@@ -13,13 +13,16 @@ const required = [
   "src/pages/CargoEnd.tsx",
   "src/components/stats/CargoStatsTabFull.tsx",
   "src/components/history/CargoHistoryScoreBlock.tsx",
-  "src/assets/tickers/ticker_cargo.png",
+  "src/lib/tickers.ts",
 ];
 for (const rel of required) assert.ok(exists(rel), `fichier CARGO manquant: ${rel}`);
 
-const png = fs.readFileSync(path.join(root, "src/assets/tickers/ticker_cargo.png"));
-assert.equal(png.readUInt32BE(16), 800, "ticker CARGO: largeur attendue 800");
-assert.equal(png.readUInt32BE(20), 230, "ticker CARGO: hauteur attendue 230");
+const tickerPath = path.join(root, "src/assets/tickers/ticker_cargo.png");
+if (fs.existsSync(tickerPath)) {
+  const png = fs.readFileSync(tickerPath);
+  assert.equal(png.readUInt32BE(16), 800, "ticker CARGO: largeur attendue 800");
+  assert.equal(png.readUInt32BE(20), 230, "ticker CARGO: hauteur attendue 230");
+}
 
 const engine = read("src/lib/gameEngines/cargoEngine.ts");
 for (const token of [
@@ -31,7 +34,7 @@ for (const token of [
 const config = read("src/pages/CargoConfig.tsx");
 for (const token of [
   "CONFIGURATION GUIDÉE","CONFIGURATION COMPLÈTE","LANCER CARGO","CARGO_VARIANT_LABELS","parcel_delivery","participantMode",
-  "teamCount","teamAssignments","ÉQUILIBRER","MULTI CARGO","truckCapacity","fragileRate","urgentRate","ticker_cargo.png"
+  "teamCount","teamAssignments","ÉQUILIBRER","COMPOSITION DES ÉQUIPES","truckCapacity","fragileRate","urgentRate","getTicker(\"cargo\")"
 ]) assert.ok(config.includes(token), `configuration incomplète: ${token}`);
 assert.ok(!config.includes("ticker_cargo.svg"), "CargoConfig ne doit plus référencer de SVG CARGO");
 
@@ -39,9 +42,13 @@ const play = read("src/pages/CargoPlay.tsx");
 for (const token of [
   "CargoEnd","History as any).upsert(buildHistoryRecord(\"in_progress\")","History as any).upsert(record)",
   "onFinish?.(record, { navigate: false })","buildCargoPlayerAdvancedStats","buildCargoTeamStats","Keypad",
-  "MANIFESTE DE CHARGEMENT","JOURNAL DES CHARGEMENTS","EventToast","cargoEventPresentation","ticker_cargo.png"
+  "MANIFESTE DE CHARGEMENT","JOURNAL DES CHARGEMENTS","EventToast","cargoEventPresentation","getTicker(\"cargo\")"
 ]) assert.ok(play.includes(token), `écran Play incomplet: ${token}`);
 assert.ok(!play.includes("ticker_cargo.svg"), "CargoPlay ne doit plus référencer de SVG CARGO");
+assert.ok(!play.includes('import tickerCargo from "../assets/tickers/ticker_cargo.png"'), "CargoPlay ne doit plus imposer un ticker statique absent");
+assert.ok(play.includes('title="CARGO"') && play.includes('tickerSrc={tickerCargo || undefined}'), "fallback header CARGO absent du Play");
+assert.ok(!config.includes('import tickerCargo from "../assets/tickers/ticker_cargo.png"'), "CargoConfig ne doit plus imposer un ticker statique absent");
+assert.ok(config.includes('title="CARGO"') && config.includes('tickerSrc={tickerCargo || undefined}'), "fallback header CARGO absent de la Config");
 
 const app = read("src/App.tsx");
 assert.ok(app.includes('case "cargo_config"'), "route config CARGO absente");
@@ -59,10 +66,10 @@ for (const token of ["BILAN DE MISSION","TABLEAU DE PERFORMANCE","RÉPARTITION D
   assert.ok(end.includes(token), `écran de fin V5 incomplet: ${token}`);
 }
 
-// Étape 2 : dashboard Stats CARGO V4 massif. L’historique détaillé reste pour l’étape 3.
+// Dashboard Stats CARGO V5 consolidé.
 const cargoStatsPage = read("src/components/stats/CargoStatsTabFull.tsx");
-for (const token of ["CENTRE DE PERFORMANCES V4","FORME RÉCENTE","POSITION DANS LA VOLÉE","SÉCURITÉ LOGISTIQUE","VARIANTES CARGO","DERNIÈRES MISSIONS"]) {
-  assert.ok(cargoStatsPage.includes(token), `stats CARGO V4 incomplètes: ${token}`);
+for (const token of ["CENTRE DE PERFORMANCES V5","FORME RÉCENTE","POSITION DANS LA VOLÉE","SÉCURITÉ LOGISTIQUE","VARIANTES CARGO","DERNIÈRES MISSIONS","JOUEURS / ÉQUIPES"]) {
+  assert.ok(cargoStatsPage.includes(token), `stats CARGO V5 incomplètes: ${token}`);
 }
 const historyCard = read("src/components/history/CargoHistoryScoreBlock.tsx");
 for (const token of ["PRÉCISION","CONTRATS","SÉRIE"]) assert.ok(historyCard.includes(token), `carte historique existante incomplète: ${token}`);

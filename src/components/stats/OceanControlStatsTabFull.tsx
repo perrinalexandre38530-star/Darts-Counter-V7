@@ -2,6 +2,7 @@
 import React from "react";
 import { oceanControlVariantLabel } from "../../lib/gameEngines/oceanControlEngine";
 import { oceanControlMissionSummary } from "../../lib/oceanControlMission";
+import { oceanControlCompetitiveScore, oceanControlCommandGrade } from "../../lib/oceanControlCompetitive";
 
 const BLUE="#30b9ff",CYAN="#65e9ff",GREEN="#65e5aa",GOLD="#f5ca68",RED="#ff6573",SOFT="#aab4c7";
 const n=(v:any)=>Number.isFinite(Number(v))?Number(v):0;
@@ -66,6 +67,19 @@ export default function OceanControlStatsTabFull({records=[],playerId,playerName
  const missionById:any={};
  missionSamples.forEach((sample:any)=>sample.objectives.forEach((objective:any)=>{const current=missionById[objective.id]||{...objective,completed:0,attempts:0};current.completed+=objective.complete?1:0;current.attempts+=1;missionById[objective.id]=current;}));
  const missionObjectiveStats=Object.values(missionById).map((objective:any)=>({...objective,rate:objective.attempts?Math.round(objective.completed/objective.attempts*100):0})).sort((a:any,b:any)=>b.rate-a.rate||a.label.localeCompare(b.label));
+ const competitiveSamples=matches.map(({record,row}:any)=>{
+  const config=record?.summary?.config||record?.payload?.config||{};
+  const won=row?.win===true||row?.winner===true||winnerIds(record).includes(String(playerId));
+  const snapshot=oceanControlCompetitiveScore(row,config,{won});
+  const score=n(row?.commandScore)>0?n(row?.commandScore):snapshot.score;
+  const gradeInfo=oceanControlCommandGrade(score);
+  return {score,grade:row?.commandGrade||gradeInfo.grade,color:row?.commandGradeColor||gradeInfo.color,playedAt:playedAt(record)};
+ });
+ const competitiveAverage=competitiveSamples.length?Math.round(competitiveSamples.reduce((sum:number,item:any)=>sum+n(item.score),0)/competitiveSamples.length):0;
+ const competitiveBest=competitiveSamples.reduce((best:number,item:any)=>Math.max(best,n(item.score)),0);
+ const competitiveGrade=oceanControlCommandGrade(competitiveAverage);
+ const gradeDistribution=["S","A","B","C","D"].map((grade)=>({grade,count:competitiveSamples.filter((item:any)=>item.grade===grade).length}));
+ const recentCompetitive=competitiveSamples.slice(0,8);
  return <div style={{width:"100%",maxWidth:980,margin:"0 auto"}}>
   <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{[["all","Tout"],["day","24 h"],["week","7 j"],["month","30 j"],["year","1 an"]].map(([key,label])=><button key={key} onClick={()=>setRange(key)} style={{borderRadius:999,padding:"6px 10px",border:`1px solid ${range===key?BLUE:"rgba(255,255,255,.10)"}`,background:range===key?`${BLUE}18`:"rgba(255,255,255,.03)",color:range===key?CYAN:SOFT,fontWeight:1000,fontSize:9}}>{label}</button>)}</div>
   {!games?<div style={{marginTop:16,borderRadius:18,padding:18,textAlign:"center",color:SOFT,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.025)"}}>Aucune partie OCEAN CONTROL exploitable pour ce joueur.</div>:<>
@@ -86,6 +100,20 @@ export default function OceanControlStatsTabFull({records=[],playerId,playerName
          <Kpi label="Victoires" value={wins} detail={`${winRate}%`} color={GREEN} />
          <Kpi label="Précision" value={`${accuracyValue}%`} detail={`${hits}/${valid} tirs`} color={GREEN} />
          <Kpi label="Navires coulés" value={ships} color={RED} />
+       </div>
+     </div>
+   </Section>
+   <Section title="Indice compétition" accent={competitiveGrade.color} subtitle={`Moyenne ${competitiveAverage} pts · meilleur ${competitiveBest} pts`}>
+     <div style={{display:"grid",gridTemplateColumns:"150px minmax(0,1fr)",gap:10,alignItems:"stretch"}}>
+       <div style={{borderRadius:16,padding:12,display:"grid",placeItems:"center",alignContent:"center",textAlign:"center",background:`linear-gradient(180deg,${competitiveGrade.color}12,rgba(255,255,255,.02))`,border:`1px solid ${competitiveGrade.color}40`}}>
+         <div style={{color:SOFT,fontSize:6.8,fontWeight:1000,letterSpacing:.5}}>GRADE MOYEN</div>
+         <div style={{marginTop:4,color:competitiveGrade.color,fontSize:34,fontWeight:1150,lineHeight:1}}>{competitiveGrade.grade}</div>
+         <div style={{marginTop:5,color:"#eef8ff",fontSize:9,fontWeight:1050}}>{competitiveAverage} / 100</div>
+         <div style={{marginTop:4,color:SOFT,fontSize:6.8,lineHeight:1.35}}>Indice partie par partie : précision, mission, puissance, sonar, tempo et clutch.</div>
+       </div>
+       <div style={{display:"grid",gap:8}}>
+         <div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:6}}>{gradeDistribution.map((item:any)=>{const info=oceanControlCommandGrade(item.grade==="S"?90:item.grade==="A"?78:item.grade==="B"?64:item.grade==="C"?50:30);return <div key={item.grade} style={{borderRadius:12,padding:"8px 6px",textAlign:"center",background:"rgba(255,255,255,.03)",border:`1px solid ${info.color}2f`}}><div style={{color:info.color,fontSize:15,fontWeight:1150}}>{item.grade}</div><div style={{marginTop:2,color:SOFT,fontSize:6.5}}>{item.count} partie{item.count>1?"s":""}</div></div>})}</div>
+         <div style={{minHeight:88,display:"grid",gridTemplateColumns:`repeat(${Math.max(1,recentCompetitive.length)},minmax(0,1fr))`,gap:5,alignItems:"end"}}>{recentCompetitive.length?recentCompetitive.map((item:any,index:number)=><div key={index} style={{display:"grid",gap:4,alignItems:"end"}}><div style={{height:Math.max(10,item.score*.68),maxHeight:68,borderRadius:9,background:`linear-gradient(180deg,${item.color},${BLUE})`}}/><div style={{textAlign:"center",color:item.color,fontSize:6.6,fontWeight:1000}}>{item.score}</div></div>):<div style={{color:SOFT,fontSize:8}}>Pas encore de tendance disponible.</div>}</div>
        </div>
      </div>
    </Section>

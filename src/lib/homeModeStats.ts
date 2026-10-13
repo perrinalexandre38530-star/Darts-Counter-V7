@@ -21,6 +21,10 @@ type ModeKey =
   | "golf"
   | "shanghai"
   | "territories"
+  | "fifty_one_by_five"
+  | "looper"
+  | "call_three"
+  | "steeplechase"
   | "darts_firefighter"
   | "darts_poker"
   | "cargo"
@@ -97,7 +101,7 @@ type ModeAgg = {
 
 const DARTS_MODE_KEYS = new Set<ModeKey>([
   "x01", "cricket", "enculette", "killer", "five_lives", "loterie", "golf", "shanghai",
-  "territories", "darts_firefighter", "darts_poker", "cargo", "ocean_control", "warfare", "battle_royale", "scram", "capital", "batard",
+  "territories", "fifty_one_by_five", "looper", "call_three", "steeplechase", "darts_firefighter", "darts_poker", "cargo", "ocean_control", "warfare", "battle_royale", "scram", "capital", "batard",
   "clock", "baseball", "bowling", "bobs_27", "halve_it", "shooter",
   "prisoner", "attrape_moi", "darts_racer", "president", "count_up",
   "game_170", "super_bull", "tic_tac_toe", "football", "rugby", "knockout",
@@ -114,6 +118,10 @@ const MODE_TITLES: Record<ModeKey, string> = {
   golf: "GOLF",
   shanghai: "SHANGHAI",
   territories: "TERRITORIES",
+  fifty_one_by_five: "51 BY 5",
+  looper: "LOOPER",
+  call_three: "CALL THREE",
+  steeplechase: "STEEPLECHASE",
   darts_firefighter: "DARTS FIREFIGHTER",
   darts_poker: "DARTS POKER",
   cargo: "CARGO",
@@ -207,6 +215,10 @@ export function detectHomeMode(record: any): ModeKey {
   if (tag.includes("loterie") || tag.includes("lottery")) return "loterie";
   if (tag.includes("golf")) return "golf";
   if (tag.includes("shanghai")) return "shanghai";
+  if (tag.includes("fifty_one_by_five") || tag.includes("51_by_5") || tag.includes("51by5") || tag.includes("fiftyonebyfive")) return "fifty_one_by_five";
+  if (tag.includes("looper")) return "looper";
+  if (tag.includes("call_three") || tag.includes("callthree")) return "call_three";
+  if (tag.includes("steeplechase") || tag.includes("steeple_chase")) return "steeplechase";
   if (tag.includes("darts_firefighter") || tag.includes("darts firefighter") || tag.includes("firefighter")) return "darts_firefighter";
   if (tag.includes("darts_poker") || tag.includes("darts poker") || tag.includes("dartspoker")) return "darts_poker";
   if (tag.includes("ocean_control") || tag.includes("ocean control") || tag.includes("oceancontrol")) return "ocean_control";
@@ -383,8 +395,11 @@ function mapPlayerDetail(record: any, profileId: string, row: any): any {
   const aliases = new Set<string>([profileId, ...playerIds(row)].map((v) => String(v || "")).filter(Boolean));
   const maps = [
     summary?.detailedByPlayer,
+    summary?.perPlayer,
     summary?.perPlayerMap,
     summary?.playerStats,
+    payload?.summary?.perPlayer,
+    payload?.stats?.players,
     payload?.playerStats,
     payload?.state?.statsByPlayerById,
     payload?.statsByPlayer,
@@ -457,6 +472,7 @@ function extractMetrics(record: any, row: any, detail: any): MatchMetrics {
     merged?.score, merged?.totalScore, merged?.points, merged?.total,
     merged?.finalScore, merged?.runs, merged?.pins, merged?.netDistance,
     merged?.cellsRevealed, merged?.marks, merged?.progress, merged?.handsWon,
+    merged?.quotientPoints, merged?.steps,
     merged?.totalWeight, merged?.parcelsDelivered,
   );
   const avg = firstFinite(
@@ -468,7 +484,8 @@ function extractMetrics(record: any, row: any, detail: any): MatchMetrics {
   const best = firstFinite(
     merged?.bestVisit, merged?.bestScore, merged?.maxVolley, merged?.highGame,
     merged?.maxScore, merged?.bestTotal, merged?.bestMargin,
-    merged?.maxCellsInVisit, merged?.bestHandScore, merged?.bestPalletWeight, merged?.longestSeries, special?.bestVisit,
+    merged?.maxCellsInVisit, merged?.bestHandScore, merged?.bestPalletWeight, merged?.longestSeries,
+    merged?.bestQuotient, merged?.bestValidStreak, merged?.bestHitStreak, merged?.bestStreak, merged?.bestVisitSteps, special?.bestVisit,
   );
   const directRate = firstFinite(
     merged?.hitRate, merged?.accuracy, merged?.successRate,
@@ -544,6 +561,33 @@ function extractMetrics(record: any, row: any, detail: any): MatchMetrics {
     waterApplied: readSpecial(merged, detail, "waterApplied"),
     canadairs: readSpecial(merged, detail, "canadairs", "dbulls"),
     zonesDestroyed: readSpecial(merged, detail, "zonesDestroyed", "totalDestroyed"),
+    // 51 BY 5
+    validVisits: readSpecial(merged, detail, "validVisits"),
+    invalidVisits: readSpecial(merged, detail, "invalidVisits"),
+    fiftyOneBusts: readSpecial(merged, detail, "busts"),
+    quotientPoints: readSpecial(merged, detail, "quotientPoints"),
+    bestQuotient: readSpecial(merged, detail, "bestQuotient"),
+    bestValidStreak: readSpecial(merged, detail, "bestValidStreak"),
+    highestRaw: readSpecial(merged, detail, "highestRaw"),
+    // LOOPER
+    loopsSurvived: readSpecial(merged, detail, "loopsSurvived"),
+    targetsSet: readSpecial(merged, detail, "targetsSet"),
+    lifeLosses: readSpecial(merged, detail, "lifeLosses"),
+    shieldsEarned: readSpecial(merged, detail, "shieldsEarned"),
+    shieldsUsed: readSpecial(merged, detail, "shieldsUsed"),
+    bestHitStreak: readSpecial(merged, detail, "bestHitStreak"),
+    // CALL THREE
+    perfectRounds: readSpecial(merged, detail, "perfectRounds"),
+    callBestVisit: readSpecial(merged, detail, "bestVisit"),
+    callBestStreak: readSpecial(merged, detail, "bestStreak"),
+    callsMade: readSpecial(merged, detail, "callsMade"),
+    // STEEPLECHASE
+    steepleSteps: readSpecial(merged, detail, "steps"),
+    fencesCleared: readSpecial(merged, detail, "fencesCleared"),
+    fenceAttempts: readSpecial(merged, detail, "fenceAttempts"),
+    bullFinishes: readSpecial(merged, detail, "bullFinishes"),
+    bestVisitSteps: readSpecial(merged, detail, "bestVisitSteps"),
+    steepleBestStreak: readSpecial(merged, detail, "bestStreak"),
     holes: firstFinite(
       record?.game?.holes,
       record?.payload?.stats?.global?.holes,
@@ -759,6 +803,44 @@ function rowsForMode(agg: ModeAgg): HomeModeSlide["rows"] {
         row("captures", formatNumber(s.captures, 0)),
         row("évasions", formatNumber(s.escapes, 0)),
         row("best visit", formatNumber(bestMetric(agg), 0)),
+      ];
+    case "fifty_one_by_five": {
+      const attempts = (s.validVisits || 0) + (s.invalidVisits || 0);
+      return [
+        row("parties", agg.sessions),
+        row("win%", formatPct(winRate)),
+        row("valides", attempts > 0 ? formatPct((s.validVisits || 0) / attempts) : "0%"),
+        row("points ÷5", formatNumber(s.quotientPoints, 0)),
+        row("best ÷5", formatNumber(mx.bestQuotient, 0)),
+        row("busts", formatNumber(s.fiftyOneBusts, 0)),
+      ];
+    }
+    case "looper":
+      return [
+        row("parties", agg.sessions),
+        row("win%", formatPct(winRate)),
+        row("hit%", formatPct(hitRate)),
+        row("boucles", formatNumber(s.loopsSurvived, 0)),
+        row("cibles posées", formatNumber(s.targetsSet, 0)),
+        row("best série", formatNumber(mx.bestHitStreak, 0)),
+      ];
+    case "call_three":
+      return [
+        row("parties", agg.sessions),
+        row("win%", formatPct(winRate)),
+        row("points", formatNumber(agg.scoreSum || s.total, 0)),
+        row("hit%", formatPct(hitRate)),
+        row("full calls", formatNumber(s.perfectRounds, 0)),
+        row("best volée", formatNumber(Math.max(mx.callBestVisit || 0, bestMetric(agg)), 0)),
+      ];
+    case "steeplechase":
+      return [
+        row("parties", agg.sessions),
+        row("win%", formatPct(winRate)),
+        row("étapes", formatNumber(s.steepleSteps, 0)),
+        row("haies", formatNumber(s.fencesCleared, 0)),
+        row("hit%", formatPct(hitRate)),
+        row("best volée", formatNumber(mx.bestVisitSteps, 0)),
       ];
     case "darts_poker":
       return [

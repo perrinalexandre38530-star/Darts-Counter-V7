@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React from "react";
 import { footballVariantLabel } from "../../lib/gameEngines/footballEngine";
-import { buildFootballCareerProgress, buildFootballHeadToHead, buildFootballSectorProfileFromRecords, footballPerformanceRating, footballTacticalProfile } from "../../lib/footballInsights";
+import { buildFootballCareerHonours, buildFootballCareerProgress, buildFootballHeadToHead, buildFootballSectorProfileFromRecords, footballPerformanceRating, footballTacticalProfile } from "../../lib/footballInsights";
 
 const GREEN = "#65e5aa", BLUE = "#35d0ff", RED = "#ff5b77", GOLD = "#ffd36b", SOFT = "#aeb8c9", WHITE = "#f7fbff";
 const n = (v: any) => Number.isFinite(Number(v)) ? Number(v) : 0;
@@ -92,6 +92,7 @@ export default function FootballStatsTabFull({ records = [], playerId, playerNam
   const favoriteVariant = Object.entries(variants).sort((a: any, b: any) => b[1].games - a[1].games)[0];
   const headToHead = buildFootballHeadToHead(footballRecords, playerId, playerName).slice(0, 6);
   const career = buildFootballCareerProgress(footballRecords, playerId, playerName);
+  const honours = buildFootballCareerHonours(footballRecords, playerId, playerName);
   const averageRating = rows.length ? Math.round((rows.reduce((total: number, row: any) => total + footballPerformanceRating(row), 0) / rows.length) * 10) / 10 : 0;
   const tactical = footballTacticalProfile({ darts, hits, successfulActions: actions, goals, shots, shotsOnTarget: onTarget, saves, tackles, interceptions, advances, passes, possessionWins: posWins, clearances, counterAttacks: counters, attackVisits, defenseVisits, goalkeeperVisits });
   const sectorProfile = buildFootballSectorProfileFromRecords(matches.map((item: any) => item.record), playerId);
@@ -165,6 +166,23 @@ export default function FootballStatsTabFull({ records = [], playerId, playerNam
       <Section title="Progression carrière" accent={GOLD} right={<span style={{ color: SOFT, fontSize: 7 }}>{career.snapshot.games} matchs · {career.snapshot.wins} victoires</span>}>
         <div style={{ display: "grid", gap: 7 }}>{career.next.map((milestone: any) => <div key={`${milestone.key}-${milestone.target}`} style={{ display: "grid", gridTemplateColumns: "105px minmax(0,1fr) 62px", gap: 7, alignItems: "center" }}><div style={{ color: WHITE, fontSize: 7.2, fontWeight: 950, whiteSpace: "nowrap" }}>{milestone.icon} {milestone.label}</div><div style={{ height: 8, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.07)" }}><div style={{ width: `${milestone.progress}%`, height: "100%", borderRadius: 999, background: GOLD }} /></div><div style={{ textAlign: "right", color: GOLD, fontSize: 7.4, fontWeight: 1050 }}>{milestone.value}/{milestone.target}</div></div>)}</div>
         {career.achieved.length ? <div style={{ marginTop: 8, display: "flex", gap: 5, flexWrap: "wrap" }}>{career.achieved.map((milestone: any) => <span key={`${milestone.key}-${milestone.target}`} style={{ borderRadius: 999, padding: "5px 7px", border: `1px solid ${GREEN}44`, background: `${GREEN}0b`, color: GREEN, fontSize: 6.2, fontWeight: 1000 }}>{milestone.icon} {milestone.target} {milestone.label}</span>)}</div> : null}
+      </Section>
+
+      <Section title="Palmarès avancé" accent={GOLD} right={<span style={{ color: SOFT, fontSize: 7 }}>distinctions carrière</span>}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>
+          <RecordCard icon="⭐" label="MASTERCLASS" value={honours.masterclasses} detail="matchs notés 9.0+" color={GOLD} />
+          <RecordCard icon="🎩" label="HAT-TRICKS" value={honours.hatTricks} detail="3 buts ou plus" color={GOLD} />
+          <RecordCard icon="🧱" label="CLEAN SHEETS" value={honours.cleanSheets} detail="victoires sans encaisser" color={GREEN} />
+          <RecordCard icon="↗️" label="REMONTÉES" value={honours.comebacks} detail="matchs renversés" color={GREEN} />
+          <RecordCard icon="🧤" label="MATCHS MUR" value={honours.wallGames} detail="3 arrêts ou plus" color={BLUE} />
+          <RecordCard icon="🛡️" label="SENTINELLE" value={honours.sentinelGames} detail="3 interceptions ou plus" color={RED} />
+          <RecordCard icon="🎯" label="MATCHS SNIPER" value={honours.sniperGames} detail="70%+ de précision" color="#a78bfa" />
+          <RecordCard icon="⚡" label="GOLDEN GOAL" value={honours.goldenGoalWins} detail={`${honours.shootoutWins} victoire${honours.shootoutWins > 1 ? "s" : ""} aux penalties`} color={GOLD} />
+        </div>
+        <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6 }}>
+          <Kpi label="Meilleure note" value={`${honours.bestRating.toFixed(1)}/10`} detail="record personnel de performance" color={GOLD} />
+          <Kpi label="Victoires aux tirs au but" value={honours.shootoutWins} detail="séances remportées" color={BLUE} />
+        </div>
       </Section>
 
       <Section title="Forme récente" accent={GREEN} right={<span style={{ color: SOFT, fontSize: 7 }}>{recentFive.length ? `${recentPoints}/${recentFive.length * 3} pts sur les 5 derniers` : "12 derniers matchs"}</span>}>

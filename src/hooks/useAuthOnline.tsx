@@ -373,6 +373,33 @@ function parseProfileTimestamp(value: any): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
+const ACCOUNT_PREFERENCES_CLOUD_EVENT = "dc:account-preferences-cloud-updated";
+const ACCOUNT_PREFERENCE_KEYS = ["appLang", "appTheme", "favX01", "favDoubleOut", "ttsVoice", "sfxVolume"] as const;
+
+function publishCloudAccountPreferences(profile: OnlineProfile | null, userId: string, source: string): void {
+  if (!profile || typeof window === "undefined") return;
+
+  const preferences = ((profile as any)?.preferences || {}) as Record<string, any>;
+  const privateInfo = ((profile as any)?.privateInfo || (profile as any)?.private_info || {}) as Record<string, any>;
+  const resolved: Record<string, any> = {};
+
+  for (const key of ACCOUNT_PREFERENCE_KEYS) {
+    const value = preferences?.[key] ?? privateInfo?.[key];
+    if (value !== undefined && value !== null && value !== "") resolved[key] = value;
+  }
+  if (!Object.keys(resolved).length) return;
+
+  // Le timeout 0 garantit que les providers racine (Theme/Lang) ont installé
+  // leurs listeners, y compris lors du tout premier bootstrap du compte.
+  window.setTimeout(() => {
+    try {
+      window.dispatchEvent(new CustomEvent(ACCOUNT_PREFERENCES_CLOUD_EVENT, {
+        detail: { userId, preferences: resolved, source },
+      }));
+    } catch {}
+  }, 0);
+}
+
 function mapSupabaseAccountProfileRow(row: any, user: User): OnlineProfile {
   const privateInfo = row?.private_info && typeof row.private_info === "object"
     ? { ...row.private_info }
@@ -1053,6 +1080,10 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
         if (String(current.user?.id || "") !== userId) return current;
         return { ...current, profile };
       });
+      // Les préférences légères du compte suivent la même autorité Supabase que
+      // le pseudo/avatar. ThemeProvider/LangProvider appliquent immédiatement
+      // les valeurs distantes sur l'appareil B sans attendre l'ouverture de MON PROFIL.
+      publishCloudAccountPreferences(profile, userId, "useAuthOnline.account-profile");
     };
 
     const refreshProfile = () => {

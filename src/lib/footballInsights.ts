@@ -500,3 +500,156 @@ export function buildFootballEndInsights(records: any[] = [], state: any, profil
     }).sort((a: any, b: any) => b.rating - a.rating),
   };
 }
+
+// -----------------------------------------------------------------------------
+// V8 — Momentum live + distinctions de match + palmarès avancé
+// -----------------------------------------------------------------------------
+
+export function buildFootballMomentumFromState(state: any, windowSize = 6) {
+  const sides = Array.isArray(state?.sides) ? state.sides.slice(0, 2) : [];
+  const visits = Array.isArray(state?.visits) ? state.visits.slice(-Math.max(1, Number(windowSize) || 6)) : [];
+  const raw: Record<string, number> = Object.fromEntries(sides.map((side: any) => [txt(side?.id), 0]));
+
+  for (const visit of visits) {
+    const sideId = txt(visit?.sideId);
+    if (!sideId || raw[sideId] == null) continue;
+    let value = 0.7;
+    for (const event of Array.isArray(visit?.events) ? visit.events : []) {
+      const type = low(event?.type);
+      const label = low(event?.label);
+      if (type.includes("goal") || label.includes("but")) value += 9;
+      else if (type.includes("shot_on_target") || label.includes("tir cadr")) value += 3.2;
+      else if (type.includes("save") || label.includes("arrêt") || label.includes("arret")) value += 3.6;
+      else if (type.includes("interception") || label.includes("interception")) value += label.includes("contre") ? 4.6 : 3.3;
+      else if (type.includes("counter") || label.includes("contre-attaque")) value += 4.2;
+      else if (type.includes("advance") || label.includes("progression")) value += Math.max(0.8, Math.min(3.6, n(event?.value) * 1.15));
+      else if (type.includes("clearance") || label.includes("repouss")) value += 1.4;
+      else if (type.includes("penalt") && (label.includes("but") || label.includes("marqu"))) value += 5.5;
+      else if (type.includes("miss") || label.includes("manqué") || label.includes("rate")) value -= 0.35;
+    }
+    raw[sideId] = Math.max(0, raw[sideId] + value);
+  }
+
+  if (sides.length < 2) return { leftPct: 50, rightPct: 50, leaderSideId: null, label: "ÉQUILIBRÉ", window: visits.length, scores: raw };
+  const leftId = txt(sides[0]?.id);
+  const rightId = txt(sides[1]?.id);
+  const leftScore = Math.max(0, n(raw[leftId]));
+  const rightScore = Math.max(0, n(raw[rightId]));
+  const total = leftScore + rightScore;
+  const leftPct = total > 0 ? Math.round((leftScore / total) * 100) : 50;
+  const rightPct = 100 - leftPct;
+  const gap = Math.abs(leftPct - rightPct);
+  const leaderSideId = gap < 8 ? null : leftPct > rightPct ? leftId : rightId;
+  const label = gap < 8 ? "ÉQUILIBRÉ" : gap < 24 ? "LÉGER TEMPS FORT" : gap < 45 ? "TEMPS FORT" : "DOMINATION";
+  return { leftPct, rightPct, leaderSideId, label, window: visits.length, scores: raw };
+}
+
+export function footballMatchHonoursFromState(state: any, profilesById?: Map<string, any>) {
+  const honours: any[] = [];
+  const players = Array.isArray(state?.players) ? state.players : [];
+  const sides = Array.isArray(state?.sides) ? state.sides : [];
+  const scoreBySide = state?.scoreBySide || {};
+  const winnerSideId = Array.isArray(state?.winnerSideIds) ? txt(state.winnerSideIds[0]) : "";
+  const sideName = (id: string) => txt(sides.find((side: any) => txt(side?.id) === id)?.name || "Équipe");
+  const playerLabel = (player: any) => {
+    const profile = profilesById?.get?.(txt(player?.id)) || player;
+    return txt(profile?.name || profile?.displayName || profile?.display_name || player?.name || "Joueur");
+  };
+  const push = (item: any) => {
+    const key = `${item.scope || "player"}:${item.playerId || item.sideId || ""}:${item.label}`;
+    if (!honours.some((entry: any) => entry.key === key)) honours.push({ key, ...item });
+  };
+
+  if (winnerSideId) {
+    const loser = sides.find((side: any) => txt(side?.id) !== winnerSideId);
+    const winnerScore = n(scoreBySide?.[winnerSideId]);
+    const loserScore = n(scoreBySide?.[txt(loser?.id)]);
+    if (loser && loserScore === 0) push({ scope: "team", sideId: winnerSideId, icon: "🧱", label: "CLEAN SHEET", detail: `${sideName(winnerSideId)} n'a encaissé aucun but`, color: "#65e5aa", priority: 98 });
+    if (winnerScore - loserScore >= 3) push({ scope: "team", sideId: winnerSideId, icon: "🔥", label: "VICTOIRE LARGE", detail: `${winnerScore - loserScore} buts d'écart`, color: "#ff5b77", priority: 86 });
+
+    const cameBack = (Array.isArray(state?.visits) ? state.visits : []).some((visit: any) => {
+      const before = visit?.scoreBefore || {};
+      return n(before?.[winnerSideId]) < n(before?.[txt(loser?.id)]);
+    });
+    if (cameBack) push({ scope: "team", sideId: winnerSideId, icon: "↗️", label: "REMONTÉE", detail: `${sideName(winnerSideId)} a renversé le match`, color: "#ffd36b", priority: 100 });
+  }
+
+  if (state?.stage === "penalties" || state?.config?.variant === "penalties") {
+    if (winnerSideId) push({ scope: "team", sideId: winnerSideId, icon: "🥅", label: "ROI DES PENALTIES", detail: `${sideName(winnerSideId)} gagne la séance`, color: "#35d0ff", priority: 92 });
+  }
+  if (state?.config?.variant === "golden_goal" && winnerSideId) {
+    push({ scope: "team", sideId: winnerSideId, icon: "⚡", label: "GOLDEN GOAL", detail: "Victoire au premier but", color: "#ffd36b", priority: 94 });
+  }
+
+  for (const player of players) {
+    const pid = txt(player?.id);
+    const stats = state?.statsByPlayer?.[pid] || {};
+    const name = playerLabel(player);
+    const rating = footballPerformanceRating(stats);
+    const accuracy = footballRowAccuracy(stats);
+    const base = { scope: "player", playerId: pid, playerName: name };
+
+    if (n(stats?.goals) >= 3) push({ ...base, icon: "🎩", label: "HAT-TRICK", detail: `${n(stats.goals)} buts`, color: "#ffd36b", priority: 96 });
+    if (n(stats?.saves) >= 3) push({ ...base, icon: "🧤", label: "MUR", detail: `${n(stats.saves)} arrêts`, color: "#35d0ff", priority: 82 });
+    if (n(stats?.interceptions) >= 3) push({ ...base, icon: "🛡️", label: "SENTINELLE", detail: `${n(stats.interceptions)} interceptions`, color: "#ff5b77", priority: 80 });
+    if (n(stats?.advances) >= 8) push({ ...base, icon: "🚀", label: "MOTEUR", detail: `+${n(stats.advances)} zones gagnées`, color: "#65e5aa", priority: 72 });
+    if (n(stats?.darts) >= 6 && accuracy >= 70) push({ ...base, icon: "🎯", label: "SNIPER", detail: `${Math.round(accuracy * 10) / 10}% de précision`, color: "#a78bfa", priority: 84 });
+    if (rating >= 9) push({ ...base, icon: "⭐", label: "MASTERCLASS", detail: `Note ${rating.toFixed(1)}/10`, color: "#ffd36b", priority: 99 });
+    if (n(stats?.counterAttacks) >= 2) push({ ...base, icon: "⚡", label: "CONTRE-ATTAQUANT", detail: `${n(stats.counterAttacks)} contres`, color: "#65e5aa", priority: 74 });
+    if (n(stats?.penaltiesScored) >= 3) push({ ...base, icon: "🥅", label: "SANG-FROID", detail: `${n(stats.penaltiesScored)} penalties marqués`, color: "#35d0ff", priority: 78 });
+  }
+
+  return honours.sort((a: any, b: any) => n(b.priority) - n(a.priority)).slice(0, 12);
+}
+
+export function buildFootballCareerHonours(records: any[] = [], playerId?: string, playerName?: string) {
+  const summary = {
+    cleanSheets: 0,
+    comebacks: 0,
+    hatTricks: 0,
+    wallGames: 0,
+    sentinelGames: 0,
+    sniperGames: 0,
+    masterclasses: 0,
+    goldenGoalWins: 0,
+    shootoutWins: 0,
+    bestRating: 0,
+  };
+
+  for (const record of records || []) {
+    if (!isFootballHistoryRecord(record)) continue;
+    const row = footballFindHistoryRow(record, playerId, playerName);
+    if (!row) continue;
+    const result = footballHistoryResult(record, row, playerId);
+    const rating = footballPerformanceRating(row);
+    summary.bestRating = Math.max(summary.bestRating, rating);
+    if (n(row?.goals) >= 3) summary.hatTricks += 1;
+    if (n(row?.saves) >= 3) summary.wallGames += 1;
+    if (n(row?.interceptions) >= 3) summary.sentinelGames += 1;
+    if (n(row?.darts) >= 6 && footballRowAccuracy(row) >= 70) summary.sniperGames += 1;
+    if (rating >= 9) summary.masterclasses += 1;
+
+    const state = record?.resume?.state || record?.payload?.stateSnapshot || record?.payload?.state || {};
+    const variant = txt(record?.summary?.variant || record?.payload?.variant || record?.payload?.config?.variant || state?.config?.variant);
+    if (result === "W" && variant === "golden_goal") summary.goldenGoalWins += 1;
+    if (result === "W" && (variant === "penalties" || state?.stage === "penalties")) summary.shootoutWins += 1;
+
+    if (result === "W") {
+      const ownSideId = txt(row?.sideId);
+      const sides = Array.isArray(state?.sides) ? state.sides : [];
+      const opponent = sides.find((side: any) => txt(side?.id) && txt(side?.id) !== ownSideId);
+      if (opponent) {
+        const opponentScore = scoreForSide(record, txt(opponent?.id));
+        if (opponentScore === 0) summary.cleanSheets += 1;
+        const cameBack = (Array.isArray(state?.visits) ? state.visits : []).some((visit: any) => {
+          const before = visit?.scoreBefore || {};
+          return n(before?.[ownSideId]) < n(before?.[txt(opponent?.id)]);
+        });
+        if (cameBack) summary.comebacks += 1;
+      }
+    }
+  }
+
+  return summary;
+}
+

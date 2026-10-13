@@ -3,6 +3,7 @@ import React from "react";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { oceanControlAccuracy, oceanControlVariantLabel } from "../lib/gameEngines/oceanControlEngine";
 import { oceanControlMissionSummary } from "../lib/oceanControlMission";
+import { buildOceanControlCompetitiveTable, oceanControlCompetitiveScore } from "../lib/oceanControlCompetitive";
 
 const BLUE = "#30b9ff", CYAN = "#65e9ff", GREEN = "#65e5aa", GOLD = "#f5ca68", RED = "#ff6573", SOFT = "#aab4c7";
 const playerName = (p: any) => p?.name || p?.displayName || p?.display_name || "Joueur";
@@ -59,6 +60,8 @@ export default function OceanControlEnd({ state, profilesById, onClose, onReplay
     const won = state.winnerPlayerIds.includes(player.id);
     return { player, profile, stats, won, index };
   }).sort((a: any, b: any) => Number(b.won) - Number(a.won) || Number(b.stats?.shipsSunk || 0) - Number(a.stats?.shipsSunk || 0) || Number(b.stats?.shipHits || 0) - Number(a.stats?.shipHits || 0) || oceanControlAccuracy(b.stats) - oceanControlAccuracy(a.stats));
+  const finalStandings = buildOceanControlCompetitiveTable(state.players, state.statsByPlayer, state.config, state.winnerPlayerIds);
+  const finalStandingById = new Map(finalStandings.map((entry: any) => [String(entry.playerId), entry]));
 
   const totalDarts = rows.reduce((sum: number, row: any) => sum + Number(row.stats?.darts || 0), 0);
   const totalHits = rows.reduce((sum: number, row: any) => sum + Number(row.stats?.shipHits || 0), 0);
@@ -81,15 +84,10 @@ export default function OceanControlEnd({ state, profilesById, onClose, onReplay
   const totalStrikes = rows.reduce((sum: number, row: any) => sum + Number(row.stats?.precisionStrikes || 0), 0);
   const dbullEfficiency = totalDbulls > 0 ? Math.round((totalStrikes / totalDbulls) * 100) : 0;
   const winnerRow = rows.find((row: any) => row.won) || rows[0] || null;
-  const commandScore = winnerRow ? Math.round(
-    oceanControlAccuracy(winnerRow.stats) * .5
-    + Math.min(25, Number(winnerRow.stats?.shipsSunk || 0) * 7)
-    + Math.min(12, Number(winnerRow.stats?.perfectVisits || 0) * 4)
-    + Math.min(8, Number(winnerRow.stats?.sonarContacts || 0))
-    + 10
-  ) : 0;
-  const commandGrade = commandScore >= 86 ? "S" : commandScore >= 72 ? "A" : commandScore >= 58 ? "B" : commandScore >= 44 ? "C" : "D";
-  const commandGradeColor = commandGrade === "S" ? GOLD : commandGrade === "A" ? GREEN : commandGrade === "B" ? BLUE : commandGrade === "C" ? CYAN : SOFT;
+  const winnerCompetitive = winnerRow ? oceanControlCompetitiveScore(winnerRow.stats, state.config, { won: true }) : null;
+  const commandScore = winnerCompetitive?.score || 0;
+  const commandGrade = winnerCompetitive?.grade || "D";
+  const commandGradeColor = winnerCompetitive?.gradeColor || SOFT;
   const battleSignature = winnerRow
     ? Number(winnerRow.stats?.sonarUses || 0) >= Math.max(2, Number(winnerRow.stats?.visits || 0) * .35) ? "TACTICIEN SONAR"
       : oceanControlAccuracy(winnerRow.stats) >= 55 ? "TIREUR DE PRÉCISION"
@@ -131,6 +129,11 @@ export default function OceanControlEnd({ state, profilesById, onClose, onReplay
         {finisher ? <Award icon="💥" title="FINISSEUR" value={playerName(finisher.profile)} detail={`${finisher.stats?.shipsSunk || 0} navires coulés`} color={RED} /> : null}
         {sonarMaster ? <Award icon="📡" title="MAÎTRE SONAR" value={playerName(sonarMaster.profile)} detail={`${sonarMaster.stats?.sonarContacts || 0} contacts détectés`} color={CYAN} /> : null}
         {tactician ? <Award icon="🧭" title="TACTICIEN" value={playerName(tactician.profile)} detail={`série ${tactician.stats?.bestHitStreak || 0} · ${tactician.stats?.multiHitVisits || 0} multi-impacts`} color={GOLD} /> : null}
+      </div>
+
+      <div style={{ marginTop: 10, borderRadius: 18, padding: 11, background: "linear-gradient(180deg,rgba(255,255,255,.04),rgba(0,0,0,.24))", border: "1px solid rgba(255,255,255,.08)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}><div><div style={{ color: GOLD, fontSize: 9, fontWeight: 1100, letterSpacing: .7 }}>CLASSEMENT DE COMMANDEMENT</div><div style={{ marginTop: 2, color: SOFT, fontSize: 7 }}>Indice compétitif final · performance + mission + maîtrise tactique</div></div><strong style={{ color: finalStandings[0]?.gradeColor || GOLD, fontSize: 10 }}>{finalStandings[0]?.score || 0} pts</strong></div>
+        <div style={{ display: "grid", gap: 6 }}>{finalStandings.map((entry: any) => { const profile = profilesById.get(String(entry.playerId)) || state.players.find((player: any) => String(player.id) === String(entry.playerId)) || {}; return <div key={entry.playerId} style={{ display: "grid", gridTemplateColumns: "28px 34px minmax(0,1fr) 32px 42px", gap: 7, alignItems: "center", padding: 8, borderRadius: 12, background: entry.rank === 1 ? `linear-gradient(90deg,${entry.gradeColor}12,rgba(255,255,255,.02))` : "rgba(255,255,255,.025)", border: `1px solid ${entry.rank === 1 ? entry.gradeColor + "44" : "rgba(255,255,255,.07)"}` }}><strong style={{ color: entry.rank === 1 ? GOLD : SOFT, textAlign: "center" }}>#{entry.rank}</strong><ProfileAvatar profile={profile} size={32} /><div style={{ minWidth: 0 }}><div style={{ color: entry.rank === 1 ? "#fff" : "#e8eef6", fontSize: 8.5, fontWeight: 1050, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{entry.name}</div><div style={{ marginTop: 2, color: SOFT, fontSize: 6.7 }}>{entry.accuracy}% précision · mission {entry.missionPercent}% · {entry.shipsSunk} nav.</div></div><span style={{ width: 27, height: 27, display: "grid", placeItems: "center", borderRadius: 9, color: entry.gradeColor, border: `1px solid ${entry.gradeColor}44`, background: `${entry.gradeColor}0d`, fontWeight: 1150 }}>{entry.grade}</span><strong style={{ color: entry.gradeColor, textAlign: "right", fontSize: 9 }}>{entry.score}</strong></div>; })}</div>
       </div>
 
       {winnerRow ? <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "86px minmax(0,1fr)", gap: 10, alignItems: "stretch", borderRadius: 18, padding: 11, background: `linear-gradient(135deg,${commandGradeColor}12,rgba(0,0,0,.24))`, border: `1px solid ${commandGradeColor}44` }}>
@@ -177,7 +180,7 @@ export default function OceanControlEnd({ state, profilesById, onClose, onReplay
               {Number(row.stats?.precisionStrikes || 0) > 0 ? <span style={{ borderRadius: 999, padding: "2px 6px", fontSize: 6.5, fontWeight: 1000, color: CYAN, border: `1px solid ${CYAN}55`, background: `${CYAN}10` }}>📍 {row.stats.precisionStrikes} DBULL</span> : null}
             </div>
           </div>
-          <div style={{ textAlign: "right", zIndex: 1 }}><div style={{ color: GREEN, fontSize: 19, fontWeight: 1150 }}>{accuracy}%</div><div style={{ color: SOFT, fontSize: 7.2 }}>{row.stats?.shipHits || 0}/{row.stats?.validShots || 0} tirs</div></div>
+          <div style={{ textAlign: "right", zIndex: 1 }}>{(() => { const standing: any = finalStandingById.get(String(row.player.id)); return <><div style={{ color: standing?.gradeColor || GREEN, fontSize: 19, fontWeight: 1150 }}>{standing?.score ?? accuracy}</div><div style={{ color: SOFT, fontSize: 7.2 }}>{standing ? `${standing.grade} · #${standing.rank}` : `${row.stats?.shipHits || 0}/${row.stats?.validShots || 0} tirs`}</div></>; })()}</div>
         </div>;
       })}</div>
 

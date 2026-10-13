@@ -33,6 +33,7 @@ import {
   type FootballConfigPayload,
   type FootballState,
 } from "../lib/gameEngines/footballEngine";
+import { buildFootballMomentumFromState, footballPerformanceRating } from "../lib/footballInsights";
 import { buildDartsTelemetry } from "../lib/dartsTelemetry";
 import { History } from "../lib/history";
 import tickerFootball from "../assets/tickers/ticker_football.png";
@@ -335,6 +336,11 @@ export default function FootballPlay(props: any) {
   const possession1 = 100 - possession0;
   const efficiency0 = sideEfficiency(state, 0);
   const efficiency1 = sideEfficiency(state, 1);
+  const momentum = buildFootballMomentumFromState(state, 6);
+  const activeRating = footballPerformanceRating(activeStats);
+  const momentumLeader = momentum.leaderSideId
+    ? state.sides.find((side: any) => String(side.id) === String(momentum.leaderSideId))
+    : null;
 
   function backToConfig() {
     if (typeof go === "function") go("football_config", { config });
@@ -571,6 +577,19 @@ export default function FootballPlay(props: any) {
         </div>
       </section>
 
+      <section className="football-momentum football-glass">
+        <div className="football-momentum__head">
+          <span style={{ color: state.sides[0]?.color || BLUE }}>{momentum.leftPct}%</span>
+          <strong>{momentumLeader ? `TEMPS FORT · ${momentumLeader.name}` : `RYTHME · ${momentum.label}`}</strong>
+          <span style={{ color: state.sides[1]?.color || RED }}>{momentum.rightPct}%</span>
+        </div>
+        <div className="football-momentum__bar" aria-label="Dynamique récente du match">
+          <span className="is-left" style={{ width: `${momentum.leftPct}%`, background: state.sides[0]?.color || BLUE }} />
+          <span className="is-right" style={{ width: `${momentum.rightPct}%`, background: state.sides[1]?.color || RED }} />
+        </div>
+        <div className="football-momentum__foot">DYNAMIQUE DES {Math.max(1, momentum.window)} DERNIÈRES VOLÉES</div>
+      </section>
+
       <FootballField state={state} />
 
       <section className="football-match-ticker football-glass" style={{ borderColor: `${currentActionColor}3d` }}>
@@ -585,7 +604,7 @@ export default function FootballPlay(props: any) {
           <div style={{ minWidth: 0 }}>
             <div className="football-player-card__eyebrow" style={{ color: activeSide?.color || GREEN }}>{botThinking ? "BOT EN RÉFLEXION" : "JOUEUR ACTIF"}</div>
             <div className="football-player-card__name">{playerName(activeProfile)}</div>
-            <div className="football-player-card__stats">{activeStats.goals || 0} but · {activeStats.shotsOnTarget || 0} cadré · {activeStats.interceptions || 0} interception</div>
+            <div className="football-player-card__stats">{activeStats.goals || 0} but · {activeStats.shotsOnTarget || 0} cadré · {activeStats.interceptions || 0} interception · <strong style={{ color: GOLD }}>NOTE {activeRating.toFixed(1)}</strong></div>
           </div>
         </section>
         <MissionCard state={state} />
@@ -629,6 +648,7 @@ export default function FootballPlay(props: any) {
     {overlay === "stats" ? <OverlayShell title={`STATS · ${playerName(activeProfile).toUpperCase()}`} subtitle={`${footballActionLabel(actionNow)} · ${activeSide?.name}`} color={GREEN} onClose={() => setOverlay(null)}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
         <Kpi label="PRÉCISION ACTIONS" value={`${footballAccuracy(activeStats)}%`} color={GREEN} />
+        <Kpi label="NOTE LIVE" value={`${activeRating.toFixed(1)}/10`} color={GOLD} detail="performance sur ce match" />
         <Kpi label="BUTS" value={activeStats.goals || 0} color={GOLD} />
         <Kpi label="TIRS CADRÉS" value={activeStats.shotsOnTarget || 0} color={BLUE} />
         <Kpi label="ARRÊTS" value={activeStats.saves || 0} color={GOLD} />

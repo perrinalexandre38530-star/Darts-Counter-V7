@@ -26,7 +26,7 @@ const config = read("src/pages/FootballConfig.tsx");
 for (const token of ["PlayerPagedSelector", "TeamPagedSelector", "BotPagedSelector", "golden_goal", "penalties", "classic", "football_play", "football-config-summary", "Clavier compact", "applyPreset"]) assert.ok(config.includes(token), `configuration incomplète: ${token}`);
 
 const play = read("src/pages/FootballPlay.tsx");
-for (const token of ["Keypad", "DartboardClickable", "FootballField", "FootballEnd", "History", "buildDartsTelemetry", "stateSnapshot", "onFinish", "CompactFootballPad", "football-compact-pad", "MissionCard", "football-quick-actions", "football-match-ticker", "sideEfficiency"]) assert.ok(play.includes(token), `écran de jeu incomplet: ${token}`);
+for (const token of ["Keypad", "DartboardClickable", "FootballField", "FootballEnd", "History", "buildDartsTelemetry", "stateSnapshot", "onFinish", "CompactFootballPad", "football-compact-pad", "MissionCard", "football-quick-actions", "football-match-ticker", "sideEfficiency", "buildFootballMomentumFromState", "NOTE LIVE", "football-momentum"]) assert.ok(play.includes(token), `écran de jeu incomplet: ${token}`);
 
 const app = read("src/App.tsx");
 assert.match(app, /case\s+["']football_config["']/);
@@ -50,16 +50,16 @@ const history = read("src/pages/HistoryPage.tsx");
 for (const token of ["FootballHistoryScoreBlock", "isFootballEntry", 'safeGo(["football_play"]', 'initialStatsSubTab: "football"']) assert.ok(history.includes(token), `Historique non câblé: ${token}`);
 
 const footballStats = read("src/components/stats/FootballStatsTabFull.tsx");
-for (const token of ["Efficacité par phase", "Volées attaque", "Volées défense", "Volées gardien", "Records personnels Darts Football", "Progression carrière", "Note moyenne", "buildFootballCareerProgress", "ADN tactique", "Carte de cible Football", "buildFootballSectorProfileFromRecords", "footballTacticalProfile"]) assert.ok(footballStats.includes(token), `Stats Football V7 incomplètes: ${token}`);
+for (const token of ["Efficacité par phase", "Volées attaque", "Volées défense", "Volées gardien", "Records personnels Darts Football", "Progression carrière", "Note moyenne", "buildFootballCareerProgress", "ADN tactique", "Carte de cible Football", "buildFootballSectorProfileFromRecords", "footballTacticalProfile", "buildFootballCareerHonours", "Palmarès avancé"]) assert.ok(footballStats.includes(token), `Stats Football V7 incomplètes: ${token}`);
 
 const footballEnd = read("src/pages/FootballEnd.tsx");
-for (const token of ["CLEAN SHEET", "CONVERSION", "PRÉCISION", "matchBadges", "PALIERS DE CARRIÈRE", "footballPerformanceRating", "ADN TACTIQUE DU MATCH", "ZONES CHAUDES", "buildFootballSectorProfileFromState"]) assert.ok(footballEnd.includes(token), `Fin Football V7 incomplète: ${token}`);
+for (const token of ["CLEAN SHEET", "CONVERSION", "PRÉCISION", "matchBadges", "PALIERS DE CARRIÈRE", "footballPerformanceRating", "ADN TACTIQUE DU MATCH", "ZONES CHAUDES", "buildFootballSectorProfileFromState", "DISTINCTIONS DU MATCH", "footballMatchHonoursFromState", "buildFootballMomentumFromState"]) assert.ok(footballEnd.includes(token), `Fin Football V7 incomplète: ${token}`);
 
 const footballHistory = read("src/components/history/FootballHistoryScoreBlock.tsx");
-for (const token of ["★ MVP", "⚽ BUTEUR", "🧤 GARDIEN", "📈 NOTE", "footballPerformanceRating", "ADN DU MVP", "ZONE FORTE", "buildFootballSectorProfileFromRecord"]) assert.ok(footballHistory.includes(token), `Carte historique Football V7 incomplète: ${token}`);
+for (const token of ["★ MVP", "⚽ BUTEUR", "🧤 GARDIEN", "📈 NOTE", "footballPerformanceRating", "ADN DU MVP", "ZONE FORTE", "buildFootballSectorProfileFromRecord", "footballMatchHonoursFromState", "DYNAMIQUE"]) assert.ok(footballHistory.includes(token), `Carte historique Football V7 incomplète: ${token}`);
 
 const footballInsights = read("src/lib/footballInsights.ts");
-for (const token of ["footballPerformanceRating", "buildFootballCareerSnapshot", "buildFootballCareerProgress", "footballCareerMilestonesUnlocked", "footballTacticalProfile", "buildFootballSectorProfileFromVisits", "buildFootballSectorProfileFromRecord", "buildFootballSectorProfileFromRecords"]) assert.ok(footballInsights.includes(token), `Insights Football V7 incomplets: ${token}`);
+for (const token of ["footballPerformanceRating", "buildFootballCareerSnapshot", "buildFootballCareerProgress", "footballCareerMilestonesUnlocked", "footballTacticalProfile", "buildFootballSectorProfileFromVisits", "buildFootballSectorProfileFromRecord", "buildFootballSectorProfileFromRecords", "buildFootballMomentumFromState", "footballMatchHonoursFromState", "buildFootballCareerHonours"]) assert.ok(footballInsights.includes(token), `Insights Football V7 incomplets: ${token}`);
 
 const codec = read("src/lib/matchCompactCodec.ts");
 for (const token of ['mode === "football_darts"', "stateSnapshot", "footballVisits", "compact.d?.fb"]) assert.ok(codec.includes(token), `codec compact non câblé: ${token}`);
@@ -67,6 +67,6 @@ for (const token of ['mode === "football_darts"', "stateSnapshot", "footballVisi
 console.log("DARTS FOOTBALL integration wiring: OK");
 
 const footballPlayCss = read("src/styles/football-play.css");
-for (const token of ["football-scoreboard", "football-field__ball", "football-command-row", "football-compact-pad", "football-pad-cell.is-target", "football-match-ticker"]) assert.ok(footballPlayCss.includes(token), `CSS FootballPlay incomplet: ${token}`);
+for (const token of ["football-scoreboard", "football-field__ball", "football-command-row", "football-compact-pad", "football-pad-cell.is-target", "football-match-ticker", "football-momentum"]) assert.ok(footballPlayCss.includes(token), `CSS FootballPlay incomplet: ${token}`);
 const footballConfigCss = read("src/styles/football-config.css");
 for (const token of ["football-config-summary", "football-mode-grid", "football-config-actions"]) assert.ok(footballConfigCss.includes(token), `CSS FootballConfig incomplet: ${token}`);

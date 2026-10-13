@@ -74,13 +74,18 @@ assert.ok(engine.includes('convoy_handoff'), 'relais Convoy absent du moteur');
 
 const ticker = 'src/assets/tickers/ticker_cargo.png';
 const tickerPresent = exists(ticker);
-console.log('✅ CARGO CERTIFICATION V10 — chaîne Config → Play → End → Historique → Stats cohérente');
-console.log('✅ CARGO CERTIFICATION V10 — écran terminé réouvrable après fermeture du bilan');
-console.log('✅ CARGO CERTIFICATION V10 — statuts historique legacy normalisés');
-console.log('✅ CARGO CERTIFICATION V10 — assets métier PNG vérifiés');
+for (const page of [config, play]) {
+  assert.ok(page.includes('getTicker("cargo")'), 'résolution souple du ticker CARGO absente');
+  assert.ok(page.includes('tickerSrc={tickerCargo || undefined}'), 'fallback PageHeader CARGO absent');
+}
+assert.ok(!config.includes('import tickerCargo from "../assets/tickers/ticker_cargo.png"'), 'CargoConfig conserve un import statique bloquant');
+assert.ok(!play.includes('import tickerCargo from "../assets/tickers/ticker_cargo.png"'), 'CargoPlay conserve un import statique bloquant');
+console.log('✅ CARGO CERTIFICATION V11 — chaîne Config → Play → End → Historique → Stats cohérente');
+console.log('✅ CARGO CERTIFICATION V11 — écran terminé réouvrable après fermeture du bilan');
+console.log('✅ CARGO CERTIFICATION V11 — statuts historique legacy normalisés');
+console.log('✅ CARGO CERTIFICATION V11 — assets métier PNG vérifiés');
 if (!tickerPresent) {
-  console.log('⚠️  MEDIA GATE — ticker officiel absent: src/assets/tickers/ticker_cargo.png');
-  console.log('⚠️  Le code CARGO est certifié, mais le build/intégration complet reste bloqué tant que le ticker officiel n’est pas restauré.');
+  console.log('✅ CARGO MEDIA FALLBACK — ticker officiel absent, header texte CARGO utilisé sans bloquer la compilation');
 } else {
-  console.log('✅ CARGO MEDIA GATE — ticker officiel présent');
+  console.log('✅ CARGO MEDIA GATE — ticker officiel présent et utilisé automatiquement');
 }

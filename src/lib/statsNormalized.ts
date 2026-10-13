@@ -23,6 +23,10 @@ export type NormalizedMode =
   | "killer"
   | "shanghai"
   | "territories"
+  | "fifty_one_by_five"
+  | "looper"
+  | "call_three"
+  | "steeplechase"
   | "darts_firefighter"
   | "darts_poker"
   | "cargo"
@@ -171,6 +175,10 @@ export function detectNormalizedMode(rec: any): NormalizedMode {
   if (blob.includes("cricket")) return "cricket";
   if (blob.includes("killer")) return "killer";
   if (blob.includes("shanghai")) return "shanghai";
+  if (blob.includes("fifty_one_by_five") || blob.includes("51 by 5") || blob.includes("51_by_5") || blob.includes("51by5")) return "fifty_one_by_five";
+  if (blob.includes("looper")) return "looper";
+  if (blob.includes("call_three") || blob.includes("call three") || blob.includes("callthree")) return "call_three";
+  if (blob.includes("steeplechase") || blob.includes("steeple chase") || blob.includes("steeple_chase")) return "steeplechase";
   if (blob.includes("darts_firefighter") || blob.includes("darts firefighter") || blob.includes("firefighter")) return "darts_firefighter";
   if (blob.includes("darts_poker") || blob.includes("darts poker") || blob.includes("dartspoker")) return "darts_poker";
   if (blob.includes("ocean_control") || blob.includes("ocean control") || blob.includes("oceancontrol")) return "ocean_control";

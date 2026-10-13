@@ -48,6 +48,10 @@ type LeaderboardMode =
   | "battle_royale"
   | "clock"
   | "territories"
+  | "fifty_one_by_five"
+  | "looper"
+  | "call_three"
+  | "steeplechase"
   | "scram"
   | "warfare"
   | "five_lives"
@@ -137,6 +141,25 @@ type MetricKey =
   | "eaglePct"
   | "bogeyPct"
   | "tripleBogeyPct"
+  // ✅ 51 BY 5 / LOOPER / CALL THREE / STEEPLECHASE
+  | "validVisits"
+  | "invalidVisits"
+  | "validRate"
+  | "bestQuotient"
+  | "quotientPoints"
+  | "bestValidStreak"
+  | "lifeLosses"
+  | "shieldsEarned"
+  | "targetsSet"
+  | "loopsSurvived"
+  | "bestHitStreak"
+  | "perfectRounds"
+  | "bestStreak"
+  | "fencesCleared"
+  | "fenceAttempts"
+  | "bullFinishes"
+  | "steps"
+  | "bestVisitSteps"
   // ✅ NEW (territories)
   | "captures"
   | "avgDom"
@@ -152,6 +175,26 @@ type Row = {
   losses: number;
   matches: number;
   winRate: number;
+
+  // ✅ NEW FOUR DARTS MODES
+  validVisits?: number;
+  invalidVisits?: number;
+  validRate?: number;
+  bestQuotient?: number;
+  quotientPoints?: number;
+  bestValidStreak?: number;
+  lifeLosses?: number;
+  shieldsEarned?: number;
+  targetsSet?: number;
+  loopsSurvived?: number;
+  bestHitStreak?: number;
+  perfectRounds?: number;
+  bestStreak?: number;
+  fencesCleared?: number;
+  fenceAttempts?: number;
+  bullFinishes?: number;
+  steps?: number;
+  bestVisitSteps?: number;
 
   // ✅ TERRITORIES
   captures: number;
@@ -300,6 +343,10 @@ const MODE_DEFS: {
   { id: "warfare", label: "WARFARE", metrics: ["wins", "winRate", "matches"] },
   { id: "babyfoot", label: "BABY-FOOT", metrics: ["wins", "winRate", "matches", "avg3", "bestVisit"] },
   { id: "pingpong", label: "PING-PONG", metrics: ["wins", "winRate", "matches", "avg3", "bestVisit"] },
+  { id: "fifty_one_by_five", label: "51 BY 5", metrics: ["wins", "winRate", "matches", "validRate", "validVisits", "quotientPoints", "bestQuotient", "bestValidStreak", "darts"] },
+  { id: "looper", label: "LOOPER", metrics: ["wins", "winRate", "matches", "hitRate", "loopsSurvived", "targetsSet", "bestHitStreak", "shieldsEarned", "lifeLosses", "darts"] },
+  { id: "call_three", label: "CALL THREE", metrics: ["wins", "winRate", "matches", "points", "pointsPerMatch", "hitRate", "perfectRounds", "bestVisit", "bestStreak", "doubleHits", "tripleHits", "darts"] },
+  { id: "steeplechase", label: "STEEPLECHASE", metrics: ["wins", "winRate", "matches", "hitRate", "steps", "fencesCleared", "fenceAttempts", "bullFinishes", "bestVisitSteps", "bestStreak", "darts"] },
   {
     id: "territories",
     label: "TERRITORIES",
@@ -825,6 +872,10 @@ function isRecordMatchingMode(rec: any, mode: LeaderboardMode, scope: Scope): bo
   if (mode === "golf") return tag.includes("golf");
   if (mode === "batard") return tag.includes("batard") || tag.includes("bastard");
   if (mode === "territories") return tag.includes("territ") || tag.includes("departement");
+  if (mode === "fifty_one_by_five") return tag.includes("fifty_one_by_five") || tag.includes("51_by_5") || tag.includes("51by5");
+  if (mode === "looper") return tag.includes("looper");
+  if (mode === "call_three") return tag.includes("call_three") || tag.includes("callthree");
+  if (mode === "steeplechase") return tag.includes("steeplechase") || tag.includes("steeple_chase");
   if (mode === "battle_royale") return tag.includes("battle") || tag.includes("royale");
   if (mode === "clock") return tag.includes("clock") || tag.includes("horloge") || tag.includes("tour");
   if (mode === "scram") return tag.includes("scram");
@@ -846,6 +897,16 @@ function extractPerPlayerSummary(summary: any): Record<string, any> {
   }
 
   const out: Record<string, any> = {};
+
+  // Les moteurs récents (51 BY 5 / LOOPER / CALL THREE / STEEPLECHASE, etc.)
+  // stockent `summary.perPlayer` sous forme de map { [playerId]: stats }.
+  if (summary.perPlayer && typeof summary.perPlayer === "object" && !Array.isArray(summary.perPlayer)) {
+    for (const [pid, detail] of Object.entries(summary.perPlayer)) {
+      if (!pid) continue;
+      out[String(pid)] = detail && typeof detail === "object" ? { ...(detail as any), id: (detail as any)?.id || pid } : { id: pid };
+    }
+    if (Object.keys(out).length) return out;
+  }
 
   if (Array.isArray(summary.perPlayer)) {
     for (const p of summary.perPlayer) {
@@ -1069,7 +1130,38 @@ function enrichGenericAggFromDetail(agg: any, det: any, mode?: string) {
   const mpr = numOr0(det.mpr, det.marksPerRound, det.marks_per_round);
   if (mpr) { agg.mprSum = (agg.mprSum || 0) + mpr; agg.mprCount = (agg.mprCount || 0) + 1; }
 
-  const hbs = det.hitsBySegment || det.hits_by_segment || det.bySegment || det.bysegment || null;
+  // 4 nouveaux modes : KPI dédiés
+  addNumToAgg(agg, "validVisits", det.validVisits);
+  addNumToAgg(agg, "invalidVisits", det.invalidVisits);
+  addNumToAgg(agg, "busts", det.busts);
+  addNumToAgg(agg, "quotientPoints", det.quotientPoints);
+  maxNumToAgg(agg, "bestQuotient", det.bestQuotient);
+  maxNumToAgg(agg, "bestValidStreak", det.bestValidStreak);
+
+  addNumToAgg(agg, "lifeLosses", det.lifeLosses);
+  addNumToAgg(agg, "shieldsEarned", det.shieldsEarned);
+  addNumToAgg(agg, "shieldsUsed", det.shieldsUsed);
+  addNumToAgg(agg, "targetsSet", det.targetsSet);
+  addNumToAgg(agg, "loopsSurvived", det.loopsSurvived);
+  maxNumToAgg(agg, "bestHitStreak", det.bestHitStreak);
+
+  addNumToAgg(agg, "perfectRounds", det.perfectRounds);
+  addNumToAgg(agg, "callsMade", det.callsMade);
+  maxNumToAgg(agg, "bestStreak", det.bestStreak);
+
+  addNumToAgg(agg, "fencesCleared", det.fencesCleared);
+  addNumToAgg(agg, "fenceAttempts", det.fenceAttempts);
+  addNumToAgg(agg, "bullFinishes", det.bullFinishes);
+  addNumToAgg(agg, "steps", det.steps);
+  maxNumToAgg(agg, "bestVisitSteps", det.bestVisitSteps);
+
+  // Ces moteurs exposent `hits` directement, sans toujours fournir hitsBySegment.
+  const directHitMap = det.hitsBySegment || det.hits_by_segment || det.bySegment || det.bysegment || null;
+  const directHits = numOr0(det.hits, det.hitCount);
+  if (directHits && !(directHitMap && typeof directHitMap === "object")) agg.totalHits = (agg.totalHits || 0) + directHits;
+  maxNumToAgg(agg, "bestVisit", det.bestVisit, det.bestVisitSteps, det.bestQuotient);
+
+  const hbs = directHitMap;
   if (hbs && typeof hbs === "object") {
     for (const [seg, c0] of Object.entries(hbs)) {
       const c = numOr0(c0);
@@ -1497,6 +1589,25 @@ function computeRowsFromHistory(
       matches,
       winRate,
 
+      validVisits: agg.validVisits || 0,
+      invalidVisits: agg.invalidVisits || 0,
+      validRate: (Number(agg.validVisits || 0) + Number(agg.invalidVisits || 0)) > 0 ? pct(Number(agg.validVisits || 0), Number(agg.validVisits || 0) + Number(agg.invalidVisits || 0)) : 0,
+      bestQuotient: agg.bestQuotient || 0,
+      quotientPoints: agg.quotientPoints || 0,
+      bestValidStreak: agg.bestValidStreak || 0,
+      lifeLosses: agg.lifeLosses || 0,
+      shieldsEarned: agg.shieldsEarned || 0,
+      targetsSet: agg.targetsSet || 0,
+      loopsSurvived: agg.loopsSurvived || 0,
+      bestHitStreak: agg.bestHitStreak || 0,
+      perfectRounds: agg.perfectRounds || 0,
+      bestStreak: agg.bestStreak || 0,
+      fencesCleared: agg.fencesCleared || 0,
+      fenceAttempts: agg.fenceAttempts || 0,
+      bullFinishes: agg.bullFinishes || 0,
+      steps: agg.steps || 0,
+      bestVisitSteps: agg.bestVisitSteps || 0,
+
       avg3,
       bestVisit: agg.bestVisit || 0,
       bestCheckout: agg.bestCheckout || 0,
@@ -1509,8 +1620,8 @@ function computeRowsFromHistory(
       favSegmentHits: fav.favSegmentHits || 0,
       totalHits: fav.totalHits || agg.totalHits || 0,
 
-      points: agg.points || agg.batardPoints || 0,
-      pointsPerMatch: matches > 0 ? (agg.points || agg.batardPoints || 0) / matches : 0,
+      points: agg.points || agg.quotientPoints || agg.batardPoints || 0,
+      pointsPerMatch: matches > 0 ? (agg.points || agg.quotientPoints || agg.batardPoints || 0) / matches : 0,
       marks: agg.marks || 0,
       marksPerMatch: matches > 0 ? (agg.marks || 0) / matches : 0,
       mpr: agg.mprCount > 0 ? agg.mprSum / agg.mprCount : (agg.darts > 0 ? ((agg.marks || 0) / agg.darts) * 3 : 0),
@@ -1786,6 +1897,24 @@ function metricLabel(m: MetricKey, sport?: string) {
       return "% Bogey";
     case "tripleBogeyPct":
       return "% Triple bogey";
+    case "validVisits": return "Volées valides";
+    case "invalidVisits": return "Volées invalides";
+    case "validRate": return "% Volées valides";
+    case "bestQuotient": return "Best ÷5";
+    case "quotientPoints": return "Points ÷5";
+    case "bestValidStreak": return "Best série valide";
+    case "lifeLosses": return "Vies perdues";
+    case "shieldsEarned": return "Boucliers gagnés";
+    case "targetsSet": return "Cibles posées";
+    case "loopsSurvived": return "Boucles réussies";
+    case "bestHitStreak": return "Best série hits";
+    case "perfectRounds": return "Full Calls";
+    case "bestStreak": return "Best série";
+    case "fencesCleared": return "Haies franchies";
+    case "fenceAttempts": return "Tentatives haies";
+    case "bullFinishes": return "Arrivées Bull";
+    case "steps": return "Étapes franchies";
+    case "bestVisitSteps": return "Best étapes / volée";
     case "kills":
       return "Kills";
     case "favNumberHits":
@@ -2506,7 +2635,7 @@ export default function StatsLeaderboardsPage({ store, go, sportOverride }: Prop
               const pctMetrics = new Set([
                 "winRate", "legWinRate", "setWinRate", "checkoutRate", "missPct", "simplePct", "doublePct",
                 "triplePct", "bullPct", "dbullPct", "hitRate", "singlePct", "doubleHitPct", "tripleHitPct",
-                "birdiePct", "eaglePct", "bogeyPct", "tripleBogeyPct"
+                "birdiePct", "eaglePct", "bogeyPct", "tripleBogeyPct", "validRate"
               ]);
               const oneDecimalMetrics = new Set([
                 "avg3", "avg1", "bestAvg3", "first9Avg", "pointsPerMatch", "marksPerMatch",

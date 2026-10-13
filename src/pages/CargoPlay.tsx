@@ -32,7 +32,7 @@ import {
   type CargoState,
 } from "../lib/gameEngines/cargoEngine";
 import { History } from "../lib/history";
-import tickerCargo from "../assets/tickers/ticker_cargo.png";
+import { getTicker } from "../lib/tickers";
 import CargoLoadStatus from "../components/cargo/CargoLoadStatus";
 import CargoManifestStrip from "../components/cargo/CargoManifestStrip";
 import CargoTeamStrip from "../components/cargo/CargoTeamStrip";
@@ -53,6 +53,7 @@ const BLUE = "#56c9ff";
 const RED = "#ef5261";
 const SOFT = "#aab1bf";
 const PLAYER_COLORS = [ORANGE, BLUE, GREEN, GOLD, RED, "#a78bfa", "#ff63b8", "#d4d8e5"];
+const tickerCargo = getTicker("cargo");
 
 function panel(accent = "rgba(255,255,255,.10)"): React.CSSProperties {
   return {
@@ -473,7 +474,7 @@ export default function CargoPlay(props: any) {
   const activeAccuracy = pct(Number(activeStats?.hits || 0), Number(activeStats?.darts || 0));
 
   return <div className="cargo-play-page" style={{ position: "fixed", inset: 0, zIndex: 40, minHeight: 0, color: theme?.text || "#fff", background: `radial-gradient(circle at 50% -6%,${ORANGE}20 0,${theme?.bg || "#080a11"} 44%,#020305 100%)`, padding: "0 0 max(6px,env(safe-area-inset-bottom))", overflow: "hidden", display: "flex", flexDirection: "column" }}>
-    <PageHeader tickerSrc={tickerCargo} tickerAlt="CARGO" tickerHeight={92} tickerFit="cover" tickerBottomGap={8} left={<div style={{ marginLeft: 6 }}><BackDot onClick={backToConfig} color={ORANGE} glow={`${ORANGE}88`} /></div>} right={<div style={{ marginRight: 6 }}><InfoDot title="Règles CARGO" color={GOLD} glow={`${GOLD}88`} content={<Rules config={config} />} /></div>} />
+    <PageHeader title="CARGO" subtitle={`${cargoVariantLabel(config.variant)} · ${config.participantMode === "teams" ? "Équipes" : config.players > 2 ? "Multi" : config.players === 2 ? "Duel" : "Solo"}`} tickerSrc={tickerCargo || undefined} tickerAlt="CARGO" tickerHeight={92} tickerFit="cover" tickerBottomGap={8} left={<div style={{ marginLeft: 6 }}><BackDot onClick={backToConfig} color={ORANGE} glow={`${ORANGE}88`} /></div>} right={<div style={{ marginRight: 6 }}><InfoDot title="Règles CARGO" color={GOLD} glow={`${GOLD}88`} content={<Rules config={config} />} /></div>} />
 
     <main className="cargo-play-main" style={{ flex: 1, minHeight: 0, width: "100%", maxWidth: 980, margin: "0 auto", padding: "7px 8px 0", boxSizing: "border-box", display: "grid", gridTemplateRows: "132px 58px 132px minmax(0,1fr)", gap: 9, overflow: "hidden" }}>
       <section className="cargo-play-hero" style={{ minHeight: 0, borderRadius: 20, overflow: "hidden", border: `1px solid ${activeColor}78`, background: "linear-gradient(180deg,rgba(18,20,27,.93),rgba(6,8,12,.96))", boxShadow: `0 0 24px ${activeColor}1c,0 12px 30px rgba(0,0,0,.26)`, display: "grid", gridTemplateRows: "minmax(0,1fr) 34px" }}>

@@ -27,8 +27,8 @@ import {
   type CargoVariant,
 } from "../lib/gameEngines/cargoEngine";
 import { recordProfileUsageForMode } from "../lib/profileUsage";
+import { getTicker } from "../lib/tickers";
 import { SelectedParticipantsCompactBlock, x01MostUsedDartSetIdForProfile } from "./X01ConfigV3";
-import tickerCargo from "../assets/tickers/ticker_cargo.png";
 import "../styles/cargo-ui.css";
 
 const LS_KEY = "dc_modecfg_cargo_v1";
@@ -40,6 +40,7 @@ const RED = "#ef5261";
 const SOFT = "#aab1bf";
 const TEAM_IDS = ["TEAM_A", "TEAM_B", "TEAM_C", "TEAM_D"] as const;
 const TEAM_COLORS = ["#ff9b42", "#56c9ff", "#62e6a7", "#d98cff"];
+const tickerCargo = getTicker("cargo");
 type CargoParticipantFormat = "solo" | "duel" | "multi" | "teams";
 
 function interleaveTeams(ids: string[], assignments: Record<string,string>, teamIds: string[], random = false) {
@@ -313,7 +314,7 @@ export default function CargoConfig(props: any) {
   const contentByStep = [participantsBlock, missionBlock, seriesBlock, truckBlock, summaryBlock];
 
   return <div className="cargo-config-page" style={{ minHeight: "100dvh", color: theme?.text || "#fff", background: `radial-gradient(circle at 50% -10%,${ORANGE}28 0,${theme?.bg || "#07090d"} 43%,#020203 100%)`, paddingBottom: 18 }}>
-    <PageHeader tickerSrc={tickerCargo} tickerAlt="CARGO" left={<BackDot onClick={back} color={ORANGE} glow={`${ORANGE}88`} />} right={<InfoDot title="Règles CARGO" color={GOLD} glow={`${GOLD}88`} content={<Rules />} />} />
+    <PageHeader title="CARGO" subtitle="LOGISTIQUE · CONTRATS · CHARGEMENT" tickerSrc={tickerCargo || undefined} tickerAlt="CARGO" left={<BackDot onClick={back} color={ORANGE} glow={`${ORANGE}88`} />} right={<InfoDot title="Règles CARGO" color={GOLD} glow={`${GOLD}88`} content={<Rules />} />} />
     <main className="cargo-config-main">
       <div className="cargo-config-mode-switch">
         <button onClick={() => chooseView("guided")} style={{ minHeight: 40, borderRadius: 13, border: `1px solid ${viewMode === "guided" ? ORANGE : "rgba(255,255,255,.10)"}`, background: viewMode === "guided" ? `${ORANGE}18` : "rgba(255,255,255,.03)", color: viewMode === "guided" ? ORANGE : SOFT, fontWeight: 1000 }}>CONFIGURATION GUIDÉE</button>

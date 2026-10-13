@@ -128,6 +128,29 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("message", onMessage);
   }, [previewRuntime.enabled]);
 
+  // Préférence de thème du compte Supabase : lorsqu'un autre appareil change
+  // le thème préféré, useAuthOnline diffuse la nouvelle valeur ici. On mémorise
+  // toujours l'id valide ; s'il s'agit d'un thème premium dont l'entitlement
+  // n'est pas encore hydraté, subscribeVerifiedEntitlements l'appliquera ensuite.
+  React.useEffect(() => {
+    if (previewRuntime.enabled || typeof window === "undefined") return;
+
+    const onCloudPreferences = (event: Event) => {
+      const detail = (event as CustomEvent)?.detail || {};
+      const raw = String(detail?.preferences?.appTheme || "").trim() as ThemeId;
+      if (!raw || !THEMES.some((item) => item.id === raw)) return;
+
+      try {
+        window.localStorage.setItem(THEME_STORAGE_KEY, raw);
+      } catch {}
+
+      if (canUseTheme(raw)) setThemeIdState(raw);
+    };
+
+    window.addEventListener("dc:account-preferences-cloud-updated", onCloudPreferences as EventListener);
+    return () => window.removeEventListener("dc:account-preferences-cloud-updated", onCloudPreferences as EventListener);
+  }, [previewRuntime.enabled]);
+
   React.useEffect(() => {
     if (previewRuntime.enabled) return;
     return subscribeVerifiedEntitlements(() => {

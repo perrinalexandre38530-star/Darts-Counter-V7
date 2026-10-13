@@ -192,7 +192,7 @@ export function PremiumMomentOverlay({ moment, accent = "#4fe4ff", profile, play
   </div>;
 }
 
-export function BotTurn({ profile, name, accent, text, icon = "🤖", intent, confidence, phaseLabel, persona, personaIcon, objectiveDetail, reaction, adaptation, adaptationDetail, learningConfidence, learningTarget }: any) {
+export function BotTurn({ profile, name, accent, text, icon = "🤖", intent, confidence, phaseLabel, persona, personaIcon, objectiveDetail, reaction, adaptation, adaptationDetail, learningConfidence, learningTarget, scouting, scoutingDetail, scoutingMatches, scoutingConfidence, scoutingTarget }: any) {
   const conf = Number.isFinite(Number(confidence)) ? Math.max(0, Math.min(100, Number(confidence))) : null;
   return <div className="party-mode__bot" style={{ borderColor: `${accent}55`, boxShadow: `inset 0 0 34px ${accent}0d` }}>
     <ProfileAvatar profile={profile} size={58} showStars={false} ringColor={accent} />
@@ -205,6 +205,12 @@ export function BotTurn({ profile, name, accent, text, icon = "🤖", intent, co
       <span>{text || "prépare sa volée…"}</span>
       {intent ? <div className="party-mode__bot-intent"><small>OBJECTIF TACTIQUE</small><strong style={{ color: accent }}>{intent}</strong>{objectiveDetail ? <p>{objectiveDetail}</p> : null}</div> : null}
       {reaction ? <div className="party-mode__bot-reaction"><small>RÉACTION IA</small><b>{reaction}</b></div> : null}
+      {scouting ? <div className="party-mode__bot-scouting">
+        <div><small>DOSSIER LONG TERME</small><strong style={{ color: accent }}>{scouting}</strong></div>
+        <em>{scoutingTarget ? `Cible : ${scoutingTarget}` : "Adversaire connu"}{Number.isFinite(Number(scoutingMatches)) ? ` · ${Math.round(Number(scoutingMatches))} match(s)` : ""}</em>
+        {scoutingDetail ? <p>{scoutingDetail}</p> : null}
+        {Number.isFinite(Number(scoutingConfidence)) ? <div className="party-mode__bot-learning"><i style={{ width: `${Math.max(0, Math.min(100, Number(scoutingConfidence)))}%`, background: accent }} /><small>{Math.round(Number(scoutingConfidence))}% dossier</small></div> : null}
+      </div> : null}
       {adaptation ? <div className="party-mode__bot-memory">
         <div><small>MÉMOIRE ADVERSAIRE</small><strong style={{ color: accent }}>{adaptation}</strong></div>
         {learningTarget ? <em>Cible : {learningTarget}</em> : null}

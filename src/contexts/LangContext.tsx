@@ -155,6 +155,21 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, []);
 
+  // Même contrat multi-appareils que pour le thème : `profiles.preferences`
+  // reste l'autorité du compte et une modification distante est appliquée sans
+  // devoir ouvrir MON PROFIL sur le second appareil.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onCloudPreferences = (event: Event) => {
+      const detail = (event as CustomEvent)?.detail || {};
+      const raw = String(detail?.preferences?.appLang || "").trim().toLowerCase() as Lang;
+      if (!raw || !ALL_LANGS.includes(raw)) return;
+      setLang(raw);
+    };
+    window.addEventListener("dc:account-preferences-cloud-updated", onCloudPreferences as EventListener);
+    return () => window.removeEventListener("dc:account-preferences-cloud-updated", onCloudPreferences as EventListener);
+  }, [setLang]);
+
   // Couvre aussi un démarrage direct avec EN déjà enregistré dans localStorage :
   // dans ce cas l'utilisateur ne reclique pas forcément sur le sélecteur.
   React.useEffect(() => {

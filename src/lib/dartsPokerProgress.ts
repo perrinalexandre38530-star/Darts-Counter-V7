@@ -109,7 +109,7 @@ function freshPlayer(id: string, name: string): DartsPokerProgressPlayer {
   };
 }
 
-type BadgeRule = {
+export type DartsPokerBadgeRule = {
   id: DartsPokerProgressBadgeId;
   target: number;
   current: (career: DartsPokerProgressPlayer) => number;
@@ -117,7 +117,7 @@ type BadgeRule = {
   detail: string;
 };
 
-const BADGE_RULES: BadgeRule[] = [
+export const DARTS_POKER_BADGE_RULES: DartsPokerBadgeRule[] = [
   { id: "first_deal", target: 1, current: (c) => c.matches, eligible: (c) => c.matches >= 1, detail: "Première partie Darts Poker terminée" },
   { id: "table_regular", target: 10, current: (c) => c.matches, eligible: (c) => c.matches >= 10, detail: "10 parties Darts Poker terminées" },
   { id: "shark", target: 10, current: (c) => c.wins, eligible: (c) => c.wins >= 10, detail: "10 victoires cumulées" },
@@ -176,7 +176,7 @@ export function commitDartsPokerProgress(input: {
       current.processedMatchIds = [...current.processedMatchIds.slice(-79), String(input.matchId)];
     }
 
-    for (const rule of BADGE_RULES) {
+    for (const rule of DARTS_POKER_BADGE_RULES) {
       if (current.badges[rule.id]) continue;
       if (!rule.eligible(current)) continue;
       current.badges[rule.id] = { unlockedAt: now, matchId: String(input.matchId) };
@@ -213,4 +213,41 @@ export function readDartsPokerProgress(playerId: string): DartsPokerProgressPlay
 export function readDartsPokerUnlockedBadgeIds(playerId: string): DartsPokerProgressBadgeId[] {
   const row = readDartsPokerProgress(playerId);
   return row ? Object.keys(row.badges || {}) as DartsPokerProgressBadgeId[] : [];
+}
+
+export function getDartsPokerBadgeRule(id: DartsPokerProgressBadgeId): DartsPokerBadgeRule | null {
+  return DARTS_POKER_BADGE_RULES.find((rule) => rule.id === id) || null;
+}
+
+export function getDartsPokerBadgeCareerValue(id: DartsPokerProgressBadgeId, career: DartsPokerProgressPlayer | null | undefined): number {
+  if (!career) return 0;
+  const rule = getDartsPokerBadgeRule(id);
+  return rule ? n(rule.current(career)) : 0;
+}
+
+export function getDartsPokerBadgeLockedReason(id: DartsPokerProgressBadgeId, career: DartsPokerProgressPlayer | null | undefined): string | null {
+  if (!career) return null;
+  if (career.badges?.[id]) return null;
+  if (id === "sniper" && n(career.darts) < 60) return `${n(career.darts)}/60 darts`;
+  if (id === "table_leader" && n(career.handsPlayed) <= 0) return "Aucune manche analysée";
+  return null;
+}
+
+export function getDartsPokerBadgeProgress(playerId: string, id: DartsPokerProgressBadgeId) {
+  const career = readDartsPokerProgress(playerId);
+  const rule = getDartsPokerBadgeRule(id);
+  const current = getDartsPokerBadgeCareerValue(id, career);
+  const target = n(rule?.target);
+  const unlocked = Boolean(career?.badges?.[id]);
+  return {
+    id,
+    career,
+    current,
+    target,
+    unlocked,
+    unlockedAt: n(career?.badges?.[id]?.unlockedAt),
+    percent: target > 0 ? Math.max(0, Math.min(100, (current / target) * 100)) : 0,
+    lockedReason: getDartsPokerBadgeLockedReason(id, career),
+    detail: rule?.detail || "",
+  };
 }

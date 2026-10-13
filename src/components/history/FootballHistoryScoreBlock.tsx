@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React from "react";
 import { footballVariantLabel } from "../../lib/gameEngines/footballEngine";
-import { buildFootballSectorProfileFromRecord, footballKeyMomentsFromRecord, footballPerformanceRating, footballTacticalProfile } from "../../lib/footballInsights";
+import { buildFootballMomentumFromState, buildFootballSectorProfileFromRecord, footballKeyMomentsFromRecord, footballMatchHonoursFromState, footballPerformanceRating, footballTacticalProfile } from "../../lib/footballInsights";
 
 const GREEN = "#65e5aa";
 const BLUE = "#53c9ff";
@@ -52,6 +52,8 @@ export default function FootballHistoryScoreBlock({ record }: any) {
   const mvpId = String(mvp?.id || mvp?.playerId || mvp?.profileId || "");
   const mvpTactical = mvp ? footballTacticalProfile(mvp) : null;
   const mvpSector = mvp ? buildFootballSectorProfileFromRecord(record, mvpId) : null;
+  const momentum = buildFootballMomentumFromState(state, 6);
+  const honours = finished ? footballMatchHonoursFromState(state).slice(0, 4) : [];
 
   return <div style={{ marginTop: 8, display: "grid", gap: 6, minWidth: 0 }}>
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
@@ -83,6 +85,13 @@ export default function FootballHistoryScoreBlock({ record }: any) {
       <div style={{ textAlign: "center" }}><strong style={{ display: "block", color: GOLD, fontSize: 9 }}>{mvpSector?.strongestSector?.sector || "—"}</strong><span style={{ color: SOFT, fontSize: 4.9 }}>ZONE FORTE</span></div>
       <div style={{ textAlign: "right" }}><strong style={{ display: "block", color: GREEN, fontSize: 9 }}>{mvpSector?.missionRate || 0}%</strong><span style={{ color: SOFT, fontSize: 4.9 }}>MISSIONS</span></div>
     </div> : null}
+
+    {finished && state?.visits?.length ? <div style={{ padding: 6, borderRadius: 10, border: "1px solid rgba(255,255,255,.075)", background: "linear-gradient(90deg,rgba(53,208,255,.03),rgba(255,255,255,.018),rgba(255,91,119,.03))" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "35px minmax(0,1fr) 35px", gap: 5, alignItems: "center", textAlign: "center" }}><strong style={{ color: sideA.color || BLUE, fontSize: 6.6 }}>{momentum.leftPct}%</strong><span style={{ color: SOFT, fontSize: 5.2, fontWeight: 1000 }}>DYNAMIQUE · {momentum.label}</span><strong style={{ color: sideB.color || RED, fontSize: 6.6 }}>{momentum.rightPct}%</strong></div>
+      <div style={{ marginTop: 4, display: "flex", height: 4, overflow: "hidden", borderRadius: 999, background: "rgba(255,255,255,.05)" }}><span style={{ width: `${momentum.leftPct}%`, background: sideA.color || BLUE }} /><span style={{ width: `${momentum.rightPct}%`, background: sideB.color || RED }} /></div>
+    </div> : null}
+
+    {honours.length ? <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>{honours.map((honour: any) => <span key={honour.key} title={honour.detail} style={{ borderRadius: 999, padding: "4px 6px", border: `1px solid ${honour.color}35`, background: `${honour.color}08`, color: honour.color, fontSize: 5.2, fontWeight: 1050 }}>{honour.icon} {honour.label}</span>)}</div> : null}
 
     {(penaltyA.length || penaltyB.length) ? <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, padding: 6, borderRadius: 10, border: `1px solid ${GOLD}33`, background: `${GOLD}08` }}>
       {[{ side: sideA, attempts: penaltyA }, { side: sideB, attempts: penaltyB }].map(({ side, attempts }: any) => <div key={side.id}><div style={{ color: side.color, fontSize: 5.8, fontWeight: 1000 }}>{side.name}</div><div style={{ marginTop: 3, display: "flex", gap: 3, flexWrap: "wrap" }}>{attempts.map((ok: boolean, index: number) => <span key={index} style={{ width: 14, height: 14, borderRadius: "50%", display: "grid", placeItems: "center", background: ok ? GREEN : RED, color: ok ? "#03110b" : "#fff", fontSize: 6.5, fontWeight: 1100 }}>{ok ? "✓" : "×"}</span>)}</div></div>)}

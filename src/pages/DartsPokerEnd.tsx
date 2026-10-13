@@ -3,6 +3,7 @@ import React from "react";
 import ProfileAvatar from "../components/ProfileAvatar";
 import DartsPokerCard from "../components/darts-poker/DartsPokerCard";
 import DartsPokerBadge from "../components/darts-poker/DartsPokerBadge";
+import DartsPokerBadgeGallery from "../components/darts-poker/DartsPokerBadgeGallery";
 import type { DartsPokerBadgeId } from "../components/darts-poker/DartsPokerBadge";
 import type { DartsPokerState } from "../lib/gameEngines/dartsPokerEngine";
 import { deriveDartsPokerMatchMetrics, deriveDartsPokerMatchStory, deriveDartsPokerPlayerMetrics, deriveDartsPokerSectorHeatmap, pokerRound1 } from "../lib/dartsPokerAnalytics";
@@ -15,6 +16,7 @@ const SOFT = "#9aa1b2";
 const PINK = "#ff63b8";
 
 function playerName(profile: any) { return profile?.name || profile?.displayName || "Joueur"; }
+function isBotLike(profile: any) { return Boolean(profile?.isBot || profile?.bot || profile?.type === "bot" || profile?.kind === "bot" || profile?.botLevel); }
 function pct(value: number) { return `${pokerRound1(Number(value || 0))}%`; }
 function button(color: string): React.CSSProperties { return { minHeight: 44, borderRadius: 14, border: `1px solid ${color}88`, background: `${color}18`, color, fontWeight: 1050, cursor: "pointer" }; }
 function fmt(value: any, digits = 1) { const n = Number(value || 0); return Number.isInteger(n) ? String(n) : n.toFixed(digits); }
@@ -25,6 +27,7 @@ const th: React.CSSProperties = { padding: "7px 8px", borderBottom: "1px solid r
 const td: React.CSSProperties = { padding: "7px 8px", borderBottom: "1px solid rgba(255,255,255,.055)", whiteSpace: "nowrap", fontSize: 8.7, color: "#e6e9ef" };
 
 export default function DartsPokerEnd({ state, profilesById, newBadgeUnlocks = [], progressByPlayer = {}, onClose, onReplay, onStats, onHistory }: { state: DartsPokerState; profilesById: Map<string, any>; newBadgeUnlocks?: any[]; progressByPlayer?: Record<string, any>; onClose: () => void; onReplay: () => void; onStats: () => void; onHistory: () => void; }) {
+  const [showBadgeGallery, setShowBadgeGallery] = React.useState(false);
   const standings = state.standings || [];
   const analyticsRows = state.players.map((player: any) => {
     const standing = standings.find((row: any) => String(row.id) === String(player.id)) || {};
@@ -37,6 +40,7 @@ export default function DartsPokerEnd({ state, profilesById, newBadgeUnlocks = [
   const story = deriveDartsPokerMatchStory(state.rounds);
   const best = analyticsRows[0];
   const winnerProfile = best ? profilesById.get(String(best.id)) || best : null;
+  const badgeProfiles = state.players.map((player: any) => profilesById.get(String(player.id)) || player).filter((profile: any) => !isBotLike(profile));
   const awards: Array<{ label: string; badgeId: DartsPokerBadgeId; color: string; row: any; value: (row: any) => string }> = [
     { label: "SHARK DE LA TABLE", badgeId: "shark", color: GOLD, row: awardWinner(analyticsRows, (r) => Number(r.points || 0)), value: (r: any) => `${fmt(r?.points)} pts` },
     { label: "TIREUR D'ÉLITE", badgeId: "sniper", color: GREEN, row: awardWinner(analyticsRows, (r) => Number(r.accuracy || 0)), value: (r: any) => pct(r?.accuracy) },
@@ -207,9 +211,11 @@ export default function DartsPokerEnd({ state, profilesById, newBadgeUnlocks = [
         {awards.map((award) => { const row = award.row; const profile = row ? profilesById.get(String(row.id)) || row : null; return <div key={award.label} style={{ padding: 8, borderRadius: 13, background: `${award.color}0c`, border: `1px solid ${award.color}44`, display: "grid", gridTemplateColumns: "54px minmax(0,1fr) auto", gap: 7, alignItems: "center" }}><div style={{ width: 54, height: 54, borderRadius: 12, overflow: "hidden", display: "grid", placeItems: "center", background: "rgba(255,255,255,.025)", border: `1px solid ${award.color}44`, boxShadow: `0 0 14px ${award.color}22` }}><DartsPokerBadge id={award.badgeId} size="100%" /></div><div style={{ minWidth: 0 }}><div style={{ color: award.color, fontSize: 6.8, fontWeight: 1100 }}>{award.label}</div><div style={{ color: "#fff", fontSize: 8.8, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{profile ? playerName(profile) : "—"}</div></div><div style={{ color: SOFT, fontSize: 7.8 }}>{award.value(row)}</div></div>; })}
       </div>
 
-      <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
+      <button type="button" onClick={() => setShowBadgeGallery(true)} style={{ ...button(BLUE), width: "100%", marginTop: 12 }}>🏆 COLLECTION & PROGRESSION DES BADGES</button>
+      <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
         <button onClick={onClose} style={button("#c9ced8")}>FERMER</button><button onClick={onReplay} style={button(RED)}>REJOUER</button><button onClick={onStats} style={button(GREEN)}>STATISTIQUES</button><button onClick={onHistory} style={button(GOLD)}>HISTORIQUE</button>
       </div>
     </div>
+    {showBadgeGallery ? <div style={{ position: "fixed", inset: 0, zIndex: 10020, background: "rgba(0,0,0,.94)", backdropFilter: "blur(11px)", display: "grid", placeItems: "center", padding: 8 }}><div style={{ width: "min(980px,100%)", maxHeight: "95dvh", overflow: "auto", borderRadius: 22, padding: 12, background: "radial-gradient(circle at 50% 0%,rgba(85,199,255,.11),#08090d 50%)", border: `1px solid ${BLUE}66`, boxShadow: "0 24px 80px rgba(0,0,0,.72)" }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 10 }}><div><div style={{ color: BLUE, fontSize: 11, fontWeight: 1150 }}>TROPHÉES DARTS POKER</div><div style={{ color: SOFT, fontSize: 8, marginTop: 2 }}>Collection permanente · progression après ce match</div></div><button type="button" onClick={() => setShowBadgeGallery(false)} style={{ minHeight: 34, borderRadius: 10, border: "1px solid rgba(255,255,255,.16)", background: "rgba(255,255,255,.05)", color: "#fff", padding: "0 12px", fontWeight: 1000 }}>FERMER</button></div><DartsPokerBadgeGallery profiles={badgeProfiles} initialPlayerId={best?.id || badgeProfiles[0]?.id} catalogOnly={!badgeProfiles.length} /></div></div> : null}
   </div>;
 }

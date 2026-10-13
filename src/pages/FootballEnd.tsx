@@ -3,7 +3,7 @@ import React from "react";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { footballAccuracy, footballVariantLabel } from "../lib/gameEngines/footballEngine";
 import { History } from "../lib/history";
-import { buildFootballEndInsights, buildFootballSectorProfileFromState, footballKeyMomentsFromState, footballPerformanceRating, footballTacticalProfile } from "../lib/footballInsights";
+import { buildFootballEndInsights, buildFootballMomentumFromState, buildFootballSectorProfileFromState, footballKeyMomentsFromState, footballMatchHonoursFromState, footballPerformanceRating, footballTacticalProfile } from "../lib/footballInsights";
 
 const GREEN = "#65e5aa";
 const BLUE = "#35d0ff";
@@ -133,6 +133,8 @@ export default function FootballEnd({ state, profilesById, onClose, onReplay, on
     state.visits?.some((visit: any) => (visit.events || []).some((event: any) => event.type === "counter")) ? { icon: "🚀", label: "CONTRE-ATTAQUE", color: BLUE } : null,
   ].filter(Boolean);
   const moments = insights?.moments?.length ? insights.moments : footballKeyMomentsFromState(state, 12);
+  const momentum = buildFootballMomentumFromState(state, 8);
+  const honours = footballMatchHonoursFromState(state, profilesById);
 
   return <div role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, zIndex: 10000, overflowY: "auto", padding: "max(8px,env(safe-area-inset-top)) 8px max(12px,env(safe-area-inset-bottom))", boxSizing: "border-box", background: "radial-gradient(circle at 50% 0%,rgba(101,229,170,.28),rgba(0,8,4,.96) 48%,#000 100%)" }}>
     <div style={{ width: "min(720px,100%)", margin: "0 auto" }}>
@@ -148,6 +150,21 @@ export default function FootballEnd({ state, profilesById, onClose, onReplay, on
 
       {matchBadges.length ? <section style={{ marginTop: 7, display: "flex", gap: 5, flexWrap: "wrap", justifyContent: "center" }}>
         {matchBadges.map((badge: any) => <span key={badge.label} style={{ borderRadius: 999, padding: "5px 8px", border: `1px solid ${badge.color}55`, background: `${badge.color}0d`, color: badge.color, fontSize: 6.4, fontWeight: 1100 }}>{badge.icon} {badge.label}</span>)}
+      </section> : null}
+
+      <section style={{ marginTop: 7, borderRadius: 15, padding: 8, border: "1px solid rgba(255,255,255,.08)", background: "linear-gradient(90deg,rgba(53,208,255,.035),rgba(255,255,255,.02),rgba(255,91,119,.035))" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "42px minmax(0,1fr) 42px", gap: 6, alignItems: "center", textAlign: "center" }}>
+          <strong style={{ color: leftColor, fontSize: 8.5 }}>{momentum.leftPct}%</strong>
+          <strong style={{ color: WHITE, fontSize: 6.6, letterSpacing: .45 }}>{momentum.leaderSideId ? `DYNAMIQUE · ${(state.sides.find((side: any) => String(side.id) === String(momentum.leaderSideId))?.name || "").toUpperCase()}` : "DYNAMIQUE · ÉQUILIBRÉE"}</strong>
+          <strong style={{ color: rightColor, fontSize: 8.5 }}>{momentum.rightPct}%</strong>
+        </div>
+        <div style={{ marginTop: 5, height: 6, display: "flex", overflow: "hidden", borderRadius: 999, background: "rgba(255,255,255,.06)" }}><span style={{ width: `${momentum.leftPct}%`, background: leftColor }} /><span style={{ width: `${momentum.rightPct}%`, background: rightColor }} /></div>
+        <div style={{ marginTop: 3, color: SOFT, textAlign: "center", fontSize: 5.3 }}>{momentum.label} · {momentum.window} dernières volées analysées</div>
+      </section>
+
+      {honours.length ? <section style={{ marginTop: 7, borderRadius: 16, padding: 9, border: "1px solid rgba(255,211,107,.28)", background: "linear-gradient(135deg,rgba(255,211,107,.075),rgba(167,139,250,.035))" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><strong style={{ color: GOLD, fontSize: 8, letterSpacing: .65 }}>🏅 DISTINCTIONS DU MATCH</strong><span style={{ color: SOFT, fontSize: 6 }}>{honours.length} distinction{honours.length > 1 ? "s" : ""}</span></div>
+        <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 5 }}>{honours.map((honour: any) => <div key={honour.key} style={{ minWidth: 0, borderRadius: 11, padding: 7, border: `1px solid ${honour.color}3d`, background: `${honour.color}08` }}><div style={{ color: honour.color, fontSize: 6.2, fontWeight: 1100 }}>{honour.icon} {honour.label}</div><div style={{ marginTop: 2, color: WHITE, fontSize: 7.2, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{honour.playerName || state.sides.find((side: any) => String(side.id) === String(honour.sideId))?.name || "Équipe"}</div><div style={{ marginTop: 2, color: SOFT, fontSize: 5.7, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{honour.detail}</div></div>)}</div>
       </section> : null}
 
       {insights?.breakthroughs?.length ? <section style={{ marginTop: 7, borderRadius: 16, padding: 9, border: `1px solid ${GOLD}66`, background: "linear-gradient(135deg,rgba(255,211,107,.12),rgba(101,229,170,.04))" }}>

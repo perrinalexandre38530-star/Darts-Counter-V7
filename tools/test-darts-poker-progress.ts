@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 
 const mem = new Map<string, string>();
 (globalThis as any).window = {
@@ -9,7 +10,7 @@ const mem = new Map<string, string>();
   },
 };
 
-const { commitDartsPokerProgress, readDartsPokerProgress } = await import("../src/lib/dartsPokerProgress.ts");
+const { commitDartsPokerProgress, readDartsPokerProgress, DARTS_POKER_BADGE_RULES, getDartsPokerBadgeProgress } = await import("../src/lib/dartsPokerProgress.ts");
 
 const stats = {
   darts: 60,
@@ -62,5 +63,23 @@ assert.equal(career?.wins, 10);
 assert.ok(career?.badges?.table_regular, "badge TABLE REGULAR absent après 10 parties");
 assert.ok(career?.badges?.shark, "badge SHARK absent après 10 victoires");
 assert.ok(career?.badges?.closer, "badge CLOSER absent après 5 fins gagnées");
+
+
+assert.equal(DARTS_POKER_BADGE_RULES.length, 12, "le catalogue doit contenir exactement 12 badges");
+const sharkProgress = getDartsPokerBadgeProgress("p1", "shark");
+assert.equal(sharkProgress.unlocked, true, "SHARK doit être persistant après 10 victoires");
+assert.equal(sharkProgress.target, 10);
+assert.equal(sharkProgress.current, 10);
+const regularProgress = getDartsPokerBadgeProgress("p1", "table_regular");
+assert.equal(regularProgress.unlocked, true, "TABLE REGULAR doit être persistant après 10 parties");
+assert.equal(regularProgress.percent, 100);
+
+
+const gallerySource = fs.readFileSync(new URL("../src/components/darts-poker/DartsPokerBadgeGallery.tsx", import.meta.url), "utf8");
+const configSource = fs.readFileSync(new URL("../src/pages/DartsPokerConfig.tsx", import.meta.url), "utf8");
+const endSource = fs.readFileSync(new URL("../src/pages/DartsPokerEnd.tsx", import.meta.url), "utf8");
+assert.match(gallerySource, /DARTS_POKER_BADGE_RULES/, "la galerie doit utiliser le catalogue de règles centralisé");
+assert.match(configSource, /12 BADGES · PROGRESSION/, "la configuration doit ouvrir la galerie de badges");
+assert.match(endSource, /COLLECTION & PROGRESSION DES BADGES/, "la fin de match doit exposer la collection de badges");
 
 console.log("Darts Poker progress: OK");
