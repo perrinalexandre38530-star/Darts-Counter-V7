@@ -197,6 +197,7 @@ function landingTickerFor(gameId: string, lang: Lang): string | null {
     departements: "territories_fr",
     training_x01: "x01",
     training_super_bull: "super_bull",
+    ptit_hun: "ptit_1",
   };
   const id = alias[gameId] || gameId;
   const candidates = lang === "fr" ? [`ticker_${id}_fr.webp`,`ticker_${id}_fr.png`,`ticker_${id}.webp`,`ticker_${id}.png`] : [`ticker_${id}_en.webp`,`ticker_${id}_en.png`,`ticker_${id}.webp`,`ticker_${id}.png`];

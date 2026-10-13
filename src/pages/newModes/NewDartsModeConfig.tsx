@@ -913,6 +913,62 @@ export default function NewDartsModeConfig(props: Props) {
     </div>
   </section>;
 
+  function applyPtitHunPreset(preset: "classic" | "precision" | "jackpot" | "sniper" | "hardcore") {
+    const base = {
+      rounds: 10, start: 20, outer: 10, d: 2, t: 3, bull: 4,
+      missMode: "multiply" as const, miss: 5, dbull: true, dbullDiv: 2,
+      zero: true, zeroAt: 3, tripleNul: true, shield: true, clean: 3, shieldDiv: 2,
+      jackpot: true, jackpotRing: "random" as const, jackpotZones: 1 as 1 | 2, jackpotRefresh: "visit" as const,
+    };
+    const selected = preset === "precision"
+      ? { ...base, shield: true, clean: 2, jackpot: false }
+      : preset === "jackpot"
+        ? { ...base, jackpot: true, jackpotZones: 2 as 1 | 2, jackpotRing: "random" as const, jackpotRefresh: "visit" as const }
+        : preset === "sniper"
+          ? { ...base, outer: 15, jackpot: true, jackpotZones: 1 as 1 | 2, jackpotRing: "triple" as const, jackpotRefresh: "round" as const }
+          : preset === "hardcore"
+            ? { ...base, rounds: 15, start: 30, outer: 20, d: 3, t: 5, bull: 6, miss: 6, zeroAt: 4, clean: 4, jackpot: true, jackpotZones: 1 as 1 | 2, jackpotRing: "triple" as const, jackpotRefresh: "visit" as const }
+            : base;
+    setPtitHunRounds(selected.rounds);
+    setPtitHunStartScore(selected.start);
+    setPtitHunOuterFactor(selected.outer);
+    setPtitHunDoubleFactor(selected.d);
+    setPtitHunTripleFactor(selected.t);
+    setPtitHunBull25Factor(selected.bull);
+    setPtitHunMissMode(selected.missMode);
+    setPtitHunMissValue(selected.miss);
+    setPtitHunDbullEnabled(selected.dbull);
+    setPtitHunDbullDivider(selected.dbullDiv);
+    setPtitHunZeroAbsolute(selected.zero);
+    setPtitHunDbullsForZero(selected.zeroAt);
+    setPtitHunTripleNul(selected.tripleNul);
+    setPtitHunShield(selected.shield);
+    setPtitHunCleanVisits(selected.clean);
+    setPtitHunShieldDivider(selected.shieldDiv);
+    setPtitHunJackpot(selected.jackpot);
+    setPtitHunJackpotRing(selected.jackpotRing);
+    setPtitHunJackpotZones(selected.jackpotZones);
+    setPtitHunJackpotRefresh(selected.jackpotRefresh);
+  }
+
+  const ptitHunPresetBlock = <section style={{ ...selectorCard, border: `1px solid ${accent}55`, boxShadow: `0 0 24px ${accent}10` }}>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950 }}>P’TIT 1 · STYLE DE PARTIE</div>
+    <div style={{ marginTop: 5, color: soft, fontSize: 10.5, lineHeight: 1.45 }}>Choisis une base en un clic, puis modifie librement chaque règle dans les étapes suivantes.</div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 8, marginTop: 11 }}>
+      {[
+        { id: "classic", icon: "1️⃣", title: "CLASSIQUE MSS", desc: "L’équilibre officiel · Jackpot D/T · Bouclier 3 · Zéro à 3 DBULL" },
+        { id: "precision", icon: "🎯", title: "PRÉCISION", desc: "Sans Jackpot · Bouclier après 2 volées propres · priorité aux petits simples" },
+        { id: "jackpot", icon: "✨", title: "JACKPOT", desc: "2 zones D/T à chaque volée · plus arcade et plus spectaculaire" },
+        { id: "sniper", icon: "🏹", title: "SNIPER", desc: "Jackpot TRIPLE uniquement · zone stable pendant le tour · gros simple ×15" },
+        { id: "hardcore", icon: "🔥", title: "HARDCORE", desc: "15 volées · gros ×20 · D×3 · T×5 · Bull25×6 · Jackpot triple" },
+      ].map((preset: any) => <button key={preset.id} type="button" onClick={() => applyPtitHunPreset(preset.id)} style={{ minHeight: 92, borderRadius: 15, border: "1px solid rgba(255,255,255,.11)", background: "linear-gradient(180deg,rgba(255,255,255,.055),rgba(0,0,0,.22))", color: "#fff", padding: "10px 9px", textAlign: "left", cursor: "pointer" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}><span style={{ fontSize: 20 }}>{preset.icon}</span><strong style={{ color: accent, fontSize: 10.5, letterSpacing: .4 }}>{preset.title}</strong></div>
+        <div style={{ marginTop: 7, color: soft, fontSize: 9.5, lineHeight: 1.35 }}>{preset.desc}</div>
+      </button>)}
+    </div>
+    <div style={{ marginTop: 9, color: "#8fffb7", fontSize: 9.5, fontWeight: 850 }}>Les préréglages ne verrouillent rien : tous les paramètres restent modifiables individuellement.</div>
+  </section>;
+
   const ptitHunCoreBlock = <section style={selectorCard}>
     <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>P’TIT 1 · SCORE & ZONES</div>
     <div style={panel}>
@@ -953,7 +1009,7 @@ export default function NewDartsModeConfig(props: Props) {
     </div>
   </section>;
 
-  const ptitHunBlock = <>{ptitHunCoreBlock}{ptitHunBonusBlock}{ptitHunJackpotBlock}</>;
+  const ptitHunBlock = <>{ptitHunPresetBlock}{ptitHunCoreBlock}{ptitHunBonusBlock}{ptitHunJackpotBlock}</>;
 
   const inputBlock = <section style={selectorCard}>
     <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Saisie</div>
@@ -997,7 +1053,7 @@ export default function NewDartsModeConfig(props: Props) {
   const steps = mode === "crados"
     ? ["Mode", cradosTeamMode ? "Équipes" : "Joueurs", "Crasse", "Zones", "Format", "Saisie", "Aide", "Résumé"]
     : mode === "ptit_hun"
-      ? ["Participants", "Score & zones", "Bonus", "Jackpot", "Format", "Saisie", "Résumé"]
+      ? ["Participants", "Style", "Score & zones", "Bonus", "Jackpot", "Format", "Saisie", "Résumé"]
       : definition.guidedSteps;
   const maxStep = steps.length - 1;
   React.useEffect(() => {
@@ -1057,12 +1113,13 @@ export default function NewDartsModeConfig(props: Props) {
           {guidedStep === 7 ? summaryBlock : null}
         </> : mode === "ptit_hun" ? <>
           {guidedStep === 0 ? participantsBlock : null}
-          {guidedStep === 1 ? ptitHunCoreBlock : null}
-          {guidedStep === 2 ? ptitHunBonusBlock : null}
-          {guidedStep === 3 ? ptitHunJackpotBlock : null}
-          {guidedStep === 4 ? matchBlock : null}
-          {guidedStep === 5 ? inputBlock : null}
-          {guidedStep === 6 ? summaryBlock : null}
+          {guidedStep === 1 ? ptitHunPresetBlock : null}
+          {guidedStep === 2 ? ptitHunCoreBlock : null}
+          {guidedStep === 3 ? ptitHunBonusBlock : null}
+          {guidedStep === 4 ? ptitHunJackpotBlock : null}
+          {guidedStep === 5 ? matchBlock : null}
+          {guidedStep === 6 ? inputBlock : null}
+          {guidedStep === 7 ? summaryBlock : null}
         </> : <>
           {guidedStep === 0 ? participantsBlock : null}
           {guidedStep === 1 ? modeBlock : null}

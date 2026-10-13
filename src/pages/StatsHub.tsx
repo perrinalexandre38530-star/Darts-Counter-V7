@@ -5196,6 +5196,11 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
       const visits = N(row?.game?.visits ?? row?.summary?.visits ?? row?.payload?.config?.visits);
       const at = N(row?.finishedAt ?? row?.updatedAt ?? row?.createdAt ?? row?.ts ?? row?.created_at, Date.now());
       const positionStats = Array.isArray(pl?.positionStats) ? pl.positionStats : Array.isArray(pl?.stats?.positionStats) ? pl.stats.positionStats : Array.isArray(pl?.special?.positionStats) ? pl.special.positionStats : [];
+      const rawConfig = row?.payload?.config ?? row?.resume?.config ?? {};
+      const exerciseTypeRaw = String(rawConfig?.exerciseType ?? row?.game?.exerciseType ?? row?.summary?.exerciseType ?? 'classic').toLowerCase();
+      const exerciseType = ['clock','half-it','sequence','grouping'].includes(exerciseTypeRaw) ? exerciseTypeRaw : 'classic';
+      const leaderboardTarget = String(rawConfig?.leaderboardTarget ?? row?.game?.leaderboardTarget ?? row?.summary?.leaderboardTarget ?? target);
+      const exerciseStats = pl?.exerciseStats ?? pl?.stats?.exerciseStats ?? pl?.special?.exerciseStats ?? null;
       return {
         id: String(row?.id || row?.matchId || `${at}`),
         at,
@@ -5210,6 +5215,9 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
         target,
         rule,
         visits,
+        leaderboardTarget,
+        exerciseType,
+        exerciseStats,
         S: N(hitSummary?.S ?? hitSummary?.single),
         D: N(hitSummary?.D ?? hitSummary?.double),
         T: N(hitSummary?.T ?? hitSummary?.triple),
@@ -5220,9 +5228,9 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
     .filter((row: any) => row.score > 0 || row.darts > 0)
     .sort((a: any, b: any) => a.at - b.at);
 
-  const configKeyOf = React.useCallback((row: any) => `${String(row?.target || "20")}|${String(row?.rule || "all")}|${Math.max(1, N(row?.visits, 1))}`, []);
+  const configKeyOf = React.useCallback((row: any) => `${String(row?.leaderboardTarget || row?.target || "20")}|${String(row?.rule || "all")}|${Math.max(1, N(row?.visits, 1))}`, []);
   const configOptions = React.useMemo(() => {
-    const byKey = new Map<string, { key: string; target: string; rule: string; visits: number; count: number; lastAt: number }>();
+    const byKey = new Map<string, { key: string; target: string; leaderboardTarget: string; exerciseType: string; rule: string; visits: number; count: number; lastAt: number }>();
     for (const row of allRows) {
       const key = configKeyOf(row);
       const prev = byKey.get(key);
@@ -5230,7 +5238,7 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
         prev.count += 1;
         prev.lastAt = Math.max(prev.lastAt, N(row?.at, 0));
       } else {
-        byKey.set(key, { key, target: String(row?.target || "20"), rule: String(row?.rule || "all"), visits: Math.max(1, N(row?.visits, 1)), count: 1, lastAt: N(row?.at, 0) });
+        byKey.set(key, { key, target: String(row?.target || "20"), leaderboardTarget: String(row?.leaderboardTarget || row?.target || "20"), exerciseType: String(row?.exerciseType || "classic"), rule: String(row?.rule || "all"), visits: Math.max(1, N(row?.visits, 1)), count: 1, lastAt: N(row?.at, 0) });
       }
     }
     return [...byKey.values()].sort((a, b) => b.lastAt - a.lastAt || a.target.localeCompare(b.target) || a.visits - b.visits);
@@ -5243,6 +5251,44 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
   const activeConfig = configOptions.find((option) => option.key === effectiveConfigKey) || null;
   const challengeRuleLabel = (value: any) => String(value || "all") === "single" ? "S" : String(value || "all") === "double" ? "D" : String(value || "all") === "triple" ? "T" : String(value || "all").startsWith("bull") ? "BULL" : "TOUS";
   const challengeTargetLabel = (value: any) => String(value || "20").startsWith("bull") ? "BULL" : String(value || "20");
+  const exerciseName = (type: any, leaderboardTarget?: any) => {
+    const t = String(type || '').toLowerCase();
+    const key = String(leaderboardTarget || '').toLowerCase();
+    if (t === 'clock' || key.startsWith('clock-')) return 'HORLOGE';
+    if (t === 'half-it' || key.startsWith('halfit-')) return 'HALF-IT';
+    if (t === 'sequence' || key.startsWith('sequence-')) return 'SÉQUENCE';
+    if (t === 'grouping' || key.startsWith('grouping-')) return 'GROUPEMENT';
+    return 'CIBLE FIXE';
+  };
+  const objectiveName = (value: any) => {
+    const key = String(value || '');
+    if (key === 'any-double') return 'DOUBLE LIBRE';
+    if (key === 'any-triple') return 'TRIPLE LIBRE';
+    if (key === 'bull' || key === 'bull25' || key === 'bull50') return 'BULL';
+    if (key.startsWith('group:')) return 'ZONE DE GROUPEMENT';
+    return key || '—';
+  };
+  const challengeConfigLabel = (option: any) => {
+    const key = String(option?.leaderboardTarget || option?.target || '20');
+    const type = String(option?.exerciseType || 'classic');
+    if (type === 'grouping' || key.startsWith('grouping-')) {
+      const hit = key.match(/^grouping-(\d+)-(\d+)-x([23])/i);
+      return hit ? `GROUPEMENT ${hit[1]}–${hit[2]} · ×${hit[3]}` : 'GROUPEMENT';
+    }
+    if (type === 'clock' || key.startsWith('clock-')) {
+      const real = key.includes('-real-');
+      const bull = key.endsWith('-bull');
+      return `HORLOGE · ${real ? 'VALEUR RÉELLE' : 'POINTS'}${bull ? ' · + BULL' : ''}`;
+    }
+    if (type === 'half-it' || key.startsWith('halfit-')) {
+      const hit = key.match(/^halfit-(\d+)-/i);
+      return `HALF-IT${hit ? ` · DÉPART ${hit[1]}` : ''}`;
+    }
+    if (type === 'sequence' || key.startsWith('sequence-')) {
+      return `SÉQUENCE · ${key.includes('sequence-hits-') ? 'POINTS' : 'VALEUR RÉELLE'}`;
+    }
+    return `CIBLE ${challengeTargetLabel(option?.target)} · ${challengeRuleLabel(option?.rule)}`;
+  };
 
   if (!playerId && !playerName) {
     return <div style={{ color: T.text70, fontSize: 13 }}>Sélectionne un joueur pour afficher ses statistiques Challenge.</div>;
@@ -5308,6 +5354,111 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
   ];
   const maxHitBar = Math.max(1, ...hitBarRows.map((row) => Number(row.value || 0)));
 
+  // V46 — fiche joueur Challenge : les nouveaux exercices remontent maintenant
+  // leurs records persistants directement dans le Centre de statistiques.
+  const exerciseRowsAll = allRows.filter((row: any) => row.exerciseType !== 'classic' && row.exerciseStats && typeof row.exerciseStats === 'object');
+  const exercisePortfolio = (() => {
+    const byType = new Map<string, any>();
+    for (const row of exerciseRowsAll) {
+      const type = String(row.exerciseType || 'classic');
+      const stats = row.exerciseStats || {};
+      const item = byType.get(type) || { type, matches: 0, configs: new Set<string>(), bestScore: 0, validationTotal: 0, bestValidation: 0, lastAt: 0 };
+      item.matches += 1;
+      item.configs.add(configKeyOf(row));
+      item.bestScore = Math.max(item.bestScore, N(row.score));
+      item.validationTotal += N(stats.validationRate);
+      item.bestValidation = Math.max(item.bestValidation, N(stats.validationRate));
+      item.lastAt = Math.max(item.lastAt, N(row.at));
+      byType.set(type, item);
+    }
+    return [...byType.values()]
+      .map((item: any) => ({ ...item, configs: item.configs.size, averageValidation: item.matches ? item.validationTotal / item.matches : 0 }))
+      .sort((a: any, b: any) => b.lastAt - a.lastAt);
+  })();
+
+  const exerciseCareer = (() => {
+    const exerciseRows = rows.filter((row: any) => row.exerciseType !== 'classic' && row.exerciseStats && typeof row.exerciseStats === 'object');
+    if (!exerciseRows.length) return null;
+    const objectiveMap = new Map<string, any>();
+    const sectorHits = new Map<number, number>();
+    let validationTotal = 0;
+    let bestValidation = 0;
+    let bestValidatedStreak = 0;
+    let bestPerfectStreak = 0;
+    let perfectVisits = 0;
+    let halfItCuts = 0;
+    let groupingDoublets = 0;
+    let groupingTriplets = 0;
+    let groupingPoints = 0;
+    for (const row of exerciseRows) {
+      const stats = row.exerciseStats || {};
+      const validation = N(stats.validationRate);
+      validationTotal += validation;
+      bestValidation = Math.max(bestValidation, validation);
+      bestValidatedStreak = Math.max(bestValidatedStreak, N(stats.bestValidatedVisitStreak));
+      bestPerfectStreak = Math.max(bestPerfectStreak, N(stats.bestPerfectVisitStreak));
+      perfectVisits += N(stats.perfectVisits);
+      halfItCuts += N(stats.halfItCuts);
+      groupingDoublets += N(stats.groupingDoublets);
+      groupingTriplets += N(stats.groupingTriplets);
+      groupingPoints += N(stats.groupingPoints);
+      for (const [objective, raw] of Object.entries(stats.objectiveStats || {})) {
+        const src: any = raw || {};
+        const dst = objectiveMap.get(objective) || { objective, attempts: 0, validated: 0, perfect: 0, points: 0, cuts: 0 };
+        dst.attempts += N(src.attempts);
+        dst.validated += N(src.validated);
+        dst.perfect += N(src.perfect);
+        dst.points += N(src.points);
+        objectiveMap.set(objective, dst);
+      }
+      for (const visit of Array.isArray(stats.visitStats) ? stats.visitStats : []) {
+        if (!visit?.halfItCut) continue;
+        const objective = String(visit?.objective || '');
+        if (!objective) continue;
+        const dst = objectiveMap.get(objective) || { objective, attempts: 0, validated: 0, perfect: 0, points: 0, cuts: 0 };
+        dst.cuts += 1;
+        objectiveMap.set(objective, dst);
+      }
+      for (const [sectorRaw, hitsRaw] of Object.entries(stats.groupingSectorHits || {})) {
+        const sector = Number(sectorRaw);
+        if (!Number.isFinite(sector) || sector < 1 || sector > 20) continue;
+        sectorHits.set(sector, (sectorHits.get(sector) || 0) + N(hitsRaw));
+      }
+    }
+    const objectives = [...objectiveMap.values()].map((item: any) => ({
+      ...item,
+      label: objectiveName(item.objective),
+      validationRate: item.attempts ? (item.validated / item.attempts) * 100 : 0,
+    })).filter((item: any) => item.attempts > 0);
+    const strongest = objectives.slice().sort((a: any, b: any) => b.validationRate - a.validationRate || b.validated - a.validated || b.points - a.points)[0] || null;
+    const weakest = objectives.slice().sort((a: any, b: any) => a.validationRate - b.validationRate || b.attempts - a.attempts || a.points - b.points)[0] || null;
+    const danger = objectives.slice().sort((a: any, b: any) => b.cuts - a.cuts || a.validationRate - b.validationRate || b.attempts - a.attempts)[0] || null;
+    const topSector = [...sectorHits.entries()].map(([sector, hits]) => ({ sector, hits })).sort((a, b) => b.hits - a.hits || b.sector - a.sector)[0] || null;
+    const recent = exerciseRows.slice(-8).map((row: any) => ({ at: row.at, score: row.score, validationRate: N(row.exerciseStats?.validationRate) }));
+    const trendDelta = recent.length >= 2 ? recent[recent.length - 1].validationRate - recent[recent.length - 2].validationRate : 0;
+    return {
+      type: String(exerciseRows[0]?.exerciseType || 'classic'),
+      matches: exerciseRows.length,
+      averageValidation: validationTotal / exerciseRows.length,
+      bestValidation,
+      bestValidatedStreak,
+      bestPerfectStreak,
+      perfectVisits,
+      halfItCuts,
+      groupingDoublets,
+      groupingTriplets,
+      groupingPoints,
+      strongest,
+      weakest,
+      danger,
+      topSector,
+      recent,
+      trendDelta,
+    };
+  })();
+
+  const exerciseTone = (type: string) => type === 'clock' ? '#41b9ff' : type === 'half-it' ? '#ffb01c' : type === 'sequence' ? '#bc63ff' : type === 'grouping' ? '#20d995' : '#ff555b';
+
   const box: React.CSSProperties = { minWidth: 0, overflow: "hidden", borderRadius: 14, border: "1px solid rgba(255,255,255,.09)", background: "rgba(0,0,0,.24)", padding: 10 };
   const statLabel: React.CSSProperties = { minWidth: 0, fontSize: "clamp(7px,1.8vw,8.5px)", opacity: .58, fontWeight: 950, letterSpacing: .35, lineHeight: 1.2, overflowWrap: "anywhere" };
   const statValue: React.CSSProperties = { minWidth: 0, marginTop: 3, fontSize: "clamp(14px,4vw,20px)", lineHeight: 1.05, fontWeight: 1000, color: "#ff555b", overflowWrap: "anywhere", wordBreak: "break-word" };
@@ -5317,7 +5468,7 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 10, minWidth: 0 }}>
         <div style={{ minWidth: 0, flex: "1 1 220px" }}>
           <div style={{ fontSize: "clamp(13px,3.8vw,16px)", fontWeight: 1000, color: "#ff555b", letterSpacing: .8, lineHeight: 1.15, overflowWrap: "anywhere" }}>CHALLENGE — STATS</div>
-          <div style={{ fontSize: "clamp(8px,2.6vw,10.5px)", color: T.text70, marginTop: 3, lineHeight: 1.3, overflowWrap: "anywhere" }}>Chaque configuration Challenge reste séparée : cible, tours et règle doivent être identiques.</div>
+          <div style={{ fontSize: "clamp(8px,2.6vw,10.5px)", color: T.text70, marginTop: 3, lineHeight: 1.3, overflowWrap: "anywhere" }}>Chaque configuration reste séparée : type d’exercice, paramètres, tours et règle ne sont jamais mélangés.</div>
         </div>
         <div style={{ color: T.text70, fontSize: 9, fontWeight: 900, whiteSpace: "nowrap" }}>{sessions} partie{sessions > 1 ? "s" : ""}</div>
       </div>
@@ -5344,10 +5495,64 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
                 whiteSpace: "nowrap",
                 boxShadow: on ? "0 0 12px rgba(255,65,72,.24)" : "none",
               }}
-            >🎯 {challengeTargetLabel(option.target)} · 🔁 {option.visits} · ✦ {challengeRuleLabel(option.rule)} <small style={{ opacity: .65 }}>({option.count})</small></button>;
+            >{option.exerciseType === 'classic' ? '🎯' : '⚡'} {challengeConfigLabel(option)} · 🔁 {option.visits} <small style={{ opacity: .65 }}>({option.count})</small></button>;
           })}
         </div>
-        {activeConfig && <div style={{ marginTop: 5, fontSize: 8, color: T.text70, lineHeight: 1.3 }}>Affichage actuel : cible {challengeTargetLabel(activeConfig.target)} · {activeConfig.visits} tours · {challengeRuleLabel(activeConfig.rule)}.</div>}
+        {activeConfig && <div style={{ marginTop: 5, fontSize: 8, color: T.text70, lineHeight: 1.3 }}>Affichage actuel : {challengeConfigLabel(activeConfig)} · {activeConfig.visits} tours.</div>}
+      </div>}
+
+      {exercisePortfolio.length > 0 && <div style={{ ...box, marginBottom: 9, padding: 12, borderColor: 'rgba(255,255,255,.12)', background: 'linear-gradient(180deg,rgba(20,23,31,.84),rgba(5,8,13,.92))' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline', marginBottom: 9 }}>
+          <div><div style={{ fontSize: 8, color: T.text70, fontWeight: 950, letterSpacing: .7 }}>FICHE JOUEUR · CHALLENGE</div><div style={{ fontSize: 12, fontWeight: 1000, marginTop: 2 }}>RECORDS DES EXERCICES</div></div>
+          <div style={{ fontSize: 8, color: T.text70 }}>{exerciseRowsAll.length} partie{exerciseRowsAll.length > 1 ? 's' : ''}</div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(145px,100%),1fr))', gap: 7 }}>
+          {exercisePortfolio.map((item: any) => {
+            const tone = exerciseTone(item.type);
+            const targetConfig = configOptions.find((option: any) => option.exerciseType === item.type);
+            return <button key={item.type} type="button" onClick={() => targetConfig && setSelectedConfigKey(targetConfig.key)} style={{ minWidth: 0, textAlign: 'left', borderRadius: 12, border: `1px solid ${tone}55`, background: `${tone}0d`, color: '#fff', padding: 9, cursor: targetConfig ? 'pointer' : 'default' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, alignItems: 'center' }}><b style={{ color: tone, fontSize: 10, letterSpacing: .5 }}>{exerciseName(item.type)}</b><span style={{ fontSize: 8, opacity: .62 }}>{item.matches} partie{item.matches > 1 ? 's' : ''}</span></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5, marginTop: 7 }}>
+                <span style={{ fontSize: 8, opacity: .65 }}>VALIDATION<strong style={{ display: 'block', fontSize: 15, color: tone }}>{item.averageValidation.toFixed(1)}%</strong></span>
+                <span style={{ fontSize: 8, opacity: .65 }}>BEST VALID.<strong style={{ display: 'block', fontSize: 15 }}>{item.bestValidation.toFixed(1)}%</strong></span>
+              </div>
+              <small style={{ display: 'block', marginTop: 5, opacity: .55, fontSize: 7.5 }}>{item.configs} configuration{item.configs > 1 ? 's' : ''} · meilleur score brut {item.bestScore}</small>
+            </button>;
+          })}
+        </div>
+      </div>}
+
+      {exerciseCareer && activeConfig && activeConfig.exerciseType !== 'classic' && <div style={{ ...box, marginBottom: 9, padding: 12, borderColor: `${exerciseTone(exerciseCareer.type)}55`, background: `linear-gradient(180deg,${exerciseTone(exerciseCareer.type)}12,rgba(0,0,0,.24))` }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, marginBottom: 9 }}>
+          <div><div style={{ fontSize: 8, color: T.text70, fontWeight: 950, letterSpacing: .7 }}>RECORDS PERSISTANTS</div><div style={{ fontSize: 12, fontWeight: 1000, color: exerciseTone(exerciseCareer.type), marginTop: 2 }}>{challengeConfigLabel(activeConfig)}</div></div>
+          <b style={{ color: exerciseCareer.trendDelta > 0 ? '#20d995' : exerciseCareer.trendDelta < 0 ? '#ff6268' : T.text70, fontSize: 10 }}>{exerciseCareer.trendDelta > 0 ? '+' : ''}{exerciseCareer.trendDelta.toFixed(1)} pts</b>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(105px,100%),1fr))', gap: 6 }}>
+          {[
+            ['PARTIES', exerciseCareer.matches],
+            ['VALIDATION MOY.', `${exerciseCareer.averageValidation.toFixed(1)}%`],
+            ['RECORD VALID.', `${exerciseCareer.bestValidation.toFixed(1)}%`],
+            ['BEST SÉRIE', exerciseCareer.bestValidatedStreak],
+            ['SÉRIE PARFAITE', exerciseCareer.bestPerfectStreak],
+          ].map(([label, value]) => <div key={String(label)} style={{ borderRadius: 10, background: 'rgba(255,255,255,.04)', padding: 8 }}><div style={statLabel}>{label}</div><div style={{ ...statValue, color: exerciseTone(exerciseCareer.type), fontSize: 17 }}>{value}</div></div>)}
+        </div>
+
+        {exerciseCareer.type === 'grouping' ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(125px,100%),1fr))', gap: 6, marginTop: 7 }}>
+          <div style={{ borderRadius: 10, background: 'rgba(255,255,255,.035)', padding: 8 }}><div style={statLabel}>SECTEUR FORT</div><div style={{ ...statValue, color: '#20d995' }}>{exerciseCareer.topSector ? exerciseCareer.topSector.sector : '—'}</div><small style={{ opacity: .6 }}>{exerciseCareer.topSector ? `${exerciseCareer.topSector.hits} hits groupés` : 'Aucun groupement'}</small></div>
+          <div style={{ borderRadius: 10, background: 'rgba(255,255,255,.035)', padding: 8 }}><div style={statLabel}>TRIPLETS CUMULÉS</div><div style={{ ...statValue, color: '#20d995' }}>{exerciseCareer.groupingTriplets}</div><small style={{ opacity: .6 }}>{exerciseCareer.groupingPoints} pts groupés</small></div>
+          <div style={{ borderRadius: 10, background: 'rgba(255,255,255,.035)', padding: 8 }}><div style={statLabel}>DOUBLETS CUMULÉS</div><div style={{ ...statValue, color: '#20d995' }}>{exerciseCareer.groupingDoublets}</div></div>
+        </div> : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(145px,100%),1fr))', gap: 6, marginTop: 7 }}>
+          <div style={{ borderRadius: 10, background: 'rgba(32,217,149,.07)', border: '1px solid rgba(32,217,149,.16)', padding: 8 }}><div style={statLabel}>OBJECTIF HISTORIQUE FORT</div><b style={{ display: 'block', marginTop: 3, color: '#20d995' }}>{exerciseCareer.strongest?.label || '—'}</b><small style={{ opacity: .62 }}>{exerciseCareer.strongest ? `${exerciseCareer.strongest.validationRate.toFixed(1)}% · ${exerciseCareer.strongest.validated}/${exerciseCareer.strongest.attempts}` : 'Aucune donnée'}</small></div>
+          <div style={{ borderRadius: 10, background: 'rgba(255,98,104,.06)', border: '1px solid rgba(255,98,104,.15)', padding: 8 }}><div style={statLabel}>{exerciseCareer.type === 'half-it' ? 'ZONE LA PLUS DANGEREUSE' : 'OBJECTIF À TRAVAILLER'}</div><b style={{ display: 'block', marginTop: 3, color: '#ff7a80' }}>{(exerciseCareer.type === 'half-it' ? exerciseCareer.danger : exerciseCareer.weakest)?.label || '—'}</b><small style={{ opacity: .62 }}>{exerciseCareer.type === 'half-it' && exerciseCareer.danger ? `${exerciseCareer.danger.cuts} × ÷2 · ${exerciseCareer.danger.validationRate.toFixed(1)}%` : exerciseCareer.weakest ? `${exerciseCareer.weakest.validationRate.toFixed(1)}% · ${exerciseCareer.weakest.validated}/${exerciseCareer.weakest.attempts}` : 'Aucune donnée'}</small></div>
+          {exerciseCareer.type === 'half-it' && <div style={{ borderRadius: 10, background: 'rgba(255,176,28,.06)', border: '1px solid rgba(255,176,28,.16)', padding: 8 }}><div style={statLabel}>DIVISIONS ÷2 CUMULÉES</div><b style={{ display: 'block', marginTop: 3, fontSize: 20, color: '#ffb01c' }}>{exerciseCareer.halfItCuts}</b></div>}
+        </div>}
+
+        {exerciseCareer.recent.length > 0 && <div style={{ marginTop: 9 }}>
+          <div style={{ ...statLabel, marginBottom: 5 }}>FORME RÉCENTE · VALIDATION</div>
+          <div style={{ height: 58, display: 'flex', alignItems: 'flex-end', gap: 4, padding: '4px 2px 0' }}>
+            {exerciseCareer.recent.map((row: any, index: number) => <i key={`${row.at}-${index}`} title={`${row.validationRate.toFixed(1)}% · ${row.score} pts`} style={{ flex: 1, minWidth: 7, maxWidth: 28, height: `${Math.max(5, Math.min(100, row.validationRate))}%`, borderRadius: '4px 4px 1px 1px', background: exerciseTone(exerciseCareer.type), opacity: .82 }} />)}
+          </div>
+        </div>}
       </div>}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(118px,100%),1fr))", gap: 7, minWidth: 0 }}>
@@ -5377,7 +5582,7 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
             return <g key={ratio}><line x1={px} y1={y} x2={chartW-px} y2={y} stroke="rgba(255,255,255,.08)" strokeWidth="1"/><text x="4" y={y+4} fill="rgba(255,255,255,.45)" fontSize="10">{val}</text></g>;
           })}
           {polyline ? <polyline points={polyline} fill="none" stroke="#ff555b" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/> : null}
-          {chartPoints.map((point: any, index: number) => <g key={`${point.row.id}-${index}`}><circle cx={point.x} cy={point.y} r="5" fill="#ff555b" stroke="#fff" strokeWidth="1.5"/><title>{`Partie ${rows.length-evolution.length+index+1} · ${point.row.score} pts · cible ${point.row.target}`}</title></g>)}
+          {chartPoints.map((point: any, index: number) => <g key={`${point.row.id}-${index}`}><circle cx={point.x} cy={point.y} r="5" fill="#ff555b" stroke="#fff" strokeWidth="1.5"/><title>{`Partie ${rows.length-evolution.length+index+1} · ${point.row.score} pts · ${point.row.exerciseType === 'classic' ? `cible ${point.row.target}` : exerciseName(point.row.exerciseType, point.row.leaderboardTarget)}`}</title></g>)}
         </svg>
       </div>
 
@@ -5436,7 +5641,7 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
       <div style={{ ...box, marginTop: 9 }}>
         <div style={{ ...statLabel, marginBottom: 7 }}>DERNIÈRES PARTIES</div>
         <div style={{ display: "grid", gap: 5 }}>
-          {[...rows].reverse().slice(0, 8).map((row: any) => <div key={row.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gridTemplateAreas: "'meta score' 'meta darts'", gap: "2px 8px", alignItems: "center", padding: "7px 8px", borderRadius: 10, background: "rgba(255,255,255,.035)", minWidth: 0 }}><span style={{ gridArea: "meta", minWidth: 0, fontSize: "clamp(8px,2.3vw,9.5px)", lineHeight: 1.25, color: T.text70, overflowWrap: "anywhere" }}>{new Date(row.at).toLocaleDateString()} · cible {row.target} · {row.visits || "—"} tours</span><b style={{ gridArea: "score", color: "#ff656b", whiteSpace: "nowrap", fontSize: "clamp(10px,2.8vw,13px)" }}>{row.score} pts</b><em style={{ gridArea: "darts", fontStyle: "normal", fontSize: 8, opacity: .65, whiteSpace: "nowrap", textAlign: "right" }}>{row.darts} fl.</em></div>)}
+          {[...rows].reverse().slice(0, 8).map((row: any) => <div key={row.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gridTemplateAreas: "'meta score' 'meta darts'", gap: "2px 8px", alignItems: "center", padding: "7px 8px", borderRadius: 10, background: "rgba(255,255,255,.035)", minWidth: 0 }}><span style={{ gridArea: "meta", minWidth: 0, fontSize: "clamp(8px,2.3vw,9.5px)", lineHeight: 1.25, color: T.text70, overflowWrap: "anywhere" }}>{new Date(row.at).toLocaleDateString()} · {row.exerciseType === 'classic' ? `cible ${row.target}` : exerciseName(row.exerciseType, row.leaderboardTarget)} · {row.visits || "—"} tours</span><b style={{ gridArea: "score", color: "#ff656b", whiteSpace: "nowrap", fontSize: "clamp(10px,2.8vw,13px)" }}>{row.score} pts</b><em style={{ gridArea: "darts", fontStyle: "normal", fontSize: 8, opacity: .65, whiteSpace: "nowrap", textAlign: "right" }}>{row.darts} fl.</em></div>)}
         </div>
       </div>
     </div>
