@@ -1,0 +1,26 @@
+name: Football V10 Validate
+
+on:
+  push:
+    branches:
+      - artifact-football-v10-gameplay-config-v13
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Football V10 UX regression
+        run: node tools/test-football-ux-v10.mjs
+      - name: Build
+        run: npm run build
