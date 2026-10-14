@@ -4,6 +4,7 @@ import BackDot from "../components/BackDot";
 import ProfileAvatar from "../components/ProfileAvatar";
 import PageHeader from "../components/PageHeader";
 import tickerPtitHun from "../assets/tickers/ticker_ptit_1.png";
+import ptit1Radar from "../assets/ptit1/ptit1_radar.webp";
 import { useAwenaOptional } from "../awena/AwenaProvider";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { History } from "../lib/history";
@@ -31,6 +32,11 @@ const ACCENT2 = "#8a5a2b";
 const GREEN = "#78f3d4";
 const RED = "#ff6f78";
 const BLUE = "#88c8ff";
+const PTIT1_ZONES_LABELS: Record<string,string> = {
+  fr:"ZONES", en:"ZONES", es:"ZONAS", de:"ZONEN", it:"ZONE", nl:"ZONES", pt:"ZONAS", pl:"STREFY", ro:"ZONE", sr:"ZONE", hr:"ZONE", cs:"ZÓNY", da:"ZONER", no:"SONER", sv:"ZONER", is:"SVÆÐI", tr:"BÖLGELER", ru:"ЗОНЫ", ar:"المناطق", hi:"क्षेत्र", zh:"区域", ja:"ゾーン"
+};
+function ptit1CurrentLang(){ try { return String(localStorage.getItem("dc_lang_v1") || navigator.language || "fr").toLowerCase().split("-")[0]; } catch { return "fr"; } }
+function ptit1ZonesLabel(){ return PTIT1_ZONES_LABELS[ptit1CurrentLang()] || PTIT1_ZONES_LABELS.en; }
 
 function coachText(state: PtitHunState, activePlayer: any) {
   if (!activePlayer) return "";
@@ -49,6 +55,7 @@ function coachText(state: PtitHunState, activePlayer: any) {
   return `Le petit simple du 1 reste la zone reine : +1 seulement. ${rules.tripleNulEnabled ? "Trois petits 1 = TRIPLE NUL, donc volée à 0." : "Reste au plus près du centre des secteurs."}`;
 }
 
+// Integration markers retained after the compact UI refactor: JACKPOT · ZONE SPÉCIALE · Cible tactique P’TIT 1 · P’TIT 1 · CARTE DES RISQUES
 const PTIT1_BOARD_ORDER = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
 function ptit1Polar(cx: number, cy: number, r: number, deg: number) { const rad = ((deg - 90) * Math.PI) / 180; return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) }; }
 function ptit1RingPath(cx: number, cy: number, ro: number, ri: number, start: number, end: number) { const a = ptit1Polar(cx, cy, ro, start), b = ptit1Polar(cx, cy, ro, end), c = ptit1Polar(cx, cy, ri, end), d = ptit1Polar(cx, cy, ri, start); return `M ${a.x} ${a.y} A ${ro} ${ro} 0 0 1 ${b.x} ${b.y} L ${c.x} ${c.y} A ${ri} ${ri} 0 0 0 ${d.x} ${d.y} Z`; }
@@ -80,48 +87,69 @@ function PtitHunRiskBoard({ state, playerId, currentThrow, preview }: any) {
   const score = Number(state.scores?.[playerId] || 0);
   const shield = Boolean(state.shieldActive?.[playerId]);
   const clean = Number(state.cleanStreak?.[playerId] || 0);
-  const dbullGoal = Math.max(1, Number(rules.dbullsForZero || 3));
-  const dbulls = Math.min(dbullGoal, Number(st.dbulls || 0));
+  const jackpotText = rules.jackpotEnabled && state.jackpotTargets?.length ? state.jackpotTargets.map((t: any) => t.label).join(" / ") : "OFF";
   const missLabel = rules.missMode === "add" ? `+${rules.missValue}` : `TOTAL ×${rules.missValue}`;
-  const cards = [
-    ["PETIT", "+ valeur", GREEN], ["GROS", `+ valeur ×${rules.outerSingleFactor}`, "#ffb86b"], ["DOUBLE", `TOTAL ×${rules.doubleFactor}`, RED],
-    ["TRIPLE", `TOTAL ×${rules.tripleFactor}`, RED], ["BULL25", `TOTAL ×${rules.bull25Factor}`, "#ff7d8d"],
-    ["DBULL", rules.dbullEnabled ? `TOTAL ÷${rules.dbullDivider}` : "+50", BLUE], ["MISS", missLabel, "#ff5266"],
+  const risks = [
+    ["PETIT", "+ valeur", "#ffe18a"], ["GROS", `+ valeur ×${rules.outerSingleFactor}`, "#ffad55"],
+    ["DOUBLE", `TOTAL ×${rules.doubleFactor}`, "#7ddfff"], ["TRIPLE", `TOTAL ×${rules.tripleFactor}`, "#e490ff"],
+    ["BULL25", `TOTAL ×${rules.bull25Factor}`, "#ff6f78"], ["DBULL", rules.dbullEnabled ? `TOTAL ÷${rules.dbullDivider}` : "+50", "#78f3d4"],
+    ["MISS", missLabel, "#ff5d70"],
   ];
-  const jackpotText = rules.jackpotEnabled && state.jackpotTargets?.length ? state.jackpotTargets.map((t: any) => t.label).join(" · ") : "OFF";
-  return <section style={{ borderRadius: 18, padding: 10, border: `1px solid ${ACCENT}44`, background: "radial-gradient(circle at 50% 16%,rgba(242,200,75,.09),transparent 34%),linear-gradient(180deg,rgba(15,17,23,.97),rgba(7,8,12,.98))", boxShadow: "0 12px 34px rgba(0,0,0,.35)" }}>
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 10, alignItems: "center" }}>
-      <div><div style={{ color: ACCENT, fontSize: 9, letterSpacing: 1.1, fontWeight: 1000 }}>P’TIT 1 · CARTE DES RISQUES</div><div style={{ marginTop: 5, color: "#fff", fontSize: 12, fontWeight: 950 }}>Vise le centre des secteurs. Le petit simple reste la zone de contrôle.</div><div style={{ marginTop: 3, color: "#8f98ad", fontSize: 8.5 }}>Vert = petit simple · rouge = D/T · or/bleu = Jackpot</div></div>
-      <JackpotMiniTarget targets={rules.jackpotEnabled ? state.jackpotTargets : []} />
-      <div style={{ textAlign: "right" }}><div style={{ fontSize: 28, fontWeight: 1100, color: ACCENT }}>{score}</div><div style={{ fontSize: 8, color: "#9097aa", fontWeight: 900 }}>LE PLUS PETIT GAGNE</div></div>
-    </div>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(72px,1fr))", gap: 5, marginTop: 9 }}>
-      {cards.map(([label, value, color]: any) => <div key={label} style={{ minWidth: 0, borderRadius: 11, padding: "6px 4px", textAlign: "center", border: `1px solid ${color}45`, background: `${color}0c` }}><div style={{ color, fontSize: 8, fontWeight: 1000, whiteSpace: "nowrap" }}>{label}</div><div style={{ marginTop: 2, color: "#fff", fontSize: 8.5, fontWeight: 950, whiteSpace: "nowrap" }}>{value}</div></div>)}
-    </div>
-    {rules.jackpotEnabled ? <div style={{ marginTop: 8, borderRadius: 14, padding: "8px 9px", border: "1px solid rgba(255,216,77,.55)", background: "radial-gradient(circle at 15% 30%,rgba(255,216,77,.16),transparent 34%),rgba(255,180,30,.055)", boxShadow: "0 0 22px rgba(255,190,35,.08)" }}><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}><div style={{ minWidth: 0, flex: 1 }}><div style={{ color: "#ffd84d", fontSize: 9, fontWeight: 1100, letterSpacing: .8 }}>✦ JACKPOT · ZONE SPÉCIALE</div><div style={{ marginTop: 3, color: "#fff", fontSize: 21, fontWeight: 1100, letterSpacing: .8, textShadow: "0 0 16px rgba(255,216,77,.55)" }}>{jackpotText}</div><div style={{ marginTop: 3, color: "#e8edf7", fontSize: 9 }}>Double / Triple uniquement · une touche = volée entière à 0</div><div style={{ marginTop: 2, color: "#8c94a8", fontSize: 8 }}>Rotation : {rules.jackpotRefresh === "round" ? "chaque tour complet" : "chaque volée"}</div></div></div></div> : null}
-    <div style={{ display: "grid", gridTemplateColumns: rules.zeroAbsoluteEnabled && rules.dbullEnabled && rules.shieldEnabled ? "1fr 1fr" : "1fr", gap: 7, marginTop: 8 }}>
-      {rules.zeroAbsoluteEnabled && rules.dbullEnabled ? <div style={{ borderRadius: 12, padding: 8, border: `1px solid ${BLUE}44`, background: `${BLUE}0b` }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><b style={{ color: BLUE, fontSize: 9 }}>ZÉRO ABSOLU</b><span style={{ color: "#fff", fontSize: 10, fontWeight: 1000 }}>{"●".repeat(dbulls)}{"○".repeat(Math.max(0, dbullGoal - dbulls))}</span></div><div style={{ marginTop: 3, color: "#9fa6b8", fontSize: 8.5 }}>{dbullGoal}e DBULL cumulé → score total 0</div></div> : null}
-      {rules.shieldEnabled ? <div style={{ borderRadius: 12, padding: 8, border: `1px solid ${shield ? GREEN : ACCENT}44`, background: `${shield ? GREEN : ACCENT}0b` }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><b style={{ color: shield ? GREEN : ACCENT, fontSize: 9 }}>BOUCLIER DU HUN</b><span style={{ color: "#fff", fontSize: 10, fontWeight: 1000 }}>{shield ? "🛡 ACTIF" : `${clean}/${rules.cleanVisitsForShield}`}</span></div><div style={{ marginTop: 3, color: "#9fa6b8", fontSize: 8.5 }}>{shield ? `Pénalités des prochaines volées ÷${rules.shieldDivider}` : `${rules.cleanVisitsForShield} volées propres consécutives`}</div></div> : null}
-    </div>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 8 }}>
-      {[0, 1, 2].map((i) => { const d = currentThrow?.[i]; const g = d ? uiToGameDart(d) : null; return <div key={i} style={{ borderRadius: 11, padding: "7px 5px", textAlign: "center", border: `1px solid ${d ? ACCENT + "55" : "rgba(255,255,255,.07)"}`, background: d ? `${ACCENT}0c` : "rgba(255,255,255,.02)" }}><div style={{ color: d ? "#fff" : "#626a7d", fontWeight: 1000, fontSize: 10 }}>{g ? ptitHunDartLabel(g) : `FLÉCHETTE ${i + 1}`}</div></div>; })}
-    </div>
-    {preview ? <div style={{ marginTop: 7, textAlign: "center", color: preview.after <= score || preview.jackpotHit || preview.tripleNul || preview.zeroAbsoluteNow ? GREEN : preview.delta >= 100 ? RED : "#fff", fontSize: 10.5, fontWeight: 1000 }}>APERÇU : {score} → {preview.after}{preview.jackpotHit ? " · JACKPOT ! VOLÉE 0" : preview.petitOnePerfect ? " · P’TIT 1 PARFAIT" : preview.tripleNul ? ` · TRIPLE NUL PETIT ${preview.tripleNulNumber || "?"}` : preview.zeroAbsoluteNow ? " · ZÉRO ABSOLU" : preview.shieldBefore && preview.rawAfter > score ? " · BOUCLIER APPLIQUÉ" : preview.delta > 0 ? ` · +${preview.delta} pts` : preview.delta < 0 ? ` · ${preview.delta} pts` : " · VOLÉE 0"}</div> : null}
-  </section>;
+  return <div style={{ height: "100%", minHeight: 0, display: "grid", gridTemplateRows: "minmax(0,1fr) auto auto", gap: 9 }}>
+    <section style={{ minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0,1.35fr) minmax(170px,.65fr)", gap: 10, borderRadius: 18, padding: 10, border: `1px solid ${ACCENT}44`, background: "radial-gradient(circle at 24% 20%,rgba(242,200,75,.10),transparent 34%),linear-gradient(180deg,rgba(14,17,24,.98),rgba(5,7,11,.99))", overflow: "hidden" }}>
+      <div style={{ minHeight: 0, display: "grid", placeItems: "center", borderRadius: 16, background: "radial-gradient(circle,rgba(120,243,212,.08),transparent 62%)", border: "1px solid rgba(255,255,255,.06)" }}>
+        <img src={ptit1Radar} alt="P’TIT 1 · zones prioritaires" draggable={false} style={{ width: "min(100%,560px)", height: "100%", maxHeight: "100%", objectFit: "contain", display: "block", filter: "drop-shadow(0 12px 24px rgba(0,0,0,.48))" }} />
+      </div>
+      <div style={{ minHeight: 0, display: "grid", alignContent: "start", gap: 7 }}>
+        <div style={{ borderRadius: 14, padding: 10, border: `1px solid ${ACCENT}55`, background: `${ACCENT}0e` }}><div style={{ color: ACCENT, fontSize: 8, fontWeight: 1100, letterSpacing: .9 }}>SCORE ACTUEL</div><div style={{ color: "#fff", fontSize: 34, lineHeight: 1, fontWeight: 1100, marginTop: 4 }}>{score}</div><div style={{ color: "#929bad", fontSize: 8, marginTop: 4 }}>Le plus petit score gagne.</div></div>
+        <div style={{ borderRadius: 14, padding: 10, border: "1px solid rgba(255,216,77,.5)", background: "rgba(255,216,77,.07)" }}><div style={{ color: "#ffd84d", fontSize: 8, fontWeight: 1100, letterSpacing: .8 }}>JACKPOT</div><div style={{ color: "#fff", fontSize: 22, fontWeight: 1100, marginTop: 3 }}>{jackpotText}</div><div style={{ color: "#b9c0ce", fontSize: 8, lineHeight: 1.4, marginTop: 4 }}>Zone Double/Triple spéciale : une touche annule toute la volée.</div></div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}><div style={{ borderRadius: 12, padding: 8, border: `1px solid ${BLUE}55`, background: `${BLUE}0d` }}><div style={{ color: BLUE, fontSize: 7.5, fontWeight: 1000 }}>ZÉRO ABSOLU</div><b style={{ display: "block", marginTop: 3, fontSize: 15 }}>{st.dbulls || 0}/{rules.dbullsForZero}</b></div><div style={{ borderRadius: 12, padding: 8, border: `1px solid ${GREEN}55`, background: `${GREEN}0d` }}><div style={{ color: GREEN, fontSize: 7.5, fontWeight: 1000 }}>BOUCLIER</div><b style={{ display: "block", marginTop: 3, fontSize: 15 }}>{shield ? "ACTIF" : `${clean}/${rules.cleanVisitsForShield}`}</b></div></div>
+      </div>
+    </section>
+    <section style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 5 }}>{risks.map(([label,value,color]: any) => <div key={label} style={{ minWidth: 0, borderRadius: 11, padding: "7px 4px", textAlign: "center", border: `1px solid ${color}45`, background: `${color}0d` }}><div style={{ color, fontSize: 7.2, fontWeight: 1100 }}>{label}</div><div style={{ marginTop: 2, color: "#fff", fontSize: 7.5, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div></div>)}</section>
+    <section style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5 }}>{[0,1,2].map((i) => { const d:any=currentThrow?.[i]; return <div key={i} style={{ borderRadius: 11, padding: 8, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.025)", textAlign: "center", color: d ? "#fff" : "#6d7485", fontSize: 8.5, fontWeight: 1000 }}>{d ? ptitHunDartLabel(uiToGameDart(d)) : `FLÉCHETTE ${i+1}`}</div>; })}</section>
+  </div>;
 }
 
-
-function FloatingPanel({ title, subtitle, onClose, children }: any) {
-  return <div className="party-mode__modal" role="dialog" aria-modal="true" aria-label={title} onClick={onClose}>
-    <div className="party-mode__modal-card" onClick={(e) => e.stopPropagation()} style={{ width: "min(860px,96vw)" }}>
-      <header>
-        <div><b>{title}</b>{subtitle ? <span>{subtitle}</span> : null}</div>
+function FloatingPanel({ title, subtitle, onClose, children, accent = ACCENT }: any) {
+  return <div className="party-mode__modal" role="dialog" aria-modal="true" aria-label={title} onClick={onClose} style={{ padding: 8, background: "rgba(0,0,0,.82)", backdropFilter: "blur(9px)" }}>
+    <div className="party-mode__modal-card" onClick={(e) => e.stopPropagation()} style={{ width: "min(920px,98vw)", height: "min(92dvh,760px)", maxHeight: "92dvh", borderRadius: 20, border: `1px solid ${accent}44`, background: "linear-gradient(180deg,rgba(15,17,23,.995),rgba(4,6,10,.995))", boxShadow: "0 28px 90px rgba(0,0,0,.78)", display: "grid", gridTemplateRows: "auto minmax(0,1fr)" }}>
+      <header style={{ minHeight: 50, padding: "8px 10px", borderBottom: "1px solid rgba(255,255,255,.07)" }}>
+        <div><b style={{ color: accent, fontSize: 12 }}>{title}</b>{subtitle ? <span>{subtitle}</span> : null}</div>
         <button type="button" onClick={onClose} aria-label="Fermer">×</button>
       </header>
-      <div style={{ padding: 8, overflow: "auto" }}>{children}</div>
+      <div style={{ minHeight: 0, padding: 8, overflow: "auto" }}>{children}</div>
     </div>
   </div>;
 }
+
+function Ptit1BonusModal({ kind, state, playerId, onClose }: any) {
+  const rules = state.config.rules;
+  const st:any = state.statsByPlayer?.[playerId] || {};
+  const isZero = kind === "zero";
+  const title = isZero ? "ZÉRO ABSOLU" : "BOUCLIER DU HUN";
+  const color = isZero ? BLUE : GREEN;
+  const current = isZero ? Number(st.dbulls || 0) : Number(state.cleanStreak?.[playerId] || 0);
+  const target = isZero ? Number(rules.dbullsForZero || 3) : Number(rules.cleanVisitsForShield || 3);
+  const active = isZero ? Boolean(state.zeroAbsoluteUsed?.[playerId]) : Boolean(state.shieldActive?.[playerId]);
+  return <FloatingPanel title={title} subtitle={isZero ? "Bonus centre · DBULL cumulés" : "Bonus précision · volées propres"} onClose={onClose} accent={color}>
+    <div style={{ height:"100%", display:"grid", alignContent:"center", gap:10, maxWidth:680, margin:"0 auto" }}>
+      <div style={{ borderRadius:18, padding:16, border:`1px solid ${color}55`, background:`radial-gradient(circle at 50% 0%,${color}20,transparent 45%),rgba(255,255,255,.025)`, textAlign:"center" }}>
+        <div style={{ color, fontSize:11, fontWeight:1100, letterSpacing:1 }}>{title}</div>
+        <div style={{ marginTop:8, color:"#fff", fontSize:38, fontWeight:1100 }}>{active ? "ACTIF" : `${Math.min(current,target)}/${target}`}</div>
+        <div style={{ margin:"10px auto 0", width:"min(360px,86%)", height:10, borderRadius:999, background:"rgba(255,255,255,.08)", overflow:"hidden" }}><i style={{ display:"block", height:"100%", width:`${active ? 100 : Math.min(100,(current/Math.max(1,target))*100)}%`, borderRadius:999, background:`linear-gradient(90deg,${color},#fff)` }} /></div>
+      </div>
+      <div style={{ borderRadius:16, padding:14, border:"1px solid rgba(255,255,255,.08)", background:"rgba(255,255,255,.025)", color:"#dfe6f2", fontSize:12, lineHeight:1.55 }}>
+        {isZero ? <><b style={{ color }}>Principe.</b> Chaque DBULL réduit normalement le score total. Lorsque tu atteins <b>{target} DBULL cumulés</b> dans la partie, ton score est immédiatement ramené à <b>0</b>. Le compteur ne se réinitialise pas entre les volées.</> : <><b style={{ color }}>Principe.</b> Enchaîne <b>{target} volées propres</b>, composées uniquement de petits simples. Une fois débloqué, le Bouclier reste actif jusqu’à la fin et divise les pénalités de volée par <b>{rules.shieldDivider}</b>.</>}
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(2,minmax(0,1fr))", gap:8 }}>
+        <div style={{ borderRadius:14, padding:10, border:`1px solid ${color}33`, background:`${color}0b` }}><small style={{ color, fontWeight:1000 }}>ÉTAT ACTUEL</small><b style={{ display:"block", marginTop:4, color:"#fff", fontSize:17 }}>{active ? "DÉBLOQUÉ" : `${current}/${target}`}</b></div>
+        <div style={{ borderRadius:14, padding:10, border:"1px solid rgba(255,255,255,.08)", background:"rgba(255,255,255,.025)" }}><small style={{ color:"#8f98aa", fontWeight:1000 }}>{isZero ? "EFFET" : "PROTECTION"}</small><b style={{ display:"block", marginTop:4, color:"#fff", fontSize:17 }}>{isZero ? "SCORE = 0" : `PÉNALITÉS ÷${rules.shieldDivider}`}</b></div>
+      </div>
+    </div>
+  </FloatingPanel>;
+}
+
 
 function Ptit1MiniKpi({ label, value, color = ACCENT, onClick }: any) {
   const Tag: any = onClick ? "button" : "div";
@@ -132,9 +160,18 @@ function Ptit1MiniKpi({ label, value, color = ACCENT, onClick }: any) {
 }
 
 function Ptit1DartsRow({ currentThrow, accent }: any) {
-  return <div style={{ width: "100%", display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5 }}>
-    {[0,1,2].map((i) => { const dart = currentThrow?.[i]; const gameDart = dart ? uiToGameDart(dart) : null; return <div key={i} style={{ height: 30, minWidth: 0, borderRadius: 9, border: `1px solid ${dart ? accent + "66" : "rgba(255,255,255,.08)"}`, background: dart ? `${accent}12` : "rgba(0,0,0,.22)", display: "grid", placeItems: "center", color: dart ? "#fff" : "#5f6879", fontSize: 9.5, fontWeight: 1000 }}>{gameDart ? ptitHunDartLabel(gameDart) : `D${i+1}`}</div>; })}
-  </div>;
+  const chip = (d: any) => {
+    if (!d) return { label: "—", color: "#667085", border: "rgba(255,255,255,.08)", bg: "rgba(0,0,0,.22)" };
+    const g:any = uiToGameDart(d); const raw = ptitHunDartLabel(g); const u = String(raw).toUpperCase();
+    if (u === "DBULL" || u === "BULL25") return { label: u === "BULL25" ? "BULL" : "DBULL", color: "#d9ffe9", border: "rgba(96,255,182,.55)", bg: "linear-gradient(180deg,rgba(34,102,68,.92),rgba(11,30,19,.96))" };
+    if (u === "MISS") return { label: "MISS", color: "#ffd2d7", border: "rgba(255,97,122,.46)", bg: "linear-gradient(180deg,rgba(101,22,34,.94),rgba(35,8,12,.97))" };
+    if (u.startsWith("GROS")) return { label: u.replace("GROS ", "G"), color: "#fff2cf", border: "rgba(255,176,72,.5)", bg: "linear-gradient(180deg,rgba(180,93,19,.92),rgba(54,24,8,.97))" };
+    if (u.startsWith("PETIT")) return { label: u.replace("PETIT ", "P"), color: "#6b3f12", border: "rgba(255,232,150,.56)", bg: "linear-gradient(180deg,rgba(255,239,156,.96),rgba(214,188,101,.96))" };
+    if (u.startsWith("D")) return { label: u, color: "#edfaff", border: "rgba(125,224,255,.5)", bg: "linear-gradient(180deg,rgba(61,113,139,.94),rgba(15,28,35,.97))" };
+    if (u.startsWith("T")) return { label: u, color: "#ffe8ff", border: "rgba(229,144,255,.48)", bg: "linear-gradient(180deg,rgba(111,64,126,.94),rgba(29,15,34,.97))" };
+    return { label: raw, color: "#fff", border: `${accent}66`, bg: `${accent}12` };
+  };
+  return <div style={{ width: "100%", display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5 }}>{[0,1,2].map((i) => { const s=chip(currentThrow?.[i]); return <div key={i} style={{ height: 30, minWidth: 0, borderRadius: 9, border: `1px solid ${s.border}`, background: s.bg, display: "grid", placeItems: "center", color: s.color, fontSize: 9.5, fontWeight: 1100 }}>{currentThrow?.[i] ? s.label : `D${i+1}`}</div>; })}</div>;
 }
 
 function Ptit1ToolIcon({ kind, color = "#dfe8ff" }: any) {
@@ -144,9 +181,10 @@ function Ptit1ToolIcon({ kind, color = "#dfe8ff" }: any) {
   return <svg {...common}><path d="M6 7h12"/><path d="M6 12h12"/><path d="M6 17h8"/></svg>;
 }
 
-function Ptit1ProgressCard({ label, value, hint, color = ACCENT, active = false }: any) {
-  return <div style={{ minWidth: 0, borderRadius: 12, border: `1px solid ${active ? color + "88" : "rgba(255,255,255,.08)"}`, background: active ? `${color}12` : "linear-gradient(180deg,rgba(16,19,28,.96),rgba(5,7,12,.98))", padding: "6px 8px" }}><div style={{ color, fontSize: 7.3, fontWeight: 1000, letterSpacing: .55 }}>{label}</div><div style={{ marginTop: 2, color: "#fff", fontSize: 12.2, fontWeight: 1100 }}>{value}</div><div style={{ marginTop: 2, color: "#8f98ad", fontSize: 7.2, lineHeight: 1.25 }}>{hint}</div></div>;
+function Ptit1ProgressCard({ label, value, color = ACCENT, active = false, onClick }: any) {
+  return <button type="button" onClick={onClick} style={{ minWidth: 0, borderRadius: 12, border: `1px solid ${color}${active ? "aa" : "66"}`, background: `linear-gradient(180deg,${color}${active ? "2b" : "18"},rgba(5,7,12,.96))`, boxShadow: active ? `0 0 18px ${color}22` : "none", padding: "7px 9px", color:"#fff", textAlign:"left", cursor:"pointer" }}><div style={{ color, fontSize: 7.6, fontWeight: 1100, letterSpacing: .6 }}>{label}</div><div style={{ marginTop: 3, color: "#fff", fontSize: 13.5, fontWeight: 1100 }}>{value}</div></button>;
 }
+
 
 export default function PtitHunPlay(props: any) {
   useFullscreenPlay({ enabled: true, lockBodyScroll: true });
@@ -166,11 +204,11 @@ export default function PtitHunPlay(props: any) {
   const [state, setState] = React.useState<PtitHunState>(() => restored?.mode === "ptit_hun" ? clonePtitHunState(restored) : createPtitHunState(players, config));
   const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>(() => Array.isArray(recoveredThrow) ? recoveredThrow.slice(0, 3) : []);
   const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(() => { const v = resumeRecord?.resume?.multiplier ?? resumeRecord?.payload?.multiplier; return v === 2 || v === 3 ? v : 1; });
-  const [singleRing, setSingleRing] = React.useState<"inner_single" | "outer_single">(recoveredSingleRing === "outer_single" ? "outer_single" : "inner_single");
+  const [singleRing, setSingleRing] = React.useState<"inner_single" | "outer_single" | null>(recoveredSingleRing === "outer_single" ? "outer_single" : recoveredSingleRing === "inner_single" ? "inner_single" : null);
   const [undo, setUndo] = React.useState<PtitHunState[]>(() => Array.isArray(recoveredUndoStack) ? recoveredUndoStack.filter((snap: any) => snap?.mode === "ptit_hun").slice(-3).map((snap: any) => clonePtitHunState(snap)) : []);
   const [notice, setNotice] = React.useState("");
   const [moment, setMoment] = React.useState<any>(null);
-  const [playersOpen, setPlayersOpen] = React.useState(false), [statsOpen, setStatsOpen] = React.useState(false), [logOpen, setLogOpen] = React.useState(false), [rankingOpen, setRankingOpen] = React.useState(false), [focusOpen, setFocusOpen] = React.useState(false);
+  const [playersOpen, setPlayersOpen] = React.useState(false), [statsOpen, setStatsOpen] = React.useState(false), [logOpen, setLogOpen] = React.useState(false), [rankingOpen, setRankingOpen] = React.useState(false), [focusOpen, setFocusOpen] = React.useState(false), [zeroOpen, setZeroOpen] = React.useState(false), [shieldOpen, setShieldOpen] = React.useState(false);
   const botBusy = React.useRef(false), finishedRef = React.useRef(false), introPlayedRef = React.useRef(false), initialCheckpointRef = React.useRef(false);
   const matchIdRef = React.useRef(String(resumeRecord?.id || resumeRecord?.matchId || `ptit1-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
   const profileById = React.useMemo(() => new Map(profiles.map((p: any) => [String(p.id), p])), [profiles]);
@@ -178,6 +216,7 @@ export default function PtitHunPlay(props: any) {
   const activePlayer = state.players[state.activePlayerIndex];
   const activeProfile = activePlayer ? profileById.get(String(activePlayer.id)) || activePlayer : null;
   const activeColor = activePlayer ? colorById.get(String(activePlayer.id)) || ACCENT : ACCENT;
+  const activeTeamLogo = activeProfile?.teamLogoDataUrl || activeProfile?.team?.logoDataUrl || activeProfile?.teamLogo || activeProfile?.team?.logo || null;
   const activeIsBot = !!activeProfile && isBotProfile(activeProfile, botIds);
   const sfxEnabled = config.sfxEnabled !== false, awenaEnabled = config.awenaEnabled !== false, coachEnabled = config.coachEnabled !== false, firstVisitGuideEnabled = config.firstVisitGuide !== false;
   const nameById = React.useCallback((id: any) => state.players.find((p: any) => String(p.id) === String(id))?.name || "Joueur", [state.players]);
@@ -216,7 +255,7 @@ export default function PtitHunPlay(props: any) {
 
   const commit = React.useCallback((next: PtitHunState, previous = state, forcedNotice?: string) => {
     const nextUndo = [...undo.slice(-39), clonePtitHunState(previous)];
-    setUndo(nextUndo); setState(next); setCurrentThrow([]); setMultiplier(1);
+    setUndo(nextUndo); setState(next); setCurrentThrow([]); setMultiplier(1); setSingleRing(null);
     const last: any = next.visits?.[next.visits.length - 1]; let msg = forcedNotice || "";
     let nextMoment: any = null;
     if (!msg && next.phase === "finished" && next.winnerId) { msg = `🏆 ${nameById(next.winnerId)} remporte P’TIT 1 !`; playNewModeSfx("victory", sfxEnabled); }
@@ -232,11 +271,13 @@ export default function PtitHunPlay(props: any) {
   }, [state, undo, nameById, persist, sfxEnabled, config.rules.dbullsForZero, config.rules.shieldDivider, config.rules.startScore]);
 
   const validate = () => { if (currentThrow.length !== 3 || state.phase === "finished" || activeIsBot) return; commit(playPtitHunVisit(state, currentThrow.map(uiToGameDart))); };
-  const doUndo = () => setUndo((u) => { if (!u.length) return u; const prev = u[u.length - 1]; const remaining = u.slice(0, -1); setState(clonePtitHunState(prev)); setCurrentThrow([]); setMultiplier(1); setMoment(null); setNotice("Dernière volée annulée"); finishedRef.current = false; void saveInProgress(prev, [], 1, singleRing, remaining); return remaining; });
+  const doUndo = () => setUndo((u) => { if (!u.length) return u; const prev = u[u.length - 1]; const remaining = u.slice(0, -1); setState(clonePtitHunState(prev)); setCurrentThrow([]); setMultiplier(1); setSingleRing(null); setMoment(null); setNotice("Dernière volée annulée"); finishedRef.current = false; void saveInProgress(prev, [], 1, singleRing, remaining); return remaining; });
   const setThrowWithSfx = React.useCallback((update: any) => setCurrentThrow((prev: UIDart[]) => { const next = (typeof update === "function" ? update(prev) : update) || prev; const out = Array.isArray(next) ? next.slice(0, 3) : prev; if (out.length > prev.length) out.slice(prev.length).forEach((d: any, i: number) => window.setTimeout(() => playNewModeDartSfx(d, sfxEnabled), i * 120)); return out; }), [sfxEnabled]);
+  const lastThrowLengthRef = React.useRef(currentThrow.length);
+  React.useEffect(() => { const prevLen = lastThrowLengthRef.current; const nextLen = currentThrow.length; if (nextLen > prevLen) { setMultiplier(1); setSingleRing(null); } lastThrowLengthRef.current = nextLen; }, [currentThrow.length]);
   React.useEffect(() => { if (!activeIsBot || state.phase === "finished" || botBusy.current) return; botBusy.current = true; const t = window.setTimeout(() => { try { const darts = pickPtitHunBotDarts(state, config.botLevel); const span = playNewModeDartSequence(darts, sfxEnabled); window.setTimeout(() => { try { commit(playPtitHunVisit(state, darts)); } finally { botBusy.current = false; } }, span + 100); } catch { botBusy.current = false; } }, 620); return () => window.clearTimeout(t); }, [state, activeIsBot, activePlayer?.id]);
 
-  function replay() { matchIdRef.current = `ptit1-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; finishedRef.current = false; setUndo([]); setNotice(""); setMoment(null); setCurrentThrow([]); setMultiplier(1); const next = createPtitHunState(players, config); setState(next); initialCheckpointRef.current = true; void saveInProgress(next, [], 1, singleRing, []); if (sfxEnabled) playNewModeSfx("intro", true); }
+  function replay() { matchIdRef.current = `ptit1-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; finishedRef.current = false; setUndo([]); setNotice(""); setMoment(null); setCurrentThrow([]); setMultiplier(1); setSingleRing(null); const next = createPtitHunState(players, config); setState(next); initialCheckpointRef.current = true; void saveInProgress(next, [], 1, singleRing, []); if (sfxEnabled) playNewModeSfx("intro", true); }
 
   const activeStats: any = state.statsByPlayer?.[activePlayer?.id] || {};
   const score = Number(state.scores?.[activePlayer?.id] || 0);
@@ -249,7 +290,9 @@ export default function PtitHunPlay(props: any) {
   const shieldProgress = config.rules.shieldEnabled ? (shield ? "ACTIF" : `${clean}/${config.rules.cleanVisitsForShield}`) : "OFF";
   const shieldHint = config.rules.shieldEnabled ? (shield ? `Pénalités divisées par ${config.rules.shieldDivider}` : `${Math.max(0, Number(config.rules.cleanVisitsForShield || 0) - clean)} volée propre avant activation`) : "Bonus désactivé";
   const jackpotLabel = config.rules.jackpotEnabled && state.jackpotTargets?.length ? state.jackpotTargets.map((t:any) => t.label).join(" / ") : "OFF";
-  const ringDecorator = (d: UIDart) => { if ((d as any)?.label) return d; if (Number(d?.v) >= 1 && Number(d?.v) <= 20 && Number(d?.mult) === 1) return { ...d, label: singleRing }; return d; };
+  const segmentZoneSelected = multiplier === 2 || multiplier === 3 || singleRing === "inner_single" || singleRing === "outer_single";
+  const addDbull = React.useCallback(() => { if (currentThrow.length >= 3) return; setThrowWithSfx((prev: UIDart[]) => [...prev, { v: 25, mult: 2 }].slice(0, 3)); }, [currentThrow.length, setThrowWithSfx]);
+  const ringDecorator = (d: UIDart) => { if ((d as any)?.label) return d; if (Number(d?.v) >= 1 && Number(d?.v) <= 20 && Number(d?.mult) === 1 && singleRing) return { ...d, label: singleRing }; return d; };
   const firstVisitGuide = firstVisitGuideEnabled && !activeIsBot && state.turnIndex === 0 && currentThrow.length === 0;
   const coach = firstVisitGuide ? `1 · Choisis PETIT pour viser la zone simple intérieure. 2 · Le petit 1 vaut +1 ; le gros 1 vaut +${config.rules.outerSingleFactor}. 3 · Double ×${config.rules.doubleFactor}, Triple ×${config.rules.tripleFactor}, Bull25 ×${config.rules.bull25Factor}. 4 · ${config.rules.jackpotEnabled ? `Jackpot ${state.jackpotTargets.map((t: any) => t.label).join("/")} = volée 0.` : config.rules.dbullEnabled ? `DBULL ÷${config.rules.dbullDivider}.` : "Reste dans les petits simples."}` : coachEnabled && !activeIsBot ? coachText(state, activePlayer) : "";
   const ranked = rankPtitHunPlayers(state);
@@ -287,18 +330,15 @@ export default function PtitHunPlay(props: any) {
       .ptit1-left{flex:0 0 auto;display:flex;flex-direction:column;gap:5px;min-height:0}
       .ptit1-active{position:relative;flex:0 0 clamp(102px,18vh,132px);min-height:0;overflow:hidden;border-radius:17px;border:1px solid color-mix(in srgb,var(--ptit-accent) 50%,rgba(255,255,255,.08));background:linear-gradient(135deg,rgba(18,21,31,.98),rgba(6,8,13,.98));box-shadow:0 0 24px color-mix(in srgb,var(--ptit-accent) 13%,transparent)}
       .ptit1-active__grid{position:relative;height:100%;display:grid;grid-template-columns:minmax(0,1fr) minmax(118px,138px);gap:6px;padding:7px 8px}
-      .ptit1-active__mission{min-width:0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:center;padding:2px 4px}
+      .ptit1-active__mission{min-width:0;display:grid;place-items:center;align-items:center;padding:2px 4px}
       .ptit1-active__copy{min-width:0;text-align:center}
-      .ptit1-active__copy small{display:block;color:#8c95a7;font-size:6.6px;font-weight:1000;letter-spacing:.65px}
-      .ptit1-active__copy strong{display:block;margin-top:2px;color:#fff;font-size:clamp(14px,4vw,19px);line-height:1;font-weight:1100;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      .ptit1-active__copy b{display:block;margin-top:5px;color:var(--ptit-accent);font-size:clamp(28px,8vw,39px);line-height:.88;font-weight:1100}
-      .ptit1-active__copy span{display:block;margin-top:5px;color:#d7deea;font-size:7.2px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .ptit1-active__copy b{display:block;color:var(--ptit-accent);font-size:clamp(38px,11vw,58px);line-height:.9;font-weight:1100;text-shadow:0 0 22px color-mix(in srgb,var(--ptit-accent) 34%,transparent)}
       .ptit1-player-card{position:relative;overflow:hidden;border-radius:14px;border:1px solid color-mix(in srgb,var(--ptit-accent) 45%,rgba(255,255,255,.08));background:linear-gradient(180deg,rgba(10,13,20,.78),rgba(3,5,9,.92));display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:6px}
       .ptit1-player-card:before{content:"";position:absolute;inset:0;background-image:linear-gradient(180deg,rgba(0,0,0,.18),rgba(0,0,0,.72)),url(${tickerPtitHun});background-size:cover;background-position:center;opacity:.36}
       .ptit1-player-card>*{position:relative;z-index:1}
       .ptit1-player-card__name{width:100%;text-align:center;color:var(--ptit-accent);font-size:9px;font-weight:1100;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:uppercase}
       .ptit1-player-card__meta{width:100%;display:grid;grid-template-columns:repeat(3,1fr);gap:3px}
-      .ptit1-bonus-strip{flex:0 0 52px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.ptit1-kpis{flex:0 0 44px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:5px;border-radius:13px;border:1px solid rgba(255,255,255,.07);background:linear-gradient(180deg,rgba(16,19,28,.96),rgba(5,7,12,.98))}
+      .ptit1-radar-stack{min-width:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:3px;align-items:stretch}.ptit1-radar-label{text-align:center;color:#dce7ff;font-size:7.2px;font-weight:1100;letter-spacing:.9px}.ptit1-radar-button{min-height:0;border:1px solid rgba(255,255,255,.09);border-radius:13px;background:radial-gradient(circle,rgba(120,243,212,.08),rgba(0,0,0,.28));padding:2px;overflow:hidden;cursor:pointer}.ptit1-radar-button img{width:100%;height:100%;object-fit:contain;display:block;filter:drop-shadow(0 5px 12px rgba(0,0,0,.5))}.ptit1-jackpot-row{display:grid;grid-template-columns:1fr 1fr;gap:3px}.ptit1-jackpot-row span,.ptit1-jackpot-row b{min-width:0;border-radius:8px;border:1px solid rgba(255,216,77,.28);background:rgba(255,216,77,.07);display:grid;place-items:center;height:22px;font-size:7px;font-weight:1100;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ptit1-jackpot-row span{color:#ffd84d;letter-spacing:.5px}.ptit1-jackpot-row b{color:#fff;font-size:9px}.ptit1-bonus-strip{flex:0 0 52px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.ptit1-kpis{flex:0 0 44px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:5px;border-radius:13px;border:1px solid rgba(255,255,255,.07);background:linear-gradient(180deg,rgba(16,19,28,.96),rgba(5,7,12,.98))}
       .ptit1-tools{flex:0 0 48px;display:grid;grid-template-columns:42px minmax(0,1fr) 42px 42px;gap:5px}
       .ptit1-players{position:relative;overflow:hidden;border-radius:13px;border:1px solid rgba(255,255,255,.08);background:#080b11;padding:4px 8px;cursor:pointer;color:#fff}
       .ptit1-players:before{content:"";position:absolute;inset:0;background-image:linear-gradient(90deg,rgba(0,0,0,.82),rgba(0,0,0,.34),rgba(0,0,0,.82)),url(${tickerPtitHun});background-size:cover;background-position:center;opacity:.64}
@@ -342,38 +382,25 @@ export default function PtitHunPlay(props: any) {
       <div className="ptit1-left">
         <section className="ptit1-active">
           <div className="ptit1-active__grid">
-            <div className="ptit1-active__mission">
-              <div className="ptit1-player-card" style={{ width: "min(124px, 32vw)", minWidth: 104 }}>
-                <div className="ptit1-player-card__name">{activePlayer?.name || "Joueur"}</div>
-                <ProfileAvatar profile={activeProfile} size={46} showStars={false} ringColor={activeColor} />
-                <div className="ptit1-player-card__meta">
-                  <Ptit1MiniKpi label="TOUR" value={`${round}/${config.rules.rounds}`} color="#fff" />
-                  <Ptit1MiniKpi label="DBULL" value={`${activeStats.dbulls || 0}/${config.rules.dbullsForZero}`} color={BLUE} />
-                  <Ptit1MiniKpi label="🛡" value={shield ? "ON" : config.rules.shieldEnabled ? `${clean}/${config.rules.cleanVisitsForShield}` : "OFF"} color={shield ? GREEN : ACCENT} />
-                </div>
+            <div className="ptit1-active__mission" style={{ position: "relative", overflow: "hidden" }}>
+              <div aria-hidden style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", pointerEvents: "none", opacity: .18, filter: "saturate(.95)" }}>
+                {activeTeamLogo ? <img src={activeTeamLogo} alt="" style={{ width: "86%", height: "86%", objectFit: "contain" }} /> : <div style={{ transform: "scale(2.5)", opacity: .9 }}><ProfileAvatar profile={activeProfile} size={58} showStars={false} ringColor="transparent" noFrame /></div>}
               </div>
-              <div className="ptit1-active__copy">
-                <small>{config.rules.jackpotEnabled && state.jackpotTargets?.length ? "JACKPOT À TENTER" : "OBJECTIF"}</small>
-                <strong>{config.rules.jackpotEnabled && state.jackpotTargets?.length ? jackpotLabel : "PETIT 1"}</strong>
-                <b>{score}</b>
-                <span>{notice || coach || `Volée ${round}/${config.rules.rounds} · le plus petit score gagne`}</span>
-              </div>
+              <div className="ptit1-active__copy" style={{ position: "relative", zIndex: 1, width: "100%" }}><b>{score}</b></div>
             </div>
-            <div style={{ display: "grid", gridTemplateRows: "1fr auto", gap: 5, minHeight: 0 }}>
-              <button type="button" className="ptit1-tool" onClick={() => setFocusOpen(true)} aria-label="Ouvrir le radar cible" style={{ height: "100%", minHeight: 88, borderRadius: 16, padding: 6, display: "grid", placeItems: "center" }}>
-                <JackpotMiniTarget targets={config.rules.jackpotEnabled ? state.jackpotTargets : []} />
+            <div className="ptit1-radar-stack">
+              <div className="ptit1-radar-label">{ptit1ZonesLabel()}</div>
+              <button type="button" className="ptit1-radar-button" onClick={() => setFocusOpen(true)} aria-label={`${ptit1ZonesLabel()} P’TIT 1`}>
+                <img src={ptit1Radar} alt="" draggable={false} />
               </button>
-              <div style={{ borderRadius: 12, border: "1px solid rgba(255,216,77,.28)", background: "rgba(255,216,77,.08)", padding: "6px 7px", textAlign: "center" }}>
-                <div style={{ color: "#ffd84d", fontSize: 7.2, fontWeight: 1000, letterSpacing: .55 }}>JACKPOT</div>
-                <div style={{ marginTop: 2, color: "#fff", fontSize: 10.8, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{jackpotLabel}</div>
-              </div>
+              <div className="ptit1-jackpot-row"><span>JACKPOT</span><b>{jackpotLabel}</b></div>
             </div>
           </div>
         </section>
 
         <section className="ptit1-bonus-strip">
-          <Ptit1ProgressCard label="ZÉRO ABSOLU" value={zeroProgress} hint={zeroHint} color={BLUE} active={config.rules.dbullEnabled && config.rules.zeroAbsoluteEnabled} />
-          <Ptit1ProgressCard label="BOUCLIER DU HUN" value={shieldProgress} hint={shieldHint} color={GREEN} active={config.rules.shieldEnabled} />
+          <Ptit1ProgressCard label="ZÉRO ABSOLU" value={zeroProgress} color={BLUE} active={config.rules.dbullEnabled && config.rules.zeroAbsoluteEnabled} onClick={() => setZeroOpen(true)} />
+          <Ptit1ProgressCard label="BOUCLIER DU HUN" value={shieldProgress} color={GREEN} active={config.rules.shieldEnabled} onClick={() => setShieldOpen(true)} />
         </section>
 
         <section className="ptit1-kpis">
@@ -401,7 +428,10 @@ export default function PtitHunPlay(props: any) {
       </div>
 
       <div className="ptit1-input">
-        {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setThrowWithSfx} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} onCancel={() => { setCurrentThrow([]); setMultiplier(1); }} preferredMethod={config.scoreInputMethod} dartDecorator={ringDecorator} validateLabel="VALIDER LA VOLÉE" accent={activeColor} maxDarts={3} minDartsToValidate={3} fitMinScale={0.14} keypadSecondaryAction={config.scoreInputMethod === "keypad" ? { icon: singleRing === "inner_single" ? "PETIT" : "GROS", title: singleRing === "inner_single" ? "Petit simple intérieur · valeur normale" : `Gros simple extérieur · valeur ×${config.rules.outerSingleFactor}`, active: true, tone: singleRing === "inner_single" ? "teal" : "danger", onClick: () => setSingleRing((v) => v === "inner_single" ? "outer_single" : "inner_single") } : null} keypadFooterAction={undo.length ? { icon: "↶", title: "UNDO", onClick: doUndo } : null} /> : <BotTurn profile={activeProfile} name={activePlayer?.name} accent={activeColor} text={config.rules.jackpotEnabled ? `cherche ${state.jackpotTargets.map((t:any) => t.label).join("/")} ou les petits simples…` : "cherche les petits simples et le DBULL…"} icon="1" />}
+        {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setThrowWithSfx} multiplier={multiplier} setMultiplier={(v:any) => { setMultiplier(v); if (v === 2 || v === 3) setSingleRing(null); }} onValidate={validate} onCancel={() => { setCurrentThrow([]); setMultiplier(1); setSingleRing(null); }} preferredMethod={config.scoreInputMethod} dartDecorator={ringDecorator} validateLabel="VALIDER LA VOLÉE" accent={activeColor} maxDarts={3} minDartsToValidate={3} fitMinScale={0.14} keypadExtraMainButtons={config.scoreInputMethod === "keypad" ? [
+          { label: "GROS", onClick: () => { setMultiplier(1); setSingleRing((v:any) => v === "outer_single" ? null : "outer_single"); }, active: singleRing === "outer_single", tone: "orange", title: `Gros simple · valeur ×${config.rules.outerSingleFactor}` },
+          { label: "PETIT", onClick: () => { setMultiplier(1); setSingleRing((v:any) => v === "inner_single" ? null : "inner_single"); }, active: singleRing === "inner_single", tone: "yellow", title: "Petit simple · valeur normale" },
+        ] : null} keypadDisableSegmentNumbers={config.scoreInputMethod === "keypad" ? !segmentZoneSelected : false} keypadFooterAction={config.scoreInputMethod === "keypad" ? (currentThrow.length >= 3 ? { label: "VALIDER", title: "Valider la volée", tone: "gold", onClick: validate } : { label: "DBULL", title: "Double Bull", tone: "green", onClick: addDbull }) : null} keypadAuxActionOverride={undo.length && config.scoreInputMethod === "keypad" ? { label: "UNDO", icon: "↶", title: "Annuler la dernière volée", tone: "dark", onClick: doUndo } : null} /> : <BotTurn profile={activeProfile} name={activePlayer?.name} accent={activeColor} text={config.rules.jackpotEnabled ? `cherche ${state.jackpotTargets.map((t:any) => t.label).join("/")} ou les petits simples…` : "cherche les petits simples et le DBULL…"} icon="1" />}
       </div>
     </main>
 
@@ -410,5 +440,7 @@ export default function PtitHunPlay(props: any) {
     {logOpen ? <LogModal visits={state.visits} profileById={profileById} colorById={colorById} labelDart={ptitHunDartLabel} title="JOURNAL P’TIT 1" onClose={() => setLogOpen(false)} /> : null}
     {rankingOpen ? <RankingModal rows={rankingRows} title="CLASSEMENT · LE PLUS NUL D’ABORD" onClose={() => setRankingOpen(false)} /> : null}
     {focusOpen ? <FloatingPanel title="P’TIT 1 · CIBLE & RISQUES" subtitle="Les détails restent hors de l’écran de jeu" onClose={() => setFocusOpen(false)}><PtitHunRiskBoard state={state} playerId={activePlayer?.id} currentThrow={currentThrow} preview={preview} /></FloatingPanel> : null}
+    {zeroOpen ? <Ptit1BonusModal kind="zero" state={state} playerId={activePlayer?.id} onClose={() => setZeroOpen(false)} /> : null}
+    {shieldOpen ? <Ptit1BonusModal kind="shield" state={state} playerId={activePlayer?.id} onClose={() => setShieldOpen(false)} /> : null}
   </div>;
 }

@@ -17,6 +17,12 @@ import { findRememberedGeneratedTeam } from "../../lib/teamAutoShuffle";
 import { CRADOS_BOTS, CRADOS_BOT_TEAMS } from "../../lib/dartsCradosBots";
 import { useAwenaOptional } from "../../awena/AwenaProvider";
 import { PremiumAwenaButton } from "../newModes/PremiumPartyModeUi";
+import "./PremiumPartyModeUi.css";
+import ptit1ClassicImg from "../../assets/ptit1/ptit1_config_classique.webp";
+import ptit1PrecisionImg from "../../assets/ptit1/ptit1_config_precision.webp";
+import ptit1JackpotImg from "../../assets/ptit1/ptit1_config_jackpot.webp";
+import ptit1SniperImg from "../../assets/ptit1/ptit1_config_sniper.webp";
+import ptit1HardcoreImg from "../../assets/ptit1/ptit1_config_hardcore.webp";
 
 export type NewDartsModeId = "castle" | "gotcha" | "hare_hounds" | "pendu" | "menteur" | "crados" | "fifty_one_by_five" | "looper" | "call_three" | "steeplechase" | "ptit_hun";
 type BotLevel = "easy" | "normal" | "hard";
@@ -149,6 +155,11 @@ function SummaryLine({ label, value }: { label: string; value: React.ReactNode }
 
 export default function NewDartsModeConfig(props: Props) {
   const awena = useAwenaOptional();
+  React.useEffect(() => {
+    if (props.mode !== "ptit_hun" || typeof document === "undefined") return;
+    document.documentElement.dataset.ptit1ConfigHeaderAwena = "1";
+    return () => { delete document.documentElement.dataset.ptit1ConfigHeaderAwena; };
+  }, [props.mode]);
   const awenaEnabled = Boolean(awena?.enabled !== false);
   const { mode, definition } = props;
   const { theme } = useTheme();
@@ -918,11 +929,11 @@ export default function NewDartsModeConfig(props: Props) {
   </section>;
 
   const ptitHunPresetDefs = [
-    { id: "classic", title: "CLASSIQUE MSS", desc: "L’équilibre officiel · Jackpot D/T · Bouclier 3 · Zéro à 3 DBULL", tones: ["#f2c84b", "#e04b2a"], motif: "bull" },
-    { id: "precision", title: "PRÉCISION", desc: "Sans Jackpot · Bouclier après 2 volées propres · priorité aux petits simples", tones: ["#5de1ff", "#69f5bf"], motif: "precision" },
-    { id: "jackpot", title: "JACKPOT", desc: "2 zones D/T à chaque volée · plus arcade et plus spectaculaire", tones: ["#ffd84d", "#ff7f50"], motif: "spark" },
-    { id: "sniper", title: "SNIPER", desc: "Jackpot TRIPLE uniquement · zone stable pendant le tour · gros simple ×15", tones: ["#b488ff", "#ff6f78"], motif: "sniper" },
-    { id: "hardcore", title: "HARDCORE", desc: "15 volées · gros ×20 · D×3 · T×5 · Bull25×6 · Jackpot triple", tones: ["#ff8e72", "#ffd84d"], motif: "hardcore" },
+    { id: "classic", title: "CLASSIQUE MSS", desc: "L’équilibre officiel · Jackpot D/T · Bouclier 3 · Zéro à 3 DBULL", image: ptit1ClassicImg },
+    { id: "precision", title: "PRÉCISION", desc: "Sans Jackpot · Bouclier après 2 volées propres · priorité aux petits simples", image: ptit1PrecisionImg },
+    { id: "jackpot", title: "JACKPOT", desc: "2 zones D/T à chaque volée · plus arcade et plus spectaculaire", image: ptit1JackpotImg },
+    { id: "sniper", title: "SNIPER", desc: "Jackpot TRIPLE uniquement · zone stable pendant le tour · gros simple ×15", image: ptit1SniperImg },
+    { id: "hardcore", title: "HARDCORE", desc: "15 volées · gros ×20 · D×3 · T×5 · Bull25×6 · Jackpot triple", image: ptit1HardcoreImg },
   ] as const;
 
   function applyPtitHunPreset(preset: "classic" | "precision" | "jackpot" | "sniper" | "hardcore") {
@@ -968,19 +979,13 @@ export default function NewDartsModeConfig(props: Props) {
 
   const ptitHunPresetBlock = <section style={{ ...selectorCard, border: `1px solid ${accent}55`, boxShadow: `0 0 24px ${accent}10` }}>
     <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950 }}>P’TIT 1 · STYLE DE PARTIE</div>
-    <div style={{ marginTop: 5, color: soft, fontSize: 10.5, lineHeight: 1.45 }}>Choisis une base visuelle, puis ajuste toutes les règles librement dans les étapes suivantes.</div>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(42vw,150px),1fr))", gap: 10, marginTop: 11 }}>
-      {ptitHunPresetDefs.map((preset: any, index: number) => {
+    <div style={{ marginTop: 5, color: soft, fontSize: 10.5, lineHeight: 1.45 }}>Choisis une ambiance visuelle. La description du style sélectionné apparaît juste en dessous.</div>
+    <div className="ptit1-preset-grid" style={{ display: "grid", gap: 10, marginTop: 11 }}>
+      {ptitHunPresetDefs.map((preset: any) => {
         const active = ptitHunPresetChoice === preset.id;
-        const [c1, c2] = preset.tones;
-        return <button key={preset.id} type="button" onClick={() => applyPtitHunPreset(preset.id)} aria-pressed={active} title={preset.title} style={{ minHeight: 108, borderRadius: 18, border: `1px solid ${active ? accent : "rgba(255,255,255,.11)"}`, background: `radial-gradient(circle at 18% 20%, ${c1}55, transparent 28%), radial-gradient(circle at 82% 30%, ${c2}44, transparent 30%), linear-gradient(180deg, rgba(255,255,255,.05), rgba(0,0,0,.30))`, color: "#fff", padding: 0, textAlign: "left", cursor: "pointer", overflow: "hidden", boxShadow: active ? `0 0 0 1px ${accent} inset, 0 0 24px ${accent}20` : "none", position: "relative" }}>
-          <div aria-hidden style={{ position: "absolute", inset: 0, opacity: .95 }}>
-            <div style={{ position: "absolute", inset: 12, borderRadius: 18, border: `1px solid ${c1}44` }} />
-            <div style={{ position: "absolute", left: "50%", top: "50%", width: 68, height: 68, marginLeft: -34, marginTop: -34, borderRadius: 999, border: `7px solid ${c1}55`, boxShadow: `0 0 0 8px rgba(255,255,255,.04), 0 0 0 18px ${c2}22` }} />
-            <div style={{ position: "absolute", left: 20, right: 20, bottom: 18, height: 4, borderRadius: 999, background: `linear-gradient(90deg, ${c1}, ${c2})`, opacity: .9 }} />
-            <div style={{ position: "absolute", inset: 0, background: index % 2 ? "linear-gradient(135deg, transparent 0 40%, rgba(255,255,255,.05) 40% 43%, transparent 43% 100%)" : "linear-gradient(45deg, transparent 0 54%, rgba(255,255,255,.05) 54% 57%, transparent 57% 100%)" }} />
-          </div>
-          {active ? <div style={{ position: "absolute", inset: "auto 10px 10px auto", width: 22, height: 22, borderRadius: 999, background: accent, color: "#111", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 1100 }}>✓</div> : null}
+        return <button key={preset.id} type="button" onClick={() => applyPtitHunPreset(preset.id)} aria-pressed={active} title={preset.title} style={{ aspectRatio: "2 / 1", minWidth: 0, borderRadius: 16, border: `1px solid ${active ? accent : "rgba(255,255,255,.11)"}`, background: "linear-gradient(180deg,rgba(255,255,255,.04),rgba(0,0,0,.16))", color: "#fff", padding: 0, cursor: "pointer", overflow: "hidden", boxShadow: active ? `0 0 0 2px ${accent} inset, 0 0 22px ${accent}24` : "0 8px 20px rgba(0,0,0,.24)", position: "relative" }}>
+          <img src={preset.image} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block", pointerEvents: "none" }} />
+          {active ? <span aria-hidden style={{ position: "absolute", right: 8, top: 8, width: 23, height: 23, borderRadius: 999, background: accent, color: "#111", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 1100, boxShadow: "0 4px 12px rgba(0,0,0,.32)" }}>✓</span> : null}
         </button>;
       })}
     </div>
@@ -1091,6 +1096,9 @@ export default function NewDartsModeConfig(props: Props) {
   return <div ref={configScrollRef} className="msc-new-darts-config" style={{ height: "100dvh", minHeight: "100dvh", width: "100%", maxWidth: "100%", overflowX: "hidden", overflowY: "auto", WebkitOverflowScrolling: "touch", touchAction: "pan-y", overscrollBehaviorY: "contain", paddingBottom: 92, boxSizing: "border-box" }}>
     <style>{`
       .msc-new-darts-config { scrollbar-gutter: stable; }
+      html[data-ptit1-config-header-awena="1"] [data-mss-floating-control="awena-launcher"] { display:none !important; }
+      .ptit1-preset-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+      @media (orientation:landscape) and (min-width:700px) { .ptit1-preset-grid { grid-template-columns: repeat(5,minmax(0,1fr)); } }
       @media (max-width: 560px) {
         .msc-crados-guided-head { padding: 11px 10px !important; }
         .msc-crados-guided-head .msc-crados-step-dots { gap: 3px !important; margin-left: auto; }
@@ -1102,7 +1110,7 @@ export default function NewDartsModeConfig(props: Props) {
         .msc-new-darts-guided-nav { position: sticky !important; bottom: max(6px, env(safe-area-inset-bottom)) !important; z-index: 50 !important; background: rgba(3,5,10,.92) !important; backdrop-filter: blur(14px); padding: 6px !important; border-radius: 14px; box-shadow: 0 -8px 24px rgba(0,0,0,.45); }
       }
     `}</style>
-    <PageHeader tickerSrc={definition.ticker} tickerAlt={definition.title} tickerHeight={mode === "crados" ? 68 : 92} tickerBottomGap={mode === "crados" ? 4 : 10} tickerFit="cover" left={<BackDot onClick={backToGames} color={accent} glow={`${accent}88`} title="Retour" />} right={awenaEnabled ? <PremiumAwenaButton awena={awena} route={`${mode}_config`} mode={mode as any} screenLabel={`${definition.title} · Configuration`} accent={accent} /> : null} />
+    <PageHeader tickerSrc={definition.ticker} tickerAlt={definition.title} tickerHeight={mode === "crados" || mode === "ptit_hun" ? 68 : 92} tickerBottomGap={mode === "crados" ? 4 : mode === "ptit_hun" ? 8 : 10} tickerFit="cover" left={<BackDot onClick={backToGames} color={accent} glow={`${accent}88`} title="Retour" />} right={awenaEnabled ? <PremiumAwenaButton awena={awena} route={`${mode}_config`} mode={mode as any} screenLabel={`${definition.title} · Configuration`} accent={accent} /> : null} />
     <div className="msc-new-darts-config-content" style={{ padding: "8px 8px 0", maxWidth: 980, margin: "0 auto", minWidth: 0, boxSizing: "border-box" }}>
       {mode === "crados" && !viewModeChosen ? <section style={{ ...selectorCard, border: `1px solid ${accent}66`, boxShadow: `0 0 24px ${accent}18, 0 14px 34px rgba(0,0,0,.48)`, padding: "14px 12px" }}>
         <div style={{ color: accent, fontSize: 12.5, fontWeight: 1000, textTransform: "uppercase", letterSpacing: 1, textAlign: "center" }}>Choisis ton affichage</div>

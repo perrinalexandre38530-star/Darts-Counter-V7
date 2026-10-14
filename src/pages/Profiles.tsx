@@ -91,7 +91,7 @@ import {
 } from "../lib/canonicalAccountProfile";
 import { mirrorAvatarFallbackToR2, resolveAvatarFallback } from "../lib/avatarR2Fallback";
 import { loadBots, saveBots } from "../lib/bots";
-import { loadTeams } from "../lib/petanqueTeamsStore";
+import { loadTeams, saveTeams, type TeamEntity } from "../lib/petanqueTeamsStore";
 import { AVATAR_GALLERY_EVENT, deleteAvatarGalleryItem, readAvatarGallery, syncAvatarGalleryFromSources, upsertAvatarGalleryItem, type AvatarGalleryCategory, type AvatarGalleryItem } from "../lib/avatarGallery";
 import CollectibleCardsPanel from "../components/profile/CollectibleCardsPanel";
 import type { CollectibleUnlockMap } from "../lib/collectibleCards";
@@ -3082,7 +3082,8 @@ ANNULER : créer un nouveau profil distinct portant le même nom.`
         ? now
         : (Number((archivedProfile as any)?.avatarUpdatedAt || 0) || now),
       privateInfo: Object.keys(mergedPrivateInfo).length ? mergedPrivateInfo : undefined,
-    };
+      country: String((mergedPrivateInfo as any)?.country || (archivedProfile as any)?.country || "").trim() || undefined,
+    } as Profile;
 
     if (avatarDataUrl) {
       (p as any).avatarUrl = null;
@@ -3646,7 +3647,11 @@ React.useEffect(() => {
     update((s: any) => {
       const nextProfiles = (Array.isArray(s?.profiles) ? s.profiles : []).map((p: any) =>
         p.id === id
-          ? { ...(p || {}), privateInfo: { ...((p as any)?.privateInfo || {}), ...patch } }
+          ? {
+              ...(p || {}),
+              ...(Object.prototype.hasOwnProperty.call(patch, "country") ? { country: String((patch as any).country || "").trim() || undefined } : {}),
+              privateInfo: { ...((p as any)?.privateInfo || {}), ...patch },
+            }
           : p
       );
       nextStoreSnapshot = { ...s, profiles: nextProfiles };
@@ -3657,6 +3662,7 @@ React.useEffect(() => {
         p.id === id
           ? {
               ...(p as any),
+              ...(Object.prototype.hasOwnProperty.call(patch, "country") ? { country: String((patch as any).country || "").trim() || undefined } : {}),
               privateInfo: {
                 ...(p as any).privateInfo,
                 ...patch,
@@ -7565,6 +7571,27 @@ function LocalProfileGridAvatar({ profile, size = 76 }: { profile: any; size?: n
   );
 }
 
+function LocalProfileTeamBadges({ profileId, accent }: { profileId: string; accent: string }) {
+  const [revision, setRevision] = React.useState(0);
+  React.useEffect(() => {
+    const refresh = () => setRevision((v) => v + 1);
+    window.addEventListener("dc-teams-updated", refresh);
+    window.addEventListener("dc:teams-changed", refresh);
+    return () => { window.removeEventListener("dc-teams-updated", refresh); window.removeEventListener("dc:teams-changed", refresh); };
+  }, []);
+  const assigned = React.useMemo(() => loadTeams().filter((team) => (team.playerIds || []).map(String).includes(String(profileId))), [profileId, revision]);
+  if (!assigned.length) return null;
+  return (
+    <div title={assigned.map((team) => team.name).join(" · ")} style={{ minHeight: 24, display: "flex", justifyContent: "center", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+      {assigned.slice(0, 4).map((team) => {
+        const src = String(team.logoDataUrl || team.logoUrl || team.avatarUrl || team.imageUrl || "").trim();
+        return <span key={team.id} style={{ width: 23, height: 23, borderRadius: "50%", overflow: "hidden", border: `1px solid ${accent}88`, background: "rgba(0,0,0,.45)", display: "grid", placeItems: "center", fontSize: 8, fontWeight: 950 }}>{src ? <img src={src} alt={team.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : String(team.name || "T").slice(0, 2).toUpperCase()}</span>;
+      })}
+      {assigned.length > 4 ? <span style={{ fontSize: 9, fontWeight: 900 }}>+{assigned.length - 4}</span> : null}
+    </div>
+  );
+}
+
 function LocalProfileGridCard({
   profile,
   accent,
@@ -7659,6 +7686,7 @@ function LocalProfileGridCard({
       >
         {profile?.name || "Profil"}
       </div>
+      <LocalProfileTeamBadges profileId={String(profile?.id || "")} accent={accent} />
     </button>
   );
 }
@@ -7989,10 +8017,10 @@ function LocalProfilesRefonte({
   onCreate: (
     name: string,
     file?: File | null,
-    privateInfo?: Partial<{ country?: string }>
+    privateInfo?: Partial<{ country?: string; teamIds?: string[] }>
   ) => Profile | void | Promise<Profile | void>;
   onRename: (id: string, name: string) => void;
-  onPatchPrivateInfo: (id: string, patch: Partial<{ country?: string }>) => void;
+  onPatchPrivateInfo: (id: string, patch: Partial<{ country?: string; teamIds?: string[] }>) => void;
   onAvatar: (id: string, file: File) => void;
   onDelete: (id: string) => void | Promise<void>;
   onOpenAvatarCreator?: () => void;
@@ -8031,6 +8059,35 @@ function LocalProfilesRefonte({
   const [listDetailOpen, setListDetailOpen] = React.useState(false);
   const [gridPage, setGridPage] = React.useState(0);
   const [pendingCreatedProfileId, setPendingCreatedProfileId] = React.useState<string | null>(null);
+  const [teamsRevision, setTeamsRevision] = React.useState(0);
+  const teams = React.useMemo(() => loadTeams(), [teamsRevision]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const refreshTeams = () => setTeamsRevision((v) => v + 1);
+    window.addEventListener("dc-teams-updated", refreshTeams);
+    window.addEventListener("dc:teams-changed", refreshTeams);
+    return () => {
+      window.removeEventListener("dc-teams-updated", refreshTeams);
+      window.removeEventListener("dc:teams-changed", refreshTeams);
+    };
+  }, []);
+
+  const assignProfileTeams = React.useCallback((profileId: string, selectedTeamIds: string[]) => {
+    const pid = String(profileId || "").trim();
+    if (!pid) return;
+    const selected = new Set((selectedTeamIds || []).map(String));
+    const now = Date.now();
+    const next = loadTeams().map((team) => {
+      const members = new Set((team.playerIds || []).map(String));
+      const had = members.has(pid);
+      const wants = selected.has(String(team.id));
+      if (wants) members.add(pid); else members.delete(pid);
+      if (had === wants) return team;
+      return { ...team, playerIds: Array.from(members), updatedAt: now };
+    });
+    saveTeams(next);
+  }, []);
 
   React.useEffect(() => {
     if (onboardingMode) {
@@ -8121,8 +8178,12 @@ function LocalProfilesRefonte({
       file?: File | null,
       privateInfo?: Partial<{ country?: string }>
     ) => {
-      const created = await Promise.resolve(onCreate(name, file, privateInfo));
+      const teamIds = Array.isArray((privateInfo as any)?.teamIds) ? (privateInfo as any).teamIds.map(String) : [];
+      const cleanPrivateInfo = { ...(privateInfo || {}) } as any;
+      delete cleanPrivateInfo.teamIds;
+      const created = await Promise.resolve(onCreate(name, file, cleanPrivateInfo));
       const createdId = String((created as Profile | undefined)?.id || "").trim();
+      if (createdId) assignProfileTeams(createdId, teamIds);
 
       if (!onboardingMode && createdId) {
         setPendingCreatedProfileId(createdId);
@@ -8132,7 +8193,7 @@ function LocalProfilesRefonte({
 
       return created;
     },
-    [onCreate, onboardingMode]
+    [onCreate, onboardingMode, assignProfileTeams]
   );
 
   const gridPageSize = 9;
@@ -8275,6 +8336,7 @@ function LocalProfilesRefonte({
   const [isEditing, setIsEditing] = React.useState(false);
   const [editName, setEditName] = React.useState("");
   const [editCountry, setEditCountry] = React.useState("");
+  const [editTeamIds, setEditTeamIds] = React.useState<string[]>([]);
   const [editFile, setEditFile] = React.useState<File | null>(null);
   const [editPreview, setEditPreview] = React.useState<string | null>(null);
   // Cache-bust local pour éviter qu'un ancien avatar reste affiché après remplacement.
@@ -8373,12 +8435,13 @@ function LocalProfilesRefonte({
     if (current) {
       const pi = ((current as any)?.privateInfo || {}) as { country?: string };
       setEditName(current.name || "");
-      setEditCountry(pi.country || "");
+      setEditCountry(pi.country || String((current as any)?.country || ""));
+      setEditTeamIds(teams.filter((team) => (team.playerIds || []).map(String).includes(String(current.id))).map((team) => String(team.id)));
     } else {
       setEditName("");
       setEditCountry("");
     }
-  }, [current?.id]);
+  }, [current?.id, teamsRevision]);
 
   React.useEffect(() => {
     if (!editFile) {
@@ -8399,6 +8462,7 @@ function LocalProfilesRefonte({
 
     if (trimmedName) await onRename(current.id, trimmedName);
     await onPatchPrivateInfo(current.id, { country: trimmedCountry || "" });
+    assignProfileTeams(current.id, editTeamIds);
     if (editFile) {
       await onAvatar(current.id, editFile);
       setAvatarRefreshKey(Date.now());
@@ -9039,6 +9103,18 @@ Sus partidas y estadísticas históricas permanecerán guardadas. Si más adelan
                         value={editCountry}
                         onChange={(e) => setEditCountry(e.target.value)}
                       />
+                      {teams.length > 0 ? (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {teams.map((team) => {
+                            const checked = editTeamIds.includes(String(team.id));
+                            return (
+                              <button key={team.id} type="button" className="btn sm" onClick={() => setEditTeamIds((prev) => checked ? prev.filter((id) => id !== String(team.id)) : [...prev, String(team.id)])} style={{ opacity: checked ? 1 : .55, borderColor: checked ? primary : undefined }}>
+                                {team.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
 
@@ -9349,6 +9425,7 @@ function AddLocalProfile({
     file?: File | null,
     privateInfo?: Partial<{
       country?: string;
+      teamIds?: string[];
     }>
   ) => Profile | void | Promise<Profile | void>;
   autoFocus?: boolean;
@@ -9356,6 +9433,9 @@ function AddLocalProfile({
 }) {
   const [name, setName] = React.useState("");
   const [country, setCountry] = React.useState("");
+  const [teamIds, setTeamIds] = React.useState<string[]>([]);
+  const [teamsRevision, setTeamsRevision] = React.useState(0);
+  const teams = React.useMemo(() => loadTeams(), [teamsRevision]);
   const [file, setFile] = React.useState<File | null>(null);
   const [preview, setPreview] = React.useState<string | null>(null);
   const [avatarPickerOpen, setAvatarPickerOpen] = React.useState(false);
@@ -9368,6 +9448,13 @@ function AddLocalProfile({
   const sportResolved = sport;
   const { t } = useLang();
   const primary = theme.primary;
+
+  React.useEffect(() => {
+    const refreshTeams = () => setTeamsRevision((v) => v + 1);
+    window.addEventListener("dc-teams-updated", refreshTeams);
+    window.addEventListener("dc:teams-changed", refreshTeams);
+    return () => { window.removeEventListener("dc-teams-updated", refreshTeams); window.removeEventListener("dc:teams-changed", refreshTeams); };
+  }, []);
 
   React.useEffect(() => {
     if (autoFocus) {
@@ -9388,6 +9475,7 @@ function AddLocalProfile({
   function reset() {
     setName("");
     setCountry("");
+    setTeamIds([]);
     setFile(null);
     setPreview(null);
   }
@@ -9407,8 +9495,9 @@ function AddLocalProfile({
   
     const trimmedName = name.trim();
     const trimmedCountry = country.trim();
-    const privateInfo: { country?: string } = {};
+    const privateInfo: { country?: string; teamIds?: string[] } = {};
     if (trimmedCountry) privateInfo.country = trimmedCountry;
+    if (teamIds.length) privateInfo.teamIds = teamIds;
   
     if ((window as any).__profilesDiag?.consoleEnabled) console.log("[AddLocalProfile] calling onCreate()", {
       trimmedName,
@@ -9529,6 +9618,14 @@ function AddLocalProfile({
             onChange={(e) => setCountry(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") void submit(); }}
           />
+          {teams.length > 0 ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+              {teams.map((team) => {
+                const checked = teamIds.includes(String(team.id));
+                return <button key={team.id} type="button" className="btn sm" onClick={() => setTeamIds((prev) => checked ? prev.filter((id) => id !== String(team.id)) : [...prev, String(team.id)])} style={{ fontSize: 9.5, opacity: checked ? 1 : .55, borderColor: checked ? primary : undefined }}>{team.name}</button>;
+              })}
+            </div>
+          ) : null}
         </div>
 
         <div

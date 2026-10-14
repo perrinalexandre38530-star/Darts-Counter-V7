@@ -357,14 +357,21 @@ const NORMALIZED_MODE_BY_AWENA: Record<string, string> = {
   looper: "looper",
   call_three: "call_three",
   steeplechase: "steeplechase",
+  ptit_hun: "ptit_hun",
+  gros_6: "gros_6",
 };
 
 function rawModeIdentityValues(rec: any) {
   return [
-    rec?.kind, rec?.mode, rec?.gameId, rec?.game?.mode, rec?.game?.id,
-    rec?.summary?.mode, rec?.summary?.gameId,
-    rec?.payload?.kind, rec?.payload?.mode, rec?.payload?.gameId,
-    rec?.payload?.summary?.mode, rec?.payload?.summary?.gameId,
+    rec?.kind, rec?.mode, rec?.type, rec?.gameId, rec?.gameMode, rec?.gameType,
+    rec?.game?.mode, rec?.game?.id, rec?.game?.kind, rec?.game?.type,
+    rec?.summary?.kind, rec?.summary?.mode, rec?.summary?.gameId, rec?.summary?.gameMode,
+    rec?.resume?.mode, rec?.resume?.kind, rec?.resume?.gameId, rec?.resume?.config?.mode, rec?.resume?.config?.gameId,
+    rec?.payload?.kind, rec?.payload?.mode, rec?.payload?.type, rec?.payload?.gameId, rec?.payload?.gameMode, rec?.payload?.gameType,
+    rec?.payload?.summary?.kind, rec?.payload?.summary?.mode, rec?.payload?.summary?.gameId, rec?.payload?.summary?.gameMode,
+    rec?.payload?.game?.mode, rec?.payload?.game?.id,
+    rec?.payload?.config?.mode, rec?.payload?.config?.gameId,
+    rec?.payload?.state?.mode, rec?.payload?.stateSnapshot?.mode,
     rec?.payload?.stats?.mode,
   ].map(norm).filter(Boolean);
 }
@@ -376,9 +383,20 @@ function rawVariantIdentityValues(rec: any) {
   ].map(norm).filter(Boolean);
 }
 
+function modeIdentityCompatAliases(modeId: string) {
+  const rows: Record<string, string[]> = {
+    x01: ["x01_v3", "x01 v3", "x01_multi", "x01 multi", "x01_solo", "x01 solo", "x01_teams", "x01 teams", "x01_local", "x01 local", "x01_online", "x01 online"],
+    killer: ["killer_classic", "killer classic", "killer_game", "killer game", "killer_match", "killer match"],
+    cricket: ["cricket_classic", "cricket classic", "cricket_game", "cricket game"],
+    ptit_hun: ["ptit1", "ptit 1", "p'tit 1", "ptit_hun", "ptit hun"],
+    gros_6: ["gros6", "gros 6", "big6", "big 6"],
+  };
+  return rows[modeId] || [];
+}
+
 function modeIdentityAliases(mode: AwenaModeKnowledge) {
   const expected = NORMALIZED_MODE_BY_AWENA[mode.id];
-  return new Set([mode.id, expected, mode.label, ...mode.aliases].map(norm).filter(Boolean));
+  return new Set([mode.id, expected, mode.label, ...mode.aliases, ...modeIdentityCompatAliases(mode.id)].map(norm).filter(Boolean));
 }
 
 function hasConflictingVariant(rec: any, mode: AwenaModeKnowledge) {
@@ -402,10 +420,10 @@ function hasConflictingModeIdentity(values: string[], mode: AwenaModeKnowledge) 
 
 function legacyIdentityMatches(value: string, expected: string, aliases: Set<string>) {
   if (aliases.has(value) || value === expected) return true;
-  // Compatibilité des anciens kinds : x01_match, cargo_result, killer_game...
+  // Compatibilité des anciens kinds : x01_match, x01_v3_match, cargo_result, killer_game...
   // On n'autorise que des suffixes génériques, jamais un autre nom de variante.
-  const suffix = value.startsWith(`${expected} `) ? value.slice(expected.length + 1) : "";
-  return /^(match|game|result|history|end|ended|finished|summary)$/.test(suffix);
+  const suffixes = [expected, ...aliases].map((base) => value.startsWith(`${base} `) ? value.slice(base.length + 1) : "").filter(Boolean);
+  return suffixes.some((suffix) => /^(match|game|result|history|end|ended|finished|summary)$/.test(suffix));
 }
 
 function rawMatchesMode(rec: any, mode: AwenaModeKnowledge) {
