@@ -35,7 +35,10 @@ import {
   type VaultSummary,
 } from "../lib/storageVault";
 import {
+  clearStatsIndexDirty,
+  loadStatsIndex,
   markStatsIndexDirty,
+  refreshStatsIndexFromHistoryNow,
   scheduleStatsIndexRefresh,
 } from "../lib/stats/rebuildStatsFromHistory";
 import {
@@ -2529,20 +2532,13 @@ export default function StorageVaultPage({ go }: Props) {
   }, [tab, restoreView, backupProvider]);
 
   const afterRestoreHousekeeping = async (reason: string) => {
-    try { markStatsIndexDirty(reason); } catch {}
-    // Le recalcul complet des statistiques ne doit plus bloquer la fin de la
-    // restauration ni la navigation. Il part dans un vrai créneau idle et un
-    // seul rebuild est conservé si plusieurs événements arrivent.
-    try {
-      void scheduleStatsIndexRefresh({
-        includeNonFinished: true,
-        persist: true,
-        debounceMs: 900,
-        reason,
-      }).catch(() => undefined);
-    } catch {}
-    try { window.dispatchEvent(new CustomEvent("dc-history-updated", { detail: { reason, statsRebuildDeferred: true } })); } catch {}
-    try { window.dispatchEvent(new CustomEvent("dc-store-updated", { detail: { reason, statsRebuildDeferred: true } })); } catch {}
+    // Une restauration vient de valider/restaurer l'index statistique. Ne pas le
+    // remarquer immédiatement dirty : cela provoquait un rebuild concurrent et
+    // pouvait donner l'impression que les stats n'avaient jamais été restaurées.
+    try { clearStatsIndexDirty(); } catch {}
+    try { window.dispatchEvent(new CustomEvent("dc-history-updated", { detail: { reason, statsRestored: true } })); } catch {}
+    try { window.dispatchEvent(new CustomEvent("dc-store-updated", { detail: { reason, statsRestored: true } })); } catch {}
+    try { window.dispatchEvent(new CustomEvent("dc-stats-index-updated", { detail: { reason, restored: true } })); } catch {}
   };
 
   const uploadSnapshotPayloadToCloudVault = async (
@@ -2663,6 +2659,34 @@ export default function StorageVaultPage({ go }: Props) {
       }
     } catch (deltaError) {
       console.warn("[StorageVault] incremental replay skipped", deltaError);
+    }
+
+    report(90, "Contrôle des statistiques restaurées…", "rebuild");
+    try {
+      const expectedStats = Number(summary.statsMatches || summary.statsBlocks || 0);
+      let restoredStats: any = await loadStatsIndex().catch(() => null);
+      let restoredCount = Number(restoredStats?.totals?.matches || 0);
+      if (expectedStats > 0 && restoredCount <= 0) {
+        report(90, "Index stats absent : reconstruction immédiate depuis les parties restaurées…", "rebuild");
+        restoredStats = await refreshStatsIndexFromHistoryNow({
+          includeNonFinished: true,
+          persist: true,
+          reason: `restore-stats:${reason}`,
+        });
+        restoredCount = Number(restoredStats?.totals?.matches || 0);
+      }
+      if (expectedStats > 0 && restoredCount <= 0) {
+        throw new Error(`Restauration incomplète : la sauvegarde annonce ${expectedStats} bloc(s) stats mais aucun index statistique n'a été restauré.`);
+      }
+      clearStatsIndexDirty();
+      try {
+        window.dispatchEvent(new CustomEvent("dc-stats-index-updated", {
+          detail: { reason: `restore:${reason}`, restored: true, totals: restoredStats?.totals || null },
+        }));
+      } catch {}
+    } catch (statsError) {
+      console.warn("[StorageVault] stats restore verification failed", statsError);
+      throw statsError;
     }
 
     report(91, "Contrôle final des profils restaurés…", "finalize");
@@ -3411,15 +3435,26 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         }
 
         if (hasCheckpoint && pending.length > 0) {
-          setMessage(`Synchronisation rapide de ${pending.length} changement(s) vers ${destinationLabel}…`);
           const startedAt = performance.now();
-          const syncResult = await flushIncrementalRemoteSync();
-          if (syncResult.supported && syncResult.synced > 0 && !syncResult.error) {
-            setMessage(`Sauvegarde incrémentale terminée en ${Math.max(1, Math.round(performance.now() - startedAt))} ms · ${syncResult.synced} changement(s) envoyé(s) · checkpoint complet conservé.`);
-            return;
-          }
-          // Provider ancien / endpoint indisponible : on retombe sur le chemin
-          // complet éprouvé ci-dessous, sans perdre la sauvegarde manuelle.
+          await startBackgroundBackupJob({
+            destination,
+            label: `Sauvegarde incrémentale ${destinationLabel}`,
+            successMessage: (result: any) => String(result?.message || `Sauvegarde incrémentale ${destinationLabel} terminée.`),
+            run: async (report) => {
+              report(8, `Analyse de ${pending.length} changement(s)…`);
+              report(22, `Préparation des différences pour ${destinationLabel}…`);
+              const syncResult = await flushIncrementalRemoteSync();
+              if (!syncResult.supported || syncResult.error || syncResult.synced <= 0) {
+                throw new Error(syncResult.error || `Le mode incrémental ${destinationLabel} n'a pas confirmé l'envoi.`);
+              }
+              report(88, `${syncResult.synced} changement(s) envoyés. Vérification…`);
+              report(100, `Sauvegarde incrémentale confirmée.`);
+              return {
+                message: `Sauvegarde incrémentale terminée en ${Math.max(1, Math.round(performance.now() - startedAt))} ms · ${syncResult.synced} changement(s) envoyé(s) · checkpoint complet conservé.`,
+              };
+            },
+          });
+          return;
         }
       } catch {
         // Toute incertitude => chemin complet existant.
@@ -4086,12 +4121,26 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
           <VaultNavButton active={tab === "diagnostic"} icon="expert" label="Expert" onClick={() => setTab("diagnostic")}/>
         </div>
 
-        <div style={{ ...panel, padding: "7px 9px", marginBottom: 8, borderRadius: 14, borderColor: busy || restoreRunning ? "rgba(251,191,36,.48)" : "rgba(34,211,238,.22)", display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 7, alignItems: "center" }}>
-          <span style={{ color: busy || restoreRunning ? amber : green, lineHeight: 0 }}>{busy || restoreRunning ? <VaultGlyph name={restoreRunning ? "restore" : "save"} size={20}/> : <VaultGlyph name="shield" size={20}/>}</span>
-          <div title={message} style={{ color: "#d9e2ef", fontSize: 11.5, fontWeight: 800, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical", lineHeight: 1.25 }}>{message}</div>
-          <MiniInfoButton title="État détaillé" color={busy || restoreRunning ? amber : neon} content={<div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{message}</div>}/>
-          {busy || restoreRunning ? <div style={{ gridColumn: "1 / -1", height: 3, borderRadius: 999, overflow: "hidden", background: "rgba(251,191,36,.14)" }}><div style={{ width: "42%", height: "100%", borderRadius: 999, background: amber, boxShadow: `0 0 12px ${amber}`, animation: "dcVaultBusy 1.1s ease-in-out infinite alternate" }}/></div> : null}
-        </div>
+        {(() => {
+          const backupRunning = backgroundBackup.status === "running";
+          const operationRunning = busy || restoreRunning || backupRunning;
+          const operationProgress = restoreRunning
+            ? Math.max(1, Math.round(backgroundRestore.progress || 1))
+            : backupRunning
+              ? Math.max(1, Math.round(backgroundBackup.progress || 1))
+              : null;
+          const operationMessage = restoreRunning
+            ? (backgroundRestore.message || message)
+            : backupRunning
+              ? (backgroundBackup.message || message)
+              : message;
+          return <div style={{ ...panel, padding: "7px 9px", marginBottom: 8, borderRadius: 14, borderColor: operationRunning ? "rgba(251,191,36,.48)" : "rgba(34,211,238,.22)", display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 7, alignItems: "center" }}>
+            <span style={{ color: operationRunning ? amber : green, lineHeight: 0 }}>{operationRunning ? <VaultGlyph name={restoreRunning ? "restore" : "save"} size={20}/> : <VaultGlyph name="shield" size={20}/>}</span>
+            <div title={operationMessage} style={{ color: "#d9e2ef", fontSize: 11.5, fontWeight: 800, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical", lineHeight: 1.25 }}>{operationMessage}{operationProgress != null ? ` · ${operationProgress}%` : ""}</div>
+            <MiniInfoButton title="État détaillé" color={operationRunning ? amber : neon} content={<div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{operationMessage}{operationProgress != null ? `\nProgression : ${operationProgress}%` : ""}</div>}/>
+            {operationRunning ? <div style={{ gridColumn: "1 / -1", height: 7, borderRadius: 999, overflow: "hidden", background: "rgba(251,191,36,.14)", border: "1px solid rgba(251,191,36,.24)" }}><div style={{ width: operationProgress != null ? `${Math.max(2, Math.min(100, operationProgress))}%` : "42%", height: "100%", borderRadius: 999, background: amber, boxShadow: `0 0 12px ${amber}`, transition: "width .22s ease", ...(operationProgress == null ? { animation: "dcVaultBusy 1.1s ease-in-out infinite alternate" } : {}) }}/></div> : null}
+          </div>;
+        })()}
 
         {tab === "restore" && (
           <div style={{ display: "grid", gap: 10 }}>

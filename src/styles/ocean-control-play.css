@@ -2099,3 +2099,181 @@
   .ocean-grid-panel{grid-column:1;grid-row:auto}
   .ocean-fire-control-panel{grid-column:2;grid-row:auto;align-self:stretch;display:grid;align-content:center}
 }
+
+
+/* ============================================================
+   OCEAN CONTROL V16 — Prévisualisation de volée / gameplay
+============================================================ */
+
+.ocean-control-cell.is-planned{
+  border-color:rgba(245,202,104,.72);
+  box-shadow:
+    inset 0 0 0 1px rgba(245,202,104,.25),
+    inset 0 0 20px rgba(245,202,104,.12),
+    0 0 16px rgba(245,202,104,.16);
+}
+
+.ocean-control-cell.is-planned:before{
+  opacity:.9;
+  background:
+    radial-gradient(circle at 50% 48%,rgba(245,202,104,.24),transparent 38%),
+    radial-gradient(circle at 50% 18%,rgba(255,255,255,.22),transparent 22%),
+    linear-gradient(180deg,rgba(132,224,255,.18),rgba(22,95,147,.06) 30%,transparent 56%),
+    repeating-linear-gradient(180deg,transparent 0 8px,rgba(255,255,255,.035) 9px 10px);
+}
+
+.ocean-cell-plan-badge{
+  position:absolute;
+  right:4px;
+  top:3px;
+  z-index:6;
+  min-width:17px;
+  height:14px;
+  padding:0 3px;
+  display:grid;
+  place-items:center;
+  border-radius:999px;
+  border:1px solid rgba(245,202,104,.72);
+  background:rgba(34,24,7,.9);
+  color:#ffe58f;
+  font-size:6.2px;
+  font-weight:1200;
+  box-shadow:0 0 12px rgba(245,202,104,.24);
+}
+
+.ocean-status-legend i.is-planned{
+  background:radial-gradient(circle,#fff2b2 0 26%,#f5ca68 31%,#4f380a 75%);
+  box-shadow:0 0 8px rgba(245,202,104,.36);
+}
+
+.ocean-salvo-preview{
+  margin:0 0 5px;
+  padding:6px 7px;
+  border-radius:11px;
+  border:1px solid rgba(245,202,104,.18);
+  background:
+    radial-gradient(circle at 90% 0%,rgba(245,202,104,.07),transparent 38%),
+    rgba(255,255,255,.022);
+}
+
+.ocean-salvo-preview__head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin-bottom:5px;
+}
+
+.ocean-salvo-preview__head>div{min-width:0}
+.ocean-salvo-preview__head span{
+  display:block;
+  color:#f5ca68;
+  font-size:5.2px;
+  font-weight:1100;
+  letter-spacing:.45px;
+}
+.ocean-salvo-preview__head strong{
+  display:block;
+  margin-top:1px;
+  color:#edf8ff;
+  font-size:6.6px;
+  font-weight:1150;
+}
+.ocean-salvo-preview__head>small{
+  color:#7f91a3;
+  font-size:5.2px;
+  text-align:right;
+  line-height:1.25;
+}
+
+.ocean-salvo-preview__slots{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:4px;
+}
+
+.ocean-salvo-slot{
+  min-width:0;
+  display:grid;
+  grid-template-columns:21px minmax(0,1fr) auto;
+  gap:5px;
+  align-items:center;
+  padding:5px;
+  border-radius:9px;
+  border:1px solid rgba(255,255,255,.065);
+  background:rgba(0,0,0,.18);
+}
+
+.ocean-salvo-slot>b{
+  width:20px;
+  height:20px;
+  display:grid;
+  place-items:center;
+  border-radius:7px;
+  color:#9fb0c0;
+  background:rgba(255,255,255,.045);
+  border:1px solid rgba(255,255,255,.08);
+  font-size:6.2px;
+  font-weight:1200;
+}
+
+.ocean-salvo-slot>div{min-width:0}
+.ocean-salvo-slot>div strong{
+  display:block;
+  color:#eef8ff;
+  font-size:6.2px;
+  font-weight:1150;
+}
+.ocean-salvo-slot>div small{
+  display:block;
+  margin-top:1px;
+  color:#8293a4;
+  font-size:5px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.ocean-salvo-slot>em{
+  max-width:74px;
+  color:#b9c8d4;
+  font-size:5.2px;
+  font-style:normal;
+  font-weight:1000;
+  text-align:right;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.ocean-salvo-slot.is-simple{border-color:rgba(48,185,255,.20)}
+.ocean-salvo-slot.is-double{border-color:rgba(101,229,170,.24)}
+.ocean-salvo-slot.is-triple{border-color:rgba(255,101,115,.24)}
+.ocean-salvo-slot.is-sonar{border-color:rgba(101,233,255,.34);background:rgba(101,233,255,.04)}
+.ocean-salvo-slot.is-dbull{border-color:rgba(245,202,104,.38);background:rgba(245,202,104,.045)}
+.ocean-salvo-slot.is-miss{border-color:rgba(255,255,255,.08);opacity:.72}
+.ocean-salvo-slot:not(.is-idle)>b{color:#f5ca68;border-color:rgba(245,202,104,.25);background:rgba(245,202,104,.07)}
+
+@media (max-width:520px){
+  .ocean-salvo-preview{padding:4px 5px;margin-bottom:4px}
+  .ocean-salvo-preview__head{margin-bottom:4px}
+  .ocean-salvo-preview__head>small{display:none}
+  .ocean-salvo-preview__slots{gap:3px}
+  .ocean-salvo-slot{
+    grid-template-columns:18px minmax(0,1fr);
+    gap:4px;
+    padding:4px;
+  }
+  .ocean-salvo-slot>b{width:17px;height:17px;font-size:5.5px}
+  .ocean-salvo-slot>div strong{font-size:5.6px}
+  .ocean-salvo-slot>div small{font-size:4.6px}
+  .ocean-salvo-slot>em{grid-column:2;font-size:4.7px;text-align:left;max-width:100%}
+  .ocean-cell-plan-badge{right:3px;top:2px;min-width:15px;height:12px;font-size:5.5px}
+}
+
+@media (max-height:760px){
+  .ocean-salvo-preview{padding-top:4px;padding-bottom:4px}
+  .ocean-salvo-preview__head{display:none}
+  .ocean-salvo-slot{padding-top:3px;padding-bottom:3px}
+  .ocean-salvo-slot>div small{display:none}
+}

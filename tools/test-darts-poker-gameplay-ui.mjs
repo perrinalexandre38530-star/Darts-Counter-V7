@@ -25,6 +25,14 @@ for (const marker of [
   "HORS TOP 5",
   "5 cartes retenues",
   "NOUVEAU MARCHÉ · 20 NOUVELLES CIBLES",
+  "MEILLEURE CIBLE",
+  "Même carte en S/D/T",
+  "★ PRIORITÉ",
+  "↑ BONNE",
+  "+ UTILE",
+  "· FAIBLE",
+  "marketStrategy",
+  "DartsPokerMarketStrategyItem",
 ]) {
   assert.ok(src.includes(marker), `Gameplay UI marker missing: ${marker}`);
 }
@@ -37,5 +45,8 @@ assert.ok(src.includes("className={refreshed ? \"dp-market-refresh\" : \"\"}"), 
 assert.ok(src.includes("activeBestFiveIds") && src.includes("hasBestFiveSelection"), "live hand must identify the retained best five");
 assert.ok(src.includes("previousTurnRef") && src.includes("setTurnTransition"), "turn changes must trigger dedicated feedback");
 assert.ok(src.includes("setPhaseTransition") && src.includes("LANCERS TERMINÉS"), "phase changes must trigger dedicated feedback");
+assert.ok(src.includes("buildDartsPokerMarketStrategy") && src.includes("summarizeDartsPokerMarketStrategy"), "gameplay must use the shared market strategy engine");
+assert.ok(src.includes("bestTarget.reason"), "priority target must explain why it is recommended");
+assert.ok(src.includes("advice.tierLabel") && src.includes("advice.tag"), "all market sectors must expose simple strategic labels");
 
 console.log("Darts Poker gameplay UI: OK");

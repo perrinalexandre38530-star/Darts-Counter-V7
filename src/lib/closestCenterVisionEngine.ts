@@ -1,5 +1,5 @@
 // @ts-nocheck
-import type { CameraCalibration } from "./cameraCalibrationStore";
+import { mapCameraPointToBoard, type CameraCalibration } from "./cameraCalibrationStore";
 
 export type DartVisualSignature = {
   hue: number[];
@@ -48,6 +48,32 @@ export type FrameStability = {
   meanDelta: number;
   confidence: number;
 };
+
+export type PrecisionReadiness = {
+  ok: boolean;
+  boardRadiusPx: number;
+  mmPerPixel: number;
+  sharpness: number;
+  exposure: number;
+  calibrationConfidence: number;
+  confidence: number;
+  reasons: string[];
+};
+
+export type DetectionConsensus = VisionDetection & {
+  frameAgreement: number;
+  sampleCount: number;
+  spreadMm: number;
+};
+
+export type FrameRegistration = {
+  dxPx: number;
+  dyPx: number;
+  error: number;
+  confidence: number;
+};
+
+export type PrecisionTier = "insufficient" | "standard" | "high" | "competition";
 
 export function clamp01(v: number) { return Math.max(0, Math.min(1, Number(v) || 0)); }
 
@@ -131,32 +157,30 @@ export function classifyDartIdentity(
   observed?: DartVisualSignature | null,
   expectedPlayerId?: string | null,
 ): DartIdentityResult {
-  const ranked = Object.entries(signatures).map(([playerId, signature]) => {
-    let score = compareDartSignatures(signature, observed);
-    // The temporal turn is only a light prior. Visual identity remains able to override it.
-    if (expectedPlayerId && String(playerId) === String(expectedPlayerId)) score = clamp01(score + .055);
-    return { playerId, score };
-  }).sort((a, b) => b.score - a.score);
-  const best = ranked[0];
-  const second = ranked[1];
-  const margin = best ? Math.max(0, best.score - (second?.score || 0)) : 0;
-  const confidence = best ? clamp01(best.score * .82 + Math.min(.18, margin * 1.8)) : 0;
-  return { playerId: best?.playerId || null, confidence, margin, scores: ranked };
+  const raw = Object.entries(signatures).map(([playerId, signature]) => ({
+    playerId, score: compareDartSignatures(signature, observed),
+  })).sort((a,b)=>b.score-a.score);
+  if (!raw.length) return {playerId:expectedPlayerId||null,confidence:0,margin:0,scores:[]};
+
+  const expected = expectedPlayerId ? raw.find(x=>String(x.playerId)===String(expectedPlayerId)) : null;
+  const visualBest = raw[0];
+  let chosen = visualBest;
+  // Temporal ownership is a strong second factor: the active player is known.
+  // Visual recognition only overrides that fact when the visual evidence is clearly stronger.
+  if (expected && String(visualBest.playerId)!==String(expected.playerId)) {
+    const visualLead = visualBest.score - expected.score;
+    if (!(visualBest.score >= .82 && visualLead >= .20)) chosen = expected;
+  }
+  const competitor = raw.find(x=>String(x.playerId)!==String(chosen.playerId));
+  const margin = Math.max(0, chosen.score-(competitor?.score||0));
+  const temporalMatch = expectedPlayerId && String(chosen.playerId)===String(expectedPlayerId);
+  const confidence = clamp01(chosen.score*.72 + Math.min(.18,Math.max(0,margin)*1.5) + (temporalMatch?.10:0));
+  const scores = raw.map(x=>({ ...x, score: clamp01(x.score + (expectedPlayerId && String(x.playerId)===String(expectedPlayerId) ? .035 : 0)) })).sort((a,b)=>b.score-a.score);
+  return {playerId:chosen.playerId||null,confidence,margin,scores};
 }
 
 export function normalizedBoardPoint(cal: CameraCalibration, xNorm: number, yNorm: number) {
-  const dx = xNorm - cal.cx, dy = yNorm - cal.cy;
-  if (cal.v === 2) {
-    const rx = Math.max(.0001, Number(cal.rx || cal.r));
-    const ry = Math.max(.0001, Number(cal.ry || cal.r));
-    const phi = Number(cal.phi || 0), c = Math.cos(phi), s = Math.sin(phi);
-    const ux = dx * c + dy * s, uy = -dx * s + dy * c;
-    const nx = ux / rx, ny = uy / ry;
-    return { nx, ny, distanceNorm: Math.sqrt(nx * nx + ny * ny) };
-  }
-  const r = Math.max(.0001, Number(cal.r || .0001));
-  const nx = dx / r, ny = dy / r;
-  return { nx, ny, distanceNorm: Math.sqrt(nx * nx + ny * ny) };
+  return mapCameraPointToBoard(cal, xNorm, yNorm);
 }
 
 export function distanceMmFromNorm(distanceNorm: number) {
@@ -164,9 +188,152 @@ export function distanceMmFromNorm(distanceNorm: number) {
   return Math.max(0, distanceNorm * 170);
 }
 
+function grayAt(frame: ImageData, x:number, y:number) {
+  const xx=Math.max(0,Math.min(frame.width-1,Math.round(x))), yy=Math.max(0,Math.min(frame.height-1,Math.round(y)));
+  const i=(yy*frame.width+xx)*4;
+  return frame.data[i]*.2126+frame.data[i+1]*.7152+frame.data[i+2]*.0722;
+}
+
+/**
+ * Estimates tiny camera translations against the empty-board reference.
+ * The error is capped so newly appeared darts cannot dominate registration.
+ */
+export function estimateFrameTranslation(reference:ImageData, frame:ImageData, cal:CameraCalibration, maxShiftPx=10):FrameRegistration {
+  const width=Math.min(reference.width,frame.width), height=Math.min(reference.height,frame.height);
+  let bestDx=0,bestDy=0,best=Infinity,second=Infinity;
+  const step=Math.max(10,Math.round(Math.min(width,height)/70));
+  for(let dy=-maxShiftPx;dy<=maxShiftPx;dy++) for(let dx=-maxShiftPx;dx<=maxShiftPx;dx++){
+    let err=0,n=0;
+    for(let y=maxShiftPx+2;y<height-maxShiftPx-2;y+=step) for(let x=maxShiftPx+2;x<width-maxShiftPx-2;x+=step){
+      if(normalizedBoardPoint(cal,x/width,y/height).distanceNorm>1.01) continue;
+      const a=grayAt(reference,x,y), b=grayAt(frame,x+dx,y+dy);
+      const d=Math.min(42,Math.abs(a-b)); // robust to dart silhouettes / highlights
+      err+=d*d; n++;
+    }
+    const score=n?err/n:Infinity;
+    if(score<best){second=best;best=score;bestDx=dx;bestDy=dy;} else if(score<second) second=score;
+  }
+  const separation=second<Infinity?Math.max(0,(second-best)/Math.max(1,second)):0;
+  const confidence=clamp01((1-Math.sqrt(best)/36)*.78+Math.min(.22,separation*3));
+  return {dxPx:bestDx,dyPx:bestDy,error:best,confidence};
+}
+
+
+function estimateRegionalTranslation(reference:ImageData,frame:ImageData,cal:CameraCalibration,quadrant:number,maxShiftPx=6){
+  const width=Math.min(reference.width,frame.width),height=Math.min(reference.height,frame.height);
+  let best={dxPx:0,dyPx:0,error:Infinity,confidence:0};
+  const step=Math.max(12,Math.round(Math.min(width,height)/60));
+  for(let dy=-maxShiftPx;dy<=maxShiftPx;dy++) for(let dx=-maxShiftPx;dx<=maxShiftPx;dx++){
+    let err=0,n=0;
+    for(let y=maxShiftPx+2;y<height-maxShiftPx-2;y+=step) for(let x=maxShiftPx+2;x<width-maxShiftPx-2;x+=step){
+      const bp=normalizedBoardPoint(cal,x/width,y/height); if(bp.distanceNorm>.92||bp.distanceNorm<.18) continue;
+      const q=(bp.nx>=0?1:0)+(bp.ny>=0?2:0); if(q!==quadrant) continue;
+      const d=Math.min(40,Math.abs(grayAt(reference,x,y)-grayAt(frame,x+dx,y+dy))); err+=d*d;n++;
+    }
+    const score=n?err/n:Infinity;
+    if(score<best.error) best={dxPx:dx,dyPx:dy,error:score,confidence:clamp01(1-Math.sqrt(score)/34)};
+  }
+  return best;
+}
+
+export function assessProjectiveDrift(reference:ImageData,frame:ImageData,cal:CameraCalibration){
+  const regs=[0,1,2,3].map(q=>estimateRegionalTranslation(reference,frame,cal,q,6));
+  const valid=regs.filter(r=>Number.isFinite(r.error));
+  if(valid.length<3) return {ok:false,regionalSpreadPx:99,confidence:0,regions:regs};
+  const mx=valid.reduce((s,r)=>s+r.dxPx,0)/valid.length,my=valid.reduce((s,r)=>s+r.dyPx,0)/valid.length;
+  const spread=Math.sqrt(valid.reduce((s,r)=>s+(r.dxPx-mx)**2+(r.dyPx-my)**2,0)/valid.length);
+  const conf=clamp01((1-spread/3)*.7+(valid.reduce((s,r)=>s+r.confidence,0)/valid.length)*.3);
+  return {ok:spread<=1.7,regionalSpreadPx:spread,confidence:conf,regions:regs};
+}
+
+export function translateFrame(frame:ImageData, dxPx:number, dyPx:number):ImageData {
+  if(!dxPx&&!dyPx) return frame;
+  const out=new ImageData(frame.width,frame.height), w=frame.width,h=frame.height;
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    const sx=x+dxPx, sy=y+dyPx, oi=(y*w+x)*4;
+    if(sx<0||sx>=w||sy<0||sy>=h){out.data[oi+3]=255;continue;}
+    const si=(sy*w+sx)*4;
+    out.data[oi]=frame.data[si];out.data[oi+1]=frame.data[si+1];out.data[oi+2]=frame.data[si+2];out.data[oi+3]=255;
+  }
+  return out;
+}
+
+export function registerFrameToReference(reference:ImageData, frame:ImageData, cal:CameraCalibration){
+  const registration=estimateFrameTranslation(reference,frame,cal,10);
+  return {frame:translateFrame(frame,registration.dxPx,registration.dyPx),registration};
+}
+
+export function temporalMedianFrame(frames:ImageData[]):ImageData|null {
+  const valid=(frames||[]).filter(Boolean);
+  if(!valid.length) return null;
+  const w=valid[0].width,h=valid[0].height;
+  if(!valid.every(f=>f.width===w&&f.height===h)) return valid[Math.floor(valid.length/2)];
+  if(valid.length===1) return valid[0];
+  const out=new ImageData(w,h), n=valid.length;
+  // Allocation-free robust temporal estimator. With >=4 frames we remove the
+  // brightest and darkest sample, then average the centre values. This rejects
+  // single-frame sensor noise/specular flashes without millions of tiny sorts.
+  for(let i=0;i<w*h*4;i+=4){
+    for(let c=0;c<3;c++){
+      let sum=0,min=255,max=0;
+      for(const f of valid){const v=f.data[i+c];sum+=v;if(v<min)min=v;if(v>max)max=v;}
+      out.data[i+c]=n>=4?Math.round((sum-min-max)/(n-2)):Math.round(sum/n);
+    }
+    out.data[i+3]=255;
+  }
+  return out;
+}
+
+export function precisionTier(readiness:PrecisionReadiness):PrecisionTier {
+  if(!readiness.ok) return "insufficient";
+  if(readiness.mmPerPixel<=.38&&readiness.sharpness>=.68&&readiness.calibrationConfidence>=.78&&readiness.confidence>=.78) return "competition";
+  if(readiness.mmPerPixel<=.52&&readiness.sharpness>=.56&&readiness.confidence>=.66) return "high";
+  return "standard";
+}
+
+export function assessPrecisionReadiness(frame: ImageData, cal: CameraCalibration): PrecisionReadiness {
+  const width = frame.width, height = frame.height;
+  const rx = cal.v === 2 ? Math.max(.0001, Number(cal.rx || cal.r)) : Math.max(.0001, Number(cal.r));
+  const ry = cal.v === 2 ? Math.max(.0001, Number(cal.ry || cal.r)) : Math.max(.0001, Number(cal.r));
+  const boardRadiusPx = Math.max(1, ((rx * width) + (ry * height)) / 2);
+  let mmPerPixel = 170 / boardRadiusPx;
+  if (cal.v===2 && Array.isArray((cal as any).homography)) {
+    const c = normalizedBoardPoint(cal, cal.cx, cal.cy);
+    const px = normalizedBoardPoint(cal, cal.cx + 1/width, cal.cy);
+    const py = normalizedBoardPoint(cal, cal.cx, cal.cy + 1/height);
+    const sx = Math.hypot(px.nx-c.nx, px.ny-c.ny)*170;
+    const sy = Math.hypot(py.nx-c.nx, py.ny-c.ny)*170;
+    if (Number.isFinite(sx) && Number.isFinite(sy) && sx>0 && sy>0) mmPerPixel=(sx+sy)/2;
+  }
+  let lap = 0, lapN = 0, mean = 0, meanN = 0, clipped = 0;
+  const d = frame.data;
+  const lum = (x:number,y:number) => { const i=(y*width+x)*4; return d[i]*.2126+d[i+1]*.7152+d[i+2]*.0722; };
+  for (let y=3;y<height-3;y+=4) for (let x=3;x<width-3;x+=4) {
+    if (normalizedBoardPoint(cal,x/width,y/height).distanceNorm>1.02) continue;
+    const c=lum(x,y), l=lum(x-2,y), r=lum(x+2,y), u=lum(x,y-2), dn=lum(x,y+2);
+    lap += Math.abs(4*c-l-r-u-dn); lapN++; mean += c; meanN++;
+    if(c<12||c>245) clipped++;
+  }
+  const sharpness = clamp01((lapN ? lap/lapN : 0) / 34);
+  const avg = meanN ? mean/meanN : 0;
+  const clippedFraction = meanN ? clipped/meanN : 1;
+  const exposure = clamp01(1 - Math.abs(avg-122)/122 - clippedFraction*.8);
+  const projectiveBoost = cal.v===2 && Array.isArray((cal as any).homography) ? clamp01(Number((cal as any).projectiveConfidence ?? .7)) : 0;
+  const calibrationConfidence = cal.v===2 ? clamp01(Number(cal.confidence ?? .72)*.50 + Number(cal.zoneConfidence ?? .72)*.20 + projectiveBoost*.30) : .48;
+  const scaleConfidence = clamp01((.90-mmPerPixel)/.55);
+  const confidence = clamp01(scaleConfidence*.34 + sharpness*.28 + exposure*.16 + calibrationConfidence*.22);
+  const reasons:string[]=[];
+  if(mmPerPixel>.58) reasons.push(`Cible trop petite dans l’image (${mmPerPixel.toFixed(2)} mm/pixel). Rapproche ou zoome la caméra.`);
+  if(sharpness<.50) reasons.push("Image trop floue pour départager précisément les pointes.");
+  if(exposure<.46) reasons.push("Exposition insuffisante ou zones brûlées sur la cible.");
+  if(calibrationConfidence<.60) reasons.push("Calibration insuffisamment fiable pour une mesure de précision.");
+  return {ok:reasons.length===0,boardRadiusPx,mmPerPixel,sharpness,exposure,calibrationConfidence,confidence,reasons};
+}
+
 export function estimateDistanceUncertaintyMm(confidence: number, calibration?: CameraCalibration | null) {
-  const calibrationPenalty = calibration?.v === 2 ? 0 : .8;
-  return Math.max(.7, .7 + (1 - clamp01(confidence)) * 4.2 + calibrationPenalty);
+  const projectivePenalty = calibration?.v === 2 && Array.isArray((calibration as any).homography) ? Math.min(.6, Number((calibration as any).projectiveErrorMm || 0) * .08) : 0;
+  const calibrationPenalty = calibration?.v === 2 ? projectivePenalty : .8;
+  return Math.max(.35, .35 + (1 - clamp01(confidence)) * 3.4 + calibrationPenalty);
 }
 
 export function analyzeFrameStability(before: ImageData, after: ImageData, cal: CameraCalibration): FrameStability {
@@ -225,10 +392,62 @@ function estimateTipFromComponent(comp: number[], heat: Float32Array, cols: numb
   return { xNorm: chosen.x, yNorm: chosen.y, geometryConfidence: clamp01(.48 + spreadRatio * .9) };
 }
 
+function refineTipAtPixelLevel(before: ImageData, after: ImageData, cal: CameraCalibration, tip:{xNorm:number;yNorm:number}) {
+  const width=Math.min(before.width,after.width), height=Math.min(before.height,after.height);
+  const cx=Math.round(tip.xNorm*width), cy=Math.round(tip.yNorm*height);
+  let sw=0,sx=0,sy=0,peak=0,count=0;
+  const radius=11;
+  for(let y=Math.max(1,cy-radius);y<=Math.min(height-2,cy+radius);y++) for(let x=Math.max(1,cx-radius);x<=Math.min(width-2,cx+radius);x++){
+    const i=(y*before.width+x)*4,j=(y*after.width+x)*4;
+    const delta=(Math.abs(before.data[i]-after.data[j])+Math.abs(before.data[i+1]-after.data[j+1])+Math.abs(before.data[i+2]-after.data[j+2]))/3;
+    if(delta<24) continue;
+    const spatial=Math.max(.08,1-Math.hypot(x-cx,y-cy)/(radius+1));
+    const w=(delta-24)*spatial; sw+=w;sx+=x*w;sy+=y*w;peak=Math.max(peak,delta);count++;
+  }
+  if(!sw||count<3) return {...tip,refineConfidence:.25};
+  // Weighted centroid is naturally sub-pixel because sx/sw and sy/sw are floating point.
+  const xNorm=(sx/sw)/width,yNorm=(sy/sw)/height;
+  const residualPx=Math.hypot(xNorm*width-cx,yNorm*height-cy);
+  return {xNorm,yNorm,refineConfidence:clamp01(.50+count/90+peak/1000-Math.min(.12,residualPx/80))};
+}
+
+export function fuseDetectionFrames(frames: VisionDetection[][], wanted=3): DetectionConsensus[] {
+  const all=frames.flatMap((items,frameIndex)=>items.map(item=>({...item,frameIndex})));
+  const clusters:any[]=[];
+  const threshold=.0048;
+  for(const item of all){
+    let best:any=null,bestD=Infinity;
+    for(const c of clusters){ const dx=item.xNorm-c.x,dy=item.yNorm-c.y,dd=Math.hypot(dx,dy); if(dd<threshold&&dd<bestD){best=c;bestD=dd;} }
+    if(!best){best={x:item.xNorm,y:item.yNorm,items:[]};clusters.push(best);}
+    best.items.push(item); const n=best.items.length; best.x=best.items.reduce((a:any,v:any)=>a+v.xNorm,0)/n; best.y=best.items.reduce((a:any,v:any)=>a+v.yNorm,0)/n;
+  }
+  return clusters.map(c=>{
+    const items=c.items; const xs=items.map((v:any)=>v.xNorm).sort((a:number,b:number)=>a-b),ys=items.map((v:any)=>v.yNorm).sort((a:number,b:number)=>a-b);
+    const mid=Math.floor(items.length/2),xNorm=xs[mid],yNorm=ys[mid];
+    const distances=items.map((v:any)=>v.distanceMm).sort((a:number,b:number)=>a-b),distanceMm=distances[Math.floor(distances.length/2)];
+    const norms=items.map((v:any)=>v.distanceNorm).sort((a:number,b:number)=>a-b),distanceNorm=norms[Math.floor(norms.length/2)];
+    const uniqueFrames=new Set(items.map((v:any)=>v.frameIndex)).size;
+    const frameAgreement=frames.length?uniqueFrames/frames.length:0;
+    const spreadMm=Math.sqrt(items.reduce((sum:number,v:any)=>sum+Math.pow(v.distanceMm-distanceMm,2),0)/Math.max(1,items.length));
+    const base=items.reduce((sum:number,v:any)=>sum+v.confidence,0)/Math.max(1,items.length);
+    return {xNorm,yNorm,distanceMm,distanceNorm,area:items.reduce((s:number,v:any)=>s+v.area,0)/items.length,geometryConfidence:items.reduce((s:number,v:any)=>s+(v.geometryConfidence||0),0)/items.length,confidence:clamp01(base*.72+frameAgreement*.28-Math.min(.2,spreadMm/12)),frameAgreement,sampleCount:items.length,spreadMm};
+  }).filter(x=>x.frameAgreement>=.75 && x.sampleCount>=3).sort((a,b)=>b.confidence-a.confidence).slice(0,wanted);
+}
+
 export function analyzeFrameDifference(before: ImageData, after: ImageData, cal: CameraCalibration, wanted = 3): VisionDetection[] {
   const width = Math.min(before.width, after.width), height = Math.min(before.height, after.height);
   const a = before.data, b = after.data;
-  const cell = 7;
+  // Estimate sensor/exposure noise on sparse board pixels, then adapt the foreground threshold.
+  const noiseSamples:number[]=[];
+  for(let y=8;y<height-8;y+=24) for(let x=8;x<width-8;x+=24){
+    if(normalizedBoardPoint(cal,x/width,y/height).distanceNorm>1.02) continue;
+    const i=(y*before.width+x)*4,j=(y*after.width+x)*4;
+    noiseSamples.push((Math.abs(a[i]-b[j])+Math.abs(a[i+1]-b[j+1])+Math.abs(a[i+2]-b[j+2]))/3);
+  }
+  noiseSamples.sort((x,y)=>x-y);
+  const noiseP75=noiseSamples.length?noiseSamples[Math.floor(noiseSamples.length*.75)]:10;
+  const deltaThreshold=Math.max(24,Math.min(46,noiseP75*2.15+10));
+  const cell = 3;
   const cols = Math.ceil(width / cell), rows = Math.ceil(height / cell);
   const heat = new Float32Array(cols * rows);
   for (let y = 0; y < height; y += 2) for (let x = 0; x < width; x += 2) {
@@ -239,12 +458,13 @@ export function analyzeFrameDifference(before: ImageData, after: ImageData, cal:
     const j = (y * after.width + x) * 4;
     const dr = Math.abs(a[i] - b[j]), dg = Math.abs(a[i + 1] - b[j + 1]), db = Math.abs(a[i + 2] - b[j + 2]);
     const delta = (dr + dg + db) / 3;
-    if (delta < 34) continue;
+    if (delta < deltaThreshold) continue;
     heat[Math.floor(y / cell) * cols + Math.floor(x / cell)] += delta;
   }
 
   const hot = new Set<number>();
-  for (let i = 0; i < heat.length; i++) if (heat[i] > 240) hot.add(i);
+  const heatThreshold=Math.max(150,deltaThreshold*5.1);
+  for (let i = 0; i < heat.length; i++) if (heat[i] > heatThreshold) hot.add(i);
   const comps: number[][] = [];
   while (hot.size) {
     const seed = hot.values().next().value; hot.delete(seed);
@@ -257,30 +477,31 @@ export function analyzeFrameDifference(before: ImageData, after: ImageData, cal:
         if (hot.has(ni)) { hot.delete(ni); q.push(ni); }
       }
     }
-    if (comp.length >= 2) comps.push(comp);
+    if (comp.length >= 3) comps.push(comp);
   }
 
   const candidates = comps.map(comp => {
     let peak = 0;
     comp.forEach(idx => { peak = Math.max(peak, heat[idx]); });
     const tip = estimateTipFromComponent(comp, heat, cols, cell, width, height, cal);
-    const bp = normalizedBoardPoint(cal, tip.xNorm, tip.yNorm);
+    const refined = refineTipAtPixelLevel(before, after, cal, tip);
+    const bp = normalizedBoardPoint(cal, refined.xNorm, refined.yNorm);
     const area = comp.length * cell * cell;
-    const shapeConfidence = clamp01((comp.length - 1) / 10);
+    const shapeConfidence = clamp01((comp.length - 2) / 18);
     const contrastConfidence = clamp01(peak / 900);
-    const confidence = clamp01(.34 + .25 * shapeConfidence + .18 * contrastConfidence + .23 * tip.geometryConfidence);
+    const confidence = clamp01(.27 + .22 * shapeConfidence + .17 * contrastConfidence + .20 * tip.geometryConfidence + .14 * refined.refineConfidence);
     return {
-      xNorm: tip.xNorm, yNorm: tip.yNorm,
+      xNorm: refined.xNorm, yNorm: refined.yNorm,
       distanceNorm: bp.distanceNorm, distanceMm: distanceMmFromNorm(bp.distanceNorm),
       confidence, area, geometryConfidence: tip.geometryConfidence,
     };
-  }).filter(x => x.distanceNorm <= 1.06 && x.area >= 80)
+  }).filter(x => x.distanceNorm <= 1.06 && x.area >= 52)
     .sort((p, q) => q.area - p.area)
     .slice(0, Math.max(wanted, 6));
 
   const out: VisionDetection[] = [];
   for (const c of candidates) {
-    if (out.some(o => Math.hypot(o.xNorm - c.xNorm, o.yNorm - c.yNorm) < .018)) continue;
+    if (out.some(o => Math.hypot(o.xNorm - c.xNorm, o.yNorm - c.yNorm) < .0048)) continue;
     out.push(c);
     if (out.length >= wanted) break;
   }

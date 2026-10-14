@@ -55,6 +55,11 @@ export type CameraCalibrationV2 = {
   method?: "auto-photo" | "auto-photo-zones" | "auto-photo-couleurs-v3" | "auto-photo-cible-v4" | "manual" | string;
   confidence?: number;
   zoneConfidence?: number;
+  // Optional projective rectification. Maps camera-normalized (x,y) to canonical board coordinates
+  // where the outer double radius is 1.0 and D20 is at (0,-1).
+  homography?: number[];
+  projectiveConfidence?: number;
+  projectiveErrorMm?: number;
   rings?: CameraBoardRingRatios;
   updatedAt: number;
 };
@@ -114,6 +119,9 @@ function normalizeCameraCalibration(obj: any): CameraCalibration | null {
       method: obj.method ? String(obj.method) : "auto-photo",
       confidence: finiteNumber(obj.confidence) ?? undefined,
       zoneConfidence: finiteNumber(obj.zoneConfidence) ?? undefined,
+      homography: Array.isArray(obj.homography) && obj.homography.length === 9 && obj.homography.every((v:any)=>Number.isFinite(Number(v))) ? obj.homography.map(Number) : undefined,
+      projectiveConfidence: finiteNumber(obj.projectiveConfidence) ?? undefined,
+      projectiveErrorMm: finiteNumber(obj.projectiveErrorMm) ?? undefined,
       rings: normalizeRings(obj.rings),
       updatedAt: Number(obj.updatedAt || Date.now()),
     };
@@ -180,4 +188,72 @@ export function clearCameraCalibration(): void {
   } catch {
     // ignore
   }
+}
+
+
+export type CameraBoardCorrespondence = { x: number; y: number; bx: number; by: number };
+
+function solveLinearSystem(a:number[][], b:number[]):number[]|null {
+  const n=b.length;
+  const m=a.map((row,i)=>[...row,b[i]]);
+  for(let col=0;col<n;col++){
+    let pivot=col;
+    for(let r=col+1;r<n;r++) if(Math.abs(m[r][col])>Math.abs(m[pivot][col])) pivot=r;
+    if(Math.abs(m[pivot][col])<1e-10) return null;
+    [m[col],m[pivot]]=[m[pivot],m[col]];
+    const div=m[col][col];
+    for(let c=col;c<=n;c++) m[col][c]/=div;
+    for(let r=0;r<n;r++) if(r!==col){
+      const f=m[r][col]; if(!f) continue;
+      for(let c=col;c<=n;c++) m[r][c]-=f*m[col][c];
+    }
+  }
+  return m.map(row=>row[n]);
+}
+
+/** Least-squares homography from camera-normalized coordinates to canonical board coordinates. */
+export function fitCameraBoardHomography(points:CameraBoardCorrespondence[]) {
+  const valid=(points||[]).filter(p=>[p.x,p.y,p.bx,p.by].every(Number.isFinite));
+  if(valid.length<4) return null;
+  const rows:number[][]=[]; const rhs:number[]=[];
+  for(const p of valid){
+    rows.push([p.x,p.y,1,0,0,0,-p.bx*p.x,-p.bx*p.y]); rhs.push(p.bx);
+    rows.push([0,0,0,p.x,p.y,1,-p.by*p.x,-p.by*p.y]); rhs.push(p.by);
+  }
+  const n=8, ata=Array.from({length:n},()=>Array(n).fill(0)), atb=Array(n).fill(0);
+  for(let r=0;r<rows.length;r++) for(let i=0;i<n;i++){
+    atb[i]+=rows[r][i]*rhs[r];
+    for(let j=0;j<n;j++) ata[i][j]+=rows[r][i]*rows[r][j];
+  }
+  const h8=solveLinearSystem(ata,atb); if(!h8) return null;
+  const h=[...h8,1];
+  let err2=0;
+  for(const p of valid){ const q=applyCameraHomography(h,p.x,p.y); if(!q) return null; err2+=(q.nx-p.bx)**2+(q.ny-p.by)**2; }
+  const rmsNorm=Math.sqrt(err2/valid.length);
+  const errorMm=rmsNorm*170;
+  const confidence=Math.max(0,Math.min(1,1-errorMm/8));
+  return {homography:h,errorMm,confidence};
+}
+
+export function applyCameraHomography(h:number[]|undefined|null,x:number,y:number):{nx:number;ny:number}|null {
+  if(!Array.isArray(h)||h.length!==9) return null;
+  const den=h[6]*x+h[7]*y+h[8]; if(!Number.isFinite(den)||Math.abs(den)<1e-9) return null;
+  const nx=(h[0]*x+h[1]*y+h[2])/den, ny=(h[3]*x+h[4]*y+h[5])/den;
+  return Number.isFinite(nx)&&Number.isFinite(ny)?{nx,ny}:null;
+}
+
+export function mapCameraPointToBoard(cal:CameraCalibration,xNorm:number,yNorm:number){
+  if(cal.v===2 && Array.isArray(cal.homography)){
+    const q=applyCameraHomography(cal.homography,xNorm,yNorm);
+    if(q) return {...q,distanceNorm:Math.hypot(q.nx,q.ny),projective:true};
+  }
+  const dx=xNorm-cal.cx,dy=yNorm-cal.cy;
+  if(cal.v===2){
+    const rx=Math.max(.0001,Number(cal.rx||cal.r)),ry=Math.max(.0001,Number(cal.ry||cal.r));
+    const phi=Number(cal.phi||0),c=Math.cos(phi),ss=Math.sin(phi);
+    const ux=dx*c+dy*ss,uy=-dx*ss+dy*c,nx=ux/rx,ny=uy/ry;
+    return {nx,ny,distanceNorm:Math.hypot(nx,ny),projective:false};
+  }
+  const r=Math.max(.0001,Number(cal.r||.0001)),nx=dx/r,ny=dy/r;
+  return {nx,ny,distanceNorm:Math.hypot(nx,ny),projective:false};
 }

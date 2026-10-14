@@ -11,7 +11,7 @@ import React from "react";
 import BackDot from "../components/BackDot";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
-import { saveCameraCalibration, loadCameraCalibration, type CameraCalibrationV1 } from "../lib/cameraCalibrationStore";
+import { saveCameraCalibration, loadCameraCalibration, fitCameraBoardHomography, type CameraCalibrationV2 } from "../lib/cameraCalibrationStore";
 import { useAwenaOptional } from "../awena/AwenaProvider";
 import { awenaProcedurePromptForRoute } from "../awena/AwenaProceduralAcademy";
 
@@ -34,19 +34,17 @@ export default function CameraScoringCalibration({ go, params }: Props) {
   const [err, setErr] = React.useState<string | null>(null);
   const [ready, setReady] = React.useState(false);
 
-  // étape: 0 centre, 1 bord, 2 orientation
-  const [step, setStep] = React.useState<0 | 1 | 2>(() => 0);
-  const [center, setCenter] = React.useState<{ x: number; y: number } | null>(null);
-  const [radiusOuter, setRadiusOuter] = React.useState<number | null>(null);
-  const [angleDeg20, setAngleDeg20] = React.useState<number | null>(null);
+  // Calibration compétition : centre + 4 points connus sur le bord extérieur du double.
+  // D20 / D6 / D3 / D11 correspondent aux axes haut / droite / bas / gauche du board canonique.
+  type CalPoint = { x:number; y:number };
+  const [step, setStep] = React.useState<0 | 1 | 2 | 3 | 4>(() => 0);
+  const [center, setCenter] = React.useState<CalPoint | null>(null);
+  const [anchors, setAnchors] = React.useState<Record<string,CalPoint>>({});
+  const [fitInfo, setFitInfo] = React.useState<any>(null);
 
   React.useEffect(() => {
-    const existing = loadCameraCalibration();
-    if (existing) {
-      setCenter({ x: existing.cx, y: existing.cy });
-      setRadiusOuter(existing.r);
-      setAngleDeg20(normDeg(toDeg(existing.a20)));
-    }
+    const existing:any = loadCameraCalibration();
+    if (existing) setCenter({ x: existing.cx, y: existing.cy });
   }, []);
 
   React.useEffect(() => {
@@ -75,70 +73,60 @@ export default function CameraScoringCalibration({ go, params }: Props) {
     };
   }, []);
 
-  function toDeg(rad: number) {
-    return (rad * 180) / Math.PI;
-  }
-
-  function normDeg(deg: number) {
-    let d = deg % 360;
-    if (d < 0) d += 360;
-    return d;
+  function viewToVideoNorm(e:React.MouseEvent){
+    const el=e.currentTarget as HTMLDivElement, rect=el.getBoundingClientRect(), video=videoRef.current;
+    if(!video?.videoWidth||!video.videoHeight) return null;
+    const boxW=rect.width,boxH=rect.height,videoAspect=video.videoWidth/video.videoHeight,boxAspect=boxW/boxH;
+    let drawW=boxW,drawH=boxH,offX=0,offY=0;
+    if(videoAspect>boxAspect){ drawH=boxW/videoAspect; offY=(boxH-drawH)/2; }
+    else { drawW=boxH*videoAspect; offX=(boxW-drawW)/2; }
+    const px=e.clientX-rect.left-offX,py=e.clientY-rect.top-offY;
+    if(px<0||py<0||px>drawW||py>drawH) return null;
+    return {x:px/drawW,y:py/drawH};
   }
 
   function handleTap(e: React.MouseEvent) {
-    const el = e.currentTarget as HTMLDivElement;
-    const rect = el.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
-
-    if (step === 0) {
-      setCenter({ x, y });
-      setStep(1);
-      return;
-    }
-
-    if (step === 1) {
-      if (!center) return;
-      const dx = x - center.x;
-      const dy = y - center.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      // dist normalisé -> rayon extérieur
-      setRadiusOuter(dist);
-      setStep(2);
-      return;
-    }
-
-    if (step === 2) {
-      if (!center) return;
-      const dx = x - center.x;
-      const dy = y - center.y;
-      const a = normDeg(toDeg(Math.atan2(dy, dx)));
-      setAngleDeg20(a);
+    const pt=viewToVideoNorm(e); if(!pt) return;
+    if(step===0){ setCenter(pt); setStep(1); return; }
+    const keys=["d20","d6","d3","d11"];
+    const key=keys[step-1];
+    const next={...anchors,[key]:pt}; setAnchors(next);
+    if(step<4) setStep((step+1) as any);
+    if(step===4 && center){
+      const correspondences=[
+        {x:center.x,y:center.y,bx:0,by:0},
+        {x:next.d20.x,y:next.d20.y,bx:0,by:-1},
+        {x:next.d6.x,y:next.d6.y,bx:1,by:0},
+        {x:next.d3.x,y:next.d3.y,bx:0,by:1},
+        {x:next.d11.x,y:next.d11.y,bx:-1,by:0},
+      ];
+      setFitInfo(fitCameraBoardHomography(correspondences));
     }
   }
 
-  const canSave = !!center && typeof radiusOuter === "number" && typeof angleDeg20 === "number";
+  const canSave = !!center && !!anchors.d20 && !!anchors.d6 && !!anchors.d3 && !!anchors.d11 && !!fitInfo && fitInfo.confidence >= .55;
 
   function save() {
-    if (!canSave) return;
-    const cal: CameraCalibrationV1 = {
-      v: 1,
-      cx: center!.x,
-      cy: center!.y,
-      r: Math.max(0.0001, radiusOuter!),
-      a20: (angleDeg20! * Math.PI) / 180,
-      updatedAt: Date.now(),
+    if (!canSave || !center) return;
+    const left=anchors.d11,right=anchors.d6,top=anchors.d20,bottom=anchors.d3;
+    const rx=Math.max(.0001,(Math.hypot(right.x-center.x,right.y-center.y)+Math.hypot(left.x-center.x,left.y-center.y))/2);
+    const ry=Math.max(.0001,(Math.hypot(top.x-center.x,top.y-center.y)+Math.hypot(bottom.x-center.x,bottom.y-center.y))/2);
+    const cal: CameraCalibrationV2 = {
+      v:2,cx:center.x,cy:center.y,rx,ry,r:(rx+ry)/2,a20:-Math.PI/2,phi:0,
+      method:"manual-projective-5pt",confidence:fitInfo.confidence,zoneConfidence:fitInfo.confidence,
+      homography:fitInfo.homography,projectiveConfidence:fitInfo.confidence,projectiveErrorMm:fitInfo.errorMm,
+      updatedAt:Date.now(),
     };
-    saveCameraCalibration(cal);
-    go(returnTab);
+    saveCameraCalibration(cal); go(returnTab);
   }
 
-  const stepText =
-    step === 0
-      ? t("cameraScoring.step0", "1/3 — Tape le centre (BULL)")
-      : step === 1
-      ? t("cameraScoring.step1", "2/3 — Tape le bord extérieur (autour du double)")
-      : t("cameraScoring.step2", "3/3 — Tape le milieu du segment 20 (en haut de la cible)");
+  const stepText = [
+    "1/5 — Tape exactement le centre du DBULL",
+    "2/5 — Tape le milieu du bord EXTÉRIEUR du DOUBLE 20",
+    "3/5 — Tape le milieu du bord EXTÉRIEUR du DOUBLE 6",
+    "4/5 — Tape le milieu du bord EXTÉRIEUR du DOUBLE 3",
+    "5/5 — Tape le milieu du bord EXTÉRIEUR du DOUBLE 11",
+  ][step];
 
   return (
     <div
@@ -202,7 +190,7 @@ export default function CameraScoringCalibration({ go, params }: Props) {
             }}
           >
             <span style={{ width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden", display: "block", background: "#050713" }}>
-              <img src="/awena/awena-avatar.webp" alt="Awena" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+              <img src="/awena/awena-avatar.webp" alt="Awena" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block", background:"#000" }} />
             </span>
           </button>
         ) : (
@@ -220,7 +208,7 @@ export default function CameraScoringCalibration({ go, params }: Props) {
             ref={videoRef}
             playsInline
             muted
-            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+            style={{ width: "100%", height: "100%", objectFit: "contain", display: "block", background:"#000" }}
           />
 
           {/* overlay guides */}
@@ -241,7 +229,7 @@ export default function CameraScoringCalibration({ go, params }: Props) {
             <div style={{ fontSize: 12, color: "rgba(245,245,255,0.78)", lineHeight: 1.35 }}>
               {t(
                 "cameraScoring.calHint",
-                "Conseil : place le téléphone fixe (trépied), cible bien au centre, lumière stable. Tu peux recalibrer à tout moment."
+                "Mode précision : téléphone fixe. Tape exactement les 5 repères demandés sur le flux caméra complet. Les bandes noires éventuelles ne font pas partie de l’image et sont ignorées."
               )}
             </div>
           </div>
@@ -284,23 +272,8 @@ export default function CameraScoringCalibration({ go, params }: Props) {
             </div>
           )}
 
-          {/* points */}
-          {center && (
-            <div
-              style={{
-                position: "absolute",
-                left: `calc(${center.x * 100}% - 8px)`,
-                top: `calc(${center.y * 100}% - 8px)`,
-                width: 16,
-                height: 16,
-                borderRadius: 999,
-                border: `2px solid ${primary}`,
-                boxShadow: `0 0 18px ${primary}55`,
-                background: "rgba(0,0,0,0.25)",
-                pointerEvents: "none",
-              }}
-            />
-          )}
+          {/* La calibration est stockée dans le repère natif du capteur. */}
+          {fitInfo ? <div style={{position:"absolute",left:12,right:12,bottom:18,padding:10,borderRadius:12,background:"rgba(0,0,0,.72)",border:`1px solid ${fitInfo.confidence>=.75?"#39d98a":"#f7c85c"}66`,fontSize:12,fontWeight:800,pointerEvents:"none"}}>Rectification projective : {Math.round(fitInfo.confidence*100)} % · erreur estimée {Number(fitInfo.errorMm||0).toFixed(2)} mm</div> : null}
         </div>
       </div>
 
@@ -322,8 +295,8 @@ export default function CameraScoringCalibration({ go, params }: Props) {
           onClick={() => {
             setStep(0);
             setCenter(null);
-            setRadiusOuter(null);
-            setAngleDeg20(null);
+            setAnchors({});
+            setFitInfo(null);
           }}
           style={{
             padding: "12px 14px",

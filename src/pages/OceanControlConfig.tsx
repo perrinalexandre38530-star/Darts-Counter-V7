@@ -59,7 +59,7 @@ function Rules() {
     <div><strong style={{ color: BLUE }}>OBJECTIF</strong><br />Détruis tous les navires de la flotte adverse. Les secteurs 1 à 20 correspondent aux vingt zones de l’océan.</div>
     <div><strong style={{ color: CYAN }}>MODE TACTIQUE</strong><br />Simple = une zone, Double = deux zones adjacentes, Triple = une ligne de trois zones.</div>
     <div><strong style={{ color: GREEN }}>SONAR</strong><br />Le Bull analyse la zone sélectionnée et indique le nombre de contacts proches.</div>
-    <div><strong style={{ color: GOLD }}>DBULL</strong><br />Le Double Bull déclenche une frappe de précision sur la zone sélectionnée ou sur une cible inconnue.</div>
+    <div><strong style={{ color: GOLD }}>DBULL</strong><br />Le Double Bull déclenche une frappe de précision uniquement sur la zone focus sélectionnée.</div>
     <div><strong style={{ color: RED }}>VICTOIRE</strong><br />La première flotte à remporter le nombre de manches choisi prend le contrôle de l’océan.</div>
   </div>;
 }

@@ -6,18 +6,22 @@ import { loadCameraCalibration, type CameraCalibration } from "../lib/cameraCali
 import {
   analyzeFrameDifference,
   analyzeFrameStability,
+  assessPrecisionReadiness,
+  assessProjectiveDrift,
+  fuseDetectionFrames,
   buildDartVisualSignature,
   classifyDartIdentity,
   compareDartSignatures,
   estimateDistanceUncertaintyMm,
   mergeDartSignatures,
   rankImpacts,
+  precisionTier,
+  registerFrameToReference,
+  temporalMedianFrame,
 } from "../lib/closestCenterVisionEngine";
 import { getTicker } from "../lib/tickers";
 
 const ACCENT = "#44e7ff";
-const W = 640;
-const H = 480;
 const PLAYER_COLORS = ["#ff4d5f", "#3da5ff", "#ffd43b", "#b96cff", "#39d98a", "#ff914d", "#55e6c1", "#f472b6"];
 
 function playerColor(players:any[], playerId:any) {
@@ -36,18 +40,55 @@ function phaseLabel(phase:string) {
 }
 
 function capture(video: HTMLVideoElement | null, crop?: { x:number; y:number; w:number; h:number }) {
-  if (!video?.videoWidth) return null;
+  if (!video?.videoWidth || !video.videoHeight) return null;
   const c = document.createElement("canvas");
-  c.width = crop ? 320 : W;
-  c.height = crop ? 320 : H;
+  const srcW = video.videoWidth, srcH = video.videoHeight;
+  if (crop) {
+    c.width = 480; c.height = 480;
+  } else {
+    // Preserve the native camera aspect ratio. Never stretch 16:9 into 4:3: that
+    // would move calibrated points and directly corrupt millimetre measurements.
+    const maxSide = 1920;
+    const scale = Math.min(1, maxSide / Math.max(srcW, srcH));
+    c.width = Math.max(640, Math.round(srcW * scale));
+    c.height = Math.max(360, Math.round(srcH * scale));
+  }
   const ctx = c.getContext("2d", { willReadFrequently: true });
   if (!ctx) return null;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   if (crop) {
-    ctx.drawImage(video, crop.x * video.videoWidth, crop.y * video.videoHeight, crop.w * video.videoWidth, crop.h * video.videoHeight, 0, 0, c.width, c.height);
+    ctx.drawImage(video, crop.x * srcW, crop.y * srcH, crop.w * srcW, crop.h * srcH, 0, 0, c.width, c.height);
   } else {
-    ctx.drawImage(video, 0, 0, c.width, c.height);
+    ctx.drawImage(video, 0, 0, srcW, srcH, 0, 0, c.width, c.height);
   }
   return ctx.getImageData(0, 0, c.width, c.height);
+}
+
+async function captureBurst(video: HTMLVideoElement | null, count = 5, delayMs = 55) {
+  const frames: ImageData[] = [];
+  for (let i = 0; i < count; i++) {
+    const frame = capture(video);
+    if (frame) frames.push(frame);
+    if (i < count - 1) await new Promise(resolve => window.setTimeout(resolve, delayMs));
+  }
+  return frames;
+}
+
+async function tunePrecisionTrack(stream:MediaStream|null){
+  try{
+    const track=stream?.getVideoTracks?.()[0]; if(!track) return;
+    const caps:any=track.getCapabilities?.()||{};
+    const advanced:any={};
+    if(Array.isArray(caps.focusMode)&&caps.focusMode.includes("continuous")) advanced.focusMode="continuous";
+    if(Array.isArray(caps.exposureMode)&&caps.exposureMode.includes("continuous")) advanced.exposureMode="continuous";
+    if(Array.isArray(caps.whiteBalanceMode)&&caps.whiteBalanceMode.includes("continuous")) advanced.whiteBalanceMode="continuous";
+    if(caps.zoom && Number.isFinite(caps.zoom.min) && Number.isFinite(caps.zoom.max)){
+      const target=Math.min(caps.zoom.max,Math.max(caps.zoom.min,1.15));
+      if(target>1) advanced.zoom=target;
+    }
+    if(Object.keys(advanced).length) await track.applyConstraints({advanced:[advanced]} as any).catch(()=>{});
+  }catch{}
 }
 
 function extractImpactPatch(after: ImageData, d: any) {
@@ -87,6 +128,8 @@ export default function ClosestCenterPlay(props:any) {
   const [pendingAfter, setPendingAfter] = React.useState<ImageData | null>(null);
   const [pendingImpacts, setPendingImpacts] = React.useState<any[]>([]);
   const [stability, setStability] = React.useState<any>(null);
+  const [precisionReadiness, setPrecisionReadiness] = React.useState<any>(null);
+  const [registrationInfo, setRegistrationInfo] = React.useState<any>(null);
   const [impacts, setImpacts] = React.useState<any[]>([]);
   const [allScores, setAllScores] = React.useState<Record<string,number>>({});
   const [tieAcknowledged, setTieAcknowledged] = React.useState(false);
@@ -96,9 +139,10 @@ export default function ClosestCenterPlay(props:any) {
     let dead = false;
     (async () => {
       try {
-        const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+        const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 2560 }, height: { ideal: 1440 }, frameRate: { ideal: 30, min: 24 } }, audio: false });
         if (dead) { s.getTracks().forEach(t => t.stop()); return; }
         streamRef.current = s;
+        await tunePrecisionTrack(s);
         if (videoRef.current) {
           videoRef.current.srcObject = s;
           await videoRef.current.play().catch(() => {});
@@ -146,32 +190,83 @@ export default function ClosestCenterPlay(props:any) {
     }
   };
 
-  const captureBaseline = () => {
+  const captureBaseline = async () => {
     if (!cal) { setStatus("❌ Calibration caméra nécessaire pour mesurer les distances avec précision."); return; }
-    const img = capture(videoRef.current);
+    if (cal.v !== 2 || !Array.isArray((cal as any).homography)) {
+      setStatus("❌ PETANQUE précision + exige la calibration projective 5 points. Ouvre la calibration caméra et calibre Centre + D20 + D6 + D3 + D11.");
+      return;
+    }
+    setStatus("Calibration précision : acquisition multi-frame de la cible vide…");
+    const baselineBurst = await captureBurst(videoRef.current, 5, 55);
+    const img = temporalMedianFrame(baselineBurst);
     if (!img) return;
+    const readiness = assessPrecisionReadiness(img, cal);
+    setPrecisionReadiness(readiness);
+    const tier = precisionTier(readiness);
+    if (!readiness.ok) {
+      setStatus(`❌ Précision insuffisante : ${readiness.reasons[0] || "repositionne la caméra"}`);
+      return;
+    }
+    if (tier === "standard") {
+      setStatus(`⚠️ Lecture acceptable mais pas encore haute précision (${readiness.mmPerPixel.toFixed(2)} mm/pixel). Rapproche la caméra pour viser le niveau HIGH/COMPÉTITION.`);
+      return;
+    }
     setBefore(img);
     setPendingAfter(null);
     setPendingImpacts([]);
     setTieAcknowledged(false);
     setPhase("play");
     setPlayerIndex(0);
-    setStatus(`${players[0]?.name}: lance 3 fléchettes, sans les retirer, puis lance l’analyse.`);
+    setStatus(`Précision ${tier.toUpperCase()} validée · ${readiness.mmPerPixel.toFixed(2)} mm/pixel. ${players[0]?.name}: lance 3 fléchettes.`);
   };
 
-  const analyze = () => {
+  const analyze = async () => {
     if (!cal || !before || !current) return;
-    const after = capture(videoRef.current);
-    if (!after) return;
+    setStatus("IA précision : lecture multi-frame en cours…");
+    const rawBurst = await captureBurst(videoRef.current, 5, 55);
+    if (rawBurst.length < 4) { setStatus("Impossible d’obtenir assez d’images stables. Relance l’analyse."); return; }
+    const geometryChecks = rawBurst.map(frame => assessProjectiveDrift(before, frame, cal));
+    const worstGeometry = geometryChecks.reduce((w:any,x:any)=>x.regionalSpreadPx>w.regionalSpreadPx?x:w, geometryChecks[0]);
+    if (!geometryChecks.every((x:any)=>x.ok)) {
+      setRegistrationInfo({ confidence: worstGeometry.confidence, geometrySpreadPx: worstGeometry.regionalSpreadPx, rejected: geometryChecks.filter((x:any)=>!x.ok).length });
+      setStatus(`❌ Dérive géométrique détectée (${worstGeometry.regionalSpreadPx.toFixed(2)} px). Le téléphone a tourné/changé de perspective : replace le support avant de mesurer.`);
+      return;
+    }
+    const registered = rawBurst.map(frame => registerFrameToReference(before, frame, cal));
+    const goodRegistered = registered.filter(x => x.registration.confidence >= .50 && Math.hypot(x.registration.dxPx,x.registration.dyPx) <= 10);
+    if (goodRegistered.length < 4) {
+      setRegistrationInfo({confidence:Math.min(...registered.map(x=>x.registration.confidence)), rejected:registered.length-goodRegistered.length});
+      setStatus("⚠️ Micro-déplacement caméra trop important pour une mesure de compétition. Immobilise le support puis relance.");
+      return;
+    }
+    const burst = goodRegistered.map(x=>x.frame);
+    const after = temporalMedianFrame(burst) || burst[burst.length - 1];
+    const avgRegistration = goodRegistered.reduce((s,x)=>s+x.registration.confidence,0)/goodRegistered.length;
+    const maxShift = Math.max(...goodRegistered.map(x=>Math.hypot(x.registration.dxPx,x.registration.dyPx)));
+    setRegistrationInfo({confidence:avgRegistration,maxShiftPx:maxShift,geometrySpreadPx:Math.max(...geometryChecks.map((x:any)=>x.regionalSpreadPx))});
 
-    const stable = analyzeFrameStability(before, after, cal);
-    setStability(stable);
-    if (!stable.stable) {
-      setStatus(`⚠️ Caméra déplacée ou cadrage instable (${Math.round(stable.changedFraction * 100)} % de l’image modifiée). Replace le téléphone exactement puis relance l’analyse.`);
+    const readiness = assessPrecisionReadiness(after, cal);
+    setPrecisionReadiness(readiness);
+    if (!readiness.ok) {
+      setStatus(`❌ Lecture refusée : ${readiness.reasons[0] || "qualité caméra insuffisante"}`);
+      return;
+    }
+    const tier = precisionTier(readiness);
+    if (tier === "standard" || tier === "insufficient") {
+      setStatus(`❌ Lecture non validée : niveau ${tier.toUpperCase()}. Rapproche la caméra / améliore la netteté pour atteindre HIGH ou COMPÉTITION.`);
       return;
     }
 
-    const found = analyzeFrameDifference(before, after, cal, 3);
+    const stabilitySamples = burst.map(frame => analyzeFrameStability(before, frame, cal));
+    const stable = stabilitySamples.reduce((best, item) => item.confidence < best.confidence ? item : best, stabilitySamples[0]);
+    setStability(stable);
+    if (!stabilitySamples.every(x => x.stable)) {
+      setStatus(`⚠️ Caméra déplacée ou cadrage instable. La volée n’est pas validée.`);
+      return;
+    }
+
+    const detectionsByFrame = burst.map(frame => analyzeFrameDifference(before, frame, cal, 7));
+    const found = fuseDetectionFrames(detectionsByFrame, 3);
     if (!found.length) {
       setStatus("Aucun nouvel impact fiable détecté. Garde le téléphone immobile et recommence l’analyse.");
       return;
@@ -186,9 +281,14 @@ export default function ClosestCenterPlay(props:any) {
       const identity = classifyDartIdentity(signatures, observed, current.id);
       const detectedOwner = players.find((p:any) => String(p.id) === String(identity.playerId));
       const owner = detectedOwner || current;
-      const measurementConfidence = Math.max(.2, Math.min(1, d.confidence * (.75 + stable.confidence * .25)));
-      const uncertaintyMm = estimateDistanceUncertaintyMm(measurementConfidence, cal);
-      const needsReview = identity.confidence < .62 || identity.margin < .055 || measurementConfidence < .64;
+      const frameAgreement = Number(d.frameAgreement ?? 1);
+      const measurementConfidence = Math.max(.2, Math.min(1, d.confidence * (.58 + stable.confidence * .16 + readiness.confidence * .18 + frameAgreement * .08)));
+      const resolutionFloor = Math.max(.35, Number(readiness.mmPerPixel || .8) * .85);
+      const consensusPenalty = Math.max(0, Number(d.spreadMm || 0) * .7);
+      const geometrySpreadPx = Math.max(...geometryChecks.map((x:any)=>x.regionalSpreadPx));
+      const registrationPenalty = Math.max(0,(1-avgRegistration)*1.2) + Math.max(0, geometrySpreadPx*.12);
+      const uncertaintyMm = Math.max(resolutionFloor, estimateDistanceUncertaintyMm(measurementConfidence, cal) + consensusPenalty + registrationPenalty);
+      const needsReview = identity.confidence < .70 || identity.margin < .075 || measurementConfidence < .74 || frameAgreement < .80 || Number(d.spreadMm||0) > .85;
       return {
         id: `r${round}-${current.id}-${Date.now()}-${i}`,
         playerId: owner.id,
@@ -202,6 +302,8 @@ export default function ClosestCenterPlay(props:any) {
         identityConfidence: identity.confidence,
         identityMargin: identity.margin,
         uncertaintyMm,
+        frameAgreement,
+        consensusSpreadMm: Number(d.spreadMm || 0),
         needsReview,
         round,
       };
@@ -211,7 +313,7 @@ export default function ClosestCenterPlay(props:any) {
     setPendingImpacts(proposed);
     setPhase("review");
     const alerts = proposed.filter((x:any) => x.needsReview).length;
-    setStatus(alerts ? `${alerts} fléchette(s) demandent un contrôle avant validation.` : "Analyse cohérente. Vérifie les 3 impacts puis valide la volée.");
+    setStatus(alerts ? `${alerts} fléchette(s) demandent un contrôle avant validation.` : "Analyse multi-frame cohérente. Vérifie les 3 impacts puis valide la volée.");
   };
 
   const cyclePendingOwner = (impactId:string) => {
@@ -354,6 +456,8 @@ export default function ClosestCenterPlay(props:any) {
           <div style={{fontSize:11,color:ACCENT,fontWeight:1000,letterSpacing:1.1}}>IA VISION · {phaseLabel(phase)}</div>
           <div style={{fontSize:14,fontWeight:900,marginTop:6}}>{status}</div>
           {stability ? <div style={{marginTop:8,fontSize:11,color:stability.stable?"#8fffc2":"#ffbd93"}}>Stabilité caméra : {Math.round(stability.confidence*100)} % · variation globale {Math.round(stability.changedFraction*100)} %</div> : null}
+          {precisionReadiness ? <div style={{marginTop:6,fontSize:11,color:precisionReadiness.ok?"#8fffc2":"#ffbd93"}}>Précision image : {Math.round(precisionReadiness.confidence*100)} % · {precisionReadiness.mmPerPixel.toFixed(2)} mm/pixel · netteté {Math.round(precisionReadiness.sharpness*100)} % · niveau {precisionTier(precisionReadiness).toUpperCase()}</div> : null}
+          {registrationInfo ? <div style={{marginTop:6,fontSize:11,color:(registrationInfo.confidence||0)>=.65?"#8fffc2":"#ffbd93"}}>Recalage multi-frame : {Math.round((registrationInfo.confidence||0)*100)} %{registrationInfo.maxShiftPx!=null?` · translation ${registrationInfo.maxShiftPx.toFixed(1)} px`:""}{registrationInfo.geometrySpreadPx!=null?` · dérive géométrique ${registrationInfo.geometrySpreadPx.toFixed(2)} px`:""}</div> : null}
           {!cal ? <div style={{marginTop:8,color:"#ffb4a9",fontSize:12}}>Calibration de cible non trouvée : le jeu refuse une mesure approximative.</div> : null}
         </section>
 
@@ -371,7 +475,7 @@ export default function ClosestCenterPlay(props:any) {
 
         {phase === "play" ? <section style={card}>
           <h3 style={h3}>MANCHE {round}/{cfg.rounds} · {current?.name}</h3>
-          <div style={{fontSize:12,color:"#b9c7d4"}}>Lance 3 fléchettes puis ne touche ni à la cible ni au téléphone. L’IA comparera chacune aux signatures de tous les joueurs.</div>
+          <div style={{fontSize:12,color:"#b9c7d4"}}>Lance 3 fléchettes puis ne touche ni à la cible ni au téléphone. L’IA analyse 5 frames, recale les micro-mouvements, localise la pointe en sous-pixel et contrôle l’identité avant validation.</div>
           <button style={{...btn,width:"100%",marginTop:10}} onClick={analyze}>🧠 ANALYSER LES 3 FLÉCHETTES</button>
         </section> : null}
 
@@ -381,7 +485,7 @@ export default function ClosestCenterPlay(props:any) {
           {pendingImpacts.map((impact:any, i:number) => {
             const p = players.find((x:any) => String(x.id) === String(impact.playerId));
             return <div key={impact.id} style={{padding:"9px 0",borderBottom:"1px solid rgba(255,255,255,.07)"}}>
-              <div style={{display:"grid",gridTemplateColumns:"28px 1fr auto",gap:8,alignItems:"center"}}><b>#{i+1}</b><div><b>{p?.name || "Joueur ?"}</b><div style={{fontSize:10,color:impact.needsReview?"#ffbd65":"#9fb0bf"}}>identité {Math.round(impact.identityConfidence*100)} % · mesure {Math.round(impact.confidence*100)} %</div></div><b style={{color:ACCENT}}>{impact.distanceMm.toFixed(1)} ± {impact.uncertaintyMm.toFixed(1)} mm</b></div>
+              <div style={{display:"grid",gridTemplateColumns:"28px 1fr auto",gap:8,alignItems:"center"}}><b>#{i+1}</b><div><b>{p?.name || "Joueur ?"}</b><div style={{fontSize:10,color:impact.needsReview?"#ffbd65":"#9fb0bf"}}>identité {Math.round(impact.identityConfidence*100)} % · mesure {Math.round(impact.confidence*100)} % · frames {Math.round((impact.frameAgreement||1)*100)} %</div></div><b style={{color:ACCENT}}>{impact.distanceMm.toFixed(1)} ± {impact.uncertaintyMm.toFixed(1)} mm</b></div>
               {impact.needsReview ? <button onClick={() => cyclePendingOwner(impact.id)} style={{...miniBtn,marginTop:6}}>⚠️ CORRIGER LE JOUEUR →</button> : null}
             </div>;
           })}

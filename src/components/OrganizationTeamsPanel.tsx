@@ -146,8 +146,9 @@ export default function OrganizationTeamsPanel({ organization, userId, initialGr
     cursor: "pointer",
   };
 
-  const refresh = React.useCallback(async () => {
-    setLoading(true);
+  const refresh = React.useCallback(async (silent = false) => {
+    if (!organization.id) return;
+    if (!silent) setLoading(true);
     setError("");
     try {
       const [groupResult, memberResult] = await Promise.all([
@@ -160,11 +161,32 @@ export default function OrganizationTeamsPanel({ organization, userId, initialGr
     } catch (e: any) {
       setError(String(e?.message || L("Impossible de charger les équipes.", "Unable to load teams.", "No se pueden cargar los equipos.")));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [organization.id, userId, L]);
 
   React.useEffect(() => { void refresh(); }, [refresh]);
+
+  // Keep team rosters synchronized with organization membership changes,
+  // including approvals performed on another screen or device.
+  React.useEffect(() => {
+    if (!organization.id || !userId || typeof window === "undefined") return;
+    const sync = () => { if (document.visibilityState === "visible") void refresh(true); };
+    const timer = window.setInterval(sync, 8000);
+    const onMembersChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ organizationId?: string }>).detail;
+      if (!detail?.organizationId || detail.organizationId === organization.id) sync();
+    };
+    window.addEventListener("focus", sync);
+    document.addEventListener("visibilitychange", sync);
+    window.addEventListener("mss:organization-members-changed", onMembersChanged as EventListener);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", sync);
+      document.removeEventListener("visibilitychange", sync);
+      window.removeEventListener("mss:organization-members-changed", onMembersChanged as EventListener);
+    };
+  }, [organization.id, userId, refresh]);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;

@@ -5,7 +5,7 @@
 // - V2 : ellipse + ratios anneaux issus de la calibration photo avancée
 // ============================================
 
-import { getCameraCalibrationRings } from "./cameraCalibrationStore";
+import { getCameraCalibrationRings, mapCameraPointToBoard } from "./cameraCalibrationStore";
 import type { CameraCalibration } from "./cameraCalibrationStore";
 
 export type CameraScoredDart = {
@@ -29,32 +29,8 @@ function normAngle(a: number): number {
 }
 
 function getNormalizedVector(cal: CameraCalibration, xNorm: number, yNorm: number) {
-  const dx = xNorm - cal.cx;
-  const dy = yNorm - cal.cy;
-
-  if (cal.v === 2) {
-    const rx = Math.max(0.0001, Number(cal.rx || cal.r || 0.0001));
-    const ry = Math.max(0.0001, Number(cal.ry || cal.r || 0.0001));
-    const phi = Number((cal as any).phi || 0);
-    const cos = Math.cos(phi);
-    const sin = Math.sin(phi);
-    // Inverse la rotation de l’ellipse détectée sur la photo : scoring stable même si
-    // le téléphone voit la cible légèrement inclinée ou tournée.
-    const ux = dx * cos + dy * sin;
-    const uy = -dx * sin + dy * cos;
-    return {
-      nx: ux / rx,
-      ny: uy / ry,
-      dist: Math.sqrt((ux / rx) * (ux / rx) + (uy / ry) * (uy / ry)),
-    };
-  }
-
-  const r = Math.max(0.0001, Number(cal.r || 0.0001));
-  return {
-    nx: dx / r,
-    ny: dy / r,
-    dist: Math.sqrt((dx / r) * (dx / r) + (dy / r) * (dy / r)),
-  };
+  const p = mapCameraPointToBoard(cal, xNorm, yNorm);
+  return { nx: p.nx, ny: p.ny, dist: p.distanceNorm };
 }
 
 export function scoreTap(

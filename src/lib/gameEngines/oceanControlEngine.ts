@@ -352,7 +352,7 @@ function rebuildBattle(state: OceanControlState, rng: () => number): OceanContro
   state.sonarScans = [];
   state.battleStartedAt = Date.now();
   state.targetOwnerId = defaultTargetOwnerId(state, state.players[state.activePlayerIndex]?.id);
-  state.focusNumber = state.gridNumbers[0] || 1;
+  state.focusNumber = null;
   return state;
 }
 
@@ -369,7 +369,7 @@ export function createOceanControlState(playersInput: Player[], configInput: Oce
   const statsByPlayer = Object.fromEntries(orderedPlayers.map((player) => [player.id, emptyStats()]));
   const state: OceanControlState = {
     mode: "ocean_control", config, players: orderedPlayers, owners, playerOwnerId, gridNumbers,
-    activePlayerIndex: 0, targetOwnerId: null, focusNumber: gridNumbers[0] || 1,
+    activePlayerIndex: 0, targetOwnerId: null, focusNumber: null,
     battleNumber: 1, roundIndex: 1, visitIndex: 0, scoreByOwner, statsByPlayer, visits: [], sonarScans: [], battleHistory: [],
     phase: config.placement === "manual" ? "placement" : "playing", placementOwnerIndex: 0,
     winnerOwnerIds: [], winnerPlayerIds: [], startedAt: Date.now(), battleStartedAt: Date.now(), finishedAt: null,
@@ -562,7 +562,12 @@ function attackCell(state: OceanControlState, owner: OceanControlFleetOwner, cel
 function resolveSonar(state: OceanControlState, owner: OceanControlFleetOwner, playerId: string, events: OceanControlEvent[]) {
   const stats = state.statsByPlayer[playerId] || (state.statsByPlayer[playerId] = normalizePlayerStats(null));
   stats.sonarUses += 1;
-  const focusNumber = state.focusNumber && state.gridNumbers.includes(state.focusNumber) ? state.focusNumber : state.gridNumbers.find((number) => !owner.attackedCells[String(cellForNumber(state, number))]) || state.gridNumbers[0];
+  const focusNumber = state.focusNumber && state.gridNumbers.includes(state.focusNumber) ? state.focusNumber : null;
+  if (focusNumber == null) {
+    stats.currentHitStreak = 0;
+    events.push({ type: "miss", label: "BULL · AUCUN FOCUS SÉLECTIONNÉ", playerId, targetOwnerId: owner.id });
+    return;
+  }
   const focusCell = cellForNumber(state, Number(focusNumber));
   const area = neighbors(focusCell);
   const contacts = area.filter((cell) => {
@@ -589,11 +594,11 @@ function resolveSonar(state: OceanControlState, owner: OceanControlFleetOwner, p
 function resolvePrecisionStrike(state: OceanControlState, owner: OceanControlFleetOwner, playerId: string, events: OceanControlEvent[]) {
   const stats = state.statsByPlayer[playerId] || (state.statsByPlayer[playerId] = normalizePlayerStats(null));
   stats.precisionStrikes += 1;
-  let cell = state.focusNumber ? cellForNumber(state, state.focusNumber) : -1;
-  if (cell < 0 || owner.attackedCells[String(cell)]) {
-    const unknownShipCell = owner.ships.flatMap((ship) => ship.cells).find((candidate) => !owner.attackedCells[String(candidate)]);
-    const unknownCell = Array.from({ length: 20 }, (_, i) => i).find((candidate) => !owner.attackedCells[String(candidate)]);
-    cell = unknownShipCell ?? unknownCell ?? 0;
+  const cell = state.focusNumber ? cellForNumber(state, state.focusNumber) : -1;
+  if (cell < 0) {
+    stats.currentHitStreak = 0;
+    events.push({ type: "miss", label: "DBULL · AUCUN FOCUS SÉLECTIONNÉ", playerId, targetOwnerId: owner.id });
+    return;
   }
   events.push({ type: "strike", label: `FRAPPE DE PRÉCISION · ${numberForCell(state, cell)}`, playerId, targetOwnerId: owner.id, number: numberForCell(state, cell), cell });
   attackCell(state, owner, cell, playerId, events);

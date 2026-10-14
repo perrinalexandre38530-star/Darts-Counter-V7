@@ -26,7 +26,7 @@ const config = read("src/pages/FootballConfig.tsx");
 for (const token of ["MATCH", "GOLDEN GOAL", "PREMIER À X", "TIRS AU BUT", "CLASSIC", "Mercy rule", "Difficulté des secteurs", "Coach tactique", "Coup d’envoi"]) assert.ok(config.includes(token), `configuration incomplète: ${token}`);
 
 const play = read("src/pages/FootballPlay.tsx");
-for (const token of ["football-live-strip", "TABLEAU DU MATCH", "FEUILLE DE MATCH", "records", "buildMatchHighlights", "CompactFootballPad", "FootballEnd"]) assert.ok(play.includes(token), `jeu incomplet: ${token}`);
+for (const token of ["FootballFlow", "football-input-zone", "TABLEAU DU MATCH", "FEUILLE DE MATCH", "records", "buildMatchHighlights", "CompactFootballPad", "FootballEnd"]) assert.ok(play.includes(token), `jeu incomplet: ${token}`);
 
 const end = read("src/pages/FootballEnd.tsx");
 for (const token of ["JOUEUR DU MATCH", "STATS MATCH", "MEILLEUR BUTEUR", "MEILLEUR GARDIEN", "MOMENTS CLÉS", "STATISTIQUES & RECORDS"]) assert.ok(end.includes(token), `écran de fin incomplet: ${token}`);

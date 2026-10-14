@@ -126,9 +126,9 @@ export default function OrganizationMembersPanel({ organization, groups, userId,
     cursor: "pointer",
   };
 
-  const refresh = React.useCallback(async () => {
+  const refresh = React.useCallback(async (silent = false) => {
     if (!organization.id) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError("");
     try {
       const [memberResult, inviteResult, proposalResult] = await Promise.all([
@@ -142,11 +142,28 @@ export default function OrganizationMembersPanel({ organization, groups, userId,
     } catch (e: any) {
       setError(String(e?.message || L("Impossible de charger les membres.", "Unable to load members.", "No se pueden cargar los miembros.")));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [organization.id, userId, canManage, L]);
 
   React.useEffect(() => { void refresh(); }, [refresh]);
+
+  // Keep cross-device approvals in sync while this panel is open.
+  // Silent refresh avoids making the member list flash every few seconds.
+  React.useEffect(() => {
+    if (!organization.id || !userId) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refresh(true);
+    }, 8000);
+    const onFocus = () => { if (document.visibilityState === "visible") void refresh(true); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [organization.id, userId, refresh]);
 
   React.useEffect(() => {
     if (!userId || !proposalOpen) return;
@@ -169,16 +186,22 @@ export default function OrganizationMembersPanel({ organization, groups, userId,
         if (cancelled) return;
         const memberIds = new Set(members.map((m) => m.userId));
         const pendingIds = new Set(invitations.filter((inv) => inv.status === "pending").map((inv) => inv.invitedUserId));
+        const pendingProposalIds = new Set(
+          proposals
+            .filter((proposal) => proposal.status === "pending" && proposal.targetType === "user")
+            .map((proposal) => proposal.targetUserId)
+            .filter(Boolean),
+        );
         setSearchResults(rows.filter((row) => {
           const id = String(row.userId || row.id || "");
-          return id && id !== userId && !memberIds.has(id) && !pendingIds.has(id);
+          return id && id !== userId && !memberIds.has(id) && !pendingIds.has(id) && !pendingProposalIds.has(id);
         }).slice(0, 8));
       }).catch((e) => {
         if (!cancelled) setError(String(e?.message || L("Recherche indisponible.", "Search unavailable.", "Búsqueda no disponible.")));
       }).finally(() => { if (!cancelled) setSearchBusy(false); });
     }, 320);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [search, canManage, members, invitations, userId, L]);
+  }, [search, canManage, members, invitations, proposals, userId, L]);
 
   const run = async (key: string, fn: () => Promise<void>, success?: string) => {
     setActionKey(key);
@@ -188,6 +211,9 @@ export default function OrganizationMembersPanel({ organization, groups, userId,
       await fn();
       if (success) setNotice(success);
       await refresh();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("mss:organization-members-changed", { detail: { organizationId: organization.id } }));
+      }
       await onChanged?.();
     } catch (e: any) {
       setError(String(e?.message || L("Action impossible.", "Action failed.", "Acción imposible.")));
@@ -242,6 +268,22 @@ export default function OrganizationMembersPanel({ organization, groups, userId,
     void run(`propose-local:${profileId}`, async () => {
       await proposeOrganizationMember(userId, organization.id, { localProfileId: profileId, localProfileName: name, localProfileAvatarUrl: avatar, localProfileCountryCode: country, role: proposalRole });
     }, L("Profil local proposé au créateur de l’organisation.", "Local profile proposed to the organization owner.", "Perfil local propuesto al creador de la organización."));
+  };
+
+  const renderProposalProgress = (proposal: OrganizationMemberProposal) => {
+    const ownerDone = proposal.adminStatus === "approved";
+    const targetDone = proposal.targetStatus === "approved" || proposal.targetStatus === "not_required";
+    const targetLabel = proposal.targetType === "local_profile"
+      ? L("PROFIL AUTORISÉ", "PROFILE AUTHORIZED", "PERFIL AUTORIZADO")
+      : L("AMI", "FRIEND", "AMIGO");
+    const chip = (label: string, done: boolean) => <span style={{ borderRadius: 999, padding: "4px 7px", border: `1px solid ${done ? theme.primary : theme.borderSoft}`, background: done ? `${theme.primary}10` : "rgba(255,255,255,.025)", color: done ? theme.primary : theme.textSoft, fontSize: 7.4, fontWeight: 1000, whiteSpace: "nowrap" }}>{done ? "✓ " : "○ "}{label}</span>;
+    return <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+      {chip(L("CRÉATEUR", "OWNER", "CREADOR"), ownerDone)}
+      <span style={{ color: theme.textSoft, fontSize: 8 }}>→</span>
+      {chip(targetLabel, targetDone)}
+      <span style={{ color: theme.textSoft, fontSize: 8 }}>→</span>
+      {chip(L("AJOUT AUTO", "AUTO ADD", "ALTA AUTO"), false)}
+    </div>;
   };
 
   const activeCount = members.filter((m) => m.status === "active").length;
@@ -375,7 +417,16 @@ export default function OrganizationMembersPanel({ organization, groups, userId,
       {proposals.length ? <div style={{ ...card, padding: 13 }}>
         <div style={{ color: theme.text, fontSize: 10.5, fontWeight: 1000 }}>{isOwner ? L("Propositions d’adhésion à valider", "Membership proposals to review", "Propuestas de adhesión por revisar") : L("Mes propositions en attente", "My pending proposals", "Mis propuestas pendientes")}</div>
         <div style={{ marginTop: 8, display: "grid", gap: 6 }}>{proposals.map((proposal) => <div key={proposal.id} style={{ borderRadius: 11, border: `1px solid ${theme.borderSoft}`, padding: 9, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
-          <div style={{ minWidth: 0 }}><strong style={{ display: "block", color: theme.text, fontSize: 9.8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{proposal.targetDisplayName}</strong><small style={{ color: theme.textSoft, fontSize: 8 }}>{proposal.targetType === "local_profile" ? L("Profil local", "Local profile", "Perfil local") : L("Ami MSS", "MSS friend", "Amigo MSS")} · {organizationRoleLabel(proposal.role)} · {proposal.adminStatus === "approved" ? L("créateur ✓", "owner ✓", "creador ✓") : L("créateur en attente", "owner pending", "creador pendiente")} · {proposal.targetStatus === "not_required" ? L("consentement propriétaire", "owner consent", "consentimiento propietario") : proposal.targetStatus === "approved" ? L("ami ✓", "friend ✓", "amigo ✓") : L("ami en attente", "friend pending", "amigo pendiente")}</small></div>
+          <div style={{ minWidth: 0 }}>
+            <strong style={{ display: "block", color: theme.text, fontSize: 9.8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{proposal.targetDisplayName}</strong>
+            <small style={{ color: theme.textSoft, fontSize: 8 }}>{proposal.targetType === "local_profile" ? L("Profil local", "Local profile", "Perfil local") : L("Ami MSS", "MSS friend", "Amigo MSS")} · {organizationRoleLabel(proposal.role)} · {L("proposé par", "proposed by", "propuesto por")} {proposal.proposerDisplayName}</small>
+            {renderProposalProgress(proposal)}
+            <div style={{ marginTop: 5, color: theme.textSoft, fontSize: 7.8, lineHeight: 1.35 }}>{proposal.adminStatus !== "approved"
+              ? L("En attente de la validation du créateur de l’organisation.", "Waiting for the organization owner approval.", "Esperando la aprobación del creador de la organización.")
+              : proposal.targetStatus === "pending"
+                ? L("Créateur validé : il ne manque plus que l’accord de l’ami.", "Owner approved: only the friend's consent is still required.", "Creador aprobado: solo falta el consentimiento del amigo.")
+                : L("Toutes les validations sont acquises : l’ajout est finalisé automatiquement.", "All approvals are complete: membership is finalized automatically.", "Todas las aprobaciones están completas: el alta se finaliza automáticamente.")}</div>
+          </div>
           <div style={{ display: "flex", gap: 5 }}>{isOwner && proposal.adminStatus === "pending" ? <><button type="button" disabled={!!actionKey} onClick={() => void run(`decline-proposal:${proposal.id}`, async () => { await reviewOrganizationMemberProposal(userId, proposal.id, false); })} style={{ ...button, minHeight: 30, color: "#ff9a9a" }}>{L("REFUSER", "DECLINE", "RECHAZAR")}</button><button type="button" disabled={!!actionKey} onClick={() => void run(`approve-proposal:${proposal.id}`, async () => { await reviewOrganizationMemberProposal(userId, proposal.id, true); }, L("Proposition validée. L’ajout sera final dès que toutes les validations requises sont acquises.", "Proposal approved. Membership becomes final once all required approvals are complete.", "Propuesta aprobada. El alta será definitiva cuando estén todas las validaciones."))} style={{ ...button, minHeight: 30, color: theme.primary }}>{L("VALIDER", "APPROVE", "APROBAR")}</button></> : proposal.proposerUserId === userId ? <button type="button" disabled={!!actionKey} onClick={() => void run(`cancel-proposal:${proposal.id}`, async () => { await cancelOrganizationMemberProposal(userId, proposal.id); })} style={{ ...button, minHeight: 30, color: "#ff9a9a" }}>{L("ANNULER", "CANCEL", "CANCELAR")}</button> : null}</div>
         </div>)}</div>
       </div> : null}

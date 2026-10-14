@@ -1,4 +1,4 @@
-import type { CargoPlayerStats, CargoState, CargoVisitEvent } from './cargoEngine';
+import type { CargoContractBed, CargoPlayerStats, CargoState, CargoVisitEvent } from './cargoEngine';
 
 export type CargoLoadStage = 'EMPTY' | 'LOADING' | 'PALLET_READY' | 'LOADED' | 'FULL';
 
@@ -291,4 +291,174 @@ export function cargoRecentEvents(state: CargoState, playerId?: string | null, l
   const selected = playerId ? visits.filter((visit) => String(visit.playerId) === String(playerId)) : visits;
   const events = selected.flatMap((visit) => Array.isArray(visit.events) ? visit.events : []).filter(Boolean);
   return events.slice(-Math.max(1, limit)).reverse();
+}
+
+
+export type CargoAimCue = {
+  mode: 'contract' | 'choice' | 'series' | 'parcel' | 'free';
+  label: string;
+  detail: string;
+  bed: CargoContractBed | 'ANY';
+  number: number | null;
+  targetCount: number;
+  progress: number;
+  remaining: number;
+  contractId: string | null;
+  suggestedContractId: string | null;
+  fixedTarget: boolean;
+};
+
+function previewBed(mult: number, value: number): CargoContractBed | 'BULL' | 'DBULL' | 'MISS' {
+  if (!value) return 'MISS';
+  if (value === 25) return mult === 2 ? 'DBULL' : 'BULL';
+  if (mult === 3) return 'T';
+  if (mult === 2) return 'D';
+  return 'S';
+}
+
+export function cargoPreviewDartLabel(dart: any): string {
+  const value = safeNumber(dart?.v ?? dart?.number, 0);
+  const mult = safeNumber(dart?.mult, 1);
+  const bed = previewBed(mult, value);
+  if (bed === 'MISS') return 'MISS';
+  if (bed === 'BULL' || bed === 'DBULL') return bed;
+  return `${bed}${value}`;
+}
+
+function suggestedContract(state: CargoState) {
+  const contracts = Array.isArray(state?.contracts) ? [...state.contracts] : [];
+  if (!contracts.length) return null;
+  return contracts.sort((a, b) => {
+    const aPriority = (a.urgent ? 2000 : 0) + (a.fragile ? 1000 : 0) + safeNumber(a.finalWeight, 0) / Math.max(1, safeNumber(a.targetCount, 1));
+    const bPriority = (b.urgent ? 2000 : 0) + (b.fragile ? 1000 : 0) + safeNumber(b.finalWeight, 0) / Math.max(1, safeNumber(b.targetCount, 1));
+    return bPriority - aPriority;
+  })[0] || null;
+}
+
+export function buildCargoAimCue(state: CargoState, stats?: CargoPlayerStats | null): CargoAimCue {
+  const config = state?.config;
+  const series = stats?.currentSeries || null;
+  const contract = cargoActiveContract(state, stats);
+
+  if (contract && series) {
+    const targetCount = Math.max(1, safeNumber(contract.targetCount, 1));
+    const progress = clamp(safeNumber(series.count, 0), 0, targetCount);
+    return {
+      mode: 'contract',
+      label: `${contract.bed}${contract.sector}`,
+      detail: `${contract.label} · ${progress}/${targetCount} · ${contract.finalWeight} kg`,
+      bed: contract.bed,
+      number: contract.sector,
+      targetCount,
+      progress,
+      remaining: Math.max(0, targetCount - progress),
+      contractId: contract.id,
+      suggestedContractId: contract.id,
+      fixedTarget: true,
+    };
+  }
+
+  if (config?.variant === 'parcel_delivery') {
+    const progress = clamp(safeNumber(series?.count, 0), 0, 5);
+    return {
+      mode: 'parcel',
+      label: series?.number ? `N° ${series.number}` : '1ER NUMÉRO',
+      detail: series?.number ? `Reste sur le ${series.number} pour pousser la livraison jusqu’à 5.` : 'La première touche fixe l’adresse de livraison.',
+      bed: 'ANY',
+      number: series?.number ? safeNumber(series.number, 0) : null,
+      targetCount: 5,
+      progress,
+      remaining: Math.max(0, 5 - progress),
+      contractId: null,
+      suggestedContractId: null,
+      fixedTarget: Boolean(series?.number),
+    };
+  }
+
+  if (series) {
+    const targetCount = Math.max(1, safeNumber(config?.maxSeries, 5));
+    const progress = clamp(safeNumber(series.count, 0), 0, targetCount);
+    const exactBed = config?.seriesRule === 'exact_segment' ? series.bed : 'ANY';
+    return {
+      mode: config?.variant === 'free_load' || config?.variant === 'full_pallet' ? 'free' : 'series',
+      label: `${exactBed === 'ANY' ? '' : exactBed}${series.number}`,
+      detail: config?.seriesRule === 'exact_segment' ? `Reste exactement sur ${series.bed}${series.number}.` : `Reste sur le numéro ${series.number}, multiplicateur libre.`,
+      bed: exactBed,
+      number: safeNumber(series.number, 0),
+      targetCount,
+      progress,
+      remaining: Math.max(0, targetCount - progress),
+      contractId: null,
+      suggestedContractId: null,
+      fixedTarget: true,
+    };
+  }
+
+  const choice = suggestedContract(state);
+  if (choice) {
+    const targetCount = Math.max(1, safeNumber(choice.targetCount, 1));
+    return {
+      mode: 'choice',
+      label: `${choice.bed}${choice.sector}`,
+      detail: `Suggestion : ${choice.label} · ${targetCount} touche${targetCount > 1 ? 's' : ''} · ${choice.finalWeight} kg.`,
+      bed: choice.bed,
+      number: choice.sector,
+      targetCount,
+      progress: 0,
+      remaining: targetCount,
+      contractId: null,
+      suggestedContractId: choice.id,
+      fixedTarget: false,
+    };
+  }
+
+  const maxSeries = Math.max(1, safeNumber(config?.maxSeries, 5));
+  return {
+    mode: 'free',
+    label: '1ER IMPACT',
+    detail: config?.seriesRule === 'exact_segment' ? 'Le premier segment fixe la série S/D/T + numéro.' : 'Le premier numéro fixe la série, multiplicateur libre.',
+    bed: 'ANY',
+    number: null,
+    targetCount: maxSeries,
+    progress: 0,
+    remaining: maxSeries,
+    contractId: null,
+    suggestedContractId: null,
+    fixedTarget: false,
+  };
+}
+
+function previewMatchesFixedTarget(aim: CargoAimCue, dart: any): boolean | null {
+  const value = safeNumber(dart?.v ?? dart?.number, 0);
+  const mult = safeNumber(dart?.mult, 1);
+  const bed = previewBed(mult, value);
+  if (bed === 'MISS') return false;
+  if (bed === 'BULL' || bed === 'DBULL') return null;
+  if (aim.number == null) return true;
+  if (value !== aim.number) return false;
+  return aim.bed === 'ANY' || aim.bed === bed;
+}
+
+export function cargoPreviewDartMatches(state: CargoState, stats: CargoPlayerStats | null | undefined, dart: any, previousDarts: any[] = []): boolean | null {
+  const aim = buildCargoAimCue(state, stats);
+  const value = safeNumber(dart?.v ?? dart?.number, 0);
+  const mult = safeNumber(dart?.mult, 1);
+  const bed = previewBed(mult, value);
+  if (bed === 'MISS') return false;
+  if (bed === 'BULL' || bed === 'DBULL') return null;
+
+  if (stats?.currentSeries || state?.config?.variant === 'parcel_delivery' && aim.number != null) {
+    return previewMatchesFixedTarget(aim, dart);
+  }
+
+  if (Array.isArray(state?.contracts) && state.contracts.length) {
+    return state.contracts.some((contract) => contract.sector === value && (contract.bed === 'ANY' || contract.bed === bed));
+  }
+
+  const first = previousDarts.find((item) => safeNumber(item?.v ?? item?.number, 0) > 0 && safeNumber(item?.v ?? item?.number, 0) !== 25);
+  if (!first) return true;
+  const firstValue = safeNumber(first?.v ?? first?.number, 0);
+  const firstBed = previewBed(safeNumber(first?.mult, 1), firstValue);
+  if (value !== firstValue) return false;
+  return state?.config?.seriesRule === 'exact_segment' ? bed === firstBed : true;
 }

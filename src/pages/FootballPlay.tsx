@@ -1,6 +1,6 @@
 // @ts-nocheck
 // =============================================================
-// DARTS FOOTBALL — match compact, lisible et tactique
+// DARTS FOOTBALL V11 — gameplay coach, terrain pédagogique et saisie contextuelle
 // =============================================================
 
 import React from "react";
@@ -105,6 +105,48 @@ function actionMeta(action: FootballAction) {
   return { title: "MARQUE LE BUT", subtitle: "N’importe quel double est valable", effects: ["DOUBLE · BUT", "DBULL · BUT", "SINON · PERDU"] };
 }
 
+function actionIcon(action: FootballAction) {
+  if (action === "attack") return "➜";
+  if (action === "defense") return "🛡️";
+  if (action === "shot" || action === "classic_shot") return "🥅";
+  if (action === "goalkeeper") return "🧤";
+  if (action === "penalty") return "🎯";
+  return "⚽";
+}
+
+function actionMissHint(state: FootballState, action: FootballAction) {
+  if (action === "attack") return state.config.missLosesPossession ? "Aucune cible sur la volée = ballon perdu." : "Aucune cible = pas de progression, mais la possession reste en jeu.";
+  if (action === "defense") return "Hors cible = pressing manqué, l’adversaire garde le ballon.";
+  if (action === "shot") return "Hors cible = tir non cadré. Une cible S/D ouvre la parade du gardien.";
+  if (action === "goalkeeper") return "Aucune zone de parade touchée = le but est accordé.";
+  if (action === "penalty") return "Aucune cible touchée = penalty raté.";
+  if (action === "classic_possession") return "Bull manqué = la possession ne change pas.";
+  return "Aucun double = frappe manquée et ballon perdu.";
+}
+
+function actionFlow(action: FootballAction) {
+  if (action === "defense") return { steps: ["DÉFENDRE", "RÉCUPÉRER", "CONTRER", "ATTAQUER"], active: 0 };
+  if (action === "shot") return { steps: ["POSSESSION", "SURFACE", "TIR", "BUT"], active: 2 };
+  if (action === "goalkeeper") return { steps: ["TIR SUBI", "PARADE", "RELANCE", "ATTAQUE"], active: 1 };
+  if (action === "penalty") return { steps: ["PLACER", "VISER", "TIRER", "BUT"], active: 2 };
+  if (action === "classic_possession") return { steps: ["BULL", "BALLON", "DOUBLE", "BUT"], active: 0 };
+  if (action === "classic_shot") return { steps: ["BALLON", "DOUBLE", "BUT", "VICTOIRE"], active: 1 };
+  return { steps: ["POSSESSION", "PROGRESSER", "SURFACE", "TIR"], active: 1 };
+}
+
+function FootballFlow({ state }: { state: FootballState }) {
+  const action = getFootballAction(state);
+  const flow = actionFlow(action);
+  const color = actionColor(action);
+  return <section className="football-flow football-glass" aria-label="Étapes de l’action en cours">
+    <div className="football-flow__label" style={{ color }}>PLAN DE JEU</div>
+    <div className="football-flow__steps">{flow.steps.map((step, index) => <React.Fragment key={step}>
+      <span className={`football-flow__step ${index === flow.active ? "is-active" : ""} ${index < flow.active ? "is-done" : ""}`} style={index === flow.active ? { color, borderColor: `${color}88`, background: `${color}12` } : undefined}>{step}</span>
+      {index < flow.steps.length - 1 ? <b className="football-flow__arrow">›</b> : null}
+    </React.Fragment>)}</div>
+  </section>;
+}
+
 function Rules({ config }: { config: FootballConfigPayload }) {
   return <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 1.46 }}>
     <div><strong style={{ color: GREEN }}>{footballVariantLabel(config.variant).toUpperCase()}</strong><br />La mission affichée change automatiquement selon la possession et la position du ballon.</div>
@@ -119,9 +161,12 @@ function FootballField({ state }: { state: FootballState }) {
   const ballLeft = `${Math.max(4, Math.min(96, (state.ballPosition / 6) * 100))}%`;
   const possession = getFootballPossessionSide(state);
   const possessionIndex = state.possessionSideIndex;
-  const zones = ["BUT", "SURF.", "DÉF.", "MILIEU", "ATT.", "SURF.", "BUT"];
+  const zones = ["BUT", "SURFACE", "DÉFENSE", "MILIEU", "ATTAQUE", "SURFACE", "BUT"];
   const leftColor = state.sides[0]?.color || BLUE;
   const rightColor = state.sides[1]?.color || RED;
+  const directionStep = possessionIndex === 0 ? 1 : -1;
+  const nextZone = Math.max(0, Math.min(6, state.ballPosition + directionStep));
+  const hasPassed = (index: number) => possessionIndex === 0 ? index < state.ballPosition : index > state.ballPosition;
 
   return <div className="football-field football-glass">
     <div className="football-field__outline" />
@@ -133,12 +178,17 @@ function FootballField({ state }: { state: FootballState }) {
     <div className="football-field__goal is-right" style={{ color: rightColor }} />
     <div className="football-field__team is-left" style={{ color: leftColor }}>{state.sides[0]?.name}</div>
     <div className="football-field__team is-right" style={{ color: rightColor }}>{state.sides[1]?.name}</div>
-    <div className={`football-field__direction ${possessionIndex === 0 ? "is-left" : "is-right"}`} style={{ color: possession?.color || GREEN }}>{possessionIndex === 0 ? "➜➜" : "➜➜"}</div>
-    <div className="football-field__status" style={{ color: possession?.color || GREEN }}>⚡ {possession?.name} · {footballZoneLabel(state.ballPosition)}</div>
+    <div className={`football-field__direction ${possessionIndex === 0 ? "is-right" : "is-left"}`} style={{ color: possession?.color || GREEN }}>{possessionIndex === 0 ? "➜➜" : "➜➜"}</div>
+    <div className={`football-field__objective ${possessionIndex === 0 ? "is-right" : "is-left"}`} style={{ color: possession?.color || GREEN }}>{possessionIndex === 0 ? "BUT À ATTAQUER ➜" : "← BUT À ATTAQUER"}</div>
+    <div className="football-field__status" style={{ color: possession?.color || GREEN }}>⚡ {possession?.name} · BALLON {footballZoneLabel(state.ballPosition)}</div>
     <div className="football-field__ball" style={{ left: ballLeft, ["--football-possession-glow" as any]: `${possession?.color || GREEN}66` }}>
       <div className="football-field__ball-core">⚽</div>
     </div>
-    <div className="football-field__zones">{zones.map((zone, index) => <span key={`${zone}-${index}`} className={`football-field__zone ${index === state.ballPosition ? "is-active" : ""}`}>{zone}</span>)}</div>
+    <div className="football-field__zones">{zones.map((zone, index) => <span
+      key={`${zone}-${index}`}
+      className={`football-field__zone ${index === state.ballPosition ? "is-active" : ""} ${index === nextZone ? "is-next" : ""} ${hasPassed(index) ? "is-passed" : ""}`}
+      style={{ ["--football-zone-color" as any]: possession?.color || GREEN }}
+    >{zone}</span>)}</div>
   </div>;
 }
 
@@ -148,17 +198,31 @@ function MissionCard({ state }: { state: FootballState }) {
   const color = actionColor(action);
   const targets = getFootballTargets(state, action);
   const specialTargets = action === "classic_possession" ? ["BULL", "DBULL"] : action === "classic_shot" ? ["TOUT DOUBLE", "DBULL"] : [];
+  const visibleTargets = specialTargets.length ? specialTargets : targets;
 
-  return <section className="football-mission-card football-glass" style={{ borderColor: `${color}55` }}>
+  return <section className="football-mission-card football-glass" style={{ borderColor: `${color}66` }}>
     <div className="football-mission-head">
-      <div className="football-mission-title" style={{ color }}>{meta.title}</div>
+      <div className="football-mission-identity">
+        <span className="football-mission-icon" style={{ color, borderColor: `${color}55`, background: `${color}12` }}>{actionIcon(action)}</span>
+        <div><div className="football-mission-eyebrow" style={{ color }}>TON ACTION</div><div className="football-mission-title" style={{ color }}>{meta.title}</div></div>
+      </div>
       <div className="football-mission-turn">{state.stage === "penalties" ? `TIR ${Math.floor(state.turnCount / 2) + 1}` : `P${state.period} · T${state.roundInPeriod}`}</div>
     </div>
-    <div style={{ marginTop: 2, color: SOFT, fontSize: 6.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{meta.subtitle}</div>
+    <div className="football-mission-subtitle">{meta.subtitle}</div>
+
+    <div className="football-mission-section-label">À VISER MAINTENANT</div>
     <div className="football-targets">
-      {(specialTargets.length ? specialTargets : targets).map((target: any) => <span key={String(target)} className="football-target-chip" style={{ color }}>{target}</span>)}
+      {visibleTargets.map((target: any, index: number) => <span key={String(target)} className={`football-target-chip ${index === 0 ? "is-primary" : ""}`} style={{ color }}>{target}</span>)}
     </div>
-    {state.config.coachHints !== false ? <div className="football-effects">{meta.effects.map((effect) => <span key={effect} className="football-effect">{effect}</span>)}</div> : null}
+
+    {state.config.coachHints !== false ? <>
+      <div className="football-mission-section-label">SI TU TOUCHES</div>
+      <div className="football-effects">{meta.effects.map((effect) => {
+        const [head, ...tail] = String(effect).split("·");
+        return <span key={effect} className="football-effect"><strong>{head.trim()}</strong><small>{tail.join("·").trim()}</small></span>;
+      })}</div>
+      <div className="football-miss-hint"><span>✕ SI TU RATES</span><strong>{actionMissHint(state, action)}</strong></div>
+    </> : null}
   </section>;
 }
 
@@ -180,6 +244,7 @@ function dartPreviewLabel(dart?: UiDart) {
 function CompactFootballPad({ currentThrow, multiplier, targets, targetColor, action, notice, onSimple, onDouble, onTriple, onNumber, onBull, onCancel, onBackspace, onValidate, disabled }: any) {
   const rows = [[0, 1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12, 13], [14, 15, 16, 17, 18, 19, 20]];
   const targetSet = new Set(action === "classic_shot" || action === "classic_possession" ? [] : targets);
+  const selectedEffect = actionMeta(action).effects[Math.max(0, Math.min(2, Number(multiplier || 1) - 1))] || "";
 
   return <div className="football-compact-pad">
     <div className="football-pad-status">
@@ -187,10 +252,12 @@ function CompactFootballPad({ currentThrow, multiplier, targets, targetColor, ac
       <div className="football-pad-preview">{[0, 1, 2].map((index) => <span key={index} className="football-pad-preview-chip">{dartPreviewLabel(currentThrow[index])}</span>)}</div>
     </div>
 
+    <div className="football-pad-choice"><span>CHOIX ACTUEL</span><strong style={{ color: targetColor }}>{selectedEffect}</strong></div>
+
     <div className="football-pad-modes">
-      <button type="button" className={`football-pad-mode ${multiplier === 1 ? "is-active is-simple" : ""}`} onClick={onSimple} disabled={disabled}>SIMPLE</button>
-      <button type="button" className={`football-pad-mode ${multiplier === 2 ? "is-active is-double" : ""}`} onClick={onDouble} disabled={disabled}>DOUBLE</button>
-      <button type="button" className={`football-pad-mode ${multiplier === 3 ? "is-active is-triple" : ""}`} onClick={onTriple} disabled={disabled}>TRIPLE</button>
+      <button type="button" className={`football-pad-mode ${multiplier === 1 ? "is-active is-simple" : ""}`} onClick={onSimple} disabled={disabled}><span>SIMPLE</span><small>SÛR</small></button>
+      <button type="button" className={`football-pad-mode ${multiplier === 2 ? "is-active is-double" : ""}`} onClick={onDouble} disabled={disabled}><span>DOUBLE</span><small>FORT</small></button>
+      <button type="button" className={`football-pad-mode ${multiplier === 3 ? "is-active is-triple" : ""}`} onClick={onTriple} disabled={disabled}><span>TRIPLE</span><small>MAX</small></button>
       <button type="button" className="football-pad-undo" onClick={onCancel} disabled={disabled}>↶</button>
     </div>
 
@@ -201,7 +268,7 @@ function CompactFootballPad({ currentThrow, multiplier, targets, targetColor, ac
       style={targetSet.has(number) ? { ["--football-target-color" as any]: targetColor } : undefined}
       onClick={() => onNumber(number)}
       disabled={disabled}
-    >{number === 0 ? "MISS" : number}</button>)}</div>)}
+    >{number === 0 ? "MISS" : <><span>{number}</span>{targetSet.has(number) ? <small>CIBLE</small> : null}</>}</button>)}</div>)}
 
     <div className="football-pad-footer">
       <button type="button" className={`football-pad-bull ${multiplier === 2 ? "is-dbull" : ""}`} onClick={onBull} disabled={disabled}>{multiplier === 2 ? "DBULL" : "BULL"}</button>
@@ -567,30 +634,8 @@ export default function FootballPlay(props: any) {
         </div>
       </section>
 
-      <section className="football-live-strip football-glass">
-        <div className="football-live-side is-left" style={{ color: state.sides[0]?.color || BLUE }}>
-          <strong>{sideStat(state, 0, "shots")}</strong><span>TIRS</span><strong>{sideStat(state, 0, "shotsOnTarget")}</strong><span>CAD.</span><strong>{possession0}%</strong><span>POS.</span><strong>{sideStat(state, 0, "interceptions")}</strong><span>INT.</span>
-        </div>
-        <div className="football-live-center">LIVE</div>
-        <div className="football-live-side is-right" style={{ color: state.sides[1]?.color || RED }}>
-          <strong>{sideStat(state, 1, "shots")}</strong><span>TIRS</span><strong>{sideStat(state, 1, "shotsOnTarget")}</strong><span>CAD.</span><strong>{possession1}%</strong><span>POS.</span><strong>{sideStat(state, 1, "interceptions")}</strong><span>INT.</span>
-        </div>
-      </section>
-
-      <section className="football-momentum football-glass">
-        <div className="football-momentum__head">
-          <span style={{ color: state.sides[0]?.color || BLUE }}>{momentum.leftPct}%</span>
-          <strong>{momentumLeader ? `TEMPS FORT · ${momentumLeader.name}` : `RYTHME · ${momentum.label}`}</strong>
-          <span style={{ color: state.sides[1]?.color || RED }}>{momentum.rightPct}%</span>
-        </div>
-        <div className="football-momentum__bar" aria-label="Dynamique récente du match">
-          <span className="is-left" style={{ width: `${momentum.leftPct}%`, background: state.sides[0]?.color || BLUE }} />
-          <span className="is-right" style={{ width: `${momentum.rightPct}%`, background: state.sides[1]?.color || RED }} />
-        </div>
-        <div className="football-momentum__foot">DYNAMIQUE DES {Math.max(1, momentum.window)} DERNIÈRES VOLÉES</div>
-      </section>
-
       <FootballField state={state} />
+      <FootballFlow state={state} />
 
       <section className="football-match-ticker football-glass" style={{ borderColor: `${currentActionColor}3d` }}>
         <span className="football-match-ticker__pulse" style={{ background: currentActionColor, boxShadow: `0 0 10px ${currentActionColor}` }} />
@@ -610,13 +655,7 @@ export default function FootballPlay(props: any) {
         <MissionCard state={state} />
       </div>
 
-      <section className="football-quick-actions">
-        <QuickAction icon="⚽" label="TABLEAU DU MATCH" value={`${score0}-${score1}`} color={BLUE} onClick={() => setOverlay("teams")} />
-        <QuickAction icon="📊" label="MES STATISTIQUES" value={`${footballAccuracy(activeStats)}%`} color={GREEN} onClick={() => setOverlay("stats")} />
-        <QuickAction icon="🕘" label="DERNIÈRE ACTION" value={state.visits.length} color={GOLD} onClick={() => setOverlay("log")} />
-      </section>
-
-      <section style={{ minWidth: 0 }}>
+      <section className="football-input-zone">
         {config.scoreInputMethod === "dartboard" ? <div className="football-dartboard-shell football-glass">
           <div style={{ width: "100%", color: String(notice || "").includes("BUT") ? GOLD : SOFT, fontSize: 7, fontWeight: 900, textAlign: "center", lineHeight: 1.3 }}>{notice}</div>
           <DartboardClickable onHit={(segment, mult) => addDart(segment, mult)} multiplier={multiplier} size={Math.min(260, typeof window !== "undefined" ? window.innerWidth - 30 : 250)} disabled={inputDisabled} />
@@ -643,6 +682,13 @@ export default function FootballPlay(props: any) {
           disabled={botThinking || state.phase === "finished"}
         />}
       </section>
+
+      <section className="football-quick-actions">
+        <QuickAction icon="⚽" label="TABLEAU DU MATCH" value={`${score0}-${score1}`} color={BLUE} onClick={() => setOverlay("teams")} />
+        <QuickAction icon="📊" label="MES STATISTIQUES" value={`${footballAccuracy(activeStats)}%`} color={GREEN} onClick={() => setOverlay("stats")} />
+        <QuickAction icon="🕘" label="DERNIÈRE ACTION" value={state.visits.length} color={GOLD} onClick={() => setOverlay("log")} />
+      </section>
+
     </main>
 
     {overlay === "stats" ? <OverlayShell title={`STATS · ${playerName(activeProfile).toUpperCase()}`} subtitle={`${footballActionLabel(actionNow)} · ${activeSide?.name}`} color={GREEN} onClose={() => setOverlay(null)}>
@@ -660,6 +706,11 @@ export default function FootballPlay(props: any) {
     </OverlayShell> : null}
 
     {overlay === "teams" ? <OverlayShell title="FEUILLE DE MATCH" subtitle={`${footballVariantLabel(config.variant)} · ${state.visits.length} volées`} color={BLUE} onClose={() => setOverlay(null)}>
+      <section className="football-momentum football-glass" style={{ marginBottom: 9 }}>
+        <div className="football-momentum__head"><span style={{ color: state.sides[0]?.color || BLUE }}>{momentum.leftPct}%</span><strong>{momentumLeader ? `TEMPS FORT · ${momentumLeader.name}` : `RYTHME · ${momentum.label}`}</strong><span style={{ color: state.sides[1]?.color || RED }}>{momentum.rightPct}%</span></div>
+        <div className="football-momentum__bar"><span className="is-left" style={{ width: `${momentum.leftPct}%`, background: state.sides[0]?.color || BLUE }} /><span className="is-right" style={{ width: `${momentum.rightPct}%`, background: state.sides[1]?.color || RED }} /></div>
+        <div className="football-momentum__foot">DYNAMIQUE DES {Math.max(1, momentum.window)} DERNIÈRES VOLÉES</div>
+      </section>
       <div style={{ display: "grid", gap: 9 }}>{state.sides.map((side: any) => <div key={side.id} style={{ borderRadius: 16, padding: 10, border: `1px solid ${side.color}55`, background: `${side.color}0d` }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: side.color }}>{side.name}</strong><strong style={{ color: WHITE, fontSize: 18 }}>{state.scoreBySide[side.id] || 0}</strong></div>
         {(() => {

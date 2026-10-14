@@ -1,7 +1,7 @@
 // @ts-nocheck
 // =============================================================
 // DARTS FOOTBALL — configuration guidée claire et progressive
-// V10 — 6 étapes, une décision principale par écran
+// V11 — 7 étapes, une décision principale par écran + résumé avant coup d'envoi
 // =============================================================
 
 import React from "react";
@@ -92,7 +92,7 @@ function RulesContent() {
     <div><strong style={{ color: BLUE }}>ATTAQUE</strong><br />Simple = +1 zone, Double = +2, Triple = +3. Plus tu es précis, plus vite tu approches du but.</div>
     <div><strong style={{ color: RED }}>DÉFENSE</strong><br />Simple repousse, Double intercepte, Triple intercepte et lance une contre-attaque.</div>
     <div><strong style={{ color: GOLD }}>TIR / GARDIEN</strong><br />Dans la surface, Triple ou DBULL marque directement. Les autres tirs cadrés peuvent déclencher une parade.</div>
-    <div><strong style={{ color: GREEN }}>MODE GUIDÉ</strong><br />Six étapes courtes : variante, style, participants, format, gameplay et saisie. Une seule décision importante à la fois.</div>
+    <div><strong style={{ color: GREEN }}>MODE GUIDÉ</strong><br />Sept étapes courtes : variante, style, participants, format, gameplay, saisie puis résumé. Une seule décision importante à la fois.</div>
     <div><strong style={{ color: BLUE }}>TOUS LES RÉGLAGES</strong><br />Affiche les mêmes options sur une seule page pour les joueurs qui veulent tout régler rapidement.</div>
   </div>;
 }
@@ -143,7 +143,7 @@ function ConfigBlock({ title, color, children }: any) {
 
 function GuidedIntro({ index, title, text, color = GREEN }: any) {
   return <div className="football-guided-intro" style={{ borderColor: `${color}55` }}>
-    <span style={{ color }}>ÉTAPE {index}/6</span>
+    <span style={{ color }}>ÉTAPE {index}/7</span>
     <div><strong>{title}</strong><small>{text}</small></div>
   </div>;
 }
@@ -184,7 +184,7 @@ export default function FootballConfig(props: any) {
 
   const [viewMode, setViewMode] = React.useState<"guided" | "complete">(() => localStorage.getItem(VIEW_KEY) === "complete" ? "complete" : "guided");
   const [step, setStep] = React.useState(0);
-  const steps = ["Mode", "Style", "Participants", "Format", "Gameplay", "Saisie"];
+  const steps = ["Mode", "Style", "Participants", "Format", "Gameplay", "Saisie", "Résumé"];
   const [participantMode, setParticipantMode] = React.useState<FootballParticipantMode>(initial.participantMode);
   const [variant, setVariant] = React.useState<FootballVariant>(initial.variant);
   const [selectedIds, setSelectedIds] = React.useState<string[]>(defaultSelected);
@@ -463,22 +463,38 @@ export default function FootballConfig(props: any) {
     <div className="football-config-note"><strong style={{ color: GREEN }}>À RETENIR :</strong> attaque = S +1 / D +2 / T +3. Défense = S repousse / D intercepte / T contre-attaque.</div>
   </ConfigBlock>;
 
-  const inputBlock = <ConfigBlock title="6 · CHOISIS LA SAISIE ET LANCE" color={GREEN}>
-    <GuidedIntro index={6} title="Dernière étape" text="Choisis comment saisir les fléchettes. Le coach tactique est conseillé pour les premières parties." color={GREEN} />
+  const inputBlock = <ConfigBlock title="6 · CHOISIS LA SAISIE" color={GREEN}>
+    <GuidedIntro index={6} title="Comment vas-tu saisir les fléchettes ?" text="Choisis seulement la méthode de saisie et l’aide visuelle. Le lancement se fait à l’étape suivante." color={GREEN} />
     <div className="football-options-list">
       <OptionRow label="Coach tactique" hint="Affiche clairement quoi viser et l’effet de S / D / T"><OptionToggle value={coachHints} onChange={setCoachHints} /></OptionRow>
       {participantMode === "players" ? <OptionRow label="Ordre des joueurs aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow> : null}
       <OptionRow label="Méthode de saisie" hint="Le clavier compact est le choix le plus rapide"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Clavier compact" }, { value: "dartboard", label: "Cible tactile" }]} onChange={setScoreInputMethod} /></OptionRow>
     </div>
+    <div className="football-config-note"><strong style={{ color: GREEN }}>CONSEIL :</strong> garde le coach tactique activé pour les premières parties. Il explique l’action à jouer sans ouvrir les règles.</div>
+  </ConfigBlock>;
+
+  const summaryBlock = <ConfigBlock title="7 · VÉRIFIE ET JOUE" color={BLUE}>
+    <GuidedIntro index={7} title="Tout est prêt ?" text="Vérifie les choix importants. Aucun réglage supplémentaire n’est nécessaire pour lancer le match." color={BLUE} />
+    <div className="football-kickoff-card">
+      <div className="football-kickoff-card__flow">
+        <span>⚽ POSSESSION</span><b>→</b><span>➜ PROGRESSION</span><b>→</b><span>🥅 TIR</span><b>→</b><span>⚡ BUT</span>
+      </div>
+      <div className="football-kickoff-card__rule">À chaque volée, l’écran de jeu indique <strong>quoi viser</strong>, <strong>ce que fait S / D / T</strong> et <strong>ce qui se passe si tu rates</strong>.</div>
+    </div>
     <div className="football-final-summary">
       <div><span>VARIANTE</span><strong>{footballVariantLabel(variant)}</strong></div>
       <div><span>FORMAT</span><strong>{durationLabel}</strong></div>
       <div><span>JOUEURS</span><strong>{selectionLabel}</strong></div>
+      <div><span>STYLE</span><strong>{activeCustom?.name || activeBuiltin?.title || "Personnalisé"}</strong></div>
+      <div><span>DIFFICULTÉ</span><strong>{targetDifficulty === "accessible" ? "Accessible" : targetDifficulty === "expert" ? "Expert" : "Standard"}</strong></div>
+      <div><span>COACH</span><strong>{coachHints ? "Activé" : "Désactivé"}</strong></div>
+      <div><span>GARDIEN</span><strong>{goalkeeperEnabled && variant !== "penalties" && variant !== "classic" ? "Activé" : "Non utilisé"}</strong></div>
       <div><span>SAISIE</span><strong>{scoreInputMethod === "keypad" ? "Clavier compact" : "Cible tactile"}</strong></div>
     </div>
+    {!valid ? <div className="football-config-note" style={{ color: RED, borderLeftColor: `${RED}88` }}><strong>À CORRIGER :</strong> {readyLabel.toLowerCase()}.</div> : <div className="football-config-ready-banner"><span>✓ CONFIGURATION VALIDE</span><strong>Tu peux donner le coup d’envoi.</strong></div>}
   </ConfigBlock>;
 
-  const guidedBlocks = [variantBlock, presetBlock, participantsBlock, formatBlock, gameplayBlock, inputBlock];
+  const guidedBlocks = [variantBlock, presetBlock, participantsBlock, formatBlock, gameplayBlock, inputBlock, summaryBlock];
 
   return <div className="football-config-page" style={{ color: theme?.text || "#fff" }}>
     <PageHeader title="FOOTBALL" tickerSrc={tickerFootball} tickerAlt="DARTS FOOTBALL" left={<BackDot onClick={back} color={GREEN} glow={`${GREEN}88`} />} right={<InfoDot title="Règles DARTS FOOTBALL" color={BLUE} glow={`${BLUE}88`} content={<RulesContent />} />} />
@@ -498,7 +514,7 @@ export default function FootballConfig(props: any) {
       {viewMode === "guided" ? <>
         <div className="football-config-steps">{steps.map((label, index) => <button key={label} type="button" className="football-config-step" onClick={() => setStep(index)} style={{ border: `1px solid ${index === step ? GREEN : "rgba(255,255,255,.08)"}`, background: index === step ? `${GREEN}18` : "rgba(255,255,255,.02)", color: index === step ? GREEN : SOFT }}>{index + 1}. {label}</button>)}</div>
         {guidedBlocks[step]}
-      </> : <>{variantBlock}{presetBlock}{participantsBlock}{formatBlock}{gameplayBlock}{inputBlock}</>}
+      </> : <>{variantBlock}{presetBlock}{participantsBlock}{formatBlock}{gameplayBlock}{inputBlock}{summaryBlock}</>}
 
       <div className="football-config-actions">
         <div className="football-config-ready"><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectionLabel}</span><strong style={{ color: valid ? GREEN : RED }}>{readyLabel}</strong></div>

@@ -102,3 +102,45 @@
 @media (prefers-reduced-motion:reduce){
   .cargo-config-page *, .cargo-play-page *, .cargo-end-overlay *, .cargo-history-detail *, .cargo-stats-root *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
 }
+
+/* CARGO Stage 14 — interactive gameplay board */
+.cargo-gameplay-board{overflow:hidden}
+.cargo-live-card,.cargo-live-load,.cargo-live-throw{min-width:0;min-height:0}
+.cargo-load-unit{transition:border-color .16s ease,background-color .16s ease,transform .16s ease,box-shadow .16s ease}
+.cargo-load-unit.is-filled{transform:translateY(-1px)}
+.cargo-load-unit.is-committed{box-shadow:0 0 12px rgba(98,230,167,.11)}
+.cargo-load-unit.is-preview{animation:cargo-preview-load .42s ease-out both;box-shadow:0 0 14px rgba(246,194,86,.14)}
+.cargo-dart-slot{transition:transform .14s ease,border-color .14s ease,background-color .14s ease}
+.cargo-dart-slot.is-good{animation:cargo-dart-good .24s ease-out both}
+.cargo-dart-slot.is-bad{animation:cargo-dart-bad .24s ease-out both}
+.cargo-dart-slot.is-special{animation:cargo-dart-special .3s ease-out both}
+.cargo-last-result{border-radius:8px}
+.cargo-result-good{animation:cargo-result-good .34s ease-out both}
+.cargo-result-danger{animation:cargo-result-danger .34s ease-out both}
+
+@keyframes cargo-preview-load{0%{opacity:.3;transform:translateY(5px) scale(.9)}70%{opacity:1;transform:translateY(-2px) scale(1.05)}100%{transform:translateY(-1px) scale(1)}}
+@keyframes cargo-dart-good{0%{transform:scale(.88)}65%{transform:scale(1.06)}100%{transform:scale(1)}}
+@keyframes cargo-dart-bad{0%,100%{transform:translateX(0)}35%{transform:translateX(-2px)}70%{transform:translateX(2px)}}
+@keyframes cargo-dart-special{0%{transform:scale(.92)}50%{transform:scale(1.04)}100%{transform:scale(1)}}
+@keyframes cargo-result-good{0%{background:rgba(98,230,167,.16)}100%{background:transparent}}
+@keyframes cargo-result-danger{0%{background:rgba(239,82,97,.18)}100%{background:transparent}}
+
+@media (max-width:640px){
+  .cargo-gameplay-board{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:5px!important}
+  .cargo-gameplay-board>button,.cargo-gameplay-board>div{padding:6px!important;border-radius:13px!important}
+  .cargo-contract-candidates{display:none!important}
+  .cargo-physical-load{gap:3px!important}
+  .cargo-load-unit{height:34px!important;border-radius:8px!important}
+  .cargo-load-unit img{width:29px!important;height:29px!important}
+}
+
+@media (max-height:720px) and (max-width:899px){
+  .cargo-gameplay-board{grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr)!important;gap:5px!important}
+  .cargo-gameplay-board>.cargo-live-load{display:none!important}
+  .cargo-gameplay-board>button,.cargo-gameplay-board>div{padding:5px!important}
+  .cargo-live-throw .cargo-last-result{display:none!important}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .cargo-load-unit.is-preview,.cargo-dart-slot.is-good,.cargo-dart-slot.is-bad,.cargo-dart-slot.is-special,.cargo-result-good,.cargo-result-danger{animation:none!important}
+}

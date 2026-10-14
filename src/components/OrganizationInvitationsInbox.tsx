@@ -44,6 +44,24 @@ export default function OrganizationInvitationsInbox({ userId, onChanged }: Prop
   }, [userId]);
 
   React.useEffect(() => { void load(); }, [load]);
+
+  // A proposal can be approved by the organization owner on another device.
+  // Refresh quietly so the friend sees the updated state without reopening the page.
+  React.useEffect(() => {
+    if (!userId) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, 8000);
+    const onFocus = () => { if (document.visibilityState === "visible") void load(); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [userId, load]);
+
   if (!items.length && !proposals.length && !error) return null;
 
   const act = async (invitation: OrganizationInvitation, accept: boolean) => {
@@ -52,6 +70,9 @@ export default function OrganizationInvitationsInbox({ userId, onChanged }: Prop
     try {
       await respondOrganizationInvitation(userId, invitation.id, accept);
       await load();
+      if (accept && typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("mss:organization-members-changed", { detail: { organizationId: invitation.organizationId } }));
+      }
       await onChanged?.();
     } catch (e: any) {
       setError(String(e?.message || L("Réponse impossible.", "Unable to respond.", "No se puede responder.")));
@@ -64,6 +85,9 @@ export default function OrganizationInvitationsInbox({ userId, onChanged }: Prop
     try {
       await respondOrganizationMemberProposal(userId, proposal.id, accept);
       await load();
+      if (accept && typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("mss:organization-members-changed", { detail: { organizationId: proposal.organizationId } }));
+      }
       await onChanged?.();
     } catch (e: any) {
       setError(String(e?.message || L("Réponse impossible.", "Unable to respond.", "No se puede responder.")));
@@ -86,7 +110,14 @@ export default function OrganizationInvitationsInbox({ userId, onChanged }: Prop
       <div style={{ minWidth: 0 }}>
         <strong style={{ display: "block", color: theme.text, fontSize: 10.8, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{proposal.organizationName || L("Organisation MSS", "MSS organization", "Organización MSS")}</strong>
         <div style={{ marginTop: 2, color: theme.textSoft, fontSize: 8.5 }}>{L("Proposé par", "Proposed by", "Propuesto por")} {proposal.proposerDisplayName} · {organizationRoleLabel(proposal.role)}</div>
-        <div style={{ marginTop: 3, color: proposal.adminStatus === "approved" ? theme.primary : theme.textSoft, fontSize: 8 }}>{proposal.adminStatus === "approved" ? L("Le créateur a déjà validé. Ton accord finalisera l’adhésion.", "The owner has already approved. Your acceptance will finalize membership.", "El creador ya ha aprobado. Tu aceptación finalizará la adhesión.") : L("Ton accord est requis. L’adhésion sera finalisée après validation du créateur.", "Your consent is required. Membership will finalize after owner approval.", "Se requiere tu consentimiento. La adhesión se finalizará tras la aprobación del creador.")}</div>
+        <div style={{ marginTop: 6, display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
+          <span style={{ borderRadius: 999, padding: "4px 7px", border: `1px solid ${proposal.adminStatus === "approved" ? theme.primary : theme.borderSoft}`, background: proposal.adminStatus === "approved" ? `${theme.primary}10` : "rgba(255,255,255,.025)", color: proposal.adminStatus === "approved" ? theme.primary : theme.textSoft, fontSize: 7.4, fontWeight: 1000 }}>{proposal.adminStatus === "approved" ? "✓" : "○"} {L("CRÉATEUR", "OWNER", "CREADOR")}</span>
+          <span style={{ color: theme.textSoft, fontSize: 8 }}>→</span>
+          <span style={{ borderRadius: 999, padding: "4px 7px", border: `1px solid ${theme.primary}55`, background: `${theme.primary}0b`, color: theme.primary, fontSize: 7.4, fontWeight: 1000 }}>○ {L("TON ACCORD", "YOUR CONSENT", "TU ACUERDO")}</span>
+          <span style={{ color: theme.textSoft, fontSize: 8 }}>→</span>
+          <span style={{ borderRadius: 999, padding: "4px 7px", border: `1px solid ${theme.borderSoft}`, color: theme.textSoft, fontSize: 7.4, fontWeight: 1000 }}>○ {L("AJOUT AUTO", "AUTO ADD", "ALTA AUTO")}</span>
+        </div>
+        <div style={{ marginTop: 4, color: proposal.adminStatus === "approved" ? theme.primary : theme.textSoft, fontSize: 8 }}>{proposal.adminStatus === "approved" ? L("Le créateur a déjà validé. Ton accord finalisera l’adhésion immédiatement.", "The owner has already approved. Your acceptance will finalize membership immediately.", "El creador ya ha aprobado. Tu aceptación finalizará la adhesión inmediatamente.") : L("Tu peux accepter maintenant : l’adhésion sera finalisée automatiquement dès que le créateur validera aussi.", "You can accept now: membership will finalize automatically as soon as the owner also approves.", "Puedes aceptar ahora: el alta se finalizará automáticamente cuando el creador también apruebe.")}</div>
         <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: 6 }}><button type="button" disabled={!!busy} onClick={() => void actProposal(proposal, false)} style={{ minHeight: 32, borderRadius: 10, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.025)", color: theme.textSoft, fontSize: 8.5, fontWeight: 900 }}>{L("REFUSER", "DECLINE", "RECHAZAR")}</button><button type="button" disabled={!!busy} onClick={() => void actProposal(proposal, true)} style={{ minHeight: 32, borderRadius: 10, border: `1px solid ${theme.primary}66`, background: `${theme.primary}12`, color: theme.primary, fontSize: 8.5, fontWeight: 1000 }}>{busy === `proposal:${proposal.id}` ? "…" : L("ACCEPTER", "ACCEPT", "ACEPTAR")}</button></div>
       </div>
     </div>)}</div></> : null}

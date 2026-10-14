@@ -22,7 +22,11 @@ const personalCloudIncrementalSupport = new Map<string, boolean>();
 const runtimeUnsupportedProviders = new Set<string>();
 
 function nasIncrementalKnownSupported(): boolean {
-  try { return localStorage.getItem('dc_incremental_nas_supported_v1') === '1'; } catch { return false; }
+  // Backend actuel : /account/incremental-changes existe. On tente donc le delta
+  // par défaut et on ne désactive qu'après un vrai 404 constaté. L'ancien garde
+  // exigeait un flag 'supported' jamais posé et forçait systématiquement le gros
+  // /sync/push, d'où les 413 et les sauvegardes lentes.
+  try { return localStorage.getItem('dc_incremental_nas_unsupported_v1') !== '1'; } catch { return true; }
 }
 
 
@@ -68,6 +72,10 @@ async function uploadBundle(provider: string, changes: IncrementalChange[]): Pro
     if (!nasIncrementalKnownSupported()) return false;
     try {
       await apiPost('/account/incremental-changes', { changes }, { timeoutMs: 15_000 });
+      try {
+        localStorage.setItem('dc_incremental_nas_supported_v1', '1');
+        localStorage.removeItem('dc_incremental_nas_unsupported_v1');
+      } catch {}
       return true;
     } catch (error: any) {
       const msg = String(error?.message || error || '');

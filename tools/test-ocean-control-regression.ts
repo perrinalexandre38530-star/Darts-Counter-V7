@@ -38,6 +38,7 @@ const baseConfig = normalizeOceanControlConfig({
 let state = createOceanControlState(players, baseConfig, () => 0.37);
 assert.equal(state.mode, "ocean_control");
 assert.equal(state.phase, "playing");
+assert.equal(state.focusNumber, null, "le focus spécial doit être choisi explicitement par le joueur");
 assert.equal(state.owners.length, 2);
 for (const owner of state.owners) {
   assert.equal(owner.ships.length, 3);
@@ -57,6 +58,12 @@ assert.equal(state.statsByPlayer.p1.shipHits, 1);
 assert.equal(oceanControlAccuracy(state.statsByPlayer.p1), 100);
 assert.equal(state.visits.length, 1);
 assert.ok(state.visits[0].events.some((event) => event.type === "hit" || event.type === "sunk"));
+
+// Sonar sans focus : aucun scan implicite ne doit viser une zone à la place du joueur.
+let blindSonar = createOceanControlState(players, baseConfig, () => 0.41);
+blindSonar = playOceanControlVisit(blindSonar, [{ bed: "OB" }] as any);
+assert.equal(blindSonar.sonarScans.length, 0);
+assert.ok(blindSonar.visits[0].events.some((event) => event.type === "miss" && String(event.label).includes("AUCUN FOCUS")));
 
 // Sonar : Bull, focus explicite, contacts conservés.
 let sonar = createOceanControlState(players, baseConfig, () => 0.42);
@@ -80,6 +87,25 @@ strike = playOceanControlVisit(strike, [{ bed: "IB" }] as any);
 assert.equal(strike.statsByPlayer.p1.precisionStrikes, 1);
 assert.equal(strike.statsByPlayer.p1.shipHits, 1);
 assert.ok(strike.visits[0].events.some((event) => event.type === "strike"));
+
+// DBULL sans focus : ne doit jamais "regarder" la flotte cachée pour garantir un impact.
+let blindStrike = createOceanControlState(players, baseConfig, () => 0.57);
+const blindTarget = getOceanTargetOwner(blindStrike)!;
+const beforeBlindCells = { ...blindTarget.attackedCells };
+blindStrike = playOceanControlVisit(blindStrike, [{ bed: "IB" }] as any);
+assert.deepEqual(getOceanTargetOwner(blindStrike)?.attackedCells || {}, beforeBlindCells);
+assert.ok(blindStrike.visits[0].events.some((event) => event.type === "miss" && String(event.label).includes("AUCUN FOCUS")));
+
+// DBULL sur une zone déjà contrôlée : reste sur le focus et ne saute pas vers un navire caché.
+let duplicateStrike = createOceanControlState(players, baseConfig, () => 0.59);
+const duplicateTarget = getOceanTargetOwner(duplicateStrike)!;
+duplicateTarget.attackedCells["0"] = "miss";
+duplicateStrike = selectOceanControlFocus(duplicateStrike, duplicateStrike.gridNumbers[0]);
+const attackedBeforeDuplicate = Object.keys(duplicateTarget.attackedCells).sort();
+duplicateStrike = playOceanControlVisit(duplicateStrike, [{ bed: "IB" }] as any);
+const duplicateVisit = duplicateStrike.visits[0];
+assert.ok(duplicateVisit.events.some((event) => event.type === "duplicate"));
+assert.deepEqual(Object.keys(duplicateStrike.owners.find((owner) => owner.id === duplicateTarget.id)?.attackedCells || {}).sort(), attackedBeforeDuplicate);
 
 // Placement manuel secret : les deux flottes doivent pouvoir être validées sans chevauchement.
 let manual = createOceanControlState(players, normalizeOceanControlConfig({ ...baseConfig, placement: "manual" }), () => 0.2);

@@ -144,8 +144,8 @@ export function RankingModal({ rows, onClose, title = "CLASSEMENT" }: any) {
   </ModalShell>;
 }
 
-export function QuickRow({ players, activeId, profileById, colorById, ticker, onPlayers, onStats, onLog, onRanking }: any) {
-  return <div className="party-mode__quick-row">
+export function QuickRow({ players, activeId, profileById, colorById, ticker, onPlayers, onStats, onLog, onRanking, onUndo, undoDisabled = false, undoTitle = "Annuler la dernière action" }: any) {
+  return <div className={`party-mode__quick-row${onUndo ? " has-undo" : ""}`}>
     <button type="button" className="party-mode__quick-icon" onClick={onRanking} aria-label="Ouvrir le classement">🏆</button>
     <button type="button" className="party-mode__players-button" onClick={onPlayers} style={{ backgroundImage: `linear-gradient(90deg,rgba(0,0,0,.76),rgba(0,0,0,.26),rgba(0,0,0,.76)),url(${ticker})` }}>
       <div>{(players || []).slice(0, 10).map((p: any) => { const id = String(p.id); const color = colorById?.get(id) || "#fff"; return <span key={id} className={id === String(activeId || "") ? "is-active" : ""} style={{ borderColor: color }}><ProfileAvatar profile={profileById?.get(id) || p} size={38} showStars={false} ringColor={color} noFrame /></span>; })}</div>
@@ -153,6 +153,7 @@ export function QuickRow({ players, activeId, profileById, colorById, ticker, on
     </button>
     <button type="button" className="party-mode__quick-icon" onClick={onStats} aria-label="Ouvrir les statistiques">📊</button>
     <button type="button" className="party-mode__quick-icon" onClick={onLog} aria-label="Ouvrir le journal">☷</button>
+    {onUndo ? <button type="button" className="party-mode__quick-icon party-mode__quick-undo" onClick={onUndo} disabled={undoDisabled} title={undoTitle} aria-label={undoTitle}>↶</button> : null}
   </div>;
 }
 
