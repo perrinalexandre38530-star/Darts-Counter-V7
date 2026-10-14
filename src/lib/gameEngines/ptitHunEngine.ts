@@ -278,17 +278,21 @@ export function clonePtitHunState(raw: PtitHunState): PtitHunState {
 }
 
 function ptitHunPenaltyBase(score: number, rules: PtitHunConfigPayload["rules"]) {
-  // ZÉRO ABSOLU doit rester une récompense, pas rendre les futurs multiplicateurs gratuits.
-  // À 0, une zone dangereuse repart donc du capital de départ comme base de sanction.
+  // Le MISS multiplicatif reste une sanction appliquée au total courant.
+  // À 0, on repart du score de départ pour éviter un MISS gratuit.
   return score > 0 ? score : Math.max(1, Number(rules.startScore || 20));
 }
 
 function applyDart(score: number, d: any, rules: PtitHunConfigPayload["rules"]) {
   if (!d || d.bed === "MISS") return rules.missMode === "add" ? score + rules.missValue : ptitHunPenaltyBase(score, rules) * rules.missValue;
   if (d.bed === "IB") return rules.dbullEnabled ? Math.ceil(score / rules.dbullDivider) : score + 50;
-  if (d.bed === "OB") return ptitHunPenaltyBase(score, rules) * rules.bull25Factor;
-  if (d.bed === "D") return ptitHunPenaltyBase(score, rules) * rules.doubleFactor;
-  if (d.bed === "T") return ptitHunPenaltyBase(score, rules) * rules.tripleFactor;
+
+  // P’TIT 1 : les pénalités Double / Triple / Bull25 s’appliquent à la VALEUR DU HIT,
+  // jamais au total du joueur. La valeur pénalisée est ensuite ajoutée au score.
+  // Exemples par défaut : T5 = 15 ×3 = +45 ; T1 = 3 ×3 = +9 ; D20 = 40 ×2 = +80.
+  if (d.bed === "OB") return score + (25 * rules.bull25Factor);
+  if (d.bed === "D") return score + ((Number(d.number || 0) * 2) * rules.doubleFactor);
+  if (d.bed === "T") return score + ((Number(d.number || 0) * 3) * rules.tripleFactor);
   if (isPtitHunOuterSingle(d)) return score + Number(d.number || 0) * rules.outerSingleFactor;
   return score + Number(d.number || 0);
 }
@@ -341,7 +345,7 @@ export function playPtitHunVisit(input: PtitHunState, dartsRaw: GameDart[]): Pti
   } else {
     for (const d of darts) {
       const beforeDart = rawAfter;
-      const dangerousMultiplier = (!d || (d as any).bed === "MISS") ? rules.missMode === "multiply" : ["D", "T", "OB"].includes(String((d as any)?.bed || ""));
+      const dangerousMultiplier = (!d || (d as any).bed === "MISS") && rules.missMode === "multiply";
       if (beforeDart === 0 && dangerousMultiplier) zeroPenaltyFloor = true;
       rawAfter = Math.max(0, Math.round(applyDart(rawAfter, d, rules)));
     }

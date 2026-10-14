@@ -35,6 +35,8 @@ import screenX01 from "../assets/public-landing/screen-x01.webp";
 import screenStats from "../assets/public-landing/screen-stats.webp";
 import languages22Fr from "../assets/public-landing/languages-22-fr.webp";
 import languages22En from "../assets/public-landing/languages-22-en.webp";
+import petanqueExplainPortrait from "../assets/petanque_explain/petanque_explain_vertical.webp";
+import petanqueExplainLandscape from "../assets/petanque_explain/petanque_explain_horizontal.webp";
 import { DARTS_GAMES, type DartsGameDef } from "../games/dartsGameRegistry";
 import { DARTS_PUBLIC_RULE_AUDIT } from "../games/dartsPublicRulesAudit";
 import { useLang, type Lang } from "../contexts/LangContext";
@@ -44,6 +46,14 @@ const landingTickerAssets = import.meta.glob("../assets/tickers/*.{png,webp}", {
   eager: true,
   import: "default",
 }) as Record<string, string>;
+
+const LANDING_EXPLANATION_VISUALS = {
+  closest_center: {
+    portrait: petanqueExplainPortrait,
+    landscape: petanqueExplainLandscape,
+    alt: "Awena vous explique le mode PETANQUE : enrôlement des fléchettes, analyse caméra, classement et points.",
+  },
+} as const;
 
 const MSS_EXCLUSIVE_DARTS = new Set(["darts_firefighter", "crados", "attrape_moi", "loterie", "menteur", "president", "pendu", "cargo", "ptit_hun"]);
 const NEW_PUBLIC_DARTS = new Set(["ptit_hun", "mistigri", "corbeau_renard", "radin", "darts_impossible"]);
@@ -136,6 +146,7 @@ const PUBLIC_RULE_CONFIG_COPY: Record<string,string> = {
   looper: "Choisissez les participants et les paramètres de vies. Le meneur pose une cible précise et le joueur suivant doit la reproduire exactement, y compris la distinction entre simple intérieur et simple extérieur. Une réussite permet de poser la cible suivante ; un échec coûte une vie. Le dernier survivant remporte la partie.",
   call_three: "Choisissez les participants et le nombre de rounds. Avant chaque volée, trois cibles sont appelées et doivent être jouées dans l’ordre, une cible par fléchette. Un Simple vaut 1 point, un Double 2 et un Triple 3. Une fois tous les rounds terminés, le meilleur total gagne.",
   steeplechase: "Choisissez les participants puis lancez la course autour de la cible. Le parcours part du 20 et suit l’ordre physique des petits simples jusqu’au 5. Des haies imposent notamment T13, T17, T8 et T5 avant l’arrivée au Bull. Le premier joueur qui boucle entièrement le parcours gagne.",
+  closest_center: "Choisissez les joueurs puis activez le format souhaité : nombre de manches, mode individuel ou équipes A/B et méthode de scoring (tous les impacts classés ou seul le plus proche). Avant la première manche, chaque joueur enrôle ses 3 fléchettes devant la caméra. Le mode contrôle aussi que les sets restent suffisamment distincts pour garantir l’attribution automatique des impacts.",
   ptit_hun: "Choisissez les participants puis configurez librement l’anti-score : durée, score de départ, valeur du gros simple, sanctions Double/Triple/Bull25/MISS, DBULL, Zéro Absolu, Triple Nul et Bouclier du Hun. Le Jackpot peut afficher une ou deux zones spéciales uniquement sur des Doubles ou Triples ; toucher la zone annule toute la volée et lui donne 0 point. À la fin, le score le plus bas gagne.",
   pendu: "Choisissez les participants et les paramètres de survie. Le joueur actif annonce ou reçoit un défi qu’il doit réussir, puis les autres tentent de le reproduire. Chaque échec ajoute une partie au pendu ; lorsque le dessin est complet, le joueur est éliminé. Le dernier survivant gagne.",
   menteur: "Choisissez les participants et le nombre de vies. À chaque tour, il faut surenchérir sur l’annonce précédente ou accuser le joueur de mentir. Le joueur défié tente alors de réaliser son contrat avec sa volée : s’il échoue il perd une vie, sinon c’est le challenger qui est pénalisé.",
@@ -243,6 +254,7 @@ function isPublicDartsDevelopment(game: DartsGameDef) {
 function DartsRulePage({ game, onBack, onOpenApp, lang, setLang, t }: { game: DartsGameDef; onBack: () => void; onOpenApp: () => void; lang: Lang; setLang: (lang: Lang) => void; t: (key: string, fallback?: string) => string }) {
   const tr = (key: string, fallback: string) => lang === "fr" ? fallback : t(`landing.${key}`, fallback);
   const ticker = landingTickerFor(game.id, lang);
+  const explainVisual = LANDING_EXPLANATION_VISUALS[game.id as keyof typeof LANDING_EXPLANATION_VISUALS];
   useLayoutEffect(() => {
     if ("scrollRestoration" in window.history) window.history.scrollRestoration = "manual";
     const top = forcePublicPageTop;
@@ -302,6 +314,17 @@ function DartsRulePage({ game, onBack, onOpenApp, lang, setLang, t }: { game: Da
       <div><span>{tr("rules.category", "CATÉGORIE")}</span><strong>{exclusive ? tr("rules.mssExclusive", "Exclusivité MSS") : tr(`category.${game.category}`, DARTS_CATEGORY_LABEL[game.category] || "Fléchettes")}</strong></div>
       <div><span>{tr("rules.options", "OPTIONS")}</span><strong>{[game.supportsTeams ? tr("rules.teams", "Équipes") : "", game.supportsBots ? tr("rules.aiBots", "Bots IA") : ""].filter(Boolean).join(" • ") || tr("rules.dependsMode", "Selon le mode")}</strong></div>
     </section>
+    {explainVisual ? <section className="mssRuleExplainVisual" aria-labelledby={`mss-rule-explain-${game.id}`}>
+      <div className="mssRuleExplainVisualHead">
+        <span>{tr("rules.awenaPoster", "AWENA T’EXPLIQUE LE MODE")}</span>
+        <h2 id={`mss-rule-explain-${game.id}`}>{tr("rules.visualWalkthrough", "Vue d’ensemble du déroulé de partie")}</h2>
+        <p>{tr("rules.visualWalkthroughBody", "Cette infographie résume l’enrôlement des fléchettes, l’analyse caméra, le classement, le calcul des points et le résultat de manche.")}</p>
+      </div>
+      <picture>
+        <source media="(max-width: 840px)" srcSet={explainVisual.portrait} />
+        <img src={explainVisual.landscape} alt={explainVisual.alt} loading="lazy" decoding="async" />
+      </picture>
+    </section> : null}
     {development && <section className="mssDevelopmentNotice"><div><span>{tr("rules.modePreparing", "MODE EN PRÉPARATION")}</span><h2>{tr("rules.sheetWillEvolve", "Cette fiche évoluera avec le développement du moteur.")}</h2><p>{tr("rules.developmentNotice", "Le concept est déjà référencé dans le catalogue MULTISPORTS SCORING. Les règles, options et écrans jouables seront détaillés ici uniquement lorsqu’ils seront réellement intégrés à l’application.")}</p></div><b>WORK IN<br/>PROGRESS</b></section>}
     <section className="mssRuleContent" id="regles">
       <article><b>01</b><h2>{tr("rules.objective", "OBJECTIF")}</h2><p>{tr(`game.${game.id}.objective`, objective)}</p></article>

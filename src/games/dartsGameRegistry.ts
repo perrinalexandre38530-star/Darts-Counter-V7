@@ -360,7 +360,7 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:ptit_hun",
     infoTitle: "P’TIT 1",
     infoBody:
-      "Le plus petit score gagne. Par défaut : petit simple = valeur normale ; gros simple = ×10 ; Double = total ×2 ; Triple = ×3 ; Bull25 = ×4 ; MISS = ×5 ; DBULL = ÷2. Triple Nul, Bouclier du Hun et Zéro Absolu peuvent être activés ou réglés. Le Jackpot ajoute une ou deux zones spéciales uniquement sur des Doubles/Triples : une touche annule toute la volée et lui donne 0 point. Tous les paramètres principaux sont configurables.",
+      "Le plus petit score gagne. Par défaut : petit simple = valeur normale ; gros simple = valeur ×10 ; Double = valeur du Double ×2 ; Triple = valeur du Triple ×3 ; Bull25 = 25 ×4 ; MISS = total ×5 ; DBULL = total ÷2. Triple Nul, Bouclier du Hun et Zéro Absolu peuvent être activés ou réglés. Le Jackpot ajoute une ou deux zones spéciales uniquement sur des Doubles/Triples : une touche annule toute la volée et lui donne 0 point. Tous les paramètres principaux sont configurables.",
   },
 
   {

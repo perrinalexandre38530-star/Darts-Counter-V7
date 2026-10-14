@@ -4,6 +4,8 @@ import BackDot from "../components/BackDot";
 import PageHeader from "../components/PageHeader";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import { getTicker } from "../lib/tickers";
+import petanqueExplainPortrait from "../assets/petanque_explain/petanque_explain_vertical.webp";
+import petanqueExplainLandscape from "../assets/petanque_explain/petanque_explain_horizontal.webp";
 
 const ACCENT = "#44e7ff";
 export default function ClosestCenterConfig(props: any) {
@@ -24,6 +26,7 @@ export default function ClosestCenterConfig(props: any) {
     <PageHeader tickerSrc={ticker} tickerAlt="PETANQUE" tickerHeight={74} left={<BackDot onClick={()=>go?.("games")} color={ACCENT}/>} />
     <div style={{flex:1,overflow:"auto",padding:12,display:"grid",gap:12,maxWidth:980,width:"100%",margin:"0 auto"}}>
       <section style={card}><h2 style={title}>🎯 PETANQUE</h2><div style={note}><b>Saisie 100 % caméra.</b> L’application mesure chaque impact et attribue les fléchettes au bon joueur grâce à leur apparition et à leur signature visuelle.</div><div style={{...note,borderColor:"#ffce5c55",background:"#ffce5c10"}}>⚠️ Pour une reconnaissance fiable, utilisez des sets bien différenciés : ailettes, couleurs, shafts, motifs ou formes nettement distincts.</div></section>
+      <section style={card}><h3 style={subtitle}>AWENA · EXPLICATION VISUELLE</h3><div style={{fontSize:12,color:"#bfd0de",lineHeight:1.55,marginBottom:10}}>Retrouve le guide du mode directement dans la configuration. En affichage vertical, la version portrait est utilisée ; en affichage large, la version paysage reste affichée.</div><picture><source media="(max-width: 840px)" srcSet={petanqueExplainPortrait} /><img src={petanqueExplainLandscape} alt="Awena vous explique le mode PETANQUE" style={{width:"100%",display:"block",borderRadius:16,border:"1px solid rgba(68,231,255,.26)",background:"#02070d",boxShadow:"0 18px 40px rgba(0,0,0,.28)"}} /></picture></section>
       <section style={card}><h3 style={subtitle}>1 · JOUEURS</h3><PlayerPagedSelector profiles={profiles} selectedIds={selectedIds} onToggle={toggle} accent={ACCENT} usageMode="closest_center" /></section>
       <section style={card}><h3 style={subtitle}>2 · FORMAT</h3><div style={grid}>{[1,3,5,7,10].map(n=><button key={n} style={pill(rounds===n)} onClick={()=>setRounds(n)}>{n} manche{n>1?"s":""}</button>)}</div><div style={grid}><button style={pill(pointsMode==="descending")} onClick={()=>setPointsMode("descending")}>Tous les impacts classés</button><button style={pill(pointsMode==="winner")} onClick={()=>setPointsMode("winner")}>Seul le plus proche marque</button></div></section>
       <section style={card}><h3 style={subtitle}>3 · ÉQUIPES</h3><button style={pill(teamMode)} onClick={()=>setTeamMode(v=>!v)}>{teamMode?"MODE ÉQUIPE A / B ACTIVÉ":"MODE INDIVIDUEL"}</button>{teamMode?<div style={{fontSize:12,color:"#aeb8c8",marginTop:8}}>Les joueurs sélectionnés sont répartis A/B en alternance. Les points individuels alimentent automatiquement le total de l’équipe.</div>:null}</section>
