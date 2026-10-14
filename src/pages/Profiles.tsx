@@ -94,6 +94,7 @@ import { loadBots, saveBots } from "../lib/bots";
 import { loadTeams, saveTeams, type TeamEntity } from "../lib/petanqueTeamsStore";
 import { AVATAR_GALLERY_EVENT, deleteAvatarGalleryItem, readAvatarGallery, syncAvatarGalleryFromSources, upsertAvatarGalleryItem, type AvatarGalleryCategory, type AvatarGalleryItem } from "../lib/avatarGallery";
 import CollectibleCardsPanel from "../components/profile/CollectibleCardsPanel";
+import TeamPagedSelector from "../components/TeamPagedSelector";
 import type { CollectibleUnlockMap } from "../lib/collectibleCards";
 
 import { useSport } from "../contexts/SportContext";
@@ -9104,16 +9105,19 @@ Sus partidas y estadísticas históricas permanecerán guardadas. Si más adelan
                         onChange={(e) => setEditCountry(e.target.value)}
                       />
                       {teams.length > 0 ? (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                          {teams.map((team) => {
-                            const checked = editTeamIds.includes(String(team.id));
-                            return (
-                              <button key={team.id} type="button" className="btn sm" onClick={() => setEditTeamIds((prev) => checked ? prev.filter((id) => id !== String(team.id)) : [...prev, String(team.id)])} style={{ opacity: checked ? 1 : .55, borderColor: checked ? primary : undefined }}>
-                                {team.name}
-                              </button>
-                            );
-                          })}
-                        </div>
+                        <TeamPagedSelector
+                          teams={teams}
+                          selectedIds={editTeamIds}
+                          onToggle={(teamId: string) => {
+                            const id = String(teamId);
+                            setEditTeamIds((prev) => prev.includes(id) ? prev.filter((value) => value !== id) : [...prev, id]);
+                          }}
+                          accent={primary}
+                          pageSize={9}
+                          modalTitle={t("profiles.locals.teams.choose", "Choisir les Teams")}
+                          chooseLabel={t("profiles.locals.teams.selector", "Sélectionner les Teams")}
+                          listLabel={t("profiles.locals.teams.list", "Liste Teams")}
+                        />
                       ) : null}
                     </div>
                   </div>
@@ -9619,12 +9623,19 @@ function AddLocalProfile({
             onKeyDown={(e) => { if (e.key === "Enter") void submit(); }}
           />
           {teams.length > 0 ? (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-              {teams.map((team) => {
-                const checked = teamIds.includes(String(team.id));
-                return <button key={team.id} type="button" className="btn sm" onClick={() => setTeamIds((prev) => checked ? prev.filter((id) => id !== String(team.id)) : [...prev, String(team.id)])} style={{ fontSize: 9.5, opacity: checked ? 1 : .55, borderColor: checked ? primary : undefined }}>{team.name}</button>;
-              })}
-            </div>
+            <TeamPagedSelector
+              teams={teams}
+              selectedIds={teamIds}
+              onToggle={(teamId: string) => {
+                const id = String(teamId);
+                setTeamIds((prev) => prev.includes(id) ? prev.filter((value) => value !== id) : [...prev, id]);
+              }}
+              accent={primary}
+              pageSize={9}
+              modalTitle={t("profiles.locals.teams.choose", "Choisir les Teams")}
+              chooseLabel={t("profiles.locals.teams.selector", "Sélectionner les Teams")}
+              listLabel={t("profiles.locals.teams.list", "Liste Teams")}
+            />
           ) : null}
         </div>
 
