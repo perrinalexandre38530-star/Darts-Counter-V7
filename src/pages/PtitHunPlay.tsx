@@ -35,6 +35,7 @@ import {
   playPtitHunVisit,
   ptitHunDartLabel,
   rankPtitHunPlayers,
+  scorePtitHunDart,
   type PtitHunState,
 } from "../lib/gameEngines/ptitHunEngine";
 import { isBotProfile, playerName, resolveModeProfiles, uiToGameDart } from "./newModes/newModePlayShared";
@@ -199,7 +200,7 @@ function Ptit1MiniKpi({ label, value, color = ACCENT, onClick }: any) {
   </Tag>;
 }
 
-function Ptit1DartsRow({ currentThrow, accent, liveScore, liveDelta = 0 }: any) {
+function Ptit1DartsRow({ currentThrow, accent, liveScore, liveDelta = 0, liveSteps = [] }: any) {
   const chip = (d: any) => {
     if (!d) return { label: "—", color: "#667085", border: "rgba(255,255,255,.08)", bg: "rgba(0,0,0,.22)" };
     const g:any = uiToGameDart(d); const raw = ptitHunDartLabel(g); const u = String(raw).toUpperCase();
@@ -211,7 +212,7 @@ function Ptit1DartsRow({ currentThrow, accent, liveScore, liveDelta = 0 }: any) 
     if (u.startsWith("T")) return { label: u, color: "#ffe8ff", border: "rgba(229,144,255,.48)", bg: "linear-gradient(180deg,rgba(111,64,126,.94),rgba(29,15,34,.97))" };
     return { label: raw, color: "#fff", border: `${accent}66`, bg: `${accent}12` };
   };
-  return <div style={{ width: "100%", display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}>{[0,1,2].map((i) => { const s=chip(currentThrow?.[i]); return <div key={i} style={{ height: 30, minWidth: 0, borderRadius: 9, border: `1px solid ${s.border}`, background: s.bg, display: "grid", placeItems: "center", color: s.color, fontSize: 9.5, fontWeight: 1100 }}>{currentThrow?.[i] ? s.label : `D${i+1}`}</div>; })}<div style={{height:30,minWidth:0,borderRadius:9,border:`1px solid ${accent}55`,background:`linear-gradient(180deg,${accent}18,rgba(0,0,0,.30))`,display:"grid",gridTemplateRows:"auto auto",placeItems:"center",alignContent:"center",lineHeight:1}}><small style={{fontSize:5.8,color:"#8f98ad",fontWeight:1000,letterSpacing:.45}}>SCORE LIVE</small><b style={{marginTop:2,fontSize:10.5,color:accent,fontWeight:1100}}>{liveScore}<span style={{marginLeft:3,fontSize:6.5,color:liveDelta===0?"#8791a4":liveDelta<0?GREEN:RED}}>{liveDelta===0?"":`${liveDelta>0?"+":""}${liveDelta}`}</span></b></div></div>;
+  return <div style={{ width: "100%", display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}>{[0,1,2].map((i) => { const s=chip(currentThrow?.[i]); const step:any = liveSteps?.[i]; return <div key={i} style={{ height: 30, minWidth: 0, borderRadius: 9, border: `1px solid ${s.border}`, background: s.bg, display: "grid", gridTemplateRows:"auto auto", placeItems: "center", alignContent:"center", color: s.color, fontWeight: 1100, lineHeight:1 }}>{currentThrow?.[i] ? <><span style={{fontSize:8.8}}>{s.label}</span><small style={{marginTop:2,fontSize:5.8,color:step?.delta===0?"#b8c0cc":step?.delta<0?GREEN:step?.kind==="miss"?RED:s.color,fontWeight:1000}}>{step ? `${step.delta>0?"+":""}${step.delta}` : ""}</small></> : <span style={{fontSize:9.5}}>{`D${i+1}`}</span>}</div>; })}<div style={{height:30,minWidth:0,borderRadius:9,border:`1px solid ${accent}55`,background:`linear-gradient(180deg,${accent}18,rgba(0,0,0,.30))`,display:"grid",gridTemplateRows:"auto auto",placeItems:"center",alignContent:"center",lineHeight:1}}><small style={{fontSize:5.8,color:"#8f98ad",fontWeight:1000,letterSpacing:.45}}>SCORE LIVE</small><b style={{marginTop:2,fontSize:10.5,color:accent,fontWeight:1100}}>{liveScore}<span style={{marginLeft:3,fontSize:6.5,color:liveDelta===0?"#8791a4":liveDelta<0?GREEN:RED}}>{liveDelta===0?"":`${liveDelta>0?"+":""}${liveDelta}`}</span></b></div></div>;
 }
 
 function Ptit1ToolIcon({ kind, color = "#dfe8ff" }: any) {
@@ -226,10 +227,6 @@ function Ptit1ProgressCard({ label, value, color = ACCENT, active = false, onCli
 }
 
 
-function ptit1PenaltyBase(score: number, rules: any) {
-  return score > 0 ? score : Math.max(1, Number(rules?.startScore || 20));
-}
-
 function ptit1UiToGameDart(d: any) {
   try { return uiToGameDart(d); } catch { return null; }
 }
@@ -242,37 +239,41 @@ function ptit1IsOuter(d: any) {
   return Boolean(d && d.bed === "S" && String(d.ring || "") === "outer_single" && Number(d.number) >= 1 && Number(d.number) <= 20);
 }
 
+function ptit1RawSteps(before: number, darts: any[], rules: any) {
+  let running = Number(before || 0);
+  return (darts || []).map((dart: any) => {
+    const gameDart = dart?.bed ? dart : ptit1UiToGameDart(dart);
+    const scored = scorePtitHunDart(running, gameDart, rules);
+    running = scored.after;
+    return { ...scored, dart: gameDart, label: ptitHunDartLabel(gameDart) };
+  });
+}
+
 function ptit1DraftProjection(state: any, playerId: string, uiDarts: any[]) {
   const rules = state?.config?.rules || {};
   const before = Number(state?.scores?.[playerId] ?? rules.startScore ?? 20);
-  let score = before;
-  let dbulls = Number(state?.statsByPlayer?.[playerId]?.dbulls || 0);
-  const zeroAlreadyUsed = Boolean(state?.zeroAbsoluteUsed?.[playerId]);
-  const targets = Array.isArray(state?.jackpotTargets) ? state.jackpotTargets : [];
-  let jackpot = false;
   const gameDarts = (uiDarts || []).map(ptit1UiToGameDart).filter(Boolean);
-  for (const d of gameDarts) {
-    if (rules.jackpotEnabled && targets.some((t:any)=>String(t.bed)===String(d.bed) && Number(t.number)===Number(d.number))) jackpot = true;
-    if (d.bed === "IB") {
-      dbulls += 1;
-      if (rules.zeroAbsoluteEnabled && !zeroAlreadyUsed && dbulls >= Number(rules.dbullsForZero || 3)) score = 0;
-      else score = rules.dbullEnabled ? Math.ceil(score / Number(rules.dbullDivider || 2)) : score + 50;
-    } else if (!d || d.bed === "MISS") {
-      score = rules.missMode === "add" ? score + Number(rules.missValue || 50) : ptit1PenaltyBase(score, rules) * Number(rules.missValue || 5);
-    } else if (d.bed === "OB") score = ptit1PenaltyBase(score, rules) * Number(rules.bull25Factor || 4);
-    else if (d.bed === "D") score = ptit1PenaltyBase(score, rules) * Number(rules.doubleFactor || 2);
-    else if (d.bed === "T") score = ptit1PenaltyBase(score, rules) * Number(rules.tripleFactor || 3);
-    else if (ptit1IsOuter(d)) score += Number(d.number || 0) * Number(rules.outerSingleFactor || 10);
-    else score += Number(d.number || 0);
-    score = Math.max(0, Math.round(score));
-  }
-  if (jackpot) score = before;
-  if (gameDarts.length === 3 && rules.tripleNulEnabled && gameDarts.every(ptit1IsInner) && new Set(gameDarts.map((d:any)=>Number(d.number))).size === 1) score = before;
-  if (rules.shieldEnabled && Boolean(state?.shieldActive?.[playerId]) && score > before) {
+  const steps = ptit1RawSteps(before, gameDarts, rules);
+  let score = steps.length ? Number(steps[steps.length - 1].after) : before;
+  const dbullsBefore = Number(state?.statsByPlayer?.[playerId]?.dbulls || 0);
+  const draftDbulls = gameDarts.filter((d:any) => d?.bed === "IB").length;
+  const dbulls = dbullsBefore + draftDbulls;
+  const zeroAlreadyUsed = Boolean(state?.zeroAbsoluteUsed?.[playerId]);
+  const zeroTriggered = Boolean(rules.zeroAbsoluteEnabled && !zeroAlreadyUsed && dbullsBefore < Number(rules.dbullsForZero || 3) && dbulls >= Number(rules.dbullsForZero || 3));
+  const targets = Array.isArray(state?.jackpotTargets) ? state.jackpotTargets : [];
+  const jackpot = Boolean(rules.jackpotEnabled && gameDarts.some((d:any) => targets.some((t:any) => String(t.bed) === String(d.bed) && Number(t.number) === Number(d.number))));
+  const tripleNul = Boolean(gameDarts.length === 3 && rules.tripleNulEnabled && gameDarts.every(ptit1IsInner) && new Set(gameDarts.map((d:any)=>Number(d.number))).size === 1);
+
+  // Les bonus de volée priment sur les calculs bruts, exactement comme dans le moteur.
+  if (jackpot || tripleNul) score = before;
+  if (zeroTriggered) score = 0;
+
+  if (!jackpot && !tripleNul && !zeroTriggered && rules.shieldEnabled && Boolean(state?.shieldActive?.[playerId]) && score > before) {
     const damage = score - before;
     score = before + Math.ceil(damage / Number(rules.shieldDivider || 2));
   }
-  return { before, score, delta: score - before, dbulls, jackpot };
+  score = Math.max(0, Math.round(score));
+  return { before, score, delta: score - before, dbulls, jackpot, tripleNul, zeroTriggered, steps };
 }
 
 function ptit1HitMeta(state: any, playerId: string, beforeUi: any[], addedUi: any) {
@@ -280,24 +281,50 @@ function ptit1HitMeta(state: any, playerId: string, beforeUi: any[], addedUi: an
   const beforeProjection = ptit1DraftProjection(state, playerId, beforeUi);
   const afterProjection = ptit1DraftProjection(state, playerId, [...beforeUi, addedUi]);
   const d:any = ptit1UiToGameDart(addedUi);
+  const raw = scorePtitHunDart(beforeProjection.score, d, rules);
   const countDbullsBeforeDraft = beforeUi.map(ptit1UiToGameDart).filter((x:any)=>x?.bed === "IB").length;
   const totalDbullNo = Number(state?.statsByPlayer?.[playerId]?.dbulls || 0) + countDbullsBeforeDraft + (d?.bed === "IB" ? 1 : 0);
   let kind = "simple", title = "HIT", detail = `${beforeProjection.score} → ${afterProjection.score}`, color = ACCENT, icon = "•";
-  if (!d || d.bed === "MISS") { kind="miss"; title="MISS"; detail=rules.missMode === "add" ? `+${rules.missValue}` : `×${rules.missValue}`; color=RED; icon="✕"; }
-  else if (d.bed === "IB") {
+  if (!d || d.bed === "MISS") {
+    kind="miss"; title="MISS";
+    detail = rules.missMode === "add" ? `+${rules.missValue} · ${beforeProjection.score} → ${afterProjection.score}` : `TOTAL ×${rules.missValue} · ${beforeProjection.score} → ${afterProjection.score}`;
+    color=RED; icon="✕";
+  } else if (d.bed === "IB") {
     kind = totalDbullNo >= Number(rules.dbullsForZero || 3) && rules.zeroAbsoluteEnabled && !state?.zeroAbsoluteUsed?.[playerId] ? "zero" : "dbull";
     title = kind === "zero" ? `BULL50 ×${totalDbullNo} · ZÉRO ABSOLU` : `BULL50 ×${totalDbullNo}`;
-    detail = kind === "zero" ? "BONUS · SCORE = 0" : `${totalDbullNo === 2 ? "2e DBULL · encore " : ""}SCORE ÷${rules.dbullDivider} · ${beforeProjection.score} → ${afterProjection.score}`;
+    detail = kind === "zero"
+      ? "BONUS · SCORE = 0"
+      : `${totalDbullNo === 2 ? "2e DBULL cumulé · " : ""}score courant ÷${rules.dbullDivider} · ${beforeProjection.score} → ${afterProjection.score}`;
     color=BLUE; icon=kind === "zero" ? "0" : "◎";
+  } else if (d.bed === "OB") {
+    const pts = 25 * Number(rules.bull25Factor || 4);
+    kind="bull25"; title="BULL25"; detail=`25 ×${rules.bull25Factor} = +${pts} · ${beforeProjection.score} → ${afterProjection.score}`; color="#ff9e5c"; icon="◉";
+  } else if (d.bed === "D") {
+    const base = Number(d.number || 0) * 2, pts = base * Number(rules.doubleFactor || 2);
+    kind="double"; title=`DOUBLE ${d.number}`; detail=`${base} ×${rules.doubleFactor} = +${pts} · ${beforeProjection.score} → ${afterProjection.score}`; color="#68d9ff"; icon="D";
+  } else if (d.bed === "T") {
+    const base = Number(d.number || 0) * 3, pts = base * Number(rules.tripleFactor || 3);
+    kind="triple"; title=`TRIPLE ${d.number}`; detail=`${base} ×${rules.tripleFactor} = +${pts} · ${beforeProjection.score} → ${afterProjection.score}`; color="#df72ff"; icon="T";
+  } else if (ptit1IsOuter(d)) {
+    const pts = Number(d.number || 0) * Number(rules.outerSingleFactor || 10);
+    kind="outer"; title=`GROS ${d.number}`; detail=`${d.number} ×${rules.outerSingleFactor} = +${pts} · ${beforeProjection.score} → ${afterProjection.score}`; color="#ff8b22"; icon="G";
+  } else if (ptit1IsInner(d)) {
+    kind="inner"; title=`PETIT ${d.number}`; detail=`+${d.number} · ${beforeProjection.score} → ${afterProjection.score}`; color="#ffe36c"; icon="P";
   }
-  else if (d.bed === "OB") { kind="bull25"; title="BULL25"; detail=`TOTAL ×${rules.bull25Factor} · ${beforeProjection.score} → ${afterProjection.score}`; color="#ff9e5c"; icon="◉"; }
-  else if (d.bed === "D") { kind="double"; title=`DOUBLE ${d.number}`; detail=`TOTAL ×${rules.doubleFactor} · ${beforeProjection.score} → ${afterProjection.score}`; color="#68d9ff"; icon="D"; }
-  else if (d.bed === "T") { kind="triple"; title=`TRIPLE ${d.number}`; detail=`TOTAL ×${rules.tripleFactor} · ${beforeProjection.score} → ${afterProjection.score}`; color="#df72ff"; icon="T"; }
-  else if (ptit1IsOuter(d)) { kind="outer"; title=`GROS ${d.number}`; detail=`+${Number(d.number||0) * Number(rules.outerSingleFactor||10)} · valeur ×${rules.outerSingleFactor}`; color="#ff8b22"; icon="G"; }
-  else if (ptit1IsInner(d)) { kind="inner"; title=`PETIT ${d.number}`; detail=`+${d.number} · ${beforeProjection.score} → ${afterProjection.score}`; color="#ffe36c"; icon="P"; }
   const jackpot = rules.jackpotEnabled && (state?.jackpotTargets||[]).some((t:any)=>String(t.bed)===String(d?.bed) && Number(t.number)===Number(d?.number));
   if (jackpot) { kind="jackpot"; title=`JACKPOT ${d.bed}${d.number}`; detail="VOLÉE = 0"; color="#ffd84d"; icon="✦"; }
-  return { kind, title, detail, color, icon, score: afterProjection.score, delta: afterProjection.delta, dbullNo: totalDbullNo };
+  return { kind, title, detail, color, icon, score: afterProjection.score, delta: afterProjection.delta, dbullNo: totalDbullNo, rawDelta: raw.delta };
+}
+
+function ptit1VisitBreakdown(visit: any, rules: any) {
+  if (!visit) return [];
+  return ptit1RawSteps(Number(visit.before || 0), visit.darts || [], rules).map((step:any) => ({
+    label: step.label,
+    delta: Number(step.delta || 0),
+    before: step.before,
+    after: step.after,
+    kind: step.kind,
+  }));
 }
 
 function playPtit1FeedbackTone(kind: string, enabled = true) {
@@ -330,7 +357,7 @@ function Ptit1VisitCard({ card, profile }: any) {
   if (!card) return null;
   return <div className="ptit1-visit-card" aria-live="polite">
     <div className="ptit1-visit-card__avatar"><ProfileAvatar profile={profile} size={52} showStars={false} ringColor={card.color || ACCENT} /></div>
-    <div className="ptit1-visit-card__copy"><small>VOLÉE TERMINÉE</small><b>{card.playerName}</b><div className="ptit1-visit-card__darts">{(card.darts||[]).map((d:any,i:number)=><span key={i}>{ptitHunDartLabel(d)}</span>)}</div></div>
+    <div className="ptit1-visit-card__copy"><small>{card.specialLabel || "VOLÉE TERMINÉE"}</small><b>{card.playerName}</b><div className="ptit1-visit-card__darts">{(card.breakdown||[]).map((step:any,i:number)=><span key={i} title={`${step.before} → ${step.after}`}>{step.label}<i>{step.delta===0?"0":`${step.delta>0?"+":""}${step.delta}`}</i></span>)}</div></div>
     <div className="ptit1-visit-card__score"><small>VOLÉE</small><b>{card.delta === 0 ? "0" : `${card.delta > 0 ? "+" : ""}${card.delta}`}</b><span>TOTAL {card.after}</span></div>
   </div>;
 }
@@ -339,7 +366,7 @@ function Ptit1PlayersModal({ rows, onClose }: any) {
   return <FloatingPanel title="ORDRE DE JEU" subtitle="Dernière volée, score et progression de chaque joueur" onClose={onClose} accent={ACCENT}>
     <div style={{display:"grid",gap:8,padding:2}}>{(rows||[]).map((row:any,index:number)=><div key={row.id||index} style={{borderRadius:15,border:`1px solid ${row.active ? row.color+"aa" : "rgba(255,255,255,.08)"}`,background:"linear-gradient(180deg,rgba(255,255,255,.04),rgba(0,0,0,.20))",padding:8,boxShadow:row.active?`0 0 18px ${row.color}22`:"none"}}>
       <div style={{display:"grid",gridTemplateColumns:"24px 42px minmax(0,1fr) auto",gap:7,alignItems:"center"}}><strong style={{color:row.color,fontSize:10}}>#{index+1}</strong><ProfileAvatar profile={row.profile} size={40} showStars={false} ringColor={row.color}/><div style={{minWidth:0}}><b style={{display:"block",color:row.color,fontSize:10,textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{row.name}</b><span style={{display:"block",marginTop:2,color:"#8792a8",fontSize:7.5}}>{row.status}</span></div><b style={{fontSize:18,color:row.color}}>{row.score}</b></div>
-      <div style={{marginTop:7,display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr)) auto",gap:5,alignItems:"stretch"}}>{[0,1,2].map((i)=>{const d=row.lastVisit?.darts?.[i];return <div key={i} style={{height:28,borderRadius:9,border:"1px solid rgba(255,255,255,.08)",background:"rgba(0,0,0,.26)",display:"grid",placeItems:"center",color:d?"#fff":"#667085",fontSize:8,fontWeight:1000}}>{d?ptitHunDartLabel(d):"—"}</div>})}<div style={{minWidth:64,borderRadius:9,border:`1px solid ${row.color}44`,background:`${row.color}0d`,display:"grid",placeItems:"center",textAlign:"center",padding:"2px 7px"}}><small style={{color:"#8f98ad",fontSize:6.5}}>DERNIÈRE</small><b style={{color:row.color,fontSize:10}}>{row.lastVisit ? `${row.lastVisit.delta>0?"+":""}${row.lastVisit.delta}` : "—"}</b></div></div>
+      <div style={{marginTop:7,display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr)) auto",gap:5,alignItems:"stretch"}}>{[0,1,2].map((i)=>{const step=row.lastBreakdown?.[i];return <div key={i} style={{height:32,borderRadius:9,border:"1px solid rgba(255,255,255,.08)",background:"rgba(0,0,0,.26)",display:"grid",gridTemplateRows:"auto auto",placeItems:"center",alignContent:"center",color:step?"#fff":"#667085",fontWeight:1000,lineHeight:1}}>{step?<><span style={{fontSize:7.8}}>{step.label}</span><small style={{marginTop:2,fontSize:6.2,color:step.delta<0?GREEN:step.kind==="miss"?RED:row.color}}>{step.delta===0?"0":`${step.delta>0?"+":""}${step.delta}`}</small></>:"—"}</div>})}<div style={{minWidth:64,borderRadius:9,border:`1px solid ${row.color}44`,background:`${row.color}0d`,display:"grid",placeItems:"center",textAlign:"center",padding:"2px 7px"}}><small style={{color:"#8f98ad",fontSize:6.5}}>DERNIÈRE</small><b style={{color:row.color,fontSize:10}}>{row.lastVisit ? `${row.lastVisit.delta>0?"+":""}${row.lastVisit.delta}` : "—"}</b></div></div>
     </div>)}</div>
   </FloatingPanel>;
 }
@@ -425,7 +452,7 @@ export default function PtitHunPlay(props: any) {
     if (last) {
       const visitPlayer:any = next.players?.find((p:any)=>String(p.id)===String(last.playerId));
       const visitColor = colorById.get(String(last.playerId)) || ACCENT;
-      setVisitCard({ key:`visit-${last.id}`, playerId:last.playerId, playerName:visitPlayer?.name || nameById(last.playerId), darts:last.darts || [], delta:Number(last.delta||0), after:Number(last.after||0), color:visitColor });
+      setVisitCard({ key:`visit-${last.id}`, playerId:last.playerId, playerName:visitPlayer?.name || nameById(last.playerId), darts:last.darts || [], breakdown:ptit1VisitBreakdown(last, config.rules), specialLabel:last?.jackpotHit ? "JACKPOT · VOLÉE ANNULÉE" : last?.petitOnePerfect ? "P’TIT 1 PARFAIT · VOLÉE ANNULÉE" : last?.tripleNul ? "TRIPLE NUL · VOLÉE ANNULÉE" : last?.zeroAbsoluteNow ? "ZÉRO ABSOLU" : "VOLÉE TERMINÉE", delta:Number(last.delta||0), after:Number(last.after||0), color:visitColor });
       try { playGolfTickerSound("PAR", .68); } catch {}
     }
     if (!msg && next.phase === "finished" && next.winnerId) { msg = `🏆 ${nameById(next.winnerId)} remporte P’TIT 1 !`; playNewModeSfx("victory", sfxEnabled); }
@@ -486,7 +513,7 @@ export default function PtitHunPlay(props: any) {
   const coach = firstVisitGuide ? `1 · Choisis PETIT pour viser la zone simple intérieure. 2 · Le petit 1 vaut +1 ; le gros 1 vaut +${config.rules.outerSingleFactor}. 3 · Double : valeur D ×${config.rules.doubleFactor}, Triple : valeur T ×${config.rules.tripleFactor}, Bull25 : 25 ×${config.rules.bull25Factor}. 4 · ${config.rules.jackpotEnabled ? `Jackpot ${state.jackpotTargets.map((t: any) => t.label).join("/")} = volée 0.` : config.rules.dbullEnabled ? `DBULL ÷${config.rules.dbullDivider}.` : "Reste dans les petits simples."}` : coachEnabled && !activeIsBot ? coachText(state, activePlayer) : "";
   const ranked = rankPtitHunPlayers(state);
   const rankingRows = ranked.map((r: any) => { const p: any = state.players.find((x: any) => String(x.id) === String(r.id)); const st: any = state.statsByPlayer?.[r.id] || {}; const color = colorById.get(String(r.id)) || ACCENT; return { id: r.id, name: p?.name || "Joueur", profile: profileById.get(String(r.id)) || p, color, value: r.score, suffix: " pts", subtitle: `${st.jackpotVisits || 0} Jackpot · ${st.tripleNuls || 0} Triple Nul · ${st.dbulls || 0}/${config.rules.dbullsForZero} DBULL · ${state.shieldActive?.[r.id] ? "🛡 actif" : `${state.cleanStreak?.[r.id] || 0}/${config.rules.cleanVisitsForShield} bouclier`}`, score: r.score, order: r.rank }; });
-  const playersRows = ranked.map((r: any) => { const p: any = state.players.find((x: any) => String(x.id) === String(r.id)); const st: any = state.statsByPlayer?.[r.id] || {}; const color = colorById.get(String(r.id)) || ACCENT; const lastVisit=[...(state.visits||[])].reverse().find((v:any)=>String(v.playerId)===String(r.id)) || null; return { id: r.id, name: p?.name || "Joueur", profile: profileById.get(String(r.id)) || p, color, active: String(r.id) === String(activePlayer?.id), status: state.shieldActive?.[r.id] ? "🛡 BOUCLIER ACTIF" : config.rules.shieldEnabled ? `${state.cleanStreak?.[r.id] || 0}/${config.rules.cleanVisitsForShield} VOLÉES PROPRES` : "BOUCLIER OFF", score:r.score, lastVisit, progress: Number(st.visits || 0), progressMax: config.rules.rounds, metrics: [{ label: "SCORE", value: r.score }, { label: "P’TIT 1", value: st.petitOneHits || 0 }, { label: "DBULL", value: st.dbulls || 0 }, { label: "VOLÉES 0", value: st.zeroVisits || 0 }] }; });
+  const playersRows = ranked.map((r: any) => { const p: any = state.players.find((x: any) => String(x.id) === String(r.id)); const st: any = state.statsByPlayer?.[r.id] || {}; const color = colorById.get(String(r.id)) || ACCENT; const lastVisit=[...(state.visits||[])].reverse().find((v:any)=>String(v.playerId)===String(r.id)) || null; return { id: r.id, name: p?.name || "Joueur", profile: profileById.get(String(r.id)) || p, color, active: String(r.id) === String(activePlayer?.id), status: state.shieldActive?.[r.id] ? "🛡 BOUCLIER ACTIF" : config.rules.shieldEnabled ? `${state.cleanStreak?.[r.id] || 0}/${config.rules.cleanVisitsForShield} VOLÉES PROPRES` : "BOUCLIER OFF", score:r.score, lastVisit, lastBreakdown:ptit1VisitBreakdown(lastVisit, config.rules), progress: Number(st.visits || 0), progressMax: config.rules.rounds, metrics: [{ label: "SCORE", value: r.score }, { label: "P’TIT 1", value: st.petitOneHits || 0 }, { label: "DBULL", value: st.dbulls || 0 }, { label: "VOLÉES 0", value: st.zeroVisits || 0 }] }; });
   const statsItems = [
     { label: "SCORE", value: score, color: ACCENT }, { label: "P’TIT 1 TOUCHÉS", value: activeStats.petitOneHits || 0, color: ACCENT }, { label: "P’TIT 1 PARFAITS", value: activeStats.petitOneTriples || 0, color: ACCENT },
     { label: "PETITS SIMPLES", value: activeStats.innerSingles || 0, color: GREEN }, { label: "GROS SIMPLES", value: activeStats.outerSingles || 0, color: "#ffb86b" }, { label: "VOLÉES À 0", value: activeStats.zeroVisits || 0, color: GREEN },
@@ -551,7 +578,7 @@ export default function PtitHunPlay(props: any) {
       .ptit1-hit-card{position:fixed;z-index:92;left:50%;top:clamp(88px,15vh,145px);transform:translateX(-50%);width:min(330px,88vw);min-height:64px;border-radius:17px;border:1px solid color-mix(in srgb,var(--hit-color) 72%,rgba(255,255,255,.12));background:linear-gradient(135deg,rgba(7,9,14,.97),rgba(16,19,28,.97));box-shadow:0 18px 48px rgba(0,0,0,.55),0 0 28px color-mix(in srgb,var(--hit-color) 28%,transparent);display:grid;grid-template-columns:46px minmax(0,1fr) auto;gap:9px;align-items:center;padding:8px 10px;pointer-events:none;animation:ptit1CardIn .16s ease-out}
       .ptit1-hit-card__icon{width:42px;height:42px;border-radius:13px;background:color-mix(in srgb,var(--hit-color) 18%,rgba(0,0,0,.65));border:1px solid color-mix(in srgb,var(--hit-color) 55%,transparent);display:grid;place-items:center;color:var(--hit-color);font-size:20px;font-weight:1100}.ptit1-hit-card small{display:block;color:#8994a9;font-size:6.5px;font-weight:1000;letter-spacing:.7px}.ptit1-hit-card b{display:block;margin-top:1px;color:var(--hit-color);font-size:13px;font-weight:1100}.ptit1-hit-card span{display:block;margin-top:2px;color:#e8edf7;font-size:8px}.ptit1-hit-card>strong{color:var(--hit-color);font-size:22px;font-weight:1100}
       .ptit1-visit-card{position:fixed;z-index:91;left:50%;top:50%;transform:translate(-50%,-50%);width:min(360px,90vw);border-radius:19px;border:1px solid color-mix(in srgb,var(--ptit-accent) 58%,rgba(255,255,255,.10));background:linear-gradient(135deg,rgba(8,10,16,.98),rgba(18,21,30,.98));box-shadow:0 24px 70px rgba(0,0,0,.68),0 0 34px color-mix(in srgb,var(--ptit-accent) 20%,transparent);display:grid;grid-template-columns:58px minmax(0,1fr) auto;gap:9px;align-items:center;padding:10px 12px;pointer-events:none;animation:ptit1VisitPop .22s cubic-bezier(.2,.9,.25,1.2)}
-      .ptit1-visit-card__copy small,.ptit1-visit-card__score small{display:block;color:#8f98aa;font-size:6.7px;font-weight:1000;letter-spacing:.65px}.ptit1-visit-card__copy>b{display:block;margin-top:2px;color:#fff;font-size:12px;text-transform:uppercase}.ptit1-visit-card__darts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;margin-top:5px}.ptit1-visit-card__darts span{height:22px;border-radius:7px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);display:grid;place-items:center;font-size:7px;color:#dfe7f4}.ptit1-visit-card__score{text-align:right}.ptit1-visit-card__score b{display:block;color:var(--ptit-accent);font-size:23px;line-height:1;font-weight:1100}.ptit1-visit-card__score span{display:block;margin-top:4px;color:#fff;font-size:8px;font-weight:1000}
+      .ptit1-visit-card__copy small,.ptit1-visit-card__score small{display:block;color:#8f98aa;font-size:6.7px;font-weight:1000;letter-spacing:.65px}.ptit1-visit-card__copy>b{display:block;margin-top:2px;color:#fff;font-size:12px;text-transform:uppercase}.ptit1-visit-card__darts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;margin-top:5px}.ptit1-visit-card__darts span{height:28px;border-radius:7px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);display:grid;grid-template-rows:auto auto;place-items:center;align-content:center;font-size:7px;color:#dfe7f4;line-height:1}.ptit1-visit-card__darts span i{font-style:normal;margin-top:2px;font-size:6px;color:var(--ptit-accent);font-weight:1000}.ptit1-visit-card__score{text-align:right}.ptit1-visit-card__score b{display:block;color:var(--ptit-accent);font-size:23px;line-height:1;font-weight:1100}.ptit1-visit-card__score span{display:block;margin-top:4px;color:#fff;font-size:8px;font-weight:1000}
       @keyframes ptit1CardIn{from{opacity:0;transform:translate(-50%,-8px) scale(.96)}to{opacity:1;transform:translate(-50%,0) scale(1)}}@keyframes ptit1VisitPop{from{opacity:0;transform:translate(-50%,-50%) scale(.86)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
       @media (orientation:landscape){
         .ptit1-play{gap:5px;padding:5px}
@@ -638,7 +665,7 @@ export default function PtitHunPlay(props: any) {
         </section>
 
         <section className="ptit1-visit">
-          <Ptit1DartsRow currentThrow={currentThrow} accent={activeColor} liveScore={liveProjection.score} liveDelta={liveProjection.delta} />
+          <Ptit1DartsRow currentThrow={currentThrow} accent={activeColor} liveScore={liveProjection.score} liveDelta={liveProjection.delta} liveSteps={liveProjection.steps} />
         </section>
       </div>
 

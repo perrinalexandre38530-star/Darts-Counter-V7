@@ -30,6 +30,7 @@ import {
   listMyOrganizations,
   listOrganizationEvents,
   listOrganizationGroups,
+  listOrganizationMemberProposals,
   loadOrganizationLocalState,
   normalizeOrganizationProfile,
   organizationKindLabel,
@@ -227,6 +228,7 @@ export default function OrganizationsPage({ go, params }: Props) {
   const [refreshTick, setRefreshTick] = React.useState(0);
   const [activeLogo, setActiveLogo] = React.useState("");
   const [activeCover, setActiveCover] = React.useState("");
+  const [pendingMembershipCount, setPendingMembershipCount] = React.useState(0);
   const [viewportWidth, setViewportWidth] = React.useState(() => (typeof window !== "undefined" ? window.innerWidth : 1280));
 
   const active = React.useMemo(() => organizations.find((org) => org.id === activeId) || organizations[0] || null, [organizations, activeId]);
@@ -278,6 +280,48 @@ export default function OrganizationsPage({ go, params }: Props) {
     });
     return () => { cancelled = true; };
   }, [active?.id, userId]);
+
+  const refreshMembershipSignals = React.useCallback(async () => {
+    if (!userId || !active?.id) {
+      setPendingMembershipCount(0);
+      return;
+    }
+    try {
+      const result = await listOrganizationMemberProposals(userId, active.id);
+      const pending = result.proposals.filter((proposal) => {
+        if (proposal.status !== "pending") return false;
+        if (active.role === "owner") return proposal.adminStatus === "pending";
+        return proposal.proposerUserId === userId;
+      });
+      setPendingMembershipCount(pending.length);
+    } catch {
+      setPendingMembershipCount(0);
+    }
+  }, [userId, active?.id, active?.role]);
+
+  React.useEffect(() => {
+    void refreshMembershipSignals();
+    if (!userId || !active?.id || typeof window === "undefined") return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshMembershipSignals();
+    }, 8000);
+    const refresh = () => {
+      if (document.visibilityState === "visible") void refreshMembershipSignals();
+    };
+    const onMembersChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ organizationId?: string }>).detail;
+      if (!detail?.organizationId || detail.organizationId === active.id) void refreshMembershipSignals();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("mss:organization-members-changed", onMembersChanged as EventListener);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("mss:organization-members-changed", onMembersChanged as EventListener);
+    };
+  }, [userId, active?.id, refreshMembershipSignals]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -534,9 +578,9 @@ export default function OrganizationsPage({ go, params }: Props) {
   }
 
   const optionalModules = active?.profile.adminSettings.enabledModules || ["communication", "federations", "billing", "sponsors"];
-  const modules: Array<{ id: View; name: string; subtitle: string; hint?: string }> = [
+  const modules: Array<{ id: View; name: string; subtitle: string; hint?: string; attention?: string }> = [
     { id: "profile", name: L("Fiche organisme", "Organization profile", "Ficha de la organización"), subtitle: L("Identité, coordonnées, activités et visuels", "Identity, contacts, activities and visuals", "Identidad, contactos, actividades y visuales") },
-    { id: "members", name: L("Membres", "Members", "Miembros"), subtitle: L("Invitations, rôles et effectifs", "Invites, roles and roster", "Invitaciones, roles y plantilla"), hint: String(Math.max(active?.memberCount || 0, 1)) },
+    { id: "members", name: L("Membres", "Members", "Miembros"), subtitle: L("Invitations, rôles et effectifs", "Invites, roles and roster", "Invitaciones, roles y plantilla"), hint: String(Math.max(active?.memberCount || 0, 1)), attention: pendingMembershipCount ? (active?.role === "owner" ? `${pendingMembershipCount} ${L("À VALIDER", "TO REVIEW", "POR VALIDAR")}` : `${pendingMembershipCount} ${L("EN ATTENTE", "PENDING", "PENDIENTE")}`) : undefined },
     { id: "groups", name: L("Équipes & groupes", "Teams & groups", "Equipos y grupos"), subtitle: L("Sports, sections et groupes internes", "Sports, sections and internal groups", "Deportes, secciones y grupos internos"), hint: String(Math.max(active?.groupCount || 0, localGroups.length)) },
     { id: "calendar", name: L("Agenda", "Calendar", "Agenda"), subtitle: L("Entraînements, matchs et événements", "Training, matches and events", "Entrenamientos, partidos y eventos"), hint: String(Math.max(active?.eventCount || 0, localEvents.length)) },
     { id: "competitions", name: L("Compétitions", "Competitions", "Competiciones"), subtitle: L("Tournois, championnats, challenges", "Tournaments, leagues, challenges", "Torneos, ligas y retos") },
@@ -895,12 +939,13 @@ export default function OrganizationsPage({ go, params }: Props) {
     const essentialsCard = <div style={{ ...card, padding: 10 }}>
       <div style={{ margin: "1px 2px 9px", display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ color: theme.text, fontSize: 11.5 }}>{L("Essentiel", "Essentials", "Esencial")}</strong><button type="button" onClick={() => navigateView("more")} style={{ border: 0, background: "transparent", color: theme.primary, fontSize: 8.5, fontWeight: 900, cursor: "pointer" }}>{L("TOUT VOIR", "SEE ALL", "VER TODO")} ›</button></div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
-        {quickModules.map((module) => <button key={module.id} type="button" onClick={() => navigateView(module.id)} style={{ ...card, minHeight: 78, padding: 9, border: `1px solid ${theme.borderSoft}`, color: theme.text, cursor: "pointer", textAlign: "left", display: "grid", gridTemplateColumns: "32px minmax(0,1fr)", gap: 7, alignItems: "center" }}><span style={{ transform: "scale(.82)", transformOrigin: "left center" }}><ModuleIcon name={module.id} color={theme.primary}/></span><span style={{ minWidth: 0 }}><span style={{ display: "flex", alignItems: "center", gap: 5 }}><strong style={{ color: theme.text, fontSize: 10.2, lineHeight: 1.15 }}>{module.name}</strong>{module.hint ? <span style={{ borderRadius: 999, background: `${theme.primary}12`, color: theme.primary, fontSize: 7, fontWeight: 1000, padding: "2px 5px" }}>{module.hint}</span> : null}</span>{active.profile.adminSettings.compactDashboard ? null : <span style={{ display: "block", marginTop: 3, color: theme.textSoft, fontSize: 8.1, lineHeight: 1.25 }}>{module.subtitle}</span>}</span></button>)}
+        {quickModules.map((module) => <button key={module.id} type="button" onClick={() => navigateView(module.id)} style={{ ...card, minHeight: 78, padding: 9, border: `1px solid ${theme.borderSoft}`, color: theme.text, cursor: "pointer", textAlign: "left", display: "grid", gridTemplateColumns: "32px minmax(0,1fr)", gap: 7, alignItems: "center" }}><span style={{ transform: "scale(.82)", transformOrigin: "left center" }}><ModuleIcon name={module.id} color={theme.primary}/></span><span style={{ minWidth: 0 }}><span style={{ display: "flex", alignItems: "center", gap: 5 }}><strong style={{ color: theme.text, fontSize: 10.2, lineHeight: 1.15 }}>{module.name}</strong>{module.hint ? <span style={{ borderRadius: 999, background: `${theme.primary}12`, color: theme.primary, fontSize: 7, fontWeight: 1000, padding: "2px 5px" }}>{module.hint}</span> : null}{module.attention ? <span style={{ borderRadius: 999, border: `1px solid ${theme.primary}66`, background: `${theme.primary}18`, color: theme.primary, fontSize: 6.5, fontWeight: 1000, padding: "2px 5px", whiteSpace: "nowrap" }}>{module.attention}</span> : null}</span>{active.profile.adminSettings.compactDashboard ? null : <span style={{ display: "block", marginTop: 3, color: theme.textSoft, fontSize: 8.1, lineHeight: 1.25 }}>{module.subtitle}</span>}</span></button>)}
       </div>
     </div>;
 
     return <div style={{ display: "grid", gap: 11 }}>
       {homeHero}
+      <OrganizationInvitationsInbox userId={userId} onChanged={async () => { await load(); await refreshMembershipSignals(); }} />
       <div style={{ display: "grid", gridTemplateColumns: wideWorkspace ? "minmax(0,1.3fr) minmax(340px,1fr)" : "1fr", gap: 11, alignItems: "start" }}>
         <div style={{ display: "grid", gap: 11 }}>
           {summaryCard}
@@ -931,7 +976,7 @@ export default function OrganizationsPage({ go, params }: Props) {
         return <div key={group.title}>
           <div style={{ margin: "0 3px 6px", color: theme.textSoft, fontSize: 8, fontWeight: 1000, letterSpacing: .8, textTransform: "uppercase" }}>{group.title}</div>
           <div style={{ ...card, overflow: "hidden" }}>
-            {entries.map((module, index) => <button key={module.id} type="button" onClick={() => navigateView(module.id)} style={{ width: "100%", minHeight: 56, border: 0, borderBottom: index < entries.length - 1 ? `1px solid ${theme.borderSoft}` : 0, background: "transparent", color: theme.text, padding: "8px 10px", display: "grid", gridTemplateColumns: "34px minmax(0,1fr) auto", gap: 8, alignItems: "center", textAlign: "left", cursor: "pointer" }}><span style={{ transform: "scale(.8)", transformOrigin: "left center" }}><ModuleIcon name={module.id} color={theme.primary}/></span><span style={{ minWidth: 0 }}><strong style={{ display: "block", fontSize: 10.5 }}>{module.name}</strong><span style={{ display: "block", marginTop: 2, color: theme.textSoft, fontSize: 8.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{module.subtitle}</span></span><span style={{ color: theme.primary, fontSize: 17 }}>›</span></button>)}
+            {entries.map((module, index) => <button key={module.id} type="button" onClick={() => navigateView(module.id)} style={{ width: "100%", minHeight: 56, border: 0, borderBottom: index < entries.length - 1 ? `1px solid ${theme.borderSoft}` : 0, background: "transparent", color: theme.text, padding: "8px 10px", display: "grid", gridTemplateColumns: "34px minmax(0,1fr) auto", gap: 8, alignItems: "center", textAlign: "left", cursor: "pointer" }}><span style={{ transform: "scale(.8)", transformOrigin: "left center" }}><ModuleIcon name={module.id} color={theme.primary}/></span><span style={{ minWidth: 0 }}><strong style={{ display: "block", fontSize: 10.5 }}>{module.name}</strong><span style={{ display: "block", marginTop: 2, color: theme.textSoft, fontSize: 8.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{module.subtitle}</span></span><span style={{ display: "flex", alignItems: "center", gap: 6 }}>{module.attention ? <span style={{ borderRadius: 999, border: `1px solid ${theme.primary}66`, background: `${theme.primary}14`, color: theme.primary, fontSize: 6.8, fontWeight: 1000, padding: "3px 6px", whiteSpace: "nowrap" }}>{module.attention}</span> : null}<span style={{ color: theme.primary, fontSize: 17 }}>›</span></span></button>)}
           </div>
         </div>;
       })}

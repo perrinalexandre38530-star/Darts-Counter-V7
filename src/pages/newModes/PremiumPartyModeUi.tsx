@@ -80,6 +80,23 @@ export function ActiveHero({ profile, name, accent, eyebrow, primary, primarySuf
   </section>;
 }
 
+export function AimAssistCard({ plan, accent = "#4fe4ff", compact = false }: any) {
+  if (!plan) return null;
+  const tone = String(plan.tone || "normal");
+  const toneAccent = tone === "danger" ? "#ff6a66" : tone === "success" ? "#69e68d" : tone === "gold" ? "#ffd34d" : accent;
+  return <section className={`party-mode__aim-assist${compact ? " is-compact" : ""} is-${tone}`} style={{ border: `1px solid ${toneAccent}55`, background: `${toneAccent}0d`, borderRadius: 14, padding: compact ? "8px 10px" : "10px 12px", display: "grid", gap: compact ? 5 : 7, minWidth: 0 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+      <span aria-hidden style={{ fontSize: compact ? 18 : 22 }}>{plan.icon || "🎯"}</span>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ color: toneAccent, fontSize: compact ? 8 : 9, fontWeight: 1100, letterSpacing: 1 }}>{plan.kicker || "AIDE CIBLE"}</div>
+        <div style={{ color: "#fff", fontSize: compact ? 11 : 13, fontWeight: 1100, lineHeight: 1.15 }}>{plan.title || "OBJECTIF"}</div>
+      </div>
+    </div>
+    {plan.detail ? <div style={{ color: SOFT, fontSize: compact ? 9 : 10, fontWeight: 800, lineHeight: 1.25 }}>{plan.detail}</div> : null}
+    {Array.isArray(plan.targets) && plan.targets.length ? <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>{plan.targets.slice(0, 5).map((target: any, index: number) => <span key={`${target}-${index}`} style={{ borderRadius: 999, padding: compact ? "3px 6px" : "4px 8px", border: `1px solid ${toneAccent}55`, background: `${toneAccent}16`, color: toneAccent, fontSize: compact ? 8 : 9, fontWeight: 1100 }}>{target}</span>)}</div> : null}
+  </section>;
+}
+
 export function KpiStrip({ items, accent, onClick, className = "party-mode__kpis" }: any) {
   const Tag: any = onClick ? "button" : "div";
   return <Tag type={onClick ? "button" : undefined} className={className} onClick={onClick} aria-label={onClick ? "Ouvrir toutes les statistiques" : undefined}>

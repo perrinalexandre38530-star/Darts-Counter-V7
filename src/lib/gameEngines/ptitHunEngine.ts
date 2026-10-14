@@ -283,18 +283,50 @@ function ptitHunPenaltyBase(score: number, rules: PtitHunConfigPayload["rules"])
   return score > 0 ? score : Math.max(1, Number(rules.startScore || 20));
 }
 
-function applyDart(score: number, d: any, rules: PtitHunConfigPayload["rules"]) {
-  if (!d || d.bed === "MISS") return rules.missMode === "add" ? score + rules.missValue : ptitHunPenaltyBase(score, rules) * rules.missValue;
-  if (d.bed === "IB") return rules.dbullEnabled ? Math.ceil(score / rules.dbullDivider) : score + 50;
+export function scorePtitHunDart(score: number, d: any, rules: PtitHunConfigPayload["rules"]) {
+  const before = Math.max(0, Math.round(Number(score || 0)));
+  let after = before;
+  let kind = "inner";
+  let baseValue = 0;
+  let factor = 1;
 
-  // P’TIT 1 : les pénalités Double / Triple / Bull25 s’appliquent à la VALEUR DU HIT,
-  // jamais au total du joueur. La valeur pénalisée est ensuite ajoutée au score.
-  // Exemples par défaut : T5 = 15 ×3 = +45 ; T1 = 3 ×3 = +9 ; D20 = 40 ×2 = +80.
-  if (d.bed === "OB") return score + (25 * rules.bull25Factor);
-  if (d.bed === "D") return score + ((Number(d.number || 0) * 2) * rules.doubleFactor);
-  if (d.bed === "T") return score + ((Number(d.number || 0) * 3) * rules.tripleFactor);
-  if (isPtitHunOuterSingle(d)) return score + Number(d.number || 0) * rules.outerSingleFactor;
-  return score + Number(d.number || 0);
+  if (!d || d.bed === "MISS") {
+    kind = "miss";
+    factor = rules.missMode === "multiply" ? Number(rules.missValue || 5) : 1;
+    after = rules.missMode === "add" ? before + Number(rules.missValue || 0) : ptitHunPenaltyBase(before, rules) * factor;
+  } else if (d.bed === "IB") {
+    kind = "dbull";
+    factor = rules.dbullEnabled ? Number(rules.dbullDivider || 2) : 1;
+    baseValue = 50;
+    after = rules.dbullEnabled ? Math.ceil(before / factor) : before + 50;
+  } else if (d.bed === "OB") {
+    kind = "bull25";
+    baseValue = 25;
+    factor = Number(rules.bull25Factor || 4);
+    after = before + baseValue * factor;
+  } else if (d.bed === "D") {
+    kind = "double";
+    baseValue = Number(d.number || 0) * 2;
+    factor = Number(rules.doubleFactor || 2);
+    after = before + baseValue * factor;
+  } else if (d.bed === "T") {
+    kind = "triple";
+    baseValue = Number(d.number || 0) * 3;
+    factor = Number(rules.tripleFactor || 3);
+    after = before + baseValue * factor;
+  } else if (isPtitHunOuterSingle(d)) {
+    kind = "outer";
+    baseValue = Number(d.number || 0);
+    factor = Number(rules.outerSingleFactor || 10);
+    after = before + baseValue * factor;
+  } else {
+    kind = "inner";
+    baseValue = Number(d.number || 0);
+    after = before + baseValue;
+  }
+
+  after = Math.max(0, Math.round(after));
+  return { before, after, delta: after - before, kind, baseValue, factor };
 }
 
 export function playPtitHunVisit(input: PtitHunState, dartsRaw: GameDart[]): PtitHunState {
@@ -347,7 +379,7 @@ export function playPtitHunVisit(input: PtitHunState, dartsRaw: GameDart[]): Pti
       const beforeDart = rawAfter;
       const dangerousMultiplier = (!d || (d as any).bed === "MISS") && rules.missMode === "multiply";
       if (beforeDart === 0 && dangerousMultiplier) zeroPenaltyFloor = true;
-      rawAfter = Math.max(0, Math.round(applyDart(rawAfter, d, rules)));
+      rawAfter = scorePtitHunDart(rawAfter, d, rules).after;
     }
     if (zeroPenaltyFloor) events.push(`À 0, pénalité relancée depuis le capital ${rules.startScore}`);
   }
