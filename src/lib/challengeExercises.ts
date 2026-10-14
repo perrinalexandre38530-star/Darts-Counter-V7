@@ -374,6 +374,100 @@ export function analyzeChallengeExercise(entries:ChallengeEntryLike[],cfg:Challe
  };
 }
 
+
+export type ChallengeRankLike={
+ score:number;
+ tieBreakPoints?:number;
+ accuracy?:number;
+ bestStreak?:number;
+ bestVisit?:number;
+ darts?:number;
+ exerciseStats?:Partial<ChallengeExerciseAnalytics>|null;
+};
+
+const metric=(value:any)=>Number.isFinite(Number(value))?Number(value):0;
+
+/**
+ * Ordre de départage commun au gameplay local, aux compétitions et au classement
+ * Online. Les exercices privilégient d'abord la validation de l'objectif, puis
+ * la régularité de volée. Le Challenge classique conserve son départage historique
+ * par somme des secteurs (utile notamment pour DOUBLES / TRIPLES).
+ */
+export function compareChallengeRankRows(a:ChallengeRankLike,b:ChallengeRankLike,cfg:ChallengeExerciseConfigLike):number{
+ const scoreDelta=metric(b?.score)-metric(a?.score);
+ if(scoreDelta)return scoreDelta;
+ const type=challengeExerciseType(cfg);
+ if(type!=='classic'){
+  const ax=a?.exerciseStats||{},bx=b?.exerciseStats||{};
+  const validation=metric((bx as any).validationRate)-metric((ax as any).validationRate);
+  if(validation)return validation;
+  const streak=metric((bx as any).bestValidatedVisitStreak)-metric((ax as any).bestValidatedVisitStreak);
+  if(streak)return streak;
+  const bestVisit=metric((bx as any).bestVisitPoints)-metric((ax as any).bestVisitPoints);
+  if(bestVisit)return bestVisit;
+  const perfect=metric((bx as any).perfectVisits)-metric((ax as any).perfectVisits);
+  if(perfect)return perfect;
+ }
+ const segmentSum=metric(b?.tieBreakPoints)-metric(a?.tieBreakPoints);
+ if(segmentSum)return segmentSum;
+ const accuracy=metric(b?.accuracy)-metric(a?.accuracy);
+ if(accuracy)return accuracy;
+ const streak=metric(b?.bestStreak)-metric(a?.bestStreak);
+ if(streak)return streak;
+ const bestVisit=metric(b?.bestVisit)-metric(a?.bestVisit);
+ if(bestVisit)return bestVisit;
+ const dartsA=metric(a?.darts),dartsB=metric(b?.darts);
+ if(dartsA!==dartsB)return dartsA-dartsB;
+ return 0;
+}
+
+/**
+ * Recompose une configuration Challenge depuis les règles d'une compétition.
+ * `objectiveOverride` reste utile pour les compétitions classiques à plusieurs
+ * cibles ; pour HORLOGE / HALF-IT / SÉQUENCE / GROUPEMENT, la configuration
+ * d'exercice stockée dans `exerciseConfig` reste l'autorité.
+ */
+export function challengeExerciseConfigFromRules(rules:any,objectiveOverride?:string|null):ChallengeExerciseConfigLike{
+ const stored=(rules?.exerciseConfig&&typeof rules.exerciseConfig==='object')?rules.exerciseConfig:rules||{};
+ const type=challengeExerciseType(stored);
+ if(type==='classic'){
+  const target=String(objectiveOverride||rules?.target||stored?.target||'20');
+  const rule=target==='any-double'?'double':target==='any-triple'?'triple':target==='bull'||target==='bull25'||target==='bull50'?'bull':String(rules?.rule||stored?.rule||'all');
+  return {target,rule,visits:Math.max(1,Math.round(Number(rules?.visits??stored?.visits??30)||30)),exerciseType:'classic'};
+ }
+ const common:any={
+  target:String(stored?.target||'20'),
+  rule:String(stored?.rule||'all'),
+  visits:Math.max(1,Math.round(Number(stored?.visits??rules?.visits??30)||30)),
+  exerciseType:type,
+  clockIncludeBull:Boolean(stored?.clockIncludeBull),
+  clockScoreMode:stored?.clockScoreMode==='real'?'real':'challenge',
+  halfItStartScore:Math.max(0,Math.round(Number(stored?.halfItStartScore??40)||0)),
+  sequenceObjectives:normalizedSequence(stored),
+  sequenceScoreMode:stored?.sequenceScoreMode==='challenge'?'challenge':'real',
+  groupingMin:clampSector(stored?.groupingMin,15),
+  groupingMax:clampSector(stored?.groupingMax,20),
+  groupingHits:Number(stored?.groupingHits)===3?3:2,
+ };
+ if(type==='clock'){
+  common.target='1';common.rule='all';common.visits=common.clockIncludeBull?21:20;
+ }else if(type==='half-it'||type==='sequence'){
+  const sequence=normalizedSequence(common);
+  common.sequenceObjectives=sequence;
+  common.visits=Math.max(1,sequence.length);
+  const first=String(sequence[0]||'20');
+  common.target=/^([1-9]|1[0-9]|20)$/.test(first)?first:'20';common.rule='all';
+ }else if(type==='grouping'){
+  const lo=Math.min(common.groupingMin,common.groupingMax),hi=Math.max(common.groupingMin,common.groupingMax);
+  common.groupingMin=lo;common.groupingMax=hi;common.target=String(lo);common.rule='all';
+ }
+ return common as ChallengeExerciseConfigLike;
+}
+
+export function challengeCompetitionObjectiveKey(rules:any):string{
+ return challengeObjectiveKeyTarget(challengeExerciseConfigFromRules(rules));
+}
+
 export function maxChallengePointsPerDart(cfg:ChallengeExerciseConfigLike):number{
  const type=challengeExerciseType(cfg);
  if(type==='classic')return Math.max(1,...(['S','D','T','25','50'] as ChallengeHit[]).map(hit=>classicHitValue(hit,String(cfg.rule||'all'),String(cfg.target||'20'),20)));

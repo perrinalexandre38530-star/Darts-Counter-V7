@@ -44,6 +44,7 @@ import type { Tournament, TournamentMatch } from "../lib/tournaments/types";
 import { PageAdBanner } from "../monetization/AdSlot";
 import ChallengePlay from "./ChallengePlay";
 import { getChallengeObjectiveImage } from "../lib/challengeObjectiveVisuals";
+import { challengeExerciseConfigFromRules, challengeExerciseType, challengeOnlineTargetLabel, compareChallengeRankRows } from "../lib/challengeExercises";
 
 import { startMatch, submitResult, buildInitialMatches } from "../lib/tournaments/engine";
 import {
@@ -1406,7 +1407,7 @@ function normalizeChallengeObjective(value: any) {
 
 function challengeObjectiveLabel(value: any) {
   const v = normalizeChallengeObjective(value);
-  return v === "any-double" ? "DOUBLES" : v === "any-triple" ? "TRIPLES" : v === "bull" ? "BULL" : v;
+  return challengeOnlineTargetLabel(v);
 }
 
 function ChallengeObjectiveThumb({ objective, className = "", title = "" }: { objective: any; className?: string; title?: string }) {
@@ -1416,7 +1417,11 @@ function ChallengeObjectiveThumb({ objective, className = "", title = "" }: { ob
 }
 
 function historyChallengeObjective(rec: any) {
-  return normalizeChallengeObjective(rec?.payload?.config?.target ?? rec?.config?.target ?? rec?.game?.target ?? rec?.summary?.target ?? rec?.payload?.summary?.target ?? rec?.objective ?? "20");
+  return normalizeChallengeObjective(
+    rec?.payload?.config?.leaderboardTarget ?? rec?.config?.leaderboardTarget ?? rec?.leaderboardTarget ??
+    rec?.payload?.summary?.leaderboardTarget ?? rec?.summary?.leaderboardTarget ??
+    rec?.payload?.config?.target ?? rec?.config?.target ?? rec?.game?.target ?? rec?.summary?.target ?? rec?.payload?.summary?.target ?? rec?.objective ?? "20"
+  );
 }
 
 function buildLinkedHistoryEntry(rec: any, tour: any) {
@@ -2287,6 +2292,8 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
   }, [tour]);
 
   const challengeRules:any = (tour as any)?.game?.rules || {};
+  const challengeCompetitionExerciseConfig:any = React.useMemo(()=>challengeExerciseConfigFromRules(challengeRules),[challengeRules]);
+  const challengeCompetitionExerciseType = challengeExerciseType(challengeCompetitionExerciseConfig);
   const challengeCompetition:any = (tour as any)?.challengeCompetition || {};
   const isChallengeCompetition = String((tour as any)?.game?.mode || "").toLowerCase() === "challenge";
   const challengeCompetitionFormat = String(challengeCompetition?.format || challengeRules?.challengeCompetitionFormat || "duels");
@@ -2334,10 +2341,10 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
     return Array.from(new Set(values.map(normalizeChallengeObjective).filter(Boolean)));
   },[isChallengeCompetition,challengeRules]);
 
-  const challengeObjectiveCatalog = React.useMemo(()=>[
+  const challengeObjectiveCatalog = React.useMemo(()=>challengeCompetitionExerciseType==="classic" ? [
     ...Array.from({length:20},(_,i)=>String(i+1)),
     "any-double","any-triple","bull"
-  ],[]);
+  ] : [],[challengeCompetitionExerciseType]);
   const challengeAvailableObjectivesToAdd = React.useMemo(()=>challengeObjectiveCatalog.filter(value=>!challengeObjectives.includes(value)),[challengeObjectiveCatalog,challengeObjectives]);
   React.useEffect(()=>{
     if(challengeAvailableObjectivesToAdd.length && !challengeAvailableObjectivesToAdd.includes(adminObjectiveToAdd)){
@@ -2352,10 +2359,11 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
   },[challengeCompetition,challengeAttemptsPerObjective]);
 
   const challengeObjectiveVisits = React.useCallback((objective:string)=>{
+    if(challengeCompetitionExerciseType!=="classic") return Math.max(1,Math.min(999,Number(challengeCompetitionExerciseConfig?.visits||challengeRules?.visits||30)||30));
     const key=normalizeChallengeObjective(objective);
     const override=challengeCompetition?.objectiveSettings?.[key]?.visits;
-    return Math.max(1,Math.min(200,Number(override||challengeRules?.visits||30)||30));
-  },[challengeCompetition,challengeRules]);
+    return Math.max(1,Math.min(999,Number(override||challengeRules?.visits||30)||30));
+  },[challengeCompetition,challengeRules,challengeCompetitionExerciseType,challengeCompetitionExerciseConfig]);
 
   const challengeScheduleRounds = React.useMemo(()=>{
     const configured=Array.isArray(challengeCompetition?.schedule?.rounds)?challengeCompetition.schedule.rounds:[];
@@ -2396,23 +2404,32 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
       const attemptsByPlayer=new Map<string,any[]>();
       const objectiveAttemptLimit=challengeObjectiveAttemptLimit(objective);
       const relevant=challengeLinkedMatchesCurrentCycle.filter((link:any)=>normalizeChallengeObjective(link?.challengeObjective || link?.target || link?.objective)===objective).slice().sort((a:any,b:any)=>Number(a?.createdAt||0)-Number(b?.createdAt||0));
+      const objectiveConfig:any=challengeExerciseConfigFromRules(challengeRules,objective);
       for(const link of relevant){
         for(const row of Array.isArray(link?.ranking)?link.ranking:[]){
           const pid=String(row?.playerId||row?.id||""); if(!pid) continue;
           const score=Number(row?.score??row?.points??row?.bestScore??row?.best??0)||0;
-          const tie=Number(row?.tieBreakPoints??row?.segmentSum??0)||0;
+          const tieBreakPoints=Number(row?.tieBreakPoints??row?.segmentSum??0)||0;
           const arr=attemptsByPlayer.get(pid)||[];
-          if(arr.length<objectiveAttemptLimit){arr.push({score,tie,link});attemptsByPlayer.set(pid,arr);}
+          if(arr.length<objectiveAttemptLimit){arr.push({
+            score,tieBreakPoints,
+            accuracy:Number(row?.accuracy??row?.successRate??0)||0,
+            bestStreak:Number(row?.bestStreak||0)||0,
+            bestVisit:Number(row?.bestVisit||0)||0,
+            darts:Number(row?.darts||row?.dartsThrown||0)||0,
+            exerciseStats:row?.exerciseStats||null,
+            link,
+          });attemptsByPlayer.set(pid,arr);}
         }
       }
       const rows=Array.from(attemptsByPlayer.entries()).map(([playerId,attempts])=>{
-        const best=attempts.slice().sort((a,b)=>b.score-a.score||b.tie-a.tie)[0]||{score:0,tie:0};
-        return {playerId,name:playersById[playerId]?.name||"Joueur",score:best.score,tie:best.tie,attempts:attempts.length};
-      }).sort((a,b)=>b.score-a.score||b.tie-a.tie||a.name.localeCompare(b.name));
+        const best=attempts.slice().sort((a,b)=>compareChallengeRankRows(a,b,objectiveConfig))[0]||{score:0,tieBreakPoints:0};
+        return {playerId,name:playersById[playerId]?.name||"Joueur",score:best.score,tie:Number(best.tieBreakPoints||0),attempts:attempts.length,exerciseStats:best.exerciseStats||null};
+      }).sort((a,b)=>compareChallengeRankRows(a,b,objectiveConfig)||a.name.localeCompare(b.name));
       out[objective]=rows.map((row,index)=>({...row,rank:index+1,championshipPoints:Number(challengePointsTable[index]||0)}));
     }
     return out;
-  },[isChallengePerformanceCompetition,challengeObjectives,challengeLinkedMatchesCurrentCycle,challengeObjectiveAttemptLimit,challengePointsTable,playersById]);
+  },[isChallengePerformanceCompetition,challengeObjectives,challengeLinkedMatchesCurrentCycle,challengeObjectiveAttemptLimit,challengePointsTable,playersById,challengeRules]);
 
   const challengeCarryPoints = React.useMemo(()=>{
     const cycles=Array.isArray(challengeCompetition?.divisionCycles)?challengeCompetition.divisionCycles:[];
@@ -2480,6 +2497,8 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
     const used=challengeAttemptCount(pid,obj);
     const maxAttempts=challengeObjectiveAttemptLimit(obj);
     if(used>=maxAttempts){setAdminNotice(`Essais épuisés pour ${player?.name||"ce joueur"} sur ${challengeObjectiveLabel(obj)}.`);return;}
+    const exerciseConfig:any=challengeExerciseConfigFromRules(challengeRules,obj);
+    const exerciseType=challengeExerciseType(exerciseConfig);
     const rule=obj==='any-double'?'double':obj==='any-triple'?'triple':obj==='bull'?'bull':String(challengeRules?.rule||'all');
     setActiveChallengeAttempt({
       player,
@@ -2489,9 +2508,10 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
       roundId:String(round?.id||""),
       roundNumber:Number(round?.round||0)||null,
       config:{
-        target:obj,
-        visits:challengeObjectiveVisits(obj),
-        rule,
+        ...exerciseConfig,
+        target:exerciseType==="classic"?obj:exerciseConfig.target,
+        visits:exerciseType==="classic"?challengeObjectiveVisits(obj):exerciseConfig.visits,
+        rule:exerciseType==="classic"?rule:exerciseConfig.rule,
         playerIds:[pid],
         teamIds:[],
         participantMode:'players',
@@ -2505,7 +2525,7 @@ export default function TournamentView({ store, go, id, sharedEntry = false }: P
           objective:obj,
           attemptNumber:used+1,
           maxAttempts,
-          tieBreak:String(challengeRules?.tieBreak||'segment_sum'),
+          tieBreak:exerciseType==="classic"?String(challengeRules?.tieBreak||'segment_sum'):"exercise",
           cycle:challengeCurrentCycle,
           roundId:String(round?.id||""),
           roundNumber:Number(round?.round||0)||null,
@@ -4143,7 +4163,9 @@ async function createSyntheticHistoryForSimulation(args: any) {
       setAdminNotice(`${player?.name||"Joueur"} a utilisé ses ${maxAttempts} essai${maxAttempts>1?"s":""} sur ${challengeObjectiveLabel(objective)}.`);
       return;
     }
-    const visits=Math.max(1,Number(playoff?.visits||challengeCompetition?.divisions?.playoffVisits||challengeRules?.visits||30)||30);
+    const exerciseConfig:any=challengeExerciseConfigFromRules(challengeRules,objective);
+    const exerciseType=challengeExerciseType(exerciseConfig);
+    const visits=exerciseType==="classic"?Math.max(1,Number(playoff?.visits||challengeCompetition?.divisions?.playoffVisits||challengeRules?.visits||30)||30):Math.max(1,Number(exerciseConfig.visits)||1);
     const rule=objective==="any-double"?"double":objective==="any-triple"?"triple":objective==="bull"?"bull":String(challengeRules?.rule||"all");
     setActiveChallengeAttempt({
       kind:"playoff",
@@ -4157,9 +4179,10 @@ async function createSyntheticHistoryForSimulation(args: any) {
       roundId:"",
       roundNumber:null,
       config:{
-        target:objective,
+        ...exerciseConfig,
+        target:exerciseType==="classic"?objective:exerciseConfig.target,
         visits,
-        rule,
+        rule:exerciseType==="classic"?rule:exerciseConfig.rule,
         playerIds:[playerId],
         teamIds:[],
         participantMode:"players",
@@ -4176,7 +4199,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
           objective,
           attemptNumber:used+1,
           maxAttempts,
-          tieBreak:String(challengeRules?.tieBreak||"segment_sum"),
+          tieBreak:exerciseType==="classic"?String(challengeRules?.tieBreak||"segment_sum"):"exercise",
           cycle:challengeCurrentCycle,
         }
       }

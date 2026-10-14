@@ -1,6 +1,8 @@
 // @ts-nocheck
 import React from "react";
 import BackDot from "../components/BackDot";
+import InfoDot from "../components/InfoDot";
+import ProfileAvatar from "../components/ProfileAvatar";
 import PageHeader from "../components/PageHeader";
 import tickerPtitHun from "../assets/tickers/ticker_ptit_1.png";
 import { useAwenaOptional } from "../awena/AwenaProvider";
@@ -20,8 +22,8 @@ import {
 } from "../lib/gameEngines/ptitHunEngine";
 import { NewModeInput, isBotProfile, playerName, resolveModeProfiles, uiToGameDart } from "./newModes/newModePlayShared";
 import {
-  ActiveHero, BotTurn, FloatingAdvice, KpiStrip, LogModal, PlayersModal, PremiumAwenaButton,
-  PremiumEndPanel, PremiumMomentOverlay, QuickRow, RankingModal, StatsModal, SummaryStrip, bestBy, modePlayerColors, percent,
+  BotTurn, LogModal, PlayersModal, PremiumAwenaButton,
+  PremiumEndPanel, PremiumMomentOverlay, RankingModal, StatsModal, bestBy, modePlayerColors,
 } from "./newModes/PremiumPartyModeUi";
 import "./newModes/PremiumPartyModeUi.css";
 
@@ -109,6 +111,33 @@ function PtitHunRiskBoard({ state, playerId, currentThrow, preview }: any) {
   </section>;
 }
 
+
+function FloatingPanel({ title, subtitle, onClose, children }: any) {
+  return <div className="party-mode__modal" role="dialog" aria-modal="true" aria-label={title} onClick={onClose}>
+    <div className="party-mode__modal-card" onClick={(e) => e.stopPropagation()} style={{ width: "min(860px,96vw)" }}>
+      <header>
+        <div><b>{title}</b>{subtitle ? <span>{subtitle}</span> : null}</div>
+        <button type="button" onClick={onClose} aria-label="Fermer">×</button>
+      </header>
+      <div style={{ padding: 8, overflow: "auto" }}>{children}</div>
+    </div>
+  </div>;
+}
+
+function Ptit1MiniKpi({ label, value, color = ACCENT, onClick }: any) {
+  const Tag: any = onClick ? "button" : "div";
+  return <Tag type={onClick ? "button" : undefined} onClick={onClick} style={{ minWidth: 0, height: "100%", border: 0, borderRadius: 10, background: "rgba(0,0,0,.28)", color: "#fff", padding: "4px 3px", textAlign: "center", cursor: onClick ? "pointer" : "default" }}>
+    <small style={{ display: "block", color: "#8791a4", fontSize: 6.2, fontWeight: 1000, letterSpacing: .45 }}>{label}</small>
+    <b style={{ display: "block", marginTop: 2, color, fontSize: 13.5, lineHeight: 1, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</b>
+  </Tag>;
+}
+
+function Ptit1DartsRow({ currentThrow, accent }: any) {
+  return <div style={{ width: "100%", display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5 }}>
+    {[0,1,2].map((i) => { const dart = currentThrow?.[i]; const gameDart = dart ? uiToGameDart(dart) : null; return <div key={i} style={{ height: 30, minWidth: 0, borderRadius: 9, border: `1px solid ${dart ? accent + "66" : "rgba(255,255,255,.08)"}`, background: dart ? `${accent}12` : "rgba(0,0,0,.22)", display: "grid", placeItems: "center", color: dart ? "#fff" : "#5f6879", fontSize: 9.5, fontWeight: 1000 }}>{gameDart ? ptitHunDartLabel(gameDart) : `D${i+1}`}</div>; })}
+  </div>;
+}
+
 export default function PtitHunPlay(props: any) {
   useFullscreenPlay({ enabled: true, lockBodyScroll: true });
   const awena = useAwenaOptional();
@@ -131,7 +160,7 @@ export default function PtitHunPlay(props: any) {
   const [undo, setUndo] = React.useState<PtitHunState[]>(() => Array.isArray(recoveredUndoStack) ? recoveredUndoStack.filter((snap: any) => snap?.mode === "ptit_hun").slice(-3).map((snap: any) => clonePtitHunState(snap)) : []);
   const [notice, setNotice] = React.useState("");
   const [moment, setMoment] = React.useState<any>(null);
-  const [playersOpen, setPlayersOpen] = React.useState(false), [statsOpen, setStatsOpen] = React.useState(false), [logOpen, setLogOpen] = React.useState(false), [rankingOpen, setRankingOpen] = React.useState(false);
+  const [playersOpen, setPlayersOpen] = React.useState(false), [statsOpen, setStatsOpen] = React.useState(false), [logOpen, setLogOpen] = React.useState(false), [rankingOpen, setRankingOpen] = React.useState(false), [focusOpen, setFocusOpen] = React.useState(false);
   const botBusy = React.useRef(false), finishedRef = React.useRef(false), introPlayedRef = React.useRef(false), initialCheckpointRef = React.useRef(false);
   const matchIdRef = React.useRef(String(resumeRecord?.id || resumeRecord?.matchId || `ptit1-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
   const profileById = React.useMemo(() => new Map(profiles.map((p: any) => [String(p.id), p])), [profiles]);
@@ -230,17 +259,129 @@ export default function PtitHunPlay(props: any) {
     </div>;
   }
 
-  return <div className="party-mode" style={{ ["--mode-accent" as any]: activeColor }} data-mss-native-play-layout="1">
+  return <div className="ptit1-play" style={{ ["--ptit-accent" as any]: activeColor }} data-mss-native-play-layout="1">
+    <style>{`
+      .ptit1-play{position:fixed;inset:0;height:100dvh;overflow:hidden;display:flex;flex-direction:column;gap:6px;padding:6px;background:radial-gradient(circle at 12% 10%,color-mix(in srgb,var(--ptit-accent) 9%,transparent),transparent 28%),linear-gradient(180deg,#090b12,#04060a);color:#fff;overscroll-behavior:none;box-sizing:border-box}
+      .ptit1-play *{box-sizing:border-box}
+      .ptit1-head{position:relative;flex:0 0 clamp(50px,8.5vh,64px);min-height:0;overflow:hidden;border-radius:15px;border:1px solid rgba(255,255,255,.08);background:#080b11}
+      .ptit1-head>img{width:100%;height:100%;object-fit:cover;display:block}
+      .ptit1-head:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(4,5,8,.92),transparent 18%,transparent 82%,rgba(4,5,8,.92));pointer-events:none}
+      .ptit1-head__controls{position:absolute;z-index:2;inset:0;display:flex;align-items:center;justify-content:space-between;padding:0 7px;pointer-events:none}
+      .ptit1-head__controls>div{display:flex;align-items:center;gap:6px;pointer-events:auto}
+      .ptit1-stage{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:5px;overflow:hidden}
+      .ptit1-left{flex:0 0 auto;display:flex;flex-direction:column;gap:5px;min-height:0}
+      .ptit1-active{position:relative;flex:0 0 clamp(102px,18vh,132px);min-height:0;overflow:hidden;border-radius:17px;border:1px solid color-mix(in srgb,var(--ptit-accent) 50%,rgba(255,255,255,.08));background:linear-gradient(135deg,rgba(18,21,31,.98),rgba(6,8,13,.98));box-shadow:0 0 24px color-mix(in srgb,var(--ptit-accent) 13%,transparent)}
+      .ptit1-active__grid{position:relative;height:100%;display:grid;grid-template-columns:minmax(0,1fr) minmax(118px,138px);gap:6px;padding:7px 8px}
+      .ptit1-active__mission{min-width:0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:center;padding:2px 4px}
+      .ptit1-active__copy{min-width:0;text-align:center}
+      .ptit1-active__copy small{display:block;color:#8c95a7;font-size:6.6px;font-weight:1000;letter-spacing:.65px}
+      .ptit1-active__copy strong{display:block;margin-top:2px;color:#fff;font-size:clamp(14px,4vw,19px);line-height:1;font-weight:1100;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .ptit1-active__copy b{display:block;margin-top:5px;color:var(--ptit-accent);font-size:clamp(28px,8vw,39px);line-height:.88;font-weight:1100}
+      .ptit1-active__copy span{display:block;margin-top:5px;color:#d7deea;font-size:7.2px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .ptit1-player-card{position:relative;overflow:hidden;border-radius:14px;border:1px solid color-mix(in srgb,var(--ptit-accent) 45%,rgba(255,255,255,.08));background:linear-gradient(180deg,rgba(10,13,20,.78),rgba(3,5,9,.92));display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:6px}
+      .ptit1-player-card:before{content:"";position:absolute;inset:0;background-image:linear-gradient(180deg,rgba(0,0,0,.18),rgba(0,0,0,.72)),url(${tickerPtitHun});background-size:cover;background-position:center;opacity:.36}
+      .ptit1-player-card>*{position:relative;z-index:1}
+      .ptit1-player-card__name{width:100%;text-align:center;color:var(--ptit-accent);font-size:9px;font-weight:1100;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:uppercase}
+      .ptit1-player-card__meta{width:100%;display:grid;grid-template-columns:repeat(3,1fr);gap:3px}
+      .ptit1-kpis{flex:0 0 44px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:5px;border-radius:13px;border:1px solid rgba(255,255,255,.07);background:linear-gradient(180deg,rgba(16,19,28,.96),rgba(5,7,12,.98))}
+      .ptit1-tools{flex:0 0 48px;display:grid;grid-template-columns:minmax(0,1fr) repeat(3,42px);gap:5px}
+      .ptit1-players{position:relative;overflow:hidden;border-radius:13px;border:1px solid rgba(255,255,255,.08);background:#080b11;padding:4px 8px;cursor:pointer;color:#fff}
+      .ptit1-players:before{content:"";position:absolute;inset:0;background-image:linear-gradient(90deg,rgba(0,0,0,.82),rgba(0,0,0,.34),rgba(0,0,0,.82)),url(${tickerPtitHun});background-size:cover;background-position:center;opacity:.64}
+      .ptit1-players>div{position:relative;height:100%;display:flex;align-items:center;justify-content:center;gap:0}
+      .ptit1-tool{height:48px;border-radius:13px;border:1px solid rgba(255,255,255,.09);background:linear-gradient(180deg,rgba(18,21,31,.96),rgba(6,8,14,.98));color:#fff;font-size:16px;display:grid;place-items:center;cursor:pointer}
+      .ptit1-visit{flex:0 0 38px;display:grid;place-items:center;padding:4px 7px;border-radius:12px;border:1px solid rgba(255,255,255,.07);background:linear-gradient(180deg,rgba(16,19,28,.96),rgba(5,7,12,.98))}
+      .ptit1-input{flex:1 1 auto;min-height:0;overflow:hidden}
+      .ptit1-input>div,.ptit1-input [data-mss-score-input-hub="1"]{height:100%;min-height:0;max-width:100%;overflow:hidden}
+      @media (orientation:landscape){
+        .ptit1-play{gap:5px;padding:5px}
+        .ptit1-head{flex-basis:46px;border-radius:12px}
+        .ptit1-stage{display:grid;grid-template-columns:minmax(300px,38%) minmax(0,1fr);gap:6px}
+        .ptit1-left{height:100%;display:grid;grid-template-rows:minmax(108px,1.45fr) 42px 46px 36px;gap:5px;overflow:hidden}
+        .ptit1-active{height:100%;min-height:0;flex:auto}
+        .ptit1-active__grid{grid-template-columns:minmax(0,1fr) 118px;padding:6px}
+        .ptit1-active__mission{gap:5px}
+        .ptit1-active__copy b{font-size:29px;margin-top:3px}.ptit1-active__copy span{margin-top:3px}
+        .ptit1-kpis,.ptit1-tools,.ptit1-visit{height:100%;min-height:0;flex:auto}
+        .ptit1-tools{grid-template-columns:minmax(0,1fr) repeat(3,38px)}
+        .ptit1-tool{height:100%}
+        .ptit1-input{height:100%}
+      }
+      @media (max-height:650px) and (orientation:portrait){
+        .ptit1-head{flex-basis:48px}.ptit1-active{flex-basis:96px}.ptit1-kpis{flex-basis:40px}.ptit1-tools{flex-basis:43px}.ptit1-tool{height:43px}.ptit1-visit{flex-basis:34px}
+        .ptit1-active__grid{grid-template-columns:minmax(0,1fr) 110px;padding:5px}.ptit1-active__copy b{font-size:27px}.ptit1-active__copy span{font-size:6.5px}
+      }
+    `}</style>
     <PremiumMomentOverlay moment={moment} accent={moment?.playerId ? (colorById.get(String(moment.playerId)) || activeColor) : activeColor} profile={moment?.playerId ? profileById.get(String(moment.playerId)) : activeProfile} playerName={moment?.playerId ? nameById(moment.playerId) : activePlayer?.name} />
-    <PageHeader tickerSrc={tickerPtitHun} tickerAlt="P’TIT 1" tickerHeight={68} tickerBottomGap={8} tickerFit="cover" left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("ptit_hun_config")} color={activeColor} glow={`${activeColor}88`} /></div>} right={awenaEnabled ? <div style={{ marginRight: 7 }}><PremiumAwenaButton awena={awena} route="ptit_hun_play" mode="ptit_hun" screenLabel="P’TIT 1 · Partie" accent={activeColor} /></div> : null} />
-    {coach ? <FloatingAdvice text={coach} accent={activeColor} kicker={firstVisitGuide ? "PREMIER TOUR · MODE D’EMPLOI" : "CONSEIL DU P’TIT HUN"} /> : null}
-    <main className="party-mode__body"><div className="party-mode__stage"><div className="party-mode__left">
-      <SummaryStrip players={state.players} activeId={activePlayer?.id} profileById={profileById} colorById={colorById} winsById={{}} primaryById={(id: string) => state.scores[id] || 0} secondaryById={(id: string) => `${state.statsByPlayer[id]?.jackpotVisits || 0} JP · ${state.statsByPlayer[id]?.dbulls || 0}/${config.rules.dbullsForZero} DBULL · ${state.shieldActive[id] ? "🛡" : config.rules.shieldEnabled ? `${state.cleanStreak[id] || 0}/${config.rules.cleanVisitsForShield}` : "—"}`} />
-      <ActiveHero profile={activeProfile} name={activePlayer?.name} accent={activeColor} eyebrow={`VOLÉE ${round}/${config.rules.rounds} · LE PLUS PETIT SCORE GAGNE`} primary={score} secondary={shield ? "🛡 BOUCLIER DU HUN ACTIF" : `${config.rules.shieldEnabled ? `Bouclier ${clean}/${config.rules.cleanVisitsForShield}` : "Bouclier OFF"} · ${config.rules.zeroAbsoluteEnabled && config.rules.dbullEnabled ? `DBULL ${activeStats.dbulls || 0}/${config.rules.dbullsForZero}` : "DBULL libre"}`} tertiary={`${activeStats.innerSingles || 0} petits simples · ${activeStats.tripleNuls || 0} Triple Nul · ${activeStats.misses || 0} MISS`} progress={Number(activeStats.visits || 0)} progressMax={config.rules.rounds} notice={notice} noticeTone={notice.includes("ZÉRO") || notice.includes("TRIPLE NUL") || notice.includes("BOUCLIER") || notice.includes("JACKPOT") ? "win" : notice.includes("MISS") ? "danger" : "normal"} aside={<div style={{ textAlign: "center" }}><div style={{ fontSize: 32, fontWeight: 1100, color: ACCENT }}>1</div><div style={{ fontSize: 8, color: GREEN, fontWeight: 1000 }}>PETIT = +1</div></div>} />
-      <PtitHunRiskBoard state={state} playerId={activePlayer?.id} currentThrow={currentThrow} preview={preview} />
-      <KpiStrip accent={activeColor} onClick={() => setStatsOpen(true)} items={[["SCORE", score], ["PETITS", activeStats.innerSingles || 0], ["JACKPOT", activeStats.jackpotVisits || 0], ["BOUCLIER", shield ? "ON" : config.rules.shieldEnabled ? `${clean}/${config.rules.cleanVisitsForShield}` : "OFF"]]} />
-      <QuickRow players={state.players} activeId={activePlayer?.id} profileById={profileById} colorById={colorById} ticker={tickerPtitHun} onPlayers={() => setPlayersOpen(true)} onStats={() => setStatsOpen(true)} onLog={() => setLogOpen(true)} onRanking={() => setRankingOpen(true)} />
-    </div><div className="party-mode__input">{!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setThrowWithSfx} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} onCancel={() => { setCurrentThrow([]); setMultiplier(1); }} preferredMethod={config.scoreInputMethod} dartDecorator={ringDecorator} validateLabel="VALIDER LA VOLÉE" accent={activeColor} maxDarts={3} minDartsToValidate={3} fitMinScale={0.16} keypadSecondaryAction={config.scoreInputMethod === "keypad" ? { icon: singleRing === "inner_single" ? "PETIT" : "GROS", title: singleRing === "inner_single" ? "Petit simple intérieur · valeur normale" : `Gros simple extérieur · valeur ×${config.rules.outerSingleFactor}`, active: true, tone: singleRing === "inner_single" ? "teal" : "danger", onClick: () => setSingleRing((v) => v === "inner_single" ? "outer_single" : "inner_single") } : null} keypadFooterAction={undo.length ? { icon: "↶", title: "UNDO", onClick: doUndo } : null} /> : <BotTurn profile={activeProfile} name={activePlayer?.name} accent={activeColor} text={config.rules.jackpotEnabled ? `cherche ${state.jackpotTargets.map((t: any) => t.label).join("/")} ou les petits simples…` : "cherche les petits simples et le DBULL…"} icon="1" />}</div></div></main>
-    {playersOpen ? <PlayersModal rows={playersRows} onClose={() => setPlayersOpen(false)} /> : null}{statsOpen ? <StatsModal items={statsItems} accent={activeColor} subtitle={activePlayer?.name} onClose={() => setStatsOpen(false)} /> : null}{logOpen ? <LogModal visits={state.visits} profileById={profileById} colorById={colorById} labelDart={ptitHunDartLabel} title="JOURNAL P’TIT 1" onClose={() => setLogOpen(false)} /> : null}{rankingOpen ? <RankingModal rows={rankingRows} title="CLASSEMENT · LE PLUS NUL D’ABORD" onClose={() => setRankingOpen(false)} /> : null}
+
+    <header className="ptit1-head">
+      <img src={tickerPtitHun} alt="P’TIT 1" draggable={false} />
+      <div className="ptit1-head__controls">
+        <div><BackDot onClick={() => go?.("ptit_hun_config")} color={activeColor} glow={`${activeColor}88`} size={36} /></div>
+        <div>
+          {awenaEnabled ? <PremiumAwenaButton awena={awena} route="ptit_hun_play" mode="ptit_hun" screenLabel="P’TIT 1 · Partie" accent={activeColor} /> : null}
+          <InfoDot onClick={() => setFocusOpen(true)} size={36} color={ACCENT} glow={`${ACCENT}88`} title="Cible et règles P’TIT 1" disableAwenaTakeover />
+        </div>
+      </div>
+    </header>
+
+    <main className="ptit1-stage">
+      <div className="ptit1-left">
+        <section className="ptit1-active">
+          <div className="ptit1-active__grid">
+            <div className="ptit1-active__mission">
+              <JackpotMiniTarget targets={config.rules.jackpotEnabled ? state.jackpotTargets : []} />
+              <div className="ptit1-active__copy">
+                <small>{config.rules.jackpotEnabled && state.jackpotTargets?.length ? "JACKPOT À TENTER" : "OBJECTIF"}</small>
+                <strong>{config.rules.jackpotEnabled && state.jackpotTargets?.length ? state.jackpotTargets.map((t:any) => t.label).join(" / ") : "PETIT 1"}</strong>
+                <b>{score}</b>
+                <span>{notice || coach || `Volée ${round}/${config.rules.rounds} · le plus petit score gagne`}</span>
+              </div>
+            </div>
+            <div className="ptit1-player-card">
+              <div className="ptit1-player-card__name">{activePlayer?.name || "Joueur"}</div>
+              <ProfileAvatar profile={activeProfile} size={46} showStars={false} ringColor={activeColor} />
+              <div className="ptit1-player-card__meta">
+                <Ptit1MiniKpi label="TOUR" value={`${round}/${config.rules.rounds}`} color="#fff" />
+                <Ptit1MiniKpi label="DBULL" value={`${activeStats.dbulls || 0}/${config.rules.dbullsForZero}`} color={BLUE} />
+                <Ptit1MiniKpi label="🛡" value={shield ? "ON" : config.rules.shieldEnabled ? `${clean}/${config.rules.cleanVisitsForShield}` : "OFF"} color={shield ? GREEN : ACCENT} />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="ptit1-kpis">
+          <Ptit1MiniKpi label="SCORE" value={score} color={activeColor} onClick={() => setStatsOpen(true)} />
+          <Ptit1MiniKpi label="P’TIT 1" value={activeStats.petitOneHits || 0} color={ACCENT} onClick={() => setStatsOpen(true)} />
+          <Ptit1MiniKpi label="VOLÉES 0" value={activeStats.zeroVisits || 0} color={GREEN} onClick={() => setStatsOpen(true)} />
+          <Ptit1MiniKpi label="JACKPOT" value={activeStats.jackpotVisits || 0} color="#ffd84d" onClick={() => setStatsOpen(true)} />
+        </section>
+
+        <section className="ptit1-tools">
+          <button type="button" className="ptit1-players" onClick={() => setPlayersOpen(true)} aria-label="Ouvrir la liste des joueurs">
+            <div>
+              {state.players.slice(0, 8).map((p:any) => { const id=String(p.id); const color=colorById.get(id)||ACCENT; return <span key={id} style={{ width: 30, height: 30, marginLeft: -5, borderRadius: 999, overflow: "hidden", border: `2px solid ${color}`, background: "#070910", display: "grid", placeItems: "center", boxShadow: id === String(activePlayer?.id || "") ? `0 0 12px ${color}88` : "none" }}><ProfileAvatar profile={profileById.get(id) || p} size={28} showStars={false} ringColor={color} noFrame /></span>; })}
+              <b style={{ marginLeft: 7, color: activeColor, fontSize: 8.5, fontWeight: 1100, letterSpacing: .65 }}>JOUEURS</b>
+            </div>
+          </button>
+          <button type="button" className="ptit1-tool" onClick={() => setRankingOpen(true)} aria-label="Classement">🏆</button>
+          <button type="button" className="ptit1-tool" onClick={() => setStatsOpen(true)} aria-label="Statistiques">📊</button>
+          <button type="button" className="ptit1-tool" onClick={() => setLogOpen(true)} aria-label="Journal">☷</button>
+        </section>
+
+        <section className="ptit1-visit">
+          <Ptit1DartsRow currentThrow={currentThrow} accent={activeColor} />
+        </section>
+      </div>
+
+      <div className="ptit1-input">
+        {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setThrowWithSfx} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} onCancel={() => { setCurrentThrow([]); setMultiplier(1); }} preferredMethod={config.scoreInputMethod} dartDecorator={ringDecorator} validateLabel="VALIDER LA VOLÉE" accent={activeColor} maxDarts={3} minDartsToValidate={3} fitMinScale={0.14} keypadSecondaryAction={config.scoreInputMethod === "keypad" ? { icon: singleRing === "inner_single" ? "PETIT" : "GROS", title: singleRing === "inner_single" ? "Petit simple intérieur · valeur normale" : `Gros simple extérieur · valeur ×${config.rules.outerSingleFactor}`, active: true, tone: singleRing === "inner_single" ? "teal" : "danger", onClick: () => setSingleRing((v) => v === "inner_single" ? "outer_single" : "inner_single") } : null} keypadFooterAction={undo.length ? { icon: "↶", title: "UNDO", onClick: doUndo } : null} /> : <BotTurn profile={activeProfile} name={activePlayer?.name} accent={activeColor} text={config.rules.jackpotEnabled ? `cherche ${state.jackpotTargets.map((t:any) => t.label).join("/")} ou les petits simples…` : "cherche les petits simples et le DBULL…"} icon="1" />}
+      </div>
+    </main>
+
+    {playersOpen ? <PlayersModal rows={playersRows} onClose={() => setPlayersOpen(false)} /> : null}
+    {statsOpen ? <StatsModal items={statsItems} accent={activeColor} subtitle={activePlayer?.name} onClose={() => setStatsOpen(false)} /> : null}
+    {logOpen ? <LogModal visits={state.visits} profileById={profileById} colorById={colorById} labelDart={ptitHunDartLabel} title="JOURNAL P’TIT 1" onClose={() => setLogOpen(false)} /> : null}
+    {rankingOpen ? <RankingModal rows={rankingRows} title="CLASSEMENT · LE PLUS NUL D’ABORD" onClose={() => setRankingOpen(false)} /> : null}
+    {focusOpen ? <FloatingPanel title="P’TIT 1 · CIBLE & RISQUES" subtitle="Les détails restent hors de l’écran de jeu" onClose={() => setFocusOpen(false)}><PtitHunRiskBoard state={state} playerId={activePlayer?.id} currentThrow={currentThrow} preview={preview} /></FloatingPanel> : null}
   </div>;
 }

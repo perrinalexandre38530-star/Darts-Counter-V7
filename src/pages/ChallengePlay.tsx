@@ -46,7 +46,7 @@ import targetAnyDouble from '../assets/challenge_targets/target_any_double.webp'
 import targetAnyTriple from '../assets/challenge_targets/target_any_triple.webp';
 import challengeBoard from '../assets/challenge_board.webp';
 import type { ChallengeConfigData,ChallengeRule } from './ChallengeConfig';
-import { analyzeChallengeExercise, challengeExerciseType, challengeObjectiveKeyTarget, challengeOnlineTargetLabel, classicHitAllowed, classicHitValue, evaluateChallengeEntries, exerciseTitle, maxChallengePointsPerDart, objectiveBoardKey, objectiveForVisit, objectiveLabel, realHitValue, type ChallengeExerciseAnalytics, type ChallengeHit } from '../lib/challengeExercises';
+import { analyzeChallengeExercise, challengeExerciseType, challengeObjectiveKeyTarget, challengeOnlineTargetLabel, classicHitAllowed, classicHitValue, compareChallengeRankRows, evaluateChallengeEntries, exerciseTitle, maxChallengePointsPerDart, objectiveBoardKey, objectiveForVisit, objectiveLabel, realHitValue, type ChallengeExerciseAnalytics, type ChallengeHit } from '../lib/challengeExercises';
 import { buildChallengeExerciseCareer, challengeCareerConfigKey, type ChallengeExerciseCareer } from '../lib/challengeExerciseCareer';
 import { buildChallengeExerciseProgress, type ChallengeExerciseProgress } from '../lib/challengeExerciseProgress';
 
@@ -500,6 +500,11 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
  const streak=React.useMemo(()=>{let n=0;for(let i=currentEvaluation.entrySuccessful.length-1;i>=0;i--){if(!currentEvaluation.entrySuccessful[i])break;n++;}return n},[currentEvaluation]);
  const participantMaxStreak=(p:Participant)=>computeChallengeDetailedStats(log.filter(x=>x.pid===p.id),cfg).bestStreak;
  const participantStats=(p:Participant)=>{const detailed=computeChallengeDetailedStats(log.filter(e=>e.pid===p.id),cfg);return {score:detailed.score,darts:detailed.darts,hits:detailed.successful,misses:detailed.failures,pct:detailed.accuracy,streak:detailed.bestStreak,hitCounts:detailed.hitCounts,detailed};};
+ const participantRankSnapshot=(p:Participant)=>{
+  const entries=log.filter(e=>e.pid===p.id);
+  const st=participantStats(p);
+  return {score:st.score,tieBreakPoints:entries.reduce((sum,e)=>sum+tieBreakValue(e,cfg),0),accuracy:st.pct,bestStreak:st.streak,bestVisit:st.detailed.bestVisit,darts:st.darts,exerciseStats:analyzeChallengeExercise(entries,cfg)};
+ };
  const allowedHits=React.useMemo<Hit[]>(()=>{
   if(groupingMode)return ['MISS'];
   if(currentObjective==='bull'||currentObjective==='bull25'||currentObjective==='bull50')return ['25','50','MISS'];
@@ -576,7 +581,7 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
  const lang=React.useMemo(()=>{try{return localStorage.getItem('dc_lang_v1')||navigator.language||'fr'}catch{return 'fr'}},[]);
  const startVoice=React.useCallback(()=>{if(groupingMode||objectiveFamilyMode){setVoiceHeard('Utilisez le keypad détaillé pour cet objectif');return;}const Ctor=(window as any).SpeechRecognition||(window as any).webkitSpeechRecognition;if(!Ctor){setVoiceHeard('Micro non supporté');return;}try{const rec=new Ctor();rec.lang=localeMap[String(lang).toLowerCase().split('-')[0]]||lang||'fr-FR';rec.interimResults=false;rec.maxAlternatives=5;rec.continuous=false;setVoiceOn(true);setVoiceHeard('…');rec.onresult=(ev:any)=>{const alternatives=Array.from(ev?.results?.[0]||[]) as any[];const heard=alternatives.map(a=>a?.transcript||'').filter(Boolean).join(' | ');setVoiceHeard(heard);const hit=parseChallengeVoice(heard,String(lang),allowedHits);if(hit)add(hit);else setVoiceHeard(`${heard} ?`);};rec.onerror=()=>setVoiceHeard('');rec.onend=()=>setVoiceOn(false);rec.start();}catch{setVoiceOn(false);}},[lang,allowedHits,add,groupingMode,objectiveFamilyMode]);
  const participantTieBreak=(p:Participant)=>log.filter(e=>e.pid===p.id).reduce((sum,e)=>sum+tieBreakValue(e,cfg),0);
- const standings=[...safeParticipants].sort((a,b)=>participantScore(b)-participantScore(a)||participantTieBreak(b)-participantTieBreak(a));
+ const standings=[...safeParticipants].sort((a,b)=>compareChallengeRankRows(participantRankSnapshot(a),participantRankSnapshot(b),cfg));
  const playerLabel=current.team?'ÉQUIPE ACTIVE':'JOUEUR ACTIF';
  const statsReturnTab=String(params?.returnTab||'history');
  const statsReturnParams=params?.returnParams;
@@ -597,7 +602,7 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
    const onlineUserId=explicitOnlineUserIdFromProfile(p.profile);
    return {id:String(p.id),name:p.name,avatarDataUrl:(p.profile?avatarSrc(p.profile):teamSrc(p.team))||null,...(onlineUserId?{onlineUserId,userId:onlineUserId}:{}),teamId:p.team?String(p.team.id||''):undefined,teamName:p.teamName||p.team?.name||'',score:detailed.score,points:detailed.score,darts:detailed.darts,dartsThrown:detailed.darts,hitCount:detailed.successful,misses:detailed.failures,bestStreak:detailed.bestStreak,bestVisit:detailed.bestVisit,avgVisit:detailed.avgVisit,successRate:detailed.accuracy,target:cfg.target,rule:cfg.rule,hitSummary:{S:detailed.hitCounts.S,D:detailed.hitCounts.D,T:detailed.hitCounts.T,SBull:detailed.hitCounts['25'],DBull:detailed.hitCounts['50'],MISS:detailed.hitCounts.MISS,darts:detailed.darts,hits:detailed.successful},positionStats:detailed.positionStats,visitScores:detailed.visitScores,cumulativeScores:detailed.cumulativeScores,exerciseStats,favNumberHits:{[String(targetSegment)]:detailed.successful},tieBreakPoints:entries.reduce((sum,e)=>sum+tieBreakValue(e,cfg),0),segmentHits:Object.fromEntries(Array.from({length:20},(_,i)=>{const n=i+1;return [String(n),entries.filter((e,index)=>Number(e.segment)===n&&evaluated.entrySuccessful[index]).length]}))};
   });
-  const rankings=[...perPlayer].sort((a,b)=>b.score-a.score||Number((b as any).tieBreakPoints||0)-Number((a as any).tieBreakPoints||0)).map((row,index)=>({...row,rank:index+1}));
+  const rankings=[...perPlayer].sort((a,b)=>compareChallengeRankRows(a as any,b as any,cfg)).map((row,index)=>({...row,rank:index+1}));
   const winnerId=status==='finished'&&safeParticipants.length>1?(rankings[0]?.id||null):null;
   const finalScores=Object.fromEntries(rankings.map(row=>[row.id,row.score]));
   const scoreLine=rankings.map(row=>`${row.name} ${row.score}`).join(' • ');
@@ -622,9 +627,9 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
   if(!done||historyStatsOnly||!onCompetitionFinish||competitionFinishRef.current) return;
   competitionFinishRef.current=true;
   const record:any=buildChallengeRecord('finished');
-  const rows=safeParticipants.map(p=>{const st=participantStats(p);return{id:String(p.id),name:p.name,score:st.score,tieBreak:participantTieBreak(p),accuracy:st.pct,bestStreak:st.streak}});
-  const tieMode=String((cfg as any)?.competition?.tieBreak||'segment_sum');
-  rows.sort((a,b)=>b.score-a.score||(tieMode==='accuracy'?b.accuracy-a.accuracy:tieMode==='best_streak'?b.bestStreak-a.bestStreak:b.tieBreak-a.tieBreak));
+  const rows=safeParticipants.map(p=>{const st=participantStats(p);const exerciseStats=analyzeChallengeExercise(log.filter(e=>e.pid===p.id),cfg);return{id:String(p.id),name:p.name,score:st.score,tieBreak:participantTieBreak(p),tieBreakPoints:participantTieBreak(p),accuracy:st.pct,bestStreak:st.streak,bestVisit:st.detailed.bestVisit,darts:st.darts,exerciseStats}});
+  const tieMode=String((cfg as any)?.competition?.tieBreak||'exercise');
+  rows.sort((a,b)=>challengeExerciseType(cfg)!=='classic'||tieMode==='exercise'?compareChallengeRankRows(a as any,b as any,cfg):b.score-a.score||(tieMode==='accuracy'?b.accuracy-a.accuracy:tieMode==='best_streak'?b.bestStreak-a.bestStreak:b.tieBreak-a.tieBreak));
   const winnerId=rows[0]?.id||null;
   void Promise.resolve(onCompetitionFinish({winnerId,standings:rows,record})).catch(error=>console.warn('[challenge] competition finish callback failed',error));
  },[done,historyStatsOnly,onCompetitionFinish,buildChallengeRecord,standings]);
@@ -717,8 +722,8 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
      legTarget:(cfg as any).legTarget||null,
      score:stats.score,
      darts:stats.darts,
-     bestStreak:stats.streak,
-     accuracy:stats.pct,
+     bestStreak:exerciseType==='classic'?stats.streak:analyzeChallengeExercise(log.filter(entry=>entry.pid===linked.id),cfg).bestValidatedVisitStreak,
+     accuracy:exerciseType==='classic'?stats.pct:analyzeChallengeExercise(log.filter(entry=>entry.pid===linked.id),cfg).validationRate,
      matchId:matchIdRef.current,
      displayName:linked.name,
      avatarUrl:avatarSrc(profile)||null,

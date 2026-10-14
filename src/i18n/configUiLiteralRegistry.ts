@@ -1728,14 +1728,69 @@ const CONFIG_EN_LITERALS: readonly string[] = [
   "🤖 BOTS",
 ];
 
+const CHALLENGE_FINAL_FR_LITERALS: readonly string[] = [
+  "TYPE DE CHALLENGE",
+  "Type de Challenge",
+  "CIBLE FIXE",
+  "HORLOGE 1 → 20",
+  "HALF-IT",
+  "SÉQUENCE",
+  "SÉQUENCE PERSONNALISÉE",
+  "Séquence personnalisée",
+  "GROUPEMENT",
+  "FIN DE PARCOURS",
+  "Fin de parcours",
+  "ARRÊT AU 20",
+  "+ BULL",
+  "CALCUL DES POINTS",
+  "Calcul des points",
+  "VALEUR RÉELLE",
+  "DOUBLE LIBRE",
+  "TRIPLE LIBRE",
+  "FOURCHETTE DE SECTEURS",
+  "Fourchette de secteurs",
+  "VALIDATION DE LA VOLÉE",
+  "Validation de la volée",
+  "2 FLÉCHETTES",
+  "3 FLÉCHETTES",
+  "NOMBRE DE TOURS",
+  "Nombre de tours",
+  "PERSONNALISÉ",
+  "PRÊT À JOUER",
+  "STATS EXERCICE",
+  "OBJECTIF À TRAVAILLER",
+  "ZONE À SÉCURISER",
+  "SECTEUR EN PROGRÈS",
+  "SECTEUR EN RECUL",
+  "OBJECTIF EN PROGRÈS",
+  "OBJECTIF EN RECUL",
+  "NOUVEAU RECORD",
+  "PROGRESSION PERSONNELLE",
+  "PREMIÈRE RÉFÉRENCE",
+  "RECORD SCORE",
+  "RECORD VALIDATION",
+  "FORCE ACTUELLE",
+  "À TRAVAILLER",
+  "MEILLEURE PROGRESSION RÉCENTE",
+  "HISTORIQUE DES RECORDS",
+  "Au moins 2 fléchettes dans le même secteur autorisé.",
+  "Au moins 3 fléchettes dans le même secteur autorisé.",
+  "S/D/T valent leurs points réels ; seuls les hits du secteur regroupé marquent.",
+  "Départage automatique : score → validation → meilleure série → meilleure volée.",
+  "1 → 20 automatiquement, un objectif par volée.",
+  "Aucun hit valide : score ÷2.",
+  "Définis l’ordre des objectifs. Utilise 1–20, BULL, D ou T.",
+];
+
 export function registerConfigUiLiteralSources(): void {
   if (registered) return;
   registered = true;
   for (const value of CONFIG_FR_LITERALS) registerUiLiteralTranslationSource(value, "fr");
+  for (const value of CHALLENGE_FINAL_FR_LITERALS) registerUiLiteralTranslationSource(value, "fr");
   for (const value of CONFIG_EN_LITERALS) registerUiLiteralTranslationSource(value, "en");
 }
 
 export const CONFIG_UI_LITERAL_COUNTS = {
-  fr: CONFIG_FR_LITERALS.length,
+  fr: CONFIG_FR_LITERALS.length + CHALLENGE_FINAL_FR_LITERALS.length,
   en: CONFIG_EN_LITERALS.length,
 } as const;

@@ -32,6 +32,7 @@ import X01PlayV3 from "./X01PlayV3";
 import CricketPlay from "./CricketPlay";
 import KillerPlay from "./KillerPlay";
 import ChallengePlay from "./ChallengePlay";
+import { challengeExerciseConfigFromRules, challengeExerciseType, challengeOnlineTargetLabel } from "../lib/challengeExercises";
 import FiftyOneByFivePlay from "./FiftyOneByFivePlay";
 import LooperPlay from "./LooperPlay";
 import CallThreePlay from "./CallThreePlay";
@@ -941,19 +942,17 @@ export default function TournamentMatchPlay({ store, go, params }: any) {
     const objectiveMode=String(rules?.objectiveMode||"fixed");
     const playerChoice=objectiveMode==="player_choice"||String(rules?.objectiveAssignment||"")==="player_choice";
     if(playerChoice&&!chosenChallengeTarget){
-      return <div style={{minHeight:"100vh",padding:18,background:theme.bg,color:theme.text}}><button onClick={()=>go("tournament_view",{id:tournamentId})}>← Retour</button><div style={{maxWidth:760,margin:"28px auto",padding:18,borderRadius:20,border:`1px solid ${theme.borderSoft}`,background:theme.card}}><h2 style={{marginTop:0}}>CHOIX DE L’OBJECTIF CHALLENGE</h2><p style={{opacity:.72}}>Cette compétition autorise les joueurs à choisir l’objectif du match parmi la sélection de l’organisateur.</p><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:9}}>{pool.map(target=><button key={target} onClick={()=>setChosenChallengeTarget(target)} style={{minHeight:64,borderRadius:14,border:"1px solid #ff5058",background:"linear-gradient(180deg,#401116,#16080b)",color:"#fff",fontWeight:1000,fontSize:15}}>{target==="any-double"?"DOUBLES":target==="any-triple"?"TRIPLES":target==="bull"?"BULL":target}</button>)}</div></div></div>;
+      return <div style={{minHeight:"100vh",padding:18,background:theme.bg,color:theme.text}}><button onClick={()=>go("tournament_view",{id:tournamentId})}>← Retour</button><div style={{maxWidth:760,margin:"28px auto",padding:18,borderRadius:20,border:`1px solid ${theme.borderSoft}`,background:theme.card}}><h2 style={{marginTop:0}}>CHOIX DE L’OBJECTIF CHALLENGE</h2><p style={{opacity:.72}}>Cette compétition autorise les joueurs à choisir l’objectif du match parmi la sélection de l’organisateur.</p><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:9}}>{pool.map(target=><button key={target} onClick={()=>setChosenChallengeTarget(target)} style={{minHeight:64,borderRadius:14,border:"1px solid #ff5058",background:"linear-gradient(180deg,#401116,#16080b)",color:"#fff",fontWeight:1000,fontSize:15}}>{challengeOnlineTargetLabel(target)}</button>)}</div></div></div>;
     }
     const resolvedTarget=chosenChallengeTarget||resolveChallengeObjective(rules,tm);
-    const target=(resolvedTarget==="bull25"||resolvedTarget==="bull50")?"bull":resolvedTarget;
-    const rule=target==="any-double"?"double":target==="any-triple"?"triple":target==="bull"?"bull":String(rules?.rule||"all");
+    const exerciseConfig:any=challengeExerciseConfigFromRules(rules,resolvedTarget);
+    const exerciseType=challengeExerciseType(exerciseConfig);
     const challengeConfig:any={
-      target,
-      rule,
-      visits:Math.max(1,Number(rules?.visits||30)),
+      ...exerciseConfig,
       playerIds:[aId,bId],
       teamIds:[],participantMode:"players",participantSource:"direct",configMode:"guided",matchMode:"duo",
       soundsEnabled:true,
-      competition:{tournamentId,matchId:(tm as any)?.id||matchId,name:(tour as any)?.name||"Compétition",scope:(tour as any)?.competitionScope||"local",tieBreak:rules?.tieBreak||"segment_sum"}
+      competition:{tournamentId,matchId:(tm as any)?.id||matchId,name:(tour as any)?.name||"Compétition",scope:(tour as any)?.competitionScope||"local",tieBreak:exerciseType==="classic"?(rules?.tieBreak||"segment_sum"):"exercise"}
     };
     const competitionParticipants=[{id:aId,name:nameOf(tour,aId),avatarDataUrl:avatarOf(tour,aId)},{id:bId,name:nameOf(tour,bId),avatarDataUrl:avatarOf(tour,bId)}];
     return <ChallengePlay go={go} params={{config:challengeConfig,competitionParticipants}} onCompetitionFinish={async(result:any)=>{

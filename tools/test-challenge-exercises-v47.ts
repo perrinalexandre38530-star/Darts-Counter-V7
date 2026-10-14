@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { buildChallengeExerciseProgress } from './src/lib/challengeExerciseProgress.ts';
-import type { ChallengeExerciseCareer } from './src/lib/challengeExerciseCareer.ts';
-import type { ChallengeExerciseAnalytics } from './src/lib/challengeExercises.ts';
+import { buildChallengeExerciseProgress } from '../src/lib/challengeExerciseProgress.ts';
+import type { ChallengeExerciseCareer } from '../src/lib/challengeExerciseCareer.ts';
+import type { ChallengeExerciseAnalytics } from '../src/lib/challengeExercises.ts';
 
 const prior:ChallengeExerciseCareer={
   matches:4,firstPlayedAt:1,lastPlayedAt:4,bestScore:120,averageScore:100,averageValidationRate:62.5,bestValidationRate:75,bestValidatedVisitStreak:4,bestPerfectVisitStreak:2,perfectVisits:5,halfItCuts:3,groupingDoublets:6,groupingTriplets:2,groupingPoints:240,
