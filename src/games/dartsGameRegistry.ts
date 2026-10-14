@@ -59,6 +59,7 @@ export type DartsGameTab =
   | "call_three_config"
   | "steeplechase_config"
   | "ptit_hun_config"
+  | "closest_center_config"
   | "training"
   | "tournaments"
   | "darts_mode"
@@ -324,6 +325,25 @@ const rawDartsGameRegistry: DartsGameDef[] = [
   // ===========================================================
   // P’TIT 1 — anti-score de précision. Classé en VARIANTES : le jeu détourne
   // volontairement la valeur des zones et récompense la précision au centre.
+  {
+    id: "closest_center",
+    label: "PETANQUE",
+    category: "challenge",
+    subCategory: "precision",
+    entry: "games",
+    tab: "closest_center_config",
+    popularityRank: 18,
+    ready: true,
+    isNew: true,
+    maxPlayers: 8,
+    supportsTeams: true,
+    supportsBots: false,
+    statsKey: "game:closest_center",
+    infoTitle: "PETANQUE",
+    infoBody:
+      "Mode de précision exclusivement caméra. En début de partie, l’IA enrôle les 3 fléchettes de chaque joueur et vérifie qu’elles sont visuellement différenciables. Pendant la manche, la caméra détecte les nouveaux impacts, les attribue au joueur ou à l’équipe, mesure leur distance au centre et classe toutes les fléchettes. Pour une reconnaissance fiable, utilisez des sets aux couleurs, ailettes, shafts ou motifs bien distincts.",
+  },
+
   {
     id: "ptit_hun",
     label: "P’TIT 1",

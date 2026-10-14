@@ -191,7 +191,15 @@ export function isPtitHunOuterSingle(d: any): boolean {
   return Boolean(d && d.bed === "S" && String(d.ring || "") === "outer_single" && Number(d.number) >= 1 && Number(d.number) <= 20);
 }
 export function ptitHunDartLabel(d: any): string {
-  if (!d || d.bed === "MISS") return "MISS";
+  if (!d) return "MISS";
+  if (d.bed === "MISS") {
+    const ring = String(d?.ring || "");
+    if (ring.startsWith("ptit_special|")) {
+      const parts = ring.split("|");
+      return parts.slice(2).join("|") || "ZONE";
+    }
+    return "MISS";
+  }
   if (d.bed === "IB") return "DBULL";
   if (d.bed === "OB") return "BULL25";
   if (d.bed === "D") return `D${d.number}`;

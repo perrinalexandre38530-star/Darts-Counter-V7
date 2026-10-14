@@ -2,14 +2,30 @@
 import React from "react";
 import BackDot from "../components/BackDot";
 import ProfileAvatar from "../components/ProfileAvatar";
+import ScoreInputHub from "../components/ScoreInputHub";
 import PageHeader from "../components/PageHeader";
 import tickerPtitHun from "../assets/tickers/ticker_ptit_1.png";
 import ptit1Radar from "../assets/ptit1/ptit1_radar.webp";
+import gros6ZonesKeypad from "../assets/gros6/gros6_zones_keypad.webp";
+import zoneOuterRing from "../assets/gros6-zones/zone_outer_ring.webp";
+import zoneClosed4 from "../assets/gros6-zones/zone_closed_4.webp";
+import zoneClosed6 from "../assets/gros6-zones/zone_closed_6.webp";
+import zoneClosed8Top from "../assets/gros6-zones/zone_closed_8_top.webp";
+import zoneClosed8Bottom from "../assets/gros6-zones/zone_closed_8_bottom.webp";
+import zoneClosed9 from "../assets/gros6-zones/zone_closed_9.webp";
+import zoneClosed10 from "../assets/gros6-zones/zone_closed_10.webp";
+import zoneClosed14 from "../assets/gros6-zones/zone_closed_14.webp";
+import zoneClosed16 from "../assets/gros6-zones/zone_closed_16.webp";
+import zoneClosed18Top from "../assets/gros6-zones/zone_closed_18_top.webp";
+import zoneClosed18Bottom from "../assets/gros6-zones/zone_closed_18_bottom.webp";
+import zoneClosed19 from "../assets/gros6-zones/zone_closed_19.webp";
+import zoneClosed20 from "../assets/gros6-zones/zone_closed_20.webp";
 import { useAwenaOptional } from "../awena/AwenaProvider";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { History } from "../lib/history";
 import type { Dart as UIDart } from "../lib/types";
 import { playNewModeDartSequence, playNewModeDartSfx, playNewModeSfx, unlockNewModeAudio } from "../lib/newModesArcadeSfx";
+import { GROS6_SPECIAL_ZONES } from "../lib/gros6Engine";
 import {
   clonePtitHunState,
   createPtitHunState,
@@ -20,7 +36,7 @@ import {
   rankPtitHunPlayers,
   type PtitHunState,
 } from "../lib/gameEngines/ptitHunEngine";
-import { NewModeInput, isBotProfile, playerName, resolveModeProfiles, uiToGameDart } from "./newModes/newModePlayShared";
+import { isBotProfile, playerName, resolveModeProfiles, uiToGameDart } from "./newModes/newModePlayShared";
 import {
   BotTurn, LogModal, PlayersModal, PremiumAwenaButton,
   PremiumEndPanel, PremiumMomentOverlay, RankingModal, StatsModal, bestBy, modePlayerColors,
@@ -80,6 +96,25 @@ function JackpotMiniTarget({ targets }: any) {
     </svg>
   </div>;
 }
+
+const PTIT1_SPECIAL_ZONE_META: Record<string, any> = {
+  outer_numbers_ring: { fr: "Contour extérieur", en: "Outer ring", asset: zoneOuterRing },
+  closed_4: { fr: "HORS CIBLE 4", en: "OFF-TARGET 4", asset: zoneClosed4 },
+  closed_6: { fr: "HORS CIBLE 6", en: "OFF-TARGET 6", asset: zoneClosed6 },
+  closed_8_top: { fr: "HORS CIBLE 8 HAUT", en: "OFF-TARGET 8 TOP", asset: zoneClosed8Top },
+  closed_8_bottom: { fr: "HORS CIBLE 8 BAS", en: "OFF-TARGET 8 BOTTOM", asset: zoneClosed8Bottom },
+  closed_9: { fr: "HORS CIBLE 9", en: "OFF-TARGET 9", asset: zoneClosed9 },
+  closed_10: { fr: "HORS CIBLE 10", en: "OFF-TARGET 10", asset: zoneClosed10 },
+  closed_14: { fr: "HORS CIBLE 14", en: "OFF-TARGET 14", asset: zoneClosed14 },
+  closed_16: { fr: "HORS CIBLE 16", en: "OFF-TARGET 16", asset: zoneClosed16 },
+  closed_18_top: { fr: "HORS CIBLE 18 HAUT", en: "OFF-TARGET 18 TOP", asset: zoneClosed18Top },
+  closed_18_bottom: { fr: "HORS CIBLE 18 BAS", en: "OFF-TARGET 18 BOTTOM", asset: zoneClosed18Bottom },
+  closed_19: { fr: "HORS CIBLE 19", en: "OFF-TARGET 19", asset: zoneClosed19 },
+  closed_20: { fr: "HORS CIBLE 20", en: "OFF-TARGET 20", asset: zoneClosed20 },
+};
+function ptit1SpecialLabel(code: string) { const meta=PTIT1_SPECIAL_ZONE_META[String(code||"")]; const lang=ptit1CurrentLang(); return meta ? (lang === "fr" ? meta.fr : meta.en) : String(code||"ZONE"); }
+function Ptit1SpecialZoneIcon({ code, accent=ACCENT, size=72 }: any){ const asset=PTIT1_SPECIAL_ZONE_META[String(code||"")]?.asset; if(!asset)return null; return <img src={asset} alt="" draggable={false} style={{width:size,height:size,objectFit:"contain",display:"block",filter:`drop-shadow(0 0 8px ${accent}22)`}}/>; }
+function Ptit1SpecialZonesModal({ onClose, onPick, accent=ACCENT }: any){ return <FloatingPanel title="ZONES SPÉCIALES" subtitle="Même sélection que GROS 6 · une zone hors cible applique la pénalité MISS" onClose={onClose} accent={accent}><div style={{height:"100%",display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(88px,1fr))",gap:8,alignContent:"start",padding:4}}>{GROS6_SPECIAL_ZONES.map((zone:any)=><button key={zone.code} type="button" onClick={()=>onPick({code:zone.code,label:ptit1SpecialLabel(zone.code)})} title={ptit1SpecialLabel(zone.code)} aria-label={ptit1SpecialLabel(zone.code)} style={{minHeight:96,borderRadius:14,border:"1px solid rgba(255,255,255,.06)",background:"linear-gradient(180deg,rgba(255,255,255,.035),rgba(0,0,0,.16))",display:"grid",placeItems:"center",padding:6,cursor:"pointer"}}><Ptit1SpecialZoneIcon code={zone.code} accent={accent}/></button>)}</div></FloatingPanel>; }
 
 function PtitHunRiskBoard({ state, playerId, currentThrow, preview }: any) {
   const rules = state.config.rules;
@@ -208,7 +243,7 @@ export default function PtitHunPlay(props: any) {
   const [undo, setUndo] = React.useState<PtitHunState[]>(() => Array.isArray(recoveredUndoStack) ? recoveredUndoStack.filter((snap: any) => snap?.mode === "ptit_hun").slice(-3).map((snap: any) => clonePtitHunState(snap)) : []);
   const [notice, setNotice] = React.useState("");
   const [moment, setMoment] = React.useState<any>(null);
-  const [playersOpen, setPlayersOpen] = React.useState(false), [statsOpen, setStatsOpen] = React.useState(false), [logOpen, setLogOpen] = React.useState(false), [rankingOpen, setRankingOpen] = React.useState(false), [focusOpen, setFocusOpen] = React.useState(false), [zeroOpen, setZeroOpen] = React.useState(false), [shieldOpen, setShieldOpen] = React.useState(false);
+  const [playersOpen, setPlayersOpen] = React.useState(false), [statsOpen, setStatsOpen] = React.useState(false), [logOpen, setLogOpen] = React.useState(false), [rankingOpen, setRankingOpen] = React.useState(false), [focusOpen, setFocusOpen] = React.useState(false), [zeroOpen, setZeroOpen] = React.useState(false), [shieldOpen, setShieldOpen] = React.useState(false), [specialOpen, setSpecialOpen] = React.useState(false);
   const botBusy = React.useRef(false), finishedRef = React.useRef(false), introPlayedRef = React.useRef(false), initialCheckpointRef = React.useRef(false);
   const matchIdRef = React.useRef(String(resumeRecord?.id || resumeRecord?.matchId || `ptit1-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
   const profileById = React.useMemo(() => new Map(profiles.map((p: any) => [String(p.id), p])), [profiles]);
@@ -217,6 +252,7 @@ export default function PtitHunPlay(props: any) {
   const activeProfile = activePlayer ? profileById.get(String(activePlayer.id)) || activePlayer : null;
   const activeColor = activePlayer ? colorById.get(String(activePlayer.id)) || ACCENT : ACCENT;
   const activeTeamLogo = activeProfile?.teamLogoDataUrl || activeProfile?.team?.logoDataUrl || activeProfile?.teamLogo || activeProfile?.team?.logo || null;
+  const activeTeamName = activeProfile?.teamName || activeProfile?.team?.name || activeProfile?.team_label || "";
   const activeIsBot = !!activeProfile && isBotProfile(activeProfile, botIds);
   const sfxEnabled = config.sfxEnabled !== false, awenaEnabled = config.awenaEnabled !== false, coachEnabled = config.coachEnabled !== false, firstVisitGuideEnabled = config.firstVisitGuide !== false;
   const nameById = React.useCallback((id: any) => state.players.find((p: any) => String(p.id) === String(id))?.name || "Joueur", [state.players]);
@@ -292,6 +328,9 @@ export default function PtitHunPlay(props: any) {
   const jackpotLabel = config.rules.jackpotEnabled && state.jackpotTargets?.length ? state.jackpotTargets.map((t:any) => t.label).join(" / ") : "OFF";
   const segmentZoneSelected = multiplier === 2 || multiplier === 3 || singleRing === "inner_single" || singleRing === "outer_single";
   const addDbull = React.useCallback(() => { if (currentThrow.length >= 3) return; setThrowWithSfx((prev: UIDart[]) => [...prev, { v: 25, mult: 2 }].slice(0, 3)); }, [currentThrow.length, setThrowWithSfx]);
+  const addBull25 = React.useCallback(() => { if (currentThrow.length >= 3) return; setThrowWithSfx((prev: UIDart[]) => [...prev, { v: 25, mult: 1 }].slice(0, 3)); }, [currentThrow.length, setThrowWithSfx]);
+  const addSpecialZone = React.useCallback((zone:any) => { if (currentThrow.length >= 3) return; const label=`ptit_special|${String(zone?.code||"zone")}|${String(zone?.label||"ZONE")}`; setThrowWithSfx((prev: UIDart[]) => [...prev, { v: 0, mult: 1, label } as any].slice(0,3)); setSpecialOpen(false); }, [currentThrow.length, setThrowWithSfx]);
+  const appendKeypadDart = React.useCallback((d: UIDart) => { if (currentThrow.length >= 3) return; setThrowWithSfx((prev: UIDart[]) => [...prev, ringDecorator(d)].slice(0,3)); }, [currentThrow.length, setThrowWithSfx, singleRing]);
   const ringDecorator = (d: UIDart) => { if ((d as any)?.label) return d; if (Number(d?.v) >= 1 && Number(d?.v) <= 20 && Number(d?.mult) === 1 && singleRing) return { ...d, label: singleRing }; return d; };
   const firstVisitGuide = firstVisitGuideEnabled && !activeIsBot && state.turnIndex === 0 && currentThrow.length === 0;
   const coach = firstVisitGuide ? `1 · Choisis PETIT pour viser la zone simple intérieure. 2 · Le petit 1 vaut +1 ; le gros 1 vaut +${config.rules.outerSingleFactor}. 3 · Double ×${config.rules.doubleFactor}, Triple ×${config.rules.tripleFactor}, Bull25 ×${config.rules.bull25Factor}. 4 · ${config.rules.jackpotEnabled ? `Jackpot ${state.jackpotTargets.map((t: any) => t.label).join("/")} = volée 0.` : config.rules.dbullEnabled ? `DBULL ÷${config.rules.dbullDivider}.` : "Reste dans les petits simples."}` : coachEnabled && !activeIsBot ? coachText(state, activePlayer) : "";
@@ -319,7 +358,7 @@ export default function PtitHunPlay(props: any) {
 
   return <div className="ptit1-play" style={{ ["--ptit-accent" as any]: activeColor }} data-mss-native-play-layout="1">
     <style>{`
-      .ptit1-play{position:fixed;inset:0;height:100dvh;overflow:hidden;display:flex;flex-direction:column;gap:6px;padding:6px;background:radial-gradient(circle at 12% 10%,color-mix(in srgb,var(--ptit-accent) 9%,transparent),transparent 28%),linear-gradient(180deg,#090b12,#04060a);color:#fff;overscroll-behavior:none;box-sizing:border-box}
+      .ptit1-play{position:fixed;inset:0;width:100vw;height:100dvh;max-height:100dvh;overflow:hidden;display:flex;flex-direction:column;gap:4px;padding:4px;background:radial-gradient(circle at 12% 10%,color-mix(in srgb,var(--ptit-accent) 9%,transparent),transparent 28%),linear-gradient(180deg,#090b12,#04060a);color:#fff;overscroll-behavior:none;box-sizing:border-box;touch-action:manipulation}
       .ptit1-play *{box-sizing:border-box}
       .ptit1-head{position:relative;flex:0 0 clamp(50px,8.5vh,64px);min-height:0;overflow:hidden;border-radius:15px;border:1px solid rgba(255,255,255,.08);background:#080b11}
       .ptit1-head>img{width:100%;height:100%;object-fit:cover;display:block}
@@ -328,42 +367,53 @@ export default function PtitHunPlay(props: any) {
       .ptit1-head__controls>div{display:flex;align-items:center;gap:6px;pointer-events:auto}
       .ptit1-stage{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:5px;overflow:hidden}
       .ptit1-left{flex:0 0 auto;display:flex;flex-direction:column;gap:5px;min-height:0}
-      .ptit1-active{position:relative;flex:0 0 clamp(102px,18vh,132px);min-height:0;overflow:hidden;border-radius:17px;border:1px solid color-mix(in srgb,var(--ptit-accent) 50%,rgba(255,255,255,.08));background:linear-gradient(135deg,rgba(18,21,31,.98),rgba(6,8,13,.98));box-shadow:0 0 24px color-mix(in srgb,var(--ptit-accent) 13%,transparent)}
-      .ptit1-active__grid{position:relative;height:100%;display:grid;grid-template-columns:minmax(0,1fr) minmax(118px,138px);gap:6px;padding:7px 8px}
-      .ptit1-active__mission{min-width:0;display:grid;place-items:center;align-items:center;padding:2px 4px}
-      .ptit1-active__copy{min-width:0;text-align:center}
-      .ptit1-active__copy b{display:block;color:var(--ptit-accent);font-size:clamp(38px,11vw,58px);line-height:.9;font-weight:1100;text-shadow:0 0 22px color-mix(in srgb,var(--ptit-accent) 34%,transparent)}
+      .ptit1-active{position:relative;flex:0 0 clamp(118px,16.5vh,140px);min-height:0;overflow:hidden;border-radius:17px;border:1px solid color-mix(in srgb,var(--ptit-accent) 50%,rgba(255,255,255,.08));background:linear-gradient(135deg,rgba(18,21,31,.98),rgba(6,8,13,.98));box-shadow:0 0 24px color-mix(in srgb,var(--ptit-accent) 13%,transparent)}
+      .ptit1-active__grid{position:relative;height:100%;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 126px;gap:6px;padding:7px}
+      .ptit1-active__mission{position:relative;min-width:0;min-height:0;overflow:hidden;border-radius:14px;background:#080b12;box-shadow:0 0 0 1px color-mix(in srgb,var(--ptit-accent) 30%,transparent) inset}
+      .ptit1-identity-watermark{position:absolute;left:-4%;top:-18%;width:48%;height:136%;object-fit:contain;opacity:.14;pointer-events:none}
+      .ptit1-identity-avatar-watermark{position:absolute;left:-18px;top:50%;transform:translateY(-50%) scale(1.52);opacity:.18;pointer-events:none;filter:saturate(.9)}
+      .ptit1-identity-gradient{position:absolute;inset:0;background:linear-gradient(90deg,color-mix(in srgb,var(--ptit-accent) 11%,transparent),rgba(0,0,0,.08) 40%,rgba(0,0,0,.36));pointer-events:none}
+      .ptit1-identity-content{position:relative;z-index:2;height:100%;display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:7px;align-items:center;padding:8px 9px}
+      .ptit1-identity-avatar{display:grid;place-items:center}
+      .ptit1-identity-copy{min-width:0}
+      .ptit1-team-name{color:var(--ptit-accent);font-size:7.2px;font-weight:1000;letter-spacing:.7px;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .ptit1-player-name{color:#fff;font-size:12px;font-weight:1100;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .ptit1-player-meta{margin-top:4px;color:#9fa9bb;font-size:6.8px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .ptit1-active__copy{min-width:54px;text-align:right}
+      .ptit1-active__copy b{display:block;color:var(--ptit-accent);font-size:clamp(34px,9.5vw,52px);line-height:.9;font-weight:1100;text-shadow:0 0 22px color-mix(in srgb,var(--ptit-accent) 34%,transparent)}
+      .ptit1-active__copy span{display:block;margin-top:4px;color:#8090a7;font-size:6.5px;font-weight:1000;letter-spacing:.7px}
       .ptit1-player-card{position:relative;overflow:hidden;border-radius:14px;border:1px solid color-mix(in srgb,var(--ptit-accent) 45%,rgba(255,255,255,.08));background:linear-gradient(180deg,rgba(10,13,20,.78),rgba(3,5,9,.92));display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:6px}
       .ptit1-player-card:before{content:"";position:absolute;inset:0;background-image:linear-gradient(180deg,rgba(0,0,0,.18),rgba(0,0,0,.72)),url(${tickerPtitHun});background-size:cover;background-position:center;opacity:.36}
       .ptit1-player-card>*{position:relative;z-index:1}
       .ptit1-player-card__name{width:100%;text-align:center;color:var(--ptit-accent);font-size:9px;font-weight:1100;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:uppercase}
       .ptit1-player-card__meta{width:100%;display:grid;grid-template-columns:repeat(3,1fr);gap:3px}
-      .ptit1-radar-stack{min-width:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:3px;align-items:stretch}.ptit1-radar-label{text-align:center;color:#dce7ff;font-size:7.2px;font-weight:1100;letter-spacing:.9px}.ptit1-radar-button{min-height:0;border:1px solid rgba(255,255,255,.09);border-radius:13px;background:radial-gradient(circle,rgba(120,243,212,.08),rgba(0,0,0,.28));padding:2px;overflow:hidden;cursor:pointer}.ptit1-radar-button img{width:100%;height:100%;object-fit:contain;display:block;filter:drop-shadow(0 5px 12px rgba(0,0,0,.5))}.ptit1-jackpot-row{display:grid;grid-template-columns:1fr 1fr;gap:3px}.ptit1-jackpot-row span,.ptit1-jackpot-row b{min-width:0;border-radius:8px;border:1px solid rgba(255,216,77,.28);background:rgba(255,216,77,.07);display:grid;place-items:center;height:22px;font-size:7px;font-weight:1100;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ptit1-jackpot-row span{color:#ffd84d;letter-spacing:.5px}.ptit1-jackpot-row b{color:#fff;font-size:9px}.ptit1-bonus-strip{flex:0 0 52px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.ptit1-kpis{flex:0 0 44px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:5px;border-radius:13px;border:1px solid rgba(255,255,255,.07);background:linear-gradient(180deg,rgba(16,19,28,.96),rgba(5,7,12,.98))}
+      .ptit1-radar-stack{width:126px;min-width:126px;height:100%;min-height:0;display:grid;grid-template-rows:12px minmax(0,1fr) 24px;gap:3px;align-items:stretch;overflow:hidden}.ptit1-radar-label{text-align:center;color:#dce7ff;font-size:7.2px;font-weight:1100;letter-spacing:.9px;line-height:12px}.ptit1-radar-button{width:100%;height:100%;min-height:0;max-height:100%;border:1px solid rgba(255,255,255,.09);border-radius:13px;background:radial-gradient(circle,rgba(120,243,212,.08),rgba(0,0,0,.28));padding:2px;overflow:hidden;cursor:pointer;display:grid;place-items:center}.ptit1-radar-button img{width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;display:block;filter:drop-shadow(0 5px 12px rgba(0,0,0,.5));pointer-events:none}.ptit1-jackpot-row{display:grid;grid-template-columns:1fr 1fr;gap:3px}.ptit1-jackpot-row span,.ptit1-jackpot-row b{min-width:0;border-radius:8px;border:1px solid rgba(255,216,77,.28);background:rgba(255,216,77,.07);display:grid;place-items:center;height:22px;font-size:7px;font-weight:1100;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ptit1-jackpot-row span{color:#ffd84d;letter-spacing:.5px}.ptit1-jackpot-row b{color:#fff;font-size:9px}.ptit1-bonus-strip{flex:0 0 52px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.ptit1-kpis{flex:0 0 44px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:5px;border-radius:13px;border:1px solid rgba(255,255,255,.07);background:linear-gradient(180deg,rgba(16,19,28,.96),rgba(5,7,12,.98))}
       .ptit1-tools{flex:0 0 48px;display:grid;grid-template-columns:42px minmax(0,1fr) 42px 42px;gap:5px}
       .ptit1-players{position:relative;overflow:hidden;border-radius:13px;border:1px solid rgba(255,255,255,.08);background:#080b11;padding:4px 8px;cursor:pointer;color:#fff}
       .ptit1-players:before{content:"";position:absolute;inset:0;background-image:linear-gradient(90deg,rgba(0,0,0,.82),rgba(0,0,0,.34),rgba(0,0,0,.82)),url(${tickerPtitHun});background-size:cover;background-position:center;opacity:.64}
       .ptit1-players>div{position:relative;height:100%;display:flex;align-items:center;justify-content:center;gap:0}
       .ptit1-tool{height:48px;border-radius:13px;border:1px solid rgba(255,255,255,.09);background:linear-gradient(180deg,rgba(18,21,31,.96),rgba(6,8,14,.98));color:#fff;font-size:16px;display:grid;place-items:center;cursor:pointer}
       .ptit1-visit{flex:0 0 38px;display:grid;place-items:center;padding:4px 7px;border-radius:12px;border:1px solid rgba(255,255,255,.07);background:linear-gradient(180deg,rgba(16,19,28,.96),rgba(5,7,12,.98))}
-      .ptit1-input{flex:1 1 auto;min-height:0;overflow:hidden}
-      .ptit1-input>div,.ptit1-input [data-mss-score-input-hub="1"]{height:100%;min-height:0;max-width:100%;overflow:hidden}
+      .ptit1-input{flex:1 1 auto;min-height:0;overflow:hidden;display:flex}
+      .ptit1-scorehub{flex:1 1 auto;min-height:0;width:100%;overflow:hidden;border-radius:16px;border:1px solid color-mix(in srgb,var(--ptit-accent) 30%,rgba(255,255,255,.08));background:linear-gradient(180deg,rgba(14,17,25,.96),rgba(4,6,10,.98));padding:6px}
+      .ptit1-scorehub>[data-mss-score-input-hub="1"],.ptit1-input [data-mss-score-input-hub="1"]{height:100%;min-height:0;max-width:100%;overflow:hidden}
       @media (orientation:landscape){
         .ptit1-play{gap:5px;padding:5px}
         .ptit1-head{flex-basis:46px;border-radius:12px}
         .ptit1-stage{display:grid;grid-template-columns:minmax(300px,38%) minmax(0,1fr);gap:6px}
         .ptit1-left{height:100%;display:grid;grid-template-rows:minmax(108px,1.45fr) 50px 42px 46px 36px;gap:5px;overflow:hidden}
         .ptit1-active{height:100%;min-height:0;flex:auto}
-        .ptit1-active__grid{grid-template-columns:minmax(0,1fr) 118px;padding:6px}
+        .ptit1-active__grid{grid-template-columns:minmax(0,1fr) 118px;padding:6px}.ptit1-radar-stack{width:118px;min-width:118px}
         .ptit1-active__mission{gap:7px}
         .ptit1-active__copy b{font-size:29px;margin-top:3px}.ptit1-active__copy span{margin-top:3px}
         .ptit1-kpis,.ptit1-tools,.ptit1-visit{height:100%;min-height:0;flex:auto}
-        .ptit1-tools{grid-template-columns:minmax(0,1fr) repeat(3,38px)}
+        .ptit1-tools{grid-template-columns:38px minmax(0,1fr) 38px 38px}
         .ptit1-tool{height:100%}
         .ptit1-input{height:100%}
       }
-      @media (max-height:650px) and (orientation:portrait){
-        .ptit1-head{flex-basis:48px}.ptit1-active{flex-basis:96px}.ptit1-bonus-strip{flex-basis:46px}.ptit1-kpis{flex-basis:40px}.ptit1-tools{flex-basis:43px}.ptit1-tool{height:43px}.ptit1-visit{flex-basis:34px}
-        .ptit1-active__grid{grid-template-columns:minmax(0,1fr) 110px;padding:5px}.ptit1-active__copy b{font-size:27px}.ptit1-active__copy span{font-size:6.5px}
+      @media (max-height:700px) and (orientation:portrait){
+        .ptit1-play{gap:3px;padding:3px}.ptit1-head{flex-basis:46px}.ptit1-active{flex-basis:108px}.ptit1-bonus-strip{flex-basis:44px}.ptit1-kpis{flex-basis:40px}.ptit1-tools{flex-basis:42px}.ptit1-tool{height:42px}.ptit1-visit{flex-basis:32px}
+        .ptit1-active__grid{grid-template-columns:minmax(0,1fr) 108px;padding:5px}.ptit1-radar-stack{width:108px;min-width:108px}.ptit1-identity-content{grid-template-columns:42px minmax(0,1fr) auto;padding:6px}.ptit1-identity-avatar{transform:scale(.84)}.ptit1-player-name{font-size:10px}.ptit1-active__copy b{font-size:31px}
       }
     `}</style>
     <PremiumMomentOverlay moment={moment} accent={moment?.playerId ? (colorById.get(String(moment.playerId)) || activeColor) : activeColor} profile={moment?.playerId ? profileById.get(String(moment.playerId)) : activeProfile} playerName={moment?.playerId ? nameById(moment.playerId) : activePlayer?.name} />
@@ -382,11 +432,18 @@ export default function PtitHunPlay(props: any) {
       <div className="ptit1-left">
         <section className="ptit1-active">
           <div className="ptit1-active__grid">
-            <div className="ptit1-active__mission" style={{ position: "relative", overflow: "hidden" }}>
-              <div aria-hidden style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", pointerEvents: "none", opacity: .18, filter: "saturate(.95)" }}>
-                {activeTeamLogo ? <img src={activeTeamLogo} alt="" style={{ width: "86%", height: "86%", objectFit: "contain" }} /> : <div style={{ transform: "scale(2.5)", opacity: .9 }}><ProfileAvatar profile={activeProfile} size={58} showStars={false} ringColor="transparent" noFrame /></div>}
+            <div className="ptit1-active__mission">
+              {activeTeamLogo ? <img className="ptit1-identity-watermark" src={activeTeamLogo} alt="" draggable={false} /> : <div className="ptit1-identity-avatar-watermark"><ProfileAvatar profile={activeProfile} size={94} showStars={false} ringColor="transparent" noFrame /></div>}
+              <div className="ptit1-identity-gradient" />
+              <div className="ptit1-identity-content">
+                <div className="ptit1-identity-avatar"><ProfileAvatar profile={activeProfile} size={50} showStars={false} ringColor={activeColor} /></div>
+                <div className="ptit1-identity-copy">
+                  {activeTeamName ? <div className="ptit1-team-name">{activeTeamName}</div> : null}
+                  <div className="ptit1-player-name">{activePlayer?.name || "Joueur"}</div>
+                  <div className="ptit1-player-meta">TOUR {round}/{config.rules.rounds} · DBULL {activeStats.dbulls || 0}/{config.rules.dbullsForZero}{shield ? " · 🛡 ACTIF" : ""}</div>
+                </div>
+                <div className="ptit1-active__copy"><b>{score}</b><span>SCORE</span></div>
               </div>
-              <div className="ptit1-active__copy" style={{ position: "relative", zIndex: 1, width: "100%" }}><b>{score}</b></div>
             </div>
             <div className="ptit1-radar-stack">
               <div className="ptit1-radar-label">{ptit1ZonesLabel()}</div>
@@ -428,10 +485,39 @@ export default function PtitHunPlay(props: any) {
       </div>
 
       <div className="ptit1-input">
-        {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setThrowWithSfx} multiplier={multiplier} setMultiplier={(v:any) => { setMultiplier(v); if (v === 2 || v === 3) setSingleRing(null); }} onValidate={validate} onCancel={() => { setCurrentThrow([]); setMultiplier(1); setSingleRing(null); }} preferredMethod={config.scoreInputMethod} dartDecorator={ringDecorator} validateLabel="VALIDER LA VOLÉE" accent={activeColor} maxDarts={3} minDartsToValidate={3} fitMinScale={0.14} keypadExtraMainButtons={config.scoreInputMethod === "keypad" ? [
-          { label: "GROS", onClick: () => { setMultiplier(1); setSingleRing((v:any) => v === "outer_single" ? null : "outer_single"); }, active: singleRing === "outer_single", tone: "orange", title: `Gros simple · valeur ×${config.rules.outerSingleFactor}` },
-          { label: "PETIT", onClick: () => { setMultiplier(1); setSingleRing((v:any) => v === "inner_single" ? null : "inner_single"); }, active: singleRing === "inner_single", tone: "yellow", title: "Petit simple · valeur normale" },
-        ] : null} keypadDisableSegmentNumbers={config.scoreInputMethod === "keypad" ? !segmentZoneSelected : false} keypadFooterAction={config.scoreInputMethod === "keypad" ? (currentThrow.length >= 3 ? { label: "VALIDER", title: "Valider la volée", tone: "gold", onClick: validate } : { label: "DBULL", title: "Double Bull", tone: "green", onClick: addDbull }) : null} keypadAuxActionOverride={undo.length && config.scoreInputMethod === "keypad" ? { label: "UNDO", icon: "↶", title: "Annuler la dernière volée", tone: "dark", onClick: doUndo } : null} /> : <BotTurn profile={activeProfile} name={activePlayer?.name} accent={activeColor} text={config.rules.jackpotEnabled ? `cherche ${state.jackpotTargets.map((t:any) => t.label).join("/")} ou les petits simples…` : "cherche les petits simples et le DBULL…"} icon="1" />}
+        {!activeIsBot ? <div className="ptit1-scorehub"><ScoreInputHub
+          currentThrow={currentThrow as any}
+          multiplier={multiplier}
+          onSimple={() => { setMultiplier(1); setSingleRing(null); }}
+          onDouble={() => { setMultiplier(2); setSingleRing(null); }}
+          onTriple={() => { setMultiplier(3); setSingleRing(null); }}
+          onBackspace={() => setCurrentThrow((prev:UIDart[]) => prev.slice(0,-1))}
+          onCancel={() => { setCurrentThrow([]); setMultiplier(1); setSingleRing(null); }}
+          onNumber={(n:number) => { if (!segmentZoneSelected) return; appendKeypadDart({ v:n, mult:multiplier } as any); }}
+          onBull={addBull25}
+          onValidate={validate}
+          onDirectDart={(d:any) => appendKeypadDart(d)}
+          onSetVisitDarts={(darts:any[]) => setThrowWithSfx((darts||[]).slice(0,3).map((d:any)=>ringDecorator(d)))}
+          validateLabel="VALIDER LA VOLÉE"
+          validateDisabled={currentThrow.length < 3}
+          preferredMethod={config.scoreInputMethod}
+          keypadExtraMainButtons={[
+            { label: "GROS", onClick: () => { setMultiplier(1); setSingleRing((v:any) => v === "outer_single" ? null : "outer_single"); }, active: singleRing === "outer_single", tone: "orange", title: `Gros simple · valeur ×${config.rules.outerSingleFactor}` },
+            { label: "PETIT", onClick: () => { setMultiplier(1); setSingleRing((v:any) => v === "inner_single" ? null : "inner_single"); }, active: singleRing === "inner_single", tone: "yellow", title: "Petit simple · valeur normale" },
+          ]}
+          keypadDisableSegmentNumbers={!segmentZoneSelected}
+          keypadAuxActionOverride={{ label: "ZONE", icon: <img src={gros6ZonesKeypad} alt="" style={{width:"100%",height:"100%",objectFit:"contain"}} />, onClick: () => setSpecialOpen(true), tone: "gold", title: "Ouvrir les zones spéciales", ariaLabel: "Ouvrir les zones spéciales", fullBleedIcon: true }}
+          keypadSecondaryAction={undo.length ? { label: "UNDO", icon: "↶", onClick: doUndo, tone: "dark", title: "Annuler la dernière volée", ariaLabel: "Annuler la dernière volée" } : null}
+          keypadFooterAction={currentThrow.length >= 3 ? { label: "VALIDER", title: "Valider la volée", tone: "gold", onClick: validate } : { label: "DBULL", title: "Double Bull", tone: "green", onClick: addDbull }}
+          hidePreview
+          hideTotal
+          showPlaceholders={false}
+          hideSwitcher
+          hideTabs
+          switcherMode="hidden"
+          fitToParent
+          fitMinScale={0.60}
+        /></div> : <BotTurn profile={activeProfile} name={activePlayer?.name} accent={activeColor} text={config.rules.jackpotEnabled ? `cherche ${state.jackpotTargets.map((t:any) => t.label).join("/")} ou les petits simples…` : "cherche les petits simples et le DBULL…"} icon="1" />}
       </div>
     </main>
 
@@ -442,5 +528,6 @@ export default function PtitHunPlay(props: any) {
     {focusOpen ? <FloatingPanel title="P’TIT 1 · CIBLE & RISQUES" subtitle="Les détails restent hors de l’écran de jeu" onClose={() => setFocusOpen(false)}><PtitHunRiskBoard state={state} playerId={activePlayer?.id} currentThrow={currentThrow} preview={preview} /></FloatingPanel> : null}
     {zeroOpen ? <Ptit1BonusModal kind="zero" state={state} playerId={activePlayer?.id} onClose={() => setZeroOpen(false)} /> : null}
     {shieldOpen ? <Ptit1BonusModal kind="shield" state={state} playerId={activePlayer?.id} onClose={() => setShieldOpen(false)} /> : null}
+    {specialOpen ? <Ptit1SpecialZonesModal onClose={() => setSpecialOpen(false)} onPick={addSpecialZone} accent={activeColor} /> : null}
   </div>;
 }
