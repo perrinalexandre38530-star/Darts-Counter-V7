@@ -56,6 +56,9 @@ type Participant={id:string;name:string;profile?:any;team?:any;teamName?:string;
 
 const hits:Hit[]=['S','D','T','25','50','MISS'];
 const challengeSoundUrls={intro:'/sounds/challenge/intro.mp3',end:'/sounds/challenge/end-game.mp3',S:'/sounds/challenge/simple.mp3',D:'/sounds/challenge/double.mp3',T:'/sounds/challenge/triple.mp3',MISS:'/sounds/challenge/miss.mp3'} as const;
+const targetBoards:Record<string,string>={'1':target1,'2':target2,'3':target3,'4':target4,'5':target5,'6':target6,'7':target7,'8':target8,'9':target9,'10':target10,'11':target11,'12':target12,'13':target13,'14':target14,'15':target15,'16':target16,'17':target17,'18':target18,'19':target19,'20':target20,'any-double':targetAnyDouble,'any-triple':targetAnyTriple,bull:targetBull50,bull25:targetBull25,bull50:targetBull50};
+const ruleLabel=(r:string)=>r==='single'?'S':r==='double'?'D':r==='triple'?'T':(r==='bull'||r==='bull25'||r==='bull50')?'BULL':'TOUS';
+const isBullMode=(rule:string,target:string)=>target==='bull'||target==='bull25'||target==='bull50'||rule==='bull'||rule==='bull25'||rule==='bull50';
 
 const explicitOnlineUserIdFromProfile=(profile:any)=>{
  const pi:any=profile?.privateInfo||profile?.private_info||{};
