@@ -64,6 +64,8 @@ export type DetectionConsensus = VisionDetection & {
   frameAgreement: number;
   sampleCount: number;
   spreadMm: number;
+  positionSpreadPx?: number;
+  rereadAgreement?: number;
 };
 
 export type FrameRegistration = {
@@ -330,6 +332,51 @@ export function assessPrecisionReadiness(frame: ImageData, cal: CameraCalibratio
   return {ok:reasons.length===0,boardRadiusPx,mmPerPixel,sharpness,exposure,calibrationConfidence,confidence,reasons};
 }
 
+
+export function localMetricMmPerPixel(cal: CameraCalibration, width:number, height:number, xNorm:number, yNorm:number) {
+  const w=Math.max(1,width),h=Math.max(1,height);
+  const c=normalizedBoardPoint(cal,xNorm,yNorm);
+  const px=normalizedBoardPoint(cal,xNorm+1/w,yNorm);
+  const py=normalizedBoardPoint(cal,xNorm,yNorm+1/h);
+  const sx=Math.hypot(px.nx-c.nx,px.ny-c.ny)*170;
+  const sy=Math.hypot(py.nx-c.nx,py.ny-c.ny)*170;
+  const major=Math.max(sx,sy), minor=Math.max(.0001,Math.min(sx,sy));
+  return {xMmPerPixel:sx,yMmPerPixel:sy,meanMmPerPixel:(sx+sy)/2,anisotropy:major/minor};
+}
+
+export function fuseIndependentConsensusPasses(first:DetectionConsensus[], second:DetectionConsensus[], cal:CameraCalibration, width:number, height:number, wanted=3):DetectionConsensus[] {
+  const used=new Set<number>();
+  const out:DetectionConsensus[]=[];
+  for(const a of first){
+    let best=-1,bestMm=Infinity;
+    for(let i=0;i<second.length;i++){
+      if(used.has(i)) continue;
+      const b=second[i];
+      const qa=normalizedBoardPoint(cal,a.xNorm,a.yNorm), qb=normalizedBoardPoint(cal,b.xNorm,b.yNorm);
+      const mm=Math.hypot(qa.nx-qb.nx,qa.ny-qb.ny)*170;
+      if(mm<bestMm){bestMm=mm;best=i;}
+    }
+    if(best<0 || bestMm>3.2) continue;
+    used.add(best); const b=second[best];
+    const wa=Math.max(.05,a.confidence),wb=Math.max(.05,b.confidence),sum=wa+wb;
+    const xNorm=(a.xNorm*wa+b.xNorm*wb)/sum,yNorm=(a.yNorm*wa+b.yNorm*wb)/sum;
+    const bp=normalizedBoardPoint(cal,xNorm,yNorm);
+    const metric=localMetricMmPerPixel(cal,width,height,xNorm,yNorm);
+    const passAgreement=clamp01(1-bestMm/3.2);
+    out.push({
+      ...a,xNorm,yNorm,distanceNorm:bp.distanceNorm,distanceMm:distanceMmFromNorm(bp.distanceNorm),
+      confidence:clamp01((a.confidence+b.confidence)*.42+passAgreement*.16),
+      frameAgreement:Math.min(1,(a.frameAgreement+b.frameAgreement)/2),
+      sampleCount:(a.sampleCount||0)+(b.sampleCount||0),
+      spreadMm:Math.sqrt((a.spreadMm*a.spreadMm+b.spreadMm*b.spreadMm+bestMm*bestMm*.25)/2),
+      positionSpreadPx:bestMm/Math.max(.0001,metric.meanMmPerPixel),
+      rereadAgreement:passAgreement,
+      geometryConfidence:clamp01(((a.geometryConfidence||0)+(b.geometryConfidence||0))/2),
+    });
+  }
+  return out.sort((a,b)=>b.confidence-a.confidence).slice(0,wanted);
+}
+
 export function estimateDistanceUncertaintyMm(confidence: number, calibration?: CameraCalibration | null) {
   const projectivePenalty = calibration?.v === 2 && Array.isArray((calibration as any).homography) ? Math.min(.6, Number((calibration as any).projectiveErrorMm || 0) * .08) : 0;
   const calibrationPenalty = calibration?.v === 2 ? projectivePenalty : .8;
@@ -429,8 +476,9 @@ export function fuseDetectionFrames(frames: VisionDetection[][], wanted=3): Dete
     const uniqueFrames=new Set(items.map((v:any)=>v.frameIndex)).size;
     const frameAgreement=frames.length?uniqueFrames/frames.length:0;
     const spreadMm=Math.sqrt(items.reduce((sum:number,v:any)=>sum+Math.pow(v.distanceMm-distanceMm,2),0)/Math.max(1,items.length));
+    const coordSpreadNorm=Math.sqrt(items.reduce((sum:number,v:any)=>sum+(v.xNorm-xNorm)**2+(v.yNorm-yNorm)**2,0)/Math.max(1,items.length));
     const base=items.reduce((sum:number,v:any)=>sum+v.confidence,0)/Math.max(1,items.length);
-    return {xNorm,yNorm,distanceMm,distanceNorm,area:items.reduce((s:number,v:any)=>s+v.area,0)/items.length,geometryConfidence:items.reduce((s:number,v:any)=>s+(v.geometryConfidence||0),0)/items.length,confidence:clamp01(base*.72+frameAgreement*.28-Math.min(.2,spreadMm/12)),frameAgreement,sampleCount:items.length,spreadMm};
+    return {xNorm,yNorm,distanceMm,distanceNorm,area:items.reduce((s:number,v:any)=>s+v.area,0)/items.length,geometryConfidence:items.reduce((s:number,v:any)=>s+(v.geometryConfidence||0),0)/items.length,confidence:clamp01(base*.72+frameAgreement*.28-Math.min(.2,spreadMm/12)),frameAgreement,sampleCount:items.length,spreadMm,positionSpreadPx:coordSpreadNorm*1000};
   }).filter(x=>x.frameAgreement>=.75 && x.sampleCount>=3).sort((a,b)=>b.confidence-a.confidence).slice(0,wanted);
 }
 

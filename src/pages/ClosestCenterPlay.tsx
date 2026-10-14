@@ -9,6 +9,8 @@ import {
   assessPrecisionReadiness,
   assessProjectiveDrift,
   fuseDetectionFrames,
+  fuseIndependentConsensusPasses,
+  localMetricMmPerPixel,
   buildDartVisualSignature,
   classifyDartIdentity,
   compareDartSignatures,
@@ -127,6 +129,8 @@ export default function ClosestCenterPlay(props:any) {
   const [before, setBefore] = React.useState<ImageData | null>(null);
   const [pendingAfter, setPendingAfter] = React.useState<ImageData | null>(null);
   const [pendingImpacts, setPendingImpacts] = React.useState<any[]>([]);
+  const [pendingConsensus, setPendingConsensus] = React.useState<any[]>([]);
+  const [precisionRereads, setPrecisionRereads] = React.useState(0);
   const [stability, setStability] = React.useState<any>(null);
   const [precisionReadiness, setPrecisionReadiness] = React.useState<any>(null);
   const [registrationInfo, setRegistrationInfo] = React.useState<any>(null);
@@ -214,6 +218,8 @@ export default function ClosestCenterPlay(props:any) {
     setBefore(img);
     setPendingAfter(null);
     setPendingImpacts([]);
+    setPendingConsensus([]);
+    setPrecisionRereads(0);
     setTieAcknowledged(false);
     setPhase("play");
     setPlayerIndex(0);
@@ -288,7 +294,7 @@ export default function ClosestCenterPlay(props:any) {
       const geometrySpreadPx = Math.max(...geometryChecks.map((x:any)=>x.regionalSpreadPx));
       const registrationPenalty = Math.max(0,(1-avgRegistration)*1.2) + Math.max(0, geometrySpreadPx*.12);
       const uncertaintyMm = Math.max(resolutionFloor, estimateDistanceUncertaintyMm(measurementConfidence, cal) + consensusPenalty + registrationPenalty);
-      const needsReview = identity.confidence < .70 || identity.margin < .075 || measurementConfidence < .74 || frameAgreement < .80 || Number(d.spreadMm||0) > .85;
+      const needsReview = identity.confidence < .70 || identity.margin < .075 || measurementConfidence < .74 || frameAgreement < .80 || Number(d.spreadMm||0) > .85 || uncertaintyMm > 1.25;
       return {
         id: `r${round}-${current.id}-${Date.now()}-${i}`,
         playerId: owner.id,
@@ -310,10 +316,49 @@ export default function ClosestCenterPlay(props:any) {
     });
 
     setPendingAfter(after);
+    setPendingConsensus(found);
+    setPrecisionRereads(0);
     setPendingImpacts(proposed);
     setPhase("review");
     const alerts = proposed.filter((x:any) => x.needsReview).length;
     setStatus(alerts ? `${alerts} fléchette(s) demandent un contrôle avant validation.` : "Analyse multi-frame cohérente. Vérifie les 3 impacts puis valide la volée.");
+  };
+
+  const precisionReread = async () => {
+    if (!cal || !before || !current || pendingConsensus.length !== 3) return;
+    setStatus("🔬 Relecture précision indépendante : seconde acquisition multi-frame…");
+    const rawBurst = await captureBurst(videoRef.current, 7, 48);
+    if (rawBurst.length < 5) { setStatus("Relecture impossible : pas assez de frames exploitables."); return; }
+    const geometryChecks = rawBurst.map(frame => assessProjectiveDrift(before, frame, cal));
+    if (!geometryChecks.every((x:any)=>x.ok)) {
+      setStatus("❌ Relecture refusée : géométrie de cible différente de la première lecture."); return;
+    }
+    const registered = rawBurst.map(frame => registerFrameToReference(before, frame, cal)).filter(x=>x.registration.confidence>=.55);
+    if (registered.length < 5) { setStatus("❌ Relecture refusée : recalage caméra insuffisant."); return; }
+    const frames=registered.map(x=>x.frame);
+    const detections=frames.map(frame=>analyzeFrameDifference(before,frame,cal,7));
+    const second=fuseDetectionFrames(detections,3);
+    if(second.length!==3){ setStatus(`❌ Relecture incomplète (${second.length}/3). Aucune précision supplémentaire n’est appliquée.`); return; }
+    const merged=fuseIndependentConsensusPasses(pendingConsensus,second,cal,before.width,before.height,3);
+    if(merged.length!==3){ setStatus("❌ Les deux lectures ne convergent pas sur les 3 mêmes pointes. Contrôle manuel requis."); return; }
+    const avgAgree=merged.reduce((sum:any,x:any)=>sum+Number(x.rereadAgreement||0),0)/merged.length;
+    const upgraded=pendingImpacts.map((impact:any)=>{
+      const match=merged.reduce((best:any,x:any)=>{
+        const mm=Math.hypot(x.xNorm-impact.xNorm,x.yNorm-impact.yNorm);
+        return !best||mm<best.d?{x,d:mm}:best;
+      },null)?.x;
+      if(!match) return impact;
+      const metric=localMetricMmPerPixel(cal,before.width,before.height,match.xNorm,match.yNorm);
+      const rereadPenalty=(1-Number(match.rereadAgreement||0))*1.1;
+      const anisotropyPenalty=Math.max(0,Number(metric.anisotropy||1)-1)*.25;
+      const uncertaintyMm=Math.max(Number(metric.meanMmPerPixel||.3)*.72, Number(impact.uncertaintyMm||1)*.64 + Number(match.spreadMm||0)*.28 + rereadPenalty + anisotropyPenalty);
+      const confidence=Math.min(1,Number(impact.confidence||0)*.62+Number(match.confidence||0)*.38);
+      return {...impact,xNorm:match.xNorm,yNorm:match.yNorm,distanceNorm:match.distanceNorm,distanceMm:match.distanceMm,uncertaintyMm,confidence,rereadAgreement:match.rereadAgreement,localMmPerPixel:metric.meanMmPerPixel,metricAnisotropy:metric.anisotropy,needsReview:impact.needsReview || match.rereadAgreement<.72};
+    });
+    setPendingConsensus(merged);
+    setPendingImpacts(upgraded);
+    setPrecisionRereads(v=>v+1);
+    setStatus(avgAgree>=.84 ? `✅ Relecture précision convergente (${Math.round(avgAgree*100)} %). Incertitudes recalculées.` : `⚠️ Relecture partiellement convergente (${Math.round(avgAgree*100)} %). Vérification visuelle recommandée.`);
   };
 
   const cyclePendingOwner = (impactId:string) => {
@@ -328,16 +373,30 @@ export default function ClosestCenterPlay(props:any) {
   const reanalyze = () => {
     setPendingAfter(null);
     setPendingImpacts([]);
+    setPendingConsensus([]);
+    setPrecisionRereads(0);
     setPhase("play");
     setStatus(`${current?.name}: garde les 3 fléchettes en place, stabilise le téléphone puis relance l’analyse.`);
   };
 
   const confirmAnalysis = () => {
     if (!pendingAfter || pendingImpacts.length !== 3) return;
+    const precisionCritical = pendingImpacts.some((x:any) => Number(x.uncertaintyMm||99) > 1.15 || Number(x.frameAgreement||0) < .90 || Number(x.consensusSpreadMm||99) > .55);
+    if (precisionCritical && precisionRereads < 1) {
+      setStatus("🔬 Validation bloquée : au moins une pointe exige une seconde lecture indépendante. Lance RELECTURE PRÉCISION.");
+      return;
+    }
+    const rereadWeak = precisionRereads > 0 && pendingImpacts.some((x:any) => x.rereadAgreement != null && Number(x.rereadAgreement) < .68);
+    if (rereadWeak) {
+      setStatus("❌ Les deux lectures ne convergent pas assez pour valider une mesure de précision. Repositionne/stabilise puis réanalyse la volée.");
+      return;
+    }
     setImpacts(v => [...v, ...pendingImpacts]);
     setBefore(pendingAfter);
     setPendingAfter(null);
     setPendingImpacts([]);
+    setPendingConsensus([]);
+    setPrecisionRereads(0);
     if (playerIndex < players.length - 1) {
       const nextPlayer = players[playerIndex + 1];
       setPlayerIndex(i => i + 1);
@@ -383,6 +442,8 @@ export default function ClosestCenterPlay(props:any) {
     setBefore(null);
     setPendingAfter(null);
     setPendingImpacts([]);
+    setPendingConsensus([]);
+    setPrecisionRereads(0);
     setTieAcknowledged(false);
     setStatus("Retire toutes les fléchettes puis capture la cible vide pour la manche suivante.");
   };
@@ -481,15 +542,15 @@ export default function ClosestCenterPlay(props:any) {
 
         {phase === "review" ? <section style={card}>
           <h3 style={h3}>CONTRÔLE IA · {current?.name}</h3>
-          <div style={{fontSize:11,color:"#aab9c6",lineHeight:1.5,marginBottom:8}}>Aucun point n’est encore enregistré. Vérifie les propriétaires et la précision avant de valider.</div>
+          <div style={{fontSize:11,color:"#aab9c6",lineHeight:1.5,marginBottom:8}}>Aucun point n’est encore enregistré. Vérifie les propriétaires et la précision. Une seconde lecture indépendante devient obligatoire dès qu’une pointe dépasse le seuil d’incertitude.</div>
           {pendingImpacts.map((impact:any, i:number) => {
             const p = players.find((x:any) => String(x.id) === String(impact.playerId));
             return <div key={impact.id} style={{padding:"9px 0",borderBottom:"1px solid rgba(255,255,255,.07)"}}>
-              <div style={{display:"grid",gridTemplateColumns:"28px 1fr auto",gap:8,alignItems:"center"}}><b>#{i+1}</b><div><b>{p?.name || "Joueur ?"}</b><div style={{fontSize:10,color:impact.needsReview?"#ffbd65":"#9fb0bf"}}>identité {Math.round(impact.identityConfidence*100)} % · mesure {Math.round(impact.confidence*100)} % · frames {Math.round((impact.frameAgreement||1)*100)} %</div></div><b style={{color:ACCENT}}>{impact.distanceMm.toFixed(1)} ± {impact.uncertaintyMm.toFixed(1)} mm</b></div>
+              <div style={{display:"grid",gridTemplateColumns:"28px 1fr auto",gap:8,alignItems:"center"}}><b>#{i+1}</b><div><b>{p?.name || "Joueur ?"}</b><div style={{fontSize:10,color:impact.needsReview?"#ffbd65":"#9fb0bf"}}>identité {Math.round(impact.identityConfidence*100)} % · mesure {Math.round(impact.confidence*100)} % · frames {Math.round((impact.frameAgreement||1)*100)} %{impact.rereadAgreement!=null?` · relecture ${Math.round(impact.rereadAgreement*100)} %`:""}</div></div><b style={{color:ACCENT}}>{impact.distanceMm.toFixed(1)} ± {impact.uncertaintyMm.toFixed(1)} mm</b></div>
               {impact.needsReview ? <button onClick={() => cyclePendingOwner(impact.id)} style={{...miniBtn,marginTop:6}}>⚠️ CORRIGER LE JOUEUR →</button> : null}
             </div>;
           })}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}><button style={btn} onClick={reanalyze}>↻ RÉANALYSER</button><button style={{...btn,background:`${ACCENT}2b`}} onClick={confirmAnalysis}>✓ VALIDER L’ANALYSE</button></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}><button style={btn} onClick={precisionReread}>🔬 RELECTURE PRÉCISION{precisionRereads ? ` (${precisionRereads})` : ""}</button><button style={btn} onClick={reanalyze}>↻ RÉANALYSER</button><button style={{...btn,background:`${ACCENT}2b`}} onClick={confirmAnalysis}>✓ VALIDER L’ANALYSE</button></div>
         </section> : null}
 
         {(phase === "roundEnd" || phase === "finished") ? <section style={card}>
