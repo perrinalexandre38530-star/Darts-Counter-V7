@@ -43,6 +43,19 @@ export const AWENA_NAVIGATION_TOPICS: AwenaNavigationTopic[] = [
   { id: "screens", label: "Écrans", aliases: ["ecrans", "ecran", "cast", "diffusion", "affichage externe"], route: "cast_host", description: "Écrans sert à diffuser ou présenter une partie sur un autre écran compatible." },
 ];
 
+
+const DARTS: AwenaSportModeKnowledge[] = [
+  {
+    id: "darts_petanque",
+    sportId: "darts",
+    label: "PETANQUE",
+    aliases: ["darts petanque", "petanque flechettes", "mode petanque flechettes", "plus proche du centre", "closest center"],
+    summary: "PETANQUE est un mode de fléchettes 100 % caméra : les fléchettes de chaque joueur sont enrôlées au départ, puis l’IA identifie les impacts, mesure leur distance au centre et classe toutes les fléchettes. Les cinq impacts les plus proches marquent 5, 4, 3, 2 et 1 point en scoring standard.",
+    howToPlayInApp: "Jeux > Fléchettes > PETANQUE. Choisis les joueurs, le nombre de manches et le mode individuel ou équipe, puis effectue l’enrôlement caméra des fléchettes. Utilise des sets visuellement très différents pour fiabiliser l’identification.",
+    configRoute: "closest_center_config",
+  },
+];
+
 const PETANQUE: AwenaSportModeKnowledge[] = [
   { id: "petanque_singles", sportId: "petanque", label: "Match simple", aliases: ["petanque simple", "match simple petanque", "1 contre 1 petanque"], summary: "Pétanque 1 contre 1 : 3 boules par joueur et par mène, jusqu'à 3 points par mène, premier à 13 points.", howToPlayInApp: "Jeux > Pétanque > Match simple, puis configure les joueurs et démarre.", configRoute: "petanque_config" },
   { id: "petanque_ffa3", sportId: "petanque", label: "Match à 3", aliases: ["petanque a 3", "match a 3 petanque", "ffa3"], summary: "Trois joueurs jouent chacun pour soi, avec 3 boules par joueur et un maximum de 3 points par mène. Premier à 13.", howToPlayInApp: "Jeux > Pétanque > Match à 3, configure les trois joueurs puis démarre.", configRoute: "petanque_config" },
@@ -87,7 +100,7 @@ const FOOTBALL: AwenaSportModeKnowledge[] = [
 ];
 
 export const AWENA_SPORTS: AwenaSportKnowledge[] = [
-  { id: "darts", label: "Fléchettes", aliases: ["flechettes", "darts"], menuRoute: "games", description: "Le catalogue Fléchettes contient les modes classiques, défis, fun et Training enregistrés dans le registre officiel de l'application.", modes: [] },
+  { id: "darts", label: "Fléchettes", aliases: ["flechettes", "darts"], menuRoute: "games", description: "Le catalogue Fléchettes contient les modes classiques, défis, fun et Training enregistrés dans le registre officiel de l'application.", modes: DARTS },
   { id: "petanque", label: "Pétanque", aliases: ["petanque", "boules"], menuRoute: "petanque_menu", description: "Pétanque propose des matchs individuels, à trois, en équipes et des entraînements.", modes: PETANQUE },
   { id: "babyfoot", label: "Baby-foot", aliases: ["baby foot", "babyfoot", "baby-foot"], menuRoute: "babyfoot_menu", description: "Baby-foot propose les matchs locaux 1V1, 2V2, 2V1 et des presets d'entraînement.", modes: BABYFOOT },
   { id: "pingpong", label: "Ping-pong", aliases: ["ping pong", "pingpong", "tennis de table"], menuRoute: "pingpong_menu", description: "Ping-pong propose 1V1, 2V2, 2V1, Tournante et Training.", modes: PINGPONG },

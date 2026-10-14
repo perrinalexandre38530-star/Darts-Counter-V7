@@ -3455,6 +3455,9 @@ function makeStyles(theme: any) {
     // Actions V3 (plus épuré que 4 gros boutons)
     actionRow: {
       marginTop: 12,
+      position: "relative",
+      zIndex: 20,
+      pointerEvents: "auto",
       display: "flex",
       gap: 8,
       alignItems: "center",
@@ -3464,6 +3467,9 @@ function makeStyles(theme: any) {
     },
     primaryAction: {
       flex: "0 0 auto",
+      position: "relative",
+      zIndex: 21,
+      pointerEvents: "auto",
       padding: "8px 8px",
       minWidth: 44,
       maxWidth: 92,
@@ -3492,6 +3498,9 @@ function makeStyles(theme: any) {
     },
     iconBtn: {
       width: 38,
+      position: "relative",
+      zIndex: 21,
+      pointerEvents: "auto",
       height: 38,
       borderRadius: 12,
       display: "grid",
@@ -4203,7 +4212,14 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
     try {
       const wantedId = String((entry as any)?.id || (entry as any)?.matchId || (entry as any)?.resumeId || "").trim();
       const wantedResume = String((entry as any)?.resumeId || matchLink(entry) || wantedId || "").trim();
-      const loaded = (wantedId && (await (History as any)?.get?.(wantedId))) || (wantedResume && wantedResume !== wantedId && (await (History as any)?.get?.(wantedResume))) || null;
+      const getWithTimeout = async (id: string) => {
+        if (!id || typeof (History as any)?.get !== "function") return null;
+        return await Promise.race([
+          Promise.resolve((History as any).get(id)).catch(() => null),
+          new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 3500)),
+        ]);
+      };
+      const loaded = (wantedId && (await getWithTimeout(wantedId))) || (wantedResume && wantedResume !== wantedId && (await getWithTimeout(wantedResume))) || null;
       if (!loaded || typeof loaded !== "object") return entry;
 
       const entryPayload = (entry as any)?.payload && typeof (entry as any).payload === "object" && !Array.isArray((entry as any).payload) ? (entry as any).payload : {};

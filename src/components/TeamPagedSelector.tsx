@@ -38,6 +38,9 @@ export default function TeamPagedSelector({
   chooseLabel = "Choisir équipes",
   closeOnSelect = false,
   onAfterToggle,
+  triggerOnly = false,
+  triggerStyle,
+  triggerContent,
 }: any) {
   const [open, setOpen] = React.useState(false);
   const [page, setPage] = React.useState(0);
@@ -79,11 +82,13 @@ export default function TeamPagedSelector({
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <button type="button" onClick={() => setOpen(true)} style={pill(accent, true)}>{chooseLabel} {selected.length ? `(${selected.length})` : ""}</button>
-        <button type="button" onClick={() => setListOpen((v) => !v)} style={pill(accent, listOpen)}>{listLabel}</button>
+        <button type="button" onClick={() => setOpen(true)} style={triggerStyle || pill(accent, true)}>
+          {triggerContent ?? <>{chooseLabel} {selected.length ? `(${selected.length})` : ""}</>}
+        </button>
+        {!triggerOnly ? <button type="button" onClick={() => setListOpen((v) => !v)} style={pill(accent, listOpen)}>{listLabel}</button> : null}
       </div>
 
-      {listOpen ? (
+      {!triggerOnly && listOpen ? (
         <div className="dc-scroll-thin" style={{ maxHeight: 220, overflowY: "auto", borderRadius: 16, border: `1px solid ${accent}44`, background: "rgba(0,0,0,.24)", padding: 8 }}>
           {ordered.map((team: any) => {
             const active = (selectedBaseCounts[baseTeamId(team)] || 0) > 0;
@@ -99,7 +104,7 @@ export default function TeamPagedSelector({
         </div>
       ) : null}
 
-      {selected.length ? (
+      {!triggerOnly && selected.length ? (
         <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", padding: 10 }}>
           <div style={{ color: accent, fontSize: 11, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Équipes sélectionnées</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>

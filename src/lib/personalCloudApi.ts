@@ -246,61 +246,42 @@ async function decodePayload(payload: any): Promise<any> {
 
 export async function uploadPersonalCloudSnapshot(provider: PersonalCloudProvider, snapshotJson: string, metadata: Record<string, any> = {}, onProgress?: (percent: number, message: string) => void) {
   const packed = await gzipBase64(snapshotJson);
-  // Google Drive: contrat historique réellement déployé sur le NAS (/backups).
-  // On envoie le snapshot compressé dans une petite enveloppe JSON afin de ne
-  // plus pousser 30-40 Mo de JSON brut à travers Express/Cloudflare.
   if (provider === "google_drive") {
     const wrapper = JSON.stringify({ __mssCompressedBackup: 1, ...packed, metadata });
-
-    // Le navigateur ne reste plus accroché pendant tout l'upload Google.
-    // Le NAS crée une tâche courte, répond immédiatement, puis pousse le fichier
-    // vers Drive en arrière-plan. On ne fait ensuite que sonder l'état de la tâche.
-    // Cela élimine le gel historique à 42 % causé par le timeout Pages/NAS.
-    try { onProgress?.(48, "Transfert reçu par le serveur, préparation Google Drive…"); } catch {}
-    const started: any = await apiPost(`/account/personal-cloud/google_drive/backups/jobs`, {
+    const body = {
       title: "Sauvegarde MULTISPORTS SCORING",
       snapshotJson: wrapper,
       summary: metadata?.summary || {},
       metadata,
-    }, {
-      timeoutMs: 30_000,
-      manual: true,
-    });
+    };
 
-    const jobId = String(started?.job?.jobId || started?.jobId || "").trim();
-    if (!jobId) {
-      // Compatibilité avec un backend plus ancien : on conserve le chemin direct,
-      // mais avec un délai réaliste plutôt que 45 s.
-      return apiPost(`/account/personal-cloud/google_drive/backups`, {
-        title: "Sauvegarde MULTISPORTS SCORING",
-        snapshotJson: wrapper,
-        summary: metadata?.summary || {},
-        metadata,
-      }, {
-        timeoutMs: 180_000,
-        manual: true,
-      }) as any;
-    }
-
-    const pollStartedAt = Date.now();
-    const deadline = pollStartedAt + 4 * 60_000;
-    while (Date.now() < deadline) {
-      const state: any = await apiGet(
-        `/account/personal-cloud/google_drive/backups/jobs/${encodeURIComponent(jobId)}`,
-        { manual: true, timeoutMs: 15_000 },
-      );
-      const status = String(state?.job?.status || "").toLowerCase();
-      const elapsedMs = Date.now() - pollStartedAt;
-      const visualPercent = Math.min(88, 52 + Math.floor(elapsedMs / 5000) * 3);
-      try { onProgress?.(visualPercent, status === "queued" ? "Google Drive en file d’attente…" : "Google Drive reçoit la sauvegarde…"); } catch {}
-      if (status === "done") {
-        try { onProgress?.(90, "Google Drive a confirmé l’écriture."); } catch {}
-        return state?.job?.result || { ok: true, provider: "google_drive" };
+    // Compatibilité ascendante ET descendante : le backend stable V62 utilisait
+    // /backups directement. Des versions plus récentes peuvent proposer /jobs.
+    // On tente le job sans jamais rendre Drive dépendant de sa présence.
+    try {
+      onProgress?.(48, "Préparation Google Drive…");
+      const started: any = await apiPost(`/account/personal-cloud/google_drive/backups/jobs`, body, { timeoutMs: 30_000, manual: true });
+      const jobId = String(started?.job?.jobId || started?.jobId || "").trim();
+      if (jobId) {
+        const deadline = Date.now() + 4 * 60_000;
+        while (Date.now() < deadline) {
+          const state: any = await apiGet(`/account/personal-cloud/google_drive/backups/jobs/${encodeURIComponent(jobId)}`, { manual: true, timeoutMs: 15_000 });
+          const status = String(state?.job?.status || "").toLowerCase();
+          onProgress?.(status === "queued" ? 55 : 75, status === "queued" ? "Google Drive en file d’attente…" : "Google Drive reçoit la sauvegarde…");
+          if (status === "done") { onProgress?.(90, "Google Drive a confirmé l’écriture."); return state?.job?.result || { ok: true, provider: "google_drive" }; }
+          if (status === "failed") throw new Error(state?.job?.error || "Sauvegarde Google Drive impossible.");
+          await new Promise((resolve) => window.setTimeout(resolve, 1200));
+        }
+        throw new Error("La tâche Google Drive n'a pas confirmé l'écriture.");
       }
-      if (status === "failed") throw new Error(state?.job?.error || "Sauvegarde Google Drive impossible.");
-      await new Promise((resolve) => window.setTimeout(resolve, 1200));
+    } catch (jobError) {
+      console.warn("[personalCloud] async Drive job unavailable, fallback to stable direct endpoint", jobError);
     }
-    throw new Error("Google Drive n'a pas confirmé la sauvegarde après 4 minutes. La tâche serveur a été arrêtée côté interface afin d'éviter un blocage permanent.");
+
+    onProgress?.(58, "Envoi Google Drive…");
+    const direct = await apiPost(`/account/personal-cloud/google_drive/backups`, body, { timeoutMs: 240_000, manual: true });
+    onProgress?.(90, "Google Drive a confirmé l’écriture.");
+    return direct as any;
   }
   return apiPost(`/account/personal-cloud/${provider}/backup`, { ...packed, metadata }) as any;
 }

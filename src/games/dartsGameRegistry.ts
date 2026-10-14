@@ -1542,6 +1542,7 @@ const READY_IDS = new Set<string>([
   "five_lives",
   "gros_6", // GROS 6 / BIG 6 — mode disponible
   "ptit_hun", // P’TIT 1 — mode disponible depuis Games > Variantes
+  "closest_center", // PETANQUE — mode caméra disponible pour test depuis Games > Défis
   "scram",
   "baseball",
   "football",

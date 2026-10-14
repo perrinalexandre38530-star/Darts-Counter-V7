@@ -1147,7 +1147,11 @@ async function buildStatsForProfile(
     // ✅ Alignement Dashboard / Centre Stats :
     // - sessions / moyenne / winrate X01 viennent de StatsBridge (index historique), pas du recalcul Home local.
     // - le recalcul local sert seulement de secours si StatsBridge est vide.
-    const globalSessions = x01AggSessions > 0 ? x01AggSessions : gamesBase > 0 ? gamesBase : multiSessions;
+    // The Home card must display the real lifetime session count. "Current form"
+    // remains useful for rating/level KPIs, but must never masquerade as the total
+    // number of played X01 matches.
+    const lifetimeSessions = Number(x01AggLifetime?.sessions || 0) || 0;
+    const globalSessions = lifetimeSessions > 0 ? lifetimeSessions : x01AggSessions > 0 ? x01AggSessions : gamesBase > 0 ? gamesBase : multiSessions;
 
     const globalAvg3 =
       x01AggAvg3D > 0

@@ -8913,6 +8913,10 @@ Sus partidas y estadísticas históricas permanecerán guardadas. Si más adelan
                 </div>
               </div>
 
+              <div style={{ marginTop: 8, marginBottom: 6 }}>
+                <LocalProfileTeamBadges profileId={String(renderedCurrent?.id || "")} accent={primary} />
+              </div>
+
               {/* === NOM PROFIL LOCAL (SHIMMER PREMIUM) === */}
               <div style={{ textAlign: "center", marginBottom: 12 }}>
                 <span
@@ -9080,6 +9084,22 @@ Sus partidas y estadísticas históricas permanecerán guardadas. Si más adelan
                         </span>
                       )}
                     </label>
+                    {teams.length > 0 ? (
+                      <TeamPagedSelector
+                        teams={teams}
+                        selectedIds={editTeamIds}
+                        onToggle={(teamId: string) => {
+                          const id = String(teamId);
+                          setEditTeamIds((prev) => prev.includes(id) ? prev.filter((value) => value !== id) : [...prev, id]);
+                        }}
+                        accent={primary}
+                        pageSize={9}
+                        modalTitle={t("profiles.locals.teams.choose", "Choisir les Teams")}
+                        triggerOnly
+                        triggerStyle={{ width: 52, height: 52, borderRadius: "50%", border: `1px solid ${primary}88`, background: editTeamIds.length ? `${primary}22` : theme.card, color: primary, fontSize: 10, fontWeight: 1000, letterSpacing: .6, cursor: "pointer", padding: 0, boxShadow: editTeamIds.length ? `0 0 14px ${primary}55` : "none" }}
+                        triggerContent={<span>TEAM{editTeamIds.length ? <><br/><b>{editTeamIds.length}</b></> : null}</span>}
+                      />
+                    ) : null}
 
                     <div
                       style={{
@@ -9104,21 +9124,7 @@ Sus partidas y estadísticas históricas permanecerán guardadas. Si más adelan
                         value={editCountry}
                         onChange={(e) => setEditCountry(e.target.value)}
                       />
-                      {teams.length > 0 ? (
-                        <TeamPagedSelector
-                          teams={teams}
-                          selectedIds={editTeamIds}
-                          onToggle={(teamId: string) => {
-                            const id = String(teamId);
-                            setEditTeamIds((prev) => prev.includes(id) ? prev.filter((value) => value !== id) : [...prev, id]);
-                          }}
-                          accent={primary}
-                          pageSize={9}
-                          modalTitle={t("profiles.locals.teams.choose", "Choisir les Teams")}
-                          chooseLabel={t("profiles.locals.teams.selector", "Sélectionner les Teams")}
-                          listLabel={t("profiles.locals.teams.list", "Liste Teams")}
-                        />
-                      ) : null}
+
                     </div>
                   </div>
 
@@ -9595,6 +9601,22 @@ function AddLocalProfile({
             </span>
           )}
         </button>
+        {teams.length > 0 ? (
+          <TeamPagedSelector
+            teams={teams}
+            selectedIds={teamIds}
+            onToggle={(teamId: string) => {
+              const id = String(teamId);
+              setTeamIds((prev) => prev.includes(id) ? prev.filter((value) => value !== id) : [...prev, id]);
+            }}
+            accent={primary}
+            pageSize={9}
+            modalTitle={t("profiles.locals.teams.choose", "Choisir les Teams")}
+            triggerOnly
+            triggerStyle={{ width: 52, height: 52, borderRadius: "50%", border: `1px solid ${primary}88`, background: teamIds.length ? `${primary}22` : theme.card, color: primary, fontSize: 10, fontWeight: 1000, letterSpacing: .6, cursor: "pointer", padding: 0, boxShadow: teamIds.length ? `0 0 14px ${primary}55` : "none" }}
+            triggerContent={<span>TEAM{teamIds.length ? <><br/><b>{teamIds.length}</b></> : null}</span>}
+          />
+        ) : null}
 
         <div
           style={{
@@ -9622,21 +9644,7 @@ function AddLocalProfile({
             onChange={(e) => setCountry(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") void submit(); }}
           />
-          {teams.length > 0 ? (
-            <TeamPagedSelector
-              teams={teams}
-              selectedIds={teamIds}
-              onToggle={(teamId: string) => {
-                const id = String(teamId);
-                setTeamIds((prev) => prev.includes(id) ? prev.filter((value) => value !== id) : [...prev, id]);
-              }}
-              accent={primary}
-              pageSize={9}
-              modalTitle={t("profiles.locals.teams.choose", "Choisir les Teams")}
-              chooseLabel={t("profiles.locals.teams.selector", "Sélectionner les Teams")}
-              listLabel={t("profiles.locals.teams.list", "Liste Teams")}
-            />
-          ) : null}
+
         </div>
 
         <div

@@ -332,14 +332,19 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
   const seen = new Set<string>();
   for (const rec of records) {
     if (!isX01Match(rec)) continue;
-    if ((rec as any).status && (rec as any).status !== "finished") continue;
+    const rawStatus = String((rec as any).status || "").toLowerCase();
+    if (rawStatus && !["finished", "done", "ended", "match_end"].includes(rawStatus)) continue;
     if ((rec as any).id && seen.has((rec as any).id)) continue;
     if ((rec as any).id) seen.add((rec as any).id);
 
     const players = pickPlayers(rec);
     const pname = x01NormName(playerName);
     const matched = players.find((p: any) => x01PlayerIds(p).some((id) => x01IdMatches(id, playerId))) || (pname ? players.find((p: any) => x01NormName(p?.name || p?.displayName || p?.nickname) === pname) : undefined);
-    if (!matched?.id && !matched?.playerId && !matched?.profileId) continue;
+    // Legacy/restored X01 rows may only preserve the player's name. If the row
+    // matched the selected profile by normalized name, it is a valid session even
+    // without an id. Rejecting those rows was the reason old histories could show
+    // ~10 sessions while 50+ X01 matches were actually present.
+    if (!matched) continue;
 
     const matchedIds = Array.from(new Set([...x01PlayerIds(matched), String(playerId || "")].filter(Boolean)));
     const canonicalMatchedId = String(matched.id || matched.playerId || matched.profileId || matchedIds[0] || "");

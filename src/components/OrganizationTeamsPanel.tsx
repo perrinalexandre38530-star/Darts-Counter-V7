@@ -21,7 +21,7 @@ import {
 } from "../lib/userMediaFallback";
 import { fileToCompressedImageDataUrl } from "../lib/teamImageStorage";
 import { getStorageDestination, loadStoragePrefs } from "../lib/storagePlans";
-import { loadTeams, type TeamEntity } from "../lib/petanqueTeamsStore";
+import { loadTeams, saveTeams, type TeamEntity } from "../lib/petanqueTeamsStore";
 
 const SPORTS = ["Multisport", "Fléchettes", "Baby-foot", "Ping-pong", "Pétanque", "Mölkky", "Running", "FIT PERF", "Football", "Autre"];
 const GROUP_KINDS: OrganizationGroupKind[] = ["team", "section", "department", "class", "group"];
@@ -257,9 +257,6 @@ export default function OrganizationTeamsPanel({ organization, userId, initialGr
       if (logoPreview && (logoFile || !logoMediaKey)) {
         logoMediaKey = teamLogoMediaKey(group.id);
         await captureUserMediaFallback(logoMediaKey, logoPreview, { kind: "team_logo", mirrorR2, updatedAt: Date.now() });
-        // Le même visuel est rendu disponible pour la vue liée dans Teams individuel.
-        const linkedTeamKey = teamLogoMediaKey(`org-${organization.id}-${group.id}`);
-        await captureUserMediaFallback(linkedTeamKey, logoPreview, { kind: "team_logo", mirrorR2, updatedAt: Date.now() }).catch(() => undefined);
         group = await updateOrganizationGroup(userId, group.id, { ...draft, logoMediaKey });
       }
 
@@ -334,11 +331,22 @@ export default function OrganizationTeamsPanel({ organization, userId, initialGr
         secondaryColor: "#0F172A",
       });
       let group = created.group;
+      // Le Team sélectionné reste la fiche canonique : on lui ajoute uniquement
+      // le rattachement organisation/groupe. Le sync Organisation -> Teams le
+      // retrouvera ensuite via syncedClubTeamId et conservera exactement son id.
+      saveTeams(loadTeams().map((candidate) => String(candidate.id) === String(team.id) ? {
+        ...candidate,
+        teamKind: "club",
+        clubId: organization.id,
+        clubName: organization.name,
+        clubRole: organization.role,
+        clubVisibility: "members",
+        syncedClubTeamId: group.id,
+        updatedAt: Date.now(),
+      } : candidate));
       if (team.logoDataUrl) {
         const logoMediaKey = teamLogoMediaKey(group.id);
         await captureUserMediaFallback(logoMediaKey, team.logoDataUrl, { kind: "team_logo", mirrorR2, updatedAt: Date.now() });
-        const linkedTeamKey = teamLogoMediaKey(`org-${organization.id}-${group.id}`);
-        await captureUserMediaFallback(linkedTeamKey, team.logoDataUrl, { kind: "team_logo", mirrorR2, updatedAt: Date.now() }).catch(() => undefined);
         group = await updateOrganizationGroup(userId, group.id, { logoMediaKey });
       }
       setSelectedId(group.id);

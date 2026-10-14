@@ -1,5 +1,6 @@
 import { supabase } from "../lib/supabaseClient";
 import { loadTeams, saveTeams, type TeamEntity } from "../lib/petanqueTeamsStore";
+import { teamLogoMediaKey } from "../lib/userMediaFallback";
 
 const ORGANIZATION_MUTATION_RPC = /^(?:ms_org_(?:create|update|delete|set|invite|respond|cancel|rotate|join|generate|remove|upsert|touch))/i;
 
@@ -1366,18 +1367,24 @@ export function syncOrganizationGroupsToSharedTeams(organization: OrganizationRe
   if (typeof window === "undefined" || !organization?.id) return;
   try {
     const existing = loadTeams();
-    const linkedIds = new Set(groups.map((group) => String(group.id)));
-    const retained = existing.filter((team) => {
-      if (String(team.clubId || "") !== organization.id || !team.syncedClubTeamId) return true;
-      return !linkedIds.has(String(team.syncedClubTeamId));
-    });
-    // Supprime les anciennes vues liées de cette organisation avant de les reconstruire.
-    const withoutCurrentOrg = retained.filter((team) => !(String(team.clubId || "") === organization.id && !!team.syncedClubTeamId));
-    const now = Date.now();
+    const groupIds = new Set(groups.map((group) => String(group.id)));
+    const byLinkedGroup = new Map<string, TeamEntity>();
+    for (const team of existing) {
+      if (String(team.clubId || "") === organization.id && team.syncedClubTeamId) {
+        byLinkedGroup.set(String(team.syncedClubTeamId), team);
+      }
+    }
+
+    // Une équipe déjà rattachée garde SON id Teams canonique. Pour une équipe créée
+    // depuis l'organisation, l'id du groupe devient directement l'id Teams : aucun
+    // préfixe org-* et aucune seconde fiche parallèle.
     const linked: TeamEntity[] = groups.map((group) => {
       const sport = normalizeGroupSportForTeams(group.sportId);
+      const previous = byLinkedGroup.get(String(group.id));
+      const canonicalId = String(previous?.id || group.id);
       return {
-        id: `org-${organization.id}-${group.id}`,
+        ...(previous || {} as TeamEntity),
+        id: canonicalId,
         name: group.name,
         sport: sport.sport,
         allSports: sport.allSports,
@@ -1388,13 +1395,21 @@ export function syncOrganizationGroupsToSharedTeams(organization: OrganizationRe
         clubRole: organization.role,
         clubVisibility: "members",
         syncedClubTeamId: group.id,
-        description: group.description || `Équipe liée à ${organization.name}. Modifications depuis l'espace Organisation.`,
-        slogan: group.captainDisplayName ? `Capitaine · ${group.captainDisplayName}` : undefined,
-        createdAt: Number(new Date(group.createdAt).getTime()) || now,
-        updatedAt: now,
+        description: group.description || previous?.description || `Équipe liée à ${organization.name}.`,
+        slogan: group.captainDisplayName ? `Capitaine · ${group.captainDisplayName}` : previous?.slogan,
+        logoMediaKey: group.logoMediaKey || previous?.logoMediaKey || teamLogoMediaKey(canonicalId),
+        createdAt: previous?.createdAt || Number(new Date(group.createdAt).getTime()) || Date.now(),
+        updatedAt: Number(new Date(group.updatedAt).getTime()) || Date.now(),
       };
     });
-    saveTeams([...withoutCurrentOrg, ...linked]);
+
+    const linkedCanonicalIds = new Set(linked.map((team) => String(team.id)));
+    const retained = existing.filter((team) => {
+      if (linkedCanonicalIds.has(String(team.id))) return false;
+      if (String(team.clubId || "") !== organization.id || !team.syncedClubTeamId) return true;
+      return groupIds.has(String(team.syncedClubTeamId)) ? false : false;
+    });
+    saveTeams([...retained, ...linked]);
   } catch (error) {
     console.warn("[organizations] Teams fusion failed", error);
   }
