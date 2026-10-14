@@ -36,6 +36,8 @@ export default function PageHeader(props: {
 
   const hasTicker = !!tickerSrc;
   const effectiveTickerBottomGap = hasTicker ? Math.max(0, tickerBottomGap) : 0;
+  const landscapeTicker = typeof window !== "undefined" && window.matchMedia?.("(orientation: landscape)")?.matches && window.innerWidth >= 900;
+  const resolvedTickerFit = tickerFit === "cover" && landscapeTicker ? "contain" : tickerFit;
   // Correspond au padding de .container (src/index.css)
   const CONTAINER_PAD_TOP = 18;
   const CONTAINER_PAD_X = 16;
@@ -72,7 +74,7 @@ export default function PageHeader(props: {
             background: "rgba(0,0,0,0.35)",
           }}
         >
-          {tickerFit === "contain" ? (
+          {resolvedTickerFit === "contain" ? (
             <img
               src={tickerSrc!}
               alt=""
@@ -101,7 +103,7 @@ export default function PageHeader(props: {
               display: "block",
               width: "100%",
               height: "100%",
-              objectFit: tickerFit,
+              objectFit: resolvedTickerFit,
               objectPosition: "center",
             }}
           />
@@ -117,7 +119,7 @@ export default function PageHeader(props: {
                 : "linear-gradient(90deg, rgba(2,3,9,.74) 0%, rgba(2,3,9,.28) 16%, rgba(2,3,9,0) 30%, rgba(2,3,9,0) 70%, rgba(2,3,9,.28) 84%, rgba(2,3,9,.74) 100%)",
             }}
           />
-          {tickerFit === "contain" ? (
+          {resolvedTickerFit === "contain" ? (
             <>
               <div
                 aria-hidden

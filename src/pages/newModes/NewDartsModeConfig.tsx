@@ -2,7 +2,6 @@
 import React from "react";
 import BackDot from "../../components/BackDot";
 import BotPagedSelector from "../../components/BotPagedSelector";
-import InfoDot from "../../components/InfoDot";
 import OptionRow from "../../components/OptionRow";
 import OptionSelect from "../../components/OptionSelect";
 import OptionToggle from "../../components/OptionToggle";
@@ -16,6 +15,8 @@ import { loadTeamsBySport } from "../../lib/petanqueTeamsStore";
 import { BotTeamsSection, PillButton, X01_PRO_BOTS, TeamsSection, SelectedParticipantsCompactBlock } from "../X01ConfigV3";
 import { findRememberedGeneratedTeam } from "../../lib/teamAutoShuffle";
 import { CRADOS_BOTS, CRADOS_BOT_TEAMS } from "../../lib/dartsCradosBots";
+import { useAwenaOptional } from "../../awena/AwenaProvider";
+import { PremiumAwenaButton } from "../newModes/PremiumPartyModeUi";
 
 export type NewDartsModeId = "castle" | "gotcha" | "hare_hounds" | "pendu" | "menteur" | "crados" | "fifty_one_by_five" | "looper" | "call_three" | "steeplechase" | "ptit_hun";
 type BotLevel = "easy" | "normal" | "hard";
@@ -147,6 +148,8 @@ function SummaryLine({ label, value }: { label: string; value: React.ReactNode }
 }
 
 export default function NewDartsModeConfig(props: Props) {
+  const awena = useAwenaOptional();
+  const awenaEnabled = Boolean(awena?.enabled !== false);
   const { mode, definition } = props;
   const { theme } = useTheme();
   const go = props.go ?? props.setTab;
@@ -267,6 +270,7 @@ export default function NewDartsModeConfig(props: Props) {
   const [ptitHunJackpotRing, setPtitHunJackpotRing] = React.useState<"random" | "double" | "triple">(saved.ptitHunJackpotRing === "double" || saved.ptitHunJackpotRing === "triple" ? saved.ptitHunJackpotRing : "random");
   const [ptitHunJackpotZones, setPtitHunJackpotZones] = React.useState<1 | 2>(Number(saved.ptitHunJackpotZones) === 2 ? 2 : 1);
   const [ptitHunJackpotRefresh, setPtitHunJackpotRefresh] = React.useState<"visit" | "round">(saved.ptitHunJackpotRefresh === "round" ? "round" : "visit");
+  const [ptitHunPresetChoice, setPtitHunPresetChoice] = React.useState<"classic" | "precision" | "jackpot" | "sniper" | "hardcore">(["classic","precision","jackpot","sniper","hardcore"].includes(String(saved.ptitHunPresetChoice || "")) ? String(saved.ptitHunPresetChoice) as any : "classic");
 
   const humanProfiles = React.useMemo(() => {
     const raw = Array.isArray(store?.profiles) ? store.profiles : [];
@@ -547,10 +551,10 @@ export default function NewDartsModeConfig(props: Props) {
       steepleDirection, steepleFences, steepleFinishBull, steepleZone,
       ptitHunRounds, ptitHunStartScore, ptitHunOuterFactor, ptitHunDoubleFactor, ptitHunTripleFactor, ptitHunBull25Factor,
       ptitHunMissMode, ptitHunMissValue, ptitHunDbullEnabled, ptitHunDbullDivider, ptitHunZeroAbsolute, ptitHunDbullsForZero,
-      ptitHunTripleNul, ptitHunShield, ptitHunCleanVisits, ptitHunShieldDivider, ptitHunJackpot, ptitHunJackpotRing, ptitHunJackpotZones, ptitHunJackpotRefresh,
+      ptitHunTripleNul, ptitHunShield, ptitHunCleanVisits, ptitHunShieldDivider, ptitHunJackpot, ptitHunJackpotRing, ptitHunJackpotZones, ptitHunJackpotRefresh, ptitHunPresetChoice,
     };
     writeSaved(mode, snapshot);
-  }, [mode, selectedIds, botsOpen, botLevel, randomOrder, scoreInputMethod, seriesWins, castleBricks, castleAssignment, castleAttacks, castleReassignEachLeg, gotchaTarget, gotchaOut, gotchaMaxRounds, gotchaBust, houndStart, hareTargetZone, hareRoleMode, hareDirection, penduPartsToLose, penduChallengeMode, penduTargetFamily, penduExecution, menteurLives, menteurContractDeck, menteurRaiseStep, menteurBullAllowed, cradosDirtLimit, cradosLayersToOwn, cradosBullWash, cradosStealMode, cradosSectorRaceMode, cradosCleanBullSplash, cradosEndOnFirstMaxDirt, cradosSfxEnabled, cradosAwenaEnabled, cradosCoachEnabled, cradosParticipantMode, cradosTeamsSourceMode, cradosTeamAssignments, cradosSelectedTeamIds, cradosSelectedBotTeamIds, cradosSavedTeamMemberSelections, cradosBotTeamsPanelEnabled, fiftyOneTarget, fiftyOneRequireThreeScoringDarts, fiftyOneBust, looperLives, looperStartTarget, looperNumberLoops, looperSetterShield, callThreeRounds, callThreeCaller, callThreeOrderStrict, callThreeBull, steepleDirection, steepleFences, steepleFinishBull, steepleZone, ptitHunRounds, ptitHunStartScore, ptitHunOuterFactor, ptitHunDoubleFactor, ptitHunTripleFactor, ptitHunBull25Factor, ptitHunMissMode, ptitHunMissValue, ptitHunDbullEnabled, ptitHunDbullDivider, ptitHunZeroAbsolute, ptitHunDbullsForZero, ptitHunTripleNul, ptitHunShield, ptitHunCleanVisits, ptitHunShieldDivider, ptitHunJackpot, ptitHunJackpotRing, ptitHunJackpotZones, ptitHunJackpotRefresh]);
+  }, [mode, selectedIds, botsOpen, botLevel, randomOrder, scoreInputMethod, seriesWins, castleBricks, castleAssignment, castleAttacks, castleReassignEachLeg, gotchaTarget, gotchaOut, gotchaMaxRounds, gotchaBust, houndStart, hareTargetZone, hareRoleMode, hareDirection, penduPartsToLose, penduChallengeMode, penduTargetFamily, penduExecution, menteurLives, menteurContractDeck, menteurRaiseStep, menteurBullAllowed, cradosDirtLimit, cradosLayersToOwn, cradosBullWash, cradosStealMode, cradosSectorRaceMode, cradosCleanBullSplash, cradosEndOnFirstMaxDirt, cradosSfxEnabled, cradosAwenaEnabled, cradosCoachEnabled, cradosParticipantMode, cradosTeamsSourceMode, cradosTeamAssignments, cradosSelectedTeamIds, cradosSelectedBotTeamIds, cradosSavedTeamMemberSelections, cradosBotTeamsPanelEnabled, fiftyOneTarget, fiftyOneRequireThreeScoringDarts, fiftyOneBust, looperLives, looperStartTarget, looperNumberLoops, looperSetterShield, callThreeRounds, callThreeCaller, callThreeOrderStrict, callThreeBull, steepleDirection, steepleFences, steepleFinishBull, steepleZone, ptitHunRounds, ptitHunStartScore, ptitHunOuterFactor, ptitHunDoubleFactor, ptitHunTripleFactor, ptitHunBull25Factor, ptitHunMissMode, ptitHunMissValue, ptitHunDbullEnabled, ptitHunDbullDivider, ptitHunZeroAbsolute, ptitHunDbullsForZero, ptitHunTripleNul, ptitHunShield, ptitHunCleanVisits, ptitHunShieldDivider, ptitHunJackpot, ptitHunJackpotRing, ptitHunJackpotZones, ptitHunJackpotRefresh, ptitHunPresetChoice]);
 
   function selectView(value: ConfigViewMode) {
     setViewMode(value);
@@ -913,6 +917,14 @@ export default function NewDartsModeConfig(props: Props) {
     </div>
   </section>;
 
+  const ptitHunPresetDefs = [
+    { id: "classic", title: "CLASSIQUE MSS", desc: "L’équilibre officiel · Jackpot D/T · Bouclier 3 · Zéro à 3 DBULL", tones: ["#f2c84b", "#e04b2a"], motif: "bull" },
+    { id: "precision", title: "PRÉCISION", desc: "Sans Jackpot · Bouclier après 2 volées propres · priorité aux petits simples", tones: ["#5de1ff", "#69f5bf"], motif: "precision" },
+    { id: "jackpot", title: "JACKPOT", desc: "2 zones D/T à chaque volée · plus arcade et plus spectaculaire", tones: ["#ffd84d", "#ff7f50"], motif: "spark" },
+    { id: "sniper", title: "SNIPER", desc: "Jackpot TRIPLE uniquement · zone stable pendant le tour · gros simple ×15", tones: ["#b488ff", "#ff6f78"], motif: "sniper" },
+    { id: "hardcore", title: "HARDCORE", desc: "15 volées · gros ×20 · D×3 · T×5 · Bull25×6 · Jackpot triple", tones: ["#ff8e72", "#ffd84d"], motif: "hardcore" },
+  ] as const;
+
   function applyPtitHunPreset(preset: "classic" | "precision" | "jackpot" | "sniper" | "hardcore") {
     const base = {
       rounds: 10, start: 20, outer: 10, d: 2, t: 3, bull: 4,
@@ -920,6 +932,7 @@ export default function NewDartsModeConfig(props: Props) {
       zero: true, zeroAt: 3, tripleNul: true, shield: true, clean: 3, shieldDiv: 2,
       jackpot: true, jackpotRing: "random" as const, jackpotZones: 1 as 1 | 2, jackpotRefresh: "visit" as const,
     };
+    setPtitHunPresetChoice(preset);
     const selected = preset === "precision"
       ? { ...base, shield: true, clean: 2, jackpot: false }
       : preset === "jackpot"
@@ -951,20 +964,29 @@ export default function NewDartsModeConfig(props: Props) {
     setPtitHunJackpotRefresh(selected.jackpotRefresh);
   }
 
+  const selectedPtitHunPreset = ptitHunPresetDefs.find((preset) => preset.id === ptitHunPresetChoice) || ptitHunPresetDefs[0];
+
   const ptitHunPresetBlock = <section style={{ ...selectorCard, border: `1px solid ${accent}55`, boxShadow: `0 0 24px ${accent}10` }}>
     <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950 }}>P’TIT 1 · STYLE DE PARTIE</div>
-    <div style={{ marginTop: 5, color: soft, fontSize: 10.5, lineHeight: 1.45 }}>Choisis une base en un clic, puis modifie librement chaque règle dans les étapes suivantes.</div>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 8, marginTop: 11 }}>
-      {[
-        { id: "classic", icon: "1️⃣", title: "CLASSIQUE MSS", desc: "L’équilibre officiel · Jackpot D/T · Bouclier 3 · Zéro à 3 DBULL" },
-        { id: "precision", icon: "🎯", title: "PRÉCISION", desc: "Sans Jackpot · Bouclier après 2 volées propres · priorité aux petits simples" },
-        { id: "jackpot", icon: "✨", title: "JACKPOT", desc: "2 zones D/T à chaque volée · plus arcade et plus spectaculaire" },
-        { id: "sniper", icon: "🏹", title: "SNIPER", desc: "Jackpot TRIPLE uniquement · zone stable pendant le tour · gros simple ×15" },
-        { id: "hardcore", icon: "🔥", title: "HARDCORE", desc: "15 volées · gros ×20 · D×3 · T×5 · Bull25×6 · Jackpot triple" },
-      ].map((preset: any) => <button key={preset.id} type="button" onClick={() => applyPtitHunPreset(preset.id)} style={{ minHeight: 92, borderRadius: 15, border: "1px solid rgba(255,255,255,.11)", background: "linear-gradient(180deg,rgba(255,255,255,.055),rgba(0,0,0,.22))", color: "#fff", padding: "10px 9px", textAlign: "left", cursor: "pointer" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}><span style={{ fontSize: 20 }}>{preset.icon}</span><strong style={{ color: accent, fontSize: 10.5, letterSpacing: .4 }}>{preset.title}</strong></div>
-        <div style={{ marginTop: 7, color: soft, fontSize: 9.5, lineHeight: 1.35 }}>{preset.desc}</div>
-      </button>)}
+    <div style={{ marginTop: 5, color: soft, fontSize: 10.5, lineHeight: 1.45 }}>Choisis une base visuelle, puis ajuste toutes les règles librement dans les étapes suivantes.</div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(42vw,150px),1fr))", gap: 10, marginTop: 11 }}>
+      {ptitHunPresetDefs.map((preset: any, index: number) => {
+        const active = ptitHunPresetChoice === preset.id;
+        const [c1, c2] = preset.tones;
+        return <button key={preset.id} type="button" onClick={() => applyPtitHunPreset(preset.id)} aria-pressed={active} title={preset.title} style={{ minHeight: 108, borderRadius: 18, border: `1px solid ${active ? accent : "rgba(255,255,255,.11)"}`, background: `radial-gradient(circle at 18% 20%, ${c1}55, transparent 28%), radial-gradient(circle at 82% 30%, ${c2}44, transparent 30%), linear-gradient(180deg, rgba(255,255,255,.05), rgba(0,0,0,.30))`, color: "#fff", padding: 0, textAlign: "left", cursor: "pointer", overflow: "hidden", boxShadow: active ? `0 0 0 1px ${accent} inset, 0 0 24px ${accent}20` : "none", position: "relative" }}>
+          <div aria-hidden style={{ position: "absolute", inset: 0, opacity: .95 }}>
+            <div style={{ position: "absolute", inset: 12, borderRadius: 18, border: `1px solid ${c1}44` }} />
+            <div style={{ position: "absolute", left: "50%", top: "50%", width: 68, height: 68, marginLeft: -34, marginTop: -34, borderRadius: 999, border: `7px solid ${c1}55`, boxShadow: `0 0 0 8px rgba(255,255,255,.04), 0 0 0 18px ${c2}22` }} />
+            <div style={{ position: "absolute", left: 20, right: 20, bottom: 18, height: 4, borderRadius: 999, background: `linear-gradient(90deg, ${c1}, ${c2})`, opacity: .9 }} />
+            <div style={{ position: "absolute", inset: 0, background: index % 2 ? "linear-gradient(135deg, transparent 0 40%, rgba(255,255,255,.05) 40% 43%, transparent 43% 100%)" : "linear-gradient(45deg, transparent 0 54%, rgba(255,255,255,.05) 54% 57%, transparent 57% 100%)" }} />
+          </div>
+          {active ? <div style={{ position: "absolute", inset: "auto 10px 10px auto", width: 22, height: 22, borderRadius: 999, background: accent, color: "#111", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 1100 }}>✓</div> : null}
+        </button>;
+      })}
+    </div>
+    <div style={{ marginTop: 11, borderRadius: 14, border: `1px solid ${accent}33`, background: "rgba(255,255,255,.03)", padding: "10px 12px" }}>
+      <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: .45 }}>{selectedPtitHunPreset.title}</div>
+      <div style={{ marginTop: 4, color: "#eef2ff", fontSize: 10.2, lineHeight: 1.45 }}>{selectedPtitHunPreset.desc}</div>
     </div>
     <div style={{ marginTop: 9, color: "#8fffb7", fontSize: 9.5, fontWeight: 850 }}>Les préréglages ne verrouillent rien : tous les paramètres restent modifiables individuellement.</div>
   </section>;
@@ -1080,7 +1102,7 @@ export default function NewDartsModeConfig(props: Props) {
         .msc-new-darts-guided-nav { position: sticky !important; bottom: max(6px, env(safe-area-inset-bottom)) !important; z-index: 50 !important; background: rgba(3,5,10,.92) !important; backdrop-filter: blur(14px); padding: 6px !important; border-radius: 14px; box-shadow: 0 -8px 24px rgba(0,0,0,.45); }
       }
     `}</style>
-    <PageHeader tickerSrc={definition.ticker} tickerAlt={definition.title} tickerHeight={mode === "crados" ? 68 : 92} tickerBottomGap={mode === "crados" ? 4 : 10} tickerFit={mode === "crados" ? "cover" : "cover"} left={<BackDot onClick={backToGames} color={accent} glow={`${accent}88`} title="Retour" />} right={<InfoDot title={`Règles ${definition.title}`} color={accent} glow={`${accent}77`} content={definition.rulesContent} />} />
+    <PageHeader tickerSrc={definition.ticker} tickerAlt={definition.title} tickerHeight={mode === "crados" ? 68 : 92} tickerBottomGap={mode === "crados" ? 4 : 10} tickerFit="cover" left={<BackDot onClick={backToGames} color={accent} glow={`${accent}88`} title="Retour" />} right={awenaEnabled ? <PremiumAwenaButton awena={awena} route={`${mode}_config`} mode={mode as any} screenLabel={`${definition.title} · Configuration`} accent={accent} /> : null} />
     <div className="msc-new-darts-config-content" style={{ padding: "8px 8px 0", maxWidth: 980, margin: "0 auto", minWidth: 0, boxSizing: "border-box" }}>
       {mode === "crados" && !viewModeChosen ? <section style={{ ...selectorCard, border: `1px solid ${accent}66`, boxShadow: `0 0 24px ${accent}18, 0 14px 34px rgba(0,0,0,.48)`, padding: "14px 12px" }}>
         <div style={{ color: accent, fontSize: 12.5, fontWeight: 1000, textTransform: "uppercase", letterSpacing: 1, textAlign: "center" }}>Choisis ton affichage</div>

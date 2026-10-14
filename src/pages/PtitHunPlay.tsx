@@ -1,7 +1,6 @@
 // @ts-nocheck
 import React from "react";
 import BackDot from "../components/BackDot";
-import InfoDot from "../components/InfoDot";
 import ProfileAvatar from "../components/ProfileAvatar";
 import PageHeader from "../components/PageHeader";
 import tickerPtitHun from "../assets/tickers/ticker_ptit_1.png";
@@ -138,6 +137,17 @@ function Ptit1DartsRow({ currentThrow, accent }: any) {
   </div>;
 }
 
+function Ptit1ToolIcon({ kind, color = "#dfe8ff" }: any) {
+  const common = { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" } as any;
+  if (kind === "ranking") return <svg {...common}><path d="M6 4h12v2l-3 3v4.5l-3 1.8-3-1.8V9L6 6V4Z"/><path d="M9 18h6"/><path d="M8 21h8"/></svg>;
+  if (kind === "stats") return <svg {...common}><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20v-11"/></svg>;
+  return <svg {...common}><path d="M6 7h12"/><path d="M6 12h12"/><path d="M6 17h8"/></svg>;
+}
+
+function Ptit1ProgressCard({ label, value, hint, color = ACCENT, active = false }: any) {
+  return <div style={{ minWidth: 0, borderRadius: 12, border: `1px solid ${active ? color + "88" : "rgba(255,255,255,.08)"}`, background: active ? `${color}12` : "linear-gradient(180deg,rgba(16,19,28,.96),rgba(5,7,12,.98))", padding: "6px 8px" }}><div style={{ color, fontSize: 7.3, fontWeight: 1000, letterSpacing: .55 }}>{label}</div><div style={{ marginTop: 2, color: "#fff", fontSize: 12.2, fontWeight: 1100 }}>{value}</div><div style={{ marginTop: 2, color: "#8f98ad", fontSize: 7.2, lineHeight: 1.25 }}>{hint}</div></div>;
+}
+
 export default function PtitHunPlay(props: any) {
   useFullscreenPlay({ enabled: true, lockBodyScroll: true });
   const awena = useAwenaOptional();
@@ -234,6 +244,11 @@ export default function PtitHunPlay(props: any) {
   const shield = Boolean(state.shieldActive?.[activePlayer?.id]);
   const clean = Number(state.cleanStreak?.[activePlayer?.id] || 0);
   const preview = React.useMemo(() => { if (currentThrow.length !== 3 || !activePlayer) return null; const next = playPtitHunVisit(state, currentThrow.map(uiToGameDart)); return next.visits?.[next.visits.length - 1] || null; }, [currentThrow, state, activePlayer?.id]);
+  const zeroProgress = config.rules.dbullEnabled && config.rules.zeroAbsoluteEnabled ? `${activeStats.dbulls || 0}/${config.rules.dbullsForZero}` : "OFF";
+  const zeroHint = config.rules.dbullEnabled && config.rules.zeroAbsoluteEnabled ? `${Math.max(0, Number(config.rules.dbullsForZero || 0) - Number(activeStats.dbulls || 0))} DBULL avant le Zéro absolu` : "Bonus désactivé";
+  const shieldProgress = config.rules.shieldEnabled ? (shield ? "ACTIF" : `${clean}/${config.rules.cleanVisitsForShield}`) : "OFF";
+  const shieldHint = config.rules.shieldEnabled ? (shield ? `Pénalités divisées par ${config.rules.shieldDivider}` : `${Math.max(0, Number(config.rules.cleanVisitsForShield || 0) - clean)} volée propre avant activation`) : "Bonus désactivé";
+  const jackpotLabel = config.rules.jackpotEnabled && state.jackpotTargets?.length ? state.jackpotTargets.map((t:any) => t.label).join(" / ") : "OFF";
   const ringDecorator = (d: UIDart) => { if ((d as any)?.label) return d; if (Number(d?.v) >= 1 && Number(d?.v) <= 20 && Number(d?.mult) === 1) return { ...d, label: singleRing }; return d; };
   const firstVisitGuide = firstVisitGuideEnabled && !activeIsBot && state.turnIndex === 0 && currentThrow.length === 0;
   const coach = firstVisitGuide ? `1 · Choisis PETIT pour viser la zone simple intérieure. 2 · Le petit 1 vaut +1 ; le gros 1 vaut +${config.rules.outerSingleFactor}. 3 · Double ×${config.rules.doubleFactor}, Triple ×${config.rules.tripleFactor}, Bull25 ×${config.rules.bull25Factor}. 4 · ${config.rules.jackpotEnabled ? `Jackpot ${state.jackpotTargets.map((t: any) => t.label).join("/")} = volée 0.` : config.rules.dbullEnabled ? `DBULL ÷${config.rules.dbullDivider}.` : "Reste dans les petits simples."}` : coachEnabled && !activeIsBot ? coachText(state, activePlayer) : "";
@@ -283,8 +298,8 @@ export default function PtitHunPlay(props: any) {
       .ptit1-player-card>*{position:relative;z-index:1}
       .ptit1-player-card__name{width:100%;text-align:center;color:var(--ptit-accent);font-size:9px;font-weight:1100;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:uppercase}
       .ptit1-player-card__meta{width:100%;display:grid;grid-template-columns:repeat(3,1fr);gap:3px}
-      .ptit1-kpis{flex:0 0 44px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:5px;border-radius:13px;border:1px solid rgba(255,255,255,.07);background:linear-gradient(180deg,rgba(16,19,28,.96),rgba(5,7,12,.98))}
-      .ptit1-tools{flex:0 0 48px;display:grid;grid-template-columns:minmax(0,1fr) repeat(3,42px);gap:5px}
+      .ptit1-bonus-strip{flex:0 0 52px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.ptit1-kpis{flex:0 0 44px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:5px;border-radius:13px;border:1px solid rgba(255,255,255,.07);background:linear-gradient(180deg,rgba(16,19,28,.96),rgba(5,7,12,.98))}
+      .ptit1-tools{flex:0 0 48px;display:grid;grid-template-columns:42px minmax(0,1fr) 42px 42px;gap:5px}
       .ptit1-players{position:relative;overflow:hidden;border-radius:13px;border:1px solid rgba(255,255,255,.08);background:#080b11;padding:4px 8px;cursor:pointer;color:#fff}
       .ptit1-players:before{content:"";position:absolute;inset:0;background-image:linear-gradient(90deg,rgba(0,0,0,.82),rgba(0,0,0,.34),rgba(0,0,0,.82)),url(${tickerPtitHun});background-size:cover;background-position:center;opacity:.64}
       .ptit1-players>div{position:relative;height:100%;display:flex;align-items:center;justify-content:center;gap:0}
@@ -296,10 +311,10 @@ export default function PtitHunPlay(props: any) {
         .ptit1-play{gap:5px;padding:5px}
         .ptit1-head{flex-basis:46px;border-radius:12px}
         .ptit1-stage{display:grid;grid-template-columns:minmax(300px,38%) minmax(0,1fr);gap:6px}
-        .ptit1-left{height:100%;display:grid;grid-template-rows:minmax(108px,1.45fr) 42px 46px 36px;gap:5px;overflow:hidden}
+        .ptit1-left{height:100%;display:grid;grid-template-rows:minmax(108px,1.45fr) 50px 42px 46px 36px;gap:5px;overflow:hidden}
         .ptit1-active{height:100%;min-height:0;flex:auto}
         .ptit1-active__grid{grid-template-columns:minmax(0,1fr) 118px;padding:6px}
-        .ptit1-active__mission{gap:5px}
+        .ptit1-active__mission{gap:7px}
         .ptit1-active__copy b{font-size:29px;margin-top:3px}.ptit1-active__copy span{margin-top:3px}
         .ptit1-kpis,.ptit1-tools,.ptit1-visit{height:100%;min-height:0;flex:auto}
         .ptit1-tools{grid-template-columns:minmax(0,1fr) repeat(3,38px)}
@@ -307,7 +322,7 @@ export default function PtitHunPlay(props: any) {
         .ptit1-input{height:100%}
       }
       @media (max-height:650px) and (orientation:portrait){
-        .ptit1-head{flex-basis:48px}.ptit1-active{flex-basis:96px}.ptit1-kpis{flex-basis:40px}.ptit1-tools{flex-basis:43px}.ptit1-tool{height:43px}.ptit1-visit{flex-basis:34px}
+        .ptit1-head{flex-basis:48px}.ptit1-active{flex-basis:96px}.ptit1-bonus-strip{flex-basis:46px}.ptit1-kpis{flex-basis:40px}.ptit1-tools{flex-basis:43px}.ptit1-tool{height:43px}.ptit1-visit{flex-basis:34px}
         .ptit1-active__grid{grid-template-columns:minmax(0,1fr) 110px;padding:5px}.ptit1-active__copy b{font-size:27px}.ptit1-active__copy span{font-size:6.5px}
       }
     `}</style>
@@ -319,7 +334,6 @@ export default function PtitHunPlay(props: any) {
         <div><BackDot onClick={() => go?.("ptit_hun_config")} color={activeColor} glow={`${activeColor}88`} size={36} /></div>
         <div>
           {awenaEnabled ? <PremiumAwenaButton awena={awena} route="ptit_hun_play" mode="ptit_hun" screenLabel="P’TIT 1 · Partie" accent={activeColor} /> : null}
-          <InfoDot onClick={() => setFocusOpen(true)} size={36} color={ACCENT} glow={`${ACCENT}88`} title="Cible et règles P’TIT 1" disableAwenaTakeover />
         </div>
       </div>
     </header>
@@ -329,24 +343,37 @@ export default function PtitHunPlay(props: any) {
         <section className="ptit1-active">
           <div className="ptit1-active__grid">
             <div className="ptit1-active__mission">
-              <JackpotMiniTarget targets={config.rules.jackpotEnabled ? state.jackpotTargets : []} />
+              <div className="ptit1-player-card" style={{ width: "min(124px, 32vw)", minWidth: 104 }}>
+                <div className="ptit1-player-card__name">{activePlayer?.name || "Joueur"}</div>
+                <ProfileAvatar profile={activeProfile} size={46} showStars={false} ringColor={activeColor} />
+                <div className="ptit1-player-card__meta">
+                  <Ptit1MiniKpi label="TOUR" value={`${round}/${config.rules.rounds}`} color="#fff" />
+                  <Ptit1MiniKpi label="DBULL" value={`${activeStats.dbulls || 0}/${config.rules.dbullsForZero}`} color={BLUE} />
+                  <Ptit1MiniKpi label="🛡" value={shield ? "ON" : config.rules.shieldEnabled ? `${clean}/${config.rules.cleanVisitsForShield}` : "OFF"} color={shield ? GREEN : ACCENT} />
+                </div>
+              </div>
               <div className="ptit1-active__copy">
                 <small>{config.rules.jackpotEnabled && state.jackpotTargets?.length ? "JACKPOT À TENTER" : "OBJECTIF"}</small>
-                <strong>{config.rules.jackpotEnabled && state.jackpotTargets?.length ? state.jackpotTargets.map((t:any) => t.label).join(" / ") : "PETIT 1"}</strong>
+                <strong>{config.rules.jackpotEnabled && state.jackpotTargets?.length ? jackpotLabel : "PETIT 1"}</strong>
                 <b>{score}</b>
                 <span>{notice || coach || `Volée ${round}/${config.rules.rounds} · le plus petit score gagne`}</span>
               </div>
             </div>
-            <div className="ptit1-player-card">
-              <div className="ptit1-player-card__name">{activePlayer?.name || "Joueur"}</div>
-              <ProfileAvatar profile={activeProfile} size={46} showStars={false} ringColor={activeColor} />
-              <div className="ptit1-player-card__meta">
-                <Ptit1MiniKpi label="TOUR" value={`${round}/${config.rules.rounds}`} color="#fff" />
-                <Ptit1MiniKpi label="DBULL" value={`${activeStats.dbulls || 0}/${config.rules.dbullsForZero}`} color={BLUE} />
-                <Ptit1MiniKpi label="🛡" value={shield ? "ON" : config.rules.shieldEnabled ? `${clean}/${config.rules.cleanVisitsForShield}` : "OFF"} color={shield ? GREEN : ACCENT} />
+            <div style={{ display: "grid", gridTemplateRows: "1fr auto", gap: 5, minHeight: 0 }}>
+              <button type="button" className="ptit1-tool" onClick={() => setFocusOpen(true)} aria-label="Ouvrir le radar cible" style={{ height: "100%", minHeight: 88, borderRadius: 16, padding: 6, display: "grid", placeItems: "center" }}>
+                <JackpotMiniTarget targets={config.rules.jackpotEnabled ? state.jackpotTargets : []} />
+              </button>
+              <div style={{ borderRadius: 12, border: "1px solid rgba(255,216,77,.28)", background: "rgba(255,216,77,.08)", padding: "6px 7px", textAlign: "center" }}>
+                <div style={{ color: "#ffd84d", fontSize: 7.2, fontWeight: 1000, letterSpacing: .55 }}>JACKPOT</div>
+                <div style={{ marginTop: 2, color: "#fff", fontSize: 10.8, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{jackpotLabel}</div>
               </div>
             </div>
           </div>
+        </section>
+
+        <section className="ptit1-bonus-strip">
+          <Ptit1ProgressCard label="ZÉRO ABSOLU" value={zeroProgress} hint={zeroHint} color={BLUE} active={config.rules.dbullEnabled && config.rules.zeroAbsoluteEnabled} />
+          <Ptit1ProgressCard label="BOUCLIER DU HUN" value={shieldProgress} hint={shieldHint} color={GREEN} active={config.rules.shieldEnabled} />
         </section>
 
         <section className="ptit1-kpis">
@@ -357,15 +384,15 @@ export default function PtitHunPlay(props: any) {
         </section>
 
         <section className="ptit1-tools">
+          <button type="button" className="ptit1-tool" onClick={() => setRankingOpen(true)} aria-label="Classement"><Ptit1ToolIcon kind="ranking" /></button>
           <button type="button" className="ptit1-players" onClick={() => setPlayersOpen(true)} aria-label="Ouvrir la liste des joueurs">
             <div>
               {state.players.slice(0, 8).map((p:any) => { const id=String(p.id); const color=colorById.get(id)||ACCENT; return <span key={id} style={{ width: 30, height: 30, marginLeft: -5, borderRadius: 999, overflow: "hidden", border: `2px solid ${color}`, background: "#070910", display: "grid", placeItems: "center", boxShadow: id === String(activePlayer?.id || "") ? `0 0 12px ${color}88` : "none" }}><ProfileAvatar profile={profileById.get(id) || p} size={28} showStars={false} ringColor={color} noFrame /></span>; })}
               <b style={{ marginLeft: 7, color: activeColor, fontSize: 8.5, fontWeight: 1100, letterSpacing: .65 }}>JOUEURS</b>
             </div>
           </button>
-          <button type="button" className="ptit1-tool" onClick={() => setRankingOpen(true)} aria-label="Classement">🏆</button>
-          <button type="button" className="ptit1-tool" onClick={() => setStatsOpen(true)} aria-label="Statistiques">📊</button>
-          <button type="button" className="ptit1-tool" onClick={() => setLogOpen(true)} aria-label="Journal">☷</button>
+          <button type="button" className="ptit1-tool" onClick={() => setStatsOpen(true)} aria-label="Statistiques"><Ptit1ToolIcon kind="stats" /></button>
+          <button type="button" className="ptit1-tool" onClick={() => setLogOpen(true)} aria-label="Journal"><Ptit1ToolIcon kind="log" /></button>
         </section>
 
         <section className="ptit1-visit">
