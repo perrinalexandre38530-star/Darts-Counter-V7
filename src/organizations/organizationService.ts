@@ -36,6 +36,9 @@ export type OrganizationMember = {
   membershipId: string;
   organizationId: string;
   userId: string;
+  entityType: "user" | "local_profile";
+  ownerUserId: string;
+  localProfileId: string;
   displayName: string;
   avatarUrl: string;
   countryCode: string;
@@ -44,6 +47,27 @@ export type OrganizationMember = {
   joinedAt: string;
   updatedAt: string;
   groupIds: string[];
+};
+
+export type OrganizationMemberProposal = {
+  id: string;
+  organizationId: string;
+  organizationName: string;
+  organizationKind: OrganizationKind;
+  proposerUserId: string;
+  proposerDisplayName: string;
+  targetType: "user" | "local_profile";
+  targetUserId: string;
+  targetDisplayName: string;
+  targetAvatarUrl: string;
+  targetCountryCode: string;
+  localProfileId: string;
+  role: OrganizationRole;
+  adminStatus: "pending" | "approved" | "declined";
+  targetStatus: "pending" | "approved" | "declined" | "not_required";
+  status: "pending" | "accepted" | "declined" | "cancelled";
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type OrganizationInvitation = {
@@ -1432,6 +1456,9 @@ function parseOrganizationMember(row: any, organizationId = ""): OrganizationMem
     membershipId: String(row?.membershipId || row?.membership_id || row?.id || ""),
     organizationId: String(row?.organizationId || row?.organization_id || organizationId || ""),
     userId: String(row?.userId || row?.user_id || ""),
+    entityType: String(row?.entityType || row?.entity_type || "user") === "local_profile" ? "local_profile" : "user",
+    ownerUserId: String(row?.ownerUserId || row?.owner_user_id || row?.userId || row?.user_id || ""),
+    localProfileId: String(row?.localProfileId || row?.local_profile_id || ""),
     displayName: String(row?.displayName || row?.display_name || row?.nickname || "Joueur MSS").trim() || "Joueur MSS",
     avatarUrl: String(row?.avatarUrl || row?.avatar_url || "").trim(),
     countryCode: String(row?.countryCode || row?.country_code || "").trim().toUpperCase().slice(0, 2),
@@ -1440,6 +1467,33 @@ function parseOrganizationMember(row: any, organizationId = ""): OrganizationMem
     joinedAt: String(row?.joinedAt || row?.joined_at || nowIso()),
     updatedAt: String(row?.updatedAt || row?.updated_at || nowIso()),
     groupIds: Array.from(new Set(rawGroups.map((value: unknown) => String(value || "").trim()).filter(Boolean))),
+  };
+}
+
+function parseOrganizationMemberProposal(row: any): OrganizationMemberProposal {
+  const targetType = String(row?.targetType || row?.target_type || "user") === "local_profile" ? "local_profile" : "user";
+  const adminStatusRaw = String(row?.adminStatus || row?.admin_status || "pending").toLowerCase();
+  const targetStatusRaw = String(row?.targetStatus || row?.target_status || (targetType === "local_profile" ? "not_required" : "pending")).toLowerCase();
+  const statusRaw = String(row?.status || "pending").toLowerCase();
+  return {
+    id: String(row?.id || ""),
+    organizationId: String(row?.organizationId || row?.organization_id || ""),
+    organizationName: String(row?.organizationName || row?.organization_name || "").trim(),
+    organizationKind: coerceKind(row?.organizationKind || row?.organization_kind || "other"),
+    proposerUserId: String(row?.proposerUserId || row?.proposer_user_id || ""),
+    proposerDisplayName: String(row?.proposerDisplayName || row?.proposer_display_name || "Membre MSS").trim() || "Membre MSS",
+    targetType,
+    targetUserId: String(row?.targetUserId || row?.target_user_id || ""),
+    targetDisplayName: String(row?.targetDisplayName || row?.target_display_name || row?.localProfileName || row?.local_profile_name || "Joueur MSS").trim() || "Joueur MSS",
+    targetAvatarUrl: String(row?.targetAvatarUrl || row?.target_avatar_url || row?.localProfileAvatarUrl || row?.local_profile_avatar_url || "").trim(),
+    targetCountryCode: String(row?.targetCountryCode || row?.target_country_code || row?.localProfileCountryCode || row?.local_profile_country_code || "").trim().toUpperCase().slice(0, 2),
+    localProfileId: String(row?.localProfileId || row?.local_profile_id || ""),
+    role: coerceRole(row?.role),
+    adminStatus: adminStatusRaw === "approved" ? "approved" : adminStatusRaw === "declined" ? "declined" : "pending",
+    targetStatus: targetStatusRaw === "approved" ? "approved" : targetStatusRaw === "declined" ? "declined" : targetStatusRaw === "not_required" ? "not_required" : "pending",
+    status: statusRaw === "accepted" ? "accepted" : statusRaw === "declined" ? "declined" : statusRaw === "cancelled" ? "cancelled" : "pending",
+    createdAt: String(row?.createdAt || row?.created_at || nowIso()),
+    updatedAt: String(row?.updatedAt || row?.updated_at || nowIso()),
   };
 }
 
@@ -1484,6 +1538,13 @@ function rpcMessage(error: any, fallback: string): string {
     ALREADY_MEMBER: "Cet utilisateur est déjà membre de l’organisation.",
     INVITATION_ALREADY_PENDING: "Une invitation est déjà en attente pour cet utilisateur.",
     INVITATION_NOT_FOUND: "Invitation introuvable.",
+    FRIEND_REQUIRED: "Cette proposition est réservée à un ami déjà lié à ton compte MSS.",
+    PROPOSAL_ALREADY_PENDING: "Une proposition d’adhésion est déjà en attente pour cette personne.",
+    PROPOSAL_NOT_FOUND: "Proposition d’adhésion introuvable.",
+    OWNER_APPROVAL_REQUIRED: "Seul le créateur de l’organisation peut valider cette proposition.",
+    LOCAL_PROFILE_REQUIRED: "Profil local invalide.",
+    LOCAL_PROFILE_NAME_REQUIRED: "Le nom du profil local est requis.",
+    LOCAL_PROFILE_NOT_OWNED: "Ce profil local n’est pas enregistré dans les profils synchronisés de ton compte.",
     USER_NOT_FOUND: "Utilisateur introuvable.",
     GROUP_NOT_FOUND: "Équipe ou groupe introuvable.",
     COMPETITION_NOT_FOUND: "Compétition introuvable.",
@@ -1632,6 +1693,105 @@ export async function cancelOrganizationInvitation(
   if (!userId) throw new Error("Connexion requise.");
   const { error } = await orgRpc("ms_org_cancel_invitation", { p_invitation_id: invitationId });
   if (error) throw new Error(rpcMessage(error, "Annulation de l’invitation impossible."));
+}
+
+export async function proposeOrganizationMember(
+  userId: string | null | undefined,
+  organizationId: string,
+  input: {
+    targetUserId?: string | null;
+    localProfileId?: string | null;
+    localProfileName?: string | null;
+    localProfileAvatarUrl?: string | null;
+    localProfileCountryCode?: string | null;
+    role?: OrganizationRole;
+  },
+): Promise<OrganizationMemberProposal> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { data, error } = await orgRpc("ms_org_propose_member", {
+    p_org_id: organizationId,
+    p_target_user_id: input.targetUserId || null,
+    p_local_profile_id: input.localProfileId || null,
+    p_local_profile_name: input.localProfileName || null,
+    p_local_profile_avatar_url: input.localProfileAvatarUrl || "",
+    p_local_profile_country_code: input.localProfileCountryCode || "",
+    p_role: input.role || "member",
+  });
+  if (error) throw new Error(rpcMessage(error, "Proposition d’adhésion impossible."));
+  const row = rpcRows(data)[0];
+  if (!row) throw new Error("Proposition d’adhésion impossible.");
+  return parseOrganizationMemberProposal(row);
+}
+
+export async function listOrganizationMemberProposals(
+  userId: string | null | undefined,
+  organizationId: string,
+): Promise<{ proposals: OrganizationMemberProposal[]; cloudAvailable: boolean }> {
+  if (!userId || !organizationId) return { proposals: [], cloudAvailable: false };
+  try {
+    const { data, error } = await orgRpc("ms_org_list_member_proposals", { p_org_id: organizationId });
+    if (error) throw error;
+    return { proposals: rpcRows(data).filter(Boolean).map(parseOrganizationMemberProposal), cloudAvailable: true };
+  } catch (error) {
+    console.warn("[organizations] member proposals unavailable", error);
+    return { proposals: [], cloudAvailable: false };
+  }
+}
+
+export async function listMyOrganizationMemberProposals(
+  userId: string | null | undefined,
+): Promise<{ proposals: OrganizationMemberProposal[]; cloudAvailable: boolean }> {
+  if (!userId) return { proposals: [], cloudAvailable: false };
+  try {
+    const { data, error } = await orgRpc("ms_org_list_my_member_proposals");
+    if (error) throw error;
+    return { proposals: rpcRows(data).filter(Boolean).map(parseOrganizationMemberProposal), cloudAvailable: true };
+  } catch (error) {
+    console.warn("[organizations] incoming member proposals unavailable", error);
+    return { proposals: [], cloudAvailable: false };
+  }
+}
+
+export async function reviewOrganizationMemberProposal(userId: string | null | undefined, proposalId: string, approve: boolean): Promise<void> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { error } = await orgRpc("ms_org_review_member_proposal", { p_proposal_id: proposalId, p_approve: approve });
+  if (error) throw new Error(rpcMessage(error, "Validation de la proposition impossible."));
+}
+
+export async function respondOrganizationMemberProposal(userId: string | null | undefined, proposalId: string, accept: boolean): Promise<void> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { error } = await orgRpc("ms_org_respond_member_proposal", { p_proposal_id: proposalId, p_accept: accept });
+  if (error) throw new Error(rpcMessage(error, "Réponse à la proposition impossible."));
+}
+
+export async function cancelOrganizationMemberProposal(userId: string | null | undefined, proposalId: string): Promise<void> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { error } = await orgRpc("ms_org_cancel_member_proposal", { p_proposal_id: proposalId });
+  if (error) throw new Error(rpcMessage(error, "Annulation de la proposition impossible."));
+}
+
+export async function setOrganizationLocalMemberRole(userId: string | null | undefined, organizationId: string, localMemberId: string, role: OrganizationRole): Promise<void> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { error } = await orgRpc("ms_org_set_local_member_role", { p_org_id: organizationId, p_local_member_id: localMemberId, p_role: role });
+  if (error) throw new Error(rpcMessage(error, "Modification du rôle impossible."));
+}
+
+export async function setOrganizationLocalMemberStatus(userId: string | null | undefined, organizationId: string, localMemberId: string, status: "active" | "suspended"): Promise<void> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { error } = await orgRpc("ms_org_set_local_member_status", { p_org_id: organizationId, p_local_member_id: localMemberId, p_status: status });
+  if (error) throw new Error(rpcMessage(error, "Modification du statut impossible."));
+}
+
+export async function removeOrganizationLocalMember(userId: string | null | undefined, organizationId: string, localMemberId: string): Promise<void> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { error } = await orgRpc("ms_org_remove_local_member", { p_org_id: organizationId, p_local_member_id: localMemberId });
+  if (error) throw new Error(rpcMessage(error, "Suppression du profil local impossible."));
+}
+
+export async function setOrganizationLocalGroupMember(userId: string | null | undefined, groupId: string, localMemberId: string, assigned: boolean): Promise<void> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { error } = await orgRpc("ms_org_set_local_group_member", { p_group_id: groupId, p_local_member_id: localMemberId, p_assigned: assigned });
+  if (error) throw new Error(rpcMessage(error, "Affectation à l’équipe impossible."));
 }
 
 export async function rotateOrganizationJoinCode(

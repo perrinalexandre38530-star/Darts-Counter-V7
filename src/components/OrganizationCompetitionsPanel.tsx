@@ -97,7 +97,9 @@ export default function OrganizationCompetitionsPanel({
 
   const canManage = ["owner", "admin", "manager"].includes(organization.role);
   const activeGroups = groups.filter((group) => group.status === "active");
-  const activeMembers = members.filter((member) => member.status === "active");
+  // Les compétitions V8 utilisent encore des auth.users UUID comme participants individuels.
+  // Les profils locaux restent visibles dans l'effectif/équipes mais sont exclus ici tant que le moteur compétition n'accepte pas leur identité canonique locale.
+  const activeMembers = members.filter((member) => member.status === "active" && member.entityType === "user");
   const candidates = participantMode === "teams"
     ? activeGroups.map((group) => ({ id: group.id, name: group.name, meta: group.sportId, avatar: "", accent: group.primaryColor }))
     : activeMembers.map((member) => ({ id: member.userId, name: member.displayName, meta: member.role, avatar: member.avatarUrl, accent: theme.primary }));

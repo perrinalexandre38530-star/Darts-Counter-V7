@@ -8,6 +8,7 @@ import {
   listOrganizationGroups,
   listOrganizationMembers,
   setOrganizationGroupMember,
+  setOrganizationLocalGroupMember,
   updateOrganizationGroup,
   type OrganizationGroupKind,
   type OrganizationLocalGroup,
@@ -294,11 +295,13 @@ export default function OrganizationTeamsPanel({ organization, userId, initialGr
 
   const toggleMember = async (group: OrganizationLocalGroup, member: OrganizationMember, assigned: boolean) => {
     if (!canManageRoster) return;
-    const key = `member:${group.id}:${member.userId}`;
+    const memberKey = member.entityType === "local_profile" ? `local:${member.membershipId}` : member.userId;
+    const key = `member:${group.id}:${memberKey}`;
     setActionKey(key);
     setError("");
     try {
-      await setOrganizationGroupMember(userId, group.id, member.userId, assigned);
+      if (member.entityType === "local_profile") await setOrganizationLocalGroupMember(userId, group.id, member.membershipId, assigned);
+      else await setOrganizationGroupMember(userId, group.id, member.userId, assigned);
       await refresh();
       await onChanged?.();
     } catch (e: any) {

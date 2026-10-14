@@ -18,6 +18,22 @@ import { getTicker } from "../lib/tickers";
 const ACCENT = "#44e7ff";
 const W = 640;
 const H = 480;
+const PLAYER_COLORS = ["#ff4d5f", "#3da5ff", "#ffd43b", "#b96cff", "#39d98a", "#ff914d", "#55e6c1", "#f472b6"];
+
+function playerColor(players:any[], playerId:any) {
+  const ix = Math.max(0, players.findIndex((p:any) => String(p.id) === String(playerId)));
+  return PLAYER_COLORS[ix % PLAYER_COLORS.length];
+}
+
+function phaseLabel(phase:string) {
+  if (phase === "enroll") return "ENRÔLEMENT";
+  if (phase === "baseline") return "CIBLE VIDE";
+  if (phase === "play") return "VOLÉE";
+  if (phase === "review") return "CONTRÔLE IA";
+  if (phase === "roundEnd") return "CLASSEMENT";
+  if (phase === "finished") return "TERMINÉ";
+  return String(phase || "").toUpperCase();
+}
 
 function capture(video: HTMLVideoElement | null, crop?: { x:number; y:number; w:number; h:number }) {
   if (!video?.videoWidth) return null;
@@ -73,6 +89,7 @@ export default function ClosestCenterPlay(props:any) {
   const [stability, setStability] = React.useState<any>(null);
   const [impacts, setImpacts] = React.useState<any[]>([]);
   const [allScores, setAllScores] = React.useState<Record<string,number>>({});
+  const [tieAcknowledged, setTieAcknowledged] = React.useState(false);
   const [status, setStatus] = React.useState("Présente les 3 fléchettes du joueur dans le cadre de scan.");
 
   React.useEffect(() => {
@@ -136,6 +153,7 @@ export default function ClosestCenterPlay(props:any) {
     setBefore(img);
     setPendingAfter(null);
     setPendingImpacts([]);
+    setTieAcknowledged(false);
     setPhase("play");
     setPlayerIndex(0);
     setStatus(`${players[0]?.name}: lance 3 fléchettes, sans les retirer, puis lance l’analyse.`);
@@ -231,8 +249,24 @@ export default function ClosestCenterPlay(props:any) {
 
   const ranked = React.useMemo(() => rankImpacts(impacts.filter((x:any) => x.round === round), cfg.pointsMode || "descending"), [impacts, round, cfg.pointsMode]);
   const hasPrecisionTieRisk = ranked.some((r:any) => r.ambiguousWithPrevious);
+  const roundValidatedImpacts = React.useMemo(() => impacts.filter((x:any) => x.round === round), [impacts, round]);
+  const projectedScores = React.useMemo(() => {
+    const out = { ...allScores };
+    if (phase === "roundEnd") ranked.forEach((r:any) => out[r.playerId] = (out[r.playerId] || 0) + Number(r.points || 0));
+    return out;
+  }, [allScores, ranked, phase]);
+  const projectedTeamTotals = React.useMemo(() => {
+    const out:any = {};
+    players.forEach((p:any) => { if (p.teamId) out[p.teamId] = (out[p.teamId] || 0) + (projectedScores[p.id] || 0); });
+    return out;
+  }, [players, projectedScores]);
 
   const commitRound = () => {
+    if (hasPrecisionTieRisk && !tieAcknowledged) {
+      setTieAcknowledged(true);
+      setStatus("⚠️ Départage inférieur à la marge de précision. Contrôle visuellement les impacts puis confirme une seconde fois pour enregistrer la manche.");
+      return;
+    }
     const next = { ...allScores };
     ranked.forEach((r:any) => next[r.playerId] = (next[r.playerId] || 0) + r.points);
     setAllScores(next);
@@ -247,6 +281,7 @@ export default function ClosestCenterPlay(props:any) {
     setBefore(null);
     setPendingAfter(null);
     setPendingImpacts([]);
+    setTieAcknowledged(false);
     setStatus("Retire toutes les fléchettes puis capture la cible vide pour la manche suivante.");
   };
 
@@ -276,6 +311,12 @@ export default function ClosestCenterPlay(props:any) {
         <div style={{position:"absolute",inset:0,pointerEvents:"none"}}>
           {phase === "enroll" ? <div style={{position:"absolute",left:"25%",top:"20%",width:"50%",height:"60%",border:`2px dashed ${ACCENT}`,borderRadius:18,boxShadow:`0 0 30px ${ACCENT}33`}}/> : null}
           <div style={{position:"absolute",left:"50%",top:"50%",width:14,height:14,margin:-7,borderRadius:"50%",border:"2px solid #fff",boxShadow:"0 0 15px #fff"}}/>
+          {roundValidatedImpacts.map((impact:any) => {
+            const p = players.find((x:any) => String(x.id) === String(impact.playerId));
+            const color = playerColor(players, impact.playerId);
+            const liveRank = ranked.find((r:any) => r.id === impact.id)?.rank;
+            return <div key={`accepted-${impact.id}`} style={{position:"absolute",left:`${impact.xNorm*100}%`,top:`${impact.yNorm*100}%`,transform:"translate(-50%,-50%)",width:20,height:20,borderRadius:"50%",border:`2px solid ${color}`,background:`${color}24`,boxShadow:`0 0 14px ${color}`}}><span style={{position:"absolute",left:14,top:13,whiteSpace:"nowrap",padding:"4px 6px",borderRadius:7,background:"rgba(2,8,14,.9)",border:`1px solid ${color}99`,fontSize:9,fontWeight:1000,color:"#fff"}}>{liveRank ? `#${liveRank} · ` : ""}{p?.name} · {impact.distanceMm.toFixed(1)} mm</span></div>;
+          })}
           {(phase === "review" ? pendingImpacts : []).map((impact:any, i:number) => {
             const p = players.find((x:any) => String(x.id) === String(impact.playerId));
             return <div key={impact.id} style={{position:"absolute",left:`${impact.xNorm*100}%`,top:`${impact.yNorm*100}%`,transform:"translate(-50%,-50%)",width:24,height:24,borderRadius:"50%",border:`2px solid ${impact.needsReview?"#ffbd45":ACCENT}`,boxShadow:`0 0 16px ${impact.needsReview?"#ffbd45":ACCENT}`}}><span style={{position:"absolute",left:18,top:-8,whiteSpace:"nowrap",padding:"5px 7px",borderRadius:8,background:"rgba(2,8,14,.92)",border:`1px solid ${impact.needsReview?"#ffbd45":ACCENT}`,fontSize:10,fontWeight:1000}}>{i+1} · {p?.name} · {impact.distanceMm.toFixed(1)} mm</span></div>;
@@ -285,8 +326,32 @@ export default function ClosestCenterPlay(props:any) {
       </div>
 
       <div style={{minHeight:0,overflow:"auto",display:"grid",gap:10,alignContent:"start"}}>
+        <section style={{...card,padding:10}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+            {[
+              ["enroll","1","ENRÔLER"],
+              ["baseline","2","RÉFÉRENCE"],
+              ["play","3","JOUER"],
+              ["roundEnd","4","CLASSER"],
+            ].map(([key,num,label]) => {
+              const order:any = {enroll:0,baseline:1,play:2,review:2,roundEnd:3,finished:4};
+              const mine:any = {enroll:0,baseline:1,play:2,roundEnd:3};
+              const active = order[phase] >= mine[key];
+              return <div key={key} style={{minWidth:0,padding:"7px 5px",borderRadius:10,border:`1px solid ${active?ACCENT:"rgba(255,255,255,.08)"}`,background:active?`${ACCENT}10`:"rgba(255,255,255,.02)",textAlign:"center"}}><b style={{display:"block",fontSize:11,color:active?ACCENT:"#607080"}}>{num}</b><span style={{fontSize:8,fontWeight:1000,color:active?"#eafcff":"#71808d",letterSpacing:.5}}>{label}</span></div>;
+            })}
+          </div>
+        </section>
+
+        {current && phase !== "roundEnd" && phase !== "finished" ? <section style={{...card,borderColor:`${playerColor(players,current.id)}66`,background:`linear-gradient(135deg,${playerColor(players,current.id)}12,rgba(255,255,255,.025))`}}>
+          <div style={{display:"grid",gridTemplateColumns:"48px 1fr auto",gap:10,alignItems:"center"}}>
+            <div style={{width:48,height:48,borderRadius:"50%",overflow:"hidden",border:`2px solid ${playerColor(players,current.id)}`,display:"grid",placeItems:"center",background:"#0b151d",fontWeight:1000,fontSize:18}}>{current.avatar?<img src={current.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:String(current.name||"?").slice(0,1).toUpperCase()}</div>
+            <div><div style={{fontSize:9,color:"#8496a5",fontWeight:1000,letterSpacing:1}}>JOUEUR ACTIF</div><b style={{fontSize:17}}>{current.name}</b>{current.teamId?<div style={{fontSize:10,color:playerColor(players,current.id)}}>Équipe {current.teamId}</div>:null}</div>
+            <div style={{display:"flex",gap:5}}>{[0,1,2].map((n) => { const done = phase!=="enroll" && roundValidatedImpacts.filter((x:any)=>String(x.expectedPlayerId)===String(current.id)).length>n; return <span key={n} style={{width:15,height:15,borderRadius:"50%",border:`1px solid ${done?playerColor(players,current.id):"#53616c"}`,background:done?playerColor(players,current.id):"transparent",boxShadow:done?`0 0 10px ${playerColor(players,current.id)}`:"none"}}/>; })}</div>
+          </div>
+        </section> : null}
+
         <section style={card}>
-          <div style={{fontSize:11,color:ACCENT,fontWeight:1000,letterSpacing:1.1}}>IA VISION · {phase.toUpperCase()}</div>
+          <div style={{fontSize:11,color:ACCENT,fontWeight:1000,letterSpacing:1.1}}>IA VISION · {phaseLabel(phase)}</div>
           <div style={{fontSize:14,fontWeight:900,marginTop:6}}>{status}</div>
           {stability ? <div style={{marginTop:8,fontSize:11,color:stability.stable?"#8fffc2":"#ffbd93"}}>Stabilité caméra : {Math.round(stability.confidence*100)} % · variation globale {Math.round(stability.changedFraction*100)} %</div> : null}
           {!cal ? <div style={{marginTop:8,color:"#ffb4a9",fontSize:12}}>Calibration de cible non trouvée : le jeu refuse une mesure approximative.</div> : null}
@@ -330,13 +395,13 @@ export default function ClosestCenterPlay(props:any) {
             const p = players.find((x:any) => String(x.id) === String(r.playerId));
             return <div key={`${r.playerId}-${i}-${r.id||"final"}`} style={{display:"grid",gridTemplateColumns:"32px 1fr auto",gap:8,alignItems:"center",padding:"8px 0",borderBottom:"1px solid rgba(255,255,255,.07)"}}><b>#{i+1}</b><div><b>{p?.name}</b>{p?.teamId ? <span style={{color:ACCENT,fontSize:11}}> · Team {p.teamId}</span> : null}{r.distanceMm != null ? <div style={{fontSize:11,color:r.ambiguousWithPrevious?"#ffbd65":"#9fb0bf"}}>{r.distanceMm.toFixed(1)} ± {Number(r.uncertaintyMm||0).toFixed(1)} mm · vision {Math.round(r.confidence*100)} % · identité {Math.round(r.identityConfidence*100)} %{r.ambiguousWithPrevious?" · départage serré":""}</div> : null}</div><b style={{color:ACCENT}}>+{r.points||0}</b></div>;
           })}
-          {phase === "roundEnd" ? <button style={{...btn,width:"100%",marginTop:10}} onClick={commitRound}>VALIDER LA MANCHE →</button> : <button style={{...btn,width:"100%",marginTop:10}} onClick={() => go?.("closest_center_config")}>NOUVELLE PARTIE</button>}
+          {phase === "roundEnd" ? <button style={{...btn,width:"100%",marginTop:10,borderColor:hasPrecisionTieRisk&&!tieAcknowledged?"#ffbd45":ACCENT,background:hasPrecisionTieRisk&&tieAcknowledged?"#ffbd4522":`${ACCENT}18`}} onClick={commitRound}>{hasPrecisionTieRisk&&!tieAcknowledged?"⚠️ CONTRÔLER LE DÉPARTAGE":hasPrecisionTieRisk&&tieAcknowledged?"✓ CONFIRMER ET ENREGISTRER":"VALIDER LA MANCHE →"}</button> : <button style={{...btn,width:"100%",marginTop:10}} onClick={() => go?.("closest_center_config")}>NOUVELLE PARTIE</button>}
         </section> : null}
 
         <section style={card}>
-          <h3 style={h3}>SCORES</h3>
-          {players.map((p:any) => <div key={p.id} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",fontSize:12}}><span>{p.name}{p.teamId?` · ${p.teamId}`:""}</span><b>{allScores[p.id]||0} pts</b></div>)}
-          {cfg.teamMode ? <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid rgba(255,255,255,.1)",display:"flex",justifyContent:"space-between"}}><b>Équipe A: {teamTotals.A||0}</b><b>Équipe B: {teamTotals.B||0}</b></div> : null}
+          <h3 style={h3}>{phase === "roundEnd" ? "SCORES PROJETÉS" : "SCORES"}</h3>
+          {[...players].sort((a:any,b:any)=>(projectedScores[b.id]||0)-(projectedScores[a.id]||0)).map((p:any,ix:number) => <div key={p.id} style={{display:"grid",gridTemplateColumns:"24px 1fr auto",gap:7,alignItems:"center",padding:"6px 0",fontSize:12,borderBottom:"1px solid rgba(255,255,255,.05)"}}><b style={{color:ix<3?"#ffd85a":"#71808d"}}>#{ix+1}</b><span><i style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:playerColor(players,p.id),marginRight:7}}/>{p.name}{p.teamId?` · ${p.teamId}`:""}</span><b>{projectedScores[p.id]||0} pts</b></div>)}
+          {cfg.teamMode ? <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid rgba(255,255,255,.1)",display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><div style={{padding:8,borderRadius:10,background:"rgba(255,77,95,.08)",border:"1px solid rgba(255,77,95,.25)"}}><small style={{display:"block",color:"#9aa9b5"}}>ÉQUIPE A</small><b>{projectedTeamTotals.A||0} pts</b></div><div style={{padding:8,borderRadius:10,background:"rgba(61,165,255,.08)",border:"1px solid rgba(61,165,255,.25)"}}><small style={{display:"block",color:"#9aa9b5"}}>ÉQUIPE B</small><b>{projectedTeamTotals.B||0} pts</b></div></div> : null}
         </section>
       </div>
     </div>
