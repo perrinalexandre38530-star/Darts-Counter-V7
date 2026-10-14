@@ -94,6 +94,7 @@ export type PtitHunVisit = {
   shieldBefore: boolean;
   shieldUnlockedNow: boolean;
   zeroAbsoluteNow: boolean;
+  zeroPenaltyFloor?: boolean;
   dbullsBefore: number;
   dbullsAfter: number;
   events: string[];
@@ -268,12 +269,18 @@ export function clonePtitHunState(raw: PtitHunState): PtitHunState {
   return s;
 }
 
+function ptitHunPenaltyBase(score: number, rules: PtitHunConfigPayload["rules"]) {
+  // ZÉRO ABSOLU doit rester une récompense, pas rendre les futurs multiplicateurs gratuits.
+  // À 0, une zone dangereuse repart donc du capital de départ comme base de sanction.
+  return score > 0 ? score : Math.max(1, Number(rules.startScore || 20));
+}
+
 function applyDart(score: number, d: any, rules: PtitHunConfigPayload["rules"]) {
-  if (!d || d.bed === "MISS") return rules.missMode === "add" ? score + rules.missValue : score * rules.missValue;
+  if (!d || d.bed === "MISS") return rules.missMode === "add" ? score + rules.missValue : ptitHunPenaltyBase(score, rules) * rules.missValue;
   if (d.bed === "IB") return rules.dbullEnabled ? Math.ceil(score / rules.dbullDivider) : score + 50;
-  if (d.bed === "OB") return score * rules.bull25Factor;
-  if (d.bed === "D") return score * rules.doubleFactor;
-  if (d.bed === "T") return score * rules.tripleFactor;
+  if (d.bed === "OB") return ptitHunPenaltyBase(score, rules) * rules.bull25Factor;
+  if (d.bed === "D") return ptitHunPenaltyBase(score, rules) * rules.doubleFactor;
+  if (d.bed === "T") return ptitHunPenaltyBase(score, rules) * rules.tripleFactor;
   if (isPtitHunOuterSingle(d)) return score + Number(d.number || 0) * rules.outerSingleFactor;
   return score + Number(d.number || 0);
 }
@@ -296,6 +303,7 @@ export function playPtitHunVisit(input: PtitHunState, dartsRaw: GameDart[]): Pti
   const jackpotDarts = rules.jackpotEnabled ? darts.filter((d: any) => ptitHunDartHitsJackpot(d, activeJackpots)) : [];
   const jackpotHit = jackpotDarts.length > 0;
   const events: string[] = [];
+  let zeroPenaltyFloor = false;
 
   st.visits += 1;
   for (const d of darts as any[]) {
@@ -323,7 +331,13 @@ export function playPtitHunVisit(input: PtitHunState, dartsRaw: GameDart[]): Pti
     rawAfter = before;
     events.push(tripleNulNumber === 1 ? `P’TIT 1 PARFAIT · 3 petits 1 · volée à 0` : `TRIPLE NUL · 3 petits ${tripleNulNumber} · volée à 0`);
   } else {
-    for (const d of darts) rawAfter = Math.max(0, Math.round(applyDart(rawAfter, d, rules)));
+    for (const d of darts) {
+      const beforeDart = rawAfter;
+      const dangerousMultiplier = (!d || (d as any).bed === "MISS") ? rules.missMode === "multiply" : ["D", "T", "OB"].includes(String((d as any)?.bed || ""));
+      if (beforeDart === 0 && dangerousMultiplier) zeroPenaltyFloor = true;
+      rawAfter = Math.max(0, Math.round(applyDart(rawAfter, d, rules)));
+    }
+    if (zeroPenaltyFloor) events.push(`À 0, pénalité relancée depuis le capital ${rules.startScore}`);
   }
 
   const zeroAbsoluteNow = rules.zeroAbsoluteEnabled && !s.zeroAbsoluteUsed[p.id] && dbullsBefore < rules.dbullsForZero && Number(st.dbulls || 0) >= rules.dbullsForZero;
@@ -375,7 +389,7 @@ export function playPtitHunVisit(input: PtitHunState, dartsRaw: GameDart[]): Pti
   s.visits.push({
     id: uid(), playerId: p.id, turn: st.visits, darts, before, rawAfter, after: s.scores[p.id], delta: finalDelta,
     rawDelta: rawAfter - before, cleanVisit: isClean, tripleNul: isTripleNul, tripleNulNumber, petitOnePerfect: tripleNulNumber === 1, jackpotHit, jackpotTargets: activeJackpots,
-    shieldBefore, shieldUnlockedNow, zeroAbsoluteNow, dbullsBefore, dbullsAfter: Number(st.dbulls || 0), events,
+    shieldBefore, shieldUnlockedNow, zeroAbsoluteNow, zeroPenaltyFloor, dbullsBefore, dbullsAfter: Number(st.dbulls || 0), events,
   });
   s.turnIndex += 1;
 

@@ -78,4 +78,15 @@ assert.equal(custom.scores.p1, 50);
 custom = playPtitHunVisit(custom, [outer(2), MISS, inner(1)]);
 assert.equal(custom.scores.p1, 191, "variantes de scoring configurables appliquées");
 
+let zeroGuard = createPtitHunState(players, { ...cfg, rules: { ...cfg.rules, startScore: 20, jackpotEnabled: false, shieldEnabled: false } });
+zeroGuard.scores.p1 = 0;
+zeroGuard = playPtitHunVisit(zeroGuard, [T(1), inner(1), inner(1)]);
+assert.equal(zeroGuard.scores.p1, 62, "à 0, un Triple repart du score de départ avant x3");
+assert.equal(zeroGuard.visits.at(-1)?.zeroPenaltyFloor, true, "le plancher anti-exploit est tracé dans la volée");
+let zeroJackpot = createPtitHunState(players, { ...cfg, rules: { ...cfg.rules, startScore: 20, jackpotEnabled: true, jackpotRingMode: "triple", jackpotZones: 1 } });
+zeroJackpot.scores.p1 = 0;
+zeroJackpot.jackpotTargets = [{ bed: "T", number: 7, label: "T7" }];
+zeroJackpot = playPtitHunVisit(zeroJackpot, [T(7), MISS, D(20)]);
+assert.equal(zeroJackpot.scores.p1, 0, "à 0, un Jackpot reste une vraie volée à 0");
+
 console.log("P’TIT 1 regression: OK");

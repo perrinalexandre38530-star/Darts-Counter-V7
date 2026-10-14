@@ -123,11 +123,12 @@ export default function PtitHunPlay(props: any) {
   const restored = resumeRecord?.resume?.state || resumeRecord?.payload?.stateSnapshot || resumeRecord?.payload?.state || null;
   const recoveredThrow = resumeRecord?.resume?.currentThrow ?? resumeRecord?.payload?.currentThrow;
   const recoveredSingleRing = resumeRecord?.resume?.singleRing ?? resumeRecord?.payload?.singleRing;
+  const recoveredUndoStack = resumeRecord?.resume?.undoStack ?? resumeRecord?.payload?.undoStack;
   const [state, setState] = React.useState<PtitHunState>(() => restored?.mode === "ptit_hun" ? clonePtitHunState(restored) : createPtitHunState(players, config));
   const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>(() => Array.isArray(recoveredThrow) ? recoveredThrow.slice(0, 3) : []);
   const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(() => { const v = resumeRecord?.resume?.multiplier ?? resumeRecord?.payload?.multiplier; return v === 2 || v === 3 ? v : 1; });
   const [singleRing, setSingleRing] = React.useState<"inner_single" | "outer_single">(recoveredSingleRing === "outer_single" ? "outer_single" : "inner_single");
-  const [undo, setUndo] = React.useState<PtitHunState[]>([]);
+  const [undo, setUndo] = React.useState<PtitHunState[]>(() => Array.isArray(recoveredUndoStack) ? recoveredUndoStack.filter((snap: any) => snap?.mode === "ptit_hun").slice(-3).map((snap: any) => clonePtitHunState(snap)) : []);
   const [notice, setNotice] = React.useState("");
   const [moment, setMoment] = React.useState<any>(null);
   const [playersOpen, setPlayersOpen] = React.useState(false), [statsOpen, setStatsOpen] = React.useState(false), [logOpen, setLogOpen] = React.useState(false), [rankingOpen, setRankingOpen] = React.useState(false);
@@ -142,7 +143,7 @@ export default function PtitHunPlay(props: any) {
   const sfxEnabled = config.sfxEnabled !== false, awenaEnabled = config.awenaEnabled !== false, coachEnabled = config.coachEnabled !== false, firstVisitGuideEnabled = config.firstVisitGuide !== false;
   const nameById = React.useCallback((id: any) => state.players.find((p: any) => String(p.id) === String(id))?.name || "Joueur", [state.players]);
 
-  const buildRecord = React.useCallback((s: PtitHunState, status: "in_progress" | "finished", draft: UIDart[] = currentThrow, draftMultiplier: 1 | 2 | 3 = multiplier, ring = singleRing) => {
+  const buildRecord = React.useCallback((s: PtitHunState, status: "in_progress" | "finished", draft: UIDart[] = currentThrow, draftMultiplier: 1 | 2 | 3 = multiplier, ring = singleRing, resumeUndo: PtitHunState[] = undo) => {
     const rows = profiles.map((p: any) => ({ id: String(p.id), name: playerName(p), avatarDataUrl: p.avatarDataUrl ?? null }));
     const rankings = rankPtitHunPlayers(s).map((r: any) => {
       const p: any = s.players.find((x: any) => String(x.id) === String(r.id)); const st: any = s.statsByPlayer?.[r.id] || {};
@@ -154,20 +155,20 @@ export default function PtitHunPlay(props: any) {
       createdAt: s.startedAt, updatedAt: Date.now(), finishedAt: status === "finished" ? (s.finishedAt || Date.now()) : undefined, winnerId: s.winnerId, players: rows,
       game: { mode: "ptit_hun", rounds: s.config.rules.rounds, startScore: s.config.rules.startScore },
       summary: { mode: "ptit_hun", finished: status === "finished", winnerId: s.winnerId, finalScores: s.scores, rankings, perPlayer, config: s.config, durationMs: Math.max(0, Number((status === "finished" ? (s.finishedAt || Date.now()) : Date.now())) - Number(s.startedAt || Date.now())), totalDarts: Object.values(s.statsByPlayer || {}).reduce((a: number, r: any) => a + Number(r?.darts || 0), 0) },
-      resume: { mode: "ptit_hun", config: s.config, state: clonePtitHunState(s), currentThrow: draft.slice(0, 3), multiplier: draftMultiplier, singleRing: ring, updatedAt: Date.now() },
-      payload: { kind: "ptit_hun", mode: "ptit_hun", sport: "darts", config: s.config, stateSnapshot: clonePtitHunState(s), currentThrow: draft.slice(0, 3), multiplier: draftMultiplier, singleRing: ring, visits: s.visits, visitHistory: s.visits, stats: { mode: "ptit_hun", players: s.statsByPlayer, finalScores: s.scores } },
+      resume: { mode: "ptit_hun", config: s.config, state: clonePtitHunState(s), currentThrow: draft.slice(0, 3), multiplier: draftMultiplier, singleRing: ring, undoStack: resumeUndo.slice(-3).map((snap) => clonePtitHunState(snap)), updatedAt: Date.now() },
+      payload: { kind: "ptit_hun", mode: "ptit_hun", sport: "darts", config: s.config, stateSnapshot: clonePtitHunState(s), currentThrow: draft.slice(0, 3), multiplier: draftMultiplier, singleRing: ring, undoStack: resumeUndo.slice(-3).map((snap) => clonePtitHunState(snap)), visits: s.visits, visitHistory: s.visits, stats: { mode: "ptit_hun", players: s.statsByPlayer, finalScores: s.scores } },
     };
-  }, [profiles, currentThrow, multiplier, singleRing]);
+  }, [profiles, currentThrow, multiplier, singleRing, undo]);
 
-  const saveInProgress = React.useCallback(async (s: PtitHunState, draft: UIDart[] = currentThrow, m: 1 | 2 | 3 = multiplier, ring = singleRing) => { try { await History.upsert(buildRecord(s, "in_progress", draft, m, ring)); } catch (e) { console.warn("[PTIT_HUN] checkpoint failed", e); } }, [buildRecord, currentThrow, multiplier, singleRing]);
-  const persist = React.useCallback((s: PtitHunState) => {
+  const saveInProgress = React.useCallback(async (s: PtitHunState, draft: UIDart[] = currentThrow, m: 1 | 2 | 3 = multiplier, ring = singleRing, resumeUndo: PtitHunState[] = undo) => { try { await History.upsert(buildRecord(s, "in_progress", draft, m, ring, resumeUndo)); } catch (e) { console.warn("[PTIT_HUN] checkpoint failed", e); } }, [buildRecord, currentThrow, multiplier, singleRing, undo]);
+  const persist = React.useCallback((s: PtitHunState, resumeUndo: PtitHunState[] = undo) => {
     if (s.phase === "finished") {
       if (finishedRef.current) return;
       finishedRef.current = true;
-      const rec = buildRecord(s, "finished", [], 1, singleRing);
+      const rec = buildRecord(s, "finished", [], 1, singleRing, resumeUndo);
       if (typeof onFinish === "function") onFinish(rec, { navigate: false }); else void History.upsert(rec).catch(() => {});
-    } else void saveInProgress(s, [], 1, singleRing);
-  }, [buildRecord, onFinish, saveInProgress, singleRing]);
+    } else void saveInProgress(s, [], 1, singleRing, resumeUndo);
+  }, [buildRecord, onFinish, saveInProgress, singleRing, undo]);
 
   React.useEffect(() => { if (initialCheckpointRef.current) return; initialCheckpointRef.current = true; if (state.phase !== "finished") void saveInProgress(state, currentThrow, multiplier, singleRing); }, [saveInProgress, state, currentThrow, multiplier, singleRing]);
   React.useEffect(() => { if (state.phase === "finished") return; const t = window.setTimeout(() => void saveInProgress(state, currentThrow, multiplier, singleRing), 180); return () => window.clearTimeout(t); }, [currentThrow, multiplier, singleRing, state.phase, state.activePlayerIndex, saveInProgress]);
@@ -175,7 +176,8 @@ export default function PtitHunPlay(props: any) {
   React.useEffect(() => { awena?.setRuntime?.({ route: "ptit_hun_play", sport: "darts", mode: "ptit_hun", phase: state.phase === "finished" ? "summary" : "play", inGame: state.phase !== "finished", screenLabel: "P’TIT 1 · Partie", playerName: activePlayer?.name, extra: { score: state.scores?.[activePlayer?.id], dbulls: state.statsByPlayer?.[activePlayer?.id]?.dbulls, shield: state.shieldActive?.[activePlayer?.id], cleanStreak: state.cleanStreak?.[activePlayer?.id], jackpots: state.jackpotTargets?.map((t: any) => t.label), rounds: config.rules.rounds } }); }, [awena, state.phase, state.activePlayerIndex, state.scores, state.shieldActive, state.cleanStreak, activePlayer?.id]);
 
   const commit = React.useCallback((next: PtitHunState, previous = state, forcedNotice?: string) => {
-    setUndo((u) => [...u.slice(-39), clonePtitHunState(previous)]); setState(next); setCurrentThrow([]); setMultiplier(1);
+    const nextUndo = [...undo.slice(-39), clonePtitHunState(previous)];
+    setUndo(nextUndo); setState(next); setCurrentThrow([]); setMultiplier(1);
     const last: any = next.visits?.[next.visits.length - 1]; let msg = forcedNotice || "";
     let nextMoment: any = null;
     if (!msg && next.phase === "finished" && next.winnerId) { msg = `🏆 ${nameById(next.winnerId)} remporte P’TIT 1 !`; playNewModeSfx("victory", sfxEnabled); }
@@ -184,17 +186,18 @@ export default function PtitHunPlay(props: any) {
     else if (!msg && last?.jackpotHit) { msg = `✦ JACKPOT ${last?.jackpotTargets?.map((t: any) => t.label).join("/") || ""} ! Volée à 0`; nextMoment = { key: `jackpot-${last.id}`, playerId: last.playerId, icon: "✦", kicker: "ZONE SPÉCIALE TOUCHÉE", title: "JACKPOT · VOLÉE 0", detail: `${last?.jackpotTargets?.map((t: any) => t.label).join(" / ") || "Double / Triple"} neutralise toute la volée`, tone: "success", durationMs: 2300 }; playNewModeSfx("success", sfxEnabled); }
     else if (!msg && last?.petitOnePerfect) { msg = "🎯 P’TIT 1 PARFAIT ! Trois petits 1 : volée à 0"; nextMoment = { key: `ptit1-${last.id}`, playerId: last.playerId, icon: "1️⃣", kicker: "SIGNATURE DU MODE", title: "P’TIT 1 PARFAIT", detail: "Petit 1 · Petit 1 · Petit 1 · volée à 0", tone: "success", durationMs: 2450 }; playNewModeSfx("success", sfxEnabled); }
     else if (!msg && last?.tripleNul) { msg = `🎯 TRIPLE NUL ! Trois petits ${last?.tripleNulNumber || ""} : volée à 0`; nextMoment = { key: `triple-nul-${last.id}`, playerId: last.playerId, icon: "🎯", kicker: "PRÉCISION PURE", title: "TRIPLE NUL", detail: `3 petits ${last?.tripleNulNumber || "?"} identiques · volée à 0`, tone: "success", durationMs: 2200 }; playNewModeSfx("success", sfxEnabled); }
+    else if (!msg && last?.zeroPenaltyFloor) { msg = `⚠️ SCORE À 0 : pénalité relancée depuis ${config.rules.startScore}`; nextMoment = { key: `zero-floor-${last.id}`, playerId: last.playerId, icon: "⚠️", kicker: "0 NE PROTÈGE PAS", title: "ZONE DANGEREUSE", detail: `À 0, les multiplicateurs repartent du capital ${config.rules.startScore}`, tone: "danger", durationMs: 1900 }; playNewModeSfx("danger", sfxEnabled); }
     else if (!msg) msg = (last?.events || []).join(" · ");
     if (nextMoment) setMoment(nextMoment);
-    setNotice(msg); persist(next);
-  }, [state, nameById, persist, sfxEnabled, config.rules.dbullsForZero, config.rules.shieldDivider]);
+    setNotice(msg); persist(next, nextUndo);
+  }, [state, undo, nameById, persist, sfxEnabled, config.rules.dbullsForZero, config.rules.shieldDivider, config.rules.startScore]);
 
   const validate = () => { if (currentThrow.length !== 3 || state.phase === "finished" || activeIsBot) return; commit(playPtitHunVisit(state, currentThrow.map(uiToGameDart))); };
-  const doUndo = () => setUndo((u) => { if (!u.length) return u; const prev = u[u.length - 1]; setState(clonePtitHunState(prev)); setCurrentThrow([]); setMultiplier(1); setMoment(null); setNotice("Dernière volée annulée"); finishedRef.current = false; void saveInProgress(prev, [], 1, singleRing); return u.slice(0, -1); });
+  const doUndo = () => setUndo((u) => { if (!u.length) return u; const prev = u[u.length - 1]; const remaining = u.slice(0, -1); setState(clonePtitHunState(prev)); setCurrentThrow([]); setMultiplier(1); setMoment(null); setNotice("Dernière volée annulée"); finishedRef.current = false; void saveInProgress(prev, [], 1, singleRing, remaining); return remaining; });
   const setThrowWithSfx = React.useCallback((update: any) => setCurrentThrow((prev: UIDart[]) => { const next = (typeof update === "function" ? update(prev) : update) || prev; const out = Array.isArray(next) ? next.slice(0, 3) : prev; if (out.length > prev.length) out.slice(prev.length).forEach((d: any, i: number) => window.setTimeout(() => playNewModeDartSfx(d, sfxEnabled), i * 120)); return out; }), [sfxEnabled]);
   React.useEffect(() => { if (!activeIsBot || state.phase === "finished" || botBusy.current) return; botBusy.current = true; const t = window.setTimeout(() => { try { const darts = pickPtitHunBotDarts(state, config.botLevel); const span = playNewModeDartSequence(darts, sfxEnabled); window.setTimeout(() => { try { commit(playPtitHunVisit(state, darts)); } finally { botBusy.current = false; } }, span + 100); } catch { botBusy.current = false; } }, 620); return () => window.clearTimeout(t); }, [state, activeIsBot, activePlayer?.id]);
 
-  function replay() { matchIdRef.current = `ptit1-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; finishedRef.current = false; setUndo([]); setNotice(""); setMoment(null); setCurrentThrow([]); setMultiplier(1); const next = createPtitHunState(players, config); setState(next); initialCheckpointRef.current = true; void saveInProgress(next, [], 1, singleRing); if (sfxEnabled) playNewModeSfx("intro", true); }
+  function replay() { matchIdRef.current = `ptit1-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; finishedRef.current = false; setUndo([]); setNotice(""); setMoment(null); setCurrentThrow([]); setMultiplier(1); const next = createPtitHunState(players, config); setState(next); initialCheckpointRef.current = true; void saveInProgress(next, [], 1, singleRing, []); if (sfxEnabled) playNewModeSfx("intro", true); }
 
   const activeStats: any = state.statsByPlayer?.[activePlayer?.id] || {};
   const score = Number(state.scores?.[activePlayer?.id] || 0);

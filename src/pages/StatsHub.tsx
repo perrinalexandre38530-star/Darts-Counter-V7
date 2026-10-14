@@ -42,6 +42,7 @@ import {
   type BatardProfileStats,
 } from "../lib/statsBridge";
 import type { CricketProfileStats } from "../lib/cricketStats";
+import { buildChallengeStatsProgression } from "../lib/challengeStatsProgression";
 
 // ---- Utils ----
 const STATSHUB_HISTORY_LIGHT_CAP = 300;
@@ -5459,6 +5460,32 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
 
   const exerciseTone = (type: string) => type === 'clock' ? '#41b9ff' : type === 'half-it' ? '#ffb01c' : type === 'sequence' ? '#bc63ff' : type === 'grouping' ? '#20d995' : '#ff555b';
 
+  const exerciseProgression = activeConfig && activeConfig.exerciseType !== 'classic'
+    ? buildChallengeStatsProgression(rows as any)
+    : null;
+  const exerciseRecordLabel = (kind: string) => kind === 'score' ? 'SCORE' : kind === 'validation' ? 'VALIDATION' : kind === 'validated-streak' ? 'SÉRIE VALIDÉE' : 'SÉRIE PARFAITE';
+  const exerciseRecordValue = (kind: string, value: number) => kind === 'validation' ? `${value.toFixed(1)}%` : kind === 'score' ? `${Math.round(value)} pts` : `${Math.round(value)}`;
+  const exerciseRecordDate = (at: number) => {
+    if (!at) return '—';
+    try { return new Date(at).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' }); } catch { return '—'; }
+  };
+
+  const groupingCurrentForm = (() => {
+    if (!exerciseProgression || !activeConfig || activeConfig.exerciseType !== 'grouping') return null;
+    const hit = String(activeConfig.leaderboardTarget || '').match(/^grouping-(\d+)-(\d+)-x[23]/i);
+    const min = hit ? Math.max(1, Math.min(20, Number(hit[1]))) : 1;
+    const max = hit ? Math.max(min, Math.min(20, Number(hit[2]))) : 20;
+    const recentCount = Math.max(1, exerciseProgression.windowSize || 1);
+    const recentRows = rows.slice(-recentCount);
+    const candidates = Array.from({ length: max - min + 1 }, (_, index) => min + index).map((sector) => {
+      const hits = recentRows.reduce((sum: number, row: any) => sum + N(row?.exerciseStats?.groupingSectorHits?.[String(sector)]), 0);
+      return { sector, average: recentRows.length ? hits / recentRows.length : 0 };
+    });
+    const strongest = candidates.slice().sort((a, b) => b.average - a.average || b.sector - a.sector)[0] || null;
+    const weakest = candidates.slice().sort((a, b) => a.average - b.average || a.sector - b.sector)[0] || null;
+    return { strongest, weakest };
+  })();
+
   const box: React.CSSProperties = { minWidth: 0, overflow: "hidden", borderRadius: 14, border: "1px solid rgba(255,255,255,.09)", background: "rgba(0,0,0,.24)", padding: 10 };
   const statLabel: React.CSSProperties = { minWidth: 0, fontSize: "clamp(7px,1.8vw,8.5px)", opacity: .58, fontWeight: 950, letterSpacing: .35, lineHeight: 1.2, overflowWrap: "anywhere" };
   const statValue: React.CSSProperties = { minWidth: 0, marginTop: 3, fontSize: "clamp(14px,4vw,20px)", lineHeight: 1.05, fontWeight: 1000, color: "#ff555b", overflowWrap: "anywhere", wordBreak: "break-word" };
@@ -5553,6 +5580,35 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
             {exerciseCareer.recent.map((row: any, index: number) => <i key={`${row.at}-${index}`} title={`${row.validationRate.toFixed(1)}% · ${row.score} pts`} style={{ flex: 1, minWidth: 7, maxWidth: 28, height: `${Math.max(5, Math.min(100, row.validationRate))}%`, borderRadius: '4px 4px 1px 1px', background: exerciseTone(exerciseCareer.type), opacity: .82 }} />)}
           </div>
         </div>}
+      </div>}
+
+      {exerciseProgression && exerciseCareer && activeConfig && activeConfig.exerciseType !== 'classic' && <div style={{ ...box, marginBottom: 9, padding: 12, borderColor: 'rgba(86,196,255,.22)', background: 'linear-gradient(180deg,rgba(20,38,52,.72),rgba(4,9,15,.94))' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, marginBottom: 9 }}>
+          <div><div style={{ fontSize: 8, color: T.text70, fontWeight: 950, letterSpacing: .7 }}>ANALYSE DE FORME · {challengeConfigLabel(activeConfig)}</div><div style={{ fontSize: 12, fontWeight: 1000, marginTop: 2 }}>PROGRESSION INTELLIGENTE</div></div>
+          <b style={{ fontSize: 9, color: exerciseProgression.momentum === 'up' ? '#20d995' : exerciseProgression.momentum === 'down' ? '#ff6268' : T.text70 }}>{exerciseProgression.momentum === 'up' ? '↗ EN PROGRÈS' : exerciseProgression.momentum === 'down' ? '↘ À RELANCER' : exerciseProgression.momentum === 'steady' ? '→ STABLE' : 'PREMIÈRE BASE'}</b>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(132px,100%),1fr))', gap: 6 }}>
+          <div style={{ borderRadius: 10, padding: 9, background: 'rgba(255,255,255,.035)' }}><div style={statLabel}>SCORE RÉCENT</div><b style={{ display: 'block', marginTop: 3, fontSize: 18 }}>{exerciseProgression.scoreTrend.current ?? '—'}</b><small style={{ color: exerciseProgression.scoreTrend.delta == null ? T.text70 : exerciseProgression.scoreTrend.delta > 0 ? '#20d995' : exerciseProgression.scoreTrend.delta < 0 ? '#ff7a80' : T.text70 }}>{exerciseProgression.scoreTrend.delta == null ? 'Référence en construction' : `${exerciseProgression.scoreTrend.delta > 0 ? '+' : ''}${exerciseProgression.scoreTrend.delta.toFixed(1)} pts vs période précédente`}</small></div>
+          <div style={{ borderRadius: 10, padding: 9, background: 'rgba(255,255,255,.035)' }}><div style={statLabel}>VALIDATION RÉCENTE</div><b style={{ display: 'block', marginTop: 3, fontSize: 18, color: exerciseTone(exerciseCareer.type) }}>{exerciseProgression.validationTrend.current == null ? '—' : `${exerciseProgression.validationTrend.current.toFixed(1)}%`}</b><small style={{ color: exerciseProgression.validationTrend.delta == null ? T.text70 : exerciseProgression.validationTrend.delta > 0 ? '#20d995' : exerciseProgression.validationTrend.delta < 0 ? '#ff7a80' : T.text70 }}>{exerciseProgression.validationTrend.delta == null ? 'Référence en construction' : `${exerciseProgression.validationTrend.delta > 0 ? '+' : ''}${exerciseProgression.validationTrend.delta.toFixed(1)} pts vs période précédente`}</small></div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(150px,100%),1fr))', gap: 6, marginTop: 7 }}>
+          {exerciseCareer.type === 'grouping' ? <>
+            <div style={{ borderRadius: 10, padding: 9, background: 'rgba(32,217,149,.07)', border: '1px solid rgba(32,217,149,.15)' }}><div style={statLabel}>FORCE ACTUELLE</div><b style={{ display: 'block', marginTop: 3, color: '#20d995' }}>{groupingCurrentForm?.strongest ? `SECTEUR ${groupingCurrentForm.strongest.sector}` : '—'}</b><small style={{ opacity: .62 }}>{groupingCurrentForm?.strongest ? `${groupingCurrentForm.strongest.average.toFixed(1)} hit${groupingCurrentForm.strongest.average > 1 ? 's' : ''} groupé${groupingCurrentForm.strongest.average > 1 ? 's' : ''} / partie récente` : 'Pas encore assez de données'}</small></div>
+            <div style={{ borderRadius: 10, padding: 9, background: 'rgba(255,98,104,.06)', border: '1px solid rgba(255,98,104,.14)' }}><div style={statLabel}>À TRAVAILLER</div><b style={{ display: 'block', marginTop: 3, color: '#ff7a80' }}>{groupingCurrentForm?.weakest ? `SECTEUR ${groupingCurrentForm.weakest.sector}` : '—'}</b><small style={{ opacity: .62 }}>{groupingCurrentForm?.weakest ? `${groupingCurrentForm.weakest.average.toFixed(1)} hit${groupingCurrentForm.weakest.average > 1 ? 's' : ''} groupé${groupingCurrentForm.weakest.average > 1 ? 's' : ''} / partie récente` : 'Pas encore assez de données'}</small></div>
+          </> : <>
+            <div style={{ borderRadius: 10, padding: 9, background: 'rgba(32,217,149,.07)', border: '1px solid rgba(32,217,149,.15)' }}><div style={statLabel}>FORCE ACTUELLE</div><b style={{ display: 'block', marginTop: 3, color: '#20d995' }}>{exerciseProgression.currentStrength ? objectiveName(exerciseProgression.currentStrength.key) : '—'}</b><small style={{ opacity: .62 }}>{exerciseProgression.currentStrength ? `${exerciseProgression.currentStrength.rate.toFixed(1)}% sur la période récente` : 'Pas encore assez de données'}</small></div>
+            <div style={{ borderRadius: 10, padding: 9, background: 'rgba(255,98,104,.06)', border: '1px solid rgba(255,98,104,.14)' }}><div style={statLabel}>À TRAVAILLER</div><b style={{ display: 'block', marginTop: 3, color: '#ff7a80' }}>{exerciseProgression.currentWeakness ? objectiveName(exerciseProgression.currentWeakness.key) : '—'}</b><small style={{ opacity: .62 }}>{exerciseProgression.currentWeakness ? `${exerciseProgression.currentWeakness.rate.toFixed(1)}% sur la période récente` : 'Pas encore assez de données'}</small></div>
+          </>}
+          <div style={{ borderRadius: 10, padding: 9, background: 'rgba(65,185,255,.06)', border: '1px solid rgba(65,185,255,.14)' }}><div style={statLabel}>MEILLEURE PROGRESSION RÉCENTE</div>{exerciseCareer.type === 'grouping' ? <><b style={{ display: 'block', marginTop: 3, color: '#41b9ff' }}>{exerciseProgression.bestSectorProgress ? `SECTEUR ${exerciseProgression.bestSectorProgress.sector}` : '—'}</b><small style={{ opacity: .62 }}>{exerciseProgression.bestSectorProgress ? `+${exerciseProgression.bestSectorProgress.delta.toFixed(1)} hit${exerciseProgression.bestSectorProgress.delta > 1 ? 's' : ''} groupé${exerciseProgression.bestSectorProgress.delta > 1 ? 's' : ''} / partie` : 'Aucune hausse mesurable'}</small></> : <><b style={{ display: 'block', marginTop: 3, color: '#41b9ff' }}>{exerciseProgression.bestObjectiveProgress ? objectiveName(exerciseProgression.bestObjectiveProgress.objective) : '—'}</b><small style={{ opacity: .62 }}>{exerciseProgression.bestObjectiveProgress ? `+${exerciseProgression.bestObjectiveProgress.delta.toFixed(1)} pts de validation` : 'Aucune hausse mesurable'}</small></>}</div>
+          <div style={{ borderRadius: 10, padding: 9, background: 'rgba(255,176,28,.05)', border: '1px solid rgba(255,176,28,.13)' }}><div style={statLabel}>{exerciseCareer.type === 'grouping' ? 'SECTEUR EN RECUL' : 'OBJECTIF EN RECUL'}</div>{exerciseCareer.type === 'grouping' ? <><b style={{ display: 'block', marginTop: 3, color: '#ffb01c' }}>{exerciseProgression.biggestSectorDrop ? `SECTEUR ${exerciseProgression.biggestSectorDrop.sector}` : '—'}</b><small style={{ opacity: .62 }}>{exerciseProgression.biggestSectorDrop ? `${exerciseProgression.biggestSectorDrop.delta.toFixed(1)} hit${Math.abs(exerciseProgression.biggestSectorDrop.delta) > 1 ? 's' : ''} groupé${Math.abs(exerciseProgression.biggestSectorDrop.delta) > 1 ? 's' : ''} / partie` : 'Aucun recul mesurable'}</small></> : <><b style={{ display: 'block', marginTop: 3, color: '#ffb01c' }}>{exerciseProgression.biggestObjectiveDrop ? objectiveName(exerciseProgression.biggestObjectiveDrop.objective) : '—'}</b><small style={{ opacity: .62 }}>{exerciseProgression.biggestObjectiveDrop ? `${exerciseProgression.biggestObjectiveDrop.delta.toFixed(1)} pts de validation` : 'Aucun recul mesurable'}</small></>}</div>
+        </div>
+
+        <div style={{ marginTop: 10, borderTop: '1px solid rgba(255,255,255,.08)', paddingTop: 9 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline', marginBottom: 6 }}><div style={{ ...statLabel, color: '#fff', opacity: .85 }}>HISTORIQUE DES RECORDS</div><small style={{ opacity: .5 }}>{exerciseProgression.recordEvents.length} record{exerciseProgression.recordEvents.length > 1 ? 's' : ''} battu{exerciseProgression.recordEvents.length > 1 ? 's' : ''}</small></div>
+          {exerciseProgression.recentRecordEvents.length ? <div style={{ display: 'grid', gap: 5 }}>{exerciseProgression.recentRecordEvents.map((event: any) => <div key={event.id} style={{ display: 'grid', gridTemplateColumns: '54px minmax(0,1fr) auto', gap: 7, alignItems: 'center', borderRadius: 9, background: 'rgba(255,255,255,.035)', padding: '7px 8px' }}><span style={{ fontSize: 8, opacity: .55 }}>{exerciseRecordDate(event.at)}</span><span style={{ minWidth: 0 }}><b style={{ display: 'block', fontSize: 9 }}>{exerciseRecordLabel(event.kind)}</b><small style={{ opacity: .55 }}>ancien {exerciseRecordValue(event.kind, event.previous)}</small></span><strong style={{ color: '#20d995', fontSize: 11 }}>{exerciseRecordValue(event.kind, event.value)}</strong></div>)}</div> : <div style={{ fontSize: 9, color: T.text70, lineHeight: 1.35 }}>La première performance sert de référence. Les prochains records battus apparaîtront ici automatiquement.</div>}
+        </div>
       </div>}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(118px,100%),1fr))", gap: 7, minWidth: 0 }}>

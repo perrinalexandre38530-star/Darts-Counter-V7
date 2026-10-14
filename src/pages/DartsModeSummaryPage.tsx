@@ -921,6 +921,12 @@ function PtitHunSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; ac
   const cleanPct = totalVisits > 0 ? Math.round((cleanVisits / totalVisits) * 1000) / 10 : 0;
   const jackpotRing = rules?.jackpotRingMode === "double" ? "Doubles" : rules?.jackpotRingMode === "triple" ? "Triples" : "Doubles / Triples";
   const missRule = rules?.missMode === "add" ? `+${num(rules?.missValue, 50)}` : `×${num(rules?.missValue, 5)}`;
+  const visits = (Array.isArray(rec?.payload?.visits) ? rec.payload.visits : Array.isArray(rec?.payload?.visitHistory) ? rec.payload.visitHistory : []) as any[];
+  const maxBy = (key: string) => rows.reduce((best: any, row: any) => !best || num(row?.raw?.[key]) > num(best?.raw?.[key]) ? row : best, null as any);
+  const catastrophe = maxBy("worstVisitDelta");
+  const comeback = maxBy("bestScoreDrop");
+  const cleanKing = maxBy("bestCleanStreak");
+  const shieldKing = maxBy("shieldSaved");
   return <>
     <section style={card(accent)}>
       <div style={sectionTitle(accent)}>ADN P’TIT 1</div>
@@ -948,6 +954,35 @@ function PtitHunSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; ac
         <Kpi label="Jackpot" value={rules?.jackpotEnabled === false ? "OFF" : `${jackpotRing} · ${num(rules?.jackpotZones, 1)} zone${num(rules?.jackpotZones, 1) > 1 ? "s" : ""}`} accent={accent} />
       </div>
     </section>
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Records de la partie</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 8 }}>
+        <Kpi label="Plus grosse catastrophe" value={catastrophe ? `${catastrophe.name} · +${num(catastrophe.raw?.worstVisitDelta)}` : "—"} accent={accent} />
+        <Kpi label="Meilleure chute de score" value={comeback ? `${comeback.name} · -${num(comeback.raw?.bestScoreDrop)}` : "—"} accent={accent} />
+        <Kpi label="Meilleure série propre" value={cleanKing ? `${cleanKing.name} · ${num(cleanKing.raw?.bestCleanStreak)}` : "—"} accent={accent} />
+        <Kpi label="Bouclier le plus rentable" value={shieldKing ? `${shieldKing.name} · ${num(shieldKing.raw?.shieldSaved)} sauvés` : "—"} accent={accent} />
+      </div>
+    </section>
+    {visits.length ? <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Trajectoire anti-score</div>
+      <div style={{ color: "#aeb5c8", fontSize: 11, marginBottom: 8 }}>Chaque ligne retrace les scores après les volées. Les marqueurs signalent les moments qui ont réellement retourné la partie.</div>
+      <div style={{ display: "grid", gap: 8 }}>
+        {rows.map((row: any) => {
+          const pv = visits.filter((v: any) => String(v?.playerId) === String(row.id));
+          const start = num(pick(rec?.summary?.config?.rules?.startScore, rec?.payload?.config?.rules?.startScore, 20), 20);
+          const shown = pv.slice(-12);
+          return <div key={`traj-${row.id}`} style={{ border: "1px solid rgba(255,255,255,.08)", borderRadius: 12, padding: 9, background: "rgba(255,255,255,.025)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><strong>{row.name}</strong><span style={{ color: accent, fontWeight: 1000 }}>{num(row.raw?.score, row.primary)} pts</span></div>
+            <div style={{ display: "flex", gap: 5, alignItems: "center", overflowX: "auto", paddingTop: 7, paddingBottom: 2 }}>
+              <span style={{ fontSize: 10, color: "#8f96aa", flex: "0 0 auto" }}>{pv.length > 12 ? "…" : `Départ ${start}`}</span>
+              {shown.map((v: any, idx: number) => <span key={`${v?.id || idx}`} title={(v?.events || []).join(" · ")} style={{ flex: "0 0 auto", minWidth: 42, textAlign: "center", padding: "5px 6px", borderRadius: 9, border: `1px solid ${v?.zeroAbsoluteNow ? "#78f3d4" : v?.jackpotHit || v?.tripleNul ? `${accent}aa` : "rgba(255,255,255,.09)"}`, background: v?.zeroAbsoluteNow ? "rgba(120,243,212,.10)" : v?.jackpotHit || v?.tripleNul ? `${accent}12` : "rgba(255,255,255,.025)", fontSize: 10, fontWeight: 900 }}>
+                {v?.zeroAbsoluteNow ? "💎" : v?.jackpotHit ? "✦" : v?.petitOnePerfect ? "1️⃣" : v?.tripleNul ? "🎯" : v?.shieldUnlockedNow ? "🛡" : ""}{num(v?.after)}
+              </span>)}
+            </div>
+          </div>;
+        })}
+      </div>
+    </section> : null}
     <section style={card(accent)}>
       <div style={sectionTitle(accent)}>Détails joueurs</div>
       <div style={{ overflowX: "auto" }}>
@@ -984,6 +1019,35 @@ function Wave61SummaryTables({ rec, rows, accent, familyLabel }: { rec: any; row
         <Kpi label="Best volée" value={bestVisit} accent={accent} />
       </div>
     </section>
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Records de la partie</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 8 }}>
+        <Kpi label="Plus grosse catastrophe" value={catastrophe ? `${catastrophe.name} · +${num(catastrophe.raw?.worstVisitDelta)}` : "—"} accent={accent} />
+        <Kpi label="Meilleure chute de score" value={comeback ? `${comeback.name} · -${num(comeback.raw?.bestScoreDrop)}` : "—"} accent={accent} />
+        <Kpi label="Meilleure série propre" value={cleanKing ? `${cleanKing.name} · ${num(cleanKing.raw?.bestCleanStreak)}` : "—"} accent={accent} />
+        <Kpi label="Bouclier le plus rentable" value={shieldKing ? `${shieldKing.name} · ${num(shieldKing.raw?.shieldSaved)} sauvés` : "—"} accent={accent} />
+      </div>
+    </section>
+    {visits.length ? <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Trajectoire anti-score</div>
+      <div style={{ color: "#aeb5c8", fontSize: 11, marginBottom: 8 }}>Chaque ligne retrace les scores après les volées. Les marqueurs signalent les moments qui ont réellement retourné la partie.</div>
+      <div style={{ display: "grid", gap: 8 }}>
+        {rows.map((row: any) => {
+          const pv = visits.filter((v: any) => String(v?.playerId) === String(row.id));
+          const start = num(pick(rec?.summary?.config?.rules?.startScore, rec?.payload?.config?.rules?.startScore, 20), 20);
+          const shown = pv.slice(-12);
+          return <div key={`traj-${row.id}`} style={{ border: "1px solid rgba(255,255,255,.08)", borderRadius: 12, padding: 9, background: "rgba(255,255,255,.025)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><strong>{row.name}</strong><span style={{ color: accent, fontWeight: 1000 }}>{num(row.raw?.score, row.primary)} pts</span></div>
+            <div style={{ display: "flex", gap: 5, alignItems: "center", overflowX: "auto", paddingTop: 7, paddingBottom: 2 }}>
+              <span style={{ fontSize: 10, color: "#8f96aa", flex: "0 0 auto" }}>{pv.length > 12 ? "…" : `Départ ${start}`}</span>
+              {shown.map((v: any, idx: number) => <span key={`${v?.id || idx}`} title={(v?.events || []).join(" · ")} style={{ flex: "0 0 auto", minWidth: 42, textAlign: "center", padding: "5px 6px", borderRadius: 9, border: `1px solid ${v?.zeroAbsoluteNow ? "#78f3d4" : v?.jackpotHit || v?.tripleNul ? `${accent}aa` : "rgba(255,255,255,.09)"}`, background: v?.zeroAbsoluteNow ? "rgba(120,243,212,.10)" : v?.jackpotHit || v?.tripleNul ? `${accent}12` : "rgba(255,255,255,.025)", fontSize: 10, fontWeight: 900 }}>
+                {v?.zeroAbsoluteNow ? "💎" : v?.jackpotHit ? "✦" : v?.petitOnePerfect ? "1️⃣" : v?.tripleNul ? "🎯" : v?.shieldUnlockedNow ? "🛡" : ""}{num(v?.after)}
+              </span>)}
+            </div>
+          </div>;
+        })}
+      </div>
+    </section> : null}
     <section style={card(accent)}>
       <div style={sectionTitle(accent)}>Détails joueurs</div>
       <div style={{ overflowX: "auto" }}>
