@@ -26,21 +26,19 @@ jobs:
             python .github/patches/apply_v126.py
           fi
 
-      - name: Build patch ZIP
+      - name: Prepare patch files
         shell: bash
         run: |
-          rm -rf _patch_v126 PATCH_V126_DIAGNOSTICS_BACKUPS_SIMPLE_UI.zip
+          rm -rf _patch_v126
           mkdir -p _patch_v126/src/pages _patch_v126/src/components/settings
           cp src/pages/Settings.tsx _patch_v126/src/pages/Settings.tsx
           cp src/components/settings/BackupDiagnosticsPanel.tsx _patch_v126/src/components/settings/BackupDiagnosticsPanel.tsx
-          cd _patch_v126
-          zip -r ../PATCH_V126_DIAGNOSTICS_BACKUPS_SIMPLE_UI.zip src
 
       - name: Upload patch artifact
         uses: actions/upload-artifact@v4
         with:
           name: PATCH_V126_DIAGNOSTICS_BACKUPS_SIMPLE_UI
-          path: PATCH_V126_DIAGNOSTICS_BACKUPS_SIMPLE_UI.zip
+          path: _patch_v126
           if-no-files-found: error
           retention-days: 7
 
