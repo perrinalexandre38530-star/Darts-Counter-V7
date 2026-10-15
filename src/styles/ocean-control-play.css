@@ -2277,3 +2277,162 @@
   .ocean-salvo-slot{padding-top:3px;padding-bottom:3px}
   .ocean-salvo-slot>div small{display:none}
 }
+
+/* =============================================================
+   OCEAN CONTROL V17 — DÉPLOIEMENT GAMEPLAY-FIRST
+   ============================================================= */
+.ocean-placement-privacy{
+  min-height:calc(100dvh - 82px);
+  display:grid;
+  place-items:center;
+  padding:16px;
+  box-sizing:border-box;
+}
+.ocean-placement-privacy-card{
+  width:min(540px,100%);
+  padding:22px;
+  border-radius:26px;
+  text-align:center;
+  background:
+    radial-gradient(circle at 50% 0,rgba(101,233,255,.16),transparent 38%),
+    linear-gradient(180deg,rgba(11,29,44,.97),rgba(3,9,15,.98));
+  border:1px solid rgba(101,233,255,.34);
+  box-shadow:0 28px 80px rgba(0,0,0,.5),inset 0 1px rgba(255,255,255,.05);
+}
+.ocean-placement-lock{
+  position:relative;
+  width:76px;height:76px;
+  display:grid;place-items:center;
+  margin:0 auto 12px;
+  border-radius:50%;
+  background:radial-gradient(circle,rgba(101,233,255,.15),rgba(48,185,255,.05) 58%,transparent 60%);
+  border:1px solid rgba(101,233,255,.28);
+  overflow:hidden;
+}
+.ocean-placement-lock span{position:relative;z-index:2;font-size:30px}
+.ocean-placement-lock i{
+  position:absolute;inset:8px;border-radius:50%;
+  border:1px dashed rgba(101,233,255,.35);
+  animation:oceanPlacementRadar 7s linear infinite;
+}
+.ocean-placement-lock i:after{content:"";position:absolute;left:50%;top:50%;width:46%;height:1px;background:linear-gradient(90deg,rgba(101,233,255,.7),transparent);transform-origin:left center}
+@keyframes oceanPlacementRadar{to{transform:rotate(360deg)}}
+.ocean-placement-eyebrow{display:block;color:#65e9ff;font-size:8px;font-weight:1150;letter-spacing:1.4px}
+.ocean-placement-privacy-card>strong{display:block;margin-top:5px;color:#fff;font-size:22px;font-weight:1150}
+.ocean-placement-privacy-card>p{max-width:420px;margin:8px auto 0;color:#b6c3d2;font-size:9.5px;line-height:1.55}
+.ocean-placement-privacy-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:15px}
+.ocean-placement-privacy-steps>div{min-width:0;padding:9px 6px;border-radius:13px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.08);display:grid;justify-items:center;gap:5px}
+.ocean-placement-privacy-steps b{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:rgba(101,233,255,.12);border:1px solid rgba(101,233,255,.35);color:#65e9ff;font-size:8px}
+.ocean-placement-privacy-steps span{color:#eaf8ff;font-size:7px;font-weight:1000;line-height:1.2}
+.ocean-placement-members{display:flex;justify-content:center;gap:7px;margin-top:14px}
+.ocean-placement-privacy-card>button{width:100%;min-height:48px;margin-top:16px;border-radius:15px;border:1px solid rgba(101,229,170,.66);background:linear-gradient(180deg,#65e5aa,#2eaa7d);color:#03130d;font-size:9px;font-weight:1200;letter-spacing:.4px;box-shadow:0 10px 28px rgba(101,229,170,.15)}
+
+.ocean-placement-page{width:min(930px,100%);margin:0 auto;padding:8px 9px 18px;box-sizing:border-box}
+.ocean-placement-command{padding:11px 12px;border-radius:18px;background:linear-gradient(180deg,rgba(48,185,255,.105),rgba(2,9,15,.86));border:1px solid rgba(48,185,255,.3);box-shadow:0 14px 36px rgba(0,0,0,.28)}
+.ocean-placement-command__head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.ocean-placement-command__head>div{min-width:0;display:grid;gap:2px}
+.ocean-placement-command__head span{color:#65e9ff;font-size:7px;font-weight:1150;letter-spacing:1px}
+.ocean-placement-command__head strong{color:#fff;font-size:14px;font-weight:1150;line-height:1.15}
+.ocean-placement-command__head small{color:#9eb2c4;font-size:7px;line-height:1.35}
+.ocean-placement-command__head>b{flex:0 0 auto;min-width:42px;height:34px;padding:0 7px;border-radius:11px;display:grid;place-items:center;color:#65e9ff;background:rgba(101,233,255,.08);border:1px solid rgba(101,233,255,.28);font-size:13px}
+.ocean-placement-progress{height:5px;margin-top:8px;border-radius:999px;background:rgba(255,255,255,.06);overflow:hidden}
+.ocean-placement-progress i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#30b9ff,#65e9ff,#65e5aa);box-shadow:0 0 14px rgba(101,233,255,.35);transition:width .28s ease}
+.ocean-placement-flow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin-top:8px}
+.ocean-placement-flow span{min-width:0;min-height:27px;padding:4px 6px;border-radius:9px;display:flex;align-items:center;gap:5px;color:#718598;background:rgba(255,255,255,.022);border:1px solid rgba(255,255,255,.055);font-size:5.9px;font-weight:1050;letter-spacing:.25px}
+.ocean-placement-flow b{width:17px;height:17px;border-radius:50%;display:grid;place-items:center;border:1px solid currentColor;font-size:5.8px}
+.ocean-placement-flow .is-active{color:#f5ca68;border-color:rgba(245,202,104,.26);background:rgba(245,202,104,.055)}
+.ocean-placement-flow .is-done{color:#65e5aa;border-color:rgba(101,229,170,.23);background:rgba(101,229,170,.045)}
+
+.ocean-placement-layout{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(250px,.75fr);gap:9px;margin-top:9px;align-items:start}
+.ocean-placement-board-card,.ocean-placement-console>section{border-radius:18px;background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(0,0,0,.25));border:1px solid rgba(255,255,255,.085);box-shadow:0 14px 34px rgba(0,0,0,.24)}
+.ocean-placement-board-card{padding:10px}
+.ocean-placement-board-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px}
+.ocean-placement-board-head>div{display:grid;gap:2px;min-width:0}
+.ocean-placement-board-head span,.ocean-placement-section-label{color:#8096a9;font-size:6px;font-weight:1100;letter-spacing:.9px}
+.ocean-placement-board-head strong{color:#fff;font-size:10px;font-weight:1150}
+.ocean-placement-board-head em{font-style:normal;color:#65e5aa;font-size:6.5px;font-weight:1000;white-space:nowrap}
+.ocean-placement-board-tip{display:flex;justify-content:space-between;gap:9px;align-items:center;margin-bottom:8px;padding:7px 8px;border-radius:11px;background:rgba(101,233,255,.05);border:1px solid rgba(101,233,255,.13)}
+.ocean-placement-board-tip b{color:#65e9ff;font-size:6.5px;font-weight:1150;white-space:nowrap}
+.ocean-placement-board-tip span{color:#a7bacb;font-size:6.4px;line-height:1.3;text-align:right}
+.ocean-control-cell.is-placement-valid:not(.has-ship){border-color:rgba(101,229,170,.58);background:linear-gradient(180deg,rgba(101,229,170,.11),rgba(5,19,24,.82));box-shadow:inset 0 0 16px rgba(101,229,170,.08),0 0 10px rgba(101,229,170,.06)}
+.ocean-control-cell.is-placement-valid:not(.has-ship):after{content:"+";position:absolute;right:4px;top:3px;color:#65e5aa;font-size:8px;font-weight:1200;opacity:.72}
+.ocean-control-cell.is-placement-invalid{opacity:.28;filter:saturate(.35);cursor:not-allowed}
+.ocean-control-cell.is-placement-invalid .ocean-cell-coord{opacity:.35}
+.ocean-placement-grid-legend{display:flex;gap:9px;align-items:center;justify-content:center;flex-wrap:wrap;margin-top:7px;color:#879aac;font-size:5.8px;font-weight:950}
+.ocean-placement-grid-legend span{display:flex;align-items:center;gap:4px}
+.ocean-placement-grid-legend i{width:9px;height:9px;border-radius:3px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.05)}
+.ocean-placement-grid-legend i.is-valid{border-color:rgba(101,229,170,.55);background:rgba(101,229,170,.16)}
+.ocean-placement-grid-legend i.is-occupied{border-color:rgba(48,185,255,.55);background:rgba(48,185,255,.18)}
+.ocean-placement-grid-legend i.is-blocked{opacity:.35}
+.ocean-placement-notice{margin-top:7px;padding:7px 8px;border-radius:10px;text-align:center;background:rgba(245,202,104,.055);border:1px solid rgba(245,202,104,.16);color:#f5ca68;font-size:6.7px;font-weight:1000;line-height:1.35}
+
+.ocean-placement-console{display:grid;gap:8px}
+.ocean-placement-console>section{padding:10px}
+.ocean-placement-current__ship{display:flex;align-items:center;gap:10px;margin-top:7px}
+.ocean-placement-current__ship .ocean-ship-card__art{width:82px;height:42px;margin:0;border-radius:10px;background:radial-gradient(circle,rgba(101,233,255,.08),transparent 68%)}
+.ocean-placement-current__ship>div:last-child{min-width:0;display:grid;gap:2px}
+.ocean-placement-current__ship strong{color:#fff;font-size:11px;font-weight:1150}
+.ocean-placement-current__ship small{color:#9fb1c1;font-size:6.8px}
+.ocean-placement-decks{display:flex;gap:4px;margin-top:8px}
+.ocean-placement-decks i{height:5px;flex:1;border-radius:999px;background:linear-gradient(90deg,#30b9ff,#65e9ff);box-shadow:0 0 8px rgba(48,185,255,.15)}
+.ocean-placement-ready{margin-top:8px;display:grid;place-items:center;text-align:center;gap:3px;color:#65e5aa}
+.ocean-placement-ready b{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;border:1px solid rgba(101,229,170,.38);background:rgba(101,229,170,.09);font-size:15px}
+.ocean-placement-ready strong{font-size:10px}.ocean-placement-ready small{color:#9fb5a9;font-size:6.5px}
+.ocean-placement-orientation>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:7px}
+.ocean-placement-orientation button{min-height:52px;border-radius:12px;border:1px solid rgba(255,255,255,.085);background:rgba(255,255,255,.025);color:#8798aa;display:grid;justify-items:center;align-content:center;gap:1px}
+.ocean-placement-orientation button b{font-size:16px;line-height:1}.ocean-placement-orientation button strong{font-size:6.8px}.ocean-placement-orientation button small{font-size:5.5px;color:#718396}
+.ocean-placement-orientation button.is-active{color:#65e9ff;border-color:rgba(101,233,255,.5);background:linear-gradient(180deg,rgba(101,233,255,.11),rgba(48,185,255,.035));box-shadow:inset 0 0 16px rgba(101,233,255,.05)}
+.ocean-placement-fleet-manifest>div{display:grid;gap:4px;margin-top:7px}
+.ocean-placement-fleet-manifest>div>div{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:6px;align-items:center;min-height:34px;padding:4px 6px;border-radius:9px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.055)}
+.ocean-placement-fleet-manifest>div>div>b{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;color:#75899a;border:1px solid rgba(255,255,255,.1);font-size:6.5px}
+.ocean-placement-fleet-manifest>div>div>span{display:grid;gap:1px;min-width:0}.ocean-placement-fleet-manifest strong{color:#dce8f2;font-size:6.9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ocean-placement-fleet-manifest small{color:#74899c;font-size:5.5px}
+.ocean-placement-fleet-manifest em{font-style:normal;color:#677a8b;font-size:5.3px;font-weight:1050}
+.ocean-placement-fleet-manifest>div>div.is-current{border-color:rgba(245,202,104,.28);background:rgba(245,202,104,.045)}
+.ocean-placement-fleet-manifest>div>div.is-current>b,.ocean-placement-fleet-manifest>div>div.is-current em{color:#f5ca68}
+.ocean-placement-fleet-manifest>div>div.is-placed{border-color:rgba(101,229,170,.18);background:rgba(101,229,170,.035)}
+.ocean-placement-fleet-manifest>div>div.is-placed>b,.ocean-placement-fleet-manifest>div>div.is-placed em{color:#65e5aa}
+.ocean-placement-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.ocean-placement-actions button{min-height:40px;border-radius:12px;font-size:6.8px;font-weight:1100}
+.ocean-placement-actions .is-reset{border:1px solid rgba(255,101,115,.3);background:rgba(255,101,115,.055);color:#ff6573}
+.ocean-placement-actions .is-auto{border:1px solid rgba(245,202,104,.32);background:rgba(245,202,104,.065);color:#f5ca68}
+
+@media (max-width:720px){
+  .ocean-placement-page{padding:5px 6px 12px}
+  .ocean-placement-layout{grid-template-columns:1fr;gap:6px}
+  .ocean-placement-console{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+  .ocean-placement-current,.ocean-placement-fleet-manifest{min-width:0}
+  .ocean-placement-actions{grid-column:1/-1}
+  .ocean-placement-command{padding:8px}
+  .ocean-placement-command__head small{display:none}
+  .ocean-placement-flow{margin-top:6px}
+  .ocean-placement-board-card{padding:7px}
+  .ocean-placement-board-tip{padding:5px 6px;margin-bottom:5px}
+}
+@media (max-width:520px){
+  .ocean-placement-privacy{padding:9px}
+  .ocean-placement-privacy-card{padding:16px 12px;border-radius:21px}
+  .ocean-placement-privacy-card>strong{font-size:17px}
+  .ocean-placement-privacy-card>p{font-size:8.2px}
+  .ocean-placement-privacy-steps{gap:4px}.ocean-placement-privacy-steps>div{padding:7px 3px}.ocean-placement-privacy-steps span{font-size:5.7px}
+  .ocean-placement-console{grid-template-columns:1fr}
+  .ocean-placement-board-tip span{display:none}
+  .ocean-placement-board-tip{justify-content:center}
+  .ocean-placement-command__head strong{font-size:11px}
+  .ocean-placement-flow span{font-size:4.9px;padding:3px}
+  .ocean-placement-flow b{width:15px;height:15px}
+  .ocean-placement-grid-legend{gap:5px;font-size:5px}
+}
+@media (max-height:720px) and (orientation:landscape){
+  .ocean-placement-page{width:min(980px,100%);padding:4px 6px 8px}
+  .ocean-placement-command{padding:6px 8px}
+  .ocean-placement-command__head small,.ocean-placement-flow{display:none}
+  .ocean-placement-progress{margin-top:5px}
+  .ocean-placement-layout{grid-template-columns:minmax(0,1.35fr) minmax(255px,.65fr);gap:6px;margin-top:6px}
+  .ocean-placement-board-card,.ocean-placement-console>section{padding:6px;border-radius:13px}
+  .ocean-placement-board-tip,.ocean-placement-grid-legend{margin-top:3px;margin-bottom:4px}
+  .ocean-placement-fleet-manifest>div{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ocean-placement-fleet-manifest>div>div{min-height:27px}
+  .ocean-placement-current__ship .ocean-ship-card__art{height:30px}
+  .ocean-placement-orientation button{min-height:38px}
+  .ocean-placement-actions button{min-height:33px}
+}

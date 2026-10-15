@@ -67,6 +67,7 @@ export default function CameraScoringSetup({ go, params }: Props) {
   const textMain = theme?.text ?? "#f5f5ff";
 
   const returnTab = params?.returnTab ?? "games";
+  const returnParams = params?.returnParams;
   const localCal = loadCameraCalibration();
 
   const initialPhone = readX01PhoneCompanionPrefs();
@@ -165,7 +166,7 @@ export default function CameraScoringSetup({ go, params }: Props) {
       }}
     >
       <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
-        <BackDot onClick={() => go(returnTab)} title={t("common.back", "Retour")} size={36} color={primary} glow={`${primary}88`} />
+        <BackDot onClick={() => go(returnTab, returnParams)} title={t("common.back", "Retour")} size={36} color={primary} glow={`${primary}88`} />
 
         <div style={{ fontWeight: 1000, letterSpacing: 0.5, color: primary, textAlign: "center" }}>
           {t("cameraScoring.title", "Comptage externe X01")}
@@ -258,7 +259,7 @@ export default function CameraScoringSetup({ go, params }: Props) {
             <div style={{ fontWeight: 900, color: cal ? "#9ff0c2" : "#ffd0d0" }}>{cal ? "Calibration locale OK" : "Calibration locale manquante"}</div>
           </div>
           <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 10 }}>
-            <button type="button" onClick={() => go("camera_scoring_calibration", { returnTab })} style={buttonStyle(primary, primarySoft, true)}>{cal ? "Recalibrer cet appareil" : "Calibrer cet appareil"}</button>
+            <button type="button" onClick={() => go("camera_scoring_calibration", { returnTab, returnParams })} style={buttonStyle(primary, primarySoft, true)}>{cal ? "Recalibrer cet appareil" : "Calibrer cet appareil"}</button>
             <button type="button" onClick={() => { clearCameraCalibration(); setCal(null); }} style={buttonStyle(primary, primarySoft, false)}>Effacer</button>
           </div>
         </div>
@@ -279,7 +280,7 @@ export default function CameraScoringSetup({ go, params }: Props) {
           Quand le téléphone est relié et calibré, retourne à la configuration X01 puis lance la partie. Le play X01 écoutera automatiquement l'URL de polling de cette session.
         </div>
         <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 10 }}>
-          <button type="button" onClick={() => go(returnTab)} style={buttonStyle(primary, primarySoft, true)}>Terminé</button>
+          <button type="button" onClick={() => go(returnTab, returnParams)} style={buttonStyle(primary, primarySoft, true)}>Terminé</button>
         </div>
       </div>
     </div>

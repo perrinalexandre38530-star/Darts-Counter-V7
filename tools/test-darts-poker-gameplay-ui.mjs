@@ -33,6 +33,13 @@ for (const marker of [
   "· FAIBLE",
   "marketStrategy",
   "DartsPokerMarketStrategyItem",
+  "RÉVÉLATION DES MAINS",
+  "RÉVÉLER TOUT",
+  "POURQUOI ?",
+  "CONTRAT ✕",
+  "dp-showdown-grid",
+  "dp-showdown-reveal",
+  "explainDartsPokerShowdown",
 ]) {
   assert.ok(src.includes(marker), `Gameplay UI marker missing: ${marker}`);
 }
@@ -48,5 +55,7 @@ assert.ok(src.includes("setPhaseTransition") && src.includes("LANCERS TERMINÉS"
 assert.ok(src.includes("buildDartsPokerMarketStrategy") && src.includes("summarizeDartsPokerMarketStrategy"), "gameplay must use the shared market strategy engine");
 assert.ok(src.includes("bestTarget.reason"), "priority target must explain why it is recommended");
 assert.ok(src.includes("advice.tierLabel") && src.includes("advice.tag"), "all market sectors must expose simple strategic labels");
+assert.ok(src.includes("getDartsPokerRoundPoints") && src.includes("getDartsPokerBestFiveIds"), "showdown must explain points and highlight the retained best five");
+assert.ok(src.includes("La meilleure main gagne la manche. Le contrat ajoute ensuite son bonus de points."), "showdown must explain scoring order clearly");
 
 console.log("Darts Poker gameplay UI: OK");

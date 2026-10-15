@@ -10,6 +10,7 @@ import {
 } from '../../lib/gameEngines/cargoVisuals';
 import { cargoContractTargetLabel } from '../../lib/gameEngines/cargoEngine';
 import { getCargoContractArt, getCargoStageBadge, getCargoSupportArt } from './cargoArt';
+import CargoVariantDashboard from './CargoVariantDashboard';
 
 const ORANGE = '#ff9b42';
 const GOLD = '#f6c256';
@@ -108,15 +109,15 @@ export default function CargoLoadStatus({ state, stats, playerId, currentThrow =
           {Array.from({ length: visualSlots }).map((_, index) => {
             const reached = index < Math.min(visualSlots, provisionalProgress);
             const committed = index < Math.min(visualSlots, aim.progress);
-            return <div key={index} className={reached ? `cargo-load-unit is-filled${committed ? ' is-committed' : ' is-preview'}` : 'cargo-load-unit'} style={{ minWidth: 0, height: 42, borderRadius: 10, border: `1px solid ${reached ? (committed ? GREEN : GOLD) : 'rgba(255,255,255,.08)'}`, background: reached ? `${committed ? GREEN : GOLD}10` : 'rgba(255,255,255,.025)', display: 'grid', placeItems: 'center', overflow: 'hidden', position: 'relative' }}>
-              {reached ? <img src={snapshot.unit === 'COLIS' ? supportArt : (index >= 2 ? supportArt : cardArt)} alt="" style={{ width: 36, height: 36, objectFit: 'contain', filter: `drop-shadow(0 5px 8px ${committed ? GREEN : GOLD}22)` }} /> : <span style={{ color: 'rgba(255,255,255,.18)', fontSize: 15, fontWeight: 1200 }}>{index + 1}</span>}
+            return <div key={index} className={reached ? `cargo-load-unit is-filled${committed ? ' is-committed' : ' is-preview'}` : 'cargo-load-unit'} style={{ minWidth: 0, height: 32, borderRadius: 9, border: `1px solid ${reached ? (committed ? GREEN : GOLD) : 'rgba(255,255,255,.08)'}`, background: reached ? `${committed ? GREEN : GOLD}10` : 'rgba(255,255,255,.025)', display: 'grid', placeItems: 'center', overflow: 'hidden', position: 'relative' }}>
+              {reached ? <img src={snapshot.unit === 'COLIS' ? supportArt : (index >= 2 ? supportArt : cardArt)} alt="" style={{ width: 28, height: 28, objectFit: 'contain', filter: `drop-shadow(0 5px 8px ${committed ? GREEN : GOLD}22)` }} /> : <span style={{ color: 'rgba(255,255,255,.18)', fontSize: 15, fontWeight: 1200 }}>{index + 1}</span>}
               {reached ? <span style={{ position: 'absolute', right: 3, top: 2, color: committed ? GREEN : GOLD, fontSize: 7, fontWeight: 1200 }}>{committed ? '✓' : '+'}</span> : null}
             </div>;
           })}
         </div>
-        <div style={{ marginTop: 7, display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 7, alignItems: 'center' }}>
-          <div style={{ minWidth: 0 }}><div style={{ color: riskColor, fontSize: 6.8, fontWeight: 1100 }}>{risk.label}</div><div style={{ marginTop: 2, color: SOFT, fontSize: 6.7, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{risk.detail}</div></div>
-          <button type="button" onClick={onOpenTruck} style={{ width: 30, height: 30, padding: 0, borderRadius: 10, border: `1px solid ${accent}44`, background: `${accent}0e`, cursor: 'pointer', display: 'grid', placeItems: 'center' }}><img className="cargo-load-badge" src={badgeArt} alt="Ouvrir le chargement" style={{ width: 26, height: 26, objectFit: 'contain' }} /></button>
+        <div style={{ marginTop: 5, display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 6, alignItems: 'center' }}>
+          <CargoVariantDashboard state={state} stats={stats} playerId={playerId} />
+          <button type="button" onClick={onOpenTruck} title={`${risk.label} · ${risk.detail}`} style={{ width: 30, height: 30, padding: 0, borderRadius: 10, border: `1px solid ${riskColor}55`, background: `${riskColor}0e`, cursor: 'pointer', display: 'grid', placeItems: 'center' }}><img className="cargo-load-badge" src={badgeArt} alt="Ouvrir le chargement" style={{ width: 26, height: 26, objectFit: 'contain' }} /></button>
         </div>
       </div>
     </div>

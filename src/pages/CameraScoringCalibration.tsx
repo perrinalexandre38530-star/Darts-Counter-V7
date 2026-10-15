@@ -29,6 +29,7 @@ export default function CameraScoringCalibration({ go, params }: Props) {
   const textMain = theme?.text ?? "#f5f5ff";
 
   const returnTab = params?.returnTab ?? "games";
+  const returnParams = params?.returnParams;
 
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
@@ -117,7 +118,7 @@ export default function CameraScoringCalibration({ go, params }: Props) {
       homography:fitInfo.homography,projectiveConfidence:fitInfo.confidence,projectiveErrorMm:fitInfo.errorMm,
       updatedAt:Date.now(),
     };
-    saveCameraCalibration(cal); go(returnTab);
+    saveCameraCalibration(cal); go(returnTab, returnParams);
   }
 
   const stepText = [
@@ -151,7 +152,7 @@ export default function CameraScoringCalibration({ go, params }: Props) {
         }}
       >
         <BackDot
-          onClick={() => go("camera_scoring_setup", { returnTab })}
+          onClick={() => go("camera_scoring_setup", { returnTab, returnParams })}
           title={t("common.back", "Retour")}
           size={36}
           color={primary}

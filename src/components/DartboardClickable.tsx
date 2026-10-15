@@ -16,6 +16,14 @@ export type DartboardHitDetail = {
   ring: "miss" | "dbull" | "bull" | "inner_single" | "triple" | "outer_single" | "double";
 };
 
+export type DartboardGuideRing = "number" | "single" | "inner_single" | "outer_single" | "double" | "triple" | "bull" | "dbull" | "bull_any";
+export type DartboardGuideTarget = {
+  segment?: number;
+  ring: DartboardGuideRing;
+  label?: string;
+  color?: string;
+};
+
 type Props = {
   /** Callback segment (0..20, 25) + mult (1..3) */
   onHit: (segment: number, mult: 1 | 2 | 3) => void;
@@ -29,6 +37,12 @@ type Props = {
   debug?: boolean;
   /** Désactive l'input */
   disabled?: boolean;
+  /** Zones à mettre en évidence pour guider le joueur sans modifier le scoring. */
+  guideTargets?: DartboardGuideTarget[];
+  /** Libellé court du guide (ex: "VISE T20"). */
+  guideLabel?: string;
+  /** Couleur par défaut du guide. */
+  guideColor?: string;
 };
 
 // Numéros standards, en partant du 20 en haut, sens horaire.
@@ -95,8 +109,41 @@ function classifyHit(r: number, angle0TopClockwise: number): { seg: number; mul:
   return { seg, mul: 1, ring: "outer_single" };
 }
 
+
+function guideRadius(size: number | undefined) {
+  const s = Math.max(80, Number(size || 320));
+  return Math.max(60, 100 - (INSET_PX * 200) / s);
+}
+function polarPoint(cx:number, cy:number, radius:number, angle:number) {
+  return { x: cx + Math.sin(angle) * radius, y: cy - Math.cos(angle) * radius };
+}
+function annularPath(segment:number, innerR:number, outerR:number) {
+  const idx = WEDGE_ORDER.findIndex((n) => Number(n) === Number(segment));
+  if (idx < 0) return "";
+  const center = idx * WEDGE;
+  const start = center - WEDGE / 2;
+  const end = center + WEDGE / 2;
+  const a = polarPoint(100, 100, outerR, start);
+  const b = polarPoint(100, 100, outerR, end);
+  const c = polarPoint(100, 100, innerR, end);
+  const d = polarPoint(100, 100, innerR, start);
+  return `M ${a.x} ${a.y} A ${outerR} ${outerR} 0 0 1 ${b.x} ${b.y} L ${c.x} ${c.y} A ${innerR} ${innerR} 0 0 0 ${d.x} ${d.y} Z`;
+}
+function guideRanges(target:DartboardGuideTarget, boardR:number) {
+  const r = (v:number) => Math.max(0, Math.min(boardR, v * boardR));
+  switch (target.ring) {
+    case "number": return [[r(R.BULL), r(R.DOUBLE_OUT)]];
+    case "single": return [[r(R.BULL), r(R.TRIPLE_IN)], [r(R.TRIPLE_OUT), r(R.DOUBLE_IN)]];
+    case "inner_single": return [[r(R.BULL), r(R.TRIPLE_IN)]];
+    case "triple": return [[r(R.TRIPLE_IN), r(R.TRIPLE_OUT)]];
+    case "outer_single": return [[r(R.TRIPLE_OUT), r(R.DOUBLE_IN)]];
+    case "double": return [[r(R.DOUBLE_IN), r(R.DOUBLE_OUT)]];
+    default: return [];
+  }
+}
+
 export default function DartboardClickable(props: Props) {
-  const { onHit, onDetailedHit, multiplier, size, debug, disabled } = props;
+  const { onHit, onDetailedHit, multiplier, size, debug, disabled, guideTargets = [], guideLabel, guideColor = "#ffe46b" } = props;
   const ref = useRef<HTMLDivElement | null>(null);
   const [last, setLast] = useState<{ seg: number; mul: 1 | 2 | 3; x: number; y: number } | null>(null);
 
@@ -106,6 +153,7 @@ export default function DartboardClickable(props: Props) {
     const s = size ?? 320;
     return { width: s, height: s };
   }, [size]);
+  const guideBoardR = useMemo(() => guideRadius(size), [size]);
 
   useEffect(() => {
     return () => {
@@ -186,6 +234,39 @@ export default function DartboardClickable(props: Props) {
           pointerEvents: "none",
         }}
       />
+
+      {guideTargets.length ? (
+        <>
+          <svg
+            viewBox="0 0 200 200"
+            aria-hidden="true"
+            style={{ position:"absolute", inset:0, width:"100%", height:"100%", pointerEvents:"none", overflow:"visible" }}
+          >
+            {guideTargets.map((target, ti) => {
+              const color = target.color || guideColor;
+              if (target.ring === "dbull") {
+                return <circle key={`g-${ti}`} cx="100" cy="100" r={R.DBULL * guideBoardR} fill={color} fillOpacity=".25" stroke={color} strokeWidth="1.6" />;
+              }
+              if (target.ring === "bull") {
+                return <circle key={`g-${ti}`} cx="100" cy="100" r={R.BULL * guideBoardR} fill="none" stroke={color} strokeOpacity=".95" strokeWidth="5.5" />;
+              }
+              if (target.ring === "bull_any") {
+                return <circle key={`g-${ti}`} cx="100" cy="100" r={R.BULL * guideBoardR} fill={color} fillOpacity=".19" stroke={color} strokeOpacity=".9" strokeWidth="1.7" />;
+              }
+              const seg = Number(target.segment || 0);
+              return <React.Fragment key={`g-${ti}`}>{guideRanges(target, guideBoardR).map(([innerR, outerR], ri) => {
+                const d = annularPath(seg, innerR, outerR);
+                return d ? <path key={ri} d={d} fill={color} fillOpacity=".19" stroke={color} strokeOpacity=".9" strokeWidth="1.4" /> : null;
+              })}</React.Fragment>;
+            })}
+          </svg>
+          {guideLabel ? (
+            <div style={{ position:"absolute", left:"50%", bottom:8, transform:"translateX(-50%)", maxWidth:"82%", padding:"4px 9px", borderRadius:999, background:"rgba(4,7,11,.86)", border:`1px solid ${guideColor}77`, color:guideColor, fontSize:9.5, fontWeight:1000, letterSpacing:.45, textAlign:"center", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", pointerEvents:"none", boxShadow:`0 0 14px ${guideColor}22` }}>
+              {guideLabel}
+            </div>
+          ) : null}
+        </>
+      ) : null}
 
       {/* Badge multiplicateur (état sélectionné parent) */}
       <div

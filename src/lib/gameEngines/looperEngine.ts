@@ -107,8 +107,8 @@ export function cloneLooperState(raw:LooperState):LooperState {
   return s;
 }
 export function assignLooperTarget(input:LooperState,dart:GameDart):LooperState {
-  const s=cloneLooperState(input); if(s.phase!=="assignment")return s;
-  s.currentTarget=looperTargetFromDart(dart,randomTarget()); s.setterId=s.players[s.activePlayerIndex]?.id||null; s.phase="playing";
+  const s=cloneLooperState(input); if(s.phase!=="assignment"||!isScoring(dart))return s;
+  s.currentTarget=looperTargetFromDart(dart,s.currentTarget); s.setterId=s.players[s.activePlayerIndex]?.id||null; s.phase="playing";
   return s;
 }
 function resetLeg(s:LooperState){s.legIndex++;s.turnIndex=0;s.activePlayerIndex=0;s.phase=s.config.rules.startTarget==="offhand"?"assignment":"playing";s.currentTarget=randomTarget();s.setterId=null;s.lives=Object.fromEntries(s.players.map(p=>[p.id,s.config.rules.lives]));s.shields=Object.fromEntries(s.players.map(p=>[p.id,0]));for(const p of s.players){s.statsByPlayer[p.id].currentHitStreak=0;}}

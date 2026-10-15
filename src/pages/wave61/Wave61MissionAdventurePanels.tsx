@@ -167,6 +167,11 @@ export function DisjonctePanel({ state, accent }: any) {
   </div>;
 }
 export function PetitBacPanel({ state, accent }: any) {
+  const active=state.players?.[state.activePlayerIndex];
+  return <div style={card(accent)}>{title(accent, "📝 LE PETIT BAC · GRILLE EN DIRECT")}
+    {playerGrid(state.players.map((p:any)=>{const step=Number(state.special?.bacStepByPlayer?.[p.id]||0); const n=Number(state.special?.bacSequence?.[Math.min(step,5)]||1); const letter=BAC_LETTERS[(n-1)%BAC_LETTERS.length]; const done=step>=BAC_CATEGORIES.length; return <div key={p.id} style={{display:"grid",gap:6,borderRadius:11,padding:8,border:`1px solid ${p.id===active?.id?accent+"88":"rgba(255,255,255,.08)"}`,background:p.id===active?.id?accent+"0d":"rgba(255,255,255,.02)"}}><div style={{display:"flex",justifyContent:"space-between",gap:6}}><b>📝 {p.name}</b><span style={{color:accent,fontSize:9,fontWeight:1100}}>{step}/{BAC_CATEGORIES.length}</span></div>{stepStrip(BAC_CATEGORIES,step,accent)}<div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:6,alignItems:"center"}}><div><div style={{color:SOFT,fontSize:8,fontWeight:900}}>CATÉGORIE ACTIVE</div><div style={{color:done?"#79e7b0":accent,fontSize:12,fontWeight:1100}}>{done?"✅ GRILLE TERMINÉE":BAC_CATEGORIES[step]}</div></div><div style={{minWidth:43,minHeight:43,borderRadius:12,display:"grid",placeItems:"center",border:`1px solid ${accent}66`,background:accent+"16",fontSize:19,fontWeight:1200}}>{done?"✓":letter}</div></div><span style={{color:SOFT,fontSize:8.3}}>Secteur demandé = lettre · BULL = joker · validation directe selon les réglages.</span></div>}))}
+  </div>;
+}: any) {
   return <div style={card(accent)}>{title(accent, "LE PETIT BAC · CATÉGORIES")}
     {playerGrid(state.players.map((p:any)=>{const step=Number(state.special?.bacStepByPlayer?.[p.id]||0); const n=Number(state.special?.bacSequence?.[Math.min(step,5)]||1); const letter=BAC_LETTERS[(n-1)%BAC_LETTERS.length]; return <div key={p.id} style={{display:"grid",gap:4}}><b>📝 {p.name}</b>{stepStrip(BAC_CATEGORIES,step,accent)}<span style={{color:accent,fontSize:11,fontWeight:1000}}>{step<BAC_CATEGORIES.length?`${BAC_CATEGORIES[step]} en ${letter}`:"GRILLE TERMINÉE"}</span><span style={{color:SOFT,fontSize:8.5}}>Dans la version finale dédiée, la réponse textuelle pourra être saisie/validée par l'arbitre.</span></div>}))}
   </div>;

@@ -219,6 +219,21 @@ export type CargoRiskCue = {
   level: 'safe' | 'watch' | 'danger';
 };
 
+export type CargoVariantMetric = {
+  label: string;
+  value: string;
+  hint?: string;
+};
+
+export type CargoVariantDashboard = {
+  variant: CargoState['config']['variant'];
+  title: string;
+  status: string;
+  detail: string;
+  progress: number;
+  metrics: CargoVariantMetric[];
+};
+
 export function buildCargoLastVisitFeedback(state: CargoState, playerId?: string | null): CargoVisitFeedback {
   const visits = Array.isArray(state?.visits) ? state.visits : [];
   const visit = [...visits].reverse().find((row) => !playerId || String(row.playerId) === String(playerId));
@@ -286,6 +301,186 @@ export function buildCargoRiskCue(state: CargoState, stats?: CargoPlayerStats | 
   if (variant === 'long_haul') return { label: 'ITINÉRAIRE', detail: 'Chaque tour fait avancer le camion vers la prochaine étape.', level: 'safe' };
   return series ? { label: 'SÉRIE ACTIVE', detail: 'Reste sur le même objectif pour construire une charge rentable.', level: 'safe' } : { label: 'AUCUNE SÉRIE', detail: 'Le premier bon impact démarre ton chargement.', level: 'watch' };
 }
+
+export function buildCargoVariantDashboard(state: CargoState, stats?: CargoPlayerStats | null, playerId?: string | null): CargoVariantDashboard {
+  const config = state?.config;
+  const variant = config?.variant || 'cargo_classic';
+  const series = stats?.currentSeries || null;
+  const contract = cargoActiveContract(state, stats);
+  const totalWeight = safeNumber(stats?.totalWeight, 0);
+  const rawWeight = safeNumber(series?.rawWeight, 0);
+  const count = safeNumber(series?.count, 0);
+  const maxSeries = Math.max(1, safeNumber(config?.maxSeries, 4));
+  const minSeries = Math.max(1, safeNumber(config?.minSeries, 2));
+  const round = Math.max(1, safeNumber(state?.roundIndex, 1));
+  const rounds = Math.max(1, safeNumber(config?.rounds, 1));
+  const target = Math.max(1, safeNumber(config?.targetWeight || config?.truckCapacity, 1000));
+  const remaining = target - totalWeight;
+  const playerVisits = (Array.isArray(state?.visits) ? state.visits : []).filter((visit) => !playerId || String(visit.playerId) === String(playerId));
+  const convoyHandoffs = playerVisits.flatMap((visit) => Array.isArray(visit.events) ? visit.events : []).filter((event) => event?.type === 'convoy_handoff').length;
+
+  if (variant === 'exact_load') {
+    const projected = totalWeight + rawWeight;
+    const projectedRemaining = target - projected;
+    return {
+      variant,
+      title: 'BALANCE DE CHARGE',
+      status: remaining === 0 ? 'CIBLE EXACTE' : remaining > 0 ? `${remaining} KG RESTANTS` : `${Math.abs(remaining)} KG AU-DESSUS`,
+      detail: projectedRemaining < 0 ? `Série active trop lourde : ${Math.abs(projectedRemaining)} kg de dépassement potentiel.` : `Avec la série active : ${Math.max(0, projectedRemaining)} kg resteraient à charger.`,
+      progress: clamp(totalWeight / target * 100, 0, 100),
+      metrics: [
+        { label: 'CHARGÉ', value: `${totalWeight} kg` },
+        { label: 'CIBLE', value: `${target} kg` },
+        { label: 'PROVISOIRE', value: rawWeight ? `+${rawWeight} kg` : '—' },
+      ],
+    };
+  }
+
+  if (variant === 'fragile_cargo') {
+    const protectedLoad = Boolean(series?.protected);
+    const exposed = Boolean(contract?.fragile && series && !protectedLoad);
+    const done = safeNumber(stats?.fragileCompleted, 0);
+    const broken = safeNumber(stats?.fragileBroken, 0);
+    const integrity = done + broken > 0 ? clamp(done / Math.max(1, done + broken) * 100, 0, 100) : 100;
+    return {
+      variant,
+      title: 'INTÉGRITÉ FRAGILE',
+      status: protectedLoad ? 'PROTÉGÉE' : exposed ? 'EXPOSÉE' : 'STABLE',
+      detail: protectedLoad ? 'La charge active est protégée.' : exposed ? 'Un MISS ou mauvais segment peut casser cette marchandise.' : 'Engage un contrat fragile puis sécurise-le avant de prendre un risque.',
+      progress: integrity,
+      metrics: [
+        { label: 'SAUVÉS', value: String(done) },
+        { label: 'CASSÉS', value: String(broken) },
+        { label: 'SÉRIE', value: series ? `${count}/${Math.max(1, safeNumber(contract?.targetCount, maxSeries))}` : '—' },
+      ],
+    };
+  }
+
+  if (variant === 'cargo_rush') {
+    const urgentContracts = (Array.isArray(state?.contracts) ? state.contracts : []).filter((item) => item?.urgent);
+    const activeUrgent = contract?.urgent ? contract : urgentContracts[0] || null;
+    const expiry = safeNumber(activeUrgent?.expiresAtRound, round);
+    const turnsLeft = activeUrgent ? Math.max(0, expiry - round + 1) : 0;
+    const rushWindow = Math.max(1, safeNumber(config?.rushExpiryRounds, 2));
+    return {
+      variant,
+      title: 'EXPRESS / DEADLINE',
+      status: activeUrgent ? (turnsLeft <= 1 ? 'DERNIER TOUR' : `${turnsLeft} TOURS`) : 'AUCUN EXPRESS',
+      detail: activeUrgent ? `${activeUrgent.label} · vise ${activeUrgent.bed}${activeUrgent.sector} avant expiration.` : 'Les contrats urgents apparaîtront ici dès qu’ils seront disponibles.',
+      progress: activeUrgent ? clamp(turnsLeft / rushWindow * 100, 0, 100) : 0,
+      metrics: [
+        { label: 'URGENTS', value: String(urgentContracts.length) },
+        { label: 'LIVRÉS', value: String(safeNumber(stats?.urgentCompleted, 0)) },
+        { label: 'TOUR', value: `${round}/${rounds}` },
+      ],
+    };
+  }
+
+  if (variant === 'convoy') {
+    const teamId = playerId ? config?.teamByPlayer?.[String(playerId)] : null;
+    const teamName = teamId ? String(config?.teamNames?.[String(teamId)] || teamId) : 'ÉQUIPE';
+    return {
+      variant,
+      title: 'RELAIS CONVOI',
+      status: series ? `SÉRIE ${count}` : 'À TRANSMETTRE',
+      detail: series ? `La palette active peut passer au prochain coéquipier de ${teamName}.` : `Démarre une série pour préparer le prochain relais de ${teamName}.`,
+      progress: clamp(count / maxSeries * 100, 0, 100),
+      metrics: [
+        { label: 'RELAIS', value: String(convoyHandoffs) },
+        { label: 'SÉRIE', value: series ? `${count}/${maxSeries}` : '0' },
+        { label: 'ÉQUIPE', value: teamName },
+      ],
+    };
+  }
+
+  if (variant === 'long_haul') {
+    const stages = Array.isArray(state?.routeStages) && state.routeStages.length ? state.routeStages : ['Entrepôt', 'Centre de livraison'];
+    const index = clamp(safeNumber(state?.routeStage, 0), 0, Math.max(0, stages.length - 1));
+    const current = stages[index] || 'Étape';
+    const next = stages[Math.min(stages.length - 1, index + 1)] || current;
+    const progress = stages.length <= 1 ? 100 : clamp(index / (stages.length - 1) * 100, 0, 100);
+    return {
+      variant,
+      title: 'ITINÉRAIRE LONG HAUL',
+      status: `${index + 1}/${stages.length} · ${current}`,
+      detail: index >= stages.length - 1 ? 'Centre de livraison atteint.' : `Prochaine étape : ${next}.`,
+      progress,
+      metrics: [
+        { label: 'ÉTAPE', value: `${index + 1}/${stages.length}` },
+        { label: 'TOUR', value: `${round}/${rounds}` },
+        { label: 'VALIDÉES', value: String(safeNumber(stats?.routeStagesCompleted, 0)) },
+      ],
+    };
+  }
+
+  if (variant === 'parcel_delivery') {
+    const delivered = safeNumber(stats?.parcelsDelivered, 0);
+    const currentCount = clamp(count, 0, 5);
+    const nextCount = Math.min(5, Math.max(1, currentCount + 1));
+    const bonuses = config?.parcelBonuses || {};
+    const nextBonus = safeNumber((bonuses as any)?.[nextCount], 0);
+    const address = series?.number ? `N° ${series.number}` : 'À DÉFINIR';
+    return {
+      variant,
+      title: 'TOURNÉE COLIS',
+      status: `${address} · ${currentCount}/5`,
+      detail: series?.number ? `Encore ${Math.max(0, 5 - currentCount)} touche${Math.max(0, 5 - currentCount) > 1 ? 's' : ''} possibles sur cette adresse · prochain bonus +${nextBonus}.` : 'La première touche fixe l’adresse de cette livraison.',
+      progress: clamp(currentCount / 5 * 100, 0, 100),
+      metrics: [
+        { label: 'LIVRÉS', value: String(delivered) },
+        { label: 'TOURNÉES', value: String(safeNumber(stats?.parcelDeliveries, 0)) },
+        { label: 'BONUS', value: `+${safeNumber(stats?.parcelBonuses, 0)}` },
+      ],
+    };
+  }
+
+  if (variant === 'full_pallet') {
+    const secureReady = count >= minSeries;
+    return {
+      variant,
+      title: 'PALETTE COMPLÈTE',
+      status: secureReady ? 'SÉCURISABLE' : `${Math.max(0, minSeries - count)} AVANT SÉCURISATION`,
+      detail: secureReady ? `Tu peux sécuriser ${rawWeight} kg maintenant ou pousser jusqu’à ${maxSeries} touches.` : `Construis la palette : minimum ${minSeries}, maximum ${maxSeries} touches.`,
+      progress: clamp(count / maxSeries * 100, 0, 100),
+      metrics: [
+        { label: 'SÉRIE', value: `${count}/${maxSeries}` },
+        { label: 'PROVISOIRE', value: rawWeight ? `${rawWeight} kg` : '—' },
+        { label: 'PALETTES', value: String(safeNumber(stats?.pallets, 0)) },
+      ],
+    };
+  }
+
+  if (variant === 'free_load') {
+    return {
+      variant,
+      title: 'CHARGE LIBRE',
+      status: series ? `${count}/${maxSeries} TOUCHES` : 'CHOISIS TA CHARGE',
+      detail: series ? `${rawWeight} kg provisoires sur la série active.` : 'Le premier impact ouvre une série libre : reste sur le même objectif.',
+      progress: clamp(count / maxSeries * 100, 0, 100),
+      metrics: [
+        { label: 'SÉRIE', value: `${count}/${maxSeries}` },
+        { label: 'BRUT', value: rawWeight ? `${rawWeight} kg` : '—' },
+        { label: 'PALETTES', value: String(safeNumber(stats?.pallets, 0)) },
+      ],
+    };
+  }
+
+  const contractsDone = safeNumber(stats?.completedContracts, 0);
+  const contractsTotal = Math.max(1, safeNumber(state?.contracts?.length, 0));
+  return {
+    variant: 'cargo_classic',
+    title: 'MANIFESTE CLASSIQUE',
+    status: contract ? contract.label : 'CHOISIS UN CONTRAT',
+    detail: contract ? `${count}/${Math.max(1, safeNumber(contract.targetCount, 1))} · ${contract.finalWeight} kg à la validation.` : 'Choisis un contrat du manifeste et complète exactement son objectif.',
+    progress: contract ? clamp(count / Math.max(1, safeNumber(contract.targetCount, 1)) * 100, 0, 100) : 0,
+    metrics: [
+      { label: 'CONTRATS', value: String(contractsDone) },
+      { label: 'PALETTES', value: String(safeNumber(stats?.pallets, 0)) },
+      { label: 'CHARGE', value: `${totalWeight} kg` },
+    ],
+  };
+}
+
 export function cargoRecentEvents(state: CargoState, playerId?: string | null, limit = 3): CargoVisitEvent[] {
   const visits = Array.isArray(state?.visits) ? [...state.visits] : [];
   const selected = playerId ? visits.filter((visit) => String(visit.playerId) === String(playerId)) : visits;

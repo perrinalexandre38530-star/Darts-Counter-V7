@@ -40,6 +40,7 @@ import {
 import { History } from "../lib/history";
 import { deriveDartsPokerMatchMetrics, deriveDartsPokerPlayerMetrics } from "../lib/dartsPokerAnalytics";
 import { buildDartsPokerMarketStrategy, summarizeDartsPokerMarketStrategy, type DartsPokerMarketStrategyItem } from "../lib/dartsPokerStrategy";
+import { explainDartsPokerShowdown, getDartsPokerBestFiveIds, getDartsPokerRoundPoints } from "../lib/dartsPokerShowdown";
 import { commitDartsPokerProgress, type DartsPokerProgressResult, type DartsPokerProgressUnlock } from "../lib/dartsPokerProgress";
 import tickerDartsPoker from "../assets/tickers/ticker_darts_poker.png";
 import DartsPokerEnd from "./DartsPokerEnd";
@@ -598,12 +599,19 @@ function DartsPokerMotionStyles() {
     @keyframes dpBestFive { 0%,100%{box-shadow:0 0 0 rgba(92,230,168,0)} 50%{box-shadow:0 0 14px rgba(92,230,168,.42)} }
     .dp-market-refresh{animation:dpMarketRefresh .72s cubic-bezier(.2,.8,.2,1)}
     .dp-market-replaced{animation:dpMarketBanner .32s ease-out}
+    @keyframes dpShowdownReveal { 0%{opacity:.08;transform:translateY(10px) scale(.975);filter:blur(4px)} 55%{opacity:1;transform:translateY(-2px) scale(1.01);filter:blur(0)} 100%{opacity:1;transform:translateY(0) scale(1);filter:blur(0)} }
+    @keyframes dpShowdownWinner { 0%,100%{filter:brightness(1);transform:translateY(0)} 50%{filter:brightness(1.2);transform:translateY(-2px)} }
     .dp-best-five{border-radius:9px;animation:dpBestFive 1.45s ease-in-out infinite}
+    .dp-showdown-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+    .dp-showdown-reveal{animation:dpShowdownReveal .42s cubic-bezier(.2,.8,.2,1) both}
+    .dp-showdown-winning-card{border-radius:10px;animation:dpShowdownWinner 1.5s ease-in-out infinite}
+    .dp-showdown-reason{animation:dpShowdownReveal .4s ease both}
     .dp-market-grid{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:2px}
     @media (max-width:600px){
       .dp-market-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:3px}
       .dp-market-coach{grid-template-columns:auto auto minmax(0,1fr)!important}
       .dp-market-coach > span:last-of-type{display:none}
+      .dp-showdown-grid{grid-template-columns:1fr}
     }
   `}</style>;
 }
@@ -816,15 +824,129 @@ function ChoiceModal({ cards, onChoose }: any) {
 
 function RoundModal({ state, profilesById, onNext }: any) {
   const round = state.rounds[state.rounds.length - 1];
-  return <div style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,.88)", backdropFilter: "blur(8px)", overflow: "auto", padding: 8 }}><div style={{ ...panel(), width: "min(760px,100%)", margin: "12px auto", background: "linear-gradient(180deg,#171014,#07080b)", borderColor: `${GOLD}66`, padding: 14 }}>
-    <div style={{ textAlign: "center" }}><div style={{ color: GOLD, fontSize: 11, fontWeight: 1100 }}>SHOWDOWN · MANCHE {round?.round}</div><div style={{ color: "#fff", fontSize: 19, fontWeight: 1200, marginTop: 3 }}>{round?.winnerIds?.length > 1 ? "ÉGALITÉ" : `${playerName(profilesById.get(String(round?.winnerIds?.[0])))} GAGNE`}</div></div>
-    {round?.contract ? <div style={{ marginTop: 10, padding: 9, borderRadius: 13, textAlign: "center", border: `1px solid ${GOLD}55`, background: `${GOLD}0d` }}><div style={{ color: GOLD, fontSize: 8.5, fontWeight: 1100 }}>CONTRAT DE MANCHE · +{round.contract.bonusPoints} PT</div><div style={{ color: "#fff", fontWeight: 1050, marginTop: 3 }}>{round.contract.label}</div></div> : null}
-    <div style={{ marginTop: 12, display: "grid", gap: 7 }}>{round?.rows?.map((row: any) => <div key={row.playerId} style={{ padding: 9, borderRadius: 14, border: `1px solid ${row.win ? GOLD : row.contractCompleted ? GREEN : "rgba(255,255,255,.09)"}`, background: row.win ? `${GOLD}0d` : row.contractCompleted ? `${GREEN}09` : "rgba(255,255,255,.025)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><strong style={{ color: row.win ? GOLD : "#fff" }}>#{row.rank} · {playerName(profilesById.get(String(row.playerId)))}</strong><div style={{ textAlign: "right" }}><strong style={{ color: GREEN }}>{row.evaluation.label}</strong><div style={{ color: GOLD, fontSize: 8, marginTop: 2 }}>+{row.pointsAwarded || 0} pt{Number(row.pointsAwarded || 0) > 1 ? "s" : ""}{row.contractCompleted ? " · CONTRAT ✓" : ""}</div></div></div>
-      <div style={{ marginTop: 7, display: "flex", gap: 4, overflowX: "auto" }}>{row.bestFive.map((card: PokerCard, index: number) => <CardView key={`${card.id}-${index}`} card={card} small />)}</div>
-    </div>)}</div>
-    <button onClick={onNext} style={{ ...action(state.roundIndex >= state.config.rounds ? RED : GREEN), width: "100%", marginTop: 12 }}>{state.roundIndex >= state.config.rounds ? "TERMINER LA PARTIE" : "MANCHE SUIVANTE"}</button>
-  </div></div>;
+  const rows = React.useMemo(() => {
+    const byPlayer = new Map((round?.rows || []).map((row: any) => [String(row.playerId), row]));
+    const inTableOrder = (state.players || []).map((player: any) => byPlayer.get(String(player.id))).filter(Boolean);
+    return inTableOrder.length ? inTableOrder : (round?.rows || []);
+  }, [round?.round, round?.rows, state.players]);
+  const [revealedCount, setRevealedCount] = React.useState(0);
+
+  React.useEffect(() => {
+    setRevealedCount(0);
+  }, [round?.round]);
+
+  React.useEffect(() => {
+    if (!round || revealedCount >= rows.length) return;
+    const timer = window.setTimeout(() => setRevealedCount((value) => Math.min(rows.length, value + 1)), revealedCount === 0 ? 350 : 520);
+    return () => window.clearTimeout(timer);
+  }, [round?.round, revealedCount, rows.length]);
+
+  const allRevealed = rows.length > 0 && revealedCount >= rows.length;
+  const showdown = explainDartsPokerShowdown(round);
+  const winnerNames = (round?.winnerIds || []).map((id: string) => playerName(profilesById.get(String(id))));
+  const winnerTitle = winnerNames.length > 1 ? `ÉGALITÉ · ${winnerNames.join(" / ")}` : `${winnerNames[0] || "—"} GAGNE`;
+  const dealerName = round?.dealerId ? playerName(profilesById.get(String(round.dealerId))) : null;
+
+  return <div style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,.92)", backdropFilter: "blur(10px)", overflow: "auto", padding: 8 }}>
+    <div style={{ ...panel(), width: "min(900px,100%)", margin: "10px auto", background: "linear-gradient(180deg,#1c1014,#08090d 72%)", borderColor: `${GOLD}66`, padding: 14 }}>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ color: GOLD, fontSize: 10, fontWeight: 1200, letterSpacing: 1.1 }}>SHOWDOWN · MANCHE {round?.round}/{state.config.rounds}</div>
+        <div style={{ color: allRevealed ? "#fff" : SOFT, fontSize: allRevealed ? 20 : 15, fontWeight: 1200, marginTop: 4 }}>
+          {allRevealed ? winnerTitle : `RÉVÉLATION DES MAINS · ${revealedCount}/${rows.length}`}
+        </div>
+        <div style={{ color: SOFT, fontSize: 8, marginTop: 4 }}>
+          {dealerName ? `Dealer · ${dealerName} · ` : ""}La meilleure main gagne la manche. Le contrat ajoute ensuite son bonus de points.
+        </div>
+      </div>
+
+      {round?.contract ? <div style={{ marginTop: 10, padding: 9, borderRadius: 13, textAlign: "center", border: `1px solid ${GOLD}55`, background: `${GOLD}0d` }}>
+        <div style={{ color: GOLD, fontSize: 8.2, fontWeight: 1100 }}>CONTRAT DE MANCHE · +{round.contract.bonusPoints} PT</div>
+        <div style={{ color: "#fff", fontWeight: 1050, marginTop: 3 }}>{round.contract.label}</div>
+        <div style={{ color: SOFT, fontSize: 7.5, marginTop: 3 }}>{round.contract.description}</div>
+      </div> : null}
+
+      <div className="dp-showdown-grid" style={{ marginTop: 12 }}>
+        {rows.map((row: any, index: number) => {
+          const visible = index < revealedCount;
+          const profile = profilesById.get(String(row.playerId));
+          const points = getDartsPokerRoundPoints(row);
+          const bestIds = getDartsPokerBestFiveIds(row);
+          const extraCards = (row.cards || []).filter((card: PokerCard) => !bestIds.has(String(card?.id || "")));
+          const totalPoints = Number(state.statsByPlayer?.[row.playerId]?.roundPoints || 0);
+          const accent = row.win ? GOLD : row.contractCompleted ? GREEN : PLAYER_COLORS[index % PLAYER_COLORS.length];
+
+          return <div key={row.playerId} className={visible ? "dp-showdown-reveal" : ""} style={{
+            minWidth: 0,
+            padding: 10,
+            borderRadius: 16,
+            border: `1px solid ${visible ? `${accent}88` : "rgba(255,255,255,.08)"}`,
+            background: visible ? (row.win ? `${GOLD}0f` : row.contractCompleted ? `${GREEN}08` : "rgba(255,255,255,.025)") : "rgba(255,255,255,.018)",
+            boxShadow: visible && row.win ? `0 0 24px ${GOLD}24` : "none",
+            transition: "all .28s ease",
+          }}>
+            <div style={{ display: "grid", gridTemplateColumns: "42px minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
+              <ProfileAvatar profile={profile || { name: row.playerId }} size={40} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                  <strong style={{ color: visible ? (row.win ? GOLD : "#fff") : SOFT, fontSize: 10.5 }}>{playerName(profile)}</strong>
+                  {String(round?.dealerId || "") === String(row.playerId) ? <span style={{ color: GOLD, fontSize: 6.5, border: `1px solid ${GOLD}55`, borderRadius: 999, padding: "2px 5px" }}>DEALER</span> : null}
+                  {visible ? <span style={{ color: accent, fontSize: 6.8, fontWeight: 1100 }}>{row.win ? (row.tied ? "ÉGALITÉ GAGNANTE" : "GAGNANT") : `#${row.rank}`}</span> : null}
+                </div>
+                <div style={{ color: visible ? (row.win ? GOLD : GREEN) : SOFT, fontSize: 8.5, fontWeight: 1050, marginTop: 2 }}>
+                  {visible ? row.evaluation?.label : "MAIN CACHÉE"}
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ color: visible ? GOLD : SOFT, fontSize: 12, fontWeight: 1200 }}>{visible ? `+${points.total}` : "—"}<span style={{ fontSize: 7, marginLeft: 2 }}>PT</span></div>
+                <div style={{ color: SOFT, fontSize: 6.5, marginTop: 1 }}>{visible ? `TOTAL ${totalPoints} PT${totalPoints > 1 ? "S" : ""}` : `RÉVÉLATION ${index + 1}`}</div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 8, display: "flex", justifyContent: "center", gap: 5, flexWrap: "wrap", minHeight: 64 }}>
+              {visible
+                ? (row.bestFive || []).map((card: PokerCard, cardIndex: number) => <div key={`${card.id}-${cardIndex}`} className={row.win ? "dp-showdown-winning-card" : ""}><CardView card={card} small /></div>)
+                : Array.from({ length: 5 }, (_, cardIndex) => <CardView key={`hidden-${cardIndex}`} card={row.bestFive?.[cardIndex] || row.cards?.[cardIndex] || null} small hidden />)}
+            </div>
+
+            {visible && extraCards.length ? <div style={{ marginTop: 5, display: "flex", justifyContent: "center", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+              <span style={{ color: SOFT, fontSize: 5.8, fontWeight: 950 }}>HORS TOP 5</span>
+              {extraCards.map((card: PokerCard, cardIndex: number) => <div key={`extra-${card.id}-${cardIndex}`} style={{ opacity: .34, filter: "grayscale(.7)" }}><DartsPokerCard card={card} size="mini" /></div>)}
+            </div> : null}
+
+            {visible ? <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: round?.contract ? "repeat(3,minmax(0,1fr))" : "repeat(2,minmax(0,1fr))", gap: 5 }}>
+              <div style={{ borderRadius: 10, padding: "5px 6px", textAlign: "center", background: `${row.win ? GOLD : SOFT}0b`, border: `1px solid ${row.win ? GOLD : SOFT}33` }}>
+                <div style={{ color: row.win ? GOLD : SOFT, fontSize: 8, fontWeight: 1100 }}>{row.win ? "+1 PT" : "+0 PT"}</div>
+                <div style={{ color: SOFT, fontSize: 5.8 }}>VICTOIRE</div>
+              </div>
+              {round?.contract ? <div style={{ borderRadius: 10, padding: "5px 6px", textAlign: "center", background: `${row.contractCompleted ? GREEN : RED}0b`, border: `1px solid ${row.contractCompleted ? GREEN : RED}33` }}>
+                <div style={{ color: row.contractCompleted ? GREEN : RED, fontSize: 8, fontWeight: 1100 }}>{row.contractCompleted ? `+${points.contractPoints} PT` : "+0 PT"}</div>
+                <div style={{ color: SOFT, fontSize: 5.8 }}>{row.contractCompleted ? "CONTRAT ✓" : "CONTRAT ✕"}</div>
+              </div> : null}
+              <div style={{ borderRadius: 10, padding: "5px 6px", textAlign: "center", background: `${BLUE}0b`, border: `1px solid ${BLUE}33` }}>
+                <div style={{ color: BLUE, fontSize: 8, fontWeight: 1100 }}>+{points.total} PT</div>
+                <div style={{ color: SOFT, fontSize: 5.8 }}>MANCHE</div>
+              </div>
+            </div> : null}
+          </div>;
+        })}
+      </div>
+
+      {allRevealed ? <div className="dp-showdown-reason" style={{ marginTop: 11, padding: 10, borderRadius: 14, border: `1px solid ${showdown.tie ? BLUE : GOLD}66`, background: `${showdown.tie ? BLUE : GOLD}0b`, textAlign: "center" }}>
+        <div style={{ color: showdown.tie ? BLUE : GOLD, fontSize: 8, fontWeight: 1200, letterSpacing: .8 }}>POURQUOI ?</div>
+        <div style={{ color: "#fff", fontSize: 10, fontWeight: 1100, marginTop: 3 }}>{showdown.title}</div>
+        <div style={{ color: SOFT, fontSize: 8, lineHeight: 1.4, marginTop: 3 }}>{showdown.detail}</div>
+        {showdown.comparison ? <div style={{ color: "#fff", fontSize: 8, fontWeight: 1000, marginTop: 4 }}>{showdown.comparison}</div> : null}
+      </div> : <button type="button" onClick={() => setRevealedCount(rows.length)} style={{ ...action(BLUE), width: "100%", marginTop: 11, minHeight: 40 }}>RÉVÉLER TOUT</button>}
+
+      <button
+        onClick={onNext}
+        disabled={!allRevealed}
+        style={{ ...action(state.roundIndex >= state.config.rounds ? RED : GREEN), width: "100%", marginTop: 9, minHeight: 44, opacity: allRevealed ? 1 : .35, cursor: allRevealed ? "pointer" : "default" }}
+      >
+        {state.roundIndex >= state.config.rounds ? "TERMINER LA PARTIE" : "MANCHE SUIVANTE"}
+      </button>
+    </div>
+  </div>;
 }
 
 function TimelineModal({ state, profilesById, onClose }: any) {

@@ -22,6 +22,7 @@ import {
   temporalMedianFrame,
 } from "../lib/closestCenterVisionEngine";
 import { getTicker } from "../lib/tickers";
+import { loadCameraScoringPreferences } from "../lib/cameraScoringPreferences";
 
 const ACCENT = "#44e7ff";
 const PLAYER_COLORS = ["#ff4d5f", "#3da5ff", "#ffd43b", "#b96cff", "#39d98a", "#ff914d", "#55e6c1", "#f472b6"];
@@ -29,6 +30,11 @@ const PLAYER_COLORS = ["#ff4d5f", "#3da5ff", "#ffd43b", "#b96cff", "#39d98a", "#
 function playerColor(players:any[], playerId:any) {
   const ix = Math.max(0, players.findIndex((p:any) => String(p.id) === String(playerId)));
   return PLAYER_COLORS[ix % PLAYER_COLORS.length];
+}
+
+function tierMeets(actual:string, required:"high"|"competition") {
+  const rank:any={insufficient:0,standard:1,high:2,competition:3};
+  return (rank[actual]||0) >= (rank[required]||2);
 }
 
 function phaseLabel(phase:string) {
@@ -41,7 +47,7 @@ function phaseLabel(phase:string) {
   return String(phase || "").toUpperCase();
 }
 
-function capture(video: HTMLVideoElement | null, crop?: { x:number; y:number; w:number; h:number }) {
+function capture(video: HTMLVideoElement | null, crop?: { x:number; y:number; w:number; h:number }, maxCaptureSide = 1920) {
   if (!video?.videoWidth || !video.videoHeight) return null;
   const c = document.createElement("canvas");
   const srcW = video.videoWidth, srcH = video.videoHeight;
@@ -50,7 +56,7 @@ function capture(video: HTMLVideoElement | null, crop?: { x:number; y:number; w:
   } else {
     // Preserve the native camera aspect ratio. Never stretch 16:9 into 4:3: that
     // would move calibrated points and directly corrupt millimetre measurements.
-    const maxSide = 1920;
+    const maxSide = Math.max(1280, Number(maxCaptureSide || 1920));
     const scale = Math.min(1, maxSide / Math.max(srcW, srcH));
     c.width = Math.max(640, Math.round(srcW * scale));
     c.height = Math.max(360, Math.round(srcH * scale));
@@ -67,10 +73,10 @@ function capture(video: HTMLVideoElement | null, crop?: { x:number; y:number; w:
   return ctx.getImageData(0, 0, c.width, c.height);
 }
 
-async function captureBurst(video: HTMLVideoElement | null, count = 5, delayMs = 55) {
+async function captureBurst(video: HTMLVideoElement | null, count = 5, delayMs = 55, maxCaptureSide = 1920) {
   const frames: ImageData[] = [];
   for (let i = 0; i < count; i++) {
-    const frame = capture(video);
+    const frame = capture(video, undefined, maxCaptureSide);
     if (frame) frames.push(frame);
     if (i < count - 1) await new Promise(resolve => window.setTimeout(resolve, delayMs));
   }
@@ -114,9 +120,11 @@ export default function ClosestCenterPlay(props:any) {
   const cfg = props.params?.config || {};
   const players = cfg.players || [];
   const ticker = getTicker("closest_center") || getTicker("darts_games") || "";
+  const [cameraPrefs] = React.useState(() => loadCameraScoringPreferences());
 
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
   const streamRef = React.useRef<MediaStream | null>(null);
+  const autoRereadRunningRef = React.useRef(false);
   const [camError, setCamError] = React.useState("");
   const [ready, setReady] = React.useState(false);
   const [cal] = React.useState<CameraCalibration | null>(() => loadCameraCalibration());
@@ -143,7 +151,7 @@ export default function ClosestCenterPlay(props:any) {
     let dead = false;
     (async () => {
       try {
-        const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 2560 }, height: { ideal: 1440 }, frameRate: { ideal: 30, min: 24 } }, audio: false });
+        const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: Math.max(1920, cameraPrefs.maxCaptureSide) }, height: { ideal: Math.round(Math.max(1920, cameraPrefs.maxCaptureSide) * 9 / 16) }, frameRate: { ideal: 30, min: 24 } }, audio: false });
         if (dead) { s.getTracks().forEach(t => t.stop()); return; }
         streamRef.current = s;
         await tunePrecisionTrack(s);
@@ -157,7 +165,7 @@ export default function ClosestCenterPlay(props:any) {
       }
     })();
     return () => { dead = true; streamRef.current?.getTracks().forEach(t => t.stop()); };
-  }, []);
+  }, [cameraPrefs.maxCaptureSide]);
 
   const current = players[phase === "enroll" ? enrollIndex : playerIndex];
 
@@ -201,7 +209,7 @@ export default function ClosestCenterPlay(props:any) {
       return;
     }
     setStatus("Calibration précision : acquisition multi-frame de la cible vide…");
-    const baselineBurst = await captureBurst(videoRef.current, 5, 55);
+    const baselineBurst = await captureBurst(videoRef.current, cameraPrefs.baselineFrames, cameraPrefs.frameDelayMs, cameraPrefs.maxCaptureSide);
     const img = temporalMedianFrame(baselineBurst);
     if (!img) return;
     const readiness = assessPrecisionReadiness(img, cal);
@@ -211,8 +219,8 @@ export default function ClosestCenterPlay(props:any) {
       setStatus(`❌ Précision insuffisante : ${readiness.reasons[0] || "repositionne la caméra"}`);
       return;
     }
-    if (tier === "standard") {
-      setStatus(`⚠️ Lecture acceptable mais pas encore haute précision (${readiness.mmPerPixel.toFixed(2)} mm/pixel). Rapproche la caméra pour viser le niveau HIGH/COMPÉTITION.`);
+    if (!tierMeets(tier, cameraPrefs.requiredTier)) {
+      setStatus(`⚠️ Niveau ${tier.toUpperCase()} insuffisant pour le profil ${cameraPrefs.profile.toUpperCase()} (${readiness.mmPerPixel.toFixed(2)} mm/pixel). Rapproche la caméra ou améliore la netteté.`);
       return;
     }
     setBefore(img);
@@ -229,11 +237,11 @@ export default function ClosestCenterPlay(props:any) {
   const analyze = async () => {
     if (!cal || !before || !current) return;
     setStatus("IA précision : lecture multi-frame en cours…");
-    const rawBurst = await captureBurst(videoRef.current, 5, 55);
-    if (rawBurst.length < 4) { setStatus("Impossible d’obtenir assez d’images stables. Relance l’analyse."); return; }
+    const rawBurst = await captureBurst(videoRef.current, cameraPrefs.analysisFrames, cameraPrefs.frameDelayMs, cameraPrefs.maxCaptureSide);
+    if (rawBurst.length < Math.max(4, cameraPrefs.analysisFrames - 1)) { setStatus("Impossible d’obtenir assez d’images stables. Relance l’analyse."); return; }
     const geometryChecks = rawBurst.map(frame => assessProjectiveDrift(before, frame, cal));
     const worstGeometry = geometryChecks.reduce((w:any,x:any)=>x.regionalSpreadPx>w.regionalSpreadPx?x:w, geometryChecks[0]);
-    if (!geometryChecks.every((x:any)=>x.ok)) {
+    if (cameraPrefs.strictProjectiveDrift && !geometryChecks.every((x:any)=>x.ok)) {
       setRegistrationInfo({ confidence: worstGeometry.confidence, geometrySpreadPx: worstGeometry.regionalSpreadPx, rejected: geometryChecks.filter((x:any)=>!x.ok).length });
       setStatus(`❌ Dérive géométrique détectée (${worstGeometry.regionalSpreadPx.toFixed(2)} px). Le téléphone a tourné/changé de perspective : replace le support avant de mesurer.`);
       return;
@@ -258,8 +266,8 @@ export default function ClosestCenterPlay(props:any) {
       return;
     }
     const tier = precisionTier(readiness);
-    if (tier === "standard" || tier === "insufficient") {
-      setStatus(`❌ Lecture non validée : niveau ${tier.toUpperCase()}. Rapproche la caméra / améliore la netteté pour atteindre HIGH ou COMPÉTITION.`);
+    if (!tierMeets(tier, cameraPrefs.requiredTier)) {
+      setStatus(`❌ Lecture non validée : niveau ${tier.toUpperCase()} inférieur au profil ${cameraPrefs.profile.toUpperCase()}.`);
       return;
     }
 
@@ -294,7 +302,7 @@ export default function ClosestCenterPlay(props:any) {
       const geometrySpreadPx = Math.max(...geometryChecks.map((x:any)=>x.regionalSpreadPx));
       const registrationPenalty = Math.max(0,(1-avgRegistration)*1.2) + Math.max(0, geometrySpreadPx*.12);
       const uncertaintyMm = Math.max(resolutionFloor, estimateDistanceUncertaintyMm(measurementConfidence, cal) + consensusPenalty + registrationPenalty);
-      const needsReview = identity.confidence < .70 || identity.margin < .075 || measurementConfidence < .74 || frameAgreement < .80 || Number(d.spreadMm||0) > .85 || uncertaintyMm > 1.25;
+      const needsReview = identity.confidence < cameraPrefs.minIdentityConfidence || identity.margin < cameraPrefs.minIdentityMargin || measurementConfidence < .74 || frameAgreement < cameraPrefs.minFrameAgreement || Number(d.spreadMm||0) > cameraPrefs.maxConsensusSpreadMm || uncertaintyMm > cameraPrefs.maxUncertaintyMm;
       return {
         id: `r${round}-${current.id}-${Date.now()}-${i}`,
         playerId: owner.id,
@@ -327,10 +335,10 @@ export default function ClosestCenterPlay(props:any) {
   const precisionReread = async () => {
     if (!cal || !before || !current || pendingConsensus.length !== 3) return;
     setStatus("🔬 Relecture précision indépendante : seconde acquisition multi-frame…");
-    const rawBurst = await captureBurst(videoRef.current, 7, 48);
-    if (rawBurst.length < 5) { setStatus("Relecture impossible : pas assez de frames exploitables."); return; }
+    const rawBurst = await captureBurst(videoRef.current, cameraPrefs.rereadFrames, Math.max(30, cameraPrefs.frameDelayMs - 4), cameraPrefs.maxCaptureSide);
+    if (rawBurst.length < Math.max(5, cameraPrefs.rereadFrames - 2)) { setStatus("Relecture impossible : pas assez de frames exploitables."); return; }
     const geometryChecks = rawBurst.map(frame => assessProjectiveDrift(before, frame, cal));
-    if (!geometryChecks.every((x:any)=>x.ok)) {
+    if (cameraPrefs.strictProjectiveDrift && !geometryChecks.every((x:any)=>x.ok)) {
       setStatus("❌ Relecture refusée : géométrie de cible différente de la première lecture."); return;
     }
     const registered = rawBurst.map(frame => registerFrameToReference(before, frame, cal)).filter(x=>x.registration.confidence>=.55);
@@ -353,13 +361,25 @@ export default function ClosestCenterPlay(props:any) {
       const anisotropyPenalty=Math.max(0,Number(metric.anisotropy||1)-1)*.25;
       const uncertaintyMm=Math.max(Number(metric.meanMmPerPixel||.3)*.72, Number(impact.uncertaintyMm||1)*.64 + Number(match.spreadMm||0)*.28 + rereadPenalty + anisotropyPenalty);
       const confidence=Math.min(1,Number(impact.confidence||0)*.62+Number(match.confidence||0)*.38);
-      return {...impact,xNorm:match.xNorm,yNorm:match.yNorm,distanceNorm:match.distanceNorm,distanceMm:match.distanceMm,uncertaintyMm,confidence,rereadAgreement:match.rereadAgreement,localMmPerPixel:metric.meanMmPerPixel,metricAnisotropy:metric.anisotropy,needsReview:impact.needsReview || match.rereadAgreement<.72};
+      return {...impact,xNorm:match.xNorm,yNorm:match.yNorm,distanceNorm:match.distanceNorm,distanceMm:match.distanceMm,uncertaintyMm,confidence,rereadAgreement:match.rereadAgreement,localMmPerPixel:metric.meanMmPerPixel,metricAnisotropy:metric.anisotropy,needsReview:impact.needsReview || match.rereadAgreement<cameraPrefs.minRereadAgreement};
     });
     setPendingConsensus(merged);
     setPendingImpacts(upgraded);
     setPrecisionRereads(v=>v+1);
     setStatus(avgAgree>=.84 ? `✅ Relecture précision convergente (${Math.round(avgAgree*100)} %). Incertitudes recalculées.` : `⚠️ Relecture partiellement convergente (${Math.round(avgAgree*100)} %). Vérification visuelle recommandée.`);
   };
+
+  React.useEffect(() => {
+    if (phase !== "review" || !cameraPrefs.autoReread || precisionRereads > 0 || pendingImpacts.length !== 3 || autoRereadRunningRef.current) return;
+    const critical = pendingImpacts.some((x:any) => Number(x.uncertaintyMm||99) > cameraPrefs.maxUncertaintyMm || Number(x.frameAgreement||0) < cameraPrefs.minFrameAgreement || Number(x.consensusSpreadMm||99) > cameraPrefs.maxConsensusSpreadMm);
+    if (!critical) return;
+    const id = window.setTimeout(() => {
+      if (autoRereadRunningRef.current) return;
+      autoRereadRunningRef.current = true;
+      void precisionReread().finally(() => { autoRereadRunningRef.current = false; });
+    }, 180);
+    return () => window.clearTimeout(id);
+  }, [phase, precisionRereads, pendingImpacts, cameraPrefs.autoReread, cameraPrefs.maxUncertaintyMm, cameraPrefs.minFrameAgreement, cameraPrefs.maxConsensusSpreadMm]);
 
   const cyclePendingOwner = (impactId:string) => {
     setPendingImpacts(prev => prev.map((impact:any) => {
@@ -381,12 +401,16 @@ export default function ClosestCenterPlay(props:any) {
 
   const confirmAnalysis = () => {
     if (!pendingAfter || pendingImpacts.length !== 3) return;
-    const precisionCritical = pendingImpacts.some((x:any) => Number(x.uncertaintyMm||99) > 1.15 || Number(x.frameAgreement||0) < .90 || Number(x.consensusSpreadMm||99) > .55);
+    const precisionCritical = pendingImpacts.some((x:any) => Number(x.uncertaintyMm||99) > cameraPrefs.maxUncertaintyMm || Number(x.frameAgreement||0) < cameraPrefs.minFrameAgreement || Number(x.consensusSpreadMm||99) > cameraPrefs.maxConsensusSpreadMm);
     if (precisionCritical && precisionRereads < 1) {
       setStatus("🔬 Validation bloquée : au moins une pointe exige une seconde lecture indépendante. Lance RELECTURE PRÉCISION.");
       return;
     }
-    const rereadWeak = precisionRereads > 0 && pendingImpacts.some((x:any) => x.rereadAgreement != null && Number(x.rereadAgreement) < .68);
+    if (precisionCritical && precisionRereads >= 1) {
+      setStatus(`❌ Précision encore insuffisante après relecture pour le profil ${cameraPrefs.profile.toUpperCase()}. Stabilise/repositionne puis réanalyse : la mesure n’est pas enregistrée.`);
+      return;
+    }
+    const rereadWeak = precisionRereads > 0 && pendingImpacts.some((x:any) => x.rereadAgreement != null && Number(x.rereadAgreement) < cameraPrefs.minRereadAgreement);
     if (rereadWeak) {
       setStatus("❌ Les deux lectures ne convergent pas assez pour valider une mesure de précision. Repositionne/stabilise puis réanalyse la volée.");
       return;
@@ -517,7 +541,7 @@ export default function ClosestCenterPlay(props:any) {
           <div style={{fontSize:11,color:ACCENT,fontWeight:1000,letterSpacing:1.1}}>IA VISION · {phaseLabel(phase)}</div>
           <div style={{fontSize:14,fontWeight:900,marginTop:6}}>{status}</div>
           {stability ? <div style={{marginTop:8,fontSize:11,color:stability.stable?"#8fffc2":"#ffbd93"}}>Stabilité caméra : {Math.round(stability.confidence*100)} % · variation globale {Math.round(stability.changedFraction*100)} %</div> : null}
-          {precisionReadiness ? <div style={{marginTop:6,fontSize:11,color:precisionReadiness.ok?"#8fffc2":"#ffbd93"}}>Précision image : {Math.round(precisionReadiness.confidence*100)} % · {precisionReadiness.mmPerPixel.toFixed(2)} mm/pixel · netteté {Math.round(precisionReadiness.sharpness*100)} % · niveau {precisionTier(precisionReadiness).toUpperCase()}</div> : null}
+          {precisionReadiness ? <div style={{marginTop:6,fontSize:11,color:precisionReadiness.ok?"#8fffc2":"#ffbd93"}}>Précision image : {Math.round(precisionReadiness.confidence*100)} % · {precisionReadiness.mmPerPixel.toFixed(2)} mm/pixel · netteté {Math.round(precisionReadiness.sharpness*100)} % · niveau {precisionTier(precisionReadiness).toUpperCase()} · profil {cameraPrefs.profile.toUpperCase()}</div> : null}
           {registrationInfo ? <div style={{marginTop:6,fontSize:11,color:(registrationInfo.confidence||0)>=.65?"#8fffc2":"#ffbd93"}}>Recalage multi-frame : {Math.round((registrationInfo.confidence||0)*100)} %{registrationInfo.maxShiftPx!=null?` · translation ${registrationInfo.maxShiftPx.toFixed(1)} px`:""}{registrationInfo.geometrySpreadPx!=null?` · dérive géométrique ${registrationInfo.geometrySpreadPx.toFixed(2)} px`:""}</div> : null}
           {!cal ? <div style={{marginTop:8,color:"#ffb4a9",fontSize:12}}>Calibration de cible non trouvée : le jeu refuse une mesure approximative.</div> : null}
         </section>

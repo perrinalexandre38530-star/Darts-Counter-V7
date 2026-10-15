@@ -144,3 +144,30 @@
 @media (prefers-reduced-motion:reduce){
   .cargo-load-unit.is-preview,.cargo-dart-slot.is-good,.cargo-dart-slot.is-bad,.cargo-dart-slot.is-special,.cargo-result-good,.cargo-result-danger{animation:none!important}
 }
+
+
+/* CARGO Stage 15 — dashboards gameplay propres aux 9 variantes */
+.cargo-variant-mini{position:relative;isolation:isolate;border-radius:10px;padding:4px 5px;background:linear-gradient(180deg,rgba(255,255,255,.028),rgba(0,0,0,.16));border:1px solid rgba(255,255,255,.055);overflow:hidden}
+.cargo-variant-mini:before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.24;background:linear-gradient(90deg,transparent,rgba(255,255,255,.025),transparent)}
+.cargo-variant-mini-head,.cargo-variant-mini-progress,.cargo-variant-mini-metrics{position:relative;z-index:1}
+.cargo-variant-exact_load{box-shadow:inset 0 0 18px rgba(86,201,255,.035)}
+.cargo-variant-fragile_cargo{box-shadow:inset 0 0 18px rgba(239,82,97,.045)}
+.cargo-variant-cargo_rush{box-shadow:inset 0 0 18px rgba(255,181,71,.045)}
+.cargo-variant-convoy{box-shadow:inset 0 0 18px rgba(217,140,255,.045)}
+.cargo-variant-long_haul{box-shadow:inset 0 0 18px rgba(86,201,255,.035)}
+.cargo-variant-parcel_delivery{box-shadow:inset 0 0 18px rgba(98,230,216,.04)}
+.cargo-variant-full_pallet{box-shadow:inset 0 0 18px rgba(246,194,86,.04)}
+.cargo-variant-free_load{box-shadow:inset 0 0 18px rgba(98,230,167,.04)}
+
+@media (max-width:640px){
+  .cargo-variant-mini{padding:3px 4px;border-radius:8px}
+  .cargo-variant-mini-head{grid-template-columns:20px minmax(0,1fr) auto!important;gap:4px!important}
+  .cargo-variant-mini-head>div:first-child{width:19px!important;height:19px!important;border-radius:6px!important;font-size:10px!important}
+  .cargo-variant-mini-progress{margin-top:3px!important;height:4px!important}
+  .cargo-variant-mini-metrics{margin-top:3px!important;gap:2px!important}
+  .cargo-variant-mini-metrics>div{padding:2px 2px!important;border-radius:6px!important}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .cargo-variant-mini-progress>div{transition:none!important}
+}

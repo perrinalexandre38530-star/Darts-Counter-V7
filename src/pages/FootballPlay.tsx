@@ -1,6 +1,6 @@
 // @ts-nocheck
 // =============================================================
-// DARTS FOOTBALL V11 — gameplay coach, terrain pédagogique et saisie contextuelle
+// DARTS FOOTBALL V12 — apprentissage en jouant, transitions et feedback contextuel
 // =============================================================
 
 import React from "react";
@@ -47,6 +47,7 @@ const GOLD = "#ffd36b";
 const SOFT = "#aeb8c9";
 const WHITE = "#f7fbff";
 const PLAYER_COLORS = [BLUE, RED, GREEN, GOLD, "#a78bfa", "#ff70c5", "#65e6d6", "#d7dde8"];
+const GUIDE_KEY = "mss:football:guide-v12";
 
 type UiDart = { v: number; mult: 1 | 2 | 3 };
 type Overlay = null | "stats" | "log" | "teams";
@@ -132,6 +133,102 @@ function actionFlow(action: FootballAction) {
   if (action === "classic_possession") return { steps: ["BULL", "BALLON", "DOUBLE", "BUT"], active: 0 };
   if (action === "classic_shot") return { steps: ["BALLON", "DOUBLE", "BUT", "VICTOIRE"], active: 1 };
   return { steps: ["POSSESSION", "PROGRESSER", "SURFACE", "TIR"], active: 1 };
+}
+
+function contextualCoachTip(state: FootballState, action: FootballAction, targets: number[]) {
+  const targetText = targets.length ? targets.slice(0, 3).join(" · ") : "";
+  if (action === "attack") {
+    if (state.ballPosition === 3) return `Depuis le milieu, sécurise ${targetText || "une cible"} en simple ou accélère avec un double.`;
+    if (state.ballPosition <= 2 || state.ballPosition >= 4) return `Tu approches de la surface : un double ou un triple peut créer immédiatement une occasion.`;
+    return `Construis proprement : une cible touchée suffit pour faire avancer le ballon.`;
+  }
+  if (action === "defense") return `Le simple repousse. Le double récupère le ballon. Le triple récupère ET lance la contre-attaque.`;
+  if (action === "shot") return `Pour éviter la parade du gardien, cherche le triple ou le DBULL. S/D donnent un tir cadré.`;
+  if (action === "goalkeeper") return `Une seule cible de parade touchée suffit : privilégie la zone la plus confortable.`;
+  if (action === "penalty") return `Pas besoin de forcer : une seule cible valide transforme le penalty.`;
+  if (action === "classic_possession") return `Le ballon se gagne au centre : BULL ou DBULL uniquement.`;
+  return `Tu as le ballon : un DOUBLE valide suffit pour marquer.`;
+}
+
+function uiDartIsUseful(dart: UiDart, action: FootballAction, targets: number[]) {
+  if (!dart || Number(dart.v) === 0) return false;
+  if (action === "classic_possession") return Number(dart.v) === 25;
+  if (action === "classic_shot") return Number(dart.v) === 25 ? dart.mult === 2 : dart.mult === 2;
+  if (Number(dart.v) === 25) return true;
+  return targets.includes(Number(dart.v));
+}
+
+function visitOutcomeMeta(visit: any) {
+  if (!visit) return { icon: "⚽", title: "COUP D’ENVOI", color: GREEN, detail: "Construis la première action." };
+  const types = new Set((visit.events || []).map((event: any) => String(event.type)));
+  if (types.has("goal") || types.has("penalty_goal")) return { icon: "⚽", title: "BUT !", color: GOLD, detail: (visit.events || []).map((event: any) => event.label).join(" · ") };
+  if (types.has("save")) return { icon: "🧤", title: "ARRÊT", color: GOLD, detail: (visit.events || []).map((event: any) => event.label).join(" · ") };
+  if (types.has("interception") || types.has("possession")) return { icon: "⚡", title: "BALLON RÉCUPÉRÉ", color: BLUE, detail: (visit.events || []).map((event: any) => event.label).join(" · ") };
+  if (types.has("shot_on_target")) return { icon: "🥅", title: "TIR CADRÉ", color: GOLD, detail: (visit.events || []).map((event: any) => event.label).join(" · ") };
+  if (types.has("counter")) return { icon: "↗", title: "CONTRE-ATTAQUE", color: GREEN, detail: (visit.events || []).map((event: any) => event.label).join(" · ") };
+  if (types.has("advance")) return { icon: "➜", title: "PROGRESSION", color: GREEN, detail: (visit.events || []).map((event: any) => event.label).join(" · ") };
+  if (types.has("clearance")) return { icon: "🛡️", title: "BALLON REPOUSSÉ", color: RED, detail: (visit.events || []).map((event: any) => event.label).join(" · ") };
+  if (types.has("turnover")) return { icon: "↔", title: "BALLON PERDU", color: RED, detail: (visit.events || []).map((event: any) => event.label).join(" · ") };
+  if (types.has("penalty_miss") || types.has("shot_miss") || types.has("failed") || types.has("miss")) return { icon: "✕", title: "ACTION MANQUÉE", color: RED, detail: (visit.events || []).map((event: any) => event.label).join(" · ") || "Aucune cible validée." };
+  return { icon: "✓", title: "VOLÉE TERMINÉE", color: SOFT, detail: (visit.events || []).map((event: any) => event.label).join(" · ") || "Action enregistrée." };
+}
+
+function FootballTransition({ state, onGuide }: { state: FootballState; onGuide: () => void }) {
+  const visit = state.visits[state.visits.length - 1];
+  const result = visitOutcomeMeta(visit);
+  const action = getFootballAction(state);
+  const nextMeta = actionMeta(action);
+  const nextColor = actionColor(action);
+  const possessionChanged = Boolean(visit && visit.possessionSideIdBefore !== visit.possessionSideIdAfter);
+
+  return <section className="football-transition football-glass">
+    <div className="football-transition__result">
+      <span className="football-transition__icon" style={{ color: result.color, borderColor: `${result.color}55`, background: `${result.color}12` }}>{result.icon}</span>
+      <div>
+        <small>VOLÉE PRÉCÉDENTE</small>
+        <strong style={{ color: result.color }}>{result.title}</strong>
+        <p>{result.detail}</p>
+      </div>
+    </div>
+    <div className="football-transition__arrow">→</div>
+    <div className="football-transition__next">
+      <div>
+        <small>MAINTENANT</small>
+        <strong style={{ color: nextColor }}>{nextMeta.title}</strong>
+        <p>{possessionChanged ? "La possession a changé. " : ""}{nextMeta.subtitle}</p>
+      </div>
+      <button type="button" className="football-transition__help" onClick={onGuide} aria-label="Revoir le guide de jeu">?</button>
+    </div>
+  </section>;
+}
+
+const GUIDE_STEPS = [
+  { icon: "🏟️", title: "LIS LE TERRAIN", text: "Le ballon, le sens de l’attaque et le but à viser sont toujours visibles. La zone éclairée est la position actuelle." },
+  { icon: "🧭", title: "SUIS LE PLAN DE JEU", text: "Le bandeau PLAN DE JEU te montre l’étape actuelle : possession, progression, surface, tir ou défense." },
+  { icon: "🎯", title: "VISE CE QUI EST INDIQUÉ", text: "TON ACTION affiche uniquement les secteurs utiles maintenant, avec l’effet du simple, du double et du triple." },
+  { icon: "✅", title: "VALIDE TA VOLÉE", text: "Les fléchettes utiles passent au vert avant validation. Après la volée, le résultat et la prochaine mission sont affichés côte à côte." },
+];
+
+function FootballGuide({ step, onStep, onClose }: { step: number; onStep: (value: number) => void; onClose: () => void }) {
+  const item = GUIDE_STEPS[Math.max(0, Math.min(GUIDE_STEPS.length - 1, step))];
+  return <div className="football-guide-backdrop" role="dialog" aria-modal="true" aria-label="Guide Darts Football">
+    <div className="football-guide">
+      <div className="football-guide__top">
+        <span>GUIDE EXPRESS · {step + 1}/{GUIDE_STEPS.length}</span>
+        <button type="button" onClick={onClose}>PASSER</button>
+      </div>
+      <div className="football-guide__icon">{item.icon}</div>
+      <h2>{item.title}</h2>
+      <p>{item.text}</p>
+      <div className="football-guide__dots">{GUIDE_STEPS.map((_, index) => <span key={index} className={index === step ? "is-active" : ""} />)}</div>
+      <div className="football-guide__actions">
+        <button type="button" disabled={step === 0} onClick={() => onStep(Math.max(0, step - 1))}>← RETOUR</button>
+        {step < GUIDE_STEPS.length - 1
+          ? <button type="button" className="is-primary" onClick={() => onStep(step + 1)}>SUIVANT →</button>
+          : <button type="button" className="is-primary" onClick={onClose}>⚽ JOUER</button>}
+      </div>
+    </div>
+  </div>;
 }
 
 function FootballFlow({ state }: { state: FootballState }) {
@@ -221,6 +318,7 @@ function MissionCard({ state }: { state: FootballState }) {
         const [head, ...tail] = String(effect).split("·");
         return <span key={effect} className="football-effect"><strong>{head.trim()}</strong><small>{tail.join("·").trim()}</small></span>;
       })}</div>
+      <div className="football-coach-tip"><span>💡 CONSEIL</span><strong>{contextualCoachTip(state, action, targets)}</strong></div>
       <div className="football-miss-hint"><span>✕ SI TU RATES</span><strong>{actionMissHint(state, action)}</strong></div>
     </> : null}
   </section>;
@@ -245,11 +343,21 @@ function CompactFootballPad({ currentThrow, multiplier, targets, targetColor, ac
   const rows = [[0, 1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12, 13], [14, 15, 16, 17, 18, 19, 20]];
   const targetSet = new Set(action === "classic_shot" || action === "classic_possession" ? [] : targets);
   const selectedEffect = actionMeta(action).effects[Math.max(0, Math.min(2, Number(multiplier || 1) - 1))] || "";
+  const usefulCount = currentThrow.filter((dart: UiDart) => uiDartIsUseful(dart, action, targets)).length;
 
   return <div className="football-compact-pad">
     <div className="football-pad-status">
       <div className="football-pad-notice" style={{ color: String(notice || "").includes("BUT") ? GOLD : SOFT }}>{notice || "Saisis jusqu’à trois fléchettes puis valide la volée."}</div>
-      <div className="football-pad-preview">{[0, 1, 2].map((index) => <span key={index} className="football-pad-preview-chip">{dartPreviewLabel(currentThrow[index])}</span>)}</div>
+      <div className="football-pad-preview">{[0, 1, 2].map((index) => {
+        const dart = currentThrow[index];
+        const useful = dart ? uiDartIsUseful(dart, action, targets) : false;
+        return <span key={index} className={`football-pad-preview-chip ${dart ? (useful ? "is-useful" : "is-off-target") : ""}`}>{dart ? <>{dartPreviewLabel(dart)} <b>{useful ? "✓" : "×"}</b></> : "—"}</span>;
+      })}</div>
+    </div>
+
+    <div className={`football-pad-live-feedback ${currentThrow.length && usefulCount === 0 ? "is-warning" : ""}`}>
+      <strong>{currentThrow.length ? `${usefulCount}/${currentThrow.length} FLÉCHETTE${currentThrow.length > 1 ? "S" : ""} UTILE${usefulCount > 1 ? "S" : ""}` : "PRÊT À JOUER"}</strong>
+      <span>{currentThrow.length ? `${3 - currentThrow.length} fléchette${3 - currentThrow.length > 1 ? "s" : ""} restante${3 - currentThrow.length > 1 ? "s" : ""}` : "Les secteurs marqués CIBLE sont ceux qui font avancer l’action."}</span>
     </div>
 
     <div className="football-pad-choice"><span>CHOIX ACTUEL</span><strong style={{ color: targetColor }}>{selectedEffect}</strong></div>
@@ -380,6 +488,11 @@ export default function FootballPlay(props: any) {
   const [overlay, setOverlay] = React.useState<Overlay>(null);
   const [showEnd, setShowEnd] = React.useState(initialState.phase === "finished");
   const [botThinking, setBotThinking] = React.useState(false);
+  const [guideStep, setGuideStep] = React.useState(0);
+  const [showGuide, setShowGuide] = React.useState(() => {
+    if (config.coachHints === false || resumeRecord) return false;
+    try { return localStorage.getItem(GUIDE_KEY) !== "1"; } catch { return false; }
+  });
   const matchIdRef = React.useRef(String(resumeRecord?.id || resumeRecord?.matchId || `football-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
   const autoSavedRef = React.useRef("");
   const botIds = React.useMemo(() => new Set((config.botIds || []).map(String)), [config.botIds]);
@@ -408,6 +521,12 @@ export default function FootballPlay(props: any) {
   const momentumLeader = momentum.leaderSideId
     ? state.sides.find((side: any) => String(side.id) === String(momentum.leaderSideId))
     : null;
+
+  function closeGuide() {
+    try { localStorage.setItem(GUIDE_KEY, "1"); } catch {}
+    setShowGuide(false);
+    setGuideStep(0);
+  }
 
   function backToConfig() {
     if (typeof go === "function") go("football_config", { config });
@@ -637,11 +756,7 @@ export default function FootballPlay(props: any) {
       <FootballField state={state} />
       <FootballFlow state={state} />
 
-      <section className="football-match-ticker football-glass" style={{ borderColor: `${currentActionColor}3d` }}>
-        <span className="football-match-ticker__pulse" style={{ background: currentActionColor, boxShadow: `0 0 10px ${currentActionColor}` }} />
-        <strong style={{ color: currentActionColor }}>{footballActionLabel(actionNow)}</strong>
-        <span>{lastEvent}</span>
-      </section>
+      <FootballTransition state={state} onGuide={() => { setGuideStep(0); setShowGuide(true); }} />
 
       <div className="football-command-row">
         <section className="football-player-card football-glass" style={{ borderColor: `${activeSide?.color || GREEN}55` }}>
@@ -711,6 +826,11 @@ export default function FootballPlay(props: any) {
         <div className="football-momentum__bar"><span className="is-left" style={{ width: `${momentum.leftPct}%`, background: state.sides[0]?.color || BLUE }} /><span className="is-right" style={{ width: `${momentum.rightPct}%`, background: state.sides[1]?.color || RED }} /></div>
         <div className="football-momentum__foot">DYNAMIQUE DES {Math.max(1, momentum.window)} DERNIÈRES VOLÉES</div>
       </section>
+      <div className="football-match-readout">
+        <div><span>POSSESSION</span><strong>{possession0}% · {possession1}%</strong></div>
+        <div><span>TIRS CADRÉS</span><strong>{sideStat(state, 0, "shotsOnTarget")} · {sideStat(state, 1, "shotsOnTarget")}</strong></div>
+        <div><span>LECTURE</span><strong>{momentumLeader ? `${momentumLeader.name} pousse` : "Match équilibré"}</strong></div>
+      </div>
       <div style={{ display: "grid", gap: 9 }}>{state.sides.map((side: any) => <div key={side.id} style={{ borderRadius: 16, padding: 10, border: `1px solid ${side.color}55`, background: `${side.color}0d` }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: side.color }}>{side.name}</strong><strong style={{ color: WHITE, fontSize: 18 }}>{state.scoreBySide[side.id] || 0}</strong></div>
         {(() => {
@@ -757,6 +877,8 @@ export default function FootballPlay(props: any) {
         </div>)}
       </div>
     </OverlayShell> : null}
+
+    {showGuide && state.phase !== "finished" ? <FootballGuide step={guideStep} onStep={setGuideStep} onClose={closeGuide} /> : null}
 
     {showEnd && state.phase === "finished" ? <FootballEnd
       state={state}

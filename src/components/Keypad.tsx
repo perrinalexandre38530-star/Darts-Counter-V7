@@ -101,6 +101,14 @@ type Props = {
 
   /** Grise les touches numériques 1..20 tant qu'un type de zone n'a pas été choisi. */
   disableSegmentNumbers?: boolean;
+  /** Met en évidence les secteurs actuellement utiles au gameplay. */
+  highlightSegmentNumbers?: number[] | null;
+  /** Met le bouton BULL en évidence lorsque le Bull est la cible. */
+  highlightBull?: boolean;
+  /** Indique le multiplicateur conseillé/exigé (D/T). */
+  guideMultiplier?: 1 | 2 | 3 | null;
+  /** Couleur du guide gameplay. */
+  guideColor?: string;
 
   /** Petit retour d'état intégré dans le keypad, sans bande séparée au-dessus */
   noticeSlot?: React.ReactNode;
@@ -236,10 +244,15 @@ const NUMBER_ROWS = [
 const KeypadNumberGrid = React.memo(function KeypadNumberGrid({
   onNumber,
   disableSegmentNumbers = false,
+  highlightSegmentNumbers = null,
+  highlightColor = "#ffe46b",
 }: {
   onNumber: (n: number) => void;
   disableSegmentNumbers?: boolean;
+  highlightSegmentNumbers?: number[] | null;
+  highlightColor?: string;
 }) {
+  const highlighted = new Set((highlightSegmentNumbers || []).map(Number));
   return (
     <div style={{ display: "grid", gap: 8 }}>
       {NUMBER_ROWS.map((row, idx) => (
@@ -257,7 +270,17 @@ const KeypadNumberGrid = React.memo(function KeypadNumberGrid({
             <button
               key={n}
               type="button"
-              style={{ ...cell, ...(blocked ? { opacity: .28, filter: "grayscale(1)", cursor: "not-allowed", boxShadow: "none" } : null) }}
+              style={{
+                ...cell,
+                ...(highlighted.has(Number(n)) && n !== 0 ? {
+                  borderColor: `${highlightColor}cc`,
+                  color: "#fff",
+                  background: `linear-gradient(180deg,${highlightColor}30,rgba(12,15,22,.96))`,
+                  boxShadow: `0 0 0 1px ${highlightColor}44 inset, 0 0 18px ${highlightColor}28`,
+                  transform: "translateY(-1px)",
+                } : null),
+                ...(blocked ? { opacity: .28, filter: "grayscale(1)", cursor: "not-allowed", boxShadow: "none" } : null)
+              }}
               onClick={() => { if (!blocked) onNumber(n); }}
               disabled={blocked}
               aria-disabled={blocked}
@@ -321,6 +344,10 @@ export default function Keypad({
   secondaryAction = null,
   footerAction = null,
   disableSegmentNumbers = false,
+  highlightSegmentNumbers = null,
+  highlightBull = false,
+  guideMultiplier = null,
+  guideColor = "#ffe46b",
   noticeSlot = null,
   validateAttention = false,
   validateLabel = "VALIDER",
@@ -615,7 +642,8 @@ export default function Keypad({
             type="button"
             style={{
               ...btnDouble,
-              borderColor: multiplier === 2 ? "#9bd7ff" : "rgba(255,255,255,.08)",
+              borderColor: guideMultiplier === 2 ? `${guideColor}dd` : multiplier === 2 ? "#9bd7ff" : "rgba(255,255,255,.08)",
+              boxShadow: guideMultiplier === 2 ? `0 0 18px ${guideColor}30` : undefined,
             }}
             aria-pressed={multiplier === 2}
             onClick={onDouble}
@@ -629,7 +657,8 @@ export default function Keypad({
             type="button"
             style={{
               ...btnTriple,
-              borderColor: multiplier === 3 ? "#ffd0ff" : "rgba(255,255,255,.08)",
+              borderColor: guideMultiplier === 3 ? `${guideColor}dd` : multiplier === 3 ? "#ffd0ff" : "rgba(255,255,255,.08)",
+              boxShadow: guideMultiplier === 3 ? `0 0 18px ${guideColor}30` : undefined,
             }}
             aria-pressed={multiplier === 3}
             onClick={onTriple}
@@ -705,7 +734,7 @@ export default function Keypad({
       {noticeSlot ? <div style={{ marginBottom: 8 }}>{noticeSlot}</div> : null}
 
       {/* Grille chiffres statique : mémoïsée pour rester instantanée sur mobile. */}
-      <KeypadNumberGrid onNumber={handleNumber} disableSegmentNumbers={disableSegmentNumbers} />
+      <KeypadNumberGrid onNumber={handleNumber} disableSegmentNumbers={disableSegmentNumbers} highlightSegmentNumbers={highlightSegmentNumbers} highlightColor={guideColor} />
 
       {/* BULL + (TOTAL ou SLOT) CENTRÉ + VALIDER */}
       <div
@@ -719,7 +748,15 @@ export default function Keypad({
       >
         <button
           type="button"
-          style={{ ...btnBull, width: "100%" }}
+          style={{
+            ...btnBull,
+            width: "100%",
+            ...(highlightBull ? {
+              borderColor: `${guideColor}dd`,
+              boxShadow: `0 0 18px ${guideColor}30, inset 0 0 0 1px ${guideColor}44`,
+              filter: "brightness(1.12)",
+            } : null),
+          }}
           onClick={onBull}
         >
           BULL

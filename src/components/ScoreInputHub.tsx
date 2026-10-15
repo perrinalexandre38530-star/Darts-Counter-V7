@@ -9,7 +9,7 @@
 
 import React from "react";
 import Keypad, { LightningMiniIcon, MicroMiniIcon } from "./Keypad";
-import DartboardClickable, { type DartboardHitDetail } from "./DartboardClickable";
+import DartboardClickable, { type DartboardGuideTarget, type DartboardHitDetail } from "./DartboardClickable";
 import ScorePresetsBar from "./ScorePresetsBar";
 import type { Dart as UIDart } from "../lib/types";
 import { SCORE_INPUT_LS_KEY, sanitizeScoreInputMethod, type ScoreInputMethod } from "../lib/scoreInput/types";
@@ -118,6 +118,13 @@ type Props = {
   keypadFooterAction?: ExternalKeypadFooterAction | null;
   /** Grise 1..20 tant que la zone/ring n'est pas choisie. */
   keypadDisableSegmentNumbers?: boolean;
+  /** Guide gameplay intégré au keypad/cible. */
+  guideSegmentNumbers?: number[] | null;
+  guideBull?: boolean;
+  guideMultiplier?: 1 | 2 | 3 | null;
+  guideColor?: string;
+  guideLabel?: string;
+  dartboardGuideTargets?: DartboardGuideTarget[] | null;
 
   /** Masquer les 3 badges d’aperçu (si affichés ailleurs) */
   hidePreview?: boolean;
@@ -228,6 +235,12 @@ export default function ScoreInputHub({
   keypadSecondaryAction = null,
   keypadFooterAction = null,
   keypadDisableSegmentNumbers = false,
+  guideSegmentNumbers = null,
+  guideBull = false,
+  guideMultiplier = null,
+  guideColor = "#ffe46b",
+  guideLabel = "",
+  dartboardGuideTargets = null,
   hidePreview,
   hideTotal,
   centerSlot,
@@ -472,6 +485,10 @@ export default function ScoreInputHub({
       secondaryAction={keypadSecondaryAction}
       footerAction={keypadFooterAction}
       disableSegmentNumbers={keypadDisableSegmentNumbers}
+      highlightSegmentNumbers={guideSegmentNumbers}
+      highlightBull={guideBull}
+      guideMultiplier={guideMultiplier}
+      guideColor={guideColor}
       noticeSlot={voiceNotice}
       validateAttention={voiceAwaitingManualValidate}
       validateLabel={validateLabel}
@@ -528,6 +545,9 @@ export default function ScoreInputHub({
           fitOuterRef={fitOuterRef}
           fitInnerRef={fitInnerRef}
           fitScale={fitScale}
+          guideTargets={dartboardGuideTargets || []}
+          guideLabel={guideLabel}
+          guideColor={guideColor}
         />
       ) : (
         <div
@@ -823,6 +843,9 @@ function DartboardInput({
   fitOuterRef,
   fitInnerRef,
   fitScale,
+  guideTargets,
+  guideLabel,
+  guideColor,
 }: {
   disabled: boolean;
   multiplier: 1 | 2 | 3;
@@ -843,6 +866,9 @@ function DartboardInput({
   fitOuterRef: React.MutableRefObject<HTMLDivElement | null>;
   fitInnerRef: React.MutableRefObject<HTMLDivElement | null>;
   fitScale: number;
+  guideTargets?: DartboardGuideTarget[];
+  guideLabel?: string;
+  guideColor?: string;
 }) {
   const totalPillStyle: React.CSSProperties = {
     minWidth: 56,
@@ -916,6 +942,9 @@ function DartboardInput({
             size={230}
             multiplier={multiplier}
             disabled={disabled}
+            guideTargets={guideTargets}
+            guideLabel={guideLabel}
+            guideColor={guideColor}
             onDetailedHit={(hit) => {
               lastDartboardDetailRef.current = hit;
               onDartboardDetailedHit?.(hit);

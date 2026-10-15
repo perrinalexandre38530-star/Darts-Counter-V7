@@ -302,15 +302,28 @@ export default function OrganizationsPage({ go, params }: Props) {
   React.useEffect(() => {
     void refreshMembershipSignals();
     if (!userId || !active?.id || typeof window === "undefined") return;
+
+    // Keep organization access/roles in sync across tabs and devices. This is
+    // especially important after ownership transfers, voluntary departures or
+    // admin-side removals: the workspace must stop showing stale owner/admin
+    // controls as soon as the server-side membership changes.
+    const refreshOrganizationAccess = async () => {
+      if (document.visibilityState !== "visible") return;
+      await Promise.allSettled([
+        refreshMembershipSignals(),
+        load(),
+      ]);
+    };
+
     const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void refreshMembershipSignals();
+      void refreshOrganizationAccess();
     }, 8000);
     const refresh = () => {
-      if (document.visibilityState === "visible") void refreshMembershipSignals();
+      void refreshOrganizationAccess();
     };
     const onMembersChanged = (event: Event) => {
       const detail = (event as CustomEvent<{ organizationId?: string }>).detail;
-      if (!detail?.organizationId || detail.organizationId === active.id) void refreshMembershipSignals();
+      if (!detail?.organizationId || detail.organizationId === active.id) void refreshOrganizationAccess();
     };
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", refresh);
@@ -321,7 +334,7 @@ export default function OrganizationsPage({ go, params }: Props) {
       document.removeEventListener("visibilitychange", refresh);
       window.removeEventListener("mss:organization-members-changed", onMembersChanged as EventListener);
     };
-  }, [userId, active?.id, refreshMembershipSignals]);
+  }, [userId, active?.id, refreshMembershipSignals, load]);
 
   React.useEffect(() => {
     let cancelled = false;

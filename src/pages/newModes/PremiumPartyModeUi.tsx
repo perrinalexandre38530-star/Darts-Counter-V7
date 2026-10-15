@@ -80,23 +80,6 @@ export function ActiveHero({ profile, name, accent, eyebrow, primary, primarySuf
   </section>;
 }
 
-export function AimAssistCard({ plan, accent = "#4fe4ff", compact = false }: any) {
-  if (!plan) return null;
-  const tone = String(plan.tone || "normal");
-  const toneAccent = tone === "danger" ? "#ff6a66" : tone === "success" ? "#69e68d" : tone === "gold" ? "#ffd34d" : accent;
-  return <section className={`party-mode__aim-assist${compact ? " is-compact" : ""} is-${tone}`} style={{ border: `1px solid ${toneAccent}55`, background: `${toneAccent}0d`, borderRadius: 14, padding: compact ? "8px 10px" : "10px 12px", display: "grid", gap: compact ? 5 : 7, minWidth: 0 }}>
-    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-      <span aria-hidden style={{ fontSize: compact ? 18 : 22 }}>{plan.icon || "🎯"}</span>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ color: toneAccent, fontSize: compact ? 8 : 9, fontWeight: 1100, letterSpacing: 1 }}>{plan.kicker || "AIDE CIBLE"}</div>
-        <div style={{ color: "#fff", fontSize: compact ? 11 : 13, fontWeight: 1100, lineHeight: 1.15 }}>{plan.title || "OBJECTIF"}</div>
-      </div>
-    </div>
-    {plan.detail ? <div style={{ color: SOFT, fontSize: compact ? 9 : 10, fontWeight: 800, lineHeight: 1.25 }}>{plan.detail}</div> : null}
-    {Array.isArray(plan.targets) && plan.targets.length ? <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>{plan.targets.slice(0, 5).map((target: any, index: number) => <span key={`${target}-${index}`} style={{ borderRadius: 999, padding: compact ? "3px 6px" : "4px 8px", border: `1px solid ${toneAccent}55`, background: `${toneAccent}16`, color: toneAccent, fontSize: compact ? 8 : 9, fontWeight: 1100 }}>{target}</span>)}</div> : null}
-  </section>;
-}
-
 export function KpiStrip({ items, accent, onClick, className = "party-mode__kpis" }: any) {
   const Tag: any = onClick ? "button" : "div";
   return <Tag type={onClick ? "button" : undefined} className={className} onClick={onClick} aria-label={onClick ? "Ouvrir toutes les statistiques" : undefined}>
@@ -310,6 +293,50 @@ export function PremiumEndPanel({ title, accent, winnerId, rankingRows, duration
       <button type="button" onClick={onGames} style={actionStyle("#fff")}>JEUX</button>
     </section>
   </div>;
+}
+
+
+export function AimAssistCard({ plan, accent = "#ffc04c", compact = false }: any) {
+  if (!plan) return null;
+  const tone = plan.tone || "normal";
+  return <div className={`party-mode-aim is-${tone}${compact ? " is-compact" : ""}`} style={{ ["--aim-accent" as any]: accent }}>
+    <div className="party-mode-aim__head"><span>{plan.icon || "🎯"}</span><div><small>{plan.kicker || "AIDE CIBLE"}</small><b>{plan.title || "VISE JUSTE"}</b></div></div>
+    {plan.detail ? <p>{plan.detail}</p> : null}
+    {Array.isArray(plan.targets) && plan.targets.length ? <div className="party-mode-aim__targets">{plan.targets.slice(0, 4).map((t: any, i: number) => <strong key={`${t}-${i}`}>{t}</strong>)}</div> : null}
+  </div>;
+}
+
+export function VisitRoadmap({ plan, currentLabels = [], maxDarts = 3, accent = "#ffc04c", title = "VOLÉE GUIDÉE", subtitle = "La route est une aide, pas une obligation." }: any) {
+  const cap = Math.max(1, Math.min(3, Number(maxDarts || 3)));
+  const targets = Array.isArray(plan?.targets) ? plan.targets : [];
+  const rows = Array.from({ length: cap }, (_, i) => ({
+    index: i,
+    target: targets[i] || (targets.length === 1 && targets[0] === "VALIDER" ? "VALIDER" : "LIBRE"),
+    actual: currentLabels?.[i] || null,
+  }));
+  const activeIndex = Math.min(currentLabels?.length || 0, cap - 1);
+  return <section className={`party-mode-roadmap is-${plan?.tone || "normal"}`} style={{ ["--roadmap-accent" as any]: accent }}>
+    <header><div><span>{plan?.icon || "🎯"}</span><div><small>{plan?.kicker || title}</small><b>{plan?.title || title}</b></div></div><em>{currentLabels?.length || 0}/{cap} DARTS</em></header>
+    <div className="party-mode-roadmap__steps">{rows.map((row: any) => {
+      const done = !!row.actual;
+      const active = !done && row.index === activeIndex;
+      return <div key={row.index} className={`${done ? "is-done " : ""}${active ? "is-active" : ""}`}>
+        <strong>{row.index + 1}</strong>
+        <div><small>CIBLE</small><b>{row.target}</b></div>
+        <span>{row.actual ? `✓ ${row.actual}` : active ? "À JOUER" : "ENSUITE"}</span>
+      </div>;
+    })}</div>
+    {subtitle ? <p>{subtitle}</p> : null}
+  </section>;
+}
+
+export function DecisionRail({ items = [], accent = "#ffc04c", title = "CHOISIS TON NIVEAU DE RISQUE" }: any) {
+  const rows = Array.isArray(items) ? items.filter(Boolean).slice(0, 4) : [];
+  if (!rows.length) return null;
+  return <section className="party-mode-decision-rail" style={{ ["--decision-accent" as any]: accent }}>
+    <header><small>LECTURE DE JEU</small><b>{title}</b></header>
+    <div>{rows.map((it: any, i: number) => <div key={`${it?.label || i}-${it?.value || ""}`} className={`is-${it?.tone || "normal"}`}><span>{it?.icon || (i === 0 ? "🛡️" : i === rows.length - 1 ? "🔥" : "⚡")}</span><div><small>{it?.label || `OPTION ${i + 1}`}</small><b>{it?.value ?? "—"}</b></div><em>{it?.detail || ""}</em></div>)}</div>
+  </section>;
 }
 
 export function percent(n: any, d: any) { const den = Number(d || 0); return den > 0 ? Math.round((Number(n || 0) / den) * 1000) / 10 : 0; }

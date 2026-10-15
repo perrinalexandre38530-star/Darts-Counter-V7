@@ -49,7 +49,7 @@ export function gameToUiDart(d:GameDart):UIDart{
 }
 export function dartLabel(d:GameDart){if(!d||d.bed==="MISS")return"MISS";if(d.bed==="IB")return"DBULL";if(d.bed==="OB")return"BULL";return`${d.bed}${d.number||""}`;}
 
-export function NewModeInput({ currentThrow, setCurrentThrow, multiplier, setMultiplier, onValidate, onCancel, preferredMethod, disabled=false, validateLabel="VALIDER", accent="#ffc04c", maxDarts=3, minDartsToValidate=1, fitMinScale=0.42, dartDecorator, onDartboardDetailedHit, keypadExtraMainButtons=null, keypadAuxActionOverride=null, keypadSecondaryAction=null, keypadFooterAction=null, keypadDisableSegmentNumbers=false, centerSlot, hidePreview=false, hideTotal=false }:any){
+export function NewModeInput({ currentThrow, setCurrentThrow, multiplier, setMultiplier, onValidate, onCancel, preferredMethod, disabled=false, validateLabel="VALIDER", accent="#ffc04c", maxDarts=3, minDartsToValidate=1, fitMinScale=0.42, dartDecorator, onDartboardDetailedHit, keypadExtraMainButtons=null, keypadAuxActionOverride=null, keypadSecondaryAction=null, keypadFooterAction=null, keypadDisableSegmentNumbers=false, centerSlot, hidePreview=false, hideTotal=false, guideSegmentNumbers=null, guideBull=false, guideMultiplier=null, guideColor, guideLabel="", dartboardGuideTargets=null }:any){
   const cap=Math.max(1,Math.min(3,Number(maxDarts)||3));
   const decorate=(d:UIDart)=>typeof dartDecorator==="function"?(dartDecorator(d)||d):d;
   const append=(d:UIDart)=>setCurrentThrow((prev:UIDart[])=>prev.length>=cap?prev:[...prev,decorate(d)]);
@@ -78,6 +78,12 @@ export function NewModeInput({ currentThrow, setCurrentThrow, multiplier, setMul
       keypadSecondaryAction={keypadSecondaryAction}
       keypadFooterAction={keypadFooterAction}
       keypadDisableSegmentNumbers={keypadDisableSegmentNumbers}
+      guideSegmentNumbers={guideSegmentNumbers}
+      guideBull={guideBull}
+      guideMultiplier={guideMultiplier}
+      guideColor={guideColor||accent}
+      guideLabel={guideLabel}
+      dartboardGuideTargets={dartboardGuideTargets}
       centerSlot={centerSlot}
       hidePreview={hidePreview}
       hideTotal={hideTotal}

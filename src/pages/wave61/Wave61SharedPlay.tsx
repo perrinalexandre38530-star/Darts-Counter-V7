@@ -98,6 +98,7 @@ import {
   JackpotPanel,
   MafiaPanel,
 } from "./wave61/Wave61PartyArcadePanels";
+import { MistigriPanel, RadinPanel } from "./wave61/Wave61FablePartyPanels";
 
 function familyRules(spec: any, preset: any) {
   const signature: Record<string, string> = {
@@ -173,18 +174,106 @@ function familyRules(spec: any, preset: any) {
 function Align4Board({ state, accent }: any) {
   const board = state?.special?.board;
   if (!Array.isArray(board)) return null;
+
+  const connectLength = Math.max(3, Math.min(5, Number(state?.config?.modeOptions?.connectLength || 4)));
+  const moves = Array.isArray(state?.special?.align4Moves) ? state.special.align4Moves : [];
+  const lastMove = moves[moves.length - 1];
+  const activePlayer = state?.players?.[state?.activePlayerIndex || 0];
+  const isTeams = state?.config?.participantMode === "teams";
+  const tokenForPlayer = (playerId: string) => isTeams ? String(state?.config?.teamByPlayer?.[playerId] || "A") : playerId;
+  const activeToken = activePlayer ? tokenForPlayer(activePlayer.id) : null;
+
+  const orderedTokens: string[] = [];
+  for (const p of state?.players || []) {
+    const token = tokenForPlayer(p.id);
+    if (token && !orderedTokens.includes(token)) orderedTokens.push(token);
+  }
+  for (const row of board) for (const token of row) if (token && !orderedTokens.includes(token)) orderedTokens.push(token);
+
+  const palette = [accent, "#ff5e78", "#ffd166", "#8a7dff", "#66e4ff", "#9be564", "#ff9f5c", "#e17cff"];
   const tokenColors: Record<string, string> = {};
-  let idx = 0;
-  for (const row of board) for (const token of row) if (token && !tokenColors[token]) tokenColors[token] = idx++ % 2 ? "#ff5e78" : accent;
-  return <div style={{ ...panelStyle(accent + "55"), padding: 10 }}>
-    <div style={{ color: accent, fontSize: 10, fontWeight: 1100, marginBottom: 7 }}>ALIGN {state?.config?.modeOptions?.connectLength || 4} · GRILLE 7 × 6</div>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4, maxWidth: 430, margin: "0 auto" }}>
-      {board.flatMap((row: any[], r: number) => row.map((token: string | null, c: number) => <div key={`${r}-${c}`} style={{ aspectRatio: "1", borderRadius: 999, border: "1px solid rgba(255,255,255,.13)", background: token ? tokenColors[token] || accent : "rgba(255,255,255,.045)", boxShadow: token ? `0 0 12px ${tokenColors[token] || accent}66` : "inset 0 2px 8px rgba(0,0,0,.4)" }} />))}
+  orderedTokens.forEach((token, idx) => { tokenColors[token] = palette[idx % palette.length]; });
+
+  const tokenLabel = (token: string) => {
+    if (isTeams) return `ÉQUIPE ${token}`;
+    const player = (state?.players || []).find((p: any) => p.id === token);
+    return player ? playerName(player) : "JOUEUR";
+  };
+
+  const countToken = (token: string) => board.reduce((sum: number, row: any[]) => sum + row.filter((cell: string | null) => cell === token).length, 0);
+  const columnHeights = Array.from({ length: 7 }, (_, c) => board.reduce((n: number, row: any[]) => n + (row[c] ? 1 : 0), 0));
+
+  const longestRun = (token: string) => {
+    const H = board.length, W = board[0]?.length || 0;
+    let best = 0;
+    for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) if (board[r][c] === token) {
+      for (const [dr, dc] of [[1,0],[0,1],[1,1],[1,-1]]) {
+        let n = 1;
+        while (r + dr * n >= 0 && r + dr * n < H && c + dc * n >= 0 && c + dc * n < W && board[r + dr * n][c + dc * n] === token) n++;
+        best = Math.max(best, n);
+      }
+    }
+    return best;
+  };
+
+  const leader = orderedTokens.map((token) => ({ token, run: longestRun(token), discs: countToken(token) }))
+    .sort((a, b) => b.run - a.run || b.discs - a.discs)[0];
+  const phaseFinished = state?.phase === "finished";
+  const totalDiscs = moves.length;
+  const boardFill = Math.min(100, Math.round((totalDiscs / 42) * 100));
+  const bullColumn = Math.max(1, Math.min(7, Number(state?.config?.modeOptions?.bullColumn || 7)));
+
+  return <div style={{ ...panelStyle(accent + "55"), padding: 10, display: "grid", gap: 9 }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      <div>
+        <div style={{ color: accent, fontSize: 10, fontWeight: 1100 }}>🔴 ALIGN {connectLength} · PLATEAU EN DIRECT</div>
+        <div style={{ color: SOFT, fontSize: 8.8, marginTop: 2 }}>Chaque impact choisit une colonne 1–7 · BULL = colonne {bullColumn}</div>
+      </div>
+      <div style={{ borderRadius: 999, padding: "5px 8px", background: phaseFinished ? `${accent}22` : "rgba(255,255,255,.045)", border: `1px solid ${phaseFinished ? accent + "77" : "rgba(255,255,255,.09)"}`, color: phaseFinished ? accent : "#e7ebf4", fontSize: 8.6, fontWeight: 1100, whiteSpace: "nowrap" }}>{phaseFinished ? "ALIGNEMENT GAGNANT" : `${totalDiscs}/42 JETONS`}</div>
     </div>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4, marginTop: 5, color: SOFT, fontSize: 8.5, textAlign: "center" }}>{[1,2,3,4,5,6,7].map((n)=><span key={n}>COL {n}</span>)}</div>
+
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 4, maxWidth: 460, width: "100%", margin: "0 auto", padding: 7, borderRadius: 14, background: "rgba(22,58,122,.35)", border: "1px solid rgba(90,150,255,.18)", boxShadow: "inset 0 0 30px rgba(0,0,0,.26)" }}>
+      {board.flatMap((row: any[], r: number) => row.map((token: string | null, c: number) => {
+        const isLast = !!lastMove && Number(lastMove.col) === c + 1 && Number(lastMove.row) === r + 1;
+        const color = token ? tokenColors[token] || accent : "transparent";
+        return <div key={`${r}-${c}`} title={token ? tokenLabel(token) : `Colonne ${c + 1}`} style={{ aspectRatio: "1", borderRadius: 999, border: `2px solid ${isLast ? "#fff" : token ? color + "aa" : "rgba(255,255,255,.12)"}`, background: token ? color : "rgba(2,8,20,.62)", boxShadow: isLast ? `0 0 0 2px ${color}66, 0 0 18px ${color}` : token ? `0 3px 10px ${color}55` : "inset 0 2px 8px rgba(0,0,0,.65)", transform: isLast ? "scale(1.05)" : "none", transition: "transform .16s ease" }} />;
+      }))}
+      {Array.from({ length: 7 }, (_, i) => i + 1).map((n) => <div key={`col-${n}`} style={{ textAlign: "center", color: columnHeights[n - 1] >= 6 ? "#ff8e8e" : n === bullColumn ? "#ffd36a" : SOFT, fontSize: 8.2, fontWeight: 1000 }}>{columnHeights[n - 1] >= 6 ? "PLEIN" : n === bullColumn ? `BULL·${n}` : `COL ${n}`}</div>)}
+    </div>
+
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 6 }}>
+      {orderedTokens.map((token) => {
+        const color = tokenColors[token] || accent;
+        const run = longestRun(token);
+        const active = token === activeToken && !phaseFinished;
+        return <div key={token} style={{ padding: "7px 8px", borderRadius: 11, background: active ? `${color}14` : "rgba(255,255,255,.035)", border: `1px solid ${active ? color + "66" : "rgba(255,255,255,.08)"}` }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center" }}>
+            <span style={{ color: "#fff", fontSize: 8.8, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>● {tokenLabel(token)}</span>
+            <span style={{ color, fontSize: 8.4, fontWeight: 1100 }}>{active ? "À TOI" : `${countToken(token)} J`}</span>
+          </div>
+          <div style={{ marginTop: 5, height: 5, borderRadius: 999, background: "rgba(255,255,255,.07)", overflow: "hidden" }}><div style={{ width: `${Math.min(100, (run / connectLength) * 100)}%`, height: "100%", borderRadius: 999, background: color }} /></div>
+          <div style={{ marginTop: 3, color: run >= connectLength - 1 && !phaseFinished ? "#ffd36a" : SOFT, fontSize: 8.1 }}>{run >= connectLength ? "ALIGNEMENT COMPLET" : `Meilleure série : ${run}/${connectLength}`}</div>
+        </div>;
+      })}
+    </div>
+
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+      <div style={{ padding: "7px 8px", borderRadius: 10, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)" }}>
+        <div style={{ color: SOFT, fontSize: 8 }}>DERNIER COUP</div>
+        <div style={{ color: lastMove ? tokenColors[lastMove.token] || accent : "#fff", fontSize: 9.4, fontWeight: 1050, marginTop: 2 }}>{lastMove ? `${tokenLabel(lastMove.token)} · COLONNE ${lastMove.col}` : "Aucun jeton posé"}</div>
+      </div>
+      <div style={{ padding: "7px 8px", borderRadius: 10, background: leader?.run >= connectLength - 1 && !phaseFinished ? "rgba(255,190,80,.08)" : "rgba(255,255,255,.03)", border: `1px solid ${leader?.run >= connectLength - 1 && !phaseFinished ? "rgba(255,190,80,.25)" : "rgba(255,255,255,.07)"}` }}>
+        <div style={{ color: SOFT, fontSize: 8 }}>MENACE ACTUELLE</div>
+        <div style={{ color: leader ? tokenColors[leader.token] || accent : "#fff", fontSize: 9.4, fontWeight: 1050, marginTop: 2 }}>{leader ? `${tokenLabel(leader.token)} · ${leader.run}/${connectLength}` : "Plateau vide"}</div>
+      </div>
+    </div>
+
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ flex: 1, height: 6, borderRadius: 999, background: "rgba(255,255,255,.07)", overflow: "hidden" }}><div style={{ width: `${boardFill}%`, height: "100%", background: accent, borderRadius: 999 }} /></div>
+      <div style={{ color: SOFT, fontSize: 8.2, whiteSpace: "nowrap" }}>{boardFill}% rempli</div>
+    </div>
   </div>;
 }
-
 function MineBoard({ state, accent }: any) {
   const revealed = new Set((state?.special?.revealed || []).map(Number));
   const exploded = new Set((state?.special?.exploded || []).map(Number));
@@ -365,13 +454,24 @@ function GreenRedPanel({ state, accent }: any) {
 
 function SniperPanel({ state, accent }: any) {
   const p=state.players[state.activePlayerIndex]; const contracts=state.special?.sniperContracts||[]; const step=Number(state.special?.sniperStepByPlayer?.[p?.id]||0);
+  const goal=Math.min(contracts.length,Number(state.config.goal||contracts.length)); const current=contracts[Math.min(step,Math.max(0,contracts.length-1))];
   const label=(c:any)=>!c?"—":c.bed==="IB"?"DBULL":c.bed==="OB"?"BULL":`${c.bed}${c.number||""}`;
-  return <div style={{ ...panelStyle(accent + "55"), padding: 10 }}><div style={{display:"flex",justifyContent:"space-between",gap:8}}><b style={{color:accent,fontSize:10}}>SNIPER · CONTRATS</b><span style={{color:SOFT,fontSize:9}}>MISSION {Math.min(step+1,contracts.length)}/{Math.min(contracts.length,state.config.goal||contracts.length)}</span></div><div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:4,marginTop:8}}>{contracts.slice(0,Math.min(12,state.config.goal||12)).map((c:any,i:number)=><div key={i} style={{minHeight:38,borderRadius:8,display:"grid",placeItems:"center",background:i<step?`${accent}14`:i===step?`${accent}25`:"rgba(255,255,255,.025)",border:`1px solid ${i===step?accent+"88":"rgba(255,255,255,.07)"}`,color:i<=step?"#fff":"#667080",fontSize:9,fontWeight:1100}}>{i<step?"✓":label(c)}</div>)}</div></div>;
+  const history=(state.special?.sniperHistory||[]).filter((h:any)=>h.playerId===p?.id); const completed=Math.min(step,goal); const pct=goal?Math.round(completed/goal*100):0;
+  return <div style={{ ...panelStyle(accent + "55"), padding: 10, display:"grid", gap:8 }}>
+    <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><div><b style={{color:accent,fontSize:10}}>🎯 SNIPER · TABLEAU DES CONTRATS</b><div style={{color:SOFT,fontSize:8.5}}>Précision exacte requise selon la difficulté · T/DBULL = HEADSHOT</div></div><span style={{color:accent,fontSize:10,fontWeight:1100}}>{completed}/{goal}</span></div>
+    <div style={{display:"grid",gridTemplateColumns:"1.2fr .8fr",gap:7}}><div style={{borderRadius:13,padding:9,background:`${accent}10`,border:`1px solid ${accent}55`,display:"grid",gap:4}}><span style={{color:SOFT,fontSize:8,fontWeight:900}}>CONTRAT ACTIF</span><b style={{fontSize:24,color:"#fff"}}>{step>=goal?"✅ MISSION TERMINÉE":label(current)}</b><span style={{color:accent,fontSize:9,fontWeight:1000}}>Progression {pct}%</span></div><div style={{borderRadius:13,padding:9,background:"rgba(255,255,255,.025)",border:"1px solid rgba(255,255,255,.08)",display:"grid",gap:4}}><span style={{color:SOFT,fontSize:8,fontWeight:900}}>DERNIÈRE SÉRIE</span><b style={{fontSize:17}}>{history.length?`+${Number(history[history.length-1]?.completed||0)} contrat(s)`:"—"}</b><span style={{color:SOFT,fontSize:8.5}}>Score {Math.round(Number(state.scores?.[p?.id]||0))}</span></div></div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:4}}>{contracts.slice(0,goal).map((c:any,i:number)=><div key={i} style={{minHeight:42,borderRadius:8,display:"grid",placeItems:"center",background:i<step?`${accent}16`:i===step?`${accent}2b`:"rgba(255,255,255,.025)",border:`1px solid ${i===step?accent+"aa":i<step?accent+"44":"rgba(255,255,255,.07)"}`,color:i<=step?"#fff":"#667080",fontSize:9,fontWeight:1100,boxShadow:i===step?`0 0 15px ${accent}22`:"none"}}>{i<step?"✓ ":""}{label(c)}</div>)}</div>
+  </div>;
 }
 
 function LuciolePanel({ state, accent, reveal }: any) {
-  const p=state.players[state.activePlayerIndex]; const step=Number(state.special?.lucioleStepByPlayer?.[p?.id]||0); const target=wave61LucioleTarget(state,p?.id);
-  return <div style={{ ...panelStyle(accent + "55"), padding: 10, textAlign:"center" }}><div style={{color:accent,fontSize:10,fontWeight:1100}}>LUCIOLE · FLASH MÉMOIRE</div><div style={{marginTop:8,minHeight:72,borderRadius:16,display:"grid",placeItems:"center",border:`1px solid ${reveal?accent+"aa":"rgba(255,255,255,.08)"}`,background:reveal?`radial-gradient(circle,${accent}33,${accent}09 52%,transparent 70%)`:"rgba(255,255,255,.025)",boxShadow:reveal?`0 0 28px ${accent}44`:"none",fontSize:reveal?34:28,fontWeight:1200,color:reveal?"#fff":"#4c5360"}}>{reveal?target:"✦"}</div><div style={{marginTop:6,color:SOFT,fontSize:9.3}}>La luciole s'affiche 1,6 s au changement de tour · progression {step}/{state.config.goal}</div></div>;
+  const p=state.players[state.activePlayerIndex]; const step=Number(state.special?.lucioleStepByPlayer?.[p?.id]||0); const target=wave61LucioleTarget(state,p?.id); const goal=Number(state.config.goal||10);
+  const wrongPenalty=Number(state.config?.modeOptions?.wrongPenalty??(state.config.difficulty==="hard"?1:0)); const hist=(state.special?.lucioleHistory||[]).filter((h:any)=>h.playerId===p?.id).slice(-5);
+  return <div style={{ ...panelStyle(accent + "55"), padding: 10, display:"grid",gap:8 }}>
+    <div style={{display:"flex",justifyContent:"space-between",gap:8}}><b style={{color:accent,fontSize:10}}>✨ LUCIOLE · MÉMOIRE LUMINEUSE</b><span style={{color:SOFT,fontSize:9}}>{step}/{goal} CAPTURÉES</span></div>
+    <div style={{display:"grid",gridTemplateColumns:"1.25fr .75fr",gap:7}}><div style={{minHeight:86,borderRadius:16,display:"grid",placeItems:"center",border:`1px solid ${reveal?accent+"bb":"rgba(255,255,255,.08)"}`,background:reveal?`radial-gradient(circle,${accent}3d,${accent}0b 55%,transparent 73%)`:"rgba(255,255,255,.02)",boxShadow:reveal?`0 0 34px ${accent}44`:"inset 0 0 30px rgba(0,0,0,.3)",fontSize:reveal?38:26,fontWeight:1200,color:reveal?"#fff":"#4c5360"}}>{reveal?target:"✦"}</div><div style={{borderRadius:13,padding:9,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.025)",display:"grid",gap:5}}><span style={{color:SOFT,fontSize:8,fontWeight:900}}>RÈGLE MÉMOIRE</span><b style={{fontSize:11,color:reveal?accent:"#fff"}}>{reveal?"MÉMORISE LE SECTEUR":"LUCIOLE ÉTEINTE"}</b><span style={{color:SOFT,fontSize:8.4}}>Erreur : {wrongPenalty?`−${wrongPenalty} étape(s)`:"pas de recul"}</span></div></div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:4}}>{Array.from({length:5}).map((_,i)=>{const h=hist[i];return <div key={i} style={{borderRadius:8,minHeight:30,display:"grid",placeItems:"center",border:"1px solid rgba(255,255,255,.07)",background:h?(h.hit?`${accent}16`:"rgba(255,90,90,.08)"):"rgba(255,255,255,.02)",color:h?(h.hit?accent:"#ff8585"):SOFT,fontSize:8.5,fontWeight:1000}}>{h?`${h.hit?"✓":"×"} ${h.expected}`:"·"}</div>})}</div>
+  </div>;
 }
 
 function GoldenDartPanel({ state, accent }: any) {
@@ -596,6 +696,8 @@ export default function Wave61SharedPlay(props: any) {
       {spec.id === "iceberg" ? <IcebergPanel state={state} accent={accent} /> : null}
       {spec.id === "jurassic_dart" ? <JurassicPanel state={state} accent={accent} /> : null}
       {spec.id === "apocalypse" ? <ApocalypsePanel state={state} accent={accent} /> : null}
+      {spec.id === "mistigri" ? <MistigriPanel state={state} accent={accent} /> : null}
+      {spec.id === "radin" ? <RadinPanel state={state} accent={accent} /> : null}
       {spec.id === "knockback" ? <KnockbackPanel state={state} accent={accent} /> : null}
       {spec.id === "spartacus" ? <SpartacusPanel state={state} accent={accent} /> : null}
       {spec.id === "cosmo_knights" ? <CosmoKnightsPanel state={state} accent={accent} /> : null}

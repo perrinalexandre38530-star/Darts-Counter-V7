@@ -35,6 +35,13 @@ function DartSlot({dart,index,state="pending",meta}:any){
   return <div className={`gv-dart is-${state}`}><small>F{index+1}</small><b>{dartText(dart)}</b><span>{dart?dartValue(dart):"—"}</span>{meta?<em>{meta}</em>:null}</div>;
 }
 
+
+export function ModeInputGuideBadge({accent="#ffc04c",label="CIBLE",value="—",sub}:any){
+  return <div className="mode-input-guide" style={{["--mig-accent" as any]:accent}}>
+    <small>{label}</small><b>{value}</b>{sub?<span>{sub}</span>:null}
+  </div>;
+}
+
 export function FiftyOneByFiveGameplayVisual({accent,currentThrow=[],rawTotal=0,dividedScore=0,valid=false,bust=false,activeScore=0,projected=0,target=51,requireThreeScoringDarts=true}:any){
   const darts=(currentThrow||[]).slice(0,3),complete=darts.length>=3||!requireThreeScoringDarts;
   const remain=Math.max(0,Number(target)-Number(activeScore));

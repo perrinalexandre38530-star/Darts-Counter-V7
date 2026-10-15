@@ -188,7 +188,7 @@ function ShipStrip({ owner, reveal = false, color = BLUE }: any) {
   })}</div>;
 }
 
-function OceanGrid({ state, owner, own = false, onFocus, placement = false, placementShip, onPlace, sonarScan = null, recentCells = [], shipColor = BLUE, compact = false, heatmap = null, plannedCells = {} }: any) {
+function OceanGrid({ state, owner, own = false, onFocus, placement = false, placementShip, onPlace, validPlacementStarts = null, sonarScan = null, recentCells = [], shipColor = BLUE, compact = false, heatmap = null, plannedCells = {} }: any) {
   const difficulty = state.config.difficulty;
   return <div className="ocean-control-grid">{Array.from({ length: 20 }, (_, cell) => {
     const number = state.gridNumbers[cell];
@@ -204,8 +204,10 @@ function OceanGrid({ state, owner, own = false, onFocus, placement = false, plac
     const heatMax = Math.max(1, Number(heatmap?.max || 1));
     const heat = Math.min(1, heatValue / heatMax);
     const plannedOrder = Math.max(0, Number(plannedCells?.[String(cell)] || 0));
-    const className = ["ocean-control-cell", compact ? "is-compact" : "", status ? `is-${status}` : "", focused ? "is-focused" : "", ship ? "has-ship" : "", placement ? "is-placement" : "", scanned ? "is-sonar-scan" : "", scanCenter ? "is-sonar-center" : "", recent ? "is-recent-impact" : "", heatValue > 0 ? "has-heat" : "", plannedOrder ? "is-planned" : ""].filter(Boolean).join(" ");
-    return <button key={cell} type="button" className={className} style={{ ["--heat" as any]: heat, ["--ship-color" as any]: shipColor }} onClick={() => placement ? onPlace?.(cell) : onFocus?.(number)} aria-label={`Zone ${number}${status ? ` · ${status}` : ""}`}>
+    const hasPlacementGuide = placement && placementShip && Array.isArray(validPlacementStarts);
+    const placementValid = !hasPlacementGuide || validPlacementStarts.includes(cell);
+    const className = ["ocean-control-cell", compact ? "is-compact" : "", status ? `is-${status}` : "", focused ? "is-focused" : "", ship ? "has-ship" : "", placement ? "is-placement" : "", hasPlacementGuide ? (placementValid ? "is-placement-valid" : "is-placement-invalid") : "", scanned ? "is-sonar-scan" : "", scanCenter ? "is-sonar-center" : "", recent ? "is-recent-impact" : "", heatValue > 0 ? "has-heat" : "", plannedOrder ? "is-planned" : ""].filter(Boolean).join(" ");
+    return <button key={cell} type="button" className={className} disabled={Boolean(hasPlacementGuide && !placementValid)} style={{ ["--heat" as any]: heat, ["--ship-color" as any]: shipColor }} onClick={() => placement ? onPlace?.(cell) : onFocus?.(number)} aria-label={`Zone ${number}${status ? ` · ${status}` : ""}${placement && placementValid ? " · départ possible" : ""}`}>
       <span className="ocean-cell-water" aria-hidden="true" />
       <span className="ocean-cell-number">{showNumber ? number : "•"}</span>
       {focused ? <span className="ocean-cell-focus-ring" aria-hidden="true" /> : null}
@@ -376,17 +378,117 @@ function OverlayShell({ title, subtitle, color, onClose, children }: any) {
   </div>;
 }
 
-function PlacementScreen({ state, profilesById, ready, onReady, orientation, setOrientation, onPlace, onReset, onAuto }: any) {
+function oceanPlacementCandidateCells(start: number, length: number, orientation: OceanControlOrientation): number[] {
+  const row = Math.floor(start / 5);
+  const col = start % 5;
+  if (orientation === "horizontal") {
+    if (col + length > 5) return [];
+    return Array.from({ length }, (_, index) => start + index);
+  }
+  if (row + length > 4) return [];
+  return Array.from({ length }, (_, index) => start + index * 5);
+}
+
+function oceanPlacementValidStarts(owner: any, ship: any, orientation: OceanControlOrientation): number[] {
+  if (!owner || !ship) return [];
+  const occupied = new Set<number>((owner.ships || []).flatMap((row: any) => row.cells || []));
+  return Array.from({ length: 20 }, (_, start) => start).filter((start) => {
+    const cells = oceanPlacementCandidateCells(start, Number(ship.length || 0), orientation);
+    return cells.length === Number(ship.length || 0) && cells.every((cell) => !occupied.has(cell));
+  });
+}
+
+function PlacementScreen({ state, profilesById, ready, onReady, orientation, setOrientation, onPlace, onReset, onAuto, notice }: any) {
   const owner = getOceanPlacementOwner(state);
   const ship = getOceanNextUnplacedShip(state);
   const memberProfiles = (owner?.memberIds || []).map((id: string) => profilesById.get(String(id))).filter(Boolean);
   if (!owner) return null;
-  if (!ready) return <div style={{ minHeight: "calc(100dvh - 76px)", display: "grid", placeItems: "center", padding: 16, boxSizing: "border-box" }}><div style={{ width: "min(520px,100%)", textAlign: "center", borderRadius: 24, padding: 20, background: "linear-gradient(180deg,rgba(48,185,255,.16),rgba(0,0,0,.44))", border: `1px solid ${BLUE}66` }}><div style={{ fontSize: 42 }}>🔒</div><div style={{ marginTop: 8, color: CYAN, fontWeight: 1150, fontSize: 18 }}>{owner.name}</div><div style={{ marginTop: 7, color: SOFT, fontSize: 10, lineHeight: 1.45 }}>Passe l’appareil au commandant de cette flotte. Les autres joueurs ne doivent pas regarder le placement.</div><div style={{ marginTop: 12, display: "flex", justifyContent: "center", gap: 6 }}>{memberProfiles.map((profile: any) => <ProfileAvatar key={profile.id} profile={profile} size={42} />)}</div><button onClick={onReady} style={{ marginTop: 16, width: "100%", minHeight: 48, borderRadius: 15, border: `1px solid ${GREEN}88`, background: `linear-gradient(180deg,${GREEN},#239d70)`, color: "#03130d", fontWeight: 1200 }}>AFFICHER MA GRILLE</button></div></div>;
-  return <main style={{ width: "min(760px,100%)", margin: "0 auto", padding: "8px 9px 16px", boxSizing: "border-box" }}>
-    <section style={{ ...panel(`${BLUE}55`), padding: 12, textAlign: "center" }}><div style={{ color: CYAN, fontSize: 11, fontWeight: 1100 }}>PLACEMENT SECRET · {owner.name}</div><div style={{ marginTop: 5, color: "#fff", fontSize: 17, fontWeight: 1150 }}>{ship ? `${ship.icon} ${ship.name} · ${ship.length} zones` : "Flotte prête"}</div><div style={{ marginTop: 4, color: SOFT, fontSize: 8.5 }}>Choisis la première case du navire puis son orientation.</div></section>
-    <section style={{ ...panel(), padding: 8, marginTop: 8 }}><OceanGrid state={state} owner={owner} own placement placementShip={ship} onPlace={onPlace} /></section>
-    <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}><button onClick={() => setOrientation("horizontal")} style={{ minHeight: 42, borderRadius: 13, border: `1px solid ${orientation === "horizontal" ? CYAN : "rgba(255,255,255,.10)"}`, background: orientation === "horizontal" ? `${CYAN}18` : "rgba(255,255,255,.03)", color: orientation === "horizontal" ? CYAN : SOFT, fontWeight: 1050 }}>↔ HORIZONTAL</button><button onClick={() => setOrientation("vertical")} style={{ minHeight: 42, borderRadius: 13, border: `1px solid ${orientation === "vertical" ? CYAN : "rgba(255,255,255,.10)"}`, background: orientation === "vertical" ? `${CYAN}18` : "rgba(255,255,255,.03)", color: orientation === "vertical" ? CYAN : SOFT, fontWeight: 1050 }}>↕ VERTICAL</button></div>
-    <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}><button onClick={onReset} style={{ minHeight: 40, borderRadius: 13, border: `1px solid ${RED}55`, background: `${RED}10`, color: RED, fontWeight: 1000 }}>RECOMMENCER</button><button onClick={onAuto} style={{ minHeight: 40, borderRadius: 13, border: `1px solid ${GOLD}66`, background: `${GOLD}12`, color: GOLD, fontWeight: 1000 }}>PLACEMENT AUTO</button></div>
+
+  const ships = owner.ships || [];
+  const placedShips = ships.filter((row: any) => Array.isArray(row.cells) && row.cells.length === Number(row.length || 0)).length;
+  const totalShips = Math.max(1, ships.length);
+  const placementPercent = Math.round((placedShips / totalShips) * 100);
+  const validStarts = oceanPlacementValidStarts(owner, ship, orientation);
+  const shipMeta = ship ? shipVisualMeta(ship) : null;
+
+  if (!ready) return <main className="ocean-placement-privacy">
+    <section className="ocean-placement-privacy-card">
+      <div className="ocean-placement-lock"><span>🔒</span><i /></div>
+      <span className="ocean-placement-eyebrow">DÉPLOIEMENT SECRET</span>
+      <strong>{owner.name}</strong>
+      <p>Passe l’appareil au commandant de cette flotte. Les adversaires ne doivent pas voir la position des navires.</p>
+      <div className="ocean-placement-privacy-steps">
+        <div><b>1</b><span>Passe l’appareil</span></div>
+        <div><b>2</b><span>Cache l’écran</span></div>
+        <div><b>3</b><span>Déverrouille la grille</span></div>
+      </div>
+      <div className="ocean-placement-members">{memberProfiles.map((profile: any) => <ProfileAvatar key={profile.id} profile={profile} size={44} />)}</div>
+      <button type="button" onClick={onReady}>JE SUIS PRÊT · AFFICHER MA GRILLE</button>
+    </section>
+  </main>;
+
+  return <main className="ocean-placement-page">
+    <section className="ocean-placement-command">
+      <div className="ocean-placement-command__head">
+        <div><span>⚓ PLACEMENT SECRET</span><strong>{owner.name}</strong><small>Pose toute ta flotte. Les cases lumineuses sont des départs valides.</small></div>
+        <b>{placedShips}/{totalShips}</b>
+      </div>
+      <div className="ocean-placement-progress"><i style={{ width: `${placementPercent}%` }} /></div>
+      <div className="ocean-placement-flow">
+        <span className="is-done"><b>1</b> ORIENTATION</span>
+        <span className={ship ? "is-active" : "is-done"}><b>2</b> CASE DE DÉPART</span>
+        <span className={placedShips === totalShips ? "is-done" : ""}><b>3</b> FLOTTE PRÊTE</span>
+      </div>
+    </section>
+
+    <div className="ocean-placement-layout">
+      <section className="ocean-placement-board-card">
+        <div className="ocean-placement-board-head">
+          <div><span>GRILLE DE DÉPLOIEMENT</span><strong>{ship ? `Place ${ship.name}` : "Flotte prête"}</strong></div>
+          <em>{validStarts.length} départ{validStarts.length > 1 ? "s" : ""} possible{validStarts.length > 1 ? "s" : ""}</em>
+        </div>
+        <div className="ocean-placement-board-tip"><b>TOUCHE UNE CASE LUMINEUSE</b><span>Le navire partira de cette case dans le sens {orientation === "horizontal" ? "horizontal →" : "vertical ↓"}.</span></div>
+        <OceanGrid state={state} owner={owner} own placement placementShip={ship} validPlacementStarts={validStarts} onPlace={onPlace} />
+        <div className="ocean-placement-grid-legend"><span><i className="is-valid" />Départ possible</span><span><i className="is-occupied" />Navire placé</span><span><i className="is-blocked" />Impossible</span></div>
+        {notice ? <div className="ocean-placement-notice" role="status" aria-live="polite">{notice}</div> : null}
+      </section>
+
+      <aside className="ocean-placement-console">
+        <section className="ocean-placement-current" style={{ ["--ship-accent" as any]: CYAN }}>
+          <span className="ocean-placement-section-label">NAVIRE À PLACER</span>
+          {ship ? <>
+            <div className="ocean-placement-current__ship">
+              <div className={`ocean-ship-card__art is-${shipMeta?.kind || "carrier"}`}><span className={`ocean-ship-silhouette is-${shipMeta?.kind || "carrier"}`} aria-hidden="true"><span className="hull" /><span className="bridge" /><span className="wake" /></span></div>
+              <div><strong>{ship.name}</strong><small>{shipMeta?.label} · {ship.length} zones</small></div>
+            </div>
+            <div className="ocean-placement-decks">{Array.from({ length: Number(ship.length || 0) }, (_, index) => <i key={index} />)}</div>
+          </> : <div className="ocean-placement-ready"><b>✓</b><strong>FLOTTE PRÊTE</strong><small>Le combat va pouvoir commencer.</small></div>}
+        </section>
+
+        <section className="ocean-placement-orientation">
+          <span className="ocean-placement-section-label">ORIENTATION</span>
+          <div>
+            <button type="button" className={orientation === "horizontal" ? "is-active" : ""} onClick={() => setOrientation("horizontal")}><b>↔</b><strong>HORIZONTAL</strong><small>vers la droite</small></button>
+            <button type="button" className={orientation === "vertical" ? "is-active" : ""} onClick={() => setOrientation("vertical")}><b>↕</b><strong>VERTICAL</strong><small>vers le bas</small></button>
+          </div>
+        </section>
+
+        <section className="ocean-placement-fleet-manifest">
+          <span className="ocean-placement-section-label">MA FLOTTE</span>
+          <div>{ships.map((row: any, index: number) => {
+            const meta = shipVisualMeta(row);
+            const placed = Array.isArray(row.cells) && row.cells.length === Number(row.length || 0);
+            const current = ship?.id === row.id;
+            return <div key={row.id} className={`${placed ? "is-placed" : ""} ${current ? "is-current" : ""}`}><b>{placed ? "✓" : index + 1}</b><span><strong>{row.name}</strong><small>{meta.label} · {row.length} zones</small></span><em>{placed ? "PLACÉ" : current ? "À POSER" : "EN ATTENTE"}</em></div>;
+          })}</div>
+        </section>
+
+        <div className="ocean-placement-actions">
+          <button type="button" className="is-reset" onClick={onReset}>↶ RECOMMENCER</button>
+          <button type="button" className="is-auto" onClick={onAuto}>⚡ PLACEMENT AUTO</button>
+        </div>
+      </aside>
+    </div>
   </main>;
 }
 
@@ -426,6 +528,7 @@ export default function OceanControlPlay(props: any) {
   const [showEnd, setShowEnd] = React.useState(initialState.phase === "finished");
   const [botThinking, setBotThinking] = React.useState(false);
   const [placementReady, setPlacementReady] = React.useState(false);
+  const [placementNotice, setPlacementNotice] = React.useState("Choisis une orientation puis une case lumineuse.");
   const [orientation, setOrientation] = React.useState<OceanControlOrientation>("horizontal");
   const placementOwnerIdRef = React.useRef(getOceanPlacementOwner(initialState)?.id || "");
   const matchIdRef = React.useRef(String(resumeRecord?.id || resumeRecord?.matchId || `ocean-control-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
@@ -461,12 +564,38 @@ export default function OceanControlPlay(props: any) {
   function chooseTarget(ownerId: string) { if (config.sfxEnabled !== false) playUiConfirm(); setState((prev) => selectOceanControlTarget(prev, ownerId)); setOverlay(null); }
   function chooseFocus(number: number) { if (config.sfxEnabled !== false) playUiClickSoft(); setState((prev) => selectOceanControlFocus(prev, number)); setNotice(`Zone ${number} sélectionnée pour le sonar / DBULL.`); }
   function dismissGameplayHelp() { setShowGameplayHelp(false); try { localStorage.setItem("dc_ocean_control_gameplay_help_v1", "dismissed"); } catch {} }
-  function handlePlace(cell: number) { const beforeOwner = getOceanPlacementOwner(state)?.id; const next = placeOceanControlShip(state, cell, orientation); const afterOwner = getOceanPlacementOwner(next)?.id; setState(next); if (beforeOwner !== afterOwner || next.phase !== "placement") setPlacementReady(false); }
-  function autoPlaceCurrentOwner() { let next = cloneOceanControlState(state); let safety = 0; while (next.phase === "placement" && getOceanPlacementOwner(next)?.id === getOceanPlacementOwner(state)?.id && safety < 300) { const ship = getOceanNextUnplacedShip(next); if (!ship) break; const cell = Math.floor(Math.random() * 20); const orient = Math.random() > .5 ? "horizontal" : "vertical"; const candidate = placeOceanControlShip(next, cell, orient as any); if (JSON.stringify(candidate) !== JSON.stringify(next)) next = candidate; safety += 1; } setState(next); setPlacementReady(false); }
+  function handlePlace(cell: number) {
+    const beforeOwner = getOceanPlacementOwner(state);
+    const beforeOwnerId = beforeOwner?.id;
+    const beforePlaced = (beforeOwner?.ships || []).filter((row: any) => row.cells?.length === row.length).length;
+    const next = placeOceanControlShip(state, cell, orientation);
+    const nextOwner = next.owners.find((row: any) => row.id === beforeOwnerId);
+    const afterPlaced = (nextOwner?.ships || []).filter((row: any) => row.cells?.length === row.length).length;
+    const afterOwner = getOceanPlacementOwner(next)?.id;
+    if (afterPlaced <= beforePlaced) {
+      setPlacementNotice("Placement impossible ici. Choisis une case lumineuse ou change l’orientation.");
+      return;
+    }
+    if (config.sfxEnabled !== false) playUiConfirm();
+    setState(next);
+    setPlacementNotice(next.phase === "placement" && beforeOwnerId === afterOwner ? "Navire placé. Passe au suivant." : "Flotte verrouillée. Passe l’appareil au commandant suivant.");
+    if (beforeOwnerId !== afterOwner || next.phase !== "placement") setPlacementReady(false);
+  }
+  function autoPlaceCurrentOwner() {
+    let next = cloneOceanControlState(state); let safety = 0; const ownerId = getOceanPlacementOwner(state)?.id;
+    while (next.phase === "placement" && getOceanPlacementOwner(next)?.id === ownerId && safety < 300) {
+      const ship = getOceanNextUnplacedShip(next); if (!ship) break;
+      const cell = Math.floor(Math.random() * 20); const orient = Math.random() > .5 ? "horizontal" : "vertical";
+      const candidate = placeOceanControlShip(next, cell, orient as any);
+      if (JSON.stringify(candidate) !== JSON.stringify(next)) next = candidate; safety += 1;
+    }
+    if (config.sfxEnabled !== false) playUiConfirm();
+    setState(next); setPlacementNotice("Placement automatique terminé."); setPlacementReady(false);
+  }
 
   React.useEffect(() => {
     const ownerId = getOceanPlacementOwner(state)?.id || "";
-    if (ownerId !== placementOwnerIdRef.current) { placementOwnerIdRef.current = ownerId; setPlacementReady(false); }
+    if (ownerId !== placementOwnerIdRef.current) { placementOwnerIdRef.current = ownerId; setPlacementReady(false); setPlacementNotice("Choisis une orientation puis une case lumineuse."); }
   }, [state.placementOwnerIndex, state.phase]);
   React.useEffect(() => { setGlobalSfxEnabled(config.sfxEnabled !== false); }, [config.sfxEnabled]);
 
@@ -542,7 +671,7 @@ export default function OceanControlPlay(props: any) {
   React.useEffect(() => { if (state.phase === "finished" || state.visits.length === 0) return; const timer = window.setTimeout(() => { void (History as any).upsert(buildHistoryRecord("in_progress")); }, 280); return () => window.clearTimeout(timer); }, [state]);
   React.useEffect(() => { if (state.phase !== "finished") return; setShowEnd(true); if (autoSavedRef.current === matchIdRef.current) return; autoSavedRef.current = matchIdRef.current; try { onFinish?.(buildHistoryRecord("finished"), { navigate: false }); } catch {} }, [state.phase]);
 
-  if (state.phase === "placement") return <div style={{ minHeight: "100dvh", color: theme?.text || "#fff", background: "radial-gradient(circle at 50% -10%,rgba(48,185,255,.22),#07101b 43%,#020507 100%)" }}><PageHeader tickerSrc={tickerOcean} tickerAlt="OCEAN CONTROL" tickerHeight={78} tickerBottomGap={6} left={<BackDot onClick={backToConfig} color={BLUE} glow={`${BLUE}88`} />} right={<InfoDot title="Placement de la flotte" color={CYAN} glow={`${CYAN}88`} content={<Rules config={config} />} />} /><PlacementScreen state={state} profilesById={profilesById} ready={placementReady} onReady={() => setPlacementReady(true)} orientation={orientation} setOrientation={setOrientation} onPlace={handlePlace} onReset={() => setState((prev) => resetOceanPlacementOwner(prev))} onAuto={autoPlaceCurrentOwner} /></div>;
+  if (state.phase === "placement") return <div style={{ minHeight: "100dvh", color: theme?.text || "#fff", background: "radial-gradient(circle at 50% -10%,rgba(48,185,255,.22),#07101b 43%,#020507 100%)" }}><PageHeader tickerSrc={tickerOcean} tickerAlt="OCEAN CONTROL" tickerHeight={78} tickerBottomGap={6} left={<BackDot onClick={backToConfig} color={BLUE} glow={`${BLUE}88`} />} right={<InfoDot title="Placement de la flotte" color={CYAN} glow={`${CYAN}88`} content={<Rules config={config} />} />} /><PlacementScreen state={state} profilesById={profilesById} ready={placementReady} onReady={() => { setPlacementReady(true); setPlacementNotice("Choisis une orientation puis une case lumineuse."); }} orientation={orientation} setOrientation={(nextOrientation: OceanControlOrientation) => { setOrientation(nextOrientation); setPlacementNotice(nextOrientation === "horizontal" ? "Horizontal sélectionné : le navire part vers la droite." : "Vertical sélectionné : le navire descend."); }} onPlace={handlePlace} onReset={() => { setState((prev) => resetOceanPlacementOwner(prev)); setPlacementNotice("Flotte effacée. Recommence le placement."); }} onAuto={autoPlaceCurrentOwner} notice={placementNotice} /></div>;
 
   const remainingShips = oceanControlRemainingDecks(targetOwner);
   const remainingCells = oceanControlRemainingCells(targetOwner);

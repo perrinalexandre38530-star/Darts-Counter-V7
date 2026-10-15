@@ -26,7 +26,7 @@ const config = read("src/pages/FootballConfig.tsx");
 for (const token of ["PlayerPagedSelector", "TeamPagedSelector", "BotPagedSelector", "golden_goal", "penalties", "classic", "football_play", "football-config-summary", "Clavier compact", "applyPreset"]) assert.ok(config.includes(token), `configuration incomplète: ${token}`);
 
 const play = read("src/pages/FootballPlay.tsx");
-for (const token of ["Keypad", "DartboardClickable", "FootballField", "FootballEnd", "History", "buildDartsTelemetry", "stateSnapshot", "onFinish", "CompactFootballPad", "football-compact-pad", "MissionCard", "football-quick-actions", "football-match-ticker", "sideEfficiency", "buildFootballMomentumFromState", "NOTE LIVE", "football-momentum"]) assert.ok(play.includes(token), `écran de jeu incomplet: ${token}`);
+for (const token of ["Keypad", "DartboardClickable", "FootballField", "FootballEnd", "History", "buildDartsTelemetry", "stateSnapshot", "onFinish", "CompactFootballPad", "football-compact-pad", "MissionCard", "football-quick-actions", "football-transition", "sideEfficiency", "buildFootballMomentumFromState", "NOTE LIVE", "football-momentum"]) assert.ok(play.includes(token), `écran de jeu incomplet: ${token}`);
 
 const app = read("src/App.tsx");
 assert.match(app, /case\s+["']football_config["']/);
