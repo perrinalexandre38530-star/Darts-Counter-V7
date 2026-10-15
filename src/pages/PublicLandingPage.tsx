@@ -44,8 +44,12 @@ import { useLang, type Lang } from "../contexts/LangContext";
 import ptit1ExampleVisual from "../assets/ptit1/ptit1_config_classique.webp";
 import ptit1RulesRecapPortrait from "../assets/ptit1/ptit1_rules_recap_vertical.webp";
 import ptit1RulesRecapLandscape from "../assets/ptit1/ptit1_rules_recap_horizontal.webp";
+import ptit1RulesRecapPortraitEn from "../assets/ptit1/ptit1_rules_recap_vertical_en.webp";
+import ptit1RulesRecapLandscapeEn from "../assets/ptit1/ptit1_rules_recap_horizontal_en.webp";
 import smallSingleZoneVisual from "../assets/rules/darts-single-zones/zone_petit_simple.webp";
 import bigSingleZoneVisual from "../assets/rules/darts-single-zones/zone_gros_simple.webp";
+import smallSingleZoneVisualEn from "../assets/rules/darts-single-zones/zone_petit_simple_en.webp";
+import bigSingleZoneVisualEn from "../assets/rules/darts-single-zones/zone_gros_simple_en.webp";
 import zoneOuterRing from "../assets/gros6-zones/zone_outer_ring.webp";
 import zoneClosed4 from "../assets/gros6-zones/zone_closed_4.webp";
 import zoneClosed6 from "../assets/gros6-zones/zone_closed_6.webp";
@@ -287,18 +291,28 @@ function isPublicDartsDevelopment(game: DartsGameDef) {
   return !game.ready || game.tab === "mode_not_ready";
 }
 
-function DartsSingleZoneVisuals({ smallLabel, bigLabel, className = "" }: { smallLabel: string; bigLabel: string; className?: string }) {
+function isFrenchRulesVisual(lang?: string) {
+  return String(lang || "fr").toLowerCase().startsWith("fr");
+}
+
+function DartsSingleZoneVisuals({ smallLabel, bigLabel, lang, className = "" }: { smallLabel: string; bigLabel: string; lang?: string; className?: string }) {
+  const isFr = isFrenchRulesVisual(lang);
+  const smallVisual = isFr ? smallSingleZoneVisual : smallSingleZoneVisualEn;
+  const bigVisual = isFr ? bigSingleZoneVisual : bigSingleZoneVisualEn;
   return <section className={`mssSingleZoneVisuals ${className}`.trim()} aria-label={`${smallLabel} / ${bigLabel}`}>
-    <figure><img src={smallSingleZoneVisual} alt={smallLabel} loading="lazy" decoding="async"/><figcaption>{smallLabel}</figcaption></figure>
-    <figure><img src={bigSingleZoneVisual} alt={bigLabel} loading="lazy" decoding="async"/><figcaption>{bigLabel}</figcaption></figure>
+    <figure><img src={smallVisual} alt={smallLabel} loading="lazy" decoding="async"/><figcaption>{smallLabel}</figcaption></figure>
+    <figure><img src={bigVisual} alt={bigLabel} loading="lazy" decoding="async"/><figcaption>{bigLabel}</figcaption></figure>
   </section>;
 }
 
-function Ptit1ResponsiveRecapVisual({ alt }: { alt: string }) {
+function Ptit1ResponsiveRecapVisual({ alt, lang }: { alt: string; lang?: string }) {
+  const isFr = isFrenchRulesVisual(lang);
+  const portrait = isFr ? ptit1RulesRecapPortrait : ptit1RulesRecapPortraitEn;
+  const landscape = isFr ? ptit1RulesRecapLandscape : ptit1RulesRecapLandscapeEn;
   return <figure className="mssPtit1RecapVisual">
     <picture>
-      <source media="(orientation: portrait)" srcSet={ptit1RulesRecapPortrait} />
-      <img src={ptit1RulesRecapLandscape} alt={alt} loading="lazy" decoding="async" />
+      <source media="(orientation: portrait)" srcSet={portrait} />
+      <img src={landscape} alt={alt} loading="lazy" decoding="async" />
     </picture>
   </figure>;
 }
@@ -347,9 +361,9 @@ function Ptit1PublicRules({ lang }: { lang: Lang }) {
     <article className="mssPtit1RecapSection">
       <div className="mssPtit1GlossaryHead"><span>03</span><h2>{recapTitle}</h2></div>
       <p className="mssPtit1RecapLead">{recapBody}</p>
-      <Ptit1ResponsiveRecapVisual alt={recapAlt} />
+      <Ptit1ResponsiveRecapVisual alt={recapAlt} lang={String(lang || "fr")} />
     </article>
-    <DartsSingleZoneVisuals smallLabel={c.smallLabel} bigLabel={c.bigLabel} className="is-ptit1" />
+    <DartsSingleZoneVisuals smallLabel={c.smallLabel} bigLabel={c.bigLabel} lang={String(lang || "fr")} className="is-ptit1" />
     <article className="mssPtit1Glossary">
       <div className="mssPtit1GlossaryHead"><span>04</span><h2>{c.glossaryTitle}</h2></div>
       <div className="mssPtit1GlossaryGrid">
@@ -441,7 +455,7 @@ function DartsRulePage({ game, onBack, onOpenApp, lang, setLang, t }: { game: Da
       <div><span>{tr("rules.options", "OPTIONS")}</span><strong>{[game.supportsTeams ? tr("rules.teams", "Équipes") : "", game.supportsBots ? tr("rules.aiBots", "Bots IA") : ""].filter(Boolean).join(" • ") || tr("rules.dependsMode", "Selon le mode")}</strong></div>
     </section>
     {game.id === "gros_6" ? <>
-      <DartsSingleZoneVisuals smallLabel={tr("rules.smallSingle", "PETIT SIMPLE")} bigLabel={tr("rules.bigSingle", "GROS SIMPLE")} className="is-gros6" />
+      <DartsSingleZoneVisuals smallLabel={tr("rules.smallSingle", "PETIT SIMPLE")} bigLabel={tr("rules.bigSingle", "GROS SIMPLE")} lang={String(lang || "fr")} className="is-gros6" />
       <section className="mssRuleExplainVisual" aria-label={lang === "fr" ? "Zones spéciales du Gros 6" : "Big 6 special zones"}>
         <DartsSpecialZonesRulesVisual lang={String(lang || "fr")} borderColor="rgba(255,210,0,.45)" />
       </section>

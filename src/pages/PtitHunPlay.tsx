@@ -8,6 +8,8 @@ import tickerPtitHun from "../assets/tickers/ticker_ptit_1.png";
 import ptit1Radar from "../assets/ptit1/ptit1_radar.webp";
 import smallSingleZoneVisual from "../assets/rules/darts-single-zones/zone_petit_simple.webp";
 import bigSingleZoneVisual from "../assets/rules/darts-single-zones/zone_gros_simple.webp";
+import smallSingleZoneVisualEn from "../assets/rules/darts-single-zones/zone_petit_simple_en.webp";
+import bigSingleZoneVisualEn from "../assets/rules/darts-single-zones/zone_gros_simple_en.webp";
 import gros6ZonesKeypad from "../assets/gros6/gros6_zones_keypad.webp";
 import zoneOuterRing from "../assets/gros6-zones/zone_outer_ring.webp";
 import zoneClosed4 from "../assets/gros6-zones/zone_closed_4.webp";
@@ -55,7 +57,22 @@ const BLUE = "#88c8ff";
 const PTIT1_ZONES_LABELS: Record<string,string> = {
   fr:"ZONES", en:"ZONES", es:"ZONAS", de:"ZONEN", it:"ZONE", nl:"ZONES", pt:"ZONAS", pl:"STREFY", ro:"ZONE", sr:"ZONE", hr:"ZONE", cs:"ZÓNY", da:"ZONER", no:"SONER", sv:"ZONER", is:"SVÆÐI", tr:"BÖLGELER", ru:"ЗОНЫ", ar:"المناطق", hi:"क्षेत्र", zh:"区域", ja:"ゾーン"
 };
-function ptit1CurrentLang(){ try { return String(localStorage.getItem("dc_lang_v1") || navigator.language || "fr").toLowerCase().split("-")[0]; } catch { return "fr"; } }
+function ptit1CurrentLang(){
+  try {
+    const raw = localStorage.getItem("dc_lang_v1");
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        const stored = String(parsed?.lang || "").trim().toLowerCase().split("-")[0];
+        if (stored) return stored;
+      } catch {
+        const stored = String(raw).trim().toLowerCase().split("-")[0];
+        if (stored) return stored;
+      }
+    }
+    return String(navigator.language || "en").toLowerCase().split("-")[0] || "en";
+  } catch { return "en"; }
+}
 function ptit1ZonesLabel(){ return PTIT1_ZONES_LABELS[ptit1CurrentLang()] || PTIT1_ZONES_LABELS.en; }
 
 function coachText(state: PtitHunState, activePlayer: any) {
@@ -712,7 +729,7 @@ export default function PtitHunPlay(props: any) {
     {statsOpen ? <StatsModal items={statsItems} accent={activeColor} subtitle={activePlayer?.name} onClose={() => setStatsOpen(false)} /> : null}
     {logOpen ? <LogModal visits={state.visits} profileById={profileById} colorById={colorById} labelDart={ptitHunDartLabel} title="JOURNAL P’TIT 1" onClose={() => setLogOpen(false)} /> : null}
     {rankingOpen ? <RankingModal rows={rankingRows} title="CLASSEMENT · LE PLUS NUL D’ABORD" onClose={() => setRankingOpen(false)} /> : null}
-    {focusOpen ? <FloatingPanel title="P’TIT 1 · CIBLE & RISQUES" subtitle="Les détails restent hors de l’écran de jeu" onClose={() => setFocusOpen(false)}><PtitHunRiskBoard state={state} playerId={activePlayer?.id} currentThrow={currentThrow} preview={preview} /><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 9 }}><figure style={{ margin: 0, overflow: "hidden", borderRadius: 12, border: `1px solid ${GREEN}44`, background: "#05070b" }}><img src={smallSingleZoneVisual} alt="Zone de petit simple" style={{ width: "100%", display: "block", aspectRatio: "1/1", objectFit: "contain" }}/><figcaption style={{ padding: "7px 8px", textAlign: "center", color: GREEN, fontSize: 8, fontWeight: 1000, letterSpacing: .6 }}>PETIT SIMPLE</figcaption></figure><figure style={{ margin: 0, overflow: "hidden", borderRadius: 12, border: `1px solid ${ACCENT}44`, background: "#05070b" }}><img src={bigSingleZoneVisual} alt="Zone de gros simple" style={{ width: "100%", display: "block", aspectRatio: "1/1", objectFit: "contain" }}/><figcaption style={{ padding: "7px 8px", textAlign: "center", color: ACCENT, fontSize: 8, fontWeight: 1000, letterSpacing: .6 }}>GROS SIMPLE</figcaption></figure></div></FloatingPanel> : null}
+    {focusOpen ? <FloatingPanel title="P’TIT 1 · CIBLE & RISQUES" subtitle="Les détails restent hors de l’écran de jeu" onClose={() => setFocusOpen(false)}><PtitHunRiskBoard state={state} playerId={activePlayer?.id} currentThrow={currentThrow} preview={preview} /><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 9 }}><figure style={{ margin: 0, overflow: "hidden", borderRadius: 12, border: `1px solid ${GREEN}44`, background: "#05070b" }}><img src={ptit1CurrentLang() === "fr" ? smallSingleZoneVisual : smallSingleZoneVisualEn} alt={ptit1CurrentLang() === "fr" ? "Zone de petit simple" : "Small single zone"} style={{ width: "100%", display: "block", aspectRatio: "1/1", objectFit: "contain" }}/><figcaption style={{ padding: "7px 8px", textAlign: "center", color: GREEN, fontSize: 8, fontWeight: 1000, letterSpacing: .6 }}>{ptit1CurrentLang() === "fr" ? "PETIT SIMPLE" : "SMALL SINGLE"}</figcaption></figure><figure style={{ margin: 0, overflow: "hidden", borderRadius: 12, border: `1px solid ${ACCENT}44`, background: "#05070b" }}><img src={ptit1CurrentLang() === "fr" ? bigSingleZoneVisual : bigSingleZoneVisualEn} alt={ptit1CurrentLang() === "fr" ? "Zone de gros simple" : "Large single zone"} style={{ width: "100%", display: "block", aspectRatio: "1/1", objectFit: "contain" }}/><figcaption style={{ padding: "7px 8px", textAlign: "center", color: ACCENT, fontSize: 8, fontWeight: 1000, letterSpacing: .6 }}>{ptit1CurrentLang() === "fr" ? "GROS SIMPLE" : "LARGE SINGLE"}</figcaption></figure></div></FloatingPanel> : null}
     {zeroOpen ? <Ptit1BonusModal kind="zero" state={state} playerId={activePlayer?.id} onClose={() => setZeroOpen(false)} /> : null}
     {shieldOpen ? <Ptit1BonusModal kind="shield" state={state} playerId={activePlayer?.id} onClose={() => setShieldOpen(false)} /> : null}
     {specialOpen ? <Ptit1SpecialZonesModal onClose={() => setSpecialOpen(false)} onPick={addSpecialZone} accent={activeColor} /> : null}

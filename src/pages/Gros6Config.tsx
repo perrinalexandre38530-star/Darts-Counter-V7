@@ -32,6 +32,8 @@ import tickerBig6 from "../assets/tickers/ticker_gros_6_en.webp";
 import gros6RulesBoard from "../assets/gros6/gros6_rules_board.webp";
 import smallSingleZoneVisual from "../assets/rules/darts-single-zones/zone_petit_simple.webp";
 import bigSingleZoneVisual from "../assets/rules/darts-single-zones/zone_gros_simple.webp";
+import smallSingleZoneVisualEn from "../assets/rules/darts-single-zones/zone_petit_simple_en.webp";
+import bigSingleZoneVisualEn from "../assets/rules/darts-single-zones/zone_gros_simple_en.webp";
 
 import botTeamEliteLogo from "../assets/ui/competition_bot_team_elite.webp";
 import botTeamProLogo from "../assets/ui/competition_bot_team_pro.webp";
@@ -250,6 +252,7 @@ function TeamCard({ team, active, primary, onClick, members, memberSelection, on
 export default function Gros6Config({ store, go }: any) {
   const { theme } = useTheme();
   const { lang } = useLang();
+  const isFrenchRulesVisual = String(lang || "fr").toLowerCase().startsWith("fr");
   const primary = theme.primary || "#ff9d25";
   const primarySoft = `${primary}20`;
 
@@ -851,12 +854,12 @@ export default function Gros6Config({ store, go }: any) {
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
                 <figure style={{ margin: 0, borderRadius: 14, overflow: "hidden", border: `1px solid ${primary}44`, background: "#05070c" }}>
-                  <img src={smallSingleZoneVisual as any} alt={lang === "fr" ? "Zone de petit simple" : "Small single zone"} style={{ width: "100%", display: "block", aspectRatio: "1/1", objectFit: "contain" }} />
-                  <figcaption style={{ padding: "8px 10px", textAlign: "center", color: primary, fontSize: 10, fontWeight: 1000, letterSpacing: .7 }}>{lang === "fr" ? "PETIT SIMPLE" : "SMALL SINGLE"}</figcaption>
+                  <img src={(isFrenchRulesVisual ? smallSingleZoneVisual : smallSingleZoneVisualEn) as any} alt={isFrenchRulesVisual ? "Zone de petit simple" : "Small single zone"} style={{ width: "100%", display: "block", aspectRatio: "1/1", objectFit: "contain" }} />
+                  <figcaption style={{ padding: "8px 10px", textAlign: "center", color: primary, fontSize: 10, fontWeight: 1000, letterSpacing: .7 }}>{isFrenchRulesVisual ? "PETIT SIMPLE" : "SMALL SINGLE"}</figcaption>
                 </figure>
                 <figure style={{ margin: 0, borderRadius: 14, overflow: "hidden", border: `1px solid ${primary}44`, background: "#05070c" }}>
-                  <img src={bigSingleZoneVisual as any} alt={lang === "fr" ? "Zone de gros simple" : "Big single zone"} style={{ width: "100%", display: "block", aspectRatio: "1/1", objectFit: "contain" }} />
-                  <figcaption style={{ padding: "8px 10px", textAlign: "center", color: primary, fontSize: 10, fontWeight: 1000, letterSpacing: .7 }}>{lang === "fr" ? "GROS SIMPLE" : "BIG SINGLE"}</figcaption>
+                  <img src={(isFrenchRulesVisual ? bigSingleZoneVisual : bigSingleZoneVisualEn) as any} alt={isFrenchRulesVisual ? "Zone de gros simple" : "Large single zone"} style={{ width: "100%", display: "block", aspectRatio: "1/1", objectFit: "contain" }} />
+                  <figcaption style={{ padding: "8px 10px", textAlign: "center", color: primary, fontSize: 10, fontWeight: 1000, letterSpacing: .7 }}>{isFrenchRulesVisual ? "GROS SIMPLE" : "LARGE SINGLE"}</figcaption>
                 </figure>
               </div>
 
