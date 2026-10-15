@@ -6,6 +6,8 @@ import ScoreInputHub from "../components/ScoreInputHub";
 import PageHeader from "../components/PageHeader";
 import tickerPtitHun from "../assets/tickers/ticker_ptit_1.png";
 import ptit1Radar from "../assets/ptit1/ptit1_radar.webp";
+import smallSingleZoneVisual from "../assets/rules/darts-single-zones/zone_petit_simple.webp";
+import bigSingleZoneVisual from "../assets/rules/darts-single-zones/zone_gros_simple.webp";
 import gros6ZonesKeypad from "../assets/gros6/gros6_zones_keypad.webp";
 import zoneOuterRing from "../assets/gros6-zones/zone_outer_ring.webp";
 import zoneClosed4 from "../assets/gros6-zones/zone_closed_4.webp";
@@ -710,7 +712,7 @@ export default function PtitHunPlay(props: any) {
     {statsOpen ? <StatsModal items={statsItems} accent={activeColor} subtitle={activePlayer?.name} onClose={() => setStatsOpen(false)} /> : null}
     {logOpen ? <LogModal visits={state.visits} profileById={profileById} colorById={colorById} labelDart={ptitHunDartLabel} title="JOURNAL P’TIT 1" onClose={() => setLogOpen(false)} /> : null}
     {rankingOpen ? <RankingModal rows={rankingRows} title="CLASSEMENT · LE PLUS NUL D’ABORD" onClose={() => setRankingOpen(false)} /> : null}
-    {focusOpen ? <FloatingPanel title="P’TIT 1 · CIBLE & RISQUES" subtitle="Les détails restent hors de l’écran de jeu" onClose={() => setFocusOpen(false)}><PtitHunRiskBoard state={state} playerId={activePlayer?.id} currentThrow={currentThrow} preview={preview} /></FloatingPanel> : null}
+    {focusOpen ? <FloatingPanel title="P’TIT 1 · CIBLE & RISQUES" subtitle="Les détails restent hors de l’écran de jeu" onClose={() => setFocusOpen(false)}><PtitHunRiskBoard state={state} playerId={activePlayer?.id} currentThrow={currentThrow} preview={preview} /><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 9 }}><figure style={{ margin: 0, overflow: "hidden", borderRadius: 12, border: `1px solid ${GREEN}44`, background: "#05070b" }}><img src={smallSingleZoneVisual} alt="Zone de petit simple" style={{ width: "100%", display: "block", aspectRatio: "1/1", objectFit: "contain" }}/><figcaption style={{ padding: "7px 8px", textAlign: "center", color: GREEN, fontSize: 8, fontWeight: 1000, letterSpacing: .6 }}>PETIT SIMPLE</figcaption></figure><figure style={{ margin: 0, overflow: "hidden", borderRadius: 12, border: `1px solid ${ACCENT}44`, background: "#05070b" }}><img src={bigSingleZoneVisual} alt="Zone de gros simple" style={{ width: "100%", display: "block", aspectRatio: "1/1", objectFit: "contain" }}/><figcaption style={{ padding: "7px 8px", textAlign: "center", color: ACCENT, fontSize: 8, fontWeight: 1000, letterSpacing: .6 }}>GROS SIMPLE</figcaption></figure></div></FloatingPanel> : null}
     {zeroOpen ? <Ptit1BonusModal kind="zero" state={state} playerId={activePlayer?.id} onClose={() => setZeroOpen(false)} /> : null}
     {shieldOpen ? <Ptit1BonusModal kind="shield" state={state} playerId={activePlayer?.id} onClose={() => setShieldOpen(false)} /> : null}
     {specialOpen ? <Ptit1SpecialZonesModal onClose={() => setSpecialOpen(false)} onPick={addSpecialZone} accent={activeColor} /> : null}

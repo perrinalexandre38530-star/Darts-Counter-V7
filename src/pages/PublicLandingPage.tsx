@@ -40,6 +40,25 @@ import petanqueExplainLandscape from "../assets/petanque_explain/petanque_explai
 import { DARTS_GAMES, type DartsGameDef } from "../games/dartsGameRegistry";
 import { DARTS_PUBLIC_RULE_AUDIT } from "../games/dartsPublicRulesAudit";
 import { useLang, type Lang } from "../contexts/LangContext";
+import ptit1ExampleVisual from "../assets/ptit1/ptit1_config_classique.webp";
+import ptit1RulesRecapPortrait from "../assets/ptit1/ptit1_rules_recap_vertical.webp";
+import ptit1RulesRecapLandscape from "../assets/ptit1/ptit1_rules_recap_horizontal.webp";
+import smallSingleZoneVisual from "../assets/rules/darts-single-zones/zone_petit_simple.webp";
+import bigSingleZoneVisual from "../assets/rules/darts-single-zones/zone_gros_simple.webp";
+import zoneOuterRing from "../assets/gros6-zones/zone_outer_ring.webp";
+import zoneClosed4 from "../assets/gros6-zones/zone_closed_4.webp";
+import zoneClosed6 from "../assets/gros6-zones/zone_closed_6.webp";
+import zoneClosed8Top from "../assets/gros6-zones/zone_closed_8_top.webp";
+import zoneClosed8Bottom from "../assets/gros6-zones/zone_closed_8_bottom.webp";
+import zoneClosed9 from "../assets/gros6-zones/zone_closed_9.webp";
+import zoneClosed10 from "../assets/gros6-zones/zone_closed_10.webp";
+import zoneClosed14 from "../assets/gros6-zones/zone_closed_14.webp";
+import zoneClosed16 from "../assets/gros6-zones/zone_closed_16.webp";
+import zoneClosed18Top from "../assets/gros6-zones/zone_closed_18_top.webp";
+import zoneClosed18Bottom from "../assets/gros6-zones/zone_closed_18_bottom.webp";
+import zoneClosed19 from "../assets/gros6-zones/zone_closed_19.webp";
+import zoneClosed20 from "../assets/gros6-zones/zone_closed_20.webp";
+import { ptit1RulesCopy } from "../games/ptit1/ptit1LocalizedRules";
 
 
 const landingTickerAssets = import.meta.glob("../assets/tickers/*.{png,webp}", {
@@ -64,6 +83,22 @@ const DARTS_CATEGORY_LABEL: Record<string,string> = {
   fun: "FUN",
   training: "ENTRAÎNEMENT",
 };
+
+const PTIT1_SPECIAL_ZONE_VISUALS = [
+  { id: "outer_numbers_ring", image: zoneOuterRing, titleFr: "Contour extérieur", titleEn: "Outer ring", bodyFr: "Anneau extérieur situé au-delà du double. Il représente la grande zone périphérique hors lit classique.", bodyEn: "Outer ring beyond the double bed. It represents the large peripheral off-board area." },
+  { id: "closed_4", image: zoneClosed4, titleFr: "Hors cible 4", titleEn: "Off-target 4", bodyFr: "Zone spéciale externe alignée sur le secteur 4.", bodyEn: "External special area aligned with sector 4." },
+  { id: "closed_6", image: zoneClosed6, titleFr: "Hors cible 6", titleEn: "Off-target 6", bodyFr: "Zone spéciale externe alignée sur le secteur 6.", bodyEn: "External special area aligned with sector 6." },
+  { id: "closed_8_top", image: zoneClosed8Top, titleFr: "Hors cible 8 haut", titleEn: "Off-target 8 top", bodyFr: "Zone spéciale externe au-dessus du secteur 8.", bodyEn: "External special area above sector 8." },
+  { id: "closed_8_bottom", image: zoneClosed8Bottom, titleFr: "Hors cible 8 bas", titleEn: "Off-target 8 bottom", bodyFr: "Zone spéciale externe sous le secteur 8.", bodyEn: "External special area below sector 8." },
+  { id: "closed_9", image: zoneClosed9, titleFr: "Hors cible 9", titleEn: "Off-target 9", bodyFr: "Zone spéciale externe alignée sur le secteur 9.", bodyEn: "External special area aligned with sector 9." },
+  { id: "closed_10", image: zoneClosed10, titleFr: "Hors cible 10", titleEn: "Off-target 10", bodyFr: "Zone spéciale externe alignée sur le secteur 10.", bodyEn: "External special area aligned with sector 10." },
+  { id: "closed_14", image: zoneClosed14, titleFr: "Hors cible 14", titleEn: "Off-target 14", bodyFr: "Zone spéciale externe alignée sur le secteur 14.", bodyEn: "External special area aligned with sector 14." },
+  { id: "closed_16", image: zoneClosed16, titleFr: "Hors cible 16", titleEn: "Off-target 16", bodyFr: "Zone spéciale externe alignée sur le secteur 16.", bodyEn: "External special area aligned with sector 16." },
+  { id: "closed_18_top", image: zoneClosed18Top, titleFr: "Hors cible 18 haut", titleEn: "Off-target 18 top", bodyFr: "Zone spéciale externe au-dessus du secteur 18.", bodyEn: "External special area above sector 18." },
+  { id: "closed_18_bottom", image: zoneClosed18Bottom, titleFr: "Hors cible 18 bas", titleEn: "Off-target 18 bottom", bodyFr: "Zone spéciale externe sous le secteur 18.", bodyEn: "External special area below sector 18." },
+  { id: "closed_19", image: zoneClosed19, titleFr: "Hors cible 19", titleEn: "Off-target 19", bodyFr: "Zone spéciale externe alignée sur le secteur 19.", bodyEn: "External special area aligned with sector 19." },
+  { id: "closed_20", image: zoneClosed20, titleFr: "Hors cible 20", titleEn: "Off-target 20", bodyFr: "Zone spéciale externe alignée sur le secteur 20.", bodyEn: "External special area aligned with sector 20." },
+] as const;
 
 const PUBLIC_RULE_CONFIG_COPY: Record<string,string> = {
   x01: "Avant de jouer, choisissez le score de départ (301, 501, 701 ou 901), le mode d’entrée et de sortie (Simple, Double ou Master selon les options proposées), puis le format du match en legs et en sets. Vous pouvez également régler l’ordre des joueurs, les sons et la voix lorsque ces options sont activées.",
@@ -251,9 +286,98 @@ function isPublicDartsDevelopment(game: DartsGameDef) {
   return !game.ready || game.tab === "mode_not_ready";
 }
 
+function DartsSingleZoneVisuals({ smallLabel, bigLabel, className = "" }: { smallLabel: string; bigLabel: string; className?: string }) {
+  return <section className={`mssSingleZoneVisuals ${className}`.trim()} aria-label={`${smallLabel} / ${bigLabel}`}>
+    <figure><img src={smallSingleZoneVisual} alt={smallLabel} loading="lazy" decoding="async"/><figcaption>{smallLabel}</figcaption></figure>
+    <figure><img src={bigSingleZoneVisual} alt={bigLabel} loading="lazy" decoding="async"/><figcaption>{bigLabel}</figcaption></figure>
+  </section>;
+}
+
+function Ptit1ResponsiveRecapVisual({ alt }: { alt: string }) {
+  return <figure className="mssPtit1RecapVisual">
+    <picture>
+      <source media="(orientation: portrait)" srcSet={ptit1RulesRecapPortrait} />
+      <img src={ptit1RulesRecapLandscape} alt={alt} loading="lazy" decoding="async" />
+    </picture>
+  </figure>;
+}
+
+function ptit1SpecialZoneVisuals(lang: Lang) {
+  const isFr = String(lang || "fr").toLowerCase().startsWith("fr");
+  return PTIT1_SPECIAL_ZONE_VISUALS.map((item) => ({
+    ...item,
+    title: isFr ? item.titleFr : item.titleEn,
+    body: isFr ? item.bodyFr : item.bodyEn,
+  }));
+}
+
+function Ptit1PublicRules({ lang }: { lang: Lang }) {
+  const c = ptit1RulesCopy(lang);
+  const recapAlt = String(lang || "fr").toLowerCase().startsWith("fr")
+    ? "Récapitulatif visuel du mode P'TIT 1 avec règles, zone de petit simple, exemple de tour et affichage en jeu."
+    : "Visual summary of P'TIT 1 showing the rules, the small single area, a sample visit and the in-game screen.";
+  const specialZonesIntro = String(lang || "fr").toLowerCase().startsWith("fr")
+    ? "Ces visuels montrent les zones spéciales déjà disponibles. Elles correspondent aux zones hors cible ou périphériques utilisées par le mode lorsqu'elles sont activées."
+    : "These visuals show the special zones already available. They correspond to off-board or peripheral areas used by the mode when they are enabled.";
+  const specialZonesTitle = String(lang || "fr").toLowerCase().startsWith("fr") ? "ZONES SPÉCIALES" : "SPECIAL ZONES";
+  const recapTitle = String(lang || "fr").toLowerCase().startsWith("fr") ? "RÉCAPITULATIF VISUEL" : "VISUAL SUMMARY";
+  const recapBody = String(lang || "fr").toLowerCase().startsWith("fr")
+    ? "En portrait, l'image verticale est affichée automatiquement. En paysage, la version horizontale prend le relais."
+    : "In portrait, the vertical artwork is shown automatically. In landscape, the horizontal version is used.";
+  const specialZones = ptit1SpecialZoneVisuals(lang);
+  const definitions = [
+    [c.smallLabel, c.small, "#74f3cf"],
+    [c.bigLabel, c.big, "#ffb54d"],
+    [c.doubleLabel, c.double, "#72d8ff"],
+    [c.tripleLabel, c.triple, "#d28cff"],
+    [c.bull25Label, c.bull25, "#ff8f70"],
+    [c.dbullLabel, c.dbull, "#7ce8ff"],
+    [c.missLabel, c.miss, "#ff6b7a"],
+    [c.jackpotLabel, c.jackpot, "#ffd84d"],
+    [c.tripleNulLabel, c.tripleNul, "#c9a4ff"],
+    [c.shieldLabel, c.shield, "#75efbd"],
+    [c.zeroLabel, c.zero, "#6fdcff"],
+  ] as const;
+  return <section className="mssPtit1RuleContent" id="regles">
+    <article className="mssPtit1RuleIntro">
+      <div><span>01</span><h2>{c.principleTitle}</h2><p>{c.principle}</p></div>
+      <div><span>02</span><h2>{c.victoryTitle}</h2><p>{c.victory}</p></div>
+    </article>
+    <article className="mssPtit1RecapSection">
+      <div className="mssPtit1GlossaryHead"><span>03</span><h2>{recapTitle}</h2></div>
+      <p className="mssPtit1RecapLead">{recapBody}</p>
+      <Ptit1ResponsiveRecapVisual alt={recapAlt} />
+    </article>
+    <DartsSingleZoneVisuals smallLabel={c.smallLabel} bigLabel={c.bigLabel} className="is-ptit1" />
+    <article className="mssPtit1Glossary">
+      <div className="mssPtit1GlossaryHead"><span>04</span><h2>{c.glossaryTitle}</h2></div>
+      <div className="mssPtit1GlossaryGrid">
+        {definitions.map(([label, body, color]) => <div key={label} style={{"--ptit-rule-color": color} as React.CSSProperties}><strong>{label}</strong><p>{body}</p></div>)}
+      </div>
+    </article>
+    <aside className="mssPtit1ConfigNote" id="configuration"><b>05</b><p>{c.configNote}</p></aside>
+    <article className="mssPtit1SpecialZones">
+      <div className="mssPtit1GlossaryHead"><span>06</span><h2>{specialZonesTitle}</h2></div>
+      <p className="mssPtit1SpecialZonesLead">{specialZonesIntro}</p>
+      <div className="mssPtit1SpecialZonesGrid">
+        {specialZones.map((zone) => <div key={zone.id} className="mssPtit1SpecialZoneCard"><img src={zone.image} alt={zone.title} loading="lazy" decoding="async" /><div><strong>{zone.title}</strong><p>{zone.body}</p></div></div>)}
+      </div>
+    </article>
+    <article className="mssPtit1Example">
+      <div className="mssPtit1ExampleArt"><img src={ptit1ExampleVisual} alt={c.exampleImageAlt} loading="lazy" decoding="async" /></div>
+      <div className="mssPtit1ExampleCopy">
+        <span>07</span><h2>{c.exampleTitle}</h2><p>{c.exampleLead}</p>
+        <div className="mssPtit1ExampleMath"><b>{c.example1}</b><b>{c.example2}</b><b>{c.example3}</b></div>
+        <strong>{c.exampleTotal}</strong><p>{c.exampleExplain}</p>
+      </div>
+    </article>
+  </section>;
+}
+
 function DartsRulePage({ game, onBack, onOpenApp, lang, setLang, t }: { game: DartsGameDef; onBack: () => void; onOpenApp: () => void; lang: Lang; setLang: (lang: Lang) => void; t: (key: string, fallback?: string) => string }) {
   const tr = (key: string, fallback: string) => lang === "fr" ? fallback : t(`landing.${key}`, fallback);
   const ticker = landingTickerFor(game.id, lang);
+  const ptit1Copy = game.id === "ptit_hun" ? ptit1RulesCopy(lang) : null;
   const explainVisual = LANDING_EXPLANATION_VISUALS[game.id as keyof typeof LANDING_EXPLANATION_VISUALS];
   useLayoutEffect(() => {
     if ("scrollRestoration" in window.history) window.history.scrollRestoration = "manual";
@@ -269,7 +393,7 @@ function DartsRulePage({ game, onBack, onOpenApp, lang, setLang, t }: { game: Da
   const exclusive = MSS_EXCLUSIVE_DARTS.has(game.id);
   const audit = DARTS_PUBLIC_RULE_AUDIT[game.id];
   const development = isPublicDartsDevelopment(game);
-  const objective = game.infoBody.split(".")[0] + ".";
+  const objective = ptit1Copy ? ptit1Copy.principle : game.infoBody.split(".")[0] + ".";
   const catalogueGames = DARTS_GAMES.filter((item) => item.id !== game.id);
   const sameCategoryGames = catalogueGames.filter((item) => item.category === game.category && isPublicDartsDevelopment(item) === development).slice(0, 4);
   const currentIndex = DARTS_GAMES.findIndex((item) => item.id === game.id);
@@ -296,7 +420,7 @@ function DartsRulePage({ game, onBack, onOpenApp, lang, setLang, t }: { game: Da
       <div className="mssRuleHeroCopy">
         <div className="mssEyebrow">{exclusive ? tr("rules.exclusiveMode", "MODE EXCLUSIF MULTISPORTS SCORING") : tr(`category.${game.category}`, DARTS_CATEGORY_LABEL[game.category] || "MODE FLÉCHETTES")}</div>
         {development && <div className="mssDevBanner">{tr("status.development", "EN DÉVELOPPEMENT")}</div>}
-        <p>{development ? tr("rules.developmentIntro", "Ce mode fait partie du catalogue MULTISPORTS SCORING mais son moteur de jeu n’est pas encore disponible dans cette version. Sa fiche présente le concept actuellement défini.") : tr(`game.${game.id}.info`, game.infoBody)}</p>
+        <p>{development ? tr("rules.developmentIntro", "Ce mode fait partie du catalogue MULTISPORTS SCORING mais son moteur de jeu n’est pas encore disponible dans cette version. Sa fiche présente le concept actuellement défini.") : (ptit1Copy ? ptit1Copy.principle : tr(`game.${game.id}.info`, game.infoBody))}</p>
         <div className="mssRuleBadges">
           <span>{tr("rules.players", "JOUEURS")}</span>
           {game.supportsTeams && <span>{tr("rules.teams", "ÉQUIPES")}</span>}
@@ -314,6 +438,7 @@ function DartsRulePage({ game, onBack, onOpenApp, lang, setLang, t }: { game: Da
       <div><span>{tr("rules.category", "CATÉGORIE")}</span><strong>{exclusive ? tr("rules.mssExclusive", "Exclusivité MSS") : tr(`category.${game.category}`, DARTS_CATEGORY_LABEL[game.category] || "Fléchettes")}</strong></div>
       <div><span>{tr("rules.options", "OPTIONS")}</span><strong>{[game.supportsTeams ? tr("rules.teams", "Équipes") : "", game.supportsBots ? tr("rules.aiBots", "Bots IA") : ""].filter(Boolean).join(" • ") || tr("rules.dependsMode", "Selon le mode")}</strong></div>
     </section>
+    {game.id === "gros_6" ? <DartsSingleZoneVisuals smallLabel={tr("rules.smallSingle", "PETIT SIMPLE")} bigLabel={tr("rules.bigSingle", "GROS SIMPLE")} className="is-gros6" /> : null}
     {explainVisual ? <section className="mssRuleExplainVisual" aria-labelledby={`mss-rule-explain-${game.id}`}>
       <div className="mssRuleExplainVisualHead">
         <span>{tr("rules.awenaPoster", "AWENA T’EXPLIQUE LE MODE")}</span>
@@ -326,6 +451,7 @@ function DartsRulePage({ game, onBack, onOpenApp, lang, setLang, t }: { game: Da
       </picture>
     </section> : null}
     {development && <section className="mssDevelopmentNotice"><div><span>{tr("rules.modePreparing", "MODE EN PRÉPARATION")}</span><h2>{tr("rules.sheetWillEvolve", "Cette fiche évoluera avec le développement du moteur.")}</h2><p>{tr("rules.developmentNotice", "Le concept est déjà référencé dans le catalogue MULTISPORTS SCORING. Les règles, options et écrans jouables seront détaillés ici uniquement lorsqu’ils seront réellement intégrés à l’application.")}</p></div><b>WORK IN<br/>PROGRESS</b></section>}
+    {game.id === "ptit_hun" && !development ? <Ptit1PublicRules lang={lang} /> : <>
     <section className="mssRuleContent" id="regles">
       <article><b>01</b><h2>{tr("rules.objective", "OBJECTIF")}</h2><p>{tr(`game.${game.id}.objective`, objective)}</p></article>
       <article><b>02</b><h2>{tr("rules.principle", "PRINCIPE & RÈGLES")}</h2><p>{tr(`game.${game.id}.info`, game.infoBody)}</p></article>
@@ -335,6 +461,7 @@ function DartsRulePage({ game, onBack, onOpenApp, lang, setLang, t }: { game: Da
       {!development && <article><b>06</b><h2>{tr("rules.flow", "DÉROULEMENT")}</h2><p>{tr("rules.flowBody", "Créez ou sélectionnez vos profils, réglez les options du mode puis lancez la partie. MULTISPORTS SCORING assure le suivi du tour, des scores et des événements propres à ce jeu.")}</p></article>}
       {!development && <article><b>07</b><h2>{tr("rules.end", "FIN DE PARTIE")}</h2><p>{tr("rules.endBody", "La condition de fin et le classement appliqués sont ceux du moteur de ce mode. Les particularités confirmées figurent dans la section « Règles & paramètres » ci-dessus.")}</p></article>}
     </section>
+    </>}
     {sameCategoryGames.length > 0 && <section className="mssRuleRelated" id="autres-modes"><div className="mssRuleRelatedHead"><span>{tr("rules.discoverAlso", "À DÉCOUVRIR AUSSI")}</span><h2>{tr("rules.sameFamily", "D’autres modes de la même famille")}</h2></div><div className="mssRuleRelatedGrid">{sameCategoryGames.map((related) => { const art = landingTickerFor(related.id, lang); return <a key={related.id} href={publicDartsUrl(related.id)} onClick={(event) => openPublicDartsRule(event, related.id)}>{art ? <img src={art} alt="" loading="lazy" decoding="async"/> : <div className="mssRuleRelatedFallback"><img src={darts} alt=""/></div>}<span>{related.label}</span></a>; })}</div></section>}
     <nav className="mssRulePager">
       {previousGame ? <a href={publicDartsUrl(previousGame.id)} onClick={(event) => openPublicDartsRule(event, previousGame.id)}><small>{tr("rules.previous", "← MODE PRÉCÉDENT")}</small><strong>{previousGame.label}</strong></a> : <span/>}
@@ -365,6 +492,7 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
   const { lang, setLang, t } = useLang();
   const tr = (key: string, fallback: string) => lang === "fr" ? fallback : t(`landing.${key}`, fallback);
   const currentPublicLanguage = PUBLIC_LANGUAGES.find((item) => item.code === lang) || PUBLIC_LANGUAGES[0];
+  const ptit1LandingCopy = ptit1RulesCopy(lang);
   const [routeHash, setRouteHash] = useState(() => window.location.hash);
   const [dartsFilter, setDartsFilter] = useState<"classic"|"exclusive"|"fun"|"challenge"|"variant"|"training"|"development">("classic");
   const [dartsSearch, setDartsSearch] = useState("");
@@ -513,13 +641,13 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
         </a>
         <div className="mssPtit1SpotlightCopy">
           <div className="mssEyebrow">{tr("ptit1.eyebrow", "NOUVEAU MODE • PRÉCISION INVERSÉE")}</div>
-          <h3>{tr("ptit1.title", "P’TIT 1 : pour gagner, marquez le moins possible.")}</h3>
-          <p>{tr("ptit1.body", "Le petit simple devient votre meilleur allié : sa valeur reste faible, tandis que le gros simple et les anneaux dangereux peuvent faire exploser votre total. Cherchez les volées parfaites, construisez votre Bouclier et osez le centre de la cible pour revenir vers zéro.")}</p>
+          <h3>{ptit1LandingCopy.spotlightTitle}</h3>
+          <p>{ptit1LandingCopy.spotlightBody}</p>
           <div className="mssPtit1Mechanics">
-            <span><b>1</b><small>{tr("ptit1.smallOne", "Petit 1 = +1")}</small></span>
-            <span><b>0</b><small>{tr("ptit1.tripleNul", "3 petits identiques = volée 0")}</small></span>
-            <span><b>÷2</b><small>{tr("ptit1.dbull", "DBULL réduit le score")}</small></span>
-            <span><b>✦</b><small>{tr("ptit1.jackpot", "Jackpot Double/Triple = volée 0")}</small></span>
+            <span><b>1</b><small>{ptit1LandingCopy.smallLabel} · +1</small></span>
+            <span><b>0</b><small>{ptit1LandingCopy.tripleNulLabel}</small></span>
+            <span><b>÷2</b><small>{ptit1LandingCopy.dbullLabel}</small></span>
+            <span><b>✦</b><small>{ptit1LandingCopy.jackpotLabel}</small></span>
           </div>
           <a className="mssPtit1SpotlightCta" href={publicDartsUrl("ptit_hun")} onClick={(event) => openPublicDartsRule(event, "ptit_hun")}>{tr("darts.fullSheet", "VOIR LA FICHE COMPLÈTE →")}</a>
         </div>

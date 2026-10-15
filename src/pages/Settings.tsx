@@ -74,6 +74,7 @@ import ContentPacksSettingsPanel from "../components/settings/ContentPacksSettin
 import ThemeRealPagePreview from "../components/settings/ThemeRealPagePreview";
 import AccountSyncDiagnosticsPanel from "../components/settings/AccountSyncDiagnosticsPanel";
 import StatsSystemDiagnosticsPanel from "../components/stats/StatsSystemDiagnosticsPanel";
+import BackupDiagnosticsPanel from "../components/settings/BackupDiagnosticsPanel";
 import { useAwenaOptional } from "../awena/AwenaProvider";
 import { getAudioPreferences } from "../lib/audioPreferences";
 import { getKeepScreenAwakePreference, setKeepScreenAwakePreference, subscribeKeepScreenAwakePreference } from "../lib/keepAwake";
@@ -5369,7 +5370,7 @@ export function Settings({ go, params }: Props) {
     const [deepAuditProgress, setDeepAuditProgress] = React.useState<any>(null);
     const [deepAuditResult, setDeepAuditResult] = React.useState<any>(null);
     const [hardFreezeReport, setHardFreezeReport] = React.useState<any>(null);
-    const [diagnosticView, setDiagnosticView] = React.useState<"menu" | "account" | "stats" | "profile" | "freeze" | "runtime">("menu");
+    const [diagnosticView, setDiagnosticView] = React.useState<"menu" | "account" | "stats" | "backups" | "profile" | "freeze" | "runtime">("menu");
 
     React.useEffect(() => {
       const id = window.setInterval(() => setTick((v) => v + 1), 2000);
@@ -5612,7 +5613,7 @@ export function Settings({ go, params }: Props) {
     const lastStatsDiag = safeReadJson<any>("dc_stats_system_diagnostic_report_v124");
 
     const diagnosticCards: Array<{
-      id: "account" | "stats" | "profile" | "freeze" | "runtime";
+      id: "account" | "stats" | "backups" | "profile" | "freeze" | "runtime";
       icon: string;
       title: string;
       subtitle: string;
@@ -5630,6 +5631,12 @@ export function Settings({ go, params }: Props) {
         subtitle: "Pipeline complet : History → X01 → identité joueur → index → cache → Centre Stats.",
         accent: "#ffd36a",
         badge: lastStatsDiag?.summary ? `${lastStatsDiag.summary.ok || 0} OK · ${lastStatsDiag.summary.fail || 0} échec` : "V124 · PIPELINE STATS",
+      },
+      {
+        id: "backups", icon: "💾", title: "Sauvegardes / restaurations",
+        subtitle: "NAS, Drive, R2, fichier/SD, incrémental et progression.",
+        accent: "#65e6a8",
+        badge: "V126",
       },
       {
         id: "profile", icon: "👤", title: "Profil / Avatar",
@@ -5663,48 +5670,32 @@ export function Settings({ go, params }: Props) {
           marginBottom: 24,
         }}
       >
-        <div style={{
-          borderRadius: 18,
-          padding: "14px 14px 13px",
-          marginBottom: 14,
-          border: `1px solid ${theme.primary}35`,
-          background: `radial-gradient(circle at 12% 0%, ${theme.primary}18, transparent 36%), linear-gradient(135deg, rgba(255,255,255,.045), rgba(255,255,255,.015))`,
-          boxShadow: `0 16px 38px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.035)`,
-        }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ color: theme.primary, fontSize: 10, fontWeight: 1000, letterSpacing: 1.5, textTransform: "uppercase" }}>OUTILS DÉVELOPPEUR</div>
-              <h2 style={{ margin: "3px 0 0", fontSize: 18, color: theme.text, letterSpacing: .3 }}>Centre de diagnostic</h2>
-              <div style={{ marginTop: 5, fontSize: 11.5, color: theme.textSoft, lineHeight: 1.45 }}>
-                Un diagnostic à la fois. Choisis la zone à analyser : les autres outils restent repliés pour éviter les kilomètres de scroll.
-              </div>
-            </div>
-            <div style={{ width: 44, height: 44, flex: "0 0 auto", borderRadius: 14, display: "grid", placeItems: "center", fontSize: 23, border: `1px solid ${theme.primary}45`, background: `${theme.primary}12`, boxShadow: `0 0 22px ${theme.primary}18` }}>🩺</div>
-          </div>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ color: theme.primary, fontSize: 9.5, fontWeight: 900, letterSpacing: 1.1, textTransform: "uppercase" }}>OUTILS DÉVELOPPEUR</div>
+          <h2 style={{ margin: "3px 0 0", fontSize: 18, color: theme.text }}>Centre de diagnostic</h2>
+          <div style={{ marginTop: 4, fontSize: 11, color: theme.textSoft, lineHeight: 1.4 }}>Choisis un diagnostic. Un seul panneau s’ouvre à la fois.</div>
         </div>
 
         {diagnosticView === "menu" ? (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
+          <div style={{ display: "grid", gap: 8 }}>
             {diagnosticCards.map((card) => (
               <button
                 key={card.id}
                 type="button"
                 onClick={() => setDiagnosticView(card.id)}
                 style={{
-                  minWidth: 0, minHeight: 156, textAlign: "left", cursor: "pointer", color: theme.text,
-                  borderRadius: 18, border: `1px solid ${card.accent}35`,
-                  padding: 13, position: "relative", overflow: "hidden",
-                  background: `radial-gradient(circle at 92% 8%, ${card.accent}1e, transparent 38%), rgba(255,255,255,.025)`,
-                  boxShadow: "0 10px 26px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.035)",
+                  width: "100%", minWidth: 0, textAlign: "left", cursor: "pointer", color: theme.text,
+                  borderRadius: 12, border: `1px solid ${theme.borderSoft}`, padding: "11px 12px",
+                  background: "rgba(255,255,255,.025)", display: "grid", gridTemplateColumns: "34px minmax(0,1fr) 22px",
+                  alignItems: "center", gap: 10, boxShadow: "none",
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 13, display: "grid", placeItems: "center", fontSize: 21, background: `${card.accent}12`, border: `1px solid ${card.accent}35` }}>{card.icon}</div>
-                  <span style={{ borderRadius: 999, padding: "4px 7px", border: `1px solid ${card.accent}35`, background: `${card.accent}0d`, color: card.accent, fontSize: 8.5, fontWeight: 1000, letterSpacing: .35, whiteSpace: "nowrap" }}>{card.badge}</span>
+                <div style={{ width: 34, height: 34, borderRadius: 10, display: "grid", placeItems: "center", fontSize: 18, background: `${card.accent}0e`, border: `1px solid ${card.accent}28` }}>{card.icon}</div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 900, color: theme.text }}>{card.title}</div>
+                  <div style={{ marginTop: 2, color: theme.textSoft, fontSize: 9.8, lineHeight: 1.3 }}>{card.subtitle}</div>
                 </div>
-                <div style={{ marginTop: 11, fontSize: 13.5, fontWeight: 1000, color: theme.text }}>{card.title}</div>
-                <div style={{ marginTop: 5, color: theme.textSoft, fontSize: 10.5, lineHeight: 1.42 }}>{card.subtitle}</div>
-                <div style={{ marginTop: 10, color: card.accent, fontSize: 9.5, fontWeight: 950 }}>OUVRIR LE DIAGNOSTIC →</div>
+                <div style={{ color: card.accent, fontSize: 18, lineHeight: 1, textAlign: "right" }}>›</div>
               </button>
             ))}
           </div>
@@ -5728,6 +5719,10 @@ export function Settings({ go, params }: Props) {
             uiSnapshot={statsUiSnapshot}
             embedded
           />
+        ) : null}
+
+        {diagnosticView === "backups" ? (
+          <BackupDiagnosticsPanel theme={theme} />
         ) : null}
 
         {diagnosticView === "profile" ? (

@@ -22,6 +22,12 @@ import { answerAwenaProceduralAcademy } from "./AwenaProceduralAcademy";
 import { answerAwenaUserGuideV92, awenaUserGuideV92Count, awenaUserGuideV92StepCount } from "./AwenaUserGuideV92";
 import { answerAwenaUniversalGuide } from "./AwenaUniversalGuide";
 import { answerAwenaKnowledgeTool } from "./AwenaKnowledgeTools";
+import { PTIT1_RULES_MARKDOWN_BY_LANG, ptit1RulesMarkdown } from "../games/ptit1/ptit1LocalizedRules";
+import ptit1ExampleVisual from "../assets/ptit1/ptit1_config_classique.webp";
+import ptit1RulesRecapPortrait from "../assets/ptit1/ptit1_rules_recap_vertical.webp";
+import ptit1RulesRecapLandscape from "../assets/ptit1/ptit1_rules_recap_horizontal.webp";
+import smallSingleZoneVisual from "../assets/rules/darts-single-zones/zone_petit_simple.webp";
+import bigSingleZoneVisual from "../assets/rules/darts-single-zones/zone_gros_simple.webp";
 
 function normalize(text: string) {
   return String(text || "")
@@ -66,6 +72,24 @@ function buildCheckoutReply(context: AwenaRuntimeContext): string | null {
   const route = suggestion.darts.map((dart) => formatDart(dart.segment, dart.multiplier)).join(" → ");
   const player = context.playerName ? `${context.playerName}, ` : "";
   return `${player}il te reste ${remaining}. Avec ${dartsLeft} fléchette${dartsLeft > 1 ? "s" : ""}, tu peux tenter ${route}.`;
+}
+
+
+function ptit1AwenaVisualIsPortrait() {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.matchMedia?.("(orientation: portrait)")?.matches || window.innerHeight > window.innerWidth;
+  } catch {
+    return false;
+  }
+}
+
+function ptit1RulesResponsiveVisual() {
+  return ptit1AwenaVisualIsPortrait() ? ptit1RulesRecapPortrait : ptit1RulesRecapLandscape;
+}
+
+function ptit1RulesResponsiveAspectRatio() {
+  return ptit1AwenaVisualIsPortrait() ? "941 / 1672" : "1672 / 941";
 }
 
 function listDartsModesText() {
@@ -373,6 +397,20 @@ Ma couche Guide Utilisateur V9.2 ajoute **${awenaUserGuideV92Count()} sujets pra
   if (asksRules) {
     if (sportMode) return { text: sportMode.summary, actions: actionForSportMode(sportMode) };
     if (activeMode) {
+      if (activeMode.id === "ptit_hun") {
+        return {
+          text: ptit1RulesMarkdown("fr"),
+          localizedTextByLang: PTIT1_RULES_MARKDOWN_BY_LANG,
+          modeId: activeMode.id,
+          actions: [
+            { id: "ptit1-rules-recap", label: "Récapitulatif visuel P’TIT 1", kind: "navigate", route: "ptit_hun_config", modeId: "ptit_hun", imageSrc: ptit1RulesResponsiveVisual(), imageAlt: "Récapitulatif visuel de P’TIT 1 avec règles, exemple de tour et écran de jeu", imageAspectRatio: ptit1RulesResponsiveAspectRatio() },
+            { id: "ptit1-zone-small", label: "Zone de petit simple", kind: "navigate", route: "ptit_hun_config", modeId: "ptit_hun", imageSrc: smallSingleZoneVisual, imageAlt: "Cible expliquant la zone de petit simple", imageAspectRatio: "1 / 1" },
+            { id: "ptit1-zone-big", label: "Zone de gros simple", kind: "navigate", route: "ptit_hun_config", modeId: "ptit_hun", imageSrc: bigSingleZoneVisual, imageAlt: "Cible expliquant la zone de gros simple", imageAspectRatio: "1 / 1" },
+            { id: "ptit1-rules-example", label: "Exemple visuel P’TIT 1", kind: "navigate", route: "ptit_hun_config", modeId: "ptit_hun", imageSrc: ptit1ExampleVisual, imageAlt: "Illustration sans texte de P’TIT 1 en situation de jeu", imageAspectRatio: "2 / 1" },
+            ...actionsForAwenaMode(activeMode, context.route),
+          ],
+        };
+      }
       return {
         text: detailedRulesText(activeMode),
         modeId: activeMode.id,

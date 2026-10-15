@@ -29,6 +29,8 @@ import { makeGros6Segment, randomGros6StartTarget } from "../lib/gros6Engine";
 import tickerGros6 from "../assets/tickers/ticker_gros_6.webp";
 import tickerBig6 from "../assets/tickers/ticker_gros_6_en.webp";
 import gros6RulesBoard from "../assets/gros6/gros6_rules_board.webp";
+import smallSingleZoneVisual from "../assets/rules/darts-single-zones/zone_petit_simple.webp";
+import bigSingleZoneVisual from "../assets/rules/darts-single-zones/zone_gros_simple.webp";
 
 import botTeamEliteLogo from "../assets/ui/competition_bot_team_elite.webp";
 import botTeamProLogo from "../assets/ui/competition_bot_team_pro.webp";
@@ -845,6 +847,17 @@ export default function Gros6Config({ store, go }: any) {
             <div style={{ color: primary, fontWeight: 1000, fontSize: 20, marginBottom: 10 }}>{lang === "fr" ? "RÈGLES — GROS 6" : "RULES — BIG 6"}</div>
             <div style={{ display: "grid", gap: 14 }}>
               <img src={gros6RulesBoard as any} alt="Gros 6 board" style={{ width: "100%", maxWidth: 460, margin: "0 auto", display: "block", borderRadius: 18, border: `1px solid ${primary}44`, boxShadow: `0 0 24px ${primary}22` }} />
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
+                <figure style={{ margin: 0, borderRadius: 14, overflow: "hidden", border: `1px solid ${primary}44`, background: "#05070c" }}>
+                  <img src={smallSingleZoneVisual as any} alt={lang === "fr" ? "Zone de petit simple" : "Small single zone"} style={{ width: "100%", display: "block", aspectRatio: "1/1", objectFit: "contain" }} />
+                  <figcaption style={{ padding: "8px 10px", textAlign: "center", color: primary, fontSize: 10, fontWeight: 1000, letterSpacing: .7 }}>{lang === "fr" ? "PETIT SIMPLE" : "SMALL SINGLE"}</figcaption>
+                </figure>
+                <figure style={{ margin: 0, borderRadius: 14, overflow: "hidden", border: `1px solid ${primary}44`, background: "#05070c" }}>
+                  <img src={bigSingleZoneVisual as any} alt={lang === "fr" ? "Zone de gros simple" : "Big single zone"} style={{ width: "100%", display: "block", aspectRatio: "1/1", objectFit: "contain" }} />
+                  <figcaption style={{ padding: "8px 10px", textAlign: "center", color: primary, fontSize: 10, fontWeight: 1000, letterSpacing: .7 }}>{lang === "fr" ? "GROS SIMPLE" : "BIG SINGLE"}</figcaption>
+                </figure>
+              </div>
 
               <div style={{ color: "#e2e4ef", fontSize: 13, lineHeight: 1.68 }}>
                 {lang === "fr"

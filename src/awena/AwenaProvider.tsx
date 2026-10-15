@@ -78,7 +78,7 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
   const { muted } = useAudio();
   const [settingsState, setSettingsState] = React.useState<AwenaSettings>(() => loadAwenaSettings());
   const [runtime, setRuntimeState] = React.useState<AwenaRuntimeContext>({});
-  const canonicalAwenaMessagesRef = React.useRef(new Map<string, { text: string; actions?: AwenaMessage["actions"] }>());
+  const canonicalAwenaMessagesRef = React.useRef(new Map<string, { text: string; actions?: AwenaMessage["actions"]; localizedTextByLang?: Record<string, string> }>());
   const messagesRef = React.useRef<AwenaMessage[]>([]);
   const localizationSeqRef = React.useRef(0);
   const previousLangRef = React.useRef(String(lang || "fr"));
@@ -180,10 +180,10 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
             return { ...item, text: awenaUi(target).intro };
           }
           const reply = await awenaTranslation.replyFromFrench(
-            { text: canonical.text, actions: canonical.actions },
+            { text: canonical.text, actions: canonical.actions, localizedTextByLang: canonical.localizedTextByLang },
             target,
           );
-          return { ...item, text: reply.text, actions: reply.actions };
+          return { ...item, text: reply.text, actions: reply.actions, authoredLocalization: Boolean(canonical.localizedTextByLang?.[target]) };
         }
 
         // Defensive path for a message created by an older hot-reloaded provider:
@@ -328,10 +328,11 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
       }));
     }
 
-    const awenaMessage = message("awena", reply.text, reply.actions);
+    const awenaMessage = { ...message("awena", reply.text, reply.actions), authoredLocalization: Boolean(canonicalReply.localizedTextByLang?.[String(lang || "fr").toLowerCase().split("-")[0]]) };
     canonicalAwenaMessagesRef.current.set(awenaMessage.id, {
       text: canonicalReply.text,
       actions: canonicalReply.actions,
+      localizedTextByLang: canonicalReply.localizedTextByLang,
     });
     const shouldSpeak = (options?.speak ?? settingsState.autoSpeak) && settingsState.voiceEnabled && !muted;
 

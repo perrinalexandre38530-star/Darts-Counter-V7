@@ -138,9 +138,10 @@ export const awenaTranslation = {
 
   async replyFromFrench(reply: AwenaReply, targetLanguage: string): Promise<AwenaReply> {
     const target = baseLang(targetLanguage);
-    if (target === "fr") return reply;
+    const authored = reply.localizedTextByLang?.[target];
+    if (target === "fr") return authored ? { ...reply, text: authored } : reply;
     const [text, actions] = await Promise.all([
-      translateText(reply.text, "fr", target),
+      authored ? Promise.resolve(authored) : translateText(reply.text, "fr", target),
       reply.actions?.length
         ? Promise.all(reply.actions.map((action) => localizeAction(action, target)))
         : Promise.resolve(reply.actions),

@@ -582,7 +582,7 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, landscapeHeaderDo
                         </button>
                     </div>
                   )}
-                  {m.role === "awena" && !String(lang || "fr").toLowerCase().startsWith("fr") && (
+                  {m.role === "awena" && !m.authoredLocalization && !String(lang || "fr").toLowerCase().startsWith("fr") && (
                     <div style={{ marginTop: 3, color: "#8f98b8", fontSize: 8.5, textAlign: "right", opacity: .78 }}>
                       {ui.automaticTranslation}
                     </div>
@@ -601,7 +601,7 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, landscapeHeaderDo
                             title={action.label}
                             style={{
                               width: "min(280px, 100%)",
-                              aspectRatio: "800 / 230",
+                              aspectRatio: action.imageAspectRatio || "800 / 230",
                               padding: 0,
                               overflow: "hidden",
                               borderRadius: 12,

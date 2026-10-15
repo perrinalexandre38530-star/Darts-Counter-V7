@@ -41,6 +41,7 @@ export type AwenaAction = {
   modeId?: string;
   imageSrc?: string;
   imageAlt?: string;
+  imageAspectRatio?: string;
 };
 
 export type AwenaMessage = {
@@ -49,10 +50,13 @@ export type AwenaMessage = {
   text: string;
   createdAt: number;
   actions?: AwenaAction[];
+  authoredLocalization?: boolean;
 };
 
 export type AwenaReply = {
   text: string;
+  /** Optional hand-authored translations. When present, Awena uses the exact selected-language text instead of machine translation. */
+  localizedTextByLang?: Record<string, string>;
   modeId?: string | null;
   actions?: AwenaAction[];
   /** Sujet général retenu pour permettre des relances courtes comme
