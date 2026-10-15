@@ -8,6 +8,7 @@ import {
   cancelOrganizationInvitation,
   cancelOrganizationMemberProposal,
   inviteOrganizationUser,
+  leaveOrganization,
   listOrganizationInvitations,
   listOrganizationMemberProposals,
   listOrganizationMembers,
@@ -23,6 +24,8 @@ import {
   setOrganizationLocalMemberStatus,
   setOrganizationMemberRole,
   setOrganizationMemberStatus,
+  transferOrganizationOwnership,
+  withdrawOrganizationLocalMember,
   type OrganizationInvitation,
   type OrganizationMemberProposal,
   type OrganizationLocalGroup,
@@ -385,7 +388,11 @@ export default function OrganizationMembersPanel({ organization, groups, userId,
         const editable = canEditTarget(organization.role, member);
         const moderatable = canModerateTarget(organization.role, member);
         const isMe = member.entityType === "user" && member.userId === userId;
+        const isMyLocalProfile = member.entityType === "local_profile" && member.ownerUserId === userId;
         const memberKey = member.entityType === "local_profile" ? `local:${member.membershipId}` : member.userId;
+        const canLeaveSelf = isMe && member.role !== "owner";
+        const canTransferOwnership = isOwner && member.entityType === "user" && !isMe && member.status === "active";
+        const canWithdrawOwnLocal = isMyLocalProfile && !moderatable;
         const expanded = expandedMember === memberKey;
         return <div key={memberKey} style={{ ...card, padding: 11, opacity: member.status === "suspended" ? .68 : 1 }}>
           <div style={{ display: "grid", gridTemplateColumns: "46px minmax(0,1fr) auto", gap: 9, alignItems: "center" }}>
@@ -408,8 +415,33 @@ export default function OrganizationMembersPanel({ organization, groups, userId,
           </div> : null}
 
           {moderatable ? <div style={{ marginTop: 9, display: "flex", justifyContent: "flex-end", gap: 6, flexWrap: "wrap" }}>
+            {canTransferOwnership ? <button type="button" disabled={!!actionKey} onClick={() => {
+              const first = window.confirm(L(
+                `Transférer la propriété de ${organization.name} à ${member.displayName} ?`,
+                `Transfer ownership of ${organization.name} to ${member.displayName}?`,
+                `¿Transferir la propiedad de ${organization.name} a ${member.displayName}?`,
+              ));
+              if (!first) return;
+              const second = window.confirm(L(
+                `Confirmation définitive : ${member.displayName} deviendra propriétaire. Ton rôle passera Administrateur et seul le nouveau propriétaire pourra retransférer la propriété.`,
+                `Final confirmation: ${member.displayName} will become owner. Your role will become Administrator and only the new owner will be able to transfer ownership again.`,
+                `Confirmación definitiva: ${member.displayName} será propietario. Tu rol pasará a Administrador y solo el nuevo propietario podrá volver a transferir la propiedad.`,
+              ));
+              if (!second) return;
+              void run(`transfer-owner:${memberKey}`, async () => { await transferOrganizationOwnership(userId, organization.id, member.userId); }, L(
+                `Propriété transférée à ${member.displayName}.`,
+                `Ownership transferred to ${member.displayName}.`,
+                `Propiedad transferida a ${member.displayName}.`,
+              ));
+            }} style={{ ...button, color: theme.primary, borderColor: `${theme.primary}66` }}>{L("TRANSFÉRER LA PROPRIÉTÉ", "TRANSFER OWNERSHIP", "TRANSFERIR PROPIEDAD")}</button> : null}
             <button type="button" disabled={!!actionKey} onClick={() => void run(`status:${memberKey}`, async () => { if (member.entityType === "local_profile") await setOrganizationLocalMemberStatus(userId, organization.id, member.membershipId, member.status === "active" ? "suspended" : "active"); else await setOrganizationMemberStatus(userId, organization.id, member.userId, member.status === "active" ? "suspended" : "active"); })} style={{ ...button, color: member.status === "active" ? "#ffbd72" : theme.primary }}>{member.status === "active" ? L("SUSPENDRE", "SUSPEND", "SUSPENDER") : L("RÉACTIVER", "REACTIVATE", "REACTIVAR")}</button>
             <button type="button" disabled={!!actionKey} onClick={() => { if (window.confirm(L(`Retirer ${member.displayName} de l’organisation ?`, `Remove ${member.displayName} from the organization?`, `¿Quitar a ${member.displayName} de la organización?`))) void run(`remove:${memberKey}`, async () => { if (member.entityType === "local_profile") await removeOrganizationLocalMember(userId, organization.id, member.membershipId); else await removeOrganizationMember(userId, organization.id, member.userId); }); }} style={{ ...button, color: "#ff8c8c", borderColor: "rgba(255,100,100,.35)" }}>{L("RETIRER", "REMOVE", "QUITAR")}</button>
+          </div> : null}
+          {canLeaveSelf ? <div style={{ marginTop: 9, display: "flex", justifyContent: "flex-end" }}>
+            <button type="button" disabled={!!actionKey} onClick={() => { if (window.confirm(L(`Quitter ${organization.name} ? Tu perdras immédiatement l’accès à son espace, ses équipes et ses contenus réservés aux membres.`, `Leave ${organization.name}? You will immediately lose access to its workspace, teams and member-only content.`, `¿Salir de ${organization.name}? Perderás inmediatamente el acceso a su espacio, equipos y contenido reservado a miembros.`))) void run(`leave:${memberKey}`, async () => { await leaveOrganization(userId, organization.id); }, L("Tu as quitté l’organisation.", "You left the organization.", "Has salido de la organización.")); }} style={{ ...button, color: "#ff9a9a", borderColor: "rgba(255,100,100,.35)" }}>{L("QUITTER L’ORGANISATION", "LEAVE ORGANIZATION", "SALIR DE LA ORGANIZACIÓN")}</button>
+          </div> : null}
+          {canWithdrawOwnLocal ? <div style={{ marginTop: 9, display: "flex", justifyContent: "flex-end" }}>
+            <button type="button" disabled={!!actionKey} onClick={() => { if (window.confirm(L(`Retirer ton profil local ${member.displayName} de ${organization.name} ?`, `Remove your local profile ${member.displayName} from ${organization.name}?`, `¿Quitar tu perfil local ${member.displayName} de ${organization.name}?`))) void run(`withdraw-local:${memberKey}`, async () => { await withdrawOrganizationLocalMember(userId, organization.id, member.membershipId); }); }} style={{ ...button, color: "#ff9a9a", borderColor: "rgba(255,100,100,.35)" }}>{L("RETIRER MON PROFIL", "REMOVE MY PROFILE", "QUITAR MI PERFIL")}</button>
           </div> : null}
         </div>;
       })}

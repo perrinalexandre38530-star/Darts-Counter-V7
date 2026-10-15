@@ -1542,6 +1542,10 @@ function rpcMessage(error: any, fallback: string): string {
     PROPOSAL_ALREADY_PENDING: "Une proposition d’adhésion est déjà en attente pour cette personne.",
     PROPOSAL_NOT_FOUND: "Proposition d’adhésion introuvable.",
     OWNER_APPROVAL_REQUIRED: "Seul le créateur de l’organisation peut valider cette proposition.",
+    OWNER_MUST_TRANSFER: "Le créateur doit transférer la propriété de l’organisation avant de pouvoir la quitter.",
+    OWNER_ONLY: "Seul le propriétaire actuel peut transférer la propriété de l’organisation.",
+    OWNER_TRANSFER_TARGET_ACTIVE_REQUIRED: "Le nouveau propriétaire doit être un membre MSS actif de l’organisation.",
+    OWNER_TRANSFER_SELF: "Choisis un autre membre pour transférer la propriété.",
     LOCAL_PROFILE_REQUIRED: "Profil local invalide.",
     LOCAL_PROFILE_NAME_REQUIRED: "Le nom du profil local est requis.",
     LOCAL_PROFILE_NOT_OWNED: "Ce profil local n’est pas enregistré dans les profils synchronisés de ton compte.",
@@ -1620,6 +1624,35 @@ export async function removeOrganizationMember(
   if (!userId) throw new Error("Connexion requise.");
   const { error } = await orgRpc("ms_org_remove_member", { p_org_id: organizationId, p_user_id: memberUserId });
   if (error) throw new Error(rpcMessage(error, "Suppression du membre impossible."));
+}
+
+export async function leaveOrganization(
+  userId: string | null | undefined,
+  organizationId: string,
+): Promise<void> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { error } = await orgRpc("ms_org_leave_self", { p_org_id: organizationId });
+  if (error) throw new Error(rpcMessage(error, "Impossible de quitter l’organisation."));
+}
+
+export async function transferOrganizationOwnership(
+  userId: string | null | undefined,
+  organizationId: string,
+  targetUserId: string,
+): Promise<void> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { error } = await orgRpc("ms_org_transfer_ownership", { p_org_id: organizationId, p_target_user_id: targetUserId });
+  if (error) throw new Error(rpcMessage(error, "Transfert de propriété impossible."));
+}
+
+export async function withdrawOrganizationLocalMember(
+  userId: string | null | undefined,
+  organizationId: string,
+  localMemberId: string,
+): Promise<void> {
+  if (!userId) throw new Error("Connexion requise.");
+  const { error } = await orgRpc("ms_org_withdraw_local_member", { p_org_id: organizationId, p_local_member_id: localMemberId });
+  if (error) throw new Error(rpcMessage(error, "Impossible de retirer ce profil local de l’organisation."));
 }
 
 export async function setOrganizationGroupMember(

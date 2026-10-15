@@ -229,25 +229,76 @@ function CodebreakerPanel({ state, accent }: any) {
 }
 
 function FaceMysterePanel({ state, accent }: any) {
-  const candidates = new Set((state?.special?.faceCandidates || []).map(Number));
+  const candidateList = (state?.special?.faceCandidates || []).map(Number);
+  const candidates = new Set(candidateList);
   const clues = state?.special?.faceClues || [];
+  const history = state?.special?.faceHistory || [];
   const secret = Number(state?.special?.faceSecret || 0);
+  const remaining = candidates.size;
+  const eliminated = Math.max(0, 20 - remaining);
+  const investigationPct = Math.min(100, Math.max(0, Math.round((eliminated / 19) * 100)));
+  const solved = state?.phase === "finished";
+  const finalCandidate = remaining === 1 ? candidateList[0] : null;
+  const latestGuesses = history.slice(-5).reverse();
+  const faceFor = (n: number) => ["🧔","👩","👨","👩‍🦱","👨‍🦲","👩‍🦰","👨‍🦱","👩‍🦳","👨‍🦳","🧑"][Math.abs(n - 1) % 10];
+
   return <div style={{ ...panelStyle(accent + "55"), padding: 10 }}>
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 7 }}>
-      <div style={{ color: accent, fontSize: 10, fontWeight: 1100 }}>FACE MYSTÈRE · SUSPECTS</div>
-      <div style={{ color: SOFT, fontSize: 9, fontWeight: 900 }}>{candidates.size} encore possible(s)</div>
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+      <div>
+        <div style={{ color: accent, fontSize: 10, fontWeight: 1100 }}>🎭 FACE MYSTÈRE · ENQUÊTE EN DIRECT</div>
+        <div style={{ color: SOFT, fontSize: 8.8, marginTop: 2 }}>Accuse un portrait avec son secteur · une erreur révèle un indice et élimine les incompatibles.</div>
+      </div>
+      <div style={{ borderRadius: 999, padding: "5px 8px", background: solved ? `${accent}22` : remaining <= 3 ? "rgba(255,190,80,.12)" : "rgba(255,255,255,.045)", border: `1px solid ${solved ? accent + "77" : remaining <= 3 ? "rgba(255,190,80,.38)" : "rgba(255,255,255,.09)"}`, color: solved ? accent : remaining <= 3 ? "#ffd06a" : "#e7ebf4", fontSize: 8.6, fontWeight: 1100, whiteSpace: "nowrap" }}>{solved ? "AFFAIRE RÉSOLUE" : `${remaining} SUSPECT${remaining > 1 ? "S" : ""}`}</div>
     </div>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(10,1fr)", gap: 4 }}>
-      {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => {
-        const alive = candidates.has(n);
-        const reveal = state?.phase === "finished" && n === secret;
-        return <div key={n} style={{ minHeight: 34, borderRadius: 9, display: "grid", placeItems: "center", border: `1px solid ${reveal ? accent : alive ? "rgba(255,255,255,.12)" : "rgba(255,255,255,.045)"}`, background: reveal ? `${accent}24` : alive ? "rgba(255,255,255,.045)" : "rgba(255,255,255,.015)", color: reveal ? "#fff" : alive ? "#dce1ec" : "#4d5360", fontSize: 9.5, fontWeight: 1000, textDecoration: alive ? "none" : "line-through" }}>{n}</div>;
-      })}
+
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.55fr) minmax(150px,.8fr)", gap: 8, marginTop: 8 }}>
+      <div style={{ borderRadius: 12, padding: 8, background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.07)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <b style={{ color: "#fff", fontSize: 9.2 }}>MUR DES SUSPECTS</b>
+          <span style={{ color: SOFT, fontSize: 8.5 }}>{eliminated}/20 écarté(s)</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5 }}>
+          {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => {
+            const alive = candidates.has(n);
+            const guilty = solved && n === secret;
+            const lastGuess = latestGuesses[0] && Number(latestGuesses[0].guess) === n;
+            return <div key={n} style={{ position: "relative", minHeight: 49, borderRadius: 9, display: "grid", placeItems: "center", padding: "3px 2px", overflow: "hidden", border: `1px solid ${guilty ? accent : alive ? (lastGuess ? "#ffd06a88" : "rgba(255,255,255,.13)") : "rgba(255,255,255,.045)"}`, background: guilty ? `linear-gradient(145deg,${accent}28,${accent}0d)` : alive ? (finalCandidate === n ? "rgba(255,190,80,.12)" : "rgba(255,255,255,.045)") : "rgba(255,255,255,.012)", opacity: alive || guilty ? 1 : .38, boxShadow: guilty ? `0 0 18px ${accent}38` : finalCandidate === n ? "0 0 14px rgba(255,190,80,.18)" : "none" }}>
+              <div style={{ fontSize: 20, lineHeight: 1 }}>{faceFor(n)}</div>
+              <div style={{ color: guilty ? accent : alive ? "#fff" : "#757b86", fontSize: 8.8, fontWeight: 1100 }}>#{n}</div>
+              {!alive && !guilty ? <div style={{ position: "absolute", left: "12%", right: "12%", top: "50%", height: 1, background: "#ff6f72aa", transform: "rotate(-14deg)" }} /> : null}
+              {guilty ? <div style={{ position: "absolute", top: 2, right: 3, fontSize: 9 }}>✅</div> : null}
+              {finalCandidate === n && !solved ? <div style={{ position: "absolute", top: 2, right: 3, fontSize: 8 }}>🎯</div> : null}
+            </div>;
+          })}
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gap: 7, alignContent: "start" }}>
+        <div style={{ borderRadius: 11, padding: 8, background: `${accent}0b`, border: `1px solid ${accent}35` }}>
+          <div style={{ color: SOFT, fontSize: 8.3, fontWeight: 1000 }}>PROGRESSION ENQUÊTE</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><b style={{ color: "#fff", fontSize: 18 }}>{investigationPct}%</b><span style={{ color: SOFT, fontSize: 8.2 }}>{eliminated} éliminés</span></div>
+          <div style={{ height: 6, borderRadius: 99, background: "rgba(255,255,255,.07)", overflow: "hidden", marginTop: 4 }}><div style={{ width: `${investigationPct}%`, height: "100%", borderRadius: 99, background: `linear-gradient(90deg,${accent}88,${accent})`, transition: "width .25s ease" }} /></div>
+        </div>
+
+        <div style={{ borderRadius: 11, padding: 8, background: remaining === 1 && !solved ? "rgba(255,190,80,.09)" : "rgba(255,255,255,.025)", border: `1px solid ${remaining === 1 && !solved ? "rgba(255,190,80,.35)" : "rgba(255,255,255,.07)"}` }}>
+          <div style={{ color: SOFT, fontSize: 8.3, fontWeight: 1000 }}>{solved ? "COUPABLE IDENTIFIÉ" : remaining === 1 ? "DERNIER SUSPECT" : "PROCHAINE ACTION"}</div>
+          <div style={{ color: solved ? accent : remaining === 1 ? "#ffd06a" : "#fff", fontSize: 13, fontWeight: 1100, marginTop: 4 }}>{solved ? `SUSPECT #${secret}` : remaining === 1 ? `VISE LE ${finalCandidate}` : "VISE UN SUSPECT ACTIF"}</div>
+          <div style={{ color: SOFT, fontSize: 8.3, marginTop: 3 }}>{solved ? "L’enquête est terminée." : remaining === 1 ? "Un seul portrait reste compatible avec tous les indices." : "Chaque erreur utile resserre l’étau."}</div>
+        </div>
+
+        <div style={{ borderRadius: 11, padding: 8, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.07)" }}>
+          <div style={{ color: SOFT, fontSize: 8.3, fontWeight: 1000, marginBottom: 4 }}>DERNIÈRES ACCUSATIONS</div>
+          {latestGuesses.length ? <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>{latestGuesses.map((h: any, i: number) => <span key={`${h.playerId}-${h.guess}-${i}`} style={{ borderRadius: 999, padding: "3px 6px", background: Number(h.guess) === secret && solved ? `${accent}20` : "rgba(255,255,255,.04)", border: `1px solid ${Number(h.guess) === secret && solved ? accent + "55" : "rgba(255,255,255,.08)"}`, color: Number(h.guess) === secret && solved ? accent : "#dce1ec", fontSize: 8.2, fontWeight: 950 }}>#{h.guess}</span>)}</div> : <div style={{ color: SOFT, fontSize: 8.4 }}>Aucune accusation.</div>}
+        </div>
+      </div>
     </div>
-    <div style={{ display: "grid", gap: 4, marginTop: 8 }}>
-      {clues.slice(-4).map((c: any, i: number) => <div key={`${c.key}-${i}`} style={{ color: "#dce1ec", fontSize: 9.5 }}>🔎 {c.label}</div>)}
-      {!clues.length ? <div style={{ color: SOFT, fontSize: 9.5 }}>Vise un suspect. Une erreur révélera un indice et réduira la liste.</div> : null}
+
+    <div style={{ marginTop: 8, borderRadius: 11, padding: 8, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.07)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><b style={{ color: "#fff", fontSize: 9 }}>📁 DOSSIER D’INDICES</b><span style={{ color: SOFT, fontSize: 8.3 }}>{clues.length} indice(s)</span></div>
+      {clues.length ? <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 6 }}>{clues.map((c: any, i: number) => <span key={`${c.key}-${i}`} style={{ borderRadius: 8, padding: "5px 7px", background: `${accent}0c`, border: `1px solid ${accent}2e`, color: "#e7ebf4", fontSize: 8.5, fontWeight: 900 }}>🔎 {c.label}</span>)}</div> : <div style={{ color: SOFT, fontSize: 8.6, marginTop: 5 }}>Aucun indice pour l’instant. Lance une première accusation.</div>}
     </div>
+
+    <div style={{ marginTop: 7, borderRadius: 10, padding: "7px 9px", background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.06)", color: SOFT, fontSize: 8.6, lineHeight: 1.45 }}><b style={{ color: "#fff" }}>RÉFLEXE ENQUÊTE :</b> secteur = accusation · erreur = suspect éliminé + nouvel indice · <b style={{ color: accent }}>bon suspect = affaire résolue immédiatement</b>.</div>
   </div>;
 }
 
