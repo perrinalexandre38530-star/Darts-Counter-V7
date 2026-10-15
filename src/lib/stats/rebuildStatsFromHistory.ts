@@ -11,6 +11,7 @@ import { normalizeMatchForStats } from "../matchCompactCodec";
 import { computeBabyFootRichStats } from "../babyfootRichStats";
 import { beginFreezeOperation, endFreezeOperation } from "../freezeWatch";
 import { getAccountLocalStorageItem, setAccountLocalStorageItem, removeAccountLocalStorageItem } from "../accountScope";
+import { recordStatsDiagnosticEvent } from "../statsDiagnosticsTrace";
 
 // ----------------------------
 // Types génériques (safe)
@@ -205,6 +206,7 @@ function saveStatsQuickMirror(idx: StatsIndex): void {
 }
 
 export function markStatsIndexDirty(reason = "unknown"): void {
+  recordStatsDiagnosticEvent("stats.index.dirty", { reason });
   try {
     if (typeof localStorage !== "undefined") {
       setAccountLocalStorageItem(STATS_DIRTY_KEY, JSON.stringify({ dirty: true, reason, at: Date.now() }));
@@ -367,6 +369,14 @@ export async function loadStatsIndex(): Promise<StatsIndex | null> {
   try {
     const fromKv = await getKV<StatsIndex>(STATS_KEY);
     if (isValidStatsIndex(fromKv)) {
+      recordStatsDiagnosticEvent("stats.index.load", {
+        source: "idb-cache",
+        matches: Number(fromKv?.totals?.matches || 0) || 0,
+        finished: Number(fromKv?.totals?.finished || 0) || 0,
+        x01: Number((fromKv as any)?.byMode?.x01?.matches || 0) || 0,
+        rowsScanned: Number(fromKv?.meta?.rowsScanned || 0) || 0,
+        rebuiltAt: Number(fromKv?.rebuiltAt || 0) || 0,
+      });
       return {
         ...fromKv,
         meta: {
@@ -406,6 +416,14 @@ export async function saveStatsIndex(idx: StatsIndex): Promise<void> {
   };
 
   await setKV(STATS_KEY, payload);
+  recordStatsDiagnosticEvent("stats.index.save", {
+    matches: Number(payload?.totals?.matches || 0) || 0,
+    finished: Number(payload?.totals?.finished || 0) || 0,
+    x01: Number((payload as any)?.byMode?.x01?.matches || 0) || 0,
+    players: Object.keys(payload?.byPlayer || {}).length,
+    rowsScanned: Number(payload?.meta?.rowsScanned || 0) || 0,
+    source: String(payload?.meta?.source || ""),
+  });
 
   // Petit miroir synchrone pour le premier paint des KPI.
   saveStatsQuickMirror(payload);
@@ -1277,6 +1295,7 @@ export function scheduleStatsIndexRefresh(options?: {
   // rebuild reprendra dès qu'une vraie page Stats le demandera.
   const constrained = isConstrainedStatsIndexDevice();
   if (constrained && !isStatsIndexRuntimeActive()) {
+    recordStatsDiagnosticEvent("stats.index.refresh-deferred", { reason, constrained: true, activeTab: (() => { try { return String((globalThis as any)?.window?.__mscActiveTab || ""); } catch { return ""; } })() });
     if (__statsRefreshTimer) {
       clearTimeout(__statsRefreshTimer);
       __statsRefreshTimer = null;
@@ -1389,6 +1408,8 @@ export async function rebuildStatsFromHistory(options?: {
 }): Promise<StatsIndex> {
   const includeNonFinished = !!options?.includeNonFinished;
   const persist = options?.persist !== false;
+  const diagnosticStartedAt = (() => { try { return performance.now(); } catch { return Date.now(); } })();
+  recordStatsDiagnosticEvent("stats.index.rebuild-start", { includeNonFinished, persist });
 
   // ✅ TDZ / cycle break:
   // rebuildStatsFromHistory <-> history created a runtime import cycle.
@@ -1477,6 +1498,15 @@ export async function rebuildStatsFromHistory(options?: {
   await reconcileLegacyPlayerAliases(idx);
   if (persist) await saveStatsIndex(idx);
   clearStatsIndexDirty();
+  const diagnosticEndedAt = (() => { try { return performance.now(); } catch { return Date.now(); } })();
+  recordStatsDiagnosticEvent("stats.index.rebuild-complete", {
+    rows: rows.length,
+    matches: Number(idx?.totals?.matches || 0) || 0,
+    finished: Number(idx?.totals?.finished || 0) || 0,
+    x01: Number((idx as any)?.byMode?.x01?.matches || 0) || 0,
+    players: Object.keys(idx?.byPlayer || {}).length,
+    durationMs: Math.round((diagnosticEndedAt - diagnosticStartedAt) * 10) / 10,
+  });
   return idx;
   } finally {
     endFreezeOperation(__freezeOp);

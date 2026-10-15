@@ -68,6 +68,7 @@ import {
   type CloudObjectIndexItem,
 } from "../lib/cloudStorageApi";
 import { restoreCloudBackupFromJson } from "../lib/cloudBackup";
+import { recordStatsDiagnosticEvent } from "../lib/statsDiagnosticsTrace";
 import {
   getDirectR2Status,
   getDirectR2Usage,
@@ -2613,6 +2614,15 @@ export default function StorageVaultPage({ go }: Props) {
     const isBackupV1 = looksLikeCloudBackupV1(snapshot);
     if (!looksLikeCloudSnapshot(snapshot) && !isBackupV1) throw new Error("Snapshot restaurable introuvable dans ce bloc.");
     const summary = isBackupV1 ? strictSummaryForCloudPayload(snapshot) : strictSummaryForRestore(snapshot);
+    recordStatsDiagnosticEvent("restore.begin", {
+      provider,
+      reason,
+      matches: Number(summary.matches || 0),
+      historyRows: Number(summary.historyRows || 0),
+      statsBlocks: Number(summary.statsBlocks || 0),
+      statsMatches: Number((summary as any).statsMatches || 0),
+      profiles: Number(summary.profiles || 0),
+    });
     const q = provider === "cloud" ? assessSaveForProvider(summary, "cloud") : assessSave(summary);
     if (!q.restorable) {
       throw new Error(`Garde-fou restauration : bloc refusé. ${q.reason} ${explainStrictPayload(snapshot)}`);
@@ -2694,6 +2704,17 @@ export default function StorageVaultPage({ go }: Props) {
       }
 
       const restoredCount = Number(restoredStats?.totals?.matches || 0);
+      recordStatsDiagnosticEvent("restore.stats-verified", {
+        provider,
+        reason,
+        expectedStats,
+        expectedHistory,
+        snapshotStatsCount,
+        restoredCount,
+        restoredFinished: Number(restoredStats?.totals?.finished || 0),
+        restoredX01: Number(restoredStats?.byMode?.x01?.matches || 0),
+        rowsScanned: Number(restoredStats?.meta?.rowsScanned || 0),
+      });
       if ((expectedStats > 0 || expectedHistory > 0) && restoredCount <= 0) {
         throw new Error(`Restauration incomplète : historique/statistiques présents dans la sauvegarde mais index statistique vide après reconstruction.`);
       }
@@ -2709,6 +2730,7 @@ export default function StorageVaultPage({ go }: Props) {
         }));
       } catch {}
     } catch (statsError) {
+      recordStatsDiagnosticEvent("restore.stats-failed", { provider, reason, error: String((statsError as any)?.message || statsError || "unknown") });
       console.warn("[StorageVault] stats restore verification failed", statsError);
       throw statsError;
     }
@@ -2793,6 +2815,7 @@ export default function StorageVaultPage({ go }: Props) {
       }
       setMessage(`Restauration terminée : ${summary.matches} partie(s), ${summary.profiles} profil(s), ${summary.statsBlocks} bloc(s) stats. Rechargement…`);
       report(100, "Restauration terminée. Rechargement…", "finalize");
+      recordStatsDiagnosticEvent("restore.complete", { provider, reason, matches: Number(summary.matches || 0), historyRows: Number(summary.historyRows || 0), statsBlocks: Number(summary.statsBlocks || 0) });
       window.setTimeout(() => window.location.reload(), 900);
       return { summary };
     }
@@ -2822,6 +2845,7 @@ export default function StorageVaultPage({ go }: Props) {
       await refresh(provider).catch(() => undefined);
     }
     report(100, "Restauration terminée. Les données sont disponibles dans l’application.", "finalize");
+    recordStatsDiagnosticEvent("restore.complete", { provider, reason, matches: Number(summary.matches || 0), historyRows: Number(summary.historyRows || 0), statsBlocks: Number(summary.statsBlocks || 0) });
     return { summary };
   };
 

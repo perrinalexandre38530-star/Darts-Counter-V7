@@ -43,6 +43,7 @@ import {
 } from "../lib/statsBridge";
 import type { CricketProfileStats } from "../lib/cricketStats";
 import { buildChallengeStatsProgression } from "../lib/challengeStatsProgression";
+import StatsSystemDiagnosticsPanel from "../components/stats/StatsSystemDiagnosticsPanel";
 
 // ---- Utils ----
 const STATSHUB_HISTORY_LIGHT_CAP = 300;
@@ -11582,28 +11583,12 @@ return (
       </button>
 
       {showStatsDiagnostic && (
-        <div style={{ position: "fixed", left: 10, right: 10, bottom: 136, zIndex: 9997, maxHeight: "55vh", overflow: "auto", background: "rgba(5,9,14,.96)", border: "1px solid rgba(72,220,255,.35)", borderRadius: 14, padding: 12, color: "#fff", fontSize: 11, boxShadow: "0 14px 40px rgba(0,0,0,.6)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 8 }}>
-            <b style={{ color: "#66e8ff", fontSize: 13 }}>DIAGNOSTIC STATS</b>
-            <button type="button" onClick={relaunchStatsSources} style={{ borderRadius: 999, border: "1px solid rgba(255,255,255,.2)", background: "rgba(255,255,255,.08)", color: "#fff", padding: "5px 9px", fontWeight: 800 }}>RELANCER</button>
-          </div>
-          <div>Profil : <b>{statsDiagnostic.profileName || "—"}</b></div>
-          <div style={{ wordBreak: "break-all", opacity: .75 }}>{statsDiagnostic.profileId || "ID absent"}</div>
-          <div style={{ marginTop: 6 }}>Avatar : <b style={{ color: statsDiagnostic.avatarOk ? "#72ffad" : "#ffb14a" }}>{statsDiagnostic.avatarOk ? `OK (${statsDiagnostic.avatarSource})` : "ABSENT"}</b></div>
-          <div>Profils locaux : <b>{statsDiagnostic.localProfiles}</b> · joueurs reconnus : <b>{statsDiagnostic.playersFound}</b></div>
-          <div>Historique normalisé : <b>{statsDiagnostic.normalizedMatches}</b> · matchs du profil : <b>{statsDiagnostic.selectedMatches}</b></div>
-          <div>Hydratation : <b>{statsDiagnostic.normalizedLoaded ? "OK" : "EN COURS"}</b> · moteur lourd : <b>{statsDiagnostic.heavyStatsReady ? "PRÊT" : "ATTENTE"}</b></div>
-          <div>Cache dashboard : <b>{statsDiagnostic.cacheOk ? "OK" : "VIDE"}</b> · onglet : <b>{statsDiagnostic.currentMode}</b></div>
-          {statsDiagnostic.dartSets && (
-            <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.12)" }}>
-              <b style={{ color: "#ffd36a" }}>DART SETS</b>
-              <div>Bibliothèque profil : <b>{Number(statsDiagnostic.dartSets.sets || 0)}</b> · lignes stats : <b>{Number(statsDiagnostic.dartSets.rows || 0)}</b></div>
-              <div>Historique lu : <b>{Number(statsDiagnostic.dartSets.history || 0)}</b> · X01 : <b>{Number(statsDiagnostic.dartSets.x01 || 0)}</b></div>
-              <div>État : <b>{String(statsDiagnostic.dartSets.phase || "—")}</b>{statsDiagnostic.dartSets.error ? ` · ${String(statsDiagnostic.dartSets.error)}` : ""}</div>
-            </div>
-          )}
-          <div style={{ marginTop: 8, opacity: .65 }}>Ce diagnostic ne supprime aucune donnée. « RELANCER » invalide seulement les caches runtime et redemande les sources officielles.</div>
-        </div>
+        <StatsSystemDiagnosticsPanel
+          profileId={statsDiagnostic.profileId}
+          profileName={statsDiagnostic.profileName}
+          uiSnapshot={statsDiagnostic}
+          onReloadSources={relaunchStatsSources}
+        />
       )}
 
       {devModeEnabled && (

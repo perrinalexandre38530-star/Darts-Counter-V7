@@ -100,6 +100,7 @@ import { enrichDartsTelemetry } from "./dartsTelemetry";
 import { beginFreezeOperation, endFreezeOperation, recordFreezeWatchEvent, saveFreezeHistoryAudit } from "./freezeWatch";
 import { recordIncrementalChange } from "./incrementalBackupJournal";
 import { flushIncrementalRemoteSyncForProvider } from "./incrementalRemoteSync";
+import { recordStatsDiagnosticEvent } from "./statsDiagnosticsTrace";
 
 // ✅ Resume index (localStorage) — permet "Reprendre partie" multi-modes
 // Évite la dépendance circulaire avec src/lib/resume.ts (qui importe History)
@@ -5320,7 +5321,15 @@ if (typeof window !== "undefined") {
 
 export const History = {
   async list() {
+    const startedAt = (() => { try { return performance.now(); } catch { return Date.now(); } })();
     const rows = await list();
+    const endedAt = (() => { try { return performance.now(); } catch { return Date.now(); } })();
+    recordStatsDiagnosticEvent("history.list", {
+      rows: Array.isArray(rows) ? rows.length : 0,
+      finished: Array.isArray(rows) ? rows.filter((row: any) => inferHistoryStatus(row) === "finished").length : 0,
+      durationMs: Math.round((endedAt - startedAt) * 10) / 10,
+      scope: historyDbName(),
+    });
     __cache = rows
       .map((r: any) => {
         const { payload, ...lite } = r || {};
@@ -5355,6 +5364,11 @@ export const History = {
     // Seulement les parties finalisées sont poussées dans la synchro privée du compte.
     // Les checkpoints live restent locaux pour ne pas saturer Realtime pendant une partie.
     if (String((syncedRecord as any)?.status || "").toLowerCase() === "finished") {
+      recordStatsDiagnosticEvent("history.finished-upsert", {
+        id: String((syncedRecord as any)?.id || (syncedRecord as any)?.matchId || ""),
+        kind: String((syncedRecord as any)?.kind || (syncedRecord as any)?.game?.mode || ""),
+        players: Array.isArray((syncedRecord as any)?.players) ? (syncedRecord as any).players.length : 0,
+      });
       dispatchAccountHistoryLocalChange({ op: "upsert", record: syncedRecord });
     }
   },
@@ -5375,6 +5389,7 @@ export const History = {
   async remove(id: string) {
     await remove(id);
     _applyRemoveToCache(id);
+    recordStatsDiagnosticEvent("history.remove", { id: String(id || "") });
     dispatchAccountHistoryLocalChange({ op: "delete", id: String(id || "") });
   },
   // Import distant sans réémettre un événement local (anti-boucle Realtime).
@@ -5392,6 +5407,7 @@ export const History = {
     } catch {}
     await clear();
     _clearCache();
+    recordStatsDiagnosticEvent("history.clear", { rowsBefore: Array.isArray(rows) ? rows.length : 0 });
     dispatchAccountHistoryLocalChange({
       op: "clear",
       ids: (Array.isArray(rows) ? rows : []).map((row: any) => String(row?.id || row?.matchId || "")).filter(Boolean),
