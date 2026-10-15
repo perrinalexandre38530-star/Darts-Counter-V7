@@ -6,7 +6,7 @@
 // - Prépare un vrai stats_index centralisé pour éviter les stats vides
 // ============================================
 
-import { delKV, getKV, setKV } from "../storage";
+import { delKV, getKV, setKV, loadStore } from "../storage";
 import { normalizeMatchForStats } from "../matchCompactCodec";
 import { computeBabyFootRichStats } from "../babyfootRichStats";
 import { beginFreezeOperation, endFreezeOperation } from "../freezeWatch";
@@ -98,7 +98,7 @@ export type StatsIndex = {
 
 const STATS_KEY = "dc_stats_index_v2";
 const STATS_LEGACY_KEY = "dc-stats-index-v1";
-const STATS_VERSION = 2;
+const STATS_VERSION = 3;
 const STATS_REFRESH_DEBOUNCE_MS = 900;
 const STATS_DIRTY_KEY = "dc_stats_index_dirty_v1";
 const STATS_QUICK_MIRROR_KEY = "dc_stats_quick_v1";
@@ -149,7 +149,7 @@ async function yieldStatsIndexWork(): Promise<void> {
 
 
 export type StatsQuickMirror = {
-  version: 1;
+  version: 2;
   updatedAt: number;
   byPlayer: Record<string, {
     matches: number;
@@ -171,7 +171,7 @@ export function loadStatsQuickMirrorSync(): StatsQuickMirror | null {
     const raw = getAccountLocalStorageItem(STATS_QUICK_MIRROR_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (!parsed || parsed.version !== 1 || typeof parsed.byPlayer !== "object") return null;
+    if (!parsed || parsed.version !== 2 || typeof parsed.byPlayer !== "object") return null;
     return parsed as StatsQuickMirror;
   } catch {
     return null;
@@ -197,7 +197,7 @@ function saveStatsQuickMirror(idx: StatsIndex): void {
         lastMatchAt: Number(e.lastMatchAt || 0) || undefined,
       };
     }
-    const mirror: StatsQuickMirror = { version: 1, updatedAt: Date.now(), byPlayer };
+    const mirror: StatsQuickMirror = { version: 2, updatedAt: Date.now(), byPlayer };
     setAccountLocalStorageItem(STATS_QUICK_MIRROR_KEY, JSON.stringify(mirror));
   } catch {
     // Cache UX uniquement : ne doit jamais bloquer les stats.
@@ -479,6 +479,85 @@ function normalizeGameKey(rec: any, payload: any): GameKey {
   return "unknown";
 }
 
+
+function normalizeStatsPlayerName(value: any): string {
+  try {
+    return String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+  } catch {
+    return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+  }
+}
+
+function legacyPlayerIdFromName(value: any): string {
+  const normalized = normalizeStatsPlayerName(value);
+  return normalized ? `legacy-name:${normalized}` : "";
+}
+
+function isFinishedHistoryStatus(value: any): boolean {
+  const status = String(value || "").trim().toLowerCase().replace(/\s+/g, "_");
+  if (!status) return false;
+  return status.includes("finish") || status.includes("complete") || [
+    "done", "ended", "end", "match_end", "match-ended", "matchend", "terminee", "terminée"
+  ].includes(status);
+}
+
+function mergePlayerAggregate(target: any, source: any, canonicalId: string): any {
+  const out: any = { ...(target || {}), playerId: canonicalId };
+  const addKeys = ["matches", "wins", "losses", "dartsThrown", "pointsScored", "__avg3WeightDarts", "__avg3WeightPoints", "__avg3DirectSum", "__avg3DirectCount"];
+  for (const key of addKeys) out[key] = (Number(out[key] || 0) || 0) + (Number(source?.[key] || 0) || 0);
+  out.bestVisit = Math.max(Number(out.bestVisit || 0) || 0, Number(source?.bestVisit || 0) || 0);
+  out.bestCheckout = Math.max(Number(out.bestCheckout || 0) || 0, Number(source?.bestCheckout || 0) || 0);
+  out.lastMatchAt = Math.max(Number(out.lastMatchAt || 0) || 0, Number(source?.lastMatchAt || 0) || 0) || undefined;
+  if (!out.name && source?.name) out.name = source.name;
+  const buckets: Record<string, number> = { ...(out.buckets || {}) };
+  for (const [key, value] of Object.entries(source?.buckets || {})) buckets[key] = (Number(buckets[key] || 0) || 0) + (Number(value || 0) || 0);
+  out.buckets = buckets;
+  out.avg3 = Number(out.__avg3WeightDarts || 0) > 0
+    ? (Number(out.__avg3WeightPoints || 0) / Number(out.__avg3WeightDarts || 1)) * 3
+    : Number(out.__avg3DirectCount || 0) > 0
+      ? Number(out.__avg3DirectSum || 0) / Number(out.__avg3DirectCount || 1)
+      : Math.max(Number(target?.avg3 || 0) || 0, Number(source?.avg3 || 0) || 0);
+  // Conserver les blocs spécifiques au mode sans écraser les valeurs déjà calculées.
+  for (const [key, value] of Object.entries(source || {})) {
+    if (key in out || key.startsWith("__")) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
+async function reconcileLegacyPlayerAliases(idx: StatsIndex): Promise<void> {
+  try {
+    const store: any = await loadStore<any>();
+    const profiles = Array.isArray(store?.profiles) ? store.profiles : [];
+    const byName = new Map<string, string | null>();
+    for (const profile of profiles) {
+      const id = String(profile?.id || profile?.profileId || profile?.uid || "").trim();
+      const names = [profile?.name, profile?.displayName, profile?.nickname, profile?.pseudo, profile?.username];
+      if (!id) continue;
+      for (const raw of names) {
+        const name = normalizeStatsPlayerName(raw);
+        if (!name) continue;
+        if (!byName.has(name)) byName.set(name, id);
+        else if (byName.get(name) !== id) byName.set(name, null); // ambigu : ne jamais fusionner au hasard
+      }
+    }
+    for (const [playerId, aggregate] of Object.entries({ ...idx.byPlayer })) {
+      const candidateName = normalizeStatsPlayerName((aggregate as any)?.name || (playerId.startsWith("legacy-name:") ? playerId.slice("legacy-name:".length) : ""));
+      const canonicalId = candidateName ? byName.get(candidateName) : null;
+      if (!canonicalId || canonicalId === playerId) continue;
+      idx.byPlayer[canonicalId] = mergePlayerAggregate(idx.byPlayer[canonicalId], aggregate, canonicalId);
+      delete idx.byPlayer[playerId];
+    }
+  } catch (error) {
+    console.warn("[stats-index] rapprochement profils legacy ignoré", error);
+  }
+}
+
 function bumpMode(idx: StatsIndex, mode: GameKey, status?: string, ts?: number) {
   const m = idx.byMode[mode] || {
     mode,
@@ -492,7 +571,7 @@ function bumpMode(idx: StatsIndex, mode: GameKey, status?: string, ts?: number) 
   m.matches += 1;
 
   const st = (status || "").toLowerCase();
-  if (st.includes("finish")) m.finished += 1;
+  if (isFinishedHistoryStatus(st)) m.finished += 1;
   else if (st.includes("progress") || st.includes("in_progress")) m.inProgress += 1;
   else if (st.includes("save")) m.saved += 1;
   else m.inProgress += 1;
@@ -769,16 +848,19 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
     const mergePool = (pool: any) => {
       if (Array.isArray(pool)) {
         for (const row of pool) {
-          const pid = String(row?.id || row?.playerId || row?.uid || row?.profileId || row?.pid || "").trim();
+          const name = row?.name || row?.displayName || row?.nickname || row?.pseudo || "";
+          const pid = String(row?.id || row?.playerId || row?.uid || row?.profileId || row?.pid || legacyPlayerIdFromName(name)).trim();
           if (!pid) continue;
-          byId.set(pid, { ...(byId.get(pid) || {}), ...(row || {}), id: pid, playerId: pid });
+          byId.set(pid, { ...(byId.get(pid) || {}), ...(row || {}), id: pid, playerId: pid, name: name || row?.name });
         }
       } else if (pool && typeof pool === "object") {
         for (const [key, row] of Object.entries(pool)) {
           if (!row || typeof row !== "object") continue;
-          const pid = String((row as any)?.id || (row as any)?.playerId || (row as any)?.uid || (row as any)?.profileId || key || "").trim();
+          const name = (row as any)?.name || (row as any)?.displayName || (row as any)?.nickname || (row as any)?.pseudo || "";
+          const keyLooksLikeIndex = /^\d+$/.test(String(key));
+          const pid = String((row as any)?.id || (row as any)?.playerId || (row as any)?.uid || (row as any)?.profileId || (!keyLooksLikeIndex ? key : "") || legacyPlayerIdFromName(name)).trim();
           if (!pid) continue;
-          byId.set(pid, { ...(byId.get(pid) || {}), ...(row as any), id: pid, playerId: pid });
+          byId.set(pid, { ...(byId.get(pid) || {}), ...(row as any), id: pid, playerId: pid, name: name || (row as any)?.name });
         }
       }
     };
@@ -1370,7 +1452,7 @@ export async function rebuildStatsFromHistory(options?: {
 
       idx.totals.matches += 1;
       const st = (status || "").toLowerCase();
-      if (st.includes("finish")) idx.totals.finished += 1;
+      if (isFinishedHistoryStatus(st)) idx.totals.finished += 1;
       else if (st.includes("save")) idx.totals.saved += 1;
       else idx.totals.inProgress += 1;
 
@@ -1392,6 +1474,7 @@ export async function rebuildStatsFromHistory(options?: {
     }
   }
 
+  await reconcileLegacyPlayerAliases(idx);
   if (persist) await saveStatsIndex(idx);
   clearStatsIndexDirty();
   return idx;

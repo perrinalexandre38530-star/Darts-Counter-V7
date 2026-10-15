@@ -2034,6 +2034,10 @@ export default function StorageVaultPage({ go }: Props) {
   const restoreFileRef = React.useRef<HTMLInputElement | null>(null);
 
   React.useEffect(() => {
+    console.info("[StorageVault] V123 stats/backup stability active");
+  }, []);
+
+  React.useEffect(() => {
     if (backgroundRestore.status !== "idle" && backgroundRestore.message) {
       setMessage(backgroundRestore.message);
     }
@@ -2664,24 +2668,44 @@ export default function StorageVaultPage({ go }: Props) {
     report(90, "Contrôle des statistiques restaurées…", "rebuild");
     try {
       const expectedStats = Number(summary.statsMatches || summary.statsBlocks || 0);
+      const expectedHistory = Math.max(Number(summary.historyRows || 0), Number(summary.matches || 0));
       let restoredStats: any = await loadStatsIndex().catch(() => null);
-      let restoredCount = Number(restoredStats?.totals?.matches || 0);
-      if (expectedStats > 0 && restoredCount <= 0) {
-        report(90, "Index stats absent : reconstruction immédiate depuis les parties restaurées…", "rebuild");
+      const snapshotStatsCount = Number(restoredStats?.totals?.matches || 0);
+
+      // V123 : l'index embarqué dans une ancienne sauvegarde peut lui-même être
+      // incomplet (ex. 10 X01 alors que 55+ parties sont dans l'historique). On le
+      // charge d'abord pour le premier paint, puis on reconstruit TOUJOURS l'index
+      // depuis l'historique qui vient réellement d'être restauré. Ainsi la source de
+      // vérité est la même sur PC, Android, Drive et NAS.
+      if (expectedHistory > 0) {
+        report(91, `Reconstruction des stats depuis ${expectedHistory} partie(s) restaurée(s)…`, "rebuild");
         restoredStats = await refreshStatsIndexFromHistoryNow({
           includeNonFinished: true,
           persist: true,
-          reason: `restore-stats:${reason}`,
+          reason: `restore-stats-v123:${reason}`,
         });
-        restoredCount = Number(restoredStats?.totals?.matches || 0);
+      } else if (expectedStats > 0 && snapshotStatsCount <= 0) {
+        report(91, "Index stats absent : reconstruction immédiate…", "rebuild");
+        restoredStats = await refreshStatsIndexFromHistoryNow({
+          includeNonFinished: true,
+          persist: true,
+          reason: `restore-stats-v123:${reason}`,
+        });
       }
-      if (expectedStats > 0 && restoredCount <= 0) {
-        throw new Error(`Restauration incomplète : la sauvegarde annonce ${expectedStats} bloc(s) stats mais aucun index statistique n'a été restauré.`);
+
+      const restoredCount = Number(restoredStats?.totals?.matches || 0);
+      if ((expectedStats > 0 || expectedHistory > 0) && restoredCount <= 0) {
+        throw new Error(`Restauration incomplète : historique/statistiques présents dans la sauvegarde mais index statistique vide après reconstruction.`);
+      }
+      // Un écart massif n'est plus masqué comme avant. Une petite différence reste
+      // tolérée pour les vieux formats dupliqués, mais 10/87 ou 10/55 est bloquant.
+      if (expectedHistory >= 5 && restoredCount < Math.floor(expectedHistory * 0.5)) {
+        throw new Error(`Restauration statistiques incomplète : ${restoredCount} partie(s) indexée(s) pour ${expectedHistory} partie(s) restaurée(s).`);
       }
       clearStatsIndexDirty();
       try {
         window.dispatchEvent(new CustomEvent("dc-stats-index-updated", {
-          detail: { reason: `restore:${reason}`, restored: true, totals: restoredStats?.totals || null },
+          detail: { reason: `restore:${reason}`, restored: true, rebuiltFromHistory: expectedHistory > 0, totals: restoredStats?.totals || null },
         }));
       } catch {}
     } catch (statsError) {

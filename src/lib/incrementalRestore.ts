@@ -2,7 +2,7 @@ import LZString from 'lz-string';
 import { loadStore, saveStore } from './storage';
 import { loadTeams, saveTeams, type TeamEntity } from './petanqueTeamsStore';
 import { withIncrementalRecordingSuppressed, type IncrementalChange } from './incrementalBackupJournal';
-import { upsertFromCloud } from './history';
+import { History, upsertFromCloud } from './history';
 
 function changeTime(change: IncrementalChange): number {
   return Number(change?.updatedAt || 0) || 0;
@@ -83,7 +83,11 @@ export async function applyIncrementalChanges(changes: IncrementalChange[], opts
         }
 
         if (change.entityType === 'match') {
-          if (change.op === 'delete') { skipped += 1; continue; }
+          if (change.op === 'delete') {
+            await History.removeFromCloud(String(change.entityId || ''));
+            applied += 1;
+            continue;
+          }
           const p: any = change.payload || {};
           let payload = p.payload ?? null;
           if (!payload && typeof p.payloadCompressed === 'string' && p.payloadCompressed) {

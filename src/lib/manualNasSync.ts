@@ -779,19 +779,30 @@ export function removeHistoryFromNasPayload(payload: any, idsToRemove?: string[]
 }
 
 export async function pushNasHistoryDeletion(idsToRemove?: string[]) {
-  const api = await getOnlineApi();
-  const pulled: any = await api.pullStoreSnapshot();
-  if (!pulled || pulled.status !== "ok" || !pulled.payload) {
-    return { ok: false, status: pulled?.status || "not_found", reason: "Aucun snapshot NAS à nettoyer" };
-  }
+  const ids = Array.isArray(idsToRemove)
+    ? Array.from(new Set(idsToRemove.map((value) => String(value || "").trim()).filter(Boolean)))
+    : [];
 
-  const cleaned = removeHistoryFromNasPayload(pulled.payload, idsToRemove);
-  const version = Number((cleaned as any)?._v ?? (cleaned as any)?.v ?? pulled.version ?? 8);
-  const res = await api.pushStoreSnapshot(cleaned, version, { force: true, reason: "history-delete" });
+  // V123 : plus aucun pull + re-push du snapshot complet pour une suppression
+  // d'historique. Ce chemin était la source exacte des POST /sync/push en 413.
+  // Les suppressions sont journalisées puis envoyées au NAS sous forme de delta.
+  if (ids.length) {
+    const { recordIncrementalChange } = await import("./incrementalBackupJournal");
+    for (const id of ids) {
+      await recordIncrementalChange({ entityType: "match", entityId: id, op: "delete", updatedAt: Date.now() });
+    }
+  }
+  const { flushIncrementalRemoteSyncForProvider } = await import("./incrementalRemoteSync");
+  const result = await flushIncrementalRemoteSyncForProvider("founder_nas");
+  if (result.error) throw new Error(result.error);
+  if (!result.supported) {
+    return { ok: false, status: "incremental_unsupported", reason: "Le backend NAS ne confirme pas encore le journal incrémental.", removedIds: ids };
+  }
   try { localStorage.setItem(LAST_PUSH_KEY, new Date().toISOString()); } catch {}
   clearNasSyncDirty();
-  return { ok: true, clearedAll: !idsToRemove || idsToRemove.length === 0, removedIds: idsToRemove || [], result: res };
+  return { ok: true, clearedAll: ids.length === 0, removedIds: ids, result };
 }
+
 
 export async function computeNasSyncSummary(extra?: any) {
   const { loadStore } = await getStorage();

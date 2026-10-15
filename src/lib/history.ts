@@ -90,16 +90,16 @@ import { encodeCompactMatch, estimateCompactBytes } from "./matchCompactCodec";
    - évite “tout a disparu après clear site data”
 ========================= */
 import type { Store } from "./types";
-import { exportCloudSnapshot, getStorageUser, getStorageUserAliases, loadStore, scopedStorageKey } from "./storage";
+import { getStorageUser, getStorageUserAliases, loadStore, scopedStorageKey } from "./storage";
 import { loadStoragePrefs } from "./storagePlans";
-import { onlineApi } from "./onlineApi";
 import { emitCloudChange } from "./cloudEvents";
-import { isRuntimeHidden, shouldDeferHeavyRuntimeWork } from "./runtimePerformance";
 import { EventBuffer } from "./sync/EventBuffer";
 import { recordProfileUsageFromMatch } from "./profileUsage";
 import { fingerprintHistoryPayload, protectFinishedHistoryPayload } from "./historyIntegrity";
 import { enrichDartsTelemetry } from "./dartsTelemetry";
 import { beginFreezeOperation, endFreezeOperation, recordFreezeWatchEvent, saveFreezeHistoryAudit } from "./freezeWatch";
+import { recordIncrementalChange } from "./incrementalBackupJournal";
+import { flushIncrementalRemoteSyncForProvider } from "./incrementalRemoteSync";
 
 // ✅ Resume index (localStorage) — permet "Reprendre partie" multi-modes
 // Évite la dépendance circulaire avec src/lib/resume.ts (qui importe History)
@@ -672,83 +672,27 @@ function _sanitizeStoreForCloudMini(s: any) {
   return clone;
 }
 
-let __cloudPushTimer: number | null = null;
-let __lastCloudPushAt = 0;
-let __deferredCloudPushReason: string | null = null;
-let __cloudPushVisibilityListenerInstalled = false;
-const HISTORY_CLOUD_MIN_INTERVAL_MS = 60_000;
-
-function installDeferredCloudPushListener() {
-  if (__cloudPushVisibilityListenerInstalled || typeof window === "undefined") return;
-  __cloudPushVisibilityListenerInstalled = true;
-
-  const flushWhenHidden = () => {
-    if (!__deferredCloudPushReason || !isRuntimeHidden()) return;
-    const deferredReason = __deferredCloudPushReason;
-    __deferredCloudPushReason = null;
-    scheduleCloudSnapshotPush(deferredReason);
-  };
-
-  try { document.addEventListener("visibilitychange", flushWhenHidden, { passive: true }); } catch {}
-  try { window.addEventListener("pagehide", flushWhenHidden, { passive: true }); } catch {}
-}
+let __lastIncrementalHistoryPushAt = 0;
 
 function scheduleCloudSnapshotPush(reason: string) {
   try {
     if (typeof window === "undefined") return;
     const prefs = loadStoragePrefs();
-    // R2 est géré par matchAutoBackup/cloudAutoRestore.
-    // Ne jamais envoyer cloud_r2 vers pushStoreSnapshot(), qui correspond
-    // au chemin NAS historique.
-    if (prefs.selectedDestination === "cloud_r2") return;
 
-    const wantsRemoteSnapshot =
-      prefs.mirrorToSupabase ||
-      prefs.selectedDestination === "founder_nas";
-    if (!wantsRemoteSnapshot) return;
-
-    // P0 FLUIDITÉ MOBILE : ce snapshot historique est un export du compte
-    // complet. Conserver uniquement la dernière demande tant que l'app est au
-    // premier plan ; les petites sauvegardes par match continuent immédiatement.
-    if (shouldDeferHeavyRuntimeWork()) {
-      __deferredCloudPushReason = String(reason || "history-change");
-      if (__cloudPushTimer) {
-        window.clearTimeout(__cloudPushTimer);
-        __cloudPushTimer = null;
-      }
-      installDeferredCloudPushListener();
-      return;
+    // V123 : l'historique n'envoie plus jamais le snapshot complet vers /sync/push.
+    // Les upserts/suppressions alimentent le journal incrémental ; on ne transmet
+    // ensuite que les différences. Cela supprime la régression 413 Cloudflare et
+    // évite de recompresser tout le compte à chaque petite modification.
+    if (prefs.selectedDestination === "founder_nas" || prefs.mirrorToSupabase) {
+      const delay = Math.max(250, 900 - (Date.now() - __lastIncrementalHistoryPushAt));
+      window.setTimeout(async () => {
+        const result = await flushIncrementalRemoteSyncForProvider("founder_nas");
+        if (!result.error && result.supported) __lastIncrementalHistoryPushAt = Date.now();
+      }, delay);
     }
-
-    if (__cloudPushTimer) {
-      window.clearTimeout(__cloudPushTimer);
-      __cloudPushTimer = null;
-    }
-
-    const delay = Math.max(1200, HISTORY_CLOUD_MIN_INTERVAL_MS - (Date.now() - __lastCloudPushAt));
-    __cloudPushTimer = window.setTimeout(async () => {
-      __cloudPushTimer = null;
-
-      // Un timer créé pendant que l'app était cachée peut n'être exécuté
-      // qu'après le retour au premier plan. Ne jamais payer alors le gros export.
-      if (shouldDeferHeavyRuntimeWork()) {
-        __deferredCloudPushReason = String(reason || "history-change");
-        installDeferredCloudPushListener();
-        return;
-      }
-
-      try {
-        const session = await onlineApi.getCurrentSession().catch(() => null);
-        const uid = String((session as any)?.user?.id || "");
-        if (!uid) return;
-
-        const payload = await exportCloudSnapshot();
-        await onlineApi.pushStoreSnapshot(payload, 8, { reason });
-        __lastCloudPushAt = Date.now();
-      } catch (error) {
-        console.warn("[history] routed snapshot push failed:", error);
-      }
-    }, delay);
+    // Les clouds personnels/R2 sont synchronisés par incrementalRemoteSync et
+    // matchAutoBackup. Aucun fallback full-snapshot n'est autorisé ici.
+    void reason;
   } catch {}
 }
 
@@ -4972,6 +4916,11 @@ export async function remove(id: string): Promise<void> {
       }
     } catch {}
 
+    try {
+      for (const deletedId of Array.from(idsToDelete)) {
+        void recordIncrementalChange({ entityType: "match", entityId: String(deletedId), op: "delete", updatedAt: Date.now() });
+      }
+    } catch {}
     invalidateStatsAfterHistoryMutation("history:remove");
     scheduleCloudSnapshotPush("history:remove");
     try { emitCloudChange("history:remove"); } catch {}
@@ -4992,6 +4941,7 @@ export async function remove(id: string): Promise<void> {
         }
       } catch {}
 
+      try { void recordIncrementalChange({ entityType: "match", entityId: wanted, op: "delete", updatedAt: Date.now() }); } catch {}
       invalidateStatsAfterHistoryMutation("history:remove:ls_fallback");
       scheduleCloudSnapshotPush("history:remove:ls_fallback");
       try { emitCloudChange("history:remove:ls_fallback"); } catch {}
@@ -5434,6 +5384,12 @@ export const History = {
   },
   async clear() {
     const rows = await list().catch(() => [] as SavedMatch[]);
+    try {
+      for (const row of Array.isArray(rows) ? rows : []) {
+        const id = String((row as any)?.id || (row as any)?.matchId || "").trim();
+        if (id) void recordIncrementalChange({ entityType: "match", entityId: id, op: "delete", updatedAt: Date.now() });
+      }
+    } catch {}
     await clear();
     _clearCache();
     dispatchAccountHistoryLocalChange({

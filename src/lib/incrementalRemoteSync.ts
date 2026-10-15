@@ -119,6 +119,26 @@ export type IncrementalSyncResult = {
   error?: string | null;
 };
 
+
+export async function flushIncrementalRemoteSyncForProvider(provider: string): Promise<IncrementalSyncResult> {
+  const normalized = String(provider || '').trim();
+  const result: IncrementalSyncResult = { provider: normalized, attempted: 0, synced: 0, supported: true };
+  if (!isRemoteProvider(normalized)) return result;
+  try {
+    const changes = await listUnsyncedIncrementalChanges(normalized);
+    result.attempted = changes.length;
+    if (!changes.length) return result;
+    const uploaded = await uploadBundle(normalized, changes);
+    result.supported = uploaded;
+    if (!uploaded) return result;
+    await markIncrementalProviderSynced(normalized, changes);
+    result.synced = changes.length;
+  } catch (error: any) {
+    result.error = error?.message || String(error);
+  }
+  return result;
+}
+
 export async function flushIncrementalRemoteSync(): Promise<IncrementalSyncResult> {
   if (inFlight) {
     rerun = true;

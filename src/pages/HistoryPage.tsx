@@ -950,7 +950,7 @@ function dedupe(list: SavedEntry[]): SavedEntry[] {
 
 /* ---------- Range filters ---------- */
 
-type RangeKey = "today" | "week" | "month" | "year" | "archives";
+type RangeKey = "all" | "today" | "week" | "month" | "year" | "archives";
 
 function startOf(period: RangeKey) {
   const now = new Date();
@@ -971,6 +971,7 @@ function startOf(period: RangeKey) {
 
 function inRange(ts: number, key: RangeKey): boolean {
   const t = ts || Date.now();
+  if (key === "all") return true;
   if (key === "archives") return t < startOf("year");
   return t >= startOf(key);
 }
@@ -3618,7 +3619,7 @@ export default function HistoryPage({
     return () => window.removeEventListener("resize", onR);
   }, []);
 
-  const [sub, setSub] = useState<RangeKey>("today");
+  const [sub, setSub] = useState<RangeKey>("all");
   const [gameFilter, setGameFilter] = useState<GameFilterKey>("all");
   const [playerFilter, setPlayerFilter] = useState<PlayerFilterKey>("all");
   const [cargoParticipantFilter, setCargoParticipantFilter] = useState<CargoParticipantFilter>("all");
@@ -5378,6 +5379,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
           <div style={S.filtersRow}>
             {(
               [
+                ["all", "ALL"],
                 ["today", "J"],
                 ["week", "S"],
                 ["month", "M"],
