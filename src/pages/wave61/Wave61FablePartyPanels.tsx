@@ -10,54 +10,11 @@ function shell(accent: string): React.CSSProperties {
 export function MistigriPanel({ state, accent }: any) {
   const holderId=String(state.special?.mistigriHolderId||""); const threshold=Math.max(1,Number(state.config?.modeOptions?.dangerThreshold||3)); const active=state.players?.[state.activePlayerIndex];
   return <div style={shell(accent)}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}><div style={{color:accent,fontSize:10,fontWeight:1100,letterSpacing:.7}}>🃏 MISTIGRI · CARTE MAUDITE EN DIRECT</div><div style={{color:"#ffb347",fontSize:9,fontWeight:1100}}>{state.players.find((p:any)=>String(p.id)===holderId)?.name||"—"} DÉTIENT LE MISTIGRI</div></div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:6}}>{state.players.map((p:any)=>{const holder=holderId===String(p.id);const danger=Number(state.special?.mistigriDangerByPlayer?.[p.id]||0);const pairs=Number(state.special?.mistigriPairsByPlayer?.[p.id]||0);const shield=Number(state.special?.mistigriShieldByPlayer?.[p.id]||0);const lives=Number(state.lives?.[p.id]||0);return <div key={p.id} style={{borderRadius:11,padding:8,border:`1px solid ${holder?"#ffb347":p.id===active?.id?accent+"77":"rgba(255,255,255,.08)"}`,background:holder?"rgba(255,160,60,.10)":"rgba(255,255,255,.025)",display:"grid",gap:5,boxShadow:holder?"0 0 18px rgba(255,160,60,.12)":"none",opacity:state.eliminated?.[p.id] ? .5 : 1}}><div style={{display:"flex",justifyContent:"space-between"}}><b>{holder?"🃏":"🎴"} {p.name}</b><span style={{color:holder?"#ffb347":accent,fontSize:8.5,fontWeight:1100}}>{holder?"À TRANSMETTRE":`${lives} VIE${lives>1?"S":""}`}</span></div><Meter value={danger} max={threshold} accent={danger>=threshold-1?"#ff726c":holder?"#ffb347":accent}/><div style={{display:"flex",justifyContent:"space-between",color:SOFT,fontSize:8}}><span>Paires {pairs}</span><span>Danger {danger}/{threshold}</span><span>🛡️ {shield}</span></div>{holder?<span style={{color:"#ffd0a0",fontSize:7.8}}>Touche la cible pour transmettre · BULL = protection.</span>:null}</div>})}</div></div>;
-}: any) {
-  const holderId = String(state.special?.mistigriHolderId || "");
-  const threshold = Math.max(1, Number(state.config?.modeOptions?.dangerThreshold || 3));
-  return <div style={shell(accent)}>
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-      <div style={{ color: accent, fontSize: 10, fontWeight: 1100, letterSpacing: .7 }}>🃏 MISTIGRI · ÉVITE LA MAUVAISE CARTE</div>
-      <div style={{ color: SOFT, fontSize: 9, fontWeight: 900 }}>Le détenteur doit transmettre avant la pénalité</div>
-    </div>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(155px,1fr))", gap: 6 }}>
-      {state.players.map((p: any) => {
-        const holder = holderId === String(p.id);
-        const danger = Number(state.special?.mistigriDangerByPlayer?.[p.id] || 0);
-        const pairs = Number(state.special?.mistigriPairsByPlayer?.[p.id] || 0);
-        const shield = Number(state.special?.mistigriShieldByPlayer?.[p.id] || 0);
-        const lives = Number(state.lives?.[p.id] || 0);
-        return <div key={p.id} style={{ borderRadius: 11, padding: 8, border: `1px solid ${holder ? "#ffb34788" : accent + "2f"}`, background: holder ? "rgba(255,160,60,.08)" : "rgba(255,255,255,.025)", display: "grid", gap: 5, opacity: state.eliminated?.[p.id] ? .55 : 1 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><b style={{ fontSize: 9.5 }}>{p.name}</b><span style={{ color: holder ? "#ffb347" : accent, fontSize: 8.5, fontWeight: 1100 }}>{holder ? "MISTIGRI" : `${lives} VIE${lives > 1 ? "S" : ""}`}</span></div>
-          <Meter value={danger} max={threshold} accent={holder ? "#ff8a65" : accent} />
-          <div style={{ color: SOFT, fontSize: 8 }}>Paires {pairs} · Danger {danger}/{threshold} · Bouclier {shield}</div>
-        </div>;
-      })}
-    </div>
-  </div>;
 }
 
 export function RadinPanel({ state, accent }: any) {
   const targetWallet=Math.max(1,Number(state.config?.modeOptions?.targetWallet||250)); const missFee=Number(state.config?.modeOptions?.missFee||12); const rebate=Number(state.config?.modeOptions?.bullRebate||25); const active=state.players?.[state.activePlayerIndex];
   return <div style={shell(accent)}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}><div style={{color:accent,fontSize:10,fontWeight:1100,letterSpacing:.7}}>💰 RADIN · CAISSE & DÉPENSES</div><div style={{color:"#ffd166",fontSize:9,fontWeight:1100}}>OBJECTIF {targetWallet}</div></div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(165px,1fr))",gap:6}}>{state.players.map((p:any)=>{const wallet=Math.round(Number(state.special?.radinWalletByPlayer?.[p.id]??state.scores?.[p.id]??0));const spent=Math.round(Number(state.special?.radinSpentByPlayer?.[p.id]||0));const earned=Math.round(Number(state.special?.radinEarnedByPlayer?.[p.id]||0));const net=earned-spent;return <div key={p.id} style={{borderRadius:11,padding:8,border:`1px solid ${p.id===active?.id?accent+"77":"rgba(255,255,255,.08)"}`,background:p.id===active?.id?accent+"0b":"rgba(255,255,255,.025)",display:"grid",gap:5}}><div style={{display:"flex",justifyContent:"space-between"}}><b>🐷 {p.name}</b><span style={{color:"#ffd166",fontSize:11,fontWeight:1100}}>{wallet}</span></div><Meter value={wallet} max={targetWallet} accent={accent}/><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:4,textAlign:"center"}}><span style={{fontSize:8,color:"#78e6a3"}}>+{earned}</span><span style={{fontSize:8,color:"#ff8a85"}}>-{spent}</span><span style={{fontSize:8,color:net>=0?"#78e6a3":"#ff8a85"}}>{net>=0?"+":""}{net}</span></div></div>})}</div><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:5,color:SOFT,fontSize:8.3,textAlign:"center"}}><span style={{borderRadius:8,padding:6,border:"1px solid rgba(255,255,255,.07)"}}>MISS coûte {missFee}</span><span style={{borderRadius:8,padding:6,border:"1px solid rgba(255,255,255,.07)"}}>BULL +{rebate}</span><span style={{borderRadius:8,padding:6,border:"1px solid rgba(255,255,255,.07)"}}>DBULL +{rebate*2}</span></div></div>;
-}: any) {
-  const targetWallet = Math.max(1, Number(state.config?.modeOptions?.targetWallet || 250));
-  return <div style={shell(accent)}>
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-      <div style={{ color: accent, fontSize: 10, fontWeight: 1100, letterSpacing: .7 }}>💰 RADIN · FAIS FRUCTIFIER LA CAISSE</div>
-      <div style={{ color: "#ffd166", fontSize: 9, fontWeight: 1100 }}>OBJECTIF {targetWallet}</div>
-    </div>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(165px,1fr))", gap: 6 }}>
-      {state.players.map((p: any) => {
-        const wallet = Math.round(Number(state.special?.radinWalletByPlayer?.[p.id] ?? state.scores?.[p.id] ?? 0));
-        const spent = Math.round(Number(state.special?.radinSpentByPlayer?.[p.id] || 0));
-        const earned = Math.round(Number(state.special?.radinEarnedByPlayer?.[p.id] || 0));
-        return <div key={p.id} style={{ borderRadius: 11, padding: 8, border: `1px solid ${accent}32`, background: "rgba(255,255,255,.025)", display: "grid", gap: 5 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><b style={{ fontSize: 9.5 }}>{p.name}</b><span style={{ color: "#ffd166", fontSize: 9.5, fontWeight: 1100 }}>{wallet}</span></div>
-          <Meter value={wallet} max={targetWallet} accent={accent} />
-          <div style={{ color: SOFT, fontSize: 8 }}>Gagné {earned} · Dépensé {spent} · Solde net {earned - spent >= 0 ? "+" : ""}{earned - spent}</div>
-        </div>;
-      })}
-    </div>
-  </div>;
 }
 
 export function CorbeauRenardPanel({ state, accent }: any) {
