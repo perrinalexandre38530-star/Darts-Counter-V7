@@ -3,7 +3,8 @@ import { StatsBridge } from "./statsBridge";
 import { History } from "./history";
 import { loadNormalizedHistory } from "./statsNormalized";
 import { buildDashboardFromNormalized } from "./statsUnifiedAgg";
-import { computeX01MultiAgg } from "./x01MultiAgg";
+import { computeX01LevelSnapshot, computeX01MultiAgg } from "./x01MultiAgg";
+import { getAccountLocalStorageItem, setAccountLocalStorageItem } from "./accountScope";
 
 export type X01ProfileStarData = { kind: "avg3d"; value: number } | { kind: "level"; value: number };
 
@@ -23,9 +24,67 @@ type MiniStats = {
   [key: string]: any;
 };
 
+
+const X01_CURRENT_LEVEL_CACHE_KEY = "dc_x01_current_level_v127";
+
+function readCurrentLevelBag(): Record<string, any> {
+  try {
+    const raw = getAccountLocalStorageItem(X01_CURRENT_LEVEL_CACHE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+
+function writeCurrentLevelCache(profile: any, stats: any): void {
+  try {
+    const value = numberFromAny(stats?.currentAvg3D ?? stats?.x01CurrentAvg3D ?? stats?.last10Avg3D);
+    if (!(value > 0 && value <= 180)) return;
+    const bag = readCurrentLevelBag();
+    const row = {
+      currentAvg3D: value,
+      currentMatches: Number(stats?.currentMatches || 0) || 0,
+      lifetimeAvg3D: numberFromAny(stats?.lifetimeAvg3D ?? stats?.globalAvg3D ?? stats?.avg3),
+      updatedAt: Date.now(),
+      name: getProfileName(profile),
+    };
+    for (const id of x01ProfileIdentityKeys(profile)) bag[id] = row;
+    const nameKey = x01StarringNormText(getProfileName(profile));
+    if (nameKey) bag[`name:${nameKey}`] = row;
+    setAccountLocalStorageItem(X01_CURRENT_LEVEL_CACHE_KEY, JSON.stringify(bag));
+  } catch {}
+}
+
+function readCurrentLevelCache(profile: any): any | null {
+  try {
+    const bag = readCurrentLevelBag();
+    for (const id of x01ProfileIdentityKeys(profile)) if (bag?.[id]) return bag[id];
+    const nameKey = x01StarringNormText(getProfileName(profile));
+    return nameKey ? bag?.[`name:${nameKey}`] || null : null;
+  } catch { return null; }
+}
+
 const statsCache = new Map<string, Promise<MiniStats | null> | MiniStats | null>();
 let normalizedHistoryPromise: Promise<any[]> | null = null;
 let fullHistoryRowsPromise: Promise<any[]> | null = null;
+
+// V127 — current level must react to every completed/deleted/restored match.
+// The previous module cache lived for the whole page lifetime, so a newly played
+// X01 could leave avatar stars stuck on an older "current" level until reload.
+function invalidateX01StarringCaches() {
+  statsCache.clear();
+  normalizedHistoryPromise = null;
+  fullHistoryRowsPromise = null;
+}
+
+try {
+  if (typeof window !== "undefined" && !(window as any).__dcX01StarringInvalidationV127) {
+    (window as any).__dcX01StarringInvalidationV127 = true;
+    const invalidate = () => invalidateX01StarringCaches();
+    window.addEventListener("dc-history-updated", invalidate as EventListener);
+    window.addEventListener("dc-stats-index-updated", invalidate as EventListener);
+    window.addEventListener("dc-account-sync-complete", invalidate as EventListener);
+    window.addEventListener("dc-storage-restored", invalidate as EventListener);
+  }
+} catch {}
 
 export function x01StarringNormText(value: any): string {
   return String(value || "")
@@ -200,22 +259,30 @@ async function computeStatsLikeProfilesPage(profileId: string, profile?: any): P
       }
       const sessions = Number(agg?.sessions || 0);
       if (sessions > 0) {
-        const avg3 = Number(agg?.sumAvg3D || 0) > 0
-          ? Number(agg.sumAvg3D) / sessions
-          : Number(agg?.darts || 0) > 0 && Number(agg?.scoreTotal || 0) > 0
-            ? (Number(agg.scoreTotal) / Number(agg.darts)) * 3
-            : 0;
+        const level = computeX01LevelSnapshot(agg, 10);
+        const avg3 = level.lifetimeAvg3D;
         const full: MiniStats = {
+          // Legacy aliases remain the lifetime value for existing stats blocks.
           avg3,
           avg3d: avg3,
           avg3D: avg3,
+          globalAvg3D: avg3,
+          lifetimeAvg3D: avg3,
+          // Explicit semantic used by every avatar/star medallion.
+          currentAvg3D: level.currentAvg3D,
+          x01CurrentAvg3D: level.currentAvg3D,
+          last10Avg3D: level.currentAvg3D,
+          currentMatches: level.currentMatches,
+          currentLimit: level.currentLimit,
           games: sessions,
           sessions,
           darts: Number(agg?.darts || 0) || 0,
           bestVisit: Number(agg?.bestVisit || 0) || 0,
           bestCheckout: Number(agg?.bestCheckout || 0) || 0,
         };
-        return pickBestStats(full, normalizedStats);
+        // The full X01 reconstruction is canonical. Do not let a larger/staler
+        // quick-cache win merely because statsQuality() gives it more points.
+        return { ...(normalizedStats || {}), ...full };
       }
     }
   } catch {}
@@ -240,7 +307,11 @@ export async function loadX01ProfileStatsForStarring(profileId: string, profile?
     const quick = profile ? readQuickStatsFromLocalStorage(profile) : null;
     const linked = profile ? readLinkedStatsOverride(profile) : null;
     const statsHub = await computeStatsLikeProfilesPage(id, profile);
-    const best = pickBestStats(syncStats, asyncStats, quick, linked, statsHub);
+    const fallback = pickBestStats(syncStats, asyncStats, quick, linked);
+    // statsHub reconstructs the complete X01 history and carries both lifetime and
+    // current(last-10) semantics. It must override the legacy quick caches.
+    const best = statsHub ? { ...(fallback || {}), ...statsHub } : fallback;
+    if (best) writeCurrentLevelCache(profile || { id, name }, best);
     statsCache.set(cacheKey, best || null);
     return best || null;
   })().catch(() => null);
@@ -302,6 +373,39 @@ export function x01ProfileLevelValue(raw: any): number {
 }
 
 export function getX01ProfileStarData(profile: any, statsById: Record<string, any> = {}): X01ProfileStarData | null {
+  // V127 — stars represent CURRENT X01 level only: AVG3D of the latest 10 matches.
+  // Never select Math.max(global,current,cache): that inflated/staled the medallion.
+  const currentKeys = [
+    "currentAvg3D", "x01CurrentAvg3D", "last10Avg3D", "avg3Current", "avg3DCurrent",
+  ];
+  const readExplicitCurrent = (row: any): number => {
+    for (const key of currentKeys) {
+      const n = numberFromAny(row?.[key]);
+      if (Number.isFinite(n) && n > 0 && n <= 180) return n;
+    }
+    return 0;
+  };
+
+  for (const id of x01ProfileIdentityKeys(profile)) {
+    const current = readExplicitCurrent(statsById?.[id]);
+    if (current > 0) return { kind: "avg3d", value: current };
+  }
+  const cachedCurrent = readCurrentLevelCache(profile);
+  const cachedCurrentValue = readExplicitCurrent(cachedCurrent);
+  if (cachedCurrentValue > 0) return { kind: "avg3d", value: cachedCurrentValue };
+
+  const normalizedCurrentName = x01StarringNormText(getProfileName(profile));
+  if (normalizedCurrentName) {
+    for (const row of Object.values(statsById || {})) {
+      const r: any = row || {};
+      const rowName = x01StarringNormText(r?.name || r?.displayName || r?.nickname || r?.playerName || r?.profileName);
+      if (rowName && rowName === normalizedCurrentName) {
+        const current = readExplicitCurrent(r);
+        if (current > 0) return { kind: "avg3d", value: current };
+      }
+    }
+  }
+
   const avgKeys = new Set([
     "avg3", "avg3d", "avg3D", "avg3Overall", "average3Darts", "average3D", "moy3d", "moyenne3",
   ]);

@@ -25,7 +25,7 @@ import {
 import { History } from "../lib/history";
 import { loadNormalizedHistory } from "../lib/statsNormalized";
 import { buildDashboardFromNormalized } from "../lib/statsUnifiedAgg";
-import { computeX01MultiAgg } from "../lib/x01MultiAgg";
+import { computeX01LevelSnapshot, computeX01MultiAgg } from "../lib/x01MultiAgg";
 import {
   babyFootRating,
   computeBabyFootProfileAggregate,
@@ -471,7 +471,12 @@ type FitMiniStats = {
 };
 
 type ProfileMiniStats = {
+  /** Lifetime X01 AVG3D across all matches. */
   avg3: number;
+  /** Current X01 AVG3D across the latest 10 matches. */
+  currentAvg3: number;
+  /** Number of matches used by currentAvg3 (max 10). */
+  currentMatches: number;
   bestVisit: number;
   bestCheckout: number;
   wins: number;
@@ -484,6 +489,8 @@ type ProfileMiniStats = {
 
 const EMPTY_PROFILE_MINI_STATS: ProfileMiniStats = {
   avg3: 0,
+  currentAvg3: 0,
+  currentMatches: 0,
   bestVisit: 0,
   bestCheckout: 0,
   wins: 0,
@@ -602,7 +609,15 @@ function normalizeProfileMiniStats(basic: any): ProfileMiniStats {
   } : undefined;
 
   return {
-    avg3: Number(basic?.avg3 ?? 0) || 0,
+    avg3: Number(basic?.avg3 ?? basic?.globalAvg3D ?? basic?.lifetimeAvg3D ?? 0) || 0,
+    currentAvg3: Number(
+      basic?.currentAvg3 ??
+      basic?.currentAvg3D ??
+      basic?.x01CurrentAvg3D ??
+      basic?.last10Avg3D ??
+      0
+    ) || 0,
+    currentMatches: Math.max(0, Number(basic?.currentMatches ?? 0) || 0),
     bestVisit: Number(basic?.bestVisit ?? 0) || 0,
     bestCheckout: Number(basic?.bestCheckout ?? 0) || 0,
     wins,
@@ -871,6 +886,8 @@ async function getStatsHubAlignedProfileMiniStats(
 
     let out: ProfileMiniStats = {
       avg3: Number(dash?.avg3Overall ?? dash?.avg3 ?? fallback.avg3) || fallback.avg3,
+      currentAvg3: Number(dash?.avg3Current ?? fallback.currentAvg3 ?? 0) || fallback.currentAvg3,
+      currentMatches: Math.max(0, Number(dash?.avg3CurrentMatches ?? fallback.currentMatches ?? 0) || 0),
       bestVisit: Number(dash?.bestVisit ?? fallback.bestVisit) || fallback.bestVisit,
       bestCheckout: Number(dash?.bestCheckout ?? fallback.bestCheckout) || fallback.bestCheckout,
       wins: Number(dash?.wins ?? fallback.wins) || fallback.wins,
@@ -905,16 +922,14 @@ async function getStatsHubAlignedProfileMiniStats(
         }
         const sessions = Number(agg?.sessions || 0);
         if (sessions > 0) {
+          const level = computeX01LevelSnapshot(agg, 10);
           out = {
             ...out,
             games: sessions,
-            // Même source que Centre de statistiques / X01 Multi : moyenne par session.
-            // scoreTotal/darts reste seulement un fallback car scoreTotal peut être capé par leg.
-            avg3: Number(agg?.sumAvg3D || 0) > 0
-              ? Number(agg.sumAvg3D) / sessions
-              : Number(agg?.darts || 0) > 0 && Number(agg?.scoreTotal || 0) > 0
-                ? (Number(agg.scoreTotal) / Number(agg.darts)) * 3
-                : out.avg3,
+            // Lifetime and current level are intentionally separate.
+            avg3: level.lifetimeAvg3D || out.avg3,
+            currentAvg3: level.currentAvg3D || out.currentAvg3,
+            currentMatches: level.currentMatches,
             bestVisit: Number(agg?.bestVisit || out.bestVisit) || out.bestVisit,
             bestCheckout: Number(agg?.bestCheckout || out.bestCheckout) || out.bestCheckout,
             darts: Number(agg?.darts || out.darts) || out.darts,
@@ -5535,7 +5550,7 @@ function ActiveProfileBlock({
             gapPx={-2}
             starSize={STAR}
             stepDeg={10}
-            avg3d={Number(activeStats?.avg3 ?? activeAvg3D ?? 0) || 0}
+            avg3d={Number(activeStats?.currentAvg3 ?? activeStats?.avg3 ?? activeAvg3D ?? 0) || 0}
           />
         </div>
 
@@ -6155,7 +6170,7 @@ function FriendsMergedBlock({ friends, loading = false, error = null, onRefresh 
               const STAR = 8;
 
               const stats: any = f.stats || {};
-              const avg = Number(stats.avg3 ?? 0);
+              const avg = Number(stats.currentAvg3 ?? stats.currentAvg3D ?? stats.x01CurrentAvg3D ?? stats.avg3 ?? 0);
               const best = Number(stats.bestVisit ?? 0);
               const winRate = (() => {
                 if (Number.isFinite(stats.winRate)) return Math.round(stats.winRate);
@@ -7622,7 +7637,7 @@ function LocalProfileGridCard({
       profile?.stats?.average3D ??
       0
     );
-    const value = Number(cached?.avg3 ?? embedded);
+    const value = Number(cached?.currentAvg3 ?? cached?.avg3 ?? embedded);
     return Number.isFinite(value) ? value : 0;
   }, [profile?.id, profile?.stats?.avg3D, profile?.stats?.avg3, profile?.stats?.average3D, sportKey]);
 
@@ -8419,6 +8434,9 @@ function LocalProfilesRefonte({
     sportResolved
   );
   const avg3 = Number.isFinite(bs.avg3) ? Number(bs.avg3) : 0;
+  const currentAvg3 = Number.isFinite(bs.currentAvg3) && Number(bs.currentAvg3) > 0
+    ? Number(bs.currentAvg3)
+    : avg3;
   const bestVisit = Number(bs.bestVisit ?? 0);
   const bestCheckout = Number(bs.bestCheckout ?? 0);
   const winPct = Math.round(Number(bs.winRate ?? 0));
@@ -8853,7 +8871,7 @@ Sus partidas y estadísticas históricas permanecerán guardadas. Si más adelan
                   >
                     <ProfileStarRing
                       anchorSize={MEDALLION}
-                      avg3d={avg3}
+                      avg3d={currentAvg3}
                       gapPx={-1}
                       starSize={STAR}
                       stepDeg={10}

@@ -522,6 +522,34 @@ export async function runStatsSystemDiagnostic(options: StatsSystemDiagnosticOpt
       `UI normalisée=${uiNormalized ?? "—"} · matchs du profil=${uiSelected ?? "—"} · historique terminé=${historyFinished} · onglet=${String(ui.currentMode || "—")}.`,
       ui,
     ));
+
+    const uiLifetimeX01 = Number(ui?.x01LifetimeMatches);
+    const uiCurrentX01 = Number(ui?.x01CurrentMatches);
+    const uiGlobalAvg3D = Number(ui?.x01GlobalAvg3D);
+    const uiCurrentAvg3D = Number(ui?.x01CurrentAvg3D);
+    const semanticDataPresent = [uiLifetimeX01, uiCurrentX01, uiGlobalAvg3D, uiCurrentAvg3D].some(Number.isFinite);
+    if (semanticDataPresent) {
+      const expectedLifetime = Number(activeHeaderX01 || 0);
+      const lifetimeMismatch = expectedLifetime > 0 && Number.isFinite(uiLifetimeX01) && uiLifetimeX01 !== expectedLifetime;
+      const currentOverflow = Number.isFinite(uiCurrentX01) && uiCurrentX01 > 10;
+      checks.push(check(
+        "x01-level-semantics",
+        "X01 — niveau global / niveau actuel",
+        lifetimeMismatch || currentOverflow ? "fail" : "ok",
+        `Global=${Number.isFinite(uiGlobalAvg3D) ? uiGlobalAvg3D.toFixed(2) : "—"} sur ${Number.isFinite(uiLifetimeX01) ? uiLifetimeX01 : "—"} match(s) · Actuel=${Number.isFinite(uiCurrentAvg3D) ? uiCurrentAvg3D.toFixed(2) : "—"} sur ${Number.isFinite(uiCurrentX01) ? uiCurrentX01 : "—"}/10.`,
+        {
+          semantics: ui?.x01LevelSemantics || null,
+          expectedLifetimeX01: expectedLifetime,
+          uiLifetimeX01,
+          uiCurrentX01,
+          uiGlobalAvg3D,
+          uiCurrentAvg3D,
+          currentLimit: 10,
+        },
+      ));
+      if (lifetimeMismatch) diagnosis.push({ severity: "critical", code: "x01-ui-lifetime-window", message: `StatsHub utilise ${uiLifetimeX01} X01 pour le niveau global alors que ${expectedLifetime} X01 appartiennent au profil. Une fenêtre récente filtre encore le lifetime.` });
+      if (currentOverflow) diagnosis.push({ severity: "critical", code: "x01-ui-current-window", message: `Le niveau actuel utilise ${uiCurrentX01} matchs au lieu d'un maximum de 10.` });
+    }
   } else {
     checks.push(check("stats-ui", "Stats Center — données réellement visibles", "skip", "Snapshot UI non fourni."));
   }

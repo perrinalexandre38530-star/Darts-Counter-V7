@@ -931,7 +931,7 @@ export default function NewDartsModeConfig(props: Props) {
 
   const ptitHunPresetDefs = [
     { id: "classic", title: "CLASSIQUE MSS", desc: "L’équilibre officiel · Jackpot D/T · Bouclier 3 · Zéro à 3 DBULL", image: ptit1ClassicImg },
-    { id: "precision", title: "PRÉCISION", desc: "Sans Jackpot · Bouclier après 2 volées propres · priorité aux petits simples", image: ptit1PrecisionImg },
+    { id: "precision", title: "PRÉCISION", desc: "Sans Jackpot · Bouclier après 2 TRIPLE NUL consécutifs · priorité aux petits simples", image: ptit1PrecisionImg },
     { id: "jackpot", title: "JACKPOT", desc: "2 zones D/T à chaque volée · plus arcade et plus spectaculaire", image: ptit1JackpotImg },
     { id: "sniper", title: "SNIPER", desc: "Jackpot TRIPLE uniquement · zone stable pendant le tour · gros simple ×15", image: ptit1SniperImg },
     { id: "hardcore", title: "HARDCORE", desc: "15 volées · gros ×20 · D×3 · T×5 · Bull25×6 · Jackpot triple", image: ptit1HardcoreImg },
@@ -1016,12 +1016,12 @@ export default function NewDartsModeConfig(props: Props) {
     <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>P’TIT 1 · BONUS DE PRÉCISION</div>
     <div style={panel}>
       <OptionRow label="TRIPLE NUL" hint="3 fléchettes dans le même petit simple = volée à 0"><OptionToggle value={ptitHunTripleNul} onChange={setPtitHunTripleNul} /></OptionRow>
-      <OptionRow label="DBULL récompensé"><OptionToggle value={ptitHunDbullEnabled} onChange={setPtitHunDbullEnabled} /></OptionRow>
-      {ptitHunDbullEnabled ? <OptionRow label="Effet DBULL"><OptionSelect value={ptitHunDbullDivider} options={[2,3,4].map((v) => ({ value: v, label: `score total ÷${v}` }))} onChange={(v: any) => setPtitHunDbullDivider(Number(v))} /></OptionRow> : null}
+      <OptionRow label="DBULL récompensé" hint="Effet immédiat et progressif : 1er ÷base, 2e ÷base², etc."><OptionToggle value={ptitHunDbullEnabled} onChange={setPtitHunDbullEnabled} /></OptionRow>
+      {ptitHunDbullEnabled ? <OptionRow label="Diviseur de base DBULL" hint={`1er ÷${ptitHunDbullDivider} · 2e ÷${Math.pow(ptitHunDbullDivider,2)} · progression cumulative`}><OptionSelect value={ptitHunDbullDivider} options={[2,3,4].map((v) => ({ value: v, label: `base ÷${v}` }))} onChange={(v: any) => setPtitHunDbullDivider(Number(v))} /></OptionRow> : null}
       {ptitHunDbullEnabled ? <OptionRow label="ZÉRO ABSOLU" hint="Après plusieurs DBULL cumulés dans la partie"><OptionToggle value={ptitHunZeroAbsolute} onChange={setPtitHunZeroAbsolute} /></OptionRow> : null}
       {ptitHunDbullEnabled && ptitHunZeroAbsolute ? <OptionRow label="DBULL pour Zéro Absolu"><OptionSelect value={ptitHunDbullsForZero} options={[2,3,4,5].map((v) => ({ value: v, label: `${v} DBULL cumulés` }))} onChange={(v: any) => setPtitHunDbullsForZero(Number(v))} /></OptionRow> : null}
-      <OptionRow label="BOUCLIER DU HUN" hint="Récompense les volées 100 % petits simples"><OptionToggle value={ptitHunShield} onChange={setPtitHunShield} /></OptionRow>
-      {ptitHunShield ? <OptionRow label="Volées propres requises"><OptionSelect value={ptitHunCleanVisits} options={[2,3,4,5].map((v) => ({ value: v, label: `${v} d’affilée` }))} onChange={(v: any) => setPtitHunCleanVisits(Number(v))} /></OptionRow> : null}
+      <OptionRow label="BOUCLIER DU HUN" hint="Récompense une série de TRIPLE NUL : 3 fléchettes dans le même petit simple, plusieurs volées d’affilée"><OptionToggle value={ptitHunShield} onChange={setPtitHunShield} /></OptionRow>
+      {ptitHunShield ? <OptionRow label="TRIPLE NUL requis"><OptionSelect value={ptitHunCleanVisits} options={[2,3,4,5].map((v) => ({ value: v, label: `${v} d’affilée` }))} onChange={(v: any) => setPtitHunCleanVisits(Number(v))} /></OptionRow> : null}
       {ptitHunShield ? <OptionRow label="Protection du bouclier"><OptionSelect value={ptitHunShieldDivider} options={[2,3,4].map((v) => ({ value: v, label: `pénalités ÷${v}` }))} onChange={(v: any) => setPtitHunShieldDivider(Number(v))} /></OptionRow> : null}
     </div>
   </section>;

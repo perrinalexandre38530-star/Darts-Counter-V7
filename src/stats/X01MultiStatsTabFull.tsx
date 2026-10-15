@@ -23,6 +23,7 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import { idbGet, idbSet } from "../lib/indexedDb";
 import { removeDerivedStatsCache, writeDerivedStatsCacheRaw } from "../lib/statsRenderCacheStorage";
 import { useLang } from "../contexts/LangContext";
+import { computeX01LevelSnapshot, computeX01MultiAgg } from "../lib/x01MultiAgg";
 
 // ------ Helpers locaux : classement multi pour un joueur ------
 
@@ -155,7 +156,7 @@ const card: React.CSSProperties = {
 
 // ---------- Types / helpers ----------
 
-type TimeRange = "all" | "day" | "week" | "month" | "year" | "current";
+type TimeRange = "all" | "day" | "week" | "month" | "year";
 type X01ScoreFilterKey = "all" | X01StartScoreKey;
 type X01VariantFilterKey = "all" | Extract<X01VariantKey, "duo" | "multi" | "team">;
 
@@ -562,11 +563,6 @@ function filterByRange(
 
   const now = Date.now();
   const ONE_DAY = 24 * 60 * 60 * 1000;
-
-  // IMPORTANT : "ACTUEL" doit être calculé APRÈS sélection du profil.
-  // Sinon les lignes les plus récentes d'autres joueurs peuvent évincer
-  // totalement le profil affiché et donner 0 session.
-  if (range === "current") return sessions;
 
   const delta =
     range === "day"
@@ -2628,21 +2624,6 @@ let __memoSelectedProfileId: string | null = null;
 let __memoSelectedRange: TimeRange | null = null;
 let __memoSelectedValue: X01MultiSession[] = [];
 
-function applyCurrentFormWindow(sessions: X01MultiSession[]): X01MultiSession[] {
-  if (!sessions.length) return sessions;
-  const now = Date.now();
-  const ONE_DAY = 24 * 60 * 60 * 1000;
-  const recent30 = sessions.filter((s) => Number(s.date || 0) >= now - 30 * ONE_DAY);
-  if (recent30.length >= 5) return recent30;
-
-  // S'il n'y a pas assez de parties sur 30 jours, on prend les dernières
-  // performances DU PROFIL sélectionné uniquement.
-  return sessions
-    .slice()
-    .sort((a, b) => Number(b.date || 0) - Number(a.date || 0))
-    .slice(0, Math.min(10, sessions.length));
-}
-
 function memoSelectedX01Sessions(
   filtered: X01MultiSession[],
   effectiveProfileId: string | null,
@@ -2663,7 +2644,7 @@ function memoSelectedX01Sessions(
         sameId(session?.profileId, normalizedId) ||
         sameId(session?.playerId, normalizedId)
       );
-  const value = range === "current" ? applyCurrentFormWindow(profileSessions) : profileSessions;
+  const value = profileSessions;
   __memoSelectedInput = filtered;
   __memoSelectedProfileId = normalizedId;
   __memoSelectedRange = range;
@@ -2825,8 +2806,13 @@ export default function X01MultiStatsTabFull({
   const { lang } = useLang();
 
   const periodLabels = React.useMemo(() => {
-    if (lang === "fr") return { current: "★", day: "J", week: "S", month: "M", year: "A", all: "All" } as const;
-    return { current: "★", day: "D", week: "W", month: "M", year: "Y", all: "All" } as const;
+    if (lang === "fr") return { day: "J", week: "S", month: "M", year: "A", all: "All" } as const;
+    return { day: "D", week: "W", month: "M", year: "Y", all: "All" } as const;
+  }, [lang]);
+
+  const levelLabels = React.useMemo(() => {
+    if (lang === "fr") return { global: "NIVEAU GLOBAL", current: "NIVEAU ACTUEL", matches: "matchs X01", latest: "derniers matchs" } as const;
+    return { global: "GLOBAL LEVEL", current: "CURRENT LEVEL", matches: "X01 matches", latest: "latest matches" } as const;
   }, [lang]);
 
   const [sessions, setSessions] = React.useState<X01MultiSession[]>(
@@ -2956,6 +2942,52 @@ export default function X01MultiStatsTabFull({
     const id = window.setTimeout(() => setMetricLocked(false), 15000);
     return () => window.clearTimeout(id);
   }, [metricLocked]);
+
+  // V127 — LE NIVEAU EST INDÉPENDANT DES FILTRES DE PÉRIODE.
+  // GLOBAL = tous les matchs X01 du profil ; ACTUEL = les 10 plus récents.
+  // L'ancien filtre ★ "actuel" limitait toute la page et pouvait donner l'impression
+  // que le Centre Stats ne connaissait que 10 matchs. Il est volontairement supprimé.
+  const levelProfileSessions = (effectiveProfileId == null
+    ? sessions
+    : sessions.filter((session: any) =>
+        sameId(session?.selectedPlayerId, effectiveProfileId) ||
+        sameId(session?.profileId, effectiveProfileId) ||
+        sameId(session?.playerId, effectiveProfileId)
+      )
+  ).slice().sort((a, b) => Number(a?.date || 0) - Number(b?.date || 0));
+
+  const currentLevelSessions = levelProfileSessions.slice(-10);
+  const avg3Of = (rows: X01MultiSession[]) => {
+    const values = rows
+      .map((row: any) => Number(row?.avg3D || 0))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+  };
+  const sessionLifetimeLevelAvg3D = avg3Of(levelProfileSessions);
+  const sessionCurrentLevelAvg3D = avg3Of(currentLevelSessions);
+  const sessionLifetimeLevelMatches = levelProfileSessions.length;
+  const sessionCurrentLevelMatches = currentLevelSessions.length;
+
+  // Prefer the same canonical full-history aggregator as Home / StatsHub / Profiles.
+  // Session rows remain a fallback for older/partial runtime sources.
+  let lifetimeLevelAvg3D = sessionLifetimeLevelAvg3D;
+  let currentLevelAvg3D = sessionCurrentLevelAvg3D;
+  let lifetimeLevelMatches = sessionLifetimeLevelMatches;
+  let currentLevelMatches = sessionCurrentLevelMatches;
+  try {
+    if (effectiveProfileId && Array.isArray(records) && records.length) {
+      const levelAgg = computeX01MultiAgg(records as any[], effectiveProfileId, playerName || undefined);
+      const level = computeX01LevelSnapshot(levelAgg, 10);
+      if (level.lifetimeMatches > 0) {
+        lifetimeLevelAvg3D = level.lifetimeAvg3D;
+        currentLevelAvg3D = level.currentAvg3D;
+        lifetimeLevelMatches = level.lifetimeMatches;
+        currentLevelMatches = level.currentMatches;
+      }
+    }
+  } catch {
+    // Keep the session-derived values above.
+  }
 
   // Sessions filtrées — mémoïsées hors React pour garantir une liste de hooks fixe.
   const filtered = memoFilteredX01Sessions(sessions, range, scoreFilter, variantFilter);
@@ -4256,7 +4288,7 @@ const detailRelationRows = Object.entries(perPersonStats)
 // ------------------- RENDER -------------------
 return (
   <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-    {/* Filtres J/S/M/A/ALL */}
+    {/* Filtres de période J/S/M/A/ALL — le niveau actuel est désormais un KPI séparé */}
     <div style={{ ...card, padding: 14, textAlign: "center" }}>
       <div
         style={{
@@ -4280,7 +4312,7 @@ return (
             transformOrigin: "center",
           }}
         >
-          {(["current", "day", "week", "month", "year", "all"] as TimeRange[]).map(
+          {(["day", "week", "month", "year", "all"] as TimeRange[]).map(
             (r) => (
               <GoldPill
                 key={r}
@@ -4350,6 +4382,57 @@ return (
               {label}
             </GoldPill>
           ))}
+        </div>
+      </div>
+
+      {/* V127 — deux niveaux explicites, sans modifier le périmètre des autres stats. */}
+      <div
+        style={{
+          ...card,
+          padding: 12,
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 10,
+        }}
+      >
+        <div
+          style={{
+            border: "1px solid rgba(71,181,255,.32)",
+            borderRadius: 14,
+            padding: "11px 10px",
+            background: "rgba(71,181,255,.07)",
+            textAlign: "center",
+          }}
+        >
+          <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: .6, color: "#47B5FF" }}>
+            {levelLabels.global}
+          </div>
+          <div style={{ fontSize: 24, fontWeight: 1000, marginTop: 3 }}>
+            {lifetimeLevelAvg3D > 0 ? lifetimeLevelAvg3D.toFixed(2) : "—"}
+          </div>
+          <div style={{ fontSize: 10, opacity: .72, marginTop: 2 }}>
+            AVG3D · {lifetimeLevelMatches} {levelLabels.matches}
+          </div>
+        </div>
+
+        <div
+          style={{
+            border: "1px solid rgba(255,213,106,.38)",
+            borderRadius: 14,
+            padding: "11px 10px",
+            background: "rgba(255,213,106,.08)",
+            textAlign: "center",
+          }}
+        >
+          <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: .6, color: T.gold }}>
+            {levelLabels.current}
+          </div>
+          <div style={{ fontSize: 24, fontWeight: 1000, marginTop: 3, color: "#ffe49b" }}>
+            {currentLevelAvg3D > 0 ? currentLevelAvg3D.toFixed(2) : "—"}
+          </div>
+          <div style={{ fontSize: 10, opacity: .72, marginTop: 2 }}>
+            AVG3D · {currentLevelMatches}/10 {levelLabels.latest}
+          </div>
         </div>
       </div>
 

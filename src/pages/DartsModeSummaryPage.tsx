@@ -914,68 +914,171 @@ function PtitHunSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; ac
   const totalJackpots = sum("jackpotVisits");
   const totalZeroVisits = rows.reduce((total, row) => total + num(pick(row?.raw?.zeroVisits, num(row?.raw?.tripleNuls) + num(row?.raw?.jackpotVisits)), 0), 0);
   const totalDbulls = sum("dbulls");
-  const totalSaved = sum("shieldSaved");
-  const cleanVisits = sum("cleanVisits");
+  const totalShieldSaved = sum("shieldSaved");
+  const totalDbullSaved = sum("dbullSaved");
+  const totalJackpotSaved = sum("jackpotSaved");
+  const totalTripleNulSaved = sum("tripleNulSaved");
+  const totalSaved = totalShieldSaved + totalDbullSaved + totalJackpotSaved + totalTripleNulSaved;
+  const cleanVisits = sum("shieldQualifyingVisits") || sum("cleanVisits");
   const totalVisits = sum("visits");
   const innerPct = totalDarts > 0 ? Math.round((totalInner / totalDarts) * 1000) / 10 : 0;
   const cleanPct = totalVisits > 0 ? Math.round((cleanVisits / totalVisits) * 1000) / 10 : 0;
   const jackpotRing = rules?.jackpotRingMode === "double" ? "Doubles" : rules?.jackpotRingMode === "triple" ? "Triples" : "Doubles / Triples";
   const missRule = rules?.missMode === "add" ? `+${num(rules?.missValue, 50)}` : `×${num(rules?.missValue, 5)}`;
+  const baseDbull = num(rules?.dbullDivider, 2);
   const visits = (Array.isArray(rec?.payload?.visits) ? rec.payload.visits : Array.isArray(rec?.payload?.visitHistory) ? rec.payload.visitHistory : []) as any[];
   const maxBy = (key: string) => rows.reduce((best: any, row: any) => !best || num(row?.raw?.[key]) > num(best?.raw?.[key]) ? row : best, null as any);
+  const maxByFn = (fn: (row:any)=>number) => rows.reduce((best:any,row:any)=>!best || fn(row)>fn(best)?row:best,null as any);
   const catastrophe = maxBy("worstVisitDelta");
   const comeback = maxBy("bestScoreDrop");
   const cleanKing = maxBy("bestCleanStreak");
   const shieldKing = maxBy("shieldSaved");
+  const dbullKing = maxBy("dbullSaved");
+  const jackpotKing = maxBy("jackpotSaved");
+  const missKing = maxByFn((row:any)=>num(row?.raw?.missDamage)+num(row?.raw?.bull25Damage));
+  const precisionKing = maxByFn((row:any)=>num(row?.raw?.tripleNuls)*100+num(row?.raw?.petitOneTriples)*500+num(row?.raw?.innerSingles));
+  const palette = ["#f2c84b","#78f3d4","#88c8ff","#ff8b63","#d780ff","#ff6f78","#9be15d","#ffb454","#67e8f9","#f9a8d4","#c4b5fd","#facc15"];
+  const startScore = num(pick(rec?.summary?.config?.rules?.startScore, rec?.payload?.config?.rules?.startScore, 20), 20);
+
+  const hitSeries = rows.map((row:any, rowIndex:number) => {
+    const pv = visits.filter((v:any)=>String(v?.playerId)===String(row.id));
+    const points:number[] = [startScore];
+    for (const v of pv) {
+      const steps = Array.isArray(v?.dartSteps) ? v.dartSteps : [];
+      if (steps.length) {
+        for (const step of steps) points.push(num(step?.after));
+        if (num(v?.after) !== points[points.length-1]) points.push(num(v?.after));
+      } else points.push(num(v?.after));
+    }
+    return { row, color: palette[rowIndex % palette.length], points };
+  });
+  const allChartScores = hitSeries.flatMap((s:any)=>s.points);
+  const chartMin = Math.min(0, ...allChartScores);
+  const chartMax = Math.max(startScore, 1, ...allChartScores);
+  const maxPoints = Math.max(2, ...hitSeries.map((s:any)=>s.points.length));
+  const chartX = (idx:number) => 36 + (idx / Math.max(1,maxPoints-1)) * 824;
+  const chartY = (score:number) => 18 + ((chartMax - score) / Math.max(1,chartMax-chartMin)) * 164;
+
+  const aggregateZones = [
+    ["Petit",sum("innerSingles"),"#f2c84b"],
+    ["Gros",sum("outerSingles"),"#ff9b55"],
+    ["Double",sum("doubles"),"#65d8ff"],
+    ["Triple",sum("triples"),"#d780ff"],
+    ["Bull25",sum("bulls25"),"#ff7b72"],
+    ["DBULL",sum("dbulls"),"#78f3d4"],
+    ["MISS",sum("misses"),"#ff5570"],
+  ] as any[];
+  const maxZone = Math.max(1,...aggregateZones.map((z:any)=>Number(z[1]||0)));
+
+  const sectorTotals = Array.from({length:20},(_,idx)=>{
+    const n=idx+1;
+    return {
+      n,
+      count: rows.reduce((acc,row)=>acc+num(row?.raw?.innerByNumber?.[String(n)]),0),
+    };
+  });
+  const topSectors = [...sectorTotals].sort((a,b)=>b.count-a.count || a.n-b.n).slice(0,5);
+  const maxSector = Math.max(1,...sectorTotals.map(s=>s.count));
+
   return <>
-    <section style={card(accent)}>
+    <section style={{ ...card(accent), background: "radial-gradient(circle at 50% 0%,rgba(242,200,75,.10),transparent 44%),rgba(255,255,255,.018)" }}>
       <div style={sectionTitle(accent)}>ADN P’TIT 1</div>
+      <div style={{ color:"#aeb5c8",fontSize:11,marginBottom:9 }}>Le match en un coup d’œil : précision, risques, bonus et dégâts réellement évités.</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8 }}>
         <Kpi label="P’tit 1 touchés" value={totalPetitOne} accent={accent} />
         <Kpi label="Volées à 0" value={totalZeroVisits} accent={accent} />
         <Kpi label="Triple Nul" value={totalTripleNuls} accent={accent} />
         <Kpi label="Jackpots" value={totalJackpots} accent={accent} />
         <Kpi label="DBULL" value={totalDbulls} accent={accent} />
-        <Kpi label="Points sauvés" value={totalSaved} accent={accent} />
+        <Kpi label="Points sauvés / effacés" value={totalSaved} accent={accent} />
         <Kpi label="Petits simples" value={`${innerPct}%`} accent={accent} />
-        <Kpi label="Volées propres" value={`${cleanPct}%`} accent={accent} />
+        <Kpi label="Qualif. Bouclier" value={`${cleanPct}%`} accent={accent} />
       </div>
     </section>
+
+    {visits.length ? <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Trajectoire anti-score · hit après hit</div>
+      <div style={{ color:"#aeb5c8",fontSize:11,marginBottom:8 }}>Chaque impact modifie immédiatement le total. Les retours à zéro, Jackpot et Triple Nul apparaissent comme de vraies ruptures de trajectoire.</div>
+      <div style={{ overflowX:"auto" }}>
+        <svg viewBox="0 0 900 210" style={{ width:"100%",minWidth:620,display:"block",borderRadius:12,background:"linear-gradient(180deg,rgba(255,255,255,.025),rgba(0,0,0,.15))" }}>
+          {[0,.25,.5,.75,1].map((t,i)=><line key={i} x1="34" x2="874" y1={18+t*164} y2={18+t*164} stroke="rgba(255,255,255,.07)" strokeWidth="1"/>)}
+          {hitSeries.map((serie:any)=><g key={`series-${serie.row.id}`}>
+            <polyline points={serie.points.map((score:number,idx:number)=>`${chartX(idx)},${chartY(score)}`).join(" ")} fill="none" stroke={serie.color} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>
+            {serie.points.map((score:number,idx:number)=><circle key={idx} cx={chartX(idx)} cy={chartY(score)} r={idx===serie.points.length-1?4.5:2.1} fill={serie.color}/>)}
+          </g>)}
+          <text x="6" y="22" fill="#8f96aa" fontSize="10">{chartMax}</text>
+          <text x="6" y="184" fill="#8f96aa" fontSize="10">{chartMin}</text>
+          <text x="36" y="202" fill="#8f96aa" fontSize="9">Départ</text>
+          <text x="835" y="202" fill="#8f96aa" fontSize="9">Fin</text>
+        </svg>
+      </div>
+      <div style={{ display:"flex",gap:10,flexWrap:"wrap",marginTop:7 }}>{hitSeries.map((s:any)=><span key={`legend-${s.row.id}`} style={{ color:s.color,fontSize:9,fontWeight:900 }}>● {s.row.name}</span>)}</div>
+    </section> : null}
+
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Répartition des impacts</div>
+      <div style={{ display:"grid",gap:7 }}>
+        {aggregateZones.map(([label,count,color]:any)=><div key={label} style={{ display:"grid",gridTemplateColumns:"78px minmax(0,1fr) 48px",gap:8,alignItems:"center" }}>
+          <span style={{ color,fontSize:10,fontWeight:950 }}>{label}</span>
+          <div style={{ height:13,borderRadius:999,background:"rgba(255,255,255,.05)",overflow:"hidden" }}><i style={{ display:"block",height:"100%",width:`${Math.max(count?2:0,(Number(count||0)/maxZone)*100)}%`,background:color,borderRadius:999 }} /></div>
+          <b style={{ textAlign:"right",fontSize:10 }}>{count}</b>
+        </div>)}
+      </div>
+    </section>
+
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Carte des petits simples · secteurs 1→20</div>
+      <div style={{ display:"grid",gridTemplateColumns:"repeat(10,minmax(0,1fr))",gap:5 }}>
+        {sectorTotals.map((s:any)=>{
+          const strength=s.count/maxSector;
+          return <div key={s.n} title={`Petit ${s.n} : ${s.count} touche(s)`} style={{ minWidth:0,borderRadius:9,padding:"7px 2px",textAlign:"center",border:`1px solid rgba(242,200,75,${.18+.55*strength})`,background:`rgba(242,200,75,${.025+.18*strength})` }}>
+            <b style={{ display:"block",color:accent,fontSize:11 }}>{s.n}</b><span style={{ display:"block",marginTop:2,color:"#fff",fontSize:9 }}>{s.count}</span>
+          </div>;
+        })}
+      </div>
+      <div style={{ display:"flex",gap:8,flexWrap:"wrap",marginTop:8,color:"#9ea7b9",fontSize:9 }}>TOP : {topSectors.map((s:any)=><b key={s.n} style={{ color:accent }}>P{s.n} · {s.count}</b>)}</div>
+    </section>
+
     <section style={card(accent)}>
       <div style={sectionTitle(accent)}>Règles jouées</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(155px,1fr))", gap: 8 }}>
-        <Kpi label="Gros simple" value={`×${num(rules?.outerSingleFactor, 10)}`} accent={accent} />
-        <Kpi label="Double / Triple" value={`×${num(rules?.doubleFactor, 2)} / ×${num(rules?.tripleFactor, 3)}`} accent={accent} />
-        <Kpi label="Bull25" value={`×${num(rules?.bull25Factor, 4)}`} accent={accent} />
+        <Kpi label="Gros simple" value={`valeur ×${num(rules?.outerSingleFactor, 10)}`} accent={accent} />
+        <Kpi label="Double / Triple" value={`valeur D ×${num(rules?.doubleFactor, 2)} / valeur T ×${num(rules?.tripleFactor, 3)}`} accent={accent} />
+        <Kpi label="Bull25" value={`25 ×${num(rules?.bull25Factor, 4)}`} accent={accent} />
         <Kpi label="MISS" value={missRule} accent={accent} />
-        <Kpi label="DBULL" value={rules?.dbullEnabled === false ? "OFF" : `÷${num(rules?.dbullDivider, 2)}`} accent={accent} />
-        <Kpi label="Zéro Absolu" value={rules?.zeroAbsoluteEnabled === false ? "OFF" : `${num(rules?.dbullsForZero, 3)} DBULL`} accent={accent} />
-        <Kpi label="Bouclier" value={rules?.shieldEnabled === false ? "OFF" : `${num(rules?.cleanVisitsForShield, 3)} propres · ÷${num(rules?.shieldDivider, 2)}`} accent={accent} />
-        <Kpi label="Jackpot" value={rules?.jackpotEnabled === false ? "OFF" : `${jackpotRing} · ${num(rules?.jackpotZones, 1)} zone${num(rules?.jackpotZones, 1) > 1 ? "s" : ""}`} accent={accent} />
+        <Kpi label="DBULL progressif" value={rules?.dbullEnabled === false ? "OFF" : `1er ÷${baseDbull} · 2e ÷${Math.pow(baseDbull,2)}`} accent={accent} />
+        <Kpi label="Zéro Absolu" value={rules?.zeroAbsoluteEnabled === false ? "OFF" : `${num(rules?.dbullsForZero, 3)}e DBULL`} accent={accent} />
+        <Kpi label="Bouclier" value={rules?.shieldEnabled === false ? "OFF" : `${num(rules?.cleanVisitsForShield, 3)} Triple Nul d’affilée · pénalités ÷${num(rules?.shieldDivider, 2)}`} accent={accent} />
+        <Kpi label="Jackpot" value={rules?.jackpotEnabled === false ? "OFF" : `${jackpotRing} · ${num(rules?.jackpotZones, 1)} zone${num(rules?.jackpotZones, 1) > 1 ? "s" : ""} · volée annulée`} accent={accent} />
       </div>
     </section>
+
     <section style={card(accent)}>
       <div style={sectionTitle(accent)}>Records de la partie</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 8 }}>
         <Kpi label="Plus grosse catastrophe" value={catastrophe ? `${catastrophe.name} · +${num(catastrophe.raw?.worstVisitDelta)}` : "—"} accent={accent} />
         <Kpi label="Meilleure chute de score" value={comeback ? `${comeback.name} · -${num(comeback.raw?.bestScoreDrop)}` : "—"} accent={accent} />
-        <Kpi label="Meilleure série propre" value={cleanKing ? `${cleanKing.name} · ${num(cleanKing.raw?.bestCleanStreak)}` : "—"} accent={accent} />
-        <Kpi label="Bouclier le plus rentable" value={shieldKing ? `${shieldKing.name} · ${num(shieldKing.raw?.shieldSaved)} sauvés` : "—"} accent={accent} />
+        <Kpi label="Meilleure série Triple Nul" value={cleanKing ? `${cleanKing.name} · ${num(cleanKing.raw?.bestCleanStreak)}` : "—"} accent={accent} />
+        <Kpi label="Bouclier sauvés" value={shieldKing ? `${shieldKing.name} · ${num(shieldKing.raw?.shieldSaved)} pts` : "—"} accent={accent} />
+        <Kpi label="DBULL le plus rentable" value={dbullKing ? `${dbullKing.name} · ${num(dbullKing.raw?.dbullSaved)} pts retirés` : "—"} accent={accent} />
+        <Kpi label="Jackpot le plus rentable" value={jackpotKing ? `${jackpotKing.name} · ${num(jackpotKing.raw?.jackpotSaved)} pts annulés` : "—"} accent={accent} />
+        <Kpi label="Kamikaze" value={missKing ? `${missKing.name} · ${num(missKing.raw?.missDamage)+num(missKing.raw?.bull25Damage)} pts de casse` : "—"} accent={accent} />
+        <Kpi label="Sniper petits simples" value={precisionKing ? `${precisionKing.name} · ${num(precisionKing.raw?.tripleNuls)} Triple Nul` : "—"} accent={accent} />
       </div>
     </section>
+
     {visits.length ? <section style={card(accent)}>
-      <div style={sectionTitle(accent)}>Trajectoire anti-score</div>
+      <div style={sectionTitle(accent)}>Trajectoire anti-score · événements</div>
       <div style={{ color: "#aeb5c8", fontSize: 11, marginBottom: 8 }}>Chaque ligne retrace les scores après les volées. Les marqueurs signalent les moments qui ont réellement retourné la partie.</div>
       <div style={{ display: "grid", gap: 8 }}>
         {rows.map((row: any) => {
           const pv = visits.filter((v: any) => String(v?.playerId) === String(row.id));
-          const start = num(pick(rec?.summary?.config?.rules?.startScore, rec?.payload?.config?.rules?.startScore, 20), 20);
           const shown = pv.slice(-12);
           return <div key={`traj-${row.id}`} style={{ border: "1px solid rgba(255,255,255,.08)", borderRadius: 12, padding: 9, background: "rgba(255,255,255,.025)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><strong>{row.name}</strong><span style={{ color: accent, fontWeight: 1000 }}>{num(row.raw?.score, row.primary)} pts</span></div>
             <div style={{ display: "flex", gap: 5, alignItems: "center", overflowX: "auto", paddingTop: 7, paddingBottom: 2 }}>
-              <span style={{ fontSize: 10, color: "#8f96aa", flex: "0 0 auto" }}>{pv.length > 12 ? "…" : `Départ ${start}`}</span>
-              {shown.map((v: any, idx: number) => <span key={`${v?.id || idx}`} title={(v?.events || []).join(" · ")} style={{ flex: "0 0 auto", minWidth: 42, textAlign: "center", padding: "5px 6px", borderRadius: 9, border: `1px solid ${v?.zeroAbsoluteNow ? "#78f3d4" : v?.jackpotHit || v?.tripleNul ? `${accent}aa` : "rgba(255,255,255,.09)"}`, background: v?.zeroAbsoluteNow ? "rgba(120,243,212,.10)" : v?.jackpotHit || v?.tripleNul ? `${accent}12` : "rgba(255,255,255,.025)", fontSize: 10, fontWeight: 900 }}>
+              <span style={{ fontSize: 10, color: "#8f96aa", flex: "0 0 auto" }}>{pv.length > 12 ? "…" : `Départ ${startScore}`}</span>
+              {shown.map((v: any, idx: number) => <span key={`${v?.id || idx}`} title={(v?.events || []).join(" · ")} style={{ flex: "0 0 auto", minWidth: 48, textAlign: "center", padding: "5px 6px", borderRadius: 9, border: `1px solid ${v?.zeroAbsoluteNow ? "#78f3d4" : v?.jackpotHit || v?.tripleNul ? `${accent}aa` : "rgba(255,255,255,.09)"}`, background: v?.zeroAbsoluteNow ? "rgba(120,243,212,.10)" : v?.jackpotHit || v?.tripleNul ? `${accent}12` : "rgba(255,255,255,.025)", fontSize: 10, fontWeight: 900 }}>
                 {v?.zeroAbsoluteNow ? "💎" : v?.jackpotHit ? "✦" : v?.petitOnePerfect ? "1️⃣" : v?.tripleNul ? "🎯" : v?.shieldUnlockedNow ? "🛡" : ""}{num(v?.after)}
               </span>)}
             </div>
@@ -983,15 +1086,39 @@ function PtitHunSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; ac
         })}
       </div>
     </section> : null}
+
     <section style={card(accent)}>
       <div style={sectionTitle(accent)}>Détails joueurs</div>
       <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 980, fontSize: 11 }}>
-          <thead><tr style={{ color: accent, textAlign: "left" }}><th style={th}>Joueur</th><th style={th}>Score</th><th style={th}>P’tit 1</th><th style={th}>P’tit 1 parfait</th><th style={th}>Petits</th><th style={th}>Volées 0</th><th style={th}>Triple Nul</th><th style={th}>Jackpot</th><th style={th}>DBULL</th><th style={th}>Propres</th><th style={th}>Bouclier sauvés</th><th style={th}>D / T / 25 / MISS</th></tr></thead>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1450, fontSize: 10.5 }}>
+          <thead><tr style={{ color: accent, textAlign: "left" }}>
+            {["Joueur","Score","Min","Max","P’tit 1","P’tit 1 parfait","Petits","Petit %","Triple Nul","Jackpot","DBULL","Zéro Absolu","MISS","Dégâts MISS","DBULL retirés","Jackpot annulés","Triple Nul annulés","Bouclier sauvés","D / T / 25"].map((h)=><th key={h} style={th}>{h}</th>)}
+          </tr></thead>
           <tbody>{rows.map((row) => {
             const raw = row.raw || {};
-            const zeroVisits = num(pick(raw.zeroVisits, num(raw.tripleNuls) + num(raw.jackpotVisits)), 0);
-            return <tr key={`ptit1-${row.id}`}><td style={td}>{row.name}</td><td style={td}>{num(pick(raw.score, row.primary))}</td><td style={td}>{num(raw.petitOneHits)}</td><td style={td}>{num(raw.petitOneTriples)}</td><td style={td}>{num(raw.innerSingles)}</td><td style={td}>{zeroVisits}</td><td style={td}>{num(raw.tripleNuls)}</td><td style={td}>{num(raw.jackpotVisits)}</td><td style={td}>{num(raw.dbulls)}</td><td style={td}>{num(raw.cleanVisits)}</td><td style={td}>{num(raw.shieldSaved)}</td><td style={td}>{num(raw.doubles)} / {num(raw.triples)} / {num(raw.bulls25)} / {num(raw.misses)}</td></tr>;
+            const darts = num(raw.darts);
+            const ppct = darts ? Math.round(num(raw.innerSingles)/darts*1000)/10 : 0;
+            return <tr key={`ptit1-${row.id}`}>
+              <td style={td}>{row.name}</td>
+              <td style={td}>{num(pick(raw.score, row.primary))}</td>
+              <td style={td}>{num(raw.lowestScore)}</td>
+              <td style={td}>{num(raw.highestScore)}</td>
+              <td style={td}>{num(raw.petitOneHits)}</td>
+              <td style={td}>{num(raw.petitOneTriples)}</td>
+              <td style={td}>{num(raw.innerSingles)}</td>
+              <td style={td}>{ppct}%</td>
+              <td style={td}>{num(raw.tripleNuls)}</td>
+              <td style={td}>{num(raw.jackpotVisits)}</td>
+              <td style={td}>{num(raw.dbulls)}</td>
+              <td style={td}>{num(raw.zeroAbsolute)}</td>
+              <td style={td}>{num(raw.misses)}</td>
+              <td style={td}>{num(raw.missDamage)}</td>
+              <td style={td}>{num(raw.dbullSaved)}</td>
+              <td style={td}>{num(raw.jackpotSaved)}</td>
+              <td style={td}>{num(raw.tripleNulSaved)}</td>
+              <td style={td}>{num(raw.shieldSaved)}</td>
+              <td style={td}>{num(raw.doubles)} / {num(raw.triples)} / {num(raw.bulls25)}</td>
+            </tr>;
           })}</tbody>
         </table>
       </div>

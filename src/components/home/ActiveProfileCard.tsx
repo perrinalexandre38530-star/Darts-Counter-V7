@@ -22,6 +22,10 @@ export type ActiveProfileStats = {
   ratingGlobal?: MaybeNum;
   winrateGlobal?: MaybeNum; // 0–1
   avg3DGlobal?: MaybeNum;
+  /** Niveau X01 actuel = AVG3D des 10 derniers matchs X01. */
+  avg3DCurrent?: MaybeNum;
+  /** Nombre de matchs réellement disponibles dans la fenêtre actuelle (max 10). */
+  currentLevelMatches?: MaybeNum;
   sessionsGlobal?: MaybeNum;
   favoriteNumberLabel?: string | null; // ex: "T20", "D16", "S19"
 
@@ -43,7 +47,12 @@ export type ActiveProfileStats = {
   onlineBestRank?: MaybeNum;
 
   // ---- X01 Multi ----
+  /** AVG3D X01 lifetime, tous matchs confondus. */
   x01MultiAvg3D?: MaybeNum;
+  /** AVG3D X01 des 10 derniers matchs. */
+  x01CurrentAvg3D?: MaybeNum;
+  /** Taille réelle de la fenêtre actuelle (max 10). */
+  x01CurrentMatches?: MaybeNum;
   x01MultiSessions?: MaybeNum;
   x01MultiWinrate?: MaybeNum;
   x01MultiBestVisit?: MaybeNum;
@@ -436,7 +445,11 @@ function ActiveProfileCard({
         id: "x01multi",
         title: t("home.stats?.x01multi", "x01 multi"),
         rows: [
-          { label: t("home.stats?.avg3d", "AVG3D"), value: fmtNum(Number(s.x01MultiAvg3D ?? 0), 2) },
+          { label: t("home.stats?.avg3dGlobal", "AVG3D global"), value: fmtNum(Number(s.x01MultiAvg3D ?? 0), 2) },
+          {
+            label: t("home.stats?.avg3dCurrent", "AVG3D actuel"),
+            value: `${fmtNum(Number(s.x01CurrentAvg3D ?? 0), 2)} · ${fmtNum(Number(s.x01CurrentMatches ?? 0), 0)}/10`,
+          },
           { label: t("home.stats?.sessions", "sessions"), value: fmtNum(Number(s.x01MultiSessions ?? 0), 0) },
           { label: t("home.stats?.winrate", "win%"), value: fmtPct(Number(s.x01MultiWinrate ?? 0)) },
           { label: t("home.stats?.bestVisit", "best visit"), value: fmtNum(Number(s.x01MultiBestVisit ?? 0), 0) },
@@ -618,13 +631,15 @@ function ActiveProfileCard({
     }
   };
 
-  // Le StarRing DOIT utiliser exactement la même AVG3D que la valeur affichée
-  // dans la carte. On évite ainsi qu'un ancien starAvg3D/cache partiel (ex: 20)
-  // masque une AVG3D globale déjà recalculée (ex: 38.8).
-  const visibleAvg3D = Number(stats?.avg3DGlobal ?? 0);
+  // V127 — le médaillon représente le NIVEAU ACTUEL, pas la moyenne lifetime.
+  // Source canonique : AVG3D des 10 derniers matchs X01. La moyenne globale reste
+  // affichée séparément dans les statistiques et ne doit plus piloter les étoiles.
+  const currentLevelAvg3D = Number(
+    stats?.x01CurrentAvg3D ?? stats?.avg3DCurrent ?? 0
+  );
   const fallbackStarAvg3D = Number(starAvg3D ?? 0);
-  const starRingAvg3D = Number.isFinite(visibleAvg3D) && visibleAvg3D > 0
-    ? visibleAvg3D
+  const starRingAvg3D = Number.isFinite(currentLevelAvg3D) && currentLevelAvg3D > 0
+    ? currentLevelAvg3D
     : Number.isFinite(fallbackStarAvg3D) && fallbackStarAvg3D > 0
       ? fallbackStarAvg3D
       : 0;

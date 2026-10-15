@@ -359,7 +359,7 @@ import {
 } from "../lib/statsNormalized";
 import { buildDashboardFromNormalized } from "../lib/statsUnifiedAgg";
 import { loadLinkedProfileProjection, mergeLinkedProfiles } from "../lib/linkedProfileSync";
-import { computeX01MultiAgg } from "../lib/x01MultiAgg";
+import { computeX01LevelSnapshot, computeX01MultiAgg } from "../lib/x01MultiAgg";
 import { aggregatePlayers as aggregateMolkkyPlayers } from "../lib/molkkyStats";
 
 // ============================================================
@@ -6731,7 +6731,16 @@ React.useEffect(() => {
   void loadX01ProfileStatsForStarring(pid, visual)
     .then((stats: any) => {
       if (cancelled) return;
-      const avg = Number(stats?.avg3 ?? stats?.avg3d ?? stats?.avg3D ?? stats?.average3Darts ?? 0);
+      const avg = Number(
+        stats?.currentAvg3D ??
+        stats?.x01CurrentAvg3D ??
+        stats?.last10Avg3D ??
+        stats?.avg3 ??
+        stats?.avg3d ??
+        stats?.avg3D ??
+        stats?.average3Darts ??
+        0
+      );
       setCanonicalStarAvg3D(Number.isFinite(avg) && avg > 0 ? avg : 0);
     })
     .catch(() => {
@@ -6808,6 +6817,26 @@ const statsDiagnostic = React.useMemo(() => {
         return byId || byName;
       })).length
     : 0;
+
+  // V127 diagnostic contract: expose the exact lifetime/current X01 semantics
+  // that the visible Stats UI and avatar star ring are supposed to use.
+  let x01LifetimeMatches = 0;
+  let x01CurrentMatches = 0;
+  let x01GlobalAvg3D = 0;
+  let x01CurrentAvg3D = 0;
+  try {
+    const agg = computeX01MultiAgg(
+      Array.isArray(detailRecords) ? detailRecords : [],
+      String(effectiveProfileId || ""),
+      String(selectedPlayerVisual?.name || selectedPlayer?.name || activeProfileName || "")
+    );
+    const level = computeX01LevelSnapshot(agg, 10);
+    x01LifetimeMatches = level.lifetimeMatches;
+    x01CurrentMatches = level.currentMatches;
+    x01GlobalAvg3D = level.lifetimeAvg3D;
+    x01CurrentAvg3D = level.currentAvg3D;
+  } catch {}
+
   return {
     profileId: String(effectiveProfileId || ""),
     profileName: String(selectedPlayerVisual?.name || selectedPlayer?.name || activeProfileName || ""),
@@ -6822,9 +6851,15 @@ const statsDiagnostic = React.useMemo(() => {
     cacheOk: Boolean(cachedDashboard),
     heavyStatsReady,
     currentMode,
+    x01LevelSemantics: "global=all_x01,current=last_10_x01",
+    x01LifetimeMatches,
+    x01CurrentMatches,
+    x01CurrentLimit: 10,
+    x01GlobalAvg3D,
+    x01CurrentAvg3D,
     dartSets: dartSetDiagnostic,
   };
-}, [effectiveProfileId, selectedPlayerVisual, selectedPlayer, activeProfileName, allPlayers.length, normalizedHistoryLoaded, nmEffective, cachedDashboard, heavyStatsReady, currentMode, dartSetDiagnostic]);
+}, [effectiveProfileId, selectedPlayerVisual, selectedPlayer, activeProfileName, allPlayers.length, normalizedHistoryLoaded, nmEffective, cachedDashboard, heavyStatsReady, currentMode, dartSetDiagnostic, detailRecords]);
 
 React.useEffect(() => {
   const snapshot = { ...statsDiagnostic, capturedAt: Date.now() };
@@ -6927,15 +6962,16 @@ const [liveDashboard, setLiveDashboard] =
 
         const sessions = agg?.sessions ?? 0;
         if (sessions > 0) {
+          const level = computeX01LevelSnapshot(agg, 10);
           dash.sessions = sessions;
-          // Source d'affichage canonique X01 : moyenne des moyennes de sessions.
-          // Ne pas utiliser scoreTotal/darts ici : scoreTotal est capé par leg dans l'agrégateur
-          // pour éviter les exports corrompus, et sous-estime les matchs multi legs/sets.
-          if (Number(agg?.sumAvg3D || 0) > 0) {
-            dash.avg3Overall = Number(agg.sumAvg3D) / sessions;
-          } else if (Number(agg?.darts || 0) > 0 && Number(agg?.scoreTotal || 0) > 0) {
-            dash.avg3Overall = (Number(agg.scoreTotal) / Number(agg.darts)) * 3;
-          }
+          // V127 — deux notions distinctes et stables :
+          // - avg3Overall/global = tout l'historique X01
+          // - avg3Current       = les 10 derniers matchs X01
+          dash.avg3Overall = level.lifetimeAvg3D;
+          dash.avg3Global = level.lifetimeAvg3D;
+          dash.avg3Current = level.currentAvg3D;
+          dash.avg3CurrentMatches = level.currentMatches;
+          dash.avg3CurrentLimit = level.currentLimit;
           dash.bestVisit = agg?.bestVisit ?? dash.bestVisit;
           dash.bestCheckout = agg?.bestCheckout ?? dash.bestCheckout;
           dash.totalDarts = agg?.darts ?? dash.totalDarts;
@@ -9728,9 +9764,10 @@ return (
                         const pid = selectedPlayerVisual.id;
                         const q: any = quick as any;
 
-                        // ✅ Source "HOME-like" : on préfère la moyenne déjà calculée
-                        // par le dashboard global (même logique que la Home via statsBridge).
-                        const dashAvg3 = Number((dashboardToShowWithModes as any)?.avg3Overall);
+                        // V127 — le médaillon représente le niveau ACTUEL (10 derniers X01).
+                        // La moyenne lifetime reste visible dans les blocs statistiques mais
+                        // ne doit jamais piloter la couronne d'étoiles.
+                        const dashAvg3Current = Number((dashboardToShowWithModes as any)?.avg3Current);
 
                         const pickPositive = (...vals: any[]) => {
                           for (const v of vals) {
@@ -9741,7 +9778,7 @@ return (
                         };
 
                         const avg3d = pickPositive(
-                          dashAvg3,
+                          dashAvg3Current,
                           canonicalStarAvg3D,
                           q?.byId?.[pid]?.avg3d,
                           q?.byId?.[pid]?.avg3,

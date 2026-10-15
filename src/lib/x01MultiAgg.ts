@@ -627,3 +627,61 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
   out.progression.sort((a, b) => a.ts - b.ts);
   return out;
 }
+
+// ============================================================
+// X01 LEVEL SEMANTICS (V127)
+// - "global"  = AVG3D across the complete X01 history for the player
+// - "current" = AVG3D across the 10 latest X01 matches with a valid AVG3D
+// This helper is deliberately shared by Home / StatsHub / Profiles / star rings
+// so the "last 10" window can never masquerade as the lifetime aggregate again.
+// ============================================================
+export type X01LevelSnapshot = {
+  lifetimeAvg3D: number;
+  currentAvg3D: number;
+  lifetimeMatches: number;
+  currentMatches: number;
+  currentLimit: number;
+};
+
+export function computeX01LevelSnapshot(
+  agg: any,
+  currentLimit = 10
+): X01LevelSnapshot {
+  const lifetimeMatches = Math.max(0, Number(agg?.sessions || 0) || 0);
+  const safeLimit = Math.max(1, Math.floor(Number(currentLimit || 10)) || 10);
+
+  let lifetimeAvg3D = 0;
+  if (lifetimeMatches > 0 && Number(agg?.sumAvg3D || 0) > 0) {
+    lifetimeAvg3D = Number(agg.sumAvg3D) / lifetimeMatches;
+  } else if (Number(agg?.darts || 0) > 0 && Number(agg?.scoreTotal || 0) > 0) {
+    lifetimeAvg3D = (Number(agg.scoreTotal) / Number(agg.darts)) * 3;
+  }
+
+  const progression = (Array.isArray(agg?.progression) ? agg.progression : [])
+    .map((row: any) => {
+      const rawTs = row?.ts ?? row?.date ?? row?.updatedAt ?? row?.createdAt ?? 0;
+      const numericTs = Number(rawTs);
+      const parsedTs = typeof rawTs === "string" && !Number.isFinite(numericTs) ? Date.parse(rawTs) : numericTs;
+      return {
+        avg3D: Number(row?.avg3D ?? row?.avg3 ?? 0),
+        ts: Number.isFinite(parsedTs) ? Number(parsedTs) : 0,
+      };
+    })
+    .filter((row: any) => Number.isFinite(row.avg3D) && row.avg3D > 0)
+    .sort((a: any, b: any) => a.ts - b.ts);
+
+  const currentRows = progression.slice(-safeLimit);
+  const currentMatches = currentRows.length;
+  const currentAvg3D = currentMatches > 0
+    ? currentRows.reduce((sum: number, row: any) => sum + row.avg3D, 0) / currentMatches
+    : lifetimeAvg3D;
+
+  return {
+    lifetimeAvg3D: Number.isFinite(lifetimeAvg3D) ? lifetimeAvg3D : 0,
+    currentAvg3D: Number.isFinite(currentAvg3D) ? currentAvg3D : 0,
+    lifetimeMatches,
+    currentMatches,
+    currentLimit: safeLimit,
+  };
+}
+

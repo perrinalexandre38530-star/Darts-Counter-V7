@@ -1,5 +1,7 @@
 // @ts-nocheck
 
+import { getAccountLocalStorageItem } from "./accountScope";
+
 function numberFromAny(raw: any): number {
   if (typeof raw === "number" && Number.isFinite(raw)) return raw;
   const text = String(raw ?? "").trim().replace(",", ".");
@@ -34,6 +36,20 @@ function parseLevelToScore(raw: any): number {
   return 0;
 }
 
+
+function readCurrentLevelStats(profile: any): any | null {
+  try {
+    const raw = getAccountLocalStorageItem("dc_x01_current_level_v127");
+    if (!raw) return null;
+    const bag = JSON.parse(raw);
+    const ids = [profile?.id, profile?.profileId, profile?.playerId, profile?.localProfileId, profile?.uid, profile?.uuid]
+      .map((v) => String(v ?? "").trim()).filter(Boolean);
+    for (const id of ids) if (bag?.[id]) return bag[id];
+    const name = String(profile?.name || profile?.displayName || profile?.nickname || "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    return name ? bag?.[`name:${name}`] || null : null;
+  } catch { return null; }
+}
+
 function readQuickStats(profile: any): any | null {
   try {
     if (typeof window === "undefined") return null;
@@ -61,11 +77,20 @@ function readQuickStats(profile: any): any | null {
 
 export function resolveProfileStarScore(profile: any, extraCandidates: any[] = []): number {
   const quick = readQuickStats(profile) || {};
+  const current = readCurrentLevelStats(profile) || {};
 
+  // V127: pour un humain, la couronne représente le niveau ACTUEL (10 derniers X01).
+  // On consulte donc les champs current avant toute moyenne lifetime fournie par un écran legacy.
   const avgCandidates = [
-    // Une valeur fournie explicitement par l'écran courant est prioritaire :
-    // elle correspond à l'AVG3D effectivement affichée. Les caches locaux ne
-    // doivent jamais ramener la couronne à un ancien niveau.
+    current?.currentAvg3D,
+    current?.x01CurrentAvg3D,
+    quick?.currentAvg3D,
+    quick?.x01CurrentAvg3D,
+    quick?.last10Avg3D,
+    profile?.stats?.x01?.currentAvg3D,
+    profile?.stats?.x01?.last10Avg3D,
+    profile?.x01?.currentAvg3D,
+    profile?.x01Stats?.currentAvg3D,
     ...extraCandidates,
     quick?.avg3D,
     quick?.avg3d,

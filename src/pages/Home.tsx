@@ -35,7 +35,7 @@ import {
   getCricketProfileStats,
 } from "../lib/statsBridge";
 import { History } from "../lib/history";
-import { computeX01MultiAgg, isX01Match } from "../lib/x01MultiAgg";
+import { computeX01LevelSnapshot, computeX01MultiAgg, isX01Match } from "../lib/x01MultiAgg";
 import { buildHomeModeSlides } from "../lib/homeModeStats";
 import { listProfileFriendLinks, type ProfileFriendLink } from "../lib/friendsApi";
 import { loadLinkedProfileProjection } from "../lib/linkedProfileSync";
@@ -155,42 +155,13 @@ function getActiveProfile(store: Store): Profile | null {
 }
 
 
-function historyMatchTimestamp(match: any): number {
-  const values = [
-    match?.updatedAt, match?.updated_at, match?.finishedAt, match?.finished_at,
-    match?.playedAt, match?.played_at, match?.createdAt, match?.created_at,
-    match?.ts, match?.timestamp, match?.date, match?.summary?.updatedAt,
-    match?.summary?.finishedAt, match?.summary?.createdAt,
-  ];
-  for (const value of values) {
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) return value < 10_000_000_000 ? value * 1000 : value;
-    if (typeof value === "string" && value.trim()) {
-      const parsed = Date.parse(value);
-      if (Number.isFinite(parsed)) return parsed;
-      const numeric = Number(value);
-      if (Number.isFinite(numeric) && numeric > 0) return numeric < 10_000_000_000 ? numeric * 1000 : numeric;
-    }
-  }
-  return 0;
-}
-
-function selectCurrentFormMatches(matches: any[], now = Date.now()): { matches: any[]; mode: "30d" | "recent" } {
-  const sorted = [...matches].sort((a, b) => historyMatchTimestamp(b) - historyMatchTimestamp(a));
-  const cutoff = now - 30 * 24 * 60 * 60 * 1000;
-  const last30 = sorted.filter((m) => historyMatchTimestamp(m) >= cutoff);
-  // 5 matchs donnent déjà un indicateur de forme suffisamment stable. En dessous,
-  // on complète avec les dernières performances pour éviter qu'un seul vieux match
-  // ou une longue période d'inactivité ne fige le niveau affiché.
-  if (last30.length >= 5) return { matches: last30, mode: "30d" };
-  if (last30.length > 0) return { matches: sorted.slice(0, Math.max(5, Math.min(10, sorted.length))), mode: "recent" };
-  return { matches: sorted.slice(0, Math.min(10, sorted.length)), mode: "recent" };
-}
-
 function emptyActiveProfileStats(): ActiveProfileStats {
   return {
     ratingGlobal: 0,
     winrateGlobal: 0,
     avg3DGlobal: 0,
+    avg3DCurrent: 0,
+    currentLevelMatches: 0,
     sessionsGlobal: 0,
     favoriteNumberLabel: null,
 
@@ -210,6 +181,8 @@ function emptyActiveProfileStats(): ActiveProfileStats {
     onlineBestRank: null,
 
     x01MultiAvg3D: 0,
+    x01CurrentAvg3D: 0,
+    x01CurrentMatches: 0,
     x01MultiSessions: 0,
     x01MultiWinrate: 0,
     x01MultiBestVisit: 0,
@@ -780,33 +753,19 @@ async function buildStatsForProfile(
     const lifetimeX01Matches: any[] = allHistoryMatches.filter((m: any) => {
       try { return isX01Match(m as any); } catch { return false; }
     });
-    // FORM ACTUELLE : les KPI de niveau ne sont plus plombés par des années d'historique.
-    // Priorité aux 30 derniers jours ; si l'échantillon est trop petit, on prend les
-    // 5 à 10 dernières performances X01. Les records restent calculés sur le lifetime.
-    const currentFormScope = selectCurrentFormMatches(lifetimeX01Matches);
-    const multiMatches: any[] = currentFormScope.matches;
-    const x01AggForHome: any = (() => {
-      try { return computeX01MultiAgg(multiMatches as any[], profileId, profileName); } catch { return null; }
-    })();
+    // V127 — source unique pour le niveau X01.
+    // GLOBAL = tout l'historique X01 ; ACTUEL = exactement les 10 derniers matchs X01.
+    // Le filtre "actuel" ne doit plus réduire le nombre de sessions ni remplacer la moyenne lifetime.
+    const multiMatches: any[] = lifetimeX01Matches;
     const x01AggLifetime: any = (() => {
       try { return computeX01MultiAgg(lifetimeX01Matches as any[], profileId, profileName); } catch { return null; }
     })();
-
-    const x01AggSessions = Number(x01AggForHome?.sessions || 0) || 0;
-    const x01AggDarts = Number(x01AggForHome?.darts || 0) || 0;
-    const x01AggScoreTotal = Number(x01AggForHome?.scoreTotal || 0) || 0;
-    // Même règle que Centre de statistiques / Dashboard / Profils :
-    // la moyenne affichée est la moyenne des moyennes de sessions X01.
-    // Ne pas prioriser scoreTotal/darts ici : scoreTotal est volontairement capé
-    // dans l'agrégateur pour éviter les exports corrompus, ce qui sous-estime
-    // les matchs multi legs/sets sur la Home.
-    const x01AggAvg3D =
-      x01AggSessions > 0 && Number(x01AggForHome?.sumAvg3D || 0) > 0
-        ? Number(x01AggForHome.sumAvg3D) / x01AggSessions
-        : x01AggDarts > 0 && x01AggScoreTotal > 0
-          ? (x01AggScoreTotal / x01AggDarts) * 3
-          : 0;
-    const x01AggBestAvg3D = Number(x01AggForHome?.bestAvg3D || 0) || 0;
+    const x01Level = computeX01LevelSnapshot(x01AggLifetime, 10);
+    const x01AggSessions = x01Level.lifetimeMatches;
+    const x01AggAvg3D = x01Level.lifetimeAvg3D;
+    const x01CurrentAvg3D = x01Level.currentAvg3D;
+    const x01CurrentMatches = x01Level.currentMatches;
+    const x01AggBestAvg3D = Number(x01AggLifetime?.bestAvg3D || 0) || 0;
 
     /* ---------------------- GLOBAL (base brut) ---------------------- */
 
@@ -1153,9 +1112,10 @@ async function buildStatsForProfile(
     const lifetimeSessions = Number(x01AggLifetime?.sessions || 0) || 0;
     const globalSessions = lifetimeSessions > 0 ? lifetimeSessions : x01AggSessions > 0 ? x01AggSessions : gamesBase > 0 ? gamesBase : multiSessions;
 
+    // Niveau GLOBAL = moyenne X01 depuis toujours. Ne jamais la remplacer par la fenêtre "actuelle".
     const globalAvg3 =
-      x01AggAvg3D > 0
-        ? x01AggAvg3D
+      x01Level.lifetimeAvg3D > 0
+        ? x01Level.lifetimeAvg3D
         : avg3Base > 0
         ? avg3Base
         : multiTotalAvg3Count > 0
@@ -1245,6 +1205,8 @@ async function buildStatsForProfile(
       ratingGlobal,
       winrateGlobal: globalWinRate,
       avg3DGlobal: globalAvg3,
+      avg3DCurrent: x01CurrentAvg3D,
+      currentLevelMatches: x01CurrentMatches,
       sessionsGlobal: globalSessions,
       favoriteNumberLabel,
 
@@ -1264,6 +1226,8 @@ async function buildStatsForProfile(
       onlineBestRank: null,
 
       x01MultiAvg3D,
+      x01CurrentAvg3D,
+      x01CurrentMatches,
       x01MultiSessions: globalSessions,
       x01MultiWinrate,
       x01MultiBestVisit: recordBestVisitX01,

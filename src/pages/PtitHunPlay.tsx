@@ -38,6 +38,7 @@ import {
   pickPtitHunBotDarts,
   playPtitHunVisit,
   ptitHunDartLabel,
+  ptitHunDbullDivisor,
   rankPtitHunPlayers,
   scorePtitHunDart,
   type PtitHunState,
@@ -87,8 +88,8 @@ function coachText(state: PtitHunState, activePlayer: any) {
   if (rules.jackpotEnabled && state.jackpotTargets?.length) return `Jackpot actif : ${state.jackpotTargets.map((t: any) => t.label).join(" / ")}. Une seule touche et toute ta volée vaut 0.`;
   if (nextZero) return `Encore un DBULL : le ${rules.dbullsForZero}e remet ton score à 0. Le centre peut renverser toute la partie.`;
   if (shield) return `Bouclier actif : tes prochaines pénalités sont divisées par ${rules.shieldDivider}. Continue de privilégier les petits simples.`;
-  if (rules.shieldEnabled && clean === rules.cleanVisitsForShield - 1) return `Encore une volée 100 % petits simples et le Bouclier du Hun devient permanent.`;
-  if (score >= 120 && rules.dbullEnabled) return `Ton score monte : le DBULL ÷${rules.dbullDivider} devient très rentable, mais le Bull25 juste autour ferait ×${rules.bull25Factor}.`;
+  if (rules.shieldEnabled && clean === rules.cleanVisitsForShield - 1) return `Encore un TRIPLE NUL : 3 fléchettes dans le même petit simple, et le Bouclier du Hun devient permanent.`;
+  if (score >= 120 && rules.dbullEnabled) { const nextDbull = Number(st.dbulls || 0) + 1; const div = Math.pow(Number(rules.dbullDivider || 2), Math.max(1,nextDbull)); return `Ton score monte : le prochain DBULL divisera le total par ${div}${rules.zeroAbsoluteEnabled && nextDbull >= rules.dbullsForZero ? " et déclenchera ZÉRO ABSOLU" : ""}. Le Bull25 juste autour reste dangereux : ×${rules.bull25Factor}.`; }
   return `Le petit simple du 1 reste la zone reine : +1 seulement. ${rules.tripleNulEnabled ? "Trois petits 1 = TRIPLE NUL, donc volée à 0." : "Reste au plus près du centre des secteurs."}`;
 }
 
@@ -152,7 +153,7 @@ function PtitHunRiskBoard({ state, playerId, currentThrow, preview }: any) {
   const risks = [
     ["PETIT", "+ valeur", "#ffe18a"], ["GROS", `+ valeur ×${rules.outerSingleFactor}`, "#ffad55"],
     ["DOUBLE", `HIT ×${rules.doubleFactor}`, "#7ddfff"], ["TRIPLE", `HIT ×${rules.tripleFactor}`, "#e490ff"],
-    ["BULL25", `25 ×${rules.bull25Factor}`, "#ff6f78"], ["DBULL", rules.dbullEnabled ? `TOTAL ÷${rules.dbullDivider}` : "+50", "#78f3d4"],
+    ["BULL25", `25 ×${rules.bull25Factor}`, "#ff6f78"], ["DBULL", rules.dbullEnabled ? `÷${rules.dbullDivider} puis ÷${Math.pow(Number(rules.dbullDivider || 2), 2)}` : "+50", "#78f3d4"],
     ["MISS", missLabel, "#ff5d70"],
   ];
   return <div style={{ height: "100%", minHeight: 0, display: "grid", gridTemplateRows: "minmax(0,1fr) auto auto", gap: 9 }}>
@@ -192,7 +193,7 @@ function Ptit1BonusModal({ kind, state, playerId, onClose }: any) {
   const current = isZero ? Number(st.dbulls || 0) : Number(state.cleanStreak?.[playerId] || 0);
   const target = isZero ? Number(rules.dbullsForZero || 3) : Number(rules.cleanVisitsForShield || 3);
   const active = isZero ? Boolean(state.zeroAbsoluteUsed?.[playerId]) : Boolean(state.shieldActive?.[playerId]);
-  return <FloatingPanel title={title} subtitle={isZero ? "Bonus centre · DBULL cumulés" : "Bonus précision · volées propres"} onClose={onClose} accent={color}>
+  return <FloatingPanel title={title} subtitle={isZero ? "Bonus centre · DBULL cumulés" : "Bonus précision · TRIPLE NUL consécutifs"} onClose={onClose} accent={color}>
     <div style={{ height:"100%", display:"grid", alignContent:"center", gap:10, maxWidth:680, margin:"0 auto" }}>
       <div style={{ borderRadius:18, padding:16, border:`1px solid ${color}55`, background:`radial-gradient(circle at 50% 0%,${color}20,transparent 45%),rgba(255,255,255,.025)`, textAlign:"center" }}>
         <div style={{ color, fontSize:11, fontWeight:1100, letterSpacing:1 }}>{title}</div>
@@ -200,7 +201,7 @@ function Ptit1BonusModal({ kind, state, playerId, onClose }: any) {
         <div style={{ margin:"10px auto 0", width:"min(360px,86%)", height:10, borderRadius:999, background:"rgba(255,255,255,.08)", overflow:"hidden" }}><i style={{ display:"block", height:"100%", width:`${active ? 100 : Math.min(100,(current/Math.max(1,target))*100)}%`, borderRadius:999, background:`linear-gradient(90deg,${color},#fff)` }} /></div>
       </div>
       <div style={{ borderRadius:16, padding:14, border:"1px solid rgba(255,255,255,.08)", background:"rgba(255,255,255,.025)", color:"#dfe6f2", fontSize:12, lineHeight:1.55 }}>
-        {isZero ? <><b style={{ color }}>Principe.</b> Chaque DBULL réduit normalement le score total. Lorsque tu atteins <b>{target} DBULL cumulés</b> dans la partie, ton score est immédiatement ramené à <b>0</b>. Le compteur ne se réinitialise pas entre les volées.</> : <><b style={{ color }}>Principe.</b> Enchaîne <b>{target} volées propres</b>, composées uniquement de petits simples. Une fois débloqué, le Bouclier reste actif jusqu’à la fin et divise les pénalités de volée par <b>{rules.shieldDivider}</b>.</>}
+        {isZero ? <><b style={{ color }}>Principe.</b> Le DBULL agit <b>au moment exact du hit</b>. Avec une base ÷{rules.dbullDivider}, le 1er DBULL divise par <b>{rules.dbullDivider}</b>, le 2e par <b>{Math.pow(Number(rules.dbullDivider || 2),2)}</b>. Au <b>{target}e DBULL cumulé</b>, ZÉRO ABSOLU remet immédiatement le score à <b>0</b>, puis les fléchettes restantes de la volée continuent normalement.</> : <><b style={{ color }}>Principe.</b> Enchaîne <b>{target} TRIPLE NUL consécutifs</b> : à chaque volée, les 3 fléchettes doivent toucher <b>le même petit simple</b>. Le chiffre peut changer à la volée suivante. Une fois débloqué, le Bouclier reste actif jusqu’à la fin et réduit chaque pénalité dangereuse par <b>{rules.shieldDivider}</b>.</>}
       </div>
       <div style={{ display:"grid", gridTemplateColumns:"repeat(2,minmax(0,1fr))", gap:8 }}>
         <div style={{ borderRadius:14, padding:10, border:`1px solid ${color}33`, background:`${color}0b` }}><small style={{ color, fontWeight:1000 }}>ÉTAT ACTUEL</small><b style={{ display:"block", marginTop:4, color:"#fff", fontSize:17 }}>{active ? "DÉBLOQUÉ" : `${current}/${target}`}</b></div>
@@ -258,39 +259,74 @@ function ptit1IsOuter(d: any) {
   return Boolean(d && d.bed === "S" && String(d.ring || "") === "outer_single" && Number(d.number) >= 1 && Number(d.number) <= 20);
 }
 
-function ptit1RawSteps(before: number, darts: any[], rules: any) {
+function ptit1RawSteps(before: number, darts: any[], rules: any, opts: any = {}) {
   let running = Number(before || 0);
-  return (darts || []).map((dart: any) => {
-    const gameDart = dart?.bed ? dart : ptit1UiToGameDart(dart);
-    const scored = scorePtitHunDart(running, gameDart, rules);
-    running = scored.after;
-    return { ...scored, dart: gameDart, label: ptitHunDartLabel(gameDart) };
-  });
+  let dbullOrdinal = Number(opts.dbullsBefore || 0);
+  const zeroAlreadyUsed = Boolean(opts.zeroAlreadyUsed);
+  let zeroTriggered = false;
+  const shieldActive = Boolean(opts.shieldActive);
+  const steps:any[] = [];
+
+  for (let index = 0; index < (darts || []).length; index += 1) {
+    const dart:any = darts[index]?.bed ? darts[index] : ptit1UiToGameDart(darts[index]);
+    if (dart?.bed === "IB") dbullOrdinal += 1;
+    const forceZeroAbsolute = Boolean(
+      dart?.bed === "IB" &&
+      rules.zeroAbsoluteEnabled &&
+      !zeroAlreadyUsed &&
+      !zeroTriggered &&
+      dbullOrdinal >= Number(rules.dbullsForZero || 3)
+    );
+    const scored:any = scorePtitHunDart(running, dart, rules, {
+      dbullOrdinal: dart?.bed === "IB" ? dbullOrdinal : undefined,
+      forceZeroAbsolute,
+    });
+    let after = Number(scored.after || 0);
+    let shieldSaved = 0;
+    if (shieldActive && rules.shieldEnabled && ["outer","double","triple","bull25","miss"].includes(scored.kind) && scored.delta > 0) {
+      const reduced = Math.ceil(scored.delta / Number(rules.shieldDivider || 2));
+      after = running + reduced;
+      shieldSaved = Math.max(0, scored.delta - reduced);
+    }
+    if (forceZeroAbsolute) zeroTriggered = true;
+    steps.push({
+      ...scored,
+      dart,
+      label: ptitHunDartLabel(dart),
+      before: running,
+      rawAfter: scored.after,
+      after,
+      delta: after - running,
+      dbullOrdinal: dart?.bed === "IB" ? dbullOrdinal : undefined,
+      dbullDivisor: dart?.bed === "IB" && rules.dbullEnabled && !forceZeroAbsolute ? ptitHunDbullDivisor(rules, dbullOrdinal) : undefined,
+      zeroAbsoluteNow: forceZeroAbsolute,
+      shieldSaved,
+    });
+    running = Math.max(0, Math.round(after));
+  }
+  return steps;
 }
 
 function ptit1DraftProjection(state: any, playerId: string, uiDarts: any[]) {
   const rules = state?.config?.rules || {};
   const before = Number(state?.scores?.[playerId] ?? rules.startScore ?? 20);
   const gameDarts = (uiDarts || []).map(ptit1UiToGameDart).filter(Boolean);
-  const steps = ptit1RawSteps(before, gameDarts, rules);
-  let score = steps.length ? Number(steps[steps.length - 1].after) : before;
   const dbullsBefore = Number(state?.statsByPlayer?.[playerId]?.dbulls || 0);
+  const steps = ptit1RawSteps(before, gameDarts, rules, {
+    dbullsBefore,
+    zeroAlreadyUsed: Boolean(state?.zeroAbsoluteUsed?.[playerId]),
+    shieldActive: Boolean(state?.shieldActive?.[playerId]),
+  });
+  let score = steps.length ? Number(steps[steps.length - 1].after) : before;
   const draftDbulls = gameDarts.filter((d:any) => d?.bed === "IB").length;
   const dbulls = dbullsBefore + draftDbulls;
-  const zeroAlreadyUsed = Boolean(state?.zeroAbsoluteUsed?.[playerId]);
-  const zeroTriggered = Boolean(rules.zeroAbsoluteEnabled && !zeroAlreadyUsed && dbullsBefore < Number(rules.dbullsForZero || 3) && dbulls >= Number(rules.dbullsForZero || 3));
+  const zeroTriggered = steps.some((step:any)=>Boolean(step.zeroAbsoluteNow));
   const targets = Array.isArray(state?.jackpotTargets) ? state.jackpotTargets : [];
   const jackpot = Boolean(rules.jackpotEnabled && gameDarts.some((d:any) => targets.some((t:any) => String(t.bed) === String(d.bed) && Number(t.number) === Number(d.number))));
   const tripleNul = Boolean(gameDarts.length === 3 && rules.tripleNulEnabled && gameDarts.every(ptit1IsInner) && new Set(gameDarts.map((d:any)=>Number(d.number))).size === 1);
 
-  // Les bonus de volée priment sur les calculs bruts, exactement comme dans le moteur.
-  if (jackpot || tripleNul) score = before;
-  if (zeroTriggered) score = 0;
-
-  if (!jackpot && !tripleNul && !zeroTriggered && rules.shieldEnabled && Boolean(state?.shieldActive?.[playerId]) && score > before) {
-    const damage = score - before;
-    score = before + Math.ceil(damage / Number(rules.shieldDivider || 2));
-  }
+  // Jackpot / Triple Nul = retour au score du début de volée, sauf si ZÉRO ABSOLU a été déclenché.
+  if (!zeroTriggered && (jackpot || tripleNul)) score = before;
   score = Math.max(0, Math.round(score));
   return { before, score, delta: score - before, dbulls, jackpot, tripleNul, zeroTriggered, steps };
 }
@@ -300,9 +336,12 @@ function ptit1HitMeta(state: any, playerId: string, beforeUi: any[], addedUi: an
   const beforeProjection = ptit1DraftProjection(state, playerId, beforeUi);
   const afterProjection = ptit1DraftProjection(state, playerId, [...beforeUi, addedUi]);
   const d:any = ptit1UiToGameDart(addedUi);
-  const raw = scorePtitHunDart(beforeProjection.score, d, rules);
   const countDbullsBeforeDraft = beforeUi.map(ptit1UiToGameDart).filter((x:any)=>x?.bed === "IB").length;
   const totalDbullNo = Number(state?.statsByPlayer?.[playerId]?.dbulls || 0) + countDbullsBeforeDraft + (d?.bed === "IB" ? 1 : 0);
+  const raw = scorePtitHunDart(beforeProjection.score, d, rules, {
+    dbullOrdinal: d?.bed === "IB" ? totalDbullNo : undefined,
+    forceZeroAbsolute: Boolean(d?.bed === "IB" && rules.zeroAbsoluteEnabled && !state?.zeroAbsoluteUsed?.[playerId] && totalDbullNo >= Number(rules.dbullsForZero || 3)),
+  });
   let kind = "simple", title = "HIT", detail = `${beforeProjection.score} → ${afterProjection.score}`, color = ACCENT, icon = "•";
   if (!d || d.bed === "MISS") {
     kind="miss"; title="MISS";
@@ -311,9 +350,10 @@ function ptit1HitMeta(state: any, playerId: string, beforeUi: any[], addedUi: an
   } else if (d.bed === "IB") {
     kind = totalDbullNo >= Number(rules.dbullsForZero || 3) && rules.zeroAbsoluteEnabled && !state?.zeroAbsoluteUsed?.[playerId] ? "zero" : "dbull";
     title = kind === "zero" ? `BULL50 ×${totalDbullNo} · ZÉRO ABSOLU` : `BULL50 ×${totalDbullNo}`;
+    const divisor = ptitHunDbullDivisor(rules, totalDbullNo);
     detail = kind === "zero"
-      ? "BONUS · SCORE = 0"
-      : `${totalDbullNo === 2 ? "2e DBULL cumulé · " : ""}score courant ÷${rules.dbullDivider} · ${beforeProjection.score} → ${afterProjection.score}`;
+      ? "BONUS · SCORE = 0 immédiatement"
+      : `${totalDbullNo === 2 ? "2e DBULL cumulé · " : ""}score courant ÷${divisor} · ${beforeProjection.score} → ${afterProjection.score}`;
     color=BLUE; icon=kind === "zero" ? "0" : "◎";
   } else if (d.bed === "OB") {
     const pts = 25 * Number(rules.bull25Factor || 4);
@@ -337,7 +377,8 @@ function ptit1HitMeta(state: any, playerId: string, beforeUi: any[], addedUi: an
 
 function ptit1VisitBreakdown(visit: any, rules: any) {
   if (!visit) return [];
-  return ptit1RawSteps(Number(visit.before || 0), visit.darts || [], rules).map((step:any) => ({
+  const recorded = Array.isArray(visit?.dartSteps) && visit.dartSteps.length ? visit.dartSteps : ptit1RawSteps(Number(visit.before || 0), visit.darts || [], rules, { dbullsBefore: Number(visit?.dbullsBefore || 0), shieldActive: Boolean(visit?.shieldBefore) });
+  return recorded.map((step:any) => ({
     label: step.label,
     delta: Number(step.delta || 0),
     before: step.before,
@@ -388,6 +429,127 @@ function Ptit1PlayersModal({ rows, onClose }: any) {
       <div style={{marginTop:7,display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr)) auto",gap:5,alignItems:"stretch"}}>{[0,1,2].map((i)=>{const step=row.lastBreakdown?.[i];return <div key={i} style={{height:32,borderRadius:9,border:"1px solid rgba(255,255,255,.08)",background:"rgba(0,0,0,.26)",display:"grid",gridTemplateRows:"auto auto",placeItems:"center",alignContent:"center",color:step?"#fff":"#667085",fontWeight:1000,lineHeight:1}}>{step?<><span style={{fontSize:7.8}}>{step.label}</span><small style={{marginTop:2,fontSize:6.2,color:step.delta<0?GREEN:step.kind==="miss"?RED:row.color}}>{step.delta===0?"0":`${step.delta>0?"+":""}${step.delta}`}</small></>:"—"}</div>})}<div style={{minWidth:64,borderRadius:9,border:`1px solid ${row.color}44`,background:`${row.color}0d`,display:"grid",placeItems:"center",textAlign:"center",padding:"2px 7px"}}><small style={{color:"#8f98ad",fontSize:6.5}}>DERNIÈRE</small><b style={{color:row.color,fontSize:10}}>{row.lastVisit ? `${row.lastVisit.delta>0?"+":""}${row.lastVisit.delta}` : "—"}</b></div></div>
     </div>)}</div>
   </FloatingPanel>;
+}
+
+
+function Ptit1FinalDashboard({ state, rankingRows, colorById, nameById }: any) {
+  const rows = (rankingRows || []).map((r:any) => {
+    const st:any = state.statsByPlayer?.[r.id] || {};
+    const darts = Number(st.darts || 0);
+    const inner = Number(st.innerSingles || 0);
+    const saved = Number(st.dbullSaved || 0) + Number(st.shieldSaved || 0) + Number(st.jackpotSaved || 0) + Number(st.tripleNulSaved || 0);
+    return { ...r, st, darts, inner, innerPct: darts ? Math.round(inner / darts * 1000) / 10 : 0, saved };
+  });
+  const visits:any[] = Array.isArray(state.visits) ? state.visits : [];
+  const maxVisit = Math.max(1, ...rows.map((r:any)=>visits.filter((v:any)=>String(v.playerId)===String(r.id)).length));
+  const start = Number(state.config?.rules?.startScore || 20);
+  const allScores = [start, ...visits.map((v:any)=>Number(v.after || 0)), ...rows.map((r:any)=>Number(r.score || 0))];
+  const minScore = Math.min(...allScores, 0);
+  const maxScore = Math.max(...allScores, start, 1);
+  const yFor = (score:number) => 18 + ((maxScore - score) / Math.max(1, maxScore - minScore)) * 164;
+  const xFor = (idx:number) => 36 + (idx / maxVisit) * 824;
+  const totalDarts = rows.reduce((a:number,r:any)=>a+r.darts,0);
+  const totalZero = rows.reduce((a:number,r:any)=>a+Number(r.st.zeroVisits||0),0);
+  const totalSaved = rows.reduce((a:number,r:any)=>a+r.saved,0);
+  const totalInner = rows.reduce((a:number,r:any)=>a+r.inner,0);
+  const globalInnerPct = totalDarts ? Math.round(totalInner/totalDarts*1000)/10 : 0;
+  const maxBy = (fn:any) => rows.reduce((best:any,row:any)=>!best || fn(row)>fn(best)?row:best,null);
+  const sniper = maxBy((r:any)=>Number(r.st.tripleNuls||0));
+  const kamikaze = maxBy((r:any)=>Number(r.st.missDamage||0)+Number(r.st.bull25Damage||0));
+  const center = maxBy((r:any)=>Number(r.st.dbullSaved||0));
+  const jackpot = maxBy((r:any)=>Number(r.st.jackpotSaved||0));
+  const shield = maxBy((r:any)=>Number(r.st.shieldSaved||0));
+  const zoneTotal = (st:any) => Math.max(1, Number(st.innerSingles||0)+Number(st.outerSingles||0)+Number(st.doubles||0)+Number(st.triples||0)+Number(st.bulls25||0)+Number(st.dbulls||0)+Number(st.misses||0));
+  const zoneParts = (st:any) => [
+    ["PETIT",Number(st.innerSingles||0),"#f2c84b"],
+    ["GROS",Number(st.outerSingles||0),"#ff9b55"],
+    ["D",Number(st.doubles||0),"#65d8ff"],
+    ["T",Number(st.triples||0),"#d780ff"],
+    ["25",Number(st.bulls25||0),"#ff7b72"],
+    ["50",Number(st.dbulls||0),"#78f3d4"],
+    ["MISS",Number(st.misses||0),"#ff5570"],
+  ];
+  return <section style={{ display:"grid", gap:10, padding:"0 10px 14px" }}>
+    <div style={{ border:`1px solid ${ACCENT}55`, borderRadius:18, padding:12, background:"radial-gradient(circle at 50% 0%,rgba(242,200,75,.11),transparent 42%),linear-gradient(180deg,rgba(14,16,23,.98),rgba(5,7,11,.99))" }}>
+      <div style={{ display:"flex", justifyContent:"space-between", gap:10, alignItems:"baseline", flexWrap:"wrap" }}>
+        <div><b style={{ color:ACCENT, fontSize:14, letterSpacing:1 }}>TABLEAU FINAL · P’TIT 1 LAB</b><div style={{ color:"#99a2b5", fontSize:9, marginTop:3 }}>Le match disséqué : risque, précision, bonus et trajectoire du score.</div></div>
+        <div style={{ color:"#fff", fontSize:10, fontWeight:900 }}>{rows[0] ? `👑 ${rows[0].name} · ${rows[0].score} pts` : ""}</div>
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(125px,1fr))", gap:7, marginTop:10 }}>
+        {[
+          ["FLÉCHETTES",totalDarts,"#fff"],
+          ["PETITS SIMPLES",`${globalInnerPct}%`,GREEN],
+          ["VOLÉES À 0",totalZero,ACCENT],
+          ["POINTS EFFACÉS / SAUVÉS",totalSaved,BLUE],
+        ].map(([label,value,color]:any)=><div key={label} style={{ borderRadius:12,padding:9,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.025)",textAlign:"center" }}><small style={{ color:"#818ba0",fontSize:7,fontWeight:1000 }}>{label}</small><b style={{ display:"block",marginTop:3,color,fontSize:20 }}>{value}</b></div>)}
+      </div>
+    </div>
+
+    <div style={{ border:"1px solid rgba(255,255,255,.08)", borderRadius:18, padding:10, background:"rgba(7,9,14,.96)" }}>
+      <div style={{ color:ACCENT,fontSize:11,fontWeight:1100,letterSpacing:.8,marginBottom:7 }}>📈 TRAJECTOIRE DU SCORE · HIT APRÈS HIT</div>
+      <div style={{ width:"100%", overflowX:"auto" }}>
+        <svg viewBox="0 0 900 210" style={{ width:"100%", minWidth:620, display:"block", borderRadius:12, background:"linear-gradient(180deg,rgba(255,255,255,.025),rgba(0,0,0,.16))" }}>
+          {[0,.25,.5,.75,1].map((t,i)=><line key={i} x1="34" x2="874" y1={18+t*164} y2={18+t*164} stroke="rgba(255,255,255,.07)" strokeWidth="1"/>)}
+          {rows.map((row:any)=>{
+            const pv=visits.filter((v:any)=>String(v.playerId)===String(row.id));
+            const pts=[{after:start},...pv];
+            const points=pts.map((v:any,idx:number)=>`${xFor(idx)},${yFor(Number(v.after||0))}`).join(" ");
+            const color=colorById.get(String(row.id))||ACCENT;
+            return <g key={`line-${row.id}`}><polyline points={points} fill="none" stroke={color} strokeWidth="4" strokeLinejoin="round" strokeLinecap="round"/>{pts.map((v:any,idx:number)=><circle key={idx} cx={xFor(idx)} cy={yFor(Number(v.after||0))} r={idx===pts.length-1?5:2.3} fill={color}/>)}</g>;
+          })}
+          <text x="8" y="22" fill="#8690a3" fontSize="10">{maxScore}</text>
+          <text x="8" y="184" fill="#8690a3" fontSize="10">{minScore}</text>
+          <text x="36" y="202" fill="#8690a3" fontSize="9">Départ</text>
+          <text x="838" y="202" fill="#8690a3" fontSize="9">Fin</text>
+        </svg>
+      </div>
+      <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginTop:6 }}>{rows.map((r:any)=><span key={`legend-${r.id}`} style={{ color:colorById.get(String(r.id))||ACCENT,fontSize:8,fontWeight:1000 }}>● {r.name}</span>)}</div>
+    </div>
+
+    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:8 }}>
+      {[
+        ["🎯 SNIPER TRIPLE NUL",sniper,`${sniper?.st?.tripleNuls||0} Triple Nul`],
+        ["💥 KAMIKAZE",kamikaze,`${Number(kamikaze?.st?.missDamage||0)+Number(kamikaze?.st?.bull25Damage||0)} pts de casse`],
+        ["💎 DOMPTEUR DBULL",center,`${center?.st?.dbullSaved||0} pts retirés`],
+        ["✦ BRAQUEUR JACKPOT",jackpot,`${jackpot?.st?.jackpotSaved||0} pts annulés`],
+        ["🛡 MAÎTRE DU BOUCLIER",shield,`${shield?.st?.shieldSaved||0} pts sauvés`],
+      ].map(([label,row,value]:any)=><div key={label} style={{ borderRadius:14,padding:10,border:`1px solid ${(row?.color||ACCENT)}44`,background:"rgba(255,255,255,.025)" }}><small style={{ color:"#8d96a8",fontSize:7,fontWeight:1000 }}>{label}</small><b style={{ display:"block",marginTop:3,color:row?.color||ACCENT,fontSize:12,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{row?.name||"—"}</b><span style={{ display:"block",marginTop:2,color:"#fff",fontSize:9 }}>{value}</span></div>)}
+    </div>
+
+    <div style={{ border:"1px solid rgba(255,255,255,.08)",borderRadius:18,padding:10,background:"rgba(7,9,14,.96)" }}>
+      <div style={{ color:ACCENT,fontSize:11,fontWeight:1100,letterSpacing:.8,marginBottom:8 }}>🎨 PROFIL DE RISQUE PAR JOUEUR</div>
+      <div style={{ display:"grid",gap:8 }}>{rows.map((row:any)=>{
+        const total=zoneTotal(row.st); const parts=zoneParts(row.st);
+        return <div key={`risk-${row.id}`} style={{ display:"grid",gridTemplateColumns:"minmax(90px,150px) minmax(0,1fr) 58px",gap:8,alignItems:"center" }}>
+          <b style={{ color:row.color||ACCENT,fontSize:9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{row.name}</b>
+          <div style={{ height:14,borderRadius:999,overflow:"hidden",display:"flex",background:"rgba(255,255,255,.05)" }}>{parts.map(([label,count,color]:any)=><i key={label} title={`${label}: ${count}`} style={{ width:`${count/total*100}%`,background:color,minWidth:count?2:0 }} />)}</div>
+          <span style={{ color:GREEN,fontSize:8,fontWeight:1000,textAlign:"right" }}>{row.innerPct}% P</span>
+        </div>;
+      })}</div>
+      <div style={{ display:"flex",gap:10,flexWrap:"wrap",marginTop:8 }}>{zoneParts({innerSingles:1,outerSingles:1,doubles:1,triples:1,bulls25:1,dbulls:1,misses:1}).map(([l,_c,c]:any)=><span key={l} style={{ color:c,fontSize:7.5,fontWeight:1000 }}>■ {l}</span>)}</div>
+    </div>
+
+    <div style={{ border:"1px solid rgba(255,255,255,.08)",borderRadius:18,overflow:"hidden",background:"rgba(7,9,14,.96)" }}>
+      <div style={{ padding:"10px 11px",color:ACCENT,fontSize:11,fontWeight:1100,letterSpacing:.8 }}>🏁 CLASSEMENT & STATS CLÉS</div>
+      <div style={{ overflowX:"auto" }}><table style={{ width:"100%",borderCollapse:"collapse",minWidth:900,fontSize:9 }}>
+        <thead><tr style={{ color:"#9ca6b8",textAlign:"left" }}>{["#","Joueur","Score","Min / Max","Petit %","Triple Nul","P’tit 1 parfait","DBULL","Jackpot","MISS","Pts retirés DBULL","Pts sauvés bouclier"].map(h=><th key={h} style={{ padding:"7px 8px",borderTop:"1px solid rgba(255,255,255,.06)",borderBottom:"1px solid rgba(255,255,255,.06)" }}>{h}</th>)}</tr></thead>
+        <tbody>{rows.map((r:any,index:number)=><tr key={`final-row-${r.id}`} style={{ borderBottom:"1px solid rgba(255,255,255,.05)" }}>
+          <td style={{ padding:"8px",color:index===0?ACCENT:"#fff",fontWeight:1100 }}>{index+1}</td>
+          <td style={{ padding:"8px",color:r.color||ACCENT,fontWeight:1000 }}>{r.name}</td>
+          <td style={{ padding:"8px",fontWeight:1100 }}>{r.score}</td>
+          <td style={{ padding:"8px" }}>{r.st.lowestScore ?? "—"} / {r.st.highestScore ?? "—"}</td>
+          <td style={{ padding:"8px" }}>{r.innerPct}%</td>
+          <td style={{ padding:"8px" }}>{r.st.tripleNuls||0}</td>
+          <td style={{ padding:"8px" }}>{r.st.petitOneTriples||0}</td>
+          <td style={{ padding:"8px" }}>{r.st.dbulls||0}</td>
+          <td style={{ padding:"8px" }}>{r.st.jackpotVisits||0}</td>
+          <td style={{ padding:"8px",color:(r.st.misses||0)>0?RED:"#fff" }}>{r.st.misses||0}</td>
+          <td style={{ padding:"8px",color:BLUE }}>{r.st.dbullSaved||0}</td>
+          <td style={{ padding:"8px",color:GREEN }}>{r.st.shieldSaved||0}</td>
+        </tr>)}</tbody>
+      </table></div>
+    </div>
+  </section>;
 }
 
 
@@ -476,7 +638,7 @@ export default function PtitHunPlay(props: any) {
     }
     if (!msg && next.phase === "finished" && next.winnerId) { msg = `🏆 ${nameById(next.winnerId)} remporte P’TIT 1 !`; playNewModeSfx("victory", sfxEnabled); }
     else if (!msg && last?.zeroAbsoluteNow) { msg = `💎 ZÉRO ABSOLU ! ${config.rules.dbullsForZero}e DBULL : score remis à 0`; nextMoment = { key: `zero-${last.id}`, playerId: last.playerId, icon: "💎", kicker: "EXPLOIT DU P’TIT HUN", title: "ZÉRO ABSOLU", detail: `${config.rules.dbullsForZero}e DBULL cumulé · score total remis à 0`, tone: "success", durationMs: 2600 }; playPtit1FeedbackTone("zero", sfxEnabled); }
-    else if (!msg && last?.shieldUnlockedNow) { msg = "🛡 BOUCLIER DU HUN débloqué jusqu’à la fin"; nextMoment = { key: `shield-${last.id}`, playerId: last.playerId, icon: "🛡️", kicker: "3 VOLÉES PROPRES", title: "BOUCLIER DU HUN", detail: `Les prochaines pénalités sont divisées par ${config.rules.shieldDivider}`, tone: "success", durationMs: 2300 }; playPtit1FeedbackTone("shield", sfxEnabled); }
+    else if (!msg && last?.shieldUnlockedNow) { msg = "🛡 BOUCLIER DU HUN débloqué jusqu’à la fin"; nextMoment = { key: `shield-${last.id}`, playerId: last.playerId, icon: "🛡️", kicker: `${config.rules.cleanVisitsForShield} TRIPLE NUL D’AFFILÉE`, title: "BOUCLIER DU HUN", detail: `Les prochaines pénalités sont divisées par ${config.rules.shieldDivider}`, tone: "success", durationMs: 2300 }; playPtit1FeedbackTone("shield", sfxEnabled); }
     else if (!msg && last?.jackpotHit) { msg = `✦ JACKPOT ${last?.jackpotTargets?.map((t: any) => t.label).join("/") || ""} ! Volée à 0`; nextMoment = { key: `jackpot-${last.id}`, playerId: last.playerId, icon: "✦", kicker: "ZONE SPÉCIALE TOUCHÉE", title: "JACKPOT · VOLÉE 0", detail: `${last?.jackpotTargets?.map((t: any) => t.label).join(" / ") || "Double / Triple"} neutralise toute la volée`, tone: "success", durationMs: 2300 }; playPtit1FeedbackTone("jackpot", sfxEnabled); }
     else if (!msg && last?.petitOnePerfect) { msg = "🎯 P’TIT 1 PARFAIT ! Trois petits 1 : volée à 0"; nextMoment = { key: `ptit1-${last.id}`, playerId: last.playerId, icon: "1️⃣", kicker: "SIGNATURE DU MODE", title: "P’TIT 1 PARFAIT", detail: "Petit 1 · Petit 1 · Petit 1 · volée à 0", tone: "success", durationMs: 2450 }; playPtit1FeedbackTone("shield", sfxEnabled); }
     else if (!msg && last?.tripleNul) { msg = `🎯 TRIPLE NUL ! Trois petits ${last?.tripleNulNumber || ""} : volée à 0`; nextMoment = { key: `triple-nul-${last.id}`, playerId: last.playerId, icon: "🎯", kicker: "PRÉCISION PURE", title: "TRIPLE NUL", detail: `3 petits ${last?.tripleNulNumber || "?"} identiques · volée à 0`, tone: "success", durationMs: 2200 }; playPtit1FeedbackTone("shield", sfxEnabled); }
@@ -520,7 +682,7 @@ export default function PtitHunPlay(props: any) {
   const zeroProgress = config.rules.dbullEnabled && config.rules.zeroAbsoluteEnabled ? `${activeStats.dbulls || 0}/${config.rules.dbullsForZero}` : "OFF";
   const zeroHint = config.rules.dbullEnabled && config.rules.zeroAbsoluteEnabled ? `${Math.max(0, Number(config.rules.dbullsForZero || 0) - Number(activeStats.dbulls || 0))} DBULL avant le Zéro absolu` : "Bonus désactivé";
   const shieldProgress = config.rules.shieldEnabled ? (shield ? "ACTIF" : `${clean}/${config.rules.cleanVisitsForShield}`) : "OFF";
-  const shieldHint = config.rules.shieldEnabled ? (shield ? `Pénalités divisées par ${config.rules.shieldDivider}` : `${Math.max(0, Number(config.rules.cleanVisitsForShield || 0) - clean)} volée propre avant activation`) : "Bonus désactivé";
+  const shieldHint = config.rules.shieldEnabled ? (shield ? `Pénalités divisées par ${config.rules.shieldDivider}` : `${Math.max(0, Number(config.rules.cleanVisitsForShield || 0) - clean)} TRIPLE NUL avant activation`) : "Bonus désactivé";
   const jackpotLabel = config.rules.jackpotEnabled && state.jackpotTargets?.length ? state.jackpotTargets.map((t:any) => t.label).join(" / ") : "OFF";
   const segmentZoneSelected = multiplier === 2 || multiplier === 3 || singleRing === "inner_single" || singleRing === "outer_single";
   const addDbull = React.useCallback(() => { if (currentThrow.length >= 3) return; setThrowWithSfx((prev: UIDart[]) => [...prev, { v: 25, mult: 2 }].slice(0, 3)); }, [currentThrow.length, setThrowWithSfx]);
@@ -529,16 +691,16 @@ export default function PtitHunPlay(props: any) {
   const appendKeypadDart = React.useCallback((d: UIDart) => { if (currentThrow.length >= 3) return; setThrowWithSfx((prev: UIDart[]) => [...prev, ringDecorator(d)].slice(0,3)); }, [currentThrow.length, setThrowWithSfx, singleRing]);
   const ringDecorator = (d: UIDart) => { if ((d as any)?.label) return d; if (Number(d?.v) >= 1 && Number(d?.v) <= 20 && Number(d?.mult) === 1 && singleRing) return { ...d, label: singleRing }; return d; };
   const firstVisitGuide = firstVisitGuideEnabled && !activeIsBot && state.turnIndex === 0 && currentThrow.length === 0;
-  const coach = firstVisitGuide ? `1 · Choisis PETIT pour viser la zone simple intérieure. 2 · Le petit 1 vaut +1 ; le gros 1 vaut +${config.rules.outerSingleFactor}. 3 · Double : valeur D ×${config.rules.doubleFactor}, Triple : valeur T ×${config.rules.tripleFactor}, Bull25 : 25 ×${config.rules.bull25Factor}. 4 · ${config.rules.jackpotEnabled ? `Jackpot ${state.jackpotTargets.map((t: any) => t.label).join("/")} = volée 0.` : config.rules.dbullEnabled ? `DBULL ÷${config.rules.dbullDivider}.` : "Reste dans les petits simples."}` : coachEnabled && !activeIsBot ? coachText(state, activePlayer) : "";
+  const coach = firstVisitGuide ? `1 · Choisis PETIT pour viser la zone simple intérieure. 2 · Le petit 1 vaut +1 ; le gros 1 vaut +${config.rules.outerSingleFactor}. 3 · Double : valeur D ×${config.rules.doubleFactor}, Triple : valeur T ×${config.rules.tripleFactor}, Bull25 : 25 ×${config.rules.bull25Factor}. 4 · ${config.rules.jackpotEnabled ? `Jackpot ${state.jackpotTargets.map((t: any) => t.label).join("/")} = volée 0.` : config.rules.dbullEnabled ? `1er DBULL ÷${config.rules.dbullDivider}, 2e ÷${Math.pow(Number(config.rules.dbullDivider || 2), 2)}, puis Zéro Absolu au ${config.rules.dbullsForZero}e.` : "Reste dans les petits simples."}` : coachEnabled && !activeIsBot ? coachText(state, activePlayer) : "";
   const ranked = rankPtitHunPlayers(state);
   const rankingRows = ranked.map((r: any) => { const p: any = state.players.find((x: any) => String(x.id) === String(r.id)); const st: any = state.statsByPlayer?.[r.id] || {}; const color = colorById.get(String(r.id)) || ACCENT; return { id: r.id, name: p?.name || "Joueur", profile: profileById.get(String(r.id)) || p, color, value: r.score, suffix: " pts", subtitle: `${st.jackpotVisits || 0} Jackpot · ${st.tripleNuls || 0} Triple Nul · ${st.dbulls || 0}/${config.rules.dbullsForZero} DBULL · ${state.shieldActive?.[r.id] ? "🛡 actif" : `${state.cleanStreak?.[r.id] || 0}/${config.rules.cleanVisitsForShield} bouclier`}`, score: r.score, order: r.rank }; });
-  const playersRows = ranked.map((r: any) => { const p: any = state.players.find((x: any) => String(x.id) === String(r.id)); const st: any = state.statsByPlayer?.[r.id] || {}; const color = colorById.get(String(r.id)) || ACCENT; const lastVisit=[...(state.visits||[])].reverse().find((v:any)=>String(v.playerId)===String(r.id)) || null; return { id: r.id, name: p?.name || "Joueur", profile: profileById.get(String(r.id)) || p, color, active: String(r.id) === String(activePlayer?.id), status: state.shieldActive?.[r.id] ? "🛡 BOUCLIER ACTIF" : config.rules.shieldEnabled ? `${state.cleanStreak?.[r.id] || 0}/${config.rules.cleanVisitsForShield} VOLÉES PROPRES` : "BOUCLIER OFF", score:r.score, lastVisit, lastBreakdown:ptit1VisitBreakdown(lastVisit, config.rules), progress: Number(st.visits || 0), progressMax: config.rules.rounds, metrics: [{ label: "SCORE", value: r.score }, { label: "P’TIT 1", value: st.petitOneHits || 0 }, { label: "DBULL", value: st.dbulls || 0 }, { label: "VOLÉES 0", value: st.zeroVisits || 0 }] }; });
+  const playersRows = ranked.map((r: any) => { const p: any = state.players.find((x: any) => String(x.id) === String(r.id)); const st: any = state.statsByPlayer?.[r.id] || {}; const color = colorById.get(String(r.id)) || ACCENT; const lastVisit=[...(state.visits||[])].reverse().find((v:any)=>String(v.playerId)===String(r.id)) || null; return { id: r.id, name: p?.name || "Joueur", profile: profileById.get(String(r.id)) || p, color, active: String(r.id) === String(activePlayer?.id), status: state.shieldActive?.[r.id] ? "🛡 BOUCLIER ACTIF" : config.rules.shieldEnabled ? `${state.cleanStreak?.[r.id] || 0}/${config.rules.cleanVisitsForShield} TRIPLE NUL` : "BOUCLIER OFF", score:r.score, lastVisit, lastBreakdown:ptit1VisitBreakdown(lastVisit, config.rules), progress: Number(st.visits || 0), progressMax: config.rules.rounds, metrics: [{ label: "SCORE", value: r.score }, { label: "P’TIT 1", value: st.petitOneHits || 0 }, { label: "DBULL", value: st.dbulls || 0 }, { label: "VOLÉES 0", value: st.zeroVisits || 0 }] }; });
   const statsItems = [
     { label: "SCORE", value: score, color: ACCENT }, { label: "P’TIT 1 TOUCHÉS", value: activeStats.petitOneHits || 0, color: ACCENT }, { label: "P’TIT 1 PARFAITS", value: activeStats.petitOneTriples || 0, color: ACCENT },
     { label: "PETITS SIMPLES", value: activeStats.innerSingles || 0, color: GREEN }, { label: "GROS SIMPLES", value: activeStats.outerSingles || 0, color: "#ffb86b" }, { label: "VOLÉES À 0", value: activeStats.zeroVisits || 0, color: GREEN },
-    { label: "TRIPLE NUL", value: activeStats.tripleNuls || 0, color: ACCENT }, { label: "VOLÉES PROPRES", value: activeStats.cleanVisits || 0 }, { label: "SÉRIE PROPRE", value: shield ? "🛡 ACTIF" : config.rules.shieldEnabled ? `${clean}/${config.rules.cleanVisitsForShield}` : "OFF", color: shield ? GREEN : ACCENT },
-    { label: "DBULL", value: `${activeStats.dbulls || 0}/${config.rules.dbullsForZero}`, color: BLUE }, { label: "JACKPOTS", value: activeStats.jackpotVisits || 0, color: "#ffd84d" }, { label: "ZÉRO ABSOLU", value: activeStats.zeroAbsolute || 0 }, { label: "POINTS ÉVITÉS", value: activeStats.shieldSaved || 0, color: GREEN },
-    { label: "DOUBLES", value: activeStats.doubles || 0, color: RED }, { label: "TRIPLES", value: activeStats.triples || 0, color: RED }, { label: "BULL25", value: activeStats.bulls25 || 0, color: RED }, { label: "MISS", value: activeStats.misses || 0, color: RED }, { label: "FLÉCHETTES", value: activeStats.darts || 0 },
+    { label: "TRIPLE NUL", value: activeStats.tripleNuls || 0, color: ACCENT }, { label: "QUALIF. BOUCLIER", value: activeStats.shieldQualifyingVisits || activeStats.cleanVisits || 0 }, { label: "SÉRIE TRIPLE NUL", value: shield ? "🛡 ACTIF" : config.rules.shieldEnabled ? `${clean}/${config.rules.cleanVisitsForShield}` : "OFF", color: shield ? GREEN : ACCENT },
+    { label: "DBULL", value: `${activeStats.dbulls || 0}/${config.rules.dbullsForZero}`, color: BLUE }, { label: "DBULL · PTS RETIRÉS", value: activeStats.dbullSaved || 0, color: BLUE }, { label: "JACKPOTS", value: activeStats.jackpotVisits || 0, color: "#ffd84d" }, { label: "JACKPOT · PTS ANNULÉS", value: activeStats.jackpotSaved || 0, color: "#ffd84d" }, { label: "TRIPLE NUL · PTS ANNULÉS", value: activeStats.tripleNulSaved || 0, color: ACCENT }, { label: "ZÉRO ABSOLU", value: activeStats.zeroAbsolute || 0 }, { label: "BOUCLIER · PTS SAUVÉS", value: activeStats.shieldSaved || 0, color: GREEN },
+    { label: "DÉGÂTS MISS", value: activeStats.missDamage || 0, color: RED }, { label: "MIN / MAX", value: `${activeStats.lowestScore ?? score} / ${activeStats.highestScore ?? score}`, color: ACCENT }, { label: "DOUBLES", value: activeStats.doubles || 0, color: RED }, { label: "TRIPLES", value: activeStats.triples || 0, color: RED }, { label: "BULL25", value: activeStats.bulls25 || 0, color: RED }, { label: "MISS", value: activeStats.misses || 0, color: RED }, { label: "FLÉCHETTES", value: activeStats.darts || 0 },
   ];
   const awards = React.useMemo(() => { const rows = rankingRows.map((r: any) => ({ ...r, st: state.statsByPlayer?.[r.id] || {} })); const nul = bestBy(rows, (r: any) => -Number(r.score || 0)); const ptit1 = bestBy(rows, (r: any) => Number(r.st.petitOneHits || 0) * 10 + Number(r.st.petitOneTriples || 0) * 100); const zero = bestBy(rows, (r: any) => Number(r.st.zeroVisits || 0) * 100 + Number(r.st.tripleNuls || 0)); const center = bestBy(rows, (r: any) => Number(r.st.dbulls || 0)); return [{ icon: "👑", label: "ROI DES NULS", name: nul?.name || "—", value: `${nul?.score ?? 0} pts`, color: nul?.color }, { icon: "1️⃣", label: "MAÎTRE DU P’TIT 1", name: ptit1?.name || "—", value: `${ptit1?.st?.petitOneHits || 0} touches · ${ptit1?.st?.petitOneTriples || 0} parfait`, color: ptit1?.color }, { icon: "0️⃣", label: "VOLÉES ZÉRO", name: zero?.name || "—", value: `${zero?.st?.zeroVisits || 0} volée(s)`, color: zero?.color }, { icon: "💎", label: "DOMPTEUR DU CENTRE", name: center?.name || "—", value: `${center?.st?.dbulls || 0} DBULL`, color: center?.color }]; }, [rankingRows, state.statsByPlayer]);
   const totalDarts = Object.values(state.statsByPlayer || {}).reduce((a: number, r: any) => a + Number(r?.darts || 0), 0), durationMs = Math.max(0, Number((state.finishedAt || Date.now())) - Number(state.startedAt || Date.now()));
@@ -548,7 +710,10 @@ export default function PtitHunPlay(props: any) {
     return <div className="party-mode" style={{ ["--mode-accent" as any]: ACCENT }} data-mss-native-play-layout="1">
       <PremiumMomentOverlay moment={moment} accent={moment?.playerId ? (colorById.get(String(moment.playerId)) || ACCENT) : ACCENT} profile={moment?.playerId ? profileById.get(String(moment.playerId)) : activeProfile} playerName={moment?.playerId ? nameById(moment.playerId) : activePlayer?.name} />
       <PageHeader tickerSrc={tickerPtitHun} tickerAlt="P’TIT 1" tickerHeight={68} tickerBottomGap={8} tickerFit="cover" left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("ptit_hun_config")} color={ACCENT} glow={`${ACCENT}88`} /></div>} right={awenaEnabled ? <div style={{ marginRight: 7 }}><PremiumAwenaButton awena={awena} route="ptit_hun_play" mode="ptit_hun" screenLabel="P’TIT 1 · Résultat" accent={ACCENT} /></div> : null} />
-      <div style={{ flex: "1 1 auto", minHeight: 0, overflow: "auto" }}><PremiumEndPanel title="P’TIT 1" accent={ACCENT} winnerId={state.winnerId} rankingRows={rankingRows} durationMs={durationMs} totalDarts={totalDarts} awards={awards} onReplay={replay} onStats={() => go?.("darts_mode_summary", { rec, mode: "ptit_hun" })} onHistory={() => go?.("statsHub", { tab: "history", mode: "active", initialStatsSubTab: "history", focusMatchId: matchIdRef.current })} onConfig={() => go?.("ptit_hun_config")} onGames={() => go?.("games", { gamesView: "all" })} /></div>
+      <div style={{ flex: "1 1 auto", minHeight: 0, overflow: "auto" }}>
+        <PremiumEndPanel title="P’TIT 1" accent={ACCENT} winnerId={state.winnerId} rankingRows={rankingRows} durationMs={durationMs} totalDarts={totalDarts} awards={awards} onReplay={replay} onStats={() => go?.("darts_mode_summary", { rec, mode: "ptit_hun" })} onHistory={() => go?.("statsHub", { tab: "history", mode: "active", initialStatsSubTab: "history", focusMatchId: matchIdRef.current })} onConfig={() => go?.("ptit_hun_config")} onGames={() => go?.("games", { gamesView: "all" })} />
+        <Ptit1FinalDashboard state={state} rankingRows={rankingRows} colorById={colorById} nameById={nameById} />
+      </div>
     </div>;
   }
 
@@ -644,7 +809,7 @@ export default function PtitHunPlay(props: any) {
                 <div className="ptit1-score-center">
                   {activeTeamName ? <div className="ptit1-team-name">{activeTeamName}</div> : null}
                   <div className="ptit1-player-name">{activePlayer?.name || "Joueur"}</div>
-                  <div className="ptit1-score-value">{score}</div>
+                  <div className="ptit1-score-value">{currentThrow.length ? liveProjection.score : score}</div>
                   <div className="ptit1-turn-row"><span>TOUR</span><b>{round}/{config.rules.rounds}</b></div>
                 </div>
               </div>
