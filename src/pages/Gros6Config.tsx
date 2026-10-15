@@ -19,6 +19,7 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import BotPagedSelector from "../components/BotPagedSelector";
 import SelectionStickyBanner from "../components/SelectionStickyBanner";
+import DartsSpecialZonesRulesVisual from "../components/DartsSpecialZonesRulesVisual";
 import { applyResolvedBotCountries } from "../lib/botCountries";
 import { loadBotPlayers } from "../lib/bots";
 import { loadTeamsBySport } from "../lib/petanqueTeamsStore";
@@ -882,6 +883,7 @@ export default function Gros6Config({ store, go }: any) {
                     ? "Avec l'option Zones spéciales, certaines zones hors cible deviennent de vraies cibles jouables. Cela comprend le contour extérieur du cercle des chiffres ainsi que plusieurs zones fermées autour des numéros 4, 6, 8, 9, 10, 14, 16, 18, 19 et 20. Lorsqu'un joueur impose l'une de ces zones, le joueur suivant doit toucher exactement cette zone précise pour sauver sa vie."
                     : "With Special Zones enabled, several off-board areas become real playable targets. This includes the outer number ring and several closed areas around numbers 4, 6, 8, 9, 10, 14, 16, 18, 19 and 20. When a player sets one of these zones, the next player must hit that exact area to save their life."}
                 </div>
+                <DartsSpecialZonesRulesVisual lang={lang} borderColor={`${primary}66`} />
               </div>
 
               <div style={{ display: "grid", gap: 10 }}>

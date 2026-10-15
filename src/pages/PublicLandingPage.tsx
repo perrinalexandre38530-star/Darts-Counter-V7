@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useState } from "react";
+import DartsSpecialZonesRulesVisual from "../components/DartsSpecialZonesRulesVisual";
 import "./PublicLandingPage.css";
 import logo from "../assets/LOGO.webp";
 import awena from "../assets/running/home_actions/running_discipline_awena.webp";
@@ -359,6 +360,7 @@ function Ptit1PublicRules({ lang }: { lang: Lang }) {
     <article className="mssPtit1SpecialZones">
       <div className="mssPtit1GlossaryHead"><span>06</span><h2>{specialZonesTitle}</h2></div>
       <p className="mssPtit1SpecialZonesLead">{specialZonesIntro}</p>
+      <DartsSpecialZonesRulesVisual lang={String(lang || "fr")} borderColor="rgba(255,216,77,.45)" />
       <div className="mssPtit1SpecialZonesGrid">
         {specialZones.map((zone) => <div key={zone.id} className="mssPtit1SpecialZoneCard"><img src={zone.image} alt={zone.title} loading="lazy" decoding="async" /><div><strong>{zone.title}</strong><p>{zone.body}</p></div></div>)}
       </div>
@@ -438,7 +440,12 @@ function DartsRulePage({ game, onBack, onOpenApp, lang, setLang, t }: { game: Da
       <div><span>{tr("rules.category", "CATÉGORIE")}</span><strong>{exclusive ? tr("rules.mssExclusive", "Exclusivité MSS") : tr(`category.${game.category}`, DARTS_CATEGORY_LABEL[game.category] || "Fléchettes")}</strong></div>
       <div><span>{tr("rules.options", "OPTIONS")}</span><strong>{[game.supportsTeams ? tr("rules.teams", "Équipes") : "", game.supportsBots ? tr("rules.aiBots", "Bots IA") : ""].filter(Boolean).join(" • ") || tr("rules.dependsMode", "Selon le mode")}</strong></div>
     </section>
-    {game.id === "gros_6" ? <DartsSingleZoneVisuals smallLabel={tr("rules.smallSingle", "PETIT SIMPLE")} bigLabel={tr("rules.bigSingle", "GROS SIMPLE")} className="is-gros6" /> : null}
+    {game.id === "gros_6" ? <>
+      <DartsSingleZoneVisuals smallLabel={tr("rules.smallSingle", "PETIT SIMPLE")} bigLabel={tr("rules.bigSingle", "GROS SIMPLE")} className="is-gros6" />
+      <section className="mssRuleExplainVisual" aria-label={lang === "fr" ? "Zones spéciales du Gros 6" : "Big 6 special zones"}>
+        <DartsSpecialZonesRulesVisual lang={String(lang || "fr")} borderColor="rgba(255,210,0,.45)" />
+      </section>
+    </> : null}
     {explainVisual ? <section className="mssRuleExplainVisual" aria-labelledby={`mss-rule-explain-${game.id}`}>
       <div className="mssRuleExplainVisualHead">
         <span>{tr("rules.awenaPoster", "AWENA T’EXPLIQUE LE MODE")}</span>

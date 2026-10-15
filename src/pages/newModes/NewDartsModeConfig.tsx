@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React from "react";
 import BackDot from "../../components/BackDot";
+import InfoDot from "../../components/InfoDot";
 import BotPagedSelector from "../../components/BotPagedSelector";
 import OptionRow from "../../components/OptionRow";
 import OptionSelect from "../../components/OptionSelect";
@@ -1110,7 +1111,29 @@ export default function NewDartsModeConfig(props: Props) {
         .msc-new-darts-guided-nav { position: sticky !important; bottom: max(6px, env(safe-area-inset-bottom)) !important; z-index: 50 !important; background: rgba(3,5,10,.92) !important; backdrop-filter: blur(14px); padding: 6px !important; border-radius: 14px; box-shadow: 0 -8px 24px rgba(0,0,0,.45); }
       }
     `}</style>
-    <PageHeader tickerSrc={definition.ticker} tickerAlt={definition.title} tickerHeight={mode === "crados" || mode === "ptit_hun" ? 68 : 92} tickerBottomGap={mode === "crados" ? 4 : mode === "ptit_hun" ? 8 : 10} tickerFit="cover" left={<BackDot onClick={backToGames} color={accent} glow={`${accent}88`} title="Retour" />} right={awenaEnabled ? <PremiumAwenaButton awena={awena} route={`${mode}_config`} mode={mode as any} screenLabel={`${definition.title} · Configuration`} accent={accent} /> : null} />
+    <PageHeader
+      tickerSrc={definition.ticker}
+      tickerAlt={definition.title}
+      tickerHeight={mode === "crados" || mode === "ptit_hun" ? 68 : 92}
+      tickerBottomGap={mode === "crados" ? 4 : mode === "ptit_hun" ? 8 : 10}
+      tickerFit="cover"
+      left={<BackDot onClick={backToGames} color={accent} glow={`${accent}88`} title="Retour" />}
+      right={(mode === "ptit_hun" && definition.rulesContent) || awenaEnabled ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 7, pointerEvents: "auto" }}>
+          {mode === "ptit_hun" && definition.rulesContent ? (
+            <InfoDot
+              title="Règles — P’TIT 1"
+              content={definition.rulesContent}
+              size={40}
+              color={accent}
+              glow={`${accent}AA`}
+              disableAwenaTakeover
+            />
+          ) : null}
+          {awenaEnabled ? <PremiumAwenaButton awena={awena} route={`${mode}_config`} mode={mode as any} screenLabel={`${definition.title} · Configuration`} accent={accent} /> : null}
+        </div>
+      ) : null}
+    />
     <div className="msc-new-darts-config-content" style={{ padding: "8px 8px 0", maxWidth: 980, margin: "0 auto", minWidth: 0, boxSizing: "border-box" }}>
       {mode === "crados" && !viewModeChosen ? <section style={{ ...selectorCard, border: `1px solid ${accent}66`, boxShadow: `0 0 24px ${accent}18, 0 14px 34px rgba(0,0,0,.48)`, padding: "14px 12px" }}>
         <div style={{ color: accent, fontSize: 12.5, fontWeight: 1000, textTransform: "uppercase", letterSpacing: 1, textAlign: "center" }}>Choisis ton affichage</div>

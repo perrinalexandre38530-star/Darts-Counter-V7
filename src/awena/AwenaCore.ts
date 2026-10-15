@@ -391,6 +391,51 @@ Ma couche Guide Utilisateur V9.2 ajoute **${awenaUserGuideV92Count()} sujets pra
     };
   }
 
+  const asksSpecialZones = /zones speciales|zone speciale|zones hors cible|zone hors cible|off board|offboard|special zones|outer ring|anneau exterieur|contour exterieur/.test(q);
+  if (asksSpecialZones && activeMode && ["gros_6", "ptit_hun"].includes(activeMode.id)) {
+    const isPtit1 = activeMode.id === "ptit_hun";
+    const frText = isPtit1
+      ? `## ZONES SPÉCIALES
+P’TIT 1 reprend les mêmes zones spéciales hors cible que GROS 6 : **le contour extérieur** et les **12 zones fermées** des chiffres 4, 6, 8 haut, 8 bas, 9, 10, 14, 16, 18 haut, 18 bas, 19 et 20.
+
+## COMMENT LES SAISIR
+Dans le keypad, ouvre **ZONE**, puis sélectionne exactement la forme touchée. Pour 8 et 18, HAUT et BAS sont deux cibles différentes. La pointe doit entrer dans l’espace fermé indiqué.
+
+## EFFET DANS P’TIT 1
+Une zone spéciale est enregistrée comme un **MISS spécial**. Elle applique donc la pénalité MISS configurée dans la partie : ajout fixe ou multiplication du score total selon tes réglages.`
+      : `## ZONES HORS CIBLE
+GROS 6 peut utiliser **le contour extérieur** et les **12 zones fermées** des chiffres 4, 6, 8 haut, 8 bas, 9, 10, 14, 16, 18 haut, 18 bas, 19 et 20 comme cibles à part entière.
+
+## COMMENT LES SAISIR
+Dans le keypad, ouvre **ZONE**, puis sélectionne exactement la forme touchée. Pour 8 et 18, HAUT et BAS sont deux cibles différentes.
+
+## EN JEU
+Si un joueur impose l’une de ces zones, le joueur suivant doit toucher **exactement cette même zone** dans sa volée pour valider la cible et éviter de perdre une vie.`;
+    const enText = isPtit1
+      ? `## SPECIAL ZONES
+P’TIT 1 uses the same off-board special zones as BIG 6: the **outer ring** and the **12 enclosed number areas** for 4, 6, 8 top, 8 bottom, 9, 10, 14, 16, 18 top, 18 bottom, 19 and 20.
+
+## HOW TO ENTER THEM
+Open **ZONE** on the keypad, then select the exact shape that was hit. For 8 and 18, TOP and BOTTOM are separate targets. The dart tip must actually enter the enclosed area.
+
+## EFFECT IN P’TIT 1
+A special zone is recorded as a **special MISS**, so it applies the configured MISS penalty: either a fixed addition or a total-score multiplier, depending on your settings.`
+      : `## OFF-BOARD ZONES
+BIG 6 can use the **outer ring** and the **12 enclosed number areas** for 4, 6, 8 top, 8 bottom, 9, 10, 14, 16, 18 top, 18 bottom, 19 and 20 as full targets.
+
+## HOW TO ENTER THEM
+Open **ZONE** on the keypad, then select the exact shape that was hit. For 8 and 18, TOP and BOTTOM are separate targets.
+
+## IN PLAY
+If a player sets one of these zones, the next player must hit **that exact same zone** during the visit to clear the target and avoid losing a life.`;
+    return {
+      text: frText,
+      localizedTextByLang: { fr: frText, en: enText },
+      modeId: activeMode.id,
+      actions: actionsForAwenaMode(activeMode, context.route),
+    };
+  }
+
   const asksRules =
     /regle|regles|règle|règles|objectif|but du jeu|principe/.test(q) ||
     (/explique(?: moi)?(?: clairement)?/.test(q) && !asksConfig);

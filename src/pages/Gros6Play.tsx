@@ -12,6 +12,7 @@
 import React from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
+import DartsSpecialZonesRulesVisual from "../components/DartsSpecialZonesRulesVisual";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ScoreInputHub from "../components/ScoreInputHub";
 import { MicroMiniIcon } from "../components/Keypad";
@@ -1223,6 +1224,7 @@ export default function Gros6Play({ store, go, config, onFinish, initialSnapshot
                   "When the option is enabled, several off-board areas become playable: the outer contour around the numbers as well as specific closed areas around 4, 6, 8 top, 8 bottom, 9, 10, 14, 16, 18 top, 18 bottom, 19 and 20. If one of these zones is set, the next player must hit that exact area."
                 )}
               </div>
+              <DartsSpecialZonesRulesVisual lang={lang} borderColor={`${accent}66`} />
             </div>
 
             <div>
