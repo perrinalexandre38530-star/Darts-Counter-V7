@@ -43,7 +43,6 @@ import {
 } from "../lib/statsBridge";
 import type { CricketProfileStats } from "../lib/cricketStats";
 import { buildChallengeStatsProgression } from "../lib/challengeStatsProgression";
-import StatsSystemDiagnosticsPanel from "../components/stats/StatsSystemDiagnosticsPanel";
 
 // ---- Utils ----
 const STATSHUB_HISTORY_LIGHT_CAP = 300;
@@ -5842,7 +5841,6 @@ go,
 const { enabled: devModeEnabled } = useDevMode();
   const [showRuntimeDebug, setShowRuntimeDebug] = React.useState(false);
   const STATS_DEBUG = devModeEnabled && showRuntimeDebug;
-  const [showStatsDiagnostic, setShowStatsDiagnostic] = React.useState(false);
   const [dartSetDiagnostic, setDartSetDiagnostic] = React.useState<any>(null);
 
   React.useEffect(() => {
@@ -6828,14 +6826,11 @@ const statsDiagnostic = React.useMemo(() => {
   };
 }, [effectiveProfileId, selectedPlayerVisual, selectedPlayer, activeProfileName, allPlayers.length, normalizedHistoryLoaded, nmEffective, cachedDashboard, heavyStatsReady, currentMode, dartSetDiagnostic]);
 
-const relaunchStatsSources = React.useCallback(() => {
-  try { clearStatsIndexCache(); } catch {}
-  try { window.dispatchEvent(new CustomEvent("dc-store-updated", { detail: { source: "stats-diagnostic" } })); } catch {}
-  try { window.dispatchEvent(new CustomEvent("dc-history-updated", { detail: { source: "stats-diagnostic" } })); } catch {}
-  try { window.dispatchEvent(new CustomEvent("dc-dartsets-updated", { detail: { source: "stats-diagnostic" } })); } catch {}
-  try { window.dispatchEvent(new CustomEvent("dc:profile-avatar-updated", { detail: { profileId: effectiveProfileId, source: "stats-diagnostic" } })); } catch {}
-  try { scheduleStatsIndexRefresh(); } catch {}
-}, [effectiveProfileId]);
+React.useEffect(() => {
+  const snapshot = { ...statsDiagnostic, capturedAt: Date.now() };
+  try { (globalThis as any).__dcStatsUiDiagnosticSnapshot = snapshot; } catch {}
+  try { sessionStorage.setItem("dc_stats_ui_diagnostic_snapshot_v124", JSON.stringify(snapshot)); } catch {}
+}, [statsDiagnostic]);
 
 
 // ============================================================
@@ -11555,42 +11550,6 @@ return (
         </div>
       </div>
     </div>
-      <button
-        type="button"
-        onClick={() => setShowStatsDiagnostic((v) => !v)}
-        style={{
-          position: "fixed",
-          right: 14,
-          bottom: devModeEnabled ? 132 : 84,
-          zIndex: 9998,
-          width: 42,
-          height: 42,
-          borderRadius: 999,
-          border: `1px solid ${statsDiagnostic.avatarOk && statsDiagnostic.selectedPlayerOk ? "rgba(72,255,174,.45)" : "rgba(255,180,70,.65)"}`,
-          background: showStatsDiagnostic ? "rgba(15,23,30,.96)" : "rgba(0,0,0,.42)",
-          color: "#fff",
-          display: "grid",
-          placeItems: "center",
-          fontSize: 20,
-          boxShadow: "0 8px 24px rgba(0,0,0,.35)",
-          backdropFilter: "blur(8px)",
-          WebkitBackdropFilter: "blur(8px)",
-        }}
-        aria-label="Diagnostic statistiques"
-        title="Diagnostic statistiques"
-      >
-        🩺
-      </button>
-
-      {showStatsDiagnostic && (
-        <StatsSystemDiagnosticsPanel
-          profileId={statsDiagnostic.profileId}
-          profileName={statsDiagnostic.profileName}
-          uiSnapshot={statsDiagnostic}
-          onReloadSources={relaunchStatsSources}
-        />
-      )}
-
       {devModeEnabled && (
         <button
           type="button"

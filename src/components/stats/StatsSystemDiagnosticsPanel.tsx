@@ -17,6 +17,7 @@ type Props = {
   profileName?: string | null;
   uiSnapshot?: Record<string, any> | null;
   onReloadSources?: () => void;
+  embedded?: boolean;
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -26,7 +27,7 @@ const STATUS_COLOR: Record<string, string> = {
   skip: "#9ca8b5",
 };
 
-export default function StatsSystemDiagnosticsPanel({ profileId, profileName, uiSnapshot, onReloadSources }: Props) {
+export default function StatsSystemDiagnosticsPanel({ profileId, profileName, uiSnapshot, onReloadSources, embedded = false }: Props) {
   const [report, setReport] = React.useState<StatsSystemDiagnosticReport | null>(() => readLastStatsSystemDiagnosticReport());
   const [busy, setBusy] = React.useState<"fast" | "deep" | null>(null);
   const [progress, setProgress] = React.useState<{ phase: string; current?: number; total?: number; detail?: string } | null>(null);
@@ -98,11 +99,30 @@ export default function StatsSystemDiagnosticsPanel({ profileId, profileName, ui
   const trace = readStatsDiagnosticTrace().slice(-12).reverse();
   const border = report?.summary.fail ? "rgba(255,110,110,.7)" : report?.summary.warn ? "rgba(255,211,106,.55)" : "rgba(72,220,255,.42)";
 
+  const shellStyle: React.CSSProperties = embedded
+    ? {
+        position: "relative",
+        width: "100%",
+        background: "radial-gradient(circle at 90% 0%, rgba(255,211,106,.08), transparent 34%), linear-gradient(145deg, rgba(8,14,22,.98), rgba(4,8,13,.98))",
+        border: `1px solid ${border}`,
+        borderRadius: 18,
+        padding: 14,
+        color: "#fff",
+        fontSize: 11,
+        boxShadow: "0 14px 36px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.035)",
+        overflow: "hidden",
+      }
+    : {
+        position: "fixed", left: 10, right: 10, bottom: 136, zIndex: 9997, maxHeight: "68vh", overflow: "auto",
+        background: "rgba(5,9,14,.985)", border: `1px solid ${border}`, borderRadius: 14, padding: 12, color: "#fff", fontSize: 11,
+        boxShadow: "0 14px 40px rgba(0,0,0,.65)",
+      };
+
   return (
-    <div style={{ position: "fixed", left: 10, right: 10, bottom: 136, zIndex: 9997, maxHeight: "68vh", overflow: "auto", background: "rgba(5,9,14,.985)", border: `1px solid ${border}`, borderRadius: 14, padding: 12, color: "#fff", fontSize: 11, boxShadow: "0 14px 40px rgba(0,0,0,.65)" }}>
+    <div style={shellStyle}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 8 }}>
         <div>
-          <b style={{ color: "#66e8ff", fontSize: 13 }}>DIAGNOSTIC INTERNE STATS — PIPELINE COMPLET</b>
+          <b style={{ color: "#66e8ff", fontSize: embedded ? 14 : 13, letterSpacing: .25 }}>DIAGNOSTIC INTERNE STATS — PIPELINE COMPLET</b>
           <div style={{ marginTop: 3, opacity: .64, fontSize: 10.4 }}>IndexedDB → History → hydratation → index → cache rapide → Stats Center</div>
         </div>
         <span style={{ color: traceEnabled ? "#72ffad" : "#9ca8b5", fontWeight: 900 }}>{traceEnabled ? "TRACE ON" : "TRACE OFF"}</span>
