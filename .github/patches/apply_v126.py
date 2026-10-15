@@ -57,6 +57,36 @@ replace_once(
 )
 
 replace_once(
+'''        <div style={{
+          borderRadius: 18,
+          padding: "14px 14px 13px",
+          marginBottom: 14,
+          border: `1px solid ${theme.primary}35`,
+          background: `radial-gradient(circle at 12% 0%, ${theme.primary}18, transparent 36%), linear-gradient(135deg, rgba(255,255,255,.045), rgba(255,255,255,.015))`,
+          boxShadow: `0 16px 38px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.035)`,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: theme.primary, fontSize: 10, fontWeight: 1000, letterSpacing: 1.5, textTransform: "uppercase" }}>OUTILS DÉVELOPPEUR</div>
+              <h2 style={{ margin: "3px 0 0", fontSize: 18, color: theme.text, letterSpacing: .3 }}>Centre de diagnostic</h2>
+              <div style={{ marginTop: 5, fontSize: 11.5, color: theme.textSoft, lineHeight: 1.45 }}>
+                Un diagnostic à la fois. Choisis la zone à analyser : les autres outils restent repliés pour éviter les kilomètres de scroll.
+              </div>
+            </div>
+            <div style={{ width: 44, height: 44, flex: "0 0 auto", borderRadius: 14, display: "grid", placeItems: "center", fontSize: 23, border: `1px solid ${theme.primary}45`, background: `${theme.primary}12`, boxShadow: `0 0 22px ${theme.primary}18` }}>🩺</div>
+          </div>
+        </div>''',
+'''        <div style={{ marginBottom: 10, paddingBottom: 10, borderBottom: `1px solid ${theme.borderSoft}` }}>
+          <div style={{ color: theme.textSoft, fontSize: 9.5, fontWeight: 900, letterSpacing: 1.1, textTransform: "uppercase" }}>OUTILS DÉVELOPPEUR</div>
+          <div style={{ marginTop: 3, fontSize: 17, fontWeight: 1000, color: theme.text }}>Centre de diagnostic</div>
+          <div style={{ marginTop: 4, fontSize: 10.5, color: theme.textSoft, lineHeight: 1.4 }}>
+            Choisis un module. Un seul diagnostic s'affiche à la fois.
+          </div>
+        </div>''',
+    "simple diagnostics header",
+)
+
+replace_once(
     '          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>',
     '          <div style={{ display: "grid", gap: 7 }}>',
     "diagnostic menu grid",
@@ -81,7 +111,7 @@ replace_once(
 )
 
 replace_once(
-'''                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+'''                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
                   <div style={{ width: 40, height: 40, borderRadius: 13, display: "grid", placeItems: "center", fontSize: 21, background: `${card.accent}12`, border: `1px solid ${card.accent}35` }}>{card.icon}</div>
                   <span style={{ borderRadius: 999, padding: "4px 7px", border: `1px solid ${card.accent}35`, background: `${card.accent}0d`, color: card.accent, fontSize: 8.5, fontWeight: 1000, letterSpacing: .35, whiteSpace: "nowrap" }}>{card.badge}</span>
                 </div>
@@ -123,7 +153,7 @@ replace_once(
     "backup diagnostics render",
 )
 
-# V126: the selector itself stays intentionally plain. Status chips live inside each
-# diagnostic so this screen remains readable on a narrow phone.
+# V126: keep the selector intentionally plain; detailed status belongs inside
+# each diagnostic panel so the menu stays readable on a narrow phone.
 path.write_text(text, encoding="utf-8")
 print("V126 Settings patch applied")
