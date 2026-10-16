@@ -1,5 +1,0 @@
-# Exemple uniquement. Ne jamais committer android/key.properties réel.
-storeFile=upload-keystore.jks
-storePassword=CHANGE_ME
-keyAlias=multisports-upload
-keyPassword=CHANGE_ME
