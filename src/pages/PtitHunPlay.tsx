@@ -449,13 +449,64 @@ function Ptit1FinalDashboard({ state, rankingRows, colorById, nameById }: any) {
     return { ...r, st, darts, inner, innerPct: darts ? Math.round(inner / darts * 1000) / 10 : 0, saved };
   });
   const visits:any[] = Array.isArray(state.visits) ? state.visits : [];
-  const maxVisit = Math.max(1, ...rows.map((r:any)=>visits.filter((v:any)=>String(v.playerId)===String(r.id)).length));
   const start = Number(state.config?.rules?.startScore || 20);
-  const allScores = [start, ...visits.map((v:any)=>Number(v.after || 0)), ...rows.map((r:any)=>Number(r.score || 0))];
+  const hitSeries = rows.map((row:any) => {
+    const pv = visits.filter((v:any)=>String(v.playerId)===String(row.id));
+    const points:any[] = [{ after:start, event:"start", label:"Départ" }];
+    for (const visit of pv) {
+      const steps = Array.isArray(visit?.dartSteps) ? visit.dartSteps : [];
+      if (steps.length) {
+        for (const step of steps) {
+          points.push({
+            after:Number(step?.after || 0),
+            event:step?.zeroAbsoluteNow ? "zero" : step?.kind === "dbull" ? "dbull" : step?.kind === "miss" ? "miss" : "",
+            label:String(step?.label || ""),
+          });
+        }
+        const lastStepScore = Number(steps[steps.length - 1]?.after || 0);
+        if (Number(visit?.after || 0) !== lastStepScore) {
+          points.push({
+            after:Number(visit?.after || 0),
+            event:visit?.jackpotHit ? "jackpot" : visit?.petitOnePerfect ? "perfect" : visit?.tripleNul ? "tripleNul" : "rollback",
+            label:visit?.jackpotHit ? "Jackpot" : visit?.petitOnePerfect ? "P’TIT 1 parfait" : visit?.tripleNul ? "Triple Nul" : "Fin de volée",
+          });
+        }
+      } else {
+        points.push({
+          after:Number(visit?.after || 0),
+          event:visit?.zeroAbsoluteNow ? "zero" : visit?.jackpotHit ? "jackpot" : visit?.tripleNul ? "tripleNul" : "",
+          label:"Fin de volée",
+        });
+      }
+      if (visit?.shieldUnlockedNow) {
+        points.push({ after:Number(visit?.after || 0), event:"shield", label:"Bouclier du Hun" });
+      }
+    }
+    return { row, points };
+  });
+  const maxPointIndex = Math.max(1, ...hitSeries.map((serie:any)=>Math.max(0, serie.points.length - 1)));
+  const allScores = hitSeries.flatMap((serie:any)=>serie.points.map((p:any)=>Number(p.after || 0)));
   const minScore = Math.min(...allScores, 0);
   const maxScore = Math.max(...allScores, start, 1);
   const yFor = (score:number) => 18 + ((maxScore - score) / Math.max(1, maxScore - minScore)) * 164;
-  const xFor = (idx:number) => 36 + (idx / maxVisit) * 824;
+  const xFor = (idx:number) => 36 + (idx / maxPointIndex) * 824;
+  const eventMoments = visits.flatMap((visit:any, visitIndex:number) => {
+    const out:any[] = [];
+    const base = {
+      id:String(visit?.id || `event-${visitIndex}`),
+      playerId:String(visit?.playerId || ""),
+      turn:Number(visit?.turn || 0),
+      score:Number(visit?.after || 0),
+      visitIndex,
+    };
+    if (visit?.zeroAbsoluteNow) out.push({ ...base, key:`${base.id}-zero`, icon:"💎", label:"ZÉRO ABSOLU", tone:BLUE });
+    if (visit?.shieldUnlockedNow) out.push({ ...base, key:`${base.id}-shield`, icon:"🛡", label:"BOUCLIER DU HUN", tone:GREEN });
+    if (visit?.jackpotHit) out.push({ ...base, key:`${base.id}-jackpot`, icon:"✦", label:"JACKPOT", tone:"#ffd84d" });
+    if (visit?.petitOnePerfect) out.push({ ...base, key:`${base.id}-perfect`, icon:"1️⃣", label:"P’TIT 1 PARFAIT", tone:ACCENT });
+    else if (visit?.tripleNul) out.push({ ...base, key:`${base.id}-tn`, icon:"🎯", label:`TRIPLE NUL ${visit?.tripleNulNumber || ""}`.trim(), tone:GREEN });
+    if (visit?.zeroPenaltyFloor) out.push({ ...base, key:`${base.id}-danger`, icon:"⚠️", label:"MISS À 0", tone:RED });
+    return out;
+  });
   const totalDarts = rows.reduce((a:number,r:any)=>a+r.darts,0);
   const totalZero = rows.reduce((a:number,r:any)=>a+Number(r.st.zeroVisits||0),0);
   const totalSaved = rows.reduce((a:number,r:any)=>a+r.saved,0);
@@ -498,12 +549,19 @@ function Ptit1FinalDashboard({ state, rankingRows, colorById, nameById }: any) {
       <div style={{ width:"100%", overflowX:"auto" }}>
         <svg viewBox="0 0 900 210" style={{ width:"100%", minWidth:620, display:"block", borderRadius:12, background:"linear-gradient(180deg,rgba(255,255,255,.025),rgba(0,0,0,.16))" }}>
           {[0,.25,.5,.75,1].map((t,i)=><line key={i} x1="34" x2="874" y1={18+t*164} y2={18+t*164} stroke="rgba(255,255,255,.07)" strokeWidth="1"/>)}
-          {rows.map((row:any)=>{
-            const pv=visits.filter((v:any)=>String(v.playerId)===String(row.id));
-            const pts=[{after:start},...pv];
+          {hitSeries.map((serie:any)=>{
+            const row=serie.row;
+            const pts=serie.points;
             const points=pts.map((v:any,idx:number)=>`${xFor(idx)},${yFor(Number(v.after||0))}`).join(" ");
             const color=colorById.get(String(row.id))||ACCENT;
-            return <g key={`line-${row.id}`}><polyline points={points} fill="none" stroke={color} strokeWidth="4" strokeLinejoin="round" strokeLinecap="round"/>{pts.map((v:any,idx:number)=><circle key={idx} cx={xFor(idx)} cy={yFor(Number(v.after||0))} r={idx===pts.length-1?5:2.3} fill={color}/>)}</g>;
+            return <g key={`line-${row.id}`}>
+              <polyline points={points} fill="none" stroke={color} strokeWidth="4" strokeLinejoin="round" strokeLinecap="round"/>
+              {pts.map((v:any,idx:number)=>{
+                const eventColor = v.event === "zero" ? BLUE : v.event === "shield" ? GREEN : v.event === "miss" ? RED : v.event === "jackpot" || v.event === "perfect" ? "#ffd84d" : color;
+                const special = Boolean(v.event && v.event !== "start");
+                return <circle key={idx} cx={xFor(idx)} cy={yFor(Number(v.after||0))} r={special ? 4.6 : idx===pts.length-1 ? 5 : 2.2} fill={eventColor} stroke={special ? "#fff" : "none"} strokeWidth={special ? 1 : 0}><title>{v.label ? `${row.name} · ${v.label} · ${v.after}` : `${row.name} · ${v.after}`}</title></circle>;
+              })}
+            </g>;
           })}
           <text x="8" y="22" fill="#8690a3" fontSize="10">{maxScore}</text>
           <text x="8" y="184" fill="#8690a3" fontSize="10">{minScore}</text>
@@ -513,6 +571,20 @@ function Ptit1FinalDashboard({ state, rankingRows, colorById, nameById }: any) {
       </div>
       <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginTop:6 }}>{rows.map((r:any)=><span key={`legend-${r.id}`} style={{ color:colorById.get(String(r.id))||ACCENT,fontSize:8,fontWeight:1000 }}>● {r.name}</span>)}</div>
     </div>
+
+    {eventMoments.length ? <div style={{ border:"1px solid rgba(255,255,255,.08)", borderRadius:18, padding:10, background:"rgba(7,9,14,.96)" }}>
+      <div style={{ color:ACCENT,fontSize:11,fontWeight:1100,letterSpacing:.8,marginBottom:7 }}>⚡ MOMENTS QUI ONT RETOURNÉ LA PARTIE</div>
+      <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:7 }}>
+        {eventMoments.slice(-12).map((event:any)=>{
+          const player = rows.find((r:any)=>String(r.id)===String(event.playerId));
+          return <div key={event.key} style={{ borderRadius:12,padding:"8px 9px",border:`1px solid ${event.tone}55`,background:`${event.tone}0d`,minWidth:0 }}>
+            <div style={{ display:"flex",alignItems:"center",gap:6 }}><span style={{ fontSize:16 }}>{event.icon}</span><b style={{ color:event.tone,fontSize:9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{event.label}</b></div>
+            <div style={{ marginTop:4,color:"#fff",fontSize:9,fontWeight:900,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{player?.name || nameById(event.playerId)}</div>
+            <div style={{ marginTop:2,color:"#8792a8",fontSize:7.5 }}>Volée {event.turn} · total {event.score}</div>
+          </div>;
+        })}
+      </div>
+    </div> : null}
 
     <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:8 }}>
       {[

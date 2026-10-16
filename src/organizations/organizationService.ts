@@ -1420,7 +1420,13 @@ export function syncOrganizationGroupsToSharedTeams(organization: OrganizationRe
         clubVisibility: "members",
         syncedClubTeamId: group.id,
         description: group.description || previous?.description || `Équipe liée à ${organization.name}.`,
-        slogan: group.captainDisplayName ? `Capitaine · ${group.captainDisplayName}` : previous?.slogan,
+        // Do not keep a stale captain label in the canonical Teams store when the
+        // organization captain has been cleared (departure/suspension/removal).
+        slogan: group.captainDisplayName
+          ? `Capitaine · ${group.captainDisplayName}`
+          : String(previous?.slogan || "").startsWith("Capitaine ·")
+            ? ""
+            : previous?.slogan,
         logoMediaKey: group.logoMediaKey || previous?.logoMediaKey || teamLogoMediaKey(canonicalId),
         createdAt: previous?.createdAt || Number(new Date(group.createdAt).getTime()) || Date.now(),
         updatedAt: Number(new Date(group.updatedAt).getTime()) || Date.now(),

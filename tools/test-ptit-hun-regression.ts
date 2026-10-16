@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createPtitHunState, playPtitHunVisit } from "../src/lib/gameEngines/ptitHunEngine.ts";
+import { createPtitHunState, pickPtitHunBotDarts, playPtitHunVisit } from "../src/lib/gameEngines/ptitHunEngine.ts";
 
 const players = [{ id: "p1", name: "Test" }] as any;
 const inner = (n: number) => ({ bed: "S", number: n, ring: "inner_single" } as any);
@@ -105,5 +105,36 @@ zeroJackpot.scores.p1 = 0;
 zeroJackpot.jackpotTargets = [{ bed: "T", number: 7, label: "T7" }];
 zeroJackpot = playPtitHunVisit(zeroJackpot, [T(7), MISS, D(20)]);
 assert.equal(zeroJackpot.scores.p1, 0, "à 0, un Jackpot reste une vraie volée à 0");
+
+// IA tactique : un bot HARD à une volée du Bouclier tente un vrai TRIPLE NUL.
+{
+  const botState = createPtitHunState(players, { ...cfg, rules: { ...cfg.rules, shieldEnabled: true, cleanVisitsForShield: 3, jackpotEnabled: false } });
+  botState.cleanStreak.p1 = 2;
+  botState.statsByPlayer.p1.currentCleanStreak = 2;
+  const originalRandom = Math.random;
+  try {
+    Math.random = () => 0;
+    const darts = pickPtitHunBotDarts(botState, "hard") as any[];
+    assert.equal(darts.length, 3);
+    assert.ok(darts.every((d:any) => d.bed === "S" && d.ring === "inner_single" && d.number === 1), "bot HARD prépare le Bouclier avec 3 petits 1");
+  } finally {
+    Math.random = originalRandom;
+  }
+}
+
+// IA tactique : à un DBULL de ZÉRO ABSOLU avec un gros score, HARD priorise le centre.
+{
+  const botState = createPtitHunState(players, { ...cfg, rules: { ...cfg.rules, shieldEnabled: false, jackpotEnabled: false, dbullEnabled: true, zeroAbsoluteEnabled: true, dbullsForZero: 3 } });
+  botState.scores.p1 = 100;
+  botState.statsByPlayer.p1.dbulls = 2;
+  const originalRandom = Math.random;
+  try {
+    Math.random = () => 0;
+    const darts = pickPtitHunBotDarts(botState, "hard") as any[];
+    assert.equal(darts[0]?.bed, "IB", "bot HARD cherche le DBULL qui déclenche ZÉRO ABSOLU");
+  } finally {
+    Math.random = originalRandom;
+  }
+}
 
 console.log("P’TIT 1 regression: OK");

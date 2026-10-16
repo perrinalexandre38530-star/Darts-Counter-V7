@@ -71,6 +71,11 @@ export default function SimpleRoundsPlay(props: any) {
   const [visitsByP, setVisitsByP] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
   const [bullsByP, setBullsByP] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
   const [dbullsByP, setDbullsByP] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
+  const [bullStreakByP, setBullStreakByP] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
+  const [bestBullStreakByP, setBestBullStreakByP] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
+  const [perfectVisitsByP, setPerfectVisitsByP] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
+  const [lastBullVisitByP, setLastBullVisitByP] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
+  const [dbullPulse, setDbullPulse] = useState(false);
 
   // Auto-play bots
   // Guard (avoid double auto-play)
@@ -201,8 +206,27 @@ function goBack() {
     if (variantId === "super_bull") {
       const bulls = exactDarts.filter((d: UIDart) => Number(d.v) === 25 && Number(d.mult) === 1).length;
       const dbulls = exactDarts.filter((d: UIDart) => Number(d.v) === 25 && Number(d.mult) === 2).length;
+      const centreHits = bulls + dbulls;
       setBullsByP((arr) => { const nx = [...arr]; nx[pIdx] = (nx[pIdx] ?? 0) + bulls; return nx; });
       setDbullsByP((arr) => { const nx = [...arr]; nx[pIdx] = (nx[pIdx] ?? 0) + dbulls; return nx; });
+      setLastBullVisitByP((arr) => { const nx = [...arr]; nx[pIdx] = v; return nx; });
+      setPerfectVisitsByP((arr) => { const nx = [...arr]; if (centreHits === 3) nx[pIdx] = (nx[pIdx] ?? 0) + 1; return nx; });
+      setBullStreakByP((arr) => {
+        const nx = [...arr];
+        let streak = nx[pIdx] ?? 0;
+        let best = bestBullStreakByP[pIdx] ?? 0;
+        for (const d of exactDarts) {
+          if (Number(d.v) === 25) { streak += 1; best = Math.max(best, streak); }
+          else streak = 0;
+        }
+        nx[pIdx] = streak;
+        setBestBullStreakByP((bestArr) => { const bn = [...bestArr]; bn[pIdx] = Math.max(bn[pIdx] ?? 0, best); return bn; });
+        return nx;
+      });
+      if (dbulls > 0) {
+        setDbullPulse(true);
+        window.setTimeout(() => setDbullPulse(false), 720);
+      }
     }
 
     const forceWin = !!res.forceWin;
@@ -233,6 +257,11 @@ function goBack() {
     setBestVisitByP(Array.from({ length: playerCount }, () => 0));
     setBullsByP(Array.from({ length: playerCount }, () => 0));
     setDbullsByP(Array.from({ length: playerCount }, () => 0));
+    setBullStreakByP(Array.from({ length: playerCount }, () => 0));
+    setBestBullStreakByP(Array.from({ length: playerCount }, () => 0));
+    setPerfectVisitsByP(Array.from({ length: playerCount }, () => 0));
+    setLastBullVisitByP(Array.from({ length: playerCount }, () => 0));
+    setDbullPulse(false);
   }
 
   function botPickVisit(): number {
@@ -374,6 +403,12 @@ function goBack() {
         darts: dartsMap,
         bestVisitByPlayer: bestVisitMap,
         bestCheckoutByPlayer: bestCheckoutMap,
+        ...(variantId === "super_bull" ? {
+          bullsByPlayer: Object.fromEntries(players.map((p: any, i: number) => [String(p.id), bullsByP[i] || 0])),
+          dbullsByPlayer: Object.fromEntries(players.map((p: any, i: number) => [String(p.id), dbullsByP[i] || 0])),
+          bestBullStreakByPlayer: Object.fromEntries(players.map((p: any, i: number) => [String(p.id), bestBullStreakByP[i] || 0])),
+          perfectBullVisitsByPlayer: Object.fromEntries(players.map((p: any, i: number) => [String(p.id), perfectVisitsByP[i] || 0])),
+        } : {}),
         // co: 0 (pas de checkout sur ces variantes)
       },
       payload: {
@@ -408,6 +443,10 @@ function goBack() {
     dartsByP,
     pointsByP,
     bestVisitByP,
+    bullsByP,
+    dbullsByP,
+    bestBullStreakByP,
+    perfectVisitsByP,
     scores,
     t,
     playerRows,
@@ -454,6 +493,29 @@ function goBack() {
           )}
         </div>
 
+        {variantId === "super_bull" && !isFinished && (
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(132px,.72fr) minmax(0,1.6fr)", gap: 12, marginBottom: 12, alignItems: "stretch" }}>
+            <div style={{ borderRadius: 22, border: dbullPulse ? "2px solid rgba(255,215,64,.95)" : "1px solid rgba(39,220,255,.25)", background: dbullPulse ? "radial-gradient(circle,rgba(255,215,64,.30),rgba(8,18,30,.96) 68%)" : "radial-gradient(circle,rgba(39,220,255,.15),rgba(8,18,30,.96) 68%)", display: "grid", placeItems: "center", minHeight: 154, boxShadow: dbullPulse ? "0 0 34px rgba(255,215,64,.28)" : "none", transition: "all .18s ease" }}>
+              <div style={{ width: 118, height: 118, borderRadius: "50%", background: "radial-gradient(circle at center,#ffd740 0 22%,#d91f38 23% 46%,#f1ead8 47% 69%,#1f9d63 70% 100%)", border: "5px solid rgba(255,255,255,.12)", boxShadow: "inset 0 0 0 3px rgba(0,0,0,.3),0 8px 28px rgba(0,0,0,.35)", display: "grid", placeItems: "center", textAlign: "center", color: "#071019", fontWeight: 1000, fontSize: 11, lineHeight: 1.05 }}>
+                <div><div style={{ fontSize: 18 }}>50</div>DBULL<div style={{ marginTop: 25, color: "white" }}>BULL 25</div></div>
+              </div>
+            </div>
+            <div style={{ borderRadius: 20, padding: 14, border: "1px solid rgba(255,255,255,.10)", background: "linear-gradient(145deg,rgba(39,220,255,.08),rgba(255,255,255,.035))" }}>
+              <div style={{ fontSize: 10, letterSpacing: 1.2, opacity: .66, fontWeight: 950 }}>SUPER BULL · JOUEUR ACTIF</div>
+              <div style={{ fontSize: 22, fontWeight: 1000, marginTop: 4 }}>{playerRows[playerIdx]?.name || `${t("generic.player", "Joueur")} ${playerIdx + 1}`}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7, marginTop: 12 }}>
+                {[
+                  ["CENTRES", (bullsByP[playerIdx] || 0) + (dbullsByP[playerIdx] || 0)],
+                  ["DBULL", dbullsByP[playerIdx] || 0],
+                  ["SÉRIE", bullStreakByP[playerIdx] || 0],
+                  ["BEST", bestBullStreakByP[playerIdx] || 0],
+                ].map(([label,value]) => <div key={String(label)} style={{ padding: "9px 5px", borderRadius: 12, background: "rgba(0,0,0,.22)", textAlign: "center" }}><div style={{ fontSize: 9, opacity: .6, fontWeight: 900 }}>{label}</div><div style={{ fontSize: 18, fontWeight: 1000, marginTop: 2 }}>{value}</div></div>)}
+              </div>
+              <div style={{ marginTop: 10, fontSize: 11, opacity: .72 }}>Dernière volée : <b>{lastBullVisitByP[playerIdx] || 0} pts</b> · Volées 100% centre : <b>{perfectVisitsByP[playerIdx] || 0}</b></div>
+            </div>
+          </div>
+        )}
+
         <div style={{ display: "grid", gridTemplateColumns: `repeat(${playerCount}, minmax(0,1fr))`, gap: 10 }}>
           {scores.map((s, i) => {
             const active = !isFinished && i === playerIdx;
@@ -482,6 +544,34 @@ function goBack() {
           })}
         </div>
         </div>
+
+        {isFinished && variantId === "super_bull" && winner && (
+          <div style={{ marginTop: 14, borderRadius: 22, padding: 16, border: "1px solid rgba(39,220,255,.24)", background: "linear-gradient(145deg,rgba(39,220,255,.11),rgba(255,215,64,.05),rgba(255,255,255,.035))" }}>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 10, letterSpacing: 1.5, opacity: .65, fontWeight: 950 }}>CLASSEMENT FINAL · SUPER BULL</div>
+              <div style={{ fontSize: 25, fontWeight: 1000, marginTop: 5 }}>🏆 {playerRows[winner.idx]?.name || `${t("generic.player", "Joueur")} ${winner.idx + 1}`}</div>
+              <div style={{ opacity: .72, marginTop: 3 }}>{winner.score} points au centre</div>
+            </div>
+            <div style={{ display: "grid", gap: 8, marginTop: 15 }}>
+              {scores.map((score, i) => ({ i, score })).sort((a,b) => b.score-a.score || (dbullsByP[b.i]||0)-(dbullsByP[a.i]||0)).map((row, rank) => {
+                const darts = dartsByP[row.i] || 0;
+                const centres = (bullsByP[row.i] || 0) + (dbullsByP[row.i] || 0);
+                const precision = darts ? Math.round((centres / darts) * 100) : 0;
+                return <div key={row.i} style={{ display: "grid", gridTemplateColumns: "36px minmax(0,1fr) repeat(4,minmax(54px,.55fr))", gap: 7, alignItems: "center", padding: 10, borderRadius: 14, background: rank === 0 ? "rgba(255,215,64,.10)" : "rgba(0,0,0,.20)", border: "1px solid rgba(255,255,255,.07)" }}>
+                  <div style={{ fontSize: 18, fontWeight: 1000 }}>#{rank+1}</div><div style={{ fontWeight: 1000 }}>{playerRows[row.i]?.name}</div>
+                  <div style={{ textAlign: "center" }}><b>{row.score}</b><div style={{ fontSize: 8, opacity: .55 }}>PTS</div></div>
+                  <div style={{ textAlign: "center" }}><b>{dbullsByP[row.i]||0}</b><div style={{ fontSize: 8, opacity: .55 }}>DBULL</div></div>
+                  <div style={{ textAlign: "center" }}><b>{precision}%</b><div style={{ fontSize: 8, opacity: .55 }}>CENTRE</div></div>
+                  <div style={{ textAlign: "center" }}><b>{bestBullStreakByP[row.i]||0}</b><div style={{ fontSize: 8, opacity: .55 }}>BEST SÉRIE</div></div>
+                </div>;
+              })}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginTop: 14 }}>
+              <button className="btn-secondary" onClick={goBack}>RETOUR CONFIG</button>
+              <button className="btn-primary" onClick={resetMatch}>REJOUER</button>
+            </div>
+          </div>
+        )}
 
         {!isFinished && !botMask[playerIdx] && (
           <div className="msc-mode-play-secondary" style={{ marginTop: 12 }}>

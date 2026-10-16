@@ -1731,7 +1731,7 @@ async function encodeNasTransportSnapshotJson(snapshotJson: string, compressedIn
   };
 }
 
-const NAS_PUSH_TIMEOUT_MS = 45_000;
+const NAS_PUSH_TIMEOUT_MS = 30_000;
 const NAS_DIRECT_PUSH_MAX_COMPRESSED_BYTES = 4 * 1024 * 1024;
 const NAS_CHUNK_CLIENT_BYTES = 1536 * 1024;
 

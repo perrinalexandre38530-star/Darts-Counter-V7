@@ -2502,6 +2502,23 @@ async function decodePayloadCompressedOffMainThread(
   payloadCompressed: any,
   ctx?: { id?: string; stage?: string }
 ): Promise<any | null> {
+  const marker = beginFreezeOperation("history.payload.decode", {
+    id: String(ctx?.id || ""),
+    stage: String(ctx?.stage || ""),
+    compressedChars: typeof payloadCompressed === "string" ? payloadCompressed.length : 0,
+    offMainThread: isAndroidHistoryRuntime(),
+  });
+  try {
+    return await decodePayloadCompressedOffMainThreadImpl(payloadCompressed, ctx);
+  } finally {
+    endFreezeOperation(marker);
+  }
+}
+
+async function decodePayloadCompressedOffMainThreadImpl(
+  payloadCompressed: any,
+  ctx?: { id?: string; stage?: string }
+): Promise<any | null> {
   if (!payloadCompressed || typeof payloadCompressed !== "string") return null;
 
   // Sur desktop, garder le chemin synchrone existant. Sur Android, le decode

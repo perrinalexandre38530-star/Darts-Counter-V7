@@ -23,6 +23,7 @@ import {
 } from "../lib/closestCenterVisionEngine";
 import { getTicker } from "../lib/tickers";
 import { loadCameraScoringPreferences } from "../lib/cameraScoringPreferences";
+import { appendClosestCenterDiagnostic, loadClosestCenterDiagnostics, summarizeClosestCenterDiagnostics } from "../lib/closestCenterDiagnostics";
 
 const ACCENT = "#44e7ff";
 const PLAYER_COLORS = ["#ff4d5f", "#3da5ff", "#ffd43b", "#b96cff", "#39d98a", "#ff914d", "#55e6c1", "#f472b6"];
@@ -121,6 +122,8 @@ export default function ClosestCenterPlay(props:any) {
   const players = cfg.players || [];
   const ticker = getTicker("closest_center") || getTicker("darts_games") || "";
   const [cameraPrefs] = React.useState(() => loadCameraScoringPreferences());
+  const sessionIdRef = React.useRef(`petanque-${Date.now()}-${Math.random().toString(36).slice(2,8)}`);
+  const [diagnostics, setDiagnostics] = React.useState<any[]>(() => loadClosestCenterDiagnostics().slice(-24));
 
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
   const streamRef = React.useRef<MediaStream | null>(null);
@@ -171,6 +174,19 @@ export default function ClosestCenterPlay(props:any) {
   }, [cameraPrefs.maxCaptureSide]);
 
   const current = players[phase === "enroll" ? enrollIndex : playerIndex];
+  const diagnosticSummary = React.useMemo(() => summarizeClosestCenterDiagnostics(diagnostics.filter((x:any) => x.sessionId === sessionIdRef.current)), [diagnostics]);
+
+  const traceCamera = React.useCallback((stage:any, level:any, code:string, message:string, metrics:any = {}) => {
+    const entry = appendClosestCenterDiagnostic({
+      sessionId: sessionIdRef.current,
+      round,
+      playerId: current?.id ?? null,
+      playerName: current?.name ?? null,
+      stage, level, code, message, metrics,
+    });
+    setDiagnostics(prev => [...prev, entry].slice(-24));
+    return entry;
+  }, [round, current?.id, current?.name]);
 
   const scanSample = () => {
     const img = capture(videoRef.current, { x:.25, y:.2, w:.5, h:.6 });
@@ -219,10 +235,12 @@ export default function ClosestCenterPlay(props:any) {
     setPrecisionReadiness(readiness);
     const tier = precisionTier(readiness);
     if (!readiness.ok) {
+      traceCamera("baseline", "reject", "readiness", "Précision de référence insuffisante", {confidence:readiness.confidence,mmPerPixel:readiness.mmPerPixel,sharpness:readiness.sharpness});
       setStatus(`❌ Précision insuffisante : ${readiness.reasons[0] || "repositionne la caméra"}`);
       return;
     }
     if (!tierMeets(tier, cameraPrefs.requiredTier)) {
+      traceCamera("baseline", "reject", "tier", "Niveau de précision inférieur au profil", {tier,profile:cameraPrefs.profile,mmPerPixel:readiness.mmPerPixel});
       setStatus(`⚠️ Niveau ${tier.toUpperCase()} insuffisant pour le profil ${cameraPrefs.profile.toUpperCase()} (${readiness.mmPerPixel.toFixed(2)} mm/pixel). Rapproche la caméra ou améliore la netteté.`);
       return;
     }
@@ -236,6 +254,7 @@ export default function ClosestCenterPlay(props:any) {
     setPreflightInfo(null);
     setPhase("play");
     setPlayerIndex(0);
+    traceCamera("baseline", "ok", "baseline-ready", "Référence de manche validée", {tier,confidence:readiness.confidence,mmPerPixel:readiness.mmPerPixel,sharpness:readiness.sharpness});
     setStatus(`Précision ${tier.toUpperCase()} validée · ${readiness.mmPerPixel.toFixed(2)} mm/pixel. Avant de lancer, effectue le CONTRÔLE AVANT VOLÉE.`);
   };
 
@@ -252,6 +271,7 @@ export default function ClosestCenterPlay(props:any) {
       const worstGeometry = geometryChecks.reduce((w:any,x:any)=>x.regionalSpreadPx>w.regionalSpreadPx?x:w, geometryChecks[0]);
       if (cameraPrefs.strictProjectiveDrift && !geometryChecks.every((x:any)=>x.ok)) {
         setPreflightInfo({ok:false,reason:"drift",geometrySpreadPx:worstGeometry.regionalSpreadPx,confidence:worstGeometry.confidence});
+        traceCamera("preflight", "reject", "projective-drift", "Dérive projective avant volée", {spreadPx:worstGeometry.regionalSpreadPx,confidence:worstGeometry.confidence});
         setStatus(`❌ Contrôle avant volée refusé : dérive projective ${worstGeometry.regionalSpreadPx.toFixed(2)} px. Replace le support avant de lancer.`);
         return;
       }
@@ -259,6 +279,7 @@ export default function ClosestCenterPlay(props:any) {
       const good = registered.filter(x => x.registration.confidence >= .55 && Math.hypot(x.registration.dxPx,x.registration.dyPx) <= 8);
       if (good.length < 3) {
         setPreflightInfo({ok:false,reason:"registration",confidence:good.length/Math.max(1,registered.length)});
+        traceCamera("preflight", "reject", "registration", "Recalage pré-volée insuffisant", {goodFrames:good.length,totalFrames:registered.length});
         setStatus("❌ Contrôle avant volée refusé : support/cadrage trop instable. Immobilise la caméra puis recommence.");
         return;
       }
@@ -276,12 +297,14 @@ export default function ClosestCenterPlay(props:any) {
       setRegistrationInfo({confidence:avgRegistration,maxShiftPx:maxShift,geometrySpreadPx:Math.max(...geometryChecks.map((x:any)=>x.regionalSpreadPx))});
       if (!readiness.ok || !tierMeets(tier, cameraPrefs.requiredTier) || !stabilitySamples.every((x:any)=>x.stable)) {
         setPreflightInfo({ok:false,reason:"quality",tier,confidence:readiness.confidence});
+        traceCamera("preflight", "reject", "quality", "Qualité/stabilité pré-volée insuffisante", {tier,profile:cameraPrefs.profile,readiness:readiness.confidence,stability:worstStability.confidence,maxShiftPx:maxShift});
         setStatus(`❌ Contrôle avant volée refusé : qualité ${tier.toUpperCase()} / stabilité insuffisante pour ${cameraPrefs.profile.toUpperCase()}.`);
         return;
       }
       setBefore(refreshed);
       setPreflightInfo({ok:true,tier,confidence:Math.min(readiness.confidence,avgRegistration,worstStability.confidence),checkedAt:Date.now()});
       setTurnArmed(true);
+      traceCamera("preflight", "ok", "armed", "Volée armée avec référence fraîche", {tier,readiness:readiness.confidence,stability:worstStability.confidence,registration:avgRegistration,maxShiftPx:maxShift});
       setStatus(`✅ Volée armée · ${tier.toUpperCase()} · référence fraîche capturée. ${current.name}: lance maintenant tes 3 fléchettes, puis ANALYSER.`);
     } finally {
       preflightRunningRef.current = false;
@@ -298,6 +321,7 @@ export default function ClosestCenterPlay(props:any) {
     const worstGeometry = geometryChecks.reduce((w:any,x:any)=>x.regionalSpreadPx>w.regionalSpreadPx?x:w, geometryChecks[0]);
     if (cameraPrefs.strictProjectiveDrift && !geometryChecks.every((x:any)=>x.ok)) {
       setRegistrationInfo({ confidence: worstGeometry.confidence, geometrySpreadPx: worstGeometry.regionalSpreadPx, rejected: geometryChecks.filter((x:any)=>!x.ok).length });
+      traceCamera("analysis", "reject", "projective-drift", "Dérive projective pendant analyse", {spreadPx:worstGeometry.regionalSpreadPx,rejectedFrames:geometryChecks.filter((x:any)=>!x.ok).length});
       setStatus(`❌ Dérive géométrique détectée (${worstGeometry.regionalSpreadPx.toFixed(2)} px). Le téléphone a tourné/changé de perspective : replace le support avant de mesurer.`);
       return;
     }
@@ -305,6 +329,7 @@ export default function ClosestCenterPlay(props:any) {
     const goodRegistered = registered.filter(x => x.registration.confidence >= .50 && Math.hypot(x.registration.dxPx,x.registration.dyPx) <= 10);
     if (goodRegistered.length < 4) {
       setRegistrationInfo({confidence:Math.min(...registered.map(x=>x.registration.confidence)), rejected:registered.length-goodRegistered.length});
+      traceCamera("analysis", "reject", "registration", "Recalage analyse insuffisant", {goodFrames:goodRegistered.length,totalFrames:registered.length});
       setStatus("⚠️ Micro-déplacement caméra trop important pour une mesure de compétition. Immobilise le support puis relance.");
       return;
     }
@@ -317,6 +342,7 @@ export default function ClosestCenterPlay(props:any) {
     const readiness = assessPrecisionReadiness(after, cal);
     setPrecisionReadiness(readiness);
     if (!readiness.ok) {
+      traceCamera("analysis", "reject", "readiness", "Qualité image insuffisante pendant analyse", {confidence:readiness.confidence,mmPerPixel:readiness.mmPerPixel,sharpness:readiness.sharpness});
       setStatus(`❌ Lecture refusée : ${readiness.reasons[0] || "qualité caméra insuffisante"}`);
       return;
     }
@@ -330,6 +356,7 @@ export default function ClosestCenterPlay(props:any) {
     const stable = stabilitySamples.reduce((best, item) => item.confidence < best.confidence ? item : best, stabilitySamples[0]);
     setStability(stable);
     if (!stabilitySamples.every(x => x.stable)) {
+      traceCamera("analysis", "reject", "stability", "Instabilité détectée pendant analyse", {confidence:stable.confidence,changedFraction:stable.changedFraction});
       setStatus(`⚠️ Caméra déplacée ou cadrage instable. La volée n’est pas validée.`);
       return;
     }
@@ -341,6 +368,7 @@ export default function ClosestCenterPlay(props:any) {
       return;
     }
     if (found.length < 3) {
+      traceCamera("analysis", "reject", "impact-count", "Nombre d’impacts détectés insuffisant", {found:found.length,expected:3});
       setStatus(`Seulement ${found.length}/3 impact(s) détecté(s). Stabilise le téléphone et relance l’analyse : aucune mesure n’a été validée.`);
       return;
     }
@@ -395,6 +423,7 @@ export default function ClosestCenterPlay(props:any) {
     setPrecisionRereads(0);
     setPendingImpacts(proposedWithTieRisk);
     setPhase("review");
+    traceCamera("analysis", proposedWithTieRisk.some((x:any)=>x.needsReview||x.precisionTieRisk) ? "warn" : "ok", "analysis-complete", "Analyse multi-frame terminée", {impacts:proposedWithTieRisk.length,review:proposedWithTieRisk.filter((x:any)=>x.needsReview).length,tieRisk:proposedWithTieRisk.filter((x:any)=>x.precisionTieRisk).length,avgUncertaintyMm:proposedWithTieRisk.reduce((s:any,x:any)=>s+Number(x.uncertaintyMm||0),0)/Math.max(1,proposedWithTieRisk.length),avgFrameAgreement:proposedWithTieRisk.reduce((s:any,x:any)=>s+Number(x.frameAgreement||0),0)/Math.max(1,proposedWithTieRisk.length)});
     const alerts = proposedWithTieRisk.filter((x:any) => x.needsReview).length;
     const tieAlerts = proposedWithTieRisk.filter((x:any) => x.precisionTieRisk).length;
     setStatus(tieAlerts ? `⚠️ ${tieAlerts} impact(s) sont dans une zone de départage serré : relecture précision renforcée requise.` : alerts ? `${alerts} fléchette(s) demandent un contrôle avant validation.` : "Analyse multi-frame cohérente. Vérifie les 3 impacts puis valide la volée.");
@@ -414,7 +443,7 @@ export default function ClosestCenterPlay(props:any) {
     const frames=registered.map(x=>x.frame);
     const detections=frames.map(frame=>analyzeFrameDifference(before,frame,cal,7));
     const second=fuseDetectionFrames(detections,3);
-    if(second.length!==3){ setStatus(`❌ Relecture incomplète (${second.length}/3). Aucune précision supplémentaire n’est appliquée.`); return; }
+    if(second.length!==3){ traceCamera("reread", "reject", "impact-count", "Relecture incomplète", {found:second.length,expected:3}); setStatus(`❌ Relecture incomplète (${second.length}/3). Aucune précision supplémentaire n’est appliquée.`); return; }
     const merged=fuseIndependentConsensusPasses(pendingConsensus,second,cal,before.width,before.height,3);
     if(merged.length!==3){ setStatus("❌ Les deux lectures ne convergent pas sur les 3 mêmes pointes. Contrôle manuel requis."); return; }
     const avgAgree=merged.reduce((sum:any,x:any)=>sum+Number(x.rereadAgreement||0),0)/merged.length;
@@ -445,6 +474,7 @@ export default function ClosestCenterPlay(props:any) {
     setPendingImpacts(upgradedWithTie);
     setPrecisionRereads(v=>v+1);
     const tieStillTight = upgradedWithTie.some((x:any)=>x.precisionTieRisk);
+    traceCamera("reread", tieStillTight || avgAgree < .84 ? "warn" : "ok", "reread-complete", "Seconde lecture indépendante terminée", {agreement:avgAgree,tieStillTight,avgUncertaintyMm:upgradedWithTie.reduce((s:any,x:any)=>s+Number(x.uncertaintyMm||0),0)/Math.max(1,upgradedWithTie.length)});
     setStatus(tieStillTight ? `⚠️ Relecture convergente à ${Math.round(avgAgree*100)} %, mais le départage reste dans la marge instrumentale. La manche demandera une confirmation visuelle finale.` : avgAgree>=.84 ? `✅ Relecture précision convergente (${Math.round(avgAgree*100)} %). Incertitudes recalculées.` : `⚠️ Relecture partiellement convergente (${Math.round(avgAgree*100)} %). Vérification visuelle recommandée.`);
   };
 
@@ -482,12 +512,14 @@ export default function ClosestCenterPlay(props:any) {
     if (!pendingAfter || pendingImpacts.length !== 3) return;
     const identityCritical = pendingImpacts.some((x:any) => !x.manuallyConfirmedOwner && (Number(x.identityConfidence||0) < cameraPrefs.minIdentityConfidence || Number(x.identityMargin||0) < cameraPrefs.minIdentityMargin));
     if (cameraPrefs.strictDartIdentification && identityCritical) {
+      traceCamera("validation", "reject", "identity", "Validation bloquée par identification stricte", {minConfidence:cameraPrefs.minIdentityConfidence,minMargin:cameraPrefs.minIdentityMargin});
       setStatus("❌ Identification stricte : au moins une fléchette n’est pas attribuée avec assez de certitude. Corrige/valide son joueur avant d’enregistrer la volée.");
       return;
     }
     const measurementCritical = pendingImpacts.some((x:any) => Number(x.uncertaintyMm||99) > cameraPrefs.maxUncertaintyMm || Number(x.frameAgreement||0) < cameraPrefs.minFrameAgreement || Number(x.consensusSpreadMm||99) > cameraPrefs.maxConsensusSpreadMm);
     const tieCritical = pendingImpacts.some((x:any) => !!x.precisionTieRisk);
     if ((measurementCritical || tieCritical) && precisionRereads < 1) {
+      traceCamera("validation", "warn", tieCritical ? "tie-reread-required" : "reread-required", "Seconde lecture requise avant validation", {tieCritical,measurementCritical});
       setStatus(tieCritical ? "🔬 Départage serré : une seconde lecture indépendante est obligatoire avant validation." : "🔬 Validation bloquée : au moins une pointe exige une seconde lecture indépendante. Lance RELECTURE PRÉCISION.");
       return;
     }
@@ -500,6 +532,7 @@ export default function ClosestCenterPlay(props:any) {
       setStatus("❌ Les deux lectures ne convergent pas assez pour valider une mesure de précision. Repositionne/stabilise puis réanalyse la volée.");
       return;
     }
+    traceCamera("validation", "ok", "turn-accepted", "Volée validée", {rereads:precisionRereads,avgUncertaintyMm:pendingImpacts.reduce((s:any,x:any)=>s+Number(x.uncertaintyMm||0),0)/Math.max(1,pendingImpacts.length),manualOwners:pendingImpacts.filter((x:any)=>x.manuallyConfirmedOwner).length});
     setImpacts(v => [...v, ...pendingImpacts]);
     setBefore(pendingAfter);
     setPendingAfter(null);
@@ -539,6 +572,7 @@ export default function ClosestCenterPlay(props:any) {
       setStatus("⚠️ Départage inférieur à la marge de précision. Contrôle visuellement les impacts puis confirme une seconde fois pour enregistrer la manche.");
       return;
     }
+    traceCamera("round", hasPrecisionTieRisk ? "warn" : "ok", "round-accepted", "Manche enregistrée", {round,precisionTieRisk:hasPrecisionTieRisk,impacts:ranked.length});
     const next = { ...allScores };
     ranked.forEach((r:any) => next[r.playerId] = (next[r.playerId] || 0) + r.points);
     setAllScores(next);
@@ -634,6 +668,15 @@ export default function ClosestCenterPlay(props:any) {
           {registrationInfo ? <div style={{marginTop:6,fontSize:11,color:(registrationInfo.confidence||0)>=.65?"#8fffc2":"#ffbd93"}}>Recalage multi-frame : {Math.round((registrationInfo.confidence||0)*100)} %{registrationInfo.maxShiftPx!=null?` · translation ${registrationInfo.maxShiftPx.toFixed(1)} px`:""}{registrationInfo.geometrySpreadPx!=null?` · dérive géométrique ${registrationInfo.geometrySpreadPx.toFixed(2)} px`:""}</div> : null}
           {phase === "play" ? <div style={{marginTop:6,fontSize:11,color:turnArmed?"#8fffc2":"#ffbd93"}}>Pré-contrôle volée : {turnArmed?`ARMÉ · ${String(preflightInfo?.tier||"").toUpperCase()} · référence verrouillée`:"REQUIS avant de lancer"}</div> : null}
           {!cal ? <div style={{marginTop:8,color:"#ffb4a9",fontSize:12}}>Calibration de cible non trouvée : le jeu refuse une mesure approximative.</div> : null}
+        </section>
+
+        <section style={{...card,padding:10}}>
+          <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}>
+            <h3 style={{...h3,margin:0}}>DIAGNOSTIC CAMÉRA · SESSION</h3>
+            <span style={{fontSize:10,color:diagnosticSummary.rejected?"#ff9f8f":"#8fffc2",fontWeight:900}}>{diagnosticSummary.accepted} volée(s) validée(s) · {diagnosticSummary.rejected} refus · {diagnosticSummary.rereads} relecture(s)</span>
+          </div>
+          {diagnostics.filter((x:any)=>x.sessionId===sessionIdRef.current).slice(-4).reverse().map((d:any)=><div key={d.id} style={{display:"grid",gridTemplateColumns:"72px 1fr",gap:8,paddingTop:6,marginTop:6,borderTop:"1px solid rgba(255,255,255,.06)",fontSize:10}}><b style={{color:d.level==="reject"?"#ff9f8f":d.level==="warn"?"#ffd58c":"#8fffc2"}}>{String(d.stage).toUpperCase()}</b><span style={{color:"#b9c7d4"}}>{d.message}</span></div>)}
+          {!diagnostics.some((x:any)=>x.sessionId===sessionIdRef.current) ? <div style={{fontSize:10,color:"#788896",marginTop:6}}>Les contrôles de cette partie apparaîtront ici.</div> : null}
         </section>
 
         {phase === "enroll" ? <section style={card}>

@@ -670,27 +670,125 @@ export function pickPtitHunBotDarts(input: PtitHunState, level: PtitHunBotLevel 
   const s = clonePtitHunState(input);
   const p: any = s.players[s.activePlayerIndex];
   if (!p) return [];
-  const st = s.statsByPlayer[p.id] || blankStats(s.config.rules.startScore);
+  const rules = s.config.rules;
+  const st = s.statsByPlayer[p.id] || blankStats(rules.startScore);
   const score = Number(s.scores[p.id] || 0);
+  const dbulls = Number(st.dbulls || 0);
+  const shieldActive = Boolean(s.shieldActive?.[p.id]);
+  const cleanStreak = Number(s.cleanStreak?.[p.id] || 0);
   const out: GameDart[] = [];
-  const innerChance = level === "hard" ? .79 : level === "easy" ? .42 : .62;
-  const dbullChance = level === "hard" ? (Number(st.dbulls || 0) === s.config.rules.dbullsForZero - 1 ? .24 : score >= 80 ? .12 : .06) : level === "easy" ? .025 : .055;
-  const jackpotChance = s.config.rules.jackpotEnabled ? (level === "hard" ? .18 : level === "normal" ? .09 : .035) : 0;
+
+  const fallback = (): GameDart => {
+    const r = Math.random();
+    if (level === "hard") {
+      if (r < .74) return inner(Math.random() < .78 ? 1 : 1 + Math.floor(Math.random() * 5));
+      if (r < .84) return dbull();
+      if (r < .90) return outer(1 + Math.floor(Math.random() * 5));
+      if (r < .95) return { bed: "D", number: 1 + Math.floor(Math.random() * 20) } as any;
+      if (r < .985) return { bed: "T", number: 1 + Math.floor(Math.random() * 20) } as any;
+      return miss();
+    }
+    if (level === "normal") {
+      if (r < .60) return inner(1 + Math.floor(Math.random() * 8));
+      if (r < .68) return dbull();
+      if (r < .80) return outer(1 + Math.floor(Math.random() * 12));
+      if (r < .88) return { bed: "D", number: 1 + Math.floor(Math.random() * 20) } as any;
+      if (r < .95) return { bed: "T", number: 1 + Math.floor(Math.random() * 20) } as any;
+      return miss();
+    }
+    if (r < .42) return inner(1 + Math.floor(Math.random() * 20));
+    if (r < .47) return dbull();
+    if (r < .70) return outer(1 + Math.floor(Math.random() * 20));
+    if (r < .82) return { bed: "D", number: 1 + Math.floor(Math.random() * 20) } as any;
+    if (r < .92) return { bed: "T", number: 1 + Math.floor(Math.random() * 20) } as any;
+    return miss();
+  };
+
+  const clusterAttempt = (number: number, perDartAccuracy: number): GameDart[] =>
+    [0, 1, 2].map(() => Math.random() < perDartAccuracy ? inner(number) : fallback());
+
+  // IA tactique : quand le Bouclier est à une seule volée, les bots moyens/difficiles
+  // tentent réellement un TRIPLE NUL au lieu de lancer trois fléchettes indépendantes.
+  const oneShieldVisitAway = Boolean(
+    rules.shieldEnabled &&
+    !shieldActive &&
+    cleanStreak === Math.max(0, Number(rules.cleanVisitsForShield || 3) - 1)
+  );
+  if (oneShieldVisitAway && level !== "easy") {
+    const commitChance = level === "hard" ? .82 : .48;
+    if (Math.random() < commitChance) {
+      const target = level === "hard" || Math.random() < .55 ? 1 : 1 + Math.floor(Math.random() * 6);
+      return clusterAttempt(target, level === "hard" ? .92 : .76);
+    }
+  }
+
+  // IA tactique : si le prochain DBULL déclenche ZÉRO ABSOLU, le centre devient
+  // la priorité lorsque le score est suffisamment élevé pour que le risque vaille le coup.
+  const nextDbullTriggersZero = Boolean(
+    rules.dbullEnabled &&
+    rules.zeroAbsoluteEnabled &&
+    !s.zeroAbsoluteUsed?.[p.id] &&
+    dbulls + 1 >= Number(rules.dbullsForZero || 3)
+  );
+  if (nextDbullTriggersZero && score >= (level === "hard" ? 36 : 70) && level !== "easy") {
+    const attemptChance = level === "hard" ? .84 : .42;
+    if (Math.random() < attemptChance) {
+      out.push(Math.random() < (level === "hard" ? .82 : .58) ? dbull() : inner(1));
+      while (out.length < 3) out.push(inner(level === "hard" ? 1 : 1 + Math.floor(Math.random() * 5)));
+      return out;
+    }
+  }
+
+  // IA tactique Jackpot : le bot peut décider de sacrifier la précision classique
+  // pour chercher une annulation complète de la volée, mais sans le faire à chaque tour.
+  if (rules.jackpotEnabled && s.jackpotTargets.length && level !== "easy") {
+    const jackpotTry = level === "hard" ? (score >= 45 ? .34 : .22) : (score >= 70 ? .18 : .10);
+    if (Math.random() < jackpotTry) {
+      const target = s.jackpotTargets[Math.floor(Math.random() * s.jackpotTargets.length)];
+      const accuracy = level === "hard" ? .72 : .48;
+      out.push(Math.random() < accuracy ? ({ bed: target.bed, number: target.number } as any) : fallback());
+      while (out.length < 3) out.push(inner(level === "hard" ? 1 : 1 + Math.floor(Math.random() * 6)));
+      return out;
+    }
+  }
+
+  // Si une série Bouclier est déjà lancée, un bot difficile essaie parfois de la conserver
+  // avec trois petits simples identiques plutôt que de casser la série inutilement.
+  if (rules.shieldEnabled && !shieldActive && cleanStreak > 0 && level === "hard" && Math.random() < .44) {
+    return clusterAttempt(Math.random() < .72 ? 1 : 1 + Math.floor(Math.random() * 5), .88);
+  }
+
+  // Stratégie générale : les chances restent dépendantes du niveau, mais le bot
+  // tient compte du score courant, du DBULL progressif et des zones Jackpot.
+  const innerChance = level === "hard" ? .78 : level === "easy" ? .42 : .60;
+  const dbullChance = level === "hard"
+    ? (score >= 120 ? .18 : score >= 70 ? .11 : .055)
+    : level === "normal"
+      ? (score >= 120 ? .09 : .045)
+      : .02;
+  const jackpotChance = rules.jackpotEnabled ? (level === "hard" ? .14 : level === "normal" ? .07 : .025) : 0;
+
   for (let i = 0; i < 3; i += 1) {
     const r = Math.random();
     if (r < jackpotChance && s.jackpotTargets.length) {
       const t = s.jackpotTargets[Math.floor(Math.random() * s.jackpotTargets.length)];
-      out.push({ bed: t.bed, number: t.number } as any); continue;
+      out.push({ bed: t.bed, number: t.number } as any);
+      continue;
     }
-    if (r < jackpotChance + dbullChance && s.config.rules.dbullEnabled) { out.push(dbull()); continue; }
+    if (r < jackpotChance + dbullChance && rules.dbullEnabled) {
+      out.push(dbull());
+      continue;
+    }
     if (r < jackpotChance + dbullChance + innerChance) {
-      const n = level === "hard" ? (Math.random() < .72 ? 1 : 1 + Math.floor(Math.random() * 5)) : level === "normal" ? 1 + Math.floor(Math.random() * 8) : 1 + Math.floor(Math.random() * 20);
-      out.push(inner(n)); continue;
+      const n = level === "hard"
+        ? (Math.random() < .76 ? 1 : 1 + Math.floor(Math.random() * 5))
+        : level === "normal"
+          ? 1 + Math.floor(Math.random() * 8)
+          : 1 + Math.floor(Math.random() * 20);
+      out.push(inner(n));
+      continue;
     }
-    if (r > .96) { out.push(miss()); continue; }
-    if (r > .84) { out.push({ bed: "T", number: 1 + Math.floor(Math.random() * 20) } as any); continue; }
-    if (r > .73) { out.push({ bed: "D", number: 1 + Math.floor(Math.random() * 20) } as any); continue; }
-    out.push(outer(level === "hard" ? 1 + Math.floor(Math.random() * 5) : 1 + Math.floor(Math.random() * 20)));
+    out.push(fallback());
   }
   return out.slice(0, 3);
 }

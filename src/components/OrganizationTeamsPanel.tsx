@@ -117,6 +117,7 @@ export default function OrganizationTeamsPanel({ organization, userId, initialGr
   // A Team captain is backed by ms_organization_groups.captain_user_id (auth.users UUID).
   // Local profiles can belong to the roster, but cannot be stored in this UUID field.
   const captainCandidates = activeMembers.filter((member) => member.entityType === "user");
+  const vacantCaptainGroups = groups.filter((group) => group.status === "active" && group.kind === "team" && !group.captainUserId);
   const wide = viewportWidth >= 980;
 
   const card: React.CSSProperties = {
@@ -401,6 +402,8 @@ export default function OrganizationTeamsPanel({ organization, userId, initialGr
         <button type="button" style={button} onClick={() => { setMode("list"); setError(""); }}>{L("FERMER", "CLOSE", "CERRAR")}</button>
       </div>
 
+      {mode === "edit" && selected?.kind === "team" && selected.status === "active" && !draft.captainUserId ? <div style={{ marginTop: 10, borderRadius: 12, padding: "9px 10px", border: "1px solid rgba(255,190,80,.38)", background: "rgba(255,170,40,.08)", color: "#ffd38a", fontSize: 8.8, fontWeight: 900, lineHeight: 1.35 }}>{L("CAPITAINE À NOMMER · cette équipe reste jouable et ses membres sont conservés. Choisis simplement un membre MSS actif comme nouveau capitaine.", "CAPTAIN NEEDED · this team remains usable and its roster is preserved. Simply choose an active MSS member as the new captain.", "CAPITÁN POR NOMBRAR · este equipo sigue utilizable y conserva su plantilla. Elige simplemente un miembro MSS activo como nuevo capitán.")}</div> : null}
+
       <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "72px minmax(0,1fr)", gap: 12, alignItems: "start" }}>
         <label style={{ width: 70, height: 70, borderRadius: 18, border: `1px solid ${draft.primaryColor}88`, background: `linear-gradient(145deg, ${draft.primaryColor}20, ${draft.secondaryColor}dd)`, display: "grid", placeItems: "center", overflow: "hidden", cursor: canManageStructure ? "pointer" : "default" }}>
           {logoPreview ? <img src={logoPreview} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <span style={{ color: draft.primaryColor, fontWeight: 1000, fontSize: 17 }}>{initials(draft.name || "TEAM")}</span>}
@@ -471,7 +474,7 @@ export default function OrganizationTeamsPanel({ organization, userId, initialGr
   return <div style={{ display: "grid", gap: 10 }}>
     <div style={{ ...card, padding: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-        <div><div style={{ color: theme.primary, fontSize: 13, fontWeight: 1000 }}>{L("ÉQUIPES & GROUPES", "TEAMS & GROUPS", "EQUIPOS Y GRUPOS")}</div><div style={{ marginTop: 3, color: theme.textSoft, fontSize: 9.2 }}>{organization.name} · {groups.filter((group) => group.status === "active").length} {L("actif(s)", "active", "activo(s)")}</div></div>
+        <div><div style={{ color: theme.primary, fontSize: 13, fontWeight: 1000 }}>{L("ÉQUIPES & GROUPES", "TEAMS & GROUPS", "EQUIPOS Y GRUPOS")}</div><div style={{ marginTop: 3, color: theme.textSoft, fontSize: 9.2 }}>{organization.name} · {groups.filter((group) => group.status === "active").length} {L("actif(s)", "active", "activo(s)")}{vacantCaptainGroups.length ? <span style={{ marginLeft: 7, color: "#ffd38a", fontWeight: 1000 }}>· {vacantCaptainGroups.length} {L("capitaine(s) à nommer", "captain(s) needed", "capitán(es) por nombrar")}</span> : null}</div></div>
         {canManageStructure ? <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}><button type="button" style={{ ...button }} onClick={openLinkExisting}>{L("ASSOCIER UNE ÉQUIPE", "LINK A TEAM", "VINCULAR UN EQUIPO")}</button><button type="button" style={{ ...button, color: theme.primary, borderColor: `${theme.primary}66` }} onClick={startCreate}>+ {L("CRÉER", "CREATE", "CREAR")}</button></div> : null}
       </div>
     </div>
@@ -500,7 +503,7 @@ export default function OrganizationTeamsPanel({ organization, userId, initialGr
           <span style={{ minWidth: 0 }}>
             <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}><strong style={{ fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{group.name}</strong><span style={{ borderRadius: 999, padding: "2px 6px", border: `1px solid ${group.primaryColor}55`, color: group.primaryColor, fontSize: 7, fontWeight: 1000 }}>{kindLabel(group.kind, L).toUpperCase()}</span></span>
             <span style={{ display: "block", marginTop: 4, color: theme.textSoft, fontSize: 8.6 }}>{group.sportId} · {roster.length} {L("membre(s)", "member(s)", "miembro(s)")}</span>
-            <span style={{ display: "block", marginTop: 2, color: theme.textSoft, fontSize: 8 }}>{captain ? `${L("Capitaine", "Captain", "Capitán")} · ${captain.displayName}` : L("Aucun capitaine défini", "No captain assigned", "Sin capitán asignado")}</span>
+            <span style={{ display: "block", marginTop: 2, color: captain ? theme.textSoft : "#ffd38a", fontSize: 8, fontWeight: captain ? 400 : 1000 }}>{captain ? `${L("Capitaine", "Captain", "Capitán")} · ${captain.displayName}` : group.kind === "team" && group.status === "active" ? L("⚠ CAPITAINE À NOMMER", "⚠ CAPTAIN NEEDED", "⚠ CAPITÁN POR NOMBRAR") : L("Aucun capitaine défini", "No captain assigned", "Sin capitán asignado")}</span>
           </span>
           <span style={{ display: "grid", justifyItems: "end", gap: 5 }}><span style={{ width: 12, height: 12, borderRadius: 999, background: group.primaryColor, boxShadow: `0 0 10px ${group.primaryColor}77` }} /><span style={{ color: group.status === "active" ? theme.primary : theme.textSoft, fontSize: 7.3, fontWeight: 1000 }}>{group.status === "active" ? L("ACTIF", "ACTIVE", "ACTIVO") : L("ARCHIVÉ", "ARCHIVED", "ARCHIVADO")}</span></span>
         </button>;
