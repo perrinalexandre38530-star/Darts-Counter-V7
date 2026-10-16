@@ -28,8 +28,7 @@ import { useAwenaOptional } from "../awena/AwenaProvider";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { History } from "../lib/history";
 import type { Dart as UIDart } from "../lib/types";
-import { playNewModeDartSequence, playNewModeDartSfx, playNewModeSfx, unlockNewModeAudio } from "../lib/newModesArcadeSfx";
-import { playGolfTickerSound } from "../lib/sfx";
+import { playPtit1DartSequence, playPtit1HitSfx, playPtit1Sfx, unlockPtit1Audio } from "../lib/ptit1Sfx";
 import { GROS6_SPECIAL_ZONES } from "../lib/gros6Engine";
 import {
   clonePtitHunState,
@@ -251,6 +250,17 @@ function ptit1UiToGameDart(d: any) {
   try { return uiToGameDart(d); } catch { return null; }
 }
 
+function gameToUiDartForPtit1(d: any) {
+  if (!d) return { v: 0, mult: 1 };
+  if (d.bed === "MISS") return { v: 0, mult: 1 };
+  if (d.bed === "IB") return { v: 25, mult: 2 };
+  if (d.bed === "OB") return { v: 25, mult: 1 };
+  if (d.bed === "D") return { v: Number(d.number || 0), mult: 2 };
+  if (d.bed === "T") return { v: Number(d.number || 0), mult: 3 };
+  if (d.bed === "S") return { v: Number(d.number || 0), mult: 1, label: d.ring === "outer_single" ? "outer_single" : "inner_single" };
+  return { v: Number(d.number || 0), mult: Number(d.mult || 1) };
+}
+
 function ptit1IsInner(d: any) {
   return Boolean(d && d.bed === "S" && String(d.ring || "") === "inner_single" && Number(d.number) >= 1 && Number(d.number) <= 20);
 }
@@ -370,6 +380,21 @@ function ptit1HitMeta(state: any, playerId: string, beforeUi: any[], addedUi: an
   } else if (ptit1IsInner(d)) {
     kind="inner"; title=`PETIT ${d.number}`; detail=`+${d.number} · ${beforeProjection.score} → ${afterProjection.score}`; color="#ffe36c"; icon="P";
   }
+  const visitDarts = [...beforeUi, addedUi].map(ptit1UiToGameDart).filter(Boolean);
+  const tripleNulNow = Boolean(
+    rules.tripleNulEnabled &&
+    visitDarts.length === 3 &&
+    visitDarts.every(ptit1IsInner) &&
+    new Set(visitDarts.map((x:any) => Number(x.number))).size === 1
+  );
+  if (tripleNulNow) {
+    const n = Number(visitDarts[0]?.number || 0);
+    kind = n === 1 ? "ptit1Perfect" : "tripleNul";
+    title = n === 1 ? "P’TIT 1 PARFAIT" : `TRIPLE NUL · PETIT ${n}`;
+    detail = `3 × PETIT ${n} · VOLÉE = 0 · ${beforeProjection.score} → ${afterProjection.score}`;
+    color = n === 1 ? "#ffe36c" : GREEN;
+    icon = n === 1 ? "1" : "0";
+  }
   const jackpot = rules.jackpotEnabled && (state?.jackpotTargets||[]).some((t:any)=>String(t.bed)===String(d?.bed) && Number(t.number)===Number(d?.number));
   if (jackpot) { kind="jackpot"; title=`JACKPOT ${d.bed}${d.number}`; detail="VOLÉE = 0"; color="#ffd84d"; icon="✦"; }
   return { kind, title, detail, color, icon, score: afterProjection.score, delta: afterProjection.delta, dbullNo: totalDbullNo, rawDelta: raw.delta };
@@ -385,23 +410,6 @@ function ptit1VisitBreakdown(visit: any, rules: any) {
     after: step.after,
     kind: step.kind,
   }));
-}
-
-function playPtit1FeedbackTone(kind: string, enabled = true) {
-  if (!enabled || typeof window === "undefined") return;
-  try {
-    const AC:any = (window as any).AudioContext || (window as any).webkitAudioContext;
-    if (!AC) return;
-    const ctx = new AC();
-    const patterns:any = {
-      inner: [[660,.055],[820,.07]], outer: [[240,.07],[190,.09]], double: [[420,.06],[620,.08]], triple: [[480,.05],[720,.05],[960,.09]],
-      bull25: [[330,.06],[220,.07],[440,.1]], dbull: [[740,.06],[980,.08]], zero: [[880,.08],[1175,.08],[1568,.16]], miss: [[150,.11],[105,.14]], jackpot: [[784,.06],[988,.06],[1318,.13]], shield: [[523,.08],[659,.08],[784,.13]],
-    };
-    const seq = patterns[kind] || patterns.inner;
-    let at = ctx.currentTime + .01;
-    seq.forEach(([freq,dur]:any) => { const osc=ctx.createOscillator(); const gain=ctx.createGain(); osc.type=kind==="miss"?"sawtooth":"sine"; osc.frequency.setValueAtTime(freq,at); gain.gain.setValueAtTime(.0001,at); gain.gain.exponentialRampToValueAtTime(.075,at+.008); gain.gain.exponentialRampToValueAtTime(.0001,at+dur); osc.connect(gain); gain.connect(ctx.destination); osc.start(at); osc.stop(at+dur+.02); at += dur*.82; });
-    window.setTimeout(()=>{ try{ctx.close();}catch{} }, 1200);
-  } catch {}
 }
 
 function Ptit1HitCard({ card }: any) {
@@ -590,7 +598,8 @@ export default function PtitHunPlay(props: any) {
   const activeTeamLogo = activeProfile?.teamLogoDataUrl || activeProfile?.team?.logoDataUrl || activeProfile?.teamLogo || activeProfile?.team?.logo || null;
   const activeTeamName = activeProfile?.teamName || activeProfile?.team?.name || activeProfile?.team_label || "";
   const activeIsBot = !!activeProfile && isBotProfile(activeProfile, botIds);
-  const sfxEnabled = config.sfxEnabled !== false, awenaEnabled = config.awenaEnabled !== false, coachEnabled = config.coachEnabled !== false, firstVisitGuideEnabled = config.firstVisitGuide !== false;
+  const [sfxEnabled, setSfxEnabled] = React.useState(config.sfxEnabled !== false);
+  const awenaEnabled = config.awenaEnabled !== false, coachEnabled = config.coachEnabled !== false, firstVisitGuideEnabled = config.firstVisitGuide !== false;
   const nameById = React.useCallback((id: any) => state.players.find((p: any) => String(p.id) === String(id))?.name || "Joueur", [state.players]);
 
   const buildRecord = React.useCallback((s: PtitHunState, status: "in_progress" | "finished", draft: UIDart[] = currentThrow, draftMultiplier: 1 | 2 | 3 = multiplier, ring = singleRing, resumeUndo: PtitHunState[] = undo) => {
@@ -622,7 +631,7 @@ export default function PtitHunPlay(props: any) {
 
   React.useEffect(() => { if (initialCheckpointRef.current) return; initialCheckpointRef.current = true; if (state.phase !== "finished") void saveInProgress(state, currentThrow, multiplier, singleRing); }, [saveInProgress, state, currentThrow, multiplier, singleRing]);
   React.useEffect(() => { if (state.phase === "finished") return; const t = window.setTimeout(() => void saveInProgress(state, currentThrow, multiplier, singleRing), 180); return () => window.clearTimeout(t); }, [currentThrow, multiplier, singleRing, state.phase, state.activePlayerIndex, saveInProgress]);
-  React.useEffect(() => { if (restored?.mode === "ptit_hun" || resumeRecord) return; const start = () => { if (!sfxEnabled || introPlayedRef.current) return; introPlayedRef.current = true; void unlockNewModeAudio(); playNewModeSfx("intro", true); }; try { if ((navigator as any)?.userActivation?.hasBeenActive) { start(); return; } } catch {} window.addEventListener("pointerdown", start, { once: true, capture: true } as any); return () => window.removeEventListener("pointerdown", start, true); }, [sfxEnabled]);
+  React.useEffect(() => { if (restored?.mode === "ptit_hun" || resumeRecord) return; const start = () => { if (!sfxEnabled || introPlayedRef.current) return; introPlayedRef.current = true; void unlockPtit1Audio(true); playPtit1Sfx("intro", true); }; try { if ((navigator as any)?.userActivation?.hasBeenActive) { start(); return; } } catch {} window.addEventListener("pointerdown", start, { once: true, capture: true } as any); return () => window.removeEventListener("pointerdown", start, true); }, [sfxEnabled]);
   React.useEffect(() => { awena?.setRuntime?.({ route: "ptit_hun_play", sport: "darts", mode: "ptit_hun", phase: state.phase === "finished" ? "summary" : "play", inGame: state.phase !== "finished", screenLabel: "P’TIT 1 · Partie", playerName: activePlayer?.name, extra: { score: state.scores?.[activePlayer?.id], dbulls: state.statsByPlayer?.[activePlayer?.id]?.dbulls, shield: state.shieldActive?.[activePlayer?.id], cleanStreak: state.cleanStreak?.[activePlayer?.id], jackpots: state.jackpotTargets?.map((t: any) => t.label), rounds: config.rules.rounds } }); }, [awena, state.phase, state.activePlayerIndex, state.scores, state.shieldActive, state.cleanStreak, activePlayer?.id]);
 
   const commit = React.useCallback((next: PtitHunState, previous = state, forcedNotice?: string) => {
@@ -634,15 +643,14 @@ export default function PtitHunPlay(props: any) {
       const visitPlayer:any = next.players?.find((p:any)=>String(p.id)===String(last.playerId));
       const visitColor = colorById.get(String(last.playerId)) || ACCENT;
       setVisitCard({ key:`visit-${last.id}`, playerId:last.playerId, playerName:visitPlayer?.name || nameById(last.playerId), darts:last.darts || [], breakdown:ptit1VisitBreakdown(last, config.rules), specialLabel:last?.jackpotHit ? "JACKPOT · VOLÉE ANNULÉE" : last?.petitOnePerfect ? "P’TIT 1 PARFAIT · VOLÉE ANNULÉE" : last?.tripleNul ? "TRIPLE NUL · VOLÉE ANNULÉE" : last?.zeroAbsoluteNow ? "ZÉRO ABSOLU" : "VOLÉE TERMINÉE", delta:Number(last.delta||0), after:Number(last.after||0), color:visitColor });
-      try { playGolfTickerSound("PAR", .68); } catch {}
     }
-    if (!msg && next.phase === "finished" && next.winnerId) { msg = `🏆 ${nameById(next.winnerId)} remporte P’TIT 1 !`; playNewModeSfx("victory", sfxEnabled); }
-    else if (!msg && last?.zeroAbsoluteNow) { msg = `💎 ZÉRO ABSOLU ! ${config.rules.dbullsForZero}e DBULL : score remis à 0`; nextMoment = { key: `zero-${last.id}`, playerId: last.playerId, icon: "💎", kicker: "EXPLOIT DU P’TIT HUN", title: "ZÉRO ABSOLU", detail: `${config.rules.dbullsForZero}e DBULL cumulé · score total remis à 0`, tone: "success", durationMs: 2600 }; playPtit1FeedbackTone("zero", sfxEnabled); }
-    else if (!msg && last?.shieldUnlockedNow) { msg = "🛡 BOUCLIER DU HUN débloqué jusqu’à la fin"; nextMoment = { key: `shield-${last.id}`, playerId: last.playerId, icon: "🛡️", kicker: `${config.rules.cleanVisitsForShield} TRIPLE NUL D’AFFILÉE`, title: "BOUCLIER DU HUN", detail: `Les prochaines pénalités sont divisées par ${config.rules.shieldDivider}`, tone: "success", durationMs: 2300 }; playPtit1FeedbackTone("shield", sfxEnabled); }
-    else if (!msg && last?.jackpotHit) { msg = `✦ JACKPOT ${last?.jackpotTargets?.map((t: any) => t.label).join("/") || ""} ! Volée à 0`; nextMoment = { key: `jackpot-${last.id}`, playerId: last.playerId, icon: "✦", kicker: "ZONE SPÉCIALE TOUCHÉE", title: "JACKPOT · VOLÉE 0", detail: `${last?.jackpotTargets?.map((t: any) => t.label).join(" / ") || "Double / Triple"} neutralise toute la volée`, tone: "success", durationMs: 2300 }; playPtit1FeedbackTone("jackpot", sfxEnabled); }
-    else if (!msg && last?.petitOnePerfect) { msg = "🎯 P’TIT 1 PARFAIT ! Trois petits 1 : volée à 0"; nextMoment = { key: `ptit1-${last.id}`, playerId: last.playerId, icon: "1️⃣", kicker: "SIGNATURE DU MODE", title: "P’TIT 1 PARFAIT", detail: "Petit 1 · Petit 1 · Petit 1 · volée à 0", tone: "success", durationMs: 2450 }; playPtit1FeedbackTone("shield", sfxEnabled); }
-    else if (!msg && last?.tripleNul) { msg = `🎯 TRIPLE NUL ! Trois petits ${last?.tripleNulNumber || ""} : volée à 0`; nextMoment = { key: `triple-nul-${last.id}`, playerId: last.playerId, icon: "🎯", kicker: "PRÉCISION PURE", title: "TRIPLE NUL", detail: `3 petits ${last?.tripleNulNumber || "?"} identiques · volée à 0`, tone: "success", durationMs: 2200 }; playPtit1FeedbackTone("shield", sfxEnabled); }
-    else if (!msg && last?.zeroPenaltyFloor) { msg = `⚠️ SCORE À 0 : pénalité relancée depuis ${config.rules.startScore}`; nextMoment = { key: `zero-floor-${last.id}`, playerId: last.playerId, icon: "⚠️", kicker: "0 NE PROTÈGE PAS", title: "ZONE DANGEREUSE", detail: `À 0, le MISS multiplicatif repart du capital ${config.rules.startScore}`, tone: "danger", durationMs: 1900 }; playPtit1FeedbackTone("miss", sfxEnabled); }
+    if (!msg && next.phase === "finished" && next.winnerId) { msg = `🏆 ${nameById(next.winnerId)} remporte P’TIT 1 !`; playPtit1Sfx("victory", sfxEnabled); }
+    else if (!msg && last?.zeroAbsoluteNow) { msg = `💎 ZÉRO ABSOLU ! ${config.rules.dbullsForZero}e DBULL : score remis à 0`; nextMoment = { key: `zero-${last.id}`, playerId: last.playerId, icon: "💎", kicker: "EXPLOIT DU P’TIT HUN", title: "ZÉRO ABSOLU", detail: `${config.rules.dbullsForZero}e DBULL cumulé · score total remis à 0`, tone: "success", durationMs: 2600 };  }
+    else if (!msg && last?.shieldUnlockedNow) { msg = "🛡 BOUCLIER DU HUN débloqué jusqu’à la fin"; nextMoment = { key: `shield-${last.id}`, playerId: last.playerId, icon: "🛡️", kicker: `${config.rules.cleanVisitsForShield} TRIPLE NUL D’AFFILÉE`, title: "BOUCLIER DU HUN", detail: `Les prochaines pénalités sont divisées par ${config.rules.shieldDivider}`, tone: "success", durationMs: 2300 }; playPtit1Sfx("shield", sfxEnabled); }
+    else if (!msg && last?.jackpotHit) { msg = `✦ JACKPOT ${last?.jackpotTargets?.map((t: any) => t.label).join("/") || ""} ! Volée à 0`; nextMoment = { key: `jackpot-${last.id}`, playerId: last.playerId, icon: "✦", kicker: "ZONE SPÉCIALE TOUCHÉE", title: "JACKPOT · VOLÉE 0", detail: `${last?.jackpotTargets?.map((t: any) => t.label).join(" / ") || "Double / Triple"} neutralise toute la volée`, tone: "success", durationMs: 2300 };  }
+    else if (!msg && last?.petitOnePerfect) { msg = "🎯 P’TIT 1 PARFAIT ! Trois petits 1 : volée à 0"; nextMoment = { key: `ptit1-${last.id}`, playerId: last.playerId, icon: "1️⃣", kicker: "SIGNATURE DU MODE", title: "P’TIT 1 PARFAIT", detail: "Petit 1 · Petit 1 · Petit 1 · volée à 0", tone: "success", durationMs: 2450 }; }
+    else if (!msg && last?.tripleNul) { msg = `🎯 TRIPLE NUL ! Trois petits ${last?.tripleNulNumber || ""} : volée à 0`; nextMoment = { key: `triple-nul-${last.id}`, playerId: last.playerId, icon: "🎯", kicker: "PRÉCISION PURE", title: "TRIPLE NUL", detail: `3 petits ${last?.tripleNulNumber || "?"} identiques · volée à 0`, tone: "success", durationMs: 2200 }; }
+    else if (!msg && last?.zeroPenaltyFloor) { msg = `⚠️ SCORE À 0 : pénalité relancée depuis ${config.rules.startScore}`; nextMoment = { key: `zero-floor-${last.id}`, playerId: last.playerId, icon: "⚠️", kicker: "0 NE PROTÈGE PAS", title: "ZONE DANGEREUSE", detail: `À 0, le MISS multiplicatif repart du capital ${config.rules.startScore}`, tone: "danger", durationMs: 1900 }; }
     else if (!msg) msg = (last?.events || []).join(" · ");
     if (nextMoment) setMoment(nextMoment);
     setNotice(msg); persist(next, nextUndo);
@@ -655,12 +663,11 @@ export default function PtitHunPlay(props: any) {
     const out = Array.isArray(next) ? next.slice(0, 3) : prev;
     if (out.length > prev.length) {
       out.slice(prev.length).forEach((d: any, i: number) => window.setTimeout(() => {
-        playNewModeDartSfx(d, sfxEnabled);
         if (activePlayer) {
           const beforeDraft = out.slice(0, prev.length + i);
           const meta = ptit1HitMeta(state, String(activePlayer.id), beforeDraft, d);
           setHitCard({ ...meta, key:`hit-${Date.now()}-${prev.length+i}` });
-          playPtit1FeedbackTone(meta.kind, sfxEnabled);
+          playPtit1HitSfx(meta, sfxEnabled);
         }
       }, i * 120));
     }
@@ -668,9 +675,9 @@ export default function PtitHunPlay(props: any) {
   }), [sfxEnabled, state, activePlayer?.id]);
   const lastThrowLengthRef = React.useRef(currentThrow.length);
   React.useEffect(() => { const prevLen = lastThrowLengthRef.current; const nextLen = currentThrow.length; if (nextLen > prevLen) { setMultiplier(1); setSingleRing(null); } lastThrowLengthRef.current = nextLen; }, [currentThrow.length]);
-  React.useEffect(() => { if (!activeIsBot || state.phase === "finished" || botBusy.current) return; botBusy.current = true; const t = window.setTimeout(() => { try { const darts = pickPtitHunBotDarts(state, config.botLevel); const span = playNewModeDartSequence(darts, sfxEnabled); window.setTimeout(() => { try { commit(playPtitHunVisit(state, darts)); } finally { botBusy.current = false; } }, span + 100); } catch { botBusy.current = false; } }, 620); return () => window.clearTimeout(t); }, [state, activeIsBot, activePlayer?.id]);
+  React.useEffect(() => { if (!activeIsBot || state.phase === "finished" || botBusy.current) return; botBusy.current = true; const t = window.setTimeout(() => { try { const darts = pickPtitHunBotDarts(state, config.botLevel); const pid = String(activePlayer?.id || ""); const span = playPtit1DartSequence(darts, sfxEnabled, (dart:any, _index:number, before:any[]) => ptit1HitMeta(state, pid, before.map((x:any)=>gameToUiDartForPtit1(x)), gameToUiDartForPtit1(dart))); window.setTimeout(() => { try { commit(playPtitHunVisit(state, darts)); } finally { botBusy.current = false; } }, span + 120); } catch { botBusy.current = false; } }, 620); return () => window.clearTimeout(t); }, [state, activeIsBot, activePlayer?.id, sfxEnabled]);
 
-  function replay() { matchIdRef.current = `ptit1-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; finishedRef.current = false; setUndo([]); setNotice(""); setMoment(null); setHitCard(null); setVisitCard(null); setCurrentThrow([]); setMultiplier(1); setSingleRing(null); const next = createPtitHunState(players, config); setState(next); initialCheckpointRef.current = true; void saveInProgress(next, [], 1, singleRing, []); if (sfxEnabled) playNewModeSfx("intro", true); }
+  function replay() { matchIdRef.current = `ptit1-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; finishedRef.current = false; setUndo([]); setNotice(""); setMoment(null); setHitCard(null); setVisitCard(null); setCurrentThrow([]); setMultiplier(1); setSingleRing(null); const next = createPtitHunState(players, config); setState(next); initialCheckpointRef.current = true; void saveInProgress(next, [], 1, singleRing, []); if (sfxEnabled) playPtit1Sfx("intro", true); }
 
   const activeStats: any = state.statsByPlayer?.[activePlayer?.id] || {};
   const score = Number(state.scores?.[activePlayer?.id] || 0);
@@ -726,6 +733,7 @@ export default function PtitHunPlay(props: any) {
       .ptit1-head:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(4,5,8,.92),transparent 18%,transparent 82%,rgba(4,5,8,.92));pointer-events:none}
       .ptit1-head__controls{position:absolute;z-index:2;inset:0;display:flex;align-items:center;justify-content:space-between;padding:0 7px;pointer-events:none}
       .ptit1-head__controls>div{display:flex;align-items:center;gap:6px;pointer-events:auto}
+.ptit1-sound-toggle{width:36px;height:36px;border-radius:999px;border:1px solid color-mix(in srgb,var(--ptit-accent) 55%,rgba(255,255,255,.12));background:rgba(5,7,11,.78);color:var(--ptit-accent);display:grid;place-items:center;font-size:16px;box-shadow:0 0 14px color-mix(in srgb,var(--ptit-accent) 18%,transparent);cursor:pointer}.ptit1-sound-toggle.is-off{color:#7f8798;border-color:rgba(255,255,255,.12);box-shadow:none}
       .ptit1-stage{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:5px;overflow:hidden}
       .ptit1-left{flex:0 0 auto;display:flex;flex-direction:column;gap:5px;min-height:0}
       .ptit1-active{position:relative;flex:0 0 clamp(118px,16.5vh,140px);min-height:0;overflow:hidden;border-radius:17px;border:1px solid color-mix(in srgb,var(--ptit-accent) 50%,rgba(255,255,255,.08));background:linear-gradient(135deg,rgba(18,21,31,.98),rgba(6,8,13,.98));box-shadow:0 0 24px color-mix(in srgb,var(--ptit-accent) 13%,transparent)}
@@ -792,6 +800,7 @@ export default function PtitHunPlay(props: any) {
       <div className="ptit1-head__controls">
         <div><BackDot onClick={() => go?.("ptit_hun_config")} color={activeColor} glow={`${activeColor}88`} size={36} /></div>
         <div>
+          <button type="button" className={`ptit1-sound-toggle${sfxEnabled ? "" : " is-off"}`} aria-label={sfxEnabled ? "Couper les bruitages P’TIT 1" : "Activer les bruitages P’TIT 1"} title={sfxEnabled ? "Bruitages P’TIT 1 : ON" : "Bruitages P’TIT 1 : OFF"} onClick={() => setSfxEnabled((value:boolean) => { const next = !value; if (next) { void unlockPtit1Audio(true); window.setTimeout(() => playPtit1Sfx("inner", true), 20); } return next; })}>{sfxEnabled ? "🔊" : "🔇"}</button>
           {awenaEnabled ? <PremiumAwenaButton awena={awena} route="ptit_hun_play" mode="ptit_hun" screenLabel="P’TIT 1 · Partie" accent={activeColor} /> : null}
         </div>
       </div>
