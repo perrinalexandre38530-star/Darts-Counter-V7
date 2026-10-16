@@ -1,12 +1,13 @@
 // @ts-nocheck
-// P’TIT 1 — pack audio dédié.
-// Les fichiers sont servis depuis /public/sounds/ptit1 et passent par le
-// moteur audio global (master / impacts / arcade / volume général).
+// P’TIT 1 — pack audio dédié fourni par l'utilisateur.
+// Assets compressés en MP3 dans /public/sounds/ptit1.
+// Les sons passent par le moteur audio global (master / impacts / arcade / volume général).
 
 import { playSfx, unlockAudio } from "./sfx";
 
 export type Ptit1SfxKind =
   | "intro"
+  | "end"
   | "inner"
   | "outer"
   | "double"
@@ -25,22 +26,25 @@ export type Ptit1SfxKind =
 const BASE = "/sounds/ptit1";
 
 const PTIT1_SFX: Record<Ptit1SfxKind, { url: string; volume: number }> = {
-  intro:      { url: `${BASE}/intro.wav`, volume: 0.64 },
-  inner:      { url: `${BASE}/small-single-impact.wav`, volume: 0.70 },
-  outer:      { url: `${BASE}/big-single-impact.wav`, volume: 0.76 },
-  double:     { url: `${BASE}/double-impact.wav`, volume: 0.76 },
-  triple:     { url: `${BASE}/triple-impact.wav`, volume: 0.78 },
-  bull25:     { url: `${BASE}/bull25-impact.wav`, volume: 0.80 },
-  dbull1:     { url: `${BASE}/dbull-1-impact.wav`, volume: 0.82 },
-  dbull2:     { url: `${BASE}/dbull-2-impact.wav`, volume: 0.86 },
-  miss:       { url: `${BASE}/miss-danger.wav`, volume: 0.90 },
-  jackpot:    { url: `${BASE}/jackpot-hit.wav`, volume: 0.90 },
-  tripleNul:  { url: `${BASE}/triple-zero.wav`, volume: 0.88 },
-  perfectOne: { url: `${BASE}/perfect-one.wav`, volume: 0.92 },
-  shield:     { url: `${BASE}/shield-unlock.wav`, volume: 0.90 },
-  zero:       { url: `${BASE}/zero-absolute.wav`, volume: 0.94 },
-  victory:    { url: `${BASE}/victory.wav`, volume: 0.90 },
+  intro:      { url: `${BASE}/intro.mp3`, volume: 0.62 },
+  end:        { url: `${BASE}/end.mp3`, volume: 0.78 },
+  inner:      { url: `${BASE}/small-single-impact.mp3`, volume: 0.72 },
+  outer:      { url: `${BASE}/big-single-impact.mp3`, volume: 0.74 },
+  double:     { url: `${BASE}/double-impact.mp3`, volume: 0.76 },
+  triple:     { url: `${BASE}/triple-impact.mp3`, volume: 0.78 },
+  bull25:     { url: `${BASE}/bull25-impact.mp3`, volume: 0.78 },
+  dbull1:     { url: `${BASE}/dbull-1-impact.mp3`, volume: 0.82 },
+  dbull2:     { url: `${BASE}/dbull-2-impact.mp3`, volume: 0.86 },
+  miss:       { url: `${BASE}/miss-danger.mp3`, volume: 0.90 },
+  jackpot:    { url: `${BASE}/jackpot-hit.mp3`, volume: 0.90 },
+  tripleNul:  { url: `${BASE}/triple-zero.mp3`, volume: 0.88 },
+  perfectOne: { url: `${BASE}/perfect-one.mp3`, volume: 0.92 },
+  shield:     { url: `${BASE}/shield-unlock.mp3`, volume: 0.90 },
+  zero:       { url: `${BASE}/zero-absolute.mp3`, volume: 0.94 },
+  victory:    { url: `${BASE}/victory.mp3`, volume: 0.88 },
 };
+
+let endSequenceTimer: number | null = null;
 
 export async function unlockPtit1Audio(enabled = true) {
   if (!enabled) return;
@@ -55,8 +59,31 @@ export function playPtit1Sfx(kind: Ptit1SfxKind, enabled = true) {
 }
 
 /**
- * Convertit la métadonnée d'un impact P’TIT 1 vers son identité sonore.
- * Le 2e DBULL a volontairement un son distinct du premier.
+ * Fin de partie : END d'abord, puis VICTORY quand un vainqueur existe.
+ * Les deux fichiers utilisateur restent séparés afin de ne pas les superposer.
+ */
+export function playPtit1MatchEndSfx(enabled = true, withVictory = true) {
+  if (!enabled) return;
+  cancelPtit1MatchEndSfx();
+  playPtit1Sfx("end", true);
+  if (withVictory && typeof window !== "undefined") {
+    endSequenceTimer = window.setTimeout(() => {
+      endSequenceTimer = null;
+      playPtit1Sfx("victory", true);
+    }, 4350);
+  }
+}
+
+export function cancelPtit1MatchEndSfx() {
+  if (endSequenceTimer != null && typeof window !== "undefined") {
+    try { window.clearTimeout(endSequenceTimer); } catch {}
+  }
+  endSequenceTimer = null;
+}
+
+/**
+ * Convertit la métadonnée d'un impact P’TIT 1 vers le son utilisateur associé.
+ * Les événements bonus/malus prennent toujours priorité sur le son d'impact normal.
  */
 export function ptit1SfxKindForHit(meta: any): Ptit1SfxKind {
   const kind = String(meta?.kind || "inner");
