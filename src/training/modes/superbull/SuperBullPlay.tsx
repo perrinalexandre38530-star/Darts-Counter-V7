@@ -64,6 +64,7 @@ export default function SuperBullPlay({ config, onExit }: { config: any; onExit:
   const accuracy=pct(data.hits,data.darts), dbullRate=pct(data.dbulls,data.darts), ppd=data.darts?data.points/data.darts:0, avg3=ppd*3;
   const remaining=Math.max(0,maxDarts-data.darts), needed=Math.max(0,target-data.points);
   const projectedDarts = ppd > 0 ? Math.ceil(needed/ppd) : null;
+  const projectionLabel = projectedDarts === null ? "—" : projectedDarts <= remaining ? `${projectedDarts} darts` : "HORS LIMITE";
   const form = data.streak>=6?"LASER":data.streak>=4?"ON FIRE":data.streak>=2?"HOT":"CENTRE";
   const lastVisit=data.visits[data.visits.length-1];
 
@@ -89,7 +90,7 @@ export default function SuperBullPlay({ config, onExit }: { config: any; onExit:
           <div className="sbt-live"><span><small>PTS / DART</small><b>{ppd.toFixed(1)}</b></span><span><small>AVG / 3</small><b>{avg3.toFixed(1)}</b></span><span><small>BEST SÉRIE</small><b>{data.bestStreak}</b></span><span><small>3/3 CENTRE</small><b>{data.perfectVisits}</b></span></div>
         </section>
         <section className="sbt-analysis">
-          <div className="sbt-next"><span><small>À MARQUER</small><b>{needed}</b></span><span><small>FLÉCHETTES RESTANTES</small><b>{remaining}</b></span><span><small>DBULL RATE</small><b>{dbullRate.toFixed(1)}%</b></span><span><small>PROJECTION</small><b>{projectedDarts===null?"—":projectedDarts<=remaining?`${projectedDarts} darts":"HORS LIMITE"}</b></span></div>
+          <div className="sbt-next"><span><small>À MARQUER</small><b>{needed}</b></span><span><small>FLÉCHETTES RESTANTES</small><b>{remaining}</b></span><span><small>DBULL RATE</small><b>{dbullRate.toFixed(1)}%</b></span><span><small>PROJECTION</small><b>{projectionLabel}</b></span></div>
           {lastVisit&&<div className="sbt-last"><header><span><small>DERNIÈRE VOLÉE</small><b>{lastVisit.score} PTS</b></span><em>{lastVisit.hits}/3 centre</em></header><div>{lastVisit.labels.map((label,i)=><span key={i} className={label.toLowerCase()}><small>D{i+1}</small><b>{label}</b></span>)}</div></div>}
           <div className="sbt-chart"><header><b>ÉVOLUTION DES VOLÉES</b><span>Best {data.bestVisit}</span></header><div>{data.visits.length?data.visits.map((v,i)=><i key={i} title={`Volée ${i+1} · ${v.score} pts`}><u style={{height:`${Math.max(5,v.score/150*100)}%`}}/><small>{v.score}</small></i>):<p>La courbe apparaîtra après la première volée.</p>}</div></div>
           <div className="sbt-position"><b>PRÉCISION PAR FLÉCHETTE</b><div>{data.dartPos.map((pos,i)=><span key={i}><small>D{i+1}</small><strong>{pct(pos.hits,pos.darts).toFixed(0)}%</strong><em>{pos.dbulls} DB</em></span>)}</div></div>
@@ -97,13 +98,7 @@ export default function SuperBullPlay({ config, onExit }: { config: any; onExit:
       </div>
       <TrainingDartPad disabled={!!result} onVisit={onVisit} notice={<div style={{fontSize:10.5,textAlign:"center",opacity:.68}}>SUPER BULL ne compte que le centre : BULL 25 · DOUBLE + BULL = DBULL 50 · tout le reste = 0.</div>}/>
     </TrainingPlayLayout>
-    <TrainingResultModal
-      open={!!result}
-      success={!!result?.success}
-      title={result?.success?"SUPER BULL · OBJECTIF ATTEINT":"SUPER BULL · LIMITE ATTEINTE"}
-      stats={result?.stats||makeTrainingStats({darts:0,hits:0,points:0,startedAt:Date.now()})}
-      metrics={result?[{label:"BULL",value:result.metrics.bulls},{label:"DBULL",value:result.metrics.dbulls},{label:"PRÉCISION CENTRE",value:`${result.metrics.accuracyPct.toFixed(1)}%`},{label:"DBULL RATE",value:`${result.metrics.dbullPct.toFixed(1)}%`},{label:"PTS / DART",value:result.metrics.pointsPerDart.toFixed(1)},{label:"AVG / 3",value:result.metrics.avg3.toFixed(1)},{label:"BEST VOLÉE",value:result.metrics.bestVisit},{label:"MEILLEURE SÉRIE",value:result.metrics.bestStreak},{label:"VOLÉES 3/3",value:result.metrics.perfectVisits}]:[]}
-      onClose={onExit}/>
+    <TrainingResultModal open={!!result} success={!!result?.success} title={result?.success?"SUPER BULL · OBJECTIF ATTEINT":"SUPER BULL · LIMITE ATTEINTE"} stats={result?.stats||makeTrainingStats({darts:0,hits:0,points:0,startedAt:Date.now()})} metrics={result?[{label:"BULL",value:result.metrics.bulls},{label:"DBULL",value:result.metrics.dbulls},{label:"PRÉCISION CENTRE",value:`${result.metrics.accuracyPct.toFixed(1)}%`},{label:"DBULL RATE",value:`${result.metrics.dbullPct.toFixed(1)}%`},{label:"PTS / DART",value:result.metrics.pointsPerDart.toFixed(1)},{label:"AVG / 3",value:result.metrics.avg3.toFixed(1)},{label:"BEST VOLÉE",value:result.metrics.bestVisit},{label:"MEILLEURE SÉRIE",value:result.metrics.bestStreak},{label:"VOLÉES 3/3",value:result.metrics.perfectVisits}]:[]} onClose={onExit}/>
   </>;
 }
 
