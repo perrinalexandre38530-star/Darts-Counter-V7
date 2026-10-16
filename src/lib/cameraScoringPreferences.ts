@@ -14,6 +14,7 @@ export type CameraScoringPreferences = {
   minRereadAgreement: number;
   autoReread: boolean;
   strictProjectiveDrift: boolean;
+  strictDartIdentification: boolean;
   minIdentityConfidence: number;
   minIdentityMargin: number;
 };
@@ -35,6 +36,7 @@ export const CAMERA_SCORING_PRESETS: Record<CameraPrecisionProfile, CameraScorin
     minRereadAgreement: .68,
     autoReread: true,
     strictProjectiveDrift: true,
+    strictDartIdentification: true,
     minIdentityConfidence: .70,
     minIdentityMargin: .075,
   },
@@ -52,6 +54,7 @@ export const CAMERA_SCORING_PRESETS: Record<CameraPrecisionProfile, CameraScorin
     minRereadAgreement: .74,
     autoReread: true,
     strictProjectiveDrift: true,
+    strictDartIdentification: true,
     minIdentityConfidence: .74,
     minIdentityMargin: .09,
   },
@@ -69,6 +72,7 @@ export const CAMERA_SCORING_PRESETS: Record<CameraPrecisionProfile, CameraScorin
     minRereadAgreement: .80,
     autoReread: true,
     strictProjectiveDrift: true,
+    strictDartIdentification: true,
     minIdentityConfidence: .78,
     minIdentityMargin: .11,
   },
@@ -98,6 +102,7 @@ export function normalizeCameraScoringPreferences(input:any): CameraScoringPrefe
     minRereadAgreement: clamp(input?.minRereadAgreement ?? base.minRereadAgreement, .55, .95),
     autoReread: input?.autoReread !== false,
     strictProjectiveDrift: input?.strictProjectiveDrift !== false,
+    strictDartIdentification: input?.strictDartIdentification !== false,
     minIdentityConfidence: clamp(input?.minIdentityConfidence ?? base.minIdentityConfidence, .55, .95),
     minIdentityMargin: clamp(input?.minIdentityMargin ?? base.minIdentityMargin, .03, .25),
   };

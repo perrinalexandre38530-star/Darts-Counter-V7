@@ -114,6 +114,9 @@ export default function OrganizationTeamsPanel({ organization, userId, initialGr
   const selected = groups.find((group) => group.id === selectedId) || null;
   const canManageRoster = canManageStructure || (organization.role === "captain" && selected?.captainUserId === userId);
   const activeMembers = members.filter((member) => member.status === "active");
+  // A Team captain is backed by ms_organization_groups.captain_user_id (auth.users UUID).
+  // Local profiles can belong to the roster, but cannot be stored in this UUID field.
+  const captainCandidates = activeMembers.filter((member) => member.entityType === "user");
   const wide = viewportWidth >= 980;
 
   const card: React.CSSProperties = {
@@ -424,7 +427,7 @@ export default function OrganizationTeamsPanel({ organization, userId, initialGr
           <div style={{ color: theme.textSoft, fontSize: 8, fontWeight: 950, marginBottom: 5 }}>{L("CAPITAINE / RESPONSABLE D’ÉQUIPE", "CAPTAIN / TEAM LEAD", "CAPITÁN / RESPONSABLE DEL EQUIPO")}</div>
           <select style={input} value={draft.captainUserId} onChange={(e) => setDraft((value) => ({ ...value, captainUserId: e.target.value }))}>
             <option value="">{L("Aucun pour le moment", "None for now", "Ninguno por ahora")}</option>
-            {activeMembers.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}
+            {captainCandidates.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}
           </select>
         </div>
         <div>
@@ -444,10 +447,11 @@ export default function OrganizationTeamsPanel({ organization, userId, initialGr
         <div style={{ marginTop: 8, display: "grid", gap: 6, maxHeight: 270, overflowY: "auto" }}>
           {activeMembers.map((member) => {
             const assigned = member.groupIds.includes(selected.id);
-            const busy = actionKey === `member:${selected.id}:${member.userId}`;
-            return <label key={member.userId} style={{ ...card, padding: 9, display: "grid", gridTemplateColumns: "34px minmax(0,1fr) auto", gap: 9, alignItems: "center", opacity: busy ? .65 : 1 }}>
+            const memberKey = member.entityType === "local_profile" ? `local:${member.membershipId}` : member.userId;
+            const busy = actionKey === `member:${selected.id}:${memberKey}`;
+            return <label key={memberKey} style={{ ...card, padding: 9, display: "grid", gridTemplateColumns: "34px minmax(0,1fr) auto", gap: 9, alignItems: "center", opacity: busy ? .65 : 1 }}>
               <span style={{ width: 32, height: 32, borderRadius: 999, overflow: "hidden", border: `1px solid ${theme.borderSoft}`, display: "grid", placeItems: "center", background: "rgba(0,0,0,.28)" }}>{member.avatarUrl ? <img src={member.avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <strong style={{ color: theme.primary, fontSize: 9 }}>{initials(member.displayName)}</strong>}</span>
-              <span style={{ minWidth: 0 }}><strong style={{ display: "block", fontSize: 9.5, color: theme.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{member.displayName}</strong><small style={{ color: theme.textSoft, fontSize: 7.8 }}>{member.userId === draft.captainUserId ? L("Capitaine", "Captain", "Capitán") : member.role}</small></span>
+              <span style={{ minWidth: 0 }}><strong style={{ display: "block", fontSize: 9.5, color: theme.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{member.displayName}</strong><small style={{ color: theme.textSoft, fontSize: 7.8 }}>{member.userId === draft.captainUserId ? L("Capitaine", "Captain", "Capitán") : member.entityType === "local_profile" ? L("Profil local", "Local profile", "Perfil local") : member.role}</small></span>
               <input type="checkbox" checked={assigned} disabled={!canManageRoster || busy} onChange={(e) => void toggleMember(selected, member, e.target.checked)} />
             </label>;
           })}

@@ -6731,14 +6731,12 @@ React.useEffect(() => {
   void loadX01ProfileStatsForStarring(pid, visual)
     .then((stats: any) => {
       if (cancelled) return;
+      // V129 : le médaillon humain représente uniquement le niveau ACTUEL.
+      // Ne jamais retomber ici sur avg3/avg3D lifetime.
       const avg = Number(
         stats?.currentAvg3D ??
         stats?.x01CurrentAvg3D ??
         stats?.last10Avg3D ??
-        stats?.avg3 ??
-        stats?.avg3d ??
-        stats?.avg3D ??
-        stats?.average3Darts ??
         0
       );
       setCanonicalStarAvg3D(Number.isFinite(avg) && avg > 0 ? avg : 0);
@@ -6837,6 +6835,10 @@ const statsDiagnostic = React.useMemo(() => {
     x01CurrentAvg3D = level.currentAvg3D;
   } catch {}
 
+  const x01TabRuntime: any = (() => {
+    try { return (globalThis as any).__dcX01StatsTabSnapshotV129 || null; } catch { return null; }
+  })();
+
   return {
     profileId: String(effectiveProfileId || ""),
     profileName: String(selectedPlayerVisual?.name || selectedPlayer?.name || activeProfileName || ""),
@@ -6857,6 +6859,12 @@ const statsDiagnostic = React.useMemo(() => {
     x01CurrentLimit: 10,
     x01GlobalAvg3D,
     x01CurrentAvg3D,
+    x01TabLifetimeMatches: Number(x01TabRuntime?.lifetimeMatches ?? NaN),
+    x01TabAnalysisMatches: Number(x01TabRuntime?.analysisMatches ?? NaN),
+    x01TabCurrentMatches: Number(x01TabRuntime?.currentLevelMatches ?? NaN),
+    x01TabRange: x01TabRuntime?.range ?? null,
+    x01TabScoreFilter: x01TabRuntime?.scoreFilter ?? null,
+    x01TabVariantFilter: x01TabRuntime?.variantFilter ?? null,
     dartSets: dartSetDiagnostic,
   };
 }, [effectiveProfileId, selectedPlayerVisual, selectedPlayer, activeProfileName, allPlayers.length, normalizedHistoryLoaded, nmEffective, cachedDashboard, heavyStatsReady, currentMode, dartSetDiagnostic, detailRecords]);

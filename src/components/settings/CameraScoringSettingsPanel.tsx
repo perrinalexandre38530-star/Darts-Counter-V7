@@ -70,6 +70,14 @@ export default function CameraScoringSettingsPanel({go}:Props){
     </div>
 
     <div style={card}>
+      <div style={{fontWeight:1000,color:theme.text}}>ACQUISITION MULTI-FRAME</div>
+      <div style={{...muted,marginTop:4}}>Plus de frames augmente la robustesse du consensus, au prix d’une analyse légèrement plus longue.</div>
+      <RangeRow label="Frames cible vide (baseline)" value={prefs.baselineFrames} min={3} max={11} step={1} suffix=" frames" onChange={v=>update({baselineFrames:v})} theme={theme}/>
+      <RangeRow label="Frames analyse principale" value={prefs.analysisFrames} min={3} max={11} step={1} suffix=" frames" onChange={v=>update({analysisFrames:v})} theme={theme}/>
+      <RangeRow label="Frames seconde lecture" value={prefs.rereadFrames} min={5} max={13} step={1} suffix=" frames" onChange={v=>update({rereadFrames:v})} theme={theme}/>
+    </div>
+
+    <div style={card}>
       <div style={{fontWeight:1000,color:theme.text}}>CONTRÔLES DE VALIDATION</div>
       <RangeRow label="Incertitude maximale" value={prefs.maxUncertaintyMm} min={.45} max={1.5} step={.05} suffix=" mm" onChange={v=>update({maxUncertaintyMm:v})} theme={theme}/>
       <RangeRow label="Accord entre frames" value={prefs.minFrameAgreement} min={.72} max={.99} step={.01} format={v=>`${Math.round(v*100)} %`} onChange={v=>update({minFrameAgreement:v})} theme={theme}/>
@@ -82,6 +90,7 @@ export default function CameraScoringSettingsPanel({go}:Props){
     <div style={card}>
       <div style={{fontWeight:1000,color:theme.text}}>IDENTIFICATION DES FLÉCHETTES</div>
       <div style={{...muted,marginTop:4}}>Ces seuils déterminent quand l’IA peut attribuer automatiquement une fléchette à un joueur enrôlé.</div>
+      <ToggleRow label="Identification stricte — bloquer toute identité ambiguë" value={prefs.strictDartIdentification} onChange={v=>update({strictDartIdentification:v})} theme={theme}/>
       <RangeRow label="Confiance identité minimale" value={prefs.minIdentityConfidence} min={.55} max={.95} step={.01} format={v=>`${Math.round(v*100)} %`} onChange={v=>update({minIdentityConfidence:v})} theme={theme}/>
       <RangeRow label="Marge face au 2e candidat" value={prefs.minIdentityMargin} min={.03} max={.25} step={.01} format={v=>`${Math.round(v*100)} pts`} onChange={v=>update({minIdentityMargin:v})} theme={theme}/>
     </div>

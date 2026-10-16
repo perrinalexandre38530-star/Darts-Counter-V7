@@ -78,19 +78,40 @@ function readQuickStats(profile: any): any | null {
 export function resolveProfileStarScore(profile: any, extraCandidates: any[] = []): number {
   const quick = readQuickStats(profile) || {};
   const current = readCurrentLevelStats(profile) || {};
+  const isBotProfile = Boolean(
+    profile?.isBot || profile?.bot || profile?.cpu || profile?.type === "bot" || profile?.kind === "bot" ||
+    String(profile?.id || "").startsWith("bot_") || profile?.botLevel != null
+  );
 
-  // V127: pour un humain, la couronne représente le niveau ACTUEL (10 derniers X01).
-  // On consulte donc les champs current avant toute moyenne lifetime fournie par un écran legacy.
-  const avgCandidates = [
+  // V129 : pour un HUMAIN, la couronne est STRICTEMENT le niveau ACTUEL X01,
+  // c.-à-d. l'AVG3D calculée sur la fenêtre des 10 derniers matchs X01.
+  // Une AVG3D lifetime ne doit jamais servir de fallback silencieux : sinon le
+  // médaillon peut afficher le niveau historique alors que l'UI dit "actuel".
+  const currentCandidates = [
     current?.currentAvg3D,
     current?.x01CurrentAvg3D,
+    current?.last10Avg3D,
     quick?.currentAvg3D,
     quick?.x01CurrentAvg3D,
     quick?.last10Avg3D,
     profile?.stats?.x01?.currentAvg3D,
     profile?.stats?.x01?.last10Avg3D,
     profile?.x01?.currentAvg3D,
+    profile?.x01?.last10Avg3D,
     profile?.x01Stats?.currentAvg3D,
+    profile?.x01Stats?.last10Avg3D,
+  ];
+
+  for (const raw of currentCandidates) {
+    const n = numberFromAny(raw);
+    if (Number.isFinite(n) && n > 0 && n <= 180) return n;
+  }
+
+  // Tant que le cache current n'est pas prêt, un humain affiche 0 étoile plutôt
+  // qu'un faux niveau lifetime. Les bots conservent leurs fallbacks historiques.
+  if (!isBotProfile) return 0;
+
+  const botAvgCandidates = [
     ...extraCandidates,
     quick?.avg3D,
     quick?.avg3d,
@@ -112,20 +133,10 @@ export function resolveProfileStarScore(profile: any, extraCandidates: any[] = [
     profile?.stats?.darts?.avg3d,
     profile?.stats?.darts?.avg3,
   ];
-
-  for (const raw of avgCandidates) {
+  for (const raw of botAvgCandidates) {
     const n = numberFromAny(raw);
     if (Number.isFinite(n) && n > 0 && n <= 180) return n;
   }
-
-  const isBotProfile = Boolean(
-    profile?.isBot || profile?.bot || profile?.cpu || profile?.type === "bot" || profile?.kind === "bot" ||
-    String(profile?.id || "").startsWith("bot_") || profile?.botLevel != null
-  );
-
-  // Les niveaux/starring enregistrés ne sont un fallback valide que pour les bots.
-  // Pour un humain la couronne est exclusivement issue de son AVG3D X01.
-  if (!isBotProfile) return 0;
 
   const levelCandidates = [
     profile?.profileStarring,

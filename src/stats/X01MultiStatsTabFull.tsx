@@ -3,7 +3,7 @@
 // src/components/stats/X01MultiStatsTabFull.tsx
 // FULL X01 MULTI stats tab (mode "X01 V3" multi / tous matchs)
 // - KPIs X01 multi (défilement)
-// - Stats détaillées (période)
+// - Stats détaillées (global)
 // - Sparkline multi-métriques (avg3 / BV / CO / %Hits / %S/D/T)
 // - Radar précision (BV / BCO / AVG) via darts reconstruits
 // - Hits par segment (S / D / T / MISS)
@@ -2621,18 +2621,46 @@ function memoFilteredX01Sessions(
 
 let __memoSelectedInput: X01MultiSession[] | null = null;
 let __memoSelectedProfileId: string | null = null;
+let __memoSelectedProfileName = "";
 let __memoSelectedRange: TimeRange | null = null;
 let __memoSelectedValue: X01MultiSession[] = [];
+
+function x01SessionBelongsToProfile(
+  session: any,
+  effectiveProfileId: string | null,
+  profileName?: string | null
+): boolean {
+  const normalizedId = effectiveProfileId == null ? "" : String(effectiveProfileId).trim();
+  if (!normalizedId) return true;
+
+  if (
+    sameId(session?.selectedPlayerId, normalizedId) ||
+    sameId(session?.profileId, normalizedId) ||
+    sameId(session?.playerId, normalizedId)
+  ) return true;
+
+  // Anciennes/restaurées : certains X01 ont gardé un ancien UUID mais le bon nom.
+  // Le loader X01 est déjà scoped au profil demandé ; ce fallback empêche ces lignes
+  // d'être reperdues dans l'UI après avoir été correctement récupérées par History.
+  const wantedName = normalizedX01PlayerName(profileName);
+  const rowName = normalizedX01PlayerName(
+    session?.playerName ?? session?.name ?? session?.displayName ?? session?.nickname
+  );
+  return !!wantedName && !!rowName && wantedName === rowName;
+}
 
 function memoSelectedX01Sessions(
   filtered: X01MultiSession[],
   effectiveProfileId: string | null,
-  range: TimeRange
+  range: TimeRange,
+  profileName?: string | null
 ): X01MultiSession[] {
   const normalizedId = effectiveProfileId == null ? null : String(effectiveProfileId);
+  const normalizedName = normalizedX01PlayerName(profileName);
   if (
     __memoSelectedInput === filtered &&
     __memoSelectedProfileId === normalizedId &&
+    __memoSelectedProfileName === normalizedName &&
     __memoSelectedRange === range
   ) {
     return __memoSelectedValue;
@@ -2640,13 +2668,12 @@ function memoSelectedX01Sessions(
   const profileSessions = normalizedId == null
     ? filtered
     : filtered.filter((session: any) =>
-        sameId(session?.selectedPlayerId, normalizedId) ||
-        sameId(session?.profileId, normalizedId) ||
-        sameId(session?.playerId, normalizedId)
+        x01SessionBelongsToProfile(session, normalizedId, profileName)
       );
   const value = profileSessions;
   __memoSelectedInput = filtered;
   __memoSelectedProfileId = normalizedId;
+  __memoSelectedProfileName = normalizedName;
   __memoSelectedRange = range;
   __memoSelectedValue = value;
   return value;
@@ -2950,9 +2977,7 @@ export default function X01MultiStatsTabFull({
   const levelProfileSessions = (effectiveProfileId == null
     ? sessions
     : sessions.filter((session: any) =>
-        sameId(session?.selectedPlayerId, effectiveProfileId) ||
-        sameId(session?.profileId, effectiveProfileId) ||
-        sameId(session?.playerId, effectiveProfileId)
+        x01SessionBelongsToProfile(session, effectiveProfileId, playerName)
       )
   ).slice().sort((a, b) => Number(a?.date || 0) - Number(b?.date || 0));
 
@@ -2989,20 +3014,34 @@ export default function X01MultiStatsTabFull({
     // Keep the session-derived values above.
   }
 
-  // Sessions filtrées — mémoïsées hors React pour garantir une liste de hooks fixe.
-  const filtered = memoFilteredX01Sessions(sessions, range, scoreFilter, variantFilter);
-  const selectedSessions = memoSelectedX01Sessions(filtered, effectiveProfileId, range);
-  const statsSessions = selectedSessions;
-  const x01DartsAll: UIDart[] = memoX01DartsForStats(statsSessions);
+  // V129 — DEUX PÉRIMÈTRES STRICTEMENT SÉPARÉS.
+  // 1) lifetime = TOUS les X01 du joueur : alimente les totaux, victoires,
+  //    legs/sets, records, pourcentages et AVG3D globale.
+  // 2) analyse = filtres J/S/M/A + score + variante : alimente seulement
+  //    les courbes, l'historique et les vues d'analyse. Une fenêtre récente
+  //    ne peut donc plus transformer 55 matchs lifetime en 10 matchs affichés.
+  const lifetimeAllSessions = sessions.slice().sort((a, b) => Number(a?.date || 0) - Number(b?.date || 0));
+  const lifetimeProfileSessions = lifetimeAllSessions.filter((session: any) =>
+    x01SessionBelongsToProfile(session, effectiveProfileId, playerName)
+  );
 
-  // Classements multi — formule identique, mémoïsation pure sans hook React.
+  const filtered = memoFilteredX01Sessions(sessions, range, scoreFilter, variantFilter);
+  const selectedSessions = memoSelectedX01Sessions(filtered, effectiveProfileId, range, playerName);
+  const analysisSessions = selectedSessions;
+
+  // Toutes les statistiques principales restent lifetime, quels que soient les filtres.
+  const statsSessions = lifetimeProfileSessions;
+  const x01DartsAll: UIDart[] = buildX01DartsForStats(statsSessions);
+  const x01DartsAnalysis: UIDart[] = buildX01DartsForStats(analysisSessions);
+
+  // Classements multi = vue d'analyse, donc le filtre courant reste volontairement actif.
   const multiRanks = memoMultiRanks(filtered, effectiveProfileId);
   
   // --- AGRÉGATION RÉELLE DES MATCHS PAR TYPE ---
 
   // Regroupe les sessions par matchId (une ligne par joueur)
   const matchGroups = new Map<string, X01MultiSession[]>();
-  for (const s of filtered) {
+  for (const s of lifetimeAllSessions) {
     if (!s.matchId) continue;
     const arr = matchGroups.get(s.matchId) || [];
     arr.push(s);
@@ -3086,8 +3125,7 @@ export default function X01MultiStatsTabFull({
 
     if (effectiveProfileId) {
       playerLine = arr.find((s) =>
-        sameId(s.selectedPlayerId, effectiveProfileId) ||
-        sameId((s as any).profileId, effectiveProfileId)
+        x01SessionBelongsToProfile(s, effectiveProfileId, playerName)
       );
       // Ne jamais prendre arr[0] au hasard : ça fausse les victoires, legs/sets et classements.
       if (!playerLine) continue;
@@ -3194,6 +3232,23 @@ const pct = (num: number, den: number) =>
 
   const totalSessions = statsSessions.length;
   const totalDarts = statsSessions.reduce((s: any, x: any) => s + x.darts, 0);
+  try {
+    const x01TabSnapshotV129 = {
+      profileId: String(effectiveProfileId || ""),
+      lifetimeMatches: totalSessions,
+      analysisMatches: analysisSessions.length,
+      currentLevelMatches,
+      currentLimit: 10,
+      range,
+      scoreFilter,
+      variantFilter,
+      capturedAt: Date.now(),
+    };
+    (globalThis as any).__dcX01StatsTabSnapshotV129 = x01TabSnapshotV129;
+    if (typeof sessionStorage !== "undefined") {
+      sessionStorage.setItem("dc_x01_stats_tab_snapshot_v129", JSON.stringify(x01TabSnapshotV129));
+    }
+  } catch {}
   const avgDarts = totalSessions > 0 ? totalDarts / totalSessions : 0;
 
   const bestVisit =
@@ -3204,15 +3259,15 @@ const pct = (num: number, den: number) =>
       ? Math.max(...statsSessions.map((x: any) => (x.bestCheckout ?? 0) || 0))
       : 0;
 
-  const globalAvg3D =
+  const sessionGlobalAvg3D =
     totalSessions > 0
       ? statsSessions.reduce((s: any, x: any) => s + x.avg3D, 0) / totalSessions
       : 0;
 
-  const globalAvg1D =
-    totalSessions > 0
-      ? statsSessions.reduce((s: any, x: any) => s + x.avg1D, 0) / totalSessions
-      : 0;
+  // Même valeur canonique que Home / Profils / médaillons de niveau : la globale
+  // porte sur TOUT l'historique X01, indépendamment des filtres d'analyse.
+  const globalAvg3D = lifetimeLevelAvg3D > 0 ? lifetimeLevelAvg3D : sessionGlobalAvg3D;
+  const globalAvg1D = globalAvg3D > 0 ? globalAvg3D / 3 : 0;
 
   // Agrégats hits / miss / bull etc.
   // (on réutilise totalSessions = statsSessions.length; défini juste au-dessus)
@@ -3518,7 +3573,7 @@ const pctSetsWinX01 =
     }
   }
 
-  const sparkSeries = statsSessions.map((s: any) => ({
+  const sparkSeries = analysisSessions.map((s: any) => ({
     x: s.date,
     y: valueForMetric(s, metric),
     session: s,
@@ -3577,13 +3632,13 @@ const pctSetsWinX01 =
   const pinkItems = finalizeKpiItems([
     {
       kind: "num",
-      label: "AVG3D (période)",
+      label: "AVG3D (globale)",
       raw: totalSessions > 0 ? globalAvg3D : null,
       format: (v) => v.toFixed(1),
     },
     {
       kind: "num",
-      label: "Moy.1D (période)",
+      label: "Moy.1D (globale)",
       raw: totalSessions > 0 ? globalAvg1D : null,
       format: (v) => v.toFixed(2),
     },
@@ -3727,7 +3782,7 @@ const pctSetsWinX01 =
     },
     {
       kind: "num",
-      label: "AVG3D (période)",
+      label: "AVG3D (globale)",
       raw: totalSessions > 0 ? globalAvg3D : null,
       format: (v) => v.toFixed(1),
     },
@@ -3831,7 +3886,7 @@ const pctSetsWinX01 =
 
 // 1) Regroupement des sessions par match
 const groupedByMatch: Record<string, X01MultiSession[]> = {};
-for (const s of filtered) {
+for (const s of lifetimeAllSessions) {
   if (!groupedByMatch[s.matchId]) groupedByMatch[s.matchId] = [];
   groupedByMatch[s.matchId].push(s);
 }
@@ -3859,7 +3914,7 @@ for (const matchId in groupedByMatch) {
   const targetId = effectiveProfileId ?? profileId ?? null;
 
   const myLine = targetId
-    ? arr.find((s) => String(s.selectedPlayerId) === String(targetId))
+    ? arr.find((s) => x01SessionBelongsToProfile(s, String(targetId), playerName))
     : arr[0];
 
   if (!myLine) continue;
@@ -4385,7 +4440,11 @@ return (
         </div>
       </div>
 
-      {/* V127 — deux niveaux explicites, sans modifier le périmètre des autres stats. */}
+      <div style={{ fontSize: 10, color: T.text70, textAlign: "center", marginTop: -4, padding: "0 8px" }}>
+        Les filtres ci-dessus pilotent les courbes et l’historique. Les totaux, victoires, records et l’AVG3D globale restent calculés sur tout l’historique X01.
+      </div>
+
+      {/* V129 — deux niveaux explicites : lifetime complet + indicateur actuel last-10. */}
       <div
         style={{
           ...card,
@@ -4411,7 +4470,7 @@ return (
             {lifetimeLevelAvg3D > 0 ? lifetimeLevelAvg3D.toFixed(2) : "—"}
           </div>
           <div style={{ fontSize: 10, opacity: .72, marginTop: 2 }}>
-            AVG3D · {lifetimeLevelMatches} {levelLabels.matches}
+            AVG3D globale · {lifetimeLevelMatches} {levelLabels.matches} au total
           </div>
         </div>
 
@@ -4431,7 +4490,7 @@ return (
             {currentLevelAvg3D > 0 ? currentLevelAvg3D.toFixed(2) : "—"}
           </div>
           <div style={{ fontSize: 10, opacity: .72, marginTop: 2 }}>
-            AVG3D · {currentLevelMatches}/10 {levelLabels.latest}
+            AVG3D actuel · calcul sur {currentLevelMatches} {levelLabels.latest}
           </div>
         </div>
       </div>
@@ -4658,7 +4717,7 @@ return (
       {totalSessions > 0 && (
         <>
 
-                    {/* ====== STATS DÉTAILLÉES (PÉRIODE) — COPY TRAINING X01 ====== */}
+                    {/* ====== STATS DÉTAILLÉES (GLOBAL) — COPY TRAINING X01 ====== */}
                     <div style={{ ...card }}>
             {(() => {
               const totalHitsRow = totalHits;
@@ -4765,7 +4824,7 @@ return (
                         fontWeight: 700,
                       }}
                     >
-                      Stats détaillées (période)
+                      Stats détaillées (global)
                     </div>
                   </div>
 
@@ -6141,7 +6200,7 @@ return (
                 }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <TrainingRadar darts={x01DartsAll} />
+                  <TrainingRadar darts={x01DartsAnalysis} />
                 </div>
                 <div
                   style={{

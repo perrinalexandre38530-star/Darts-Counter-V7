@@ -54,7 +54,7 @@ export type StatsSystemDiagnosticPipeline = {
 };
 
 export type StatsSystemDiagnosticReport = {
-  version: "stats-diagnostic-v124";
+  version: "stats-diagnostic-v129";
   generatedAt: string;
   deep: boolean;
   traceEnabled: boolean;
@@ -118,7 +118,8 @@ export type StatsSystemDiagnosticOptions = {
   onProgress?: (progress: { phase: string; current?: number; total?: number; detail?: string }) => void;
 };
 
-const LAST_REPORT_KEY = "dc_stats_system_diagnostic_report_v124";
+const LAST_REPORT_KEY = "dc_stats_system_diagnostic_report_v129";
+const LEGACY_REPORT_KEY = "dc_stats_system_diagnostic_report_v124";
 
 function safeLsGet(key: string): string | null {
   try { return typeof localStorage !== "undefined" ? localStorage.getItem(key) : null; } catch { return null; }
@@ -135,7 +136,7 @@ export function readLastStatsSystemDiagnosticReport(): StatsSystemDiagnosticRepo
     const raw = safeLsGet(LAST_REPORT_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    return parsed?.version === "stats-diagnostic-v124" ? parsed as StatsSystemDiagnosticReport : null;
+    return parsed?.version === "stats-diagnostic-v129" ? parsed as StatsSystemDiagnosticReport : null;
   } catch {
     return null;
   }
@@ -143,6 +144,7 @@ export function readLastStatsSystemDiagnosticReport(): StatsSystemDiagnosticRepo
 
 export function clearLastStatsSystemDiagnosticReport(): void {
   safeLsRemove(LAST_REPORT_KEY);
+  safeLsRemove(LEGACY_REPORT_KEY);
 }
 
 function persistReport(report: StatsSystemDiagnosticReport): void {
@@ -511,6 +513,16 @@ export async function runStatsSystemDiagnostic(options: StatsSystemDiagnosticOpt
   }
 
   const ui = options.uiSnapshot || null;
+  let x01TabV129: any = null;
+  try {
+    x01TabV129 = (globalThis as any).__dcX01StatsTabSnapshotV129 || null;
+  } catch {}
+  if (!x01TabV129) {
+    try {
+      const raw = typeof sessionStorage !== "undefined" ? sessionStorage.getItem("dc_x01_stats_tab_snapshot_v129") : null;
+      x01TabV129 = raw ? JSON.parse(raw) : null;
+    } catch {}
+  }
   const uiNormalized = ui && Number.isFinite(Number(ui.normalizedMatches)) ? Number(ui.normalizedMatches) : null;
   const uiSelected = ui && Number.isFinite(Number(ui.selectedMatches)) ? Number(ui.selectedMatches) : null;
   if (ui) {
@@ -554,6 +566,36 @@ export async function runStatsSystemDiagnostic(options: StatsSystemDiagnosticOpt
     checks.push(check("stats-ui", "Stats Center — données réellement visibles", "skip", "Snapshot UI non fourni."));
   }
 
+  if (x01TabV129) {
+    const tabLifetime = Number(x01TabV129?.lifetimeMatches);
+    const tabAnalysis = Number(x01TabV129?.analysisMatches);
+    const tabCurrent = Number(x01TabV129?.currentLevelMatches);
+    const expectedLifetime = Number(activeHeaderX01 || 0);
+    const profileMatches = !profile.id || !x01TabV129?.profileId || String(profile.id) === String(x01TabV129.profileId);
+    const lifetimeMismatch = profileMatches && expectedLifetime > 0 && Number.isFinite(tabLifetime) && tabLifetime !== expectedLifetime;
+    const currentOverflow = Number.isFinite(tabCurrent) && tabCurrent > 10;
+    checks.push(check(
+      "x01-tab-lifetime-scope-v129",
+      "X01 — totaux lifetime / filtre d’analyse",
+      lifetimeMismatch || currentOverflow ? "fail" : "ok",
+      `Totaux UI=${Number.isFinite(tabLifetime) ? tabLifetime : "—"} X01 · filtre analyse=${Number.isFinite(tabAnalysis) ? tabAnalysis : "—"} · fenêtre AVG3D actuelle=${Number.isFinite(tabCurrent) ? tabCurrent : "—"}/10 · période=${String(x01TabV129?.range || "—")}.`,
+      {
+        expectedLifetimeX01: expectedLifetime,
+        tabLifetimeMatches: tabLifetime,
+        tabAnalysisMatches: tabAnalysis,
+        tabCurrentMatches: tabCurrent,
+        currentLimit: 10,
+        range: x01TabV129?.range ?? null,
+        scoreFilter: x01TabV129?.scoreFilter ?? null,
+        variantFilter: x01TabV129?.variantFilter ?? null,
+      },
+    ));
+    if (lifetimeMismatch) diagnosis.push({ severity: "critical", code: "x01-tab-filtering-lifetime", message: `L'onglet X01 affiche ${tabLifetime} matchs lifetime alors que ${expectedLifetime} X01 appartiennent au profil : un filtre d'analyse touche encore les totaux.` });
+    if (currentOverflow) diagnosis.push({ severity: "critical", code: "x01-current-window-overflow-v129", message: `L'AVG3D actuelle utilise ${tabCurrent} matchs au lieu des 10 derniers X01 maximum.` });
+  } else {
+    checks.push(check("x01-tab-lifetime-scope-v129", "X01 — totaux lifetime / filtre d’analyse", "skip", "Ouvre une fois l’onglet X01 puis relance le diagnostic pour comparer les totaux réellement affichés."));
+  }
+
   // Diagnostic synthesis: locate the first stage where counts diverge.
   if (storage && Number(storage.headerRows || 0) < historyFinished) {
     diagnosis.push({ severity: "critical", code: "storage-before-history-loss", message: `Le stockage ne contient que ${storage.headerRows} header(s) pour ${historyFinished} partie(s) terminée(s) visibles.` });
@@ -586,7 +628,7 @@ export async function runStatsSystemDiagnostic(options: StatsSystemDiagnosticOpt
   }, { ok: 0, warn: 0, fail: 0, skip: 0, total: 0 });
 
   const report: StatsSystemDiagnosticReport = {
-    version: "stats-diagnostic-v124",
+    version: "stats-diagnostic-v129",
     generatedAt: new Date().toISOString(),
     deep,
     traceEnabled: isStatsDiagnosticTraceEnabled(),

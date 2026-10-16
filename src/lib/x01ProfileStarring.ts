@@ -406,6 +406,16 @@ export function getX01ProfileStarData(profile: any, statsById: Record<string, an
     }
   }
 
+  const isBotProfile = Boolean(
+    profile?.isBot || profile?.bot || profile?.cpu || profile?.type === "bot" || profile?.kind === "bot" ||
+    String(profile?.id || "").startsWith("bot_") || profile?.botLevel != null
+  );
+
+  // V129 : les humains n'utilisent JAMAIS une AVG3D lifetime pour le médaillon.
+  // Si le niveau actuel n'est pas encore hydraté, on attend la valeur current
+  // plutôt que d'afficher une étoile historiquement correcte mais actuellement fausse.
+  if (!isBotProfile) return null;
+
   const avgKeys = new Set([
     "avg3", "avg3d", "avg3D", "avg3Overall", "average3Darts", "average3D", "moy3d", "moyenne3",
   ]);
@@ -470,12 +480,6 @@ export function getX01ProfileStarData(profile: any, statsById: Record<string, an
   if (avgValues.length) {
     return { kind: "avg3d", value: Math.max(...avgValues) };
   }
-
-  const isBotProfile = Boolean(
-    profile?.isBot || profile?.bot || profile?.cpu || profile?.type === "bot" || profile?.kind === "bot" ||
-    String(profile?.id || "").startsWith("bot_") || profile?.botLevel != null
-  );
-  if (!isBotProfile) return null;
 
   const levelCandidates: any[] = collectNumbersByKeys(profile, levelKeys, 5);
   for (const id of x01ProfileIdentityKeys(profile)) {

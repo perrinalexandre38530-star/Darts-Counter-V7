@@ -620,7 +620,10 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
         }
       }
 
-      if (avg3 > 0) out.progression.push({ avg3D: avg3, ts: (rec as any).updatedAt ?? (rec as any).createdAt ?? Date.now() });
+      // V129: garder UNE entrée chronologique par match, même si l'AVG3D est absente.
+      // Le niveau actuel doit sélectionner les 10 derniers MATCHS X01 d'abord,
+      // puis calculer l'AVG3D avec les valeurs réellement disponibles dans cette fenêtre.
+      out.progression.push({ avg3D: avg3, ts: (rec as any).updatedAt ?? (rec as any).createdAt ?? Date.now() });
     }
   }
 
@@ -631,7 +634,7 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
 // ============================================================
 // X01 LEVEL SEMANTICS (V127)
 // - "global"  = AVG3D across the complete X01 history for the player
-// - "current" = AVG3D across the 10 latest X01 matches with a valid AVG3D
+// - "current" = AVG3D computed inside the 10 latest X01 matches (and nowhere else)
 // This helper is deliberately shared by Home / StatsHub / Profiles / star rings
 // so the "last 10" window can never masquerade as the lifetime aggregate again.
 // ============================================================
@@ -667,14 +670,20 @@ export function computeX01LevelSnapshot(
         ts: Number.isFinite(parsedTs) ? Number(parsedTs) : 0,
       };
     })
-    .filter((row: any) => Number.isFinite(row.avg3D) && row.avg3D > 0)
+    .filter((row: any) => Number.isFinite(row.ts))
     .sort((a: any, b: any) => a.ts - b.ts);
 
+  // IMPORTANT V129 : on sélectionne d'abord les 10 derniers MATCHS X01.
+  // On ne sélectionne surtout pas les 10 dernières AVG3D valides, ce qui pourrait
+  // aller chercher un 11e/12e ancien match si une partie récente est incomplète.
   const currentRows = progression.slice(-safeLimit);
-  const currentMatches = currentRows.length;
-  const currentAvg3D = currentMatches > 0
-    ? currentRows.reduce((sum: number, row: any) => sum + row.avg3D, 0) / currentMatches
-    : lifetimeAvg3D;
+  const validCurrentRows = currentRows.filter(
+    (row: any) => Number.isFinite(row.avg3D) && row.avg3D > 0
+  );
+  const currentMatches = Math.min(lifetimeMatches, currentRows.length);
+  const currentAvg3D = validCurrentRows.length > 0
+    ? validCurrentRows.reduce((sum: number, row: any) => sum + row.avg3D, 0) / validCurrentRows.length
+    : 0;
 
   return {
     lifetimeAvg3D: Number.isFinite(lifetimeAvg3D) ? lifetimeAvg3D : 0,
