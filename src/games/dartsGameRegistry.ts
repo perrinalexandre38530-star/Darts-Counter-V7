@@ -436,7 +436,7 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:super_bull",
     infoTitle: "Super Bull",
     infoBody:
-      "Mode MVP jouable : volées (0..180) sur X rounds. Objectif optionnel : premier à l'atteindre gagne. La version Bull/DBull dédiée sera consolidée ensuite.",
+      "Mode centre de cible : BULL = 25, DBULL = 50, toute autre zone = 0. Trois fléchettes par volée. Le meilleur total après les rounds gagne, ou le premier à atteindre l’objectif configuré.",
   },
   {
     id: "happy_mille",
@@ -1502,8 +1502,8 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     tab: "training",
     popularityRank: 110,
     ready: true,
-    maxPlayers: 1,
-    supportsTeams: false,
+    maxPlayers: 10,
+    supportsTeams: true,
     supportsBots: false,
     statsKey: "training:super_bull",
     infoTitle: "Super Bull (Training)",

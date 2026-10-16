@@ -19,9 +19,9 @@ export default function SuperBullConfig({ profiles, onStart, onExit }: { profile
     body={<div style={{ width: "min(760px,100%)", margin: "0 auto" }}>
       <TrainingParticipantsSelector profiles={profiles} value={participants} onChange={setParticipants} />
       <div style={sectionLabel}>OBJECTIF BULL</div>
-      {[50,100,150].map((value) => <TrainingOptionCard key={value} title={`${value} points`} subtitle={value===50?"Rapide":value===100?"Standard":"Volume long"} active={target===value} onClick={() => setTarget(value)} />)}
+      {[50,100,150,200,300,500].map((value) => <TrainingOptionCard key={value} title={`${value} points`} subtitle={value===50?"Sprint centre":value===100?"Standard":value===200?"Endurance Bull":value>=300?"Expert / gros volume":undefined} active={target===value} onClick={() => setTarget(value)} />)}
       <div style={sectionLabel}>LIMITE</div>
-      {[15,30,60].map((value) => <TrainingOptionCard key={value} title={`${value} fléchettes max`} active={maxDarts===value} onClick={() => setMaxDarts(value)} />)}
+      {[9,15,30,45,60,90].map((value) => <TrainingOptionCard key={value} title={`${value} fléchettes max`} active={maxDarts===value} onClick={() => setMaxDarts(value)} />)}
       <TrainingStartButton disabled={!resolved.length} label={resolved.length > 1 ? `LANCER — ${resolved.length} JOUEURS` : undefined} onClick={() => onStart({ target, maxDarts, ...buildTrainingParticipantConfig(participants, profiles) })} />
     </div>}
   />;

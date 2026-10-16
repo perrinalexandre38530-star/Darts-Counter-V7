@@ -51,11 +51,11 @@ export const SIMPLE_ROUND_VARIANTS: Record<string, VariantSpec> = {
     title: "SUPER BULL",
     tickerSrc: tickerSuperBull,
     infoTitle: "Règles SUPER BULL",
-    infoText: "Objectif: marquer un maximum de points **BULL** (25/50) sur X rounds. Chaque volée correspond à la somme des points BULL sur 3 fléchettes (0..150). Le plus haut score gagne. Si un objectif est défini, le premier à l\'atteindre gagne.",
-    playersOptions: [2, 3, 4],
-    roundsOptions: [5, 8, 10, 12, 15],
-    objectiveOptions: [0, 100, 150, 200, 300, 500],
-    defaults: { players: 2, botsEnabled: false, botLevel: "normal", rounds: 10, objective: 200 , humansCount: 1 },
+    infoText: "SUPER BULL se joue uniquement au centre : BULL extérieur = 25 points, DBULL = 50 points, toute autre zone = MISS (0). Chaque joueur lance 3 fléchettes par volée. Le meilleur total après X rounds gagne, ou le premier qui atteint l’objectif configuré.",
+    playersOptions: [1, 2, 3, 4],
+    roundsOptions: [3, 5, 8, 10, 12, 15, 20],
+    objectiveOptions: [0, 50, 100, 150, 200, 300, 500, 750, 1000],
+    defaults: { players: 1, botsEnabled: false, botLevel: "normal", rounds: 10, objective: 200 , humansCount: 1 },
     applyVisit: ({ visit, currentScore, objective }) => {
       const v = Math.max(0, Math.min(150, clampVisit(visit)));
       const next = currentScore + v;

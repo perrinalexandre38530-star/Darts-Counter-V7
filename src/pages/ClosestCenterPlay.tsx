@@ -125,6 +125,7 @@ export default function ClosestCenterPlay(props:any) {
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
   const streamRef = React.useRef<MediaStream | null>(null);
   const autoRereadRunningRef = React.useRef(false);
+  const preflightRunningRef = React.useRef(false);
   const [camError, setCamError] = React.useState("");
   const [ready, setReady] = React.useState(false);
   const [cal] = React.useState<CameraCalibration | null>(() => loadCameraCalibration());
@@ -145,6 +146,8 @@ export default function ClosestCenterPlay(props:any) {
   const [impacts, setImpacts] = React.useState<any[]>([]);
   const [allScores, setAllScores] = React.useState<Record<string,number>>({});
   const [tieAcknowledged, setTieAcknowledged] = React.useState(false);
+  const [turnArmed, setTurnArmed] = React.useState(false);
+  const [preflightInfo, setPreflightInfo] = React.useState<any>(null);
   const [status, setStatus] = React.useState("Présente les 3 fléchettes du joueur dans le cadre de scan.");
 
   React.useEffect(() => {
@@ -229,13 +232,65 @@ export default function ClosestCenterPlay(props:any) {
     setPendingConsensus([]);
     setPrecisionRereads(0);
     setTieAcknowledged(false);
+    setTurnArmed(false);
+    setPreflightInfo(null);
     setPhase("play");
     setPlayerIndex(0);
-    setStatus(`Précision ${tier.toUpperCase()} validée · ${readiness.mmPerPixel.toFixed(2)} mm/pixel. ${players[0]?.name}: lance 3 fléchettes.`);
+    setStatus(`Précision ${tier.toUpperCase()} validée · ${readiness.mmPerPixel.toFixed(2)} mm/pixel. Avant de lancer, effectue le CONTRÔLE AVANT VOLÉE.`);
+  };
+
+  const runPreflightCheck = async () => {
+    if (!cal || !before || !current || preflightRunningRef.current) return;
+    preflightRunningRef.current = true;
+    setTurnArmed(false);
+    setStatus("🛡️ Contrôle avant volée : stabilité, perspective et netteté…");
+    try {
+      const count = Math.max(3, Math.min(5, cameraPrefs.baselineFrames));
+      const rawBurst = await captureBurst(videoRef.current, count, cameraPrefs.frameDelayMs, cameraPrefs.maxCaptureSide);
+      if (rawBurst.length < 3) { setStatus("❌ Contrôle avant volée incomplet : caméra non exploitable."); return; }
+      const geometryChecks = rawBurst.map(frame => assessProjectiveDrift(before, frame, cal));
+      const worstGeometry = geometryChecks.reduce((w:any,x:any)=>x.regionalSpreadPx>w.regionalSpreadPx?x:w, geometryChecks[0]);
+      if (cameraPrefs.strictProjectiveDrift && !geometryChecks.every((x:any)=>x.ok)) {
+        setPreflightInfo({ok:false,reason:"drift",geometrySpreadPx:worstGeometry.regionalSpreadPx,confidence:worstGeometry.confidence});
+        setStatus(`❌ Contrôle avant volée refusé : dérive projective ${worstGeometry.regionalSpreadPx.toFixed(2)} px. Replace le support avant de lancer.`);
+        return;
+      }
+      const registered = rawBurst.map(frame => registerFrameToReference(before, frame, cal));
+      const good = registered.filter(x => x.registration.confidence >= .55 && Math.hypot(x.registration.dxPx,x.registration.dyPx) <= 8);
+      if (good.length < 3) {
+        setPreflightInfo({ok:false,reason:"registration",confidence:good.length/Math.max(1,registered.length)});
+        setStatus("❌ Contrôle avant volée refusé : support/cadrage trop instable. Immobilise la caméra puis recommence.");
+        return;
+      }
+      const frames = good.map(x=>x.frame);
+      const refreshed = temporalMedianFrame(frames);
+      if (!refreshed) { setStatus("❌ Impossible de rafraîchir la référence caméra."); return; }
+      const readiness = assessPrecisionReadiness(refreshed, cal);
+      const tier = precisionTier(readiness);
+      const stabilitySamples = frames.map(frame => analyzeFrameStability(before, frame, cal));
+      const worstStability = stabilitySamples.reduce((best:any,item:any)=>item.confidence<best.confidence?item:best, stabilitySamples[0]);
+      setPrecisionReadiness(readiness);
+      setStability(worstStability);
+      const maxShift = Math.max(...good.map(x=>Math.hypot(x.registration.dxPx,x.registration.dyPx)));
+      const avgRegistration = good.reduce((sum,x)=>sum+x.registration.confidence,0)/good.length;
+      setRegistrationInfo({confidence:avgRegistration,maxShiftPx:maxShift,geometrySpreadPx:Math.max(...geometryChecks.map((x:any)=>x.regionalSpreadPx))});
+      if (!readiness.ok || !tierMeets(tier, cameraPrefs.requiredTier) || !stabilitySamples.every((x:any)=>x.stable)) {
+        setPreflightInfo({ok:false,reason:"quality",tier,confidence:readiness.confidence});
+        setStatus(`❌ Contrôle avant volée refusé : qualité ${tier.toUpperCase()} / stabilité insuffisante pour ${cameraPrefs.profile.toUpperCase()}.`);
+        return;
+      }
+      setBefore(refreshed);
+      setPreflightInfo({ok:true,tier,confidence:Math.min(readiness.confidence,avgRegistration,worstStability.confidence),checkedAt:Date.now()});
+      setTurnArmed(true);
+      setStatus(`✅ Volée armée · ${tier.toUpperCase()} · référence fraîche capturée. ${current.name}: lance maintenant tes 3 fléchettes, puis ANALYSER.`);
+    } finally {
+      preflightRunningRef.current = false;
+    }
   };
 
   const analyze = async () => {
     if (!cal || !before || !current) return;
+    if (!turnArmed) { setStatus("🛡️ Lance d’abord CONTRÔLE AVANT VOLÉE, puis seulement les 3 fléchettes."); return; }
     setStatus("IA précision : lecture multi-frame en cours…");
     const rawBurst = await captureBurst(videoRef.current, cameraPrefs.analysisFrames, cameraPrefs.frameDelayMs, cameraPrefs.maxCaptureSide);
     if (rawBurst.length < Math.max(4, cameraPrefs.analysisFrames - 1)) { setStatus("Impossible d’obtenir assez d’images stables. Relance l’analyse."); return; }
@@ -323,13 +378,26 @@ export default function ClosestCenterPlay(props:any) {
       };
     });
 
+    const acceptedThisRound = impacts.filter((x:any) => x.round === round);
+    const combinedForTie = [...acceptedThisRound, ...proposed];
+    const tieRiskIds = new Set<string>();
+    for (let a = 0; a < combinedForTie.length; a++) for (let b = a + 1; b < combinedForTie.length; b++) {
+      const left:any = combinedForTie[a], right:any = combinedForTie[b];
+      const gap = Math.abs(Number(left.distanceMm||0)-Number(right.distanceMm||0));
+      const ua = Number(left.uncertaintyMm ?? cameraPrefs.maxUncertaintyMm);
+      const ub = Number(right.uncertaintyMm ?? cameraPrefs.maxUncertaintyMm);
+      const margin = Math.max(.45, (ua + ub) * .60);
+      if (gap <= margin) { tieRiskIds.add(String(left.id)); tieRiskIds.add(String(right.id)); }
+    }
+    const proposedWithTieRisk = proposed.map((x:any)=>({...x,precisionTieRisk:tieRiskIds.has(String(x.id))}));
     setPendingAfter(after);
     setPendingConsensus(found);
     setPrecisionRereads(0);
-    setPendingImpacts(proposed);
+    setPendingImpacts(proposedWithTieRisk);
     setPhase("review");
-    const alerts = proposed.filter((x:any) => x.needsReview).length;
-    setStatus(alerts ? `${alerts} fléchette(s) demandent un contrôle avant validation.` : "Analyse multi-frame cohérente. Vérifie les 3 impacts puis valide la volée.");
+    const alerts = proposedWithTieRisk.filter((x:any) => x.needsReview).length;
+    const tieAlerts = proposedWithTieRisk.filter((x:any) => x.precisionTieRisk).length;
+    setStatus(tieAlerts ? `⚠️ ${tieAlerts} impact(s) sont dans une zone de départage serré : relecture précision renforcée requise.` : alerts ? `${alerts} fléchette(s) demandent un contrôle avant validation.` : "Analyse multi-frame cohérente. Vérifie les 3 impacts puis valide la volée.");
   };
 
   const precisionReread = async () => {
@@ -363,15 +431,26 @@ export default function ClosestCenterPlay(props:any) {
       const confidence=Math.min(1,Number(impact.confidence||0)*.62+Number(match.confidence||0)*.38);
       return {...impact,xNorm:match.xNorm,yNorm:match.yNorm,distanceNorm:match.distanceNorm,distanceMm:match.distanceMm,uncertaintyMm,confidence,rereadAgreement:match.rereadAgreement,localMmPerPixel:metric.meanMmPerPixel,metricAnisotropy:metric.anisotropy,needsReview:impact.needsReview || match.rereadAgreement<cameraPrefs.minRereadAgreement};
     });
+    const acceptedThisRound = impacts.filter((x:any)=>x.round===round);
+    const tiePool = [...acceptedThisRound, ...upgraded];
+    const tieRiskIds = new Set<string>();
+    for (let a=0;a<tiePool.length;a++) for (let b=a+1;b<tiePool.length;b++) {
+      const left:any=tiePool[a], right:any=tiePool[b];
+      const gap=Math.abs(Number(left.distanceMm||0)-Number(right.distanceMm||0));
+      const ua=Number(left.uncertaintyMm ?? cameraPrefs.maxUncertaintyMm), ub=Number(right.uncertaintyMm ?? cameraPrefs.maxUncertaintyMm);
+      if (gap <= Math.max(.35,(ua+ub)*.55)) { tieRiskIds.add(String(left.id)); tieRiskIds.add(String(right.id)); }
+    }
+    const upgradedWithTie = upgraded.map((x:any)=>({...x,precisionTieRisk:tieRiskIds.has(String(x.id))}));
     setPendingConsensus(merged);
-    setPendingImpacts(upgraded);
+    setPendingImpacts(upgradedWithTie);
     setPrecisionRereads(v=>v+1);
-    setStatus(avgAgree>=.84 ? `✅ Relecture précision convergente (${Math.round(avgAgree*100)} %). Incertitudes recalculées.` : `⚠️ Relecture partiellement convergente (${Math.round(avgAgree*100)} %). Vérification visuelle recommandée.`);
+    const tieStillTight = upgradedWithTie.some((x:any)=>x.precisionTieRisk);
+    setStatus(tieStillTight ? `⚠️ Relecture convergente à ${Math.round(avgAgree*100)} %, mais le départage reste dans la marge instrumentale. La manche demandera une confirmation visuelle finale.` : avgAgree>=.84 ? `✅ Relecture précision convergente (${Math.round(avgAgree*100)} %). Incertitudes recalculées.` : `⚠️ Relecture partiellement convergente (${Math.round(avgAgree*100)} %). Vérification visuelle recommandée.`);
   };
 
   React.useEffect(() => {
     if (phase !== "review" || !cameraPrefs.autoReread || precisionRereads > 0 || pendingImpacts.length !== 3 || autoRereadRunningRef.current) return;
-    const critical = pendingImpacts.some((x:any) => Number(x.uncertaintyMm||99) > cameraPrefs.maxUncertaintyMm || Number(x.frameAgreement||0) < cameraPrefs.minFrameAgreement || Number(x.consensusSpreadMm||99) > cameraPrefs.maxConsensusSpreadMm);
+    const critical = pendingImpacts.some((x:any) => x.precisionTieRisk || Number(x.uncertaintyMm||99) > cameraPrefs.maxUncertaintyMm || Number(x.frameAgreement||0) < cameraPrefs.minFrameAgreement || Number(x.consensusSpreadMm||99) > cameraPrefs.maxConsensusSpreadMm);
     if (!critical) return;
     const id = window.setTimeout(() => {
       if (autoRereadRunningRef.current) return;
@@ -396,7 +475,7 @@ export default function ClosestCenterPlay(props:any) {
     setPendingConsensus([]);
     setPrecisionRereads(0);
     setPhase("play");
-    setStatus(`${current?.name}: garde les 3 fléchettes en place, stabilise le téléphone puis relance l’analyse.`);
+    setStatus(`${current?.name}: garde les 3 fléchettes en place, stabilise le téléphone puis relance l’analyse. La référence pré-volée reste verrouillée.`);
   };
 
   const confirmAnalysis = () => {
@@ -406,12 +485,13 @@ export default function ClosestCenterPlay(props:any) {
       setStatus("❌ Identification stricte : au moins une fléchette n’est pas attribuée avec assez de certitude. Corrige/valide son joueur avant d’enregistrer la volée.");
       return;
     }
-    const precisionCritical = pendingImpacts.some((x:any) => Number(x.uncertaintyMm||99) > cameraPrefs.maxUncertaintyMm || Number(x.frameAgreement||0) < cameraPrefs.minFrameAgreement || Number(x.consensusSpreadMm||99) > cameraPrefs.maxConsensusSpreadMm);
-    if (precisionCritical && precisionRereads < 1) {
-      setStatus("🔬 Validation bloquée : au moins une pointe exige une seconde lecture indépendante. Lance RELECTURE PRÉCISION.");
+    const measurementCritical = pendingImpacts.some((x:any) => Number(x.uncertaintyMm||99) > cameraPrefs.maxUncertaintyMm || Number(x.frameAgreement||0) < cameraPrefs.minFrameAgreement || Number(x.consensusSpreadMm||99) > cameraPrefs.maxConsensusSpreadMm);
+    const tieCritical = pendingImpacts.some((x:any) => !!x.precisionTieRisk);
+    if ((measurementCritical || tieCritical) && precisionRereads < 1) {
+      setStatus(tieCritical ? "🔬 Départage serré : une seconde lecture indépendante est obligatoire avant validation." : "🔬 Validation bloquée : au moins une pointe exige une seconde lecture indépendante. Lance RELECTURE PRÉCISION.");
       return;
     }
-    if (precisionCritical && precisionRereads >= 1) {
+    if (measurementCritical && precisionRereads >= 1) {
       setStatus(`❌ Précision encore insuffisante après relecture pour le profil ${cameraPrefs.profile.toUpperCase()}. Stabilise/repositionne puis réanalyse : la mesure n’est pas enregistrée.`);
       return;
     }
@@ -429,8 +509,10 @@ export default function ClosestCenterPlay(props:any) {
     if (playerIndex < players.length - 1) {
       const nextPlayer = players[playerIndex + 1];
       setPlayerIndex(i => i + 1);
+      setTurnArmed(false);
+      setPreflightInfo(null);
       setPhase("play");
-      setStatus(`${nextPlayer?.name}: lance maintenant 3 fléchettes sans retirer les précédentes.`);
+      setStatus(`${nextPlayer?.name}: ne lance pas encore. Effectue le CONTRÔLE AVANT VOLÉE avec les fléchettes précédentes en place.`);
     } else {
       setPhase("roundEnd");
       setStatus("Manche analysée. Vérifie le classement avant de retirer les fléchettes.");
@@ -474,6 +556,8 @@ export default function ClosestCenterPlay(props:any) {
     setPendingConsensus([]);
     setPrecisionRereads(0);
     setTieAcknowledged(false);
+    setTurnArmed(false);
+    setPreflightInfo(null);
     setStatus("Retire toutes les fléchettes puis capture la cible vide pour la manche suivante.");
   };
 
@@ -548,6 +632,7 @@ export default function ClosestCenterPlay(props:any) {
           {stability ? <div style={{marginTop:8,fontSize:11,color:stability.stable?"#8fffc2":"#ffbd93"}}>Stabilité caméra : {Math.round(stability.confidence*100)} % · variation globale {Math.round(stability.changedFraction*100)} %</div> : null}
           {precisionReadiness ? <div style={{marginTop:6,fontSize:11,color:precisionReadiness.ok?"#8fffc2":"#ffbd93"}}>Précision image : {Math.round(precisionReadiness.confidence*100)} % · {precisionReadiness.mmPerPixel.toFixed(2)} mm/pixel · netteté {Math.round(precisionReadiness.sharpness*100)} % · niveau {precisionTier(precisionReadiness).toUpperCase()} · profil {cameraPrefs.profile.toUpperCase()}</div> : null}
           {registrationInfo ? <div style={{marginTop:6,fontSize:11,color:(registrationInfo.confidence||0)>=.65?"#8fffc2":"#ffbd93"}}>Recalage multi-frame : {Math.round((registrationInfo.confidence||0)*100)} %{registrationInfo.maxShiftPx!=null?` · translation ${registrationInfo.maxShiftPx.toFixed(1)} px`:""}{registrationInfo.geometrySpreadPx!=null?` · dérive géométrique ${registrationInfo.geometrySpreadPx.toFixed(2)} px`:""}</div> : null}
+          {phase === "play" ? <div style={{marginTop:6,fontSize:11,color:turnArmed?"#8fffc2":"#ffbd93"}}>Pré-contrôle volée : {turnArmed?`ARMÉ · ${String(preflightInfo?.tier||"").toUpperCase()} · référence verrouillée`:"REQUIS avant de lancer"}</div> : null}
           {!cal ? <div style={{marginTop:8,color:"#ffb4a9",fontSize:12}}>Calibration de cible non trouvée : le jeu refuse une mesure approximative.</div> : null}
         </section>
 
@@ -565,8 +650,8 @@ export default function ClosestCenterPlay(props:any) {
 
         {phase === "play" ? <section style={card}>
           <h3 style={h3}>MANCHE {round}/{cfg.rounds} · {current?.name}</h3>
-          <div style={{fontSize:12,color:"#b9c7d4"}}>Lance 3 fléchettes puis ne touche ni à la cible ni au téléphone. L’IA analyse 5 frames, recale les micro-mouvements, localise la pointe en sous-pixel et contrôle l’identité avant validation.</div>
-          <button style={{...btn,width:"100%",marginTop:10}} onClick={analyze}>🧠 ANALYSER LES 3 FLÉCHETTES</button>
+          <div style={{fontSize:12,color:"#b9c7d4",lineHeight:1.5}}>{turnArmed?"Référence pré-volée verrouillée. Lance maintenant exactement 3 fléchettes, ne touche ni à la cible ni au téléphone, puis analyse.":"Avant de lancer, l’IA vérifie la perspective, la stabilité et la netteté puis capture une référence fraîche. Cette étape évite qu’un micro-déplacement entre deux joueurs fausse les millimètres."}</div>
+          {!turnArmed ? <button style={{...btn,width:"100%",marginTop:10,borderColor:"#8fffc2",background:"rgba(57,217,138,.12)"}} onClick={runPreflightCheck}>🛡️ CONTRÔLE AVANT VOLÉE</button> : <button style={{...btn,width:"100%",marginTop:10}} onClick={analyze}>🧠 ANALYSER LES 3 FLÉCHETTES</button>}
         </section> : null}
 
         {phase === "review" ? <section style={card}>
@@ -575,7 +660,7 @@ export default function ClosestCenterPlay(props:any) {
           {pendingImpacts.map((impact:any, i:number) => {
             const p = players.find((x:any) => String(x.id) === String(impact.playerId));
             return <div key={impact.id} style={{padding:"9px 0",borderBottom:"1px solid rgba(255,255,255,.07)"}}>
-              <div style={{display:"grid",gridTemplateColumns:"28px 1fr auto",gap:8,alignItems:"center"}}><b>#{i+1}</b><div><b>{p?.name || "Joueur ?"}</b><div style={{fontSize:10,color:impact.needsReview?"#ffbd65":"#9fb0bf"}}>identité {Math.round(impact.identityConfidence*100)} % · mesure {Math.round(impact.confidence*100)} % · frames {Math.round((impact.frameAgreement||1)*100)} %{impact.rereadAgreement!=null?` · relecture ${Math.round(impact.rereadAgreement*100)} %`:""}</div></div><b style={{color:ACCENT}}>{impact.distanceMm.toFixed(1)} ± {impact.uncertaintyMm.toFixed(1)} mm</b></div>
+              <div style={{display:"grid",gridTemplateColumns:"28px 1fr auto",gap:8,alignItems:"center"}}><b>#{i+1}</b><div><b>{p?.name || "Joueur ?"}</b><div style={{fontSize:10,color:impact.needsReview||impact.precisionTieRisk?"#ffbd65":"#9fb0bf"}}>identité {Math.round(impact.identityConfidence*100)} % · mesure {Math.round(impact.confidence*100)} % · frames {Math.round((impact.frameAgreement||1)*100)} %{impact.rereadAgreement!=null?` · relecture ${Math.round(impact.rereadAgreement*100)} %`:""}{impact.precisionTieRisk?" · ⚠ départage serré":""}</div></div><b style={{color:ACCENT}}>{impact.distanceMm.toFixed(1)} ± {impact.uncertaintyMm.toFixed(1)} mm</b></div>
               {impact.needsReview ? <button onClick={() => cyclePendingOwner(impact.id)} style={{...miniBtn,marginTop:6}}>⚠️ CORRIGER LE JOUEUR →</button> : null}
             </div>;
           })}
@@ -587,7 +672,7 @@ export default function ClosestCenterPlay(props:any) {
           {phase === "roundEnd" && hasPrecisionTieRisk ? <div style={{padding:9,borderRadius:10,border:"1px solid #ffbd4555",background:"#ffbd4510",color:"#ffd796",fontSize:11,marginBottom:6}}>⚠️ Au moins deux impacts sont plus proches que la marge d’incertitude estimée. Un contrôle caméra rapproché est conseillé avant validation.</div> : null}
           {(phase === "finished" ? players.map((p:any) => ({playerId:p.id,points:allScores[p.id]||0,distanceMm:null})).sort((a:any,b:any)=>b.points-a.points) : ranked).map((r:any,i:number) => {
             const p = players.find((x:any) => String(x.id) === String(r.playerId));
-            return <div key={`${r.playerId}-${i}-${r.id||"final"}`} style={{display:"grid",gridTemplateColumns:"32px 1fr auto",gap:8,alignItems:"center",padding:"8px 0",borderBottom:"1px solid rgba(255,255,255,.07)"}}><b>#{i+1}</b><div><b>{p?.name}</b>{p?.teamId ? <span style={{color:ACCENT,fontSize:11}}> · Team {p.teamId}</span> : null}{r.distanceMm != null ? <div style={{fontSize:11,color:r.ambiguousWithPrevious?"#ffbd65":"#9fb0bf"}}>{r.distanceMm.toFixed(1)} ± {Number(r.uncertaintyMm||0).toFixed(1)} mm · vision {Math.round(r.confidence*100)} % · identité {Math.round(r.identityConfidence*100)} %{r.ambiguousWithPrevious?" · départage serré":""}</div> : null}</div><b style={{color:ACCENT}}>+{r.points||0}</b></div>;
+            return <div key={`${r.playerId}-${i}-${r.id||"final"}`} style={{display:"grid",gridTemplateColumns:"32px 1fr auto",gap:8,alignItems:"center",padding:"8px 0",borderBottom:"1px solid rgba(255,255,255,.07)"}}><b>#{i+1}</b><div><b>{p?.name}</b>{p?.teamId ? <span style={{color:ACCENT,fontSize:11}}> · Team {p.teamId}</span> : null}{r.distanceMm != null ? <div style={{fontSize:11,color:r.ambiguousWithPrevious?"#ffbd65":"#9fb0bf"}}>{r.distanceMm.toFixed(1)} ± {Number(r.uncertaintyMm||0).toFixed(1)} mm · vision {Math.round(r.confidence*100)} % · identité {Math.round(r.identityConfidence*100)} %{r.ambiguousWithPrevious?` · départage ${Number(r.gapToPreviousMm||0).toFixed(2)} mm ≤ marge ${Number(r.ambiguityMarginMm||0).toFixed(2)} mm`:""}</div> : null}</div><b style={{color:ACCENT}}>+{r.points||0}</b></div>;
           })}
           {phase === "roundEnd" ? <button style={{...btn,width:"100%",marginTop:10,borderColor:hasPrecisionTieRisk&&!tieAcknowledged?"#ffbd45":ACCENT,background:hasPrecisionTieRisk&&tieAcknowledged?"#ffbd4522":`${ACCENT}18`}} onClick={commitRound}>{hasPrecisionTieRisk&&!tieAcknowledged?"⚠️ CONTRÔLER LE DÉPARTAGE":hasPrecisionTieRisk&&tieAcknowledged?"✓ CONFIRMER ET ENREGISTRER":"VALIDER LA MANCHE →"}</button> : <button style={{...btn,width:"100%",marginTop:10}} onClick={() => go?.("closest_center_config")}>NOUVELLE PARTIE</button>}
         </section> : null}

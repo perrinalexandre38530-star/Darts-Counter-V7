@@ -563,13 +563,17 @@ export function rankImpacts(impacts: ClosestCenterImpact[], pointsMode: "descend
     const uncertaintyMm = impact.uncertaintyMm ?? estimateDistanceUncertaintyMm(impact.confidence);
     const prevUncertainty = previous ? (previous.uncertaintyMm ?? estimateDistanceUncertaintyMm(previous.confidence)) : 0;
     const gapToPreviousMm = previous ? impact.distanceMm - previous.distanceMm : null;
-    const ambiguousWithPrevious = !!previous && Number(gapToPreviousMm) <= Math.max(1, (uncertaintyMm + prevUncertainty) * .55);
+    const ambiguityMarginMm = previous ? Math.max(.35, (uncertaintyMm + prevUncertainty) * .55) : 0;
+    const ambiguousWithPrevious = !!previous && Number(gapToPreviousMm) <= ambiguityMarginMm;
+    const separationConfidence = previous ? clamp01((Number(gapToPreviousMm) - ambiguityMarginMm * .35) / Math.max(.35, ambiguityMarginMm * 1.65)) : 1;
     return {
       ...impact,
       rank: index + 1,
       points: pointsMode === "winner" ? (index === 0 ? 1 : 0) : Math.max(0, 5 - index),
       uncertaintyMm,
       gapToPreviousMm,
+      ambiguityMarginMm,
+      separationConfidence,
       ambiguousWithPrevious,
     };
   });

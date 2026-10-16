@@ -69,6 +69,8 @@ export default function SimpleRoundsPlay(props: any) {
   const [pointsByP, setPointsByP] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
   const [bestVisitByP, setBestVisitByP] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
   const [visitsByP, setVisitsByP] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
+  const [bullsByP, setBullsByP] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
+  const [dbullsByP, setDbullsByP] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
 
   // Auto-play bots
   // Guard (avoid double auto-play)
@@ -144,8 +146,17 @@ function goBack() {
 
   function applyVisitFor(pIdx: number, rawDarts: UIDart[]) {
     if (!spec) return;
-    const exactDarts = (Array.isArray(rawDarts) ? rawDarts : []).slice(0, 3);
-    const v = clamp(scoreDarts(exactDarts));
+    const enteredDarts = (Array.isArray(rawDarts) ? rawDarts : []).slice(0, 3);
+    // SUPER BULL est un vrai drill centre : seules les zones BULL/DBULL marquent.
+    // Toute autre zone saisie (y compris via la cible graphique) devient un MISS à 0.
+    const exactDarts = variantId === "super_bull"
+      ? enteredDarts.map((d: UIDart) => (Number(d?.v) === 25 && (Number(d?.mult) === 1 || Number(d?.mult) === 2))
+          ? { v: 25, mult: Number(d.mult) === 2 ? 2 : 1 } as UIDart
+          : { v: 0, mult: 1 } as UIDart)
+      : enteredDarts;
+    const v = variantId === "super_bull"
+      ? exactDarts.reduce((sum: number, d: UIDart) => sum + (Number(d.v) === 25 ? (Number(d.mult) === 2 ? 50 : 25) : 0), 0)
+      : clamp(scoreDarts(exactDarts));
     const pid = String(playerRows[pIdx]?.id ?? `p${pIdx + 1}`);
     const visitIndex = visitHistoryRef.current.filter((row: any) => String(row?.playerId) === pid).length;
     visitHistoryRef.current.push(canonicalVisitFromUiDarts({
@@ -187,6 +198,12 @@ function goBack() {
       nx[pIdx] = Math.max(nx[pIdx] ?? 0, v);
       return nx;
     });
+    if (variantId === "super_bull") {
+      const bulls = exactDarts.filter((d: UIDart) => Number(d.v) === 25 && Number(d.mult) === 1).length;
+      const dbulls = exactDarts.filter((d: UIDart) => Number(d.v) === 25 && Number(d.mult) === 2).length;
+      setBullsByP((arr) => { const nx = [...arr]; nx[pIdx] = (nx[pIdx] ?? 0) + bulls; return nx; });
+      setDbullsByP((arr) => { const nx = [...arr]; nx[pIdx] = (nx[pIdx] ?? 0) + dbulls; return nx; });
+    }
 
     const forceWin = !!res.forceWin;
     advanceTurn(nextScores, forceWin ? pIdx : null);
@@ -214,6 +231,8 @@ function goBack() {
     setDartsByP(Array.from({ length: playerCount }, () => 0));
     setPointsByP(Array.from({ length: playerCount }, () => 0));
     setBestVisitByP(Array.from({ length: playerCount }, () => 0));
+    setBullsByP(Array.from({ length: playerCount }, () => 0));
+    setDbullsByP(Array.from({ length: playerCount }, () => 0));
   }
 
   function botPickVisit(): number {
@@ -453,6 +472,11 @@ function goBack() {
                   {botMask[i] ? " • BOT" : ""}
                 </div>
                 <div style={{ marginTop: 6, fontSize: 22, fontWeight: 1000 }}>{s}</div>
+                {variantId === "super_bull" && (
+                  <div style={{ marginTop: 5, fontSize: 10, opacity: 0.72, fontWeight: 850 }}>
+                    BULL {bullsByP[i] || 0} • DBULL {dbullsByP[i] || 0} • {dartsByP[i] || 0} darts
+                  </div>
+                )}
               </div>
             );
           })}
@@ -466,19 +490,42 @@ function goBack() {
             </div>
 
             <div style={{ marginTop: 10 }}>
-              <ScoreInputHub
-                currentThrow={currentThrow}
-                multiplier={multiplier}
-                onSimple={() => setMultiplier(1)}
-                onDouble={() => setMultiplier(2)}
-                onTriple={() => setMultiplier(3)}
-                onCancel={() => { setCurrentThrow([]); setMultiplier(1); }}
-                onBackspace={() => setCurrentThrow((prev) => prev.slice(0, -1))}
-                onNumber={(n: number) => setCurrentThrow((prev) => prev.length >= 3 ? prev : [...prev, { v: n, mult: multiplier }])}
-                onBull={() => setCurrentThrow((prev) => prev.length >= 3 ? prev : [...prev, { v: 25, mult: multiplier === 3 ? 1 : multiplier } as UIDart])}
-                onValidate={validate}
-                onDirectDart={(d: UIDart) => setCurrentThrow((prev) => prev.length >= 3 ? prev : [...prev, d])}
-              />
+              {variantId === "super_bull" ? (
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+                    {Array.from({ length: 3 }, (_, i) => {
+                      const d = currentThrow[i];
+                      const label = !d ? `D${i + 1}` : Number(d.v) !== 25 ? "MISS" : Number(d.mult) === 2 ? "DBULL 50" : "BULL 25";
+                      return <div key={i} style={{ padding: "12px 6px", borderRadius: 14, textAlign: "center", fontWeight: 950, fontSize: 12, border: "1px solid rgba(255,255,255,.12)", background: d ? "rgba(39,220,255,.10)" : "rgba(255,255,255,.04)" }}>{label}</div>;
+                    })}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+                    <button className="btn-secondary" onClick={() => setCurrentThrow((p) => p.length >= 3 ? p : [...p, { v: 0, mult: 1 }])}>MISS</button>
+                    <button className="btn-secondary" onClick={() => setCurrentThrow((p) => p.length >= 3 ? p : [...p, { v: 25, mult: 1 }])}>BULL · 25</button>
+                    <button className="btn-primary" onClick={() => setCurrentThrow((p) => p.length >= 3 ? p : [...p, { v: 25, mult: 2 }])}>DBULL · 50</button>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1.4fr", gap: 8 }}>
+                    <button className="btn-secondary" onClick={() => setCurrentThrow([])}>ANNULER</button>
+                    <button className="btn-secondary" onClick={() => setCurrentThrow((p) => p.slice(0, -1))}>EFFACER</button>
+                    <button className="btn-primary" disabled={currentThrow.length !== 3} onClick={validate}>VALIDER · {currentThrow.reduce((sum, d) => sum + (Number(d.v) === 25 ? (Number(d.mult) === 2 ? 50 : 25) : 0), 0)} PTS</button>
+                  </div>
+                  <div style={{ textAlign: "center", fontSize: 10.5, opacity: .68 }}>3 fléchettes obligatoires par volée • seules BULL et DBULL marquent</div>
+                </div>
+              ) : (
+                <ScoreInputHub
+                  currentThrow={currentThrow}
+                  multiplier={multiplier}
+                  onSimple={() => setMultiplier(1)}
+                  onDouble={() => setMultiplier(2)}
+                  onTriple={() => setMultiplier(3)}
+                  onCancel={() => { setCurrentThrow([]); setMultiplier(1); }}
+                  onBackspace={() => setCurrentThrow((prev) => prev.slice(0, -1))}
+                  onNumber={(n: number) => setCurrentThrow((prev) => prev.length >= 3 ? prev : [...prev, { v: n, mult: multiplier }])}
+                  onBull={() => setCurrentThrow((prev) => prev.length >= 3 ? prev : [...prev, { v: 25, mult: multiplier === 3 ? 1 : multiplier } as UIDart])}
+                  onValidate={validate}
+                  onDirectDart={(d: UIDart) => setCurrentThrow((prev) => prev.length >= 3 ? prev : [...prev, d])}
+                />
+              )}
             </div>
           </div>
         )}
