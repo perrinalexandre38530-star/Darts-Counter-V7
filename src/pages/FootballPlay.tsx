@@ -1,6 +1,6 @@
 // @ts-nocheck
 // =============================================================
-// DARTS FOOTBALL V12 — apprentissage en jouant, transitions et feedback contextuel
+// DARTS FOOTBALL V13 — plan tactique conseillé + aperçu avant validation
 // =============================================================
 
 import React from "react";
@@ -158,6 +158,75 @@ function uiDartIsUseful(dart: UiDart, action: FootballAction, targets: number[])
   return targets.includes(Number(dart.v));
 }
 
+type FootballRecommendation = {
+  intent: "safe" | "balanced" | "bold";
+  label: string;
+  targetLabel: string;
+  target: number | null;
+  multiplier: 1 | 2 | 3 | null;
+  outcome: string;
+  reason: string;
+  color: string;
+};
+
+function footballTacticalRecommendation(state: FootballState, action: FootballAction, targets: number[]): FootballRecommendation {
+  const activeSide = getFootballActiveSide(state);
+  const sideIndex = Math.max(0, state.sides.findIndex((side: any) => String(side.id) === String(activeSide?.id)));
+  const otherIndex = sideIndex === 0 ? 1 : 0;
+  const ownScore = Number(state.scoreBySide[state.sides[sideIndex]?.id] || 0);
+  const otherScore = Number(state.scoreBySide[state.sides[otherIndex]?.id] || 0);
+  const lateRound = Number(state.roundInPeriod || 0) >= Math.max(1, Math.ceil(Number(state.config.halfRounds || 1) * .66));
+  const lateMatch = state.stage === "penalties" || state.stage === "extra_time" || (Number(state.period || 1) >= 2 && lateRound);
+  let intent: FootballRecommendation["intent"] = "balanced";
+  if (lateMatch && ownScore < otherScore) intent = "bold";
+  else if (lateMatch && ownScore > otherScore) intent = "safe";
+
+  const primaryTarget = targets[0] || null;
+  const intentLabel = intent === "safe" ? "SÉCURISE" : intent === "bold" ? "TENTE LE COUP" : "JOUE ÉQUILIBRÉ";
+  const color = intent === "safe" ? GREEN : intent === "bold" ? GOLD : BLUE;
+  const reason = lateMatch
+    ? ownScore < otherScore ? "Tu es derrière : cherche l’action qui peut renverser le match." : ownScore > otherScore ? "Tu mènes : privilégie l’action la plus fiable." : "Le match est serré : garde un bon équilibre risque / récompense."
+    : "Le match est encore ouvert : privilégie une action rentable sans tout risquer.";
+
+  if (action === "classic_possession") return { intent: "safe", label: "PRENDS LE BALLON", targetLabel: "BULL", target: 25, multiplier: 1, outcome: "POSSESSION", reason: "Le centre suffit pour récupérer le ballon.", color: BLUE };
+  if (action === "classic_shot") return { intent, label: intentLabel, targetLabel: "DOUBLE", target: null, multiplier: 2, outcome: "BUT", reason: "Choisis le double que tu maîtrises le mieux.", color: GOLD };
+  if (action === "goalkeeper") return { intent: "safe", label: "FERME L’ANGLE", targetLabel: primaryTarget ? `S${primaryTarget}` : "ZONE", target: primaryTarget, multiplier: 1, outcome: "ARRÊT", reason: "Une seule zone de parade touchée suffit pour stopper le tir.", color: GOLD };
+  if (action === "penalty") return { intent: "safe", label: "PLACE TON TIR", targetLabel: primaryTarget ? `S${primaryTarget}` : "CIBLE", target: primaryTarget, multiplier: 1, outcome: "BUT", reason: "Une cible valide suffit : inutile de forcer le multiplicateur.", color: GOLD };
+
+  const multiplier = (intent === "safe" ? 1 : intent === "bold" ? 3 : 2) as 1 | 2 | 3;
+  const prefix = multiplier === 3 ? "T" : multiplier === 2 ? "D" : "S";
+  const targetLabel = primaryTarget ? `${prefix}${primaryTarget}` : prefix;
+  if (action === "defense") return { intent, label: intentLabel, targetLabel, target: primaryTarget, multiplier, outcome: multiplier === 1 ? "REPOUSSE" : multiplier === 2 ? "INTERCEPTION" : "INTERCEPTION + CONTRE", reason, color };
+  if (action === "shot") return { intent, label: intentLabel, targetLabel, target: primaryTarget, multiplier, outcome: multiplier === 3 ? "BUT DIRECT" : multiplier === 2 ? "TIR PUISSANT" : "TIR CADRÉ", reason, color };
+  return { intent, label: intentLabel, targetLabel, target: primaryTarget, multiplier, outcome: multiplier === 1 ? "+1 ZONE" : multiplier === 2 ? "+2 ZONES" : "+3 ZONES", reason, color };
+}
+
+function footballInputProjection(state: FootballState, darts: UiDart[]) {
+  if (!darts.length || state.phase === "finished") return null;
+  try {
+    const preview = playFootballVisit(state, darts.map(uiToGameDart));
+    const visit = preview.visits[preview.visits.length - 1];
+    if (!visit) return null;
+    const result = visitOutcomeMeta(visit);
+    const beforeSide = state.sides[state.possessionSideIndex];
+    const afterSide = preview.sides[preview.possessionSideIndex];
+    return {
+      preview,
+      visit,
+      result,
+      beforeSide,
+      afterSide,
+      possessionChanged: String(beforeSide?.id || "") !== String(afterSide?.id || ""),
+      ballBefore: state.ballPosition,
+      ballAfter: preview.ballPosition,
+      scoreBefore: state.sides.map((side: any) => Number(state.scoreBySide[side.id] || 0)),
+      scoreAfter: preview.sides.map((side: any) => Number(preview.scoreBySide[side.id] || 0)),
+    };
+  } catch {
+    return null;
+  }
+}
+
 function visitOutcomeMeta(visit: any) {
   if (!visit) return { icon: "⚽", title: "COUP D’ENVOI", color: GREEN, detail: "Construis la première action." };
   const types = new Set((visit.events || []).map((event: any) => String(event.type)));
@@ -206,6 +275,7 @@ const GUIDE_STEPS = [
   { icon: "🏟️", title: "LIS LE TERRAIN", text: "Le ballon, le sens de l’attaque et le but à viser sont toujours visibles. La zone éclairée est la position actuelle." },
   { icon: "🧭", title: "SUIS LE PLAN DE JEU", text: "Le bandeau PLAN DE JEU te montre l’étape actuelle : possession, progression, surface, tir ou défense." },
   { icon: "🎯", title: "VISE CE QUI EST INDIQUÉ", text: "TON ACTION affiche uniquement les secteurs utiles maintenant, avec l’effet du simple, du double et du triple." },
+  { icon: "👁", title: "REGARDE L’APERÇU", text: "Dès que tu saisis une fléchette, APERÇU SI TU VALIDES MAINTENANT te montre le résultat probable : progression, possession ou score." },
   { icon: "✅", title: "VALIDE TA VOLÉE", text: "Les fléchettes utiles passent au vert avant validation. Après la volée, le résultat et la prochaine mission sont affichés côte à côte." },
 ];
 
@@ -289,7 +359,7 @@ function FootballField({ state }: { state: FootballState }) {
   </div>;
 }
 
-function MissionCard({ state }: { state: FootballState }) {
+function MissionCard({ state, recommendation }: { state: FootballState; recommendation: FootballRecommendation }) {
   const action = getFootballAction(state);
   const meta = actionMeta(action);
   const color = actionColor(action);
@@ -312,6 +382,16 @@ function MissionCard({ state }: { state: FootballState }) {
       {visibleTargets.map((target: any, index: number) => <span key={String(target)} className={`football-target-chip ${index === 0 ? "is-primary" : ""}`} style={{ color }}>{target}</span>)}
     </div>
 
+    {state.config.coachHints !== false ? <div className="football-recommended-play" style={{ ["--football-plan-color" as any]: recommendation.color }}>
+      <div className="football-recommended-play__head"><span>🧠 PLAN CONSEILLÉ</span><strong>{recommendation.label}</strong></div>
+      <div className="football-recommended-play__main">
+        <b>{recommendation.targetLabel}</b>
+        <span>→</span>
+        <strong>{recommendation.outcome}</strong>
+      </div>
+      <p>{recommendation.reason}</p>
+    </div> : null}
+
     {state.config.coachHints !== false ? <>
       <div className="football-mission-section-label">SI TU TOUCHES</div>
       <div className="football-effects">{meta.effects.map((effect) => {
@@ -322,6 +402,23 @@ function MissionCard({ state }: { state: FootballState }) {
       <div className="football-miss-hint"><span>✕ SI TU RATES</span><strong>{actionMissHint(state, action)}</strong></div>
     </> : null}
   </section>;
+}
+
+function FootballProjectionStrip({ projection }: { projection: any }) {
+  if (!projection) return null;
+  const { result, preview, afterSide, possessionChanged, ballBefore, ballAfter, scoreBefore, scoreAfter } = projection;
+  const scoreChanged = scoreBefore[0] !== scoreAfter[0] || scoreBefore[1] !== scoreAfter[1];
+  const ballChanged = ballBefore !== ballAfter;
+  return <div className="football-projection" style={{ ["--football-projection-color" as any]: result.color }}>
+    <div className="football-projection__head"><span>👁 APERÇU SI TU VALIDES MAINTENANT</span><strong style={{ color: result.color }}>{result.icon} {result.title}</strong></div>
+    <div className="football-projection__facts">
+      {scoreChanged ? <span><small>SCORE</small><b>{scoreAfter[0]} - {scoreAfter[1]}</b></span> : null}
+      {ballChanged ? <span><small>BALLON</small><b>{footballZoneLabel(ballBefore)} → {footballZoneLabel(ballAfter)}</b></span> : null}
+      {possessionChanged ? <span><small>POSSESSION</small><b>{afterSide?.name || "Adversaire"}</b></span> : null}
+      {!scoreChanged && !ballChanged && !possessionChanged ? <span><small>RÉSULTAT</small><b>{result.detail || "Action enregistrée"}</b></span> : null}
+      {preview.phase === "finished" ? <span className="is-final"><small>ISSUE</small><b>FIN DU MATCH</b></span> : null}
+    </div>
+  </div>;
 }
 
 function QuickAction({ icon, label, value, color, onClick }: any) {
@@ -339,7 +436,7 @@ function dartPreviewLabel(dart?: UiDart) {
   return `${dart.mult === 3 ? "T" : dart.mult === 2 ? "D" : "S"}${dart.v}`;
 }
 
-function CompactFootballPad({ currentThrow, multiplier, targets, targetColor, action, notice, onSimple, onDouble, onTriple, onNumber, onBull, onCancel, onBackspace, onValidate, disabled }: any) {
+function CompactFootballPad({ currentThrow, multiplier, targets, targetColor, action, notice, recommendation, projection, onSimple, onDouble, onTriple, onNumber, onBull, onCancel, onBackspace, onValidate, disabled }: any) {
   const rows = [[0, 1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12, 13], [14, 15, 16, 17, 18, 19, 20]];
   const targetSet = new Set(action === "classic_shot" || action === "classic_possession" ? [] : targets);
   const selectedEffect = actionMeta(action).effects[Math.max(0, Math.min(2, Number(multiplier || 1) - 1))] || "";
@@ -360,26 +457,28 @@ function CompactFootballPad({ currentThrow, multiplier, targets, targetColor, ac
       <span>{currentThrow.length ? `${3 - currentThrow.length} fléchette${3 - currentThrow.length > 1 ? "s" : ""} restante${3 - currentThrow.length > 1 ? "s" : ""}` : "Les secteurs marqués CIBLE sont ceux qui font avancer l’action."}</span>
     </div>
 
-    <div className="football-pad-choice"><span>CHOIX ACTUEL</span><strong style={{ color: targetColor }}>{selectedEffect}</strong></div>
+    <FootballProjectionStrip projection={projection} />
+
+    <div className="football-pad-choice"><span>CHOIX ACTUEL</span><strong style={{ color: targetColor }}>{selectedEffect}</strong>{recommendation ? <em>PLAN · {recommendation.targetLabel}</em> : null}</div>
 
     <div className="football-pad-modes">
-      <button type="button" className={`football-pad-mode ${multiplier === 1 ? "is-active is-simple" : ""}`} onClick={onSimple} disabled={disabled}><span>SIMPLE</span><small>SÛR</small></button>
-      <button type="button" className={`football-pad-mode ${multiplier === 2 ? "is-active is-double" : ""}`} onClick={onDouble} disabled={disabled}><span>DOUBLE</span><small>FORT</small></button>
-      <button type="button" className={`football-pad-mode ${multiplier === 3 ? "is-active is-triple" : ""}`} onClick={onTriple} disabled={disabled}><span>TRIPLE</span><small>MAX</small></button>
+      <button type="button" className={`football-pad-mode ${multiplier === 1 ? "is-active is-simple" : ""} ${recommendation?.multiplier === 1 ? "is-recommended" : ""}`} onClick={onSimple} disabled={disabled}><span>SIMPLE</span><small>SÛR</small></button>
+      <button type="button" className={`football-pad-mode ${multiplier === 2 ? "is-active is-double" : ""} ${recommendation?.multiplier === 2 ? "is-recommended" : ""}`} onClick={onDouble} disabled={disabled}><span>DOUBLE</span><small>FORT</small></button>
+      <button type="button" className={`football-pad-mode ${multiplier === 3 ? "is-active is-triple" : ""} ${recommendation?.multiplier === 3 ? "is-recommended" : ""}`} onClick={onTriple} disabled={disabled}><span>TRIPLE</span><small>MAX</small></button>
       <button type="button" className="football-pad-undo" onClick={onCancel} disabled={disabled}>↶</button>
     </div>
 
     {rows.map((row, rowIndex) => <div key={rowIndex} className="football-pad-row">{row.map((number) => <button
       key={number}
       type="button"
-      className={`football-pad-cell ${number === 0 ? "is-miss" : ""} ${targetSet.has(number) ? "is-target" : ""}`}
+      className={`football-pad-cell ${number === 0 ? "is-miss" : ""} ${targetSet.has(number) ? "is-target" : ""} ${recommendation?.target === number ? "is-recommended" : ""}`}
       style={targetSet.has(number) ? { ["--football-target-color" as any]: targetColor } : undefined}
       onClick={() => onNumber(number)}
       disabled={disabled}
-    >{number === 0 ? "MISS" : <><span>{number}</span>{targetSet.has(number) ? <small>CIBLE</small> : null}</>}</button>)}</div>)}
+    >{number === 0 ? "MISS" : <><span>{number}</span>{recommendation?.target === number ? <small>PLAN</small> : targetSet.has(number) ? <small>CIBLE</small> : null}</>}</button>)}</div>)}
 
     <div className="football-pad-footer">
-      <button type="button" className={`football-pad-bull ${multiplier === 2 ? "is-dbull" : ""}`} onClick={onBull} disabled={disabled}>{multiplier === 2 ? "DBULL" : "BULL"}</button>
+      <button type="button" className={`football-pad-bull ${multiplier === 2 ? "is-dbull" : ""} ${recommendation?.target === 25 ? "is-recommended" : ""}`} onClick={onBull} disabled={disabled}>{multiplier === 2 ? "DBULL" : "BULL"}</button>
       <button type="button" className="football-pad-backspace" onClick={onBackspace} disabled={disabled || !currentThrow.length}>⌫</button>
       <button type="button" className="football-pad-validate" onClick={onValidate} disabled={disabled || !currentThrow.length}>VALIDER · {currentThrow.length}/3</button>
     </div>
@@ -504,6 +603,8 @@ export default function FootballPlay(props: any) {
   const actionNow = getFootballAction(state);
   const targetsNow = getFootballTargets(state, actionNow);
   const currentActionColor = actionColor(actionNow);
+  const tacticalRecommendation = React.useMemo(() => footballTacticalRecommendation(state, actionNow, targetsNow), [state, actionNow, targetsNow.join("|")]);
+  const inputProjection = React.useMemo(() => footballInputProjection(state, throwDarts), [state, throwDarts]);
   const score0 = Number(state.scoreBySide[state.sides[0]?.id] || 0);
   const score1 = Number(state.scoreBySide[state.sides[1]?.id] || 0);
   const lastVisit = state.visits[state.visits.length - 1];
@@ -767,13 +868,14 @@ export default function FootballPlay(props: any) {
             <div className="football-player-card__stats">{activeStats.goals || 0} but · {activeStats.shotsOnTarget || 0} cadré · {activeStats.interceptions || 0} interception · <strong style={{ color: GOLD }}>NOTE {activeRating.toFixed(1)}</strong></div>
           </div>
         </section>
-        <MissionCard state={state} />
+        <MissionCard state={state} recommendation={tacticalRecommendation} />
       </div>
 
       <section className="football-input-zone">
         {config.scoreInputMethod === "dartboard" ? <div className="football-dartboard-shell football-glass">
           <div style={{ width: "100%", color: String(notice || "").includes("BUT") ? GOLD : SOFT, fontSize: 7, fontWeight: 900, textAlign: "center", lineHeight: 1.3 }}>{notice}</div>
           <DartboardClickable onHit={(segment, mult) => addDart(segment, mult)} multiplier={multiplier} size={Math.min(260, typeof window !== "undefined" ? window.innerWidth - 30 : 250)} disabled={inputDisabled} />
+          <FootballProjectionStrip projection={inputProjection} />
           <div className="football-dartboard-actions">
             <button type="button" onClick={cancelOrUndo} className="football-dartboard-action" style={{ border: `1px solid ${RED}66`, background: `${RED}12`, color: RED }}>↶ ANNULER</button>
             <div style={{ display: "grid", placeItems: "center", color: activeSide?.color || GREEN, fontSize: 13, fontWeight: 1200 }}>{throwDarts.length}/3</div>
@@ -786,6 +888,8 @@ export default function FootballPlay(props: any) {
           targetColor={currentActionColor}
           action={actionNow}
           notice={notice || lastEvent}
+          recommendation={tacticalRecommendation}
+          projection={inputProjection}
           onSimple={() => setMultiplier(1)}
           onDouble={() => setMultiplier(2)}
           onTriple={() => setMultiplier(3)}

@@ -21,7 +21,7 @@ export default function SuperBullPlay({ config, onExit }: { config: any; onExit:
   const [, rerender] = React.useReducer((value) => value + 1, 0);
   const [result, setResult] = React.useState<any>(null);
   const [dbullFlash, setDbullFlash] = React.useState(false);
-  const [recentVisits, setRecentVisits] = React.useState<Array<{ points:number; hits:number; dbulls:number }>>([]);
+  const [recentVisits, setRecentVisits] = React.useState<Array<{ points:number; hits:number; dbulls:number; darts:number }>>([]);
 
   const finish = React.useCallback((success: boolean) => {
     if (endedRef.current) return;
@@ -32,11 +32,13 @@ export default function SuperBullPlay({ config, onExit }: { config: any; onExit:
     const dbullPct = data.darts > 0 ? (data.dbulls / data.darts) * 100 : 0;
     const completionPct = Math.min(100, (data.points / target) * 100);
     const centreValue = data.hits > 0 ? data.points / data.hits : 0;
+    const pointsPerDart = data.darts > 0 ? data.points / data.darts : 0;
+    const dartsToTarget = success ? data.darts : null;
     const stats = makeTrainingStats({ darts: data.darts, hits: data.hits, points: data.points, startedAt: startedAtRef.current, endedAt });
     const metrics = {
       target, maxDarts, bulls: data.bulls, dbulls: data.dbulls, bestStreak: data.bestStreak,
       bestVisit: data.bestVisit, perfectVisits: data.perfectVisits, accuracyPct, dbullPct,
-      centreValue, completionPct, score: completionPct,
+      centreValue, completionPct, pointsPerDart, dartsToTarget, score: completionPct,
     };
     recordSoloTrainingResult({
       modeId: "training_super_bull", config, participantIds: config?.selectedPlayerIds,
@@ -52,13 +54,14 @@ export default function SuperBullPlay({ config, onExit }: { config: any; onExit:
     const data = dataRef.current;
     const remaining = Math.max(0, maxDarts - data.darts);
     const accepted = darts.slice(0, remaining);
-    appendTrainingVisit(visitHistoryRef.current, accepted, { roundIndex: visitHistoryRef.current.length, result: "BULL" });
+    const consumed: TrainingDart[] = [];
 
     let visitPoints = 0;
     let visitHits = 0;
     let visitDbulls = 0;
     for (const dart of accepted) {
-      if (endedRef.current || data.darts >= maxDarts) break;
+      if (endedRef.current || data.darts >= maxDarts || data.points >= target) break;
+      consumed.push(dart);
       data.darts += 1;
       const value = bullValue(dart);
       visitPoints += value;
@@ -73,12 +76,14 @@ export default function SuperBullPlay({ config, onExit }: { config: any; onExit:
       } else data.streak = 0;
     }
 
+    if (!consumed.length) return;
+    appendTrainingVisit(visitHistoryRef.current, consumed, { roundIndex: visitHistoryRef.current.length, result: "BULL" });
     data.visits += 1;
     data.lastVisit = visitPoints;
     data.lastVisitHits = visitHits;
     data.bestVisit = Math.max(data.bestVisit, visitPoints);
-    if (accepted.length === 3 && visitHits === 3) data.perfectVisits += 1;
-    setRecentVisits((prev) => [{ points: visitPoints, hits: visitHits, dbulls: visitDbulls }, ...prev].slice(0, 5));
+    if (consumed.length === 3 && visitHits === 3) data.perfectVisits += 1;
+    setRecentVisits((prev) => [{ points: visitPoints, hits: visitHits, dbulls: visitDbulls, darts: consumed.length }, ...prev].slice(0, 5));
     if (visitDbulls > 0) {
       setDbullFlash(true);
       window.setTimeout(() => setDbullFlash(false), 720);
@@ -86,7 +91,7 @@ export default function SuperBullPlay({ config, onExit }: { config: any; onExit:
     rerender();
     if (data.points >= target) finish(true);
     else if (data.darts >= maxDarts) finish(false);
-  }, [finish, maxDarts]);
+  }, [finish, maxDarts, target]);
 
   const data = dataRef.current;
   const accuracy = data.darts > 0 ? (data.hits / data.darts) * 100 : 0;
@@ -126,7 +131,7 @@ export default function SuperBullPlay({ config, onExit }: { config: any; onExit:
         </div>
 
         {recentVisits.length > 0 && <div style={{ display: "flex", gap: 6, marginBottom: 9, overflowX: "auto" }}>
-          {recentVisits.map((visit, i) => <div key={i} style={{ minWidth: 76, padding: "7px 8px", borderRadius: 11, background: "rgba(0,0,0,.20)", border: "1px solid rgba(255,255,255,.06)", textAlign: "center" }}><div style={{ fontSize: 13, fontWeight: 1000 }}>{visit.points} pts</div><div style={{ fontSize: 8.5, opacity: .6 }}>{visit.hits}/3 centre{visit.dbulls ? ` · ${visit.dbulls} DB` : ""}</div></div>)}
+          {recentVisits.map((visit, i) => <div key={i} style={{ minWidth: 76, padding: "7px 8px", borderRadius: 11, background: "rgba(0,0,0,.20)", border: "1px solid rgba(255,255,255,.06)", textAlign: "center" }}><div style={{ fontSize: 13, fontWeight: 1000 }}>{visit.points} pts</div><div style={{ fontSize: 8.5, opacity: .6 }}>{visit.hits}/{visit.darts} centre{visit.dbulls ? ` · ${visit.dbulls} DB` : ""}</div></div>)}
         </div>}
 
         <TrainingDartPad
@@ -148,6 +153,8 @@ export default function SuperBullPlay({ config, onExit }: { config: any; onExit:
           { label: "MEILLEURE SÉRIE", value: result.metrics.bestStreak },
           { label: "MEILLEURE VOLÉE", value: `${result.metrics.bestVisit} pts` },
           { label: "VOLÉES 100% CENTRE", value: result.metrics.perfectVisits },
+          { label: "POINTS / FLÉCHETTE", value: result.metrics.pointsPerDart.toFixed(1) },
+          { label: "FLÉCHETTES UTILISÉES", value: result.stats.darts },
         ] : []}
         onClose={onExit}
       />

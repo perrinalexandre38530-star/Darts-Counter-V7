@@ -296,6 +296,22 @@ export function PremiumEndPanel({ title, accent, winnerId, rankingRows, duration
 }
 
 
+
+export function TurnOutcomeCard({ outcome, accent = "#ffc04c", nextPlayer = "", compact = false }: any) {
+  if (!outcome) return null;
+  const tone = outcome.tone || "normal";
+  return <section className={`party-mode-outcome is-${tone}${compact ? " is-compact" : ""}`} style={{ ["--outcome-accent" as any]: accent }} data-outcome-id={outcome.id || undefined}>
+    <div className="party-mode-outcome__icon">{outcome.icon || "★"}</div>
+    <div className="party-mode-outcome__body">
+      <small>{outcome.kicker || "DERNIÈRE ACTION"}</small>
+      <b>{outcome.title || "ACTION VALIDÉE"}</b>
+      {outcome.detail ? <p>{outcome.detail}</p> : null}
+      {Array.isArray(outcome.chips) && outcome.chips.length ? <div>{outcome.chips.slice(0, 4).map((chip: any, i: number) => <span key={`${chip}-${i}`}>{chip}</span>)}</div> : null}
+    </div>
+    {nextPlayer ? <aside><small>À SUIVRE</small><strong>{nextPlayer}</strong></aside> : null}
+  </section>;
+}
+
 export function AimAssistCard({ plan, accent = "#ffc04c", compact = false }: any) {
   if (!plan) return null;
   const tone = plan.tone || "normal";

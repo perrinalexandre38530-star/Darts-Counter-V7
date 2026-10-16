@@ -27,6 +27,23 @@ function card(accent: string): React.CSSProperties {
   };
 }
 
+function metricText(row: any) {
+  const label = String(row?.metric?.label || "SCORE");
+  const value = row?.metric?.value ?? row?.score ?? 0;
+  return `${label} ${value}`;
+}
+
+function bestBy(rows: any[], selector: (row: any) => number, preferWinner = false) {
+  return rows.reduce((best: any, row: any) => {
+    if (!best) return row;
+    const a = selector(row);
+    const b = selector(best);
+    if (a !== b) return a > b ? row : best;
+    if (preferWinner && row.winner !== best.winner) return row.winner ? row : best;
+    return row.rank < best.rank ? row : best;
+  }, null);
+}
+
 export function buildWave61EndRows(state: Wave61State, profiles: any[]) {
   const profileById = new Map((profiles || []).map((p: any) => [String(p?.id || ""), p]));
   const rows = (state?.players || []).map((p: any) => {
@@ -67,6 +84,8 @@ export function buildWave61EndRows(state: Wave61State, profiles: any[]) {
 
   return rows.sort((a: any, b: any) => {
     if (a.winner !== b.winner) return a.winner ? -1 : 1;
+    const metricDelta = n(b.metric?.value) - n(a.metric?.value);
+    if (metricDelta) return metricDelta;
     if (b.progress !== a.progress) return b.progress - a.progress;
     if (b.score !== a.score) return b.score - a.score;
     if (b.accuracy !== a.accuracy) return b.accuracy - a.accuracy;
@@ -92,9 +111,25 @@ export function buildWave61MatchStats(state: Wave61State) {
   };
 }
 
+export function buildWave61Awards(rows: any[]) {
+  if (!rows.length) return [];
+  const winner = rows.find((row: any) => row.winner) || rows[0];
+  const precision = bestBy(rows.filter((row: any) => row.darts > 0), (row) => row.accuracy, true);
+  const bull = bestBy(rows, (row) => row.bulls, true);
+  const combo = bestBy(rows, (row) => row.bestCombo || row.bestVisit, true);
+  const awards = [
+    { key: "winner", icon: "🏆", label: "VICTOIRE", row: winner, value: metricText(winner) },
+    precision ? { key: "precision", icon: "🎯", label: "PRÉCISION", row: precision, value: `${precision.accuracy}%` } : null,
+    bull ? { key: "bull", icon: "⭕", label: "BULL MASTER", row: bull, value: `${bull.bulls} bull${bull.bulls > 1 ? "s" : ""}` } : null,
+    combo ? { key: "combo", icon: "🔥", label: "MEILLEURE SÉRIE", row: combo, value: `${Math.max(combo.bestCombo, combo.bestVisit)}` } : null,
+  ].filter(Boolean);
+  return awards;
+}
+
 export default function Wave61EndSummary({ state, profiles, accent, familyLabel }: any) {
   const rows = React.useMemo(() => buildWave61EndRows(state, profiles), [state, profiles]);
   const stats = React.useMemo(() => buildWave61MatchStats(state), [state]);
+  const awards = React.useMemo(() => buildWave61Awards(rows), [rows]);
   const top = rows.slice(0, 3);
   const teamMode = state?.config?.participantMode === "teams";
   const teamRows = teamMode
@@ -108,7 +143,21 @@ export default function Wave61EndSummary({ state, profiles, accent, familyLabel 
         ["PRÉCISION", `${stats.accuracy}%`],
         ["BULLS", stats.bulls],
         ["BEST VOLÉE", stats.bestVisit],
+        ["DOUBLES", stats.doubles],
+        ["TRIPLES", stats.triples],
+        ["BEST COMBO", stats.bestCombo],
+        ["TOUCHES", `${stats.totalHits}/${stats.totalDarts}`],
       ].map(([label, value]) => <div key={String(label)} style={{ ...card(accent), textAlign: "center" }}><div style={{ color: accent, fontSize: 8.4, fontWeight: 1000, letterSpacing: .7 }}>{label}</div><div style={{ marginTop: 3, color: "#fff", fontSize: 18, fontWeight: 1100 }}>{value}</div></div>)}
+    </div>
+
+    <div style={{ ...card(accent), padding: 8 }}>
+      <div style={{ color: accent, fontSize: 9, fontWeight: 1050, letterSpacing: .8, marginBottom: 7 }}>RÉCOMPENSES DU MATCH</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(155px,1fr))", gap: 6 }}>
+        {awards.map((award: any) => <div key={award.key} style={{ borderRadius: 11, padding: 8, border: `1px solid ${award.key === "winner" ? accent + "77" : "rgba(255,255,255,.08)"}`, background: award.key === "winner" ? `${accent}10` : "rgba(255,255,255,.025)", display: "grid", gridTemplateColumns: "34px minmax(0,1fr)", gap: 7, alignItems: "center" }}>
+          <ProfileAvatar profile={award.row.profile} size={34} showStars={false} ringColor={award.key === "winner" ? accent : "rgba(255,255,255,.18)"} />
+          <div style={{ minWidth: 0 }}><div style={{ color: accent, fontSize: 8.1, fontWeight: 1100, letterSpacing: .6 }}>{award.icon} {award.label}</div><div style={{ color: "#fff", fontSize: 10.2, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{award.row.name}</div><div style={{ color: SOFT, fontSize: 8.4 }}>{award.value}</div></div>
+        </div>)}
+      </div>
     </div>
 
     {teamRows.length ? <div style={{ ...card(accent), display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
@@ -121,17 +170,17 @@ export default function Wave61EndSummary({ state, profiles, accent, familyLabel 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 6 }}>
         {top.map((row: any) => <div key={row.id} style={{ display: "grid", gridTemplateColumns: "34px minmax(0,1fr)", gap: 7, alignItems: "center", borderRadius: 11, padding: 7, border: `1px solid ${row.winner ? accent + "88" : "rgba(255,255,255,.08)"}`, background: row.winner ? `${accent}12` : "rgba(255,255,255,.025)" }}>
           <ProfileAvatar profile={row.profile} size={34} showStars={false} ringColor={row.winner ? accent : "rgba(255,255,255,.18)"} />
-          <div style={{ minWidth: 0 }}><div style={{ color: row.winner ? "#fff" : "#dce1eb", fontWeight: 1000, fontSize: 10.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.rank === 1 ? "🥇 " : row.rank === 2 ? "🥈 " : "🥉 "}{row.name}</div><div style={{ color: SOFT, fontSize: 8.8, marginTop: 2 }}>{row.metric?.label || "SCORE"} {row.metric?.value ?? row.score} · {row.accuracy}%</div></div>
+          <div style={{ minWidth: 0 }}><div style={{ color: row.winner ? "#fff" : "#dce1eb", fontWeight: 1000, fontSize: 10.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.rank === 1 ? "🥇 " : row.rank === 2 ? "🥈 " : "🥉 "}{row.name}</div><div style={{ color: SOFT, fontSize: 8.8, marginTop: 2 }}>{metricText(row)} · {row.accuracy}%</div><div style={{ color: SOFT, fontSize: 7.8, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.metric?.sub || `${row.hits} touches`}</div></div>
         </div>)}
       </div>
     </div>
 
     <div style={{ ...card(accent), padding: 8 }}>
-      <div style={{ color: accent, fontSize: 9, fontWeight: 1050, letterSpacing: .8, marginBottom: 7 }}>DÉTAILS JOUEURS</div>
+      <div style={{ color: accent, fontSize: 9, fontWeight: 1050, letterSpacing: .8, marginBottom: 7 }}>DÉTAILS JOUEURS · OBJECTIF DU MODE</div>
       <div style={{ overflowX: "auto", borderRadius: 10, border: "1px solid rgba(255,255,255,.08)" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 610, fontSize: 9.2 }}>
-        <thead><tr style={{ color: accent, background: "rgba(255,255,255,.035)", textAlign: "left" }}><th style={{ padding: 7 }}>#</th><th style={{ padding: 7 }}>Joueur</th><th style={{ padding: 7 }}>Score</th><th style={{ padding: 7 }}>Progression</th><th style={{ padding: 7 }}>Flèches</th><th style={{ padding: 7 }}>Touches</th><th style={{ padding: 7 }}>Précision</th><th style={{ padding: 7 }}>Bulls</th><th style={{ padding: 7 }}>Best</th></tr></thead>
-        <tbody>{rows.map((row: any) => <tr key={row.id} style={{ borderTop: "1px solid rgba(255,255,255,.055)", color: row.winner ? "#fff" : "#cbd1dd", background: row.winner ? `${accent}0c` : "transparent" }}><td style={{ padding: 7, fontWeight: 1000 }}>{row.rank}</td><td style={{ padding: 7, fontWeight: 900 }}>{row.name}{row.team ? ` · ${row.team}` : ""}</td><td style={{ padding: 7 }}>{Math.round(row.score)}</td><td style={{ padding: 7 }}>{Math.round(row.progress)}%</td><td style={{ padding: 7 }}>{row.darts}</td><td style={{ padding: 7 }}>{row.hits}</td><td style={{ padding: 7 }}>{row.accuracy}%</td><td style={{ padding: 7 }}>{row.bulls}</td><td style={{ padding: 7 }}>{row.bestVisit}</td></tr>)}</tbody>
+      <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760, fontSize: 9.2 }}>
+        <thead><tr style={{ color: accent, background: "rgba(255,255,255,.035)", textAlign: "left" }}><th style={{ padding: 7 }}>#</th><th style={{ padding: 7 }}>Joueur</th><th style={{ padding: 7 }}>Objectif</th><th style={{ padding: 7 }}>Détail mode</th><th style={{ padding: 7 }}>Score</th><th style={{ padding: 7 }}>Flèches</th><th style={{ padding: 7 }}>Touches</th><th style={{ padding: 7 }}>Précision</th><th style={{ padding: 7 }}>S/D/T</th><th style={{ padding: 7 }}>Best</th></tr></thead>
+        <tbody>{rows.map((row: any) => <tr key={row.id} style={{ borderTop: "1px solid rgba(255,255,255,.055)", color: row.winner ? "#fff" : "#cbd1dd", background: row.winner ? `${accent}0c` : "transparent" }}><td style={{ padding: 7, fontWeight: 1000 }}>{row.rank}</td><td style={{ padding: 7, fontWeight: 900 }}>{row.name}{row.team ? ` · ${row.team}` : ""}</td><td style={{ padding: 7, color: row.winner ? accent : "#fff", fontWeight: 1000 }}>{metricText(row)}</td><td style={{ padding: 7, color: SOFT, maxWidth: 230 }}>{row.metric?.sub || "—"}</td><td style={{ padding: 7 }}>{Math.round(row.score)}</td><td style={{ padding: 7 }}>{row.darts}</td><td style={{ padding: 7 }}>{row.hits}</td><td style={{ padding: 7 }}>{row.accuracy}%</td><td style={{ padding: 7 }}>{row.doubles}/{row.triples}/{row.bulls}</td><td style={{ padding: 7 }}>{Math.max(row.bestVisit, row.bestCombo)}</td></tr>)}</tbody>
       </table>
       </div>
     </div>

@@ -608,9 +608,12 @@ function activeOwnerCount(state: OceanControlState) {
   return state.owners.filter((owner) => !owner.eliminated).length;
 }
 
-function completeBattle(state: OceanControlState, winningOwner: OceanControlFleetOwner, playerId: string, events: OceanControlEvent[]) {
+function completeBattle(state: OceanControlState, winningOwner: OceanControlFleetOwner, playerId: string, events: OceanControlEvent[], rng: () => number = Math.random) {
   state.scoreByOwner[winningOwner.id] = (state.scoreByOwner[winningOwner.id] || 0) + 1;
-  state.statsByPlayer[playerId].wins += 1;
+  winningOwner.memberIds.forEach((memberId) => {
+    if (!state.statsByPlayer[memberId]) state.statsByPlayer[memberId] = normalizePlayerStats(null);
+    state.statsByPlayer[memberId].wins += 1;
+  });
   events.push({ type: "battle_win", label: `${winningOwner.name.toUpperCase()} CONTRÔLE L’OCÉAN`, playerId, targetOwnerId: winningOwner.id });
   const battleVisits = state.visits.filter((visit) => visit.battle === state.battleNumber);
   const battleEvents = battleVisits.flatMap((visit) => visit.events || []);
@@ -635,7 +638,7 @@ function completeBattle(state: OceanControlState, winningOwner: OceanControlFlee
     return;
   }
   state.battleNumber += 1;
-  rebuildBattle(state, Math.random);
+  rebuildBattle(state, rng);
 }
 
 function advanceTurn(state: OceanControlState) {
@@ -654,7 +657,7 @@ function advanceTurn(state: OceanControlState) {
   state.targetOwnerId = defaultTargetOwnerId(state, player?.id);
 }
 
-export function playOceanControlVisit(stateInput: OceanControlState, dartsInput: GameDart[]): OceanControlState {
+export function playOceanControlVisit(stateInput: OceanControlState, dartsInput: GameDart[], rng: () => number = Math.random): OceanControlState {
   const state = cloneOceanControlState(stateInput);
   if (state.phase !== "playing") return state;
   const player = getOceanActivePlayer(state);
@@ -706,7 +709,7 @@ export function playOceanControlVisit(stateInput: OceanControlState, dartsInput:
 
   if (owner.eliminated || activeOwnerCount(state) <= 1) {
     const winningOwner = state.owners.find((row) => !row.eliminated) || getOceanOwnerForPlayer(state, player.id);
-    if (winningOwner) completeBattle(state, winningOwner, player.id, events);
+    if (winningOwner) completeBattle(state, winningOwner, player.id, events, rng);
   }
   if (state.phase === "playing") advanceTurn(state);
   return state;
@@ -747,31 +750,55 @@ function targetCandidates(state: OceanControlState, owner: OceanControlFleetOwne
   return state.gridNumbers.filter((number) => !owner.attackedCells[String(cellForNumber(state, number))]);
 }
 
-export function pickOceanControlBotDarts(state: OceanControlState, levelInput?: OceanControlBotLevel): { darts: GameDart[]; focusNumber: number | null } {
+export function pickOceanControlBotDarts(state: OceanControlState, levelInput?: OceanControlBotLevel, rng: () => number = Math.random): { darts: GameDart[]; focusNumber: number | null } {
   const level = levelInput || state.config.botLevel;
-  const target = getOceanTargetOwner(state) || state.owners.find((owner) => !owner.eliminated && owner.id !== state.playerOwnerId[getOceanActivePlayer(state)?.id || ""]);
+  const active = getOceanActivePlayer(state);
+  const ownId = state.playerOwnerId[String(active?.id || "")] || "";
+  const selected = getOceanTargetOwner(state);
+  const target = selected && selected.id !== ownId && !selected.eliminated
+    ? selected
+    : state.owners.find((owner) => !owner.eliminated && owner.id !== ownId);
   if (!target) return { darts: [{ bed: "MISS" }, { bed: "MISS" }, { bed: "MISS" }], focusNumber: null };
+
+  // IMPORTANT : le BOT ne lit jamais les cases de navires encore cachées.
+  // Il ne peut utiliser que les informations publiques : cases déjà jouées,
+  // impacts connus et résultats sonar, exactement comme un joueur humain.
   const candidates = targetCandidates(state, target);
-  const liveCells = target.ships.flatMap((ship) => ship.cells.filter((cell) => !ship.hits.includes(cell) && !target.attackedCells[String(cell)]));
-  const woundedNeighbors = target.ships.flatMap((ship) => ship.hits.flatMap(neighbors)).filter((cell) => !target.attackedCells[String(cell)]);
+  const knownHits = Object.entries(target.attackedCells)
+    .filter(([, status]) => status === "hit")
+    .map(([cell]) => Number(cell));
+  const woundedNeighbors = Array.from(new Set(knownHits.flatMap(neighbors)))
+    .filter((cell) => cell >= 0 && cell < 20 && !target.attackedCells[String(cell)]);
+  const latestScan = oceanControlLatestSonarScan(state, target.id);
+  const sonarCandidates = latestScan?.contactCount
+    ? (latestScan.cells || []).filter((cell) => !target.attackedCells[String(cell)])
+    : [];
+
   const missRate = level === "easy" ? 0.35 : level === "hard" ? 0.08 : 0.18;
-  const smartRate = level === "hard" ? 0.68 : level === "normal" ? 0.35 : 0.08;
+  const exploitRate = level === "hard" ? 0.88 : level === "normal" ? 0.62 : 0.24;
+  const sonarRate = level === "easy" ? 0.10 : level === "hard" ? 0.24 : 0.18;
   const darts: GameDart[] = [];
   let focusNumber: number | null = null;
+
+  const pickCell = (pool: number[]) => pool.length ? pool[Math.floor(rng() * pool.length)] : undefined;
   for (let i = 0; i < 3; i += 1) {
-    if (Math.random() < missRate) { darts.push({ bed: "MISS" }); continue; }
-    if (state.config.sonarEnabled && i === 0 && Math.random() < (level === "easy" ? 0.12 : 0.20)) {
-      const focusCell = woundedNeighbors[0] ?? Math.floor(Math.random() * 20);
+    if (rng() < missRate) { darts.push({ bed: "MISS" }); continue; }
+
+    if (state.config.sonarEnabled && i === 0 && rng() < sonarRate) {
+      const focusCell = pickCell(woundedNeighbors) ?? pickCell(sonarCandidates) ?? pickCell(candidates.map((number) => cellForNumber(state, number))) ?? Math.floor(rng() * 20);
       focusNumber = numberForCell(state, focusCell);
       darts.push({ bed: "OB" });
       continue;
     }
+
     let cell: number | undefined;
-    if (woundedNeighbors.length) cell = woundedNeighbors[Math.floor(Math.random() * woundedNeighbors.length)];
-    else if (Math.random() < smartRate && liveCells.length) cell = liveCells[Math.floor(Math.random() * liveCells.length)];
-    else if (candidates.length) cell = cellForNumber(state, candidates[Math.floor(Math.random() * candidates.length)]);
+    if (woundedNeighbors.length && rng() < exploitRate) cell = pickCell(woundedNeighbors);
+    if (cell == null && sonarCandidates.length && rng() < exploitRate) cell = pickCell(sonarCandidates);
+    if (cell == null && candidates.length) cell = cellForNumber(state, candidates[Math.floor(rng() * candidates.length)]);
     if (cell == null || cell < 0) { darts.push({ bed: "MISS" }); continue; }
-    const bed: GameDart["bed"] = state.config.variant === "tactical" ? (Math.random() < 0.18 ? "T" : Math.random() < 0.32 ? "D" : "S") : "S";
+
+    const roll = rng();
+    const bed: GameDart["bed"] = state.config.variant === "tactical" ? (roll < 0.18 ? "T" : roll < 0.42 ? "D" : "S") : "S";
     darts.push({ bed, number: numberForCell(state, cell) });
   }
   return { darts, focusNumber };

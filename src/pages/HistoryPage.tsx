@@ -2014,7 +2014,47 @@ function renderRankScoreLine(players: HistoryScorePlayer[], theme: any, getScore
   );
 }
 
+
+function isSuperBullHistoryEntry(e: SavedEntry): boolean {
+  return historyModeTokens(e).some((token: string) => token.includes("super_bull") || token.includes("superbull"));
+}
+
+function SuperBullHistoryScoreBlock({ e, theme }: { e: SavedEntry; theme: any }) {
+  const anyE: any = e as any;
+  const summary = anyE?.summary || anyE?.payload?.summary || {};
+  const players = Array.isArray(anyE?.players) ? anyE.players : [];
+  const byId = new Map(players.map((p: any, i: number) => [String(p?.id ?? p?.playerId ?? `p${i+1}`), p]));
+  let rows = Array.isArray(summary?.superBullRanking) ? summary.superBullRanking.slice() : [];
+  if (!rows.length && Array.isArray(summary?.perPlayer)) {
+    rows = summary.perPlayer.map((r: any, i: number) => ({ rank:i+1, playerId:r.id, score:r.score, dbulls:r.dbulls, centres:r.centreHits, bestStreak:r.bestBullStreak, perfectVisits:r.perfectBullVisits, centreAccuracy:r.centreAccuracy }));
+    rows.sort((a:any,b:any)=>Number(b.score||0)-Number(a.score||0)||Number(b.dbulls||0)-Number(a.dbulls||0)||Number(b.centres||0)-Number(a.centres||0));
+  }
+  if (!rows.length) return <>{summarizeScore(e)}</>;
+  return <div style={{display:"grid",gap:5,minWidth:0}}>
+    <div style={{display:"flex",gap:7,alignItems:"center",flexWrap:"wrap"}}>
+      {rows.slice(0,4).map((r:any,index:number)=>{
+        const p:any=byId.get(String(r.playerId));
+        const name=historyScoreName(e,p)||getName(p)||`Joueur ${index+1}`;
+        return <React.Fragment key={`${r.playerId}-${index}`}>{index?<span style={{color:"rgba(255,255,255,.32)"}}>•</span>:null}<span style={{color:historyRankColor(index+1),fontWeight:1000}}>{index+1}.</span><span style={{fontWeight:900}}>{name}</span><span style={{color:theme.primary,fontWeight:1000}}>{Number(r.score||0)} pts</span></React.Fragment>;
+      })}
+    </div>
+    <div style={{color:"rgba(255,255,255,.62)",fontSize:9.5,fontWeight:850,lineHeight:1.35}}>
+      {rows.slice(0,4).map((r:any,index:number)=>{
+        const p:any=byId.get(String(r.playerId)); const pid=String(r.playerId||p?.id||"");
+        const name=historyScoreName(e,p)||getName(p)||`Joueur ${index+1}`;
+        const darts=Number(summary?.darts?.[pid]||summary?.perPlayer?.find?.((x:any)=>String(x?.id)===pid)?.darts||0);
+        const centres=Number(r.centres ?? summary?.centreHitsByPlayer?.[pid] ?? 0);
+        const precision=Number(r.centreAccuracy ?? summary?.centreAccuracyByPlayer?.[pid] ?? (darts?centres/darts*100:0));
+        return `${name}: DBULL ${Number(r.dbulls||0)} • centre ${precision.toFixed(1)}% • série ${Number(r.bestStreak||0)} • volées parfaites ${Number(r.perfectVisits||0)}`;
+      }).join("  |  ")}
+    </div>
+  </div>;
+}
+
 function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
+  if (isSuperBullHistoryEntry(e)) {
+    return <SuperBullHistoryScoreBlock e={e} theme={theme} />;
+  }
   if (isFootballEntry(e)) {
     return <FootballHistoryScoreBlock record={e} />;
   }

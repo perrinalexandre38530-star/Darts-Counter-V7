@@ -1069,3 +1069,183 @@
   .football-pad-preview-chip,
   .football-guide__dots span { transition:none !important; }
 }
+
+/* =============================================================
+   DARTS FOOTBALL V13 — DÉCISION TACTIQUE + APERÇU AVANT VALIDATION
+   Un seul plan conseillé, le secteur prioritaire marqué PLAN et une
+   projection concrète de ce qui se passera si la volée est validée.
+   ============================================================= */
+
+.football-recommended-play {
+  margin-top:9px;
+  padding:9px 10px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.11);
+  background:linear-gradient(135deg,rgba(255,255,255,.035),rgba(0,0,0,.20));
+  box-shadow:inset 3px 0 0 var(--football-plan-color,#35d0ff);
+}
+.football-recommended-play__head {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
+.football-recommended-play__head span {
+  color:#8c99aa;
+  font-size:6.5px;
+  line-height:1;
+  font-weight:1150;
+  letter-spacing:.55px;
+}
+.football-recommended-play__head strong {
+  color:var(--football-plan-color,#35d0ff);
+  font-size:7.4px;
+  line-height:1;
+  font-weight:1200;
+  letter-spacing:.35px;
+}
+.football-recommended-play__main {
+  margin-top:6px;
+  display:flex;
+  align-items:center;
+  gap:7px;
+}
+.football-recommended-play__main b {
+  min-width:48px;
+  padding:6px 8px;
+  border-radius:9px;
+  border:1px solid rgba(255,255,255,.16);
+  background:rgba(255,255,255,.055);
+  color:#fff;
+  font-size:13px;
+  line-height:1;
+  text-align:center;
+}
+.football-recommended-play__main span { color:#657286; font-size:13px; font-weight:1000; }
+.football-recommended-play__main strong { color:var(--football-plan-color,#35d0ff); font-size:10px; line-height:1.15; }
+.football-recommended-play p {
+  margin:6px 0 0;
+  color:#b4c0cf;
+  font-size:7.5px;
+  line-height:1.35;
+}
+
+.football-projection {
+  margin:0 0 7px;
+  padding:8px;
+  border-radius:11px;
+  border:1px solid rgba(255,255,255,.10);
+  background:linear-gradient(180deg,rgba(255,255,255,.028),rgba(0,0,0,.20));
+}
+.football-projection__head {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
+.football-projection__head > span {
+  color:#7f8c9e;
+  font-size:6.2px;
+  line-height:1;
+  font-weight:1150;
+  letter-spacing:.45px;
+}
+.football-projection__head > strong {
+  font-size:8px;
+  line-height:1.1;
+  text-align:right;
+}
+.football-projection__facts {
+  margin-top:6px;
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(92px,1fr));
+  gap:5px;
+}
+.football-projection__facts > span {
+  min-width:0;
+  padding:5px 6px;
+  border-radius:8px;
+  border:1px solid rgba(255,255,255,.06);
+  background:rgba(255,255,255,.025);
+}
+.football-projection__facts small {
+  display:block;
+  color:#768296;
+  font-size:5.4px;
+  line-height:1;
+  font-weight:1100;
+  letter-spacing:.35px;
+}
+.football-projection__facts b {
+  display:block;
+  margin-top:3px;
+  color:#edf5ff;
+  font-size:7.6px;
+  line-height:1.2;
+  white-space:normal;
+}
+.football-projection__facts .is-final {
+  border-color:rgba(255,211,107,.32);
+  background:rgba(255,211,107,.075);
+}
+.football-projection__facts .is-final b { color:#ffd36b; }
+
+.football-pad-choice em {
+  margin-left:auto;
+  padding:3px 5px;
+  border-radius:7px;
+  border:1px solid rgba(255,211,107,.22);
+  background:rgba(255,211,107,.055);
+  color:#ffd36b;
+  font-size:5.7px;
+  line-height:1;
+  font-style:normal;
+  font-weight:1150;
+  letter-spacing:.35px;
+  white-space:nowrap;
+}
+.football-pad-mode.is-recommended:not(.is-active) {
+  border-color:rgba(255,211,107,.40);
+  box-shadow:inset 0 0 0 1px rgba(255,211,107,.10);
+}
+.football-pad-mode.is-recommended:not(.is-active)::after {
+  content:"PLAN";
+  margin-top:1px;
+  color:#ffd36b;
+  font-size:4.7px;
+  line-height:1;
+  font-weight:1200;
+  letter-spacing:.3px;
+}
+.football-pad-cell.is-recommended {
+  border-color:#ffd36b;
+  background:linear-gradient(180deg,rgba(255,211,107,.15),rgba(255,211,107,.055));
+  box-shadow:inset 0 0 0 1px rgba(255,211,107,.20),0 0 12px rgba(255,211,107,.10);
+}
+.football-pad-cell.is-recommended > small { color:#ffd36b; }
+.football-pad-bull.is-recommended {
+  border-color:#ffd36b;
+  box-shadow:inset 0 0 0 1px rgba(255,211,107,.16),0 0 13px rgba(255,211,107,.10);
+}
+
+@media (max-width:520px) {
+  .football-recommended-play { padding:8px; }
+  .football-recommended-play__head { align-items:flex-start; flex-direction:column; gap:3px; }
+  .football-recommended-play__main b { min-width:44px; font-size:12px; }
+  .football-recommended-play p { font-size:7.1px; }
+  .football-projection__head { align-items:flex-start; flex-direction:column; gap:3px; }
+  .football-projection__head > strong { text-align:left; }
+  .football-projection__facts { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .football-pad-choice { flex-wrap:wrap; }
+  .football-pad-choice em { order:3; width:100%; margin-left:0; text-align:center; }
+}
+
+@media (max-width:390px) {
+  .football-projection__facts { grid-template-columns:1fr; }
+  .football-recommended-play__main strong { font-size:9px; }
+}
+
+@media (prefers-reduced-motion:reduce) {
+  .football-pad-cell.is-recommended,
+  .football-pad-mode.is-recommended { transition:none !important; }
+}

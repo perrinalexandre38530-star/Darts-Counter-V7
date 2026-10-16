@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 
-const play = fs.readFileSync(new URL('../pages/wave61/Wave61SharedPlay.tsx', import.meta.url), 'utf8');
-const engine = fs.readFileSync(new URL('../lib/gameEngines/wave61Engine.ts', import.meta.url), 'utf8');
-const config = fs.readFileSync(new URL('../pages/wave61/modes/align_4Config.tsx', import.meta.url), 'utf8');
+const play = fs.readFileSync(new URL('../src/pages/wave61/Wave61SharedPlay.tsx', import.meta.url), 'utf8');
+const engine = fs.readFileSync(new URL('../src/lib/gameEngines/wave61Engine.ts', import.meta.url), 'utf8');
+const config = fs.readFileSync(new URL('../src/pages/wave61/modes/align_4Config.tsx', import.meta.url), 'utf8');
 
 assert(play.includes('ALIGN {connectLength} · PLATEAU EN DIRECT'), 'Plateau ALIGN 4 V83 absent');
 assert(play.includes('DERNIER COUP'), 'Bloc dernier coup absent');

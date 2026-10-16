@@ -20,13 +20,14 @@ import {
 } from "./newModes/newModePlayShared";
 import {
   ActiveHero, AimAssistCard, BotTurn, DecisionRail, FloatingAdvice, GameplayMission, KpiStrip, LogModal, PlayersModal, PremiumAwenaButton,
-  PremiumEndPanel, PremiumMomentOverlay, QuickRow, RankingModal, StatsModal, SummaryStrip, VisitRoadmap, bestBy, modePlayerColors, percent,
+  PremiumEndPanel, PremiumMomentOverlay, QuickRow, RankingModal, StatsModal, SummaryStrip, TurnOutcomeCard, VisitRoadmap, bestBy, modePlayerColors, percent,
 } from "./newModes/PremiumPartyModeUi";
 import { resolvePremiumPartyMoment } from "./newModes/premiumPartyMoments";
 import { premiumBotTacticalPlan, resolvePremiumBotBrain } from "../lib/premiumPartyBotAI";
 import { adaptPremiumBotBrain } from "../lib/premiumPartyBotMemory";
 import { adaptPremiumBotBrainFromScouting, commitPremiumPartyScouting } from "../lib/premiumPartyBotScouting";
 import { adaptPremiumBotBrainFromRivalry, commitPremiumPartyRivalry } from "../lib/premiumPartyBotRivalry";
+import { premiumPartyTurnOutcome } from "../lib/premiumPartyTurnOutcome";
 import { menteurAuctionAssist, menteurProofAimAssist } from "../lib/premiumPartyGameplayAssist";
 import "./newModes/PremiumPartyModeUi.css";
 
@@ -208,6 +209,7 @@ export default function MenteurPlay(props: any) {
   }));
   const previewDarts = currentThrow.map(uiToGameDart), previewScore = scoreMenteurVisit(previewDarts), previewScoreOk = previewScore >= state.bid, previewConditionOk = isMenteurConditionSatisfied(state.condition, previewDarts), previewContractOk = currentThrow.length ? isMenteurContractSatisfied(state, previewDarts) : false;
   const proofAimPlan = React.useMemo(() => menteurProofAimAssist(state.bid, state.condition, previewDarts), [state.bid, state.condition, currentThrow]);
+  const turnOutcome = React.useMemo(() => premiumPartyTurnOutcome("menteur", state), [state]);
   const activeLives = activePlayer ? Number(state.lives[activePlayer.id] || 0) : 0, activeStats = activePlayer ? state.statsByPlayer[activePlayer.id] || {} : {}, coach = coachEnabled && !activeIsBot ? coachText(state, activePlayer) : "";
   const lastBidderName = state.lastBidderId ? nameById(state.lastBidderId) : "—", challengerName = state.challengerId ? nameById(state.challengerId) : "—";
   const rankingRows = React.useMemo(() => [...state.players].map((p: any, i: number) => { const st = state.statsByPlayer[p.id] || {}, color = colorById.get(String(p.id)) || ACCENT, lives = Number(state.lives[p.id] || 0), dead = !!state.eliminated[p.id]; return { id: String(p.id), name: p.name, profile: profileById.get(String(p.id)) || p, color, wins: Number(state.legWins[p.id] || 0), lives, dead, pressure: Number(st.successfulCalls || 0) + Number(st.contractsProven || 0), subtitle: `${dead ? "OUT" : `${lives} ♥`} · ${st.successfulCalls || 0} appels gagnés · ${st.contractsProven || 0} preuves`, value: Number(state.legWins[p.id] || 0), suffix: " M", order: i }; }).sort((a, b) => b.wins - a.wins || Number(a.dead) - Number(b.dead) || b.lives - a.lives || b.pressure - a.pressure || a.order - b.order), [state.players, state.legWins, state.lives, state.eliminated, state.statsByPlayer, profileById, colorById]);
@@ -233,6 +235,7 @@ export default function MenteurPlay(props: any) {
       <GameplayMission accent={state.phase === "challenge" ? (previewContractOk ? GREEN : RED) : activeColor} icon={state.phase === "challenge" ? "🎯" : "🤥"} title={state.phase === "challenge" ? "PROUVE L’ANNONCE" : "SURENCHÉRIS OU APPELLE MENTEUR"} text={state.phase === "challenge" ? `Tu dois prouver ${state.bid} points et respecter : ${menteurConditionLabel(state.condition)}.` : state.bid ? `Annonce actuelle : ${state.bid} par ${lastBidderName}. Monte l’enchère ou accuse le dernier annonceur.` : `Ouvre l’enchère à partir de ${minBid} points.`} chips={state.phase === "challenge" ? [`SCORE ${previewScore}/${state.bid}`, previewScoreOk ? "SCORE ✓" : "SCORE ○", previewConditionOk ? "CONDITION ✓" : "CONDITION ○", proofAimPlan.targets?.length ? `ROUTE ${proofAimPlan.targets.join(" → ")}` : null] : [`MIN ${minBid}`, `PAS ${step}`, `${activeLives}/${config.rules.lives} VIES`, auctionAimPlan.targets?.[0] || null]} tone={state.phase === "challenge" ? (previewContractOk ? "success" : "danger") : "normal"} />
       {!activeIsBot && state.phase === "challenge" ? <VisitRoadmap plan={proofAimPlan} currentLabels={currentThrow.map((d:any)=>dartLabel(uiToGameDart(d)))} maxDarts={3} accent={previewContractOk ? GREEN : RED} title="PREUVE DART PAR DART" subtitle="La route cherche à valider le score ET la condition." /> : null}
       {!activeIsBot && state.phase === "auction" ? <DecisionRail items={auctionDecisionItems} accent={activeColor} title="PRUDENT, PRESSION OU BLUFF ?" /> : null}
+      <TurnOutcomeCard outcome={turnOutcome} accent={activeColor} nextPlayer={activePlayer?.name || ""} />
       <MenteurTableBoard state={state} colorById={colorById} previewScore={previewScore} previewConditionOk={previewConditionOk} previewContractOk={previewContractOk} dartsCount={currentThrow.length} />
       {state.phase === "challenge" ? <section style={{ ...panelStyle(previewContractOk ? `${GREEN}55` : `${RED}33`), padding: 8, display: "grid", gap: 6 }}><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}><div style={{ borderRadius: 10, padding: 7, border: `1px solid ${previewScoreOk ? GREEN + "55" : "rgba(255,255,255,.10)"}`, color: previewScoreOk ? GREEN : SOFT, fontSize: 9, fontWeight: 1000, textAlign: "center" }}>{previewScoreOk ? "✓" : "○"} SCORE ≥ {state.bid}</div><div style={{ borderRadius: 10, padding: 7, border: `1px solid ${previewConditionOk ? GREEN + "55" : "rgba(255,255,255,.10)"}`, color: previewConditionOk ? GREEN : SOFT, fontSize: 9, fontWeight: 1000, textAlign: "center" }}>{previewConditionOk ? "✓" : "○"} {menteurConditionLabel(state.condition)}</div></div></section> : null}
       <KpiStrip accent={activeColor} onClick={() => setStatsOpen(true)} items={[["VIES", activeLives], ["BID MAX", activeStats.maxBid || 0], ["APPELS", activeStats.successfulCalls || 0], ["PREUVES", activeStats.contractsProven || 0]]} />

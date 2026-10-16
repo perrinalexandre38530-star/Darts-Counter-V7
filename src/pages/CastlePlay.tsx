@@ -17,13 +17,14 @@ import {
 import { NewModeInput, isBotProfile, lastEvents, playerName, resolveModeProfiles, uiToGameDart } from "./newModes/newModePlayShared";
 import {
   ActiveHero, AimAssistCard, BotTurn, FloatingAdvice, GameplayMission, KpiStrip, LogModal, PlayersModal, PremiumAwenaButton,
-  PremiumEndPanel, PremiumMomentOverlay, QuickRow, RankingModal, StatsModal, SummaryStrip, VisitRoadmap, bestBy, modePlayerColors, percent,
+  PremiumEndPanel, PremiumMomentOverlay, QuickRow, RankingModal, StatsModal, SummaryStrip, TurnOutcomeCard, VisitRoadmap, bestBy, modePlayerColors, percent,
 } from "./newModes/PremiumPartyModeUi";
 import { resolvePremiumPartyMoment } from "./newModes/premiumPartyMoments";
 import { premiumBotTacticalPlan, resolvePremiumBotBrain } from "../lib/premiumPartyBotAI";
 import { adaptPremiumBotBrain } from "../lib/premiumPartyBotMemory";
 import { adaptPremiumBotBrainFromScouting, commitPremiumPartyScouting } from "../lib/premiumPartyBotScouting";
 import { adaptPremiumBotBrainFromRivalry, commitPremiumPartyRivalry } from "../lib/premiumPartyBotRivalry";
+import { premiumPartyTurnOutcome } from "../lib/premiumPartyTurnOutcome";
 import { castleAimAssist } from "../lib/premiumPartyGameplayAssist";
 import "./newModes/PremiumPartyModeUi.css";
 
@@ -194,6 +195,7 @@ export default function CastlePlay(props: any) {
 
   const activeStats=activePlayer?state.statsByPlayer[activePlayer.id]||{}:{}; const activeBricks=Number(state.bricks?.[activePlayer?.id]||0); const target=Number(state.config.rules.targetBricks||15); const legTarget=state.config.seriesWins*2-1;
   const aimPlan=React.useMemo(()=>castleAimAssist(state,String(activePlayer?.id||"")),[state,activePlayer?.id]);
+  const turnOutcome=React.useMemo(()=>premiumPartyTurnOutcome("castle",state),[state]);
   const coach=coachEnabled&&!activeIsBot?coachText(state,activePlayer):"";
   const rankingRows=React.useMemo(()=>[...state.players].map((p:any,i:number)=>{const st=state.statsByPlayer[p.id]||{};const color=colorById.get(String(p.id))||ACCENT;return{id:String(p.id),name:p.name,profile:profileById.get(String(p.id))||p,color,wins:Number(state.legWins[p.id]||0),bricks:Number(state.bricks[p.id]||0),impact:Number(st.builds||0)+Number(st.damage||0),subtitle:`${state.bricks[p.id]||0}/${target} briques · ${st.damage||0} dégâts`,value:Number(state.legWins[p.id]||0),suffix:" M",order:i};}).sort((a,b)=>b.wins-a.wins||b.bricks-a.bricks||b.impact-a.impact||a.order-b.order),[state.players,state.legWins,state.bricks,state.statsByPlayer,target,profileById,colorById]);
   const playersRows=state.players.map((p:any,i:number)=>{const st=state.statsByPlayer[p.id]||{};const color=colorById.get(String(p.id))||ACCENT;return{id:p.id,name:p.name,profile:profileById.get(String(p.id))||p,color,active:i===activeIndex,status:state.phase==="assignment"&&!state.targets[p.id]?"NUMÉRO À ATTRIBUER":`SECTEUR ${state.targets[p.id]||"—"}`,progress:Number(state.bricks[p.id]||0),progressMax:target,metrics:[{label:"BRIQUES",value:`${state.bricks[p.id]||0}/${target}`},{label:"BUILD",value:st.builds||0},{label:"DÉGÂTS",value:st.damage||0},{label:"M",value:state.legWins[p.id]||0}]};});
@@ -211,6 +213,7 @@ export default function CastlePlay(props: any) {
       <ActiveHero profile={activeProfile} name={activePlayer?.name} accent={activeColor} eyebrow={`MANCHE ${state.legIndex+1} · BO${legTarget} · ${state.phase==="assignment"?"ATTRIBUTION":"VOLÉE "+(state.turnIndex+1)}`} primary={state.phase==="assignment"?(state.assignmentIndex+1):activeBricks} primarySuffix={state.phase==="assignment"?`/${state.players.length}`:`/${target}`} secondary={state.phase==="assignment"?"1 fléchette main opposée · secteur 1–20":`SECTEUR ${state.targets[activePlayer?.id]||"—"} · ${state.config.rules.attacksEnabled?"ATTAQUE ACTIVE":"CONSTRUCTION SEULE"}`} tertiary={state.phase==="assignment"?"MISS / BULL = relance":`${activeStats.builds||0} briques posées · ${activeStats.damage||0} dégâts infligés`} progress={state.phase==="assignment"?state.assignmentIndex:activeBricks} progressMax={state.phase==="assignment"?state.players.length:target} notice={notice} noticeTone={notice.includes("🏆")?"win":notice.includes("MISS")?"danger":"normal"} aside={state.phase==="assignment"?<div style={{display:"grid",placeItems:"center",gap:4}}><ProfileAvatar profile={activeProfile} size={62} showStars={false} ringColor={activeColor}/><b style={{fontSize:9,color:activeColor}}>LANCE !</b></div>:<CastleMeter value={activeBricks} target={target} accent={activeColor}/>}/>
       <GameplayMission accent={activeColor} icon={state.phase === "assignment" ? "🎯" : "🏰"} title={state.phase === "assignment" ? "ATTRIBUE TON SECTEUR" : "CONSTRUIS TON CHÂTEAU OU ATTAQUE"} text={state.phase === "assignment" ? "Une seule fléchette, main opposée, sur un secteur 1–20. MISS ou BULL = relance." : `Ton secteur ${state.targets[activePlayer?.id] || "—"} construit. Les secteurs adverses détruisent leurs briques.`} chips={state.phase === "assignment" ? ["1 DART", "1–20", "MISS/BULL = RELANCE"] : ["S = 1", "D = 2", "T = 3", state.config.rules.attacksEnabled ? "ATTAQUE ACTIVE" : "PAS D’ATTAQUE", aimPlan.targets?.[0] ? `VISE ${aimPlan.targets[0]}` : null]} />
       {!activeIsBot ? <VisitRoadmap plan={aimPlan} currentLabels={currentThrow.map((d:any)=>castleDartLabel(uiToGameDart(d)))} maxDarts={state.phase === "assignment" ? 1 : 3} accent={activeColor} title="PLAN DE VOLÉE" subtitle={state.phase === "assignment" ? "Une seule fléchette valide attribue le fief." : "Construis ou attaque selon la situation."} /> : null}
+      <TurnOutcomeCard outcome={turnOutcome} accent={activeColor} nextPlayer={activePlayer?.name || ""} />
       <CastleBattlefield state={state} activeId={activePlayer?.id} colorById={colorById} currentThrow={currentThrow} />
       <KpiStrip accent={activeColor} onClick={()=>setStatsOpen(true)} items={[["BUILD",activeStats.builds||0],["DÉGÂTS",activeStats.damage||0],["PRÉC.",`${percent(activeStats.usefulHits,activeStats.darts)}%`],["M",state.legWins[activePlayer?.id]||0]]}/>
       <QuickRow players={state.players} activeId={activePlayer?.id} profileById={profileById} colorById={colorById} ticker={tickerCastle} onPlayers={()=>setPlayersOpen(true)} onStats={()=>setStatsOpen(true)} onLog={()=>setLogOpen(true)} onRanking={()=>setRankingOpen(true)}/>

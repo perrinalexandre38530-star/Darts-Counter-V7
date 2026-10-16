@@ -1,8 +1,8 @@
 import fs from "node:fs";
-const engine = fs.readFileSync(new URL("../lib/gameEngines/wave61Engine.ts", import.meta.url), "utf8");
-const panel = fs.readFileSync(new URL("../pages/wave61/Wave61SurvivalCombatPanels.tsx", import.meta.url), "utf8");
-const config = fs.readFileSync(new URL("../pages/wave61/modes/jurassic_dartConfig.tsx", import.meta.url), "utf8");
-const play = fs.readFileSync(new URL("../pages/wave61/modes/jurassic_dartPlay.tsx", import.meta.url), "utf8");
+const engine = fs.readFileSync(new URL("../src/lib/gameEngines/wave61Engine.ts", import.meta.url), "utf8");
+const panel = fs.readFileSync(new URL("../src/pages/wave61/Wave61SurvivalCombatPanels.tsx", import.meta.url), "utf8");
+const config = fs.readFileSync(new URL("../src/pages/wave61/modes/jurassic_dartConfig.tsx", import.meta.url), "utf8");
+const play = fs.readFileSync(new URL("../src/pages/wave61/modes/jurassic_dartPlay.tsx", import.meta.url), "utf8");
 for (const needle of ["function processJurassic", "jurassicProgressByPlayer", "jurassicThreatByPlayer", "jurassicSecurityByPlayer", "tranquilizerPower", "attackThreshold", "securityDamage"]) if (!engine.includes(needle)) throw new Error(`V81 jurassic: contrat moteur absent: ${needle}`);
 for (const needle of ["JURASSIC DART · EXPÉDITION EN DIRECT", "MENACE DINOSAURES", "SÉCURITÉ DU CAMP", "TRANQUILLISANT", "EN CAS D’ATTAQUE", "RÉFLEXE SURVIE", "FOSSILES", "ADN", "ENCLOS", "ÉVASION"]) if (!panel.includes(needle)) throw new Error(`V81 jurassic: UI absente: ${needle}`);
 for (const needle of ["attackThreshold", "tranquilizerPower", "securityDamage"]) if (!config.includes(needle)) throw new Error(`V81 jurassic: option dédiée absente: ${needle}`);

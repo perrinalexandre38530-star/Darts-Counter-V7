@@ -307,6 +307,122 @@ function FirstRunGuide({ onClose }: any) {
   </div>;
 }
 
+
+function TurnImpactMap({ debrief }: any) {
+  const events = Array.isArray(debrief?.events) ? debrief.events : [];
+  const numbers = Array.isArray(debrief?.gridNumbers) && debrief.gridNumbers.length === 20
+    ? debrief.gridNumbers
+    : Array.from({ length: 20 }, (_, index) => index + 1);
+  const sonarEvents = events.filter((event: any) => event?.type === "sonar");
+  const scannedCells = new Set<number>(sonarEvents.flatMap((event: any) => Array.isArray(event?.scanCells) ? event.scanCells : []));
+  const sonarCenters = new Set<number>(sonarEvents.map((event: any) => Number(event?.cell)).filter((cell: number) => Number.isInteger(cell)));
+  const byCell = new Map<number, any[]>();
+  events.forEach((event: any) => {
+    const cell = Number(event?.cell);
+    if (!Number.isInteger(cell)) return;
+    byCell.set(cell, [...(byCell.get(cell) || []), event]);
+  });
+  const priority = ["sunk", "hit", "water", "duplicate", "strike"];
+  return <div className="ocean-resolution-map-wrap">
+    <div className="ocean-resolution-map-head"><div><span>CARTE D’IMPACT</span><strong>LA VOLÉE EN UN COUP D’ŒIL</strong></div><small>Les animations montrent uniquement ce que la volée a réellement révélé.</small></div>
+    <div className="ocean-resolution-map" aria-label="Carte des impacts de la volée">
+      {numbers.map((number: number, cell: number) => {
+        const cellEvents = byCell.get(cell) || [];
+        const primary = priority.map((type) => cellEvents.find((event: any) => event?.type === type)).find(Boolean);
+        const type = String(primary?.type || "");
+        const scanned = scannedCells.has(cell);
+        const sonarCenter = sonarCenters.has(cell);
+        const strike = cellEvents.some((event: any) => event?.type === "strike");
+        const className = ["ocean-resolution-cell", type ? `is-${type}` : "", scanned ? "is-scanned" : "", sonarCenter ? "is-sonar-center" : "", strike ? "is-strike" : ""].filter(Boolean).join(" ");
+        const icon = type === "sunk" ? "💥" : type === "hit" ? "🔥" : type === "water" ? "💧" : type === "duplicate" ? "↻" : strike ? "🎯" : sonarCenter ? "📡" : "";
+        return <div key={cell} className={className} style={{ ["--impact-delay" as any]: `${cell * 18}ms` }}>
+          <span className="ocean-resolution-cell__number">{number}</span>
+          {scanned ? <i className="ocean-resolution-cell__sonar" aria-hidden="true" /> : null}
+          {type === "water" ? <i className="ocean-resolution-cell__splash" aria-hidden="true" /> : null}
+          {(type === "hit" || type === "sunk") ? <i className="ocean-resolution-cell__blast" aria-hidden="true" /> : null}
+          {icon ? <b className="ocean-resolution-cell__icon">{icon}</b> : null}
+        </div>;
+      })}
+    </div>
+    <div className="ocean-resolution-map-legend"><span className="is-hit">🔥 Touché</span><span className="is-sunk">💥 Coulé</span><span className="is-water">💧 À l’eau</span><span className="is-sonar">📡 Sonar</span><span className="is-duplicate">↻ Déjà joué</span></div>
+  </div>;
+}
+
+function TurnResolutionScreen({ debrief, onContinue, onUndo }: any) {
+  if (!debrief) return null;
+  if (debrief.stage === "handoff") {
+    return <div className="ocean-turn-resolution-screen is-handoff" style={{ ["--resolution-color" as any]: debrief.color || CYAN }}>
+      <div className="ocean-handoff-card">
+        <span className="ocean-handoff-lock">🔒</span>
+        <span className="ocean-handoff-kicker">PASSAGE DE COMMANDEMENT</span>
+        <strong>PASSE L’APPAREIL À<br /><b>{debrief.nextName || "COMMANDANT SUIVANT"}</b></strong>
+        <small>La résolution précédente est masquée. Le commandant suivant peut reprendre la bataille sans voir d’information privée sur la flotte adverse.</small>
+        {debrief.nextProfile ? <ProfileAvatar profile={debrief.nextProfile} size={74} /> : null}
+        <button type="button" onClick={onContinue}>JE SUIS {String(debrief.nextName || "PRÊT").toUpperCase()} · CONTINUER</button>
+      </div>
+    </div>;
+  }
+
+  const items = Array.isArray(debrief.items) ? debrief.items : [];
+  return <div className="ocean-turn-resolution-screen" style={{ ["--resolution-color" as any]: debrief.color || CYAN }}>
+    <div className="ocean-turn-resolution-card">
+      <div className="ocean-turn-resolution-head">
+        <div>
+          <span>⚓ RÉSOLUTION DE VOLÉE</span>
+          <strong>{debrief.actorName}</strong>
+          <small>B{debrief.battle} · T{debrief.round} · cible {debrief.targetName}</small>
+        </div>
+        <span className="ocean-turn-resolution-grade">{debrief.darts?.join(" / ") || "—"}</span>
+      </div>
+
+      <div className={`ocean-turn-resolution-hero is-${debrief.tone || "neutral"}`}>
+        <span>{debrief.icon}</span>
+        <div>
+          <small>RÉSULTAT</small>
+          <strong>{debrief.title}</strong>
+          <p>{debrief.detail}</p>
+        </div>
+      </div>
+
+      <div className="ocean-turn-resolution-darts" aria-label="Fléchettes de la volée">
+        {[0, 1, 2].map((index) => <div key={index} className={debrief.darts?.[index] ? "is-played" : ""}>
+          <span>D{index + 1}</span>
+          <strong>{debrief.darts?.[index] || "—"}</strong>
+        </div>)}
+      </div>
+
+      <TurnImpactMap debrief={debrief} />
+
+      <div className="ocean-turn-resolution-events">
+        {items.length ? items.map((item: any) => <div key={item.key} className={`is-${item.tone}`}>
+
+          <span>{item.icon}</span><strong>{item.label}</strong>
+        </div>) : <div className="is-neutral"><span>•</span><strong>AUCUN EFFET TACTIQUE</strong></div>}
+      </div>
+
+      <div className="ocean-turn-resolution-kpis">
+        <div><span>IMPACTS</span><strong>{debrief.hitCount}</strong><small>{debrief.hitZones?.length ? `zones ${debrief.hitZones.join(", ")}` : "aucun contact"}</small></div>
+        <div><span>COULÉS</span><strong>{debrief.sunkCount}</strong><small>{debrief.shipNames?.length ? debrief.shipNames.join(" · ") : "aucun navire"}</small></div>
+        <div><span>SONAR</span><strong>{debrief.contactCount}</strong><small>{debrief.sonarUsed ? "contacts détectés" : "non utilisé"}</small></div>
+        <div><span>FLOTTE CIBLE</span><strong>{debrief.targetShipsAfter ?? "—"}</strong><small>navires restants</small></div>
+      </div>
+
+      <div className="ocean-turn-resolution-next">
+        <span>{debrief.finished ? "🏆 FIN DE PARTIE" : debrief.battleWon ? "⚔️ BATAILLE TERMINÉE" : "➡️ PROCHAINE ACTION"}</span>
+        <strong>{debrief.finished ? "Ouvrir le débrief final" : debrief.phaseAfter === "placement" ? "Déployer la flotte de la prochaine bataille" : debrief.nextIsBot ? `${debrief.nextName} va jouer` : debrief.nextName ? `Passer à ${debrief.nextName}` : "Continuer la bataille"}</strong>
+        <small>{debrief.finished ? "La dernière volée est enregistrée." : debrief.nextIsBot ? "Le BOT jouera dès que tu fermes cette résolution." : "Valide ce résultat avant de passer au commandant suivant."}</small>
+      </div>
+
+      <div className="ocean-turn-resolution-actions">
+        <button type="button" className="is-undo" onClick={onUndo}>↶ ANNULER LA VOLÉE</button>
+        <button type="button" className="is-continue" onClick={onContinue}>
+          {debrief.finished ? "VOIR LE DÉBRIEF FINAL" : debrief.phaseAfter === "placement" ? "BATAILLE SUIVANTE" : debrief.nextIsBot ? "LAISSER JOUER LE BOT" : "COMMANDANT SUIVANT"}
+        </button>
+      </div>
+    </div>
+  </div>;
+}
+
 function QuickButton({ icon, label, value, color, onClick }: any) {
   return <button type="button" onClick={onClick} className="ocean-float-action" style={{ borderColor: `${color}66`, background: `linear-gradient(180deg,${color}20,rgba(3,10,16,.96))` }} title={`${label} · ${value}`}>
     <span className="ocean-float-action__icon" style={{ color }}>{icon}</span>
@@ -520,6 +636,7 @@ export default function OceanControlPlay(props: any) {
   const [undoStack, setUndoStack] = React.useState<OceanControlState[]>([]);
   const [notice, setNotice] = React.useState(oceanControlTacticalHint(initialState));
   const [impactFeedback, setImpactFeedback] = React.useState<any>(null);
+  const [turnDebrief, setTurnDebrief] = React.useState<any>(null);
   const [showGameplayHelp, setShowGameplayHelp] = React.useState<boolean>(() => {
     try { return localStorage.getItem("dc_ocean_control_gameplay_help_v1") !== "dismissed" && !resumeRecord; }
     catch { return !resumeRecord; }
@@ -558,11 +675,134 @@ export default function OceanControlPlay(props: any) {
     if (config.sfxEnabled !== false) playImpactFromDart({ value: dart.v, mult: dart.mult });
     setThrowDarts((prev) => [...prev, dart].slice(0, 3));
   }
-  function commitVisit(source?: UiDart[]) { const darts = (source || throwDarts).slice(0, 3); if (!darts.length || state.phase !== "playing") return; setUndoStack((prev) => [...prev.slice(-29), cloneOceanControlState(state)]); const next = playOceanControlVisit(state, darts.map(uiToGameDart)); setState(next); setThrowDarts([]); setMultiplier(1); const visit = next.visits[next.visits.length - 1]; setNotice(visit?.events?.map((event) => event.label).join(" · ") || oceanControlTacticalHint(next)); setImpactFeedback(feedbackFromVisit(visit)); if (config.sfxEnabled !== false) playOceanResultSfx(visit, next.phase === "finished"); if (next.phase === "finished") setShowEnd(true); }
+  function commitVisit(source?: UiDart[]) {
+    const darts = (source || throwDarts).slice(0, 3);
+    if (!darts.length || state.phase !== "playing" || turnDebrief) return;
+    const before = cloneOceanControlState(state);
+    setUndoStack((prev) => [...prev.slice(-29), before]);
+    const next = playOceanControlVisit(state, darts.map(uiToGameDart));
+    const visit = next.visits[next.visits.length - 1];
+    setState(next);
+    setThrowDarts([]);
+    setMultiplier(1);
+    setNotice(visit?.events?.map((event: any) => event.label).join(" · ") || oceanControlTacticalHint(next));
+    setImpactFeedback(feedbackFromVisit(visit));
+    setTurnDebrief(makeTurnDebrief(before, next, visit));
+    if (config.sfxEnabled !== false) playOceanResultSfx(visit, next.phase === "finished");
+  }
+
   function cancelOrUndo() { if (throwDarts.length) { if (config.sfxEnabled !== false) playUiClickSoft(); setThrowDarts([]); setMultiplier(1); setImpactFeedback(null); setNotice("Volée effacée."); return; } const previous = undoStack[undoStack.length - 1]; if (!previous) { setNotice("Aucune action à annuler."); return; } if (config.sfxEnabled !== false) playUiClickSoft(); setState(previous); setUndoStack((prev) => prev.slice(0, -1)); setShowEnd(false); setImpactFeedback(null); autoSavedRef.current = ""; setNotice("Dernière volée annulée."); }
-  function resetMatch() { if (config.sfxEnabled !== false) playUiConfirm(); matchIdRef.current = `ocean-control-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; const next = createOceanControlState(players, config); setState(next); setThrowDarts([]); setUndoStack([]); setShowEnd(false); setOverlay(null); setPlacementReady(false); setImpactFeedback(null); setNotice(oceanControlTacticalHint(next)); autoSavedRef.current = ""; }
+  function resetMatch() { if (config.sfxEnabled !== false) playUiConfirm(); matchIdRef.current = `ocean-control-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; const next = createOceanControlState(players, config); setState(next); setThrowDarts([]); setUndoStack([]); setShowEnd(false); setOverlay(null); setPlacementReady(false); setImpactFeedback(null); setTurnDebrief(null); setNotice(oceanControlTacticalHint(next)); autoSavedRef.current = ""; }
   function chooseTarget(ownerId: string) { if (config.sfxEnabled !== false) playUiConfirm(); setState((prev) => selectOceanControlTarget(prev, ownerId)); setOverlay(null); }
   function chooseFocus(number: number) { if (config.sfxEnabled !== false) playUiClickSoft(); setState((prev) => selectOceanControlFocus(prev, number)); setNotice(`Zone ${number} sélectionnée pour le sonar / DBULL.`); }
+  function makeTurnDebrief(before: OceanControlState, next: OceanControlState, visit: any) {
+    const actor = getOceanActivePlayer(before);
+    const actorProfile = profilesById.get(String(actor?.id || "")) || actor;
+    const targetBefore = before.owners.find((owner: any) => String(owner.id) === String(visit?.targetOwnerId || ""));
+    const sameBattle = Number(next.battleNumber) === Number(before.battleNumber);
+    const targetAfter = sameBattle ? next.owners.find((owner: any) => String(owner.id) === String(visit?.targetOwnerId || "")) : null;
+    const nextPlayer = next.phase === "playing" ? getOceanActivePlayer(next) : null;
+    const nextProfile = nextPlayer ? (profilesById.get(String(nextPlayer.id)) || nextPlayer) : null;
+    const events = Array.isArray(visit?.events) ? visit.events : [];
+    const hitEvents = events.filter((event: any) => event?.type === "hit" || event?.type === "sunk");
+    const sunkEvents = events.filter((event: any) => event?.type === "sunk");
+    const sonarEvents = events.filter((event: any) => event?.type === "sonar");
+    const waterEvents = events.filter((event: any) => event?.type === "water" || event?.type === "miss");
+    const duplicateEvents = events.filter((event: any) => event?.type === "duplicate");
+    const battleWon = events.some((event: any) => event?.type === "battle_win");
+    const strike = events.some((event: any) => event?.type === "strike");
+    const contactCount = sonarEvents.reduce((sum: number, event: any) => sum + Number(event?.contactCount || 0), 0);
+    const hitZones = Array.from(new Set(hitEvents.map((event: any) => Number(event?.number || 0)).filter((value: number) => value > 0)));
+    const shipNames = Array.from(new Set(sunkEvents.map((event: any) => String(event?.shipName || "")).filter(Boolean)));
+    const title = battleWon
+      ? "OCÉAN SOUS CONTRÔLE"
+      : sunkEvents.length
+        ? `${sunkEvents.length} NAVIRE${sunkEvents.length > 1 ? "S" : ""} COULÉ${sunkEvents.length > 1 ? "S" : ""}`
+        : hitEvents.length
+          ? `${hitEvents.length} IMPACT${hitEvents.length > 1 ? "S" : ""} CONFIRMÉ${hitEvents.length > 1 ? "S" : ""}`
+          : sonarEvents.length
+            ? contactCount > 0 ? `${contactCount} CONTACT${contactCount > 1 ? "S" : ""} SONAR` : "ZONE SONAR CLAIRE"
+            : duplicateEvents.length
+              ? "ZONE DÉJÀ CONTRÔLÉE"
+              : "À L’EAU";
+    const tone = battleWon ? "win" : sunkEvents.length ? "sunk" : hitEvents.length ? "hit" : sonarEvents.length ? "sonar" : duplicateEvents.length ? "duplicate" : "water";
+    const color = battleWon ? GOLD : sunkEvents.length ? RED : hitEvents.length ? "#ff7a45" : sonarEvents.length ? CYAN : duplicateEvents.length ? "#a78bfa" : BLUE;
+    const icon = battleWon ? "🏆" : sunkEvents.length ? "💥" : hitEvents.length ? "🔥" : sonarEvents.length ? "📡" : duplicateEvents.length ? "↻" : "🌊";
+    const detail = battleWon
+      ? `${targetBefore?.name || "La flotte ennemie"} est neutralisée.`
+      : sunkEvents.length
+        ? `${shipNames.join(" · ") || "Bâtiment ennemi"} détruit${shipNames.length > 1 ? "s" : ""}.`
+        : hitEvents.length
+          ? `${hitZones.length ? `Zones ${hitZones.join(", ")} touchées.` : "Impact sur la flotte ennemie."}`
+          : sonarEvents.length
+            ? contactCount > 0 ? "Le sonar révèle une zone prioritaire pour la prochaine attaque." : "Aucun bâtiment détecté dans la zone analysée."
+            : waterEvents.length
+              ? `${waterEvents.length} tir${waterEvents.length > 1 ? "s" : ""} sans contact.`
+              : "Volée résolue.";
+    return {
+      id: `${visit?.id || Date.now()}-resolution`,
+      stage: "result",
+      actorId: actor?.id || visit?.playerId || null,
+      actorName: playerName(actorProfile),
+      actorProfile,
+      actorIsBot: isBot(actorProfile, botIds),
+      targetName: targetBefore?.name || "Flotte ennemie",
+      battle: visit?.battle || before.battleNumber,
+      round: visit?.round || before.roundIndex,
+      darts: Array.isArray(visit?.labels) ? visit.labels : [],
+      events: events.map((event: any) => ({ ...event, scanCells: Array.isArray(event?.scanCells) ? [...event.scanCells] : event?.scanCells })),
+      gridNumbers: [...(before.gridNumbers || [])],
+      items: visitResultItems(visit),
+      title,
+      detail,
+      tone,
+      color,
+      icon,
+      hitCount: hitEvents.length,
+      sunkCount: sunkEvents.length,
+      sonarUsed: sonarEvents.length > 0,
+      contactCount,
+      hitZones,
+      shipNames,
+      strike,
+      targetShipsAfter: battleWon ? 0 : targetAfter ? oceanControlRemainingDecks(targetAfter) : null,
+      battleWon,
+      finished: next.phase === "finished",
+      phaseAfter: next.phase,
+      nextPlayerId: nextPlayer?.id || null,
+      nextName: nextProfile ? playerName(nextProfile) : null,
+      nextProfile,
+      nextIsBot: nextProfile ? isBot(nextProfile, botIds) : false,
+    };
+  }
+
+  function continueTurnDebrief() {
+    if (!turnDebrief) return;
+    if (turnDebrief.stage === "handoff") {
+      setTurnDebrief(null);
+      return;
+    }
+    if (turnDebrief.finished) {
+      setTurnDebrief(null);
+      setShowEnd(true);
+      return;
+    }
+    const needsHandoff = state.phase === "playing"
+      && turnDebrief.nextPlayerId
+      && String(turnDebrief.nextPlayerId) !== String(turnDebrief.actorId)
+      && !turnDebrief.nextIsBot;
+    if (needsHandoff) {
+      setTurnDebrief({ ...turnDebrief, stage: "handoff" });
+      return;
+    }
+    setTurnDebrief(null);
+  }
+
+  function undoResolvedVisit() {
+    setTurnDebrief(null);
+    setShowEnd(false);
+    cancelOrUndo();
+  }
   function dismissGameplayHelp() { setShowGameplayHelp(false); try { localStorage.setItem("dc_ocean_control_gameplay_help_v1", "dismissed"); } catch {} }
   function handlePlace(cell: number) {
     const beforeOwner = getOceanPlacementOwner(state);
@@ -618,17 +858,17 @@ export default function OceanControlPlay(props: any) {
   }, [state.phase, state.placementOwnerIndex]);
 
   React.useEffect(() => {
-    if (state.phase !== "playing" || !activePlayer || !isBot(activeProfile, botIds) || botThinking) return;
+    if (state.phase !== "playing" || !activePlayer || !isBot(activeProfile, botIds) || botThinking || turnDebrief) return;
     setBotThinking(true);
     const timer = window.setTimeout(() => {
       const plan = pickOceanControlBotDarts(state, config.botLevel);
       let prepared = plan.focusNumber ? selectOceanControlFocus(state, plan.focusNumber) : state;
       const next = playOceanControlVisit(prepared, plan.darts);
       setUndoStack((prev) => [...prev.slice(-29), cloneOceanControlState(state)]); setState(next); setThrowDarts([]); setBotThinking(false);
-      const visit = next.visits[next.visits.length - 1]; setNotice(visit?.events?.map((event) => event.label).join(" · ") || "Volée BOT validée."); setImpactFeedback(feedbackFromVisit(visit)); if (config.sfxEnabled !== false) playOceanResultSfx(visit, next.phase === "finished"); if (next.phase === "finished") setShowEnd(true);
+      const visit = next.visits[next.visits.length - 1]; setNotice(visit?.events?.map((event: any) => event.label).join(" · ") || "Volée BOT validée."); setImpactFeedback(feedbackFromVisit(visit)); setTurnDebrief(makeTurnDebrief(state, next, visit)); if (config.sfxEnabled !== false) playOceanResultSfx(visit, next.phase === "finished");
     }, 650);
     return () => { window.clearTimeout(timer); setBotThinking(false); };
-  }, [state.activePlayerIndex, state.roundIndex, state.battleNumber, state.phase]);
+  }, [state.activePlayerIndex, state.roundIndex, state.battleNumber, state.phase, turnDebrief?.id, turnDebrief?.stage]);
 
   React.useEffect(() => { if (!overlay) return; const previous = document.body.style.overflow; document.body.style.overflow = "hidden"; const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setOverlay(null); }; window.addEventListener("keydown", onKey); return () => { document.body.style.overflow = previous; window.removeEventListener("keydown", onKey); }; }, [overlay]);
   React.useEffect(() => { if (!impactFeedback) return; const timer = window.setTimeout(() => setImpactFeedback(null), 1650); return () => window.clearTimeout(timer); }, [impactFeedback?.id]);
@@ -669,9 +909,7 @@ export default function OceanControlPlay(props: any) {
   }
 
   React.useEffect(() => { if (state.phase === "finished" || state.visits.length === 0) return; const timer = window.setTimeout(() => { void (History as any).upsert(buildHistoryRecord("in_progress")); }, 280); return () => window.clearTimeout(timer); }, [state]);
-  React.useEffect(() => { if (state.phase !== "finished") return; setShowEnd(true); if (autoSavedRef.current === matchIdRef.current) return; autoSavedRef.current = matchIdRef.current; try { onFinish?.(buildHistoryRecord("finished"), { navigate: false }); } catch {} }, [state.phase]);
-
-  if (state.phase === "placement") return <div style={{ minHeight: "100dvh", color: theme?.text || "#fff", background: "radial-gradient(circle at 50% -10%,rgba(48,185,255,.22),#07101b 43%,#020507 100%)" }}><PageHeader tickerSrc={tickerOcean} tickerAlt="OCEAN CONTROL" tickerHeight={78} tickerBottomGap={6} left={<BackDot onClick={backToConfig} color={BLUE} glow={`${BLUE}88`} />} right={<InfoDot title="Placement de la flotte" color={CYAN} glow={`${CYAN}88`} content={<Rules config={config} />} />} /><PlacementScreen state={state} profilesById={profilesById} ready={placementReady} onReady={() => { setPlacementReady(true); setPlacementNotice("Choisis une orientation puis une case lumineuse."); }} orientation={orientation} setOrientation={(nextOrientation: OceanControlOrientation) => { setOrientation(nextOrientation); setPlacementNotice(nextOrientation === "horizontal" ? "Horizontal sélectionné : le navire part vers la droite." : "Vertical sélectionné : le navire descend."); }} onPlace={handlePlace} onReset={() => { setState((prev) => resetOceanPlacementOwner(prev)); setPlacementNotice("Flotte effacée. Recommence le placement."); }} onAuto={autoPlaceCurrentOwner} notice={placementNotice} /></div>;
+  React.useEffect(() => { if (state.phase !== "finished") return; if (!turnDebrief) setShowEnd(true); if (autoSavedRef.current === matchIdRef.current) return; autoSavedRef.current = matchIdRef.current; try { onFinish?.(buildHistoryRecord("finished"), { navigate: false }); } catch {} }, [state.phase, turnDebrief?.id]);
 
   const remainingShips = oceanControlRemainingDecks(targetOwner);
   const remainingCells = oceanControlRemainingCells(targetOwner);
@@ -765,6 +1003,13 @@ export default function OceanControlPlay(props: any) {
           ? { step: "2", icon: "🎯", title: `CONTINUE · ${throwDarts.length}/3 FLÉCHETTES`, detail: `Déjà saisi : ${throwDarts.map(dartPreviewLabel).join(" / ")}. Vérifie l’effet D1 / D2 / D3 avant validation.`, action: `IL RESTE ${3 - throwDarts.length}`, tone: BLUE }
           : { step: "3", icon: "✓", title: "VOLÉE PRÊTE", detail: `${throwDarts.map(dartPreviewLabel).join(" / ")} · vérifie les zones prévues sur la carte puis valide.`, action: "VALIDER LA VOLÉE", tone: GREEN };
   const noticeSlot = <div style={{ color: botThinking ? GOLD : SOFT, fontSize: 8.2, fontWeight: 900, textAlign: "center", lineHeight: 1.2 }}>{botThinking ? "BOT EN APPROCHE…" : notice}</div>;
+
+  if (turnDebrief) return <div className="ocean-turn-resolution-page" style={{ color: theme?.text || "#fff" }}>
+    <PageHeader tickerSrc={tickerOcean} tickerAlt="OCEAN CONTROL" tickerHeight={60} tickerBottomGap={2} left={<BackDot onClick={backToConfig} color={BLUE} glow={`${BLUE}88`} />} right={<InfoDot title="Résolution de volée" color={CYAN} glow={`${CYAN}88`} content={<Rules config={config} />} />} />
+    <TurnResolutionScreen debrief={turnDebrief} onContinue={continueTurnDebrief} onUndo={undoResolvedVisit} />
+  </div>;
+
+  if (state.phase === "placement") return <div style={{ minHeight: "100dvh", color: theme?.text || "#fff", background: "radial-gradient(circle at 50% -10%,rgba(48,185,255,.22),#07101b 43%,#020507 100%)" }}><PageHeader tickerSrc={tickerOcean} tickerAlt="OCEAN CONTROL" tickerHeight={78} tickerBottomGap={6} left={<BackDot onClick={backToConfig} color={BLUE} glow={`${BLUE}88`} />} right={<InfoDot title="Placement de la flotte" color={CYAN} glow={`${CYAN}88`} content={<Rules config={config} />} />} /><PlacementScreen state={state} profilesById={profilesById} ready={placementReady} onReady={() => { setPlacementReady(true); setPlacementNotice("Choisis une orientation puis une case lumineuse."); }} orientation={orientation} setOrientation={(nextOrientation: OceanControlOrientation) => { setOrientation(nextOrientation); setPlacementNotice(nextOrientation === "horizontal" ? "Horizontal sélectionné : le navire part vers la droite." : "Vertical sélectionné : le navire descend."); }} onPlace={handlePlace} onReset={() => { setState((prev) => resetOceanPlacementOwner(prev)); setPlacementNotice("Flotte effacée. Recommence le placement."); }} onAuto={autoPlaceCurrentOwner} notice={placementNotice} /></div>;
 
   return <div className="ocean-control-page" style={{ color: theme?.text || "#fff" }}>
     <PageHeader tickerSrc={tickerOcean} tickerAlt="OCEAN CONTROL" tickerHeight={60} tickerBottomGap={2} left={<BackDot onClick={backToConfig} color={BLUE} glow={`${BLUE}88`} />} right={<InfoDot title="Règles OCEAN CONTROL" color={CYAN} glow={`${CYAN}88`} content={<Rules config={config} />} />} />

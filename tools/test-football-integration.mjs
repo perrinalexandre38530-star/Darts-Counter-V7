@@ -67,6 +67,8 @@ for (const token of ['mode === "football_darts"', "stateSnapshot", "footballVisi
 console.log("DARTS FOOTBALL integration wiring: OK");
 
 const footballPlayCss = read("src/styles/football-play.css");
-for (const token of ["football-scoreboard", "football-field__ball", "football-command-row", "football-compact-pad", "football-pad-cell.is-target", "football-match-ticker", "football-momentum"]) assert.ok(footballPlayCss.includes(token), `CSS FootballPlay incomplet: ${token}`);
+for (const token of ["football-scoreboard", "football-field__ball", "football-command-row", "football-compact-pad", "football-pad-cell.is-target", "football-match-ticker", "football-momentum", "football-recommended-play", "football-projection", "football-pad-cell.is-recommended"]) assert.ok(footballPlayCss.includes(token), `CSS FootballPlay incomplet: ${token}`);
+
+for (const token of ["footballTacticalRecommendation", "PLAN CONSEILLÉ", "footballInputProjection", "FootballProjectionStrip", "APERÇU SI TU VALIDES MAINTENANT"]) assert.ok(play.includes(token), `Gameplay Football V13 incomplet: ${token}`);
 const footballConfigCss = read("src/styles/football-config.css");
 for (const token of ["football-config-summary", "football-mode-grid", "football-config-actions"]) assert.ok(footballConfigCss.includes(token), `CSS FootballConfig incomplet: ${token}`);

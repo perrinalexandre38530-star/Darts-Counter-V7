@@ -9,6 +9,7 @@ import {
   normalizeOceanControlConfig,
   oceanControlAccuracy,
   oceanControlLatestSonarScan,
+  pickOceanControlBotDarts,
   placeOceanControlShip,
   playOceanControlVisit,
   selectOceanControlFocus,
@@ -171,5 +172,42 @@ assert.equal(decoded?.stats?.mode, "ocean_control");
 assert.equal(decoded?.players?.[0]?.precisionStrikes, 1);
 assert.equal(decoded?.players?.[0]?.successfulVisits, 1);
 assert.equal(decoded?.players?.[0]?.bestHitStreak, 1);
+
+
+
+// BOT équitable : à informations publiques identiques, modifier la position secrète des navires
+// ne doit pas modifier le plan du BOT lorsque le RNG est identique.
+let botA = createOceanControlState(players, baseConfig, () => 0.31);
+let botB = cloneOceanControlState(botA);
+const targetA = getOceanTargetOwner(botA)!;
+const targetB = getOceanTargetOwner(botB)!;
+targetB.ships = targetB.ships.map((ship, index) => ({ ...ship, cells: ship.cells.map((cell) => (cell + 7 + index) % 20), hits: [] }));
+targetA.attackedCells["0"] = "miss";
+targetB.attackedCells["0"] = "miss";
+const rngValues = [0.7, 0.8, 0.9, 0.4, 0.55, 0.75, 0.62, 0.81, 0.33, 0.91, 0.48, 0.66];
+const makeRng = () => { let index = 0; return () => rngValues[index++ % rngValues.length]; };
+assert.deepEqual(pickOceanControlBotDarts(botA, "hard", makeRng()), pickOceanControlBotDarts(botB, "hard", makeRng()), "le BOT ne doit pas lire la flotte cachée");
+
+// Victoire en équipe : tous les membres de la flotte gagnante reçoivent le crédit de victoire.
+const teamPlayers = [
+  { id: "a1", name: "A1" }, { id: "a2", name: "A2" },
+  { id: "b1", name: "B1" }, { id: "b2", name: "B2" },
+] as any;
+const teamConfig = normalizeOceanControlConfig({
+  ...baseConfig,
+  participantMode: "teams",
+  teamByPlayer: { a1: "A", a2: "A", b1: "B", b2: "B" },
+  selectedIds: ["a1", "a2", "b1", "b2"],
+  players: 4,
+  winsNeeded: 1,
+});
+let teamState = createOceanControlState(teamPlayers, teamConfig, () => 0.27);
+const teamTarget = getOceanTargetOwner(teamState)!;
+teamTarget.ships = [{ id: "last-team", name: "Patrouilleur", icon: "🚤", length: 1, cells: [0], hits: [], sunk: false }];
+teamState = playOceanControlVisit(teamState, [{ bed: "S", number: teamState.gridNumbers[0] }] as any, () => 0.27);
+assert.equal(teamState.phase, "finished");
+assert.deepEqual(new Set(teamState.winnerPlayerIds), new Set(["a1", "a2"]));
+assert.equal(teamState.statsByPlayer.a1.wins, 1);
+assert.equal(teamState.statsByPlayer.a2.wins, 1);
 
 console.log("✅ OCEAN CONTROL REGRESSION OK");

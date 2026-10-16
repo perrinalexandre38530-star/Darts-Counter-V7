@@ -1,8 +1,8 @@
 import fs from "node:fs";
-const engine = fs.readFileSync(new URL("../lib/gameEngines/wave61Engine.ts", import.meta.url), "utf8");
-const panel = fs.readFileSync(new URL("../pages/wave61/Wave61MissionAdventurePanels.tsx", import.meta.url), "utf8");
-const config = fs.readFileSync(new URL("../pages/wave61/modes/jardinierConfig.tsx", import.meta.url), "utf8");
-const catalogue = fs.readFileSync(new URL("../games/dartsWave61.ts", import.meta.url), "utf8");
+const engine = fs.readFileSync(new URL("../src/lib/gameEngines/wave61Engine.ts", import.meta.url), "utf8");
+const panel = fs.readFileSync(new URL("../src/pages/wave61/Wave61MissionAdventurePanels.tsx", import.meta.url), "utf8");
+const config = fs.readFileSync(new URL("../src/pages/wave61/modes/jardinierConfig.tsx", import.meta.url), "utf8");
+const catalogue = fs.readFileSync(new URL("../src/games/dartsWave61.ts", import.meta.url), "utf8");
 for (const needle of ["function processJardinier", "gardenGrowthByPlayer", "gardenHarvestByPlayer", "gardenWaterByPlayer", "waterDrain", "harvestGoal", "if (harvest >= harvestGoal) finishWith"]) if (!engine.includes(needle)) throw new Error(`V78 jardinier: contrat moteur absent: ${needle}`);
 for (const needle of ["LE JARDINIER · POTAGER EN DIRECT", "Réserve critique", "BULL = arrosage", "🥕"]) if (!panel.includes(needle)) throw new Error(`V78 jardinier: UI dédiée absente: ${needle}`);
 for (const needle of ["waterStart", "waterDrain", "harvestGoal"]) if (!config.includes(needle)) throw new Error(`V78 jardinier: option dédiée absente: ${needle}`);

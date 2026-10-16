@@ -8,6 +8,7 @@ import React from "react";
 import BackDot from "../components/BackDot";
 import DartboardClickable from "../components/DartboardClickable";
 import InfoDot from "../components/InfoDot";
+import Keypad from "../components/Keypad";
 import PageHeader from "../components/PageHeader";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { useTheme } from "../contexts/ThemeContext";
@@ -37,7 +38,8 @@ import CargoLoadStatus from "../components/cargo/CargoLoadStatus";
 import CargoManifestStrip from "../components/cargo/CargoManifestStrip";
 import CargoTeamStrip from "../components/cargo/CargoTeamStrip";
 import CargoParcelRoutePanel from "../components/cargo/CargoParcelRoutePanel";
-import { buildCargoMissionCue, buildCargoVisualSnapshot } from "../lib/gameEngines/cargoVisuals";
+import CargoGameplayBurst, { buildCargoGameplayBurst, type CargoGameplayBurstData } from "../components/cargo/CargoGameplayBurst";
+import { buildCargoAimCue, buildCargoMissionCue, buildCargoVisualSnapshot } from "../lib/gameEngines/cargoVisuals";
 import { getCargoContractArt, getCargoHeroArt, getCargoStageBadge, getCargoSupportArt } from "../components/cargo/cargoArt";
 import CargoEnd from "./CargoEnd";
 import "../styles/cargo-ui.css";
@@ -263,6 +265,7 @@ export default function CargoPlay(props: any) {
   const [showEnd, setShowEnd] = React.useState(initialState.phase === "finished");
   const [botThinking, setBotThinking] = React.useState(false);
   const [eventToast, setEventToast] = React.useState<CargoToast>(null);
+  const [gameplayBurst, setGameplayBurst] = React.useState<CargoGameplayBurstData | null>(null);
   const matchIdRef = React.useRef(String(resumeRecord?.id || resumeRecord?.matchId || `cargo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
   const autoSavedRef = React.useRef("");
 
@@ -289,16 +292,22 @@ export default function CargoPlay(props: any) {
     setState(next); setThrowDarts([]); setMultiplier(1);
     const visit = next.visits[next.visits.length - 1];
     setNotice(visit?.events?.map((event) => event.label).join(" · ") || cargoCurrentObjective(next));
-    const toast = notableToast(visit?.events || []);
-    if (toast) setEventToast(toast);
+    const burst = buildCargoGameplayBurst(visit?.events || [], state, next);
+    if (burst) {
+      setGameplayBurst(burst);
+      setEventToast(null);
+    } else {
+      const toast = notableToast(visit?.events || []);
+      if (toast) setEventToast(toast);
+    }
     if (next.phase === "finished") setShowEnd(true);
   }
   function cancelOrUndo() {
     if (throwDarts.length) { setThrowDarts([]); setMultiplier(1); setNotice("Volée effacée."); return; }
     const previous = undoStack[undoStack.length - 1]; if (!previous) { setNotice("Aucune action à annuler."); return; }
-    setState(previous); setUndoStack((prev) => prev.slice(0, -1)); setShowEnd(false); autoSavedRef.current = ""; setNotice("Dernière volée annulée.");
+    setState(previous); setUndoStack((prev) => prev.slice(0, -1)); setShowEnd(false); setGameplayBurst(null); setEventToast(null); autoSavedRef.current = ""; setNotice("Dernière volée annulée.");
   }
-  function resetMatch() { matchIdRef.current = `cargo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; const next = createCargoState(players, config); setState(next); setThrowDarts([]); setUndoStack([]); setShowEnd(false); setOverlay(null); setEventToast(null); setNotice(cargoCurrentObjective(next)); autoSavedRef.current = ""; }
+  function resetMatch() { matchIdRef.current = `cargo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; const next = createCargoState(players, config); setState(next); setThrowDarts([]); setUndoStack([]); setShowEnd(false); setOverlay(null); setEventToast(null); setGameplayBurst(null); setNotice(cargoCurrentObjective(next)); autoSavedRef.current = ""; }
 
   React.useEffect(() => {
     if (state.phase !== "playing" || !activePlayer || !isBot(activeProfile, botIds) || botThinking) return;
@@ -307,7 +316,17 @@ export default function CargoPlay(props: any) {
       const darts = pickCargoBotDarts(state).map((dart: any) => dart?.bed === "MISS" ? ({ v: 0, mult: 1 }) : dart?.bed === "OB" || dart?.bed === "BULL" ? ({ v: 25, mult: 1 }) : dart?.bed === "IB" || dart?.bed === "DBULL" ? ({ v: 25, mult: 2 }) : ({ v: Number(dart?.number || 0), mult: dart?.bed === "T" ? 3 : dart?.bed === "D" ? 2 : 1 }));
       const next = playCargoVisit(state, darts.map(uiToGameDart));
       setUndoStack((prev) => [...prev.slice(-29), cloneCargoState(state)]); setState(next); setThrowDarts([]); setBotThinking(false);
-      const visit = next.visits[next.visits.length - 1]; setNotice(visit?.events?.map((event) => event.label).join(" · ") || "Volée BOT validée."); const toast = notableToast(visit?.events || []); if (toast) setEventToast(toast); if (next.phase === "finished") setShowEnd(true);
+      const visit = next.visits[next.visits.length - 1];
+      setNotice(visit?.events?.map((event) => event.label).join(" · ") || "Volée BOT validée.");
+      const burst = buildCargoGameplayBurst(visit?.events || [], state, next);
+      if (burst) {
+        setGameplayBurst(burst);
+        setEventToast(null);
+      } else {
+        const toast = notableToast(visit?.events || []);
+        if (toast) setEventToast(toast);
+      }
+      if (next.phase === "finished") setShowEnd(true);
     }, 620);
     return () => { window.clearTimeout(timer); setBotThinking(false); };
   }, [state.activePlayerIndex, state.roundIndex, state.phase]);
@@ -317,6 +336,13 @@ export default function CargoPlay(props: any) {
     const timer = window.setTimeout(() => setEventToast(null), eventToast.priority >= 4 ? 2600 : 1900);
     return () => window.clearTimeout(timer);
   }, [eventToast?.id]);
+
+  React.useEffect(() => {
+    if (!gameplayBurst) return;
+    const duration = gameplayBurst.tone === "danger" ? 2350 : gameplayBurst.priority >= 5 ? 2200 : 1850;
+    const timer = window.setTimeout(() => setGameplayBurst(null), duration);
+    return () => window.clearTimeout(timer);
+  }, [gameplayBurst?.id]);
 
   React.useEffect(() => {
     if (!overlay) return;
@@ -460,6 +486,17 @@ export default function CargoPlay(props: any) {
   }, [state.phase]);
 
   const missionCue = buildCargoMissionCue(state, activeStats);
+  const aimCue = buildCargoAimCue(state, activeStats);
+  const aimNumber = Number(aimCue?.number || 0);
+  const aimGuideColor = missionCue.tone === "danger" ? RED : missionCue.tone === "warning" ? GOLD : missionCue.tone === "good" ? GREEN : ORANGE;
+  const aimGuideMultiplier = aimCue?.bed === "D" ? 2 : aimCue?.bed === "T" ? 3 : aimCue?.bed === "S" ? 1 : null;
+  const aimHighlightNumbers = aimNumber >= 1 && aimNumber <= 20 ? [aimNumber] : null;
+  const dartboardGuideTargets = aimNumber >= 1 && aimNumber <= 20 ? [{
+    segment: aimNumber,
+    ring: aimCue?.bed === "D" ? "double" : aimCue?.bed === "T" ? "triple" : aimCue?.bed === "S" ? "single" : "number",
+    label: aimCue.label,
+    color: aimGuideColor,
+  }] : [];
   const missionCueColor = missionCue.tone === "good" ? GREEN : missionCue.tone === "warning" ? GOLD : missionCue.tone === "danger" ? RED : ORANGE;
   const centerScore = <div style={{ textAlign: "center" }}><div style={{ color: isParcel ? BLUE : ORANGE, fontSize: 21, lineHeight: 1, fontWeight: 1200 }}>{activeScore} <span style={{ fontSize: 11, opacity: .82 }}>{scoreUnit}</span></div><div style={{ marginTop: 4, color: activeSeries ? GREEN : SOFT, fontSize: 8.3, fontWeight: 1000 }}>{activeSeries ? `SÉRIE ${activeSeries.count}${isParcel ? "/5" : ""}` : `TOUR ${state.roundIndex}/${config.rounds}`}</div></div>;
   const objectiveNow = cargoCurrentObjective(state);
@@ -480,7 +517,7 @@ export default function CargoPlay(props: any) {
   const cargoFill = Math.max(0, Math.min(100, activeScore / Math.max(1, cargoTarget) * 100));
   const activeAccuracy = pct(Number(activeStats?.hits || 0), Number(activeStats?.darts || 0));
 
-  return <div className="cargo-play-page" style={{ position: "fixed", inset: 0, zIndex: 40, minHeight: 0, color: theme?.text || "#fff", background: `radial-gradient(circle at 50% -6%,${ORANGE}20 0,${theme?.bg || "#080a11"} 44%,#020305 100%)`, padding: "0 0 max(6px,env(safe-area-inset-bottom))", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+  return <div className={`cargo-play-page${gameplayBurst ? ` cargo-play-burst-active cargo-play-burst-${gameplayBurst.tone}` : ""}`} style={{ position: "fixed", inset: 0, zIndex: 40, minHeight: 0, color: theme?.text || "#fff", background: `radial-gradient(circle at 50% -6%,${ORANGE}20 0,${theme?.bg || "#080a11"} 44%,#020305 100%)`, padding: "0 0 max(6px,env(safe-area-inset-bottom))", overflow: "hidden", display: "flex", flexDirection: "column" }}>
     <PageHeader title="CARGO" subtitle={`${cargoVariantLabel(config.variant)} · ${config.participantMode === "teams" ? "Équipes" : config.players > 2 ? "Multi" : config.players === 2 ? "Duel" : "Solo"}`} tickerSrc={tickerCargo} tickerAlt="CARGO" tickerHeight={92} tickerFit="cover" tickerBottomGap={8} left={<div style={{ marginLeft: 6 }}><BackDot onClick={backToConfig} color={ORANGE} glow={`${ORANGE}88`} /></div>} right={<div style={{ marginRight: 6 }}><InfoDot title="Règles CARGO" color={GOLD} glow={`${GOLD}88`} content={<Rules config={config} />} /></div>} />
 
     <main className="cargo-play-main" style={{ flex: 1, minHeight: 0, width: "100%", maxWidth: 980, margin: "0 auto", padding: "7px 8px 0", boxSizing: "border-box", display: "grid", gridTemplateRows: "132px 58px 132px minmax(0,1fr)", gap: 9, overflow: "hidden" }}>
@@ -526,8 +563,10 @@ export default function CargoPlay(props: any) {
       <CargoLoadStatus state={state} stats={activeStats} playerId={activePlayer?.id} currentThrow={throwDarts} onOpenTruck={() => setOverlay("truck")} onOpenManifest={() => setOverlay("manifest")} />
 
       {state.phase === "playing" ? <section className="cargo-play-input" style={{ minHeight: 0, overflow: "hidden", display: "flex", justifyContent: "center", alignItems: "stretch", borderRadius: 20, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.018)", padding: 7, boxShadow: "0 12px 32px rgba(0,0,0,.24)" }}>
-        {config.scoreInputMethod === "dartboard" ? <div style={{ width: "100%", height: "100%", minHeight: 0, borderRadius: 18, background: "linear-gradient(180deg,rgba(20,20,23,.82),rgba(8,8,11,.93))", padding: 10, display: "grid", gridTemplateRows: "minmax(0,1fr) 56px", gap: 12 }}><div style={{ minHeight: 0, display: "grid", placeItems: "center", overflow: "hidden" }}><DartboardClickable size={Math.min(330, Math.max(220, Math.floor((typeof window !== "undefined" ? window.innerHeight : 803) * .39)))} multiplier={multiplier} disabled={botThinking || throwDarts.length >= 3} onHit={(segment, mult) => addDart(segment, mult)} /></div><div style={{ display: "grid", gridTemplateColumns: "minmax(88px,.8fr) minmax(64px,.44fr) minmax(120px,1fr)", gap: 10 }}><button type="button" onClick={cancelOrUndo} style={{ borderRadius: 16, border: "1px solid rgba(255,180,0,.3)", background: "linear-gradient(180deg,#ffc63a,#ffaf00)", color: "#1a1a1a", fontWeight: 1050, cursor: "pointer", boxShadow: "0 9px 20px rgba(255,170,0,.20)" }}>ANNULER</button><div style={{ display: "grid", placeItems: "center" }}>{centerScore}</div><button type="button" onClick={() => commitVisit()} disabled={!throwDarts.length} style={{ borderRadius: 16, border: throwDarts.length ? "1px solid rgba(255,180,0,.3)" : "1px solid rgba(255,255,255,.06)", color: throwDarts.length ? "#171008" : "rgba(255,255,255,.24)", background: throwDarts.length ? "linear-gradient(180deg,#ffc63a,#ffad00)" : "rgba(255,255,255,.035)", fontWeight: 1100, cursor: throwDarts.length ? "pointer" : "default" }}>VALIDER</button></div></div> : <div style={{ width: "100%", height: "100%", minHeight: 0 }}>
-          <CargoAiryKeypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={() => setMultiplier(1)} onDouble={() => setMultiplier(2)} onTriple={() => setMultiplier(3)} onBackspace={() => { setThrowDarts((prev) => prev.slice(0,-1)); setMultiplier(1); }} onCancel={cancelOrUndo} onNumber={(number: number) => addDart(number)} onBull={() => addDart(25, multiplier === 2 ? 2 : 1)} onValidate={() => commitVisit()} centerSlot={centerScore} noticeSlot={keypadNotice} validateAttention={throwDarts.length === 3} disabled={botThinking} />
+        {config.scoreInputMethod === "dartboard" ? <div style={{ width: "100%", height: "100%", minHeight: 0, borderRadius: 18, background: "linear-gradient(180deg,rgba(20,20,23,.82),rgba(8,8,11,.93))", padding: 10, display: "grid", gridTemplateRows: "minmax(0,1fr) 56px", gap: 12 }}><div style={{ minHeight: 0, display: "grid", placeItems: "center", overflow: "hidden" }}><DartboardClickable size={Math.min(330, Math.max(220, Math.floor((typeof window !== "undefined" ? window.innerHeight : 803) * .39)))} multiplier={multiplier} disabled={botThinking || throwDarts.length >= 3} guideTargets={dartboardGuideTargets as any} guideLabel={aimCue.fixedTarget || aimCue.mode === "choice" ? `VISE ${aimCue.label}` : aimCue.label} guideColor={aimGuideColor} onHit={(segment, mult) => addDart(segment, mult)} /></div><div style={{ display: "grid", gridTemplateColumns: "minmax(88px,.8fr) minmax(64px,.44fr) minmax(120px,1fr)", gap: 10 }}><button type="button" onClick={cancelOrUndo} style={{ borderRadius: 16, border: "1px solid rgba(255,180,0,.3)", background: "linear-gradient(180deg,#ffc63a,#ffaf00)", color: "#1a1a1a", fontWeight: 1050, cursor: "pointer", boxShadow: "0 9px 20px rgba(255,170,0,.20)" }}>ANNULER</button><div style={{ display: "grid", placeItems: "center" }}>{centerScore}</div><button type="button" onClick={() => commitVisit()} disabled={!throwDarts.length} style={{ borderRadius: 16, border: throwDarts.length ? "1px solid rgba(255,180,0,.3)" : "1px solid rgba(255,255,255,.06)", color: throwDarts.length ? "#171008" : "rgba(255,255,255,.24)", background: throwDarts.length ? "linear-gradient(180deg,#ffc63a,#ffad00)" : "rgba(255,255,255,.035)", fontWeight: 1100, cursor: throwDarts.length ? "pointer" : "default" }}>VALIDER</button></div></div> : <div style={{ width: "100%", height: "100%", minHeight: 0 }}>
+          <div className="cargo-airy-keypad cargo-guided-keypad" style={{ width: "100%", height: "100%", minHeight: 0, overflowY: "auto", pointerEvents: botThinking ? "none" : "auto", opacity: botThinking ? .68 : 1 }}>
+            <Keypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={() => setMultiplier(1)} onDouble={() => setMultiplier(2)} onTriple={() => setMultiplier(3)} onBackspace={() => { setThrowDarts((prev) => prev.slice(0,-1)); setMultiplier(1); }} onCancel={cancelOrUndo} onNumber={(number: number) => addDart(number)} onBull={() => addDart(25, multiplier === 2 ? 2 : 1)} onValidate={() => commitVisit()} centerSlot={centerScore} noticeSlot={keypadNotice} validateAttention={throwDarts.length === 3} validateDisabled={!throwDarts.length || botThinking} highlightSegmentNumbers={aimHighlightNumbers} guideMultiplier={aimGuideMultiplier as any} guideColor={aimGuideColor} highlightBull={String(aimCue?.label || "").includes("BULL")} safeBottomPad={false} footerGap={8} />
+          </div>
         </div>}
       </section> : <section className="cargo-play-finished" style={{ minHeight: 0, overflow: "hidden", borderRadius: 20, border: `1px solid ${GOLD}55`, background: "radial-gradient(circle at 50% 0%,rgba(246,194,86,.16),transparent 42%),linear-gradient(180deg,rgba(19,21,26,.96),rgba(7,9,13,.98))", boxShadow: "0 14px 36px rgba(0,0,0,.30)", display: "grid", gridTemplateColumns: "minmax(120px,.75fr) minmax(0,1.25fr)", gap: 14, alignItems: "center", padding: 14 }}>
         <div style={{ minHeight: 0, display: "grid", placeItems: "center" }}><img src={getCargoStageBadge("FULL")} alt="Chargement complet" style={{ width: "min(210px,100%)", maxHeight: 168, objectFit: "contain", filter: "drop-shadow(0 14px 26px rgba(0,0,0,.45))" }} /></div>
@@ -562,6 +601,7 @@ export default function CargoPlay(props: any) {
         .cargo-airy-keypad{grid-template-rows:46px 56px minmax(18px,auto) minmax(250px,1fr) 62px!important;gap:13px!important;padding:14px!important}
       }
     `}</style>
+    {gameplayBurst ? <CargoGameplayBurst burst={gameplayBurst} /> : null}
     {eventToast ? <EventToast toast={eventToast} onClose={() => setEventToast(null)} /> : null}
     {overlay === "truck" ? <TruckModal state={state} stats={activeStats} activeContract={activeContract} onClose={() => setOverlay(null)} /> : null}
     {overlay === "manifest" ? <ManifestModal state={state} activeStats={activeStats} activeContract={activeContract} onClose={() => setOverlay(null)} /> : null}

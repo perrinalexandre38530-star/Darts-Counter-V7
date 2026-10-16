@@ -61,6 +61,7 @@ export default function SimpleRoundsPlay(props: any) {
   const [currentThrow, setCurrentThrow] = useState<UIDart[]>([]);
   const [multiplier, setMultiplier] = useState<1 | 2 | 3>(1);
   const visitHistoryRef = useRef<any[]>([]);
+  const startedAtRef = useRef(Date.now());
   const [gameOver, setGameOver] = useState(false);
   const [winnerIdx, setWinnerIdx] = useState<number | null>(null);
 
@@ -86,12 +87,37 @@ export default function SimpleRoundsPlay(props: any) {
 
   const isFinished = gameOver || roundIdx >= cfg.rounds;
 
+  const superBullRanking = useMemo(() => {
+    if (variantId !== "super_bull") return [];
+    return scores
+      .map((score, i) => ({
+        i,
+        score,
+        dbulls: dbullsByP[i] || 0,
+        centres: (bullsByP[i] || 0) + (dbullsByP[i] || 0),
+        bestStreak: bestBullStreakByP[i] || 0,
+        perfectVisits: perfectVisitsByP[i] || 0,
+      }))
+      .sort((a, b) =>
+        b.score - a.score ||
+        b.dbulls - a.dbulls ||
+        b.centres - a.centres ||
+        b.bestStreak - a.bestStreak ||
+        b.perfectVisits - a.perfectVisits ||
+        a.i - b.i
+      );
+  }, [variantId, scores, dbullsByP, bullsByP, bestBullStreakByP, perfectVisitsByP]);
+
   const winner = useMemo(() => {
     if (!isFinished) return null;
     if (winnerIdx != null) return { idx: winnerIdx, score: scores[winnerIdx] };
+    if (variantId === "super_bull" && superBullRanking.length) {
+      const first = superBullRanking[0];
+      return { idx: first.i, score: first.score };
+    }
     const idx = spec?.computeWinnerOnEnd(scores) ?? 0;
     return { idx, score: scores[idx] };
-  }, [isFinished, winnerIdx, scores, spec]);
+  }, [isFinished, winnerIdx, scores, spec, variantId, superBullRanking]);
 
   const configTab = useMemo(() => {
     // Note: keep this map minimal + explicit to avoid wrong navigation
@@ -249,6 +275,7 @@ function goBack() {
     setCurrentThrow([]);
     setMultiplier(1);
     visitHistoryRef.current = [];
+    startedAtRef.current = Date.now();
     setGameOver(false);
     setWinnerIdx(null);
     setVisitsByP(Array.from({ length: playerCount }, () => 0));
@@ -399,15 +426,40 @@ function goBack() {
       },
       summary: {
         legs: 1,
+        winnerName: String(players[winner.idx]?.name ?? ""),
+        durationMs: Math.max(0, now - startedAtRef.current),
+        finishReason: cfg.objective > 0 && (scores[winner.idx] || 0) >= cfg.objective ? "objective" : "rounds",
         avg3ByPlayer,
         darts: dartsMap,
         bestVisitByPlayer: bestVisitMap,
         bestCheckoutByPlayer: bestCheckoutMap,
+        perPlayer: players.map((p: any, i: number) => ({
+          id: String(p.id), name: p.name, score: scores[i] || 0, darts: dartsByP[i] || 0, visits: visitsByP[i] || 0,
+          bestVisit: bestVisitByP[i] || 0, bulls: bullsByP[i] || 0, dbulls: dbullsByP[i] || 0,
+          centreHits: (bullsByP[i] || 0) + (dbullsByP[i] || 0),
+          centreAccuracy: (dartsByP[i] || 0) > 0 ? Math.round((((bullsByP[i] || 0) + (dbullsByP[i] || 0)) / (dartsByP[i] || 1)) * 10000) / 100 : 0,
+          dbullRate: (dartsByP[i] || 0) > 0 ? Math.round(((dbullsByP[i] || 0) / (dartsByP[i] || 1)) * 10000) / 100 : 0,
+          bestBullStreak: bestBullStreakByP[i] || 0, perfectBullVisits: perfectVisitsByP[i] || 0,
+        })),
         ...(variantId === "super_bull" ? {
           bullsByPlayer: Object.fromEntries(players.map((p: any, i: number) => [String(p.id), bullsByP[i] || 0])),
           dbullsByPlayer: Object.fromEntries(players.map((p: any, i: number) => [String(p.id), dbullsByP[i] || 0])),
+          centreHitsByPlayer: Object.fromEntries(players.map((p: any, i: number) => [String(p.id), (bullsByP[i] || 0) + (dbullsByP[i] || 0)])),
+          centreAccuracyByPlayer: Object.fromEntries(players.map((p: any, i: number) => {
+            const darts = dartsByP[i] || 0;
+            const centres = (bullsByP[i] || 0) + (dbullsByP[i] || 0);
+            return [String(p.id), darts > 0 ? Math.round((centres / darts) * 10000) / 100 : 0];
+          })),
+          dbullRateByPlayer: Object.fromEntries(players.map((p: any, i: number) => {
+            const darts = dartsByP[i] || 0;
+            return [String(p.id), darts > 0 ? Math.round(((dbullsByP[i] || 0) / darts) * 10000) / 100 : 0];
+          })),
           bestBullStreakByPlayer: Object.fromEntries(players.map((p: any, i: number) => [String(p.id), bestBullStreakByP[i] || 0])),
           perfectBullVisitsByPlayer: Object.fromEntries(players.map((p: any, i: number) => [String(p.id), perfectVisitsByP[i] || 0])),
+          superBullRanking: superBullRanking.map((row, rank) => ({
+            rank: rank + 1, playerId: String(players[row.i]?.id ?? `p${row.i + 1}`), score: row.score,
+            dbulls: row.dbulls, centres: row.centres, bestStreak: row.bestStreak, perfectVisits: row.perfectVisits,
+          })),
         } : {}),
         // co: 0 (pas de checkout sur ces variantes)
       },
@@ -417,6 +469,10 @@ function goBack() {
         sport: "darts",
         config: cfg,
         scores,
+        startedAt: startedAtRef.current,
+        endedAt: now,
+        durationMs: Math.max(0, now - startedAtRef.current),
+        result: { winnerId: String(players[winner.idx]?.id ?? ""), winnerName: String(players[winner.idx]?.name ?? ""), score: scores[winner.idx] || 0 },
         visitHistory: visitHistoryRef.current.slice(),
         events: visitHistoryRef.current.slice(),
       },
@@ -447,6 +503,7 @@ function goBack() {
     dbullsByP,
     bestBullStreakByP,
     perfectVisitsByP,
+    superBullRanking,
     scores,
     t,
     playerRows,
@@ -551,9 +608,10 @@ function goBack() {
               <div style={{ fontSize: 10, letterSpacing: 1.5, opacity: .65, fontWeight: 950 }}>CLASSEMENT FINAL · SUPER BULL</div>
               <div style={{ fontSize: 25, fontWeight: 1000, marginTop: 5 }}>🏆 {playerRows[winner.idx]?.name || `${t("generic.player", "Joueur")} ${winner.idx + 1}`}</div>
               <div style={{ opacity: .72, marginTop: 3 }}>{winner.score} points au centre</div>
+              <div style={{ opacity: .55, marginTop: 4, fontSize: 10 }}>{cfg.objective > 0 ? `Objectif ${cfg.objective} pts` : `${cfg.rounds} rounds · score final`} • ${visitHistoryRef.current.length} volées enregistrées</div>
             </div>
             <div style={{ display: "grid", gap: 8, marginTop: 15 }}>
-              {scores.map((score, i) => ({ i, score })).sort((a,b) => b.score-a.score || (dbullsByP[b.i]||0)-(dbullsByP[a.i]||0)).map((row, rank) => {
+              {superBullRanking.map((row, rank) => {
                 const darts = dartsByP[row.i] || 0;
                 const centres = (bullsByP[row.i] || 0) + (dbullsByP[row.i] || 0);
                 const precision = darts ? Math.round((centres / darts) * 100) : 0;

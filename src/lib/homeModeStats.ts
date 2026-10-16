@@ -509,6 +509,11 @@ function extractMetrics(record: any, row: any, detail: any): MatchMetrics {
     runs: readSpecial(merged, detail, "runs"),
     halves: readSpecial(merged, detail, "halvingEvents", "halves"),
     perfectVisits: readSpecial(merged, detail, "perfectVisits"),
+    superBullBulls: readSpecial(merged, detail, "bulls"),
+    superBullDbulls: readSpecial(merged, detail, "dbulls"),
+    superBullCentres: readSpecial(merged, detail, "centreHits", "hits"),
+    superBullBestStreak: readSpecial(merged, detail, "bestBullStreak", "bestStreak"),
+    superBullPerfectVisits: readSpecial(merged, detail, "perfectBullVisits", "perfectVisits"),
     pointsWon: readSpecial(merged, detail, "pointsWon", "points"),
     marks: readSpecial(merged, detail, "marks", "marksTotal", "special.marksTotal"),
     captures: readSpecial(merged, detail, "captures"),
@@ -896,11 +901,21 @@ function rowsForMode(agg: ModeAgg): HomeModeSlide["rows"] {
         row("arrêts", formatNumber(s.footballSaves, 0)),
         row("interceptions", formatNumber(s.footballInterceptions, 0)),
       ];
+    case "super_bull": {
+      const centreRate = agg.darts > 0 ? (s.superBullCentres || agg.hits) / agg.darts : hitRate;
+      return [
+        row("parties", agg.sessions),
+        row("win%", formatPct(winRate)),
+        row("DBULL", formatNumber(s.superBullDbulls, 0)),
+        row("BULL", formatNumber(s.superBullBulls, 0)),
+        row("précision centre", formatPct(centreRate)),
+        row("best série", formatNumber(Math.max(mx.superBullBestStreak || 0, mx.bestStreak || 0), 0)),
+      ];
+    }
     case "shanghai":
     case "capital":
     case "count_up":
     case "game_170":
-    case "super_bull":
     case "happy_mille":
     case "simple_rounds":
       return [

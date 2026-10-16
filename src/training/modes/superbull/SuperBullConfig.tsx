@@ -10,8 +10,9 @@ const sectionLabel: React.CSSProperties = { margin: "14px 2px 8px", color: "#27d
 
 export default function SuperBullConfig({ profiles, onStart, onExit }: { profiles?: Profile[]; onStart:(cfg:any)=>void; onExit:()=>void; }) {
   const [participants, setParticipants] = useTrainingParticipantSelection(profiles);
-  const [target, setTarget] = React.useState(100);
-  const [maxDarts, setMaxDarts] = React.useState(30);
+  const last = React.useMemo(() => { try { return JSON.parse(localStorage.getItem("msc.training.superbull.last.v2") || "{}"); } catch { return {}; } }, []);
+  const [target, setTarget] = React.useState(Number(last?.target) || 100);
+  const [maxDarts, setMaxDarts] = React.useState(Number(last?.maxDarts) || 30);
   const resolved = resolveTrainingParticipants(participants, profiles);
 
   return <TrainingShell
@@ -22,7 +23,8 @@ export default function SuperBullConfig({ profiles, onStart, onExit }: { profile
       {[50,100,150,200,300,500].map((value) => <TrainingOptionCard key={value} title={`${value} points`} subtitle={value===50?"Sprint centre":value===100?"Standard":value===200?"Endurance Bull":value>=300?"Expert / gros volume":undefined} active={target===value} onClick={() => setTarget(value)} />)}
       <div style={sectionLabel}>LIMITE</div>
       {[9,15,30,45,60,90].map((value) => <TrainingOptionCard key={value} title={`${value} fléchettes max`} active={maxDarts===value} onClick={() => setMaxDarts(value)} />)}
-      <TrainingStartButton disabled={!resolved.length} label={resolved.length > 1 ? `LANCER — ${resolved.length} JOUEURS` : undefined} onClick={() => onStart({ target, maxDarts, ...buildTrainingParticipantConfig(participants, profiles) })} />
+      <div style={{ margin:"10px 0", borderRadius:14, padding:10, border:"1px solid rgba(39,220,255,.16)", background:"rgba(39,220,255,.05)", fontSize:10.5, opacity:.82 }}>BULL 25 · DBULL 50 · MISS 0 • objectif {target} pts en {maxDarts} fléchettes maximum.</div>
+      <TrainingStartButton disabled={!resolved.length} label={resolved.length > 1 ? `LANCER — ${resolved.length} JOUEURS` : undefined} onClick={() => { const cfg={ target, maxDarts, ...buildTrainingParticipantConfig(participants, profiles) }; try { localStorage.setItem("msc.training.superbull.last.v2", JSON.stringify({target,maxDarts})); } catch {} onStart(cfg); }} />
     </div>}
   />;
 }
