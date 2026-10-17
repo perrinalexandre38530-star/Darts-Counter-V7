@@ -97,9 +97,9 @@ import {
   writeExternalBackupNow,
   type ExternalBackupStatus,
 } from "../lib/externalBackupTarget";
-import { connectPersonalCloud, downloadPersonalCloudSnapshot, getPersonalCloudBackupMeta, getPersonalCloudStatus, isPersonalCloudProvider, personalCloudProviderLabel, uploadPersonalCloudSnapshot } from "../lib/personalCloudApi";
+import { connectPersonalCloud, downloadPersonalCloudSnapshot, downloadPersonalCloudSnapshotById, getPersonalCloudBackupMeta, getPersonalCloudStatus, isPersonalCloudProvider, personalCloudProviderLabel, uploadPersonalCloudSnapshot } from "../lib/personalCloudApi";
 import { registerAccountLatestBackup } from "../lib/latestBackupApi";
-import { fetchRemoteIncrementalChanges, flushIncrementalRemoteSync } from "../lib/incrementalRemoteSync";
+import { fetchRemoteIncrementalChanges, flushIncrementalRemoteSyncForProvider } from "../lib/incrementalRemoteSync";
 import { applyIncrementalChanges } from "../lib/incrementalRestore";
 import { listUnsyncedIncrementalChanges } from "../lib/incrementalBackupJournal";
 import {
@@ -1731,7 +1731,7 @@ async function encodeNasTransportSnapshotJson(snapshotJson: string, compressedIn
   };
 }
 
-const NAS_PUSH_TIMEOUT_MS = 30_000;
+const NAS_PUSH_TIMEOUT_MS = 45_000;
 const NAS_DIRECT_PUSH_MAX_COMPRESSED_BYTES = 4 * 1024 * 1024;
 const NAS_CHUNK_CLIENT_BYTES = 1536 * 1024;
 
@@ -2642,9 +2642,21 @@ export default function StorageVaultPage({ go }: Props) {
       if (!ok) return { summary };
     }
 
-    report(58, "Création de la sécurité locale avant restauration…", "prepare");
     const restoreAuth = rememberAuthKeys();
-    await createLocalMemorySlot("Sécurité avant restauration", "before-restore").catch(() => null);
+    const recentSafety = localSlots.find((slot: any) => {
+      const source = String(slot?.source || "");
+      const label = String(slot?.label || "").toLowerCase();
+      const at = Date.parse(String(slot?.updatedAt || slot?.createdAt || "")) || 0;
+      return (source === "before-restore" || label.includes("sécurité avant restauration"))
+        && at > 0
+        && Date.now() - at < 10 * 60_000;
+    });
+    if (recentSafety) {
+      report(60, "Sécurité locale récente déjà disponible : création redondante évitée.", "prepare");
+    } else {
+      report(58, "Création de la sécurité locale avant restauration…", "prepare");
+      await createLocalMemorySlot("Sécurité avant restauration", "before-restore").catch(() => null);
+    }
 
     report(64, "Import des parties, profils et médias dans l’appareil…", "import");
     let importReport: any = null;
@@ -2964,12 +2976,17 @@ ${label}`)) return;
     }
     setBusy(true);
     try {
+      setMessage("Google Drive : lecture rapide des métadonnées…");
       const status = await getPersonalCloudStatus("google_drive");
       if (!status.configured) throw new Error("Google Drive n’est pas configuré côté serveur.");
       if (!status.connected) {
         setMessage("Connexion à Google Drive…");
         await connectPersonalCloud("google_drive");
       }
+
+      // V130 PERF: sélectionner Google Drive ne doit JAMAIS télécharger 30-50 Mo.
+      // On lit uniquement la fiche metadata. Le snapshot complet n'est téléchargé
+      // qu'après appui sur Restaurer, avec une vraie progression octet par octet.
       const meta = await getPersonalCloudBackupMeta("google_drive");
       if (!meta) {
         setPersonalRestoreEntry(null);
@@ -2978,24 +2995,46 @@ ${label}`)) return;
         setMessage("Google Drive connecté, mais aucune sauvegarde MULTISPORTS SCORING n’y est encore disponible.");
         return;
       }
-      const snapshot = await downloadPersonalCloudSnapshot("google_drive");
-      const summary = strictSummaryForRestore(snapshot);
+
+      const summary = normalizeSummary(
+        meta?.summary ||
+        meta?.metadata?.summary ||
+        meta?.metadata?.backupSummary ||
+        {}
+      );
       const quality = assessSave(summary);
-      const timestamp = String(meta.updatedAt || meta?.metadata?.exportedAt || new Date().toISOString());
+      const timestamp = String(meta.updatedAt || meta.createdAt || meta?.metadata?.exportedAt || new Date().toISOString());
+      const backupId = String(meta.id || meta.fileId || meta.backupId || "").trim();
       const slot: MemorySlot = {
-        id: "personal_google_drive_latest", ownerId: getVaultCurrentUserId(),
-        createdAt: timestamp, updatedAt: timestamp, label: "Google Drive", source: "manual",
-        payload: snapshot, summary,
+        id: backupId || "personal_google_drive_latest",
+        ownerId: getVaultCurrentUserId(),
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        label: "Google Drive",
+        source: "manual",
+        payload: {
+          __lazyPersonalCloud: true,
+          provider: "google_drive",
+          backupId: backupId || null,
+        },
+        summary,
       };
       setPersonalRestoreEntry({
-        key: "personal:google_drive:latest", source: "personal", slot, summary,
-        createdAt: timestamp, updatedAt: timestamp, index: 1, latest: true, quality,
+        key: `personal:google_drive:${backupId || "latest"}`,
+        source: "personal",
+        slot,
+        summary,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        index: 1,
+        latest: true,
+        quality,
         title: "Sauvegarde Google Drive",
         subtitle: `${fmtDate(timestamp)} · ${summary.matches} partie(s) · ${summary.profiles} profil(s)`,
       });
       setRestoreSource("google_drive");
       setRestoreView("current");
-      setMessage(`Google Drive prêt : ${summary.matches} partie(s) · ${summary.profiles} profil(s) · ${summary.statsMatches || summary.statsBlocks} partie(s) avec stats.`);
+      setMessage(`Google Drive prêt immédiatement : ${summary.matches} partie(s) · ${summary.profiles} profil(s) · aucun snapshot lourd téléchargé.`);
     } catch (error: any) {
       setPersonalRestoreEntry(null);
       setMessage(`Google Drive impossible : ${error?.message || error}`);
@@ -3467,13 +3506,20 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         const pending = await listUnsyncedIncrementalChanges(deltaProvider);
         let hasCheckpoint = false;
         if (destination === "founder_nas") {
-          const slots = await withFastFallback(listNasMemorySlots(), [], 2_500);
-          hasCheckpoint = Array.isArray(slots) && slots.some((slot: any) => slot?.latest || slot?.id === "latest");
+          // V130: le cache de cartes NAS vaut preuve de checkpoint. On évite ainsi
+          // d'attendre le réseau avant chaque clic Sauvegarder.
+          const cached = readCachedNasSlots();
+          hasCheckpoint = cached.some((slot: any) => slot?.latest || slot?.id === "latest");
+          if (!hasCheckpoint) {
+            const slots = await withFastFallback(listNasMemorySlots(), null as any, 3_500);
+            hasCheckpoint = Array.isArray(slots) && slots.some((slot: any) => slot?.latest || slot?.id === "latest");
+          }
         } else if (destination === "cloud_r2") {
-          const slots = await withFastFallback(listCloudVaultBackups(1, false), [], 2_500);
+          const slots = await withFastFallback(listCloudVaultBackups(1, false), null as any, 3_500);
           hasCheckpoint = Array.isArray(slots) && slots.length > 0;
         } else {
-          const meta = await withFastFallback(getPersonalCloudBackupMeta(destination), null as any, 2_500);
+          // Drive/OneDrive/Dropbox : metadata seulement, jamais le snapshot complet.
+          const meta = await withFastFallback(getPersonalCloudBackupMeta(destination), null as any, 6_000);
           hasCheckpoint = !!meta;
         }
 
@@ -3491,7 +3537,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
             run: async (report) => {
               report(8, `Analyse de ${pending.length} changement(s)…`);
               report(22, `Préparation des différences pour ${destinationLabel}…`);
-              const syncResult = await flushIncrementalRemoteSync();
+              const syncResult = await flushIncrementalRemoteSyncForProvider(deltaProvider);
               if (!syncResult.supported || syncResult.error || syncResult.synced <= 0) {
                 throw new Error(syncResult.error || `Le mode incrémental ${destinationLabel} n'a pas confirmé l'envoi.`);
               }
@@ -3572,7 +3618,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
               prepared.snapshot, `Sécurité locale — ${localLabel}`, "manual", prepared.summary, prepared.snapshotJson, compressed
             )).then((slot) => setLocalSlots((current) => [slot, ...current.filter((item) => item.id !== slot.id)].slice(0, 10))).catch(() => null);
           }
-          report(42, `Envoi vers ${personalCloudProviderLabel(destination)}…`);
+          report(16, `Compression et préparation ${personalCloudProviderLabel(destination)}…`);
           const uploadResult = await uploadPersonalCloudSnapshot(destination, prepared.snapshotJson, {
             summary: prepared.summary, exportedAt: new Date().toISOString(), rawSizeBytes: prepared.bytes, engine: "personal-cloud-v2",
           }, (percent, message) => report(percent, message));
@@ -3707,7 +3753,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
 
   const confirmBackgroundRestore = (entry: SaveEntry, provider: BackupProvider): boolean => {
     const summary = normalizeSummary(entry.summary || {});
-    const sourceLabel = provider === "cloud" ? "Cloud R2" : entry.source === "local" || entry.source === "file" ? "cet appareil" : "NAS";
+    const sourceLabel = provider === "cloud" ? "Cloud R2" : provider === "google_drive" ? "Google Drive" : entry.source === "local" || entry.source === "file" ? "cet appareil" : "NAS";
     return window.confirm(
       `Restaurer "${entry.title}" depuis ${sourceLabel} ?\n\n` +
       `${summary.matches} parties • ${summary.historyRows} lignes historique • ${summary.profiles} profils • ${summary.statsBlocks} stats\n\n` +
@@ -3757,127 +3803,104 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
 
     const slot = entry.slot as NasSlot;
     const id = String(slot.id || "latest");
-    const expectedBytes = Number(normalizeSummary(entry.summary).bytes || 0);
 
-    if (Capacitor.isNativePlatform()) {
-      launchNativeRestore(entry, "nas", async (report) => {
-        report(4, `Connexion au NAS pour préparer ${entry.title}…`, "download");
-        const pulled = await pullNasMemorySlot(id, {
-          summaryHint: normalizeSummary(entry.summary),
-          onProgress: (loadedBytes, totalBytes) => {
-            const fallbackTotal = expectedBytes > 0 ? Math.ceil(expectedBytes * 4 / 3) : 0;
-            const denominator = totalBytes > 0 ? totalBytes : fallbackTotal;
-            const ratio = denominator > 0 ? Math.min(1, loadedBytes / denominator) : 0;
-            const progress = 6 + Math.round(ratio * 44);
-            const sizeText = denominator > 0
-              ? `${fmtBytes(loadedBytes)} / ${fmtBytes(denominator)}`
-              : fmtBytes(loadedBytes);
-            report(progress, `Téléchargement NAS : ${sizeText}. Tu peux naviguer dans l’application.`, "download");
-          },
-        });
-        report(52, "Téléchargement terminé. Décompression locale du snapshot…", "prepare");
-        return restoreSnapshotIntoBrowserAndAccount(
-          pulled.payload,
-          `restore-nas:${id}`,
-          entry.title,
-          { skipConfirm: true, background: true, provider: "nas", report },
-        );
+    // V130: même pipeline progressif sur Android natif, PWA et navigateur.
+    // Plus aucun POST de promotion bloquant avant l'import local.
+    launchNativeRestore(entry, "nas", async (report) => {
+      report(4, `Connexion au NAS pour préparer ${entry.title}…`, "download");
+      const pulled = await pullNasMemorySlot(id, {
+        summaryHint: normalizeSummary(entry.summary),
+        onProgress: (loadedBytes, totalBytes) => {
+          const ratio = totalBytes > 0 ? Math.min(1, loadedBytes / totalBytes) : 0;
+          const progress = totalBytes > 0 ? 6 + Math.round(ratio * 44) : 12;
+          const sizeText = totalBytes > 0
+            ? `${fmtBytes(loadedBytes)} / ${fmtBytes(totalBytes)}`
+            : fmtBytes(loadedBytes);
+          report(progress, `Téléchargement NAS : ${sizeText}`, "download");
+        },
       });
-      return;
-    }
-
-    setBusy(true);
-    try {
-      setMessage(
-        `Téléchargement manuel de la sauvegarde NAS${expectedBytes > 0 ? ` (${fmtBytes(expectedBytes)})` : ""}… ` +
-        `Le NAS peut avoir besoin de quelques secondes pour préparer le fichier.`
-      );
-      const pulled = await pullNasMemorySlot(id);
-      // Si l’utilisateur restaure une archive versionnée, la promouvoir directement
-      // côté NAS. Cela évite de ré-uploader les ~18 Mo via /sync/push après l’import.
-      if (id !== "latest") {
-        await apiPost(`/sync/slots/${encodeURIComponent(id)}/restore`, {});
-      }
-      await restoreSnapshotIntoBrowserAndAccount(
+      report(52, "Téléchargement NAS terminé. Décompression et import local…", "prepare");
+      const result = await restoreSnapshotIntoBrowserAndAccount(
         pulled.payload,
         `restore-nas:${id}`,
         entry.title,
-        { provider: "nas", skipAccountSync: true },
+        { skipConfirm: true, background: true, provider: "nas", report, skipAccountSync: true },
       );
-    } catch (error: any) {
-      setMessage(`Restauration NAS impossible : ${error?.message || error}`);
-    } finally { setBusy(false); }
+      if (id !== "latest") {
+        void apiPost(`/sync/slots/${encodeURIComponent(id)}/restore`, {}, { manual: true, timeoutMs: 8_000 })
+          .catch((promotionError) => console.warn("[StorageVault] promotion NAS différée non confirmée", promotionError));
+      }
+      return result;
+    });
   };
 
   const restoreCloud = async (entry: SaveEntry) => {
-    if (Capacitor.isNativePlatform()) {
-      launchNativeRestore(entry, "cloud", async (report) => {
-        report(8, "Téléchargement de la sauvegarde Cloud R2…", "download");
-        const slot = entry.slot as CloudSlot;
-        const pulled = slot.__payload
-          ? { payload: slot.__payload, summary: slot.__summary || strictSummaryForCloudPayload(slot.__payload) }
-          : await pullCloudVaultSlot(slot);
-        report(50, "Téléchargement Cloud terminé. Préparation du snapshot…", "prepare");
-        return restoreSnapshotIntoBrowserAndAccount(
-          pulled.payload,
-          `restore-cloud:${slot.id}`,
-          entry.title,
-          { skipConfirm: true, background: true, provider: "cloud", report },
-        );
-      });
-      return;
-    }
-
-    setBusy(true);
-    try {
+    launchNativeRestore(entry, "cloud", async (report) => {
+      report(8, "Téléchargement de la sauvegarde Cloud R2…", "download");
       const slot = entry.slot as CloudSlot;
       const pulled = slot.__payload
         ? { payload: slot.__payload, summary: slot.__summary || strictSummaryForCloudPayload(slot.__payload) }
         : await pullCloudVaultSlot(slot);
-      await restoreSnapshotIntoBrowserAndAccount(pulled.payload, `restore-cloud:${slot.id}`, entry.title, { provider: "cloud" });
-    } catch (error: any) {
-      setMessage(`Restauration cloud impossible : ${error?.message || error}`);
-    } finally { setBusy(false); }
+      report(50, "Téléchargement Cloud terminé. Préparation du snapshot…", "prepare");
+      return restoreSnapshotIntoBrowserAndAccount(
+        pulled.payload,
+        `restore-cloud:${slot.id}`,
+        entry.title,
+        { skipConfirm: true, background: true, provider: "cloud", report, skipAccountSync: true },
+      );
+    });
   };
 
   const restorePersonal = async (entry: SaveEntry) => {
-    setBusy(true);
-    try {
-      const slot = entry.slot as MemorySlot;
-      await restoreSnapshotIntoBrowserAndAccount(
-        decodeMaybeCompressedNasPayload(slot.payload),
-        `restore-google-drive:${slot.id}`,
+    const slot = entry.slot as MemorySlot;
+    const lazy = slot?.payload && typeof slot.payload === "object" && (slot.payload as any).__lazyPersonalCloud === true;
+    const backupId = String((slot?.payload as any)?.backupId || slot.id || "").trim();
+
+    // V130: Drive suit désormais le même vrai pipeline de progression que NAS/R2.
+    // Sélection = metadata instantanée ; téléchargement = seulement après Restaurer.
+    const run = async (report: BackgroundRestoreReporter) => {
+      let snapshot: any;
+      if (lazy) {
+        report(4, "Google Drive : ouverture de la sauvegarde…", "download");
+        snapshot = backupId && backupId !== "personal_google_drive_latest"
+          ? await downloadPersonalCloudSnapshotById("google_drive", backupId, (percent, message) => {
+              const mapped = 5 + Math.round(Math.max(0, Math.min(100, percent)) * 0.45);
+              report(mapped, message, percent >= 74 ? "prepare" : "download");
+            })
+          : await downloadPersonalCloudSnapshot("google_drive", (percent, message) => {
+              const mapped = 5 + Math.round(Math.max(0, Math.min(100, percent)) * 0.45);
+              report(mapped, message, percent >= 74 ? "prepare" : "download");
+            });
+      } else {
+        snapshot = decodeMaybeCompressedNasPayload(slot.payload);
+      }
+
+      report(50, "Google Drive : snapshot prêt. Import local…", "prepare");
+      return restoreSnapshotIntoBrowserAndAccount(
+        snapshot,
+        `restore-google-drive:${backupId || slot.id}`,
         entry.title,
-        { provider: "google_drive" },
+        { skipConfirm: true, background: true, provider: "google_drive", report },
       );
-    } catch (error: any) {
-      setMessage(`Restauration Google Drive impossible : ${error?.message || error}`);
-    } finally { setBusy(false); }
+    };
+
+    // Le job de fond fournit une progression persistante, même sur PWA Android.
+    launchNativeRestore(entry, "google_drive", run);
   };
 
   const restoreLocal = async (entry: SaveEntry) => {
-    if (Capacitor.isNativePlatform()) {
-      launchNativeRestore(entry, "nas", async (report) => {
-        report(44, "Lecture de la sauvegarde présente sur cet appareil…", "prepare");
-        const slot = entry.slot as MemorySlot;
-        const payload = decodeMaybeCompressedNasPayload(slot.payload);
-        return restoreSnapshotIntoBrowserAndAccount(
-          payload,
-          `restore-local:${slot.id}`,
-          entry.title,
-          { skipConfirm: true, background: true, provider: "nas", report },
-        );
-      });
-      return;
-    }
-
-    setBusy(true);
-    try {
+    launchNativeRestore(entry, "nas", async (report) => {
+      report(18, "Lecture de la sauvegarde présente sur cet appareil…", "prepare");
       const slot = entry.slot as MemorySlot;
-      await restoreSnapshotIntoBrowserAndAccount(decodeMaybeCompressedNasPayload(slot.payload), `restore-local:${slot.id}`, entry.title, { provider: "nas" });
-    } catch (error: any) {
-      setMessage(`Restauration locale impossible : ${error?.message || error}`);
-    } finally { setBusy(false); }
+      const payload = decodeMaybeCompressedNasPayload(slot.payload);
+      report(44, "Sauvegarde locale décodée. Import des données…", "prepare");
+      return restoreSnapshotIntoBrowserAndAccount(
+        payload,
+        `restore-local:${slot.id}`,
+        entry.title,
+        { skipConfirm: true, background: true, provider: "nas", report, skipAccountSync: true },
+      );
+    });
   };
 
   const importJsonFile = async (file: File | null) => {

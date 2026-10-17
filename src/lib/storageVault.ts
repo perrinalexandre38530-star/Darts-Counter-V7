@@ -1054,23 +1054,12 @@ export async function decodeMaybeCompressedNasPayloadAsync(payload: any): Promis
 }
 
 export async function listNasMemorySlots(): Promise<NasSlot[]> {
-  const data = await apiGet("/sync/slots?limit=120").catch(async () => {
-    // Compatibilité ancien backend : /sync/pull suffit pour prouver que le
-    // courant existe. On calcule aussi son résumé ; sans cela la page le
-    // classait « technique » puis le masquait, donnant l'impression qu'il avait
-    // disparu alors que le payload était bien présent sur le NAS.
-    const latest = await apiGet("/sync/pull");
-    if (!latest?.payload) return { slots: [] };
-    const decoded = decodeMaybeCompressedNasPayload(latest.payload);
-    return { slots: [{
-      id: "latest",
-      latest: true,
-      version: latest.version,
-      updatedAt: latest.updatedAt,
-      createdAt: latest.updatedAt,
-      summary: summarizeVaultPayload(decoded),
-    }] };
-  });
+  // V130 PERF: la liste des sauvegardes doit rester une opération de métadonnées.
+  // Ne JAMAIS retomber sur /sync/pull ici : ce fallback téléchargeait/décompressait
+  // 30-50 Mo juste pour afficher une carte et expliquait les attentes interminables
+  // au simple choix de « NAS privé ». La page conserve déjà un cache stale-while-
+  // revalidate si le backend de liste est momentanément indisponible.
+  const data = await apiGet("/sync/slots?limit=12", { manual: true, timeoutMs: 6_000 });
   const slots = Array.isArray(data) ? data : Array.isArray(data?.slots) ? data.slots : [];
   return slots as NasSlot[];
 }
@@ -1157,7 +1146,12 @@ export async function restoreNasMemorySlot(slotId: string): Promise<{ slot: NasS
   const pulled = await pullNasMemorySlot(slotId);
   await importCloudSnapshot(pulled.payload, { mode: "replace" });
   if (slotId !== "latest") {
-    await apiPost(`/sync/slots/${encodeURIComponent(slotId)}/restore`, {}).catch(() => null);
+    // V130: promouvoir l'archive côté NAS est un confort serveur, pas une condition
+    // de réussite de la restauration locale. L'ancien await bloquait toute la
+    // restauration sur un POST /restore capable de dépasser 10 s alors que les
+    // données avaient déjà été téléchargées correctement.
+    void apiPost(`/sync/slots/${encodeURIComponent(slotId)}/restore`, {}, { manual: true, timeoutMs: 8_000 })
+      .catch((error) => console.warn("[storageVault] promotion NAS différée", error));
   }
   return { slot: pulled.slot, summary: pulled.summary };
 }

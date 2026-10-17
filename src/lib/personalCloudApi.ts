@@ -4,6 +4,7 @@ import { getRuntimePlatform } from "./nativePlatform";
 
 export type PersonalCloudProvider = "google_drive" | "onedrive" | "dropbox";
 export type PersonalCloudStatus = { provider: PersonalCloudProvider; configured: boolean; connected: boolean; accountLabel?: string | null; updatedAt?: string | null; error?: string };
+export type PersonalCloudTransferProgress = (percent: number, message: string, loadedBytes?: number, totalBytes?: number) => void;
 
 const PROVIDERS: PersonalCloudProvider[] = ["google_drive", "onedrive", "dropbox"];
 export function isPersonalCloudProvider(v: unknown): v is PersonalCloudProvider { return PROVIDERS.includes(String(v) as PersonalCloudProvider); }
@@ -211,7 +212,8 @@ export async function disconnectPersonalCloud(provider: PersonalCloudProvider): 
   if (res?.ok === false) throw new Error(res?.error || "Déconnexion cloud impossible.");
 }
 
-async function gzipBase64(text: string): Promise<{ encoding: "gzip-base64" | "plain-base64"; data: string }> {
+async function gzipBase64(text: string, onProgress?: PersonalCloudTransferProgress): Promise<{ encoding: "gzip-base64" | "plain-base64"; data: string }> {
+  onProgress?.(18, "Compression locale de la sauvegarde…");
   const bytes = new TextEncoder().encode(text);
   if (typeof CompressionStream !== "undefined") {
     // IMPORTANT : ne jamais attendre writer.write() avant de consommer le
@@ -222,16 +224,19 @@ async function gzipBase64(text: string): Promise<{ encoding: "gzip-base64" | "pl
     const zipped = new Uint8Array(await new Response(stream).arrayBuffer());
     let binary = ""; const step = 0x8000;
     for (let i = 0; i < zipped.length; i += step) binary += String.fromCharCode(...zipped.subarray(i, i + step));
+    onProgress?.(36, "Compression terminée. Préparation du transfert…", zipped.byteLength, zipped.byteLength);
     return { encoding: "gzip-base64", data: btoa(binary) };
   }
   let binary = ""; const step = 0x8000;
   for (let i = 0; i < bytes.length; i += step) binary += String.fromCharCode(...bytes.subarray(i, i + step));
+  onProgress?.(36, "Préparation du transfert terminée…", bytes.byteLength, bytes.byteLength);
   return { encoding: "plain-base64", data: btoa(binary) };
 }
 
-async function decodePayload(payload: any): Promise<any> {
+async function decodePayload(payload: any, onProgress?: PersonalCloudTransferProgress): Promise<any> {
   if (payload?.snapshot) return payload.snapshot;
   if (!payload?.data) throw new Error("Sauvegarde cloud vide.");
+  onProgress?.(76, "Téléchargement terminé. Décompression locale…");
   const binary = atob(String(payload.data));
   const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
   let text = "";
@@ -241,11 +246,12 @@ async function decodePayload(payload: any): Promise<any> {
     const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
     text = await new Response(stream).text();
   } else text = new TextDecoder().decode(bytes);
+  onProgress?.(94, "Décompression terminée. Vérification du snapshot…");
   return JSON.parse(text);
 }
 
 export async function uploadPersonalCloudSnapshot(provider: PersonalCloudProvider, snapshotJson: string, metadata: Record<string, any> = {}, onProgress?: (percent: number, message: string) => void) {
-  const packed = await gzipBase64(snapshotJson);
+  const packed = await gzipBase64(snapshotJson, onProgress);
   if (provider === "google_drive") {
     const wrapper = JSON.stringify({ __mssCompressedBackup: 1, ...packed, metadata });
     const body = {
@@ -255,42 +261,60 @@ export async function uploadPersonalCloudSnapshot(provider: PersonalCloudProvide
       metadata,
     };
 
-    // Compatibilité ascendante ET descendante : le backend stable V62 utilisait
-    // /backups directement. Des versions plus récentes peuvent proposer /jobs.
-    // On tente le job sans jamais rendre Drive dépendant de sa présence.
+    // Compatibilité ascendante ET descendante : /jobs si présent, /backups sinon.
+    // V130: une tâche ACCEPTÉE ne retombe plus ensuite sur un second upload direct.
+    // L'ancien comportement pouvait attendre 4 minutes puis renvoyer le même gros
+    // snapshot une deuxième fois, d'où les attentes interminables et ambiguës.
+    let jobAccepted = false;
     try {
-      onProgress?.(48, "Préparation Google Drive…");
-      const started: any = await apiPost(`/account/personal-cloud/google_drive/backups/jobs`, body, { timeoutMs: 30_000, manual: true });
+      onProgress?.(48, "Google Drive : création de la tâche…");
+      const started: any = await apiPost(`/account/personal-cloud/google_drive/backups/jobs`, body, { timeoutMs: 12_000, manual: true });
       const jobId = String(started?.job?.jobId || started?.jobId || "").trim();
       if (jobId) {
-        const deadline = Date.now() + 4 * 60_000;
+        jobAccepted = true;
+        const deadline = Date.now() + 90_000;
         while (Date.now() < deadline) {
-          const state: any = await apiGet(`/account/personal-cloud/google_drive/backups/jobs/${encodeURIComponent(jobId)}`, { manual: true, timeoutMs: 15_000 });
+          const state: any = await apiGet(`/account/personal-cloud/google_drive/backups/jobs/${encodeURIComponent(jobId)}`, { manual: true, timeoutMs: 10_000 });
           const status = String(state?.job?.status || "").toLowerCase();
-          onProgress?.(status === "queued" ? 55 : 75, status === "queued" ? "Google Drive en file d’attente…" : "Google Drive reçoit la sauvegarde…");
+          onProgress?.(status === "queued" ? 55 : 75, status === "queued" ? "Google Drive en file d’attente…" : "Google Drive écrit la sauvegarde…");
           if (status === "done") { onProgress?.(90, "Google Drive a confirmé l’écriture."); return state?.job?.result || { ok: true, provider: "google_drive" }; }
           if (status === "failed") throw new Error(state?.job?.error || "Sauvegarde Google Drive impossible.");
-          await new Promise((resolve) => window.setTimeout(resolve, 1200));
+          await new Promise((resolve) => window.setTimeout(resolve, 800));
         }
-        throw new Error("La tâche Google Drive n'a pas confirmé l'écriture.");
+        throw new Error("Google Drive n'a pas confirmé la sauvegarde dans les 90 secondes.");
       }
-    } catch (jobError) {
-      console.warn("[personalCloud] async Drive job unavailable, fallback to stable direct endpoint", jobError);
+    } catch (jobError: any) {
+      if (jobAccepted) throw jobError;
+      const status = Number(jobError?.status || jobError?.statusCode || 0);
+      const message = String(jobError?.message || jobError || "");
+      const unsupported = [404, 405, 501].includes(status) || /404|405|501|not found|cannot post/i.test(message);
+      if (!unsupported) throw jobError;
+      console.warn("[personalCloud] Drive /jobs indisponible, fallback endpoint stable", jobError);
     }
 
-    onProgress?.(58, "Envoi Google Drive…");
-    const direct = await apiPost(`/account/personal-cloud/google_drive/backups`, body, { timeoutMs: 240_000, manual: true });
+    onProgress?.(58, "Envoi Google Drive via le chemin stable…");
+    const direct = await apiPost(`/account/personal-cloud/google_drive/backups`, body, { timeoutMs: 180_000, manual: true });
     onProgress?.(90, "Google Drive a confirmé l’écriture.");
     return direct as any;
   }
   return apiPost(`/account/personal-cloud/${provider}/backup`, { ...packed, metadata }) as any;
 }
 
-async function latestGoogleDriveBackup(): Promise<any | null> {
-  const res: any = await apiGet(`/account/personal-cloud/google_drive/backups?limit=20`, { manual: true, timeoutMs: 30_000 }).catch(() => null);
+let latestDriveMetaCache: { at: number; value: any | null } | null = null;
+
+async function latestGoogleDriveBackup(force = false): Promise<any | null> {
+  if (!force && latestDriveMetaCache && Date.now() - latestDriveMetaCache.at < 30_000) {
+    return latestDriveMetaCache.value;
+  }
+  // V130 PERF: cette requête doit rester purement metadata. Trois entrées suffisent
+  // pour déterminer la plus récente et évitent de lister 20 fichiers à chaque clic.
+  const res: any = await apiGet(`/account/personal-cloud/google_drive/backups?limit=3`, { manual: true, timeoutMs: 8_000 });
   const items = Array.isArray(res?.backups) ? res.backups : Array.isArray(res?.files) ? res.files : [];
-  if (!items.length) return null;
-  return [...items].sort((a: any, b: any) => Date.parse(String(b?.updatedAt || b?.createdAt || 0)) - Date.parse(String(a?.updatedAt || a?.createdAt || 0)))[0] || null;
+  const value = !items.length
+    ? null
+    : ([...items].sort((a: any, b: any) => Date.parse(String(b?.updatedAt || b?.createdAt || 0)) - Date.parse(String(a?.updatedAt || a?.createdAt || 0)))[0] || null);
+  latestDriveMetaCache = { at: Date.now(), value };
+  return value;
 }
 
 export async function getPersonalCloudBackupMeta(provider: PersonalCloudProvider): Promise<any | null> {
@@ -299,35 +323,62 @@ export async function getPersonalCloudBackupMeta(provider: PersonalCloudProvider
   return res?.backup || null;
 }
 
-export async function downloadPersonalCloudSnapshotById(provider: PersonalCloudProvider, backupId: string): Promise<any> {
+export async function downloadPersonalCloudSnapshotById(
+  provider: PersonalCloudProvider,
+  backupId: string,
+  onProgress?: PersonalCloudTransferProgress,
+): Promise<any> {
   const id = String(backupId || "").trim();
   if (!id) throw new Error("Identifiant de sauvegarde cloud manquant.");
   if (provider === "google_drive") {
-    const res: any = await apiGet(`/account/personal-cloud/google_drive/backups/${encodeURIComponent(id)}`, { manual: true, timeoutMs: 120_000 });
+    onProgress?.(4, "Connexion à Google Drive…");
+    const res: any = await apiGet(`/account/personal-cloud/google_drive/backups/${encodeURIComponent(id)}`, {
+      manual: true,
+      timeoutMs: 180_000,
+      onDownloadProgress: (loadedBytes, totalBytes) => {
+        const ratio = totalBytes > 0 ? Math.max(0, Math.min(1, loadedBytes / totalBytes)) : 0;
+        const percent = totalBytes > 0 ? 6 + Math.round(ratio * 66) : 12;
+        const mb = (n: number) => `${(Math.max(0, n) / 1024 / 1024).toFixed(1)} Mo`;
+        onProgress?.(
+          percent,
+          totalBytes > 0
+            ? `Téléchargement Google Drive : ${mb(loadedBytes)} / ${mb(totalBytes)}`
+            : `Téléchargement Google Drive : ${mb(loadedBytes)}`,
+          loadedBytes,
+          totalBytes,
+        );
+      },
+    });
     const raw = String(res?.snapshotJson || "");
     if (!raw) throw new Error("Sauvegarde Google Drive vide.");
+    onProgress?.(74, "Snapshot Google Drive reçu. Lecture du conteneur…");
     const parsed = JSON.parse(raw);
-    if (parsed?.__mssCompressedBackup === 1) return decodePayload(parsed);
+    if (parsed?.__mssCompressedBackup === 1) return decodePayload(parsed, onProgress);
+    onProgress?.(94, "Snapshot Google Drive prêt à être restauré.");
     return parsed;
   }
-  // OneDrive/Dropbox conserveront le contrat courant tant qu'un endpoint par ID
-  // n'est pas déployé pour ces providers.
-  return downloadPersonalCloudSnapshot(provider);
+  return downloadPersonalCloudSnapshot(provider, onProgress);
 }
 
-export async function downloadPersonalCloudSnapshot(provider: PersonalCloudProvider): Promise<any> {
+export async function downloadPersonalCloudSnapshot(
+  provider: PersonalCloudProvider,
+  onProgress?: PersonalCloudTransferProgress,
+): Promise<any> {
   if (provider === "google_drive") {
     const latest = await latestGoogleDriveBackup();
     if (!latest?.id) throw new Error("Aucune sauvegarde Google Drive disponible.");
-    const res: any = await apiGet(`/account/personal-cloud/google_drive/backups/${encodeURIComponent(String(latest.id))}`, { manual: true, timeoutMs: 120_000 });
-    const raw = String(res?.snapshotJson || "");
-    if (!raw) throw new Error("Sauvegarde Google Drive vide.");
-    const parsed = JSON.parse(raw);
-    if (parsed?.__mssCompressedBackup === 1) return decodePayload(parsed);
-    return parsed;
+    return downloadPersonalCloudSnapshotById(provider, String(latest.id), onProgress);
   }
-  const res: any = await apiGet(`/account/personal-cloud/${provider}/backup`);
-  return decodePayload(res);
+  onProgress?.(8, `Téléchargement ${personalCloudProviderLabel(provider)}…`);
+  const res: any = await apiGet(`/account/personal-cloud/${provider}/backup`, {
+    manual: true,
+    timeoutMs: 180_000,
+    onDownloadProgress: (loadedBytes, totalBytes) => {
+      const ratio = totalBytes > 0 ? Math.max(0, Math.min(1, loadedBytes / totalBytes)) : 0;
+      onProgress?.(totalBytes > 0 ? 8 + Math.round(ratio * 64) : 12, `Téléchargement ${personalCloudProviderLabel(provider)}…`, loadedBytes, totalBytes);
+    },
+  });
+  return decodePayload(res, onProgress);
 }
 
 export function personalCloudProviderLabel(provider: PersonalCloudProvider): string {

@@ -317,6 +317,47 @@ async function enrichHistoryDumpFromLocalRevisions(dump: HistoryDumpV1): Promise
   }
 }
 
+function compactFinishedHistoryHeaderForBackup(header: any): any {
+  if (!header || typeof header !== "object") return header;
+  const status = String(header?.status || header?.summary?.status || "").toLowerCase();
+  const finished = ["finished", "done", "ended", "complete", "completed", "match_end"].includes(status)
+    || header?.summary?.finished === true;
+  if (!finished) return header;
+
+  // V130 BACKUP PERF: history_details contient déjà le payload complet compressé.
+  // Un header terminé n'a donc pas à réembarquer les mêmes volées/télémétries dans
+  // 4 à 6 chemins différents. On allège UNIQUEMENT la copie d'export : l'IndexedDB
+  // locale n'est pas modifiée et le champ compact/statistiques reste intact.
+  const out: any = { ...header, backupHeaderCompacted: 1 };
+  for (const key of [
+    "visitHistory", "visitsHistory", "visits", "volleys", "vollees", "rounds", "turns",
+    "darts", "replayDarts", "dartsDetail", "throws", "hits", "dartHits",
+    "telemetry", "dartTelemetry", "events", "dartLog", "cricketDartLog",
+  ]) delete out[key];
+
+  if (out.__legStats && typeof out.__legStats === "object") {
+    const legStats = { ...out.__legStats };
+    for (const key of ["visits", "visitHistory", "visitsHistory", "darts", "throws", "legs", "legDetails"]) delete legStats[key];
+    out.__legStats = legStats;
+  }
+
+  if (out.summary && typeof out.summary === "object") {
+    const summary = { ...out.summary };
+    for (const key of ["visitHistory", "visitsHistory", "visits", "volleys", "darts", "throws", "telemetry", "dartTelemetry", "events"]) delete summary[key];
+    if (summary.__legStats && typeof summary.__legStats === "object") {
+      const stats = { ...summary.__legStats };
+      for (const key of ["visits", "visitHistory", "visitsHistory", "darts", "throws", "legs", "legDetails"]) delete stats[key];
+      summary.__legStats = stats;
+    }
+    out.summary = summary;
+  }
+
+  // Une partie terminée n'a plus besoin d'un checkpoint de reprise. Le payload
+  // détaillé compressé reste, lui, intégralement présent dans history_details.
+  delete out.resume;
+  return out;
+}
+
 function getAllFromStore<T = any>(store: IDBObjectStore): Promise<T[]> {
   return new Promise((resolve, reject) => {
     if ("getAll" in store) {
@@ -356,8 +397,9 @@ export async function exportHistoryDump(): Promise<HistoryDumpV1> {
             const id = String(h?.id || h?.matchId || "").trim();
             if (!id) continue;
             const detail = detailsById.get(id) || null;
+            const compactHeader = compactFinishedHistoryHeaderForBackup(h || {});
             out[id] = {
-              ...(h || {}),
+              ...(compactHeader || {}),
               id,
               matchId: String(h?.matchId || id),
               payloadCompressed: String(detail?.payloadCompressed || ""),
