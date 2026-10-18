@@ -50,7 +50,7 @@ export function gameToUiDart(d:GameDart):UIDart{
 export function dartLabel(d:GameDart){if(!d||d.bed==="MISS")return"MISS";if(d.bed==="IB")return"DBULL";if(d.bed==="OB")return"BULL";return`${d.bed}${d.number||""}`;}
 export function gameDartValue(d:GameDart){if(!d||d.bed==="MISS")return 0;if(d.bed==="IB")return 50;if(d.bed==="OB")return 25;const n=Number((d as any).number||0);return d.bed==="T"?n*3:d.bed==="D"?n*2:n;}
 
-export function NewModeInput({ currentThrow, setCurrentThrow, multiplier, setMultiplier, onValidate, onCancel, preferredMethod, disabled=false, validateDisabled=false, validateLabel="VALIDER", accent="#ffc04c", maxDarts=3, minDartsToValidate=1, fitMinScale=0.42, dartDecorator, onDartboardDetailedHit, keypadExtraMainButtons=null, keypadAuxActionOverride=null, keypadSecondaryAction=null, keypadFooterAction=null, keypadDisableSegmentNumbers=false, centerSlot, hidePreview=false, hideTotal=false, guideSegmentNumbers=null, guideBull=false, guideMultiplier=null, guideColor, guideLabel="", dartboardGuideTargets=null }:any){
+export function NewModeInput({ currentThrow, setCurrentThrow, multiplier, setMultiplier, onValidate, onCancel, preferredMethod, disabled=false, validateDisabled=false, validateLabel="VALIDER", accent="#ffc04c", maxDarts=3, minDartsToValidate=1, fitMinScale=0.42, dartDecorator, onDartboardDetailedHit, keypadExtraMainButtons=null, keypadAuxActionOverride=null, keypadSecondaryAction=null, keypadFooterAction=null, keypadDisableSegmentNumbers=false, centerSlot, hidePreview=false, hideTotal=false, guideSegmentNumbers=null, guideBull=false, guideMultiplier=null, guideColor, guideLabel="", dartboardGuideTargets=null, compact=true }:any){
   const cap=Math.max(1,Math.min(3,Number(maxDarts)||3));
   const decorate=(d:UIDart)=>typeof dartDecorator==="function"?(dartDecorator(d)||d):d;
   const append=(d:UIDart)=>setCurrentThrow((prev:UIDart[])=>prev.length>=cap?prev:[...prev,decorate(d)]);
@@ -88,7 +88,7 @@ export function NewModeInput({ currentThrow, setCurrentThrow, multiplier, setMul
       centerSlot={centerSlot}
       hidePreview={hidePreview}
       hideTotal={hideTotal}
-      compact
+      compact={compact}
       fitToParent
       fitMinScale={fitMinScale}
     />

@@ -279,6 +279,8 @@ export default function ScoreInputHub({
   const { theme } = useTheme();
   const { lang } = useLang();
   const switcherAccent = (theme as any)?.navAccent ?? (theme as any)?.primary ?? "#55e6ff";
+  const inputThemePrimary = (theme as any)?.colors?.primary ?? (theme as any)?.primary ?? switcherAccent;
+  const inputThemeSecondary = (theme as any)?.colors?.secondary ?? (theme as any)?.secondary ?? inputThemePrimary;
   const devEnabled = safeReadDevModeEnabled();
   const configuredMethod = preferredMethod ? sanitizeScoreInputMethod(preferredMethod, { allowVisitScore }) : null;
   const [method, setMethod] = React.useState<ScoreInputMethod>(() => configuredMethod || safeReadMethod());
@@ -552,6 +554,8 @@ export default function ScoreInputHub({
           fitInnerRef={fitInnerRef}
           fitScale={fitScale}
           hideQuickVisitHint={hideQuickVisitHint}
+          themePrimary={inputThemePrimary}
+          themeSecondary={inputThemeSecondary}
         />
       ) : method === "dartboard" ? (
         <DartboardInput
@@ -577,6 +581,23 @@ export default function ScoreInputHub({
           guideTargets={dartboardGuideTargets || []}
           guideLabel={guideLabel}
           guideColor={guideColor}
+        />
+      ) : quickVisitSwitcher && method === "presets" && allowPresets ? (
+        <QuickPresetInput
+          disabled={disabled}
+          currentThrow={safeCurrentThrow}
+          currentTotal={currentTotal}
+          onApplyPreset={applyPresetVisit}
+          onCancel={onCancel}
+          onValidate={handleValidateFromKeypad}
+          validateDisabled={disabled || validateDisabled || safeCurrentThrow.length === 0}
+          themePrimary={inputThemePrimary}
+          themeSecondary={inputThemeSecondary}
+          fitToParent={fitToParent}
+          contentBoxStyle={contentBoxStyle}
+          fitOuterRef={fitOuterRef}
+          fitInnerRef={fitInnerRef}
+          fitScale={fitScale}
         />
       ) : (
         <div
@@ -628,6 +649,8 @@ function VisitScoreKeypad({
   fitInnerRef,
   fitScale,
   hideQuickVisitHint,
+  themePrimary,
+  themeSecondary,
 }: {
   disabled: boolean;
   feedback?: React.ReactNode;
@@ -640,6 +663,8 @@ function VisitScoreKeypad({
   fitInnerRef: React.MutableRefObject<HTMLDivElement | null>;
   fitScale: number;
   hideQuickVisitHint?: boolean;
+  themePrimary?: string;
+  themeSecondary?: string;
 }) {
   const [raw, setRaw] = React.useState("");
   const [localError, setLocalError] = React.useState<string | null>(null);
@@ -647,6 +672,12 @@ function VisitScoreKeypad({
   const parsed = raw.trim() ? Number(raw) : NaN;
   const canEnter = raw.trim().length > 0 && Number.isFinite(parsed) && parsed >= 0 && parsed <= 180;
   const quickScores = [26, 41, 45, 60, 81, 85, 95, 100, 121, 125, 140, 180];
+  const primary = String(themePrimary || "#55e6ff");
+  const secondary = String(themeSecondary || primary);
+  const lightTone = `color-mix(in srgb, ${primary} 30%, white 70%)`;
+  const lightTone2 = `color-mix(in srgb, ${secondary} 24%, white 76%)`;
+  const darkTone = `color-mix(in srgb, ${secondary} 34%, #071019 66%)`;
+  const darkTone2 = `color-mix(in srgb, ${primary} 28%, #03070d 72%)`;
 
   const compactFit = fitToParent;
 
@@ -671,30 +702,30 @@ function VisitScoreKeypad({
   };
   const btnGold: React.CSSProperties = {
     ...btnBase,
-    background: "linear-gradient(180deg, #ffc63a, #ffaf00)",
-    color: "#1a1a1a",
-    border: "1px solid rgba(255,180,0,.3)",
-    boxShadow: "0 10px 22px rgba(255,170,0,.24)",
+    background: `linear-gradient(180deg, ${darkTone}, ${darkTone2})`,
+    color: lightTone,
+    border: `1px solid color-mix(in srgb, ${primary} 56%, rgba(255,255,255,.24) 44%)`,
+    boxShadow: `0 10px 22px color-mix(in srgb, ${primary} 18%, transparent 82%), inset 0 1px 0 rgba(255,255,255,.08)`,
   };
   const btnQuickLow: React.CSSProperties = {
     ...btnBase,
     height: compactFit ? "clamp(30px, 5.8vw, 36px)" : "clamp(34px, 7vw, 42px)",
     borderRadius: compactFit ? 12 : 14,
-    color: "#3b176f",
-    background: "linear-gradient(180deg, rgba(178,133,255,.92), rgba(121,77,218,.86))",
-    border: "1px solid rgba(204,170,255,.56)",
-    boxShadow: "0 8px 18px rgba(122,63,255,.18), inset 0 1px 0 rgba(255,255,255,.20)",
-    textShadow: "0 1px 0 rgba(255,255,255,.18)",
+    color: darkTone2,
+    background: `linear-gradient(180deg, ${lightTone2}, ${lightTone})`,
+    border: `1px solid color-mix(in srgb, ${primary} 38%, white 62%)`,
+    boxShadow: `0 8px 18px color-mix(in srgb, ${primary} 18%, transparent 82%), inset 0 1px 0 rgba(255,255,255,.34)`,
+    textShadow: "none",
   };
   const btnQuickHigh: React.CSSProperties = {
     ...btnBase,
     height: compactFit ? "clamp(30px, 5.8vw, 36px)" : "clamp(34px, 7vw, 42px)",
     borderRadius: compactFit ? 12 : 14,
-    color: "#681843",
-    background: "linear-gradient(180deg, rgba(255,132,194,.92), rgba(213,71,143,.86))",
-    border: "1px solid rgba(255,180,218,.58)",
-    boxShadow: "0 8px 18px rgba(255,82,170,.18), inset 0 1px 0 rgba(255,255,255,.20)",
-    textShadow: "0 1px 0 rgba(255,255,255,.18)",
+    color: lightTone,
+    background: `linear-gradient(180deg, ${darkTone}, ${darkTone2})`,
+    border: `1px solid color-mix(in srgb, ${secondary} 42%, rgba(255,255,255,.22) 58%)`,
+    boxShadow: `0 8px 18px color-mix(in srgb, ${secondary} 16%, transparent 84%), inset 0 1px 0 rgba(255,255,255,.08)`,
+    textShadow: "0 1px 0 rgba(0,0,0,.18)",
   };
   const btnDanger: React.CSSProperties = {
     ...btnBase,
@@ -794,13 +825,13 @@ function VisitScoreKeypad({
                 display: "grid",
                 placeItems: "center",
                 padding: compactFit ? "4px 12px" : "6px 14px",
-                background: "rgba(0,0,0,.55)",
-                border: "1px solid rgba(255,187,51,.42)",
-                color: "#ffc63a",
+                background: `linear-gradient(180deg, ${darkTone2}, rgba(0,0,0,.72))`,
+                border: `1px solid color-mix(in srgb, ${primary} 46%, rgba(255,255,255,.16) 54%)`,
+                color: lightTone,
                 fontSize: compactFit ? 24 : 26,
                 lineHeight: 1,
                 fontWeight: 1000,
-                boxShadow: "0 0 22px rgba(255,170,0,.16)",
+                boxShadow: `0 0 22px color-mix(in srgb, ${primary} 16%, transparent 84%)`,
               }}
             >
               {raw || "0"}
@@ -1174,6 +1205,78 @@ function VoiceInlineNotice({
           {tone === "confirm" ? "VALIDER" : "REC"}
         </span>
       ) : null}
+    </div>
+  );
+}
+
+function QuickPresetInput({
+  disabled,
+  currentThrow,
+  currentTotal,
+  onApplyPreset,
+  onCancel,
+  onValidate,
+  validateDisabled,
+  themePrimary,
+  themeSecondary,
+  fitToParent,
+  contentBoxStyle,
+  fitOuterRef,
+  fitInnerRef,
+  fitScale,
+}: {
+  disabled: boolean;
+  currentThrow: UIDart[];
+  currentTotal: number;
+  onApplyPreset: (darts: UIDart[]) => void;
+  onCancel: () => void;
+  onValidate: () => void;
+  validateDisabled: boolean;
+  themePrimary?: string;
+  themeSecondary?: string;
+  fitToParent: boolean;
+  contentBoxStyle: React.CSSProperties;
+  fitOuterRef: React.MutableRefObject<HTMLDivElement | null>;
+  fitInnerRef: React.MutableRefObject<HTMLDivElement | null>;
+  fitScale: number;
+}) {
+  const primary = String(themePrimary || "#55e6ff");
+  const secondary = String(themeSecondary || primary);
+  const light = `color-mix(in srgb, ${primary} 28%, white 72%)`;
+  const dark = `color-mix(in srgb, ${secondary} 30%, #071019 70%)`;
+  const dartLabel = (d: UIDart) => {
+    const v = Number((d as any)?.v || 0);
+    const m = Number((d as any)?.mult || 1);
+    if (!v) return "MISS";
+    if (v === 25) return m === 2 ? "DBULL" : "BULL";
+    return `${m === 3 ? "T" : m === 2 ? "D" : "S"}${v}`;
+  };
+  return (
+    <div ref={fitToParent ? fitOuterRef : null} style={{ ...contentBoxStyle, ...(fitToParent ? { flex: 1, minHeight: 0, overflow: "hidden" } : null) }}>
+      <div
+        ref={fitToParent ? fitInnerRef : null}
+        style={fitToParent ? { transform: `scale(${fitScale})`, transformOrigin: "top left", width: fitScale < 1 ? `${100 / fitScale}%` : "100%" } : undefined}
+      >
+        <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,.09)", background: "linear-gradient(180deg, rgba(17,22,30,.92), rgba(7,10,15,.96))", padding: 12, boxShadow: "0 12px 30px rgba(0,0,0,.36)" }}>
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ color: light, fontWeight: 1000, letterSpacing: .8, fontSize: 14 }}>PRESETS</div>
+            <div style={{ marginTop: 2, color: "rgba(255,255,255,.56)", fontSize: 10.5, fontWeight: 750 }}>Choisis une volée prédéfinie puis valide.</div>
+          </div>
+          <ScorePresetsBar disabled={disabled} currentCount={currentThrow.length} onPushDart={() => {}} onApplyPreset={onApplyPreset} autoValidate={false} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center", marginTop: 2, marginBottom: 10 }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", minHeight: 32, alignItems: "center" }}>
+              {currentThrow.length ? currentThrow.map((d, i) => (
+                <span key={i} style={{ minWidth: 46, minHeight: 30, padding: "0 8px", borderRadius: 10, display: "grid", placeItems: "center", background: dark, color: light, border: `1px solid color-mix(in srgb, ${primary} 36%, rgba(255,255,255,.12) 64%)`, fontWeight: 950, fontSize: 11 }}>{dartLabel(d)}</span>
+              )) : <span style={{ color: "rgba(255,255,255,.46)", fontSize: 10.5, fontWeight: 800 }}>Aucune volée sélectionnée</span>}
+            </div>
+            <div style={{ minWidth: 58, minHeight: 38, borderRadius: 12, display: "grid", placeItems: "center", background: light, color: dark, fontWeight: 1000, fontSize: 18 }}>{currentTotal}</div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1.55fr", gap: 8 }}>
+            <button type="button" disabled={disabled} onClick={onCancel} style={{ minHeight: 44, borderRadius: 14, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: "#fff", fontWeight: 950 }}>ANNULER</button>
+            <button type="button" disabled={validateDisabled} onClick={onValidate} style={{ minHeight: 44, borderRadius: 14, border: `1px solid color-mix(in srgb, ${primary} 46%, rgba(255,255,255,.18) 54%)`, background: dark, color: light, fontWeight: 1000, opacity: validateDisabled ? .45 : 1, boxShadow: validateDisabled ? "none" : `0 8px 22px color-mix(in srgb, ${primary} 16%, transparent 84%)` }}>VALIDER</button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

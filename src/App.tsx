@@ -7552,7 +7552,7 @@ case "babyfoot_team_edit":
     "cargo_config", "ocean_control_config", "castle_config", "gotcha_config",
     "hare_hounds_config", "pendu_config", "menteur_config", "crados_config",
     "fifty_one_by_five_config", "looper_config", "call_three_config", "steeplechase_config", "ptit_hun_config", "closest_center_config",
-    "halve_it_config", "prisoner_config", "shooter_config", "darts_racer_config",
+    "halve_it_config", "prisoner_config", "super_bull_config", "shooter_config", "darts_racer_config",
     "bobs_27_config", "bowling_config", "baseball_config", "attrape_moi_config",
     "president_config", "capital_config", "loterie_config", "departements_config",
     "football_config"

@@ -180,6 +180,87 @@ function Ptit1SpecialZonesModal({ onClose, onPick, accent=ACCENT }: any){
   return <FloatingPanel title={ptit1Ui("ZONES SPÉCIALES","SPECIAL ZONES")} subtitle={ptit1Ui("Sélectionne exactement la zone touchée","Select the exact zone that was hit")} onClose={onClose} accent={accent}><div style={{display:"flex",justifyContent:"center",marginBottom:10}}><button type="button" onClick={askAwena} title={ptit1Ui("Awena explique les zones spéciales","Awena explains special zones")} aria-label={ptit1Ui("Awena explique les zones spéciales","Awena explains special zones")} style={{width:58,height:58,padding:0,borderRadius:999,border:`2px solid ${accent}`,background:"rgba(0,0,0,.38)",overflow:"hidden",cursor:"pointer",boxShadow:`0 0 20px ${accent}55`}}><img src="/awena/awena-avatar.webp" alt="Awena" style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/></button></div><div style={{height:"100%",display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(88px,1fr))",gap:8,alignContent:"start",padding:4}}>{GROS6_SPECIAL_ZONES.map((zone:any)=><button key={zone.code} type="button" onClick={()=>onPick({code:zone.code,label:ptit1SpecialLabel(zone.code)})} title={ptit1SpecialLabel(zone.code)} aria-label={ptit1SpecialLabel(zone.code)} style={{minHeight:96,borderRadius:14,border:0,background:"transparent",display:"grid",placeItems:"center",padding:6,cursor:"pointer"}}><Ptit1SpecialZoneIcon code={zone.code} accent={accent}/></button>)}</div></FloatingPanel>;
 }
 
+function ptit1TokenMeta(raw: any, accent = ACCENT) {
+  if (!raw) return { label: "—", color: "#7a8496", border: "rgba(255,255,255,.08)", bg: "rgba(255,255,255,.03)", badge: "" };
+  const g:any = raw?.bed ? raw : uiToGameDart(raw);
+  const txt = String(ptit1DisplayDartLabel(g) || "").toUpperCase();
+  if (txt === "BULL25" || txt === "BULL") return { label: "BULL", color: "#ffdde2", border: "rgba(255,111,120,.48)", bg: "linear-gradient(180deg,rgba(114,25,38,.92),rgba(31,10,14,.97))", badge: "×" };
+  if (txt === "DBULL") return { label: "DBULL", color: "#dcfff0", border: "rgba(120,243,212,.55)", bg: "linear-gradient(180deg,rgba(14,92,70,.92),rgba(5,28,22,.97))", badge: "÷" };
+  if (txt === "MISS" || txt.includes("HORS") || txt.includes("OFF-TARGET")) return { label: txt === "MISS" ? "MISS" : "ZONE", color: "#ffe3e7", border: "rgba(255,97,122,.46)", bg: "linear-gradient(180deg,rgba(101,22,34,.94),rgba(35,8,12,.97))", badge: "!" };
+  if (txt.startsWith("GROS")) return { label: txt.replace("GROS ", "G"), color: "#fff1d7", border: "rgba(255,176,72,.5)", bg: "linear-gradient(180deg,rgba(180,93,19,.92),rgba(54,24,8,.97))", badge: "×10" };
+  if (txt.startsWith("PETIT")) return { label: txt.replace("PETIT ", "P"), color: "#5b3610", border: "rgba(255,232,150,.56)", bg: "linear-gradient(180deg,rgba(255,239,156,.96),rgba(214,188,101,.96))", badge: "+" };
+  if (txt.startsWith("D")) return { label: txt, color: "#edfaff", border: "rgba(125,224,255,.5)", bg: "linear-gradient(180deg,rgba(61,113,139,.94),rgba(15,28,35,.97))", badge: "×2" };
+  if (txt.startsWith("T")) return { label: txt, color: "#ffe8ff", border: "rgba(229,144,255,.48)", bg: "linear-gradient(180deg,rgba(111,64,126,.94),rgba(29,15,34,.97))", badge: "×3" };
+  return { label: txt || String(raw), color: "#fff", border: `${accent}66`, bg: `${accent}12`, badge: "" };
+}
+
+function Ptit1LiveTargetBoard({ rules, targets = [], score, currentThrow = [] }: any) {
+  const oneIndex = PTIT1_BOARD_ORDER.indexOf(1);
+  const oneStart = oneIndex * 18 - 9;
+  const oneEnd = oneStart + 18;
+  const tokenCells = [
+    { label: ptit1Ui("PETIT 1","SMALL 1"), hint: ptit1Ui("objectif principal","main target"), color: "#78f3d4" },
+    { label: ptit1Ui("GROS 1","BIG 1"), hint: `+${rules.outerSingleFactor}`, color: "#ffad55" },
+    { label: "BULL25", hint: `×${rules.bull25Factor}`, color: "#ff6f78" },
+    { label: "DBULL", hint: rules.dbullEnabled ? `÷${rules.dbullDivider}` : "+50", color: "#78f3d4" },
+  ];
+  const hitTokens = (currentThrow || []).slice(0,3).map((d:any, i:number) => ({ ...ptit1TokenMeta(d), key: i }));
+  return <div style={{ minHeight: 0, display: "grid", gap: 8 }}>
+    <div style={{ borderRadius: 18, border: `1px solid ${ACCENT}44`, background: "radial-gradient(circle at 50% 12%,rgba(255,216,77,.16),transparent 30%), radial-gradient(circle at 50% 68%,rgba(120,243,212,.08),transparent 44%), linear-gradient(180deg,rgba(14,17,24,.98),rgba(5,7,11,.99))", padding: 10 }}>
+      <svg viewBox="0 0 100 100" width="100%" height="100%" style={{ display: "block", maxHeight: 420, margin: "0 auto", filter: "drop-shadow(0 16px 28px rgba(0,0,0,.50))" }}>
+        <circle cx="50" cy="50" r="49" fill="#0d1118" stroke="rgba(255,216,77,.18)" strokeWidth="1" />
+        {PTIT1_BOARD_ORDER.map((n, idx) => {
+          const start = idx * 18 - 9;
+          const end = start + 18;
+          const isOne = n === 1;
+          const baseDark = idx % 2 === 0 ? "#14181f" : "#efe0c9";
+          const baseLight = idx % 2 === 0 ? "#efe0c9" : "#14181f";
+          return <g key={n}>
+            <path d={ptit1RingPath(50,50,45,38,start,end)} fill={isOne ? "rgba(255,173,85,.95)" : (idx % 2 === 0 ? "#d63c39" : "#1a9157")} opacity={isOne ? 1 : .92} />
+            <path d={ptit1RingPath(50,50,37.5,28.8,start,end)} fill={isOne ? "rgba(255,232,150,.95)" : baseDark} />
+            <path d={ptit1RingPath(50,50,28.4,21,start,end)} fill={isOne ? "rgba(194,33,40,.98)" : (idx % 2 === 0 ? "#d63c39" : "#1a9157")} opacity={isOne ? 1 : .92} />
+            <path d={ptit1RingPath(50,50,20.4,8.6,start,end)} fill={isOne ? "rgba(120,243,212,.96)" : baseLight} stroke={isOne ? "#f7ffbe" : "rgba(255,255,255,.05)"} strokeWidth={isOne ? 1.1 : .35} />
+          </g>;
+        })}
+        {PTIT1_BOARD_ORDER.map((n, idx) => {
+          const a = idx * 18 - 9;
+          const line = ptit1Polar(50,50,45,a);
+          const pt = ptit1Polar(50,50,41.6,a+9);
+          const isOne = n === 1;
+          return <g key={`mark-${n}`}>
+            <line x1="50" y1="50" x2={line.x} y2={line.y} stroke="rgba(255,255,255,.11)" strokeWidth=".6" />
+            <text x={pt.x} y={pt.y+1.5} textAnchor="middle" fontSize={isOne ? "6.2" : "4.6"} fill={isOne ? "#fff5b6" : "rgba(255,255,255,.85)"} fontWeight="1000">{n}</text>
+          </g>;
+        })}
+        <path d={ptit1RingPath(50,50,20.4,8.6,oneStart,oneEnd)} fill="rgba(120,243,212,.95)" stroke="#f7ffbe" strokeWidth="1.2" style={{ filter: "drop-shadow(0 0 8px rgba(120,243,212,.66))" }} />
+        <path d={ptit1RingPath(50,50,37.5,28.8,oneStart,oneEnd)} fill="rgba(255,173,85,.98)" stroke="#ffe0a9" strokeWidth="1.1" style={{ filter: "drop-shadow(0 0 6px rgba(255,173,85,.45))" }} />
+        {(targets || []).map((t:any, i:number) => {
+          const idx = PTIT1_BOARD_ORDER.indexOf(Number(t.number));
+          if (idx < 0) return null;
+          const start = idx * 18 - 9;
+          const end = start + 18;
+          const d = t.bed === "D" ? ptit1RingPath(50,50,45,38,start,end) : ptit1RingPath(50,50,28.4,21,start,end);
+          return <path key={`${t.label}-${i}`} d={d} fill={i % 2 === 0 ? "rgba(255,62,74,.95)" : "rgba(255,216,77,.95)"} stroke="#fff6c4" strokeWidth="1.2" style={{ filter: "drop-shadow(0 0 10px rgba(255,87,87,.66))" }} />;
+        })}
+        <circle cx="50" cy="50" r="6.4" fill="rgba(255,111,120,.98)" stroke="#ffe8b6" strokeWidth="1.2" style={{ filter: "drop-shadow(0 0 10px rgba(255,111,120,.45))" }} />
+        <circle cx="50" cy="50" r="3.1" fill="rgba(120,243,212,.98)" stroke="#fff" strokeWidth="1" style={{ filter: "drop-shadow(0 0 10px rgba(120,243,212,.62))" }} />
+        <text x="50" y="95" textAnchor="middle" fontSize="5" fill="#d6deea" fontWeight="900">{ptit1Ui("Cible vivante · zones colorées = impacts clés","Live board · coloured zones = key impacts")}</text>
+      </svg>
+    </div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>
+      {tokenCells.map((item) => <div key={item.label} style={{ minWidth: 0, borderRadius: 12, padding: "7px 6px", border: `1px solid ${item.color}44`, background: `${item.color}10`, textAlign: "center" }}><div style={{ color: item.color, fontSize: 7.2, fontWeight: 1100, letterSpacing: .4 }}>{item.label}</div><div style={{ color: "#fff", marginTop: 2, fontSize: 7.6, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.hint}</div></div>)}
+    </div>
+    {hitTokens.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
+      {Array.from({ length: 3 }).map((_, i) => {
+        const token:any = hitTokens[i];
+        return <div key={i} style={{ minHeight: 48, borderRadius: 12, border: `1px solid ${token?.border || "rgba(255,255,255,.08)"}`, background: token?.bg || "rgba(255,255,255,.03)", display: "grid", placeItems: "center", color: token?.color || "#7a8496", fontWeight: 1100, position: "relative" }}>
+          {token ? <><span style={{ position: "absolute", top: 6, right: 8, fontSize: 7, opacity: .88 }}>{token.badge}</span><span style={{ fontSize: 12 }}>{token.label}</span></> : <span style={{ fontSize: 8.6 }}>{`${ptit1Ui("FLÉCHETTE","DART")} ${i+1}`}</span>}
+        </div>;
+      })}
+    </div> : null}
+  </div>;
+}
+
 function PtitHunRiskBoard({ state, playerId, currentThrow, preview }: any) {
   const rules = state.config.rules;
   const st = state.statsByPlayer?.[playerId] || {};
@@ -188,25 +269,51 @@ function PtitHunRiskBoard({ state, playerId, currentThrow, preview }: any) {
   const clean = Number(state.cleanStreak?.[playerId] || 0);
   const jackpotText = rules.jackpotEnabled && state.jackpotTargets?.length ? state.jackpotTargets.map((t: any) => t.label).join(" / ") : "OFF";
   const missLabel = rules.missMode === "add" ? `+${rules.missValue}` : `TOTAL ×${rules.missValue}`;
-  const risks = [
-    [ptit1Ui("PETIT","SMALL"), ptit1Ui("+ valeur","+ value"), "#ffe18a"], [ptit1Ui("GROS","BIG"), `+ ${ptit1Ui("valeur","value")} ×${rules.outerSingleFactor}`, "#ffad55"],
-    ["DOUBLE", `HIT ×${rules.doubleFactor}`, "#7ddfff"], ["TRIPLE", `HIT ×${rules.tripleFactor}`, "#e490ff"],
-    ["BULL25", `25 ×${rules.bull25Factor}`, "#ff6f78"], ["DBULL", rules.dbullEnabled ? `÷${rules.dbullDivider} puis ÷${Math.pow(Number(rules.dbullDivider || 2), 2)}` : "+50", "#78f3d4"],
-    ["MISS", missLabel, "#ff5d70"],
+  const stack = typeof window !== "undefined" ? window.innerWidth < 760 : false;
+  const objectiveRows = [
+    { label: ptit1Ui("OBJECTIF #1","GOAL #1"), title: ptit1Ui("PETIT 1","SMALL 1"), detail: ptit1Ui("C’est la meilleure case du mode : +1 seulement.","This is the best square in the mode: only +1."), color: GREEN },
+    { label: ptit1Ui("OBJECTIF #2","GOAL #2"), title: "DBULL", detail: rules.dbullEnabled ? ptit1Ui(`Le ${rules.dbullsForZero}e DBULL cumulé remet le score à 0.`,`Cumulative DBULL #${rules.dbullsForZero} resets the score to 0.`) : ptit1Ui("DBULL simple : +50.","Plain DBULL: +50."), color: BLUE },
+    { label: ptit1Ui("JACKPOT ACTIF","LIVE JACKPOT"), title: jackpotText, detail: rules.jackpotEnabled ? ptit1Ui("Évite cette Double/Triple : une seule touche annule la volée.","Avoid this Double/Triple: one hit cancels the visit.") : ptit1Ui("Jackpot désactivé pour cette partie.","Jackpot is disabled for this match."), color: "#ffd84d" },
   ];
-  return <div style={{ height: "100%", minHeight: 0, display: "grid", gridTemplateRows: "minmax(0,1fr) auto auto", gap: 9 }}>
-    <section style={{ minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0,1.35fr) minmax(170px,.65fr)", gap: 10, borderRadius: 18, padding: 10, border: `1px solid ${ACCENT}44`, background: "radial-gradient(circle at 24% 20%,rgba(242,200,75,.10),transparent 34%),linear-gradient(180deg,rgba(14,17,24,.98),rgba(5,7,11,.99))", overflow: "hidden" }}>
-      <div style={{ minHeight: 0, display: "grid", placeItems: "center", borderRadius: 16, background: "radial-gradient(circle,rgba(120,243,212,.08),transparent 62%)", border: "1px solid rgba(255,255,255,.06)" }}>
-        <img src={ptit1Radar} alt={ptit1Ui("P’TIT 1 · zones prioritaires","P’TIT 1 · priority zones")} draggable={false} style={{ width: "min(100%,560px)", height: "100%", maxHeight: "100%", objectFit: "contain", display: "block", filter: "drop-shadow(0 12px 24px rgba(0,0,0,.48))" }} />
-      </div>
-      <div style={{ minHeight: 0, display: "grid", alignContent: "start", gap: 7 }}>
-        <div style={{ borderRadius: 14, padding: 10, border: `1px solid ${ACCENT}55`, background: `${ACCENT}0e` }}><div style={{ color: ACCENT, fontSize: 8, fontWeight: 1100, letterSpacing: .9 }}>{ptit1Ui("SCORE ACTUEL","CURRENT SCORE")}</div><div style={{ color: "#fff", fontSize: 34, lineHeight: 1, fontWeight: 1100, marginTop: 4 }}>{score}</div><div style={{ color: "#929bad", fontSize: 8, marginTop: 4 }}>{ptit1Ui("Le plus petit score gagne.","Lowest score wins.")}</div></div>
-        <div style={{ borderRadius: 14, padding: 10, border: "1px solid rgba(255,216,77,.5)", background: "rgba(255,216,77,.07)" }}><div style={{ color: "#ffd84d", fontSize: 8, fontWeight: 1100, letterSpacing: .8 }}>JACKPOT</div><div style={{ color: "#fff", fontSize: 22, fontWeight: 1100, marginTop: 3 }}>{jackpotText}</div><div style={{ color: "#b9c0ce", fontSize: 8, lineHeight: 1.4, marginTop: 4 }}>{ptit1Ui("Zone Double/Triple spéciale : une touche annule toute la volée.","Special Double/Triple zone: one hit cancels the whole visit.")}</div></div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}><div style={{ borderRadius: 12, padding: 8, border: `1px solid ${BLUE}55`, background: `${BLUE}0d` }}><div style={{ color: BLUE, fontSize: 7.5, fontWeight: 1000 }}>{ptit1Ui("ZÉRO ABSOLU","ABSOLUTE ZERO")}</div><b style={{ display: "block", marginTop: 3, fontSize: 15 }}>{st.dbulls || 0}/{rules.dbullsForZero}</b></div><div style={{ borderRadius: 12, padding: 8, border: `1px solid ${GREEN}55`, background: `${GREEN}0d` }}><div style={{ color: GREEN, fontSize: 7.5, fontWeight: 1000 }}>{ptit1Ui("BOUCLIER","SHIELD")}</div><b style={{ display: "block", marginTop: 3, fontSize: 15 }}>{shield ? ptit1Ui("ACTIF","ACTIVE") : `${clean}/${rules.cleanVisitsForShield}`}</b></div></div>
+  const dangerRows = [
+    { label: "GROS", detail: `+ ${ptit1Ui("valeur","value")} ×${rules.outerSingleFactor}`, color: "#ffad55" },
+    { label: "DOUBLE", detail: `HIT ×${rules.doubleFactor}`, color: "#7ddfff" },
+    { label: "TRIPLE", detail: `HIT ×${rules.tripleFactor}`, color: "#e490ff" },
+    { label: "BULL25", detail: `25 ×${rules.bull25Factor}`, color: "#ff6f78" },
+    { label: "MISS", detail: missLabel, color: RED },
+  ];
+  const liveRows = [
+    { label: ptit1Ui("SCORE ACTUEL","CURRENT SCORE"), value: score, color: ACCENT },
+    { label: "JACKPOT", value: jackpotText, color: "#ffd84d" },
+    { label: ptit1Ui("ZÉRO ABSOLU","ABSOLUTE ZERO"), value: `${st.dbulls || 0}/${rules.dbullsForZero}`, color: BLUE },
+    { label: ptit1Ui("BOUCLIER DU HUN","HUN SHIELD"), value: shield ? ptit1Ui("ACTIF","ACTIVE") : `${clean}/${rules.cleanVisitsForShield}`, color: GREEN },
+  ];
+  const previewTag = preview?.jackpotHit ? ptit1Ui("JACKPOT : volée annulée","JACKPOT: visit cancelled") : preview?.zeroAbsoluteNow ? ptit1Ui("ZÉRO ABSOLU prêt","ABSOLUTE ZERO ready") : preview?.shieldUnlockedNow ? ptit1Ui("BOUCLIER DÉBLOQUÉ","SHIELD UNLOCKED") : preview?.tripleNul ? ptit1Ui("TRIPLE NUL","TRIPLE ZERO") : preview?.petitOnePerfect ? ptit1Ui("P’TIT 1 PARFAIT","PERFECT P’TIT 1") : "";
+  return <div style={{ height: "100%", minHeight: 0, display: "grid", gap: 10, gridTemplateRows: "auto minmax(0,1fr) auto" }}>
+    <section style={{ display: "grid", gridTemplateColumns: stack ? "1fr" : "repeat(4,minmax(0,1fr))", gap: 7 }}>
+      {liveRows.map((item) => <div key={item.label} style={{ minWidth: 0, borderRadius: 14, padding: 10, border: `1px solid ${item.color}55`, background: `${item.color}0f` }}><div style={{ color: item.color, fontSize: 7.8, fontWeight: 1100, letterSpacing: .7 }}>{item.label}</div><div style={{ color: "#fff", fontSize: item.label === "JACKPOT" ? 20 : 24, lineHeight: 1.05, fontWeight: 1100, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.value}</div><div style={{ color: "#929bad", fontSize: 7.6, marginTop: 4 }}>{item.label === ptit1Ui("SCORE ACTUEL","CURRENT SCORE") ? ptit1Ui("Le plus petit score gagne.","Lowest score wins.") : item.label === "JACKPOT" ? ptit1Ui("Double/Triple rouge à éviter immédiatement.","Red Double/Triple to avoid right now.") : item.label === ptit1Ui("ZÉRO ABSOLU","ABSOLUTE ZERO") ? ptit1Ui("Progression centre cumulée.","Cumulative centre progress.") : ptit1Ui("Bonus défensif longue durée.","Long-term defensive bonus.")}</div></div>)}
+    </section>
+
+    <section style={{ minHeight: 0, display: "grid", gridTemplateColumns: stack ? "1fr" : "minmax(0,1.05fr) minmax(240px,.95fr)", gap: 10 }}>
+      <Ptit1LiveTargetBoard rules={rules} targets={state.jackpotTargets || []} score={score} currentThrow={currentThrow} />
+      <div style={{ minHeight: 0, display: "grid", gap: 10, alignContent: "start" }}>
+        <div style={{ borderRadius: 16, padding: 10, border: `1px solid ${ACCENT}44`, background: "linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02))" }}>
+          <div style={{ color: ACCENT, fontSize: 8.5, fontWeight: 1100, letterSpacing: .8, marginBottom: 7 }}>{ptit1Ui("OBJECTIFS & BONUS","GOALS & BONUSES")}</div>
+          <div style={{ display: "grid", gap: 7 }}>{objectiveRows.map((item) => <div key={item.label} style={{ borderRadius: 12, border: `1px solid ${item.color}44`, background: `${item.color}0d`, padding: 8 }}><div style={{ color: item.color, fontSize: 7.2, fontWeight: 1100, letterSpacing: .5 }}>{item.label}</div><div style={{ color: "#fff", marginTop: 3, fontSize: 11.5, fontWeight: 1050 }}>{item.title}</div><div style={{ color: "#b8c0ce", marginTop: 3, fontSize: 8, lineHeight: 1.45 }}>{item.detail}</div></div>)}</div>
+        </div>
+        <div style={{ borderRadius: 16, padding: 10, border: `1px solid ${RED}44`, background: "linear-gradient(180deg,rgba(255,100,120,.08),rgba(255,255,255,.02))" }}>
+          <div style={{ color: RED, fontSize: 8.5, fontWeight: 1100, letterSpacing: .8, marginBottom: 7 }}>{ptit1Ui("RISQUES IMMÉDIATS","IMMEDIATE RISKS")}</div>
+          <div style={{ display: "grid", gap: 6 }}>{dangerRows.map((item) => <div key={item.label} style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 7, alignItems: "start", borderRadius: 11, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", padding: "7px 8px" }}><span style={{ color: item.color, fontSize: 8.2, fontWeight: 1100, minWidth: 56 }}>{item.label}</span><span style={{ color: "#dfe6f2", fontSize: 8.1, lineHeight: 1.45 }}>{item.detail}</span></div>)}</div>
+        </div>
       </div>
     </section>
-    <section style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 5 }}>{risks.map(([label,value,color]: any) => <div key={label} style={{ minWidth: 0, borderRadius: 11, padding: "7px 4px", textAlign: "center", border: `1px solid ${color}45`, background: `${color}0d` }}><div style={{ color, fontSize: 7.2, fontWeight: 1100 }}>{label}</div><div style={{ marginTop: 2, color: "#fff", fontSize: 7.5, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div></div>)}</section>
-    <section style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5 }}>{[0,1,2].map((i) => { const d:any=currentThrow?.[i]; return <div key={i} style={{ borderRadius: 11, padding: 8, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.025)", textAlign: "center", color: d ? "#fff" : "#6d7485", fontSize: 8.5, fontWeight: 1000 }}>{d ? ptit1DisplayDartLabel(uiToGameDart(d)) : `${ptit1Ui("FLÉCHETTE","DART")} ${i+1}`}</div>; })}</section>
+
+    <section style={{ display: "grid", gap: 8 }}>
+      {previewTag ? <div style={{ borderRadius: 12, padding: "8px 10px", border: `1px solid ${ACCENT}44`, background: `${ACCENT}12`, color: "#fff", fontSize: 8.2, fontWeight: 1000 }}>{previewTag}</div> : null}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
+        {[0,1,2].map((i) => { const d:any = currentThrow?.[i]; const token = d ? ptit1TokenMeta(d) : null; return <div key={i} style={{ borderRadius: 12, padding: 8, minHeight: 42, border: `1px solid ${token?.border || "rgba(255,255,255,.08)"}`, background: token?.bg || "rgba(255,255,255,.025)", textAlign: "center", color: token?.color || "#6d7485", display: "grid", placeItems: "center", fontSize: token ? 11 : 8.5, fontWeight: 1050 }}>{token ? token.label : `${ptit1Ui("FLÉCHETTE","DART")} ${i+1}`}</div>; })}
+      </div>
+    </section>
   </div>;
 }
 
@@ -264,18 +371,17 @@ function Ptit1MiniKpi({ label, value, color = ACCENT, onClick }: any) {
 }
 
 function Ptit1DartsRow({ currentThrow, accent, liveScore, liveDelta = 0, liveSteps = [] }: any) {
-  const chip = (d: any) => {
-    if (!d) return { label: "—", color: "#667085", border: "rgba(255,255,255,.08)", bg: "rgba(0,0,0,.22)" };
-    const g:any = uiToGameDart(d); const raw = ptit1DisplayDartLabel(g); const u = String(raw).toUpperCase();
-    if (u === "DBULL" || u === "BULL25") return { label: u === "BULL25" ? "BULL" : "DBULL", color: "#d9ffe9", border: "rgba(96,255,182,.55)", bg: "linear-gradient(180deg,rgba(34,102,68,.92),rgba(11,30,19,.96))" };
-    if (u === "MISS" || u.includes("HORS") || u.includes("OFF-TARGET")) return { label: u === "MISS" ? "MISS" : "ZONE", color: "#ffd2d7", border: "rgba(255,97,122,.46)", bg: "linear-gradient(180deg,rgba(101,22,34,.94),rgba(35,8,12,.97))" };
-    if (u.startsWith("GROS")) return { label: u.replace("GROS ", "G"), color: "#fff2cf", border: "rgba(255,176,72,.5)", bg: "linear-gradient(180deg,rgba(180,93,19,.92),rgba(54,24,8,.97))" };
-    if (u.startsWith("PETIT")) return { label: u.replace("PETIT ", "P"), color: "#6b3f12", border: "rgba(255,232,150,.56)", bg: "linear-gradient(180deg,rgba(255,239,156,.96),rgba(214,188,101,.96))" };
-    if (u.startsWith("D")) return { label: u, color: "#edfaff", border: "rgba(125,224,255,.5)", bg: "linear-gradient(180deg,rgba(61,113,139,.94),rgba(15,28,35,.97))" };
-    if (u.startsWith("T")) return { label: u, color: "#ffe8ff", border: "rgba(229,144,255,.48)", bg: "linear-gradient(180deg,rgba(111,64,126,.94),rgba(29,15,34,.97))" };
-    return { label: raw, color: "#fff", border: `${accent}66`, bg: `${accent}12` };
-  };
-  return <div style={{ width: "100%", display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}>{[0,1,2].map((i) => { const s=chip(currentThrow?.[i]); const step:any = liveSteps?.[i]; return <div key={i} style={{ height: 30, minWidth: 0, borderRadius: 9, border: `1px solid ${s.border}`, background: s.bg, display: "grid", gridTemplateRows:"auto auto", placeItems: "center", alignContent:"center", color: s.color, fontWeight: 1100, lineHeight:1 }}>{currentThrow?.[i] ? <><span style={{fontSize:8.8}}>{s.label}</span><small style={{marginTop:2,fontSize:5.8,color:step?.delta===0?"#b8c0cc":step?.delta<0?GREEN:step?.kind==="miss"?RED:s.color,fontWeight:1000}}>{step ? `${step.delta>0?"+":""}${step.delta}` : ""}</small></> : <span style={{fontSize:9.5}}>{`D${i+1}`}</span>}</div>; })}<div style={{height:30,minWidth:0,borderRadius:9,border:`1px solid ${accent}55`,background:`linear-gradient(180deg,${accent}18,rgba(0,0,0,.30))`,display:"grid",gridTemplateRows:"auto auto",placeItems:"center",alignContent:"center",lineHeight:1}}><small style={{fontSize:5.8,color:"#8f98ad",fontWeight:1000,letterSpacing:.45}}>{ptit1Ui("SCORE LIVE","LIVE SCORE")}</small><b style={{marginTop:2,fontSize:10.5,color:accent,fontWeight:1100}}>{liveScore}<span style={{marginLeft:3,fontSize:6.5,color:liveDelta===0?"#8791a4":liveDelta<0?GREEN:RED}}>{liveDelta===0?"":`${liveDelta>0?"+":""}${liveDelta}`}</span></b></div></div>;
+  return <div style={{ width: "100%", display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}>
+    {[0,1,2].map((i) => {
+      const token = currentThrow?.[i] ? ptit1TokenMeta(currentThrow[i], accent) : null;
+      const step:any = liveSteps?.[i];
+      const deltaColor = step?.delta === 0 ? "#b8c0cc" : step?.delta < 0 ? GREEN : step?.kind === "miss" ? RED : token?.color;
+      return <div key={i} style={{ height: 32, minWidth: 0, borderRadius: 10, border: `1px solid ${token?.border || "rgba(255,255,255,.08)"}`, background: token?.bg || "rgba(0,0,0,.22)", display: "grid", placeItems: "center", color: token?.color || "#7f8798", fontWeight: 1100, lineHeight: 1, position: "relative", overflow: "hidden" }}>
+        {token ? <><span style={{ fontSize: 9.1 }}>{token.label}</span>{step ? <small style={{ position: "absolute", right: 5, top: 4, fontSize: 5.7, color: deltaColor, fontWeight: 1000 }}>{`${step.delta > 0 ? "+" : ""}${step.delta}`}</small> : null}</> : <span style={{ fontSize: 9.5 }}>{`D${i+1}`}</span>}
+      </div>;
+    })}
+    <div style={{ height: 32, minWidth: 0, borderRadius: 10, border: `1px solid ${accent}55`, background: `linear-gradient(180deg,${accent}18,rgba(0,0,0,.30))`, display: "grid", gridTemplateRows: "auto auto", placeItems: "center", alignContent: "center", lineHeight: 1 }}><small style={{ fontSize: 5.8, color: "#8f98ad", fontWeight: 1000, letterSpacing: .45 }}>{ptit1Ui("SCORE LIVE","LIVE SCORE")}</small><b style={{ marginTop: 2, fontSize: 10.5, color: accent, fontWeight: 1100 }}>{liveScore}<span style={{ marginLeft: 3, fontSize: 6.5, color: liveDelta === 0 ? "#8791a4" : liveDelta < 0 ? GREEN : RED }}>{liveDelta === 0 ? "" : `${liveDelta > 0 ? "+" : ""}${liveDelta}`}</span></b></div>
+  </div>;
 }
 
 function Ptit1ToolIcon({ kind, color = "#dfe8ff" }: any) {
@@ -1008,7 +1114,7 @@ export default function PtitHunPlay(props: any) {
           ]}
           keypadDisableSegmentNumbers={!segmentZoneSelected}
           keypadAuxActionOverride={{ label: "ZONE", icon: <img src={gros6ZonesKeypad} alt="" style={{width:"100%",height:"100%",objectFit:"contain"}} />, onClick: () => setSpecialOpen(true), tone: "gold", title: fr ? "Ouvrir les zones spéciales" : "Open special zones", ariaLabel: fr ? "Ouvrir les zones spéciales" : "Open special zones", fullBleedIcon: true }}
-          keypadSecondaryAction={undo.length ? { label: "UNDO", icon: "↶", onClick: doUndo, tone: "dark", title: fr ? "Annuler la dernière volée" : "Undo last visit", ariaLabel: fr ? "Annuler la dernière volée" : "Undo last visit" } : null}
+          keypadSecondaryAction={currentThrow.length < 3 ? { icon: <span style={{ fontSize: 10.5, fontWeight: 1100, letterSpacing: .4 }}>MISS</span>, onClick: () => appendKeypadDart({ v: 0, mult: 1 } as any), tone: "dark", title: fr ? "Ajouter un MISS" : "Add a MISS", ariaLabel: fr ? "Ajouter un MISS" : "Add a MISS" } : null}
           keypadFooterAction={currentThrow.length >= 3 ? { label: fr ? "VALIDER" : "VALIDATE", title: fr ? "Valider la volée" : "Validate visit", tone: "gold", onClick: validate } : { label: "DBULL", title: "Double Bull", tone: "green", onClick: addDbull }}
           hidePreview
           hideTotal

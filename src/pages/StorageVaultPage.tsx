@@ -97,7 +97,7 @@ import {
   writeExternalBackupNow,
   type ExternalBackupStatus,
 } from "../lib/externalBackupTarget";
-import { connectPersonalCloud, downloadPersonalCloudSnapshot, downloadPersonalCloudSnapshotById, getPersonalCloudBackupMeta, getPersonalCloudStatus, isPersonalCloudProvider, personalCloudProviderLabel, uploadPersonalCloudSnapshot } from "../lib/personalCloudApi";
+import { connectPersonalCloud, downloadPersonalCloudSnapshot, downloadPersonalCloudSnapshotById, getPersonalCloudBackupMeta, getPersonalCloudStatus, isPersonalCloudProvider, listPersonalCloudBackups, personalCloudProviderLabel, uploadPersonalCloudSnapshot } from "../lib/personalCloudApi";
 import { registerAccountLatestBackup } from "../lib/latestBackupApi";
 import { fetchRemoteIncrementalChanges, flushIncrementalRemoteSyncForProvider } from "../lib/incrementalRemoteSync";
 import { applyIncrementalChanges } from "../lib/incrementalRestore";
@@ -1734,6 +1734,22 @@ async function encodeNasTransportSnapshotJson(snapshotJson: string, compressedIn
 const NAS_PUSH_TIMEOUT_MS = 45_000;
 const NAS_DIRECT_PUSH_MAX_COMPRESSED_BYTES = 4 * 1024 * 1024;
 const NAS_CHUNK_CLIENT_BYTES = 1536 * 1024;
+const NAS_CHUNK_CONCURRENCY = 3;
+
+async function sha256HexBrowser(bytes: Uint8Array): Promise<string> {
+  try {
+    if (!globalThis.crypto?.subtle) return "";
+    const source = bytes.slice().buffer;
+    const digest = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", source));
+    return Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join("");
+  } catch {
+    return "";
+  }
+}
+
+function jsonToHeaderBase64(value: unknown): string {
+  return bytesToBase64(new TextEncoder().encode(JSON.stringify(value ?? {})));
+}
 
 async function fetchNasJson(path: string, body: any, token: string, timeoutMs = NAS_PUSH_TIMEOUT_MS): Promise<any> {
   const controller = new AbortController();
@@ -1764,12 +1780,61 @@ async function fetchNasJson(path: string, body: any, token: string, timeoutMs = 
     return data;
   } catch (error: any) {
     if (error?.name === "AbortError") {
-      throw new Error(`Le NAS n’a pas répondu après ${Math.round(timeoutMs / 1000)} secondes.`);
+      const timeout: any = new Error(`Le NAS n’a pas répondu après ${Math.round(timeoutMs / 1000)} secondes.`);
+      timeout.status = 408;
+      throw timeout;
     }
     throw error;
   } finally {
     window.clearTimeout(timer);
   }
+}
+
+async function pushSnapshotToNasRaw(
+  transport: { rawBytes: number; compressedBytes: number; compressed: Uint8Array },
+  version: number,
+  reason: string,
+  token: string,
+  summary?: any,
+  onProgress?: (sentBytes: number, totalBytes: number) => void,
+): Promise<any> {
+  if (typeof XMLHttpRequest === "undefined") {
+    const err: any = new Error("Transport binaire NAS indisponible.");
+    err.status = 501;
+    throw err;
+  }
+  const checksum = await sha256HexBrowser(transport.compressed);
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", buildApiUrl("/sync/push/raw"), true);
+    xhr.timeout = 75_000;
+    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.setRequestHeader("Content-Type", "application/gzip");
+    xhr.setRequestHeader("X-MSS-Version", String(version));
+    xhr.setRequestHeader("X-MSS-Reason", encodeURIComponent(reason));
+    xhr.setRequestHeader("X-MSS-Raw-Bytes", String(transport.rawBytes));
+    if (checksum) xhr.setRequestHeader("X-MSS-Checksum", checksum);
+    xhr.setRequestHeader("X-MSS-Summary", jsonToHeaderBase64(summary || {}));
+    xhr.upload.onprogress = (event) => {
+      const total = event.lengthComputable ? event.total : transport.compressedBytes;
+      onProgress?.(event.loaded, total || transport.compressedBytes);
+    };
+    xhr.onerror = () => reject(Object.assign(new Error("Transport NAS binaire inaccessible."), { status: xhr.status || 0 }));
+    xhr.ontimeout = () => reject(Object.assign(new Error("Le NAS n'a pas confirmé l'envoi binaire dans les 75 secondes."), { status: 408 }));
+    xhr.onload = () => {
+      let data: any = null;
+      try { data = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch {}
+      if (xhr.status < 200 || xhr.status >= 300) {
+        const err: any = new Error(String(data?.message || data?.error || `NAS HTTP ${xhr.status}`));
+        err.status = xhr.status;
+        err.payload = data;
+        reject(err);
+        return;
+      }
+      resolve(data || {});
+    };
+    xhr.send(transport.compressed);
+  });
 }
 
 async function pushSnapshotToNasChunked(
@@ -1778,9 +1843,11 @@ async function pushSnapshotToNasChunked(
   reason: string,
   token: string,
   summary?: any,
+  onProgress?: (sentBytes: number, totalBytes: number) => void,
 ): Promise<any> {
   const chunkBytes = NAS_CHUNK_CLIENT_BYTES;
   const totalChunks = Math.ceil(transport.compressed.byteLength / chunkBytes);
+  const checksum = await sha256HexBrowser(transport.compressed);
   const started = await fetchNasJson("/sync/push/chunked/start", {
     version,
     reason,
@@ -1788,6 +1855,7 @@ async function pushSnapshotToNasChunked(
     rawBytes: transport.rawBytes,
     compressedBytes: transport.compressedBytes,
     totalChunks,
+    checksum,
   }, token, 30_000);
 
   const uploadId = String(started?.uploadId || "").trim();
@@ -1798,18 +1866,27 @@ async function pushSnapshotToNasChunked(
     throw new Error(`Le NAS annonce des blocs maximum de ${serverMax} octets, inférieurs au protocole client. Mets à jour le backend NAS avec le même patch.`);
   }
 
-  for (let index = 0; index < totalChunks; index += 1) {
-    const slice = transport.compressed.subarray(
-      index * chunkBytes,
-      Math.min(transport.compressed.byteLength, (index + 1) * chunkBytes),
-    );
-    await fetchNasJson(
-      `/sync/push/chunked/${encodeURIComponent(uploadId)}/${index}`,
-      { data: bytesToBase64(slice) },
-      token,
-      30_000,
-    );
-  }
+  let nextIndex = 0;
+  let sentBytes = 0;
+  const worker = async () => {
+    while (true) {
+      const index = nextIndex++;
+      if (index >= totalChunks) return;
+      const slice = transport.compressed.subarray(
+        index * chunkBytes,
+        Math.min(transport.compressed.byteLength, (index + 1) * chunkBytes),
+      );
+      await fetchNasJson(
+        `/sync/push/chunked/${encodeURIComponent(uploadId)}/${index}`,
+        { data: bytesToBase64(slice) },
+        token,
+        35_000,
+      );
+      sentBytes += slice.byteLength;
+      onProgress?.(Math.min(sentBytes, transport.compressedBytes), transport.compressedBytes);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(NAS_CHUNK_CONCURRENCY, totalChunks) }, () => worker()));
 
   return fetchNasJson(
     `/sync/push/chunked/${encodeURIComponent(uploadId)}/finalize`,
@@ -1819,14 +1896,32 @@ async function pushSnapshotToNasChunked(
   );
 }
 
-async function pushSnapshotToNasFast(snapshotJson: string, version: number, reason: string, token: string, summary?: any, compressedInput?: Uint8Array): Promise<any> {
+async function pushSnapshotToNasFast(
+  snapshotJson: string,
+  version: number,
+  reason: string,
+  token: string,
+  summary?: any,
+  compressedInput?: Uint8Array,
+  onProgress?: (sentBytes: number, totalBytes: number, mode: "raw" | "chunked" | "json") => void,
+): Promise<any> {
   const transport = await encodeNasTransportSnapshotJson(snapshotJson, compressedInput);
 
-  // Au-delà de quelques Mo, on ne traverse plus Cloudflare/Express avec un seul
-  // gros JSON base64. Le gzip est découpé puis réassemblé côté NAS. Le contenu
-  // du backup reste strictement identique : aucune image/donnée n'est retirée.
+  // V131 : primaire = un seul flux gzip binaire. On évite le base64 (+33 %) et
+  // les 10 requêtes séquentielles qui pouvaient transformer 15 Mo en 10 minutes.
+  // Si un ancien backend/proxy refuse ce flux, le chunking reste le filet de
+  // compatibilité et envoie désormais 3 blocs en parallèle avec checksum global.
   if (transport.compressedBytes > NAS_DIRECT_PUSH_MAX_COMPRESSED_BYTES) {
-    return pushSnapshotToNasChunked(transport, version, reason, token, summary);
+    try {
+      const data = await pushSnapshotToNasRaw(transport, version, reason, token, summary, (sent, total) => onProgress?.(sent, total, "raw"));
+      return { ...data, transport: data?.transport || "gzip-raw-v1" };
+    } catch (error: any) {
+      const status = Number(error?.status || 0);
+      const fallback = [0, 404, 405, 408, 413, 415, 501, 502, 503, 504].includes(status);
+      if (!fallback) throw error;
+      console.warn("[StorageVault] transport NAS binaire indisponible, fallback chunked", error);
+      return pushSnapshotToNasChunked(transport, version, reason, token, summary, (sent, total) => onProgress?.(sent, total, "chunked"));
+    }
   }
 
   try {
@@ -1838,12 +1933,11 @@ async function pushSnapshotToNasFast(snapshotJson: string, version: number, reas
       transportStats: { rawBytes: transport.rawBytes, compressedBytes: transport.compressedBytes },
       summary: summary || undefined,
     }, token, NAS_PUSH_TIMEOUT_MS);
+    onProgress?.(transport.compressedBytes, transport.compressedBytes, "json");
     return { ...data, transportStats: data?.transportStats || { rawBytes: transport.rawBytes, compressedBytes: transport.compressedBytes } };
   } catch (error: any) {
-    // Si un intermédiaire impose une limite plus basse, bascule automatique vers
-    // le protocole découpé sans demander à l'utilisateur de relancer l'opération.
-    if (Number(error?.status || 0) === 413) {
-      return pushSnapshotToNasChunked(transport, version, reason, token, summary);
+    if ([413, 415].includes(Number(error?.status || 0))) {
+      return pushSnapshotToNasChunked(transport, version, reason, token, summary, (sent, total) => onProgress?.(sent, total, "chunked"));
     }
     throw error;
   }
@@ -2005,7 +2099,7 @@ export default function StorageVaultPage({ go }: Props) {
   const [trashCloudSlots, setTrashCloudSlots] = React.useState<CloudSlot[]>([]);
   const [backupProvider, setBackupProvider] = React.useState<BackupProvider>(() => readPreferredRemoteSource() || "nas");
   const [restoreSource, setRestoreSource] = React.useState<RestoreSource>(() => readPreferredRemoteSource() || "nas");
-  const [personalRestoreEntry, setPersonalRestoreEntry] = React.useState<SaveEntry | null>(null);
+  const [personalRestoreEntries, setPersonalRestoreEntries] = React.useState<SaveEntry[]>([]);
   const [storagePrefs, setStoragePrefs] = React.useState(() => loadStoragePrefs());
   const [externalBackupStatus, setExternalBackupStatus] = React.useState<ExternalBackupStatus>(() => ({
     supported: typeof window !== "undefined" && typeof (window as any).showSaveFilePicker === "function",
@@ -2334,13 +2428,15 @@ export default function StorageVaultPage({ go }: Props) {
     : restoreSource === "file"
       ? importedRestoreEntry
       : restoreSource === "google_drive"
-        ? personalRestoreEntry
+        ? personalRestoreEntries[0] || null
         : latestRemoteEntry;
   const currentRestoreArchives = restoreSource === "local"
     ? localEntries.slice(1)
-    : restoreSource === "file" || restoreSource === "google_drive"
+    : restoreSource === "file"
       ? []
-      : archivedRemoteEntries;
+      : restoreSource === "google_drive"
+        ? personalRestoreEntries.slice(1)
+        : archivedRemoteEntries;
   const headerSummary = normalizeSummary(currentRestoreEntry?.summary || latestRemoteEntry?.summary || localEntries[0]?.summary || {});
   const headerDate = currentRestoreEntry?.createdAt || currentRestoreEntry?.updatedAt || latestRemoteEntry?.createdAt || localEntries[0]?.createdAt || null;
   const matchBackupEntries = React.useMemo(() => {
@@ -2976,7 +3072,7 @@ ${label}`)) return;
     }
     setBusy(true);
     try {
-      setMessage("Google Drive : lecture rapide des métadonnées…");
+      setMessage("Google Drive : inventaire des sauvegardes et anciennes archives…");
       const status = await getPersonalCloudStatus("google_drive");
       if (!status.configured) throw new Error("Google Drive n’est pas configuré côté serveur.");
       if (!status.connected) {
@@ -2984,59 +3080,68 @@ ${label}`)) return;
         await connectPersonalCloud("google_drive");
       }
 
-      // V130 PERF: sélectionner Google Drive ne doit JAMAIS télécharger 30-50 Mo.
-      // On lit uniquement la fiche metadata. Le snapshot complet n'est téléchargé
-      // qu'après appui sur Restaurer, avec une vraie progression octet par octet.
-      const meta = await getPersonalCloudBackupMeta("google_drive");
-      if (!meta) {
-        setPersonalRestoreEntry(null);
+      // Lecture METADATA uniquement : aucune sauvegarde lourde n'est téléchargée
+      // ici. La liste serveur fusionne le dossier visible actuel + les anciennes
+      // sauvegardes appDataFolder afin que les backups historiques restent restaurables.
+      const backups = await listPersonalCloudBackups("google_drive", 100);
+      if (!backups.length) {
+        setPersonalRestoreEntries([]);
         setRestoreSource("google_drive");
         setRestoreView("current");
-        setMessage("Google Drive connecté, mais aucune sauvegarde MULTISPORTS SCORING n’y est encore disponible.");
+        setMessage("Google Drive connecté, mais aucune sauvegarde MULTISPORTS SCORING n’y est disponible.");
         return;
       }
 
-      const summary = normalizeSummary(
-        meta?.summary ||
-        meta?.metadata?.summary ||
-        meta?.metadata?.backupSummary ||
-        {}
-      );
-      const quality = assessSave(summary);
-      const timestamp = String(meta.updatedAt || meta.createdAt || meta?.metadata?.exportedAt || new Date().toISOString());
-      const backupId = String(meta.id || meta.fileId || meta.backupId || "").trim();
-      const slot: MemorySlot = {
-        id: backupId || "personal_google_drive_latest",
-        ownerId: getVaultCurrentUserId(),
-        createdAt: timestamp,
-        updatedAt: timestamp,
-        label: "Google Drive",
-        source: "manual",
-        payload: {
-          __lazyPersonalCloud: true,
-          provider: "google_drive",
-          backupId: backupId || null,
-        },
-        summary,
-      };
-      setPersonalRestoreEntry({
-        key: `personal:google_drive:${backupId || "latest"}`,
-        source: "personal",
-        slot,
-        summary,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-        index: 1,
-        latest: true,
-        quality,
-        title: "Sauvegarde Google Drive",
-        subtitle: `${fmtDate(timestamp)} · ${summary.matches} partie(s) · ${summary.profiles} profil(s)`,
+      const entries = backups.map((meta: any, idx: number): SaveEntry => {
+        const summary = normalizeSummary(meta?.summary || meta?.metadata?.summary || meta?.metadata?.backupSummary || {});
+        const hasSummary = Number(summary.matches || 0) > 0 || Number(summary.historyRows || 0) > 0 || Number(summary.profiles || 0) > 0 || Number(summary.statsBlocks || 0) > 0;
+        const assessed = assessSave(summary);
+        const quality: SaveQuality = hasSummary
+          ? assessed
+          : {
+              grade: "technical",
+              label: "Ancienne sauvegarde",
+              short: "À vérifier",
+              color: amber,
+              score: 55,
+              restorable: true,
+              reason: "Ancienne sauvegarde Drive sans résumé embarqué. Son intégrité sera contrôlée après téléchargement, avant tout remplacement local.",
+            };
+        const timestamp = String(meta.updatedAt || meta.createdAt || meta?.metadata?.exportedAt || new Date().toISOString());
+        const backupId = String(meta.id || meta.fileId || meta.backupId || meta.providerFileId || "").trim();
+        const slot: MemorySlot = {
+          id: backupId || `personal_google_drive_${idx}`,
+          ownerId: getVaultCurrentUserId(),
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          label: "Google Drive",
+          source: "manual",
+          payload: { __lazyPersonalCloud: true, provider: "google_drive", backupId: backupId || null },
+          summary,
+        };
+        return {
+          key: `personal:google_drive:${backupId || idx}`,
+          source: "personal",
+          slot,
+          summary,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          index: idx + 1,
+          latest: idx === 0,
+          quality,
+          title: idx === 0 ? "Sauvegarde Google Drive courante" : `Archive Google Drive ${String(idx).padStart(2, "0")}`,
+          subtitle: hasSummary
+            ? `${fmtDate(timestamp)} · ${summary.matches} partie(s) · ${summary.profiles} profil(s)`
+            : `${fmtDate(timestamp)} · ancienne sauvegarde détectée · contenu vérifié au téléchargement`,
+        };
       });
+
+      setPersonalRestoreEntries(entries);
       setRestoreSource("google_drive");
       setRestoreView("current");
-      setMessage(`Google Drive prêt immédiatement : ${summary.matches} partie(s) · ${summary.profiles} profil(s) · aucun snapshot lourd téléchargé.`);
+      setMessage(`Google Drive prêt : ${entries.length} sauvegarde(s) trouvée(s), dont ${Math.max(0, entries.length - 1)} archive(s) historique(s). Aucun snapshot lourd téléchargé.`);
     } catch (error: any) {
-      setPersonalRestoreEntry(null);
+      setPersonalRestoreEntries([]);
       setMessage(`Google Drive impossible : ${error?.message || error}`);
     } finally {
       setBusy(false);
@@ -3716,10 +3821,16 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         const response = await pushSnapshotToNasFast(
           prepared.snapshotJson,
           version,
-          "storage-vault-background-v45",
+          "storage-vault-background-v131",
           token,
           prepared.summary,
           compressed,
+          (sentBytes, totalBytes, mode) => {
+            const ratio = totalBytes > 0 ? Math.max(0, Math.min(1, sentBytes / totalBytes)) : 0;
+            const progress = 58 + Math.round(ratio * 28);
+            const modeLabel = mode === "raw" ? "direct" : mode === "chunked" ? "découpé" : "compatible";
+            report(progress, `Envoi NAS ${modeLabel} : ${formatStorageBytes(sentBytes)} / ${formatStorageBytes(totalBytes)}`);
+          },
         );
         report(90, "Confirmation et indexation NAS…");
         void localSafetyPromise;
@@ -4230,7 +4341,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
 
               <div style={{ display: "grid", gridTemplateColumns: restoreSource === "file" ? "1fr" : restoreSource === "local" ? "repeat(2,minmax(0,1fr))" : "repeat(3,minmax(0,1fr))", gap: 7, marginTop: 9 }}>
                 <VaultActionButton icon="current" label="Dernière" active={restoreView === "current"} onClick={() => setRestoreView("current")}/>
-                {restoreSource !== "file" && restoreSource !== "google_drive" ? <VaultActionButton icon="archive" label={`Archives ${currentRestoreArchives.length}`} active={restoreView === "archives"} onClick={() => setRestoreView("archives")}/> : null}
+                {restoreSource !== "file" ? <VaultActionButton icon="archive" label={`Archives ${currentRestoreArchives.length}`} active={restoreView === "archives"} onClick={() => setRestoreView("archives")}/> : null}
                 {restoreSource === "nas" || restoreSource === "cloud" ? <VaultActionButton icon="trash" label={`Corbeille ${trashRemoteEntries.length}`} active={restoreView === "trash"} onClick={() => setRestoreView("trash")}/> : null}
               </div>
             </div>
@@ -4242,7 +4353,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
                   detail={restoreSource === "file" ? "Le fichier sera d’abord analysé et affiché. Rien ne sera restauré avant confirmation." : "Crée une sauvegarde depuis l’onglet Sauver, puis actualise."}
                 />)}
 
-            {restoreView === "archives" && restoreSource !== "file" && restoreSource !== "google_drive" ? (
+            {restoreView === "archives" && restoreSource !== "file" ? (
               <>
                 {currentRestoreArchives.map(renderEntry)}
                 {!currentRestoreArchives.length ? <CompactEmpty title="Aucune archive restaurable"/> : null}

@@ -1333,6 +1333,8 @@ function QuickPartyScoreboard({
   themePrimary,
   themeSecondary,
   lang,
+  showSeriesScore = false,
+  seriesUnit = "sets",
 }: any) {
   const hasTeams = Array.isArray(teams) && teams.length > 0;
   const fr = String(lang || "fr").toLowerCase() === "fr";
@@ -1385,6 +1387,7 @@ function QuickPartyScoreboard({
         const st = teamStats(team);
         return {
           id: team.id,
+          slotLabel: `${fr ? "E" : "T"}${Math.max(1, teams.findIndex((t: any) => t?.id === team.id) + 1)}`,
           name: team.name || (fr ? "ÉQUIPE" : "TEAM"),
           detail: (team.players || []).map((p: any) => p.name).join(" · "),
           score: Number(team.score ?? startScore),
@@ -1394,11 +1397,12 @@ function QuickPartyScoreboard({
           ...st,
         };
       })
-    : (players || []).map((p: any) => {
+    : (players || []).map((p: any, playerIndex: number) => {
         const st = playerStats(String(p.id));
         return {
           id: p.id,
-          name: p.name || (fr ? "JOUEUR" : "PLAYER"),
+          slotLabel: `J${playerIndex + 1}`,
+          name: p.name || `J${playerIndex + 1}`,
           detail: "",
           score: Number(scores?.[p.id] ?? startScore),
           active: String(p.id) === String(activePlayerId || ""),
@@ -1546,12 +1550,14 @@ function QuickPartyScoreboard({
                       fontWeight: 1000,
                     }}
                   >
-                    {String(card.name || "J").trim().slice(0, 2).toUpperCase()}
+                    {String(card.slotLabel || "J").toUpperCase()}
                   </div>
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontSize: isDuelLike ? 14 : 11, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {card.name}
-                    </div>
+                    {String(card.name || "").trim().toUpperCase() !== String(card.slotLabel || "").trim().toUpperCase() ? (
+                      <div style={{ fontSize: isDuelLike ? 14 : 11, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {card.name}
+                      </div>
+                    ) : null}
                     {card.detail ? (
                       <div style={{ marginTop: 1, fontSize: 8, opacity: 0.68, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{card.detail}</div>
                     ) : null}
@@ -1591,7 +1597,7 @@ function QuickPartyScoreboard({
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "end" }}>
+                <div style={{ display: "grid", gridTemplateColumns: showSeriesScore ? "1fr auto" : "1fr", gap: 10, alignItems: "end" }}>
                   <div style={{ display: "grid", gap: 2.5, minWidth: 0, fontSize: isDuelLike ? 10.5 : 8.5, fontWeight: 850 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 7 }}>
                       <span style={{ color: metaTextColor, opacity: 0.78, fontWeight: 1000 }}>{fr ? "AVG 3" : "3-DART AVG"}</span>
@@ -1606,20 +1612,22 @@ function QuickPartyScoreboard({
                       <b>{card.darts || 0}</b>
                     </div>
                   </div>
-                  <div
-                    style={{
-                      padding: "5px 7px",
-                      borderRadius: 8,
-                      background: chipBg,
-                      border: badgeBorder,
-                      color: bodyTextColor,
-                      fontSize: 8.5,
-                      fontWeight: 1000,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    S {card.sets}
-                  </div>
+                  {showSeriesScore ? (
+                    <div
+                      style={{
+                        padding: "5px 7px",
+                        borderRadius: 8,
+                        background: chipBg,
+                        border: badgeBorder,
+                        color: bodyTextColor,
+                        fontSize: 8.5,
+                        fontWeight: 1000,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {String(seriesUnit).toLowerCase().startsWith("leg") ? `L ${card.legs}` : `S ${card.sets}`}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -2840,7 +2848,7 @@ const isBotTurn = React.useMemo(() => {
 
   // Targets SETS/LEGS (robuste: compat anciens configs / modes TEAMS)
   const matchFormatUnitForUi = String((config as any)?.matchFormat?.unit ?? "sets").toLowerCase().includes("leg") ? "legs" : "sets";
-  const setsTarget = Math.max(
+  const rawSetsTarget = Math.max(
     1,
     Number(
       (config as any).setsToWin ??
@@ -2850,7 +2858,7 @@ const isBotTurn = React.useMemo(() => {
         1
     )
   );
-  const legsTarget = Math.max(
+  const rawLegsTarget = Math.max(
     1,
     Number(
       (config as any).legsPerSet ??
@@ -2860,8 +2868,11 @@ const isBotTurn = React.useMemo(() => {
         1
     )
   );
+  const configuredMatchTarget = Math.max(1, Number((config as any)?.matchFormat?.target ?? (config as any)?.matchVictoryTarget ?? 1));
+  const setsTarget = matchFormatUnitForUi === "sets" ? Math.max(rawSetsTarget, configuredMatchTarget) : rawSetsTarget;
+  const legsTarget = matchFormatUnitForUi === "legs" ? Math.max(rawLegsTarget, configuredMatchTarget) : rawLegsTarget;
   const isDuel = players.length === 2;
-  const useSetsUi = setsTarget > 1 || legsTarget > 1;
+  const useSetsUi = setsTarget > 1 || legsTarget > 1 || configuredMatchTarget > 1;
 
   // ---------------- Avatars (depuis config.players) ----------------
 
@@ -2876,7 +2887,9 @@ const isBotTurn = React.useMemo(() => {
     );
 
   // Ticker X01 plein cadre uniquement pour le multi individuel et le BO1 simple (1 set / 1 leg).
-  const showFullX01TickerHeader = (!isTeamsMode && players.length >= 3) || !useSetsUi; // dès qu’un vrai BO/FT sets/legs > 1 est actif, on remplace le ticker par le scoreboard compact type arcade.
+  const showFullX01TickerHeader = isQuickParty
+    ? !useSetsUi
+    : ((!isTeamsMode && players.length >= 3) || !useSetsUi); // PARTIE RAPIDE : tout BO/FT multi-leg/set remplace le ticker par le scoreboard de match.
 
 const teamsView = React.useMemo(() => {
   if (!isTeamsMode) return null;
@@ -6475,6 +6488,8 @@ if (false && isLandscapeTablet) {
                 themePrimary={themePrimary}
                 themeSecondary={themeSecondary}
                 lang={lang}
+                showSeriesScore={useSetsUi}
+                seriesUnit={matchFormatUnitForUi}
               />
             ) : isTeamsMode && activeTeam ? (
               <TeamHeaderBlock

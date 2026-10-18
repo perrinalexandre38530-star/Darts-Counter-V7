@@ -44,7 +44,7 @@ function orderValue(x:any) {
   return Number(x.distanceMm);
 }
 
-export function buildClosestCenterStats(players:any[], impacts:any[], scores:Record<string,number>, rounds:number) {
+export function buildClosestCenterStats(players:any[], impacts:any[], scores:Record<string,number>, rounds:number, dartsPerPlayer:number = 3) {
   const totalRounds=Math.max(1,Number(rounds||1));
   const roundBestOwner:Record<number,string>={};
   for(let r=1;r<=totalRounds;r++){
@@ -59,7 +59,7 @@ export function buildClosestCenterStats(players:any[], impacts:any[], scores:Rec
     const distances=items.map((x:any)=>Number(x.distanceMm)).filter(Number.isFinite);
     const uncertainties=items.map((x:any)=>Number(x.uncertaintyMm)).filter((v:number)=>Number.isFinite(v)&&v>=0);
     const identities=items.map((x:any)=>Number(x.identityConfidence)).filter((v:number)=>Number.isFinite(v)&&v>=0&&v<=1);
-    const attempts=totalRounds*3;
+    const attempts=totalRounds*Math.max(1,Number(dartsPerPlayer||3));
     return {
       playerId:String(p.id),
       name:String(p.name||"Joueur"),

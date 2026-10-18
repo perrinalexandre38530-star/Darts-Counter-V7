@@ -754,8 +754,14 @@ export function analyzeFrameDifference(before: ImageData, after: ImageData, cal:
   return out;
 }
 
-export function rankImpacts(impacts: ClosestCenterImpact[], pointsMode: "descending" | "winner" = "descending") {
+export function rankImpacts(
+  impacts: ClosestCenterImpact[],
+  pointsMode: "petanque" | "descending" | "winner" = "petanque",
+) {
   const sorted = [...impacts].sort((a, b) => a.distanceMm - b.distanceMm);
+  const winningSide = sorted[0] ? String(sorted[0].teamId || sorted[0].playerId || "") : "";
+  let petanqueStillScoring = true;
+
   return sorted.map((impact, index) => {
     const previous = sorted[index - 1];
     const uncertaintyMm = impact.uncertaintyMm ?? estimateDistanceUncertaintyMm(impact.confidence);
@@ -764,10 +770,26 @@ export function rankImpacts(impacts: ClosestCenterImpact[], pointsMode: "descend
     const ambiguityMarginMm = previous ? Math.max(.35, (uncertaintyMm + prevUncertainty) * .55) : 0;
     const ambiguousWithPrevious = !!previous && Number(gapToPreviousMm) <= ambiguityMarginMm;
     const separationConfidence = previous ? clamp01((Number(gapToPreviousMm) - ambiguityMarginMm * .35) / Math.max(.35, ambiguityMarginMm * 1.65)) : 1;
+
+    let points = 0;
+    if (pointsMode === "winner") {
+      points = index === 0 ? 1 : 0;
+    } else if (pointsMode === "descending") {
+      points = Math.max(0, 5 - index);
+    } else {
+      // Règle Pétanque : une seule équipe marque dans la mène. Elle marque
+      // autant de points qu'elle possède de fléchettes plus proches du but que
+      // la meilleure fléchette adverse.
+      const side = String(impact.teamId || impact.playerId || "");
+      if (petanqueStillScoring && side === winningSide) points = 1;
+      else petanqueStillScoring = false;
+    }
+
     return {
       ...impact,
       rank: index + 1,
-      points: pointsMode === "winner" ? (index === 0 ? 1 : 0) : Math.max(0, 5 - index),
+      points,
+      scoringSide: winningSide || null,
       uncertaintyMm,
       gapToPreviousMm,
       ambiguityMarginMm,

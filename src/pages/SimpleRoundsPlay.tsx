@@ -100,7 +100,7 @@ function SuperBullChallengeView({
         <div className="sbx-board-media">
           <div className="sbx-board-glow"/>
           <div className={`sbx-bull-stage ${superBullFx ? `is-${superBullFx.type}` : ""}`}>
-            <div className={`sbx-bull-display ${dbullPulse ? "is-hot" : ""}`}>
+            <div className={`sbx-bull-display ${superBullFx?.type === "bull50" ? "is-hot" : ""}`}>
               <div className="sbx-bull-rim" />
               <div className="sbx-bull-rim-red" />
               <div className="sbx-bull-rim-cream" />

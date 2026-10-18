@@ -1059,13 +1059,13 @@ export async function listNasMemorySlots(): Promise<NasSlot[]> {
   // 30-50 Mo juste pour afficher une carte et expliquait les attentes interminables
   // au simple choix de « NAS privé ». La page conserve déjà un cache stale-while-
   // revalidate si le backend de liste est momentanément indisponible.
-  const data = await apiGet("/sync/slots?limit=12", { manual: true, timeoutMs: 6_000 });
+  const data = await apiGet("/sync/slots?limit=120", { manual: true, timeoutMs: 8_000 });
   const slots = Array.isArray(data) ? data : Array.isArray(data?.slots) ? data.slots : [];
   return slots as NasSlot[];
 }
 
 export async function listNasDeletedMemorySlots(): Promise<NasSlot[]> {
-  const data = await apiGet("/sync/slots/trash?limit=120").catch(() => ({ slots: [] }));
+  const data = await apiGet("/sync/slots/trash?limit=120", { manual: true, timeoutMs: 8_000 }).catch(() => ({ slots: [] }));
   const slots = Array.isArray(data) ? data : Array.isArray(data?.slots) ? data.slots : [];
   return slots as NasSlot[];
 }
