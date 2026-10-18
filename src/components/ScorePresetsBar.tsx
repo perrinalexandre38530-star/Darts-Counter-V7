@@ -27,6 +27,8 @@ type Props = {
   currentCount: number;
   /** Si true, on valide automatiquement quand on arrive à 3 */
   autoValidate?: boolean;
+  themePrimary?: string;
+  themeSecondary?: string;
 };
 
 const PRESETS: Preset[] = [
@@ -50,7 +52,15 @@ export default function ScorePresetsBar({
   onAutoValidate,
   currentCount,
   autoValidate = false,
+  themePrimary,
+  themeSecondary,
 }: Props) {
+  const primary = String(themePrimary || "#55e6ff");
+  const secondary = String(themeSecondary || primary);
+  const lightBg = `linear-gradient(180deg, color-mix(in srgb, ${primary} 28%, white 72%), color-mix(in srgb, ${primary} 18%, white 82%))`;
+  const darkBg = `linear-gradient(180deg, color-mix(in srgb, ${secondary} 40%, #0b1017 60%), color-mix(in srgb, ${secondary} 26%, #05080d 74%))`;
+  const lightText = `color-mix(in srgb, ${secondary} 72%, #091018 28%)`;
+  const darkText = `color-mix(in srgb, ${primary} 30%, white 70%)`;
   function applyPreset(p: Preset) {
     if (disabled) return;
 
@@ -89,30 +99,38 @@ export default function ScorePresetsBar({
         marginBottom: 12,
       }}
     >
-      {PRESETS.map((p) => (
-        <button
-          key={p.id}
-          type="button"
-          onClick={() => applyPreset(p)}
-          title={p.hint || p.label}
-          disabled={disabled}
-          style={{
-            height: 44,
-            borderRadius: 14,
-            border: "1px solid rgba(255,255,255,.10)",
-            background: disabled
-              ? "rgba(255,255,255,.03)"
-              : "linear-gradient(180deg, rgba(46,150,193,.20), rgba(0,0,0,.35))",
-            color: disabled ? "rgba(255,255,255,.35)" : "rgba(255,255,255,.92)",
-            fontWeight: 1000,
-            letterSpacing: 0.2,
-            cursor: disabled ? "not-allowed" : "pointer",
-            boxShadow: disabled ? "none" : "0 10px 22px rgba(0,0,0,.28)",
-          }}
-        >
-          {p.label}
-        </button>
-      ))}
+      {PRESETS.map((p, index) => {
+        const numericValue = Number.parseInt(String(p.label), 10);
+        const useLight = Number.isFinite(numericValue) ? numericValue <= 85 : index % 2 === 0;
+        const background = useLight ? lightBg : darkBg;
+        const color = useLight ? lightText : darkText;
+        const border = useLight
+          ? `1px solid color-mix(in srgb, ${primary} 34%, white 66%)`
+          : `1px solid color-mix(in srgb, ${primary} 42%, rgba(255,255,255,.22) 58%)`;
+        return (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => applyPreset(p)}
+            title={p.hint || p.label}
+            disabled={disabled}
+            style={{
+              height: 44,
+              borderRadius: 14,
+              border,
+              background: disabled ? "rgba(255,255,255,.03)" : background,
+              color: disabled ? "rgba(255,255,255,.35)" : color,
+              fontWeight: 1000,
+              letterSpacing: 0.2,
+              cursor: disabled ? "not-allowed" : "pointer",
+              boxShadow: disabled ? "none" : `0 10px 22px color-mix(in srgb, ${primary} 10%, transparent 90%)`,
+              textShadow: useLight ? "none" : "0 1px 0 rgba(0,0,0,.24)",
+            }}
+          >
+            {p.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

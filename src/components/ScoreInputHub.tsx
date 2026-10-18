@@ -170,6 +170,9 @@ type Props = {
   /** PARTIE RAPIDE : ouvre la saisie caméra assistée X01 existante. */
   quickCameraAction?: (() => void) | null;
   quickCameraActive?: boolean;
+  /** Override palette (useful for équipe active en Partie Rapide). */
+  themePrimary?: string;
+  themeSecondary?: string;
 };
 
 function safeReadDevModeEnabled(): boolean {
@@ -275,12 +278,14 @@ export default function ScoreInputHub({
   hideQuickVisitHint = false,
   quickCameraAction = null,
   quickCameraActive = false,
+  themePrimary,
+  themeSecondary,
 }: Props) {
   const { theme } = useTheme();
   const { lang } = useLang();
-  const switcherAccent = (theme as any)?.navAccent ?? (theme as any)?.primary ?? "#55e6ff";
-  const inputThemePrimary = (theme as any)?.colors?.primary ?? (theme as any)?.primary ?? switcherAccent;
-  const inputThemeSecondary = (theme as any)?.colors?.secondary ?? (theme as any)?.secondary ?? inputThemePrimary;
+  const switcherAccent = themePrimary || (theme as any)?.navAccent ?? (theme as any)?.primary ?? "#55e6ff";
+  const inputThemePrimary = themePrimary || (theme as any)?.colors?.primary ?? (theme as any)?.primary ?? switcherAccent;
+  const inputThemeSecondary = themeSecondary || (theme as any)?.colors?.secondary ?? (theme as any)?.secondary ?? inputThemePrimary;
   const devEnabled = safeReadDevModeEnabled();
   const configuredMethod = preferredMethod ? sanitizeScoreInputMethod(preferredMethod, { allowVisitScore }) : null;
   const [method, setMethod] = React.useState<ScoreInputMethod>(() => configuredMethod || safeReadMethod());
@@ -630,6 +635,8 @@ export default function ScoreInputHub({
           currentCount={safeCurrentThrow.length}
           onClose={() => setPresetOpen(false)}
           onApplyPreset={applyPresetVisit}
+          themePrimary={inputThemePrimary}
+          themeSecondary={inputThemeSecondary}
         />
       ) : null}
     </div>
@@ -1262,7 +1269,7 @@ function QuickPresetInput({
             <div style={{ color: light, fontWeight: 1000, letterSpacing: .8, fontSize: 14 }}>PRESETS</div>
             <div style={{ marginTop: 2, color: "rgba(255,255,255,.56)", fontSize: 10.5, fontWeight: 750 }}>Choisis une volée prédéfinie puis valide.</div>
           </div>
-          <ScorePresetsBar disabled={disabled} currentCount={currentThrow.length} onPushDart={() => {}} onApplyPreset={onApplyPreset} autoValidate={false} />
+          <ScorePresetsBar disabled={disabled} currentCount={currentThrow.length} onPushDart={() => {}} onApplyPreset={onApplyPreset} autoValidate={false} themePrimary={themePrimary} themeSecondary={themeSecondary} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center", marginTop: 2, marginBottom: 10 }}>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", minHeight: 32, alignItems: "center" }}>
               {currentThrow.length ? currentThrow.map((d, i) => (
@@ -1286,12 +1293,18 @@ function PresetSheet({
   currentCount,
   onClose,
   onApplyPreset,
+  themePrimary,
+  themeSecondary,
 }: {
   disabled: boolean;
   currentCount: number;
   onClose: () => void;
   onApplyPreset: (darts: UIDart[]) => void;
+  themePrimary?: string;
+  themeSecondary?: string;
 }) {
+  const primary = String(themePrimary || "#55e6ff");
+  const secondary = String(themeSecondary || primary);
   return (
     <div
       role="dialog"
@@ -1312,16 +1325,16 @@ function PresetSheet({
         style={{
           width: "min(560px, 100%)",
           borderRadius: 24,
-          border: "1px solid rgba(180,255,30,.26)",
+          border: `1px solid color-mix(in srgb, ${primary} 36%, rgba(255,255,255,.18) 64%)`,
           background: "linear-gradient(180deg, rgba(18,22,30,.98), rgba(5,7,10,.98))",
-          boxShadow: "0 24px 70px rgba(0,0,0,.75), 0 0 38px rgba(180,255,30,.12)",
+          boxShadow: `0 24px 70px rgba(0,0,0,.75), 0 0 38px color-mix(in srgb, ${primary} 14%, transparent 86%)`,
           padding: 14,
         }}
         onClick={(e) => e.stopPropagation()}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
           <div>
-            <div style={{ color: "#b9ff2a", fontWeight: 1000, letterSpacing: 1, fontSize: 15 }}>PRESETS</div>
+            <div style={{ color: `color-mix(in srgb, ${primary} 28%, white 72%)`, fontWeight: 1000, letterSpacing: 1, fontSize: 15 }}>PRESETS</div>
             <div style={{ color: "rgba(255,255,255,.62)", fontWeight: 800, fontSize: 12 }}>
               Choisis une volée : elle remplit le keypad, puis tu valides.
             </div>
@@ -1349,6 +1362,8 @@ function PresetSheet({
           onPushDart={() => {}}
           onApplyPreset={onApplyPreset}
           autoValidate={false}
+          themePrimary={primary}
+          themeSecondary={secondary}
         />
       </div>
     </div>

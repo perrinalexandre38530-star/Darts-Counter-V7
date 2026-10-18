@@ -125,6 +125,57 @@ function extractImpactPatch(after: ImageData, d: any) {
   return buildDartVisualSignature(ctx.getImageData(0, 0, 160, 160));
 }
 
+function roundUsage(impacts:any[], players:any[], round:number, dartsPerPlayer:number) {
+  const used:Record<string,number> = {};
+  players.forEach((p:any)=>used[String(p.id)] = 0);
+  impacts.filter((x:any)=>Number(x.round)===Number(round)).forEach((x:any)=>{
+    const id=String(x.playerId || "");
+    if (id in used) used[id] = Math.min(dartsPerPlayer, (used[id] || 0) + 1);
+  });
+  return used;
+}
+
+function teamRemaining(players:any[], used:Record<string,number>, dartsPerPlayer:number, teamId:"A"|"B") {
+  return players
+    .filter((p:any)=>String(p.teamId||"A")===teamId)
+    .reduce((sum:number,p:any)=>sum + Math.max(0, dartsPerPlayer - Number(used[String(p.id)] || 0)), 0);
+}
+
+function determinePetanqueTeamToPlay(
+  impacts:any[],
+  players:any[],
+  round:number,
+  dartsPerPlayer:number,
+  starterTeam:"A"|"B",
+):"A"|"B"|null {
+  const roundImpacts=impacts.filter((x:any)=>Number(x.round)===Number(round));
+  const used=roundUsage(impacts,players,round,dartsPerPlayer);
+  const remA=teamRemaining(players,used,dartsPerPlayer,"A");
+  const remB=teamRemaining(players,used,dartsPerPlayer,"B");
+  if (remA<=0 && remB<=0) return null;
+  if (remA<=0) return "B";
+  if (remB<=0) return "A";
+  if (!roundImpacts.length) return starterTeam;
+  const sorted=[...roundImpacts].sort((a:any,b:any)=>Number(a.distanceMm||Infinity)-Number(b.distanceMm||Infinity));
+  const pointTeam=String(sorted[0]?.teamId || players.find((p:any)=>String(p.id)===String(sorted[0]?.playerId))?.teamId || starterTeam)==="B"?"B":"A";
+  const hasA=roundImpacts.some((x:any)=>String(x.teamId || players.find((p:any)=>String(p.id)===String(x.playerId))?.teamId)==="A");
+  const hasB=roundImpacts.some((x:any)=>String(x.teamId || players.find((p:any)=>String(p.id)===String(x.playerId))?.teamId)==="B");
+  if (!hasA) return "A";
+  if (!hasB) return "B";
+  const challenger=pointTeam==="A"?"B":"A";
+  return challenger==="A" ? (remA>0?"A":"B") : (remB>0?"B":"A");
+}
+
+function firstEligiblePlayerIndex(players:any[], used:Record<string,number>, dartsPerPlayer:number, teamId:"A"|"B"|null, preferredIndex=0) {
+  if (!teamId) return -1;
+  const eligible=players
+    .map((p:any,i:number)=>({p,i}))
+    .filter(({p}:any)=>String(p.teamId||"A")===teamId && Number(used[String(p.id)]||0)<dartsPerPlayer);
+  if (!eligible.length) return -1;
+  const preferred=eligible.find(({i}:any)=>i===preferredIndex);
+  return preferred ? preferred.i : eligible[0].i;
+}
+
 export default function ClosestCenterPlay(props:any) {
   const go = props.go ?? props.setTab;
   const cfg = props.params?.config || {};
@@ -154,6 +205,7 @@ export default function ClosestCenterPlay(props:any) {
   const [signatures, setSignatures] = React.useState<Record<string,any>>({});
   const [round, setRound] = React.useState(1);
   const [playerIndex, setPlayerIndex] = React.useState(0);
+  const [roundStarterTeam, setRoundStarterTeam] = React.useState<"A"|"B">("A");
   const [before, setBefore] = React.useState<ImageData | null>(null);
   const [pendingAfter, setPendingAfter] = React.useState<ImageData | null>(null);
   const [pendingImpacts, setPendingImpacts] = React.useState<any[]>([]);
@@ -195,17 +247,40 @@ export default function ClosestCenterPlay(props:any) {
     return () => { dead = true; streamRef.current?.getTracks().forEach(t => t.stop()); };
   }, [cameraPrefs.maxCaptureSide, isManual]);
 
+  const roundUsed = React.useMemo(() => roundUsage(impacts, players, round, dartsPerPlayer), [impacts, players, round, dartsPerPlayer]);
+  const petanqueTeamToPlay = React.useMemo(() => pointsMode==="petanque" && !isManual
+    ? determinePetanqueTeamToPlay(impacts, players, round, dartsPerPlayer, roundStarterTeam)
+    : null, [pointsMode, isManual, impacts, players, round, dartsPerPlayer, roundStarterTeam]);
   const current = players[phase === "enroll" ? enrollIndex : playerIndex];
+  const expectedTurnDarts = pointsMode==="petanque" && !isManual ? 1 : dartsPerPlayer;
+  const currentDartsUsed = current ? Number(roundUsed[String(current.id)] || 0) : 0;
+  const currentDartsRemaining = Math.max(0, dartsPerPlayer - currentDartsUsed);
+  const teamDartsRemaining = React.useMemo(() => ({
+    A: teamRemaining(players, roundUsed, dartsPerPlayer, "A"),
+    B: teamRemaining(players, roundUsed, dartsPerPlayer, "B"),
+  }), [players, roundUsed, dartsPerPlayer]);
+  const livePointTeam = React.useMemo(() => {
+    const live=impacts.filter((x:any)=>Number(x.round)===Number(round));
+    if (!live.length) return null;
+    const closest=[...live].sort((a:any,b:any)=>Number(a.distanceMm||Infinity)-Number(b.distanceMm||Infinity))[0];
+    return String(closest?.teamId || players.find((p:any)=>String(p.id)===String(closest?.playerId))?.teamId || "")==="B" ? "B" : "A";
+  }, [impacts, players, round]);
   const sessionDiagnostics = React.useMemo(() => diagnostics.filter((x:any) => x.sessionId === sessionIdRef.current), [diagnostics]);
   const diagnosticSummary = React.useMemo(() => summarizeClosestCenterDiagnostics(sessionDiagnostics), [sessionDiagnostics]);
   const cameraQuality = React.useMemo(() => buildClosestCenterQualityReport(sessionDiagnostics), [sessionDiagnostics]);
+
+  React.useEffect(() => {
+    if (isManual || pointsMode!=="petanque" || phase==="enroll" || phase==="review" || phase==="roundEnd" || phase==="finished") return;
+    const nextIndex=firstEligiblePlayerIndex(players,roundUsed,dartsPerPlayer,petanqueTeamToPlay,playerIndex);
+    if (nextIndex>=0 && nextIndex!==playerIndex) setPlayerIndex(nextIndex);
+  }, [isManual, pointsMode, phase, players, roundUsed, dartsPerPlayer, petanqueTeamToPlay, playerIndex]);
 
   const saveCheckpoint = React.useCallback(async (extra:any = {}) => {
     if (!players.length || phase === "finished") return;
     const now = Date.now();
     const safePhase = phase === "enroll" ? "enroll" : "baseline";
     const resumeState = {
-      v: 1, mode: "closest_center", cfg, players, round, allScores, impacts, signatures, inputMode, playerIndex,
+      v: 1, mode: "closest_center", cfg, players, round, allScores, impacts, signatures, inputMode, playerIndex, roundStarterTeam,
       enrollIndex, phase: isManual ? (phase === "roundEnd" ? "roundEnd" : "play") : safePhase, sessionId: sessionIdRef.current, diagnostics: sessionDiagnostics.slice(-120),
       updatedAt: now, ...extra,
     };
@@ -218,7 +293,7 @@ export default function ClosestCenterPlay(props:any) {
         payload: { stateSnapshot: resumeState },
       } as any);
     } catch {}
-  }, [players, phase, cfg, round, allScores, impacts, signatures, enrollIndex, playerIndex, inputMode, isManual, sessionDiagnostics, manualRanking, manualWinningTeam, pointsMode, dartsPerPlayer]);
+  }, [players, phase, cfg, round, allScores, impacts, signatures, enrollIndex, playerIndex, roundStarterTeam, inputMode, isManual, sessionDiagnostics, manualRanking, manualWinningTeam, pointsMode, dartsPerPlayer]);
 
   React.useEffect(() => {
     if (hydratedRef.current) return;
@@ -237,6 +312,7 @@ export default function ClosestCenterPlay(props:any) {
       setSignatures(st.signatures || {});
       setEnrollIndex(Math.max(0, Number(st.enrollIndex || 0)));
       setPlayerIndex(Math.max(0, Math.min(players.length - 1, Number(st.playerIndex || 0))));
+      if (st.roundStarterTeam === "A" || st.roundStarterTeam === "B") setRoundStarterTeam(st.roundStarterTeam);
       if (Array.isArray(st.diagnostics)) setDiagnostics(st.diagnostics.slice(-120));
       setBefore(null); setPendingAfter(null); setPendingImpacts([]); setPendingConsensus([]);
       setPrecisionRereads(0); setTieAcknowledged(false); setTurnArmed(false); setPreflightInfo(null);
@@ -261,7 +337,7 @@ export default function ClosestCenterPlay(props:any) {
     if (!hydratedRef.current || phase === "finished") return;
     const t = window.setTimeout(() => { void saveCheckpoint(); }, 220);
     return () => window.clearTimeout(t);
-  }, [round, allScores, impacts, signatures, enrollIndex, playerIndex, phase, manualRanking, manualWinningTeam, saveCheckpoint]);
+  }, [round, allScores, impacts, signatures, enrollIndex, playerIndex, roundStarterTeam, phase, manualRanking, manualWinningTeam, saveCheckpoint]);
 
   React.useEffect(() => {
     const flush = () => { if (phase !== "finished") void saveCheckpoint(); };
@@ -348,9 +424,14 @@ export default function ClosestCenterPlay(props:any) {
     setTurnArmed(false);
     setPreflightInfo(null);
     setPhase("play");
-    setPlayerIndex(0);
+    if (pointsMode==="petanque") {
+      const starterIndex=players.findIndex((p:any)=>String(p.teamId||"A")===roundStarterTeam);
+      setPlayerIndex(starterIndex>=0?starterIndex:0);
+    } else setPlayerIndex(0);
     traceCamera("baseline", "ok", "baseline-ready", "Référence de manche validée", {tier,confidence:readiness.confidence,mmPerPixel:readiness.mmPerPixel,sharpness:readiness.sharpness});
-    setStatus(`Précision ${tier.toUpperCase()} validée · ${readiness.mmPerPixel.toFixed(2)} mm/pixel. Avant de lancer, effectue le CONTRÔLE AVANT VOLÉE.`);
+    setStatus(pointsMode==="petanque"
+      ? `Précision ${tier.toUpperCase()} validée · ÉQUIPE ${roundStarterTeam} commence la mène. Choisis le joueur puis effectue le CONTRÔLE AVANT LANCER.`
+      : `Précision ${tier.toUpperCase()} validée · ${readiness.mmPerPixel.toFixed(2)} mm/pixel. Avant de lancer, effectue le CONTRÔLE AVANT VOLÉE.`);
   };
 
   const runPreflightCheck = async () => {
@@ -400,7 +481,7 @@ export default function ClosestCenterPlay(props:any) {
       setPreflightInfo({ok:true,tier,confidence:Math.min(readiness.confidence,avgRegistration,worstStability.confidence),checkedAt:Date.now()});
       setTurnArmed(true);
       traceCamera("preflight", "ok", "armed", "Volée armée avec référence fraîche", {tier,readiness:readiness.confidence,stability:worstStability.confidence,registration:avgRegistration,maxShiftPx:maxShift});
-      setStatus(`✅ Volée armée · ${tier.toUpperCase()} · référence fraîche capturée. ${current.name}: lance maintenant tes ${dartsPerPlayer} fléchette${dartsPerPlayer>1?"s":""}, puis ANALYSER.`);
+      setStatus(`✅ Volée armée · ${tier.toUpperCase()} · référence fraîche capturée. ${current.name}: lance maintenant tes ${expectedTurnDarts} fléchette${expectedTurnDarts>1?"s":""}, puis ANALYSER.`);
     } finally {
       preflightRunningRef.current = false;
     }
@@ -408,7 +489,7 @@ export default function ClosestCenterPlay(props:any) {
 
   const analyze = async () => {
     if (!cal || !before || !current) return;
-    if (!turnArmed) { setStatus(`🛡️ Lance d’abord CONTRÔLE AVANT VOLÉE, puis seulement ${dartsPerPlayer} fléchette${dartsPerPlayer>1?"s":""}.`); return; }
+    if (!turnArmed) { setStatus(`🛡️ Lance d’abord CONTRÔLE AVANT VOLÉE, puis seulement ${expectedTurnDarts} fléchette${expectedTurnDarts>1?"s":""}.`); return; }
     setStatus("IA précision : lecture multi-frame en cours…");
     const rawBurst = await captureBurst(videoRef.current, cameraPrefs.analysisFrames, cameraPrefs.frameDelayMs, cameraPrefs.maxCaptureSide);
     if (rawBurst.length < Math.max(4, cameraPrefs.analysisFrames - 1)) { setStatus("Impossible d’obtenir assez d’images stables. Relance l’analyse."); return; }
@@ -456,15 +537,15 @@ export default function ClosestCenterPlay(props:any) {
       return;
     }
 
-    const detectionsByFrame = burst.map(frame => analyzeFrameDifference(before, frame, cal, Math.max(5, dartsPerPlayer + 3)));
-    const found = fuseDetectionFrames(detectionsByFrame, dartsPerPlayer);
+    const detectionsByFrame = burst.map(frame => analyzeFrameDifference(before, frame, cal, Math.max(4, expectedTurnDarts + 3)));
+    const found = fuseDetectionFrames(detectionsByFrame, expectedTurnDarts);
     if (!found.length) {
       setStatus("Aucun nouvel impact fiable détecté. Garde le téléphone immobile et recommence l’analyse.");
       return;
     }
-    if (found.length < dartsPerPlayer) {
-      traceCamera("analysis", "reject", "impact-count", "Nombre d’impacts détectés insuffisant", {found:found.length,expected:dartsPerPlayer});
-      setStatus(`Seulement ${found.length}/${dartsPerPlayer} impact(s) détecté(s). Stabilise le téléphone et relance l’analyse : aucune mesure n’a été validée.`);
+    if (found.length < expectedTurnDarts) {
+      traceCamera("analysis", "reject", "impact-count", "Nombre d’impacts détectés insuffisant", {found:found.length,expected:expectedTurnDarts});
+      setStatus(`Seulement ${found.length}/${expectedTurnDarts} impact(s) détecté(s). Stabilise le téléphone et relance l’analyse : aucune mesure n’a été validée.`);
       return;
     }
 
@@ -527,11 +608,11 @@ export default function ClosestCenterPlay(props:any) {
     traceCamera("analysis", proposedWithTieRisk.some((x:any)=>x.needsReview||x.precisionTieRisk) ? "warn" : "ok", "analysis-complete", "Analyse multi-frame terminée", {impacts:proposedWithTieRisk.length,review:proposedWithTieRisk.filter((x:any)=>x.needsReview).length,tieRisk:proposedWithTieRisk.filter((x:any)=>x.precisionTieRisk).length,avgUncertaintyMm:proposedWithTieRisk.reduce((s:any,x:any)=>s+Number(x.uncertaintyMm||0),0)/Math.max(1,proposedWithTieRisk.length),avgFrameAgreement:proposedWithTieRisk.reduce((s:any,x:any)=>s+Number(x.frameAgreement||0),0)/Math.max(1,proposedWithTieRisk.length)});
     const alerts = proposedWithTieRisk.filter((x:any) => x.needsReview).length;
     const tieAlerts = proposedWithTieRisk.filter((x:any) => x.precisionTieRisk).length;
-    setStatus(tieAlerts ? `⚠️ ${tieAlerts} impact(s) sont dans une zone de départage serré : relecture précision renforcée requise.` : alerts ? `${alerts} fléchette(s) demandent un contrôle avant validation.` : `Analyse multi-frame cohérente. Vérifie les ${dartsPerPlayer} impact(s) puis valide la volée.`);
+    setStatus(tieAlerts ? `⚠️ ${tieAlerts} impact(s) sont dans une zone de départage serré : relecture précision renforcée requise.` : alerts ? `${alerts} fléchette(s) demandent un contrôle avant validation.` : `Analyse multi-frame cohérente. Vérifie les ${expectedTurnDarts} impact(s) puis valide la volée.`);
   };
 
   const precisionReread = async () => {
-    if (!cal || !before || !current || pendingConsensus.length !== dartsPerPlayer) return;
+    if (!cal || !before || !current || pendingConsensus.length !== expectedTurnDarts) return;
     setStatus("🔬 Relecture précision indépendante : seconde acquisition multi-frame…");
     const rawBurst = await captureBurst(videoRef.current, cameraPrefs.rereadFrames, Math.max(30, cameraPrefs.frameDelayMs - 4), cameraPrefs.maxCaptureSide);
     if (rawBurst.length < Math.max(5, cameraPrefs.rereadFrames - 2)) { setStatus("Relecture impossible : pas assez de frames exploitables."); return; }
@@ -543,9 +624,9 @@ export default function ClosestCenterPlay(props:any) {
     if (registered.length < 5) { setStatus("❌ Relecture refusée : recalage caméra insuffisant."); return; }
     const frames=registered.map(x=>x.frame);
     const detections=frames.map(frame=>analyzeFrameDifference(before,frame,cal,7));
-    const second=fuseDetectionFrames(detections,dartsPerPlayer);
-    if(second.length!==dartsPerPlayer){ traceCamera("reread", "reject", "impact-count", "Relecture incomplète", {found:second.length,expected:dartsPerPlayer}); setStatus(`❌ Relecture incomplète (${second.length}/${dartsPerPlayer}). Aucune précision supplémentaire n’est appliquée.`); return; }
-    const merged=fuseIndependentConsensusPasses(pendingConsensus,second,cal,before.width,before.height,dartsPerPlayer);
+    const second=fuseDetectionFrames(detections,expectedTurnDarts);
+    if(second.length!==expectedTurnDarts){ traceCamera("reread", "reject", "impact-count", "Relecture incomplète", {found:second.length,expected:expectedTurnDarts}); setStatus(`❌ Relecture incomplète (${second.length}/${expectedTurnDarts}). Aucune précision supplémentaire n’est appliquée.`); return; }
+    const merged=fuseIndependentConsensusPasses(pendingConsensus,second,cal,before.width,before.height,expectedTurnDarts);
     if(merged.length!==3){ setStatus("❌ Les deux lectures ne convergent pas sur les 3 mêmes pointes. Contrôle manuel requis."); return; }
     const avgAgree=merged.reduce((sum:any,x:any)=>sum+Number(x.rereadAgreement||0),0)/merged.length;
     const upgraded=pendingImpacts.map((impact:any)=>{
@@ -580,7 +661,7 @@ export default function ClosestCenterPlay(props:any) {
   };
 
   React.useEffect(() => {
-    if (phase !== "review" || !cameraPrefs.autoReread || precisionRereads > 0 || pendingImpacts.length !== dartsPerPlayer || autoRereadRunningRef.current) return;
+    if (phase !== "review" || !cameraPrefs.autoReread || precisionRereads > 0 || pendingImpacts.length !== expectedTurnDarts || autoRereadRunningRef.current) return;
     const critical = pendingImpacts.some((x:any) => x.precisionTieRisk || Number(x.uncertaintyMm||99) > cameraPrefs.maxUncertaintyMm || Number(x.frameAgreement||0) < cameraPrefs.minFrameAgreement || Number(x.consensusSpreadMm||99) > cameraPrefs.maxConsensusSpreadMm);
     if (!critical) return;
     const id = window.setTimeout(() => {
@@ -606,7 +687,7 @@ export default function ClosestCenterPlay(props:any) {
     setPendingConsensus([]);
     setPrecisionRereads(0);
     setPhase("play");
-    setStatus(`${current?.name}: garde les ${dartsPerPlayer} fléchette${dartsPerPlayer>1?"s":""} en place, stabilise le téléphone puis relance l’analyse. La référence pré-volée reste verrouillée.`);
+    setStatus(`${current?.name}: garde ${expectedTurnDarts===1?"la fléchette":"les "+expectedTurnDarts+" fléchettes"} en place, stabilise le téléphone puis relance l’analyse. La référence pré-volée reste verrouillée.`);
   };
 
   const resetManualEntry = () => { setManualRanking(Array.from({length:8},()=>null)); setManualWinningTeam(null); setManualEditingRound(false); };
@@ -688,7 +769,7 @@ export default function ClosestCenterPlay(props:any) {
   };
 
   const confirmAnalysis = () => {
-    if (!pendingAfter || pendingImpacts.length !== dartsPerPlayer) return;
+    if (!pendingAfter || pendingImpacts.length !== expectedTurnDarts) return;
     const identityCritical = pendingImpacts.some((x:any) => !x.manuallyConfirmedOwner && (Number(x.identityConfidence||0) < cameraPrefs.minIdentityConfidence || Number(x.identityMargin||0) < cameraPrefs.minIdentityMargin));
     if (cameraPrefs.strictDartIdentification && identityCritical) {
       traceCamera("validation", "reject", "identity", "Validation bloquée par identification stricte", {minConfidence:cameraPrefs.minIdentityConfidence,minMargin:cameraPrefs.minIdentityMargin});
@@ -711,18 +792,44 @@ export default function ClosestCenterPlay(props:any) {
       setStatus("❌ Les deux lectures ne convergent pas assez pour valider une mesure de précision. Repositionne/stabilise puis réanalyse la volée.");
       return;
     }
-    traceCamera("validation", "ok", "turn-accepted", "Volée validée", {rereads:precisionRereads,avgUncertaintyMm:pendingImpacts.reduce((s:any,x:any)=>s+Number(x.uncertaintyMm||0),0)/Math.max(1,pendingImpacts.length),manualOwners:pendingImpacts.filter((x:any)=>x.manuallyConfirmedOwner).length});
-    setImpacts(v => [...v, ...pendingImpacts]);
+    traceCamera("validation", "ok", "turn-accepted", pointsMode==="petanque" ? "Fléchette validée" : "Volée validée", {rereads:precisionRereads,avgUncertaintyMm:pendingImpacts.reduce((s:any,x:any)=>s+Number(x.uncertaintyMm||0),0)/Math.max(1,pendingImpacts.length),manualOwners:pendingImpacts.filter((x:any)=>x.manuallyConfirmedOwner).length});
+    const combinedImpacts=[...impacts,...pendingImpacts];
+    setImpacts(combinedImpacts);
     setBefore(pendingAfter);
     setPendingAfter(null);
     setPendingImpacts([]);
     setPendingConsensus([]);
     setPrecisionRereads(0);
+    setTurnArmed(false);
+    setPreflightInfo(null);
+
+    if (pointsMode==="petanque") {
+      const usedAfter=roundUsage(combinedImpacts,players,round,dartsPerPlayer);
+      const nextTeam=determinePetanqueTeamToPlay(combinedImpacts,players,round,dartsPerPlayer,roundStarterTeam);
+      if (!nextTeam) {
+        setPhase("roundEnd");
+        setStatus("Toutes les fléchettes de la mène ont été jouées. Vérifie les points avant de retirer les fléchettes.");
+        return;
+      }
+      const nextIndex=firstEligiblePlayerIndex(players,usedAfter,dartsPerPlayer,nextTeam,playerIndex);
+      if (nextIndex<0) {
+        setPhase("roundEnd");
+        setStatus("Mène terminée. Vérifie les points avant de retirer les fléchettes.");
+        return;
+      }
+      setPlayerIndex(nextIndex);
+      setPhase("play");
+      const nextPlayer=players[nextIndex];
+      const remaining=Math.max(0,dartsPerPlayer-Number(usedAfter[String(nextPlayer?.id)]||0));
+      const liveSorted=[...combinedImpacts.filter((x:any)=>Number(x.round)===Number(round))].sort((a:any,b:any)=>Number(a.distanceMm||Infinity)-Number(b.distanceMm||Infinity));
+      const pointTeam=liveSorted[0] ? String(liveSorted[0].teamId||"") : "";
+      setStatus(`ÉQUIPE ${nextTeam} doit jouer${pointTeam?` · le point est à l’équipe ${pointTeam}`:""}. ${nextPlayer?.name}: ${remaining} fléchette${remaining>1?"s":""} en main. Effectue le CONTRÔLE AVANT LANCER.`);
+      return;
+    }
+
     if (playerIndex < players.length - 1) {
       const nextPlayer = players[playerIndex + 1];
       setPlayerIndex(i => i + 1);
-      setTurnArmed(false);
-      setPreflightInfo(null);
       setPhase("play");
       setStatus(`${nextPlayer?.name}: ne lance pas encore. Effectue le CONTRÔLE AVANT VOLÉE avec les fléchettes précédentes en place.`);
     } else {
@@ -757,6 +864,10 @@ export default function ClosestCenterPlay(props:any) {
     setAllScores(next);
     const nextTeamTotals:any = {};
     players.forEach((p:any) => { if (p.teamId) nextTeamTotals[p.teamId] = (nextTeamTotals[p.teamId] || 0) + (next[p.id] || 0); });
+    const roundWinningTeam = pointsMode==="petanque"
+      ? (String(ranked.find((r:any)=>Number(r.points||0)>0)?.scoringSide || ranked[0]?.teamId || "")==="B" ? "B" : "A")
+      : null;
+    if (roundWinningTeam) setRoundStarterTeam(roundWinningTeam);
     const targetReached = pointsMode === "petanque" && Math.max(Number(nextTeamTotals.A||0), Number(nextTeamTotals.B||0)) >= Number(cfg.targetScore || 13);
     if (targetReached || (pointsMode !== "petanque" && round >= Number(cfg.rounds || 3))) {
       setPhase("finished");
@@ -765,7 +876,10 @@ export default function ClosestCenterPlay(props:any) {
     }
     setRound(r => r + 1);
     setPhase(isManual ? "play" : "baseline");
-    setPlayerIndex(0);
+    if (pointsMode==="petanque" && roundWinningTeam) {
+      const starterIndex=players.findIndex((p:any)=>String(p.teamId||"A")===roundWinningTeam);
+      setPlayerIndex(starterIndex>=0?starterIndex:0);
+    } else setPlayerIndex(0);
     setBefore(null);
     setPendingAfter(null);
     setPendingImpacts([]);
@@ -863,13 +977,17 @@ export default function ClosestCenterPlay(props:any) {
         const teamPlayers=players.filter((p:any)=>String(p.teamId)===team);
         const score=Number(projectedTeamTotals?.[team]||0);
         return <React.Fragment key={team}>
-          {idx===1?<div style={{display:"grid",placeItems:"center",padding:"0 4px"}}><div style={{fontSize:9,color:"#71818f",fontWeight:1000}}>MÈNE {round}</div><div style={{fontSize:10,color:ACCENT,fontWeight:1000,whiteSpace:"nowrap"}}>{pointsMode==="petanque"?`OBJECTIF ${Number(cfg.targetScore||13)}`:pointsMode==="descending"?"TOP 5":"PLUS PROCHE"}</div></div>:null}
+          {idx===1?<div style={{display:"grid",placeItems:"center",padding:"0 4px"}}><div style={{fontSize:9,color:"#71818f",fontWeight:1000}}>MÈNE {round}</div><div style={{fontSize:10,color:ACCENT,fontWeight:1000,whiteSpace:"nowrap"}}>{pointsMode==="petanque"?`OBJECTIF ${Number(cfg.targetScore||13)}`:pointsMode==="descending"?"TOP 5":"PLUS PROCHE"}</div>{pointsMode==="petanque"&&!isManual?<div style={{fontSize:8,marginTop:2,color:livePointTeam?(livePointTeam==="A"?"#ff8f9c":"#83c8ff"):"#7d8d99",fontWeight:1000}}>{livePointTeam?`POINT ÉQUIPE ${livePointTeam}`:`DÉPART ${roundStarterTeam}`}</div>:null}</div>:null}
           <div style={{gridColumn:idx===0?1:3,padding:"7px 9px",borderRadius:12,border:`1px solid ${team==="A"?"rgba(255,77,95,.28)":"rgba(61,165,255,.28)"}`,background:team==="A"?"rgba(255,77,95,.07)":"rgba(61,165,255,.07)",display:"grid",gridTemplateColumns:idx===0?"1fr auto":"auto 1fr",gap:8,alignItems:"center"}}>
             {idx===1?<b style={{fontSize:24,lineHeight:1,color:"#fff"}}>{score}</b>:null}
             <div style={{minWidth:0,textAlign:idx===0?"left":"right"}}>
               <div style={{fontSize:9,fontWeight:1000,color:team==="A"?"#ff8f9c":"#83c8ff",letterSpacing:1}}>ÉQUIPE {team}</div>
               <div style={{fontSize:11,fontWeight:900,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{teamPlayers.map((p:any)=>`${p.name} ${Number(projectedScores?.[p.id]||0)}`).join(" · ") || "—"}</div>
-              <div style={{fontSize:9,color:"#738493",marginTop:2}}>{dartsPerPlayer} fléchette{dartsPerPlayer>1?"s":""}/joueur</div>
+              <div style={{fontSize:9,color:"#738493",marginTop:2}}>
+                {pointsMode==="petanque" && !isManual
+                  ? `${Number(teamDartsRemaining[team]||0)} en main · ${teamPlayers.map((p:any)=>`${p.name} ${Math.max(0,dartsPerPlayer-Number(roundUsed[String(p.id)]||0))}`).join(" · ")}`
+                  : `${dartsPerPlayer} fléchette${dartsPerPlayer>1?"s":""}/joueur`}
+              </div>
             </div>
             {idx===0?<b style={{fontSize:24,lineHeight:1,color:"#fff"}}>{score}</b>:null}
           </div>
@@ -910,13 +1028,35 @@ export default function ClosestCenterPlay(props:any) {
           </div>
         </section> : null}
 
+        {!isManual && pointsMode==="petanque" && phase==="play" && petanqueTeamToPlay ? <section style={{...card,padding:10,borderColor:petanqueTeamToPlay==="A"?"rgba(255,77,95,.32)":"rgba(61,165,255,.32)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",marginBottom:7}}>
+            <div><b style={{fontSize:11,color:petanqueTeamToPlay==="A"?"#ff8f9c":"#83c8ff"}}>ÉQUIPE {petanqueTeamToPlay} À JOUER</b><div style={{fontSize:9,color:"#8193a1",marginTop:2}}>{livePointTeam?`Le point est à l’équipe ${livePointTeam}`:"Début de mène"} · {Number(teamDartsRemaining[petanqueTeamToPlay]||0)} fléchette(s) en main</div></div>
+            {roundValidatedImpacts.length===0 && !turnArmed ? <div style={{display:"flex",gap:5}}>
+              <button onClick={()=>setRoundStarterTeam("A")} style={{...miniBtn,borderColor:roundStarterTeam==="A"?"#ff8f9c":"rgba(255,255,255,.12)",color:roundStarterTeam==="A"?"#ffb6be":"#93a2ae"}}>A COMMENCE</button>
+              <button onClick={()=>setRoundStarterTeam("B")} style={{...miniBtn,borderColor:roundStarterTeam==="B"?"#83c8ff":"rgba(255,255,255,.12)",color:roundStarterTeam==="B"?"#b9ddff":"#93a2ae"}}>B COMMENCE</button>
+            </div> : null}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:6}}>
+            {players.map((p:any,i:number)=>{
+              if(String(p.teamId||"A")!==petanqueTeamToPlay) return null;
+              const used=Number(roundUsed[String(p.id)]||0);
+              const remaining=Math.max(0,dartsPerPlayer-used);
+              const active=i===playerIndex;
+              return <button key={p.id} disabled={remaining<=0 || turnArmed} onClick={()=>setPlayerIndex(i)} style={{minHeight:42,padding:"7px 8px",borderRadius:11,border:`1px solid ${active?playerColor(players,p.id):"rgba(255,255,255,.10)"}`,background:active?`${playerColor(players,p.id)}18`:"rgba(255,255,255,.025)",color:remaining>0?"#fff":"#65727d",fontWeight:900,textAlign:"left",opacity:remaining>0?1:.48}}>
+                <span style={{display:"block",fontSize:11,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}</span>
+                <span style={{display:"block",fontSize:9,marginTop:2,color:active?playerColor(players,p.id):"#8fa0ad"}}>{remaining} en main</span>
+              </button>;
+            })}
+          </div>
+        </section> : null}
+
         <section style={card}>
           <div style={{fontSize:11,color:ACCENT,fontWeight:1000,letterSpacing:1.1}}>{isManual?"SAISIE MANUELLE":"IA VISION"} · {phaseLabel(phase)}</div>
           <div style={{fontSize:14,fontWeight:900,marginTop:6}}>{status}</div>
           {!isManual && stability ? <div style={{marginTop:8,fontSize:11,color:stability.stable?"#8fffc2":"#ffbd93"}}>Stabilité caméra : {Math.round(stability.confidence*100)} % · variation globale {Math.round(stability.changedFraction*100)} %</div> : null}
           {!isManual && precisionReadiness ? <div style={{marginTop:6,fontSize:11,color:precisionReadiness.ok?"#8fffc2":"#ffbd93"}}>Précision image : {Math.round(precisionReadiness.confidence*100)} % · {precisionReadiness.mmPerPixel.toFixed(2)} mm/pixel · netteté {Math.round(precisionReadiness.sharpness*100)} % · niveau {precisionTier(precisionReadiness).toUpperCase()} · profil {cameraPrefs.profile.toUpperCase()}</div> : null}
           {!isManual && registrationInfo ? <div style={{marginTop:6,fontSize:11,color:(registrationInfo.confidence||0)>=.65?"#8fffc2":"#ffbd93"}}>Recalage multi-frame : {Math.round((registrationInfo.confidence||0)*100)} %{registrationInfo.maxShiftPx!=null?` · translation ${registrationInfo.maxShiftPx.toFixed(1)} px`:""}{registrationInfo.geometrySpreadPx!=null?` · dérive géométrique ${registrationInfo.geometrySpreadPx.toFixed(2)} px`:""}</div> : null}
-          {!isManual && phase === "play" ? <div style={{marginTop:6,fontSize:11,color:turnArmed?"#8fffc2":"#ffbd93"}}>Pré-contrôle volée : {turnArmed?`ARMÉ · ${String(preflightInfo?.tier||"").toUpperCase()} · référence verrouillée`:"REQUIS avant de lancer"}</div> : null}
+          {!isManual && phase === "play" ? <div style={{marginTop:6,fontSize:11,color:turnArmed?"#8fffc2":"#ffbd93"}}>{pointsMode==="petanque"?"Pré-contrôle lancer":"Pré-contrôle volée"} : {turnArmed?`ARMÉ · ${String(preflightInfo?.tier||"").toUpperCase()} · référence verrouillée`:"REQUIS avant de lancer"}</div> : null}
           {!isManual && !cal ? <div style={{marginTop:8,color:"#ffb4a9",fontSize:12}}>Calibration de cible non trouvée : le jeu refuse une mesure approximative.</div> : null}
         </section>
 
@@ -1008,8 +1148,8 @@ export default function ClosestCenterPlay(props:any) {
 
         {!isManual && phase === "play" ? <section style={card}>
           <h3 style={h3}>MANCHE {round}/{cfg.rounds} · {current?.name}</h3>
-          <div style={{fontSize:12,color:"#b9c7d4",lineHeight:1.5}}>{turnArmed?`Référence pré-volée verrouillée. Lance maintenant exactement ${dartsPerPlayer} fléchette${dartsPerPlayer>1?"s":""}, ne touche ni à la cible ni au téléphone, puis analyse.`:"Avant de lancer, l’IA vérifie la perspective, la stabilité et la netteté puis capture une référence fraîche. Cette étape évite qu’un micro-déplacement entre deux joueurs fausse les millimètres."}</div>
-          {!turnArmed ? <button style={{...btn,width:"100%",marginTop:10,borderColor:"#8fffc2",background:"rgba(57,217,138,.12)"}} onClick={runPreflightCheck}>🛡️ CONTRÔLE AVANT VOLÉE</button> : <button style={{...btn,width:"100%",marginTop:10}} onClick={analyze}>🧠 ANALYSER LES 3 FLÉCHETTES</button>}
+          <div style={{fontSize:12,color:"#b9c7d4",lineHeight:1.5}}>{turnArmed?`Référence pré-volée verrouillée. Lance maintenant exactement ${expectedTurnDarts} fléchette${expectedTurnDarts>1?"s":""}, ne touche ni à la cible ni au téléphone, puis analyse.`:"Avant de lancer, l’IA vérifie la perspective, la stabilité et la netteté puis capture une référence fraîche. Cette étape évite qu’un micro-déplacement entre deux joueurs fausse les millimètres."}</div>
+          {!turnArmed ? <button style={{...btn,width:"100%",marginTop:10,borderColor:"#8fffc2",background:"rgba(57,217,138,.12)"}} onClick={runPreflightCheck}>🛡️ {pointsMode==="petanque"?"CONTRÔLE AVANT LANCER":"CONTRÔLE AVANT VOLÉE"}</button> : <button style={{...btn,width:"100%",marginTop:10}} onClick={analyze}>🧠 {expectedTurnDarts===1?"ANALYSER LA FLÉCHETTE":`ANALYSER LES ${expectedTurnDarts} FLÉCHETTES`}</button>}
         </section> : null}
 
         {!isManual && phase === "review" ? <section style={card}>

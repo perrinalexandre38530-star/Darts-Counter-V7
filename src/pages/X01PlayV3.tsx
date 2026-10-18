@@ -1297,15 +1297,23 @@ function computeCheckoutText(
 type _TeamSkin = "pink" | "gold" | "blue" | "green";
 const teamAvatarSrc = (skin: _TeamSkin) => getTeamAvatarUrl(skin);
 
-// --- TEAM SKIN RESOLVER (from team name/color) ---
+// --- TEAM SKIN / PALETTE HELPERS ---
 type TeamSkin = "pink" | "gold" | "blue" | "green";
-const resolveTeamSkin = (team: any): TeamSkin => {
+const TEAM_SKIN_ORDER: TeamSkin[] = ["blue", "gold", "pink", "green"];
+const TEAM_SKIN_COLORS: Record<TeamSkin, { primary: string; secondary: string }> = {
+  blue: { primary: "#59e7ff", secondary: "#143747" },
+  gold: { primary: "#ffd25f", secondary: "#4b3410" },
+  pink: { primary: "#ff89dd", secondary: "#4d1f43" },
+  green: { primary: "#7ff7b8", secondary: "#173f33" },
+};
+const fallbackTeamSkin = (index: number): TeamSkin => TEAM_SKIN_ORDER[Math.abs(index) % TEAM_SKIN_ORDER.length];
+const resolveTeamSkin = (team: any, fallback: TeamSkin = "gold"): TeamSkin => {
   const n = String(team?.name ?? "").toLowerCase();
   const c = String(team?.color ?? "").toLowerCase();
 
   // name hints
   if (n.includes("pink") || n.includes("rose")) return "pink";
-  if (n.includes("gold") || n.includes("jaune") || n.includes("yellow")) return "gold";
+  if (n.includes("gold") || n.includes("jaune") || n.includes("yellow") || n.includes("or")) return "gold";
   if (n.includes("blue") || n.includes("bleu")) return "blue";
   if (n.includes("green") || n.includes("vert")) return "green";
 
@@ -1315,10 +1323,20 @@ const resolveTeamSkin = (team: any): TeamSkin => {
   if (c.includes("18a0") || c.includes("00b0") || c.includes("blue") || c.includes("cyan")) return "blue";
   if (c.includes("00e6") || c.includes("00f5") || c.includes("green")) return "green";
 
-  // stable fallback
-  return "gold";
+  return fallback;
 };
-const teamAvatarUrl = (team: any) => team?.logoDataUrl || team?.avatarUrl || getTeamAvatarUrl(resolveTeamSkin(team));
+const teamPaletteFor = (team: any, index = 0) => {
+  const fallback = fallbackTeamSkin(index);
+  const skin = resolveTeamSkin(team, fallback);
+  const palette = TEAM_SKIN_COLORS[skin];
+  return {
+    skin,
+    primary: team?.color || palette.primary,
+    secondary: palette.secondary,
+    logoUrl: team?.logoDataUrl || team?.avatarUrl || getTeamAvatarUrl(skin),
+  };
+};
+const teamAvatarUrl = (team: any, index = 0) => teamPaletteFor(team, index).logoUrl;
 
 function QuickPartyScoreboard({
   players,
@@ -1394,6 +1412,9 @@ function QuickPartyScoreboard({
           active: (team.playerIds || []).map(String).includes(String(activePlayerId || "")),
           legs: Number(state?.teamLegsWon?.[team.id] || 0),
           sets: Number(state?.teamSetsWon?.[team.id] || 0),
+          teamColor: team.color || null,
+          teamDark: (team as any).colorDark || null,
+          logoUrl: (team as any).avatarUrl || (team as any).logoDataUrl || null,
           ...st,
         };
       })
@@ -1424,7 +1445,7 @@ function QuickPartyScoreboard({
 
   const activeCard = cards.find((c: any) => c.active);
   const activeCardIndex = Math.max(0, cards.findIndex((c: any) => c.id === activeCard?.id));
-  const activeAccent = colorFor(activeCardIndex);
+  const activeAccent = String(activeCard?.teamColor || colorFor(activeCardIndex));
   const isDuelLike = cards.length === 2;
 
   return (
@@ -1460,37 +1481,29 @@ function QuickPartyScoreboard({
         }}
       >
         {cards.map((card: any, index: number) => {
-          const accent = colorFor(index);
+          const accent = String(card.teamColor || colorFor(index));
+          const accentDark = String(card.teamDark || `color-mix(in srgb, ${accent} 32%, #061019 68%)`);
           const cardIsActive = !!card.active;
           const cardBg = cardIsActive
-            ? `linear-gradient(145deg, color-mix(in srgb, ${accent} 28%, white 72%) 0%, color-mix(in srgb, ${accent} 46%, white 54%) 100%)`
-            : `linear-gradient(145deg, color-mix(in srgb, ${accent} 42%, #0b1017 58%) 0%, color-mix(in srgb, ${accent} 22%, #04070c 78%) 100%)`;
+            ? `linear-gradient(145deg, color-mix(in srgb, ${accent} 26%, white 74%) 0%, color-mix(in srgb, ${accent} 42%, white 58%) 100%)`
+            : `linear-gradient(145deg, color-mix(in srgb, ${accentDark} 76%, #081018 24%) 0%, color-mix(in srgb, ${accentDark} 92%, #03070b 8%) 100%)`;
 
           // 1v1 : croisement volontaire des palettes.
           // Le texte d'un panneau reprend la tonalité du FOND de l'autre panneau.
           // Ainsi, quand le tour change, clair/foncé et couleurs de texte s'inversent ensemble.
           const oppositeIndex = isDuelLike ? (index === 0 ? 1 : 0) : index;
-          const oppositeAccent = colorFor(oppositeIndex);
+          const oppositeBaseAccent = String(cards[oppositeIndex]?.teamColor || colorFor(oppositeIndex));
+          const oppositeBaseDark = String(cards[oppositeIndex]?.teamDark || `color-mix(in srgb, ${oppositeBaseAccent} 32%, #061019 68%)`);
           const oppositeIsActive = !!cards[oppositeIndex]?.active;
           const oppositePanelTone = oppositeIsActive
-            ? `color-mix(in srgb, ${oppositeAccent} 38%, white 62%)`
-            : `color-mix(in srgb, ${oppositeAccent} 28%, #070b10 72%)`;
+            ? `color-mix(in srgb, ${oppositeBaseAccent} 34%, white 66%)`
+            : `color-mix(in srgb, ${oppositeBaseDark} 78%, white 22%)`;
           const bodyTextColor = isDuelLike
             ? oppositePanelTone
             : cardIsActive
-            ? "#ffffff"
+            ? accentDark
             : "rgba(255,255,255,.96)";
           const metaTextColor = bodyTextColor;
-          const chipBg = isDuelLike
-            ? `color-mix(in srgb, ${bodyTextColor} 14%, transparent 86%)`
-            : cardIsActive
-            ? "rgba(10,18,25,.74)"
-            : "rgba(4,7,10,.82)";
-          const badgeBorder = isDuelLike
-            ? `1px solid color-mix(in srgb, ${bodyTextColor} 34%, transparent 66%)`
-            : cardIsActive
-            ? "1px solid rgba(255,255,255,.26)"
-            : "1px solid rgba(255,255,255,.12)";
           return (
             <div
               key={card.id}
@@ -1548,9 +1561,14 @@ function QuickPartyScoreboard({
                       boxShadow: "0 4px 12px rgba(0,0,0,.24)",
                       fontSize: 12,
                       fontWeight: 1000,
+                      overflow: "hidden",
                     }}
                   >
-                    {String(card.slotLabel || "J").toUpperCase()}
+                    {card.logoUrl ? (
+                      <img src={card.logoUrl} alt="" aria-hidden style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    ) : (
+                      String(card.slotLabel || "J").toUpperCase()
+                    )}
                   </div>
                   <div style={{ minWidth: 0, flex: 1 }}>
                     {String(card.name || "").trim().toUpperCase() !== String(card.slotLabel || "").trim().toUpperCase() ? (
@@ -1561,24 +1579,6 @@ function QuickPartyScoreboard({
                     {card.detail ? (
                       <div style={{ marginTop: 1, fontSize: 8, opacity: 0.68, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{card.detail}</div>
                     ) : null}
-                  </div>
-                  <div
-                    style={{
-                      minWidth: 34,
-                      height: 30,
-                      padding: "0 7px",
-                      borderRadius: 9,
-                      display: "grid",
-                      placeItems: "center",
-                      background: chipBg,
-                      border: badgeBorder,
-                      fontWeight: 1000,
-                      fontSize: 12,
-                      color: bodyTextColor,
-                    }}
-                    title={fr ? "Legs gagnés" : "Legs won"}
-                  >
-                    {card.legs}
                   </div>
                 </div>
 
@@ -1597,7 +1597,7 @@ function QuickPartyScoreboard({
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: showSeriesScore ? "1fr auto" : "1fr", gap: 10, alignItems: "end" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10, alignItems: "end" }}>
                   <div style={{ display: "grid", gap: 2.5, minWidth: 0, fontSize: isDuelLike ? 10.5 : 8.5, fontWeight: 850 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 7 }}>
                       <span style={{ color: metaTextColor, opacity: 0.78, fontWeight: 1000 }}>{fr ? "AVG 3" : "3-DART AVG"}</span>
@@ -1612,22 +1612,6 @@ function QuickPartyScoreboard({
                       <b>{card.darts || 0}</b>
                     </div>
                   </div>
-                  {showSeriesScore ? (
-                    <div
-                      style={{
-                        padding: "5px 7px",
-                        borderRadius: 8,
-                        background: chipBg,
-                        border: badgeBorder,
-                        color: bodyTextColor,
-                        fontSize: 8.5,
-                        fontWeight: 1000,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {String(seriesUnit).toLowerCase().startsWith("leg") ? `L ${card.legs}` : `S ${card.sets}`}
-                    </div>
-                  ) : null}
                 </div>
               </div>
             </div>
@@ -2895,20 +2879,18 @@ const teamsView = React.useMemo(() => {
   if (!isTeamsMode) return null;
 
   const teams = configTeams;
-  const teamMetaById: Record<string, { name?: string; color?: string }> = Object.fromEntries(
-    teams.map((t: any) => [String(t.id), { name: t.name, color: t.color || (String(t.name||"").toLowerCase().includes("pink") ? "#ff4fd8" : String(t.name||"").toLowerCase().includes("rose") ? "#ff4fd8" : String(t.name||"").toLowerCase().includes("gold") ? "#ffcf57" : undefined) }])
-  );
   const playersById: Record<string, any> = Object.fromEntries(
     (players as any[]).map((p: any) => [p.id, p])
   );
 
   return teams
-    .map((t: any) => {
+    .map((t: any, teamIndex: number) => {
+      const palette = teamPaletteFor(t, teamIndex);
       const ids: string[] = Array.isArray(t.players) ? t.players : [];
       const members = ids
         .map((id) => playersById[id])
         .filter(Boolean)
-        .map((p: any) => {
+        .map((p: any, memberIndex: number) => {
           const actualDartSetThumb = getDartSetMedallionSrcById((p as any)?.dartSetId);
           const brandLogo = actualDartSetThumb ? null : getProBotBrandLogoForPlayer(p);
           const countryCode = resolveX01PlayerCountryCode(p) || profileById[p.id]?.countryCode || null;
@@ -2922,6 +2904,7 @@ const teamsView = React.useMemo(() => {
             countryCode,
             countryFlagSrc: getCountryFlagSrc(countryCode || undefined),
             isActive: p.id === activePlayerId,
+            teamTone: memberIndex % 2 === 0 ? "light" : "dark",
           };
         });
 
@@ -2930,10 +2913,12 @@ const teamsView = React.useMemo(() => {
 
       return {
         id: t.id,
-        name: t.name || teamMetaById[String(t.id)]?.name || "TEAM",
-        color: t.color || teamMetaById[String(t.id)]?.color || "#ffcf57",
-        avatarUrl: teamAvatarUrl(t),
-
+        name: t.name || `ÉQUIPE ${teamIndex + 1}`,
+        color: palette.primary,
+        colorDark: palette.secondary,
+        skin: palette.skin,
+        avatarUrl: palette.logoUrl,
+        logoDataUrl: t?.logoDataUrl || null,
         playerIds: ids,
         players: members,
         score,
@@ -6268,6 +6253,8 @@ if (false && isLandscapeTablet) {
                       hideQuickVisitHint={isQuickParty}
                       quickCameraAction={isQuickParty ? (() => setCameraOpen(true)) : null}
                       quickCameraActive={isQuickParty && cameraOpen}
+                      themePrimary={isQuickParty && isTeamsMode && activeTeam ? activeTeam.color : themePrimary}
+                      themeSecondary={isQuickParty && isTeamsMode && activeTeam ? ((activeTeam as any).colorDark || themeSecondary) : themeSecondary}
                     />
                     )}
                   </div>
@@ -6488,7 +6475,7 @@ if (false && isLandscapeTablet) {
                 themePrimary={themePrimary}
                 themeSecondary={themeSecondary}
                 lang={lang}
-                showSeriesScore={useSetsUi}
+                showSeriesScore={false}
                 seriesUnit={matchFormatUnitForUi}
               />
             ) : isTeamsMode && activeTeam ? (
@@ -8149,21 +8136,35 @@ function TeamsPlayersListInner(props: {
                 alignItems: "center",
                 justifyContent: "space-between",
                 marginBottom: 6,
+                gap: 10,
               }}
             >
-              <div style={{ fontWeight: 900, color: teamColor }}>
-                {team.name}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 999, overflow: "hidden", border: `2px solid color-mix(in srgb, ${teamColor} 56%, white 44%)`, boxShadow: `0 0 16px color-mix(in srgb, ${teamColor} 18%, transparent 82%)`, flex: "0 0 34px", background: "rgba(255,255,255,.06)" }}>
+                  <img src={(team as any).avatarUrl || teamAvatarUrl(team)} alt="" aria-hidden style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 900, color: teamColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {team.name}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.54)", fontWeight: 800 }}>
+                    {(team.players || []).map((pl: any) => pl.name).join(" · ")}
+                  </div>
+                </div>
               </div>
               <div style={{ fontWeight: 900, color: teamScore === 0 ? "#7fe2a9" : teamColor }}>
                 {teamScore === 0 ? "FINI" : teamScore}
               </div>
             </div>
 
-            {(team.players || []).map((p: any) => {
+            {(team.players || []).map((p: any, playerIndex: number) => {
               const prof = profileById[p.id];
               const avatarSrc = prof?.avatarDataUrl ?? p?.avatarDataUrl ?? p?.avatarUrl ?? p?.photoUrl ?? p?.avatar ?? null;
               const avatarFallback = makeAvatarPlaceholderDataUrl(prof?.name || p?.name, p?.id);
               const live = liveStatsByPlayer[p.id];
+              const playerTint = playerIndex % 2 === 0
+                ? `color-mix(in srgb, ${teamColor} 52%, white 48%)`
+                : `color-mix(in srgb, ${teamColor} 58%, #0b1017 42%)`;
 
               const dCount: number = live?.dartsThrown ?? 0;
               const a3d =
@@ -8197,7 +8198,9 @@ function TeamsPlayersListInner(props: {
                       height: 36,
                       borderRadius: "50%",
                       overflow: "hidden",
-                      background: "rgba(255,255,255,.06)",
+                      background: playerTint,
+                      border: `2px solid ${playerTint}`,
+                      boxShadow: isActive ? `0 0 0 2px color-mix(in srgb, ${teamColor} 56%, transparent 44%), 0 0 14px color-mix(in srgb, ${teamColor} 26%, transparent 74%)` : 'none',
                     }}
                   >
                     <img
@@ -8225,7 +8228,7 @@ function TeamsPlayersListInner(props: {
                       <div
                         style={{
                           fontWeight: 800,
-                          color: teamColor,
+                          color: playerTint,
                           whiteSpace: "nowrap",
                         }}
                       >
