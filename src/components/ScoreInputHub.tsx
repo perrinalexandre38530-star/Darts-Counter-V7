@@ -525,8 +525,20 @@ export default function ScoreInputHub({
     />
   );
 
+  const quickSafeBottomPad = quickVisitSwitcher && method !== "visit_score"
+    ? "max(18px, env(safe-area-inset-bottom, 0px))"
+    : undefined;
+
   return (
-    <div data-mss-score-input-hub="1" style={{ position: "relative", ...(fitToParent ? { height: "100%", minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" } : null) }}>
+    <div
+      data-mss-score-input-hub="1"
+      style={{
+        position: "relative",
+        boxSizing: "border-box",
+        paddingBottom: quickSafeBottomPad,
+        ...(fitToParent ? { height: "100%", minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" } : null),
+      }}
+    >
       <style>{`@keyframes dcVoiceBlink{0%,100%{opacity:1;filter:brightness(1.1)}50%{opacity:.42;filter:brightness(1.85)}} @keyframes dcVoiceGlow{0%,100%{box-shadow:0 0 12px rgba(255,255,255,.26)}50%{box-shadow:0 0 26px rgba(255,255,255,.82)}}`}</style>
       {showSwitcher ? (
         <div style={{ marginBottom: 8 }}>

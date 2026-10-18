@@ -5829,11 +5829,10 @@ try {
 // - OVERLAYS inclus DANS le return (sinon JSX cassé)
 // =====================================================
 
-// Landscape tablet now uses the unified GameplayLayout below.
-// IMPORTANT: keep the portrait/phone rendering unchanged; only bypass the legacy
-// dedicated landscape branch, which was still forcing objectFit: cover on the
-// X01 ticker and rendering the player list inline.
-if (false && isLandscapeTablet) {
+// PARTIE RAPIDE : en paysage tablette/gros téléphone, on reprend volontairement
+// la structure X01 Arcade : header horizontal + panneau joueur/liste à gauche
+// + saisie à droite. Le portrait reste géré par GameplayLayout.
+if (isLandscapeTablet && isQuickParty) {
   return (
     <div
       className={`x01play-container theme-${theme.id}`}
@@ -5869,7 +5868,7 @@ if (false && isLandscapeTablet) {
               inset: "6px 12px",
               width: "calc(100% - 24px)",
               height: "calc(100% - 12px)",
-              objectFit: "cover",
+              objectFit: "contain",
               borderRadius: 18,
               display: "block",
               userSelect: "none",
@@ -5946,19 +5945,35 @@ if (false && isLandscapeTablet) {
             )}
           </div>
 
-          {!showFullX01TickerHeader && useSetsUi ? (
-            <SetLegChip
-              currentSet={(state as any).currentSet ?? 1}
-              currentLegInSet={(state as any).currentLeg ?? 1}
-              setsTarget={setsTarget}
-              legsTarget={legsTarget}
-              useSets={useSetsUi}
-              unit={matchFormatUnitForUi as any}
-              victoryMode={matchVictoryModeForUi as any}
-            />
-          ) : (
-            <span aria-hidden style={{ width: 40, flex: "0 0 40px" }} />
-          )}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, minWidth: 48 }}>
+            {!showFullX01TickerHeader && useSetsUi ? (
+              <SetLegChip
+                currentSet={(state as any).currentSet ?? 1}
+                currentLegInSet={(state as any).currentLeg ?? 1}
+                setsTarget={setsTarget}
+                legsTarget={legsTarget}
+                useSets={useSetsUi}
+                unit={matchFormatUnitForUi as any}
+                victoryMode={matchVictoryModeForUi as any}
+              />
+            ) : null}
+            <button
+              type="button"
+              aria-label="Ouvrir Awena"
+              title="Awena"
+              onClick={() => awena?.openPanel?.()}
+              style={{
+                position: "relative", width: 44, height: 44, flex: "0 0 44px", borderRadius: "50%", padding: 3,
+                border: "none", background: "conic-gradient(#3dff96, #33d8ff, #ff4cc8, #3dff96)",
+                boxShadow: "0 0 14px rgba(51,216,255,.30), 0 8px 20px rgba(0,0,0,.40)", cursor: "pointer",
+              }}
+            >
+              <span style={{ width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden", display: "block", background: "#060815" }}>
+                <img src="/awena/awena-avatar.webp" alt="Awena" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+              </span>
+              <span aria-hidden style={{ position: "absolute", right: -2, bottom: -2, width: 18, height: 18, borderRadius: "50%", display: "grid", placeItems: "center", background: "#11172a", border: "1px solid rgba(255,255,255,.18)", color: "#fff", fontSize: 9, boxShadow: "0 4px 10px rgba(0,0,0,.45)" }}>🎙</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -5969,7 +5984,7 @@ if (false && isLandscapeTablet) {
             ? {
                 flex: 1,
                 display: "grid",
-                gridTemplateColumns: "1fr 1fr",
+                gridTemplateColumns: "minmax(0, .92fr) minmax(0, 1.08fr)",
                 gap: 12,
                 padding: 12,
                 overflow: "hidden",
@@ -6087,8 +6102,10 @@ if (false && isLandscapeTablet) {
           display: "flex",
           flexDirection: "column",
           gap: 8,
-          overflow: "visible",
-          paddingBottom: "calc(env(safe-area-inset-bottom) + 8px)",
+          minWidth: 0,
+          minHeight: 0,
+          overflow: "hidden",
+          paddingBottom: "max(10px, env(safe-area-inset-bottom, 0px))",
         }}>
           <div style={{ flex: "0 0 auto", overflow: "visible" }}>
             <div
@@ -6099,8 +6116,9 @@ if (false && isLandscapeTablet) {
                 zIndex: 45,
                 width: "100%",
                 minHeight: 0,
-                height: "auto",
-                maxHeight: isTabletUi ? "100%" : "none",
+                height: "100%",
+                maxHeight: "100%",
+                overflow: "hidden",
               }}
             >
               {onlineTurnLocked ? (onlineStandbyChat || null) : isBotTurn ? (
@@ -6265,6 +6283,7 @@ if (false && isLandscapeTablet) {
                       quickCameraActive={isQuickParty && cameraOpen}
                       themePrimary={isQuickParty && isTeamsMode && activeTeam ? activeTeam.color : themePrimary}
                       themeSecondary={isQuickParty && isTeamsMode && activeTeam ? ((activeTeam as any).colorDark || themeSecondary) : themeSecondary}
+                      fitToParent
                     />
                     )}
                   </div>
