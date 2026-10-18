@@ -522,22 +522,71 @@ export function fuseDetectionFrames(frames: VisionDetection[][], wanted=3): Dete
   const threshold=.0048;
   for(const item of all){
     let best:any=null,bestD=Infinity;
-    for(const c of clusters){ const dx=item.xNorm-c.x,dy=item.yNorm-c.y,dd=Math.hypot(dx,dy); if(dd<threshold&&dd<bestD){best=c;bestD=dd;} }
+    for(const c of clusters){
+      const dx=item.xNorm-c.x,dy=item.yNorm-c.y,dd=Math.hypot(dx,dy);
+      if(dd<threshold&&dd<bestD){best=c;bestD=dd;}
+    }
     if(!best){best={x:item.xNorm,y:item.yNorm,items:[]};clusters.push(best);}
-    best.items.push(item); const n=best.items.length; best.x=best.items.reduce((a:any,v:any)=>a+v.xNorm,0)/n; best.y=best.items.reduce((a:any,v:any)=>a+v.yNorm,0)/n;
+    best.items.push(item);
+    // Track the cluster centre with confidence weighting so a weak/noisy candidate
+    // cannot pull a strong multi-frame track away from the actual dart tip.
+    let sw=0,sx=0,sy=0;
+    for(const v of best.items){
+      const w=Math.max(.08,Number(v.confidence||0))*Math.max(.35,Number(v.geometryConfidence||.6));
+      sw+=w;sx+=v.xNorm*w;sy+=v.yNorm*w;
+    }
+    best.x=sx/Math.max(.0001,sw); best.y=sy/Math.max(.0001,sw);
   }
+
   return clusters.map(c=>{
-    const items=c.items; const xs=items.map((v:any)=>v.xNorm).sort((a:number,b:number)=>a-b),ys=items.map((v:any)=>v.yNorm).sort((a:number,b:number)=>a-b);
-    const mid=Math.floor(items.length/2),xNorm=xs[mid],yNorm=ys[mid];
-    const distances=items.map((v:any)=>v.distanceMm).sort((a:number,b:number)=>a-b),distanceMm=distances[Math.floor(distances.length/2)];
-    const norms=items.map((v:any)=>v.distanceNorm).sort((a:number,b:number)=>a-b),distanceNorm=norms[Math.floor(norms.length/2)];
+    // Keep at most the strongest observation for each source frame. This prevents
+    // duplicate blobs in one frame from artificially increasing sampleCount.
+    const byFrame=new Map<number,any>();
+    for(const v of c.items){
+      const prev=byFrame.get(v.frameIndex);
+      if(!prev || Number(v.confidence||0)>Number(prev.confidence||0)) byFrame.set(v.frameIndex,v);
+    }
+    let items=[...byFrame.values()];
+    if(!items.length) return null;
+
+    // Robust distance gate: remove observations that are far away from the
+    // median track. A single reflection/motion artefact must not move a close
+    // millimetre-level ranking.
+    const rawDistances=items.map((v:any)=>Number(v.distanceMm)).filter(Number.isFinite).sort((a:number,b:number)=>a-b);
+    const med=rawDistances[Math.floor(rawDistances.length/2)] ?? 0;
+    const dev=rawDistances.map((d:number)=>Math.abs(d-med)).sort((a:number,b:number)=>a-b);
+    const mad=dev[Math.floor(dev.length/2)] ?? 0;
+    const robustGate=Math.max(.55,Math.min(2.2,mad*3.2+.25));
+    const filtered=items.filter((v:any)=>Math.abs(Number(v.distanceMm)-med)<=robustGate);
+    if(filtered.length>=Math.max(2,Math.ceil(items.length*.67))) items=filtered;
+
+    let sw=0,xw=0,yw=0;
+    for(const v of items){
+      const w=Math.max(.08,Number(v.confidence||0))*Math.max(.35,Number(v.geometryConfidence||.6));
+      sw+=w;xw+=Number(v.xNorm)*w;yw+=Number(v.yNorm)*w;
+    }
+    const xNorm=xw/Math.max(.0001,sw),yNorm=yw/Math.max(.0001,sw);
+    const distances=items.map((v:any)=>Number(v.distanceMm)).sort((a:number,b:number)=>a-b);
+    const distanceMm=distances[Math.floor(distances.length/2)];
+    const norms=items.map((v:any)=>Number(v.distanceNorm)).sort((a:number,b:number)=>a-b);
+    const distanceNorm=norms[Math.floor(norms.length/2)];
     const uniqueFrames=new Set(items.map((v:any)=>v.frameIndex)).size;
     const frameAgreement=frames.length?uniqueFrames/frames.length:0;
-    const spreadMm=Math.sqrt(items.reduce((sum:number,v:any)=>sum+Math.pow(v.distanceMm-distanceMm,2),0)/Math.max(1,items.length));
-    const coordSpreadNorm=Math.sqrt(items.reduce((sum:number,v:any)=>sum+(v.xNorm-xNorm)**2+(v.yNorm-yNorm)**2,0)/Math.max(1,items.length));
-    const base=items.reduce((sum:number,v:any)=>sum+v.confidence,0)/Math.max(1,items.length);
-    return {xNorm,yNorm,distanceMm,distanceNorm,area:items.reduce((s:number,v:any)=>s+v.area,0)/items.length,geometryConfidence:items.reduce((s:number,v:any)=>s+(v.geometryConfidence||0),0)/items.length,confidence:clamp01(base*.72+frameAgreement*.28-Math.min(.2,spreadMm/12)),frameAgreement,sampleCount:items.length,spreadMm,positionSpreadPx:coordSpreadNorm*1000};
-  }).filter(x=>x.frameAgreement>=.75 && x.sampleCount>=3).sort((a,b)=>b.confidence-a.confidence).slice(0,wanted);
+    const spreadMm=Math.sqrt(items.reduce((sum:number,v:any)=>sum+Math.pow(Number(v.distanceMm)-distanceMm,2),0)/Math.max(1,items.length));
+    const coordSpreadNorm=Math.sqrt(items.reduce((sum:number,v:any)=>sum+(Number(v.xNorm)-xNorm)**2+(Number(v.yNorm)-yNorm)**2,0)/Math.max(1,items.length));
+    const base=items.reduce((sum:number,v:any)=>sum+Number(v.confidence||0),0)/Math.max(1,items.length);
+    const outlierPenalty=Math.max(0,(byFrame.size-items.length)/Math.max(1,byFrame.size))*.12;
+    return {
+      xNorm,yNorm,distanceMm,distanceNorm,
+      area:items.reduce((s:number,v:any)=>s+Number(v.area||0),0)/items.length,
+      geometryConfidence:items.reduce((s:number,v:any)=>s+Number(v.geometryConfidence||0),0)/items.length,
+      confidence:clamp01(base*.70+frameAgreement*.30-Math.min(.22,spreadMm/10)-outlierPenalty),
+      frameAgreement,sampleCount:items.length,spreadMm,positionSpreadPx:coordSpreadNorm*1000,
+      rejectedFrameSamples:Math.max(0,byFrame.size-items.length),
+    };
+  }).filter((x:any)=>x && x.frameAgreement>=.75 && x.sampleCount>=3)
+    .sort((a:any,b:any)=>b.confidence-a.confidence)
+    .slice(0,wanted) as DetectionConsensus[];
 }
 
 export function analyzeFrameDifference(before: ImageData, after: ImageData, cal: CameraCalibration, wanted = 3): VisionDetection[] {
