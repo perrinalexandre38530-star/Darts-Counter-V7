@@ -16,7 +16,7 @@ type KeypadAuxAction = {
   onClick: () => void;
   disabled?: boolean;
   active?: boolean;
-  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "red" | "dark";
   title?: string;
   ariaLabel?: string;
   /** L’icône remplit toute la surface de la touche (ex: visuel ZONES du Gros 6). */
@@ -27,7 +27,7 @@ type KeypadExtraMainButton = {
   label: React.ReactNode;
   onClick: () => void;
   active?: boolean;
-  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "red" | "dark";
   title?: string;
   ariaLabel?: string;
 };
@@ -37,7 +37,7 @@ type KeypadSecondaryAction = {
   onClick: () => void;
   disabled?: boolean;
   active?: boolean;
-  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "red" | "dark";
   title?: string;
   ariaLabel?: string;
 };
@@ -46,7 +46,7 @@ type KeypadFooterAction = {
   label: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
-  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "red" | "dark";
   title?: string;
   ariaLabel?: string;
 };
@@ -95,6 +95,9 @@ type Props = {
 
   /** Action secondaire à côté du bouton retour/annuler (ex: MICRO Gros 6). */
   secondaryAction?: KeypadSecondaryAction | null;
+
+  /** Ordonnancement dédié des commandes principales. */
+  actionLayout?: "default" | "ptit1";
 
   /** Remplace le bouton VALIDER du footer par une action dédiée (ex: DBULL Gros 6). */
   footerAction?: KeypadFooterAction | null;
@@ -342,6 +345,7 @@ export default function Keypad({
   extraMainButtons = null,
   singleRingSelector = null,
   secondaryAction = null,
+  actionLayout = "default",
   footerAction = null,
   disableSegmentNumbers = false,
   highlightSegmentNumbers = null,
@@ -393,6 +397,9 @@ export default function Keypad({
       yellow: active
         ? { background: 'linear-gradient(180deg, #fff0a8, #f5cc58)', color: '#5b3510', border: '1px solid #fff5c9' }
         : { background: 'linear-gradient(180deg, #ffe795, #dcb442)', color: '#654019', border: '1px solid rgba(255,240,170,.82)' },
+      red: active
+        ? { background: 'linear-gradient(180deg, #ff6a72, #b01224)', color: '#fff0f2', border: '1px solid #ffc0c6' }
+        : { background: 'linear-gradient(180deg, rgba(255,72,92,.92), rgba(120,10,24,.96))', color: '#ffecef', border: '1px solid rgba(255,164,174,.70)' },
       dark: active
         ? { background: 'linear-gradient(180deg, rgba(255,255,255,.18), rgba(255,255,255,.08))', color: '#fff', border: '1px solid rgba(255,255,255,.88)' }
         : { background: 'rgba(255,255,255,.05)', color: 'rgba(255,255,255,.9)', border: '1px solid rgba(255,255,255,.1)' },
@@ -420,6 +427,9 @@ export default function Keypad({
       gold: active
         ? { background: 'linear-gradient(180deg, rgba(255,205,54,.42), rgba(0,0,0,.22))', color: '#fff5cc', border: '1px solid rgba(255,230,156,.60)', boxShadow: '0 0 22px rgba(255,175,0,.18)' }
         : { background: 'linear-gradient(180deg, rgba(255,205,54,.18), rgba(0,0,0,.30))', color: '#fff0bf', border: '1px solid rgba(255,230,156,.28)', boxShadow: 'none' },
+      red: active
+        ? { background: 'linear-gradient(180deg, rgba(255,106,114,.35), rgba(78,0,10,.48))', color: '#fff3f5', border: '1px solid rgba(255,176,185,.62)', boxShadow: '0 0 22px rgba(255,74,96,.22)' }
+        : { background: 'linear-gradient(180deg, rgba(255,86,106,.18), rgba(0,0,0,.32))', color: '#ffe6ea', border: '1px solid rgba(255,152,165,.32)', boxShadow: 'none' },
       dark: active
         ? { background: 'linear-gradient(180deg, rgba(180,255,30,.24), rgba(0,0,0,.38))', color: '#d8ff66', border: '1px solid rgba(180,255,30,.55)', boxShadow: '0 0 22px rgba(180,255,30,.22)' }
         : { background: 'rgba(255,255,255,.055)', color: 'rgba(255,255,255,.92)', border: '1px solid rgba(255,255,255,.12)', boxShadow: 'none' },
@@ -511,8 +521,95 @@ export default function Keypad({
         </div>
       ) : null}
 
-      {/* DOUBLE / TRIPLE / GROS / PETIT + commandes intégrées */}
-      {useExtendedMainRow ? (
+      {/* Commandes principales */}
+      {actionLayout === "ptit1" && useExtendedMainRow ? (
+        <>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+              gap: 10,
+              marginBottom: 8,
+            }}
+          >
+            <button
+              type="button"
+              style={{ ...btnDouble, borderColor: multiplier === 2 ? "#9bd7ff" : "rgba(255,255,255,.08)" }}
+              aria-pressed={multiplier === 2}
+              onClick={onDouble}
+              onMouseUp={onSimple}
+              title="Double"
+            >DOUBLE</button>
+            <button
+              type="button"
+              style={{ ...btnTriple, borderColor: multiplier === 3 ? "#ffd0ff" : "rgba(255,255,255,.08)" }}
+              aria-pressed={multiplier === 3}
+              onClick={onTriple}
+              onMouseUp={onSimple}
+              title="Triple"
+            >TRIPLE</button>
+            {secondaryAction ? (
+              <button
+                type="button"
+                style={{ ...splitActionBase, ...auxToneStyles(secondaryAction.tone || 'red', !!secondaryAction.active), opacity: secondaryAction.disabled ? .45 : 1 }}
+                onClick={secondaryAction.onClick}
+                disabled={secondaryAction.disabled}
+                title={secondaryAction.title || "MISS"}
+                aria-label={secondaryAction.ariaLabel || secondaryAction.title || "MISS"}
+              >
+                <ActionIcon>{secondaryAction.icon}</ActionIcon>
+              </button>
+            ) : <span />}
+            <button
+              type="button"
+              style={{ ...splitActionBase, background: "linear-gradient(180deg, rgba(255,198,58,.96), rgba(255,175,0,.90))", color: "#1a1a1a", border: "1px solid rgba(255,180,0,.34)", boxShadow: "0 10px 22px rgba(255,170,0,.24)" }}
+              onClick={onCancel}
+              onContextMenu={(e) => { e.preventDefault(); onBackspace?.(); }}
+              title="Retour / annuler"
+              aria-label="Retour / annuler"
+            >
+              <ActionIcon><UndoMiniIcon /></ActionIcon>
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+              gap: 10,
+              marginBottom: noticeSlot ? 8 : 10,
+            }}
+          >
+            {extraButtons.map((btn, idx) => (
+              <button
+                key={idx}
+                type="button"
+                style={extraButtonStyle(!!btn.active, btn.tone || (idx === 0 ? 'yellow' : 'orange'))}
+                aria-pressed={!!btn.active}
+                onClick={btn.onClick}
+                title={btn.title || String(btn.label)}
+                aria-label={btn.ariaLabel || String(btn.label)}
+              >
+                {btn.label}
+              </button>
+            ))}
+            {auxAction ? (
+              <button
+                type="button"
+                style={{ ...splitActionBase, ...auxToneStyles(auxAction.tone || 'gold', !!auxAction.active), opacity: auxAction.disabled ? .45 : 1, position: "relative", overflow: "hidden" }}
+                onClick={auxAction.onClick}
+                disabled={auxAction.disabled}
+                title={auxAction.title || auxAction.label}
+                aria-label={auxAction.ariaLabel || auxAction.label}
+              >
+                {auxAction.fullBleedIcon ? (
+                  <span style={{ position: "absolute", inset: 0, display: "block", overflow: "hidden", borderRadius: "inherit" }}>{auxAction.icon}</span>
+                ) : <ActionIcon>{auxAction.icon}</ActionIcon>}
+              </button>
+            ) : <span />}
+          </div>
+        </>
+      ) : useExtendedMainRow ? (
         <>
           <div
             style={{

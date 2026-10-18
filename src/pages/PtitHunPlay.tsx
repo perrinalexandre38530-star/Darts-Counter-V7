@@ -957,8 +957,8 @@ export default function PtitHunPlay(props: any) {
     <style>{`
       .ptit1-play{position:fixed;inset:0;width:100vw;height:100dvh;max-height:100dvh;overflow:hidden;display:flex;flex-direction:column;gap:4px;padding:4px;background:radial-gradient(circle at 12% 10%,color-mix(in srgb,var(--ptit-accent) 9%,transparent),transparent 28%),linear-gradient(180deg,#090b12,#04060a);color:#fff;overscroll-behavior:none;box-sizing:border-box;touch-action:manipulation}
       .ptit1-play *{box-sizing:border-box}
-      .ptit1-head{position:relative;flex:0 0 clamp(50px,8.5vh,64px);min-height:0;overflow:hidden;border-radius:15px;border:1px solid rgba(255,255,255,.08);background:#080b11}
-      .ptit1-head>img{width:100%;height:100%;object-fit:cover;display:block}
+      .ptit1-head{position:relative;flex:0 0 clamp(50px,8.5vh,64px);min-height:0;overflow:hidden;border-radius:15px;border:1px solid rgba(255,255,255,.08);background:#080b11;display:flex;align-items:center;justify-content:center}
+      .ptit1-head>img{width:100%;height:100%;object-fit:cover;object-position:center;display:block}
       .ptit1-head:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(4,5,8,.92),transparent 18%,transparent 82%,rgba(4,5,8,.92));pointer-events:none}
       .ptit1-head__controls{position:absolute;z-index:2;inset:0;display:flex;align-items:center;justify-content:space-between;padding:0 7px;pointer-events:none}
       .ptit1-head__controls>div{display:flex;align-items:center;gap:6px;pointer-events:auto}
@@ -1004,6 +1004,7 @@ export default function PtitHunPlay(props: any) {
       @media (orientation:landscape){
         .ptit1-play{gap:5px;padding:5px}
         .ptit1-head{flex-basis:46px;border-radius:12px}
+        .ptit1-head>img{width:auto;height:100%;max-width:none;object-fit:contain;object-position:center center;margin:0 auto}
         .ptit1-stage{display:grid;grid-template-columns:minmax(300px,38%) minmax(0,1fr);gap:6px}
         .ptit1-left{height:100%;display:grid;grid-template-rows:minmax(108px,1.45fr) 50px 42px 46px 36px;gap:5px;overflow:hidden}
         .ptit1-active{height:100%;min-height:0;flex:auto}
@@ -1014,6 +1015,30 @@ export default function PtitHunPlay(props: any) {
         .ptit1-tools{grid-template-columns:38px minmax(0,1fr) 38px 38px}
         .ptit1-tool{height:100%}
         .ptit1-input{height:100%}
+      }
+      @media (orientation:landscape) and (max-width:980px){
+        .ptit1-play{gap:4px;padding:4px}
+        .ptit1-head{flex-basis:42px}
+        .ptit1-stage{grid-template-columns:minmax(232px,41%) minmax(0,1fr);gap:5px}
+        .ptit1-left{grid-template-rows:minmax(96px,1.35fr) 46px 38px 42px 32px;gap:4px}
+        .ptit1-active__grid{grid-template-columns:minmax(0,1fr) 102px;padding:5px}
+        .ptit1-radar-stack{width:102px;min-width:102px;grid-template-rows:10px minmax(0,1fr) 22px}
+        .ptit1-radar-label{font-size:6.4px;line-height:10px}
+        .ptit1-radar-button{border-radius:11px;padding:2px}
+        .ptit1-jackpot-row span,.ptit1-jackpot-row b{height:20px;font-size:6.3px}
+        .ptit1-bonus-strip{flex-basis:46px;gap:4px}
+        .ptit1-kpis{padding:4px;gap:3px}
+        .ptit1-tools{grid-template-columns:34px minmax(0,1fr) 34px 34px;gap:4px}
+        .ptit1-tool{font-size:14px;border-radius:11px}
+        .ptit1-players{padding:3px 6px}
+        .ptit1-scorehub{padding:5px;border-radius:14px}
+        .ptit1-identity-content.is-solo{padding-left:58px}
+        .ptit1-identity-content.is-team{grid-template-columns:36px minmax(0,1fr);gap:6px;padding-left:6px}
+        .ptit1-player-name{font-size:8px}
+        .ptit1-score-value{font-size:clamp(26px,6.8vw,38px)}
+        .ptit1-turn-row{margin-top:4px}
+        .ptit1-turn-row span,.ptit1-turn-row b{height:18px;min-width:38px;font-size:6.2px}
+        .ptit1-sound-toggle{width:32px;height:32px;font-size:14px}
       }
       @media (max-height:700px) and (orientation:portrait){
         .ptit1-play{gap:3px;padding:3px}.ptit1-head{flex-basis:46px}.ptit1-active{flex-basis:108px}.ptit1-bonus-strip{flex-basis:44px}.ptit1-kpis{flex-basis:40px}.ptit1-tools{flex-basis:42px}.ptit1-tool{height:42px}.ptit1-visit{flex-basis:32px}
@@ -1109,12 +1134,13 @@ export default function PtitHunPlay(props: any) {
           validateDisabled={currentThrow.length < 3}
           preferredMethod={config.scoreInputMethod}
           keypadExtraMainButtons={[
-            { label: fr ? "GROS" : "BIG", onClick: () => { setMultiplier(1); setSingleRing((v:any) => v === "outer_single" ? null : "outer_single"); }, active: singleRing === "outer_single", tone: "orange", title: fr ? `Gros simple · valeur ×${config.rules.outerSingleFactor}` : `Big single · value ×${config.rules.outerSingleFactor}` },
             { label: fr ? "PETIT" : "SMALL", onClick: () => { setMultiplier(1); setSingleRing((v:any) => v === "inner_single" ? null : "inner_single"); }, active: singleRing === "inner_single", tone: "yellow", title: fr ? "Petit simple · valeur normale" : "Small single · normal value" },
+            { label: fr ? "GROS" : "BIG", onClick: () => { setMultiplier(1); setSingleRing((v:any) => v === "outer_single" ? null : "outer_single"); }, active: singleRing === "outer_single", tone: "orange", title: fr ? `Gros simple · valeur ×${config.rules.outerSingleFactor}` : `Big single · value ×${config.rules.outerSingleFactor}` },
           ]}
+          keypadActionLayout="ptit1"
           keypadDisableSegmentNumbers={!segmentZoneSelected}
           keypadAuxActionOverride={{ label: "ZONE", icon: <img src={gros6ZonesKeypad} alt="" style={{width:"100%",height:"100%",objectFit:"contain"}} />, onClick: () => setSpecialOpen(true), tone: "gold", title: fr ? "Ouvrir les zones spéciales" : "Open special zones", ariaLabel: fr ? "Ouvrir les zones spéciales" : "Open special zones", fullBleedIcon: true }}
-          keypadSecondaryAction={currentThrow.length < 3 ? { icon: <span style={{ fontSize: 10.5, fontWeight: 1100, letterSpacing: .4 }}>MISS</span>, onClick: () => appendKeypadDart({ v: 0, mult: 1 } as any), tone: "dark", title: fr ? "Ajouter un MISS" : "Add a MISS", ariaLabel: fr ? "Ajouter un MISS" : "Add a MISS" } : null}
+          keypadSecondaryAction={currentThrow.length < 3 ? { icon: <span style={{ fontSize: 10.5, fontWeight: 1100, letterSpacing: .4 }}>MISS</span>, onClick: () => appendKeypadDart({ v: 0, mult: 1 } as any), tone: "red", title: fr ? "Ajouter un MISS" : "Add a MISS", ariaLabel: fr ? "Ajouter un MISS" : "Add a MISS" } : null}
           keypadFooterAction={currentThrow.length >= 3 ? { label: fr ? "VALIDER" : "VALIDATE", title: fr ? "Valider la volée" : "Validate visit", tone: "gold", onClick: validate } : { label: "DBULL", title: "Double Bull", tone: "green", onClick: addDbull }}
           hidePreview
           hideTotal
