@@ -196,6 +196,34 @@ function grayAt(frame: ImageData, x:number, y:number) {
   return frame.data[i]*.2126+frame.data[i+1]*.7152+frame.data[i+2]*.0722;
 }
 
+function grayAtBilinear(frame: ImageData, x:number, y:number) {
+  const w=frame.width,h=frame.height;
+  const xx=Math.max(0,Math.min(w-1.001,x)), yy=Math.max(0,Math.min(h-1.001,y));
+  const x0=Math.floor(xx),y0=Math.floor(yy),x1=Math.min(w-1,x0+1),y1=Math.min(h-1,y0+1);
+  const fx=xx-x0,fy=yy-y0;
+  const lum=(px:number,py:number)=>{
+    const i=(py*w+px)*4;
+    return frame.data[i]*.2126+frame.data[i+1]*.7152+frame.data[i+2]*.0722;
+  };
+  const a=lum(x0,y0)*(1-fx)+lum(x1,y0)*fx;
+  const b=lum(x0,y1)*(1-fx)+lum(x1,y1)*fx;
+  return a*(1-fy)+b*fy;
+}
+
+function rgbDeltaBilinear(before:ImageData, after:ImageData, x:number, y:number) {
+  const sample=(frame:ImageData,c:number)=>{
+    const w=frame.width,h=frame.height;
+    const xx=Math.max(0,Math.min(w-1.001,x)),yy=Math.max(0,Math.min(h-1.001,y));
+    const x0=Math.floor(xx),y0=Math.floor(yy),x1=Math.min(w-1,x0+1),y1=Math.min(h-1,y0+1);
+    const fx=xx-x0,fy=yy-y0;
+    const at=(px:number,py:number)=>frame.data[(py*w+px)*4+c];
+    const a=at(x0,y0)*(1-fx)+at(x1,y0)*fx;
+    const b=at(x0,y1)*(1-fx)+at(x1,y1)*fx;
+    return a*(1-fy)+b*fy;
+  };
+  return (Math.abs(sample(before,0)-sample(after,0))+Math.abs(sample(before,1)-sample(after,1))+Math.abs(sample(before,2)-sample(after,2)))/3;
+}
+
 /**
  * Estimates tiny camera translations against the empty-board reference.
  * The error is capped so newly appeared darts cannot dominate registration.
@@ -203,13 +231,15 @@ function grayAt(frame: ImageData, x:number, y:number) {
 export function estimateFrameTranslation(reference:ImageData, frame:ImageData, cal:CameraCalibration, maxShiftPx=10):FrameRegistration {
   const width=Math.min(reference.width,frame.width), height=Math.min(reference.height,frame.height);
   const scores=new Map<string,number>();
-  const scoreAt=(dx:number,dy:number)=>{
-    const key=`${dx},${dy}`; const cached=scores.get(key); if(cached!=null) return cached;
-    const step=Math.max(10,Math.round(Math.min(width,height)/70));
+  const step=Math.max(10,Math.round(Math.min(width,height)/70));
+  const scoreAt=(dx:number,dy:number,subpixel=false)=>{
+    const key=subpixel?`${dx.toFixed(3)},${dy.toFixed(3)}`:`${dx},${dy}`;
+    const cached=scores.get(key); if(cached!=null) return cached;
     let err=0,n=0;
     for(let y=maxShiftPx+2;y<height-maxShiftPx-2;y+=step) for(let x=maxShiftPx+2;x<width-maxShiftPx-2;x+=step){
       if(normalizedBoardPoint(cal,x/width,y/height).distanceNorm>1.01) continue;
-      const a=grayAt(reference,x,y), b=grayAt(frame,x+dx,y+dy);
+      const a=grayAt(reference,x,y);
+      const b=subpixel?grayAtBilinear(frame,x+dx,y+dy):grayAt(frame,x+dx,y+dy);
       const d=Math.min(42,Math.abs(a-b));
       err+=d*d; n++;
     }
@@ -217,12 +247,9 @@ export function estimateFrameTranslation(reference:ImageData, frame:ImageData, c
   };
   let bestDx=0,bestDy=0,best=Infinity,second=Infinity;
   for(let dy=-maxShiftPx;dy<=maxShiftPx;dy++) for(let dx=-maxShiftPx;dx<=maxShiftPx;dx++){
-    const score=scoreAt(dx,dy);
+    const score=scoreAt(dx,dy,false);
     if(score<best){second=best;best=score;bestDx=dx;bestDy=dy;} else if(score<second) second=score;
   }
-  // Parabolic interpolation around the best integer translation. This gives a
-  // genuine sub-pixel registration estimate instead of snapping the camera
-  // motion to whole pixels.
   const parabolaOffset=(fm:number,f0:number,fp:number)=>{
     const den=fm-2*f0+fp;
     if(!Number.isFinite(fm)||!Number.isFinite(fp)||Math.abs(den)<1e-6) return 0;
@@ -231,27 +258,59 @@ export function estimateFrameTranslation(reference:ImageData, frame:ImageData, c
   let subX=0,subY=0;
   if(bestDx>-maxShiftPx&&bestDx<maxShiftPx) subX=parabolaOffset(scoreAt(bestDx-1,bestDy),best,scoreAt(bestDx+1,bestDy));
   if(bestDy>-maxShiftPx&&bestDy<maxShiftPx) subY=parabolaOffset(scoreAt(bestDx,bestDy-1),best,scoreAt(bestDx,bestDy+1));
+
+  // Micro-search with bilinear sampling around the parabolic estimate. This
+  // removes the remaining whole-pixel sampling bias when the phone moves by
+  // only a fraction of a source pixel.
+  let refinedDx=bestDx+subX,refinedDy=bestDy+subY;
+  let refinedScore=scoreAt(refinedDx,refinedDy,true);
+  for(const delta of [.25,.125]){
+    let localDx=refinedDx,localDy=refinedDy,localScore=refinedScore;
+    for(let oy=-2;oy<=2;oy++) for(let ox=-2;ox<=2;ox++){
+      const dx=Math.max(-maxShiftPx,Math.min(maxShiftPx,refinedDx+ox*delta));
+      const dy=Math.max(-maxShiftPx,Math.min(maxShiftPx,refinedDy+oy*delta));
+      const score=scoreAt(dx,dy,true);
+      if(score<localScore){localScore=score;localDx=dx;localDy=dy;}
+    }
+    refinedDx=localDx;refinedDy=localDy;refinedScore=localScore;
+  }
+
   const separation=second<Infinity?Math.max(0,(second-best)/Math.max(1,second)):0;
-  const subpixelStrength=1-Math.min(1,(Math.abs(subX)+Math.abs(subY))*.35);
-  const confidence=clamp01((1-Math.sqrt(best)/36)*.74+Math.min(.22,separation*3)+subpixelStrength*.04);
-  return {dxPx:bestDx+subX,dyPx:bestDy+subY,error:best,confidence};
+  const refinementGain=Math.max(0,(best-refinedScore)/Math.max(1,best));
+  const confidence=clamp01((1-Math.sqrt(refinedScore)/36)*.72+Math.min(.20,separation*3)+Math.min(.08,refinementGain*4));
+  return {dxPx:refinedDx,dyPx:refinedDy,error:refinedScore,confidence};
 }
 
 function estimateRegionalTranslation(reference:ImageData,frame:ImageData,cal:CameraCalibration,quadrant:number,maxShiftPx=6){
   const width=Math.min(reference.width,frame.width),height=Math.min(reference.height,frame.height);
-  let best={dxPx:0,dyPx:0,error:Infinity,confidence:0};
   const step=Math.max(12,Math.round(Math.min(width,height)/60));
-  for(let dy=-maxShiftPx;dy<=maxShiftPx;dy++) for(let dx=-maxShiftPx;dx<=maxShiftPx;dx++){
+  const scoreAt=(dx:number,dy:number,subpixel=false)=>{
     let err=0,n=0;
     for(let y=maxShiftPx+2;y<height-maxShiftPx-2;y+=step) for(let x=maxShiftPx+2;x<width-maxShiftPx-2;x+=step){
       const bp=normalizedBoardPoint(cal,x/width,y/height); if(bp.distanceNorm>.92||bp.distanceNorm<.18) continue;
       const q=(bp.nx>=0?1:0)+(bp.ny>=0?2:0); if(q!==quadrant) continue;
-      const d=Math.min(40,Math.abs(grayAt(reference,x,y)-grayAt(frame,x+dx,y+dy))); err+=d*d;n++;
+      const b=subpixel?grayAtBilinear(frame,x+dx,y+dy):grayAt(frame,x+dx,y+dy);
+      const d=Math.min(40,Math.abs(grayAt(reference,x,y)-b)); err+=d*d;n++;
     }
-    const score=n?err/n:Infinity;
-    if(score<best.error) best={dxPx:dx,dyPx:dy,error:score,confidence:clamp01(1-Math.sqrt(score)/34)};
+    return n?err/n:Infinity;
+  };
+  let best={dxPx:0,dyPx:0,error:Infinity,confidence:0};
+  for(let dy=-maxShiftPx;dy<=maxShiftPx;dy++) for(let dx=-maxShiftPx;dx<=maxShiftPx;dx++){
+    const score=scoreAt(dx,dy,false);
+    if(score<best.error) best={dxPx:dx,dyPx:dy,error:score,confidence:0};
   }
-  return best;
+  let dx=best.dxPx,dy=best.dyPx,error=best.error;
+  for(const delta of [.25,.125]){
+    let bx=dx,by=dy,be=error;
+    for(let oy=-2;oy<=2;oy++) for(let ox=-2;ox<=2;ox++){
+      const tx=Math.max(-maxShiftPx,Math.min(maxShiftPx,dx+ox*delta));
+      const ty=Math.max(-maxShiftPx,Math.min(maxShiftPx,dy+oy*delta));
+      const e=scoreAt(tx,ty,true);
+      if(e<be){be=e;bx=tx;by=ty;}
+    }
+    dx=bx;dy=by;error=be;
+  }
+  return {dxPx:dx,dyPx:dy,error,confidence:clamp01(1-Math.sqrt(error)/34)};
 }
 
 export function assessProjectiveDrift(reference:ImageData,frame:ImageData,cal:CameraCalibration){
@@ -493,15 +552,11 @@ function refineTipAtPixelLevel(before: ImageData, after: ImageData, cal: CameraC
     let ws=0,x=0,y=0,qm=0;
     for(const p of group){ws+=p.w;x+=p.x*p.w;y+=p.y*p.w;qm+=p.q*p.w;} x/=ws||1;y/=ws||1;qm/=ws||1;
     let spread=0;for(const p of group) spread+=p.w*Math.abs(p.q-qm);spread/=ws||1;
-    return {x,y,spread,coarseDistance:Math.hypot(x-cx,y-cy)};
+    return {x,y,spread,coarseDistance:Math.hypot(x-cx,y-cy),t:(x-mx)*ax+(y-my)*ay};
   });
-  // The coarse geometric estimator already chose which end is the dart tip.
-  // Keep that identity and refine the nearest endpoint instead of letting shaft
-  // or flight contrast pull the centroid away from the actual board contact.
   const chosen=endpoints[0].coarseDistance<=endpoints[1].coarseDistance?endpoints[0]:endpoints[1];
 
-  // Final 5x5 weighted centroid around the endpoint gives floating-point
-  // coordinates and removes residual grid quantisation.
+  // Sub-pixel centroid near the selected endpoint.
   let fs=0,fx=0,fy=0,localPeak=0,localN=0;
   for(let y=Math.max(1,Math.floor(chosen.y-3));y<=Math.min(height-2,Math.ceil(chosen.y+3));y++) for(let x=Math.max(1,Math.floor(chosen.x-3));x<=Math.min(width-2,Math.ceil(chosen.x+3));x++){
     const i=(y*before.width+x)*4,j=(y*after.width+x)*4;
@@ -509,11 +564,45 @@ function refineTipAtPixelLevel(before: ImageData, after: ImageData, cal: CameraC
     if(delta<18) continue;
     const ww=Math.pow(delta-17,1.25);fs+=ww;fx+=x*ww;fy+=y*ww;localPeak=Math.max(localPeak,delta);localN++;
   }
-  const x=fs?fx/fs:chosen.x,y=fs?fy/fs:chosen.y;
+  let x=fs?fx/fs:chosen.x,y=fs?fy/fs:chosen.y;
+
+  // Boundary extrapolation along the dart's principal axis. A centroid is
+  // inherently biased slightly toward the shaft; the board contact is the
+  // terminal edge of the silhouette. We detect that contrast edge at 1/4 px.
+  const sign=chosen.t>=0?1:-1,dirX=ax*sign,dirY=ay*sign;
+  const profile:{s:number;d:number}[]=[];
+  for(let step=-16;step<=28;step++){
+    const ss=step*.25;
+    profile.push({s:ss,d:rgbDeltaBilinear(before,after,chosen.x+dirX*ss,chosen.y+dirY*ss)});
+  }
+  const inner=profile.filter(v=>v.s>=-2.5&&v.s<=.5).map(v=>v.d).sort((a,b)=>a-b);
+  const innerMedian=inner.length?inner[Math.floor(inner.length/2)]:0;
+  const edgeThreshold=Math.max(10,Math.min(34,innerMedian*.38));
+  let crossing:number|null=null;
+  for(let i=1;i<profile.length;i++){
+    const a=profile[i-1],b=profile[i];
+    if(a.s<-.5) continue;
+    if(a.d>=edgeThreshold&&b.d<edgeThreshold){
+      const frac=(a.d-edgeThreshold)/Math.max(.001,a.d-b.d);
+      crossing=a.s+(b.s-a.s)*Math.max(0,Math.min(1,frac));
+    }
+  }
+  let boundaryConfidence=0;
+  if(crossing!=null && crossing>=-.5 && crossing<=6.5 && innerMedian>=18){
+    const bx=chosen.x+dirX*crossing,by=chosen.y+dirY*crossing;
+    const move=Math.hypot(bx-x,by-y);
+    if(move<=5.5){
+      boundaryConfidence=clamp01((innerMedian-16)/55)*clamp01(1-Math.max(0,move-3.5)/2);
+      const blend=.58+.30*boundaryConfidence;
+      x=x*(1-blend)+bx*blend;
+      y=y*(1-blend)+by*blend;
+    }
+  }
+
   const axisMajor=Math.max(cxx,cyy), axisMinor=Math.max(1,Math.min(cxx,cyy));
   const elongation=Math.min(5,Math.sqrt(axisMajor/axisMinor));
-  const confidence=clamp01(.42+Math.min(.18,pts.length/180)+Math.min(.14,peak/900)+Math.min(.12,localN/45)+Math.min(.14,(elongation-1)/5));
-  return {xNorm:x/width,yNorm:y/height,refineConfidence:confidence,subpixelX:x-Math.round(x),subpixelY:y-Math.round(y)};
+  const confidence=clamp01(.37+Math.min(.17,pts.length/180)+Math.min(.12,peak/900)+Math.min(.10,localN/45)+Math.min(.12,(elongation-1)/5)+boundaryConfidence*.18);
+  return {xNorm:x/width,yNorm:y/height,refineConfidence:confidence,subpixelX:x-Math.round(x),subpixelY:y-Math.round(y),boundaryConfidence};
 }
 
 export function fuseDetectionFrames(frames: VisionDetection[][], wanted=3): DetectionConsensus[] {
@@ -560,16 +649,18 @@ export function fuseDetectionFrames(frames: VisionDetection[][], wanted=3): Dete
     const filtered=items.filter((v:any)=>Math.abs(Number(v.distanceMm)-med)<=robustGate);
     if(filtered.length>=Math.max(2,Math.ceil(items.length*.67))) items=filtered;
 
-    let sw=0,xw=0,yw=0;
+    let sw=0,xw=0,yw=0,dw=0,nw=0;
     for(const v of items){
-      const w=Math.max(.08,Number(v.confidence||0))*Math.max(.35,Number(v.geometryConfidence||.6));
+      const baseW=Math.max(.08,Number(v.confidence||0))*Math.max(.35,Number(v.geometryConfidence||.6));
+      const residual=Math.abs(Number(v.distanceMm)-med);
+      const robustW=1/(1+Math.pow(residual/Math.max(.35,robustGate*.55),2));
+      const w=baseW*robustW;
       sw+=w;xw+=Number(v.xNorm)*w;yw+=Number(v.yNorm)*w;
+      dw+=Number(v.distanceMm)*w;nw+=Number(v.distanceNorm)*w;
     }
     const xNorm=xw/Math.max(.0001,sw),yNorm=yw/Math.max(.0001,sw);
-    const distances=items.map((v:any)=>Number(v.distanceMm)).sort((a:number,b:number)=>a-b);
-    const distanceMm=distances[Math.floor(distances.length/2)];
-    const norms=items.map((v:any)=>Number(v.distanceNorm)).sort((a:number,b:number)=>a-b);
-    const distanceNorm=norms[Math.floor(norms.length/2)];
+    const distanceMm=dw/Math.max(.0001,sw);
+    const distanceNorm=nw/Math.max(.0001,sw);
     const uniqueFrames=new Set(items.map((v:any)=>v.frameIndex)).size;
     const frameAgreement=frames.length?uniqueFrames/frames.length:0;
     const spreadMm=Math.sqrt(items.reduce((sum:number,v:any)=>sum+Math.pow(Number(v.distanceMm)-distanceMm,2),0)/Math.max(1,items.length));

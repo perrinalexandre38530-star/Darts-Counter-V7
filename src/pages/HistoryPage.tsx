@@ -408,6 +408,7 @@ const SPORT_GAME_FILTERS: Record<string, { key: string; label: string; aliases: 
     { key: "clock", label: "Horloge", aliases: ["clock", "tourdelhorloge", "tour_de_lhorloge", "tdh"] },
     { key: "training", label: "Training", aliases: ["training", "entrainement", "practice"] },
     { key: "countup", label: "Count Up", aliases: ["countup", "count_up"] },
+    { key: "closest_center", label: "Darts Pétanque · Plus près du centre", aliases: ["closest_center", "closestcenter", "darts petanque", "dartspetanque", "plus pres du centre", "plus près du centre"] },
   ],
   petanque: [
     { key: "petanque", label: "Pétanque", aliases: ["petanque", "petanque_classic", "classic"] },
@@ -590,6 +591,7 @@ function inferGameFilterKey(e: SavedEntry, sport: SportId): string {
 function inferSportKey(e: SavedEntry): string {
   const tokens = collectEntryModeTokens(e);
   const joined = tokens.join("|");
+  if (/closest_center|closestcenter|dartspetanque|darts petanque/.test(joined)) return "darts";
   if (/petanque|boule/.test(joined)) return "petanque";
   if (/pingpong|ping_pong|tabletennis|table_tennis/.test(joined)) return "pingpong";
   if (/babyfoot|foosball/.test(joined)) return "babyfoot";
@@ -803,6 +805,7 @@ function modeLabel(e: SavedEntry) {
   if (m === "steeplechase") return "STEEPLECHASE";
   if (m === "ptit_hun" || m === "ptithun") return "P’TIT 1";
   if (m === "ocean_control" || m === "oceancontrol") return "OCEAN CONTROL";
+  if (m === "closest_center" || m === "closestcenter") return "DARTS PÉTANQUE · PLUS PRÈS DU CENTRE";
   if (m === "football" || m === "football_darts" || m === "footballdarts") return "DARTS FOOTBALL";
   if (m === "x01") {
     const sc = getStartScore(e);
@@ -4831,6 +4834,22 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
       return;
     }
 
+    // DARTS PÉTANQUE · PLUS PRÈS DU CENTRE : reprise exacte avec sa config dédiée.
+    if (["closest_center", "closestcenter"].includes(normalizeToken(baseMode(e)))) {
+      let full:any=e;
+      try { const loaded=await History.get(String(resumeId||e.id||"")); if(loaded) full={...(e as any),...(loaded as any)}; } catch {}
+      const st=(full as any)?.resume?.state || (full as any)?.payload?.stateSnapshot || {};
+      const config=st?.cfg || (full as any)?.config || (full as any)?.payload?.config || {
+        players:(full as any)?.players || [],
+        rounds:(full as any)?.game?.rounds || (full as any)?.summary?.rounds || 3,
+        teamMode:!!(full as any)?.game?.teamMode,
+        pointsMode:(full as any)?.game?.pointsMode || "top5",
+        inputMode:(full as any)?.game?.inputMode || (full as any)?.summary?.inputMode || "camera",
+      };
+      go("closest_center_play", { rec:full, resumeId, config, from:preview?"history_preview":"history", preview:!!preview });
+      return;
+    }
+
     const inferredMode = inferGameFilterKey(e, "darts");
 
     // CHALLENGE : reprise exacte à n'importe quel moment (config + journal de touches + joueur/tour actif).
@@ -5070,6 +5089,14 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
 
     const m = baseMode(e);
     const inferredMode = inferGameFilterKey(e, "darts");
+
+    // ✅ DARTS PÉTANQUE · PLUS PRÈS DU CENTRE : fiche dédiée, jamais le fallback X01.
+    if (["closest_center", "closestcenter"].includes(normalizeToken(m)) || ["closest_center", "closestcenter"].includes(normalizeToken(inferredMode))) {
+      const full = await hydrateSavedEntry(e);
+      const matchId = String((full as any)?.id || (full as any)?.matchId || e.id || resumeId || "");
+      go("closest_center_history_detail", { matchId, focusMatchId:matchId, rec:full, from:"history" });
+      return;
+    }
 
     // ✅ BABY-FOOT : ouvrir la vraie fiche Baby-Foot, jamais X01.
     if (isBabyFootEntry(e)) {
@@ -5344,6 +5371,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
   function sportLogoForKind(kind: string) {
     const k = String(kind || "").toLowerCase();
     if (k.includes("ping")) return logoPingPong;
+    if (k.includes("closest_center") || k.includes("closestcenter") || k.includes("dartspetanque")) return logoDarts;
     if (k.includes("petanque")) return logoPetanque;
     if (k.includes("babyfoot")) return logoBabyfoot;
     // darts family

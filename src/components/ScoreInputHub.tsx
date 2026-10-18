@@ -536,6 +536,7 @@ export default function ScoreInputHub({
           fitOuterRef={fitOuterRef}
           fitInnerRef={fitInnerRef}
           fitScale={fitScale}
+          hideQuickVisitHint={hideQuickVisitHint}
         />
       ) : method === "dartboard" ? (
         <DartboardInput
@@ -611,6 +612,7 @@ function VisitScoreKeypad({
   fitOuterRef,
   fitInnerRef,
   fitScale,
+  hideQuickVisitHint,
 }: {
   disabled: boolean;
   feedback?: React.ReactNode;
@@ -622,6 +624,7 @@ function VisitScoreKeypad({
   fitOuterRef: React.MutableRefObject<HTMLDivElement | null>;
   fitInnerRef: React.MutableRefObject<HTMLDivElement | null>;
   fitScale: number;
+  hideQuickVisitHint?: boolean;
 }) {
   const [raw, setRaw] = React.useState("");
   const [localError, setLocalError] = React.useState<string | null>(null);

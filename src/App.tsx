@@ -273,6 +273,7 @@ const PetanqueStatsTeamsPage = React.lazy(() => import("./pages/petanque/Petanqu
 const PetanqueStatsLeaderboardsPage = React.lazy(() => import("./pages/petanque/PetanqueStatsLeaderboardsPage"));
 const PetanqueStatsMatchesPage = React.lazy(() => import("./pages/petanque/PetanqueStatsMatchesPage"));
 const PetanqueStatsHistoryPage = React.lazy(() => import("./pages/petanque/PetanqueStatsHistoryPage"));
+const ClosestCenterHistoryDetail = React.lazy(() => import("./pages/ClosestCenterHistoryDetail"));
 
 const PetanqueTournamentsHome = React.lazy(() => import("./pages/petanque/PetanqueTournamentsHome"));
 const PetanqueTournamentCreate = React.lazy(() => import("./pages/petanque/PetanqueTournamentCreate"));
@@ -1225,6 +1226,7 @@ type Tab =
   | "petanque_stats_leaderboards"
   | "petanque_stats_matches"
   | "petanque_stats_history"
+  | "closest_center_history_detail"
   | "petanque_tournaments"
   | "petanque_tournament_create"
   | "petanque_tournament_view"
@@ -7334,6 +7336,10 @@ case "babyfoot_team_edit":
       case "closest_center_config":
         page = <ClosestCenterConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
+      case "closest_center_history_detail":
+        page = <ClosestCenterHistoryDetail store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+
       case "closest_center_play":
         page = (
           <ClosestCenterPlay
