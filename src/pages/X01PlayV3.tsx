@@ -1419,20 +1419,26 @@ function QuickPartyScoreboard({
   };
 
   const activeCard = cards.find((c: any) => c.active);
+  const activeCardIndex = Math.max(0, cards.findIndex((c: any) => c.id === activeCard?.id));
+  const activeAccent = colorFor(activeCardIndex);
   const isDuelLike = cards.length === 2;
 
   return (
     <div style={{ display: "grid", gap: 8 }}>
       <div
         style={{
+          minHeight: 24,
+          display: "grid",
+          placeItems: "center",
           textAlign: "center",
-          fontSize: 9,
-          fontWeight: 950,
-          letterSpacing: 0.9,
-          color: "rgba(255,255,255,.52)",
+          fontSize: 14,
+          fontWeight: 1000,
+          letterSpacing: 0.35,
+          color: activeCard ? activeAccent : "#fff",
+          textShadow: "0 2px 12px rgba(0,0,0,.55)",
         }}
       >
-        ⚡ {fr ? "PARTIE RAPIDE" : "QUICK GAME"} · X01
+        {activeCard ? `${String(activeCard.name || "").toUpperCase()} · ${fr ? "À TOI DE JOUER !" : "YOUR TURN!"}` : ""}
       </div>
 
       <div
@@ -1451,6 +1457,14 @@ function QuickPartyScoreboard({
       >
         {cards.map((card: any, index: number) => {
           const accent = colorFor(index);
+          const cardIsActive = !!card.active;
+          const cardBg = cardIsActive
+            ? `linear-gradient(145deg, color-mix(in srgb, ${accent} 28%, white 72%) 0%, color-mix(in srgb, ${accent} 46%, white 54%) 100%)`
+            : `linear-gradient(145deg, color-mix(in srgb, ${accent} 42%, #0b1017 58%) 0%, color-mix(in srgb, ${accent} 22%, #04070c 78%) 100%)`;
+          const bodyTextColor = cardIsActive ? "#ffffff" : "rgba(255,255,255,.96)";
+          const metaTextColor = cardIsActive ? "rgba(12,20,28,.82)" : "rgba(255,255,255,.72)";
+          const chipBg = cardIsActive ? "rgba(10,18,25,.74)" : "rgba(4,7,10,.82)";
+          const badgeBorder = cardIsActive ? "1px solid rgba(255,255,255,.26)" : "1px solid rgba(255,255,255,.12)";
           return (
             <div
               key={card.id}
@@ -1459,16 +1473,17 @@ function QuickPartyScoreboard({
                 minWidth: 0,
                 minHeight: isDuelLike ? 184 : 154,
                 borderRadius: isDuelLike ? 0 : 18,
-                border: card.active
+                border: cardIsActive
                   ? `2px solid color-mix(in srgb, ${accent} 78%, white 22%)`
                   : `1px solid color-mix(in srgb, ${accent} 42%, rgba(255,255,255,.10) 58%)`,
-                background: `linear-gradient(145deg, color-mix(in srgb, ${accent} 78%, #111820 22%) 0%, color-mix(in srgb, ${accent} 54%, #070b10 46%) 100%)`,
-                boxShadow: card.active
-                  ? `inset 0 0 0 1px rgba(255,255,255,.12), 0 0 26px color-mix(in srgb, ${accent} 38%, transparent 62%)`
+                background: cardBg,
+                boxShadow: cardIsActive
+                  ? `inset 0 0 0 1px rgba(255,255,255,.18), 0 0 26px color-mix(in srgb, ${accent} 38%, transparent 62%)`
                   : "inset 0 0 0 1px rgba(255,255,255,.055)",
                 padding: isDuelLike ? "13px 13px 12px" : "10px 9px",
-                color: "#fff",
+                color: bodyTextColor,
                 overflow: "hidden",
+                transition: "background .2s ease, border-color .2s ease, box-shadow .2s ease",
               }}
             >
               <div
@@ -1490,8 +1505,8 @@ function QuickPartyScoreboard({
                       height: 9,
                       flex: "0 0 auto",
                       borderRadius: 999,
-                      background: card.active ? "#fff" : "rgba(0,0,0,.45)",
-                      boxShadow: card.active ? `0 0 12px #fff, 0 0 18px ${accent}` : "none",
+                      background: cardIsActive ? "#fff" : "rgba(255,255,255,.28)",
+                      boxShadow: cardIsActive ? `0 0 12px #fff, 0 0 18px ${accent}` : "none",
                     }}
                   />
                   <div
@@ -1502,8 +1517,8 @@ function QuickPartyScoreboard({
                       borderRadius: "50%",
                       display: "grid",
                       placeItems: "center",
-                      background: "rgba(5,8,12,.34)",
-                      border: "2px solid rgba(255,255,255,.34)",
+                      background: cardIsActive ? "rgba(10,18,25,.30)" : "rgba(5,8,12,.40)",
+                      border: cardIsActive ? "2px solid rgba(255,255,255,.40)" : "2px solid rgba(255,255,255,.22)",
                       boxShadow: "0 4px 12px rgba(0,0,0,.24)",
                       fontSize: 12,
                       fontWeight: 1000,
@@ -1527,8 +1542,8 @@ function QuickPartyScoreboard({
                       borderRadius: 9,
                       display: "grid",
                       placeItems: "center",
-                      background: "rgba(4,7,10,.68)",
-                      border: "1px solid rgba(255,255,255,.13)",
+                      background: chipBg,
+                      border: badgeBorder,
                       fontWeight: 1000,
                       fontSize: 12,
                       color: "#fff",
@@ -1547,7 +1562,7 @@ function QuickPartyScoreboard({
                       fontWeight: 1000,
                       letterSpacing: -3,
                       fontVariantNumeric: "tabular-nums",
-                      textShadow: "0 4px 18px rgba(0,0,0,.34)",
+                      textShadow: cardIsActive ? "0 4px 18px rgba(0,0,0,.26)" : "0 4px 18px rgba(0,0,0,.40)",
                     }}
                   >
                     {card.score}
@@ -1557,15 +1572,15 @@ function QuickPartyScoreboard({
                 <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "end" }}>
                   <div style={{ display: "grid", gap: 2.5, minWidth: 0, fontSize: isDuelLike ? 10.5 : 8.5, fontWeight: 850 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 7 }}>
-                      <span style={{ color: "rgba(8,12,16,.76)", fontWeight: 1000 }}>{fr ? "AVG 3" : "3-DART AVG"}</span>
+                      <span style={{ color: metaTextColor, fontWeight: 1000 }}>{fr ? "AVG 3" : "3-DART AVG"}</span>
                       <b>{Number(card.avg3 || 0).toFixed(2)}</b>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 7 }}>
-                      <span style={{ color: "rgba(8,12,16,.76)", fontWeight: 1000 }}>{fr ? "DERNIÈRE" : "LAST SCORE"}</span>
+                      <span style={{ color: metaTextColor, fontWeight: 1000 }}>{fr ? "DERNIÈRE" : "LAST SCORE"}</span>
                       <b>{card.lastScore == null ? "–" : card.lastScore}</b>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 7 }}>
-                      <span style={{ color: "rgba(8,12,16,.76)", fontWeight: 1000 }}>{fr ? "FLÉCHETTES" : "DARTS"}</span>
+                      <span style={{ color: metaTextColor, fontWeight: 1000 }}>{fr ? "FLÉCHETTES" : "DARTS"}</span>
                       <b>{card.darts || 0}</b>
                     </div>
                   </div>
@@ -1573,8 +1588,8 @@ function QuickPartyScoreboard({
                     style={{
                       padding: "5px 7px",
                       borderRadius: 8,
-                      background: "rgba(4,7,10,.60)",
-                      border: "1px solid rgba(255,255,255,.12)",
+                      background: chipBg,
+                      border: badgeBorder,
                       fontSize: 8.5,
                       fontWeight: 1000,
                       whiteSpace: "nowrap",
@@ -1589,20 +1604,6 @@ function QuickPartyScoreboard({
         })}
       </div>
 
-      <div
-        style={{
-          minHeight: 25,
-          display: "grid",
-          placeItems: "center",
-          fontSize: 13,
-          fontWeight: 1000,
-          letterSpacing: 0.35,
-          color: activeCard ? colorFor(Math.max(0, cards.findIndex((c: any) => c.id === activeCard.id))) : "#fff",
-          textShadow: "0 2px 12px rgba(0,0,0,.55)",
-        }}
-      >
-        {activeCard ? `${String(activeCard.name || "").toUpperCase()} · ${fr ? "À TOI DE JOUER !" : "YOUR TURN!"}` : ""}
-      </div>
     </div>
   );
 }
@@ -2850,7 +2851,7 @@ const isBotTurn = React.useMemo(() => {
     );
 
   // Ticker X01 plein cadre uniquement pour le multi individuel et le BO1 simple (1 set / 1 leg).
-  const showFullX01TickerHeader = (!isTeamsMode && players.length >= 3) || !useSetsUi;
+  const showFullX01TickerHeader = (!isTeamsMode && players.length >= 3) || !useSetsUi; // dès qu’un vrai BO/FT sets/legs > 1 est actif, on remplace le ticker par le scoreboard compact type arcade.
 
 const teamsView = React.useMemo(() => {
   if (!isTeamsMode) return null;
@@ -6224,6 +6225,7 @@ if (false && isLandscapeTablet) {
                       hideSwitcher={!isQuickParty}
                       hideTabs={!isQuickParty}
                       switcherMode={isQuickParty ? "inline" : "hidden"}
+                      hideQuickVisitHint={isQuickParty}
                     />
                     )}
                   </div>
@@ -6725,6 +6727,7 @@ if (false && isLandscapeTablet) {
               hideSwitcher={!isQuickParty}
               hideTabs={!isQuickParty}
               switcherMode={isQuickParty ? "inline" : "hidden"}
+              hideQuickVisitHint={isQuickParty}
               fitToParent
             />
             )}

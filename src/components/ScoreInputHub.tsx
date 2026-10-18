@@ -163,6 +163,8 @@ type Props = {
   fitMinScale?: number;
   /** Afficher le sélecteur en overlay (compat ancienne API). */
   switcherOverlay?: boolean;
+  /** Masquer le texte d’aide sous le keypad score de volée. */
+  hideQuickVisitHint?: boolean;
 };
 
 function safeReadDevModeEnabled(): boolean {
@@ -265,6 +267,7 @@ export default function ScoreInputHub({
   fitToParent = false,
   fitMinScale = 0.42,
   switcherOverlay: _switcherOverlay = false,
+  hideQuickVisitHint = false,
 }: Props) {
   const devEnabled = safeReadDevModeEnabled();
   const configuredMethod = preferredMethod ? sanitizeScoreInputMethod(preferredMethod, { allowVisitScore }) : null;
@@ -822,11 +825,11 @@ function VisitScoreKeypad({
             <div style={{ marginTop: compactFit ? 8 : 10, borderRadius: 14, padding: compactFit ? "7px 9px" : "8px 10px", border: "1px solid rgba(255,204,102,.34)", background: "rgba(255,174,0,.08)", color: "#ffcc66", fontSize: compactFit ? 10.8 : 11.5, fontWeight: 850, lineHeight: 1.25 }}>
               {localError || feedback}
             </div>
-          ) : (
+          ) : !hideQuickVisitHint ? (
             <div style={{ marginTop: compactFit ? 8 : 10, color: "rgba(255,255,255,.54)", fontSize: compactFit ? 10.8 : 11.5, fontWeight: 750, textAlign: "center" }}>
               Saisie rapide du score total : aucun détail S/D/T ne sera affiché pour cette partie.
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>
