@@ -1,5 +1,5 @@
 import { registerPlugin } from "@capacitor/core";
-import { apiDelete, apiGet, apiPost, buildApiUrl, ensureAccountBackendAccessToken } from "./apiClient";
+import { apiDelete, apiGet, apiGetBytes, apiPost, buildApiUrl, ensureAccountBackendAccessToken } from "./apiClient";
 import { getRuntimePlatform } from "./nativePlatform";
 
 export type PersonalCloudProvider = "google_drive" | "onedrive" | "dropbox";
@@ -381,7 +381,7 @@ export async function uploadPersonalCloudSnapshot(
     } catch (rawError: any) {
       const rawStatus = Number(rawError?.status || rawError?.statusCode || 0);
       const canFallback = rawError?.code === "raw_drive_unsupported" || rawError?.code === "drive_job_lost" || rawError?.code === "drive_job_timeout" ||
-        [0, 404, 405, 408, 409, 415, 429, 500, 502, 503, 504].includes(rawStatus);
+        [0, 401, 404, 405, 408, 409, 415, 429, 500, 502, 503, 504].includes(rawStatus);
       if (!canFallback) throw rawError;
       console.warn("[personalCloud] Drive raw job indisponible, fallback JSON", rawError);
     }

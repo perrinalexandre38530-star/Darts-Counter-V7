@@ -19,7 +19,7 @@ let __authBootstrapPromise: Promise<void> | null = null;
 // - garde TOUTE la logique existante
 // ============================================================
 
-import { supabase, __SUPABASE_ENV__ } from "./supabaseClient";
+import { supabase, __SUPABASE_ENV__, isSupabaseRestCircuitOpen, isSupabaseTransientUnavailableError } from "./supabaseClient";
 import {
   clearSupabaseBrowserAuthStorage,
   decodeJwtPayloadUnsafe,
@@ -911,6 +911,7 @@ async function ensureAuthedUser() {
 }
 
 async function getOrCreateProfile(userId: string, fallbackNickname: string, authUser?: any): Promise<OnlineProfile | null> {
+  if (isSupabaseRestCircuitOpen()) return null;
   const PROFILES_TABLE = await resolveProfilesTable();
 
   const { data: profileRow, error: selErr } = await supabase
@@ -921,7 +922,7 @@ async function getOrCreateProfile(userId: string, fallbackNickname: string, auth
     .maybeSingle();
 
   if (selErr) {
-    console.warn("[onlineApi] profiles select error", selErr);
+    if (!isSupabaseTransientUnavailableError(selErr)) console.warn("[onlineApi] profiles select error", selErr);
     return null;
   }
 

@@ -1,4 +1,4 @@
-import { supabase } from "../lib/supabaseClient";
+import { supabase, isSupabaseRestCircuitOpen, isSupabaseTransientUnavailableError } from "../lib/supabaseClient";
 import { loadTeams, saveTeams, type TeamEntity } from "../lib/petanqueTeamsStore";
 import { teamLogoMediaKey } from "../lib/userMediaFallback";
 
@@ -974,7 +974,7 @@ function cacheOrganizationGroups(userId: string | null | undefined, organization
 
 export async function listOrganizationGroups(userId: string | null | undefined, organizationId: string): Promise<{ groups: OrganizationLocalGroup[]; cloudAvailable: boolean }> {
   const local = listLocalOrganizationGroups(userId, organizationId);
-  if (!userId || !organizationId) return { groups: local, cloudAvailable: false };
+  if (!userId || !organizationId || isSupabaseRestCircuitOpen()) return { groups: local, cloudAvailable: false };
   try {
     const { data, error } = await orgRpc("ms_org_list_groups", { p_org_id: organizationId });
     if (error) throw error;
@@ -982,6 +982,9 @@ export async function listOrganizationGroups(userId: string | null | undefined, 
     cacheOrganizationGroups(userId, organizationId, groups);
     return { groups, cloudAvailable: true };
   } catch (rpcError) {
+    if (isSupabaseTransientUnavailableError(rpcError) || isSupabaseRestCircuitOpen()) {
+      return { groups: local, cloudAvailable: false };
+    }
     try {
       const { data, error } = await supabase
         .from("ms_organization_groups")

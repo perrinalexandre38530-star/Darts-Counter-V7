@@ -2298,9 +2298,28 @@ function SWUpdateBanner() {
 function App() {
   const samsungTvNativeBoot = React.useMemo(() => readSamsungTvNativeAppBoot(), []);
   const isSamsungTvNativeApp = !!samsungTvNativeBoot;
+  const isSamsungTvLocalStore = samsungTvNativeBoot?.storeMode === "local";
   const themePreviewConfig = React.useMemo(() => readThemePreviewConfig(), []);
   const isThemePreviewFrame = themePreviewConfig.enabled;
   const themePreviewTabRef = React.useRef<Tab>(themePreviewConfig.tab);
+  const [isLandscapeViewport, setIsLandscapeViewport] = React.useState(() => {
+    try { return !!window.matchMedia?.("(orientation: landscape)")?.matches; } catch { return false; }
+  });
+
+  React.useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const media = window.matchMedia("(orientation: landscape)");
+    const sync = () => setIsLandscapeViewport(!!media.matches);
+    sync();
+    try {
+      media.addEventListener("change", sync);
+      return () => media.removeEventListener("change", sync);
+    } catch {
+      // Safari / anciennes WebView
+      media.addListener(sync);
+      return () => media.removeListener(sync);
+    }
+  }, []);
 
   // Nettoyage ultra-précoce : avant même le splash/routage, supprimer tout
   // callback OAuth déjà consommé que Chrome/PWA aurait restauré au démarrage.
@@ -2441,7 +2460,10 @@ useEffect(() => {
   }, []);
 
   const [store, setStoreRaw] = React.useState<Store>(() => {
-    if (!samsungTvNativeBoot) return initialStore;
+    // TV autonome : on charge le vrai store local Tizen/IndexedDB exactement
+    // comme l'application. Le seed injecté par le téléphone n'est utilisé que
+    // pour le mode mirror/companion.
+    if (!samsungTvNativeBoot || isSamsungTvLocalStore) return initialStore;
     const tvProfiles = Array.isArray(samsungTvNativeBoot.profiles)
       ? samsungTvNativeBoot.profiles.map((profile: any) => ({
           id: String(profile?.id || ""),
@@ -3319,6 +3341,17 @@ useEffect(() => {
     // On commit la route immédiatement ; Suspense peut afficher son fallback tout de suite.
     commitRouteState();
 
+    // Samsung TV FULL APP : le shell réutilise les vraies routes/composants de
+    // l'application. On publie donc la navigation réelle au conteneur TV au lieu
+    // de maintenir un second menu parallèle.
+    if (isSamsungTvNativeApp) {
+      try {
+        window.dispatchEvent(new CustomEvent("mss:samsung-tv:navigation", {
+          detail: { tab: String(next || ""), params: nextParams ?? null, at: Date.now() },
+        }));
+      } catch {}
+    }
+
     // Deux frames = nouvel écran engagé dans le pipeline de rendu. On libère alors
     // les effets visuels temporairement mis en pause et on garde une mesure de
     // diagnostic uniquement quand le mode diag est activé.
@@ -3778,7 +3811,10 @@ useEffect(() => {
     bootStoreLoadedRef.current = false;
     loadedStoreScopeRef.current = getStorageUser();
 
-    if (isSamsungTvNativeApp && samsungTvNativeBoot) {
+    // En mode mirror, le téléphone injecte profils/réglages et route.
+    // En mode TV autonome, on poursuit le boot normal IndexedDB/localStorage afin
+    // de retrouver exactement les données et menus natifs de l'application.
+    if (isSamsungTvNativeApp && samsungTvNativeBoot && !isSamsungTvLocalStore) {
       const tvProfiles = Array.isArray(samsungTvNativeBoot.profiles)
         ? samsungTvNativeBoot.profiles.map((profile: any) => ({
             id: String(profile?.id || ""),
@@ -3897,7 +3933,13 @@ useEffect(() => {
            isStandalonePublicHash(h);
 
           if (!isAuthFlow && !isThemePreviewFrame) {
-            if (!hasProfiles || !hasActive) {
+            if (isSamsungTvLocalStore) {
+              // TV autonome : accès immédiat au vrai sélecteur SPORTS de l'app,
+              // même avant la création du premier profil. Les profils pourront
+              // ensuite être créés directement depuis la TV.
+              setRouteParams(null);
+              setTab("gameSelect");
+            } else if (!hasProfiles || !hasActive) {
               setRouteParams(null);
               setTab("account_start");
             } else {
@@ -3912,7 +3954,7 @@ useEffect(() => {
           setStore(initialStore);
           if (!isStandalonePublicHash(String(window.location.hash || "")) && !isThemePreviewFrame) {
             setRouteParams(null);
-            setTab("account_start");
+            setTab(isSamsungTvLocalStore ? "gameSelect" : "account_start");
           }
         }
       } finally {
@@ -7571,9 +7613,18 @@ case "babyfoot_team_edit":
 
   const isAuthShell = AUTH_SHELL_TABS.has(tab);
   const isStandaloneCompanion = isStandalonePublicHash(String(window.location.hash || "")) || tab === "x01_device_camera" || tab === "public_landing";
-  const appChromeAllowed = !isSamsungTvNativeApp && online?.ready && online.status === "signed_in" && !isAuthShell && !isStandaloneCompanion;
+  // La TV autonome doit afficher le même chrome que l'application : BottomNav
+  // paysage, sélecteur de sport, Awena, thèmes et routes réelles. La session
+  // online reste requise uniquement sur téléphone/web classique.
+  const appChromeAllowed =
+    (isSamsungTvNativeApp || (online?.ready && online.status === "signed_in")) &&
+    !isAuthShell &&
+    !isStandaloneCompanion;
   const showSportQuickSwitch = SPORT_QUICK_SWITCH_ALLOWED_TABS.has(tab) && appChromeAllowed;
-  const landscapeHeaderDocked = LANDSCAPE_HEADER_DOCK_TABS.has(tab) || isGameConfigRoute;
+  const landscapeHeaderDocked = LANDSCAPE_HEADER_DOCK_TABS.has(tab) || isGameConfigRoute || (isGamePlayRoute && isLandscapeViewport);
+  // Règle paysage globale : la BottomNav devient une rail verticale, y compris pendant PLAY.
+  // En portrait on conserve le plein écran historique des gameplays.
+  const showBottomNav = appChromeAllowed && (!HIDE_BOTTOM_NAV_TABS.has(tab) || (isGamePlayRoute && isLandscapeViewport));
 
 
   return (
@@ -7633,12 +7684,12 @@ case "babyfoot_team_edit":
             sport={String(activeSport || "")}
             go={go}
             landscapeHeaderDocked={landscapeHeaderDocked}
-            inGame={HIDE_BOTTOM_NAV_TABS.has(tab) && tab !== "gameSelect" && tab !== "x01_device_camera"}
+            inGame={!showBottomNav && HIDE_BOTTOM_NAV_TABS.has(tab) && tab !== "gameSelect" && tab !== "x01_device_camera"}
           />
         )}
 
         {/* Navigation totalement absente tant qu'aucune session n'est active. */}
-        {appChromeAllowed && !HIDE_BOTTOM_NAV_TABS.has(tab) && (
+        {showBottomNav && (
           <BottomNav
             value={tab as any}
             onChange={(k: any) => go(k, organizationMode ? { organizationId: activeOrganizationId, workspaceMode: true } : undefined)}

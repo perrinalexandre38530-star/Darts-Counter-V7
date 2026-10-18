@@ -11,7 +11,7 @@
 //   et polling de secours comme pour le profil du compte.
 // ============================================================
 
-import { supabase } from "./supabaseClient";
+import { supabase, isSupabaseRestCircuitOpen, isSupabaseTransientUnavailableError, supabaseRestRetryAfterMs } from "./supabaseClient";
 import { History, ACCOUNT_HISTORY_LOCAL_CHANGE_EVENT, type SavedMatch } from "./history";
 import { loadBots, restoreBotsFromSnapshot } from "./bots";
 import { isOfficialBotId } from "./officialBots";
@@ -667,7 +667,20 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
   let stopped = false;
   let remoteApplyDepth = 0;
   let tableUnavailable = false;
+  let remotePausedUntil = 0;
+  let lastTransientNoticeAt = 0;
   let pollTimer: number | null = null;
+
+  const remotePaused = () => Date.now() < remotePausedUntil || isSupabaseRestCircuitOpen();
+  const pauseRemote = (error: any, action: string) => {
+    const retryMs = Math.max(20_000, supabaseRestRetryAfterMs() || 0);
+    remotePausedUntil = Math.max(remotePausedUntil, Date.now() + retryMs);
+    emitStatus({ state: "cloud-paused", action, retryAt: remotePausedUntil, error: String(error?.message || error || "Supabase indisponible") });
+    if (Date.now() - lastTransientNoticeAt > 30_000) {
+      lastTransientNoticeAt = Date.now();
+      console.warn(`[account-sync] Supabase indisponible : synchro suspendue ${Math.ceil(retryMs / 1000)}s`, { action, code: error?.code || null });
+    }
+  };
   let channel: any = null;
   let statsNamespaceReady = false;
   const localTimers = new Map<string, number>();
@@ -719,12 +732,16 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
       emitStatus({ state: "migration-required", action, error: msg });
       return;
     }
+    if (isSupabaseTransientUnavailableError(error)) {
+      pauseRemote(error, action);
+      return;
+    }
     console.warn(`[account-sync] ${action} failed`, error);
     emitStatus({ state: "error", action, error: msg });
   };
 
   const fetchDocument = async (type: DocumentType, id = DEFAULT_DOCUMENT_ID): Promise<SyncRow | null> => {
-    if (stopped || tableUnavailable) return null;
+    if (stopped || tableUnavailable || remotePaused()) return null;
     const { data, error } = await supabase
       .from(TABLE)
       .select("owner_user_id,document_type,document_id,payload,client_updated_at,deleted_at,created_at,updated_at")
@@ -740,7 +757,7 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
   };
 
   const pushDocument = async (type: DocumentType, payload: any, id = DEFAULT_DOCUMENT_ID, explicitTs?: number): Promise<boolean> => {
-    if (stopped || tableUnavailable || remoteApplyDepth > 0) return false;
+    if (stopped || tableUnavailable || remotePaused() || remoteApplyDepth > 0) return false;
     const ts = Math.max(Date.now(), Number(explicitTs || 0) || 0);
     const safePayload = cloudSafe(payload);
     const row = {
@@ -765,7 +782,7 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
   };
 
   const softDeleteHistory = async (id: string, explicitTs?: number): Promise<boolean> => {
-    if (stopped || tableUnavailable || remoteApplyDepth > 0) return false;
+    if (stopped || tableUnavailable || remotePaused() || remoteApplyDepth > 0) return false;
     const matchId = cleanId(id);
     if (!matchId) return false;
     const ts = Math.max(Date.now(), Number(explicitTs || 0) || 0);
@@ -901,10 +918,10 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     getLocal: () => any[] | Promise<any[]>,
     applyMerged: (payload: any[]) => void | Promise<void>,
   ) => {
-    if (stopped || tableUnavailable) return;
+    if (stopped || tableUnavailable || remotePaused()) return;
     const localPayload = await getLocal();
     const remote = await fetchDocument(type);
-    if (stopped || tableUnavailable) return;
+    if (stopped || tableUnavailable || remotePaused()) return;
     if (!remote) {
       await pushDocument(type, localPayload);
       return;
@@ -936,7 +953,7 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     applyRemote: (payload: any) => void | Promise<void>,
     localTimestamp = 0,
   ) => {
-    if (stopped || tableUnavailable) return;
+    if (stopped || tableUnavailable || remotePaused()) return;
     const remote = await fetchDocument(type);
     if (!remote) {
       await pushDocument(type, localPayload, DEFAULT_DOCUMENT_ID, localTimestamp || Date.now());
@@ -1015,7 +1032,7 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
   };
 
   const scheduleLocalPush = (key: string, fn: () => Promise<any>, delay = LOCAL_DEBOUNCE_MS) => {
-    if (stopped || remoteApplyDepth > 0 || tableUnavailable) return;
+    if (stopped || remoteApplyDepth > 0 || tableUnavailable || remotePaused()) return;
     const existing = localTimers.get(key);
     if (existing != null) window.clearTimeout(existing);
     const timer = window.setTimeout(() => {
@@ -1030,7 +1047,7 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     const out: SyncRow[] = [];
     let from = 0;
     const pageSize = 250;
-    while (!stopped && !tableUnavailable) {
+    while (!stopped && !tableUnavailable && !remotePaused()) {
       const { data, error } = await supabase
         .from(TABLE)
         .select("owner_user_id,document_type,document_id,payload,client_updated_at,deleted_at,created_at,updated_at")
@@ -1059,7 +1076,7 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     let written = 0;
     const failedIds: string[] = [];
     for (let i = 0; i < rows.length; i += HISTORY_BATCH_SIZE) {
-      if (stopped || tableUnavailable) break;
+      if (stopped || tableUnavailable || remotePaused()) break;
       const batch = rows.slice(i, i + HISTORY_BATCH_SIZE);
       for (const row of batch) markOutbound(DOC.historyMatch, cleanId(row?.document_id), Number(row?.client_updated_at || 0));
       const { error } = await supabase.from(TABLE).upsert(batch as any, { onConflict: "owner_user_id,document_type,document_id" });
@@ -1067,8 +1084,13 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
         written += batch.length;
         for (const row of batch) setRevision(DOC.historyMatch, row.document_id, row.client_updated_at);
       } else {
-        // Un seul match trop volumineux / invalide ne doit jamais bloquer les 23
-        // autres lignes du lot. On rejoue donc le lot ligne par ligne.
+        if (isSupabaseTransientUnavailableError(error)) {
+          for (const row of batch) clearOutbound(DOC.historyMatch, cleanId(row?.document_id), Number(row?.client_updated_at || 0));
+          noteSupabaseError(error, `${action}:batch`);
+          break;
+        }
+        // Une ligne invalide ne doit pas bloquer les autres, mais ce fallback
+        // n'est jamais execute pendant une panne Supabase globale.
         console.warn(`[account-sync] ${action} batch failed; retrying row by row`, error);
         for (const row of batch) {
           const id = cleanId(row?.document_id);
@@ -1091,9 +1113,9 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
   };
 
   const bootstrapHistory = async () => {
-    if (stopped || tableUnavailable) return;
+    if (stopped || tableUnavailable || remotePaused()) return;
     const remoteRows = await fetchAllHistoryRows();
-    if (stopped || tableUnavailable) return;
+    if (stopped || tableUnavailable || remotePaused()) return;
     const remoteById = new Map(remoteRows.map((row) => [cleanId(row.document_id), row]));
 
     // 1) Matérialiser d'abord ce que le compte possède déjà dans le cloud.
@@ -1143,7 +1165,7 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
   };
 
   const refreshRemoteDocuments = async () => {
-    if (stopped || tableUnavailable) return;
+    if (stopped || tableUnavailable || remotePaused()) return;
     const { data, error } = await supabase
       .from(TABLE)
       .select("owner_user_id,document_type,document_id,payload,client_updated_at,deleted_at,created_at,updated_at")
@@ -1186,7 +1208,7 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     await syncScalarDocument(DOC.statsSources, { values: statsValues }, applyStatsSourcesPayload);
     await syncScalarDocument(DOC.organizationWorkspace, loadOrganizationWorkspace(userId), applyOrganizationWorkspacePayload);
 
-    if (!tableUnavailable) {
+    if (!tableUnavailable && !remotePaused()) {
       emitStatus({ state: "ready", userId });
       // L'historique peut être volumineux : il arrive après les objets UI rapides.
       window.setTimeout(() => { void bootstrapHistory().catch((error) => console.warn("[account-sync] history bootstrap failed", error)); }, 900);
@@ -1291,7 +1313,7 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
   };
 
   const forcePushAllLocalToAccount = async (reason = "manual") => {
-    if (stopped || tableUnavailable || remoteApplyDepth > 0) return;
+    if (stopped || tableUnavailable || remotePaused() || remoteApplyDepth > 0) return;
     emitStatus({ state: "force-sync", direction: "up", userId, reason });
 
     // D'abord sceller toutes les images restaurées/créées dans le petit coffre
@@ -1337,7 +1359,7 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
   };
 
   const onAccountMediaSynced = (event: Event) => {
-    if (stopped || tableUnavailable || remoteApplyDepth > 0) return;
+    if (stopped || tableUnavailable || remotePaused() || remoteApplyDepth > 0) return;
     const kind = cleanId((event as CustomEvent)?.detail?.kind).toLowerCase();
     // Un média arrive parfois quelques centaines de ms après la métadonnée.
     // On repousse donc le document léger afin que l'autre appareil retente
@@ -1362,7 +1384,7 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     if (key === "*" || isStatsSourceKey(key)) scheduleLocalPush(DOC.statsSources, pushStatsSources, 700);
   };
   const onHistoryChanged = (event: Event) => {
-    if (remoteApplyDepth > 0 || tableUnavailable) return;
+    if (remoteApplyDepth > 0 || tableUnavailable || remotePaused()) return;
     const detail: any = (event as CustomEvent)?.detail || {};
     if (detail.op === "upsert" && detail.record) {
       const record: SavedMatch = detail.record;
@@ -1399,7 +1421,7 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
   };
 
   const onFocusOrOnline = () => {
-    if (stopped || document.visibilityState === "hidden") return;
+    if (stopped || remotePaused() || document.visibilityState === "hidden") return;
     void refreshRemoteDocuments();
   };
   const onVisibility = () => {
@@ -1463,7 +1485,7 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
   }
 
   pollTimer = window.setInterval(() => {
-    if (stopped || document.visibilityState === "hidden") return;
+    if (stopped || remotePaused() || document.visibilityState === "hidden") return;
     void refreshRemoteDocuments();
   }, POLL_MS);
 

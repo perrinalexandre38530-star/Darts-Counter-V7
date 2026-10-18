@@ -13,6 +13,7 @@ type Props = {
   boot: SamsungTvNativeAppBoot;
   snapshot?: ViewerLiveSnapshot | null;
   onExit: () => void;
+  onNavigate?: (tab: string, params?: any) => void;
 };
 
 const FOCUSABLE_SELECTOR = [
@@ -87,6 +88,22 @@ function RemoteFocusBridge({ onExit }: { onExit: () => void }) {
       if (back) {
         event.preventDefault();
         event.stopPropagation();
+
+        // Réutiliser le vrai bouton Retour de l'application quand il existe.
+        // Ainsi la télécommande suit exactement la navigation mobile/tablette
+        // au lieu de sortir brutalement vers un second menu TV.
+        const backCandidates = Array.from(document.querySelectorAll<HTMLElement>(
+          '[data-mss-protected-control][aria-label], [role="button"][aria-label], [title]'
+        )).filter(visible);
+        const backControl = backCandidates.find((el) => {
+          const label = `${el.getAttribute("aria-label") || ""} ${el.getAttribute("title") || ""}`.toLowerCase();
+          return label.includes("retour") || label.includes("back");
+        }) || null;
+        if (backControl) {
+          try { backControl.click(); } catch {}
+          return;
+        }
+
         onExit();
         return;
       }
@@ -96,6 +113,13 @@ function RemoteFocusBridge({ onExit }: { onExit: () => void }) {
       if (!items.length) return;
       let active = document.activeElement as HTMLElement | null;
       if (!active || !items.includes(active)) active = lastFocusedRef.current && items.includes(lastFocusedRef.current) ? lastFocusedRef.current : items[0];
+
+      // Le sélecteur de sports de l'application possède déjà sa propre navigation
+      // gauche/droite. On la laisse vivre telle quelle lorsqu'un contrôle du
+      // sélecteur a le focus, au lieu de superposer une seconde logique TV.
+      if ((key === "ArrowLeft" || key === "ArrowRight") && active?.closest?.(".msc-game-select-page")) {
+        return;
+      }
 
       if (key === "Enter") {
         if (!active) return;
@@ -193,7 +217,7 @@ function X01TurnMirrorBridge({ snapshot, enabled }: { snapshot?: ViewerLiveSnaps
   return null;
 }
 
-export default function SamsungTvSharedAppHost({ boot, snapshot, onExit }: Props) {
+export default function SamsungTvSharedAppHost({ boot, snapshot, onExit, onNavigate }: Props) {
   // Le boot doit être publié AVANT le premier render de AppRoot. Un useEffect/useLayoutEffect
   // serait trop tard : le vrai App lirait alors un boot null et retomberait sur GameSelect/Auth.
   setSamsungTvNativeAppBoot(boot);
@@ -210,6 +234,18 @@ export default function SamsungTvSharedAppHost({ boot, snapshot, onExit }: Props
       delete document.body.dataset.mssSamsungTvSharedApp;
     };
   }, [boot]);
+
+  React.useEffect(() => {
+    if (!onNavigate) return;
+    const handleNavigation = (event: Event) => {
+      const detail = (event as CustomEvent)?.detail || {};
+      const tab = String(detail?.tab || "");
+      if (!tab) return;
+      onNavigate(tab, detail?.params);
+    };
+    window.addEventListener("mss:samsung-tv:navigation", handleNavigation as EventListener);
+    return () => window.removeEventListener("mss:samsung-tv:navigation", handleNavigation as EventListener);
+  }, [onNavigate]);
 
   return (
     <div className="mss-tv-shared-app-host">

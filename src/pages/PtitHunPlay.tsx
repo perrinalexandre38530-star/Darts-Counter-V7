@@ -195,6 +195,7 @@ function ptit1TokenMeta(raw: any, accent = ACCENT) {
 }
 
 function Ptit1LiveTargetBoard({ rules, targets = [], score, currentThrow = [] }: any) {
+  const compact = typeof window !== "undefined" ? window.innerWidth < 560 : false;
   const oneIndex = PTIT1_BOARD_ORDER.indexOf(1);
   const oneStart = oneIndex * 18 - 9;
   const oneEnd = oneStart + 18;
@@ -206,8 +207,8 @@ function Ptit1LiveTargetBoard({ rules, targets = [], score, currentThrow = [] }:
   ];
   const hitTokens = (currentThrow || []).slice(0,3).map((d:any, i:number) => ({ ...ptit1TokenMeta(d), key: i }));
   return <div style={{ minHeight: 0, display: "grid", gap: 8 }}>
-    <div style={{ borderRadius: 18, border: `1px solid ${ACCENT}44`, background: "radial-gradient(circle at 50% 12%,rgba(255,216,77,.16),transparent 30%), radial-gradient(circle at 50% 68%,rgba(120,243,212,.08),transparent 44%), linear-gradient(180deg,rgba(14,17,24,.98),rgba(5,7,11,.99))", padding: 10 }}>
-      <svg viewBox="0 0 100 100" width="100%" height="100%" style={{ display: "block", maxHeight: 420, margin: "0 auto", filter: "drop-shadow(0 16px 28px rgba(0,0,0,.50))" }}>
+    <div style={{ borderRadius: 18, border: `1px solid ${ACCENT}44`, background: "radial-gradient(circle at 50% 12%,rgba(255,216,77,.16),transparent 30%), radial-gradient(circle at 50% 68%,rgba(120,243,212,.08),transparent 44%), linear-gradient(180deg,rgba(14,17,24,.98),rgba(5,7,11,.99))", padding: compact ? 8 : 10 }}>
+      <svg viewBox="0 0 100 100" width="100%" height="100%" style={{ display: "block", maxHeight: compact ? 270 : 360, margin: "0 auto", filter: "drop-shadow(0 16px 28px rgba(0,0,0,.50))" }}>
         <circle cx="50" cy="50" r="49" fill="#0d1118" stroke="rgba(255,216,77,.18)" strokeWidth="1" />
         {PTIT1_BOARD_ORDER.map((n, idx) => {
           const start = idx * 18 - 9;
@@ -244,16 +245,16 @@ function Ptit1LiveTargetBoard({ rules, targets = [], score, currentThrow = [] }:
         })}
         <circle cx="50" cy="50" r="6.4" fill="rgba(255,111,120,.98)" stroke="#ffe8b6" strokeWidth="1.2" style={{ filter: "drop-shadow(0 0 10px rgba(255,111,120,.45))" }} />
         <circle cx="50" cy="50" r="3.1" fill="rgba(120,243,212,.98)" stroke="#fff" strokeWidth="1" style={{ filter: "drop-shadow(0 0 10px rgba(120,243,212,.62))" }} />
-        <text x="50" y="95" textAnchor="middle" fontSize="5" fill="#d6deea" fontWeight="900">{ptit1Ui("Cible vivante · zones colorées = impacts clés","Live board · coloured zones = key impacts")}</text>
       </svg>
+      <div style={{ marginTop: 6, textAlign: 'center', color: '#d6deea', fontSize: 7.6, fontWeight: 900, lineHeight: 1.35 }}>{ptit1Ui("Cible vivante : zones colorées = impacts clés","Live board: coloured zones = key impacts")}</div>
     </div>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>
+    <div style={{ display: "grid", gridTemplateColumns: compact ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 6 }}>
       {tokenCells.map((item) => <div key={item.label} style={{ minWidth: 0, borderRadius: 12, padding: "7px 6px", border: `1px solid ${item.color}44`, background: `${item.color}10`, textAlign: "center" }}><div style={{ color: item.color, fontSize: 7.2, fontWeight: 1100, letterSpacing: .4 }}>{item.label}</div><div style={{ color: "#fff", marginTop: 2, fontSize: 7.6, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.hint}</div></div>)}
     </div>
     {hitTokens.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
       {Array.from({ length: 3 }).map((_, i) => {
         const token:any = hitTokens[i];
-        return <div key={i} style={{ minHeight: 48, borderRadius: 12, border: `1px solid ${token?.border || "rgba(255,255,255,.08)"}`, background: token?.bg || "rgba(255,255,255,.03)", display: "grid", placeItems: "center", color: token?.color || "#7a8496", fontWeight: 1100, position: "relative" }}>
+        return <div key={i} style={{ minHeight: 46, borderRadius: 12, border: `1px solid ${token?.border || "rgba(255,255,255,.08)"}`, background: token?.bg || "rgba(255,255,255,.03)", display: "grid", placeItems: "center", color: token?.color || "#7a8496", fontWeight: 1100, position: "relative" }}>
           {token ? <><span style={{ position: "absolute", top: 6, right: 8, fontSize: 7, opacity: .88 }}>{token.badge}</span><span style={{ fontSize: 12 }}>{token.label}</span></> : <span style={{ fontSize: 8.6 }}>{`${ptit1Ui("FLÉCHETTE","DART")} ${i+1}`}</span>}
         </div>;
       })}
@@ -269,7 +270,9 @@ function PtitHunRiskBoard({ state, playerId, currentThrow, preview }: any) {
   const clean = Number(state.cleanStreak?.[playerId] || 0);
   const jackpotText = rules.jackpotEnabled && state.jackpotTargets?.length ? state.jackpotTargets.map((t: any) => t.label).join(" / ") : "OFF";
   const missLabel = rules.missMode === "add" ? `+${rules.missValue}` : `TOTAL ×${rules.missValue}`;
-  const stack = typeof window !== "undefined" ? window.innerWidth < 760 : false;
+  const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1200;
+  const mobile = viewportWidth < 560;
+  const stack = viewportWidth < 860;
   const objectiveRows = [
     { label: ptit1Ui("OBJECTIF #1","GOAL #1"), title: ptit1Ui("PETIT 1","SMALL 1"), detail: ptit1Ui("C’est la meilleure case du mode : +1 seulement.","This is the best square in the mode: only +1."), color: GREEN },
     { label: ptit1Ui("OBJECTIF #2","GOAL #2"), title: "DBULL", detail: rules.dbullEnabled ? ptit1Ui(`Le ${rules.dbullsForZero}e DBULL cumulé remet le score à 0.`,`Cumulative DBULL #${rules.dbullsForZero} resets the score to 0.`) : ptit1Ui("DBULL simple : +50.","Plain DBULL: +50."), color: BLUE },
@@ -289,12 +292,12 @@ function PtitHunRiskBoard({ state, playerId, currentThrow, preview }: any) {
     { label: ptit1Ui("BOUCLIER DU HUN","HUN SHIELD"), value: shield ? ptit1Ui("ACTIF","ACTIVE") : `${clean}/${rules.cleanVisitsForShield}`, color: GREEN },
   ];
   const previewTag = preview?.jackpotHit ? ptit1Ui("JACKPOT : volée annulée","JACKPOT: visit cancelled") : preview?.zeroAbsoluteNow ? ptit1Ui("ZÉRO ABSOLU prêt","ABSOLUTE ZERO ready") : preview?.shieldUnlockedNow ? ptit1Ui("BOUCLIER DÉBLOQUÉ","SHIELD UNLOCKED") : preview?.tripleNul ? ptit1Ui("TRIPLE NUL","TRIPLE ZERO") : preview?.petitOnePerfect ? ptit1Ui("P’TIT 1 PARFAIT","PERFECT P’TIT 1") : "";
-  return <div style={{ height: "100%", minHeight: 0, display: "grid", gap: 10, gridTemplateRows: "auto minmax(0,1fr) auto" }}>
-    <section style={{ display: "grid", gridTemplateColumns: stack ? "1fr" : "repeat(4,minmax(0,1fr))", gap: 7 }}>
+  return <div style={{ height: "100%", minHeight: 0, display: "grid", gap: 10, gridTemplateRows: "auto auto auto" }}>
+    <section style={{ display: "grid", gridTemplateColumns: mobile ? "repeat(2,minmax(0,1fr))" : stack ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 7 }}>
       {liveRows.map((item) => <div key={item.label} style={{ minWidth: 0, borderRadius: 14, padding: 10, border: `1px solid ${item.color}55`, background: `${item.color}0f` }}><div style={{ color: item.color, fontSize: 7.8, fontWeight: 1100, letterSpacing: .7 }}>{item.label}</div><div style={{ color: "#fff", fontSize: item.label === "JACKPOT" ? 20 : 24, lineHeight: 1.05, fontWeight: 1100, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.value}</div><div style={{ color: "#929bad", fontSize: 7.6, marginTop: 4 }}>{item.label === ptit1Ui("SCORE ACTUEL","CURRENT SCORE") ? ptit1Ui("Le plus petit score gagne.","Lowest score wins.") : item.label === "JACKPOT" ? ptit1Ui("Double/Triple rouge à éviter immédiatement.","Red Double/Triple to avoid right now.") : item.label === ptit1Ui("ZÉRO ABSOLU","ABSOLUTE ZERO") ? ptit1Ui("Progression centre cumulée.","Cumulative centre progress.") : ptit1Ui("Bonus défensif longue durée.","Long-term defensive bonus.")}</div></div>)}
     </section>
 
-    <section style={{ minHeight: 0, display: "grid", gridTemplateColumns: stack ? "1fr" : "minmax(0,1.05fr) minmax(240px,.95fr)", gap: 10 }}>
+    <section style={{ minHeight: 0, display: "grid", gridTemplateColumns: stack ? "1fr" : "minmax(0,1.02fr) minmax(250px,.98fr)", gap: 10, alignItems: "start" }}>
       <Ptit1LiveTargetBoard rules={rules} targets={state.jackpotTargets || []} score={score} currentThrow={currentThrow} />
       <div style={{ minHeight: 0, display: "grid", gap: 10, alignContent: "start" }}>
         <div style={{ borderRadius: 16, padding: 10, border: `1px solid ${ACCENT}44`, background: "linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02))" }}>
@@ -305,6 +308,7 @@ function PtitHunRiskBoard({ state, playerId, currentThrow, preview }: any) {
           <div style={{ color: RED, fontSize: 8.5, fontWeight: 1100, letterSpacing: .8, marginBottom: 7 }}>{ptit1Ui("RISQUES IMMÉDIATS","IMMEDIATE RISKS")}</div>
           <div style={{ display: "grid", gap: 6 }}>{dangerRows.map((item) => <div key={item.label} style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 7, alignItems: "start", borderRadius: 11, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", padding: "7px 8px" }}><span style={{ color: item.color, fontSize: 8.2, fontWeight: 1100, minWidth: 56 }}>{item.label}</span><span style={{ color: "#dfe6f2", fontSize: 8.1, lineHeight: 1.45 }}>{item.detail}</span></div>)}</div>
         </div>
+        <Ptit1SingleZoneLegend />
       </div>
     </section>
 
@@ -1158,7 +1162,7 @@ export default function PtitHunPlay(props: any) {
     {statsOpen ? <StatsModal items={statsItems} accent={activeColor} subtitle={activePlayer?.name} onClose={() => setStatsOpen(false)} /> : null}
     {logOpen ? <LogModal visits={state.visits} profileById={profileById} colorById={colorById} labelDart={ptit1DisplayDartLabel} title={fr ? "JOURNAL P’TIT 1" : "P’TIT 1 LOG"} onClose={() => setLogOpen(false)} /> : null}
     {rankingOpen ? <RankingModal rows={rankingRows} title={fr ? "CLASSEMENT · LE PLUS NUL D’ABORD" : "RANKING · LOWEST SCORE FIRST"} onClose={() => setRankingOpen(false)} /> : null}
-    {focusOpen ? <FloatingPanel title={fr ? "P’TIT 1 · CIBLE & RISQUES" : "P’TIT 1 · BOARD & RISKS"} subtitle={fr ? "Les détails restent hors de l’écran de jeu" : "Details stay outside the main play screen"} onClose={() => setFocusOpen(false)}><PtitHunRiskBoard state={state} playerId={activePlayer?.id} currentThrow={currentThrow} preview={preview} /><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 9 }}><figure style={{ margin: 0, overflow: "hidden", borderRadius: 12, border: `1px solid ${GREEN}44`, background: "#05070b" }}><img src={ptit1CurrentLang() === "fr" ? smallSingleZoneVisual : smallSingleZoneVisualEn} alt={ptit1CurrentLang() === "fr" ? "Zone de petit simple" : "Small single zone"} style={{ width: "100%", display: "block", aspectRatio: "1/1", objectFit: "contain" }}/><figcaption style={{ padding: "7px 8px", textAlign: "center", color: GREEN, fontSize: 8, fontWeight: 1000, letterSpacing: .6 }}>{ptit1CurrentLang() === "fr" ? "PETIT SIMPLE" : "SMALL SINGLE"}</figcaption></figure><figure style={{ margin: 0, overflow: "hidden", borderRadius: 12, border: `1px solid ${ACCENT}44`, background: "#05070b" }}><img src={ptit1CurrentLang() === "fr" ? bigSingleZoneVisual : bigSingleZoneVisualEn} alt={ptit1CurrentLang() === "fr" ? "Zone de gros simple" : "Large single zone"} style={{ width: "100%", display: "block", aspectRatio: "1/1", objectFit: "contain" }}/><figcaption style={{ padding: "7px 8px", textAlign: "center", color: ACCENT, fontSize: 8, fontWeight: 1000, letterSpacing: .6 }}>{ptit1CurrentLang() === "fr" ? "GROS SIMPLE" : "LARGE SINGLE"}</figcaption></figure></div></FloatingPanel> : null}
+    {focusOpen ? <FloatingPanel title={fr ? "P’TIT 1 · CIBLE & RISQUES" : "P’TIT 1 · BOARD & RISKS"} subtitle={fr ? "Lecture claire des objectifs, risques et zones utiles" : "Clear read of goals, risks and key zones"} onClose={() => setFocusOpen(false)}><PtitHunRiskBoard state={state} playerId={activePlayer?.id} currentThrow={currentThrow} preview={preview} /></FloatingPanel> : null}
     {zeroOpen ? <Ptit1BonusModal kind="zero" state={state} playerId={activePlayer?.id} onClose={() => setZeroOpen(false)} /> : null}
     {shieldOpen ? <Ptit1BonusModal kind="shield" state={state} playerId={activePlayer?.id} onClose={() => setShieldOpen(false)} /> : null}
     {specialOpen ? <Ptit1SpecialZonesModal onClose={() => setSpecialOpen(false)} onPick={addSpecialZone} accent={activeColor} /> : null}

@@ -15,7 +15,7 @@
 
 import * as React from "react";
 import type { Session, User } from "@supabase/supabase-js";
-import { supabase } from "../lib/supabaseClient";
+import { supabase, isSupabaseRestCircuitOpen, isSupabaseTransientUnavailableError } from "../lib/supabaseClient";
 import { setStorageUser } from "../lib/storage";
 import { onlineApi, type UpdateProfilePayload } from "../lib/onlineApi";
 import { isNasProviderEnabled, isSupabaseHardDisabledInNasMode } from "../lib/serverConfig";
@@ -448,7 +448,7 @@ function mapSupabaseAccountProfileRow(row: any, user: User): OnlineProfile {
  */
 async function loadSupabaseAccountProfile(user: User): Promise<OnlineProfile | null> {
   const userId = String(user?.id || "").trim();
-  if (!userId || isSupabaseHardDisabledInNasMode()) return null;
+  if (!userId || isSupabaseHardDisabledInNasMode() || isSupabaseRestCircuitOpen()) return null;
 
   try {
     let result = await supabase
@@ -478,11 +478,13 @@ async function loadSupabaseAccountProfile(user: User): Promise<OnlineProfile | n
       }
     }
 
-    if (result.error) {
+    if (result.error && !isSupabaseTransientUnavailableError(result.error)) {
       console.warn("[useAuthOnline] direct Supabase profile read failed", result.error);
     }
   } catch (error) {
-    console.warn("[useAuthOnline] direct Supabase profile read failed", error);
+    if (!isSupabaseTransientUnavailableError(error)) {
+      console.warn("[useAuthOnline] direct Supabase profile read failed", error);
+    }
   }
   return null;
 }
@@ -500,6 +502,7 @@ async function safeLoadProfileBestEffort(user: User): Promise<OnlineProfile | nu
       // tout nouvel appareil, même si le cache local/NAS est ancien ou vide.
       const direct = await loadSupabaseAccountProfile(user);
       if (direct) return direct;
+      if (isSupabaseRestCircuitOpen()) return null;
 
       const api: any = onlineApi as any;
 
@@ -1087,9 +1090,11 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     };
 
     const refreshProfile = () => {
-      if (disposed) return;
+      if (disposed || isSupabaseRestCircuitOpen()) return;
       void safeLoadProfileBestEffort(user).then(commit).catch((error) => {
-        console.warn("[useAuthOnline] account profile refresh skipped", error);
+        if (!isSupabaseTransientUnavailableError(error)) {
+          console.warn("[useAuthOnline] account profile refresh skipped", error);
+        }
       });
     };
 
@@ -1162,10 +1167,13 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     let heartbeatTimer: number | null = null;
 
     const scheduleHeartbeat = (next: "online" | "away" | "offline") => {
+      if (isSupabaseRestCircuitOpen()) return;
       scheduleOutsideNavigation(() => {
-        if (!alive) return;
+        if (!alive || isSupabaseRestCircuitOpen()) return;
         void cloudCommunityHeartbeat(next).catch((error) => {
-          console.warn("[community] heartbeat unavailable:", error);
+          if (!isSupabaseTransientUnavailableError(error)) {
+            console.warn("[community] heartbeat unavailable:", error);
+          }
         });
       }, isCapacitorNativeRuntime() ? 900 : 120);
     };

@@ -758,7 +758,9 @@ export function rankImpacts(
   impacts: ClosestCenterImpact[],
   pointsMode: "petanque" | "descending" | "winner" = "petanque",
 ) {
-  const sorted = [...impacts].sort((a, b) => a.distanceMm - b.distanceMm);
+  const sorted = [...impacts]
+    .filter((impact:any) => !impact?.miss && !impact?.isMiss && Number.isFinite(Number(impact?.distanceMm)))
+    .sort((a, b) => Number(a.distanceMm) - Number(b.distanceMm));
   const winningSide = sorted[0] ? String(sorted[0].teamId || sorted[0].playerId || "") : "";
   let petanqueStillScoring = true;
 

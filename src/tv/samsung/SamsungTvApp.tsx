@@ -26,7 +26,7 @@ const LAST_CODE_KEY = "mss_samsung_tv_last_viewer_code_v1";
 const CODE_LENGTH = 6;
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".split("");
 const GRID_COLUMNS = 8;
-const TV_BUILD_MARKER = "MSS_TV_SHARED_PHONE_UI_BUILD_20260919_07";
+const TV_BUILD_MARKER = "MSS_TV_FULL_APP_MENUS_BUILD_20261018_08";
 const TV_LIST_PAGE_SIZE = 12;
 const TV_STATS_PROFILE_LIMIT = 8;
 
@@ -135,12 +135,14 @@ function useTizenStartup() {
   }, []);
 }
 
-function TvJoin({ onJoin }: { onJoin: (code: string) => void }) {
+function TvJoin({ onJoin, onOpenApp }: { onJoin: (code: string) => void; onOpenApp: () => void }) {
   const copy = React.useMemo(getCopy, []);
   const [code, setCode] = React.useState(readLastCode);
   const [focusIndex, setFocusIndex] = React.useState(0);
   const [error, setError] = React.useState("");
-  const totalKeys = CODE_CHARS.length + 3;
+  const appIndex = 0;
+  const charOffset = 1;
+  const totalKeys = 1 + CODE_CHARS.length + 3;
   const connectIndex = totalKeys - 1;
   const clearIndex = totalKeys - 2;
   const deleteIndex = totalKeys - 3;
@@ -166,7 +168,8 @@ function TvJoin({ onJoin }: { onJoin: (code: string) => void }) {
   }, [code, copy.invalid, onJoin]);
 
   const activate = React.useCallback((index: number) => {
-    if (index < CODE_CHARS.length) return append(CODE_CHARS[index]);
+    if (index === appIndex) return onOpenApp();
+    if (index >= charOffset && index < charOffset + CODE_CHARS.length) return append(CODE_CHARS[index - charOffset]);
     if (index === deleteIndex) return removeOne();
     if (index === clearIndex) {
       setCode("");
@@ -174,7 +177,7 @@ function TvJoin({ onJoin }: { onJoin: (code: string) => void }) {
       return;
     }
     if (index === connectIndex) submit();
-  }, [append, clearIndex, connectIndex, deleteIndex, removeOne, submit]);
+  }, [append, appIndex, charOffset, clearIndex, connectIndex, deleteIndex, onOpenApp, removeOne, submit]);
 
   React.useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -203,9 +206,15 @@ function TvJoin({ onJoin }: { onJoin: (code: string) => void }) {
         return;
       }
       let next = focusIndex;
-      if (key === "ArrowLeft") next = Math.max(0, focusIndex - 1);
+      if (focusIndex === appIndex) {
+        if (key === "ArrowDown") next = charOffset;
+        else if (key === "ArrowLeft" || key === "ArrowRight" || key === "ArrowUp") next = appIndex;
+        else return;
+      } else if (key === "ArrowUp" && focusIndex >= charOffset && focusIndex < charOffset + GRID_COLUMNS) {
+        next = appIndex;
+      } else if (key === "ArrowLeft") next = Math.max(charOffset, focusIndex - 1);
       else if (key === "ArrowRight") next = Math.min(totalKeys - 1, focusIndex + 1);
-      else if (key === "ArrowUp") next = Math.max(0, focusIndex - GRID_COLUMNS);
+      else if (key === "ArrowUp") next = Math.max(charOffset, focusIndex - GRID_COLUMNS);
       else if (key === "ArrowDown") next = Math.min(totalKeys - 1, focusIndex + GRID_COLUMNS);
       else return;
       event.preventDefault();
@@ -231,12 +240,23 @@ function TvJoin({ onJoin }: { onJoin: (code: string) => void }) {
           <div className="mss-tv-brand-title">{copy.title}</div>
           <div className="mss-tv-brand-subtitle">{copy.subtitle}</div>
         </header>
+        <button
+          type="button"
+          tabIndex={-1}
+          className={`mss-tv-standalone-launch${focusIndex === appIndex ? " is-focused" : ""}`}
+          onMouseEnter={() => setFocusIndex(appIndex)}
+          onClick={onOpenApp}
+        >
+          <span>OUVRIR L’APPLICATION TV</span>
+          <small>Mêmes menus, thèmes et écrans que MULTISPORTS SCORING</small>
+        </button>
+        <div className="mss-tv-join-divider"><span>OU CONNECTER UN TÉLÉPHONE</span></div>
         <div className="mss-tv-join-copy">{copy.enterCode}</div>
         <div className="mss-tv-code" aria-label="Viewer code">
           {Array.from({ length: CODE_LENGTH }).map((_, index) => <span key={index} className={code[index] ? "is-filled" : ""}>{code[index] || "·"}</span>)}
         </div>
         <div className="mss-tv-keypad">
-          {CODE_CHARS.map((ch, index) => renderKey(ch, index))}
+          {CODE_CHARS.map((ch, index) => renderKey(ch, charOffset + index))}
           {renderKey(copy.del, deleteIndex, "delete")}
           {renderKey(copy.clear, clearIndex, "clear")}
           {renderKey(copy.connect, connectIndex, "connect")}
@@ -580,7 +600,7 @@ function TvHub({
         <div>
           <div className="mss-tv-hub-title">MULTISPORTS SCORING</div>
           <div className="mss-tv-hub-subtitle">TV COMPLÈTE · SESSION {sessionId}</div>
-          <div className="mss-tv-build-marker">TV SHARED PHONE UI V7 · 2026.09.19-07</div>
+          <div className="mss-tv-build-marker">TV FULL APP MENUS V8 · 2026.10.18-08</div>
         </div>
         <div className={`mss-tv-link-state is-${connectionStatus}`}>
           <span className="mss-tv-link-dot" />
@@ -1600,6 +1620,7 @@ export default function SamsungTvApp() {
   const selectedSportRef = React.useRef<TvSportId>("darts");
   const phoneNavigationRef = React.useRef<PhoneNavigation | null>(null);
   const snapshotRef = React.useRef<ViewerLiveSnapshot | null>(null);
+  const sharedAppBootRef = React.useRef<SamsungTvNativeAppBoot | null>(null);
 
   React.useEffect(() => {
     autoFollowGameRef.current = autoFollowGame;
@@ -1621,7 +1642,25 @@ export default function SamsungTvApp() {
     applyTvTheme(tvState.theme);
   }, [tvState.theme]);
 
+  React.useEffect(() => {
+    sharedAppBootRef.current = sharedAppBoot;
+  }, [sharedAppBoot]);
+
   useKeepFocusedVisible(focusIndex, screen);
+
+  const openStandaloneApp = React.useCallback(() => {
+    const boot: SamsungTvNativeAppBoot = {
+      version: 1,
+      tab: "gameSelect",
+      params: { source: "samsung-tv-standalone", tvNative: true },
+      sportId: "darts",
+      sessionId: "",
+      storeMode: "local",
+      launchedAt: Date.now(),
+    };
+    sharedAppBootRef.current = boot;
+    setSharedAppBoot(boot);
+  }, []);
 
   const join = React.useCallback((code: string) => {
     const clean = normalizeViewerCode(code).slice(0, CODE_LENGTH);
@@ -1642,6 +1681,7 @@ export default function SamsungTvApp() {
     setSelectedProfileId(null);
     setProfileEditor(null);
     setProfileDeleteArmed(false);
+    sharedAppBootRef.current = null;
     setSharedAppBoot(null);
     setHash(clean);
   }, []);
@@ -1693,6 +1733,7 @@ export default function SamsungTvApp() {
             profiles: currentState.profiles,
             settings: currentState.settings,
             theme: currentState.theme,
+            storeMode: "mirror",
             launchedAt: Date.now(),
           });
           return;
@@ -1744,6 +1785,27 @@ export default function SamsungTvApp() {
           selectedSportRef.current = next.activeSport;
           setTvState(next);
           setSelectedSport(next.activeSport);
+
+          // Dès que le téléphone a fourni son état, on ouvre la VRAIE application
+          // partagée sur le sélecteur de sports. Le vieux hub TV n'est plus
+          // l'écran principal : les menus sont ceux de l'application elle-même.
+          if (!sharedAppBootRef.current && screenRef.current === "hub") {
+            const boot: SamsungTvNativeAppBoot = {
+              version: 1,
+              tab: "gameSelect",
+              params: { source: "samsung-tv-companion", tvNative: true },
+              sportId: next.activeSport || "darts",
+              sessionId,
+              activeProfileId: next.activeProfileId,
+              profiles: next.profiles,
+              settings: next.settings,
+              theme: next.theme,
+              storeMode: "mirror",
+              launchedAt: Date.now(),
+            };
+            sharedAppBootRef.current = boot;
+            setSharedAppBoot(boot);
+          }
           return;
         }
 
@@ -1758,6 +1820,42 @@ export default function SamsungTvApp() {
         };
         phoneNavigationRef.current = nav;
         setPhoneNavigation(nav);
+
+        // Companion V8 : lorsque la vraie application partagée est ouverte,
+        // toute navigation du téléphone remonte vers la même route/composant TV.
+        // On ne maintient plus un menu TV parallèle qui diverge visuellement.
+        if (sharedAppBootRef.current?.storeMode === "mirror" && nav.tab) {
+          const currentTvState = tvStateRef.current;
+          const mirroredConfig = nav.gameplay
+            ? sharedGameConfigForSnapshot(snapshotRef.current, nav, currentTvState)
+            : (nav.gameConfig || null);
+          const boot: SamsungTvNativeAppBoot = {
+            version: 1,
+            tab: nav.tab,
+            params: {
+              ...(nav.params || {}),
+              ...(mirroredConfig ? { config: mirroredConfig, x01ConfigV3: mirroredConfig } : {}),
+              source: "samsung-tv-phone-follow",
+              tvNative: true,
+            },
+            gameConfig: mirroredConfig,
+            sportId: currentTvState.activeSport || selectedSportRef.current || "darts",
+            sessionId,
+            activeProfileId: currentTvState.activeProfileId,
+            profiles: currentTvState.profiles,
+            settings: currentTvState.settings,
+            theme: currentTvState.theme,
+            storeMode: "mirror",
+            launchedAt: Date.now(),
+          };
+          sharedAppBootRef.current = boot;
+          setSharedAppBoot(boot);
+          if (nav.gameplay) {
+            autoFollowGameRef.current = true;
+            setAutoFollowGame(true);
+          }
+          return;
+        }
 
         const nextScreen = screenForPhoneTab(nav.tab);
         if (nav.gameplay) {
@@ -1776,6 +1874,7 @@ export default function SamsungTvApp() {
             profiles: currentTvState.profiles,
             settings: currentTvState.settings,
             theme: currentTvState.theme,
+            storeMode: "mirror",
             launchedAt: Date.now(),
           });
           return;
@@ -1887,6 +1986,7 @@ export default function SamsungTvApp() {
       profiles: current.profiles,
       settings: current.settings,
       theme: current.theme,
+      storeMode: "mirror",
       launchedAt: Date.now(),
     });
     // Le téléphone suit l'ouverture de la même configuration quand la route est autorisée.
@@ -2355,26 +2455,37 @@ export default function SamsungTvApp() {
     if (focusIndex >= count) setFocusIndex(count - 1);
   }, [countForScreen, focusIndex, screen]);
 
-  if (!sessionId) return <TvJoin onJoin={join} />;
-
   if (sharedAppBoot) {
     return (
       <React.Suspense fallback={<div className="mss-tv-shared-app-loading">Chargement de l’interface MULTISPORTS SCORING…</div>}>
         <SamsungTvSharedAppHost
+          key={`${sharedAppBoot.storeMode || "mirror"}:${sharedAppBoot.tab}:${sharedAppBoot.launchedAt}`}
           boot={sharedAppBoot}
           snapshot={snapshot}
+          onNavigate={(tab, params) => {
+            if (sessionId) sendNavigate(tab, params);
+          }}
           onExit={() => {
+            const localStandalone = sharedAppBoot.storeMode === "local";
+            sharedAppBootRef.current = null;
             setSharedAppBoot(null);
             setSelectedAction(null);
             setGuidedSetup(null);
             autoFollowGameRef.current = false;
             setAutoFollowGame(false);
-            openScreen("sport", Math.max(0, sportActions.findIndex((action) => action.id === selectedAction?.id)));
+            if (localStandalone || !sessionId) {
+              setSessionId("");
+              setHash(null);
+              return;
+            }
+            openScreen("hub", viewerMenuIndexForRoute(phoneNavigation?.tab || ""));
           }}
         />
       </React.Suspense>
     );
   }
+
+  if (!sessionId) return <TvJoin onJoin={join} onOpenApp={openStandaloneApp} />;
 
   if (screen === "scoreboard" && hasLiveGame && snapshot) {
     return (

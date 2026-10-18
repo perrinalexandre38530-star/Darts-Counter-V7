@@ -46,6 +46,190 @@ const SUPABASE_URL = RESOLVED_SUPABASE_CONFIG.url;
 const SUPABASE_ANON_KEY = RESOLVED_SUPABASE_CONFIG.anonKey;
 const isDev = !!import.meta.env.DEV;
 
+
+// -----------------------------------------------------------------------------
+// SUPABASE DATA-PLANE CIRCUIT BREAKER
+// -----------------------------------------------------------------------------
+// PGRST002 = PostgREST n'arrive plus a charger le schema depuis PostgreSQL.
+// Quand cela arrive, relancer profils + sync + organisations + messages en
+// parallele empire la panne et transforme la console en rafale de 503.
+//
+// On limite donc la concurrence REST, puis on ouvre un circuit global pendant
+// une courte periode apres un 502/503/504 de la data-plane. Auth reste disponible
+// car /auth/v1 n'est volontairement jamais bloque ici.
+const SUPABASE_REST_MAX_CONCURRENCY = 4;
+const SUPABASE_REST_BASE_COOLDOWN_MS = 20_000;
+const SUPABASE_REST_MAX_COOLDOWN_MS = 3 * 60_000;
+let supabaseRestActive = 0;
+let supabaseRestCircuitUntil = 0;
+let supabaseRestFailureCount = 0;
+let supabaseRestNeedsProbe = false;
+let supabaseRestProbeInFlight = false;
+let supabaseRestLastNoticeAt = 0;
+const supabaseRestWaiters: Array<() => void> = [];
+
+function supabaseRequestUrl(input: any): string {
+  try {
+    if (typeof input === "string") return input;
+    if (input instanceof URL) return input.toString();
+    if (input && typeof input.url === "string") return String(input.url);
+  } catch {}
+  return String(input || "");
+}
+
+function isSupabaseRestRequest(input: any): boolean {
+  const url = supabaseRequestUrl(input);
+  return !!url && url.startsWith(SUPABASE_URL) && /\/rest\/v1(?:\/|\?|$)/i.test(url);
+}
+
+function transientErrorText(error: any): string {
+  return [
+    error?.message,
+    error?.details,
+    error?.hint,
+    error?.error,
+    error?.payload?.message,
+    error?.payload?.error,
+  ].filter(Boolean).join(" ").toLowerCase();
+}
+
+export function isSupabaseTransientUnavailableError(error: any): boolean {
+  const code = String(error?.code || error?.payload?.code || "").toUpperCase();
+  const status = Number(error?.status || error?.statusCode || error?.status_code || 0);
+  const text = transientErrorText(error);
+  return code === "PGRST002" ||
+    code === "PGRST001" ||
+    text.includes("schema cache") ||
+    text.includes("could not query the database") ||
+    text.includes("database is unavailable") ||
+    text.includes("connection terminated unexpectedly") ||
+    text.includes("too many connections") ||
+    ([502, 503, 504].includes(status) && (text.includes("supabase") || text.includes("database") || text.includes("schema") || !text));
+}
+
+export function isSupabaseRestCircuitOpen(): boolean {
+  return Date.now() < supabaseRestCircuitUntil || (supabaseRestNeedsProbe && supabaseRestProbeInFlight);
+}
+
+export function supabaseRestRetryAfterMs(): number {
+  if (Date.now() < supabaseRestCircuitUntil) return Math.max(0, supabaseRestCircuitUntil - Date.now());
+  return supabaseRestNeedsProbe ? 2_000 : 0;
+}
+
+function announceSupabaseRestState(state: "paused" | "ready", detail: any = {}): void {
+  if (typeof window === "undefined") return;
+  try { window.dispatchEvent(new CustomEvent("msc:supabase-rest-health", { detail: { state, ...detail } })); } catch {}
+}
+
+function openSupabaseRestCircuit(reason: string, status = 503): void {
+  const now = Date.now();
+  // Plusieurs requetes deja parties peuvent toutes revenir 503 en meme temps.
+  // Elles appartiennent a la meme panne : ne pas multiplier le backoff pour
+  // chaque reponse concurrente. Le backoff augmente seulement si un vrai probe
+  // apres expiration echoue de nouveau.
+  if (now >= supabaseRestCircuitUntil) {
+    supabaseRestFailureCount = Math.min(8, supabaseRestFailureCount + 1);
+  }
+  const cooldown = Math.min(
+    SUPABASE_REST_MAX_COOLDOWN_MS,
+    SUPABASE_REST_BASE_COOLDOWN_MS * Math.max(1, 2 ** (supabaseRestFailureCount - 1)),
+  );
+  supabaseRestCircuitUntil = Math.max(supabaseRestCircuitUntil, now + cooldown);
+  supabaseRestNeedsProbe = true;
+  if (Date.now() - supabaseRestLastNoticeAt > 30_000) {
+    supabaseRestLastNoticeAt = Date.now();
+    console.warn(`[supabase] data-plane suspendue ${Math.ceil(cooldown / 1000)}s (${status}) : ${reason || "service indisponible"}`);
+  }
+  announceSupabaseRestState("paused", { retryAt: supabaseRestCircuitUntil, status, reason });
+}
+
+function closeSupabaseRestCircuit(): void {
+  const wasPaused = supabaseRestFailureCount > 0 || supabaseRestNeedsProbe || supabaseRestCircuitUntil > 0;
+  supabaseRestFailureCount = 0;
+  supabaseRestCircuitUntil = 0;
+  supabaseRestNeedsProbe = false;
+  supabaseRestProbeInFlight = false;
+  if (wasPaused) announceSupabaseRestState("ready", { at: Date.now() });
+}
+
+function syntheticSupabaseCooldownResponse(): Response {
+  const retryMs = Math.max(1_000, supabaseRestRetryAfterMs());
+  return new Response(JSON.stringify({
+    code: "PGRST002",
+    message: "Supabase data-plane temporairement suspendue par le circuit de protection.",
+    hint: `Nouvel essai automatique dans ${Math.ceil(retryMs / 1000)} s.`,
+    mssCircuitOpen: true,
+  }), {
+    status: 503,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "retry-after": String(Math.ceil(retryMs / 1000)),
+      "x-mss-supabase-circuit": "open",
+    },
+  });
+}
+
+async function acquireSupabaseRestSlot(): Promise<void> {
+  if (supabaseRestActive < SUPABASE_REST_MAX_CONCURRENCY) {
+    supabaseRestActive += 1;
+    return;
+  }
+  await new Promise<void>((resolve) => supabaseRestWaiters.push(resolve));
+  supabaseRestActive += 1;
+}
+
+function releaseSupabaseRestSlot(): void {
+  supabaseRestActive = Math.max(0, supabaseRestActive - 1);
+  const next = supabaseRestWaiters.shift();
+  if (next) next();
+}
+
+const nativeFetch = globalThis.fetch.bind(globalThis);
+
+async function resilientSupabaseFetch(input: any, init?: RequestInit): Promise<Response> {
+  if (!isSupabaseRestRequest(input)) return nativeFetch(input, init);
+
+  await acquireSupabaseRestSlot();
+  let isHalfOpenProbe = false;
+  try {
+    if (Date.now() < supabaseRestCircuitUntil) return syntheticSupabaseCooldownResponse();
+
+    if (supabaseRestNeedsProbe) {
+      if (supabaseRestProbeInFlight) return syntheticSupabaseCooldownResponse();
+      supabaseRestProbeInFlight = true;
+      isHalfOpenProbe = true;
+    }
+
+    const response = await nativeFetch(input, init);
+    if ([502, 503, 504].includes(response.status)) {
+      let payload: any = null;
+      let text = "";
+      try {
+        text = await response.clone().text();
+        try { payload = text ? JSON.parse(text) : null; } catch {}
+      } catch {}
+      const code = String(payload?.code || "").toUpperCase();
+      const message = String(payload?.message || payload?.error || text || `HTTP ${response.status}`);
+      if (code === "PGRST002" || code === "PGRST001" || /schema cache|could not query the database|database.*unavailable|connection|timeout/i.test(message) || response.status === 503) {
+        openSupabaseRestCircuit(message, response.status);
+      }
+    } else {
+      // 2xx/4xx signifie que PostgREST repond de nouveau : meme une erreur RLS
+      // ou RPC absente prouve que la data-plane a retrouve PostgreSQL.
+      closeSupabaseRestCircuit();
+    }
+    return response;
+  } catch (error: any) {
+    // Une erreur reseau sur l'URL REST est egalement protegee, sans toucher Auth.
+    openSupabaseRestCircuit(String(error?.message || error || "Erreur reseau Supabase"), 503);
+    throw error;
+  } finally {
+    if (isHalfOpenProbe) supabaseRestProbeInFlight = false;
+    releaseSupabaseRestSlot();
+  }
+}
+
 export const __SUPABASE_ENV__ = {
   url: SUPABASE_URL,
   anonKey: SUPABASE_ANON_KEY,
@@ -222,6 +406,7 @@ function createRealSupabaseClient(): SupabaseClient {
   const url = SUPABASE_URL || "https://invalid.supabase.co";
   const key = SUPABASE_ANON_KEY || "invalid-anon-key";
   return createClient(url, key, {
+    global: { fetch: resilientSupabaseFetch as any },
     auth: {
       persistSession: true,
       // Pendant un retour OAuth PKCE, aucun refresh d'une ancienne session ne

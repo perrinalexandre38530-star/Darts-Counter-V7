@@ -149,6 +149,7 @@ function determinePetanqueTeamToPlay(
   starterTeam:"A"|"B",
 ):"A"|"B"|null {
   const roundImpacts=impacts.filter((x:any)=>Number(x.round)===Number(round));
+  const validImpacts=roundImpacts.filter((x:any)=>!x?.miss && !x?.isMiss && Number.isFinite(Number(x?.distanceMm)));
   const used=roundUsage(impacts,players,round,dartsPerPlayer);
   const remA=teamRemaining(players,used,dartsPerPlayer,"A");
   const remB=teamRemaining(players,used,dartsPerPlayer,"B");
@@ -156,10 +157,16 @@ function determinePetanqueTeamToPlay(
   if (remA<=0) return "B";
   if (remB<=0) return "A";
   if (!roundImpacts.length) return starterTeam;
-  const sorted=[...roundImpacts].sort((a:any,b:any)=>Number(a.distanceMm||Infinity)-Number(b.distanceMm||Infinity));
+  if (!validImpacts.length) {
+    const last=roundImpacts[roundImpacts.length-1];
+    const lastTeam=String(last?.teamId || players.find((p:any)=>String(p.id)===String(last?.playerId))?.teamId || starterTeam)==="B"?"B":"A";
+    const other=lastTeam==="A"?"B":"A";
+    return other==="A" ? (remA>0?"A":"B") : (remB>0?"B":"A");
+  }
+  const sorted=[...validImpacts].sort((a:any,b:any)=>Number(a.distanceMm)-Number(b.distanceMm));
   const pointTeam=String(sorted[0]?.teamId || players.find((p:any)=>String(p.id)===String(sorted[0]?.playerId))?.teamId || starterTeam)==="B"?"B":"A";
-  const hasA=roundImpacts.some((x:any)=>String(x.teamId || players.find((p:any)=>String(p.id)===String(x.playerId))?.teamId)==="A");
-  const hasB=roundImpacts.some((x:any)=>String(x.teamId || players.find((p:any)=>String(p.id)===String(x.playerId))?.teamId)==="B");
+  const hasA=validImpacts.some((x:any)=>String(x.teamId || players.find((p:any)=>String(p.id)===String(x.playerId))?.teamId)==="A");
+  const hasB=validImpacts.some((x:any)=>String(x.teamId || players.find((p:any)=>String(p.id)===String(x.playerId))?.teamId)==="B");
   if (!hasA) return "A";
   if (!hasB) return "B";
   const challenger=pointTeam==="A"?"B":"A";
@@ -296,9 +303,9 @@ export default function ClosestCenterPlay(props:any) {
       const lastPoint=[...manualThrows].filter((x:any)=>Number(x.round)===Number(round)).reverse().find((x:any)=>x.tookPoint);
       return lastPoint ? (String(lastPoint.teamId)==="B" ? "B" : "A") : null;
     }
-    const live=impacts.filter((x:any)=>Number(x.round)===Number(round));
+    const live=impacts.filter((x:any)=>Number(x.round)===Number(round) && !x?.miss && !x?.isMiss && Number.isFinite(Number(x?.distanceMm)));
     if (!live.length) return null;
-    const closest=[...live].sort((a:any,b:any)=>Number(a.distanceMm||Infinity)-Number(b.distanceMm||Infinity))[0];
+    const closest=[...live].sort((a:any,b:any)=>Number(a.distanceMm)-Number(b.distanceMm))[0];
     return String(closest?.teamId || players.find((p:any)=>String(p.id)===String(closest?.playerId))?.teamId || "")==="B" ? "B" : "A";
   }, [isManual, pointsMode, manualThrows, impacts, players, round]);
   const sessionDiagnostics = React.useMemo(() => diagnostics.filter((x:any) => x.sessionId === sessionIdRef.current), [diagnostics]);
@@ -915,6 +922,61 @@ export default function ClosestCenterPlay(props:any) {
     setStatus(pointsMode==="petanque" ? "Corrige uniquement les fléchettes qui marquent puis valide à nouveau la mène." : "Corrige l’ordre des fléchettes puis valide à nouveau le classement.");
   };
 
+  const recordCameraMiss = () => {
+    if (isManual || pointsMode!=="petanque" || phase!=="play" || !current) return;
+    const ownerTeam=(String(current?.teamId||"A")==="B"?"B":"A") as "A"|"B";
+    const miss:any={
+      id:`cmiss-${round}-${current.id}-${Date.now()}`,
+      round:Number(round),
+      playerId:String(current.id),
+      expectedPlayerId:String(current.id),
+      teamId:ownerTeam,
+      dartIndex:Number(cameraRoundUsed[String(current.id)]||0),
+      source:"camera_miss",
+      miss:true,
+      isMiss:true,
+      manuallyEntered:true,
+      confidence:1,
+      identityConfidence:1,
+      identityMargin:1,
+      frameAgreement:1,
+      consensusSpreadMm:0,
+      uncertaintyMm:0,
+      createdAt:Date.now(),
+    };
+    const combinedImpacts=[...impacts,miss];
+    setImpacts(combinedImpacts);
+    setPendingAfter(null);
+    setPendingImpacts([]);
+    setPendingConsensus([]);
+    setPrecisionRereads(0);
+    setTieAcknowledged(false);
+    setTurnArmed(false);
+    setPreflightInfo(null);
+    traceCamera("validation","warn","camera-miss","Lancer consommé sans impact mesurable",{round,playerId:String(current.id),teamId:ownerTeam});
+
+    const usedAfter=roundUsage(combinedImpacts,players,round,dartsPerPlayer);
+    const nextTeam=determinePetanqueTeamToPlay(combinedImpacts,players,round,dartsPerPlayer,roundStarterTeam);
+    if (!nextTeam) {
+      setPhase("roundEnd");
+      setStatus("Toutes les fléchettes de la mène ont été jouées. Vérifie les points avant validation.");
+      return;
+    }
+    const nextIndex=firstEligiblePlayerIndex(players,usedAfter,dartsPerPlayer,nextTeam,playerIndex);
+    if (nextIndex<0) {
+      setPhase("roundEnd");
+      setStatus("Mène terminée. Vérifie les points avant validation.");
+      return;
+    }
+    setPlayerIndex(nextIndex);
+    setPhase("play");
+    const nextPlayer=players[nextIndex];
+    const remaining=Math.max(0,dartsPerPlayer-Number(usedAfter[String(nextPlayer?.id)]||0));
+    const validRound=combinedImpacts.filter((x:any)=>Number(x.round)===Number(round)&&!x?.miss&&!x?.isMiss&&Number.isFinite(Number(x?.distanceMm)));
+    const pointTeam=validRound.length ? (String([...validRound].sort((a:any,b:any)=>Number(a.distanceMm)-Number(b.distanceMm))[0]?.teamId)==="B"?"B":"A") : null;
+    setStatus(`MISS enregistré · ÉQUIPE ${nextTeam} doit jouer${pointTeam?` · le point est à l’équipe ${pointTeam}`:" · aucun point établi"}. ${nextPlayer?.name}: ${remaining} en main.`);
+  };
+
   const confirmAnalysis = () => {
     if (!pendingAfter || pendingImpacts.length !== expectedTurnDarts) return;
     const identityCritical = pendingImpacts.some((x:any) => !x.manuallyConfirmedOwner && (!!x.identityMismatch || Number(x.identityConfidence||0) < cameraPrefs.minIdentityConfidence || Number(x.identityMargin||0) < cameraPrefs.minIdentityMargin));
@@ -1011,10 +1073,10 @@ export default function ClosestCenterPlay(props:any) {
     setAllScores(next);
     const nextTeamTotals:any = {};
     players.forEach((p:any) => { if (p.teamId) nextTeamTotals[p.teamId] = (nextTeamTotals[p.teamId] || 0) + (next[p.id] || 0); });
-    const roundWinningTeam = pointsMode==="petanque"
-      ? (String(ranked.find((r:any)=>Number(r.points||0)>0)?.scoringSide || ranked[0]?.teamId || "")==="B" ? "B" : "A")
-      : null;
     const scoringRows = ranked.filter((r:any)=>Number(r.points||0)>0);
+    const roundWinningTeam = pointsMode==="petanque" && scoringRows.length
+      ? (String(scoringRows[0]?.scoringSide || scoringRows[0]?.teamId || "")==="B" ? "B" : "A")
+      : null;
     const pointsByPlayer:Record<string,number> = {};
     scoringRows.forEach((r:any)=>{ const id=String(r.playerId||""); if(id) pointsByPlayer[id]=(pointsByPlayer[id]||0)+Number(r.points||0); });
     const roundPoints = scoringRows.reduce((sum:number,r:any)=>sum+Number(r.points||0),0);
@@ -1066,8 +1128,14 @@ export default function ClosestCenterPlay(props:any) {
       setManualStage("throws");
     }
     setStatus(isManual
-      ? (pointsMode==="petanque" ? `Nouvelle mène : équipe ${roundWinningTeam || roundStarterTeam} commence. Enregistre chaque lancer avec POINT PRIS / POINT NON PRIS.` : "Nouvelle manche : joue les volées puis saisis uniquement les fléchettes qui scorent.")
-      : "Retire toutes les fléchettes puis capture la cible vide pour la manche suivante.");
+      ? (pointsMode==="petanque"
+          ? (manualEntryMode==="quick"
+              ? `Nouvelle mène : équipe ${roundWinningTeam || roundStarterTeam} commence. Joue la mène puis saisis uniquement les fléchettes qui marquent.`
+              : `Nouvelle mène : équipe ${roundWinningTeam || roundStarterTeam} commence. Enregistre chaque lancer avec POINT PRIS / POINT NON PRIS.`)
+          : "Nouvelle manche : joue les volées puis saisis uniquement les fléchettes qui scorent.")
+      : (pointsMode==="petanque" && !roundWinningTeam
+          ? `Mène nulle : aucun impact valide. L’équipe ${roundStarterTeam} recommence. Retire les fléchettes puis capture la cible vide.`
+          : "Retire toutes les fléchettes puis capture la cible vide pour la manche suivante."));
   };
 
   const teamTotals = React.useMemo(() => {
@@ -1381,6 +1449,7 @@ export default function ClosestCenterPlay(props:any) {
           <h3 style={h3}>MANCHE {round}/{cfg.rounds} · {current?.name}</h3>
           <div style={{fontSize:12,color:"#b9c7d4",lineHeight:1.5}}>{turnArmed?`Référence pré-volée verrouillée. Lance maintenant exactement ${expectedTurnDarts} fléchette${expectedTurnDarts>1?"s":""}, ne touche ni à la cible ni au téléphone, puis analyse.`:"Avant de lancer, l’IA vérifie la perspective, la stabilité et la netteté puis capture une référence fraîche. Cette étape évite qu’un micro-déplacement entre deux joueurs fausse les millimètres."}</div>
           {!turnArmed ? <button style={{...btn,width:"100%",marginTop:10,borderColor:"#8fffc2",background:"rgba(57,217,138,.12)"}} onClick={runPreflightCheck}>🛡️ {pointsMode==="petanque"?"CONTRÔLE AVANT LANCER":"CONTRÔLE AVANT VOLÉE"}</button> : <button style={{...btn,width:"100%",marginTop:10}} onClick={analyze}>🧠 {expectedTurnDarts===1?"ANALYSER LA FLÉCHETTE":`ANALYSER LES ${expectedTurnDarts} FLÉCHETTES`}</button>}
+          {pointsMode==="petanque" ? <button style={{...miniBtn,width:"100%",marginTop:7,minHeight:34,borderColor:"rgba(255,189,117,.35)",color:"#ffd2a5"}} onClick={recordCameraMiss}>↗ MISS / HORS CIBLE / FLÉCHETTE TOMBÉE</button> : null}
         </section> : null}
 
         {!isManual && phase === "review" ? <section style={card}>

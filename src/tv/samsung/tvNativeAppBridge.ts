@@ -17,6 +17,8 @@ export type SamsungTvNativeAppBoot = {
   profiles?: SamsungTvNativeProfile[];
   settings?: Record<string, any>;
   theme?: Record<string, any>;
+  /** local = vraie application TV autonome avec son stockage Tizen ; mirror = données injectées depuis le téléphone. */
+  storeMode?: "local" | "mirror";
   launchedAt: number;
 };
 

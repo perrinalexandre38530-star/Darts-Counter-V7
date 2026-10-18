@@ -54,7 +54,8 @@ export function buildClosestCenterStats(players:any[], impacts:any[], scores:Rec
   }
   const playerStats:ClosestCenterPlayerStat[]=(players||[]).map((p:any)=>{
     const playerImpacts=(impacts||[]).filter((x:any)=>String(x.playerId)===String(p.id));
-    const items=playerImpacts.filter((x:any)=>!isManualRankImpact(x)&&Number.isFinite(Number(x.distanceMm)));
+    const explicitMisses=playerImpacts.filter((x:any)=>x?.miss===true || x?.isMiss===true);
+    const items=playerImpacts.filter((x:any)=>!x?.miss&&!x?.isMiss&&!isManualRankImpact(x)&&Number.isFinite(Number(x.distanceMm)));
     const rankedItems=playerImpacts.filter((x:any)=>isManualRankImpact(x));
     const distances=items.map((x:any)=>Number(x.distanceMm)).filter(Number.isFinite);
     const uncertainties=items.map((x:any)=>Number(x.uncertaintyMm)).filter((v:number)=>Number.isFinite(v)&&v>=0);
@@ -67,7 +68,7 @@ export function buildClosestCenterStats(players:any[], impacts:any[], scores:Rec
       points:Number(scores?.[p.id]||0),
       attempts,
       measured:distances.length,
-      misses:rankedItems.length ? 0 : Math.max(0,attempts-distances.length),
+      misses:rankedItems.length ? 0 : (explicitMisses.length ? explicitMisses.length : Math.max(0,attempts-distances.length)),
       bestMm:distances.length?Math.min(...distances):null,
       averageMm:avg(distances),
       medianMm:median(distances),
@@ -81,7 +82,8 @@ export function buildClosestCenterStats(players:any[], impacts:any[], scores:Rec
     };
   }).sort((a,b)=>b.points-a.points||((a.bestMm??Infinity)-(b.bestMm??Infinity)));
 
-  const metricImpacts=(impacts||[]).filter((x:any)=>!isManualRankImpact(x)&&Number.isFinite(Number(x.distanceMm)));
+  const metricImpacts=(impacts||[]).filter((x:any)=>!x?.miss&&!x?.isMiss&&!isManualRankImpact(x)&&Number.isFinite(Number(x.distanceMm)));
+  const explicitMisses=(impacts||[]).filter((x:any)=>x?.miss===true || x?.isMiss===true);
   const allDistances=metricImpacts.map((x:any)=>Number(x.distanceMm)).filter(Number.isFinite);
   const bestImpact=[...metricImpacts].sort((a:any,b:any)=>Number(a.distanceMm)-Number(b.distanceMm))[0]||null;
   const totalRankedDarts=(impacts||[]).filter((x:any)=>isManualRankImpact(x)).length;
@@ -89,6 +91,8 @@ export function buildClosestCenterStats(players:any[], impacts:any[], scores:Rec
     rounds:totalRounds,
     totalImpacts: totalRankedDarts || allDistances.length,
     totalRankedDarts,
+    totalMisses: explicitMisses.length,
+    totalThrows: totalRankedDarts || (allDistances.length + explicitMisses.length),
     manualRankingOnly: totalRankedDarts > 0 && allDistances.length === 0,
     bestDistanceMm:allDistances.length?Math.min(...allDistances):null,
     averageDistanceMm:avg(allDistances),

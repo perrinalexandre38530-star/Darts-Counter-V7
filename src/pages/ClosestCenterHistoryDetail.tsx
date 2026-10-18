@@ -66,7 +66,7 @@ export default function ClosestCenterHistoryDetail(props:any){
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:7,marginTop:10}}>
           <div style={kpi}><b style={{fontSize:17,color:ACCENT}}>{rounds}</b><br/><small>{pointsMode==="petanque"?"mènes":"manches"}</small></div>
-          <div style={kpi}><b style={{fontSize:17,color:ACCENT}}>{stats?.totalImpacts ?? impacts.length}</b><br/><small>{inputMode==="manual"?(pointsMode==="petanque"?"fléchettes marquantes":"rangs saisis"):"impacts"}</small></div>
+          <div style={kpi}><b style={{fontSize:17,color:ACCENT}}>{inputMode==="manual"?(stats?.totalImpacts ?? impacts.length):(stats?.totalThrows ?? stats?.totalImpacts ?? impacts.length)}</b><br/><small>{inputMode==="manual"?(pointsMode==="petanque"?"fléchettes marquantes":"rangs saisis"):"lancers"}</small></div>
           <div style={kpi}><b style={{fontSize:14,color:ACCENT}}>{formatMode.toUpperCase()}</b><br/><small>{dartsPerPlayer} fl./joueur</small></div>
           {pointsMode==="petanque"?<div style={kpi}><b style={{fontSize:17,color:ACCENT}}>{targetScore}</b><br/><small>objectif</small></div>:null}
           {inputMode!=="manual"?<><div style={kpi}><b style={{fontSize:17,color:ACCENT}}>{fmtMm(stats?.bestDistanceMm)}</b><br/><small>meilleure distance</small></div><div style={kpi}><b style={{fontSize:17,color:ACCENT}}>{fmtMm(stats?.averageDistanceMm)}</b><br/><small>distance moyenne</small></div></>:null}
@@ -75,9 +75,15 @@ export default function ClosestCenterHistoryDetail(props:any){
       </section>
 
       <section style={card}>
-        <div style={{fontSize:12,color:ACCENT,fontWeight:1000,marginBottom:6}}>CLASSEMENT FINAL</div>
+        <div style={{fontSize:12,color:ACCENT,fontWeight:1000,marginBottom:6}}>{teamMode&&pointsMode==="petanque"?"RÉSULTAT FINAL":"CLASSEMENT FINAL"}</div>
+        {teamMode&&pointsMode==="petanque"?<div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:10,alignItems:"center",padding:"12px 10px",marginBottom:10,borderRadius:13,border:`1px solid ${ACCENT}44`,background:"linear-gradient(135deg,rgba(255,77,95,.08),rgba(61,165,255,.08))"}}>
+          <div style={{textAlign:"center"}}><small style={{color:"#ff9aa5",fontWeight:1000}}>ÉQUIPE A</small><div style={{fontSize:30,fontWeight:1000}}>{num(teamTotals?.A)}</div></div>
+          <div style={{textAlign:"center"}}><small style={{color:"#71818f"}}>FINAL</small><div style={{marginTop:3,color:"#ffd85a",fontWeight:1000}}>🏆 ÉQUIPE {num(teamTotals?.B)>num(teamTotals?.A)?"B":"A"}</div></div>
+          <div style={{textAlign:"center"}}><small style={{color:"#8bcfff",fontWeight:1000}}>ÉQUIPE B</small><div style={{fontSize:30,fontWeight:1000}}>{num(teamTotals?.B)}</div></div>
+        </div>:null}
+        {teamMode&&pointsMode==="petanque"?<div style={{fontSize:10,color:"#83929e",fontWeight:1000,letterSpacing:.7,margin:"2px 0 5px"}}>CONTRIBUTIONS JOUEURS</div>:null}
         {ranking.map((s:any,i:number)=><div key={s.playerId||i} style={{display:"grid",gridTemplateColumns:"34px minmax(0,1fr) auto",gap:8,alignItems:"center",padding:"9px 0",borderBottom:"1px solid rgba(255,255,255,.07)"}}>
-          <b style={{color:i<3?"#ffd85a":"#83929e"}}>#{i+1}</b>
+          <b style={{color:i<3?"#ffd85a":"#83929e"}}>{teamMode&&pointsMode==="petanque"?"•":`#${i+1}`}</b>
           <div><b>{s.name || players.find((p:any)=>String(p.id)===String(s.playerId))?.name || "Joueur"}</b>{s.teamId?<span style={{fontSize:10,color:ACCENT}}> · Équipe {s.teamId}</span>:null}<div style={{fontSize:10,color:"#8fa0ad",marginTop:2}}>{inputMode==="manual"?(pointsMode==="petanque"?`${s.rankedDarts||0} fléchette(s) marquante(s) · ${s.roundWins||0} mène(s) gagnée(s)`:`${s.rankedDarts||0} fléchette(s) classée(s) · ${s.roundWins||0} manche(s) gagnée(s)`):`meilleure ${fmtMm(s.bestMm)} · moyenne ${fmtMm(s.averageMm)} · médiane ${fmtMm(s.medianMm)} · ${s.misses||0} MISS`}</div></div>
           <b style={{color:ACCENT,fontSize:17}}>{num(s.points)} pts</b>
         </div>)}
@@ -115,7 +121,7 @@ export default function ClosestCenterHistoryDetail(props:any){
 
       <section style={card}>
         <div style={{fontSize:12,color:ACCENT,fontWeight:1000,marginBottom:6}}>{pointsMode==="petanque"?"DÉTAIL PAR MÈNE":"DÉTAIL PAR MANCHE"}</div>
-        <div style={{display:"grid",gap:7}}>{byRound.map((g:any)=><div key={g.round} style={{padding:9,borderRadius:12,background:"rgba(255,255,255,.025)",border:"1px solid rgba(255,255,255,.07)"}}><b style={{fontSize:11}}>{pointsMode==="petanque"?"MÈNE":"MANCHE"} {g.round}</b>{g.rows.length?<div style={{display:"grid",gap:4,marginTop:6}}>{g.rows.map((x:any,i:number)=>{const p=players.find((q:any)=>String(q.id)===String(x.playerId)); return <div key={x.id||`${g.round}-${i}`} style={{display:"grid",gridTemplateColumns:"24px 1fr auto",gap:7,fontSize:11}}><b style={{color:i<5?"#ffd85a":"#778996"}}>#{i+1}</b><span>{p?.name||"Joueur"}{x.teamId?` · ${x.teamId}`:""}</span><b>{inputMode==="manual"?(pointsMode==="petanque"?"+1 point":`Rang #${num(x.manualRank ?? (i+1),i+1)}`):<>{fmtMm(x.distanceMm)}{Number.isFinite(Number(x.uncertaintyMm))?<small style={{color:"#8294a2"}}> ± {num(x.uncertaintyMm).toFixed(2)}</small>:null}</>}</b></div>})}</div>:<div style={{fontSize:10,color:"#71808d",marginTop:5}}>Aucun impact mesuré enregistré.</div>}</div>)}</div>
+        <div style={{display:"grid",gap:7}}>{byRound.map((g:any)=><div key={g.round} style={{padding:9,borderRadius:12,background:"rgba(255,255,255,.025)",border:"1px solid rgba(255,255,255,.07)"}}><b style={{fontSize:11}}>{pointsMode==="petanque"?"MÈNE":"MANCHE"} {g.round}</b>{g.rows.length?<div style={{display:"grid",gap:4,marginTop:6}}>{g.rows.map((x:any,i:number)=>{const p=players.find((q:any)=>String(q.id)===String(x.playerId)); return <div key={x.id||`${g.round}-${i}`} style={{display:"grid",gridTemplateColumns:"24px 1fr auto",gap:7,fontSize:11}}><b style={{color:i<5?"#ffd85a":"#778996"}}>#{i+1}</b><span>{p?.name||"Joueur"}{x.teamId?` · ${x.teamId}`:""}</span><b>{inputMode==="manual"?(pointsMode==="petanque"?"+1 point":`Rang #${num(x.manualRank ?? (i+1),i+1)}`):(x?.miss||x?.isMiss?<span style={{color:"#ffbd75"}}>MISS / HORS CIBLE</span>:<>{fmtMm(x.distanceMm)}{Number.isFinite(Number(x.uncertaintyMm))?<small style={{color:"#8294a2"}}> ± {num(x.uncertaintyMm).toFixed(2)}</small>:null}</>)}</b></div>})}</div>:<div style={{fontSize:10,color:"#71808d",marginTop:5}}>Aucun impact mesuré enregistré.</div>}</div>)}</div>
       </section>
 
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><button onClick={()=>go?.("history",{sport:"darts",game:"closest_center",focusMatchId:rec.id||rec.matchId})} style={{minHeight:42,borderRadius:13,border:`1px solid ${ACCENT}`,background:`${ACCENT}13`,color:"#fff",fontWeight:1000}}>HISTORIQUE DARTS</button><button onClick={()=>go?.("closest_center_config")} style={{minHeight:42,borderRadius:13,border:"1px solid rgba(255,255,255,.2)",background:"rgba(255,255,255,.05)",color:"#fff",fontWeight:1000}}>NOUVELLE PARTIE</button></div>

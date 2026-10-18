@@ -5906,7 +5906,37 @@ try {
             </button>
           </div>
         )}
-        headerCenter={!isGameplayLandscape && !showFullX01TickerHeader ? (
+        headerCenter={isGameplayLandscape && !showFullX01TickerHeader && useSetsUi ? (
+          <div style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", minWidth: 0 }}>
+            {isTeamsMode && teamsView && (teamsView as any[]).length >= 2 ? (
+              (teamsView as any[]).length === 2 ? (
+                <DuelHeaderCompact
+                  leftAvatarUrl={((teamsView as any[])[0]?.avatarUrl as string) ?? ""}
+                  rightAvatarUrl={((teamsView as any[])[1]?.avatarUrl as string) ?? ""}
+                  leftSets={(state as any).teamSetsWon?.[((teamsView as any[])[0]?.id as any)] ?? 0}
+                  rightSets={(state as any).teamSetsWon?.[((teamsView as any[])[1]?.id as any)] ?? 0}
+                  leftLegs={(state as any).teamLegsWon?.[((teamsView as any[])[0]?.id as any)] ?? 0}
+                  rightLegs={(state as any).teamLegsWon?.[((teamsView as any[])[1]?.id as any)] ?? 0}
+                />
+              ) : (
+                <TeamsHeaderCompact
+                  teams={teamsView as any[]}
+                  teamLegsWon={(state as any).teamLegsWon ?? {}}
+                  teamSetsWon={(state as any).teamSetsWon ?? {}}
+                />
+              )
+            ) : isDuel ? (
+              <DuelHeaderCompact
+                leftAvatarUrl={profileById[players[0].id]?.avatarDataUrl ?? ""}
+                rightAvatarUrl={profileById[players[1].id]?.avatarDataUrl ?? ""}
+                leftSets={(state as any).setsWon?.[players[0].id] ?? 0}
+                rightSets={(state as any).setsWon?.[players[1].id] ?? 0}
+                leftLegs={(state as any).legsWon?.[players[0].id] ?? 0}
+                rightLegs={(state as any).legsWon?.[players[1].id] ?? 0}
+              />
+            ) : null}
+          </div>
+        ) : !isGameplayLandscape && !showFullX01TickerHeader ? (
           <div ref={headerWrapRef} style={{ width: "100%" }}>
             <div
               style={{
@@ -5963,47 +5993,9 @@ try {
               ) : null}
             </div>
           </div>
-        
         ) : null}
         activeProfileHeader={
           <div style={{ maxWidth: CONTENT_MAX, margin: "0 auto" }}>
-            {!isQuickParty && isTabletUi && !showFullX01TickerHeader ? (
-              <div style={{ marginBottom: 10, display: "flex", justifyContent: "center" }}>
-                <div style={{ display: "flex", justifyContent: "center", minWidth: 0 }}>
-                {useSetsUi && isTeamsMode && teamsView && (teamsView as any[]).length >= 2 ? (
-                  (teamsView as any[]).length === 2 ? (
-                    <DuelHeaderCompact
-                      leftAvatarUrl={((teamsView as any[])[0]?.avatarUrl as string) ?? ""}
-                      rightAvatarUrl={((teamsView as any[])[1]?.avatarUrl as string) ?? ""}
-                      leftSets={(state as any).teamSetsWon?.[((teamsView as any[])[0]?.id as any)] ?? 0}
-                      rightSets={(state as any).teamSetsWon?.[((teamsView as any[])[1]?.id as any)] ?? 0}
-                      leftLegs={(state as any).teamLegsWon?.[((teamsView as any[])[0]?.id as any)] ?? 0}
-                      rightLegs={(state as any).teamLegsWon?.[((teamsView as any[])[1]?.id as any)] ?? 0}
-                    />
-                  ) : (
-                    <TeamsHeaderCompact
-                      teams={teamsView as any[]}
-                      teamLegsWon={(state as any).teamLegsWon ?? {}}
-                      teamSetsWon={(state as any).teamSetsWon ?? {}}
-                    />
-                  )
-                ) : (
-                  isDuel &&
-                  useSetsUi && (
-                    <DuelHeaderCompact
-                      leftAvatarUrl={profileById[players[0].id]?.avatarDataUrl ?? ""}
-                      rightAvatarUrl={profileById[players[1].id]?.avatarDataUrl ?? ""}
-                      leftSets={(state as any).setsWon?.[players[0].id] ?? 0}
-                      rightSets={(state as any).setsWon?.[players[1].id] ?? 0}
-                      leftLegs={(state as any).legsWon?.[players[0].id] ?? 0}
-                      rightLegs={(state as any).legsWon?.[players[1].id] ?? 0}
-                    />
-                  )
-                )}
-              </div>
-              </div>
-            ) : null}
-
             {isQuickParty && !isGameplayLandscape ? (
               <QuickPartyScoreboard
                 players={players}

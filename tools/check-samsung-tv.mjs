@@ -99,6 +99,18 @@ else {
 
   if (bundleText.includes("MSS_TIZEN_RANDOM_UUID_COMPAT_V1")) pass("Compatibilité crypto.randomUUID Tizen intégrée");
   else fail("Fallback crypto.randomUUID Tizen absent du bundle");
+
+  if (bundleText.includes("MSS_TV_FULL_APP_MENUS_BUILD_20261018_08") && bundleText.includes("samsung-tv-standalone"))
+    pass("Mode Samsung TV autonome basé sur les vrais menus de l'application intégré");
+  else fail("Mode Samsung TV autonome / menus application V8 absent du bundle");
+
+  if (bundleText.includes("mss:samsung-tv:navigation") && bundleText.includes("mss-tv-shared-app-host"))
+    pass("Navigation application TV ↔ shell Samsung synchronisée");
+  else fail("Pont de navigation application TV absent");
+
+  if (bundleText.includes("msc-game-select-page") && bundleText.includes("gameSelect"))
+    pass("Vrai sélecteur de sports de l'application inclus dans la TV");
+  else fail("Sélecteur de sports application non détecté dans le bundle TV");
 }
 
 function dirSize(dir) {

@@ -583,9 +583,19 @@ async function recoverNasAuthToken(reason: "missing_token" | "401"): Promise<str
 }
 
 export async function ensureAccountBackendAccessToken(): Promise<string> {
-  const existing = readNasAccessToken();
-  if (existing) return existing;
-  return recoverNasAuthToken("missing_token");
+  // Les routes /account/personal-cloud/* et /sync/* acceptent aussi la session
+  // Supabase du compte. Il est inutile de fabriquer d'abord un JWT NAS technique
+  // quand un access token public frais est deja disponible : cela ajoute une
+  // dependance reseau et faisait echouer Drive pendant certaines pannes data-plane.
+  const existingNas = readNasAccessToken();
+  if (existingNas) return existingNas;
+
+  const publicAccountToken = readAccountAccessToken();
+  if (publicAccountToken) return publicAccountToken;
+
+  const recoveredNas = await recoverNasAuthToken("missing_token");
+  if (recoveredNas) return recoveredNas;
+  return readAccountAccessToken();
 }
 
 async function readResponseText(

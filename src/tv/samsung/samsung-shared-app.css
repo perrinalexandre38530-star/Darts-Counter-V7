@@ -24,8 +24,6 @@ html[data-mss-samsung-tv-shared-app="1"] .container {
   padding-bottom: 0 !important;
 }
 
-html[data-mss-samsung-tv-shared-app="1"] .bottom-nav,
-html[data-mss-samsung-tv-shared-app="1"] [data-bottom-nav],
 html[data-mss-samsung-tv-shared-app="1"] .dc-global-cast-button {
   display: none !important;
 }
@@ -54,7 +52,7 @@ html[data-mss-samsung-tv-shared-app="1"] [tabindex]:focus {
 
 .mss-tv-shared-app-hint {
   position: fixed;
-  left: 24px;
+  left: calc(var(--msc-landscape-rail-width, 122px) + 18px);
   bottom: 14px;
   z-index: 100000;
   pointer-events: none;
@@ -80,6 +78,7 @@ html[data-mss-samsung-tv-shared-app="1"] {
   --msc-page-pad-x: clamp(16px, 1.8vw, 34px);
   --msc-page-pad-y: clamp(8px, 1.2vh, 18px);
   --msc-bottom-nav-space: 0px;
+  --msc-landscape-rail-width: clamp(112px, 7.2vw, 138px);
 }
 
 html[data-mss-samsung-tv-shared-app="1"],
@@ -117,13 +116,62 @@ html[data-mss-samsung-tv-shared-app="1"] .container {
   padding-bottom: 0 !important;
 }
 
+/* TV FULL APP : on conserve la vraie BottomNav paysage de l'application.
+   responsive-landscape.css la transforme déjà en rail vertical pour data-msc-device=tv. */
 html[data-mss-samsung-tv-shared-app="1"] .bottom-nav,
 html[data-mss-samsung-tv-shared-app="1"] [data-bottom-nav],
 html[data-mss-samsung-tv-shared-app="1"] nav.bottom-nav {
-  display: none !important;
+  display: flex !important;
 }
 
 html[data-mss-samsung-tv-shared-app="1"] .mss-tv-shared-app-hint {
   opacity: .18;
   font-size: 10px;
+}
+
+
+/* ==========================================================
+   TV FULL APP V8 — mêmes menus que l'application
+   ========================================================== */
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  scrollbar-width: none !important;
+}
+
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route::-webkit-scrollbar,
+html[data-mss-samsung-tv-shared-app="1"] .mss-tv-shared-app-host::-webkit-scrollbar {
+  display: none !important;
+}
+
+/* Le sélecteur de sports reste exactement celui de l'app, simplement agrandi
+   pour la distance TV et débarrassé des contraintes de largeur mobile. */
+html[data-mss-samsung-tv-shared-app="1"] .msc-game-select-page {
+  min-height: 100vh !important;
+  width: 100% !important;
+}
+
+html[data-mss-samsung-tv-shared-app="1"] .msc-game-select-panel {
+  max-width: min(1120px, calc(100vw - var(--msc-landscape-rail-width, 122px) - 90px)) !important;
+}
+
+html[data-mss-samsung-tv-shared-app="1"] .msc-game-select-tile {
+  width: min(620px, 48vw) !important;
+}
+
+html[data-mss-samsung-tv-shared-app="1"] .msc-game-select-logo {
+  width: min(340px, 28vw) !important;
+  height: min(340px, 28vw) !important;
+}
+
+html[data-mss-samsung-tv-shared-app="1"] :where(button, a, [role="button"], input, select, textarea):focus-visible {
+  outline: 4px solid var(--gold, #ffe18b) !important;
+  outline-offset: 4px !important;
+  box-shadow: 0 0 0 2px rgba(255,213,106,.24), 0 0 34px rgba(255,213,106,.28) !important;
+}
+
+/* Évite que le petit rappel télécommande masque un contrôle du rail. */
+html[data-mss-samsung-tv-shared-app="1"] .mss-tv-shared-app-hint {
+  left: calc(var(--msc-landscape-rail-width, 122px) + 18px) !important;
+  bottom: 10px !important;
 }

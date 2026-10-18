@@ -3332,8 +3332,20 @@
     object-position: center !important;
   }
   
+  html[data-msc-orientation="landscape"] .msc-gameplay-body {
+    flex: 1 1 0 !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
   html[data-msc-orientation="landscape"] .msc-gameplay-grid {
     grid-template-columns: minmax(0, .96fr) minmax(0, 1.04fr) !important;
+    grid-template-rows: minmax(0, 1fr) !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    flex: 1 1 0 !important;
     gap: 10px !important;
   }
   
