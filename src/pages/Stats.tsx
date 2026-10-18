@@ -4,6 +4,7 @@
 
 import React from "react";
 import { History } from "../lib/history";
+import { isQuickPartyRecord } from "../lib/quickParty";
 import { getOrRebuildStatsIndex, type StatsIndex } from "../lib/stats/rebuildStatsFromHistory";
 
 /* -------------------- Types -------------------- */
@@ -30,7 +31,8 @@ export default function StatsPage() {
 
   const load = React.useCallback(async () => {
     try {
-      const list = ((await (History as any).listFinished?.()) ?? (await History.list())) as Row[];
+      const rawList = ((await (History as any).listFinished?.()) ?? (await History.list())) as Row[];
+      const list = (Array.isArray(rawList) ? rawList : []).filter((row: any) => !isQuickPartyRecord(row));
       setRows(list);
 
       const idx: StatsIndex = await getOrRebuildStatsIndex({ includeNonFinished: false, force: false, persist: true });

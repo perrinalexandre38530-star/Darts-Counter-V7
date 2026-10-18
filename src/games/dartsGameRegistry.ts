@@ -1517,6 +1517,7 @@ const rawDartsGameRegistry: DartsGameDef[] = [
 const READY_IDS = new Set<string>([
   "x01",
   "challenge",
+  "super_bull",
   "training_x01",
   "tour_horloge",
   "training_doubleio",

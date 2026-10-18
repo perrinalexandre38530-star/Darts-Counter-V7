@@ -53,6 +53,7 @@ function __ms_get(obj:any,...paths:string[]){
 //   Si tu n'as pas encore de marquage source, "all" == "local".
 // ============================================
 
+import { isQuickPartyRecord } from "./quickParty";
 import { History } from "./history";
 import type { SavedMatch } from "./history";
 import {
@@ -2309,7 +2310,7 @@ export const StatsBridge = {
     if (!profileId) return createEmptyMultiLegsSets();
     try {
       const rows = ((await (History as any).listFinished?.()) ?? (await History.list())) as SavedMatch[];
-      const allRows = Array.isArray(rows) ? rows : [];
+      const allRows = (Array.isArray(rows) ? rows : []).filter((row: any) => !isQuickPartyRecord(row));
       const fullRows: SavedMatch[] = [];
       const chunkSize = 16;
       for (let offset = 0; offset < allRows.length; offset += chunkSize) {

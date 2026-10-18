@@ -6,6 +6,7 @@
 // - Prépare un vrai stats_index centralisé pour éviter les stats vides
 // ============================================
 
+import { isQuickPartyRecord } from "../quickParty";
 import { delKV, getKV, setKV, loadStore } from "../storage";
 import { normalizeMatchForStats } from "../matchCompactCodec";
 import { computeBabyFootRichStats } from "../babyfootRichStats";
@@ -1463,6 +1464,9 @@ export async function rebuildStatsFromHistory(options?: {
     }));
 
     for (const rec of hydratedChunk) {
+      // PARTIES RAPIDES : elles gardent toutes leurs stats dans l'historique dédié
+      // mais ne doivent jamais alimenter les profils avant transfert explicite.
+      if (isQuickPartyRecord(rec)) continue;
       const ts = toTs(rec?.updatedAt) ?? toTs(rec?.createdAt) ?? undefined;
       const rawPayload = rec?.payload ?? rec?.snapshot ?? rec?.data ?? null;
       const payload = normalizeMatchForStats(rec, rawPayload);

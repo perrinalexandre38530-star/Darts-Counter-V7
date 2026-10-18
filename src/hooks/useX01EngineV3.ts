@@ -1850,6 +1850,10 @@ export function useX01EngineV3({
         id: historyId || state.matchId,
         kind: "x01",
         status: "finished",
+        quickParty: (config as any)?.quickParty === true,
+        partyMode: (config as any)?.quickParty === true ? "quick" : ((config as any)?.partyMode || "arcade"),
+        profileStatsDeferred: (config as any)?.quickParty === true || !!(config as any)?.profileStatsDeferred,
+        temporaryParticipants: (config as any)?.quickParty === true || !!(config as any)?.temporaryParticipants,
         players: playersLite,
         winnerId: (state as any).lastWinnerId ?? null,
         game: {
@@ -1858,6 +1862,9 @@ export function useX01EngineV3({
         },
         summary,
         payload: {
+          quickParty: (config as any)?.quickParty === true,
+          partyMode: (config as any)?.quickParty === true ? "quick" : ((config as any)?.partyMode || "arcade"),
+          profileStatsDeferred: (config as any)?.quickParty === true || !!(config as any)?.profileStatsDeferred,
           config,
           state,
           liveStatsByPlayer,

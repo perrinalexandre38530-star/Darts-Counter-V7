@@ -45,6 +45,10 @@ export interface X01PlayerV3 {
   id: X01PlayerId;
   name: string;
   avatar?: string; // dataURL ou url
+  avatarDataUrl?: string | null;
+  profileId?: string | null;
+  temporaryPlayerId?: string | null;
+  isTemporary?: boolean;
   dartSetId?: string | null; // jeu de fléchettes utilisé pour ce match
 }
 
@@ -168,6 +172,13 @@ export interface X01ConfigV3 {
     voiceId?: string;
     sfxVolume?: number;
   };
+
+  // PARTIE RAPIDE : même moteur X01, identités temporaires et stats profils différées.
+  quickParty?: boolean;
+  partyMode?: "quick" | "arcade";
+  profileStatsDeferred?: boolean;
+  temporaryParticipants?: boolean;
+  quickInputCanSwitchToDetailed?: boolean;
 }
 
 /* -----------------------------------------------

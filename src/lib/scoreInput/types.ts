@@ -32,11 +32,14 @@ export type ScoreVisitPayload = {
 
 export const SCORE_INPUT_LS_KEY = "dc-score-input-method";
 
-export function sanitizeScoreInputMethod(value: unknown): ScoreInputMethod {
-  // SCORE VOLÉE est conservé dans le type uniquement pour lire les anciennes
-  // parties. Il n'est plus autorisé pour une nouvelle partie : un total 0..180
-  // ne permet pas de connaître honnêtement les S/D/T/BULL/MISS qui l'ont produit.
-  if (value === "visit_score") return "keypad";
+export function sanitizeScoreInputMethod(
+  value: unknown,
+  options?: { allowVisitScore?: boolean }
+): ScoreInputMethod {
+  // SCORE VOLÉE reste volontairement interdit dans l'expérience ARCADE car un
+  // total 0..180 ne décrit pas les segments réels. PARTIE RAPIDE l'autorise
+  // explicitement et marque ensuite ces volées comme agrégées dans l'historique.
+  if (value === "visit_score") return options?.allowVisitScore ? "visit_score" : "keypad";
   if (value === "keypad" || value === "dartboard" || value === "presets" || value === "voice") {
     return value;
   }

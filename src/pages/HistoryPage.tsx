@@ -29,6 +29,7 @@ import { importRecoveredHistoryJson } from "../lib/importRecoveredHistory";
 import { exportHistoryDump, importHistoryDump } from "../lib/historyCloud";
 import { buildFullHistoryBackup, extractHistoryDumpFromJson, saveFullHistoryBackupFile } from "../lib/historyFileTransfer";
 import { scheduleStatsIndexRefresh } from "../lib/stats/rebuildStatsFromHistory";
+import { isQuickPartyRecord, quickPartyParticipants, quickPartyProfileLinks } from "../lib/quickParty";
 import { inboxAddLocal, inboxListLocal, inboxRemoveLocal, type InboxItemLocal } from "../lib/matchInboxLocal";
 import { applyBabyFootImportRules, isBabyFootShareLike } from "../lib/babyfootImportRules";
 import { listInboxCloud, sendMatchToFriendUserId, setInboxStatusCloud, type InboxRowCloud } from "../lib/matchInboxCloud";
@@ -3651,7 +3652,12 @@ export default function HistoryPage({
   const { sport } = useSport();
   const S = useMemo(() => makeStyles(theme), [theme]);
 
-  const [tab, setTab] = useState<"all" | "done" | "running" | "inbox">("done");
+  const [tab, setTab] = useState<"all" | "done" | "running" | "inbox" | "quick">(() => {
+    try { return sessionStorage.getItem("mss:history:open-quick") === "1" ? "quick" : "done"; } catch { return "done"; }
+  });
+  useEffect(() => {
+    try { sessionStorage.removeItem("mss:history:open-quick"); } catch {}
+  }, []);
   const [isNarrow, setIsNarrow] = useState(() => (typeof window !== "undefined" ? window.innerWidth < 360 : false));
   useEffect(() => {
     const onR = () => setIsNarrow(window.innerWidth < 360);
@@ -3695,6 +3701,9 @@ export default function HistoryPage({
   const [friendShareLoading, setFriendShareLoading] = useState(false);
   const [friendShareSending, setFriendShareSending] = useState<string | null>(null);
   const [friendShareMessage, setFriendShareMessage] = useState("");
+  const [quickLinkEntry, setQuickLinkEntry] = useState<SavedEntry | null>(null);
+  const [quickLinks, setQuickLinks] = useState<Record<string, string>>({});
+  const [quickLinkBusy, setQuickLinkBusy] = useState(false);
 
   // ============================================================
   // 🔎 DEBUG HISTORYPAGE — voir RAW vs filtré (pour "Aucune partie ici")
@@ -4475,8 +4484,138 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
     await openFriendShare(await hydrateSavedEntry(entry));
   }
 
+  async function openQuickProfileLinks(entry: SavedEntry) {
+    const full = await hydrateSavedEntry(entry);
+    setQuickLinkEntry(full);
+    setQuickLinks(quickPartyProfileLinks(full));
+  }
 
-  const allItems = useMemo(() => dedupe(items).filter((e) => !isChallengeHistoryEntry(e) || challengeHistoryHasStarted(e)), [items]);
+  async function persistQuickProfileLinks() {
+    if (!quickLinkEntry) return;
+    setQuickLinkBusy(true);
+    try {
+      const full: any = await hydrateSavedEntry(quickLinkEntry);
+      const links = { ...quickLinks };
+      const next: any = {
+        ...full,
+        quickProfileLinks: links,
+        updatedAt: Date.now(),
+        summary: { ...(full?.summary || {}), quickProfileLinks: links },
+        payload: { ...(full?.payload || {}), quickProfileLinks: links },
+      };
+      await History.upsert(next);
+      setQuickLinkEntry(next);
+      await loadHistory();
+    } finally {
+      setQuickLinkBusy(false);
+    }
+  }
+
+  function deepRemapQuickIds(value: any, idMap: Record<string, string>): any {
+    if (typeof value === "string") return idMap[value] || value;
+    if (Array.isArray(value)) return value.map((row) => deepRemapQuickIds(row, idMap));
+    if (!value || typeof value !== "object") return value;
+    const out: any = {};
+    for (const [key, row] of Object.entries(value)) {
+      const mappedKey = idMap[key] || key;
+      out[mappedKey] = deepRemapQuickIds(row, idMap);
+    }
+    return out;
+  }
+
+  function normalizeTransferredQuickRecord(value: any, profilesById: Record<string, any>): any {
+    if (Array.isArray(value)) return value.map((row) => normalizeTransferredQuickRecord(row, profilesById));
+    if (!value || typeof value !== "object") return value;
+    const out: any = { ...value };
+    if ("quickParty" in out) out.quickParty = false;
+    if ("partyMode" in out) out.partyMode = "arcade";
+    if ("profileStatsDeferred" in out) out.profileStatsDeferred = false;
+    if ("temporaryParticipants" in out) out.temporaryParticipants = false;
+    if ("quickProfileLinks" in out) delete out.quickProfileLinks;
+    if (out.id && profilesById[String(out.id)]) {
+      const profile = profilesById[String(out.id)];
+      out.profileId = String(profile.id);
+      out.name = profile.name || out.name;
+      out.avatarDataUrl = profile.avatarDataUrl ?? out.avatarDataUrl ?? null;
+      out.avatarUrl = profile.avatarUrl ?? out.avatarUrl ?? null;
+      out.isTemporary = false;
+      delete out.temporaryPlayerId;
+    }
+    for (const [key, row] of Object.entries(out)) {
+      if (row && typeof row === "object") out[key] = normalizeTransferredQuickRecord(row, profilesById);
+    }
+    return out;
+  }
+
+  async function transferQuickPartyToProfiles() {
+    if (!quickLinkEntry) return;
+    const participants = quickPartyParticipants(quickLinkEntry);
+    const missing = participants.filter((p: any) => !quickLinks[String(p.temporaryPlayerId || p.id)]);
+    if (missing.length) {
+      window.alert(`Associe d'abord tous les joueurs (${participants.length - missing.length}/${participants.length}).`);
+      return;
+    }
+    const profiles = Array.isArray(storeRef.current?.profiles) ? storeRef.current.profiles : [];
+    const profilesById = Object.fromEntries(profiles.map((p: any) => [String(p.id), p]));
+    const selectedProfileIds = participants.map((p: any) => String(quickLinks[String(p.temporaryPlayerId || p.id)] || "")).filter(Boolean);
+    if (new Set(selectedProfileIds).size !== selectedProfileIds.length) {
+      window.alert("Chaque joueur rapide doit être associé à un profil différent.");
+      return;
+    }
+    const idMap: Record<string, string> = {};
+    for (const p of participants) {
+      const tempId = String(p.temporaryPlayerId || p.id);
+      const profileId = String(quickLinks[tempId] || "");
+      if (!profileId || !profilesById[profileId]) {
+        window.alert(`Profil introuvable pour ${p.name || tempId}.`);
+        return;
+      }
+      idMap[tempId] = profileId;
+    }
+
+    setQuickLinkBusy(true);
+    try {
+      const full: any = await hydrateSavedEntry(quickLinkEntry);
+      let converted: any = deepRemapQuickIds(full, idMap);
+      converted = normalizeTransferredQuickRecord(converted, profilesById);
+      converted.quickParty = false;
+      converted.partyMode = "arcade";
+      converted.profileStatsDeferred = false;
+      converted.temporaryParticipants = false;
+      converted.convertedFromQuickParty = true;
+      converted.quickPartyConvertedAt = Date.now();
+      converted.updatedAt = Date.now();
+      delete converted.quickProfileLinks;
+      if (converted.payload) {
+        converted.payload.quickParty = false;
+        converted.payload.partyMode = "arcade";
+        converted.payload.profileStatsDeferred = false;
+        delete converted.payload.quickProfileLinks;
+      }
+      await History.upsert(converted);
+      try {
+        void scheduleStatsIndexRefresh({
+          reason: "quick-party-profile-transfer",
+          debounceMs: 80,
+          includeNonFinished: true,
+          persist: true,
+        });
+      } catch {}
+      setQuickLinkEntry(null);
+      setQuickLinks({});
+      setTab("done");
+      await loadHistory();
+      window.alert("Partie transférée dans l'historique avec profils ✅");
+    } finally {
+      setQuickLinkBusy(false);
+    }
+  }
+
+
+  const rawAllItems = useMemo(() => dedupe(items).filter((e) => !isChallengeHistoryEntry(e) || challengeHistoryHasStarted(e)), [items]);
+  const quickItems = useMemo(() => rawAllItems.filter((e) => isQuickPartyRecord(e)), [rawAllItems]);
+  // Les PARTIES RAPIDES sont volontairement absentes de ALL / TERMINÉES / EN COURS classiques.
+  const allItems = useMemo(() => rawAllItems.filter((e) => !isQuickPartyRecord(e)), [rawAllItems]);
 
   const { done, running } = useMemo(() => {
     const fins = allItems.filter((e) => statusOf(e) === "finished");
@@ -4487,8 +4626,8 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
   const inboxCount = (inboxLocal?.length || 0) + (inboxCloud?.length || 0);
 
   const source = useMemo(
-    () => (tab === "all" ? allItems : tab === "inbox" ? [] : tab === "done" ? done : running),
-    [tab, allItems, done, running]
+    () => (tab === "all" ? allItems : tab === "inbox" ? [] : tab === "quick" ? quickItems : tab === "done" ? done : running),
+    [tab, allItems, quickItems, done, running]
   );
 
   const sportSource = useMemo(() => {
@@ -5242,6 +5381,11 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
           <div style={{ ...S.kpiValue, color: theme.danger }}>{running.length}</div>
         </div>
 
+        <div style={S.kpiCard(tab === "quick", "#52f5b2")} onClick={() => setTab("quick")}>
+          <div style={S.kpiLabel}>Parties rapides</div>
+          <div style={{ ...S.kpiValue, color: "#52f5b2" }}>{quickItems.length}</div>
+        </div>
+
         <div style={S.kpiCard(tab === "inbox", theme.primary)} onClick={() => setTab("inbox")}>
           <div style={S.kpiLabel}>Reçues</div>
           <div style={S.kpiValue}>{inboxCount}</div>
@@ -5388,7 +5532,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
           </div>
         )}
 
-        {tab !== "inbox" && (
+        {tab !== "inbox" && tab !== "quick" && (
           <button
             type="button"
             aria-label="Vider tout l'historique"
@@ -5579,6 +5723,12 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                       {modeLabel(e)}
                     </span>
 
+                    {isQuickPartyRecord(e) ? (
+                      <span style={{ padding: "4px 10px", borderRadius: 999, fontSize: 10, fontWeight: 950, background: "rgba(82,245,178,.10)", border: "1px solid rgba(82,245,178,.7)", color: "#baffdf" }}>
+                        ⚡ PARTIE RAPIDE
+                      </span>
+                    ) : null}
+
                     <span
                       style={{
                         padding: "4px 10px",
@@ -5644,6 +5794,16 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                     </div>
                   )}
 
+                  {isQuickPartyRecord(e) ? (
+                    <button
+                      type="button"
+                      onClick={() => openQuickProfileLinks(e)}
+                      style={{ ...S.primaryAction, border: "1px solid rgba(82,245,178,.65)", color: "#baffdf", background: "rgba(82,245,178,.08)" }}
+                    >
+                      ASSOCIER PROFILS {Object.keys(quickPartyProfileLinks(e)).length}/{quickPartyParticipants(e).length}
+                    </button>
+                  ) : null}
+
                   <div style={S.iconRow}>
                     {inProg && (
                       <div style={S.iconBtn} onClick={() => goResume(e, true)} title="Voir (sans reprendre)">
@@ -5699,6 +5859,83 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
 	          )
         )}
       </div>
+
+      {quickLinkEntry ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{ position: "fixed", inset: 0, zIndex: 10020, background: "rgba(0,0,0,.78)", display: "grid", placeItems: "center", padding: 14 }}
+          onClick={() => !quickLinkBusy && setQuickLinkEntry(null)}
+        >
+          <div
+            style={{ width: "min(620px,100%)", maxHeight: "86vh", overflow: "auto", borderRadius: 22, border: "1px solid rgba(82,245,178,.62)", background: "linear-gradient(180deg,#11181a,#070a0c)", color: "#fff", padding: 15, boxShadow: "0 20px 60px rgba(0,0,0,.55)" }}
+            onClick={(ev) => ev.stopPropagation()}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <div>
+                <div style={{ fontWeight: 1000, color: "#baffdf", fontSize: 18 }}>⚡ ASSOCIER LES JOUEURS</div>
+                <div style={{ fontSize: 11, opacity: .62, marginTop: 3 }}>La partie reste dans PARTIES RAPIDES tant que tu ne valides pas le transfert.</div>
+              </div>
+              <button type="button" disabled={quickLinkBusy} onClick={() => setQuickLinkEntry(null)} style={{ ...S.toolIconBtn(false, false), width: 38, height: 38 }}>×</button>
+            </div>
+
+            <div style={{ display: "grid", gap: 9, marginTop: 14 }}>
+              {quickPartyParticipants(quickLinkEntry).map((participant: any, index: number) => {
+                const tempId = String(participant.temporaryPlayerId || participant.id);
+                const linked = String(quickLinks[tempId] || "");
+                const profiles = (Array.isArray(storeRef.current?.profiles) ? storeRef.current.profiles : []).filter((p: any) => !p?.isBot);
+                return (
+                  <div key={tempId} style={{ border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.035)", borderRadius: 14, padding: 10, display: "grid", gridTemplateColumns: "minmax(90px,.8fr) minmax(160px,1.4fr)", gap: 9, alignItems: "center" }}>
+                    <div>
+                      <div style={{ fontSize: 9, opacity: .46, fontWeight: 900 }}>JOUEUR RAPIDE {index + 1}</div>
+                      <div style={{ fontWeight: 950 }}>{participant.name || `J${index + 1}`}</div>
+                    </div>
+                    <select
+                      value={linked}
+                      onChange={(ev) => setQuickLinks((prev) => ({ ...prev, [tempId]: ev.target.value }))}
+                      style={{ width: "100%", minHeight: 42, borderRadius: 11, border: `1px solid ${linked ? "rgba(82,245,178,.6)" : "rgba(255,255,255,.14)"}`, background: "#111619", color: "#fff", padding: "7px 10px", fontWeight: 850 }}
+                    >
+                      <option value="">— Choisir un profil —</option>
+                      {profiles.map((profile: any) => {
+                        const usedElsewhere = Object.entries(quickLinks).some(([otherTempId, profileId]) => otherTempId !== tempId && String(profileId) === String(profile.id));
+                        return <option key={profile.id} value={profile.id} disabled={usedElsewhere}>{profile.name || "Profil"}{usedElsewhere ? " · déjà associé" : ""}</option>;
+                      })}
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8 }}>
+              <button
+                type="button"
+                disabled={quickLinkBusy}
+                onClick={async () => {
+                  await persistQuickProfileLinks();
+                  go("profiles", { autoCreate: true, returnTo: { tab: "statsHub", params: { tab: "history" } } });
+                }}
+                style={{ minHeight: 44, borderRadius: 12, border: "1px solid rgba(255,255,255,.16)", background: "rgba(255,255,255,.05)", color: "#fff", fontWeight: 900 }}
+              >
+                + CRÉER UN PROFIL
+              </button>
+              <button type="button" disabled={quickLinkBusy} onClick={() => void persistQuickProfileLinks()} style={{ minHeight: 44, borderRadius: 12, border: "1px solid rgba(82,245,178,.45)", background: "rgba(82,245,178,.07)", color: "#baffdf", fontWeight: 950 }}>
+                ENREGISTRER LES ASSOCIATIONS
+              </button>
+              <button
+                type="button"
+                disabled={quickLinkBusy || quickPartyParticipants(quickLinkEntry).some((p: any) => !quickLinks[String(p.temporaryPlayerId || p.id)])}
+                onClick={() => void transferQuickPartyToProfiles()}
+                style={{ minHeight: 44, borderRadius: 12, border: "1px solid rgba(255,202,87,.65)", background: "rgba(255,202,87,.10)", color: "#ffe5a0", fontWeight: 1000, opacity: quickPartyParticipants(quickLinkEntry).some((p: any) => !quickLinks[String(p.temporaryPlayerId || p.id)]) ? .45 : 1 }}
+              >
+                TRANSFÉRER VERS L’HISTORIQUE
+              </button>
+            </div>
+            <div style={{ marginTop: 9, textAlign: "center", fontSize: 10, opacity: .5 }}>
+              {Object.keys(quickLinks).filter((id) => quickLinks[id]).length}/{quickPartyParticipants(quickLinkEntry).length} joueur(s) associé(s)
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {friendShareEntry ? (
         <div

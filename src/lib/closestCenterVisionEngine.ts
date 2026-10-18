@@ -202,24 +202,40 @@ function grayAt(frame: ImageData, x:number, y:number) {
  */
 export function estimateFrameTranslation(reference:ImageData, frame:ImageData, cal:CameraCalibration, maxShiftPx=10):FrameRegistration {
   const width=Math.min(reference.width,frame.width), height=Math.min(reference.height,frame.height);
-  let bestDx=0,bestDy=0,best=Infinity,second=Infinity;
-  const step=Math.max(10,Math.round(Math.min(width,height)/70));
-  for(let dy=-maxShiftPx;dy<=maxShiftPx;dy++) for(let dx=-maxShiftPx;dx<=maxShiftPx;dx++){
+  const scores=new Map<string,number>();
+  const scoreAt=(dx:number,dy:number)=>{
+    const key=`${dx},${dy}`; const cached=scores.get(key); if(cached!=null) return cached;
+    const step=Math.max(10,Math.round(Math.min(width,height)/70));
     let err=0,n=0;
     for(let y=maxShiftPx+2;y<height-maxShiftPx-2;y+=step) for(let x=maxShiftPx+2;x<width-maxShiftPx-2;x+=step){
       if(normalizedBoardPoint(cal,x/width,y/height).distanceNorm>1.01) continue;
       const a=grayAt(reference,x,y), b=grayAt(frame,x+dx,y+dy);
-      const d=Math.min(42,Math.abs(a-b)); // robust to dart silhouettes / highlights
+      const d=Math.min(42,Math.abs(a-b));
       err+=d*d; n++;
     }
-    const score=n?err/n:Infinity;
+    const v=n?err/n:Infinity; scores.set(key,v); return v;
+  };
+  let bestDx=0,bestDy=0,best=Infinity,second=Infinity;
+  for(let dy=-maxShiftPx;dy<=maxShiftPx;dy++) for(let dx=-maxShiftPx;dx<=maxShiftPx;dx++){
+    const score=scoreAt(dx,dy);
     if(score<best){second=best;best=score;bestDx=dx;bestDy=dy;} else if(score<second) second=score;
   }
+  // Parabolic interpolation around the best integer translation. This gives a
+  // genuine sub-pixel registration estimate instead of snapping the camera
+  // motion to whole pixels.
+  const parabolaOffset=(fm:number,f0:number,fp:number)=>{
+    const den=fm-2*f0+fp;
+    if(!Number.isFinite(fm)||!Number.isFinite(fp)||Math.abs(den)<1e-6) return 0;
+    return Math.max(-.5,Math.min(.5,.5*(fm-fp)/den));
+  };
+  let subX=0,subY=0;
+  if(bestDx>-maxShiftPx&&bestDx<maxShiftPx) subX=parabolaOffset(scoreAt(bestDx-1,bestDy),best,scoreAt(bestDx+1,bestDy));
+  if(bestDy>-maxShiftPx&&bestDy<maxShiftPx) subY=parabolaOffset(scoreAt(bestDx,bestDy-1),best,scoreAt(bestDx,bestDy+1));
   const separation=second<Infinity?Math.max(0,(second-best)/Math.max(1,second)):0;
-  const confidence=clamp01((1-Math.sqrt(best)/36)*.78+Math.min(.22,separation*3));
-  return {dxPx:bestDx,dyPx:bestDy,error:best,confidence};
+  const subpixelStrength=1-Math.min(1,(Math.abs(subX)+Math.abs(subY))*.35);
+  const confidence=clamp01((1-Math.sqrt(best)/36)*.74+Math.min(.22,separation*3)+subpixelStrength*.04);
+  return {dxPx:bestDx+subX,dyPx:bestDy+subY,error:best,confidence};
 }
-
 
 function estimateRegionalTranslation(reference:ImageData,frame:ImageData,cal:CameraCalibration,quadrant:number,maxShiftPx=6){
   const width=Math.min(reference.width,frame.width),height=Math.min(reference.height,frame.height);
@@ -250,12 +266,19 @@ export function assessProjectiveDrift(reference:ImageData,frame:ImageData,cal:Ca
 
 export function translateFrame(frame:ImageData, dxPx:number, dyPx:number):ImageData {
   if(!dxPx&&!dyPx) return frame;
-  const out=new ImageData(frame.width,frame.height), w=frame.width,h=frame.height;
+  const out=new ImageData(frame.width,frame.height), w=frame.width,h=frame.height,d=frame.data;
+  const sample=(x:number,y:number,c:number)=>{
+    const x0=Math.floor(x),y0=Math.floor(y),x1=x0+1,y1=y0+1;
+    if(x0<0||y0<0||x1>=w||y1>=h) return 0;
+    const fx=x-x0,fy=y-y0;
+    const i00=(y0*w+x0)*4+c,i10=(y0*w+x1)*4+c,i01=(y1*w+x0)*4+c,i11=(y1*w+x1)*4+c;
+    const a=d[i00]*(1-fx)+d[i10]*fx,b=d[i01]*(1-fx)+d[i11]*fx;
+    return Math.round(a*(1-fy)+b*fy);
+  };
   for(let y=0;y<h;y++) for(let x=0;x<w;x++){
     const sx=x+dxPx, sy=y+dyPx, oi=(y*w+x)*4;
-    if(sx<0||sx>=w||sy<0||sy>=h){out.data[oi+3]=255;continue;}
-    const si=(sy*w+sx)*4;
-    out.data[oi]=frame.data[si];out.data[oi+1]=frame.data[si+1];out.data[oi+2]=frame.data[si+2];out.data[oi+3]=255;
+    if(sx<0||sx>=w-1||sy<0||sy>=h-1){out.data[oi+3]=255;continue;}
+    out.data[oi]=sample(sx,sy,0);out.data[oi+1]=sample(sx,sy,1);out.data[oi+2]=sample(sx,sy,2);out.data[oi+3]=255;
   }
   return out;
 }
@@ -378,9 +401,12 @@ export function fuseIndependentConsensusPasses(first:DetectionConsensus[], secon
 }
 
 export function estimateDistanceUncertaintyMm(confidence: number, calibration?: CameraCalibration | null) {
-  const projectivePenalty = calibration?.v === 2 && Array.isArray((calibration as any).homography) ? Math.min(.6, Number((calibration as any).projectiveErrorMm || 0) * .08) : 0;
+  const projectivePenalty = calibration?.v === 2 && Array.isArray((calibration as any).homography) ? Math.min(.55, Number((calibration as any).projectiveErrorMm || 0) * .075) : 0;
   const calibrationPenalty = calibration?.v === 2 ? projectivePenalty : .8;
-  return Math.max(.35, .35 + (1 - clamp01(confidence)) * 3.4 + calibrationPenalty);
+  // The vision pipeline now performs sub-pixel registration and tip refinement.
+  // Keep a conservative physical floor, but do not force every excellent frame
+  // to the old 0.35 mm minimum when the calibrated source scale supports better.
+  return Math.max(.22, .22 + (1 - clamp01(confidence)) * 2.9 + calibrationPenalty);
 }
 
 export function analyzeFrameStability(before: ImageData, after: ImageData, cal: CameraCalibration): FrameStability {
@@ -441,21 +467,53 @@ function estimateTipFromComponent(comp: number[], heat: Float32Array, cols: numb
 
 function refineTipAtPixelLevel(before: ImageData, after: ImageData, cal: CameraCalibration, tip:{xNorm:number;yNorm:number}) {
   const width=Math.min(before.width,after.width), height=Math.min(before.height,after.height);
-  const cx=Math.round(tip.xNorm*width), cy=Math.round(tip.yNorm*height);
-  let sw=0,sx=0,sy=0,peak=0,count=0;
-  const radius=11;
-  for(let y=Math.max(1,cy-radius);y<=Math.min(height-2,cy+radius);y++) for(let x=Math.max(1,cx-radius);x<=Math.min(width-2,cx+radius);x++){
+  const cx=tip.xNorm*width, cy=tip.yNorm*height;
+  const radius=18;
+  const pts:{x:number;y:number;w:number}[]=[];
+  let peak=0;
+  for(let y=Math.max(1,Math.floor(cy-radius));y<=Math.min(height-2,Math.ceil(cy+radius));y++) for(let x=Math.max(1,Math.floor(cx-radius));x<=Math.min(width-2,Math.ceil(cx+radius));x++){
     const i=(y*before.width+x)*4,j=(y*after.width+x)*4;
     const delta=(Math.abs(before.data[i]-after.data[j])+Math.abs(before.data[i+1]-after.data[j+1])+Math.abs(before.data[i+2]-after.data[j+2]))/3;
-    if(delta<24) continue;
-    const spatial=Math.max(.08,1-Math.hypot(x-cx,y-cy)/(radius+1));
-    const w=(delta-24)*spatial; sw+=w;sx+=x*w;sy+=y*w;peak=Math.max(peak,delta);count++;
+    if(delta<20) continue;
+    const spatial=Math.max(.04,1-Math.hypot(x-cx,y-cy)/(radius+1));
+    const w=Math.pow(Math.max(0,delta-18),1.18)*spatial;
+    pts.push({x,y,w}); peak=Math.max(peak,delta);
   }
-  if(!sw||count<3) return {...tip,refineConfidence:.25};
-  // Weighted centroid is naturally sub-pixel because sx/sw and sy/sw are floating point.
-  const xNorm=(sx/sw)/width,yNorm=(sy/sw)/height;
-  const residualPx=Math.hypot(xNorm*width-cx,yNorm*height-cy);
-  return {xNorm,yNorm,refineConfidence:clamp01(.50+count/90+peak/1000-Math.min(.12,residualPx/80))};
+  if(pts.length<5) return {...tip,refineConfidence:.22};
+
+  let sw=0,mx=0,my=0;
+  for(const p of pts){sw+=p.w;mx+=p.x*p.w;my+=p.y*p.w;} mx/=sw||1;my/=sw||1;
+  let cxx=0,cyy=0,cxy=0;
+  for(const p of pts){const dx=p.x-mx,dy=p.y-my;cxx+=p.w*dx*dx;cyy+=p.w*dy*dy;cxy+=p.w*dx*dy;}
+  const theta=.5*Math.atan2(2*cxy,cxx-cyy),ax=Math.cos(theta),ay=Math.sin(theta),px=-ay,py=ax;
+  const projected=pts.map(p=>({...p,t:(p.x-mx)*ax+(p.y-my)*ay,q:(p.x-mx)*px+(p.y-my)*py})).sort((a,b)=>a.t-b.t);
+  const nEnd=Math.max(4,Math.ceil(projected.length*.16));
+  const groups=[projected.slice(0,nEnd),projected.slice(-nEnd)];
+  const endpoints=groups.map(group=>{
+    let ws=0,x=0,y=0,qm=0;
+    for(const p of group){ws+=p.w;x+=p.x*p.w;y+=p.y*p.w;qm+=p.q*p.w;} x/=ws||1;y/=ws||1;qm/=ws||1;
+    let spread=0;for(const p of group) spread+=p.w*Math.abs(p.q-qm);spread/=ws||1;
+    return {x,y,spread,coarseDistance:Math.hypot(x-cx,y-cy)};
+  });
+  // The coarse geometric estimator already chose which end is the dart tip.
+  // Keep that identity and refine the nearest endpoint instead of letting shaft
+  // or flight contrast pull the centroid away from the actual board contact.
+  const chosen=endpoints[0].coarseDistance<=endpoints[1].coarseDistance?endpoints[0]:endpoints[1];
+
+  // Final 5x5 weighted centroid around the endpoint gives floating-point
+  // coordinates and removes residual grid quantisation.
+  let fs=0,fx=0,fy=0,localPeak=0,localN=0;
+  for(let y=Math.max(1,Math.floor(chosen.y-3));y<=Math.min(height-2,Math.ceil(chosen.y+3));y++) for(let x=Math.max(1,Math.floor(chosen.x-3));x<=Math.min(width-2,Math.ceil(chosen.x+3));x++){
+    const i=(y*before.width+x)*4,j=(y*after.width+x)*4;
+    const delta=(Math.abs(before.data[i]-after.data[j])+Math.abs(before.data[i+1]-after.data[j+1])+Math.abs(before.data[i+2]-after.data[j+2]))/3;
+    if(delta<18) continue;
+    const ww=Math.pow(delta-17,1.25);fs+=ww;fx+=x*ww;fy+=y*ww;localPeak=Math.max(localPeak,delta);localN++;
+  }
+  const x=fs?fx/fs:chosen.x,y=fs?fy/fs:chosen.y;
+  const axisMajor=Math.max(cxx,cyy), axisMinor=Math.max(1,Math.min(cxx,cyy));
+  const elongation=Math.min(5,Math.sqrt(axisMajor/axisMinor));
+  const confidence=clamp01(.42+Math.min(.18,pts.length/180)+Math.min(.14,peak/900)+Math.min(.12,localN/45)+Math.min(.14,(elongation-1)/5));
+  return {xNorm:x/width,yNorm:y/height,refineConfidence:confidence,subpixelX:x-Math.round(x),subpixelY:y-Math.round(y)};
 }
 
 export function fuseDetectionFrames(frames: VisionDetection[][], wanted=3): DetectionConsensus[] {

@@ -287,10 +287,13 @@ export default function OrganizationTeamsPanel({ organization, userId, initialGr
         group = await updateOrganizationGroup(userId, group.id, { ...draft, logoMediaKey });
       }
 
+      const captainWasAutoAdded = !!draft.captainUserId && (mode === "create" || !draftCaptainAlreadyAssigned);
       setMode("list");
       setSelectedId(group.id);
       setLogoFile(null);
-      setNotice(L("Fiche équipe enregistrée.", "Team profile saved.", "Ficha del equipo guardada."));
+      setNotice(captainWasAutoAdded
+        ? L("Fiche enregistrée · le capitaine a été ajouté automatiquement à l’effectif.", "Profile saved · the captain was automatically added to the roster.", "Ficha guardada · el capitán se añadió automáticamente a la plantilla.")
+        : L("Fiche équipe enregistrée.", "Team profile saved.", "Ficha del equipo guardada."));
       await refresh();
       await onChanged?.();
     } catch (e: any) {
@@ -321,6 +324,14 @@ export default function OrganizationTeamsPanel({ organization, userId, initialGr
 
   const toggleMember = async (group: OrganizationLocalGroup, member: OrganizationMember, assigned: boolean) => {
     if (!canManageRoster) return;
+    if (!assigned && member.entityType === "user" && member.userId === group.captainUserId) {
+      setError(L(
+        "Le capitaine doit rester dans l’effectif. Nomme d’abord un autre capitaine (ou retire le capitaine dans la fiche), puis retire ce membre.",
+        "The captain must remain in the roster. Choose another captain first (or clear the captain in the team profile), then remove this member.",
+        "El capitán debe permanecer en la plantilla. Nombra primero a otro capitán (o quita el capitán en la ficha) y después retira a este miembro."
+      ));
+      return;
+    }
     const memberKey = member.entityType === "local_profile" ? `local:${member.membershipId}` : member.userId;
     const key = `member:${group.id}:${memberKey}`;
     setActionKey(key);
@@ -338,9 +349,26 @@ export default function OrganizationTeamsPanel({ organization, userId, initialGr
   };
 
   const rosterFor = (group: OrganizationLocalGroup) => activeMembers.filter((member) => member.groupIds.includes(group.id));
+  const editorRoster = selected ? rosterFor(selected) : [];
+  const draftCaptain = draft.captainUserId
+    ? activeMembers.find((member) => member.entityType === "user" && member.userId === draft.captainUserId) || null
+    : null;
+  const draftCaptainAlreadyAssigned = !!(selected && draft.captainUserId && editorRoster.some((member) => member.entityType === "user" && member.userId === draft.captainUserId));
 
   const openLinkExisting = () => {
-    const existing = loadTeams().filter((team) => !groups.some((group) => group.name.trim().toLowerCase() === String(team.name || "").trim().toLowerCase()));
+    // Une Team canonique déjà rattachée à une organisation ne doit jamais pouvoir
+    // être rattachée une seconde fois. À l'inverse, deux Teams différentes peuvent
+    // parfaitement porter le même nom : on filtre donc par identité/lien, jamais
+    // par libellé, afin de respecter strictement "1 Team = 1 ID".
+    const currentGroupIds = new Set(groups.map((group) => String(group.id)));
+    const existing = loadTeams().filter((team) => {
+      const teamId = String(team.id || "");
+      const linkedGroupId = String(team.syncedClubTeamId || "");
+      const linkedOrgId = String(team.clubId || "");
+      if (currentGroupIds.has(teamId)) return false;
+      if (linkedGroupId || linkedOrgId) return false;
+      return true;
+    });
     setAvailableTeams(existing);
     setLinkOpen(true);
     setError("");
@@ -430,8 +458,12 @@ export default function OrganizationTeamsPanel({ organization, userId, initialGr
           <div style={{ color: theme.textSoft, fontSize: 8, fontWeight: 950, marginBottom: 5 }}>{L("CAPITAINE / RESPONSABLE D’ÉQUIPE", "CAPTAIN / TEAM LEAD", "CAPITÁN / RESPONSABLE DEL EQUIPO")}</div>
           <select style={input} value={draft.captainUserId} onChange={(e) => setDraft((value) => ({ ...value, captainUserId: e.target.value }))}>
             <option value="">{L("Aucun pour le moment", "None for now", "Ninguno por ahora")}</option>
-            {captainCandidates.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}
+            {captainCandidates.map((member) => {
+              const inRoster = selected ? member.groupIds.includes(selected.id) : false;
+              return <option key={member.userId} value={member.userId}>{member.displayName}{inRoster ? "" : L(" · ajout auto à l’effectif", " · auto-add to roster", " · alta automática en plantilla")}</option>;
+            })}
           </select>
+          {draftCaptain && !draftCaptainAlreadyAssigned ? <div style={{ marginTop: 5, color: theme.primary, fontSize: 7.6, fontWeight: 850, lineHeight: 1.3 }}>{L("Ce capitaine sera ajouté automatiquement à l’effectif lors de l’enregistrement.", "This captain will be added to the roster automatically when you save.", "Este capitán se añadirá automáticamente a la plantilla al guardar.")}</div> : null}
         </div>
         <div>
           <div style={{ color: theme.textSoft, fontSize: 8, fontWeight: 950, marginBottom: 5 }}>{L("STATUT", "STATUS", "ESTADO")}</div>
@@ -444,7 +476,7 @@ export default function OrganizationTeamsPanel({ organization, userId, initialGr
 
       {editing ? <div style={{ marginTop: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-          <div><div style={{ color: theme.text, fontSize: 10.5, fontWeight: 1000 }}>{L("EFFECTIF DE L’ÉQUIPE", "TEAM ROSTER", "PLANTILLA DEL EQUIPO")}</div><div style={{ color: theme.textSoft, fontSize: 8.5, marginTop: 2 }}>{rosterFor(selected).length} {L("membre(s) affecté(s)", "assigned member(s)", "miembro(s) asignado(s)")}</div></div>
+          <div><div style={{ color: theme.text, fontSize: 10.5, fontWeight: 1000 }}>{L("EFFECTIF DE L’ÉQUIPE", "TEAM ROSTER", "PLANTILLA DEL EQUIPO")}</div><div style={{ color: theme.textSoft, fontSize: 8.5, marginTop: 2 }}>{editorRoster.length} {L("membre(s) affecté(s)", "assigned member(s)", "miembro(s) asignado(s)")} · {L("capitaine toujours inclus", "captain always included", "capitán siempre incluido")}</div></div>
           {!canManageRoster ? <span style={{ color: theme.textSoft, fontSize: 8 }}>{L("Lecture seule", "Read only", "Solo lectura")}</span> : null}
         </div>
         <div style={{ marginTop: 8, display: "grid", gap: 6, maxHeight: 270, overflowY: "auto" }}>
@@ -455,7 +487,13 @@ export default function OrganizationTeamsPanel({ organization, userId, initialGr
             return <label key={memberKey} style={{ ...card, padding: 9, display: "grid", gridTemplateColumns: "34px minmax(0,1fr) auto", gap: 9, alignItems: "center", opacity: busy ? .65 : 1 }}>
               <span style={{ width: 32, height: 32, borderRadius: 999, overflow: "hidden", border: `1px solid ${theme.borderSoft}`, display: "grid", placeItems: "center", background: "rgba(0,0,0,.28)" }}>{member.avatarUrl ? <img src={member.avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <strong style={{ color: theme.primary, fontSize: 9 }}>{initials(member.displayName)}</strong>}</span>
               <span style={{ minWidth: 0 }}><strong style={{ display: "block", fontSize: 9.5, color: theme.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{member.displayName}</strong><small style={{ color: theme.textSoft, fontSize: 7.8 }}>{member.userId === draft.captainUserId ? L("Capitaine", "Captain", "Capitán") : member.entityType === "local_profile" ? L("Profil local", "Local profile", "Perfil local") : member.role}</small></span>
-              <input type="checkbox" checked={assigned} disabled={!canManageRoster || busy} onChange={(e) => void toggleMember(selected, member, e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={assigned}
+                disabled={!canManageRoster || busy || (member.entityType === "user" && member.userId === draft.captainUserId)}
+                title={member.entityType === "user" && member.userId === draft.captainUserId ? L("Le capitaine doit rester dans l’effectif.", "The captain must remain in the roster.", "El capitán debe permanecer en la plantilla.") : undefined}
+                onChange={(e) => void toggleMember(selected, member, e.target.checked)}
+              />
             </label>;
           })}
         </div>

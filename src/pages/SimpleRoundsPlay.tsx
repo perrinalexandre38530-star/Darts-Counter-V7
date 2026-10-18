@@ -11,11 +11,115 @@ import { History } from "../lib/history";
 import ScoreInputHub from "../components/ScoreInputHub";
 import type { Dart as UIDart } from "../lib/types";
 import { buildDartsTelemetry, canonicalToUiDart, canonicalVisitFromUiDarts, exactDartsForScore, scoreDarts } from "../lib/dartsTelemetry";
+import challengeBoard from "../assets/challenge_board.webp";
 
 const clamp = (n: number) => {
   const v = Math.round(Number.isFinite(n) ? n : 0);
   return Math.max(0, Math.min(180, v));
 };
+
+function SuperBullChallengeView({
+  spec, cfg, playerRows, playerIdx, scores, currentThrow, botMask, roundIdx, isFinished, winner,
+  bullsByP, dbullsByP, dartsByP, bullStreakByP, bestBullStreakByP, perfectVisitsByP, lastBullVisitByP,
+  superBullRanking, onBack, onReset, onDart, onUndo,
+}: any) {
+  const active = playerRows[playerIdx] || playerRows[0] || { name: "Joueur 1" };
+  const activeDarts = dartsByP[playerIdx] || 0;
+  const activeCentres = (bullsByP[playerIdx] || 0) + (dbullsByP[playerIdx] || 0);
+  const precision = activeDarts > 0 ? Math.round((activeCentres / activeDarts) * 100) : 0;
+  const objective = Number(cfg.objective || 0);
+  const progressMax = objective > 0 ? objective : Math.max(150, Number(cfg.rounds || 1) * 150);
+  const progressPct = Math.max(0, Math.min(100, ((scores[playerIdx] || 0) / progressMax) * 100));
+  const roundLabel = `${Math.min(roundIdx + 1, Number(cfg.rounds || 1))}/${cfg.rounds}`;
+  const throwValue = currentThrow.reduce((sum: number, d: any) => sum + (Number(d?.v) === 25 ? (Number(d?.mult) === 2 ? 50 : 25) : 0), 0);
+  const initials = (name: string) => String(name || "J").split(/\s+/).slice(0, 2).map((x: string) => x[0]).join("").toUpperCase();
+  const dartLabel = (d: any) => !d ? "—" : Number(d.v) !== 25 ? "MISS" : Number(d.mult) === 2 ? "50" : "25";
+  const avatar = (p: any, size = 54) => p?.avatarDataUrl
+    ? <img src={p.avatarDataUrl} alt={p.name || "Joueur"} style={{ width:size, height:size, borderRadius:"50%", objectFit:"cover", border:"2px solid #2bd9ff", boxShadow:"0 0 16px #16c9ff55" }}/>
+    : <span style={{ width:size, height:size, borderRadius:"50%", display:"grid", placeItems:"center", background:"radial-gradient(circle at 35% 25%,#33465e,#0a111a 65%)", border:"2px solid #2bd9ff", color:"#fff", fontWeight:1000, boxShadow:"0 0 16px #16c9ff55" }}>{initials(p?.name)}</span>;
+
+  if (isFinished && winner) {
+    return <div className="sbx-root">
+      <header className="sbx-head">
+        <div className="sbx-back"><BackDot onClick={onBack} /></div>
+        <img src={spec.tickerSrc} alt="SUPER BULL" />
+        <div className="sbx-info"><InfoDot title={spec.infoTitle} content={spec.infoText} /></div>
+      </header>
+      <main className="sbx-finish">
+        <div className="sbx-finish-card">
+          <div className="sbx-kicker">SUPER BULL · PARTIE TERMINÉE</div>
+          <div className="sbx-trophy">🏆</div>
+          <h1>{playerRows[winner.idx]?.name || `Joueur ${winner.idx + 1}`}</h1>
+          <div className="sbx-winner-score">{winner.score} <small>PTS</small></div>
+          <p>{objective > 0 ? `Objectif ${objective} points atteint / classement final` : `${cfg.rounds} rounds terminés`}</p>
+          <div className="sbx-ranking">
+            {superBullRanking.map((row: any, rank: number) => {
+              const p = playerRows[row.i];
+              const darts = dartsByP[row.i] || 0;
+              const centres = (bullsByP[row.i] || 0) + (dbullsByP[row.i] || 0);
+              const pct = darts ? Math.round((centres / darts) * 100) : 0;
+              return <div className={rank === 0 ? "winner" : ""} key={row.i}>
+                <b>#{rank + 1}</b>{avatar(p, 40)}<span><strong>{p?.name}</strong><small>{row.score} pts</small></span>
+                <em>25 <strong>{bullsByP[row.i] || 0}</strong></em><em>50 <strong>{dbullsByP[row.i] || 0}</strong></em><em>PRÉC. <strong>{pct}%</strong></em><em>SÉRIE <strong>{bestBullStreakByP[row.i] || 0}</strong></em>
+              </div>;
+            })}
+          </div>
+          <div className="sbx-finish-actions"><button onClick={onBack}>RETOUR CONFIG</button><button className="primary" onClick={onReset}>REJOUER</button></div>
+        </div>
+      </main>
+      <style>{SUPER_BULL_CHALLENGE_CSS}</style>
+    </div>;
+  }
+
+  return <div className="sbx-root">
+    <header className="sbx-head">
+      <div className="sbx-back"><BackDot onClick={onBack} /></div>
+      <img src={spec.tickerSrc} alt="SUPER BULL" />
+      <div className="sbx-info"><InfoDot title={spec.infoTitle} content={spec.infoText} /></div>
+    </header>
+
+    <main className="sbx-layout">
+      <section className="sbx-left">
+        <div className="sbx-active-player">
+          <div className="sbx-active-avatar">{avatar(active, 72)}</div>
+          <div className="sbx-active-copy"><small>JOUEUR ACTIF</small><strong>{active.name}</strong><span>{botMask[playerIdx] ? "BOT IA" : "SUPER BULL"}</span></div>
+          <div className="sbx-active-score"><small>SCORE</small><b>{scores[playerIdx] || 0}</b>{objective > 0 && <span>/ {objective}</span>}</div>
+        </div>
+        <div className="sbx-left-kpis"><div><span>BULL25</span><b>{bullsByP[playerIdx] || 0}</b></div><div><span>BULL50</span><b>{dbullsByP[playerIdx] || 0}</b></div><div><span>PRÉCISION</span><b>{precision}%</b></div></div>
+        <div className="sbx-left-kpis"><div><span>SÉRIE</span><b>{bullStreakByP[playerIdx] || 0}</b></div><div><span>BEST</span><b>{bestBullStreakByP[playerIdx] || 0}</b></div><div><span>100% CENTRE</span><b>{perfectVisitsByP[playerIdx] || 0}</b></div></div>
+        <div className="sbx-roster-title"><b>JOUEURS</b><span>{playerRows.length}</span></div>
+        <div className="sbx-roster">
+          {playerRows.map((p: any, i: number) => <div key={p.id || i} className={i === playerIdx ? "active" : ""}>{avatar(p, 38)}<span><b>{p.name}</b><small>{botMask[i] ? "BOT" : `${dartsByP[i] || 0} fl.`}</small></span><strong>{scores[i] || 0}</strong></div>)}
+        </div>
+      </section>
+
+      <section className="sbx-board">
+        <div className="sbx-board-caption"><span>SUPER BULL · CENTRE DE CIBLE</span><b>{objective > 0 ? `${scores[playerIdx] || 0} / ${objective}` : `${scores[playerIdx] || 0} PTS`}</b><small>VOLÉE {roundLabel} · {currentThrow.length}/3 FLÉCHETTES</small></div>
+        <div className="sbx-board-media"><img src={challengeBoard} alt="Cible de fléchettes"/><div className="sbx-board-glow"/><div className="sbx-center-ring"><span>25</span><b>50</b></div></div>
+        <div className="sbx-darts-row">{[0,1,2].map(i => <div key={i} className={currentThrow[i] ? (Number(currentThrow[i]?.v) === 25 ? (Number(currentThrow[i]?.mult) === 2 ? "dbull" : "bull") : "miss") : ""}><small>D{i+1}</small><b>{dartLabel(currentThrow[i])}</b></div>)}</div>
+      </section>
+
+      <aside className="sbx-right">
+        <div className="sbx-progress-card"><div><span>SUPER BULL · CENTRE DE CIBLE</span><b>{scores[playerIdx] || 0}{objective > 0 ? ` / ${objective}` : " PTS"}</b><small>Dernière volée {lastBullVisitByP[playerIdx] || 0} pts · {currentThrow.length}/3 en cours</small></div><em>VOLÉE<strong>{roundLabel}</strong></em><i><u style={{width:`${progressPct}%`}}/></i></div>
+        <div className="sbx-stats-card"><h3>STATISTIQUES PARTIE · {active.name}</h3><div className="sbx-stat-grid"><div><span>BULL25</span><b>{bullsByP[playerIdx] || 0}</b></div><div><span>BULL50</span><b>{dbullsByP[playerIdx] || 0}</b></div><div><span>SÉRIE MAX</span><b>{bestBullStreakByP[playerIdx] || 0}</b></div><div><span>VOLÉES 100%</span><b>{perfectVisitsByP[playerIdx] || 0}</b></div><div><span>PRÉCISION</span><b>{precision}%</b></div><div><span>VOLÉE EN COURS</span><b>{throwValue} pts</b></div></div></div>
+        <div className="sbx-input-title"><span>SAISIE DE LA VOLÉE</span><small>3 touches uniquement</small></div>
+        <div className="sbx-keypad">
+          <button className="bull25" disabled={botMask[playerIdx]} onClick={() => onDart({ v:25, mult:1 })}><span className="target">25</span><b>BULL25</b><small>+25 PTS</small></button>
+          <button className="bull50" disabled={botMask[playerIdx]} onClick={() => onDart({ v:25, mult:2 })}><span className="target">50</span><b>BULL50</b><small>+50 PTS</small></button>
+          <button className="miss" disabled={botMask[playerIdx]} onClick={() => onDart({ v:0, mult:1 })}><span className="target">×</span><b>MISS</b><small>0 PT</small></button>
+        </div>
+        <button className="sbx-undo" disabled={!currentThrow.length || botMask[playerIdx]} onClick={onUndo}>↶ ANNULER LA DERNIÈRE FLÉCHETTE</button>
+      </aside>
+    </main>
+    <style>{SUPER_BULL_CHALLENGE_CSS}</style>
+  </div>;
+}
+
+const SUPER_BULL_CHALLENGE_CSS = `
+.sbx-root{min-height:100dvh;background:#02070d;color:#fff;display:flex;flex-direction:column;overflow:hidden}.sbx-head{height:104px;min-height:76px;position:relative;border-bottom:1px solid #1b5670;background:#07101a;overflow:hidden}.sbx-head>img{width:100%;height:100%;object-fit:cover;object-position:center;display:block}.sbx-head:after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,#02070dcc 0,transparent 19%,transparent 81%,#02070dcc 100%);pointer-events:none}.sbx-back,.sbx-info{position:absolute;top:50%;transform:translateY(-50%);z-index:3}.sbx-back{left:12px}.sbx-info{right:14px}.sbx-layout{flex:1;min-height:0;display:grid;grid-template-columns:minmax(240px,24fr) minmax(360px,40fr) minmax(340px,36fr);gap:8px;padding:8px}.sbx-left,.sbx-board,.sbx-right{min-height:0;border:1px solid #14344a;border-radius:16px;background:linear-gradient(180deg,#07131f,#040b12);box-shadow:inset 0 1px 0 #ffffff08}.sbx-left{padding:9px;display:flex;flex-direction:column;gap:7px}.sbx-active-player{min-height:94px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:9px;align-items:center;padding:8px;border:1px solid #1b607d;border-radius:14px;background:linear-gradient(135deg,#0b2535,#07111a)}.sbx-active-copy{min-width:0;display:flex;flex-direction:column}.sbx-active-copy small,.sbx-active-score small{font-size:8px;letter-spacing:.8px;color:#6fdfff;font-weight:1000}.sbx-active-copy strong{font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sbx-active-copy span{font-size:9px;color:#8a9aa9;margin-top:4px}.sbx-active-score{text-align:right}.sbx-active-score b{display:block;font-size:31px;line-height:1}.sbx-active-score span{font-size:11px;color:#8aa4b6}.sbx-left-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}.sbx-left-kpis>div{min-height:58px;display:grid;place-items:center;text-align:center;border:1px solid #143146;border-radius:11px;background:#06101a}.sbx-left-kpis span{font-size:7px;color:#899aa9;font-weight:1000}.sbx-left-kpis b{font-size:20px;color:#24d9ff}.sbx-roster-title{height:30px;display:flex;align-items:center;justify-content:space-between;padding:0 7px;border-bottom:1px solid #173044;font-size:10px}.sbx-roster-title span{border-radius:99px;padding:2px 7px;background:#173044;color:#89dff2}.sbx-roster{overflow:auto;display:grid;gap:4px}.sbx-roster>div{min-height:48px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:7px;align-items:center;padding:5px;border:1px solid #102a3d;border-radius:10px;background:#050e16}.sbx-roster>div.active{border-color:#e8b82b;box-shadow:0 0 18px #e8b82b25}.sbx-roster>div span{min-width:0;display:flex;flex-direction:column}.sbx-roster>div span b{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sbx-roster>div span small{font-size:7px;color:#7e8d9a}.sbx-roster>div>strong{font-size:18px;color:#ffd248}.sbx-board{padding:8px;display:flex;flex-direction:column;gap:7px}.sbx-board-caption{min-height:65px;padding:7px 12px;border-radius:12px;border:1px solid #17455e;background:linear-gradient(180deg,#092236,#07131f);display:grid;grid-template-columns:1fr auto;grid-template-areas:'a b' 'c b';align-items:center}.sbx-board-caption span{grid-area:a;font-size:9px;color:#56dcff;font-weight:1000;letter-spacing:.7px}.sbx-board-caption b{grid-area:b;font-size:30px}.sbx-board-caption small{grid-area:c;font-size:9px;color:#8b9dab}.sbx-board-media{position:relative;flex:1;min-height:0;display:grid;place-items:center;overflow:hidden;border-radius:14px;background:radial-gradient(circle,#123249 0,#07111a 52%,#03070c 78%)}.sbx-board-media>img{width:min(100%,620px);height:100%;object-fit:contain;filter:drop-shadow(0 0 22px #ff9c242d)}.sbx-board-glow{position:absolute;width:30%;aspect-ratio:1;border-radius:50%;box-shadow:0 0 55px #ffcf3233,inset 0 0 24px #ff463822;pointer-events:none}.sbx-center-ring{position:absolute;width:84px;aspect-ratio:1;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle,#e42134 0 30%,#147f50 31% 63%,#f2e7cf 64% 78%,#13855a 79%);border:2px solid #ffe9a8;box-shadow:0 0 30px #ffd22e55;color:#fff;text-shadow:0 2px 4px #000;font-weight:1000}.sbx-center-ring span{position:absolute;bottom:8px;font-size:11px}.sbx-center-ring b{font-size:22px}.sbx-darts-row{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.sbx-darts-row>div{height:48px;border:1px solid #293b49;border-radius:10px;background:#070e15;display:grid;place-items:center;grid-template-columns:auto auto;gap:5px}.sbx-darts-row small{font-size:8px;color:#82919f}.sbx-darts-row b{font-size:16px}.sbx-darts-row .bull{border-color:#21c778;color:#62efaa}.sbx-darts-row .dbull{border-color:#ff4756;color:#ff8a91}.sbx-darts-row .miss{color:#9ea8b2}.sbx-right{padding:9px;display:flex;flex-direction:column;gap:7px}.sbx-progress-card{padding:10px;border:1px solid #166487;border-radius:14px;background:linear-gradient(145deg,#09283c,#06121d);display:grid;grid-template-columns:minmax(0,1fr) 78px;gap:7px}.sbx-progress-card>div{display:flex;flex-direction:column}.sbx-progress-card span{font-size:9px;color:#2ce0ff;font-weight:1000;letter-spacing:.6px}.sbx-progress-card b{font-size:35px;line-height:1.1;margin-top:4px}.sbx-progress-card small{font-size:8px;color:#a9b5bf}.sbx-progress-card em{border:1px solid #16435c;border-radius:10px;display:grid;place-items:center;font-style:normal;font-size:8px;color:#9dafbd}.sbx-progress-card em strong{font-size:19px;color:#fff}.sbx-progress-card>i{grid-column:1/-1;height:7px;border-radius:99px;overflow:hidden;background:#102836}.sbx-progress-card>i u{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#16b7ee,#1ee6d0);box-shadow:0 0 12px #20dfff88}.sbx-stats-card{padding:8px;border:1px solid #16364a;border-radius:13px;background:#050d14}.sbx-stats-card h3{margin:0 0 6px;font-size:10px}.sbx-stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}.sbx-stat-grid>div{min-height:54px;border:1px solid #153246;border-radius:9px;background:#07131d;display:grid;place-items:center;text-align:center}.sbx-stat-grid span{font-size:7px;color:#8ea0ae;font-weight:1000}.sbx-stat-grid b{font-size:18px;color:#21d9ff}.sbx-input-title{display:flex;justify-content:space-between;align-items:end;padding:0 3px}.sbx-input-title span{font-size:9px;font-weight:1000;letter-spacing:.7px}.sbx-input-title small{font-size:7px;color:#8594a1}.sbx-keypad{flex:1;min-height:156px;display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.sbx-keypad button{min-height:120px;border-radius:16px;border:1px solid #31404d;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;font-weight:1000;cursor:pointer}.sbx-keypad button:disabled{opacity:.45;cursor:not-allowed}.sbx-keypad .target{width:47px;height:47px;border-radius:50%;display:grid;place-items:center;background:#f3ead7;border:6px solid currentColor;box-shadow:0 0 18px currentColor;font-size:15px;color:#061017}.sbx-keypad button b{font-size:20px}.sbx-keypad button small{font-size:8px}.sbx-keypad .bull25{background:linear-gradient(180deg,#11a865,#075b39);border-color:#42efa0;color:#b5ffcf}.sbx-keypad .bull50{background:linear-gradient(180deg,#ed2638,#86121d);border-color:#ff6672;color:#ffd3d6}.sbx-keypad .miss{background:linear-gradient(180deg,#46515c,#1c252e);border-color:#91a0ae;color:#e4e9ee}.sbx-undo{height:42px;border-radius:11px;border:1px solid #244057;background:#07131e;color:#b5c4d0;font-weight:1000;font-size:9px}.sbx-undo:disabled{opacity:.35}.sbx-finish{flex:1;display:grid;place-items:center;padding:18px}.sbx-finish-card{width:min(900px,96vw);max-height:calc(100dvh - 140px);overflow:auto;border:1px solid #1c5a77;border-radius:22px;padding:20px;background:linear-gradient(145deg,#0a2334,#050c13);text-align:center}.sbx-kicker{font-size:10px;color:#33dcff;letter-spacing:1.3px;font-weight:1000}.sbx-trophy{font-size:46px;margin-top:5px}.sbx-finish h1{margin:0;font-size:32px}.sbx-winner-score{font-size:46px;font-weight:1000;color:#ffd546}.sbx-winner-score small{font-size:13px}.sbx-finish p{color:#9aabb8}.sbx-ranking{display:grid;gap:6px;text-align:left}.sbx-ranking>div{display:grid;grid-template-columns:36px 44px minmax(0,1fr) repeat(4,minmax(60px,.5fr));gap:6px;align-items:center;padding:7px;border:1px solid #173244;border-radius:11px;background:#06111a}.sbx-ranking>div.winner{border-color:#d5a92c;background:#211b08}.sbx-ranking>div>span{display:flex;flex-direction:column}.sbx-ranking>div>span small{color:#8594a1}.sbx-ranking em{font-style:normal;font-size:7px;color:#8b9cab;text-align:center}.sbx-ranking em strong{display:block;color:#fff;font-size:15px}.sbx-finish-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}.sbx-finish-actions button{height:48px;border-radius:12px;border:1px solid #29465a;background:#091520;color:#fff;font-weight:1000}.sbx-finish-actions .primary{background:linear-gradient(180deg,#16bfe8,#08748f);border-color:#45e5ff}.sbx-finish-actions button,.sbx-undo,.sbx-keypad button{touch-action:manipulation}
+@media(max-width:980px){.sbx-head{height:78px}.sbx-layout{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(280px,1fr) auto;overflow:auto}.sbx-left{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,.7fr);grid-template-areas:'active kpis1' 'active kpis2';}.sbx-active-player{grid-area:active}.sbx-left-kpis:nth-of-type(1){grid-area:kpis1}.sbx-left-kpis:nth-of-type(2){grid-area:kpis2}.sbx-roster-title,.sbx-roster{display:none}.sbx-board{min-height:390px}.sbx-right{min-height:380px}.sbx-keypad{min-height:140px}.sbx-ranking>div{grid-template-columns:30px 40px minmax(90px,1fr) repeat(2,minmax(54px,.5fr))}.sbx-ranking em:nth-last-child(-n+2){display:none}}
+@media(max-width:620px){.sbx-root{overflow:auto}.sbx-head{height:68px;position:sticky;top:0;z-index:20}.sbx-layout{display:flex;flex-direction:column;padding:5px}.sbx-left{display:block}.sbx-active-player{min-height:82px}.sbx-left-kpis,.sbx-roster-title,.sbx-roster{display:none}.sbx-board{min-height:330px}.sbx-board-caption b{font-size:24px}.sbx-board-media{min-height:220px}.sbx-center-ring{width:68px}.sbx-right{min-height:auto}.sbx-stat-grid{grid-template-columns:repeat(3,1fr)}.sbx-keypad{min-height:116px}.sbx-keypad button{min-height:108px;border-radius:13px}.sbx-keypad .target{width:38px;height:38px}.sbx-keypad button b{font-size:15px}.sbx-progress-card b{font-size:28px}.sbx-finish-card{max-height:none}.sbx-ranking>div{grid-template-columns:30px 40px minmax(80px,1fr) 54px}.sbx-ranking em:not(:first-of-type){display:none}}
+`;
 
 export default function SimpleRoundsPlay(props: any) {
   const { t } = useLang();
@@ -264,6 +368,18 @@ function goBack() {
     applyVisitFor(playerIdx, currentThrow);
     setCurrentThrow([]);
     setMultiplier(1);
+  }
+
+  function addSuperBullDart(dart: UIDart) {
+    if (variantId !== "super_bull" || isFinished || botMask[playerIdx]) return;
+    const next = [...currentThrow, dart].slice(0, 3);
+    if (next.length >= 3) {
+      applyVisitFor(playerIdx, next);
+      setCurrentThrow([]);
+      setMultiplier(1);
+      return;
+    }
+    setCurrentThrow(next);
   }
 
   function resetMatch() {
@@ -516,6 +632,33 @@ function goBack() {
         Variante inconnue: {String(variantId)}
       </div>
     );
+  }
+
+  if (variantId === "super_bull") {
+    return <SuperBullChallengeView
+      spec={spec}
+      cfg={cfg}
+      playerRows={playerRows}
+      playerIdx={playerIdx}
+      scores={scores}
+      currentThrow={currentThrow}
+      botMask={botMask}
+      roundIdx={roundIdx}
+      isFinished={isFinished}
+      winner={winner}
+      bullsByP={bullsByP}
+      dbullsByP={dbullsByP}
+      dartsByP={dartsByP}
+      bullStreakByP={bullStreakByP}
+      bestBullStreakByP={bestBullStreakByP}
+      perfectVisitsByP={perfectVisitsByP}
+      lastBullVisitByP={lastBullVisitByP}
+      superBullRanking={superBullRanking}
+      onBack={goBack}
+      onReset={resetMatch}
+      onDart={addSuperBullDart}
+      onUndo={() => setCurrentThrow((prev) => prev.slice(0, -1))}
+    />;
   }
 
   return (

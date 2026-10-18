@@ -699,6 +699,17 @@ function readRec(params: any) {
   return params?.rec || params?.record || params?.match || params?.payload || null;
 }
 
+function ptit1SummaryIsFrench() {
+  try {
+    const raw = localStorage.getItem("dc_lang_v1");
+    if (raw) {
+      try { return String(JSON.parse(raw)?.lang || "").toLowerCase().startsWith("fr"); }
+      catch { return String(raw).toLowerCase().startsWith("fr"); }
+    }
+    return String(navigator.language || "en").toLowerCase().startsWith("fr");
+  } catch { return false; }
+}
+
 const pageStyle: React.CSSProperties = {
   minHeight: "100dvh",
   padding: "14px 12px 90px",
@@ -713,12 +724,14 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
   const wave61Spec = wave61ModeId ? DARTS_WAVE_61.find((entry) => entry.id === wave61ModeId) : null;
   const wave61Preset = wave61ModeId ? getWave61Preset(wave61ModeId) : null;
   const baseMeta = MODE_META[mode] || MODE_META.unknown;
-  const meta = mode === "wave61" && wave61Spec && wave61Preset ? {
+  let meta = mode === "wave61" && wave61Spec && wave61Preset ? {
     ...baseMeta,
     title: wave61Spec.label,
     accent: wave61Preset.accent || baseMeta.accent,
     subtitle: `${wave61Preset.label} · ${wave61Spec.infoBody}`,
   } : baseMeta;
+  const ptit1Fr = mode === "ptit_hun" ? ptit1SummaryIsFrench() : true;
+  if (mode === "ptit_hun" && !ptit1Fr) meta = { ...meta, subtitle: "Precision anti-score: small singles, Triple Zero, D/T Jackpot, Hun Shield and DBULL hunting.", primary: "Final score", secondary: "Jackpots", tertiary: "DBULL" };
   const rows = React.useMemo(() => buildRows(rec, mode), [rec, mode]);
   const winner = rows.find((r) => r.isWinner) || rows[0] || null;
   const bobsSummary = mode === "bobs_27" ? (pick(rec?.summary, rec?.payload?.summary, {}) || {}) : {};
@@ -739,7 +752,7 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
   const pokerMatchStats = mode === "darts_poker" ? (pick(pokerSummary?.matchStats, rec?.payload?.stats?.match, rec?.payload?.stats?.global, {}) || {}) : {};
   const winnerLabel = mode === "capital" && capitalSummary?.winnerTeamName ? String(capitalSummary.winnerTeamName) : mode === "attrape_moi" && attrapeSummary?.winnerName ? String(attrapeSummary.winnerName) : (winner?.name || "—");
   const date = pick(rec?.createdAt, rec?.updatedAt, rec?.summary?.createdAt, rec?.payload?.createdAt);
-  const createdLabel = date ? new Date(Number(date) || date).toLocaleString("fr-FR") : "—";
+  const createdLabel = date ? new Date(Number(date) || date).toLocaleString(mode === "ptit_hun" && !ptit1Fr ? "en-GB" : "fr-FR") : "—";
 
   const totalDarts = mode === "bobs_27"
     ? num(bobsMatchStats?.totalDarts, rows.reduce((sum, r) => sum + num(pick(r.raw?.darts, r.raw?.dartsThrown, r.raw?.totalThrows), 0), 0))
@@ -815,12 +828,12 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
   return (
     <div style={pageStyle}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 12 }}>
-        <button onClick={() => go("stats", { tab: "history" })} style={pill(meta.accent, true)}>← Historique</button>
-        <button onClick={() => go("games")} style={pill(meta.accent, false)}>Quitter</button>
+        <button onClick={() => go("stats", { tab: "history" })} style={pill(meta.accent, true)}>← {mode === "ptit_hun" && !ptit1Fr ? "History" : "Historique"}</button>
+        <button onClick={() => go("games")} style={pill(meta.accent, false)}>{mode === "ptit_hun" && !ptit1Fr ? "Exit" : "Quitter"}</button>
       </div>
 
       <section style={card(meta.accent)}>
-        <div style={{ fontSize: 11, fontWeight: 900, opacity: 0.75 }}>RÉSUMÉ</div>
+        <div style={{ fontSize: 11, fontWeight: 900, opacity: 0.75 }}>{mode === "ptit_hun" && !ptit1Fr ? "SUMMARY" : "RÉSUMÉ"}</div>
         <h1 style={{ margin: "4px 0 2px", color: meta.accent, fontSize: 28, lineHeight: 1, textTransform: "uppercase", textShadow: `0 0 16px ${meta.accent}66` }}>
           {meta.title}
         </h1>
@@ -829,17 +842,17 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
       </section>
 
       <section style={card(meta.accent)}>
-        <div style={sectionTitle(meta.accent)}>Vue générale</div>
+        <div style={sectionTitle(meta.accent)}>{mode === "ptit_hun" && !ptit1Fr ? "Overview" : "Vue générale"}</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <Kpi label="Vainqueur" value={winnerLabel} accent={meta.accent} />
-          <Kpi label="Joueurs" value={rows.length || "—"} accent={meta.accent} />
-          <Kpi label="Total flèches" value={totalDarts || "—"} accent={meta.accent} />
-          <Kpi label={mode === "capital" ? "Contrats tentés" : mode === "bobs_27" ? "Doubles réussis" : mode === "halve_it" ? "Touches valides" : mode === "shooter" ? "Marks" : mode === "darts_racer" ? "Distance nette" : mode === "attrape_moi" ? "Captures" : mode === "prisoner" ? "Captures" : mode === "darts_firefighter" ? "Niveaux de feu supprimés" : mode === "darts_poker" ? "Mains gagnées" : mode === "pendu" ? "Défis réussis" : mode === "menteur" ? "Appels MENTEUR" : mode === "crados" ? "Secteurs contaminés" : mode === "fifty_one_by_five" ? "Volées valides" : mode === "looper" ? "Boucles sauvées" : mode === "call_three" ? "Cibles réussies" : mode === "steeplechase" ? "Étapes franchies" : mode === "ptit_hun" ? "Volées à 0" : mode === "castle" ? "Briques / dégâts" : mode === "gotcha" ? "GOTCHA" : mode === "hare_hounds" ? "Étapes" : mode === "wave61" ? "Touches moteur" : "Total actions"} value={totalActions || "—"} accent={meta.accent} />
+          <Kpi label={mode === "ptit_hun" && !ptit1Fr ? "Winner" : "Vainqueur"} value={winnerLabel} accent={meta.accent} />
+          <Kpi label={mode === "ptit_hun" && !ptit1Fr ? "Players" : "Joueurs"} value={rows.length || "—"} accent={meta.accent} />
+          <Kpi label={mode === "ptit_hun" && !ptit1Fr ? "Total darts" : "Total flèches"} value={totalDarts || "—"} accent={meta.accent} />
+          <Kpi label={mode === "capital" ? "Contrats tentés" : mode === "bobs_27" ? "Doubles réussis" : mode === "halve_it" ? "Touches valides" : mode === "shooter" ? "Marks" : mode === "darts_racer" ? "Distance nette" : mode === "attrape_moi" ? "Captures" : mode === "prisoner" ? "Captures" : mode === "darts_firefighter" ? "Niveaux de feu supprimés" : mode === "darts_poker" ? "Mains gagnées" : mode === "pendu" ? "Défis réussis" : mode === "menteur" ? "Appels MENTEUR" : mode === "crados" ? "Secteurs contaminés" : mode === "fifty_one_by_five" ? "Volées valides" : mode === "looper" ? "Boucles sauvées" : mode === "call_three" ? "Cibles réussies" : mode === "steeplechase" ? "Étapes franchies" : mode === "ptit_hun" ? (ptit1Fr ? "Volées à 0" : "Zero visits") : mode === "castle" ? "Briques / dégâts" : mode === "gotcha" ? "GOTCHA" : mode === "hare_hounds" ? "Étapes" : mode === "wave61" ? "Touches moteur" : "Total actions"} value={totalActions || "—"} accent={meta.accent} />
         </div>
       </section>
 
       <section style={card(meta.accent)}>
-        <div style={sectionTitle(meta.accent)}>Classement</div>
+        <div style={sectionTitle(meta.accent)}>{mode === "ptit_hun" && !ptit1Fr ? "Ranking" : "Classement"}</div>
         <div style={{ display: "grid", gap: 8 }}>
           {rows.length ? rows.map((r, i) => (
             <div key={`${r.id}-${i}`} style={{ display: "grid", gridTemplateColumns: "34px 1fr auto", gap: 10, alignItems: "center", padding: 10, borderRadius: 14, background: r.isWinner ? `${meta.accent}20` : "rgba(255,255,255,.045)", border: `1px solid ${r.isWinner ? meta.accent : "rgba(255,255,255,.10)"}` }}>
@@ -853,7 +866,7 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
               </div>
               <div style={{ fontWeight: 1000, color: meta.accent }}>{r.isWinner ? "WIN" : r.tertiary}</div>
             </div>
-          )) : <div style={{ color: "#c9c9d4" }}>Aucun joueur trouvé dans ce résumé.</div>}
+          )) : <div style={{ color: "#c9c9d4" }}>{mode === "ptit_hun" && !ptit1Fr ? "No player found in this summary." : "Aucun joueur trouvé dans ce résumé."}</div>}
         </div>
       </section>
 
@@ -904,6 +917,7 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
 
 
 function PtitHunSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; accent: string }) {
+  const fr = ptit1SummaryIsFrench();
   const cfg = pick(rec?.summary?.config, rec?.payload?.config, rec?.game, {}) || {};
   const rules = cfg?.rules || {};
   const sum = (key: string) => rows.reduce((total, row) => total + num(row?.raw?.[key]), 0);
@@ -960,8 +974,8 @@ function PtitHunSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; ac
   const chartY = (score:number) => 18 + ((chartMax - score) / Math.max(1,chartMax-chartMin)) * 164;
 
   const aggregateZones = [
-    ["Petit",sum("innerSingles"),"#f2c84b"],
-    ["Gros",sum("outerSingles"),"#ff9b55"],
+    [fr ? "Petit" : "Small",sum("innerSingles"),"#f2c84b"],
+    [fr ? "Gros" : "Big",sum("outerSingles"),"#ff9b55"],
     ["Double",sum("doubles"),"#65d8ff"],
     ["Triple",sum("triples"),"#d780ff"],
     ["Bull25",sum("bulls25"),"#ff7b72"],
@@ -983,22 +997,22 @@ function PtitHunSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; ac
   return <>
     <section style={{ ...card(accent), background: "radial-gradient(circle at 50% 0%,rgba(242,200,75,.10),transparent 44%),rgba(255,255,255,.018)" }}>
       <div style={sectionTitle(accent)}>ADN P’TIT 1</div>
-      <div style={{ color:"#aeb5c8",fontSize:11,marginBottom:9 }}>Le match en un coup d’œil : précision, risques, bonus et dégâts réellement évités.</div>
+      <div style={{ color:"#aeb5c8",fontSize:11,marginBottom:9 }}>{fr ? "Le match en un coup d’œil : précision, risques, bonus et dégâts réellement évités." : "The match at a glance: precision, risks, bonuses and damage actually avoided."}</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8 }}>
-        <Kpi label="P’tit 1 touchés" value={totalPetitOne} accent={accent} />
-        <Kpi label="Volées à 0" value={totalZeroVisits} accent={accent} />
-        <Kpi label="Triple Nul" value={totalTripleNuls} accent={accent} />
+        <Kpi label={fr ? "P’tit 1 touchés" : "P’TIT 1 hits"} value={totalPetitOne} accent={accent} />
+        <Kpi label={fr ? "Volées à 0" : "Zero visits"} value={totalZeroVisits} accent={accent} />
+        <Kpi label={fr ? "Triple Nul" : "Triple Zero"} value={totalTripleNuls} accent={accent} />
         <Kpi label="Jackpots" value={totalJackpots} accent={accent} />
         <Kpi label="DBULL" value={totalDbulls} accent={accent} />
-        <Kpi label="Points sauvés / effacés" value={totalSaved} accent={accent} />
-        <Kpi label="Petits simples" value={`${innerPct}%`} accent={accent} />
-        <Kpi label="Qualif. Bouclier" value={`${cleanPct}%`} accent={accent} />
+        <Kpi label={fr ? "Points sauvés / effacés" : "Points saved / erased"} value={totalSaved} accent={accent} />
+        <Kpi label={fr ? "Petits simples" : "Small singles"} value={`${innerPct}%`} accent={accent} />
+        <Kpi label={fr ? "Qualif. Bouclier" : "Shield qualifiers"} value={`${cleanPct}%`} accent={accent} />
       </div>
     </section>
 
     {visits.length ? <section style={card(accent)}>
-      <div style={sectionTitle(accent)}>Trajectoire anti-score · hit après hit</div>
-      <div style={{ color:"#aeb5c8",fontSize:11,marginBottom:8 }}>Chaque impact modifie immédiatement le total. Les retours à zéro, Jackpot et Triple Nul apparaissent comme de vraies ruptures de trajectoire.</div>
+      <div style={sectionTitle(accent)}>{fr ? "Trajectoire anti-score · hit après hit" : "Anti-score trajectory · hit by hit"}</div>
+      <div style={{ color:"#aeb5c8",fontSize:11,marginBottom:8 }}>{fr ? "Chaque impact modifie immédiatement le total. Les retours à zéro, Jackpot et Triple Nul apparaissent comme de vraies ruptures de trajectoire." : "Every hit immediately changes the total. Zero resets, Jackpot and Triple Zero appear as real breaks in the trajectory."}</div>
       <div style={{ overflowX:"auto" }}>
         <svg viewBox="0 0 900 210" style={{ width:"100%",minWidth:620,display:"block",borderRadius:12,background:"linear-gradient(180deg,rgba(255,255,255,.025),rgba(0,0,0,.15))" }}>
           {[0,.25,.5,.75,1].map((t,i)=><line key={i} x1="34" x2="874" y1={18+t*164} y2={18+t*164} stroke="rgba(255,255,255,.07)" strokeWidth="1"/>)}
@@ -1008,15 +1022,15 @@ function PtitHunSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; ac
           </g>)}
           <text x="6" y="22" fill="#8f96aa" fontSize="10">{chartMax}</text>
           <text x="6" y="184" fill="#8f96aa" fontSize="10">{chartMin}</text>
-          <text x="36" y="202" fill="#8f96aa" fontSize="9">Départ</text>
-          <text x="835" y="202" fill="#8f96aa" fontSize="9">Fin</text>
+          <text x="36" y="202" fill="#8f96aa" fontSize="9">{fr ? "Départ" : "Start"}</text>
+          <text x="835" y="202" fill="#8f96aa" fontSize="9">{fr ? "Fin" : "End"}</text>
         </svg>
       </div>
       <div style={{ display:"flex",gap:10,flexWrap:"wrap",marginTop:7 }}>{hitSeries.map((s:any)=><span key={`legend-${s.row.id}`} style={{ color:s.color,fontSize:9,fontWeight:900 }}>● {s.row.name}</span>)}</div>
     </section> : null}
 
     <section style={card(accent)}>
-      <div style={sectionTitle(accent)}>Répartition des impacts</div>
+      <div style={sectionTitle(accent)}>{fr ? "Répartition des impacts" : "Hit distribution"}</div>
       <div style={{ display:"grid",gap:7 }}>
         {aggregateZones.map(([label,count,color]:any)=><div key={label} style={{ display:"grid",gridTemplateColumns:"78px minmax(0,1fr) 48px",gap:8,alignItems:"center" }}>
           <span style={{ color,fontSize:10,fontWeight:950 }}>{label}</span>
@@ -1027,11 +1041,11 @@ function PtitHunSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; ac
     </section>
 
     <section style={card(accent)}>
-      <div style={sectionTitle(accent)}>Carte des petits simples · secteurs 1→20</div>
+      <div style={sectionTitle(accent)}>{fr ? "Carte des petits simples · secteurs 1→20" : "Small-single map · sectors 1→20"}</div>
       <div style={{ display:"grid",gridTemplateColumns:"repeat(10,minmax(0,1fr))",gap:5 }}>
         {sectorTotals.map((s:any)=>{
           const strength=s.count/maxSector;
-          return <div key={s.n} title={`Petit ${s.n} : ${s.count} touche(s)`} style={{ minWidth:0,borderRadius:9,padding:"7px 2px",textAlign:"center",border:`1px solid rgba(242,200,75,${.18+.55*strength})`,background:`rgba(242,200,75,${.025+.18*strength})` }}>
+          return <div key={s.n} title={`${fr ? "Petit" : "Small"} ${s.n} : ${s.count} ${fr ? "touche(s)" : "hit(s)"}`} style={{ minWidth:0,borderRadius:9,padding:"7px 2px",textAlign:"center",border:`1px solid rgba(242,200,75,${.18+.55*strength})`,background:`rgba(242,200,75,${.025+.18*strength})` }}>
             <b style={{ display:"block",color:accent,fontSize:11 }}>{s.n}</b><span style={{ display:"block",marginTop:2,color:"#fff",fontSize:9 }}>{s.count}</span>
           </div>;
         })}
@@ -1040,36 +1054,36 @@ function PtitHunSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; ac
     </section>
 
     <section style={card(accent)}>
-      <div style={sectionTitle(accent)}>Règles jouées</div>
+      <div style={sectionTitle(accent)}>{fr ? "Règles jouées" : "Rules played"}</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(155px,1fr))", gap: 8 }}>
-        <Kpi label="Gros simple" value={`valeur ×${num(rules?.outerSingleFactor, 10)}`} accent={accent} />
-        <Kpi label="Double / Triple" value={`valeur D ×${num(rules?.doubleFactor, 2)} / valeur T ×${num(rules?.tripleFactor, 3)}`} accent={accent} />
+        <Kpi label={fr ? "Gros simple" : "Big single"} value={`${fr ? "valeur" : "value"} ×${num(rules?.outerSingleFactor, 10)}`} accent={accent} />
+        <Kpi label="Double / Triple" value={`${fr ? "valeur" : "value"} D ×${num(rules?.doubleFactor, 2)} / ${fr ? "valeur" : "value"} T ×${num(rules?.tripleFactor, 3)}`} accent={accent} />
         <Kpi label="Bull25" value={`25 ×${num(rules?.bull25Factor, 4)}`} accent={accent} />
         <Kpi label="MISS" value={missRule} accent={accent} />
-        <Kpi label="DBULL progressif" value={rules?.dbullEnabled === false ? "OFF" : `1er ÷${baseDbull} · 2e ÷${Math.pow(baseDbull,2)}`} accent={accent} />
-        <Kpi label="Zéro Absolu" value={rules?.zeroAbsoluteEnabled === false ? "OFF" : `${num(rules?.dbullsForZero, 3)}e DBULL`} accent={accent} />
-        <Kpi label="Bouclier" value={rules?.shieldEnabled === false ? "OFF" : `${num(rules?.cleanVisitsForShield, 3)} Triple Nul d’affilée · pénalités ÷${num(rules?.shieldDivider, 2)}`} accent={accent} />
-        <Kpi label="Jackpot" value={rules?.jackpotEnabled === false ? "OFF" : `${jackpotRing} · ${num(rules?.jackpotZones, 1)} zone${num(rules?.jackpotZones, 1) > 1 ? "s" : ""} · volée annulée`} accent={accent} />
+        <Kpi label={fr ? "DBULL progressif" : "Progressive DBULL"} value={rules?.dbullEnabled === false ? "OFF" : `${fr ? "1er" : "1st"} ÷${baseDbull} · ${fr ? "2e" : "2nd"} ÷${Math.pow(baseDbull,2)}`} accent={accent} />
+        <Kpi label={fr ? "Zéro Absolu" : "Absolute Zero"} value={rules?.zeroAbsoluteEnabled === false ? "OFF" : `${fr ? `${num(rules?.dbullsForZero, 3)}e` : `#${num(rules?.dbullsForZero, 3)}`} DBULL`} accent={accent} />
+        <Kpi label={fr ? "Bouclier" : "Shield"} value={rules?.shieldEnabled === false ? "OFF" : `${num(rules?.cleanVisitsForShield, 3)} ${fr ? "Triple Nul d’affilée · pénalités" : "Triple Zero in a row · penalties"} ÷${num(rules?.shieldDivider, 2)}`} accent={accent} />
+        <Kpi label="Jackpot" value={rules?.jackpotEnabled === false ? "OFF" : `${jackpotRing} · ${num(rules?.jackpotZones, 1)} zone${num(rules?.jackpotZones, 1) > 1 ? "s" : ""} · ${fr ? "volée annulée" : "visit cancelled"}`} accent={accent} />
       </div>
     </section>
 
     <section style={card(accent)}>
-      <div style={sectionTitle(accent)}>Records de la partie</div>
+      <div style={sectionTitle(accent)}>{fr ? "Records de la partie" : "Match records"}</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 8 }}>
-        <Kpi label="Plus grosse catastrophe" value={catastrophe ? `${catastrophe.name} · +${num(catastrophe.raw?.worstVisitDelta)}` : "—"} accent={accent} />
-        <Kpi label="Meilleure chute de score" value={comeback ? `${comeback.name} · -${num(comeback.raw?.bestScoreDrop)}` : "—"} accent={accent} />
-        <Kpi label="Meilleure série Triple Nul" value={cleanKing ? `${cleanKing.name} · ${num(cleanKing.raw?.bestCleanStreak)}` : "—"} accent={accent} />
-        <Kpi label="Bouclier sauvés" value={shieldKing ? `${shieldKing.name} · ${num(shieldKing.raw?.shieldSaved)} pts` : "—"} accent={accent} />
-        <Kpi label="DBULL le plus rentable" value={dbullKing ? `${dbullKing.name} · ${num(dbullKing.raw?.dbullSaved)} pts retirés` : "—"} accent={accent} />
-        <Kpi label="Jackpot le plus rentable" value={jackpotKing ? `${jackpotKing.name} · ${num(jackpotKing.raw?.jackpotSaved)} pts annulés` : "—"} accent={accent} />
+        <Kpi label={fr ? "Plus grosse catastrophe" : "Biggest disaster"} value={catastrophe ? `${catastrophe.name} · +${num(catastrophe.raw?.worstVisitDelta)}` : "—"} accent={accent} />
+        <Kpi label={fr ? "Meilleure chute de score" : "Best score drop"} value={comeback ? `${comeback.name} · -${num(comeback.raw?.bestScoreDrop)}` : "—"} accent={accent} />
+        <Kpi label={fr ? "Meilleure série Triple Nul" : "Best Triple Zero streak"} value={cleanKing ? `${cleanKing.name} · ${num(cleanKing.raw?.bestCleanStreak)}` : "—"} accent={accent} />
+        <Kpi label={fr ? "Bouclier sauvés" : "Shield points saved"} value={shieldKing ? `${shieldKing.name} · ${num(shieldKing.raw?.shieldSaved)} pts` : "—"} accent={accent} />
+        <Kpi label={fr ? "DBULL le plus rentable" : "Most profitable DBULL"} value={dbullKing ? `${dbullKing.name} · ${num(dbullKing.raw?.dbullSaved)} pts retirés` : "—"} accent={accent} />
+        <Kpi label={fr ? "Jackpot le plus rentable" : "Most profitable Jackpot"} value={jackpotKing ? `${jackpotKing.name} · ${num(jackpotKing.raw?.jackpotSaved)} pts annulés` : "—"} accent={accent} />
         <Kpi label="Kamikaze" value={missKing ? `${missKing.name} · ${num(missKing.raw?.missDamage)+num(missKing.raw?.bull25Damage)} pts de casse` : "—"} accent={accent} />
-        <Kpi label="Sniper petits simples" value={precisionKing ? `${precisionKing.name} · ${num(precisionKing.raw?.tripleNuls)} Triple Nul` : "—"} accent={accent} />
+        <Kpi label={fr ? "Sniper petits simples" : "Small-single sniper"} value={precisionKing ? `${precisionKing.name} · ${num(precisionKing.raw?.tripleNuls)} Triple Nul` : "—"} accent={accent} />
       </div>
     </section>
 
     {visits.length ? <section style={card(accent)}>
-      <div style={sectionTitle(accent)}>Trajectoire anti-score · événements</div>
-      <div style={{ color: "#aeb5c8", fontSize: 11, marginBottom: 8 }}>Chaque ligne retrace les scores après les volées. Les marqueurs signalent les moments qui ont réellement retourné la partie.</div>
+      <div style={sectionTitle(accent)}>{fr ? "Trajectoire anti-score · événements" : "Anti-score trajectory · events"}</div>
+      <div style={{ color: "#aeb5c8", fontSize: 11, marginBottom: 8 }}>{fr ? "Chaque ligne retrace les scores après les volées. Les marqueurs signalent les moments qui ont réellement retourné la partie." : "Each line tracks scores after every visit. Markers show the moments that truly changed the match."}</div>
       <div style={{ display: "grid", gap: 8 }}>
         {rows.map((row: any) => {
           const pv = visits.filter((v: any) => String(v?.playerId) === String(row.id));
@@ -1077,7 +1091,7 @@ function PtitHunSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; ac
           return <div key={`traj-${row.id}`} style={{ border: "1px solid rgba(255,255,255,.08)", borderRadius: 12, padding: 9, background: "rgba(255,255,255,.025)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><strong>{row.name}</strong><span style={{ color: accent, fontWeight: 1000 }}>{num(row.raw?.score, row.primary)} pts</span></div>
             <div style={{ display: "flex", gap: 5, alignItems: "center", overflowX: "auto", paddingTop: 7, paddingBottom: 2 }}>
-              <span style={{ fontSize: 10, color: "#8f96aa", flex: "0 0 auto" }}>{pv.length > 12 ? "…" : `Départ ${startScore}`}</span>
+              <span style={{ fontSize: 10, color: "#8f96aa", flex: "0 0 auto" }}>{pv.length > 12 ? "…" : `${fr ? "Départ" : "Start"} ${startScore}`}</span>
               {shown.map((v: any, idx: number) => <span key={`${v?.id || idx}`} title={(v?.events || []).join(" · ")} style={{ flex: "0 0 auto", minWidth: 48, textAlign: "center", padding: "5px 6px", borderRadius: 9, border: `1px solid ${v?.zeroAbsoluteNow ? "#78f3d4" : v?.jackpotHit || v?.tripleNul ? `${accent}aa` : "rgba(255,255,255,.09)"}`, background: v?.zeroAbsoluteNow ? "rgba(120,243,212,.10)" : v?.jackpotHit || v?.tripleNul ? `${accent}12` : "rgba(255,255,255,.025)", fontSize: 10, fontWeight: 900 }}>
                 {v?.zeroAbsoluteNow ? "💎" : v?.jackpotHit ? "✦" : v?.petitOnePerfect ? "1️⃣" : v?.tripleNul ? "🎯" : v?.shieldUnlockedNow ? "🛡" : ""}{num(v?.after)}
               </span>)}
@@ -1088,11 +1102,11 @@ function PtitHunSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; ac
     </section> : null}
 
     <section style={card(accent)}>
-      <div style={sectionTitle(accent)}>Détails joueurs</div>
+      <div style={sectionTitle(accent)}>{fr ? "Détails joueurs" : "Player details"}</div>
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1450, fontSize: 10.5 }}>
           <thead><tr style={{ color: accent, textAlign: "left" }}>
-            {["Joueur","Score","Min","Max","P’tit 1","P’tit 1 parfait","Petits","Petit %","Triple Nul","Jackpot","DBULL","Zéro Absolu","MISS","Dégâts MISS","DBULL retirés","Jackpot annulés","Triple Nul annulés","Bouclier sauvés","D / T / 25"].map((h)=><th key={h} style={th}>{h}</th>)}
+            {(fr ? ["Joueur","Score","Min","Max","P’tit 1","P’tit 1 parfait","Petits","Petit %","Triple Nul","Jackpot","DBULL","Zéro Absolu","MISS","Dégâts MISS","DBULL retirés","Jackpot annulés","Triple Nul annulés","Bouclier sauvés","D / T / 25"] : ["Player","Score","Min","Max","P’TIT 1","Perfect P’TIT 1","Small","Small %","Triple Zero","Jackpot","DBULL","Absolute Zero","MISS","MISS damage","DBULL removed","Jackpot cancelled","Triple Zero cancelled","Shield saved","D / T / 25"]).map((h)=><th key={h} style={th}>{h}</th>)}
           </tr></thead>
           <tbody>{rows.map((row) => {
             const raw = row.raw || {};

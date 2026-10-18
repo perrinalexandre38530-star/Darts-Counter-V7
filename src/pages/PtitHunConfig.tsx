@@ -32,7 +32,7 @@ export default function PtitHunConfig(props: any) {
     minPlayers: 1,
     maxPlayers: 12,
     playTab: "ptit_hun_play",
-    guidedSteps: ["Participants", "Score & zones", "Bonus", "Jackpot", "Format", "Saisie", "Résumé"],
+    guidedSteps: String(lang || "fr").toLowerCase().startsWith("fr") ? ["Participants", "Score & zones", "Bonus", "Jackpot", "Format", "Saisie", "Résumé"] : ["Participants", "Score & zones", "Bonuses", "Jackpot", "Format", "Input", "Summary"],
     rulesContent: rules,
   }} />;
 }

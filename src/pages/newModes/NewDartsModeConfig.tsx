@@ -130,6 +130,23 @@ function writeSaved(mode: NewDartsModeId, value: any) {
   try { localStorage.setItem(`${LS_PREFIX}${mode}`, JSON.stringify(value)); } catch {}
 }
 
+function ptit1ConfigIsFrench() {
+  try {
+    const raw = localStorage.getItem("dc_lang_v1");
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        return String(parsed?.lang || "").toLowerCase().startsWith("fr");
+      } catch {
+        return String(raw).toLowerCase().startsWith("fr");
+      }
+    }
+    return String(navigator.language || "en").toLowerCase().startsWith("fr");
+  } catch {
+    return false;
+  }
+}
+
 function Pill({ children, active, onClick, accent }: any) {
   return (
     <button
@@ -163,6 +180,7 @@ export default function NewDartsModeConfig(props: Props) {
   }, [props.mode]);
   const awenaEnabled = Boolean(awena?.enabled !== false);
   const { mode, definition } = props;
+  const ptitHunFr = mode === "ptit_hun" ? ptit1ConfigIsFrench() : true;
   const { theme } = useTheme();
   const go = props.go ?? props.setTab;
   const store = props.store ?? props.params?.store ?? null;
@@ -718,19 +736,19 @@ export default function NewDartsModeConfig(props: Props) {
   </section> : null;
 
   const playerParticipantsBlock = <section style={selectorCard}>
-    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>{mode === "crados" ? "Joueurs" : "Participants"}</div>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>{mode === "crados" ? "Joueurs" : mode === "ptit_hun" ? (ptitHunFr ? "Participants" : "Participants") : "Participants"}</div>
     {mode === "crados" && selectedProfiles.length ? <SelectedParticipantsCompactBlock items={selectedProfiles} accent={accent} onRemove={(id: string) => togglePlayer(id)} allProfiles={[...humanProfiles, ...bots]} /> : null}
-    <PlayerPagedSelector usageMode={mode} profiles={humanProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} pageSize={9} modalTitle="Choisir des joueurs" showSelectedSummary={false} />
+    <PlayerPagedSelector usageMode={mode} profiles={humanProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} pageSize={9} modalTitle={mode === "ptit_hun" && !ptitHunFr ? "Choose players" : "Choisir des joueurs"} showSelectedSummary={false} />
     <div style={{ marginTop: 12, paddingTop: 11, borderTop: "1px solid rgba(255,255,255,.06)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: botsOpen ? 9 : 0 }}>
-        <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 900, color: accent }}>Bots IA</div>
+        <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 900, color: accent }}>{mode === "ptit_hun" && !ptitHunFr ? "AI BOTS" : "Bots IA"}</div>
         <Pill active={botsOpen} onClick={() => setBotsOpen((v) => !v)} accent={accent}>{botsOpen ? "ON" : "OFF"}</Pill>
       </div>
-      {botsOpen ? <BotPagedSelector bots={bots} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} label={mode === "crados" ? "BOTS CRADOS + CPU" : "BOTS IA"} modalTitle={mode === "crados" ? "Choisir les BOTS CRADOS" : "Choisir des BOTS IA"} showCheckbox={false} showSelectedSummary={false} /> : null}
-      {(mode === "crados" ? cradosCpuBotCount > 0 : botCount > 0) && botsOpen ? <div style={{ marginTop: 10 }}><OptionRow label={mode === "crados" ? "Secours difficulté BOTS CPU" : "Difficulté IA"}><OptionSelect value={botLevel} options={[{ value: "easy", label: "Facile" }, { value: "normal", label: "Normal" }, { value: "hard", label: "Difficile" }]} onChange={setBotLevel} /></OptionRow></div> : null}
+      {botsOpen ? <BotPagedSelector bots={bots} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} label={mode === "crados" ? "BOTS CRADOS + CPU" : mode === "ptit_hun" && !ptitHunFr ? "AI BOTS" : "BOTS IA"} modalTitle={mode === "crados" ? "Choisir les BOTS CRADOS" : mode === "ptit_hun" && !ptitHunFr ? "Choose AI BOTS" : "Choisir des BOTS IA"} showCheckbox={false} showSelectedSummary={false} /> : null}
+      {(mode === "crados" ? cradosCpuBotCount > 0 : botCount > 0) && botsOpen ? <div style={{ marginTop: 10 }}><OptionRow label={mode === "crados" ? "Secours difficulté BOTS CPU" : mode === "ptit_hun" && !ptitHunFr ? "AI difficulty" : "Difficulté IA"}><OptionSelect value={botLevel} options={[{ value: "easy", label: mode === "ptit_hun" && !ptitHunFr ? "Easy" : "Facile" }, { value: "normal", label: "Normal" }, { value: "hard", label: mode === "ptit_hun" && !ptitHunFr ? "Hard" : "Difficile" }]} onChange={setBotLevel} /></OptionRow></div> : null}
     </div>
-    <div style={{ marginTop: 10, color: validSelection ? accent : "#ff9baa", fontSize: 11.5, fontWeight: 900 }}>{validSelection ? `${selectedProfiles.length} participant${selectedProfiles.length > 1 ? "s" : ""} sélectionné${selectedProfiles.length > 1 ? "s" : ""}` : `Sélectionne ${definition.minPlayers} à ${definition.maxPlayers} participants.`}</div>
-    {maxReached ? <div style={{ marginTop: 6, color: soft, fontSize: 10.5 }}>Maximum atteint : {definition.maxPlayers} participants.</div> : null}
+    <div style={{ marginTop: 10, color: validSelection ? accent : "#ff9baa", fontSize: 11.5, fontWeight: 900 }}>{validSelection ? (mode === "ptit_hun" && !ptitHunFr ? `${selectedProfiles.length} participant${selectedProfiles.length > 1 ? "s" : ""} selected` : `${selectedProfiles.length} participant${selectedProfiles.length > 1 ? "s" : ""} sélectionné${selectedProfiles.length > 1 ? "s" : ""}`) : (mode === "ptit_hun" && !ptitHunFr ? `Select ${definition.minPlayers} to ${definition.maxPlayers} participants.` : `Sélectionne ${definition.minPlayers} à ${definition.maxPlayers} participants.`)}</div>
+    {maxReached ? <div style={{ marginTop: 6, color: soft, fontSize: 10.5 }}>{mode === "ptit_hun" && !ptitHunFr ? `Maximum reached: ${definition.maxPlayers} participants.` : <>Maximum atteint : {definition.maxPlayers} participants.</>}</div> : null}
   </section>;
 
   const cradosTeamsBlock = mode === "crados" ? <>
@@ -788,10 +806,10 @@ export default function NewDartsModeConfig(props: Props) {
   </section> : null;
 
   const matchBlock = <section style={selectorCard}>
-    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Format de match</div>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>{mode === "ptit_hun" && !ptitHunFr ? "Match format" : "Format de match"}</div>
     <div style={panel}>
-      {mode !== "ptit_hun" ? <OptionRow compact={mode === "crados"} label="Série"><OptionSelect compact={mode === "crados"} value={seriesWins} options={[{ value: 1, label: "BO1 — 1 victoire" }, { value: 2, label: "BO3 — 2 victoires" }, { value: 3, label: "BO5 — 3 victoires" }]} onChange={(v: any) => setSeriesWins(Number(v) as any)} /></OptionRow> : <div style={{ color: soft, fontSize: 11, lineHeight: 1.45, marginBottom: 8 }}>Une seule partie : tous les joueurs jouent le même nombre de volées. Le plus petit score final gagne.</div>}
-      {mode !== "crados" ? <OptionRow label="Ordre aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow> : null}
+      {mode !== "ptit_hun" ? <OptionRow compact={mode === "crados"} label="Série"><OptionSelect compact={mode === "crados"} value={seriesWins} options={[{ value: 1, label: "BO1 — 1 victoire" }, { value: 2, label: "BO3 — 2 victoires" }, { value: 3, label: "BO5 — 3 victoires" }]} onChange={(v: any) => setSeriesWins(Number(v) as any)} /></OptionRow> : <div style={{ color: soft, fontSize: 11, lineHeight: 1.45, marginBottom: 8 }}>{ptitHunFr ? "Une seule partie : tous les joueurs jouent le même nombre de volées. Le plus petit score final gagne." : "Single match: every player throws the same number of visits. The lowest final score wins."}</div>}
+      {mode !== "crados" ? <OptionRow label={mode === "ptit_hun" && !ptitHunFr ? "Random order" : "Ordre aléatoire"}><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow> : null}
     </div>
   </section>;
 
@@ -932,11 +950,11 @@ export default function NewDartsModeConfig(props: Props) {
   </section>;
 
   const ptitHunPresetDefs = [
-    { id: "classic", title: "CLASSIQUE MSS", desc: "L’équilibre officiel · Jackpot D/T · Bouclier 3 · Zéro à 3 DBULL", image: ptit1ClassicImg },
-    { id: "precision", title: "PRÉCISION", desc: "Sans Jackpot · Bouclier après 2 TRIPLE NUL consécutifs · priorité aux petits simples", image: ptit1PrecisionImg },
-    { id: "jackpot", title: "JACKPOT", desc: "2 zones D/T à chaque volée · plus arcade et plus spectaculaire", image: ptit1JackpotImg },
-    { id: "sniper", title: "SNIPER", desc: "Jackpot TRIPLE uniquement · zone stable pendant le tour · gros simple ×15", image: ptit1SniperImg },
-    { id: "hardcore", title: "HARDCORE", desc: "15 volées · gros ×20 · D×3 · T×5 · Bull25×6 · Jackpot triple", image: ptit1HardcoreImg },
+    { id: "classic", title: "CLASSIQUE MSS", desc: ptitHunFr ? "L’équilibre officiel · Jackpot D/T · Bouclier 3 · Zéro à 3 DBULL" : "Official balance · D/T Jackpot · Shield after 3 · Zero at 3 DBULL", image: ptit1ClassicImg },
+    { id: "precision", title: ptitHunFr ? "PRÉCISION" : "PRECISION", desc: ptitHunFr ? "Sans Jackpot · Bouclier après 2 TRIPLE NUL consécutifs · priorité aux petits simples" : "No Jackpot · Shield after 2 consecutive TRIPLE ZERO visits · small singles first", image: ptit1PrecisionImg },
+    { id: "jackpot", title: "JACKPOT", desc: ptitHunFr ? "2 zones D/T à chaque volée · plus arcade et plus spectaculaire" : "2 D/T zones every visit · more arcade and spectacular", image: ptit1JackpotImg },
+    { id: "sniper", title: "SNIPER", desc: ptitHunFr ? "Jackpot TRIPLE uniquement · zone stable pendant le tour · gros simple ×15" : "TRIPLE-only Jackpot · stable zone during the round · big single ×15", image: ptit1SniperImg },
+    { id: "hardcore", title: "HARDCORE", desc: ptitHunFr ? "15 volées · gros ×20 · D×3 · T×5 · Bull25×6 · Jackpot triple" : "15 visits · big ×20 · D×3 · T×5 · Bull25×6 · Triple Jackpot", image: ptit1HardcoreImg },
   ] as const;
 
   function applyPtitHunPreset(preset: "classic" | "precision" | "jackpot" | "sniper" | "hardcore") {
@@ -981,8 +999,8 @@ export default function NewDartsModeConfig(props: Props) {
   const selectedPtitHunPreset = ptitHunPresetDefs.find((preset) => preset.id === ptitHunPresetChoice) || ptitHunPresetDefs[0];
 
   const ptitHunPresetBlock = <section style={{ ...selectorCard, border: `1px solid ${accent}55`, boxShadow: `0 0 24px ${accent}10` }}>
-    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950 }}>P’TIT 1 · STYLE DE PARTIE</div>
-    <div style={{ marginTop: 5, color: soft, fontSize: 10.5, lineHeight: 1.45 }}>Choisis une ambiance visuelle. La description du style sélectionné apparaît juste en dessous.</div>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950 }}>P’TIT 1 · {ptitHunFr ? "STYLE DE PARTIE" : "MATCH STYLE"}</div>
+    <div style={{ marginTop: 5, color: soft, fontSize: 10.5, lineHeight: 1.45 }}>{ptitHunFr ? "Choisis une ambiance visuelle. La description du style sélectionné apparaît juste en dessous." : "Choose a visual style. The selected style description appears just below."}</div>
     <div className="ptit1-preset-grid" style={{ display: "grid", gap: 10, marginTop: 11 }}>
       {ptitHunPresetDefs.map((preset: any) => {
         const active = ptitHunPresetChoice === preset.id;
@@ -996,65 +1014,65 @@ export default function NewDartsModeConfig(props: Props) {
       <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: .45 }}>{selectedPtitHunPreset.title}</div>
       <div style={{ marginTop: 4, color: "#eef2ff", fontSize: 10.2, lineHeight: 1.45 }}>{selectedPtitHunPreset.desc}</div>
     </div>
-    <div style={{ marginTop: 9, color: "#8fffb7", fontSize: 9.5, fontWeight: 850 }}>Les préréglages ne verrouillent rien : tous les paramètres restent modifiables individuellement.</div>
+    <div style={{ marginTop: 9, color: "#8fffb7", fontSize: 9.5, fontWeight: 850 }}>{ptitHunFr ? "Les préréglages ne verrouillent rien : tous les paramètres restent modifiables individuellement." : "Presets do not lock anything: every setting remains individually editable."}</div>
   </section>;
 
   const ptitHunCoreBlock = <section style={selectorCard}>
-    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>P’TIT 1 · SCORE & ZONES</div>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>P’TIT 1 · {ptitHunFr ? "SCORE & ZONES" : "SCORE & ZONES"}</div>
     <div style={panel}>
-      <OptionRow label="Nombre de volées"><OptionSelect value={ptitHunRounds} options={[{ value: 3, label: "3 — éclair" }, { value: 5, label: "5 — rapide" }, { value: 7, label: "7 — court" }, { value: 10, label: "10 — classique" }, { value: 15, label: "15 — précision" }, { value: 20, label: "20 — endurance" }, { value: 30, label: "30 — marathon" }]} onChange={(v: any) => setPtitHunRounds(Number(v))} /></OptionRow>
-      <OptionRow label="Score de départ" hint="Capital initial et base anti-exploit si une pénalité multiplicative frappe alors que le score est à 0"><OptionSelect value={ptitHunStartScore} options={[10,20,30,50,100].map((v) => ({ value: v, label: `${v} points` }))} onChange={(v: any) => setPtitHunStartScore(Number(v))} /></OptionRow>
-      <OptionRow label="Petit simple"><strong style={{ color: "#8fffb7" }}>valeur normale</strong></OptionRow>
-      <OptionRow label="Gros simple"><OptionSelect value={ptitHunOuterFactor} options={[5,10,15,20].map((v) => ({ value: v, label: `valeur ×${v}` }))} onChange={(v: any) => setPtitHunOuterFactor(Number(v))} /></OptionRow>
-      <OptionRow label="Double"><OptionSelect value={ptitHunDoubleFactor} options={[2,3,4].map((v) => ({ value: v, label: `valeur du hit ×${v}` }))} onChange={(v: any) => setPtitHunDoubleFactor(Number(v))} /></OptionRow>
-      <OptionRow label="Triple"><OptionSelect value={ptitHunTripleFactor} options={[2,3,4,5].map((v) => ({ value: v, label: `valeur du hit ×${v}` }))} onChange={(v: any) => setPtitHunTripleFactor(Number(v))} /></OptionRow>
-      <OptionRow label="Bull 25"><OptionSelect value={ptitHunBull25Factor} options={[2,3,4,5,6].map((v) => ({ value: v, label: `valeur du hit ×${v}` }))} onChange={(v: any) => setPtitHunBull25Factor(Number(v))} /></OptionRow>
-      <OptionRow label="MISS / hors cible"><OptionSelect value={ptitHunMissMode} options={[{ value: "multiply", label: "Multiplier le total" }, { value: "add", label: "Ajouter une pénalité fixe" }]} onChange={(v: any) => { setPtitHunMissMode(v); setPtitHunMissValue(v === "add" ? 50 : 5); }} /></OptionRow>
-      <OptionRow label={ptitHunMissMode === "add" ? "Pénalité MISS" : "Multiplicateur MISS"}><OptionSelect value={ptitHunMissValue} options={(ptitHunMissMode === "add" ? [25,50,100,200] : [2,3,4,5,6]).map((v) => ({ value: v, label: ptitHunMissMode === "add" ? `+${v} points` : `score ×${v}` }))} onChange={(v: any) => setPtitHunMissValue(Number(v))} /></OptionRow>
+      <OptionRow label={ptitHunFr ? "Nombre de volées" : "Number of visits"}><OptionSelect value={ptitHunRounds} options={[{ value: 3, label: ptitHunFr ? "3 — éclair" : "3 — lightning" }, { value: 5, label: ptitHunFr ? "5 — rapide" : "5 — quick" }, { value: 7, label: ptitHunFr ? "7 — court" : "7 — short" }, { value: 10, label: ptitHunFr ? "10 — classique" : "10 — classic" }, { value: 15, label: ptitHunFr ? "15 — précision" : "15 — precision" }, { value: 20, label: ptitHunFr ? "20 — endurance" : "20 — endurance" }, { value: 30, label: ptitHunFr ? "30 — marathon" : "30 — marathon" }]} onChange={(v: any) => setPtitHunRounds(Number(v))} /></OptionRow>
+      <OptionRow label={ptitHunFr ? "Score de départ" : "Starting score"} hint={ptitHunFr ? "Capital initial et base anti-exploit si une pénalité multiplicative frappe alors que le score est à 0" : "Initial capital and anti-exploit base if a multiplicative penalty hits while the score is 0"}><OptionSelect value={ptitHunStartScore} options={[10,20,30,50,100].map((v) => ({ value: v, label: `${v} ${ptitHunFr ? "points" : "points"}` }))} onChange={(v: any) => setPtitHunStartScore(Number(v))} /></OptionRow>
+      <OptionRow label={ptitHunFr ? "Petit simple" : "Small single"}><strong style={{ color: "#8fffb7" }}>{ptitHunFr ? "valeur normale" : "normal value"}</strong></OptionRow>
+      <OptionRow label={ptitHunFr ? "Gros simple" : "Big single"}><OptionSelect value={ptitHunOuterFactor} options={[5,10,15,20].map((v) => ({ value: v, label: `${ptitHunFr ? "valeur" : "value"} ×${v}` }))} onChange={(v: any) => setPtitHunOuterFactor(Number(v))} /></OptionRow>
+      <OptionRow label="Double"><OptionSelect value={ptitHunDoubleFactor} options={[2,3,4].map((v) => ({ value: v, label: `${ptitHunFr ? "valeur du hit" : "hit value"} ×${v}` }))} onChange={(v: any) => setPtitHunDoubleFactor(Number(v))} /></OptionRow>
+      <OptionRow label="Triple"><OptionSelect value={ptitHunTripleFactor} options={[2,3,4,5].map((v) => ({ value: v, label: `${ptitHunFr ? "valeur du hit" : "hit value"} ×${v}` }))} onChange={(v: any) => setPtitHunTripleFactor(Number(v))} /></OptionRow>
+      <OptionRow label="Bull 25"><OptionSelect value={ptitHunBull25Factor} options={[2,3,4,5,6].map((v) => ({ value: v, label: `${ptitHunFr ? "valeur du hit" : "hit value"} ×${v}` }))} onChange={(v: any) => setPtitHunBull25Factor(Number(v))} /></OptionRow>
+      <OptionRow label={ptitHunFr ? "MISS / hors cible" : "MISS / off-target"}><OptionSelect value={ptitHunMissMode} options={[{ value: "multiply", label: ptitHunFr ? "Multiplier le total" : "Multiply total score" }, { value: "add", label: ptitHunFr ? "Ajouter une pénalité fixe" : "Add a fixed penalty" }]} onChange={(v: any) => { setPtitHunMissMode(v); setPtitHunMissValue(v === "add" ? 50 : 5); }} /></OptionRow>
+      <OptionRow label={ptitHunMissMode === "add" ? (ptitHunFr ? "Pénalité MISS" : "MISS penalty") : (ptitHunFr ? "Multiplicateur MISS" : "MISS multiplier")}><OptionSelect value={ptitHunMissValue} options={(ptitHunMissMode === "add" ? [25,50,100,200] : [2,3,4,5,6]).map((v) => ({ value: v, label: ptitHunMissMode === "add" ? `+${v} points` : `score ×${v}` }))} onChange={(v: any) => setPtitHunMissValue(Number(v))} /></OptionRow>
     </div>
   </section>;
 
   const ptitHunBonusBlock = <section style={selectorCard}>
-    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>P’TIT 1 · BONUS DE PRÉCISION</div>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>P’TIT 1 · {ptitHunFr ? "BONUS DE PRÉCISION" : "PRECISION BONUSES"}</div>
     <div style={panel}>
-      <OptionRow label="Bruitages P’TIT 1" hint="Pack audio dédié : petit/gros simple, Double, Triple, Bull25, DBULL progressif, MISS, Jackpot, Triple Nul, Bouclier, Zéro Absolu et victoire. Le volume général reste piloté par Réglages > Audio."><OptionToggle value={ptitHunSfxEnabled} onChange={setPtitHunSfxEnabled} /></OptionRow>
-      <OptionRow label="TRIPLE NUL" hint="3 fléchettes dans le même petit simple = volée à 0"><OptionToggle value={ptitHunTripleNul} onChange={setPtitHunTripleNul} /></OptionRow>
-      <OptionRow label="DBULL récompensé" hint="Effet immédiat et progressif : 1er ÷base, 2e ÷base², etc."><OptionToggle value={ptitHunDbullEnabled} onChange={setPtitHunDbullEnabled} /></OptionRow>
-      {ptitHunDbullEnabled ? <OptionRow label="Diviseur de base DBULL" hint={`1er ÷${ptitHunDbullDivider} · 2e ÷${Math.pow(ptitHunDbullDivider,2)} · progression cumulative`}><OptionSelect value={ptitHunDbullDivider} options={[2,3,4].map((v) => ({ value: v, label: `base ÷${v}` }))} onChange={(v: any) => setPtitHunDbullDivider(Number(v))} /></OptionRow> : null}
-      {ptitHunDbullEnabled ? <OptionRow label="ZÉRO ABSOLU" hint="Après plusieurs DBULL cumulés dans la partie"><OptionToggle value={ptitHunZeroAbsolute} onChange={setPtitHunZeroAbsolute} /></OptionRow> : null}
-      {ptitHunDbullEnabled && ptitHunZeroAbsolute ? <OptionRow label="DBULL pour Zéro Absolu"><OptionSelect value={ptitHunDbullsForZero} options={[2,3,4,5].map((v) => ({ value: v, label: `${v} DBULL cumulés` }))} onChange={(v: any) => setPtitHunDbullsForZero(Number(v))} /></OptionRow> : null}
-      <OptionRow label="BOUCLIER DU HUN" hint="Récompense une série de TRIPLE NUL : 3 fléchettes dans le même petit simple, plusieurs volées d’affilée"><OptionToggle value={ptitHunShield} onChange={setPtitHunShield} /></OptionRow>
-      {ptitHunShield ? <OptionRow label="TRIPLE NUL requis"><OptionSelect value={ptitHunCleanVisits} options={[2,3,4,5].map((v) => ({ value: v, label: `${v} d’affilée` }))} onChange={(v: any) => setPtitHunCleanVisits(Number(v))} /></OptionRow> : null}
-      {ptitHunShield ? <OptionRow label="Protection du bouclier"><OptionSelect value={ptitHunShieldDivider} options={[2,3,4].map((v) => ({ value: v, label: `pénalités ÷${v}` }))} onChange={(v: any) => setPtitHunShieldDivider(Number(v))} /></OptionRow> : null}
+      <OptionRow label={ptitHunFr ? "Bruitages P’TIT 1" : "P’TIT 1 sound effects"} hint={ptitHunFr ? "Pack audio dédié : impacts, DBULL progressif, MISS, Jackpot, Triple Nul, Bouclier, Zéro Absolu, intro et victoire. Le volume général reste piloté par Réglages > Audio." : "Dedicated audio pack: impacts, progressive DBULL, MISS, Jackpot, Triple Zero, Shield, Absolute Zero, intro and victory. Master volume still follows Settings > Audio."}><OptionToggle value={ptitHunSfxEnabled} onChange={setPtitHunSfxEnabled} /></OptionRow>
+      <OptionRow label={ptitHunFr ? "TRIPLE NUL" : "TRIPLE ZERO"} hint={ptitHunFr ? "3 fléchettes dans le même petit simple = volée à 0" : "3 darts in the same small single = zero visit"}><OptionToggle value={ptitHunTripleNul} onChange={setPtitHunTripleNul} /></OptionRow>
+      <OptionRow label={ptitHunFr ? "DBULL récompensé" : "Rewarded DBULL"} hint={ptitHunFr ? "Effet immédiat et progressif : 1er ÷base, 2e ÷base², etc." : "Immediate progressive effect: 1st ÷base, 2nd ÷base², etc."}><OptionToggle value={ptitHunDbullEnabled} onChange={setPtitHunDbullEnabled} /></OptionRow>
+      {ptitHunDbullEnabled ? <OptionRow label={ptitHunFr ? "Diviseur de base DBULL" : "DBULL base divisor"} hint={ptitHunFr ? `1er ÷${ptitHunDbullDivider} · 2e ÷${Math.pow(ptitHunDbullDivider,2)} · progression cumulative` : `1st ÷${ptitHunDbullDivider} · 2nd ÷${Math.pow(ptitHunDbullDivider,2)} · cumulative progression`}><OptionSelect value={ptitHunDbullDivider} options={[2,3,4].map((v) => ({ value: v, label: `base ÷${v}` }))} onChange={(v: any) => setPtitHunDbullDivider(Number(v))} /></OptionRow> : null}
+      {ptitHunDbullEnabled ? <OptionRow label={ptitHunFr ? "ZÉRO ABSOLU" : "ABSOLUTE ZERO"} hint={ptitHunFr ? "Après plusieurs DBULL cumulés dans la partie" : "After several cumulative DBULLs during the match"}><OptionToggle value={ptitHunZeroAbsolute} onChange={setPtitHunZeroAbsolute} /></OptionRow> : null}
+      {ptitHunDbullEnabled && ptitHunZeroAbsolute ? <OptionRow label={ptitHunFr ? "DBULL pour Zéro Absolu" : "DBULLs for Absolute Zero"}><OptionSelect value={ptitHunDbullsForZero} options={[2,3,4,5].map((v) => ({ value: v, label: `${v} ${ptitHunFr ? "DBULL cumulés" : "cumulative DBULLs"}` }))} onChange={(v: any) => setPtitHunDbullsForZero(Number(v))} /></OptionRow> : null}
+      <OptionRow label={ptitHunFr ? "BOUCLIER DU HUN" : "HUN SHIELD"} hint={ptitHunFr ? "Récompense une série de TRIPLE NUL : 3 fléchettes dans le même petit simple, plusieurs volées d’affilée" : "Rewards a TRIPLE ZERO streak: 3 darts in the same small single over several consecutive visits"}><OptionToggle value={ptitHunShield} onChange={setPtitHunShield} /></OptionRow>
+      {ptitHunShield ? <OptionRow label={ptitHunFr ? "TRIPLE NUL requis" : "TRIPLE ZERO required"}><OptionSelect value={ptitHunCleanVisits} options={[2,3,4,5].map((v) => ({ value: v, label: `${v} ${ptitHunFr ? "d’affilée" : "in a row"}` }))} onChange={(v: any) => setPtitHunCleanVisits(Number(v))} /></OptionRow> : null}
+      {ptitHunShield ? <OptionRow label={ptitHunFr ? "Protection du bouclier" : "Shield protection"}><OptionSelect value={ptitHunShieldDivider} options={[2,3,4].map((v) => ({ value: v, label: `${ptitHunFr ? "pénalités" : "penalties"} ÷${v}` }))} onChange={(v: any) => setPtitHunShieldDivider(Number(v))} /></OptionRow> : null}
     </div>
   </section>;
 
   const ptitHunJackpotBlock = <section style={{ ...selectorCard, border: `1px solid ${ptitHunJackpot ? "#ffd84d66" : "rgba(255,255,255,.08)"}`, boxShadow: ptitHunJackpot ? "0 0 26px rgba(255,191,45,.10)" : "none" }}>
-    <div style={{ color: "#ffd84d", textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>🎯 ZONE SPÉCIALE JACKPOT</div>
+    <div style={{ color: "#ffd84d", textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>🎯 {ptitHunFr ? "ZONE SPÉCIALE JACKPOT" : "SPECIAL JACKPOT ZONE"}</div>
     <div style={{ ...panel, background: "linear-gradient(180deg,rgba(255,192,35,.07),rgba(255,255,255,.025))" }}>
-      <OptionRow label="Activer le Jackpot" hint="Toucher la zone annule toute la volée : 0 point"><OptionToggle value={ptitHunJackpot} onChange={setPtitHunJackpot} /></OptionRow>
-      {ptitHunJackpot ? <OptionRow label="Zones autorisées"><OptionSelect value={ptitHunJackpotRing} options={[{ value: "random", label: "Aléatoire — Double OU Triple" }, { value: "double", label: "Doubles uniquement" }, { value: "triple", label: "Triples uniquement" }]} onChange={setPtitHunJackpotRing} /></OptionRow> : null}
-      {ptitHunJackpot ? <OptionRow label="Nombre de zones"><OptionSelect value={ptitHunJackpotZones} options={[{ value: 1, label: "1 zone — classique" }, { value: 2, label: "2 zones — arcade" }]} onChange={(v: any) => setPtitHunJackpotZones(Number(v) === 2 ? 2 : 1)} /></OptionRow> : null}
-      {ptitHunJackpot ? <OptionRow label="Renouvellement"><OptionSelect value={ptitHunJackpotRefresh} options={[{ value: "visit", label: "À chaque volée — imprévisible" }, { value: "round", label: "À chaque tour — même chance pour tous" }]} onChange={setPtitHunJackpotRefresh} /></OptionRow> : null}
-      <div style={{ marginTop: 9, borderRadius: 13, padding: "9px 10px", background: "rgba(0,0,0,.22)", border: "1px solid rgba(255,216,77,.16)", color: soft, fontSize: 10.5, lineHeight: 1.45 }}><b style={{ color: "#ffd84d" }}>Jamais de simple.</b> Le Jackpot impose toujours un <b>DOUBLE</b> ou un <b>TRIPLE</b>. Une seule fléchette réussie suffit pour mettre la volée entière à <b>0</b>.</div>
+      <OptionRow label={ptitHunFr ? "Activer le Jackpot" : "Enable Jackpot"} hint={ptitHunFr ? "Toucher la zone annule toute la volée : 0 point" : "Hitting the zone cancels the whole visit: 0 points"}><OptionToggle value={ptitHunJackpot} onChange={setPtitHunJackpot} /></OptionRow>
+      {ptitHunJackpot ? <OptionRow label={ptitHunFr ? "Zones autorisées" : "Allowed zones"}><OptionSelect value={ptitHunJackpotRing} options={[{ value: "random", label: ptitHunFr ? "Aléatoire — Double OU Triple" : "Random — Double OR Triple" }, { value: "double", label: ptitHunFr ? "Doubles uniquement" : "Doubles only" }, { value: "triple", label: ptitHunFr ? "Triples uniquement" : "Triples only" }]} onChange={setPtitHunJackpotRing} /></OptionRow> : null}
+      {ptitHunJackpot ? <OptionRow label={ptitHunFr ? "Nombre de zones" : "Number of zones"}><OptionSelect value={ptitHunJackpotZones} options={[{ value: 1, label: ptitHunFr ? "1 zone — classique" : "1 zone — classic" }, { value: 2, label: ptitHunFr ? "2 zones — arcade" : "2 zones — arcade" }]} onChange={(v: any) => setPtitHunJackpotZones(Number(v) === 2 ? 2 : 1)} /></OptionRow> : null}
+      {ptitHunJackpot ? <OptionRow label={ptitHunFr ? "Renouvellement" : "Refresh"}><OptionSelect value={ptitHunJackpotRefresh} options={[{ value: "visit", label: ptitHunFr ? "À chaque volée — imprévisible" : "Every visit — unpredictable" }, { value: "round", label: ptitHunFr ? "À chaque tour — même chance pour tous" : "Every round — same chance for everyone" }]} onChange={setPtitHunJackpotRefresh} /></OptionRow> : null}
+      <div style={{ marginTop: 9, borderRadius: 13, padding: "9px 10px", background: "rgba(0,0,0,.22)", border: "1px solid rgba(255,216,77,.16)", color: soft, fontSize: 10.5, lineHeight: 1.45 }}>{ptitHunFr ? <><b style={{ color: "#ffd84d" }}>Jamais de simple.</b> Le Jackpot impose toujours un <b>DOUBLE</b> ou un <b>TRIPLE</b>. Une seule fléchette réussie suffit pour mettre la volée entière à <b>0</b>.</> : <><b style={{ color: "#ffd84d" }}>Never a single.</b> Jackpot always requires a <b>DOUBLE</b> or a <b>TRIPLE</b>. One successful dart is enough to cancel the entire visit to <b>0</b>.</>}</div>
     </div>
   </section>;
 
   const ptitHunBlock = <>{ptitHunPresetBlock}{ptitHunCoreBlock}{ptitHunBonusBlock}{ptitHunJackpotBlock}</>;
 
   const inputBlock = <section style={selectorCard}>
-    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Saisie</div>
-    <OptionRow label="Mode de saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "KEYPAD" }, { value: "dartboard", label: "CIBLE INTERACTIVE" }]} onChange={setScoreInputMethod} /></OptionRow>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>{mode === "ptit_hun" && !ptitHunFr ? "Input" : "Saisie"}</div>
+    <OptionRow label={mode === "ptit_hun" && !ptitHunFr ? "Input mode" : "Mode de saisie"}><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "KEYPAD" }, { value: "dartboard", label: mode === "ptit_hun" && !ptitHunFr ? "INTERACTIVE BOARD" : "CIBLE INTERACTIVE" }]} onChange={setScoreInputMethod} /></OptionRow>
   </section>;
 
   const boLabel = seriesWins === 1 ? "BO1" : seriesWins === 2 ? "BO3" : "BO5";
   const summaryBlock = <section style={{ ...selectorCard, border: `1px solid ${validSelection ? accent + "66" : "rgba(255,120,150,.30)"}` }}>
-    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Résumé</div>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>{mode === "ptit_hun" && !ptitHunFr ? "Summary" : "Résumé"}</div>
     <div style={{ ...panel, display: "grid", gap: 8 }}>
       <SummaryLine label="Mode" value={definition.title} />
       <SummaryLine label="Participants" value={mode === "crados" && cradosTeamMode ? `${activeCradosTeams.length} équipes · ${cradosTeamMemberIds.length} joueurs` : `${selectedIds.length} / ${definition.maxPlayers}${botCount ? ` · ${botCount} BOT${botCount > 1 ? "S" : ""}` : ""}`} />
-      <SummaryLine label="Format" value={mode === "ptit_hun" ? `${ptitHunRounds} volées` : boLabel} />
-      <SummaryLine label="Saisie" value={scoreInputMethod === "dartboard" ? "Cible interactive" : "Keypad"} />
+      <SummaryLine label="Format" value={mode === "ptit_hun" ? `${ptitHunRounds} ${ptitHunFr ? "volées" : "visits"}` : boLabel} />
+      <SummaryLine label={mode === "ptit_hun" && !ptitHunFr ? "Input" : "Saisie"} value={scoreInputMethod === "dartboard" ? (mode === "ptit_hun" && !ptitHunFr ? "Interactive board" : "Cible interactive") : "Keypad"} />
       {mode === "castle" ? <><SummaryLine label="Objectif" value={`${castleBricks} briques`} /><SummaryLine label="Combat" value={castleAttacks ? "Construction + attaque" : "Construction seule"} /></> : null}
       {mode === "gotcha" ? <><SummaryLine label="Cible" value={gotchaTarget} /><SummaryLine label="Sortie" value={gotchaOut === "straight" ? "Straight" : gotchaOut === "double" ? "Double" : "Master"} /></> : null}
       {mode === "hare_hounds" ? <><SummaryLine label="Départs" value={`Lièvre 20 · Limier ${houndStart}`} /><SummaryLine label="Zone" value={hareTargetZone === "any" ? "S/D/T" : hareTargetZone === "double" ? "Doubles" : "Triples"} /></> : null}
@@ -1065,7 +1083,7 @@ export default function NewDartsModeConfig(props: Props) {
       {mode === "looper" ? <><SummaryLine label="Vies" value={`${looperLives}`} /><SummaryLine label="Cible" value="Segment exact" /></> : null}
       {mode === "call_three" ? <><SummaryLine label="Rounds" value={`${callThreeRounds}`} /><SummaryLine label="Appel" value={callThreeCaller === "next" ? "Joueur suivant" : "Aléatoire"} /></> : null}
       {mode === "steeplechase" ? <><SummaryLine label="Parcours" value={steepleDirection === "clockwise" ? "Horaire" : "Anti-horaire"} /><SummaryLine label="Haies" value={steepleFences ? "T13 · T17 · T8 · T5" : "Désactivées"} /></> : null}
-      {mode === "ptit_hun" ? <><SummaryLine label="Volées" value={`${ptitHunRounds}`} /><SummaryLine label="Objectif" value="Score le plus bas" /><SummaryLine label="Zone reine" value="Petit simple du 1" /><SummaryLine label="Gros simple" value={`×${ptitHunOuterFactor}`} /><SummaryLine label="DBULL" value={ptitHunDbullEnabled ? `÷${ptitHunDbullDivider}${ptitHunZeroAbsolute ? ` · ${ptitHunDbullsForZero} = Zéro Absolu` : ""}` : "désactivé"} /><SummaryLine label="Triple Nul" value={ptitHunTripleNul ? "ON" : "OFF"} /><SummaryLine label="Bouclier" value={ptitHunShield ? `${ptitHunCleanVisits} propres · ÷${ptitHunShieldDivider}` : "OFF"} /><SummaryLine label="Jackpot" value={ptitHunJackpot ? `${ptitHunJackpotRing === "random" ? "D/T" : ptitHunJackpotRing === "double" ? "Doubles" : "Triples"} · ${ptitHunJackpotZones} zone${ptitHunJackpotZones > 1 ? "s" : ""}` : "OFF"} /><SummaryLine label="Bruitages" value={ptitHunSfxEnabled ? "P’TIT 1 ON" : "OFF"} /></> : null}
+      {mode === "ptit_hun" ? <><SummaryLine label={ptitHunFr ? "Volées" : "Visits"} value={`${ptitHunRounds}`} /><SummaryLine label={ptitHunFr ? "Objectif" : "Goal"} value={ptitHunFr ? "Score le plus bas" : "Lowest score"} /><SummaryLine label={ptitHunFr ? "Zone reine" : "Safest zone"} value={ptitHunFr ? "Petit simple du 1" : "Small single 1"} /><SummaryLine label={ptitHunFr ? "Gros simple" : "Big single"} value={`×${ptitHunOuterFactor}`} /><SummaryLine label="DBULL" value={ptitHunDbullEnabled ? `÷${ptitHunDbullDivider}${ptitHunZeroAbsolute ? ` · ${ptitHunDbullsForZero} = ${ptitHunFr ? "Zéro Absolu" : "Absolute Zero"}` : ""}` : (ptitHunFr ? "désactivé" : "disabled")} /><SummaryLine label={ptitHunFr ? "Triple Nul" : "Triple Zero"} value={ptitHunTripleNul ? "ON" : "OFF"} /><SummaryLine label={ptitHunFr ? "Bouclier" : "Shield"} value={ptitHunShield ? `${ptitHunCleanVisits} ${ptitHunFr ? "Triple Nul d’affilée" : "Triple Zero in a row"} · ÷${ptitHunShieldDivider}` : "OFF"} /><SummaryLine label="Jackpot" value={ptitHunJackpot ? `${ptitHunJackpotRing === "random" ? "D/T" : ptitHunJackpotRing === "double" ? "Doubles" : "Triples"} · ${ptitHunJackpotZones} ${ptitHunFr ? `zone${ptitHunJackpotZones > 1 ? "s" : ""}` : `zone${ptitHunJackpotZones > 1 ? "s" : ""}`}` : "OFF"} /><SummaryLine label={ptitHunFr ? "Bruitages" : "Sound effects"} value={ptitHunSfxEnabled ? "P’TIT 1 ON" : "OFF"} /></> : null}
     </div>
     {!validSelection ? <div style={{ marginTop: 10, color: "#ff9baa", fontSize: 11.5, fontWeight: 900, textAlign: "center" }}>Sélectionne au moins {definition.minPlayers} participants pour continuer.</div> : null}
   </section>;

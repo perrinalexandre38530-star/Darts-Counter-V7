@@ -57,7 +57,7 @@ export const PTIT1_RULES_BY_LANG: Record<string, Ptit1RulesCopy> = {
     "bull25Label": "BULL 25",
     "bull25": "25 points multipliés par le facteur Bull25. Par défaut ×4 : Bull25 = +100.",
     "dbullLabel": "DBULL / BULL 50",
-    "dbull": "Divise le score total courant. Par défaut ÷2. Plusieurs DBULL se cumulent pendant la partie.",
+    "dbull": "Effet immédiat sur le score courant : par défaut, le 1er DBULL divise par 2, le 2e DBULL cumulé divise par 4. Au seuil de ZÉRO ABSOLU, le score passe immédiatement à 0 puis la volée continue.",
     "missLabel": "MISS",
     "miss": "Pénalité configurable : ajout fixe ou multiplication du score total. Par défaut ×5.",
     "jackpotLabel": "JACKPOT",
@@ -65,9 +65,9 @@ export const PTIT1_RULES_BY_LANG: Record<string, Ptit1RulesCopy> = {
     "tripleNulLabel": "TRIPLE NUL",
     "tripleNul": "Trois petits simples identiques dans la même volée = volée à 0.",
     "shieldLabel": "BOUCLIER DU HUN",
-    "shield": "Après le nombre configuré de volées propres, le Bouclier devient permanent et réduit les pénalités futures. Par défaut ÷2.",
+    "shield": "Après le nombre configuré de TRIPLE NUL consécutifs, le Bouclier devient permanent et réduit les pénalités futures. Chaque TRIPLE NUL exige 3 fléchettes dans le même petit simple ; le numéro peut changer d’une volée à l’autre. Par défaut ÷2.",
     "zeroLabel": "ZÉRO ABSOLU",
-    "zero": "Au nombre configuré de DBULL cumulés, le score total est remis à 0. Par défaut au 3e DBULL.",
+    "zero": "Au nombre configuré de DBULL cumulés, le score courant est remis immédiatement à 0 au moment du hit. Les fléchettes restantes de la volée continuent normalement. Par défaut au 3e DBULL.",
     "configNote": "Toutes ces valeurs sont paramétrables dans la page de configuration.",
     "exampleTitle": "EXEMPLE EN PARTIE",
     "exampleLead": "Un joueur lance T5, T1 puis D20.",
@@ -97,7 +97,7 @@ export const PTIT1_RULES_BY_LANG: Record<string, Ptit1RulesCopy> = {
     "bull25Label": "BULL 25",
     "bull25": "25 points multiplied by the Bull25 factor. Default ×4: Bull25 = +100.",
     "dbullLabel": "DBULL / BULL 50",
-    "dbull": "Divides the current total score. Default ÷2. Multiple DBULLs stack over the match.",
+    "dbull": "Immediate effect on the current score: by default, the 1st DBULL divides by 2 and the 2nd cumulative DBULL divides by 4. At the ABSOLUTE ZERO threshold, the score instantly becomes 0 and the visit continues.",
     "missLabel": "MISS",
     "miss": "Configurable penalty: fixed addition or multiplication of the total score. Default ×5.",
     "jackpotLabel": "JACKPOT",
@@ -105,9 +105,9 @@ export const PTIT1_RULES_BY_LANG: Record<string, Ptit1RulesCopy> = {
     "tripleNulLabel": "TRIPLE ZERO",
     "tripleNul": "Three identical small singles in the same visit = visit score 0.",
     "shieldLabel": "HUN SHIELD",
-    "shield": "After the configured number of clean visits, the Shield becomes permanent and reduces future penalties. Default ÷2.",
+    "shield": "After the configured number of consecutive TRIPLE ZERO visits, the Shield becomes permanent and reduces future penalties. Each TRIPLE ZERO requires all 3 darts in the same small single; the number may change between visits. Default ÷2.",
     "zeroLabel": "ABSOLUTE ZERO",
-    "zero": "When the configured number of cumulative DBULLs is reached, the total score is reset to 0. Default: the 3rd DBULL.",
+    "zero": "At the configured number of cumulative DBULLs, the current score is instantly reset to 0 on that hit. Any remaining darts in the visit continue normally. Default: the 3rd DBULL.",
     "configNote": "All these values can be changed on the configuration page.",
     "exampleTitle": "GAME EXAMPLE",
     "exampleLead": "A player throws T5, T1, then D20.",
@@ -924,7 +924,12 @@ export const PTIT1_RULES_BY_LANG: Record<string, Ptit1RulesCopy> = {
 
 export function ptit1RulesCopy(lang: string | undefined): Ptit1RulesCopy {
   const code = String(lang || "fr").toLowerCase().split("-")[0];
-  return PTIT1_RULES_BY_LANG[code] || PTIT1_RULES_BY_LANG.en || PTIT1_RULES_BY_LANG.fr;
+  const base = PTIT1_RULES_BY_LANG[code] || PTIT1_RULES_BY_LANG.en || PTIT1_RULES_BY_LANG.fr;
+  if (code === "fr") return base;
+  // The latest DBULL / Shield / Absolute Zero mechanics are safety-critical gameplay copy.
+  // English is the canonical fallback outside French until each translated line is revalidated.
+  const en = PTIT1_RULES_BY_LANG.en;
+  return { ...base, dbull: en.dbull, shield: en.shield, zero: en.zero };
 }
 
 export function ptit1RulesMarkdown(lang: string | undefined): string {

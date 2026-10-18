@@ -1319,6 +1319,54 @@ const resolveTeamSkin = (team: any): TeamSkin => {
   return "gold";
 };
 const teamAvatarUrl = (team: any) => team?.logoDataUrl || team?.avatarUrl || getTeamAvatarUrl(resolveTeamSkin(team));
+
+function QuickPartyScoreboard({ players, teams, scores, activePlayerId, state, startScore }: any) {
+  const hasTeams = Array.isArray(teams) && teams.length > 0;
+  const cards = hasTeams
+    ? teams.map((team: any) => ({
+        id: team.id,
+        name: team.name || "ÉQUIPE",
+        detail: (team.players || []).map((p: any) => p.name).join(" · "),
+        score: Number(team.score ?? startScore),
+        active: (team.playerIds || []).includes(activePlayerId),
+        legs: Number(state?.teamLegsWon?.[team.id] || 0),
+        sets: Number(state?.teamSetsWon?.[team.id] || 0),
+      }))
+    : (players || []).map((p: any) => ({
+        id: p.id,
+        name: p.name || "JOUEUR",
+        detail: p.id === activePlayerId ? "AU TOUR DE JOUER" : "",
+        score: Number(scores?.[p.id] ?? startScore),
+        active: p.id === activePlayerId,
+        legs: Number(state?.legsWon?.[p.id] || 0),
+        sets: Number(state?.setsWon?.[p.id] || 0),
+      }));
+
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      <div style={{ textAlign: "center", fontSize: 9, fontWeight: 950, letterSpacing: .9, color: "rgba(255,255,255,.52)" }}>⚡ PARTIE RAPIDE · X01</div>
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(Math.max(cards.length, 1), 4)}, minmax(0, 1fr))`, gap: 8 }}>
+        {cards.map((card: any) => (
+          <div key={card.id} style={{
+            minWidth: 0,
+            borderRadius: 16,
+            border: `1px solid ${card.active ? "#52f5b2" : "rgba(255,255,255,.12)"}`,
+            background: card.active ? "linear-gradient(180deg,rgba(82,245,178,.14),rgba(6,10,12,.92))" : "rgba(7,9,12,.84)",
+            boxShadow: card.active ? "0 0 22px rgba(82,245,178,.16)" : "none",
+            padding: "8px 8px 9px",
+            textAlign: "center",
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: card.active ? "#baffdf" : "rgba(255,255,255,.78)" }}>{card.name}</div>
+            {card.detail ? <div style={{ marginTop: 1, fontSize: 8, opacity: .48, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{card.detail}</div> : null}
+            <div style={{ fontSize: cards.length <= 2 ? "clamp(42px,10vw,78px)" : "clamp(30px,7vw,58px)", lineHeight: .98, fontWeight: 1000, letterSpacing: -2, margin: "5px 0 4px", fontVariantNumeric: "tabular-nums" }}>{card.score}</div>
+            <div style={{ fontSize: 9, opacity: .58, fontWeight: 900 }}>LEGS {card.legs} · SETS {card.sets}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function X01PlayV3({
   config,
   online = false,
@@ -1342,6 +1390,7 @@ export default function X01PlayV3({
   
   const isTabletUi = useMediaQueryLocal("(min-width: 900px) and (orientation: landscape)");
 const themePrimary = (theme as any)?.colors?.primary ?? (theme as any)?.primary ?? "#ffcc55";
+  const isQuickParty = (config as any)?.quickParty === true || String((config as any)?.partyMode || "") === "quick";
 
   // ✅ IMPORTANT : on récupère aussi la langue courante de l’app
   const { t, lang } = useLang() as any;
@@ -2360,8 +2409,12 @@ const isBotTurn = React.useMemo(() => {
   // 🎤 Voice scoring (MVP) — dictée 3 fléchettes + confirmation
   // - Ignore automatiquement si scoringSource=external ou BOT
   // =====================================================
-  const configuredScoreInputMethod = sanitizeScoreInputMethod((config as any)?.scoreInputDefaultMethod);
-  const voiceScoreEnabled = configuredScoreInputMethod === "voice" || !!(config as any)?.voiceScoreInputEnabled;
+  const configuredScoreInputBase = sanitizeScoreInputMethod((config as any)?.scoreInputDefaultMethod, { allowVisitScore: isQuickParty });
+  const [configuredScoreInputMethod, setConfiguredScoreInputMethod] = React.useState<any>(configuredScoreInputBase);
+  React.useEffect(() => {
+    setConfiguredScoreInputMethod(configuredScoreInputBase);
+  }, [configuredScoreInputBase, (config as any)?.id]);
+  const voiceScoreEnabled = !isQuickParty && (configuredScoreInputMethod === "voice" || !!(config as any)?.voiceScoreInputEnabled);
   const voiceMatchIsLive = status === "running" || status === "playing";
 
   const speakVoiceScore = React.useCallback(
@@ -2738,6 +2791,10 @@ const activeTeam = React.useMemo(() => {
           matchId,
           kind: "x01",
           status: "in_progress",
+          quickParty: isQuickParty,
+          partyMode: isQuickParty ? "quick" : "arcade",
+          profileStatsDeferred: isQuickParty,
+          temporaryParticipants: isQuickParty,
           createdAt: autosaveCreatedAtRef.current,
           updatedAt: now,
           players: lightPlayers,
@@ -2754,6 +2811,9 @@ const activeTeam = React.useMemo(() => {
             darts: darts.length,
           },
           payload: {
+            quickParty: isQuickParty,
+            partyMode: isQuickParty ? "quick" : "arcade",
+            profileStatsDeferred: isQuickParty,
             config: lightConfig,
             darts,
           },
@@ -5898,7 +5958,10 @@ if (false && isLandscapeTablet) {
                       onSubmitVisitScore={onlineCanScore ? handleSubmitVisitScore : (() => {})}
                       onCorrectVisitScore={onlineCanScore ? handleCorrectVisitScore : (() => {})}
                       visitScoreFeedback={visitScoreFeedback}
-                      preferredMethod={sanitizeScoreInputMethod((config as any)?.scoreInputDefaultMethod)}
+                      preferredMethod={configuredScoreInputMethod}
+                      allowVisitScore={isQuickParty}
+                      quickVisitSwitcher={isQuickParty}
+                      onMethodChange={isQuickParty ? setConfiguredScoreInputMethod : undefined}
                       voiceControl={{
                         enabled: !!(voiceScoreEnabled && scoringSource !== "external" && !isBotTurn && onlineCanScore && !isBustLocked && voiceMatchIsLive),
                         supported: voiceScore.supported,
@@ -5917,7 +5980,9 @@ if (false && isLandscapeTablet) {
                       hidePreview
                       showPlaceholders={false}
                       disabled={!onlineCanScore}
-                      switcherMode="hidden"
+                      hideSwitcher={!isQuickParty}
+                      hideTabs={!isQuickParty}
+                      switcherMode={isQuickParty ? "inline" : "hidden"}
                     />
                     )}
                   </div>
@@ -6087,7 +6152,7 @@ if (false && isLandscapeTablet) {
         ) : null}
         activeProfileHeader={
           <div style={{ maxWidth: CONTENT_MAX, margin: "0 auto" }}>
-            {isTabletUi && !showFullX01TickerHeader ? (
+            {!isQuickParty && isTabletUi && !showFullX01TickerHeader ? (
               <div style={{ marginBottom: 10, display: "flex", justifyContent: "center" }}>
                 <div style={{ display: "flex", justifyContent: "center", minWidth: 0 }}>
                 {useSetsUi && isTeamsMode && teamsView && (teamsView as any[]).length >= 2 ? (
@@ -6124,7 +6189,16 @@ if (false && isLandscapeTablet) {
               </div>
             ) : null}
 
-            {isTeamsMode && activeTeam ? (
+            {isQuickParty ? (
+              <QuickPartyScoreboard
+                players={players}
+                teams={teamsView}
+                scores={scores}
+                activePlayerId={activePlayerId}
+                state={state}
+                startScore={config.startScore}
+              />
+            ) : isTeamsMode && activeTeam ? (
               <TeamHeaderBlock
                 teamColor={activeTeam.color}
                 teamId={activeTeam.id}
@@ -6378,7 +6452,10 @@ if (false && isLandscapeTablet) {
               onSubmitVisitScore={onlineCanScore ? handleSubmitVisitScore : (() => {})}
               onCorrectVisitScore={onlineCanScore ? handleCorrectVisitScore : (() => {})}
               visitScoreFeedback={visitScoreFeedback}
-              preferredMethod={sanitizeScoreInputMethod((config as any)?.scoreInputDefaultMethod)}
+              preferredMethod={configuredScoreInputMethod}
+              allowVisitScore={isQuickParty}
+              quickVisitSwitcher={isQuickParty}
+              onMethodChange={isQuickParty ? setConfiguredScoreInputMethod : undefined}
               voiceControl={{
                 enabled: !!(voiceScoreEnabled && scoringSource !== "external" && !isBotTurn && onlineCanScore && !isBustLocked && voiceMatchIsLive),
                 supported: voiceScore.supported,
@@ -6397,8 +6474,10 @@ if (false && isLandscapeTablet) {
               hidePreview
               showPlaceholders={false}
               disabled={!onlineCanScore}
-              // ✅ UX: pas de dropdown, modes visibles, et auto-fit pour que le keypad ne force JAMAIS un scroll.
-              switcherMode="inline"
+              // PARTIE RAPIDE : deux choix seulement, VOLÉE / FLÉCHETTES.
+              hideSwitcher={!isQuickParty}
+              hideTabs={!isQuickParty}
+              switcherMode={isQuickParty ? "inline" : "hidden"}
               fitToParent
             />
             )}
@@ -9405,7 +9484,7 @@ function saveX01V3MatchToHistory({
     legsPerSet: (config as any)?.legsPerSet ?? 1,
   });
 
-  const scoreInputDefaultMethodForHistory = sanitizeScoreInputMethod((config as any)?.scoreInputDefaultMethod);
+  const scoreInputDefaultMethodForHistory = sanitizeScoreInputMethod((config as any)?.scoreInputDefaultMethod, { allowVisitScore: (config as any)?.quickParty === true || String((config as any)?.partyMode || "") === "quick" });
   const isVisitScoreInputForHistory =
     scoreInputDefaultMethodForHistory === "visit_score" ||
     (Array.isArray(replayDarts) && replayDarts.some((d: any) => d?.source === "visit_score" || d?.scoreInputMode === "visit_score")) ||
@@ -10120,8 +10199,9 @@ function saveX01V3MatchToHistory({
   // QUICK STATS PROFILS (dc-quick-stats pour ProfileStarRing)
   // -------------------------
   try {
-    // On considère tout le match comme un "leg" global pour les quick-stats
-    StatsBridge
+    // PARTIE RAPIDE : les stats existent dans la partie mais ne sont rattachées
+    // à aucun profil avant l'association + transfert explicites dans Historique.
+    if (!((config as any)?.quickParty === true || String((config as any)?.partyMode || "") === "quick")) StatsBridge
       .commitLegAndAccumulate({ perPlayer }, legacy)
       .catch((err) => {
         console.warn(
@@ -10199,6 +10279,10 @@ function saveX01V3MatchToHistory({
   });
 
   const payload = {
+    quickParty: (config as any)?.quickParty === true,
+    partyMode: (config as any)?.quickParty === true ? "quick" : ((config as any)?.partyMode || "arcade"),
+    profileStatsDeferred: (config as any)?.quickParty === true || !!(config as any)?.profileStatsDeferred,
+    temporaryParticipants: (config as any)?.quickParty === true || !!(config as any)?.temporaryParticipants,
     mode: gameMode, // "x01_solo" | "x01_multi" | "x01_teams"
     variant: "x01_v3",
     game: "x01",
@@ -10267,6 +10351,10 @@ function saveX01V3MatchToHistory({
     resumeId: matchId, // pour matchLink() dans HistoryPage
     kind: "x01",
     status: "finished",
+    quickParty: (config as any)?.quickParty === true,
+    partyMode: (config as any)?.quickParty === true ? "quick" : ((config as any)?.partyMode || "arcade"),
+    profileStatsDeferred: (config as any)?.quickParty === true || !!(config as any)?.profileStatsDeferred,
+    temporaryParticipants: (config as any)?.quickParty === true || !!(config as any)?.temporaryParticipants,
     x01StartScore: x01StartScoreForHistory,
     startScore: x01StartScoreForHistory,
     x01Variant: x01VariantForHistory,
@@ -10290,6 +10378,8 @@ function saveX01V3MatchToHistory({
       id: p.id,
       name: p.name,
       profileId: (p as any).profileId ?? null,
+      temporaryPlayerId: (p as any).temporaryPlayerId ?? ((config as any)?.quickParty ? p.id : null),
+      isTemporary: !!(p as any).isTemporary || !!(config as any)?.quickParty,
       avatarDataUrl: p.avatarDataUrl,
       dartSetId: p.dartSetId ?? null,
       dartPresetId: p.dartPresetId ?? null,
@@ -10372,7 +10462,9 @@ function saveX01V3MatchToHistory({
     };
 
     // 🔥 met à jour dc-quick-stats (games, darts, avg3, bestVisit, bestCheckout, wins)
-    StatsBridge.commitLegAndAccumulate?.(null, quickLegacy);
+    if (!((config as any)?.quickParty === true || String((config as any)?.partyMode || "") === "quick")) {
+      StatsBridge.commitLegAndAccumulate?.(null, quickLegacy);
+    }
 
     // 2) 🟢 Sauvegarde "lourde" dans l'historique (IndexedDB + fallback LS)
     // V3 FIX : non bloquant pour l'UI, mais log explicite si l'écriture échoue.

@@ -235,6 +235,8 @@ const TournamentMatchResult = React.lazy(() => import("./pages/TournamentMatchRe
 
 // X01 V3
 const X01ConfigV3 = React.lazy(() => import("./pages/X01ConfigV3"));
+const X01QuickConfig = React.lazy(() => import("./pages/X01QuickConfig"));
+const GameModeEntryChoice = React.lazy(() => import("./components/GameModeEntryChoice"));
 const X01PlayV3 = React.lazy(() => import("./pages/X01PlayV3"));
 const ChallengeConfig = React.lazy(() => import("./pages/ChallengeConfig"));
 const ChallengePlay = React.lazy(() => import("./pages/ChallengePlay"));
@@ -6272,22 +6274,46 @@ case "babyfoot_team_edit":
         page = <ChallengeLeaderboardPage go={go} params={routeParams} />;
         break;
 
-      case "x01_config_v3":
-        page = (
-          <X01ConfigV3
-            profiles={store.profiles}
-            activeProfileId={store.activeProfileId ?? null}
-            onBack={() => go("games")}
-            onStart={(cfg) => {
-              setX01ConfigV3(cfg);
-              go("x01_play_v3", { fresh: Date.now() });
-            }}
-            go={go}
-            voiceSetupRequested={!!routeParams?.awenaVoiceSetup}
-            voiceSetupRequestId={routeParams?.awenaVoiceRequestId ?? null}
-          />
-        );
+      case "x01_config_v3": {
+        const launchMode = routeParams?.awenaVoiceSetup ? "arcade" : String(routeParams?.launchMode || "");
+        if (launchMode === "quick") {
+          page = (
+            <X01QuickConfig
+              onBack={() => go("x01_config_v3")}
+              onStart={(cfg) => {
+                setX01ConfigV3(cfg);
+                go("x01_play_v3", { fresh: Date.now(), quickParty: true });
+              }}
+            />
+          );
+        } else if (launchMode === "arcade") {
+          page = (
+            <X01ConfigV3
+              profiles={store.profiles}
+              activeProfileId={store.activeProfileId ?? null}
+              onBack={() => go("x01_config_v3")}
+              onStart={(cfg) => {
+                setX01ConfigV3({ ...(cfg as any), quickParty: false, partyMode: "arcade", profileStatsDeferred: false } as any);
+                go("x01_play_v3", { fresh: Date.now(), quickParty: false });
+              }}
+              go={go}
+              voiceSetupRequested={!!routeParams?.awenaVoiceSetup}
+              voiceSetupRequestId={routeParams?.awenaVoiceRequestId ?? null}
+            />
+          );
+        } else {
+          page = (
+            <GameModeEntryChoice
+              title="X01"
+              subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE"
+              onBack={() => go("games")}
+              onQuick={() => go("x01_config_v3", { launchMode: "quick" })}
+              onArcade={() => go("x01_config_v3", { launchMode: "arcade" })}
+            />
+          );
+        }
         break;
+      }
 
       case "x01_play_v3": {
         page = (
@@ -8139,12 +8165,17 @@ function X01PlayV3Route({
           }
           go("x01_config_v3");
         }}
-        onFinishExit={() => go("statsHub", { tab: "history" })}
+        onFinishExit={() => {
+          if ((cfgToStart as any)?.quickParty === true || String((cfgToStart as any)?.partyMode || "") === "quick") {
+            try { sessionStorage.setItem("mss:history:open-quick", "1"); } catch {}
+          }
+          go("statsHub", { tab: "history" });
+        }}
         onReplaySameConfig={() => {
           setX01ConfigV3(cfgToStart);
           go("x01_play_v3", { ...(routeParams || {}), resumeId: undefined, fresh: Date.now(), replaySame: true });
         }}
-        onReplayNewConfig={() => go(isOnline ? "x01setup" : "x01_config_v3", routeParams)}
+        onReplayNewConfig={() => go(isOnline ? "x01setup" : "x01_config_v3", (cfgToStart as any)?.quickParty ? { launchMode: "quick" } : { launchMode: "arcade" })}
         onShowSummary={(matchId: string) =>
           go("statsDetail", { matchId, showEnd: true, online: isOnline, lobbyCode: routeLobbyCode || routeParams?.lobbyCode })
         }
@@ -8188,13 +8219,19 @@ function X01PlayV3Route({
       key={key}
       config={cfgToUse}
       resume={resume}
-      onExit={() => go("statsHub", { tab: "history" })}
-      onFinishExit={() => go("statsHub", { tab: "history" })}
+      onExit={() => {
+        if ((cfgToUse as any)?.quickParty === true || String((cfgToUse as any)?.partyMode || "") === "quick") { try { sessionStorage.setItem("mss:history:open-quick", "1"); } catch {} }
+        go("statsHub", { tab: "history" });
+      }}
+      onFinishExit={() => {
+        if ((cfgToUse as any)?.quickParty === true || String((cfgToUse as any)?.partyMode || "") === "quick") { try { sessionStorage.setItem("mss:history:open-quick", "1"); } catch {} }
+        go("statsHub", { tab: "history" });
+      }}
       onReplaySameConfig={() => {
         setX01ConfigV3(cfgToUse);
         go("x01_play_v3", { fresh: Date.now(), replaySame: true });
       }}
-      onReplayNewConfig={() => go("x01_config_v3")}
+      onReplayNewConfig={() => go("x01_config_v3", (cfgToUse as any)?.quickParty ? { launchMode: "quick" } : { launchMode: "arcade" })}
       onShowSummary={(matchId: string) =>
         go("statsDetail", { matchId, showEnd: true })
       }

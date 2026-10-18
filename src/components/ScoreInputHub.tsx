@@ -101,6 +101,11 @@ type Props = {
 
   /** Méthode choisie par l'écran de config. Prioritaire sur le localStorage. */
   preferredMethod?: ScoreInputMethod | string | null;
+  /** PARTIE RAPIDE uniquement : réautorise le keypad de score total 0..180. */
+  allowVisitScore?: boolean;
+  /** Affiche uniquement le basculeur VOLÉE / FLÉCHETTES. */
+  quickVisitSwitcher?: boolean;
+  onMethodChange?: (method: ScoreInputMethod) => void;
 
   /** Pilotage visuel de la commande vocale. Le hook reste dans la page Play. */
   voiceControl?: VoiceControl;
@@ -228,6 +233,9 @@ export default function ScoreInputHub({
   onCorrectVisitScore,
   visitScoreFeedback,
   preferredMethod,
+  allowVisitScore = false,
+  quickVisitSwitcher = false,
+  onMethodChange,
   voiceControl,
   enablePresets = true,
   keypadAuxActionOverride = null,
@@ -259,20 +267,21 @@ export default function ScoreInputHub({
   switcherOverlay: _switcherOverlay = false,
 }: Props) {
   const devEnabled = safeReadDevModeEnabled();
-  const configuredMethod = preferredMethod ? sanitizeScoreInputMethod(preferredMethod) : null;
+  const configuredMethod = preferredMethod ? sanitizeScoreInputMethod(preferredMethod, { allowVisitScore }) : null;
   const [method, setMethod] = React.useState<ScoreInputMethod>(() => configuredMethod || safeReadMethod());
   const [presetOpen, setPresetOpen] = React.useState(false);
   const lastDartboardDetailRef = React.useRef<DartboardHitDetail | null>(null);
 
   React.useEffect(() => {
     if (!preferredMethod) return;
-    const next = sanitizeScoreInputMethod(preferredMethod);
+    const next = sanitizeScoreInputMethod(preferredMethod, { allowVisitScore });
     setMethod((prev) => (prev === next ? prev : next));
-  }, [preferredMethod]);
+  }, [preferredMethod, allowVisitScore]);
 
   React.useEffect(() => {
     safeWriteMethod(method);
-  }, [method]);
+    onMethodChange?.(method);
+  }, [method, onMethodChange]);
 
   const allowPresets = enablePresets && (!!onSetVisitDarts || !!onDirectDart);
   const showSwitcher = !hideSwitcher && !hideTabs && switcherMode !== "hidden";
@@ -507,6 +516,7 @@ export default function ScoreInputHub({
             allowPresets={allowPresets}
             disabled={disabled}
             devEnabled={devEnabled}
+            quickOnly={quickVisitSwitcher}
           />
         </div>
       ) : null}
@@ -1227,12 +1237,14 @@ function MethodBar({
   allowPresets,
   disabled,
   devEnabled,
+  quickOnly = false,
 }: {
   method: ScoreInputMethod;
   setMethod: (m: ScoreInputMethod) => void;
   allowPresets: boolean;
   disabled: boolean;
   devEnabled: boolean;
+  quickOnly?: boolean;
 }) {
   const btn = (key: ScoreInputMethod, label: string, enabled: boolean) => {
     const active = method === key;
@@ -1276,11 +1288,20 @@ function MethodBar({
 
   return (
     <div style={{ display: "flex", gap: 10, overflowX: "auto", padding: "6px 2px 2px", WebkitOverflowScrolling: "touch" }}>
-      {btn("keypad", "KEYPAD", true)}
-      {btn("visit_score", "SCORE VOLÉE", true)}
-      {btn("dartboard", "CIBLE", true)}
-      {btn("presets", "PRESETS", allowPresets)}
-      {btn("voice", "VOICE", true)}
+      {quickOnly ? (
+        <>
+          {btn("visit_score", "VOLÉE", true)}
+          {btn("keypad", "FLÉCHETTES", true)}
+        </>
+      ) : (
+        <>
+          {btn("keypad", "KEYPAD", true)}
+          {btn("visit_score", "SCORE VOLÉE", true)}
+          {btn("dartboard", "CIBLE", true)}
+          {btn("presets", "PRESETS", allowPresets)}
+          {btn("voice", "VOICE", true)}
+        </>
+      )}
     </div>
   );
 }

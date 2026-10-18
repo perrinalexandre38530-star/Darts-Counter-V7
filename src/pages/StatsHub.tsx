@@ -1,6 +1,7 @@
 // ============================================
 // src/pages/StatsHub.tsx — Stats + Historique + Training (v2 complet)
 // ============================================
+import { isQuickPartyRecord } from "../lib/quickParty";
 import React from "react";
 const STATS_HUB_DEBUG = false;
 import { useSport } from "../contexts/SportContext";
@@ -1540,7 +1541,7 @@ function useHistoryAPI(enabled = true, focusMode?: string | null): SavedMatch[] 
       try {
         const list = await History.list();
         if (!mounted) return;
-        const base = takeRecent(toArr<SavedMatch>(list), STATSHUB_HISTORY_LIGHT_CAP);
+        const base = takeRecent(toArr<SavedMatch>(list).filter((row: any) => !isQuickPartyRecord(row)), STATSHUB_HISTORY_LIGHT_CAP);
         setRows(base);
 
         // Then hydrate in background and refresh once.
@@ -6267,7 +6268,7 @@ const combinedHistory = React.useMemo(() => {
         ...store.filter((r: any) => authoritativeIds.has(String(r?.id ?? r?.matchId ?? r?.resumeId ?? ""))),
       ]
     : [...mem, ...store];
-  const sourceWithLinked = [...source, ...linked];
+  const sourceWithLinked = [...source, ...linked].filter((row: any) => !isQuickPartyRecord(row));
 
   const byId = new Map<string, SavedMatch>();
   for (const r of sourceWithLinked) {

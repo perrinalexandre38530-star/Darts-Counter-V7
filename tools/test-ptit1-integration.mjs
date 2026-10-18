@@ -9,9 +9,9 @@ for (const token of ['ptit_hun_config','ptit_hun_play','PtitHunConfig','PtitHunP
 for (const token of ['id: "ptit_hun"','label: "P’TIT 1"','supportsBots: true']) if(!reg.includes(token)) throw new Error(`Registry missing ${token}`);
 for (const token of ['title: "P’TIT 1"','ticker_ptit_1.png','JACKPOT']) if(!cfg.includes(token)) throw new Error(`Config missing ${token}`);
 for (const token of ['JACKPOT · ZONE SPÉCIALE','JackpotMiniTarget','Cible tactique P’TIT 1','P’TIT 1 · CARTE DES RISQUES','PremiumMomentOverlay','P’TIT 1 PARFAIT','VOLÉES À 0','undoStack','0 NE PROTÈGE PAS','playPtit1HitSfx','ptit1-sound-toggle','MOMENTS QUI ONT RETOURNÉ LA PARTIE','hitSeries','dartSteps']) if(!play.includes(token)) throw new Error(`Play missing ${token}`);
-for (const token of ['P’TIT 1 · STYLE DE PARTIE','CLASSIQUE MSS','PRÉCISION','JACKPOT','SNIPER','HARDCORE','ptitHunOuterFactor','ptitHunMissMode','ptitHunZeroAbsolute','ptitHunTripleNul','ptitHunShield','ptitHunJackpotRing','ptitHunJackpotRefresh','ptitHunSfxEnabled','Bruitages P’TIT 1']) if(!generic.includes(token)) throw new Error(`Config options missing ${token}`);
+for (const token of ['P’TIT 1 ·','STYLE DE PARTIE','MATCH STYLE','CLASSIQUE MSS','PRÉCISION','PRECISION','JACKPOT','SNIPER','HARDCORE','ptitHunOuterFactor','ptitHunMissMode','ptitHunZeroAbsolute','ptitHunTripleNul','ptitHunShield','ptitHunJackpotRing','ptitHunJackpotRefresh','ptitHunSfxEnabled','Bruitages P’TIT 1']) if(!generic.includes(token)) throw new Error(`Config options missing ${token}`);
 const summary=read('src/pages/DartsModeSummaryPage.tsx');
-for (const token of ['PtitHunSummaryTables','P’tit 1 touchés','Règles jouées','Bouclier sauvés','Records de la partie','Trajectoire anti-score']) if(!summary.includes(token)) throw new Error(`Summary missing ${token}`);
+for (const token of ['PtitHunSummaryTables','P’tit 1 touchés','P’TIT 1 hits','Règles jouées','Rules played','Bouclier sauvés','Shield saved','Records de la partie','Match records','Trajectoire anti-score','Anti-score trajectory']) if(!summary.includes(token)) throw new Error(`Summary missing ${token}`);
 const engine=read('src/lib/gameEngines/ptitHunEngine.ts');
 
 const audio=read('src/lib/ptit1Sfx.ts');
