@@ -552,8 +552,15 @@ export default function ClosestCenterPlay(props:any) {
     const proposed = found.map((d:any, i:number) => {
       const observed = extractImpactPatch(after, d);
       const identity = classifyDartIdentity(signatures, observed, current.id);
-      const detectedOwner = players.find((p:any) => String(p.id) === String(identity.playerId));
-      const owner = detectedOwner || current;
+      // The active player is authoritative: the visual signature is a safety check,
+      // not a silent ownership switch. A strong mismatch is surfaced for review.
+      const expectedId = String(current.id);
+      const visualBest = Array.isArray(identity.scores) && identity.scores.length ? identity.scores[0] : null;
+      const expectedVisual = Array.isArray(identity.scores) ? identity.scores.find((x:any)=>String(x.playerId)===expectedId) : null;
+      const visualBestId = visualBest?.playerId != null ? String(visualBest.playerId) : expectedId;
+      const visualLeadOverExpected = Math.max(0, Number(visualBest?.score||0) - Number(expectedVisual?.score||0));
+      const identityMismatch = visualBestId !== expectedId && Number(visualBest?.score||0) >= .76 && visualLeadOverExpected >= .10;
+      const owner = current;
       const frameAgreement = Number(d.frameAgreement ?? 1);
       const measurementConfidence = Math.max(.2, Math.min(1, d.confidence * (.58 + stable.confidence * .16 + readiness.confidence * .18 + frameAgreement * .08)));
       const localMetric = localMetricMmPerPixel(cal, after.width, after.height, d.xNorm, d.yNorm);
@@ -565,7 +572,9 @@ export default function ClosestCenterPlay(props:any) {
       const geometrySpreadPx = Math.max(...geometryChecks.map((x:any)=>x.regionalSpreadPx));
       const registrationPenalty = Math.max(0,(1-avgRegistration)*.95) + Math.max(0, geometrySpreadPx*.09);
       const uncertaintyMm = Math.max(resolutionFloor, estimateDistanceUncertaintyMm(measurementConfidence, cal) + consensusPenalty + registrationPenalty);
-      const needsReview = identity.confidence < cameraPrefs.minIdentityConfidence || identity.margin < cameraPrefs.minIdentityMargin || measurementConfidence < .74 || frameAgreement < cameraPrefs.minFrameAgreement || Number(d.spreadMm||0) > cameraPrefs.maxConsensusSpreadMm || uncertaintyMm > cameraPrefs.maxUncertaintyMm;
+      const expectedIdentityConfidence = Math.max(0, Math.min(1, Number(expectedVisual?.score ?? identity.confidence ?? 0)));
+      const expectedMargin = Math.max(0, Number(expectedVisual?.score||0) - Math.max(0, ...((identity.scores||[]).filter((x:any)=>String(x.playerId)!==expectedId).map((x:any)=>Number(x.score||0)))));
+      const needsReview = identityMismatch || expectedIdentityConfidence < cameraPrefs.minIdentityConfidence || expectedMargin < cameraPrefs.minIdentityMargin || measurementConfidence < .74 || frameAgreement < cameraPrefs.minFrameAgreement || Number(d.spreadMm||0) > cameraPrefs.maxConsensusSpreadMm || uncertaintyMm > cameraPrefs.maxUncertaintyMm;
       return {
         id: `r${round}-${current.id}-${Date.now()}-${i}`,
         playerId: owner.id,
@@ -576,8 +585,12 @@ export default function ClosestCenterPlay(props:any) {
         distanceNorm: d.distanceNorm,
         distanceMm: d.distanceMm,
         confidence: measurementConfidence,
-        identityConfidence: identity.confidence,
-        identityMargin: identity.margin,
+        identityConfidence: expectedIdentityConfidence,
+        identityMargin: expectedMargin,
+        identityMismatch,
+        visualBestPlayerId: visualBestId,
+        visualBestConfidence: Number(visualBest?.score||0),
+        expectedVisualConfidence: Number(expectedVisual?.score||0),
         uncertaintyMm,
         frameAgreement,
         consensusSpreadMm: Number(d.spreadMm || 0),
@@ -677,7 +690,7 @@ export default function ClosestCenterPlay(props:any) {
       if (impact.id !== impactId) return impact;
       const ix = Math.max(0, players.findIndex((p:any) => String(p.id) === String(impact.playerId)));
       const owner = players[(ix + 1) % players.length];
-      return { ...impact, playerId: owner.id, teamId: owner.teamId || null, identityConfidence: 1, identityMargin: 1, needsReview: false, manuallyConfirmedOwner: true };
+      return { ...impact, playerId: owner.id, teamId: owner.teamId || null, identityConfidence: 1, identityMargin: 1, identityMismatch: false, needsReview: false, manuallyConfirmedOwner: true };
     }));
   };
 
@@ -770,7 +783,7 @@ export default function ClosestCenterPlay(props:any) {
 
   const confirmAnalysis = () => {
     if (!pendingAfter || pendingImpacts.length !== expectedTurnDarts) return;
-    const identityCritical = pendingImpacts.some((x:any) => !x.manuallyConfirmedOwner && (Number(x.identityConfidence||0) < cameraPrefs.minIdentityConfidence || Number(x.identityMargin||0) < cameraPrefs.minIdentityMargin));
+    const identityCritical = pendingImpacts.some((x:any) => !x.manuallyConfirmedOwner && (!!x.identityMismatch || Number(x.identityConfidence||0) < cameraPrefs.minIdentityConfidence || Number(x.identityMargin||0) < cameraPrefs.minIdentityMargin));
     if (cameraPrefs.strictDartIdentification && identityCritical) {
       traceCamera("validation", "reject", "identity", "Validation bloquée par identification stricte", {minConfidence:cameraPrefs.minIdentityConfidence,minMargin:cameraPrefs.minIdentityMargin});
       setStatus("❌ Identification stricte : au moins une fléchette n’est pas attribuée avec assez de certitude. Corrige/valide son joueur avant d’enregistrer la volée.");
@@ -1158,7 +1171,7 @@ export default function ClosestCenterPlay(props:any) {
           {pendingImpacts.map((impact:any, i:number) => {
             const p = players.find((x:any) => String(x.id) === String(impact.playerId));
             return <div key={impact.id} style={{padding:"9px 0",borderBottom:"1px solid rgba(255,255,255,.07)"}}>
-              <div style={{display:"grid",gridTemplateColumns:"28px 1fr auto",gap:8,alignItems:"center"}}><b>#{i+1}</b><div><b>{p?.name || "Joueur ?"}</b><div style={{fontSize:10,color:impact.needsReview||impact.precisionTieRisk?"#ffbd65":"#9fb0bf"}}>identité {Math.round(impact.identityConfidence*100)} % · mesure {Math.round(impact.confidence*100)} % · frames {Math.round((impact.frameAgreement||1)*100)} %{impact.rereadAgreement!=null?` · relecture ${Math.round(impact.rereadAgreement*100)} %`:""}{impact.precisionTieRisk?" · ⚠ départage serré":""}</div></div><b style={{color:ACCENT}}>{impact.distanceMm.toFixed(1)} ± {impact.uncertaintyMm.toFixed(1)} mm</b></div>
+              <div style={{display:"grid",gridTemplateColumns:"28px 1fr auto",gap:8,alignItems:"center"}}><b>#{i+1}</b><div><b>{p?.name || "Joueur ?"}</b><div style={{fontSize:10,color:impact.needsReview||impact.precisionTieRisk?"#ffbd65":"#9fb0bf"}}>identité attendue {Math.round(impact.identityConfidence*100)} % · mesure {Math.round(impact.confidence*100)} % · frames {Math.round((impact.frameAgreement||1)*100)} %{impact.rereadAgreement!=null?` · relecture ${Math.round(impact.rereadAgreement*100)} %`:""}{impact.precisionTieRisk?" · ⚠ départage serré":""}{impact.identityMismatch?" · ⚠ signature différente du joueur attendu":""}</div>{impact.identityMismatch?<div style={{fontSize:10,color:"#ff8b98",marginTop:3}}>L’IA pense reconnaître une autre fléchette. Vérifie le joueur avant validation.</div>:null}</div><b style={{color:ACCENT}}>{impact.distanceMm.toFixed(1)} ± {impact.uncertaintyMm.toFixed(1)} mm</b></div>
               {impact.needsReview ? <button onClick={() => cyclePendingOwner(impact.id)} style={{...miniBtn,marginTop:6}}>⚠️ CORRIGER LE JOUEUR →</button> : null}
             </div>;
           })}

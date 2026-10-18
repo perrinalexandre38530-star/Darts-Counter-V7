@@ -283,9 +283,9 @@ export default function ScoreInputHub({
 }: Props) {
   const { theme } = useTheme();
   const { lang } = useLang();
-  const switcherAccent = themePrimary || (theme as any)?.navAccent ?? (theme as any)?.primary ?? "#55e6ff";
-  const inputThemePrimary = themePrimary || (theme as any)?.colors?.primary ?? (theme as any)?.primary ?? switcherAccent;
-  const inputThemeSecondary = themeSecondary || (theme as any)?.colors?.secondary ?? (theme as any)?.secondary ?? inputThemePrimary;
+  const switcherAccent = themePrimary || ((theme as any)?.navAccent ?? (theme as any)?.primary ?? "#55e6ff");
+  const inputThemePrimary = themePrimary || ((theme as any)?.colors?.primary ?? (theme as any)?.primary ?? switcherAccent);
+  const inputThemeSecondary = themeSecondary || ((theme as any)?.colors?.secondary ?? (theme as any)?.secondary ?? inputThemePrimary);
   const devEnabled = safeReadDevModeEnabled();
   const configuredMethod = preferredMethod ? sanitizeScoreInputMethod(preferredMethod, { allowVisitScore }) : null;
   const [method, setMethod] = React.useState<ScoreInputMethod>(() => configuredMethod || safeReadMethod());
