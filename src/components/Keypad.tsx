@@ -96,9 +96,6 @@ type Props = {
   /** Action secondaire à côté du bouton retour/annuler (ex: MICRO Gros 6). */
   secondaryAction?: KeypadSecondaryAction | null;
 
-  /** Ordonnancement dédié des commandes principales. */
-  actionLayout?: "default" | "ptit1";
-
   /** Remplace le bouton VALIDER du footer par une action dédiée (ex: DBULL Gros 6). */
   footerAction?: KeypadFooterAction | null;
 
@@ -122,6 +119,9 @@ type Props = {
   validateLabel?: React.ReactNode;
   /** Désactive uniquement la validation, sans bloquer le reste du keypad. */
   validateDisabled?: boolean;
+
+  /** Disposition d’actions dédiée à certains modes (sans modifier le keypad standard). */
+  layoutVariant?: "default" | "ptit1";
 
   /** Ajoute un padding bas safe-area (par défaut: true) */
   safeBottomPad?: boolean;
@@ -345,7 +345,6 @@ export default function Keypad({
   extraMainButtons = null,
   singleRingSelector = null,
   secondaryAction = null,
-  actionLayout = "default",
   footerAction = null,
   disableSegmentNumbers = false,
   highlightSegmentNumbers = null,
@@ -356,6 +355,7 @@ export default function Keypad({
   validateAttention = false,
   validateLabel = "VALIDER",
   validateDisabled = false,
+  layoutVariant = "default",
   safeBottomPad = true,
   footerGap = 10,
 }: Props) {
@@ -369,6 +369,7 @@ export default function Keypad({
   }, []);
 
   const extraButtons = Array.isArray(extraMainButtons) ? extraMainButtons.filter(Boolean).slice(0, 2) : [];
+  const usePtit1ActionRows = layoutVariant === "ptit1" && extraButtons.length >= 2 && !!secondaryAction && !!auxAction;
   const useExtendedMainRow = extraButtons.length > 0;
 
   const extraButtonStyle = (active = false, tone: KeypadExtraMainButton['tone'] = 'dark'): React.CSSProperties => {
@@ -521,14 +522,15 @@ export default function Keypad({
         </div>
       ) : null}
 
-      {/* Commandes principales */}
-      {actionLayout === "ptit1" && useExtendedMainRow ? (
+      {/* Actions principales. P’TIT 1 possède volontairement son ordre propre. */}
+      {usePtit1ActionRows ? (
         <>
           <div
+            data-mss-ptit1-keypad-row="primary"
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-              gap: 10,
+              gap: 8,
               marginBottom: 8,
             }}
           >
@@ -539,7 +541,9 @@ export default function Keypad({
               onClick={onDouble}
               onMouseUp={onSimple}
               title="Double"
-            >DOUBLE</button>
+            >
+              DOUBLE
+            </button>
             <button
               type="button"
               style={{ ...btnTriple, borderColor: multiplier === 3 ? "#ffd0ff" : "rgba(255,255,255,.08)" }}
@@ -547,44 +551,55 @@ export default function Keypad({
               onClick={onTriple}
               onMouseUp={onSimple}
               title="Triple"
-            >TRIPLE</button>
-            {secondaryAction ? (
-              <button
-                type="button"
-                style={{ ...splitActionBase, ...auxToneStyles(secondaryAction.tone || 'red', !!secondaryAction.active), opacity: secondaryAction.disabled ? .45 : 1 }}
-                onClick={secondaryAction.onClick}
-                disabled={secondaryAction.disabled}
-                title={secondaryAction.title || "MISS"}
-                aria-label={secondaryAction.ariaLabel || secondaryAction.title || "MISS"}
-              >
-                <ActionIcon>{secondaryAction.icon}</ActionIcon>
-              </button>
-            ) : <span />}
+            >
+              TRIPLE
+            </button>
             <button
               type="button"
-              style={{ ...splitActionBase, background: "linear-gradient(180deg, rgba(255,198,58,.96), rgba(255,175,0,.90))", color: "#1a1a1a", border: "1px solid rgba(255,180,0,.34)", boxShadow: "0 10px 22px rgba(255,170,0,.24)" }}
+              style={{ ...splitActionBase, ...auxToneStyles(secondaryAction!.tone || "red", !!secondaryAction!.active), opacity: secondaryAction!.disabled ? .45 : 1 }}
+              onClick={secondaryAction!.onClick}
+              disabled={secondaryAction!.disabled}
+              title={secondaryAction!.title || "MISS"}
+              aria-label={secondaryAction!.ariaLabel || secondaryAction!.title || "MISS"}
+            >
+              <ActionIcon>{secondaryAction!.icon}</ActionIcon>
+            </button>
+            <button
+              type="button"
+              style={{
+                ...splitActionBase,
+                background: "linear-gradient(180deg, rgba(255,198,58,.96), rgba(255,175,0,.90))",
+                color: "#1a1a1a",
+                border: "1px solid rgba(255,180,0,.34)",
+                boxShadow: "0 10px 22px rgba(255,170,0,.24)",
+                fontWeight: 1000,
+              }}
               onClick={onCancel}
               onContextMenu={(e) => { e.preventDefault(); onBackspace?.(); }}
               title="Retour / annuler"
               aria-label="Retour / annuler"
             >
-              <ActionIcon><UndoMiniIcon /></ActionIcon>
+              <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5, minWidth: 0 }}>
+                <UndoMiniIcon size={18} />
+                <span style={{ fontSize: 9, whiteSpace: "nowrap" }}>ANNULER</span>
+              </span>
             </button>
           </div>
 
           <div
+            data-mss-ptit1-keypad-row="zones"
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-              gap: 10,
+              gap: 8,
               marginBottom: noticeSlot ? 8 : 10,
             }}
           >
-            {extraButtons.map((btn, idx) => (
+            {extraButtons.slice(0, 2).map((btn, idx) => (
               <button
                 key={idx}
                 type="button"
-                style={extraButtonStyle(!!btn.active, btn.tone || (idx === 0 ? 'yellow' : 'orange'))}
+                style={extraButtonStyle(!!btn.active, btn.tone || (idx === 0 ? "yellow" : "orange"))}
                 aria-pressed={!!btn.active}
                 onClick={btn.onClick}
                 title={btn.title || String(btn.label)}
@@ -593,20 +608,33 @@ export default function Keypad({
                 {btn.label}
               </button>
             ))}
-            {auxAction ? (
-              <button
-                type="button"
-                style={{ ...splitActionBase, ...auxToneStyles(auxAction.tone || 'gold', !!auxAction.active), opacity: auxAction.disabled ? .45 : 1, position: "relative", overflow: "hidden" }}
-                onClick={auxAction.onClick}
-                disabled={auxAction.disabled}
-                title={auxAction.title || auxAction.label}
-                aria-label={auxAction.ariaLabel || auxAction.label}
-              >
-                {auxAction.fullBleedIcon ? (
-                  <span style={{ position: "absolute", inset: 0, display: "block", overflow: "hidden", borderRadius: "inherit" }}>{auxAction.icon}</span>
-                ) : <ActionIcon>{auxAction.icon}</ActionIcon>}
-              </button>
-            ) : <span />}
+            <button
+              type="button"
+              style={{
+                ...splitActionBase,
+                ...auxToneStyles(auxAction!.tone || "gold", !!auxAction!.active),
+                opacity: auxAction!.disabled ? .45 : 1,
+                position: "relative",
+                overflow: "hidden",
+                fontWeight: 1000,
+              }}
+              onClick={auxAction!.onClick}
+              disabled={auxAction!.disabled}
+              title={auxAction!.title || auxAction!.label}
+              aria-label={auxAction!.ariaLabel || auxAction!.label}
+            >
+              {auxAction!.fullBleedIcon ? (
+                <>
+                  <span style={{ position: "absolute", inset: 0, display: "block", overflow: "hidden", borderRadius: "inherit", opacity: .72 }}>
+                    {auxAction!.icon}
+                  </span>
+                  <span style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(0,0,0,.08),rgba(0,0,0,.68))" }} />
+                  <span style={{ position: "relative", zIndex: 2, padding: "0 5px", fontSize: 8.5, lineHeight: 1.05, textAlign: "center", color: "#fff3bd", textShadow: "0 1px 3px #000" }}>{auxAction!.label}</span>
+                </>
+              ) : (
+                <span style={{ fontSize: 9 }}>{auxAction!.label}</span>
+              )}
+            </button>
           </div>
         </>
       ) : useExtendedMainRow ? (

@@ -1137,9 +1137,9 @@ export default function PtitHunPlay(props: any) {
             { label: fr ? "PETIT" : "SMALL", onClick: () => { setMultiplier(1); setSingleRing((v:any) => v === "inner_single" ? null : "inner_single"); }, active: singleRing === "inner_single", tone: "yellow", title: fr ? "Petit simple · valeur normale" : "Small single · normal value" },
             { label: fr ? "GROS" : "BIG", onClick: () => { setMultiplier(1); setSingleRing((v:any) => v === "outer_single" ? null : "outer_single"); }, active: singleRing === "outer_single", tone: "orange", title: fr ? `Gros simple · valeur ×${config.rules.outerSingleFactor}` : `Big single · value ×${config.rules.outerSingleFactor}` },
           ]}
-          keypadActionLayout="ptit1"
+          keypadLayoutVariant="ptit1"
           keypadDisableSegmentNumbers={!segmentZoneSelected}
-          keypadAuxActionOverride={{ label: "ZONE", icon: <img src={gros6ZonesKeypad} alt="" style={{width:"100%",height:"100%",objectFit:"contain"}} />, onClick: () => setSpecialOpen(true), tone: "gold", title: fr ? "Ouvrir les zones spéciales" : "Open special zones", ariaLabel: fr ? "Ouvrir les zones spéciales" : "Open special zones", fullBleedIcon: true }}
+          keypadAuxActionOverride={{ label: fr ? "ZONE SPÉCIALES" : "SPECIAL ZONES", icon: <img src={gros6ZonesKeypad} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} />, onClick: () => setSpecialOpen(true), tone: "gold", title: fr ? "Ouvrir les zones spéciales" : "Open special zones", ariaLabel: fr ? "Ouvrir les zones spéciales" : "Open special zones", fullBleedIcon: true }}
           keypadSecondaryAction={currentThrow.length < 3 ? { icon: <span style={{ fontSize: 10.5, fontWeight: 1100, letterSpacing: .4 }}>MISS</span>, onClick: () => appendKeypadDart({ v: 0, mult: 1 } as any), tone: "red", title: fr ? "Ajouter un MISS" : "Add a MISS", ariaLabel: fr ? "Ajouter un MISS" : "Add a MISS" } : null}
           keypadFooterAction={currentThrow.length >= 3 ? { label: fr ? "VALIDER" : "VALIDATE", title: fr ? "Valider la volée" : "Validate visit", tone: "gold", onClick: validate } : { label: "DBULL", title: "Double Bull", tone: "green", onClick: addDbull }}
           hidePreview

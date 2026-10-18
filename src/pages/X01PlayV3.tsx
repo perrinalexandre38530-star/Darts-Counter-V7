@@ -5837,11 +5837,12 @@ try {
     <div
       className={`x01play-container theme-${theme.id}`}
       // 100dvh = évite l'effet "aplati" quand la barre navigateur mobile change la hauteur utile.
-      style={{ overflow: "hidden", minHeight: "100dvh" }}
+      style={{ overflow: "hidden", height: "100dvh", minHeight: 0 }}
     >
       {/* ✅ MEP: Layout unifié (Header + Profil Actif + Joueurs modal + Volée + Saisie) */}
       <GameplayLayout
         modeId="x01"
+        forceLayout={isGameplayLandscape ? "tablet" : "auto"}
         title=""
         onBack={handleQuit}
         showInfo={false}
@@ -5905,7 +5906,7 @@ try {
             </button>
           </div>
         )}
-        headerCenter={!isTabletUi && !showFullX01TickerHeader ? (
+        headerCenter={!isGameplayLandscape && !showFullX01TickerHeader ? (
           <div ref={headerWrapRef} style={{ width: "100%" }}>
             <div
               style={{

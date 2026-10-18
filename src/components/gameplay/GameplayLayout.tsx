@@ -513,7 +513,7 @@ export default function GameplayLayout({
             ) : null}
           </div>
         ) : (
-          <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+          <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", width: "100%" }}>
             <div
               className="msc-gameplay-grid"
               style={{
@@ -521,7 +521,9 @@ export default function GameplayLayout({
                 // minmax(0,1fr) = empêche le débordement horizontal des enfants (shadows, min-width, etc.)
                 gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
                 gap: 10,
-                height: "100%",
+                flex: 1,
+                width: "100%",
+                height: "auto",
                 minHeight: 0,
               }}
             >

@@ -119,6 +119,8 @@ type Props = {
   keypadAuxActionOverride?: ExternalKeypadAuxAction | null;
   /** Boutons principaux supplémentaires dans le keypad (ex: GROS / PETIT). */
   keypadExtraMainButtons?: ExternalKeypadExtraMainButton[] | null;
+  /** Variante de disposition interne du keypad. */
+  keypadLayoutVariant?: "default" | "ptit1";
   /** Action secondaire dans la zone retour (ex: micro Gros 6). */
   keypadSecondaryAction?: ExternalKeypadSecondaryAction | null;
   /** Remplace le bouton footer VALIDER (ex: DBULL Gros 6). */
@@ -250,6 +252,7 @@ export default function ScoreInputHub({
   enablePresets = true,
   keypadAuxActionOverride = null,
   keypadExtraMainButtons = null,
+  keypadLayoutVariant = "default",
   keypadSecondaryAction = null,
   keypadFooterAction = null,
   keypadDisableSegmentNumbers = false,
@@ -391,10 +394,7 @@ export default function ScoreInputHub({
 
   const contentBoxStyle: React.CSSProperties = {
     ...(lockContentHeight ? { minHeight: 0 } : null),
-    // IMPORTANT mobile : la barre de méthodes prend sa propre hauteur. Le contenu
-    // doit occuper uniquement le RESTE disponible, pas 100% en plus de la barre.
-    // Cela évite que FLÈCHES / VOIX / PRESETS soient rognés par la barre système.
-    ...(fitToParent ? { flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" } : null),
+    ...(fitToParent ? { height: "100%", display: "flex", flexDirection: "column", minHeight: 0 } : null),
   };
 
   const applyPresetVisit = React.useCallback(
@@ -481,7 +481,7 @@ export default function ScoreInputHub({
     }
   }, [disabled, method, onValidate, voiceControl]);
 
-  const voiceNotice = method === "voice" && !quickVisitSwitcher ? (
+  const voiceNotice = method === "voice" ? (
     <VoiceInlineNotice
       enabled={!!voiceControl?.enabled}
       supported={voiceSupported}
@@ -514,6 +514,7 @@ export default function ScoreInputHub({
       centerSlot={centerSlot}
       auxAction={keypadAuxAction}
       extraMainButtons={keypadExtraMainButtons}
+      layoutVariant={keypadLayoutVariant}
       secondaryAction={keypadSecondaryAction}
       footerAction={keypadFooterAction}
       disableSegmentNumbers={keypadDisableSegmentNumbers}
