@@ -6822,9 +6822,17 @@ case "babyfoot_team_edit":
         );
         break;
 
-      case "super_bull_config":
-        page = <SuperBullConfig setTab={go} params={routeParams} />;
+      case "super_bull_config": {
+        const launchMode = String(routeParams?.launchMode || (routeParams?.quickParty ? "quick" : (routeParams?.config || routeParams?.resume || routeParams?.rec || routeParams?.mode === "super_bull" ? "arcade" : "")));
+        if (launchMode === "quick") {
+          page = <SuperBullConfig store={store} go={go} setTab={go} params={{ ...routeParams, launchMode: "quick" }} />;
+        } else if (launchMode === "arcade") {
+          page = <SuperBullConfig store={store} go={go} setTab={go} params={{ ...routeParams, launchMode: "arcade" }} />;
+        } else {
+          page = <GameModeEntryChoice title="SUPER BULL" subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("super_bull_config", { launchMode: "quick" })} onArcade={() => go("super_bull_config", { launchMode: "arcade" })} />;
+        }
         break;
+      }
       case "super_bull_play":
         page = <SuperBullPlay setTab={go} params={routeParams} />;
         break;

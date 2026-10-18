@@ -5,6 +5,7 @@ import tickerArcade from "../assets/tickers/ticker_arcade.png";
 import tickerPartieRapide from "../assets/tickers/ticker_partie_rapide.png";
 import tickerQuickGame from "../assets/tickers/ticker_quick_game.png";
 import tickerX01 from "../assets/tickers/ticker_x01.png";
+import tickerSuperBull from "../assets/tickers/ticker_super_bull.png";
 
 type Props = {
   title: string;
@@ -18,7 +19,7 @@ export default function GameModeEntryChoice({ title, onQuick, onArcade, onBack }
   const { lang } = useLang();
   const isFr = String(lang || "fr").toLowerCase() === "fr";
   const normalizedTitle = String(title || "").trim().toLowerCase();
-  const modeTicker = normalizedTitle === "x01" ? tickerX01 : null;
+  const modeTicker = normalizedTitle === "x01" ? tickerX01 : (normalizedTitle === "super bull" || normalizedTitle === "superbull") ? tickerSuperBull : null;
 
   const labels = isFr
     ? {

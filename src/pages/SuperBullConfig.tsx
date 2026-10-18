@@ -131,6 +131,7 @@ export default function SuperBullConfig(props: any) {
   const spec = SIMPLE_ROUND_VARIANTS.super_bull;
   const store = props?.store ?? props?.params?.store ?? null;
   const saved = React.useMemo(loadSavedState, []);
+  const forcedLaunchMode: EntryMode | null = props?.params?.launchMode === "quick" ? "quick" : props?.params?.launchMode === "arcade" ? "arcade" : null;
   const storeProfiles: any[] = Array.isArray(store?.profiles) ? store.profiles : [];
   const humanProfiles = React.useMemo(() => storeProfiles.filter((p) => !isBotLike(p)), [storeProfiles]);
   const botProfiles = React.useMemo(loadUserBots, []);
@@ -141,7 +142,7 @@ export default function SuperBullConfig(props: any) {
   const initialQuick = { ...legacyInitial, ...(saved.quick || {}) } as any;
   const initialArcade = { ...legacyInitial, ...(saved.arcade || {}) } as any;
 
-  const [entryMode, setEntryMode] = React.useState<EntryMode>(saved.entryMode === "arcade" ? "arcade" : "quick");
+  const [entryMode, setEntryMode] = React.useState<EntryMode>(forcedLaunchMode || (saved.entryMode === "arcade" ? "arcade" : "quick"));
 
   const [players, setPlayers] = React.useState(Number(initialQuick.playersCount || initialQuick.players) || 1);
   const [botsEnabled, setBotsEnabled] = React.useState(!!initialQuick.botsEnabled);
@@ -218,9 +219,9 @@ export default function SuperBullConfig(props: any) {
   }, []);
 
   const back = React.useCallback(() => {
-    if (props?.setTab) return props.setTab("games");
+    if (props?.setTab) return props.setTab(forcedLaunchMode ? "super_bull_config" : "games");
     window.history.back();
-  }, [props]);
+  }, [props, forcedLaunchMode]);
 
   const start = React.useCallback(() => {
     const cfg = entryMode === "quick" ? quickCfg : arcadeCfg;
@@ -259,7 +260,7 @@ export default function SuperBullConfig(props: any) {
       />
 
       <div style={{ padding: "8px 8px 14px", display: "grid", gap: 10 }}>
-        <section style={{ ...cardStyle(), border: "1px solid rgba(41,222,255,.44)" }}>
+        {!forcedLaunchMode ? <section style={{ ...cardStyle(), border: "1px solid rgba(41,222,255,.44)" }}>
           <div style={{ color: "#29deff", fontSize: 12, fontWeight: 1000, letterSpacing: 1.1, textTransform: "uppercase" }}>Entrée du mode</div>
           <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
             <button type="button" onClick={() => setEntryMode("quick")} style={segmentedButtonStyle(entryMode === "quick")}> 
@@ -271,7 +272,16 @@ export default function SuperBullConfig(props: any) {
               <div style={{ marginTop: 4, fontSize: 10.5, opacity: .8 }}>Profils / avatars · sélection des participants · BOTS</div>
             </button>
           </div>
-        </section>
+        </section> : null}
+
+        {forcedLaunchMode ? <section style={{ ...cardStyle(forcedLaunchMode === "arcade" ? "#ffd76a" : "#29deff"), padding: 12 }}>
+          <div style={{ textAlign: "center", fontWeight: 1100, fontSize: 18, letterSpacing: .7 }}>
+            {forcedLaunchMode === "quick" ? "⚡ PARTIE RAPIDE SUPER BULL" : "🎮 SUPER BULL · ARCADE"}
+          </div>
+          <div style={{ marginTop: 4, textAlign: "center", color: "#9fb1c0", fontSize: 10.5, fontWeight: 850 }}>
+            {forcedLaunchMode === "quick" ? "SANS PROFIL · JOUEURS TEMPORAIRES · RÉGLAGES ESSENTIELS" : "PROFILS · AVATARS · BOTS · STATISTIQUES LIÉES AUX JOUEURS"}
+          </div>
+        </section> : null}
 
         <section style={cardStyle()}>
           <div style={{ color: "#29deff", fontSize: 12, fontWeight: 1000, letterSpacing: 1.1, textTransform: "uppercase" }}>Format de partie</div>
