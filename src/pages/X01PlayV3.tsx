@@ -8,7 +8,6 @@
 
 import React, { useEffect } from "react";
 import { resolveAudioVolume } from "../lib/audioPreferences";
-import { useViewport } from "../hooks/useViewport";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 
 import { getTeamAvatarUrl } from "../assets/teamAvatars";
@@ -1640,11 +1639,12 @@ export default function X01PlayV3({
   React.useEffect(() => subscribeGoogleCastStatus(() => setCastStatusTick((n) => n + 1)), []);
   // Fullscreen gameplay (mobile) — hide tabbar + lock global scroll
   useFullscreenPlay();
-  const { isLandscapeTablet } = useViewport();
   const { theme } = useTheme();
   const awena = useAwenaOptional();
   
   const isTabletUi = useMediaQueryLocal("(min-width: 900px) and (orientation: landscape)");
+  // Même seuil que GameplayLayout : inclut les téléphones Android en paysage.
+  const isGameplayLandscape = useMediaQueryLocal("(min-width: 640px) and (orientation: landscape)");
 const themePrimary = (theme as any)?.colors?.primary ?? (theme as any)?.primary ?? "#ffcc55";
   const themeSecondary = (theme as any)?.colors?.secondary ?? (theme as any)?.secondary ?? themePrimary;
   const isQuickParty = (config as any)?.quickParty === true || String((config as any)?.partyMode || "") === "quick";
@@ -5829,498 +5829,9 @@ try {
 // - OVERLAYS inclus DANS le return (sinon JSX cassé)
 // =====================================================
 
-// PARTIE RAPIDE : en paysage tablette/gros téléphone, on reprend volontairement
-// la structure X01 Arcade : header horizontal + panneau joueur/liste à gauche
-// + saisie à droite. Le portrait reste géré par GameplayLayout.
-if (isLandscapeTablet && isQuickParty) {
-  return (
-    <div
-      className={`x01play-container theme-${theme.id}`}
-      style={{
-        height: "100svh",
-        minHeight: "100dvh",
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
-        paddingTop: "env(safe-area-inset-top)",
-        paddingBottom: "env(safe-area-inset-bottom)",
-      }}
-    >
-      {/* HEADER : pleine largeur */}
-      <div
-        ref={headerWrapRef}
-        style={{
-          position: "relative",
-          zIndex: 60,
-          width: "100%",
-          paddingInline: 12,
-          paddingTop: 6,
-          paddingBottom: 6,
-        }}
-      >
-        {showFullX01TickerHeader ? (
-          <img
-            src={tickerX01}
-            alt="X01"
-            draggable={false}
-            style={{
-              position: "absolute",
-              inset: "6px 12px",
-              width: "calc(100% - 24px)",
-              height: "calc(100% - 12px)",
-              objectFit: "contain",
-              borderRadius: 18,
-              display: "block",
-              userSelect: "none",
-              pointerEvents: "none",
-            }}
-          />
-        ) : null}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            width: "100%",
-            minHeight: showFullX01TickerHeader ? 72 : undefined,
-            position: "relative",
-          }}
-        >
-          <BackDot onClick={handleQuit} size={40} />
-
-          <div style={{ flex: 1, display: "flex", justifyContent: "center", minWidth: 0 }}>
-            {!showFullX01TickerHeader && !useSetsUi ? <X01HeaderTicker compact /> : null}
-            {!showFullX01TickerHeader && useSetsUi && (
-              <div
-                style={{
-                  position: "absolute",
-                  right: 14,
-                  top: 10,
-                  padding: "6px 10px",
-                  borderRadius: 999,
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: "rgba(0,0,0,0.35)",
-                  boxShadow: "0 10px 26px rgba(0,0,0,0.45)",
-                  fontSize: 12,
-                  color: "#ffd36a",
-                }}
-              >
-                {isFirstToUi
-                  ? `FIRST TO ${configuredMatchTarget}`
-                  : matchFormatUnitForUi === "legs"
-                  ? `Leg ${Math.max(1, Number((state as any)?.currentLeg ?? 1))}/${Math.max(1, visibleLegsTargetForUi)}`
-                  : `${visibleSetsTargetForUi > 1 ? `Set ${Math.max(1, Number((state as any)?.currentSet ?? 1))}/${Math.max(1, visibleSetsTargetForUi)} • ` : ""}Leg ${Math.max(1, Number((state as any)?.currentLeg ?? 1))}/${Math.max(1, visibleLegsTargetForUi)}`}
-              </div>
-            )}
-
-                        {/* Scoreboard SET/LEG (même rendu que SOLO) */}
-            {!showFullX01TickerHeader && useSetsUi && isTeamsMode && teamsView && (teamsView as any[]).length >= 2 ? (
-              (teamsView as any[]).length === 2 ? (
-                <DuelHeaderCompact
-                  leftAvatarUrl={((teamsView as any[])[0]?.avatarUrl as string) ?? ""}
-                  rightAvatarUrl={((teamsView as any[])[1]?.avatarUrl as string) ?? ""}
-                  leftSets={(state as any).teamSetsWon?.[((teamsView as any[])[0]?.id as any)] ?? 0}
-                  rightSets={(state as any).teamSetsWon?.[((teamsView as any[])[1]?.id as any)] ?? 0}
-                  leftLegs={(state as any).teamLegsWon?.[((teamsView as any[])[0]?.id as any)] ?? 0}
-                  rightLegs={(state as any).teamLegsWon?.[((teamsView as any[])[1]?.id as any)] ?? 0}
-                />
-              ) : (
-                <TeamsHeaderCompact
-                  teams={teamsView as any[]}
-                  teamLegsWon={(state as any).teamLegsWon ?? {}}
-                  teamSetsWon={(state as any).teamSetsWon ?? {}}
-                />
-              )
-            ) : (
-              isDuel && !showFullX01TickerHeader && useSetsUi && (
-                <DuelHeaderCompact
-                  leftAvatarUrl={profileById[players[0].id]?.avatarDataUrl ?? ""}
-                  rightAvatarUrl={profileById[players[1].id]?.avatarDataUrl ?? ""}
-                  leftSets={(state as any).setsWon?.[players[0].id] ?? 0}
-                  rightSets={(state as any).setsWon?.[players[1].id] ?? 0}
-                  leftLegs={(state as any).legsWon?.[players[0].id] ?? 0}
-                  rightLegs={(state as any).legsWon?.[players[1].id] ?? 0}
-                />
-              )
-            )}
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, minWidth: 48 }}>
-            {!showFullX01TickerHeader && useSetsUi ? (
-              <SetLegChip
-                currentSet={(state as any).currentSet ?? 1}
-                currentLegInSet={(state as any).currentLeg ?? 1}
-                setsTarget={setsTarget}
-                legsTarget={legsTarget}
-                useSets={useSetsUi}
-                unit={matchFormatUnitForUi as any}
-                victoryMode={matchVictoryModeForUi as any}
-              />
-            ) : null}
-            <button
-              type="button"
-              aria-label="Ouvrir Awena"
-              title="Awena"
-              onClick={() => awena?.openPanel?.()}
-              style={{
-                position: "relative", width: 44, height: 44, flex: "0 0 44px", borderRadius: "50%", padding: 3,
-                border: "none", background: "conic-gradient(#3dff96, #33d8ff, #ff4cc8, #3dff96)",
-                boxShadow: "0 0 14px rgba(51,216,255,.30), 0 8px 20px rgba(0,0,0,.40)", cursor: "pointer",
-              }}
-            >
-              <span style={{ width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden", display: "block", background: "#060815" }}>
-                <img src="/awena/awena-avatar.webp" alt="Awena" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-              </span>
-              <span aria-hidden style={{ position: "absolute", right: -2, bottom: -2, width: 18, height: 18, borderRadius: "50%", display: "grid", placeItems: "center", background: "#11172a", border: "1px solid rgba(255,255,255,.18)", color: "#fff", fontSize: 9, boxShadow: "0 4px 10px rgba(0,0,0,.45)" }}>🎙</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* MAIN : 2 colonnes sans scroll global */}
-      <div
-        style={
-          isTabletUi
-            ? {
-                flex: 1,
-                display: "grid",
-                gridTemplateColumns: "minmax(0, .92fr) minmax(0, 1.08fr)",
-                gap: 12,
-                padding: 12,
-                overflow: "hidden",
-                alignItems: "stretch",
-              }
-            : {
-                flex: 1,
-                display: "flex",
-                flexDirection: "column",
-                gap: 8,
-                padding: 10,
-                overflowY: "auto",
-                WebkitOverflowScrolling: "touch" as any,
-              }
-        }
-      >
-        {/* GAUCHE : Player+Score + Liste joueurs (scroll interne) */}
-        <div style={
-          isTabletUi
-            ? { display: "flex", flexDirection: "column", overflow: "hidden" }
-            : { display: "flex", flexDirection: "column", gap: 8 }
-        }>
-          <div style={{ flex: "0 0 auto" }}>
-            {isTeamsMode && activeTeam ? (
-            <TeamHeaderBlock
-              teamColor={activeTeam.color}
-              teamName={activeTeam.name}
-              teamPlayers={activeTeam.players}
-              teamLogoUrl={(activeTeam as any).avatarUrl || (activeTeam as any).logoDataUrl || null}
-              activePlayerId={activePlayerId}
-              teamScore={activeTeam.score}
-              currentThrow={currentThrow}
-              liveRanking={liveRanking}
-              curDarts={curDarts}
-              curM3D={curM3D}
-              bestVisit={bestVisit}
-              useSets={useSetsUi}
-              teamLegsWon={(state as any).teamLegsWon ?? {}}
-              teamSetsWon={(state as any).teamSetsWon ?? {}}
-              teamId={activeTeam.id}
-              checkoutText={checkoutText}
-              countryFlagSrc={activePlayerCountryFlagSrc}
-              showThrowCounter={showThrowCounter}
-              configuredScoreInputMethod={configuredScoreInputMethod}
-            />
-          ) : (
-            <HeaderBlock
-              currentPlayer={activePlayer}
-              currentAvatar={activePlayer ? profileById[activePlayer.id]?.avatarDataUrl ?? null : null}
-              currentRemaining={currentScore}
-              currentThrow={currentThrow}
-              doubleOut={doubleOut}
-              liveRanking={liveRanking}
-              curDarts={curDarts}
-              curM3D={curM3D}
-              bestVisit={bestVisit}
-              legsWon={(state as any).legsWon ?? {}}
-              setsWon={(state as any).setsWon ?? {}}
-              useSets={useSetsUi}
-              checkoutText={checkoutText}
-              countryFlagSrc={activePlayerCountryFlagSrc}
-              dartSetThumbSrc={activePlayerDartSetThumb}
-              dartSetBgColor={activePlayerDartSetBg}
-              dartSetIsBrand={activePlayerDartSetIsBrand}
-              onlineCameraPanel={x01OnlineCameraPanel}
-              onlineCameraActive={x01OnlineCameraActive}
-              voiceScoreEnabled={voiceScoreEnabled}
-              configuredScoreInputMethod={configuredScoreInputMethod}
-              voiceScore={voiceScore}
-            showThrowCounter={showThrowCounter}
-            />
-          )}
-          </div>
-
-          <div style={{ flex: 1, overflowY: "auto", paddingTop: 10 }}>
-            {isTeamsMode && teamsView ? (
-            <TeamsPlayersList
-              cameraOpen={cameraOpen}
-              setCameraOpen={setCameraOpen}
-              teams={teamsView}
-              activePlayerId={activePlayerId}
-              profileById={profileById}
-              liveStatsByPlayer={liveStatsByPlayer}
-              start={config.startScore}
-              scoresByPlayer={scores}
-              useSets={useSetsUi}
-              lastVisitsByPlayer={lastVisitsByPlayer}
-              lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
-              lastVisitBustCountByPlayer={lastVisitBustCountByPlayer}
-              avg3ByPlayer={avg3ByPlayer}
-            />
-          ) : (
-            <PlayersListOnly
-              cameraOpen={cameraOpen}
-              setCameraOpen={setCameraOpen}
-              players={players}
-              profileById={profileById}
-              liveStatsByPlayer={liveStatsByPlayer}
-              start={config.startScore}
-              scoresByPlayer={scores}
-              legsWon={(state as any).legsWon ?? {}}
-              setsWon={(state as any).setsWon ?? {}}
-              useSets={useSetsUi}
-              lastVisitsByPlayer={lastVisitsByPlayer}
-              lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
-              lastVisitBustCountByPlayer={lastVisitBustCountByPlayer}
-              avg3ByPlayer={avg3ByPlayer}
-            />
-          )}
-          </div>
-        </div>
-
-        {/* DROITE : Mode de saisie (inchangé, mais dans le flow) */}
-        <div style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 8,
-          minWidth: 0,
-          minHeight: 0,
-          overflow: "hidden",
-          paddingBottom: "max(10px, env(safe-area-inset-bottom, 0px))",
-        }}>
-          <div style={{ flex: "0 0 auto", overflow: "visible" }}>
-            <div
-              ref={keypadWrapRef}
-              style={{
-                position: "relative",
-                inset: 0,
-                zIndex: 45,
-                width: "100%",
-                minHeight: 0,
-                height: "100%",
-                maxHeight: "100%",
-                overflow: "hidden",
-              }}
-            >
-              {onlineTurnLocked ? (onlineStandbyChat || null) : isBotTurn ? (
-                <div
-                  style={{
-                    padding: 8,
-                    borderRadius: 14,
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    background: "linear-gradient(180deg, rgba(10,10,12,.9), rgba(6,6,8,.95))",
-                    textAlign: "center",
-                    fontSize: 13,
-                    color: "#e3e6ff",
-                    boxShadow: "0 10px 24px rgba(0,0,0,.5)",
-                  }}
-                >
-                  🤖 {activePlayer?.name ?? t("x01v3.bot.name", "BOT")}{" "}
-                  {t("x01v3.bot.playing", "joue son tour...")}
-                </div>
-              ) : scoringSource === "external" ? (
-                <div
-                  style={{
-                    padding: 14,
-                    borderRadius: 14,
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    background: "linear-gradient(180deg, rgba(10,10,12,.9), rgba(6,6,8,.95))",
-                    textAlign: "center",
-                    fontSize: 13,
-                    color: "#e3e6ff",
-                    boxShadow: "0 10px 24px rgba(0,0,0,.5)",
-                  }}
-                >
-                  🎥 {t("x01v3.external.title", "Comptage externe en cours…")}
-                  <div style={{ fontSize: 11.5, opacity: 0.75, marginTop: 6 }}>
-                    {t(
-                      "x01v3.external.hint",
-                      "Les fléchettes sont injectées automatiquement depuis l'appareil configuré."
-                    )}
-                  </div>
-
-                  <div style={{ marginTop: 8, padding: "7px 9px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.045)", fontSize: 11.5, fontWeight: 850, color: externalDeviceState.status === "error" ? "#ffb4b4" : externalDeviceState.status === "connected" ? "#a7ffd1" : "#dfe2ff" }}>
-                    {externalDeviceState.label}
-                  </div>
-
-                  {canUseBluetoothExternal && (
-                    <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
-                      <button
-                        type="button"
-                        onClick={connectExternalBluetooth}
-                        style={{
-                          height: 40,
-                          borderRadius: 14,
-                          padding: "0 14px",
-                          border: "1px solid rgba(255,255,255,0.14)",
-                          background: "linear-gradient(180deg, rgba(255,255,255,0.10), rgba(0,0,0,0.35))",
-                          color: "#fff",
-                          fontWeight: 900,
-                          cursor: "pointer",
-                          boxShadow: "0 10px 24px rgba(0,0,0,.5)",
-                        }}
-                      >
-                        Connecter Bluetooth
-                      </button>
-                    </div>
-                  )}
-
-                  {canUseCameraAssisted && (
-                    <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
-                      <button
-                        type="button"
-                        onClick={() => setCameraOpen(true)}
-                        style={{
-                          height: 40,
-                          borderRadius: 14,
-                          padding: "0 14px",
-                          border: "1px solid rgba(255,255,255,0.14)",
-                          background:
-                            "linear-gradient(180deg, rgba(255,255,255,0.10), rgba(0,0,0,0.35))",
-                          color: "#fff",
-                          fontWeight: 900,
-                          cursor: "pointer",
-                          boxShadow: "0 10px 24px rgba(0,0,0,.5)",
-                        }}
-                      >
-                        {t("x01v3.camera.open", "Ouvrir Caméra")}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div
-                  style={{
-                    border: isBustLocked ? "1px solid rgba(255,80,80,.65)" : "1px solid transparent",
-                    background: isBustLocked ? "rgba(120,0,0,.10)" : "transparent",
-                    borderRadius: 14,
-                    padding: 6,
-                    height: isTabletUi ? "100%" : "auto",
-                    boxSizing: "border-box",
-                  }}
-                >
-                  {isBustLocked ? (
-                    <div
-                      style={{
-                        marginBottom: 6,
-                        textAlign: "center",
-                        fontWeight: 900,
-                        letterSpacing: 0.6,
-                        color: "#ff6b6b",
-                        textShadow: "0 0 14px rgba(255,90,90,.35)",
-                      }}
-                    >
-                      BUST — {configuredScoreInputMethod === "visit_score" ? "Valide ou corrige le score" : t("x01v3.bust.lock", "Valide ou annule la volée")}
-                    </div>
-                  ) : null}
-
-                  <div
-                    style={{ height: "100%" }}
-                  >
-                    {onlineTurnLocked ? (onlineStandbyChat || null) : (
-                    <ScoreInputHub
-                      currentThrow={currentThrow}
-                      multiplier={multiplier}
-                      onSimple={onlineCanScore ? handleSimple : (() => {})}
-                      onDouble={onlineCanScore ? handleDouble : (() => {})}
-                      onTriple={onlineCanScore ? handleTriple : (() => {})}
-                      onBackspace={onlineCanScore ? handleBackspace : (() => {})}
-                      onCancel={onlineCanScore ? handleCancel : (() => {})}
-                      onNumber={onlineCanScore ? handleNumber : (() => {})}
-                      onBull={onlineCanScore ? handleBull : (() => {})}
-                      onValidate={onlineCanScore ? requestValidateThrow : (() => {})}
-                      onDirectDart={onlineCanScore ? handleDirectDart : (() => {})}
-                      onSetVisitDarts={onlineCanScore ? handleSetVisitDarts : (() => {})}
-                      onSubmitVisitScore={onlineCanScore ? handleSubmitVisitScore : (() => {})}
-                      onCorrectVisitScore={onlineCanScore ? handleCorrectVisitScore : (() => {})}
-                      visitScoreFeedback={visitScoreFeedback}
-                      preferredMethod={configuredScoreInputMethod}
-                      allowVisitScore={isQuickParty}
-                      quickVisitSwitcher={isQuickParty}
-                      onMethodChange={isQuickParty ? setConfiguredScoreInputMethod : undefined}
-                      voiceControl={{
-                        enabled: !!(voiceScoreEnabled && scoringSource !== "external" && !isBotTurn && onlineCanScore && !isBustLocked && voiceMatchIsLive),
-                        supported: voiceScore.supported,
-                        phase: voiceScore.phase,
-                        activity: voiceScore.activity,
-                        expectedIndex: voiceScore.expectedIndex,
-                        awaitingConfirm: voiceScore.awaitingConfirm,
-                        lastHeard: voiceScore.lastHeard,
-                        dartsLabel: voiceScore.dartsLabel,
-                        dartsTotal: voiceScore.dartsTotal,
-                        permissionHint: voiceScore.permissionHint,
-                        onStart: () => voiceScore.beginTurn(),
-                        onStop: () => voiceScore.stop(),
-                        onReset: () => voiceScore.resetTurn(),
-                      }}
-                      hidePreview
-                      showPlaceholders={false}
-                      disabled={!onlineCanScore}
-                      hideSwitcher={!isQuickParty}
-                      hideTabs={!isQuickParty}
-                      switcherMode={isQuickParty ? "inline" : "hidden"}
-                      hideQuickVisitHint={isQuickParty}
-                      quickCameraAction={isQuickParty ? (() => setCameraOpen(true)) : null}
-                      quickCameraActive={isQuickParty && cameraOpen}
-                      themePrimary={isQuickParty && isTeamsMode && activeTeam ? activeTeam.color : themePrimary}
-                      themeSecondary={isQuickParty && isTeamsMode && activeTeam ? ((activeTeam as any).colorDark || themeSecondary) : themeSecondary}
-                      fitToParent
-                    />
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* OVERLAYS (inchangés) */}
-      <X01LegOverlayV3
-        open={!onlineExitingToLobby && (status === "leg_end" || status === "set_end" || status === "match_end")}
-        status={status}
-        config={config}
-        state={state}
-        liveStatsByPlayer={liveStatsByPlayer}
-        onNextLeg={startNextLeg}
-        onExitMatch={handleQuit}
-        onReplaySameConfig={handleReplaySameConfig}
-        onReplayNewConfig={handleReplayNewConfigInternal}
-        onShowSummary={handleShowSummary}
-        onContinueMulti={players.length >= 3 ? handleContinueMulti : undefined}
-      />
-
-      <EndOfLegOverlay
-        open={summaryOpen && !!summaryLegStats}
-        result={summaryLegStats}
-        playersById={summaryPlayersById}
-        teams={isTeamsMode ? (teamsView as any) : null}
-        visitHistory={buildReplayVisitsForX01History(replayDartsRef.current, (Array.isArray(players) ? players : []).map((p: any) => String(p.id)), config.startScore ?? 501, (config as any).outMode ?? (config as any).checkoutMode ?? "double")}
-        onClose={() => setSummaryOpen(false)}
-        onReplay={handleReplaySameConfig}
-      />
-    </div>
-  );
-}
+// PARTIE RAPIDE paysage : aucune branche dédiée.
+// On utilise volontairement le même GameplayLayout que X01 Arcade afin de
+// conserver la règle horizontale commune : gauche fixe (score/joueurs), droite saisie.
 
   return (
     <div
@@ -6338,7 +5849,7 @@ if (isLandscapeTablet && isQuickParty) {
         headerFullBleedAlt={showFullX01TickerHeader ? "X01" : ""}
         topRightExtra={(
           <div className="x01-play-header-actions" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {isTabletUi && useSetsUi && !showFullX01TickerHeader ? (
+            {isGameplayLandscape && useSetsUi && !showFullX01TickerHeader ? (
               <SetLegChip
                 currentSet={(state as any).currentSet ?? 1}
                 currentLegInSet={(state as any).currentLeg ?? 1}
@@ -6346,6 +5857,7 @@ if (isLandscapeTablet && isQuickParty) {
                 legsTarget={legsTarget}
                 useSets={useSetsUi}
                 unit={matchFormatUnitForUi as any}
+                victoryMode={matchVictoryModeForUi as any}
               />
             ) : null}
             <button
@@ -6491,7 +6003,7 @@ if (isLandscapeTablet && isQuickParty) {
               </div>
             ) : null}
 
-            {isQuickParty ? (
+            {isQuickParty && !isGameplayLandscape ? (
               <QuickPartyScoreboard
                 players={players}
                 teams={teamsView}
@@ -6568,7 +6080,7 @@ if (isLandscapeTablet && isQuickParty) {
           </div>
         }
         playersRowLabel="JOUEURS"
-        playersPanelMode="modal"
+        playersPanelMode={isGameplayLandscape ? "sidebar-auto" : "modal"}
         // ⚠️ Identité visuelle : le ticker X01 doit rester en fond du bandeau JOUEURS.
         playersBannerImage={tickerX01}
         playersPanelTitle={<span style={{ color: themePrimary, textShadow: `0 0 10px ${themePrimary}AA, 0 0 22px ${themePrimary}77`, letterSpacing: 0.4, fontWeight: 950 }}>Joueurs</span>}

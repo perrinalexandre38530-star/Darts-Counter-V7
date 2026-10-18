@@ -38,7 +38,7 @@ type ExternalKeypadAuxAction = {
   onClick: () => void;
   disabled?: boolean;
   active?: boolean;
-  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "red" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "dark";
   title?: string;
   ariaLabel?: string;
   fullBleedIcon?: boolean;
@@ -49,7 +49,7 @@ type ExternalKeypadSecondaryAction = {
   onClick: () => void;
   disabled?: boolean;
   active?: boolean;
-  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "red" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "dark";
   title?: string;
   ariaLabel?: string;
 };
@@ -58,7 +58,7 @@ type ExternalKeypadFooterAction = {
   label: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
-  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "red" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "dark";
   title?: string;
   ariaLabel?: string;
 };
@@ -67,7 +67,7 @@ type ExternalKeypadExtraMainButton = {
   label: React.ReactNode;
   onClick: () => void;
   active?: boolean;
-  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "red" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "dark";
   title?: string;
   ariaLabel?: string;
 };
@@ -121,8 +121,6 @@ type Props = {
   keypadExtraMainButtons?: ExternalKeypadExtraMainButton[] | null;
   /** Action secondaire dans la zone retour (ex: micro Gros 6). */
   keypadSecondaryAction?: ExternalKeypadSecondaryAction | null;
-  /** Mise en page dédiée des commandes principales du keypad. */
-  keypadActionLayout?: "default" | "ptit1";
   /** Remplace le bouton footer VALIDER (ex: DBULL Gros 6). */
   keypadFooterAction?: ExternalKeypadFooterAction | null;
   /** Grise 1..20 tant que la zone/ring n'est pas choisie. */
@@ -253,7 +251,6 @@ export default function ScoreInputHub({
   keypadAuxActionOverride = null,
   keypadExtraMainButtons = null,
   keypadSecondaryAction = null,
-  keypadActionLayout = "default",
   keypadFooterAction = null,
   keypadDisableSegmentNumbers = false,
   guideSegmentNumbers = null,
@@ -394,7 +391,10 @@ export default function ScoreInputHub({
 
   const contentBoxStyle: React.CSSProperties = {
     ...(lockContentHeight ? { minHeight: 0 } : null),
-    ...(fitToParent ? { height: "100%", display: "flex", flexDirection: "column", minHeight: 0 } : null),
+    // IMPORTANT mobile : la barre de méthodes prend sa propre hauteur. Le contenu
+    // doit occuper uniquement le RESTE disponible, pas 100% en plus de la barre.
+    // Cela évite que FLÈCHES / VOIX / PRESETS soient rognés par la barre système.
+    ...(fitToParent ? { flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" } : null),
   };
 
   const applyPresetVisit = React.useCallback(
@@ -481,7 +481,7 @@ export default function ScoreInputHub({
     }
   }, [disabled, method, onValidate, voiceControl]);
 
-  const voiceNotice = method === "voice" ? (
+  const voiceNotice = method === "voice" && !quickVisitSwitcher ? (
     <VoiceInlineNotice
       enabled={!!voiceControl?.enabled}
       supported={voiceSupported}
@@ -515,7 +515,6 @@ export default function ScoreInputHub({
       auxAction={keypadAuxAction}
       extraMainButtons={keypadExtraMainButtons}
       secondaryAction={keypadSecondaryAction}
-      actionLayout={keypadActionLayout}
       footerAction={keypadFooterAction}
       disableSegmentNumbers={keypadDisableSegmentNumbers}
       highlightSegmentNumbers={guideSegmentNumbers}
