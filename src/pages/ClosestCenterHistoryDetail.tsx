@@ -41,6 +41,7 @@ export default function ClosestCenterHistoryDetail(props:any){
   const inputMode=String(rec?.inputMode || rec?.summary?.inputMode || rec?.payload?.inputMode || rec?.game?.inputMode || "camera");
   const cameraQuality=rec?.cameraQuality || rec?.summary?.cameraQuality || rec?.payload?.cameraQuality || null;
   const teamTotals=rec?.teamTotals || rec?.summary?.teamTotals || rec?.payload?.teamTotals || {};
+  const roundResults=safeArray(rec?.roundResults?.length?rec.roundResults:(rec?.summary?.roundResults?.length?rec.summary.roundResults:rec?.payload?.roundResults));
   const teamMode=!!rec?.game?.teamMode || Object.keys(teamTotals||{}).length>0;
   const ranking=[...(stats?.players||[])].sort((a:any,b:any)=>num(b.points)-num(a.points)||num(a.bestMm,Infinity)-num(b.bestMm,Infinity));
   const byRound=React.useMemo(()=>{
@@ -87,6 +88,28 @@ export default function ClosestCenterHistoryDetail(props:any){
         <div style={{display:"flex",justifyContent:"space-between",gap:8}}><b style={{fontSize:12,color:ACCENT}}>QUALITÉ DE MESURE CAMÉRA</b><b>NOTE {cameraQuality.grade} · {num(cameraQuality.score)}/100</b></div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(105px,1fr))",gap:7,marginTop:8}}>
           <div style={kpi}><b>{num(cameraQuality.accepted)}</b><br/><small>volées OK</small></div><div style={kpi}><b>{num(cameraQuality.rejected)}</b><br/><small>refus</small></div><div style={kpi}><b>{num(cameraQuality.rereads)}</b><br/><small>relectures</small></div><div style={kpi}><b>{fmtMm(cameraQuality.avgUncertaintyMm)}</b><br/><small>incertitude moy.</small></div>
+        </div>
+      </section>:null}
+
+      {pointsMode==="petanque" && roundResults.length ? <section style={card}>
+        <div style={{fontSize:12,color:ACCENT,fontWeight:1000,marginBottom:7}}>ÉVOLUTION DU SCORE</div>
+        <div style={{display:"grid",gap:6}}>
+          {roundResults.sort((a:any,b:any)=>num(a.round)-num(b.round)).map((rr:any)=>{
+            const win=String(rr?.winningTeam||"");
+            const pts=num(rr?.points);
+            const scoreA=num(rr?.scoreAfter?.A);
+            const scoreB=num(rr?.scoreAfter?.B);
+            const contributors=Object.entries(rr?.pointsByPlayer||{}).filter(([,v]:any)=>num(v)>0).map(([id,v]:any)=>{
+              const p=players.find((x:any)=>String(x.id)===String(id));
+              return `${p?.name||"Joueur"} +${num(v)}`;
+            }).join(" · ");
+            const method=rr?.inputMode==="camera"?"📷 CAMÉRA":rr?.manualEntryMode==="guided"?"🎯 MANUEL GUIDÉ":"⚡ MANUEL RAPIDE";
+            return <div key={rr?.round} style={{display:"grid",gridTemplateColumns:"62px minmax(0,1fr) auto",gap:8,alignItems:"center",padding:"8px 9px",borderRadius:11,background:"rgba(255,255,255,.028)",border:"1px solid rgba(255,255,255,.07)"}}>
+              <b style={{fontSize:11,color:"#fff"}}>MÈNE {num(rr?.round)}</b>
+              <div><b style={{fontSize:11,color:win==="A"?"#ff9aa5":"#8bcfff"}}>ÉQUIPE {win || "—"} · +{pts}</b><div style={{fontSize:9,color:"#80919f",marginTop:2}}>{contributors || "Répartition non enregistrée"} · départ {rr?.starterTeam||"—"} · {method}</div></div>
+              <b style={{fontSize:15,color:ACCENT}}>{scoreA}–{scoreB}</b>
+            </div>;
+          })}
         </div>
       </section>:null}
 

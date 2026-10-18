@@ -246,6 +246,7 @@ export default function ClosestCenterPlay(props:any) {
   const [manualThrows, setManualThrows] = React.useState<any[]>([]);
   const [manualStage, setManualStage] = React.useState<"throws"|"score">("throws");
   const [manualEntryMode, setManualEntryMode] = React.useState<"quick"|"guided">("quick");
+  const [roundResults, setRoundResults] = React.useState<any[]>([]);
   const [status, setStatus] = React.useState(isManual
     ? (pointsMode === "petanque" ? "Saisie rapide : à la fin de la mène, choisis seulement l’équipe qui marque et ses fléchettes marquantes." : "Fin de manche : renseigne uniquement les fléchettes qui scorent.")
     : "Présente les 3 fléchettes du joueur dans le cadre de scan.");
@@ -317,7 +318,7 @@ export default function ClosestCenterPlay(props:any) {
     const safePhase = phase === "enroll" ? "enroll" : "baseline";
     const resumeState = {
       v: 1, mode: "closest_center", cfg, players, round, allScores, impacts, signatures, inputMode, playerIndex, roundStarterTeam,
-      manualThrows, manualStage, manualEntryMode, manualRanking, manualWinningTeam,
+      manualThrows, manualStage, manualEntryMode, manualRanking, manualWinningTeam, roundResults,
       enrollIndex, phase: isManual ? (phase === "roundEnd" ? "roundEnd" : "play") : safePhase, sessionId: sessionIdRef.current, diagnostics: sessionDiagnostics.slice(-120),
       updatedAt: now, ...extra,
     };
@@ -325,12 +326,12 @@ export default function ClosestCenterPlay(props:any) {
       await History.upsert({
         id: matchIdRef.current, matchId: matchIdRef.current, kind: "closest_center", status: "in_progress",
         createdAt: now, updatedAt: now, players, game: { mode: "closest_center", rounds: pointsMode==="petanque"?round:cfg.rounds, targetScore:cfg.targetScore||null, formatMode:cfg.formatMode||"duo", dartsPerPlayer, teamMode: cfg.teamMode, pointsMode, inputMode },
-        summary: { round, rounds: pointsMode==="petanque"?round:(cfg.rounds || 3), targetScore:cfg.targetScore||null, formatMode:cfg.formatMode||"duo", dartsPerPlayer, scores: allScores, finished: false },
+        summary: { round, rounds: pointsMode==="petanque"?round:(cfg.rounds || 3), targetScore:cfg.targetScore||null, formatMode:cfg.formatMode||"duo", dartsPerPlayer, scores: allScores, roundResults, finished: false },
         resume: { state: resumeState },
-        payload: { stateSnapshot: resumeState },
+        payload: { stateSnapshot: resumeState, roundResults },
       } as any);
     } catch {}
-  }, [players, phase, cfg, round, allScores, impacts, signatures, enrollIndex, playerIndex, roundStarterTeam, inputMode, isManual, sessionDiagnostics, manualRanking, manualWinningTeam, manualThrows, manualStage, manualEntryMode, pointsMode, dartsPerPlayer]);
+  }, [players, phase, cfg, round, allScores, impacts, signatures, enrollIndex, playerIndex, roundStarterTeam, inputMode, isManual, sessionDiagnostics, manualRanking, manualWinningTeam, manualThrows, manualStage, manualEntryMode, roundResults, pointsMode, dartsPerPlayer]);
 
   React.useEffect(() => {
     if (hydratedRef.current) return;
@@ -351,6 +352,7 @@ export default function ClosestCenterPlay(props:any) {
       setPlayerIndex(Math.max(0, Math.min(players.length - 1, Number(st.playerIndex || 0))));
       if (st.roundStarterTeam === "A" || st.roundStarterTeam === "B") setRoundStarterTeam(st.roundStarterTeam);
       if (Array.isArray(st.diagnostics)) setDiagnostics(st.diagnostics.slice(-120));
+      if (Array.isArray(st.roundResults)) setRoundResults(st.roundResults);
       setBefore(null); setPendingAfter(null); setPendingImpacts([]); setPendingConsensus([]);
       setPrecisionRereads(0); setTieAcknowledged(false); setTurnArmed(false); setPreflightInfo(null);
       if (isManual) {
@@ -381,7 +383,7 @@ export default function ClosestCenterPlay(props:any) {
     if (!hydratedRef.current || phase === "finished") return;
     const t = window.setTimeout(() => { void saveCheckpoint(); }, 220);
     return () => window.clearTimeout(t);
-  }, [round, allScores, impacts, signatures, enrollIndex, playerIndex, roundStarterTeam, phase, manualRanking, manualWinningTeam, manualThrows, manualStage, manualEntryMode, saveCheckpoint]);
+  }, [round, allScores, impacts, signatures, enrollIndex, playerIndex, roundStarterTeam, phase, manualRanking, manualWinningTeam, manualThrows, manualStage, manualEntryMode, roundResults, saveCheckpoint]);
 
   React.useEffect(() => {
     const flush = () => { if (phase !== "finished") void saveCheckpoint(); };
@@ -1012,6 +1014,31 @@ export default function ClosestCenterPlay(props:any) {
     const roundWinningTeam = pointsMode==="petanque"
       ? (String(ranked.find((r:any)=>Number(r.points||0)>0)?.scoringSide || ranked[0]?.teamId || "")==="B" ? "B" : "A")
       : null;
+    const scoringRows = ranked.filter((r:any)=>Number(r.points||0)>0);
+    const pointsByPlayer:Record<string,number> = {};
+    scoringRows.forEach((r:any)=>{ const id=String(r.playerId||""); if(id) pointsByPlayer[id]=(pointsByPlayer[id]||0)+Number(r.points||0); });
+    const roundPoints = scoringRows.reduce((sum:number,r:any)=>sum+Number(r.points||0),0);
+    const scoreBefore = {
+      A: Number(Object.entries(allScores).reduce((sum:number,[id,v]:any)=>sum + (String(players.find((p:any)=>String(p.id)===String(id))?.teamId)==="A" ? Number(v||0) : 0),0)),
+      B: Number(Object.entries(allScores).reduce((sum:number,[id,v]:any)=>sum + (String(players.find((p:any)=>String(p.id)===String(id))?.teamId)==="B" ? Number(v||0) : 0),0)),
+    };
+    const scoreAfter = { A:Number(nextTeamTotals.A||0), B:Number(nextTeamTotals.B||0) };
+    setRoundResults(prev => [
+      ...prev.filter((x:any)=>Number(x.round)!==Number(round)),
+      {
+        round:Number(round),
+        winningTeam:roundWinningTeam,
+        points:Number(roundPoints),
+        pointsByPlayer,
+        starterTeam:roundStarterTeam,
+        inputMode,
+        manualEntryMode:isManual ? manualEntryMode : null,
+        scoringMode:pointsMode,
+        scoreBefore,
+        scoreAfter,
+        createdAt:Date.now(),
+      },
+    ].sort((a:any,b:any)=>Number(a.round)-Number(b.round)));
     if (roundWinningTeam) setRoundStarterTeam(roundWinningTeam);
     const targetReached = pointsMode === "petanque" && Math.max(Number(nextTeamTotals.A||0), Number(nextTeamTotals.B||0)) >= Number(cfg.targetScore || 13);
     if (targetReached || (pointsMode !== "petanque" && round >= Number(cfg.rounds || 3))) {
@@ -1079,6 +1106,7 @@ export default function ClosestCenterPlay(props:any) {
       inputMode,
       cameraQuality:isManual?null:cameraQuality,
       petanqueStats,
+      roundResults,
       game:{mode:"closest_center",rounds:pointsMode==="petanque"?round:(cfg.rounds||round),targetScore:cfg.targetScore||null,formatMode:cfg.formatMode||"duo",dartsPerPlayer,teamMode:cfg.teamMode,pointsMode,inputMode},
       summary:{
         rounds:pointsMode==="petanque"?round:(cfg.rounds||round),
@@ -1093,6 +1121,7 @@ export default function ClosestCenterPlay(props:any) {
         bestDistanceMm:petanqueStats.bestDistanceMm,
         cameraQuality:isManual?null:cameraQuality,
         petanqueStats,
+        roundResults,
         finished:true,
       },
       payload:{
@@ -1104,6 +1133,8 @@ export default function ClosestCenterPlay(props:any) {
         dartsPerPlayer,
         pointsMode,
         petanqueStats,
+        roundResults,
+        manualEntryMode:isManual?manualEntryMode:null,
         cameraQuality:isManual?null:cameraQuality,
         diagnostics:isManual?[]:sessionDiagnostics,
       },
@@ -1113,7 +1144,7 @@ export default function ClosestCenterPlay(props:any) {
     // record here as well. This guarantees a detailed local history entry even
     // when the surrounding shell does not persist onFinish.
     void History.upsert(finalRecord).catch(()=>{});
-  }, [phase, allScores, teamTotals, impacts, inputMode, isManual, cameraQuality, sessionDiagnostics, petanqueStats, winner?.playerId, winningTeamId, cfg.rounds, cfg.targetScore, cfg.formatMode, cfg.teamMode, cfg.pointsMode, round, players, pointsMode, dartsPerPlayer]);
+  }, [phase, allScores, teamTotals, impacts, inputMode, isManual, cameraQuality, sessionDiagnostics, petanqueStats, winner?.playerId, winningTeamId, cfg.rounds, cfg.targetScore, cfg.formatMode, cfg.teamMode, cfg.pointsMode, round, players, pointsMode, dartsPerPlayer, roundResults, manualEntryMode]);
 
 
   if (!players.length) return <div style={{padding:20,color:"white"}}>Configuration introuvable. <button onClick={() => go?.("closest_center_config")}>Retour</button></div>;
@@ -1366,13 +1397,20 @@ export default function ClosestCenterPlay(props:any) {
         </section> : null}
 
         {(phase === "roundEnd" || phase === "finished") ? <section style={card}>
-          <h3 style={h3}>{phase === "finished" ? "CLASSEMENT FINAL" : pointsMode==="petanque" ? "POINTS DE LA MÈNE" : "CLASSEMENT DE LA MANCHE"}</h3>
+          <h3 style={h3}>{phase === "finished" ? (cfg.teamMode && pointsMode==="petanque" ? "RÉSULTAT FINAL" : "CLASSEMENT FINAL") : pointsMode==="petanque" ? "POINTS DE LA MÈNE" : "CLASSEMENT DE LA MANCHE"}</h3>
+          {phase==="finished" && cfg.teamMode && pointsMode==="petanque" ? <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:10,alignItems:"center",padding:"12px 10px",marginBottom:9,borderRadius:13,border:`1px solid ${ACCENT}44`,background:"linear-gradient(135deg,rgba(255,77,95,.08),rgba(61,165,255,.08))"}}>
+            <div style={{textAlign:"center"}}><div style={{fontSize:10,color:"#ff9aa5",fontWeight:1000}}>ÉQUIPE A</div><div style={{fontSize:30,fontWeight:1000,lineHeight:1}}>{Number(teamTotals.A||0)}</div></div>
+            <div style={{textAlign:"center"}}><div style={{fontSize:10,color:"#7f909d"}}>FINAL</div><div style={{fontSize:12,color:"#ffd85a",fontWeight:1000,marginTop:3}}>{winningTeamId?`🏆 ÉQUIPE ${winningTeamId}`:"—"}</div></div>
+            <div style={{textAlign:"center"}}><div style={{fontSize:10,color:"#8bcfff",fontWeight:1000}}>ÉQUIPE B</div><div style={{fontSize:30,fontWeight:1000,lineHeight:1}}>{Number(teamTotals.B||0)}</div></div>
+          </div> : null}
+          {phase==="finished" && cfg.teamMode && pointsMode==="petanque" ? <div style={{fontSize:10,color:"#8ea0ad",fontWeight:900,letterSpacing:.7,margin:"2px 0 5px"}}>CONTRIBUTIONS JOUEURS</div> : null}
           {!isManual && phase === "roundEnd" && hasPrecisionTieRisk ? <div style={{padding:9,borderRadius:10,border:"1px solid #ffbd4555",background:"#ffbd4510",color:"#ffd796",fontSize:11,marginBottom:6}}>⚠️ Au moins deux impacts sont plus proches que la marge d’incertitude estimée. Un contrôle caméra rapproché est conseillé avant validation.</div> : null}
           {(phase === "finished" ? finalPlayerRanking.map((s:any)=>({playerId:s.playerId,points:s.points,distanceMm:null,playerStat:s})) : ranked).map((r:any,i:number) => {
             const p = players.find((x:any) => String(x.id) === String(r.playerId));
-            return <div key={`${r.playerId}-${i}-${r.id||"final"}`} style={{display:"grid",gridTemplateColumns:"32px 1fr auto",gap:8,alignItems:"center",padding:"8px 0",borderBottom:"1px solid rgba(255,255,255,.07)"}}><b>#{i+1}</b><div><b>{p?.name}</b>{p?.teamId ? <span style={{color:ACCENT,fontSize:11}}> · Team {p.teamId}</span> : null}{phase==="finished"&&r.playerStat?<div style={{fontSize:10,color:"#9fb0bf",marginTop:2}}>{isManual?`${r.playerStat.rankedDarts||0} fléchette(s) marquante(s) · ${r.playerStat.roundWins} mène(s) gagnée(s)`:`meilleure ${r.playerStat.bestMm!=null?`${r.playerStat.bestMm.toFixed(1)} mm`:"—"} · moyenne ${r.playerStat.averageMm!=null?`${r.playerStat.averageMm.toFixed(1)} mm`:"—"} · ${r.playerStat.roundWins} manche(s) gagnée(s) · ${r.playerStat.misses} MISS`}</div>:null}{r.distanceMm != null ? <div style={{fontSize:11,color:r.ambiguousWithPrevious?"#ffbd65":"#9fb0bf"}}>{isManual?`rang manuel #${r.rank || r.manualRank || i+1}`:`${r.distanceMm.toFixed(1)} mm ± ${Number(r.uncertaintyMm||0).toFixed(1)} mm · vision ${Math.round(r.confidence*100)} % · identité ${Math.round(r.identityConfidence*100)} %${r.ambiguousWithPrevious?` · départage ${Number(r.gapToPreviousMm||0).toFixed(2)} mm ≤ marge ${Number(r.ambiguityMarginMm||0).toFixed(2)} mm`:""}`}</div> : null}</div><b style={{color:ACCENT}}>+{r.points||0}</b></div>;
+            const teamFinal = phase==="finished" && cfg.teamMode && pointsMode==="petanque";
+            return <div key={`${r.playerId}-${i}-${r.id||"final"}`} style={{display:"grid",gridTemplateColumns:"32px 1fr auto",gap:8,alignItems:"center",padding:"8px 0",borderBottom:"1px solid rgba(255,255,255,.07)"}}><b>{teamFinal?"•":`#${i+1}`}</b><div><b>{p?.name}</b>{p?.teamId ? <span style={{color:ACCENT,fontSize:11}}> · Team {p.teamId}</span> : null}{phase==="finished"&&r.playerStat?<div style={{fontSize:10,color:"#9fb0bf",marginTop:2}}>{isManual?`${r.playerStat.rankedDarts||0} fléchette(s) marquante(s) · ${r.playerStat.roundWins} mène(s) avec point le plus proche`:`meilleure ${r.playerStat.bestMm!=null?`${r.playerStat.bestMm.toFixed(1)} mm`:"—"} · moyenne ${r.playerStat.averageMm!=null?`${r.playerStat.averageMm.toFixed(1)} mm`:"—"} · ${r.playerStat.roundWins} mène(s) avec point le plus proche · ${r.playerStat.misses} MISS`}</div>:null}{r.distanceMm != null ? <div style={{fontSize:11,color:r.ambiguousWithPrevious?"#ffbd65":"#9fb0bf"}}>{isManual?`rang manuel #${r.rank || r.manualRank || i+1}`:`${r.distanceMm.toFixed(1)} mm ± ${Number(r.uncertaintyMm||0).toFixed(1)} mm · vision ${Math.round(r.confidence*100)} % · identité ${Math.round(r.identityConfidence*100)} %${r.ambiguousWithPrevious?` · départage ${Number(r.gapToPreviousMm||0).toFixed(2)} mm ≤ marge ${Number(r.ambiguityMarginMm||0).toFixed(2)} mm`:""}`}</div> : null}</div><b style={{color:ACCENT}}>{teamFinal?`${r.points||0} pts`:`+${r.points||0}`}</b></div>;
           })}
-          {phase === "finished" ? <div style={{marginTop:10,padding:10,borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.035)"}}><div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><b style={{fontSize:11,color:"#ffd85a"}}>STATISTIQUES DARTS PÉTANQUE</b><b style={{fontSize:11}}>{cfg.teamMode?(winningTeamId?`ÉQUIPE ${winningTeamId} GAGNANTE`:""):winner?`${winner.name} GAGNANT`:""}</b></div><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginTop:8,fontSize:10,textAlign:"center"}}>{isManual?<><span>{petanqueStats.totalRankedDarts||petanqueStats.totalImpacts||0}<br/><i style={{color:"#8797a5"}}>{pointsMode==="petanque"?"fléchettes marquantes":"Top 5 classées"}</i></span><span>{winner?.roundWins||0}<br/><i style={{color:"#8797a5"}}>manches gagnées</i></span></>:<><span>{petanqueStats.bestDistanceMm!=null?petanqueStats.bestDistanceMm.toFixed(1):"—"}<br/><i style={{color:"#8797a5"}}>meilleur mm</i></span><span>{petanqueStats.averageDistanceMm!=null?petanqueStats.averageDistanceMm.toFixed(1):"—"}<br/><i style={{color:"#8797a5"}}>moyenne mm</i></span></>}<span>{petanqueStats.totalImpacts}<br/><i style={{color:"#8797a5"}}>{isManual?(pointsMode==="petanque"?"points saisis":"rangs saisis"):"impacts"}</i></span><span>{pointsMode==="petanque"?round:(cfg.rounds||round)}<br/><i style={{color:"#8797a5"}}>{pointsMode==="petanque"?"mènes":"manches"}</i></span></div></div> : null}
+          {phase === "finished" ? <div style={{marginTop:10,padding:10,borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.035)"}}><div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><b style={{fontSize:11,color:"#ffd85a"}}>STATISTIQUES DARTS PÉTANQUE</b><b style={{fontSize:11}}>{cfg.teamMode?(winningTeamId?`ÉQUIPE ${winningTeamId} GAGNANTE`:""):(winner?`${winner.name} GAGNANT`:"")}</b></div><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginTop:8,fontSize:10,textAlign:"center"}}>{isManual?<><span>{petanqueStats.totalRankedDarts||petanqueStats.totalImpacts||0}<br/><i style={{color:"#8797a5"}}>{pointsMode==="petanque"?"fléchettes marquantes":"Top 5 classées"}</i></span><span>{winner?.roundWins||0}<br/><i style={{color:"#8797a5"}}>manches gagnées</i></span></>:<><span>{petanqueStats.bestDistanceMm!=null?petanqueStats.bestDistanceMm.toFixed(1):"—"}<br/><i style={{color:"#8797a5"}}>meilleur mm</i></span><span>{petanqueStats.averageDistanceMm!=null?petanqueStats.averageDistanceMm.toFixed(1):"—"}<br/><i style={{color:"#8797a5"}}>moyenne mm</i></span></>}<span>{petanqueStats.totalImpacts}<br/><i style={{color:"#8797a5"}}>{isManual?(pointsMode==="petanque"?"points saisis":"rangs saisis"):"impacts"}</i></span><span>{pointsMode==="petanque"?round:(cfg.rounds||round)}<br/><i style={{color:"#8797a5"}}>{pointsMode==="petanque"?"mènes":"manches"}</i></span></div></div> : null}
           {phase === "finished" && !isManual ? <div style={{marginTop:10,padding:10,borderRadius:12,border:"1px solid rgba(68,231,255,.2)",background:"rgba(68,231,255,.05)"}}><div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><b style={{fontSize:11,color:ACCENT}}>BILAN QUALITÉ CAMÉRA</b><b style={{fontSize:12}}>NOTE {cameraQuality.grade} · {cameraQuality.score}/100</b></div><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginTop:8,fontSize:10,textAlign:"center"}}><span>{cameraQuality.accepted}<br/><i style={{color:"#8797a5"}}>volées OK</i></span><span>{cameraQuality.rejected}<br/><i style={{color:"#8797a5"}}>refus</i></span><span>{cameraQuality.rereads}<br/><i style={{color:"#8797a5"}}>relectures</i></span><span>{cameraQuality.avgUncertaintyMm!=null?cameraQuality.avgUncertaintyMm.toFixed(2):"—"}<br/><i style={{color:"#8797a5"}}>mm moy.</i></span></div>{cameraQuality.rounds.length ? <div style={{marginTop:8,display:"grid",gap:4}}>{cameraQuality.rounds.map((q:any)=><div key={q.round} style={{display:"grid",gridTemplateColumns:"70px 1fr auto",gap:8,fontSize:10,color:"#aebdca"}}><b>M{q.round}</b><span>{q.accepted} OK · {q.rejected} refus · {q.rereads} relecture(s)</span><b>{q.qualityScore}/100</b></div>)}</div> : null}</div> : null}
           {isManual && phase === "roundEnd" ? <div style={{marginTop:10}}><button onClick={editManualRanking} style={{...miniBtn,width:"100%",minHeight:38,borderColor:"rgba(143,255,194,.35)",color:"#bfffd9"}}>{pointsMode==="petanque"?"✎ MODIFIER LES POINTS":"✎ MODIFIER LE CLASSEMENT"}</button></div> : null}
           {phase === "roundEnd" ? <button style={{...btn,width:"100%",marginTop:10,borderColor:hasPrecisionTieRisk&&!tieAcknowledged?"#ffbd45":ACCENT,background:hasPrecisionTieRisk&&tieAcknowledged?"#ffbd4522":`${ACCENT}18`}} onClick={commitRound}>{hasPrecisionTieRisk&&!tieAcknowledged?"⚠️ CONTRÔLER LE DÉPARTAGE":hasPrecisionTieRisk&&tieAcknowledged?"✓ CONFIRMER ET ENREGISTRER":pointsMode==="petanque"?"VALIDER LA MÈNE →":"VALIDER LA MANCHE →"}</button> : <button style={{...btn,width:"100%",marginTop:10}} onClick={() => go?.("closest_center_config")}>NOUVELLE PARTIE</button>}
