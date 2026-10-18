@@ -2853,8 +2853,12 @@ const isBotTurn = React.useMemo(() => {
     )
   );
   const configuredMatchTarget = Math.max(1, Number((config as any)?.matchFormat?.target ?? (config as any)?.matchVictoryTarget ?? 1));
+  const matchVictoryModeForUi = String((config as any)?.matchFormat?.type ?? (config as any)?.matchVictoryMode ?? (config as any)?.victoryMode ?? "best_of").toLowerCase();
   const setsTarget = matchFormatUnitForUi === "sets" ? Math.max(rawSetsTarget, configuredMatchTarget) : rawSetsTarget;
   const legsTarget = matchFormatUnitForUi === "legs" ? Math.max(rawLegsTarget, configuredMatchTarget) : rawLegsTarget;
+  const isFirstToUi = matchVictoryModeForUi.includes("first");
+  const visibleSetsTargetForUi = isFirstToUi ? Math.max(1, setsTarget * 2 - 1) : setsTarget;
+  const visibleLegsTargetForUi = isFirstToUi ? Math.max(1, legsTarget * 2 - 1) : legsTarget;
   const isDuel = players.length === 2;
   const useSetsUi = setsTarget > 1 || legsTarget > 1 || configuredMatchTarget > 1;
 
@@ -2894,6 +2898,8 @@ const teamsView = React.useMemo(() => {
           const actualDartSetThumb = getDartSetMedallionSrcById((p as any)?.dartSetId);
           const brandLogo = actualDartSetThumb ? null : getProBotBrandLogoForPlayer(p);
           const countryCode = resolveX01PlayerCountryCode(p) || profileById[p.id]?.countryCode || null;
+          const globalPlayerIndex = (players as any[]).findIndex((candidate: any) => String(candidate?.id || "") === String(p?.id || ""));
+          const slotLabel = `J${Math.max(1, globalPlayerIndex + 1)}`;
           return {
             id: p.id,
             name: p.name,
@@ -2905,6 +2911,7 @@ const teamsView = React.useMemo(() => {
             countryFlagSrc: getCountryFlagSrc(countryCode || undefined),
             isActive: p.id === activePlayerId,
             teamTone: memberIndex % 2 === 0 ? "light" : "dark",
+            slotLabel,
           };
         });
 
@@ -5899,9 +5906,11 @@ if (false && isLandscapeTablet) {
                   color: "#ffd36a",
                 }}
               >
-                {matchFormatUnitForUi === "legs"
-                  ? `Leg ${setsTarget <= 1 ? state.currentLeg : state.currentSet}/${setsTarget <= 1 ? legsTarget : setsTarget}`
-                  : `${setsTarget > 1 ? `Set ${state.currentSet}/${setsTarget} • ` : ""}Leg ${state.currentLeg}/${legsTarget}`}
+                {isFirstToUi
+                  ? `FIRST TO ${configuredMatchTarget}`
+                  : matchFormatUnitForUi === "legs"
+                  ? `Leg ${Math.max(1, Number((state as any)?.currentLeg ?? 1))}/${Math.max(1, visibleLegsTargetForUi)}`
+                  : `${visibleSetsTargetForUi > 1 ? `Set ${Math.max(1, Number((state as any)?.currentSet ?? 1))}/${Math.max(1, visibleSetsTargetForUi)} • ` : ""}Leg ${Math.max(1, Number((state as any)?.currentLeg ?? 1))}/${Math.max(1, visibleLegsTargetForUi)}`}
               </div>
             )}
 
@@ -5945,6 +5954,7 @@ if (false && isLandscapeTablet) {
               legsTarget={legsTarget}
               useSets={useSetsUi}
               unit={matchFormatUnitForUi as any}
+              victoryMode={matchVictoryModeForUi as any}
             />
           ) : (
             <span aria-hidden style={{ width: 40, flex: "0 0 40px" }} />
@@ -6416,6 +6426,7 @@ if (false && isLandscapeTablet) {
                   legsTarget={legsTarget}
                   useSets={useSetsUi}
                   unit={matchFormatUnitForUi as any}
+                  victoryMode={matchVictoryModeForUi as any}
                 />
               ) : null}
             </div>
@@ -6472,8 +6483,8 @@ if (false && isLandscapeTablet) {
                 liveStatsByPlayer={liveStatsByPlayer}
                 avg3ByPlayer={avg3ByPlayer}
                 lastVisitsByPlayer={lastVisitsByPlayer}
-                themePrimary={themePrimary}
-                themeSecondary={themeSecondary}
+                themePrimary={isTeamsMode && activeTeam ? activeTeam.color : themePrimary}
+                themeSecondary={isTeamsMode && activeTeam ? ((activeTeam as any).colorDark || themeSecondary) : themeSecondary}
                 lang={lang}
                 showSeriesScore={false}
                 seriesUnit={matchFormatUnitForUi}
@@ -6761,6 +6772,8 @@ if (false && isLandscapeTablet) {
               hideQuickVisitHint={isQuickParty}
               quickCameraAction={isQuickParty ? (() => setCameraOpen(true)) : null}
               quickCameraActive={isQuickParty && cameraOpen}
+              themePrimary={isQuickParty && isTeamsMode && activeTeam ? activeTeam.color : themePrimary}
+              themeSecondary={isQuickParty && isTeamsMode && activeTeam ? ((activeTeam as any).colorDark || themeSecondary) : themeSecondary}
               fitToParent
             />
             )}
@@ -8159,19 +8172,31 @@ function TeamsPlayersListInner(props: {
 
             {(team.players || []).map((p: any, playerIndex: number) => {
               const prof = profileById[p.id];
-              const avatarSrc = prof?.avatarDataUrl ?? p?.avatarDataUrl ?? p?.avatarUrl ?? p?.photoUrl ?? p?.avatar ?? null;
-              const avatarFallback = makeAvatarPlaceholderDataUrl(prof?.name || p?.name, p?.id);
               const live = liveStatsByPlayer[p.id];
-              const playerTint = playerIndex % 2 === 0
-                ? `color-mix(in srgb, ${teamColor} 52%, white 48%)`
-                : `color-mix(in srgb, ${teamColor} 58%, #0b1017 42%)`;
+              const teamDark = team?.colorDark || `color-mix(in srgb, ${teamColor} 58%, #0b1017 42%)`;
+              const useLightTone = String((p as any)?.teamTone || "light") === "light";
+              const playerTint = useLightTone
+                ? `color-mix(in srgb, ${teamColor} 58%, white 42%)`
+                : `color-mix(in srgb, ${teamDark} 78%, white 22%)`;
+              const playerBadgeBg = useLightTone
+                ? `linear-gradient(180deg, color-mix(in srgb, ${teamColor} 30%, white 70%), color-mix(in srgb, ${teamColor} 54%, white 46%))`
+                : `linear-gradient(180deg, color-mix(in srgb, ${teamDark} 70%, #0a1118 30%), color-mix(in srgb, ${teamDark} 88%, #05080d 12%))`;
+              const playerBadgeText = useLightTone
+                ? `color-mix(in srgb, ${teamDark} 78%, #071019 22%)`
+                : `color-mix(in srgb, ${teamColor} 18%, white 82%)`;
+              const isActive = p.id === activePlayerId;
+              const liveRowBg = isActive
+                ? `linear-gradient(180deg, color-mix(in srgb, ${teamColor} 16%, rgba(255,255,255,.08) 84%), rgba(18,18,20,.72))`
+                : "linear-gradient(180deg, rgba(28,28,32,.65), rgba(18,18,20,.65))";
+              const liveRowBorder = isActive
+                ? `1px solid color-mix(in srgb, ${teamColor} 48%, rgba(255,255,255,.20) 52%)`
+                : "1px solid rgba(255,255,255,.07)";
 
               const dCount: number = live?.dartsThrown ?? 0;
               const a3d =
                 dCount > 0 ? (avg3ByPlayer[p.id] ?? 0).toFixed(2) : "0.00";
 
-              const isActive = p.id === activePlayerId;
-              const score = scoresByPlayer[p.id] ?? start;
+              const slotLabel = String((p as any)?.slotLabel || `J${playerIndex + 1}`);
 
               return (
                 <div
@@ -8182,37 +8207,29 @@ function TeamsPlayersListInner(props: {
                     gap: 9,
                     padding: "7px 9px",
                     borderRadius: 12,
-                    background: isActive
-                      ? "linear-gradient(180deg, rgba(255,195,26,.14), rgba(18,18,20,.65))"
-                      : "linear-gradient(180deg, rgba(28,28,32,.65), rgba(18,18,20,.65))",
-                    border: isActive
-                      ? "1px solid rgba(255,195,26,.35)"
-                      : "1px solid rgba(255,255,255,.07)",
+                    background: liveRowBg,
+                    border: liveRowBorder,
                     marginBottom: 5,
                   }}
                 >
-                  {/* Avatar */}
                   <div
+                    aria-hidden
                     style={{
                       width: 36,
                       height: 36,
                       borderRadius: "50%",
-                      overflow: "hidden",
-                      background: playerTint,
-                      border: `2px solid ${playerTint}`,
-                      boxShadow: isActive ? `0 0 0 2px color-mix(in srgb, ${teamColor} 56%, transparent 44%), 0 0 14px color-mix(in srgb, ${teamColor} 26%, transparent 74%)` : 'none',
+                      display: "grid",
+                      placeItems: "center",
+                      background: playerBadgeBg,
+                      border: `2px solid color-mix(in srgb, ${playerTint} 72%, white 28%)`,
+                      boxShadow: isActive ? `0 0 0 2px color-mix(in srgb, ${teamColor} 40%, transparent 60%), 0 0 14px color-mix(in srgb, ${teamColor} 26%, transparent 74%)` : 'none',
+                      color: playerBadgeText,
+                      fontWeight: 1000,
+                      letterSpacing: 0.2,
+                      textShadow: useLightTone ? "none" : "0 1px 0 rgba(0,0,0,.24)",
                     }}
                   >
-                    <img
-                      src={avatarSrc || avatarFallback}
-                      alt={prof?.name || p?.name || "Joueur"}
-                      onError={(event) => { event.currentTarget.src = avatarFallback; }}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                      }}
-                    />
+                    {slotLabel}
                   </div>
 
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -8615,9 +8632,17 @@ function SetLegChip(props: {
   legsTarget: number;
   useSets: boolean;
   unit?: "sets" | "legs";
+  victoryMode?: "best_of" | "first_to" | string;
 }) {
-  const { currentSet, currentLegInSet, setsTarget, legsTarget, useSets, unit = "sets" } =
-    props;
+  const {
+    currentSet,
+    currentLegInSet,
+    setsTarget,
+    legsTarget,
+    useSets,
+    unit = "sets",
+    victoryMode = "best_of",
+  } = props;
 
   const st: React.CSSProperties = {
     display: "inline-flex",
@@ -8635,11 +8660,25 @@ function SetLegChip(props: {
     borderRadius: 999,
   };
 
+  const isFirstTo = String(victoryMode || "best_of").toLowerCase().includes("first");
+  const visibleSetsTarget = setsTarget;
+  const visibleLegsTarget = legsTarget;
+  const currentGlobalLeg = useSets ? ((Math.max(1, currentSet) - 1) * Math.max(1, legsTarget)) + Math.max(1, currentLegInSet) : Math.max(1, currentLegInSet);
+
+  if (isFirstTo) {
+    const target = unit === "sets" ? Math.max(1, setsTarget) : Math.max(1, legsTarget);
+    return (
+      <span style={st}>
+        <span>FIRST TO {target}</span>
+      </span>
+    );
+  }
+
   if (!useSets || unit === "legs") {
     return (
       <span style={st}>
         <span>
-          Leg {unit === "legs" ? (setsTarget <= 1 ? currentLegInSet : currentSet) : currentLegInSet}/{unit === "legs" ? (setsTarget <= 1 ? legsTarget : setsTarget) : legsTarget}
+          Leg {Math.max(1, currentGlobalLeg)}/{Math.max(1, visibleLegsTarget)}
         </span>
       </span>
     );
@@ -8648,11 +8687,11 @@ function SetLegChip(props: {
   return (
     <span style={st}>
       <span>
-        Set {currentSet}/{setsTarget}
+        Set {Math.max(1, currentSet)}/{Math.max(1, visibleSetsTarget)}
       </span>
       <span style={{ opacity: 0.6 }}>•</span>
       <span>
-        Leg {currentLegInSet}/{legsTarget}
+        Leg {Math.max(1, currentLegInSet)}/{Math.max(1, visibleLegsTarget)}
       </span>
     </span>
   );

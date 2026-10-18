@@ -44,6 +44,46 @@ function finishHint(remaining:number,outMode:string){
   if(remaining<=60)return`${remaining} points restants`;
   return"Construis ton score sans dépasser la cible";
 }
+
+function computeX01StyleFinish(remaining:number,dartsLeft:number,outMode:"straight"|"double"|"master"):{text:string,darts:string[]}|null{
+  if(!Number.isFinite(remaining)||remaining<=0||dartsLeft<=0||remaining>180)return null;
+  type D={code:string;score:number;kind:"S"|"D"|"T"|"B"};
+  const all:D[]=[],doubles:D[]=[],masters:D[]=[];
+  for(let n=1;n<=20;n++){
+    const si:D={code:`S${n}`,score:n,kind:"S"};
+    const d:D={code:`D${n}`,score:n*2,kind:"D"};
+    const t:D={code:`T${n}`,score:n*3,kind:"T"};
+    all.push(si,d,t);doubles.push(d);masters.push(d,t);
+  }
+  const sb:D={code:"BULL",score:25,kind:"B"};
+  const db:D={code:"DBULL",score:50,kind:"D"};
+  all.push(sb,db);doubles.push(db);masters.push(db);
+  const lastPool=outMode==="double"?doubles:outMode==="master"?masters:all;
+  const triples=[20,19,18,17,16,15,14,13,12,11,10];
+  const doublesPref=[20,16,18,10,12,8,6,4,2,1,5,9,14,7,3,11,13,15,17,19,25];
+  const penalty=(d:D,last:boolean)=>{
+    if(d.code==="BULL")return 40;
+    if(d.code==="DBULL")return last?4:22;
+    const n=Number(d.code.slice(1));
+    if(d.kind==="T"){const i=triples.indexOf(n);return i>=0?i:30+(20-n)*.25;}
+    if(d.kind==="D"){const i=doublesPref.indexOf(n);return(last?0:6)+(i>=0?i*.9:40);}
+    return 18+(20-n)*.15;
+  };
+  const lineScore=(line:D[])=>line.length*1000+line.reduce((sum,d,i)=>sum+penalty(d,i===line.length-1),0);
+  let best:{line:D[];rank:number}|null=null;
+  const validLast=(d:D)=>outMode==="double"?d.kind==="D":outMode==="master"?(d.kind==="D"||d.kind==="T"):true;
+  const keep=(line:D[])=>{const rank=lineScore(line);if(!best||rank<best.rank)best={line,rank};};
+  const max=Math.min(3,Math.max(1,dartsLeft));
+  for(let used=1;used<=max;used++){
+    if(used===1){for(const a of lastPool)if(a.score===remaining&&validLast(a))keep([a]);}
+    else if(used===2){for(const a of all)for(const b of lastPool)if(a.score+b.score===remaining&&validLast(b))keep([a,b]);}
+    else{for(const a of all){if(a.score>=remaining)continue;for(const b of all){if(a.score+b.score>=remaining)continue;for(const c of lastPool)if(a.score+b.score+c.score===remaining&&validLast(c))keep([a,b,c]);}}}
+    if(best&&best.line.length===1)break;
+  }
+  if(!best)return null;
+  const darts=best.line.map(d=>d.code);
+  return{text:darts.join(" → "),darts};
+}
 function coachText(state:GotchaState,active:any){
   if(!active)return"";const score=Number(state.scores[active.id]||0);const remaining=state.config.rules.targetScore-score;
   const gotchas=state.players.filter((p:any)=>p.id!==active.id&&Number(state.scores[p.id]||0)>score).map((p:any)=>({p,delta:Number(state.scores[p.id]||0)-score})).filter((x:any)=>x.delta>0&&x.delta<=180).sort((a:any,b:any)=>a.delta-b.delta);
@@ -159,6 +199,10 @@ export default function GotchaPlay(props:any){
 
   const currentScore=activePlayer?Number(state.scores[activePlayer.id]||0):0;const remaining=Math.max(0,config.rules.targetScore-currentScore);const legTarget=config.seriesWins*2-1;const previewDarts=currentThrow.map(uiToGameDart);const provisional=previewDarts.reduce((sum,d)=>sum+dartScore(d),0);const projected=currentScore+provisional;const projectedVictims=activePlayer?state.players.filter((p:any)=>p.id!==activePlayer.id&&Number(state.scores[p.id]||0)>0&&Number(state.scores[p.id]||0)===projected):[];const previewBust=projected>config.rules.targetScore;const activeStats=activePlayer?state.statsByPlayer[activePlayer.id]||{}:{};const coach=coachEnabled&&!activeIsBot?coachText(state,activePlayer):"";
   const aimPlan=React.useMemo(()=>gotchaAimAssist(state,String(activePlayer?.id||""),previewDarts),[state,activePlayer?.id,currentThrow]);
+  const finishRemaining=Math.max(0,config.rules.targetScore-projected);
+  const finishDartsLeft=Math.max(0,3-currentThrow.length);
+  const x01Finish=React.useMemo(()=>previewBust?null:computeX01StyleFinish(finishRemaining,finishDartsLeft,config.rules.outMode),[previewBust,finishRemaining,finishDartsLeft,config.rules.outMode]);
+  const finishStripText=previewBust?"BUST SI TU VALIDES":projectedVictims.length?`GOTCHA ×${projectedVictims.length} · ${projectedVictims.map((p:any)=>p.name).join(", ")}`:projected===config.rules.targetScore?"FINISH ATTEINT · VALIDE LA VOLÉE":x01Finish?`Route : ${x01Finish.text}`:aimPlan.targets?.length?`Route : ${aimPlan.targets.join(" → ")}`:finishHint(finishRemaining,config.rules.outMode);
   const turnOutcome=React.useMemo(()=>premiumPartyTurnOutcome("gotcha",state),[state]);
   const rankingRows=React.useMemo(()=>[...state.players].map((p:any,i:number)=>{const st=state.statsByPlayer[p.id]||{};const color=colorById.get(String(p.id))||ACCENT;return{id:String(p.id),name:p.name,profile:profileById.get(String(p.id))||p,color,wins:Number(state.legWins[p.id]||0),score:Number(state.scores[p.id]||0),gotchas:Number(st.gotchas||0),victims:Number(st.victims||0),busts:Number(st.busts||0),subtitle:`${state.scores[p.id]||0}/${config.rules.targetScore} · ${st.gotchas||0} GOTCHA · ${st.busts||0} bust`,value:Number(state.legWins[p.id]||0),suffix:" M",order:i};}).sort((a,b)=>b.wins-a.wins||b.score-a.score||b.gotchas-a.gotchas||b.victims-a.victims||a.busts-b.busts||a.order-b.order),[state.players,state.legWins,state.scores,state.statsByPlayer,profileById,colorById]);
   const playersRows=state.players.map((p:any,i:number)=>{const st=state.statsByPlayer[p.id]||{};const color=colorById.get(String(p.id))||ACCENT;return{id:p.id,name:p.name,profile:profileById.get(String(p.id))||p,color,active:i===state.activePlayerIndex,status:`RESTE ${Math.max(0,config.rules.targetScore-Number(state.scores[p.id]||0))}`,progress:Number(state.scores[p.id]||0),progressMax:config.rules.targetScore,metrics:[{label:"SCORE",value:state.scores[p.id]||0},{label:"GOTCHA",value:st.gotchas||0},{label:"BUST",value:st.busts||0},{label:"M",value:state.legWins[p.id]||0}]};});
@@ -176,7 +220,7 @@ export default function GotchaPlay(props:any){
       <button type="button" onClick={()=>setStatsOpen(true)} className="is-bust"><small>BUST</small><b>{activeStats.busts||0}</b></button>
     </div>
     <button type="button" className={`gotcha-finish-strip${previewBust?" is-danger":projectedVictims.length?" is-success":""}`} onClick={()=>!activeIsBot&&setInfoPanel("route")}>
-      <span className="gotcha-finish-strip__icon"><GotchaToolIcon name="route"/></span><span className="gotcha-finish-strip__copy"><small>AIDE FINISH</small><b>{previewBust?"BUST SI TU VALIDES":projectedVictims.length?`GOTCHA ×${projectedVictims.length} · ${projectedVictims.map((p:any)=>p.name).join(", ")}`:aimPlan.targets?.length?`Route : ${aimPlan.targets.join(" → ")}`:finishHint(remaining,config.rules.outMode)}</b></span><span className="gotcha-finish-strip__chev">›</span>
+      <span className="gotcha-finish-strip__icon"><GotchaToolIcon name="route"/></span><span className="gotcha-finish-strip__copy"><small>{x01Finish?"FINISH X01":"AIDE FINISH"}</small><b>{finishStripText}</b></span><span className="gotcha-finish-strip__chev">›</span>
     </button>
     <nav className="gotcha-tools" aria-label="Informations GOTCHA">
       <button style={{["--gotcha-tool" as any]:"#b778ff"}} onClick={()=>setPlayersOpen(true)}><span><GotchaToolIcon name="players"/></span><b>JOUEURS</b></button>
@@ -188,6 +232,6 @@ export default function GotchaPlay(props:any){
       <button style={{["--gotcha-tool" as any]:"#d9e6f5"}} onClick={()=>setLogOpen(true)}><span><GotchaToolIcon name="log"/></span><b>JOURNAL</b></button>
     </nav>
   </div><div className="party-mode__input">{!activeIsBot?<NewModeInput currentThrow={currentThrow} setCurrentThrow={setThrowWithSfx} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} onCancel={handleCancel} preferredMethod={config.scoreInputMethod} validateLabel={previewBust?"VALIDER LE BUST":"VALIDER"} accent={previewBust?RED:activeColor} compact={false} fitMinScale={0.72}/>:<BotTurn intent={activeBotPlan.intent} objectiveDetail={activeBotPlan.detail} reaction={activeBotPlan.reaction} persona={activeBotPlan.persona} personaIcon={activeBotPlan.personaIcon} confidence={activeBotPlan.confidence} adaptation={activeBotMemory ? `${activeBotMemory.icon} ${activeBotMemory.label}` : undefined} adaptationDetail={activeBotMemory?.detail} learningConfidence={activeBotMemory?.confidence} learningTarget={activeBotMemory?.targetName} rivalry={activeBotRivalry ? `${activeBotRivalry.icon} ${activeBotRivalry.label}` : undefined} rivalryDetail={activeBotRivalry?.detail} rivalryRecord={activeBotRivalry?.record} rivalryMatches={activeBotRivalry?.matches} rivalryConfidence={activeBotRivalry?.confidence} rivalryTension={activeBotRivalry?.tension} rivalryTarget={activeBotRivalry?.targetName} rivalryQuote={activeBotRivalry?.quote} scouting={activeBotScouting ? `${activeBotScouting.icon} ${activeBotScouting.label}` : undefined} scoutingDetail={activeBotScouting?.detail} scoutingMatches={activeBotScouting?.matches} scoutingConfidence={activeBotScouting?.confidence} scoutingTarget={activeBotScouting?.targetName} phaseLabel={`MANCHE ${state.legIndex+1}`} profile={activeProfile} name={activePlayer?.name} accent={activeColor} text="cherche le finish ou le GOTCHA…" icon="🎯"/>}</div></div></main>
-  {infoPanel?<div className="party-mode__modal gotcha-info-modal" onClick={()=>setInfoPanel(null)}><section className="party-mode__modal-card" onClick={(e)=>e.stopPropagation()}><header><div><b>{infoPanel==="mission"?"MISSION GOTCHA":infoPanel==="route"?"ROUTE / FINISH":infoPanel==="race"?"COURSE GOTCHA":"DERNIÈRE VOLÉE"}</b><span>Informations détaillées — l’écran de jeu reste volontairement épuré.</span></div><button onClick={()=>setInfoPanel(null)}>×</button></header><div className="gotcha-info-modal__body">{infoPanel==="mission"?<GameplayMission accent={previewBust ? RED : activeColor} icon={previewBust ? "💥" : projectedVictims.length ? "🎯" : "⚡"} title={previewBust ? "BUST SI TU VALIDES" : projectedVictims.length ? `GOTCHA SUR ${projectedVictims.map((p:any)=>p.name).join(", ")}` : `ATTEINS ${config.rules.targetScore} SANS DÉPASSER`} text={currentThrow.length ? `Projection : ${currentScore} + ${provisional} = ${projected}.` : `Il te reste ${remaining} point(s). Si ton score final égale celui d’un adversaire, il repart à zéro.`} chips={[config.rules.outMode === "straight" ? "STRAIGHT OUT" : config.rules.outMode === "double" ? "DOUBLE OUT" : "MASTER OUT", `BUST: ${config.rules.bustRule === "zero" ? "RETOUR À 0" : "VOLÉE ANNULÉE"}`, projectedVictims.length ? `GOTCHA ×${projectedVictims.length}` : null, aimPlan.targets?.length ? `ROUTE ${aimPlan.targets.join(" → ")}` : null]} tone={previewBust ? "danger" : projectedVictims.length ? "success" : "normal"}/>:infoPanel==="route"?<VisitRoadmap plan={aimPlan} currentLabels={currentThrow.map((d:any)=>gotchaDartLabel(uiToGameDart(d)))} maxDarts={3} accent={previewBust ? RED : activeColor} title="ROUTE GOTCHA / FINISH" subtitle="La route se recalcule après chaque fléchette."/>:infoPanel==="race"?<GotchaRaceBoard state={state} activeId={activePlayer?.id} colorById={colorById} currentThrow={currentThrow}/>:<TurnOutcomeCard outcome={turnOutcome} accent={activeColor} nextPlayer={activePlayer?.name || ""}/>}</div></section></div>:null}
+  {infoPanel?<div className="party-mode__modal gotcha-info-modal" onClick={()=>setInfoPanel(null)}><section className="party-mode__modal-card" onClick={(e)=>e.stopPropagation()}><header><div><b>{infoPanel==="mission"?"MISSION GOTCHA":infoPanel==="route"?"ROUTE / FINISH":infoPanel==="race"?"COURSE GOTCHA":"DERNIÈRE VOLÉE"}</b><span>Informations détaillées — l’écran de jeu reste volontairement épuré.</span></div><button onClick={()=>setInfoPanel(null)}>×</button></header><div className="gotcha-info-modal__body">{infoPanel==="mission"?<GameplayMission accent={previewBust ? RED : activeColor} icon={previewBust ? "💥" : projectedVictims.length ? "🎯" : "⚡"} title={previewBust ? "BUST SI TU VALIDES" : projectedVictims.length ? `GOTCHA SUR ${projectedVictims.map((p:any)=>p.name).join(", ")}` : `ATTEINS ${config.rules.targetScore} SANS DÉPASSER`} text={currentThrow.length ? `Projection : ${currentScore} + ${provisional} = ${projected}.` : `Il te reste ${remaining} point(s). Si ton score final égale celui d’un adversaire, il repart à zéro.`} chips={[config.rules.outMode === "straight" ? "STRAIGHT OUT" : config.rules.outMode === "double" ? "DOUBLE OUT" : "MASTER OUT", `BUST: ${config.rules.bustRule === "zero" ? "RETOUR À 0" : "VOLÉE ANNULÉE"}`, projectedVictims.length ? `GOTCHA ×${projectedVictims.length}` : null, x01Finish ? `FINISH ${x01Finish.text}` : aimPlan.targets?.length ? `ROUTE ${aimPlan.targets.join(" → ")}` : null]} tone={previewBust ? "danger" : projectedVictims.length ? "success" : "normal"}/>:infoPanel==="route"?<VisitRoadmap plan={aimPlan} currentLabels={currentThrow.map((d:any)=>gotchaDartLabel(uiToGameDart(d)))} maxDarts={3} accent={previewBust ? RED : activeColor} title={x01Finish?`FINISH · ${x01Finish.text}`:"ROUTE GOTCHA / FINISH"} subtitle="Suggestion recalculée après chaque fléchette, avec la logique de finish X01 quand un checkout est possible."/>:infoPanel==="race"?<GotchaRaceBoard state={state} activeId={activePlayer?.id} colorById={colorById} currentThrow={currentThrow}/>:<TurnOutcomeCard outcome={turnOutcome} accent={activeColor} nextPlayer={activePlayer?.name || ""}/>}</div></section></div>:null}
   {playersOpen?<PlayersModal rows={playersRows} onClose={()=>setPlayersOpen(false)}/>:null}{statsOpen?<StatsModal items={statsItems} accent={activeColor} subtitle={activePlayer?.name} onClose={()=>setStatsOpen(false)}/>:null}{logOpen?<LogModal visits={state.visits} profileById={profileById} colorById={colorById} labelDart={gotchaDartLabel} title="JOURNAL GOTCHA" onClose={()=>setLogOpen(false)}/>:null}{rankingOpen?<RankingModal rows={rankingRows} title="CLASSEMENT GOTCHA" onClose={()=>setRankingOpen(false)}/>:null}</div>;
 }

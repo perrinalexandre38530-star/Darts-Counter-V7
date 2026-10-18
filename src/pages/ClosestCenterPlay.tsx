@@ -166,6 +166,27 @@ function determinePetanqueTeamToPlay(
   return challenger==="A" ? (remA>0?"A":"B") : (remB>0?"B":"A");
 }
 
+function determineManualPetanqueTeamToPlay(
+  throwsLog:any[],
+  players:any[],
+  round:number,
+  dartsPerPlayer:number,
+  starterTeam:"A"|"B",
+):"A"|"B"|null {
+  const roundThrows=throwsLog.filter((x:any)=>Number(x.round)===Number(round));
+  const used=roundUsage(roundThrows,players,round,dartsPerPlayer);
+  const remA=teamRemaining(players,used,dartsPerPlayer,"A");
+  const remB=teamRemaining(players,used,dartsPerPlayer,"B");
+  if (remA<=0 && remB<=0) return null;
+  if (remA<=0) return "B";
+  if (remB<=0) return "A";
+  if (!roundThrows.length) return starterTeam;
+  const lastPoint=[...roundThrows].reverse().find((x:any)=>x.tookPoint);
+  const pointTeam=(String(lastPoint?.teamId || starterTeam)==="B"?"B":"A") as "A"|"B";
+  const challenger=pointTeam==="A"?"B":"A";
+  return challenger==="A" ? (remA>0?"A":"B") : (remB>0?"B":"A");
+}
+
 function firstEligiblePlayerIndex(players:any[], used:Record<string,number>, dartsPerPlayer:number, teamId:"A"|"B"|null, preferredIndex=0) {
   if (!teamId) return -1;
   const eligible=players
@@ -222,8 +243,10 @@ export default function ClosestCenterPlay(props:any) {
   const [manualRanking, setManualRanking] = React.useState<(string | null)[]>(Array.from({length:8},()=>null));
   const [manualWinningTeam, setManualWinningTeam] = React.useState<"A"|"B"|null>(null);
   const [manualEditingRound, setManualEditingRound] = React.useState(false);
+  const [manualThrows, setManualThrows] = React.useState<any[]>([]);
+  const [manualStage, setManualStage] = React.useState<"throws"|"score">("throws");
   const [status, setStatus] = React.useState(isManual
-    ? (pointsMode === "petanque" ? "Fin de mène : indique uniquement l’équipe qui marque et les fléchettes qui rapportent un point." : "Fin de manche : renseigne uniquement les fléchettes qui scorent.")
+    ? (pointsMode === "petanque" ? "Choisis l’équipe qui commence, puis indique seulement si chaque lancer prend le point ou non." : "Fin de manche : renseigne uniquement les fléchettes qui scorent.")
     : "Présente les 3 fléchettes du joueur dans le cadre de scan.");
 
   React.useEffect(() => {
@@ -247,33 +270,45 @@ export default function ClosestCenterPlay(props:any) {
     return () => { dead = true; streamRef.current?.getTracks().forEach(t => t.stop()); };
   }, [cameraPrefs.maxCaptureSide, isManual]);
 
-  const roundUsed = React.useMemo(() => roundUsage(impacts, players, round, dartsPerPlayer), [impacts, players, round, dartsPerPlayer]);
-  const petanqueTeamToPlay = React.useMemo(() => pointsMode==="petanque" && !isManual
-    ? determinePetanqueTeamToPlay(impacts, players, round, dartsPerPlayer, roundStarterTeam)
-    : null, [pointsMode, isManual, impacts, players, round, dartsPerPlayer, roundStarterTeam]);
+  const cameraRoundUsed = React.useMemo(() => roundUsage(impacts, players, round, dartsPerPlayer), [impacts, players, round, dartsPerPlayer]);
+  const manualRoundThrows = React.useMemo(() => manualThrows.filter((x:any)=>Number(x.round)===Number(round)), [manualThrows, round]);
+  const manualRoundUsed = React.useMemo(() => roundUsage(manualThrows, players, round, dartsPerPlayer), [manualThrows, players, round, dartsPerPlayer]);
+  const activeRoundUsed = isManual && pointsMode==="petanque" ? manualRoundUsed : cameraRoundUsed;
+  const petanqueTeamToPlay = React.useMemo(() => {
+    if (pointsMode!=="petanque") return null;
+    if (isManual) return manualStage==="throws"
+      ? determineManualPetanqueTeamToPlay(manualThrows, players, round, dartsPerPlayer, roundStarterTeam)
+      : null;
+    return determinePetanqueTeamToPlay(impacts, players, round, dartsPerPlayer, roundStarterTeam);
+  }, [pointsMode, isManual, manualStage, manualThrows, impacts, players, round, dartsPerPlayer, roundStarterTeam]);
   const current = players[phase === "enroll" ? enrollIndex : playerIndex];
   const expectedTurnDarts = pointsMode==="petanque" && !isManual ? 1 : dartsPerPlayer;
-  const currentDartsUsed = current ? Number(roundUsed[String(current.id)] || 0) : 0;
+  const currentDartsUsed = current ? Number(activeRoundUsed[String(current.id)] || 0) : 0;
   const currentDartsRemaining = Math.max(0, dartsPerPlayer - currentDartsUsed);
   const teamDartsRemaining = React.useMemo(() => ({
-    A: teamRemaining(players, roundUsed, dartsPerPlayer, "A"),
-    B: teamRemaining(players, roundUsed, dartsPerPlayer, "B"),
-  }), [players, roundUsed, dartsPerPlayer]);
+    A: teamRemaining(players, activeRoundUsed, dartsPerPlayer, "A"),
+    B: teamRemaining(players, activeRoundUsed, dartsPerPlayer, "B"),
+  }), [players, activeRoundUsed, dartsPerPlayer]);
   const livePointTeam = React.useMemo(() => {
+    if (isManual && pointsMode==="petanque") {
+      const lastPoint=[...manualThrows].filter((x:any)=>Number(x.round)===Number(round)).reverse().find((x:any)=>x.tookPoint);
+      return lastPoint ? (String(lastPoint.teamId)==="B" ? "B" : "A") : null;
+    }
     const live=impacts.filter((x:any)=>Number(x.round)===Number(round));
     if (!live.length) return null;
     const closest=[...live].sort((a:any,b:any)=>Number(a.distanceMm||Infinity)-Number(b.distanceMm||Infinity))[0];
     return String(closest?.teamId || players.find((p:any)=>String(p.id)===String(closest?.playerId))?.teamId || "")==="B" ? "B" : "A";
-  }, [impacts, players, round]);
+  }, [isManual, pointsMode, manualThrows, impacts, players, round]);
   const sessionDiagnostics = React.useMemo(() => diagnostics.filter((x:any) => x.sessionId === sessionIdRef.current), [diagnostics]);
   const diagnosticSummary = React.useMemo(() => summarizeClosestCenterDiagnostics(sessionDiagnostics), [sessionDiagnostics]);
   const cameraQuality = React.useMemo(() => buildClosestCenterQualityReport(sessionDiagnostics), [sessionDiagnostics]);
 
   React.useEffect(() => {
-    if (isManual || pointsMode!=="petanque" || phase==="enroll" || phase==="review" || phase==="roundEnd" || phase==="finished") return;
-    const nextIndex=firstEligiblePlayerIndex(players,roundUsed,dartsPerPlayer,petanqueTeamToPlay,playerIndex);
+    if (pointsMode!=="petanque" || phase==="enroll" || phase==="review" || phase==="roundEnd" || phase==="finished") return;
+    if (isManual && manualStage!=="throws") return;
+    const nextIndex=firstEligiblePlayerIndex(players,activeRoundUsed,dartsPerPlayer,petanqueTeamToPlay,playerIndex);
     if (nextIndex>=0 && nextIndex!==playerIndex) setPlayerIndex(nextIndex);
-  }, [isManual, pointsMode, phase, players, roundUsed, dartsPerPlayer, petanqueTeamToPlay, playerIndex]);
+  }, [isManual, manualStage, pointsMode, phase, players, activeRoundUsed, dartsPerPlayer, petanqueTeamToPlay, playerIndex]);
 
   const saveCheckpoint = React.useCallback(async (extra:any = {}) => {
     if (!players.length || phase === "finished") return;
@@ -281,6 +316,7 @@ export default function ClosestCenterPlay(props:any) {
     const safePhase = phase === "enroll" ? "enroll" : "baseline";
     const resumeState = {
       v: 1, mode: "closest_center", cfg, players, round, allScores, impacts, signatures, inputMode, playerIndex, roundStarterTeam,
+      manualThrows, manualStage, manualRanking, manualWinningTeam,
       enrollIndex, phase: isManual ? (phase === "roundEnd" ? "roundEnd" : "play") : safePhase, sessionId: sessionIdRef.current, diagnostics: sessionDiagnostics.slice(-120),
       updatedAt: now, ...extra,
     };
@@ -293,7 +329,7 @@ export default function ClosestCenterPlay(props:any) {
         payload: { stateSnapshot: resumeState },
       } as any);
     } catch {}
-  }, [players, phase, cfg, round, allScores, impacts, signatures, enrollIndex, playerIndex, roundStarterTeam, inputMode, isManual, sessionDiagnostics, manualRanking, manualWinningTeam, pointsMode, dartsPerPlayer]);
+  }, [players, phase, cfg, round, allScores, impacts, signatures, enrollIndex, playerIndex, roundStarterTeam, inputMode, isManual, sessionDiagnostics, manualRanking, manualWinningTeam, manualThrows, manualStage, pointsMode, dartsPerPlayer]);
 
   React.useEffect(() => {
     if (hydratedRef.current) return;
@@ -319,8 +355,12 @@ export default function ClosestCenterPlay(props:any) {
       if (isManual) {
         if (Array.isArray(st.manualRanking)) setManualRanking([...st.manualRanking, ...Array.from({length:8},()=>null)].slice(0,8));
         if (st.manualWinningTeam === "A" || st.manualWinningTeam === "B") setManualWinningTeam(st.manualWinningTeam);
+        if (Array.isArray(st.manualThrows)) setManualThrows(st.manualThrows);
+        if (st.manualStage === "score" || st.manualStage === "throws") setManualStage(st.manualStage);
         setPhase(st.phase === "roundEnd" ? "roundEnd" : "play");
-        setStatus("♻️ Partie manuelle reprise. Continue la saisie de la mène en cours.");
+        setStatus(st.manualStage === "score"
+          ? "♻️ Partie manuelle reprise. Termine la saisie des seuls points marqués."
+          : "♻️ Partie manuelle reprise. Continue la mène lancer par lancer.");
       } else {
         setPlayerIndex(0);
         setPhase(Object.keys(st.signatures || {}).length >= players.length ? "baseline" : "enroll");
@@ -337,7 +377,7 @@ export default function ClosestCenterPlay(props:any) {
     if (!hydratedRef.current || phase === "finished") return;
     const t = window.setTimeout(() => { void saveCheckpoint(); }, 220);
     return () => window.clearTimeout(t);
-  }, [round, allScores, impacts, signatures, enrollIndex, playerIndex, roundStarterTeam, phase, manualRanking, manualWinningTeam, saveCheckpoint]);
+  }, [round, allScores, impacts, signatures, enrollIndex, playerIndex, roundStarterTeam, phase, manualRanking, manualWinningTeam, manualThrows, manualStage, saveCheckpoint]);
 
   React.useEffect(() => {
     const flush = () => { if (phase !== "finished") void saveCheckpoint(); };
@@ -703,6 +743,71 @@ export default function ClosestCenterPlay(props:any) {
     setStatus(`${current?.name}: garde ${expectedTurnDarts===1?"la fléchette":"les "+expectedTurnDarts+" fléchettes"} en place, stabilise le téléphone puis relance l’analyse. La référence pré-volée reste verrouillée.`);
   };
 
+  const recordManualPetanqueThrow = (takesPoint:boolean) => {
+    if (!isManual || pointsMode!=="petanque" || manualStage!=="throws") return;
+    const teamToPlay=determineManualPetanqueTeamToPlay(manualThrows,players,round,dartsPerPlayer,roundStarterTeam);
+    if (!teamToPlay) return;
+    const p=players[playerIndex];
+    if (!p || String(p.teamId||"A")!==teamToPlay) {
+      setStatus(`❌ Choisis un joueur de l’équipe ${teamToPlay} qui a encore une fléchette en main.`);
+      return;
+    }
+    const used=roundUsage(manualThrows,players,round,dartsPerPlayer);
+    if (Number(used[String(p.id)]||0)>=dartsPerPlayer) {
+      setStatus(`❌ ${p.name} n’a plus de fléchette en main.`);
+      return;
+    }
+    const roundThrows=manualThrows.filter((x:any)=>Number(x.round)===Number(round));
+    const effectiveTakesPoint=roundThrows.length===0 ? true : !!takesPoint;
+    const entry={
+      id:`mt-${round}-${p.id}-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+      round,
+      playerId:String(p.id),
+      teamId:String(p.teamId||"A")==="B"?"B":"A",
+      tookPoint:effectiveTakesPoint,
+      sequence:roundThrows.length+1,
+      createdAt:Date.now(),
+    };
+    const next=[...manualThrows,entry];
+    setManualThrows(next);
+    const nextTeam=determineManualPetanqueTeamToPlay(next,players,round,dartsPerPlayer,roundStarterTeam);
+    const lastPoint=[...next].filter((x:any)=>Number(x.round)===Number(round)).reverse().find((x:any)=>x.tookPoint);
+    const pointTeam=(String(lastPoint?.teamId||entry.teamId)==="B"?"B":"A") as "A"|"B";
+    if (!nextTeam) {
+      setManualStage("score");
+      setManualWinningTeam(pointTeam);
+      setManualRanking(Array.from({length:8},()=>null));
+      setStatus(`Mène terminée · le point est à l’équipe ${pointTeam}. Saisis uniquement les fléchettes de cette équipe qui marquent.`);
+      return;
+    }
+    const usedAfter=roundUsage(next,players,round,dartsPerPlayer);
+    const nextIndex=firstEligiblePlayerIndex(players,usedAfter,dartsPerPlayer,nextTeam,playerIndex);
+    if (nextIndex>=0) setPlayerIndex(nextIndex);
+    const nextPlayer=players[nextIndex];
+    const remaining=nextPlayer ? Math.max(0,dartsPerPlayer-Number(usedAfter[String(nextPlayer.id)]||0)) : 0;
+    setStatus(`${effectiveTakesPoint?`Point pris par l’équipe ${entry.teamId}.`:`Le point reste à l’équipe ${pointTeam}.`} Équipe ${nextTeam} à jouer${nextPlayer?` · ${nextPlayer.name} (${remaining} en main)`:""}.`);
+  };
+
+  const undoLastManualPetanqueThrow = () => {
+    if (!isManual || pointsMode!=="petanque") return;
+    const roundThrows=manualThrows.filter((x:any)=>Number(x.round)===Number(round));
+    if (!roundThrows.length) return;
+    const last=roundThrows[roundThrows.length-1];
+    setManualThrows(prev=>{
+      const ix=prev.findIndex((x:any)=>String(x.id)===String(last.id));
+      if (ix<0) return prev;
+      const next=[...prev];
+      next.splice(ix,1);
+      return next;
+    });
+    setManualStage("throws");
+    setManualWinningTeam(null);
+    setManualRanking(Array.from({length:8},()=>null));
+    const ownerIndex=players.findIndex((p:any)=>String(p.id)===String(last.playerId));
+    if (ownerIndex>=0) setPlayerIndex(ownerIndex);
+    setStatus(`↩️ Dernier lancer de ${players[ownerIndex]?.name || "ce joueur"} annulé. Rejoue-le puis indique s’il prend le point.`);
+  };
+
   const resetManualEntry = () => { setManualRanking(Array.from({length:8},()=>null)); setManualWinningTeam(null); setManualEditingRound(false); };
 
   const chooseManualRankOwner = (slot:number, playerId:string) => {
@@ -727,11 +832,25 @@ export default function ClosestCenterPlay(props:any) {
     let selectedOwners = manualRanking.filter(Boolean) as string[];
 
     if (pointsMode === "petanque") {
-      if (!manualWinningTeam) { setStatus("❌ Choisis d’abord l’équipe qui marque cette mène."); return; }
+      const roundThrows=manualThrows.filter((x:any)=>Number(x.round)===Number(round));
+      if (manualStage!=="score" || !roundThrows.length) { setStatus("❌ Termine d’abord tous les lancers de la mène."); return; }
+      const lastPoint=[...roundThrows].reverse().find((x:any)=>x.tookPoint);
+      const winningTeam=(String(lastPoint?.teamId||manualWinningTeam||"A")==="B"?"B":"A") as "A"|"B";
+      if (!manualWinningTeam || manualWinningTeam!==winningTeam) setManualWinningTeam(winningTeam);
       if (!selectedOwners.length) { setStatus("❌ Ajoute au moins une fléchette qui marque."); return; }
       if (selectedOwners.length > dartsPerTeam) { setStatus(`❌ Maximum ${dartsPerTeam} point(s) possible(s) pour cette équipe.`); return; }
-      const wrongSide=selectedOwners.some((id:string)=>String(players.find((p:any)=>String(p.id)===String(id))?.teamId)!==manualWinningTeam);
+      const wrongSide=selectedOwners.some((id:string)=>String(players.find((p:any)=>String(p.id)===String(id))?.teamId)!==winningTeam);
       if (wrongSide) { setStatus("❌ En règle Pétanque, toutes les fléchettes qui marquent appartiennent à la même équipe."); return; }
+      const thrownByPlayer:Record<string,number>={};
+      roundThrows.forEach((x:any)=>{const id=String(x.playerId||""); thrownByPlayer[id]=(thrownByPlayer[id]||0)+1;});
+      const scoredByPlayer:Record<string,number>={};
+      for (const id of selectedOwners) scoredByPlayer[id]=(scoredByPlayer[id]||0)+1;
+      const impossible=Object.keys(scoredByPlayer).find(id=>Number(scoredByPlayer[id]||0)>Number(thrownByPlayer[id]||0));
+      if (impossible) {
+        const who=players.find((p:any)=>String(p.id)===String(impossible));
+        setStatus(`❌ ${who?.name||"Ce joueur"} ne peut pas avoir plus de fléchettes marquantes que de fléchettes réellement jouées.`);
+        return;
+      }
     } else if (pointsMode === "winner") {
       if (!manualRanking[0]) { setStatus("❌ Indique le propriétaire de la fléchette la plus proche."); return; }
       selectedOwners=[String(manualRanking[0])];
@@ -777,8 +896,9 @@ export default function ClosestCenterPlay(props:any) {
     if (pointsMode==="petanque" && existing[0]?.teamId) setManualWinningTeam(String(existing[0].teamId)==="B"?"B":"A");
     setImpacts(v=>v.filter((x:any)=>!(x.round===round && x.source==="manual_rank")));
     setManualEditingRound(true);
+    if (pointsMode==="petanque") setManualStage("score");
     setPhase("play");
-    setStatus("Corrige l’ordre des fléchettes puis valide à nouveau le classement.");
+    setStatus(pointsMode==="petanque" ? "Corrige uniquement les fléchettes qui marquent puis valide à nouveau la mène." : "Corrige l’ordre des fléchettes puis valide à nouveau le classement.");
   };
 
   const confirmAnalysis = () => {
@@ -902,8 +1022,12 @@ export default function ClosestCenterPlay(props:any) {
     setTurnArmed(false);
     setPreflightInfo(null);
     resetManualEntry();
+    if (isManual && pointsMode==="petanque") {
+      setManualThrows(v=>v.filter((x:any)=>Number(x.round)!==Number(round)));
+      setManualStage("throws");
+    }
     setStatus(isManual
-      ? (pointsMode==="petanque" ? "Nouvelle mène : joue toutes les fléchettes puis saisis uniquement celles de l’équipe qui marquent." : "Nouvelle manche : joue les volées puis saisis uniquement les fléchettes qui scorent.")
+      ? (pointsMode==="petanque" ? `Nouvelle mène : équipe ${roundWinningTeam || roundStarterTeam} commence. Enregistre chaque lancer avec POINT PRIS / POINT NON PRIS.` : "Nouvelle manche : joue les volées puis saisis uniquement les fléchettes qui scorent.")
       : "Retire toutes les fléchettes puis capture la cible vide pour la manche suivante.");
   };
 
@@ -990,15 +1114,15 @@ export default function ClosestCenterPlay(props:any) {
         const teamPlayers=players.filter((p:any)=>String(p.teamId)===team);
         const score=Number(projectedTeamTotals?.[team]||0);
         return <React.Fragment key={team}>
-          {idx===1?<div style={{display:"grid",placeItems:"center",padding:"0 4px"}}><div style={{fontSize:9,color:"#71818f",fontWeight:1000}}>MÈNE {round}</div><div style={{fontSize:10,color:ACCENT,fontWeight:1000,whiteSpace:"nowrap"}}>{pointsMode==="petanque"?`OBJECTIF ${Number(cfg.targetScore||13)}`:pointsMode==="descending"?"TOP 5":"PLUS PROCHE"}</div>{pointsMode==="petanque"&&!isManual?<div style={{fontSize:8,marginTop:2,color:livePointTeam?(livePointTeam==="A"?"#ff8f9c":"#83c8ff"):"#7d8d99",fontWeight:1000}}>{livePointTeam?`POINT ÉQUIPE ${livePointTeam}`:`DÉPART ${roundStarterTeam}`}</div>:null}</div>:null}
+          {idx===1?<div style={{display:"grid",placeItems:"center",padding:"0 4px"}}><div style={{fontSize:9,color:"#71818f",fontWeight:1000}}>MÈNE {round}</div><div style={{fontSize:10,color:ACCENT,fontWeight:1000,whiteSpace:"nowrap"}}>{pointsMode==="petanque"?`OBJECTIF ${Number(cfg.targetScore||13)}`:pointsMode==="descending"?"TOP 5":"PLUS PROCHE"}</div>{pointsMode==="petanque"?<div style={{fontSize:8,marginTop:2,color:livePointTeam?(livePointTeam==="A"?"#ff8f9c":"#83c8ff"):"#7d8d99",fontWeight:1000}}>{livePointTeam?`POINT ÉQUIPE ${livePointTeam}`:`DÉPART ${roundStarterTeam}`}</div>:null}</div>:null}
           <div style={{gridColumn:idx===0?1:3,padding:"7px 9px",borderRadius:12,border:`1px solid ${team==="A"?"rgba(255,77,95,.28)":"rgba(61,165,255,.28)"}`,background:team==="A"?"rgba(255,77,95,.07)":"rgba(61,165,255,.07)",display:"grid",gridTemplateColumns:idx===0?"1fr auto":"auto 1fr",gap:8,alignItems:"center"}}>
             {idx===1?<b style={{fontSize:24,lineHeight:1,color:"#fff"}}>{score}</b>:null}
             <div style={{minWidth:0,textAlign:idx===0?"left":"right"}}>
               <div style={{fontSize:9,fontWeight:1000,color:team==="A"?"#ff8f9c":"#83c8ff",letterSpacing:1}}>ÉQUIPE {team}</div>
               <div style={{fontSize:11,fontWeight:900,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{teamPlayers.map((p:any)=>`${p.name} ${Number(projectedScores?.[p.id]||0)}`).join(" · ") || "—"}</div>
               <div style={{fontSize:9,color:"#738493",marginTop:2}}>
-                {pointsMode==="petanque" && !isManual
-                  ? `${Number(teamDartsRemaining[team]||0)} en main · ${teamPlayers.map((p:any)=>`${p.name} ${Math.max(0,dartsPerPlayer-Number(roundUsed[String(p.id)]||0))}`).join(" · ")}`
+                {pointsMode==="petanque"
+                  ? `${Number(teamDartsRemaining[team]||0)} en main · ${teamPlayers.map((p:any)=>`${p.name} ${Math.max(0,dartsPerPlayer-Number(activeRoundUsed[String(p.id)]||0))}`).join(" · ")}`
                   : `${dartsPerPlayer} fléchette${dartsPerPlayer>1?"s":""}/joueur`}
               </div>
             </div>
@@ -1041,10 +1165,10 @@ export default function ClosestCenterPlay(props:any) {
           </div>
         </section> : null}
 
-        {!isManual && pointsMode==="petanque" && phase==="play" && petanqueTeamToPlay ? <section style={{...card,padding:10,borderColor:petanqueTeamToPlay==="A"?"rgba(255,77,95,.32)":"rgba(61,165,255,.32)"}}>
+        {pointsMode==="petanque" && phase==="play" && petanqueTeamToPlay && (!isManual || manualStage==="throws") ? <section style={{...card,padding:10,borderColor:petanqueTeamToPlay==="A"?"rgba(255,77,95,.32)":"rgba(61,165,255,.32)"}}>
           <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",marginBottom:7}}>
             <div><b style={{fontSize:11,color:petanqueTeamToPlay==="A"?"#ff8f9c":"#83c8ff"}}>ÉQUIPE {petanqueTeamToPlay} À JOUER</b><div style={{fontSize:9,color:"#8193a1",marginTop:2}}>{livePointTeam?`Le point est à l’équipe ${livePointTeam}`:"Début de mène"} · {Number(teamDartsRemaining[petanqueTeamToPlay]||0)} fléchette(s) en main</div></div>
-            {roundValidatedImpacts.length===0 && !turnArmed ? <div style={{display:"flex",gap:5}}>
+            {((isManual ? manualRoundThrows.length===0 : roundValidatedImpacts.length===0) && (isManual || !turnArmed)) ? <div style={{display:"flex",gap:5}}>
               <button onClick={()=>setRoundStarterTeam("A")} style={{...miniBtn,borderColor:roundStarterTeam==="A"?"#ff8f9c":"rgba(255,255,255,.12)",color:roundStarterTeam==="A"?"#ffb6be":"#93a2ae"}}>A COMMENCE</button>
               <button onClick={()=>setRoundStarterTeam("B")} style={{...miniBtn,borderColor:roundStarterTeam==="B"?"#83c8ff":"rgba(255,255,255,.12)",color:roundStarterTeam==="B"?"#b9ddff":"#93a2ae"}}>B COMMENCE</button>
             </div> : null}
@@ -1052,10 +1176,10 @@ export default function ClosestCenterPlay(props:any) {
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:6}}>
             {players.map((p:any,i:number)=>{
               if(String(p.teamId||"A")!==petanqueTeamToPlay) return null;
-              const used=Number(roundUsed[String(p.id)]||0);
+              const used=Number(activeRoundUsed[String(p.id)]||0);
               const remaining=Math.max(0,dartsPerPlayer-used);
               const active=i===playerIndex;
-              return <button key={p.id} disabled={remaining<=0 || turnArmed} onClick={()=>setPlayerIndex(i)} style={{minHeight:42,padding:"7px 8px",borderRadius:11,border:`1px solid ${active?playerColor(players,p.id):"rgba(255,255,255,.10)"}`,background:active?`${playerColor(players,p.id)}18`:"rgba(255,255,255,.025)",color:remaining>0?"#fff":"#65727d",fontWeight:900,textAlign:"left",opacity:remaining>0?1:.48}}>
+              return <button key={p.id} disabled={remaining<=0 || (!isManual && turnArmed)} onClick={()=>setPlayerIndex(i)} style={{minHeight:42,padding:"7px 8px",borderRadius:11,border:`1px solid ${active?playerColor(players,p.id):"rgba(255,255,255,.10)"}`,background:active?`${playerColor(players,p.id)}18`:"rgba(255,255,255,.025)",color:remaining>0?"#fff":"#65727d",fontWeight:900,textAlign:"left",opacity:remaining>0?1:.48}}>
                 <span style={{display:"block",fontSize:11,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}</span>
                 <span style={{display:"block",fontSize:9,marginTop:2,color:active?playerColor(players,p.id):"#8fa0ad"}}>{remaining} en main</span>
               </button>;
@@ -1063,15 +1187,15 @@ export default function ClosestCenterPlay(props:any) {
           </div>
         </section> : null}
 
-        <section style={card}>
-          <div style={{fontSize:11,color:ACCENT,fontWeight:1000,letterSpacing:1.1}}>{isManual?"SAISIE MANUELLE":"IA VISION"} · {phaseLabel(phase)}</div>
+        {!isManual ? <section style={card}>
+          <div style={{fontSize:11,color:ACCENT,fontWeight:1000,letterSpacing:1.1}}>IA VISION · {phaseLabel(phase)}</div>
           <div style={{fontSize:14,fontWeight:900,marginTop:6}}>{status}</div>
           {!isManual && stability ? <div style={{marginTop:8,fontSize:11,color:stability.stable?"#8fffc2":"#ffbd93"}}>Stabilité caméra : {Math.round(stability.confidence*100)} % · variation globale {Math.round(stability.changedFraction*100)} %</div> : null}
           {!isManual && precisionReadiness ? <div style={{marginTop:6,fontSize:11,color:precisionReadiness.ok?"#8fffc2":"#ffbd93"}}>Précision image : {Math.round(precisionReadiness.confidence*100)} % · {precisionReadiness.mmPerPixel.toFixed(2)} mm/pixel · netteté {Math.round(precisionReadiness.sharpness*100)} % · niveau {precisionTier(precisionReadiness).toUpperCase()} · profil {cameraPrefs.profile.toUpperCase()}</div> : null}
           {!isManual && registrationInfo ? <div style={{marginTop:6,fontSize:11,color:(registrationInfo.confidence||0)>=.65?"#8fffc2":"#ffbd93"}}>Recalage multi-frame : {Math.round((registrationInfo.confidence||0)*100)} %{registrationInfo.maxShiftPx!=null?` · translation ${registrationInfo.maxShiftPx.toFixed(1)} px`:""}{registrationInfo.geometrySpreadPx!=null?` · dérive géométrique ${registrationInfo.geometrySpreadPx.toFixed(2)} px`:""}</div> : null}
           {!isManual && phase === "play" ? <div style={{marginTop:6,fontSize:11,color:turnArmed?"#8fffc2":"#ffbd93"}}>{pointsMode==="petanque"?"Pré-contrôle lancer":"Pré-contrôle volée"} : {turnArmed?`ARMÉ · ${String(preflightInfo?.tier||"").toUpperCase()} · référence verrouillée`:"REQUIS avant de lancer"}</div> : null}
           {!isManual && !cal ? <div style={{marginTop:8,color:"#ffb4a9",fontSize:12}}>Calibration de cible non trouvée : le jeu refuse une mesure approximative.</div> : null}
-        </section>
+        </section> : null}
 
         {!isManual ? <section style={{...card,padding:10}}>
           <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}>
@@ -1097,31 +1221,59 @@ export default function ClosestCenterPlay(props:any) {
 
         {isManual && phase === "play" ? <section style={{...card,borderColor:"rgba(143,255,194,.35)",padding:10}}>
           <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",marginBottom:8}}>
-            <h3 style={{...h3,color:"#8fffc2",margin:0}}>{pointsMode==="petanque"?`MÈNE ${round} · POINTS À SAISIR`:`MANCHE ${round}/${cfg.rounds} · FLÉCHETTES QUI SCORENT`}</h3>
+            <h3 style={{...h3,color:"#8fffc2",margin:0}}>{pointsMode==="petanque"?(manualStage==="throws"?`MÈNE ${round} · JOUER`:`MÈNE ${round} · POINTS À SAISIR`):`MANCHE ${round}/${cfg.rounds} · FLÉCHETTES QUI SCORENT`}</h3>
             <span style={{fontSize:9,color:"#78909f",fontWeight:900}}>{String(cfg.formatMode||"duo").toUpperCase()} · {dartsPerPlayer} fl./joueur</span>
           </div>
+          <div style={{marginBottom:9,padding:"7px 9px",borderRadius:9,background:"rgba(68,231,255,.055)",border:"1px solid rgba(68,231,255,.12)",fontSize:10,color:"#b9cbd7",fontWeight:800}}>{status}</div>
 
-          {pointsMode==="petanque" ? <>
-            <div style={{fontSize:11,color:"#aebdca",lineHeight:1.45,marginBottom:9}}>Ne renseigne <b>que les fléchettes qui marquent</b>. Choisis l’équipe dont la meilleure fléchette est la plus proche du bull, puis ajoute chaque fléchette de cette équipe qui est également plus proche que la meilleure adverse.</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
-              {(["A","B"] as const).map(team=><button key={team} onClick={()=>{setManualWinningTeam(team);setManualRanking(Array.from({length:8},()=>null));}} style={{...btn,minHeight:40,borderColor:manualWinningTeam===team?(team==="A"?"#ff6b7d":"#53b4ff"):"rgba(255,255,255,.12)",background:manualWinningTeam===team?(team==="A"?"rgba(255,77,95,.15)":"rgba(61,165,255,.15)"):"rgba(255,255,255,.025)"}}>{manualWinningTeam===team?"✓ ":""}ÉQUIPE {team} MARQUE</button>)}
+          {pointsMode==="petanque" ? (manualStage==="throws" ? <>
+            <div style={{fontSize:11,color:"#aebdca",lineHeight:1.45,marginBottom:9}}>
+              Joue <b>une fléchette à la fois</b>. Après chaque lancer, indique seulement si elle prend le point. Aucun millimètre ni classement complet à saisir.
             </div>
-
-            {manualWinningTeam ? <div style={{marginTop:10}}>
+            <div style={{padding:9,borderRadius:11,border:`1px solid ${petanqueTeamToPlay==="A"?"rgba(255,77,95,.30)":"rgba(61,165,255,.30)"}`,background:"rgba(255,255,255,.025)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
+                <div>
+                  <b style={{fontSize:12,color:petanqueTeamToPlay==="A"?"#ff9aa6":"#8ecfff"}}>ÉQUIPE {petanqueTeamToPlay || roundStarterTeam} À JOUER</b>
+                  <div style={{fontSize:10,color:"#8495a3",marginTop:2}}>{livePointTeam?`Point actuel : équipe ${livePointTeam}`:"Premier lancer : il prendra automatiquement le point."}</div>
+                </div>
+                <span style={{fontSize:10,color:"#8fffc2",fontWeight:1000}}>{manualRoundThrows.length}/{players.length*dartsPerPlayer} jouée(s)</span>
+              </div>
+              {current ? <div style={{marginTop:9,padding:"8px 9px",borderRadius:10,background:`${playerColor(players,current.id)}12`,border:`1px solid ${playerColor(players,current.id)}55`,display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
+                <div><span style={{display:"block",fontSize:9,color:"#8798a5",fontWeight:1000}}>JOUEUR SÉLECTIONNÉ</span><b>{current.name}</b></div>
+                <b style={{fontSize:11,color:playerColor(players,current.id)}}>{currentDartsRemaining} en main</b>
+              </div> : null}
+              <div style={{display:"grid",gridTemplateColumns:manualRoundThrows.length===0?"1fr":"1fr 1fr",gap:7,marginTop:9}}>
+                {manualRoundThrows.length===0 ? <button onClick={()=>recordManualPetanqueThrow(true)} style={{...btn,minHeight:44,borderColor:"#8fffc2",background:"rgba(57,217,138,.14)"}}>🎯 ENREGISTRER LE PREMIER LANCER</button> : <>
+                  <button onClick={()=>recordManualPetanqueThrow(true)} style={{...btn,minHeight:44,borderColor:"#8fffc2",background:"rgba(57,217,138,.14)"}}>🎯 PREND LE POINT</button>
+                  <button onClick={()=>recordManualPetanqueThrow(false)} style={{...btn,minHeight:44,borderColor:"#ffbd75",background:"rgba(255,189,117,.08)"}}>↔ NE PREND PAS LE POINT</button>
+                </>}
+              </div>
+            </div>
+            {manualRoundThrows.length ? <>
+              <div style={{marginTop:8,fontSize:9,color:"#748694"}}>Derniers lancers : {manualRoundThrows.slice(-6).map((x:any)=>`${players.find((p:any)=>String(p.id)===String(x.playerId))?.name||"?"}${x.tookPoint?" ✓":" ·"}`).join("  /  ")}</div>
+              <button onClick={undoLastManualPetanqueThrow} style={{...miniBtn,width:"100%",marginTop:7,minHeight:32,borderColor:"rgba(255,189,117,.22)",color:"#ffd2a5"}}>↩ ANNULER LE DERNIER LANCER</button>
+            </> : null}
+          </> : <>
+            <div style={{fontSize:11,color:"#aebdca",lineHeight:1.45,marginBottom:9}}>
+              Mène terminée. Le point est à <b>l’équipe {manualWinningTeam}</b>. Indique uniquement les fléchettes de cette équipe qui sont plus proches que la meilleure adverse.
+            </div>
+            {manualRoundThrows.length ? <button onClick={undoLastManualPetanqueThrow} style={{...miniBtn,width:"100%",marginBottom:8,minHeight:32,borderColor:"rgba(255,189,117,.22)",color:"#ffd2a5"}}>↩ CORRIGER LE DERNIER LANCER</button> : null}
+            {manualWinningTeam ? <div>
               <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",marginBottom:7}}>
-                <b style={{fontSize:11,color:"#fff"}}>AJOUTER LES FLÉCHETTES QUI MARQUENT</b>
+                <b style={{fontSize:11,color:"#fff"}}>FLÉCHETTES QUI MARQUENT</b>
                 <span style={{fontSize:11,color:"#8fffc2",fontWeight:1000}}>{manualRanking.filter(Boolean).length} point{manualRanking.filter(Boolean).length>1?"s":""}</span>
               </div>
               <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.max(1,Math.min(4,players.filter((p:any)=>String(p.teamId)===manualWinningTeam).length))},minmax(0,1fr))`,gap:7}}>
                 {players.filter((p:any)=>String(p.teamId)===manualWinningTeam).map((p:any)=>{
                   const used=manualRanking.filter(id=>String(id||"")===String(p.id)).length;
-                  const full=used>=dartsPerPlayer || manualRanking.filter(Boolean).length>=dartsPerTeam;
+                  const thrown=manualRoundThrows.filter((x:any)=>String(x.playerId)===String(p.id)).length;
+                  const full=used>=thrown || manualRanking.filter(Boolean).length>=dartsPerTeam;
                   return <button key={p.id} disabled={full} onClick={()=>{
                     const slot=manualRanking.findIndex(x=>!x);
                     if(slot>=0) chooseManualRankOwner(slot,String(p.id));
                   }} style={{...miniBtn,minHeight:52,borderColor:used?playerColor(players,p.id):"rgba(255,255,255,.14)",background:used?`${playerColor(players,p.id)}1d`:"rgba(255,255,255,.035)",color:"#fff",opacity:full ? .45 : 1}}>
                     <span style={{display:"block",fontSize:12}}>{p.name}</span>
-                    <span style={{display:"block",fontSize:9,marginTop:3,color:"#91a3b1"}}>{used}/{dartsPerPlayer} fléchette{used>1?"s":""} · +{used} pt{used>1?"s":""}</span>
+                    <span style={{display:"block",fontSize:9,marginTop:3,color:"#91a3b1"}}>{used}/{thrown} marquante{used>1?"s":""} · +{used} pt{used>1?"s":""}</span>
                   </button>;
                 })}
               </div>
@@ -1129,10 +1281,10 @@ export default function ClosestCenterPlay(props:any) {
                 const p=players.find((x:any)=>String(x.id)===String(id));
                 return <button key={`${id}-${i}`} onClick={()=>{
                   setManualRanking(prev=>{const next=[...prev];next.splice(i,1);next.push(null);return next;});
-                }} style={{...miniBtn,minHeight:28,borderColor:"rgba(143,255,194,.28)",color:"#dfffee"}}>#{i+1} {p?.name} ×</button>;
+                }} style={{...miniBtn,minHeight:28,borderColor:"rgba(143,255,194,.28)",color:"#dfffee"}}>+1 {p?.name} ×</button>;
               })}</div>:null}
-            </div> : <div style={{marginTop:9,padding:9,borderRadius:10,background:"rgba(255,255,255,.025)",color:"#7f909e",fontSize:11}}>Commence par choisir l’équipe qui marque.</div>}
-          </> : pointsMode==="winner" ? <>
+            </div> : null}
+          </>) : pointsMode==="winner" ? <>
             <div style={{fontSize:11,color:"#aebdca",lineHeight:1.45}}>Choisis uniquement le propriétaire de la fléchette la plus proche. Elle vaut 1 point.</div>
             <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:9}}>{players.map((p:any)=>{
               const selected=String(manualRanking[0]||"")===String(p.id);
@@ -1154,9 +1306,9 @@ export default function ClosestCenterPlay(props:any) {
             })}</div>
           </>}
 
-          <button disabled={pointsMode==="petanque"?!manualWinningTeam||!manualRanking.some(Boolean):!manualRanking[0]} style={{...btn,width:"100%",marginTop:11,borderColor:"#8fffc2",background:"rgba(57,217,138,.14)",opacity:(pointsMode==="petanque" ? (!manualWinningTeam || !manualRanking.some(Boolean)) : !manualRanking[0]) ? .45 : 1}} onClick={submitManualTurn}>
+          {(pointsMode!=="petanque" || manualStage==="score") ? <button disabled={pointsMode==="petanque"?!manualWinningTeam||!manualRanking.some(Boolean):!manualRanking[0]} style={{...btn,width:"100%",marginTop:11,borderColor:"#8fffc2",background:"rgba(57,217,138,.14)",opacity:(pointsMode==="petanque" ? (!manualWinningTeam || !manualRanking.some(Boolean)) : !manualRanking[0]) ? .45 : 1}} onClick={submitManualTurn}>
             ✓ {pointsMode==="petanque"?"VALIDER LES POINTS DE LA MÈNE":"VALIDER LES FLÉCHETTES QUI SCORENT"}
-          </button>
+          </button> : null}
         </section> : null}
 
         {!isManual && phase === "play" ? <section style={card}>
