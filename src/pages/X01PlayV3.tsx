@@ -1320,48 +1320,288 @@ const resolveTeamSkin = (team: any): TeamSkin => {
 };
 const teamAvatarUrl = (team: any) => team?.logoDataUrl || team?.avatarUrl || getTeamAvatarUrl(resolveTeamSkin(team));
 
-function QuickPartyScoreboard({ players, teams, scores, activePlayerId, state, startScore }: any) {
+function QuickPartyScoreboard({
+  players,
+  teams,
+  scores,
+  activePlayerId,
+  state,
+  startScore,
+  liveStatsByPlayer,
+  avg3ByPlayer,
+  lastVisitsByPlayer,
+  themePrimary,
+  themeSecondary,
+  lang,
+}: any) {
   const hasTeams = Array.isArray(teams) && teams.length > 0;
+  const fr = String(lang || "fr").toLowerCase() === "fr";
+  const primary = String(themePrimary || "#55e6ff");
+  const secondary = String(themeSecondary || primary);
+
+  const visitScoreFor = (pid: string): number | string | null => {
+    const darts = (lastVisitsByPlayer?.[pid] || []) as UIDart[];
+    if (!Array.isArray(darts) || darts.length === 0) return null;
+    const entered = visitScoreInputFromDarts(darts);
+    if (entered === "BUST") return "BUST";
+    if (typeof entered === "number") return entered;
+    return sumThrow(darts);
+  };
+
+  const playerStats = (pid: string) => {
+    const live: any = liveStatsByPlayer?.[pid] || {};
+    return {
+      avg3: Number(avg3ByPlayer?.[pid] || 0),
+      darts: Number(live?.dartsThrown ?? live?.darts ?? 0),
+      lastScore: visitScoreFor(pid),
+    };
+  };
+
+  const teamStats = (team: any) => {
+    const ids = Array.isArray(team?.playerIds)
+      ? team.playerIds.map(String)
+      : Array.isArray(team?.players)
+      ? team.players.map((p: any) => String(p?.id || "")).filter(Boolean)
+      : [];
+    let darts = 0;
+    let weighted = 0;
+    let lastScore: number | string | null = null;
+    for (const pid of ids) {
+      const st = playerStats(pid);
+      darts += st.darts;
+      weighted += st.avg3 * st.darts;
+      if (pid === String(activePlayerId || "")) lastScore = st.lastScore;
+      else if (lastScore == null && st.lastScore != null) lastScore = st.lastScore;
+    }
+    return {
+      darts,
+      avg3: darts > 0 ? weighted / darts : 0,
+      lastScore,
+    };
+  };
+
   const cards = hasTeams
-    ? teams.map((team: any) => ({
-        id: team.id,
-        name: team.name || "ÉQUIPE",
-        detail: (team.players || []).map((p: any) => p.name).join(" · "),
-        score: Number(team.score ?? startScore),
-        active: (team.playerIds || []).includes(activePlayerId),
-        legs: Number(state?.teamLegsWon?.[team.id] || 0),
-        sets: Number(state?.teamSetsWon?.[team.id] || 0),
-      }))
-    : (players || []).map((p: any) => ({
-        id: p.id,
-        name: p.name || "JOUEUR",
-        detail: p.id === activePlayerId ? "AU TOUR DE JOUER" : "",
-        score: Number(scores?.[p.id] ?? startScore),
-        active: p.id === activePlayerId,
-        legs: Number(state?.legsWon?.[p.id] || 0),
-        sets: Number(state?.setsWon?.[p.id] || 0),
-      }));
+    ? teams.map((team: any) => {
+        const st = teamStats(team);
+        return {
+          id: team.id,
+          name: team.name || (fr ? "ÉQUIPE" : "TEAM"),
+          detail: (team.players || []).map((p: any) => p.name).join(" · "),
+          score: Number(team.score ?? startScore),
+          active: (team.playerIds || []).map(String).includes(String(activePlayerId || "")),
+          legs: Number(state?.teamLegsWon?.[team.id] || 0),
+          sets: Number(state?.teamSetsWon?.[team.id] || 0),
+          ...st,
+        };
+      })
+    : (players || []).map((p: any) => {
+        const st = playerStats(String(p.id));
+        return {
+          id: p.id,
+          name: p.name || (fr ? "JOUEUR" : "PLAYER"),
+          detail: "",
+          score: Number(scores?.[p.id] ?? startScore),
+          active: String(p.id) === String(activePlayerId || ""),
+          legs: Number(state?.legsWon?.[p.id] || 0),
+          sets: Number(state?.setsWon?.[p.id] || 0),
+          ...st,
+        };
+      });
+
+  const colorFor = (index: number) => {
+    if (index === 0) return primary;
+    if (index === 1) {
+      if (secondary && secondary !== primary) return secondary;
+      return `color-mix(in srgb, ${primary} 72%, white 28%)`;
+    }
+    const mixes = ["#ffffff", "#86ffd8", "#ffd86b", "#c79bff"];
+    return `color-mix(in srgb, ${primary} 70%, ${mixes[index % mixes.length]} 30%)`;
+  };
+
+  const activeCard = cards.find((c: any) => c.active);
+  const isDuelLike = cards.length === 2;
 
   return (
     <div style={{ display: "grid", gap: 8 }}>
-      <div style={{ textAlign: "center", fontSize: 9, fontWeight: 950, letterSpacing: .9, color: "rgba(255,255,255,.52)" }}>⚡ PARTIE RAPIDE · X01</div>
-      <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(Math.max(cards.length, 1), 4)}, minmax(0, 1fr))`, gap: 8 }}>
-        {cards.map((card: any) => (
-          <div key={card.id} style={{
-            minWidth: 0,
-            borderRadius: 16,
-            border: `1px solid ${card.active ? "#52f5b2" : "rgba(255,255,255,.12)"}`,
-            background: card.active ? "linear-gradient(180deg,rgba(82,245,178,.14),rgba(6,10,12,.92))" : "rgba(7,9,12,.84)",
-            boxShadow: card.active ? "0 0 22px rgba(82,245,178,.16)" : "none",
-            padding: "8px 8px 9px",
-            textAlign: "center",
-          }}>
-            <div style={{ fontSize: 11, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: card.active ? "#baffdf" : "rgba(255,255,255,.78)" }}>{card.name}</div>
-            {card.detail ? <div style={{ marginTop: 1, fontSize: 8, opacity: .48, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{card.detail}</div> : null}
-            <div style={{ fontSize: cards.length <= 2 ? "clamp(42px,10vw,78px)" : "clamp(30px,7vw,58px)", lineHeight: .98, fontWeight: 1000, letterSpacing: -2, margin: "5px 0 4px", fontVariantNumeric: "tabular-nums" }}>{card.score}</div>
-            <div style={{ fontSize: 9, opacity: .58, fontWeight: 900 }}>LEGS {card.legs} · SETS {card.sets}</div>
-          </div>
-        ))}
+      <div
+        style={{
+          textAlign: "center",
+          fontSize: 9,
+          fontWeight: 950,
+          letterSpacing: 0.9,
+          color: "rgba(255,255,255,.52)",
+        }}
+      >
+        ⚡ {fr ? "PARTIE RAPIDE" : "QUICK GAME"} · X01
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: cards.length <= 1
+            ? "minmax(0, 1fr)"
+            : isDuelLike
+            ? "repeat(2, minmax(0, 1fr))"
+            : "repeat(auto-fit, minmax(150px, 1fr))",
+          gap: isDuelLike ? 0 : 7,
+          borderRadius: isDuelLike ? 22 : 0,
+          overflow: isDuelLike ? "hidden" : "visible",
+          boxShadow: isDuelLike ? "0 14px 34px rgba(0,0,0,.42)" : "none",
+        }}
+      >
+        {cards.map((card: any, index: number) => {
+          const accent = colorFor(index);
+          return (
+            <div
+              key={card.id}
+              style={{
+                position: "relative",
+                minWidth: 0,
+                minHeight: isDuelLike ? 184 : 154,
+                borderRadius: isDuelLike ? 0 : 18,
+                border: card.active
+                  ? `2px solid color-mix(in srgb, ${accent} 78%, white 22%)`
+                  : `1px solid color-mix(in srgb, ${accent} 42%, rgba(255,255,255,.10) 58%)`,
+                background: `linear-gradient(145deg, color-mix(in srgb, ${accent} 78%, #111820 22%) 0%, color-mix(in srgb, ${accent} 54%, #070b10 46%) 100%)`,
+                boxShadow: card.active
+                  ? `inset 0 0 0 1px rgba(255,255,255,.12), 0 0 26px color-mix(in srgb, ${accent} 38%, transparent 62%)`
+                  : "inset 0 0 0 1px rgba(255,255,255,.055)",
+                padding: isDuelLike ? "13px 13px 12px" : "10px 9px",
+                color: "#fff",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  pointerEvents: "none",
+                  background: `radial-gradient(circle at ${index % 2 ? "90%" : "10%"} 0%, rgba(255,255,255,.18), transparent 34%), linear-gradient(180deg, rgba(255,255,255,.05), transparent 46%)`,
+                }}
+              />
+
+              <div style={{ position: "relative", zIndex: 1, height: "100%", display: "grid", gridTemplateRows: "auto 1fr auto", gap: 4 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                  <span
+                    aria-hidden
+                    style={{
+                      width: 9,
+                      height: 9,
+                      flex: "0 0 auto",
+                      borderRadius: 999,
+                      background: card.active ? "#fff" : "rgba(0,0,0,.45)",
+                      boxShadow: card.active ? `0 0 12px #fff, 0 0 18px ${accent}` : "none",
+                    }}
+                  />
+                  <div
+                    style={{
+                      width: 34,
+                      height: 34,
+                      flex: "0 0 34px",
+                      borderRadius: "50%",
+                      display: "grid",
+                      placeItems: "center",
+                      background: "rgba(5,8,12,.34)",
+                      border: "2px solid rgba(255,255,255,.34)",
+                      boxShadow: "0 4px 12px rgba(0,0,0,.24)",
+                      fontSize: 12,
+                      fontWeight: 1000,
+                    }}
+                  >
+                    {String(card.name || "J").trim().slice(0, 2).toUpperCase()}
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: isDuelLike ? 14 : 11, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {card.name}
+                    </div>
+                    {card.detail ? (
+                      <div style={{ marginTop: 1, fontSize: 8, opacity: 0.68, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{card.detail}</div>
+                    ) : null}
+                  </div>
+                  <div
+                    style={{
+                      minWidth: 34,
+                      height: 30,
+                      padding: "0 7px",
+                      borderRadius: 9,
+                      display: "grid",
+                      placeItems: "center",
+                      background: "rgba(4,7,10,.68)",
+                      border: "1px solid rgba(255,255,255,.13)",
+                      fontWeight: 1000,
+                      fontSize: 12,
+                      color: "#fff",
+                    }}
+                    title={fr ? "Legs gagnés" : "Legs won"}
+                  >
+                    {card.legs}
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 0 }}>
+                  <div
+                    style={{
+                      fontSize: isDuelLike ? "clamp(58px, 15vw, 94px)" : "clamp(36px, 8vw, 62px)",
+                      lineHeight: 0.9,
+                      fontWeight: 1000,
+                      letterSpacing: -3,
+                      fontVariantNumeric: "tabular-nums",
+                      textShadow: "0 4px 18px rgba(0,0,0,.34)",
+                    }}
+                  >
+                    {card.score}
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "end" }}>
+                  <div style={{ display: "grid", gap: 2.5, minWidth: 0, fontSize: isDuelLike ? 10.5 : 8.5, fontWeight: 850 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 7 }}>
+                      <span style={{ color: "rgba(8,12,16,.76)", fontWeight: 1000 }}>{fr ? "AVG 3" : "3-DART AVG"}</span>
+                      <b>{Number(card.avg3 || 0).toFixed(2)}</b>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 7 }}>
+                      <span style={{ color: "rgba(8,12,16,.76)", fontWeight: 1000 }}>{fr ? "DERNIÈRE" : "LAST SCORE"}</span>
+                      <b>{card.lastScore == null ? "–" : card.lastScore}</b>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 7 }}>
+                      <span style={{ color: "rgba(8,12,16,.76)", fontWeight: 1000 }}>{fr ? "FLÉCHETTES" : "DARTS"}</span>
+                      <b>{card.darts || 0}</b>
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      padding: "5px 7px",
+                      borderRadius: 8,
+                      background: "rgba(4,7,10,.60)",
+                      border: "1px solid rgba(255,255,255,.12)",
+                      fontSize: 8.5,
+                      fontWeight: 1000,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    S {card.sets}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div
+        style={{
+          minHeight: 25,
+          display: "grid",
+          placeItems: "center",
+          fontSize: 13,
+          fontWeight: 1000,
+          letterSpacing: 0.35,
+          color: activeCard ? colorFor(Math.max(0, cards.findIndex((c: any) => c.id === activeCard.id))) : "#fff",
+          textShadow: "0 2px 12px rgba(0,0,0,.55)",
+        }}
+      >
+        {activeCard ? `${String(activeCard.name || "").toUpperCase()} · ${fr ? "À TOI DE JOUER !" : "YOUR TURN!"}` : ""}
       </div>
     </div>
   );
@@ -1390,6 +1630,7 @@ export default function X01PlayV3({
   
   const isTabletUi = useMediaQueryLocal("(min-width: 900px) and (orientation: landscape)");
 const themePrimary = (theme as any)?.colors?.primary ?? (theme as any)?.primary ?? "#ffcc55";
+  const themeSecondary = (theme as any)?.colors?.secondary ?? (theme as any)?.secondary ?? themePrimary;
   const isQuickParty = (config as any)?.quickParty === true || String((config as any)?.partyMode || "") === "quick";
 
   // ✅ IMPORTANT : on récupère aussi la langue courante de l’app
@@ -6197,6 +6438,12 @@ if (false && isLandscapeTablet) {
                 activePlayerId={activePlayerId}
                 state={state}
                 startScore={config.startScore}
+                liveStatsByPlayer={liveStatsByPlayer}
+                avg3ByPlayer={avg3ByPlayer}
+                lastVisitsByPlayer={lastVisitsByPlayer}
+                themePrimary={themePrimary}
+                themeSecondary={themeSecondary}
+                lang={lang}
               />
             ) : isTeamsMode && activeTeam ? (
               <TeamHeaderBlock

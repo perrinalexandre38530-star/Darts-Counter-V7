@@ -5980,7 +5980,7 @@ React.useEffect(() => {
 if (!config || !config.players || config.players.length < 2) {
   return (
     <div style={{ padding: 16, color: "#fff" }}>
-      <button onClick={() => { saveInProgress(); go("killer_config"); }}>← Retour</button>
+      <button onClick={() => { saveInProgress(); go("killer_config", { launchMode: (config as any)?.quickParty ? "quick" : "arcade", variantId: (config as any)?.variantId, gameId: (config as any)?.gameId }); }}>← Retour</button>
       <p>Configuration KILLER invalide.</p>
     </div>
   );
@@ -6430,7 +6430,7 @@ return (
                 setShowEnd(false);
                 setTimeout(() => {
                   if (endRec) onFinish(endRec);
-                  go("killer_config");
+                  go("killer_config", { launchMode: (config as any)?.quickParty ? "quick" : "arcade", variantId: (config as any)?.variantId, gameId: (config as any)?.gameId });
                 }, 0);
               }}
               style={{
@@ -6536,7 +6536,7 @@ return (
       {/* ✅ BackDot à gauche (comme en config) */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, pointerEvents: "auto" }}>
         <BackDot
-          onClick={() => { saveInProgress(); go("killer_config"); }}
+          onClick={() => { saveInProgress(); go("killer_config", { launchMode: (config as any)?.quickParty ? "quick" : "arcade", variantId: (config as any)?.variantId, gameId: (config as any)?.gameId }); }}
           title="Retour"
           size={38}
           color={gold}

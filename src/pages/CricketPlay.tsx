@@ -425,6 +425,8 @@ function pickCricketBotThrow(state: any, player: any, withPoints: boolean, quali
 type CricketVariantId = "classic" | "enculette" | "cut_throat";
 
 export default function CricketPlay({ profiles, params, onFinish }: Props) {
+  const isQuickParty = params?.quickParty === true || String(params?.partyMode || "").toLowerCase() === "quick";
+  const quickSafePlaySound = React.useCallback((name: any) => { if (!isQuickParty) playSound(name); }, [isQuickParty]);
   const [castStatusTick, setCastStatusTick] = React.useState(0);
   React.useEffect(() => subscribeGoogleCastStatus(() => setCastStatusTick((n) => n + 1)), []);
   const allProfiles = profiles ?? [];
@@ -441,19 +443,19 @@ export default function CricketPlay({ profiles, params, onFinish }: Props) {
   const [phase, setPhase] = React.useState<Phase>("setup");
 
   // ---- Joueurs sélectionnés ----
-  const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = React.useState<string[]>(() => isQuickParty && Array.isArray(params?.quickPlayers) ? params.quickPlayers.map((p: any) => String(p?.id || "")).filter(Boolean).slice(0, 4) : []);
   const [selectedBotIds, setSelectedBotIds] = React.useState<string[]>([]);
 
   // ---- Paramètres ----
-  const [scoreMode, setScoreMode] = React.useState<ScoreMode>("points");
-  const [maxRounds, setMaxRounds] = React.useState<number>(20);
+  const [scoreMode, setScoreMode] = React.useState<ScoreMode>(() => isQuickParty && params?.quickScoreMode === "no-points" ? "no-points" : "points");
+  const [maxRounds, setMaxRounds] = React.useState<number>(() => isQuickParty ? Math.max(1, Math.min(99, Number(params?.quickMaxRounds || 20))) : 20);
   const [rotateFirstPlayer, setRotateFirstPlayer] = React.useState<boolean>(true);
 
   // ---- Variante (2A): Cricket classique / Enculette-Vache ----
   const [variantId, setVariantId] = React.useState<CricketVariantId>("classic");
 
   const [randomStart, setRandomStart] = React.useState<boolean>(false);
-  const [teamMode, setTeamMode] = React.useState<boolean>(false);
+  const [teamMode, setTeamMode] = React.useState<boolean>(() => isQuickParty && params?.quickTeamMode === true);
   const [fillWithBots, setFillWithBots] = React.useState<boolean>(false);
 
   // ✅ DartSet (v1) — utile pour StatsHub / Stats par fléchettes
@@ -1157,8 +1159,15 @@ function renderAvatarCircle(
     setHitMode("S");
     setLegStartAt(Date.now());
     setShowEnd(false);
-    playSound("start");
+    quickSafePlaySound("start");
   }
+
+  const quickAutoStartedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!isQuickParty || params?.autoQuickStart !== true || quickAutoStartedRef.current || !canStart) return;
+    quickAutoStartedRef.current = true;
+    handleStartMatch();
+  }, [isQuickParty, params?.autoQuickStart, canStart]);
 
   // --------------------------------------------------
   // PLAY : SFX + logique
@@ -1166,23 +1175,23 @@ function renderAvatarCircle(
 
   function sfxForHit(target: number, mult: Multiplier) {
     if (target >= 0 && target <= 14) {
-      playSound("bust");
+      quickSafePlaySound("bust");
       return;
     }
     if (target === 25) {
-      if (mult === 2) playSound("dbull");
-      else playSound("bull");
+      if (mult === 2) quickSafePlaySound("dbull");
+      else quickSafePlaySound("bull");
       return;
     }
     if (mult === 2) {
-      playSound("double");
+      quickSafePlaySound("double");
       return;
     }
     if (mult === 3) {
-      playSound("triple");
+      quickSafePlaySound("triple");
       return;
     }
-    playSound("ok");
+    quickSafePlaySound("ok");
   }
 
   function maybeApplyMaxRoundsHardStop(next: CricketState): CricketState {
@@ -1330,7 +1339,7 @@ function renderAvatarCircle(
     try { cricketRecorder.eventsRef.current.pop(); } catch {}
     if ((next as any).forcedFinished) (next as any).forcedFinished = false;
     setState(next);
-    playSound("undo");
+    quickSafePlaySound("undo");
   }
 
   function handleNewLegInternal() {
@@ -1359,7 +1368,7 @@ function renderAvatarCircle(
     setHitMode("S");
     setLegStartAt(Date.now());;
     setShowEnd(false);
-    playSound("start");
+    quickSafePlaySound("start");
   }
 
   function handleQuitInternal() {
@@ -1622,6 +1631,9 @@ function buildHistoryRecord(): SavedMatch | null {
       name: p.name,
       avatarDataUrl: prof?.avatarDataUrl ?? null,
       dartSetId: pDartSetId,
+      temporaryPlayerId: isQuickParty ? p.id : undefined,
+      isTemporary: isQuickParty,
+      profileId: isQuickParty ? null : p.id,
     };
   });
 
@@ -1688,6 +1700,10 @@ const totalDarts = playersPayload.reduce((a, p) => a + p.hits.length, 0);
 return {
     id: matchIdRef.current,
     kind: "cricket",
+    quickParty: isQuickParty,
+    partyMode: isQuickParty ? "quick" : "arcade",
+    profileStatsDeferred: isQuickParty,
+    temporaryParticipants: isQuickParty,
     // Garder la variante dans le HEADER léger History. Sans ceci, listFinished()
     // ne voit que kind=cricket car payload est stocké séparément/compressé.
     variantId,
@@ -1702,12 +1718,19 @@ return {
       legs: 1,
       darts: totalDarts,
       mode: "cricket",
+      quickParty: isQuickParty,
+      partyMode: isQuickParty ? "quick" : "arcade",
       variantId,
       scoringVariant,
       cutThroat: isCutThroatRoute,
     },
     payload: {
       mode: "cricket",
+      quickParty: isQuickParty,
+      partyMode: isQuickParty ? "quick" : "arcade",
+      profileStatsDeferred: isQuickParty,
+      temporaryParticipants: isQuickParty,
+      quickPlayers: isQuickParty ? (params?.quickPlayers || []) : undefined,
       dartSetId,
       dartSetIdsByPlayer,
       meta: { ...(params?.meta || {}), dartSetId, dartSetIdsByPlayer },
@@ -1938,7 +1961,7 @@ return {
             try {
               const go = (window as any)?.__appGo || (window as any)?.__appStore?.go;
               if (typeof go === "function") {
-                go("games");
+                go("cricket", { launchMode: isQuickParty ? "quick" : "arcade" });
                 return;
               }
             } catch {}

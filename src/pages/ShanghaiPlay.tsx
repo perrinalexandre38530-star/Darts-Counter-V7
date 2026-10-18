@@ -646,7 +646,7 @@ export default function ShanghaiPlay(props: Props) {
     if (typeof go === "function") {
       try {
         // Route officielle dans App.tsx
-        go("shanghai");
+        go("shanghai", { launchMode: (cfg as any)?.quickParty ? "quick" : "arcade" });
         return;
       } catch {}
       // Fallbacks (anciens ids éventuels)

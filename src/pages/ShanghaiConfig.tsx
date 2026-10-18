@@ -31,6 +31,7 @@ import { recordProfileUsageForMode, sortProfilesByModeUsage } from "../lib/profi
 type Props = {
   store: Store;
   go: (tab: any, params?: any) => void;
+  onBack?: () => void;
 };
 
 type PlayerLite = {
@@ -112,7 +113,7 @@ function buildTargetOrder(
   return order.slice(0, maxRounds);
 }
 
-export default function ShanghaiConfigPage({ store, go }: Props) {
+export default function ShanghaiConfigPage({ store, go, onBack }: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
 
@@ -355,7 +356,7 @@ export default function ShanghaiConfigPage({ store, go }: Props) {
             >
               <div style={{ pointerEvents: "auto" }}>
                 <BackDot
-                  onClick={() => go("games")}
+                  onClick={() => (onBack ? onBack() : go("games"))}
                   title={t("common.back", "Retour")}
                   size={42}
                   color={theme.primary}

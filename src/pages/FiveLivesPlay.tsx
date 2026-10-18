@@ -1254,7 +1254,7 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
     const now = Date.now();
     if (now - lastBackTapRef.current < 350) return;
     lastBackTapRef.current = now;
-    go("five_lives_config");
+    go("five_lives_config", { launchMode: (config as any)?.quickParty ? "quick" : "arcade" });
   };
 
   return (
@@ -2118,7 +2118,7 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
               >
                 <button
                   type="button"
-                  onClick={() => go("five_lives_config")}
+                  onClick={() => go("five_lives_config", { launchMode: (config as any)?.quickParty ? "quick" : "arcade" })}
                   style={{
                     height: 44,
                     borderRadius: 999,

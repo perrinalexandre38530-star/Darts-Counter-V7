@@ -236,6 +236,7 @@ const TournamentMatchResult = React.lazy(() => import("./pages/TournamentMatchRe
 // X01 V3
 const X01ConfigV3 = React.lazy(() => import("./pages/X01ConfigV3"));
 const X01QuickConfig = React.lazy(() => import("./pages/X01QuickConfig"));
+const QuickPartyModeConfig = React.lazy(() => import("./pages/QuickPartyModeConfig"));
 const GameModeEntryChoice = React.lazy(() => import("./components/GameModeEntryChoice"));
 const X01PlayV3 = React.lazy(() => import("./pages/X01PlayV3"));
 const ChallengeConfig = React.lazy(() => import("./pages/ChallengeConfig"));
@@ -690,13 +691,29 @@ function mergeOnlineRouteContext(currentParams: any, next: any, params?: any) {
 
 function enrichOnlineMatchForHistory(match: any, fallbackMode: string, params: any) {
   const ctx = readOnlineRouteContext(params);
-  if (!ctx?.lobbyCode) return match;
+  const quickCfg = params?.config && typeof params.config === "object" ? params.config : null;
+  const isQuick = params?.quickParty === true || quickCfg?.quickParty === true || String(params?.partyMode || quickCfg?.partyMode || "").toLowerCase() === "quick";
+  if (!ctx?.lobbyCode && !isQuick) return match;
   const payload = match?.payload && typeof match.payload === "object" ? { ...match.payload } : {};
-  return {
+  const out: any = {
     ...(match || {}),
     kind: match?.kind || fallbackMode,
-    payload: {
-      ...payload,
+    payload: { ...payload },
+  };
+  if (isQuick) {
+    out.quickParty = true;
+    out.partyMode = "quick";
+    out.profileStatsDeferred = true;
+    out.temporaryParticipants = true;
+    out.payload.quickParty = true;
+    out.payload.partyMode = "quick";
+    out.payload.profileStatsDeferred = true;
+    out.payload.temporaryParticipants = true;
+    if (!out.payload.config && quickCfg) out.payload.config = quickCfg;
+  }
+  if (ctx?.lobbyCode) {
+    out.payload = {
+      ...out.payload,
       online: true,
       onlineV10: true,
       source: "online",
@@ -704,8 +721,9 @@ function enrichOnlineMatchForHistory(match: any, fallbackMode: string, params: a
       onlineMode: ctx.onlineMode || fallbackMode,
       lobbyCode: ctx.lobbyCode,
       lobbyId: ctx.lobbyId || null,
-    },
-  };
+    };
+  }
+  return out;
 }
 
 
@@ -6342,20 +6360,37 @@ case "babyfoot_team_edit":
         page = <X01End go={go} params={routeParams} />;
         break;
 
-      case "cricket":
-        page = (
-          <CricketPlay
-            profiles={store.profiles ?? []}
-            params={routeParams}
-            onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "cricket", routeParams))}
-          />
-        );
+      case "cricket": {
+        const cricketLaunchMode = String(routeParams?.launchMode || (routeParams?.quickParty ? "quick_play" : (routeParams?.resume || routeParams?.rec || routeParams?.snapshot ? "arcade" : "")));
+        if (cricketLaunchMode === "quick") {
+          page = <QuickPartyModeConfig modeId="cricket" title="CRICKET" params={routeParams} onBack={() => go("cricket")} onStart={(result) => go(result.route, result.params)} />;
+        } else if (cricketLaunchMode === "arcade" || cricketLaunchMode === "quick_play") {
+          page = (
+            <CricketPlay
+              profiles={cricketLaunchMode === "quick_play" ? (routeParams?.quickPlayers ?? []) : (store.profiles ?? [])}
+              params={routeParams}
+              onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "cricket", routeParams))}
+            />
+          );
+        } else {
+          page = <GameModeEntryChoice title="CRICKET" subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("cricket", { ...routeParams, launchMode: "quick" })} onArcade={() => go("cricket", { ...routeParams, launchMode: "arcade" })} />;
+        }
         break;
+      }
 
       case "killer":
-      case "killer_config":
-        page = <KillerConfig key={`killer-config-${String(routeParams?.variantId || routeParams?.gameId || "classic")}`} store={store} go={go} params={routeParams} />;
+      case "killer_config": {
+        const killerLaunchMode = String(routeParams?.launchMode || (routeParams?.quickParty ? "quick" : (routeParams?.config || routeParams?.resume || routeParams?.rec ? "arcade" : "")));
+        const killerTitle = String(routeParams?.variantId || routeParams?.gameId || "").toLowerCase().includes("progressive") ? "KILLER PROGRESSIF" : "KILLER";
+        if (killerLaunchMode === "quick") {
+          page = <QuickPartyModeConfig modeId="killer" title={killerTitle} params={routeParams} onBack={() => go("killer_config", { ...routeParams, launchMode: undefined })} onStart={(result) => go(result.route, result.params)} />;
+        } else if (killerLaunchMode === "arcade") {
+          page = <KillerConfig key={`killer-config-${String(routeParams?.variantId || routeParams?.gameId || "classic")}`} store={store} go={go} params={routeParams} onBack={() => go("killer_config", { ...routeParams, launchMode: undefined })} />;
+        } else {
+          page = <GameModeEntryChoice title={killerTitle} subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("killer_config", { ...routeParams, launchMode: "quick" })} onArcade={() => go("killer_config", { ...routeParams, launchMode: "arcade" })} />;
+        }
         break;
+      }
 
       case "killer_play": {
         page = <KillerPlayRoute store={store} go={go} routeParams={routeParams} onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "killer", routeParams))} />;
@@ -6366,9 +6401,13 @@ case "babyfoot_team_edit":
         page = <KillerSummaryPage store={store} go={go} params={routeParams} />;
         break;
 
-      case "five_lives_config":
-        page = <FiveLivesConfig store={store} go={go} />;
+      case "five_lives_config": {
+        const launchMode = String(routeParams?.launchMode || (routeParams?.quickParty ? "quick" : (routeParams?.config || routeParams?.resume || routeParams?.rec ? "arcade" : "")));
+        if (launchMode === "quick") page = <QuickPartyModeConfig modeId="five_lives" title="5 VIES" params={routeParams} onBack={() => go("five_lives_config")} onStart={(result) => go(result.route, result.params)} />;
+        else if (launchMode === "arcade") page = <FiveLivesConfig store={store} go={go} onBack={() => go("five_lives_config")} />;
+        else page = <GameModeEntryChoice title="5 VIES" subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("five_lives_config", { launchMode: "quick" })} onArcade={() => go("five_lives_config", { launchMode: "arcade" })} />;
         break;
+      }
 
       case "five_lives_play": {
         const cfg = routeParams?.config;
@@ -6405,9 +6444,13 @@ case "babyfoot_team_edit":
         break;
       }
 
-      case "shanghai":
-        page = <ShanghaiConfigPage store={store} go={go} />;
+      case "shanghai": {
+        const launchMode = String(routeParams?.launchMode || (routeParams?.quickParty ? "quick" : (routeParams?.config || routeParams?.resume || routeParams?.rec ? "arcade" : "")));
+        if (launchMode === "quick") page = <QuickPartyModeConfig modeId="shanghai" title="SHANGHAI" params={routeParams} onBack={() => go("shanghai")} onStart={(result) => go(result.route, result.params)} />;
+        else if (launchMode === "arcade") page = <ShanghaiConfigPage store={store} go={go} onBack={() => go("shanghai")} />;
+        else page = <GameModeEntryChoice title="SHANGHAI" subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("shanghai", { launchMode: "quick" })} onArcade={() => go("shanghai", { launchMode: "arcade" })} />;
         break;
+      }
 
       case "shanghai_play": {
         const cfg = routeParams?.config;
@@ -6734,9 +6777,13 @@ case "babyfoot_team_edit":
       // - Chaque page reçoit setTab=go + params=routeParams
       // - Les Config poussent vers "<mode>_play" avec { config }
       // ============================================================
-      case "halve_it_config":
-        page = <HalveItConfig store={store} go={go} setTab={go} params={routeParams} />;
+      case "halve_it_config": {
+        const launchMode = String(routeParams?.launchMode || (routeParams?.quickParty ? "quick" : (routeParams?.config || routeParams?.resume || routeParams?.rec || routeParams?.mode === "halve_it" ? "arcade" : "")));
+        if (launchMode === "quick") page = <QuickPartyModeConfig modeId="halve_it" title="HALVE-IT" params={routeParams} onBack={() => go("halve_it_config")} onStart={(result) => go(result.route, result.params)} />;
+        else if (launchMode === "arcade") page = <HalveItConfig store={store} go={go} setTab={go} params={routeParams} onBack={() => go("halve_it_config")} />;
+        else page = <GameModeEntryChoice title="HALVE-IT" subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("halve_it_config", { launchMode: "quick" })} onArcade={() => go("halve_it_config", { launchMode: "arcade" })} />;
         break;
+      }
       case "halve_it_play":
         page = (
           <HalveItPlay
@@ -6782,9 +6829,13 @@ case "babyfoot_team_edit":
         page = <SuperBullPlay setTab={go} params={routeParams} />;
         break;
 
-      case "shooter_config":
-        page = <ShooterConfig store={store} go={go} setTab={go} params={routeParams} />;
+      case "shooter_config": {
+        const launchMode = String(routeParams?.launchMode || (routeParams?.quickParty ? "quick" : (routeParams?.config || routeParams?.resume || routeParams?.rec || routeParams?.mode === "shooter" ? "arcade" : "")));
+        if (launchMode === "quick") page = <QuickPartyModeConfig modeId="shooter" title="SHOOTER" params={routeParams} onBack={() => go("shooter_config")} onStart={(result) => go(result.route, result.params)} />;
+        else if (launchMode === "arcade") page = <ShooterConfig store={store} go={go} setTab={go} params={routeParams} onBack={() => go("shooter_config")} />;
+        else page = <GameModeEntryChoice title="SHOOTER" subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("shooter_config", { launchMode: "quick" })} onArcade={() => go("shooter_config", { launchMode: "arcade" })} />;
         break;
+      }
       case "shooter_play":
         page = (
           <ShooterPlay
@@ -6847,9 +6898,13 @@ case "babyfoot_team_edit":
         );
         break;
 
-      case "bowling_config":
-        page = <BowlingConfig store={store} go={go} setTab={go} params={routeParams} />;
+      case "bowling_config": {
+        const launchMode = String(routeParams?.launchMode || (routeParams?.quickParty ? "quick" : (routeParams?.config || routeParams?.resume || routeParams?.rec || routeParams?.mode === "bowling" ? "arcade" : "")));
+        if (launchMode === "quick") page = <QuickPartyModeConfig modeId="bowling" title="BOWLING" params={routeParams} onBack={() => go("bowling_config")} onStart={(result) => go(result.route, result.params)} />;
+        else if (launchMode === "arcade") page = <BowlingConfig store={store} go={go} setTab={go} params={routeParams} onBack={() => go("bowling_config")} />;
+        else page = <GameModeEntryChoice title="BOWLING" subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("bowling_config", { launchMode: "quick" })} onArcade={() => go("bowling_config", { launchMode: "arcade" })} />;
         break;
+      }
       case "bowling_play":
         page = (
           <BowlingPlay
@@ -6889,9 +6944,13 @@ case "babyfoot_team_edit":
         page = <GolfPlay store={store} setTab={go} params={routeParams} onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "golf", routeParams))} />;
         break;
 
-      case "baseball_config":
-        page = <BaseballConfig store={store} go={go} setTab={go} params={routeParams} />;
+      case "baseball_config": {
+        const launchMode = String(routeParams?.launchMode || (routeParams?.quickParty ? "quick" : (routeParams?.config || routeParams?.resume || routeParams?.rec || routeParams?.mode === "baseball" ? "arcade" : "")));
+        if (launchMode === "quick") page = <QuickPartyModeConfig modeId="baseball" title="BASEBALL" params={routeParams} onBack={() => go("baseball_config")} onStart={(result) => go(result.route, result.params)} />;
+        else if (launchMode === "arcade") page = <BaseballConfig store={store} go={go} setTab={go} params={routeParams} onBack={() => go("baseball_config")} />;
+        else page = <GameModeEntryChoice title="BASEBALL" subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("baseball_config", { launchMode: "quick" })} onArcade={() => go("baseball_config", { launchMode: "arcade" })} />;
         break;
+      }
       case "baseball_play":
         page = (
           <BaseballPlay
@@ -6923,9 +6982,13 @@ case "babyfoot_team_edit":
         );
         break;
 
-      case "president_config":
-        page = <PresidentConfig store={store} go={go} setTab={go} params={routeParams} />;
+      case "president_config": {
+        const launchMode = String(routeParams?.launchMode || (routeParams?.quickParty ? "quick" : (routeParams?.config || routeParams?.resume || routeParams?.rec || routeParams?.mode === "president" ? "arcade" : "")));
+        if (launchMode === "quick") page = <QuickPartyModeConfig modeId="president" title="PRÉSIDENT" params={routeParams} onBack={() => go("president_config")} onStart={(result) => go(result.route, result.params)} />;
+        else if (launchMode === "arcade") page = <PresidentConfig store={store} go={go} setTab={go} params={routeParams} onBack={() => go("president_config")} />;
+        else page = <GameModeEntryChoice title="PRÉSIDENT" subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("president_config", { launchMode: "quick" })} onArcade={() => go("president_config", { launchMode: "arcade" })} />;
         break;
+      }
       case "president_play":
         page = (
           <PresidentPlay

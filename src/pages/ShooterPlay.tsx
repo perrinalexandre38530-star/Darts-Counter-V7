@@ -426,7 +426,7 @@ export default function ShooterPlay(props: any) {
     if (now - lastBackRef.current < 350) return;
     lastBackRef.current = now;
     if (state.history.length && !state.finished && !window.confirm("Quitter cette partie de SHOOTER en cours ?")) return;
-    if (typeof go === "function") go("shooter_config", config);
+    if (typeof go === "function") go("shooter_config", { ...config, launchMode: props?.params?.quickParty === true ? "quick" : "arcade", quickParty: props?.params?.quickParty === true });
   }
 
   function buildHistoryRecord() {

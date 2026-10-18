@@ -365,7 +365,7 @@ export default function BowlingPlay(props: any) {
   function backToConfig() {
     const now = Date.now(); if (now - lastBackRef.current < 350) return; lastBackRef.current = now;
     if (state.history.length && !state.finished && !window.confirm("Quitter cette partie de BOWLING en cours ?")) return;
-    if (typeof go === "function") go("bowling_config", config);
+    if (typeof go === "function") go("bowling_config", { ...config, launchMode: props?.params?.quickParty === true ? "quick" : "arcade", quickParty: props?.params?.quickParty === true });
   }
 
   function buildHistoryRecord() {

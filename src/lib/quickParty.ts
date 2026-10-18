@@ -16,10 +16,18 @@ export function isQuickPartyRecord(value: any): boolean {
 export function quickPartyParticipants(value: any): any[] {
   const pools = [
     value?.players,
+    value?.playersList,
+    value?.quickPlayers,
     value?.payload?.players,
+    value?.payload?.playersList,
+    value?.payload?.quickPlayers,
     value?.payload?.config?.players,
+    value?.payload?.config?.playersList,
+    value?.payload?.config?.quickPlayers,
     value?.resume?.config?.players,
+    value?.resume?.config?.playersList,
     value?.config?.players,
+    value?.config?.playersList,
   ];
   const src = pools.find((rows) => Array.isArray(rows) && rows.length) || [];
   const seen = new Set<string>();

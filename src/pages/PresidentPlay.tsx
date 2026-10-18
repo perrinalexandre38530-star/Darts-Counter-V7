@@ -375,7 +375,7 @@ export default function PresidentPlay(props: any) {
   }
   function back() {
     if (state.history.length && !state.finished && !window.confirm("Quitter le règne en cours ?")) return;
-    if (typeof go === "function") go("president_config", config);
+    if (typeof go === "function") go("president_config", { ...config, launchMode: props?.params?.quickParty === true ? "quick" : "arcade", quickParty: props?.params?.quickParty === true });
   }
   function replay() {
     setState(createInitial()); setUndo([]); setThrowDarts([]); setSelectedTarget(null); setNotice(""); setShowEnd(false); setShowRound(false);
