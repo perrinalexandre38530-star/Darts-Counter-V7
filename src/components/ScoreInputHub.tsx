@@ -13,6 +13,8 @@ import DartboardClickable, { type DartboardGuideTarget, type DartboardHitDetail 
 import ScorePresetsBar from "./ScorePresetsBar";
 import type { Dart as UIDart } from "../lib/types";
 import { SCORE_INPUT_LS_KEY, sanitizeScoreInputMethod, type ScoreInputMethod } from "../lib/scoreInput/types";
+import { useTheme } from "../contexts/ThemeContext";
+import { useLang } from "../contexts/LangContext";
 
 type VoiceControl = {
   enabled?: boolean;
@@ -165,6 +167,9 @@ type Props = {
   switcherOverlay?: boolean;
   /** Masquer le texte d’aide sous le keypad score de volée. */
   hideQuickVisitHint?: boolean;
+  /** PARTIE RAPIDE : ouvre la saisie caméra assistée X01 existante. */
+  quickCameraAction?: (() => void) | null;
+  quickCameraActive?: boolean;
 };
 
 function safeReadDevModeEnabled(): boolean {
@@ -268,7 +273,12 @@ export default function ScoreInputHub({
   fitMinScale = 0.42,
   switcherOverlay: _switcherOverlay = false,
   hideQuickVisitHint = false,
+  quickCameraAction = null,
+  quickCameraActive = false,
 }: Props) {
+  const { theme } = useTheme();
+  const { lang } = useLang();
+  const switcherAccent = (theme as any)?.navAccent ?? (theme as any)?.primary ?? "#55e6ff";
   const devEnabled = safeReadDevModeEnabled();
   const configuredMethod = preferredMethod ? sanitizeScoreInputMethod(preferredMethod, { allowVisitScore }) : null;
   const [method, setMethod] = React.useState<ScoreInputMethod>(() => configuredMethod || safeReadMethod());
@@ -520,6 +530,11 @@ export default function ScoreInputHub({
             disabled={disabled}
             devEnabled={devEnabled}
             quickOnly={quickVisitSwitcher}
+            accent={switcherAccent}
+            lang={lang}
+            cameraAction={quickCameraAction}
+            cameraActive={quickCameraActive}
+            voiceEnabled={voiceSupported}
           />
         </div>
       ) : null}
@@ -1237,6 +1252,106 @@ function PresetSheet({
   );
 }
 
+function MethodIcon({ kind, size = 23 }: { kind: "visit" | "keypad" | "dartboard" | "voice" | "camera" | "presets"; size?: number }) {
+  const p = { fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+  if (kind === "visit") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M5 7h14M5 12h10M5 17h7"/><path {...p} d="m17 14 2 2 3-4"/></svg>;
+  if (kind === "keypad") return <svg width={size} height={size} viewBox="0 0 24 24"><circle cx="7" cy="6" r="1.2" fill="currentColor"/><circle cx="12" cy="6" r="1.2" fill="currentColor"/><circle cx="17" cy="6" r="1.2" fill="currentColor"/><circle cx="7" cy="12" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="17" cy="12" r="1.2" fill="currentColor"/><circle cx="7" cy="18" r="1.2" fill="currentColor"/><circle cx="12" cy="18" r="1.2" fill="currentColor"/><circle cx="17" cy="18" r="1.2" fill="currentColor"/></svg>;
+  if (kind === "dartboard") return <svg width={size} height={size} viewBox="0 0 24 24"><circle {...p} cx="12" cy="12" r="8"/><circle {...p} cx="12" cy="12" r="4"/><circle {...p} cx="12" cy="12" r="1"/><path {...p} d="M12 4v3M20 12h-3M12 20v-3M4 12h3"/></svg>;
+  if (kind === "voice") return <svg width={size} height={size} viewBox="0 0 24 24"><rect {...p} x="9" y="3" width="6" height="11" rx="3"/><path {...p} d="M6.5 11.5a5.5 5.5 0 0 0 11 0M12 17v4M9 21h6"/></svg>;
+  if (kind === "camera") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M4 7.5h4l1.4-2h5.2l1.4 2h4v11H4z"/><circle {...p} cx="12" cy="13" r="3.5"/></svg>;
+  return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="m13 2-7 11h6l-1 9 7-12h-6z"/></svg>;
+}
+
+function QuickMethodNav({
+  method,
+  setMethod,
+  allowPresets,
+  disabled,
+  devEnabled,
+  accent,
+  lang,
+  cameraAction,
+  cameraActive,
+  voiceEnabled,
+}: {
+  method: ScoreInputMethod;
+  setMethod: (m: ScoreInputMethod) => void;
+  allowPresets: boolean;
+  disabled: boolean;
+  devEnabled: boolean;
+  accent: string;
+  lang?: string;
+  cameraAction?: (() => void) | null;
+  cameraActive?: boolean;
+  voiceEnabled?: boolean;
+}) {
+  const fr = String(lang || "fr").toLowerCase().startsWith("fr");
+  const items: Array<{ key: string; method?: ScoreInputMethod; label: string; icon: "visit" | "keypad" | "dartboard" | "voice" | "camera" | "presets"; enabled: boolean; active?: boolean; action?: () => void }> = [
+    { key: "visit", method: "visit_score", label: fr ? "VOLÉE" : "VISIT", icon: "visit", enabled: true },
+    { key: "keypad", method: "keypad", label: fr ? "FLÈCHES" : "DARTS", icon: "keypad", enabled: true },
+    { key: "target", method: "dartboard", label: fr ? "CIBLE" : "TARGET", icon: "dartboard", enabled: true },
+    { key: "voice", method: "voice", label: fr ? "VOIX" : "VOICE", icon: "voice", enabled: voiceEnabled !== false },
+    { key: "camera", label: fr ? "CAMÉRA" : "CAMERA", icon: "camera", enabled: !!cameraAction, active: !!cameraActive, action: cameraAction || undefined },
+    { key: "presets", method: "presets", label: "PRESETS", icon: "presets", enabled: allowPresets },
+  ];
+
+  return (
+    <nav
+      aria-label={fr ? "Mode de saisie" : "Input method"}
+      style={{
+        display: "grid",
+        gridTemplateColumns: `repeat(${items.length}, minmax(46px, 1fr))`,
+        gap: 4,
+        padding: "5px 6px",
+        borderRadius: 17,
+        border: "1px solid rgba(255,255,255,.10)",
+        background: "linear-gradient(180deg, rgba(17,22,30,.88), rgba(7,10,15,.92))",
+        boxShadow: "0 8px 22px rgba(0,0,0,.28), inset 0 0 0 1px rgba(255,255,255,.02)",
+        overflow: "hidden",
+      }}
+    >
+      {items.map((item) => {
+        const active = item.active || (!!item.method && method === item.method);
+        const canClick = !disabled && (item.enabled || devEnabled);
+        return (
+          <button
+            key={item.key}
+            type="button"
+            disabled={!canClick}
+            aria-label={item.label}
+            title={item.label}
+            onClick={() => {
+              if (!canClick) return;
+              if (item.action) item.action();
+              else if (item.method) setMethod(item.method);
+            }}
+            style={{
+              minWidth: 0,
+              minHeight: 52,
+              padding: "4px 2px 3px",
+              border: "none",
+              borderRadius: 12,
+              background: active ? `${accent}1f` : "transparent",
+              color: active ? accent : "rgba(255,255,255,.78)",
+              display: "grid",
+              gridTemplateRows: "28px auto",
+              placeItems: "center",
+              gap: 2,
+              cursor: canClick ? "pointer" : "not-allowed",
+              opacity: item.enabled ? 1 : devEnabled ? .52 : .30,
+              boxShadow: active ? `inset 0 -2px 0 ${accent}, 0 0 14px ${accent}20` : "none",
+              transition: "background .16s ease, color .16s ease, box-shadow .16s ease",
+            }}
+          >
+            <span style={{ display: "grid", placeItems: "center", width: 28, height: 28 }}><MethodIcon kind={item.icon} /></span>
+            <span style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 7.7, lineHeight: 1, fontWeight: 900, letterSpacing: .15 }}>{item.label}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
 function MethodBar({
   method,
   setMethod,
@@ -1244,6 +1359,11 @@ function MethodBar({
   disabled,
   devEnabled,
   quickOnly = false,
+  accent = "#55e6ff",
+  lang = "fr",
+  cameraAction = null,
+  cameraActive = false,
+  voiceEnabled = true,
 }: {
   method: ScoreInputMethod;
   setMethod: (m: ScoreInputMethod) => void;
@@ -1251,7 +1371,29 @@ function MethodBar({
   disabled: boolean;
   devEnabled: boolean;
   quickOnly?: boolean;
+  accent?: string;
+  lang?: string;
+  cameraAction?: (() => void) | null;
+  cameraActive?: boolean;
+  voiceEnabled?: boolean;
 }) {
+  if (quickOnly) {
+    return (
+      <QuickMethodNav
+        method={method}
+        setMethod={setMethod}
+        allowPresets={allowPresets}
+        disabled={disabled}
+        devEnabled={devEnabled}
+        accent={accent}
+        lang={lang}
+        cameraAction={cameraAction}
+        cameraActive={cameraActive}
+        voiceEnabled={voiceEnabled}
+      />
+    );
+  }
+
   const btn = (key: ScoreInputMethod, label: string, enabled: boolean) => {
     const active = method === key;
     const canClick = !disabled && (enabled || devEnabled);
@@ -1278,15 +1420,7 @@ function MethodBar({
           letterSpacing: 0.2,
         }}
       >
-        <span
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: 999,
-            background: active ? "rgba(180,255,30,0.95)" : "rgba(255,255,255,0.25)",
-            boxShadow: active ? "0 0 10px rgba(180,255,30,0.55)" : "none",
-          }}
-        />
+        <span style={{ width: 8, height: 8, borderRadius: 999, background: active ? "rgba(180,255,30,0.95)" : "rgba(255,255,255,0.25)", boxShadow: active ? "0 0 10px rgba(180,255,30,0.55)" : "none" }} />
         <span style={{ fontSize: 12 }}>{label}</span>
       </button>
     );
@@ -1294,20 +1428,12 @@ function MethodBar({
 
   return (
     <div style={{ display: "flex", gap: 10, overflowX: "auto", padding: "6px 2px 2px", WebkitOverflowScrolling: "touch" }}>
-      {quickOnly ? (
-        <>
-          {btn("visit_score", "VOLÉE", true)}
-          {btn("keypad", "FLÉCHETTES", true)}
-        </>
-      ) : (
-        <>
-          {btn("keypad", "KEYPAD", true)}
-          {btn("visit_score", "SCORE VOLÉE", true)}
-          {btn("dartboard", "CIBLE", true)}
-          {btn("presets", "PRESETS", allowPresets)}
-          {btn("voice", "VOICE", true)}
-        </>
-      )}
+      {btn("keypad", "KEYPAD", true)}
+      {btn("visit_score", "SCORE VOLÉE", true)}
+      {btn("dartboard", "CIBLE", true)}
+      {btn("presets", "PRESETS", allowPresets)}
+      {btn("voice", "VOICE", true)}
     </div>
   );
 }
+

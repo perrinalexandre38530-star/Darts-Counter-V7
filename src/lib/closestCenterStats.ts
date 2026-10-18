@@ -15,6 +15,7 @@ export type ClosestCenterPlayerStat = {
   roundWins: number;
   avgUncertaintyMm: number | null;
   avgIdentityConfidence: number | null;
+  rankedDarts: number;
 };
 
 function median(values:number[]) {
@@ -34,16 +35,27 @@ function std(values:number[]) {
   return Math.sqrt(values.reduce((s,v)=>s+(v-m)*(v-m),0)/values.length);
 }
 
+function isManualRankImpact(x:any) {
+  return x?.source === "manual_rank" || x?.ordinalOnly === true || Number.isFinite(Number(x?.manualRank));
+}
+
+function orderValue(x:any) {
+  if (isManualRankImpact(x)) return Number(x.manualRank || x.distanceMm || Infinity);
+  return Number(x.distanceMm);
+}
+
 export function buildClosestCenterStats(players:any[], impacts:any[], scores:Record<string,number>, rounds:number) {
   const totalRounds=Math.max(1,Number(rounds||1));
   const roundBestOwner:Record<number,string>={};
   for(let r=1;r<=totalRounds;r++){
-    const items=(impacts||[]).filter((x:any)=>Number(x.round)===r&&Number.isFinite(Number(x.distanceMm)));
-    items.sort((a:any,b:any)=>Number(a.distanceMm)-Number(b.distanceMm));
+    const items=(impacts||[]).filter((x:any)=>Number(x.round)===r&&(isManualRankImpact(x)||Number.isFinite(Number(x.distanceMm))));
+    items.sort((a:any,b:any)=>orderValue(a)-orderValue(b));
     if(items[0]) roundBestOwner[r]=String(items[0].playerId);
   }
   const playerStats:ClosestCenterPlayerStat[]=(players||[]).map((p:any)=>{
-    const items=(impacts||[]).filter((x:any)=>String(x.playerId)===String(p.id)&&Number.isFinite(Number(x.distanceMm)));
+    const playerImpacts=(impacts||[]).filter((x:any)=>String(x.playerId)===String(p.id));
+    const items=playerImpacts.filter((x:any)=>!isManualRankImpact(x)&&Number.isFinite(Number(x.distanceMm)));
+    const rankedItems=playerImpacts.filter((x:any)=>isManualRankImpact(x));
     const distances=items.map((x:any)=>Number(x.distanceMm)).filter(Number.isFinite);
     const uncertainties=items.map((x:any)=>Number(x.uncertaintyMm)).filter((v:number)=>Number.isFinite(v)&&v>=0);
     const identities=items.map((x:any)=>Number(x.identityConfidence)).filter((v:number)=>Number.isFinite(v)&&v>=0&&v<=1);
@@ -55,7 +67,7 @@ export function buildClosestCenterStats(players:any[], impacts:any[], scores:Rec
       points:Number(scores?.[p.id]||0),
       attempts,
       measured:distances.length,
-      misses:Math.max(0,attempts-distances.length),
+      misses:rankedItems.length ? 0 : Math.max(0,attempts-distances.length),
       bestMm:distances.length?Math.min(...distances):null,
       averageMm:avg(distances),
       medianMm:median(distances),
@@ -65,14 +77,19 @@ export function buildClosestCenterStats(players:any[], impacts:any[], scores:Rec
       roundWins:Object.values(roundBestOwner).filter(id=>id===String(p.id)).length,
       avgUncertaintyMm:avg(uncertainties),
       avgIdentityConfidence:avg(identities),
+      rankedDarts:rankedItems.length,
     };
   }).sort((a,b)=>b.points-a.points||((a.bestMm??Infinity)-(b.bestMm??Infinity)));
 
-  const allDistances=(impacts||[]).map((x:any)=>Number(x.distanceMm)).filter(Number.isFinite);
-  const bestImpact=(impacts||[]).filter((x:any)=>Number.isFinite(Number(x.distanceMm))).sort((a:any,b:any)=>Number(a.distanceMm)-Number(b.distanceMm))[0]||null;
+  const metricImpacts=(impacts||[]).filter((x:any)=>!isManualRankImpact(x)&&Number.isFinite(Number(x.distanceMm)));
+  const allDistances=metricImpacts.map((x:any)=>Number(x.distanceMm)).filter(Number.isFinite);
+  const bestImpact=[...metricImpacts].sort((a:any,b:any)=>Number(a.distanceMm)-Number(b.distanceMm))[0]||null;
+  const totalRankedDarts=(impacts||[]).filter((x:any)=>isManualRankImpact(x)).length;
   return {
     rounds:totalRounds,
-    totalImpacts:allDistances.length,
+    totalImpacts: totalRankedDarts || allDistances.length,
+    totalRankedDarts,
+    manualRankingOnly: totalRankedDarts > 0 && allDistances.length === 0,
     bestDistanceMm:allDistances.length?Math.min(...allDistances):null,
     averageDistanceMm:avg(allDistances),
     bestImpact:bestImpact?{playerId:String(bestImpact.playerId),distanceMm:Number(bestImpact.distanceMm),round:Number(bestImpact.round||0)}:null,

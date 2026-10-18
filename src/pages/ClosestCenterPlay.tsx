@@ -164,10 +164,9 @@ export default function ClosestCenterPlay(props:any) {
   const [tieAcknowledged, setTieAcknowledged] = React.useState(false);
   const [turnArmed, setTurnArmed] = React.useState(false);
   const [preflightInfo, setPreflightInfo] = React.useState<any>(null);
-  const [manualDistances, setManualDistances] = React.useState<string[]>(["", "", ""]);
-  const [manualMisses, setManualMisses] = React.useState<boolean[]>([false, false, false]);
-  const [manualEditingPlayerId, setManualEditingPlayerId] = React.useState<string | null>(null);
-  const [status, setStatus] = React.useState(isManual ? "Saisie manuelle : mesure les 3 distances au centre en millimètres." : "Présente les 3 fléchettes du joueur dans le cadre de scan.");
+  const [manualRanking, setManualRanking] = React.useState<(string | null)[]>([null, null, null, null, null]);
+  const [manualEditingRound, setManualEditingRound] = React.useState(false);
+  const [status, setStatus] = React.useState(isManual ? "Saisie manuelle : joue la manche puis classe simplement les fléchettes de la plus proche à la plus éloignée." : "Présente les 3 fléchettes du joueur dans le cadre de scan.");
 
   React.useEffect(() => {
     if (isManual) { setReady(true); setCamError(""); return; }
@@ -602,45 +601,59 @@ export default function ClosestCenterPlay(props:any) {
     setStatus(`${current?.name}: garde les 3 fléchettes en place, stabilise le téléphone puis relance l’analyse. La référence pré-volée reste verrouillée.`);
   };
 
-  const resetManualEntry = () => { setManualDistances(["", "", ""]); setManualMisses([false, false, false]); };
+  const resetManualEntry = () => { setManualRanking([null, null, null, null, null]); setManualEditingRound(false); };
 
-  const submitManualTurn = () => {
-    if (!isManual || !current) return;
-    const values = manualDistances.map((raw,i) => manualMisses[i] ? null : Number(String(raw).replace(",",".")));
-    if (values.some((v,i) => !manualMisses[i] && (!Number.isFinite(v) || Number(v) < 0 || Number(v) > 1000))) {
-      setStatus("❌ Renseigne une distance valide en mm pour chaque fléchette, ou utilise MISS.");
-      return;
-    }
-    const now=Date.now();
-    const manualImpacts=values.flatMap((distanceMm:any,i:number)=> distanceMm==null ? [] : [{
-      id:`m-${round}-${current.id}-${i}-${now}`, round, playerId:current.id, expectedPlayerId:current.id, teamId:current.teamId||null,
-      dartIndex:i, distanceMm:Number(distanceMm), distanceNorm:Number(distanceMm)/170, xNorm:.5, yNorm:.5,
-      confidence:1, identityConfidence:1, identityMargin:1, frameAgreement:1, consensusSpreadMm:0, uncertaintyMm:0,
-      source:"manual", manuallyEntered:true,
-    }]);
-    setImpacts(v=>[...v,...manualImpacts]);
-    resetManualEntry();
-    if (manualEditingPlayerId) {
-      setManualEditingPlayerId(null); setPhase("roundEnd");
-      setStatus("Correction enregistrée. Vérifie à nouveau le classement de la manche.");
-    } else if(playerIndex < players.length-1){
-      const next=players[playerIndex+1]; setPlayerIndex(i=>i+1); setPhase("play");
-      setStatus(`${next?.name}: saisis les 3 distances au centre en millimètres.`);
-    } else {
-      setPhase("roundEnd"); setStatus("Manche saisie. Vérifie le classement avant de valider.");
-    }
+  const chooseManualRankOwner = (slot:number, playerId:string) => {
+    setManualRanking(prev => {
+      const next=[...prev];
+      const same = String(next[slot] || "") === String(playerId);
+      if (same) { next[slot]=null; return next; }
+      const already = next.filter((id,ix)=>ix!==slot && String(id||"")===String(playerId)).length;
+      if (already >= 3) {
+        setStatus("❌ Un joueur ne peut occuper que 3 rangs maximum : il ne lance que 3 fléchettes.");
+        return prev;
+      }
+      next[slot]=String(playerId);
+      return next;
+    });
   };
 
-  const editManualPlayer = (playerId:string) => {
+  const submitManualTurn = () => {
+    if (!isManual) return;
+    const firstEmpty=manualRanking.findIndex(x=>!x);
+    const hasGap=firstEmpty>=0 && manualRanking.slice(firstEmpty+1).some(Boolean);
+    if (!manualRanking[0]) { setStatus("❌ Indique au minimum la fléchette la plus proche (#1)."); return; }
+    if (hasGap) { setStatus("❌ Le classement doit être continu : complète les rangs dans l’ordre, sans trou."); return; }
+    const now=Date.now();
+    const occurrence:Record<string,number>={};
+    const manualImpacts=manualRanking.flatMap((playerId:any,i:number)=>{
+      if(!playerId) return [];
+      const owner=players.find((p:any)=>String(p.id)===String(playerId));
+      if(!owner) return [];
+      const dartIndex=occurrence[playerId]||0; occurrence[playerId]=dartIndex+1;
+      return [{
+        id:`mr-${round}-${playerId}-${i}-${now}`, round, playerId:String(playerId), expectedPlayerId:String(playerId), teamId:owner.teamId||null,
+        dartIndex, manualRank:i+1, distanceMm:i+1, distanceNorm:(i+1)/1000, xNorm:.5, yNorm:.5,
+        confidence:1, identityConfidence:1, identityMargin:1, frameAgreement:1, consensusSpreadMm:0, uncertaintyMm:0,
+        source:"manual_rank", manuallyEntered:true, ordinalOnly:true,
+      }];
+    });
+    setImpacts(v=>[...v,...manualImpacts]);
+    resetManualEntry();
+    setPhase("roundEnd");
+    setStatus(manualEditingRound ? "Classement corrigé. Vérifie puis valide la manche." : "Classement manuel enregistré. Vérifie puis valide la manche.");
+  };
+
+  const editManualRanking = () => {
     if(!isManual) return;
-    const ix=players.findIndex((p:any)=>String(p.id)===String(playerId)); if(ix<0) return;
-    const existing=impacts.filter((x:any)=>x.round===round && String(x.playerId)===String(playerId) && x.source==="manual");
-    const values=[0,1,2].map(i=>existing.find((x:any)=>Number(x.dartIndex)===i));
-    setManualDistances(values.map((x:any)=>x?String(x.distanceMm):""));
-    setManualMisses(values.map((x:any)=>!x));
-    setImpacts(v=>v.filter((x:any)=>!(x.round===round && String(x.playerId)===String(playerId) && x.source==="manual")));
-    setManualEditingPlayerId(String(playerId)); setPlayerIndex(ix); setPhase("play");
-    setStatus(`${players[ix]?.name}: corrige la volée puis valide à nouveau.`);
+    const existing=impacts.filter((x:any)=>x.round===round && x.source==="manual_rank").sort((a:any,b:any)=>Number(a.manualRank||a.distanceMm)-Number(b.manualRank||b.distanceMm));
+    const next:(string|null)[]=[null,null,null,null,null];
+    existing.forEach((x:any)=>{ const ix=Math.max(0,Math.min(4,Number(x.manualRank||x.distanceMm)-1)); next[ix]=String(x.playerId); });
+    setManualRanking(next);
+    setImpacts(v=>v.filter((x:any)=>!(x.round===round && x.source==="manual_rank")));
+    setManualEditingRound(true);
+    setPhase("play");
+    setStatus("Corrige l’ordre des fléchettes puis valide à nouveau le classement.");
   };
 
   const confirmAnalysis = () => {
@@ -727,8 +740,8 @@ export default function ClosestCenterPlay(props:any) {
     setTieAcknowledged(false);
     setTurnArmed(false);
     setPreflightInfo(null);
-    resetManualEntry(); setManualEditingPlayerId(null);
-    setStatus(isManual ? "Nouvelle manche : saisis les 3 distances du premier joueur." : "Retire toutes les fléchettes puis capture la cible vide pour la manche suivante.");
+    resetManualEntry();
+    setStatus(isManual ? "Nouvelle manche : joue les volées puis classe les 5 fléchettes les plus proches." : "Retire toutes les fléchettes puis capture la cible vide pour la manche suivante.");
   };
 
   const teamTotals = React.useMemo(() => {
@@ -803,7 +816,7 @@ export default function ClosestCenterPlay(props:any) {
     <PageHeader tickerSrc={ticker} tickerAlt="PETANQUE" tickerHeight={68} left={<BackDot onClick={() => go?.("closest_center_config")} color={ACCENT}/>} />
     <div style={{flex:1,minHeight:0,overflow:narrow?"auto":"hidden",display:"grid",gridTemplateColumns:narrow?"1fr":"minmax(0,1.45fr) minmax(320px,.75fr)",gridTemplateRows:narrow?"minmax(390px,56vh) auto":"1fr",gap:10,padding:10}}>
       <div style={{position:"relative",minHeight:narrow?390:0,borderRadius:18,overflow:"hidden",border:"1px solid rgba(68,231,255,.3)",background:"#000"}}>
-        {isManual ? <div style={{height:"100%",minHeight:390,display:"grid",placeItems:"center",padding:24,background:"radial-gradient(circle at 50% 35%,rgba(68,231,255,.12),transparent 42%),linear-gradient(180deg,#08131d,#03070d)"}}><div style={{maxWidth:520,textAlign:"center"}}><div style={{fontSize:54}}>✍️</div><h2 style={{margin:"8px 0",fontSize:24}}>SAISIE MANUELLE · LOCAL</h2><p style={{margin:0,color:"#b8c7d3",lineHeight:1.6,fontSize:13}}>Aucune caméra n’est utilisée. Mesure chaque fléchette depuis le centre du bull jusqu’au point d’impact, en millimètres. Les distances enregistrées alimentent exactement le même classement Top 5 et les mêmes scores.</p><div style={{marginTop:18,padding:14,borderRadius:14,border:"1px solid rgba(143,255,194,.3)",background:"rgba(57,217,138,.07)",color:"#dfffee",fontSize:12}}><b>Conseil :</b> pour départager deux fléchettes très proches, saisis des décimales (ex. 24,6 mm et 24,9 mm).</div></div></div> : <><video ref={videoRef} muted playsInline style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+        {isManual ? <div style={{height:"100%",minHeight:390,display:"grid",placeItems:"center",padding:24,background:"radial-gradient(circle at 50% 35%,rgba(68,231,255,.12),transparent 42%),linear-gradient(180deg,#08131d,#03070d)"}}><div style={{maxWidth:520,textAlign:"center"}}><div style={{fontSize:54}}>✍️</div><h2 style={{margin:"8px 0",fontSize:24}}>SAISIE MANUELLE · LOCAL</h2><p style={{margin:0,color:"#b8c7d3",lineHeight:1.6,fontSize:13}}>Aucune caméra et aucune mesure en millimètres. Une fois toutes les fléchettes jouées, classe simplement les impacts du <b>plus proche du bull au plus éloigné</b>.</p><div style={{marginTop:18,padding:14,borderRadius:14,border:"1px solid rgba(143,255,194,.3)",background:"rgba(57,217,138,.07)",color:"#dfffee",fontSize:12}}><b>Top 5 :</b> choisis le propriétaire de la fléchette #1, puis #2, #3, #4 et #5. Un même joueur peut apparaître plusieurs fois si plusieurs de ses fléchettes sont bien placées.</div></div></div> : <><video ref={videoRef} muted playsInline style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
         <div style={{position:"absolute",inset:0,pointerEvents:"none"}}>
           {phase === "enroll" ? <div style={{position:"absolute",left:"25%",top:"20%",width:"50%",height:"60%",border:`2px dashed ${ACCENT}`,borderRadius:18,boxShadow:`0 0 30px ${ACCENT}33`}}/> : null}
           <div style={{position:"absolute",left:"50%",top:"50%",width:14,height:14,margin:-7,borderRadius:"50%",border:"2px solid #fff",boxShadow:"0 0 15px #fff"}}/>
@@ -823,10 +836,10 @@ export default function ClosestCenterPlay(props:any) {
 
       <div style={{minHeight:0,overflow:"auto",display:"grid",gap:10,alignContent:"start"}}>
         <section style={{...card,padding:10}}>
-          {isManual ? <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}><div style={{padding:"8px 6px",borderRadius:10,border:`1px solid ${phase!=="roundEnd"?"#8fffc2":"rgba(255,255,255,.08)"}`,background:phase!=="roundEnd"?"rgba(57,217,138,.09)":"rgba(255,255,255,.02)",textAlign:"center",fontSize:10,fontWeight:1000}}>1 · SAISIR LES DISTANCES</div><div style={{padding:"8px 6px",borderRadius:10,border:`1px solid ${phase==="roundEnd"||phase==="finished"?ACCENT:"rgba(255,255,255,.08)"}`,background:phase==="roundEnd"||phase==="finished"?`${ACCENT}10`:"rgba(255,255,255,.02)",textAlign:"center",fontSize:10,fontWeight:1000}}>2 · CLASSER / VALIDER</div></div> : <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>{[["enroll","1","ENRÔLER"],["baseline","2","RÉFÉRENCE"],["play","3","JOUER"],["roundEnd","4","CLASSER"]].map(([key,num,label]) => { const order:any={enroll:0,baseline:1,play:2,review:2,roundEnd:3,finished:4}; const mine:any={enroll:0,baseline:1,play:2,roundEnd:3}; const active=order[phase]>=mine[key]; return <div key={key} style={{minWidth:0,padding:"7px 5px",borderRadius:10,border:`1px solid ${active?ACCENT:"rgba(255,255,255,.08)"}`,background:active?`${ACCENT}10`:"rgba(255,255,255,.02)",textAlign:"center"}}><b style={{display:"block",fontSize:11,color:active?ACCENT:"#607080"}}>{num}</b><span style={{fontSize:8,fontWeight:1000,color:active?"#eafcff":"#71808d",letterSpacing:.5}}>{label}</span></div>; })}</div>}
+          {isManual ? <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}><div style={{padding:"8px 6px",borderRadius:10,border:`1px solid ${phase!=="roundEnd"?"#8fffc2":"rgba(255,255,255,.08)"}`,background:phase!=="roundEnd"?"rgba(57,217,138,.09)":"rgba(255,255,255,.02)",textAlign:"center",fontSize:10,fontWeight:1000}}>1 · CLASSER LES FLÉCHETTES</div><div style={{padding:"8px 6px",borderRadius:10,border:`1px solid ${phase==="roundEnd"||phase==="finished"?ACCENT:"rgba(255,255,255,.08)"}`,background:phase==="roundEnd"||phase==="finished"?`${ACCENT}10`:"rgba(255,255,255,.02)",textAlign:"center",fontSize:10,fontWeight:1000}}>2 · VÉRIFIER / VALIDER</div></div> : <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>{[["enroll","1","ENRÔLER"],["baseline","2","RÉFÉRENCE"],["play","3","JOUER"],["roundEnd","4","CLASSER"]].map(([key,num,label]) => { const order:any={enroll:0,baseline:1,play:2,review:2,roundEnd:3,finished:4}; const mine:any={enroll:0,baseline:1,play:2,roundEnd:3}; const active=order[phase]>=mine[key]; return <div key={key} style={{minWidth:0,padding:"7px 5px",borderRadius:10,border:`1px solid ${active?ACCENT:"rgba(255,255,255,.08)"}`,background:active?`${ACCENT}10`:"rgba(255,255,255,.02)",textAlign:"center"}}><b style={{display:"block",fontSize:11,color:active?ACCENT:"#607080"}}>{num}</b><span style={{fontSize:8,fontWeight:1000,color:active?"#eafcff":"#71808d",letterSpacing:.5}}>{label}</span></div>; })}</div>}
         </section>
 
-        {current && phase !== "roundEnd" && phase !== "finished" ? <section style={{...card,borderColor:`${playerColor(players,current.id)}66`,background:`linear-gradient(135deg,${playerColor(players,current.id)}12,rgba(255,255,255,.025))`}}>
+        {!isManual && current && phase !== "roundEnd" && phase !== "finished" ? <section style={{...card,borderColor:`${playerColor(players,current.id)}66`,background:`linear-gradient(135deg,${playerColor(players,current.id)}12,rgba(255,255,255,.025))`}}>
           <div style={{display:"grid",gridTemplateColumns:"48px 1fr auto",gap:10,alignItems:"center"}}>
             <div style={{width:48,height:48,borderRadius:"50%",overflow:"hidden",border:`2px solid ${playerColor(players,current.id)}`,display:"grid",placeItems:"center",background:"#0b151d",fontWeight:1000,fontSize:18}}>{current.avatar?<img src={current.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:String(current.name||"?").slice(0,1).toUpperCase()}</div>
             <div><div style={{fontSize:9,color:"#8496a5",fontWeight:1000,letterSpacing:1}}>JOUEUR ACTIF</div><b style={{fontSize:17}}>{current.name}</b>{current.teamId?<div style={{fontSize:10,color:playerColor(players,current.id)}}>Équipe {current.teamId}</div>:null}</div>
@@ -867,10 +880,23 @@ export default function ClosestCenterPlay(props:any) {
         </section> : null}
 
         {isManual && phase === "play" ? <section style={{...card,borderColor:"rgba(143,255,194,.35)"}}>
-          <h3 style={{...h3,color:"#8fffc2"}}>MANCHE {round}/{cfg.rounds} · {current?.name}</h3>
-          <div style={{fontSize:12,color:"#b9c7d4",lineHeight:1.5}}>Saisis la distance de chaque fléchette au centre du bull. Décimales acceptées. Une fléchette marquée MISS est ignorée dans le classement.</div>
-          <div style={{display:"grid",gap:8,marginTop:10}}>{[0,1,2].map(i=><div key={i} style={{display:"grid",gridTemplateColumns:"70px 1fr 74px",gap:8,alignItems:"center"}}><b style={{fontSize:12}}>FLÉCHETTE {i+1}</b><div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:6,alignItems:"center"}}><input inputMode="decimal" disabled={manualMisses[i]} value={manualDistances[i]} onChange={e=>setManualDistances(v=>v.map((x,j)=>j===i?e.target.value:x))} placeholder="ex. 24,6" style={{minWidth:0,height:42,borderRadius:11,border:"1px solid rgba(255,255,255,.16)",background:"rgba(255,255,255,.05)",color:"#fff",padding:"0 10px",fontWeight:900,fontSize:15,opacity:manualMisses[i]?.45:1}}/><span style={{fontSize:11,color:"#8fa1ae"}}>mm</span></div><button onClick={()=>setManualMisses(v=>v.map((x,j)=>j===i?!x:x))} style={{...miniBtn,minHeight:42,borderColor:manualMisses[i]?"#ff8f8f":"rgba(255,255,255,.16)",color:manualMisses[i]?"#ffb0a8":"#c8d3dc"}}>{manualMisses[i]?"MISS ✓":"MISS"}</button></div>)}</div>
-          <button style={{...btn,width:"100%",marginTop:12,borderColor:"#8fffc2",background:"rgba(57,217,138,.14)"}} onClick={submitManualTurn}>✓ VALIDER LA VOLÉE</button>
+          <h3 style={{...h3,color:"#8fffc2"}}>MANCHE {round}/{cfg.rounds} · CLASSEMENT MANUEL</h3>
+          <div style={{fontSize:12,color:"#b9c7d4",lineHeight:1.55}}>Jouez toutes les volées en laissant les fléchettes sur la cible. Ensuite, indique simplement qui possède la fléchette la plus proche du bull, puis la suivante. Aucun millimètre à mesurer.</div>
+          <div style={{display:"grid",gap:8,marginTop:12}}>{[0,1,2,3,4].map(i=>{
+            const selectedId=manualRanking[i];
+            const pts=(cfg.pointsMode||"descending")==="winner"?(i===0?1:0):Math.max(0,5-i);
+            return <div key={i} style={{padding:10,borderRadius:13,border:`1px solid ${selectedId?"#8fffc255":"rgba(255,255,255,.10)"}`,background:selectedId?"rgba(57,217,138,.06)":"rgba(255,255,255,.02)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:7}}><b style={{color:i===0?"#ffd85a":"#dbe7ef"}}>#{i+1} · {i===0?"PLUS PROCHE":`${i+1}e PLUS PROCHE`}</b><span style={{fontSize:10,color:pts?"#8fffc2":"#71808d",fontWeight:1000}}>+{pts} pt{pts>1?"s":""}</span></div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{players.map((p:any)=>{
+                const selected=String(selectedId||"")===String(p.id);
+                const used=manualRanking.filter(id=>String(id||"")===String(p.id)).length;
+                const full=!selected&&used>=3;
+                return <button key={p.id} disabled={full} onClick={()=>chooseManualRankOwner(i,String(p.id))} style={{...miniBtn,minHeight:34,borderColor:selected?playerColor(players,p.id):"rgba(255,255,255,.14)",background:selected?`${playerColor(players,p.id)}24`:"rgba(255,255,255,.035)",color:selected?"#fff":"#c4d0d9",opacity:full?.35:1}}>{selected?"✓ ":""}{p.name}{used?` (${used}/3)`:""}</button>;
+              })}</div>
+              {selectedId?<button onClick={()=>chooseManualRankOwner(i,String(selectedId))} style={{marginTop:6,border:0,background:"transparent",color:"#8496a5",fontSize:10,textDecoration:"underline"}}>Effacer ce rang</button>:null}
+            </div>;
+          })}</div>
+          <button style={{...btn,width:"100%",marginTop:12,borderColor:"#8fffc2",background:"rgba(57,217,138,.14)"}} onClick={submitManualTurn}>✓ VALIDER LE CLASSEMENT DE LA MANCHE</button>
         </section> : null}
 
         {!isManual && phase === "play" ? <section style={card}>
@@ -897,11 +923,11 @@ export default function ClosestCenterPlay(props:any) {
           {!isManual && phase === "roundEnd" && hasPrecisionTieRisk ? <div style={{padding:9,borderRadius:10,border:"1px solid #ffbd4555",background:"#ffbd4510",color:"#ffd796",fontSize:11,marginBottom:6}}>⚠️ Au moins deux impacts sont plus proches que la marge d’incertitude estimée. Un contrôle caméra rapproché est conseillé avant validation.</div> : null}
           {(phase === "finished" ? finalPlayerRanking.map((s:any)=>({playerId:s.playerId,points:s.points,distanceMm:null,playerStat:s})) : ranked).map((r:any,i:number) => {
             const p = players.find((x:any) => String(x.id) === String(r.playerId));
-            return <div key={`${r.playerId}-${i}-${r.id||"final"}`} style={{display:"grid",gridTemplateColumns:"32px 1fr auto",gap:8,alignItems:"center",padding:"8px 0",borderBottom:"1px solid rgba(255,255,255,.07)"}}><b>#{i+1}</b><div><b>{p?.name}</b>{p?.teamId ? <span style={{color:ACCENT,fontSize:11}}> · Team {p.teamId}</span> : null}{phase==="finished"&&r.playerStat?<div style={{fontSize:10,color:"#9fb0bf",marginTop:2}}>meilleure {r.playerStat.bestMm!=null?`${r.playerStat.bestMm.toFixed(1)} mm`:"—"} · moyenne {r.playerStat.averageMm!=null?`${r.playerStat.averageMm.toFixed(1)} mm`:"—"} · {r.playerStat.roundWins} manche(s) gagnée(s) · {r.playerStat.misses} MISS</div>:null}{r.distanceMm != null ? <div style={{fontSize:11,color:r.ambiguousWithPrevious?"#ffbd65":"#9fb0bf"}}>{r.distanceMm.toFixed(1)} mm{isManual?" · saisie manuelle":` ± ${Number(r.uncertaintyMm||0).toFixed(1)} mm · vision ${Math.round(r.confidence*100)} % · identité ${Math.round(r.identityConfidence*100)} %`}{!isManual&&r.ambiguousWithPrevious?` · départage ${Number(r.gapToPreviousMm||0).toFixed(2)} mm ≤ marge ${Number(r.ambiguityMarginMm||0).toFixed(2)} mm`:""}</div> : null}</div><b style={{color:ACCENT}}>+{r.points||0}</b></div>;
+            return <div key={`${r.playerId}-${i}-${r.id||"final"}`} style={{display:"grid",gridTemplateColumns:"32px 1fr auto",gap:8,alignItems:"center",padding:"8px 0",borderBottom:"1px solid rgba(255,255,255,.07)"}}><b>#{i+1}</b><div><b>{p?.name}</b>{p?.teamId ? <span style={{color:ACCENT,fontSize:11}}> · Team {p.teamId}</span> : null}{phase==="finished"&&r.playerStat?<div style={{fontSize:10,color:"#9fb0bf",marginTop:2}}>{isManual?`${r.playerStat.rankedDarts||0} fléchette(s) classée(s) Top 5 · ${r.playerStat.roundWins} manche(s) gagnée(s)`:`meilleure ${r.playerStat.bestMm!=null?`${r.playerStat.bestMm.toFixed(1)} mm`:"—"} · moyenne ${r.playerStat.averageMm!=null?`${r.playerStat.averageMm.toFixed(1)} mm`:"—"} · ${r.playerStat.roundWins} manche(s) gagnée(s) · ${r.playerStat.misses} MISS`}</div>:null}{r.distanceMm != null ? <div style={{fontSize:11,color:r.ambiguousWithPrevious?"#ffbd65":"#9fb0bf"}}>{isManual?`rang manuel #${r.rank || r.manualRank || i+1}`:`${r.distanceMm.toFixed(1)} mm ± ${Number(r.uncertaintyMm||0).toFixed(1)} mm · vision ${Math.round(r.confidence*100)} % · identité ${Math.round(r.identityConfidence*100)} %${r.ambiguousWithPrevious?` · départage ${Number(r.gapToPreviousMm||0).toFixed(2)} mm ≤ marge ${Number(r.ambiguityMarginMm||0).toFixed(2)} mm`:""}`}</div> : null}</div><b style={{color:ACCENT}}>+{r.points||0}</b></div>;
           })}
-          {phase === "finished" ? <div style={{marginTop:10,padding:10,borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.035)"}}><div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><b style={{fontSize:11,color:"#ffd85a"}}>STATISTIQUES PETANQUE</b><b style={{fontSize:11}}>{cfg.teamMode?(winningTeamId?`ÉQUIPE ${winningTeamId} GAGNANTE`:""):winner?`${winner.name} GAGNANT`:""}</b></div><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginTop:8,fontSize:10,textAlign:"center"}}><span>{petanqueStats.bestDistanceMm!=null?petanqueStats.bestDistanceMm.toFixed(1):"—"}<br/><i style={{color:"#8797a5"}}>meilleur mm</i></span><span>{petanqueStats.averageDistanceMm!=null?petanqueStats.averageDistanceMm.toFixed(1):"—"}<br/><i style={{color:"#8797a5"}}>moyenne mm</i></span><span>{petanqueStats.totalImpacts}<br/><i style={{color:"#8797a5"}}>impacts</i></span><span>{cfg.rounds||round}<br/><i style={{color:"#8797a5"}}>manches</i></span></div></div> : null}
+          {phase === "finished" ? <div style={{marginTop:10,padding:10,borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.035)"}}><div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><b style={{fontSize:11,color:"#ffd85a"}}>STATISTIQUES DARTS PÉTANQUE</b><b style={{fontSize:11}}>{cfg.teamMode?(winningTeamId?`ÉQUIPE ${winningTeamId} GAGNANTE`:""):winner?`${winner.name} GAGNANT`:""}</b></div><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginTop:8,fontSize:10,textAlign:"center"}}>{isManual?<><span>{petanqueStats.totalRankedDarts||petanqueStats.totalImpacts||0}<br/><i style={{color:"#8797a5"}}>Top 5 classées</i></span><span>{winner?.roundWins||0}<br/><i style={{color:"#8797a5"}}>manches gagnées</i></span></>:<><span>{petanqueStats.bestDistanceMm!=null?petanqueStats.bestDistanceMm.toFixed(1):"—"}<br/><i style={{color:"#8797a5"}}>meilleur mm</i></span><span>{petanqueStats.averageDistanceMm!=null?petanqueStats.averageDistanceMm.toFixed(1):"—"}<br/><i style={{color:"#8797a5"}}>moyenne mm</i></span></>}<span>{petanqueStats.totalImpacts}<br/><i style={{color:"#8797a5"}}>{isManual?"rangs saisis":"impacts"}</i></span><span>{cfg.rounds||round}<br/><i style={{color:"#8797a5"}}>manches</i></span></div></div> : null}
           {phase === "finished" && !isManual ? <div style={{marginTop:10,padding:10,borderRadius:12,border:"1px solid rgba(68,231,255,.2)",background:"rgba(68,231,255,.05)"}}><div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><b style={{fontSize:11,color:ACCENT}}>BILAN QUALITÉ CAMÉRA</b><b style={{fontSize:12}}>NOTE {cameraQuality.grade} · {cameraQuality.score}/100</b></div><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginTop:8,fontSize:10,textAlign:"center"}}><span>{cameraQuality.accepted}<br/><i style={{color:"#8797a5"}}>volées OK</i></span><span>{cameraQuality.rejected}<br/><i style={{color:"#8797a5"}}>refus</i></span><span>{cameraQuality.rereads}<br/><i style={{color:"#8797a5"}}>relectures</i></span><span>{cameraQuality.avgUncertaintyMm!=null?cameraQuality.avgUncertaintyMm.toFixed(2):"—"}<br/><i style={{color:"#8797a5"}}>mm moy.</i></span></div>{cameraQuality.rounds.length ? <div style={{marginTop:8,display:"grid",gap:4}}>{cameraQuality.rounds.map((q:any)=><div key={q.round} style={{display:"grid",gridTemplateColumns:"70px 1fr auto",gap:8,fontSize:10,color:"#aebdca"}}><b>M{q.round}</b><span>{q.accepted} OK · {q.rejected} refus · {q.rereads} relecture(s)</span><b>{q.qualityScore}/100</b></div>)}</div> : null}</div> : null}
-          {isManual && phase === "roundEnd" ? <div style={{marginTop:10}}><div style={{fontSize:10,color:"#8fa1ae",marginBottom:6}}>CORRIGER UNE VOLÉE</div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{players.map((p:any)=><button key={p.id} onClick={()=>editManualPlayer(p.id)} style={miniBtn}>{p.name}</button>)}</div></div> : null}
+          {isManual && phase === "roundEnd" ? <div style={{marginTop:10}}><button onClick={editManualRanking} style={{...miniBtn,width:"100%",minHeight:38,borderColor:"rgba(143,255,194,.35)",color:"#bfffd9"}}>✎ MODIFIER LE CLASSEMENT MANUEL</button></div> : null}
           {phase === "roundEnd" ? <button style={{...btn,width:"100%",marginTop:10,borderColor:hasPrecisionTieRisk&&!tieAcknowledged?"#ffbd45":ACCENT,background:hasPrecisionTieRisk&&tieAcknowledged?"#ffbd4522":`${ACCENT}18`}} onClick={commitRound}>{hasPrecisionTieRisk&&!tieAcknowledged?"⚠️ CONTRÔLER LE DÉPARTAGE":hasPrecisionTieRisk&&tieAcknowledged?"✓ CONFIRMER ET ENREGISTRER":"VALIDER LA MANCHE →"}</button> : <button style={{...btn,width:"100%",marginTop:10}} onClick={() => go?.("closest_center_config")}>NOUVELLE PARTIE</button>}
         </section> : null}
 

@@ -42,7 +42,7 @@ export default function ClosestCenterHistoryDetail(props:any){
   const byRound=React.useMemo(()=>{
     const out:any[]=[];
     for(let r=1;r<=rounds;r++){
-      const rows=impacts.filter((x:any)=>num(x.round)===r).sort((a:any,b:any)=>num(a.distanceMm,Infinity)-num(b.distanceMm,Infinity));
+      const rows=impacts.filter((x:any)=>num(x.round)===r).sort((a:any,b:any)=>num(a.manualRank ?? a.distanceMm,Infinity)-num(b.manualRank ?? b.distanceMm,Infinity));
       out.push({round:r,rows});
     }
     return out;
@@ -61,9 +61,8 @@ export default function ClosestCenterHistoryDetail(props:any){
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:7,marginTop:10}}>
           <div style={kpi}><b style={{fontSize:17,color:ACCENT}}>{rounds}</b><br/><small>manches</small></div>
-          <div style={kpi}><b style={{fontSize:17,color:ACCENT}}>{stats?.totalImpacts ?? impacts.length}</b><br/><small>impacts</small></div>
-          <div style={kpi}><b style={{fontSize:17,color:ACCENT}}>{fmtMm(stats?.bestDistanceMm)}</b><br/><small>meilleure distance</small></div>
-          <div style={kpi}><b style={{fontSize:17,color:ACCENT}}>{fmtMm(stats?.averageDistanceMm)}</b><br/><small>distance moyenne</small></div>
+          <div style={kpi}><b style={{fontSize:17,color:ACCENT}}>{stats?.totalImpacts ?? impacts.length}</b><br/><small>{inputMode==="manual"?"rangs Top 5":"impacts"}</small></div>
+          {inputMode==="manual"?<><div style={kpi}><b style={{fontSize:17,color:ACCENT}}>ORDRE</b><br/><small>sans mesure mm</small></div><div style={kpi}><b style={{fontSize:17,color:ACCENT}}>5→1</b><br/><small>points Top 5</small></div></>:<><div style={kpi}><b style={{fontSize:17,color:ACCENT}}>{fmtMm(stats?.bestDistanceMm)}</b><br/><small>meilleure distance</small></div><div style={kpi}><b style={{fontSize:17,color:ACCENT}}>{fmtMm(stats?.averageDistanceMm)}</b><br/><small>distance moyenne</small></div></>}
           {cameraQuality?<div style={kpi}><b style={{fontSize:17,color:ACCENT}}>{cameraQuality.grade || "—"} · {num(cameraQuality.score)}%</b><br/><small>qualité caméra</small></div>:null}
         </div>
       </section>
@@ -72,7 +71,7 @@ export default function ClosestCenterHistoryDetail(props:any){
         <div style={{fontSize:12,color:ACCENT,fontWeight:1000,marginBottom:6}}>CLASSEMENT FINAL</div>
         {ranking.map((s:any,i:number)=><div key={s.playerId||i} style={{display:"grid",gridTemplateColumns:"34px minmax(0,1fr) auto",gap:8,alignItems:"center",padding:"9px 0",borderBottom:"1px solid rgba(255,255,255,.07)"}}>
           <b style={{color:i<3?"#ffd85a":"#83929e"}}>#{i+1}</b>
-          <div><b>{s.name || players.find((p:any)=>String(p.id)===String(s.playerId))?.name || "Joueur"}</b>{s.teamId?<span style={{fontSize:10,color:ACCENT}}> · Équipe {s.teamId}</span>:null}<div style={{fontSize:10,color:"#8fa0ad",marginTop:2}}>meilleure {fmtMm(s.bestMm)} · moyenne {fmtMm(s.averageMm)} · médiane {fmtMm(s.medianMm)} · {s.misses||0} MISS</div></div>
+          <div><b>{s.name || players.find((p:any)=>String(p.id)===String(s.playerId))?.name || "Joueur"}</b>{s.teamId?<span style={{fontSize:10,color:ACCENT}}> · Équipe {s.teamId}</span>:null}<div style={{fontSize:10,color:"#8fa0ad",marginTop:2}}>{inputMode==="manual"?`${s.rankedDarts||0} fléchette(s) classée(s) dans le Top 5 · ${s.roundWins||0} manche(s) gagnée(s)`:`meilleure ${fmtMm(s.bestMm)} · moyenne ${fmtMm(s.averageMm)} · médiane ${fmtMm(s.medianMm)} · ${s.misses||0} MISS`}</div></div>
           <b style={{color:ACCENT,fontSize:17}}>{num(s.points)} pts</b>
         </div>)}
         {teamMode?<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}>{Object.entries(teamTotals||{}).sort().map(([id,pts]:any)=><div key={id} style={kpi}><small>ÉQUIPE {id}</small><br/><b style={{fontSize:18,color:ACCENT}}>{num(pts)} pts</b></div>)}</div>:null}
@@ -87,7 +86,7 @@ export default function ClosestCenterHistoryDetail(props:any){
 
       <section style={card}>
         <div style={{fontSize:12,color:ACCENT,fontWeight:1000,marginBottom:6}}>DÉTAIL PAR MANCHE</div>
-        <div style={{display:"grid",gap:7}}>{byRound.map((g:any)=><div key={g.round} style={{padding:9,borderRadius:12,background:"rgba(255,255,255,.025)",border:"1px solid rgba(255,255,255,.07)"}}><b style={{fontSize:11}}>MANCHE {g.round}</b>{g.rows.length?<div style={{display:"grid",gap:4,marginTop:6}}>{g.rows.map((x:any,i:number)=>{const p=players.find((q:any)=>String(q.id)===String(x.playerId)); return <div key={x.id||`${g.round}-${i}`} style={{display:"grid",gridTemplateColumns:"24px 1fr auto",gap:7,fontSize:11}}><b style={{color:i<5?"#ffd85a":"#778996"}}>#{i+1}</b><span>{p?.name||"Joueur"}{x.teamId?` · ${x.teamId}`:""}</span><b>{fmtMm(x.distanceMm)}{inputMode!=="manual"&&Number.isFinite(Number(x.uncertaintyMm))?<small style={{color:"#8294a2"}}> ± {num(x.uncertaintyMm).toFixed(2)}</small>:null}</b></div>})}</div>:<div style={{fontSize:10,color:"#71808d",marginTop:5}}>Aucun impact mesuré enregistré.</div>}</div>)}</div>
+        <div style={{display:"grid",gap:7}}>{byRound.map((g:any)=><div key={g.round} style={{padding:9,borderRadius:12,background:"rgba(255,255,255,.025)",border:"1px solid rgba(255,255,255,.07)"}}><b style={{fontSize:11}}>MANCHE {g.round}</b>{g.rows.length?<div style={{display:"grid",gap:4,marginTop:6}}>{g.rows.map((x:any,i:number)=>{const p=players.find((q:any)=>String(q.id)===String(x.playerId)); return <div key={x.id||`${g.round}-${i}`} style={{display:"grid",gridTemplateColumns:"24px 1fr auto",gap:7,fontSize:11}}><b style={{color:i<5?"#ffd85a":"#778996"}}>#{i+1}</b><span>{p?.name||"Joueur"}{x.teamId?` · ${x.teamId}`:""}</span><b>{inputMode==="manual"?`Rang #${num(x.manualRank ?? (i+1),i+1)}`:<>{fmtMm(x.distanceMm)}{Number.isFinite(Number(x.uncertaintyMm))?<small style={{color:"#8294a2"}}> ± {num(x.uncertaintyMm).toFixed(2)}</small>:null}</>}</b></div>})}</div>:<div style={{fontSize:10,color:"#71808d",marginTop:5}}>Aucun impact mesuré enregistré.</div>}</div>)}</div>
       </section>
 
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><button onClick={()=>go?.("history",{sport:"darts",game:"closest_center",focusMatchId:rec.id||rec.matchId})} style={{minHeight:42,borderRadius:13,border:`1px solid ${ACCENT}`,background:`${ACCENT}13`,color:"#fff",fontWeight:1000}}>HISTORIQUE DARTS</button><button onClick={()=>go?.("closest_center_config")} style={{minHeight:42,borderRadius:13,border:"1px solid rgba(255,255,255,.2)",background:"rgba(255,255,255,.05)",color:"#fff",fontWeight:1000}}>NOUVELLE PARTIE</button></div>

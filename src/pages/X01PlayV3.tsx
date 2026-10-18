@@ -1461,10 +1461,32 @@ function QuickPartyScoreboard({
           const cardBg = cardIsActive
             ? `linear-gradient(145deg, color-mix(in srgb, ${accent} 28%, white 72%) 0%, color-mix(in srgb, ${accent} 46%, white 54%) 100%)`
             : `linear-gradient(145deg, color-mix(in srgb, ${accent} 42%, #0b1017 58%) 0%, color-mix(in srgb, ${accent} 22%, #04070c 78%) 100%)`;
-          const bodyTextColor = cardIsActive ? "#ffffff" : "rgba(255,255,255,.96)";
-          const metaTextColor = cardIsActive ? "rgba(12,20,28,.82)" : "rgba(255,255,255,.72)";
-          const chipBg = cardIsActive ? "rgba(10,18,25,.74)" : "rgba(4,7,10,.82)";
-          const badgeBorder = cardIsActive ? "1px solid rgba(255,255,255,.26)" : "1px solid rgba(255,255,255,.12)";
+
+          // 1v1 : croisement volontaire des palettes.
+          // Le texte d'un panneau reprend la tonalité du FOND de l'autre panneau.
+          // Ainsi, quand le tour change, clair/foncé et couleurs de texte s'inversent ensemble.
+          const oppositeIndex = isDuelLike ? (index === 0 ? 1 : 0) : index;
+          const oppositeAccent = colorFor(oppositeIndex);
+          const oppositeIsActive = !!cards[oppositeIndex]?.active;
+          const oppositePanelTone = oppositeIsActive
+            ? `color-mix(in srgb, ${oppositeAccent} 38%, white 62%)`
+            : `color-mix(in srgb, ${oppositeAccent} 28%, #070b10 72%)`;
+          const bodyTextColor = isDuelLike
+            ? oppositePanelTone
+            : cardIsActive
+            ? "#ffffff"
+            : "rgba(255,255,255,.96)";
+          const metaTextColor = bodyTextColor;
+          const chipBg = isDuelLike
+            ? `color-mix(in srgb, ${bodyTextColor} 14%, transparent 86%)`
+            : cardIsActive
+            ? "rgba(10,18,25,.74)"
+            : "rgba(4,7,10,.82)";
+          const badgeBorder = isDuelLike
+            ? `1px solid color-mix(in srgb, ${bodyTextColor} 34%, transparent 66%)`
+            : cardIsActive
+            ? "1px solid rgba(255,255,255,.26)"
+            : "1px solid rgba(255,255,255,.12)";
           return (
             <div
               key={card.id}
@@ -1546,7 +1568,7 @@ function QuickPartyScoreboard({
                       border: badgeBorder,
                       fontWeight: 1000,
                       fontSize: 12,
-                      color: "#fff",
+                      color: bodyTextColor,
                     }}
                     title={fr ? "Legs gagnés" : "Legs won"}
                   >
@@ -1572,15 +1594,15 @@ function QuickPartyScoreboard({
                 <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "end" }}>
                   <div style={{ display: "grid", gap: 2.5, minWidth: 0, fontSize: isDuelLike ? 10.5 : 8.5, fontWeight: 850 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 7 }}>
-                      <span style={{ color: metaTextColor, fontWeight: 1000 }}>{fr ? "AVG 3" : "3-DART AVG"}</span>
+                      <span style={{ color: metaTextColor, opacity: 0.78, fontWeight: 1000 }}>{fr ? "AVG 3" : "3-DART AVG"}</span>
                       <b>{Number(card.avg3 || 0).toFixed(2)}</b>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 7 }}>
-                      <span style={{ color: metaTextColor, fontWeight: 1000 }}>{fr ? "DERNIÈRE" : "LAST SCORE"}</span>
+                      <span style={{ color: metaTextColor, opacity: 0.78, fontWeight: 1000 }}>{fr ? "DERNIÈRE" : "LAST SCORE"}</span>
                       <b>{card.lastScore == null ? "–" : card.lastScore}</b>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 7 }}>
-                      <span style={{ color: metaTextColor, fontWeight: 1000 }}>{fr ? "FLÉCHETTES" : "DARTS"}</span>
+                      <span style={{ color: metaTextColor, opacity: 0.78, fontWeight: 1000 }}>{fr ? "FLÉCHETTES" : "DARTS"}</span>
                       <b>{card.darts || 0}</b>
                     </div>
                   </div>
@@ -1590,6 +1612,7 @@ function QuickPartyScoreboard({
                       borderRadius: 8,
                       background: chipBg,
                       border: badgeBorder,
+                      color: bodyTextColor,
                       fontSize: 8.5,
                       fontWeight: 1000,
                       whiteSpace: "nowrap",
@@ -2656,12 +2679,14 @@ const isBotTurn = React.useMemo(() => {
   React.useEffect(() => {
     setConfiguredScoreInputMethod(configuredScoreInputBase);
   }, [configuredScoreInputBase, (config as any)?.id]);
-  const voiceScoreEnabled = !isQuickParty && (configuredScoreInputMethod === "voice" || !!(config as any)?.voiceScoreInputEnabled);
+  const voiceScoreEnabled = configuredScoreInputMethod === "voice" || (!!(config as any)?.voiceScoreInputEnabled && !isQuickParty);
   const voiceMatchIsLive = status === "running" || status === "playing";
 
   const speakVoiceScore = React.useCallback(
     (text: string) => {
       try {
+        // PARTIE RAPIDE reste silencieuse : le micro fonctionne, sans voix de synthèse.
+        if (isQuickParty) return;
         // La dictée X01 reste sur le canal historique WebSpeech.
         // On coupe Awena native avant de parler pour éviter deux voix simultanées.
         void awenaVoice.stop();
@@ -2680,7 +2705,7 @@ const isBotTurn = React.useMemo(() => {
         // ignore
       }
     },
-    [lang]
+    [lang, isQuickParty]
   );
 
   const voiceDirectDartRef = React.useRef<((dart: UIDart) => void) | null>(null);
@@ -4718,8 +4743,10 @@ React.useEffect(() => {
   // devient alors un deuxième clavier de score sans casser la saisie téléphone.
   if (isBotTurn) return;
 
-  const canUseRemoteInput = (detail: any) =>
-    scoringSource === "external" || String(detail?.source || "") === "samsung-tv";
+  const canUseRemoteInput = (detail: any) => {
+    const source = String(detail?.source || "");
+    return scoringSource === "external" || source === "samsung-tv" || (isQuickParty && source === "camera-assisted");
+  };
 
   const onDart = (ev: any) => {
     try {
@@ -6226,6 +6253,8 @@ if (false && isLandscapeTablet) {
                       hideTabs={!isQuickParty}
                       switcherMode={isQuickParty ? "inline" : "hidden"}
                       hideQuickVisitHint={isQuickParty}
+                      quickCameraAction={isQuickParty ? (() => setCameraOpen(true)) : null}
+                      quickCameraActive={isQuickParty && cameraOpen}
                     />
                     )}
                   </div>
@@ -6728,6 +6757,8 @@ if (false && isLandscapeTablet) {
               hideTabs={!isQuickParty}
               switcherMode={isQuickParty ? "inline" : "hidden"}
               hideQuickVisitHint={isQuickParty}
+              quickCameraAction={isQuickParty ? (() => setCameraOpen(true)) : null}
+              quickCameraActive={isQuickParty && cameraOpen}
               fitToParent
             />
             )}
@@ -6737,6 +6768,29 @@ if (false && isLandscapeTablet) {
           </div>
         }
       />
+
+      {isQuickParty ? (
+        <CameraAssistedOverlay
+          open={cameraOpen}
+          onClose={() => setCameraOpen(false)}
+          onDart={(d) => {
+            try {
+              if (typeof window === "undefined") return;
+              window.dispatchEvent(
+                new CustomEvent("dc:x01v3:dart", {
+                  detail: {
+                    segment: d.segment,
+                    multiplier: d.multiplier === 0 ? 1 : d.multiplier,
+                    source: "camera-assisted",
+                  },
+                })
+              );
+            } catch (e) {
+              console.warn("[X01PlayV3] quick camera dispatch failed", e);
+            }
+          }}
+        />
+      ) : null}
 
       {pendingOnlineVisitConfirm ? (
         <div
