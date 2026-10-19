@@ -5934,29 +5934,29 @@ try {
       style={{ overflow: "hidden", height: "100dvh", minHeight: 0 }}
     >
       {isQuickParty && isGameplayLandscape ? (
-        <div className="x01ql-play" style={{ ["--x01ql-accent" as any]: quickLandscapeAccent }}>
+        <div className="x01ql-play" data-mss-native-play-layout="1" style={{ ["--x01ql-accent" as any]: quickLandscapeAccent }}>
           <style>{`
-            .x01ql-play{position:relative;width:100%;height:100%;max-height:100%;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:6px;padding:0;background:linear-gradient(180deg,rgba(3,8,13,.92),rgba(2,5,9,.98));color:#fff;box-sizing:border-box;overscroll-behavior:none}
+            .x01ql-play{position:relative!important;width:100%!important;height:100%!important;max-height:100%!important;min-height:0!important;overflow:hidden!important;display:flex!important;flex-direction:column!important;gap:5px!important;padding:5px!important;background:linear-gradient(180deg,rgba(3,8,13,.92),rgba(2,5,9,.98));color:#fff;box-sizing:border-box;overscroll-behavior:none}
             .x01ql-play *{box-sizing:border-box}
-            .x01ql-head{position:relative;flex:0 0 clamp(64px,13vh,92px);min-height:0;overflow:hidden;border-radius:14px;border:1px solid color-mix(in srgb,var(--x01ql-accent) 28%,rgba(255,255,255,.08));background:#070b11;display:flex;align-items:center;justify-content:center}
-            .x01ql-head__bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;display:block;opacity:.88;filter:saturate(.94) brightness(.78)}
+            .x01ql-head{position:relative!important;flex:0 0 clamp(46px,10.5vh,66px)!important;width:100%!important;min-height:0;overflow:hidden;border-radius:14px;border:1px solid color-mix(in srgb,var(--x01ql-accent) 28%,rgba(255,255,255,.08));background:#070b11;display:flex;align-items:center;justify-content:center}
+            .x01ql-head__bg{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;object-fit:cover!important;object-position:center;display:block;opacity:.88;filter:saturate(.94) brightness(.78)}
             .x01ql-head:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(1,5,9,.78),rgba(1,5,9,.18) 28%,rgba(1,5,9,.12) 72%,rgba(1,5,9,.72));pointer-events:none}
             .x01ql-head__left,.x01ql-head__right,.x01ql-head__center{position:relative;z-index:2;display:flex;align-items:center}
             .x01ql-head__left{position:absolute;left:10px;top:50%;transform:translateY(-50%)}
             .x01ql-head__right{position:absolute;right:10px;top:50%;transform:translateY(-50%);gap:7px}
             .x01ql-head__center{justify-content:center;min-width:0;max-width:42%;height:100%}
-            .x01ql-stage{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;overflow:hidden}
-            .x01ql-left{min-width:0;min-height:0;display:grid;grid-template-rows:minmax(0,62%) minmax(0,38%);gap:8px;overflow:hidden}
+            .x01ql-stage{position:relative!important;flex:1 1 auto!important;width:100%!important;height:auto!important;min-height:0!important;display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;grid-template-rows:minmax(0,1fr)!important;gap:6px!important;overflow:hidden!important;grid-column:auto!important;grid-row:auto!important}
+            .x01ql-left{width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;display:grid!important;grid-template-rows:minmax(0,64%) minmax(0,36%)!important;gap:6px!important;overflow:hidden!important;grid-column:auto!important;grid-row:1!important}
             .x01ql-score{min-width:0;min-height:0;overflow:hidden;border-radius:16px;border:1px solid color-mix(in srgb,var(--x01ql-accent) 30%,rgba(255,255,255,.08));background:rgba(5,9,14,.88);padding:5px}
             .x01ql-score>div{height:100%;min-height:0;min-width:0}
             .x01ql-players{min-width:0;min-height:0;overflow:auto;border-radius:15px;border:1px solid rgba(255,255,255,.08);background:linear-gradient(180deg,rgba(13,17,24,.94),rgba(4,7,11,.98));padding:5px;scrollbar-width:thin}
-            .x01ql-input{min-width:0;min-height:0;overflow:hidden;border-radius:16px;border:1px solid color-mix(in srgb,var(--x01ql-accent) 30%,rgba(255,255,255,.08));background:linear-gradient(180deg,rgba(13,17,24,.96),rgba(4,7,11,.99));padding:5px;display:flex}
+            .x01ql-input{width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;max-width:100%!important;max-height:100%!important;overflow:hidden!important;grid-column:auto!important;grid-row:1!important;border-radius:16px;border:1px solid color-mix(in srgb,var(--x01ql-accent) 30%,rgba(255,255,255,.08));background:linear-gradient(180deg,rgba(13,17,24,.96),rgba(4,7,11,.99));padding:5px;display:flex}
             .x01ql-input>[data-mss-score-input-hub="1"]{height:100%;min-height:0;width:100%;overflow:hidden}
             @media (orientation:landscape) and (max-width:980px){
               .x01ql-play{gap:5px}
               .x01ql-head{flex-basis:clamp(56px,16vh,72px);border-radius:12px}
-              .x01ql-stage{grid-template-columns:minmax(0,48%) minmax(0,52%);gap:5px}
-              .x01ql-left{grid-template-rows:minmax(0,64%) minmax(0,36%);gap:5px}
+              .x01ql-stage{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;gap:4px!important}
+              .x01ql-left{grid-template-rows:minmax(0,65%) minmax(0,35%)!important;gap:4px!important}
               .x01ql-score,.x01ql-players,.x01ql-input{border-radius:13px;padding:4px}
               .x01ql-head__left{left:6px}.x01ql-head__right{right:6px;gap:4px}.x01ql-head__center{max-width:38%}
             }

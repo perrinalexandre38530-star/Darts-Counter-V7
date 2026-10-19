@@ -5361,3 +5361,175 @@
     -webkit-line-clamp: 2 !important;
   }
   
+/* ========================================================================
+   V21 — X01 QUICK PARTY landscape lock
+   The generic :has() auto-split must never re-layout the dedicated X01
+   quick-party landscape shell. This shell owns its exact 3-zone contract:
+   full-width header, then 50/50 score+players / input below.
+   ======================================================================== */
+@media (orientation: landscape) {
+  html[data-msc-orientation="landscape"]
+    .dc-themed-route[data-msc-game-screen="play"]
+    > .x01play-container
+    > .x01ql-play {
+    position: relative !important;
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-width: none !important;
+    max-height: 100% !important;
+    margin: 0 !important;
+    padding: 5px !important;
+    gap: 5px !important;
+    overflow: hidden !important;
+    grid-template-columns: none !important;
+    grid-template-rows: none !important;
+    grid-auto-rows: initial !important;
+    align-content: normal !important;
+  }
+
+  html[data-msc-orientation="landscape"]
+    .dc-themed-route[data-msc-game-screen="play"]
+    > .x01play-container
+    > .x01ql-play
+    > .x01ql-head {
+    position: relative !important;
+    flex: 0 0 clamp(46px, 10.5vh, 66px) !important;
+    width: 100% !important;
+    height: auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-width: none !important;
+    max-height: clamp(46px, 10.5vh, 66px) !important;
+    margin: 0 !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
+    align-self: stretch !important;
+    overflow: hidden !important;
+  }
+
+  html[data-msc-orientation="landscape"]
+    .dc-themed-route[data-msc-game-screen="play"]
+    > .x01play-container
+    > .x01ql-play
+    > .x01ql-head
+    > .x01ql-head__bg {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    object-fit: cover !important;
+    object-position: center !important;
+  }
+
+  html[data-msc-orientation="landscape"]
+    .dc-themed-route[data-msc-game-screen="play"]
+    > .x01play-container
+    > .x01ql-play
+    > .x01ql-stage {
+    position: relative !important;
+    flex: 1 1 auto !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    grid-template-rows: minmax(0, 1fr) !important;
+    width: 100% !important;
+    height: auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 6px !important;
+    overflow: hidden !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
+    align-self: stretch !important;
+  }
+
+  html[data-msc-orientation="landscape"] .x01ql-stage > .x01ql-left,
+  html[data-msc-orientation="landscape"] .x01ql-stage > .x01ql-input {
+    position: relative !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    margin: 0 !important;
+    grid-column: auto !important;
+    grid-row: 1 !important;
+    align-self: stretch !important;
+  }
+
+  html[data-msc-orientation="landscape"] .x01ql-stage > .x01ql-left {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: minmax(0, 64%) minmax(0, 36%) !important;
+    gap: 6px !important;
+    overflow: hidden !important;
+  }
+
+  html[data-msc-orientation="landscape"] .x01ql-stage > .x01ql-input {
+    display: flex !important;
+    overflow: hidden !important;
+  }
+
+  html[data-msc-orientation="landscape"] .x01ql-score,
+  html[data-msc-orientation="landscape"] .x01ql-players,
+  html[data-msc-orientation="landscape"] .x01ql-input {
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+  }
+
+  html[data-msc-orientation="landscape"] .x01ql-input > [data-mss-score-input-hub="1"] {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+  }
+}
+
+@media (orientation: landscape) and (max-width: 980px) {
+  html[data-msc-orientation="landscape"]
+    .dc-themed-route[data-msc-game-screen="play"]
+    > .x01play-container
+    > .x01ql-play {
+    padding: 4px !important;
+    gap: 4px !important;
+  }
+
+  html[data-msc-orientation="landscape"]
+    .dc-themed-route[data-msc-game-screen="play"]
+    > .x01play-container
+    > .x01ql-play
+    > .x01ql-head {
+    flex-basis: 44px !important;
+    max-height: 44px !important;
+  }
+
+  html[data-msc-orientation="landscape"]
+    .dc-themed-route[data-msc-game-screen="play"]
+    > .x01play-container
+    > .x01ql-play
+    > .x01ql-stage {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: 4px !important;
+  }
+
+  html[data-msc-orientation="landscape"] .x01ql-stage > .x01ql-left {
+    grid-template-rows: minmax(0, 65%) minmax(0, 35%) !important;
+    gap: 4px !important;
+  }
+}
