@@ -25,7 +25,7 @@ import ptit1JackpotImg from "../../assets/ptit1/ptit1_config_jackpot.webp";
 import ptit1SniperImg from "../../assets/ptit1/ptit1_config_sniper.webp";
 import ptit1HardcoreImg from "../../assets/ptit1/ptit1_config_hardcore.webp";
 
-export type NewDartsModeId = "castle" | "gotcha" | "hare_hounds" | "pendu" | "menteur" | "crados" | "fifty_one_by_five" | "looper" | "call_three" | "steeplechase" | "ptit_hun";
+export type NewDartsModeId = "castle" | "gotcha" | "hare_hounds" | "pendu" | "menteur" | "crados" | "fifty_one_by_five" | "looper" | "call_three" | "steeplechase" | "ptit_hun" | "bss_king";
 type BotLevel = "easy" | "normal" | "hard";
 type ConfigViewMode = "guided" | "complete";
 
@@ -255,6 +255,11 @@ export default function NewDartsModeConfig(props: Props) {
   const [cradosSavedTeamMemberSelections, setCradosSavedTeamMemberSelections] = React.useState<Record<string, string[]>>(() => saved.cradosSavedTeamMemberSelections && typeof saved.cradosSavedTeamMemberSelections === "object" ? saved.cradosSavedTeamMemberSelections : {});
   const [cradosBotTeamsPanelEnabled, setCradosBotTeamsPanelEnabled] = React.useState(saved.cradosBotTeamsPanelEnabled === true);
   const [cradosTeamError, setCradosTeamError] = React.useState("");
+
+  // BSS KING
+  const [bssBadgesToThrone, setBssBadgesToThrone] = React.useState<3 | 5 | 7>(saved.bssBadgesToThrone === 3 || saved.bssBadgesToThrone === 7 ? saved.bssBadgesToThrone : 5);
+  const [bssChaosEnabled, setBssChaosEnabled] = React.useState(saved.bssChaosEnabled !== false);
+  const [bssThroneFinish, setBssThroneFinish] = React.useState<"bull" | "dbull">(saved.bssThroneFinish === "dbull" ? "dbull" : "bull");
 
   // 51 BY 5
   const [fiftyOneTarget, setFiftyOneTarget] = React.useState<31 | 51 | 71 | 101>([31, 71, 101].includes(Number(saved.fiftyOneTarget)) ? Number(saved.fiftyOneTarget) as any : 51);
@@ -583,9 +588,10 @@ export default function NewDartsModeConfig(props: Props) {
       ptitHunRounds, ptitHunStartScore, ptitHunOuterFactor, ptitHunDoubleFactor, ptitHunTripleFactor, ptitHunBull25Factor,
       ptitHunMissMode, ptitHunMissValue, ptitHunDbullEnabled, ptitHunDbullDivider, ptitHunZeroAbsolute, ptitHunDbullsForZero,
       ptitHunTripleNul, ptitHunShield, ptitHunCleanVisits, ptitHunShieldDivider, ptitHunJackpot, ptitHunJackpotRing, ptitHunJackpotZones, ptitHunJackpotRefresh, ptitHunSfxEnabled, ptitHunPresetChoice,
+      bssBadgesToThrone, bssChaosEnabled, bssThroneFinish,
     };
     writeSaved(mode, snapshot);
-  }, [mode, selectedIds, botsOpen, botLevel, randomOrder, scoreInputMethod, seriesWins, castleBricks, castleAssignment, castleAttacks, castleReassignEachLeg, gotchaTarget, gotchaOut, gotchaMaxRounds, gotchaBust, houndStart, hareTargetZone, hareRoleMode, hareDirection, penduPartsToLose, penduChallengeMode, penduTargetFamily, penduExecution, menteurLives, menteurContractDeck, menteurRaiseStep, menteurBullAllowed, cradosDirtLimit, cradosLayersToOwn, cradosBullWash, cradosStealMode, cradosSectorRaceMode, cradosCleanBullSplash, cradosEndOnFirstMaxDirt, cradosSfxEnabled, cradosAwenaEnabled, cradosCoachEnabled, cradosParticipantMode, cradosTeamsSourceMode, cradosTeamAssignments, cradosSelectedTeamIds, cradosSelectedBotTeamIds, cradosSavedTeamMemberSelections, cradosBotTeamsPanelEnabled, fiftyOneTarget, fiftyOneRequireThreeScoringDarts, fiftyOneBust, looperLives, looperStartTarget, looperNumberLoops, looperSetterShield, callThreeRounds, callThreeCaller, callThreeOrderStrict, callThreeBull, steepleDirection, steepleFences, steepleFinishBull, steepleZone, ptitHunRounds, ptitHunStartScore, ptitHunOuterFactor, ptitHunDoubleFactor, ptitHunTripleFactor, ptitHunBull25Factor, ptitHunMissMode, ptitHunMissValue, ptitHunDbullEnabled, ptitHunDbullDivider, ptitHunZeroAbsolute, ptitHunDbullsForZero, ptitHunTripleNul, ptitHunShield, ptitHunCleanVisits, ptitHunShieldDivider, ptitHunJackpot, ptitHunJackpotRing, ptitHunJackpotZones, ptitHunJackpotRefresh, ptitHunSfxEnabled, ptitHunPresetChoice]);
+  }, [mode, selectedIds, botsOpen, botLevel, randomOrder, scoreInputMethod, seriesWins, castleBricks, castleAssignment, castleAttacks, castleReassignEachLeg, gotchaTarget, gotchaOut, gotchaMaxRounds, gotchaBust, houndStart, hareTargetZone, hareRoleMode, hareDirection, penduPartsToLose, penduChallengeMode, penduTargetFamily, penduExecution, menteurLives, menteurContractDeck, menteurRaiseStep, menteurBullAllowed, cradosDirtLimit, cradosLayersToOwn, cradosBullWash, cradosStealMode, cradosSectorRaceMode, cradosCleanBullSplash, cradosEndOnFirstMaxDirt, cradosSfxEnabled, cradosAwenaEnabled, cradosCoachEnabled, cradosParticipantMode, cradosTeamsSourceMode, cradosTeamAssignments, cradosSelectedTeamIds, cradosSelectedBotTeamIds, cradosSavedTeamMemberSelections, cradosBotTeamsPanelEnabled, fiftyOneTarget, fiftyOneRequireThreeScoringDarts, fiftyOneBust, looperLives, looperStartTarget, looperNumberLoops, looperSetterShield, callThreeRounds, callThreeCaller, callThreeOrderStrict, callThreeBull, steepleDirection, steepleFences, steepleFinishBull, steepleZone, ptitHunRounds, ptitHunStartScore, ptitHunOuterFactor, ptitHunDoubleFactor, ptitHunTripleFactor, ptitHunBull25Factor, ptitHunMissMode, ptitHunMissValue, ptitHunDbullEnabled, ptitHunDbullDivider, ptitHunZeroAbsolute, ptitHunDbullsForZero, ptitHunTripleNul, ptitHunShield, ptitHunCleanVisits, ptitHunShieldDivider, ptitHunJackpot, ptitHunJackpotRing, ptitHunJackpotZones, ptitHunJackpotRefresh, ptitHunSfxEnabled, ptitHunPresetChoice, bssBadgesToThrone, bssChaosEnabled, bssThroneFinish]);
 
   function selectView(value: ConfigViewMode) {
     setViewMode(value);
@@ -609,6 +615,7 @@ export default function NewDartsModeConfig(props: Props) {
     if (mode === "fifty_one_by_five") return { target: fiftyOneTarget, divisor: 5, requireThreeScoringDarts: fiftyOneRequireThreeScoringDarts, bustRule: fiftyOneBust, exactFinish: true };
     if (mode === "looper") return { lives: looperLives, startTarget: looperStartTarget, exactSegment: true, numberLoopsEnabled: looperNumberLoops, setterShield: looperSetterShield };
     if (mode === "call_three") return { rounds: callThreeRounds, callerMode: callThreeCaller, orderedTargets: callThreeOrderStrict, bullAllowed: callThreeBull, multiplierScoring: true };
+    if (mode === "bss_king") return { badgesToThrone: bssBadgesToThrone, chaosEnabled: bssChaosEnabled, throneFinish: bssThroneFinish };
     if (mode === "ptit_hun") return {
       rounds: ptitHunRounds, startScore: ptitHunStartScore, outerSingleFactor: ptitHunOuterFactor,
       doubleFactor: ptitHunDoubleFactor, tripleFactor: ptitHunTripleFactor, bull25Factor: ptitHunBull25Factor,
@@ -907,6 +914,16 @@ export default function NewDartsModeConfig(props: Props) {
     </div>
   </section> : null;
 
+  const bssBlock = <section style={selectorCard}>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Règles BSS KING</div>
+    <div style={panel}>
+      <OptionRow label="Écussons avant le trône"><OptionSelect value={bssBadgesToThrone} options={[{ value: 3, label: "3 — partie rapide" }, { value: 5, label: "5 — classique" }, { value: 7, label: "7 — grande soirée" }]} onChange={(v: any) => setBssBadgesToThrone(Number(v) === 3 ? 3 : Number(v) === 7 ? 7 : 5)} /></OptionRow>
+      <OptionRow label="Défis BSS / chaos"><OptionToggle value={bssChaosEnabled} onChange={setBssChaosEnabled} /></OptionRow>
+      <OptionRow label="Couronnement"><OptionSelect value={bssThroneFinish} options={[{ value: "bull", label: "BULL ou DBULL — recommandé" }, { value: "dbull", label: "DBULL uniquement — hardcore" }]} onChange={setBssThroneFinish} /></OptionRow>
+    </div>
+    <div style={{ marginTop: 9, color: soft, fontSize: 10.7, lineHeight: 1.45 }}>Remporte les tournées pour gagner des écussons BSS. Une fois le quota atteint, tu passes en phase TRÔNE : touche le Bull demandé pour devenir BSS KING.</div>
+  </section>;
+
   const fiftyOneBlock = <section style={selectorCard}>
     <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Règles 51 BY 5</div>
     <div style={panel}>
@@ -1079,6 +1096,7 @@ export default function NewDartsModeConfig(props: Props) {
       {mode === "pendu" ? <><SummaryLine label="Élimination" value={`${penduPartsToLose} erreurs`} /><SummaryLine label="Gameplay" value={penduChallengeMode === "caller" ? "Bourreau / copie" : "Rondes aléatoires"} /><SummaryLine label="Objectifs" value={penduTargetFamily === "segments" ? "Cible & zones" : penduTargetFamily === "scores" ? "Scores" : "Arcade complet"} /></> : null}
       {mode === "menteur" ? <><SummaryLine label="Vies" value={`${menteurLives}`} /><SummaryLine label="Contrats" value={menteurContractDeck === "score" ? "Scores" : menteurContractDeck === "mixed" ? "Mixte" : "Avancé"} /></> : null}
       {mode === "crados" ? <><SummaryLine label="Type de partie" value={cradosTeamMode ? "Équipes" : "Joueurs"} />{cradosTeamMode ? <SummaryLine label="Composition" value={cradosTeamsSourceMode === "saved" ? "Équipes créées / familles IA" : cradosTeamsSourceMode === "auto" ? "Brassage automatique" : "Manuelle"} /> : null}<SummaryLine label="Crasse max" value={`${cradosDirtLimit}`} /><SummaryLine label="Contamination" value={`${cradosLayersToOwn} couche${cradosLayersToOwn > 1 ? "s" : ""} / secteur`} /><SummaryLine label="Secteur vierge" value={cradosSectorRaceMode === "race" ? "Course — toutes les touches comptent" : "Prise en main — le dernier efface l’autre"} /><SummaryLine label="Bull spécial" value={cradosCleanBullSplash ? "Bull propre contagieux" : "Standard"} /><SummaryLine label="Fin de manche" value={cradosEndOnFirstMaxDirt ? "Première jauge pleine" : "Dernier camp encore propre"} /><SummaryLine label="Bruitages" value={cradosSfxEnabled ? "ON" : "OFF"} /><SummaryLine label="Awena" value={cradosAwenaEnabled ? "ON" : "OFF"} /><SummaryLine label="Conseil cible" value={cradosCoachEnabled ? "ON" : "OFF"} /></> : null}
+      {mode === "bss_king" ? <><SummaryLine label="Trône" value={`${bssBadgesToThrone} écussons`} /><SummaryLine label="Défis" value={bssChaosEnabled ? "BSS Chaos ON" : "Classiques uniquement"} /><SummaryLine label="Couronnement" value={bssThroneFinish === "dbull" ? "DBULL uniquement" : "BULL / DBULL"} /></> : null}
       {mode === "fifty_one_by_five" ? <><SummaryLine label="Objectif" value={`${fiftyOneTarget}`} /><SummaryLine label="Calcul" value="Total ÷ 5 si divisible" /></> : null}
       {mode === "looper" ? <><SummaryLine label="Vies" value={`${looperLives}`} /><SummaryLine label="Cible" value="Segment exact" /></> : null}
       {mode === "call_three" ? <><SummaryLine label="Rounds" value={`${callThreeRounds}`} /><SummaryLine label="Appel" value={callThreeCaller === "next" ? "Joueur suivant" : "Aléatoire"} /></> : null}
@@ -1094,6 +1112,7 @@ export default function NewDartsModeConfig(props: Props) {
     : mode === "pendu" ? penduBlock
     : mode === "menteur" ? menteurBlock
     : mode === "crados" ? cradosBlock
+    : mode === "bss_king" ? bssBlock
     : mode === "fifty_one_by_five" ? fiftyOneBlock
     : mode === "looper" ? looperBlock
     : mode === "call_three" ? callThreeBlock

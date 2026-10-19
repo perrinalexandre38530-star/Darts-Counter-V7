@@ -54,6 +54,7 @@ export type DartsGameTab =
   | "pendu_config"
   | "menteur_config"
   | "crados_config"
+  | "bss_king_config"
   | "fifty_one_by_five_config"
   | "looper_config"
   | "call_three_config"
@@ -839,6 +840,24 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     infoTitle: "CRADOS",
     infoBody:
       "Les secteurs de la cible se salissent progressivement à ta couleur. Marcher dans la crasse des autres te contamine, tandis que le Bull peut te nettoyer. Le dernier joueur ou la dernière équipe non éliminé remporte la manche ; le premier camp qui atteint le nombre de manches configuré gagne le match.",
+  },
+  {
+    id: "bss_king",
+    label: "BSS KING",
+    category: "fun",
+    subCategory: "party",
+    entry: "games",
+    tab: "bss_king_config",
+    popularityRank: 48.04,
+    ready: true,
+    isNew: true,
+    maxPlayers: 10,
+    supportsTeams: false,
+    supportsBots: true,
+    statsKey: "game:bss_king",
+    infoTitle: "BSS KING",
+    infoBody:
+      "Univers original inspiré de la bande des BSS — les Boit-Sans-Soif. Chaque tournée propose un défi de fléchettes. Le meilleur gagne un écusson BSS ; une fois le quota atteint, il faut réussir le Bull final pour prendre le trône et devenir BSS KING.",
   },
   {
     id: "castle",

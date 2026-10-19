@@ -427,6 +427,8 @@ const MenteurConfig = React.lazy(() => import("./pages/MenteurConfig"));
 const MenteurPlay = React.lazy(() => import("./pages/MenteurPlay"));
 const CradosConfig = React.lazy(() => import("./pages/CradosConfig"));
 const CradosPlay = React.lazy(() => import("./pages/CradosPlay"));
+const BssKingConfig = React.lazy(() => import("./pages/BssKingConfig"));
+const BssKingPlay = React.lazy(() => import("./pages/BssKingPlay"));
 const FiftyOneByFiveConfig = React.lazy(() => import("./pages/FiftyOneByFiveConfig"));
 const FiftyOneByFivePlay = React.lazy(() => import("./pages/FiftyOneByFivePlay"));
 const LooperConfig = React.lazy(() => import("./pages/LooperConfig"));
@@ -1378,6 +1380,8 @@ type Tab =
   | "menteur_play"
   | "crados_config"
   | "crados_play"
+  | "bss_king_config"
+  | "bss_king_play"
   | "fifty_one_by_five_config"
   | "fifty_one_by_five_play"
   | "looper_config"
@@ -7290,6 +7294,23 @@ case "babyfoot_team_edit":
         );
         break;
 
+      case "bss_king_config":
+        page = <BssKingConfig store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+      case "bss_king_play":
+        page = (
+          <BssKingPlay
+            store={store}
+            go={go}
+            setTab={go}
+            params={routeParams}
+            onFinish={(m: any, options?: { navigate?: boolean }) =>
+              pushHistory(enrichOnlineMatchForHistory(m, "bss_king", routeParams), options)
+            }
+          />
+        );
+        break;
+
       case "fifty_one_by_five_config":
         page = <FiftyOneByFiveConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
@@ -7487,6 +7508,7 @@ case "babyfoot_team_edit":
     "gotcha_play",
     "hare_hounds_play",
     "crados_play",
+    "bss_king_play",
     "challenge_play",
     "challenge_leaderboard",
     "fifty_one_by_five_play",
@@ -7572,7 +7594,7 @@ case "babyfoot_team_edit":
     "loterie_config", "happy_mille_config", "rugby_config", "departements_config",
     "darts_firefighter_config", "darts_poker_config", "cargo_config",
     "ocean_control_config", "castle_config", "gotcha_config", "hare_hounds_config",
-    "pendu_config", "menteur_config", "crados_config", "fifty_one_by_five_config",
+    "pendu_config", "menteur_config", "crados_config", "bss_king_config", "fifty_one_by_five_config",
     "looper_config", "call_three_config", "steeplechase_config", "ptit_hun_config", "closest_center_config", "enculette_config",
     "darts_mode_config", "wave61_config",
     // Ces routes historiques sont elles aussi des écrans CONFIG.
@@ -7592,7 +7614,7 @@ case "babyfoot_team_edit":
   const NATIVE_GUIDED_DARTS_CONFIG_TABS = new Set<string>([
     "x01_config_v3", "gros_6_config", "darts_firefighter_config", "darts_poker_config",
     "cargo_config", "ocean_control_config", "castle_config", "gotcha_config",
-    "hare_hounds_config", "pendu_config", "menteur_config", "crados_config",
+    "hare_hounds_config", "pendu_config", "menteur_config", "crados_config", "bss_king_config",
     "fifty_one_by_five_config", "looper_config", "call_three_config", "steeplechase_config", "ptit_hun_config", "closest_center_config",
     "halve_it_config", "prisoner_config", "super_bull_config", "shooter_config", "darts_racer_config",
     "bobs_27_config", "bowling_config", "baseball_config", "attrape_moi_config",
