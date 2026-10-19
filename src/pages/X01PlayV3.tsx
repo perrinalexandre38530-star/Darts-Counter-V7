@@ -1352,6 +1352,7 @@ function QuickPartyScoreboard({
   lang,
   showSeriesScore = false,
   seriesUnit = "sets",
+  compactLandscape = false,
 }: any) {
   const hasTeams = Array.isArray(teams) && teams.length > 0;
   const fr = String(lang || "fr").toLowerCase() === "fr";
@@ -1451,11 +1452,11 @@ function QuickPartyScoreboard({
     <div style={{ display: "grid", gap: 8 }}>
       <div
         style={{
-          minHeight: 24,
+          minHeight: compactLandscape ? 18 : 24,
           display: "grid",
           placeItems: "center",
           textAlign: "center",
-          fontSize: 14,
+          fontSize: compactLandscape ? 10.5 : 14,
           fontWeight: 1000,
           letterSpacing: 0.35,
           color: activeCard ? activeAccent : "#fff",
@@ -1509,7 +1510,7 @@ function QuickPartyScoreboard({
               style={{
                 position: "relative",
                 minWidth: 0,
-                minHeight: isDuelLike ? 184 : 154,
+                minHeight: compactLandscape ? 0 : (isDuelLike ? 184 : 154),
                 borderRadius: isDuelLike ? 0 : 18,
                 border: cardIsActive
                   ? `2px solid color-mix(in srgb, ${accent} 78%, white 22%)`
@@ -1518,7 +1519,7 @@ function QuickPartyScoreboard({
                 boxShadow: cardIsActive
                   ? `inset 0 0 0 1px rgba(255,255,255,.18), 0 0 26px color-mix(in srgb, ${accent} 38%, transparent 62%)`
                   : "inset 0 0 0 1px rgba(255,255,255,.055)",
-                padding: isDuelLike ? "13px 13px 12px" : "10px 9px",
+                padding: compactLandscape ? "7px 7px 6px" : (isDuelLike ? "13px 13px 12px" : "10px 9px"),
                 color: bodyTextColor,
                 overflow: "hidden",
                 transition: "background .2s ease, border-color .2s ease, box-shadow .2s ease",
@@ -1549,9 +1550,9 @@ function QuickPartyScoreboard({
                   />
                   <div
                     style={{
-                      width: 34,
-                      height: 34,
-                      flex: "0 0 34px",
+                      width: compactLandscape ? 27 : 34,
+                      height: compactLandscape ? 27 : 34,
+                      flex: compactLandscape ? "0 0 27px" : "0 0 34px",
                       borderRadius: "50%",
                       display: "grid",
                       placeItems: "center",
@@ -1571,12 +1572,12 @@ function QuickPartyScoreboard({
                   </div>
                   <div style={{ minWidth: 0, flex: 1 }}>
                     {String(card.name || "").trim().toUpperCase() !== String(card.slotLabel || "").trim().toUpperCase() ? (
-                      <div style={{ fontSize: isDuelLike ? 14 : 11, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <div style={{ fontSize: compactLandscape ? 10.5 : (isDuelLike ? 14 : 11), fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {card.name}
                       </div>
                     ) : null}
                     {card.detail ? (
-                      <div style={{ marginTop: 1, fontSize: 8, opacity: 0.68, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{card.detail}</div>
+                      <div style={{ marginTop: 1, fontSize: compactLandscape ? 7 : 8, opacity: 0.68, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{card.detail}</div>
                     ) : null}
                   </div>
                 </div>
@@ -1584,7 +1585,7 @@ function QuickPartyScoreboard({
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 0 }}>
                   <div
                     style={{
-                      fontSize: isDuelLike ? "clamp(58px, 15vw, 94px)" : "clamp(36px, 8vw, 62px)",
+                      fontSize: compactLandscape ? "clamp(36px, 6.4vw, 58px)" : (isDuelLike ? "clamp(58px, 15vw, 94px)" : "clamp(36px, 8vw, 62px)"),
                       lineHeight: 0.9,
                       fontWeight: 1000,
                       letterSpacing: -3,
@@ -1597,7 +1598,7 @@ function QuickPartyScoreboard({
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10, alignItems: "end" }}>
-                  <div style={{ display: "grid", gap: 2.5, minWidth: 0, fontSize: isDuelLike ? 10.5 : 8.5, fontWeight: 850 }}>
+                  <div style={{ display: "grid", gap: compactLandscape ? 1.5 : 2.5, minWidth: 0, fontSize: compactLandscape ? 7.8 : (isDuelLike ? 10.5 : 8.5), fontWeight: 850 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 7 }}>
                       <span style={{ color: metaTextColor, opacity: 0.78, fontWeight: 1000 }}>{fr ? "AVG 3" : "3-DART AVG"}</span>
                       <b>{Number(card.avg3 || 0).toFixed(2)}</b>
@@ -5935,36 +5936,34 @@ try {
       {isQuickParty && isGameplayLandscape ? (
         <div className="x01ql-play" style={{ ["--x01ql-accent" as any]: quickLandscapeAccent }}>
           <style>{`
-            .x01ql-play{position:fixed;inset:0;width:100vw;height:100dvh;max-height:100dvh;overflow:hidden;display:flex;flex-direction:column;gap:4px;padding:4px;background:linear-gradient(180deg,rgba(3,8,13,.92),rgba(2,5,9,.98));color:#fff;box-sizing:border-box;overscroll-behavior:none;z-index:20}
+            .x01ql-play{position:relative;width:100%;height:100%;max-height:100%;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:6px;padding:0;background:linear-gradient(180deg,rgba(3,8,13,.92),rgba(2,5,9,.98));color:#fff;box-sizing:border-box;overscroll-behavior:none}
             .x01ql-play *{box-sizing:border-box}
-            .x01ql-head{position:relative;flex:0 0 46px;min-height:0;overflow:hidden;border-radius:13px;border:1px solid color-mix(in srgb,var(--x01ql-accent) 28%,rgba(255,255,255,.08));background:#070b11;display:flex;align-items:center;justify-content:center}
-            .x01ql-head:before{content:"";position:absolute;inset:0;background-image:linear-gradient(90deg,rgba(2,6,10,.88),rgba(2,6,10,.36) 34%,rgba(2,6,10,.36) 66%,rgba(2,6,10,.88)),url(${tickerX01});background-size:cover;background-position:center;opacity:.52}
+            .x01ql-head{position:relative;flex:0 0 clamp(64px,13vh,92px);min-height:0;overflow:hidden;border-radius:14px;border:1px solid color-mix(in srgb,var(--x01ql-accent) 28%,rgba(255,255,255,.08));background:#070b11;display:flex;align-items:center;justify-content:center}
+            .x01ql-head__bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;display:block;opacity:.88;filter:saturate(.94) brightness(.78)}
+            .x01ql-head:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(1,5,9,.78),rgba(1,5,9,.18) 28%,rgba(1,5,9,.12) 72%,rgba(1,5,9,.72));pointer-events:none}
             .x01ql-head__left,.x01ql-head__right,.x01ql-head__center{position:relative;z-index:2;display:flex;align-items:center}
-            .x01ql-head__left{position:absolute;left:7px;top:50%;transform:translateY(-50%)}
-            .x01ql-head__right{position:absolute;right:7px;top:50%;transform:translateY(-50%);gap:7px}
-            .x01ql-head__center{justify-content:center;min-width:0;max-width:54%;height:100%}
-            .x01ql-head__ticker{display:block;width:auto;height:100%;max-width:100%;object-fit:contain}
-            .x01ql-stage{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:minmax(300px,38%) minmax(0,1fr);gap:6px;overflow:hidden}
-            .x01ql-left{min-height:0;display:grid;grid-template-rows:minmax(184px,.92fr) minmax(0,1.08fr);gap:6px;overflow:hidden}
-            .x01ql-score{min-height:0;overflow:hidden;border-radius:16px;border:1px solid color-mix(in srgb,var(--x01ql-accent) 30%,rgba(255,255,255,.08));background:rgba(5,9,14,.88);padding:5px}
-            .x01ql-score>div{height:100%;min-height:0}
-            .x01ql-players{min-height:0;overflow:auto;border-radius:15px;border:1px solid rgba(255,255,255,.08);background:linear-gradient(180deg,rgba(13,17,24,.94),rgba(4,7,11,.98));padding:5px;scrollbar-width:thin}
-            .x01ql-input{min-height:0;overflow:hidden;border-radius:16px;border:1px solid color-mix(in srgb,var(--x01ql-accent) 30%,rgba(255,255,255,.08));background:linear-gradient(180deg,rgba(13,17,24,.96),rgba(4,7,11,.99));padding:5px;display:flex}
+            .x01ql-head__left{position:absolute;left:10px;top:50%;transform:translateY(-50%)}
+            .x01ql-head__right{position:absolute;right:10px;top:50%;transform:translateY(-50%);gap:7px}
+            .x01ql-head__center{justify-content:center;min-width:0;max-width:42%;height:100%}
+            .x01ql-stage{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;overflow:hidden}
+            .x01ql-left{min-width:0;min-height:0;display:grid;grid-template-rows:minmax(0,62%) minmax(0,38%);gap:8px;overflow:hidden}
+            .x01ql-score{min-width:0;min-height:0;overflow:hidden;border-radius:16px;border:1px solid color-mix(in srgb,var(--x01ql-accent) 30%,rgba(255,255,255,.08));background:rgba(5,9,14,.88);padding:5px}
+            .x01ql-score>div{height:100%;min-height:0;min-width:0}
+            .x01ql-players{min-width:0;min-height:0;overflow:auto;border-radius:15px;border:1px solid rgba(255,255,255,.08);background:linear-gradient(180deg,rgba(13,17,24,.94),rgba(4,7,11,.98));padding:5px;scrollbar-width:thin}
+            .x01ql-input{min-width:0;min-height:0;overflow:hidden;border-radius:16px;border:1px solid color-mix(in srgb,var(--x01ql-accent) 30%,rgba(255,255,255,.08));background:linear-gradient(180deg,rgba(13,17,24,.96),rgba(4,7,11,.99));padding:5px;display:flex}
             .x01ql-input>[data-mss-score-input-hub="1"]{height:100%;min-height:0;width:100%;overflow:hidden}
             @media (orientation:landscape) and (max-width:980px){
-              .x01ql-play{gap:4px;padding:4px}
-              .x01ql-head{flex-basis:42px}
-              .x01ql-stage{grid-template-columns:minmax(232px,41%) minmax(0,1fr);gap:5px}
-              .x01ql-left{grid-template-rows:minmax(160px,.92fr) minmax(0,1.08fr);gap:5px}
+              .x01ql-play{gap:5px}
+              .x01ql-head{flex-basis:clamp(56px,16vh,72px);border-radius:12px}
+              .x01ql-stage{grid-template-columns:minmax(0,48%) minmax(0,52%);gap:5px}
+              .x01ql-left{grid-template-rows:minmax(0,64%) minmax(0,36%);gap:5px}
               .x01ql-score,.x01ql-players,.x01ql-input{border-radius:13px;padding:4px}
-              .x01ql-head__right{gap:4px}
-            }
-            @media (orientation:landscape) and (min-width:1000px){
-              .x01ql-play{padding-left:80px}
+              .x01ql-head__left{left:6px}.x01ql-head__right{right:6px;gap:4px}.x01ql-head__center{max-width:38%}
             }
           `}</style>
 
           <header className="x01ql-head">
+            <img className="x01ql-head__bg" src={tickerX01} alt="" aria-hidden draggable={false} />
             <div className="x01ql-head__left">
               <BackDot onClick={handleQuit} size={34} color={quickLandscapeAccent} glow={`${quickLandscapeAccent}88`} />
             </div>
@@ -5992,8 +5991,8 @@ try {
                     leftLegs={(state as any).legsWon?.[players[0].id] ?? 0}
                     rightLegs={(state as any).legsWon?.[players[1].id] ?? 0}
                   />
-                ) : <img className="x01ql-head__ticker" src={tickerX01} alt="X01" draggable={false} />
-              ) : <img className="x01ql-head__ticker" src={tickerX01} alt="X01" draggable={false} />}
+                ) : null
+              ) : null}
             </div>
             <div className="x01ql-head__right">
               {useSetsUi ? (
@@ -6031,6 +6030,7 @@ try {
                   lang={lang}
                   showSeriesScore={false}
                   seriesUnit={matchFormatUnitForUi}
+                  compactLandscape
                 />
               </div>
               <div className="x01ql-players">{quickLandscapePlayers}</div>
