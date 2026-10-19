@@ -5930,6 +5930,7 @@ try {
   return (
     <div
       className={`x01play-container theme-${theme.id}`}
+      data-mss-native-play-layout={isQuickParty && isGameplayLandscape ? "1" : undefined}
       // 100dvh = évite l'effet "aplati" quand la barre navigateur mobile change la hauteur utile.
       style={{ overflow: "hidden", height: "100dvh", minHeight: 0 }}
     >

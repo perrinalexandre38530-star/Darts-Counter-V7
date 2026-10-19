@@ -1042,43 +1042,71 @@ export default function PtitHunPlay(props: any) {
       .ptit1-visit-card__copy small,.ptit1-visit-card__score small{display:block;color:#8f98aa;font-size:6.7px;font-weight:1000;letter-spacing:.65px}.ptit1-visit-card__copy>b{display:block;margin-top:2px;color:#fff;font-size:12px;text-transform:uppercase}.ptit1-visit-card__darts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;margin-top:5px}.ptit1-visit-card__darts span{height:28px;border-radius:7px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);display:grid;grid-template-rows:auto auto;place-items:center;align-content:center;font-size:7px;color:#dfe7f4;line-height:1}.ptit1-visit-card__darts span i{font-style:normal;margin-top:2px;font-size:6px;color:var(--ptit-accent);font-weight:1000}.ptit1-visit-card__score{text-align:right}.ptit1-visit-card__score b{display:block;color:var(--ptit-accent);font-size:23px;line-height:1;font-weight:1100}.ptit1-visit-card__score span{display:block;margin-top:4px;color:#fff;font-size:8px;font-weight:1000}
       @keyframes ptit1CardIn{from{opacity:0;transform:translate(-50%,-8px) scale(.96)}to{opacity:1;transform:translate(-50%,0) scale(1)}}@keyframes ptit1VisitPop{from{opacity:0;transform:translate(-50%,-50%) scale(.86)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
       @media (orientation:landscape){
-        .ptit1-play{gap:5px;padding:5px}
-        .ptit1-head{flex-basis:46px;border-radius:12px}
-        .ptit1-head>img{width:auto;height:100%;max-width:none;object-fit:contain;object-position:center center;margin:0 auto}
-        .ptit1-stage{display:grid;grid-template-columns:minmax(300px,38%) minmax(0,1fr);gap:6px}
-        .ptit1-left{height:100%;display:grid;grid-template-rows:minmax(108px,1.45fr) 50px 42px 46px 36px;gap:5px;overflow:hidden}
+        .ptit1-play{gap:clamp(3px,.65vh,6px);padding:clamp(3px,.65vh,6px)}
+        .ptit1-head{flex:0 0 clamp(38px,7.8vh,58px);border-radius:12px}
+        .ptit1-head>img{width:auto;height:100%;max-width:min(100%,calc(100vh * 3.5));object-fit:contain;object-position:center center;margin:0 auto}
+        .ptit1-stage{height:100%;min-height:0;display:grid;grid-template-columns:minmax(270px,38%) minmax(0,1fr);gap:clamp(4px,.7vw,7px);overflow:hidden}
+        .ptit1-left{height:100%;min-height:0;display:grid;grid-template-rows:minmax(92px,1fr) clamp(40px,8.5vh,62px) clamp(34px,7.5vh,48px) clamp(38px,8vh,54px) clamp(30px,6.4vh,42px);gap:clamp(3px,.65vh,6px);overflow:hidden}
         .ptit1-active{height:100%;min-height:0;flex:auto}
-        .ptit1-active__grid{grid-template-columns:minmax(0,1fr) 118px;padding:6px}.ptit1-radar-stack{width:118px;min-width:118px}
+        .ptit1-active__grid{grid-template-columns:minmax(0,1fr) clamp(92px,14vw,126px);padding:clamp(4px,.75vh,7px)}
+        .ptit1-radar-stack{width:clamp(92px,14vw,126px);min-width:clamp(92px,14vw,126px)}
         .ptit1-active__mission{gap:7px}
-        .ptit1-active__copy b{font-size:29px;margin-top:3px}.ptit1-active__copy span{margin-top:3px}
-        .ptit1-kpis,.ptit1-tools,.ptit1-visit{height:100%;min-height:0;flex:auto}
-        .ptit1-tools{grid-template-columns:38px minmax(0,1fr) 38px 38px}
-        .ptit1-tool{height:100%}
-        .ptit1-input{height:100%}
+        .ptit1-active__copy b{font-size:clamp(22px,5.5vh,34px);margin-top:3px}.ptit1-active__copy span{margin-top:3px}
+        .ptit1-bonus-strip,.ptit1-kpis,.ptit1-tools,.ptit1-visit{height:100%;min-height:0;max-height:100%;flex:auto}
+        .ptit1-tools{grid-template-columns:clamp(32px,6vh,42px) minmax(0,1fr) clamp(32px,6vh,42px) clamp(32px,6vh,42px)}
+        .ptit1-tool{height:100%;min-height:0}
+        .ptit1-input{height:100%;min-height:0;max-height:100%;overflow:hidden}
+        .ptit1-scorehub{height:100%;min-height:0;max-height:100%;overflow:hidden}
       }
       @media (orientation:landscape) and (max-width:980px){
-        .ptit1-play{gap:4px;padding:4px}
-        .ptit1-head{flex-basis:42px}
-        .ptit1-stage{grid-template-columns:minmax(232px,41%) minmax(0,1fr);gap:5px}
-        .ptit1-left{grid-template-rows:minmax(96px,1.35fr) 46px 38px 42px 32px;gap:4px}
-        .ptit1-active__grid{grid-template-columns:minmax(0,1fr) 102px;padding:5px}
-        .ptit1-radar-stack{width:102px;min-width:102px;grid-template-rows:10px minmax(0,1fr) 22px}
-        .ptit1-radar-label{font-size:6.4px;line-height:10px}
-        .ptit1-radar-button{border-radius:11px;padding:2px}
-        .ptit1-jackpot-row span,.ptit1-jackpot-row b{height:20px;font-size:6.3px}
-        .ptit1-bonus-strip{flex-basis:46px;gap:4px}
-        .ptit1-kpis{padding:4px;gap:3px}
-        .ptit1-tools{grid-template-columns:34px minmax(0,1fr) 34px 34px;gap:4px}
-        .ptit1-tool{font-size:14px;border-radius:11px}
-        .ptit1-players{padding:3px 6px}
-        .ptit1-scorehub{padding:5px;border-radius:14px}
-        .ptit1-identity-content.is-solo{padding-left:58px}
-        .ptit1-identity-content.is-team{grid-template-columns:36px minmax(0,1fr);gap:6px;padding-left:6px}
-        .ptit1-player-name{font-size:8px}
-        .ptit1-score-value{font-size:clamp(26px,6.8vw,38px)}
-        .ptit1-turn-row{margin-top:4px}
-        .ptit1-turn-row span,.ptit1-turn-row b{height:18px;min-width:38px;font-size:6.2px}
-        .ptit1-sound-toggle{width:32px;height:32px;font-size:14px}
+        .ptit1-stage{grid-template-columns:minmax(220px,41%) minmax(0,1fr);gap:4px}
+        .ptit1-active__grid{grid-template-columns:minmax(0,1fr) clamp(82px,16vw,104px);padding:4px}
+        .ptit1-radar-stack{width:clamp(82px,16vw,104px);min-width:clamp(82px,16vw,104px);grid-template-rows:10px minmax(0,1fr) 20px}
+        .ptit1-radar-label{font-size:6.2px;line-height:10px}
+        .ptit1-radar-button{border-radius:10px;padding:2px}
+        .ptit1-jackpot-row span,.ptit1-jackpot-row b{height:18px;font-size:6px}
+        .ptit1-kpis{padding:3px;gap:3px}
+        .ptit1-tools{gap:3px}
+        .ptit1-tool{font-size:13px;border-radius:10px}
+        .ptit1-players{padding:2px 5px}
+        .ptit1-scorehub{padding:4px;border-radius:12px}
+        .ptit1-identity-content.is-solo{padding-left:52px}
+        .ptit1-identity-content.is-team{grid-template-columns:34px minmax(0,1fr);gap:5px;padding-left:5px}
+        .ptit1-player-name{font-size:7.6px}
+        .ptit1-score-value{font-size:clamp(24px,7vh,36px)}
+        .ptit1-turn-row{margin-top:3px}
+        .ptit1-turn-row span,.ptit1-turn-row b{height:17px;min-width:34px;font-size:5.9px}
+        .ptit1-sound-toggle{width:30px;height:30px;font-size:13px}
+      }
+      @media (orientation:landscape) and (max-height:520px){
+        .ptit1-play{gap:3px;padding:3px}
+        .ptit1-head{flex-basis:36px}
+        .ptit1-stage{gap:3px}
+        .ptit1-left{grid-template-rows:minmax(78px,1fr) 38px 32px 36px 28px;gap:3px}
+        .ptit1-active__grid{grid-template-columns:minmax(0,1fr) 88px;padding:3px}
+        .ptit1-radar-stack{width:88px;min-width:88px;grid-template-rows:9px minmax(0,1fr) 18px;gap:2px}
+        .ptit1-radar-label{font-size:5.8px;line-height:9px}
+        .ptit1-jackpot-row span,.ptit1-jackpot-row b{height:17px;font-size:5.5px}
+        .ptit1-kpis{padding:2px;gap:2px}
+        .ptit1-tools{grid-template-columns:30px minmax(0,1fr) 30px 30px;gap:3px}
+        .ptit1-scorehub{padding:3px;border-radius:11px}
+        .ptit1-score-value{font-size:clamp(22px,7.2vh,31px)}
+        .ptit1-turn-row span,.ptit1-turn-row b{height:16px;min-width:31px;font-size:5.6px}
+      }
+      @media (orientation:landscape) and (max-height:420px){
+        .ptit1-head{flex-basis:32px}
+        .ptit1-left{grid-template-rows:minmax(68px,1fr) 34px 29px 32px 26px;gap:2px}
+        .ptit1-stage{grid-template-columns:minmax(205px,40%) minmax(0,1fr)}
+        .ptit1-active__grid{grid-template-columns:minmax(0,1fr) 78px;padding:2px}
+        .ptit1-radar-stack{width:78px;min-width:78px;grid-template-rows:8px minmax(0,1fr) 16px;gap:1px}
+        .ptit1-radar-label{font-size:5.3px;line-height:8px}
+        .ptit1-jackpot-row span,.ptit1-jackpot-row b{height:15px;font-size:5px;border-radius:6px}
+        .ptit1-tools{grid-template-columns:27px minmax(0,1fr) 27px 27px;gap:2px}
+        .ptit1-tool{border-radius:8px}
+        .ptit1-scorehub{padding:2px;border-radius:9px}
+        .ptit1-identity-content.is-solo{padding-left:44px}
+        .ptit1-player-name{font-size:7px}
+        .ptit1-score-value{font-size:clamp(20px,7vh,28px)}
       }
       @media (max-height:700px) and (orientation:portrait){
         .ptit1-play{gap:3px;padding:3px}.ptit1-head{flex-basis:46px}.ptit1-active{flex-basis:108px}.ptit1-bonus-strip{flex-basis:44px}.ptit1-kpis{flex-basis:40px}.ptit1-tools{flex-basis:42px}.ptit1-tool{height:42px}.ptit1-visit{flex-basis:32px}

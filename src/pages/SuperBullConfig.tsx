@@ -251,7 +251,20 @@ export default function SuperBullConfig(props: any) {
     : `${selectedArcadeItems.length} participant(s)${selectedBots.length ? ` · ${selectedBots.length} BOT(S)` : ""}`;
 
   return (
-    <div style={{ minHeight: "100dvh", paddingBottom: 92, background: "radial-gradient(circle at top, rgba(22,46,78,.32), rgba(4,8,14,.98) 44%)" }}>
+    <div
+      className="super-bull-config-screen"
+      style={{
+        height: "100dvh",
+        minHeight: 0,
+        boxSizing: "border-box",
+        overflowY: "auto",
+        overflowX: "hidden",
+        overscrollBehaviorY: "contain",
+        WebkitOverflowScrolling: "touch",
+        paddingBottom: "calc(112px + env(safe-area-inset-bottom, 0px))",
+        background: "radial-gradient(circle at top, rgba(22,46,78,.32), rgba(4,8,14,.98) 44%)",
+      }}
+    >
       <PageHeader
         title="SUPER BULL"
         tickerSrc={spec.tickerSrc}
@@ -433,6 +446,23 @@ export default function SuperBullConfig(props: any) {
           </button>
         </div>
       </div>
+      <style>{`
+        .super-bull-config-screen {
+          scrollbar-gutter: stable;
+          touch-action: pan-y;
+        }
+        @media (orientation: landscape) {
+          .super-bull-config-screen {
+            height: 100dvh !important;
+            max-height: 100dvh !important;
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
+            overscroll-behavior-y: contain;
+            -webkit-overflow-scrolling: touch;
+            padding-bottom: calc(128px + env(safe-area-inset-bottom, 0px)) !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }

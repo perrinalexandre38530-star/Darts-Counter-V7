@@ -7622,9 +7622,11 @@ case "babyfoot_team_edit":
     !isStandaloneCompanion;
   const showSportQuickSwitch = SPORT_QUICK_SWITCH_ALLOWED_TABS.has(tab) && appChromeAllowed;
   const landscapeHeaderDocked = LANDSCAPE_HEADER_DOCK_TABS.has(tab) || isGameConfigRoute || (isGamePlayRoute && isLandscapeViewport);
-  // Règle paysage globale : la BottomNav devient une rail verticale, y compris pendant PLAY.
-  // En portrait on conserve le plein écran historique des gameplays.
-  const showBottomNav = appChromeAllowed && (!HIDE_BOTTOM_NAV_TABS.has(tab) || (isGamePlayRoute && isLandscapeViewport));
+  // Règle paysage globale : la BottomNav devient normalement une rail verticale pendant PLAY.
+  // P’TIT 1 fait exception : son écran de jeu exploite toute la largeur disponible en paysage,
+  // comme en portrait, afin de préserver le couple panneau joueur + keypad sans débordement.
+  const forceFullscreenPlay = tab === "ptit_hun_play";
+  const showBottomNav = appChromeAllowed && !forceFullscreenPlay && (!HIDE_BOTTOM_NAV_TABS.has(tab) || (isGamePlayRoute && isLandscapeViewport));
 
 
   return (
@@ -7678,7 +7680,7 @@ case "babyfoot_team_edit":
           </React.Suspense>
         )}
 
-        {appChromeAllowed && (
+        {appChromeAllowed && tab !== "super_bull_play" && (
           <AwenaOverlay
             route={String(tab)}
             sport={String(activeSport || "")}

@@ -110,9 +110,10 @@ export default function ClosestCenterHistoryDetail(props:any){
               return `${p?.name||"Joueur"} +${num(v)}`;
             }).join(" · ");
             const method=rr?.inputMode==="camera"?"📷 CAMÉRA":rr?.manualEntryMode==="guided"?"🎯 MANUEL GUIDÉ":"⚡ MANUEL RAPIDE";
+            const arbitration=[rr?.cameraPointArbitration?"⚖️ point arbitré":null,rr?.cameraScoreArbitration?`⚖️ score arbitré ${num(rr.cameraScoreArbitration.points)} pt${num(rr.cameraScoreArbitration.points)>1?"s":""}`:null].filter(Boolean).join(" · ");
             return <div key={rr?.round} style={{display:"grid",gridTemplateColumns:"62px minmax(0,1fr) auto",gap:8,alignItems:"center",padding:"8px 9px",borderRadius:11,background:"rgba(255,255,255,.028)",border:"1px solid rgba(255,255,255,.07)"}}>
               <b style={{fontSize:11,color:"#fff"}}>MÈNE {num(rr?.round)}</b>
-              <div><b style={{fontSize:11,color:win==="A"?"#ff9aa5":"#8bcfff"}}>ÉQUIPE {win || "—"} · +{pts}</b><div style={{fontSize:9,color:"#80919f",marginTop:2}}>{contributors || "Répartition non enregistrée"} · départ {rr?.starterTeam||"—"} · {method}</div></div>
+              <div><b style={{fontSize:11,color:win==="A"?"#ff9aa5":"#8bcfff"}}>ÉQUIPE {win || "—"} · +{pts}</b><div style={{fontSize:9,color:"#80919f",marginTop:2}}>{contributors || "Répartition non enregistrée"} · départ {rr?.starterTeam||"—"} · {method}{arbitration?` · ${arbitration}`:""}</div></div>
               <b style={{fontSize:15,color:ACCENT}}>{scoreA}–{scoreB}</b>
             </div>;
           })}
