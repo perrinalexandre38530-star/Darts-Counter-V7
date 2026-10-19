@@ -3758,8 +3758,13 @@ React.useEffect(() => {
   async function handlePrivateInfoSave(patch: PrivateInfo) {
     if (!active) return;
 
+    // V134 — révision explicite de l'identité choisie par l'utilisateur. Elle
+    // est écrite LOCAL-FIRST avant tout appel réseau, afin qu'une panne Supabase
+    // ne puisse plus faire repasser un ancien nickname distant devant MON PROFIL.
+    const identityUpdatedAt = Date.now();
     const localPatch = {
       ...(patch as any),
+      identityUpdatedAt,
       password: "",
     } as PrivateInfo;
 
@@ -3831,8 +3836,6 @@ React.useEffect(() => {
           active?.id ||
           ""
         ).trim();
-        const identityUpdatedAt = Date.now();
-
         const savedProfile = await (await getOnlineApi()).updateProfile({
           nickname: patch.nickname?.trim() || undefined,
           displayName: patch.nickname?.trim() || active.name || undefined,

@@ -175,7 +175,7 @@ function publicSharedMatchFromMessage(message: any): SharedMatchItem | null {
   const meta = message?.metadata;
   if (!meta || meta?.type !== PUBLIC_SHARED_MATCH_META_TYPE) return null;
   const shared = meta?.sharedMatch;
-  if (!shared || typeof shared !== "object" || !shared.payload) return null;
+  if (!shared || typeof shared !== "object") return null;
 
   const id = String(message?.id || "").trim();
   if (!id) return null;
@@ -202,6 +202,13 @@ function publicSharedMatchFromMessage(message: any): SharedMatchItem | null {
     ownerUser: message?.fromUser || null,
     targetUser: message?.toUser || null,
   };
+}
+
+
+export function sharedMatchesFromPrivateMessages(messages: any[]): SharedMatchItem[] {
+  return (Array.isArray(messages) ? messages : [])
+    .map(publicSharedMatchFromMessage)
+    .filter(Boolean) as SharedMatchItem[];
 }
 
 export async function shareMatchToFriend(input: {
@@ -236,10 +243,8 @@ export async function shareMatchToFriend(input: {
 
 export async function listSharedMatches(): Promise<SharedMatchItem[]> {
   if (publicBackendActive()) {
-    const messages = await cloudListPrivateMessages();
-    return (Array.isArray(messages) ? messages : [])
-      .map(publicSharedMatchFromMessage)
-      .filter(Boolean) as SharedMatchItem[];
+    const messages = await cloudListPrivateMessages({ limit: 120, compact: true });
+    return sharedMatchesFromPrivateMessages(messages);
   }
   const res = await apiGet("/online/shared-matches");
   return Array.isArray(res?.items) ? res.items : [];
@@ -400,8 +405,8 @@ export type PrivateMessageItem = {
   editedAt?: string | null;
 };
 
-export async function listPrivateMessages(): Promise<PrivateMessageItem[]> {
-  if (!canUseNasOnlineApi()) return (await cloudListPrivateMessages()) as PrivateMessageItem[];
+export async function listPrivateMessages(options: number | { limit?: number; compact?: boolean } = {}): Promise<PrivateMessageItem[]> {
+  if (!canUseNasOnlineApi()) return (await cloudListPrivateMessages(options)) as PrivateMessageItem[];
   const res = await apiGet("/online/private-messages");
   return Array.isArray(res?.messages) ? res.messages : [];
 }

@@ -1,15 +1,7 @@
-import {
-  listFriendRequests,
-  listPrivateMessages,
-  listProfileFriendLinks,
-  listSharedMatches,
-  type FriendRequest,
-  type PrivateMessageItem,
-  type ProfileFriendLink,
-  type SharedMatchItem,
-} from "./friendsApi";
 import { apiGet, apiPost, canUseNasOnlineApi, readNasAccessToken } from "./apiClient";
 import { isNasProviderEnabled } from "./serverConfig";
+import { cloudGetMessageCenterSummary } from "./publicSocialApi";
+import { isSupabaseRestCircuitOpen } from "./supabaseClient";
 
 export type MessageCenterUnreadSummary = {
   unreadMessages: number;
@@ -25,6 +17,7 @@ export type MessageCenterUnreadSummary = {
 
 const SEEN_KEYS_LS = "dc_message_center_seen_keys_v1";
 const LAST_TOTAL_LS = "dc_message_center_last_total_v1";
+const LAST_SUMMARY_LS = "dc_message_center_last_summary_v2";
 
 function safeJson<T>(raw: string | null, fallback: T): T {
   try {
@@ -53,20 +46,6 @@ function setSeenKeys(keys: Set<string>) {
   storageSet(SEEN_KEYS_LS, JSON.stringify(trimmed));
 }
 
-function isPending(status: unknown) {
-  return String(status || "pending").toLowerCase() === "pending";
-}
-
-function displayName(user: any): string {
-  return String(user?.displayName || user?.nickname || user?.email || "un ami").trim();
-}
-
-function itemTime(v: any): number {
-  const raw = v?.createdAt || v?.created_at || v?.updatedAt || v?.updated_at || 0;
-  const n = Date.parse(String(raw || ""));
-  return Number.isFinite(n) ? n : 0;
-}
-
 function isAuthenticationRoute(): boolean {
   if (typeof window === "undefined") return false;
   const hash = String(window.location.hash || "").toLowerCase();
@@ -80,14 +59,23 @@ export function canUseMessageCenterPolling() {
   return !isNasProviderEnabled() || canUseNasOnlineApi();
 }
 
+function emptySummary(): MessageCenterUnreadSummary {
+  return { unreadMessages: 0, friendRequests: 0, profileLinks: 0, sharedMatches: 0, system: 0, invites: 0, total: 0, newestLabel: "", newestKey: "" };
+}
+
+function readLastSummary(): MessageCenterUnreadSummary {
+  const cached = safeJson<MessageCenterUnreadSummary | null>(storageGet(LAST_SUMMARY_LS), null);
+  return cached && typeof cached === "object" ? { ...emptySummary(), ...cached } : emptySummary();
+}
+
+function writeLastSummary(summary: MessageCenterUnreadSummary): void {
+  storageSet(LAST_SUMMARY_LS, JSON.stringify(summary));
+}
+
 export async function fetchMessageCenterUnreadSummary(): Promise<MessageCenterUnreadSummary> {
-  if (!canUseMessageCenterPolling()) {
-    return { unreadMessages: 0, friendRequests: 0, profileLinks: 0, sharedMatches: 0, system: 0, invites: 0, total: 0, newestLabel: "", newestKey: "" };
-  }
+  if (!canUseMessageCenterPolling()) return emptySummary();
 
   // Source de vérité NAS uniquement lorsque le provider est explicitement NAS.
-  // En public/hybride, cette route legacy ne doit jamais être appelée : le résumé
-  // est calculé avec les RPC Supabase juste en dessous.
   if (canUseNasOnlineApi()) {
     try {
       const serverSummary = await apiGet("/online/messages/summary");
@@ -99,70 +87,37 @@ export async function fetchMessageCenterUnreadSummary(): Promise<MessageCenterUn
       const system = Number(counters.system || 0) || 0;
       const invites = Number(counters.invites || 0) || 0;
       const total = Math.max(0, unreadMessages + friendRequests + profileLinks + sharedMatches + system + invites);
-      return {
-        unreadMessages,
-        friendRequests,
-        profileLinks,
-        sharedMatches,
-        system,
-        invites,
-        total,
-        newestLabel: total > 0 ? `${total} élément(s) à traiter` : "",
-        newestKey: total > 0 ? `summary:${total}` : "",
-      };
+      const summary = { unreadMessages, friendRequests, profileLinks, sharedMatches, system, invites, total, newestLabel: total > 0 ? `${total} élément(s) à traiter` : "", newestKey: total > 0 ? `summary:${total}` : "" };
+      writeLastSummary(summary);
+      return summary;
     } catch {
-      // Fallback Supabase ci-dessous.
+      return readLastSummary();
     }
   }
 
-  const [messages, requests, links, shares] = await Promise.all([
-    listPrivateMessages().catch(() => [] as PrivateMessageItem[]),
-    listFriendRequests().catch(() => [] as FriendRequest[]),
-    listProfileFriendLinks().catch(() => [] as ProfileFriendLink[]),
-    listSharedMatches().catch(() => [] as SharedMatchItem[]),
-  ]);
-
-  const unreadMessages = (Array.isArray(messages) ? messages : []).filter((m: any) => m?.direction !== "outgoing" && !m?.readAt).length;
-  const friendRequests = (Array.isArray(requests) ? requests : []).filter((r: any) => r?.direction !== "outgoing" && isPending(r?.status)).length;
-  const profileLinks = (Array.isArray(links) ? links : []).filter((l: any) => l?.direction !== "outgoing" && isPending(l?.status)).length;
-  const sharedMatches = (Array.isArray(shares) ? shares : []).filter((s: any) => s?.direction !== "outgoing" && isPending(s?.status)).length;
-
-  const candidates: Array<{ key: string; label: string; ts: number }> = [];
-  for (const m of messages as any[]) {
-    if (m?.direction !== "outgoing" && !m?.readAt) {
-      candidates.push({ key: `msg:${m.id}`, label: `Nouveau message de ${displayName(m.fromUser)}`, ts: itemTime(m) });
-    }
+  // Public/hybride : ne jamais télécharger l'historique complet des messages
+  // pour calculer un simple badge. Une RPC agrégée renvoie seulement quelques
+  // compteurs + la clé du dernier élément. Pendant PGRST002 on conserve le
+  // dernier badge connu sans générer de requête supplémentaire.
+  if (isSupabaseRestCircuitOpen()) return readLastSummary();
+  try {
+    const cloud = await cloudGetMessageCenterSummary();
+    const summary: MessageCenterUnreadSummary = {
+      unreadMessages: Math.max(0, Number(cloud.unreadMessages || 0)),
+      friendRequests: Math.max(0, Number(cloud.friendRequests || 0)),
+      profileLinks: 0,
+      sharedMatches: Math.max(0, Number(cloud.sharedMatches || 0)),
+      system: 0,
+      invites: 0,
+      total: Math.max(0, Number(cloud.total || 0)),
+      newestLabel: String(cloud.newestLabel || ""),
+      newestKey: String(cloud.newestKey || ""),
+    };
+    writeLastSummary(summary);
+    return summary;
+  } catch {
+    return readLastSummary();
   }
-  for (const r of requests as any[]) {
-    if (r?.direction !== "outgoing" && isPending(r?.status)) {
-      candidates.push({ key: `friend:${r.id}`, label: `Nouvelle demande d’ami de ${displayName(r.fromUser)}`, ts: itemTime(r) });
-    }
-  }
-  for (const l of links as any[]) {
-    if (l?.direction !== "outgoing" && isPending(l?.status)) {
-      candidates.push({ key: `link:${l.id}`, label: `Demande d’association profil de ${displayName(l.requesterUser)}`, ts: itemTime(l) });
-    }
-  }
-  for (const s of shares as any[]) {
-    if (s?.direction !== "outgoing" && isPending(s?.status)) {
-      candidates.push({ key: `share:${s.id}`, label: `Partie partagée par ${displayName(s.ownerUser)}`, ts: itemTime(s) });
-    }
-  }
-  candidates.sort((a, b) => b.ts - a.ts);
-  const newest = candidates[0];
-  const total = unreadMessages + friendRequests + profileLinks + sharedMatches;
-
-  return {
-    unreadMessages,
-    friendRequests,
-    profileLinks,
-    sharedMatches,
-    system: 0,
-    invites: 0,
-    total,
-    newestLabel: newest?.label || "",
-    newestKey: newest?.key || "",
-  };
 }
 
 async function ensureMessageServiceWorkerRegistration(): Promise<ServiceWorkerRegistration | null> {

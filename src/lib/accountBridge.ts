@@ -162,6 +162,40 @@ function getRemoteCanonicalLocalProfileId(onlineProfile?: any): string {
   ).trim();
 }
 
+function explicitIdentityTimestamp(profile: any): number {
+  const pi = readPrivateInfo(profile);
+  const raw =
+    (pi as any)?.identityUpdatedAt ??
+    (pi as any)?.identity_updated_at ??
+    profile?.identityUpdatedAt ??
+    profile?.identity_updated_at ??
+    0;
+  const numeric = Number(raw || 0);
+  if (Number.isFinite(numeric) && numeric > 0) return numeric;
+  const parsed = raw ? Date.parse(String(raw)) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function isGenericIdentityLabel(value: any): boolean {
+  const raw = String(value || "").trim().toLowerCase();
+  return !raw || ["player", "joueur", "user", "profil", "profile"].includes(raw);
+}
+
+function shouldRemoteNicknameWin(local: any, account: any, onlineProfile: any, onlineNickname: string): boolean {
+  if (!onlineNickname) return false;
+  const localName = String(local?.name || account?.name || "").trim();
+  if (isGenericIdentityLabel(localName)) return true;
+
+  const localTs = Math.max(explicitIdentityTimestamp(local), explicitIdentityTimestamp(account));
+  const remoteTs = explicitIdentityTimestamp(onlineProfile);
+
+  // Sans révision explicite, on ne détruit jamais un nom local déjà renseigné.
+  // C'est le garde-fou qui manquait lors de PGRST002 : un fallback auth/social
+  // ne peut plus devenir l'autorité juste parce qu'il arrive au démarrage.
+  if (!remoteTs) return false;
+  return remoteTs > localTs;
+}
+
 function buildPrivateInfoPatch(user: any, onlineProfile?: any): PrivateInfoRaw {
   const email = safeLower(user?.email);
   const prefs = (onlineProfile as any)?.preferences || {};
@@ -642,6 +676,19 @@ function mergeAccountIntoLocalProfile(localProfile: any, accountProfile: any, us
 
   const remoteIdentity = buildPrivateInfoPatch(user, onlineProfile);
   const onlineNickname = getOnlineNickname(user, onlineProfile);
+  const remoteNicknameWins = shouldRemoteNicknameWin(local, account, onlineProfile, onlineNickname);
+  if (!remoteNicknameWins) {
+    delete (remoteIdentity as any).nickname;
+  }
+  // Si une ancienne version a déjà remplacé `name` au démarrage mais que le
+  // privateInfo local conserve encore l'identité explicitement sauvegardée, la
+  // révision identityUpdatedAt permet de la récupérer automatiquement.
+  const protectedLocalNickname = explicitIdentityTimestamp(local) > 0
+    ? firstMeaningful(localPI?.nickname, local?.name)
+    : firstMeaningful(local?.name, localPI?.nickname);
+  const protectedAccountNickname = explicitIdentityTimestamp(account) > 0
+    ? firstMeaningful(accountPI?.nickname, account?.name)
+    : firstMeaningful(account?.name, accountPI?.nickname);
 
   const merged: any = {
     ...account,
@@ -649,8 +696,10 @@ function mergeAccountIntoLocalProfile(localProfile: any, accountProfile: any, us
     id: String(local?.id || uid),
     // Le COMPTE Supabase est l'autorité de l'identité légère multi-appareils.
     // Les données de jeu/statistiques restent locales et ne sont jamais remplacées.
-    name: firstMeaningful(onlineNickname, account?.name, local?.name),
-    surname: firstMeaningful(onlineProfile?.surname, onlineNickname, account?.surname, local?.surname),
+    name: remoteNicknameWins
+      ? firstMeaningful(onlineNickname, protectedLocalNickname, protectedAccountNickname)
+      : firstMeaningful(protectedLocalNickname, protectedAccountNickname, onlineNickname),
+    surname: firstMeaningful(onlineProfile?.surname, account?.surname, local?.surname),
     firstName: firstMeaningful(onlineProfile?.firstName, onlineProfile?.first_name, (remoteIdentity as any)?.firstName, account?.firstName, local?.firstName),
     lastName: firstMeaningful(onlineProfile?.lastName, onlineProfile?.last_name, (remoteIdentity as any)?.lastName, account?.lastName, local?.lastName),
     birthDate: firstMeaningful(onlineProfile?.birthDate, onlineProfile?.birth_date, (remoteIdentity as any)?.birthDate, account?.birthDate, local?.birthDate),
@@ -699,6 +748,9 @@ function mergeAccountIntoLocalProfile(localProfile: any, accountProfile: any, us
     // Les champs distants définis gagnent sur les anciennes valeurs de cet
     // appareil ; les champs absents ne détruisent rien.
     ...remoteIdentity,
+    nickname: remoteNicknameWins
+      ? (onlineNickname || (remoteIdentity as any)?.nickname || protectedLocalNickname || protectedAccountNickname)
+      : (protectedLocalNickname || protectedAccountNickname || onlineNickname),
     onlineUserId: uid,
     onlineEmail: safeLower(user?.email) || (remoteIdentity as any)?.onlineEmail || localPI?.onlineEmail || accountPI?.onlineEmail || "",
     accountUserId: uid,

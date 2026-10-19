@@ -6,6 +6,7 @@ import {
   listFriendRequests,
   listFriends,
   listPrivateMessages,
+  sharedMatchesFromPrivateMessages,
   listProfileFriendLinks,
   listSharedMatches,
   refuseSharedMatch,
@@ -39,6 +40,7 @@ import {
   type MessengerGroup,
 } from "../lib/friendsApi";
 import { markMessageCenterRefreshNeeded, requestMessageNotificationsPermission, showMessageCenterNotification } from "../lib/messageCenterNotify";
+import { canUseNasOnlineApi } from "../lib/apiClient";
 import ProfileStarRing from "../components/ProfileStarRing";
 import ResilientUserImage from "../components/ResilientUserImage";
 import { onlineAvatarMediaKey, captureUserMediaFallback, groupAvatarMediaKey, groupCoverMediaKey } from "../lib/userMediaFallback";
@@ -1405,15 +1407,24 @@ export default function MessagesPage({ store, update, go }: Props) {
       const requestsPromise = listFriendRequests()
         .then((items) => { const safe = Array.isArray(items) ? items : []; setFriendRequests(safe); return safe; })
         .catch(() => cached?.friendRequests || []);
-      const sharesPromise = listSharedMatches()
-        .then((items) => { const safe = Array.isArray(items) ? items : []; setSharedMatches(safe); return safe; })
-        .catch(() => cached?.sharedMatches || []);
+      const messagesPromise = listPrivateMessages(canUseNasOnlineApi() ? {} : { limit: 160, compact: true })
+        .then((items) => { const safe = Array.isArray(items) ? items : []; setPrivateMessages(safe); return safe; })
+        .catch(() => cached?.privateMessages || []);
+      // En mode public Supabase, les parties partagées sont déjà encapsulées dans
+      // les messages privés. Réutiliser la même réponse évite de télécharger une
+      // deuxième fois toute la messagerie à chaque refresh.
+      const sharesPromise = canUseNasOnlineApi()
+        ? listSharedMatches()
+            .then((items) => { const safe = Array.isArray(items) ? items : []; setSharedMatches(safe); return safe; })
+            .catch(() => cached?.sharedMatches || [])
+        : messagesPromise.then((items) => {
+            const safe = sharedMatchesFromPrivateMessages(items as any[]);
+            setSharedMatches(safe);
+            return safe;
+          });
       const linksPromise = listProfileFriendLinks()
         .then((items) => { const safe = Array.isArray(items) ? items : []; setProfileLinks(safe); return safe; })
         .catch(() => cached?.profileLinks || []);
-      const messagesPromise = listPrivateMessages()
-        .then((items) => { const safe = Array.isArray(items) ? items : []; setPrivateMessages(safe); return safe; })
-        .catch(() => cached?.privateMessages || []);
       const groupsPromise = listMessengerGroups()
         .then((items) => {
           const safe = mergeGroupsById((Array.isArray(items) ? items : []).map(normalizeMessengerGroup), loadLocalJson<LocalChatGroup[]>("ms_message_groups_v1", []));
@@ -1453,8 +1464,8 @@ export default function MessagesPage({ store, update, go }: Props) {
     // Ça évite qu'un cache vide ou un timeout NAS masque les amis/groupes pendant plusieurs minutes.
     if (active !== "messages") return;
     const t1 = window.setTimeout(() => loadAll(true).catch(() => {}), 250);
-    const t2 = window.setTimeout(() => loadAll(true).catch(() => {}), 1800);
-    return () => { window.clearTimeout(t1); window.clearTimeout(t2); };
+    const t2 = canUseNasOnlineApi() ? window.setTimeout(() => loadAll(true).catch(() => {}), 1800) : null;
+    return () => { window.clearTimeout(t1); if (t2 != null) window.clearTimeout(t2); };
   }, [active, loadAll]);
 
 
@@ -1765,7 +1776,7 @@ export default function MessagesPage({ store, update, go }: Props) {
       incomingCallPollBusyRef.current = true;
       try {
         const [messages, calls] = await Promise.all([
-          listPrivateMessages().catch(() => []),
+          listPrivateMessages(canUseNasOnlineApi() ? {} : { limit: 80, compact: true }).catch(() => []),
           listIncomingMessengerCalls().catch(() => []),
         ]);
         if (Array.isArray(messages) && messages.length) {
@@ -1786,13 +1797,17 @@ export default function MessagesPage({ store, update, go }: Props) {
       }
     };
     pollIncomingCallsAndMessages().catch(() => {});
-    const timer = window.setInterval(() => pollIncomingCallsAndMessages().catch(() => {}), incomingCallNotice ? 850 : chatFullscreen ? 1200 : 3000);
+    const publicMode = !canUseNasOnlineApi();
+    const pollMs = publicMode
+      ? (incomingCallNotice ? 2500 : chatFullscreen ? 5000 : 8000)
+      : (incomingCallNotice ? 850 : chatFullscreen ? 1200 : 3000);
+    const timer = window.setInterval(() => pollIncomingCallsAndMessages().catch(() => {}), pollMs);
     return () => { stopped = true; window.clearInterval(timer); };
   }, [active, chatFullscreen, selectedThreadUserId, friends, currentAccountId, incomingCallNotice?.callId]);
 
   React.useEffect(() => {
     if (active !== "messages" || !chatFullscreen) return;
-    const timer = window.setInterval(() => loadAll(true).catch(() => {}), 12000);
+    const timer = window.setInterval(() => loadAll(true).catch(() => {}), canUseNasOnlineApi() ? 12000 : 60000);
     return () => window.clearInterval(timer);
   }, [active, chatFullscreen, selectedThreadUserId, loadAll]);
 

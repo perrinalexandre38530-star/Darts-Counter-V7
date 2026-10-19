@@ -564,6 +564,16 @@ function cachedAuthMatchesSupabaseUser(session: AuthSession | null | undefined, 
   return accountSetsOverlap(cachedAuthAccountIds(session), supabaseAccountIds(user));
 }
 
+function cachedProfileForSupabaseUser(user: any): OnlineProfile | null {
+  try {
+    const cached = loadAuthFromLS();
+    if (!cachedAuthMatchesSupabaseUser(cached, user)) return null;
+    return cached?.profile || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Coupe uniquement les identifiants techniques qui appartiennent clairement à
  * un AUTRE compte. C'est indispensable lors d'un changement Google/Facebook/etc. :
@@ -1403,6 +1413,11 @@ async function buildAuthSessionFromSupabaseUncoalesced(opts?: { allowNasFailure?
   };
 
   let profile = await getOrCreateProfile(supabaseUserId, nickname, user);
+  // V134 — une panne PostgREST ne doit JAMAIS effacer le dernier profil compte
+  // valide déjà stocké sur l'appareil. V132 pouvait construire une session avec
+  // profile=null puis l'écrire dans localStorage, ce qui faisait retomber MON
+  // PROFIL sur le nickname social/email au prochain démarrage.
+  if (!profile) profile = cachedProfileForSupabaseUser(user);
   let privateNasCapability: PrivateNasCapability | null = null;
   try {
     privateNasCapability = await probePrivateNasCapabilityForSession(session, nickname, { bootstrapProfile: true });

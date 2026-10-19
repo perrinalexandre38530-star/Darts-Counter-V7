@@ -1,4 +1,4 @@
-import { supabase } from "./supabaseClient";
+import { supabase, isSupabaseRestCircuitOpen, supabaseRestRetryAfterMs } from "./supabaseClient";
 
 export type CloudPublicUser = {
   id: string;
@@ -64,8 +64,33 @@ export type CloudPrivateMessage = {
 };
 
 function rpcError(error: any, fallback: string): never {
-  throw new Error(String(error?.message || error?.details || error?.hint || fallback));
+  const out: any = new Error(String(error?.message || error?.details || error?.hint || fallback));
+  out.code = error?.code || null;
+  out.status = error?.status || error?.statusCode || null;
+  out.details = error?.details || null;
+  out.hint = error?.hint || null;
+  throw out;
 }
+
+function assertSupabaseDataPlaneAvailable(): void {
+  if (!isSupabaseRestCircuitOpen()) return;
+  const retryMs = Math.max(1000, supabaseRestRetryAfterMs());
+  const error: any = new Error(`Supabase data-plane temporairement suspendue. Nouvel essai dans ${Math.ceil(retryMs / 1000)} s.`);
+  error.code = "PGRST002";
+  error.status = 503;
+  error.mssCircuitOpen = true;
+  error.retryAfterMs = retryMs;
+  throw error;
+}
+
+export type CloudMessageCenterSummary = {
+  unreadMessages: number;
+  friendRequests: number;
+  sharedMatches: number;
+  total: number;
+  newestLabel: string;
+  newestKey: string;
+};
 
 function rows(data: any): any[] {
   if (Array.isArray(data)) return data;
@@ -96,6 +121,7 @@ export async function cloudSendFriendRequest(toUserId: string, message?: string)
 }
 
 export async function cloudListFriendRequests(): Promise<CloudFriendRequest[]> {
+  assertSupabaseDataPlaneAvailable();
   const { data, error } = await supabase.rpc("ms_list_friend_requests");
   if (error) rpcError(error, "Impossible de charger les demandes d'amis.");
   return rows(data) as CloudFriendRequest[];
@@ -108,6 +134,7 @@ export async function cloudRespondFriendRequest(id: string, status: "accepted" |
 }
 
 export async function cloudListFriends(): Promise<CloudPublicUser[]> {
+  assertSupabaseDataPlaneAvailable();
   const { data, error } = await supabase.rpc("ms_list_friends");
   if (error) rpcError(error, "Impossible de charger les amis.");
   return rows(data) as CloudPublicUser[];
@@ -121,6 +148,7 @@ export async function cloudRemoveFriend(userId: string) {
 
 
 export async function cloudCommunityHeartbeat(status: "online" | "away" | "offline" = "online") {
+  assertSupabaseDataPlaneAvailable();
   // Compatibilité backend : certaines instances Supabase n'ont pas encore reçu
   // la migration ms_community_heartbeat (2026-09-02). ms_update_presence existe
   // depuis la première version ONLINE et met à jour la même table ms_presence.
@@ -131,6 +159,7 @@ export async function cloudCommunityHeartbeat(status: "online" | "away" | "offli
 }
 
 export async function cloudGetCommunityPulse(recentLimit = 8): Promise<CommunityPulse> {
+  assertSupabaseDataPlaneAvailable();
   const { data, error } = await supabase.rpc("ms_get_community_pulse", {
     p_recent_limit: Math.max(1, Math.min(20, Number(recentLimit) || 8)),
   } as any);
@@ -149,15 +178,71 @@ export async function cloudGetCommunityPulse(recentLimit = 8): Promise<Community
 }
 
 export async function cloudUpdatePresence(status: "online" | "away" | "offline") {
+  assertSupabaseDataPlaneAvailable();
   const { data, error } = await supabase.rpc("ms_update_presence", { p_status: status } as any);
   if (error) rpcError(error, "Impossible de mettre à jour la présence.");
   return data;
 }
 
-export async function cloudListPrivateMessages(): Promise<CloudPrivateMessage[]> {
-  const { data, error } = await supabase.rpc("ms_list_private_messages", { p_limit: 500 } as any);
+export async function cloudListPrivateMessages(options: number | { limit?: number; compact?: boolean } = {}): Promise<CloudPrivateMessage[]> {
+  assertSupabaseDataPlaneAvailable();
+  const opts = typeof options === "number" ? { limit: options } : (options || {});
+  const limit = Math.max(1, Math.min(250, Number(opts.limit || 120)));
+  const compact = opts.compact !== false;
+
+  if (compact) {
+    const compactResult = await supabase.rpc("ms_list_private_messages_compact", { p_limit: limit } as any);
+    if (!compactResult.error) return rows(compactResult.data) as CloudPrivateMessage[];
+    const code = String((compactResult.error as any)?.code || "");
+    const message = String((compactResult.error as any)?.message || "");
+    if (!(code === "PGRST202" || code === "42883" || /ms_list_private_messages_compact|function .* does not exist/i.test(message))) {
+      rpcError(compactResult.error, "Impossible de charger les messages privés.");
+    }
+  }
+
+  const { data, error } = await supabase.rpc("ms_list_private_messages", { p_limit: limit } as any);
   if (error) rpcError(error, "Impossible de charger les messages privés.");
   return rows(data) as CloudPrivateMessage[];
+}
+
+export async function cloudGetMessageCenterSummary(): Promise<CloudMessageCenterSummary> {
+  assertSupabaseDataPlaneAvailable();
+  const { data, error } = await supabase.rpc("ms_message_center_summary", {} as any);
+  if (!error) {
+    const value: any = Array.isArray(data) ? data[0] : data;
+    return {
+      unreadMessages: Math.max(0, Number(value?.unreadMessages ?? value?.unread_messages ?? 0) || 0),
+      friendRequests: Math.max(0, Number(value?.friendRequests ?? value?.friend_requests ?? 0) || 0),
+      sharedMatches: Math.max(0, Number(value?.sharedMatches ?? value?.shared_matches ?? 0) || 0),
+      total: Math.max(0, Number(value?.total || 0) || 0),
+      newestLabel: String(value?.newestLabel ?? value?.newest_label ?? ""),
+      newestKey: String(value?.newestKey ?? value?.newest_key ?? ""),
+    };
+  }
+
+  const code = String((error as any)?.code || "");
+  const message = String((error as any)?.message || "");
+  if (!(code === "PGRST202" || code === "42883" || /ms_message_center_summary|function .* does not exist/i.test(message))) {
+    rpcError(error, "Impossible de charger le résumé de messagerie.");
+  }
+
+  // Compatibilité avec un backend qui n'a pas encore reçu la migration V135 :
+  // lecture bornée et compacte, jamais 500 messages x plusieurs appels.
+  const [messages, requests] = await Promise.all([
+    cloudListPrivateMessages({ limit: 60, compact: true }).catch(() => [] as CloudPrivateMessage[]),
+    cloudListFriendRequests().catch(() => [] as CloudFriendRequest[]),
+  ]);
+  const incomingUnread = messages.filter((m: any) => m?.direction !== "outgoing" && !m?.readAt);
+  const sharedMatches = incomingUnread.filter((m: any) => m?.metadata?.type === "mss-shared-match-v1").length;
+  const unreadMessages = incomingUnread.length - sharedMatches;
+  const friendRequests = requests.filter((r: any) => r?.direction !== "outgoing" && String(r?.status || "pending") === "pending").length;
+  const newest = incomingUnread.slice().sort((a: any, b: any) => Date.parse(String(b?.createdAt || "")) - Date.parse(String(a?.createdAt || "")))[0];
+  const total = unreadMessages + sharedMatches + friendRequests;
+  return {
+    unreadMessages, friendRequests, sharedMatches, total,
+    newestLabel: newest ? (newest?.metadata?.type === "mss-shared-match-v1" ? "Nouvelle partie partagée" : "Nouveau message") : (friendRequests ? "Nouvelle demande d’ami" : ""),
+    newestKey: newest?.id ? `msg:${newest.id}` : (friendRequests ? `friend:${requests.find((r: any) => r?.direction !== "outgoing" && String(r?.status || "pending") === "pending")?.id || friendRequests}` : ""),
+  };
 }
 
 export async function cloudSendPrivateMessage(toUserId: string, text: string, metadata?: any) {

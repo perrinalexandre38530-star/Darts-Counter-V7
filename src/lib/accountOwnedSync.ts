@@ -52,7 +52,7 @@ export const ACCOUNT_OWNED_FORCE_SYNC_EVENT = "dc:account-owned-force-sync";
 
 const TABLE = "account_sync_documents";
 const DEFAULT_DOCUMENT_ID = "default";
-const POLL_MS = 30_000;
+const POLL_MS = 120_000;
 const LOCAL_DEBOUNCE_MS = 420;
 const HISTORY_BATCH_SIZE = 10;
 const REVISION_KEY = "mss_account_owned_sync_revisions_v1";
@@ -1048,9 +1048,12 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     let from = 0;
     const pageSize = 250;
     while (!stopped && !tableUnavailable && !remotePaused()) {
+      // Inventaire léger uniquement : les payloads complets des parties peuvent
+      // peser plusieurs Mo cumulés. Ils ne sont téléchargés que si la version
+      // distante est réellement plus récente ou absente de cet appareil.
       const { data, error } = await supabase
         .from(TABLE)
-        .select("owner_user_id,document_type,document_id,payload,client_updated_at,deleted_at,created_at,updated_at")
+        .select("owner_user_id,document_type,document_id,client_updated_at,deleted_at,created_at,updated_at")
         .eq("owner_user_id", userId)
         .eq("document_type", DOC.historyMatch)
         .order("client_updated_at", { ascending: false })
@@ -1065,7 +1068,6 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
       out.push(...rows);
       if (rows.length < pageSize) break;
       from += pageSize;
-      // Ne jamais monopoliser le thread sur un gros historique.
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
     return out;
@@ -1118,17 +1120,42 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     if (stopped || tableUnavailable || remotePaused()) return;
     const remoteById = new Map(remoteRows.map((row) => [cleanId(row.document_id), row]));
 
-    // 1) Matérialiser d'abord ce que le compte possède déjà dans le cloud.
-    for (let i = 0; i < remoteRows.length; i += HISTORY_BATCH_SIZE) {
-      const batch = remoteRows.slice(i, i + HISTORY_BATCH_SIZE);
+    // Lire d'abord les en-têtes locaux : sur un appareil déjà synchronisé, cela
+    // permet d'éviter de re-télécharger à chaque connexion toutes les parties.
+    const headers = await ((History as any).listFinished?.() ?? History.list()).catch(() => [] as SavedMatch[]);
+    const localHeaderById = new Map<string, any>();
+    for (const header of (Array.isArray(headers) ? headers : [])) {
+      const id = cleanId((header as any)?.id || (header as any)?.matchId);
+      if (id) localHeaderById.set(id, header);
+    }
+
+    // 1) Matérialiser uniquement les parties distantes réellement nouvelles.
+    const rowsToFetch = remoteRows.filter((row) => {
+      const id = cleanId(row.document_id);
+      const remoteTs = Number(row.client_updated_at || 0) || toTimestamp(row.updated_at);
+      if (row.deleted_at) return true;
+      const local = localHeaderById.get(id);
+      const localTs = local ? Math.max(toTimestamp(local?.updatedAt), toTimestamp(local?.finishedAt), toTimestamp(local?.createdAt)) : 0;
+      if (local && localTs >= remoteTs) {
+        if (remoteTs) setRevision(DOC.historyMatch, id, remoteTs);
+        return false;
+      }
+      return true;
+    });
+
+    for (let i = 0; i < rowsToFetch.length; i += HISTORY_BATCH_SIZE) {
+      const batchMeta = rowsToFetch.slice(i, i + HISTORY_BATCH_SIZE);
+      const fetched = await Promise.all(batchMeta.map(async (meta) => {
+        if (meta.deleted_at) return meta;
+        return await fetchDocument(DOC.historyMatch, cleanId(meta.document_id));
+      }));
       await runRemoteApply(async () => {
-        for (const row of batch) await applyHistoryRow(row);
+        for (const row of fetched) if (row) await applyHistoryRow(row);
       });
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
 
     // 2) Rattacher les parties finalisées présentes uniquement sur cet appareil.
-    const headers = await ((History as any).listFinished?.() ?? History.list()).catch(() => [] as SavedMatch[]);
     const pending: any[] = [];
     for (let i = 0; i < (Array.isArray(headers) ? headers.length : 0); i += 1) {
       if (stopped) return;
@@ -1166,9 +1193,13 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
 
   const refreshRemoteDocuments = async () => {
     if (stopped || tableUnavailable || remotePaused()) return;
+    // Polling de secours = métadonnées seulement. `stats_sources` peut à lui
+    // seul approcher 4 Mo : le relire intégralement toutes les 30 s était une
+    // source d'egress disproportionnée. Realtime reste instantané ; ce poll ne
+    // télécharge un payload que si client_updated_at a réellement changé.
     const { data, error } = await supabase
       .from(TABLE)
-      .select("owner_user_id,document_type,document_id,payload,client_updated_at,deleted_at,created_at,updated_at")
+      .select("owner_user_id,document_type,document_id,client_updated_at,deleted_at,created_at,updated_at")
       .eq("owner_user_id", userId)
       .neq("document_type", DOC.historyMatch);
     if (error) {
@@ -1176,8 +1207,14 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
       return;
     }
     for (const candidate of (Array.isArray(data) ? data : [])) {
-      const row = normalizeSyncRow(candidate, userId);
-      if (row) await applyRemoteRow(row, false);
+      const meta = normalizeSyncRow(candidate, userId);
+      if (!meta) continue;
+      const type = String(meta.document_type || "") as DocumentType;
+      const id = cleanId(meta.document_id || DEFAULT_DOCUMENT_ID) || DEFAULT_DOCUMENT_ID;
+      const remoteTs = Number(meta.client_updated_at || 0) || toTimestamp(meta.updated_at);
+      if (remoteTs && remoteTs <= getRevision(type, id)) continue;
+      const full = await fetchDocument(type, id);
+      if (full) await applyRemoteRow(full, false);
     }
   };
 

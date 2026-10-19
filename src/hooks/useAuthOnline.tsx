@@ -502,6 +502,18 @@ async function safeLoadProfileBestEffort(user: User): Promise<OnlineProfile | nu
       // tout nouvel appareil, même si le cache local/NAS est ancien ou vide.
       const direct = await loadSupabaseAccountProfile(user);
       if (direct) return direct;
+
+      // V134 — en panne PGRST002, conserver le dernier profil valide du MÊME
+      // compte au lieu de renvoyer null. Le cache d'un autre compte est rejeté
+      // par cachedSessionMatchesSupabaseUser().
+      const cached = readCachedAuthSession();
+      if (cachedSessionMatchesSupabaseUser(cached, user) && cached?.profile) {
+        return cached.profile as OnlineProfile;
+      }
+
+      // Si le circuit est ouvert et qu'aucun profil local valide n'existe, on
+      // s'arrête ici : pas de nouvelle rafale REST, mais surtout aucun faux
+      // profil dérivé du mail / provider social.
       if (isSupabaseRestCircuitOpen()) return null;
 
       const api: any = onlineApi as any;
@@ -1090,7 +1102,10 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     };
 
     const refreshProfile = () => {
-      if (disposed || isSupabaseRestCircuitOpen()) return;
+      if (disposed) return;
+      // safeLoadProfileBestEffort sait maintenant renvoyer le dernier profil
+      // valide sans réseau quand PostgREST est suspendu. On ne coupe donc plus
+      // ici la réhydratation de l'identité locale.
       void safeLoadProfileBestEffort(user).then(commit).catch((error) => {
         if (!isSupabaseTransientUnavailableError(error)) {
           console.warn("[useAuthOnline] account profile refresh skipped", error);

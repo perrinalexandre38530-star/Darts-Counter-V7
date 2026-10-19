@@ -379,7 +379,7 @@ export default function BottomNav({
     };
 
     run(false);
-    timer = window.setInterval(() => run(true), constrained ? 45_000 : 15_000);
+    timer = window.setInterval(() => run(true), constrained ? 120_000 : 60_000);
     const onFocus = () => run(false);
     const onManual = () => run(false);
     const onCount = (event: any) => {
