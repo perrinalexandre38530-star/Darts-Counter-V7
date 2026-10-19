@@ -262,6 +262,42 @@ function Ptit1LiveTargetBoard({ rules, targets = [], score, currentThrow = [] }:
   </div>;
 }
 
+function Ptit1SingleZoneLegend() {
+  const compact = typeof window !== "undefined" ? window.innerWidth < 480 : false;
+  const isFr = ptit1CurrentLang() === "fr";
+  const cards = [
+    {
+      key: "small",
+      src: isFr ? smallSingleZoneVisual : smallSingleZoneVisualEn,
+      alt: isFr ? "Zone de petit simple" : "Small single zone",
+      title: isFr ? "PETIT SIMPLE" : "SMALL SINGLE",
+      subtitle: isFr ? "zone centrale = score normal" : "inner single = normal value",
+      color: GREEN,
+    },
+    {
+      key: "big",
+      src: isFr ? bigSingleZoneVisual : bigSingleZoneVisualEn,
+      alt: isFr ? "Zone de gros simple" : "Large single zone",
+      title: isFr ? "GROS SIMPLE" : "BIG SINGLE",
+      subtitle: isFr ? "couronne externe = valeur ×10" : "outer single = value ×10",
+      color: ACCENT,
+    },
+  ];
+
+  return <div style={{ borderRadius: 16, padding: 10, border: `1px solid ${ACCENT}33`, background: "linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,.015))" }}>
+    <div style={{ color: ACCENT, fontSize: 8.4, fontWeight: 1100, letterSpacing: .8, marginBottom: 7 }}>{ptit1Ui("REPÈRES VISUELS","VISUAL GUIDES")}</div>
+    <div style={{ display: "grid", gridTemplateColumns: compact ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 8 }}>
+      {cards.map((card) => <figure key={card.key} style={{ margin: 0, overflow: "hidden", borderRadius: 12, border: `1px solid ${card.color}44`, background: "#05070b" }}>
+        <img src={card.src} alt={card.alt} style={{ width: "100%", display: "block", aspectRatio: "1 / 1", objectFit: "contain", padding: 4 }} />
+        <figcaption style={{ padding: "6px 7px 8px", textAlign: "center" }}>
+          <div style={{ color: card.color, fontSize: 7.8, fontWeight: 1100, letterSpacing: .55 }}>{card.title}</div>
+          <div style={{ color: "#aeb7c7", fontSize: 7.1, lineHeight: 1.35, marginTop: 3 }}>{card.subtitle}</div>
+        </figcaption>
+      </figure>)}
+    </div>
+  </div>;
+}
+
 function PtitHunRiskBoard({ state, playerId, currentThrow, preview }: any) {
   const rules = state.config.rules;
   const st = state.statsByPlayer?.[playerId] || {};

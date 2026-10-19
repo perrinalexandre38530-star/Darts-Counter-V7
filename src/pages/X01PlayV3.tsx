@@ -5833,14 +5833,213 @@ try {
 // On utilise volontairement le même GameplayLayout que X01 Arcade afin de
 // conserver la règle horizontale commune : gauche fixe (score/joueurs), droite saisie.
 
+
+  const quickLandscapeAccent = isTeamsMode && activeTeam ? activeTeam.color : themePrimary;
+  const quickLandscapeAccentDark = isTeamsMode && activeTeam ? ((activeTeam as any).colorDark || themeSecondary) : themeSecondary;
+
+  const quickLandscapePlayers = isTeamsMode && teamsView ? (
+    <TeamsPlayersList
+      cameraOpen={cameraOpen}
+      setCameraOpen={setCameraOpen}
+      teams={teamsView}
+      activePlayerId={activePlayerId}
+      profileById={profileById}
+      liveStatsByPlayer={liveStatsByPlayer}
+      start={config.startScore}
+      scoresByPlayer={scores}
+      useSets={useSetsUi}
+      lastVisitsByPlayer={lastVisitsByPlayer}
+      lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
+      lastVisitBustCountByPlayer={lastVisitBustCountByPlayer}
+      avg3ByPlayer={avg3ByPlayer}
+      hideLastVisitDetails={configuredScoreInputMethod === "visit_score"}
+    />
+  ) : (
+    <PlayersListOnly
+      cameraOpen={cameraOpen}
+      setCameraOpen={setCameraOpen}
+      players={playersInTurnOrder}
+      profileById={profileById}
+      liveStatsByPlayer={liveStatsByPlayer}
+      start={config.startScore}
+      scoresByPlayer={scores}
+      legsWon={(state as any).legsWon ?? {}}
+      setsWon={(state as any).setsWon ?? {}}
+      useSets={useSetsUi}
+      lastVisitsByPlayer={lastVisitsByPlayer}
+      lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
+      lastVisitBustCountByPlayer={lastVisitBustCountByPlayer}
+      avg3ByPlayer={avg3ByPlayer}
+      hideLastVisitDetails={configuredScoreInputMethod === "visit_score"}
+    />
+  );
+
+  const quickLandscapeInput = (
+    <ScoreInputHub
+      currentThrow={currentThrow}
+      multiplier={multiplier}
+      onSimple={onlineCanScore ? handleSimple : (() => {})}
+      onDouble={onlineCanScore ? handleDouble : (() => {})}
+      onTriple={onlineCanScore ? handleTriple : (() => {})}
+      onBackspace={onlineCanScore ? handleBackspace : (() => {})}
+      onCancel={onlineCanScore ? handleCancel : (() => {})}
+      onNumber={onlineCanScore ? handleNumber : (() => {})}
+      onBull={onlineCanScore ? handleBull : (() => {})}
+      onValidate={onlineCanScore ? requestValidateThrow : (() => {})}
+      onDirectDart={onlineCanScore ? handleDirectDart : (() => {})}
+      onSetVisitDarts={onlineCanScore ? handleSetVisitDarts : (() => {})}
+      onSubmitVisitScore={onlineCanScore ? handleSubmitVisitScore : (() => {})}
+      onCorrectVisitScore={onlineCanScore ? handleCorrectVisitScore : (() => {})}
+      visitScoreFeedback={visitScoreFeedback}
+      preferredMethod={configuredScoreInputMethod}
+      allowVisitScore
+      quickVisitSwitcher
+      onMethodChange={setConfiguredScoreInputMethod}
+      voiceControl={{
+        enabled: !!(voiceScoreEnabled && scoringSource !== "external" && !isBotTurn && onlineCanScore && !isBustLocked && voiceMatchIsLive),
+        supported: voiceScore.supported,
+        phase: voiceScore.phase,
+        activity: voiceScore.activity,
+        expectedIndex: voiceScore.expectedIndex,
+        awaitingConfirm: voiceScore.awaitingConfirm,
+        lastHeard: voiceScore.lastHeard,
+        dartsLabel: voiceScore.dartsLabel,
+        dartsTotal: voiceScore.dartsTotal,
+        permissionHint: voiceScore.permissionHint,
+        onStart: () => voiceScore.beginTurn(),
+        onStop: () => voiceScore.stop(),
+        onReset: () => voiceScore.resetTurn(),
+      }}
+      hidePreview
+      showPlaceholders={false}
+      disabled={!onlineCanScore}
+      hideSwitcher={false}
+      hideTabs={false}
+      switcherMode="inline"
+      hideQuickVisitHint
+      quickCameraAction={() => setCameraOpen(true)}
+      quickCameraActive={cameraOpen}
+      themePrimary={quickLandscapeAccent}
+      themeSecondary={quickLandscapeAccentDark}
+      fitToParent
+      fitMinScale={0.54}
+    />
+  );
+
   return (
     <div
       className={`x01play-container theme-${theme.id}`}
       // 100dvh = évite l'effet "aplati" quand la barre navigateur mobile change la hauteur utile.
       style={{ overflow: "hidden", height: "100dvh", minHeight: 0 }}
     >
-      {/* ✅ MEP: Layout unifié (Header + Profil Actif + Joueurs modal + Volée + Saisie) */}
-      <GameplayLayout
+      {isQuickParty && isGameplayLandscape ? (
+        <div className="x01ql-play" style={{ ["--x01ql-accent" as any]: quickLandscapeAccent }}>
+          <style>{`
+            .x01ql-play{position:fixed;inset:0;width:100vw;height:100dvh;max-height:100dvh;overflow:hidden;display:flex;flex-direction:column;gap:4px;padding:4px;background:linear-gradient(180deg,rgba(3,8,13,.92),rgba(2,5,9,.98));color:#fff;box-sizing:border-box;overscroll-behavior:none;z-index:20}
+            .x01ql-play *{box-sizing:border-box}
+            .x01ql-head{position:relative;flex:0 0 46px;min-height:0;overflow:hidden;border-radius:13px;border:1px solid color-mix(in srgb,var(--x01ql-accent) 28%,rgba(255,255,255,.08));background:#070b11;display:flex;align-items:center;justify-content:center}
+            .x01ql-head:before{content:"";position:absolute;inset:0;background-image:linear-gradient(90deg,rgba(2,6,10,.88),rgba(2,6,10,.36) 34%,rgba(2,6,10,.36) 66%,rgba(2,6,10,.88)),url(${tickerX01});background-size:cover;background-position:center;opacity:.52}
+            .x01ql-head__left,.x01ql-head__right,.x01ql-head__center{position:relative;z-index:2;display:flex;align-items:center}
+            .x01ql-head__left{position:absolute;left:7px;top:50%;transform:translateY(-50%)}
+            .x01ql-head__right{position:absolute;right:7px;top:50%;transform:translateY(-50%);gap:7px}
+            .x01ql-head__center{justify-content:center;min-width:0;max-width:54%;height:100%}
+            .x01ql-head__ticker{display:block;width:auto;height:100%;max-width:100%;object-fit:contain}
+            .x01ql-stage{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:minmax(300px,38%) minmax(0,1fr);gap:6px;overflow:hidden}
+            .x01ql-left{min-height:0;display:grid;grid-template-rows:minmax(184px,.92fr) minmax(0,1.08fr);gap:6px;overflow:hidden}
+            .x01ql-score{min-height:0;overflow:hidden;border-radius:16px;border:1px solid color-mix(in srgb,var(--x01ql-accent) 30%,rgba(255,255,255,.08));background:rgba(5,9,14,.88);padding:5px}
+            .x01ql-score>div{height:100%;min-height:0}
+            .x01ql-players{min-height:0;overflow:auto;border-radius:15px;border:1px solid rgba(255,255,255,.08);background:linear-gradient(180deg,rgba(13,17,24,.94),rgba(4,7,11,.98));padding:5px;scrollbar-width:thin}
+            .x01ql-input{min-height:0;overflow:hidden;border-radius:16px;border:1px solid color-mix(in srgb,var(--x01ql-accent) 30%,rgba(255,255,255,.08));background:linear-gradient(180deg,rgba(13,17,24,.96),rgba(4,7,11,.99));padding:5px;display:flex}
+            .x01ql-input>[data-mss-score-input-hub="1"]{height:100%;min-height:0;width:100%;overflow:hidden}
+            @media (orientation:landscape) and (max-width:980px){
+              .x01ql-play{gap:4px;padding:4px}
+              .x01ql-head{flex-basis:42px}
+              .x01ql-stage{grid-template-columns:minmax(232px,41%) minmax(0,1fr);gap:5px}
+              .x01ql-left{grid-template-rows:minmax(160px,.92fr) minmax(0,1.08fr);gap:5px}
+              .x01ql-score,.x01ql-players,.x01ql-input{border-radius:13px;padding:4px}
+              .x01ql-head__right{gap:4px}
+            }
+            @media (orientation:landscape) and (min-width:1000px){
+              .x01ql-play{padding-left:80px}
+            }
+          `}</style>
+
+          <header className="x01ql-head">
+            <div className="x01ql-head__left">
+              <BackDot onClick={handleQuit} size={34} color={quickLandscapeAccent} glow={`${quickLandscapeAccent}88`} />
+            </div>
+            <div className="x01ql-head__center">
+              {useSetsUi ? (
+                isTeamsMode && teamsView && (teamsView as any[]).length >= 2 ? (
+                  (teamsView as any[]).length === 2 ? (
+                    <DuelHeaderCompact
+                      leftAvatarUrl={((teamsView as any[])[0]?.avatarUrl as string) ?? ""}
+                      rightAvatarUrl={((teamsView as any[])[1]?.avatarUrl as string) ?? ""}
+                      leftSets={(state as any).teamSetsWon?.[((teamsView as any[])[0]?.id as any)] ?? 0}
+                      rightSets={(state as any).teamSetsWon?.[((teamsView as any[])[1]?.id as any)] ?? 0}
+                      leftLegs={(state as any).teamLegsWon?.[((teamsView as any[])[0]?.id as any)] ?? 0}
+                      rightLegs={(state as any).teamLegsWon?.[((teamsView as any[])[1]?.id as any)] ?? 0}
+                    />
+                  ) : (
+                    <TeamsHeaderCompact teams={teamsView as any[]} teamLegsWon={(state as any).teamLegsWon ?? {}} teamSetsWon={(state as any).teamSetsWon ?? {}} />
+                  )
+                ) : isDuel ? (
+                  <DuelHeaderCompact
+                    leftAvatarUrl={profileById[players[0].id]?.avatarDataUrl ?? ""}
+                    rightAvatarUrl={profileById[players[1].id]?.avatarDataUrl ?? ""}
+                    leftSets={(state as any).setsWon?.[players[0].id] ?? 0}
+                    rightSets={(state as any).setsWon?.[players[1].id] ?? 0}
+                    leftLegs={(state as any).legsWon?.[players[0].id] ?? 0}
+                    rightLegs={(state as any).legsWon?.[players[1].id] ?? 0}
+                  />
+                ) : <img className="x01ql-head__ticker" src={tickerX01} alt="X01" draggable={false} />
+              ) : <img className="x01ql-head__ticker" src={tickerX01} alt="X01" draggable={false} />}
+            </div>
+            <div className="x01ql-head__right">
+              {useSetsUi ? (
+                <SetLegChip
+                  currentSet={(state as any).currentSet ?? 1}
+                  currentLegInSet={(state as any).currentLeg ?? 1}
+                  setsTarget={setsTarget}
+                  legsTarget={legsTarget}
+                  useSets={useSetsUi}
+                  unit={matchFormatUnitForUi as any}
+                  victoryMode={matchVictoryModeForUi as any}
+                />
+              ) : null}
+              <button type="button" aria-label="Awena" title="Awena" onClick={() => awena?.openPanel?.()} style={{width:36,height:36,borderRadius:999,padding:2,border:"none",background:"conic-gradient(#3dff96,#33d8ff,#ff4cc8,#3dff96)",boxShadow:"0 0 14px rgba(51,216,255,.32)",cursor:"pointer"}}>
+                <span style={{width:"100%",height:"100%",borderRadius:999,overflow:"hidden",display:"block",background:"#060815"}}><img src="/awena/awena-avatar.webp" alt="Awena" style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}} /></span>
+              </button>
+            </div>
+          </header>
+
+          <main className="x01ql-stage">
+            <section className="x01ql-left">
+              <div className="x01ql-score">
+                <QuickPartyScoreboard
+                  players={players}
+                  teams={teamsView}
+                  scores={scores}
+                  activePlayerId={activePlayerId}
+                  state={state}
+                  startScore={config.startScore}
+                  liveStatsByPlayer={liveStatsByPlayer}
+                  avg3ByPlayer={avg3ByPlayer}
+                  lastVisitsByPlayer={lastVisitsByPlayer}
+                  themePrimary={quickLandscapeAccent}
+                  themeSecondary={quickLandscapeAccentDark}
+                  lang={lang}
+                  showSeriesScore={false}
+                  seriesUnit={matchFormatUnitForUi}
+                />
+              </div>
+              <div className="x01ql-players">{quickLandscapePlayers}</div>
+            </section>
+            <section className="x01ql-input">{quickLandscapeInput}</section>
+          </main>
+        </div>
+      ) : (
+        <GameplayLayout
         modeId="x01"
         forceLayout={isGameplayLandscape ? "tablet" : "auto"}
         title=""
@@ -6307,6 +6506,7 @@ try {
           </div>
         }
       />
+      )}
 
       {isQuickParty ? (
         <CameraAssistedOverlay

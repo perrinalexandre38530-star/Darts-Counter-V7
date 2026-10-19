@@ -481,7 +481,7 @@ export default function ScoreInputHub({
     }
   }, [disabled, method, onValidate, voiceControl]);
 
-  const voiceNotice = method === "voice" ? (
+  const voiceNotice = method === "voice" && !quickVisitSwitcher ? (
     <VoiceInlineNotice
       enabled={!!voiceControl?.enabled}
       supported={voiceSupported}
@@ -530,7 +530,7 @@ export default function ScoreInputHub({
   );
 
   const quickSafeBottomPad = quickVisitSwitcher && method !== "visit_score"
-    ? "max(18px, env(safe-area-inset-bottom, 0px))"
+    ? "max(46px, env(safe-area-inset-bottom, 0px))"
     : undefined;
 
   return (
