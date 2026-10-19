@@ -57,10 +57,12 @@ const isDev = !!import.meta.env.DEV;
 // On limite donc la concurrence REST, puis on ouvre un circuit global pendant
 // une courte periode apres un 502/503/504 de la data-plane. Auth reste disponible
 // car /auth/v1 n'est volontairement jamais bloque ici.
-const SUPABASE_REST_MAX_CONCURRENCY = 4;
-const SUPABASE_REST_BASE_COOLDOWN_MS = 20_000;
-const SUPABASE_REST_MAX_COOLDOWN_MS = 3 * 60_000;
+const SUPABASE_REST_NORMAL_CONCURRENCY = 4;
+const SUPABASE_REST_BASE_COOLDOWN_MS = 60_000;
+const SUPABASE_REST_MAX_COOLDOWN_MS = 10 * 60_000;
+const SUPABASE_REST_CIRCUIT_STORAGE_KEY = "msc:supabase-rest-circuit-v1";
 let supabaseRestActive = 0;
+let supabaseRestHealthy = false;
 let supabaseRestCircuitUntil = 0;
 let supabaseRestFailureCount = 0;
 let supabaseRestNeedsProbe = false;
@@ -121,6 +123,41 @@ function announceSupabaseRestState(state: "paused" | "ready", detail: any = {}):
   try { window.dispatchEvent(new CustomEvent("msc:supabase-rest-health", { detail: { state, ...detail } })); } catch {}
 }
 
+function persistSupabaseRestCircuit(): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (supabaseRestCircuitUntil > Date.now()) {
+      window.sessionStorage.setItem(SUPABASE_REST_CIRCUIT_STORAGE_KEY, JSON.stringify({
+        until: supabaseRestCircuitUntil,
+        failures: supabaseRestFailureCount,
+        needsProbe: supabaseRestNeedsProbe,
+      }));
+    } else {
+      window.sessionStorage.removeItem(SUPABASE_REST_CIRCUIT_STORAGE_KEY);
+    }
+  } catch {}
+}
+
+function restorePersistedSupabaseRestCircuit(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = window.sessionStorage.getItem(SUPABASE_REST_CIRCUIT_STORAGE_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    const until = Number(saved?.until || 0);
+    if (until > Date.now() && until - Date.now() <= SUPABASE_REST_MAX_COOLDOWN_MS) {
+      supabaseRestCircuitUntil = until;
+      supabaseRestFailureCount = Math.max(1, Math.min(8, Number(saved?.failures || 1)));
+      supabaseRestNeedsProbe = true;
+      supabaseRestHealthy = false;
+    } else {
+      window.sessionStorage.removeItem(SUPABASE_REST_CIRCUIT_STORAGE_KEY);
+    }
+  } catch {}
+}
+
+restorePersistedSupabaseRestCircuit();
+
 function openSupabaseRestCircuit(reason: string, status = 503): void {
   const now = Date.now();
   // Plusieurs requetes deja parties peuvent toutes revenir 503 en meme temps.
@@ -136,6 +173,8 @@ function openSupabaseRestCircuit(reason: string, status = 503): void {
   );
   supabaseRestCircuitUntil = Math.max(supabaseRestCircuitUntil, now + cooldown);
   supabaseRestNeedsProbe = true;
+  supabaseRestHealthy = false;
+  persistSupabaseRestCircuit();
   if (Date.now() - supabaseRestLastNoticeAt > 30_000) {
     supabaseRestLastNoticeAt = Date.now();
     console.warn(`[supabase] data-plane suspendue ${Math.ceil(cooldown / 1000)}s (${status}) : ${reason || "service indisponible"}`);
@@ -149,6 +188,8 @@ function closeSupabaseRestCircuit(): void {
   supabaseRestCircuitUntil = 0;
   supabaseRestNeedsProbe = false;
   supabaseRestProbeInFlight = false;
+  supabaseRestHealthy = true;
+  persistSupabaseRestCircuit();
   if (wasPaused) announceSupabaseRestState("ready", { at: Date.now() });
 }
 
@@ -171,7 +212,8 @@ function syntheticSupabaseCooldownResponse(): Response {
 }
 
 async function acquireSupabaseRestSlot(): Promise<void> {
-  if (supabaseRestActive < SUPABASE_REST_MAX_CONCURRENCY) {
+  const maxConcurrency = supabaseRestHealthy ? SUPABASE_REST_NORMAL_CONCURRENCY : 1;
+  if (supabaseRestActive < maxConcurrency) {
     supabaseRestActive += 1;
     return;
   }

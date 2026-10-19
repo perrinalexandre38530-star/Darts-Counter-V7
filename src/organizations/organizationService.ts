@@ -18,6 +18,18 @@ async function orgRpc(functionName: string, args?: Record<string, any>): Promise
   return result;
 }
 
+function organizationCloudPaused(): boolean {
+  return isSupabaseRestCircuitOpen();
+}
+
+function warnOrganizationCloudError(label: string, error: any): void {
+  // Une panne PGRST002/503 est deja signalee une seule fois par le circuit global.
+  // Les ecrans Organisation doivent alors passer silencieusement sur leur cache/local
+  // au lieu de remplir la console de dizaines de warnings identiques.
+  if (organizationCloudPaused() || isSupabaseTransientUnavailableError(error)) return;
+  console.warn(`[organizations] ${label}`, error);
+}
+
 export type OrganizationKind =
   | "club"
   | "association"
@@ -530,7 +542,7 @@ function saveOrganizationLocalState(userId: string | null | undefined, state: Lo
   try {
     window.localStorage.setItem(storageKey(userId), JSON.stringify(state));
   } catch (error) {
-    console.warn("[organizations] local save failed", error);
+    warnOrganizationCloudError("local save failed", error);
   }
 }
 
@@ -773,7 +785,7 @@ export async function createOrganization(userId: string | null | undefined, inpu
         return { organization, cloudAvailable: true };
       }
     } catch (error) {
-      console.warn("[organizations] cloud create unavailable, using local fallback", error);
+      warnOrganizationCloudError("cloud create unavailable, using local fallback", error);
     }
   }
 
@@ -838,7 +850,7 @@ export async function updateOrganizationProfile(
         return { organization, cloudAvailable: true };
       }
     } catch (error) {
-      console.warn("[organizations] cloud profile update unavailable, keeping local metadata", error);
+      warnOrganizationCloudError("cloud profile update unavailable, keeping local metadata", error);
       return {
         organization: localOrganization,
         cloudAvailable: false,
@@ -879,7 +891,7 @@ export async function updateOrganizationIdentity(
         return { organization, cloudAvailable: true };
       }
     } catch (error) {
-      console.warn("[organizations] cloud identity update unavailable, keeping local metadata", error);
+      warnOrganizationCloudError("cloud identity update unavailable, keeping local metadata", error);
       return { organization: localOrganization, cloudAvailable: false, warning: "Identité conservée localement ; la synchronisation cloud est indisponible." };
     }
   }
@@ -915,7 +927,7 @@ export async function joinOrganization(userId: string | null | undefined, rawCod
         return { organization, cloudAvailable: true };
       }
     } catch (error) {
-      console.warn("[organizations] cloud join unavailable", error);
+      warnOrganizationCloudError("cloud join unavailable", error);
     }
   }
 
@@ -996,7 +1008,7 @@ export async function listOrganizationGroups(userId: string | null | undefined, 
       cacheOrganizationGroups(userId, organizationId, groups);
       return { groups, cloudAvailable: true };
     } catch {
-      console.warn("[organizations] group list unavailable", rpcError);
+      warnOrganizationCloudError("group list unavailable", rpcError);
       return { groups: local, cloudAvailable: false };
     }
   }
@@ -1049,7 +1061,7 @@ export async function createOrganizationGroup(
         cacheOrganizationGroups(userId, organizationId, [group, ...current]);
         return { group, cloudAvailable: true };
       } catch {
-        console.warn("[organizations] cloud group create unavailable, using local fallback", rpcError);
+        warnOrganizationCloudError("cloud group create unavailable, using local fallback", rpcError);
       }
     }
   }
@@ -1230,7 +1242,7 @@ export async function createOrganizationEvent(userId: string | null | undefined,
       cacheOrganizationEvents(userId, organizationId, [...current, event].sort((a,b) => a.startsAt.localeCompare(b.startsAt)));
       return { event, cloudAvailable: true };
     } catch (error) {
-      console.warn("[organizations] cloud event create unavailable, using local fallback", error);
+      warnOrganizationCloudError("cloud event create unavailable, using local fallback", error);
     }
   }
   return { event: addLocalOrganizationEvent(userId, organizationId, clean), cloudAvailable: false };
@@ -1255,7 +1267,7 @@ export async function updateOrganizationEvent(userId: string | null | undefined,
       cacheOrganizationEvents(userId, organizationId, [...current, event].sort((a,b) => a.startsAt.localeCompare(b.startsAt)));
       return { event, cloudAvailable: true };
     } catch (error) {
-      console.warn("[organizations] cloud event update unavailable, using local fallback", error);
+      warnOrganizationCloudError("cloud event update unavailable, using local fallback", error);
     }
   }
   const event = updateLocalOrganizationEvent(userId, organizationId, eventId, clean);
@@ -1270,7 +1282,7 @@ export async function deleteOrganizationEvent(userId: string | null | undefined,
       deleteLocalOrganizationEvent(userId, organizationId, eventId);
       return { cloudAvailable: true };
     } catch (error) {
-      console.warn("[organizations] cloud event delete unavailable, using local fallback", error);
+      warnOrganizationCloudError("cloud event delete unavailable, using local fallback", error);
     }
   }
   deleteLocalOrganizationEvent(userId, organizationId, eventId);
@@ -1444,7 +1456,7 @@ export function syncOrganizationGroupsToSharedTeams(organization: OrganizationRe
     });
     saveTeams([...retained, ...linked]);
   } catch (error) {
-    console.warn("[organizations] Teams fusion failed", error);
+    warnOrganizationCloudError("Teams fusion failed", error);
   }
 }
 
@@ -1586,13 +1598,13 @@ export async function listOrganizationMembers(
   userId: string | null | undefined,
   organizationId: string,
 ): Promise<{ members: OrganizationMember[]; cloudAvailable: boolean }> {
-  if (!userId || !organizationId) return { members: [], cloudAvailable: false };
+  if (!userId || !organizationId || organizationCloudPaused()) return { members: [], cloudAvailable: false };
   try {
     const { data, error } = await orgRpc("ms_org_list_members", { p_org_id: organizationId });
     if (error) throw error;
     return { members: rpcRows(data).filter(Boolean).map((row) => parseOrganizationMember(row, organizationId)), cloudAvailable: true };
   } catch (error) {
-    console.warn("[organizations] member list unavailable", error);
+    warnOrganizationCloudError("member list unavailable", error);
     return { members: [], cloudAvailable: false };
   }
 }
@@ -1693,13 +1705,13 @@ export async function listOrganizationInvitations(
   userId: string | null | undefined,
   organizationId: string,
 ): Promise<{ invitations: OrganizationInvitation[]; cloudAvailable: boolean }> {
-  if (!userId || !organizationId) return { invitations: [], cloudAvailable: false };
+  if (!userId || !organizationId || organizationCloudPaused()) return { invitations: [], cloudAvailable: false };
   try {
     const { data, error } = await orgRpc("ms_org_list_invitations", { p_org_id: organizationId });
     if (error) throw error;
     return { invitations: rpcRows(data).filter(Boolean).map(parseOrganizationInvitation), cloudAvailable: true };
   } catch (error) {
-    console.warn("[organizations] invitation list unavailable", error);
+    warnOrganizationCloudError("invitation list unavailable", error);
     return { invitations: [], cloudAvailable: false };
   }
 }
@@ -1707,13 +1719,13 @@ export async function listOrganizationInvitations(
 export async function listMyOrganizationInvitations(
   userId: string | null | undefined,
 ): Promise<{ invitations: OrganizationInvitation[]; cloudAvailable: boolean }> {
-  if (!userId) return { invitations: [], cloudAvailable: false };
+  if (!userId || organizationCloudPaused()) return { invitations: [], cloudAvailable: false };
   try {
     const { data, error } = await orgRpc("ms_org_list_my_invitations");
     if (error) throw error;
     return { invitations: rpcRows(data).filter(Boolean).map(parseOrganizationInvitation), cloudAvailable: true };
   } catch (error) {
-    console.warn("[organizations] incoming invitations unavailable", error);
+    warnOrganizationCloudError("incoming invitations unavailable", error);
     return { invitations: [], cloudAvailable: false };
   }
 }
@@ -1769,13 +1781,13 @@ export async function listOrganizationMemberProposals(
   userId: string | null | undefined,
   organizationId: string,
 ): Promise<{ proposals: OrganizationMemberProposal[]; cloudAvailable: boolean }> {
-  if (!userId || !organizationId) return { proposals: [], cloudAvailable: false };
+  if (!userId || !organizationId || organizationCloudPaused()) return { proposals: [], cloudAvailable: false };
   try {
     const { data, error } = await orgRpc("ms_org_list_member_proposals", { p_org_id: organizationId });
     if (error) throw error;
     return { proposals: rpcRows(data).filter(Boolean).map(parseOrganizationMemberProposal), cloudAvailable: true };
   } catch (error) {
-    console.warn("[organizations] member proposals unavailable", error);
+    warnOrganizationCloudError("member proposals unavailable", error);
     return { proposals: [], cloudAvailable: false };
   }
 }
@@ -1783,13 +1795,13 @@ export async function listOrganizationMemberProposals(
 export async function listMyOrganizationMemberProposals(
   userId: string | null | undefined,
 ): Promise<{ proposals: OrganizationMemberProposal[]; cloudAvailable: boolean }> {
-  if (!userId) return { proposals: [], cloudAvailable: false };
+  if (!userId || organizationCloudPaused()) return { proposals: [], cloudAvailable: false };
   try {
     const { data, error } = await orgRpc("ms_org_list_my_member_proposals");
     if (error) throw error;
     return { proposals: rpcRows(data).filter(Boolean).map(parseOrganizationMemberProposal), cloudAvailable: true };
   } catch (error) {
-    console.warn("[organizations] incoming member proposals unavailable", error);
+    warnOrganizationCloudError("incoming member proposals unavailable", error);
     return { proposals: [], cloudAvailable: false };
   }
 }
@@ -1928,13 +1940,13 @@ export async function listOrganizationCompetitions(
   userId: string | null | undefined,
   organizationId: string,
 ): Promise<{ competitions: OrganizationCompetition[]; cloudAvailable: boolean }> {
-  if (!userId || !organizationId) return { competitions: [], cloudAvailable: false };
+  if (!userId || !organizationId || organizationCloudPaused()) return { competitions: [], cloudAvailable: false };
   try {
     const { data, error } = await orgRpc("ms_org_list_competitions", { p_org_id: organizationId });
     if (error) throw error;
     return { competitions: rpcRows(data).filter(Boolean).map(parseOrganizationCompetition), cloudAvailable: true };
   } catch (error) {
-    console.warn("[organizations] competition list unavailable", error);
+    warnOrganizationCloudError("competition list unavailable", error);
     return { competitions: [], cloudAvailable: false };
   }
 }
@@ -2115,7 +2127,7 @@ export async function listOrganizationAnnouncements(
   organizationId: string,
   groupId?: string | null,
 ): Promise<{ announcements: OrganizationAnnouncement[]; cloudAvailable: boolean }> {
-  if (!userId || !organizationId) return { announcements: [], cloudAvailable: false };
+  if (!userId || !organizationId || organizationCloudPaused()) return { announcements: [], cloudAvailable: false };
   try {
     const { data, error } = await orgRpc("ms_org_list_announcements", {
       p_org_id: organizationId,
@@ -2124,7 +2136,7 @@ export async function listOrganizationAnnouncements(
     if (error) throw error;
     return { announcements: rpcRows(data).filter(Boolean).map(parseOrganizationAnnouncement), cloudAvailable: true };
   } catch (error) {
-    console.warn("[organizations] announcements unavailable", error);
+    warnOrganizationCloudError("announcements unavailable", error);
     return { announcements: [], cloudAvailable: false };
   }
 }
@@ -2239,13 +2251,13 @@ export async function listOrganizationFeeCampaigns(
   userId: string | null | undefined,
   organizationId: string,
 ): Promise<{ campaigns: OrganizationFeeCampaign[]; cloudAvailable: boolean }> {
-  if (!userId || !organizationId) return { campaigns: [], cloudAvailable: false };
+  if (!userId || !organizationId || organizationCloudPaused()) return { campaigns: [], cloudAvailable: false };
   try {
     const { data, error } = await orgRpc("ms_org_list_fee_campaigns", { p_org_id: organizationId });
     if (error) throw error;
     return { campaigns: rpcRows(data).filter(Boolean).map(parseOrganizationFeeCampaign), cloudAvailable: true };
   } catch (error) {
-    console.warn("[organizations] fee campaigns unavailable", error);
+    warnOrganizationCloudError("fee campaigns unavailable", error);
     return { campaigns: [], cloudAvailable: false };
   }
 }
@@ -2387,13 +2399,13 @@ export async function listOrganizationPartners(
   userId: string | null | undefined,
   organizationId: string,
 ): Promise<{ partners: OrganizationPartner[]; cloudAvailable: boolean }> {
-  if (!userId || !organizationId) return { partners: [], cloudAvailable: false };
+  if (!userId || !organizationId || organizationCloudPaused()) return { partners: [], cloudAvailable: false };
   try {
     const { data, error } = await orgRpc("ms_org_list_partners", { p_org_id: organizationId });
     if (error) throw error;
     return { partners: rpcRows(data).filter(Boolean).map(parseOrganizationPartner), cloudAvailable: true };
   } catch (error) {
-    console.warn("[organizations] partners unavailable", error);
+    warnOrganizationCloudError("partners unavailable", error);
     return { partners: [], cloudAvailable: false };
   }
 }
@@ -2505,13 +2517,13 @@ export async function listOrganizationFederationLinks(
   userId: string | null | undefined,
   organizationId: string,
 ): Promise<{ links: OrganizationFederationLink[]; cloudAvailable: boolean }> {
-  if (!userId || !organizationId) return { links: [], cloudAvailable: false };
+  if (!userId || !organizationId || organizationCloudPaused()) return { links: [], cloudAvailable: false };
   try {
     const { data, error } = await orgRpc("ms_org_list_federation_links", { p_org_id: organizationId });
     if (error) throw error;
     return { links: rpcRows(data).filter(Boolean).map(parseOrganizationFederationLink), cloudAvailable: true };
   } catch (error) {
-    console.warn("[organizations] federation links unavailable", error);
+    warnOrganizationCloudError("federation links unavailable", error);
     return { links: [], cloudAvailable: false };
   }
 }
@@ -2588,13 +2600,13 @@ export async function listOrganizationInstallations(
   userId: string | null | undefined,
   organizationId: string,
 ): Promise<{ installations: OrganizationInstallation[]; cloudAvailable: boolean }> {
-  if (!userId || !organizationId) return { installations: [], cloudAvailable: false };
+  if (!userId || !organizationId || organizationCloudPaused()) return { installations: [], cloudAvailable: false };
   try {
     const { data, error } = await orgRpc("ms_org_list_installations", { p_org_id: organizationId });
     if (error) throw error;
     return { installations: rpcRows(data).filter(Boolean).map(parseOrganizationInstallation), cloudAvailable: true };
   } catch (error) {
-    console.warn("[organizations] installations unavailable", error);
+    warnOrganizationCloudError("installations unavailable", error);
     return { installations: [], cloudAvailable: false };
   }
 }
@@ -2674,6 +2686,6 @@ export async function touchOrganizationInstallation(
     const { error } = await orgRpc("ms_org_touch_installation", { p_token: String(token).trim() });
     if (error) throw error;
   } catch (error) {
-    console.warn("[organizations] venue usage counter unavailable", error);
+    warnOrganizationCloudError("venue usage counter unavailable", error);
   }
 }
