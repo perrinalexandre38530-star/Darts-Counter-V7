@@ -4,6 +4,8 @@ import BackDot from "../components/BackDot";
 import PageHeader from "../components/PageHeader";
 import ProfileAvatar from "../components/ProfileAvatar";
 import bssArt from "../assets/bss/bss_original.jpg";
+import bssBg from "../assets/bss/bss_bg.webp";
+import tickerBssKing from "../assets/tickers/ticker_bss_king.webp";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { History } from "../lib/history";
 import type { Dart as UIDart } from "../lib/types";
@@ -15,6 +17,7 @@ import "./newModes/PremiumPartyModeUi.css";
 
 const GOLD="#f0c76a", RED="#d74855", BG="#09080b", SOFT="#a9a1a5";
 const COLORS=["#f0c76a","#ff667a","#65d7ff","#7df2a7","#bc8cff","#ff9b54","#f9ed69","#6de4da","#ff7dd1","#9dc3ff"];
+const SHELL_BG = {backgroundImage:`linear-gradient(180deg, rgba(9,8,11,.80), rgba(9,8,11,.95)), url(${bssBg})`, backgroundSize:"cover", backgroundPosition:"center", backgroundRepeat:"no-repeat"} as const;
 
 function panel(extra:any={}){return {border:"1px solid rgba(255,255,255,.09)",borderRadius:18,background:"linear-gradient(180deg,rgba(30,23,26,.96),rgba(10,9,12,.98))",boxShadow:"0 12px 30px rgba(0,0,0,.34)",...extra};}
 function scoreLabel(d:any){try{return dartLabel(d)}catch{return "—"}}
@@ -66,8 +69,8 @@ export default function BssKingPlay(props:any){
   const ranking=React.useMemo(()=>[...state.players].map((p:any,i:number)=>({p,badges:Number(state.badges[p.id]||0),influence:Number(state.influence[p.id]||0),i})).sort((a,b)=>b.badges-a.badges||b.influence-a.influence||a.i-b.i),[state.players,state.badges,state.influence]);
   const winner=state.winnerId?profileById.get(String(state.winnerId))||state.players.find((p:any)=>p.id===state.winnerId):null;
 
-  if(state.phase==="finished") return <div style={{height:"100dvh",overflow:"auto",background:`radial-gradient(circle at 50% 12%,rgba(215,72,85,.24),transparent 34%),${BG}`,color:"#fff"}}>
-    <PageHeader tickerSrc={bssArt} tickerAlt="BSS KING" tickerHeight={72} tickerFit="cover" left={<div style={{marginLeft:7}}><BackDot onClick={()=>go?.("bss_king_config")} color={GOLD} glow={`${GOLD}88`}/></div>} />
+  if(state.phase==="finished") return <div style={{height:"100dvh",overflow:"auto",background:`radial-gradient(circle at 50% 12%,rgba(215,72,85,.24),transparent 34%),${BG}`, ...SHELL_BG,color:"#fff"}}>
+    <PageHeader tickerSrc={tickerBssKing} tickerAlt="BSS KING" tickerHeight={72} tickerFit="cover" left={<div style={{marginLeft:7}}><BackDot onClick={()=>go?.("bss_king_config")} color={GOLD} glow={`${GOLD}88`}/></div>} />
     <div style={{maxWidth:900,margin:"0 auto",padding:"18px 14px 90px"}}>
       <section style={panel({padding:20,textAlign:"center",border:`1px solid ${GOLD}66`,boxShadow:`0 0 34px ${GOLD}20,0 18px 50px rgba(0,0,0,.5)`})}>
         <div style={{fontSize:13,fontWeight:1000,letterSpacing:2,color:GOLD}}>👑 BSS KING 👑</div>
@@ -84,8 +87,8 @@ export default function BssKingPlay(props:any){
     </div>
   </div>;
 
-  return <div style={{height:"100dvh",minHeight:0,overflow:"hidden",background:`radial-gradient(circle at 50% 0%,rgba(215,72,85,.17),transparent 32%),${BG}`,color:"#fff",display:"flex",flexDirection:"column"}} data-mss-native-play-layout="1">
-    <PageHeader tickerSrc={bssArt} tickerAlt="BSS KING" tickerHeight={68} tickerFit="cover" tickerBottomGap={8} left={<div style={{marginLeft:7}}><BackDot onClick={()=>go?.("bss_king_config")} color={activeColor} glow={`${activeColor}88`}/></div>} right={awena?.enabled!==false?<div style={{marginRight:7}}><PremiumAwenaButton awena={awena} route="bss_king_play" mode="bss_king" screenLabel="BSS KING · Partie" accent={activeColor}/></div>:null}/>
+  return <div style={{height:"100dvh",minHeight:0,overflow:"hidden",background:`radial-gradient(circle at 50% 0%,rgba(215,72,85,.17),transparent 32%),${BG}`, ...SHELL_BG,color:"#fff",display:"flex",flexDirection:"column"}} data-mss-native-play-layout="1">
+    <PageHeader tickerSrc={tickerBssKing} tickerAlt="BSS KING" tickerHeight={68} tickerFit="cover" tickerBottomGap={8} left={<div style={{marginLeft:7}}><BackDot onClick={()=>go?.("bss_king_config")} color={activeColor} glow={`${activeColor}88`}/></div>} right={awena?.enabled!==false?<div style={{marginRight:7}}><PremiumAwenaButton awena={awena} route="bss_king_play" mode="bss_king" screenLabel="BSS KING · Partie" accent={activeColor}/></div>:null}/>
     <main style={{flex:"1 1 auto",minHeight:0,overflow:"hidden",padding:"0 10px 10px"}}>
       <div style={{height:"100%",display:"grid",gridTemplateColumns:"minmax(0,1.05fr) minmax(320px,.95fr)",gap:10}} className="bss-play-grid">
         <div style={{minHeight:0,overflow:"auto",display:"grid",alignContent:"start",gap:9,paddingBottom:8}}>

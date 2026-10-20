@@ -19,6 +19,7 @@ export const NEW_MODE_IDS: string[] = [
   "pendu",
   "menteur",
   "crados",
+  "bss_king",
   "halve_it",
   "bobs_27",
   "happy_mille",
