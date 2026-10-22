@@ -74,24 +74,45 @@ function getPointsHelp(challenge: any, throneFinish: "bull" | "dbull") {
 
 function IconInfoButton({ icon, label, onClick, active, accent }: any) {
   return <button onClick={onClick} style={{
-    borderRadius: 14,
+    borderRadius: 16,
     border: `1px solid ${active ? accent : "rgba(255,255,255,.08)"}`,
     background: active ? `${accent}16` : "rgba(255,255,255,.035)",
     color: "#fff",
-    padding: "8px 8px 9px",
+    padding: "9px 8px 10px",
     display: "grid",
-    gridTemplateColumns: "24px minmax(0,1fr)",
-    gap: 8,
-    alignItems: "center",
-    textAlign: "left",
+    justifyItems: "center",
+    gap: 6,
+    alignContent: "center",
+    textAlign: "center",
     cursor: "pointer",
+    minHeight: 74,
   }}>
-    <div style={{ width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", background: active ? `${accent}22` : "rgba(255,255,255,.06)", border: `1px solid ${active ? accent : "rgba(255,255,255,.10)"}`, fontSize: 13 }}>{icon}</div>
+    <div style={{ width: 34, height: 34, borderRadius: 999, display: "grid", placeItems: "center", background: active ? `${accent}22` : "rgba(255,255,255,.06)", border: `1px solid ${active ? accent : "rgba(255,255,255,.10)"}`, fontSize: 16, boxShadow: active ? `0 0 18px ${accent}25` : "none" }}>{icon}</div>
     <div style={{ minWidth: 0 }}>
-      <div style={{ fontSize: 10.3, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
+      <div style={{ fontSize: 10.1, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
       <div style={{ fontSize: 8.2, color: SOFT }}>{active ? "Ouvert" : "Ouvrir"}</div>
     </div>
   </button>;
+}
+
+function SmallPlayerCard({ profile, name, active, accent, badges, influence, throneReady }: any) {
+  return <div style={{
+    minWidth: 0,
+    padding: "8px 6px",
+    borderRadius: 13,
+    border: `1px solid ${active ? accent : "rgba(255,255,255,.08)"}`,
+    background: active ? `${accent}12` : "rgba(255,255,255,.025)",
+    textAlign: "center",
+    boxShadow: active ? `0 0 18px ${accent}1e` : "none",
+  }}>
+    <div style={{ display: "grid", placeItems: "center" }}>
+      <ProfileAvatar profile={profile} size={34} showStars={false} ringColor={active ? accent : "rgba(255,255,255,.16)"} />
+    </div>
+    <div style={{ marginTop: 5, fontSize: 9.2, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</div>
+    <div style={{ marginTop: 3, fontSize: 11.5, fontWeight: 1100, color: active ? accent : GOLD }}>👑 {badges}</div>
+    <div style={{ fontSize: 7.9, color: SOFT }}>⚡ {influence} pts</div>
+    {throneReady ? <div style={{ marginTop: 4, fontSize: 7.2, fontWeight: 1000, color: GOLD, letterSpacing: .4 }}>TRÔNE</div> : null}
+  </div>;
 }
 
 export default function BssKingPlay(props: any) {
@@ -133,7 +154,6 @@ export default function BssKingPlay(props: any) {
   const modeMood = config.rules.chaosEnabled ? "CHAOS ACTIVÉ" : "MODE CLASSIQUE";
   const ranking = React.useMemo(() => [...state.players].map((p: any, i: number) => ({ p, badges: Number(state.badges[p.id] || 0), influence: Number(state.influence[p.id] || 0), i })).sort((a, b) => b.badges - a.badges || b.influence - a.influence || a.i - b.i), [state.players, state.badges, state.influence]);
   const winner = state.winnerId ? profileById.get(String(state.winnerId)) || state.players.find((p: any) => p.id === state.winnerId) : null;
-  const miniEvents = React.useMemo(() => state.events.slice(-3).reverse(), [state.events]);
 
   const buildRecord = React.useCallback((s: BssState, status: "in_progress" | "finished", draft: UIDart[] = currentThrow) => {
     const rows = profiles.map((p: any) => ({ id: String(p.id), name: playerName(p), avatarDataUrl: p.avatarDataUrl ?? null }));
@@ -241,11 +261,11 @@ export default function BssKingPlay(props: any) {
     <PageHeader tickerSrc={tickerBssKing} tickerAlt="BSS KING" tickerHeight={68} tickerFit="cover" tickerBottomGap={8} left={<div style={{ marginLeft: 7 }}><BackDot onClick={backToConfig} color={activeColor} glow={`${activeColor}88`} /></div>} right={awena?.enabled !== false ? <div style={{ marginRight: 7 }}><PremiumAwenaButton awena={awena} route="bss_king_play" mode="bss_king" screenLabel="BSS KING · Partie" accent={activeColor} /></div> : null} />
 
     <main style={{ flex: "1 1 auto", minHeight: 0, overflow: "hidden", padding: "0 10px 10px", position: "relative" }}>
-      {overlay ? <div className="bss-floating-panel" style={panel({ position: "absolute", zIndex: 30, top: 8, left: 8, width: "min(460px, calc(100% - 16px))", border: `1px solid ${activeColor}4d`, background: "linear-gradient(180deg,rgba(19,15,19,.985),rgba(10,9,12,.995))", boxShadow: "0 20px 60px rgba(0,0,0,.55)" })}>
+      {overlay ? <div className="bss-floating-panel" style={panel({ position: "absolute", zIndex: 30, top: 8, left: 8, width: "min(470px, calc(100% - 16px))", border: `1px solid ${activeColor}4d`, background: "linear-gradient(180deg,rgba(19,15,19,.985),rgba(10,9,12,.995))", boxShadow: "0 20px 60px rgba(0,0,0,.55)" })}>
         <img src={overlay === "points" ? bssGearSkull : overlay === "ranking" ? bssPentagram : bssSkullCross} alt="" aria-hidden style={{ position: "absolute", right: -20, top: -8, width: 130, opacity: .08 }} />
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "12px 14px 10px", borderBottom: "1px solid rgba(255,255,255,.08)" }}>
           <div>
-            <div style={{ fontSize: 9.2, letterSpacing: 1.1, color: activeColor, fontWeight: 1000 }}>{overlay === "rules" ? "RÈGLES RAPIDES" : overlay === "points" ? "POINTS BSS" : overlay === "ranking" ? "CLASSEMENT" : "JOURNAL"}</div>
+            <div style={{ fontSize: 9.2, letterSpacing: 1.1, color: activeColor, fontWeight: 1000 }}>{overlay === "rules" ? "RÈGLES RAPIDES" : overlay === "points" ? "POINTS BSS" : overlay === "ranking" ? "CLASSEMENT" : "LOGS DE PARTIE"}</div>
             <div style={{ fontSize: 17, fontWeight: 1100 }}>{overlay === "rules" ? "Comment gagne-t-on ?" : overlay === "points" ? "Comment on marque et à quoi ça sert" : overlay === "ranking" ? "Ordre du classement actuel" : "Les dernières actions"}</div>
           </div>
           <button onClick={() => setOverlay(null)} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.05)", color: "#fff", fontWeight: 1100 }}>×</button>
@@ -298,8 +318,8 @@ export default function BssKingPlay(props: any) {
         </div>
       </div> : null}
 
-      <div style={{ height: "100%", display: "grid", gridTemplateColumns: "minmax(0,0.96fr) minmax(360px,1.04fr)", gap: 10 }} className="bss-play-grid">
-        <div style={{ minHeight: 0, overflow: "auto", display: "grid", alignContent: "start", gap: 9, paddingBottom: 8 }}>
+      <div style={{ height: "100%", display: "grid", gridTemplateColumns: "minmax(300px,0.82fr) minmax(420px,1.18fr)", gap: 10 }} className="bss-play-grid">
+        <div className="bss-summary-column" style={{ minHeight: 0, overflow: "auto", display: "grid", alignContent: "start", gap: 9, paddingBottom: 8 }}>
           <section style={panel({ padding: 11, border: `1px solid ${activeColor}52`, background: `linear-gradient(180deg,${activeColor}10,rgba(10,9,12,.985))` })}>
             <img src={bssPentagram} alt="" aria-hidden style={{ position: "absolute", right: -10, top: -8, width: 100, opacity: .09 }} />
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 9 }}>
@@ -329,10 +349,10 @@ export default function BssKingPlay(props: any) {
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7, marginTop: 10 }}>
-              <IconInfoButton icon="ℹ️" label="Règles" active={overlay === "rules"} onClick={() => setOverlay(v => v === "rules" ? null : "rules")} accent={activeColor} />
+              <IconInfoButton icon="📘" label="Règles" active={overlay === "rules"} onClick={() => setOverlay(v => v === "rules" ? null : "rules")} accent={activeColor} />
               <IconInfoButton icon="⚡" label="Points BSS" active={overlay === "points"} onClick={() => setOverlay(v => v === "points" ? null : "points")} accent={activeColor} />
-              <IconInfoButton icon="👑" label="Classement" active={overlay === "ranking"} onClick={() => setOverlay(v => v === "ranking" ? null : "ranking")} accent={activeColor} />
-              <IconInfoButton icon="📝" label="Journal" active={overlay === "journal"} onClick={() => setOverlay(v => v === "journal" ? null : "journal")} accent={activeColor} />
+              <IconInfoButton icon="🏆" label="Classement" active={overlay === "ranking"} onClick={() => setOverlay(v => v === "ranking" ? null : "ranking")} accent={activeColor} />
+              <IconInfoButton icon="🧾" label="Logs" active={overlay === "journal"} onClick={() => setOverlay(v => v === "journal" ? null : "journal")} accent={activeColor} />
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7, marginTop: 10 }}>
@@ -341,41 +361,21 @@ export default function BssKingPlay(props: any) {
               <div style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.04)", padding: "8px 7px", textAlign: "center" }}><div style={{ fontSize: 8.1, color: SOFT }}>DÉFIS</div><div style={{ fontSize: 15, fontWeight: 1100, marginTop: 2 }}>{state.statsByPlayer[active?.id]?.challengeWins || 0}</div></div>
               <div style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.04)", padding: "8px 7px", textAlign: "center" }}><div style={{ fontSize: 8.1, color: SOFT }}>TRÔNE</div><div style={{ fontSize: 15, fontWeight: 1100, marginTop: 2 }}>{state.statsByPlayer[active?.id]?.throneAttempts || 0}</div></div>
             </div>
-          </section>
 
-          <section style={panel({ padding: 9 })}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
-              <div style={{ fontSize: 10, color: GOLD, fontWeight: 1000, letterSpacing: 1 }}>ORDRE & CLASSEMENT</div>
-              <button onClick={() => setOverlay(v => v === "ranking" ? null : "ranking")} style={{ borderRadius: 999, padding: "5px 9px", border: `1px solid ${activeColor}40`, background: `${activeColor}10`, color: "#fff", fontSize: 9.2, fontWeight: 1000 }}>détails</button>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(5, Math.max(2, state.players.length))},minmax(0,1fr))`, gap: 6 }}>
-              {ranking.map(({ p, badges, influence }: any) => {
-                const prof = profileById.get(String(p.id)) || p;
-                const on = p.id === active?.id;
-                return <div key={p.id} style={{ padding: "8px 6px", borderRadius: 13, border: `1px solid ${on ? activeColor : "rgba(255,255,255,.08)"}`, background: on ? `${activeColor}10` : "rgba(255,255,255,.025)", textAlign: "center", minWidth: 0 }}>
-                  <ProfileAvatar profile={prof} size={34} showStars={false} ringColor={on ? activeColor : "rgba(255,255,255,.16)"} />
-                  <div style={{ marginTop: 4, fontSize: 9, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
-                  <div style={{ marginTop: 3, fontSize: 12.5, fontWeight: 1100, color: on ? activeColor : GOLD }}>👑 {badges}</div>
-                  <div style={{ fontSize: 7.7, color: SOFT }}>⚡ {influence} pts</div>
-                </div>;
-              })}
-            </div>
-            <div style={{ marginTop: 7, fontSize: 9.4, color: SOFT, lineHeight: 1.4 }}>Classement : d’abord les <b style={{ color: "#fff" }}>écussons</b>, puis les <b style={{ color: "#fff" }}>points BSS</b> en départage.</div>
-          </section>
-
-          <section style={panel({ padding: 10 })}>
-            <img src={bssSkullCross} alt="" aria-hidden style={{ position: "absolute", right: -10, bottom: -10, width: 94, opacity: .06 }} />
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-              <div style={{ fontSize: 9.8, color: GOLD, fontWeight: 1000, letterSpacing: 1 }}>DERNIÈRES ACTIONS</div>
-              <button onClick={() => setOverlay(v => v === "journal" ? null : "journal")} style={{ borderRadius: 999, padding: "5px 9px", border: `1px solid ${activeColor}40`, background: `${activeColor}10`, color: "#fff", fontSize: 9.2, fontWeight: 1000 }}>ouvrir</button>
-            </div>
-            <div style={{ marginTop: 6, display: "grid", gap: 4 }}>
-              {miniEvents.map((e: string, i: number) => <div key={`${e}-${i}`} style={{ fontSize: 9.7, color: i === 0 ? "#fff" : SOFT, lineHeight: 1.4, borderTop: i ? "1px solid rgba(255,255,255,.05)" : "none", paddingTop: i ? 4 : 0 }}>{e}</div>)}
+            <div style={{ marginTop: 10, borderTop: "1px solid rgba(255,255,255,.07)", paddingTop: 10 }}>
+              <div style={{ fontSize: 10, color: GOLD, fontWeight: 1000, letterSpacing: 1, marginBottom: 7 }}>ORDRE & JOUEURS</div>
+              <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(5, Math.max(2, state.players.length))},minmax(0,1fr))`, gap: 6 }}>
+                {ranking.map(({ p, badges, influence }: any) => {
+                  const prof = profileById.get(String(p.id)) || p;
+                  const on = p.id === active?.id;
+                  return <SmallPlayerCard key={p.id} profile={prof} name={p.name} active={on} accent={activeColor} badges={badges} influence={influence} throneReady={Boolean(state.throneReady?.[p.id])} />;
+                })}
+              </div>
             </div>
           </section>
         </div>
 
-        <div style={{ minHeight: 0, overflow: "hidden", display: "grid", gridTemplateRows: "auto minmax(0,1fr)", gap: 8 }}>
+        <div className="bss-input-column" style={{ minHeight: 0, overflow: "hidden", display: "grid", gridTemplateRows: "auto minmax(0,1fr)", gap: 8 }}>
           <section style={panel({ padding: 11, border: `1px solid ${activeColor}28`, background: "linear-gradient(135deg,rgba(16,14,18,.98),rgba(32,13,18,.98))" })}>
             <img src={bssThrone} alt="" aria-hidden style={{ position: "absolute", right: 8, top: -6, width: 110, opacity: .15 }} />
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
@@ -389,7 +389,7 @@ export default function BssKingPlay(props: any) {
           </section>
 
           <div style={{ minHeight: 0, overflow: "hidden", position: "relative" }}>
-            {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} onCancel={() => { setCurrentThrow([]); setMultiplier(1); }} preferredMethod={config.scoreInputMethod} minDartsToValidate={1} validateLabel={throneMode ? "TENTER LE TRÔNE" : "VALIDER LA TOURNÉE"} accent={activeColor} fitMinScale={0.18} centerSlot={<div style={{ textAlign: "center", fontSize: 10, fontWeight: 1000, color: activeColor }}>{currentThrowSummary}</div>} /> : <div style={{ ...panel({ padding: 18, height: "100%", display: "grid", placeItems: "center", textAlign: "center" }) }}><img src={bssGearSkull} alt="" aria-hidden style={{ position: "absolute", left: -25, bottom: -30, width: 150, opacity: .07 }} /><div><ProfileAvatar profile={activeProfile} size={84} showStars={false} ringColor={activeColor} /><div style={{ fontSize: 20, fontWeight: 1100, marginTop: 10 }}>{active?.name}</div><div style={{ color: SOFT, marginTop: 5 }}>Le BOT BSS prépare sa tournée…</div></div></div>}
+            {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} onCancel={() => { setCurrentThrow([]); setMultiplier(1); }} preferredMethod={config.scoreInputMethod} minDartsToValidate={1} validateLabel={throneMode ? "TENTER LE TRÔNE" : "VALIDER LA TOURNÉE"} accent={activeColor} fitMinScale={0.34} compact={false} centerSlot={<div style={{ textAlign: "center", fontSize: 10, fontWeight: 1000, color: activeColor }}>{currentThrowSummary}</div>} /> : <div style={{ ...panel({ padding: 18, height: "100%", display: "grid", placeItems: "center", textAlign: "center" }) }}><img src={bssGearSkull} alt="" aria-hidden style={{ position: "absolute", left: -25, bottom: -30, width: 150, opacity: .07 }} /><div><ProfileAvatar profile={activeProfile} size={84} showStars={false} ringColor={activeColor} /><div style={{ fontSize: 20, fontWeight: 1100, marginTop: 10 }}>{active?.name}</div><div style={{ color: SOFT, marginTop: 5 }}>Le BOT BSS prépare sa tournée…</div></div></div>}
             <button onClick={doUndo} disabled={!currentThrow.length && !undo.length} style={{ position: "absolute", right: 18, bottom: 18, padding: "8px 12px", borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(0,0,0,.55)", color: "#fff", fontWeight: 900, opacity: (!currentThrow.length && !undo.length) ? .4 : 1 }}>↶ ANNULER</button>
           </div>
         </div>
@@ -398,13 +398,14 @@ export default function BssKingPlay(props: any) {
 
     <style>{`
       @media (max-width: 980px){
-        .bss-play-grid{grid-template-columns:1fr!important;grid-template-rows:minmax(0,.94fr) minmax(330px,1.06fr)!important}
-        .bss-play-grid>div:first-child{max-height:43dvh}
+        .bss-play-grid{grid-template-columns:1fr!important;grid-template-rows:minmax(210px,auto) minmax(420px,1fr)!important}
+        .bss-summary-column{max-height:34dvh!important}
+        .bss-input-column{min-height:0!important}
         .bss-floating-panel{left:8px!important;right:8px!important;width:auto!important}
       }
       @media (max-width: 620px){
-        .bss-play-grid{grid-template-rows:minmax(0,.78fr) minmax(350px,1.22fr)!important}
-        .bss-play-grid>div:first-child{max-height:39dvh}
+        .bss-play-grid{grid-template-rows:minmax(190px,auto) minmax(440px,1fr)!important}
+        .bss-summary-column{max-height:32dvh!important}
       }
       @media (max-width: 520px){
         .bss-play-grid section[style]{border-radius:16px}

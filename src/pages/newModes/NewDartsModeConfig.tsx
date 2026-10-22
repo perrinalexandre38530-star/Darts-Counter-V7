@@ -27,8 +27,6 @@ import ptit1SniperImg from "../../assets/ptit1/ptit1_config_sniper.webp";
 import ptit1HardcoreImg from "../../assets/ptit1/ptit1_config_hardcore.webp";
 import bssOriginalImg from "../../assets/bss/bss_original.jpg";
 import bssThroneImg from "../../assets/bss/bss_throne.png";
-import bssFresco1Img from "../../assets/bss/bss_fresco_1.png";
-import bssFresco2Img from "../../assets/bss/bss_fresco_2.png";
 import bssPentagramImg from "../../assets/bss/bss_pentagram.png";
 
 export type NewDartsModeId = "castle" | "gotcha" | "hare_hounds" | "pendu" | "menteur" | "crados" | "fifty_one_by_five" | "looper" | "call_three" | "steeplechase" | "ptit_hun" | "bss_king";
@@ -947,9 +945,18 @@ export default function NewDartsModeConfig(props: Props) {
           <div style={{ color: soft, fontSize: 11, lineHeight: 1.5, marginTop: 6 }}>Le but est simple : gagner des tournées, cumuler des écussons puis réussir la phase Trône pour devenir BSS KING.</div>
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, padding: 10, background: "rgba(255,255,255,.02)" }}>
-        <img src={bssFresco1Img} alt="Fresque BSS 1" style={{ width: "100%", height: 90, objectFit: "cover", borderRadius: 12, border: "1px solid rgba(255,255,255,.08)" }} />
-        <img src={bssFresco2Img} alt="Fresque BSS 2" style={{ width: "100%", height: 90, objectFit: "cover", borderRadius: 12, border: "1px solid rgba(255,255,255,.08)" }} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, padding: 10, background: "rgba(255,255,255,.02)" }}>
+        {[
+          { step: "1", title: "GAGNE LA TOURNÉE", text: "Tous jouent le même défi. Le meilleur score de la tournée prend 1 écusson." },
+          { step: "2", title: "CUMULE LES ÉCUSSONS", text: "Les écussons sont l’objectif principal. Les points BSS servent surtout de départage." },
+          { step: "3", title: "PRENDS LE TRÔNE", text: "Au quota choisi, ton objectif devient le Trône : Bull ou DBull final = victoire immédiate." },
+        ].map((item) => (
+          <div key={item.step} style={{ borderRadius: 12, border: `1px solid ${accent}26`, background: "rgba(255,255,255,.035)", padding: 10 }}>
+            <div style={{ color: accent, fontSize: 9.5, fontWeight: 1000, letterSpacing: .8 }}>ÉTAPE {item.step}</div>
+            <div style={{ fontSize: 11.2, fontWeight: 1000, marginTop: 4 }}>{item.title}</div>
+            <div style={{ color: soft, fontSize: 10.2, lineHeight: 1.45, marginTop: 5 }}>{item.text}</div>
+          </div>
+        ))}
       </div>
     </div>
 
