@@ -73,46 +73,21 @@ function getPointsHelp(challenge: any, throneFinish: "bull" | "dbull") {
 }
 
 function IconInfoButton({ icon, label, onClick, active, accent }: any) {
-  return <button onClick={onClick} style={{
-    borderRadius: 16,
-    border: `1px solid ${active ? accent : "rgba(255,255,255,.08)"}`,
-    background: active ? `${accent}16` : "rgba(255,255,255,.035)",
-    color: "#fff",
-    padding: "9px 8px 10px",
-    display: "grid",
-    justifyItems: "center",
-    gap: 6,
-    alignContent: "center",
-    textAlign: "center",
-    cursor: "pointer",
-    minHeight: 74,
-  }}>
-    <div style={{ width: 34, height: 34, borderRadius: 999, display: "grid", placeItems: "center", background: active ? `${accent}22` : "rgba(255,255,255,.06)", border: `1px solid ${active ? accent : "rgba(255,255,255,.10)"}`, fontSize: 16, boxShadow: active ? `0 0 18px ${accent}25` : "none" }}>{icon}</div>
-    <div style={{ minWidth: 0 }}>
-      <div style={{ fontSize: 10.1, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
-      <div style={{ fontSize: 8.2, color: SOFT }}>{active ? "Ouvert" : "Ouvrir"}</div>
-    </div>
-  </button>;
-}
-
-function SmallPlayerCard({ profile, name, active, accent, badges, influence, throneReady }: any) {
-  return <div style={{
+  return <button onClick={onClick} aria-label={label} title={label} style={{
     minWidth: 0,
-    padding: "8px 6px",
     borderRadius: 13,
     border: `1px solid ${active ? accent : "rgba(255,255,255,.08)"}`,
-    background: active ? `${accent}12` : "rgba(255,255,255,.025)",
-    textAlign: "center",
-    boxShadow: active ? `0 0 18px ${accent}1e` : "none",
+    background: active ? `${accent}18` : "rgba(255,255,255,.035)",
+    color: active ? accent : "#fff",
+    padding: "7px 6px",
+    display: "grid",
+    justifyItems: "center",
+    gap: 4,
+    cursor: "pointer",
   }}>
-    <div style={{ display: "grid", placeItems: "center" }}>
-      <ProfileAvatar profile={profile} size={34} showStars={false} ringColor={active ? accent : "rgba(255,255,255,.16)"} />
-    </div>
-    <div style={{ marginTop: 5, fontSize: 9.2, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</div>
-    <div style={{ marginTop: 3, fontSize: 11.5, fontWeight: 1100, color: active ? accent : GOLD }}>👑 {badges}</div>
-    <div style={{ fontSize: 7.9, color: SOFT }}>⚡ {influence} pts</div>
-    {throneReady ? <div style={{ marginTop: 4, fontSize: 7.2, fontWeight: 1000, color: GOLD, letterSpacing: .4 }}>TRÔNE</div> : null}
-  </div>;
+    <div style={{ width: 28, height: 28, borderRadius: 999, display: "grid", placeItems: "center", background: active ? `${accent}24` : "rgba(255,255,255,.055)", border: `1px solid ${active ? accent : "rgba(255,255,255,.10)"}`, fontSize: 14 }}>{icon}</div>
+    <div style={{ maxWidth: "100%", fontSize: 8.7, lineHeight: 1, fontWeight: 1000, color: active ? accent : "#d9d4d7", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
+  </button>;
 }
 
 export default function BssKingPlay(props: any) {
@@ -261,11 +236,11 @@ export default function BssKingPlay(props: any) {
     <PageHeader tickerSrc={tickerBssKing} tickerAlt="BSS KING" tickerHeight={68} tickerFit="cover" tickerBottomGap={8} left={<div style={{ marginLeft: 7 }}><BackDot onClick={backToConfig} color={activeColor} glow={`${activeColor}88`} /></div>} right={awena?.enabled !== false ? <div style={{ marginRight: 7 }}><PremiumAwenaButton awena={awena} route="bss_king_play" mode="bss_king" screenLabel="BSS KING · Partie" accent={activeColor} /></div> : null} />
 
     <main style={{ flex: "1 1 auto", minHeight: 0, overflow: "hidden", padding: "0 10px 10px", position: "relative" }}>
-      {overlay ? <div className="bss-floating-panel" style={panel({ position: "absolute", zIndex: 30, top: 8, left: 8, width: "min(470px, calc(100% - 16px))", border: `1px solid ${activeColor}4d`, background: "linear-gradient(180deg,rgba(19,15,19,.985),rgba(10,9,12,.995))", boxShadow: "0 20px 60px rgba(0,0,0,.55)" })}>
+      {overlay ? <div className="bss-floating-panel" style={panel({ position: "absolute", zIndex: 30, top: 8, left: 8, width: "min(460px, calc(100% - 16px))", border: `1px solid ${activeColor}4d`, background: "linear-gradient(180deg,rgba(19,15,19,.985),rgba(10,9,12,.995))", boxShadow: "0 20px 60px rgba(0,0,0,.55)" })}>
         <img src={overlay === "points" ? bssGearSkull : overlay === "ranking" ? bssPentagram : bssSkullCross} alt="" aria-hidden style={{ position: "absolute", right: -20, top: -8, width: 130, opacity: .08 }} />
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "12px 14px 10px", borderBottom: "1px solid rgba(255,255,255,.08)" }}>
           <div>
-            <div style={{ fontSize: 9.2, letterSpacing: 1.1, color: activeColor, fontWeight: 1000 }}>{overlay === "rules" ? "RÈGLES RAPIDES" : overlay === "points" ? "POINTS BSS" : overlay === "ranking" ? "CLASSEMENT" : "LOGS DE PARTIE"}</div>
+            <div style={{ fontSize: 9.2, letterSpacing: 1.1, color: activeColor, fontWeight: 1000 }}>{overlay === "rules" ? "RÈGLES RAPIDES" : overlay === "points" ? "POINTS BSS" : overlay === "ranking" ? "CLASSEMENT" : "JOURNAL"}</div>
             <div style={{ fontSize: 17, fontWeight: 1100 }}>{overlay === "rules" ? "Comment gagne-t-on ?" : overlay === "points" ? "Comment on marque et à quoi ça sert" : overlay === "ranking" ? "Ordre du classement actuel" : "Les dernières actions"}</div>
           </div>
           <button onClick={() => setOverlay(null)} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.05)", color: "#fff", fontWeight: 1100 }}>×</button>
@@ -287,15 +262,21 @@ export default function BssKingPlay(props: any) {
           {overlay === "points" ? <div style={{ display: "grid", gap: 10 }}>
             <div style={{ borderRadius: 14, border: `1px solid ${activeColor}35`, background: `${activeColor}0f`, padding: 12 }}>
               <div style={{ fontSize: 11.2, fontWeight: 1000, color: activeColor }}>DÉFINITION</div>
-              <div style={{ fontSize: 11.3, lineHeight: 1.5, color: "#fff", marginTop: 5 }}>Les <b>points BSS</b> sont le total cumulé de tous les points marqués sur les tournées. Ils ne remplacent pas les écussons : ils servent surtout à suivre la performance globale et à <b>départager</b> les joueurs ayant le même nombre d’écussons.</div>
+              <div style={{ fontSize: 11.3, lineHeight: 1.5, color: "#fff", marginTop: 5 }}>Les <b>points BSS</b> sont les points que tu marques avec tes fléchettes en respectant le défi affiché. Ton score de tournée est comparé à celui des autres joueurs ; <b>le seul meilleur score gagne 1 écusson</b>. Les points BSS restent aussi cumulés sur toute la partie pour suivre la performance et départager les joueurs à égalité d’écussons.</div>
             </div>
             <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.04)", padding: 12 }}>
               <div style={{ fontSize: 11.2, fontWeight: 1000, color: GOLD }}>BARÈME DU DÉFI ACTUEL</div>
               <div style={{ fontSize: 12.2, fontWeight: 1100, marginTop: 4 }}>{challenge.title}</div>
               <div style={{ display: "grid", gap: 5, marginTop: 7 }}>{pointsHelp.map((line, i) => <div key={`${line}-${i}`} style={{ fontSize: 10.6, color: i < 2 ? "#fff" : SOFT, lineHeight: 1.45 }}>• {line}</div>)}</div>
             </div>
+            <div style={{ borderRadius: 14, border: `1px solid ${GOLD}38`, background: "rgba(240,199,106,.07)", padding: 11 }}>
+              <div style={{ fontSize: 10.2, fontWeight: 1000, color: GOLD, letterSpacing: .6 }}>CONVERSION VERS LA VICTOIRE</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 8 }}>
+                {[{a:"1",b:"PTS BSS",c:"Tu marques selon le défi"},{a:"2",b:"ÉCUSSON",c:"Meilleur score seul"},{a:"3",b:"TRÔNE",c:`À ${config.rules.badgesToThrone} écussons`},{a:"4",b:"KING",c:config.rules.throneFinish === "dbull" ? "DBULL 50" : "Bull / DBULL"}].map((x:any)=><div key={x.a} style={{minWidth:0,borderRadius:11,border:"1px solid rgba(255,255,255,.07)",background:"rgba(0,0,0,.20)",padding:"7px 6px",textAlign:"center"}}><div style={{fontSize:8.2,color:SOFT}}>ÉTAPE {x.a}</div><div style={{fontSize:10.2,fontWeight:1100,color:x.a==="4"?GOLD:"#fff",marginTop:2}}>{x.b}</div><div style={{fontSize:8.4,color:SOFT,lineHeight:1.25,marginTop:2}}>{x.c}</div></div>)}
+              </div>
+            </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
-              <div style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", padding: "9px 10px" }}><div style={{ fontSize: 9, color: SOFT }}>ÉCUSSONS</div><div style={{ fontSize: 11.2, fontWeight: 1000, marginTop: 2 }}>Récompense de tournée</div><div style={{ fontSize: 9.8, color: SOFT, lineHeight: 1.4, marginTop: 3 }}>Le seul meilleur score de la tournée gagne 1 écusson.</div></div>
+              <div style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", padding: "9px 10px" }}><div style={{ fontSize: 9, color: SOFT }}>ÉCUSSONS</div><div style={{ fontSize: 11.2, fontWeight: 1000, marginTop: 2 }}>Récompense de tournée</div><div style={{ fontSize: 9.8, color: SOFT, lineHeight: 1.4, marginTop: 3 }}>Le seul meilleur score de la tournée gagne 1 écusson. Une égalité en tête = aucun écusson.</div></div>
               <div style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", padding: "9px 10px" }}><div style={{ fontSize: 9, color: SOFT }}>PTS BSS</div><div style={{ fontSize: 11.2, fontWeight: 1000, marginTop: 2 }}>Total cumulé</div><div style={{ fontSize: 9.8, color: SOFT, lineHeight: 1.4, marginTop: 3 }}>Addition de tous les points gagnés sur les défis joués.</div></div>
             </div>
           </div> : null}
@@ -318,8 +299,8 @@ export default function BssKingPlay(props: any) {
         </div>
       </div> : null}
 
-      <div style={{ height: "100%", display: "grid", gridTemplateColumns: "minmax(300px,0.82fr) minmax(420px,1.18fr)", gap: 10 }} className="bss-play-grid">
-        <div className="bss-summary-column" style={{ minHeight: 0, overflow: "auto", display: "grid", alignContent: "start", gap: 9, paddingBottom: 8 }}>
+      <div style={{ height: "100%", display: "grid", gridTemplateColumns: "minmax(0,0.96fr) minmax(360px,1.04fr)", gap: 10 }} className="bss-play-grid">
+        <div style={{ minHeight: 0, overflow: "auto", display: "grid", alignContent: "start", gap: 9, paddingBottom: 8 }}>
           <section style={panel({ padding: 11, border: `1px solid ${activeColor}52`, background: `linear-gradient(180deg,${activeColor}10,rgba(10,9,12,.985))` })}>
             <img src={bssPentagram} alt="" aria-hidden style={{ position: "absolute", right: -10, top: -8, width: 100, opacity: .09 }} />
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 9 }}>
@@ -348,34 +329,52 @@ export default function BssKingPlay(props: any) {
               <div style={{ fontSize: 9.3, fontWeight: 1000, color: throneMode ? GOLD : "#fff", lineHeight: 1.4, marginTop: 6 }}>{winReminder}</div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7, marginTop: 10 }}>
-              <IconInfoButton icon="📘" label="Règles" active={overlay === "rules"} onClick={() => setOverlay(v => v === "rules" ? null : "rules")} accent={activeColor} />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 9 }}>
+              <IconInfoButton icon="ℹ️" label="Règles" active={overlay === "rules"} onClick={() => setOverlay(v => v === "rules" ? null : "rules")} accent={activeColor} />
               <IconInfoButton icon="⚡" label="Points BSS" active={overlay === "points"} onClick={() => setOverlay(v => v === "points" ? null : "points")} accent={activeColor} />
-              <IconInfoButton icon="🏆" label="Classement" active={overlay === "ranking"} onClick={() => setOverlay(v => v === "ranking" ? null : "ranking")} accent={activeColor} />
-              <IconInfoButton icon="🧾" label="Logs" active={overlay === "journal"} onClick={() => setOverlay(v => v === "journal" ? null : "journal")} accent={activeColor} />
+              <IconInfoButton icon="👑" label="Classement" active={overlay === "ranking"} onClick={() => setOverlay(v => v === "ranking" ? null : "ranking")} accent={activeColor} />
+              <IconInfoButton icon="📝" label="Journal" active={overlay === "journal"} onClick={() => setOverlay(v => v === "journal" ? null : "journal")} accent={activeColor} />
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7, marginTop: 10 }}>
-              <div style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.04)", padding: "8px 7px", textAlign: "center" }}><div style={{ fontSize: 8.1, color: SOFT }}>TOURNÉE</div><div style={{ fontSize: 15, fontWeight: 1100, color: activeColor, marginTop: 2 }}>{state.roundScores[active?.id] || 0}</div></div>
-              <div style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.04)", padding: "8px 7px", textAlign: "center" }}><div style={{ fontSize: 8.1, color: SOFT }}>PTS BSS</div><div style={{ fontSize: 15, fontWeight: 1100, marginTop: 2 }}>{state.influence[active?.id] || 0}</div></div>
-              <div style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.04)", padding: "8px 7px", textAlign: "center" }}><div style={{ fontSize: 8.1, color: SOFT }}>DÉFIS</div><div style={{ fontSize: 15, fontWeight: 1100, marginTop: 2 }}>{state.statsByPlayer[active?.id]?.challengeWins || 0}</div></div>
-              <div style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.04)", padding: "8px 7px", textAlign: "center" }}><div style={{ fontSize: 8.1, color: SOFT }}>TRÔNE</div><div style={{ fontSize: 15, fontWeight: 1100, marginTop: 2 }}>{state.statsByPlayer[active?.id]?.throneAttempts || 0}</div></div>
-            </div>
-
-            <div style={{ marginTop: 10, borderTop: "1px solid rgba(255,255,255,.07)", paddingTop: 10 }}>
-              <div style={{ fontSize: 10, color: GOLD, fontWeight: 1000, letterSpacing: 1, marginBottom: 7 }}>ORDRE & JOUEURS</div>
-              <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(5, Math.max(2, state.players.length))},minmax(0,1fr))`, gap: 6 }}>
-                {ranking.map(({ p, badges, influence }: any) => {
-                  const prof = profileById.get(String(p.id)) || p;
-                  const on = p.id === active?.id;
-                  return <SmallPlayerCard key={p.id} profile={prof} name={p.name} active={on} accent={activeColor} badges={badges} influence={influence} throneReady={Boolean(state.throneReady?.[p.id])} />;
-                })}
+            <div style={{ marginTop: 9, borderRadius: 13, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.22)", padding: "8px 9px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", alignItems: "center", gap: 4, textAlign: "center" }}>
+                <div><div style={{ fontSize: 7.7, color: SOFT }}>TON SCORE</div><div style={{ fontSize: 14, fontWeight: 1100, color: activeColor }}>{state.roundScores[active?.id] || 0}</div></div>
+                <div><div style={{ fontSize: 7.7, color: SOFT }}>PTS BSS</div><div style={{ fontSize: 14, fontWeight: 1100 }}>{state.influence[active?.id] || 0}</div></div>
+                <div><div style={{ fontSize: 7.7, color: SOFT }}>ÉCUSSONS</div><div style={{ fontSize: 14, fontWeight: 1100, color: GOLD }}>{activeBadges}/{config.rules.badgesToThrone}</div></div>
+                <div><div style={{ fontSize: 7.7, color: SOFT }}>APRÈS</div><div style={{ fontSize: 10.1, fontWeight: 1100, color: throneMode ? GOLD : "#fff" }}>{throneMode ? "TRÔNE" : badgesRemaining > 1 ? `${badgesRemaining} ÉCUSSONS` : "1 ÉCUSSON"}</div></div>
               </div>
+              <div style={{ marginTop: 7, paddingTop: 7, borderTop: "1px solid rgba(255,255,255,.055)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ minWidth: 0, fontSize: 8.9, lineHeight: 1.3, color: SOFT }}><b style={{ color: "#fff" }}>Conversion :</b> score du défi → meilleur de la tournée = <b style={{color:GOLD}}>1 écusson</b> → quota = Trône → Bull final = KING.</div>
+                <button onClick={() => setOverlay("points")} style={{ flex: "0 0 auto", borderRadius: 999, padding: "5px 8px", border: `1px solid ${activeColor}42`, background: `${activeColor}10`, color: activeColor, fontSize: 8.4, fontWeight: 1000 }}>COMPRENDRE</button>
+              </div>
+            </div>
+          </section>
+
+          <section className="bss-player-band" style={panel({ padding: 8, background: "linear-gradient(180deg,rgba(17,15,19,.96),rgba(8,8,11,.985))" })}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+              <div style={{ fontSize: 9.3, color: GOLD, fontWeight: 1000, letterSpacing: .8 }}>JOUEURS · ÉCUSSONS · POINTS BSS</div>
+              <button onClick={() => setOverlay("ranking")} style={{ borderRadius: 999, padding: "4px 8px", border: `1px solid ${activeColor}35`, background: `${activeColor}0d`, color: activeColor, fontSize: 8, fontWeight: 1000 }}>CLASSEMENT</button>
+            </div>
+            <div className="bss-player-strip" style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(5, Math.max(2, state.players.length))},minmax(0,1fr))`, gap: 5 }}>
+              {ranking.map(({ p, badges, influence }: any) => {
+                const prof = profileById.get(String(p.id)) || p;
+                const on = p.id === active?.id;
+                const throne = Boolean(state.throneReady?.[p.id]);
+                return <button key={p.id} onClick={() => setOverlay("ranking")} style={{ cursor:"pointer", padding: "7px 5px", borderRadius: 12, border: `1px solid ${on ? activeColor : throne ? GOLD : "rgba(255,255,255,.07)"}`, background: on ? `${activeColor}12` : throne ? "rgba(240,199,106,.07)" : "rgba(255,255,255,.02)", color:"#fff", textAlign: "center", minWidth: 0, boxShadow: on ? `0 0 18px ${activeColor}1e` : "none" }}>
+                  <div style={{ display: "grid", placeItems: "center" }}><ProfileAvatar profile={prof} size={32} showStars={false} ringColor={on ? activeColor : throne ? GOLD : "rgba(255,255,255,.14)"} /></div>
+                  <div style={{ marginTop: 4, fontSize: 8.5, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 3, marginTop: 4 }}>
+                    <div style={{ borderRadius: 8, background: "rgba(240,199,106,.08)", padding: "3px 2px" }}><div style={{ fontSize: 6.5, color: SOFT }}>ÉCUSSONS</div><div style={{ fontSize: 10.3, fontWeight: 1100, color: throne ? GOLD : on ? activeColor : "#fff" }}>◆ {badges}</div></div>
+                    <div style={{ borderRadius: 8, background: "rgba(101,215,255,.06)", padding: "3px 2px" }}><div style={{ fontSize: 6.5, color: SOFT }}>PTS BSS</div><div style={{ fontSize: 10.3, fontWeight: 1100, color: on ? activeColor : "#fff" }}>⚡ {influence}</div></div>
+                  </div>
+                  {throne ? <div style={{ marginTop: 3, fontSize: 6.8, color: GOLD, fontWeight: 1100, letterSpacing: .5 }}>TRÔNE DÉBLOQUÉ</div> : null}
+                </button>;
+              })}
             </div>
           </section>
         </div>
 
-        <div className="bss-input-column" style={{ minHeight: 0, overflow: "hidden", display: "grid", gridTemplateRows: "auto minmax(0,1fr)", gap: 8 }}>
+        <div style={{ minHeight: 0, overflow: "hidden", display: "grid", gridTemplateRows: "auto minmax(0,1fr)", gap: 8 }}>
           <section style={panel({ padding: 11, border: `1px solid ${activeColor}28`, background: "linear-gradient(135deg,rgba(16,14,18,.98),rgba(32,13,18,.98))" })}>
             <img src={bssThrone} alt="" aria-hidden style={{ position: "absolute", right: 8, top: -6, width: 110, opacity: .15 }} />
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
@@ -389,7 +388,7 @@ export default function BssKingPlay(props: any) {
           </section>
 
           <div style={{ minHeight: 0, overflow: "hidden", position: "relative" }}>
-            {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} onCancel={() => { setCurrentThrow([]); setMultiplier(1); }} preferredMethod={config.scoreInputMethod} minDartsToValidate={1} validateLabel={throneMode ? "TENTER LE TRÔNE" : "VALIDER LA TOURNÉE"} accent={activeColor} fitMinScale={0.34} compact={false} centerSlot={<div style={{ textAlign: "center", fontSize: 10, fontWeight: 1000, color: activeColor }}>{currentThrowSummary}</div>} /> : <div style={{ ...panel({ padding: 18, height: "100%", display: "grid", placeItems: "center", textAlign: "center" }) }}><img src={bssGearSkull} alt="" aria-hidden style={{ position: "absolute", left: -25, bottom: -30, width: 150, opacity: .07 }} /><div><ProfileAvatar profile={activeProfile} size={84} showStars={false} ringColor={activeColor} /><div style={{ fontSize: 20, fontWeight: 1100, marginTop: 10 }}>{active?.name}</div><div style={{ color: SOFT, marginTop: 5 }}>Le BOT BSS prépare sa tournée…</div></div></div>}
+            {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} onCancel={() => { setCurrentThrow([]); setMultiplier(1); }} preferredMethod={config.scoreInputMethod} minDartsToValidate={1} validateLabel={throneMode ? "TENTER LE TRÔNE" : "VALIDER LA TOURNÉE"} accent={activeColor} fitMinScale={0.36} centerSlot={<div style={{ textAlign: "center", fontSize: 10, fontWeight: 1000, color: activeColor }}>{currentThrowSummary}</div>} /> : <div style={{ ...panel({ padding: 18, height: "100%", display: "grid", placeItems: "center", textAlign: "center" }) }}><img src={bssGearSkull} alt="" aria-hidden style={{ position: "absolute", left: -25, bottom: -30, width: 150, opacity: .07 }} /><div><ProfileAvatar profile={activeProfile} size={84} showStars={false} ringColor={activeColor} /><div style={{ fontSize: 20, fontWeight: 1100, marginTop: 10 }}>{active?.name}</div><div style={{ color: SOFT, marginTop: 5 }}>Le BOT BSS prépare sa tournée…</div></div></div>}
             <button onClick={doUndo} disabled={!currentThrow.length && !undo.length} style={{ position: "absolute", right: 18, bottom: 18, padding: "8px 12px", borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(0,0,0,.55)", color: "#fff", fontWeight: 900, opacity: (!currentThrow.length && !undo.length) ? .4 : 1 }}>↶ ANNULER</button>
           </div>
         </div>
@@ -398,14 +397,14 @@ export default function BssKingPlay(props: any) {
 
     <style>{`
       @media (max-width: 980px){
-        .bss-play-grid{grid-template-columns:1fr!important;grid-template-rows:minmax(210px,auto) minmax(420px,1fr)!important}
-        .bss-summary-column{max-height:34dvh!important}
-        .bss-input-column{min-height:0!important}
+        .bss-play-grid{grid-template-columns:1fr!important;grid-template-rows:minmax(0,.94fr) minmax(330px,1.06fr)!important}
+        .bss-play-grid>div:first-child{max-height:41dvh}
         .bss-floating-panel{left:8px!important;right:8px!important;width:auto!important}
       }
       @media (max-width: 620px){
-        .bss-play-grid{grid-template-rows:minmax(190px,auto) minmax(440px,1fr)!important}
-        .bss-summary-column{max-height:32dvh!important}
+        .bss-play-grid{grid-template-rows:minmax(0,.76fr) minmax(350px,1.24fr)!important}
+        .bss-play-grid>div:first-child{max-height:37dvh}
+        .bss-player-strip{grid-template-columns:repeat(4,minmax(0,1fr))!important}
       }
       @media (max-width: 520px){
         .bss-play-grid section[style]{border-radius:16px}
