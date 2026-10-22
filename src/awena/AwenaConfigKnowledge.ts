@@ -19,7 +19,7 @@ const DETAILS: Record<string, AwenaModeConfigDetail> = {
     ],
     victory: "gagner seul des tournées pour obtenir des écussons ; une fois le quota atteint, toucher le Bull final configuré pendant une tentative de Trône pour devenir immédiatement BSS KING",
     variants: ["3 / 5 / 7 écussons", "Défis classiques", "BSS Chaos", "Bull ou DBull final", "DBull final uniquement", "Partie Rapide", "Arcade + BOTS IA"],
-    notes: ["Tous les joueurs tentent le même objectif pendant une tournée. Le meilleur score de la tournée gagne un écusson ; une égalité en tête ne distribue aucun écusson.", "L’objectif exact et le barème de la tournée sont affichés dans le bloc du joueur actif, il n’est donc pas nécessaire de mémoriser les défis."],
+    notes: ["Tous les joueurs tentent le même objectif pendant une tournée. Le meilleur score de la tournée gagne un écusson ; une égalité en tête ne distribue aucun écusson.", "Les points BSS sont le total cumulé des points marqués sur les tournées. Ils servent de départage si deux joueurs ont le même nombre d’écussons.", "Le barème exact du défi actif et les explications règles / points / classement sont accessibles directement dans l’écran de jeu via des blocs flottants."],
   },
   fifty_one_by_five: {
     options: [

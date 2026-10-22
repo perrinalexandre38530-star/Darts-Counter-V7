@@ -25,6 +25,11 @@ import ptit1PrecisionImg from "../../assets/ptit1/ptit1_config_precision.webp";
 import ptit1JackpotImg from "../../assets/ptit1/ptit1_config_jackpot.webp";
 import ptit1SniperImg from "../../assets/ptit1/ptit1_config_sniper.webp";
 import ptit1HardcoreImg from "../../assets/ptit1/ptit1_config_hardcore.webp";
+import bssOriginalImg from "../../assets/bss/bss_original.jpg";
+import bssThroneImg from "../../assets/bss/bss_throne.png";
+import bssFresco1Img from "../../assets/bss/bss_fresco_1.png";
+import bssFresco2Img from "../../assets/bss/bss_fresco_2.png";
+import bssPentagramImg from "../../assets/bss/bss_pentagram.png";
 
 export type NewDartsModeId = "castle" | "gotcha" | "hare_hounds" | "pendu" | "menteur" | "crados" | "fifty_one_by_five" | "looper" | "call_three" | "steeplechase" | "ptit_hun" | "bss_king";
 type BotLevel = "easy" | "normal" | "hard";
@@ -931,12 +936,43 @@ export default function NewDartsModeConfig(props: Props) {
 
   const bssBlock = <section style={selectorCard}>
     <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>Règles BSS KING</div>
-    <div style={panel}>
+
+    <div style={{ ...panel, padding: 0, overflow: "hidden" }}>
+      <div style={{ position: "relative", minHeight: 170, backgroundImage: `linear-gradient(135deg, rgba(7,7,10,.22), rgba(7,7,10,.72)), url(${bssOriginalImg})`, backgroundSize: "cover", backgroundPosition: "center" }}>
+        <img src={bssPentagramImg} alt="" aria-hidden style={{ position: "absolute", right: 10, top: 8, width: 84, opacity: .18 }} />
+        <img src={bssThroneImg} alt="" aria-hidden style={{ position: "absolute", right: 0, bottom: -6, width: 108, opacity: .88 }} />
+        <div style={{ padding: 14, maxWidth: "72%" }}>
+          <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1.1 }}>UNIVERS BSS</div>
+          <div style={{ fontSize: 24, fontWeight: 1000, marginTop: 4 }}>Écussons, défis et Trône</div>
+          <div style={{ color: soft, fontSize: 11, lineHeight: 1.5, marginTop: 6 }}>Le but est simple : gagner des tournées, cumuler des écussons puis réussir la phase Trône pour devenir BSS KING.</div>
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, padding: 10, background: "rgba(255,255,255,.02)" }}>
+        <img src={bssFresco1Img} alt="Fresque BSS 1" style={{ width: "100%", height: 90, objectFit: "cover", borderRadius: 12, border: "1px solid rgba(255,255,255,.08)" }} />
+        <img src={bssFresco2Img} alt="Fresque BSS 2" style={{ width: "100%", height: 90, objectFit: "cover", borderRadius: 12, border: "1px solid rgba(255,255,255,.08)" }} />
+      </div>
+    </div>
+
+    <div style={{ ...panel, marginTop: 10 }}>
       <OptionRow label="Écussons avant le trône"><OptionSelect value={bssBadgesToThrone} options={[{ value: 3, label: "3 — partie rapide" }, { value: 5, label: "5 — classique" }, { value: 7, label: "7 — grande soirée" }]} onChange={(v: any) => setBssBadgesToThrone(Number(v) === 3 ? 3 : Number(v) === 7 ? 7 : 5)} /></OptionRow>
       <OptionRow label="Défis BSS / chaos"><OptionToggle value={bssChaosEnabled} onChange={setBssChaosEnabled} /></OptionRow>
       <OptionRow label="Couronnement"><OptionSelect value={bssThroneFinish} options={[{ value: "bull", label: "BULL ou DBULL — recommandé" }, { value: "dbull", label: "DBULL uniquement — hardcore" }]} onChange={setBssThroneFinish} /></OptionRow>
     </div>
-    <div style={{ marginTop: 9, padding: 10, borderRadius: 12, border: `1px solid ${accent}3d`, background: `${accent}0c`, color: soft, fontSize: 10.7, lineHeight: 1.5 }}><b style={{ color: accent }}>Règle simple :</b> 1) tous les joueurs tentent le même objectif avec 3 fléchettes ; 2) le meilleur score gagne <b>1 écusson</b> ; 3) au quota d’écussons, ton objectif devient le <b>TRÔNE</b> ; 4) touche le Bull final demandé = <b>victoire immédiate</b>. L’objectif précis et son barème sont affichés pendant chaque tour.</div>
+
+    <div style={{ marginTop: 9, padding: 10, borderRadius: 12, border: `1px solid ${accent}3d`, background: `${accent}0c`, color: soft, fontSize: 10.7, lineHeight: 1.5 }}>
+      <b style={{ color: accent }}>Règle simple :</b> 1) tous les joueurs tentent le même objectif avec 3 fléchettes ; 2) le meilleur score gagne <b>1 écusson</b> ; 3) au quota d’écussons, ton objectif devient le <b>TRÔNE</b> ; 4) touche le Bull final demandé = <b>victoire immédiate</b>.
+    </div>
+
+    <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
+      <div style={{ padding: 10, borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)" }}>
+        <div style={{ color: accent, fontSize: 10, fontWeight: 1000 }}>POINTS BSS</div>
+        <div style={{ fontSize: 10.5, color: soft, lineHeight: 1.45, marginTop: 4 }}>Les points BSS sont le total cumulé des points marqués sur les tournées. Ils servent de départage si plusieurs joueurs ont le même nombre d’écussons.</div>
+      </div>
+      <div style={{ padding: 10, borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)" }}>
+        <div style={{ color: accent, fontSize: 10, fontWeight: 1000 }}>CONVERSIONS</div>
+        <div style={{ fontSize: 10.5, color: soft, lineHeight: 1.45, marginTop: 4 }}>Libre : S1 D2 T3 Bull2 DBull4 · Double : 3 pts par D · Triple : 4 pts par T · Bull : Bull2 DBull5.</div>
+      </div>
+    </div>
   </section>;
 
   const fiftyOneBlock = <section style={selectorCard}>
