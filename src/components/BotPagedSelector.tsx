@@ -192,6 +192,9 @@ export default function BotPagedSelector({
 
   const sorted = React.useMemo(() => {
     return [...(bots || [])].sort((a, b) => {
+      const explicitA = Number((a as any)?.sortOrder);
+      const explicitB = Number((b as any)?.sortOrder);
+      if (Number.isFinite(explicitA) && Number.isFinite(explicitB) && explicitA !== explicitB) return explicitA - explicitB;
       const ga = GROUP_ORDER.indexOf(itemGroup(a));
       const gb = GROUP_ORDER.indexOf(itemGroup(b));
       if (ga !== gb) return (ga < 0 ? 99 : ga) - (gb < 0 ? 99 : gb);

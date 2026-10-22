@@ -1019,13 +1019,13 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
     ],
     "options": [
       "OBJECTIF",
-      "Remporte les tournées, collectionne les écussons BSS puis prends le trône.",
+      "Tous les joueurs tentent le même objectif avec jusqu'à 3 fléchettes. Le meilleur score de la tournée gagne 1 écusson BSS.",
       "DÉFIS BSS",
-      "Chaque tournée change la règle : libre, secteur imposé, Doubles, Triples, Bull ou autres défis de la bande.",
+      "L'objectif exact et son barème sont affichés pendant le tour : score libre, secteur précis, Doubles, Triples, Bull ou plage de secteurs.",
       "ÉCUSSONS",
-      "Le meilleur score d'influence de la tournée gagne un écusson. Une égalité ne distribue rien.",
+      "Une égalité en tête ne distribue aucun écusson. Atteindre le quota configuré débloque le Trône pour ce joueur.",
       "BSS KING",
-      "Quand le quota d'écussons est atteint, le joueur tente le trône avec le Bull final configuré.",
+      "En phase Trône, toucher le Bull final configuré donne immédiatement la victoire et le titre de BSS KING.",
       "./newModes/NewDartsModeConfig",
       "../assets/tickers/ticker_bss_king.webp"
     ]

@@ -22,6 +22,19 @@ const SHELL_BG = {backgroundImage:`linear-gradient(180deg, rgba(9,8,11,.80), rgb
 function panel(extra:any={}){return {border:"1px solid rgba(255,255,255,.09)",borderRadius:18,background:"linear-gradient(180deg,rgba(30,23,26,.96),rgba(10,9,12,.98))",boxShadow:"0 12px 30px rgba(0,0,0,.34)",...extra};}
 function scoreLabel(d:any){try{return dartLabel(d)}catch{return "—"}}
 
+function bssObjective(challenge:any, throneFinish:"bull"|"dbull"){
+  if(challenge?.kind==="throne") return throneFinish==="dbull"
+    ? {goal:"TOUCHE LE DBULL 50", scoring:"Un seul DBULL dans ta volée suffit : tu deviens immédiatement BSS KING."}
+    : {goal:"TOUCHE LE BULL", scoring:"Bull 25 ou DBULL 50 : une seule touche suffit pour gagner la partie."};
+  if(challenge?.kind==="target") return {goal:`VISE UNIQUEMENT LE ${challenge.target}`,scoring:`Seul le secteur ${challenge.target} compte · Simple = 1 · Double = 2 · Triple = 3.`};
+  if(challenge?.kind==="double") return {goal:"VISE LES DOUBLES",scoring:"Chaque Double touché vaut 3 points. Tout le reste vaut 0."};
+  if(challenge?.kind==="triple") return {goal:"VISE LES TRIPLES",scoring:"Chaque Triple touché vaut 4 points. Tout le reste vaut 0."};
+  if(challenge?.kind==="bull") return {goal:"VISE LE CENTRE",scoring:"Bull 25 = 2 points · DBULL 50 = 5 points. Tout le reste vaut 0."};
+  if(challenge?.kind==="low") return {goal:"VISE LES SECTEURS 1 À 10",scoring:"Seuls 1 à 10 comptent · Simple = 1 · Double = 2 · Triple = 3."};
+  if(challenge?.kind==="high") return {goal:"VISE LES SECTEURS 11 À 20",scoring:"Seuls 11 à 20 comptent · Simple = 1 · Double = 2 · Triple = 3."};
+  return {goal:"FAIS LE PLUS DE POINTS POSSIBLE",scoring:"Simple = 1 · Double = 2 · Triple = 3 · Bull 25 = 2 · DBULL 50 = 4."};
+}
+
 export default function BssKingPlay(props:any){
   useFullscreenPlay({enabled:true,lockBodyScroll:true});
   const awena=useAwenaOptional();
@@ -42,16 +55,26 @@ export default function BssKingPlay(props:any){
   const botIds=React.useMemo(()=>new Set((config.botIds||[]).map(String)),[config.botIds]);
   const active=state.players[state.activePlayerIndex], activeProfile=active?profileById.get(String(active.id))||active:null;
   const activeIsBot=!!activeProfile&&isBotProfile(activeProfile,botIds);
+  const activeBotHitRate=Number(activeProfile?.bssHitRate);
+  const configLaunchMode=config.quickParty===true||config.partyMode==="quick"?"quick":"arcade";
+  const backToConfig=React.useCallback(()=>go?.("bss_king_config",{launchMode:configLaunchMode}),[go,configLaunchMode]);
   const activeColor=active?COLORS[Math.max(0,state.players.findIndex((p:any)=>p.id===active.id))%COLORS.length]:GOLD;
   const throneMode=Boolean(active&&state.throneReady?.[active.id]);
   const challenge=throneMode?{kind:"throne",title:"PRENDS LE TRÔNE",subtitle:config.rules.throneFinish==="dbull"?"DBULL 50 obligatoire":"BULL 25 ou DBULL 50",icon:"👑"}:state.challenge;
+  const objective=React.useMemo(()=>bssObjective(challenge,config.rules.throneFinish),[challenge,config.rules.throneFinish]);
+  const activeBadges=Number(state.badges[active?.id]||0);
+  const badgesRemaining=Math.max(0,Number(config.rules.badgesToThrone||0)-activeBadges);
+  const winReminder=throneMode
+    ? "RÉUSSIS CET OBJECTIF = VICTOIRE IMMÉDIATE."
+    : `${badgesRemaining} écusson${badgesRemaining>1?"s":""} avant le TRÔNE. Le meilleur score de cette tournée gagne 1 écusson.`;
 
   const buildRecord=React.useCallback((s:BssState,status:"in_progress"|"finished",draft:UIDart[]=currentThrow)=>{
     const rows=profiles.map((p:any)=>({id:String(p.id),name:playerName(p),avatarDataUrl:p.avatarDataUrl??null}));
     const ranking=[...s.players].map((p:any,i:number)=>({id:p.id,name:p.name,badges:Number(s.badges[p.id]||0),influence:Number(s.influence[p.id]||0),order:i})).sort((a,b)=>b.badges-a.badges||b.influence-a.influence||a.order-b.order);
-    return {id:matchIdRef.current,matchId:matchIdRef.current,resumeId:matchIdRef.current,kind:"bss_king",mode:"bss_king",sport:"darts",status,createdAt:s.startedAt,updatedAt:Date.now(),finishedAt:status==="finished"?(s.finishedAt||Date.now()):undefined,winnerId:s.winnerId,players:rows,
-      game:{mode:"bss_king",badgesToThrone:s.config.rules.badgesToThrone},summary:{mode:"bss_king",finished:status==="finished",winnerId:s.winnerId,badges:s.badges,influence:s.influence,ranking,config:s.config,totalDarts:Object.values(s.statsByPlayer||{}).reduce((a:number,r:any)=>a+Number(r?.darts||0),0),durationMs:Math.max(0,(status==="finished"?(s.finishedAt||Date.now()):Date.now())-Number(s.startedAt||Date.now()))},
-      resume:{mode:"bss_king",config:s.config,state:cloneBssState(s),currentThrow:draft.slice(0,3),updatedAt:Date.now()},payload:{kind:"bss_king",mode:"bss_king",sport:"darts",config:s.config,stateSnapshot:cloneBssState(s),currentThrow:draft.slice(0,3),visits:s.visits,stats:{mode:"bss_king",players:s.statsByPlayer,badges:s.badges,influence:s.influence}}};
+    const quickParty=s.config.quickParty===true||s.config.partyMode==="quick";
+    return {id:matchIdRef.current,matchId:matchIdRef.current,resumeId:matchIdRef.current,kind:"bss_king",mode:"bss_king",sport:"darts",status,quickParty,partyMode:quickParty?"quick":"arcade",createdAt:s.startedAt,updatedAt:Date.now(),finishedAt:status==="finished"?(s.finishedAt||Date.now()):undefined,winnerId:s.winnerId,players:rows,
+      game:{mode:"bss_king",badgesToThrone:s.config.rules.badgesToThrone,quickParty},summary:{mode:"bss_king",quickParty,partyMode:quickParty?"quick":"arcade",finished:status==="finished",winnerId:s.winnerId,badges:s.badges,influence:s.influence,ranking,config:s.config,totalDarts:Object.values(s.statsByPlayer||{}).reduce((a:number,r:any)=>a+Number(r?.darts||0),0),durationMs:Math.max(0,(status==="finished"?(s.finishedAt||Date.now()):Date.now())-Number(s.startedAt||Date.now()))},
+      resume:{mode:"bss_king",config:s.config,state:cloneBssState(s),currentThrow:draft.slice(0,3),updatedAt:Date.now()},payload:{kind:"bss_king",mode:"bss_king",sport:"darts",quickParty,partyMode:quickParty?"quick":"arcade",config:s.config,stateSnapshot:cloneBssState(s),currentThrow:draft.slice(0,3),visits:s.visits,stats:{mode:"bss_king",players:s.statsByPlayer,badges:s.badges,influence:s.influence}}};
   },[profiles,currentThrow]);
 
   const save=React.useCallback(async(s:BssState,draft:UIDart[]=currentThrow)=>{try{await History.upsert(buildRecord(s,"in_progress",draft));}catch(e){console.warn("[BSS KING] checkpoint failed",e);}},[buildRecord,currentThrow]);
@@ -62,15 +85,15 @@ export default function BssKingPlay(props:any){
   const validate=React.useCallback(()=>{if(!active||activeIsBot||!currentThrow.length)return;const darts=currentThrow.map(uiToGameDart);setUndo(v=>[...v.slice(-9),cloneBssState(state)]);const next=playBssVisit(state,darts);const last=next.visits[next.visits.length-1];setState(next);setCurrentThrow([]);setMultiplier(1);setNotice(last?.events?.[0]||"");},[active,activeIsBot,currentThrow,state]);
   const doUndo=React.useCallback(()=>{if(currentThrow.length){setCurrentThrow(v=>v.slice(0,-1));return;}setUndo(v=>{const copy=[...v],prev=copy.pop();if(prev){setState(prev);setNotice("Dernière tournée annulée");}return copy;});},[currentThrow]);
 
-  React.useEffect(()=>{if(state.phase!=="playing"||!activeIsBot||botBusy.current)return;botBusy.current=true;const t=window.setTimeout(()=>{const darts=pickBssBotDarts(state,config.botLevel);setUndo(v=>[...v.slice(-9),cloneBssState(state)]);const next=playBssVisit(state,darts);const last=next.visits[next.visits.length-1];setState(next);setNotice(last?.events?.[0]||"");botBusy.current=false;},620);return()=>{window.clearTimeout(t);botBusy.current=false;};},[state,activeIsBot,config.botLevel]);
+  React.useEffect(()=>{if(state.phase!=="playing"||!activeIsBot||botBusy.current)return;botBusy.current=true;const t=window.setTimeout(()=>{const darts=pickBssBotDarts(state,config.botLevel,Number.isFinite(activeBotHitRate)?activeBotHitRate:undefined);setUndo(v=>[...v.slice(-9),cloneBssState(state)]);const next=playBssVisit(state,darts);const last=next.visits[next.visits.length-1];setState(next);setNotice(last?.events?.[0]||"");botBusy.current=false;},620);return()=>{window.clearTimeout(t);botBusy.current=false;};},[state,activeIsBot,config.botLevel,activeBotHitRate]);
 
-  React.useEffect(()=>{awena?.setRuntimeContext?.({route:"bss_king_play",modeId:"bss_king",screenLabel:"BSS KING · Partie",facts:{round:state.round,challenge:challenge.title,badgesToThrone:config.rules.badgesToThrone,activePlayer:active?.name||""}});},[awena,state.round,challenge.title,active?.name,config.rules.badgesToThrone]);
+  React.useEffect(()=>{awena?.setRuntimeContext?.({route:"bss_king_play",modeId:"bss_king",screenLabel:"BSS KING · Partie",facts:{round:state.round,challenge:challenge.title,objective:objective.goal,scoring:objective.scoring,badgesToThrone:config.rules.badgesToThrone,activeBadges,badgesRemaining,throneMode,activePlayer:active?.name||"",howToWin:"Gagner seul une tournée = 1 écusson. Atteindre le quota d’écussons débloque le Trône. Réussir le Bull final configuré = victoire immédiate."}});},[awena,state.round,challenge.title,objective.goal,objective.scoring,active?.name,config.rules.badgesToThrone,activeBadges,badgesRemaining,throneMode]);
 
   const ranking=React.useMemo(()=>[...state.players].map((p:any,i:number)=>({p,badges:Number(state.badges[p.id]||0),influence:Number(state.influence[p.id]||0),i})).sort((a,b)=>b.badges-a.badges||b.influence-a.influence||a.i-b.i),[state.players,state.badges,state.influence]);
   const winner=state.winnerId?profileById.get(String(state.winnerId))||state.players.find((p:any)=>p.id===state.winnerId):null;
 
   if(state.phase==="finished") return <div style={{height:"100dvh",overflow:"auto",background:`radial-gradient(circle at 50% 12%,rgba(215,72,85,.24),transparent 34%),${BG}`, ...SHELL_BG,color:"#fff"}}>
-    <PageHeader tickerSrc={tickerBssKing} tickerAlt="BSS KING" tickerHeight={72} tickerFit="cover" left={<div style={{marginLeft:7}}><BackDot onClick={()=>go?.("bss_king_config")} color={GOLD} glow={`${GOLD}88`}/></div>} />
+    <PageHeader tickerSrc={tickerBssKing} tickerAlt="BSS KING" tickerHeight={72} tickerFit="cover" left={<div style={{marginLeft:7}}><BackDot onClick={backToConfig} color={GOLD} glow={`${GOLD}88`}/></div>} />
     <div style={{maxWidth:900,margin:"0 auto",padding:"18px 14px 90px"}}>
       <section style={panel({padding:20,textAlign:"center",border:`1px solid ${GOLD}66`,boxShadow:`0 0 34px ${GOLD}20,0 18px 50px rgba(0,0,0,.5)`})}>
         <div style={{fontSize:13,fontWeight:1000,letterSpacing:2,color:GOLD}}>👑 BSS KING 👑</div>
@@ -80,7 +103,7 @@ export default function BssKingPlay(props:any){
         <img src={bssArt} alt="Il était une fois les BSS" style={{width:"100%",maxHeight:270,objectFit:"cover",borderRadius:15,marginTop:16,border:"1px solid rgba(255,255,255,.1)"}}/>
         <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:8,marginTop:16}}>
           <button onClick={()=>{const fresh=createBssState(players,config);setState(fresh);setUndo([]);setNotice("");finishedRef.current=false;matchIdRef.current=`bss-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;}} style={{padding:13,borderRadius:999,border:`1px solid ${GOLD}99`,background:`${GOLD}18`,color:"#fff",fontWeight:1000}}>↻ REJOUER</button>
-          <button onClick={()=>go?.("bss_king_config")} style={{padding:13,borderRadius:999,border:"1px solid rgba(255,255,255,.15)",background:"rgba(255,255,255,.06)",color:"#fff",fontWeight:1000}}>CONFIGURATION</button>
+          <button onClick={backToConfig} style={{padding:13,borderRadius:999,border:"1px solid rgba(255,255,255,.15)",background:"rgba(255,255,255,.06)",color:"#fff",fontWeight:1000}}>CONFIGURATION</button>
         </div>
         <button onClick={()=>go?.("games",{gamesView:"all"})} style={{width:"100%",marginTop:8,padding:13,borderRadius:999,border:"1px solid rgba(255,255,255,.12)",background:"rgba(255,255,255,.035)",color:"#ddd",fontWeight:900}}>RETOUR AUX JEUX</button>
       </section>
@@ -88,39 +111,45 @@ export default function BssKingPlay(props:any){
   </div>;
 
   return <div style={{height:"100dvh",minHeight:0,overflow:"hidden",background:`radial-gradient(circle at 50% 0%,rgba(215,72,85,.17),transparent 32%),${BG}`, ...SHELL_BG,color:"#fff",display:"flex",flexDirection:"column"}} data-mss-native-play-layout="1">
-    <PageHeader tickerSrc={tickerBssKing} tickerAlt="BSS KING" tickerHeight={68} tickerFit="cover" tickerBottomGap={8} left={<div style={{marginLeft:7}}><BackDot onClick={()=>go?.("bss_king_config")} color={activeColor} glow={`${activeColor}88`}/></div>} right={awena?.enabled!==false?<div style={{marginRight:7}}><PremiumAwenaButton awena={awena} route="bss_king_play" mode="bss_king" screenLabel="BSS KING · Partie" accent={activeColor}/></div>:null}/>
+    <PageHeader tickerSrc={tickerBssKing} tickerAlt="BSS KING" tickerHeight={68} tickerFit="cover" tickerBottomGap={8} left={<div style={{marginLeft:7}}><BackDot onClick={backToConfig} color={activeColor} glow={`${activeColor}88`}/></div>} right={awena?.enabled!==false?<div style={{marginRight:7}}><PremiumAwenaButton awena={awena} route="bss_king_play" mode="bss_king" screenLabel="BSS KING · Partie" accent={activeColor}/></div>:null}/>
     <main style={{flex:"1 1 auto",minHeight:0,overflow:"hidden",padding:"0 10px 10px"}}>
       <div style={{height:"100%",display:"grid",gridTemplateColumns:"minmax(0,1.05fr) minmax(320px,.95fr)",gap:10}} className="bss-play-grid">
         <div style={{minHeight:0,overflow:"auto",display:"grid",alignContent:"start",gap:9,paddingBottom:8}}>
           <section style={panel({padding:10,border:`1px solid ${activeColor}55`,background:`linear-gradient(180deg,${activeColor}10,rgba(10,9,12,.98))`})}>
             <div style={{display:"grid",gridTemplateColumns:"58px minmax(0,1fr) auto",gap:10,alignItems:"center"}}>
               <ProfileAvatar profile={activeProfile} size={58} showStars={false} ringColor={activeColor}/>
-              <div style={{minWidth:0}}><div style={{fontSize:10,color:activeColor,fontWeight:1000,letterSpacing:1}}>TOURNÉE {state.round} · {throneMode?"PHASE TRÔNE":"BSS"}</div><div style={{fontSize:22,fontWeight:1100,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{active?.name}</div><div style={{color:SOFT,fontSize:10,marginTop:2}}>{notice||"À toi de jouer."}</div></div>
-              <div style={{textAlign:"center"}}><div style={{fontSize:30,fontWeight:1100,color:activeColor}}>{state.badges[active?.id]||0}</div><div style={{fontSize:8,color:SOFT}}>ÉCUSSONS / {config.rules.badgesToThrone}</div></div>
+              <div style={{minWidth:0}}><div style={{fontSize:10,color:activeColor,fontWeight:1000,letterSpacing:1}}>TOURNÉE {state.round} · {throneMode?"PHASE TRÔNE":"À TOI DE JOUER"}</div><div style={{fontSize:22,fontWeight:1100,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{active?.name}</div><div style={{color:SOFT,fontSize:10,marginTop:2}}>{notice||"Lis l’objectif ci-dessous, puis lance jusqu’à 3 fléchettes."}</div></div>
+              <div style={{textAlign:"center"}}><div style={{fontSize:30,fontWeight:1100,color:activeColor}}>{activeBadges}</div><div style={{fontSize:8,color:SOFT}}>ÉCUSSONS / {config.rules.badgesToThrone}</div></div>
+            </div>
+            <div style={{marginTop:9,padding:"9px 10px",borderRadius:13,border:`1px solid ${throneMode?GOLD:activeColor}66`,background:throneMode?"rgba(240,199,106,.12)":`${activeColor}0d`}}>
+              <div style={{fontSize:8.5,fontWeight:1000,letterSpacing:1.2,color:throneMode?GOLD:activeColor}}>🎯 OBJECTIF MAINTENANT</div>
+              <div style={{fontSize:15,fontWeight:1100,marginTop:3}}>{objective.goal}</div>
+              <div style={{fontSize:9.5,color:SOFT,lineHeight:1.4,marginTop:3}}>{objective.scoring}</div>
+              <div style={{fontSize:9.2,fontWeight:1000,color:throneMode?GOLD:"#fff",lineHeight:1.35,marginTop:6}}>{winReminder}</div>
             </div>
           </section>
 
-          <section style={panel({padding:12,border:`1px solid ${throneMode?GOLD:RED}55`,background:throneMode?"linear-gradient(135deg,rgba(240,199,106,.14),rgba(31,19,22,.98))":"linear-gradient(135deg,rgba(215,72,85,.13),rgba(31,19,22,.98))"})}>
-            <div style={{display:"flex",gap:10,alignItems:"center"}}><div style={{fontSize:34}}>{challenge.icon}</div><div><div style={{fontSize:10,color:throneMode?GOLD:RED,fontWeight:1000,letterSpacing:1}}>DÉFI EN COURS</div><div style={{fontSize:18,fontWeight:1100}}>{challenge.title}</div><div style={{fontSize:10.5,color:SOFT,marginTop:3}}>{challenge.subtitle}</div></div></div>
+          <section style={panel({padding:11,border:`1px solid ${throneMode?GOLD:RED}45`,background:throneMode?"linear-gradient(135deg,rgba(240,199,106,.12),rgba(31,19,22,.98))":"linear-gradient(135deg,rgba(215,72,85,.10),rgba(31,19,22,.98))"})}>
+            <div style={{display:"flex",gap:10,alignItems:"center"}}><div style={{fontSize:31}}>{challenge.icon}</div><div><div style={{fontSize:9.5,color:throneMode?GOLD:RED,fontWeight:1000,letterSpacing:1}}>RÈGLE DE LA TOURNÉE</div><div style={{fontSize:16,fontWeight:1100}}>{challenge.title}</div><div style={{fontSize:10,color:SOFT,marginTop:3}}>{throneMode?"Réussis le Bull demandé et la partie est gagnée.":"Tous les joueurs ont exactement le même objectif. Le meilleur score gagne l’écusson."}</div></div></div>
           </section>
 
           <section style={panel({padding:9})}>
             <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(5,Math.max(2,state.players.length))},minmax(0,1fr))`,gap:6}}>
-              {ranking.map(({p,badges,influence}:any)=>{const prof=profileById.get(String(p.id))||p, on=p.id===active?.id; return <div key={p.id} style={{padding:"8px 6px",borderRadius:13,border:`1px solid ${on?activeColor:"rgba(255,255,255,.08)"}`,background:on?`${activeColor}10`:"rgba(255,255,255,.025)",textAlign:"center",minWidth:0}}><ProfileAvatar profile={prof} size={34} showStars={false} ringColor={on?activeColor:"rgba(255,255,255,.16)"}/><div style={{marginTop:4,fontSize:9,fontWeight:900,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}</div><div style={{marginTop:3,fontSize:13,fontWeight:1100,color:on?activeColor:GOLD}}>👑 {badges}</div><div style={{fontSize:7.8,color:SOFT}}>INF {influence}</div></div>})}
+              {ranking.map(({p,badges,influence}:any)=>{const prof=profileById.get(String(p.id))||p, on=p.id===active?.id; return <div key={p.id} style={{padding:"8px 6px",borderRadius:13,border:`1px solid ${on?activeColor:"rgba(255,255,255,.08)"}`,background:on?`${activeColor}10`:"rgba(255,255,255,.025)",textAlign:"center",minWidth:0}}><ProfileAvatar profile={prof} size={34} showStars={false} ringColor={on?activeColor:"rgba(255,255,255,.16)"}/><div style={{marginTop:4,fontSize:9,fontWeight:900,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}</div><div style={{marginTop:3,fontSize:13,fontWeight:1100,color:on?activeColor:GOLD}}>👑 {badges}</div><div style={{fontSize:7.8,color:SOFT}}>PTS BSS {influence}</div></div>})}
             </div>
           </section>
 
           <section style={panel({padding:10})}>
             <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:6}}>
               <div style={{textAlign:"center"}}><b style={{fontSize:18,color:activeColor}}>{state.roundScores[active?.id]||0}</b><div style={{fontSize:7.5,color:SOFT}}>TOURNÉE</div></div>
-              <div style={{textAlign:"center"}}><b style={{fontSize:18}}>{state.influence[active?.id]||0}</b><div style={{fontSize:7.5,color:SOFT}}>INFLUENCE</div></div>
+              <div style={{textAlign:"center"}}><b style={{fontSize:18}}>{state.influence[active?.id]||0}</b><div style={{fontSize:7.5,color:SOFT}}>POINTS BSS</div></div>
               <div style={{textAlign:"center"}}><b style={{fontSize:18}}>{state.statsByPlayer[active?.id]?.challengeWins||0}</b><div style={{fontSize:7.5,color:SOFT}}>DÉFIS GAGNÉS</div></div>
               <div style={{textAlign:"center"}}><b style={{fontSize:18}}>{state.statsByPlayer[active?.id]?.throneAttempts||0}</b><div style={{fontSize:7.5,color:SOFT}}>TRÔNE</div></div>
             </div>
           </section>
 
           <section style={panel({padding:10})}>
-            <div style={{fontSize:9.5,color:GOLD,fontWeight:1000,letterSpacing:1}}>DERNIÈRES CHRONIQUES BSS</div>
+            <div style={{fontSize:9.5,color:GOLD,fontWeight:1000,letterSpacing:1}}>DERNIÈRES ACTIONS</div>
             <div style={{marginTop:6,display:"grid",gap:4}}>{state.events.slice(-4).reverse().map((e:string,i:number)=><div key={`${e}-${i}`} style={{fontSize:9.5,color:i===0?"#fff":SOFT,lineHeight:1.4,borderTop:i?"1px solid rgba(255,255,255,.05)":"none",paddingTop:i?4:0}}>{e}</div>)}</div>
           </section>
         </div>

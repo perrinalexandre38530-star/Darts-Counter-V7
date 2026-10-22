@@ -79,8 +79,8 @@ const LANDING_EXPLANATION_VISUALS = {
   },
 } as const;
 
-const MSS_EXCLUSIVE_DARTS = new Set(["darts_firefighter", "crados", "attrape_moi", "loterie", "menteur", "president", "pendu", "cargo", "ptit_hun"]);
-const NEW_PUBLIC_DARTS = new Set(["ptit_hun", "mistigri", "corbeau_renard", "radin", "darts_impossible"]);
+const MSS_EXCLUSIVE_DARTS = new Set(["darts_firefighter", "crados", "bss_king", "attrape_moi", "loterie", "menteur", "president", "pendu", "cargo", "ptit_hun"]);
+const NEW_PUBLIC_DARTS = new Set(["bss_king", "ptit_hun", "mistigri", "corbeau_renard", "radin", "darts_impossible"]);
 const DARTS_CATEGORY_LABEL: Record<string,string> = {
   classic: "GRANDS CLASSIQUES",
   variant: "VARIANTES",
@@ -190,6 +190,7 @@ const PUBLIC_RULE_CONFIG_COPY: Record<string,string> = {
   pendu: "Choisissez les participants et les paramètres de survie. Le joueur actif annonce ou reçoit un défi qu’il doit réussir, puis les autres tentent de le reproduire. Chaque échec ajoute une partie au pendu ; lorsque le dessin est complet, le joueur est éliminé. Le dernier survivant gagne.",
   menteur: "Choisissez les participants et le nombre de vies. À chaque tour, il faut surenchérir sur l’annonce précédente ou accuser le joueur de mentir. Le joueur défié tente alors de réaliser son contrat avec sa volée : s’il échoue il perd une vie, sinon c’est le challenger qui est pénalisé.",
   crados: "Choisissez les joueurs ou équipes, les paramètres de manche et les options disponibles. Les secteurs de la cible se couvrent progressivement de crasse aux couleurs des joueurs. Marcher dans la crasse adverse contamine votre jauge tandis que le Bull peut nettoyer. Le dernier joueur ou camp encore en jeu remporte la manche.",
+  bss_king: "Choisissez les participants, puis le quota de 3, 5 ou 7 écussons avant le Trône. À chaque tournée, tous les joueurs tentent le même objectif avec jusqu’à 3 fléchettes et le meilleur score gagne 1 écusson ; une égalité en tête ne donne rien. Activez ou non les défis BSS Chaos, puis choisissez le couronnement : Bull ou DBull, ou DBull uniquement. Dès que le quota d’écussons est atteint, toucher le Bull final demandé donne immédiatement la victoire et le titre de BSS KING.",
   castle: "Choisissez les participants et l’objectif de construction. Chaque joueur possède son propre numéro : un Simple ajoute 1 brique, un Double 2 et un Triple 3. Toucher le numéro d’un adversaire détruit le même nombre de briques dans son château. Dans la règle classique, le premier à construire 15 briques gagne.",
   gotcha: "Choisissez les participants, le total cible et le mode de sortie Straight, Double ou Master lorsqu’il est proposé, ainsi que la règle de bust. Tous commencent à zéro et progressent vers le total exact. Si votre score cumulé devient exactement égal à celui d’un adversaire, GOTCHA : son score est remis à zéro.",
   training_x01: "Choisissez le score de départ et les paramètres d’entraînement X01. La session travaille la construction de score, les fins de manche et la régularité ; les statistiques enregistrent vos performances pour suivre votre progression au fil des séances.",
@@ -582,7 +583,7 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
 
   const catalogueCards = [
     ["classic","GRANDS CLASSIQUES","Les incontournables des fléchettes : X01, Cricket, Killer, Shanghai et autres références."],
-    ["exclusive","EXCLUSIVITÉS MSS","Les créations propres à MULTISPORTS SCORING : Firefighter, CRADOS, Loterie, Menteur, Président, Le Pendu, Cargo…"],
+    ["exclusive","EXCLUSIVITÉS MSS","Les créations propres à MULTISPORTS SCORING : Firefighter, CRADOS, BSS KING, Loterie, Menteur, Président, Le Pendu, Cargo…"],
     ["fun","FUN","Des parties pensées pour l’ambiance, les soirées et les règles décalées."],
     ["challenge","DÉFIS","CHALLENGE et les autres modes à objectifs : scoring, précision, performance, duel et élimination."],
     ["variant","VARIANTES","Des façons différentes de jouer et de revisiter la cible."],

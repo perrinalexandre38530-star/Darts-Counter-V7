@@ -857,7 +857,7 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:bss_king",
     infoTitle: "BSS KING",
     infoBody:
-      "Univers original inspiré de la bande des BSS — les Boit-Sans-Soif. Chaque tournée propose un défi de fléchettes. Le meilleur gagne un écusson BSS ; une fois le quota atteint, il faut réussir le Bull final pour prendre le trône et devenir BSS KING.",
+      "BSS KING est un jeu de défis très simple : tous les joueurs tentent le même objectif avec jusqu’à 3 fléchettes, puis le meilleur score de la tournée gagne 1 écusson BSS. Une égalité en tête ne distribue rien. Dès qu’un joueur atteint le quota d’écussons, il passe au Trône : toucher le Bull final configuré lui donne immédiatement la victoire et le titre de BSS KING. L’objectif exact et son barème sont affichés à chaque tour.",
   },
   {
     id: "castle",

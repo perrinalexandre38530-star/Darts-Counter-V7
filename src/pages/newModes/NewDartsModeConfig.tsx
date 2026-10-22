@@ -16,6 +16,7 @@ import { loadTeamsBySport } from "../../lib/petanqueTeamsStore";
 import { BotTeamsSection, PillButton, X01_PRO_BOTS, TeamsSection, SelectedParticipantsCompactBlock } from "../X01ConfigV3";
 import { findRememberedGeneratedTeam } from "../../lib/teamAutoShuffle";
 import { CRADOS_BOTS, CRADOS_BOT_TEAMS } from "../../lib/dartsCradosBots";
+import { BSS_KING_BOTS, BSS_KING_PLAYABLE_CHARACTERS } from "../../lib/bssKingBots";
 import { useAwenaOptional } from "../../awena/AwenaProvider";
 import { PremiumAwenaButton } from "../newModes/PremiumPartyModeUi";
 import "./PremiumPartyModeUi.css";
@@ -180,6 +181,8 @@ export default function NewDartsModeConfig(props: Props) {
   }, [props.mode]);
   const awenaEnabled = Boolean(awena?.enabled !== false);
   const { mode, definition } = props;
+  const bssLaunchMode = mode === "bss_king" && props?.params?.launchMode === "quick" ? "quick" : mode === "bss_king" && props?.params?.launchMode === "arcade" ? "arcade" : null;
+  const bssQuickMode = bssLaunchMode === "quick";
   const ptitHunFr = mode === "ptit_hun" ? ptit1ConfigIsFrench() : true;
   const { theme } = useTheme();
   const go = props.go ?? props.setTab;
@@ -196,7 +199,7 @@ export default function NewDartsModeConfig(props: Props) {
   const [viewModeChosen, setViewModeChosen] = React.useState(() => mode !== "crados");
   const configScrollRef = React.useRef<HTMLDivElement | null>(null);
   const [selectedIds, setSelectedIds] = React.useState<string[]>(Array.isArray(saved.selectedIds) ? saved.selectedIds.map(String).slice(0, definition.maxPlayers) : []);
-  const [botsOpen, setBotsOpen] = React.useState(saved.botsOpen === true);
+  const [botsOpen, setBotsOpen] = React.useState(Object.prototype.hasOwnProperty.call(saved, "botsOpen") ? saved.botsOpen === true : (mode === "bss_king" && bssLaunchMode === "arcade"));
   const [botLevel, setBotLevel] = React.useState<BotLevel>(saved.botLevel === "easy" || saved.botLevel === "hard" ? saved.botLevel : "normal");
   const [randomOrder, setRandomOrder] = React.useState(saved.randomOrder !== false);
   const [scoreInputMethod, setScoreInputMethod] = React.useState<"keypad" | "dartboard">(saved.scoreInputMethod === "dartboard" ? "dartboard" : "keypad");
@@ -309,18 +312,22 @@ export default function NewDartsModeConfig(props: Props) {
   const [ptitHunPresetChoice, setPtitHunPresetChoice] = React.useState<"classic" | "precision" | "jackpot" | "sniper" | "hardcore">(["classic","precision","jackpot","sniper","hardcore"].includes(String(saved.ptitHunPresetChoice || "")) ? String(saved.ptitHunPresetChoice) as any : "classic");
 
   const humanProfiles = React.useMemo(() => {
+    if (mode === "bss_king" && bssQuickMode) return BSS_KING_PLAYABLE_CHARACTERS.map((p: any) => normalizeProfile(p, false));
     const raw = Array.isArray(store?.profiles) ? store.profiles : [];
     return raw.filter((p: any) => !isBotLike(p)).map((p: any) => normalizeProfile(p, false));
-  }, [store?.profiles]);
+  }, [store?.profiles, mode, bssQuickMode]);
 
   const buildBotPool = React.useCallback(() => {
     const map = new Map<string, any>();
-    const officialBots = mode === "crados" ? CRADOS_BOTS : (X01_PRO_BOTS || []);
+    const officialBots = mode === "crados" ? CRADOS_BOTS : mode === "bss_king" ? (bssQuickMode ? [] : BSS_KING_BOTS) : (X01_PRO_BOTS || []);
     officialBots.forEach((b: any) => map.set(String(b.id), normalizeProfile(b, true)));
+    // BSS KING reste volontairement limité à ses 16 personnages officiels.
     // Les BOTS CPU personnels restent disponibles dans CRADOS et dans les autres modes.
-    try { loadBotPlayers().forEach((b: any) => map.set(String(b.id), normalizeProfile({ ...b, isUserBot: true, source: b?.source || "cpu", groupLabel: b?.groupLabel || "CPU Home" }, true))); } catch {}
+    if (mode !== "bss_king") {
+      try { loadBotPlayers().forEach((b: any) => map.set(String(b.id), normalizeProfile({ ...b, isUserBot: true, source: b?.source || "cpu", groupLabel: b?.groupLabel || "CPU Home" }, true))); } catch {}
+    }
     return [...map.values()];
-  }, [mode]);
+  }, [mode, bssQuickMode]);
   const [bots, setBots] = React.useState<any[]>(() => buildBotPool());
   React.useEffect(() => { setBots(buildBotPool()); }, [buildBotPool]);
 
@@ -553,7 +560,7 @@ export default function NewDartsModeConfig(props: Props) {
   // Migration douce : les anciens BOTS Pro X01 mémorisés dans la config CRADOS
   // ne doivent pas survivre au remplacement par les 24 personnages CRADOS.
   React.useEffect(() => {
-    if (mode !== "crados") return;
+    if (mode !== "crados" && mode !== "bss_king") return;
     setSelectedIds((prev) => prev.filter((id) => profileById.has(String(id))));
   }, [mode, profileById]);
 
@@ -601,6 +608,7 @@ export default function NewDartsModeConfig(props: Props) {
 
   function backToGames() {
     if (typeof props?.params?.onBack === "function") return props.params.onBack();
+    if (mode === "bss_king" && bssLaunchMode && typeof go === "function") return go("bss_king_config", { launchMode: undefined });
     if (typeof go === "function") return go("games", { gamesView: "all" });
     window.history.back();
   }
@@ -677,9 +685,14 @@ export default function NewDartsModeConfig(props: Props) {
           ? teams.filter((team: any) => team.isCradosFamily || String(team.id).startsWith("bot_team_crados_")).map((team: any) => String(team.id))
           : [],
       } : {}),
+      ...(mode === "bss_king" ? {
+        quickParty: bssQuickMode,
+        partyMode: bssQuickMode ? "quick" : "arcade",
+        temporaryParticipants: bssQuickMode,
+      } : {}),
       menuVersion: 3,
     };
-    try { recordProfileUsageForMode(mode, orderedIds); } catch {}
+    if (!(mode === "bss_king" && bssQuickMode)) { try { recordProfileUsageForMode(mode, orderedIds); } catch {} }
     go(definition.playTab, { config: payload });
   }
 
@@ -743,17 +756,19 @@ export default function NewDartsModeConfig(props: Props) {
   </section> : null;
 
   const playerParticipantsBlock = <section style={selectorCard}>
-    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>{mode === "crados" ? "Joueurs" : mode === "ptit_hun" ? (ptitHunFr ? "Participants" : "Participants") : "Participants"}</div>
+    <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>{mode === "bss_king" && bssQuickMode ? "Personnages BSS jouables" : mode === "crados" ? "Joueurs" : mode === "ptit_hun" ? (ptitHunFr ? "Participants" : "Participants") : "Participants"}</div>
+    {mode === "bss_king" && bssQuickMode ? <div style={{ color: soft, fontSize: 11.5, lineHeight: 1.45, marginBottom: 10 }}>PARTIE RAPIDE : choisis directement les personnages BSS qui seront contrôlés par les joueurs. Aucun d'eux n'est piloté par l'IA dans ce mode.</div> : null}
     {mode === "crados" && selectedProfiles.length ? <SelectedParticipantsCompactBlock items={selectedProfiles} accent={accent} onRemove={(id: string) => togglePlayer(id)} allProfiles={[...humanProfiles, ...bots]} /> : null}
-    <PlayerPagedSelector usageMode={mode} profiles={humanProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} pageSize={9} modalTitle={mode === "ptit_hun" && !ptitHunFr ? "Choose players" : "Choisir des joueurs"} showSelectedSummary={false} />
-    <div style={{ marginTop: 12, paddingTop: 11, borderTop: "1px solid rgba(255,255,255,.06)" }}>
+    <PlayerPagedSelector usageMode={mode} profiles={humanProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} pageSize={9} modalTitle={mode === "bss_king" && bssQuickMode ? "Choisir les personnages BSS" : mode === "ptit_hun" && !ptitHunFr ? "Choose players" : "Choisir des joueurs"} showSelectedSummary={false} />
+    {!bssQuickMode ? <div style={{ marginTop: 12, paddingTop: 11, borderTop: "1px solid rgba(255,255,255,.06)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: botsOpen ? 9 : 0 }}>
-        <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 900, color: accent }}>{mode === "ptit_hun" && !ptitHunFr ? "AI BOTS" : "Bots IA"}</div>
+        <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 900, color: accent }}>{mode === "bss_king" ? "BOTS IA BSS KING" : mode === "ptit_hun" && !ptitHunFr ? "AI BOTS" : "Bots IA"}</div>
         <Pill active={botsOpen} onClick={() => setBotsOpen((v) => !v)} accent={accent}>{botsOpen ? "ON" : "OFF"}</Pill>
       </div>
-      {botsOpen ? <BotPagedSelector bots={bots} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} label={mode === "crados" ? "BOTS CRADOS + CPU" : mode === "ptit_hun" && !ptitHunFr ? "AI BOTS" : "BOTS IA"} modalTitle={mode === "crados" ? "Choisir les BOTS CRADOS" : mode === "ptit_hun" && !ptitHunFr ? "Choose AI BOTS" : "Choisir des BOTS IA"} showCheckbox={false} showSelectedSummary={false} /> : null}
-      {(mode === "crados" ? cradosCpuBotCount > 0 : botCount > 0) && botsOpen ? <div style={{ marginTop: 10 }}><OptionRow label={mode === "crados" ? "Secours difficulté BOTS CPU" : mode === "ptit_hun" && !ptitHunFr ? "AI difficulty" : "Difficulté IA"}><OptionSelect value={botLevel} options={[{ value: "easy", label: mode === "ptit_hun" && !ptitHunFr ? "Easy" : "Facile" }, { value: "normal", label: "Normal" }, { value: "hard", label: mode === "ptit_hun" && !ptitHunFr ? "Hard" : "Difficile" }]} onChange={setBotLevel} /></OptionRow></div> : null}
-    </div>
+      {botsOpen ? <BotPagedSelector bots={bots} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} label={mode === "bss_king" ? "BOTS BSS KING" : mode === "crados" ? "BOTS CRADOS + CPU" : mode === "ptit_hun" && !ptitHunFr ? "AI BOTS" : "BOTS IA"} modalTitle={mode === "bss_king" ? "Choisir les BOTS BSS KING" : mode === "crados" ? "Choisir les BOTS CRADOS" : mode === "ptit_hun" && !ptitHunFr ? "Choose AI BOTS" : "Choisir des BOTS IA"} showCheckbox={false} showSelectedSummary={false} /> : null}
+      {(mode === "crados" ? cradosCpuBotCount > 0 : botCount > 0) && botsOpen && mode !== "bss_king" ? <div style={{ marginTop: 10 }}><OptionRow label={mode === "crados" ? "Secours difficulté BOTS CPU" : mode === "ptit_hun" && !ptitHunFr ? "AI difficulty" : "Difficulté IA"}><OptionSelect value={botLevel} options={[{ value: "easy", label: mode === "ptit_hun" && !ptitHunFr ? "Easy" : "Facile" }, { value: "normal", label: "Normal" }, { value: "hard", label: mode === "ptit_hun" && !ptitHunFr ? "Hard" : "Difficile" }]} onChange={setBotLevel} /></OptionRow></div> : null}
+      {mode === "bss_king" && botsOpen ? <div style={{ marginTop: 9, color: soft, fontSize: 10.7, lineHeight: 1.45 }}>Difficulté individuelle verrouillée par personnage : CHAUVE #1 → OUINX #16. Tous les BOTS conservent un niveau relevé.</div> : null}
+    </div> : null}
     <div style={{ marginTop: 10, color: validSelection ? accent : "#ff9baa", fontSize: 11.5, fontWeight: 900 }}>{validSelection ? (mode === "ptit_hun" && !ptitHunFr ? `${selectedProfiles.length} participant${selectedProfiles.length > 1 ? "s" : ""} selected` : `${selectedProfiles.length} participant${selectedProfiles.length > 1 ? "s" : ""} sélectionné${selectedProfiles.length > 1 ? "s" : ""}`) : (mode === "ptit_hun" && !ptitHunFr ? `Select ${definition.minPlayers} to ${definition.maxPlayers} participants.` : `Sélectionne ${definition.minPlayers} à ${definition.maxPlayers} participants.`)}</div>
     {maxReached ? <div style={{ marginTop: 6, color: soft, fontSize: 10.5 }}>{mode === "ptit_hun" && !ptitHunFr ? `Maximum reached: ${definition.maxPlayers} participants.` : <>Maximum atteint : {definition.maxPlayers} participants.</>}</div> : null}
   </section>;
@@ -921,7 +936,7 @@ export default function NewDartsModeConfig(props: Props) {
       <OptionRow label="Défis BSS / chaos"><OptionToggle value={bssChaosEnabled} onChange={setBssChaosEnabled} /></OptionRow>
       <OptionRow label="Couronnement"><OptionSelect value={bssThroneFinish} options={[{ value: "bull", label: "BULL ou DBULL — recommandé" }, { value: "dbull", label: "DBULL uniquement — hardcore" }]} onChange={setBssThroneFinish} /></OptionRow>
     </div>
-    <div style={{ marginTop: 9, color: soft, fontSize: 10.7, lineHeight: 1.45 }}>Remporte les tournées pour gagner des écussons BSS. Une fois le quota atteint, tu passes en phase TRÔNE : touche le Bull demandé pour devenir BSS KING.</div>
+    <div style={{ marginTop: 9, padding: 10, borderRadius: 12, border: `1px solid ${accent}3d`, background: `${accent}0c`, color: soft, fontSize: 10.7, lineHeight: 1.5 }}><b style={{ color: accent }}>Règle simple :</b> 1) tous les joueurs tentent le même objectif avec 3 fléchettes ; 2) le meilleur score gagne <b>1 écusson</b> ; 3) au quota d’écussons, ton objectif devient le <b>TRÔNE</b> ; 4) touche le Bull final demandé = <b>victoire immédiate</b>. L’objectif précis et son barème sont affichés pendant chaque tour.</div>
   </section>;
 
   const fiftyOneBlock = <section style={selectorCard}>
@@ -1096,7 +1111,7 @@ export default function NewDartsModeConfig(props: Props) {
       {mode === "pendu" ? <><SummaryLine label="Élimination" value={`${penduPartsToLose} erreurs`} /><SummaryLine label="Gameplay" value={penduChallengeMode === "caller" ? "Bourreau / copie" : "Rondes aléatoires"} /><SummaryLine label="Objectifs" value={penduTargetFamily === "segments" ? "Cible & zones" : penduTargetFamily === "scores" ? "Scores" : "Arcade complet"} /></> : null}
       {mode === "menteur" ? <><SummaryLine label="Vies" value={`${menteurLives}`} /><SummaryLine label="Contrats" value={menteurContractDeck === "score" ? "Scores" : menteurContractDeck === "mixed" ? "Mixte" : "Avancé"} /></> : null}
       {mode === "crados" ? <><SummaryLine label="Type de partie" value={cradosTeamMode ? "Équipes" : "Joueurs"} />{cradosTeamMode ? <SummaryLine label="Composition" value={cradosTeamsSourceMode === "saved" ? "Équipes créées / familles IA" : cradosTeamsSourceMode === "auto" ? "Brassage automatique" : "Manuelle"} /> : null}<SummaryLine label="Crasse max" value={`${cradosDirtLimit}`} /><SummaryLine label="Contamination" value={`${cradosLayersToOwn} couche${cradosLayersToOwn > 1 ? "s" : ""} / secteur`} /><SummaryLine label="Secteur vierge" value={cradosSectorRaceMode === "race" ? "Course — toutes les touches comptent" : "Prise en main — le dernier efface l’autre"} /><SummaryLine label="Bull spécial" value={cradosCleanBullSplash ? "Bull propre contagieux" : "Standard"} /><SummaryLine label="Fin de manche" value={cradosEndOnFirstMaxDirt ? "Première jauge pleine" : "Dernier camp encore propre"} /><SummaryLine label="Bruitages" value={cradosSfxEnabled ? "ON" : "OFF"} /><SummaryLine label="Awena" value={cradosAwenaEnabled ? "ON" : "OFF"} /><SummaryLine label="Conseil cible" value={cradosCoachEnabled ? "ON" : "OFF"} /></> : null}
-      {mode === "bss_king" ? <><SummaryLine label="Trône" value={`${bssBadgesToThrone} écussons`} /><SummaryLine label="Défis" value={bssChaosEnabled ? "BSS Chaos ON" : "Classiques uniquement"} /><SummaryLine label="Couronnement" value={bssThroneFinish === "dbull" ? "DBULL uniquement" : "BULL / DBULL"} /></> : null}
+      {mode === "bss_king" ? <><SummaryLine label="Comment gagner" value={`Gagner des tournées → ${bssBadgesToThrone} écussons → Trône`} /><SummaryLine label="Défis" value={bssChaosEnabled ? "Variés + Chaos" : "Classiques"} /><SummaryLine label="Victoire finale" value={bssThroneFinish === "dbull" ? "Toucher le DBULL" : "Toucher BULL ou DBULL"} /></> : null}
       {mode === "fifty_one_by_five" ? <><SummaryLine label="Objectif" value={`${fiftyOneTarget}`} /><SummaryLine label="Calcul" value="Total ÷ 5 si divisible" /></> : null}
       {mode === "looper" ? <><SummaryLine label="Vies" value={`${looperLives}`} /><SummaryLine label="Cible" value="Segment exact" /></> : null}
       {mode === "call_three" ? <><SummaryLine label="Rounds" value={`${callThreeRounds}`} /><SummaryLine label="Appel" value={callThreeCaller === "next" ? "Joueur suivant" : "Aléatoire"} /></> : null}

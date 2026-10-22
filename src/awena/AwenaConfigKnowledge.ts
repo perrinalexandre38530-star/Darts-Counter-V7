@@ -8,6 +8,19 @@ export type AwenaModeConfigDetail = {
 };
 
 const DETAILS: Record<string, AwenaModeConfigDetail> = {
+  bss_king: {
+    options: [
+      "2 à 10 participants ; en Arcade, les 16 BOTS BSS KING officiels peuvent être affrontés",
+      "quota avant le Trône : 3, 5 ou 7 écussons",
+      "Défis BSS / Chaos activé ou désactivé",
+      "couronnement : Bull ou DBull, ou DBull uniquement",
+      "saisie keypad ou cible interactive",
+      "Partie Rapide : les personnages BSS peuvent être choisis comme joueurs contrôlés manuellement",
+    ],
+    victory: "gagner seul des tournées pour obtenir des écussons ; une fois le quota atteint, toucher le Bull final configuré pendant une tentative de Trône pour devenir immédiatement BSS KING",
+    variants: ["3 / 5 / 7 écussons", "Défis classiques", "BSS Chaos", "Bull ou DBull final", "DBull final uniquement", "Partie Rapide", "Arcade + BOTS IA"],
+    notes: ["Tous les joueurs tentent le même objectif pendant une tournée. Le meilleur score de la tournée gagne un écusson ; une égalité en tête ne distribue aucun écusson.", "L’objectif exact et le barème de la tournée sont affichés dans le bloc du joueur actif, il n’est donc pas nécessaire de mémoriser les défis."],
+  },
   fifty_one_by_five: {
     options: [
       "1 à 12 participants, avec bots IA possibles",

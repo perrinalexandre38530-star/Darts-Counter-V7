@@ -7294,9 +7294,21 @@ case "babyfoot_team_edit":
         );
         break;
 
-      case "bss_king_config":
-        page = <BssKingConfig store={store} go={go} setTab={go} params={routeParams} />;
+      case "bss_king_config": {
+        const launchMode = routeParams?.launchMode === "quick" ? "quick" : routeParams?.launchMode === "arcade" ? "arcade" : null;
+        if (launchMode) {
+          page = <BssKingConfig store={store} go={go} setTab={go} params={{ ...routeParams, launchMode }} />;
+        } else {
+          page = <GameModeEntryChoice
+            title="BSS KING"
+            subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE"
+            onBack={() => go("games")}
+            onQuick={() => go("bss_king_config", { launchMode: "quick" })}
+            onArcade={() => go("bss_king_config", { launchMode: "arcade" })}
+          />;
+        }
         break;
+      }
       case "bss_king_play":
         page = (
           <BssKingPlay
