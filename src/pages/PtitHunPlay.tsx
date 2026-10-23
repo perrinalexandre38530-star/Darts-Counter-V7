@@ -306,9 +306,10 @@ function PtitHunRiskBoard({ state, playerId, currentThrow, preview }: any) {
   const clean = Number(state.cleanStreak?.[playerId] || 0);
   const jackpotText = rules.jackpotEnabled && state.jackpotTargets?.length ? state.jackpotTargets.map((t: any) => t.label).join(" / ") : "OFF";
   const missLabel = rules.missMode === "add" ? `+${rules.missValue}` : `TOTAL ×${rules.missValue}`;
+  const [tab, setTab] = React.useState<"overview" | "board" | "risks" | "zones">("overview");
   const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1200;
-  const mobile = viewportWidth < 560;
-  const stack = viewportWidth < 860;
+  const compact = viewportWidth < 620;
+
   const objectiveRows = [
     { label: ptit1Ui("OBJECTIF #1","GOAL #1"), title: ptit1Ui("PETIT 1","SMALL 1"), detail: ptit1Ui("C’est la meilleure case du mode : +1 seulement.","This is the best square in the mode: only +1."), color: GREEN },
     { label: ptit1Ui("OBJECTIF #2","GOAL #2"), title: "DBULL", detail: rules.dbullEnabled ? ptit1Ui(`Le ${rules.dbullsForZero}e DBULL cumulé remet le score à 0.`,`Cumulative DBULL #${rules.dbullsForZero} resets the score to 0.`) : ptit1Ui("DBULL simple : +50.","Plain DBULL: +50."), color: BLUE },
@@ -322,49 +323,103 @@ function PtitHunRiskBoard({ state, playerId, currentThrow, preview }: any) {
     { label: "MISS", detail: missLabel, color: RED },
   ];
   const liveRows = [
-    { label: ptit1Ui("SCORE ACTUEL","CURRENT SCORE"), value: score, color: ACCENT },
-    { label: "JACKPOT", value: jackpotText, color: "#ffd84d" },
-    { label: ptit1Ui("ZÉRO ABSOLU","ABSOLUTE ZERO"), value: `${st.dbulls || 0}/${rules.dbullsForZero}`, color: BLUE },
-    { label: ptit1Ui("BOUCLIER DU HUN","HUN SHIELD"), value: shield ? ptit1Ui("ACTIF","ACTIVE") : `${clean}/${rules.cleanVisitsForShield}`, color: GREEN },
+    { label: ptit1Ui("SCORE ACTUEL","CURRENT SCORE"), value: score, hint: ptit1Ui("Le plus petit score gagne.","Lowest score wins."), color: ACCENT },
+    { label: "JACKPOT", value: jackpotText, hint: ptit1Ui("Double/Triple rouge à éviter immédiatement.","Red Double/Triple to avoid right now."), color: "#ffd84d" },
+    { label: ptit1Ui("ZÉRO ABSOLU","ABSOLUTE ZERO"), value: `${st.dbulls || 0}/${rules.dbullsForZero}`, hint: ptit1Ui("Progression centre cumulée.","Cumulative centre progress."), color: BLUE },
+    { label: ptit1Ui("BOUCLIER DU HUN","HUN SHIELD"), value: shield ? ptit1Ui("ACTIF","ACTIVE") : `${clean}/${rules.cleanVisitsForShield}`, hint: ptit1Ui("Bonus défensif longue durée.","Long-term defensive bonus."), color: GREEN },
   ];
   const previewTag = preview?.jackpotHit ? ptit1Ui("JACKPOT : volée annulée","JACKPOT: visit cancelled") : preview?.zeroAbsoluteNow ? ptit1Ui("ZÉRO ABSOLU prêt","ABSOLUTE ZERO ready") : preview?.shieldUnlockedNow ? ptit1Ui("BOUCLIER DÉBLOQUÉ","SHIELD UNLOCKED") : preview?.tripleNul ? ptit1Ui("TRIPLE NUL","TRIPLE ZERO") : preview?.petitOnePerfect ? ptit1Ui("P’TIT 1 PARFAIT","PERFECT P’TIT 1") : "";
-  return <div style={{ height: "100%", minHeight: 0, display: "grid", gap: 10, gridTemplateRows: "auto auto auto" }}>
-    <section style={{ display: "grid", gridTemplateColumns: mobile ? "repeat(2,minmax(0,1fr))" : stack ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 7 }}>
-      {liveRows.map((item) => <div key={item.label} style={{ minWidth: 0, borderRadius: 14, padding: 10, border: `1px solid ${item.color}55`, background: `${item.color}0f` }}><div style={{ color: item.color, fontSize: 7.8, fontWeight: 1100, letterSpacing: .7 }}>{item.label}</div><div style={{ color: "#fff", fontSize: item.label === "JACKPOT" ? 20 : 24, lineHeight: 1.05, fontWeight: 1100, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.value}</div><div style={{ color: "#929bad", fontSize: 7.6, marginTop: 4 }}>{item.label === ptit1Ui("SCORE ACTUEL","CURRENT SCORE") ? ptit1Ui("Le plus petit score gagne.","Lowest score wins.") : item.label === "JACKPOT" ? ptit1Ui("Double/Triple rouge à éviter immédiatement.","Red Double/Triple to avoid right now.") : item.label === ptit1Ui("ZÉRO ABSOLU","ABSOLUTE ZERO") ? ptit1Ui("Progression centre cumulée.","Cumulative centre progress.") : ptit1Ui("Bonus défensif longue durée.","Long-term defensive bonus.")}</div></div>)}
-    </section>
 
-    <section style={{ minHeight: 0, display: "grid", gridTemplateColumns: stack ? "1fr" : "minmax(0,1.02fr) minmax(250px,.98fr)", gap: 10, alignItems: "start" }}>
-      <Ptit1LiveTargetBoard rules={rules} targets={state.jackpotTargets || []} score={score} currentThrow={currentThrow} />
-      <div style={{ minHeight: 0, display: "grid", gap: 10, alignContent: "start" }}>
-        <div style={{ borderRadius: 16, padding: 10, border: `1px solid ${ACCENT}44`, background: "linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02))" }}>
-          <div style={{ color: ACCENT, fontSize: 8.5, fontWeight: 1100, letterSpacing: .8, marginBottom: 7 }}>{ptit1Ui("OBJECTIFS & BONUS","GOALS & BONUSES")}</div>
-          <div style={{ display: "grid", gap: 7 }}>{objectiveRows.map((item) => <div key={item.label} style={{ borderRadius: 12, border: `1px solid ${item.color}44`, background: `${item.color}0d`, padding: 8 }}><div style={{ color: item.color, fontSize: 7.2, fontWeight: 1100, letterSpacing: .5 }}>{item.label}</div><div style={{ color: "#fff", marginTop: 3, fontSize: 11.5, fontWeight: 1050 }}>{item.title}</div><div style={{ color: "#b8c0ce", marginTop: 3, fontSize: 8, lineHeight: 1.45 }}>{item.detail}</div></div>)}</div>
-        </div>
-        <div style={{ borderRadius: 16, padding: 10, border: `1px solid ${RED}44`, background: "linear-gradient(180deg,rgba(255,100,120,.08),rgba(255,255,255,.02))" }}>
-          <div style={{ color: RED, fontSize: 8.5, fontWeight: 1100, letterSpacing: .8, marginBottom: 7 }}>{ptit1Ui("RISQUES IMMÉDIATS","IMMEDIATE RISKS")}</div>
-          <div style={{ display: "grid", gap: 6 }}>{dangerRows.map((item) => <div key={item.label} style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 7, alignItems: "start", borderRadius: 11, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", padding: "7px 8px" }}><span style={{ color: item.color, fontSize: 8.2, fontWeight: 1100, minWidth: 56 }}>{item.label}</span><span style={{ color: "#dfe6f2", fontSize: 8.1, lineHeight: 1.45 }}>{item.detail}</span></div>)}</div>
-        </div>
+  const tabs = [
+    { id: "overview", label: ptit1Ui("VUE GÉNÉRALE","OVERVIEW"), icon: "◎" },
+    { id: "board", label: ptit1Ui("CIBLE","BOARD"), icon: "◉" },
+    { id: "risks", label: ptit1Ui("RISQUES","RISKS"), icon: "⚠" },
+    { id: "zones", label: ptit1Ui("REPÈRES","GUIDES"), icon: "◇" },
+  ] as const;
+
+  const shell: React.CSSProperties = {
+    minHeight: 0,
+    height: "100%",
+    display: "grid",
+    gridTemplateRows: "auto minmax(0,1fr)",
+    gap: 9,
+  };
+  const panel: React.CSSProperties = {
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,.08)",
+    background: "linear-gradient(180deg,rgba(15,18,25,.96),rgba(5,7,11,.98))",
+  };
+
+  return <div style={shell}>
+    <nav aria-label={ptit1Ui("Onglets Cible et risques","Board and risks tabs")} style={{ ...panel, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5, padding: 5, position: "sticky", top: 0, zIndex: 4 }}>
+      {tabs.map((item) => {
+        const active = tab === item.id;
+        return <button key={item.id} type="button" onClick={() => setTab(item.id)} aria-pressed={active} style={{ minWidth: 0, minHeight: compact ? 42 : 46, borderRadius: 12, border: `1px solid ${active ? ACCENT + "88" : "rgba(255,255,255,.07)"}`, background: active ? `linear-gradient(180deg,${ACCENT}24,${ACCENT}0c)` : "rgba(255,255,255,.025)", color: active ? ACCENT : "#aeb7c7", cursor: "pointer", fontWeight: 1100, display: "grid", placeItems: "center", alignContent: "center", gap: 2, padding: "5px 4px" }}>
+          <span style={{ fontSize: compact ? 12 : 14, lineHeight: 1 }}>{item.icon}</span>
+          <span style={{ fontSize: compact ? 6.6 : 7.4, letterSpacing: .45, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{item.label}</span>
+        </button>;
+      })}
+    </nav>
+
+    <div style={{ minHeight: 0, overflow: "auto", overscrollBehavior: "contain", padding: "1px 2px 6px" }}>
+      {tab === "overview" ? <div style={{ display: "grid", gap: 10, alignContent: "start", maxWidth: 860, margin: "0 auto" }}>
+        <section style={{ display: "grid", gridTemplateColumns: compact ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 7 }}>
+          {liveRows.map((item) => <div key={item.label} style={{ minWidth: 0, borderRadius: 14, padding: compact ? 9 : 11, border: `1px solid ${item.color}55`, background: `${item.color}0f` }}>
+            <div style={{ color: item.color, fontSize: 7.8, fontWeight: 1100, letterSpacing: .7 }}>{item.label}</div>
+            <div style={{ color: "#fff", fontSize: item.label === "JACKPOT" ? 19 : 24, lineHeight: 1.05, fontWeight: 1100, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.value}</div>
+            <div style={{ color: "#929bad", fontSize: 7.5, marginTop: 4, lineHeight: 1.35 }}>{item.hint}</div>
+          </div>)}
+        </section>
+        <section style={{ ...panel, padding: compact ? 9 : 11 }}>
+          <div style={{ color: ACCENT, fontSize: 8.6, fontWeight: 1100, letterSpacing: .8, marginBottom: 8 }}>{ptit1Ui("OBJECTIFS & BONUS","GOALS & BONUSES")}</div>
+          <div style={{ display: "grid", gridTemplateColumns: compact ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 8 }}>
+            {objectiveRows.map((item) => <div key={item.label} style={{ minWidth: 0, borderRadius: 13, border: `1px solid ${item.color}44`, background: `${item.color}0d`, padding: 9 }}>
+              <div style={{ color: item.color, fontSize: 7.2, fontWeight: 1100, letterSpacing: .5 }}>{item.label}</div>
+              <div style={{ color: "#fff", marginTop: 3, fontSize: 12, fontWeight: 1050 }}>{item.title}</div>
+              <div style={{ color: "#b8c0ce", marginTop: 4, fontSize: 8, lineHeight: 1.45 }}>{item.detail}</div>
+            </div>)}
+          </div>
+        </section>
+        {previewTag ? <div style={{ borderRadius: 12, padding: "9px 10px", border: `1px solid ${ACCENT}44`, background: `${ACCENT}12`, color: "#fff", fontSize: 8.4, fontWeight: 1000, textAlign: "center" }}>{previewTag}</div> : null}
+      </div> : null}
+
+      {tab === "board" ? <div style={{ width: "100%", maxWidth: compact ? 520 : 620, margin: "0 auto", display: "grid", alignContent: "start" }}>
+        <Ptit1LiveTargetBoard rules={rules} targets={state.jackpotTargets || []} score={score} currentThrow={currentThrow} />
+      </div> : null}
+
+      {tab === "risks" ? <div style={{ display: "grid", gap: 10, maxWidth: 780, margin: "0 auto", alignContent: "start" }}>
+        <section style={{ ...panel, padding: compact ? 9 : 11, borderColor: `${RED}44`, background: "linear-gradient(180deg,rgba(255,100,120,.08),rgba(255,255,255,.02))" }}>
+          <div style={{ color: RED, fontSize: 8.6, fontWeight: 1100, letterSpacing: .8, marginBottom: 8 }}>{ptit1Ui("RISQUES IMMÉDIATS","IMMEDIATE RISKS")}</div>
+          <div style={{ display: "grid", gridTemplateColumns: compact ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 7 }}>
+            {dangerRows.map((item) => <div key={item.label} style={{ display: "grid", gridTemplateColumns: "70px minmax(0,1fr)", gap: 8, alignItems: "center", borderRadius: 11, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", padding: "9px 10px" }}>
+              <span style={{ color: item.color, fontSize: 8.2, fontWeight: 1100 }}>{item.label}</span>
+              <span style={{ color: "#dfe6f2", fontSize: 8.1, lineHeight: 1.35 }}>{item.detail}</span>
+            </div>)}
+          </div>
+        </section>
+        <section style={{ ...panel, padding: 10 }}>
+          <div style={{ color: ACCENT, fontSize: 8.5, fontWeight: 1100, letterSpacing: .8, marginBottom: 7 }}>{ptit1Ui("VOLÉE EN COURS","CURRENT VISIT")}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>
+            {[0,1,2].map((i) => { const d:any = currentThrow?.[i]; const token = d ? ptit1TokenMeta(d) : null; return <div key={i} style={{ borderRadius: 12, padding: 8, minHeight: 48, border: `1px solid ${token?.border || "rgba(255,255,255,.08)"}`, background: token?.bg || "rgba(255,255,255,.025)", textAlign: "center", color: token?.color || "#6d7485", display: "grid", placeItems: "center", fontSize: token ? 11 : 8.5, fontWeight: 1050 }}>{token ? token.label : `${ptit1Ui("FLÉCHETTE","DART")} ${i+1}`}</div>; })}
+          </div>
+        </section>
+      </div> : null}
+
+      {tab === "zones" ? <div style={{ width: "100%", maxWidth: 760, margin: "0 auto" }}>
         <Ptit1SingleZoneLegend />
-      </div>
-    </section>
-
-    <section style={{ display: "grid", gap: 8 }}>
-      {previewTag ? <div style={{ borderRadius: 12, padding: "8px 10px", border: `1px solid ${ACCENT}44`, background: `${ACCENT}12`, color: "#fff", fontSize: 8.2, fontWeight: 1000 }}>{previewTag}</div> : null}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
-        {[0,1,2].map((i) => { const d:any = currentThrow?.[i]; const token = d ? ptit1TokenMeta(d) : null; return <div key={i} style={{ borderRadius: 12, padding: 8, minHeight: 42, border: `1px solid ${token?.border || "rgba(255,255,255,.08)"}`, background: token?.bg || "rgba(255,255,255,.025)", textAlign: "center", color: token?.color || "#6d7485", display: "grid", placeItems: "center", fontSize: token ? 11 : 8.5, fontWeight: 1050 }}>{token ? token.label : `${ptit1Ui("FLÉCHETTE","DART")} ${i+1}`}</div>; })}
-      </div>
-    </section>
+      </div> : null}
+    </div>
   </div>;
 }
 
 function FloatingPanel({ title, subtitle, onClose, children, accent = ACCENT }: any) {
-  return <div className="party-mode__modal" role="dialog" aria-modal="true" aria-label={title} onClick={onClose} style={{ padding: 8, background: "rgba(0,0,0,.82)", backdropFilter: "blur(9px)" }}>
-    <div className="party-mode__modal-card" onClick={(e) => e.stopPropagation()} style={{ width: "min(920px,98vw)", height: "min(92dvh,760px)", maxHeight: "92dvh", borderRadius: 20, border: `1px solid ${accent}44`, background: "linear-gradient(180deg,rgba(15,17,23,.995),rgba(4,6,10,.995))", boxShadow: "0 28px 90px rgba(0,0,0,.78)", display: "grid", gridTemplateRows: "auto minmax(0,1fr)" }}>
-      <header style={{ minHeight: 50, padding: "8px 10px", borderBottom: "1px solid rgba(255,255,255,.07)" }}>
-        <div><b style={{ color: accent, fontSize: 12 }}>{title}</b>{subtitle ? <span>{subtitle}</span> : null}</div>
-        <button type="button" onClick={onClose} aria-label={ptit1Ui("Fermer","Close")}>×</button>
+  return <div className="party-mode__modal" role="dialog" aria-modal="true" aria-label={title} onClick={onClose} style={{ padding: "max(8px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left))", background: "rgba(0,0,0,.82)", backdropFilter: "blur(9px)", display: "grid", placeItems: "center" }}>
+    <div className="party-mode__modal-card" onClick={(e) => e.stopPropagation()} style={{ width: "min(980px,96vw)", height: "min(90dvh,780px)", maxHeight: "calc(100dvh - 16px)", margin: "auto", overflow: "hidden", borderRadius: 20, border: `1px solid ${accent}44`, background: "linear-gradient(180deg,rgba(15,17,23,.995),rgba(4,6,10,.995))", boxShadow: "0 28px 90px rgba(0,0,0,.78)", display: "grid", gridTemplateRows: "auto minmax(0,1fr)" }}>
+      <header style={{ minHeight: 54, padding: "9px 11px", borderBottom: "1px solid rgba(255,255,255,.07)", display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", alignItems: "center", gap: 10 }}>
+        <div style={{ minWidth: 0 }}><b style={{ color: accent, fontSize: 12, display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</b>{subtitle ? <span style={{ display: "block", marginTop: 2, color: "#8f98aa", fontSize: 7.8, lineHeight: 1.3 }}>{subtitle}</span> : null}</div>
+        <button type="button" onClick={onClose} aria-label={ptit1Ui("Fermer","Close")} style={{ width: 38, height: 38, borderRadius: 999, border: "1px solid rgba(255,255,255,.13)", background: "rgba(255,255,255,.05)", color: "#fff", fontSize: 20, fontWeight: 1000, cursor: "pointer" }}>×</button>
       </header>
-      <div style={{ minHeight: 0, padding: 8, overflow: "auto" }}>{children}</div>
+      <div style={{ minHeight: 0, padding: 8, overflow: "hidden" }}>{children}</div>
     </div>
   </div>;
 }
