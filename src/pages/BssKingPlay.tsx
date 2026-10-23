@@ -83,24 +83,30 @@ function bssObjective(challenge: any, throneFinish: "bull" | "dbull") {
   if (challenge?.kind === "big_single") return { goal: "GROS SIMPLE", scoring: "Seuls les GROS simples comptent · 2 points BSS par touche." };
   if (challenge?.kind === "small_single") return { goal: "PETIT SIMPLE", scoring: "Seuls les PETITS simples comptent · 2 points BSS par touche." };
   if (challenge?.kind === "color_area") return { goal: `${bssColorLabel(challenge.targetColor)} + ${challenge.targetArea === "small" ? "PETIT" : "GROS"}`, scoring: `Sélectionne ${bssColorLabel(challenge.targetColor)} + ${challenge.targetArea === "small" ? "PETIT" : "GROS"} puis la valeur du secteur · 3 points BSS par touche conforme.` };
-  if (challenge?.kind === "sequence") return { goal: `SUITE ${challenge.sequenceStart}-${Number(challenge.sequenceStart || 1) + 1}-${Number(challenge.sequenceStart || 1) + 2}`, scoring: `Touche les trois secteurs ${challenge.sequenceStart}, ${Number(challenge.sequenceStart || 1) + 1} et ${Number(challenge.sequenceStart || 1) + 2}, dans n’importe quel ordre. Suite complète = 8 points BSS.` };
-  if (challenge?.kind === "max_score") return { goal: `MAX ${challenge.maxScore}`, scoring: `Fais le plus gros score possible sur 3 fléchettes sans dépasser ${challenge.maxScore}. Si tu dépasses : 0 point BSS.` };
-  if (challenge?.kind === "exact_score") return { goal: `EXACT ${challenge.exactScore}`, scoring: `Réalise exactement ${challenge.exactScore} points avec ta volée. Réussite = 8 points BSS, sinon 0.` };
+  if (challenge?.kind === "color_bed") return { goal: `${bssColorLabel(challenge.targetColor)} + ${challenge.targetBed === "T" ? "TRIPLE" : "DOUBLE"}`, scoring: `Sélectionne ${bssColorLabel(challenge.targetColor)} + ${challenge.targetBed === "T" ? "TRIPLE" : "DOUBLE"} puis la valeur. Chaque touche conforme vaut ${challenge.targetBed === "T" ? 5 : 4} points BSS.` };
+  if (challenge?.kind === "area_parity") return { goal: `${challenge.targetArea === "small" ? "PETITS" : "GROS"} ${challenge.targetParity === "odd" ? "IMPAIRS" : "PAIRS"}`, scoring: `Seuls les ${challenge.targetArea === "small" ? "petits" : "gros"} simples des secteurs ${challenge.targetParity === "odd" ? "impairs" : "pairs"} comptent · 3 points BSS par touche.` };
+  if (challenge?.kind === "area_range") return { goal: `${challenge.targetArea === "small" ? "PETIT" : "GROS"} ${challenge.targetRange === "low" ? "1-10" : "11-20"}`, scoring: `Seuls les ${challenge.targetArea === "small" ? "petits" : "gros"} simples des secteurs ${challenge.targetRange === "low" ? "1 à 10" : "11 à 20"} comptent · 3 points BSS par touche.` };
+  if (challenge?.kind === "color_target") return { goal: `${bssColorLabel(challenge.targetColor)} + ${challenge.target}`, scoring: `Seules les touches du secteur ${challenge.target} en ${bssColorLabel(challenge.targetColor)} comptent. Le lit touché augmente la valeur BSS.` };
+  if (challenge?.kind === "color_bonus") return { goal: `BONUS ${bssColorLabel(challenge.targetColor)}`, scoring: `Toutes les touches comptent normalement, mais chaque fléchette en ${bssColorLabel(challenge.targetColor)} rapporte +2 points BSS.` };
+  if (challenge?.kind === "area_bonus") return { goal: `BONUS ${challenge.targetArea === "small" ? "PETIT" : "GROS"}`, scoring: `Toutes les touches comptent normalement, mais chaque ${challenge.targetArea === "small" ? "petit" : "gros"} simple rapporte +2 points BSS.` };
+  if (challenge?.kind === "sequence") return { goal: `SUITE ${challenge.sequenceStart}-${Number(challenge.sequenceStart || 1) + 1}-${Number(challenge.sequenceStart || 1) + 2}`, scoring: `Chaque secteur distinct de la suite rapporte 3 points BSS. Les trois secteurs touchés = +3 points bonus.` };
+  if (challenge?.kind === "max_score") return { goal: `MAX ${challenge.maxScore}`, scoring: `Approche-toi le plus possible de ${challenge.maxScore} sans dépasser. Ton score BSS progresse jusqu’à 12 points ; dépassement = 0.` };
+  if (challenge?.kind === "exact_score") return { goal: `EXACT ${challenge.exactScore}`, scoring: `Plus ton score réel est proche de ${challenge.exactScore}, plus tu marques. Exact = 12 points BSS ; proche = score intermédiaire.` };
   if (challenge?.kind === "no_miss") return { goal: "SANS FAUTE", scoring: "Les 3 fléchettes doivent toucher la cible. Un seul MISS annule toute la volée. Si les 3 touchent, Simple = 1 · Double = 2 · Triple = 3 · Bull = 2 · DBULL = 4." };
-  if (challenge?.kind === "same_number") return { goal: "TRIPLÉ DE SECTEUR", scoring: "Touche 3 fois le même numéro avec tes 3 fléchettes. Les multiplicateurs sont libres. Réussite = 10 points BSS." };
-  if (challenge?.kind === "three_different") return { goal: "3 SECTEURS DIFFÉRENTS", scoring: "Tes 3 fléchettes doivent toucher 3 numéros différents. Réussite = 8 points BSS." };
-  if (challenge?.kind === "one_each_bed") return { goal: "SIMPLE + DOUBLE + TRIPLE", scoring: "Dans la même volée, touche au moins un Simple, un Double et un Triple, peu importe les numéros. Réussite = 10 points BSS." };
-  if (challenge?.kind === "sdt_target") return { goal: `S-D-T DU ${challenge.target}`, scoring: `Touche le Simple ${challenge.target}, le Double ${challenge.target} et le Triple ${challenge.target} dans n’importe quel ordre. Réussite = 12 points BSS.` };
-  if (challenge?.kind === "ascending") return { goal: "MONTÉE", scoring: "Les numéros touchés doivent être strictement croissants dans l’ordre des 3 fléchettes. Exemple : 5 → 12 → 20. Réussite = 9 points BSS." };
-  if (challenge?.kind === "descending") return { goal: "DESCENTE", scoring: "Les numéros touchés doivent être strictement décroissants dans l’ordre des 3 fléchettes. Exemple : 20 → 12 → 5. Réussite = 9 points BSS." };
-  if (challenge?.kind === "neighbors") return { goal: `VOISINS DU ${challenge.target}`, scoring: `Touche le ${challenge.target} et ses deux voisins physiques sur la cible, dans n’importe quel ordre. Réussite = 10 points BSS.` };
-  if (challenge?.kind === "bull_sandwich") return { goal: "SANDWICH BULL", scoring: "1re fléchette : Bull. 2e : libre mais doit toucher. 3e : Bull. Réussite = 11 points BSS." };
-  if (challenge?.kind === "mirror") return { goal: "MIROIR", scoring: "La 1re et la 3e fléchette doivent toucher le même numéro. La 2e est libre mais doit toucher. Réussite = 9 points BSS." };
+  if (challenge?.kind === "same_number") return { goal: "TRIPLÉ DE SECTEUR", scoring: "Répète le même numéro : 1 touche = 1 point BSS · une paire = 5 · un triplé = 10." };
+  if (challenge?.kind === "three_different") return { goal: "3 SECTEURS DIFFÉRENTS", scoring: "Chaque numéro différent augmente ton score : 1 différent = 2 · 2 différents = 4 · 3 différents = 8 points BSS." };
+  if (challenge?.kind === "one_each_bed") return { goal: "SIMPLE + DOUBLE + TRIPLE", scoring: "Simple = 2 · Double = 3 · Triple = 4 lorsqu’ils sont présents. Trio complet = +3 points bonus." };
+  if (challenge?.kind === "sdt_target") return { goal: `S-D-T DU ${challenge.target}`, scoring: `Sur le ${challenge.target} : Simple = 2 · Double = 3 · Triple = 4. Trio complet = +3 points bonus.` };
+  if (challenge?.kind === "ascending") return { goal: "MONTÉE", scoring: "1 point par fléchette valide +3 pour chaque progression correcte entre deux fléchettes. Montée parfaite = 9 points BSS." };
+  if (challenge?.kind === "descending") return { goal: "DESCENTE", scoring: "1 point par fléchette valide +3 pour chaque descente correcte entre deux fléchettes. Descente parfaite = 9 points BSS." };
+  if (challenge?.kind === "neighbors") return { goal: `VOISINS DU ${challenge.target}`, scoring: `Chaque voisin distinct touché rapporte 3 points BSS. Les trois zones touchées = +3 points bonus.` };
+  if (challenge?.kind === "bull_sandwich") return { goal: "SANDWICH BULL", scoring: "Bull en 1re = 3 · touche centrale = 1 · Bull en 3e = 3. Sandwich complet = +4 points bonus." };
+  if (challenge?.kind === "mirror") return { goal: "MIROIR", scoring: "Chaque touche vaut 1 point BSS. Si la 1re et la 3e fléchette touchent le même numéro : +6 points bonus." };
   if (challenge?.kind === "avoid_target") return { goal: `INTERDIT ${challenge.target}`, scoring: `Marque librement, mais si une seule fléchette touche le secteur ${challenge.target}, toute la volée vaut 0.` };
-  if (challenge?.kind === "three_colors") return { goal: "3 COULEURS", scoring: "Touche 3 couleurs différentes de la cible dans la même volée. Réussite = 9 points BSS." };
-  if (challenge?.kind === "bull_double") return { goal: "BULL + DOUBLE", scoring: "Touche au moins un Bull et au moins un Double dans la même volée. Réussite = 10 points BSS." };
-  if (challenge?.kind === "min_score") return { goal: `MINIMUM ${challenge.minScore}`, scoring: `Fais au moins ${challenge.minScore} points réels avec tes 3 fléchettes. Réussite = 8 points BSS.` };
-  if (challenge?.kind === "double_target") return { goal: `2 TOUCHES SUR ${challenge.target}`, scoring: `Touche au moins 2 fois le secteur ${challenge.target} avec tes 3 fléchettes. Réussite = 8 points BSS.` };
+  if (challenge?.kind === "three_colors") return { goal: "3 COULEURS", scoring: "Chaque couleur différente rapporte 2 points BSS. Trois couleurs différentes = +3 points bonus." };
+  if (challenge?.kind === "bull_double") return { goal: "BULL + DOUBLE", scoring: "Au moins un Bull = 4 points BSS · au moins un Double = 4 · les deux dans la volée = +2 bonus." };
+  if (challenge?.kind === "min_score") return { goal: `CAP ${challenge.minScore}+`, scoring: `Ton score BSS augmente à mesure que tu approches puis dépasses ${challenge.minScore}. Maximum : 12 points BSS.` };
+  if (challenge?.kind === "double_target") return { goal: `RÉPÈTE LE ${challenge.target}`, scoring: `Chaque touche sur le ${challenge.target} rapporte : Simple = 3 · Double = 4 · Triple = 5 points BSS.` };
   return { goal: "FAIS LE PLUS DE POINTS POSSIBLE", scoring: "Tournée libre : Simple = 1 · Double = 2 · Triple = 3 · Bull 25 = 2 · DBULL 50 = 4 points BSS." };
 }
 function bssObjectiveCompact(challenge: any, throneFinish: "bull" | "dbull") {
@@ -119,6 +125,12 @@ function bssObjectiveCompact(challenge: any, throneFinish: "bull" | "dbull") {
   if (challenge?.kind === "big_single") return "GROS SIMPLE";
   if (challenge?.kind === "small_single") return "PETIT SIMPLE";
   if (challenge?.kind === "color_area") return `${bssColorLabel(challenge.targetColor)} + ${challenge.targetArea === "small" ? "PETIT" : "GROS"}`;
+  if (challenge?.kind === "color_bed") return `${bssColorLabel(challenge.targetColor)} + ${challenge.targetBed === "T" ? "TRIPLE" : "DOUBLE"}`;
+  if (challenge?.kind === "area_parity") return `${challenge.targetArea === "small" ? "PETIT" : "GROS"} ${challenge.targetParity === "odd" ? "IMPAIRS" : "PAIRS"}`;
+  if (challenge?.kind === "area_range") return `${challenge.targetArea === "small" ? "PETIT" : "GROS"} ${challenge.targetRange === "low" ? "1-10" : "11-20"}`;
+  if (challenge?.kind === "color_target") return `${bssColorLabel(challenge.targetColor)} + ${challenge.target}`;
+  if (challenge?.kind === "color_bonus") return `BONUS ${bssColorLabel(challenge.targetColor)}`;
+  if (challenge?.kind === "area_bonus") return `BONUS ${challenge.targetArea === "small" ? "PETIT" : "GROS"}`;
   if (challenge?.kind === "sequence") return `SUITE ${challenge.sequenceStart}-${Number(challenge.sequenceStart || 1) + 1}-${Number(challenge.sequenceStart || 1) + 2}`;
   if (challenge?.kind === "max_score") return `MAX ${challenge.maxScore}`;
   if (challenge?.kind === "exact_score") return `EXACT ${challenge.exactScore}`;
@@ -135,8 +147,8 @@ function bssObjectiveCompact(challenge: any, throneFinish: "bull" | "dbull") {
   if (challenge?.kind === "avoid_target") return `INTERDIT ${challenge.target}`;
   if (challenge?.kind === "three_colors") return "3 COULEURS";
   if (challenge?.kind === "bull_double") return "BULL + DOUBLE";
-  if (challenge?.kind === "min_score") return `MIN ${challenge.minScore}`;
-  if (challenge?.kind === "double_target") return `2× ${challenge.target}`;
+  if (challenge?.kind === "min_score") return `CAP ${challenge.minScore}+`;
+  if (challenge?.kind === "double_target") return `RÉPÈTE ${challenge.target}`;
   return "BEST SCORE";
 }
 
@@ -160,24 +172,30 @@ function getPointsHelp(challenge: any, throneFinish: "bull" | "dbull") {
   if (challenge?.kind === "big_single") rows.push("Défi GROS SIMPLE : sélectionne GROS puis la valeur du secteur. Chaque bon gros simple vaut 2 points BSS.");
   if (challenge?.kind === "small_single") rows.push("Défi PETIT SIMPLE : sélectionne PETIT puis la valeur du secteur. Chaque bon petit simple vaut 2 points BSS.");
   if (challenge?.kind === "color_area") rows.push(`Défi combiné : sélectionne ${bssColorLabel(challenge.targetColor)} + ${challenge.targetArea === "small" ? "PETIT" : "GROS"} puis la valeur. Chaque touche conforme vaut 3 points BSS.`);
-  if (challenge?.kind === "sequence") rows.push(`Défi suite : touche ${challenge.sequenceStart}, ${Number(challenge.sequenceStart || 1)+1} et ${Number(challenge.sequenceStart || 1)+2} sur la même volée · 8 points BSS.`);
+  if (challenge?.kind === "color_bed") rows.push(`Défi couleur + lit : sélectionne ${bssColorLabel(challenge.targetColor)} + ${challenge.targetBed === "T" ? "TRIPLE" : "DOUBLE"} puis la valeur. Chaque touche conforme vaut ${challenge.targetBed === "T" ? 5 : 4} points BSS.`);
+  if (challenge?.kind === "area_parity") rows.push(`Défi zone + parité : ${challenge.targetArea === "small" ? "PETITS" : "GROS"} simples sur secteurs ${challenge.targetParity === "odd" ? "impairs" : "pairs"} · 3 points par touche.`);
+  if (challenge?.kind === "area_range") rows.push(`Défi zone + plage : ${challenge.targetArea === "small" ? "PETITS" : "GROS"} simples sur ${challenge.targetRange === "low" ? "1 à 10" : "11 à 20"} · 3 points par touche.`);
+  if (challenge?.kind === "color_target") rows.push(`Défi couleur + secteur : seules les touches ${bssColorLabel(challenge.targetColor)} du ${challenge.target} comptent, avec bonus selon le lit.`);
+  if (challenge?.kind === "color_bonus") rows.push(`Défi bonus couleur : toutes les touches comptent et chaque touche ${bssColorLabel(challenge.targetColor)} ajoute +2 points BSS.`);
+  if (challenge?.kind === "area_bonus") rows.push(`Défi bonus zone : toutes les touches comptent et chaque ${challenge.targetArea === "small" ? "PETIT" : "GROS"} simple ajoute +2 points BSS.`);
+  if (challenge?.kind === "sequence") rows.push(`Défi suite : chaque secteur distinct de la suite rapporte 3 points BSS ; les trois = +3 bonus.`);
   if (challenge?.kind === "max_score") rows.push(`Défi plafond : score réel de la volée ≤ ${challenge.maxScore}. Plus tu t’approches du plafond sans le dépasser, mieux c’est. Dépassement = 0.`);
-  if (challenge?.kind === "exact_score") rows.push(`Défi exact : réalise exactement ${challenge.exactScore} points · 8 points BSS si réussi.`);
+  if (challenge?.kind === "exact_score") rows.push(`Défi exact : exact = 12 points BSS ; plus tu t’éloignes de ${challenge.exactScore}, plus le score BSS diminue.`);
   if (challenge?.kind === "no_miss") rows.push("Défi sans faute : les 3 fléchettes doivent toucher la cible. Un MISS annule toute la volée.");
-  if (challenge?.kind === "same_number") rows.push("Défi triplé : 3 touches sur le même numéro = 10 points BSS.");
-  if (challenge?.kind === "three_different") rows.push("Défi variété : 3 numéros différents = 8 points BSS.");
-  if (challenge?.kind === "one_each_bed") rows.push("Défi S+D+T : au moins un Simple, un Double et un Triple dans la même volée = 10 points BSS.");
-  if (challenge?.kind === "sdt_target") rows.push(`Défi S-D-T : Simple, Double et Triple du ${challenge.target} = 12 points BSS.`);
-  if (challenge?.kind === "ascending") rows.push("Défi montée : les 3 numéros doivent être strictement croissants dans l’ordre des fléchettes = 9 points BSS.");
-  if (challenge?.kind === "descending") rows.push("Défi descente : les 3 numéros doivent être strictement décroissants dans l’ordre des fléchettes = 9 points BSS.");
-  if (challenge?.kind === "neighbors") rows.push(`Défi voisins : touche le ${challenge.target} et ses deux voisins physiques = 10 points BSS.`);
-  if (challenge?.kind === "bull_sandwich") rows.push("Défi sandwich Bull : Bull / touche libre / Bull = 11 points BSS.");
-  if (challenge?.kind === "mirror") rows.push("Défi miroir : la 1re et la 3e fléchette touchent le même numéro = 9 points BSS.");
+  if (challenge?.kind === "same_number") rows.push("Défi triplé : 1 répétition = 1 point, une paire sur le même numéro = 5, un triplé = 10.");
+  if (challenge?.kind === "three_different") rows.push("Défi variété : 1 numéro différent = 2 points, 2 = 4, 3 = 8.");
+  if (challenge?.kind === "one_each_bed") rows.push("Défi S+D+T : Simple=2 · Double=3 · Triple=4 · trio complet = +3 bonus.");
+  if (challenge?.kind === "sdt_target") rows.push(`Défi S-D-T ${challenge.target} : Simple=2 · Double=3 · Triple=4 · trio complet = +3 bonus.`);
+  if (challenge?.kind === "ascending") rows.push("Défi montée : 1 point par touche +3 pour chaque progression correcte. Montée parfaite = 9.");
+  if (challenge?.kind === "descending") rows.push("Défi descente : 1 point par touche +3 pour chaque descente correcte. Descente parfaite = 9.");
+  if (challenge?.kind === "neighbors") rows.push(`Défi voisins : chaque voisin distinct du ${challenge.target} vaut 3 points ; trio complet = +3 bonus.`);
+  if (challenge?.kind === "bull_sandwich") rows.push("Défi sandwich Bull : 3 points par Bull aux extrémités, 1 au centre, +4 si le sandwich est complet.");
+  if (challenge?.kind === "mirror") rows.push("Défi miroir : chaque touche vaut 1 ; si la 1re et la 3e ont le même numéro = +6 bonus.");
   if (challenge?.kind === "avoid_target") rows.push(`Défi interdit : toucher le ${challenge.target} annule toute la volée.`);
-  if (challenge?.kind === "three_colors") rows.push("Défi 3 couleurs : 3 couleurs différentes sur la cible = 9 points BSS.");
-  if (challenge?.kind === "bull_double") rows.push("Défi Bull + Double : au moins un Bull et un Double dans la même volée = 10 points BSS.");
-  if (challenge?.kind === "min_score") rows.push(`Défi minimum : fais au moins ${challenge.minScore} points réels = 8 points BSS.`);
-  if (challenge?.kind === "double_target") rows.push(`Défi double touche : touche au moins 2 fois le secteur ${challenge.target} = 8 points BSS.`);
+  if (challenge?.kind === "three_colors") rows.push("Défi 3 couleurs : chaque couleur différente vaut 2 ; trois couleurs = +3 bonus.");
+  if (challenge?.kind === "bull_double") rows.push("Défi Bull + Double : Bull=4 · Double=4 · combinaison complète=+2 bonus.");
+  if (challenge?.kind === "min_score") rows.push(`Défi CAP ${challenge.minScore}+ : le score BSS progresse avec le score réel, jusqu’à 12 points.`);
+  if (challenge?.kind === "double_target") rows.push(`Défi répétition ${challenge.target} : chaque touche rapporte S=3 · D=4 · T=5 points BSS.`);
   if (challenge?.kind === "throne") rows.push(throneFinish === "dbull" ? "Phase TRÔNE : les points ne comptent plus, il faut toucher le DBULL 50." : "Phase TRÔNE : les points ne comptent plus, il faut toucher Bull 25 ou DBULL 50.");
   rows.push("Les écussons, eux, ne se gagnent qu’en terminant seul meilleur score de la tournée.");
   return rows;
@@ -459,6 +477,15 @@ export default function BssKingPlay(props: any) {
                 {kind:"big_single",targetArea:"big",title:"GROS SIMPLE"},
                 {kind:"small_single",targetArea:"small",title:"PETIT SIMPLE"},
                 {kind:"color_area",targetColor:"black",targetArea:"big",title:"NOIR + GROS"},
+                {kind:"color_bed",targetColor:"red",targetBed:"D",title:"ROUGE + DOUBLE"},
+                {kind:"color_bed",targetColor:"green",targetBed:"T",title:"VERT + TRIPLE"},
+                {kind:"area_parity",targetArea:"big",targetParity:"even",title:"GROS PAIRS"},
+                {kind:"area_parity",targetArea:"small",targetParity:"odd",title:"PETITS IMPAIRS"},
+                {kind:"area_range",targetArea:"big",targetRange:"high",title:"GROS 11-20"},
+                {kind:"area_range",targetArea:"small",targetRange:"low",title:"PETIT 1-10"},
+                {kind:"color_target",targetColor:"red",target:20,title:"ROUGE + 20"},
+                {kind:"color_bonus",targetColor:"green",title:"BONUS VERT"},
+                {kind:"area_bonus",targetArea:"big",title:"BONUS GROS"},
                 {kind:"sequence",sequenceStart:7,title:"SUITE"},
                 {kind:"max_score",maxScore:20,title:"PLAFOND"},
                 {kind:"exact_score",exactScore:42,title:"SCORE EXACT"},
