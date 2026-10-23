@@ -2,7 +2,14 @@
 import type { GameDart, Player } from "../types-game";
 
 export type BssBotLevel = "easy" | "normal" | "hard";
-export type BssChallengeKind = "open" | "double" | "triple" | "target" | "bull" | "low" | "high" | "throne";
+export type BssChallengeKind =
+  | "open" | "double" | "triple" | "target" | "bull" | "low" | "high" | "throne"
+  | "even" | "odd" | "triple_even" | "dbull" | "color" | "sequence" | "max_score" | "exact_score"
+  | "no_miss" | "same_number" | "three_different" | "one_each_bed" | "sdt_target"
+  | "ascending" | "descending" | "neighbors" | "bull_sandwich" | "mirror"
+  | "avoid_target" | "three_colors" | "bull_double" | "min_score" | "double_target"
+  | "big_single" | "small_single" | "color_area";
+export type BssChallengeColor = "red" | "green" | "black" | "white";
 export type BssConfigPayload = {
   mode: "bss_king";
   selectedIds: string[];
@@ -19,7 +26,19 @@ export type BssConfigPayload = {
   temporaryParticipants?: boolean;
   rules: { badgesToThrone: number; chaosEnabled: boolean; throneFinish: "bull" | "dbull" };
 };
-export type BssChallenge = { kind:BssChallengeKind; title:string; subtitle:string; icon:string; target?:number; };
+export type BssChallenge = {
+  kind:BssChallengeKind;
+  title:string;
+  subtitle:string;
+  icon:string;
+  target?:number;
+  targetColor?:BssChallengeColor;
+  sequenceStart?:number;
+  maxScore?:number;
+  exactScore?:number;
+  minScore?:number;
+  targetArea?:"big"|"small";
+};
 export type BssStats = { darts:number; visits:number; challengeWins:number; badgesWon:number; influence:number; bulls:number; dbulls:number; doubles:number; triples:number; misses:number; throneAttempts:number; bestVisit:number; };
 export type BssVisit = { id:string; playerId:string; round:number; challenge:BssChallenge; darts:GameDart[]; score:number; events:string[]; };
 export type BssState = {
@@ -34,6 +53,13 @@ const clone=<T,>(v:T):T=>JSON.parse(JSON.stringify(v));
 const uid=(p="bss")=>`${p}-${Date.now()}-${Math.random().toString(36).slice(2,9)}`;
 const blankStats=():BssStats=>({darts:0,visits:0,challengeWins:0,badgesWon:0,influence:0,bulls:0,dbulls:0,doubles:0,triples:0,misses:0,throneAttempts:0,bestVisit:0});
 const TARGETS=[20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1];
+const EXACT_SCORES=[21,24,27,30,32,36,40,42,45,50,51,54,57,60];
+const MAX_SCORES=[20,25,30,35,40];
+const MIN_SCORES=[45,50,60,75,90];
+const COLORS:BssChallengeColor[]=["red","green","black","white"];
+const BOARD_ORDER=[20,1,18,4,13,6,10,15,2,17,3,19,7,16,8,11,14,9,12,5];
+const RED_NUMBERS=new Set([20,12,14,8,7,3,2,10,13,18]);
+const colorLabel:Record<BssChallengeColor,string>={red:"ROUGE",green:"VERT",black:"NOIR",white:"BLANC"};
 
 export function normalizeBssConfig(raw:any):BssConfigPayload {
   const r=raw?.rules||{}; const ids=Array.isArray(raw?.selectedIds)?raw.selectedIds.map(String):[];
@@ -41,44 +67,190 @@ export function normalizeBssConfig(raw:any):BssConfigPayload {
   return { mode:"bss_king", selectedIds:ids, players:Math.max(2,Number(raw?.players||ids.length||2)), playersList:Array.isArray(raw?.playersList)?raw.playersList:[], botIds:Array.isArray(raw?.botIds)?raw.botIds.map(String):[], botsEnabled:Boolean(raw?.botsEnabled), botLevel:raw?.botLevel==="easy"||raw?.botLevel==="hard"?raw.botLevel:"normal", randomOrder:raw?.randomOrder!==false, scoreInputMethod:raw?.scoreInputMethod==="dartboard"?"dartboard":"keypad", seriesWins:raw?.seriesWins===2||raw?.seriesWins===3?raw.seriesWins:1, quickParty, partyMode:quickParty?"quick":"arcade", temporaryParticipants:quickParty||raw?.temporaryParticipants===true, rules:{badgesToThrone:[3,5,7].includes(Number(r?.badgesToThrone))?Number(r.badgesToThrone):5, chaosEnabled:r?.chaosEnabled!==false, throneFinish:r?.throneFinish==="dbull"?"dbull":"bull"} };
 }
 
-function challengeForRound(round:number, chaos:boolean):BssChallenge {
-  const target=TARGETS[(Math.max(1,round)-1)%TARGETS.length];
-  const classic:BssChallenge[]=[
-    {kind:"open",title:"TOURNÉE LIBRE",subtitle:"Fais le plus gros score · S=1 · D=2 · T=3 · Bull=2 · DBull=4",icon:"🍻"},
-    {kind:"target",title:`VISE LE ${target}`,subtitle:`Seul le ${target} compte · Simple=1 · Double=2 · Triple=3`,icon:"🎯",target},
-    {kind:"double",title:"DOUBLES UNIQUEMENT",subtitle:"Chaque Double vaut 3 points · tout le reste vaut 0",icon:"✌️"},
-    {kind:"bull",title:"VISE LE CENTRE",subtitle:"Bull 25 = 2 points · DBull 50 = 5 points",icon:"👑"},
+function randomOf<T>(values:T[]):T { return values[Math.floor(Math.random()*values.length)]; }
+function challengeKey(c?:BssChallenge|null){
+  if(!c)return "";
+  return [c.kind,c.target??"",c.targetColor??"",c.targetArea??"",c.sequenceStart??"",c.maxScore??"",c.exactScore??"",c.minScore??""].join(":");
+}
+function createChallenge(kind:BssChallengeKind):BssChallenge {
+  if(kind==="open") return {kind,title:"TOURNÉE LIBRE",subtitle:"Fais le plus gros score · S=1 · D=2 · T=3 · Bull=2 · DBull=4",icon:"🍻"};
+  if(kind==="target"){ const target=randomOf(TARGETS); return {kind,title:`VISE LE ${target}`,subtitle:`Seul le ${target} compte · Simple=1 · Double=2 · Triple=3`,icon:"🎯",target}; }
+  if(kind==="double") return {kind,title:"DOUBLES UNIQUEMENT",subtitle:"Chaque Double vaut 3 points · tout le reste vaut 0",icon:"✌️"};
+  if(kind==="triple") return {kind,title:"TRIPLES UNIQUEMENT",subtitle:"Chaque Triple vaut 4 points · tout le reste vaut 0",icon:"⚡"};
+  if(kind==="bull") return {kind,title:"VISE LE CENTRE",subtitle:"Bull 25 = 2 points · DBull 50 = 5 points",icon:"👑"};
+  if(kind==="low") return {kind,title:"SECTEURS 1 À 10",subtitle:"Seuls 1 à 10 comptent · S=1 · D=2 · T=3",icon:"😈"};
+  if(kind==="high") return {kind,title:"SECTEURS 11 À 20",subtitle:"Seuls 11 à 20 comptent · S=1 · D=2 · T=3",icon:"🔥"};
+  if(kind==="even") return {kind,title:"PAIRS UNIQUEMENT",subtitle:"Seuls les secteurs pairs comptent · S=1 · D=2 · T=3",icon:"2️⃣"};
+  if(kind==="odd") return {kind,title:"IMPAIRS UNIQUEMENT",subtitle:"Seuls les secteurs impairs comptent · S=1 · D=2 · T=3",icon:"3️⃣"};
+  if(kind==="triple_even") return {kind,title:"TRIPLES PAIRS",subtitle:"Seuls les triples d’un secteur pair comptent · 5 points chacun",icon:"⚡"};
+  if(kind==="dbull") return {kind,title:"BULLE ROUGE",subtitle:"Seul le DBULL 50 compte · 6 points BSS par touche",icon:"🔴"};
+  if(kind==="color"){ const targetColor=randomOf(COLORS); return {kind,title:`COULEUR ${colorLabel[targetColor]}`,subtitle:`Touche uniquement les zones ${colorLabel[targetColor].toLowerCase()} · Simple=1 · Double=2 · Triple=3`,icon:"🎨",targetColor}; }
+  if(kind==="big_single") return {kind,title:"GROS SIMPLE",subtitle:"Seuls les gros simples comptent · 2 points BSS par touche",icon:"🟠",targetArea:"big"};
+  if(kind==="small_single") return {kind,title:"PETIT SIMPLE",subtitle:"Seuls les petits simples comptent · 2 points BSS par touche",icon:"🟡",targetArea:"small"};
+  if(kind==="color_area"){ const targetColor=randomOf(["black","white"] as BssChallengeColor[]), targetArea=randomOf(["big","small"] as Array<"big"|"small">); return {kind,title:`${colorLabel[targetColor]} + ${targetArea==="big"?"GROS":"PETIT"}`,subtitle:`Touche un ${targetArea==="big"?"gros":"petit"} simple ${colorLabel[targetColor].toLowerCase()} · 3 points BSS par touche`,icon:"🎨",targetColor,targetArea}; }
+  if(kind==="sequence"){ const sequenceStart=1+Math.floor(Math.random()*18); return {kind,title:`SUITE ${sequenceStart}-${sequenceStart+1}-${sequenceStart+2}`,subtitle:`Touche les 3 secteurs ${sequenceStart}, ${sequenceStart+1} et ${sequenceStart+2} dans n’importe quel ordre · 8 points si la suite est complète`,icon:"🔗",sequenceStart}; }
+  if(kind==="max_score"){ const maxScore=randomOf(MAX_SCORES); return {kind,title:`MAX ${maxScore}`,subtitle:`Fais le plus gros score sans dépasser ${maxScore} sur 3 fléchettes · dépassement = 0`,icon:"🧸",maxScore}; }
+  if(kind==="exact_score"){ const exactScore=randomOf(EXACT_SCORES); return {kind,title:`EXACT ${exactScore}`,subtitle:`Réalise exactement ${exactScore} points sur 3 fléchettes · réussite = 8 points BSS`,icon:"🎯",exactScore}; }
+  if(kind==="no_miss") return {kind,title:"SANS FAUTE",subtitle:"Aucun MISS autorisé · si les 3 fléchettes touchent la cible, leurs multiplicateurs comptent",icon:"🧱"};
+  if(kind==="same_number") return {kind,title:"TRIPLÉ DE SECTEUR",subtitle:"Touche 3 fois le même numéro · réussite = 10 points BSS",icon:"🎰"};
+  if(kind==="three_different") return {kind,title:"3 SECTEURS DIFFÉRENTS",subtitle:"Tes 3 fléchettes doivent toucher 3 numéros différents · réussite = 8 points BSS",icon:"🃏"};
+  if(kind==="one_each_bed") return {kind,title:"SIMPLE + DOUBLE + TRIPLE",subtitle:"Fais au moins un Simple, un Double et un Triple dans la même volée · 10 points BSS",icon:"🪜"};
+  if(kind==="sdt_target"){ const target=randomOf(TARGETS); return {kind,title:`S-D-T DU ${target}`,subtitle:`Touche le Simple ${target}, le Double ${target} et le Triple ${target} · 12 points BSS`,icon:"🎯",target}; }
+  if(kind==="ascending") return {kind,title:"MONTÉE",subtitle:"Touche 3 numéros strictement croissants dans l’ordre des fléchettes · 9 points BSS",icon:"📈"};
+  if(kind==="descending") return {kind,title:"DESCENTE",subtitle:"Touche 3 numéros strictement décroissants dans l’ordre des fléchettes · 9 points BSS",icon:"📉"};
+  if(kind==="neighbors"){ const target=randomOf(TARGETS); return {kind,title:`VOISINS DU ${target}`,subtitle:`Touche le ${target} et ses 2 voisins physiques sur la cible, dans n’importe quel ordre · 10 points BSS`,icon:"🧭",target}; }
+  if(kind==="bull_sandwich") return {kind,title:"SANDWICH BULL",subtitle:"1re fléchette = Bull, 2e libre, 3e = Bull · réussite = 11 points BSS",icon:"🥪"};
+  if(kind==="mirror") return {kind,title:"MIROIR",subtitle:"La 1re et la 3e fléchette doivent toucher le même numéro · 9 points BSS",icon:"🪞"};
+  if(kind==="avoid_target"){ const target=randomOf(TARGETS.slice(0,12)); return {kind,title:`INTERDIT ${target}`,subtitle:`Marque librement, mais toucher le ${target} annule toute la volée`,icon:"☠️",target}; }
+  if(kind==="three_colors") return {kind,title:"3 COULEURS",subtitle:"Touche 3 couleurs de cible différentes sur la même volée · 9 points BSS",icon:"🌈"};
+  if(kind==="bull_double") return {kind,title:"BULL + DOUBLE",subtitle:"Touche au moins un Bull et au moins un Double dans la même volée · 10 points BSS",icon:"🍻"};
+  if(kind==="min_score"){ const minScore=randomOf(MIN_SCORES); return {kind,title:`MINIMUM ${minScore}`,subtitle:`Fais au moins ${minScore} points réels sur 3 fléchettes · réussite = 8 points BSS`,icon:"🚀",minScore}; }
+  if(kind==="double_target"){ const target=randomOf(TARGETS); return {kind,title:`2 TOUCHES SUR ${target}`,subtitle:`Touche au moins 2 fois le secteur ${target} · réussite = 8 points BSS`,icon:"✌️",target}; }
+  return {kind:"open",title:"TOURNÉE LIBRE",subtitle:"Fais le plus gros score · S=1 · D=2 · T=3 · Bull=2 · DBull=4",icon:"🍻"};
+}
+
+function randomChallenge(chaos:boolean, previous?:BssChallenge|null):BssChallenge {
+  const core:BssChallengeKind[]=["open","target","double","triple","bull","low","high","even","odd"];
+  const wild:BssChallengeKind[]=[
+    ...core,"target","color","big_single","small_single","color_area","sequence","max_score","exact_score","triple_even","dbull",
+    "no_miss","same_number","three_different","one_each_bed","sdt_target","ascending","descending",
+    "neighbors","bull_sandwich","mirror","avoid_target","three_colors","bull_double","min_score","double_target"
   ];
-  const chaosDeck:BssChallenge[]=[
-    ...classic,
-    {kind:"triple",title:"TRIPLES UNIQUEMENT",subtitle:"Chaque Triple vaut 4 points · tout le reste vaut 0",icon:"⚡"},
-    {kind:"low",title:"SECTEURS 1 À 10",subtitle:"Seuls 1 à 10 comptent · S=1 · D=2 · T=3",icon:"😈"},
-    {kind:"high",title:"SECTEURS 11 À 20",subtitle:"Seuls 11 à 20 comptent · S=1 · D=2 · T=3",icon:"🔥"},
-  ];
-  const deck=chaos?chaosDeck:classic;
-  return clone(deck[(Math.max(1,round)-1)%deck.length]);
+  const pool=chaos?wild:core;
+  const previousKind=previous?.kind;
+  // Garantie : jamais deux tournées consécutives de la même famille de défi.
+  const eligible=previousKind ? pool.filter(kind=>kind!==previousKind) : pool;
+  const candidate=createChallenge(randomOf(eligible.length?eligible:pool));
+  // Sécurité supplémentaire pour les défis paramétrés.
+  if(challengeKey(candidate)!==challengeKey(previous)) return candidate;
+  return createChallenge(randomOf(eligible.length?eligible:pool));
 }
 
 export function createBssState(players:Player[], raw:any):BssState {
   const config=normalizeBssConfig(raw); const ps=(players||[]).map((p,i)=>({id:String(p?.id||`p${i+1}`),name:String(p?.name||`Joueur ${i+1}`)}));
-  return {sport:"darts",mode:"bss_king",config,players:ps,badges:Object.fromEntries(ps.map(p=>[p.id,0])),influence:Object.fromEntries(ps.map(p=>[p.id,0])),statsByPlayer:Object.fromEntries(ps.map(p=>[p.id,blankStats()])),activePlayerIndex:0,round:1,challenge:challengeForRound(1,config.rules.chaosEnabled),roundScores:Object.fromEntries(ps.map(p=>[p.id,0])),roundPlayedIds:[],throneReady:Object.fromEntries(ps.map(p=>[p.id,false])),phase:"playing",winnerId:null,visits:[],events:["Bienvenue chez les BSS : le trône attend son KING."],startedAt:Date.now()};
+  return {sport:"darts",mode:"bss_king",config,players:ps,badges:Object.fromEntries(ps.map(p=>[p.id,0])),influence:Object.fromEntries(ps.map(p=>[p.id,0])),statsByPlayer:Object.fromEntries(ps.map(p=>[p.id,blankStats()])),activePlayerIndex:0,round:1,challenge:randomChallenge(config.rules.chaosEnabled),roundScores:Object.fromEntries(ps.map(p=>[p.id,0])),roundPlayedIds:[],throneReady:Object.fromEntries(ps.map(p=>[p.id,false])),phase:"playing",winnerId:null,visits:[],events:["Bienvenue chez les BSS : le trône attend son KING."],startedAt:Date.now()};
 }
 export function cloneBssState(raw:BssState):BssState { const s:any=clone(raw); for(const p of s.players||[]) s.statsByPlayer[p.id]={...blankStats(),...(s.statsByPlayer?.[p.id]||{})}; return s; }
 
+function rawDartScore(d:any){
+  if(!d||d.bed==="MISS")return 0;
+  if(d.bed==="IB")return 50;
+  if(d.bed==="OB")return 25;
+  const n=Number(d.number||0); if(n<1||n>20)return 0;
+  return n*(d.bed==="T"?3:d.bed==="D"?2:1);
+}
+function bssDartMeta(d:any){
+  const ring=String(d?.ring||"");
+  if(!ring.startsWith("BSSMETA")){
+    const area=ring==="inner_single"?"small":ring==="outer_single"?"big":null;
+    return { color:null as BssChallengeColor|null, area:area as ("big"|"small")|null };
+  }
+  const parts=Object.fromEntries(ring.split("|").slice(1).map((chunk:string)=>{ const [k,v]=chunk.split("="); return [k,v]; }));
+  const color=(COLORS.includes(parts.c as BssChallengeColor)?parts.c:null) as BssChallengeColor|null;
+  const area=(parts.a==="big"||parts.a==="small"?parts.a:null) as ("big"|"small")|null;
+  return {color,area};
+}
+function dartSingleArea(d:any):"big"|"small"|null {
+  if(!d||d.bed!=="S") return null;
+  return bssDartMeta(d).area;
+}
+function dartBoardColor(d:any):BssChallengeColor|null {
+  if(!d||d.bed==="MISS")return null;
+  const explicit=bssDartMeta(d).color; if(explicit)return explicit;
+  if(d.bed==="IB")return "red";
+  if(d.bed==="OB")return "green";
+  const n=Number(d.number||0); if(n<1||n>20)return null;
+  if(d.bed==="D"||d.bed==="T") return RED_NUMBERS.has(n)?"red":"green";
+  const idx=BOARD_ORDER.indexOf(n); return idx>=0&&idx%2===0?"black":"white";
+}
 function dartScore(d:any,c:BssChallenge){
   if(!d||d.bed==="MISS")return 0;
   if(c.kind==="throne") return d.bed==="IB"?2:d.bed==="OB"?1:0;
   if(c.kind==="bull") return d.bed==="IB"?5:d.bed==="OB"?2:0;
+  if(c.kind==="dbull") return d.bed==="IB"?6:0;
+  if(c.kind==="color"){ if(dartBoardColor(d)!==c.targetColor)return 0; return d.bed==="IB"?4:d.bed==="OB"?2:d.bed==="T"?3:d.bed==="D"?2:1; }
+  if(c.kind==="big_single") return d.bed==="S"&&dartSingleArea(d)==="big"?2:0;
+  if(c.kind==="small_single") return d.bed==="S"&&dartSingleArea(d)==="small"?2:0;
+  if(c.kind==="color_area") return d.bed==="S"&&dartSingleArea(d)===c.targetArea&&dartBoardColor(d)===c.targetColor?3:0;
   if(d.bed==="IB"||d.bed==="OB") return c.kind==="open"?(d.bed==="IB"?4:2):0;
   const n=Number(d.number||0); const mult=d.bed==="T"?3:d.bed==="D"?2:1;
   if(c.kind==="double") return d.bed==="D"?3:0;
   if(c.kind==="triple") return d.bed==="T"?4:0;
+  if(c.kind==="triple_even") return d.bed==="T"&&n%2===0?5:0;
   if(c.kind==="target") return n===Number(c.target||0)?mult:0;
   if(c.kind==="low") return n>=1&&n<=10?mult:0;
   if(c.kind==="high") return n>=11&&n<=20?mult:0;
+  if(c.kind==="even") return n>=1&&n<=20&&n%2===0?mult:0;
+  if(c.kind==="odd") return n>=1&&n<=20&&n%2===1?mult:0;
   return mult;
 }
-export function evaluateBssVisit(darts:GameDart[], challenge:BssChallenge){ return (darts||[]).slice(0,3).reduce((sum,d)=>sum+dartScore(d,challenge),0); }
+export function evaluateBssVisit(darts:GameDart[], challenge:BssChallenge){
+  const three=(darts||[]).slice(0,3);
+  const validNumbers=three.map((d:any)=>d?.bed==="MISS"?0:Number(d?.number||0));
+  const validDarts=three.filter((d:any)=>d?.bed!=="MISS");
+  if(challenge?.kind==="sequence"){
+    const start=Number(challenge.sequenceStart||1); const needed=new Set([start,start+1,start+2]);
+    const hit=new Set(validDarts.filter((d:any)=>Number(d?.number)>=1&&Number(d?.number)<=20).map((d:any)=>Number(d.number)));
+    return [...needed].every(n=>hit.has(n))?8:0;
+  }
+  if(challenge?.kind==="max_score"){
+    const total=three.reduce((sum,d)=>sum+rawDartScore(d),0); const cap=Number(challenge.maxScore||20);
+    return total>0&&total<=cap?total:0;
+  }
+  if(challenge?.kind==="exact_score"){
+    const total=three.reduce((sum,d)=>sum+rawDartScore(d),0);
+    return total===Number(challenge.exactScore||0)?8:0;
+  }
+  if(challenge?.kind==="no_miss"){
+    if(three.length<3||validDarts.length<3)return 0;
+    return three.reduce((sum,d)=>sum+dartScore(d,{kind:"open",title:"",subtitle:"",icon:""} as BssChallenge),0);
+  }
+  if(challenge?.kind==="same_number"){
+    if(three.length<3||validDarts.length<3)return 0;
+    const nums=validNumbers.filter(n=>n>=1&&n<=20); return nums.length===3&&nums.every(n=>n===nums[0])?10:0;
+  }
+  if(challenge?.kind==="three_different"){
+    const nums=validNumbers.filter(n=>n>=1&&n<=20); return nums.length===3&&new Set(nums).size===3?8:0;
+  }
+  if(challenge?.kind==="one_each_bed"){
+    const beds=new Set(validDarts.map((d:any)=>d?.bed)); return beds.has("S")&&beds.has("D")&&beds.has("T")?10:0;
+  }
+  if(challenge?.kind==="sdt_target"){
+    const t=Number(challenge.target||20); const beds=new Set(validDarts.filter((d:any)=>Number(d?.number)===t).map((d:any)=>d?.bed)); return beds.has("S")&&beds.has("D")&&beds.has("T")?12:0;
+  }
+  if(challenge?.kind==="ascending"||challenge?.kind==="descending"){
+    const nums=validNumbers.filter(n=>n>=1&&n<=20); if(nums.length!==3)return 0;
+    const ok=challenge.kind==="ascending"?(nums[0]<nums[1]&&nums[1]<nums[2]):(nums[0]>nums[1]&&nums[1]>nums[2]); return ok?9:0;
+  }
+  if(challenge?.kind==="neighbors"){
+    const t=Number(challenge.target||20); const idx=BOARD_ORDER.indexOf(t); if(idx<0)return 0;
+    const needed=new Set([BOARD_ORDER[(idx+BOARD_ORDER.length-1)%BOARD_ORDER.length],t,BOARD_ORDER[(idx+1)%BOARD_ORDER.length]]);
+    const hit=new Set(validNumbers.filter(n=>n>=1&&n<=20)); return [...needed].every(n=>hit.has(n))?10:0;
+  }
+  if(challenge?.kind==="bull_sandwich"){
+    if(three.length<3)return 0; const isBull=(d:any)=>d?.bed==="OB"||d?.bed==="IB"; return isBull(three[0])&&three[1]?.bed!=="MISS"&&isBull(three[2])?11:0;
+  }
+  if(challenge?.kind==="mirror"){
+    if(three.length<3||three[0]?.bed==="MISS"||three[2]?.bed==="MISS")return 0; const a=Number(three[0]?.number||0),c=Number(three[2]?.number||0); return a>=1&&a<=20&&a===c?9:0;
+  }
+  if(challenge?.kind==="avoid_target"){
+    const forbidden=Number(challenge.target||20); if(validDarts.some((d:any)=>Number(d?.number)===forbidden))return 0;
+    return three.reduce((sum,d)=>sum+dartScore(d,{kind:"open",title:"",subtitle:"",icon:""} as BssChallenge),0);
+  }
+  if(challenge?.kind==="three_colors"){
+    const cols=validDarts.map(d=>dartBoardColor(d)).filter(Boolean); return cols.length===3&&new Set(cols).size===3?9:0;
+  }
+  if(challenge?.kind==="bull_double"){
+    const hasBull=validDarts.some((d:any)=>d?.bed==="OB"||d?.bed==="IB"); const hasDouble=validDarts.some((d:any)=>d?.bed==="D"); return hasBull&&hasDouble?10:0;
+  }
+  if(challenge?.kind==="min_score"){
+    const total=three.reduce((sum,d)=>sum+rawDartScore(d),0); return total>=Number(challenge.minScore||60)?8:0;
+  }
+  if(challenge?.kind==="double_target"){
+    const t=Number(challenge.target||20); return validDarts.filter((d:any)=>Number(d?.number)===t).length>=2?8:0;
+  }
+  return three.reduce((sum,d)=>sum+dartScore(d,challenge),0);
+}
 
 function finishRound(s:BssState){
   const rows=s.players.map(p=>({id:p.id,score:Number(s.roundScores[p.id]||0)})).sort((a,b)=>b.score-a.score);
@@ -88,7 +260,8 @@ function finishRound(s:BssState){
     if(s.badges[id]>=s.config.rules.badgesToThrone&&!s.throneReady[id]){ s.throneReady[id]=true; s.events.push(`${p?.name||"Joueur"} a assez d’écussons : PROCHAINE ÉTAPE, LE TRÔNE !`); }
   } else if(winners.length>1) s.events.push(`Égalité sur la tournée ${s.round} : aucun écusson distribué.`);
   else s.events.push(`Tournée ${s.round} blanche : personne ne marque.`);
-  s.round+=1; s.roundScores=Object.fromEntries(s.players.map(p=>[p.id,0])); s.roundPlayedIds=[]; s.challenge=challengeForRound(s.round,s.config.rules.chaosEnabled);
+  const previous=s.challenge;
+  s.round+=1; s.roundScores=Object.fromEntries(s.players.map(p=>[p.id,0])); s.roundPlayedIds=[]; s.challenge=randomChallenge(s.config.rules.chaosEnabled,previous);
 }
 
 export function playBssVisit(input:BssState,dartsRaw:GameDart[]):BssState{
@@ -107,8 +280,62 @@ export function playBssVisit(input:BssState,dartsRaw:GameDart[]):BssState{
 
 function hit(level:BssBotLevel,override?:number){const n=Number(override);if(Number.isFinite(n)&&n>0&&n<=1)return Math.max(.25,Math.min(.99,n));return level==="hard"?.86:level==="easy"?.46:.66;}
 function missOr(d:GameDart,level:BssBotLevel,override?:number):GameDart{return Math.random()<hit(level,override)?d:{bed:"MISS"};}
+function botColorDart(color:BssChallengeColor):GameDart{
+  if(color==="red") return Math.random()<.18?{bed:"IB"}:{bed:"T",number:20};
+  if(color==="green") return Math.random()<.18?{bed:"OB"}:{bed:"T",number:19};
+  if(color==="black") return {bed:"S",number:20};
+  return {bed:"S",number:1};
+}
+function bssMetaRing(color?:BssChallengeColor|null,area?:"big"|"small"|null){ return ["BSSMETA",color?`c=${color}`:"",area?`a=${area}`:""].filter(Boolean).join("|"); }
+function exactBotDarts(target:number):GameDart[]{
+  // Priorité à une combinaison simple lisible et valide.
+  for(let a=20;a>=1;a--) for(let b=20;b>=0;b--) for(let c=20;c>=0;c--){ if(a+b+c===target) return [{bed:"S",number:a},b?{bed:"S",number:b}:{bed:"MISS"},c?{bed:"S",number:c}:{bed:"MISS"}]; }
+  return [{bed:"S",number:20},{bed:"S",number:20},{bed:"S",number:Math.max(1,Math.min(20,target-40))}];
+}
 export function pickBssBotDarts(input:BssState, level:BssBotLevel="normal", hitRateOverride?:number):GameDart[]{
-  const s=cloneBssState(input); const p=s.players[s.activePlayerIndex]; if(!p)return[]; const throne=Boolean(s.throneReady[p.id]); const c=throne?{kind:"throne",target:0}:s.challenge;
-  const one=():GameDart=>{ if(c.kind==="throne") return missOr({bed:s.config.rules.throneFinish==="dbull"?"IB":"OB"},level,hitRateOverride); if(c.kind==="bull")return missOr({bed:Math.random()<.35?"IB":"OB"},level,hitRateOverride); if(c.kind==="double")return missOr({bed:"D",number:16+Math.floor(Math.random()*5)},level,hitRateOverride); if(c.kind==="triple")return missOr({bed:"T",number:18+Math.floor(Math.random()*3)},level,hitRateOverride); if(c.kind==="target")return missOr({bed:Math.random()<.4?"T":Math.random()<.55?"D":"S",number:Number((c as any).target||20)},level,hitRateOverride); if(c.kind==="low")return missOr({bed:Math.random()<.35?"T":"S",number:7+Math.floor(Math.random()*4)},level,hitRateOverride); if(c.kind==="high")return missOr({bed:Math.random()<.45?"T":"S",number:17+Math.floor(Math.random()*4)},level,hitRateOverride); return missOr({bed:Math.random()<.45?"T":Math.random()<.65?"D":"S",number:18+Math.floor(Math.random()*3)},level,hitRateOverride); };
+  const s=cloneBssState(input); const p=s.players[s.activePlayerIndex]; if(!p)return[]; const throne=Boolean(s.throneReady[p.id]); const c:any=throne?{kind:"throne",target:0}:s.challenge;
+  if(c.kind==="sequence"){
+    const start=Number(c.sequenceStart||1); return [start,start+1,start+2].map(n=>missOr({bed:"S",number:n},level,hitRateOverride));
+  }
+  if(c.kind==="exact_score") return exactBotDarts(Number(c.exactScore||30)).map(d=>missOr(d,level,hitRateOverride));
+  if(c.kind==="max_score"){
+    const cap=Number(c.maxScore||20); const a=Math.max(1,Math.floor(cap/3)); const b=Math.max(1,Math.floor((cap-a)/2)); const cc=Math.max(0,cap-a-b);
+    return [a,b,cc].map(n=>n?missOr({bed:"S",number:Math.min(20,n)},level,hitRateOverride):{bed:"MISS"});
+  }
+  if(c.kind==="no_miss") return [20,19,18].map(n=>missOr({bed:"S",number:n},level,hitRateOverride));
+  if(c.kind==="same_number") return [1,2,3].map(()=>missOr({bed:"S",number:20},level,hitRateOverride));
+  if(c.kind==="three_different") return [20,19,18].map(n=>missOr({bed:"S",number:n},level,hitRateOverride));
+  if(c.kind==="one_each_bed") return [missOr({bed:"S",number:20},level,hitRateOverride),missOr({bed:"D",number:20},level,hitRateOverride),missOr({bed:"T",number:20},level,hitRateOverride)];
+  if(c.kind==="sdt_target"){ const t=Number(c.target||20); return ["S","D","T"].map((bed:any)=>missOr({bed,number:t},level,hitRateOverride)); }
+  if(c.kind==="ascending") return [5,12,20].map(n=>missOr({bed:"S",number:n},level,hitRateOverride));
+  if(c.kind==="descending") return [20,12,5].map(n=>missOr({bed:"S",number:n},level,hitRateOverride));
+  if(c.kind==="neighbors"){
+    const t=Number(c.target||20),idx=BOARD_ORDER.indexOf(t); const nums=[BOARD_ORDER[(idx+BOARD_ORDER.length-1)%BOARD_ORDER.length],t,BOARD_ORDER[(idx+1)%BOARD_ORDER.length]]; return nums.map(n=>missOr({bed:"S",number:n},level,hitRateOverride));
+  }
+  if(c.kind==="bull_sandwich") return [missOr({bed:"OB"},level,hitRateOverride),missOr({bed:"S",number:20},level,hitRateOverride),missOr({bed:"OB"},level,hitRateOverride)];
+  if(c.kind==="mirror") return [missOr({bed:"S",number:20},level,hitRateOverride),missOr({bed:"S",number:19},level,hitRateOverride),missOr({bed:"S",number:20},level,hitRateOverride)];
+  if(c.kind==="avoid_target"){ const bad=Number(c.target||20),safe=bad===20?19:20; return [1,2,3].map(()=>missOr({bed:"T",number:safe},level,hitRateOverride)); }
+  if(c.kind==="three_colors") return [missOr({bed:"IB"},level,hitRateOverride),missOr({bed:"OB"},level,hitRateOverride),missOr({bed:"S",number:20},level,hitRateOverride)];
+  if(c.kind==="bull_double") return [missOr({bed:"OB"},level,hitRateOverride),missOr({bed:"D",number:20},level,hitRateOverride),missOr({bed:"S",number:20},level,hitRateOverride)];
+  if(c.kind==="min_score") return [1,2,3].map(()=>missOr({bed:"T",number:20},level,hitRateOverride));
+  if(c.kind==="double_target"){ const t=Number(c.target||20); return [missOr({bed:"S",number:t},level,hitRateOverride),missOr({bed:"D",number:t},level,hitRateOverride),missOr({bed:"S",number:20},level,hitRateOverride)]; }
+  const one=():GameDart=>{
+    if(c.kind==="throne") return missOr({bed:s.config.rules.throneFinish==="dbull"?"IB":"OB"},level,hitRateOverride);
+    if(c.kind==="bull")return missOr({bed:Math.random()<.35?"IB":"OB"},level,hitRateOverride);
+    if(c.kind==="dbull")return missOr({bed:"IB"},level,hitRateOverride);
+    if(c.kind==="color")return missOr(botColorDart(c.targetColor||"red"),level,hitRateOverride);
+    if(c.kind==="big_single")return missOr({bed:"S",number:20,ring:bssMetaRing("black","big")} as any,level,hitRateOverride);
+    if(c.kind==="small_single")return missOr({bed:"S",number:20,ring:bssMetaRing("black","small")} as any,level,hitRateOverride);
+    if(c.kind==="color_area"){ const color=c.targetColor||"black",area=c.targetArea||"big"; const number=color==="white"?1:20; return missOr({bed:"S",number,ring:bssMetaRing(color,area)} as any,level,hitRateOverride); }
+    if(c.kind==="double")return missOr({bed:"D",number:16+Math.floor(Math.random()*5)},level,hitRateOverride);
+    if(c.kind==="triple")return missOr({bed:"T",number:18+Math.floor(Math.random()*3)},level,hitRateOverride);
+    if(c.kind==="triple_even")return missOr({bed:"T",number:18+2*Math.floor(Math.random()*2)},level,hitRateOverride);
+    if(c.kind==="target")return missOr({bed:Math.random()<.4?"T":Math.random()<.55?"D":"S",number:Number(c.target||20)},level,hitRateOverride);
+    if(c.kind==="low")return missOr({bed:Math.random()<.35?"T":"S",number:7+Math.floor(Math.random()*4)},level,hitRateOverride);
+    if(c.kind==="high")return missOr({bed:Math.random()<.45?"T":"S",number:17+Math.floor(Math.random()*4)},level,hitRateOverride);
+    if(c.kind==="even")return missOr({bed:Math.random()<.45?"T":"S",number:18+2*Math.floor(Math.random()*2)},level,hitRateOverride);
+    if(c.kind==="odd")return missOr({bed:Math.random()<.45?"T":"S",number:17+2*Math.floor(Math.random()*2)},level,hitRateOverride);
+    return missOr({bed:Math.random()<.45?"T":Math.random()<.65?"D":"S",number:18+Math.floor(Math.random()*3)},level,hitRateOverride);
+  };
   return [one(),one(),one()];
 }

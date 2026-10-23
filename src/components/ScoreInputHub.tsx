@@ -72,6 +72,14 @@ type ExternalKeypadExtraMainButton = {
   ariaLabel?: string;
 };
 
+type ExternalKeypadColorButton = {
+  color: string;
+  onClick: () => void;
+  active?: boolean;
+  title?: string;
+  ariaLabel?: string;
+};
+
 type Props = {
   /** Volée en cours (0..3 flèches) */
   currentThrow: UIDart[];
@@ -119,6 +127,10 @@ type Props = {
   keypadAuxActionOverride?: ExternalKeypadAuxAction | null;
   /** Boutons principaux supplémentaires dans le keypad (ex: GROS / PETIT). */
   keypadExtraMainButtons?: ExternalKeypadExtraMainButton[] | null;
+  /** Rangée de 4 couleurs contextuelle, sans texte visible. */
+  keypadColorButtons?: ExternalKeypadColorButton[] | null;
+  /** DOUBLE/TRIPLE restent sélectionnés jusqu'à la prochaine valeur. */
+  keypadLatchMultiplier?: boolean;
   /** Variante de disposition interne du keypad. */
   keypadLayoutVariant?: "default" | "ptit1";
   /** Action secondaire dans la zone retour (ex: micro Gros 6). */
@@ -252,6 +264,8 @@ export default function ScoreInputHub({
   enablePresets = true,
   keypadAuxActionOverride = null,
   keypadExtraMainButtons = null,
+  keypadColorButtons = null,
+  keypadLatchMultiplier = false,
   keypadLayoutVariant = "default",
   keypadSecondaryAction = null,
   keypadFooterAction = null,
@@ -514,6 +528,8 @@ export default function ScoreInputHub({
       centerSlot={centerSlot}
       auxAction={keypadAuxAction}
       extraMainButtons={keypadExtraMainButtons}
+      colorButtons={keypadColorButtons}
+      latchMultiplier={keypadLatchMultiplier}
       layoutVariant={keypadLayoutVariant}
       secondaryAction={keypadSecondaryAction}
       footerAction={keypadFooterAction}

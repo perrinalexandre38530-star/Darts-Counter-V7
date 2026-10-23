@@ -106,6 +106,7 @@ function capitalContractTarget(contract: CapitalContractID): string {
     case "triple_any": return "TRIPLE";
     case "double_any": return "DOUBLE";
     case "center": return "BULL";
+    case "peluche": return "≤ 20 • 0 MISS";
     case "colors_3": return "3 COUL.";
     case "suite": return "SUITE";
     case "side": return "SIDE";
@@ -144,7 +145,8 @@ export type CapitalContractID =
   | "n15"
   | "exact_57"
   | "n14"
-  | "center";
+  | "center"
+  | "peluche";
 
 export type CapitalStartOrderMode = "random" | "fixed";
 
@@ -337,6 +339,8 @@ function contractLabel(id: CapitalContractID): string {
       return "14";
     case "center":
       return "Centre";
+    case "peluche":
+      return "Peluche";
     default:
       return String(id);
   }
@@ -449,6 +453,9 @@ function contractSuccess(contract: CapitalContractID, th: Dart[]): boolean {
       return hasNumber(th, 14);
     case "center":
       return isCenter(th);
+    case "peluche":
+      // PELUCHE : le moindre MISS fait perdre, même avec un total <= 20.
+      return (th || []).length === 3 && (th || []).every((d) => Number(d?.v || 0) > 0) && scoreThrow(th) <= 20;
     default:
       return false;
   }
@@ -512,6 +519,12 @@ function botMakeThrow(contract: CapitalContractID, level: any, risk: any): Dart[
 
   if (contract === "colors_3") {
     return [rand(acc) ? pick(25, 1) : miss(), rand(acc) ? pick(20, 2) : miss(), rand(acc) ? pick(19, 3) : miss()];
+  }
+
+  if (contract === "peluche") {
+    // Le bot vise uniquement des secteurs valides pour rester sous 20 ; un MISS accidentel fait perdre le contrat.
+    if (rand(acc)) return [pick(7, 1), pick(6, 1), pick(6, 1)];
+    return [N(5), N(5), N(5)];
   }
 
   return [miss(), miss(), miss()];

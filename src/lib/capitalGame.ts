@@ -13,7 +13,8 @@ export type CapitalContractId =
   | "n15"
   | "exact_57"
   | "n14"
-  | "center";
+  | "center"
+  | "peluche";
 
 export type CapitalDart = { v: number; mult: 1 | 2 | 3 };
 export type CapitalParticipantMode = "players" | "teams";
@@ -111,7 +112,7 @@ export const CAPITAL_OFFICIAL_CONTRACTS: CapitalContractId[] = [
   "center",
 ];
 
-export const CAPITAL_SELECTABLE_CONTRACTS: CapitalContractId[] = CAPITAL_OFFICIAL_CONTRACTS.filter((id) => id !== "capital");
+export const CAPITAL_SELECTABLE_CONTRACTS: CapitalContractId[] = [...CAPITAL_OFFICIAL_CONTRACTS.filter((id) => id !== "capital"), "peluche"];
 
 export const CAPITAL_CONTRACT_META: Record<CapitalContractId, { short: string; label: string; rule: string }> = {
   capital: { short: "CAP", label: "Capital", rule: "Les 3 fléchettes constituent le capital de départ." },
@@ -129,6 +130,7 @@ export const CAPITAL_CONTRACT_META: Record<CapitalContractId, { short: string; l
   exact_57: { short: "57", label: "57 exact", rule: "Obtenir exactement 57 points avec la volée." },
   n14: { short: "14", label: "14", rule: "Toucher au moins une fois le secteur 14." },
   center: { short: "BULL", label: "Centre", rule: "Toucher le BULL (25) ou le DBULL (50)." },
+  peluche: { short: "PEL", label: "Peluche", rule: "Sur 3 fléchettes, le total de la volée ne doit pas dépasser 20 points. MISS interdit : le moindre MISS fait perdre immédiatement le contrat." },
 };
 
 export function clampCapitalNumber(value: any, min: number, max: number, fallback = min): number {
@@ -225,6 +227,9 @@ export function capitalContractSuccess(contract: CapitalContractId, rawDarts: Ca
       return darts.some((dart) => dart.v === 14);
     case "center":
       return darts.some((dart) => dart.v === 25);
+    case "peluche":
+      // PELUCHE : 3 fléchettes, 20 points maximum et absolument aucun MISS.
+      return darts.every((dart) => Number(dart?.v || 0) > 0) && capitalVisitScore(darts) <= 20;
     default:
       return false;
   }
@@ -304,6 +309,7 @@ export function makeCapitalBotVisit(
     case "suite": return randomHit(accuracy) ? [dart(18), dart(19), dart(20)] : [tryDart(10), tryDart(11), tryDart(12)];
     case "side": return randomHit(accuracy) ? [dart(20), dart(1), dart(18)] : [tryDart(6), tryDart(10), tryDart(15)];
     case "colors_3": return randomHit(accuracy) ? [dart(25), dart(20, 2), dart(19)] : [tryDart(20), tryDart(5), miss()];
+    case "peluche": return randomHit(accuracy) ? [dart(7), dart(6), dart(6)] : [tryDart(5), tryDart(5), tryDart(5)];
     default: return [miss(), miss(), miss()];
   }
 }

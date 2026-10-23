@@ -32,6 +32,14 @@ type KeypadExtraMainButton = {
   ariaLabel?: string;
 };
 
+type KeypadColorButton = {
+  color: string;
+  onClick: () => void;
+  active?: boolean;
+  title?: string;
+  ariaLabel?: string;
+};
+
 type KeypadSecondaryAction = {
   icon: React.ReactNode;
   onClick: () => void;
@@ -89,6 +97,10 @@ type Props = {
 
   /** Boutons principaux supplémentaires (ex: GROS / PETIT). */
   extraMainButtons?: KeypadExtraMainButton[] | null;
+  /** Rangée de couleurs contextuelle, sans libellé visible (ex: BSS KING). */
+  colorButtons?: KeypadColorButton[] | null;
+  /** Si true, DOUBLE/TRIPLE restent sélectionnés jusqu'à la prochaine valeur. */
+  latchMultiplier?: boolean;
 
   /** Sélecteur optionnel des deux zones simples physiques (ex: PRISONER). */
   singleRingSelector?: KeypadSingleRingSelector | null;
@@ -343,6 +355,8 @@ export default function Keypad({
   centerSlot = null,
   auxAction = null,
   extraMainButtons = null,
+  colorButtons = null,
+  latchMultiplier = false,
   singleRingSelector = null,
   secondaryAction = null,
   footerAction = null,
@@ -369,6 +383,7 @@ export default function Keypad({
   }, []);
 
   const extraButtons = Array.isArray(extraMainButtons) ? extraMainButtons.filter(Boolean).slice(0, 2) : [];
+  const colorRowButtons = Array.isArray(colorButtons) ? colorButtons.filter(Boolean).slice(0, 4) : [];
   const usePtit1ActionRows = layoutVariant === "ptit1" && extraButtons.length >= 2 && !!secondaryAction && !!auxAction;
   const useExtendedMainRow = extraButtons.length > 0;
 
@@ -539,7 +554,7 @@ export default function Keypad({
               style={{ ...btnDouble, borderColor: multiplier === 2 ? "#9bd7ff" : "rgba(255,255,255,.08)" }}
               aria-pressed={multiplier === 2}
               onClick={onDouble}
-              onMouseUp={onSimple}
+              onMouseUp={latchMultiplier ? undefined : onSimple}
               title="Double"
             >
               DOUBLE
@@ -549,7 +564,7 @@ export default function Keypad({
               style={{ ...btnTriple, borderColor: multiplier === 3 ? "#ffd0ff" : "rgba(255,255,255,.08)" }}
               aria-pressed={multiplier === 3}
               onClick={onTriple}
-              onMouseUp={onSimple}
+              onMouseUp={latchMultiplier ? undefined : onSimple}
               title="Triple"
             >
               TRIPLE
@@ -655,7 +670,7 @@ export default function Keypad({
               }}
               aria-pressed={multiplier === 2}
               onClick={onDouble}
-              onMouseUp={onSimple}
+              onMouseUp={latchMultiplier ? undefined : onSimple}
               title="Double"
             >
               DOUBLE
@@ -669,7 +684,7 @@ export default function Keypad({
               }}
               aria-pressed={multiplier === 3}
               onClick={onTriple}
-              onMouseUp={onSimple}
+              onMouseUp={latchMultiplier ? undefined : onSimple}
               title="Triple"
             >
               TRIPLE
@@ -772,7 +787,7 @@ export default function Keypad({
             }}
             aria-pressed={multiplier === 2}
             onClick={onDouble}
-            onMouseUp={onSimple}
+            onMouseUp={latchMultiplier ? undefined : onSimple}
             title="Double"
           >
             DOUBLE
@@ -787,7 +802,7 @@ export default function Keypad({
             }}
             aria-pressed={multiplier === 3}
             onClick={onTriple}
-            onMouseUp={onSimple}
+            onMouseUp={latchMultiplier ? undefined : onSimple}
             title="Triple"
           >
             TRIPLE
@@ -859,6 +874,14 @@ export default function Keypad({
       {noticeSlot ? <div style={{ marginBottom: 8 }}>{noticeSlot}</div> : null}
 
       {/* Grille chiffres statique : mémoïsée pour rester instantanée sur mobile. */}
+      {colorRowButtons.length ? (
+        <div data-mss-keypad-color-row="1" style={{ display: "grid", gridTemplateColumns: `repeat(${colorRowButtons.length}, minmax(0, 1fr))`, gap: 8, marginBottom: 8 }}>
+          {colorRowButtons.map((btn, idx) => (
+            <button key={idx} type="button" onClick={btn.onClick} aria-pressed={!!btn.active} title={btn.title || btn.ariaLabel || "Couleur"} aria-label={btn.ariaLabel || btn.title || "Couleur"} style={{ height: 34, borderRadius: 10, border: btn.active ? "2px solid #fff" : "1px solid rgba(255,255,255,.28)", background: btn.color, boxShadow: btn.active ? `0 0 0 2px ${btn.color}55, 0 0 18px ${btn.color}88` : "inset 0 0 0 1px rgba(0,0,0,.18)", transform: btn.active ? "translateY(-1px)" : "none", cursor: "pointer" }} />
+          ))}
+        </div>
+      ) : null}
+
       <KeypadNumberGrid onNumber={handleNumber} disableSegmentNumbers={disableSegmentNumbers} highlightSegmentNumbers={highlightSegmentNumbers} highlightColor={guideColor} />
 
       {/* BULL + (TOTAL ou SLOT) CENTRÉ + VALIDER */}

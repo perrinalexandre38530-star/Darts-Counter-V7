@@ -962,7 +962,7 @@ export default function NewDartsModeConfig(props: Props) {
 
     <div style={{ ...panel, marginTop: 10 }}>
       <OptionRow label="Écussons avant le trône"><OptionSelect value={bssBadgesToThrone} options={[{ value: 3, label: "3 — partie rapide" }, { value: 5, label: "5 — classique" }, { value: 7, label: "7 — grande soirée" }]} onChange={(v: any) => setBssBadgesToThrone(Number(v) === 3 ? 3 : Number(v) === 7 ? 7 : 5)} /></OptionRow>
-      <OptionRow label="Défis BSS / chaos"><OptionToggle value={bssChaosEnabled} onChange={setBssChaosEnabled} /></OptionRow>
+      <OptionRow label="Défis BSS / chaos" hint="Les défis changent aléatoirement. Chaos ajoute couleurs, suites, scores plafond/exacts, pairs/impairs, triples pairs et DBULL rouge."><OptionToggle value={bssChaosEnabled} onChange={setBssChaosEnabled} /></OptionRow>
       <OptionRow label="Couronnement"><OptionSelect value={bssThroneFinish} options={[{ value: "bull", label: "BULL ou DBULL — recommandé" }, { value: "dbull", label: "DBULL uniquement — hardcore" }]} onChange={setBssThroneFinish} /></OptionRow>
     </div>
 
@@ -977,7 +977,7 @@ export default function NewDartsModeConfig(props: Props) {
       </div>
       <div style={{ padding: 10, borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)" }}>
         <div style={{ color: accent, fontSize: 10, fontWeight: 1000 }}>CONVERSIONS</div>
-        <div style={{ fontSize: 10.5, color: soft, lineHeight: 1.45, marginTop: 4 }}>Libre : S1 D2 T3 Bull2 DBull4 · Double : 3 pts par D · Triple : 4 pts par T · Bull : Bull2 DBull5.</div>
+        <div style={{ fontSize: 10.5, color: soft, lineHeight: 1.45, marginTop: 4 }}>Le barème change avec l’objectif : libre, secteur, D/T, Bull, pairs/impairs, couleurs, suites, plafond ou score exact. L’écran de jeu affiche toujours la règle active.</div>
       </div>
     </div>
   </section>;

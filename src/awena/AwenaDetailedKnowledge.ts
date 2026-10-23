@@ -618,6 +618,7 @@ const DEEP: Record<string, ModeDeepDetail> = {
       { title: "CAPITAL DE DÉPART", body: "Avant les contrats, chaque joueur lance 3 fléchettes pour constituer son **Capital**, c’est-à-dire son score de départ." },
       { title: "UN CONTRAT = UNE VOLÉE", body: "Chaque contrat se joue en une volée de 3 fléchettes. Si le contrat est réussi, le total valide de la volée est ajouté ; s’il est raté, le capital est divisé par deux, arrondi à l’entier inférieur." },
       { title: "15 CONTRATS OFFICIELS", body: "Capital, 20, Triple, 19, Double, 18, Side, 17, Suite, 16, Couleur, 15, 57, 14, Centre." },
+      { title: "CONTRAT PELUCHE", body: "En mode Custom, le contrat **Peluche** demande de jouer 3 fléchettes sans dépasser 20 points au total. Un total de 20 ou moins valide le contrat ; au-dessus de 20, il est raté." },
       { title: "VALIDATION", body: "Chaque contrat possède sa propre condition : numéro précis, multiplicateur, suite, couleur/zone ou centre. Seules les fléchettes qui respectent le contrat servent à sa réussite." },
       { title: "VICTOIRE", body: "En règle officielle, après le dernier contrat, le joueur ou l’équipe avec le Capital le plus élevé gagne." },
     ],

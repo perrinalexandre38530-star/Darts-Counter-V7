@@ -28,6 +28,20 @@ const SOFT = "#a9a1a5";
 const COLORS = ["#f0c76a", "#ff667a", "#65d7ff", "#7df2a7", "#bc8cff", "#ff9b54", "#f9ed69", "#6de4da", "#ff7dd1", "#9dc3ff"];
 const SHELL_BG = { backgroundImage: `linear-gradient(180deg, rgba(9,8,11,.82), rgba(9,8,11,.96)), url(${bssBg})`, backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat" } as const;
 
+type BssInputColor = "red" | "black" | "green" | "white";
+type BssInputArea = "big" | "small";
+const BSS_INPUT_COLORS: Array<{ id:BssInputColor; hex:string; label:string }> = [
+  { id:"red", hex:"#d52232", label:"Rouge" },
+  { id:"black", hex:"#111318", label:"Noir" },
+  { id:"green", hex:"#199b58", label:"Vert" },
+  { id:"white", hex:"#f2f1ea", label:"Blanc" },
+];
+function bssColorLabel(color:any){ return BSS_INPUT_COLORS.find(c=>c.id===String(color))?.label.toUpperCase() || String(color||"COULEUR").toUpperCase(); }
+function bssInputLabel(color:BssInputColor|null, area:BssInputArea|null, previous?:string){
+  const bits=["BSSMETA", color?`c=${color}`:"", area?`a=${area}`:""].filter(Boolean);
+  return bits.length>1?bits.join("|"):(previous||undefined);
+}
+
 function panel(extra: any = {}) {
   return {
     position: "relative",
@@ -61,6 +75,32 @@ function bssObjective(challenge: any, throneFinish: "bull" | "dbull") {
   if (challenge?.kind === "bull") return { goal: "VISE LE CENTRE", scoring: "Bull 25 = 2 points BSS · DBULL 50 = 5 points BSS. Tout le reste vaut 0." };
   if (challenge?.kind === "low") return { goal: "VISE LES SECTEURS 1 À 10", scoring: "Seuls 1 à 10 comptent : Simple = 1 · Double = 2 · Triple = 3 point(s) BSS." };
   if (challenge?.kind === "high") return { goal: "VISE LES SECTEURS 11 À 20", scoring: "Seuls 11 à 20 comptent : Simple = 1 · Double = 2 · Triple = 3 point(s) BSS." };
+  if (challenge?.kind === "even") return { goal: "PAIRS UNIQUEMENT", scoring: "Seuls les secteurs pairs comptent : Simple = 1 · Double = 2 · Triple = 3 point(s) BSS." };
+  if (challenge?.kind === "odd") return { goal: "IMPAIRS UNIQUEMENT", scoring: "Seuls les secteurs impairs comptent : Simple = 1 · Double = 2 · Triple = 3 point(s) BSS." };
+  if (challenge?.kind === "triple_even") return { goal: "TRIPLES PAIRS", scoring: "Seuls les triples d’un secteur pair comptent. Chaque réussite vaut 5 points BSS." };
+  if (challenge?.kind === "dbull") return { goal: "BULLE ROUGE", scoring: "Seul le DBULL 50 compte. Chaque DBULL vaut 6 points BSS." };
+  if (challenge?.kind === "color") return { goal: `COULEUR ${bssColorLabel(challenge.targetColor)}`, scoring: `Seules les zones ${bssColorLabel(challenge.targetColor)} comptent · Simple=1 · Double=2 · Triple=3.` };
+  if (challenge?.kind === "big_single") return { goal: "GROS SIMPLE", scoring: "Seuls les GROS simples comptent · 2 points BSS par touche." };
+  if (challenge?.kind === "small_single") return { goal: "PETIT SIMPLE", scoring: "Seuls les PETITS simples comptent · 2 points BSS par touche." };
+  if (challenge?.kind === "color_area") return { goal: `${bssColorLabel(challenge.targetColor)} + ${challenge.targetArea === "small" ? "PETIT" : "GROS"}`, scoring: `Sélectionne ${bssColorLabel(challenge.targetColor)} + ${challenge.targetArea === "small" ? "PETIT" : "GROS"} puis la valeur du secteur · 3 points BSS par touche conforme.` };
+  if (challenge?.kind === "sequence") return { goal: `SUITE ${challenge.sequenceStart}-${Number(challenge.sequenceStart || 1) + 1}-${Number(challenge.sequenceStart || 1) + 2}`, scoring: `Touche les trois secteurs ${challenge.sequenceStart}, ${Number(challenge.sequenceStart || 1) + 1} et ${Number(challenge.sequenceStart || 1) + 2}, dans n’importe quel ordre. Suite complète = 8 points BSS.` };
+  if (challenge?.kind === "max_score") return { goal: `MAX ${challenge.maxScore}`, scoring: `Fais le plus gros score possible sur 3 fléchettes sans dépasser ${challenge.maxScore}. Si tu dépasses : 0 point BSS.` };
+  if (challenge?.kind === "exact_score") return { goal: `EXACT ${challenge.exactScore}`, scoring: `Réalise exactement ${challenge.exactScore} points avec ta volée. Réussite = 8 points BSS, sinon 0.` };
+  if (challenge?.kind === "no_miss") return { goal: "SANS FAUTE", scoring: "Les 3 fléchettes doivent toucher la cible. Un seul MISS annule toute la volée. Si les 3 touchent, Simple = 1 · Double = 2 · Triple = 3 · Bull = 2 · DBULL = 4." };
+  if (challenge?.kind === "same_number") return { goal: "TRIPLÉ DE SECTEUR", scoring: "Touche 3 fois le même numéro avec tes 3 fléchettes. Les multiplicateurs sont libres. Réussite = 10 points BSS." };
+  if (challenge?.kind === "three_different") return { goal: "3 SECTEURS DIFFÉRENTS", scoring: "Tes 3 fléchettes doivent toucher 3 numéros différents. Réussite = 8 points BSS." };
+  if (challenge?.kind === "one_each_bed") return { goal: "SIMPLE + DOUBLE + TRIPLE", scoring: "Dans la même volée, touche au moins un Simple, un Double et un Triple, peu importe les numéros. Réussite = 10 points BSS." };
+  if (challenge?.kind === "sdt_target") return { goal: `S-D-T DU ${challenge.target}`, scoring: `Touche le Simple ${challenge.target}, le Double ${challenge.target} et le Triple ${challenge.target} dans n’importe quel ordre. Réussite = 12 points BSS.` };
+  if (challenge?.kind === "ascending") return { goal: "MONTÉE", scoring: "Les numéros touchés doivent être strictement croissants dans l’ordre des 3 fléchettes. Exemple : 5 → 12 → 20. Réussite = 9 points BSS." };
+  if (challenge?.kind === "descending") return { goal: "DESCENTE", scoring: "Les numéros touchés doivent être strictement décroissants dans l’ordre des 3 fléchettes. Exemple : 20 → 12 → 5. Réussite = 9 points BSS." };
+  if (challenge?.kind === "neighbors") return { goal: `VOISINS DU ${challenge.target}`, scoring: `Touche le ${challenge.target} et ses deux voisins physiques sur la cible, dans n’importe quel ordre. Réussite = 10 points BSS.` };
+  if (challenge?.kind === "bull_sandwich") return { goal: "SANDWICH BULL", scoring: "1re fléchette : Bull. 2e : libre mais doit toucher. 3e : Bull. Réussite = 11 points BSS." };
+  if (challenge?.kind === "mirror") return { goal: "MIROIR", scoring: "La 1re et la 3e fléchette doivent toucher le même numéro. La 2e est libre mais doit toucher. Réussite = 9 points BSS." };
+  if (challenge?.kind === "avoid_target") return { goal: `INTERDIT ${challenge.target}`, scoring: `Marque librement, mais si une seule fléchette touche le secteur ${challenge.target}, toute la volée vaut 0.` };
+  if (challenge?.kind === "three_colors") return { goal: "3 COULEURS", scoring: "Touche 3 couleurs différentes de la cible dans la même volée. Réussite = 9 points BSS." };
+  if (challenge?.kind === "bull_double") return { goal: "BULL + DOUBLE", scoring: "Touche au moins un Bull et au moins un Double dans la même volée. Réussite = 10 points BSS." };
+  if (challenge?.kind === "min_score") return { goal: `MINIMUM ${challenge.minScore}`, scoring: `Fais au moins ${challenge.minScore} points réels avec tes 3 fléchettes. Réussite = 8 points BSS.` };
+  if (challenge?.kind === "double_target") return { goal: `2 TOUCHES SUR ${challenge.target}`, scoring: `Touche au moins 2 fois le secteur ${challenge.target} avec tes 3 fléchettes. Réussite = 8 points BSS.` };
   return { goal: "FAIS LE PLUS DE POINTS POSSIBLE", scoring: "Tournée libre : Simple = 1 · Double = 2 · Triple = 3 · Bull 25 = 2 · DBULL 50 = 4 points BSS." };
 }
 function bssObjectiveCompact(challenge: any, throneFinish: "bull" | "dbull") {
@@ -71,6 +111,32 @@ function bssObjectiveCompact(challenge: any, throneFinish: "bull" | "dbull") {
   if (challenge?.kind === "bull") return "CENTRE";
   if (challenge?.kind === "low") return "SECTEURS 1-10";
   if (challenge?.kind === "high") return "SECTEURS 11-20";
+  if (challenge?.kind === "even") return "PAIRS";
+  if (challenge?.kind === "odd") return "IMPAIRS";
+  if (challenge?.kind === "triple_even") return "TRIPLES PAIRS";
+  if (challenge?.kind === "dbull") return "DBULL ROUGE";
+  if (challenge?.kind === "color") return `COULEUR ${bssColorLabel(challenge.targetColor)}`;
+  if (challenge?.kind === "big_single") return "GROS SIMPLE";
+  if (challenge?.kind === "small_single") return "PETIT SIMPLE";
+  if (challenge?.kind === "color_area") return `${bssColorLabel(challenge.targetColor)} + ${challenge.targetArea === "small" ? "PETIT" : "GROS"}`;
+  if (challenge?.kind === "sequence") return `SUITE ${challenge.sequenceStart}-${Number(challenge.sequenceStart || 1) + 1}-${Number(challenge.sequenceStart || 1) + 2}`;
+  if (challenge?.kind === "max_score") return `MAX ${challenge.maxScore}`;
+  if (challenge?.kind === "exact_score") return `EXACT ${challenge.exactScore}`;
+  if (challenge?.kind === "no_miss") return "SANS FAUTE";
+  if (challenge?.kind === "same_number") return "TRIPLÉ";
+  if (challenge?.kind === "three_different") return "3 DIFFÉRENTS";
+  if (challenge?.kind === "one_each_bed") return "S + D + T";
+  if (challenge?.kind === "sdt_target") return `S-D-T ${challenge.target}`;
+  if (challenge?.kind === "ascending") return "MONTÉE";
+  if (challenge?.kind === "descending") return "DESCENTE";
+  if (challenge?.kind === "neighbors") return `VOISINS ${challenge.target}`;
+  if (challenge?.kind === "bull_sandwich") return "BULL / ? / BULL";
+  if (challenge?.kind === "mirror") return "MIROIR";
+  if (challenge?.kind === "avoid_target") return `INTERDIT ${challenge.target}`;
+  if (challenge?.kind === "three_colors") return "3 COULEURS";
+  if (challenge?.kind === "bull_double") return "BULL + DOUBLE";
+  if (challenge?.kind === "min_score") return `MIN ${challenge.minScore}`;
+  if (challenge?.kind === "double_target") return `2× ${challenge.target}`;
   return "BEST SCORE";
 }
 
@@ -86,6 +152,32 @@ function getPointsHelp(challenge: any, throneFinish: "bull" | "dbull") {
   if (challenge?.kind === "bull") rows.push("Défi Bull : Bull 25 = 2 points BSS · DBULL 50 = 5 points BSS.");
   if (challenge?.kind === "low") rows.push("Défi 1 à 10 : seuls les secteurs 1 à 10 comptent · S=1 · D=2 · T=3.");
   if (challenge?.kind === "high") rows.push("Défi 11 à 20 : seuls les secteurs 11 à 20 comptent · S=1 · D=2 · T=3.");
+  if (challenge?.kind === "even") rows.push("Défi pairs : seuls les numéros pairs comptent · S=1 · D=2 · T=3.");
+  if (challenge?.kind === "odd") rows.push("Défi impairs : seuls les numéros impairs comptent · S=1 · D=2 · T=3.");
+  if (challenge?.kind === "triple_even") rows.push("Défi triples pairs : un triple sur un secteur pair vaut 5 points BSS.");
+  if (challenge?.kind === "dbull") rows.push("Défi bulle rouge : seul le DBULL 50 compte · 6 points BSS par DBULL.");
+  if (challenge?.kind === "color") rows.push(`Défi couleur ${bssColorLabel(challenge.targetColor)} : la couleur se sélectionne puis la valeur du secteur est saisie. Simple=1 · Double=2 · Triple=3.`);
+  if (challenge?.kind === "big_single") rows.push("Défi GROS SIMPLE : sélectionne GROS puis la valeur du secteur. Chaque bon gros simple vaut 2 points BSS.");
+  if (challenge?.kind === "small_single") rows.push("Défi PETIT SIMPLE : sélectionne PETIT puis la valeur du secteur. Chaque bon petit simple vaut 2 points BSS.");
+  if (challenge?.kind === "color_area") rows.push(`Défi combiné : sélectionne ${bssColorLabel(challenge.targetColor)} + ${challenge.targetArea === "small" ? "PETIT" : "GROS"} puis la valeur. Chaque touche conforme vaut 3 points BSS.`);
+  if (challenge?.kind === "sequence") rows.push(`Défi suite : touche ${challenge.sequenceStart}, ${Number(challenge.sequenceStart || 1)+1} et ${Number(challenge.sequenceStart || 1)+2} sur la même volée · 8 points BSS.`);
+  if (challenge?.kind === "max_score") rows.push(`Défi plafond : score réel de la volée ≤ ${challenge.maxScore}. Plus tu t’approches du plafond sans le dépasser, mieux c’est. Dépassement = 0.`);
+  if (challenge?.kind === "exact_score") rows.push(`Défi exact : réalise exactement ${challenge.exactScore} points · 8 points BSS si réussi.`);
+  if (challenge?.kind === "no_miss") rows.push("Défi sans faute : les 3 fléchettes doivent toucher la cible. Un MISS annule toute la volée.");
+  if (challenge?.kind === "same_number") rows.push("Défi triplé : 3 touches sur le même numéro = 10 points BSS.");
+  if (challenge?.kind === "three_different") rows.push("Défi variété : 3 numéros différents = 8 points BSS.");
+  if (challenge?.kind === "one_each_bed") rows.push("Défi S+D+T : au moins un Simple, un Double et un Triple dans la même volée = 10 points BSS.");
+  if (challenge?.kind === "sdt_target") rows.push(`Défi S-D-T : Simple, Double et Triple du ${challenge.target} = 12 points BSS.`);
+  if (challenge?.kind === "ascending") rows.push("Défi montée : les 3 numéros doivent être strictement croissants dans l’ordre des fléchettes = 9 points BSS.");
+  if (challenge?.kind === "descending") rows.push("Défi descente : les 3 numéros doivent être strictement décroissants dans l’ordre des fléchettes = 9 points BSS.");
+  if (challenge?.kind === "neighbors") rows.push(`Défi voisins : touche le ${challenge.target} et ses deux voisins physiques = 10 points BSS.`);
+  if (challenge?.kind === "bull_sandwich") rows.push("Défi sandwich Bull : Bull / touche libre / Bull = 11 points BSS.");
+  if (challenge?.kind === "mirror") rows.push("Défi miroir : la 1re et la 3e fléchette touchent le même numéro = 9 points BSS.");
+  if (challenge?.kind === "avoid_target") rows.push(`Défi interdit : toucher le ${challenge.target} annule toute la volée.`);
+  if (challenge?.kind === "three_colors") rows.push("Défi 3 couleurs : 3 couleurs différentes sur la cible = 9 points BSS.");
+  if (challenge?.kind === "bull_double") rows.push("Défi Bull + Double : au moins un Bull et un Double dans la même volée = 10 points BSS.");
+  if (challenge?.kind === "min_score") rows.push(`Défi minimum : fais au moins ${challenge.minScore} points réels = 8 points BSS.`);
+  if (challenge?.kind === "double_target") rows.push(`Défi double touche : touche au moins 2 fois le secteur ${challenge.target} = 8 points BSS.`);
   if (challenge?.kind === "throne") rows.push(throneFinish === "dbull" ? "Phase TRÔNE : les points ne comptent plus, il faut toucher le DBULL 50." : "Phase TRÔNE : les points ne comptent plus, il faut toucher Bull 25 ou DBULL 50.");
   rows.push("Les écussons, eux, ne se gagnent qu’en terminant seul meilleur score de la tournée.");
   return rows;
@@ -127,6 +219,8 @@ export default function BssKingPlay(props: any) {
   const [state, setState] = React.useState<BssState>(() => restored?.mode === "bss_king" ? cloneBssState(restored) : createBssState(players, config));
   const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>(() => Array.isArray(resumeRecord?.resume?.currentThrow) ? resumeRecord.resume.currentThrow.slice(0, 3) : []);
   const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
+  const [selectedColor, setSelectedColor] = React.useState<BssInputColor | null>(null);
+  const [selectedArea, setSelectedArea] = React.useState<BssInputArea | null>(null);
   const [notice, setNotice] = React.useState("");
   const [overlay, setOverlay] = React.useState<null | "rules" | "points" | "ranking" | "journal" | "objective">(null);
   const [overlayTab, setOverlayTab] = React.useState("main");
@@ -154,6 +248,10 @@ export default function BssKingPlay(props: any) {
     : `${badgesRemaining} écusson${badgesRemaining > 1 ? "s" : ""} avant le TRÔNE · meilleur score de la tournée = 1 écusson.`;
   const currentThrowSummary = currentThrow.length ? currentThrow.map((d: any) => scoreLabel(uiToGameDart(d))).join(" · ") : (throneMode ? "👑 Tente le Trône" : "🎯 Jusqu’à 3 fléchettes");
   const currentGameDarts = React.useMemo(() => currentThrow.map(uiToGameDart), [currentThrow]);
+  const decorateBssInputDart = React.useCallback((d:any) => ({ ...d, label: bssInputLabel(selectedColor, selectedArea, d?.label) }), [selectedColor, selectedArea]);
+  const resetBssInputSelectors = React.useCallback(() => { setMultiplier(1); setSelectedColor(null); setSelectedArea(null); }, []);
+  const selectBssArea = React.useCallback((area:BssInputArea) => { setSelectedArea(v => v===area ? null : area); setMultiplier(1); }, []);
+  const selectBssMultiplier = React.useCallback((value:1|2|3) => { setSelectedArea(null); setMultiplier(value); }, []);
   const liveVisitScore = React.useMemo(() => currentGameDarts.reduce((sum: number, d: any) => {
     if (!d || d.bed === "MISS") return sum;
     if (d.bed === "IB") return sum + 50;
@@ -212,9 +310,9 @@ export default function BssKingPlay(props: any) {
     const last = next.visits[next.visits.length - 1];
     setState(next);
     setCurrentThrow([]);
-    setMultiplier(1);
+    resetBssInputSelectors();
     setNotice(last?.events?.[0] || "");
-  }, [active, activeIsBot, currentThrow, state]);
+  }, [active, activeIsBot, currentThrow, state, resetBssInputSelectors]);
 
   const doUndo = React.useCallback(() => {
     if (currentThrow.length) { setCurrentThrow(v => v.slice(0, -1)); return; }
@@ -346,8 +444,41 @@ export default function BssKingPlay(props: any) {
               {overlayTab === "main" ? <div className="bss-objective-detail"><span>OBJECTIF ACTUEL · TOURNÉE {state.round}</span><h2>{objective.goal}</h2><p>{objective.scoring}</p><div className="bss-objective-callout">{winReminder}</div></div> : null}
               {overlayTab === "scale" ? <div className="bss-list-cards">{pointsHelp.map((line:string,i:number)=><div key={i}><b>{i===0?"POINTS BSS":i===1?"À QUOI SERVENT-ILS ?":`RÈGLE ${i-1}`}</b><span>{line}</span></div>)}</div> : null}
               {overlayTab === "all" ? <div className="bss-objective-grid">{[
-                {kind:"open",title:"TOURNÉE LIBRE"},{kind:"target",target:20,title:"SECTEUR IMPOSÉ"},{kind:"double",title:"DOUBLES"},{kind:"triple",title:"TRIPLES"},{kind:"bull",title:"CENTRE"},{kind:"low",title:"1 À 10"},{kind:"high",title:"11 À 20"},{kind:"throne",title:"TRÔNE"}
-              ].map((c:any)=>{const d=bssObjective(c,config.rules.throneFinish);return <div key={c.kind}><small>{c.title}</small><b>{d.goal}</b><p>{d.scoring}</p></div>})}</div> : null}
+                {kind:"open",title:"TOURNÉE LIBRE"},
+                {kind:"target",target:20,title:"SECTEUR IMPOSÉ"},
+                {kind:"double",title:"DOUBLES"},
+                {kind:"triple",title:"TRIPLES"},
+                {kind:"bull",title:"CENTRE"},
+                {kind:"low",title:"1 À 10"},
+                {kind:"high",title:"11 À 20"},
+                {kind:"even",title:"PAIRS"},
+                {kind:"odd",title:"IMPAIRS"},
+                {kind:"triple_even",title:"TRIPLES PAIRS"},
+                {kind:"dbull",title:"BULLE ROUGE"},
+                {kind:"color",targetColor:"red",title:"COULEUR"},
+                {kind:"big_single",targetArea:"big",title:"GROS SIMPLE"},
+                {kind:"small_single",targetArea:"small",title:"PETIT SIMPLE"},
+                {kind:"color_area",targetColor:"black",targetArea:"big",title:"NOIR + GROS"},
+                {kind:"sequence",sequenceStart:7,title:"SUITE"},
+                {kind:"max_score",maxScore:20,title:"PLAFOND"},
+                {kind:"exact_score",exactScore:42,title:"SCORE EXACT"},
+                {kind:"no_miss",title:"SANS FAUTE"},
+                {kind:"same_number",title:"TRIPLÉ DE SECTEUR"},
+                {kind:"three_different",title:"3 DIFFÉRENTS"},
+                {kind:"one_each_bed",title:"SIMPLE + DOUBLE + TRIPLE"},
+                {kind:"sdt_target",target:20,title:"S-D-T CIBLÉ"},
+                {kind:"ascending",title:"MONTÉE"},
+                {kind:"descending",title:"DESCENTE"},
+                {kind:"neighbors",target:20,title:"VOISINS"},
+                {kind:"bull_sandwich",title:"SANDWICH BULL"},
+                {kind:"mirror",title:"MIROIR"},
+                {kind:"avoid_target",target:20,title:"SECTEUR INTERDIT"},
+                {kind:"three_colors",title:"3 COULEURS"},
+                {kind:"bull_double",title:"BULL + DOUBLE"},
+                {kind:"min_score",minScore:60,title:"SCORE MINIMUM"},
+                {kind:"double_target",target:20,title:"DOUBLE TOUCHE"},
+                {kind:"throne",title:"TRÔNE"}
+              ].map((c:any,idx:number)=>{const d=bssObjective(c,config.rules.throneFinish);return <div key={`${c.kind}-${idx}`}><small>{c.title}</small><b>{d.goal}</b><p>{d.scoring}</p></div>})}</div> : null}
               {overlayTab === "win" ? <div className="bss-win-steps">{[
                 ["1","JOUE LA TOURNÉE","Tous les joueurs tentent le même objectif avec jusqu’à 3 fléchettes."],
                 ["2","GAGNE L’ÉCUSSON","Le seul meilleur score de la tournée gagne 1 écusson BSS."],
@@ -428,15 +559,23 @@ export default function BssKingPlay(props: any) {
             currentThrow={currentThrow}
             setCurrentThrow={setCurrentThrow}
             multiplier={multiplier}
-            setMultiplier={setMultiplier}
+            setMultiplier={selectBssMultiplier}
             onValidate={validate}
-            onCancel={() => { setCurrentThrow([]); setMultiplier(1); }}
+            onCancel={() => { setCurrentThrow([]); resetBssInputSelectors(); }}
+            dartDecorator={decorateBssInputDart}
+            onDartCommitted={resetBssInputSelectors}
+            keypadExtraMainButtons={[
+              { label: "GROS", onClick: () => selectBssArea("big"), active: selectedArea === "big", tone: "orange", title: "Gros simple" },
+              { label: "PETIT", onClick: () => selectBssArea("small"), active: selectedArea === "small", tone: "yellow", title: "Petit simple" },
+            ]}
+            keypadColorButtons={BSS_INPUT_COLORS.map(c => ({ color:c.hex, onClick:() => setSelectedColor(v => v===c.id ? null : c.id), active:selectedColor===c.id, title:c.label, ariaLabel:`Couleur ${c.label}` }))}
+            keypadLatchMultiplier
             preferredMethod={config.scoreInputMethod}
             minDartsToValidate={1}
             validateLabel={throneMode ? "TRÔNE" : "VALIDER"}
             accent={activeColor}
             fitMinScale={0.52}
-            centerSlot={<div className="bss-keypad-live"><b>{liveVisitScore}</b><div className="bss-keypad-bss"><span>+{liveBssPoints}</span></div></div>}
+            centerSlot={<div className="bss-keypad-live"><b>{liveVisitScore}</b><div className="bss-keypad-bss"><span>+{liveBssPoints}</span></div>{(selectedColor||selectedArea)?<small>{[selectedColor?BSS_INPUT_COLORS.find(c=>c.id===selectedColor)?.label:null,selectedArea==="big"?"GROS":selectedArea==="small"?"PETIT":null].filter(Boolean).join(" · ")}</small>:null}</div>}
           /> : <div className="bss-bot-panel"><ProfileAvatar profile={activeProfile} size={88} showStars={false} ringColor={activeColor}/><b>{active?.name}</b><span>Le BOT BSS prépare sa tournée…</span></div>}
         </div>
       </div>
@@ -464,7 +603,7 @@ export default function BssKingPlay(props: any) {
       .bss-score-metrics{width:100%;display:grid;grid-template-columns:minmax(0,1.12fr) 80px 88px;gap:8px;align-items:flex-end;margin-top:8px}.bss-metric-item{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:5px;min-width:0}.bss-metric-item>span{font-size:6.1px;font-weight:1100;letter-spacing:.48px;color:#9a95a0;text-transform:uppercase;line-height:1.1;text-align:center}.bss-live-score{width:100%;height:86px;border-radius:14px;border:1px solid color-mix(in srgb,var(--bss-accent) 32%,rgba(255,255,255,.07));background:rgba(0,0,0,.28);display:flex;align-items:center;justify-content:center}.bss-live-score b{color:var(--bss-accent);font-size:clamp(40px,5.8vw,60px);line-height:.82;font-weight:1200;text-shadow:0 0 22px color-mix(in srgb,var(--bss-accent) 34%,transparent)}.bss-shape-metric{position:relative;width:100%;height:86px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:6px 12px 8px;border:0;background-color:transparent;background-position:center;background-repeat:no-repeat;background-size:contain;filter:drop-shadow(0 6px 12px rgba(0,0,0,.36));text-align:center;overflow:visible}.bss-shape-metric.is-shield{background-image:url(${bssEcussonBlock});color:${GOLD}}.bss-shape-metric.is-pack{background-image:url(${bssPtsBssBlock});color:#ff9f1c}.bss-shape-metric b{max-width:100%;font-size:17px;line-height:.94;font-weight:1200;color:currentColor;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 5px rgba(0,0,0,.9)}
       .bss-objective-card{position:relative;overflow:hidden;min-width:0;height:100%;border-radius:14px;border:1px solid color-mix(in srgb,var(--bss-accent) 42%,rgba(255,255,255,.08));background-image:linear-gradient(180deg,rgba(18,8,10,.78),rgba(8,9,11,.82)),url(${bssThrone});background-repeat:no-repeat,no-repeat;background-position:center,center 70%;background-size:cover,78% auto;color:#fff;padding:10px 8px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;cursor:pointer;box-shadow:inset 0 0 30px rgba(0,0,0,.25)}.bss-objective-card small{margin-top:0;color:${RED};font-size:7px;font-weight:1200;letter-spacing:.9px}.bss-objective-card>b{margin-top:6px;font-size:clamp(12px,1.45vw,18px);line-height:1.02;font-weight:1250;letter-spacing:.4px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .bss-tool-row{flex:0 0 50px;display:flex;gap:6px;align-items:center;justify-content:center;padding:3px 5px;border-radius:14px;border:1px solid rgba(255,255,255,.07);background:linear-gradient(180deg,rgba(16,15,19,.92),rgba(7,8,11,.96))}.bss-tool-icon{width:44px;height:44px;border-radius:13px;border:1px solid rgba(255,255,255,.09);background:linear-gradient(180deg,rgba(21,22,28,.98),rgba(6,8,12,.98));color:#cfd5df;display:grid;place-items:center;cursor:pointer;box-shadow:inset 0 0 0 1px rgba(255,255,255,.015)}.bss-tool-icon.is-active,.bss-tool-icon:hover{color:var(--tool-accent);border-color:color-mix(in srgb,var(--tool-accent) 55%,rgba(255,255,255,.08));box-shadow:0 0 15px color-mix(in srgb,var(--tool-accent) 18%,transparent)}
-      .bss-input-column>[data-mss-play-input="1"]{height:100%!important}.bss-keypad-live{min-width:74px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;line-height:1}.bss-keypad-live b{color:#fff;font-size:24px;font-weight:1250;line-height:.9}.bss-keypad-bss{width:52px;height:34px;display:grid;place-items:center;background-image:url(${bssPtsBssBlock});background-position:center;background-repeat:no-repeat;background-size:contain;filter:drop-shadow(0 4px 10px rgba(0,0,0,.35))}.bss-keypad-bss span{display:block;color:#ff9f1c;font-size:10px;font-weight:1200;text-shadow:0 1px 4px rgba(0,0,0,.85)}.bss-bot-panel{height:100%;min-height:0;border-radius:17px;border:1px solid color-mix(in srgb,var(--bss-accent) 38%,rgba(255,255,255,.08));background:linear-gradient(180deg,rgba(14,16,22,.97),rgba(5,7,10,.98));display:flex;flex-direction:column;align-items:center;justify-content:center}.bss-bot-panel>b{margin-top:9px;color:var(--bss-accent);font-size:20px}.bss-bot-panel>span{margin-top:5px;color:#969cac;font-size:10px}
+      .bss-input-column>[data-mss-play-input="1"]{height:100%!important}.bss-keypad-live{min-width:74px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;line-height:1}.bss-keypad-live b{color:#fff;font-size:24px;font-weight:1250;line-height:.9}.bss-keypad-bss{width:52px;height:34px;display:grid;place-items:center;background-image:url(${bssPtsBssBlock});background-position:center;background-repeat:no-repeat;background-size:contain;filter:drop-shadow(0 4px 10px rgba(0,0,0,.35))}.bss-keypad-bss span{display:block;color:#ff9f1c;font-size:10px;font-weight:1200;text-shadow:0 1px 4px rgba(0,0,0,.85)}.bss-keypad-live>small{color:#d7dbe4;font-size:6.6px;font-weight:1000;letter-spacing:.35px;white-space:nowrap}.bss-bot-panel{height:100%;min-height:0;border-radius:17px;border:1px solid color-mix(in srgb,var(--bss-accent) 38%,rgba(255,255,255,.08));background:linear-gradient(180deg,rgba(14,16,22,.97),rgba(5,7,10,.98));display:flex;flex-direction:column;align-items:center;justify-content:center}.bss-bot-panel>b{margin-top:9px;color:var(--bss-accent);font-size:20px}.bss-bot-panel>span{margin-top:5px;color:#969cac;font-size:10px}
       .bss-turn-toast{position:absolute;z-index:40;left:50%;top:8px;transform:translateX(-50%);width:min(520px,calc(100% - 18px));min-height:48px;border-radius:14px;border:1px solid color-mix(in srgb,var(--bss-accent) 45%,rgba(255,255,255,.08));background:rgba(8,9,12,.94);backdrop-filter:blur(10px);box-shadow:0 16px 42px rgba(0,0,0,.45);display:grid;grid-template-columns:32px minmax(0,1fr);align-items:center;gap:8px;padding:7px 11px;color:var(--bss-accent);animation:bssToastIn .2s ease-out}.bss-turn-toast div{min-width:0}.bss-turn-toast b{display:block;font-size:7px;letter-spacing:.8px}.bss-turn-toast span{display:block;margin-top:2px;color:#fff;font-size:9.6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}@keyframes bssToastIn{from{opacity:0;transform:translate(-50%,-8px)}to{opacity:1;transform:translate(-50%,0)}}
       .bss-modal-backdrop{position:fixed;z-index:10000;inset:0;background:rgba(0,0,0,.66);backdrop-filter:blur(5px);display:grid;place-items:center;padding:14px}.bss-modal{width:min(760px,100%);max-height:min(82dvh,760px);overflow:hidden;border-radius:19px;border:1px solid color-mix(in srgb,var(--bss-accent) 44%,rgba(255,255,255,.10));background:linear-gradient(180deg,rgba(21,18,22,.995),rgba(7,8,11,.995));box-shadow:0 26px 80px rgba(0,0,0,.65);display:flex;flex-direction:column}.bss-modal-head{flex:0 0 auto;display:grid;grid-template-columns:42px minmax(0,1fr) 38px;align-items:center;gap:9px;padding:11px 12px;border-bottom:1px solid rgba(255,255,255,.08)}.bss-modal-head-icon{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;color:var(--bss-accent);background:color-mix(in srgb,var(--bss-accent) 9%,rgba(0,0,0,.4));border:1px solid color-mix(in srgb,var(--bss-accent) 35%,transparent)}.bss-modal-head small{display:block;color:var(--bss-accent);font-size:7.5px;font-weight:1100;letter-spacing:.9px}.bss-modal-head h3{margin:2px 0 0;font-size:15px;line-height:1.1}.bss-modal-close{width:36px;height:36px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#fff;display:grid;place-items:center;cursor:pointer}.bss-modal-tabs{flex:0 0 auto;display:flex;gap:5px;padding:7px 9px;border-bottom:1px solid rgba(255,255,255,.06);overflow-x:auto;scrollbar-width:none}.bss-modal-tabs::-webkit-scrollbar{display:none}.bss-modal-tabs button{flex:0 0 auto;min-width:88px;height:32px;border-radius:10px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);color:#959ba8;font-size:7.6px;font-weight:1100;letter-spacing:.35px;cursor:pointer}.bss-modal-tabs button.is-active{color:var(--tab-accent);border-color:color-mix(in srgb,var(--tab-accent) 50%,transparent);background:color-mix(in srgb,var(--tab-accent) 9%,rgba(0,0,0,.35))}.bss-modal-body{min-height:0;overflow:auto;padding:11px 12px 14px}
       .bss-objective-detail{text-align:center;padding:9px}.bss-objective-detail>span{color:var(--bss-accent);font-size:8px;font-weight:1100;letter-spacing:.8px}.bss-objective-detail h2{margin:7px 0 0;font-size:clamp(22px,4vw,36px)}.bss-objective-detail p{max-width:620px;margin:8px auto 0;color:#b2adb5;font-size:11px;line-height:1.55}.bss-objective-callout{margin:12px auto 0;max-width:620px;border-radius:13px;border:1px solid rgba(240,199,106,.25);background:rgba(240,199,106,.07);padding:9px 10px;color:${GOLD};font-size:9.8px;font-weight:900}

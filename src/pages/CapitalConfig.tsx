@@ -55,7 +55,8 @@ export type CapitalContractID =
   | "n15"
   | "exact_57"
   | "n14"
-  | "center";
+  | "center"
+  | "peluche";
 
 export type CapitalConfigPayload = {
   // ✅ Participants (profils + bots)
@@ -253,6 +254,8 @@ function labelOf(id: CapitalContractID): string {
       return "14 (au moins un 14)";
     case "center":
       return "Centre (25 ou 50)";
+    case "peluche":
+      return "Peluche (≤ 20 sur 3 fléchettes • MISS interdit)";
     default:
       return String(id);
   }
@@ -475,6 +478,7 @@ export default function CapitalConfig(props: any) {
     "exact_57",
     "n14",
     "center",
+    "peluche",
   ]);
 
   const restoredPresetRef = React.useRef(Boolean(props?.params?.config));
@@ -672,6 +676,7 @@ export default function CapitalConfig(props: any) {
       "exact_57",
       "n14",
       "center",
+      "peluche",
     ];
     return pool.filter((id) => !used.has(id));
   }, [customList]);
