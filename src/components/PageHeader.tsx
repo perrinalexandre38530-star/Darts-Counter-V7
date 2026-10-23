@@ -17,6 +17,8 @@ export default function PageHeader(props: {
   tickerFit?: "cover" | "contain";
   /** Espace réservé sous le ticker pour éviter qu'un premier bloc ne vienne le toucher / passer dessous. */
   tickerBottomGap?: number;
+  /** Légère mise à l'échelle de l'image de ticker pour compenser les marges internes de certains assets. */
+  tickerImageScale?: number;
   /** Décalage top du header sticky. Utile avec le full-bleed qui compense le padding haut du container. */
   stickyTop?: number;
 }) {
@@ -31,6 +33,7 @@ export default function PageHeader(props: {
     tickerEdgeFade = "default",
     tickerFit = "cover",
     tickerBottomGap = 10,
+    tickerImageScale = 1,
     stickyTop = 0,
   } = props;
 
@@ -105,6 +108,8 @@ export default function PageHeader(props: {
               height: "100%",
               objectFit: resolvedTickerFit,
               objectPosition: "center",
+              transform: tickerImageScale !== 1 ? `scale(${tickerImageScale})` : undefined,
+              transformOrigin: "center",
             }}
           />
           <div
