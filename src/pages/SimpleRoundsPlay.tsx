@@ -329,6 +329,10 @@ export default function SimpleRoundsPlay(props: any) {
       objective: 0,
       humansCount: 1,
     };
+  const isQuickParty = variantId === "super_bull" && (
+    (cfg as any)?.quickParty === true ||
+    String((cfg as any)?.partyMode || (cfg as any)?.entryMode || "").toLowerCase() === "quick"
+  );
 
   const playerRows = useMemo(() => {
     const explicit = props?.params?.players ?? props?.players ?? (Array.isArray((cfg as any)?.players) ? (cfg as any).players : null);
@@ -444,7 +448,14 @@ export default function SimpleRoundsPlay(props: any) {
 function goBack() {
     if (props?.setTab) {
       // Retour logique vers la config du mode (plutôt que sortir du flow)
-      if (configTab && configTab !== "games") return props.setTab(configTab, { config: cfg });
+      if (configTab && configTab !== "games") return props.setTab(configTab, {
+        config: cfg,
+        ...(variantId === "super_bull" ? {
+          launchMode: isQuickParty ? "quick" : "arcade",
+          quickParty: isQuickParty,
+          partyMode: isQuickParty ? "quick" : "arcade",
+        } : {}),
+      });
       return props.setTab("games");
     }
     window.history.back();
@@ -580,6 +591,7 @@ function goBack() {
     setSuperBullFx(payload);
     if (superBullFxTimerRef.current) window.clearTimeout(superBullFxTimerRef.current);
     superBullFxTimerRef.current = window.setTimeout(() => setSuperBullFx(null), 980);
+    if (isQuickParty) return;
     try { void unlockAudio(); } catch {}
     try {
       if (kind === "bull50") {
@@ -735,6 +747,12 @@ function goBack() {
       id: String(p.id),
       name: botMask[i] && !String(p.name).includes("BOT") ? `${p.name} (BOT)` : p.name,
       avatarDataUrl: p.avatarDataUrl ?? null,
+      ...(variantId === "super_bull" ? {
+        temporaryPlayerId: isQuickParty ? String(p.id) : undefined,
+        isTemporary: isQuickParty,
+        profileId: isQuickParty || botMask[i] ? null : String(p.id),
+        isBot: !!botMask[i],
+      } : {}),
     }));
 
     const avg3ByPlayer: Record<string, number> = {};
@@ -759,6 +777,12 @@ function goBack() {
       matchId: id,
       kind: String(variantId || "simple_rounds"),
       status: "finished",
+      ...(variantId === "super_bull" ? {
+        quickParty: isQuickParty,
+        partyMode: isQuickParty ? "quick" : "arcade",
+        profileStatsDeferred: isQuickParty,
+        temporaryParticipants: isQuickParty,
+      } : {}),
       createdAt: now,
       updatedAt: now,
       players,
@@ -769,12 +793,22 @@ function goBack() {
         objective: cfg.objective,
         botsEnabled: !!cfg.botsEnabled,
         botLevel: cfg.botLevel,
+        ...(variantId === "super_bull" ? {
+          partyMode: isQuickParty ? "quick" : "arcade",
+          quickParty: isQuickParty,
+        } : {}),
       },
       summary: {
         legs: 1,
         winnerName: String(players[winner.idx]?.name ?? ""),
         durationMs: Math.max(0, now - startedAtRef.current),
         finishReason: cfg.objective > 0 && (scores[winner.idx] || 0) >= cfg.objective ? "objective" : "rounds",
+        ...(variantId === "super_bull" ? {
+          quickParty: isQuickParty,
+          partyMode: isQuickParty ? "quick" : "arcade",
+          profileStatsDeferred: isQuickParty,
+          temporaryParticipants: isQuickParty,
+        } : {}),
         avg3ByPlayer,
         darts: dartsMap,
         bestVisitByPlayer: bestVisitMap,
@@ -813,6 +847,13 @@ function goBack() {
         variantId,
         mode: variantId,
         sport: "darts",
+        ...(variantId === "super_bull" ? {
+          quickParty: isQuickParty,
+          partyMode: isQuickParty ? "quick" : "arcade",
+          profileStatsDeferred: isQuickParty,
+          temporaryParticipants: isQuickParty,
+          quickPlayers: isQuickParty ? players : undefined,
+        } : {}),
         config: cfg,
         scores,
         startedAt: startedAtRef.current,
@@ -854,6 +895,7 @@ function goBack() {
     t,
     playerRows,
     playerCount,
+    isQuickParty,
   ]);
 
   if (!spec) {

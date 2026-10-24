@@ -34,6 +34,9 @@ import tickerTrainingFr from "../assets/tickers/ticker_menu_training_fr.png";
 import tickerTrainingEn from "../assets/tickers/ticker_menu_training_en.png";
 import { dartsGameRegistry } from "../games/dartsGameRegistry";
 import { devClickable, devVisuallyDisabled } from "../lib/devGate";
+import { getTrainingDetailedSessions } from "../training/stats/trainingStatsHub";
+import { buildTrainingDiagnosis, chooseRecommendedFamily } from "../training/coach/trainingDiagnosis";
+import { TRAINING_FAMILY_META } from "../training/catalog/trainingExerciseCatalog";
 
 type Tab =
   | "games"
@@ -190,6 +193,23 @@ export default function TrainingMenu({ go }: Props) {
     } catch {}
   }, []);
   const [infoMode, setInfoMode] = React.useState<ModeDef | null>(null);
+  const [trainingRevision, setTrainingRevision] = React.useState(0);
+
+  React.useEffect(() => {
+    const refresh = () => setTrainingRevision((value) => value + 1);
+    window.addEventListener("dc-training-stats-updated", refresh);
+    window.addEventListener("dc-training-history-updated", refresh);
+    return () => {
+      window.removeEventListener("dc-training-stats-updated", refresh);
+      window.removeEventListener("dc-training-history-updated", refresh);
+    };
+  }, []);
+
+  const trainingDiagnosis = React.useMemo(() => {
+    void trainingRevision;
+    return buildTrainingDiagnosis(getTrainingDetailedSessions({ limit: 250 }));
+  }, [trainingRevision]);
+  const recommendedFamily = React.useMemo(() => chooseRecommendedFamily(trainingDiagnosis), [trainingDiagnosis]);
 
   const PAGE_BG = theme.bg;
   const CARD_BG = theme.card;
@@ -301,6 +321,25 @@ export default function TrainingMenu({ go }: Props) {
       tickerSrc: findTickerSmart("training_doubleio"),
     };
 
+    const labCard: ModeDef = {
+      id: "lab",
+      titleKey: "training.menu.lab.title",
+      titleDefault: "Centre d’entraînement",
+      subtitleKey: "training.menu.lab.subtitle",
+      subtitleDefault: "Programme • Exercices • Diagnostic • Progression",
+      infoKey: "training.menu.lab.info",
+      infoDefault:
+        "Bibliothèque d’exercices pilotée par un moteur générique : scoring, doubles, checkout, précision, bull et régularité. Les résultats alimentent ton diagnostic et tes recommandations.",
+      tab: "training_mode",
+      params: { modeId: "training_lab" },
+      enabled: true,
+      badge: "NOUVEAU",
+      accentHex: "#27dcff",
+      accentBorder: "rgba(39,220,255,0.42)",
+      accentGlow: "rgba(39,220,255,0.6)",
+      tickerSrc: findTickerSmart("training_challenges"),
+    };
+
     const challengesCard: ModeDef = {
       id: "challenges",
       titleKey: "training.menu.challenges.title",
@@ -317,7 +356,7 @@ export default function TrainingMenu({ go }: Props) {
       tickerSrc: findTickerSmart("training_challenges"),
     };
 
-    return [evolution, x01, clock, doubleIOCard, challengesCard];
+    return [labCard, evolution, x01, clock, doubleIOCard, challengesCard];
   }, [t, regById]);
 
   const extraModes: ModeDef[] = React.useMemo(() => {
@@ -508,6 +547,34 @@ export default function TrainingMenu({ go }: Props) {
 </div>
 
       <PageAdBanner placement="games" slotKey="page-games-training-under-header" style={{ marginBottom: 14 }} />
+
+      <div
+        style={{
+          marginBottom: 14,
+          padding: 14,
+          borderRadius: 18,
+          border: "1px solid rgba(39,220,255,.24)",
+          background: "linear-gradient(135deg,rgba(39,220,255,.10),rgba(255,255,255,.025))",
+          boxShadow: "0 12px 30px rgba(0,0,0,.35)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 950, letterSpacing: 1.2, color: "#27dcff" }}>COACH TRAINING</div>
+            <div style={{ marginTop: 3, fontSize: 15, fontWeight: 950 }}>Programme recommandé : {TRAINING_FAMILY_META[recommendedFamily].label}</div>
+          </div>
+          <button type="button" onClick={() => navigate("training_mode", { modeId: "training_lab" })} style={{ border: "1px solid rgba(39,220,255,.55)", background: "rgba(39,220,255,.16)", color: theme.text, borderRadius: 999, padding: "8px 12px", fontSize: 10.5, fontWeight: 900, cursor: "pointer" }}>OUVRIR LE CENTRE</button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginTop: 11 }}>
+          {trainingDiagnosis.slice(0, 6).map((row) => (
+            <div key={row.family} style={{ padding: "8px 9px", borderRadius: 12, background: "rgba(0,0,0,.18)", border: row.family === recommendedFamily ? "1px solid rgba(39,220,255,.35)" : "1px solid rgba(255,255,255,.07)" }}>
+              <div style={{ fontSize: 9.5, fontWeight: 900, opacity: .78 }}>{row.label}</div>
+              <div style={{ marginTop: 3, fontSize: 12, fontWeight: 950 }}>{row.sessions ? `${Math.round(row.accuracyPct)}%` : "—"}</div>
+              <div style={{ fontSize: 8.5, opacity: .5 }}>{row.sessions} séance{row.sessions > 1 ? "s" : ""}</div>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* Pinned modes */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

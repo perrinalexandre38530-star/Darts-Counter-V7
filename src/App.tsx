@@ -6871,7 +6871,13 @@ case "babyfoot_team_edit":
         break;
 
       case "super_bull_config": {
-        const launchMode = String(routeParams?.launchMode || (routeParams?.quickParty ? "quick" : (routeParams?.config || routeParams?.resume || routeParams?.rec || routeParams?.mode === "super_bull" ? "arcade" : "")));
+        const superBullConfigMode = String(routeParams?.config?.partyMode || routeParams?.config?.entryMode || "").toLowerCase();
+        const launchMode = String(
+          routeParams?.launchMode ||
+          (routeParams?.quickParty === true || routeParams?.config?.quickParty === true || superBullConfigMode === "quick"
+            ? "quick"
+            : (routeParams?.config || routeParams?.resume || routeParams?.rec || routeParams?.mode === "super_bull" ? "arcade" : ""))
+        );
         if (launchMode === "quick") {
           page = <SuperBullConfig store={store} go={go} setTab={go} params={{ ...routeParams, launchMode: "quick" }} />;
         } else if (launchMode === "arcade") {

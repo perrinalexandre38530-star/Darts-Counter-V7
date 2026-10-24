@@ -144,6 +144,27 @@ export function RankingModal({ rows, onClose, title = "CLASSEMENT" }: any) {
   </ModalShell>;
 }
 
+
+export function PartyToolGlyph({ name }: { name: "players"|"mission"|"route"|"board"|"stats"|"ranking"|"log" }) {
+  const p = { fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+  const common = { width: 21, height: 21, viewBox: "0 0 24 24", "aria-hidden": true } as any;
+  if (name === "players") return <svg {...common}><circle {...p} cx="9" cy="8" r="3"/><circle {...p} cx="17" cy="9" r="2.3"/><path {...p} d="M3.5 20a5.5 5.5 0 0 1 11 0M14 15.5a4.5 4.5 0 0 1 6.5 4"/></svg>;
+  if (name === "mission") return <svg {...common}><circle {...p} cx="12" cy="12" r="8"/><circle {...p} cx="12" cy="12" r="4"/><path {...p} d="M12 2v3M22 12h-3M12 22v-3M2 12h3"/></svg>;
+  if (name === "route") return <svg {...common}><circle {...p} cx="6" cy="18" r="2"/><circle {...p} cx="18" cy="6" r="2"/><path {...p} d="M7.5 16.5c2.5-4 6-1 8.5-5.5"/></svg>;
+  if (name === "board") return <svg {...common}><path {...p} d="M4 20V7l8-4 8 4v13"/><path {...p} d="M8 20v-6h8v6M8 9h2M14 9h2"/></svg>;
+  if (name === "stats") return <svg {...common}><path {...p} d="M4 20V9M10 20V4M16 20v-7M22 20V7"/></svg>;
+  if (name === "ranking") return <svg {...common}><path {...p} d="M8 5h8v3a4 4 0 0 1-8 0V5ZM6 5H4v2a4 4 0 0 0 4 4M18 5h2v2a4 4 0 0 1-4 4M12 12v3M9 20h6M10 15h4"/></svg>;
+  return <svg {...common}><path {...p} d="M6 4h12v16H6zM9 8h6M9 12h6M9 16h4"/></svg>;
+}
+
+export function PartyCompactTools({ items }: any) {
+  return <div className="party-compact-tools" aria-label="Raccourcis de partie">{(items || []).map((item:any)=><button key={item.id || item.label} type="button" onClick={item.onClick} aria-label={item.label} title={item.label} style={{["--tool-color" as any]:item.color || "var(--mode-accent)"}}><span><PartyToolGlyph name={item.icon || item.id}/></span><b>{item.label}</b></button>)}</div>;
+}
+
+export function PartyInfoModal({ title, subtitle, onClose, children }: any) {
+  return <ModalShell title={title} subtitle={subtitle || "Informations détaillées"} onClose={onClose} className="party-info-modal"><div className="party-info-modal__body">{children}</div></ModalShell>;
+}
+
 export function QuickRow({ players, activeId, profileById, colorById, ticker, onPlayers, onStats, onLog, onRanking, onUndo, undoDisabled = false, undoTitle = "Annuler la dernière action" }: any) {
   return <div className={`party-mode__quick-row${onUndo ? " has-undo" : ""}`}>
     <button type="button" className="party-mode__quick-icon" onClick={onRanking} aria-label="Ouvrir le classement">🏆</button>

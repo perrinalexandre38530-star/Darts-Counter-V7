@@ -173,6 +173,11 @@ export default function SuperBullConfig(props: any) {
     rounds,
     objective,
     entryMode: "quick",
+    quickParty: true,
+    partyMode: "quick",
+    profileStatsDeferred: true,
+    temporaryParticipants: true,
+    audio: { arcadeEnabled: false, hitEnabled: false, voiceEnabled: false, sfxVolume: 0 },
   }), [players, botsEnabled, botLevel, humansCount, rounds, objective]);
 
   const arcadeCfg = React.useMemo(() => ({
@@ -191,6 +196,10 @@ export default function SuperBullConfig(props: any) {
     rounds,
     objective,
     entryMode: "arcade",
+    quickParty: false,
+    partyMode: "arcade",
+    profileStatsDeferred: false,
+    temporaryParticipants: false,
     botsPanelEnabled,
   }), [selectedArcadeItems, selectedIds, selectedBots.length, selectedHumans.length, botLevel, rounds, objective, botsPanelEnabled]);
 

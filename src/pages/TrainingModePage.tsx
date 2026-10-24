@@ -19,6 +19,7 @@ import GhostConfig from "../training/modes/ghost/GhostConfig";
 import RepeatMasterConfig from "../training/modes/repeat/RepeatMasterConfig";
 import ChallengesConfig from "../training/modes/challenges/ChallengesConfig";
 import EvolutionConfig from "../training/modes/evolution/EvolutionConfig";
+import TrainingLabConfig from "../training/modes/lab/TrainingLabConfig";
 
 import TimeAttackPlay from "../training/modes/timeattack/TimeAttackPlay";
 import DoubleInOutPlay from "../training/modes/double/DoubleInOutPlay";
@@ -28,6 +29,7 @@ import GhostModePlay from "../training/modes/ghost/GhostModePlay";
 import RepeatMasterPlay from "../training/modes/repeat/RepeatMasterPlay";
 import ChallengesPlay from "../training/modes/challenges/ChallengesPlay";
 import EvolutionPlay from "../training/modes/evolution/EvolutionPlay";
+import TrainingLabPlay from "../training/modes/lab/TrainingLabPlay";
 
 type Props = {
   modeId: string;
@@ -256,6 +258,7 @@ export default function TrainingModePage({ modeId, onExit, profiles }: Props) {
       case "training_challenges": return <ChallengesConfig {...configProps} />;
       case "training_super_bull": return <SuperBullConfig {...configProps} />;
       case "training_evolution": return <EvolutionConfig {...configProps} />;
+      case "training_lab": return <TrainingLabConfig {...configProps} />;
       default:
         return <div style={{ padding: 18 }}><button type="button" onClick={exitAndSync}>← Retour</button><p>Mode Training inconnu : {id}</p></div>;
     }
@@ -274,6 +277,7 @@ export default function TrainingModePage({ modeId, onExit, profiles }: Props) {
     case "training_challenges": return <ChallengesPlay key={`${config?.groupSessionId}-${participantIndex}`} {...playProps} />;
     case "training_super_bull": return <SuperBullPlay key={`${config?.groupSessionId}-${participantIndex}`} {...playProps} />;
     case "training_evolution": return <EvolutionPlay {...playProps} />;
+    case "training_lab": return <TrainingLabPlay key={`${config?.groupSessionId}-${participantIndex}`} {...playProps} />;
     default:
       return <div style={{ padding: 18 }}><button type="button" onClick={exitAndSync}>← Retour</button><p>Mode Training inconnu : {id}</p></div>;
   }

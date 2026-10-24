@@ -921,6 +921,14 @@ export default function Keypad({
                 e.preventDefault();
                 onBackspace?.();
               }}
+              title="Annuler (clic droit : supprimer la dernière entrée locale)"
+              aria-label="Annuler"
+            >
+              ANNULER
+            </button>
+          )}
+        </div>
+      )}
 
       {noticeSlot ? <div style={{ marginBottom: 8 }}>{noticeSlot}</div> : null}
 
