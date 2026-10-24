@@ -18,6 +18,7 @@ import {
 import { buildCoachProgram, buildCustomProgram, TRAINING_PROGRAMS, type TrainingProgramDefinition, type TrainingProgramBuildOptions } from "../../catalog/trainingProgramCatalog";
 import { loadTrainingLabPreferences, setTrainingFamilyGoal, setTrainingFamilyGoalDeadline, setTrainingWeeklySessionTarget, toggleFavoriteExercise, toggleFavoriteProgram, type TrainingLabPreferences } from "../../preferences/trainingLabPreferences";
 import { buildTrainingWeeklyPlanStats, loadTrainingProgramSessions } from "../../profile/trainingPlanTracker";
+import { buildTrainingLoadSummary } from "../../profile/trainingLoadCoach";
 
 const familyOrder: TrainingExerciseFamily[] = ["scoring", "doubles", "checkout", "precision", "bull", "regularity"];
 type HubTab = "program" | "exercises" | "diagnosis" | "progress";
@@ -56,6 +57,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
     return loadTrainingProgramSessions();
   }, [revision]);
   const weeklyPlan = React.useMemo(() => buildTrainingWeeklyPlanStats(programSessions, preferences.weeklySessionTarget), [programSessions, preferences.weeklySessionTarget]);
+  const loadSummary = React.useMemo(() => buildTrainingLoadSummary(programSessions, preferences.weeklySessionTarget), [programSessions, preferences.weeklySessionTarget]);
   const diagnosis = React.useMemo(() => buildTrainingDiagnosis(sessions), [sessions]);
   const recommendedFamily = React.useMemo(() => chooseGoalPriorityFamily(diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines), [diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines]);
   const progression = React.useMemo(() => buildTrainingProgression(sessions), [sessions]);
@@ -191,6 +193,34 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 <div style={{ padding: 8, borderRadius: 10, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 12 }}>{programSessions.length}</b><div style={{ fontSize: 7.5, opacity: .48 }}>SÉANCES SUIVIES</div></div>
               </div>
               <button type="button" onClick={() => { setProgramId(coachProgram.id); }} style={{ width: "100%", marginTop: 9, padding: 9, borderRadius: 10, border: "1px solid rgba(80,255,174,.28)", background: "rgba(80,255,174,.08)", color: "inherit", fontSize: 9.5, fontWeight: 950, cursor: "pointer" }}>PROCHAINE SÉANCE AWENA • {coachProgram.title}</button>
+            </div>
+
+            <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: loadSummary.status === "recovery" || loadSummary.status === "high" ? "1px solid rgba(255,184,76,.28)" : "1px solid rgba(39,220,255,.20)", background: loadSummary.status === "recovery" || loadSummary.status === "high" ? "linear-gradient(135deg,rgba(255,184,76,.08),rgba(255,255,255,.02))" : "linear-gradient(135deg,rgba(39,220,255,.07),rgba(140,90,255,.035))" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+                <div style={{ minWidth: 0, flex: "1 1 260px" }}>
+                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: loadSummary.status === "recovery" || loadSummary.status === "high" ? "#ffd86b" : "#27dcff" }}>CHARGE & FORME</div>
+                  <div style={{ marginTop: 4, fontSize: 13, fontWeight: 950 }}>{loadSummary.statusLabel}</div>
+                  <div style={{ marginTop: 4, fontSize: 9.5, lineHeight: 1.4, opacity: .64 }}>{loadSummary.statusMessage} {loadSummary.recommendedAction}</div>
+                </div>
+                <div style={{ padding: "8px 10px", borderRadius: 11, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.035)", textAlign: "center" }}>
+                  <div style={{ fontSize: 7.5, opacity: .5 }}>PROCHAINE DURÉE</div>
+                  <b style={{ display: "block", marginTop: 2, fontSize: 17 }}>{loadSummary.recommendedDurationMin}<span style={{ fontSize: 9, opacity: .55 }}> MIN</span></b>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 10, textAlign: "center" }}>
+                <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{loadSummary.last7Sessions}</b><div style={{ fontSize: 7, opacity: .45 }}>SÉANCES / 7J</div></div>
+                <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{loadSummary.last7Minutes}</b><div style={{ fontSize: 7, opacity: .45 }}>MINUTES / 7J</div></div>
+                <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{loadSummary.activeDays7}</b><div style={{ fontSize: 7, opacity: .45 }}>JOURS ACTIFS</div></div>
+                <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11, color: loadSummary.formDelta > 5 ? "#8cffcb" : loadSummary.formDelta < -5 ? "#ffd86b" : "inherit" }}>{loadSummary.formDelta > 0 ? "+" : ""}{Math.round(loadSummary.formDelta)}</b><div style={{ fontSize: 7, opacity: .45 }}>FORME</div></div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 4, marginTop: 10 }}>
+                {loadSummary.calendar.map((day) => <div key={day.dayStart} title={`${day.sessions} séance(s) • ${day.minutes} min`} style={{ textAlign: "center", padding: "6px 2px", borderRadius: 8, border: day.sessions ? "1px solid rgba(39,220,255,.18)" : "1px solid rgba(255,255,255,.055)", background: day.sessions ? "rgba(39,220,255,.07)" : "rgba(255,255,255,.018)" }}>
+                  <div style={{ fontSize: 6.5, opacity: .45 }}>{day.label}</div>
+                  <div style={{ marginTop: 3, fontSize: 10, fontWeight: 950 }}>{day.sessions || "·"}</div>
+                  <div style={{ marginTop: 1, fontSize: 6.5, opacity: .42 }}>{day.minutes ? `${day.minutes}m` : "—"}</div>
+                </div>)}
+              </div>
+              <button type="button" onClick={() => { setCustomDuration(loadSummary.recommendedDurationMin); setCustomFocus(recommendedFamily); setProgramId(`custom_${loadSummary.recommendedDurationMin}_${recommendedFamily}_standard`); }} style={{ width: "100%", marginTop: 9, padding: 9, borderRadius: 10, border: "1px solid rgba(39,220,255,.20)", background: "rgba(39,220,255,.06)", color: "inherit", fontSize: 9, fontWeight: 950, cursor: "pointer" }}>PRÉPARER LA SÉANCE CONSEILLÉE • {loadSummary.recommendedDurationMin} MIN • {TRAINING_FAMILY_META[recommendedFamily].label.toUpperCase()}</button>
             </div>
             {!!preferences.favoritePrograms.length && <>
               <div style={{ margin: "10px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#ffd86b" }}>★ MES SÉANCES FAVORITES</div>
