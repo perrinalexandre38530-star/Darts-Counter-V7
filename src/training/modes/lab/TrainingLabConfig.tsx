@@ -26,6 +26,7 @@ import { buildTrainingCoachHistory } from "../../profile/trainingCoachHistory";
 import { buildTrainingCycleCoach } from "../../profile/trainingCycleCoach";
 import { buildTrainingBlockCoach, buildTrainingCycleHistory } from "../../profile/trainingBlockCoach";
 import { buildTrainingAdaptationCoach } from "../../profile/trainingAdaptationCoach";
+import { buildTrainingBlockHandoff, buildTrainingBlockReviews } from "../../profile/trainingBlockReview";
 
 const familyOrder: TrainingExerciseFamily[] = ["scoring", "doubles", "checkout", "precision", "bull", "regularity"];
 type HubTab = "program" | "exercises" | "diagnosis" | "progress";
@@ -77,6 +78,8 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
   const recommendedFamily = cycleCoach.priority?.family || rawRecommendedFamily;
   const blockCoach = React.useMemo(() => buildTrainingBlockCoach(programSessions, cycleCoach), [programSessions, cycleCoach]);
   const adaptationCoach = React.useMemo(() => buildTrainingAdaptationCoach(programSessions, cycleCoach, blockCoach, loadSummary), [programSessions, cycleCoach, blockCoach, loadSummary]);
+  const blockHandoff = React.useMemo(() => buildTrainingBlockHandoff(programSessions, recommendedFamily), [programSessions, recommendedFamily]);
+  const blockReviews = React.useMemo(() => buildTrainingBlockReviews(programSessions, recommendedFamily, 4), [programSessions, recommendedFamily]);
   const cycleHistory = React.useMemo(() => buildTrainingCycleHistory(programSessions, 6), [programSessions]);
   const weekCoachPlan = React.useMemo(() => buildTrainingWeekCoachPlan(programSessions, preferences.weeklySessionTarget, recommendedFamily, loadSummary), [programSessions, preferences.weeklySessionTarget, recommendedFamily, loadSummary]);
   const nextRecommendation = React.useMemo(() => { void revision; return loadTrainingNextRecommendation(); }, [revision]);
@@ -343,6 +346,24 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 </div>)}
               </div>}
             </div>
+
+            {blockHandoff.justStartedNewBlock && blockHandoff.latest && <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: blockHandoff.latest.outcome === "rebuild" ? "1px solid rgba(255,184,76,.28)" : "1px solid rgba(80,255,174,.26)", background: blockHandoff.latest.outcome === "rebuild" ? "linear-gradient(135deg,rgba(255,184,76,.08),rgba(140,90,255,.035))" : "linear-gradient(135deg,rgba(80,255,174,.07),rgba(39,220,255,.04))" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+                <div style={{ minWidth: 0, flex: "1 1 260px" }}>
+                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: blockHandoff.latest.outcome === "rebuild" ? "#ffd86b" : "#8cffcb" }}>BILAN DE BLOC • {blockHandoff.latest.outcomeLabel}</div>
+                  <div style={{ marginTop: 4, fontSize: 13, fontWeight: 950 }}>{blockHandoff.latest.headline}</div>
+                  <div style={{ marginTop: 4, fontSize: 9.5, lineHeight: 1.4, opacity: .64 }}>{blockHandoff.latest.summary}</div>
+                </div>
+                <button type="button" onClick={() => prepareRecommendedSession(loadSummary.recommendedDurationMin, blockHandoff.recommendedFamily)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(80,255,174,.24)", background: "rgba(80,255,174,.07)", color: "inherit", fontSize: 8.5, fontWeight: 950, cursor: "pointer" }}>OUVRIR LE BLOC {blockHandoff.nextBlockNumber} • {blockHandoff.recommendedLabel.toUpperCase()}</button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 10, textAlign: "center" }}>
+                <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{Math.round(blockHandoff.latest.average)}</b><div style={{ fontSize: 7, opacity: .45 }}>MOYENNE</div></div>
+                <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{Math.round(blockHandoff.latest.consistency)}</b><div style={{ fontSize: 7, opacity: .45 }}>RÉGULARITÉ</div></div>
+                <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{blockHandoff.latest.familyCoverage}/6</b><div style={{ fontSize: 7, opacity: .45 }}>COUVERTURE</div></div>
+                <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{blockHandoff.latest.bestScore ? Math.round(blockHandoff.latest.bestScore) : "—"}</b><div style={{ fontSize: 7, opacity: .45 }}>MEILLEURE</div></div>
+              </div>
+              <div style={{ marginTop: 8, padding: 9, borderRadius: 10, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.06)", fontSize: 8.8, lineHeight: 1.4, opacity: .72 }}><b>Passage au bloc {blockHandoff.nextBlockNumber} :</b> nouvelle cible {blockHandoff.targetAverage}/100 • priorité d’ouverture {blockHandoff.recommendedLabel}. Aucune donnée n’est remise à zéro : le nouveau bloc repart de la référence réellement atteinte.</div>
+            </div>}
 
             <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: cycleCoach.onTrack ? "1px solid rgba(80,255,174,.22)" : "1px solid rgba(255,184,76,.24)", background: cycleCoach.onTrack ? "linear-gradient(135deg,rgba(80,255,174,.055),rgba(39,220,255,.035))" : "linear-gradient(135deg,rgba(255,184,76,.07),rgba(140,90,255,.035))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -667,6 +688,21 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 </div>;
               })}
             </div>
+
+            <div style={{ margin: "16px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>BILANS DE BLOCS • 12 SÉANCES</div>
+            {!blockReviews.length ? <div style={{ padding: 14, borderRadius: 13, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.025)", fontSize: 9.5, opacity: .58 }}>Le premier bilan complet apparaîtra après 12 programmes terminés.</div> : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 7 }}>
+              {blockReviews.map((review, index) => <div key={`block-review-${review.blockNumber}`} style={{ padding: 11, borderRadius: 13, border: index === 0 ? "1px solid rgba(39,220,255,.22)" : "1px solid rgba(255,255,255,.075)", background: index === 0 ? "rgba(39,220,255,.045)" : "rgba(255,255,255,.022)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><b style={{ fontSize: 9.5 }}>Bloc {review.blockNumber}</b><span style={{ fontSize: 7.5, color: review.outcome === "rebuild" ? "#ffd86b" : review.outcome === "breakthrough" || review.outcome === "progress" ? "#8cffcb" : "#27dcff" }}>{review.outcomeLabel}</span></div>
+                <div style={{ marginTop: 6, fontSize: 8.2, lineHeight: 1.35, opacity: .52 }}>{new Date(review.startAt).toLocaleDateString()} → {new Date(review.endAt).toLocaleDateString()} • dominante {review.dominantLabel}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 5, marginTop: 9, textAlign: "center" }}>
+                  <div><b style={{ fontSize: 11 }}>{Math.round(review.average)}</b><div style={{ fontSize: 6.2, opacity: .42 }}>MOY.</div></div>
+                  <div><b style={{ fontSize: 11 }}>{Math.round(review.accuracy)}%</b><div style={{ fontSize: 6.2, opacity: .42 }}>PRÉC.</div></div>
+                  <div><b style={{ fontSize: 11 }}>{Math.round(review.consistency)}</b><div style={{ fontSize: 6.2, opacity: .42 }}>RÉG.</div></div>
+                  <div><b style={{ fontSize: 11 }}>{review.familyCoverage}/6</b><div style={{ fontSize: 6.2, opacity: .42 }}>FAMILLES</div></div>
+                </div>
+                <div style={{ marginTop: 8, paddingTop: 7, borderTop: "1px solid rgba(255,255,255,.05)", fontSize: 7.6, opacity: .55 }}>Bloc suivant : <b>{review.nextPriorityLabel}</b> • cible {review.nextTargetAverage}/100{review.blockNumber > 1 ? ` • ${review.deltaVsPrevious >= 0 ? "+" : ""}${Math.round(review.deltaVsPrevious)} pts` : ""}</div>
+              </div>)}
+            </div>}
 
             <div style={{ margin: "16px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#8cffcb" }}>HISTORIQUE DES CYCLES</div>
             {!cycleHistory.length ? <div style={{ padding: 14, borderRadius: 13, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.025)", fontSize: 9.5, opacity: .58 }}>Il faut 4 programmes complets pour fermer un premier cycle.</div> : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 7 }}>

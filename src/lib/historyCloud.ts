@@ -487,7 +487,10 @@ export async function importHistoryDump(
   const preserveExisting = opts?.preserveExisting ?? !replace;
 
   const db = await openDB();
-  const deletedIds = readHistoryDeletedIdsSet();
+  // Une restauration "replace" est autoritaire : le backup doit pouvoir
+  // ressusciter une partie supprimée localement après la date de sauvegarde.
+  // Les tombstones locaux ne doivent donc filtrer les lignes que lors d'un merge.
+  const deletedIds = replace ? new Set<string>() : readHistoryDeletedIdsSet();
 
   // V63 restauration différentielle : même en mode replace, on lit l'état actuel
   // afin de ne réécrire que les matchs réellement différents. Le coût de lecture
@@ -508,7 +511,9 @@ export async function importHistoryDump(
       if (!id || deletedIds.has(id) || isDeletedHistoryRecord(r, deletedIds)) continue;
       const incoming = { ...r, id, matchId: String(r?.matchId || id) };
       const existing = (existingDump.rows || {})[id] || null;
-      preparedRows[id] = mergeHistorySnapshotRowMonotonic(existing, incoming) as SavedMatch;
+      // En replace, le snapshot est la source de vérité exacte. Ne pas laisser
+      // un état local plus récent/partiel modifier la sauvegarde restaurée.
+      preparedRows[id] = (replace ? incoming : mergeHistorySnapshotRowMonotonic(existing, incoming)) as SavedMatch;
     } catch {}
     if ((rowIndex + 1) % 8 === 0 || rowIndex + 1 === totalRows) {
       opts?.onProgress?.(rowIndex + 1, totalRows);
@@ -551,6 +556,9 @@ export async function importHistoryDump(
       tx.onabort = () => reject(tx.error);
     });
     await yieldIfNeeded(true);
+    if (replace) {
+      try { localStorage.removeItem(HISTORY_DELETED_IDS_KEY); } catch {}
+    }
     return;
   }
 
@@ -567,7 +575,7 @@ export async function importHistoryDump(
       for (const [id, r] of Object.entries(preparedRows)) {
         try {
           const existing = (existingDump.rows || {})[id] || null;
-          const merged = mergeHistorySnapshotRowMonotonic(existing, r) as any;
+          const merged = (replace ? r : mergeHistorySnapshotRowMonotonic(existing, r)) as any;
           if (historyRowsExactlyEqual(existing, merged)) continue;
           store.put(merged);
         } catch {}
@@ -580,5 +588,8 @@ export async function importHistoryDump(
       tx.onabort = () => reject(tx.error);
     });
     await yieldIfNeeded(true);
+    if (replace) {
+      try { localStorage.removeItem(HISTORY_DELETED_IDS_KEY); } catch {}
+    }
   }
 }

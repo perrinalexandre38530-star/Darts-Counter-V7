@@ -3786,8 +3786,13 @@ async function revalidatePortableRestoreReport(report: PortableAccountRestoreRep
   return report;
 }
 
-async function restorePortableAccountData(portable: any): Promise<PortableAccountRestoreReport | null> {
+async function restorePortableAccountData(
+  portable: any,
+  opts?: { onProgress?: (progress: number, message: string) => void },
+): Promise<PortableAccountRestoreReport | null> {
   if (!portable || typeof portable !== "object") return null;
+  const progress = (value: number, message: string) => { try { opts?.onProgress?.(value, message); } catch {} };
+  progress(2, "Préparation des données de compte…");
   const report: PortableAccountRestoreReport = {
     ok: true,
     expected: expectedPortableCounts(portable),
@@ -3834,10 +3839,15 @@ async function restorePortableAccountData(portable: any): Promise<PortableAccoun
         } : team;
       });
     }
-    const hydrated = await hydrateStoreUserMedia(mergedStore).catch(() => ({ store: mergedStore, changed: false }));
+    progress(12, "Restauration des profils et données principales…");
+    // Le snapshot portable contient déjà son coffre média local. Ne jamais
+    // attendre R2/NAS pendant cette étape : une restauration locale doit rester
+    // déterministe et ne pas se figer à 85 % sur une requête distante.
+    const hydrated = await hydrateStoreUserMedia(mergedStore, { allowRemote: false }).catch(() => ({ store: mergedStore, changed: false }));
     mergedStore = hydrated?.store || mergedStore;
     restoredDartSetsForRuntime = Array.isArray(mergedStore?.dartSets) ? mergedStore.dartSets : null;
     await saveStore(mergedStore as any, { skipAsyncNormalize: true });
+    progress(34, "Profils restaurés. Activation des collections…");
   } catch (error) {
     recordError("portable account store restore failed", error);
   }
@@ -3845,10 +3855,12 @@ async function restorePortableAccountData(portable: any): Promise<PortableAccoun
   try {
     if (Array.isArray(portable?.bots)) restoreBotsFromSnapshot(portable.bots as any[]);
   } catch (error) { recordError("portable bots restore failed", error); }
+  progress(45, "Bots restaurés. Activation des dartsets…");
   try {
     if (Array.isArray(restoredDartSetsForRuntime)) replaceAllDartSets(restoredDartSetsForRuntime as any[]);
     else if (Array.isArray(portable?.dartSets)) replaceAllDartSets(portable.dartSets as any[]);
   } catch (error) { recordError("portable dartsets restore failed", error); }
+  progress(58, "Dartsets restaurés. Activation des équipes…");
   try {
     if (Array.isArray(portable?.teams)) {
       // Priorité au média embarqué avec le profil : il rend la restauration
@@ -3863,12 +3875,13 @@ async function restorePortableAccountData(portable: any): Promise<PortableAccoun
           ...(media.coverDataUrl ? { coverDataUrl: media.coverDataUrl } : {}),
         } : team;
       });
-      const hydratedTeams = await hydrateStoreUserMedia({ teams: portableTeamsWithMedia }, { allowRemote: true })
+      const hydratedTeams = await hydrateStoreUserMedia({ teams: portableTeamsWithMedia }, { allowRemote: false })
         .then((result) => Array.isArray(result?.store?.teams) ? result.store.teams : portableTeamsWithMedia)
         .catch(() => portableTeamsWithMedia);
       saveStoredTeams(hydratedTeams as any[]);
     }
   } catch (error) { recordError("portable teams restore failed", error); }
+  progress(70, "Équipes restaurées. Préférences et galeries…");
   try {
     const critical = portable?.criticalLocalStorage && typeof portable.criticalLocalStorage === "object" ? portable.criticalLocalStorage : {};
     for (const [key, value] of Object.entries<any>(critical)) {
@@ -3879,13 +3892,16 @@ async function restorePortableAccountData(portable: any): Promise<PortableAccoun
   try {
     await restoreGalleryMetadata(portable);
   } catch (error) { recordError("portable gallery restore failed", error); }
+  progress(82, "Galeries restaurées. Compétitions…");
   try {
     if (portable?.tournaments && typeof portable.tournaments === "object") {
       await importLocalTournamentsSnapshot(portable.tournaments, { replace: false });
     }
   } catch (error) { recordError("portable competitions restore failed", error); }
 
+  progress(92, "Contrôle des données de compte restaurées…");
   await revalidatePortableRestoreReport(report);
+  progress(100, "Profils, bots, dartsets et équipes restaurés.");
 
   if (typeof window !== "undefined") {
     const events = [
@@ -4227,6 +4243,36 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
     });
     await yieldIfNeeded(true);
 
+    // Contrôle structurel immédiat : une restauration complète ne doit jamais
+    // annoncer 118 parties si seulement 87 ont réellement été réinjectées dans
+    // l'IndexedDB History. En mode replace/smart-replace, le snapshot est
+    // autoritaire ; on retente une fois puis on bloque explicitement si le compte
+    // reste différent.
+    if (mode !== "merge") {
+      const incomingRowsObject = (dump as any)?.history?.rows && typeof (dump as any).history.rows === "object"
+        ? (dump as any).history.rows
+        : null;
+      const incomingIds = incomingRowsObject
+        ? Object.values<any>(incomingRowsObject)
+            .map((row: any) => String(row?.id || row?.matchId || "").trim())
+            .filter(Boolean)
+        : [];
+      if (incomingIds.length > 0) {
+        report(61, `Vérification des ${incomingIds.length} partie(s) restaurée(s)…`);
+        let restoredHistory = await exportHistoryDump().catch(() => ({ _v: 1 as const, rows: {} as Record<string, any> }));
+        let restoredCount = Object.keys(restoredHistory?.rows || {}).length;
+        if (restoredCount !== incomingIds.length) {
+          console.warn(`[storage] history restore count mismatch ${restoredCount}/${incomingIds.length}; retry authoritative import`);
+          await importHistoryDump((dump as any).history, { replace: true, preserveExisting: false });
+          restoredHistory = await exportHistoryDump().catch(() => ({ _v: 1 as const, rows: {} as Record<string, any> }));
+          restoredCount = Object.keys(restoredHistory?.rows || {}).length;
+        }
+        if (restoredCount !== incomingIds.length) {
+          throw new Error(`Restauration historique incomplète : ${restoredCount}/${incomingIds.length} partie(s) réellement restaurée(s).`);
+        }
+      }
+    }
+
   // MEDIA UTILISATEUR MULTI-SOURCE : réhydrate le coffre IndexedDB dédié
   // avant même que le NAS soit à nouveau disponible.
   try {
@@ -4257,7 +4303,12 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
   // catégories que les anciens snapshots pouvaient laisser vides.
   try {
     report(80, "Restauration des profils, bots, dartsets et équipes…");
-    portableReport = await restorePortableAccountData((dump as any)?.portableAccountData || (dump as any)?.portable_account_data || null);
+    portableReport = await restorePortableAccountData(
+      (dump as any)?.portableAccountData || (dump as any)?.portable_account_data || null,
+      {
+        onProgress: (value, message) => report(80 + Math.round(Math.max(0, Math.min(100, value)) * 0.07), message),
+      },
+    );
   } catch (portableError) {
     console.warn("[storage] portable account data import skipped", portableError);
     portableReport = {
@@ -4333,23 +4384,24 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
   // Une sauvegarde restaurée (Drive / NAS / SD / fichier / R2) devient le nouvel
   // état du compte. On force donc la réplication légère Supabase + médias R2 du
   // compte AVANT de rendre la main. Ce bridge est indépendant du transport backup.
-  report(99, "Synchronisation de la sauvegarde restaurée avec votre compte…");
+  report(99, "Restauration locale terminée. Synchronisation du compte différée…");
   try {
     const forceSync = typeof window !== "undefined" ? (window as any).__forceAccountOwnedSyncNow : null;
     if (typeof forceSync === "function") {
-      await forceSync({ reason: `restore:${mode}` });
+      // Ne jamais bloquer la restauration locale sur le réseau. Le backup vient
+      // d'être validé localement ; la réplication compte reprend en arrière-plan.
+      void Promise.resolve(forceSync({ reason: `restore:${mode}` }))
+        .catch((syncError: any) => console.warn("[storage] account sync after restore deferred", syncError));
     } else if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("dc:account-owned-force-sync", {
         detail: { reason: `restore:${mode}` },
       }));
     }
   } catch (syncError) {
-    // La restauration locale reste valide même si le réseau est momentanément
-    // indisponible. Le polling/focus du compte reprendra la réplication ensuite.
     console.warn("[storage] account sync after restore deferred", syncError);
   }
 
-  report(100, "Import local terminé et raccordé au compte.");
+  report(100, "Import local terminé. Données restaurées disponibles.");
   } finally {
     try { sessionStorage.removeItem("dc_cloud_restore_in_progress_v2"); } catch {}
     endFreezeOperation(__freezeOp);
