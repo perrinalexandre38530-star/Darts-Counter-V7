@@ -360,6 +360,13 @@ const ENTRIES: DeepEntry[] = [
     route: "training",
   },
   {
+    id: "super-bull-game",
+    title: "Super Bull",
+    aliases: ["super bull", "superbull", "regles super bull", "super bull arcade", "super bull partie rapide", "super bull equipe"],
+    text: "## SUPER BULL\nMode centre de cible : **BULL25 = 25 points**, **BULL50 = 50 points**, **MISS = 0**. Chaque participant joue 3 fléchettes par volée. Avec un objectif, la victoire arrive dès qu’une volée permet de l’atteindre ou le dépasser ; sans objectif, le meilleur total après les rounds gagne.\n\n## MODES\n- **PARTIE RAPIDE** : participants temporaires, BOTS optionnels, sons coupés par défaut ;\n- **ARCADE** : profils + BOTS IA, ou **équipes enregistrées**. Une équipe joue comme un participant de score collectif, avec son logo et sa liste de membres conservés dans la sauvegarde, la reprise et l’historique.\n\n## DÉPARTAGE ET STATS\nEn cas d’égalité : score, BULL50, centres, meilleure série puis volées 100 %. Les stats détaillent aussi BULL25/BULL50/MISS, précision, meilleure volée et D1/D2/D3. La dernière volée peut être corrigée et les parties en cours sont reprenables depuis l’historique.",
+    route: "super_bull_config",
+  },
+  {
     id: "training-superbull",
     title: "Super Bull Training",
     aliases: ["super bull training", "training super bull", "bull training"],

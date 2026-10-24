@@ -5,13 +5,17 @@ import BotPagedSelector from "../components/BotPagedSelector";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
+import TeamPagedSelector from "../components/TeamPagedSelector";
 import { SIMPLE_ROUND_VARIANTS } from "../lib/simpleRounds/variants";
 import type { CommonConfig } from "../lib/simpleRounds/types";
 import { loadBotPlayers } from "../lib/bots";
+import { loadTeamsBySport, resolveTeamLogo } from "../lib/petanqueTeamsStore";
 
 export type SuperBullConfigPayload = CommonConfig & {
   entryMode?: "quick" | "arcade";
+  participantSource?: "players" | "teams";
   selectedIds?: string[];
+  selectedTeamIds?: string[];
   players?: any[];
 };
 
@@ -20,7 +24,13 @@ type EntryMode = "quick" | "arcade";
 type SavedState = {
   entryMode?: EntryMode;
   quick?: Partial<CommonConfig> & { playersCount?: number };
-  arcade?: Partial<CommonConfig> & { selectedIds?: string[]; botsPanelEnabled?: boolean; botIds?: string[] };
+  arcade?: Partial<CommonConfig> & {
+    participantSource?: "players" | "teams";
+    selectedIds?: string[];
+    selectedTeamIds?: string[];
+    botsPanelEnabled?: boolean;
+    botIds?: string[];
+  };
 };
 
 const STORAGE_KEY = "msc.super_bull.last_config.v3";
@@ -76,6 +86,10 @@ function loadSavedState(): SavedState {
 
 function avatarSrcOf(profile: any) {
   return profile?.avatarDataUrl ?? profile?.avatarUrl ?? profile?.avatar ?? profile?.photoUrl ?? null;
+}
+
+function directTeamLogo(team: any) {
+  return team?.logoDataUrl ?? team?.logoUrl ?? team?.avatarUrl ?? team?.imageUrl ?? team?.regionLogoDataUrl ?? team?.regionLogoUrl ?? null;
 }
 
 function pillStyle(active: boolean, accent = "#29deff"): React.CSSProperties {
@@ -135,14 +149,20 @@ export default function SuperBullConfig(props: any) {
   const storeProfiles: any[] = Array.isArray(store?.profiles) ? store.profiles : [];
   const humanProfiles = React.useMemo(() => storeProfiles.filter((p) => !isBotLike(p)), [storeProfiles]);
   const botProfiles = React.useMemo(loadUserBots, []);
+  const teamCatalog = React.useMemo(() => {
+    try { return loadTeamsBySport("darts") || []; } catch { return []; }
+  }, []);
   const allArcadeItems = React.useMemo(() => [...humanProfiles, ...botProfiles], [humanProfiles, botProfiles]);
   const profileById = React.useMemo(() => new Map(allArcadeItems.map((p: any) => [String(p.id), p])), [allArcadeItems]);
+  const teamById = React.useMemo(() => new Map(teamCatalog.map((team: any) => [String(team.id), team])), [teamCatalog]);
+  const humanProfileById = React.useMemo(() => new Map(humanProfiles.map((p: any) => [String(p.id), p])), [humanProfiles]);
 
   const legacyInitial = React.useMemo(() => ({ ...spec.defaults, ...(props?.params?.config || {}) }), [props?.params?.config, spec.defaults]);
   const initialQuick = { ...legacyInitial, ...(saved.quick || {}) } as any;
   const initialArcade = { ...legacyInitial, ...(saved.arcade || {}) } as any;
 
   const [entryMode, setEntryMode] = React.useState<EntryMode>(forcedLaunchMode || (saved.entryMode === "arcade" ? "arcade" : "quick"));
+  const [participantSource, setParticipantSource] = React.useState<"players" | "teams">(initialArcade.participantSource === "teams" ? "teams" : "players");
 
   const [players, setPlayers] = React.useState(Number(initialQuick.playersCount || initialQuick.players) || 1);
   const [botsEnabled, setBotsEnabled] = React.useState(!!initialQuick.botsEnabled);
@@ -152,7 +172,22 @@ export default function SuperBullConfig(props: any) {
   const [objective, setObjective] = React.useState(Number(initialQuick.objective ?? initialArcade.objective ?? 200));
 
   const [selectedIds, setSelectedIds] = React.useState<string[]>(() => Array.isArray(initialArcade.selectedIds) ? initialArcade.selectedIds.map(String).slice(0, MAX_PLAYERS) : []);
+  const [selectedTeamIds, setSelectedTeamIds] = React.useState<string[]>(() => Array.isArray(initialArcade.selectedTeamIds) ? initialArcade.selectedTeamIds.map(String).slice(0, MAX_PLAYERS) : []);
   const [botsPanelEnabled, setBotsPanelEnabled] = React.useState(initialArcade.botsPanelEnabled === true);
+  const [teamLogoById, setTeamLogoById] = React.useState<Record<string, string>>({});
+
+  React.useEffect(() => {
+    let alive = true;
+    if (!teamCatalog.length) return () => { alive = false; };
+    Promise.all(teamCatalog.map(async (team: any) => {
+      try { return [String(team.id), await resolveTeamLogo(team, true)] as const; }
+      catch { return [String(team.id), String(directTeamLogo(team) || "")] as const; }
+    })).then((entries) => {
+      if (!alive) return;
+      setTeamLogoById(Object.fromEntries(entries.filter(([, src]) => Boolean(src))));
+    }).catch(() => undefined);
+    return () => { alive = false; };
+  }, [teamCatalog]);
 
   const selectedArcadeItems = React.useMemo(
     () => selectedIds.map((id) => profileById.get(String(id))).filter(Boolean),
@@ -160,7 +195,22 @@ export default function SuperBullConfig(props: any) {
   );
   const selectedHumans = React.useMemo(() => selectedArcadeItems.filter((p: any) => !isBotLike(p)), [selectedArcadeItems]);
   const selectedBots = React.useMemo(() => selectedArcadeItems.filter((p: any) => isBotLike(p)), [selectedArcadeItems]);
-  const validArcade = selectedArcadeItems.length >= 1;
+  const selectedTeams = React.useMemo(() => selectedTeamIds.map((id) => teamById.get(String(id))).filter(Boolean), [selectedTeamIds, teamById]);
+  const teamParticipants = React.useMemo(() => selectedTeams.map((team: any, i: number) => {
+    const memberIds = Array.isArray(team?.playerIds) ? team.playerIds.map(String).filter(Boolean) : [];
+    const memberNames = memberIds.map((id: string) => humanProfileById.get(id)?.name).filter(Boolean).map(String);
+    return {
+      id: `team:${String(team?.id ?? i + 1)}`,
+      name: String(team?.name || `Équipe ${i + 1}`),
+      avatarDataUrl: teamLogoById[String(team?.id)] || directTeamLogo(team),
+      isBot: false,
+      isTeam: true,
+      teamId: String(team?.id ?? ""),
+      teamMemberIds: memberIds,
+      teamMemberNames: memberNames,
+    };
+  }), [selectedTeams, humanProfileById, teamLogoById]);
+  const validArcade = participantSource === "teams" ? teamParticipants.length >= 1 : selectedArcadeItems.length >= 1;
   const validQuick = players >= 1;
   const canStart = entryMode === "quick" ? validQuick : validArcade;
 
@@ -181,17 +231,27 @@ export default function SuperBullConfig(props: any) {
   }), [players, botsEnabled, botLevel, humansCount, rounds, objective]);
 
   const arcadeCfg = React.useMemo(() => ({
-    players: selectedArcadeItems.map((p: any, i: number) => ({
-      id: String(p?.id ?? `p${i + 1}`),
-      name: String(p?.name ?? `Joueur ${i + 1}`),
-      avatarDataUrl: avatarSrcOf(p),
-      isBot: isBotLike(p),
-      botLevel: p?.botLevel ?? p?.level ?? botLevel,
-    })),
+    players: participantSource === "teams" ? teamParticipants : selectedArcadeItems.map((p: any, i: number) => ({
+        id: String(p?.id ?? `p${i + 1}`),
+        name: String(p?.name ?? `Joueur ${i + 1}`),
+        avatarDataUrl: avatarSrcOf(p),
+        isBot: isBotLike(p),
+        botLevel: p?.botLevel ?? p?.level ?? botLevel,
+      })),
+    participantSource,
+    teamMode: participantSource === "teams",
+    selectedTeamIds,
+    teams: participantSource === "teams" ? teamParticipants.map((team: any) => ({
+      id: team.teamId,
+      name: team.name,
+      logoDataUrl: team.avatarDataUrl,
+      playerIds: team.teamMemberIds,
+      playerNames: team.teamMemberNames,
+    })) : [],
     selectedIds,
-    playersCount: selectedArcadeItems.length,
-    botsEnabled: selectedBots.length > 0,
-    humansCount: Math.max(0, selectedHumans.length),
+    playersCount: participantSource === "teams" ? teamParticipants.length : selectedArcadeItems.length,
+    botsEnabled: participantSource === "players" && selectedBots.length > 0,
+    humansCount: participantSource === "teams" ? teamParticipants.length : Math.max(0, selectedHumans.length),
     botLevel,
     rounds,
     objective,
@@ -201,7 +261,7 @@ export default function SuperBullConfig(props: any) {
     profileStatsDeferred: false,
     temporaryParticipants: false,
     botsPanelEnabled,
-  }), [selectedArcadeItems, selectedIds, selectedBots.length, selectedHumans.length, botLevel, rounds, objective, botsPanelEnabled]);
+  }), [participantSource, teamParticipants, selectedTeamIds, selectedArcadeItems, selectedIds, selectedBots.length, selectedHumans.length, botLevel, rounds, objective, botsPanelEnabled]);
 
   React.useEffect(() => {
     try {
@@ -209,7 +269,9 @@ export default function SuperBullConfig(props: any) {
         entryMode,
         quick: quickCfg,
         arcade: {
+          participantSource,
           selectedIds,
+          selectedTeamIds,
           botLevel,
           rounds,
           objective,
@@ -217,10 +279,20 @@ export default function SuperBullConfig(props: any) {
         },
       }));
     } catch {}
-  }, [entryMode, quickCfg, selectedIds, botLevel, rounds, objective, botsPanelEnabled]);
+  }, [entryMode, quickCfg, participantSource, selectedIds, selectedTeamIds, botLevel, rounds, objective, botsPanelEnabled]);
 
   const toggleSelected = React.useCallback((id: string) => {
     setSelectedIds((prev) => {
+      if (prev.includes(id)) return prev.filter((item) => item !== id);
+      if (prev.length >= MAX_PLAYERS) return prev;
+      return [...prev, id];
+    });
+  }, []);
+
+  const toggleTeamSelected = React.useCallback((idRaw: string) => {
+    const id = String(idRaw || "");
+    if (!id) return;
+    setSelectedTeamIds((prev) => {
       if (prev.includes(id)) return prev.filter((item) => item !== id);
       if (prev.length >= MAX_PLAYERS) return prev;
       return [...prev, id];
@@ -239,7 +311,9 @@ export default function SuperBullConfig(props: any) {
         entryMode,
         quick: quickCfg,
         arcade: {
+          participantSource,
           selectedIds,
+          selectedTeamIds,
           botLevel,
           rounds,
           objective,
@@ -253,11 +327,13 @@ export default function SuperBullConfig(props: any) {
         ...(entryMode === "arcade" ? { players: arcadeCfg.players } : {}),
       });
     }
-  }, [entryMode, quickCfg, arcadeCfg, selectedIds, botLevel, rounds, objective, botsPanelEnabled, props]);
+  }, [entryMode, quickCfg, arcadeCfg, participantSource, selectedIds, selectedTeamIds, botLevel, rounds, objective, botsPanelEnabled, props]);
 
   const summaryLabel = entryMode === "quick"
     ? `${players} joueur${players > 1 ? "s" : ""}${botsEnabled ? ` · ${Math.max(0, players - Math.min(Math.max(1, humansCount), Math.max(1, players - 1)))} BOT(S)` : ""}`
-    : `${selectedArcadeItems.length} participant(s)${selectedBots.length ? ` · ${selectedBots.length} BOT(S)` : ""}`;
+    : participantSource === "teams"
+      ? `${teamParticipants.length} équipe${teamParticipants.length > 1 ? "s" : ""}`
+      : `${selectedArcadeItems.length} participant(s)${selectedBots.length ? ` · ${selectedBots.length} BOT(S)` : ""}`;
 
   return (
     <div
@@ -386,26 +462,56 @@ export default function SuperBullConfig(props: any) {
         ) : (
           <>
             <section style={cardStyle()}>
-              <div style={{ color: "#ffd76a", fontSize: 12, fontWeight: 1000, letterSpacing: 1.1, textTransform: "uppercase" }}>Arcade · Profils joueurs</div>
-              <div style={{ marginTop: 8, color: "#a6b9c8", fontSize: 11, lineHeight: 1.45 }}>
-                Sélectionne de 1 à {MAX_PLAYERS} participants avec leurs avatars et profils. L’ordre de sélection devient l’ordre de jeu.
+              <div style={{ color: "#ffd76a", fontSize: 12, fontWeight: 1000, letterSpacing: 1.1, textTransform: "uppercase" }}>Arcade · Participants</div>
+              <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <button type="button" onClick={() => setParticipantSource("players")} style={segmentedButtonStyle(participantSource === "players", "#29deff")}>
+                  <div style={{ fontSize: 13, fontWeight: 1000 }}>👤 JOUEURS</div>
+                  <div style={{ marginTop: 4, fontSize: 10, opacity: .78 }}>Profils + BOTS IA</div>
+                </button>
+                <button type="button" onClick={() => setParticipantSource("teams")} style={segmentedButtonStyle(participantSource === "teams", "#ffd76a")}>
+                  <div style={{ fontSize: 13, fontWeight: 1000 }}>🛡️ ÉQUIPES</div>
+                  <div style={{ marginTop: 4, fontSize: 10, opacity: .78 }}>Teams enregistrées · score collectif</div>
+                </button>
               </div>
-              <div style={{ marginTop: 10 }}>
-                <PlayerPagedSelector
-                  usageMode="super_bull"
-                  profiles={humanProfiles}
-                  selectedIds={selectedIds}
-                  onToggle={toggleSelected}
-                  accent="#29deff"
-                  pageSize={9}
-                  modalTitle="Choisir les joueurs SUPER BULL"
-                  showSelectedSummary={true}
-                />
-              </div>
-              {!humanProfiles.length ? <div style={{ marginTop: 10, color: "#ffb8c7", fontSize: 11.5, fontWeight: 850 }}>Aucun profil local disponible pour le moment.</div> : null}
+              {participantSource === "players" ? <>
+                <div style={{ marginTop: 10, color: "#a6b9c8", fontSize: 11, lineHeight: 1.45 }}>
+                  Sélectionne de 1 à {MAX_PLAYERS} participants avec leurs avatars et profils. L’ordre de sélection devient l’ordre de jeu.
+                </div>
+                <div style={{ marginTop: 10 }}>
+                  <PlayerPagedSelector
+                    usageMode="super_bull"
+                    profiles={humanProfiles}
+                    selectedIds={selectedIds}
+                    onToggle={toggleSelected}
+                    accent="#29deff"
+                    pageSize={9}
+                    modalTitle="Choisir les joueurs SUPER BULL"
+                    showSelectedSummary={true}
+                  />
+                </div>
+                {!humanProfiles.length ? <div style={{ marginTop: 10, color: "#ffb8c7", fontSize: 11.5, fontWeight: 850 }}>Aucun profil local disponible pour le moment.</div> : null}
+              </> : <>
+                <div style={{ marginTop: 10, color: "#a6b9c8", fontSize: 11, lineHeight: 1.45 }}>
+                  Chaque équipe devient un participant de score SUPER BULL. Son logo, son nom et la liste de ses membres sont conservés dans la partie, l’historique et la reprise.
+                </div>
+                <div style={{ marginTop: 10 }}>
+                  <TeamPagedSelector
+                    teams={teamCatalog}
+                    selectedIds={selectedTeamIds}
+                    onToggle={toggleTeamSelected}
+                    accent="#ffd76a"
+                    pageSize={9}
+                    modalTitle="Choisir les équipes SUPER BULL"
+                    chooseLabel="Choisir équipes"
+                    listLabel="Liste équipes"
+                  />
+                </div>
+                {!teamCatalog.length ? <div style={{ marginTop: 10, color: "#ffb8c7", fontSize: 11.5, fontWeight: 850 }}>Aucune équipe Darts enregistrée pour le moment.</div> : null}
+                {selectedTeamIds.length >= MAX_PLAYERS ? <div style={{ marginTop: 10, color: "#ffd76a", fontSize: 11.5, fontWeight: 850 }}>Maximum {MAX_PLAYERS} équipes pour SUPER BULL.</div> : null}
+              </>}
             </section>
 
-            <section style={cardStyle()}>
+            {participantSource === "players" ? <section style={cardStyle()}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                 <div>
                   <div style={{ color: "#ffd76a", fontSize: 12, fontWeight: 1000, letterSpacing: 1.1, textTransform: "uppercase" }}>Arcade · BOTS IA</div>
@@ -417,7 +523,7 @@ export default function SuperBullConfig(props: any) {
                 <BotPagedSelector bots={botProfiles} selectedIds={selectedIds} onToggle={toggleSelected} accent="#ffd76a" label="BOTS IA" showCheckbox={false} showSelectedSummary={false} />
               </div> : null}
               {selectedIds.length >= MAX_PLAYERS ? <div style={{ marginTop: 10, color: "#ffd76a", fontSize: 11.5, fontWeight: 850 }}>Roster complet : retire un participant pour en ajouter un autre.</div> : null}
-            </section>
+            </section> : null}
           </>
         )}
 

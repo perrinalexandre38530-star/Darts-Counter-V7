@@ -1287,12 +1287,12 @@ function SuperBullSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; 
     </section>
 
     <section style={card(accent)}>
-      <div style={sectionTitle(accent)}>Détail par joueur</div>
+      <div style={sectionTitle(accent)}>Détail par participant</div>
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", minWidth: 980, borderCollapse: "collapse", fontSize: 11.5 }}>
           <thead>
             <tr style={{ color: accent, textAlign: "left" }}>
-              <th style={th}>Joueur</th><th style={th}>Score</th><th style={th}>Flèches</th>
+              <th style={th}>Participant</th><th style={th}>Score</th><th style={th}>Flèches</th>
               <th style={th}>BULL25</th><th style={th}>BULL50</th><th style={th}>MISS</th>
               <th style={th}>Centre</th><th style={th}>BULL50 %</th><th style={th}>Best</th>
               <th style={th}>Moy./volée</th><th style={th}>Série</th><th style={th}>Parfaites</th>
@@ -1334,7 +1334,7 @@ function SuperBullSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; 
           const total = darts.reduce((sum: number, d: any) => sum + dartPoints(d), 0);
           return <div key={`sb-visit-${index}`} style={{ display: "grid", gridTemplateColumns: "44px minmax(90px,1fr) repeat(3,minmax(60px,.7fr)) 58px", gap: 6, alignItems: "center", padding: "7px 8px", borderRadius: 10, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", fontSize: 11 }}>
             <strong style={{ color: accent }}>#{index + 1}</strong>
-            <span style={{ fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerNameById(String(visit?.playerId || ""))}</span>
+            <span style={{ fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerNameById(String(visit?.playerId || ""))}{visit?.teamMemberName ? ` · ${visit.teamMemberName}` : ""}</span>
             {[0,1,2].map((slot) => <span key={slot} style={{ color: dartName(darts[slot]) === "BULL50" ? "#ff6b79" : dartName(darts[slot]) === "BULL25" ? "#62e8a3" : "#a8b1bc", fontWeight: 900 }}>{dartName(darts[slot])}</span>)}
             <strong style={{ textAlign: "right", color: "#fff" }}>{total}</strong>
           </div>;

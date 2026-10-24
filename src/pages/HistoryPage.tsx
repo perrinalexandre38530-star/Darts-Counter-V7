@@ -780,20 +780,24 @@ function statusOf(e: SavedEntry): "finished" | "in_progress" {
   // Les marqueurs de fin explicites et irréversibles gagnent toujours.
   // IMPORTANT : winnerId n'est volontairement PAS ici. Plusieurs moteurs
   // conservent le gagnant du dernier leg / de la dernière manche pendant le live.
-  const hasHardFinish =
-    tokens.some((token) => finishedTokens.has(token)) ||
+  const hasIrreversibleFinish =
     summary?.finished === true || summary?.result?.finished === true ||
     payload?.summary?.finished === true || payload?.result?.finished === true ||
     decoded?.summary?.finished === true || decoded?.result?.finished === true ||
     resumeState?.finished === true || payloadState?.finished === true ||
     !!anyE?.finishedAt || !!summary?.finishedAt || !!payload?.finishedAt;
-  if (hasHardFinish) return "finished";
+  if (hasIrreversibleFinish) return "finished";
 
-  // Un checkpoint/status live explicite est prioritaire sur les winnerId intermédiaires.
-  // Cela évite notamment P'TIT 1 / X01 multi-legs / Challenge classés terminés
-  // après une simple manche gagnée.
-  if (tokens.some((token) => liveTokens.has(token))) return "in_progress";
-  if (anyE?.resume?.state || anyE?.resume?.config || anyE?.resume?.livePayload) return "in_progress";
+  const hasLiveSnapshot = Boolean(anyE?.resume?.state || anyE?.resume?.config || anyE?.resume?.livePayload);
+  const hasLiveToken = tokens.some((token) => liveTokens.has(token));
+  const hasFinishedToken = tokens.some((token) => finishedTokens.has(token));
+
+  // AUTO-RÉPARATION LEGACY : d'anciennes lignes ont pu recevoir status=finished
+  // après un leg/round tout en conservant un vrai snapshot de reprise. Le snapshot
+  // live gagne sur ce token obsolète tant qu'aucune preuve irréversible de fin
+  // (finishedAt / finished=true) n'existe.
+  if (hasLiveToken || hasLiveSnapshot) return "in_progress";
+  if (hasFinishedToken) return "finished";
 
   // Sans aucun marqueur live, un gagnant final reste une preuve raisonnable de fin.
   const winnerId =

@@ -86,6 +86,8 @@ type Props = {
 
   /** Masquer les 3 badges d’aperçu (si affichés ailleurs) */
   hidePreview?: boolean;
+  /** Formateur optionnel des 3 hits de volée (ex: T12 ROUGE / G20 NOIR). */
+  previewFormatter?: (dart?: UIDart, index?: number) => React.ReactNode;
 
   /** Masquer le total (centre entre BULL & VALIDER) */
   hideTotal?: boolean;
@@ -355,6 +357,7 @@ export default function Keypad({
   onBull,
   onValidate,
   hidePreview = false,
+  previewFormatter = null,
   hideTotal = false,
   centerSlot = null,
   auxAction = null,
@@ -487,9 +490,9 @@ export default function Keypad({
             width: "100%",
           }}
         >
-          <span style={{ ...chip, color: "#eec7ff" }}>{fmt(currentThrow[0])}</span>
-          <span style={{ ...chip, color: "#cfe6ff" }}>{fmt(currentThrow[1])}</span>
-          <span style={{ ...chip, color: "#ffe7c0" }}>{fmt(currentThrow[2])}</span>
+          <span style={{ ...chip, color: "#eec7ff" }}>{previewFormatter ? previewFormatter(currentThrow[0], 0) : fmt(currentThrow[0])}</span>
+          <span style={{ ...chip, color: "#cfe6ff" }}>{previewFormatter ? previewFormatter(currentThrow[1], 1) : fmt(currentThrow[1])}</span>
+          <span style={{ ...chip, color: "#ffe7c0" }}>{previewFormatter ? previewFormatter(currentThrow[2], 2) : fmt(currentThrow[2])}</span>
         </div>
       )}
 

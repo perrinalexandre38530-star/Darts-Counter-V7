@@ -48,7 +48,7 @@ export const DARTS_NEW_MODES: DartsModeDef[] = [
     infoTitle:"SHOOTER", infoBody:"Course de précision sur une séquence de cibles. S/D/T rapportent 1/2/3 marks, avec zones imposées, pénalités, score, joueurs, équipes et bots configurables.",
     defaultRounds:15, defaultDarts:3 },
   { id:"super_bull", label:"Super Bull", category:"variant",
-    infoTitle:"Super Bull", infoBody:"Mode centre : BULL25 = 25 points, BULL50 = 50 points, MISS = 0. Trois fléchettes par volée ; meilleur total après les rounds ou victoire dès l'objectif atteint.",
+    infoTitle:"Super Bull", infoBody:"Mode centre : BULL25 = 25 points, BULL50 = 50 points, MISS = 0. Trois fléchettes par volée ; meilleur total après les rounds ou victoire dès l'objectif atteint. Arcade : profils, BOTS ou équipes enregistrées avec score collectif.",
     defaultRounds:10, defaultDarts:3, targetScore:200 },
   { id:"tic_tac_toe", label:"Tic-Tac-Toe", category:"fun",
     infoTitle:"Tic-Tac-Toe", infoBody:"Grille 3x3. Prends une case en touchant la cible associee. 3 alignees = victoire.",

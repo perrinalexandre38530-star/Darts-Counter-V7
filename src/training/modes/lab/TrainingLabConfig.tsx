@@ -24,6 +24,8 @@ import { buildTrainingCareer } from "../../profile/trainingCareer";
 import { buildTrainingMissionBoard } from "../../profile/trainingMissions";
 import { buildTrainingCoachHistory } from "../../profile/trainingCoachHistory";
 import { buildTrainingCycleCoach } from "../../profile/trainingCycleCoach";
+import { buildTrainingBlockCoach, buildTrainingCycleHistory } from "../../profile/trainingBlockCoach";
+import { buildTrainingAdaptationCoach } from "../../profile/trainingAdaptationCoach";
 
 const familyOrder: TrainingExerciseFamily[] = ["scoring", "doubles", "checkout", "precision", "bull", "regularity"];
 type HubTab = "program" | "exercises" | "diagnosis" | "progress";
@@ -73,6 +75,9 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
   const rawRecommendedFamily = React.useMemo(() => chooseGoalPriorityFamily(diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines), [diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines]);
   const cycleCoach = React.useMemo(() => buildTrainingCycleCoach(programSessions, diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines), [programSessions, diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines]);
   const recommendedFamily = cycleCoach.priority?.family || rawRecommendedFamily;
+  const blockCoach = React.useMemo(() => buildTrainingBlockCoach(programSessions, cycleCoach), [programSessions, cycleCoach]);
+  const adaptationCoach = React.useMemo(() => buildTrainingAdaptationCoach(programSessions, cycleCoach, blockCoach, loadSummary), [programSessions, cycleCoach, blockCoach, loadSummary]);
+  const cycleHistory = React.useMemo(() => buildTrainingCycleHistory(programSessions, 6), [programSessions]);
   const weekCoachPlan = React.useMemo(() => buildTrainingWeekCoachPlan(programSessions, preferences.weeklySessionTarget, recommendedFamily, loadSummary), [programSessions, preferences.weeklySessionTarget, recommendedFamily, loadSummary]);
   const nextRecommendation = React.useMemo(() => { void revision; return loadTrainingNextRecommendation(); }, [revision]);
   const progression = React.useMemo(() => buildTrainingProgression(sessions), [sessions]);
@@ -293,6 +298,50 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                   <div style={{ padding: "6px 8px", borderRadius: 9, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 11, color: cycleComparison.delta > 3 ? "#8cffcb" : cycleComparison.delta < -3 ? "#ffd86b" : "inherit" }}>{cycleComparison.previousSessions ? `${cycleComparison.delta > 0 ? "+" : ""}${Math.round(cycleComparison.delta)}` : "—"}</b><div style={{ fontSize: 6.8, opacity: .43 }}>DELTA</div></div>
                 </div>
               </div>
+            </div>
+
+            <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: adaptationCoach.status === "progressing" ? "1px solid rgba(80,255,174,.24)" : adaptationCoach.status === "plateau" || adaptationCoach.status === "regressing" ? "1px solid rgba(255,184,76,.26)" : "1px solid rgba(39,220,255,.18)", background: adaptationCoach.status === "progressing" ? "linear-gradient(135deg,rgba(80,255,174,.06),rgba(39,220,255,.035))" : adaptationCoach.status === "plateau" || adaptationCoach.status === "regressing" ? "linear-gradient(135deg,rgba(255,184,76,.07),rgba(140,90,255,.035))" : "rgba(255,255,255,.025)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+                <div style={{ minWidth: 0, flex: "1 1 260px" }}>
+                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: adaptationCoach.status === "progressing" ? "#8cffcb" : adaptationCoach.status === "plateau" || adaptationCoach.status === "regressing" ? "#ffd86b" : "#27dcff" }}>PILOTAGE AWENA • {adaptationCoach.label}</div>
+                  <div style={{ marginTop: 4, fontSize: 13, fontWeight: 950 }}>{adaptationCoach.headline}</div>
+                  <div style={{ marginTop: 4, fontSize: 9.5, lineHeight: 1.4, opacity: .64 }}>{adaptationCoach.summary}</div>
+                </div>
+                <button type="button" onClick={() => prepareRecommendedSession(adaptationCoach.recommendedDurationMin, adaptationCoach.recommendedFamily)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(39,220,255,.22)", background: "rgba(39,220,255,.07)", color: "inherit", fontSize: 8.5, fontWeight: 950, cursor: "pointer" }}>{adaptationCoach.actionLabel} • {adaptationCoach.recommendedDurationMin} MIN</button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 10, textAlign: "center" }}>
+                <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{programSessions.length >= 4 ? Math.round(adaptationCoach.recentAverage) : "—"}</b><div style={{ fontSize: 7, opacity: .45 }}>4 DERNIÈRES</div></div>
+                <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{programSessions.length >= 8 ? Math.round(adaptationCoach.previousAverage) : "—"}</b><div style={{ fontSize: 7, opacity: .45 }}>4 AVANT</div></div>
+                <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{programSessions.length >= 8 ? `${adaptationCoach.delta > 0 ? "+" : ""}${Math.round(adaptationCoach.delta)}` : "—"}</b><div style={{ fontSize: 7, opacity: .45 }}>DELTA</div></div>
+                <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{programSessions.length >= 4 ? Math.round(adaptationCoach.consistency) : "—"}</b><div style={{ fontSize: 7, opacity: .45 }}>RÉGULARITÉ</div></div>
+              </div>
+              {adaptationCoach.targetRequiredAverage !== null && <div style={{ marginTop: 8, padding: 9, borderRadius: 10, background: adaptationCoach.targetFeasible ? "rgba(80,255,174,.035)" : "rgba(255,184,76,.055)", border: adaptationCoach.targetFeasible ? "1px solid rgba(80,255,174,.12)" : "1px solid rgba(255,184,76,.18)", fontSize: 8.8, lineHeight: 1.4, opacity: .75 }}><b>Cible du bloc :</b> il faut environ {Math.round(adaptationCoach.targetRequiredAverage)}/100 de moyenne sur les {blockCoach.remainingSessions} séance{blockCoach.remainingSessions > 1 ? "s" : ""} restante{blockCoach.remainingSessions > 1 ? "s" : ""}.{!adaptationCoach.targetFeasible ? " Awena considère la cible trop agressive : privilégie d’abord la reconstruction du niveau." : ""}</div>}
+            </div>
+
+            <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: "1px solid rgba(39,220,255,.20)", background: "linear-gradient(135deg,rgba(39,220,255,.065),rgba(140,90,255,.045))" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start", flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>BLOC DE PROGRESSION AWENA • 12 SÉANCES</div>
+                  <div style={{ marginTop: 4, fontSize: 13, fontWeight: 950 }}>{blockCoach.headline}</div>
+                  <div style={{ marginTop: 4, fontSize: 9.5, lineHeight: 1.4, opacity: .64 }}>{blockCoach.summary}</div>
+                </div>
+                <button type="button" onClick={() => prepareRecommendedSession(loadSummary.recommendedDurationMin, blockCoach.recommendedFamily)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(39,220,255,.24)", background: "rgba(39,220,255,.08)", color: "inherit", fontSize: 8.5, fontWeight: 950, cursor: "pointer" }}>POURSUIVRE • {blockCoach.recommendedLabel.toUpperCase()}</button>
+              </div>
+              <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,.07)", overflow: "hidden", marginTop: 10 }}><div style={{ width: `${Math.max(2, blockCoach.completionPct)}%`, height: "100%", background: "linear-gradient(90deg,#27dcff,#8c5aff,#ffd86b)" }} /></div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 9, textAlign: "center" }}>
+                <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{blockCoach.completedSessions}/{blockCoach.blockSize}</b><div style={{ fontSize: 7, opacity: .45 }}>SÉANCES</div></div>
+                <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{blockCoach.completedCycles}/3</b><div style={{ fontSize: 7, opacity: .45 }}>CYCLES</div></div>
+                <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{blockCoach.completedSessions ? Math.round(blockCoach.currentAverage) : "—"}</b><div style={{ fontSize: 7, opacity: .45 }}>MOY. / {blockCoach.targetAverage}</div></div>
+                <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{blockCoach.familyCoverage}/{blockCoach.familyCoverageTarget}</b><div style={{ fontSize: 7, opacity: .45 }}>COUVERTURE</div></div>
+              </div>
+              <div style={{ marginTop: 8, padding: 9, borderRadius: 10, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.06)", fontSize: 8.8, lineHeight: 1.4, opacity: .7 }}><b>Prochain jalon :</b> {blockCoach.milestone}</div>
+              {!!blockCoach.cycles.length && <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 8 }}>
+                {blockCoach.cycles.map((cycle) => <div key={cycle.cycleNumber} style={{ padding: 8, borderRadius: 10, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.12)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 6, fontSize: 7.5, opacity: .5 }}><span>CYCLE {cycle.cycleNumber}</span><span>{cycle.sessions}/4</span></div>
+                  <div style={{ marginTop: 3, fontSize: 12, fontWeight: 950 }}>{Math.round(cycle.average)}<span style={{ fontSize: 7.5, opacity: .45 }}>/100</span></div>
+                  <div style={{ marginTop: 2, fontSize: 7, opacity: .48 }}>{cycle.dominantLabel} • rég. {Math.round(cycle.consistency)}</div>
+                </div>)}
+              </div>}
             </div>
 
             <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: cycleCoach.onTrack ? "1px solid rgba(80,255,174,.22)" : "1px solid rgba(255,184,76,.24)", background: cycleCoach.onTrack ? "linear-gradient(135deg,rgba(80,255,174,.055),rgba(39,220,255,.035))" : "linear-gradient(135deg,rgba(255,184,76,.07),rgba(140,90,255,.035))" }}>
@@ -618,6 +667,19 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 </div>;
               })}
             </div>
+
+            <div style={{ margin: "16px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#8cffcb" }}>HISTORIQUE DES CYCLES</div>
+            {!cycleHistory.length ? <div style={{ padding: 14, borderRadius: 13, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.025)", fontSize: 9.5, opacity: .58 }}>Il faut 4 programmes complets pour fermer un premier cycle.</div> : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 7 }}>
+              {cycleHistory.map((cycle, index) => <div key={`cycle-history-${cycle.cycleNumber}`} style={{ padding: 10, borderRadius: 12, border: index === 0 ? "1px solid rgba(80,255,174,.22)" : "1px solid rgba(255,255,255,.075)", background: index === 0 ? "rgba(80,255,174,.04)" : "rgba(255,255,255,.022)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><b style={{ fontSize: 9.5 }}>Cycle {cycle.cycleNumber}</b><span style={{ fontSize: 8, opacity: .5 }}>{cycle.families.length}/6 familles</span></div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 5, marginTop: 8, textAlign: "center" }}>
+                  <div><b style={{ fontSize: 12 }}>{Math.round(cycle.average)}</b><div style={{ fontSize: 6.5, opacity: .42 }}>MOY.</div></div>
+                  <div><b style={{ fontSize: 12 }}>{Math.round(cycle.consistency)}</b><div style={{ fontSize: 6.5, opacity: .42 }}>RÉG.</div></div>
+                  <div><b style={{ fontSize: 12 }}>{Math.round(cycle.bestScore)}</b><div style={{ fontSize: 6.5, opacity: .42 }}>BEST</div></div>
+                </div>
+                <div style={{ marginTop: 7, fontSize: 7.5, opacity: .5 }}>Dominante : <b>{cycle.dominantLabel}</b> • précision {Math.round(cycle.accuracy)}%</div>
+              </div>)}
+            </div>}
 
             <div style={{ margin: "16px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#ffd86b" }}>RECORDS PERSONNELS</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 7 }}>

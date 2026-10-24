@@ -525,14 +525,19 @@ function detectStatus(rec: any, decoded: any | null): "finished" | "in_progress"
     rec?.winnerId || s?.winnerId || s?.result?.winnerId || rec?.payload?.winnerId ||
     rec?.payload?.summary?.winnerId || d?.winnerId || d?.summary?.winnerId || d?.result?.winnerId || null;
 
-  if (tokens.some((token) => finishedTokens.has(token))) return "finished";
-  if (rec?.finishedAt || s?.finishedAt || rec?.payload?.finishedAt) return "finished";
-  if (s?.finished === true || s?.result?.finished === true || d?.summary?.finished === true || d?.result?.finished === true) return "finished";
+  const hasIrreversibleFinish =
+    !!rec?.finishedAt || !!s?.finishedAt || !!rec?.payload?.finishedAt ||
+    s?.finished === true || s?.result?.finished === true ||
+    d?.summary?.finished === true || d?.result?.finished === true;
+  if (hasIrreversibleFinish) return "finished";
 
-  // Rankings/stats et winnerId peuvent exister pendant le live (P'TIT 1,
-  // X01 multi-legs, Challenge, Crados, etc.). Un état live explicite gagne.
-  if (tokens.some((token) => liveTokens.has(token))) return "in_progress";
-  if (rec?.resume?.state || rec?.resume?.config || rec?.resume?.livePayload) return "in_progress";
+  const hasLiveSnapshot = Boolean(rec?.resume?.state || rec?.resume?.config || rec?.resume?.livePayload);
+  const hasLiveToken = tokens.some((token) => liveTokens.has(token));
+  const hasFinishedToken = tokens.some((token) => finishedTokens.has(token));
+
+  // Répare les faux `finished` historiques conservant encore un snapshot live.
+  if (hasLiveToken || hasLiveSnapshot) return "in_progress";
+  if (hasFinishedToken) return "finished";
 
   // Winner seulement en absence totale de snapshot/statut live.
   if (winnerId) return "finished";

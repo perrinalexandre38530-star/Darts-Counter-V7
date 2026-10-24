@@ -200,62 +200,88 @@ function Ptit1LiveTargetBoard({ rules, targets = [], score, currentThrow = [] }:
   const oneStart = oneIndex * 18 - 9;
   const oneEnd = oneStart + 18;
   const tokenCells = [
-    { label: ptit1Ui("PETIT 1","SMALL 1"), hint: ptit1Ui("objectif principal","main target"), color: "#78f3d4" },
-    { label: ptit1Ui("GROS 1","BIG 1"), hint: `+${rules.outerSingleFactor}`, color: "#ffad55" },
-    { label: "BULL25", hint: `×${rules.bull25Factor}`, color: "#ff6f78" },
-    { label: "DBULL", hint: rules.dbullEnabled ? `÷${rules.dbullDivider}` : "+50", color: "#78f3d4" },
+    { label: ptit1Ui("PETIT 1","SMALL 1"), hint: ptit1Ui("objectif principal","main target"), color: "#67ffe0", glow: "rgba(103,255,224,.45)" },
+    { label: ptit1Ui("GROS 1","BIG 1"), hint: `+${rules.outerSingleFactor}`, color: "#ffb347", glow: "rgba(255,179,71,.42)" },
+    { label: "BULL25", hint: `×${rules.bull25Factor}`, color: "#ff5b8f", glow: "rgba(255,91,143,.45)" },
+    { label: "DBULL", hint: rules.dbullEnabled ? `÷${rules.dbullDivider}` : "+50", color: "#5cf2ff", glow: "rgba(92,242,255,.42)" },
   ];
   const hitTokens = (currentThrow || []).slice(0,3).map((d:any, i:number) => ({ ...ptit1TokenMeta(d), key: i }));
-  return <div style={{ minHeight: 0, display: "grid", gap: 8 }}>
-    <div style={{ borderRadius: 18, border: `1px solid ${ACCENT}44`, background: "radial-gradient(circle at 50% 12%,rgba(255,216,77,.16),transparent 30%), radial-gradient(circle at 50% 68%,rgba(120,243,212,.08),transparent 44%), linear-gradient(180deg,rgba(14,17,24,.98),rgba(5,7,11,.99))", padding: compact ? 8 : 10 }}>
-      <svg viewBox="0 0 100 100" width="100%" height="100%" style={{ display: "block", maxHeight: compact ? 270 : 360, margin: "0 auto", filter: "drop-shadow(0 16px 28px rgba(0,0,0,.50))" }}>
-        <circle cx="50" cy="50" r="49" fill="#0d1118" stroke="rgba(255,216,77,.18)" strokeWidth="1" />
-        {PTIT1_BOARD_ORDER.map((n, idx) => {
-          const start = idx * 18 - 9;
-          const end = start + 18;
-          const isOne = n === 1;
-          const baseDark = idx % 2 === 0 ? "#14181f" : "#efe0c9";
-          const baseLight = idx % 2 === 0 ? "#efe0c9" : "#14181f";
-          return <g key={n}>
-            <path d={ptit1RingPath(50,50,45,38,start,end)} fill={isOne ? "rgba(255,173,85,.95)" : (idx % 2 === 0 ? "#d63c39" : "#1a9157")} opacity={isOne ? 1 : .92} />
-            <path d={ptit1RingPath(50,50,37.5,28.8,start,end)} fill={isOne ? "rgba(255,232,150,.95)" : baseDark} />
-            <path d={ptit1RingPath(50,50,28.4,21,start,end)} fill={isOne ? "rgba(194,33,40,.98)" : (idx % 2 === 0 ? "#d63c39" : "#1a9157")} opacity={isOne ? 1 : .92} />
-            <path d={ptit1RingPath(50,50,20.4,8.6,start,end)} fill={isOne ? "rgba(120,243,212,.96)" : baseLight} stroke={isOne ? "#f7ffbe" : "rgba(255,255,255,.05)"} strokeWidth={isOne ? 1.1 : .35} />
-          </g>;
-        })}
-        {PTIT1_BOARD_ORDER.map((n, idx) => {
-          const a = idx * 18 - 9;
-          const line = ptit1Polar(50,50,45,a);
-          const pt = ptit1Polar(50,50,41.6,a+9);
-          const isOne = n === 1;
-          return <g key={`mark-${n}`}>
-            <line x1="50" y1="50" x2={line.x} y2={line.y} stroke="rgba(255,255,255,.11)" strokeWidth=".6" />
-            <text x={pt.x} y={pt.y+1.5} textAnchor="middle" fontSize={isOne ? "6.2" : "4.6"} fill={isOne ? "#fff5b6" : "rgba(255,255,255,.85)"} fontWeight="1000">{n}</text>
-          </g>;
-        })}
-        <path d={ptit1RingPath(50,50,20.4,8.6,oneStart,oneEnd)} fill="rgba(120,243,212,.95)" stroke="#f7ffbe" strokeWidth="1.2" style={{ filter: "drop-shadow(0 0 8px rgba(120,243,212,.66))" }} />
-        <path d={ptit1RingPath(50,50,37.5,28.8,oneStart,oneEnd)} fill="rgba(255,173,85,.98)" stroke="#ffe0a9" strokeWidth="1.1" style={{ filter: "drop-shadow(0 0 6px rgba(255,173,85,.45))" }} />
-        {(targets || []).map((t:any, i:number) => {
-          const idx = PTIT1_BOARD_ORDER.indexOf(Number(t.number));
-          if (idx < 0) return null;
-          const start = idx * 18 - 9;
-          const end = start + 18;
-          const d = t.bed === "D" ? ptit1RingPath(50,50,45,38,start,end) : ptit1RingPath(50,50,28.4,21,start,end);
-          return <path key={`${t.label}-${i}`} d={d} fill={i % 2 === 0 ? "rgba(255,62,74,.95)" : "rgba(255,216,77,.95)"} stroke="#fff6c4" strokeWidth="1.2" style={{ filter: "drop-shadow(0 0 10px rgba(255,87,87,.66))" }} />;
-        })}
-        <circle cx="50" cy="50" r="6.4" fill="rgba(255,111,120,.98)" stroke="#ffe8b6" strokeWidth="1.2" style={{ filter: "drop-shadow(0 0 10px rgba(255,111,120,.45))" }} />
-        <circle cx="50" cy="50" r="3.1" fill="rgba(120,243,212,.98)" stroke="#fff" strokeWidth="1" style={{ filter: "drop-shadow(0 0 10px rgba(120,243,212,.62))" }} />
-      </svg>
-      <div style={{ marginTop: 6, textAlign: 'center', color: '#d6deea', fontSize: 7.6, fontWeight: 900, lineHeight: 1.35 }}>{ptit1Ui("Cible vivante : zones colorées = impacts clés","Live board: coloured zones = key impacts")}</div>
+  return <div style={{ minHeight: 0, display: "grid", gap: 10 }}>
+    <div style={{ borderRadius: 22, border: "1px solid rgba(90,220,255,.26)", boxShadow: "0 0 0 1px rgba(255,188,64,.12) inset, 0 0 30px rgba(0,196,255,.14), 0 0 54px rgba(255,112,43,.11)", background: "radial-gradient(circle at 50% 0%,rgba(255,173,51,.20),transparent 28%), radial-gradient(circle at 14% 18%,rgba(255,0,128,.12),transparent 24%), radial-gradient(circle at 88% 18%,rgba(0,234,255,.12),transparent 24%), linear-gradient(180deg,rgba(11,14,22,.98),rgba(3,5,9,.995))", padding: compact ? 10 : 14 }}>
+      <div style={{ marginBottom: 8, display: "grid", gridTemplateColumns: compact ? "1fr" : "auto 1fr auto", gap: 8, alignItems: "center" }}>
+        <div style={{ color: "#f7d261", fontSize: 8.3, fontWeight: 1100, letterSpacing: 1.1, textTransform: "uppercase", textShadow: "0 0 8px rgba(247,210,97,.48)" }}>{ptit1Ui("mode arcade","arcade mode")}</div>
+        <div style={{ height: 1, background: "linear-gradient(90deg,rgba(92,242,255,.0),rgba(92,242,255,.45),rgba(255,92,146,.42),rgba(255,179,71,.0))" }} />
+        <div style={{ color: "#9cc8ff", fontSize: 7.2, fontWeight: 1000, letterSpacing: .7 }}>{ptit1Ui("zones chaudes","hot zones")}</div>
+      </div>
+      <div style={{ borderRadius: 20, padding: compact ? 8 : 12, background: "radial-gradient(circle at 50% 30%,rgba(255,255,255,.05),transparent 54%), linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,.01))", border: "1px solid rgba(255,255,255,.06)", boxShadow: "inset 0 0 28px rgba(0,0,0,.32)" }}>
+        <svg viewBox="0 0 100 100" width="100%" height="100%" style={{ display: "block", maxHeight: compact ? 290 : 400, margin: "0 auto", filter: "drop-shadow(0 0 28px rgba(18,218,255,.16)) drop-shadow(0 22px 40px rgba(0,0,0,.55))" }}>
+          <defs>
+            <radialGradient id="ptit1ArcadeCore" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="rgba(255,255,255,.98)" />
+              <stop offset="22%" stopColor="rgba(255,244,140,.95)" />
+              <stop offset="52%" stopColor="rgba(255,98,144,.82)" />
+              <stop offset="100%" stopColor="rgba(255,98,144,0)" />
+            </radialGradient>
+            <radialGradient id="ptit1NeonAura" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="rgba(89,255,232,.40)" />
+              <stop offset="55%" stopColor="rgba(89,255,232,.12)" />
+              <stop offset="100%" stopColor="rgba(89,255,232,0)" />
+            </radialGradient>
+          </defs>
+          <circle cx="50" cy="50" r="49" fill="#060912" stroke="rgba(255,221,112,.28)" strokeWidth="1.2" />
+          <circle cx="50" cy="50" r="46" fill="url(#ptit1NeonAura)" opacity=".9" />
+          {PTIT1_BOARD_ORDER.map((n, idx) => {
+            const start = idx * 18 - 9;
+            const end = start + 18;
+            const isOne = n === 1;
+            const baseDark = idx % 2 === 0 ? "#121a2c" : "#f0e5d0";
+            const baseLight = idx % 2 === 0 ? "#f0e5d0" : "#121a2c";
+            return <g key={n}>
+              <path d={ptit1RingPath(50,50,45,38,start,end)} fill={isOne ? "#ffa73f" : (idx % 2 === 0 ? "#ff4d55" : "#18c37d")} opacity={isOne ? 1 : .96} />
+              <path d={ptit1RingPath(50,50,37.5,28.8,start,end)} fill={isOne ? "#ffd46f" : baseDark} />
+              <path d={ptit1RingPath(50,50,28.4,21,start,end)} fill={isOne ? "#ff7b36" : (idx % 2 === 0 ? "#ff4d55" : "#18c37d")} opacity={isOne ? 1 : .96} />
+              <path d={ptit1RingPath(50,50,20.4,8.6,start,end)} fill={isOne ? "#61ffe1" : baseLight} stroke={isOne ? "#fdffd3" : "rgba(255,255,255,.06)"} strokeWidth={isOne ? 1.2 : .35} />
+            </g>;
+          })}
+          {PTIT1_BOARD_ORDER.map((n, idx) => {
+            const a = idx * 18 - 9;
+            const line = ptit1Polar(50,50,45,a);
+            const pt = ptit1Polar(50,50,41.6,a+9);
+            const isOne = n === 1;
+            return <g key={`mark-${n}`}>
+              <line x1="50" y1="50" x2={line.x} y2={line.y} stroke="rgba(255,255,255,.11)" strokeWidth=".6" />
+              <text x={pt.x} y={pt.y+1.5} textAnchor="middle" fontSize={isOne ? "6.2" : "4.7"} fill={isOne ? "#fff8b0" : "rgba(255,255,255,.92)"} fontWeight="1000" style={{ filter: isOne ? "drop-shadow(0 0 6px rgba(255,248,176,.55))" : "none" }}>{n}</text>
+            </g>;
+          })}
+          <path d={ptit1RingPath(50,50,20.4,8.6,oneStart,oneEnd)} fill="rgba(97,255,225,.98)" stroke="#f9ffca" strokeWidth="1.4" style={{ filter: "drop-shadow(0 0 14px rgba(97,255,225,.88)) drop-shadow(0 0 26px rgba(97,255,225,.42))" }} />
+          <path d={ptit1RingPath(50,50,37.5,28.8,oneStart,oneEnd)} fill="rgba(255,174,66,.98)" stroke="#fff0aa" strokeWidth="1.2" style={{ filter: "drop-shadow(0 0 14px rgba(255,174,66,.75)) drop-shadow(0 0 24px rgba(255,174,66,.35))" }} />
+          {(targets || []).map((t:any, i:number) => {
+            const idx = PTIT1_BOARD_ORDER.indexOf(Number(t.number));
+            if (idx < 0) return null;
+            const start = idx * 18 - 9;
+            const end = start + 18;
+            const d = t.bed === "D" ? ptit1RingPath(50,50,45,38,start,end) : ptit1RingPath(50,50,28.4,21,start,end);
+            const fill = i % 2 === 0 ? "rgba(255,63,133,.98)" : "rgba(255,232,86,.98)";
+            const glow = i % 2 === 0 ? "rgba(255,63,133,.72)" : "rgba(255,232,86,.62)";
+            return <g key={`${t.label}-${i}`}>
+              <path d={d} fill={fill} stroke="#fff8cf" strokeWidth="1.25" style={{ filter: `drop-shadow(0 0 18px ${glow}) drop-shadow(0 0 32px ${glow})` }} />
+            </g>;
+          })}
+          <circle cx="50" cy="50" r="8.6" fill="url(#ptit1ArcadeCore)" opacity=".9" />
+          <circle cx="50" cy="50" r="6.4" fill="rgba(255,111,120,.98)" stroke="#ffe8b6" strokeWidth="1.2" style={{ filter: "drop-shadow(0 0 14px rgba(255,111,120,.75))" }} />
+          <circle cx="50" cy="50" r="3.1" fill="rgba(92,242,255,.98)" stroke="#fff" strokeWidth="1" style={{ filter: "drop-shadow(0 0 12px rgba(92,242,255,.92))" }} />
+        </svg>
+        <div style={{ marginTop: 8, textAlign: "center", color: "#eff5ff", fontSize: 7.6, fontWeight: 900, lineHeight: 1.35, textShadow: "0 0 10px rgba(92,242,255,.18)" }}>{ptit1Ui("Cible vivante : zones colorées = impacts clés","Live board: coloured zones = key impacts")}</div>
+      </div>
     </div>
-    <div style={{ display: "grid", gridTemplateColumns: compact ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 6 }}>
-      {tokenCells.map((item) => <div key={item.label} style={{ minWidth: 0, borderRadius: 12, padding: "7px 6px", border: `1px solid ${item.color}44`, background: `${item.color}10`, textAlign: "center" }}><div style={{ color: item.color, fontSize: 7.2, fontWeight: 1100, letterSpacing: .4 }}>{item.label}</div><div style={{ color: "#fff", marginTop: 2, fontSize: 7.6, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.hint}</div></div>)}
+    <div style={{ display: "grid", gridTemplateColumns: compact ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap: 7 }}>
+      {tokenCells.map((item) => <div key={item.label} style={{ minWidth: 0, borderRadius: 14, padding: "8px 7px", border: `1px solid ${item.color}66`, background: `linear-gradient(180deg,${item.glow.replace('.45','.16')},rgba(9,12,18,.86))`, boxShadow: `0 0 16px ${item.glow.replace('.45','.12').replace('.42','.12')}`, textAlign: "center" }}><div style={{ color: item.color, fontSize: 7.2, fontWeight: 1100, letterSpacing: .55, textShadow: `0 0 8px ${item.glow}` }}>{item.label}</div><div style={{ color: "#fff", marginTop: 2, fontSize: 7.6, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.hint}</div></div>)}
     </div>
-    {hitTokens.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
+    {hitTokens.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>
       {Array.from({ length: 3 }).map((_, i) => {
         const token:any = hitTokens[i];
-        return <div key={i} style={{ minHeight: 46, borderRadius: 12, border: `1px solid ${token?.border || "rgba(255,255,255,.08)"}`, background: token?.bg || "rgba(255,255,255,.03)", display: "grid", placeItems: "center", color: token?.color || "#7a8496", fontWeight: 1100, position: "relative" }}>
-          {token ? <><span style={{ position: "absolute", top: 6, right: 8, fontSize: 7, opacity: .88 }}>{token.badge}</span><span style={{ fontSize: 12 }}>{token.label}</span></> : <span style={{ fontSize: 8.6 }}>{`${ptit1Ui("FLÉCHETTE","DART")} ${i+1}`}</span>}
+        return <div key={i} style={{ minHeight: 48, borderRadius: 13, border: `1px solid ${token?.border || "rgba(255,255,255,.08)"}`, background: token?.bg || "linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.02))", boxShadow: token ? "0 0 18px rgba(255,255,255,.06)" : "none", display: "grid", placeItems: "center", color: token?.color || "#7a8496", fontWeight: 1100, position: "relative" }}>
+          {token ? <><span style={{ position: "absolute", top: 6, right: 8, fontSize: 7, opacity: .92 }}>{token.badge}</span><span style={{ fontSize: 12, textShadow: "0 0 10px rgba(255,255,255,.12)" }}>{token.label}</span></> : <span style={{ fontSize: 8.6 }}>{`${ptit1Ui("FLÉCHETTE","DART")} ${i+1}`}</span>}
         </div>;
       })}
     </div> : null}
@@ -345,16 +371,17 @@ function PtitHunRiskBoard({ state, playerId, currentThrow, preview }: any) {
     gap: 9,
   };
   const panel: React.CSSProperties = {
-    borderRadius: 16,
-    border: "1px solid rgba(255,255,255,.08)",
-    background: "linear-gradient(180deg,rgba(15,18,25,.96),rgba(5,7,11,.98))",
+    borderRadius: 18,
+    border: "1px solid rgba(92,242,255,.12)",
+    background: "radial-gradient(circle at top,rgba(255,174,66,.08),transparent 30%), linear-gradient(180deg,rgba(15,18,25,.96),rgba(5,7,11,.985))",
+    boxShadow: "inset 0 0 0 1px rgba(255,255,255,.03), 0 0 26px rgba(0,0,0,.18)",
   };
 
   return <div style={shell}>
     <nav aria-label={ptit1Ui("Onglets Cible et risques","Board and risks tabs")} style={{ ...panel, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5, padding: 5, position: "sticky", top: 0, zIndex: 4 }}>
       {tabs.map((item) => {
         const active = tab === item.id;
-        return <button key={item.id} type="button" onClick={() => setTab(item.id)} aria-pressed={active} style={{ minWidth: 0, minHeight: compact ? 42 : 46, borderRadius: 12, border: `1px solid ${active ? ACCENT + "88" : "rgba(255,255,255,.07)"}`, background: active ? `linear-gradient(180deg,${ACCENT}24,${ACCENT}0c)` : "rgba(255,255,255,.025)", color: active ? ACCENT : "#aeb7c7", cursor: "pointer", fontWeight: 1100, display: "grid", placeItems: "center", alignContent: "center", gap: 2, padding: "5px 4px" }}>
+        return <button key={item.id} type="button" onClick={() => setTab(item.id)} aria-pressed={active} style={{ minWidth: 0, minHeight: compact ? 42 : 46, borderRadius: 13, border: `1px solid ${active ? "rgba(255,216,77,.48)" : "rgba(255,255,255,.07)"}`, background: active ? "linear-gradient(180deg,rgba(255,214,78,.18),rgba(16,25,38,.92))" : "linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,.015))", color: active ? "#ffe06a" : "#b5c0d3", boxShadow: active ? "0 0 18px rgba(255,216,77,.15), inset 0 0 12px rgba(92,242,255,.10)" : "none", cursor: "pointer", fontWeight: 1100, display: "grid", placeItems: "center", alignContent: "center", gap: 2, padding: "5px 4px" }}>
           <span style={{ fontSize: compact ? 12 : 14, lineHeight: 1 }}>{item.icon}</span>
           <span style={{ fontSize: compact ? 6.6 : 7.4, letterSpacing: .45, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{item.label}</span>
         </button>;
@@ -413,11 +440,11 @@ function PtitHunRiskBoard({ state, playerId, currentThrow, preview }: any) {
 }
 
 function FloatingPanel({ title, subtitle, onClose, children, accent = ACCENT }: any) {
-  return <div className="party-mode__modal" role="dialog" aria-modal="true" aria-label={title} onClick={onClose} style={{ padding: "max(8px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left))", background: "rgba(0,0,0,.82)", backdropFilter: "blur(9px)", display: "grid", placeItems: "center" }}>
-    <div className="party-mode__modal-card" onClick={(e) => e.stopPropagation()} style={{ width: "min(980px,96vw)", height: "min(90dvh,780px)", maxHeight: "calc(100dvh - 16px)", margin: "auto", overflow: "hidden", borderRadius: 20, border: `1px solid ${accent}44`, background: "linear-gradient(180deg,rgba(15,17,23,.995),rgba(4,6,10,.995))", boxShadow: "0 28px 90px rgba(0,0,0,.78)", display: "grid", gridTemplateRows: "auto minmax(0,1fr)" }}>
+  return <div className="party-mode__modal" role="dialog" aria-modal="true" aria-label={title} onClick={onClose} style={{ padding: "max(8px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left))", background: "radial-gradient(circle at top,rgba(255,82,137,.18),transparent 24%), radial-gradient(circle at bottom,rgba(0,224,255,.12),transparent 28%), rgba(0,0,0,.84)", backdropFilter: "blur(11px)", display: "grid", placeItems: "center" }}>
+    <div className="party-mode__modal-card" onClick={(e) => e.stopPropagation()} style={{ width: "min(980px,96vw)", height: "min(90dvh,780px)", maxHeight: "calc(100dvh - 16px)", margin: "auto", overflow: "hidden", borderRadius: 22, border: `1px solid ${accent}44`, background: "radial-gradient(circle at top,rgba(255,179,71,.10),transparent 24%), linear-gradient(180deg,rgba(14,17,25,.995),rgba(3,5,9,.995))", boxShadow: "0 0 0 1px rgba(255,255,255,.03) inset, 0 28px 90px rgba(0,0,0,.78), 0 0 36px rgba(0,224,255,.10), 0 0 26px rgba(255,82,137,.08)", display: "grid", gridTemplateRows: "auto minmax(0,1fr)" }}>
       <header style={{ minHeight: 54, padding: "9px 11px", borderBottom: "1px solid rgba(255,255,255,.07)", display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", alignItems: "center", gap: 10 }}>
         <div style={{ minWidth: 0 }}><b style={{ color: accent, fontSize: 12, display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</b>{subtitle ? <span style={{ display: "block", marginTop: 2, color: "#8f98aa", fontSize: 7.8, lineHeight: 1.3 }}>{subtitle}</span> : null}</div>
-        <button type="button" onClick={onClose} aria-label={ptit1Ui("Fermer","Close")} style={{ width: 38, height: 38, borderRadius: 999, border: "1px solid rgba(255,255,255,.13)", background: "rgba(255,255,255,.05)", color: "#fff", fontSize: 20, fontWeight: 1000, cursor: "pointer" }}>×</button>
+        <button type="button" onClick={onClose} aria-label={ptit1Ui("Fermer","Close")} style={{ width: 40, height: 40, borderRadius: 999, border: "1px solid rgba(255,255,255,.13)", background: "linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.03))", color: "#fff", boxShadow: "0 0 16px rgba(255,255,255,.06)", fontSize: 20, fontWeight: 1000, cursor: "pointer" }}>×</button>
       </header>
       <div style={{ minHeight: 0, padding: 8, overflow: "hidden" }}>{children}</div>
     </div>

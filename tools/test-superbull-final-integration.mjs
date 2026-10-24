@@ -20,6 +20,7 @@ const app = read("src/App.tsx");
 const config = read("src/pages/SuperBullConfig.tsx");
 const play = read("src/pages/SimpleRoundsPlay.tsx");
 const history = read("src/pages/HistoryPage.tsx");
+const modeSummary = read("src/pages/DartsModeSummaryPage.tsx");
 const stats = read("src/pages/StatsHub.tsx");
 const rebuild = read("src/lib/stats/rebuildStatsFromHistory.ts");
 const registry = read("src/games/dartsGameRegistry.ts");
@@ -45,6 +46,10 @@ mustInclude(config, [
   "SUPER BULL · ARCADE",
   "PlayerPagedSelector",
   "BotPagedSelector",
+  "TeamPagedSelector",
+  'participantSource === "teams"',
+  "selectedTeamIds",
+  "teamMemberIds",
   "quickParty: true",
   "profileStatsDeferred: true",
   "overflow-y: auto !important",
@@ -69,6 +74,10 @@ mustInclude(play, [
   "const hasExplicitBots = explicitMask.some(Boolean)",
   "resolveBotLevel(targetPlayerIdx = playerIdx)",
   "botLevel: botMask[i] ? resolveBotLevel(i) : undefined",
+  "isTeam: !!p?.isTeam",
+  "teamMemberIds",
+  "teamMemberName",
+  "isQuickParty || botMask[i] || p?.isTeam ? null : String(p.id)",
 ], "gameplay/reprise/correction/bots");
 
 assert.ok(play.includes('setPlayerIdx(playerCount > 0 ? completedVisits % playerCount : 0)'), "correction: joueur actif non restauré");
@@ -82,6 +91,11 @@ mustInclude(history, [
   "quickPartyParticipants",
   "normalizeTransferredQuickRecord",
 ], "historique");
+
+mustInclude(modeSummary, [
+  "Détail par participant",
+  "teamMemberName",
+], "historique détaillé équipes SUPER BULL");
 
 mustInclude(stats, [
   'key: "super_bull"',
@@ -99,6 +113,7 @@ mustInclude(rebuild, [
 mustInclude(registry, [
   'id: "super_bull"',
   'tab: "super_bull_config"',
+  "supportsTeams: true",
   '"super_bull",',
 ], "registre");
 
@@ -139,12 +154,19 @@ mustInclude(publicRules, [
 ], "audit règles SUPER BULL Training");
 
 mustInclude(awenaDetailed, [
+  'Mode complet et jouable en Partie Rapide ou Arcade',
+  'Choix entre **JOUEURS** et **ÉQUIPES**',
+  'BULL25 = 25 points',
+  'BULL50 = 50 points',
   'BULL25 = 25 points.',
   'BULL50 = 50 points.',
   'SPRINT 50/15 · STANDARD 100/30 · ENDURANCE 200/45 · EXPERT 300/60.',
 ], "Awena détaillée SUPER BULL");
 
 mustInclude(awenaDeep, [
+  'id: "super-bull-game"',
+  '**équipes enregistrées**',
+  'Une équipe joue comme un participant de score collectif',
   'BULL25 = 25 points',
   'Objectifs disponibles : 50, 100, 150, 200, 300 ou 500 points',
   'limites : 9, 15, 30, 45, 60 ou 90 fléchettes',
@@ -153,6 +175,7 @@ mustInclude(awenaDeep, [
 mustInclude(legacyCatalog, [
   'id:"super_bull", label:"Super Bull", category:"variant"',
   'BULL25 = 25 points, BULL50 = 50 points, MISS = 0',
+  'profils, BOTS ou équipes enregistrées avec score collectif',
   'targetScore:200',
 ], "catalogue générique SUPER BULL");
 

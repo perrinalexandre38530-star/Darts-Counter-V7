@@ -432,12 +432,12 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     popularityRank: 23,
     ready: true,
     maxPlayers: 4,
-    supportsTeams: false,
+    supportsTeams: true,
     supportsBots: true,
     statsKey: "game:super_bull",
     infoTitle: "Super Bull",
     infoBody:
-      "Mode centre de cible : BULL25 = 25 points, BULL50 = 50 points, toute autre zone = MISS (0). Trois fléchettes par volée. Le meilleur total après les rounds gagne, ou le premier à atteindre l’objectif configuré.",
+      "Mode centre de cible : BULL25 = 25 points, BULL50 = 50 points, toute autre zone = MISS (0). Trois fléchettes par volée. En Arcade, joue avec des profils, des BOTS ou des équipes enregistrées ; une équipe est un participant de score collectif avec son logo et ses membres conservés dans l’historique. Le meilleur total après les rounds gagne, ou le premier à atteindre l’objectif configuré.",
   },
   {
     id: "happy_mille",

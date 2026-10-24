@@ -164,23 +164,23 @@ function inferHistoryStatus(rec: any): "in_progress" | "finished" {
     const decoded: any = rec?.decoded || {};
     const resumeState: any = rec?.resume?.state || {};
     const payloadState: any = payload?.stateSnapshot || payload?.state || {};
-    const hasHardFinish =
-      tokens.some((token) => finishedTokens.has(token)) ||
+    const hasIrreversibleFinish =
       summary?.finished === true || summary?.result?.finished === true ||
       payload?.summary?.finished === true || payload?.result?.finished === true ||
       decoded?.summary?.finished === true || decoded?.result?.finished === true ||
       resumeState?.finished === true || payloadState?.finished === true ||
       !!rec?.finishedAt || !!summary?.finishedAt || !!payload?.finishedAt;
-    if (hasHardFinish) return "finished";
-
-    // Un checkpoint live explicite gagne sur les winnerId intermédiaires et sur
-    // tout contenu statistique calculé pendant la partie.
-    if (tokens.some((token) => liveTokens.has(token))) return "in_progress";
+    if (hasIrreversibleFinish) return "finished";
 
     const resume: any = rec?.resume || {};
-    if (resume?.state || resume?.config || resume?.livePayload || (Array.isArray(resume?.darts) && resume.darts.length > 0)) {
-      return "in_progress";
-    }
+    const hasLiveSnapshot = Boolean(resume?.state || resume?.config || resume?.livePayload || (Array.isArray(resume?.darts) && resume.darts.length > 0));
+    const hasLiveToken = tokens.some((token) => liveTokens.has(token));
+    const hasFinishedToken = tokens.some((token) => finishedTokens.has(token));
+
+    // AUTO-RÉPARATION des anciens faux "finished" : un snapshot live conservé
+    // signifie que la partie reste relançable, sauf preuve irréversible de fin.
+    if (hasLiveToken || hasLiveSnapshot) return "in_progress";
+    if (hasFinishedToken) return "finished";
 
     // Sans marqueur live, un gagnant peut enfin être considéré comme final.
     const winnerId =

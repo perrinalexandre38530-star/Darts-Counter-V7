@@ -36,7 +36,7 @@ function SuperBullTargetIcon({ kind, size = 30 }: { kind: "bull25" | "bull50"; s
 
 function SuperBullChallengeView({
   spec, cfg, playerRows, playerIdx, scores, currentThrow, botMask, roundIdx, isFinished, winner,
-  bullsByP, dbullsByP, dartsByP, bullStreakByP, bestBullStreakByP, perfectVisitsByP, lastBullVisitByP,
+  bullsByP, dbullsByP, dartsByP, visitsByP, bullStreakByP, bestBullStreakByP, perfectVisitsByP, lastBullVisitByP,
   superBullRanking, superBullFx, visitHistory, isQuickParty, onBack, onHistory, onReset, onDart, onUndo,
 }: any) {
   const active = playerRows[playerIdx] || playerRows[0] || { name: "Joueur 1" };
@@ -55,6 +55,13 @@ function SuperBullChallengeView({
   const avatar = (p: any, size = 54) => p?.avatarDataUrl
     ? <img src={p.avatarDataUrl} alt={p.name || "Joueur"} style={{ width:size, height:size, borderRadius:"50%", objectFit:"cover", border:"2px solid #2bd9ff", boxShadow:"0 0 16px #16c9ff55" }}/>
     : <span style={{ width:size, height:size, borderRadius:"50%", display:"grid", placeItems:"center", background:"radial-gradient(circle at 35% 25%,#33465e,#0a111a 65%)", border:"2px solid #2bd9ff", color:"#fff", fontWeight:1000, boxShadow:"0 0 16px #16c9ff55" }}>{initials(p?.name)}</span>;
+  const teamMemberTurnName = (p: any, i: number) => {
+    if (!p?.isTeam) return "";
+    const names = Array.isArray(p?.teamMemberNames) ? p.teamMemberNames.filter(Boolean) : [];
+    if (!names.length) return "";
+    const turn = Math.max(0, Number(visitsByP?.[i] || 0));
+    return String(names[turn % names.length] || "");
+  };
 
   const [panel, setPanel] = React.useState<null | "stats" | "players" | "ranking" | "log">(null);
   const [statsPlayerIdx, setStatsPlayerIdx] = React.useState(playerIdx);
@@ -117,13 +124,13 @@ function SuperBullChallengeView({
           <div className="sbx-mini-log">{selectedStats.rows.length ? selectedStats.rows.slice().reverse().slice(0,8).map((v:any,idx:number)=><div key={v.id||idx}><b>V{Number(v.visitIndex||0)+1}</b><span>{[0,1,2].map((slot)=>labelDart(v?.darts?.[slot])).join(" · ")}</span><strong>{Number(v.score||0)} pts</strong></div>) : <p>Aucune volée validée pour le moment.</p>}</div>
         </> : null}
 
-        {panel === "players" ? <div className="sbx-players-modal-list">{playerRows.map((p:any,i:number)=>{const darts=dartsByP[i]||0;const centres=(bullsByP[i]||0)+(dbullsByP[i]||0);const pct=darts?Math.round(centres/darts*100):0;return <button type="button" key={p.id||i} className={i===playerIdx?"active":""} onClick={()=>openStats(i)}>{avatar(p,42)}<span><b>{p?.name}</b><small>{botMask[i]?"BOT IA":`${darts} fléchettes`} · {pct}% centre</small></span><strong>{scores[i]||0}<small>PTS</small></strong></button>})}</div> : null}
+        {panel === "players" ? <div className="sbx-players-modal-list">{playerRows.map((p:any,i:number)=>{const darts=dartsByP[i]||0;const centres=(bullsByP[i]||0)+(dbullsByP[i]||0);const pct=darts?Math.round(centres/darts*100):0;return <button type="button" key={p.id||i} className={i===playerIdx?"active":""} onClick={()=>openStats(i)}>{avatar(p,42)}<span><b>{p?.name}</b><small>{p?.isTeam?`ÉQUIPE · ${p?.teamMemberNames?.length||p?.teamMemberIds?.length||0} membre(s)`:botMask[i]?"BOT IA":`${darts} fléchettes`} · {pct}% centre</small></span><strong>{scores[i]||0}<small>PTS</small></strong></button>})}</div> : null}
 
         {panel === "ranking" ? <div className="sbx-live-ranking">{superBullRanking.map((row:any,rank:number)=>{const p=playerRows[row.i];const darts=dartsByP[row.i]||0;const centres=(bullsByP[row.i]||0)+(dbullsByP[row.i]||0);const pct=darts?Math.round(centres/darts*100):0;return <button type="button" key={row.i} className={row.i===playerIdx?"active":""} onClick={()=>openStats(row.i)}><em>#{rank+1}</em>{avatar(p,38)}<span><b>{p?.name}</b><small>{bullsByP[row.i]||0}×25 · {dbullsByP[row.i]||0}×50 · {pct}%</small></span><strong>{row.score} pts</strong></button>})}</div> : null}
 
         {panel === "log" ? <div className="sbx-full-log">
           <div className="sbx-log-head"><span>VOLÉE</span><span>JOUEUR</span><span>D1</span><span>D2</span><span>D3</span><span>PTS</span></div>
-          {logRows.length ? logRows.map((v:any,idx:number)=>{const pi=playerRows.findIndex((p:any,i:number)=>playerId(i)===String(v?.playerId));return <div className="sbx-log-row" key={v.id||idx}><b>V{Number(v.visitIndex||0)+1}</b><span>{pi>=0?playerRows[pi]?.name:"Joueur"}</span>{[0,1,2].map(slot=>{const d=v?.darts?.[slot];const cls=classifyDart(d).toLowerCase();return <i key={slot} className={cls}>{labelDart(d)}</i>})}<strong>{Number(v.score||0)}</strong></div>}) : <div className="sbx-empty-log">Aucune volée validée pour le moment.</div>}
+          {logRows.length ? logRows.map((v:any,idx:number)=>{const pi=playerRows.findIndex((p:any,i:number)=>playerId(i)===String(v?.playerId));const baseName=pi>=0?playerRows[pi]?.name:"Joueur";const who=v?.teamMemberName?`${baseName} · ${v.teamMemberName}`:baseName;return <div className="sbx-log-row" key={v.id||idx}><b>V{Number(v.visitIndex||0)+1}</b><span>{who}</span>{[0,1,2].map(slot=>{const d=v?.darts?.[slot];const cls=classifyDart(d).toLowerCase();return <i key={slot} className={cls}>{labelDart(d)}</i>})}<strong>{Number(v.score||0)}</strong></div>}) : <div className="sbx-empty-log">Aucune volée validée pour le moment.</div>}
         </div> : null}
       </section>
     </div>
@@ -197,14 +204,14 @@ function SuperBullChallengeView({
         {playerRows.length > 1 && <div className="sbx-portrait-roster">{playerRows.map((p:any,i:number)=><button type="button" key={p.id||i} className={i===playerIdx?"active":""} onClick={()=>openStats(i)} aria-label={`${p.name} : ${scores[i]||0} points`}>{avatar(p,30)}<strong>{scores[i]||0}</strong></button>)}</div>}
         <div className="sbx-active-player">
           <div className="sbx-active-avatar">{avatar(active, 72)}</div>
-          <div className="sbx-active-copy"><small>JOUEUR ACTIF</small><strong>{active.name}</strong><span>{botMask[playerIdx] ? "BOT IA" : "SUPER BULL"}</span></div>
+          <div className="sbx-active-copy"><small>{active?.isTeam ? "ÉQUIPE ACTIVE" : "JOUEUR ACTIF"}</small><strong>{active.name}</strong><span>{active?.isTeam ? (teamMemberTurnName(active, playerIdx) ? `À lancer : ${teamMemberTurnName(active, playerIdx)}` : `${active?.teamMemberNames?.length || active?.teamMemberIds?.length || 0} membre(s)`) : botMask[playerIdx] ? "BOT IA" : "SUPER BULL"}</span></div>
           <div className="sbx-active-score"><small>SCORE</small><b>{scores[playerIdx] || 0}</b>{objective > 0 && <span>/ {objective}</span>}</div>
         </div>
         <div className="sbx-left-kpis"><div><span>BULL25</span><b>{bullsByP[playerIdx] || 0}</b></div><div><span>BULL50</span><b>{dbullsByP[playerIdx] || 0}</b></div><div><span>PRÉCISION</span><b>{precision}%</b></div></div>
         <div className="sbx-left-kpis"><div><span>SÉRIE</span><b>{bullStreakByP[playerIdx] || 0}</b></div><div><span>BEST</span><b>{bestBullStreakByP[playerIdx] || 0}</b></div><div><span>100% CENTRE</span><b>{perfectVisitsByP[playerIdx] || 0}</b></div></div>
-        <div className="sbx-roster-title"><b>JOUEURS</b><span>{playerRows.length}</span></div>
+        <div className="sbx-roster-title"><b>{playerRows.some((p:any)=>p?.isTeam) ? "ÉQUIPES" : "JOUEURS"}</b><span>{playerRows.length}</span></div>
         <div className="sbx-roster">
-          {playerRows.map((p: any, i: number) => <div key={p.id || i} className={i === playerIdx ? "active" : ""}>{avatar(p, 38)}<span><b>{p.name}</b><small>{botMask[i] ? "BOT" : `${dartsByP[i] || 0} fl.`}</small></span><strong>{scores[i] || 0}</strong></div>)}
+          {playerRows.map((p: any, i: number) => <div key={p.id || i} className={i === playerIdx ? "active" : ""}>{avatar(p, 38)}<span><b>{p.name}</b><small>{p?.isTeam ? (i === playerIdx && teamMemberTurnName(p, i) ? `À lancer : ${teamMemberTurnName(p, i)}` : `ÉQUIPE · ${p?.teamMemberNames?.length || p?.teamMemberIds?.length || 0} membre(s)`) : botMask[i] ? "BOT" : `${dartsByP[i] || 0} fl.`}</small></span><strong>{scores[i] || 0}</strong></div>)}
         </div>
       </section>
 
@@ -212,7 +219,7 @@ function SuperBullChallengeView({
         <div className="sbx-player-toolbar sbx-landscape-ui">
           <div className="sbx-player-strip" aria-label="Joueurs SUPER BULL">
             {playerRows.map((p: any, i: number) => <button key={p.id || i} type="button" className={`sbx-player-chip ${i === playerIdx ? "active" : ""}`} onClick={() => openStats(i)}>
-              {avatar(p, 30)}<span><b>{p.name}</b><small>{scores[i] || 0} pts · {dartsByP[i] || 0} fl.</small></span>
+              {avatar(p, 30)}<span><b>{p.name}</b><small>{p?.isTeam ? `${scores[i] || 0} pts${teamMemberTurnName(p, i) ? ` · ${teamMemberTurnName(p, i)}` : ""}` : `${scores[i] || 0} pts · ${dartsByP[i] || 0} fl.`}</small></span>
             </button>)}
           </div>
           <div className="sbx-toolbar-actions">
@@ -391,6 +398,10 @@ export default function SimpleRoundsPlay(props: any) {
         avatarDataUrl: p?.avatarDataUrl ?? p?.avatarUrl ?? null,
         isBot: !!p?.isBot,
         botLevel: p?.botLevel ?? p?.level ?? null,
+        isTeam: !!p?.isTeam,
+        teamId: p?.teamId ? String(p.teamId) : null,
+        teamMemberIds: Array.isArray(p?.teamMemberIds) ? p.teamMemberIds.map(String) : Array.isArray(p?.playerIds) ? p.playerIds.map(String) : [],
+        teamMemberNames: Array.isArray(p?.teamMemberNames) ? p.teamMemberNames.map(String) : Array.isArray(p?.playerNames) ? p.playerNames.map(String) : [],
       }));
     }
     const count = Math.max(1, Number((cfg as any)?.players) || 1);
@@ -400,6 +411,10 @@ export default function SimpleRoundsPlay(props: any) {
       avatarDataUrl: null,
       isBot: false,
       botLevel: null,
+      isTeam: false,
+      teamId: null,
+      teamMemberIds: [],
+      teamMemberNames: [],
     }));
   }, [props?.params?.players, props?.players, resumeState?.players, resumePayload?.players, resumeRecord?.players, (cfg as any)?.players, t]);
   const playerCount = playerRows.length;
@@ -576,13 +591,27 @@ function goBack() {
       : clamp(scoreDarts(exactDarts));
     const pid = String(playerRows[pIdx]?.id ?? `p${pIdx + 1}`);
     const visitIndex = visitHistoryRef.current.filter((row: any) => String(row?.playerId) === pid).length;
-    visitHistoryRef.current.push(canonicalVisitFromUiDarts({
+    const canonicalVisit: any = canonicalVisitFromUiDarts({
       playerId: pid,
       darts: exactDarts,
       visitIndex,
       roundIndex: roundIdx,
       source: `simple_rounds:${variantId}`,
-    }));
+    });
+    if (variantId === "super_bull" && playerRows[pIdx]?.isTeam) {
+      const memberIds = Array.isArray(playerRows[pIdx]?.teamMemberIds) ? playerRows[pIdx].teamMemberIds : [];
+      const memberNames = Array.isArray(playerRows[pIdx]?.teamMemberNames) ? playerRows[pIdx].teamMemberNames : [];
+      const memberCount = Math.max(memberIds.length, memberNames.length);
+      if (memberCount > 0) {
+        const memberIndex = visitIndex % memberCount;
+        canonicalVisit.teamId = playerRows[pIdx]?.teamId || null;
+        canonicalVisit.teamName = playerRows[pIdx]?.name || null;
+        canonicalVisit.teamMemberIndex = memberIndex;
+        canonicalVisit.teamMemberId = memberIds[memberIndex] || null;
+        canonicalVisit.teamMemberName = memberNames[memberIndex] || null;
+      }
+    }
+    visitHistoryRef.current.push(canonicalVisit);
 
     const res = spec.applyVisit({
       visit: v,
@@ -919,9 +948,13 @@ function goBack() {
         avatarDataUrl: p.avatarDataUrl ?? null,
         temporaryPlayerId: isQuickParty ? String(p.id) : undefined,
         isTemporary: isQuickParty,
-        profileId: isQuickParty || botMask[i] ? null : String(p.id),
+        profileId: isQuickParty || botMask[i] || p?.isTeam ? null : String(p.id),
         isBot: !!botMask[i],
         botLevel: botMask[i] ? resolveBotLevel(i) : undefined,
+        isTeam: !!p?.isTeam,
+        teamId: p?.teamId || null,
+        teamMemberIds: Array.isArray(p?.teamMemberIds) ? p.teamMemberIds.slice() : [],
+        teamMemberNames: Array.isArray(p?.teamMemberNames) ? p.teamMemberNames.slice() : [],
       }));
       const stateSnapshot = {
         matchId: id,
@@ -1056,9 +1089,13 @@ function goBack() {
       ...(variantId === "super_bull" ? {
         temporaryPlayerId: isQuickParty ? String(p.id) : undefined,
         isTemporary: isQuickParty,
-        profileId: isQuickParty || botMask[i] ? null : String(p.id),
+        profileId: isQuickParty || botMask[i] || p?.isTeam ? null : String(p.id),
         isBot: !!botMask[i],
         botLevel: botMask[i] ? resolveBotLevel(i) : undefined,
+        isTeam: !!p?.isTeam,
+        teamId: p?.teamId || null,
+        teamMemberIds: Array.isArray(p?.teamMemberIds) ? p.teamMemberIds.slice() : [],
+        teamMemberNames: Array.isArray(p?.teamMemberNames) ? p.teamMemberNames.slice() : [],
       } : {}),
     }));
 
@@ -1273,6 +1310,7 @@ function goBack() {
       bullsByP={bullsByP}
       dbullsByP={dbullsByP}
       dartsByP={dartsByP}
+      visitsByP={visitsByP}
       bullStreakByP={bullStreakByP}
       bestBullStreakByP={bestBullStreakByP}
       perfectVisitsByP={perfectVisitsByP}

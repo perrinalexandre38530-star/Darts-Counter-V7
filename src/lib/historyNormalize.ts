@@ -56,17 +56,20 @@ const pickStatus = (row: any, decoded: any): "in_progress" | "finished" => {
   ].map((value) => String(value ?? "").trim().toLowerCase()).filter(Boolean);
 
   const summary = row?.summary || decoded?.summary || {};
-  const hasHardFinish =
-    tokens.some((token) => finishedTokens.has(token)) ||
+  const hasIrreversibleFinish =
     summary?.finished === true || summary?.result?.finished === true ||
     row?.payload?.summary?.finished === true || decoded?.summary?.finished === true ||
     !!row?.finishedAt || !!summary?.finishedAt || !!row?.payload?.finishedAt;
-  if (hasHardFinish) return "finished";
+  if (hasIrreversibleFinish) return "finished";
 
-  // Les états live explicites gagnent sur winnerId : ce champ peut représenter
-  // le dernier leg / round gagné dans un snapshot encore relançable.
-  if (tokens.some((token) => liveTokens.has(token))) return "in_progress";
-  if (row?.resume?.state || row?.resume?.config || row?.resume?.livePayload) return "in_progress";
+  const hasLiveSnapshot = Boolean(row?.resume?.state || row?.resume?.config || row?.resume?.livePayload);
+  const hasLiveToken = tokens.some((token) => liveTokens.has(token));
+  const hasFinishedToken = tokens.some((token) => finishedTokens.has(token));
+
+  // Une ancienne ligne `finished` reste récupérable si elle possède toujours son
+  // snapshot live. Seuls finished=true / finishedAt rendent la fin irréversible.
+  if (hasLiveToken || hasLiveSnapshot) return "in_progress";
+  if (hasFinishedToken) return "finished";
 
   const winnerId =
     row?.winnerId || summary?.winnerId || summary?.result?.winnerId ||
