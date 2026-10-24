@@ -16,7 +16,8 @@ import {
   type TrainingExerciseFamily,
 } from "../../catalog/trainingExerciseCatalog";
 import { buildCoachProgram, buildCustomProgram, TRAINING_PROGRAMS, type TrainingProgramDefinition, type TrainingProgramBuildOptions } from "../../catalog/trainingProgramCatalog";
-import { loadTrainingLabPreferences, setTrainingFamilyGoal, toggleFavoriteExercise, toggleFavoriteProgram, type TrainingLabPreferences } from "../../preferences/trainingLabPreferences";
+import { loadTrainingLabPreferences, setTrainingFamilyGoal, setTrainingFamilyGoalDeadline, setTrainingWeeklySessionTarget, toggleFavoriteExercise, toggleFavoriteProgram, type TrainingLabPreferences } from "../../preferences/trainingLabPreferences";
+import { buildTrainingWeeklyPlanStats, loadTrainingProgramSessions } from "../../profile/trainingPlanTracker";
 
 const familyOrder: TrainingExerciseFamily[] = ["scoring", "doubles", "checkout", "precision", "bull", "regularity"];
 type HubTab = "program" | "exercises" | "diagnosis" | "progress";
@@ -33,9 +34,11 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
     const refresh = () => setRevision((x) => x + 1);
     window.addEventListener("dc-training-stats-updated", refresh);
     window.addEventListener("dc-training-history-updated", refresh);
+    window.addEventListener("dc-training-plan-updated", refresh);
     return () => {
       window.removeEventListener("dc-training-stats-updated", refresh);
       window.removeEventListener("dc-training-history-updated", refresh);
+      window.removeEventListener("dc-training-plan-updated", refresh);
     };
   }, []);
   React.useEffect(() => {
@@ -48,11 +51,16 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
     void revision;
     return getTrainingDetailedSessions({ limit: 300 });
   }, [revision]);
+  const programSessions = React.useMemo(() => {
+    void revision;
+    return loadTrainingProgramSessions();
+  }, [revision]);
+  const weeklyPlan = React.useMemo(() => buildTrainingWeeklyPlanStats(programSessions, preferences.weeklySessionTarget), [programSessions, preferences.weeklySessionTarget]);
   const diagnosis = React.useMemo(() => buildTrainingDiagnosis(sessions), [sessions]);
-  const recommendedFamily = React.useMemo(() => chooseGoalPriorityFamily(diagnosis, preferences.familyGoals), [diagnosis, preferences.familyGoals]);
+  const recommendedFamily = React.useMemo(() => chooseGoalPriorityFamily(diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines), [diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines]);
   const progression = React.useMemo(() => buildTrainingProgression(sessions), [sessions]);
   const goalStatuses = React.useMemo(() => buildTrainingGoalStatuses(diagnosis, preferences.familyGoals), [diagnosis, preferences.familyGoals]);
-  const prescription = React.useMemo(() => buildGoalAwareCoachPrescription(diagnosis, preferences.familyGoals), [diagnosis, preferences.familyGoals]);
+  const prescription = React.useMemo(() => buildGoalAwareCoachPrescription(diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines), [diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines]);
   const coachProgram = React.useMemo(() => buildCoachProgram(recommendedFamily), [recommendedFamily]);
   const programs = React.useMemo(() => {
     const base = [coachProgram, ...TRAINING_PROGRAMS];
@@ -125,6 +133,14 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
     setPreferences(setTrainingFamilyGoal(preferences, familyId, value));
   };
 
+  const updateGoalDeadline = (familyId: TrainingExerciseFamily, value: string) => {
+    setPreferences(setTrainingFamilyGoalDeadline(preferences, familyId, value || null));
+  };
+
+  const updateWeeklyTarget = (value: number) => {
+    setPreferences(setTrainingWeeklySessionTarget(preferences, value));
+  };
+
   const tabs: Array<{ id: HubTab; label: string }> = [
     { id: "program", label: "PROGRAMME" },
     { id: "exercises", label: "EXERCICES" },
@@ -155,6 +171,27 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
           </div>
 
           {tab === "program" && <div>
+            <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: "1px solid rgba(80,255,174,.24)", background: "linear-gradient(135deg,rgba(80,255,174,.09),rgba(39,220,255,.045))" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#8cffcb" }}>PLAN HEBDOMADAIRE</div>
+                  <div style={{ marginTop: 4, fontSize: 13, fontWeight: 950 }}>{weeklyPlan.completed}/{weeklyPlan.target} séances complètes cette semaine</div>
+                  <div style={{ marginTop: 4, fontSize: 9.5, opacity: .62 }}>{weeklyPlan.remaining ? `Encore ${weeklyPlan.remaining} séance${weeklyPlan.remaining > 1 ? "s" : ""} pour tenir le rythme.` : "Objectif hebdomadaire atteint. Awena peut maintenir ou augmenter progressivement la charge."}</div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <button type="button" onClick={() => updateWeeklyTarget(preferences.weeklySessionTarget - 1)} style={{ width: 28, height: 28, borderRadius: 9, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.04)", color: "inherit", cursor: "pointer" }}>−</button>
+                  <b style={{ minWidth: 58, textAlign: "center", fontSize: 10 }}>{preferences.weeklySessionTarget}/SEM.</b>
+                  <button type="button" onClick={() => updateWeeklyTarget(preferences.weeklySessionTarget + 1)} style={{ width: 28, height: 28, borderRadius: 9, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.04)", color: "inherit", cursor: "pointer" }}>+</button>
+                </div>
+              </div>
+              <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,.07)", overflow: "hidden", marginTop: 10 }}><div style={{ width: `${Math.max(2, weeklyPlan.completionPct)}%`, height: "100%", background: "linear-gradient(90deg,#8cffcb,#27dcff)" }} /></div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginTop: 9, textAlign: "center" }}>
+                <div style={{ padding: 8, borderRadius: 10, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 12 }}>{weeklyPlan.streakWeeks}</b><div style={{ fontSize: 7.5, opacity: .48 }}>SEMAINES DE SÉRIE</div></div>
+                <div style={{ padding: 8, borderRadius: 10, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 12 }}>{weeklyPlan.bestSession ? Math.round(weeklyPlan.bestSession.performanceScore) : 0}</b><div style={{ fontSize: 7.5, opacity: .48 }}>MEILLEURE SÉANCE</div></div>
+                <div style={{ padding: 8, borderRadius: 10, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 12 }}>{programSessions.length}</b><div style={{ fontSize: 7.5, opacity: .48 }}>SÉANCES SUIVIES</div></div>
+              </div>
+              <button type="button" onClick={() => { setProgramId(coachProgram.id); }} style={{ width: "100%", marginTop: 9, padding: 9, borderRadius: 10, border: "1px solid rgba(80,255,174,.28)", background: "rgba(80,255,174,.08)", color: "inherit", fontSize: 9.5, fontWeight: 950, cursor: "pointer" }}>PROCHAINE SÉANCE AWENA • {coachProgram.title}</button>
+            </div>
             {!!preferences.favoritePrograms.length && <>
               <div style={{ margin: "10px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#ffd86b" }}>★ MES SÉANCES FAVORITES</div>
               <div style={{ display: "flex", gap: 7, overflowX: "auto", paddingBottom: 3 }}>
@@ -322,10 +359,23 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                         <button type="button" onClick={() => updateGoal(row.family, target - 5)} style={{ width: 28, height: 26, borderRadius: 8, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.04)", color: "inherit", cursor: "pointer" }}>−</button>
                         <button type="button" onClick={() => updateGoal(row.family, target + 5)} style={{ width: 28, height: 26, borderRadius: 8, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.04)", color: "inherit", cursor: "pointer" }}>+</button>
                       </div>
+                      <div style={{ marginTop: 8 }}>
+                        <div style={{ fontSize: 7.5, opacity: .45, marginBottom: 4 }}>DATE CIBLE</div>
+                        <input type="date" value={preferences.familyGoalDeadlines[row.family] || ""} onChange={(event) => updateGoalDeadline(row.family, event.target.value)} style={{ width: "100%", boxSizing: "border-box", padding: "6px 7px", borderRadius: 8, border: "1px solid rgba(255,255,255,.09)", background: "rgba(0,0,0,.18)", color: "inherit", fontSize: 8.5 }} />
+                      </div>
                     </div>;
                   })()}
                 </div>;
               })}
+            </div>
+
+            <div style={{ margin: "16px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#ffd86b" }}>RECORDS PERSONNELS</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 7 }}>
+              {progression.map((row) => <div key={`record-${row.family}`} style={{ padding: 10, borderRadius: 12, border: "1px solid rgba(255,216,107,.12)", background: "rgba(255,216,107,.035)" }}>
+                <div style={{ fontSize: 8.5, opacity: .55 }}>{row.label.toUpperCase()}</div>
+                <div style={{ marginTop: 3, fontSize: 18, fontWeight: 950 }}>{Math.round(row.bestScore)}<span style={{ fontSize: 9, opacity: .5 }}>/100</span></div>
+                <div style={{ marginTop: 3, fontSize: 8, opacity: .45 }}>{row.sessions} séance{row.sessions > 1 ? "s" : ""} • série {row.streak}</div>
+              </div>)}
             </div>
 
             <div style={{ margin: "16px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>DERNIÈRES SÉANCES DU CENTRE</div>

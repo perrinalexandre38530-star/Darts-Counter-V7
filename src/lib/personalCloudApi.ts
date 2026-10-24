@@ -424,10 +424,31 @@ export async function uploadPersonalCloudSnapshot(
     }
 
     onProgress?.(62, "Google Drive : envoi via le chemin de compatibilité…");
-    const direct = await apiPost(`/account/personal-cloud/google_drive/backups`, body, { timeoutMs: 180_000, manual: true });
-    invalidateGoogleDriveCaches();
-    onProgress?.(92, "Google Drive a confirmé l’écriture.");
-    return direct as any;
+    try {
+      const direct = await apiPost(`/account/personal-cloud/google_drive/backups`, body, { timeoutMs: 180_000, manual: true });
+      invalidateGoogleDriveCaches();
+      onProgress?.(92, "Google Drive a confirmé l’écriture.");
+      return direct as any;
+    } catch (directError: any) {
+      const status = Number(directError?.status || directError?.statusCode || 0);
+      const message = String(directError?.message || directError || "");
+      const legacyAllowed = [0, 404, 405, 408, 409, 415, 429, 500, 501, 502, 503, 504].includes(status) ||
+        /404|405|408|409|415|429|500|501|502|503|504|not found|cannot post|timeout|inaccessible/i.test(message);
+      if (!legacyAllowed) throw directError;
+
+      // Compatibilité critique : certaines installations NAS encore en V1
+      // n'exposent que /backup (singulier). Le client récent doit continuer à
+      // sauvegarder au lieu d'échouer après les trois transports V131.
+      onProgress?.(70, "Google Drive : reprise via le backend compatible…");
+      const legacy = await apiPost(`/account/personal-cloud/google_drive/backup`, {
+        encoding: packed.encoding,
+        data: packed.data,
+        metadata,
+      }, { timeoutMs: 180_000, manual: true });
+      invalidateGoogleDriveCaches();
+      onProgress?.(92, "Google Drive a confirmé l’écriture (mode compatible).");
+      return legacy as any;
+    }
   }
   return apiPost(`/account/personal-cloud/${provider}/backup`, { encoding: packed.encoding, data: packed.data, metadata }) as any;
 }
@@ -439,8 +460,31 @@ export async function listPersonalCloudBackups(provider: PersonalCloudProvider, 
   }
   const capped = Math.max(1, Math.min(100, Number(limit || 100)));
   if (driveBackupsCache && Date.now() - driveBackupsCache.at < 15_000) return driveBackupsCache.value.slice(0, capped);
-  const res: any = await apiGet(`/account/personal-cloud/google_drive/backups?limit=${capped}`, { manual: true, timeoutMs: 12_000 });
-  const items = Array.isArray(res?.backups) ? res.backups : Array.isArray(res?.files) ? res.files : [];
+  let items: any[] = [];
+  try {
+    const res: any = await apiGet(`/account/personal-cloud/google_drive/backups?limit=${capped}`, { manual: true, timeoutMs: 12_000 });
+    items = Array.isArray(res?.backups) ? res.backups : Array.isArray(res?.files) ? res.files : [];
+  } catch (error: any) {
+    const status = Number(error?.status || error?.statusCode || 0);
+    const message = String(error?.message || error || "");
+    const legacyAllowed = [0, 404, 405, 501, 502, 503, 504].includes(status) || /404|405|501|not found|inaccessible/i.test(message);
+    if (!legacyAllowed) throw error;
+
+    // Ancien backend : une seule sauvegarde courante. On l'expose sous un ID
+    // synthétique connu du downloader afin que l'UI Archives reste fonctionnelle.
+    const legacy: any = await apiGet(`/account/personal-cloud/google_drive/backup/meta`, { manual: true, timeoutMs: 12_000 }).catch(() => null);
+    const meta = legacy?.backup || null;
+    items = meta ? [{
+      id: "personal_google_drive_latest",
+      backupId: "personal_google_drive_latest",
+      provider: "google_drive",
+      updatedAt: meta.updatedAt || meta.createdAt || meta?.metadata?.exportedAt || null,
+      createdAt: meta.createdAt || meta.updatedAt || meta?.metadata?.exportedAt || null,
+      metadata: meta.metadata || {},
+      summary: meta.summary || meta?.metadata?.summary || {},
+      legacy: true,
+    }] : [];
+  }
   const sorted = [...items].sort((a: any, b: any) => Date.parse(String(b?.updatedAt || b?.createdAt || 0)) - Date.parse(String(a?.updatedAt || a?.createdAt || 0)));
   driveBackupsCache = { at: Date.now(), value: sorted };
   latestDriveMetaCache = { at: Date.now(), value: sorted[0] || null };
@@ -480,6 +524,18 @@ export async function downloadPersonalCloudSnapshotById(
   const id = String(backupId || "").trim();
   if (!id) throw new Error("Identifiant de sauvegarde cloud manquant.");
   if (provider === "google_drive") {
+    if (id === "personal_google_drive_latest") {
+      onProgress?.(8, "Google Drive : téléchargement compatible…");
+      const legacy: any = await apiGet(`/account/personal-cloud/google_drive/backup`, {
+        manual: true,
+        timeoutMs: 180_000,
+        onDownloadProgress: (loadedBytes, totalBytes) => {
+          const ratio = totalBytes > 0 ? Math.max(0, Math.min(1, loadedBytes / totalBytes)) : 0;
+          onProgress?.(totalBytes > 0 ? 8 + Math.round(ratio * 64) : 12, "Téléchargement Google Drive…", loadedBytes, totalBytes);
+        },
+      });
+      return decodePayload(legacy, onProgress);
+    }
     onProgress?.(4, "Connexion à Google Drive…");
     // V131 : restauration binaire. Le backend renvoie un gzip brut même pour les
     // anciennes sauvegardes JSON/base64. On évite ainsi une seconde enveloppe JSON
@@ -508,30 +564,38 @@ export async function downloadPersonalCloudSnapshotById(
       console.warn("[personalCloud] restauration Drive binaire indisponible, fallback JSON", rawError);
     }
 
-    const res: any = await apiGet(`/account/personal-cloud/google_drive/backups/${encodeURIComponent(id)}`, {
-      manual: true,
-      timeoutMs: 180_000,
-      onDownloadProgress: (loadedBytes, totalBytes) => {
-        const ratio = totalBytes > 0 ? Math.max(0, Math.min(1, loadedBytes / totalBytes)) : 0;
-        const percent = totalBytes > 0 ? 6 + Math.round(ratio * 66) : 12;
-        const mb = (n: number) => `${(Math.max(0, n) / 1024 / 1024).toFixed(1)} Mo`;
-        onProgress?.(
-          percent,
-          totalBytes > 0
-            ? `Téléchargement Google Drive : ${mb(loadedBytes)} / ${mb(totalBytes)}`
-            : `Téléchargement Google Drive : ${mb(loadedBytes)}`,
-          loadedBytes,
-          totalBytes,
-        );
-      },
-    });
-    const raw = String(res?.snapshotJson || "");
-    if (!raw) throw new Error("Sauvegarde Google Drive vide.");
-    onProgress?.(74, "Snapshot Google Drive reçu. Lecture du conteneur…");
-    const parsed = JSON.parse(raw);
-    if (parsed?.__mssCompressedBackup === 1) return decodePayload(parsed, onProgress);
-    onProgress?.(94, "Snapshot Google Drive prêt à être restauré.");
-    return parsed;
+    try {
+      const res: any = await apiGet(`/account/personal-cloud/google_drive/backups/${encodeURIComponent(id)}`, {
+        manual: true,
+        timeoutMs: 180_000,
+        onDownloadProgress: (loadedBytes, totalBytes) => {
+          const ratio = totalBytes > 0 ? Math.max(0, Math.min(1, loadedBytes / totalBytes)) : 0;
+          const percent = totalBytes > 0 ? 6 + Math.round(ratio * 66) : 12;
+          const mb = (n: number) => `${(Math.max(0, n) / 1024 / 1024).toFixed(1)} Mo`;
+          onProgress?.(
+            percent,
+            totalBytes > 0
+              ? `Téléchargement Google Drive : ${mb(loadedBytes)} / ${mb(totalBytes)}`
+              : `Téléchargement Google Drive : ${mb(loadedBytes)}`,
+            loadedBytes,
+            totalBytes,
+          );
+        },
+      });
+      const raw = String(res?.snapshotJson || "");
+      if (!raw) throw new Error("Sauvegarde Google Drive vide.");
+      onProgress?.(74, "Snapshot Google Drive reçu. Lecture du conteneur…");
+      const parsed = JSON.parse(raw);
+      if (parsed?.__mssCompressedBackup === 1) return decodePayload(parsed, onProgress);
+      onProgress?.(94, "Snapshot Google Drive prêt à être restauré.");
+      return parsed;
+    } catch (error: any) {
+      const status = Number(error?.status || error?.statusCode || 0);
+      const compatible = [0, 404, 405, 501, 502, 503, 504].includes(status) || /404|405|501|not found|inaccessible/i.test(String(error?.message || error || ""));
+      if (!compatible) throw error;
+      const legacy: any = await apiGet(`/account/personal-cloud/google_drive/backup`, { manual: true, timeoutMs: 180_000 });
+      return decodePayload(legacy, onProgress);
+    }
   }
   return downloadPersonalCloudSnapshot(provider, onProgress);
 }

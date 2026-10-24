@@ -13,6 +13,12 @@ import {
 } from "./externalBackupTarget";
 import { uploadCloudVaultSnapshotJson } from "./cloudStorageApi";
 import { getStorageDestination, loadStoragePrefs } from "./storagePlans";
+import {
+  getPersonalCloudStatus,
+  isPersonalCloudProvider,
+  personalCloudProviderLabel,
+  uploadPersonalCloudSnapshot,
+} from "./personalCloudApi";
 
 export type ConfiguredBackupResult = {
   ok: boolean;
@@ -149,6 +155,39 @@ export function saveConfiguredBackupNow(reason = "manual-match-end"): Promise<Co
           destinationLabel,
           localSafetyCreated,
           message: `Sauvegarde Cloud R2 créée (${Math.max(1, Math.round(snapshotBytes / 1024 / 1024))} Mo)${localSafetyCreated ? " + copie locale" : ""}.`,
+        };
+      }
+
+      if (isPersonalCloudProvider(destination)) {
+        await createSafetyCopy(`${automatic ? "Sécurité auto" : "Sécurité locale"} avant ${personalCloudProviderLabel(destination)} — ${nowLabel}`);
+        await ensureLocalSnapshot();
+
+        const status = await getPersonalCloudStatus(destination);
+        if (!status.configured) {
+          throw new Error(`${personalCloudProviderLabel(destination)} n'est pas configuré côté serveur. La copie locale de sécurité a été créée.`);
+        }
+        if (!status.connected) {
+          // Une sauvegarde automatique ne doit jamais ouvrir OAuth toute seule.
+          throw new Error(`${personalCloudProviderLabel(destination)} n'est pas connecté. Reconnecte-le depuis Sauvegardes. La copie locale de sécurité a été créée.`);
+        }
+
+        const result: any = await uploadPersonalCloudSnapshot(destination, localSnapshotJson, {
+          summary: localSummary || {},
+          exportedAt: new Date().toISOString(),
+          rawSizeBytes: new Blob([localSnapshotJson]).size,
+          source: reason,
+          engine: "configured-backup-v4-personal-cloud",
+        });
+        if (result?.ok === false) {
+          throw new Error(result?.error || `Échec de la sauvegarde ${personalCloudProviderLabel(destination)}.`);
+        }
+
+        return {
+          ok: true,
+          destination,
+          destinationLabel,
+          localSafetyCreated,
+          message: `Sauvegarde ${personalCloudProviderLabel(destination)} créée${localSafetyCreated ? " + copie locale de sécurité" : ""}.`,
         };
       }
 

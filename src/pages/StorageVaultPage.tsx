@@ -1731,7 +1731,7 @@ async function encodeNasTransportSnapshotJson(snapshotJson: string, compressedIn
   };
 }
 
-const NAS_PUSH_TIMEOUT_MS = 45_000;
+const NAS_PUSH_TIMEOUT_MS = 30_000;
 const NAS_DIRECT_PUSH_MAX_COMPRESSED_BYTES = 4 * 1024 * 1024;
 const NAS_CHUNK_CLIENT_BYTES = 1536 * 1024;
 const NAS_CHUNK_CONCURRENCY = 3;
@@ -1920,7 +1920,28 @@ async function pushSnapshotToNasFast(
       const fallback = [0, 404, 405, 408, 413, 415, 501, 502, 503, 504].includes(status);
       if (!fallback) throw error;
       console.warn("[StorageVault] transport NAS binaire indisponible, fallback chunked", error);
-      return pushSnapshotToNasChunked(transport, version, reason, token, summary, (sent, total) => onProgress?.(sent, total, "chunked"));
+      try {
+        return await pushSnapshotToNasChunked(transport, version, reason, token, summary, (sent, total) => onProgress?.(sent, total, "chunked"));
+      } catch (chunkError: any) {
+        const chunkStatus = Number(chunkError?.status || 0);
+        const legacyFallback = [0, 404, 405, 408, 413, 415, 501, 502, 503, 504].includes(chunkStatus);
+        if (!legacyFallback) throw chunkError;
+
+        // Compatibilité avec un backend NAS encore sur le contrat V62/V130 :
+        // l'enveloppe gzip+base64 est déjà compressée, donc on peut l'envoyer via
+        // /sync/push sans reconstruire le snapshot ni perdre la sauvegarde.
+        console.warn("[StorageVault] chunking NAS indisponible, fallback /sync/push compatible", chunkError);
+        const data = await fetchNasJson("/sync/push", {
+          payload: transport.payload,
+          version,
+          reason,
+          transport: "gzip+store-v2-compat",
+          transportStats: { rawBytes: transport.rawBytes, compressedBytes: transport.compressedBytes },
+          summary: summary || undefined,
+        }, token, 75_000);
+        onProgress?.(transport.compressedBytes, transport.compressedBytes, "json");
+        return { ...data, transport: data?.transport || "gzip+store-v2-compat" };
+      }
     }
   }
 

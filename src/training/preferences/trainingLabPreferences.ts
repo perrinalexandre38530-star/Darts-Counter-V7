@@ -5,10 +5,14 @@ const KEY = "dc_training_lab_preferences_v1";
 
 export type TrainingFamilyGoals = Record<TrainingExerciseFamily, number>;
 
+export type TrainingFamilyGoalDeadlines = Record<TrainingExerciseFamily, string | null>;
+
 export type TrainingLabPreferences = {
   favoriteExerciseIds: string[];
   favoritePrograms: TrainingProgramDefinition[];
   familyGoals: TrainingFamilyGoals;
+  familyGoalDeadlines: TrainingFamilyGoalDeadlines;
+  weeklySessionTarget: number;
 };
 
 export const DEFAULT_TRAINING_FAMILY_GOALS: TrainingFamilyGoals = {
@@ -18,6 +22,15 @@ export const DEFAULT_TRAINING_FAMILY_GOALS: TrainingFamilyGoals = {
   precision: 70,
   bull: 60,
   regularity: 70,
+};
+
+export const DEFAULT_TRAINING_GOAL_DEADLINES: TrainingFamilyGoalDeadlines = {
+  scoring: null,
+  doubles: null,
+  checkout: null,
+  precision: null,
+  bull: null,
+  regularity: null,
 };
 
 function clampGoal(value: unknown, fallback: number) {
@@ -57,18 +70,27 @@ export function loadTrainingLabPreferences(): TrainingLabPreferences {
     const favoritePrograms = Array.isArray(parsed?.favoritePrograms)
       ? parsed.favoritePrograms.map(sanitizeProgram).filter(Boolean) as TrainingProgramDefinition[]
       : [];
+    const deadlines = { ...DEFAULT_TRAINING_GOAL_DEADLINES };
+    for (const family of Object.keys(deadlines) as TrainingExerciseFamily[]) {
+      const value = parsed?.familyGoalDeadlines?.[family];
+      deadlines[family] = typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+    }
     return {
       favoriteExerciseIds: Array.isArray(parsed?.favoriteExerciseIds)
         ? Array.from(new Set(parsed.favoriteExerciseIds.map((id: unknown) => String(id || "")).filter(Boolean)))
         : [],
       favoritePrograms: favoritePrograms.slice(0, 12),
       familyGoals: goals,
+      familyGoalDeadlines: deadlines,
+      weeklySessionTarget: Math.max(1, Math.min(7, Math.round(Number(parsed?.weeklySessionTarget) || 3))),
     };
   } catch {
     return {
       favoriteExerciseIds: [],
       favoritePrograms: [],
       familyGoals: { ...DEFAULT_TRAINING_FAMILY_GOALS },
+      familyGoalDeadlines: { ...DEFAULT_TRAINING_GOAL_DEADLINES },
+      weeklySessionTarget: 3,
     };
   }
 }
@@ -78,6 +100,8 @@ export function saveTrainingLabPreferences(input: TrainingLabPreferences) {
     favoriteExerciseIds: Array.from(new Set(input.favoriteExerciseIds || [])).slice(0, 40),
     favoritePrograms: (input.favoritePrograms || []).map(sanitizeProgram).filter(Boolean).slice(0, 12) as TrainingProgramDefinition[],
     familyGoals: { ...DEFAULT_TRAINING_FAMILY_GOALS, ...(input.familyGoals || {}) },
+    familyGoalDeadlines: { ...DEFAULT_TRAINING_GOAL_DEADLINES, ...(input.familyGoalDeadlines || {}) },
+    weeklySessionTarget: Math.max(1, Math.min(7, Math.round(Number(input.weeklySessionTarget) || 3))),
   };
   try {
     localStorage.setItem(KEY, JSON.stringify(clean));
@@ -118,5 +142,24 @@ export function setTrainingFamilyGoal(
       ...prefs.familyGoals,
       [family]: clampGoal(value, DEFAULT_TRAINING_FAMILY_GOALS[family]),
     },
+  });
+}
+
+export function setTrainingFamilyGoalDeadline(
+  prefs: TrainingLabPreferences,
+  family: TrainingExerciseFamily,
+  value: string | null
+) {
+  const deadline = typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+  return saveTrainingLabPreferences({
+    ...prefs,
+    familyGoalDeadlines: { ...prefs.familyGoalDeadlines, [family]: deadline },
+  });
+}
+
+export function setTrainingWeeklySessionTarget(prefs: TrainingLabPreferences, value: number) {
+  return saveTrainingLabPreferences({
+    ...prefs,
+    weeklySessionTarget: Math.max(1, Math.min(7, Math.round(Number(value) || 3))),
   });
 }

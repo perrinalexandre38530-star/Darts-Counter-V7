@@ -293,3 +293,95 @@
 @media (orientation:portrait),(max-width:699px){.party-mode-visit-center{min-height:40px;width:min(104px,100%)}.party-mode-visit-center>b{font-size:17px}}
 
 @media (orientation:landscape) and (max-height:620px){.party-mode-end__highlights{padding:5px;gap:4px}.party-mode-end__highlights>div{padding:5px}.party-mode-end__highlights b{font-size:14px}.party-mode-end__highlights span{display:none}}
+
+
+/* V11 — CASTLE / GOTCHA / HARE & HOUNDS : paysage plein écran cohérent X01 */
+@media (orientation:landscape) and (min-width:700px){
+  .castle-play .party-mode__body,
+  .gotcha-play .party-mode__body,
+  .hare-hounds-play .party-mode__body{width:100%;max-width:100%;padding:3px 7px max(4px,env(safe-area-inset-bottom))}
+  .castle-play .party-mode__stage,
+  .gotcha-play .party-mode__stage,
+  .hare-hounds-play .party-mode__stage{grid-template-columns:minmax(330px,.88fr) minmax(430px,1.42fr);grid-template-rows:minmax(0,1fr);gap:8px;align-items:stretch}
+  .castle-play .party-mode__left,
+  .gotcha-play .party-mode__left,
+  .hare-hounds-play .party-mode__left{grid-template-rows:auto auto auto auto auto;gap:5px;overflow:hidden;align-content:start}
+  .castle-play .party-mode__input,
+  .gotcha-play .party-mode__input,
+  .hare-hounds-play .party-mode__input{grid-column:2;grid-row:1;height:100%;min-height:0;overflow:hidden}
+  .castle-play .party-mode__input>div,
+  .gotcha-play .party-mode__input>div,
+  .hare-hounds-play .party-mode__input>div{height:100%;min-height:0}
+  .castle-play .party-mode__summary-strip,
+  .gotcha-play .party-mode__summary-strip,
+  .hare-hounds-play .party-mode__summary-strip{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden}
+  .castle-play .party-mode__summary-item,
+  .gotcha-play .party-mode__summary-item,
+  .hare-hounds-play .party-mode__summary-item{flex:0 0 min(190px,48%);height:37px}
+  .castle-play .party-mode__active,
+  .gotcha-play .party-mode__active,
+  .hare-hounds-play .party-mode__active{min-height:98px;grid-template-columns:minmax(0,1fr) 112px;padding:6px 7px}
+  .castle-play .party-mode__active-main,
+  .gotcha-play .party-mode__active-main,
+  .hare-hounds-play .party-mode__active-main{padding-left:28px}
+  .castle-play .party-mode__hero-score,
+  .hare-hounds-play .party-mode__hero-score,
+  .gotcha-play .gotcha-hero-score{min-height:66px}
+  .castle-play .party-mode__hero-score b,
+  .hare-hounds-play .party-mode__hero-score b,
+  .gotcha-play .gotcha-hero-score b{font-size:40px}
+  .castle-play .party-compact-live,
+  .hare-hounds-play .party-compact-live,
+  .gotcha-play .gotcha-finish-strip{min-height:36px}
+  .castle-play .party-compact-tools button,
+  .hare-hounds-play .party-compact-tools button,
+  .gotcha-play .gotcha-tools button{height:38px}
+  .castle-play .party-mode__kpis>span,
+  .hare-hounds-play .party-mode__kpis>span{padding:4px 2px}
+  .castle-play .party-mode__kpis b,
+  .hare-hounds-play .party-mode__kpis b{font-size:10px}
+  .castle-play .party-mode__advice,
+  .gotcha-play .party-mode__advice,
+  .hare-hounds-play .party-mode__advice{top:72px;right:10px;max-width:min(300px,34vw)}
+}
+@media (orientation:landscape) and (min-width:700px) and (max-height:620px){
+  .castle-play .party-mode__stage,
+  .gotcha-play .party-mode__stage,
+  .hare-hounds-play .party-mode__stage{grid-template-columns:minmax(305px,.82fr) minmax(410px,1.48fr);gap:6px}
+  .castle-play .party-mode__left,
+  .gotcha-play .party-mode__left,
+  .hare-hounds-play .party-mode__left{gap:4px}
+  .castle-play .party-mode__summary-item,
+  .gotcha-play .party-mode__summary-item,
+  .hare-hounds-play .party-mode__summary-item{height:32px}
+  .castle-play .party-mode__summary-copy span,
+  .gotcha-play .party-mode__summary-copy span,
+  .hare-hounds-play .party-mode__summary-copy span{display:none}
+  .castle-play .party-mode__active,
+  .gotcha-play .party-mode__active,
+  .hare-hounds-play .party-mode__active{min-height:84px;padding:4px 6px;grid-template-columns:minmax(0,1fr) 102px}
+  .castle-play .party-mode__active-ghost,
+  .gotcha-play .party-mode__active-ghost,
+  .hare-hounds-play .party-mode__active-ghost{width:94px;height:94px}
+  .castle-play .party-mode__hero-score,
+  .hare-hounds-play .party-mode__hero-score,
+  .gotcha-play .gotcha-hero-score{min-height:58px}
+  .castle-play .party-mode__hero-score b,
+  .hare-hounds-play .party-mode__hero-score b,
+  .gotcha-play .gotcha-hero-score b{font-size:34px}
+  .castle-play .party-compact-live,
+  .hare-hounds-play .party-compact-live,
+  .gotcha-play .gotcha-finish-strip{min-height:32px;padding-top:3px;padding-bottom:3px}
+  .castle-play .party-compact-tools button,
+  .hare-hounds-play .party-compact-tools button,
+  .gotcha-play .gotcha-tools button{height:34px}
+  .castle-play .party-compact-tools b,
+  .hare-hounds-play .party-compact-tools b,
+  .gotcha-play .gotcha-tools b{font-size:4.4px}
+  .castle-play .party-mode__kpis>span,
+  .hare-hounds-play .party-mode__kpis>span,
+  .gotcha-play .gotcha-kpis button{min-height:32px;padding-top:3px;padding-bottom:3px}
+  .castle-play .party-mode__advice,
+  .gotcha-play .party-mode__advice,
+  .hare-hounds-play .party-mode__advice{top:64px;max-width:min(280px,32vw)}
+}

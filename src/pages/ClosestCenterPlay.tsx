@@ -43,6 +43,7 @@ function tierMeets(actual:string, required:"high"|"competition") {
 function phaseLabel(phase:string) {
   if (phase === "enroll") return "ENRÔLEMENT";
   if (phase === "baseline") return "CIBLE VIDE";
+  if (phase === "prepare") return "PRÉPARATION";
   if (phase === "play") return "VOLÉE";
   if (phase === "review") return "CONTRÔLE IA";
   if (phase === "roundEnd") return "CLASSEMENT";
@@ -326,7 +327,7 @@ export default function ClosestCenterPlay(props:any) {
   const [camError, setCamError] = React.useState("");
   const [ready, setReady] = React.useState(false);
   const [cal] = React.useState<CameraCalibration | null>(() => loadCameraCalibration());
-  const [phase, setPhase] = React.useState<"enroll"|"baseline"|"play"|"review"|"roundEnd"|"finished">(isManual ? "play" : "enroll");
+  const [phase, setPhase] = React.useState<"enroll"|"baseline"|"prepare"|"play"|"review"|"roundEnd"|"finished">(isManual ? "play" : "enroll");
   const [enrollIndex, setEnrollIndex] = React.useState(0);
   const [samples, setSamples] = React.useState<Record<string,any[]>>({});
   const [signatures, setSignatures] = React.useState<Record<string,any>>({});
@@ -434,7 +435,7 @@ export default function ClosestCenterPlay(props:any) {
   const cameraQuality = React.useMemo(() => buildClosestCenterQualityReport(sessionDiagnostics), [sessionDiagnostics]);
 
   React.useEffect(() => {
-    if (pointsMode!=="petanque" || phase==="enroll" || phase==="review" || phase==="roundEnd" || phase==="finished" || cameraPointNeedsDecision) return;
+    if (pointsMode!=="petanque" || phase==="enroll" || phase==="prepare" || phase==="review" || phase==="roundEnd" || phase==="finished" || cameraPointNeedsDecision) return;
     if (isManual && (manualEntryMode!=="guided" || manualStage!=="throws")) return;
     const nextIndex=firstEligiblePlayerIndex(players,activeRoundUsed,dartsPerPlayer,petanqueTeamToPlay,playerIndex);
     if (nextIndex>=0 && nextIndex!==playerIndex) setPlayerIndex(nextIndex);
@@ -443,11 +444,11 @@ export default function ClosestCenterPlay(props:any) {
   const saveCheckpoint = React.useCallback(async (extra:any = {}) => {
     if (!players.length || phase === "finished") return;
     const now = Date.now();
-    const safePhase = phase === "enroll" ? "enroll" : phase === "roundEnd" ? "roundEnd" : "baseline";
+    const safePhase = phase === "enroll" ? "enroll" : phase === "prepare" ? "prepare" : phase === "roundEnd" ? "roundEnd" : "baseline";
     const resumeState = {
       v: 1, mode: "closest_center", cfg, players, round, allScores, impacts, signatures, inputMode, playerIndex, roundStarterTeam,
       manualThrows, manualStage, manualEntryMode, manualRanking, manualWinningTeam, roundResults, cameraPointOverride, cameraScoreOverride, roundNullDecision,
-      enrollIndex, phase: isManual ? (phase === "roundEnd" ? "roundEnd" : "play") : safePhase, sessionId: sessionIdRef.current, diagnostics: sessionDiagnostics.slice(-120),
+      enrollIndex, phase: isManual ? (phase === "roundEnd" ? "roundEnd" : phase === "prepare" ? "prepare" : "play") : safePhase, sessionId: sessionIdRef.current, diagnostics: sessionDiagnostics.slice(-120),
       updatedAt: now, ...extra,
     };
     try {
@@ -492,8 +493,10 @@ export default function ClosestCenterPlay(props:any) {
         if (st.manualWinningTeam === "A" || st.manualWinningTeam === "B") setManualWinningTeam(st.manualWinningTeam);
         if (Array.isArray(st.manualThrows)) setManualThrows(st.manualThrows);
         if (st.manualStage === "score" || st.manualStage === "throws") setManualStage(st.manualStage);
-        setPhase(st.phase === "roundEnd" ? "roundEnd" : "play");
-        setStatus(st.manualEntryMode === "quick"
+        setPhase(st.phase === "roundEnd" ? "roundEnd" : st.phase === "prepare" ? "prepare" : "play");
+        setStatus(st.phase === "prepare"
+          ? `♻️ Mène ${Number(st.round||1)} prête à démarrer. Vérifie le score puis lance la mène suivante.`
+          : st.manualEntryMode === "quick"
           ? "♻️ Partie manuelle reprise en saisie rapide. Choisis l’équipe qui marque puis ses seules fléchettes marquantes."
           : st.manualStage === "score"
             ? "♻️ Partie manuelle reprise. Termine la saisie des seuls points marqués."
@@ -504,6 +507,9 @@ export default function ClosestCenterPlay(props:any) {
         if (st.phase === "roundEnd" && enrolled) {
           setPhase("roundEnd");
           setStatus("♻️ Fin de mène restaurée. Les mesures déjà validées sont conservées : termine le départage éventuel puis valide la mène.");
+        } else if (st.phase === "prepare" && enrolled) {
+          setPhase("prepare");
+          setStatus(`♻️ Mène ${Number(st.round||1)} prête. Retire toutes les fléchettes et libère complètement la cible avant de réarmer la caméra.`);
         } else {
           setPhase(enrolled ? "baseline" : "enroll");
           setStatus(enrolled
@@ -1256,6 +1262,15 @@ export default function ClosestCenterPlay(props:any) {
     players.forEach((p:any) => { if (p.teamId) out[p.teamId] = (out[p.teamId] || 0) + (projectedScores[p.id] || 0); });
     return out;
   }, [players, projectedScores]);
+  const targetScore = Number(cfg.targetScore || 13);
+  const teamTargetState = React.useMemo(() => {
+    const make = (team:"A"|"B") => {
+      const score = Number(projectedTeamTotals?.[team] || 0);
+      const remaining = Math.max(0, targetScore - score);
+      return { score, remaining, matchPoint: pointsMode === "petanque" && remaining === 1, reached: pointsMode === "petanque" && remaining === 0 };
+    };
+    return { A: make("A"), B: make("B") };
+  }, [projectedTeamTotals, targetScore, pointsMode]);
 
   const declareNullRound = (reason:"camera_tie"|"manual_tie") => {
     if (pointsMode!=="petanque") return;
@@ -1288,6 +1303,9 @@ export default function ClosestCenterPlay(props:any) {
 
   const undoLastValidatedRound = () => {
     if (!roundResults.length) return;
+    // A finished match can be reopened by undoing its last validated end.
+    // Re-arm final persistence so the replayed finish overwrites the same History record.
+    finishSaved.current = false;
     const last=[...roundResults].sort((a:any,b:any)=>Number(b.round)-Number(a.round))[0];
     if (!last) return;
     const lastRound=Number(last.round||0);
@@ -1376,6 +1394,7 @@ export default function ClosestCenterPlay(props:any) {
         createdAt:Date.now(),
       },
     ].sort((a:any,b:any)=>Number(a.round)-Number(b.round)));
+    const nextStarterTeam:"A"|"B" = roundWinningTeam || roundStarterTeam;
     if (roundWinningTeam) setRoundStarterTeam(roundWinningTeam);
     const targetReached = pointsMode === "petanque" && Math.max(Number(nextTeamTotals.A||0), Number(nextTeamTotals.B||0)) >= Number(cfg.targetScore || 13);
     if (targetReached || (pointsMode !== "petanque" && round >= Number(cfg.rounds || 3))) {
@@ -1384,13 +1403,14 @@ export default function ClosestCenterPlay(props:any) {
       releaseRoundCommit();
       return;
     }
-    setRound(r => r + 1);
+    const nextRound = Number(round) + 1;
+    setRound(nextRound);
     setCameraPointOverride(null);
     setCameraScoreOverride(null);
     setRoundNullDecision(null);
-    setPhase(isManual ? "play" : "baseline");
-    if (pointsMode==="petanque" && roundWinningTeam) {
-      const starterIndex=players.findIndex((p:any)=>String(p.teamId||"A")===roundWinningTeam);
+    setPhase("prepare");
+    if (pointsMode==="petanque") {
+      const starterIndex=players.findIndex((p:any)=>String(p.teamId||"A")===nextStarterTeam);
       setPlayerIndex(starterIndex>=0?starterIndex:0);
     } else setPlayerIndex(0);
     setBefore(null);
@@ -1404,18 +1424,36 @@ export default function ClosestCenterPlay(props:any) {
     resetManualEntry();
     if (isManual && pointsMode==="petanque") {
       setManualThrows(v=>v.filter((x:any)=>Number(x.round)!==Number(round)));
-      setManualStage("throws");
+      setManualStage(manualEntryMode==="guided"?"throws":"score");
     }
     setStatus(isManual
       ? (pointsMode==="petanque"
-          ? (manualEntryMode==="quick"
-              ? `Nouvelle mène : équipe ${roundWinningTeam || roundStarterTeam} commence. Joue la mène puis saisis uniquement les fléchettes qui marquent.`
-              : `Nouvelle mène : équipe ${roundWinningTeam || roundStarterTeam} commence. Enregistre chaque lancer avec POINT PRIS / POINT NON PRIS.`)
-          : "Nouvelle manche : joue les volées puis saisis uniquement les fléchettes qui scorent.")
-      : (pointsMode==="petanque" && !roundWinningTeam
-          ? `Mène nulle : aucun point. L’équipe ${roundStarterTeam} recommence. Retire les fléchettes puis capture la cible vide.`
-          : "Retire toutes les fléchettes puis capture la cible vide pour la manche suivante."));
+          ? `Mène ${nextRound} prête · ÉQUIPE ${nextStarterTeam} commence. Vérifie le score puis démarre la mène.`
+          : `Manche ${nextRound} prête. Vérifie le score puis démarre la manche.`)
+      : (pointsMode==="petanque"
+          ? (!roundWinningTeam
+              ? `Mène ${nextRound} prête · mène précédente nulle. ÉQUIPE ${nextStarterTeam} recommence. Retire toutes les fléchettes et libère la cible avant de réarmer la caméra.`
+              : `Mène ${nextRound} prête · ÉQUIPE ${nextStarterTeam} commence. Retire toutes les fléchettes et libère la cible avant de réarmer la caméra.`)
+          : `Manche ${nextRound} prête. Retire toutes les fléchettes et libère la cible avant de réarmer la caméra.`));
     releaseRoundCommit();
+  };
+
+  const startPreparedRound = async () => {
+    if (phase !== "prepare") return;
+    setBefore(null); setPendingAfter(null); setPendingImpacts([]); setPendingConsensus([]);
+    setPrecisionRereads(0); setTieAcknowledged(false); setTurnArmed(false); setPreflightInfo(null);
+    if (isManual) {
+      setPhase("play");
+      if (pointsMode === "petanque") setManualStage(manualEntryMode === "guided" ? "throws" : "score");
+      setStatus(pointsMode === "petanque"
+        ? (manualEntryMode === "quick"
+            ? `Mène ${round} démarrée · ÉQUIPE ${roundStarterTeam} commence. Joue la mène puis saisis uniquement les fléchettes qui marquent.`
+            : `Mène ${round} démarrée · ÉQUIPE ${roundStarterTeam} commence. Enregistre chaque lancer avec PREND LE POINT / NE PREND PAS LE POINT.`)
+        : `Manche ${round} démarrée. Saisis uniquement les fléchettes qui scorent.`);
+      return;
+    }
+    setStatus(`Mène ${round} · acquisition de la cible vide. Ne touche plus au téléphone.`);
+    await captureBaseline();
   };
 
   const teamTotals = React.useMemo(() => {
@@ -1504,6 +1542,7 @@ export default function ClosestCenterPlay(props:any) {
     {label:"FORMAT", value:String(cfg.formatMode || "duo").toUpperCase()},
     {label:"FLÉCHETTES", value:`${dartsPerPlayer}/JOUEUR`},
   ];
+  const matchPointTeams = pointsMode==="petanque" ? (["A","B"] as const).filter((t)=>teamTargetState[t].matchPoint) : [];
   const playAction = React.useMemo(() => {
     if (phase === "finished") return { icon:"🏆", title:"PARTIE TERMINÉE", hint:"Consulte le résultat puis lance une nouvelle partie.", tone:"#ffd85a" };
     if (phase === "roundEnd") {
@@ -1512,6 +1551,7 @@ export default function ClosestCenterPlay(props:any) {
       if (!isManual && unresolvedPetanquePoint) return { icon:"⚖️", title:"DÉPARTAGER LE POINT", hint:"La précision caméra ne permet pas de choisir honnêtement l’équipe au point.", tone:"#ffd58c" };
       return { icon:"✓", title:pointsMode==="petanque"?"VALIDER LA MÈNE":"VALIDER LA MANCHE", hint:"Contrôle le résultat puis enregistre-le.", tone:"#8fffc2" };
     }
+    if (phase === "prepare") return { icon:"↻", title:pointsMode==="petanque"?`PRÉPARER LA MÈNE ${round}`:`PRÉPARER LA MANCHE ${round}`, hint:isManual?"Vérifie le score et les joueurs, puis démarre la suite.":"Retire toutes les fléchettes, vérifie que la cible est totalement libre, puis réarme la caméra.", tone:"#ffd58c" };
     if (isManual) {
       if (pointsMode === "petanque" && manualEntryMode === "quick") return { icon:"⚡", title:"JOUER LA MÈNE PUIS SAISIR LES POINTS", hint:"Ne touche à rien pendant les lancers. À la fin, renseigne seulement l’équipe qui marque et ses fléchettes marquantes.", tone:"#8fffc2" };
       if (pointsMode === "petanque" && manualStage === "throws") return { icon:"🎯", title:`ÉQUIPE ${petanqueTeamToPlay || roundStarterTeam} À JOUER`, hint:"Sélectionne le joueur, puis indique seulement si sa fléchette prend le point.", tone:petanqueTeamToPlay==="B"?"#83c8ff":"#ff8f9c" };
@@ -1569,6 +1609,7 @@ export default function ClosestCenterPlay(props:any) {
                     : `${Number(teamDartsRemaining[team]||0)} en main · ${teamPlayers.map((p:any)=>`${p.name} ${Math.max(0,dartsPerPlayer-Number(activeRoundUsed[String(p.id)]||0))}`).join(" · ")}`)
                   : `${dartsPerPlayer} fléchette${dartsPerPlayer>1?"s":""}/joueur`}
               </div>
+              {pointsMode==="petanque" ? <div style={{display:"inline-flex",marginTop:4,padding:"3px 6px",borderRadius:999,border:`1px solid ${teamTargetState[team].matchPoint?"#ffd85a66":teamTargetState[team].reached?"#8fffc266":"rgba(255,255,255,.09)"}`,background:teamTargetState[team].matchPoint?"rgba(255,216,90,.10)":teamTargetState[team].reached?"rgba(143,255,194,.10)":"rgba(255,255,255,.025)",fontSize:8,fontWeight:1000,color:teamTargetState[team].matchPoint?"#ffd85a":teamTargetState[team].reached?"#8fffc2":"#91a2ae"}}>{teamTargetState[team].reached?"OBJECTIF ATTEINT":teamTargetState[team].matchPoint?"● BALLE DE MATCH":`RESTE ${teamTargetState[team].remaining}`}</div> : null}
             </div>
             {idx===0?<b style={{fontSize:compactHeight?24:30,lineHeight:1,color:"#fff",fontVariantNumeric:"tabular-nums"}}>{score}</b>:null}
           </div>
@@ -1585,7 +1626,7 @@ export default function ClosestCenterPlay(props:any) {
           <span style={{padding:"5px 8px",borderRadius:999,background:"rgba(2,8,14,.82)",border:"1px solid rgba(255,255,255,.14)",fontSize:9,fontWeight:1000,color:"#dce8ef"}}>MÈNE {round}</span>
         </div>
         <div style={{position:"absolute",right:10,top:10,zIndex:3,padding:"5px 8px",borderRadius:999,background:"rgba(2,8,14,.82)",border:`1px solid ${cameraQuality.grade==="A"?"#8fffc266":cameraQuality.grade==="B"?`${ACCENT}66`:"#ffbd4566"}`,fontSize:9,fontWeight:1000,color:"#fff",pointerEvents:"none"}}>QUALITÉ {cameraQuality.grade} · {cameraQuality.score}/100</div>
-        {current && phase!=="roundEnd" && phase!=="finished" ? <div style={{position:"absolute",left:10,right:10,bottom:10,zIndex:3,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:12,background:"linear-gradient(90deg,rgba(2,8,14,.92),rgba(2,8,14,.72))",border:"1px solid rgba(255,255,255,.12)",pointerEvents:"none"}}><div style={{minWidth:0}}><span style={{display:"block",fontSize:8,color:"#8295a3",fontWeight:1000}}>JOUEUR ATTENDU</span><b style={{display:"block",fontSize:13,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",color:playerColor(players,current.id)}}>{current.name}</b></div><b style={{fontSize:10,color:petanqueTeamToPlay?teamAccent(petanqueTeamToPlay):"#dbe8f0"}}>{petanqueTeamToPlay?`ÉQUIPE ${petanqueTeamToPlay} À JOUER`:turnArmed?"PRÊT":"PRÉ-CONTRÔLE"}</b></div> : null}
+        {current && phase!=="prepare" && phase!=="roundEnd" && phase!=="finished" ? <div style={{position:"absolute",left:10,right:10,bottom:10,zIndex:3,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:12,background:"linear-gradient(90deg,rgba(2,8,14,.92),rgba(2,8,14,.72))",border:"1px solid rgba(255,255,255,.12)",pointerEvents:"none"}}><div style={{minWidth:0}}><span style={{display:"block",fontSize:8,color:"#8295a3",fontWeight:1000}}>JOUEUR ATTENDU</span><b style={{display:"block",fontSize:13,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",color:playerColor(players,current.id)}}>{current.name}</b></div><b style={{fontSize:10,color:petanqueTeamToPlay?teamAccent(petanqueTeamToPlay):"#dbe8f0"}}>{petanqueTeamToPlay?`ÉQUIPE ${petanqueTeamToPlay} À JOUER`:turnArmed?"PRÊT":"PRÉ-CONTRÔLE"}</b></div> : null}
         <div style={{position:"absolute",inset:0,pointerEvents:"none"}}>
           {phase === "enroll" ? <div style={{position:"absolute",left:"25%",top:"20%",width:"50%",height:"60%",border:`2px dashed ${ACCENT}`,borderRadius:18,boxShadow:`0 0 30px ${ACCENT}33`}}/> : null}
           <div style={{position:"absolute",left:"50%",top:"50%",width:14,height:14,margin:-7,borderRadius:"50%",border:"2px solid #fff",boxShadow:"0 0 15px #fff"}}/>
@@ -1607,7 +1648,7 @@ export default function ClosestCenterPlay(props:any) {
         <section style={{...card,padding:landscape?9:10,borderColor:`${playAction.tone}55`,background:`linear-gradient(135deg,${playAction.tone}16,rgba(255,255,255,.025))`}}>
           <div style={{display:"grid",gridTemplateColumns:"36px minmax(0,1fr)",gap:9,alignItems:"center"}}>
             <div style={{width:36,height:36,borderRadius:11,display:"grid",placeItems:"center",fontSize:18,background:`${playAction.tone}18`,border:`1px solid ${playAction.tone}55`}}>{playAction.icon}</div>
-            <div style={{minWidth:0}}><div style={{fontSize:8,color:playAction.tone,fontWeight:1000,letterSpacing:1.2}}>ACTION À FAIRE</div><b style={{display:"block",fontSize:landscape?12:13,marginTop:2,whiteSpace:"normal"}}>{playAction.title}</b><div style={{fontSize:9,color:"#9fb0bc",lineHeight:1.35,marginTop:2}}>{playAction.hint}</div></div>
+            <div style={{minWidth:0}}><div style={{fontSize:8,color:playAction.tone,fontWeight:1000,letterSpacing:1.2}}>ACTION À FAIRE</div><b style={{display:"block",fontSize:landscape?12:13,marginTop:2,whiteSpace:"normal"}}>{playAction.title}</b><div style={{fontSize:9,color:"#9fb0bc",lineHeight:1.35,marginTop:2}}>{playAction.hint}</div>{phase!=="finished" && matchPointTeams.length ? <div style={{fontSize:8,color:"#ffd85a",fontWeight:1000,marginTop:4}}>● BALLE DE MATCH · ÉQUIPE {matchPointTeams.join(" / ")}</div> : null}</div>
           </div>
         </section>
         {!isManual ? <section style={{...card,padding:8}}>
@@ -1685,6 +1726,24 @@ export default function ClosestCenterPlay(props:any) {
           {sessionDiagnostics.slice(-4).reverse().map((d:any)=><div key={d.id} style={{display:"grid",gridTemplateColumns:"72px 1fr",gap:8,paddingTop:6,marginTop:6,borderTop:"1px solid rgba(255,255,255,.06)",fontSize:10}}><b style={{color:d.level==="reject"?"#ff9f8f":d.level==="warn"?"#ffd58c":"#8fffc2"}}>{String(d.stage).toUpperCase()}</b><span style={{color:"#b9c7d4"}}>{d.message}</span></div>)}
           {!sessionDiagnostics.length ? <div style={{fontSize:10,color:"#788896",marginTop:6}}>Les contrôles de cette partie apparaîtront ici.</div> : null}
         </details> : null}
+
+        {phase === "prepare" ? <section style={{...card,padding:landscape?12:11,borderColor:"rgba(255,213,140,.30)",background:"linear-gradient(135deg,rgba(255,189,69,.08),rgba(68,231,255,.035))"}}>
+          <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}>
+            <div><div style={{fontSize:9,color:"#ffd58c",fontWeight:1000,letterSpacing:1.1}}>PRÉPARER LA SUITE</div><h3 style={{...h3,margin:"3px 0 0",color:"#fff"}}>{pointsMode==="petanque"?`MÈNE ${round}`:`MANCHE ${round}`}</h3></div>
+            <div style={{textAlign:"right"}}><div style={{fontSize:9,color:"#81929f"}}>DÉPART</div><b style={{fontSize:14,color:teamAccent(roundStarterTeam)}}>ÉQUIPE {roundStarterTeam}</b></div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,alignItems:"center",marginTop:10,padding:"9px 10px",borderRadius:12,background:"rgba(255,255,255,.035)",border:"1px solid rgba(255,255,255,.08)"}}>
+            <div><span style={{fontSize:8,color:"#81929f",fontWeight:900}}>ÉQUIPE A</span><b style={{display:"block",fontSize:21,color:teamAccent("A")}}>{Number(teamTotals.A||0)}</b></div>
+            <b style={{fontSize:10,color:"#718491"}}>—</b>
+            <div style={{textAlign:"right"}}><span style={{fontSize:8,color:"#81929f",fontWeight:900}}>ÉQUIPE B</span><b style={{display:"block",fontSize:21,color:teamAccent("B")}}>{Number(teamTotals.B||0)}</b></div>
+          </div>
+          <div style={{marginTop:9,padding:"9px 10px",borderRadius:10,background:isManual?"rgba(143,255,194,.055)":"rgba(68,231,255,.055)",border:`1px solid ${isManual?"rgba(143,255,194,.18)":"rgba(68,231,255,.18)"}`,fontSize:10,lineHeight:1.45,color:"#c6d3dc"}}>
+            {isManual
+              ? <>Vérifie le score et les joueurs. Quand tout est prêt, démarre la nouvelle {pointsMode==="petanque"?"mène":"manche"}.</>
+              : <><b style={{color:"#fff"}}>Retire toutes les fléchettes.</b> La cible doit être totalement libre et le téléphone ne doit plus bouger. Le bouton ci-dessous capture immédiatement une nouvelle référence multi-frame.</>}
+          </div>
+          <button style={{...btn,width:"100%",marginTop:10,minHeight:42,borderColor:isManual?"#8fffc2":ACCENT,background:isManual?"rgba(57,217,138,.11)":`${ACCENT}14`}} onClick={startPreparedRound}>{isManual?`▶ DÉMARRER ${pointsMode==="petanque"?"LA MÈNE":"LA MANCHE"}`:"📷 CIBLE LIBRE · RÉARMER LA CAMÉRA"}</button>
+        </section> : null}
 
         {!isManual && phase === "enroll" ? <section style={card}>
           <h3 style={h3}>ENRÔLEMENT · {current?.name}</h3>

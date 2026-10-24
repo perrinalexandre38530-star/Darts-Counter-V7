@@ -154,6 +154,7 @@ function SuperBullChallengeView({
             })}
           </div>
           {isQuickParty ? <div className="sbx-quick-finish-note">PARTIE RAPIDE · associe ensuite les joueurs temporaires à tes profils depuis <b>Historique → Parties rapides</b>.</div> : null}
+          <button type="button" className="sbx-finish-correct" disabled={!completedVisits.length} onClick={onUndo}>↶ CORRIGER LA DERNIÈRE VOLÉE</button>
           <div className="sbx-finish-actions sbx-finish-actions-v2"><button onClick={onBack}>CONFIG</button><button onClick={onHistory}>HISTORIQUE</button><button className="primary" onClick={onReset}>REJOUER</button></div>
         </div>
       </main>
@@ -256,7 +257,7 @@ function SuperBullChallengeView({
           <button className={`bull50 ${superBullFx?.type === "bull50" ? "is-hit" : ""}`} disabled={botMask[playerIdx]} onClick={() => onDart({ v:25, mult:2 })}><span className="target"><img src={targetBull50} alt="Bull 50" /></span><b>BULL50</b><small>+50 PTS</small></button>
           <button className={`miss ${superBullFx?.type === "miss" ? "is-hit" : ""}`} disabled={botMask[playerIdx]} onClick={() => onDart({ v:0, mult:1 })}><span className="target">×</span><b>MISS</b><small>0 PT</small></button>
         </div>
-        <button className="sbx-undo" disabled={!currentThrow.length || botMask[playerIdx]} onClick={onUndo}>↶ ANNULER LA DERNIÈRE FLÉCHETTE</button>
+        <button className="sbx-undo" disabled={!currentThrow.length && !completedVisits.length} onClick={onUndo}>{currentThrow.length ? `↶ ANNULER D${currentThrow.length}` : "↶ CORRIGER LA DERNIÈRE VOLÉE"}</button>
       </aside>
     </main>
 
@@ -267,7 +268,7 @@ function SuperBullChallengeView({
 }
 
 const SUPER_BULL_CHALLENGE_CSS = `
-.sbx-root{min-height:100dvh;background:#02070d;color:#fff;display:flex;flex-direction:column;overflow:hidden}.sbx-head{height:104px;min-height:76px;position:relative;border-bottom:1px solid #1b5670;background:#07101a;overflow:hidden;display:flex;align-items:center;justify-content:center;padding:0 86px}.sbx-head>img{width:auto;height:100%;max-width:100%;object-fit:contain;object-position:center;display:block}.sbx-head:after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,#02070dcc 0,transparent 19%,transparent 81%,#02070dcc 100%);pointer-events:none}.sbx-back,.sbx-info{position:absolute;top:50%;transform:translateY(-50%);z-index:3}.sbx-back{left:12px}.sbx-info{right:14px}.sbx-layout{flex:1;min-height:0;display:grid;grid-template-columns:minmax(240px,24fr) minmax(360px,40fr) minmax(340px,36fr);gap:8px;padding:8px}.sbx-left,.sbx-board,.sbx-right{min-height:0;border:1px solid #14344a;border-radius:16px;background:linear-gradient(180deg,#07131f,#040b12);box-shadow:inset 0 1px 0 #ffffff08}.sbx-left{padding:9px;display:flex;flex-direction:column;gap:7px}.sbx-active-player{min-height:94px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:9px;align-items:center;padding:8px;border:1px solid #1b607d;border-radius:14px;background:linear-gradient(135deg,#0b2535,#07111a)}.sbx-active-copy{min-width:0;display:flex;flex-direction:column}.sbx-active-copy small,.sbx-active-score small{font-size:8px;letter-spacing:.8px;color:#6fdfff;font-weight:1000}.sbx-active-copy strong{font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sbx-active-copy span{font-size:9px;color:#8a9aa9;margin-top:4px}.sbx-active-score{text-align:right}.sbx-active-score b{display:block;font-size:31px;line-height:1}.sbx-active-score span{font-size:11px;color:#8aa4b6}.sbx-left-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}.sbx-left-kpis>div{min-height:58px;display:grid;place-items:center;text-align:center;border:1px solid #143146;border-radius:11px;background:#06101a}.sbx-left-kpis span{font-size:7px;color:#899aa9;font-weight:1000}.sbx-left-kpis b{font-size:20px;color:#24d9ff}.sbx-roster-title{height:30px;display:flex;align-items:center;justify-content:space-between;padding:0 7px;border-bottom:1px solid #173044;font-size:10px}.sbx-roster-title span{border-radius:99px;padding:2px 7px;background:#173044;color:#89dff2}.sbx-roster{overflow:auto;display:grid;gap:4px}.sbx-roster>div{min-height:48px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:7px;align-items:center;padding:5px;border:1px solid #102a3d;border-radius:10px;background:#050e16}.sbx-roster>div.active{border-color:#e8b82b;box-shadow:0 0 18px #e8b82b25}.sbx-roster>div span{min-width:0;display:flex;flex-direction:column}.sbx-roster>div span b{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sbx-roster>div span small{font-size:7px;color:#7e8d9a}.sbx-roster>div>strong{font-size:18px;color:#ffd248}.sbx-board{padding:8px;display:flex;flex-direction:column;gap:7px}.sbx-board-caption{min-height:65px;padding:7px 12px;border-radius:12px;border:1px solid #17455e;background:linear-gradient(180deg,#092236,#07131f);display:grid;grid-template-columns:1fr auto;grid-template-areas:'a b' 'c b';align-items:center}.sbx-board-caption span{grid-area:a;font-size:9px;color:#56dcff;font-weight:1000;letter-spacing:.7px}.sbx-board-caption b{grid-area:b;font-size:30px}.sbx-board-caption small{grid-area:c;font-size:9px;color:#8b9dab}.sbx-board-media{position:relative;flex:1;min-height:0;border-radius:24px;overflow:hidden;border:1px solid #214762;background:linear-gradient(180deg,rgba(7,16,27,.96),rgba(4,10,17,.98))}.sbx-board-photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;display:block;filter:saturate(1.05) contrast(1.04) brightness(.88)}.sbx-board-glow{position:absolute;inset:0;background:radial-gradient(circle at 72% 50%,rgba(255,215,120,.18),transparent 14%),linear-gradient(90deg,rgba(2,7,13,.82) 0%,rgba(2,7,13,.28) 34%,rgba(2,7,13,.1) 62%,rgba(2,7,13,.76) 100%);pointer-events:none}.sbx-bull-stage{position:absolute;inset:0;display:grid;place-items:center;padding:18px 18px 28px;isolation:isolate}.sbx-bull-stage.is-bull25{background:radial-gradient(circle at 72% 50%,rgba(37,214,122,.14),transparent 30%)}.sbx-bull-stage.is-bull50{background:radial-gradient(circle at 72% 50%,rgba(255,96,120,.18),transparent 34%)}.sbx-bull-stage.is-miss{background:radial-gradient(circle at 72% 50%,rgba(200,210,224,.08),transparent 28%)}.sbx-board-legend{position:absolute;left:16px;top:16px;display:flex;gap:10px;z-index:3}.sbx-board-legend>div{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:999px;background:rgba(4,10,18,.78);border:1px solid rgba(255,255,255,.10);box-shadow:0 10px 24px rgba(0,0,0,.28)}.sbx-board-legend img{width:30px;height:30px;object-fit:contain}.sbx-board-legend span{font-size:11px;font-weight:1000;letter-spacing:.85px;color:#f5fbff}.sbx-hit-overlay{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;opacity:0;z-index:4}.sbx-hit-overlay.is-visible{opacity:1}.sbx-hit-overlay.is-visible .sbx-hit-card{animation:sbxHitCard .92s cubic-bezier(.18,.89,.32,1.18)}.sbx-hit-overlay.is-visible .sbx-hit-pulse{animation:sbxHitPulse .92s ease-out}.sbx-hit-pulse{position:absolute;width:min(76%,340px);aspect-ratio:1/1;border-radius:50%;border:8px solid rgba(255,255,255,.14)}.sbx-hit-overlay.is-bull25 .sbx-hit-pulse{border-color:rgba(63,242,162,.42);box-shadow:0 0 45px rgba(63,242,162,.20)}.sbx-hit-overlay.is-bull50 .sbx-hit-pulse{border-color:rgba(255,111,131,.5);box-shadow:0 0 55px rgba(255,111,131,.24)}.sbx-hit-overlay.is-miss .sbx-hit-pulse{border-color:rgba(185,195,209,.28);box-shadow:0 0 35px rgba(185,195,209,.15)}.sbx-hit-card{min-width:min(76%,280px);max-width:min(84%,340px);display:grid;justify-items:center;gap:4px;padding:16px 14px 14px;border-radius:24px;border:1px solid rgba(255,255,255,.12);background:linear-gradient(180deg,rgba(5,12,20,.90),rgba(7,16,28,.74));box-shadow:0 28px 68px rgba(0,0,0,.48);backdrop-filter:blur(5px)}.sbx-hit-card img{width:84px;height:84px;object-fit:contain;filter:drop-shadow(0 8px 20px rgba(0,0,0,.35))}.sbx-hit-card span{font-size:10px;font-weight:1000;letter-spacing:1.25px;color:#7adfff}.sbx-hit-card strong{font-size:28px;line-height:1;font-weight:1000}.sbx-hit-card small{font-size:11px;color:#d8e3ed;font-weight:800}.sbx-hit-overlay.is-bull25 .sbx-hit-card strong{color:#78f4ad}.sbx-hit-overlay.is-bull50 .sbx-hit-card strong{color:#ffd56f}.sbx-hit-overlay.is-miss .sbx-hit-card strong{color:#f4f7fb}.sbx-hit-miss{width:84px;height:84px;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle at 30% 25%,#65717d,#24303d 72%);border:5px solid rgba(255,255,255,.13);font-size:44px;font-weight:1000;color:#f5f8fb;box-shadow:0 8px 20px rgba(0,0,0,.35)}@keyframes sbxHitCard{0%{transform:translateY(22px) scale(.72);opacity:0}18%{transform:translateY(-8px) scale(1.04);opacity:1}100%{transform:translateY(0) scale(1);opacity:1}}@keyframes sbxHitPulse{0%{transform:scale(.42);opacity:.7}100%{transform:scale(1.42);opacity:0}}.sbx-darts-row{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.sbx-darts-row>div{height:48px;border:1px solid #293b49;border-radius:10px;background:#070e15;display:grid;place-items:center;grid-template-columns:auto auto;gap:5px}.sbx-darts-row small{font-size:8px;color:#82919f}.sbx-darts-row b{font-size:16px}.sbx-darts-row .bull{border-color:#21c778;color:#62efaa}.sbx-darts-row .dbull{border-color:#ff4756;color:#ff8a91}.sbx-darts-row .miss{color:#9ea8b2}.sbx-right{padding:9px;display:flex;flex-direction:column;gap:7px}.sbx-progress-card{padding:10px;border:1px solid #166487;border-radius:14px;background:linear-gradient(145deg,#09283c,#06121d);display:grid;grid-template-columns:minmax(0,1fr) 78px;gap:7px}.sbx-progress-card>div{display:flex;flex-direction:column}.sbx-progress-card span{font-size:9px;color:#2ce0ff;font-weight:1000;letter-spacing:.6px}.sbx-progress-card b{font-size:35px;line-height:1.1;margin-top:4px}.sbx-progress-card small{font-size:8px;color:#a9b5bf}.sbx-progress-card em{border:1px solid #16435c;border-radius:10px;display:grid;place-items:center;font-style:normal;font-size:8px;color:#9dafbd}.sbx-progress-card em strong{font-size:19px;color:#fff}.sbx-progress-card>i{grid-column:1/-1;height:7px;border-radius:99px;overflow:hidden;background:#102836}.sbx-progress-card>i u{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#16b7ee,#1ee6d0);box-shadow:0 0 12px #20dfff88}.sbx-stats-card{padding:8px;border:1px solid #16364a;border-radius:13px;background:#050d14}.sbx-stats-card h3{margin:0 0 6px;font-size:10px}.sbx-stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}.sbx-stat-grid>div{min-height:54px;border:1px solid #153246;border-radius:9px;background:#07131d;display:grid;place-items:center;text-align:center}.sbx-stat-grid span{font-size:7px;color:#8ea0ae;font-weight:1000}.sbx-stat-grid b{font-size:18px;color:#21d9ff}.sbx-input-title{display:flex;justify-content:space-between;align-items:end;padding:0 3px}.sbx-input-title span{font-size:9px;font-weight:1000;letter-spacing:.7px}.sbx-input-title small{font-size:7px;color:#8594a1}.sbx-keypad{flex:1;min-height:156px;display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.sbx-keypad button{min-height:120px;border-radius:16px;border:1px solid #31404d;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;font-weight:1000;cursor:pointer}.sbx-keypad button:disabled{opacity:.45;cursor:not-allowed}.sbx-keypad .target{width:47px;height:47px;border-radius:50%;display:grid;place-items:center;background:#f3ead7;border:6px solid currentColor;box-shadow:0 0 18px currentColor;font-size:15px;color:#061017;overflow:hidden}.sbx-keypad .target img{width:100%;height:100%;object-fit:contain;border-radius:50%}.sbx-keypad button b{font-size:20px}.sbx-keypad button small{font-size:8px}.sbx-keypad .bull25{background:linear-gradient(180deg,#11a865,#075b39);border-color:#42efa0;color:#b5ffcf}.sbx-keypad .bull50{background:linear-gradient(180deg,#ed2638,#86121d);border-color:#ff6672;color:#ffd3d6}.sbx-keypad .miss{background:linear-gradient(180deg,#46515c,#1c252e);border-color:#91a0ae;color:#e4e9ee}.sbx-undo{height:42px;border-radius:11px;border:1px solid #244057;background:#07131e;color:#b5c4d0;font-weight:1000;font-size:9px}.sbx-undo:disabled{opacity:.35}.sbx-finish{flex:1;display:grid;place-items:center;padding:18px}.sbx-finish-card{width:min(900px,96vw);max-height:calc(100dvh - 140px);overflow:auto;border:1px solid #1c5a77;border-radius:22px;padding:20px;background:linear-gradient(145deg,#0a2334,#050c13);text-align:center}.sbx-kicker{font-size:10px;color:#33dcff;letter-spacing:1.3px;font-weight:1000}.sbx-finish-winner{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:center;padding:12px;border:1px solid #1b607d;border-radius:16px;background:linear-gradient(135deg,#0b2535,#07111a);text-align:left}.sbx-finish-copy small{font-size:9px;color:#6fdfff;font-weight:1000;letter-spacing:.8px}.sbx-finish-copy p{margin:4px 0 0;color:#9aabb8}.sbx-finish-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;margin:8px 0}.sbx-finish-kpis>div{min-height:54px;border:1px solid #173244;border-radius:10px;background:#06111a;display:grid;place-items:center;text-align:center}.sbx-finish-kpis span{font-size:7px;color:#8ea0ae;font-weight:1000}.sbx-finish-kpis b{font-size:18px;color:#21d9ff}.sbx-finish-toolbar{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 0}.sbx-finish-toolbar button{height:38px;border-radius:10px;border:1px solid #24445a;background:#07131e;color:#fff;font-size:9px;font-weight:1000;letter-spacing:.5px}.sbx-quick-finish-note{margin-top:8px;padding:9px 11px;border-radius:10px;border:1px solid #1c5a77;background:#082032;color:#b8d8e7;font-size:9px;line-height:1.35}.sbx-finish-actions-v2{grid-template-columns:1fr 1fr 1.2fr}.sbx-trophy{font-size:46px;margin-top:5px}.sbx-finish h1{margin:0;font-size:32px}.sbx-winner-score{font-size:46px;font-weight:1000;color:#ffd546}.sbx-winner-score small{font-size:13px}.sbx-finish p{color:#9aabb8}.sbx-ranking{display:grid;gap:6px;text-align:left}.sbx-ranking>button{display:grid;color:#fff;text-align:left;font:inherit;cursor:pointer;grid-template-columns:36px 44px minmax(0,1fr) repeat(4,minmax(60px,.5fr));gap:6px;align-items:center;padding:7px;border:1px solid #173244;border-radius:11px;background:#06111a}.sbx-ranking>button.winner{border-color:#d5a92c;background:#211b08}.sbx-ranking>button>span{display:flex;flex-direction:column}.sbx-ranking>button>span small{color:#8594a1}.sbx-ranking em{font-style:normal;font-size:7px;color:#8b9cab;text-align:center}.sbx-ranking em strong{display:block;color:#fff;font-size:15px}.sbx-finish-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}.sbx-finish-actions button{height:48px;border-radius:12px;border:1px solid #29465a;background:#091520;color:#fff;font-weight:1000}.sbx-finish-actions .primary{background:linear-gradient(180deg,#16bfe8,#08748f);border-color:#45e5ff}.sbx-finish-actions button,.sbx-undo,.sbx-keypad button{touch-action:manipulation}
+.sbx-root{min-height:100dvh;background:#02070d;color:#fff;display:flex;flex-direction:column;overflow:hidden}.sbx-head{height:104px;min-height:76px;position:relative;border-bottom:1px solid #1b5670;background:#07101a;overflow:hidden;display:flex;align-items:center;justify-content:center;padding:0 86px}.sbx-head>img{width:auto;height:100%;max-width:100%;object-fit:contain;object-position:center;display:block}.sbx-head:after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,#02070dcc 0,transparent 19%,transparent 81%,#02070dcc 100%);pointer-events:none}.sbx-back,.sbx-info{position:absolute;top:50%;transform:translateY(-50%);z-index:3}.sbx-back{left:12px}.sbx-info{right:14px}.sbx-layout{flex:1;min-height:0;display:grid;grid-template-columns:minmax(240px,24fr) minmax(360px,40fr) minmax(340px,36fr);gap:8px;padding:8px}.sbx-left,.sbx-board,.sbx-right{min-height:0;border:1px solid #14344a;border-radius:16px;background:linear-gradient(180deg,#07131f,#040b12);box-shadow:inset 0 1px 0 #ffffff08}.sbx-left{padding:9px;display:flex;flex-direction:column;gap:7px}.sbx-active-player{min-height:94px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:9px;align-items:center;padding:8px;border:1px solid #1b607d;border-radius:14px;background:linear-gradient(135deg,#0b2535,#07111a)}.sbx-active-copy{min-width:0;display:flex;flex-direction:column}.sbx-active-copy small,.sbx-active-score small{font-size:8px;letter-spacing:.8px;color:#6fdfff;font-weight:1000}.sbx-active-copy strong{font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sbx-active-copy span{font-size:9px;color:#8a9aa9;margin-top:4px}.sbx-active-score{text-align:right}.sbx-active-score b{display:block;font-size:31px;line-height:1}.sbx-active-score span{font-size:11px;color:#8aa4b6}.sbx-left-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}.sbx-left-kpis>div{min-height:58px;display:grid;place-items:center;text-align:center;border:1px solid #143146;border-radius:11px;background:#06101a}.sbx-left-kpis span{font-size:7px;color:#899aa9;font-weight:1000}.sbx-left-kpis b{font-size:20px;color:#24d9ff}.sbx-roster-title{height:30px;display:flex;align-items:center;justify-content:space-between;padding:0 7px;border-bottom:1px solid #173044;font-size:10px}.sbx-roster-title span{border-radius:99px;padding:2px 7px;background:#173044;color:#89dff2}.sbx-roster{overflow:auto;display:grid;gap:4px}.sbx-roster>div{min-height:48px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:7px;align-items:center;padding:5px;border:1px solid #102a3d;border-radius:10px;background:#050e16}.sbx-roster>div.active{border-color:#e8b82b;box-shadow:0 0 18px #e8b82b25}.sbx-roster>div span{min-width:0;display:flex;flex-direction:column}.sbx-roster>div span b{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sbx-roster>div span small{font-size:7px;color:#7e8d9a}.sbx-roster>div>strong{font-size:18px;color:#ffd248}.sbx-board{padding:8px;display:flex;flex-direction:column;gap:7px}.sbx-board-caption{min-height:65px;padding:7px 12px;border-radius:12px;border:1px solid #17455e;background:linear-gradient(180deg,#092236,#07131f);display:grid;grid-template-columns:1fr auto;grid-template-areas:'a b' 'c b';align-items:center}.sbx-board-caption span{grid-area:a;font-size:9px;color:#56dcff;font-weight:1000;letter-spacing:.7px}.sbx-board-caption b{grid-area:b;font-size:30px}.sbx-board-caption small{grid-area:c;font-size:9px;color:#8b9dab}.sbx-board-media{position:relative;flex:1;min-height:0;border-radius:24px;overflow:hidden;border:1px solid #214762;background:linear-gradient(180deg,rgba(7,16,27,.96),rgba(4,10,17,.98))}.sbx-board-photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;display:block;filter:saturate(1.05) contrast(1.04) brightness(.88)}.sbx-board-glow{position:absolute;inset:0;background:radial-gradient(circle at 72% 50%,rgba(255,215,120,.18),transparent 14%),linear-gradient(90deg,rgba(2,7,13,.82) 0%,rgba(2,7,13,.28) 34%,rgba(2,7,13,.1) 62%,rgba(2,7,13,.76) 100%);pointer-events:none}.sbx-bull-stage{position:absolute;inset:0;display:grid;place-items:center;padding:18px 18px 28px;isolation:isolate}.sbx-bull-stage.is-bull25{background:radial-gradient(circle at 72% 50%,rgba(37,214,122,.14),transparent 30%)}.sbx-bull-stage.is-bull50{background:radial-gradient(circle at 72% 50%,rgba(255,96,120,.18),transparent 34%)}.sbx-bull-stage.is-miss{background:radial-gradient(circle at 72% 50%,rgba(200,210,224,.08),transparent 28%)}.sbx-board-legend{position:absolute;left:16px;top:16px;display:flex;gap:10px;z-index:3}.sbx-board-legend>div{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:999px;background:rgba(4,10,18,.78);border:1px solid rgba(255,255,255,.10);box-shadow:0 10px 24px rgba(0,0,0,.28)}.sbx-board-legend img{width:30px;height:30px;object-fit:contain}.sbx-board-legend span{font-size:11px;font-weight:1000;letter-spacing:.85px;color:#f5fbff}.sbx-hit-overlay{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;opacity:0;z-index:4}.sbx-hit-overlay.is-visible{opacity:1}.sbx-hit-overlay.is-visible .sbx-hit-card{animation:sbxHitCard .92s cubic-bezier(.18,.89,.32,1.18)}.sbx-hit-overlay.is-visible .sbx-hit-pulse{animation:sbxHitPulse .92s ease-out}.sbx-hit-pulse{position:absolute;width:min(76%,340px);aspect-ratio:1/1;border-radius:50%;border:8px solid rgba(255,255,255,.14)}.sbx-hit-overlay.is-bull25 .sbx-hit-pulse{border-color:rgba(63,242,162,.42);box-shadow:0 0 45px rgba(63,242,162,.20)}.sbx-hit-overlay.is-bull50 .sbx-hit-pulse{border-color:rgba(255,111,131,.5);box-shadow:0 0 55px rgba(255,111,131,.24)}.sbx-hit-overlay.is-miss .sbx-hit-pulse{border-color:rgba(185,195,209,.28);box-shadow:0 0 35px rgba(185,195,209,.15)}.sbx-hit-card{min-width:min(76%,280px);max-width:min(84%,340px);display:grid;justify-items:center;gap:4px;padding:16px 14px 14px;border-radius:24px;border:1px solid rgba(255,255,255,.12);background:linear-gradient(180deg,rgba(5,12,20,.90),rgba(7,16,28,.74));box-shadow:0 28px 68px rgba(0,0,0,.48);backdrop-filter:blur(5px)}.sbx-hit-card img{width:84px;height:84px;object-fit:contain;filter:drop-shadow(0 8px 20px rgba(0,0,0,.35))}.sbx-hit-card span{font-size:10px;font-weight:1000;letter-spacing:1.25px;color:#7adfff}.sbx-hit-card strong{font-size:28px;line-height:1;font-weight:1000}.sbx-hit-card small{font-size:11px;color:#d8e3ed;font-weight:800}.sbx-hit-overlay.is-bull25 .sbx-hit-card strong{color:#78f4ad}.sbx-hit-overlay.is-bull50 .sbx-hit-card strong{color:#ffd56f}.sbx-hit-overlay.is-miss .sbx-hit-card strong{color:#f4f7fb}.sbx-hit-miss{width:84px;height:84px;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle at 30% 25%,#65717d,#24303d 72%);border:5px solid rgba(255,255,255,.13);font-size:44px;font-weight:1000;color:#f5f8fb;box-shadow:0 8px 20px rgba(0,0,0,.35)}@keyframes sbxHitCard{0%{transform:translateY(22px) scale(.72);opacity:0}18%{transform:translateY(-8px) scale(1.04);opacity:1}100%{transform:translateY(0) scale(1);opacity:1}}@keyframes sbxHitPulse{0%{transform:scale(.42);opacity:.7}100%{transform:scale(1.42);opacity:0}}.sbx-darts-row{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.sbx-darts-row>div{height:48px;border:1px solid #293b49;border-radius:10px;background:#070e15;display:grid;place-items:center;grid-template-columns:auto auto;gap:5px}.sbx-darts-row small{font-size:8px;color:#82919f}.sbx-darts-row b{font-size:16px}.sbx-darts-row .bull{border-color:#21c778;color:#62efaa}.sbx-darts-row .dbull{border-color:#ff4756;color:#ff8a91}.sbx-darts-row .miss{color:#9ea8b2}.sbx-right{padding:9px;display:flex;flex-direction:column;gap:7px}.sbx-progress-card{padding:10px;border:1px solid #166487;border-radius:14px;background:linear-gradient(145deg,#09283c,#06121d);display:grid;grid-template-columns:minmax(0,1fr) 78px;gap:7px}.sbx-progress-card>div{display:flex;flex-direction:column}.sbx-progress-card span{font-size:9px;color:#2ce0ff;font-weight:1000;letter-spacing:.6px}.sbx-progress-card b{font-size:35px;line-height:1.1;margin-top:4px}.sbx-progress-card small{font-size:8px;color:#a9b5bf}.sbx-progress-card em{border:1px solid #16435c;border-radius:10px;display:grid;place-items:center;font-style:normal;font-size:8px;color:#9dafbd}.sbx-progress-card em strong{font-size:19px;color:#fff}.sbx-progress-card>i{grid-column:1/-1;height:7px;border-radius:99px;overflow:hidden;background:#102836}.sbx-progress-card>i u{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#16b7ee,#1ee6d0);box-shadow:0 0 12px #20dfff88}.sbx-stats-card{padding:8px;border:1px solid #16364a;border-radius:13px;background:#050d14}.sbx-stats-card h3{margin:0 0 6px;font-size:10px}.sbx-stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}.sbx-stat-grid>div{min-height:54px;border:1px solid #153246;border-radius:9px;background:#07131d;display:grid;place-items:center;text-align:center}.sbx-stat-grid span{font-size:7px;color:#8ea0ae;font-weight:1000}.sbx-stat-grid b{font-size:18px;color:#21d9ff}.sbx-input-title{display:flex;justify-content:space-between;align-items:end;padding:0 3px}.sbx-input-title span{font-size:9px;font-weight:1000;letter-spacing:.7px}.sbx-input-title small{font-size:7px;color:#8594a1}.sbx-keypad{flex:1;min-height:156px;display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.sbx-keypad button{min-height:120px;border-radius:16px;border:1px solid #31404d;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;font-weight:1000;cursor:pointer}.sbx-keypad button:disabled{opacity:.45;cursor:not-allowed}.sbx-keypad .target{width:47px;height:47px;border-radius:50%;display:grid;place-items:center;background:#f3ead7;border:6px solid currentColor;box-shadow:0 0 18px currentColor;font-size:15px;color:#061017;overflow:hidden}.sbx-keypad .target img{width:100%;height:100%;object-fit:contain;border-radius:50%}.sbx-keypad button b{font-size:20px}.sbx-keypad button small{font-size:8px}.sbx-keypad .bull25{background:linear-gradient(180deg,#11a865,#075b39);border-color:#42efa0;color:#b5ffcf}.sbx-keypad .bull50{background:linear-gradient(180deg,#ed2638,#86121d);border-color:#ff6672;color:#ffd3d6}.sbx-keypad .miss{background:linear-gradient(180deg,#46515c,#1c252e);border-color:#91a0ae;color:#e4e9ee}.sbx-undo{height:42px;border-radius:11px;border:1px solid #244057;background:#07131e;color:#b5c4d0;font-weight:1000;font-size:9px}.sbx-undo:disabled{opacity:.35}.sbx-finish{flex:1;display:grid;place-items:center;padding:18px}.sbx-finish-card{width:min(900px,96vw);max-height:calc(100dvh - 140px);overflow:auto;border:1px solid #1c5a77;border-radius:22px;padding:20px;background:linear-gradient(145deg,#0a2334,#050c13);text-align:center}.sbx-kicker{font-size:10px;color:#33dcff;letter-spacing:1.3px;font-weight:1000}.sbx-finish-winner{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:center;padding:12px;border:1px solid #1b607d;border-radius:16px;background:linear-gradient(135deg,#0b2535,#07111a);text-align:left}.sbx-finish-copy small{font-size:9px;color:#6fdfff;font-weight:1000;letter-spacing:.8px}.sbx-finish-copy p{margin:4px 0 0;color:#9aabb8}.sbx-finish-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;margin:8px 0}.sbx-finish-kpis>div{min-height:54px;border:1px solid #173244;border-radius:10px;background:#06111a;display:grid;place-items:center;text-align:center}.sbx-finish-kpis span{font-size:7px;color:#8ea0ae;font-weight:1000}.sbx-finish-kpis b{font-size:18px;color:#21d9ff}.sbx-finish-toolbar{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 0}.sbx-finish-toolbar button{height:38px;border-radius:10px;border:1px solid #24445a;background:#07131e;color:#fff;font-size:9px;font-weight:1000;letter-spacing:.5px}.sbx-quick-finish-note{margin-top:8px;padding:9px 11px;border-radius:10px;border:1px solid #1c5a77;background:#082032;color:#b8d8e7;font-size:9px;line-height:1.35}.sbx-finish-correct{width:100%;height:42px;margin-top:8px;border-radius:11px;border:1px solid #a77b24;background:linear-gradient(180deg,#39280b,#171006);color:#ffd76a;font-size:9px;font-weight:1000;letter-spacing:.6px}.sbx-finish-correct:disabled{opacity:.35}.sbx-finish-actions-v2{grid-template-columns:1fr 1fr 1.2fr}.sbx-trophy{font-size:46px;margin-top:5px}.sbx-finish h1{margin:0;font-size:32px}.sbx-winner-score{font-size:46px;font-weight:1000;color:#ffd546}.sbx-winner-score small{font-size:13px}.sbx-finish p{color:#9aabb8}.sbx-ranking{display:grid;gap:6px;text-align:left}.sbx-ranking>button{display:grid;color:#fff;text-align:left;font:inherit;cursor:pointer;grid-template-columns:36px 44px minmax(0,1fr) repeat(4,minmax(60px,.5fr));gap:6px;align-items:center;padding:7px;border:1px solid #173244;border-radius:11px;background:#06111a}.sbx-ranking>button.winner{border-color:#d5a92c;background:#211b08}.sbx-ranking>button>span{display:flex;flex-direction:column}.sbx-ranking>button>span small{color:#8594a1}.sbx-ranking em{font-style:normal;font-size:7px;color:#8b9cab;text-align:center}.sbx-ranking em strong{display:block;color:#fff;font-size:15px}.sbx-finish-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}.sbx-finish-actions button{height:48px;border-radius:12px;border:1px solid #29465a;background:#091520;color:#fff;font-weight:1000}.sbx-finish-actions .primary{background:linear-gradient(180deg,#16bfe8,#08748f);border-color:#45e5ff}.sbx-finish-actions button,.sbx-undo,.sbx-keypad button{touch-action:manipulation}
 .sbx-player-toolbar{min-height:65px;padding:6px 7px;border-radius:12px;border:1px solid #17455e;background:linear-gradient(180deg,#092236,#07131f);display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;align-items:center}.sbx-player-strip{min-width:0;display:flex;gap:5px;overflow-x:auto;scrollbar-width:none}.sbx-player-strip::-webkit-scrollbar{display:none}.sbx-player-chip{min-width:120px;max-width:170px;height:50px;border:1px solid #17364b;border-radius:10px;background:#06111b;color:#fff;display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px;align-items:center;padding:4px 7px;text-align:left;cursor:pointer}.sbx-player-chip.active{border-color:#efbd31;background:linear-gradient(135deg,#18200f,#07121b);box-shadow:0 0 14px #efbd3122}.sbx-player-chip>span{min-width:0;display:flex;flex-direction:column}.sbx-player-chip b{font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sbx-player-chip small{font-size:7px;color:#8599aa;margin-top:2px}.sbx-toolbar-actions{display:flex;gap:5px}.sbx-toolbar-actions>button{width:58px;height:50px;border:1px solid #1f4a63;border-radius:10px;background:#07131d;color:#73e7ff;display:grid;place-items:center;padding:3px;cursor:pointer}.sbx-toolbar-actions>button span{font-size:18px;line-height:1}.sbx-toolbar-actions>button small{font-size:5.7px;font-weight:1000;letter-spacing:.5px}.sbx-stats-open{width:100%;color:#fff;text-align:left;cursor:pointer;font:inherit}.sbx-stats-open:hover,.sbx-stats-open:focus-visible{border-color:#2f9fc4;box-shadow:0 0 0 1px #2f9fc433,0 0 18px #1acfff12;outline:none}.sbx-stats-card h3{display:flex;align-items:center;justify-content:space-between;gap:8px}.sbx-stats-card h3 em{font-style:normal;color:#50dcff;font-size:6.5px;letter-spacing:.5px;white-space:nowrap}.sbx-overlay{position:fixed;inset:0;z-index:12150;background:rgba(0,0,0,.82);backdrop-filter:blur(7px);display:grid;place-items:center;padding:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left))}.sbx-modal{width:min(860px,96vw);max-height:min(88dvh,820px);overflow:auto;border:1px solid #28536b;border-radius:20px;background:linear-gradient(180deg,#0a1724,#040a10);box-shadow:0 30px 90px #000;padding:11px;color:#fff}.sbx-modal-head{position:sticky;top:-11px;z-index:3;margin:-11px -11px 9px;padding:10px 11px;background:linear-gradient(180deg,#0d2232,#08131d);border-bottom:1px solid #24485d;display:grid;grid-template-columns:minmax(0,1fr) 36px;align-items:center;gap:8px}.sbx-modal-head div{display:flex;flex-direction:column}.sbx-modal-head small{font-size:7px;color:#50dcff;font-weight:1000;letter-spacing:1px}.sbx-modal-head strong{font-size:15px;letter-spacing:.8px}.sbx-modal-head button{width:34px;height:34px;border-radius:50%;border:1px solid #3a566a;background:#07111a;color:#fff;font-size:22px}.sbx-modal-player-tabs{display:flex;gap:5px;overflow-x:auto;padding-bottom:6px}.sbx-modal-player-tabs button{min-width:100px;height:42px;border:1px solid #1b3448;border-radius:10px;background:#06101a;color:#fff;display:flex;align-items:center;gap:6px;padding:4px 7px}.sbx-modal-player-tabs button.active{border-color:#efbd31;background:#181607}.sbx-modal-player-tabs button span{font-size:9px;font-weight:1000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sbx-detail-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin-top:5px}.sbx-detail-kpis>div{min-height:60px;border:1px solid #17364a;border-radius:10px;background:#06111b;display:grid;place-items:center;text-align:center;padding:5px}.sbx-detail-kpis span{font-size:6.5px;color:#8299aa;font-weight:1000}.sbx-detail-kpis b{font-size:20px;color:#27d9ff}.sbx-section-title{display:flex;justify-content:space-between;align-items:end;gap:8px;margin:12px 2px 6px;padding-bottom:5px;border-bottom:1px solid #17384e}.sbx-section-title span{font-size:9px;color:#56dcff;font-weight:1000;letter-spacing:.7px}.sbx-section-title small{font-size:7px;color:#8395a4}.sbx-dart-position-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.sbx-dart-position{border:1px solid #1a3a50;border-radius:12px;background:#06111a;padding:8px}.sbx-dart-position header{display:flex;justify-content:space-between;align-items:center}.sbx-dart-position header b{font-size:15px}.sbx-dart-position header strong{font-size:20px;color:#26d9ff}.sbx-pos-bar{height:5px;background:#102534;border-radius:99px;overflow:hidden;margin:6px 0}.sbx-pos-bar i{display:block;height:100%;background:linear-gradient(90deg,#19be78,#24dcff);border-radius:99px}.sbx-pos-values{display:grid;grid-template-columns:repeat(4,1fr);gap:3px}.sbx-pos-values span{display:grid;place-items:center;padding:5px 2px;border-radius:7px;background:#091722}.sbx-pos-values em{font-style:normal;font-size:5.5px;color:#8798a7}.sbx-pos-values b{font-size:12px}.sbx-mini-log{display:grid;gap:4px}.sbx-mini-log>div{display:grid;grid-template-columns:38px minmax(0,1fr) 70px;gap:7px;align-items:center;padding:7px;border:1px solid #142e40;border-radius:9px;background:#06101a}.sbx-mini-log>div b{color:#56dcff}.sbx-mini-log>div span{font-size:9px}.sbx-mini-log>div strong{text-align:right;color:#ffd24c}.sbx-mini-log p,.sbx-empty-log{padding:18px;text-align:center;color:#8496a6}.sbx-live-ranking{display:grid;gap:5px}.sbx-live-ranking button{width:100%;min-height:56px;border:1px solid #17364a;border-radius:11px;background:#06111a;color:#fff;display:grid;grid-template-columns:38px 42px minmax(0,1fr) 86px;gap:7px;align-items:center;padding:6px 8px;text-align:left}.sbx-live-ranking button.active{border-color:#efbd31;background:#171509}.sbx-live-ranking button>em{font-style:normal;font-size:18px;color:#ffd24c;text-align:center}.sbx-live-ranking button>span{min-width:0;display:flex;flex-direction:column}.sbx-live-ranking button>span b{font-size:10px}.sbx-live-ranking button>span small{font-size:7px;color:#8598a7}.sbx-live-ranking button>strong{text-align:right;color:#27d9ff;font-size:18px}.sbx-full-log{display:grid;gap:3px}.sbx-log-head,.sbx-log-row{display:grid;grid-template-columns:48px minmax(95px,1fr) 58px 58px 58px 58px;gap:4px;align-items:center}.sbx-log-head{position:sticky;top:49px;z-index:2;background:#0a1724;padding:6px;border-bottom:1px solid #24475c;color:#8197a8;font-size:6px;font-weight:1000}.sbx-log-row{padding:6px;border:1px solid #142e40;border-radius:8px;background:#06101a}.sbx-log-row>b{color:#56dcff}.sbx-log-row>span{font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sbx-log-row i{font-style:normal;text-align:center;padding:5px 2px;border-radius:6px;background:#111d27;color:#b8c3cd;font-size:8px;font-weight:1000}.sbx-log-row i.bull25{background:#073b28;color:#6cf1a7}.sbx-log-row i.bull50{background:#4a1118;color:#ffabb2}.sbx-log-row>strong{text-align:center;color:#ffd24c}.sbx-log-row i.miss{color:#8b99a5}
 
 .sbx-portrait-ui,.sbx-portrait-roster{display:none}
@@ -334,8 +335,22 @@ export default function SimpleRoundsPlay(props: any) {
   useFullscreenPlay({ enabled: variantId === "super_bull", lockBodyScroll: true });
   const spec = SIMPLE_ROUND_VARIANTS[variantId];
 
+  const resumeRecord: any = props?.params?.rec || props?.params?.record || props?.params?.resume || null;
+  const resumePayload: any = resumeRecord?.decoded || (resumeRecord?.payload && typeof resumeRecord.payload === "object" ? resumeRecord.payload : null) || {};
+  const resumeState: any =
+    props?.params?.snapshot ||
+    resumeRecord?.resume?.state ||
+    resumeRecord?.resume?.livePayload?.stateSnapshot ||
+    resumeRecord?.resume?.livePayload?.state ||
+    resumePayload?.stateSnapshot ||
+    resumePayload?.state ||
+    null;
+
   const cfg: CommonConfig =
     (props?.params?.config as CommonConfig) ||
+    (resumeRecord?.resume?.config as CommonConfig) ||
+    (resumeRecord?.resume?.livePayload?.config as CommonConfig) ||
+    (resumePayload?.config as CommonConfig) ||
     (props?.config as CommonConfig) || {
       players: 2,
       botsEnabled: false,
@@ -350,7 +365,13 @@ export default function SimpleRoundsPlay(props: any) {
   );
 
   const playerRows = useMemo(() => {
-    const explicit = props?.params?.players ?? props?.players ?? (Array.isArray((cfg as any)?.players) ? (cfg as any).players : null);
+    const explicit =
+      props?.params?.players ??
+      props?.players ??
+      (Array.isArray(resumeState?.players) ? resumeState.players : null) ??
+      (Array.isArray(resumePayload?.players) ? resumePayload.players : null) ??
+      (Array.isArray(resumeRecord?.players) ? resumeRecord.players : null) ??
+      (Array.isArray((cfg as any)?.players) ? (cfg as any).players : null);
     if (Array.isArray(explicit) && explicit.length) {
       return explicit.map((p: any, i: number) => ({
         id: String(p?.id ?? p?.profileId ?? `p${i + 1}`),
@@ -366,33 +387,41 @@ export default function SimpleRoundsPlay(props: any) {
       avatarDataUrl: null,
       isBot: false,
     }));
-  }, [props?.params?.players, props?.players, (cfg as any)?.players, t]);
+  }, [props?.params?.players, props?.players, resumeState?.players, resumePayload?.players, resumeRecord?.players, (cfg as any)?.players, t]);
   const playerCount = playerRows.length;
 
-  const [roundIdx, setRoundIdx] = useState(0); // 0..cfg.rounds
-  const [playerIdx, setPlayerIdx] = useState(0);
-  const [scores, setScores] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
-  const [currentThrow, setCurrentThrow] = useState<UIDart[]>([]);
-  const [multiplier, setMultiplier] = useState<1 | 2 | 3>(1);
-  const visitHistoryRef = useRef<any[]>([]);
-  const startedAtRef = useRef(Date.now());
+  const fitArray = (value: any, fallback = 0) => Array.from({ length: playerCount }, (_, i) => Number(Array.isArray(value) ? value[i] : fallback) || 0);
+  const freshMatchId = () =>
+    (typeof crypto !== "undefined" && typeof (crypto as any).randomUUID === "function"
+      ? (crypto as any).randomUUID()
+      : `sr_${variantId}_${Date.now()}_${Math.random().toString(16).slice(2)}`);
+  const matchIdRef = useRef<string>(String(props?.params?.resumeId || resumeRecord?.id || resumeRecord?.matchId || resumeState?.matchId || freshMatchId()));
+
+  const [roundIdx, setRoundIdx] = useState(() => Math.max(0, Number(resumeState?.roundIdx ?? resumeState?.roundIndex ?? 0) || 0)); // 0..cfg.rounds
+  const [playerIdx, setPlayerIdx] = useState(() => Math.max(0, Math.min(playerCount - 1, Number(resumeState?.playerIdx ?? resumeState?.playerIndex ?? 0) || 0)));
+  const [scores, setScores] = useState<number[]>(() => fitArray(resumeState?.scores, 0));
+  const [currentThrow, setCurrentThrow] = useState<UIDart[]>(() => Array.isArray(resumeState?.currentThrow) ? resumeState.currentThrow.slice(0, 3) : []);
+  const [multiplier, setMultiplier] = useState<1 | 2 | 3>(() => ([1,2,3].includes(Number(resumeState?.multiplier)) ? Number(resumeState?.multiplier) : 1) as 1|2|3);
+  const visitHistoryRef = useRef<any[]>(Array.isArray(resumeState?.visitHistory) ? resumeState.visitHistory.slice() : Array.isArray(resumePayload?.visitHistory) ? resumePayload.visitHistory.slice() : []);
+  const startedAtRef = useRef(Number(resumeState?.startedAt || resumePayload?.startedAt || resumeRecord?.createdAt || Date.now()) || Date.now());
   const [gameOver, setGameOver] = useState(false);
   const [winnerIdx, setWinnerIdx] = useState<number | null>(null);
 
   // Stats (par joueur) — 1 saisie = 1 volée (3 darts)
-  const [dartsByP, setDartsByP] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
-  const [pointsByP, setPointsByP] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
-  const [bestVisitByP, setBestVisitByP] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
-  const [visitsByP, setVisitsByP] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
-  const [bullsByP, setBullsByP] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
-  const [dbullsByP, setDbullsByP] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
-  const [bullStreakByP, setBullStreakByP] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
-  const [bestBullStreakByP, setBestBullStreakByP] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
-  const [perfectVisitsByP, setPerfectVisitsByP] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
-  const [lastBullVisitByP, setLastBullVisitByP] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
+  const [dartsByP, setDartsByP] = useState<number[]>(() => fitArray(resumeState?.dartsByP, 0));
+  const [pointsByP, setPointsByP] = useState<number[]>(() => fitArray(resumeState?.pointsByP, 0));
+  const [bestVisitByP, setBestVisitByP] = useState<number[]>(() => fitArray(resumeState?.bestVisitByP, 0));
+  const [visitsByP, setVisitsByP] = useState<number[]>(() => fitArray(resumeState?.visitsByP, 0));
+  const [bullsByP, setBullsByP] = useState<number[]>(() => fitArray(resumeState?.bullsByP, 0));
+  const [dbullsByP, setDbullsByP] = useState<number[]>(() => fitArray(resumeState?.dbullsByP, 0));
+  const [bullStreakByP, setBullStreakByP] = useState<number[]>(() => fitArray(resumeState?.bullStreakByP, 0));
+  const [bestBullStreakByP, setBestBullStreakByP] = useState<number[]>(() => fitArray(resumeState?.bestBullStreakByP, 0));
+  const [perfectVisitsByP, setPerfectVisitsByP] = useState<number[]>(() => fitArray(resumeState?.perfectVisitsByP, 0));
+  const [lastBullVisitByP, setLastBullVisitByP] = useState<number[]>(() => fitArray(resumeState?.lastBullVisitByP, 0));
   const [dbullPulse, setDbullPulse] = useState(false);
   const [superBullFx, setSuperBullFx] = useState<any>(null);
   const superBullFxTimerRef = useRef<number | null>(null);
+  const superBullAutosaveTimerRef = useRef<number | null>(null);
 
   // Auto-play bots
   // Guard (avoid double auto-play)
@@ -403,6 +432,7 @@ export default function SimpleRoundsPlay(props: any) {
 
   useEffect(() => () => {
     if (superBullFxTimerRef.current) window.clearTimeout(superBullFxTimerRef.current);
+    if (superBullAutosaveTimerRef.current) window.clearTimeout(superBullAutosaveTimerRef.current);
   }, []);
 
   const isFinished = gameOver || roundIdx >= cfg.rounds;
@@ -645,6 +675,96 @@ function goBack() {
     setCurrentThrow(next);
   }
 
+  function rebuildSuperBullStateFromVisits(rows: any[]) {
+    const nextScores = Array.from({ length: playerCount }, () => 0);
+    const nextDarts = Array.from({ length: playerCount }, () => 0);
+    const nextPoints = Array.from({ length: playerCount }, () => 0);
+    const nextBestVisit = Array.from({ length: playerCount }, () => 0);
+    const nextVisits = Array.from({ length: playerCount }, () => 0);
+    const nextBulls = Array.from({ length: playerCount }, () => 0);
+    const nextDbulls = Array.from({ length: playerCount }, () => 0);
+    const nextStreak = Array.from({ length: playerCount }, () => 0);
+    const nextBestStreak = Array.from({ length: playerCount }, () => 0);
+    const nextPerfect = Array.from({ length: playerCount }, () => 0);
+    const nextLastVisit = Array.from({ length: playerCount }, () => 0);
+    const indexById = new Map(playerRows.map((p: any, i: number) => [String(p?.id ?? `p${i + 1}`), i]));
+
+    for (const visit of Array.isArray(rows) ? rows : []) {
+      const pIdx = indexById.get(String(visit?.playerId ?? ""));
+      if (pIdx == null) continue;
+      const darts = Array.isArray(visit?.darts) ? visit.darts.slice(0, 3) : [];
+      let visitPoints = 0;
+      let bulls = 0;
+      let dbulls = 0;
+      let centres = 0;
+      for (const d of darts) {
+        const isDbull = d?.bed === "DBULL" || (Number(d?.value) === 25 && Number(d?.multiplier) === 2);
+        const isBull = !isDbull && (d?.bed === "BULL" || Number(d?.value) === 25);
+        if (isDbull) { dbulls += 1; centres += 1; visitPoints += 50; }
+        else if (isBull) { bulls += 1; centres += 1; visitPoints += 25; }
+        if (isBull || isDbull) {
+          nextStreak[pIdx] += 1;
+          nextBestStreak[pIdx] = Math.max(nextBestStreak[pIdx], nextStreak[pIdx]);
+        } else {
+          nextStreak[pIdx] = 0;
+        }
+      }
+      nextScores[pIdx] += visitPoints;
+      nextPoints[pIdx] += visitPoints;
+      nextDarts[pIdx] += darts.length;
+      nextVisits[pIdx] += 1;
+      nextBulls[pIdx] += bulls;
+      nextDbulls[pIdx] += dbulls;
+      nextBestVisit[pIdx] = Math.max(nextBestVisit[pIdx], visitPoints);
+      if (darts.length === 3 && centres === 3) nextPerfect[pIdx] += 1;
+      nextLastVisit[pIdx] = visitPoints;
+    }
+
+    return {
+      scores: nextScores, darts: nextDarts, points: nextPoints, bestVisit: nextBestVisit, visits: nextVisits,
+      bulls: nextBulls, dbulls: nextDbulls, streak: nextStreak, bestStreak: nextBestStreak, perfect: nextPerfect, lastVisit: nextLastVisit,
+    };
+  }
+
+  function undoSuperBullInput() {
+    if (variantId !== "super_bull") return;
+    if (currentThrow.length > 0) {
+      setCurrentThrow((prev) => prev.slice(0, -1));
+      setSuperBullFx(null);
+      return;
+    }
+    if (!visitHistoryRef.current.length) return;
+
+    const nextHistory = visitHistoryRef.current.slice(0, -1);
+    visitHistoryRef.current = nextHistory;
+    const rebuilt = rebuildSuperBullStateFromVisits(nextHistory);
+    const completedVisits = nextHistory.length;
+
+    setScores(rebuilt.scores);
+    setDartsByP(rebuilt.darts);
+    setPointsByP(rebuilt.points);
+    setBestVisitByP(rebuilt.bestVisit);
+    setVisitsByP(rebuilt.visits);
+    setBullsByP(rebuilt.bulls);
+    setDbullsByP(rebuilt.dbulls);
+    setBullStreakByP(rebuilt.streak);
+    setBestBullStreakByP(rebuilt.bestStreak);
+    setPerfectVisitsByP(rebuilt.perfect);
+    setLastBullVisitByP(rebuilt.lastVisit);
+    setPlayerIdx(playerCount > 0 ? completedVisits % playerCount : 0);
+    setRoundIdx(playerCount > 0 ? Math.floor(completedVisits / playerCount) : 0);
+    setCurrentThrow([]);
+    setMultiplier(1);
+    setGameOver(false);
+    setWinnerIdx(null);
+    setDbullPulse(false);
+    setSuperBullFx(null);
+    savedRef.current = false;
+    botActRef.current = null;
+    if (superBullFxTimerRef.current) window.clearTimeout(superBullFxTimerRef.current);
+    if (superBullAutosaveTimerRef.current) window.clearTimeout(superBullAutosaveTimerRef.current);
+  }
+
   function resetMatch() {
     savedRef.current = false;
     botActRef.current = null;
@@ -669,7 +789,9 @@ function goBack() {
     setLastBullVisitByP(Array.from({ length: playerCount }, () => 0));
     setDbullPulse(false);
     setSuperBullFx(null);
+    matchIdRef.current = freshMatchId();
     if (superBullFxTimerRef.current) window.clearTimeout(superBullFxTimerRef.current);
+    if (superBullAutosaveTimerRef.current) window.clearTimeout(superBullAutosaveTimerRef.current);
   }
 
   function botPickVisit(): number {
@@ -752,6 +874,140 @@ function goBack() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfg?.botsEnabled, botMask, playerIdx, roundIdx, isFinished, scores.join("|")]);
 
+  // SUPER BULL — sauvegarde live pour une reprise exacte depuis l'Historique.
+  // On garde un seul matchId pendant toute la partie : le record "in_progress"
+  // sera écrasé par le record "finished" au coup final, sans doublon.
+  useEffect(() => {
+    if (variantId !== "super_bull" || isFinished) return;
+    if (superBullAutosaveTimerRef.current) window.clearTimeout(superBullAutosaveTimerRef.current);
+
+    superBullAutosaveTimerRef.current = window.setTimeout(() => {
+      const now = Date.now();
+      const id = String(matchIdRef.current || freshMatchId());
+      matchIdRef.current = id;
+      const livePlayers = playerRows.map((p: any, i: number) => ({
+        id: String(p.id),
+        name: botMask[i] && !String(p.name).includes("BOT") ? `${p.name} (BOT)` : p.name,
+        avatarDataUrl: p.avatarDataUrl ?? null,
+        temporaryPlayerId: isQuickParty ? String(p.id) : undefined,
+        isTemporary: isQuickParty,
+        profileId: isQuickParty || botMask[i] ? null : String(p.id),
+        isBot: !!botMask[i],
+      }));
+      const stateSnapshot = {
+        matchId: id,
+        roundIdx,
+        playerIdx,
+        scores: scores.slice(),
+        currentThrow: currentThrow.slice(),
+        multiplier,
+        players: livePlayers,
+        visitHistory: visitHistoryRef.current.slice(),
+        startedAt: startedAtRef.current,
+        dartsByP: dartsByP.slice(),
+        pointsByP: pointsByP.slice(),
+        bestVisitByP: bestVisitByP.slice(),
+        visitsByP: visitsByP.slice(),
+        bullsByP: bullsByP.slice(),
+        dbullsByP: dbullsByP.slice(),
+        bullStreakByP: bullStreakByP.slice(),
+        bestBullStreakByP: bestBullStreakByP.slice(),
+        perfectVisitsByP: perfectVisitsByP.slice(),
+        lastBullVisitByP: lastBullVisitByP.slice(),
+      };
+      const liveRec: any = {
+        id,
+        matchId: id,
+        kind: "super_bull",
+        mode: "super_bull",
+        status: "in_progress",
+        quickParty: isQuickParty,
+        partyMode: isQuickParty ? "quick" : "arcade",
+        profileStatsDeferred: isQuickParty,
+        temporaryParticipants: isQuickParty,
+        createdAt: Number(resumeRecord?.createdAt || startedAtRef.current || now),
+        updatedAt: now,
+        players: livePlayers,
+        game: {
+          mode: "super_bull",
+          rounds: cfg.rounds,
+          objective: cfg.objective,
+          botsEnabled: !!cfg.botsEnabled,
+          botLevel: cfg.botLevel,
+          partyMode: isQuickParty ? "quick" : "arcade",
+          quickParty: isQuickParty,
+        },
+        summary: {
+          mode: "super_bull",
+          status: "in_progress",
+          roundIdx,
+          playerIdx,
+          currentPlayerId: String(livePlayers[playerIdx]?.id || ""),
+          scores: scores.slice(),
+          darts: Object.fromEntries(livePlayers.map((p: any, i: number) => [String(p.id), dartsByP[i] || 0])),
+          quickParty: isQuickParty,
+          partyMode: isQuickParty ? "quick" : "arcade",
+          temporaryParticipants: isQuickParty,
+        },
+        resume: {
+          route: "super_bull_play",
+          mode: "super_bull",
+          config: cfg,
+          state: stateSnapshot,
+          livePayload: { config: cfg, stateSnapshot },
+        },
+        payload: {
+          variantId: "super_bull",
+          mode: "super_bull",
+          sport: "darts",
+          status: "in_progress",
+          quickParty: isQuickParty,
+          partyMode: isQuickParty ? "quick" : "arcade",
+          profileStatsDeferred: isQuickParty,
+          temporaryParticipants: isQuickParty,
+          quickPlayers: isQuickParty ? livePlayers : undefined,
+          config: cfg,
+          players: livePlayers,
+          startedAt: startedAtRef.current,
+          updatedAt: now,
+          visitHistory: visitHistoryRef.current.slice(),
+          events: visitHistoryRef.current.slice(),
+          stateSnapshot,
+        },
+      };
+      Promise.resolve(History.upsert(liveRec)).catch((e) => console.warn("History.upsert(superBull live) failed:", e));
+    }, 180);
+
+    return () => {
+      if (superBullAutosaveTimerRef.current) {
+        window.clearTimeout(superBullAutosaveTimerRef.current);
+        superBullAutosaveTimerRef.current = null;
+      }
+    };
+  }, [
+    variantId,
+    isFinished,
+    isQuickParty,
+    cfg,
+    playerRows,
+    botMask,
+    roundIdx,
+    playerIdx,
+    scores,
+    currentThrow,
+    multiplier,
+    dartsByP,
+    pointsByP,
+    bestVisitByP,
+    visitsByP,
+    bullsByP,
+    dbullsByP,
+    bullStreakByP,
+    bestBullStreakByP,
+    perfectVisitsByP,
+    lastBullVisitByP,
+  ]);
+
   // Persist history + summary once when finished
   useEffect(() => {
     if (!isFinished) return;
@@ -761,10 +1017,8 @@ function goBack() {
     savedRef.current = true;
 
     const now = Date.now();
-    const id =
-      (typeof crypto !== "undefined" && typeof (crypto as any).randomUUID === "function"
-        ? (crypto as any).randomUUID()
-        : `sr_${variantId}_${now}_${Math.random().toString(16).slice(2)}`);
+    const id = String(matchIdRef.current || freshMatchId());
+    matchIdRef.current = id;
 
     const players = playerRows.map((p: any, i: number) => ({
       id: String(p.id),
@@ -835,7 +1089,7 @@ function goBack() {
         profileStatsDeferred: isQuickParty,
         temporaryParticipants: isQuickParty,
       } : {}),
-      createdAt: now,
+      createdAt: Number(resumeRecord?.createdAt || startedAtRef.current || now),
       updatedAt: now,
       players,
       winnerId: String(players[winner.idx]?.id ?? `p${winner.idx + 1}`),
@@ -1001,7 +1255,7 @@ function goBack() {
       onHistory={goHistory}
       onReset={resetMatch}
       onDart={addSuperBullDart}
-      onUndo={() => setCurrentThrow((prev) => prev.slice(0, -1))}
+      onUndo={undoSuperBullInput}
     />;
   }
 

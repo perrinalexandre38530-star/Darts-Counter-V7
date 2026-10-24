@@ -640,6 +640,8 @@ function isGenericDartsSummaryMode(mode: string): boolean {
     "darts_firefighter",
     "dartspoker",
     "darts_poker",
+    "super_bull",
+    "superbull",
     "cargo",
     "castle",
     "gotcha",
@@ -2050,6 +2052,18 @@ function SuperBullHistoryScoreBlock({ e, theme }: { e: SavedEntry; theme: any })
     rows = summary.perPlayer.map((r: any, i: number) => ({ rank:i+1, playerId:r.id, score:r.score, dbulls:r.dbulls, centres:r.centreHits, bestStreak:r.bestBullStreak, perfectVisits:r.perfectBullVisits, centreAccuracy:r.centreAccuracy }));
     rows.sort((a:any,b:any)=>Number(b.score||0)-Number(a.score||0)||Number(b.dbulls||0)-Number(a.dbulls||0)||Number(b.centres||0)-Number(a.centres||0));
   }
+  if (!rows.length && Array.isArray(summary?.scores) && summary.scores.length) {
+    rows = summary.scores.map((score: any, i: number) => ({
+      rank: i + 1,
+      playerId: String(players[i]?.id ?? `p${i + 1}`),
+      score: Number(score || 0),
+      dbulls: 0,
+      centres: 0,
+      bestStreak: 0,
+      perfectVisits: 0,
+      live: true,
+    })).sort((a: any, b: any) => Number(b.score || 0) - Number(a.score || 0));
+  }
   if (!rows.length) return <>{summarizeScore(e)}</>;
   return <div style={{display:"grid",gap:5,minWidth:0}}>
     <div style={{display:"flex",gap:7,alignItems:"center",flexWrap:"wrap"}}>
@@ -2678,6 +2692,55 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
         <div style={{ color: "rgba(255,255,255,.58)", fontSize: 9.5, fontWeight: 800, lineHeight: 1.25 }}>
           {allPlayers.slice(0, 4).map((p: any) => `${historyScoreName(e, p) || getName(p)} : ${Number(p?.points || p?.score || 0)} pts • MPR ${Number(p?.mpr || 0).toFixed(2)} • ${Number(p?.hitRate || 0).toFixed(0)}% hit`).join("  |  ")}
         </div>
+      </div>
+    );
+  }
+
+  const premiumMode = normalizeToken(baseMode(e));
+  if (["castle", "gotcha", "hare_hounds", "harehounds"].includes(premiumMode)) {
+    const anyE: any = e as any;
+    const summary: any = anyE?.summary || anyE?.payload?.summary || {};
+    const perPlayerSource: any = summary?.perPlayer || anyE?.payload?.stats?.players || anyE?.payload?.stateSnapshot?.statsByPlayer || anyE?.resume?.state?.statsByPlayer || {};
+    const rows: any[] = Array.isArray(perPlayerSource)
+      ? perPlayerSource
+      : Object.entries(perPlayerSource || {}).map(([id, value]: any) => ({ id, ...(value || {}) }));
+    const players = getAllEntryPlayers(e);
+    const playerName = (row: any, index: number) => {
+      const id = String(row?.id || row?.playerId || row?.profileId || "");
+      const hit = players.find((p: any) => String(p?.id || p?.playerId || p?.profileId || "") === id);
+      return historyScoreName(e, hit || row) || getName(hit || row) || `Joueur ${index + 1}`;
+    };
+    const winnerId = String(anyE?.winnerId || summary?.winnerId || anyE?.payload?.winnerId || anyE?.resume?.state?.winnerId || "");
+    const n = (value: any) => Number(value || 0) || 0;
+    const pct = (row: any) => {
+      const explicit = Number(row?.accuracy);
+      if (Number.isFinite(explicit)) return Math.max(0, Math.min(100, explicit));
+      const darts = n(row?.darts);
+      if (!darts) return 0;
+      const hits = premiumMode === "castle" ? n(row?.usefulHits) : premiumMode === "gotcha" ? Math.max(0, darts - n(row?.misses)) : n(row?.validHits);
+      return (hits / darts) * 100;
+    };
+    const displayRows = rows.length ? rows : players.map((p: any) => ({ id: p?.id || p?.playerId || p?.profileId }));
+    const modeAccent = premiumMode === "castle" ? "#f6b84d" : premiumMode === "gotcha" ? "#ff5b57" : "#61d9ff";
+    const metricLine = (row: any) => {
+      if (premiumMode === "castle") return `${n(row?.builds)} build • ${n(row?.damage)} dégâts • ${n(row?.usefulHits)} touches • ${pct(row).toFixed(0)}%`;
+      if (premiumMode === "gotcha") return `${n(row?.gotchas)} GOTCHA • ${n(row?.victims)} victimes • ${n(row?.busts)} bust • best ${n(row?.bestVisit)}`;
+      return `${n(row?.steps)} étapes • ${n(row?.catches)} captures • ${n(row?.escapes)} fuites • ${pct(row).toFixed(0)}%`;
+    };
+    return (
+      <div style={{ display: "grid", gap: 5, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+          {displayRows.slice(0, 4).map((row: any, index: number) => {
+            const id = String(row?.id || row?.playerId || row?.profileId || "");
+            const wins = n(row?.wins ?? row?.legsWon ?? summary?.legWins?.[id]);
+            const isWinner = !!winnerId && id === winnerId;
+            return <React.Fragment key={id || index}>{index ? <span style={{ color: "rgba(255,255,255,.34)" }}>•</span> : null}<span style={{ color: isWinner ? modeAccent : "rgba(255,255,255,.93)", fontWeight: 950 }}>{playerName(row, index)}{isWinner ? " 🏆" : ""}</span><span style={{ color: modeAccent, fontWeight: 1000 }}>{wins} M</span></React.Fragment>;
+          })}
+        </div>
+        <div style={{ color: "rgba(255,255,255,.64)", fontSize: 9.5, fontWeight: 850, lineHeight: 1.35 }}>
+          {displayRows.slice(0, 4).map((row: any, index: number) => `${playerName(row, index)} : ${metricLine(row)}`).join("  |  ")}
+        </div>
+        {statusOf(e) === "in_progress" ? <div style={{ color: modeAccent, fontSize: 8.5, fontWeight: 1000, letterSpacing: .45 }}>▶ PARTIE À REPRENDRE</div> : null}
       </div>
     );
   }

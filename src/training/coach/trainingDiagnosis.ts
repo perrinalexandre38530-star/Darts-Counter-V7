@@ -199,7 +199,8 @@ export function buildTrainingGoalStatuses(
 
 export function chooseGoalPriorityFamily(
   rows: TrainingFamilyDiagnosis[],
-  goals: Partial<Record<TrainingExerciseFamily, number>>
+  goals: Partial<Record<TrainingExerciseFamily, number>>,
+  deadlines: Partial<Record<TrainingExerciseFamily, string | null>> = {}
 ): TrainingExerciseFamily {
   const statuses = buildTrainingGoalStatuses(rows, goals);
   const withEvidence = statuses.filter((status) => {
@@ -207,30 +208,49 @@ export function chooseGoalPriorityFamily(
     return Number(row?.sessions || 0) > 0;
   });
   if (!withEvidence.length) return chooseRecommendedFamily(rows);
-  return [...withEvidence].sort((a, b) => b.gap - a.gap || a.current - b.current)[0].family;
+  const urgency = (family: TrainingExerciseFamily) => {
+    const raw = deadlines?.[family];
+    if (!raw) return 0;
+    const target = new Date(`${raw}T23:59:59`).getTime();
+    if (!Number.isFinite(target)) return 0;
+    const days = Math.ceil((target - Date.now()) / 86400000);
+    if (days < 0) return 45;
+    if (days <= 7) return 30;
+    if (days <= 14) return 20;
+    if (days <= 30) return 10;
+    return 3;
+  };
+  return [...withEvidence].sort((a, b) => (b.gap + urgency(b.family)) - (a.gap + urgency(a.family)) || a.current - b.current)[0].family;
 }
 
 export function buildGoalAwareCoachPrescription(
   rows: TrainingFamilyDiagnosis[],
-  goals: Partial<Record<TrainingExerciseFamily, number>>
+  goals: Partial<Record<TrainingExerciseFamily, number>>,
+  deadlines: Partial<Record<TrainingExerciseFamily, string | null>> = {}
 ) {
   const base = buildCoachPrescription(rows);
-  const family = chooseGoalPriorityFamily(rows, goals);
+  const family = chooseGoalPriorityFamily(rows, goals, deadlines);
   const row = rows.find((item) => item.family === family);
   const goal = Math.max(20, Math.min(100, Number(goals?.[family] ?? 70)));
   const current = Math.max(0, Math.min(100, Number(row?.recentScore || 0)));
   const gap = Math.max(0, goal - current);
   const label = TRAINING_FAMILY_META[family].label;
+  const deadline = deadlines?.[family] || null;
+  const deadlineAt = deadline ? new Date(`${deadline}T23:59:59`).getTime() : 0;
+  const daysLeft = deadlineAt && Number.isFinite(deadlineAt) ? Math.ceil((deadlineAt - Date.now()) / 86400000) : null;
+  const deadlineText = deadline ? (daysLeft !== null && daysLeft < 0 ? ` Échéance dépassée depuis ${Math.abs(daysLeft)} jour${Math.abs(daysLeft) > 1 ? "s" : ""}.` : ` Échéance dans ${daysLeft} jour${daysLeft === 1 ? "" : "s"}.`) : "";
 
   if (!row || row.sessions === 0) {
     return {
       ...base,
       family,
       title: `Awena recommande : établir ta référence ${label}`,
-      body: `Objectif personnel ${goal}/100. Il faut d'abord quelques séances ciblées pour mesurer précisément ton niveau sur cette compétence.`,
+      body: `Objectif personnel ${goal}/100. Il faut d'abord quelques séances ciblées pour mesurer précisément ton niveau sur cette compétence.${deadlineText}`,
       goal,
       current,
       gap,
+      deadline,
+      daysLeft,
     };
   }
 
@@ -239,10 +259,12 @@ export function buildGoalAwareCoachPrescription(
       ...base,
       family,
       title: `Awena : objectif ${label} atteint`,
-      body: `Indice récent ${Math.round(current)}/100 pour un objectif ${goal}/100. On peut maintenir ce niveau tout en renforçant ton prochain axe prioritaire.`,
+      body: `Indice récent ${Math.round(current)}/100 pour un objectif ${goal}/100. On peut maintenir ce niveau tout en renforçant ton prochain axe prioritaire.${deadlineText}`,
       goal,
       current,
       gap,
+      deadline,
+      daysLeft,
     };
   }
 
@@ -250,9 +272,11 @@ export function buildGoalAwareCoachPrescription(
     ...base,
     family,
     title: `Awena recommande : ${label} — encore ${Math.ceil(gap)} pts`,
-    body: `Indice récent ${Math.round(current)}/100, objectif personnel ${goal}/100. Je privilégie cette compétence jusqu'à réduire l'écart, puis le programme rééquilibrera automatiquement la séance.`,
+    body: `Indice récent ${Math.round(current)}/100, objectif personnel ${goal}/100. Je privilégie cette compétence jusqu'à réduire l'écart, puis le programme rééquilibrera automatiquement la séance.${deadlineText}`,
     goal,
     current,
     gap,
+    deadline,
+    daysLeft,
   };
 }

@@ -5,6 +5,8 @@ import TrainingResultModal from "../../ui/TrainingResultModal";
 import { appendTrainingVisit, recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
 import { getTrainingExercise } from "../../catalog/trainingExerciseCatalog";
 import { isDoubleDart, makeTrainingStats, trainingDartMatches, type TrainingDart } from "../../lib/trainingDarts";
+import { loadTrainingProgramSessions, recordTrainingProgramSession } from "../../profile/trainingPlanTracker";
+import type { TrainingExerciseFamily } from "../../catalog/trainingExerciseCatalog";
 
 type RunState = { darts: number; hits: number; points: number; progress: number; checkoutTotal: number };
 type ProgramStepResult = {
@@ -36,6 +38,8 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
   const [result, setResult] = React.useState<any>(null);
   const [programResults, setProgramResults] = React.useState<ProgramStepResult[]>([]);
   const [programSummaryOpen, setProgramSummaryOpen] = React.useState(false);
+  const [programRecordMessage, setProgramRecordMessage] = React.useState<string | null>(null);
+  const programTrackedRef = React.useRef(false);
 
   const isProgram = programIds.length > 1;
   const totalSteps = programIds.length;
@@ -172,6 +176,28 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
     return { rows, steps, successes, darts, accuracy, performance, best };
   }, [programResults]);
 
+  React.useEffect(() => {
+    if (!programSummaryOpen || programTrackedRef.current || !isProgram || programSummary.steps < totalSteps) return;
+    programTrackedRef.current = true;
+    const previous = loadTrainingProgramSessions();
+    const previousBest = previous.reduce((best, row) => Math.max(best, row.performanceScore), 0);
+    recordTrainingProgramSession({
+      programId: String(config?.programId || "program"),
+      programTitle: String(config?.programTitle || "Programme Training"),
+      durationMin: Math.max(0, Number(config?.programDurationMin) || 0),
+      exerciseIds: programSummary.rows.map((row) => row.exerciseId),
+      families: Array.from(new Set(programSummary.rows.map((row) => row.family))) as TrainingExerciseFamily[],
+      steps: programSummary.steps,
+      successes: programSummary.successes,
+      darts: programSummary.darts,
+      accuracyPct: programSummary.accuracy,
+      performanceScore: programSummary.performance,
+    });
+    if (programSummary.performance > previousBest && programSummary.performance > 0) {
+      setProgramRecordMessage(previous.length ? `NOUVEAU RECORD DE SÉANCE • ${Math.round(programSummary.performance)}/100` : `PREMIÈRE RÉFÉRENCE • ${Math.round(programSummary.performance)}/100`);
+    }
+  }, [config?.programDurationMin, config?.programId, config?.programTitle, isProgram, programSummary, programSummaryOpen, totalSteps]);
+
   const s = stateRef.current;
   const target = exercise.engine === "target_hits" ? exercise.target || "—" : exercise.engine === "sequence" ? sequence[Math.min(s.progress, Math.max(0, sequence.length - 1))] || "—" : exercise.engine === "checkout" ? String(Math.max(0, goal - s.checkoutTotal)) : String(Math.max(0, goal - s.points));
   const progressValue = exercise.engine === "score_darts" ? Math.min(s.points, goal) : exercise.engine === "checkout" ? Math.min(s.checkoutTotal, goal) : Math.min(s.progress, goal);
@@ -231,6 +257,8 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
         {programSummary.best && <div style={{ marginTop: 10, padding: 10, borderRadius: 12, background: "rgba(39,220,255,.07)", border: "1px solid rgba(39,220,255,.16)", fontSize: 10 }}>
           <b>Meilleure étape :</b> {programSummary.best.exerciseTitle} • {programSummary.best.performanceScore}/100
         </div>}
+
+        {programRecordMessage && <div style={{ marginTop: 8, padding: 10, borderRadius: 12, background: "rgba(255,216,107,.08)", border: "1px solid rgba(255,216,107,.24)", color: "#ffd86b", fontSize: 9.5, fontWeight: 950, textAlign: "center", letterSpacing: .5 }}>{programRecordMessage}</div>}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12 }}>
           {programSummary.rows.map((row, index) => <div key={`${row.exerciseId}-${index}`} style={{ display: "grid", gridTemplateColumns: "26px 1fr auto auto", gap: 8, alignItems: "center", padding: 9, borderRadius: 11, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.06)" }}>

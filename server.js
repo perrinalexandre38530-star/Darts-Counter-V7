@@ -53,7 +53,16 @@ const corsOptions = {
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-MSS-Version",
+    "X-MSS-Reason",
+    "X-MSS-Raw-Bytes",
+    "X-MSS-Checksum",
+    "X-MSS-Summary",
+    "X-MSS-Backup-Meta",
+  ],
   optionsSuccessStatus: 204,
 };
 
@@ -67,7 +76,7 @@ app.use((req, res, next) => {
     res.header("Access-Control-Allow-Credentials", "true");
   }
   res.header("Vary", "Origin");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-MSS-Version, X-MSS-Reason, X-MSS-Raw-Bytes, X-MSS-Checksum, X-MSS-Summary, X-MSS-Backup-Meta");
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
@@ -1363,6 +1372,39 @@ function sendStoredSnapshotGzip(res, row, fallbackId) {
   return res.end(buffer);
 }
 
+// Alias explicite V131 conservé pour les tests de contrat et les futurs appels.
+// Le contenu envoyé est exactement le gzip stocké, sans enveloppe JSON/base64.
+function sendNasSnapshotGzip(res, row, fallbackId) {
+  return sendStoredSnapshotGzip(res, row, fallbackId);
+}
+
+function parseBase64JsonHeader(value, fallback = {}) {
+  try {
+    const raw = String(value || "").trim();
+    if (!raw) return fallback;
+    const parsed = JSON.parse(Buffer.from(raw, "base64").toString("utf8"));
+    return parsed && typeof parsed === "object" ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function sha256HexBuffer(buffer) {
+  return crypto.createHash("sha256").update(buffer).digest("hex");
+}
+
+const nasChunkUploads = new Map();
+const NAS_CHUNK_UPLOAD_TTL_MS = 10 * 60 * 1000;
+const NAS_CHUNK_MAX_BYTES = 64 * 1024 * 1024;
+const NAS_CHUNK_MAX_PART_BYTES = 2 * 1024 * 1024;
+
+function cleanupNasChunkUploads() {
+  const now = Date.now();
+  for (const [id, state] of nasChunkUploads.entries()) {
+    if (!state || now - Number(state.createdAt || 0) > NAS_CHUNK_UPLOAD_TTL_MS) nasChunkUploads.delete(id);
+  }
+}
+
 function transportFromStoredSnapshotText(text, encoding) {
   const raw = typeof text === "string" ? text.trim() : "";
   const enc = String(encoding || "").trim().toLowerCase();
@@ -1557,7 +1599,7 @@ async function insertUserStoreSnapshotSlot(userId, encoded, version = 2, payload
       WHERE user_id = $1 AND store = 'main'
     )
     DELETE FROM user_store_snapshots
-    WHERE id IN (SELECT id FROM ranked WHERE rn > 10)
+    WHERE id IN (SELECT id FROM ranked WHERE rn > 30)
   `, [userId]).catch(() => {});
   return slotId;
 }
@@ -2401,11 +2443,134 @@ app.post("/profiles/avatar", authRequired, async (req, res) => {
   }
 });
 
+app.post("/sync/push/raw", authRequired, express.raw({ type: ["application/gzip", "application/octet-stream"], limit: "64mb" }), async (req, res) => {
+  try {
+    const compressed = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || []);
+    if (compressed.length < 18 || compressed[0] !== 0x1f || compressed[1] !== 0x8b) {
+      return res.status(400).json({ ok: false, code: "invalid_gzip", error: "Snapshot NAS gzip invalide." });
+    }
+    if (compressed.length > NAS_CHUNK_MAX_BYTES) {
+      return res.status(413).json({ ok: false, code: "payload_too_large", error: "Snapshot NAS compressé trop volumineux." });
+    }
+
+    const checksum = String(req.headers["x-mss-checksum"] || "").trim().toLowerCase();
+    if (checksum && checksum !== sha256HexBuffer(compressed)) {
+      return res.status(400).json({ ok: false, code: "checksum_mismatch", error: "Checksum NAS invalide." });
+    }
+
+    const version = Math.max(1, Number(req.headers["x-mss-version"] || 8) || 8);
+    let reason = String(req.headers["x-mss-reason"] || "storage-vault-raw");
+    try { reason = decodeURIComponent(reason); } catch {}
+    reason = reason.slice(0, 160) || "storage-vault-raw";
+    const rawBytes = Math.max(0, Number(req.headers["x-mss-raw-bytes"] || 0) || 0);
+    const summary = parseBase64JsonHeader(req.headers["x-mss-summary"], {});
+    const encoded = {
+      text: compressed.toString("base64"),
+      encoding: "gzip-base64-json",
+      rawBytes,
+      storedBytes: compressed.length,
+    };
+    const saved = await saveUserStoreSnapshot(req.user.id, null, version, reason, encoded, summary);
+    return res.json({
+      ok: true,
+      version,
+      updatedAt: nowIso(),
+      slotId: saved?.slotId || null,
+      transport: "gzip-raw-v1",
+      transportStats: { rawBytes, compressedBytes: compressed.length },
+      fastPath: true,
+    });
+  } catch (error) {
+    console.error("POST /sync/push/raw error:", error);
+    return res.status(500).json({ ok: false, error: error.message || "Erreur sauvegarde NAS gzip" });
+  }
+});
+
+app.post("/sync/push/chunked/start", authRequired, async (req, res) => {
+  try {
+    cleanupNasChunkUploads();
+    const totalChunks = Math.max(1, Math.min(128, Number(req.body?.totalChunks || 0) || 0));
+    const compressedBytes = Math.max(0, Number(req.body?.compressedBytes || 0) || 0);
+    if (!totalChunks || !compressedBytes) return res.status(400).json({ ok: false, error: "Transport NAS découpé incomplet." });
+    if (compressedBytes > NAS_CHUNK_MAX_BYTES) return res.status(413).json({ ok: false, code: "payload_too_large", error: "Snapshot NAS compressé trop volumineux." });
+    const uploadId = uid("nasup");
+    nasChunkUploads.set(uploadId, {
+      uploadId,
+      userId: req.user.id,
+      createdAt: Date.now(),
+      version: Math.max(1, Number(req.body?.version || 8) || 8),
+      reason: String(req.body?.reason || "storage-vault-chunked").slice(0, 160),
+      summary: req.body?.summary && typeof req.body.summary === "object" ? req.body.summary : {},
+      rawBytes: Math.max(0, Number(req.body?.rawBytes || 0) || 0),
+      compressedBytes,
+      totalChunks,
+      checksum: String(req.body?.checksum || "").trim().toLowerCase(),
+      parts: new Array(totalChunks),
+    });
+    return res.status(201).json({ ok: true, uploadId, maxChunkBytes: NAS_CHUNK_MAX_PART_BYTES, totalChunks });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message || "Initialisation du transport NAS découpé impossible" });
+  }
+});
+
+app.post("/sync/push/chunked/:uploadId/:index", authRequired, async (req, res) => {
+  try {
+    cleanupNasChunkUploads();
+    const uploadId = String(req.params.uploadId || "").trim();
+    const state = nasChunkUploads.get(uploadId);
+    if (!state || String(state.userId) !== String(req.user.id)) return res.status(404).json({ ok: false, error: "Upload NAS introuvable ou expiré." });
+    const index = Number(req.params.index);
+    if (!Number.isInteger(index) || index < 0 || index >= state.totalChunks) return res.status(400).json({ ok: false, error: "Index de bloc NAS invalide." });
+    const data = String(req.body?.data || "").trim();
+    if (!data) return res.status(400).json({ ok: false, error: "Bloc NAS vide." });
+    const part = Buffer.from(data, "base64");
+    if (!part.length || part.length > NAS_CHUNK_MAX_PART_BYTES) return res.status(413).json({ ok: false, code: "payload_too_large", error: "Bloc NAS trop volumineux." });
+    state.parts[index] = part;
+    return res.json({ ok: true, uploadId, index, receivedBytes: part.length });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message || "Écriture du bloc NAS impossible" });
+  }
+});
+
+app.post("/sync/push/chunked/:uploadId/finalize", authRequired, async (req, res) => {
+  const uploadId = String(req.params.uploadId || "").trim();
+  try {
+    cleanupNasChunkUploads();
+    const state = nasChunkUploads.get(uploadId);
+    if (!state || String(state.userId) !== String(req.user.id)) return res.status(404).json({ ok: false, error: "Upload NAS introuvable ou expiré." });
+    if (state.parts.some((part) => !Buffer.isBuffer(part))) return res.status(409).json({ ok: false, error: "Tous les blocs NAS n'ont pas été reçus." });
+    const compressed = Buffer.concat(state.parts);
+    if (compressed.length !== state.compressedBytes) return res.status(409).json({ ok: false, error: "Taille finale NAS incohérente." });
+    if (compressed.length < 18 || compressed[0] !== 0x1f || compressed[1] !== 0x8b) return res.status(400).json({ ok: false, error: "Snapshot NAS gzip invalide." });
+    if (state.checksum && state.checksum !== sha256HexBuffer(compressed)) return res.status(400).json({ ok: false, error: "Checksum final NAS invalide." });
+    const encoded = {
+      text: compressed.toString("base64"),
+      encoding: "gzip-base64-json",
+      rawBytes: state.rawBytes,
+      storedBytes: compressed.length,
+    };
+    const saved = await saveUserStoreSnapshot(req.user.id, null, state.version, state.reason, encoded, state.summary);
+    nasChunkUploads.delete(uploadId);
+    return res.json({
+      ok: true,
+      version: state.version,
+      updatedAt: nowIso(),
+      slotId: saved?.slotId || null,
+      transport: "gzip-chunked-v1",
+      transportStats: { rawBytes: state.rawBytes, compressedBytes: compressed.length, totalChunks: state.totalChunks },
+      fastPath: true,
+    });
+  } catch (error) {
+    nasChunkUploads.delete(uploadId);
+    return res.status(500).json({ ok: false, error: error.message || "Finalisation NAS découpée impossible" });
+  }
+});
+
 app.get("/sync/pull/raw", authRequired, async (req, res) => {
   try {
     const row = await loadUserStoreSnapshotStoredRow(req.user.id);
     if (!row) return res.status(404).json({ ok: false, error: "Aucun backup NAS disponible" });
-    return sendStoredSnapshotGzip(res, row, "latest");
+    return sendNasSnapshotGzip(res, row, "latest");
   } catch (error) {
     console.error("GET /sync/pull/raw error:", error);
     res.status(500).json({ ok: false, error: error.message || "Erreur lecture gzip NAS" });
@@ -8089,6 +8254,14 @@ app.get("/online/private-messages/conversations", authRequired, async (req, res)
 // -----------------------------------------------------------------------------
 const PERSONAL_CLOUD_PROVIDERS = new Set(["google_drive", "onedrive", "dropbox"]);
 const PERSONAL_CLOUD_FILE = "multisports-scoring-backup-v1.json";
+
+// Compatibilité des anciennes builds qui utilisaient encore "google-drive".
+app.use((req, _res, next) => {
+  if (String(req.url || "").includes("/account/personal-cloud/google-drive")) {
+    req.url = String(req.url).replace("/account/personal-cloud/google-drive", "/account/personal-cloud/google_drive");
+  }
+  next();
+});
 function personalCloudConfigured(provider) {
   const cfg = personalCloudConfig(provider);
   // Les trois fournisseurs utilisent ici un flux OAuth serveur confidentiel.
@@ -8166,7 +8339,7 @@ function personalCloudCallbackTarget(decoded,provider,status,errorMessage){
   return fallback;
 }
 app.get("/account/personal-cloud/:provider/status", authRequired, async(req,res)=>{try{const provider=String(req.params.provider);if(!PERSONAL_CLOUD_PROVIDERS.has(provider))return res.status(404).json({error:"Provider inconnu"});const cfg=personalCloudConfig(provider);const row=await personalCloudTokenRow(req.user.id,provider);res.json({provider,configured:personalCloudConfigured(provider),connected:!!(row?.refresh_token||row?.access_token),accountLabel:row?.account_label||null,updatedAt:row?.updated_at||null,incrementalSupported:true,capabilities:{incremental:true}});}catch(e){sendDatabaseAwareError(res,e,"Erreur statut cloud personnel");}});
-app.get("/account/personal-cloud/:provider/connect-url", authRequired, async(req,res)=>{const provider=String(req.params.provider);if(!PERSONAL_CLOUD_PROVIDERS.has(provider))return res.status(404).json({error:"Provider inconnu"});const cfg=personalCloudConfig(provider);if(!personalCloudConfigured(provider))return res.status(503).json({error:`${provider} n'est pas configuré côté serveur (client ID / secret manquant).`});const redirect=personalCloudRedirectUri(req,provider);const state=personalCloudState(req.user.id,provider,req.query.returnTo);let url="";if(provider==="google_drive")url=`https://accounts.google.com/o/oauth2/v2/auth?${new URLSearchParams({client_id:cfg.clientId,redirect_uri:redirect,response_type:"code",scope:"https://www.googleapis.com/auth/drive.appdata",access_type:"offline",include_granted_scopes:"true",prompt:"consent",state}).toString()}`;if(provider==="onedrive")url=`https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${new URLSearchParams({client_id:cfg.clientId,redirect_uri:redirect,response_type:"code",scope:"offline_access Files.ReadWrite.AppFolder",state}).toString()}`;if(provider==="dropbox")url=`https://www.dropbox.com/oauth2/authorize?${new URLSearchParams({client_id:cfg.clientId,redirect_uri:redirect,response_type:"code",token_access_type:"offline",state}).toString()}`;res.json({ok:true,url});});
+app.get("/account/personal-cloud/:provider/connect-url", authRequired, async(req,res)=>{const provider=String(req.params.provider);if(!PERSONAL_CLOUD_PROVIDERS.has(provider))return res.status(404).json({error:"Provider inconnu"});const cfg=personalCloudConfig(provider);if(!personalCloudConfigured(provider))return res.status(503).json({error:`${provider} n'est pas configuré côté serveur (client ID / secret manquant).`});const redirect=personalCloudRedirectUri(req,provider);const state=personalCloudState(req.user.id,provider,req.query.returnTo);let url="";if(provider==="google_drive")url=`https://accounts.google.com/o/oauth2/v2/auth?${new URLSearchParams({client_id:cfg.clientId,redirect_uri:redirect,response_type:"code",scope:"https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file",access_type:"offline",include_granted_scopes:"true",prompt:"consent",state}).toString()}`;if(provider==="onedrive")url=`https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${new URLSearchParams({client_id:cfg.clientId,redirect_uri:redirect,response_type:"code",scope:"offline_access Files.ReadWrite.AppFolder",state}).toString()}`;if(provider==="dropbox")url=`https://www.dropbox.com/oauth2/authorize?${new URLSearchParams({client_id:cfg.clientId,redirect_uri:redirect,response_type:"code",token_access_type:"offline",state}).toString()}`;res.json({ok:true,url});});
 app.get("/account/personal-cloud/:provider/callback", async(req,res)=>{
  let decoded=null; const provider=String(req.params.provider);
  try{
@@ -8200,6 +8373,327 @@ async function personalCloudUpload(provider,token,buffer){
  const r=await fetch("https://content.dropboxapi.com/2/files/upload",{method:"POST",headers:{authorization:`Bearer ${token}`,"Dropbox-API-Arg":JSON.stringify({path:`/${PERSONAL_CLOUD_FILE}`,mode:"overwrite",autorename:false,mute:true}),"content-type":"application/octet-stream"},body:buffer});if(!r.ok)throw new Error(`Dropbox upload ${r.status}`);
 }
 async function personalCloudDownload(provider,token){if(provider==="google_drive"){const q=encodeURIComponent(`name='${PERSONAL_CLOUD_FILE}' and 'appDataFolder' in parents and trashed=false`);const list=await fetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${q}&fields=files(id,name,modifiedTime,size)`,{headers:{authorization:`Bearer ${token}`}}).then(r=>r.json());const f=list?.files?.[0];if(!f)return null;const r=await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`,{headers:{authorization:`Bearer ${token}`}});if(!r.ok)throw new Error(`Google Drive download ${r.status}`);return {buffer:Buffer.from(await r.arrayBuffer()),meta:f};}if(provider==="onedrive"){const r=await fetch(`https://graph.microsoft.com/v1.0/me/drive/special/approot:/${PERSONAL_CLOUD_FILE}:/content`,{headers:{authorization:`Bearer ${token}`},redirect:"follow"});if(r.status===404)return null;if(!r.ok)throw new Error(`OneDrive download ${r.status}`);return {buffer:Buffer.from(await r.arrayBuffer()),meta:{modifiedTime:r.headers.get("last-modified")}};}const r=await fetch("https://content.dropboxapi.com/2/files/download",{method:"POST",headers:{authorization:`Bearer ${token}`,"Dropbox-API-Arg":JSON.stringify({path:`/${PERSONAL_CLOUD_FILE}`})}});if(r.status===409)return null;if(!r.ok)throw new Error(`Dropbox download ${r.status}`);let meta={};try{meta=JSON.parse(r.headers.get("dropbox-api-result")||"{}")}catch{}return {buffer:Buffer.from(await r.arrayBuffer()),meta};}
+
+// -----------------------------------------------------------------------------
+// GOOGLE DRIVE V131 — archives, upload gzip brut, jobs et compatibilité V1.
+// Les nouvelles sauvegardes sont écrites dans appDataFolder pour rester privées.
+// Quand le scope drive.file est disponible, on recherche aussi les fichiers
+// historiques créés par l'application dans l'espace Drive visible.
+// -----------------------------------------------------------------------------
+const GOOGLE_DRIVE_BACKUP_PREFIX = "multisports-scoring-backup-";
+const GOOGLE_DRIVE_BACKUP_RETENTION = 30;
+const googleDriveBackupJobs = new Map();
+
+function googleDriveBackupDescription(metadata) {
+  try {
+    const compact = {
+      mss: 1,
+      summary: metadata?.summary || {},
+      metadata: metadata || {},
+      exportedAt: metadata?.exportedAt || new Date().toISOString(),
+    };
+    return JSON.stringify(compact).slice(0, 12000);
+  } catch {
+    return "";
+  }
+}
+
+function parseGoogleDriveBackupDescription(value) {
+  try {
+    const parsed = JSON.parse(String(value || "{}"));
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function googleDriveListFiles(token, { spaces, q, limit = 100 }) {
+  const params = new URLSearchParams({
+    spaces,
+    q,
+    pageSize: String(Math.max(1, Math.min(100, Number(limit || 100)))),
+    orderBy: "modifiedTime desc",
+    fields: "files(id,name,createdTime,modifiedTime,size,mimeType,description,appProperties,parents,trashed)",
+  });
+  const response = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    const error = new Error(`Google Drive list ${response.status}${body ? `: ${body.slice(0, 240)}` : ""}`);
+    error.statusCode = response.status;
+    throw error;
+  }
+  const data = await response.json();
+  return Array.isArray(data?.files) ? data.files : [];
+}
+
+async function googleDriveListVisibleBackupsEverywhere(token, limit = 100) {
+  try {
+    return await googleDriveListFiles(token, {
+      spaces: "drive",
+      q: `trashed=false and name contains 'multisports-scoring-backup'`,
+      limit,
+    });
+  } catch (error) {
+    // Les anciens tokens n'ont parfois que drive.appdata. Ce scan est donc
+    // best-effort et ne doit jamais rendre Drive inutilisable.
+    console.warn("[google-drive] visible backup scan skipped:", error?.message || error);
+    return [];
+  }
+}
+
+async function googleDriveListLegacyAppDataBackups(token, limit = 100) {
+  return googleDriveListFiles(token, {
+    spaces: "appDataFolder",
+    q: `trashed=false and (name contains 'multisports-scoring-backup' or name='${PERSONAL_CLOUD_FILE}')`,
+    limit,
+  });
+}
+
+function normalizeGoogleDriveBackupMeta(file) {
+  const desc = parseGoogleDriveBackupDescription(file?.description);
+  return {
+    id: String(file?.id || ""),
+    fileId: String(file?.id || ""),
+    backupId: String(file?.id || ""),
+    providerFileId: String(file?.id || ""),
+    provider: "google_drive",
+    name: file?.name || null,
+    createdAt: file?.createdTime || file?.modifiedTime || null,
+    updatedAt: file?.modifiedTime || file?.createdTime || null,
+    sizeBytes: Math.max(0, Number(file?.size || 0) || 0),
+    mimeType: file?.mimeType || null,
+    summary: desc?.summary || desc?.metadata?.summary || {},
+    metadata: desc?.metadata || {},
+    legacy: String(file?.name || "") === PERSONAL_CLOUD_FILE,
+  };
+}
+
+async function googleDriveListAllBackups(token, limit = 100) {
+  const [appData, visible] = await Promise.all([
+    googleDriveListLegacyAppDataBackups(token, limit).catch(() => []),
+    googleDriveListVisibleBackupsEverywhere(token, limit).catch(() => []),
+  ]);
+  const byId = new Map();
+  for (const file of [...appData, ...visible]) {
+    const id = String(file?.id || "").trim();
+    if (id && !byId.has(id)) byId.set(id, file);
+  }
+  return Array.from(byId.values())
+    .sort((a, b) => Date.parse(String(b?.modifiedTime || b?.createdTime || 0)) - Date.parse(String(a?.modifiedTime || a?.createdTime || 0)))
+    .slice(0, Math.max(1, Math.min(100, Number(limit || 100))));
+}
+
+async function googleDriveUploadArchiveBuffer(userId, token, buffer, metadata = {}, contentType = "application/gzip") {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const ext = contentType === "application/gzip" ? "json.gz" : "json";
+  const name = `${GOOGLE_DRIVE_BACKUP_PREFIX}${stamp}.${ext}`;
+  const fileMeta = {
+    name,
+    parents: ["appDataFolder"],
+    description: googleDriveBackupDescription(metadata),
+    appProperties: {
+      mssBackup: "1",
+      mssUserId: String(userId || "").slice(0, 120),
+      mssEncoding: contentType === "application/gzip" ? "gzip" : "json",
+    },
+  };
+  const boundary = `mss_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
+  const pre = Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(fileMeta)}\r\n--${boundary}\r\nContent-Type: ${contentType}\r\n\r\n`);
+  const post = Buffer.from(`\r\n--${boundary}--`);
+  const response = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,createdTime,modifiedTime,size,mimeType,description,appProperties", {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": `multipart/related; boundary=${boundary}` },
+    body: Buffer.concat([pre, buffer, post]),
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    const error = new Error(`Google Drive upload ${response.status}${body ? `: ${body.slice(0, 240)}` : ""}`);
+    error.statusCode = response.status;
+    throw error;
+  }
+  const file = await response.json();
+
+  // Rétention best-effort : conserve les 30 sauvegardes les plus récentes.
+  void googleDriveListLegacyAppDataBackups(token, 100).then(async (files) => {
+    const archives = files
+      .filter((row) => String(row?.name || "").startsWith(GOOGLE_DRIVE_BACKUP_PREFIX))
+      .sort((a, b) => Date.parse(String(b?.modifiedTime || 0)) - Date.parse(String(a?.modifiedTime || 0)));
+    for (const old of archives.slice(GOOGLE_DRIVE_BACKUP_RETENTION)) {
+      const id = String(old?.id || "").trim();
+      if (!id) continue;
+      await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        headers: { authorization: `Bearer ${token}` },
+      }).catch(() => null);
+    }
+  }).catch(() => null);
+
+  return normalizeGoogleDriveBackupMeta(file);
+}
+
+async function googleDriveDownloadFileBuffer(token, fileId) {
+  const id = String(fileId || "").trim();
+  if (!id) throw Object.assign(new Error("Identifiant Google Drive manquant."), { statusCode: 400 });
+  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?alt=media`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const error = new Error(`Google Drive download ${response.status}`);
+    error.statusCode = response.status;
+    throw error;
+  }
+  return Buffer.from(await response.arrayBuffer());
+}
+
+async function googleDriveBufferToSnapshotGzip(buffer) {
+  if (buffer.length >= 2 && buffer[0] === 0x1f && buffer[1] === 0x8b) return buffer;
+  const text = buffer.toString("utf8");
+  let parsed = null;
+  try { parsed = JSON.parse(text); } catch {}
+  const encoding = String(parsed?.encoding || "").toLowerCase();
+  if ((parsed?.__mssCompressedBackup === 1 || parsed?.version === 1) && /gzip-base64/.test(encoding) && typeof parsed?.data === "string") {
+    const packed = Buffer.from(parsed.data, "base64");
+    if (packed.length >= 2 && packed[0] === 0x1f && packed[1] === 0x8b) return packed;
+  }
+  if ((parsed?.__mssCompressedBackup === 1 || parsed?.version === 1) && /plain-base64|base64-json/.test(encoding) && typeof parsed?.data === "string") {
+    return gzipAsync(Buffer.from(parsed.data, "base64"));
+  }
+  if (typeof parsed?.snapshotJson === "string") return gzipAsync(Buffer.from(parsed.snapshotJson, "utf8"));
+  return gzipAsync(Buffer.from(text, "utf8"));
+}
+
+async function googleDriveBufferToSnapshotJson(buffer) {
+  if (buffer.length >= 2 && buffer[0] === 0x1f && buffer[1] === 0x8b) {
+    return (await gunzipAsync(buffer)).toString("utf8");
+  }
+  const text = buffer.toString("utf8");
+  let parsed = null;
+  try { parsed = JSON.parse(text); } catch { return text; }
+  const encoding = String(parsed?.encoding || "").toLowerCase();
+  if (parsed?.version === 1 && /gzip-base64/.test(encoding) && typeof parsed?.data === "string") {
+    return (await gunzipAsync(Buffer.from(parsed.data, "base64"))).toString("utf8");
+  }
+  if ((parsed?.version === 1 || parsed?.__mssCompressedBackup === 1) && /plain-base64|base64-json/.test(encoding) && typeof parsed?.data === "string") {
+    return Buffer.from(parsed.data, "base64").toString("utf8");
+  }
+  if (typeof parsed?.snapshotJson === "string") return parsed.snapshotJson;
+  return text;
+}
+
+function cleanupGoogleDriveBackupJobs() {
+  const now = Date.now();
+  for (const [id, job] of googleDriveBackupJobs.entries()) {
+    if (!job || now - Number(job.createdAtMs || 0) > 15 * 60 * 1000) googleDriveBackupJobs.delete(id);
+  }
+}
+
+function startGoogleDriveBackupJob(userId, runner) {
+  cleanupGoogleDriveBackupJobs();
+  const jobId = uid("gdrv");
+  const job = { jobId, userId, status: "queued", createdAtMs: Date.now(), result: null, error: null };
+  googleDriveBackupJobs.set(jobId, job);
+  setImmediate(async () => {
+    job.status = "running";
+    try {
+      job.result = await runner();
+      job.status = "done";
+    } catch (error) {
+      job.error = error?.message || String(error || "Sauvegarde Google Drive impossible");
+      job.status = "failed";
+    }
+  });
+  return job;
+}
+
+app.post("/account/personal-cloud/google_drive/backups/raw/jobs", authRequired, express.raw({ type: ["application/gzip", "application/octet-stream"], limit: "64mb" }), async (req, res) => {
+  try {
+    const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || []);
+    if (buffer.length < 2 || buffer[0] !== 0x1f || buffer[1] !== 0x8b) return res.status(400).json({ ok: false, error: "Gzip Google Drive invalide." });
+    const metadataHeader = parseBase64JsonHeader(req.headers["x-mss-backup-meta"], {});
+    const job = startGoogleDriveBackupJob(req.user.id, async () => {
+      const token = await refreshPersonalCloudAccess(req.user.id, "google_drive");
+      return googleDriveUploadArchiveBuffer(req.user.id, token, buffer, metadataHeader?.metadata || metadataHeader || {}, "application/gzip");
+    });
+    return res.status(202).json({ ok: true, job: { jobId: job.jobId, status: job.status } });
+  } catch (error) {
+    return res.status(Number(error?.statusCode || 500)).json({ ok: false, error: error?.message || "Démarrage Drive impossible" });
+  }
+});
+
+app.post("/account/personal-cloud/google_drive/backups/jobs", authRequired, async (req, res) => {
+  try {
+    const snapshotJson = String(req.body?.snapshotJson || "");
+    if (!snapshotJson) return res.status(400).json({ ok: false, error: "Snapshot Google Drive vide." });
+    const metadata = req.body?.metadata || {};
+    const job = startGoogleDriveBackupJob(req.user.id, async () => {
+      const token = await refreshPersonalCloudAccess(req.user.id, "google_drive");
+      return googleDriveUploadArchiveBuffer(req.user.id, token, Buffer.from(snapshotJson, "utf8"), metadata, "application/json");
+    });
+    return res.status(202).json({ ok: true, job: { jobId: job.jobId, status: job.status } });
+  } catch (error) {
+    return res.status(Number(error?.statusCode || 500)).json({ ok: false, error: error?.message || "Démarrage Drive impossible" });
+  }
+});
+
+app.get("/account/personal-cloud/google_drive/backups/jobs/:jobId", authRequired, async (req, res) => {
+  cleanupGoogleDriveBackupJobs();
+  const job = googleDriveBackupJobs.get(String(req.params.jobId || ""));
+  if (!job || String(job.userId) !== String(req.user.id)) return res.status(404).json({ ok: false, error: "Tâche Google Drive introuvable." });
+  return res.json({ ok: true, job: { jobId: job.jobId, status: job.status, result: job.result, error: job.error } });
+});
+
+app.post("/account/personal-cloud/google_drive/backups", authRequired, async (req, res) => {
+  try {
+    const snapshotJson = String(req.body?.snapshotJson || "");
+    if (!snapshotJson) return res.status(400).json({ ok: false, error: "Snapshot Google Drive vide." });
+    const token = await refreshPersonalCloudAccess(req.user.id, "google_drive");
+    const backup = await googleDriveUploadArchiveBuffer(req.user.id, token, Buffer.from(snapshotJson, "utf8"), req.body?.metadata || {}, "application/json");
+    return res.json({ ok: true, provider: "google_drive", backup, ...backup });
+  } catch (error) {
+    return res.status(Number(error?.statusCode || 500)).json({ ok: false, error: error?.message || "Sauvegarde Google Drive impossible" });
+  }
+});
+
+app.get("/account/personal-cloud/google_drive/backups", authRequired, async (req, res) => {
+  try {
+    const limit = Math.max(1, Math.min(100, Number(req.query?.limit || 100) || 100));
+    const token = await refreshPersonalCloudAccess(req.user.id, "google_drive");
+    const files = await googleDriveListAllBackups(token, limit);
+    const backups = files.map(normalizeGoogleDriveBackupMeta);
+    return res.json({ ok: true, provider: "google_drive", backups, files: backups });
+  } catch (error) {
+    return res.status(Number(error?.statusCode || 500)).json({ ok: false, error: error?.message || "Liste Google Drive impossible" });
+  }
+});
+
+app.get("/account/personal-cloud/google_drive/backups/:id/raw", authRequired, async (req, res) => {
+  try {
+    const token = await refreshPersonalCloudAccess(req.user.id, "google_drive");
+    const source = await googleDriveDownloadFileBuffer(token, req.params.id);
+    const gzip = await googleDriveBufferToSnapshotGzip(source);
+    res.status(200);
+    res.setHeader("Content-Type", "application/gzip");
+    res.setHeader("Content-Length", String(gzip.length));
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-MSS-Snapshot-Id", String(req.params.id || ""));
+    return res.end(gzip);
+  } catch (error) {
+    return res.status(Number(error?.statusCode || 500)).json({ ok: false, error: error?.message || "Lecture Google Drive gzip impossible" });
+  }
+});
+
+app.get("/account/personal-cloud/google_drive/backups/:id", authRequired, async (req, res) => {
+  try {
+    const token = await refreshPersonalCloudAccess(req.user.id, "google_drive");
+    const source = await googleDriveDownloadFileBuffer(token, req.params.id);
+    const snapshotJson = await googleDriveBufferToSnapshotJson(source);
+    return res.json({ ok: true, provider: "google_drive", id: req.params.id, snapshotJson });
+  } catch (error) {
+    return res.status(Number(error?.statusCode || 500)).json({ ok: false, error: error?.message || "Lecture Google Drive impossible" });
+  }
+});
 app.post("/account/personal-cloud/:provider/backup", authRequired, async(req,res)=>{try{const provider=String(req.params.provider);if(!PERSONAL_CLOUD_PROVIDERS.has(provider))return res.status(404).json({error:"Provider inconnu"});const token=await refreshPersonalCloudAccess(req.user.id,provider);const envelope={version:1,ownerUserId:req.user.id,provider,updatedAt:new Date().toISOString(),encoding:String(req.body?.encoding||""),data:String(req.body?.data||""),metadata:req.body?.metadata||{}};if(!envelope.data)return res.status(400).json({error:"Snapshot vide"});await personalCloudUpload(provider,token,Buffer.from(JSON.stringify(envelope)));res.json({ok:true,provider,backup:{updatedAt:envelope.updatedAt,metadata:envelope.metadata}});}catch(e){res.status(Number(e?.statusCode||500)).json({ok:false,error:e?.message||"Sauvegarde cloud personnel impossible"});}});
 app.get("/account/personal-cloud/:provider/backup", authRequired, async(req,res)=>{try{const provider=String(req.params.provider),token=await refreshPersonalCloudAccess(req.user.id,provider),found=await personalCloudDownload(provider,token);if(!found)return res.status(404).json({error:"Aucune sauvegarde"});const envelope=JSON.parse(found.buffer.toString("utf8"));if(String(envelope.ownerUserId||"")!==String(req.user.id))return res.status(403).json({error:"Sauvegarde d'un autre compte refusée"});res.json(envelope);}catch(e){res.status(Number(e?.statusCode||500)).json({ok:false,error:e?.message||"Lecture cloud personnel impossible"});}});
 app.get("/account/personal-cloud/:provider/backup/meta", authRequired, async(req,res)=>{try{const provider=String(req.params.provider),token=await refreshPersonalCloudAccess(req.user.id,provider),found=await personalCloudDownload(provider,token);if(!found)return res.status(404).json({error:"Aucune sauvegarde"});const envelope=JSON.parse(found.buffer.toString("utf8"));if(String(envelope.ownerUserId||"")!==String(req.user.id))return res.status(403).json({error:"Sauvegarde d'un autre compte refusée"});res.json({ok:true,backup:{updatedAt:envelope.updatedAt,metadata:envelope.metadata||{},provider}});}catch(e){res.status(Number(e?.statusCode||500)).json({ok:false,error:e?.message||"Métadonnées cloud personnel impossibles"});}});

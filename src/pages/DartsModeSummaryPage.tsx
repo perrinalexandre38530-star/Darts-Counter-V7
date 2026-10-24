@@ -29,6 +29,7 @@ type ModeKind =
   | "territories"
   | "darts_firefighter"
   | "darts_poker"
+  | "super_bull"
   | "pendu"
   | "menteur"
   | "crados"
@@ -157,6 +158,14 @@ const MODE_META: Record<ModeKind, { title: string; accent: string; subtitle: str
     primary: "Mains gagnées",
     secondary: "Meilleure main",
     tertiary: "Précision",
+  },
+  super_bull: {
+    title: "SUPER BULL",
+    accent: "#29deff",
+    subtitle: "Précision centre : BULL25, BULL50, séries, volées parfaites et efficacité D1/D2/D3.",
+    primary: "Score",
+    secondary: "Précision centre",
+    tertiary: "DBULL",
   },
   darts_firefighter: {
     title: "DARTS FIREFIGHTER",
@@ -304,6 +313,7 @@ const aliases: Array<[ModeKind, string[]]> = [
   ["territories", ["territories", "territoires", "departements", "departement"]],
   ["darts_firefighter", ["darts_firefighter", "dartsfirefighter", "darts firefighter", "firefighter"]],
   ["darts_poker", ["darts_poker", "dartspoker", "darts poker"]],
+  ["super_bull", ["super_bull", "superbull", "super bull"]],
   ["pendu", ["pendu", "hangman"]],
   ["menteur", ["menteur", "liar", "bluff"]],
   ["crados", ["crados", "crado", "dirty", "slime"]],
@@ -565,6 +575,16 @@ function valueFor(mode: ModeKind, key: "primary" | "secondary" | "tertiary", row
     const accuracy = num(row.accuracy, darts > 0 ? (hits / darts) * 100 : 0);
     return `${Math.round(accuracy * 10) / 10}%`;
   }
+  if (mode === "super_bull") {
+    if (key === "primary") return num(pick(row.score, row.points), 0);
+    if (key === "secondary") {
+      const darts = num(pick(row.darts, row.dartsThrown), 0);
+      const hits = num(pick(row.centreHits, row.hits), num(row.bulls) + num(row.dbulls));
+      const accuracy = num(row.centreAccuracy, darts > 0 ? (hits / darts) * 100 : 0);
+      return `${Math.round(accuracy * 10) / 10}%`;
+    }
+    return num(row.dbulls, 0);
+  }
   if (mode === "castle") {
     if (key === "primary") return num(pick(row.builds, row.bricks), 0);
     if (key === "secondary") return num(row.damage, 0);
@@ -793,6 +813,8 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
             ? num(firefighterMatchStats?.totalFireReduced, rows.reduce((sum, r) => sum + num(r.raw?.fireReduced, 0), 0))
             : mode === "darts_poker"
               ? num(pokerMatchStats?.totalHandsWon, rows.reduce((sum, r) => sum + num(r.raw?.handsWon, 0), 0))
+            : mode === "super_bull"
+              ? rows.reduce((sum, r) => sum + num(pick(r.raw?.centreHits, r.raw?.hits), num(r.raw?.bulls) + num(r.raw?.dbulls)), 0)
             : mode === "pendu"
               ? rows.reduce((sum, r) => sum + num(r.raw?.challengesPassed, 0), 0)
             : mode === "menteur"
@@ -847,7 +869,7 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
           <Kpi label={mode === "ptit_hun" && !ptit1Fr ? "Winner" : "Vainqueur"} value={winnerLabel} accent={meta.accent} />
           <Kpi label={mode === "ptit_hun" && !ptit1Fr ? "Players" : "Joueurs"} value={rows.length || "—"} accent={meta.accent} />
           <Kpi label={mode === "ptit_hun" && !ptit1Fr ? "Total darts" : "Total flèches"} value={totalDarts || "—"} accent={meta.accent} />
-          <Kpi label={mode === "capital" ? "Contrats tentés" : mode === "bobs_27" ? "Doubles réussis" : mode === "halve_it" ? "Touches valides" : mode === "shooter" ? "Marks" : mode === "darts_racer" ? "Distance nette" : mode === "attrape_moi" ? "Captures" : mode === "prisoner" ? "Captures" : mode === "darts_firefighter" ? "Niveaux de feu supprimés" : mode === "darts_poker" ? "Mains gagnées" : mode === "pendu" ? "Défis réussis" : mode === "menteur" ? "Appels MENTEUR" : mode === "crados" ? "Secteurs contaminés" : mode === "fifty_one_by_five" ? "Volées valides" : mode === "looper" ? "Boucles sauvées" : mode === "call_three" ? "Cibles réussies" : mode === "steeplechase" ? "Étapes franchies" : mode === "ptit_hun" ? (ptit1Fr ? "Volées à 0" : "Zero visits") : mode === "castle" ? "Briques / dégâts" : mode === "gotcha" ? "GOTCHA" : mode === "hare_hounds" ? "Étapes" : mode === "wave61" ? "Touches moteur" : "Total actions"} value={totalActions || "—"} accent={meta.accent} />
+          <Kpi label={mode === "capital" ? "Contrats tentés" : mode === "bobs_27" ? "Doubles réussis" : mode === "halve_it" ? "Touches valides" : mode === "shooter" ? "Marks" : mode === "darts_racer" ? "Distance nette" : mode === "attrape_moi" ? "Captures" : mode === "prisoner" ? "Captures" : mode === "darts_firefighter" ? "Niveaux de feu supprimés" : mode === "darts_poker" ? "Mains gagnées" : mode === "super_bull" ? "Centres touchés" : mode === "pendu" ? "Défis réussis" : mode === "menteur" ? "Appels MENTEUR" : mode === "crados" ? "Secteurs contaminés" : mode === "fifty_one_by_five" ? "Volées valides" : mode === "looper" ? "Boucles sauvées" : mode === "call_three" ? "Cibles réussies" : mode === "steeplechase" ? "Étapes franchies" : mode === "ptit_hun" ? (ptit1Fr ? "Volées à 0" : "Zero visits") : mode === "castle" ? "Briques / dégâts" : mode === "gotcha" ? "GOTCHA" : mode === "hare_hounds" ? "Étapes" : mode === "wave61" ? "Touches moteur" : "Total actions"} value={totalActions || "—"} accent={meta.accent} />
         </div>
       </section>
 
@@ -888,6 +910,8 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
         <DartsFirefighterSummaryTables rec={rec} rows={rows} accent={meta.accent} />
       ) : mode === "darts_poker" ? (
         <DartsPokerSummaryTables rec={rec} rows={rows} accent={meta.accent} />
+      ) : mode === "super_bull" ? (
+        <SuperBullSummaryTables rec={rec} rows={rows} accent={meta.accent} />
       ) : mode === "ptit_hun" ? (
         <PtitHunSummaryTables rec={rec} rows={rows} accent={meta.accent} />
       ) : ["pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase"].includes(mode) ? (
@@ -1206,6 +1230,120 @@ function Wave61SummaryTables({ rec, rows, accent, familyLabel }: { rec: any; row
     </section>
   </>;
 }
+
+
+function SuperBullSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; accent: string }) {
+  const summary = pick(rec?.summary, rec?.payload?.summary, {}) || {};
+  const visits = asArray(pick(rec?.payload?.visitHistory, rec?.payload?.events, rec?.resume?.state?.visitHistory));
+  const perPlayer = asArray(pick(summary?.perPlayer, rec?.payload?.superBull?.perPlayer));
+  const byId = new Map(perPlayer.map((p: any) => [String(playerId(p)), p]));
+
+  const enriched = rows.map((row: any) => {
+    const raw = { ...(row?.raw || {}), ...(byId.get(String(row?.id)) || {}) };
+    const darts = num(pick(raw?.darts, raw?.dartsThrown), 0);
+    const bulls = num(raw?.bulls, 0);
+    const dbulls = num(raw?.dbulls, 0);
+    const centres = num(pick(raw?.centreHits, raw?.hits), bulls + dbulls);
+    const misses = num(raw?.misses, Math.max(0, darts - centres));
+    const accuracy = num(raw?.centreAccuracy, darts > 0 ? centres / darts * 100 : 0);
+    const dbullRate = num(raw?.dbullRate, darts > 0 ? dbulls / darts * 100 : 0);
+    const positions = asArray(raw?.positionStats);
+    return { ...row, raw, darts, bulls, dbulls, centres, misses, accuracy, dbullRate, positions };
+  });
+
+  const totalDarts = enriched.reduce((sum: number, r: any) => sum + r.darts, 0);
+  const totalBull25 = enriched.reduce((sum: number, r: any) => sum + r.bulls, 0);
+  const totalBull50 = enriched.reduce((sum: number, r: any) => sum + r.dbulls, 0);
+  const totalCentres = totalBull25 + totalBull50;
+  const totalMiss = Math.max(0, totalDarts - totalCentres);
+  const overallAccuracy = totalDarts > 0 ? totalCentres / totalDarts * 100 : 0;
+  const bestVisit = Math.max(0, ...enriched.map((r: any) => num(r.raw?.bestVisit)));
+  const bestStreak = Math.max(0, ...enriched.map((r: any) => num(r.raw?.bestBullStreak)));
+  const perfectVisits = enriched.reduce((sum: number, r: any) => sum + num(r.raw?.perfectBullVisits), 0);
+
+  const dartName = (d: any) => {
+    if (!d) return "—";
+    const bed = String(d?.bed || "").toUpperCase();
+    if (bed === "DBULL" || bed === "IB" || (num(d?.value) === 25 && num(d?.multiplier) === 2)) return "BULL50";
+    if (bed === "BULL" || bed === "OB" || num(d?.value) === 25) return "BULL25";
+    return "MISS";
+  };
+  const dartPoints = (d: any) => dartName(d) === "BULL50" ? 50 : dartName(d) === "BULL25" ? 25 : 0;
+  const playerNameById = (id: string) => enriched.find((r: any) => String(r.id) === String(id))?.name || String(id || "Joueur");
+
+  return <>
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Bilan SUPER BULL</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(125px,1fr))", gap: 8 }}>
+        <Kpi label="Précision centre" value={`${Math.round(overallAccuracy * 10) / 10}%`} accent={accent} />
+        <Kpi label="BULL25" value={totalBull25} accent="#55e89b" />
+        <Kpi label="BULL50" value={totalBull50} accent="#ff5a69" />
+        <Kpi label="MISS" value={totalMiss} accent="#9ba6b3" />
+        <Kpi label="Best volée" value={bestVisit} accent="#ffd76a" />
+        <Kpi label="Série max" value={bestStreak} accent="#29deff" />
+        <Kpi label="Volées parfaites" value={perfectVisits} accent="#c983ff" />
+        <Kpi label="Flèches" value={totalDarts} accent="#ffffff" />
+      </div>
+    </section>
+
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Détail par joueur</div>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", minWidth: 980, borderCollapse: "collapse", fontSize: 11.5 }}>
+          <thead>
+            <tr style={{ color: accent, textAlign: "left" }}>
+              <th style={th}>Joueur</th><th style={th}>Score</th><th style={th}>Flèches</th>
+              <th style={th}>BULL25</th><th style={th}>BULL50</th><th style={th}>MISS</th>
+              <th style={th}>Centre</th><th style={th}>DBULL</th><th style={th}>Best</th>
+              <th style={th}>Moy./volée</th><th style={th}>Série</th><th style={th}>Parfaites</th>
+              <th style={th}>D1</th><th style={th}>D2</th><th style={th}>D3</th>
+            </tr>
+          </thead>
+          <tbody>
+            {enriched.map((r: any) => {
+              const pos = (slot: number) => r.positions.find((p: any) => num(p?.position) === slot);
+              return <tr key={`super-bull-${r.id}`}>
+                <td style={td}>{r.name}</td>
+                <td style={td}>{num(pick(r.raw?.score, r.raw?.points))}</td>
+                <td style={td}>{r.darts}</td>
+                <td style={td}>{r.bulls}</td>
+                <td style={td}>{r.dbulls}</td>
+                <td style={td}>{r.misses}</td>
+                <td style={td}>{Math.round(r.accuracy * 10) / 10}%</td>
+                <td style={td}>{Math.round(r.dbullRate * 10) / 10}%</td>
+                <td style={td}>{num(r.raw?.bestVisit)}</td>
+                <td style={td}>{num(r.raw?.avgVisit).toFixed(1)}</td>
+                <td style={td}>{num(r.raw?.bestBullStreak)}</td>
+                <td style={td}>{num(r.raw?.perfectBullVisits)}</td>
+                {[1,2,3].map((slot) => {
+                  const p = pos(slot);
+                  return <td key={slot} style={td}>{p ? `${num(p?.accuracy).toFixed(0)}%` : "—"}</td>;
+                })}
+              </tr>;
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Log des volées</div>
+      {visits.length ? <div style={{ display: "grid", gap: 6, maxHeight: 360, overflowY: "auto", paddingRight: 2 }}>
+        {visits.map((visit: any, index: number) => {
+          const darts = asArray(visit?.darts).slice(0, 3);
+          const total = darts.reduce((sum: number, d: any) => sum + dartPoints(d), 0);
+          return <div key={`sb-visit-${index}`} style={{ display: "grid", gridTemplateColumns: "44px minmax(90px,1fr) repeat(3,minmax(60px,.7fr)) 58px", gap: 6, alignItems: "center", padding: "7px 8px", borderRadius: 10, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", fontSize: 11 }}>
+            <strong style={{ color: accent }}>#{index + 1}</strong>
+            <span style={{ fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerNameById(String(visit?.playerId || ""))}</span>
+            {[0,1,2].map((slot) => <span key={slot} style={{ color: dartName(darts[slot]) === "BULL50" ? "#ff6b79" : dartName(darts[slot]) === "BULL25" ? "#62e8a3" : "#a8b1bc", fontWeight: 900 }}>{dartName(darts[slot])}</span>)}
+            <strong style={{ textAlign: "right", color: "#fff" }}>{total}</strong>
+          </div>;
+        })}
+      </div> : <div style={{ color: "#aeb2c3", fontSize: 12 }}>Aucun log détaillé disponible pour cette partie.</div>}
+    </section>
+  </>;
+}
+
 
 function OriginalPartyModeSummaryTables({ mode, rec, rows, accent }: { mode: "pendu" | "menteur" | "crados" | "fifty_one_by_five" | "looper" | "call_three" | "steeplechase"; rec: any; rows: any[]; accent: string }) {
   const sum = (key: string) => rows.reduce((total, row) => total + num(row?.raw?.[key]), 0);
