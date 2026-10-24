@@ -7690,6 +7690,7 @@ case "babyfoot_team_edit":
           data-msc-route={String(tab)}
           data-msc-game-screen={isGameMenuRoute ? "menu" : isGameConfigRoute ? "config" : isGamePlayRoute ? "play" : undefined}
           data-msc-game-layout={gameLandscapeKind}
+          data-mss-bottom-nav-visible={showBottomNav ? "1" : "0"}
           style={{
             paddingBottom: 88,
             // Les sélecteurs Compte/Organisation et Sport sont désormais des médaillons

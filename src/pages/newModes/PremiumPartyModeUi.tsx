@@ -62,10 +62,10 @@ export function SummaryStrip({ players, activeId, profileById, colorById, primar
   </div>;
 }
 
-export function ActiveHero({ profile, name, accent, eyebrow, primary, primarySuffix, secondary, tertiary, progress, progressMax, icon, aside, notice, noticeTone = "normal" }: any) {
+export function ActiveHero({ profile, name, accent, eyebrow, primary, primarySuffix, secondary, tertiary, progress, progressMax, icon, aside, notice, noticeTone = "normal", className = "" }: any) {
   const pct = progressMax > 0 ? Math.max(0, Math.min(100, (Number(progress || 0) / Number(progressMax)) * 100)) : null;
   const avatarSrc = profile?.avatarDataUrl || profile?.avatarUrl || profile?.avatar || profile?.photoDataUrl || profile?.photoURL || "";
-  return <section className="party-mode__active" style={{ ["--mode-accent" as any]: accent, borderColor: `${accent}66`, boxShadow: `0 16px 40px rgba(0,0,0,.34), inset 0 0 42px ${accent}0f` }}>
+  return <section className={`party-mode__active${className ? ` ${className}` : ""}`} style={{ ["--mode-accent" as any]: accent, borderColor: `${accent}66`, boxShadow: `0 16px 40px rgba(0,0,0,.34), inset 0 0 42px ${accent}0f` }}>
     <div className="party-mode__active-ghost" aria-hidden>{avatarSrc ? <img src={avatarSrc} alt="" /> : <ProfileAvatar profile={profile} size={122} showStars={false} ringColor={accent} noFrame />}</div>
     <div className="party-mode__active-main">
       {eyebrow ? <div className="party-mode__active-eyebrow" style={{ color: accent }}>{eyebrow}</div> : null}
@@ -85,7 +85,8 @@ export function KpiStrip({ items, accent, onClick, className = "party-mode__kpis
   return <Tag type={onClick ? "button" : undefined} className={className} onClick={onClick} aria-label={onClick ? "Ouvrir toutes les statistiques" : undefined}>
     {(items || []).map((item: any) => {
       const [label, value] = Array.isArray(item) ? item : [item?.label, item?.value];
-      return <span key={String(label)}><small>{label}</small><b style={{ color: accent }}>{value ?? "—"}</b></span>;
+      const color = Array.isArray(item) ? accent : (item?.color || accent);
+      return <span key={String(label)} style={{ color }}><small>{label}</small><b style={{ color }}>{value ?? "—"}</b></span>;
     })}
   </Tag>;
 }

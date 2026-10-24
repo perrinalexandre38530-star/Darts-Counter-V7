@@ -5634,3 +5634,133 @@ html[data-msc-orientation="landscape"]
   overflow: hidden !important;
 }
 
+
+
+/* ========================================================================
+   V23 — X01 QUICK PARTY: viewport/rail contract
+   When BottomNav is visible in landscape, the route MUST own only the width
+   to the right of the rail. This overrides dc-themed-route--full, which is a
+   theme/background scope and must not be interpreted as fullscreen gameplay.
+   ======================================================================== */
+@media (orientation: landscape) {
+  html[data-msc-orientation="landscape"]
+  .dc-themed-route[data-msc-game-screen="play"][data-mss-bottom-nav-visible="1"] {
+    position: relative !important;
+    left: auto !important;
+    right: auto !important;
+    width: calc(100vw - var(--msc-landscape-rail-width)) !important;
+    max-width: calc(100vw - var(--msc-landscape-rail-width)) !important;
+    height: var(--msc-app-height, 100dvh) !important;
+    max-height: var(--msc-app-height, 100dvh) !important;
+    margin-left: var(--msc-landscape-rail-width) !important;
+    margin-right: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+  }
+
+  html[data-msc-orientation="landscape"]
+  .dc-themed-route[data-msc-game-screen="play"][data-mss-bottom-nav-visible="1"]
+  > .x01play-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+
+  html[data-msc-orientation="landscape"]
+  .dc-themed-route[data-msc-game-screen="play"][data-mss-bottom-nav-visible="1"]
+  .x01ql-play[data-mss-native-play-layout="1"] {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  html[data-msc-orientation="landscape"]
+  .dc-themed-route[data-msc-game-screen="play"][data-mss-bottom-nav-visible="1"]
+  .x01ql-stage {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    overflow: hidden !important;
+  }
+
+  html[data-msc-orientation="landscape"]
+  .dc-themed-route[data-msc-game-screen="play"][data-mss-bottom-nav-visible="1"]
+  :is(.x01ql-left, .x01ql-input, .x01ql-score, .x01ql-players) {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    overflow-x: hidden !important;
+    box-sizing: border-box !important;
+  }
+}
+
+/* Téléphone paysage : même composition que PC, simplement plus compacte.
+   On ne change PAS le 50/50. */
+@media (orientation: landscape) and (max-width: 980px) {
+  html[data-msc-orientation="landscape"][data-msc-device="phone"]
+  .dc-themed-route[data-msc-game-screen="play"][data-mss-bottom-nav-visible="1"]
+  .x01ql-play[data-mss-native-play-layout="1"] {
+    padding: 3px !important;
+    gap: 3px !important;
+  }
+
+  html[data-msc-orientation="landscape"][data-msc-device="phone"]
+  .dc-themed-route[data-msc-game-screen="play"][data-mss-bottom-nav-visible="1"]
+  .x01ql-head {
+    flex: 0 0 42px !important;
+    height: 42px !important;
+    max-height: 42px !important;
+    border-radius: 10px !important;
+  }
+
+  html[data-msc-orientation="landscape"][data-msc-device="phone"]
+  .dc-themed-route[data-msc-game-screen="play"][data-mss-bottom-nav-visible="1"]
+  .x01ql-stage {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 3px !important;
+  }
+
+  html[data-msc-orientation="landscape"][data-msc-device="phone"]
+  .dc-themed-route[data-msc-game-screen="play"][data-mss-bottom-nav-visible="1"]
+  .x01ql-left {
+    grid-template-rows: minmax(0, 63%) minmax(0, 37%) !important;
+    gap: 3px !important;
+  }
+
+  html[data-msc-orientation="landscape"][data-msc-device="phone"]
+  .dc-themed-route[data-msc-game-screen="play"][data-mss-bottom-nav-visible="1"]
+  :is(.x01ql-score, .x01ql-players, .x01ql-input) {
+    padding: 3px !important;
+    border-radius: 10px !important;
+  }
+
+  html[data-msc-orientation="landscape"][data-msc-device="phone"]
+  .dc-themed-route[data-msc-game-screen="play"][data-mss-bottom-nav-visible="1"]
+  .x01ql-head__center {
+    max-width: 46% !important;
+    transform: scale(.86) !important;
+    transform-origin: center !important;
+  }
+
+  html[data-msc-orientation="landscape"][data-msc-device="phone"]
+  .dc-themed-route[data-msc-game-screen="play"][data-mss-bottom-nav-visible="1"]
+  .x01ql-head__right {
+    right: 4px !important;
+    gap: 3px !important;
+    transform: translateY(-50%) scale(.82) !important;
+    transform-origin: right center !important;
+  }
+}

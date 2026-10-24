@@ -28,7 +28,7 @@ import { buildMatchSharePacket, isMatchSharePacketV1, shareOneMatch, type MatchS
 import { importRecoveredHistoryJson } from "../lib/importRecoveredHistory";
 import { exportHistoryDump, importHistoryDump } from "../lib/historyCloud";
 import { buildFullHistoryBackup, extractHistoryDumpFromJson, saveFullHistoryBackupFile } from "../lib/historyFileTransfer";
-import { scheduleStatsIndexRefresh } from "../lib/stats/rebuildStatsFromHistory";
+import { rebuildStatsFromHistory, scheduleStatsIndexRefresh } from "../lib/stats/rebuildStatsFromHistory";
 import { isQuickPartyRecord, quickPartyParticipants, quickPartyProfileLinks } from "../lib/quickParty";
 import { inboxAddLocal, inboxListLocal, inboxRemoveLocal, type InboxItemLocal } from "../lib/matchInboxLocal";
 import { applyBabyFootImportRules, isBabyFootShareLike } from "../lib/babyfootImportRules";
@@ -4591,21 +4591,50 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
       converted.quickPartyConvertedAt = Date.now();
       converted.updatedAt = Date.now();
       delete converted.quickProfileLinks;
+      if (converted.summary && typeof converted.summary === "object") {
+        converted.summary.quickParty = false;
+        converted.summary.partyMode = "arcade";
+        converted.summary.profileStatsDeferred = false;
+        converted.summary.temporaryParticipants = false;
+        delete converted.summary.quickProfileLinks;
+      }
+      if (converted.config && typeof converted.config === "object") {
+        converted.config.quickParty = false;
+        converted.config.partyMode = "arcade";
+        converted.config.profileStatsDeferred = false;
+        converted.config.temporaryParticipants = false;
+      }
       if (converted.payload) {
         converted.payload.quickParty = false;
         converted.payload.partyMode = "arcade";
         converted.payload.profileStatsDeferred = false;
+        converted.payload.temporaryParticipants = false;
+        if (converted.payload.config && typeof converted.payload.config === "object") {
+          converted.payload.config.quickParty = false;
+          converted.payload.config.partyMode = "arcade";
+          converted.payload.config.profileStatsDeferred = false;
+          converted.payload.config.temporaryParticipants = false;
+        }
         delete converted.payload.quickProfileLinks;
       }
       await History.upsert(converted);
+
+      // Le transfert est une action explicite de l'utilisateur : les stats des
+      // profils associés doivent être disponibles immédiatement, y compris sur
+      // mobile où les refresh planifiés peuvent être volontairement différés.
       try {
-        void scheduleStatsIndexRefresh({
-          reason: "quick-party-profile-transfer",
-          debounceMs: 80,
-          includeNonFinished: true,
-          persist: true,
-        });
-      } catch {}
+        await rebuildStatsFromHistory({ includeNonFinished: true, persist: true });
+      } catch (error) {
+        console.warn("[quick-party-transfer] rebuild stats immédiat échoué", error);
+        try {
+          void scheduleStatsIndexRefresh({
+            reason: "quick-party-profile-transfer-fallback",
+            debounceMs: 80,
+            includeNonFinished: true,
+            persist: true,
+          });
+        } catch {}
+      }
       setQuickLinkEntry(null);
       setQuickLinks({});
       setTab("done");
