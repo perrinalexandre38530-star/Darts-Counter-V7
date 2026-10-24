@@ -795,6 +795,35 @@ function goBack() {
       bestCheckoutMap[pid] = 0;
     }
 
+    const superBullPositionStats = (i: number) => {
+      if (variantId !== "super_bull") return [];
+      const pid = String(players[i]?.id ?? `p${i + 1}`);
+      const rows = visitHistoryRef.current.filter((v: any) => String(v?.playerId) === pid);
+      const classify = (d: any) => d?.bed === "DBULL" || (Number(d?.value) === 25 && Number(d?.multiplier) === 2)
+        ? "BULL50"
+        : d?.bed === "BULL" || Number(d?.value) === 25
+          ? "BULL25"
+          : "MISS";
+      return [0, 1, 2].map((slot) => {
+        const slotDarts = rows.map((v: any) => v?.darts?.[slot]).filter(Boolean);
+        const bull25 = slotDarts.filter((d: any) => classify(d) === "BULL25").length;
+        const bull50 = slotDarts.filter((d: any) => classify(d) === "BULL50").length;
+        const miss = Math.max(0, slotDarts.length - bull25 - bull50);
+        const hits = bull25 + bull50;
+        const points = bull25 * 25 + bull50 * 50;
+        return {
+          position: slot + 1,
+          darts: slotDarts.length,
+          bull25,
+          bull50,
+          miss,
+          hits,
+          points,
+          accuracy: slotDarts.length ? Math.round((hits / slotDarts.length) * 10000) / 100 : 0,
+        };
+      });
+    };
+
     const rec: any = {
       id,
       matchId: id,
@@ -837,12 +866,16 @@ function goBack() {
         bestVisitByPlayer: bestVisitMap,
         bestCheckoutByPlayer: bestCheckoutMap,
         perPlayer: players.map((p: any, i: number) => ({
-          id: String(p.id), name: p.name, score: scores[i] || 0, darts: dartsByP[i] || 0, visits: visitsByP[i] || 0,
+          id: String(p.id), name: p.name, score: scores[i] || 0, points: pointsByP[i] || scores[i] || 0, darts: dartsByP[i] || 0, dartsThrown: dartsByP[i] || 0, visits: visitsByP[i] || 0,
           bestVisit: bestVisitByP[i] || 0, bulls: bullsByP[i] || 0, dbulls: dbullsByP[i] || 0,
+          hits: (bullsByP[i] || 0) + (dbullsByP[i] || 0),
+          misses: Math.max(0, (dartsByP[i] || 0) - (bullsByP[i] || 0) - (dbullsByP[i] || 0)),
           centreHits: (bullsByP[i] || 0) + (dbullsByP[i] || 0),
           centreAccuracy: (dartsByP[i] || 0) > 0 ? Math.round((((bullsByP[i] || 0) + (dbullsByP[i] || 0)) / (dartsByP[i] || 1)) * 10000) / 100 : 0,
           dbullRate: (dartsByP[i] || 0) > 0 ? Math.round(((dbullsByP[i] || 0) / (dartsByP[i] || 1)) * 10000) / 100 : 0,
+          avgVisit: (visitsByP[i] || 0) > 0 ? Math.round(((pointsByP[i] || 0) / (visitsByP[i] || 1)) * 100) / 100 : 0,
           bestBullStreak: bestBullStreakByP[i] || 0, perfectBullVisits: perfectVisitsByP[i] || 0,
+          ...(variantId === "super_bull" ? { positionStats: superBullPositionStats(i) } : {}),
         })),
         ...(variantId === "super_bull" ? {
           bullsByPlayer: Object.fromEntries(players.map((p: any, i: number) => [String(p.id), bullsByP[i] || 0])),
@@ -887,6 +920,18 @@ function goBack() {
         events: visitHistoryRef.current.slice(),
       },
     };
+
+    if (variantId === "super_bull") {
+      rec.payload.players = players;
+      rec.payload.summary = rec.summary;
+      rec.payload.superBull = {
+        ranking: rec.summary.superBullRanking,
+        perPlayer: rec.summary.perPlayer,
+        bullsByPlayer: rec.summary.bullsByPlayer,
+        dbullsByPlayer: rec.summary.dbullsByPlayer,
+        centreAccuracyByPlayer: rec.summary.centreAccuracyByPlayer,
+      };
+    }
 
     const telemetry = buildDartsTelemetry(rec, rec.payload);
     if (telemetry) {

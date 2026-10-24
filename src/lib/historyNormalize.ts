@@ -36,16 +36,35 @@ const pickKind = (row: any, decoded: any) => {
 };
 
 const pickStatus = (row: any, decoded: any): "in_progress" | "finished" => {
-  const raw = String(row?.status || "").toLowerCase();
-  if (raw === "finished") return "finished";
+  const finishedTokens = new Set(["finished", "finish", "done", "match_end", "match-end", "ended", "complete", "completed"]);
+  const liveTokens = new Set(["in_progress", "inprogress", "playing", "live", "running", "started", "active"]);
+  const tokens = [
+    row?.status,
+    row?.summary?.status,
+    row?.payload?.status,
+    row?.payload?.summary?.status,
+    decoded?.status,
+    decoded?.summary?.status,
+    row?.resume?.state?.status,
+    row?.resume?.state?.phase,
+    row?.payload?.state?.status,
+    row?.payload?.state?.phase,
+    row?.payload?.stateSnapshot?.status,
+    row?.payload?.stateSnapshot?.phase,
+    decoded?.state?.status,
+    decoded?.state?.phase,
+  ].map((value) => String(value ?? "").trim().toLowerCase()).filter(Boolean);
 
-  const s = row?.summary || decoded?.summary || decoded?.result || decoded?.stats || {};
-  if (s?.finished === true) return "finished";
-  if (s?.result?.finished === true) return "finished";
-  if (s?.winnerId) return "finished";
-  if (Array.isArray(s?.rankings) && s.rankings.length) return "finished";
-
-  if (raw === "in_progress" || raw === "inprogress") return "in_progress";
+  const summary = row?.summary || decoded?.summary || {};
+  const hasFinish =
+    tokens.some((token) => finishedTokens.has(token)) ||
+    summary?.finished === true || summary?.result?.finished === true ||
+    row?.payload?.summary?.finished === true || decoded?.summary?.finished === true ||
+    !!row?.finishedAt || !!row?.winnerId || !!summary?.winnerId || !!summary?.result?.winnerId ||
+    !!row?.payload?.winnerId || !!row?.payload?.summary?.winnerId || !!decoded?.winnerId || !!decoded?.summary?.winnerId;
+  if (hasFinish) return "finished";
+  if (tokens.some((token) => liveTokens.has(token))) return "in_progress";
+  if (row?.resume?.state || row?.resume?.config || row?.resume?.livePayload) return "in_progress";
   return "in_progress";
 };
 

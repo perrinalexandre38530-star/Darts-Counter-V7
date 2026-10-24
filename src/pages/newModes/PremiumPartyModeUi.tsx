@@ -278,7 +278,7 @@ export function FloatingAdvice({ text, accent, kicker = "CONSEIL CIBLE" }: any) 
 
 function medal(index: number) { return index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `#${index + 1}`; }
 
-export function PremiumEndPanel({ title, accent, winnerId, rankingRows, durationMs, totalDarts, awards, progression, onReplay, onStats, onHistory, onConfig, onGames }: any) {
+export function PremiumEndPanel({ title, accent, winnerId, rankingRows, durationMs, totalDarts, highlights, awards, progression, onReplay, onStats, onHistory, onConfig, onGames }: any) {
   const rows = rankingRows || [];
   const winner = rows.find((r: any) => String(r.id) === String(winnerId || "")) || rows[0];
   const mins = Math.floor(Math.max(0, Number(durationMs || 0)) / 60000);
@@ -289,6 +289,7 @@ export function PremiumEndPanel({ title, accent, winnerId, rankingRows, duration
       <div className="party-mode-end__winner"><span>CHAMPION · {title}</span><div><ProfileAvatar profile={winner?.profile} size={86} showStars={false} ringColor={winner?.color || accent} /></div><b style={{ color: winner?.color || accent }}>{String(winner?.name || "VICTOIRE").toUpperCase()}</b><small>{winner?.subtitle || "Match terminé"}</small></div>
       <div className="party-mode-end__match"><div><span>DURÉE</span><b>{mins}:{String(secs).padStart(2, "0")}</b></div><div><span>DARTS</span><b>{Number(totalDarts || 0)}</b></div><div><span>JOUEURS</span><b>{rows.length}</b></div></div>
     </section>
+    {highlights?.length ? <section className="party-mode-end__highlights">{highlights.slice(0, 4).map((h: any) => <div key={h.label} style={{ ["--highlight-color" as any]: h.color || accent }}><small>{h.label}</small><b>{h.value ?? "—"}</b>{h.detail ? <span>{h.detail}</span> : null}</div>)}</section> : null}
     <section className="party-mode-end__podium">{rows.slice(0, 3).map((row: any, index: number) => <div key={row.id} className={`is-rank-${index + 1}`} style={{ borderColor: `${row.color}66` }}><span>{medal(index)}</span><ProfileAvatar profile={row.profile} size={58} showStars={false} ringColor={row.color} noFrame /><b style={{ color: row.color }}>{String(row.name || "—").toUpperCase()}</b><small>{row.subtitle || ""}</small><strong style={{ color: row.color }}>{row.value}{row.suffix || ""}</strong></div>)}</section>
     {awards?.length ? <section className="party-mode-end__awards">{awards.slice(0, 4).map((a: any) => <div key={a.label}><span>{a.icon || "★"}</span><small>{a.label}</small><b style={{ color: a.color || accent }}>{a.name}</b><em>{a.value}</em></div>)}</section> : null}
     {progression?.unlocks?.length ? <section className="party-mode-end__progress">
@@ -332,6 +333,14 @@ export function TurnOutcomeCard({ outcome, accent = "#ffc04c", nextPlayer = "", 
     </div>
     {nextPlayer ? <aside><small>À SUIVRE</small><strong>{nextPlayer}</strong></aside> : null}
   </section>;
+}
+
+export function ModeVisitCenter({ value = "0", label = "VOLÉE", detail = "", accent = "#ffc04c", tone = "normal" }: any) {
+  return <div className={`party-mode-visit-center is-${tone}`} style={{ ["--visit-accent" as any]: accent }}>
+    <small>{label}</small>
+    <b>{value}</b>
+    {detail ? <span>{detail}</span> : null}
+  </div>;
 }
 
 export function AimAssistCard({ plan, accent = "#ffc04c", compact = false }: any) {

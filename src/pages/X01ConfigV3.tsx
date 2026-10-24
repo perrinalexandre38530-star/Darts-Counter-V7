@@ -2630,7 +2630,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   const [scoreInputMethod, setScoreInputMethod] = React.useState<ScoreInputMethod>(() => {
     try {
       const raw = localStorage.getItem(SCORE_INPUT_LS_KEY) || "keypad";
-      const method = sanitizeScoreInputMethod(raw);
+      const method = sanitizeScoreInputMethod(raw, { allowVisitScore: true });
       if (method !== raw) localStorage.setItem(SCORE_INPUT_LS_KEY, method);
       return method;
     } catch {}
@@ -2638,7 +2638,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   });
 
   const selectScoreInputMethod = React.useCallback((method: ScoreInputMethod) => {
-    const safeMethod = sanitizeScoreInputMethod(method);
+    const safeMethod = sanitizeScoreInputMethod(method, { allowVisitScore: true });
     setScoreInputMethod(safeMethod);
     try {
       localStorage.setItem(SCORE_INPUT_LS_KEY, safeMethod);
@@ -3771,7 +3771,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
 
     try {
       try {
-        localStorage.setItem(SCORE_INPUT_LS_KEY, sanitizeScoreInputMethod(scoreInputMethod));
+        localStorage.setItem(SCORE_INPUT_LS_KEY, sanitizeScoreInputMethod(scoreInputMethod, { allowVisitScore: true }));
       } catch {}
       x01PersistLastSelectedPlayerIds(effectivePlayerIds);
       x01BumpPlayerUsage(effectivePlayerIds);
@@ -4346,6 +4346,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                   <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Méthode de saisie</div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <PillButton label="KEYPAD" active={scoreInputMethod === "keypad"} onClick={() => selectScoreInputMethod("keypad")} primary={primary} primarySoft={primarySoft} compact />
+                    <PillButton label="SCORE VOLÉE" active={scoreInputMethod === "visit_score"} onClick={() => selectScoreInputMethod("visit_score")} primary={primary} primarySoft={primarySoft} compact />
                     <PillButton label="CIBLE" active={scoreInputMethod === "dartboard"} onClick={() => selectScoreInputMethod("dartboard")} primary={primary} primarySoft={primarySoft} compact />
                     <PillButton label="PRESETS" active={scoreInputMethod === "presets"} onClick={() => selectScoreInputMethod("presets")} primary={primary} primarySoft={primarySoft} compact />
                     <PillButton label="VOICE" active={scoreInputMethod === "voice"} onClick={() => selectScoreInputMethod("voice")} primary={primary} primarySoft={primarySoft} compact />
@@ -5094,7 +5095,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>
               {t(
                 "x01v3.inputMethod.desc",
-                "Choisis une saisie qui conserve chaque fléchette : keypad détaillé, cible, presets ou voix."
+                "Choisis ta saisie : keypad détaillé, score total de volée, cible, presets ou voix."
               )}
             </div>
 
@@ -5103,6 +5104,14 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                 label={t("x01v3.inputMethod.keypad", "KEYPAD")}
                 active={scoreInputMethod === "keypad"}
                 onClick={() => selectScoreInputMethod("keypad")}
+                primary={primary}
+                primarySoft={primarySoft}
+                compact
+              />
+              <PillButton
+                label={t("x01v3.inputMethod.visitScore", "SCORE VOLÉE")}
+                active={scoreInputMethod === "visit_score"}
+                onClick={() => selectScoreInputMethod("visit_score")}
                 primary={primary}
                 primarySoft={primarySoft}
                 compact
@@ -5134,7 +5143,9 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             </div>
 
             <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 8 }}>
-              {scoreInputMethod === "dartboard"
+              {scoreInputMethod === "visit_score"
+                ? t("x01v3.inputMethod.hintVisitScore", "SCORE VOLÉE : saisis directement le total 0–180. Les stats S/D/T ne sont pas disponibles pour ces volées agrégées.")
+                : scoreInputMethod === "dartboard"
                 ? t("x01v3.inputMethod.hintDartboard", "CIBLE : touche la cible pour saisir directement S/D/T.")
                 : scoreInputMethod === "presets"
                 ? t("x01v3.inputMethod.hintPresets", "PRESETS : raccourcis 1 tap avec détail des fléchettes pour préserver les stats.")

@@ -137,39 +137,61 @@ function _resumeIndexRemove(id: string) {
 
 function inferHistoryStatus(rec: any): "in_progress" | "finished" {
   try {
-    const raw = String(rec?.status || "").toLowerCase();
+    const finishedTokens = new Set(["finished", "finish", "done", "match_end", "match-end", "ended", "complete", "completed"]);
+    const liveTokens = new Set(["in_progress", "inprogress", "playing", "live", "running", "started", "active"]);
+    const tokens = [
+      rec?.status,
+      rec?.summary?.status,
+      rec?.payload?.status,
+      rec?.payload?.summary?.status,
+      rec?.decoded?.status,
+      rec?.decoded?.summary?.status,
+      rec?.resume?.status,
+      rec?.resume?.state?.status,
+      rec?.resume?.state?.phase,
+      rec?.payload?.state?.status,
+      rec?.payload?.state?.phase,
+      rec?.payload?.stateSnapshot?.status,
+      rec?.payload?.stateSnapshot?.phase,
+      rec?.decoded?.state?.status,
+      rec?.decoded?.state?.phase,
+    ].map((value) => String(value ?? "").trim().toLowerCase()).filter(Boolean);
 
-    // V3 FIX : un ancien header peut encore porter status="in_progress"
-    // alors qu'un upsert final a déjà ajouté winnerId/summary.finished.
-    // On privilégie donc les marqueurs de fin AVANT le raw in_progress.
-    if (raw === "finished" || raw === "done" || raw === "match_end" || raw === "ended") return "finished";
-
+    // Marqueurs de fin réels. Un simple bloc stats/rankings n'est PAS une preuve
+    // de fin : de nombreux moteurs calculent ces valeurs pendant la partie.
     const summary: any = rec?.summary || {};
-    if (summary?.finished === true) return "finished";
-    if (summary?.result?.finished === true) return "finished";
-    if (summary?.winnerId) return "finished";
-    if (summary?.result?.winnerId) return "finished";
-    if (Array.isArray(summary?.rankings) && summary.rankings.length > 0) return "finished";
-
-    if (rec?.winnerId) return "finished";
-
     const payload: any = rec?.payload || {};
-    if (payload?.winnerId || payload?.summary?.winnerId || payload?.summary?.finished === true || payload?.result?.winnerId || payload?.result?.finished === true) {
-      return "finished";
-    }
+    const decoded: any = rec?.decoded || {};
+    const resumeState: any = rec?.resume?.state || {};
+    const payloadState: any = payload?.stateSnapshot || payload?.state || {};
+    const hasExplicitFinish =
+      tokens.some((token) => finishedTokens.has(token)) ||
+      summary?.finished === true || summary?.result?.finished === true ||
+      payload?.summary?.finished === true || payload?.result?.finished === true ||
+      decoded?.summary?.finished === true || decoded?.result?.finished === true ||
+      resumeState?.finished === true || payloadState?.finished === true ||
+      !!rec?.finishedAt || !!summary?.finishedAt || !!payload?.finishedAt ||
+      !!rec?.winnerId || !!summary?.winnerId || !!summary?.result?.winnerId ||
+      !!payload?.winnerId || !!payload?.summary?.winnerId || !!payload?.result?.winnerId ||
+      !!decoded?.winnerId || !!decoded?.summary?.winnerId || !!decoded?.result?.winnerId;
+    if (hasExplicitFinish) return "finished";
 
-    if (raw === "in_progress" || raw === "inprogress" || raw === "playing" || raw === "live") return "in_progress";
+    // Un checkpoint live explicite gagne sur tout contenu statistique présent.
+    if (tokens.some((token) => liveTokens.has(token))) return "in_progress";
 
     const resume: any = rec?.resume || {};
-    if (resume?.state || resume?.config || (Array.isArray(resume?.darts) && resume.darts.length > 0)) {
+    if (resume?.state || resume?.config || resume?.livePayload || (Array.isArray(resume?.darts) && resume.darts.length > 0)) {
       return "in_progress";
     }
 
-    if (payload?.result || payload?.summary || payload?.stats) return "finished";
+    // Sans marqueur live ni fin, un vrai résultat final peut être considéré terminé.
+    if (summary?.result?.winnerId || payload?.result?.winnerId || decoded?.result?.winnerId) return "finished";
 
-    return "finished";
+    // Fallback conservateur : mieux vaut laisser une partie relançable que la
+    // classer à tort en terminée et perdre l'action REPRENDRE.
+    return "in_progress";
   } catch {
-    return "finished";
+    return "in_progress";
   }
 }
 

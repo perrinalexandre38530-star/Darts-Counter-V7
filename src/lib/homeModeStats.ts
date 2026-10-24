@@ -5,6 +5,8 @@
 // Tolérant aux anciens formats + payload.stats des modes récents.
 // ============================================================
 
+import { isQuickPartyRecord } from "./quickParty";
+
 export type HomeModeSlide = {
   id: string;
   title: string;
@@ -961,6 +963,10 @@ export function buildHomeModeSlides(
   const byMode = new Map<string, ModeAgg>();
 
   for (const record of Array.isArray(matches) ? matches : []) {
+    // Les PARTIES RAPIDES restent dans leur historique dédié et ne doivent
+    // jamais alimenter les stats d'un profil tant qu'elles n'ont pas été
+    // explicitement converties/associées depuis Historique > Parties rapides.
+    if (isQuickPartyRecord(record) || record?.profileStatsDeferred === true || record?.summary?.profileStatsDeferred === true || record?.payload?.profileStatsDeferred === true) continue;
     const mode = detectHomeMode(record);
     if (excluded.has(mode) || !recordMatchesSport(record, mode, requestedSport)) continue;
 

@@ -1425,7 +1425,7 @@ function useHistoryAPI(enabled = true, focusMode?: string | null): SavedMatch[] 
       const arr = toArr<SavedMatch>(list);
 
       // Keep fast: only hydrate records likely used by the dashboard.
-      const NEED = new Set(["x01", "cricket", "killer", "challenge", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "castle", "gotcha", "hare_hounds", "pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase", "cargo", "ocean_control", "football", "prisoner", "loterie", "warfare", "tour", "clock", "battle_royale", "territories", "darts_firefighter", "five_lives", "gros_6", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
+      const NEED = new Set(["x01", "cricket", "killer", "challenge", "super_bull", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "castle", "gotcha", "hare_hounds", "pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase", "cargo", "ocean_control", "football", "prisoner", "loterie", "warfare", "tour", "clock", "battle_royale", "territories", "darts_firefighter", "five_lives", "gros_6", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
       const focusedMode = (() => {
         const key = String(focusMode || "").trim();
         if (key === "x01_multi" || key === "x01_compare") return "x01";
@@ -1732,6 +1732,7 @@ function classifyRecordMode(rec: SavedMatch): string {
   if (tag.includes("cricket")) return "cricket";
   if (tag.includes("killer")) return "killer";
   if (tag.includes("challenge")) return "challenge";
+  if (tag.includes("super_bull") || tag.includes("super bull") || tag.includes("superbull")) return "super_bull";
   if (tag.includes("shanghai")) return "shanghai";
   if (tag.includes("golf")) return "golf";
   if (tag.includes("darts_firefighter") || tag.includes("darts firefighter") || tag.includes("firefighter")) return "darts_firefighter";
@@ -5159,6 +5160,140 @@ function TrainingHitsBySegment({ sessions }: TrainingHitsBySegmentProps) {
 }
 
 
+
+function SuperBullStatsPanel({ records, playerId, playerName }: { records: any[]; playerId?: string | null; playerName?: string | null }) {
+  const normId = (v: any) => String(v ?? "").replace(/^online:/, "");
+  const pid = normId(playerId || "");
+  const pname = normPlayerName(playerName || "");
+  const isQuick = (row: any) => Boolean(
+    row?.quickParty === true || row?.summary?.quickParty === true || row?.payload?.quickParty === true || row?.payload?.summary?.quickParty === true ||
+    String(row?.entryMode ?? row?.summary?.entryMode ?? row?.payload?.entryMode ?? row?.payload?.config?.entryMode ?? "").toLowerCase() === "quick"
+  );
+  const finished = (row: any) => {
+    const status = lc(row?.status ?? row?.summary?.status ?? row?.payload?.status ?? row?.payload?.summary?.status);
+    return status === "finished" || status === "done" || status === "completed" || row?.summary?.finished === true || row?.payload?.summary?.finished === true;
+  };
+  const readPlayer = (row: any) => {
+    const sources = [
+      row?.summary?.perPlayer,
+      row?.payload?.summary?.perPlayer,
+      row?.payload?.stats?.players,
+      row?.payload?.players,
+      row?.players,
+    ].filter(Array.isArray) as any[][];
+    for (const arr of sources) {
+      const hit = arr.find((entry: any) => {
+        const id = normId(entry?.id ?? entry?.playerId ?? entry?.profileId);
+        const name = normPlayerName(entry?.name ?? entry?.displayName ?? entry?.playerName ?? "");
+        return (pid && id === pid) || (!!pname && name === pname);
+      });
+      if (hit) return hit;
+    }
+    return null;
+  };
+  const readWinnerId = (row: any) => normId(
+    row?.winnerId ?? row?.summary?.winnerId ?? row?.payload?.winnerId ?? row?.payload?.summary?.winnerId ?? row?.summary?.superBullRanking?.[0]?.playerId ?? row?.payload?.summary?.superBullRanking?.[0]?.playerId ?? ""
+  );
+  const rows = (records || [])
+    .filter((row: any) => classifyRecordMode(row as any) === "super_bull")
+    .filter((row: any) => !isQuick(row) && finished(row))
+    .map((row: any) => {
+      const pl = readPlayer(row);
+      if (!pl) return null;
+      const summary = row?.summary ?? row?.payload?.summary ?? {};
+      const id = normId(pl?.id ?? pl?.playerId ?? pl?.profileId);
+      const score = N(pl?.score ?? pl?.points ?? summary?.finalScores?.[id] ?? 0);
+      const darts = N(pl?.darts ?? pl?.dartsThrown ?? 0);
+      const bulls = N(pl?.bulls ?? pl?.bull25 ?? pl?.superBullBulls ?? pl?.special?.bulls ?? 0);
+      const dbulls = N(pl?.dbulls ?? pl?.bull50 ?? pl?.superBullDbulls ?? pl?.special?.dbulls ?? 0);
+      const centres = N(pl?.centreHits ?? pl?.centres ?? pl?.superBullCentres ?? (bulls + dbulls));
+      const misses = N(pl?.misses ?? Math.max(0, darts - centres));
+      const precision = N(pl?.centreAccuracy ?? pl?.accuracy ?? (darts ? centres / darts * 100 : 0));
+      const bestStreak = N(pl?.bestBullStreak ?? pl?.bestStreak ?? pl?.special?.bestStreak ?? 0);
+      const perfectVisits = N(pl?.perfectBullVisits ?? pl?.perfectVisits ?? pl?.special?.perfectVisits ?? 0);
+      const bestVisit = N(pl?.bestVisit ?? pl?.special?.bestVisit ?? 0);
+      const visits = N(pl?.visits ?? pl?.turns ?? (darts ? Math.ceil(darts / 3) : 0));
+      const pos = Array.isArray(pl?.positionStats) ? pl.positionStats : Array.isArray(pl?.special?.positionStats) ? pl.special.positionStats : [];
+      const positionStats = [1,2,3].map((slot) => {
+        const raw = pos.find((x: any) => N(x?.position) === slot) || {};
+        const pdarts = N(raw?.darts ?? raw?.attempts ?? 0);
+        const pbulls = N(raw?.bulls ?? raw?.bull25 ?? 0);
+        const pdbulls = N(raw?.dbulls ?? raw?.bull50 ?? 0);
+        const phits = N(raw?.hits ?? raw?.centres ?? (pbulls + pdbulls));
+        const pmiss = N(raw?.misses ?? Math.max(0, pdarts - phits));
+        const ppoints = N(raw?.points ?? (pbulls * 25 + pdbulls * 50));
+        const pacc = N(raw?.accuracy ?? raw?.centreAccuracy ?? (pdarts ? phits / pdarts * 100 : 0));
+        return { position: slot, darts: pdarts, bulls: pbulls, dbulls: pdbulls, hits: phits, misses: pmiss, points: ppoints, accuracy: pacc };
+      });
+      const at = N(row?.finishedAt ?? row?.updatedAt ?? row?.createdAt ?? row?.ts ?? row?.created_at, Date.now());
+      const win = readWinnerId(row) ? readWinnerId(row) === id : Boolean(pl?.winner || pl?.isWinner || N(pl?.rank) === 1);
+      return { score, darts, bulls, dbulls, centres, misses, precision, bestStreak, perfectVisits, bestVisit, visits, positionStats, at, win };
+    })
+    .filter(Boolean) as any[];
+
+  const total = rows.length;
+  const sum = (key: string) => rows.reduce((acc: number, row: any) => acc + N(row?.[key]), 0);
+  const totalDarts = sum("darts");
+  const totalBulls = sum("bulls");
+  const totalDbulls = sum("dbulls");
+  const totalCentres = sum("centres");
+  const totalMisses = sum("misses");
+  const totalScore = sum("score");
+  const totalVisits = sum("visits");
+  const wins = rows.filter((r: any) => r.win).length;
+  const accuracy = totalDarts ? totalCentres / totalDarts * 100 : 0;
+  const dbullRate = totalDarts ? totalDbulls / totalDarts * 100 : 0;
+  const avgVisit = totalVisits ? totalScore / totalVisits : 0;
+  const avgDart = totalDarts ? totalScore / totalDarts : 0;
+  const bestScore = rows.reduce((m: number, r: any) => Math.max(m, N(r.score)), 0);
+  const bestVisit = rows.reduce((m: number, r: any) => Math.max(m, N(r.bestVisit)), 0);
+  const bestStreak = rows.reduce((m: number, r: any) => Math.max(m, N(r.bestStreak)), 0);
+  const perfectVisits = rows.reduce((m: number, r: any) => m + N(r.perfectVisits), 0);
+  const positions = [1,2,3].map((slot) => {
+    const list = rows.map((r: any) => r.positionStats?.find?.((x: any) => N(x.position) === slot)).filter(Boolean);
+    const darts = list.reduce((a: number, x: any) => a + N(x.darts), 0);
+    const bulls = list.reduce((a: number, x: any) => a + N(x.bulls), 0);
+    const dbulls = list.reduce((a: number, x: any) => a + N(x.dbulls), 0);
+    const hits = list.reduce((a: number, x: any) => a + N(x.hits), 0);
+    const misses = list.reduce((a: number, x: any) => a + N(x.misses), 0);
+    const points = list.reduce((a: number, x: any) => a + N(x.points), 0);
+    const acc = darts ? hits / darts * 100 : 0;
+    return { slot, darts, bulls, dbulls, hits, misses, points, accuracy: acc };
+  });
+  const recent = rows.slice().sort((a:any,b:any)=>N(a.at)-N(b.at)).slice(-12);
+
+  const panel: React.CSSProperties = { borderRadius: 18, border: "1px solid rgba(41,222,255,.18)", background: "linear-gradient(180deg,rgba(8,18,29,.92),rgba(5,11,18,.96))", padding: 12 };
+  const kpi = (label: string, value: React.ReactNode, sub?: string, color = "#29deff") => <div style={{...panel,minHeight:78,display:"grid",alignContent:"center",textAlign:"center"}}><div style={{fontSize:8,color:"#8ea8ba",fontWeight:1000,letterSpacing:.7}}>{label}</div><div style={{fontSize:23,fontWeight:1000,color,marginTop:3}}>{value}</div>{sub?<div style={{fontSize:8,color:"#8293a3",marginTop:2}}>{sub}</div>:null}</div>;
+
+  if (!total) return <div style={{...panel,padding:18,textAlign:"center"}}><div style={{fontWeight:1000,color:"#29deff"}}>SUPER BULL — Stats</div><div style={{marginTop:8,color:"#9aabba",fontSize:12}}>Aucune partie Arcade SUPER BULL terminée pour ce profil. Les Parties Rapides restent volontairement séparées.</div></div>;
+
+  return <div style={{display:"grid",gap:10}}>
+    <div style={{...panel,padding:14}}><div style={{fontWeight:1000,letterSpacing:1,color:"#29deff"}}>SUPER BULL — STATS LIFETIME</div><div style={{marginTop:5,fontSize:11,color:"#9eb1c0"}}>{total} partie{total>1?"s":""} Arcade · {wins} victoire{wins>1?"s":""} · les Parties Rapides ne sont pas mélangées aux profils.</div></div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8}}>
+      {kpi("PARTIES", total, `${wins} victoire${wins>1?"s":""}`)}
+      {kpi("WIN RATE", `${Math.round((wins/Math.max(1,total))*100)}%`)}
+      {kpi("PRÉCISION CENTRE", `${accuracy.toFixed(1)}%`, `${totalCentres}/${totalDarts} fléchettes`, "#70efad")}
+      {kpi("BULL25", totalBulls, undefined, "#70efad")}
+      {kpi("BULL50", totalDbulls, `${dbullRate.toFixed(1)}% des darts`, "#ffd76a")}
+      {kpi("MISS", totalMisses, undefined, "#ff8f9e")}
+      {kpi("BEST SCORE", bestScore, undefined, "#ffd76a")}
+      {kpi("BEST VOLÉE", `${bestVisit} pts`)}
+      {kpi("BEST SÉRIE", bestStreak)}
+      {kpi("VOLÉES 100%", perfectVisits)}
+      {kpi("MOY. / VOLÉE", avgVisit.toFixed(1))}
+      {kpi("MOY. / DART", avgDart.toFixed(1))}
+    </div>
+    <div style={panel}>
+      <div style={{fontSize:10,fontWeight:1000,letterSpacing:.8,color:"#29deff",marginBottom:8}}>PRÉCISION PAR FLÉCHETTE</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8}}>{positions.map((p:any)=><div key={p.slot} style={{borderRadius:15,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.035)",padding:10,textAlign:"center"}}><div style={{fontSize:10,fontWeight:1000,color:"#8fdcff"}}>D{p.slot}</div><div style={{fontSize:26,fontWeight:1000,marginTop:3}}>{p.accuracy.toFixed(1)}%</div><div style={{fontSize:8,color:"#92a3b0",lineHeight:1.5,marginTop:4}}>B25 {p.bulls} · B50 {p.dbulls}<br/>MISS {p.misses} · {p.points} pts</div></div>)}</div>
+    </div>
+    <div style={panel}>
+      <div style={{fontSize:10,fontWeight:1000,letterSpacing:.8,color:"#29deff"}}>12 DERNIÈRES PARTIES</div>
+      <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.max(1,recent.length)},minmax(20px,1fr))`,gap:5,alignItems:"end",height:120,marginTop:10}}>{recent.map((r:any,i:number)=>{const max=Math.max(1,...recent.map((x:any)=>N(x.score)));const h=Math.max(8,(N(r.score)/max)*100);return <div key={`${r.at}-${i}`} style={{display:"grid",alignItems:"end",height:"100%",textAlign:"center"}}><div title={`${r.score} pts · ${r.precision.toFixed(1)}% centre`} style={{height:`${h}%`,minHeight:8,borderRadius:"7px 7px 2px 2px",background:"linear-gradient(180deg,#29deff,#137796)",boxShadow:"0 0 12px rgba(41,222,255,.14)"}}/><div style={{fontSize:7,color:"#8da0af",marginTop:3}}>{r.score}</div></div>})}</div>
+    </div>
+  </div>;
+}
+
 function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]; playerId?: string | null; playerName?: string | null }) {
   const normId = (v: any) => String(v ?? "").replace(/^online:/, "");
   const pid = normId(playerId || "");
@@ -5975,6 +6110,7 @@ const modeDefs = React.useMemo(
               { key: "shanghai", label: "Shanghai" },
               { key: "killer", label: "Killer" },
               { key: "challenge", label: "Challenge" },
+              { key: "super_bull", label: "SUPER BULL" },
               { key: "golf", label: "Golf" },
               { key: "battle_royale", label: "Battle Royale" },
               { key: "warfare", label: "Warfare" },
@@ -7732,6 +7868,7 @@ const modeThemeColor: Record<string, string> = {
   training: "#71c9ff",
   killer: "#ff6a3c",
   shanghai: "#ffb000",
+  super_bull: "#29deff",
   golf: "#f6c256",
   territories: "#4ac29a",
   darts_firefighter: "#ff6b27",
@@ -7792,6 +7929,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     cricket: "Cricket",
     killer: "Killer",
     challenge: "Challenge",
+    super_bull: "SUPER BULL",
     shanghai: "Shanghai",
     golf: "Golf",
     battle_royale: "Battle Royale",
@@ -7829,7 +7967,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     darts_firefighter: "DARTS FIREFIGHTER",
     clock: "Tour de l’horloge",
   };
-  const order = ["x01", "killer", "challenge", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "gros_6", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "castle", "gotcha", "hare_hounds", "pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase", "cargo", "ocean_control", "football", "prisoner", "loterie", "capital", "batard", "territories", "darts_firefighter", "clock"];
+  const order = ["x01", "killer", "challenge", "super_bull", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "gros_6", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "castle", "gotcha", "hare_hounds", "pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase", "cargo", "ocean_control", "football", "prisoner", "loterie", "capital", "batard", "territories", "darts_firefighter", "clock"];
   const n = (v: any, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
   const sumNumericValues = (v: any): number => {
     if (!v || typeof v !== "object") return 0;
@@ -8262,6 +8400,13 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     if (!pid || !recordHasPlayer(r as any, pid, selectedPlayer?.name)) continue;
     const mode = classifyRecordMode(r as any);
     if (!mode || mode === "other") continue;
+    if (mode === "super_bull") {
+      const quickParty = Boolean(
+        (r as any)?.quickParty === true || (r as any)?.summary?.quickParty === true || (r as any)?.payload?.quickParty === true || (r as any)?.payload?.summary?.quickParty === true ||
+        String((r as any)?.entryMode ?? (r as any)?.summary?.entryMode ?? (r as any)?.payload?.entryMode ?? (r as any)?.payload?.config?.entryMode ?? "").toLowerCase() === "quick"
+      );
+      if (quickParty) continue;
+    }
     const a = byMode[mode] || (byMode[mode] = {
       key: mode,
       label: modeLabels[mode] || mode.toUpperCase(),
@@ -9393,6 +9538,21 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
           { label: "Best score", value: fmtStatValue(a.best || 0), tone: "blue" },
           { label: "Précision", value: (a.hits + a.miss) ? fmtStatValue(accuracy, "%") : "—", tone: "green" },
         ]
+      : a.key === "super_bull"
+      ? [
+          { label: "Parties", value: fmtStatValue(a.matches), tone: "gold" },
+          { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
+          { label: "Points", value: fmtStatValue(a.points || 0), tone: "gold" },
+          { label: "Pts/match", value: fmtStatValue(a.matches ? a.points / a.matches : 0), tone: "gold" },
+          { label: "Précision centre", value: (a.darts || a.hits) ? fmtStatValue(accuracy, "%") : "—", tone: "green" },
+          { label: "BULL25", value: fmtStatValue(a.bullHits || 0), tone: "green" },
+          { label: "BULL50", value: fmtStatValue(a.dbullHits || 0), tone: "red" },
+          { label: "MISS", value: fmtStatValue(a.missHits || a.miss || 0), tone: "red" },
+          { label: "Best volée", value: fmtStatValue(a.bestRound || a.best || 0), tone: "blue" },
+          { label: "Best série", value: fmtStatValue(a.bestStreak || 0), tone: "blue" },
+          { label: "Volées 100%", value: fmtStatValue(a.extra || 0), tone: "green" },
+          { label: "Fléchettes", value: fmtStatValue(a.darts || 0), tone: "blue" },
+        ]
       : a.key === "golf"
       ? [
           { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
@@ -10313,6 +10473,16 @@ return (
             {currentMode === "challenge" && (
               <div style={card}>
                 <ChallengeStatsPanel
+                  records={detailRecords as any[]}
+                  playerId={selectedPlayer?.id || null}
+                  playerName={selectedPlayer?.name || null}
+                />
+              </div>
+            )}
+
+            {currentMode === "super_bull" && (
+              <div style={card}>
+                <SuperBullStatsPanel
                   records={detailRecords as any[]}
                   playerId={selectedPlayer?.id || null}
                   playerName={selectedPlayer?.name || null}

@@ -500,40 +500,38 @@ function detectKindMode(rec: any, decoded: any | null) {
 }
 
 function detectStatus(rec: any, decoded: any | null): "finished" | "in_progress" {
-  const raw = safeLower(rec?.status || "");
-  if (raw === "finished" || raw === "done" || raw === "match_end" || raw === "ended") return "finished";
+  const finishedTokens = new Set(["finished", "finish", "done", "match_end", "match-end", "ended", "complete", "completed"]);
+  const liveTokens = new Set(["inprogress", "in_progress", "playing", "live", "running", "started", "active"]);
+  const d = decoded || {};
+  const tokens = [
+    rec?.status,
+    rec?.summary?.status,
+    rec?.payload?.status,
+    rec?.payload?.summary?.status,
+    rec?.resume?.state?.status,
+    rec?.resume?.state?.phase,
+    rec?.payload?.state?.status,
+    rec?.payload?.state?.phase,
+    rec?.payload?.stateSnapshot?.status,
+    rec?.payload?.stateSnapshot?.phase,
+    d?.status,
+    d?.summary?.status,
+    d?.state?.status,
+    d?.state?.phase,
+  ].map((value) => safeLower(value || "")).filter(Boolean);
 
-  // V3 FIX : un header peut encore avoir status="in_progress" après fusion,
-  // donc on cherche d'abord les marqueurs solides de fin.
   const s = rec?.summary || rec?.payload?.summary || {};
   const winnerId =
-    rec?.winnerId ||
-    s?.winnerId ||
-    s?.result?.winnerId ||
-    rec?.payload?.winnerId ||
-    null;
+    rec?.winnerId || s?.winnerId || s?.result?.winnerId || rec?.payload?.winnerId ||
+    rec?.payload?.summary?.winnerId || d?.winnerId || d?.summary?.winnerId || d?.result?.winnerId || null;
 
-  if (winnerId) return "finished";
+  if (tokens.some((token) => finishedTokens.has(token))) return "finished";
+  if (winnerId || rec?.finishedAt || s?.finishedAt || rec?.payload?.finishedAt) return "finished";
+  if (s?.finished === true || s?.result?.finished === true || d?.summary?.finished === true || d?.result?.finished === true) return "finished";
 
-  // certains moteurs stockent rankings ou finished explicitement
-  if (s?.finished === true) return "finished";
-  if (s?.result?.finished === true) return "finished";
-  if (Array.isArray(s?.rankings) && s.rankings.length) return "finished";
-
-  // decoded payload : même logique (pas "summary existe" => finished)
-  const d = decoded || {};
-  const dw =
-    d?.winnerId ||
-    d?.summary?.winnerId ||
-    d?.result?.winnerId ||
-    null;
-
-  if (dw) return "finished";
-  if (d?.summary?.finished === true) return "finished";
-  if (d?.result?.finished === true) return "finished";
-  if (Array.isArray(d?.rankings) && d.rankings.length) return "finished";
-
-  if (raw === "inprogress" || raw === "in_progress" || raw === "playing" || raw === "live") return "in_progress";
+  // Rankings/stats peuvent exister pendant le live (P'TIT 1, Challenge, Crados, etc.).
+  if (tokens.some((token) => liveTokens.has(token))) return "in_progress";
+  if (rec?.resume?.state || rec?.resume?.config || rec?.resume?.livePayload) return "in_progress";
   return "in_progress";
 }
 

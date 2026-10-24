@@ -30,8 +30,15 @@ export default function ClosestCenterConfig(props: any) {
   const [inputMode, setInputMode] = React.useState<"camera"|"manual">("camera");
   const [configMode, setConfigMode] = React.useState<"guided"|"complete">("guided");
   const [guidedStep, setGuidedStep] = React.useState(0);
+  const [landscape, setLandscape] = React.useState(() => typeof window !== "undefined" ? window.innerWidth > window.innerHeight && window.innerWidth >= 760 : false);
 
   const ticker = getTicker("closest_center") || getTicker("darts_games") || "";
+
+  React.useEffect(() => {
+    const sync = () => setLandscape(window.innerWidth > window.innerHeight && window.innerWidth >= 760);
+    sync(); window.addEventListener("resize", sync); window.addEventListener("orientationchange", sync);
+    return () => { window.removeEventListener("resize", sync); window.removeEventListener("orientationchange", sync); };
+  }, []);
 
   React.useEffect(() => {
     setSelectedIds(prev => prev.slice(0, fmt.total));
@@ -119,7 +126,7 @@ export default function ClosestCenterConfig(props: any) {
       <div style={{...note,borderColor:"#8fffc255",background:"#39d98a10"}}><b>Saisie manuelle épurée :</b> tu ne renseignes que les fléchettes qui marquent. Aucun besoin de classer toutes les fléchettes ni de mesurer des millimètres.</div>
       <div style={{...note,borderColor:"#ffce5c55",background:"#ffce5c10"}}><b>Variantes disponibles :</b> Top 5 (5/4/3/2/1) ou “seul le plus proche”. Elles restent séparées de la règle Pétanque.</div>
     </section>
-    <section style={card}><h3 style={subtitle}>AWENA · EXPLICATION VISUELLE</h3><picture><source media="(max-width: 840px)" srcSet={petanqueExplainPortrait}/><img src={petanqueExplainLandscape} alt="Awena vous explique Darts Pétanque" style={{width:"100%",display:"block",borderRadius:16,border:"1px solid rgba(68,231,255,.26)",background:"#02070d"}}/></picture></section>
+    {!landscape ? <section style={card}><h3 style={subtitle}>AWENA · EXPLICATION VISUELLE</h3><picture><source media="(max-width: 840px)" srcSet={petanqueExplainPortrait}/><img src={petanqueExplainLandscape} alt="Awena vous explique Darts Pétanque" style={{width:"100%",display:"block",borderRadius:16,border:"1px solid rgba(68,231,255,.26)",background:"#02070d"}}/></picture></section> : null}
   </>;
 
   const renderFormat = () => <section style={card}>
@@ -189,21 +196,37 @@ export default function ClosestCenterConfig(props: any) {
     </>}
   </section>;
 
-  return <div style={{height:"100%",display:"flex",flexDirection:"column",background:"linear-gradient(180deg,#07111b,#04070d)",color:"#fff"}}>
-    <PageHeader tickerSrc={ticker} tickerAlt="DARTS PÉTANQUE" tickerHeight={74} left={<BackDot onClick={()=>go?.("games")} color={ACCENT}/>}/>
-    <div style={{flex:1,overflow:"auto",padding:12,display:"grid",gap:12,maxWidth:980,width:"100%",margin:"0 auto"}}>
-      <section style={{...card,padding:9,display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-        <button style={modeBtn(configMode==="guided")} onClick={()=>setConfigMode("guided")}>CONFIG GUIDÉE</button>
-        <button style={modeBtn(configMode==="complete")} onClick={()=>setConfigMode("complete")}>CONFIG COMPLÈTE</button>
-      </section>
-      {configMode==="guided"?<>
-        <section style={{...card,padding:8,display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:6}}>{steps.map((step,i)=><button key={step} onClick={()=>setGuidedStep(i)} style={{minHeight:44,borderRadius:12,border:`1px solid ${i===guidedStep?ACCENT:"rgba(255,255,255,.08)"}`,background:i===guidedStep?`${ACCENT}1f`:"rgba(255,255,255,.025)",color:i===guidedStep?"#fff":"#8798a6",fontWeight:1000,fontSize:9}}>{i+1}<br/>{step}</button>)}</section>
-        {guidedStep===0?renderConcept():guidedStep===1?renderFormat():guidedStep===2?renderPlayers():guidedStep===3?renderRule():renderInput()}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-          <button disabled={!canPrev} onClick={()=>setGuidedStep(v=>Math.max(0,v-1))} style={{...navBtn,opacity:canPrev?1:.35}}>← PRÉCÉDENT</button>
-          {canNext?<button onClick={()=>setGuidedStep(v=>Math.min(steps.length-1,v+1))} style={navBtn}>SUIVANT →</button>:<button disabled={!canStart} onClick={start} style={{...navBtn,borderColor:ACCENT,background:`${ACCENT}20`,opacity:canStart?1:.4}}>{inputMode==="camera"?"LANCER L’ENRÔLEMENT IA →":"LANCER LA PARTIE MANUELLE →"}</button>}
-        </div>
-      </>:<>{renderConcept()}{renderFormat()}{renderPlayers()}{renderRule()}{renderInput()}<button disabled={!canStart} onClick={start} style={{minHeight:54,borderRadius:18,border:`1px solid ${ACCENT}`,background:`linear-gradient(135deg,${ACCENT}33,#1677ff33)`,color:"#fff",fontWeight:1000,fontSize:16,opacity:canStart?1:.45}}>{inputMode==="camera"?"LANCER L’ENRÔLEMENT IA →":"LANCER LA PARTIE MANUELLE →"}</button></>}
+  const configMain = <div style={{display:"grid",gap:10,alignContent:"start"}}>
+    <section style={{...card,padding:8,display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
+      <button style={modeBtn(configMode==="guided")} onClick={()=>setConfigMode("guided")}>CONFIG GUIDÉE</button>
+      <button style={modeBtn(configMode==="complete")} onClick={()=>setConfigMode("complete")}>CONFIG COMPLÈTE</button>
+    </section>
+    {configMode==="guided"?<>
+      <section style={{...card,padding:7,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(64px,1fr))",gap:5}}>{steps.map((step,i)=><button key={step} onClick={()=>setGuidedStep(i)} style={{minHeight:42,borderRadius:11,border:`1px solid ${i===guidedStep?ACCENT:"rgba(255,255,255,.08)"}`,background:i===guidedStep?`${ACCENT}1f`:"rgba(255,255,255,.025)",color:i===guidedStep?"#fff":"#8798a6",fontWeight:1000,fontSize:8}}>{i+1}<br/>{step}</button>)}</section>
+      {guidedStep===0?renderConcept():guidedStep===1?renderFormat():guidedStep===2?renderPlayers():guidedStep===3?renderRule():renderInput()}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        <button disabled={!canPrev} onClick={()=>setGuidedStep(v=>Math.max(0,v-1))} style={{...navBtn,opacity:canPrev?1:.35}}>← PRÉCÉDENT</button>
+        {canNext?<button onClick={()=>setGuidedStep(v=>Math.min(steps.length-1,v+1))} style={navBtn}>SUIVANT →</button>:<button disabled={!canStart} onClick={start} style={{...navBtn,borderColor:ACCENT,background:`${ACCENT}20`,opacity:canStart?1:.4}}>{inputMode==="camera"?"LANCER L’ENRÔLEMENT IA →":"LANCER LA PARTIE MANUELLE →"}</button>}
+      </div>
+    </>:<>{renderConcept()}{renderFormat()}{renderPlayers()}{renderRule()}{renderInput()}<button disabled={!canStart} onClick={start} style={{minHeight:52,borderRadius:16,border:`1px solid ${ACCENT}`,background:`linear-gradient(135deg,${ACCENT}33,#1677ff33)`,color:"#fff",fontWeight:1000,fontSize:15,opacity:canStart?1:.45}}>{inputMode==="camera"?"LANCER L’ENRÔLEMENT IA →":"LANCER LA PARTIE MANUELLE →"}</button></>}
+  </div>;
+
+  const landscapeAside = <aside style={{...card,padding:10,display:"grid",gridTemplateRows:"auto minmax(0,1fr) auto",gap:8,minHeight:0,overflow:"hidden",background:"linear-gradient(180deg,rgba(11,25,36,.98),rgba(5,11,17,.98))"}}>
+    <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><div><div style={{fontSize:9,color:ACCENT,fontWeight:1000,letterSpacing:1.1}}>AWENA EXPLIQUE</div><b style={{fontSize:13}}>DARTS PÉTANQUE</b></div><span style={{padding:"5px 8px",borderRadius:999,border:`1px solid ${inputMode==="camera"?ACCENT:"#8fffc2"}55`,fontSize:9,fontWeight:1000,color:inputMode==="camera"?ACCENT:"#8fffc2"}}>{inputMode==="camera"?"📷 CAMÉRA IA":"✍️ MANUEL"}</span></div>
+    <div style={{minHeight:0,overflow:"hidden",display:"grid",placeItems:"center"}}><img src={petanqueExplainLandscape} alt="Awena vous explique Darts Pétanque" style={{width:"100%",height:"100%",maxHeight:"100%",objectFit:"contain",display:"block",borderRadius:14,border:"1px solid rgba(68,231,255,.22)",background:"#02070d"}}/></div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:6}}>
+      <div style={summaryKpi}><span>FORMAT</span><b>{String(fmt.label).split(" · ")[0]}</b></div>
+      <div style={summaryKpi}><span>RÈGLE</span><b>{pointsMode==="petanque"?`PÉTANQUE · ${targetScore}`:pointsMode==="descending"?"TOP 5":"PLUS PROCHE"}</b></div>
+      <div style={summaryKpi}><span>JOUEURS</span><b>{selectedIds.length}/{fmt.total}</b></div>
+      <div style={summaryKpi}><span>FLÉCHETTES</span><b>{fmt.darts}/JOUEUR</b></div>
+    </div>
+  </aside>;
+
+  return <div style={{height:"100%",minHeight:0,display:"flex",flexDirection:"column",overflow:"hidden",background:"linear-gradient(180deg,#07111b,#04070d)",color:"#fff"}}>
+    <PageHeader tickerSrc={ticker} tickerAlt="DARTS PÉTANQUE" tickerHeight={landscape?56:72} left={<BackDot onClick={()=>go?.("games")} color={ACCENT}/>}/>
+    <div style={{flex:1,minHeight:0,overflow:"hidden",padding:landscape?9:12,maxWidth:landscape?1320:980,width:"100%",margin:"0 auto",display:"grid",gridTemplateColumns:landscape?"minmax(0,1.22fr) minmax(330px,.78fr)":"1fr",gap:10}}>
+      <div style={{minHeight:0,overflow:"auto",paddingRight:landscape?2:0}}>{configMain}</div>
+      {landscape ? landscapeAside : null}
     </div>
   </div>;
 }
@@ -216,3 +239,4 @@ const grid:React.CSSProperties={display:"flex",gap:8,flexWrap:"wrap",marginTop:8
 const pill=(active:boolean):React.CSSProperties=>({minHeight:38,padding:"7px 12px",borderRadius:999,border:`1px solid ${active?ACCENT:"rgba(255,255,255,.12)"}`,background:active?`${ACCENT}22`:"rgba(255,255,255,.03)",color:"#fff",fontWeight:900});
 const modeBtn=(active:boolean):React.CSSProperties=>({minHeight:50,borderRadius:14,border:`1px solid ${active?ACCENT:"rgba(255,255,255,.1)"}`,background:active?`linear-gradient(135deg,${ACCENT}25,#1677ff20)`:"rgba(255,255,255,.025)",color:active?"#fff":"#8fa0ae",fontWeight:1000,fontSize:12,letterSpacing:.6,padding:"8px 10px",textAlign:"left"});
 const navBtn:React.CSSProperties={minHeight:48,borderRadius:14,border:"1px solid rgba(255,255,255,.14)",background:"rgba(255,255,255,.05)",color:"#fff",fontWeight:1000};
+const summaryKpi:React.CSSProperties={padding:"7px 8px",borderRadius:10,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.03)",minWidth:0};

@@ -748,38 +748,53 @@ function getKnownPlayers(store: Store, entries: SavedEntry[]): { id: string; lab
 }
 
 function statusOf(e: SavedEntry): "finished" | "in_progress" {
-  // CHALLENGE possède toujours un status explicite depuis sa première fléchette.
-  // Ses rankings/stats existent aussi pendant le live et ne sont donc JAMAIS une preuve de fin.
-  if (isChallengeHistoryEntry(e)) {
-    const anyE: any = e as any;
-    const challengeStatus = String(anyE?.status || anyE?.summary?.status || anyE?.payload?.status || anyE?.payload?.summary?.status || anyE?.decoded?.status || anyE?.decoded?.summary?.status || "").toLowerCase();
-    const challengeFinished = anyE?.summary?.finished === true || anyE?.payload?.summary?.finished === true || anyE?.decoded?.summary?.finished === true || !!anyE?.finishedAt;
-    if (challengeStatus === "finished" || challengeFinished) return "finished";
-    return "in_progress";
-  }
+  const anyE: any = e as any;
+  const finishedTokens = new Set(["finished", "finish", "done", "match_end", "match-end", "ended", "complete", "completed"]);
+  const liveTokens = new Set(["in_progress", "inprogress", "playing", "live", "running", "started", "active"]);
+  const tokens = [
+    anyE?.status,
+    anyE?.summary?.status,
+    anyE?.payload?.status,
+    anyE?.payload?.summary?.status,
+    anyE?.decoded?.status,
+    anyE?.decoded?.summary?.status,
+    anyE?.resume?.status,
+    anyE?.resume?.state?.status,
+    anyE?.resume?.state?.phase,
+    anyE?.payload?.state?.status,
+    anyE?.payload?.state?.phase,
+    anyE?.payload?.stateSnapshot?.status,
+    anyE?.payload?.stateSnapshot?.phase,
+    anyE?.decoded?.state?.status,
+    anyE?.decoded?.state?.phase,
+  ].map((value) => String(value ?? "").trim().toLowerCase()).filter(Boolean);
 
-  // 1️⃣ Status explicite : un checkpoint de reprise doit rester prioritaire.
-  // Certains modes (dont CRADOS) transportent déjà un bloc stats pendant la
-  // partie ; ce bloc ne doit jamais suffire à reclasser la ligne en « terminée ».
-  const raw = String(e.status || "").toLowerCase();
-  if (raw === "finished") return "finished";
-  if (raw === "inprogress" || raw === "in_progress" || raw === "playing" || raw === "live") return "in_progress";
+  const summary: any = anyE?.summary || {};
+  const payload: any = anyE?.payload || {};
+  const decoded: any = anyE?.decoded || {};
+  const resumeState: any = anyE?.resume?.state || {};
+  const payloadState: any = payload?.stateSnapshot || payload?.state || {};
 
-  // 2️⃣ Summary direct
-  const s: any = e.summary || {};
-  if (s.finished === true) return "finished";
-  if (s.result?.finished === true) return "finished";
+  // Une partie n'est terminée que sur un marqueur de fin réel. La présence de
+  // stats, rankings ou perPlayer est normale pendant le live pour de nombreux jeux.
+  const hasExplicitFinish =
+    tokens.some((token) => finishedTokens.has(token)) ||
+    summary?.finished === true || summary?.result?.finished === true ||
+    payload?.summary?.finished === true || payload?.result?.finished === true ||
+    decoded?.summary?.finished === true || decoded?.result?.finished === true ||
+    resumeState?.finished === true || payloadState?.finished === true ||
+    !!anyE?.finishedAt || !!summary?.finishedAt || !!payload?.finishedAt ||
+    !!anyE?.winnerId || !!summary?.winnerId || !!summary?.result?.winnerId ||
+    !!payload?.winnerId || !!payload?.summary?.winnerId || !!payload?.result?.winnerId ||
+    !!decoded?.winnerId || !!decoded?.summary?.winnerId || !!decoded?.result?.winnerId;
+  if (hasExplicitFinish) return "finished";
 
-  // 3️⃣ Indices forts de fin
-  if (s.winnerId) return "finished";
-  if (Array.isArray(s.rankings) && s.rankings.length > 0) return "finished";
-  if (Array.isArray(s.players) && s.players.length > 0 && s.result) return "finished";
+  // Un status/checkpoint live explicite doit rester prioritaire, y compris pour
+  // P'TIT 1, CRADOS, CHALLENGE, etc. qui exposent déjà leurs stats pendant la partie.
+  if (tokens.some((token) => liveTokens.has(token))) return "in_progress";
+  if (anyE?.resume?.state || anyE?.resume?.config || anyE?.resume?.livePayload) return "in_progress";
 
-  // 4️⃣ Payload décodé
-  const d: any = e.decoded || {};
-  if (d.summary || d.result || d.stats) return "finished";
-
-  // 5️⃣ Fallback legacy
+  // Fallback conservateur : garder REPRENDRE plutôt que perdre une partie live.
   return "in_progress";
 }
 
@@ -2048,10 +2063,13 @@ function SuperBullHistoryScoreBlock({ e, theme }: { e: SavedEntry; theme: any })
       {rows.slice(0,4).map((r:any,index:number)=>{
         const p:any=byId.get(String(r.playerId)); const pid=String(r.playerId||p?.id||"");
         const name=historyScoreName(e,p)||getName(p)||`Joueur ${index+1}`;
-        const darts=Number(summary?.darts?.[pid]||summary?.perPlayer?.find?.((x:any)=>String(x?.id)===pid)?.darts||0);
-        const centres=Number(r.centres ?? summary?.centreHitsByPlayer?.[pid] ?? 0);
-        const precision=Number(r.centreAccuracy ?? summary?.centreAccuracyByPlayer?.[pid] ?? (darts?centres/darts*100:0));
-        return `${name}: DBULL ${Number(r.dbulls||0)} • centre ${precision.toFixed(1)}% • série ${Number(r.bestStreak||0)} • volées parfaites ${Number(r.perfectVisits||0)}`;
+        const playerRow:any=summary?.perPlayer?.find?.((x:any)=>String(x?.id)===pid);
+        const darts=Number(summary?.darts?.[pid]||playerRow?.darts||0);
+        const centres=Number(r.centres ?? summary?.centreHitsByPlayer?.[pid] ?? playerRow?.centreHits ?? 0);
+        const precision=Number(r.centreAccuracy ?? summary?.centreAccuracyByPlayer?.[pid] ?? playerRow?.centreAccuracy ?? (darts?centres/darts*100:0));
+        const positions=Array.isArray(playerRow?.positionStats) ? playerRow.positionStats : [];
+        const posLabel=positions.length ? ` • D1/D2/D3 ${[1,2,3].map((slot)=>{const ps=positions.find((x:any)=>Number(x?.position)===slot);return ps?`${Number(ps?.accuracy||0).toFixed(0)}%`:'—';}).join('/')}` : '';
+        return `${name}: DBULL ${Number(r.dbulls||0)} • centre ${precision.toFixed(1)}% • série ${Number(r.bestStreak||0)} • volées parfaites ${Number(r.perfectVisits||0)}${posLabel}`;
       }).join("  |  ")}
     </div>
   </div>;
@@ -4967,6 +4985,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
     {
       const rawMode = normalizeToken(inferredMode || baseMode(e));
       const routeByMode: Record<string, string> = {
+        // Modes récents
         castle: "castle_play",
         gotcha: "gotcha_play",
         harehounds: "hare_hounds_play",
@@ -4984,6 +5003,36 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
         steeplechase: "steeplechase_play",
         ptithun: "ptit_hun_play",
         ptit_hun: "ptit_hun_play",
+        // Modes historiques : une carte EN COURS doit toujours revenir au moteur
+        // qui l'a créée, jamais tomber sur le fallback X01.
+        battleroyale: "battle_royale_play",
+        battle_royale: "battle_royale_play",
+        warfare: "warfare_play",
+        fivelives: "five_lives_play",
+        five_lives: "five_lives_play",
+        les5vies: "five_lives_play",
+        scram: "scram_play",
+        baseball: "baseball_play",
+        attrapemoi: "attrape_moi_play",
+        attrape_moi: "attrape_moi_play",
+        president: "president_play",
+        bobs27: "bobs_27_play",
+        bobs_27: "bobs_27_play",
+        halveit: "halve_it_play",
+        halve_it: "halve_it_play",
+        shooter: "shooter_play",
+        dartsracer: "darts_racer_play",
+        darts_racer: "darts_racer_play",
+        mariokart: "darts_racer_play",
+        mario_kart: "darts_racer_play",
+        prisoner: "prisoner_play",
+        capital: "capital_play",
+        territories: "departements_play",
+        territoires: "departements_play",
+        departements: "departements_play",
+        bowling: "bowling_play",
+        superbull: "super_bull_play",
+        super_bull: "super_bull_play",
       };
       const canonicalByMode: Record<string, string> = {
         harehounds: "hare_hounds",
@@ -4992,6 +5041,18 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
         "51_by_5": "fifty_one_by_five",
         callthree: "call_three",
         ptithun: "ptit_hun",
+        battleroyale: "battle_royale",
+        fivelives: "five_lives",
+        les5vies: "five_lives",
+        attrapemoi: "attrape_moi",
+        bobs27: "bobs_27",
+        halveit: "halve_it",
+        dartsracer: "darts_racer",
+        mariokart: "darts_racer",
+        mario_kart: "darts_racer",
+        territories: "departements",
+        territoires: "departements",
+        superbull: "super_bull",
       };
       const newModeRoute = routeByMode[rawMode] || null;
       if (newModeRoute && statusOf(e) === "in_progress") {
@@ -5120,6 +5181,28 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
 
     const m = baseMode(e);
     const inferredMode = inferGameFilterKey(e, "darts");
+    const sportKey = inferSportKey(e);
+
+    // Sports hors Darts : le bouton Voir stats doit ouvrir leur historique/statistiques
+    // dédié, jamais le fallback X01.
+    if (sportKey === "petanque") {
+      const full = await hydrateSavedEntry(e);
+      const matchId = String((full as any)?.id || (full as any)?.matchId || e.id || resumeId || "");
+      go("petanque_stats_history", { focusMatchId: matchId, matchId, rec: full, from: "history" });
+      return;
+    }
+    if (sportKey === "pingpong") {
+      const full = await hydrateSavedEntry(e);
+      const matchId = String((full as any)?.id || (full as any)?.matchId || e.id || resumeId || "");
+      go("pingpong_stats_history", { focusMatchId: matchId, matchId, rec: full, from: "history" });
+      return;
+    }
+    if (sportKey === "molkky") {
+      const full = await hydrateSavedEntry(e);
+      const matchId = String((full as any)?.id || (full as any)?.matchId || e.id || resumeId || "");
+      go("molkky_stats_history", { focusMatchId: matchId, matchId, rec: full, from: "history" });
+      return;
+    }
 
     // ✅ DARTS PÉTANQUE · PLUS PRÈS DU CENTRE : fiche dédiée, jamais le fallback X01.
     if (["closest_center", "closestcenter"].includes(normalizeToken(m)) || ["closest_center", "closestcenter"].includes(normalizeToken(inferredMode))) {
@@ -5756,6 +5839,8 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
               <>
 	            {visibleFiltered.map((e) => {
             const inProg = statusOf(e) === "in_progress";
+            const quickParty = isQuickPartyRecord(e);
+            const quickParticipants = quickParty ? quickPartyParticipants(e) : [];
             const key = matchLink(e) || e.id;
             const historyVisits = !inProg && isX01HistoryRecord(e) ? buildX01HistoryVisits(e) : [];
             const historyPlayersById = buildHistoryPlayersById(e, store);
@@ -5764,8 +5849,8 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
             return (
               <ScaledCard key={key} baseStyle={sportCardStyle(getModeColor(e))}>
                 <img src={sportLogoForKind(baseMode(e) || e.kind)} style={S.watermarkLogo} />
-                <div style={S.rowBetween}>
-                  <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ ...S.rowBetween, alignItems: "flex-start", gap: 8, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", minWidth: 0, flex: "1 1 220px" }}>
                     <span
                       style={{
                         padding: "4px 10px",
@@ -5782,7 +5867,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                       {modeLabel(e)}
                     </span>
 
-                    {isQuickPartyRecord(e) ? (
+                    {quickParty ? (
                       <span style={{ padding: "4px 10px", borderRadius: 999, fontSize: 10, fontWeight: 950, background: "rgba(82,245,178,.10)", border: "1px solid rgba(82,245,178,.7)", color: "#baffdf" }}>
                         ⚡ PARTIE RAPIDE
                       </span>
@@ -5804,30 +5889,45 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                       {inProg ? "En cours" : "Terminé"}
                     </span>
                   </div>
-                  <span style={{ fontSize: 11, color: theme.primary }}>{fmtDate(historyPlayedAt(e))}</span>
+                  <span style={{ fontSize: 10.5, color: theme.primary, flex: "0 0 auto", marginLeft: "auto", whiteSpace: "nowrap" }}>{fmtDate(historyPlayedAt(e))}</span>
                 </div>
 
-                <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.9)", fontWeight: 800 }}>
+                <div style={{ marginTop: 8, fontSize: 11.5, lineHeight: 1.4, color: "rgba(255,255,255,0.9)", fontWeight: 800, whiteSpace: "normal", overflowWrap: "anywhere" }}>
                   <HistoryScoreLine e={e} theme={theme} />
                 </div>
 
-                <div style={{ ...S.rowBetween, marginTop: 10 }}>
-                  <div style={S.avatars}>
-                    {getHistoryAvatarPlayersInFinalOrder(e).slice(0, 6).map((p, i) => {
-                      const nm = getName(p);
-                      const url = getAvatarUrl(store, p);
-                      return (
-                        <div key={i} style={{ ...S.avWrap, marginLeft: i === 0 ? 0 : -8 }}>
-                          <ProfileAvatar
-                            profile={{ ...(p || {}), id: getId(p), name: nm, avatarDataUrl: url || (p as any)?.avatarDataUrl || makeAvatarPlaceholderDataUrl(nm, getId(p)) }}
-                            size={42}
-                            showStars={false}
-                            noFrame
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
+                <div style={{ ...S.rowBetween, marginTop: 10, gap: 8, alignItems: "center" }}>
+                  {quickParty ? (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5, minWidth: 0, flex: "1 1 auto" }}>
+                      {quickParticipants.slice(0, 10).map((participant: any, index: number) => {
+                        const pid = String(participant?.temporaryPlayerId || participant?.id || `p${index + 1}`);
+                        const name = String(participant?.name || `J${index + 1}`);
+                        const linkedId = quickPartyProfileLinks(e)[pid];
+                        return (
+                          <span key={pid} style={{ minHeight: 28, padding: "5px 8px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 5, background: linkedId ? "rgba(82,245,178,.12)" : "rgba(255,255,255,.06)", border: `1px solid ${linkedId ? "rgba(82,245,178,.48)" : "rgba(255,255,255,.12)"}`, color: linkedId ? "#baffdf" : "rgba(255,255,255,.84)", fontSize: 10, fontWeight: 900 }}>
+                            <b>{`J${index + 1}`}</b>{name !== `J${index + 1}` ? <span style={{ opacity: .86 }}>{name}</span> : null}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div style={{ ...S.avatars, minWidth: 0, flex: "1 1 auto" }}>
+                      {getHistoryAvatarPlayersInFinalOrder(e).slice(0, 6).map((p, i) => {
+                        const nm = getName(p);
+                        const url = getAvatarUrl(store, p);
+                        return (
+                          <div key={i} style={{ ...S.avWrap, marginLeft: i === 0 ? 0 : -8 }}>
+                            <ProfileAvatar
+                              profile={{ ...(p || {}), id: getId(p), name: nm, avatarDataUrl: url || (p as any)?.avatarDataUrl || makeAvatarPlaceholderDataUrl(nm, getId(p)) }}
+                              size={42}
+                              showStars={false}
+                              noFrame
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
 
                   {(() => {
                     const winnerName = !inProg ? deriveHistoryWinnerName(e) : "";
@@ -5842,49 +5942,53 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                   })()}
                 </div>
 
-                <div style={S.actionRow}>
-                  {inProg ? (
-                    <div style={S.primaryAction} onClick={() => goResume(e, false)}>
-                      <Icon.Play />
-                    </div>
-                  ) : (
-                    <div style={S.primaryAction} onClick={() => goStats(e)}>
-                      <Icon.Eye /> Voir stats
-                    </div>
-                  )}
+                <div style={{ marginTop: 12, position: "relative", zIndex: 20, display: "grid", gap: 8, width: "100%", maxWidth: "100%" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: quickParty ? "repeat(2, minmax(0,1fr))" : "minmax(0,1fr)", gap: 7, minWidth: 0 }}>
+                    {inProg ? (
+                      <button type="button" style={{ ...S.primaryAction, maxWidth: "none", width: "100%", minHeight: 40 }} onClick={(event) => { event.stopPropagation(); void goResume(e, false); }}>
+                        <Icon.Play /> REPRENDRE
+                      </button>
+                    ) : (
+                      <button type="button" style={{ ...S.primaryAction, maxWidth: "none", width: "100%", minHeight: 40 }} onClick={(event) => { event.stopPropagation(); void goStats(e); }}>
+                        <Icon.Eye /> VOIR STATS
+                      </button>
+                    )}
 
-                  {isQuickPartyRecord(e) ? (
-                    <button
-                      type="button"
-                      onClick={() => openQuickProfileLinks(e)}
-                      style={{ ...S.primaryAction, border: "1px solid rgba(82,245,178,.65)", color: "#baffdf", background: "rgba(82,245,178,.08)" }}
-                    >
-                      ASSOCIER PROFILS {Object.keys(quickPartyProfileLinks(e)).length}/{quickPartyParticipants(e).length}
+                    {quickParty ? (
+                      <button
+                        type="button"
+                        onClick={(event) => { event.stopPropagation(); openQuickProfileLinks(e); }}
+                        style={{ ...S.primaryAction, maxWidth: "none", width: "100%", minHeight: 40, border: "1px solid rgba(82,245,178,.65)", color: "#baffdf", background: "rgba(82,245,178,.08)", fontSize: 9.5, lineHeight: 1.15, whiteSpace: "normal" }}
+                      >
+                        ASSOCIER PROFILS {Object.keys(quickPartyProfileLinks(e)).length}/{quickParticipants.length}
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {inProg ? (
+                    <button type="button" style={{ ...S.primaryAction, maxWidth: "none", width: "100%", minHeight: 36, opacity: .88 }} onClick={(event) => { event.stopPropagation(); void goStats(e); }}>
+                      <Icon.Eye /> STATS ACTUELLES
                     </button>
                   ) : null}
 
-                  <div style={S.iconRow}>
-                    {inProg && (
-                      <div style={S.iconBtn} onClick={() => goResume(e, true)} title="Voir (sans reprendre)">
+                  <div style={{ display: "grid", gridTemplateColumns: `repeat(${inProg ? 5 : 4}, minmax(0,1fr))`, gap: 7, width: "100%", minWidth: 0 }}>
+                    {inProg ? (
+                      <button type="button" style={{ ...S.iconBtn, width: "100%" }} onClick={(event) => { event.stopPropagation(); void goResume(e, true); }} title="Aperçu sans reprendre">
                         <Icon.Eye />
-                      </div>
-                    )}
-
-                    <div style={S.iconBtn} onClick={() => handleShare(e)} title="Partager le vrai fichier de partie">
+                      </button>
+                    ) : null}
+                    <button type="button" style={{ ...S.iconBtn, width: "100%" }} onClick={(event) => { event.stopPropagation(); void handleShare(e); }} title="Partager le vrai fichier de partie">
                       <Icon.Share />
-                    </div>
-
-                    <div style={S.iconBtn} onClick={() => handleExportMatchFile(e)} title="Enregistrer le fichier dans Téléchargements">
+                    </button>
+                    <button type="button" style={{ ...S.iconBtn, width: "100%" }} onClick={(event) => { event.stopPropagation(); void handleExportMatchFile(e); }} title="Enregistrer le fichier dans Téléchargements">
                       <Icon.Export />
-                    </div>
-
-                    <div style={S.iconBtn} onClick={() => handleSendToFriend(e)} title="Envoyer directement à un ami">
+                    </button>
+                    <button type="button" style={{ ...S.iconBtn, width: "100%" }} onClick={(event) => { event.stopPropagation(); void handleSendToFriend(e); }} title="Envoyer directement à un ami">
                       <Icon.Send />
-                    </div>
-
-                    <div style={{ ...S.iconBtn, ...S.iconDanger }} onClick={() => handleDelete(e)} title="Supprimer">
+                    </button>
+                    <button type="button" style={{ ...S.iconBtn, ...S.iconDanger, width: "100%" }} onClick={(event) => { event.stopPropagation(); void handleDelete(e); }} title="Supprimer">
                       <Icon.Trash />
-                    </div>
+                    </button>
                   </div>
                 </div>
 

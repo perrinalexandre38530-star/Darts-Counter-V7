@@ -2667,7 +2667,7 @@ const isBotTurn = React.useMemo(() => {
   // 🎤 Voice scoring (MVP) — dictée 3 fléchettes + confirmation
   // - Ignore automatiquement si scoringSource=external ou BOT
   // =====================================================
-  const configuredScoreInputBase = sanitizeScoreInputMethod((config as any)?.scoreInputDefaultMethod, { allowVisitScore: isQuickParty });
+  const configuredScoreInputBase = sanitizeScoreInputMethod((config as any)?.scoreInputDefaultMethod, { allowVisitScore: true });
   const [configuredScoreInputMethod, setConfiguredScoreInputMethod] = React.useState<any>(configuredScoreInputBase);
   React.useEffect(() => {
     setConfiguredScoreInputMethod(configuredScoreInputBase);
@@ -6468,7 +6468,7 @@ try {
               onCorrectVisitScore={onlineCanScore ? handleCorrectVisitScore : (() => {})}
               visitScoreFeedback={visitScoreFeedback}
               preferredMethod={configuredScoreInputMethod}
-              allowVisitScore={isQuickParty}
+              allowVisitScore={isQuickParty || configuredScoreInputMethod === "visit_score"}
               quickVisitSwitcher={isQuickParty}
               onMethodChange={isQuickParty ? setConfiguredScoreInputMethod : undefined}
               voiceControl={{
@@ -9570,7 +9570,7 @@ function saveX01V3MatchToHistory({
     legsPerSet: (config as any)?.legsPerSet ?? 1,
   });
 
-  const scoreInputDefaultMethodForHistory = sanitizeScoreInputMethod((config as any)?.scoreInputDefaultMethod, { allowVisitScore: (config as any)?.quickParty === true || String((config as any)?.partyMode || "") === "quick" });
+  const scoreInputDefaultMethodForHistory = sanitizeScoreInputMethod((config as any)?.scoreInputDefaultMethod, { allowVisitScore: true });
   const isVisitScoreInputForHistory =
     scoreInputDefaultMethodForHistory === "visit_score" ||
     (Array.isArray(replayDarts) && replayDarts.some((d: any) => d?.source === "visit_score" || d?.scoreInputMode === "visit_score")) ||

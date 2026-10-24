@@ -36,10 +36,10 @@ export function sanitizeScoreInputMethod(
   value: unknown,
   options?: { allowVisitScore?: boolean }
 ): ScoreInputMethod {
-  // SCORE VOLÉE reste volontairement interdit dans l'expérience ARCADE car un
-  // total 0..180 ne décrit pas les segments réels. PARTIE RAPIDE l'autorise
-  // explicitement et marque ensuite ces volées comme agrégées dans l'historique.
-  if (value === "visit_score") return options?.allowVisitScore ? "visit_score" : "keypad";
+  // SCORE VOLÉE est disponible en PARTIE RAPIDE et désormais aussi en X01 ARCADE
+  // lorsqu'il est explicitement choisi dans la configuration. Les stats de segments
+  // S/D/T restent naturellement indisponibles pour ces volées agrégées.
+  if (value === "visit_score") return options?.allowVisitScore === false ? "keypad" : "visit_score";
   if (value === "keypad" || value === "dartboard" || value === "presets" || value === "voice") {
     return value;
   }

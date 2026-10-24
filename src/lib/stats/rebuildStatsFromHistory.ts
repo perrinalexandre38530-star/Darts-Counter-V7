@@ -23,6 +23,7 @@ export type GameKey =
   | "killer"
   | "golf"
   | "shanghai"
+  | "super_bull"
   | "territories"
   | "darts_firefighter"
   | "pendu"
@@ -286,6 +287,7 @@ function createEmptyStatsIndex(includeNonFinished = false): StatsIndex {
       killer: { mode: "killer", matches: 0, finished: 0, inProgress: 0, saved: 0 },
       golf: { mode: "golf", matches: 0, finished: 0, inProgress: 0, saved: 0 },
       shanghai: { mode: "shanghai", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      super_bull: { mode: "super_bull", matches: 0, finished: 0, inProgress: 0, saved: 0 },
       territories: { mode: "territories", matches: 0, finished: 0, inProgress: 0, saved: 0 },
       darts_firefighter: { mode: "darts_firefighter", matches: 0, finished: 0, inProgress: 0, saved: 0 },
       pendu: { mode: "pendu", matches: 0, finished: 0, inProgress: 0, saved: 0 },
@@ -311,6 +313,7 @@ function createEmptyStatsIndex(includeNonFinished = false): StatsIndex {
       killer: [],
       golf: [],
       shanghai: [],
+      super_bull: [],
       territories: [],
       darts_firefighter: [],
       pendu: [],
@@ -479,6 +482,7 @@ function normalizeGameKey(rec: any, payload: any): GameKey {
   if (g.includes("killer")) return "killer";
   if (g.includes("golf")) return "golf";
   if (g.includes("shanghai")) return "shanghai";
+  if (g.includes("super_bull") || g.includes("super bull") || g.includes("superbull")) return "super_bull";
   if (g.includes("darts_firefighter") || g.includes("darts firefighter") || g.includes("firefighter")) return "darts_firefighter";
   if (g.includes("pendu") || g.includes("hangman")) return "pendu";
   if (g.includes("menteur") || g.includes("bluff")) return "menteur";
@@ -782,6 +786,7 @@ function extractGenericDartsMode(mode: GameKey, payload: any, ts: number | undef
       validVisits: 0, invalidVisits: 0, busts: 0, rawPoints: 0, quotientPoints: 0, highestRaw: 0,
       lifeLosses: 0, shieldsUsed: 0, shieldsEarned: 0, targetsSet: 0, loopsSurvived: 0,
       perfectRounds: 0, callsMade: 0, fencesCleared: 0, bullFinishes: 0, steps: 0,
+      centreHits: 0, bestBullStreak: 0, perfectBullVisits: 0, centreAccuracySum: 0, centreAccuracyCount: 0,
     };
     cur.points += points;
     cur.darts += dartsThrown;
@@ -808,6 +813,11 @@ function extractGenericDartsMode(mode: GameKey, payload: any, ts: number | undef
     cur.triples += Number(pl?.triples ?? 0) || 0;
     cur.bulls += Number(pl?.bulls ?? 0) || 0;
     cur.dbulls += Number(pl?.dbulls ?? 0) || 0;
+    cur.centreHits += Number(pl?.centreHits ?? pl?.hits ?? 0) || 0;
+    cur.bestBullStreak = Math.max(Number(cur.bestBullStreak || 0), Number(pl?.bestBullStreak ?? pl?.bestStreak ?? 0) || 0);
+    cur.perfectBullVisits += Number(pl?.perfectBullVisits ?? pl?.perfectVisits ?? 0) || 0;
+    const __centreAccuracy = Number(pl?.centreAccuracy ?? pl?.accuracy ?? 0) || 0;
+    if (__centreAccuracy > 0) { cur.centreAccuracySum += __centreAccuracy; cur.centreAccuracyCount += 1; }
     cur.scoringHits += Number(pl?.scoringHits ?? 0) || 0;
     cur.blockedDarts += Number(pl?.blockedDarts ?? 0) || 0;
     cur.wastedDarts += Number(pl?.wastedDarts ?? 0) || 0;
@@ -1257,6 +1267,7 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
   five_lives: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
   scram: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
   capital: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
+  super_bull: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
   batard: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
 };
 
