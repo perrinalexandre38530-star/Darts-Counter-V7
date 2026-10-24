@@ -60,7 +60,10 @@ mustInclude(play, [
   "CORRIGER LA DERNIÈRE VOLÉE",
   "setGameOver(false)",
   "savedRef.current = false",
-], "gameplay/reprise/correction");
+  "const hasExplicitBots = explicitMask.some(Boolean)",
+  "resolveBotLevel(targetPlayerIdx = playerIdx)",
+  "botLevel: botMask[i] ? resolveBotLevel(i) : undefined",
+], "gameplay/reprise/correction/bots");
 
 assert.ok(play.includes('setPlayerIdx(playerCount > 0 ? completedVisits % playerCount : 0)'), "correction: joueur actif non restauré");
 assert.ok(play.includes('setRoundIdx(playerCount > 0 ? Math.floor(completedVisits / playerCount) : 0)'), "correction: round non restauré");

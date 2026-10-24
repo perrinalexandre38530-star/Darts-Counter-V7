@@ -17,9 +17,10 @@ import {
 } from "../../catalog/trainingExerciseCatalog";
 import { buildCoachProgram, buildCustomProgram, TRAINING_PROGRAMS, type TrainingProgramDefinition, type TrainingProgramBuildOptions } from "../../catalog/trainingProgramCatalog";
 import { loadTrainingLabPreferences, setTrainingFamilyGoal, setTrainingFamilyGoalDeadline, setTrainingWeeklySessionTarget, toggleFavoriteExercise, toggleFavoriteProgram, type TrainingLabPreferences } from "../../preferences/trainingLabPreferences";
-import { buildTrainingWeeklyPlanStats, loadTrainingProgramSessions } from "../../profile/trainingPlanTracker";
+import { buildTrainingCycleComparison, buildTrainingWeeklyPlanStats, clearTrainingProgramDraft, loadTrainingProgramDraft, loadTrainingProgramSessions } from "../../profile/trainingPlanTracker";
 import { buildTrainingLoadSummary } from "../../profile/trainingLoadCoach";
 import { buildTrainingWeekCoachPlan, loadTrainingNextRecommendation } from "../../profile/trainingWeeklyCoach";
+import { buildTrainingCareer } from "../../profile/trainingCareer";
 
 const familyOrder: TrainingExerciseFamily[] = ["scoring", "doubles", "checkout", "precision", "bull", "regularity"];
 type HubTab = "program" | "exercises" | "diagnosis" | "progress";
@@ -38,11 +39,13 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
     window.addEventListener("dc-training-history-updated", refresh);
     window.addEventListener("dc-training-plan-updated", refresh);
     window.addEventListener("dc-training-next-recommendation-updated", refresh);
+    window.addEventListener("dc-training-program-draft-updated", refresh);
     return () => {
       window.removeEventListener("dc-training-stats-updated", refresh);
       window.removeEventListener("dc-training-history-updated", refresh);
       window.removeEventListener("dc-training-plan-updated", refresh);
       window.removeEventListener("dc-training-next-recommendation-updated", refresh);
+      window.removeEventListener("dc-training-program-draft-updated", refresh);
     };
   }, []);
   React.useEffect(() => {
@@ -60,6 +63,8 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
     return loadTrainingProgramSessions();
   }, [revision]);
   const weeklyPlan = React.useMemo(() => buildTrainingWeeklyPlanStats(programSessions, preferences.weeklySessionTarget), [programSessions, preferences.weeklySessionTarget]);
+  const cycleComparison = React.useMemo(() => buildTrainingCycleComparison(programSessions, 4), [programSessions]);
+  const programDraft = React.useMemo(() => { void revision; return loadTrainingProgramDraft(); }, [revision]);
   const loadSummary = React.useMemo(() => buildTrainingLoadSummary(programSessions, preferences.weeklySessionTarget), [programSessions, preferences.weeklySessionTarget]);
   const diagnosis = React.useMemo(() => buildTrainingDiagnosis(sessions), [sessions]);
   const recommendedFamily = React.useMemo(() => chooseGoalPriorityFamily(diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines), [diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines]);
@@ -67,6 +72,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
   const nextRecommendation = React.useMemo(() => { void revision; return loadTrainingNextRecommendation(); }, [revision]);
   const progression = React.useMemo(() => buildTrainingProgression(sessions), [sessions]);
   const goalStatuses = React.useMemo(() => buildTrainingGoalStatuses(diagnosis, preferences.familyGoals), [diagnosis, preferences.familyGoals]);
+  const career = React.useMemo(() => buildTrainingCareer(programSessions, progression, weeklyPlan), [programSessions, progression, weeklyPlan]);
   const prescription = React.useMemo(() => buildGoalAwareCoachPrescription(diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines), [diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines]);
   const coachProgram = React.useMemo(() => buildCoachProgram(recommendedFamily), [recommendedFamily]);
   const programs = React.useMemo(() => {
@@ -155,6 +161,23 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
     setProgramId(`custom_${duration}_${focus}_${loadSummary.status === "high" || loadSummary.status === "recovery" ? "accessible" : "standard"}`);
   };
 
+  const resumeProgramDraft = () => {
+    if (!programDraft) return;
+    onStart({
+      programId: programDraft.programId,
+      programTitle: programDraft.programTitle,
+      programDurationMin: programDraft.durationMin,
+      programExerciseIds: programDraft.exerciseIds,
+      exerciseId: programDraft.exerciseIds[programDraft.nextStepIndex] || programDraft.exerciseIds[0],
+      family: programDraft.focusFamily !== "balanced" ? programDraft.focusFamily : recommendedFamily,
+      programFocusFamily: programDraft.focusFamily,
+      sessionKind: "program",
+      resumeStepIndex: programDraft.nextStepIndex,
+      resumeProgramResults: programDraft.completedSteps,
+      ...buildTrainingParticipantConfig(participants, profiles),
+    });
+  };
+
   const tabs: Array<{ id: HubTab; label: string }> = [
     { id: "program", label: "PROGRAMME" },
     { id: "exercises", label: "EXERCICES" },
@@ -179,6 +202,18 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
               <span style={{ fontSize: 9, padding: "4px 7px", borderRadius: 999, background: prescription.gap <= 0 ? "rgba(80,255,174,.10)" : "rgba(255,184,76,.08)", border: prescription.gap <= 0 ? "1px solid rgba(80,255,174,.20)" : "1px solid rgba(255,184,76,.16)" }}>{prescription.gap <= 0 ? "OBJECTIF ATTEINT" : `ÉCART ${Math.ceil(prescription.gap)} PTS`}</span>
             </div>
           </div>
+
+          {programDraft && <div style={{ marginTop: 10, padding: 12, borderRadius: 15, border: "1px solid rgba(255,216,107,.28)", background: "linear-gradient(135deg,rgba(255,216,107,.08),rgba(140,90,255,.045))", display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ minWidth: 0, flex: "1 1 280px" }}>
+              <div style={{ fontSize: 8, fontWeight: 950, color: "#ffd86b", letterSpacing: 1 }}>PROGRAMME INTERROMPU</div>
+              <div style={{ marginTop: 3, fontSize: 11, fontWeight: 950 }}>{programDraft.programTitle}</div>
+              <div style={{ marginTop: 3, fontSize: 8.8, opacity: .6 }}>Étape {programDraft.nextStepIndex + 1}/{programDraft.exerciseIds.length} • {programDraft.completedSteps.length} étape{programDraft.completedSteps.length > 1 ? "s" : ""} déjà enregistrée{programDraft.completedSteps.length > 1 ? "s" : ""} • sauvegardé {new Date(programDraft.savedAt).toLocaleString()}</div>
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button type="button" disabled={!resolved.length} onClick={resumeProgramDraft} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,216,107,.38)", background: "rgba(255,216,107,.10)", color: "inherit", fontSize: 8.5, fontWeight: 950, cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .45 }}>REPRENDRE À L’ÉTAPE {programDraft.nextStepIndex + 1}</button>
+              <button type="button" onClick={() => clearTrainingProgramDraft()} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.035)", color: "inherit", fontSize: 8.5, fontWeight: 850, cursor: "pointer" }}>ABANDONNER</button>
+            </div>
+          </div>}
 
           {nextRecommendation && <div style={{ marginTop: 10, padding: 11, borderRadius: 14, border: "1px solid rgba(185,156,255,.20)", background: "rgba(140,90,255,.055)", display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <div style={{ minWidth: 0, flex: "1 1 260px" }}>
@@ -214,6 +249,21 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 <div style={{ padding: 8, borderRadius: 10, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 12 }}>{programSessions.length}</b><div style={{ fontSize: 7.5, opacity: .48 }}>SÉANCES SUIVIES</div></div>
               </div>
               <button type="button" onClick={() => { setProgramId(coachProgram.id); }} style={{ width: "100%", marginTop: 9, padding: 9, borderRadius: 10, border: "1px solid rgba(80,255,174,.28)", background: "rgba(80,255,174,.08)", color: "inherit", fontSize: 9.5, fontWeight: 950, cursor: "pointer" }}>PROCHAINE SÉANCE AWENA • {coachProgram.title}</button>
+            </div>
+
+            <div style={{ marginTop: 10, padding: 12, borderRadius: 15, border: cycleComparison.direction === "up" ? "1px solid rgba(80,255,174,.22)" : cycleComparison.direction === "down" ? "1px solid rgba(255,184,76,.24)" : "1px solid rgba(255,255,255,.09)", background: cycleComparison.direction === "up" ? "rgba(80,255,174,.045)" : cycleComparison.direction === "down" ? "rgba(255,184,76,.045)" : "rgba(255,255,255,.025)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: 1, opacity: .58 }}>COMPARAISON DE CYCLES</div>
+                  <div style={{ marginTop: 3, fontSize: 12, fontWeight: 950 }}>{cycleComparison.headline}</div>
+                  <div style={{ marginTop: 3, fontSize: 8.8, opacity: .56 }}>4 dernières séances vs 4 précédentes • régularité {Math.round(cycleComparison.consistency)}/100</div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,auto)", gap: 6, textAlign: "center" }}>
+                  <div style={{ padding: "6px 8px", borderRadius: 9, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 11 }}>{Math.round(cycleComparison.recentAverage)}</b><div style={{ fontSize: 6.8, opacity: .43 }}>ACTUEL</div></div>
+                  <div style={{ padding: "6px 8px", borderRadius: 9, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 11 }}>{cycleComparison.previousSessions ? Math.round(cycleComparison.previousAverage) : "—"}</b><div style={{ fontSize: 6.8, opacity: .43 }}>AVANT</div></div>
+                  <div style={{ padding: "6px 8px", borderRadius: 9, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 11, color: cycleComparison.delta > 3 ? "#8cffcb" : cycleComparison.delta < -3 ? "#ffd86b" : "inherit" }}>{cycleComparison.previousSessions ? `${cycleComparison.delta > 0 ? "+" : ""}${Math.round(cycleComparison.delta)}` : "—"}</b><div style={{ fontSize: 6.8, opacity: .43 }}>DELTA</div></div>
+                </div>
+              </div>
             </div>
 
             <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: loadSummary.status === "recovery" || loadSummary.status === "high" ? "1px solid rgba(255,184,76,.28)" : "1px solid rgba(39,220,255,.20)", background: loadSummary.status === "recovery" || loadSummary.status === "high" ? "linear-gradient(135deg,rgba(255,184,76,.08),rgba(255,255,255,.02))" : "linear-gradient(135deg,rgba(39,220,255,.07),rgba(140,90,255,.035))" }}>
@@ -395,7 +445,38 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
           </div>}
 
           {tab === "progress" && <div>
-            <div style={{ margin: "10px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>PROGRESSION PAR COMPÉTENCE</div>
+            <div style={{ marginTop: 10, padding: 14, borderRadius: 16, border: "1px solid rgba(255,216,107,.22)", background: "linear-gradient(135deg,rgba(255,216,107,.08),rgba(140,90,255,.055))" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start", flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: 1.1, color: "#ffd86b" }}>CARRIÈRE TRAINING</div>
+                  <div style={{ marginTop: 3, fontSize: 17, fontWeight: 950 }}>Niveau {career.level.level} • {career.level.title}</div>
+                  <div style={{ marginTop: 3, fontSize: 9, opacity: .56 }}>{career.xp} XP • {career.completedPrograms} programme{career.completedPrograms > 1 ? "s" : ""} • {career.unlockedBadges}/{career.totalBadges} badges</div>
+                </div>
+                <div style={{ textAlign: "right" }}><b style={{ fontSize: 19 }}>{Math.round(career.averagePerformance)}</b><div style={{ fontSize: 7, opacity: .45 }}>PERF. CARRIÈRE</div></div>
+              </div>
+              <div style={{ height: 7, marginTop: 10, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.07)" }}><div style={{ width: `${Math.max(2, career.level.progressPct)}%`, height: "100%", background: "linear-gradient(90deg,#ffd86b,#27dcff,#8c5aff)" }} /></div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 7.5, opacity: .45 }}><span>{career.level.minXp} XP</span><span>{career.level.nextXp ? `PROCHAIN NIVEAU ${career.level.nextXp} XP` : "NIVEAU MAX"}</span></div>
+            </div>
+
+            <div style={{ margin: "14px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#b99cff" }}>MAÎTRISES</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 7 }}>
+              {career.mastery.map((item) => <div key={`mastery-${item.family}`} style={{ padding: 10, borderRadius: 12, border: "1px solid rgba(185,156,255,.12)", background: "rgba(140,90,255,.03)" }}>
+                <div style={{ fontSize: 8, opacity: .5 }}>{item.label.toUpperCase()}</div>
+                <div style={{ marginTop: 3, fontSize: 13, fontWeight: 950 }}>{item.tier}</div>
+                <div style={{ marginTop: 3, fontSize: 8, opacity: .48 }}>{Math.round(item.score)}/100 • {item.sessions} séances</div>
+                {item.nextTarget && <div style={{ marginTop: 5, fontSize: 7.3, color: "#ffd86b", opacity: .82 }}>PROCHAIN PALIER {item.nextTarget}/100</div>}
+              </div>)}
+            </div>
+
+            <div style={{ margin: "14px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#ffd86b" }}>BADGES TRAINING</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 7 }}>
+              {career.badges.map((badge) => <div key={badge.id} style={{ padding: 10, borderRadius: 12, border: badge.unlocked ? "1px solid rgba(255,216,107,.26)" : "1px solid rgba(255,255,255,.07)", background: badge.unlocked ? "rgba(255,216,107,.055)" : "rgba(255,255,255,.02)", opacity: badge.unlocked ? 1 : .58 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 7 }}><b style={{ fontSize: 9.5 }}>{badge.unlocked ? "◆ " : "◇ "}{badge.title}</b><span style={{ fontSize: 8, color: badge.unlocked ? "#ffd86b" : "inherit" }}>{badge.unlocked ? "DÉBLOQUÉ" : `${Math.min(badge.progress,badge.target)}/${badge.target}`}</span></div>
+                <div style={{ marginTop: 4, fontSize: 8, lineHeight: 1.35, opacity: .5 }}>{badge.description}</div>
+              </div>)}
+            </div>
+
+            <div style={{ margin: "16px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>PROGRESSION PAR COMPÉTENCE</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 8 }}>
               {progression.map((row) => {
                 const deltaLabel = row.delta > 2 ? `+${Math.round(row.delta)}` : row.delta < -2 ? `${Math.round(row.delta)}` : "stable";
@@ -446,6 +527,16 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 <div style={{ marginTop: 3, fontSize: 8, opacity: .45 }}>{row.sessions} séance{row.sessions > 1 ? "s" : ""} • série {row.streak}</div>
               </div>)}
             </div>
+
+            <div style={{ margin: "16px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#b99cff" }}>HISTORIQUE DES PLANS</div>
+            {!programSessions.length ? <div style={{ padding: 14, borderRadius: 13, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.025)", fontSize: 9.5, opacity: .58 }}>Aucun programme complet enregistré pour le moment.</div> : <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {programSessions.slice(0, 8).map((session) => <div key={session.id} style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto", gap: 8, alignItems: "center", padding: 10, borderRadius: 12, border: "1px solid rgba(185,156,255,.10)", background: "rgba(140,90,255,.025)" }}>
+                <div><b style={{ fontSize: 9.5 }}>{session.programTitle}</b><div style={{ marginTop: 2, fontSize: 7.8, opacity: .45 }}>{new Date(session.endedAt).toLocaleDateString()} • {session.durationMin || "—"} min • {session.steps} étapes</div></div>
+                <div style={{ textAlign: "center" }}><b style={{ fontSize: 10 }}>{session.successes}/{session.steps}</b><div style={{ fontSize: 6.8, opacity: .4 }}>RÉUSSIES</div></div>
+                <div style={{ textAlign: "center" }}><b style={{ fontSize: 10 }}>{Math.round(session.accuracyPct)}%</b><div style={{ fontSize: 6.8, opacity: .4 }}>PRÉC.</div></div>
+                <div style={{ minWidth: 38, textAlign: "center" }}><b style={{ fontSize: 12, color: session.performanceScore >= 75 ? "#8cffcb" : session.performanceScore < 50 ? "#ffd86b" : "inherit" }}>{Math.round(session.performanceScore)}</b><div style={{ fontSize: 6.8, opacity: .4 }}>PERF.</div></div>
+              </div>)}
+            </div>}
 
             <div style={{ margin: "16px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>DERNIÈRES SÉANCES DU CENTRE</div>
             {!labSessions.length ? <div style={{ padding: 18, borderRadius: 15, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.03)", fontSize: 11, opacity: .7 }}>Aucune séance du Centre enregistrée pour le moment. Lance un exercice ou un programme pour créer ta courbe de progression.</div> : <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>

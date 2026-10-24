@@ -5,11 +5,14 @@ import TrainingResultModal from "../../ui/TrainingResultModal";
 import { appendTrainingVisit, recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
 import { getTrainingExercise } from "../../catalog/trainingExerciseCatalog";
 import { isDoubleDart, makeTrainingStats, trainingDartMatches, type TrainingDart } from "../../lib/trainingDarts";
-import { loadTrainingProgramSessions, recordTrainingProgramSession } from "../../profile/trainingPlanTracker";
+import { clearTrainingProgramDraft, loadTrainingProgramSessions, recordTrainingProgramSession, saveTrainingProgramDraft } from "../../profile/trainingPlanTracker";
 import type { TrainingExerciseFamily } from "../../catalog/trainingExerciseCatalog";
 import { buildTrainingLoadSummary } from "../../profile/trainingLoadCoach";
 import { buildPostSessionCoach, saveTrainingNextRecommendation } from "../../profile/trainingWeeklyCoach";
 import { loadTrainingLabPreferences } from "../../preferences/trainingLabPreferences";
+import { buildTrainingCareer, trainingProgramXp } from "../../profile/trainingCareer";
+import { buildTrainingProgression } from "../../coach/trainingDiagnosis";
+import { getTrainingDetailedSessions } from "../../stats/trainingStatsHub";
 
 type RunState = { darts: number; hits: number; points: number; progress: number; checkoutTotal: number };
 type ProgramStepResult = {
@@ -31,7 +34,8 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
     const ids = Array.isArray(config?.programExerciseIds) ? config.programExerciseIds.map(String).filter(Boolean) : [];
     return ids.length ? ids : [String(config?.exerciseId || "")].filter(Boolean);
   }, [config?.exerciseId, config?.programExerciseIds]);
-  const [stepIndex, setStepIndex] = React.useState(0);
+  const initialStepIndex = Math.max(0, Math.min(programIds.length - 1, Number(config?.resumeStepIndex) || 0));
+  const [stepIndex, setStepIndex] = React.useState(initialStepIndex);
   const exercise = React.useMemo(() => getTrainingExercise(programIds[Math.min(stepIndex, programIds.length - 1)] || config?.exerciseId), [config?.exerciseId, programIds, stepIndex]);
   const startedAtRef = React.useRef(Date.now());
   const endedRef = React.useRef(false);
@@ -39,10 +43,11 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
   const stateRef = React.useRef<RunState>(emptyRun());
   const [, force] = React.useReducer((n) => n + 1, 0);
   const [result, setResult] = React.useState<any>(null);
-  const [programResults, setProgramResults] = React.useState<ProgramStepResult[]>([]);
+  const [programResults, setProgramResults] = React.useState<ProgramStepResult[]>(() => Array.isArray(config?.resumeProgramResults) ? config.resumeProgramResults : []);
   const [programSummaryOpen, setProgramSummaryOpen] = React.useState(false);
   const [programRecordMessage, setProgramRecordMessage] = React.useState<string | null>(null);
   const [postSessionCoach, setPostSessionCoach] = React.useState<ReturnType<typeof buildPostSessionCoach> | null>(null);
+  const [careerMessage, setCareerMessage] = React.useState<{ xp: number; text: string } | null>(null);
   const programTrackedRef = React.useRef(false);
 
   const isProgram = programIds.length > 1;
@@ -97,8 +102,17 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
     };
     if (isProgram) {
       setProgramResults((rows) => {
-        const next = rows.filter((_, index) => index !== stepIndex);
+        const next = [...rows];
         next[stepIndex] = stepResult;
+        saveTrainingProgramDraft({
+          programId: String(config?.programId || "program"),
+          programTitle: String(config?.programTitle || "Programme Training"),
+          durationMin: Math.max(0, Number(config?.programDurationMin) || 0),
+          exerciseIds: programIds,
+          focusFamily: (config?.programFocusFamily || config?.family || "balanced") as TrainingExerciseFamily | "balanced",
+          nextStepIndex: Math.min(totalSteps - 1, stepIndex + 1),
+          completedSteps: next.filter(Boolean) as any,
+        });
         return next;
       });
     }
@@ -117,7 +131,7 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
       visitHistory: visitHistoryRef.current,
     });
     setResult({ success, metrics, stats: makeTrainingStats({ darts: s.darts, hits: s.hits, points: s.points, startedAt: startedAtRef.current, endedAt }) });
-  }, [config, exercise, goal, isProgram, stepIndex, totalSteps]);
+  }, [config, exercise, goal, isProgram, programIds, stepIndex, totalSteps]);
 
   const onVisit = React.useCallback((rawVisit: TrainingDart[]) => {
     if (endedRef.current || !rawVisit.length) return;
@@ -154,6 +168,21 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
     force();
   }, [exercise, finish, goal, sequence, stepIndex]);
 
+  const handleExit = React.useCallback(() => {
+    if (isProgram && !programSummaryOpen) {
+      saveTrainingProgramDraft({
+        programId: String(config?.programId || "program"),
+        programTitle: String(config?.programTitle || "Programme Training"),
+        durationMin: Math.max(0, Number(config?.programDurationMin) || 0),
+        exerciseIds: programIds,
+        focusFamily: (config?.programFocusFamily || config?.family || "balanced") as TrainingExerciseFamily | "balanced",
+        nextStepIndex: result ? Math.min(totalSteps - 1, stepIndex + 1) : stepIndex,
+        completedSteps: programResults.filter(Boolean) as any,
+      });
+    }
+    onExit();
+  }, [config, isProgram, onExit, programIds, programResults, programSummaryOpen, result, stepIndex, totalSteps]);
+
   const closeResult = React.useCallback(() => {
     if (isProgram && stepIndex + 1 < totalSteps) {
       setStepIndex((index) => index + 1);
@@ -183,6 +212,7 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
   React.useEffect(() => {
     if (!programSummaryOpen || programTrackedRef.current || !isProgram || programSummary.steps < totalSteps) return;
     programTrackedRef.current = true;
+    clearTrainingProgramDraft();
     const previous = loadTrainingProgramSessions();
     const previousBest = previous.reduce((best, row) => Math.max(best, row.performanceScore), 0);
     const currentRecord = recordTrainingProgramSession({
@@ -198,6 +228,12 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
       performanceScore: programSummary.performance,
     });
     if (currentRecord) {
+      const beforeProgression = buildTrainingProgression(getTrainingDetailedSessions({ limit: 300 }));
+      const beforeCareer = buildTrainingCareer(previous, beforeProgression);
+      const afterCareer = buildTrainingCareer([currentRecord, ...previous], beforeProgression);
+      const gainedXp = trainingProgramXp(currentRecord);
+      const levelUp = afterCareer.level.level > beforeCareer.level.level;
+      setCareerMessage({ xp: gainedXp, text: levelUp ? `NIVEAU ${afterCareer.level.level} DÉBLOQUÉ • ${afterCareer.level.title}` : `${afterCareer.xp} XP CARRIÈRE` });
       const prefs = loadTrainingLabPreferences();
       const weakestStep = [...programSummary.rows].sort((a, b) => a.performanceScore - b.performanceScore)[0];
       const nextFamily = (weakestStep?.family || currentRecord.families[0] || "precision") as TrainingExerciseFamily;
@@ -220,7 +256,7 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
     <TrainingPlayLayout
       title={title}
       tickerId="training_challenges"
-      onExit={onExit}
+      onExit={handleExit}
       participant={config?.activeParticipant}
       participantIndex={Number(config?.activeParticipantIndex || 0) + 1}
       participantTotal={Number(config?.activeParticipantTotal || 1)}
@@ -273,6 +309,10 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
 
         {programRecordMessage && <div style={{ marginTop: 8, padding: 10, borderRadius: 12, background: "rgba(255,216,107,.08)", border: "1px solid rgba(255,216,107,.24)", color: "#ffd86b", fontSize: 9.5, fontWeight: 950, textAlign: "center", letterSpacing: .5 }}>{programRecordMessage}</div>}
 
+        {careerMessage && <div style={{ marginTop: 8, padding: 10, borderRadius: 12, background: "linear-gradient(135deg,rgba(255,216,107,.075),rgba(140,90,255,.065))", border: "1px solid rgba(185,156,255,.20)", textAlign: "center" }}>
+          <b style={{ fontSize: 11, color: "#ffd86b" }}>+{careerMessage.xp} XP</b><div style={{ marginTop: 3, fontSize: 8.5, fontWeight: 900, opacity: .7 }}>{careerMessage.text}</div>
+        </div>}
+
         {postSessionCoach && <div style={{ marginTop: 10, padding: 11, borderRadius: 13, background: postSessionCoach.tone === "positive" ? "rgba(80,255,174,.07)" : postSessionCoach.tone === "caution" ? "rgba(255,184,76,.07)" : "rgba(39,220,255,.06)", border: postSessionCoach.tone === "positive" ? "1px solid rgba(80,255,174,.20)" : postSessionCoach.tone === "caution" ? "1px solid rgba(255,184,76,.20)" : "1px solid rgba(39,220,255,.18)" }}>
           <div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1, opacity: .58 }}>BILAN COACH AWENA</div>
           <div style={{ marginTop: 4, fontSize: 11.5, fontWeight: 950 }}>{postSessionCoach.headline}</div>
@@ -293,7 +333,7 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
           </div>)}
         </div>
 
-        <button type="button" onClick={onExit} style={{ width: "100%", marginTop: 14, padding: 12, borderRadius: 12, border: "1px solid rgba(39,220,255,.45)", background: "linear-gradient(135deg,rgba(39,220,255,.20),rgba(140,90,255,.18))", color: "inherit", fontWeight: 950, cursor: "pointer" }}>TERMINER LA SÉANCE</button>
+        <button type="button" onClick={() => { clearTrainingProgramDraft(); onExit(); }} style={{ width: "100%", marginTop: 14, padding: 12, borderRadius: 12, border: "1px solid rgba(39,220,255,.45)", background: "linear-gradient(135deg,rgba(39,220,255,.20),rgba(140,90,255,.18))", color: "inherit", fontWeight: 950, cursor: "pointer" }}>TERMINER LA SÉANCE</button>
       </div>
     </div>}
   </>;

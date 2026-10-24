@@ -94,6 +94,30 @@ async function captureBurst(video: HTMLVideoElement | null, count = 5, delayMs =
   return frames;
 }
 
+async function captureSettledBurst(video: HTMLVideoElement | null, cal: CameraCalibration, count = 5, delayMs = 55, maxCaptureSide = 1920) {
+  // Capture a couple of extra fresh frames so autofocus / auto-exposure have a
+  // chance to converge. We keep only the most recent stable window instead of
+  // relying on an arbitrary fixed wait that would slow down every device.
+  const wanted = Math.max(3, Number(count || 5));
+  const raw = await captureBurst(video, wanted + 2, delayMs, maxCaptureSide);
+  if (raw.length < wanted) return { ok:false, frames:raw, reason:'capture', metrics:null as any };
+  const metrics = raw.map(frame => assessPrecisionReadiness(frame, cal));
+  const windowFrames = raw.slice(-wanted);
+  const windowMetrics = metrics.slice(-wanted);
+  const spread = (values:number[]) => values.length ? Math.max(...values) - Math.min(...values) : 99;
+  const sharpnessSpread = spread(windowMetrics.map(x => Number(x.sharpness || 0)));
+  const exposureSpread = spread(windowMetrics.map(x => Number(x.exposure || 0)));
+  const confidenceSpread = spread(windowMetrics.map(x => Number(x.confidence || 0)));
+  const minSharpness = Math.min(...windowMetrics.map(x => Number(x.sharpness || 0)));
+  const minExposure = Math.min(...windowMetrics.map(x => Number(x.exposure || 0)));
+  const settled = sharpnessSpread <= .14 && exposureSpread <= .14 && confidenceSpread <= .13 && minSharpness >= .38 && minExposure >= .34;
+  return {
+    ok:settled, frames:windowFrames, reason:settled?'ok':'settling',
+    metrics:{sharpnessSpread,exposureSpread,confidenceSpread,minSharpness,minExposure}
+  };
+}
+
+
 
 function cameraHardwareFingerprint(stream:MediaStream|null, video:HTMLVideoElement|null){
   try{
@@ -644,7 +668,13 @@ export default function ClosestCenterPlay(props:any) {
       return;
     }
     setStatus("Calibration précision : acquisition multi-frame de la cible vide…");
-    const baselineBurst = await captureBurst(videoRef.current, cameraPrefs.baselineFrames, cameraPrefs.frameDelayMs, cameraPrefs.maxCaptureSide);
+    const settledBaseline = await captureSettledBurst(videoRef.current, cal, cameraPrefs.baselineFrames, cameraPrefs.frameDelayMs, cameraPrefs.maxCaptureSide);
+    if (!settledBaseline.ok) {
+      traceCamera("baseline", "reject", "camera-settling", "Autofocus/exposition non stabilisés", settledBaseline.metrics || {});
+      setStatus("⏳ CAMÉRA EN COURS DE STABILISATION · Attends une seconde sans toucher au téléphone puis relance la baseline.");
+      return;
+    }
+    const baselineBurst = settledBaseline.frames;
     const img = temporalMedianFrame(baselineBurst);
     if (!img) return;
     const readiness = assessPrecisionReadiness(img, cal);
@@ -690,7 +720,14 @@ export default function ClosestCenterPlay(props:any) {
     setStatus("🛡️ Contrôle avant volée : stabilité, perspective et netteté…");
     try {
       const count = Math.max(3, Math.min(5, cameraPrefs.baselineFrames));
-      const rawBurst = await captureBurst(videoRef.current, count, cameraPrefs.frameDelayMs, cameraPrefs.maxCaptureSide);
+      const settledBurst = await captureSettledBurst(videoRef.current, cal, count, cameraPrefs.frameDelayMs, cameraPrefs.maxCaptureSide);
+      if (!settledBurst.ok) {
+        traceCamera("preflight", "reject", "camera-settling", "Autofocus/exposition non stabilisés avant lancer", settledBurst.metrics || {});
+        setPreflightInfo({ok:false,reason:"camera-settling",...(settledBurst.metrics||{})});
+        setStatus("⏳ Caméra encore en stabilisation (focus/exposition). Garde le support immobile puis relance le contrôle.");
+        return;
+      }
+      const rawBurst = settledBurst.frames;
       if (rawBurst.length < 3) { setStatus("❌ Contrôle avant volée incomplet : caméra non exploitable."); return; }
       const geometryChecks = rawBurst.map(frame => assessProjectiveDrift(before, frame, cal));
       const worstGeometry = geometryChecks.reduce((w:any,x:any)=>x.regionalSpreadPx>w.regionalSpreadPx?x:w, geometryChecks[0]);
@@ -741,7 +778,13 @@ export default function ClosestCenterPlay(props:any) {
     if (!verifyCameraHardwareLock('analysis')) return;
     if (!turnArmed) { setStatus(`🛡️ Lance d’abord CONTRÔLE AVANT VOLÉE, puis seulement ${expectedTurnDarts} fléchette${expectedTurnDarts>1?"s":""}.`); return; }
     setStatus("IA précision : lecture multi-frame en cours…");
-    const rawBurst = await captureBurst(videoRef.current, cameraPrefs.analysisFrames, cameraPrefs.frameDelayMs, cameraPrefs.maxCaptureSide);
+    const settledAnalysis = await captureSettledBurst(videoRef.current, cal, cameraPrefs.analysisFrames, cameraPrefs.frameDelayMs, cameraPrefs.maxCaptureSide);
+    if (!settledAnalysis.ok) {
+      traceCamera("analysis", "reject", "camera-settling", "Autofocus/exposition non stabilisés pendant analyse", settledAnalysis.metrics || {});
+      setStatus("⏳ Analyse différée : autofocus/exposition encore instables. Ne touche pas à la cible, attends un instant puis relance.");
+      return;
+    }
+    const rawBurst = settledAnalysis.frames;
     if (rawBurst.length < Math.max(4, cameraPrefs.analysisFrames - 1)) { setStatus("Impossible d’obtenir assez d’images stables. Relance l’analyse."); return; }
     const geometryChecks = rawBurst.map(frame => assessProjectiveDrift(before, frame, cal));
     const worstGeometry = geometryChecks.reduce((w:any,x:any)=>x.regionalSpreadPx>w.regionalSpreadPx?x:w, geometryChecks[0]);
@@ -878,7 +921,13 @@ export default function ClosestCenterPlay(props:any) {
     if (!cal || !before || !current || pendingConsensus.length !== expectedTurnDarts) return;
     if (!verifyCameraHardwareLock('reread')) return;
     setStatus("🔬 Relecture précision indépendante : seconde acquisition multi-frame…");
-    const rawBurst = await captureBurst(videoRef.current, cameraPrefs.rereadFrames, Math.max(30, cameraPrefs.frameDelayMs - 4), cameraPrefs.maxCaptureSide);
+    const settledReread = await captureSettledBurst(videoRef.current, cal, cameraPrefs.rereadFrames, Math.max(30, cameraPrefs.frameDelayMs - 4), cameraPrefs.maxCaptureSide);
+    if (!settledReread.ok) {
+      traceCamera("reread", "reject", "camera-settling", "Autofocus/exposition non stabilisés pendant relecture", settledReread.metrics || {});
+      setStatus("⏳ Seconde lecture différée : caméra encore en stabilisation. Garde tout immobile puis relance.");
+      return;
+    }
+    const rawBurst = settledReread.frames;
     if (rawBurst.length < Math.max(5, cameraPrefs.rereadFrames - 2)) { setStatus("Relecture impossible : pas assez de frames exploitables."); return; }
     const geometryChecks = rawBurst.map(frame => assessProjectiveDrift(before, frame, cal));
     if (cameraPrefs.strictProjectiveDrift && !geometryChecks.every((x:any)=>x.ok)) {

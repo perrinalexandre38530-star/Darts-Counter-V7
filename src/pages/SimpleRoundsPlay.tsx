@@ -390,6 +390,7 @@ export default function SimpleRoundsPlay(props: any) {
         name: String(p?.name ?? p?.displayName ?? `${t("generic.player", "Joueur")} ${i + 1}`),
         avatarDataUrl: p?.avatarDataUrl ?? p?.avatarUrl ?? null,
         isBot: !!p?.isBot,
+        botLevel: p?.botLevel ?? p?.level ?? null,
       }));
     }
     const count = Math.max(1, Number((cfg as any)?.players) || 1);
@@ -398,6 +399,7 @@ export default function SimpleRoundsPlay(props: any) {
       name: `${t("generic.player", "Joueur")} ${i + 1}`,
       avatarDataUrl: null,
       isBot: false,
+      botLevel: null,
     }));
   }, [props?.params?.players, props?.players, resumeState?.players, resumePayload?.players, resumeRecord?.players, (cfg as any)?.players, t]);
   const playerCount = playerRows.length;
@@ -497,11 +499,18 @@ export default function SimpleRoundsPlay(props: any) {
   }, [variantId]);
 
   const botMask = useMemo(() => {
-    // Convention: si botsEnabled, les N premiers sont humains, le reste = bots
+    // Arcade : l'identité BOT appartient au participant lui-même et peut être mélangée
+    // librement dans l'ordre de jeu (Humain / BOT / Humain / BOT, etc.).
+    const explicitMask = playerRows.map((p: any) => !!p?.isBot);
+    const hasExplicitBots = explicitMask.some(Boolean);
+    if (hasExplicitBots) return explicitMask;
+
+    // Partie Rapide legacy : aucun participant explicite n'est marqué BOT, on conserve
+    // alors la convention humansCount pour fabriquer les BOTS temporaires.
     if (!cfg?.botsEnabled) return Array.from({ length: playerCount }, () => false);
     const humans = Math.min(Math.max(1, Number(cfg?.humansCount ?? 1)), Math.max(1, playerCount));
     return Array.from({ length: playerCount }, (_, i) => i >= humans);
-  }, [cfg?.botsEnabled, playerCount, (cfg as any)?.humansCount]);
+  }, [cfg?.botsEnabled, playerCount, (cfg as any)?.humansCount, playerRows]);
 function goBack() {
     if (props?.setTab) {
       // Retour logique vers la config du mode (plutôt que sortir du flow)
@@ -806,8 +815,15 @@ function goBack() {
     if (superBullAutosaveTimerRef.current) window.clearTimeout(superBullAutosaveTimerRef.current);
   }
 
-  function botPickVisit(): number {
-    const lvl = String(cfg?.botLevel || "normal");
+  function resolveBotLevel(targetPlayerIdx = playerIdx): "easy" | "normal" | "hard" {
+    const explicit = String(playerRows[targetPlayerIdx]?.botLevel || "").toLowerCase();
+    if (explicit === "easy" || explicit === "normal" || explicit === "hard") return explicit;
+    const fallback = String(cfg?.botLevel || "normal").toLowerCase();
+    return fallback === "easy" || fallback === "hard" ? fallback : "normal";
+  }
+
+  function botPickVisit(targetPlayerIdx = playerIdx): number {
+    const lvl = resolveBotLevel(targetPlayerIdx);
     const r = Math.random();
 
     // Mode spécial SUPER BULL : modèle bull (25/50) sur 3 fléchettes
@@ -852,9 +868,9 @@ function goBack() {
     return clamp(base + (Math.random() - 0.5) * span);
   }
 
-  function botPickDarts(): UIDart[] {
+  function botPickDarts(targetPlayerIdx = playerIdx): UIDart[] {
     if (variantId === "super_bull") {
-      const lvl = String(cfg?.botLevel || "normal");
+      const lvl = resolveBotLevel(targetPlayerIdx);
       const pBull = lvl === "hard" ? 0.38 : lvl === "easy" ? 0.12 : 0.24;
       const pDBull = lvl === "hard" ? 0.18 : lvl === "easy" ? 0.03 : 0.09;
       return Array.from({ length: 3 }, () => {
@@ -864,7 +880,7 @@ function goBack() {
         return { v: 0, mult: 1 as const };
       });
     }
-    return exactDartsForScore(botPickVisit()).map(canonicalToUiDart);
+    return exactDartsForScore(botPickVisit(targetPlayerIdx)).map(canonicalToUiDart);
   }
 
   // Auto-play bots
@@ -878,7 +894,7 @@ function goBack() {
     botActRef.current = { key };
 
     const timer = window.setTimeout(() => {
-      const darts = botPickDarts();
+      const darts = botPickDarts(playerIdx);
       applyVisitFor(playerIdx, darts);
     }, 520);
 
@@ -905,6 +921,7 @@ function goBack() {
         isTemporary: isQuickParty,
         profileId: isQuickParty || botMask[i] ? null : String(p.id),
         isBot: !!botMask[i],
+        botLevel: botMask[i] ? resolveBotLevel(i) : undefined,
       }));
       const stateSnapshot = {
         matchId: id,
@@ -1041,6 +1058,7 @@ function goBack() {
         isTemporary: isQuickParty,
         profileId: isQuickParty || botMask[i] ? null : String(p.id),
         isBot: !!botMask[i],
+        botLevel: botMask[i] ? resolveBotLevel(i) : undefined,
       } : {}),
     }));
 
