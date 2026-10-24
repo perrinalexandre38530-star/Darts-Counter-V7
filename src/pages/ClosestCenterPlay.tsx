@@ -94,6 +94,42 @@ async function captureBurst(video: HTMLVideoElement | null, count = 5, delayMs =
   return frames;
 }
 
+
+function cameraHardwareFingerprint(stream:MediaStream|null, video:HTMLVideoElement|null){
+  try{
+    const track=stream?.getVideoTracks?.()[0];
+    if(!track) return null;
+    const st:any=track.getSettings?.()||{};
+    const vw=Number(video?.videoWidth||st.width||0), vh=Number(video?.videoHeight||st.height||0);
+    return {
+      deviceId:String(st.deviceId||''),
+      groupId:String(st.groupId||''),
+      width:Number(st.width||vw||0),
+      height:Number(st.height||vh||0),
+      videoWidth:vw,
+      videoHeight:vh,
+      aspect:vh>0?vw/vh:0,
+      zoom:Number(st.zoom||1),
+      facingMode:String(st.facingMode||''),
+      frameRate:Number(st.frameRate||0),
+    };
+  }catch{return null;}
+}
+
+function compareCameraHardwareLock(base:any,current:any){
+  const reasons:string[]=[];
+  if(!base||!current) return {ok:false,reasons:['Flux caméra indisponible']};
+  if(base.deviceId&&current.deviceId&&base.deviceId!==current.deviceId) reasons.push('caméra changée');
+  if(base.facingMode&&current.facingMode&&base.facingMode!==current.facingMode) reasons.push('objectif changé');
+  if(base.width&&current.width&&Math.abs(base.width-current.width)>2) reasons.push(`résolution ${base.width}→${current.width}`);
+  if(base.height&&current.height&&Math.abs(base.height-current.height)>2) reasons.push(`résolution ${base.height}→${current.height}`);
+  if(base.videoWidth&&current.videoWidth&&Math.abs(base.videoWidth-current.videoWidth)>2) reasons.push(`flux ${base.videoWidth}→${current.videoWidth}px`);
+  if(base.videoHeight&&current.videoHeight&&Math.abs(base.videoHeight-current.videoHeight)>2) reasons.push(`flux ${base.videoHeight}→${current.videoHeight}px`);
+  if(base.aspect&&current.aspect&&Math.abs(base.aspect-current.aspect)>.004) reasons.push('orientation/cadrage capteur changé');
+  if(Number.isFinite(base.zoom)&&Number.isFinite(current.zoom)&&Math.abs(base.zoom-current.zoom)>.025) reasons.push(`zoom ${base.zoom.toFixed(2)}→${current.zoom.toFixed(2)}`);
+  return {ok:reasons.length===0,reasons};
+}
+
 async function tunePrecisionTrack(stream:MediaStream|null){
   try{
     const track=stream?.getVideoTracks?.()[0]; if(!track) return;
@@ -324,7 +360,9 @@ export default function ClosestCenterPlay(props:any) {
   const autoRereadRunningRef = React.useRef(false);
   const preflightRunningRef = React.useRef(false);
   const roundCommitLockRef = React.useRef(false);
+  const cameraHardwareLockRef = React.useRef<any>(null);
   const [camError, setCamError] = React.useState("");
+  const [cameraHardwareState, setCameraHardwareState] = React.useState<any>(null);
   const [ready, setReady] = React.useState(false);
   const [cal] = React.useState<CameraCalibration | null>(() => loadCameraCalibration());
   const [phase, setPhase] = React.useState<"enroll"|"baseline"|"prepare"|"play"|"review"|"roundEnd"|"finished">(isManual ? "play" : "enroll");
@@ -385,6 +423,24 @@ export default function ClosestCenterPlay(props:any) {
     })();
     return () => { dead = true; streamRef.current?.getTracks().forEach(t => t.stop()); };
   }, [cameraPrefs.maxCaptureSide, isManual]);
+
+  const verifyCameraHardwareLock = React.useCallback((stage:string) => {
+    if (isManual) return true;
+    const currentFp=cameraHardwareFingerprint(streamRef.current,videoRef.current);
+    const baseFp=cameraHardwareLockRef.current;
+    if(!baseFp){
+      setCameraHardwareState(currentFp?{ok:true,locked:false,current:currentFp}:null);
+      return true;
+    }
+    const check=compareCameraHardwareLock(baseFp,currentFp);
+    setCameraHardwareState({ ...check, locked:true, baseline:baseFp, current:currentFp, checkedAt:Date.now() });
+    if(check.ok) return true;
+    setTurnArmed(false);
+    setPreflightInfo({ok:false,reason:'hardware-change',details:check.reasons});
+    traceCamera(stage, 'reject', 'camera-hardware-change', 'Paramètres matériels caméra modifiés', {reasons:check.reasons,baseline:baseFp,current:currentFp});
+    setStatus(`❌ Caméra modifiée depuis la référence : ${check.reasons.join(' · ')}. Recalibration 5 points requise avant de poursuivre.`);
+    return false;
+  }, [isManual]);
 
   const cameraRoundUsed = React.useMemo(() => roundUsage(impacts, players, round, dartsPerPlayer), [impacts, players, round, dartsPerPlayer]);
   const manualRoundThrows = React.useMemo(() => manualThrows.filter((x:any)=>Number(x.round)===Number(round)), [manualThrows, round]);
@@ -604,6 +660,9 @@ export default function ClosestCenterPlay(props:any) {
       setStatus(`⚠️ Niveau ${tier.toUpperCase()} insuffisant pour le profil ${cameraPrefs.profile.toUpperCase()} (${readiness.mmPerPixel.toFixed(2)} mm/pixel). Rapproche la caméra ou améliore la netteté.`);
       return;
     }
+    const hardwareFp=cameraHardwareFingerprint(streamRef.current,videoRef.current);
+    cameraHardwareLockRef.current=hardwareFp;
+    setCameraHardwareState(hardwareFp?{ok:true,locked:true,baseline:hardwareFp,current:hardwareFp,checkedAt:Date.now()}:null);
     setBefore(img);
     setPendingAfter(null);
     setPendingImpacts([]);
@@ -625,6 +684,7 @@ export default function ClosestCenterPlay(props:any) {
 
   const runPreflightCheck = async () => {
     if (!cal || !before || !current || preflightRunningRef.current) return;
+    if (!verifyCameraHardwareLock('preflight')) return;
     preflightRunningRef.current = true;
     setTurnArmed(false);
     setStatus("🛡️ Contrôle avant volée : stabilité, perspective et netteté…");
@@ -678,6 +738,7 @@ export default function ClosestCenterPlay(props:any) {
 
   const analyze = async () => {
     if (!cal || !before || !current) return;
+    if (!verifyCameraHardwareLock('analysis')) return;
     if (!turnArmed) { setStatus(`🛡️ Lance d’abord CONTRÔLE AVANT VOLÉE, puis seulement ${expectedTurnDarts} fléchette${expectedTurnDarts>1?"s":""}.`); return; }
     setStatus("IA précision : lecture multi-frame en cours…");
     const rawBurst = await captureBurst(videoRef.current, cameraPrefs.analysisFrames, cameraPrefs.frameDelayMs, cameraPrefs.maxCaptureSide);
@@ -815,6 +876,7 @@ export default function ClosestCenterPlay(props:any) {
 
   const precisionReread = async () => {
     if (!cal || !before || !current || pendingConsensus.length !== expectedTurnDarts) return;
+    if (!verifyCameraHardwareLock('reread')) return;
     setStatus("🔬 Relecture précision indépendante : seconde acquisition multi-frame…");
     const rawBurst = await captureBurst(videoRef.current, cameraPrefs.rereadFrames, Math.max(30, cameraPrefs.frameDelayMs - 4), cameraPrefs.maxCaptureSide);
     if (rawBurst.length < Math.max(5, cameraPrefs.rereadFrames - 2)) { setStatus("Relecture impossible : pas assez de frames exploitables."); return; }
@@ -829,7 +891,11 @@ export default function ClosestCenterPlay(props:any) {
     const second=fuseDetectionFrames(detections,expectedTurnDarts);
     if(second.length!==expectedTurnDarts){ traceCamera("reread", "reject", "impact-count", "Relecture incomplète", {found:second.length,expected:expectedTurnDarts}); setStatus(`❌ Relecture incomplète (${second.length}/${expectedTurnDarts}). Aucune précision supplémentaire n’est appliquée.`); return; }
     const merged=fuseIndependentConsensusPasses(pendingConsensus,second,cal,before.width,before.height,expectedTurnDarts);
-    if(merged.length!==3){ setStatus("❌ Les deux lectures ne convergent pas sur les 3 mêmes pointes. Contrôle manuel requis."); return; }
+    if(merged.length!==expectedTurnDarts){
+      traceCamera("reread", "reject", "consensus-count", "Les deux lectures indépendantes ne convergent pas sur le quota attendu", {found:merged.length,expected:expectedTurnDarts});
+      setStatus(`❌ Les deux lectures ne convergent pas sur ${expectedTurnDarts===1?"la même pointe":`les ${expectedTurnDarts} mêmes pointes`}. Contrôle manuel requis.`);
+      return;
+    }
     const avgAgree=merged.reduce((sum:any,x:any)=>sum+Number(x.rereadAgreement||0),0)/merged.length;
     const upgraded=pendingImpacts.map((impact:any)=>{
       const match=merged.reduce((best:any,x:any)=>{
@@ -872,7 +938,7 @@ export default function ClosestCenterPlay(props:any) {
       void precisionReread().finally(() => { autoRereadRunningRef.current = false; });
     }, 180);
     return () => window.clearTimeout(id);
-  }, [phase, precisionRereads, pendingImpacts, cameraPrefs.autoReread, cameraPrefs.maxUncertaintyMm, cameraPrefs.minFrameAgreement, cameraPrefs.maxConsensusSpreadMm]);
+  }, [phase, precisionRereads, pendingImpacts, expectedTurnDarts, cameraPrefs.autoReread, cameraPrefs.maxUncertaintyMm, cameraPrefs.minFrameAgreement, cameraPrefs.maxConsensusSpreadMm]);
 
   const cyclePendingOwner = (impactId:string) => {
     setPendingImpacts(prev => prev.map((impact:any) => {
@@ -1713,6 +1779,7 @@ export default function ClosestCenterPlay(props:any) {
           {stability ? <div style={{marginTop:7,fontSize:10,color:stability.stable?"#8fffc2":"#ffbd93"}}>Stabilité {Math.round(stability.confidence*100)} % · variation {Math.round(stability.changedFraction*100)} %</div> : null}
           {precisionReadiness ? <div style={{marginTop:5,fontSize:10,color:precisionReadiness.ok?"#8fffc2":"#ffbd93"}}>Précision {Math.round(precisionReadiness.confidence*100)} % · {precisionReadiness.mmPerPixel.toFixed(2)} mm/pixel · netteté {Math.round(precisionReadiness.sharpness*100)} % · {precisionTier(precisionReadiness).toUpperCase()} · {cameraPrefs.profile.toUpperCase()}</div> : null}
           {registrationInfo ? <div style={{marginTop:5,fontSize:10,color:(registrationInfo.confidence||0)>=.65?"#8fffc2":"#ffbd93"}}>Recalage {Math.round((registrationInfo.confidence||0)*100)} %{registrationInfo.maxShiftPx!=null?` · ${registrationInfo.maxShiftPx.toFixed(1)} px`:""}{registrationInfo.geometrySpreadPx!=null?` · dérive ${registrationInfo.geometrySpreadPx.toFixed(2)} px`:""}</div> : null}
+          {cameraHardwareState?.locked ? <div style={{marginTop:5,fontSize:10,color:cameraHardwareState.ok?"#8fffc2":"#ff8f7d"}}>Matériel {cameraHardwareState.ok?"VERROUILLÉ":"MODIFIÉ"}{cameraHardwareState?.baseline?.zoom?` · zoom ${Number(cameraHardwareState.baseline.zoom).toFixed(2)}×`:""}{cameraHardwareState?.baseline?.videoWidth?` · ${cameraHardwareState.baseline.videoWidth}×${cameraHardwareState.baseline.videoHeight}`:""}{!cameraHardwareState.ok&&cameraHardwareState.reasons?.length?` · ${cameraHardwareState.reasons.join(" · ")}`:""}</div> : null}
           {phase === "play" ? <div style={{marginTop:5,fontSize:10,color:turnArmed?"#8fffc2":"#ffbd93"}}>{pointsMode==="petanque"?"Pré-contrôle lancer":"Pré-contrôle volée"} : {turnArmed?`ARMÉ · ${String(preflightInfo?.tier||"").toUpperCase()} · référence verrouillée`:"REQUIS"}</div> : null}
           {!cal ? <div style={{marginTop:7,color:"#ffb4a9",fontSize:10}}>Calibration absente : mesure bloquée.</div> : null}
         </details> : null}

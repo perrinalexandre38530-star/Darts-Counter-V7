@@ -52,12 +52,37 @@ function errText(error: unknown) {
  * Les données Supabase restent la source live ; ce bloc sert de copie de secours
  * indépendante afin qu'une sauvegarde de compte contienne aussi le collectif.
  */
-export async function exportOrganizationsBackupSnapshot(userId?: string | null): Promise<OrganizationBackupSnapshot | null> {
+export async function exportOrganizationsBackupSnapshot(
+  userId?: string | null,
+  options: { remote?: boolean } = {},
+): Promise<OrganizationBackupSnapshot | null> {
   const uid = String(userId || "").trim();
   if (!uid) return null;
 
   const localState = loadOrganizationLocalState(uid);
   let organizations = localState.organizations;
+
+  // Une sauvegarde locale/NAS/Drive ne doit jamais dépendre de Supabase.
+  // Le snapshot contient immédiatement l'état local connu ; Supabase reste la
+  // source live et pourra être resynchronisé séparément.
+  if (options.remote === false) {
+    return {
+      _v: 1,
+      userId: uid,
+      createdAt: new Date().toISOString(),
+      workspace: loadOrganizationWorkspace(uid),
+      localState,
+      organizations: organizations.map((organization) => ({
+        organization,
+        groups: localState.groups.filter((row) => row.organizationId === organization.id),
+        events: localState.events.filter((row) => row.organizationId === organization.id),
+        members: [], invitations: [], competitions: [], competitionDetails: [], rankings: [], announcements: [],
+        feeCampaigns: [], feeMembers: {}, partners: [], federationLinks: [], installations: [],
+        cloudAvailable: {},
+        errors: ["remote refresh skipped during local snapshot"],
+      })),
+    };
+  }
   try {
     const listed = await listMyOrganizations(uid);
     if (listed.organizations.length) organizations = listed.organizations;

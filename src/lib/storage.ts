@@ -2798,58 +2798,65 @@ async function listKVKeys(): Promise<string[]> {
    Export / Import ALL (IDB + localStorage dc_* & dc-*)
    ✅ FIX : importAll supporte _v:2 (exportAll actuel) + restore history
 ============================================================ */
-export async function exportAll(): Promise<any> {
+export async function exportAll(onProgress?: (progress: number, message: string) => void): Promise<any> {
+  const report = (p: number, message: string) => { try { onProgress?.(p, message); } catch {} };
   const idbDump: Record<string, any> = {};
 
+  report(2, "Lecture du stockage local…");
   try {
     const db = await openDB();
-
     const tx = db.transaction(STORE_NAME, "readonly");
     const store = tx.objectStore(STORE_NAME);
+    const [keys, values] = await Promise.all([
+      new Promise<IDBValidKey[]>((resolve, reject) => {
+        const req = store.getAllKeys();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      }),
+      new Promise<any[]>((resolve, reject) => {
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      }),
+    ]);
 
-    const req = store.getAllKeys();
-
-    const keys: IDBValidKey[] = await new Promise((resolve, reject) => {
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => reject(req.error);
-    });
-
-    const valuesReq = store.getAll();
-
-    const values: any[] = await new Promise((resolve, reject) => {
-      valuesReq.onsuccess = () => resolve(valuesReq.result || []);
-      valuesReq.onerror = () => reject(valuesReq.error);
-    });
-
-    for (let i = 0; i < keys.length; i++) {
-      try {
-        const rawKey = String(keys[i] || "");
-        const raw = values[i];
-
-        if (raw == null) continue;
-        // Les anciennes restaurations ont créé des clés récursives du type
-        // `store:<uidA>:<uidB>` et `dc_stats_index_v2:<uidA>:<uidB>`.
-        // Elles dupliquent le même compte, gonflent le JSON et rendent le choix
-        // du store aléatoire sur Android. On ne les réexporte plus.
-        if (/^(store|dc_stats_index_v2):[^:]+:/.test(rawKey)) continue;
-
-        const json = await decompressGzip(raw);
-        const parsed = safeJsonParse(json, null);
-        if (rawKey === scopedStorageKey(STORE_KEY) && parsed && typeof parsed === "object") {
-          idbDump[rawKey] = sanitizeStoreForPersistence(parsed as any);
-        } else {
-          idbDump[rawKey] = parsed;
+    // Décompression par petits lots : l'ancien code faisait tout strictement en
+    // série. Une entrée lourde suffisait à donner l'impression d'un gel complet.
+    const chunkSize = 4;
+    for (let base = 0; base < keys.length; base += chunkSize) {
+      const end = Math.min(keys.length, base + chunkSize);
+      await Promise.all(Array.from({ length: end - base }, async (_, offset) => {
+        const i = base + offset;
+        try {
+          const rawKey = String(keys[i] || "");
+          const raw = values[i];
+          if (raw == null) return;
+          if (/^(store|dc_stats_index_v2):[^:]+:/.test(rawKey)) return;
+          const json = await Promise.race([
+            decompressGzip(raw),
+            new Promise<string>((_, reject) => setTimeout(() => reject(new Error(`timeout decode ${rawKey}`)), 12_000)),
+          ]);
+          const parsed = safeJsonParse(json, null);
+          idbDump[rawKey] = rawKey === scopedStorageKey(STORE_KEY) && parsed && typeof parsed === "object"
+            ? sanitizeStoreForPersistence(parsed as any)
+            : parsed;
+        } catch (error) {
+          console.warn("[storage] exportAll entry skipped", String(keys[i] || ""), error);
         }
-      } catch {}
+      }));
+      report(4 + Math.round((end / Math.max(1, keys.length)) * 28), `Stockage local ${end}/${keys.length}…`);
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
   } catch (err) {
     console.warn("[storage] exportAll optimized read failed:", err);
   }
 
-  // Le store portable doit toujours provenir de la vue la plus complète et
-  // non du scope courant, qui peut ne contenir que le profil actif sur Android.
+  report(34, "Consolidation des profils et réglages…");
   try {
-    const canonicalStore = await loadCanonicalAccountStoreForSnapshot();
+    const canonicalStore = await Promise.race([
+      loadCanonicalAccountStoreForSnapshot(),
+      new Promise<any>((resolve) => setTimeout(() => resolve(null), 12_000)),
+    ]);
     if (validProfileList(canonicalStore?.profiles).length > 0) {
       const safeCanonical = sanitizeStoreForPersistence(canonicalStore as any);
       idbDump[STORE_KEY] = safeCanonical;
@@ -2862,30 +2869,39 @@ export async function exportAll(): Promise<any> {
   const lsDump = exportLocalStorageDc();
   const nextIdbDump = injectCollectionsIntoSnapshotStore(idbDump);
 
-  const tournaments = await exportLocalTournamentsSnapshot().catch((err) => {
+  report(40, "Collecte des compétitions…");
+  const tournaments = await Promise.race([
+    exportLocalTournamentsSnapshot(),
+    new Promise<any>((resolve) => setTimeout(() => resolve(null), 8_000)),
+  ]).catch((err) => {
     console.warn("[storage] export tournaments snapshot failed", err);
-    return { _v: 1, exportedAt: new Date().toISOString(), tournaments: [], matchesByTournament: {}, counts: { tournaments: 0, matchesBuckets: 0, matches: 0 } };
-  });
+    return null;
+  }) || { _v: 1, exportedAt: new Date().toISOString(), tournaments: [], matchesByTournament: {}, counts: { tournaments: 0, matchesBuckets: 0, matches: 0 } };
 
-  const running = await exportRunningBackupSnapshot().catch((err) => {
+  report(46, "Collecte Running / outdoor…");
+  const running = await Promise.race([
+    exportRunningBackupSnapshot(),
+    new Promise<any>((resolve) => setTimeout(() => resolve(null), 8_000)),
+  ]).catch((err) => {
     console.warn("[storage] export running snapshot failed", err);
-    return { _v: 2, exportedAt: new Date().toISOString(), activities: [], routes: [], drafts: [], offlineRoutePacks: [], preferences: {} };
+    return null;
+  }) || { _v: 2, exportedAt: new Date().toISOString(), activities: [], routes: [], drafts: [], offlineRoutePacks: [], preferences: {} };
+
+  report(54, "Collecte de l'historique des parties…");
+  const history = await exportHistoryDump().catch((error) => {
+    console.warn("[storage] export history snapshot failed", error);
+    return { _v: 1, rows: {} };
   });
+  report(72, "Snapshot local principal assemblé.");
 
   return {
     _v: 2,
     idb: nextIdbDump,
     localStorage: lsDump,
-    history: await exportHistoryDump().catch(() => ({ _v: 1, rows: {} })),
-    // ✅ NAS BACKUP: les ligues/tournois vivent dans dc_tournaments_db_v1,
-    // une IndexedDB séparée du store principal. On les embarque explicitement
-    // pour que /sync/push puis /sync/pull restaurent aussi les compétitions.
+    history,
     tournaments,
     competitions: tournaments,
     teams: loadStoredTeams(),
-    // RUNNING / outdoor vit dans plusieurs IndexedDB et clés mss-* séparées.
-    // Ce bloc explicite rend les sauvegardes manuelles réellement portables
-    // entre Android, PWA et un nouvel appareil, photos et traces GPS incluses.
     running,
     outdoorActivities: running,
     exportedAt: new Date().toISOString(),
@@ -4022,6 +4038,8 @@ export type CloudSnapshotExportOptions = {
   includeEmbeddedMedia?: boolean;
   /** Les avatars ont déjà leurs objets R2 dédiés dans le chemin R2 rapide. */
   includeAvatarFallbacks?: boolean;
+  /** Progression interne du snapshot (0..100), utilisée par le Centre de sauvegarde. */
+  onProgress?: (progress: number, message: string) => void;
 };
 
 export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {}): Promise<CloudSnapshot> {
@@ -4030,7 +4048,10 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
     includeEmbeddedMedia: opts.includeEmbeddedMedia !== false,
   });
   try {
-  const dump = await exportAll();
+  const report = (p: number, message: string) => { try { opts.onProgress?.(p, message); } catch {} };
+  report(1, "Démarrage du snapshot local…");
+  const dump = await exportAll((p, message) => report(Math.min(74, 2 + Math.round(p * 0.72)), message));
+  report(75, "Consolidation des médias locaux…");
   const mediaMirror = opts.mediaMirror ?? "await";
   // IMPORTANT RESTAURATION MULTI-APPAREILS : un snapshot NAS/local/fichier doit
   // être autonome. Avant d'exporter le coffre média, on capture donc réellement
@@ -4054,7 +4075,10 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
         // NAS / local / fichier : la copie IndexedDB locale doit être terminée
         // AVANT exportUserMediaFallbackSnapshot(). Aucun upload R2 n'est imposé
         // lorsque mediaMirror="skip".
-        await captureStoreUserMedia(mediaSource, { mirrorR2: mediaMirror === "await" });
+        await Promise.race([
+          captureStoreUserMedia(mediaSource, { mirrorR2: mediaMirror === "await" }),
+          new Promise<void>((resolve) => setTimeout(resolve, 10_000)),
+        ]);
 
         if (mediaMirror === "background") {
           void captureStoreUserMedia(mediaSource, { mirrorR2: true })
@@ -4091,7 +4115,8 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
       const ownerId = String(getStorageUser() || "").trim();
       if (ownerId) {
         const { exportOrganizationsBackupSnapshot } = await import("../organizations/organizationBackup");
-        const organizationData = await exportOrganizationsBackupSnapshot(ownerId);
+        report(82, "Archivage local des organisations…");
+        const organizationData = await exportOrganizationsBackupSnapshot(ownerId, { remote: false });
         if (organizationData && organizationData.organizations.length) clone.organizationData = organizationData;
       }
     } catch (organizationError) {
@@ -4102,8 +4127,12 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
     // les gros data:image. On embarque donc aussi le coffre média indépendant
     // dans TOUT snapshot portable (R2, NAS, Local, fichier/SD/USB).
     if (opts.includeEmbeddedMedia !== false) {
+      report(86, "Archivage des médias embarqués…");
       try {
-        const userMediaFallbacks = await exportUserMediaFallbackSnapshot();
+        const userMediaFallbacks = await Promise.race([
+          exportUserMediaFallbackSnapshot(),
+          new Promise<any>((resolve) => setTimeout(() => resolve({ media: {} }), 10_000)),
+        ]);
         if (Object.keys(userMediaFallbacks.media || {}).length > 0) {
           clone.userMediaFallbacks = userMediaFallbacks;
         }
@@ -4116,6 +4145,7 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
     // plus les gros base64. On ajoute donc au snapshot cloud un bloc séparé de
     // miniatures compactes (192px), utilisable même si le NAS est hors ligne.
     if (opts.includeAvatarFallbacks !== false) {
+      report(91, "Préparation des avatars de secours…");
       try {
         const currentStore: any = await loadCanonicalAccountStoreForSnapshot();
         const avatarFallbacks = await buildAvatarFallbackSnapshot(
@@ -4157,6 +4187,7 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
       schemaVersion: 1,
     };
 
+    report(100, "Snapshot local prêt.");
     return clone;
   } catch (err) {
     console.warn("[storage] exportCloudSnapshot sanitize failed", err);

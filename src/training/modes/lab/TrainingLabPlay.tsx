@@ -7,6 +7,9 @@ import { getTrainingExercise } from "../../catalog/trainingExerciseCatalog";
 import { isDoubleDart, makeTrainingStats, trainingDartMatches, type TrainingDart } from "../../lib/trainingDarts";
 import { loadTrainingProgramSessions, recordTrainingProgramSession } from "../../profile/trainingPlanTracker";
 import type { TrainingExerciseFamily } from "../../catalog/trainingExerciseCatalog";
+import { buildTrainingLoadSummary } from "../../profile/trainingLoadCoach";
+import { buildPostSessionCoach, saveTrainingNextRecommendation } from "../../profile/trainingWeeklyCoach";
+import { loadTrainingLabPreferences } from "../../preferences/trainingLabPreferences";
 
 type RunState = { darts: number; hits: number; points: number; progress: number; checkoutTotal: number };
 type ProgramStepResult = {
@@ -39,6 +42,7 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
   const [programResults, setProgramResults] = React.useState<ProgramStepResult[]>([]);
   const [programSummaryOpen, setProgramSummaryOpen] = React.useState(false);
   const [programRecordMessage, setProgramRecordMessage] = React.useState<string | null>(null);
+  const [postSessionCoach, setPostSessionCoach] = React.useState<ReturnType<typeof buildPostSessionCoach> | null>(null);
   const programTrackedRef = React.useRef(false);
 
   const isProgram = programIds.length > 1;
@@ -181,7 +185,7 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
     programTrackedRef.current = true;
     const previous = loadTrainingProgramSessions();
     const previousBest = previous.reduce((best, row) => Math.max(best, row.performanceScore), 0);
-    recordTrainingProgramSession({
+    const currentRecord = recordTrainingProgramSession({
       programId: String(config?.programId || "program"),
       programTitle: String(config?.programTitle || "Programme Training"),
       durationMin: Math.max(0, Number(config?.programDurationMin) || 0),
@@ -193,6 +197,15 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
       accuracyPct: programSummary.accuracy,
       performanceScore: programSummary.performance,
     });
+    if (currentRecord) {
+      const prefs = loadTrainingLabPreferences();
+      const weakestStep = [...programSummary.rows].sort((a, b) => a.performanceScore - b.performanceScore)[0];
+      const nextFamily = (weakestStep?.family || currentRecord.families[0] || "precision") as TrainingExerciseFamily;
+      const loadAfter = buildTrainingLoadSummary([currentRecord, ...previous], prefs.weeklySessionTarget);
+      const advice = buildPostSessionCoach(previous, currentRecord, nextFamily, loadAfter);
+      setPostSessionCoach(advice);
+      saveTrainingNextRecommendation(advice);
+    }
     if (programSummary.performance > previousBest && programSummary.performance > 0) {
       setProgramRecordMessage(previous.length ? `NOUVEAU RECORD DE SÉANCE • ${Math.round(programSummary.performance)}/100` : `PREMIÈRE RÉFÉRENCE • ${Math.round(programSummary.performance)}/100`);
     }
@@ -259,6 +272,17 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
         </div>}
 
         {programRecordMessage && <div style={{ marginTop: 8, padding: 10, borderRadius: 12, background: "rgba(255,216,107,.08)", border: "1px solid rgba(255,216,107,.24)", color: "#ffd86b", fontSize: 9.5, fontWeight: 950, textAlign: "center", letterSpacing: .5 }}>{programRecordMessage}</div>}
+
+        {postSessionCoach && <div style={{ marginTop: 10, padding: 11, borderRadius: 13, background: postSessionCoach.tone === "positive" ? "rgba(80,255,174,.07)" : postSessionCoach.tone === "caution" ? "rgba(255,184,76,.07)" : "rgba(39,220,255,.06)", border: postSessionCoach.tone === "positive" ? "1px solid rgba(80,255,174,.20)" : postSessionCoach.tone === "caution" ? "1px solid rgba(255,184,76,.20)" : "1px solid rgba(39,220,255,.18)" }}>
+          <div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1, opacity: .58 }}>BILAN COACH AWENA</div>
+          <div style={{ marginTop: 4, fontSize: 11.5, fontWeight: 950 }}>{postSessionCoach.headline}</div>
+          <div style={{ marginTop: 4, fontSize: 9.5, lineHeight: 1.42, opacity: .68 }}>{postSessionCoach.body}</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+            <span style={{ padding: "4px 7px", borderRadius: 999, background: "rgba(255,255,255,.045)", fontSize: 8, fontWeight: 900 }}>PROCHAINE • {postSessionCoach.nextDurationMin} MIN</span>
+            <span style={{ padding: "4px 7px", borderRadius: 999, background: "rgba(255,255,255,.045)", fontSize: 8, fontWeight: 900 }}>FOCUS • {postSessionCoach.nextFamilyLabel.toUpperCase()}</span>
+            {Math.abs(postSessionCoach.delta) >= 1 && <span style={{ padding: "4px 7px", borderRadius: 999, background: "rgba(255,255,255,.045)", fontSize: 8, fontWeight: 900 }}>FORME • {postSessionCoach.delta > 0 ? "+" : ""}{Math.round(postSessionCoach.delta)} PTS</span>}
+          </div>
+        </div>}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12 }}>
           {programSummary.rows.map((row, index) => <div key={`${row.exerciseId}-${index}`} style={{ display: "grid", gridTemplateColumns: "26px 1fr auto auto", gap: 8, alignItems: "center", padding: 9, borderRadius: 11, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.06)" }}>

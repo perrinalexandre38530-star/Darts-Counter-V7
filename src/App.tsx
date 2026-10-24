@@ -7665,7 +7665,7 @@ case "babyfoot_team_edit":
   // Règle paysage globale : la BottomNav devient normalement une rail verticale pendant PLAY.
   // P’TIT 1 fait exception : son écran de jeu exploite toute la largeur disponible en paysage,
   // comme en portrait, afin de préserver le couple panneau joueur + keypad sans débordement.
-  const forceFullscreenPlay = tab === "ptit_hun_play";
+  const forceFullscreenPlay = tab === "ptit_hun_play" || (tab === "bss_king_play" && isLandscapeViewport);
   const showBottomNav = appChromeAllowed && !forceFullscreenPlay && (!HIDE_BOTTOM_NAV_TABS.has(tab) || (isGamePlayRoute && isLandscapeViewport));
 
 

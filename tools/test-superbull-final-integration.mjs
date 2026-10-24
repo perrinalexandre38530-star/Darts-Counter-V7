@@ -24,6 +24,8 @@ const stats = read("src/pages/StatsHub.tsx");
 const rebuild = read("src/lib/stats/rebuildStatsFromHistory.ts");
 const registry = read("src/games/dartsGameRegistry.ts");
 const quick = read("src/lib/quickParty.ts");
+const trainingPlay = read("src/training/modes/superbull/SuperBullPlay.tsx");
+const trainingStats = read("src/components/stats/StatsTrainingModesLocal.tsx");
 
 mustInclude(app, [
   'case "super_bull_config"',
@@ -43,7 +45,7 @@ mustInclude(config, [
 ], "configuration");
 
 mustInclude(play, [
-  'import superBullHero from "../assets/superbull/superbull_horizontal_hero.png"',
+  'import superBullHero from "../assets/superbull/superbull_horizontal_hero.webp"',
   "BULL25",
   "BULL50",
   "MISS",
@@ -92,6 +94,21 @@ mustInclude(registry, [
 ], "registre");
 
 mustInclude(quick, ["isQuickPartyRecord", "quickPartyParticipants", "quickPartyProfileLinks"], "contrat Partie Rapide");
+
+assert.ok(exists("src/assets/superbull/superbull_horizontal_hero.webp"), "asset SUPER BULL WebP manquant");
+mustInclude(trainingPlay, [
+  'modeId: "training_super_bull"',
+  "BULL25",
+  "BULL50",
+  "MISS",
+  "positionStats",
+], "Training SUPER BULL");
+mustInclude(trainingStats, [
+  "SUPER BULL — TRAINING DÉTAILLÉ",
+  "superBullEvolution",
+  "superBullPositionStats",
+  "ÉVOLUTION PRÉCISION CENTRE",
+], "Stats Training SUPER BULL");
 
 for (const [file, text] of [["SuperBullConfig.tsx", config], ["SimpleRoundsPlay.tsx", play]]) {
   assert.ok(!/bient[oô]t disponible|not implemented/i.test(text), `${file}: marqueur de mode incomplet détecté`);

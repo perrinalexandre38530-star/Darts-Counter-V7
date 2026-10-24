@@ -282,6 +282,62 @@ function detailRows(mode: PremiumPartyStatsMode, rows: any[], common: any) {
   ];
 }
 
+function bestRowBy(rows: any[], field: string) {
+  return rows.reduce((best: any, row: any) => n(row?.st?.[field]) > n(best?.st?.[field]) ? row : best, null);
+}
+function accuracyOf(row: any) { return row?.darts ? Math.round((n(row.hits) / n(row.darts)) * 1000) / 10 : 0; }
+function modeRecords(mode: PremiumPartyStatsMode, rows: any[]) {
+  const item = (label: string, field: string, color: string, suffix = "") => {
+    const row = bestRowBy(rows, field);
+    return { label, value: row ? `${n(row?.st?.[field])}${suffix}` : `0${suffix}`, date: row ? row.label : "—", color };
+  };
+  const bestAccuracy = rows.reduce((best: any, row: any) => accuracyOf(row) > accuracyOf(best) ? row : best, null);
+  const acc = { label: "Précision / match", value: `${bestAccuracy ? accuracyOf(bestAccuracy) : 0}%`, date: bestAccuracy?.label || "—", color: GREEN };
+  if (mode === "castle") return [
+    item("Build / volée", "bestBuildVisit", GOLD), item("Dégâts / volée", "bestDamageVisit", RED),
+    item("Impact / volée", "bestImpactVisit", MAGENTA), item("Série utile", "bestUsefulStreak", CYAN), acc,
+  ];
+  if (mode === "gotcha") return [
+    item("Best GOTCHA", "bestGotchaVisit", RED), item("Score max atteint", "highestScore", GOLD),
+    item("Best volée", "bestVisit", MAGENTA), item("GOTCHA / match", "gotchas", CYAN), item("Victimes / match", "victims", RED), acc,
+  ];
+  if (mode === "hare_hounds") return [
+    item("Étapes / volée", "bestVisitSteps", CYAN), item("Série de touches", "bestHitStreak", GOLD),
+    item("Étapes / match", "steps", GREEN), item("Captures / match", "catches", RED), item("Évasions / match", "escapes", MAGENTA), acc,
+  ];
+  return [item("Best volée", "bestVisit", metaAccent(mode)), acc];
+}
+function metaAccent(mode: PremiumPartyStatsMode) { return MODE_META[mode]?.accent || CYAN; }
+function modeBadges(mode: PremiumPartyStatsMode, rows: any[], common: any) {
+  const total = (f: string) => sum(rows, f);
+  const peak = (f: string) => max(rows, f);
+  const badge = (icon: string, label: string, desc: string, value: number, target: number, color: string) => ({
+    icon, label, desc, value, target, color, unlocked: value >= target, progress: target ? Math.min(100, Math.round((value / target) * 100)) : 0,
+  });
+  if (mode === "castle") return [
+    badge("🏗️", "Bâtisseur", "25 constructions", total("builds"), 25, GOLD),
+    badge("🏰", "Forteresse", "10 victoires", common.wins, 10, CYAN),
+    badge("⚔️", "Assaillant", "250 dégâts infligés", total("damage"), 250, RED),
+    badge("🎯", "Précision royale", "70% de précision lifetime", common.accuracy, 70, GREEN),
+    badge("💥", "Impact majeur", "Impact de volée ≥ 75", peak("bestImpactVisit"), 75, MAGENTA),
+  ];
+  if (mode === "gotcha") return [
+    badge("🎯", "Premier GOTCHA", "Réaliser 1 GOTCHA", total("gotchas"), 1, RED),
+    badge("☠️", "Chasseur", "10 GOTCHA", total("gotchas"), 10, MAGENTA),
+    badge("👥", "Victimes", "25 victimes", total("victims"), 25, GOLD),
+    badge("✅", "Sang-froid", "10 finishes exacts", total("exactFinishes"), 10, GREEN),
+    badge("🎯", "Sniper", "70% de précision lifetime", common.accuracy, 70, CYAN),
+  ];
+  if (mode === "hare_hounds") return [
+    badge("🐇", "Grand lièvre", "50 étapes parcourues", total("steps"), 50, CYAN),
+    badge("🐕", "Chasseur", "10 captures", total("catches"), 10, RED),
+    badge("💨", "Insaisissable", "10 évasions", total("escapes"), 10, GREEN),
+    badge("🏁", "Marathon", "25 parties terminées", common.matches, 25, GOLD),
+    badge("🎯", "Pisteur", "70% de précision lifetime", common.accuracy, 70, MAGENTA),
+  ];
+  return [];
+}
+
 export default function PartyModesStatsTabFull({
   records,
   playerId,
@@ -332,6 +388,20 @@ export default function PartyModesStatsTabFull({
   const specificKpis = modeKpis(mode, rows, common);
   const details = detailRows(mode, rows, common);
   const hh = historyHeaders(mode);
+  const recordsList = React.useMemo(() => modeRecords(mode, rows), [mode, rows]);
+  const badges = React.useMemo(() => modeBadges(mode, rows, common), [mode, rows, common]);
+  const recentRows = rows.slice(-10);
+  const recent = React.useMemo(() => {
+    const matches = recentRows.length;
+    const wins = recentRows.reduce((a: number, r: any) => a + (r.won ? 1 : 0), 0);
+    const darts = recentRows.reduce((a: number, r: any) => a + n(r.darts), 0);
+    const hits = recentRows.reduce((a: number, r: any) => a + n(r.hits), 0);
+    const accuracy = darts ? Math.round((hits / darts) * 1000) / 10 : 0;
+    const winRate = matches ? Math.round((wins / matches) * 1000) / 10 : 0;
+    const primary = recentRows.reduce((a: number, r: any) => a + n(modeHistory(mode, r)[0]), 0);
+    const secondary = recentRows.reduce((a: number, r: any) => a + n(modeHistory(mode, r)[1]), 0);
+    return { matches, wins, darts, hits, accuracy, winRate, primary, secondary };
+  }, [recentRows, mode]);
 
   if (!rows.length) return <Card><SectionTitle accent={meta.accent}>{meta.title} — statistiques détaillées</SectionTitle><div style={{ color: MUTED, fontSize: 12 }}>Aucune partie {meta.title} terminée enregistrée pour {playerName || "ce joueur"}.</div></Card>;
 
@@ -342,6 +412,40 @@ export default function PartyModesStatsTabFull({
       <Kpi label="Précision" value={`${common.accuracy}%`} detail={`${common.hits}/${common.darts} touches utiles`} color={CYAN} />
       {specificKpis.map((k: any[]) => <Kpi key={k[0]} label={k[0]} value={k[1]} detail={k[2]} color={k[3] || meta.accent} />)}
     </div>
+
+    <Card>
+      <SectionTitle accent={meta.accent} sub="Fenêtre dynamique des 10 dernières parties terminées">FORME ACTUELLE</SectionTitle>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8 }}>
+        <Kpi label="Parties récentes" value={recent.matches} detail={`${recent.wins} victoire${recent.wins > 1 ? "s" : ""}`} color={meta.accent} />
+        <Kpi label="Victoires récentes" value={`${recent.winRate}%`} detail={`Lifetime ${common.winRate}%`} color={recent.winRate >= common.winRate ? GREEN : GOLD} />
+        <Kpi label="Précision récente" value={`${recent.accuracy}%`} detail={`Lifetime ${common.accuracy}%`} color={recent.accuracy >= common.accuracy ? CYAN : GOLD} />
+        <Kpi label={hh[0]} value={recent.primary} detail={`sur ${recent.matches || 0} partie${recent.matches > 1 ? "s" : ""}`} color={meta.accent} />
+        <Kpi label={hh[1]} value={recent.secondary} detail="cumul récent" color={MAGENTA} />
+      </div>
+    </Card>
+
+    {badges.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 12 }}>
+      <Card>
+        <SectionTitle accent={meta.accent} sub="Records personnels extraits des parties terminées">RECORDS {meta.title}</SectionTitle>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(135px,1fr))", gap: 8 }}>
+          {recordsList.map((r: any) => <div key={r.label} style={{ padding: 11, borderRadius: 15, border: `1px solid ${r.color}33`, background: `linear-gradient(180deg,${r.color}10,rgba(255,255,255,.018))` }}>
+            <div style={{ color: MUTED, fontSize: 9, fontWeight: 950, textTransform: "uppercase", letterSpacing: .45 }}>{r.label}</div>
+            <div style={{ marginTop: 4, color: r.color, fontSize: 22, fontWeight: 1100, lineHeight: 1 }}>{r.value}</div>
+            <div style={{ marginTop: 5, color: "#aab3bf", fontSize: 8.5 }}>{r.date}</div>
+          </div>)}
+        </div>
+      </Card>
+      <Card>
+        <SectionTitle accent={meta.accent} sub="Objectifs lifetime — progression sauvegardée automatiquement">BADGES</SectionTitle>
+        <div style={{ display: "grid", gap: 8 }}>
+          {badges.map((b: any) => <div key={b.label} style={{ display: "grid", gridTemplateColumns: "42px minmax(0,1fr) auto", gap: 9, alignItems: "center", padding: 9, borderRadius: 14, border: `1px solid ${b.unlocked ? `${b.color}55` : "rgba(255,255,255,.07)"}`, background: b.unlocked ? `${b.color}0d` : "rgba(255,255,255,.025)", opacity: b.unlocked ? 1 : .72 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 12, display: "grid", placeItems: "center", fontSize: 19, background: b.unlocked ? `${b.color}22` : "rgba(255,255,255,.05)", filter: b.unlocked ? "none" : "grayscale(1)" }}>{b.icon}</div>
+            <div style={{ minWidth: 0 }}><div style={{ color: b.unlocked ? b.color : WHITE, fontWeight: 1050, fontSize: 11 }}>{b.label}</div><div style={{ marginTop: 2, color: MUTED, fontSize: 8.5 }}>{b.desc}</div><div style={{ marginTop: 6, height: 4, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.06)" }}><div style={{ width: `${b.progress}%`, height: "100%", background: b.color }} /></div></div>
+            <div style={{ textAlign: "right" }}><div style={{ color: b.unlocked ? GREEN : MUTED, fontSize: 9, fontWeight: 1000 }}>{b.unlocked ? "DÉBLOQUÉ" : `${b.progress}%`}</div><div style={{ marginTop: 2, color: "#aab3bf", fontSize: 8 }}>{Math.round(b.value)}/{b.target}</div></div>
+          </div>)}
+        </div>
+      </Card>
+    </div> : null}
 
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 12 }}>
       <Card>

@@ -19,6 +19,7 @@ import { buildCoachProgram, buildCustomProgram, TRAINING_PROGRAMS, type Training
 import { loadTrainingLabPreferences, setTrainingFamilyGoal, setTrainingFamilyGoalDeadline, setTrainingWeeklySessionTarget, toggleFavoriteExercise, toggleFavoriteProgram, type TrainingLabPreferences } from "../../preferences/trainingLabPreferences";
 import { buildTrainingWeeklyPlanStats, loadTrainingProgramSessions } from "../../profile/trainingPlanTracker";
 import { buildTrainingLoadSummary } from "../../profile/trainingLoadCoach";
+import { buildTrainingWeekCoachPlan, loadTrainingNextRecommendation } from "../../profile/trainingWeeklyCoach";
 
 const familyOrder: TrainingExerciseFamily[] = ["scoring", "doubles", "checkout", "precision", "bull", "regularity"];
 type HubTab = "program" | "exercises" | "diagnosis" | "progress";
@@ -36,10 +37,12 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
     window.addEventListener("dc-training-stats-updated", refresh);
     window.addEventListener("dc-training-history-updated", refresh);
     window.addEventListener("dc-training-plan-updated", refresh);
+    window.addEventListener("dc-training-next-recommendation-updated", refresh);
     return () => {
       window.removeEventListener("dc-training-stats-updated", refresh);
       window.removeEventListener("dc-training-history-updated", refresh);
       window.removeEventListener("dc-training-plan-updated", refresh);
+      window.removeEventListener("dc-training-next-recommendation-updated", refresh);
     };
   }, []);
   React.useEffect(() => {
@@ -60,6 +63,8 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
   const loadSummary = React.useMemo(() => buildTrainingLoadSummary(programSessions, preferences.weeklySessionTarget), [programSessions, preferences.weeklySessionTarget]);
   const diagnosis = React.useMemo(() => buildTrainingDiagnosis(sessions), [sessions]);
   const recommendedFamily = React.useMemo(() => chooseGoalPriorityFamily(diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines), [diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines]);
+  const weekCoachPlan = React.useMemo(() => buildTrainingWeekCoachPlan(programSessions, preferences.weeklySessionTarget, recommendedFamily, loadSummary), [programSessions, preferences.weeklySessionTarget, recommendedFamily, loadSummary]);
+  const nextRecommendation = React.useMemo(() => { void revision; return loadTrainingNextRecommendation(); }, [revision]);
   const progression = React.useMemo(() => buildTrainingProgression(sessions), [sessions]);
   const goalStatuses = React.useMemo(() => buildTrainingGoalStatuses(diagnosis, preferences.familyGoals), [diagnosis, preferences.familyGoals]);
   const prescription = React.useMemo(() => buildGoalAwareCoachPrescription(diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines), [diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines]);
@@ -143,6 +148,13 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
     setPreferences(setTrainingWeeklySessionTarget(preferences, value));
   };
 
+  const prepareRecommendedSession = (duration: 15 | 30 | 45, focus: TrainingExerciseFamily | "balanced") => {
+    setCustomDuration(duration);
+    setCustomFocus(focus);
+    setCustomIntensity(loadSummary.status === "high" || loadSummary.status === "recovery" ? "accessible" : "standard");
+    setProgramId(`custom_${duration}_${focus}_${loadSummary.status === "high" || loadSummary.status === "recovery" ? "accessible" : "standard"}`);
+  };
+
   const tabs: Array<{ id: HubTab; label: string }> = [
     { id: "program", label: "PROGRAMME" },
     { id: "exercises", label: "EXERCICES" },
@@ -167,6 +179,15 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
               <span style={{ fontSize: 9, padding: "4px 7px", borderRadius: 999, background: prescription.gap <= 0 ? "rgba(80,255,174,.10)" : "rgba(255,184,76,.08)", border: prescription.gap <= 0 ? "1px solid rgba(80,255,174,.20)" : "1px solid rgba(255,184,76,.16)" }}>{prescription.gap <= 0 ? "OBJECTIF ATTEINT" : `ÉCART ${Math.ceil(prescription.gap)} PTS`}</span>
             </div>
           </div>
+
+          {nextRecommendation && <div style={{ marginTop: 10, padding: 11, borderRadius: 14, border: "1px solid rgba(185,156,255,.20)", background: "rgba(140,90,255,.055)", display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ minWidth: 0, flex: "1 1 260px" }}>
+              <div style={{ fontSize: 8, fontWeight: 950, color: "#b99cff", letterSpacing: 1 }}>SUITE DE LA DERNIÈRE SÉANCE</div>
+              <div style={{ marginTop: 3, fontSize: 10.5, fontWeight: 950 }}>{nextRecommendation.headline}</div>
+              <div style={{ marginTop: 3, fontSize: 8.8, opacity: .58 }}>{nextRecommendation.durationMin} min • {nextRecommendation.familyLabel} • {nextRecommendation.body}</div>
+            </div>
+            <button type="button" onClick={() => { setTab("program"); prepareRecommendedSession(nextRecommendation.durationMin, nextRecommendation.family); }} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(185,156,255,.28)", background: "rgba(140,90,255,.10)", color: "inherit", fontSize: 8.5, fontWeight: 950, cursor: "pointer" }}>REPRENDRE LE FIL</button>
+          </div>}
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 12, position: "sticky", top: 0, zIndex: 3, padding: "6px 0", backdropFilter: "blur(10px)" }}>
             {tabs.map((item) => <button key={item.id} type="button" onClick={() => setTab(item.id)} style={{ minWidth: 0, padding: "9px 4px", borderRadius: 11, border: tab === item.id ? "1px solid #27dcff" : "1px solid rgba(255,255,255,.10)", background: tab === item.id ? "rgba(39,220,255,.15)" : "rgba(0,0,0,.2)", color: "inherit", fontSize: 9.5, fontWeight: 950, letterSpacing: .5, cursor: "pointer" }}>{item.label}</button>)}
@@ -220,7 +241,25 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                   <div style={{ marginTop: 1, fontSize: 6.5, opacity: .42 }}>{day.minutes ? `${day.minutes}m` : "—"}</div>
                 </div>)}
               </div>
-              <button type="button" onClick={() => { setCustomDuration(loadSummary.recommendedDurationMin); setCustomFocus(recommendedFamily); setProgramId(`custom_${loadSummary.recommendedDurationMin}_${recommendedFamily}_standard`); }} style={{ width: "100%", marginTop: 9, padding: 9, borderRadius: 10, border: "1px solid rgba(39,220,255,.20)", background: "rgba(39,220,255,.06)", color: "inherit", fontSize: 9, fontWeight: 950, cursor: "pointer" }}>PRÉPARER LA SÉANCE CONSEILLÉE • {loadSummary.recommendedDurationMin} MIN • {TRAINING_FAMILY_META[recommendedFamily].label.toUpperCase()}</button>
+              <button type="button" onClick={() => prepareRecommendedSession(loadSummary.recommendedDurationMin, recommendedFamily)} style={{ width: "100%", marginTop: 9, padding: 9, borderRadius: 10, border: "1px solid rgba(39,220,255,.20)", background: "rgba(39,220,255,.06)", color: "inherit", fontSize: 9, fontWeight: 950, cursor: "pointer" }}>PRÉPARER LA SÉANCE CONSEILLÉE • {loadSummary.recommendedDurationMin} MIN • {TRAINING_FAMILY_META[recommendedFamily].label.toUpperCase()}</button>
+            </div>
+
+            <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: "1px solid rgba(140,90,255,.22)", background: "linear-gradient(135deg,rgba(140,90,255,.08),rgba(39,220,255,.035))" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start", flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#b99cff" }}>FIL CONDUCTEUR AWENA</div>
+                  <div style={{ marginTop: 4, fontSize: 12.5, fontWeight: 950 }}>{weekCoachPlan.cadenceLabel}</div>
+                  <div style={{ marginTop: 4, fontSize: 9.5, lineHeight: 1.4, opacity: .62 }}>{weekCoachPlan.summary}</div>
+                </div>
+                {weekCoachPlan.nextSlot && <button type="button" onClick={() => prepareRecommendedSession(weekCoachPlan.nextSlot!.durationMin as 15 | 30 | 45, weekCoachPlan.nextSlot!.focusFamily)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(140,90,255,.28)", background: "rgba(140,90,255,.09)", color: "inherit", fontSize: 8.5, fontWeight: 950, cursor: "pointer" }}>PRÉPARER {weekCoachPlan.nextSlot.label}</button>}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 5, marginTop: 10 }}>
+                {weekCoachPlan.slots.map((slot) => <div key={slot.dayStart} title={`${slot.focusLabel}${slot.durationMin ? ` • ${slot.durationMin} min` : ""}`} style={{ minWidth: 0, padding: "7px 3px", borderRadius: 9, textAlign: "center", border: slot.state === "done" ? "1px solid rgba(80,255,174,.22)" : slot.state === "planned" ? "1px solid rgba(140,90,255,.24)" : "1px solid rgba(255,255,255,.055)", background: slot.state === "done" ? "rgba(80,255,174,.07)" : slot.state === "planned" ? "rgba(140,90,255,.07)" : "rgba(255,255,255,.018)" }}>
+                  <div style={{ fontSize: 7.5, opacity: .48 }}>{slot.label}</div>
+                  <div style={{ marginTop: 4, fontSize: 11, fontWeight: 950, color: slot.state === "done" ? "#8cffcb" : slot.state === "planned" ? "#b99cff" : "inherit" }}>{slot.state === "done" ? "✓" : slot.state === "planned" ? `${slot.durationMin}'` : "—"}</div>
+                  <div style={{ marginTop: 3, fontSize: 6.5, opacity: .44, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{slot.state === "done" && slot.performanceScore != null ? `${Math.round(slot.performanceScore)}/100` : slot.focusLabel}</div>
+                </div>)}
+              </div>
             </div>
             {!!preferences.favoritePrograms.length && <>
               <div style={{ margin: "10px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#ffd86b" }}>★ MES SÉANCES FAVORITES</div>

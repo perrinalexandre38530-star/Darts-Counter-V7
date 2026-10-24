@@ -175,6 +175,78 @@ export default function StatsTrainingModesLocal() {
     [challengePositionStats],
   );
 
+  const superBullEvolution = React.useMemo(() => {
+    return (data.recent || [])
+      .filter((session) => session.modeId === "training_super_bull")
+      .slice()
+      .sort((a, b) => Number(a.endedAt || 0) - Number(b.endedAt || 0))
+      .slice(-30);
+  }, [data.recent]);
+
+  const superBullTotals = React.useMemo(() => {
+    const totals = {
+      sessions: superBullEvolution.length,
+      darts: 0,
+      points: 0,
+      hits: 0,
+      bulls: 0,
+      dbulls: 0,
+      misses: 0,
+      successes: 0,
+      perfectVisits: 0,
+      bestStreak: 0,
+      bestVisit: 0,
+      dartsToTarget: [] as number[],
+      positions: [1, 2, 3].map((slot) => ({ slot, darts: 0, b25: 0, b50: 0, misses: 0, points: 0 })),
+    };
+
+    for (const session of superBullEvolution) {
+      const metrics: any = session.metrics || {};
+      totals.darts += Math.max(0, Number(session.darts || 0));
+      totals.points += Math.max(0, Number(session.points || 0));
+      totals.hits += Math.max(0, Number(session.hits || 0));
+      totals.bulls += Math.max(0, Number(metrics.bulls || 0));
+      totals.dbulls += Math.max(0, Number(metrics.dbulls || 0));
+      totals.misses += Math.max(0, Number(metrics.misses ?? session.misses ?? 0));
+      totals.successes += session.success ? 1 : 0;
+      totals.perfectVisits += Math.max(0, Number(metrics.perfectVisits || 0));
+      totals.bestStreak = Math.max(totals.bestStreak, Math.max(0, Number(metrics.bestStreak || 0)));
+      totals.bestVisit = Math.max(totals.bestVisit, Math.max(0, Number(metrics.bestVisit || 0)));
+      if (Number.isFinite(Number(metrics.dartsToTarget)) && Number(metrics.dartsToTarget) > 0) {
+        totals.dartsToTarget.push(Number(metrics.dartsToTarget));
+      }
+
+      const positions = Array.isArray(metrics.positionStats) ? metrics.positionStats : [];
+      for (const row of positions) {
+        const slot = Math.max(1, Math.min(3, Number(row?.slot || 0))) - 1;
+        if (slot < 0 || slot > 2) continue;
+        const target = totals.positions[slot];
+        target.darts += Math.max(0, Number(row?.darts || 0));
+        target.b25 += Math.max(0, Number(row?.b25 || 0));
+        target.b50 += Math.max(0, Number(row?.b50 || 0));
+        target.misses += Math.max(0, Number(row?.misses || 0));
+        target.points += Math.max(0, Number(row?.points || 0));
+      }
+    }
+    return totals;
+  }, [superBullEvolution]);
+
+  const superBullPositionStats = React.useMemo(() => superBullTotals.positions.map((row) => {
+    const hits = row.b25 + row.b50;
+    return {
+      ...row,
+      hits,
+      precision: row.darts > 0 ? (hits / row.darts) * 100 : 0,
+      dbullRate: row.darts > 0 ? (row.b50 / row.darts) * 100 : 0,
+      pointsPerDart: row.darts > 0 ? row.points / row.darts : 0,
+    };
+  }), [superBullTotals]);
+
+  const superBullBestPosition = React.useMemo(
+    () => superBullPositionStats.slice().sort((a, b) => b.precision - a.precision)[0] || null,
+    [superBullPositionStats],
+  );
+
   const global = data.global || EMPTY_ROW;
   const globalAccuracy = pct(int(global.hits), int(global.darts));
   const successRate = pct(int(global.successes), int(global.sessions));
@@ -368,6 +440,92 @@ export default function StatsTrainingModesLocal() {
               </div>
             </>;
           })()}
+        </section>
+      ) : null}
+
+      {superBullEvolution.length ? (
+        <section style={{ ...shell, marginTop: 10, padding: 11 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline", marginBottom: 7 }}>
+            <div style={{ fontSize: 11, fontWeight: 950, color: "#27dcff", letterSpacing: 0.7 }}>SUPER BULL — TRAINING DÉTAILLÉ</div>
+            <div style={{ fontSize: 9, opacity: .55 }}>{superBullTotals.sessions} session{superBullTotals.sessions > 1 ? "s" : ""}</div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(105px,1fr))", gap: 6 }}>
+            {[
+              ["PRÉCISION", superBullTotals.darts ? `${one((superBullTotals.hits / superBullTotals.darts) * 100)}%` : "—"],
+              ["BULL25", int(superBullTotals.bulls)],
+              ["BULL50", int(superBullTotals.dbulls)],
+              ["MISS", int(superBullTotals.misses)],
+              ["BEST SÉRIE", int(superBullTotals.bestStreak)],
+              ["BEST VOLÉE", `${int(superBullTotals.bestVisit)} pts`],
+              ["VOLÉES 100%", int(superBullTotals.perfectVisits)],
+              ["RÉUSSITE", pct(superBullTotals.successes, superBullTotals.sessions)],
+            ].map(([label, value]) => (
+              <div key={String(label)} style={{ borderRadius: 11, border: "1px solid rgba(39,220,255,.16)", background: "rgba(0,0,0,.23)", padding: 7 }}>
+                <div style={{ fontSize: 8, opacity: .5, fontWeight: 900 }}>{label}</div>
+                <b style={{ display: "block", marginTop: 2, color: "#27dcff", fontSize: 13 }}>{value}</b>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ marginTop: 10, fontSize: 9, fontWeight: 950, letterSpacing: .65, color: "#7feaff" }}>
+            PRÉCISION PAR FLÉCHETTE {superBullBestPosition && superBullBestPosition.darts ? `• meilleure : D${superBullBestPosition.slot} (${one(superBullBestPosition.precision)}%)` : ""}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 6 }}>
+            {superBullPositionStats.map((pos) => (
+              <div key={pos.slot} style={{ borderRadius: 11, border: "1px solid rgba(39,220,255,.22)", background: "rgba(0,0,0,.23)", padding: 7, minWidth: 0 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "baseline" }}>
+                  <b style={{ fontSize: 9 }}>D{pos.slot}</b>
+                  <strong style={{ color: "#27dcff", fontSize: 14 }}>{pos.darts ? `${one(pos.precision)}%` : "—"}</strong>
+                </div>
+                <div style={{ height: 5, borderRadius: 999, background: "rgba(255,255,255,.08)", marginTop: 6, overflow: "hidden" }}>
+                  <i style={{ display: "block", width: `${Math.min(100, pos.precision)}%`, height: "100%", borderRadius: 999, background: "linear-gradient(90deg,#27dcff,#32ffb2)" }} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 3, marginTop: 6 }}>
+                  {[
+                    ["B25", pos.b25],
+                    ["B50", pos.b50],
+                    ["MISS", pos.misses],
+                    ["PTS/D", one(pos.pointsPerDart)],
+                  ].map(([label, value]) => (
+                    <span key={String(label)} style={{ minWidth: 0, borderRadius: 7, background: "rgba(255,255,255,.035)", padding: "4px 5px", display: "flex", justifyContent: "space-between", gap: 4, fontSize: 7.5 }}>
+                      <b>{label}</b><em style={{ fontStyle: "normal", opacity: .72 }}>{value}</em>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {(() => {
+            const rows = superBullEvolution.slice(-20);
+            const width = 620, height = 170, pad = 26;
+            const values = rows.map((session) => Math.max(0, Math.min(100, Number(session.accuracyPct || 0))));
+            const points = rows.map((session, index) => {
+              const x = rows.length <= 1 ? width / 2 : pad + (index / (rows.length - 1)) * (width - pad * 2);
+              const y = height - pad - (values[index] / 100) * (height - pad * 2);
+              return { x, y, session, value: values[index] };
+            });
+            return (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                  <div style={{ fontSize: 9, fontWeight: 950, color: "#7feaff", letterSpacing: .6 }}>ÉVOLUTION PRÉCISION CENTRE</div>
+                  <div style={{ fontSize: 8.5, opacity: .5 }}>20 dernières max.</div>
+                </div>
+                <svg viewBox={`0 0 ${width} ${height}`} style={{ display: "block", width: "100%", minHeight: 135, marginTop: 3 }} role="img" aria-label="Évolution de la précision Super Bull en Training">
+                  {[0,25,50,75,100].map((value) => { const y = height - pad - (value / 100) * (height - pad * 2); return <g key={value}><line x1={pad} y1={y} x2={width-pad} y2={y} stroke="rgba(255,255,255,.08)"/><text x="2" y={y+4} fontSize="9" fill="rgba(255,255,255,.42)">{value}%</text></g>; })}
+                  <polyline points={points.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke="#27dcff" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>
+                  {points.map((point, index) => <g key={point.session.id}><circle cx={point.x} cy={point.y} r="4.5" fill="#27dcff" stroke="#fff" strokeWidth="1.2"/><title>{`Session ${index + 1} · ${one(point.value)}% · ${point.session.points} pts`}</title></g>)}
+                </svg>
+              </div>
+            );
+          })()}
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(125px,1fr))", gap: 6, marginTop: 2 }}>
+            <div style={{ borderRadius: 10, background: "rgba(0,0,0,.23)", padding: 7 }}><div style={{ fontSize: 8, opacity: .5 }}>POINTS / FLÉCHETTE</div><b style={{ color: "#27dcff" }}>{superBullTotals.darts ? one(superBullTotals.points / superBullTotals.darts) : "—"}</b></div>
+            <div style={{ borderRadius: 10, background: "rgba(0,0,0,.23)", padding: 7 }}><div style={{ fontSize: 8, opacity: .5 }}>TAUX BULL50</div><b style={{ color: "#27dcff" }}>{superBullTotals.darts ? `${one((superBullTotals.dbulls / superBullTotals.darts) * 100)}%` : "—"}</b></div>
+            <div style={{ borderRadius: 10, background: "rgba(0,0,0,.23)", padding: 7 }}><div style={{ fontSize: 8, opacity: .5 }}>DARTS MOY. POUR OBJECTIF</div><b style={{ color: "#27dcff" }}>{superBullTotals.dartsToTarget.length ? one(superBullTotals.dartsToTarget.reduce((a,b)=>a+b,0) / superBullTotals.dartsToTarget.length) : "—"}</b></div>
+          </div>
         </section>
       ) : null}
 

@@ -1643,7 +1643,10 @@ function installPreparedBackupInvalidation(): void {
 
 installPreparedBackupInvalidation();
 
-async function prepareCurrentBackupOnce(kind: PreparedBackupKind = "full"): Promise<PreparedBackup> {
+async function prepareCurrentBackupOnce(
+  kind: PreparedBackupKind = "full",
+  onProgress?: (progress: number, message: string) => void,
+): Promise<PreparedBackup> {
   const inFlight = preparedBackupInFlight.get(kind);
   if (inFlight) return inFlight;
 
@@ -1655,7 +1658,10 @@ async function prepareCurrentBackupOnce(kind: PreparedBackupKind = "full"): Prom
     const exportOptions = kind === "cloud-fast"
       ? { mediaMirror: "background" as const, includeEmbeddedMedia: false, includeAvatarFallbacks: false }
       : { mediaMirror: "skip" as const, includeEmbeddedMedia: true, includeAvatarFallbacks: true };
-    const snapshot = normalizeCloudPayload(unwrapSnapshotEnvelope(await exportCloudSnapshot(exportOptions)));
+    const snapshot = normalizeCloudPayload(unwrapSnapshotEnvelope(await exportCloudSnapshot({
+      ...exportOptions,
+      onProgress: (progress, message) => onProgress?.(progress, message),
+    })));
     if (!looksLikeCloudSnapshot(snapshot) && !looksLikeCloudBackupV1(snapshot)) {
       throw new Error("L’état courant ne contient pas une sauvegarde Multisports exploitable.");
     }
@@ -3703,7 +3709,10 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
 
         const preparedKind: PreparedBackupKind = (destination === "cloud_r2" || isPersonalCloudProvider(destination)) ? "cloud-fast" : "full";
         report(12, "Assemblage du snapshot local…");
-        const prepared = await prepareCurrentBackupOnce(preparedKind);
+        const prepared = await prepareCurrentBackupOnce(preparedKind, (snapshotProgress, snapshotMessage) => {
+          const mapped = 12 + Math.round(Math.max(0, Math.min(100, snapshotProgress)) * 0.30);
+          report(Math.min(42, mapped), snapshotMessage || "Assemblage du snapshot local…");
+        });
         const quality = assessSaveForProvider(prepared.summary, destination === "cloud_r2" ? "cloud" : destination === "founder_nas" ? "nas" : "local");
         if (!quality.restorable) throw new Error(`Sauvegarde refusée : ${quality.reason}`);
 
