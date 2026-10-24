@@ -41,7 +41,8 @@ type KeypadColorButton = {
 };
 
 type KeypadSecondaryAction = {
-  icon: React.ReactNode;
+  icon?: React.ReactNode;
+  label?: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
   active?: boolean;
@@ -110,6 +111,9 @@ type Props = {
 
   /** Remplace le bouton VALIDER du footer par une action dédiée (ex: DBULL Gros 6). */
   footerAction?: KeypadFooterAction | null;
+  footerLeftSlot?: React.ReactNode;
+  footerHideBull?: boolean;
+  actionRowLayout?: "default" | "triple";
 
   /** Grise les touches numériques 1..20 tant qu'un type de zone n'a pas été choisi. */
   disableSegmentNumbers?: boolean;
@@ -360,6 +364,8 @@ export default function Keypad({
   singleRingSelector = null,
   secondaryAction = null,
   footerAction = null,
+  footerLeftSlot = null,
+  footerHideBull = false,
   disableSegmentNumbers = false,
   highlightSegmentNumbers = null,
   highlightBull = false,
@@ -372,6 +378,7 @@ export default function Keypad({
   layoutVariant = "default",
   safeBottomPad = true,
   footerGap = 10,
+  actionRowLayout = "default",
 }: Props) {
   const currentThrow = Array.isArray(_currentThrow) ? _currentThrow : [];
   const total = throwTotal(currentThrow);
@@ -386,6 +393,7 @@ export default function Keypad({
   const colorRowButtons = Array.isArray(colorButtons) ? colorButtons.filter(Boolean).slice(0, 4) : [];
   const usePtit1ActionRows = layoutVariant === "ptit1" && extraButtons.length >= 2 && !!secondaryAction && !!auxAction;
   const useExtendedMainRow = extraButtons.length > 0;
+  const useTripleActionRow = actionRowLayout === "triple" && !!secondaryAction && !!auxAction;
 
   const extraButtonStyle = (active = false, tone: KeypadExtraMainButton['tone'] = 'dark'): React.CSSProperties => {
     const tones = {
@@ -452,6 +460,7 @@ export default function Keypad({
     } as const;
     return map[tone] || map.dark;
   };
+  const actionContent = (action:any, fallback?:React.ReactNode) => action?.icon ?? action?.label ?? fallback ?? null;
 
   return (
     <div
@@ -705,69 +714,119 @@ export default function Keypad({
             ))}
           </div>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: auxAction ? "1fr 1fr" : "1fr",
-              gap: 8,
-              marginBottom: noticeSlot ? 8 : 10,
-            }}
-          >
-            <div style={{ display: "grid", gridTemplateColumns: secondaryAction ? "1fr 1fr" : "1fr", gap: 8, minWidth: 0 }}>
+          {useTripleActionRow ? (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                gap: 8,
+                marginBottom: noticeSlot ? 8 : 10,
+              }}
+            >
               <button
                 type="button"
-                style={auxAction ? {
+                style={{
                   ...splitActionBase,
                   background: "linear-gradient(180deg, rgba(255,198,58,.96), rgba(255,175,0,.90))",
                   color: "#1a1a1a",
                   border: "1px solid rgba(255,180,0,.34)",
                   boxShadow: "0 10px 22px rgba(255,170,0,.24)",
-                } : btnCancel}
+                  fontWeight: 1000,
+                  fontSize: 10,
+                }}
                 onClick={onCancel}
                 onContextMenu={(e) => { e.preventDefault(); onBackspace?.(); }}
                 title="Retour / effacer"
                 aria-label="Retour / effacer"
               >
-                {auxAction ? <ActionIcon><UndoMiniIcon /></ActionIcon> : "ANNULER"}
+                ANNULER
               </button>
-              {secondaryAction ? (
+              <button
+                type="button"
+                style={{ ...splitActionBase, ...auxToneStyles(secondaryAction!.tone || 'green', !!secondaryAction!.active), opacity: secondaryAction!.disabled ? .45 : 1, fontWeight: 1000 }}
+                onClick={secondaryAction!.onClick}
+                disabled={secondaryAction!.disabled}
+                title={secondaryAction!.title || String(secondaryAction!.label || 'Action')}
+                aria-label={secondaryAction!.ariaLabel || secondaryAction!.title || String(secondaryAction!.label || 'Action')}
+              >
+                {secondaryAction!.icon ?? secondaryAction!.label ?? "ACTION"}
+              </button>
+              <button
+                type="button"
+                style={{ ...splitActionBase, ...auxToneStyles(auxAction!.tone || 'gold', !!auxAction!.active), opacity: auxAction!.disabled ? 0.45 : 1, fontWeight: 1000 }}
+                onClick={auxAction!.onClick}
+                disabled={auxAction!.disabled}
+                title={auxAction!.title || String(auxAction!.label)}
+                aria-label={auxAction!.ariaLabel || auxAction!.title || String(auxAction!.label)}
+              >
+                {auxAction!.icon ?? auxAction!.label}
+              </button>
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: auxAction ? "1fr 1fr" : "1fr",
+                gap: 8,
+                marginBottom: noticeSlot ? 8 : 10,
+              }}
+            >
+              <div style={{ display: "grid", gridTemplateColumns: secondaryAction ? "1fr 1fr" : "1fr", gap: 8, minWidth: 0 }}>
                 <button
                   type="button"
-                  style={{ ...splitActionBase, ...auxToneStyles(secondaryAction.tone || 'teal', !!secondaryAction.active), opacity: secondaryAction.disabled ? .45 : 1 }}
-                  onClick={secondaryAction.onClick}
-                  disabled={secondaryAction.disabled}
-                  title={secondaryAction.title || "Action"}
-                  aria-label={secondaryAction.ariaLabel || secondaryAction.title || "Action"}
+                  style={auxAction ? {
+                    ...splitActionBase,
+                    background: "linear-gradient(180deg, rgba(255,198,58,.96), rgba(255,175,0,.90))",
+                    color: "#1a1a1a",
+                    border: "1px solid rgba(255,180,0,.34)",
+                    boxShadow: "0 10px 22px rgba(255,170,0,.24)",
+                  } : btnCancel}
+                  onClick={onCancel}
+                  onContextMenu={(e) => { e.preventDefault(); onBackspace?.(); }}
+                  title="Retour / effacer"
+                  aria-label="Retour / effacer"
                 >
-                  <ActionIcon>{secondaryAction.icon}</ActionIcon>
+                  {auxAction ? <ActionIcon><UndoMiniIcon /></ActionIcon> : "ANNULER"}
+                </button>
+                {secondaryAction ? (
+                  <button
+                    type="button"
+                    style={{ ...splitActionBase, ...auxToneStyles(secondaryAction.tone || 'teal', !!secondaryAction.active), opacity: secondaryAction.disabled ? .45 : 1 }}
+                    onClick={secondaryAction.onClick}
+                    disabled={secondaryAction.disabled}
+                    title={secondaryAction.title || String(secondaryAction.label || 'Action')}
+                    aria-label={secondaryAction.ariaLabel || secondaryAction.title || String(secondaryAction.label || 'Action')}
+                  >
+                    {secondaryAction.icon ?? secondaryAction.label}
+                  </button>
+                ) : null}
+              </div>
+              {auxAction ? (
+                <button
+                  type="button"
+                  style={{
+                    ...splitActionBase,
+                    ...auxToneStyles(auxAction.tone || 'dark', !!auxAction.active),
+                    opacity: auxAction.disabled ? 0.45 : 1,
+                    position: "relative",
+                    overflow: "hidden",
+                  }}
+                  onClick={auxAction.onClick}
+                  disabled={auxAction.disabled}
+                  title={auxAction.title || auxAction.label}
+                  aria-label={auxAction.ariaLabel || auxAction.label}
+                >
+                  {auxAction.fullBleedIcon ? (
+                    <span style={{ position: "absolute", inset: 0, display: "block", overflow: "hidden", borderRadius: "inherit" }}>
+                      {auxAction.icon}
+                    </span>
+                  ) : (
+                    auxAction.icon ?? auxAction.label
+                  )}
                 </button>
               ) : null}
             </div>
-            {auxAction ? (
-              <button
-                type="button"
-                style={{
-                  ...splitActionBase,
-                  ...auxToneStyles(auxAction.tone || 'dark', !!auxAction.active),
-                  opacity: auxAction.disabled ? 0.45 : 1,
-                  position: "relative",
-                  overflow: "hidden",
-                }}
-                onClick={auxAction.onClick}
-                disabled={auxAction.disabled}
-                title={auxAction.title || auxAction.label}
-                aria-label={auxAction.ariaLabel || auxAction.label}
-              >
-                {auxAction.fullBleedIcon ? (
-                  <span style={{ position: "absolute", inset: 0, display: "block", overflow: "hidden", borderRadius: "inherit" }}>
-                    {auxAction.icon}
-                  </span>
-                ) : (
-                  <ActionIcon>{auxAction.icon}</ActionIcon>
-                )}
-              </button>
-            ) : null}
-          </div>
+          )}
         </>
       ) : (
         <div
@@ -862,14 +921,6 @@ export default function Keypad({
                 e.preventDefault();
                 onBackspace?.();
               }}
-              title="Annuler (clic droit : supprimer la dernière entrée locale)"
-              aria-label="Annuler"
-            >
-              ANNULER
-            </button>
-          )}
-        </div>
-      )}
 
       {noticeSlot ? <div style={{ marginBottom: 8 }}>{noticeSlot}</div> : null}
 
@@ -884,7 +935,7 @@ export default function Keypad({
 
       <KeypadNumberGrid onNumber={handleNumber} disableSegmentNumbers={disableSegmentNumbers} highlightSegmentNumbers={highlightSegmentNumbers} highlightColor={guideColor} />
 
-      {/* BULL + (TOTAL ou SLOT) CENTRÉ + VALIDER */}
+      {/* BULL ou SLOT à gauche + centre + VALIDER */}
       <div
         style={{
           display: "grid",
@@ -894,21 +945,29 @@ export default function Keypad({
           marginTop: 10,
         }}
       >
-        <button
-          type="button"
-          style={{
-            ...btnBull,
-            width: "100%",
-            ...(highlightBull ? {
-              borderColor: `${guideColor}dd`,
-              boxShadow: `0 0 18px ${guideColor}30, inset 0 0 0 1px ${guideColor}44`,
-              filter: "brightness(1.12)",
-            } : null),
-          }}
-          onClick={onBull}
-        >
-          BULL
-        </button>
+        <div style={{ minWidth: 0, display: "flex", alignItems: "center" }}>
+          {footerLeftSlot ? (
+            <div style={{ width: "100%" }}>{footerLeftSlot}</div>
+          ) : footerHideBull ? (
+            <div style={{ width: "100%", minHeight: 40 }} />
+          ) : (
+            <button
+              type="button"
+              style={{
+                ...btnBull,
+                width: "100%",
+                ...(highlightBull ? {
+                  borderColor: `${guideColor}dd`,
+                  boxShadow: `0 0 18px ${guideColor}30, inset 0 0 0 1px ${guideColor}44`,
+                  filter: "brightness(1.12)",
+                } : null),
+              }}
+              onClick={onBull}
+            >
+              BULL
+            </button>
+          )}
+        </div>
 
         <div
           style={{
@@ -920,7 +979,7 @@ export default function Keypad({
           }}
         >
           {centerSlot ? (
-            <div style={{ display: "grid", placeItems: "center" }}>
+            <div style={{ display: "grid", placeItems: "center", width: "100%" }}>
               {centerSlot}
             </div>
           ) : hideTotal ? null : (

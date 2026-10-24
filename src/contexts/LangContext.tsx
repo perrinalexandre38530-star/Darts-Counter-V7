@@ -106,6 +106,32 @@ function getDictFor(code: Lang): Dict | undefined {
   return DICT_ANY[code] as Dict | undefined;
 }
 
+// Convention d'affichage française des zones centrales :
+// - zone 25 : 1/2 BULL
+// - zone 50 : BULL
+// Les moteurs continuent d'utiliser leurs identifiants historiques BULL / DBULL.
+function localizeFrenchBullTerms(value: string): string {
+  if (!value || !/bull/i.test(value)) return value;
+  const OUTER = "__MSS_OUTER_BULL__";
+  const INNER = "__MSS_INNER_BULL__";
+  let text = String(value);
+
+  // Protéger d'abord toutes les écritures qui désignent explicitement la zone 50.
+  text = text.replace(/\bD[\s-]?BULL\s*50\b/gi, `${INNER} 50`);
+  text = text.replace(/\bDOUBLE\s+BULL\s*50\b/gi, `${INNER} 50`);
+  text = text.replace(/\bBULL\s*50\b/gi, `${INNER} 50`);
+  text = text.replace(/\bD[\s-]?BULL\b/gi, INNER);
+  text = text.replace(/\bDOUBLE\s+BULL\b/gi, INNER);
+
+  // Les BULL restants correspondent à la zone 25 dans les libellés historiques.
+  text = text.replace(/\bBULL\s*25\b/gi, `${OUTER} 25`);
+  text = text.replace(/\bBULL\b/gi, OUTER);
+
+  return text
+    .replaceAll(INNER, "BULL")
+    .replaceAll(OUTER, "1/2 BULL");
+}
+
 // -----------------------------
 // Provider
 // -----------------------------
@@ -299,7 +325,8 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
       const source = prev && current === prev.applied ? prev.source : current;
       const sourceChanged = !prev || source !== prev.source;
       const resolved = !sourceChanged && prev?.resolvedLang === lang ? prev.resolved : undefined;
-      const applied = resolved || translateLiteral(source);
+      const translated = resolved || translateLiteral(source);
+      const applied = lang === "fr" ? localizeFrenchBullTerms(translated) : translated;
       textState.set(node, { source, applied, resolved, resolvedLang: resolved ? lang : undefined });
       if (applied !== current) node.nodeValue = applied;
       if (lang !== "fr" && !resolved && getUiLiteralSourceLanguage(source)) scheduleTextResolve(node, source);
@@ -318,7 +345,8 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
       const source = prev && current === prev.applied ? prev.source : current;
       const sourceChanged = !prev || source !== prev.source;
       const resolved = !sourceChanged && prev?.resolvedLang === lang ? prev.resolved : undefined;
-      const applied = resolved || translateLiteral(source);
+      const translated = resolved || translateLiteral(source);
+      const applied = lang === "fr" ? localizeFrenchBullTerms(translated) : translated;
       map.set(attr, { source, applied, resolved, resolvedLang: resolved ? lang : undefined });
       if (applied !== current) el.setAttribute(attr, applied);
       if (lang !== "fr" && !resolved && getUiLiteralSourceLanguage(source)) scheduleAttrResolve(el, attr, source);
@@ -364,17 +392,75 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
     // - Retour vers FR depuis une autre langue : un scan unique suffit à restaurer
     //   les sources mémorisées. Il n'y a ensuite rien à traduire sur les nouveaux
     //   écrans FR, donc surtout PAS de MutationObserver global.
-    if (lang === "fr" && !literalSafetyHasRunRef.current) {
+    if (lang === "fr") {
+      const scanBullOnly = (root: Node) => {
+        const applyIfBullText = (node: Text) => {
+          const current = node.nodeValue || "";
+          if (/bull/i.test(current)) applyText(node);
+        };
+        if (root.nodeType === Node.TEXT_NODE) {
+          applyIfBullText(root as Text);
+          return;
+        }
+        if (root.nodeType !== Node.ELEMENT_NODE && root.nodeType !== Node.DOCUMENT_FRAGMENT_NODE && root.nodeType !== Node.DOCUMENT_NODE) return;
+        if (root.nodeType === Node.ELEMENT_NODE) {
+          const el = root as Element;
+          if (el.closest('[translate="no"],[data-i18n-skip="true"]')) return;
+          for (const attr of translatedAttrs) {
+            const current = el.getAttribute(attr) || "";
+            if (/bull/i.test(current)) applyAttr(el, attr);
+          }
+        }
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        let node = walker.nextNode();
+        while (node) {
+          const parent = (node as Text).parentElement;
+          const tag = parent?.tagName?.toLowerCase();
+          if (tag !== "script" && tag !== "style" && tag !== "noscript") applyIfBullText(node as Text);
+          node = walker.nextNode();
+        }
+        if ((root as ParentNode).querySelectorAll) {
+          (root as ParentNode).querySelectorAll("[placeholder],[title],[aria-label],[alt]").forEach((el) => {
+            for (const attr of translatedAttrs) {
+              const current = el.getAttribute(attr) || "";
+              if (/bull/i.test(current)) applyAttr(el, attr);
+            }
+          });
+        }
+      };
+
+      scanBullOnly(body);
       literalSafetyHasRunRef.current = true;
-      return () => { cancelled = true; };
+
+      let bullFrame: number | null = null;
+      const bullRoots = new Set<Node>();
+      const flushBull = () => {
+        bullFrame = null;
+        if (cancelled) return;
+        const roots = Array.from(bullRoots);
+        bullRoots.clear();
+        roots.forEach(scanBullOnly);
+      };
+      const bullObserver = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          if (mutation.type === "characterData") bullRoots.add(mutation.target);
+          else if (mutation.type === "childList") mutation.addedNodes.forEach((n) => bullRoots.add(n));
+          else if (mutation.type === "attributes") bullRoots.add(mutation.target);
+        }
+        if (bullFrame == null) bullFrame = window.requestAnimationFrame(flushBull);
+      });
+      bullObserver.observe(body, { subtree:true, childList:true, characterData:true, attributes:true, attributeFilter:[...translatedAttrs] });
+
+      return () => {
+        cancelled = true;
+        bullObserver.disconnect();
+        if (bullFrame != null) window.cancelAnimationFrame(bullFrame);
+        bullRoots.clear();
+      };
     }
 
     scan(body);
     literalSafetyHasRunRef.current = true;
-
-    if (lang === "fr") {
-      return () => { cancelled = true; };
-    }
 
     // Les anciens callbacks scannaient immédiatement chaque addedNode. React peut
     // créer des centaines de mutations lors d'un changement de page, avec des

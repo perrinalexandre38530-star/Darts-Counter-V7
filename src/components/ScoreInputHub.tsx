@@ -45,7 +45,8 @@ type ExternalKeypadAuxAction = {
 };
 
 type ExternalKeypadSecondaryAction = {
-  icon: React.ReactNode;
+  icon?: React.ReactNode;
+  label?: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
   active?: boolean;
@@ -137,6 +138,9 @@ type Props = {
   keypadSecondaryAction?: ExternalKeypadSecondaryAction | null;
   /** Remplace le bouton footer VALIDER (ex: DBULL Gros 6). */
   keypadFooterAction?: ExternalKeypadFooterAction | null;
+  keypadFooterLeftSlot?: React.ReactNode;
+  keypadFooterHideBull?: boolean;
+  keypadActionRowLayout?: "default" | "triple";
   /** Grise 1..20 tant que la zone/ring n'est pas choisie. */
   keypadDisableSegmentNumbers?: boolean;
   /** Guide gameplay intégré au keypad/cible. */
@@ -269,6 +273,9 @@ export default function ScoreInputHub({
   keypadLayoutVariant = "default",
   keypadSecondaryAction = null,
   keypadFooterAction = null,
+  keypadFooterLeftSlot = null,
+  keypadFooterHideBull = false,
+  keypadActionRowLayout = "default",
   keypadDisableSegmentNumbers = false,
   guideSegmentNumbers = null,
   guideBull = false,
@@ -533,6 +540,9 @@ export default function ScoreInputHub({
       layoutVariant={keypadLayoutVariant}
       secondaryAction={keypadSecondaryAction}
       footerAction={keypadFooterAction}
+      footerLeftSlot={keypadFooterLeftSlot}
+      footerHideBull={keypadFooterHideBull}
+      actionRowLayout={keypadActionRowLayout}
       disableSegmentNumbers={keypadDisableSegmentNumbers}
       highlightSegmentNumbers={guideSegmentNumbers}
       highlightBull={guideBull}
