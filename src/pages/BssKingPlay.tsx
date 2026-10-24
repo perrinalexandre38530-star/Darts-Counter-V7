@@ -557,7 +557,13 @@ export default function BssKingPlay(props: any) {
               { label: "GROS", onClick: () => selectBssArea("big"), active: selectedArea === "big", tone: "orange", title: "Gros simple" },
               { label: "PETIT", onClick: () => selectBssArea("small"), active: selectedArea === "small", tone: "yellow", title: "Petit simple" },
             ]}
-            keypadColorButtons={BSS_INPUT_COLORS.map(c => ({ color:c.hex, onClick:() => setSelectedColor(v => v===c.id ? null : c.id), active:selectedColor===c.id, title:c.label, ariaLabel:`Couleur ${c.label}` }))}
+            keypadColorButtons={BSS_INPUT_COLORS.map((c) => ({
+              color: c.hex,
+              onClick: () => setSelectedColor((v) => v === c.id ? null : c.id),
+              active: selectedColor === c.id,
+              title: c.label,
+              ariaLabel: "Couleur " + c.label,
+            }))}
             keypadLatchMultiplier
             preferredMethod={config.scoreInputMethod}
             minDartsToValidate={1}
@@ -593,7 +599,13 @@ export default function BssKingPlay(props: any) {
               { label: "GROS", onClick: () => selectBssArea("big"), active: selectedArea === "big", tone: "orange", title: "Gros simple" },
               { label: "PETIT", onClick: () => selectBssArea("small"), active: selectedArea === "small", tone: "yellow", title: "Petit simple" },
             ]}
-            keypadColorButtons={BSS_INPUT_COLORS.map(c => ({ color:c.hex, onClick:() => setSelectedColor(v => v===c.id ? null : c.id), active:selectedColor===c.id, title:c.label, ariaLabel:`Couleur ${c.label}` }))}
+            keypadColorButtons={BSS_INPUT_COLORS.map((c) => ({
+              color: c.hex,
+              onClick: () => setSelectedColor((v) => v === c.id ? null : c.id),
+              active: selectedColor === c.id,
+              title: c.label,
+              ariaLabel: "Couleur " + c.label,
+            }))}
             keypadLatchMultiplier
             keypadSecondaryAction={{ label: "BULL", onClick: () => appendBssInputDart({ v:25, mult:1 }), tone: "green", title: "Bull 25" }}
             keypadAuxActionOverride={{ label: "DBULL", icon: <span style={{fontWeight:1000}}>DBULL</span>, onClick: () => appendBssInputDart({ v:25, mult:2 }), tone: "gold", title: "DBULL 50" }}
