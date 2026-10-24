@@ -51,7 +51,7 @@ export const SIMPLE_ROUND_VARIANTS: Record<string, VariantSpec> = {
     title: "SUPER BULL",
     tickerSrc: tickerSuperBull,
     infoTitle: "Règles SUPER BULL",
-    infoText: "SUPER BULL se joue uniquement au centre : BULL extérieur = 25 points, DBULL = 50 points, toute autre zone = MISS (0). Chaque joueur lance 3 fléchettes par volée. Le meilleur total après X rounds gagne, ou le premier qui atteint l’objectif configuré.",
+    infoText: "SUPER BULL se joue uniquement au centre : BULL25 = 25 points, BULL50 = 50 points, toute autre zone = MISS (0). Chaque joueur lance 3 fléchettes par volée. Le meilleur total après X rounds gagne, ou le premier qui atteint l’objectif configuré.",
     playersOptions: [1, 2, 3, 4],
     roundsOptions: [3, 5, 8, 10, 12, 15, 20],
     objectiveOptions: [0, 50, 100, 150, 200, 300, 500, 750, 1000],

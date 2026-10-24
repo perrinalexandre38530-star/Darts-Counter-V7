@@ -278,7 +278,7 @@ export default function SuperBullConfig(props: any) {
         title="SUPER BULL"
         tickerSrc={spec.tickerSrc}
         left={<BackDot onClick={back} />}
-        right={<InfoDot title="Règles SUPER BULL" content="3 fléchettes par volée. BULL extérieur = 25 points, DBULL = 50 points, toute autre zone = MISS. Le premier à atteindre l'objectif gagne. Sans objectif, le meilleur total à la fin des rounds gagne. En cas d'égalité : score, DBULL, centres, meilleure série puis volées parfaites." />}
+        right={<InfoDot title="Règles SUPER BULL" content="3 fléchettes par volée. BULL25 = 25 points, BULL50 = 50 points, toute autre zone = MISS. Le premier à atteindre l'objectif gagne. Sans objectif, le meilleur total à la fin des rounds gagne. En cas d'égalité : score, BULL50, centres, meilleure série puis volées parfaites." />}
       />
 
       <div style={{ padding: "8px 8px 14px", display: "grid", gap: 10 }}>

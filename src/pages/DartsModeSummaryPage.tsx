@@ -405,11 +405,6 @@ function pick(...vals: any[]) {
   return undefined;
 }
 
-function partyMetric(row: any, ...keys: string[]): number {
-  const source = row?.raw || row || {};
-  return num(pick(...keys.map((key) => source?.[key])), 0);
-}
-
 function asArray(v: any): any[] {
   if (Array.isArray(v)) return v;
   if (v && typeof v === "object") return Object.entries(v).map(([id, val]: any) => ({ id, ...(val || {}) }));
@@ -591,22 +586,22 @@ function valueFor(mode: ModeKind, key: "primary" | "secondary" | "tertiary", row
     return num(row.dbulls, 0);
   }
   if (mode === "castle") {
-    if (key === "primary") return num(pick(row.builds, row.bricks, row.build, row.bricksBuilt), 0);
-    if (key === "secondary") return num(pick(row.damage, row.damageDealt, row.attackDamage), 0);
+    if (key === "primary") return num(pick(row.builds, row.bricks), 0);
+    if (key === "secondary") return num(row.damage, 0);
     const darts = num(pick(row.darts, row.dartsThrown), 0);
-    const useful = num(pick(row.usefulHits, row.validHits, row.hits), 0);
+    const useful = num(pick(row.usefulHits, row.hits), 0);
     return `${Math.round((darts > 0 ? (useful / darts) * 100 : 0) * 10) / 10}%`;
   }
   if (mode === "gotcha") {
-    if (key === "primary") return num(pick(row.gotchas, row.gotchaCount, row.gotchaHits), 0);
-    if (key === "secondary") return num(pick(row.bestVisit, row.bestVisitScore, row.highestVisit), 0);
-    return num(pick(row.busts, row.bustCount), 0);
+    if (key === "primary") return num(row.gotchas, 0);
+    if (key === "secondary") return num(row.bestVisit, 0);
+    return num(row.busts, 0);
   }
   if (mode === "hare_hounds") {
-    if (key === "primary") return num(pick(row.steps, row.stepsAdvanced, row.progressSteps), 0);
-    if (key === "secondary") return num(pick(row.catches, row.captures, row.catchCount), 0);
+    if (key === "primary") return num(row.steps, 0);
+    if (key === "secondary") return num(row.catches, 0);
     const darts = num(pick(row.darts, row.dartsThrown), 0);
-    const hits = num(pick(row.validHits, row.usefulHits, row.hits), 0);
+    const hits = num(pick(row.validHits, row.hits), 0);
     return `${Math.round((darts > 0 ? (hits / darts) * 100 : 0) * 10) / 10}%`;
   }
   if (mode === "darts_firefighter") {
@@ -645,7 +640,7 @@ function valueFor(mode: ModeKind, key: "primary" | "secondary" | "tertiary", row
     return num(row.perfectRounds, 0);
   }
   if (mode === "steeplechase") {
-    if (key === "primary") return num(pick(row.steps, row.stepsAdvanced, row.progressSteps), 0);
+    if (key === "primary") return num(row.steps, 0);
     if (key === "secondary") return num(row.fencesCleared, 0);
     const darts = num(pick(row.darts, row.dartsThrown), 0);
     const hits = num(row.hits, 0);
@@ -809,11 +804,11 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
         : mode === "prisoner"
           ? num(prisonerMatchStats?.totalCaptures, rows.reduce((sum, r) => sum + num(r.raw?.captures, 0), 0))
           : mode === "castle"
-            ? rows.reduce((sum, r) => sum + partyMetric(r, "builds", "bricks", "build", "bricksBuilt") + partyMetric(r, "damage", "damageDealt", "attackDamage"), 0)
+            ? rows.reduce((sum, r) => sum + num(r.raw?.builds, 0) + num(r.raw?.damage, 0), 0)
           : mode === "gotcha"
-            ? rows.reduce((sum, r) => sum + partyMetric(r, "gotchas", "gotchaCount", "gotchaHits"), 0)
+            ? rows.reduce((sum, r) => sum + num(r.raw?.gotchas, 0), 0)
           : mode === "hare_hounds"
-            ? rows.reduce((sum, r) => sum + partyMetric(r, "steps", "stepsAdvanced", "progressSteps"), 0)
+            ? rows.reduce((sum, r) => sum + num(r.raw?.steps, 0), 0)
           : mode === "darts_firefighter"
             ? num(firefighterMatchStats?.totalFireReduced, rows.reduce((sum, r) => sum + num(r.raw?.fireReduced, 0), 0))
             : mode === "darts_poker"
@@ -1299,7 +1294,7 @@ function SuperBullSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; 
             <tr style={{ color: accent, textAlign: "left" }}>
               <th style={th}>Joueur</th><th style={th}>Score</th><th style={th}>Flèches</th>
               <th style={th}>BULL25</th><th style={th}>BULL50</th><th style={th}>MISS</th>
-              <th style={th}>Centre</th><th style={th}>DBULL</th><th style={th}>Best</th>
+              <th style={th}>Centre</th><th style={th}>BULL50 %</th><th style={th}>Best</th>
               <th style={th}>Moy./volée</th><th style={th}>Série</th><th style={th}>Parfaites</th>
               <th style={th}>D1</th><th style={th}>D2</th><th style={th}>D3</th>
             </tr>
@@ -1481,7 +1476,7 @@ function CastleSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; acc
   const summary = pick(rec?.summary, rec?.payload?.summary, {}) || {};
   const config = pick(summary?.config, rec?.payload?.config, {}) || {};
   const visits = asArray(pick(rec?.payload?.visits, rec?.payload?.visitHistory));
-  const totalDarts = rows.reduce((sum, row) => sum + partyMetric(row, "darts", "dartsThrown", "totalThrows"), 0);
+  const totalDarts = rows.reduce((sum, row) => sum + num(row?.raw?.darts), 0);
   const totalUseful = rows.reduce((sum, row) => sum + num(row?.raw?.usefulHits), 0);
   const totalBuilds = rows.reduce((sum, row) => sum + num(row?.raw?.builds), 0);
   const totalDamage = rows.reduce((sum, row) => sum + num(row?.raw?.damage), 0);
@@ -1512,7 +1507,7 @@ function CastleSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; acc
       <div style={sectionTitle(accent)}>Bâtisseurs & assaillants</div>
       <div style={{ overflowX: "auto" }}><table style={{ width: "100%", minWidth: 1030, borderCollapse: "collapse", fontSize: 11.5 }}>
         <thead><tr style={{ color: accent, textAlign: "left" }}><th style={th}>Joueur</th><th style={th}>Secteur</th><th style={th}>Manches</th><th style={th}>Briques</th><th style={th}>Dégâts</th><th style={th}>Touches utiles</th><th style={th}>Best impact</th><th style={th}>Série</th><th style={th}>S/D/T</th><th style={th}>MISS</th><th style={th}>BULL/DBULL</th><th style={th}>Flèches</th><th style={th}>Préc.</th></tr></thead>
-        <tbody>{rows.map((row: any) => { const p = row.raw || {}; const darts = partyMetric(p, "darts", "dartsThrown", "totalThrows"); const useful = partyMetric(p, "usefulHits", "validHits", "hits"); const pct = darts > 0 ? useful / darts * 100 : 0; return <tr key={`castle-${row.id}`}><td style={td}>{row.name}</td><td style={td}>{num(p.target) || "—"}</td><td style={td}>{num(p.wins ?? p.legsWon)}</td><td style={td}>{partyMetric(p, "builds", "bricks", "build", "bricksBuilt")}</td><td style={td}>{partyMetric(p, "damage", "damageDealt", "attackDamage")}</td><td style={td}>{useful}</td><td style={td}>{partyMetric(p, "bestImpactVisit", "bestVisit", "bestImpact")}</td><td style={td}>{partyMetric(p, "bestUsefulStreak", "bestHitStreak", "bestStreak")}</td><td style={td}>{num(p.singles)}/{num(p.doubles)}/{num(p.triples)}</td><td style={td}>{num(p.misses)}</td><td style={td}>{num(p.bulls)}/{num(p.dbulls)}</td><td style={td}>{darts}</td><td style={td}>{Math.round(pct * 10) / 10}%</td></tr>; })}</tbody>
+        <tbody>{rows.map((row: any) => { const p = row.raw || {}; const darts = num(p.darts); const useful = num(p.usefulHits); const pct = darts > 0 ? useful / darts * 100 : 0; return <tr key={`castle-${row.id}`}><td style={td}>{row.name}</td><td style={td}>{num(p.target) || "—"}</td><td style={td}>{num(p.wins ?? p.legsWon)}</td><td style={td}>{num(p.builds)}</td><td style={td}>{num(p.damage)}</td><td style={td}>{useful}</td><td style={td}>{num(p.bestImpactVisit)}</td><td style={td}>{num(p.bestUsefulStreak)}</td><td style={td}>{num(p.singles)}/{num(p.doubles)}/{num(p.triples)}</td><td style={td}>{num(p.misses)}</td><td style={td}>{num(p.bulls)}/{num(p.dbulls)}</td><td style={td}>{darts}</td><td style={td}>{Math.round(pct * 10) / 10}%</td></tr>; })}</tbody>
       </table></div>
     </section>
 
@@ -1533,12 +1528,12 @@ function GotchaSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; acc
   const visits = asArray(pick(rec?.payload?.visits, rec?.payload?.visitHistory));
   const targetScore = num(pick(summary?.targetScore, config?.rules?.targetScore), 301);
   const totalDarts = rows.reduce((sum, row) => sum + num(row?.raw?.darts), 0);
-  const gotchas = rows.reduce((sum, row) => sum + partyMetric(row, "gotchas", "gotchaCount", "gotchaHits"), 0);
-  const victims = rows.reduce((sum, row) => sum + partyMetric(row, "victims", "victimsCount", "resetVictims"), 0);
-  const busts = rows.reduce((sum, row) => sum + partyMetric(row, "busts", "bustCount"), 0);
-  const bestVisit = rows.reduce((best, row) => Math.max(best, partyMetric(row, "bestVisit", "bestVisitScore", "highestVisit")), 0);
-  const highestScore = rows.reduce((best, row) => Math.max(best, partyMetric(row, "highestScore", "maxScore", "peakScore")), 0);
-  const exactFinishes = rows.reduce((sum, row) => sum + partyMetric(row, "exactFinishes", "finishes", "finishCount"), 0);
+  const gotchas = rows.reduce((sum, row) => sum + num(row?.raw?.gotchas), 0);
+  const victims = rows.reduce((sum, row) => sum + num(row?.raw?.victims), 0);
+  const busts = rows.reduce((sum, row) => sum + num(row?.raw?.busts), 0);
+  const bestVisit = rows.reduce((best, row) => Math.max(best, num(row?.raw?.bestVisit)), 0);
+  const highestScore = rows.reduce((best, row) => Math.max(best, num(row?.raw?.highestScore)), 0);
+  const exactFinishes = rows.reduce((sum, row) => sum + num(row?.raw?.exactFinishes), 0);
   const outMode = ({ straight: "STRAIGHT OUT", double: "DOUBLE OUT", master: "MASTER OUT" } as any)[String(config?.rules?.outMode)] || "STRAIGHT OUT";
   const bustRule = String(config?.rules?.bustRule || "turn") === "zero" ? "Retour à 0" : "Volée annulée";
   return <>
@@ -1562,7 +1557,7 @@ function GotchaSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; acc
       <div style={sectionTitle(accent)}>Statistiques joueurs</div>
       <div style={{ overflowX: "auto" }}><table style={{ width: "100%", minWidth: 1050, borderCollapse: "collapse", fontSize: 11.5 }}>
         <thead><tr style={{ color: accent, textAlign: "left" }}><th style={th}>Joueur</th><th style={th}>Score final</th><th style={th}>Manches</th><th style={th}>GOTCHA</th><th style={th}>Victimes</th><th style={th}>BUST</th><th style={th}>Points</th><th style={th}>Best</th><th style={th}>Max score</th><th style={th}>Finishes</th><th style={th}>S/D/T</th><th style={th}>Bull/DBull</th><th style={th}>MISS</th><th style={th}>Flèches</th></tr></thead>
-        <tbody>{rows.map((row: any) => { const p = row.raw || {}; return <tr key={`gotcha-${row.id}`}><td style={td}>{row.name}</td><td style={td}>{num(p.score)}</td><td style={td}>{num(p.wins ?? p.legsWon)}</td><td style={td}>{partyMetric(p, "gotchas", "gotchaCount", "gotchaHits")}</td><td style={td}>{partyMetric(p, "victims", "victimsCount", "resetVictims")}</td><td style={td}>{partyMetric(p, "busts", "bustCount")}</td><td style={td}>{num(p.points)}</td><td style={td}>{partyMetric(p, "bestVisit", "bestVisitScore", "highestVisit")}</td><td style={td}>{partyMetric(p, "highestScore", "maxScore", "peakScore")}</td><td style={td}>{partyMetric(p, "exactFinishes", "finishes", "finishCount")}</td><td style={td}>{num(p.singles)}/{num(p.doubles)}/{num(p.triples)}</td><td style={td}>{num(p.bulls)}/{num(p.dbulls)}</td><td style={td}>{num(p.misses)}</td><td style={td}>{partyMetric(p, "darts", "dartsThrown", "totalThrows")}</td></tr>; })}</tbody>
+        <tbody>{rows.map((row: any) => { const p = row.raw || {}; return <tr key={`gotcha-${row.id}`}><td style={td}>{row.name}</td><td style={td}>{num(p.score)}</td><td style={td}>{num(p.wins ?? p.legsWon)}</td><td style={td}>{num(p.gotchas)}</td><td style={td}>{num(p.victims)}</td><td style={td}>{num(p.busts)}</td><td style={td}>{num(p.points)}</td><td style={td}>{num(p.bestVisit)}</td><td style={td}>{num(p.highestScore)}</td><td style={td}>{num(p.exactFinishes)}</td><td style={td}>{num(p.singles)}/{num(p.doubles)}/{num(p.triples)}</td><td style={td}>{num(p.bulls)}/{num(p.dbulls)}</td><td style={td}>{num(p.misses)}</td><td style={td}>{num(p.darts)}</td></tr>; })}</tbody>
       </table></div>
     </section>
 
@@ -1581,14 +1576,14 @@ function HareHoundsSummaryTables({ rec, rows, accent }: { rec: any; rows: any[];
   const summary = pick(rec?.summary, rec?.payload?.summary, {}) || {};
   const config = pick(summary?.config, rec?.payload?.config, {}) || {};
   const visits = asArray(pick(rec?.payload?.visits, rec?.payload?.visitHistory));
-  const totalDarts = rows.reduce((sum, row) => sum + partyMetric(row, "darts", "dartsThrown", "totalThrows"), 0);
-  const validHits = rows.reduce((sum, row) => sum + partyMetric(row, "validHits", "usefulHits", "hits"), 0);
-  const steps = rows.reduce((sum, row) => sum + partyMetric(row, "steps", "stepsAdvanced", "progressSteps"), 0);
-  const catches = rows.reduce((sum, row) => sum + partyMetric(row, "catches", "captures", "catchCount"), 0);
-  const escapes = rows.reduce((sum, row) => sum + partyMetric(row, "escapes", "fugues", "escapeCount"), 0);
+  const totalDarts = rows.reduce((sum, row) => sum + num(row?.raw?.darts), 0);
+  const validHits = rows.reduce((sum, row) => sum + num(row?.raw?.validHits), 0);
+  const steps = rows.reduce((sum, row) => sum + num(row?.raw?.steps), 0);
+  const catches = rows.reduce((sum, row) => sum + num(row?.raw?.catches), 0);
+  const escapes = rows.reduce((sum, row) => sum + num(row?.raw?.escapes), 0);
   const accuracy = totalDarts > 0 ? validHits / totalDarts * 100 : 0;
-  const bestVisitSteps = rows.reduce((best, row) => Math.max(best, partyMetric(row, "bestVisitSteps", "bestStepsVisit", "maxVisitSteps")), 0);
-  const bestHitStreak = rows.reduce((best, row) => Math.max(best, partyMetric(row, "bestHitStreak", "bestStreak", "hitStreak")), 0);
+  const bestVisitSteps = rows.reduce((best, row) => Math.max(best, num(row?.raw?.bestVisitSteps)), 0);
+  const bestHitStreak = rows.reduce((best, row) => Math.max(best, num(row?.raw?.bestHitStreak)), 0);
   const direction = String(config?.rules?.direction || "clockwise") === "counter" ? "ANTI-HORAIRE" : "HORAIRE";
   const zone = String(config?.rules?.targetZone || "any") === "double" ? "DOUBLES" : String(config?.rules?.targetZone || "any") === "triple" ? "TRIPLES" : "S / D / T";
   return <>

@@ -21,6 +21,9 @@ import { buildTrainingCycleComparison, buildTrainingWeeklyPlanStats, clearTraini
 import { buildTrainingLoadSummary } from "../../profile/trainingLoadCoach";
 import { buildTrainingWeekCoachPlan, loadTrainingNextRecommendation } from "../../profile/trainingWeeklyCoach";
 import { buildTrainingCareer } from "../../profile/trainingCareer";
+import { buildTrainingMissionBoard } from "../../profile/trainingMissions";
+import { buildTrainingCoachHistory } from "../../profile/trainingCoachHistory";
+import { buildTrainingCycleCoach } from "../../profile/trainingCycleCoach";
 
 const familyOrder: TrainingExerciseFamily[] = ["scoring", "doubles", "checkout", "precision", "bull", "regularity"];
 type HubTab = "program" | "exercises" | "diagnosis" | "progress";
@@ -67,12 +70,16 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
   const programDraft = React.useMemo(() => { void revision; return loadTrainingProgramDraft(); }, [revision]);
   const loadSummary = React.useMemo(() => buildTrainingLoadSummary(programSessions, preferences.weeklySessionTarget), [programSessions, preferences.weeklySessionTarget]);
   const diagnosis = React.useMemo(() => buildTrainingDiagnosis(sessions), [sessions]);
-  const recommendedFamily = React.useMemo(() => chooseGoalPriorityFamily(diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines), [diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines]);
+  const rawRecommendedFamily = React.useMemo(() => chooseGoalPriorityFamily(diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines), [diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines]);
+  const cycleCoach = React.useMemo(() => buildTrainingCycleCoach(programSessions, diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines), [programSessions, diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines]);
+  const recommendedFamily = cycleCoach.priority?.family || rawRecommendedFamily;
   const weekCoachPlan = React.useMemo(() => buildTrainingWeekCoachPlan(programSessions, preferences.weeklySessionTarget, recommendedFamily, loadSummary), [programSessions, preferences.weeklySessionTarget, recommendedFamily, loadSummary]);
   const nextRecommendation = React.useMemo(() => { void revision; return loadTrainingNextRecommendation(); }, [revision]);
   const progression = React.useMemo(() => buildTrainingProgression(sessions), [sessions]);
   const goalStatuses = React.useMemo(() => buildTrainingGoalStatuses(diagnosis, preferences.familyGoals), [diagnosis, preferences.familyGoals]);
   const career = React.useMemo(() => buildTrainingCareer(programSessions, progression, weeklyPlan), [programSessions, progression, weeklyPlan]);
+  const missionBoard = React.useMemo(() => buildTrainingMissionBoard(programSessions, progression, recommendedFamily, preferences.weeklySessionTarget, cycleComparison), [programSessions, progression, recommendedFamily, preferences.weeklySessionTarget, cycleComparison]);
+  const coachHistory = React.useMemo(() => buildTrainingCoachHistory(programSessions, preferences.weeklySessionTarget, recommendedFamily), [programSessions, preferences.weeklySessionTarget, recommendedFamily]);
   const prescription = React.useMemo(() => buildGoalAwareCoachPrescription(diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines), [diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines]);
   const coachProgram = React.useMemo(() => buildCoachProgram(recommendedFamily), [recommendedFamily]);
   const programs = React.useMemo(() => {
@@ -251,6 +258,28 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
               <button type="button" onClick={() => { setProgramId(coachProgram.id); }} style={{ width: "100%", marginTop: 9, padding: 9, borderRadius: 10, border: "1px solid rgba(80,255,174,.28)", background: "rgba(80,255,174,.08)", color: "inherit", fontSize: 9.5, fontWeight: 950, cursor: "pointer" }}>PROCHAINE SÉANCE AWENA • {coachProgram.title}</button>
             </div>
 
+            <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: "1px solid rgba(255,216,107,.22)", background: "linear-gradient(135deg,rgba(255,216,107,.075),rgba(39,220,255,.035))" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start", flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#ffd86b" }}>MISSIONS AWENA</div>
+                  <div style={{ marginTop: 4, fontSize: 13, fontWeight: 950 }}>{missionBoard.headline} • {missionBoard.completed}/{missionBoard.total}</div>
+                  <div style={{ marginTop: 4, fontSize: 9.5, lineHeight: 1.4, opacity: .62 }}>{missionBoard.summary}</div>
+                </div>
+                {missionBoard.nextMission && <button type="button" onClick={() => prepareRecommendedSession(missionBoard.nextMission!.recommendedDurationMin, missionBoard.nextMission!.family)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,216,107,.28)", background: "rgba(255,216,107,.08)", color: "inherit", fontSize: 8.5, fontWeight: 950, cursor: "pointer" }}>PRÉPARER LA MISSION</button>}
+              </div>
+              <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,.07)", overflow: "hidden", marginTop: 10 }}><div style={{ width: `${Math.max(2, missionBoard.completionPct)}%`, height: "100%", background: "linear-gradient(90deg,#ffd86b,#27dcff,#8c5aff)" }} /></div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 7, marginTop: 10 }}>
+                {missionBoard.missions.map((mission) => {
+                  const ratio = Math.max(0, Math.min(100, (mission.progress / Math.max(1, mission.target)) * 100));
+                  return <div key={mission.id} style={{ padding: 10, borderRadius: 12, border: mission.completed ? "1px solid rgba(80,255,174,.22)" : "1px solid rgba(255,255,255,.075)", background: mission.completed ? "rgba(80,255,174,.05)" : "rgba(255,255,255,.025)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><b style={{ fontSize: 9.5 }}>{mission.completed ? "✓ " : ""}{mission.title}</b><span style={{ fontSize: 8, color: mission.completed ? "#8cffcb" : "#ffd86b" }}>{Math.round(mission.progress)}/{mission.target}{mission.unit === "%" ? "%" : ""}</span></div>
+                    <div style={{ marginTop: 4, minHeight: 28, fontSize: 8, lineHeight: 1.35, opacity: .5 }}>{mission.description}</div>
+                    <div style={{ height: 5, borderRadius: 999, background: "rgba(255,255,255,.06)", overflow: "hidden", marginTop: 7 }}><div style={{ width: `${Math.max(2, ratio)}%`, height: "100%", background: mission.completed ? "linear-gradient(90deg,#8cffcb,#27dcff)" : "linear-gradient(90deg,#ffd86b,#8c5aff)" }} /></div>
+                  </div>;
+                })}
+              </div>
+            </div>
+
             <div style={{ marginTop: 10, padding: 12, borderRadius: 15, border: cycleComparison.direction === "up" ? "1px solid rgba(80,255,174,.22)" : cycleComparison.direction === "down" ? "1px solid rgba(255,184,76,.24)" : "1px solid rgba(255,255,255,.09)", background: cycleComparison.direction === "up" ? "rgba(80,255,174,.045)" : cycleComparison.direction === "down" ? "rgba(255,184,76,.045)" : "rgba(255,255,255,.025)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <div>
@@ -263,6 +292,28 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                   <div style={{ padding: "6px 8px", borderRadius: 9, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 11 }}>{cycleComparison.previousSessions ? Math.round(cycleComparison.previousAverage) : "—"}</b><div style={{ fontSize: 6.8, opacity: .43 }}>AVANT</div></div>
                   <div style={{ padding: "6px 8px", borderRadius: 9, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 11, color: cycleComparison.delta > 3 ? "#8cffcb" : cycleComparison.delta < -3 ? "#ffd86b" : "inherit" }}>{cycleComparison.previousSessions ? `${cycleComparison.delta > 0 ? "+" : ""}${Math.round(cycleComparison.delta)}` : "—"}</b><div style={{ fontSize: 6.8, opacity: .43 }}>DELTA</div></div>
                 </div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: cycleCoach.onTrack ? "1px solid rgba(80,255,174,.22)" : "1px solid rgba(255,184,76,.24)", background: cycleCoach.onTrack ? "linear-gradient(135deg,rgba(80,255,174,.055),rgba(39,220,255,.035))" : "linear-gradient(135deg,rgba(255,184,76,.07),rgba(140,90,255,.035))" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+                <div style={{ minWidth: 0, flex: "1 1 250px" }}>
+                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: cycleCoach.onTrack ? "#8cffcb" : "#ffd86b" }}>CAP DE CYCLE AWENA • 4 SÉANCES</div>
+                  <div style={{ marginTop: 4, fontSize: 13, fontWeight: 950 }}>{cycleCoach.headline}</div>
+                  <div style={{ marginTop: 4, fontSize: 9.5, lineHeight: 1.4, opacity: .64 }}>{cycleCoach.summary}</div>
+                </div>
+                <button type="button" onClick={() => prepareRecommendedSession(loadSummary.recommendedDurationMin, cycleCoach.priority.family)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(39,220,255,.22)", background: "rgba(39,220,255,.07)", color: "inherit", fontSize: 8.5, fontWeight: 950, cursor: "pointer" }}>TRAVAILLER {cycleCoach.priority.label.toUpperCase()}</button>
+              </div>
+              <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,.07)", overflow: "hidden", marginTop: 10 }}><div style={{ width: `${Math.max(2, cycleCoach.completionPct)}%`, height: "100%", background: "linear-gradient(90deg,#8cffcb,#27dcff,#8c5aff)" }} /></div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 10, textAlign: "center" }}>
+                <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{cycleCoach.completedSessions}/{cycleCoach.cycleSize}</b><div style={{ fontSize: 7, opacity: .45 }}>SÉANCES</div></div>
+                <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{cycleCoach.completedSessions ? Math.round(cycleCoach.currentAverage) : "—"}</b><div style={{ fontSize: 7, opacity: .45 }}>MOY. / {cycleCoach.targetAverage}</div></div>
+                <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{cycleCoach.focusCompleted}/{cycleCoach.focusTarget}</b><div style={{ fontSize: 7, opacity: .45 }}>FOCUS</div></div>
+                <div style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 11 }}>{cycleCoach.varietyCompleted}/{cycleCoach.varietyTarget}</b><div style={{ fontSize: 7, opacity: .45 }}>VARIÉTÉ</div></div>
+              </div>
+              <div style={{ marginTop: 8, display: "flex", gap: 7, flexWrap: "wrap", fontSize: 8.2, opacity: .56 }}>
+                <span>Priorité : <b>{cycleCoach.priority.label}</b> ({cycleCoach.priority.reason})</span>
+                <span>• Relais : <b>{cycleCoach.secondary.label}</b></span>
               </div>
             </div>
 
@@ -473,6 +524,55 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
               {career.badges.map((badge) => <div key={badge.id} style={{ padding: 10, borderRadius: 12, border: badge.unlocked ? "1px solid rgba(255,216,107,.26)" : "1px solid rgba(255,255,255,.07)", background: badge.unlocked ? "rgba(255,216,107,.055)" : "rgba(255,255,255,.02)", opacity: badge.unlocked ? 1 : .58 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 7 }}><b style={{ fontSize: 9.5 }}>{badge.unlocked ? "◆ " : "◇ "}{badge.title}</b><span style={{ fontSize: 8, color: badge.unlocked ? "#ffd86b" : "inherit" }}>{badge.unlocked ? "DÉBLOQUÉ" : `${Math.min(badge.progress,badge.target)}/${badge.target}`}</span></div>
                 <div style={{ marginTop: 4, fontSize: 8, lineHeight: 1.35, opacity: .5 }}>{badge.description}</div>
+              </div>)}
+            </div>
+
+            <div style={{ marginTop: 14, padding: 13, borderRadius: 15, border: "1px solid rgba(39,220,255,.16)", background: "linear-gradient(135deg,rgba(39,220,255,.055),rgba(140,90,255,.035))" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>SYNTHÈSE DU CYCLE</div>
+                  <div style={{ marginTop: 4, fontSize: 12, fontWeight: 950 }}>{missionBoard.cycleChallenge.completed ? "Défi validé" : missionBoard.cycleChallenge.title}</div>
+                  <div style={{ marginTop: 3, fontSize: 8.8, lineHeight: 1.4, opacity: .56 }}>{missionBoard.cycleChallenge.description}</div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,auto)", gap: 6, textAlign: "center" }}>
+                  <div style={{ padding: "7px 8px", borderRadius: 9, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 11 }}>{Math.round(missionBoard.record.recentAverage)}</b><div style={{ fontSize: 6.8, opacity: .42 }}>MOY. 4</div></div>
+                  <div style={{ padding: "7px 8px", borderRadius: 9, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 11 }}>{Math.round(missionBoard.record.weekBest)}</b><div style={{ fontSize: 6.8, opacity: .42 }}>BEST SEM.</div></div>
+                  <div style={{ padding: "7px 8px", borderRadius: 9, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 11, color: "#ffd86b" }}>{Math.round(missionBoard.record.careerBest)}</b><div style={{ fontSize: 6.8, opacity: .42 }}>RECORD</div></div>
+                </div>
+              </div>
+              <div style={{ marginTop: 9, height: 6, borderRadius: 999, background: "rgba(255,255,255,.06)", overflow: "hidden" }}><div style={{ width: `${Math.max(2, Math.min(100, (missionBoard.cycleChallenge.progress / Math.max(1, missionBoard.cycleChallenge.target)) * 100))}%`, height: "100%", background: missionBoard.cycleChallenge.completed ? "linear-gradient(90deg,#8cffcb,#27dcff)" : "linear-gradient(90deg,#27dcff,#8c5aff)" }} /></div>
+              <div style={{ marginTop: 7, fontSize: 8, opacity: .5 }}>PROCHAIN RECORD GLOBAL À BATTRE • {Math.round(missionBoard.record.personalBestTarget)}/100</div>
+            </div>
+
+            <div style={{ margin: "16px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#8cffcb" }}>BILAN COACH HEBDOMADAIRE</div>
+            <div style={{ padding: 13, borderRadius: 15, border: "1px solid rgba(80,255,174,.16)", background: "linear-gradient(135deg,rgba(80,255,174,.05),rgba(39,220,255,.025))" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start", flexWrap: "wrap" }}>
+                <div style={{ flex: "1 1 260px" }}>
+                  <div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: 1, color: "#8cffcb" }}>AWENA · SYNTHÈSE DE LA SEMAINE</div>
+                  <div style={{ marginTop: 3, fontSize: 12.5, fontWeight: 950 }}>{coachHistory.headline}</div>
+                  <div style={{ marginTop: 4, fontSize: 8.8, lineHeight: 1.45, opacity: .58 }}>{coachHistory.body}</div>
+                  <div style={{ marginTop: 6, fontSize: 8.5, lineHeight: 1.45, color: "#ffd86b" }}>{coachHistory.recommendation}</div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,auto)", gap: 6, textAlign: "center" }}>
+                  <div style={{ padding: "7px 8px", borderRadius: 9, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 11 }}>{coachHistory.current.completedMissions}/{coachHistory.current.totalMissions}</b><div style={{ fontSize: 6.8, opacity: .42 }}>MISSIONS</div></div>
+                  <div style={{ padding: "7px 8px", borderRadius: 9, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 11 }}>{Math.round(coachHistory.consistencyPct)}%</b><div style={{ fontSize: 6.8, opacity: .42 }}>RÉGULARITÉ</div></div>
+                  <div style={{ padding: "7px 8px", borderRadius: 9, background: "rgba(255,255,255,.035)" }}><b style={{ fontSize: 11, color: coachHistory.performanceDelta >= 0 ? "#8cffcb" : "#ffd86b" }}>{coachHistory.previous ? `${coachHistory.performanceDelta >= 0 ? "+" : ""}${Math.round(coachHistory.performanceDelta)}` : "—"}</b><div style={{ fontSize: 6.8, opacity: .42 }}>VS SEM. -1</div></div>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(115px,1fr))", gap: 6, marginTop: 10 }}>
+                {coachHistory.current.missions.map((mission) => <div key={mission.id} style={{ padding: 8, borderRadius: 10, border: mission.completed ? "1px solid rgba(80,255,174,.18)" : "1px solid rgba(255,255,255,.07)", background: mission.completed ? "rgba(80,255,174,.04)" : "rgba(255,255,255,.02)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 5 }}><b style={{ fontSize: 8.5 }}>{mission.completed ? "✓ " : ""}{mission.label}</b><span style={{ fontSize: 7.5, opacity: .55 }}>{Math.round(mission.progress)}/{mission.target}</span></div>
+                </div>)}
+              </div>
+            </div>
+
+            <div style={{ margin: "12px 0 8px", fontSize: 10, fontWeight: 950, letterSpacing: 1, color: "#b99cff" }}>HISTORIQUE DES MISSIONS · 6 SEMAINES</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {coachHistory.weeks.map((week, index) => <div key={week.weekStart} style={{ display: "grid", gridTemplateColumns: "minmax(110px,1fr) auto auto auto", gap: 8, alignItems: "center", padding: 9, borderRadius: 11, border: index === 0 ? "1px solid rgba(39,220,255,.16)" : "1px solid rgba(255,255,255,.065)", background: index === 0 ? "rgba(39,220,255,.035)" : "rgba(255,255,255,.018)", opacity: week.sessions ? 1 : .52 }}>
+                <div><b style={{ fontSize: 8.8 }}>{index === 0 ? "CETTE SEMAINE" : week.label}</b><div style={{ marginTop: 2, fontSize: 7.3, opacity: .45 }}>{week.headline} • {week.dominantFamilyLabel}</div></div>
+                <div style={{ textAlign: "center" }}><b style={{ fontSize: 9.5 }}>{week.sessions}</b><div style={{ fontSize: 6.4, opacity: .4 }}>SÉANCES</div></div>
+                <div style={{ textAlign: "center" }}><b style={{ fontSize: 9.5 }}>{week.completedMissions}/{week.totalMissions}</b><div style={{ fontSize: 6.4, opacity: .4 }}>MISSIONS</div></div>
+                <div style={{ minWidth: 42, textAlign: "center" }}><b style={{ fontSize: 10.5, color: week.status === "mastered" ? "#8cffcb" : week.status === "solid" ? "#27dcff" : "inherit" }}>{week.sessions ? Math.round(week.averagePerformance) : "—"}</b><div style={{ fontSize: 6.4, opacity: .4 }}>MOY.</div></div>
               </div>)}
             </div>
 

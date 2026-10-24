@@ -56,15 +56,23 @@ const pickStatus = (row: any, decoded: any): "in_progress" | "finished" => {
   ].map((value) => String(value ?? "").trim().toLowerCase()).filter(Boolean);
 
   const summary = row?.summary || decoded?.summary || {};
-  const hasFinish =
+  const hasHardFinish =
     tokens.some((token) => finishedTokens.has(token)) ||
     summary?.finished === true || summary?.result?.finished === true ||
     row?.payload?.summary?.finished === true || decoded?.summary?.finished === true ||
-    !!row?.finishedAt || !!row?.winnerId || !!summary?.winnerId || !!summary?.result?.winnerId ||
-    !!row?.payload?.winnerId || !!row?.payload?.summary?.winnerId || !!decoded?.winnerId || !!decoded?.summary?.winnerId;
-  if (hasFinish) return "finished";
+    !!row?.finishedAt || !!summary?.finishedAt || !!row?.payload?.finishedAt;
+  if (hasHardFinish) return "finished";
+
+  // Les états live explicites gagnent sur winnerId : ce champ peut représenter
+  // le dernier leg / round gagné dans un snapshot encore relançable.
   if (tokens.some((token) => liveTokens.has(token))) return "in_progress";
   if (row?.resume?.state || row?.resume?.config || row?.resume?.livePayload) return "in_progress";
+
+  const winnerId =
+    row?.winnerId || summary?.winnerId || summary?.result?.winnerId ||
+    row?.payload?.winnerId || row?.payload?.summary?.winnerId ||
+    decoded?.winnerId || decoded?.summary?.winnerId || decoded?.result?.winnerId || null;
+  if (winnerId) return "finished";
   return "in_progress";
 };
 

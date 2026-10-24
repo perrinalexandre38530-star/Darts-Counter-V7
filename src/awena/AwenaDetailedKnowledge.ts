@@ -740,13 +740,16 @@ const DEEP: Record<string, ModeDeepDetail> = {
 
   training_super_bull: {
     rules: [
-      { title: "OBJECTIF", body: "Drill solo centré sur le Bull." },
-      { title: "VALEURS", bullets: ["Bull = 25.", "Double Bull = 50.", "Les autres zones comptent comme des ratés Training."] },
+      { title: "OBJECTIF", body: "Training centré sur les deux zones du centre, jouable en solo, multi ou équipes." },
+      { title: "VALEURS", bullets: ["BULL25 = 25 points.", "BULL50 = 50 points.", "MISS = 0 point."] },
+      { title: "VOLÉE", body: "La saisie utilise uniquement BULL25, BULL50 et MISS, avec suivi séparé de D1, D2 et D3." },
       { title: "FIN", body: "Atteindre l'objectif de points avant la limite de fléchettes." },
     ],
     configuration: [
-      { title: "OBJECTIF", body: "Score cible de la session." },
-      { title: "LIMITE", body: "Nombre maximal de fléchettes disponible." },
+      { title: "PRÉRÉGLAGES", body: "SPRINT 50/15 · STANDARD 100/30 · ENDURANCE 200/45 · EXPERT 300/60." },
+      { title: "OBJECTIF", body: "50, 100, 150, 200, 300 ou 500 points." },
+      { title: "LIMITE", body: "9, 15, 30, 45, 60 ou 90 fléchettes maximum." },
+      { title: "PARTICIPANTS", body: "Solo, plusieurs joueurs ou équipes ; chacun joue le même objectif et la même limite." },
     ],
   },
 

@@ -437,7 +437,7 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:super_bull",
     infoTitle: "Super Bull",
     infoBody:
-      "Mode centre de cible : BULL = 25, DBULL = 50, toute autre zone = 0. Trois fléchettes par volée. Le meilleur total après les rounds gagne, ou le premier à atteindre l’objectif configuré.",
+      "Mode centre de cible : BULL25 = 25 points, BULL50 = 50 points, toute autre zone = MISS (0). Trois fléchettes par volée. Le meilleur total après les rounds gagne, ou le premier à atteindre l’objectif configuré.",
   },
   {
     id: "happy_mille",
@@ -1527,7 +1527,7 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     statsKey: "training:super_bull",
     infoTitle: "Super Bull (Training)",
     infoBody:
-      "Drill centre en solo : BULL = 25, DBULL = 50. Atteins l'objectif de points avant la limite de fléchettes. Les autres zones comptent comme des ratés Training.",
+      "Training centre en solo, multi ou équipes : BULL25 = 25 points, BULL50 = 50 points, MISS = 0. Chaque participant joue le même objectif et la même limite de fléchettes ; les stats détaillent aussi D1, D2 et D3.",
   },
 ];
 

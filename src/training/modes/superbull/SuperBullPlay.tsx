@@ -3,6 +3,7 @@ import TrainingPlayLayout from "../../ui/TrainingPlayLayout";
 import TrainingResultModal from "../../ui/TrainingResultModal";
 import { makeTrainingStats, normalizeTrainingDart, type TrainingDart } from "../../lib/trainingDarts";
 import { appendTrainingVisit, recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
+import { playGolfPerfSfx, playGolfTickerSound, unlockAudio } from "../../../lib/sfx";
 
 const dartFromKind = (kind: "bull25" | "bull50" | "miss"): TrainingDart =>
   normalizeTrainingDart(kind === "bull50" ? { v: 25, mult: 2 } : kind === "bull25" ? { v: 25, mult: 1 } : { v: 0, mult: 1 });
@@ -74,6 +75,20 @@ export default function SuperBullPlay({ config, onExit }: { config: any; onExit:
     setFx({ id: Date.now() + Math.random(), kind });
     if (fxTimerRef.current) window.clearTimeout(fxTimerRef.current);
     fxTimerRef.current = window.setTimeout(() => setFx(null), 700);
+    // Même feedback sonore que SUPER BULL Jeu. Les helpers respectent les préférences audio globales.
+    try { void unlockAudio(); } catch {}
+    try {
+      if (kind === "bull50") {
+        playGolfTickerSound("EAGLE", 0.98);
+        window.setTimeout(() => playGolfPerfSfx("EAGLE", 0.88), 110);
+      } else if (kind === "bull25") {
+        playGolfTickerSound("BIRDIE", 0.96);
+        window.setTimeout(() => playGolfPerfSfx("BIRDIE", 0.8), 110);
+      } else {
+        playGolfTickerSound("MISS", 0.94);
+        window.setTimeout(() => playGolfPerfSfx("MISS", 0.76), 90);
+      }
+    } catch {}
   }, []);
 
   const finishFrom = React.useCallback((finalVisits: TrainingDart[][], success: boolean) => {

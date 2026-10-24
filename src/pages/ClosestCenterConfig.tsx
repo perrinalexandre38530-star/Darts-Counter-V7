@@ -9,6 +9,19 @@ import petanqueExplainLandscape from "../assets/petanque_explain/petanque_explai
 
 const ACCENT = "#44e7ff";
 
+type ConfigIconName = "concept"|"format"|"players"|"rule"|"camera"|"manual"|"play";
+function ConfigIcon({name,size=18}:{name:ConfigIconName;size?:number}){
+  const q={fill:"none",stroke:"currentColor",strokeWidth:2,strokeLinecap:"round",strokeLinejoin:"round"} as const;
+  const c={width:size,height:size,viewBox:"0 0 24 24",ariaHidden:true};
+  if(name==="players") return <svg {...c}><circle {...q} cx="9" cy="8" r="3"/><circle {...q} cx="17" cy="9" r="2.4"/><path {...q} d="M3.5 20a5.5 5.5 0 0 1 11 0M14 20a4.2 4.2 0 0 1 7 0"/></svg>;
+  if(name==="camera") return <svg {...c}><rect {...q} x="3" y="6" width="18" height="13" rx="3"/><circle {...q} cx="12" cy="12.5" r="4"/><path {...q} d="M8 6l1.5-2h5L16 6"/></svg>;
+  if(name==="manual") return <svg {...c}><path {...q} d="M5 19h4l10-10-4-4L5 15v4Z"/><path {...q} d="m13 7 4 4"/></svg>;
+  if(name==="format") return <svg {...c}><rect {...q} x="3" y="5" width="8" height="6" rx="2"/><rect {...q} x="13" y="5" width="8" height="6" rx="2"/><rect {...q} x="8" y="14" width="8" height="6" rx="2"/></svg>;
+  if(name==="rule") return <svg {...c}><path {...q} d="M5 4h14v16H5zM8 8h8M8 12h6M8 16h4"/></svg>;
+  if(name==="play") return <svg {...c}><circle {...q} cx="12" cy="12" r="9"/><path {...q} d="m10 8 5 4-5 4V8Z"/></svg>;
+  return <svg {...c}><circle {...q} cx="12" cy="12" r="8"/><circle {...q} cx="12" cy="12" r="4"/><path {...q} d="M12 2v3M22 12h-3M12 22v-3M2 12h3"/></svg>;
+}
+
 const FORMATS:any = {
   duo:       { label:"DUO · 1 VS 1", sideSize:1, total:2, darts:3, note:"1 joueur par équipe · 3 fléchettes chacun" },
   doublette: { label:"DOUBLETTE · 2 VS 2", sideSize:2, total:4, darts:3, note:"2 joueurs par équipe · 3 fléchettes chacun" },
@@ -121,16 +134,16 @@ export default function ClosestCenterConfig(props: any) {
 
   const renderConcept = () => <>
     <section style={card}>
-      <h2 style={title}>🎯 DARTS PÉTANQUE</h2>
+      <div style={{display:"flex",alignItems:"center",gap:8}}><span style={iconDisc}><ConfigIcon name="concept" size={19}/></span><h2 style={{...title,margin:0}}>DARTS PÉTANQUE</h2></div>
       <div style={note}><b>Principe principal : la logique de la pétanque réelle.</b> Deux équipes jouent une mène. L’équipe dont la meilleure fléchette est la plus proche du bull marque autant de points qu’elle possède de fléchettes mieux placées que la meilleure fléchette adverse.</div>
       <div style={{...note,borderColor:"#8fffc255",background:"#39d98a10"}}><b>Saisie manuelle épurée :</b> tu ne renseignes que les fléchettes qui marquent. Aucun besoin de classer toutes les fléchettes ni de mesurer des millimètres.</div>
       <div style={{...note,borderColor:"#ffce5c55",background:"#ffce5c10"}}><b>Variantes disponibles :</b> Top 5 (5/4/3/2/1) ou “seul le plus proche”. Elles restent séparées de la règle Pétanque.</div>
     </section>
-    {!landscape ? <section style={card}><h3 style={subtitle}>AWENA · EXPLICATION VISUELLE</h3><picture><source media="(max-width: 840px)" srcSet={petanqueExplainPortrait}/><img src={petanqueExplainLandscape} alt="Awena vous explique Darts Pétanque" style={{width:"100%",display:"block",borderRadius:16,border:"1px solid rgba(68,231,255,.26)",background:"#02070d"}}/></picture></section> : null}
+    {!landscape ? <details style={{...card,padding:0,overflow:"hidden"}}><summary style={{listStyle:"none",cursor:"pointer",padding:"10px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}><span style={{display:"flex",alignItems:"center",gap:8}}><span style={iconDisc}><ConfigIcon name="concept" size={17}/></span><b style={{fontSize:11,color:ACCENT,letterSpacing:.8}}>AWENA EXPLIQUE</b></span><span style={{fontSize:9,color:"#8395a3",fontWeight:900}}>OUVRIR ▾</span></summary><div style={{padding:"0 10px 10px"}}><picture><source media="(max-width: 840px)" srcSet={petanqueExplainPortrait}/><img src={petanqueExplainLandscape} alt="Awena vous explique Darts Pétanque" style={{width:"100%",display:"block",maxHeight:"44vh",objectFit:"contain",borderRadius:14,border:"1px solid rgba(68,231,255,.22)",background:"#02070d"}}/></picture></div></details> : null}
   </>;
 
   const renderFormat = () => <section style={card}>
-    <h3 style={subtitle}>1 · FORMAT D’ÉQUIPES</h3>
+    <div style={sectionHead}><span style={iconDisc}><ConfigIcon name="format" size={17}/></span><h3 style={{...subtitle,margin:0}}>FORMAT D’ÉQUIPES</h3></div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:8}}>
       {Object.entries(FORMATS).map(([key,v]:any)=><button key={key} style={modeBtn(formatMode===key)} onClick={()=>setFormatMode(key as any)}><b>{v.label}</b><small style={{display:"block",marginTop:4,opacity:.72}}>{v.note}</small></button>)}
     </div>
@@ -138,7 +151,7 @@ export default function ClosestCenterConfig(props: any) {
   </section>;
 
   const renderPlayers = () => <section style={card}>
-    <h3 style={subtitle}>2 · JOUEURS & ÉQUIPES</h3>
+    <div style={sectionHead}><span style={iconDisc}><ConfigIcon name="players" size={17}/></span><h3 style={{...subtitle,margin:0}}>JOUEURS & ÉQUIPES</h3></div>
     <div style={{fontSize:12,color:"#9fb1bf",marginBottom:9}}>Sélectionne exactement <b>{fmt.total} joueurs</b> pour {fmt.label}. Les bots sont exclus.</div>
     <PlayerPagedSelector profiles={profiles} selectedIds={selectedIds} onToggle={toggle} accent={ACCENT} usageMode="closest_center"/>
     <div style={{marginTop:10,display:"grid",gap:7}}>
@@ -155,7 +168,7 @@ export default function ClosestCenterConfig(props: any) {
   </section>;
 
   const renderRule = () => <section style={card}>
-    <h3 style={subtitle}>3 · RÈGLE & MANCHES</h3>
+    <div style={sectionHead}><span style={iconDisc}><ConfigIcon name="rule" size={17}/></span><h3 style={{...subtitle,margin:0}}>RÈGLE & OBJECTIF</h3></div>
     {pointsMode==="petanque"
       ? <div style={{...note,marginTop:0}}><b>Fin de partie :</b> première équipe à atteindre l’objectif. <div style={{...grid,marginTop:8}}>{[7,11,13].map(n=><button key={n} style={pill(targetScore===n)} onClick={()=>setTargetScore(n)}>OBJECTIF {n}</button>)}</div></div>
       : <div style={grid}>{[1,3,5,7,10].map(n=><button key={n} style={pill(rounds===n)} onClick={()=>setRounds(n)}>{n} manche{n>1?"s":""}</button>)}</div>}
@@ -167,10 +180,10 @@ export default function ClosestCenterConfig(props: any) {
   </section>;
 
   const renderInput = () => <section style={card}>
-    <h3 style={subtitle}>4 · MODE DE SAISIE</h3>
+    <div style={sectionHead}><span style={iconDisc}><ConfigIcon name={inputMode==="camera"?"camera":"manual"} size={17}/></span><h3 style={{...subtitle,margin:0}}>MODE DE SAISIE</h3></div>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-      <button style={modeBtn(inputMode==="camera")} onClick={()=>setInputMode("camera")}>📷 CAMÉRA IA</button>
-      <button style={modeBtn(inputMode==="manual")} onClick={()=>setInputMode("manual")}>✍️ MANUEL · LOCAL</button>
+      <button style={{...modeBtn(inputMode==="camera"),display:"flex",alignItems:"center",justifyContent:"center",gap:8,textAlign:"center"}} onClick={()=>setInputMode("camera")}><ConfigIcon name="camera"/>CAMÉRA IA</button>
+      <button style={{...modeBtn(inputMode==="manual"),display:"flex",alignItems:"center",justifyContent:"center",gap:8,textAlign:"center"}} onClick={()=>setInputMode("manual")}><ConfigIcon name="manual"/>MANUEL · LOCAL</button>
     </div>
     {inputMode==="camera"?<>
       <ol style={{margin:"12px 0 0",paddingLeft:20,color:"#cad5e1",lineHeight:1.6,fontSize:13}}>
@@ -198,11 +211,11 @@ export default function ClosestCenterConfig(props: any) {
 
   const configMain = <div style={{display:"grid",gap:10,alignContent:"start"}}>
     <section style={{...card,padding:8,display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
-      <button style={modeBtn(configMode==="guided")} onClick={()=>setConfigMode("guided")}>CONFIG GUIDÉE</button>
-      <button style={modeBtn(configMode==="complete")} onClick={()=>setConfigMode("complete")}>CONFIG COMPLÈTE</button>
+      <button style={{...modeBtn(configMode==="guided"),textAlign:"center"}} onClick={()=>setConfigMode("guided")}>◉ CONFIG GUIDÉE</button>
+      <button style={{...modeBtn(configMode==="complete"),textAlign:"center"}} onClick={()=>setConfigMode("complete")}>▦ CONFIG COMPLÈTE</button>
     </section>
     {configMode==="guided"?<>
-      <section style={{...card,padding:7,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(64px,1fr))",gap:5}}>{steps.map((step,i)=><button key={step} onClick={()=>setGuidedStep(i)} style={{minHeight:42,borderRadius:11,border:`1px solid ${i===guidedStep?ACCENT:"rgba(255,255,255,.08)"}`,background:i===guidedStep?`${ACCENT}1f`:"rgba(255,255,255,.025)",color:i===guidedStep?"#fff":"#8798a6",fontWeight:1000,fontSize:8}}>{i+1}<br/>{step}</button>)}</section>
+      <section style={{...card,padding:7,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(64px,1fr))",gap:5}}>{steps.map((step,i)=>{const names:any=["concept","format","players","rule",inputMode==="camera"?"camera":"manual"];return <button key={step} onClick={()=>setGuidedStep(i)} title={step} style={{minHeight:44,borderRadius:12,border:`1px solid ${i===guidedStep?ACCENT:"rgba(255,255,255,.08)"}`,background:i===guidedStep?`${ACCENT}18`:"rgba(255,255,255,.025)",color:i===guidedStep?ACCENT:"#8798a6",fontWeight:1000,fontSize:8,display:"grid",placeItems:"center",gap:2}}><ConfigIcon name={names[i]} size={17}/><span>{step}</span></button>})}</section>
       {guidedStep===0?renderConcept():guidedStep===1?renderFormat():guidedStep===2?renderPlayers():guidedStep===3?renderRule():renderInput()}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
         <button disabled={!canPrev} onClick={()=>setGuidedStep(v=>Math.max(0,v-1))} style={{...navBtn,opacity:canPrev?1:.35}}>← PRÉCÉDENT</button>
@@ -212,7 +225,7 @@ export default function ClosestCenterConfig(props: any) {
   </div>;
 
   const landscapeAside = <aside style={{...card,padding:10,display:"grid",gridTemplateRows:"auto minmax(0,1fr) auto",gap:8,minHeight:0,overflow:"hidden",background:"linear-gradient(180deg,rgba(11,25,36,.98),rgba(5,11,17,.98))"}}>
-    <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><div><div style={{fontSize:9,color:ACCENT,fontWeight:1000,letterSpacing:1.1}}>AWENA EXPLIQUE</div><b style={{fontSize:13}}>DARTS PÉTANQUE</b></div><span style={{padding:"5px 8px",borderRadius:999,border:`1px solid ${inputMode==="camera"?ACCENT:"#8fffc2"}55`,fontSize:9,fontWeight:1000,color:inputMode==="camera"?ACCENT:"#8fffc2"}}>{inputMode==="camera"?"📷 CAMÉRA IA":"✍️ MANUEL"}</span></div>
+    <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><div><div style={{fontSize:9,color:ACCENT,fontWeight:1000,letterSpacing:1.1}}>AWENA EXPLIQUE</div><b style={{fontSize:13}}>DARTS PÉTANQUE</b></div><span style={{padding:"5px 8px",borderRadius:999,border:`1px solid ${inputMode==="camera"?ACCENT:"#8fffc2"}55`,fontSize:9,fontWeight:1000,color:inputMode==="camera"?ACCENT:"#8fffc2"}}>{inputMode==="camera"?"CAMÉRA IA":"MANUEL"}</span></div>
     <div style={{minHeight:0,overflow:"hidden",display:"grid",placeItems:"center"}}><img src={petanqueExplainLandscape} alt="Awena vous explique Darts Pétanque" style={{width:"100%",height:"100%",maxHeight:"100%",objectFit:"contain",display:"block",borderRadius:14,border:"1px solid rgba(68,231,255,.22)",background:"#02070d"}}/></div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:6}}>
       <div style={summaryKpi}><span>FORMAT</span><b>{String(fmt.label).split(" · ")[0]}</b></div>
@@ -231,7 +244,7 @@ export default function ClosestCenterConfig(props: any) {
   </div>;
 }
 
-const card:React.CSSProperties={border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.035)",borderRadius:18,padding:14,boxShadow:"0 12px 35px rgba(0,0,0,.25)"};
+const card:React.CSSProperties={border:"1px solid rgba(255,255,255,.10)",background:"linear-gradient(180deg,rgba(13,24,34,.82),rgba(5,11,17,.78))",borderRadius:18,padding:14,boxShadow:"0 14px 36px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.035)",backdropFilter:"blur(12px)"};
 const title:React.CSSProperties={margin:"0 0 10px",fontSize:22,letterSpacing:.5};
 const subtitle:React.CSSProperties={margin:"0 0 10px",fontSize:13,letterSpacing:1.2,color:ACCENT};
 const note:React.CSSProperties={padding:11,borderRadius:14,border:`1px solid ${ACCENT}33`,background:`${ACCENT}0f`,fontSize:13,lineHeight:1.5,color:"#dbe9f4",marginTop:8};
@@ -239,4 +252,6 @@ const grid:React.CSSProperties={display:"flex",gap:8,flexWrap:"wrap",marginTop:8
 const pill=(active:boolean):React.CSSProperties=>({minHeight:38,padding:"7px 12px",borderRadius:999,border:`1px solid ${active?ACCENT:"rgba(255,255,255,.12)"}`,background:active?`${ACCENT}22`:"rgba(255,255,255,.03)",color:"#fff",fontWeight:900});
 const modeBtn=(active:boolean):React.CSSProperties=>({minHeight:50,borderRadius:14,border:`1px solid ${active?ACCENT:"rgba(255,255,255,.1)"}`,background:active?`linear-gradient(135deg,${ACCENT}25,#1677ff20)`:"rgba(255,255,255,.025)",color:active?"#fff":"#8fa0ae",fontWeight:1000,fontSize:12,letterSpacing:.6,padding:"8px 10px",textAlign:"left"});
 const navBtn:React.CSSProperties={minHeight:48,borderRadius:14,border:"1px solid rgba(255,255,255,.14)",background:"rgba(255,255,255,.05)",color:"#fff",fontWeight:1000};
-const summaryKpi:React.CSSProperties={padding:"7px 8px",borderRadius:10,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.03)",minWidth:0};
+const summaryKpi:React.CSSProperties={padding:"8px 9px",borderRadius:12,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.03)",minWidth:0};
+const sectionHead:React.CSSProperties={display:"flex",alignItems:"center",gap:8,marginBottom:10};
+const iconDisc:React.CSSProperties={width:34,height:34,borderRadius:11,border:`1px solid ${ACCENT}44`,background:`${ACCENT}0e`,color:ACCENT,display:"grid",placeItems:"center",flex:"0 0 auto"};

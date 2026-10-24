@@ -363,7 +363,7 @@ const ENTRIES: DeepEntry[] = [
     id: "training-superbull",
     title: "Super Bull Training",
     aliases: ["super bull training", "training super bull", "bull training"],
-    text: "## SUPER BULL — TRAINING\nExercice centré sur le milieu de cible :\n- Bull = 25 ;\n- Double Bull = 50 ;\n- les autres zones sont considérées comme ratées pour ce drill.\n\nTu dois atteindre l'objectif avant la limite de fléchettes.",
+    text: "## SUPER BULL — TRAINING\nTraining centré sur le milieu de cible :\n- BULL25 = 25 points ;\n- BULL50 = 50 points ;\n- MISS = 0 point.\n\nLa saisie suit D1, D2 et D3 séparément. Tu peux jouer en solo, multi ou équipes : chaque participant reçoit le même objectif et la même limite. Préréglages : SPRINT 50/15, STANDARD 100/30, ENDURANCE 200/45, EXPERT 300/60. Objectifs disponibles : 50, 100, 150, 200, 300 ou 500 points ; limites : 9, 15, 30, 45, 60 ou 90 fléchettes.",
     route: "training",
   },
   {

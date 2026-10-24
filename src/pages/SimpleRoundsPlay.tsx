@@ -104,7 +104,7 @@ function SuperBullChallengeView({
           <div className="sbx-modal-player-tabs">{playerRows.map((p:any,i:number)=><button type="button" key={p.id||i} className={i===selectedStats.i?"active":""} onClick={()=>setStatsPlayerIdx(i)}>{avatar(p,32)}<span>{p.name}</span></button>)}</div>
           <div className="sbx-detail-kpis">
             <div><span>SCORE</span><b>{selectedStats.score}</b></div><div><span>FLÉCHETTES</span><b>{selectedStats.darts}</b></div><div><span>CENTRES</span><b>{selectedStats.centres}</b></div><div><span>PRÉCISION</span><b>{selectedStats.precision}%</b></div>
-            <div><span>BULL25</span><b>{selectedStats.bulls}</b></div><div><span>BULL50</span><b>{selectedStats.dbulls}</b></div><div><span>MISS</span><b>{selectedStats.misses}</b></div><div><span>TAUX DBULL</span><b>{selectedStats.dbullRate}%</b></div>
+            <div><span>BULL25</span><b>{selectedStats.bulls}</b></div><div><span>BULL50</span><b>{selectedStats.dbulls}</b></div><div><span>MISS</span><b>{selectedStats.misses}</b></div><div><span>TAUX BULL50</span><b>{selectedStats.dbullRate}%</b></div>
             <div><span>BEST VOLÉE</span><b>{selectedStats.bestVisit}</b></div><div><span>MOY. VOLÉE</span><b>{selectedStats.avgVisit}</b></div><div><span>SÉRIE MAX</span><b>{selectedStats.streak}</b></div><div><span>VOLÉES 100%</span><b>{selectedStats.perfect}</b></div>
           </div>
           <div className="sbx-section-title"><span>PRÉCISION PAR FLÉCHETTE</span><small>D1 / D2 / D3 · comme Challenge</small></div>
@@ -658,9 +658,9 @@ function goBack() {
     const isDbull = Number(dart?.v) === 25 && Number(dart?.mult) === 2;
     const kind = isDbull ? "bull50" : isBull ? "bull25" : "miss";
     const payload = kind === "bull50"
-      ? { id: Date.now() + Math.random(), type: kind, eyebrow: "IMPACT PARFAIT", label: "DBULL 50", subtitle: "+50 points au centre", image: "" }
+      ? { id: Date.now() + Math.random(), type: kind, eyebrow: "IMPACT PARFAIT", label: "BULL50", subtitle: "+50 points au centre", image: "" }
       : kind === "bull25"
-        ? { id: Date.now() + Math.random(), type: kind, eyebrow: "BON IMPACT", label: "BULL 25", subtitle: "+25 points au centre", image: "" }
+        ? { id: Date.now() + Math.random(), type: kind, eyebrow: "BON IMPACT", label: "BULL25", subtitle: "+25 points au centre", image: "" }
         : { id: Date.now() + Math.random(), type: kind, eyebrow: "AUCUN POINT", label: "MISS", subtitle: "Impact hors centre · 0 point", image: "" };
     setSuperBullFx(payload);
     if (superBullFxTimerRef.current) window.clearTimeout(superBullFxTimerRef.current);
@@ -1325,7 +1325,7 @@ function goBack() {
           <div style={{ display: "grid", gridTemplateColumns: "minmax(132px,.72fr) minmax(0,1.6fr)", gap: 12, marginBottom: 12, alignItems: "stretch" }}>
             <div style={{ borderRadius: 22, border: dbullPulse ? "2px solid rgba(255,215,64,.95)" : "1px solid rgba(39,220,255,.25)", background: dbullPulse ? "radial-gradient(circle,rgba(255,215,64,.30),rgba(8,18,30,.96) 68%)" : "radial-gradient(circle,rgba(39,220,255,.15),rgba(8,18,30,.96) 68%)", display: "grid", placeItems: "center", minHeight: 154, boxShadow: dbullPulse ? "0 0 34px rgba(255,215,64,.28)" : "none", transition: "all .18s ease" }}>
               <div style={{ width: 118, height: 118, borderRadius: "50%", background: "radial-gradient(circle at center,#ffd740 0 22%,#d91f38 23% 46%,#f1ead8 47% 69%,#1f9d63 70% 100%)", border: "5px solid rgba(255,255,255,.12)", boxShadow: "inset 0 0 0 3px rgba(0,0,0,.3),0 8px 28px rgba(0,0,0,.35)", display: "grid", placeItems: "center", textAlign: "center", color: "#071019", fontWeight: 1000, fontSize: 11, lineHeight: 1.05 }}>
-                <div><div style={{ fontSize: 18 }}>50</div>DBULL<div style={{ marginTop: 25, color: "white" }}>BULL 25</div></div>
+                <div><div style={{ fontSize: 18 }}>50</div>BULL50<div style={{ marginTop: 25, color: "white" }}>BULL25</div></div>
               </div>
             </div>
             <div style={{ borderRadius: 20, padding: 14, border: "1px solid rgba(255,255,255,.10)", background: "linear-gradient(145deg,rgba(39,220,255,.08),rgba(255,255,255,.035))" }}>
@@ -1334,7 +1334,7 @@ function goBack() {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7, marginTop: 12 }}>
                 {[
                   ["CENTRES", (bullsByP[playerIdx] || 0) + (dbullsByP[playerIdx] || 0)],
-                  ["DBULL", dbullsByP[playerIdx] || 0],
+                  ["BULL50", dbullsByP[playerIdx] || 0],
                   ["SÉRIE", bullStreakByP[playerIdx] || 0],
                   ["BEST", bestBullStreakByP[playerIdx] || 0],
                 ].map(([label,value]) => <div key={String(label)} style={{ padding: "9px 5px", borderRadius: 12, background: "rgba(0,0,0,.22)", textAlign: "center" }}><div style={{ fontSize: 9, opacity: .6, fontWeight: 900 }}>{label}</div><div style={{ fontSize: 18, fontWeight: 1000, marginTop: 2 }}>{value}</div></div>)}
@@ -1364,7 +1364,7 @@ function goBack() {
                 <div style={{ marginTop: 6, fontSize: 22, fontWeight: 1000 }}>{s}</div>
                 {variantId === "super_bull" && (
                   <div style={{ marginTop: 5, fontSize: 10, opacity: 0.72, fontWeight: 850 }}>
-                    BULL {bullsByP[i] || 0} • DBULL {dbullsByP[i] || 0} • {dartsByP[i] || 0} darts
+                    BULL25 {bullsByP[i] || 0} • BULL50 {dbullsByP[i] || 0} • {dartsByP[i] || 0} darts
                   </div>
                 )}
               </div>
@@ -1389,7 +1389,7 @@ function goBack() {
                 return <div key={row.i} style={{ display: "grid", gridTemplateColumns: "36px minmax(0,1fr) repeat(4,minmax(54px,.55fr))", gap: 7, alignItems: "center", padding: 10, borderRadius: 14, background: rank === 0 ? "rgba(255,215,64,.10)" : "rgba(0,0,0,.20)", border: "1px solid rgba(255,255,255,.07)" }}>
                   <div style={{ fontSize: 18, fontWeight: 1000 }}>#{rank+1}</div><div style={{ fontWeight: 1000 }}>{playerRows[row.i]?.name}</div>
                   <div style={{ textAlign: "center" }}><b>{row.score}</b><div style={{ fontSize: 8, opacity: .55 }}>PTS</div></div>
-                  <div style={{ textAlign: "center" }}><b>{dbullsByP[row.i]||0}</b><div style={{ fontSize: 8, opacity: .55 }}>DBULL</div></div>
+                  <div style={{ textAlign: "center" }}><b>{dbullsByP[row.i]||0}</b><div style={{ fontSize: 8, opacity: .55 }}>BULL50</div></div>
                   <div style={{ textAlign: "center" }}><b>{precision}%</b><div style={{ fontSize: 8, opacity: .55 }}>CENTRE</div></div>
                   <div style={{ textAlign: "center" }}><b>{bestBullStreakByP[row.i]||0}</b><div style={{ fontSize: 8, opacity: .55 }}>BEST SÉRIE</div></div>
                 </div>;
@@ -1414,21 +1414,21 @@ function goBack() {
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
                     {Array.from({ length: 3 }, (_, i) => {
                       const d = currentThrow[i];
-                      const label = !d ? `D${i + 1}` : Number(d.v) !== 25 ? "MISS" : Number(d.mult) === 2 ? "DBULL 50" : "BULL 25";
+                      const label = !d ? `D${i + 1}` : Number(d.v) !== 25 ? "MISS" : Number(d.mult) === 2 ? "BULL50" : "BULL25";
                       return <div key={i} style={{ padding: "12px 6px", borderRadius: 14, textAlign: "center", fontWeight: 950, fontSize: 12, border: "1px solid rgba(255,255,255,.12)", background: d ? "rgba(39,220,255,.10)" : "rgba(255,255,255,.04)" }}>{label}</div>;
                     })}
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
                     <button className="btn-secondary" onClick={() => setCurrentThrow((p) => p.length >= 3 ? p : [...p, { v: 0, mult: 1 }])}>MISS</button>
                     <button className="btn-secondary" onClick={() => setCurrentThrow((p) => p.length >= 3 ? p : [...p, { v: 25, mult: 1 }])}>BULL · 25</button>
-                    <button className="btn-primary" onClick={() => setCurrentThrow((p) => p.length >= 3 ? p : [...p, { v: 25, mult: 2 }])}>DBULL · 50</button>
+                    <button className="btn-primary" onClick={() => setCurrentThrow((p) => p.length >= 3 ? p : [...p, { v: 25, mult: 2 }])}>BULL50 · 50</button>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1.4fr", gap: 8 }}>
                     <button className="btn-secondary" onClick={() => setCurrentThrow([])}>ANNULER</button>
                     <button className="btn-secondary" onClick={() => setCurrentThrow((p) => p.slice(0, -1))}>EFFACER</button>
                     <button className="btn-primary" disabled={currentThrow.length !== 3} onClick={validate}>VALIDER · {currentThrow.reduce((sum, d) => sum + (Number(d.v) === 25 ? (Number(d.mult) === 2 ? 50 : 25) : 0), 0)} PTS</button>
                   </div>
-                  <div style={{ textAlign: "center", fontSize: 10.5, opacity: .68 }}>3 fléchettes obligatoires par volée • seules BULL et DBULL marquent</div>
+                  <div style={{ textAlign: "center", fontSize: 10.5, opacity: .68 }}>3 fléchettes obligatoires par volée • seules BULL25 et BULL50 marquent</div>
                 </div>
               ) : (
                 <ScoreInputHub

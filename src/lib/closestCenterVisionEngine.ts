@@ -65,6 +65,8 @@ export type DetectionConsensus = VisionDetection & {
   sampleCount: number;
   spreadMm: number;
   positionSpreadPx?: number;
+  spatialSpreadNorm?: number;
+  spatialRejectedSamples?: number;
   rereadAgreement?: number;
 };
 
@@ -649,6 +651,23 @@ export function fuseDetectionFrames(frames: VisionDetection[][], wanted=3): Dete
     const filtered=items.filter((v:any)=>Math.abs(Number(v.distanceMm)-med)<=robustGate);
     if(filtered.length>=Math.max(2,Math.ceil(items.length*.67))) items=filtered;
 
+    // 2D robust gate. Radial distance alone is not enough: two false candidates
+    // can sit at almost the same distance from the bull while being located at
+    // different places on the board. This is especially common with crossings,
+    // occlusions and specular highlights around an existing dart.
+    const xs=items.map((v:any)=>Number(v.xNorm)).sort((a:number,b:number)=>a-b);
+    const ys=items.map((v:any)=>Number(v.yNorm)).sort((a:number,b:number)=>a-b);
+    const mxNorm=xs[Math.floor(xs.length/2)] ?? 0;
+    const myNorm=ys[Math.floor(ys.length/2)] ?? 0;
+    const spatialResiduals=items.map((v:any)=>Math.hypot(Number(v.xNorm)-mxNorm,Number(v.yNorm)-myNorm)).sort((a:number,b:number)=>a-b);
+    const spatialMed=spatialResiduals[Math.floor(spatialResiduals.length/2)] ?? 0;
+    const spatialDev=spatialResiduals.map((d:number)=>Math.abs(d-spatialMed)).sort((a:number,b:number)=>a-b);
+    const spatialMad=spatialDev[Math.floor(spatialDev.length/2)] ?? 0;
+    const spatialGate=Math.max(.0012,Math.min(.0042,spatialMed+spatialMad*3.2+.00045));
+    const spatialFiltered=items.filter((v:any)=>Math.hypot(Number(v.xNorm)-mxNorm,Number(v.yNorm)-myNorm)<=spatialGate);
+    const spatialRejected=Math.max(0,items.length-spatialFiltered.length);
+    if(spatialFiltered.length>=Math.max(2,Math.ceil(items.length*.67))) items=spatialFiltered;
+
     let sw=0,xw=0,yw=0,dw=0,nw=0;
     for(const v of items){
       const baseW=Math.max(.08,Number(v.confidence||0))*Math.max(.35,Number(v.geometryConfidence||.6));
@@ -667,12 +686,15 @@ export function fuseDetectionFrames(frames: VisionDetection[][], wanted=3): Dete
     const coordSpreadNorm=Math.sqrt(items.reduce((sum:number,v:any)=>sum+(Number(v.xNorm)-xNorm)**2+(Number(v.yNorm)-yNorm)**2,0)/Math.max(1,items.length));
     const base=items.reduce((sum:number,v:any)=>sum+Number(v.confidence||0),0)/Math.max(1,items.length);
     const outlierPenalty=Math.max(0,(byFrame.size-items.length)/Math.max(1,byFrame.size))*.12;
+    const spatialPenalty=Math.min(.20,Math.max(0,coordSpreadNorm-.0007)*52)+Math.min(.08,spatialRejected*.025);
     return {
       xNorm,yNorm,distanceMm,distanceNorm,
       area:items.reduce((s:number,v:any)=>s+Number(v.area||0),0)/items.length,
       geometryConfidence:items.reduce((s:number,v:any)=>s+Number(v.geometryConfidence||0),0)/items.length,
-      confidence:clamp01(base*.70+frameAgreement*.30-Math.min(.22,spreadMm/10)-outlierPenalty),
+      confidence:clamp01(base*.70+frameAgreement*.30-Math.min(.22,spreadMm/10)-outlierPenalty-spatialPenalty),
       frameAgreement,sampleCount:items.length,spreadMm,positionSpreadPx:coordSpreadNorm*1000,
+      spatialSpreadNorm:coordSpreadNorm,
+      spatialRejectedSamples:spatialRejected,
       rejectedFrameSamples:Math.max(0,byFrame.size-items.length),
     };
   }).filter((x:any)=>x && x.frameAgreement>=.75 && x.sampleCount>=3)

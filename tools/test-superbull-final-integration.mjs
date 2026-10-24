@@ -26,6 +26,12 @@ const registry = read("src/games/dartsGameRegistry.ts");
 const quick = read("src/lib/quickParty.ts");
 const trainingPlay = read("src/training/modes/superbull/SuperBullPlay.tsx");
 const trainingStats = read("src/components/stats/StatsTrainingModesLocal.tsx");
+const publicLanding = read("src/pages/PublicLandingPage.tsx");
+const publicRules = read("src/games/dartsPublicRulesAudit.ts");
+const awenaDetailed = read("src/awena/AwenaDetailedKnowledge.ts");
+const awenaDeep = read("src/awena/AwenaDeepKnowledge.ts");
+const legacyCatalog = read("src/lib/dartsModesCatalog.ts");
+const pkg = JSON.parse(read("package.json"));
 
 mustInclude(app, [
   'case "super_bull_config"',
@@ -112,6 +118,43 @@ mustInclude(trainingStats, [
   "superBullPositionStats",
   "ÉVOLUTION PRÉCISION CENTRE",
 ], "Stats Training SUPER BULL");
+
+assert.equal(pkg?.scripts?.["test:superbull"], "node ./tools/test-superbull-final-integration.mjs", "package.json: script test:superbull manquant ou incorrect");
+mustInclude(publicLanding, [
+  'BULL25 rapporte 25 points',
+  'BULL50 rapporte 50 points',
+  'training_super_bull: "Définissez la durée de la session',
+  'BULL25 et BULL50',
+], "nomenclature publique SUPER BULL");
+
+mustInclude(registry, [
+  'BULL25 = 25 points, BULL50 = 50 points',
+  'Training centre en solo, multi ou équipes',
+], "aide registre SUPER BULL");
+
+mustInclude(publicRules, [
+  'OBJECTIF : 50 / 100 / 150 / 200 / 300 / 500 points',
+  'LIMITE : 9 / 15 / 30 / 45 / 60 / 90 fléchettes',
+  'BULL25 = 25 points ; BULL50 = 50 points ; MISS = 0',
+], "audit règles SUPER BULL Training");
+
+mustInclude(awenaDetailed, [
+  'BULL25 = 25 points.',
+  'BULL50 = 50 points.',
+  'SPRINT 50/15 · STANDARD 100/30 · ENDURANCE 200/45 · EXPERT 300/60.',
+], "Awena détaillée SUPER BULL");
+
+mustInclude(awenaDeep, [
+  'BULL25 = 25 points',
+  'Objectifs disponibles : 50, 100, 150, 200, 300 ou 500 points',
+  'limites : 9, 15, 30, 45, 60 ou 90 fléchettes',
+], "Awena profonde SUPER BULL");
+
+mustInclude(legacyCatalog, [
+  'id:"super_bull", label:"Super Bull", category:"variant"',
+  'BULL25 = 25 points, BULL50 = 50 points, MISS = 0',
+  'targetScore:200',
+], "catalogue générique SUPER BULL");
 
 for (const [file, text] of [["SuperBullConfig.tsx", config], ["SimpleRoundsPlay.tsx", play]]) {
   assert.ok(!/bient[oô]t disponible|not implemented/i.test(text), `${file}: marqueur de mode incomplet détecté`);

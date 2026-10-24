@@ -777,24 +777,30 @@ function statusOf(e: SavedEntry): "finished" | "in_progress" {
   const resumeState: any = anyE?.resume?.state || {};
   const payloadState: any = payload?.stateSnapshot || payload?.state || {};
 
-  // Une partie n'est terminée que sur un marqueur de fin réel. La présence de
-  // stats, rankings ou perPlayer est normale pendant le live pour de nombreux jeux.
-  const hasExplicitFinish =
+  // Les marqueurs de fin explicites et irréversibles gagnent toujours.
+  // IMPORTANT : winnerId n'est volontairement PAS ici. Plusieurs moteurs
+  // conservent le gagnant du dernier leg / de la dernière manche pendant le live.
+  const hasHardFinish =
     tokens.some((token) => finishedTokens.has(token)) ||
     summary?.finished === true || summary?.result?.finished === true ||
     payload?.summary?.finished === true || payload?.result?.finished === true ||
     decoded?.summary?.finished === true || decoded?.result?.finished === true ||
     resumeState?.finished === true || payloadState?.finished === true ||
-    !!anyE?.finishedAt || !!summary?.finishedAt || !!payload?.finishedAt ||
-    !!anyE?.winnerId || !!summary?.winnerId || !!summary?.result?.winnerId ||
-    !!payload?.winnerId || !!payload?.summary?.winnerId || !!payload?.result?.winnerId ||
-    !!decoded?.winnerId || !!decoded?.summary?.winnerId || !!decoded?.result?.winnerId;
-  if (hasExplicitFinish) return "finished";
+    !!anyE?.finishedAt || !!summary?.finishedAt || !!payload?.finishedAt;
+  if (hasHardFinish) return "finished";
 
-  // Un status/checkpoint live explicite doit rester prioritaire, y compris pour
-  // P'TIT 1, CRADOS, CHALLENGE, etc. qui exposent déjà leurs stats pendant la partie.
+  // Un checkpoint/status live explicite est prioritaire sur les winnerId intermédiaires.
+  // Cela évite notamment P'TIT 1 / X01 multi-legs / Challenge classés terminés
+  // après une simple manche gagnée.
   if (tokens.some((token) => liveTokens.has(token))) return "in_progress";
   if (anyE?.resume?.state || anyE?.resume?.config || anyE?.resume?.livePayload) return "in_progress";
+
+  // Sans aucun marqueur live, un gagnant final reste une preuve raisonnable de fin.
+  const winnerId =
+    anyE?.winnerId || summary?.winnerId || summary?.result?.winnerId ||
+    payload?.winnerId || payload?.summary?.winnerId || payload?.result?.winnerId ||
+    decoded?.winnerId || decoded?.summary?.winnerId || decoded?.result?.winnerId || null;
+  if (winnerId) return "finished";
 
   // Fallback conservateur : garder REPRENDRE plutôt que perdre une partie live.
   return "in_progress";
@@ -2083,7 +2089,7 @@ function SuperBullHistoryScoreBlock({ e, theme }: { e: SavedEntry; theme: any })
         const precision=Number(r.centreAccuracy ?? summary?.centreAccuracyByPlayer?.[pid] ?? playerRow?.centreAccuracy ?? (darts?centres/darts*100:0));
         const positions=Array.isArray(playerRow?.positionStats) ? playerRow.positionStats : [];
         const posLabel=positions.length ? ` • D1/D2/D3 ${[1,2,3].map((slot)=>{const ps=positions.find((x:any)=>Number(x?.position)===slot);return ps?`${Number(ps?.accuracy||0).toFixed(0)}%`:'—';}).join('/')}` : '';
-        return `${name}: DBULL ${Number(r.dbulls||0)} • centre ${precision.toFixed(1)}% • série ${Number(r.bestStreak||0)} • volées parfaites ${Number(r.perfectVisits||0)}${posLabel}`;
+        return `${name}: BULL50 ${Number(r.dbulls||0)} • centre ${precision.toFixed(1)}% • série ${Number(r.bestStreak||0)} • volées parfaites ${Number(r.perfectVisits||0)}${posLabel}`;
       }).join("  |  ")}
     </div>
   </div>;
@@ -4698,14 +4704,33 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
         }
         delete converted.payload.quickProfileLinks;
       }
+      // IMPORTANT : une partie rapide peut encore être "in_progress" au moment
+      // du transfert. History.upsert utilise normalement un checkpoint léger
+      // pour ces parties, qui ne réécrit pas tous les marqueurs quickParty.
+      // On force donc UNE écriture complète, sans persister ce flag interne.
+      try {
+        Object.defineProperty(converted, "__forceFullInProgress", {
+          value: true,
+          enumerable: false,
+          configurable: true,
+        });
+      } catch {}
+
       await History.upsert(converted);
 
-      // Le transfert est une action explicite de l'utilisateur : les stats des
-      // profils associés doivent être disponibles immédiatement, y compris sur
-      // mobile où les refresh planifiés peuvent être volontairement différés.
-      try {
-        await rebuildStatsFromHistory({ includeNonFinished: true, persist: true });
-      } catch (error) {
+      // Le transfert doit être visible immédiatement. Ne pas bloquer la fermeture
+      // de la modale pendant le rebuild complet des stats (potentiellement long
+      // sur mobile avec un historique important).
+      setQuickLinkEntry(null);
+      setQuickLinks({});
+      setTab(String(converted?.status || "").toLowerCase() === "finished" ? "done" : "running");
+      await loadHistory();
+      window.alert("Partie transférée dans l'historique avec profils ✅");
+
+      // Rebuild lancé immédiatement mais de façon non bloquante : les IDs profils
+      // viennent d'être injectés dans l'historique normal et seront donc repris
+      // par le moteur de stats dès ce passage.
+      void rebuildStatsFromHistory({ includeNonFinished: true, persist: true }).catch((error) => {
         console.warn("[quick-party-transfer] rebuild stats immédiat échoué", error);
         try {
           void scheduleStatsIndexRefresh({
@@ -4715,12 +4740,10 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
             persist: true,
           });
         } catch {}
-      }
-      setQuickLinkEntry(null);
-      setQuickLinks({});
-      setTab("done");
-      await loadHistory();
-      window.alert("Partie transférée dans l'historique avec profils ✅");
+      });
+    } catch (error: any) {
+      console.error("[quick-party-transfer] transfert échoué", error);
+      window.alert(`Impossible de transférer cette partie : ${error?.message || String(error)}`);
     } finally {
       setQuickLinkBusy(false);
     }
@@ -6153,7 +6176,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                 onClick={() => void transferQuickPartyToProfiles()}
                 style={{ minHeight: 44, borderRadius: 12, border: "1px solid rgba(255,202,87,.65)", background: "rgba(255,202,87,.10)", color: "#ffe5a0", fontWeight: 1000, opacity: quickPartyParticipants(quickLinkEntry).some((p: any) => !quickLinks[String(p.temporaryPlayerId || p.id)]) ? .45 : 1 }}
               >
-                TRANSFÉRER VERS L’HISTORIQUE
+                {quickLinkBusy ? "TRANSFERT…" : "TRANSFÉRER VERS L’HISTORIQUE"}
               </button>
             </div>
             <div style={{ marginTop: 9, textAlign: "center", fontSize: 10, opacity: .5 }}>

@@ -1406,11 +1406,13 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
     "status": 'available',
     "sources": ["src/training/modes/superbull/SuperBullConfig.tsx", "src/training/modes/superbull/SuperBullPlay.tsx"],
     "options": [
-      "OBJECTIF : 50 / 100 / 150 points",
-      "LIMITE : 15 / 30 / 60 fléchettes",
-      "BULL = 25 points ; DBULL = 50 points",
+      "PRÉRÉGLAGES : SPRINT 50 pts / 15 darts · STANDARD 100 / 30 · ENDURANCE 200 / 45 · EXPERT 300 / 60",
+      "OBJECTIF : 50 / 100 / 150 / 200 / 300 / 500 points",
+      "LIMITE : 9 / 15 / 30 / 45 / 60 / 90 fléchettes",
+      "BULL25 = 25 points ; BULL50 = 50 points ; MISS = 0",
       "Même objectif et même limite pour tous les participants",
-      "Sélection de participants : solo, multi ou équipes"
+      "Sélection de participants : solo, multi ou équipes",
+      "Statistiques détaillées : BULL25, BULL50, MISS, précision, séries et D1 / D2 / D3"
     ]
   },
   "mistigri": {

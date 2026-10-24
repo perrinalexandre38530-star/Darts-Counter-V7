@@ -28,6 +28,22 @@ import { History } from "../lib/history";
 import { buildClosestCenterStats } from "../lib/closestCenterStats";
 
 const ACCENT = "#44e7ff";
+
+type PetanqueIconName = "score"|"action"|"players"|"camera"|"stats"|"target"|"check"|"undo"|"settings"|"history";
+function PetanqueIcon({ name, size = 19 }: { name: PetanqueIconName; size?: number }) {
+  const q = { fill:"none", stroke:"currentColor", strokeWidth:2, strokeLinecap:"round", strokeLinejoin:"round" } as const;
+  const common={width:size,height:size,viewBox:"0 0 24 24",ariaHidden:true};
+  if(name==="score") return <svg {...common}><path {...q} d="M4 20V9M10 20V4M16 20v-7M22 20V7"/></svg>;
+  if(name==="action") return <svg {...common}><circle {...q} cx="12" cy="12" r="8"/><path {...q} d="m10 8 5 4-5 4V8Z"/></svg>;
+  if(name==="players") return <svg {...common}><circle {...q} cx="9" cy="8" r="3"/><circle {...q} cx="17" cy="9" r="2.4"/><path {...q} d="M3.5 20a5.5 5.5 0 0 1 11 0M14 20a4.2 4.2 0 0 1 7 0"/></svg>;
+  if(name==="camera") return <svg {...common}><rect {...q} x="3" y="6" width="18" height="13" rx="3"/><circle {...q} cx="12" cy="12.5" r="4"/><path {...q} d="M8 6l1.5-2h5L16 6"/></svg>;
+  if(name==="stats") return <svg {...common}><path {...q} d="M5 19V11M10 19V6M15 19v-4M20 19V8"/></svg>;
+  if(name==="target") return <svg {...common}><circle {...q} cx="12" cy="12" r="8"/><circle {...q} cx="12" cy="12" r="4"/><path {...q} d="M12 2v3M22 12h-3M12 22v-3M2 12h3"/></svg>;
+  if(name==="check") return <svg {...common}><circle {...q} cx="12" cy="12" r="9"/><path {...q} d="m8 12 2.5 2.5L16.5 9"/></svg>;
+  if(name==="undo") return <svg {...common}><path {...q} d="M9 7 4 12l5 5M5 12h8a6 6 0 1 1 0 12"/></svg>;
+  if(name==="history") return <svg {...common}><path {...q} d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path {...q} d="M3 3v5h5M12 7v5l3 2"/></svg>;
+  return <svg {...common}><circle {...q} cx="12" cy="12" r="3"/><path {...q} d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>;
+}
 const PLAYER_COLORS = ["#ff4d5f", "#3da5ff", "#ffd43b", "#b96cff", "#39d98a", "#ff914d", "#55e6c1", "#f472b6"];
 
 function playerColor(players:any[], playerId:any) {
@@ -423,6 +439,7 @@ export default function ClosestCenterPlay(props:any) {
   const [showFinalPlayers, setShowFinalPlayers] = React.useState(false);
   const [showFinalStats, setShowFinalStats] = React.useState(false);
   const [showFinalCamera, setShowFinalCamera] = React.useState(false);
+  const [quickPanel, setQuickPanel] = React.useState<null | "score" | "players" | "camera" | "info">(null);
   const [status, setStatus] = React.useState(isManual
     ? (pointsMode === "petanque" ? "Saisie rapide : à la fin de la mène, choisis seulement l’équipe qui marque et ses fléchettes marquantes." : "Fin de manche : renseigne uniquement les fléchettes qui scorent.")
     : "Présente les 3 fléchettes du joueur dans le cadre de scan.");
@@ -862,12 +879,20 @@ export default function ClosestCenterPlay(props:any) {
       // never advertise artificial precision near oblique board regions.
       const resolutionFloor = Math.max(.18, Number(localMetric.meanMmPerPixel || readiness.mmPerPixel || .8) * .38 * Math.max(1, Math.min(1.8, Number(localMetric.anisotropy||1))));
       const consensusPenalty = Math.max(0, Number(d.spreadMm || 0) * .62);
+      const spatialSpreadMm = Math.max(
+        0,
+        Number(d.spatialSpreadNorm || 0) * Math.min(after.width, after.height) * Number(localMetric.meanMmPerPixel || readiness.mmPerPixel || .8),
+      );
+      // A stable radius with an unstable 2D position is not a precise tip. Penalise
+      // that residual explicitly so crossings/reflections at a similar radius cannot
+      // masquerade as millimetre-level agreement.
+      const spatialConsensusPenalty = Math.max(0, (spatialSpreadMm - .18) * .72);
       const geometrySpreadPx = Math.max(...geometryChecks.map((x:any)=>x.regionalSpreadPx));
       const registrationPenalty = Math.max(0,(1-avgRegistration)*.95) + Math.max(0, geometrySpreadPx*.09);
-      const uncertaintyMm = Math.max(resolutionFloor, estimateDistanceUncertaintyMm(measurementConfidence, cal) + consensusPenalty + registrationPenalty);
+      const uncertaintyMm = Math.max(resolutionFloor, estimateDistanceUncertaintyMm(measurementConfidence, cal) + consensusPenalty + spatialConsensusPenalty + registrationPenalty);
       const expectedIdentityConfidence = Math.max(0, Math.min(1, Number(expectedVisual?.score ?? identity.confidence ?? 0)));
       const expectedMargin = Math.max(0, Number(expectedVisual?.score||0) - Math.max(0, ...((identity.scores||[]).filter((x:any)=>String(x.playerId)!==expectedId).map((x:any)=>Number(x.score||0)))));
-      const needsReview = identityMismatch || expectedIdentityConfidence < cameraPrefs.minIdentityConfidence || expectedMargin < cameraPrefs.minIdentityMargin || measurementConfidence < .74 || frameAgreement < cameraPrefs.minFrameAgreement || Number(d.spreadMm||0) > cameraPrefs.maxConsensusSpreadMm || uncertaintyMm > cameraPrefs.maxUncertaintyMm;
+      const needsReview = identityMismatch || expectedIdentityConfidence < cameraPrefs.minIdentityConfidence || expectedMargin < cameraPrefs.minIdentityMargin || measurementConfidence < .74 || frameAgreement < cameraPrefs.minFrameAgreement || Number(d.spreadMm||0) > cameraPrefs.maxConsensusSpreadMm || spatialSpreadMm > Math.max(.85, cameraPrefs.maxUncertaintyMm * .80) || uncertaintyMm > cameraPrefs.maxUncertaintyMm;
       return {
         id: `r${round}-${current.id}-${Date.now()}-${i}`,
         playerId: owner.id,
@@ -887,6 +912,8 @@ export default function ClosestCenterPlay(props:any) {
         uncertaintyMm,
         frameAgreement,
         consensusSpreadMm: Number(d.spreadMm || 0),
+        spatialSpreadMm,
+        spatialRejectedSamples: Number(d.spatialRejectedSamples || 0),
         localMmPerPixel: localMetric.meanMmPerPixel,
         metricAnisotropy: localMetric.anisotropy,
         needsReview,
@@ -1651,6 +1678,10 @@ export default function ClosestCenterPlay(props:any) {
   }, [phase, allScores, teamTotals, impacts, inputMode, isManual, cameraQuality, sessionDiagnostics, petanqueStats, winner?.playerId, winningTeamId, cfg.rounds, cfg.targetScore, cfg.formatMode, cfg.teamMode, cfg.pointsMode, round, players, pointsMode, dartsPerPlayer, roundResults, manualEntryMode]);
 
 
+  const jumpTo = React.useCallback((id:string) => {
+    try { document.getElementById(id)?.scrollIntoView({ behavior:"smooth", block:"nearest", inline:"nearest" }); } catch {}
+  }, []);
+
   const teamAccent = (team:"A"|"B") => team === "A" ? "#ff5f70" : "#54b5ff";
   const manualKpis = [
     {label:"SAISIE", value: pointsMode === "petanque" ? (manualEntryMode === "quick" ? "RAPIDE" : "GUIDÉE") : (pointsMode === "descending" ? "TOP 5" : "PLUS PROCHE")},
@@ -1679,7 +1710,7 @@ export default function ClosestCenterPlay(props:any) {
     if (!turnArmed) return { icon:"🛡️", title:`PRÉPARER LE LANCER · ${current?.name || "JOUEUR"}`, hint:"Lance le contrôle avant lancer pour verrouiller une référence caméra fraîche.", tone:"#ffbd93" };
     return { icon:"🎯", title:`LANCER · ${current?.name || "JOUEUR"}`, hint:`Lance ${expectedTurnDarts} fléchette${expectedTurnDarts>1?"s":""}, puis déclenche l’analyse sans toucher au téléphone ni à la cible.`, tone:"#8fffc2" };
   }, [phase, currentRoundNull, isManual, unresolvedPetanqueScore, unresolvedPetanquePoint, pointsMode, manualEntryMode, manualStage, petanqueTeamToPlay, roundStarterTeam, current?.name, cameraPointNeedsDecision, turnArmed, expectedTurnDarts]);
-  const playerRail = <section style={{...card,padding:10,display:"grid",gap:8,alignContent:"start",background:"linear-gradient(180deg,rgba(13,24,34,.96),rgba(6,12,18,.96))"}}>
+  const playerRail = <section id="cc-players" style={{...card,padding:10,display:"grid",gap:8,alignContent:"start",background:"linear-gradient(180deg,rgba(13,24,34,.96),rgba(6,12,18,.96))"}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
       <b style={{fontSize:11,letterSpacing:1,color:"#dceaf4"}}>JOUEURS · MÈNE {round}</b>
       <span style={{fontSize:9,color:"#81929f",fontWeight:900}}>{pointsMode === "petanque" ? `OBJECTIF ${Number(cfg.targetScore||13)}` : pointsMode === "descending" ? "TOP 5" : "PLUS PROCHE"}</span>
@@ -1706,7 +1737,7 @@ export default function ClosestCenterPlay(props:any) {
   return <div style={{height:"100%",minHeight:0,display:"flex",flexDirection:"column",overflow:"hidden",background:"radial-gradient(circle at 50% -20%,#10273a 0,#071019 32%,#03070d 72%)",color:"#fff"}}>
     <PageHeader tickerSrc={ticker} tickerAlt="DARTS PÉTANQUE" tickerHeight={compactHeight?54:62} left={<BackDot onClick={() => go?.("closest_center_config")} color={ACCENT}/>} />
 
-    <section style={{margin:`${compactHeight?5:7}px 10px 0`,border:"1px solid rgba(255,255,255,.11)",background:"linear-gradient(180deg,rgba(16,27,38,.98),rgba(6,12,19,.98))",borderRadius:16,padding:compactHeight?6:8,display:"grid",gridTemplateColumns:"minmax(0,1fr) auto minmax(0,1fr)",gap:7,alignItems:"stretch",boxShadow:"0 12px 30px rgba(0,0,0,.24)"}}>
+    <section id="cc-score" style={{margin:`${compactHeight?5:7}px 10px 0`,border:"1px solid rgba(255,255,255,.11)",background:"linear-gradient(180deg,rgba(16,27,38,.98),rgba(6,12,19,.98))",borderRadius:16,padding:compactHeight?6:8,display:"grid",gridTemplateColumns:"minmax(0,1fr) auto minmax(0,1fr)",gap:7,alignItems:"stretch",boxShadow:"0 12px 30px rgba(0,0,0,.24)"}}>
       {(["A","B"] as const).map((team,idx)=>{
         const teamPlayers=players.filter((p:any)=>String(p.teamId)===team);
         const score=Number(projectedTeamTotals?.[team]||0);
@@ -1734,7 +1765,7 @@ export default function ClosestCenterPlay(props:any) {
 
     <div style={{flex:1,minHeight:0,overflow:landscape?"hidden":"auto",display:"grid",gridTemplateColumns:landscape?(isManual?"minmax(250px,.62fr) minmax(0,1.38fr)":"minmax(0,1.5fr) minmax(330px,.82fr)"):"1fr",gridTemplateRows:landscape?"minmax(0,1fr)":(!isManual?"minmax(250px,40vh) auto":"auto"),gap:10,padding:10,maxWidth:isManual&&!landscape?980:undefined,width:"100%",margin:isManual&&!landscape?"0 auto":undefined,alignItems:"stretch"}}>
       {isManual && landscape ? playerRail : null}
-      {!isManual ? <div style={{position:"relative",minHeight:landscape?0:250,borderRadius:18,overflow:"hidden",border:"1px solid rgba(68,231,255,.3)",background:"#000",boxShadow:"0 16px 40px rgba(0,0,0,.32)"}}>
+      {!isManual ? <div id="cc-camera" style={{position:"relative",minHeight:landscape?0:250,borderRadius:18,overflow:"hidden",border:"1px solid rgba(68,231,255,.3)",background:"#000",boxShadow:"0 16px 40px rgba(0,0,0,.32)"}}>
         <><video ref={videoRef} muted playsInline style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
         <div style={{position:"absolute",left:10,top:10,zIndex:3,display:"flex",gap:6,flexWrap:"wrap",pointerEvents:"none"}}>
           <span style={{padding:"5px 8px",borderRadius:999,background:"rgba(2,8,14,.82)",border:`1px solid ${ACCENT}55`,fontSize:9,fontWeight:1000,color:ACCENT}}>IA · {phaseLabel(phase)}</span>
@@ -1760,9 +1791,9 @@ export default function ClosestCenterPlay(props:any) {
       </div> : null}
 
       <div style={{minHeight:0,overflow:landscape?"auto":"visible",display:"grid",gap:8,alignContent:"start",paddingRight:landscape?2:0}}>{isManual && !landscape ? <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>{manualKpis.map(k=><div key={k.label} style={{padding:"7px 5px",borderRadius:10,background:"rgba(255,255,255,.035)",border:"1px solid rgba(255,255,255,.07)",textAlign:"center"}}><b style={{display:"block",fontSize:9}}>{k.value}</b><span style={{fontSize:7,color:"#748694",fontWeight:900}}>{k.label}</span></div>)}</div> : null}
-        <section style={{...card,padding:landscape?9:10,borderColor:`${playAction.tone}55`,background:`linear-gradient(135deg,${playAction.tone}16,rgba(255,255,255,.025))`}}>
+        <section id="cc-action" style={{...card,padding:landscape?9:10,borderColor:`${playAction.tone}55`,background:`linear-gradient(135deg,${playAction.tone}16,rgba(255,255,255,.025))`}}>
           <div style={{display:"grid",gridTemplateColumns:"36px minmax(0,1fr)",gap:9,alignItems:"center"}}>
-            <div style={{width:36,height:36,borderRadius:11,display:"grid",placeItems:"center",fontSize:18,background:`${playAction.tone}18`,border:`1px solid ${playAction.tone}55`}}>{playAction.icon}</div>
+            <div style={{width:36,height:36,borderRadius:12,display:"grid",placeItems:"center",color:playAction.tone,background:`${playAction.tone}12`,border:`1px solid ${playAction.tone}55`,boxShadow:`0 0 18px ${playAction.tone}16`}}><PetanqueIcon name={phase==="finished"?"stats":phase==="roundEnd"?"check":phase==="prepare"?"action":!isManual?"target":"action"} size={19}/></div>
             <div style={{minWidth:0}}><div style={{fontSize:8,color:playAction.tone,fontWeight:1000,letterSpacing:1.2}}>ACTION À FAIRE</div><b style={{display:"block",fontSize:landscape?12:13,marginTop:2,whiteSpace:"normal"}}>{playAction.title}</b><div style={{fontSize:9,color:"#9fb0bc",lineHeight:1.35,marginTop:2}}>{playAction.hint}</div>{phase!=="finished" && matchPointTeams.length ? <div style={{fontSize:8,color:"#ffd85a",fontWeight:1000,marginTop:4}}>● BALLE DE MATCH · ÉQUIPE {matchPointTeams.join(" / ")}</div> : null}</div>
           </div>
         </section>
@@ -1819,7 +1850,7 @@ export default function ClosestCenterPlay(props:any) {
           </div>
         </section> : null}
 
-        {!isManual ? <details style={{...card,padding:9}} open={false}>
+        {!isManual ? <details id="cc-details" style={{...card,padding:9}} open={false}>
           <summary style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",cursor:"pointer",listStyle:"none"}}>
             <span style={{fontSize:10,color:ACCENT,fontWeight:1000,letterSpacing:1}}>ÉTAT CAMÉRA · {phaseLabel(phase)}</span>
             <span style={{fontSize:9,color:turnArmed?"#8fffc2":"#8fa0ad",fontWeight:900}}>{turnArmed?"ARMÉE":"DÉTAILS"}</span>
@@ -2019,12 +2050,12 @@ export default function ClosestCenterPlay(props:any) {
           {finalRoundHistory.length ? <div style={{marginTop:10}}><div style={{fontSize:8,color:"#80919f",fontWeight:1000,letterSpacing:1,marginBottom:6}}>ÉVOLUTION DU SCORE</div><div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:2}}>{finalRoundHistory.map((rr:any)=><div key={rr.round} style={{flex:"0 0 auto",minWidth:82,padding:"7px 8px",borderRadius:10,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.025)",textAlign:"center"}}><b style={{display:"block",fontSize:9,color:rr.nullRound?"#ffbd69":rr.winningTeam==="A"?"#ff9aa5":"#8bcfff"}}>M{rr.round} · {rr.nullRound?"NULLE":rr.winningTeam?`+${rr.points} ${rr.winningTeam}`:"—"}</b><span style={{fontSize:9,color:"#dbe7ee"}}>{Number(rr.scoreAfter?.A||0)}–{Number(rr.scoreAfter?.B||0)}</span></div>)}</div></div> : null}
         </section> : null}
 
-        {(phase === "roundEnd" || phase === "finished") ? <section style={card}>
+        {(phase === "roundEnd" || phase === "finished") ? <section id="cc-result" style={card}>
           <h3 style={h3}>{phase === "finished" ? (cfg.teamMode && pointsMode==="petanque" ? "RÉSULTAT FINAL" : "CLASSEMENT FINAL") : pointsMode==="petanque" ? "POINTS DE LA MÈNE" : "CLASSEMENT DE LA MANCHE"}</h3>
           {phase==="finished" ? <div style={{display:"grid",gridTemplateColumns:!isManual?"repeat(3,minmax(0,1fr))":"repeat(2,minmax(0,1fr))",gap:6,marginBottom:8}}>
-            <button onClick={()=>setShowFinalPlayers(v=>!v)} style={{...miniBtn,minHeight:36,borderColor:showFinalPlayers?`${ACCENT}88`:"rgba(255,255,255,.12)",color:showFinalPlayers?"#fff":"#b8c6cf"}}>👥 {showFinalPlayers?"MASQUER":"CONTRIBUTIONS"}</button>
-            <button onClick={()=>setShowFinalStats(v=>!v)} style={{...miniBtn,minHeight:36,borderColor:showFinalStats?`${ACCENT}88`:"rgba(255,255,255,.12)",color:showFinalStats?"#fff":"#b8c6cf"}}>📊 {showFinalStats?"MASQUER":"STATS"}</button>
-            {!isManual?<button onClick={()=>setShowFinalCamera(v=>!v)} style={{...miniBtn,minHeight:36,borderColor:showFinalCamera?`${ACCENT}88`:"rgba(255,255,255,.12)",color:showFinalCamera?"#fff":"#b8c6cf"}}>📷 {showFinalCamera?"MASQUER":"QUALITÉ CAMÉRA"}</button>:null}
+            <button onClick={()=>setShowFinalPlayers(v=>!v)} style={{...miniBtn,minHeight:36,display:"flex",alignItems:"center",justifyContent:"center",gap:6,borderColor:showFinalPlayers?`${ACCENT}88`:"rgba(255,255,255,.12)",color:showFinalPlayers?"#fff":"#b8c6cf"}}><PetanqueIcon name="players" size={17}/><span>{showFinalPlayers?"MASQUER":"CONTRIBUTIONS"}</span></button>
+            <button onClick={()=>setShowFinalStats(v=>!v)} style={{...miniBtn,minHeight:36,display:"flex",alignItems:"center",justifyContent:"center",gap:6,borderColor:showFinalStats?`${ACCENT}88`:"rgba(255,255,255,.12)",color:showFinalStats?"#fff":"#b8c6cf"}}><PetanqueIcon name="stats" size={17}/><span>{showFinalStats?"MASQUER":"STATS"}</span></button>
+            {!isManual?<button onClick={()=>setShowFinalCamera(v=>!v)} style={{...miniBtn,minHeight:36,display:"flex",alignItems:"center",justifyContent:"center",gap:6,borderColor:showFinalCamera?`${ACCENT}88`:"rgba(255,255,255,.12)",color:showFinalCamera?"#fff":"#b8c6cf"}}><PetanqueIcon name="camera" size={17}/><span>{showFinalCamera?"MASQUER":"QUALITÉ CAMÉRA"}</span></button>:null}
           </div> : null}
           {phase==="finished" && showFinalPlayers && cfg.teamMode && pointsMode==="petanque" ? <div style={{fontSize:10,color:"#8ea0ad",fontWeight:900,letterSpacing:.7,margin:"2px 0 5px"}}>CONTRIBUTIONS JOUEURS</div> : null}
           {currentRoundNull ? <div style={{padding:10,borderRadius:10,border:"1px solid #ffbd4555",background:"#ffbd4510",color:"#ffe0a6",fontSize:11,marginBottom:7}}><b>⚖️ MÈNE NULLE · 0 POINT</b><div style={{marginTop:3,color:"#c9d2da"}}>Égalité confirmée : aucun point ne sera ajouté. L’équipe qui avait commencé cette mène commencera la suivante.</div><button onClick={cancelNullRound} style={{...miniBtn,width:"100%",marginTop:7}}>↩ ANNULER LA MÈNE NULLE</button></div> : !isManual && phase === "roundEnd" && unresolvedPetanquePoint ? <div style={{padding:9,borderRadius:10,border:"1px solid #ffbd4555",background:"#ffbd4510",color:"#ffd796",fontSize:11,marginBottom:6}}>⚖️ Le point est indécidable dans la marge de précision. Reviens au contrôle de la cible et désigne explicitement l’équipe au point avant de valider.</div> : !isManual && phase === "roundEnd" && hasPrecisionTieRisk ? <div style={{padding:9,borderRadius:10,border:"1px solid #ffbd4555",background:"#ffbd4510",color:"#ffd796",fontSize:11,marginBottom:6}}>⚠️ Au moins deux impacts sont plus proches que la marge d’incertitude estimée. Un contrôle caméra rapproché est conseillé avant validation.</div> : null}
@@ -2042,11 +2073,34 @@ export default function ClosestCenterPlay(props:any) {
 
       </div>
     </div>
+
+    {phase !== "finished" && quickPanel ? <aside aria-label="Panneau rapide Darts Pétanque" style={{position:"fixed",zIndex:45,right:landscape?62:12,bottom:landscape?12:66,width:landscape?330:"calc(100vw - 24px)",maxWidth:landscape?330:420,maxHeight:landscape?"72vh":"48vh",overflow:"auto",padding:10,borderRadius:18,background:"linear-gradient(180deg,rgba(5,14,21,.96),rgba(2,8,13,.94))",border:"1px solid rgba(255,255,255,.13)",boxShadow:"0 18px 46px rgba(0,0,0,.5)",backdropFilter:"blur(18px)"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,color:ACCENT,fontWeight:1000,fontSize:11,letterSpacing:.7}}><PetanqueIcon name={quickPanel==="score"?"score":quickPanel==="players"?"players":quickPanel==="camera"?"camera":"settings"} size={17}/><span>{quickPanel==="score"?"SCORE":quickPanel==="players"?"JOUEURS":quickPanel==="camera"?"CAMÉRA":"INFOS PARTIE"}</span></div>
+        <button type="button" aria-label="Fermer" onClick={()=>setQuickPanel(null)} style={{width:30,height:30,borderRadius:10,border:"1px solid rgba(255,255,255,.12)",background:"rgba(255,255,255,.04)",color:"#dce8ef",fontWeight:1000,cursor:"pointer"}}>×</button>
+      </div>
+      {quickPanel==="score" ? <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,alignItems:"stretch"}}>
+        {(["A","B"] as const).map((team,idx)=><React.Fragment key={team}>{idx===1?<div style={{display:"grid",placeItems:"center",fontSize:9,color:"#8394a1",fontWeight:1000}}>M{round}</div>:null}<div style={{gridColumn:idx===0?1:3,padding:10,borderRadius:14,border:`1px solid ${team==="A"?"rgba(255,77,95,.28)":"rgba(61,165,255,.28)"}`,background:team==="A"?"rgba(255,77,95,.08)":"rgba(61,165,255,.08)",textAlign:idx===0?"left":"right"}}><div style={{fontSize:9,fontWeight:1000,color:team==="A"?"#ff8f9c":"#83c8ff"}}>ÉQUIPE {team}</div><div style={{fontSize:28,fontWeight:1000,lineHeight:1.05,marginTop:4}}>{Number(projectedTeamTotals?.[team]||0)}</div><div style={{fontSize:9,color:"#8ea0ad",marginTop:4}}>{pointsMode==="petanque"?(teamTargetState[team].reached?"OBJECTIF ATTEINT":teamTargetState[team].matchPoint?"BALLE DE MATCH":`RESTE ${teamTargetState[team].remaining}`):pointsMode==="descending"?"TOP 5":"PLUS PROCHE"}</div></div></React.Fragment>)}
+      </div> : null}
+      {quickPanel==="players" ? <div style={{display:"grid",gap:6}}>{players.map((p:any)=>{const team=String(p.teamId||"");const remain=Math.max(0,dartsPerPlayer-Number(activeRoundUsed[String(p.id)]||0));return <div key={p.id} style={{display:"grid",gridTemplateColumns:"10px 1fr auto",gap:8,alignItems:"center",padding:"8px 9px",borderRadius:12,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.025)"}}><span style={{width:8,height:8,borderRadius:99,background:playerColor(players,p.id),boxShadow:`0 0 10px ${playerColor(players,p.id)}`}}/><div style={{minWidth:0}}><b style={{display:"block",fontSize:11,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}</b><span style={{fontSize:8,color:"#8193a1"}}>ÉQUIPE {team||"—"}</span></div><b style={{fontSize:10,color:remain?"#8fffc2":"#738493"}}>{remain}/{dartsPerPlayer} EN MAIN</b></div>})}</div> : null}
+      {quickPanel==="camera" ? <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}><div style={quickKpi}><span>PHASE</span><b>{phaseLabel(phase)}</b></div><div style={quickKpi}><span>QUALITÉ</span><b>{cameraQuality.grade} · {cameraQuality.score}/100</b></div><div style={quickKpi}><span>MATÉRIEL</span><b style={{color:cameraHardwareState?.ok===false?"#ff8f7d":"#8fffc2"}}>{cameraHardwareState?.locked?(cameraHardwareState.ok===false?"MODIFIÉ":"VERROUILLÉ"):"—"}</b></div><div style={quickKpi}><span>LECTURE</span><b>{precisionRereads?`${precisionRereads} RELECT.`:"DIRECTE"}</b></div><div style={{gridColumn:"1/-1",padding:9,borderRadius:12,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.025)",fontSize:9,color:"#9fb0bc",lineHeight:1.4}}>{status}</div></div> : null}
+      {quickPanel==="info" ? <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}><div style={quickKpi}><span>RÈGLE</span><b>{pointsMode==="petanque"?"PÉTANQUE":pointsMode==="descending"?"TOP 5":"PLUS PROCHE"}</b></div><div style={quickKpi}><span>FORMAT</span><b>{String(cfg.formatMode||"duo").toUpperCase()}</b></div><div style={quickKpi}><span>SAISIE</span><b>{isManual?`MANUEL ${manualEntryMode==="quick"?"RAPIDE":"GUIDÉ"}`:"CAMÉRA IA"}</b></div><div style={quickKpi}><span>MÈNE</span><b>{round}</b></div><div style={{gridColumn:"1/-1",padding:9,borderRadius:12,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.025)",fontSize:9,color:"#9fb0bc"}}>{pointsMode==="petanque"?`Objectif ${Number(cfg.targetScore||13)} · ${dartsPerPlayer} fléchette${dartsPerPlayer>1?"s":""}/joueur`:`${dartsPerPlayer} fléchette${dartsPerPlayer>1?"s":""}/joueur`}</div></div> : null}
+    </aside> : null}
+
+    {phase !== "finished" ? <nav aria-label="Raccourcis Darts Pétanque" style={{position:"fixed",zIndex:46,right:landscape?10:12,bottom:landscape?"auto":12,top:landscape?"50%":"auto",transform:landscape?"translateY(-50%)":"none",display:"flex",flexDirection:landscape?"column":"row",gap:7,padding:6,borderRadius:18,background:"rgba(3,9,14,.86)",border:"1px solid rgba(255,255,255,.12)",boxShadow:"0 14px 34px rgba(0,0,0,.42)",backdropFilter:"blur(16px)"}}>
+      {[
+        {panel:"score" as const,label:"Score",icon:"score" as PetanqueIconName},
+        {panel:"action" as const,label:"Action",icon:"action" as PetanqueIconName},
+        {panel:"players" as const,label:"Joueurs",icon:"players" as PetanqueIconName},
+        {panel:(isManual?"info":"camera") as "info"|"camera",label:isManual?"Infos":"Caméra",icon:(isManual?"settings":"camera") as PetanqueIconName},
+      ].map((it)=>{const active=it.panel!=="action"&&quickPanel===it.panel;return <button key={it.panel} type="button" title={it.label} aria-label={it.label} onClick={()=>{if(it.panel==="action"){setQuickPanel(null);jumpTo("cc-action");}else setQuickPanel(active?null:it.panel);}} style={{width:landscape?42:40,height:landscape?42:40,borderRadius:13,border:`1px solid ${active?`${ACCENT}88`:"rgba(255,255,255,.11)"}`,background:active?`${ACCENT}18`:"rgba(255,255,255,.035)",color:active?"#fff":ACCENT,display:"grid",placeItems:"center",cursor:"pointer",boxShadow:active?`0 0 18px ${ACCENT}22`:"inset 0 1px 0 rgba(255,255,255,.04)"}}><PetanqueIcon name={it.icon} size={18}/></button>})}
+    </nav> : null}
   </div>;
 }
 
-const card:React.CSSProperties = { border:"1px solid rgba(255,255,255,.095)", background:"linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.025))", borderRadius:15, padding:11, boxShadow:"0 10px 28px rgba(0,0,0,.16)" };
+const card:React.CSSProperties = { border:"1px solid rgba(255,255,255,.10)", background:"linear-gradient(180deg,rgba(13,24,34,.82),rgba(5,11,17,.78))", borderRadius:17, padding:11, boxShadow:"0 14px 34px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.035)", backdropFilter:"blur(12px)" };
 const h3:React.CSSProperties = { margin:"0 0 8px", fontSize:13, color:ACCENT, letterSpacing:.8 };
-const btn:React.CSSProperties = { minHeight:42, padding:"8px 12px", borderRadius:13, border:`1px solid ${ACCENT}`, background:`${ACCENT}18`, color:"#fff", fontWeight:1000 };
+const btn:React.CSSProperties = { minHeight:42, padding:"8px 12px", borderRadius:14, border:`1px solid ${ACCENT}88`, background:`linear-gradient(180deg,${ACCENT}18,${ACCENT}0d)`, color:"#fff", fontWeight:1000, boxShadow:"inset 0 1px 0 rgba(255,255,255,.05)" };
 const miniBtn:React.CSSProperties = { minHeight:30, padding:"5px 8px", borderRadius:9, border:"1px solid #ffbd4566", background:"#ffbd4510", color:"#ffd58c", fontWeight:900, fontSize:10 };
+const quickKpi:React.CSSProperties = { padding:"9px 10px", borderRadius:12, border:"1px solid rgba(255,255,255,.08)", background:"rgba(255,255,255,.025)", minWidth:0 };
 const overlay:React.CSSProperties = { position:"absolute", inset:0, display:"grid", placeItems:"center", background:"rgba(0,0,0,.75)", fontWeight:900, padding:20, textAlign:"center" };

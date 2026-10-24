@@ -7,7 +7,16 @@ import { getTicker } from "../lib/tickers";
 import { buildClosestCenterStats } from "../lib/closestCenterStats";
 
 const ACCENT = "#44e7ff";
-const card: React.CSSProperties = { border:"1px solid rgba(255,255,255,.11)", background:"rgba(255,255,255,.04)", borderRadius:16, padding:12 };
+function HistIcon({name,size=18}:{name:"history"|"play"|"camera"|"manual"|"stats";size?:number}){
+  const q={fill:"none",stroke:"currentColor",strokeWidth:2,strokeLinecap:"round",strokeLinejoin:"round"} as const;
+  const c={width:size,height:size,viewBox:"0 0 24 24",ariaHidden:true};
+  if(name==="history") return <svg {...c}><path {...q} d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path {...q} d="M3 3v5h5M12 7v5l3 2"/></svg>;
+  if(name==="play") return <svg {...c}><circle {...q} cx="12" cy="12" r="9"/><path {...q} d="m10 8 5 4-5 4V8Z"/></svg>;
+  if(name==="camera") return <svg {...c}><rect {...q} x="3" y="6" width="18" height="13" rx="3"/><circle {...q} cx="12" cy="12.5" r="4"/><path {...q} d="M8 6l1.5-2h5L16 6"/></svg>;
+  if(name==="manual") return <svg {...c}><path {...q} d="M5 19h4l10-10-4-4L5 15v4Z"/><path {...q} d="m13 7 4 4"/></svg>;
+  return <svg {...c}><path {...q} d="M5 19V11M10 19V6M15 19v-4M20 19V8"/></svg>;
+}
+const card: React.CSSProperties = { border:"1px solid rgba(255,255,255,.11)", background:"linear-gradient(180deg,rgba(13,24,34,.82),rgba(5,11,17,.78))", borderRadius:17, padding:12, boxShadow:"0 14px 34px rgba(0,0,0,.22)", backdropFilter:"blur(12px)" };
 const kpi: React.CSSProperties = { padding:"9px 7px", borderRadius:12, background:"rgba(255,255,255,.035)", border:"1px solid rgba(255,255,255,.08)", textAlign:"center" };
 
 function num(v:any, fallback=0){ const n=Number(v); return Number.isFinite(n)?n:fallback; }
@@ -62,7 +71,7 @@ export default function ClosestCenterHistoryDetail(props:any){
       <section style={{...card,borderColor:`${ACCENT}55`}}>
         <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",flexWrap:"wrap"}}>
           <div><div style={{fontSize:11,color:ACCENT,fontWeight:1000,letterSpacing:1}}>DARTS PÉTANQUE · PLUS PRÈS DU CENTRE</div><h2 style={{margin:"4px 0 0",fontSize:20}}>FICHE DE PARTIE</h2></div>
-          <div style={{padding:"6px 10px",borderRadius:999,border:`1px solid ${inputMode==="manual"?"#8fffc2":ACCENT}`,color:inputMode==="manual"?"#bfffd9":ACCENT,fontSize:11,fontWeight:1000}}>{inputMode==="manual"?"✍️ SAISIE MANUELLE":"📷 CAMÉRA IA"}</div>
+          <div style={{padding:"6px 10px",borderRadius:999,border:`1px solid ${inputMode==="manual"?"#8fffc2":ACCENT}`,color:inputMode==="manual"?"#bfffd9":ACCENT,fontSize:11,fontWeight:1000}}><span style={{display:"inline-flex",alignItems:"center",gap:6}}><HistIcon name={inputMode==="manual"?"manual":"camera"} size={16}/>{inputMode==="manual"?"SAISIE MANUELLE":"CAMÉRA IA"}</span></div>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:7,marginTop:10}}>
           <div style={kpi}><b style={{fontSize:17,color:ACCENT}}>{rounds}</b><br/><small>{pointsMode==="petanque"?"mènes":"manches"}</small></div>
@@ -90,12 +99,7 @@ export default function ClosestCenterHistoryDetail(props:any){
         {teamMode?<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}>{Object.entries(teamTotals||{}).sort().map(([id,pts]:any)=><div key={id} style={kpi}><small>ÉQUIPE {id}</small><br/><b style={{fontSize:18,color:ACCENT}}>{num(pts)} pts</b></div>)}</div>:null}
       </section>
 
-      {cameraQuality?<section style={{...card,borderColor:"rgba(68,231,255,.24)"}}>
-        <div style={{display:"flex",justifyContent:"space-between",gap:8}}><b style={{fontSize:12,color:ACCENT}}>QUALITÉ DE MESURE CAMÉRA</b><b>NOTE {cameraQuality.grade} · {num(cameraQuality.score)}/100</b></div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(105px,1fr))",gap:7,marginTop:8}}>
-          <div style={kpi}><b>{num(cameraQuality.accepted)}</b><br/><small>volées OK</small></div><div style={kpi}><b>{num(cameraQuality.rejected)}</b><br/><small>refus</small></div><div style={kpi}><b>{num(cameraQuality.rereads)}</b><br/><small>relectures</small></div><div style={kpi}><b>{fmtMm(cameraQuality.avgUncertaintyMm)}</b><br/><small>incertitude moy.</small></div>
-        </div>
-      </section>:null}
+      {cameraQuality?<details style={{...card,borderColor:"rgba(68,231,255,.24)"}}><summary style={{cursor:"pointer",listStyle:"none",display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><span style={{display:"inline-flex",alignItems:"center",gap:7,color:ACCENT,fontWeight:1000,fontSize:12}}><HistIcon name="camera"/>QUALITÉ CAMÉRA</span><b>NOTE {cameraQuality.grade} · {num(cameraQuality.score)}/100</b></summary><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(105px,1fr))",gap:7,marginTop:10}}><div style={kpi}><b>{num(cameraQuality.accepted)}</b><br/><small>volées OK</small></div><div style={kpi}><b>{num(cameraQuality.rejected)}</b><br/><small>refus</small></div><div style={kpi}><b>{num(cameraQuality.rereads)}</b><br/><small>relectures</small></div><div style={kpi}><b>{fmtMm(cameraQuality.avgUncertaintyMm)}</b><br/><small>incertitude moy.</small></div></div></details>:null}
 
       {pointsMode==="petanque" && roundResults.length ? <section style={card}>
         <div style={{fontSize:12,color:ACCENT,fontWeight:1000,marginBottom:7}}>ÉVOLUTION DU SCORE</div>
@@ -120,12 +124,12 @@ export default function ClosestCenterHistoryDetail(props:any){
         </div>
       </section>:null}
 
-      <section style={card}>
-        <div style={{fontSize:12,color:ACCENT,fontWeight:1000,marginBottom:6}}>{pointsMode==="petanque"?"DÉTAIL PAR MÈNE":"DÉTAIL PAR MANCHE"}</div>
+      <details style={card}>
+        <summary style={{cursor:"pointer",listStyle:"none",display:"flex",alignItems:"center",gap:7,color:ACCENT,fontWeight:1000,fontSize:12}}><HistIcon name="stats"/>{pointsMode==="petanque"?"DÉTAIL PAR MÈNE":"DÉTAIL PAR MANCHE"}</summary>
         <div style={{display:"grid",gap:7}}>{byRound.map((g:any)=><div key={g.round} style={{padding:9,borderRadius:12,background:"rgba(255,255,255,.025)",border:"1px solid rgba(255,255,255,.07)"}}><b style={{fontSize:11}}>{pointsMode==="petanque"?"MÈNE":"MANCHE"} {g.round}</b>{g.rows.length?<div style={{display:"grid",gap:4,marginTop:6}}>{g.rows.map((x:any,i:number)=>{const p=players.find((q:any)=>String(q.id)===String(x.playerId)); return <div key={x.id||`${g.round}-${i}`} style={{display:"grid",gridTemplateColumns:"24px 1fr auto",gap:7,fontSize:11}}><b style={{color:i<5?"#ffd85a":"#778996"}}>#{i+1}</b><span>{p?.name||"Joueur"}{x.teamId?` · ${x.teamId}`:""}</span><b>{inputMode==="manual"?(pointsMode==="petanque"?"+1 point":`Rang #${num(x.manualRank ?? (i+1),i+1)}`):(x?.miss||x?.isMiss?<span style={{color:"#ffbd75"}}>MISS / HORS CIBLE</span>:<>{fmtMm(x.distanceMm)}{Number.isFinite(Number(x.uncertaintyMm))?<small style={{color:"#8294a2"}}> ± {num(x.uncertaintyMm).toFixed(2)}</small>:null}</>)}</b></div>})}</div>:<div style={{fontSize:10,color:"#71808d",marginTop:5}}>Aucun impact mesuré enregistré.</div>}</div>)}</div>
-      </section>
+      </details>
 
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><button onClick={()=>go?.("history",{sport:"darts",game:"closest_center",focusMatchId:rec.id||rec.matchId})} style={{minHeight:42,borderRadius:13,border:`1px solid ${ACCENT}`,background:`${ACCENT}13`,color:"#fff",fontWeight:1000}}>HISTORIQUE DARTS</button><button onClick={()=>go?.("closest_center_config")} style={{minHeight:42,borderRadius:13,border:"1px solid rgba(255,255,255,.2)",background:"rgba(255,255,255,.05)",color:"#fff",fontWeight:1000}}>NOUVELLE PARTIE</button></div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><button onClick={()=>go?.("history",{sport:"darts",game:"closest_center",focusMatchId:rec.id||rec.matchId})} style={{minHeight:42,borderRadius:13,border:`1px solid ${ACCENT}`,background:`${ACCENT}13`,color:"#fff",fontWeight:1000}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:7}}><HistIcon name="history"/>HISTORIQUE DARTS</span></button><button onClick={()=>go?.("closest_center_config")} style={{minHeight:42,borderRadius:13,border:"1px solid rgba(255,255,255,.2)",background:"rgba(255,255,255,.05)",color:"#fff",fontWeight:1000}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:7}}><HistIcon name="play"/>NOUVELLE PARTIE</span></button></div>
     </div>
   </div>;
 }
