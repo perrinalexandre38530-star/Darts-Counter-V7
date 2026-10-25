@@ -145,6 +145,75 @@ export async function analyzeLegacySnapshotAgainstCurrent(input: any): Promise<L
   });
 }
 
+
+export async function restoreLegacySnapshotAuthoritatively(
+  input: any,
+  opts?: { onProgress?: (progress: number, message: string) => void },
+): Promise<LegacyMigrationRuntimeReport> {
+  if (!isLegacyMigrationCandidate(input)) throw new Error("Ce fichier n'est pas un snapshot legacy migrable.");
+  const reportProgress = (value: number, message: string) => { try { opts?.onProgress?.(value, message); } catch {} };
+  const accountUserId = clean(getStorageUser()) || null;
+  reportProgress(3, "Normalisation du backup legacy sélectionné…");
+
+  // RESTAURER != MIGRER : lorsque l'utilisateur choisit explicitement un slot
+  // NAS/Drive/R2, le backup sélectionné devient la base autoritaire. On analyse
+  // donc la source sans la comparer aux 87/90 parties déjà présentes localement.
+  // Les preuves d'identité restent strictement explicites ; aucun nom n'est fusionné.
+  const plan = analyzeLegacySnapshot(input, {
+    currentAccountUserId: accountUserId,
+    currentProfileIds: [],
+    currentMatchIds: [],
+    currentMatchFingerprints: [],
+    currentTombstoneIds: [],
+    portableLocalStoragePredicate: (key) => isRegisteredPortableLocalStorageKey(key),
+  });
+
+  reportProgress(12, "Enregistrement des alias d’identité explicites…");
+  registerPlanIdentities(plan, accountUserId);
+  const snapshot = buildLegacyMigrationSnapshot(plan, input);
+  snapshot.portableAccountData.teams = accountOwnedTeams(snapshot.portableAccountData.teams);
+  snapshot.portableAccountData.counts.teams = snapshot.portableAccountData.teams.length;
+
+  reportProgress(22, `Restauration autoritaire de ${plan.summary.matchesTotal} partie(s)…`);
+  await importCloudSnapshot(snapshot, {
+    mode: "smart-replace",
+    onProgress: (progress, message) => reportProgress(22 + Math.round(Math.max(0, Math.min(100, progress)) * 0.62), message),
+  });
+
+  if (plan.agenda.events.length) {
+    reportProgress(86, `Consolidation de ${plan.agenda.events.length} événement(s) Agenda…`);
+    await setKV("mss-multisport-agenda-v2", plan.agenda.events);
+  }
+  await persistQuarantine(plan);
+  reportProgress(91, "Reconstruction des statistiques depuis History V4…");
+  await refreshStatsIndexFromHistoryNow({ reason: `legacy-authoritative-restore:${plan.source.fingerprint}` }).catch((error) => {
+    plan.warnings.push(`Rebuild Stats différé: ${String((error as any)?.message || error || "erreur")}`);
+  });
+
+  const appliedAt = new Date().toISOString();
+  const runtimeReport: LegacyMigrationRuntimeReport = {
+    ok: true,
+    alreadyApplied: false,
+    plan,
+    importedMatches: plan.summary.migrate + plan.summary.repaired + plan.summary.incomplete,
+    repairedMatches: plan.summary.repaired,
+    incompleteMatches: plan.summary.incomplete,
+    duplicateMatches: plan.summary.duplicate,
+    quarantinedMatches: plan.summary.quarantined,
+    importedProfiles: plan.summary.profilesImportable,
+    agendaEvents: plan.summary.agendaEvents,
+    warnings: plan.warnings,
+    appliedAt,
+  };
+  writeJournal(accountUserId, runtimeReport);
+  try {
+    window.dispatchEvent(new CustomEvent("dc:legacy-migration-complete", { detail: { ...runtimeReport, authoritativeRestore: true } }));
+    window.dispatchEvent(new CustomEvent("dc-stats-index-updated", { detail: { reason: "legacy-authoritative-restore", restored: true } }));
+  } catch {}
+  reportProgress(100, "Restauration legacy autoritaire terminée.");
+  return runtimeReport;
+}
+
 export async function migrateLegacySnapshotIntoCurrent(
   input: any,
   opts?: { force?: boolean; onProgress?: (progress: number, message: string) => void },

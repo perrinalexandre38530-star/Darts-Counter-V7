@@ -57,7 +57,10 @@ import { profilesDiagIncrement, profilesDiagLog, profilesDiagMark, profilesDiagM
 import { logProfileStabilityAudit, profileStabilityFingerprint } from "../lib/profileStabilityAudit";
 import { loadLinkedProfileProjection, mergeLinkedProfiles, invalidateLinkedProfileProjectionCache } from "../lib/linkedProfileSync";
 import {
+  assignPreferredDartSetToProfile,
+  getDartSetsForProfile,
   getFavoriteDartSetForProfile,
+  isDartSetFavoriteForProfile,
   type DartSet,
 } from "../lib/dartSetsStore";
 import {
@@ -89,6 +92,7 @@ import {
   getCanonicalAccountProfileFromStore,
   getCanonicalAccountProfileId,
 } from "../lib/canonicalAccountProfile";
+import { resolveCanonicalProfileIdFromAlias } from "../data/identityAliases";
 import { mirrorAvatarFallbackToR2, resolveAvatarFallback } from "../lib/avatarR2Fallback";
 import { loadBots, saveBots } from "../lib/bots";
 import { loadTeams, saveTeams, type TeamEntity } from "../lib/petanqueTeamsStore";
@@ -2768,8 +2772,10 @@ export default function Profiles({
       avatarUpdatedAt: now,
     });
 
+    // Le miroir R2 est optionnel : un changement d'avatar local ne doit jamais
+    // sembler échouer simplement parce que R2 n'est pas la destination active.
     void mirrorAvatarFallbackToR2(id, thumbDataUrl, { avatarUpdatedAt: now })
-      .catch((error) => console.warn("[Profiles] avatar R2 mirror skipped", error));
+      .catch(() => undefined);
 
     // Commit LOCAL IMMÉDIAT dans le store canonique avant tout upload réseau.
     // Home / Stats / sélecteurs lisent ce store : ils doivent voir la nouvelle
@@ -4355,6 +4361,7 @@ React.useEffect(() => {
                 <LocalProfilesRefonte
                   profiles={stableProfiles as any}
                   activeProfileId={activeProfileId}
+                  accountUserId={currentAuthUserId()}
                   onCreate={(name, file, privateInfo) => {
                     const cachedAuth = readCachedAuthUser();
                     const onboardingUid = readPendingOnboardingUserId();
@@ -7023,7 +7030,7 @@ function LocalSectionTab({
   );
 }
 
-type LocalProfileActionIconName = "edit" | "avatar" | "purge" | "delete";
+type LocalProfileActionIconName = "edit" | "avatar" | "dartset" | "purge" | "delete";
 
 function LocalProfileActionGlyph({
   name,
@@ -7057,6 +7064,18 @@ function LocalProfileActionGlyph({
         <path {...strokeProps} d="M5 20a7 7 0 0 1 14 0" />
         <path {...strokeProps} d="M18.5 3.5v4" />
         <path {...strokeProps} d="M16.5 5.5h4" />
+      </svg>
+    );
+  }
+
+  if (name === "dartset") {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
+        <circle {...strokeProps} cx="10" cy="12" r="6.5" />
+        <circle {...strokeProps} cx="10" cy="12" r="2.5" />
+        <path {...strokeProps} d="m14.5 7.5 5-5" />
+        <path {...strokeProps} d="m16.5 2.5 3 0 0 3" />
+        <path {...strokeProps} d="m12.2 9.8 5.2-5.2" />
       </svg>
     );
   }
@@ -8008,6 +8027,7 @@ function LocalAssociationsPanel({
 function LocalProfilesRefonte({
   profiles,
   activeProfileId,
+  accountUserId,
   onCreate,
   onRename,
   onPatchPrivateInfo,
@@ -8033,6 +8053,7 @@ function LocalProfilesRefonte({
 }: {
   profiles: Profile[];
   activeProfileId: string | null;
+  accountUserId?: string | null;
   onCreate: (
     name: string,
     file?: File | null,
@@ -8168,9 +8189,20 @@ function LocalProfilesRefonte({
   const locals = React.useMemo(() => {
     if (onboardingMode) return [];
 
-    const filtered = localProfilesSource.filter(
-      (p: any) => p.id !== activeProfileId && !isMirrorProfile(p)
-    );
+    const activeId = String(activeProfileId || "").trim();
+    const activeCanonicalId = activeId
+      ? (resolveCanonicalProfileIdFromAlias(activeId, accountUserId) || activeId)
+      : "";
+    const filtered = localProfilesSource.filter((p: any) => {
+      const pid = String(p?.id || "").trim();
+      if (!pid || isMirrorProfile(p)) return false;
+      if (pid === activeId) return false;
+      // WAVE 2 : masquer uniquement les alias explicitement prouvés du profil
+      // actif. Jamais de rapprochement par nom (Perrin/Ninja restent distincts
+      // sans preuve d'identité).
+      const canonicalId = resolveCanonicalProfileIdFromAlias(pid, accountUserId) || pid;
+      return !activeCanonicalId || canonicalId !== activeCanonicalId;
+    });
 
     const collator = new Intl.Collator("fr", {
       sensitivity: "base",
@@ -8189,7 +8221,7 @@ function LocalProfilesRefonte({
       if (byName !== 0) return byName;
       return collator.compare(String(a?.id || ""), String(b?.id || ""));
     });
-  }, [localProfilesSource, activeProfileId, onboardingMode, allModesUsageCounts]);
+  }, [localProfilesSource, activeProfileId, accountUserId, onboardingMode, allModesUsageCounts]);
 
   const handleCreateLocal = React.useCallback(
     async (
@@ -8361,6 +8393,7 @@ function LocalProfilesRefonte({
   // Cache-bust local pour éviter qu'un ancien avatar reste affiché après remplacement.
   const [avatarRefreshKey, setAvatarRefreshKey] = React.useState(0);
   const [avatarPickerOpen, setAvatarPickerOpen] = React.useState(false);
+  const [dartSetPickerOpen, setDartSetPickerOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (index >= locals.length && locals.length > 0) {
@@ -8427,7 +8460,15 @@ function LocalProfilesRefonte({
     ""
   ).trim();
 
-
+  const currentDartSets = React.useMemo(
+    () => current?.id && isDarts ? getDartSetsForProfile(String(current.id)) : [],
+    [current?.id, isDarts, gridDartSetRevision]
+  );
+  const currentPreferredDartSet = React.useMemo(() => {
+    if (!current?.id || !isDarts) return undefined;
+    const pid = String(current.id);
+    return currentDartSets.find((set) => isDartSetFavoriteForProfile(set, pid));
+  }, [current?.id, isDarts, currentDartSets, gridDartSetRevision]);
 
   // stats du profil courant
   const bs = useBasicStats(
@@ -8452,6 +8493,7 @@ function LocalProfilesRefonte({
   // reset édition quand on change de profil
   React.useEffect(() => {
     setIsEditing(false);
+    setDartSetPickerOpen(false);
     setEditFile(null);
     setEditPreview(null);
     if (current) {
@@ -8528,6 +8570,13 @@ function LocalProfilesRefonte({
     if (!current) return;
     const profileId = String(current.id || "");
     const profileName = String(current.name || "ce profil");
+    const activeId = String(activeProfileId || "").trim();
+    const resolvedId = resolveCanonicalProfileIdFromAlias(profileId, accountUserId) || profileId;
+    const resolvedActiveId = activeId ? (resolveCanonicalProfileIdFromAlias(activeId, accountUserId) || activeId) : "";
+    if (activeId && (profileId === activeId || resolvedId === resolvedActiveId)) {
+      alert("Ce profil est un alias technique du profil actif. Il est protégé et ne doit pas être supprimé.");
+      return;
+    }
     const ok = window.confirm(
       t(
         "profiles.locals.actions.deleteConfirm",
@@ -8900,21 +8949,33 @@ Sus partidas y estadísticas históricas permanecerán guardadas. Si más adelan
                     <AvatarLite
                       size={AVATAR}
                       profileId={String((renderedCurrent as any)?.id || "")}
-                      src={buildAvatarSrc({
-                        avatarUrl: linkedFriendAvatarUrl || (renderedCurrent as any)?.avatarUrl || null,
-                        avatarDataUrl: linkedFriendAvatarUrl ? null : ((renderedCurrent as any)?.avatarDataUrl || null),
-                        avatarFullDataUrl: linkedFriendAvatarUrl || (renderedCurrent as any)?.avatarUrl ? null : ((currentAvatarCache as any)?.avatarThumbDataUrl || (currentAvatarCache as any)?.avatarDataUrl || null),
-                        avatarUpdatedAt: linkedFriendAvatarUrl
-                          ? (Date.parse(String((currentProfileLink as any)?.updatedAt || "")) || Date.now())
-                          : ((renderedCurrent as any)?.avatarUpdatedAt ?? null),
-                      })}
+                      src={(() => {
+                        const localData = String(
+                          (renderedCurrent as any)?.avatarDataUrl ||
+                          (currentAvatarCache as any)?.avatarThumbDataUrl ||
+                          (currentAvatarCache as any)?.avatarDataUrl ||
+                          (currentAvatarCache as any)?.avatarFullDataUrl ||
+                          ""
+                        ).trim();
+                        const localUrl = String((renderedCurrent as any)?.avatarUrl || "").trim();
+                        const useLinkedFallback = !localData && !localUrl && !!linkedFriendAvatarUrl;
+                        return buildAvatarSrc({
+                          avatarUrl: localUrl || (useLinkedFallback ? linkedFriendAvatarUrl : null),
+                          avatarDataUrl: localData || null,
+                          avatarFullDataUrl: localData || null,
+                          avatarUpdatedAt: useLinkedFallback
+                            ? (Date.parse(String((currentProfileLink as any)?.updatedAt || "")) || null)
+                            : ((renderedCurrent as any)?.avatarUpdatedAt ?? (currentAvatarCache as any)?.avatarUpdatedAt ?? null),
+                        });
+                      })()}
                       fallbackSrc={String(
                         (currentAvatarCache as any)?.avatarThumbDataUrl ||
                         (currentAvatarCache as any)?.avatarDataUrl ||
                         (currentAvatarCache as any)?.avatarFullDataUrl ||
+                        linkedFriendAvatarUrl ||
                         ""
                       )}
-                      label={(linkedFriendAvatarUrl ? linkedFriendName : renderedCurrent.name)?.[0]?.toUpperCase() || "?"}
+                      label={(renderedCurrent.name || linkedFriendName)?.[0]?.toUpperCase() || "?"}
                     />
                   </div>
                   {isDarts ? (
@@ -9007,7 +9068,7 @@ Sus partidas y estadísticas históricas permanecerán guardadas. Si más adelan
                 aria-label="Actions du profil local"
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                  gridTemplateColumns: isDarts ? "repeat(5, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))",
                   gap: 7,
                   marginTop: 3,
                   marginBottom: 5,
@@ -9029,6 +9090,16 @@ Sus partidas y estadísticas históricas permanecerán guardadas. Si más adelan
                   accent={primary}
                   onClick={() => setAvatarPickerOpen(true)}
                 />
+                {isDarts ? (
+                  <LocalProfileActionButton
+                    icon="dartset"
+                    label="DARTSET"
+                    title="Attribuer ou changer le DartSet préféré de ce profil"
+                    accent={primary}
+                    active={dartSetPickerOpen}
+                    onClick={() => setDartSetPickerOpen((value) => !value)}
+                  />
+                ) : null}
                 <LocalProfileActionButton
                   icon="purge"
                   label={t("profiles.locals.actions.purgeShort", "PURGER")}
@@ -9045,6 +9116,58 @@ Sus partidas y estadísticas históricas permanecerán guardadas. Si más adelan
                   onClick={handleDeleteProfile}
                 />
               </div>
+
+              {isDarts && dartSetPickerOpen ? (
+                <div
+                  style={{
+                    marginTop: 8,
+                    marginBottom: 5,
+                    padding: 10,
+                    borderRadius: 14,
+                    border: `1px solid ${primary}66`,
+                    background: "rgba(0,0,0,.22)",
+                  }}
+                >
+                  <div style={{ fontSize: 10.5, fontWeight: 950, color: primary, marginBottom: 7, letterSpacing: .6 }}>
+                    DARTSET PRÉFÉRÉ DU PROFIL
+                  </div>
+                  <select
+                    value={String(currentPreferredDartSet?.id || "")}
+                    onChange={(event) => {
+                      if (!current?.id) return;
+                      const nextId = String(event.target.value || "").trim();
+                      const ok = assignPreferredDartSetToProfile(String(current.id), nextId || null);
+                      if (!ok) {
+                        alert("Impossible d’attribuer ce DartSet à ce profil.");
+                        return;
+                      }
+                      setGridDartSetRevision((value) => value + 1);
+                    }}
+                    style={{
+                      width: "100%",
+                      minHeight: 42,
+                      borderRadius: 12,
+                      border: `1px solid ${theme.borderSoft}`,
+                      background: "rgba(4,12,20,.94)",
+                      color: theme.textMain,
+                      padding: "0 10px",
+                      fontWeight: 850,
+                    }}
+                  >
+                    <option value="">Aucun DartSet préféré</option>
+                    {currentDartSets.map((set) => (
+                      <option key={String(set.id)} value={String(set.id)}>
+                        {String(set.name || "DartSet")}
+                      </option>
+                    ))}
+                  </select>
+                  {currentDartSets.length === 0 ? (
+                    <div className="subtitle" style={{ marginTop: 7, fontSize: 10 }}>
+                      Aucun DartSet disponible pour ce profil. Crée ou rends public un DartSet depuis la vue DARTSETS.
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
               {/* MODE EDITION (nom / pays / avatar) */}
               {isEditing && (
@@ -10146,6 +10269,7 @@ const MemoLocalProfilesRefonte = React.memo(LocalProfilesRefonte, (prev, next) =
   return (
     prevIds === nextIds &&
     prev.activeProfileId === next.activeProfileId &&
+    prev.accountUserId === next.accountUserId &&
     prev.onboardingMode === next.onboardingMode &&
     prev.autoFocusCreate === next.autoFocusCreate &&
     prev.deferHeavy === next.deferHeavy &&

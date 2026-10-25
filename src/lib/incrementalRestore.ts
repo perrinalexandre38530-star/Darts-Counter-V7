@@ -8,6 +8,34 @@ function changeTime(change: IncrementalChange): number {
   return Number(change?.updatedAt || 0) || 0;
 }
 
+function meaningful(value: any): boolean {
+  if (value == null) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return true;
+}
+
+function mergeProfile(current: any, incoming: any, remoteUpdatedAt: number): any {
+  const merged: any = { ...(current || {}) };
+  for (const [key, value] of Object.entries(incoming || {})) {
+    if (meaningful(value) || !meaningful(merged[key])) merged[key] = value;
+  }
+  merged.privateInfo = { ...((current as any)?.privateInfo || {}), ...((incoming as any)?.privateInfo || {}) };
+  merged.preferences = { ...((current as any)?.preferences || {}), ...((incoming as any)?.preferences || {}) };
+  const localUpdatedAt = Number((current as any)?.updatedAt || (current as any)?.avatarUpdatedAt || 0) || 0;
+  if (current && localUpdatedAt > remoteUpdatedAt && remoteUpdatedAt > 0) {
+    for (const [key, value] of Object.entries(incoming || {})) {
+      if (!meaningful((current as any)[key]) && meaningful(value)) merged[key] = value;
+    }
+  }
+  return merged;
+}
+
+/**
+ * Rejoue un journal incrémental sans faire un saveStore() par ligne.
+ * Un bundle de 60 profils = une seule écriture du store, pas 60 recompressions.
+ */
 export async function applyIncrementalChanges(changes: IncrementalChange[], opts: { since?: number } = {}): Promise<{ applied: number; skipped: number }> {
   const since = Math.max(0, Number(opts.since || 0) || 0);
   const rows = (Array.isArray(changes) ? changes : [])
@@ -17,109 +45,116 @@ export async function applyIncrementalChanges(changes: IncrementalChange[], opts
   let skipped = 0;
 
   await withIncrementalRecordingSuppressed(async () => {
-    for (const change of rows) {
+    const profileRows = rows.filter((row) => row.entityType === 'profile' || row.entityType === 'store_meta');
+    if (profileRows.length) {
       try {
-        if (change.entityType === 'profile') {
-          const store: any = await loadStore<any>();
-          if (!store) { skipped += 1; continue; }
+        const store: any = await loadStore<any>();
+        if (!store) {
+          skipped += profileRows.length;
+        } else {
           const profiles = Array.isArray(store.profiles) ? [...store.profiles] : [];
-          const id = String(change.entityId || '');
-          const idx = profiles.findIndex((p: any) => String(p?.id || '') === id);
-          if (change.op === 'delete') {
-            if (idx >= 0) profiles.splice(idx, 1);
-          } else if (change.payload && typeof change.payload === 'object') {
+          let nextStore: any = { ...store };
+          let dirty = false;
+          for (const change of profileRows) {
+            if (change.entityType === 'store_meta') {
+              if (change.payload && typeof change.payload === 'object') {
+                nextStore = { ...nextStore, ...change.payload };
+                dirty = true;
+                applied += 1;
+              } else skipped += 1;
+              continue;
+            }
+            const id = String(change.entityId || '');
+            const idx = profiles.findIndex((p: any) => String(p?.id || '') === id);
+            if (change.op === 'delete') {
+              if (idx >= 0) profiles.splice(idx, 1);
+              dirty = true;
+              applied += 1;
+              continue;
+            }
+            if (!change.payload || typeof change.payload !== 'object') { skipped += 1; continue; }
             const incoming: any = change.payload;
             const current: any = idx >= 0 ? profiles[idx] : null;
-            const meaningful = (value: any) => {
-              if (value == null) return false;
-              if (typeof value === 'string') return value.trim().length > 0;
-              if (Array.isArray(value)) return value.length > 0;
-              if (typeof value === 'object') return Object.keys(value).length > 0;
-              return true;
-            };
-            const merged: any = { ...(current || {}) };
-            for (const [key, value] of Object.entries(incoming)) {
-              if (meaningful(value) || !meaningful(merged[key])) merged[key] = value;
-            }
-            merged.privateInfo = { ...((current as any)?.privateInfo || {}), ...((incoming as any)?.privateInfo || {}) };
-            merged.preferences = { ...((current as any)?.preferences || {}), ...((incoming as any)?.preferences || {}) };
-            const localUpdatedAt = Number((current as any)?.updatedAt || (current as any)?.avatarUpdatedAt || 0) || 0;
-            const remoteUpdatedAt = Number(change.updatedAt || (incoming as any)?.updatedAt || 0) || 0;
-            if (current && localUpdatedAt > remoteUpdatedAt && remoteUpdatedAt > 0) {
-              for (const [key, value] of Object.entries(incoming)) {
-                if (!meaningful((current as any)[key]) && meaningful(value)) merged[key] = value;
-              }
-            }
+            const merged = mergeProfile(current, incoming, Number(change.updatedAt || incoming?.updatedAt || 0) || 0);
             if (idx >= 0) profiles[idx] = merged;
             else profiles.push(merged);
+            dirty = true;
+            applied += 1;
           }
-          await saveStore({ ...store, profiles } as any, { skipAsyncNormalize: true });
-          applied += 1;
-          continue;
+          if (dirty) {
+            nextStore.profiles = profiles;
+            await saveStore(nextStore, { skipAsyncNormalize: true, skipMediaCapture: true, suppressIncremental: true });
+          }
         }
+      } catch {
+        skipped += profileRows.length;
+      }
+    }
 
-        if (change.entityType === 'store_meta') {
-          const store: any = await loadStore<any>();
-          if (!store || !change.payload || typeof change.payload !== 'object') { skipped += 1; continue; }
-          await saveStore({ ...store, ...change.payload } as any, { skipAsyncNormalize: true });
-          applied += 1;
-          continue;
-        }
-
-        if (change.entityType === 'team') {
-          const teams = loadTeams();
+    const teamRows = rows.filter((row) => row.entityType === 'team');
+    if (teamRows.length) {
+      try {
+        const teams = loadTeams();
+        let dirty = false;
+        for (const change of teamRows) {
           const id = String(change.entityId || '');
           const idx = teams.findIndex((team) => String(team?.id || '') === id);
           if (change.op === 'delete') {
             if (idx >= 0) teams.splice(idx, 1);
+            dirty = true;
+            applied += 1;
           } else if (change.payload && typeof change.payload === 'object') {
             const team = change.payload as TeamEntity;
             if (idx >= 0) teams[idx] = team;
             else teams.push(team);
-          }
-          saveTeams(teams);
-          applied += 1;
-          continue;
-        }
-
-        if (change.entityType === 'match') {
-          if (change.op === 'delete') {
-            await History.removeFromCloud(String(change.entityId || ''));
+            dirty = true;
             applied += 1;
-            continue;
-          }
-          const p: any = change.payload || {};
-          let payload = p.payload ?? null;
-          if (!payload && typeof p.payloadCompressed === 'string' && p.payloadCompressed) {
-            const text = LZString.decompressFromUTF16(p.payloadCompressed);
-            if (text) { try { payload = JSON.parse(text); } catch {} }
-          }
-          const header = p.header && typeof p.header === 'object' ? p.header : {};
-          const rec: any = {
-            ...header,
-            id: p.matchId || change.entityId || p.id,
-            matchId: p.matchId || change.entityId || p.id,
-            sport: p.sport || header.sport || payload?.sport || 'darts',
-            kind: p.kind || header.kind || payload?.kind || payload?.mode || 'match',
-            status: p.status || header.status || 'finished',
-            createdAt: Number(p.createdAt || header.createdAt || Date.now()),
-            updatedAt: Number(p.updatedAt || header.updatedAt || change.updatedAt || Date.now()),
-            players: p.players || header.players || payload?.players || [],
-            winnerId: p.winnerId ?? header.winnerId ?? payload?.winnerId ?? null,
-            summary: p.summary || header.summary || payload?.summary || {},
-            game: p.game || header.game || payload?.game || null,
-            payload,
-          };
-          await upsertFromCloud(rec);
+          } else skipped += 1;
+        }
+        if (dirty) saveTeams(teams);
+      } catch {
+        skipped += teamRows.length;
+      }
+    }
+
+    for (const change of rows.filter((row) => row.entityType === 'match')) {
+      try {
+        if (change.op === 'delete') {
+          await History.removeFromCloud(String(change.entityId || ''));
           applied += 1;
           continue;
         }
-
-        skipped += 1;
+        const p: any = change.payload || {};
+        let payload = p.payload ?? null;
+        if (!payload && typeof p.payloadCompressed === 'string' && p.payloadCompressed) {
+          const text = LZString.decompressFromUTF16(p.payloadCompressed);
+          if (text) { try { payload = JSON.parse(text); } catch {} }
+        }
+        const header = p.header && typeof p.header === 'object' ? p.header : {};
+        const rec: any = {
+          ...header,
+          id: p.matchId || change.entityId || p.id,
+          matchId: p.matchId || change.entityId || p.id,
+          sport: p.sport || header.sport || payload?.sport || 'darts',
+          kind: p.kind || header.kind || payload?.kind || payload?.mode || 'match',
+          status: p.status || header.status || 'finished',
+          createdAt: Number(p.createdAt || header.createdAt || Date.now()),
+          updatedAt: Number(p.updatedAt || header.updatedAt || change.updatedAt || Date.now()),
+          players: p.players || header.players || payload?.players || [],
+          winnerId: p.winnerId ?? header.winnerId ?? payload?.winnerId ?? null,
+          summary: p.summary || header.summary || payload?.summary || {},
+          game: p.game || header.game || payload?.game || null,
+          payload,
+        };
+        await upsertFromCloud(rec);
+        applied += 1;
       } catch {
         skipped += 1;
       }
     }
+
+    const known = profileRows.length + teamRows.length + rows.filter((row) => row.entityType === 'match').length;
+    skipped += Math.max(0, rows.length - known);
   });
 
   return { applied, skipped };

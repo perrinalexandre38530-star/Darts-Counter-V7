@@ -35,6 +35,23 @@ import { buildTrainingAssessment } from "../../profile/trainingAssessment";
 
 const familyOrder: TrainingExerciseFamily[] = ["scoring", "doubles", "checkout", "precision", "bull", "regularity"];
 type HubTab = "program" | "exercises" | "diagnosis" | "progress";
+type ProgramPanel = "today" | "week" | "cycle" | "library";
+type ProgressPanel = "overview" | "skills" | "coach" | "cycles" | "history";
+
+function HubGlyph({ name, size = 17 }: { name: string; size?: number }) {
+  const common = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
+  if (name === "today") return <svg {...common}><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="4"/></svg>;
+  if (name === "week") return <svg {...common}><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/><path d="M7 14h2M11 14h2M15 14h2M7 18h2M11 18h2"/></svg>;
+  if (name === "cycle") return <svg {...common}><path d="M20 7h-5V2"/><path d="M20 7a8 8 0 1 0 1 7"/><path d="M4 17h5v5"/></svg>;
+  if (name === "library") return <svg {...common}><path d="M4 4h6v16H4zM14 4h6v16h-6z"/><path d="M7 8h0M17 8h0"/></svg>;
+  if (name === "skills") return <svg {...common}><path d="M4 19V9M10 19V5M16 19v-8M22 19V3"/></svg>;
+  if (name === "coach") return <svg {...common}><path d="M12 3a6 6 0 0 0-6 6c0 4 3 5 3 8h6c0-3 3-4 3-8a6 6 0 0 0-6-6Z"/><path d="M9 21h6M9 17h6"/></svg>;
+  if (name === "history") return <svg {...common}><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5M12 7v5l3 2"/></svg>;
+  if (name === "progress") return <svg {...common}><path d="M4 18l5-5 4 3 7-9"/><path d="M15 7h5v5"/></svg>;
+  if (name === "diagnosis") return <svg {...common}><circle cx="11" cy="11" r="6"/><path d="m16 16 5 5M8 11h6M11 8v6"/></svg>;
+  if (name === "exercises") return <svg {...common}><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>;
+  return <svg {...common}><path d="M4 12h16M12 4v16"/></svg>;
+}
 
 function pct(value: number) {
   return `${Math.round(Number(value) || 0)}%`;
@@ -108,6 +125,8 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
   }, [coachProgram, preferences.favoritePrograms]);
 
   const [tab, setTab] = React.useState<HubTab>("program");
+  const [programPanel, setProgramPanel] = React.useState<ProgramPanel>("today");
+  const [progressPanel, setProgressPanel] = React.useState<ProgressPanel>("overview");
   const [family, setFamily] = React.useState<TrainingExerciseFamily>(recommendedFamily);
   const firstInFamily = React.useMemo(() => TRAINING_EXERCISE_CATALOG.find((e) => e.family === family) || TRAINING_EXERCISE_CATALOG[0], [family]);
   const [exerciseId, setExerciseId] = React.useState(firstInFamily.id);
@@ -205,11 +224,24 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
     });
   };
 
-  const tabs: Array<{ id: HubTab; label: string }> = [
-    { id: "program", label: "PROGRAMME" },
-    { id: "exercises", label: "EXERCICES" },
-    { id: "diagnosis", label: "DIAGNOSTIC" },
-    { id: "progress", label: "PROGRESSION" },
+  const tabs: Array<{ id: HubTab; label: string; icon: string }> = [
+    { id: "program", label: "PROGRAMME", icon: "today" },
+    { id: "exercises", label: "EXERCICES", icon: "exercises" },
+    { id: "diagnosis", label: "DIAGNOSTIC", icon: "diagnosis" },
+    { id: "progress", label: "PROGRESSION", icon: "progress" },
+  ];
+  const programPanels: Array<{ id: ProgramPanel; label: string; icon: string }> = [
+    { id: "today", label: "AUJOURD’HUI", icon: "today" },
+    { id: "week", label: "SEMAINE", icon: "week" },
+    { id: "cycle", label: "CYCLES", icon: "cycle" },
+    { id: "library", label: "SÉANCES", icon: "library" },
+  ];
+  const progressPanels: Array<{ id: ProgressPanel; label: string; icon: string }> = [
+    { id: "overview", label: "SYNTHÈSE", icon: "progress" },
+    { id: "skills", label: "COMPÉTENCES", icon: "skills" },
+    { id: "coach", label: "COACH", icon: "coach" },
+    { id: "cycles", label: "CYCLES", icon: "cycle" },
+    { id: "history", label: "HISTORIQUE", icon: "history" },
   ];
 
   return (
@@ -219,10 +251,10 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
         <div style={{ width: "min(940px,100%)", margin: "0 auto", paddingBottom: 26 }}>
           <TrainingParticipantsSelector profiles={profiles} value={participants} onChange={setParticipants} />
 
-          <div style={{ marginTop: 12, padding: 13, borderRadius: 16, border: "1px solid rgba(39,220,255,.28)", background: "linear-gradient(135deg,rgba(39,220,255,.12),rgba(140,90,255,.07))" }}>
+          <div style={{ marginTop: 10, padding: 10, borderRadius: 14, border: "1px solid rgba(39,220,255,.28)", background: "linear-gradient(135deg,rgba(39,220,255,.12),rgba(140,90,255,.07))" }}>
             <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1.2, color: "#27dcff" }}>COACH AWENA</div>
-            <div style={{ marginTop: 4, fontSize: 14, fontWeight: 950 }}>{prescription.title}</div>
-            <div style={{ marginTop: 5, fontSize: 10.5, lineHeight: 1.45, opacity: .72 }}>{prescription.body}</div>
+            <div style={{ marginTop: 3, fontSize: 12.5, fontWeight: 950 }}>{prescription.title}</div>
+            <div style={{ marginTop: 3, fontSize: 9.2, lineHeight: 1.35, opacity: .72 }}>{prescription.body}</div>
             <div style={{ marginTop: 8, display: "flex", gap: 7, flexWrap: "wrap" }}>
               <span style={{ fontSize: 9, padding: "4px 7px", borderRadius: 999, background: "rgba(39,220,255,.10)", border: "1px solid rgba(39,220,255,.18)" }}>ACTUEL {Math.round(prescription.current)}/100</span>
               <span style={{ fontSize: 9, padding: "4px 7px", borderRadius: 999, background: "rgba(140,90,255,.10)", border: "1px solid rgba(140,90,255,.18)" }}>OBJECTIF {prescription.goal}/100</span>
@@ -230,7 +262,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
             </div>
           </div>
 
-          {programDraft && <div style={{ marginTop: 10, padding: 12, borderRadius: 15, border: "1px solid rgba(255,216,107,.28)", background: "linear-gradient(135deg,rgba(255,216,107,.08),rgba(140,90,255,.045))", display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          {tab === "program" && programDraft && <div style={{ marginTop: 10, padding: 12, borderRadius: 15, border: "1px solid rgba(255,216,107,.28)", background: "linear-gradient(135deg,rgba(255,216,107,.08),rgba(140,90,255,.045))", display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <div style={{ minWidth: 0, flex: "1 1 280px" }}>
               <div style={{ fontSize: 8, fontWeight: 950, color: "#ffd86b", letterSpacing: 1 }}>PROGRAMME INTERROMPU</div>
               <div style={{ marginTop: 3, fontSize: 11, fontWeight: 950 }}>{programDraft.programTitle}</div>
@@ -242,7 +274,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
             </div>
           </div>}
 
-          {nextRecommendation && <div style={{ marginTop: 10, padding: 11, borderRadius: 14, border: "1px solid rgba(185,156,255,.20)", background: "rgba(140,90,255,.055)", display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          {tab === "program" && nextRecommendation && <div style={{ marginTop: 10, padding: 11, borderRadius: 14, border: "1px solid rgba(185,156,255,.20)", background: "rgba(140,90,255,.055)", display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <div style={{ minWidth: 0, flex: "1 1 260px" }}>
               <div style={{ fontSize: 8, fontWeight: 950, color: "#b99cff", letterSpacing: 1 }}>SUITE DE LA DERNIÈRE SÉANCE</div>
               <div style={{ marginTop: 3, fontSize: 10.5, fontWeight: 950 }}>{nextRecommendation.headline}</div>
@@ -252,11 +284,19 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
           </div>}
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 12, position: "sticky", top: 0, zIndex: 3, padding: "6px 0", backdropFilter: "blur(10px)" }}>
-            {tabs.map((item) => <button key={item.id} type="button" onClick={() => setTab(item.id)} style={{ minWidth: 0, padding: "9px 4px", borderRadius: 11, border: tab === item.id ? "1px solid #27dcff" : "1px solid rgba(255,255,255,.10)", background: tab === item.id ? "rgba(39,220,255,.15)" : "rgba(0,0,0,.2)", color: "inherit", fontSize: 9.5, fontWeight: 950, letterSpacing: .5, cursor: "pointer" }}>{item.label}</button>)}
+            {tabs.map((item) => <button key={item.id} type="button" onClick={() => setTab(item.id)} style={{ minWidth: 0, padding: "7px 4px", borderRadius: 11, border: tab === item.id ? "1px solid #27dcff" : "1px solid rgba(255,255,255,.10)", background: tab === item.id ? "rgba(39,220,255,.15)" : "rgba(0,0,0,.2)", color: "inherit", fontSize: 8, fontWeight: 950, letterSpacing: .35, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}><HubGlyph name={item.icon} size={16} /><span>{item.label}</span></button>)}
           </div>
 
           {tab === "program" && <div>
-            <div style={{ marginTop: 10, padding: 14, borderRadius: 17, border: actionCoach.tone === "amber" ? "1px solid rgba(255,184,76,.34)" : actionCoach.tone === "green" ? "1px solid rgba(80,255,174,.30)" : actionCoach.tone === "violet" ? "1px solid rgba(185,156,255,.32)" : "1px solid rgba(39,220,255,.32)", background: actionCoach.tone === "amber" ? "linear-gradient(135deg,rgba(255,184,76,.10),rgba(140,90,255,.035))" : actionCoach.tone === "green" ? "linear-gradient(135deg,rgba(80,255,174,.08),rgba(39,220,255,.035))" : actionCoach.tone === "violet" ? "linear-gradient(135deg,rgba(140,90,255,.10),rgba(39,220,255,.035))" : "linear-gradient(135deg,rgba(39,220,255,.11),rgba(140,90,255,.045))" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 8, position: "sticky", top: 54, zIndex: 2, padding: "5px 0", background: "rgba(8,10,16,.78)", backdropFilter: "blur(12px)" }}>
+              {programPanels.map((item) => {
+                const status = item.id === "today" ? `${dailyPlan.durationMin} MIN` : item.id === "week" ? `${weeklyPlan.completed}/${weeklyPlan.target}` : item.id === "cycle" ? `${cycleCoach.completedSessions}/${cycleCoach.cycleSize}` : `${programs.length} PLANS`;
+                return <button key={item.id} type="button" onClick={() => setProgramPanel(item.id)} style={{ minWidth: 0, padding: "7px 3px", borderRadius: 10, border: programPanel === item.id ? "1px solid rgba(39,220,255,.55)" : "1px solid rgba(255,255,255,.075)", background: programPanel === item.id ? "rgba(39,220,255,.11)" : "rgba(255,255,255,.025)", color: "inherit", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}><HubGlyph name={item.icon} size={15} /><span style={{ fontSize: 7.2, fontWeight: 950 }}>{item.label}</span><span style={{ fontSize: 6.2, opacity: .46 }}>{status}</span></button>;
+              })}
+            </div>
+
+            {programPanel === "today" && <>
+            <div style={{ marginTop: 8, padding: 14, borderRadius: 17, border: actionCoach.tone === "amber" ? "1px solid rgba(255,184,76,.34)" : actionCoach.tone === "green" ? "1px solid rgba(80,255,174,.30)" : actionCoach.tone === "violet" ? "1px solid rgba(185,156,255,.32)" : "1px solid rgba(39,220,255,.32)", background: actionCoach.tone === "amber" ? "linear-gradient(135deg,rgba(255,184,76,.10),rgba(140,90,255,.035))" : actionCoach.tone === "green" ? "linear-gradient(135deg,rgba(80,255,174,.08),rgba(39,220,255,.035))" : actionCoach.tone === "violet" ? "linear-gradient(135deg,rgba(140,90,255,.10),rgba(39,220,255,.035))" : "linear-gradient(135deg,rgba(39,220,255,.11),rgba(140,90,255,.045))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
                 <div style={{ minWidth: 0, flex: "1 1 300px" }}>
                   <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1.1, color: actionCoach.tone === "amber" ? "#ffd86b" : actionCoach.tone === "green" ? "#8cffcb" : actionCoach.tone === "violet" ? "#b99cff" : "#27dcff" }}>{actionCoach.eyebrow}</div>
@@ -305,8 +345,10 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 <div style={{ marginTop: 7, fontSize: 7.8, opacity: .5 }}>{new Date(assessment.endedAt).toLocaleDateString()} • {assessment.sessionsSinceAssessment} séance{assessment.sessionsSinceAssessment > 1 ? "s" : ""} depuis le bilan{assessment.delta == null ? "" : ` • évolution ${assessment.delta >= 0 ? "+" : ""}${Math.round(assessment.delta)} pts`}</div>
               </>}
             </div>
+            </>}
 
-            <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: "1px solid rgba(80,255,174,.24)", background: "linear-gradient(135deg,rgba(80,255,174,.09),rgba(39,220,255,.045))" }}>
+            {programPanel === "week" && <>
+            <div style={{ marginTop: 8, padding: 13, borderRadius: 16, border: "1px solid rgba(80,255,174,.24)", background: "linear-gradient(135deg,rgba(80,255,174,.09),rgba(39,220,255,.045))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <div>
                   <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#8cffcb" }}>PLAN HEBDOMADAIRE</div>
@@ -349,8 +391,10 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 })}
               </div>
             </div>
+            </>}
 
-            <div style={{ marginTop: 10, padding: 12, borderRadius: 15, border: cycleComparison.direction === "up" ? "1px solid rgba(80,255,174,.22)" : cycleComparison.direction === "down" ? "1px solid rgba(255,184,76,.24)" : "1px solid rgba(255,255,255,.09)", background: cycleComparison.direction === "up" ? "rgba(80,255,174,.045)" : cycleComparison.direction === "down" ? "rgba(255,184,76,.045)" : "rgba(255,255,255,.025)" }}>
+            {programPanel === "cycle" && <>
+            <div style={{ marginTop: 8, padding: 12, borderRadius: 15, border: cycleComparison.direction === "up" ? "1px solid rgba(80,255,174,.22)" : cycleComparison.direction === "down" ? "1px solid rgba(255,184,76,.24)" : "1px solid rgba(255,255,255,.09)", background: cycleComparison.direction === "up" ? "rgba(80,255,174,.045)" : cycleComparison.direction === "down" ? "rgba(255,184,76,.045)" : "rgba(255,255,255,.025)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <div>
                   <div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: 1, opacity: .58 }}>COMPARAISON DE CYCLES</div>
@@ -448,8 +492,10 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 <span>• Relais : <b>{cycleCoach.secondary.label}</b></span>
               </div>
             </div>
+            </>}
 
-            <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: loadSummary.status === "recovery" || loadSummary.status === "high" ? "1px solid rgba(255,184,76,.28)" : "1px solid rgba(39,220,255,.20)", background: loadSummary.status === "recovery" || loadSummary.status === "high" ? "linear-gradient(135deg,rgba(255,184,76,.08),rgba(255,255,255,.02))" : "linear-gradient(135deg,rgba(39,220,255,.07),rgba(140,90,255,.035))" }}>
+            {programPanel === "week" && <>
+            <div style={{ marginTop: 8, padding: 13, borderRadius: 16, border: loadSummary.status === "recovery" || loadSummary.status === "high" ? "1px solid rgba(255,184,76,.28)" : "1px solid rgba(39,220,255,.20)", background: loadSummary.status === "recovery" || loadSummary.status === "high" ? "linear-gradient(135deg,rgba(255,184,76,.08),rgba(255,255,255,.02))" : "linear-gradient(135deg,rgba(39,220,255,.07),rgba(140,90,255,.035))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
                 <div style={{ minWidth: 0, flex: "1 1 260px" }}>
                   <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: loadSummary.status === "recovery" || loadSummary.status === "high" ? "#ffd86b" : "#27dcff" }}>CHARGE & FORME</div>
@@ -494,6 +540,9 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 </div>)}
               </div>
             </div>
+            </>}
+
+            {programPanel === "library" && <>
             {!!preferences.favoritePrograms.length && <>
               <div style={{ margin: "10px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#ffd86b" }}>★ MES SÉANCES FAVORITES</div>
               <div style={{ display: "flex", gap: 7, overflowX: "auto", paddingBottom: 3 }}>
@@ -567,6 +616,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
               <button type="button" onClick={() => toggleProgramFavorite(selectedProgram)} style={{ padding: "8px 11px", borderRadius: 10, border: favoriteProgramIds.has(selectedProgram.id) ? "1px solid rgba(255,216,107,.55)" : "1px solid rgba(255,255,255,.12)", background: favoriteProgramIds.has(selectedProgram.id) ? "rgba(255,216,107,.10)" : "rgba(255,255,255,.04)", color: "inherit", fontSize: 9, fontWeight: 900, cursor: "pointer" }}>{favoriteProgramIds.has(selectedProgram.id) ? "★ RETIRER DES FAVORIS" : selectedProgram.id.startsWith("custom_") ? "★ ENREGISTRER CETTE SÉANCE" : "☆ AJOUTER AUX FAVORIS"}</button>
             </div>
             <TrainingStartButton disabled={!resolved.length} label={resolved.length > 1 ? `LANCER LE PROGRAMME — ${resolved.length} JOUEURS` : `LANCER ${selectedProgram.title}`} onClick={() => startProgram(selectedProgram)} />
+            </>}
           </div>}
 
           {tab === "exercises" && <div>
@@ -628,7 +678,15 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
           </div>}
 
           {tab === "progress" && <div>
-            <div style={{ marginTop: 10, padding: 14, borderRadius: 16, border: "1px solid rgba(255,216,107,.22)", background: "linear-gradient(135deg,rgba(255,216,107,.08),rgba(140,90,255,.055))" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5, marginTop: 8, position: "sticky", top: 54, zIndex: 2, padding: "5px 0", background: "rgba(8,10,16,.78)", backdropFilter: "blur(12px)" }}>
+              {progressPanels.map((item) => {
+                const status = item.id === "overview" ? `NIV. ${career.level.level}` : item.id === "skills" ? `${progression.filter((row) => row.sessions > 0).length}/6` : item.id === "coach" ? `${liveCoachHistory.sampleSize} SÉANCES` : item.id === "cycles" ? `${cycleHistory.length} CYCLES` : `${programSessions.length} PLANS`;
+                return <button key={item.id} type="button" onClick={() => setProgressPanel(item.id)} style={{ minWidth: 0, padding: "6px 2px", borderRadius: 9, border: progressPanel === item.id ? "1px solid rgba(39,220,255,.50)" : "1px solid rgba(255,255,255,.07)", background: progressPanel === item.id ? "rgba(39,220,255,.10)" : "rgba(255,255,255,.02)", color: "inherit", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}><HubGlyph name={item.icon} size={14} /><span style={{ fontSize: 6.7, fontWeight: 950 }}>{item.label}</span><span style={{ fontSize: 5.9, opacity: .44 }}>{status}</span></button>;
+              })}
+            </div>
+
+            {progressPanel === "overview" && <>
+            <div style={{ marginTop: 8, padding: 14, borderRadius: 16, border: "1px solid rgba(255,216,107,.22)", background: "linear-gradient(135deg,rgba(255,216,107,.08),rgba(140,90,255,.055))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start", flexWrap: "wrap" }}>
                 <div>
                   <div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: 1.1, color: "#ffd86b" }}>CARRIÈRE TRAINING</div>
@@ -640,8 +698,10 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
               <div style={{ height: 7, marginTop: 10, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.07)" }}><div style={{ width: `${Math.max(2, career.level.progressPct)}%`, height: "100%", background: "linear-gradient(90deg,#ffd86b,#27dcff,#8c5aff)" }} /></div>
               <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 7.5, opacity: .45 }}><span>{career.level.minXp} XP</span><span>{career.level.nextXp ? `PROCHAIN NIVEAU ${career.level.nextXp} XP` : "NIVEAU MAX"}</span></div>
             </div>
+            </>}
 
-            <div style={{ margin: "14px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#b99cff" }}>MAÎTRISES</div>
+            {progressPanel === "skills" && <>
+            <div style={{ margin: "12px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#b99cff" }}>MAÎTRISES</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 7 }}>
               {career.mastery.map((item) => <div key={`mastery-${item.family}`} style={{ padding: 10, borderRadius: 12, border: "1px solid rgba(185,156,255,.12)", background: "rgba(140,90,255,.03)" }}>
                 <div style={{ fontSize: 8, opacity: .5 }}>{item.label.toUpperCase()}</div>
@@ -658,8 +718,10 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 <div style={{ marginTop: 4, fontSize: 8, lineHeight: 1.35, opacity: .5 }}>{badge.description}</div>
               </div>)}
             </div>
+            </>}
 
-            <div style={{ marginTop: 14, padding: 13, borderRadius: 15, border: "1px solid rgba(39,220,255,.16)", background: "linear-gradient(135deg,rgba(39,220,255,.055),rgba(140,90,255,.035))" }}>
+            {progressPanel === "overview" && <>
+            <div style={{ marginTop: 10, padding: 13, borderRadius: 15, border: "1px solid rgba(39,220,255,.16)", background: "linear-gradient(135deg,rgba(39,220,255,.055),rgba(140,90,255,.035))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <div>
                   <div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>SYNTHÈSE DU CYCLE</div>
@@ -675,8 +737,10 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
               <div style={{ marginTop: 9, height: 6, borderRadius: 999, background: "rgba(255,255,255,.06)", overflow: "hidden" }}><div style={{ width: `${Math.max(2, Math.min(100, (missionBoard.cycleChallenge.progress / Math.max(1, missionBoard.cycleChallenge.target)) * 100))}%`, height: "100%", background: missionBoard.cycleChallenge.completed ? "linear-gradient(90deg,#8cffcb,#27dcff)" : "linear-gradient(90deg,#27dcff,#8c5aff)" }} /></div>
               <div style={{ marginTop: 7, fontSize: 8, opacity: .5 }}>PROCHAIN RECORD GLOBAL À BATTRE • {Math.round(missionBoard.record.personalBestTarget)}/100</div>
             </div>
+            </>}
 
-            <div style={{ margin: "16px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#8cffcb" }}>BILAN COACH HEBDOMADAIRE</div>
+            {progressPanel === "coach" && <>
+            <div style={{ margin: "12px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#8cffcb" }}>BILAN COACH HEBDOMADAIRE</div>
             <div style={{ padding: 13, borderRadius: 15, border: "1px solid rgba(80,255,174,.16)", background: "linear-gradient(135deg,rgba(80,255,174,.05),rgba(39,220,255,.025))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start", flexWrap: "wrap" }}>
                 <div style={{ flex: "1 1 260px" }}>
@@ -707,8 +771,10 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 <div style={{ minWidth: 42, textAlign: "center" }}><b style={{ fontSize: 10.5, color: week.status === "mastered" ? "#8cffcb" : week.status === "solid" ? "#27dcff" : "inherit" }}>{week.sessions ? Math.round(week.averagePerformance) : "—"}</b><div style={{ fontSize: 6.4, opacity: .4 }}>MOY.</div></div>
               </div>)}
             </div>
+            </>}
 
-            <div style={{ margin: "16px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>PROGRESSION PAR COMPÉTENCE</div>
+            {progressPanel === "skills" && <>
+            <div style={{ margin: "12px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>PROGRESSION PAR COMPÉTENCE</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 8 }}>
               {progression.map((row) => {
                 const deltaLabel = row.delta > 2 ? `+${Math.round(row.delta)}` : row.delta < -2 ? `${Math.round(row.delta)}` : "stable";
@@ -750,8 +816,10 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 </div>;
               })}
             </div>
+            </>}
 
-            <div style={{ margin: "16px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>BILANS DE BLOCS • 12 SÉANCES</div>
+            {progressPanel === "cycles" && <>
+            <div style={{ margin: "12px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>BILANS DE BLOCS • 12 SÉANCES</div>
             {!blockReviews.length ? <div style={{ padding: 14, borderRadius: 13, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.025)", fontSize: 9.5, opacity: .58 }}>Le premier bilan complet apparaîtra après 12 programmes terminés.</div> : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 7 }}>
               {blockReviews.map((review, index) => <div key={`block-review-${review.blockNumber}`} style={{ padding: 11, borderRadius: 13, border: index === 0 ? "1px solid rgba(39,220,255,.22)" : "1px solid rgba(255,255,255,.075)", background: index === 0 ? "rgba(39,220,255,.045)" : "rgba(255,255,255,.022)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><b style={{ fontSize: 9.5 }}>Bloc {review.blockNumber}</b><span style={{ fontSize: 7.5, color: review.outcome === "rebuild" ? "#ffd86b" : review.outcome === "breakthrough" || review.outcome === "progress" ? "#8cffcb" : "#27dcff" }}>{review.outcomeLabel}</span></div>
@@ -778,8 +846,10 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 <div style={{ marginTop: 7, fontSize: 7.5, opacity: .5 }}>Dominante : <b>{cycle.dominantLabel}</b> • précision {Math.round(cycle.accuracy)}%</div>
               </div>)}
             </div>}
+            </>}
 
-            <div style={{ margin: "16px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#ffd86b" }}>RECORDS PERSONNELS</div>
+            {progressPanel === "skills" && <>
+            <div style={{ margin: "12px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#ffd86b" }}>RECORDS PERSONNELS</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 7 }}>
               {progression.map((row) => <div key={`record-${row.family}`} style={{ padding: 10, borderRadius: 12, border: "1px solid rgba(255,216,107,.12)", background: "rgba(255,216,107,.035)" }}>
                 <div style={{ fontSize: 8.5, opacity: .55 }}>{row.label.toUpperCase()}</div>
@@ -787,8 +857,10 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 <div style={{ marginTop: 3, fontSize: 8, opacity: .45 }}>{row.sessions} séance{row.sessions > 1 ? "s" : ""} • série {row.streak}</div>
               </div>)}
             </div>
+            </>}
 
-            <div style={{ margin: "16px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#ffd86b" }}>RÉFÉRENCE DE NIVEAU</div>
+            {progressPanel === "overview" && <>
+            <div style={{ margin: "12px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#ffd86b" }}>RÉFÉRENCE DE NIVEAU</div>
             <div style={{ padding: 12, borderRadius: 14, border: "1px solid rgba(255,216,107,.16)", background: "linear-gradient(135deg,rgba(255,216,107,.045),rgba(140,90,255,.025))" }}>
               {!assessment.available ? <div style={{ fontSize: 9, opacity: .58 }}>Aucun bilan standardisé enregistré. Lance le Bilan de niveau depuis PROGRAMME pour obtenir une référence comparable sur les 6 compétences.</div> : <>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "baseline" }}>
@@ -801,8 +873,10 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 <div style={{ marginTop: 8, fontSize: 7.8, opacity: .5 }}>Point fort : <b style={{ color: "#8cffcb" }}>{assessment.strongestLabel}</b> • axe prioritaire : <b style={{ color: "#ffd86b" }}>{assessment.weakestLabel}</b>{assessment.delta == null ? "" : ` • évolution globale ${assessment.delta >= 0 ? "+" : ""}${Math.round(assessment.delta)} pts`}</div>
               </>}
             </div>
+            </>}
 
-            <div style={{ margin: "16px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>LIVE COACH • 6 DERNIÈRES SÉANCES</div>
+            {progressPanel === "coach" && <>
+            <div style={{ margin: "12px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>LIVE COACH • 6 DERNIÈRES SÉANCES</div>
             <div style={{ padding: 12, borderRadius: 14, border: "1px solid rgba(39,220,255,.16)", background: "linear-gradient(135deg,rgba(39,220,255,.045),rgba(140,90,255,.03))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
                 <div style={{ minWidth: 180, flex: 1 }}><b style={{ fontSize: 10.5 }}>{liveCoachHistory.headline}</b><div style={{ marginTop: 4, fontSize: 8.5, lineHeight: 1.4, opacity: .58 }}>{liveCoachHistory.body}</div></div>
@@ -844,8 +918,10 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
               </div>}
               <div style={{ marginTop: 7, fontSize: 7.7, opacity: .48 }}>Évolution du taux d'adaptation : <b>{coachingEffectiveness.adaptationRateDelta >= 0 ? "+" : ""}{Math.round(coachingEffectiveness.adaptationRateDelta)} pts</b> vs période précédente. Awena privilégie désormais la stabilité si les adaptations n'apportent plus de gain mesurable.</div>
             </div>
+            </>}
 
-            <div style={{ margin: "16px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#b99cff" }}>HISTORIQUE DES PLANS</div>
+            {progressPanel === "history" && <>
+            <div style={{ margin: "12px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#b99cff" }}>HISTORIQUE DES PLANS</div>
             {!programSessions.length ? <div style={{ padding: 14, borderRadius: 13, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.025)", fontSize: 9.5, opacity: .58 }}>Aucun programme complet enregistré pour le moment.</div> : <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {programSessions.slice(0, 8).map((session) => <div key={session.id} style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto", gap: 8, alignItems: "center", padding: 10, borderRadius: 12, border: "1px solid rgba(185,156,255,.10)", background: "rgba(140,90,255,.025)" }}>
                 <div><b style={{ fontSize: 9.5 }}>{session.programTitle}</b><div style={{ marginTop: 2, fontSize: 7.8, opacity: .45 }}>{new Date(session.endedAt).toLocaleDateString()} • {session.durationMin || "—"} min • {session.steps} étapes</div></div>
@@ -868,6 +944,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 </div>;
               })}
             </div>}
+            </>}
           </div>}
         </div>
       }

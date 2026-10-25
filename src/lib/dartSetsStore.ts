@@ -2585,6 +2585,41 @@ export function deleteDartSet(id: DartSetId): boolean {
   return ok;
 }
 
+/**
+ * Affecte UN DartSet préféré à un profil local. Contrairement au toggle legacy,
+ * cette API est exclusive : changer de DartSet retire l'ancien favori uniquement
+ * pour ce profil, sans modifier les favoris des autres joueurs.
+ */
+export function assignPreferredDartSetToProfile(profileId: string, dartSetId?: DartSetId | null): boolean {
+  const pid = s(profileId);
+  if (!pid) return false;
+  const targetId = s(dartSetId);
+  const all = loadAll();
+  const target = targetId ? findDartSetByIdIn(all, targetId) : undefined;
+  if (targetId && (!target || !profileCanSeeDartSet(target, pid))) return false;
+
+  const aliases = collectStrictProfileIds(pid);
+  let changed = false;
+  const next = all.map((set) => {
+    const current = readFavoriteProfileIds(set);
+    const stripped = current.filter((id) => !aliases.has(id));
+    const isTarget = !!target && String(set.id) === String(target.id);
+    const favoriteProfileIds = isTarget ? uniqStrings([...stripped, pid]) : stripped;
+    const same = favoriteProfileIds.length === current.length && favoriteProfileIds.every((id, index) => id === current[index]);
+    const nextGlobalCompat = effectiveDartSetScope(set) === "private" && favoriteProfileIds.includes(s(set.profileId));
+    if (same && Boolean(set.isFavorite) === nextGlobalCompat) return set;
+    changed = true;
+    return { ...set, favoriteProfileIds, isFavorite: nextGlobalCompat, updatedAt: Date.now() };
+  });
+  if (!changed) return true;
+  const ok = savePrimary(next, "assignPreferred");
+  if (ok) {
+    profileSelectorCache.delete(pid);
+    try { window.dispatchEvent(new CustomEvent("dc-dartsets-updated", { detail: { reason: "assign-preferred", profileId: pid, dartSetId: target?.id || null } })); } catch {}
+  }
+  return ok;
+}
+
 export function setFavoriteDartSet(profileId: string, dartSetId: DartSetId) {
   const pid = s(profileId);
   const set = getDartSetById(dartSetId);

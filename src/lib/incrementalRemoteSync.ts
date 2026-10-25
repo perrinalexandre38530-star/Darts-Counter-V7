@@ -21,12 +21,20 @@ let rerun = false;
 const personalCloudIncrementalSupport = new Map<string, boolean>();
 const runtimeUnsupportedProviders = new Set<string>();
 
-function nasIncrementalKnownSupported(): boolean {
-  // Backend actuel : /account/incremental-changes existe. On tente donc le delta
-  // par défaut et on ne désactive qu'après un vrai 404 constaté. L'ancien garde
-  // exigeait un flag 'supported' jamais posé et forçait systématiquement le gros
-  // /sync/push, d'où les 413 et les sauvegardes lentes.
-  try { return localStorage.getItem('dc_incremental_nas_unsupported_v1') !== '1'; } catch { return true; }
+function nasIncrementalKnownSupported(forceProbe = false): boolean {
+  if (forceProbe) return true;
+  // Un ancien build stockait simplement "1" et bloquait ensuite le probe à vie.
+  // WAVE post-test : ce marqueur legacy est considéré comme périmé. Les nouveaux
+  // 404 mémorisent un timestamp et sont retestés après 6 h (ou immédiatement
+  // depuis le bouton Sauvegarder qui passe forceProbe=true).
+  try {
+    const raw = String(localStorage.getItem('dc_incremental_nas_unsupported_v1') || '').trim();
+    if (!raw || raw === '1') return true;
+    const failedAt = Number(raw || 0);
+    return !Number.isFinite(failedAt) || failedAt <= 0 || (Date.now() - failedAt) >= 6 * 60 * 60 * 1000;
+  } catch {
+    return true;
+  }
 }
 
 
@@ -54,8 +62,9 @@ function isRemoteProvider(provider: string): boolean {
   return ['founder_nas', 'cloud_r2', 'google_drive', 'onedrive', 'dropbox'].includes(provider);
 }
 
-async function uploadBundle(provider: string, changes: IncrementalChange[]): Promise<boolean> {
+async function uploadBundle(provider: string, changes: IncrementalChange[], opts: { forceProbe?: boolean } = {}): Promise<boolean> {
   if (!changes.length) return true;
+  if (opts.forceProbe) runtimeUnsupportedProviders.delete(provider);
   if (runtimeUnsupportedProviders.has(provider)) return false;
   const bundle = {
     version: 1,
@@ -69,7 +78,7 @@ async function uploadBundle(provider: string, changes: IncrementalChange[]): Pro
     // Un NAS ancien répond 404 sur cette route. Ne plus générer une erreur réseau
     // visible à chaque chargement : le mode incrémental NAS n'est activé que
     // lorsqu'une version compatible l'a explicitement validé une première fois.
-    if (!nasIncrementalKnownSupported()) return false;
+    if (!nasIncrementalKnownSupported(!!opts.forceProbe)) return false;
     try {
       await apiPost('/account/incremental-changes', { changes }, { timeoutMs: 15_000 });
       try {
@@ -82,7 +91,7 @@ async function uploadBundle(provider: string, changes: IncrementalChange[]): Pro
       const status = Number(error?.status || error?.statusCode || 0);
       if (status === 404 || /404|not found|cannot post \/account\/incremental-changes/i.test(msg)) {
         runtimeUnsupportedProviders.add(provider);
-        try { localStorage.setItem('dc_incremental_nas_unsupported_v1', '1'); } catch {}
+        try { localStorage.setItem('dc_incremental_nas_unsupported_v1', String(Date.now())); } catch {}
         return false;
       }
       throw error;
@@ -120,7 +129,10 @@ export type IncrementalSyncResult = {
 };
 
 
-export async function flushIncrementalRemoteSyncForProvider(provider: string): Promise<IncrementalSyncResult> {
+export async function flushIncrementalRemoteSyncForProvider(
+  provider: string,
+  opts: { forceProbe?: boolean } = {},
+): Promise<IncrementalSyncResult> {
   const normalized = String(provider || '').trim();
   const result: IncrementalSyncResult = { provider: normalized, attempted: 0, synced: 0, supported: true };
   if (!isRemoteProvider(normalized)) return result;
@@ -128,7 +140,7 @@ export async function flushIncrementalRemoteSyncForProvider(provider: string): P
     const changes = await listUnsyncedIncrementalChanges(normalized);
     result.attempted = changes.length;
     if (!changes.length) return result;
-    const uploaded = await uploadBundle(normalized, changes);
+    const uploaded = await uploadBundle(normalized, changes, opts);
     result.supported = uploaded;
     if (!uploaded) return result;
     await markIncrementalProviderSynced(normalized, changes);

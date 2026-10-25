@@ -320,11 +320,12 @@ export async function buildBackupManifestV2(snapshot: any, userIdInput?: string 
   for (const definition of DATA_REGISTRY) domainEntityIds.set(definition.id, new Set());
 
   explicitPortableCounts(snapshot, domains);
-  const mediaVaultV2Critical = Number(snapshot?.mediaVaultV2?._v || 0) === 2 && (
-    (Array.isArray(snapshot?.mediaVaultV2?.summary?.missingRequiredRefs) && snapshot.mediaVaultV2.summary.missingRequiredRefs.length > 0) ||
-    (Array.isArray(snapshot?.mediaVaultV2?.summary?.integrityErrors) && snapshot.mediaVaultV2.summary.integrityErrors.length > 0)
-  );
-  if (mediaVaultV2Critical) warnings.push("Media Vault V2 incomplet ou corrompu : le snapshot portable ne doit pas être considéré comme restaurable.");
+  const mediaVaultV2Missing = Number(snapshot?.mediaVaultV2?._v || 0) === 2 &&
+    Array.isArray(snapshot?.mediaVaultV2?.summary?.missingRequiredRefs) && snapshot.mediaVaultV2.summary.missingRequiredRefs.length > 0;
+  const mediaVaultV2Critical = Number(snapshot?.mediaVaultV2?._v || 0) === 2 &&
+    Array.isArray(snapshot?.mediaVaultV2?.summary?.integrityErrors) && snapshot.mediaVaultV2.summary.integrityErrors.length > 0;
+  if (mediaVaultV2Missing) warnings.push("Media Vault V2 partiel : certains anciens médias sont absents, mais les données principales restent restaurables.");
+  if (mediaVaultV2Critical) warnings.push("Media Vault V2 corrompu : le snapshot portable ne doit pas être considéré comme restaurable.");
 
   const scan = (rawEntries: Array<[string, any]>, source: "idb" | "localStorage") => {
     for (const [rawKey, rawValue] of rawEntries) {

@@ -1065,7 +1065,12 @@ export async function resolveUserMediaFallback(
     // vient de revenir. Une image retrouvée ici est immédiatement scellée dans
     // IndexedDB + R2 pour que la panne suivante soit transparente.
     const primary = String(primarySourceInput || "").trim();
-    if (primary) {
+    const primaryNeedsNetwork = /^https?:\/\//i.test(primary) || primary.startsWith("/api/") || primary.startsWith("/media/");
+    // Lors d'une restauration locale (allowR2=false), ne JAMAIS attendre une
+    // ancienne URL NAS/HTTP pour chacun des 60+ profils. Le coffre V2 vient
+    // d'être importé ; si le pixel n'y est pas, l'UI le récupérera plus tard
+    // de façon lazy. C'était la cause directe du palier 81 % pendant 2-3 min.
+    if (primary && (!primaryNeedsNetwork || opts.allowR2 !== false)) {
       found = await compactSource(primary, kind);
       if (found) {
         await storeEntry({ key, kind, dataUrl: found, updatedAt: Date.now(), sourceUrl: primary });

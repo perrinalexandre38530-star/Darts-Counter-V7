@@ -13,7 +13,7 @@ import { useAuthOnline } from "../hooks/useAuthOnline";
 import { apiPost, buildApiUrl, ensureAccountBackendAccessToken, readNasAccessToken } from "../lib/apiClient";
 import { exportCloudSnapshot, importCloudSnapshot, loadStore, saveStore } from "../lib/storage";
 import { isLegacyMigrationCandidate } from "../data/legacyMigrationV1";
-import { analyzeLegacySnapshotAgainstCurrent, migrateLegacySnapshotIntoCurrent } from "../lib/legacyMigrationRuntime";
+import { analyzeLegacySnapshotAgainstCurrent, migrateLegacySnapshotIntoCurrent, restoreLegacySnapshotAuthoritatively } from "../lib/legacyMigrationRuntime";
 import {
   createLocalMemorySlot,
   createLocalMemorySlotFromSnapshot,
@@ -2764,6 +2764,8 @@ export default function StorageVaultPage({ go }: Props) {
       provider?: BackupProvider;
       report?: BackgroundRestoreReporter;
       skipAccountSync?: boolean;
+      /** Explicit remote Restore uses the selected backup as authority; file import remains merge-safe. */
+      legacyStrategy?: "merge" | "authoritative";
     },
   ): Promise<{ summary: VaultSummary }> => {
     const report = options?.report || (() => {});
@@ -2792,13 +2794,16 @@ export default function StorageVaultPage({ go }: Props) {
 
     const isNativeRestore = Capacitor.isNativePlatform();
     const targetLabel = provider === "cloud" ? "Cloudflare R2" : provider === "google_drive" ? "Google Drive" : "compte NAS";
+    const authoritativeLegacy = legacyMigration && options?.legacyStrategy === "authoritative";
     const restoreFlowText = legacyMigration
-      ? `WAVE 9 va MIGRER ce backup ancien sans effacer l’état actuel : doublons ignorés, alias explicites réparés, données ambiguës conservées comme incomplètes/quarantaine. ${legacyPlan?.summary?.repaired || 0} partie(s) réparée(s), ${legacyPlan?.summary?.duplicate || 0} doublon(s), ${legacyPlan?.summary?.quarantined || 0} quarantaine(s).`
+      ? authoritativeLegacy
+        ? `WAVE 9 va normaliser ce backup ancien puis le RESTAURER comme état personnel de référence : les alias explicites sont réparés, aucune fusion par nom n’est faite et l’historique sélectionné remplace l’historique local. ${legacyPlan?.summary?.repaired || 0} partie(s) réparée(s), ${legacyPlan?.summary?.quarantined || 0} quarantaine(s).`
+        : `WAVE 9 va MIGRER ce backup ancien sans effacer l’état actuel : doublons ignorés, alias explicites réparés, données ambiguës conservées comme incomplètes/quarantaine. ${legacyPlan?.summary?.repaired || 0} partie(s) réparée(s), ${legacyPlan?.summary?.duplicate || 0} doublon(s), ${legacyPlan?.summary?.quarantined || 0} quarantaine(s).`
       : isNativeRestore
         ? "L’application va créer une sécurité puis remplacer uniquement les données locales par cette sauvegarde. Aucune autre source ne sera chargée en arrière-plan."
         : `L’application va créer une sécurité, restaurer le navigateur, synchroniser vers ${targetLabel}, puis recharger.`;
     if (!options?.skipConfirm) {
-      const actionLabel = legacyMigration ? "Migrer" : "Restaurer";
+      const actionLabel = legacyMigration && !authoritativeLegacy ? "Migrer" : "Restaurer";
       const ok = window.confirm(
         `${actionLabel} "${label}" ?\n\n` +
         `${summary.matches} parties • ${summary.historyRows} lignes historique • ${summary.profiles} profils • ${summary.statsBlocks} stats\n\n` +
@@ -2823,16 +2828,24 @@ export default function StorageVaultPage({ go }: Props) {
       await createLocalMemorySlot("Sécurité avant restauration", "before-restore").catch(() => null);
     }
 
-    report(64, legacyMigration ? "Migration legacy non destructive…" : "Import des parties, profils et médias dans l’appareil…", "import");
+    report(64, legacyMigration
+      ? (authoritativeLegacy ? "Normalisation puis restauration autoritaire du backup legacy…" : "Migration legacy non destructive…")
+      : "Import des parties, profils et médias dans l’appareil…", "import");
     let importReport: any = null;
     let legacyMigrationReport: any = null;
     if (legacyMigration) {
-      legacyMigrationReport = await migrateLegacySnapshotIntoCurrent(snapshot, {
-        onProgress: (progress, message) => {
-          report(64 + Math.round(Math.max(0, Math.min(100, progress)) * 0.26), message, "import");
-        },
-      });
-      if (!legacyMigrationReport?.ok) throw new Error("Migration legacy impossible.");
+      legacyMigrationReport = authoritativeLegacy
+        ? await restoreLegacySnapshotAuthoritatively(snapshot, {
+            onProgress: (progress, message) => {
+              report(64 + Math.round(Math.max(0, Math.min(100, progress)) * 0.26), message, "import");
+            },
+          })
+        : await migrateLegacySnapshotIntoCurrent(snapshot, {
+            onProgress: (progress, message) => {
+              report(64 + Math.round(Math.max(0, Math.min(100, progress)) * 0.26), message, "import");
+            },
+          });
+      if (!legacyMigrationReport?.ok) throw new Error(authoritativeLegacy ? "Restauration legacy autoritaire impossible." : "Migration legacy impossible.");
     } else if (isBackupV1) {
       const restored = await restoreCloudBackupFromJson({ json: JSON.stringify(snapshot), mode: "replace", rebuild: true });
       if (!restored.ok) throw new Error(restored.error || "Restauration CloudBackup impossible.");
@@ -3745,9 +3758,14 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
             run: async (report) => {
               report(8, `Analyse de ${pending.length} changement(s)…`);
               report(22, `Préparation des différences pour ${destinationLabel}…`);
-              const syncResult = await flushIncrementalRemoteSyncForProvider(deltaProvider);
+              // Clic manuel = vrai probe réseau, même si un ancien build avait
+              // mémorisé un 404. On ne doit jamais condamner l'incrémental à vie.
+              const syncResult = await flushIncrementalRemoteSyncForProvider(deltaProvider, { forceProbe: true });
               if (!syncResult.supported || syncResult.error || syncResult.synced <= 0) {
-                throw new Error(syncResult.error || `Le mode incrémental ${destinationLabel} n'a pas confirmé l'envoi.`);
+                throw new Error(
+                  syncResult.error ||
+                  `Endpoint incrémental ${destinationLabel} indisponible : ${pending.length} changement(s) restent dans le journal. Aucun snapshot complet n'a été réécrit.`
+                );
               }
               report(88, `${syncResult.synced} changement(s) envoyés. Vérification…`);
               report(100, `Sauvegarde incrémentale confirmée.`);
@@ -3755,11 +3773,24 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
                 message: `Sauvegarde incrémentale terminée en ${Math.max(1, Math.round(performance.now() - startedAt))} ms · ${syncResult.synced} changement(s) envoyé(s) · checkpoint complet conservé.`,
               };
             },
+          }).catch((error: any) => {
+            // Un checkpoint existe déjà : si le backend delta est indisponible,
+            // conserver le journal est plus sûr et beaucoup plus rapide que
+            // réécrire silencieusement 45+ Mo. Le prochain probe reprendra les
+            // mêmes changements sans perte.
+            setMessage(String(error?.message || error || `Sauvegarde incrémentale ${destinationLabel} en attente.`));
           });
           return;
         }
-      } catch {
-        // Toute incertitude => chemin complet existant.
+      } catch (error: any) {
+        if (hasCheckpoint) {
+          setMessage(
+            String(error?.message || error || `Sauvegarde incrémentale ${destinationLabel} en attente. Le checkpoint complet existant est conservé.`)
+          );
+          return;
+        }
+        // Sans aucun checkpoint distant, un premier snapshot complet reste
+        // nécessaire pour amorcer la chaîne incrémentale.
       }
     }
 
@@ -4052,7 +4083,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         pulled.payload,
         `restore-nas:${id}`,
         entry.title,
-        { skipConfirm: true, background: true, provider: "nas", report, skipAccountSync: true },
+        { skipConfirm: true, background: true, provider: "nas", report, skipAccountSync: true, legacyStrategy: "authoritative" },
       );
       if (id !== "latest") {
         void apiPost(`/sync/slots/${encodeURIComponent(id)}/restore`, {}, { manual: true, timeoutMs: 8_000 })
@@ -4074,7 +4105,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         pulled.payload,
         `restore-cloud:${slot.id}`,
         entry.title,
-        { skipConfirm: true, background: true, provider: "cloud", report, skipAccountSync: true },
+        { skipConfirm: true, background: true, provider: "cloud", report, skipAccountSync: true, legacyStrategy: "authoritative" },
       );
     });
   };
@@ -4108,7 +4139,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         snapshot,
         `restore-google-drive:${backupId || slot.id}`,
         entry.title,
-        { skipConfirm: true, background: true, provider: "google_drive", report },
+        { skipConfirm: true, background: true, provider: "google_drive", report, legacyStrategy: "authoritative" },
       );
     };
 
@@ -4126,7 +4157,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         payload,
         `restore-local:${slot.id}`,
         entry.title,
-        { skipConfirm: true, background: true, provider: "nas", report, skipAccountSync: true },
+        { skipConfirm: true, background: true, provider: "nas", report, skipAccountSync: true, legacyStrategy: "authoritative" },
       );
     });
   };

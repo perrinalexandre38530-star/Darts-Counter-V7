@@ -38,7 +38,7 @@ import { listActivities, saveActivity } from "../activity/activityStore";
 import { loadRunningRoutes, saveRunningRoutes } from "../activity/runningRoutes";
 import { listRunningSessionDrafts, saveRunningSessionDraft } from "../activity/runningSessionDrafts";
 import { listOutdoorOfflineRoutePacks, prepareOutdoorOfflineRoutePack } from "../activity/outdoorOfflineCache";
-import { recordIncrementalChange, recordIncrementalChangesBatch } from "./incrementalBackupJournal";
+import { recordIncrementalChange, recordIncrementalChangesBatch, withIncrementalRecordingSuppressed } from "./incrementalBackupJournal";
 import { beginBackupPerfStep, recordBackupPerfEvent } from "./backupPerformanceDiagnostics";
 import { isCanonicalBackupArtifact, stageCanonicalBackupArtifact } from "./backup/canonicalBackupArtifact";
 import { buildBackupManifestV2, validateBackupManifestV2 } from "../data/backupManifestV2";
@@ -48,6 +48,7 @@ import {
   portableLocalStorageKeysForDomain,
 } from "../data/dataRegistry";
 import { accountOwnedTeams, mergeAccountTeamsPreservingOrganizations } from "../data/organizationDataBoundary";
+import { resolveCanonicalProfileIdFromAlias } from "../data/identityAliases";
 import {
   clearMediaVaultV2All,
   clearMediaVaultV2ForOwner,
@@ -2655,6 +2656,10 @@ async function loadStoreInternal<T extends Store>(scopeKey: string, runId: numbe
 
 type SaveOpts = {
   skipAsyncNormalize?: boolean;
+  /** Restore/snapshot imports already own media persistence; do not recapture 60+ images. */
+  skipMediaCapture?: boolean;
+  /** Applying a remote/backup state must not create a fresh local delta for every entity. */
+  suppressIncremental?: boolean;
 };
 
 // HIST/BACKUP STABILITY V30 — toutes les écritures du store principal passent
@@ -2677,7 +2682,7 @@ async function saveStoreInternal<T extends Store>(store: T, opts?: SaveOpts): Pr
   // sont répliqués vers R2 sans dépendre du NAS.
   // Sauvegarde locale uniquement à chaque mutation du store. La réplication R2
   // est déclenchée par le pipeline cloud dédié, jamais par un simple rendu/navigation.
-  scheduleStoreUserMediaCapture(guardedInput as any);
+  if (!opts?.skipMediaCapture) scheduleStoreUserMediaCapture(guardedInput as any);
   const startedAt = storageNowMs();
 
   try {
@@ -2759,26 +2764,37 @@ async function saveStoreInternal<T extends Store>(store: T, opts?: SaveOpts): Pr
     await idbSet(storeScopeKey, payload);
     lastSavedStoreJsonByScope.set(storeScopeKey, json);
 
-    // Journal incrémental compact : on ne conserve que la dernière révision de
-    // chaque profil + quelques métadonnées de compte. Aucun snapshot complet ici.
-    try {
-      const journalProfiles = Array.isArray((compat.store as any)?.profiles)
-        ? (compat.store as any).profiles
-        : (Array.isArray((guardedInput as any)?.profiles) ? (guardedInput as any).profiles : []);
-      const changes: any[] = [];
-      for (const profile of journalProfiles) {
-        const id = String((profile as any)?.id || "").trim();
-        if (id) changes.push({ entityType: "profile", entityId: id, payload: profile, updatedAt: Number((profile as any)?.updatedAt || Date.now()) });
+    // Journal incrémental V2 : n'enregistre QUE les entités réellement modifiées.
+    // L'ancien code remettait les 60+ profils dans le journal à chaque saveStore(),
+    // ce qui transformait une modification d'avatar en faux « 60 changements ».
+    if (!opts?.suppressIncremental) try {
+      const previousPersisted: any = prevJson ? safeJsonParse<any>(prevJson, {}) : {};
+      const previousProfiles = new Map<string, any>();
+      for (const profile of Array.isArray(previousPersisted?.profiles) ? previousPersisted.profiles : []) {
+        const id = String(profile?.id || "").trim();
+        if (id) previousProfiles.set(id, profile);
       }
-      changes.push({
-        entityType: "store_meta",
-        entityId: "main",
-        payload: { activeProfileId: (persistedStore as any)?.activeProfileId ?? null },
-        updatedAt: Date.now(),
-      });
-      // Une transaction unique remplace 60+ ouvertures IndexedDB lorsque le
-      // compte contient beaucoup de profils.
-      void recordIncrementalChangesBatch(changes).catch(() => undefined);
+      const nextProfiles = Array.isArray((persistedStore as any)?.profiles) ? (persistedStore as any).profiles : [];
+      const nextIds = new Set<string>();
+      const changes: any[] = [];
+      for (const profile of nextProfiles) {
+        const id = String(profile?.id || "").trim();
+        if (!id) continue;
+        nextIds.add(id);
+        const before = previousProfiles.get(id);
+        if (!before || safeJsonStringify(before) !== safeJsonStringify(profile)) {
+          changes.push({ entityType: "profile", entityId: id, payload: profile, updatedAt: Number((profile as any)?.updatedAt || (profile as any)?.avatarUpdatedAt || Date.now()) });
+        }
+      }
+      for (const id of previousProfiles.keys()) {
+        if (!nextIds.has(id)) changes.push({ entityType: "profile", entityId: id, op: "delete", updatedAt: Date.now() });
+      }
+      const prevActive = previousPersisted?.activeProfileId ?? null;
+      const nextActive = (persistedStore as any)?.activeProfileId ?? null;
+      if (prevActive !== nextActive) {
+        changes.push({ entityType: "store_meta", entityId: "main", payload: { activeProfileId: nextActive }, updatedAt: Date.now() });
+      }
+      if (changes.length) void recordIncrementalChangesBatch(changes).catch(() => undefined);
     } catch {}
     const endedAt = storageNowMs();
     const totalMs = Math.round((endedAt - startedAt) * 10) / 10;
@@ -3971,7 +3987,11 @@ async function revalidatePortableRestoreReport(report: PortableAccountRestoreRep
 
 async function restorePortableAccountData(
   portable: any,
-  opts?: { onProgress?: (progress: number, message: string) => void },
+  opts?: {
+    onProgress?: (progress: number, message: string) => void;
+    /** Explicit Restore: the selected backup owns the personal-account partition. */
+    authoritative?: boolean;
+  },
 ): Promise<PortableAccountRestoreReport | null> {
   if (!portable || typeof portable !== "object") return null;
   const progress = (value: number, message: string) => { try { opts?.onProgress?.(value, message); } catch {} };
@@ -3996,19 +4016,30 @@ async function restorePortableAccountData(
     const current: any = (await loadStore().catch(() => null)) || {};
     const remoteProfiles = effectivePortableProfiles(portable?.profiles);
     const byId = new Map<string, any>();
-    for (const profile of Array.isArray(current?.profiles) ? current.profiles : []) {
-      const id = String(profile?.id || "").trim();
-      if (id) byId.set(id, profile);
+    if (!opts?.authoritative) {
+      for (const profile of Array.isArray(current?.profiles) ? current.profiles : []) {
+        const id = String(profile?.id || "").trim();
+        if (id) byId.set(id, profile);
+      }
     }
     for (const remote of remoteProfiles) {
       const id = String(remote?.id || "").trim();
       if (!id) continue;
-      byId.set(id, mergePortableProfile(byId.get(id) || {}, remote));
+      byId.set(id, opts?.authoritative ? remote : mergePortableProfile(byId.get(id) || {}, remote));
     }
+    const restoredProfiles = Array.from(byId.values());
+    const restoredProfileIds = new Set(restoredProfiles.map((profile: any) => String(profile?.id || "").trim()).filter(Boolean));
+    const requestedActiveId = String(portable?.activeProfileId || "").trim();
+    const currentActiveId = String(current?.activeProfileId || "").trim();
+    const restoredActiveId = requestedActiveId && restoredProfileIds.has(requestedActiveId)
+      ? requestedActiveId
+      : currentActiveId && restoredProfileIds.has(currentActiveId)
+        ? currentActiveId
+        : String((restoredProfiles[0] as any)?.id || "").trim() || null;
     let mergedStore: any = {
       ...(current || {}),
-      profiles: Array.from(byId.values()),
-      activeProfileId: portable?.activeProfileId || current?.activeProfileId || null,
+      profiles: restoredProfiles,
+      activeProfileId: restoredActiveId,
     };
     if (Array.isArray(portable?.bots)) mergedStore.bots = portable.bots;
     if (Array.isArray(portable?.dartSets)) mergedStore.dartSets = portable.dartSets;
@@ -4032,7 +4063,12 @@ async function restorePortableAccountData(
     const hydrated = await hydrateStoreUserMedia(mergedStore, { allowRemote: false }).catch(() => ({ store: mergedStore, changed: false }));
     mergedStore = hydrated?.store || mergedStore;
     restoredDartSetsForRuntime = Array.isArray(mergedStore?.dartSets) ? mergedStore.dartSets : null;
-    await saveStore(mergedStore as any, { skipAsyncNormalize: true });
+    // Diff local : si le store correspond déjà au backup, aucune recompression /
+    // réécriture IndexedDB n'est faite. Sinon une seule écriture batch remplace
+    // les dizaines de saveStore() de l'ancien restore.
+    if (safeJsonStringify(current) !== safeJsonStringify(mergedStore)) {
+      await saveStore(mergedStore as any, { skipAsyncNormalize: true, skipMediaCapture: true, suppressIncremental: true });
+    }
     progress(34, "Profils restaurés. Activation des collections…");
   } catch (error) {
     recordError("portable account store restore failed", error);
@@ -4040,12 +4076,18 @@ async function restorePortableAccountData(
   finishPortableStorePerf({ ok: report.errors.length === 0, count: Number(report.expected.profiles || 0) });
 
   try {
-    if (Array.isArray(portable?.bots)) restoreBotsFromSnapshot(portable.bots as any[]);
+    if (Array.isArray(portable?.bots) && safeJsonStringify(loadStoredBots()) !== safeJsonStringify(portable.bots)) {
+      restoreBotsFromSnapshot(portable.bots as any[]);
+    }
   } catch (error) { recordError("portable bots restore failed", error); }
   progress(45, "Bots restaurés. Activation des dartsets…");
   try {
-    if (Array.isArray(restoredDartSetsForRuntime)) replaceAllDartSets(restoredDartSetsForRuntime as any[]);
-    else if (Array.isArray(portable?.dartSets)) replaceAllDartSets(portable.dartSets as any[]);
+    const incomingDartSets = Array.isArray(restoredDartSetsForRuntime)
+      ? restoredDartSetsForRuntime
+      : (Array.isArray(portable?.dartSets) ? portable.dartSets : null);
+    if (incomingDartSets && safeJsonStringify(getAllDartSets()) !== safeJsonStringify(incomingDartSets)) {
+      replaceAllDartSets(incomingDartSets as any[]);
+    }
   } catch (error) { recordError("portable dartsets restore failed", error); }
   progress(58, "Dartsets restaurés. Activation des équipes…");
   const finishPortableTeamsPerf = beginBackupPerfStep("restore", "portable-teams", { operationId: portableOperationId });
@@ -4066,7 +4108,11 @@ async function restorePortableAccountData(
       const hydratedTeams = await hydrateStoreUserMedia({ teams: portableTeamsWithMedia }, { allowRemote: false })
         .then((result) => Array.isArray(result?.store?.teams) ? result.store.teams : portableTeamsWithMedia)
         .catch(() => portableTeamsWithMedia);
-      saveStoredTeams(mergeAccountTeamsPreservingOrganizations(loadStoredTeams(), hydratedTeams as any[]));
+      const currentTeams = loadStoredTeams();
+      const nextTeams = mergeAccountTeamsPreservingOrganizations(currentTeams, hydratedTeams as any[]);
+      if (safeJsonStringify(currentTeams) !== safeJsonStringify(nextTeams)) {
+        await withIncrementalRecordingSuppressed(async () => { saveStoredTeams(nextTeams); });
+      }
     }
   } catch (error) { recordError("portable teams restore failed", error); }
   finishPortableTeamsPerf({ ok: true, count: Array.isArray(portable?.teams) ? portable.teams.length : 0 });
@@ -4353,9 +4399,15 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
             if (total > 0) report(87 + Math.round((completed / total) * 3), `Archivage Media Vault V2 : ${completed}/${total}`);
           },
         });
-        if (mediaVaultV2.summary.integrityErrors.length > 0 || mediaVaultV2.summary.missingRequiredRefs.length > 0) {
+        // Une référence média ancienne/manquante ne doit plus empêcher la sauvegarde
+        // de TOUTES les données du compte. On la signale dans le Manifest comme
+        // sauvegarde dégradée. En revanche un SHA/asset réellement corrompu reste fatal.
+        if (mediaVaultV2.summary.missingRequiredRefs.length > 0) {
+          console.warn(`[storage] Media Vault V2 dégradé : ${mediaVaultV2.summary.missingRequiredRefs.length} référence(s) média absente(s). Les données principales restent sauvegardables.`);
+        }
+        if (mediaVaultV2.summary.integrityErrors.length > 0) {
           const err: any = new Error(
-            `Media Vault V2 incomplet : ${mediaVaultV2.summary.missingRequiredRefs.length} référence(s) manquante(s), ${mediaVaultV2.summary.integrityErrors.length} erreur(s) d’intégrité.`,
+            `Media Vault V2 corrompu : ${mediaVaultV2.summary.integrityErrors.length} erreur(s) d’intégrité.`,
           );
           err.code = "MEDIA_VAULT_V2_INTEGRITY";
           throw err;
@@ -4472,13 +4524,19 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
     if ((dump as any)?.mediaVaultV2 || (dump as any)?.media_vault_v2) {
       report(0, "Contrôle d’intégrité Media Vault V2…");
       const requiredMediaKeys = collectRequiredMediaKeysFromSnapshot(dump);
+      const presentRefs = (dump as any)?.mediaVaultV2?.refs && typeof (dump as any).mediaVaultV2.refs === "object"
+        ? new Set(Object.keys((dump as any).mediaVaultV2.refs))
+        : new Set<string>();
+      const requiredPresent = requiredMediaKeys.filter((key) => presentRefs.has(key));
+      const missingRequired = requiredMediaKeys.filter((key) => !presentRefs.has(key));
       const mediaValidation = await validateMediaVaultV2Snapshot(dump, {
         ownerUserId: String(getStorageUser() || "").trim() || null,
-        requiredKeys: requiredMediaKeys,
+        requiredKeys: requiredPresent,
       });
       if (!mediaValidation.ok) {
         throw new Error(`Media Vault V2 invalide : ${mediaValidation.errors.slice(0, 8).join(" ")}`);
       }
+      if (missingRequired.length) console.warn(`[storage] Restore Media Vault V2 dégradé : ${missingRequired.length} référence(s) optionnelle(s) absente(s).`);
     }
 
     if (mode === "replace") {
@@ -4580,6 +4638,7 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
       (dump as any)?.portableAccountData || (dump as any)?.portable_account_data || null,
       {
         onProgress: (value, message) => report(80 + Math.round(Math.max(0, Math.min(100, value)) * 0.07), message),
+        authoritative: mode !== "merge",
       },
     );
     finishPortablePerf({ ok: portableReport?.ok !== false, count: Number(portableReport?.restored?.profiles || 0), detail: portableReport?.errors?.length ? `${portableReport.errors.length} avertissement(s)` : undefined });
@@ -4618,7 +4677,9 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
     const hydratedDartSets = await hydrateStoreUserMedia({ dartSets: canonical }, { allowRemote: false })
       .then((result) => Array.isArray(result?.store?.dartSets) ? result.store.dartSets : canonical)
       .catch(() => canonical);
-    writeDartSetsToLocalStorage(hydratedDartSets);
+    if (safeJsonStringify(getAllDartSets()) !== safeJsonStringify(hydratedDartSets)) {
+      writeDartSetsToLocalStorage(hydratedDartSets);
+    }
     await yieldIfNeeded(true);
   }
   if (activeId) writeActiveDartSetIdToLocalStorage(activeId);
@@ -4626,7 +4687,9 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
   const { bots } = extractBotsFromSnapshot(dump);
   if (Array.isArray(bots)) {
     try {
-      restoreBotsFromSnapshot(bots as any[]);
+      if (safeJsonStringify(loadStoredBots()) !== safeJsonStringify(bots)) {
+        restoreBotsFromSnapshot(bots as any[]);
+      }
     } catch (e) {
       console.warn("[storage] restore bots from snapshot failed", e);
     }
@@ -4642,7 +4705,11 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
       const hydratedTeams = await hydrateStoreUserMedia({ teams: sourceTeams }, { allowRemote: false })
         .then((result) => Array.isArray(result?.store?.teams) ? result.store.teams : sourceTeams)
         .catch(() => sourceTeams);
-      saveStoredTeams(mergeAccountTeamsPreservingOrganizations(loadStoredTeams(), hydratedTeams as any[]));
+      const beforeTeams = loadStoredTeams();
+      const afterTeams = mergeAccountTeamsPreservingOrganizations(beforeTeams, hydratedTeams as any[]);
+      if (safeJsonStringify(beforeTeams) !== safeJsonStringify(afterTeams)) {
+        saveStoredTeams(afterTeams);
+      }
       try { window.dispatchEvent(new Event("dc-teams-updated")); } catch {}
       try { window.dispatchEvent(new Event("dc:teams-changed")); } catch {}
     } catch (e) {
@@ -4748,20 +4815,37 @@ async function normalizeLocalProfilesInStore(): Promise<void> {
     }
   }
 
-  // 3) Ne pas dédoublonner agressivement par signature : deux profils locaux
-  // peuvent avoir le même nom/pays ou perdre temporairement leur avatar pendant
-  // la migration média. On garde donc uniquement le dédoublonnage par id.
-  const cleaned = Array.from(byId.values());
+  // 3) Ne jamais fusionner par signature/nom. En revanche, WAVE 2 nous donne
+  // une preuve forte pour les anciens profils techniques : si leur id est un
+  // alias explicite d'un profil canonique déjà présent, on peut retirer cette
+  // fiche technique sans toucher aux parties historiques qui gardent leur id.
+  const dedupedById = Array.from(byId.values());
+  const accountUserId = String(getStorageUser() || "").trim() || null;
+  const canonicalIds = new Set(dedupedById.map((p: any) => String(p?.id || "").trim()).filter(Boolean));
+  const cleaned = dedupedById.filter((p: any) => {
+    const pid = String(p?.id || "").trim();
+    if (!pid) return false;
+    const resolved = resolveCanonicalProfileIdFromAlias(pid, accountUserId);
+    return !(resolved && resolved !== pid && canonicalIds.has(resolved));
+  });
 
-  // 4) sécurise l'activeProfileId
-  const activeId = String(store?.activeProfileId ?? "");
-  if (activeId && !cleaned.some((p) => String(p?.id) === activeId)) {
+  // 4) sécurise l'activeProfileId et remappe un ancien alias technique vers son
+  // canonique si celui-ci vient d'être restauré.
+  const activeId = String(store?.activeProfileId ?? "").trim();
+  const resolvedActiveId = activeId ? resolveCanonicalProfileIdFromAlias(activeId, accountUserId) : "";
+  if (resolvedActiveId && cleaned.some((p: any) => String(p?.id || "") === resolvedActiveId)) {
+    store.activeProfileId = resolvedActiveId;
+  } else if (activeId && !cleaned.some((p) => String(p?.id) === activeId)) {
     store.activeProfileId = cleaned[0]?.id ?? null;
   }
 
   store.profiles = cleaned;
 
   const outTxt = safeJsonStringify(store);
+  if (outTxt === txt) {
+    writeProfilesSafetyCache(store);
+    return;
+  }
   const scopedKey = scopedStorageKey(STORE_KEY);
   const outRaw = await persistPayloadForKey(scopedKey, outTxt);
   await idbSet(scopedKey, outRaw);
