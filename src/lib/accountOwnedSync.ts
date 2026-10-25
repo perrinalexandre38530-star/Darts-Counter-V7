@@ -45,6 +45,8 @@ import {
 } from "./userMediaFallback";
 import { ACCOUNT_LOCAL_STORAGE_MUTATION_EVENT } from "./storage";
 import { accountScopedLocalStorageKey } from "./accountScope";
+import { collectCanonicalEntityMediaRefs } from "../data/canonicalEntityStores";
+import { accountOwnedTeams, mergeAccountTeamsPreservingOrganizations } from "../data/organizationDataBoundary";
 
 export const ACCOUNT_OWNED_STORE_MUTATED_EVENT = "dc:account-owned-store-mutated";
 export const ACCOUNT_OWNED_SYNC_STATUS_EVENT = "dc:account-owned-sync-status";
@@ -321,7 +323,7 @@ function serializeBots(): any[] {
 }
 
 function serializeTeams(): any[] {
-  return loadTeams().map((team: any) => {
+  return accountOwnedTeams(loadTeams()).map((team: any) => {
     const logo = cleanId(team?.logoDataUrl || team?.logoUrl || team?.avatarUrl || team?.imageUrl);
     const cover = cleanId(team?.coverDataUrl || team?.coverUrl);
     const row = cloudSafe(team) || {};
@@ -671,7 +673,11 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
   let lastTransientNoticeAt = 0;
   let pollTimer: number | null = null;
 
-  const remotePaused = () => Date.now() < remotePausedUntil || isSupabaseRestCircuitOpen();
+  const restoreInProgress = () => {
+    try { return typeof sessionStorage !== "undefined" && sessionStorage.getItem("dc_cloud_restore_in_progress_v2") === "1"; }
+    catch { return false; }
+  };
+  const remotePaused = () => restoreInProgress() || Date.now() < remotePausedUntil || isSupabaseRestCircuitOpen();
   const pauseRemote = (error: any, action: string) => {
     const retryMs = Math.max(20_000, supabaseRestRetryAfterMs() || 0);
     remotePausedUntil = Math.max(remotePausedUntil, Date.now() + retryMs);
@@ -822,8 +828,12 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
   const applyTeamsPayload = async (payload: any) => {
     const rows = collectionPayloadItems(payload);
     if (!rows) return;
-    const hydrated = await hydrateTeams(rows);
-    saveTeams(hydrated as TeamEntity[]);
+    // WAVE 8 : les anciens documents `teams` peuvent encore contenir des
+    // projections Organisation. Elles ne sont jamais adoptées depuis le canal
+    // privé du compte. Les projections locales existantes sont préservées.
+    const privateRows = accountOwnedTeams(rows);
+    const hydrated = await hydrateTeams(privateRows);
+    saveTeams(mergeAccountTeamsPreservingOrganizations(loadTeams(), hydrated as TeamEntity[]));
   };
 
   const applyGalleryPayload = async (payload: any) => {
@@ -909,7 +919,7 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     });
 
     setRevision(type, id, remoteTs || Date.now());
-    signatures.set(revisionKey(type, id), fingerprint(row.payload));
+    signatures.set(revisionKey(type, id), fingerprint(type === DOC.teams ? accountOwnedTeams(collectionPayloadItems(row.payload) || []) : row.payload));
     emitStatus({ state: "synced", direction: "down", type, id, at: remoteTs || Date.now() });
   };
 
@@ -917,6 +927,7 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     type: DocumentType,
     getLocal: () => any[] | Promise<any[]>,
     applyMerged: (payload: any[]) => void | Promise<void>,
+    sanitizeRemote: (payload: any[]) => any[] = (payload) => payload,
   ) => {
     if (stopped || tableUnavailable || remotePaused()) return;
     const localPayload = await getLocal();
@@ -926,7 +937,9 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
       await pushDocument(type, localPayload);
       return;
     }
-    const remotePayload = Array.isArray(remote.payload) ? remote.payload : remote?.payload?.items || [];
+    const remotePayloadRaw = Array.isArray(remote.payload) ? remote.payload : remote?.payload?.items || [];
+    const remotePayload = sanitizeRemote(remotePayloadRaw);
+    const remotePayloadWasSanitized = fingerprint(remotePayloadRaw) !== fingerprint(remotePayload);
     const localRevision = getRevision(type);
     const remoteRevision = Number(remote.client_updated_at || 0) || toTimestamp(remote.updated_at);
 
@@ -941,8 +954,10 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     await runRemoteApply(() => applyMerged(merged));
     setRevision(type, DEFAULT_DOCUMENT_ID, remoteRevision || Date.now());
     signatures.set(revisionKey(type), fingerprint(merged));
-    if (fingerprint(merged) !== fingerprint(remotePayload)) {
-      // L'union a ajouté des objets locaux absents du compte : les rattacher.
+    if (remotePayloadWasSanitized || fingerprint(merged) !== fingerprint(remotePayload)) {
+      // L'union a ajouté des objets locaux absents du compte, ou WAVE 8 a
+      // retiré d'anciens objets Organisation du document privé : réécrire
+      // immédiatement la version strictement account-owned.
       await pushDocument(type, merged);
     }
   };
@@ -1037,7 +1052,10 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     if (existing != null) window.clearTimeout(existing);
     const timer = window.setTimeout(() => {
       localTimers.delete(key);
-      if (stopped || remoteApplyDepth > 0) return;
+      // Le timer a pu être armé juste AVANT le début d'une restauration.
+      // Revalider le verrou au moment réel de l'exécution évite qu'un ancien
+      // état local parte vers Supabase pendant l'import transactionnel.
+      if (stopped || remoteApplyDepth > 0 || remotePaused()) return;
       void fn().catch((error) => console.warn(`[account-sync] local push ${key} failed`, error));
     }, delay);
     localTimers.set(key, timer);
@@ -1229,7 +1247,7 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
 
     await syncCollection(DOC.profiles, () => serializeProfiles(options.getProfiles(), userId), applyProfilesPayload);
     await syncCollection(DOC.bots, () => serializeBots(), applyBotsPayload);
-    await syncCollection(DOC.teams, () => serializeTeams(), applyTeamsPayload);
+    await syncCollection(DOC.teams, () => serializeTeams(), applyTeamsPayload, (rows) => accountOwnedTeams(rows));
     await syncCollection(DOC.gallery, () => serializeGallery(userId), applyGalleryPayload);
     await syncCollection(DOC.dartSets, () => serializeDartSets(), applyDartSetsPayload);
 
@@ -1316,16 +1334,8 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
       const id = cleanId(profile?.id);
       if (id) keys.add(profileAvatarMediaKey(id));
     }
-    for (const bot of loadBots()) {
-      if (!bot || isOfficialBotId(bot?.id) || bot?.systemBot) continue;
-      const id = cleanId(bot?.id);
-      if (id) keys.add(botAvatarMediaKey(id));
-    }
-    for (const team of loadTeams()) {
-      const id = cleanId(team?.id);
-      if (!id) continue;
-      keys.add(cleanId((team as any)?.logoMediaKey) || teamLogoMediaKey(id));
-      keys.add(cleanId((team as any)?.coverMediaKey) || teamCoverMediaKey(id));
+    for (const ref of collectCanonicalEntityMediaRefs({ bots: loadBots(), dartSets: getAllDartSets(), teams: accountOwnedTeams(loadTeams()) })) {
+      keys.add(ref.mediaKey);
     }
     for (const item of readAvatarGallery(userId)) {
       const id = cleanId((item as any)?.id || (item as any)?.hash);
@@ -1340,12 +1350,6 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
         }
       }
     } catch {}
-    for (const set of getAllDartSets()) {
-      const id = cleanId((set as any)?.id);
-      if (!id) continue;
-      keys.add(cleanId((set as any)?.r2MainMediaKey) || dartSetMainMediaKey(id));
-      keys.add(cleanId((set as any)?.r2ThumbMediaKey) || dartSetThumbMediaKey(id));
-    }
     return new Set(Array.from(keys).filter(Boolean));
   };
 
@@ -1360,8 +1364,8 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
         profiles: options.getProfiles(),
         bots: loadBots(),
         dartSets: getAllDartSets(),
-        teams: loadTeams(),
-      }, { mirrorR2: false });
+        teams: accountOwnedTeams(loadTeams()),
+      }, { mirrorR2: false, mirrorAccount: false });
       // Les snapshots Drive/NAS/SD peuvent contenir un média uniquement dans le
       // coffre IndexedDB séparé. On republie uniquement les médias réellement
       // rattachés au compte courant (plus les petits médias Organisation), jamais
@@ -1369,7 +1373,7 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
       const referencedKeys = collectReferencedAccountMediaKeys();
       const mirrored = await mirrorAllLocalUserMediaToAccountR2({
         keys: referencedKeys,
-        kinds: ["club_logo", "club_cover", "group_avatar", "group_cover", "avatar_ai_gallery", "team_logo", "team_cover"],
+        kinds: ["avatar_ai_gallery", "team_logo", "team_cover"],
         concurrency: 1,
       });
       if (mirrored.failed) throw new Error(`R2 Account Media : ${mirrored.failed} média(s) non synchronisé(s).`);
@@ -1411,6 +1415,9 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
   const onForceSync = (event: Event) => {
     const detail: any = (event as CustomEvent)?.detail || {};
     if (detail?.userId && cleanId(detail.userId) !== userId) return;
+    // Les CustomEvent contournaient auparavant le garde du bridge global.
+    // Pendant un restore, aucune réplication distante ne doit partir.
+    if (remotePaused()) return;
     void forcePushAllLocalToAccount(cleanId(detail?.reason) || "external").catch((error) => console.warn("[account-sync] forced sync failed", error));
   };
   const onStatsIndexUpdated = () => scheduleLocalPush(DOC.statsIndex, pushStatsIndex, 650);
@@ -1468,6 +1475,7 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
   const globalForceSync = async (detail?: any) => {
     const requestedUserId = cleanId(detail?.userId);
     if (requestedUserId && requestedUserId !== userId) return false;
+    if (restoreInProgress()) return false;
     await forcePushAllLocalToAccount(cleanId(detail?.reason) || "global-bridge");
     return true;
   };

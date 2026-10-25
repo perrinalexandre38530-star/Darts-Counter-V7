@@ -8,7 +8,7 @@
 // - Compression : LZString (UTF-16) sur le champ payload → stocké en payloadCompressed
 // - Fallback : localStorage si IDB indispo (compact, sans payload)
 // - Migration auto depuis l’ancien localStorage KEY = "dc-history-v1"
-// - Trim auto à MAX_ROWS
+// - WAVE 0: aucune purge automatique de l'historique canonique
 // ✅ FIX CRITICAL: legacy LSK peut être JSON OU LZString UTF16 (et parfois base64-ish) -> parse robuste
 // ✅ FIX CRITICAL: 1 match MULTI = 1 record (dédoublonnage list + id canonique upsert)
 // ✅ PATCH (CRITICAL): NE JAMAIS JSON.parse un payload non maîtrisé (safeJsonParse partout)
@@ -101,6 +101,17 @@ import { beginFreezeOperation, endFreezeOperation, recordFreezeWatchEvent, saveF
 import { recordIncrementalChange } from "./incrementalBackupJournal";
 import { flushIncrementalRemoteSyncForProvider } from "./incrementalRemoteSync";
 import { recordStatsDiagnosticEvent } from "./statsDiagnosticsTrace";
+import {
+  ensureHistoryV4Stores,
+  ensureHistoryV4Backfill,
+  upsertCanonicalHistoryV4,
+  tombstoneCanonicalHistoryV4,
+  tombstoneAllCanonicalHistoryV4,
+  reviveCanonicalHistoryV4,
+  listCanonicalHistoryV4,
+  getCanonicalHistoryV4,
+  historyV4Diagnostics,
+} from "./historyV4";
 
 // ✅ Resume index (localStorage) — permet "Reprendre partie" multi-modes
 // Évite la dépendance circulaire avec src/lib/resume.ts (qui importe History)
@@ -743,12 +754,15 @@ function historyDbName(): string {
     return HISTORY_DB_BASE;
   }
 }
-const DB_VER = 3; // ⬅ split header/detail stores
+const DB_VER = 4; // WAVE 6: split legacy + canonical History V4 stores
 const STORE_LEGACY = "history";
 const STORE_HEADERS = "history_headers";
 const STORE_DETAILS = "history_details";
 const STORE = STORE_HEADERS;
-const MAX_ROWS = 400;
+// WAVE 0 DATA GUARD: l'historique canonique est append-only jusqu'à la migration History V4.
+// MAX_CACHE_ROWS ne concerne que le cache UI léger et peut rester borné.
+const HISTORY_DESTRUCTIVE_TRIM_ENABLED = false;
+const MAX_ROWS = Number.MAX_SAFE_INTEGER;
 const MAX_CACHE_ROWS = 400;
 const HISTORY_UI_CACHE_KEY = "dc-history-ui-cache-v1";
 const HISTORY_UI_CACHE_VERSION = 1;
@@ -866,7 +880,11 @@ export function reviveForExplicitImport(recOrId: any): number {
       typeof recOrId === "string"
         ? [String(recOrId)]
         : getAllCandidateIdsForDeletion(recOrId);
-    return unmarkHistoryDeletedIds(ids);
+    const revived = unmarkHistoryDeletedIds(ids);
+    // History V4 keeps durable tombstones in IndexedDB. Explicit/manual import
+    // is the only path allowed to revive them.
+    void reviveCanonicalHistoryV4(ids).catch(() => {});
+    return revived;
   } catch {
     return 0;
   }
@@ -1721,6 +1739,9 @@ function openDB(): Promise<IDBDatabase> {
             details.createIndex("by_updatedAt", "updatedAt", { unique: false });
           } catch {}
         }
+
+        // WAVE 6: the DB version must never reach 4 without all canonical stores.
+        ensureHistoryV4Stores(db, req.transaction);
       } catch (e) {
         console.warn("[history] onupgradeneeded error:", e);
       }
@@ -3377,6 +3398,9 @@ async function _readRowsLightFromIdb(): Promise<SavedMatch[]> {
 type _TrimRow = { id: string; updatedAt?: number; createdAt?: number; status?: string; conflictOf?: string | null };
 
 function _computeTrimIds(rows: _TrimRow[], keepIds: string[] = []): string[] {
+  // Ne jamais supprimer automatiquement une partie utilisateur. Les anciennes
+  // limites à 400 étaient incompatibles avec les statistiques lifetime.
+  if (!HISTORY_DESTRUCTIVE_TRIM_ENABLED) return [];
   const uniqKeep = new Set((keepIds || []).filter(Boolean).map(String));
   if (!Array.isArray(rows) || rows.length <= MAX_ROWS) return [];
 
@@ -4352,6 +4376,7 @@ export async function upsert(rec: SavedMatch): Promise<void> {
       payloadCompressed = payloadStr ? LZString.compressToUTF16(payloadStr) : "";
     }
 
+    const v4SupersededIds: string[] = [];
     await withStores([STORE_HEADERS, STORE_DETAILS], "readwrite", async (stores) => {
       const headers = stores[STORE_HEADERS];
       const details = stores[STORE_DETAILS];
@@ -4473,6 +4498,9 @@ export async function upsert(rec: SavedMatch): Promise<void> {
           });
 
           for (const key of staleKeys) {
+            // Legacy mirrors can still be physically cleaned during the transition,
+            // but the canonical V4 record is never erased: it receives a tombstone.
+            v4SupersededIds.push(String(key));
             try { headers.delete(key); } catch {}
             try { details.delete(key); } catch {}
             try { _resumeIndexRemove(String(key)); } catch {}
@@ -4496,6 +4524,13 @@ export async function upsert(rec: SavedMatch): Promise<void> {
         detailReq.onerror = () => reject(detailReq.error);
       });
     });
+
+    // WAVE 6 canonical write. The legacy stores above remain a compatibility
+    // mirror for UI/readers while History V4 becomes the authority used by stats/backups.
+    await upsertCanonicalHistoryV4({ ...safe, payload: payloadEffective }, payloadCompressed);
+    if (v4SupersededIds.length) {
+      await tombstoneCanonicalHistoryV4(v4SupersededIds, "superseded_by_finished_match").catch(() => {});
+    }
 
     invalidateHistoryListReadCache();
 
@@ -4675,7 +4710,10 @@ export async function upsert(rec: SavedMatch): Promise<void> {
         }
       } catch {}
       rows.unshift(trimmed);
-      while (rows.length > 120) rows.pop();
+      // WAVE 0 DATA GUARD: l'ancien fallback supprimait silencieusement toute
+      // partie au-delà de 120 lignes. On tente désormais de conserver l'ensemble
+      // du fallback ; si le quota est insuffisant, writeLegacyRowsSafe échoue
+      // explicitement au lieu de sacrifier des parties plus anciennes.
       const fallbackTarget = writeLegacyRowsSafe(rows);
       invalidateHistoryListReadCache();
       if (fallbackTarget === "none") {
@@ -4937,6 +4975,9 @@ function clearDartSetStatsRenderCaches(): void {
 
 export async function remove(id: string): Promise<void> {
   await migrateFromLocalStorageOnce();
+  // Backfill BEFORE touching the legacy mirrors so a deletion can never erase
+  // the only remaining copy of an old match.
+  await ensureHistoryV4Backfill().catch(() => ({ migrated: 0, active: 0 }));
 
   const wanted = String(id || "").trim();
   if (!wanted) return;
@@ -5008,6 +5049,9 @@ export async function remove(id: string): Promise<void> {
       });
     });
 
+    // Canonical History V4 is non-destructive: deletions are durable tombstones.
+    await tombstoneCanonicalHistoryV4(idsToDelete, "user_delete").catch(() => {});
+
     invalidateHistoryListReadCache();
 
     try {
@@ -5058,6 +5102,7 @@ export async function remove(id: string): Promise<void> {
     scheduleCloudSnapshotPush("history:remove");
     try { emitCloudChange("history:remove"); } catch {}
   } catch {
+    await tombstoneCanonicalHistoryV4([wanted], "user_delete_fallback").catch(() => {});
     try {
       const rows = readLegacyRowsSafe() as any[];
       const out = rows.filter((r) => {
@@ -5085,6 +5130,10 @@ export async function remove(id: string): Promise<void> {
 
 export async function clear(): Promise<void> {
   await migrateFromLocalStorageOnce();
+
+  // Preserve the full canonical dataset and mark every active row deleted.
+  await ensureHistoryV4Backfill().catch(() => ({ migrated: 0, active: 0 }));
+  await tombstoneAllCanonicalHistoryV4("user_clear").catch(() => 0);
 
   try {
     await withStores([STORE_HEADERS, STORE_DETAILS], "readwrite", (stores) => {
@@ -5421,6 +5470,22 @@ export async function getX01(id: string): Promise<SavedMatch | null> {
   return r && r.kind === "x01" ? r : null;
 }
 
+export async function listCanonicalForStats(): Promise<SavedMatch[]> {
+  const rows = await listCanonicalHistoryV4({ hydratePayload: true, includeDeleted: false });
+  return rows
+    .filter(isHistoryRowUsable)
+    .map((row: any) => normalizeHistoryRow(row)) as SavedMatch[];
+}
+
+export async function getCanonicalV4(id: string): Promise<SavedMatch | null> {
+  const row = await getCanonicalHistoryV4(id, { hydratePayload: true, includeDeleted: false });
+  return row ? (normalizeHistoryRow(row) as SavedMatch) : null;
+}
+
+export async function getHistoryV4Diagnostics() {
+  return historyV4Diagnostics();
+}
+
 export const ACCOUNT_HISTORY_LOCAL_CHANGE_EVENT = "dc:account-history-local-change";
 
 function dispatchAccountHistoryLocalChange(detail: any): void {
@@ -5473,6 +5538,9 @@ export const History = {
   },
   get,
   getAll,
+  listCanonicalForStats,
+  getCanonicalV4,
+  getHistoryV4Diagnostics,
   reviveForExplicitImport,
   async upsert(rec: SavedMatch) {
     const isLive = _isInProgressRecord(rec) && !(rec as any)?.__forceFullInProgress;

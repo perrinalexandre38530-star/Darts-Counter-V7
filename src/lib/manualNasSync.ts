@@ -484,7 +484,32 @@ async function flushRuntimeStoreBeforeNasPush() {
   }
 }
 
+
+/** WAVE 7 — transport NAS d'un artefact déjà construit et validé.
+ * Aucun nouvel export n'est effectué ici : le NAS reçoit exactement le même
+ * conteneur logique que Local/Drive/R2/fichier.
+ */
+export async function pushNasPreparedArtifact(payload: any, summary: Record<string, any> = {}) {
+  const api = await getOnlineApi();
+  const startedAt = Date.now();
+  const res = await api.pushStoreSnapshot(payload as any, Number(payload?._v || 1), { force: true, reason: "canonical-backup-artifact-v1" });
+  try { localStorage.setItem(LAST_PUSH_KEY, new Date().toISOString()); } catch {}
+  clearNasSyncDirty();
+  return {
+    ...(res || {}),
+    artifactId: String(payload?.artifactId || ""),
+    payloadSha256: String(payload?.payloadSha256 || ""),
+    summary: { ...(summary || {}), durationMs: Date.now() - startedAt, packedBytes: Number(payload?.packedBytes || 0) },
+  };
+}
+
 export async function pushNasAccountSnapshot() {
+  const { buildCanonicalBackupArtifact } = await import("./backup/backupEngineV1");
+  const built = await buildCanonicalBackupArtifact();
+  return pushNasPreparedArtifact(built.artifact, built.summary);
+}
+
+export async function pushNasAccountSnapshotLegacy() {
   const { loadStore, saveStore, exportCloudSnapshot } = await getStorage();
   
   const { uploadStoreMediaAssets, hydrateStoreMediaUrls } = mediaSync;

@@ -11,6 +11,7 @@
 // ============================================
 
 import type { Profile } from "./types";
+import { registerCanonicalIdentity, resolveCanonicalProfileIdFromAlias } from "../data/identityAliases";
 
 const ACCOUNT_PROFILE_BINDING_PREFIX = "dc_account_profile_binding_v16:";
 const AUTH_SESSION_KEY = "dc_online_auth_supabase_v1";
@@ -76,7 +77,19 @@ export function bindCanonicalAccountProfileId(accountUserId: any, profileId: any
   const pid = cleanId(profileId);
   const key = bindingKey(uid);
   if (!key || !pid || typeof localStorage === "undefined") return pid;
-  try { localStorage.setItem(key, pid); } catch {}
+  try {
+    if (cleanId(localStorage.getItem(key)) !== pid) localStorage.setItem(key, pid);
+  } catch {}
+  // WAVE 2 : le binding historique compte -> joueur alimente aussi le registre
+  // d'alias. Cela ne fusionne aucun profil et ne modifie jamais un alias déjà
+  // rattaché à un autre profil canonique.
+  try {
+    registerCanonicalIdentity({
+      accountUserId: uid,
+      canonicalProfileId: pid,
+      accountIds: [uid],
+    });
+  } catch {}
   return pid;
 }
 
@@ -118,7 +131,8 @@ export function getCanonicalAccountProfileFromStore(store: any, accountUserId?: 
   if (uid) {
     const boundId = getBoundAccountProfileId(uid);
     if (boundId) {
-      const bound = list.find((profile: any) => cleanId(profile?.id) === boundId && isHumanProfile(profile));
+      const resolvedBoundId = resolveCanonicalProfileIdFromAlias(boundId, uid) || boundId;
+      const bound = list.find((profile: any) => cleanId(profile?.id) === resolvedBoundId && isHumanProfile(profile));
       if (bound) return bound as Profile;
     }
 
@@ -138,7 +152,8 @@ export function getCanonicalAccountProfileFromStore(store: any, accountUserId?: 
 
   const activeId = cleanId(store?.activeProfileId);
   if (activeId) {
-    const exact = list.find((profile: any) => cleanId(profile?.id) === activeId && isHumanProfile(profile));
+    const resolvedActiveId = resolveCanonicalProfileIdFromAlias(activeId, uid) || activeId;
+    const exact = list.find((profile: any) => cleanId(profile?.id) === resolvedActiveId && isHumanProfile(profile));
     if (exact) return exact as Profile;
   }
 
@@ -165,11 +180,20 @@ export function lockCanonicalAccountProfileForStore(
   if (!list.length) return "";
 
   const boundId = getBoundAccountProfileId(uid);
-  if (boundId && list.some((profile: any) => cleanId(profile?.id) === boundId)) return boundId;
+  if (boundId) {
+    const resolvedBoundId = resolveCanonicalProfileIdFromAlias(boundId, uid) || boundId;
+    if (list.some((profile: any) => cleanId(profile?.id) === resolvedBoundId)) {
+      if (resolvedBoundId !== boundId) bindCanonicalAccountProfileId(uid, resolvedBoundId);
+      return resolvedBoundId;
+    }
+  }
 
   const preferred = cleanId(preferredProfileId);
-  if (preferred && list.some((profile: any) => cleanId(profile?.id) === preferred)) {
-    return bindCanonicalAccountProfileId(uid, preferred);
+  if (preferred) {
+    const resolvedPreferred = resolveCanonicalProfileIdFromAlias(preferred, uid) || preferred;
+    if (list.some((profile: any) => cleanId(profile?.id) === resolvedPreferred)) {
+      return bindCanonicalAccountProfileId(uid, resolvedPreferred);
+    }
   }
 
   const exactBindings = list.filter((profile: any) => profileHasExactAccountBinding(profile, uid));

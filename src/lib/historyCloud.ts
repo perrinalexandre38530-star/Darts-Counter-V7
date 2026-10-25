@@ -1,16 +1,22 @@
 // ============================================================
 // src/lib/historyCloud.ts
 // Export / Import du store IndexedDB history pour snapshots cloud.
-// ✅ Compat DB_VER=3 (history_headers/history_details) + fallback legacy.
+// ✅ Compat DB_VER=4 (History V4 canonique + mirrors history_headers/history_details) + fallback legacy.
 // ============================================================
 
 import type { SavedMatch } from "./history";
 import LZString from "lz-string";
 import { mergeHistoryPayloadMonotonic, protectFinishedHistoryPayload } from "./historyIntegrity";
 import { createCooperativeYielder } from "./mainThreadYield";
+import {
+  ensureHistoryV4Stores,
+  exportHistoryV4Snapshot,
+  importHistoryV4Snapshot,
+  HISTORY_V4_SCHEMA_VERSION,
+} from "./historyV4";
 
 const HISTORY_DB_BASE = "dc-store-v1";
-const DB_VER = 3;
+const DB_VER = 4;
 
 function detectHistoryScopeUserId(): string | null {
   try {
@@ -130,6 +136,8 @@ function openDB(): Promise<IDBDatabase> {
       } catch {
         try { details.createIndex("by_updatedAt", "updatedAt", { unique: false }); } catch {}
       }
+
+      ensureHistoryV4Stores(db, req.transaction);
     };
 
     req.onsuccess = () => resolve(req.result);
@@ -140,6 +148,8 @@ function openDB(): Promise<IDBDatabase> {
 export type HistoryDumpV1 = {
   _v: 1;
   rows: Record<string, SavedMatch>;
+  historySchemaVersion?: 4;
+  tombstones?: Record<string, { id: string; matchId?: string; deletedAt: number; reason?: string; schemaVersion?: number }>;
 };
 
 
@@ -310,7 +320,7 @@ async function enrichHistoryDumpFromLocalRevisions(dump: HistoryDumpV1): Promise
       };
       rows[matchId] = mergeHistorySnapshotRowMonotonic(rows[matchId], revisionRow) as SavedMatch;
     }
-    return { _v: 1, rows };
+    return { ...dump, _v: 1, rows };
   } catch (error) {
     console.warn("[historyCloud] local revision safety enrichment skipped", error);
     return dump;
@@ -380,6 +390,27 @@ function getAllFromStore<T = any>(store: IDBObjectStore): Promise<T[]> {
 
 export async function exportHistoryDump(): Promise<HistoryDumpV1> {
   const db = await openDB();
+
+  // WAVE 6: canonical V4 is the export authority. `_v:1` remains only as a
+  // compatibility envelope for the existing transport/restore code.
+  try {
+    const canonical = await exportHistoryV4Snapshot();
+    const deleted = new Set(Object.keys(canonical.tombstones || {}));
+    const activeRows: Record<string, SavedMatch> = {};
+    for (const [id, row] of Object.entries<any>(canonical.rows || {})) {
+      if (!deleted.has(String(id))) activeRows[String(id)] = row as SavedMatch;
+    }
+    if (Object.keys(activeRows).length > 0 || deleted.size > 0) {
+      return await enrichHistoryDumpFromLocalRevisions({
+        _v: 1,
+        historySchemaVersion: HISTORY_V4_SCHEMA_VERSION,
+        rows: activeRows,
+        tombstones: canonical.tombstones,
+      });
+    }
+  } catch (error) {
+    console.warn("[historyCloud] canonical V4 export fallback", error);
+  }
 
   // ✅ format moderne split header/detail
   if (db.objectStoreNames.contains(STORE_HEADERS) && db.objectStoreNames.contains(STORE_DETAILS)) {
@@ -491,6 +522,8 @@ export async function importHistoryDump(
   // ressusciter une partie supprimée localement après la date de sauvegarde.
   // Les tombstones locaux ne doivent donc filtrer les lignes que lors d'un merge.
   const deletedIds = replace ? new Set<string>() : readHistoryDeletedIdsSet();
+  const incomingTombstones = dump?.tombstones && typeof dump.tombstones === "object" ? dump.tombstones : {};
+  const incomingTombstoneIds = new Set(Object.keys(incomingTombstones));
 
   // V63 restauration différentielle : même en mode replace, on lit l'état actuel
   // afin de ne réécrire que les matchs réellement différents. Le coût de lecture
@@ -508,7 +541,7 @@ export async function importHistoryDump(
     try {
       const r: any = raw || {};
       const id = String(r?.id || r?.matchId || "").trim();
-      if (!id || deletedIds.has(id) || isDeletedHistoryRecord(r, deletedIds)) continue;
+      if (!id || incomingTombstoneIds.has(id) || deletedIds.has(id) || isDeletedHistoryRecord(r, deletedIds)) continue;
       const incoming = { ...r, id, matchId: String(r?.matchId || id) };
       const existing = (existingDump.rows || {})[id] || null;
       // En replace, le snapshot est la source de vérité exacte. Ne pas laisser
@@ -529,6 +562,13 @@ export async function importHistoryDump(
       const tx = db.transaction([STORE_HEADERS, STORE_DETAILS], "readwrite");
       const headers = tx.objectStore(STORE_HEADERS);
       const details = tx.objectStore(STORE_DETAILS);
+
+      // Mirror V4 tombstones into the legacy compatibility stores so current
+      // History UI readers cannot display a canonically deleted match.
+      for (const deletedId of incomingTombstoneIds) {
+        try { headers.delete(deletedId); } catch {}
+        try { details.delete(deletedId); } catch {}
+      }
 
       if (replace) {
         const nextIds = new Set(Object.keys(preparedRows));
@@ -559,6 +599,18 @@ export async function importHistoryDump(
     if (replace) {
       try { localStorage.removeItem(HISTORY_DELETED_IDS_KEY); } catch {}
     }
+    await importHistoryV4Snapshot({
+      schemaVersion: HISTORY_V4_SCHEMA_VERSION,
+      rows: preparedRows,
+      tombstones: incomingTombstones as any,
+      meta: {
+        exportedAt: Date.now(),
+        activeRows: Object.keys(preparedRows).length,
+        tombstones: incomingTombstoneIds.size,
+      },
+    }, { replace }).catch((error) => {
+      console.warn("[historyCloud] History V4 import mirror failed", error);
+    });
     return;
   }
 
@@ -566,6 +618,9 @@ export async function importHistoryDump(
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE_LEGACY, "readwrite");
       const store = tx.objectStore(STORE_LEGACY);
+      for (const deletedId of incomingTombstoneIds) {
+        try { store.delete(deletedId); } catch {}
+      }
       if (replace) {
         const nextIds = new Set(Object.keys(preparedRows));
         for (const existingId of Object.keys(existingDump.rows || {})) {
@@ -591,5 +646,17 @@ export async function importHistoryDump(
     if (replace) {
       try { localStorage.removeItem(HISTORY_DELETED_IDS_KEY); } catch {}
     }
+    await importHistoryV4Snapshot({
+      schemaVersion: HISTORY_V4_SCHEMA_VERSION,
+      rows: preparedRows,
+      tombstones: incomingTombstones as any,
+      meta: {
+        exportedAt: Date.now(),
+        activeRows: Object.keys(preparedRows).length,
+        tombstones: incomingTombstoneIds.size,
+      },
+    }, { replace }).catch((error) => {
+      console.warn("[historyCloud] History V4 legacy import mirror failed", error);
+    });
   }
 }

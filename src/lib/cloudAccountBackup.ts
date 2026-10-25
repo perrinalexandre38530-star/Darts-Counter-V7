@@ -1,4 +1,5 @@
-import { exportCloudSnapshot, getCachedLocalProfilesForSafety, getStorageUser } from "./storage";
+import { getCachedLocalProfilesForSafety, getStorageUser } from "./storage";
+import { buildCanonicalBackupArtifact } from "./backup/backupEngineV1";
 import { uploadCloudVaultSnapshotJson } from "./cloudStorageApi";
 import { loadStoragePrefs } from "./storagePlans";
 import { canAttemptDirectR2FromStoredSession, getDirectR2Usage, isDirectR2PremiumWriteAllowed } from "./directR2BackupApi";
@@ -112,6 +113,7 @@ export function prepareSnapshotForDirectR2(snapshot: any): {
   snapshot: any;
   audit: {
     embeddedMediaRemoved: number;
+    embeddedMediaVaultV2Removed: number;
     embeddedAvatarFallbacksRemoved: number;
     galleryLocalStorageRemoved: number;
     transientLocalStorageRemoved: number;
@@ -123,6 +125,7 @@ export function prepareSnapshotForDirectR2(snapshot: any): {
       snapshot,
       audit: {
         embeddedMediaRemoved: 0,
+        embeddedMediaVaultV2Removed: 0,
         embeddedAvatarFallbacksRemoved: 0,
         galleryLocalStorageRemoved: 0,
         transientLocalStorageRemoved: 0,
@@ -133,10 +136,13 @@ export function prepareSnapshotForDirectR2(snapshot: any): {
 
   const next: any = { ...snapshot };
   const embeddedMediaRemoved = Object.keys(snapshot?.userMediaFallbacks?.media || snapshot?.user_media_fallbacks?.media || {}).length;
+  const embeddedMediaVaultV2Removed = Object.keys(snapshot?.mediaVaultV2?.assets || snapshot?.media_vault_v2?.assets || {}).length;
   const embeddedAvatarFallbacksRemoved = Object.keys(snapshot?.avatarFallbacks?.profiles || snapshot?.avatar_fallbacks?.profiles || {}).length;
 
   delete next.userMediaFallbacks;
   delete next.user_media_fallbacks;
+  delete next.mediaVaultV2;
+  delete next.media_vault_v2;
   delete next.avatarFallbacks;
   delete next.avatar_fallbacks;
 
@@ -186,6 +192,7 @@ export function prepareSnapshotForDirectR2(snapshot: any): {
     _v: 2,
     mode: "dedicated-r2-media-objects",
     embeddedMediaRemoved,
+    embeddedMediaVaultV2Removed,
     embeddedAvatarFallbacksRemoved,
     galleryLocalStorageRemoved,
     transientLocalStorageRemoved,
@@ -198,6 +205,7 @@ export function prepareSnapshotForDirectR2(snapshot: any): {
     snapshot: next,
     audit: {
       embeddedMediaRemoved,
+      embeddedMediaVaultV2Removed,
       embeddedAvatarFallbacksRemoved,
       galleryLocalStorageRemoved,
       transientLocalStorageRemoved,
@@ -253,7 +261,8 @@ async function flushQueuedCloudR2AccountBackup(reason: string, allowForeground =
         await captureStoreUserMedia({ teams: storedTeams }, { mirrorR2: true });
       }
 
-      const fullSnapshot = await exportCloudSnapshot({ mediaMirror: "background", includeEmbeddedMedia: false, includeAvatarFallbacks: false });
+      const built = await buildCanonicalBackupArtifact();
+      const fullSnapshot = built.snapshot;
       const summary = snapshotSummary(fullSnapshot);
       const portableVersion = Number(fullSnapshot?.portableAccountData?._v || 0);
       if (portableVersion < 2) throw new Error("Snapshot R2 incomplet : portableAccountData v2 absent.");
@@ -271,8 +280,7 @@ async function flushQueuedCloudR2AccountBackup(reason: string, allowForeground =
         );
       }
 
-      const prepared = prepareSnapshotForDirectR2(fullSnapshot);
-      const snapshotJson = JSON.stringify(prepared.snapshot);
+      const snapshotJson = built.artifactJson;
       await uploadCloudVaultSnapshotJson({
         snapshotJson,
         title: `Sauvegarde compte automatique — ${new Date().toLocaleString("fr-FR")}`,
@@ -280,12 +288,14 @@ async function flushQueuedCloudR2AccountBackup(reason: string, allowForeground =
         metadata: {
           summary,
           source: reason || "account-data-change",
-          engine: "account-auto-backup-r2-v4",
+          engine: "canonical-backup-artifact-v1",
           portableAccountDataVersion: portableVersion,
-          r2MediaStrategy: prepared.snapshot?.r2MediaStrategy,
-          r2MediaAudit: prepared.audit,
+          artifactId: built.artifact.artifactId,
+          payloadSha256: built.artifact.payloadSha256,
+          payloadBytes: built.artifact.payloadBytes,
+          packedBytes: built.artifact.packedBytes,
           snapshotBytes: new Blob([snapshotJson]).size,
-          exportedAt: new Date().toISOString(),
+          exportedAt: built.artifact.createdAt,
         },
       });
       lastSuccessAt = Date.now();
@@ -295,7 +305,8 @@ async function flushQueuedCloudR2AccountBackup(reason: string, allowForeground =
           reason,
           summary,
           portableAccountDataVersion: portableVersion,
-          r2MediaAudit: prepared.audit,
+          artifactId: built.artifact.artifactId,
+          payloadSha256: built.artifact.payloadSha256,
           snapshotBytes: new Blob([snapshotJson]).size,
         }));
       } catch {}

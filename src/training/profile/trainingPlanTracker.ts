@@ -9,6 +9,9 @@ export type TrainingProgramSessionRecord = {
   programTitle: string;
   durationMin: number;
   exerciseIds: string[];
+  plannedExerciseIds: string[];
+  adaptationCount: number;
+  targetHitCount: number;
   families: TrainingExerciseFamily[];
   steps: number;
   successes: number;
@@ -22,6 +25,7 @@ function sanitizeRecord(input: any): TrainingProgramSessionRecord | null {
   const endedAt = Number(input.endedAt);
   if (!Number.isFinite(endedAt) || endedAt <= 0) return null;
   const exerciseIds = Array.isArray(input.exerciseIds) ? input.exerciseIds.map(String).filter(Boolean) : [];
+  const plannedExerciseIds = Array.isArray(input.plannedExerciseIds) ? input.plannedExerciseIds.map(String).filter(Boolean) : exerciseIds.slice();
   const families = Array.isArray(input.families)
     ? input.families.map(String).filter(Boolean) as TrainingExerciseFamily[]
     : [];
@@ -32,6 +36,9 @@ function sanitizeRecord(input: any): TrainingProgramSessionRecord | null {
     programTitle: String(input.programTitle || "Programme Training"),
     durationMin: Math.max(0, Math.round(Number(input.durationMin) || 0)),
     exerciseIds,
+    plannedExerciseIds,
+    adaptationCount: Math.max(0, Math.round(Number(input.adaptationCount) || 0)),
+    targetHitCount: Math.max(0, Math.round(Number(input.targetHitCount) || 0)),
     families,
     steps: Math.max(0, Math.round(Number(input.steps) || exerciseIds.length)),
     successes: Math.max(0, Math.round(Number(input.successes) || 0)),

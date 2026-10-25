@@ -30,13 +30,13 @@ import InfoDot from "../../components/InfoDot";
 import BackDot from "../../components/BackDot";
 
 
-// ✅ NEW: Store unique Teams
+// ✅ WAVE 0: Store Teams canonique riche (même modèle que Profiles > Teams / Organisations)
 import {
   loadTeamsBySport,
   createTeam,
   fileToDataUrl,
   type TeamEntity,
-} from "../../lib/teamsStore";
+} from "../../lib/petanqueTeamsStore";
 import { teamBaseId } from "../../lib/teamSelectionInstances";
 import { recordProfileUsageForMode, sortProfilesByModeUsage } from "../../lib/profileUsage";
 

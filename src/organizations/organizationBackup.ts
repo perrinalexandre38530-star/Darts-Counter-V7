@@ -18,7 +18,9 @@ import {
 import { loadOrganizationWorkspace } from "./organizationWorkspace";
 
 export type OrganizationBackupSnapshot = {
-  _v: 1;
+  _v: 2;
+  authority: "supabase";
+  purpose: "disaster-recovery-mirror";
   userId: string;
   createdAt: string;
   workspace: ReturnType<typeof loadOrganizationWorkspace>;
@@ -67,7 +69,9 @@ export async function exportOrganizationsBackupSnapshot(
   // source live et pourra être resynchronisé séparément.
   if (options.remote === false) {
     return {
-      _v: 1,
+      _v: 2,
+      authority: "supabase",
+      purpose: "disaster-recovery-mirror",
       userId: uid,
       createdAt: new Date().toISOString(),
       workspace: loadOrganizationWorkspace(uid),
@@ -150,7 +154,9 @@ export async function exportOrganizationsBackupSnapshot(
   }));
 
   return {
-    _v: 1,
+    _v: 2,
+    authority: "supabase",
+    purpose: "disaster-recovery-mirror",
     userId: uid,
     createdAt: new Date().toISOString(),
     workspace: loadOrganizationWorkspace(uid),

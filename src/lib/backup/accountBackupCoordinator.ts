@@ -272,6 +272,7 @@ function snapshotOwnerIds(payload: any): string[] {
   };
 
   add(p?.backupManifest?.userId);
+  add(p?.ownerUserId); // WAVE 7 canonical artifact owner
   add(p?.userId);
   add(p?.user?.id);
   add(p?.session?.user?.id);

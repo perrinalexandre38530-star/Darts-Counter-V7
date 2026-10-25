@@ -1,4 +1,3 @@
-import { exportCloudSnapshot } from "./storage";
 import {
   createLocalMemorySlotFromSnapshot,
   createNasVersionedSnapshot,
@@ -19,6 +18,7 @@ import {
   personalCloudProviderLabel,
   uploadPersonalCloudSnapshot,
 } from "./personalCloudApi";
+import { buildCanonicalBackupArtifact } from "./backup/backupEngineV1";
 
 export type ConfiguredBackupResult = {
   ok: boolean;
@@ -26,6 +26,8 @@ export type ConfiguredBackupResult = {
   destinationLabel: string;
   message: string;
   localSafetyCreated?: boolean;
+  artifactId?: string;
+  payloadSha256?: string;
 };
 
 let backupTail: Promise<unknown> = Promise.resolve();
@@ -41,13 +43,12 @@ function isAutomaticReason(reason: string): boolean {
 }
 
 /**
- * Sauvegarde instantanée vers la destination choisie dans Réglages > Sauvegarde.
+ * WAVE 7 — moteur de sauvegarde unifié.
  *
- * Invariants V55+ :
- * - les sauvegardes sont sérialisées (jamais deux exports concurrents) ;
- * - une fin de partie crée TOUJOURS d'abord une copie locale complète ;
- * - NAS/R2/fichier sont ensuite des copies supplémentaires, jamais l'unique filet ;
- * - aucun sélecteur système n'est ouvert automatiquement en fin de partie.
+ * Une seule construction est autorisée par opération :
+ * flush -> snapshot canonique -> Manifest V2 -> compression -> SHA-256.
+ * Ensuite chaque destination transporte le MEME artefact. Aucun provider ne
+ * reconstruit une variante du compte pendant cette sauvegarde.
  */
 export function saveConfiguredBackupNow(reason = "manual-match-end"): Promise<ConfiguredBackupResult> {
   return enqueueConfiguredBackup(async () => {
@@ -61,30 +62,27 @@ export function saveConfiguredBackupNow(reason = "manual-match-end"): Promise<Co
     let localSafetyCreated = false;
 
     try {
-      // Snapshot local autonome : médias inclus, mais aucun miroir R2 déclenché.
-      // Il est préparé avant le remote afin qu'une panne NAS/R2 ne puisse jamais
-      // annuler la sauvegarde de la partie qui vient de se terminer.
-      let localSnapshot: any = null;
-      let localSummary: ReturnType<typeof summarizeVaultPayload> | null = null;
-      let localSnapshotJson = "";
-
-      const ensureLocalSnapshot = async () => {
-        if (localSnapshot) return localSnapshot;
-        localSnapshot = await exportCloudSnapshot({ mediaMirror: "skip" });
-        localSummary = summarizeVaultPayload(localSnapshot);
-        localSnapshotJson = JSON.stringify(localSnapshot);
-        return localSnapshot;
+      let prepared: Awaited<ReturnType<typeof buildCanonicalBackupArtifact>> | null = null;
+      const ensureArtifact = async () => {
+        if (prepared) return prepared;
+        prepared = await buildCanonicalBackupArtifact();
+        return prepared;
       };
+
+      const artifactMeta = () => ({
+        artifactId: prepared?.artifact?.artifactId,
+        payloadSha256: prepared?.artifact?.payloadSha256,
+      });
 
       const createSafetyCopy = async (label: string, source: MemorySlot["source"] = localSource) => {
         if (!keepLocalSafety) return null;
-        await ensureLocalSnapshot();
+        const built = await ensureArtifact();
         const slot = await createLocalMemorySlotFromSnapshot(
-          localSnapshot,
+          built.artifact,
           label,
           source,
-          localSummary,
-          localSnapshotJson,
+          summarizeVaultPayload(built.artifact),
+          built.artifactJson,
         );
         localSafetyCreated = true;
         return slot;
@@ -97,138 +95,120 @@ export function saveConfiguredBackupNow(reason = "manual-match-end"): Promise<Co
           destination,
           destinationLabel,
           localSafetyCreated,
+          ...artifactMeta(),
           message: automatic ? "Sauvegarde automatique locale créée." : "Sauvegarde locale créée.",
         };
       }
 
       if (destination === "founder_nas") {
-        await createSafetyCopy(
-          `${automatic ? "Sécurité auto" : "Sécurité locale"} avant NAS — ${nowLabel}`,
-          "before-nas-backup",
-        );
-        await createNasVersionedSnapshot();
+        await createSafetyCopy(`${automatic ? "Sécurité auto" : "Sécurité locale"} avant NAS — ${nowLabel}`, "before-nas-backup");
+        const built = await ensureArtifact();
+        await createNasVersionedSnapshot(built.artifact, built.summary);
         return {
           ok: true,
           destination,
           destinationLabel,
           localSafetyCreated,
+          ...artifactMeta(),
           message: localSafetyCreated ? "Sauvegarde NAS créée + copie locale de sécurité." : "Sauvegarde NAS créée.",
         };
       }
 
       if (destination === "cloud_r2") {
         await createSafetyCopy(`${automatic ? "Sécurité auto" : "Sécurité locale"} avant R2 — ${nowLabel}`);
-
-        // R2 reste allégé : les médias ont leurs objets dédiés. La copie locale
-        // ci-dessus reste, elle, totalement autonome pour la restauration appareil.
-        const snapshot = await exportCloudSnapshot({
-          mediaMirror: "skip",
-          includeEmbeddedMedia: false,
-          includeAvatarFallbacks: false,
-        });
-        const summary = summarizeVaultPayload(snapshot);
-        const snapshotJson = JSON.stringify(snapshot);
-        const snapshotBytes = new Blob([snapshotJson]).size;
-
-        if (snapshotBytes > 20_000_000) {
-          throw new Error(`Snapshot R2 encore trop volumineux (${snapshotBytes} octets).`);
-        }
-
+        const built = await ensureArtifact();
+        const artifactBytes = new Blob([built.artifactJson]).size;
         await uploadCloudVaultSnapshotJson({
-          snapshotJson,
+          snapshotJson: built.artifactJson,
           title: `${automatic ? "Sauvegarde auto fin de partie" : "Sauvegarde"} — ${nowLabel}`,
           sourceDestination: "cloud_r2",
           metadata: {
-            summary,
-            exportedAt: new Date().toISOString(),
+            summary: built.summary,
+            exportedAt: built.artifact.createdAt,
             source: reason,
-            engine: "configured-backup-v3-safe-local-first",
-            snapshotBytes,
-            portableAccountDataVersion: Number((snapshot as any)?.portableAccountData?._v || 0),
-            mediaMirror: "skip-during-snapshot",
+            engine: "canonical-backup-artifact-v1",
+            artifactId: built.artifact.artifactId,
+            payloadSha256: built.artifact.payloadSha256,
+            payloadBytes: built.artifact.payloadBytes,
+            packedBytes: built.artifact.packedBytes,
+            artifactBytes,
           },
         });
-
         return {
           ok: true,
           destination,
           destinationLabel,
           localSafetyCreated,
-          message: `Sauvegarde Cloud R2 créée (${Math.max(1, Math.round(snapshotBytes / 1024 / 1024))} Mo)${localSafetyCreated ? " + copie locale" : ""}.`,
+          ...artifactMeta(),
+          message: `Sauvegarde Cloud R2 créée (${Math.max(1, Math.round(artifactBytes / 1024 / 1024))} Mo)${localSafetyCreated ? " + copie locale" : ""}.`,
         };
       }
 
       if (isPersonalCloudProvider(destination)) {
         await createSafetyCopy(`${automatic ? "Sécurité auto" : "Sécurité locale"} avant ${personalCloudProviderLabel(destination)} — ${nowLabel}`);
-        await ensureLocalSnapshot();
-
+        const built = await ensureArtifact();
         const status = await getPersonalCloudStatus(destination);
         if (!status.configured) {
           throw new Error(`${personalCloudProviderLabel(destination)} n'est pas configuré côté serveur. La copie locale de sécurité a été créée.`);
         }
         if (!status.connected) {
-          // Une sauvegarde automatique ne doit jamais ouvrir OAuth toute seule.
           throw new Error(`${personalCloudProviderLabel(destination)} n'est pas connecté. Reconnecte-le depuis Sauvegardes. La copie locale de sécurité a été créée.`);
         }
 
-        const result: any = await uploadPersonalCloudSnapshot(destination, localSnapshotJson, {
-          summary: localSummary || {},
-          exportedAt: new Date().toISOString(),
-          rawSizeBytes: new Blob([localSnapshotJson]).size,
+        const result: any = await uploadPersonalCloudSnapshot(destination, built.artifactJson, {
+          summary: built.summary,
+          exportedAt: built.artifact.createdAt,
+          rawSizeBytes: new Blob([built.artifactJson]).size,
           source: reason,
-          engine: "configured-backup-v4-personal-cloud",
+          engine: "canonical-backup-artifact-v1",
+          artifactId: built.artifact.artifactId,
+          payloadSha256: built.artifact.payloadSha256,
+          payloadBytes: built.artifact.payloadBytes,
+          packedBytes: built.artifact.packedBytes,
         });
-        if (result?.ok === false) {
-          throw new Error(result?.error || `Échec de la sauvegarde ${personalCloudProviderLabel(destination)}.`);
-        }
+        if (result?.ok === false) throw new Error(result?.error || `Échec de la sauvegarde ${personalCloudProviderLabel(destination)}.`);
 
         return {
           ok: true,
           destination,
           destinationLabel,
           localSafetyCreated,
+          ...artifactMeta(),
           message: `Sauvegarde ${personalCloudProviderLabel(destination)} créée${localSafetyCreated ? " + copie locale de sécurité" : ""}.`,
         };
       }
 
-      if (
-        destination === "device_file" ||
-        destination === "external_sd_manual" ||
-        destination === "personal_cloud_manual"
-      ) {
+      if (destination === "device_file" || destination === "external_sd_manual" || destination === "personal_cloud_manual") {
         await createSafetyCopy(`${automatic ? "Sécurité auto" : "Sécurité locale"} avant fichier — ${nowLabel}`);
-        await ensureLocalSnapshot();
+        const built = await ensureArtifact();
         const status = await getExternalBackupStatus();
 
-        // Une sauvegarde automatique ne doit JAMAIS ouvrir un picker ou lancer
-        // un téléchargement sans action utilisateur. Si la cible mémorisée n'est
-        // plus accessible, la copie locale ci-dessus reste valide.
         if (automatic) {
-          if (!status.configured) {
-            throw new Error("Cible fichier/SD/cloud personnel non configurée. La copie locale automatique a été créée.");
-          }
-          const next = await writeExternalBackupJsonNow(localSnapshotJson, reason, { requestPermission: false });
+          if (!status.configured) throw new Error("Cible fichier/SD/cloud personnel non configurée. La copie locale automatique a été créée.");
+          const next = await writeExternalBackupJsonNow(built.artifactJson, reason, { requestPermission: false });
           if (next.lastError) throw new Error(`${next.lastError} La copie locale automatique a été créée.`);
           return {
             ok: true,
             destination,
             destinationLabel,
             localSafetyCreated,
+            ...artifactMeta(),
             message: "Sauvegarde automatique fichier créée + copie locale de sécurité.",
           };
         }
 
         const next = status.configured
-          ? await writeExternalBackupJsonNow(localSnapshotJson, reason, { requestPermission: true })
+          ? await writeExternalBackupJsonNow(built.artifactJson, reason, { requestPermission: true })
           : status.supported
-            ? await chooseExternalBackupFileWithJson(localSnapshotJson, reason)
-            : await downloadExternalBackupJson(localSnapshotJson, reason);
+            ? await chooseExternalBackupFileWithJson(built.artifactJson, reason)
+            : await downloadExternalBackupJson(built.artifactJson, reason);
         if (next.lastError) throw new Error(next.lastError);
         return {
           ok: true,
           destination,
           destinationLabel,
           localSafetyCreated,
+          ...artifactMeta(),
           message: localSafetyCreated ? "Sauvegarde fichier créée + copie locale de sécurité." : "Sauvegarde fichier créée.",
         };
       }

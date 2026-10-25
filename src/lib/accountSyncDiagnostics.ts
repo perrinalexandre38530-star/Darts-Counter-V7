@@ -10,6 +10,7 @@ import { loadStatsIndex } from "./stats/rebuildStatsFromHistory";
 import { listLocalMemorySlots } from "./storageVault";
 import { loadStoragePrefs } from "./storagePlans";
 import { getAccountOwnedLocalProfiles } from "./accountOwnedSync";
+import { accountOwnedTeams, organizationManagedTeams } from "../data/organizationDataBoundary";
 import {
   deleteAccountR2Media,
   downloadAccountR2Media,
@@ -279,7 +280,7 @@ export async function runAccountSyncDiagnostic(options: { activeProbe?: boolean 
     try {
       if (typeof forceBridge === "function") await forceBridge({ reason: "internal-diagnostic-v121" });
       else window.dispatchEvent(new CustomEvent("dc:account-owned-force-sync", { detail: { reason: "internal-diagnostic-v121" } }));
-      add(checks, { id: "force_sync", label: "Resynchronisation compte", status: "ok", detail: "Profils/Bots/Teams/Galerie/DartSets/Stats/History ont été repoussés vers le compte." });
+      add(checks, { id: "force_sync", label: "Resynchronisation compte", status: "ok", detail: "Profils/Bots/Teams privées/Galerie/DartSets/Stats/History ont été repoussés vers le compte. Les données Organisation restent hors canal privé." });
     } catch (error: any) {
       add(checks, { id: "force_sync", label: "Resynchronisation compte", status: "fail", detail: String(error?.message || error || "Échec") });
     }
@@ -314,10 +315,13 @@ export async function runAccountSyncDiagnostic(options: { activeProbe?: boolean 
   const localProfiles = getAccountOwnedLocalProfiles(Array.isArray(store?.profiles) ? store.profiles : [], userId);
   const userBots = Array.isArray(bots) ? bots.filter((b: any) => b && !isOfficialBotId(b.id) && !b?.systemBot) : [];
   const finishedHistory = Array.isArray(history) ? history.filter(isFinishedMatch) : [];
+  const privateTeams = accountOwnedTeams(Array.isArray(teams) ? teams : []);
+  const organizationTeams = organizationManagedTeams(Array.isArray(teams) ? teams : []);
   const localCounts = {
     profiles: localProfiles.length,
     bots: userBots.length,
-    teams: Array.isArray(teams) ? teams.length : 0,
+    teams: privateTeams.length,
+    organizationTeamProjections: organizationTeams.length,
     gallery: Array.isArray(gallery) ? gallery.length : 0,
     dartSets: Array.isArray(dartSets) ? dartSets.length : 0,
     history: Array.isArray(history) ? history.length : 0,
@@ -345,7 +349,7 @@ export async function runAccountSyncDiagnostic(options: { activeProbe?: boolean 
     id: "local_data",
     label: "Données locales rattachées au compte",
     status: "ok",
-    detail: `Profils ${localCounts.profiles} · Bots ${localCounts.bots} · Teams ${localCounts.teams} · Galerie ${localCounts.gallery} · DartSets ${localCounts.dartSets} · History ${localCounts.history}.`,
+    detail: `Profils ${localCounts.profiles} · Bots ${localCounts.bots} · Teams privées ${localCounts.teams} · Projections orga ${localCounts.organizationTeamProjections} · Galerie ${localCounts.gallery} · DartSets ${localCounts.dartSets} · History ${localCounts.history}.`,
     data: localCounts,
   });
 
@@ -361,7 +365,7 @@ export async function runAccountSyncDiagnostic(options: { activeProbe?: boolean 
     const id = String(bot?.id || "").trim();
     if (id) referencedMediaKeys.add(botAvatarMediaKey(id));
   }
-  for (const team of (Array.isArray(teams) ? teams : [])) {
+  for (const team of privateTeams) {
     const id = String(team?.id || team?.teamId || "").trim();
     if (!id) continue;
     referencedMediaKeys.add(String(team?.logoMediaKey || teamLogoMediaKey(id)));
@@ -386,14 +390,8 @@ export async function runAccountSyncDiagnostic(options: { activeProbe?: boolean 
       }
     }
   } catch {}
-  // Les organisations ont leur modèle Supabase propre : leurs IDs ne sont pas
-  // tous présents dans Store. Les médias orga encore présents dans IndexedDB
-  // sont néanmoins des médias actifs du compte et doivent être couverts.
-  for (const key of (mediaLocal?.keys || [])) {
-    if (/^(club_logo|club_cover|group_avatar|group_cover|organization_logo|organization_cover):/i.test(String(key || ""))) {
-      referencedMediaKeys.add(String(key));
-    }
-  }
+  // WAVE 8 : les médias Organisation sont gérés par leur propre autorité
+  // (Supabase/stockage organisation) et ne font jamais partie du miroir R2 privé.
 
   let remoteMeta: any[] = [];
   let remoteSingletons: any[] = [];
@@ -426,6 +424,17 @@ export async function runAccountSyncDiagnostic(options: { activeProbe?: boolean 
     remoteCounts[type] = (remoteCounts[type] || 0) + 1;
   }
   const singletonByType = new Map(remoteSingletons.filter((row: any) => !row?.deleted_at).map((row: any) => [String(row.document_type), row]));
+  const remoteTeamPayload = singletonByType.get("teams")?.payload;
+  const remoteOrganizationTeams = organizationManagedTeams(Array.isArray(remoteTeamPayload) ? remoteTeamPayload : []);
+  add(checks, {
+    id: "organization_boundary",
+    label: "Frontière compte / organisation",
+    status: remoteOrganizationTeams.length ? "warn" : "ok",
+    detail: remoteOrganizationTeams.length
+      ? `${remoteOrganizationTeams.length} ancienne(s) projection(s) Organisation sont encore présentes dans le document privé Teams. WAVE 8 les ignore et les retirera au prochain push compte.`
+      : `Canal privé propre : ${privateTeams.length} Team(s) personnelle(s), ${organizationTeams.length} projection(s) Organisation conservée(s) uniquement localement/UI.`,
+    data: { accountTeams: privateTeams.length, organizationProjections: organizationTeams.length, leakedRemoteOrganizationTeams: remoteOrganizationTeams.length },
+  });
 
   const comparisons = [
     ["local_profiles", localCounts.profiles],
@@ -444,7 +453,7 @@ export async function runAccountSyncDiagnostic(options: { activeProbe?: boolean 
     id: "collection_parity",
     label: "Parité collections locales / compte",
     status: mismatch.length ? (activeProbe ? "fail" : "warn") : "ok",
-    detail: mismatch.length ? `Écart détecté : ${mismatch.join(" · ")}.${activeProbe ? " Le resync vient d'être exécuté : cet écart est réel." : " Un test complet force la réconciliation."}` : "Profils/Bots/Teams/Galerie/DartSets sont alignés en nombre.",
+    detail: mismatch.length ? `Écart détecté : ${mismatch.join(" · ")}.${activeProbe ? " Le resync vient d'être exécuté : cet écart est réel." : " Un test complet force la réconciliation."}` : "Profils/Bots/Teams privées/Galerie/DartSets sont alignés en nombre.",
     data: { mismatch },
   });
 
@@ -510,7 +519,7 @@ export async function runAccountSyncDiagnostic(options: { activeProbe?: boolean 
     try {
       const mirrored = await mirrorAllLocalUserMediaToAccountR2({
         keys: referencedMediaKeys,
-        kinds: ["club_logo", "club_cover", "group_avatar", "group_cover", "organization_logo", "organization_cover", "avatar_ai_gallery", "team_logo", "team_cover"],
+        kinds: ["avatar_ai_gallery", "team_logo", "team_cover"],
         maxEntries: 1200,
         concurrency: 1,
       });

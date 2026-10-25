@@ -12,6 +12,7 @@
 
 import type { Profile } from "./types";
 import { bindCanonicalAccountProfileId, getBoundAccountProfileId } from "./canonicalAccountProfile";
+import { registerCanonicalIdentity, resolveCanonicalProfileIdFromAlias } from "../data/identityAliases";
 
 // ------------------------------------------------------------
 // Helpers privateInfo
@@ -427,6 +428,34 @@ function profileAliasIds(profile: any): string[] {
   return Array.from(new Set(values.map((v) => String(v || "").trim()).filter(Boolean)));
 }
 
+function persistCanonicalIdentityAliases(
+  canonicalProfile: any,
+  uid: string,
+  accountIds: string[],
+  legacyProfiles: any[] = [],
+  onlineProfile?: any,
+): void {
+  const canonicalProfileId = String(canonicalProfile?.id || "").trim();
+  if (!canonicalProfileId) return;
+  const legacyProfileIds = Array.from(new Set([
+    ...legacyProfiles.map((profile) => String(profile?.id || "").trim()),
+    ...legacyProfiles.flatMap((profile) => profileAliasIds(profile)),
+    ...profileAliasIds(canonicalProfile),
+  ].filter((id) => id && id !== canonicalProfileId)));
+  try {
+    registerCanonicalIdentity({
+      accountUserId: uid,
+      canonicalProfileId,
+      profile: canonicalProfile,
+      accountIds,
+      legacyProfileIds,
+      remoteCanonicalProfileId: getRemoteCanonicalLocalProfileId(onlineProfile),
+    });
+  } catch (error) {
+    console.warn("[identity] canonical alias registration skipped", error);
+  }
+}
+
 function hasOnlineBindingTo(profile: any, uid: string): boolean {
   const pi = readPrivateInfo(profile);
   return [
@@ -477,7 +506,8 @@ function pickCanonicalLocalAccountProfile(
   // téléphone/PC et permet de conserver le même profile.id historique.
   const remoteCanonicalId = getRemoteCanonicalLocalProfileId(onlineProfile);
   if (remoteCanonicalId) {
-    const remoteBound = locals.find((profile) => String(profile?.id || "").trim() === remoteCanonicalId);
+    const resolvedRemoteCanonicalId = resolveCanonicalProfileIdFromAlias(remoteCanonicalId, uid) || remoteCanonicalId;
+    const remoteBound = locals.find((profile) => String(profile?.id || "").trim() === resolvedRemoteCanonicalId);
     if (remoteBound) return remoteBound;
   }
 
@@ -486,20 +516,20 @@ function pickCanonicalLocalAccountProfile(
   // redevenir actif simplement parce qu'il apparaît plus tôt dans le tableau.
   const boundId = getBoundAccountProfileId(uid);
   if (boundId) {
-    const bound = locals.find((profile) => String(profile?.id || "").trim() === boundId);
+    const resolvedBoundId = resolveCanonicalProfileIdFromAlias(boundId, uid) || boundId;
+    const bound = locals.find((profile) => String(profile?.id || "").trim() === resolvedBoundId);
     if (bound) return bound;
   }
 
   const dedicatedAliases = new Set(profileAliasIds(dedicated));
   const dedicatedLabel = identityLabel(dedicated);
   const dedicatedAvatar = identityAvatar(dedicated);
-  const onlineLabel = safeLower(getOnlineNickname({ id: uid }, onlineProfile));
   const dedicatedCreatedAt = Number(dedicated?.createdAt || 0);
 
-  // Les anciens correctifs ont parfois lié plusieurs profils humains au même
-  // compte. On ne peut donc plus faire un simple Array.find(binding). On score
-  // les preuves d'identité ; les alias historiques / nom du compte / UID
-  // Supabase exact gagnent sur le simple "profil actif du moment".
+  // WAVE 2 : un nom seul n'est JAMAIS une preuve d'identité. Deux joueurs
+  // peuvent avoir le même pseudo et un surnom distant peut avoir changé. On ne
+  // score donc que les preuves structurelles : alias, createdAt de clone,
+  // binding compte, profil actif explicite et signature nom+avatar.
   const scored = locals.map((profile, index) => {
     const id = String(profile?.id || "").trim();
     const label = identityLabel(profile);
@@ -507,20 +537,19 @@ function pickCanonicalLocalAccountProfile(
     let score = 0;
     if (dedicatedAliases.has(id)) score += 1200;
     if (dedicatedCreatedAt > 0 && Number(profile?.createdAt || 0) === dedicatedCreatedAt) score += 900;
-    if (dedicatedLabel && label && label === dedicatedLabel) score += 850;
-    if (onlineLabel && label && label === onlineLabel) score += 800;
-    if (dedicatedAvatar && avatar && avatar === dedicatedAvatar) score += 700;
-    if (hasOnlineBindingTo(profile, uid)) score += 600;
-    if (hasOnlineBindingToAny(profile, accountIds)) score += 220;
+    if (hasOnlineBindingTo(profile, uid)) score += 1000;
+    if (hasOnlineBindingToAny(profile, accountIds)) score += 700;
+    if (dedicatedLabel && dedicatedAvatar && label === dedicatedLabel && avatar === dedicatedAvatar) score += 700;
     if (id === activeId) score += 300;
-    score += Math.min(100, scoreProfileCompleteness(profile) * 4);
+    score += Math.min(20, scoreProfileCompleteness(profile));
     // ordre stable uniquement comme dernier départage
     score -= index * 0.001;
     return { profile, score };
   }).sort((a, b) => b.score - a.score);
 
   const best = scored[0];
-  if (best && best.score > 0) return best.profile;
+  // La complétude seule ne suffit jamais à choisir une identité.
+  if (best && best.score >= 300) return best.profile;
   return pickOriginalLocalProfile(profiles, uid, dedicated, activeId, accountIds);
 }
 
@@ -613,21 +642,17 @@ function pickOriginalLocalProfile(profiles: any[], uid: string, dedicated: any, 
     if (exact.length === 1) return exact[0];
   }
 
-  // 5) Nom identique et unique. Les anciens clones reprenaient systématiquement
-  // le nom du profil source, même lorsque l'avatar distant avait changé.
-  if (label) {
-    const byName = locals.filter((profile) => identityLabel(profile) === label);
-    if (byName.length === 1) return byName[0];
-  }
+  // WAVE 2 : volontairement aucun fallback "nom identique". Un nom/pseudo
+  // n'est qu'une information d'affichage, jamais une clé de fusion.
 
-  // 6) Lors d'une première liaison (pas encore de profil dédié), le profil actif
+  // 5) Lors d'une première liaison (pas encore de profil dédié), le profil actif
   // est le choix explicite de l'utilisateur.
   if (!dedicated && activeId) {
     const active = locals.find((profile) => String(profile?.id || "") === activeId);
     if (active) return active;
   }
 
-  // 7) Un seul profil humain local : aucune ambiguïté possible.
+  // 6) Un seul profil humain local : aucune ambiguïté possible.
   if (locals.length === 1) return locals[0];
   return null;
 }
@@ -807,6 +832,7 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
         canonicalLocalProfileId: canonicalId,
       },
     );
+    persistCanonicalIdentityAliases(only, uid, accountIds, [], onlineProfile);
     bindCanonicalAccountProfileId(uid, canonicalId);
     return { ...store, profiles: [only], activeProfileId: canonicalId };
   }
@@ -826,6 +852,7 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
   if (originalLocal) {
     const merged = mergeAccountIntoLocalProfile(originalLocal, dedicated, user, onlineProfile);
     const canonicalId = String(merged?.id || originalLocal?.id || "").trim();
+    persistCanonicalIdentityAliases(merged, uid, accountIds, dedicated ? [dedicated] : [], onlineProfile);
     bindCanonicalAccountProfileId(uid, canonicalId);
 
     const nextProfiles: any[] = [];
@@ -888,6 +915,7 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
     // on répare ce clone vers cet id au lieu de publier l'UID comme nouveau
     // canonicalLocalProfileId et de casser l'alignement PC/téléphone.
     const refreshed = writePrivateInfo({ ...next, id: canonicalId }, pi);
+    persistCanonicalIdentityAliases(refreshed, uid, accountIds, [dedicated], onlineProfile);
     bindCanonicalAccountProfileId(uid, canonicalId);
 
     const nextProfiles = inputProfiles.filter((profile) => {
@@ -915,6 +943,7 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
     || inputProfiles[0];
   const merged = mergeAccountIntoLocalProfile(active, null, user, onlineProfile);
   const canonicalId = String(merged?.id || active?.id || "").trim();
+  persistCanonicalIdentityAliases(merged, uid, accountIds, [], onlineProfile);
   bindCanonicalAccountProfileId(uid, canonicalId);
   const nextProfiles = inputProfiles.map((profile) => String(profile?.id || "").trim() === canonicalId ? merged : profile)
     .filter((profile) => {

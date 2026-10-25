@@ -7,12 +7,13 @@
 // ============================================
 
 import { isQuickPartyRecord } from "../quickParty";
-import { delKV, getKV, setKV, loadStore } from "../storage";
+import { delKV, getKV, setKV, getStorageUser } from "../storage";
 import { normalizeMatchForStats } from "../matchCompactCodec";
 import { computeBabyFootRichStats } from "../babyfootRichStats";
 import { beginFreezeOperation, endFreezeOperation } from "../freezeWatch";
 import { getAccountLocalStorageItem, setAccountLocalStorageItem, removeAccountLocalStorageItem } from "../accountScope";
 import { recordStatsDiagnosticEvent } from "../statsDiagnosticsTrace";
+import { resolveCanonicalProfileIdFromAlias } from "../../data/identityAliases";
 
 // ----------------------------
 // Types génériques (safe)
@@ -78,10 +79,11 @@ export type ModeAgg = {
 };
 
 export type StatsIndexMeta = {
-  source: "history-rebuild" | "idb-cache" | "localStorage-legacy";
+  source: "history-rebuild" | "history-v4-rebuild" | "idb-cache" | "localStorage-legacy";
   rowsScanned: number;
   includeNonFinished: boolean;
   historyUpdatedAt?: number;
+  historySchemaVersion?: 4;
 };
 
 export type StatsIndex = {
@@ -101,7 +103,7 @@ export type StatsIndex = {
 
 const STATS_KEY = "dc_stats_index_v2";
 const STATS_LEGACY_KEY = "dc-stats-index-v1";
-const STATS_VERSION = 3;
+const STATS_VERSION = 4;
 const STATS_REFRESH_DEBOUNCE_MS = 900;
 const STATS_DIRTY_KEY = "dc_stats_index_dirty_v1";
 const STATS_QUICK_MIRROR_KEY = "dc_stats_quick_v1";
@@ -388,6 +390,7 @@ export async function loadStatsIndex(): Promise<StatsIndex | null> {
           rowsScanned: Number(fromKv?.meta?.rowsScanned || 0) || 0,
           includeNonFinished: Boolean(fromKv?.meta?.includeNonFinished),
           historyUpdatedAt: Number(fromKv?.meta?.historyUpdatedAt || 0) || undefined,
+          historySchemaVersion: Number(fromKv?.meta?.historySchemaVersion || 0) === 4 ? 4 : undefined,
         },
       };
     }
@@ -416,6 +419,7 @@ export async function saveStatsIndex(idx: StatsIndex): Promise<void> {
       rowsScanned: Number(idx?.meta?.rowsScanned || idx?.totals?.matches || 0) || 0,
       includeNonFinished: Boolean(idx?.meta?.includeNonFinished),
       historyUpdatedAt: Number(idx?.meta?.historyUpdatedAt || 0) || undefined,
+      historySchemaVersion: Number(idx?.meta?.historySchemaVersion || 0) === 4 ? 4 : undefined,
     },
   };
 
@@ -553,31 +557,17 @@ function mergePlayerAggregate(target: any, source: any, canonicalId: string): an
   return out;
 }
 
-async function reconcileLegacyPlayerAliases(idx: StatsIndex): Promise<void> {
+async function reconcileCanonicalPlayerAliases(idx: StatsIndex): Promise<void> {
   try {
-    const store: any = await loadStore<any>();
-    const profiles = Array.isArray(store?.profiles) ? store.profiles : [];
-    const byName = new Map<string, string | null>();
-    for (const profile of profiles) {
-      const id = String(profile?.id || profile?.profileId || profile?.uid || "").trim();
-      const names = [profile?.name, profile?.displayName, profile?.nickname, profile?.pseudo, profile?.username];
-      if (!id) continue;
-      for (const raw of names) {
-        const name = normalizeStatsPlayerName(raw);
-        if (!name) continue;
-        if (!byName.has(name)) byName.set(name, id);
-        else if (byName.get(name) !== id) byName.set(name, null); // ambigu : ne jamais fusionner au hasard
-      }
-    }
+    const accountUserId = getStorageUser();
     for (const [playerId, aggregate] of Object.entries({ ...idx.byPlayer })) {
-      const candidateName = normalizeStatsPlayerName((aggregate as any)?.name || (playerId.startsWith("legacy-name:") ? playerId.slice("legacy-name:".length) : ""));
-      const canonicalId = candidateName ? byName.get(candidateName) : null;
+      const canonicalId = resolveCanonicalProfileIdFromAlias(playerId, accountUserId);
       if (!canonicalId || canonicalId === playerId) continue;
       idx.byPlayer[canonicalId] = mergePlayerAggregate(idx.byPlayer[canonicalId], aggregate, canonicalId);
       delete idx.byPlayer[playerId];
     }
   } catch (error) {
-    console.warn("[stats-index] rapprochement profils legacy ignoré", error);
+    console.warn("[stats-index] rapprochement alias canonique ignoré", error);
   }
 }
 
@@ -1365,6 +1355,25 @@ export function cancelScheduledStatsIndexRefresh(): void {
   }
 }
 
+async function loadHistoryRowsForStats(includeNonFinished: boolean): Promise<{ History: any; rows: any[]; source: "history-v4-rebuild" | "history-rebuild" }> {
+  const { History } = await import("../history");
+  try {
+    if (typeof (History as any)?.listCanonicalForStats === "function") {
+      const canonical = await (History as any).listCanonicalForStats();
+      const rows = Array.isArray(canonical)
+        ? (includeNonFinished ? canonical : canonical.filter((row: any) => isFinishedHistoryStatus(row?.status)))
+        : [];
+      return { History, rows, source: "history-v4-rebuild" };
+    }
+  } catch (error) {
+    console.warn("[stats-index] History V4 read fallback", error);
+  }
+  const legacy = includeNonFinished
+    ? await History.list()
+    : ((await (History as any).listFinished?.()) ?? (await History.list()));
+  return { History, rows: Array.isArray(legacy) ? legacy : [], source: "history-rebuild" };
+}
+
 export async function getOrRebuildStatsIndex(options?: {
   includeNonFinished?: boolean;
   persist?: boolean;
@@ -1394,10 +1403,7 @@ export async function getOrRebuildStatsIndex(options?: {
   // restaurées par un index vide. Si l'historique est vide et qu'un index restauré
   // existe, on garde l'index restauré comme source de vérité exploitable.
   try {
-    const { History } = await import("../history");
-    const rows = options?.includeNonFinished
-      ? await History.list()
-      : ((await (History as any).listFinished?.()) ?? (await History.list()));
+    const { rows } = await loadHistoryRowsForStats(!!options?.includeNonFinished);
     if ((!Array.isArray(rows) || rows.length === 0) && statsIndexHasData(cached)) {
       return cached as StatsIndex;
     }
@@ -1423,23 +1429,18 @@ export async function rebuildStatsFromHistory(options?: {
   const diagnosticStartedAt = (() => { try { return performance.now(); } catch { return Date.now(); } })();
   recordStatsDiagnosticEvent("stats.index.rebuild-start", { includeNonFinished, persist });
 
-  // ✅ TDZ / cycle break:
-  // rebuildStatsFromHistory <-> history created a runtime import cycle.
-  // We resolve History lazily here so the module graph is fully initialized
-  // before accessing the History object.
-  const { History } = await import("../history");
-
-  const list = includeNonFinished
-    ? await History.list()
-    : (await History.listFinished?.()) ?? (await History.list());
+  // History V4 is the canonical authority. Legacy list/get remain a fallback
+  // only while old devices/snapshots are transitioning.
+  const { History, rows: list, source: historySource } = await loadHistoryRowsForStats(includeNonFinished);
 
   const idx = createEmptyStatsIndex(includeNonFinished);
   idx.rebuiltAt = Date.now();
   idx.meta = {
-    source: "history-rebuild",
+    source: historySource,
     rowsScanned: Array.isArray(list) ? list.length : 0,
     includeNonFinished,
     historyUpdatedAt: computeHistoryUpdatedAt(Array.isArray(list) ? list : []),
+    ...(historySource === "history-v4-rebuild" ? { historySchemaVersion: 4 as const } : {}),
   };
 
   const rows: any[] = Array.isArray(list) ? list : [];
@@ -1466,7 +1467,11 @@ export async function rebuildStatsFromHistory(options?: {
     const lightChunk = rows.slice(offset, offset + HYDRATE_CHUNK);
     const hydratedChunk = await Promise.all(lightChunk.map(async (lightRec: any) => {
       try {
+        if (lightRec?.payload && typeof lightRec.payload === "object") return lightRec;
         const id = String(lightRec?.matchId ?? lightRec?.id ?? "").trim();
+        if (id && typeof (History as any)?.getCanonicalV4 === "function") {
+          return ((await (History as any).getCanonicalV4(id)) as any) || lightRec;
+        }
         if (id && typeof (History as any)?.get === "function") {
           return ((await (History as any).get(id)) as any) || lightRec;
         }
@@ -1510,7 +1515,7 @@ export async function rebuildStatsFromHistory(options?: {
     }
   }
 
-  await reconcileLegacyPlayerAliases(idx);
+  await reconcileCanonicalPlayerAliases(idx);
   if (persist) await saveStatsIndex(idx);
   clearStatsIndexDirty();
   const diagnosticEndedAt = (() => { try { return performance.now(); } catch { return Date.now(); } })();

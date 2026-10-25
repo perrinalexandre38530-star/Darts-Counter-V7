@@ -34,6 +34,11 @@ export interface DartSet {
   mainImageAssetId?: string | null;
   thumbImageAssetId?: string | null;
   photoAssetId?: string | null;
+  /** WAVE 3 : clés canoniques du coffre média, indépendantes des URL R2 legacy. */
+  mainMediaKey?: string | null;
+  thumbMediaKey?: string | null;
+  r2MainMediaKey?: string | null;
+  r2ThumbMediaKey?: string | null;
 
   photoDataUrl?: string;
   imageDataUrl?: string;
@@ -927,6 +932,10 @@ function normalizeDartSetForRuntime(raw: any, opts?: { allowDeleted?: boolean })
     mainImageAssetId: raw.mainImageAssetId ?? raw.imageAssetId ?? raw.dartSetImageAssetId ?? null,
     thumbImageAssetId: raw.thumbImageAssetId ?? raw.photoThumbAssetId ?? null,
     photoAssetId: raw.photoAssetId ?? raw.mainImageAssetId ?? raw.imageAssetId ?? raw.dartSetImageAssetId ?? null,
+    mainMediaKey: s(raw.mainMediaKey || raw.r2MainMediaKey) || (rawId ? dartSetMainMediaKey(rawId) : null),
+    thumbMediaKey: s(raw.thumbMediaKey || raw.r2ThumbMediaKey) || (rawId ? dartSetThumbMediaKey(rawId) : null),
+    r2MainMediaKey: s(raw.r2MainMediaKey || raw.mainMediaKey) || (rawId ? dartSetMainMediaKey(rawId) : null),
+    r2ThumbMediaKey: s(raw.r2ThumbMediaKey || raw.thumbMediaKey) || (rawId ? dartSetThumbMediaKey(rawId) : null),
     kind: normalizeKind(raw.kind) || (presetId ? "preset" : mainImageUrl || thumbImageUrl ? "photo" : "plain"),
     presetId,
     isFavorite: Boolean(raw.isFavorite),
@@ -967,6 +976,12 @@ function sanitizeDartSetForStorage(raw: any): any {
 
   next.scope = effectiveDartSetScope(next);
   next.name = s(next.name) || "Mes fléchettes";
+  if (s(next.id)) {
+    next.mainMediaKey = s(next.mainMediaKey || next.r2MainMediaKey) || dartSetMainMediaKey(s(next.id));
+    next.thumbMediaKey = s(next.thumbMediaKey || next.r2ThumbMediaKey) || dartSetThumbMediaKey(s(next.id));
+    next.r2MainMediaKey = s(next.r2MainMediaKey || next.mainMediaKey) || next.mainMediaKey;
+    next.r2ThumbMediaKey = s(next.r2ThumbMediaKey || next.thumbMediaKey) || next.thumbMediaKey;
+  }
 
   let favoriteProfileIds = uniqStrings([
     ...(Array.isArray(next.favoriteProfileIds) ? next.favoriteProfileIds : []),
@@ -1984,6 +1999,21 @@ function backfillDartSetMediaToR2(list: DartSet[]): void {
       r2BackfilledDartSetIds.delete(id);
     }
   }
+}
+
+export function getCanonicalDartSetMediaRefs(set: DartSet | null | undefined): { main: string | null; thumb: string | null } {
+  const id = s(set?.id);
+  if (!id) return { main: null, thumb: null };
+  const hasUserMedia = Boolean(
+    set?.kind === "photo" || set?.mainImageAssetId || set?.thumbImageAssetId || set?.photoAssetId ||
+    set?.photoDataUrl || set?.imageDataUrl || set?.mainImageDataUrl || set?.dartSetImageDataUrl ||
+    (typeof set?.mainImageUrl === "string" && (set.mainImageUrl.startsWith("data:image/") || set.mainImageUrl.startsWith("/media/") || /^https?:\/\//i.test(set.mainImageUrl)))
+  );
+  if (!hasUserMedia) return { main: null, thumb: null };
+  return {
+    main: s(set?.mainMediaKey || set?.r2MainMediaKey) || dartSetMainMediaKey(id),
+    thumb: s(set?.thumbMediaKey || set?.r2ThumbMediaKey) || dartSetThumbMediaKey(id),
+  };
 }
 
 export function getAllDartSets(): DartSet[] {

@@ -50,6 +50,9 @@ export type BotRecord = {
   avatarThumbAssetId?: string | null;
   avatarFullAssetId?: string | null;
   avatarCastAssetId?: string | null;
+  /** WAVE 3 : clé canonique de l’avatar dans le coffre média. */
+  avatarMediaKey?: string | null;
+  avatarSha256?: string | null;
   avatarUpdatedAt?: string | number | null;
   countryCode?: string | null;
   country?: string | null;
@@ -73,6 +76,7 @@ export type BotPlayerLite = {
   avatarThumbAssetId?: string | null;
   avatarFullAssetId?: string | null;
   avatarCastAssetId?: string | null;
+  avatarMediaKey?: string | null;
   avatarUpdatedAt?: string | number | null;
   countryCode?: string | null;
   country?: string | null;
@@ -437,6 +441,7 @@ export function normalizeBotLevel(input: any): BotLevel {
 export function normalizeBotRecord(input: any): BotRecord {
   const level = normalizeBotLevel(input?.level ?? input?.botLevel);
   const nowIso = new Date().toISOString();
+  const id = String(input?.id || nanoid());
   const avatarDataUrl = sanitizeAvatarDataUrl(
     input?.avatarDataUrl ?? input?.avatar ?? input?.avatarUrl ?? null
   );
@@ -446,7 +451,7 @@ export function normalizeBotRecord(input: any): BotRecord {
 
   return {
     ...input,
-    id: String(input?.id || nanoid()),
+    id,
     name: String(input?.name || "BOT"),
     level,
     botLevel: String(input?.botLevel || level),
@@ -457,6 +462,8 @@ export function normalizeBotRecord(input: any): BotRecord {
     avatarThumbAssetId: input?.avatarThumbAssetId || null,
     avatarFullAssetId: input?.avatarFullAssetId || null,
     avatarCastAssetId: input?.avatarCastAssetId || null,
+    avatarMediaKey: String(input?.avatarMediaKey || input?.avatar_media_key || botAvatarMediaKey(id)).trim() || null,
+    avatarSha256: input?.avatarSha256 || input?.avatarHash || null,
     avatarUpdatedAt: input?.avatarUpdatedAt || null,
     countryCode: countryCode || null,
     country: countryCode || null,
@@ -694,6 +701,7 @@ export function toBotPlayerLite(input: any): BotPlayerLite {
     avatarThumbAssetId: bot.avatarThumbAssetId ?? null,
     avatarFullAssetId: bot.avatarFullAssetId ?? null,
     avatarCastAssetId: bot.avatarCastAssetId ?? null,
+    avatarMediaKey: bot.avatarMediaKey ?? botAvatarMediaKey(bot.id),
     avatarUpdatedAt: bot.avatarUpdatedAt ?? null,
     countryCode: bot.countryCode ?? bot.country ?? null,
     country: bot.country ?? bot.countryCode ?? null,
@@ -706,6 +714,13 @@ export function toBotPlayerLite(input: any): BotPlayerLite {
     level: bot.level,
     avatarSeed: bot.avatarSeed,
   };
+}
+
+export function getCanonicalBotMediaRef(input: any): string | null {
+  const bot = normalizeBotRecord(input);
+  const id = String(bot?.id || "").trim();
+  if (!id || isOfficialBotId(id) || (bot as any)?.systemBot) return null;
+  return String(bot.avatarMediaKey || "").trim() || botAvatarMediaKey(id);
 }
 
 export function loadBotPlayers(): BotPlayerLite[] {

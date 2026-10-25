@@ -26,6 +26,7 @@ function extractStoreFromPayload(payload: any): any | null {
 
 export function hasMeaningfulRemoteSnapshotPayload(payload: any): boolean {
   if (!payload || typeof payload !== "object") return false;
+  if ((payload as any)?.kind === "mss_canonical_backup_artifact_v1" && (payload as any)?.data && (payload as any)?.payloadSha256) return true;
 
   const store = extractStoreFromPayload(payload);
   if (store && typeof store === "object") {

@@ -40,6 +40,8 @@ export type TeamEntity = {
   logoSha256?: string | null;
   /** Référence durable du logo personnalisé dans le coffre média IndexedDB/R2. */
   logoMediaKey?: string | null;
+  /** WAVE 3 : clé canonique du visuel de couverture dans le coffre média. */
+  coverMediaKey?: string | null;
 
   // ---------------------------
   // Champs étendus (optionnels)
@@ -99,6 +101,7 @@ export type PetanqueTeam = {
   logoLibraryId?: string | null;
   logoLibraryFileName?: string | null;
   logoMediaKey?: string | null;
+  coverMediaKey?: string | null;
   teamKind?: "leisure" | "club";
   clubId?: string | null;
   clubName?: string | null;
@@ -235,6 +238,7 @@ function normalizeTeamEntity(t: any): TeamEntity | null {
   const regionLogoAssetId = normalizeTextField(t.regionLogoAssetId);
   const coverUrl = normalizeTextField(t.coverUrl);
   const coverAssetId = normalizeTextField(t.coverAssetId);
+  const coverMediaKey = normalizeTextField(t.coverMediaKey || t.cover_media_key) || teamCoverMediaKey(id);
   const regionLogoDataUrl = normalizeImageRef(t.regionLogoDataUrl, t.regionLogoUrl);
   const slogan = typeof t.slogan === "string" ? t.slogan : undefined;
   const description = typeof t.description === "string" ? t.description : undefined;
@@ -271,6 +275,7 @@ function normalizeTeamEntity(t: any): TeamEntity | null {
     coverDataUrl: normalizeImageRef(t.coverDataUrl, t.coverUrl),
     coverUrl: coverUrl ?? null,
     coverAssetId: coverAssetId ?? null,
+    coverMediaKey,
     coverSha256: normalizeTextField(t.coverSha256 || t.coverHash) ?? null,
     slogan,
     description,
@@ -337,6 +342,16 @@ function dedupeById(list: TeamEntity[]) {
  * canonique : le logo reste récupérable même si localStorage a dû supprimer
  * la dataURL pour éviter un QuotaExceededError.
  */
+export function getCanonicalTeamMediaRefs(team: TeamEntity | null | undefined): { logo: string | null; cover: string | null } {
+  const id = String(team?.id || "").trim();
+  if (!id) return { logo: null, cover: null };
+  const libraryLogo = String(team?.logoLibraryId || team?.logoLibraryFileName || "").trim();
+  return {
+    logo: libraryLogo ? null : (String(team?.logoMediaKey || "").trim() || teamLogoMediaKey(id)),
+    cover: String(team?.coverMediaKey || "").trim() || teamCoverMediaKey(id),
+  };
+}
+
 export async function resolveTeamLogo(team: TeamEntity | null | undefined, allowR2 = true): Promise<string> {
   if (!team?.id) return "";
   const primary = String(team.logoDataUrl || team.logoUrl || team.avatarUrl || team.imageUrl || "").trim();

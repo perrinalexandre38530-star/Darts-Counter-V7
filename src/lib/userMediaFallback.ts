@@ -12,6 +12,13 @@ import {
 } from "./directR2BackupApi";
 import { resolveRuntimeMediaUrl } from "./serverConfig";
 import { createCooperativeYielder } from "./mainThreadYield";
+import {
+  getMediaVaultV2Diagnostics,
+  importLegacyEntriesIntoMediaVaultV2,
+  linkMediaVaultV2Remote,
+  putMediaVaultV2DataUrl,
+  resolveMediaVaultV2DataUrl,
+} from "../data/mediaVaultV2";
 
 export { ACCOUNT_MEDIA_SYNCED_EVENT };
 
@@ -115,6 +122,7 @@ export async function getUserMediaVaultDiagnostics(): Promise<{
   newestUpdatedAt: number;
   oldestUpdatedAt: number;
   memory: ReturnType<typeof getUserMediaMemoryDiagnostics>;
+  v2: Awaited<ReturnType<typeof getMediaVaultV2Diagnostics>>;
 }> {
   const rows = (await idbGetAll()).filter((row) => row?.key && isImageDataUrl(row?.dataUrl));
   const byKind: Record<string, number> = {};
@@ -141,6 +149,7 @@ export async function getUserMediaVaultDiagnostics(): Promise<{
     newestUpdatedAt,
     oldestUpdatedAt: oldestUpdatedAt === Number.MAX_SAFE_INTEGER ? 0 : oldestUpdatedAt,
     memory: getUserMediaMemoryDiagnostics(),
+    v2: await getMediaVaultV2Diagnostics(),
   };
 }
 
@@ -331,6 +340,11 @@ async function idbCount(): Promise<number> {
 export async function readFirstLocalUserMediaFallback(keysInput: string[]): Promise<string> {
   const keys = Array.from(new Set((keysInput || []).map(cleanKey).filter(Boolean)));
   if (!keys.length) return "";
+
+  for (const key of keys) {
+    const v2 = await resolveMediaVaultV2DataUrl(key).catch(() => "");
+    if (v2 && isImageDataUrl(v2)) return v2;
+  }
 
   for (const key of keys) {
     const cached = rememberedEntry(key);
@@ -641,6 +655,18 @@ async function compactSource(source: string, kind: string): Promise<string> {
 async function storeEntry(entry: UserMediaFallbackEntry): Promise<void> {
   rememberEntry(entry);
   await idbPut(entry);
+  // WAVE 4 : le coffre V1 reste un cache/compatibilité, le V2 devient la copie
+  // locale intègre et account-scoped. Une capture réussie doit donc toujours
+  // créer/actualiser sa référence V2.
+  try {
+    await putMediaVaultV2DataUrl({
+      mediaKey: entry.key,
+      kind: entry.kind,
+      dataUrl: entry.dataUrl,
+      updatedAt: entry.updatedAt,
+      sourceUrl: entry.sourceUrl || null,
+    });
+  } catch {}
 }
 
 export async function readLocalUserMediaFallback(keyInput: string): Promise<string> {
@@ -648,6 +674,13 @@ export async function readLocalUserMediaFallback(keyInput: string): Promise<stri
   if (!key) return "";
   const mem = rememberedEntry(key);
   if (mem?.dataUrl) return mem.dataUrl;
+  // WAVE 4 : priorité au coffre V2. Cela permet à l'UI historique de continuer
+  // à demander une mediaKey sans connaître encore l'assetId interne.
+  const v2 = await resolveMediaVaultV2DataUrl(key).catch(() => "");
+  if (v2 && isImageDataUrl(v2)) {
+    rememberEntry({ key, kind: key.split(":")[0] || "user_image", dataUrl: v2, updatedAt: Date.now() });
+    return v2;
+  }
   const row = await idbGet(key);
   if (row?.dataUrl && isImageDataUrl(row.dataUrl)) {
     rememberEntry(row);
@@ -692,11 +725,20 @@ export async function captureUserMediaFallback(
 
     if (sameSource && localEntry) {
       rememberEntry(localEntry);
+      // Backfill non bloquant des anciennes entrées V1 vers V2.
+      void putMediaVaultV2DataUrl({
+        mediaKey: localEntry.key,
+        kind: localEntry.kind,
+        dataUrl: localEntry.dataUrl,
+        updatedAt: localEntry.updatedAt,
+        sourceUrl: localEntry.sourceUrl || null,
+      }).catch(() => undefined);
       if (mirrorAccount) {
         try {
           if (!(await isAccountR2MediaFresh({ key, updatedAt: Number(localEntry.updatedAt || updatedAt) }))) {
             await uploadAccountR2Media(localEntry);
           }
+          await linkMediaVaultV2Remote(key, { remoteObjectKey: `account-media/${key}` }).catch(() => false);
         } catch {}
       }
       if (mirrorR2) {
@@ -715,7 +757,10 @@ export async function captureUserMediaFallback(
       try {
         if (await isAccountR2MediaFresh({ key, updatedAt })) {
           const local = await readLocalUserMediaFallback(key);
-          return local || (isImageDataUrl(source) ? source : "");
+          if (local) return local;
+          // Le remote est frais mais le coffre local a été vidé : continuer
+          // jusqu'à compactSource/storeEntry afin de reconstruire V2 avant une
+          // sauvegarde portable, au lieu de renvoyer des pixels non persistés.
         }
       } catch {}
     }
@@ -727,7 +772,9 @@ export async function captureUserMediaFallback(
       try {
         if (await isDirectR2MediaFresh({ key, updatedAt })) {
           const local = await readLocalUserMediaFallback(key);
-          return local || (isImageDataUrl(source) ? source : "");
+          if (local) return local;
+          // Même règle que pour le coffre account : un remote frais ne remplace
+          // pas la copie locale exigée par un snapshot NAS/fichier autonome.
         }
       } catch {}
     }
@@ -748,7 +795,10 @@ export async function captureUserMediaFallback(
     };
     await storeEntry(entry);
     if (mirrorAccount) {
-      try { await uploadAccountR2Media(entry); } catch {}
+      try {
+        await uploadAccountR2Media(entry);
+        await linkMediaVaultV2Remote(key, { remoteObjectKey: `account-media/${key}` });
+      } catch {}
     }
     if (mirrorR2) {
       try { await uploadDirectR2MediaFallback(entry); } catch {}
@@ -984,6 +1034,7 @@ export async function resolveUserMediaFallback(
             updatedAt: Number(accountRemote?.meta?.updatedAtMs || Date.now()) || Date.now(),
             sourceUrl: accountRemote?.meta?.sourceUrl || null,
           });
+          await linkMediaVaultV2Remote(key, { remoteObjectKey: `account-media/${key}` }).catch(() => false);
           return dataUrl;
         }
       } catch {}
@@ -1061,7 +1112,7 @@ function fastImageHash(text: string): string {
 
 export async function captureStoreUserMedia(
   store: any,
-  opts: { mirrorR2?: boolean } = {},
+  opts: { mirrorR2?: boolean; mirrorAccount?: boolean } = {},
 ): Promise<void> {
   type MediaJob = { key: string; source: string; kind: UserMediaKind | string; updatedAt?: number };
   const jobsByKey = new Map<string, MediaJob>();
@@ -1188,6 +1239,7 @@ export async function captureStoreUserMedia(
         kind: job.kind,
         updatedAt: job.updatedAt,
         mirrorR2: opts.mirrorR2 !== false,
+        mirrorAccount: opts.mirrorAccount !== false,
       }).catch(() => "");
     });
   }
@@ -1358,6 +1410,25 @@ export async function mirrorAllLocalUserMediaToAccountR2(
   return { attempted: rows.length, uploaded, fresh, failed, failedKeys };
 }
 
+export async function migrateLegacyUserMediaFallbackToV2(
+  opts: { keys?: Iterable<string>; onProgress?: (completed: number, total: number) => void } = {},
+): Promise<{ imported: number; skipped: number; total: number }> {
+  const wanted = opts.keys
+    ? new Set(Array.from(opts.keys, (value) => cleanKey(value)).filter(Boolean))
+    : null;
+  // IMPORTANT compte : le coffre V1 historique n'était pas account-scoped.
+  // Une migration automatique sans liste de références pourrait attribuer au
+  // compte courant des images appartenant à un autre compte ayant utilisé le
+  // même appareil. WAVE 4 n'adopte donc que les clés prouvées par le snapshot
+  // canonique du compte ; l'option sans filtre reste réservée aux imports d'un
+  // backup déjà validé pour ce propriétaire.
+  const rows = (await idbGetAll())
+    .filter((row) => row?.key && isImageDataUrl(row?.dataUrl))
+    .filter((row) => !wanted || wanted.has(cleanKey(row.key)));
+  const result = await importLegacyEntriesIntoMediaVaultV2(rows, { onProgress: opts.onProgress });
+  return { ...result, total: rows.length };
+}
+
 export async function exportUserMediaFallbackSnapshot(): Promise<UserMediaFallbackSnapshot> {
   const rows = (await idbGetAll())
     .filter((row) => row?.key && isImageDataUrl(row?.dataUrl))
@@ -1414,6 +1485,15 @@ export async function importUserMediaFallbackSnapshot(
   opts.onProgress?.(Math.max(0, total - 1), total, `Écriture groupée de ${entries.length} média(s)…`);
   await yieldIfNeeded(true);
   await idbPutMany(entries);
+  // Compatibilité ascendante : un ancien snapshot V1 restauré est immédiatement
+  // converti dans le coffre V2, sans attendre la prochaine sauvegarde.
+  await importLegacyEntriesIntoMediaVaultV2(entries, {
+    onProgress: (completed, legacyTotal) => {
+      if (legacyTotal > 0 && (completed % 16 === 0 || completed === legacyTotal)) {
+        opts.onProgress?.(Math.max(0, total - 1), total, `Conversion Media Vault V2 : ${completed}/${legacyTotal}`);
+      }
+    },
+  }).catch(() => ({ imported: 0, skipped: entries.length }));
   await yieldIfNeeded(true);
   opts.onProgress?.(total, total, `${entries.length} média(s) restauré(s).`);
   if (typeof window !== "undefined") {

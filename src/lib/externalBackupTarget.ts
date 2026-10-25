@@ -1,4 +1,4 @@
-import { exportCloudSnapshot } from "./storage";
+import { buildCanonicalBackupArtifact } from "./backup/backupEngineV1";
 import { loadStoragePrefs } from "./storagePlans";
 import { isRuntimeHidden, shouldDeferHeavyRuntimeWork } from "./runtimePerformance";
 
@@ -113,23 +113,17 @@ async function permissionFor(handle: any, request: boolean): Promise<"granted" |
   }
 }
 
-async function buildBackupJson(reason: string): Promise<string> {
-  const snapshot: any = await exportCloudSnapshot();
-  const wrapped = {
-    ...snapshot,
-    externalBackup: {
-      version: 1,
-      reason,
-      exportedAt: new Date().toISOString(),
-      app: "multisports-scoring",
-    },
-  };
-  return JSON.stringify(wrapped);
+async function buildBackupJson(_reason: string): Promise<string> {
+  // WAVE 7 : même artefact que NAS / R2 / Drive / local. Les métadonnées de
+  // destination restent hors du payload afin de ne pas modifier le hash global.
+  const built = await buildCanonicalBackupArtifact();
+  return built.artifactJson;
 }
 
 function wrapPreparedSnapshotJson(snapshotJson: string, reason: string): string {
   try {
     const parsed = JSON.parse(snapshotJson);
+    if (parsed?.kind === "mss_canonical_backup_artifact_v1") return snapshotJson;
     return JSON.stringify({
       ...parsed,
       externalBackup: {

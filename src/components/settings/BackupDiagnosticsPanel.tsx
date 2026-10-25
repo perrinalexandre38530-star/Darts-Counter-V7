@@ -7,8 +7,9 @@ import { getIncrementalBackupStats, listUnsyncedIncrementalChanges } from "../..
 import { getNasSyncState } from "../../lib/manualNasSync";
 import { getPersonalCloudStatus } from "../../lib/personalCloudApi";
 import { getDirectR2Status, getDirectR2Usage } from "../../lib/directR2BackupApi";
+import { clearBackupPerfEvents, readBackupPerfEvents, summarizeBackupPerfEvents, type BackupPerfEvent } from "../../lib/backupPerformanceDiagnostics";
 
-const REPORT_KEY = "dc_backup_diagnostic_report_v126";
+const REPORT_KEY = "dc_backup_diagnostic_report_v132";
 
 type ThemeLike = {
   text?: string;
@@ -26,7 +27,7 @@ type DiagnosticCheck = {
 };
 
 type BackupDiagnosticReport = {
-  version: "v126";
+  version: "v132";
   generatedAt: string;
   destination: string;
   checks: DiagnosticCheck[];
@@ -37,6 +38,10 @@ type BackupDiagnosticReport = {
   incremental: {
     journal: any;
     unsynced: Record<string, number>;
+  };
+  performance: {
+    recent: BackupPerfEvent[];
+    slowest: BackupPerfEvent[];
   };
   raw?: any;
 };
@@ -94,6 +99,7 @@ export default function BackupDiagnosticsPanel({ theme }: { theme: ThemeLike }) 
       let r2Usage: any = null;
       let journal: any = null;
       const unsynced: Record<string, number> = {};
+      const perf = summarizeBackupPerfEvents(100);
 
       try {
         external = await getExternalBackupStatus();
@@ -183,13 +189,26 @@ export default function BackupDiagnosticsPanel({ theme }: { theme: ThemeLike }) 
         data: { backup: bgBackup, restore: bgRestore },
       });
 
+      const slowest = perf.slowest[0] || null;
+      const slowStatus: DiagnosticCheck["status"] = !slowest ? "info" : slowest.durationMs >= 10_000 ? "fail" : slowest.durationMs >= 3_000 ? "warn" : "ok";
+      checks.push({
+        id: "performance",
+        label: "Performance réelle",
+        status: slowStatus,
+        detail: slowest
+          ? `Étape la plus lente : ${slowest.phase} · ${(slowest.durationMs / 1000).toFixed(slowest.durationMs >= 1000 ? 1 : 2)} s · ${slowest.operation}. ${perf.recent.length} mesure(s) récente(s).`
+          : "Aucune mesure encore enregistrée. Lance une sauvegarde/restauration puis relance ANALYSER.",
+        data: { slowest: perf.slowest, recent: perf.recent },
+      });
+
       const result: BackupDiagnosticReport = {
-        version: "v126",
+        version: "v132",
         generatedAt: new Date().toISOString(),
         destination: String(prefs.selectedDestination || "app_local"),
         checks,
         background: { backup: bgBackup, restore: bgRestore },
         incremental: { journal, unsynced },
+        performance: { recent: perf.recent, slowest: perf.slowest },
         raw: {
           prefs,
           external,
@@ -216,6 +235,13 @@ export default function BackupDiagnosticsPanel({ theme }: { theme: ThemeLike }) 
       try { window.prompt("Copie le rapport :", txt); } catch {}
     }
   }, [report]);
+
+  const clearPerf = React.useCallback(() => {
+    clearBackupPerfEvents();
+    setReport((current) => current ? { ...current, performance: { recent: [], slowest: [] }, checks: current.checks.filter((check) => check.id !== "performance") } : current);
+  }, []);
+
+  const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(ms >= 10_000 ? 0 : 1)} s` : `${Math.round(ms)} ms`;
 
   const renderProgress = (label: string, value: number, message: string, status: string) => {
     const pct = Math.max(0, Math.min(100, Math.round(Number(value || 0))));
@@ -247,6 +273,9 @@ export default function BackupDiagnosticsPanel({ theme }: { theme: ThemeLike }) 
         <button type="button" onClick={() => void copy()} disabled={!report} style={{ borderRadius: 10, border: `1px solid ${border}`, background: "rgba(255,255,255,.03)", color: report ? text : soft, padding: "9px 12px", fontWeight: 800, cursor: report ? "pointer" : "default" }}>
           COPIER RAPPORT
         </button>
+        <button type="button" onClick={clearPerf} style={{ borderRadius: 10, border: `1px solid ${border}`, background: "rgba(255,255,255,.03)", color: soft, padding: "9px 12px", fontWeight: 800, cursor: "pointer" }}>
+          EFFACER MESURES
+        </button>
       </div>
 
       <div style={{ marginTop: 12, borderTop: `1px solid ${border}` }}>
@@ -256,7 +285,23 @@ export default function BackupDiagnosticsPanel({ theme }: { theme: ThemeLike }) 
 
       {report ? (
         <div style={{ marginTop: 12 }}>
-          <div style={{ color: soft, fontSize: 10.5, marginBottom: 8 }}>Rapport V126 · {formatDate(report.generatedAt)} · destination active : <b style={{ color: text }}>{report.destination}</b></div>
+          <div style={{ color: soft, fontSize: 10.5, marginBottom: 8 }}>Rapport V132 · {formatDate(report.generatedAt)} · destination active : <b style={{ color: text }}>{report.destination}</b></div>
+          {Array.isArray(report.performance?.recent) && report.performance.recent.length ? (
+            <div style={{ marginBottom: 10, border: `1px solid ${border}`, borderRadius: 11, padding: 10, background: "rgba(255,255,255,.018)" }}>
+              <div style={{ color: text, fontWeight: 900, fontSize: 11.5, marginBottom: 7 }}>TEMPS MESURÉS — dernières étapes</div>
+              <div style={{ display: "grid", gap: 5 }}>
+                {report.performance.recent.slice(0, 8).map((row) => (
+                  <div key={row.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ color: text, fontSize: 10.5, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.operation.toUpperCase()} · {row.phase}</div>
+                      {row.detail ? <div style={{ color: soft, fontSize: 9.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.detail}</div> : null}
+                    </div>
+                    <div style={{ color: row.durationMs >= 10_000 ? "#ff8a8a" : row.durationMs >= 3_000 ? "#ffd36a" : "#65e6a8", fontWeight: 1000, fontSize: 10.5 }}>{formatDuration(row.durationMs)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <div style={{ display: "grid", gap: 7 }}>
             {report.checks.map((check) => (
               <div key={check.id} style={{ border: `1px solid ${border}`, borderRadius: 11, padding: "10px 11px", background: "rgba(255,255,255,.018)" }}>

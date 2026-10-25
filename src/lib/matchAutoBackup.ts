@@ -1,6 +1,7 @@
 import LZString from "lz-string";
 import { apiDelete, apiGet, apiPost, readNasAccessToken } from "./apiClient";
-import { exportCloudSnapshot, getStorageUser } from "./storage";
+import { getStorageUser } from "./storage";
+import { buildCanonicalBackupArtifact } from "./backup/backupEngineV1";
 import { loadStoragePrefs } from "./storagePlans";
 import { queueExternalBackup } from "./externalBackupTarget";
 import { uploadPersonalCloudSnapshot, isPersonalCloudProvider, type PersonalCloudProvider } from "./personalCloudApi";
@@ -45,8 +46,13 @@ async function runPersonalCloudFullSnapshot(job: DeferredPersonalCloudSnapshot):
   }
 
   deferredPersonalCloudRunning = (async () => {
-    const snapshot = await exportCloudSnapshot({ mediaMirror: "skip", includeEmbeddedMedia: false });
-    await uploadPersonalCloudSnapshot(job.provider, JSON.stringify(snapshot), job.metadata);
+    const built = await buildCanonicalBackupArtifact();
+    await uploadPersonalCloudSnapshot(job.provider, built.artifactJson, {
+      ...job.metadata,
+      artifactId: built.artifact.artifactId,
+      payloadSha256: built.artifact.payloadSha256,
+      summary: built.summary,
+    });
     await markIncrementalCheckpoint({ provider: job.provider, reason: job.metadata?.reason || "auto-checkpoint" }).catch(() => undefined);
   })().catch((error) => {
     try {
@@ -716,8 +722,8 @@ async function pushLatestSnapshotToCloud(reason: string): Promise<void> {
     if (last > 0 && now - last < CLOUD_FULL_SNAPSHOT_MIN_INTERVAL_MS) return;
     localStorage.setItem("dc_cloud_auto_full_backup_last_at_v1", String(now));
   } catch {}
-  const snapshot = await exportCloudSnapshot();
-  const json = JSON.stringify(snapshot);
+  const built = await buildCanonicalBackupArtifact();
+  const json = built.artifactJson;
   await uploadCloudObject({
     objectType: CLOUD_VAULT_OBJECT_TYPE,
     sport: "system",
@@ -732,6 +738,9 @@ async function pushLatestSnapshotToCloud(reason: string): Promise<void> {
       reason,
       exportedAt: new Date().toISOString(),
       rawSizeBytes: json.length,
+      artifactId: built.artifact.artifactId,
+      payloadSha256: built.artifact.payloadSha256,
+      summary: built.summary,
     },
   });
   await markIncrementalCheckpoint({ provider: "cloud_r2", reason }).catch(() => undefined);

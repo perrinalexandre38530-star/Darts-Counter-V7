@@ -1,174 +1,85 @@
 // =============================================================
 // src/lib/teamsStore.ts
-// Store unique TEAMS multi-sport (localStorage)
-// Key: dc-teams-v1
+// WAVE 3 — façade de compatibilité vers le store Teams canonique.
+//
+// IMPORTANT : ce module ne possède plus de persistance propre. Toute lecture /
+// écriture passe par petanqueTeamsStore.ts afin qu’un ancien écran ne puisse
+// plus réécrire dc-teams-v1 avec un schéma appauvri.
 // =============================================================
 
-import { fileToCompressedImageDataUrl, sanitizeStoredImage, setJsonWithQuotaRecovery } from "./teamImageStorage";
-import { captureUserMediaFallback, teamLogoMediaKey } from "./userMediaFallback";
-import { deleteAccountR2Media, deleteDirectR2MediaFallback } from "./directR2BackupApi";
-import { unpackJsonFromStorage } from "./imageStorageCodec";
-import { accountScopedLocalStorageKey, adoptLegacyLocalStorageKey, getAccountScopeId } from "./accountScope";
+import {
+  loadTeams as loadCanonicalTeams,
+  saveTeams as saveCanonicalTeams,
+  loadTeamsBySport as loadCanonicalTeamsBySport,
+  createTeam as createCanonicalTeam,
+  updateTeam as updateCanonicalTeam,
+  deleteTeam as deleteCanonicalTeam,
+  fileToDataUrl as canonicalFileToDataUrl,
+  type TeamEntity,
+  type TeamSport,
+} from "./petanqueTeamsStore";
 
-export type TeamSport = "petanque" | "darts" | string;
+export type { TeamSport };
+export type Team = TeamEntity;
 
-export type Team = {
-  id: string;              // uuid
-  sport: TeamSport;        // "petanque"
-  name: string;            // "Les Boulistes"
-  logoDataUrl?: string;    // optionnel (base64) -> OK pour local
-  logoUrl?: string;        // optionnel (si un jour tu upload)
-  createdAt: number;
-  updatedAt: number;
-};
-
-const KEY = "dc-teams-v1";
-
-function teamsStorageKey(): string {
-  const uid = getAccountScopeId();
-  if (uid) adoptLegacyLocalStorageKey(KEY, uid);
-  return accountScopedLocalStorageKey(KEY, uid);
-}
-
-const r2BackfilledTeamIds = new Set<string>();
-
-function safeParse<T>(raw: string | null, fallback: T): T {
-  try {
-    return unpackJsonFromStorage<T>(raw, fallback);
-  } catch {
-    return fallback;
-  }
-}
-
-function safeStringify(v: any) {
-  try {
-    return JSON.stringify(v);
-  } catch {
-    return "[]";
-  }
-}
-
-function keepNonInlineImageRef(value: unknown): string | undefined {
-  const s = typeof value === "string" ? value.trim() : "";
-  if (!s || /^data:image\//i.test(s)) return undefined;
-  return s;
-}
-
+/** @deprecated Utiliser petanqueTeamsStore.loadTeams(). */
 export function loadTeams(): Team[] {
-  const arr = safeParse<any[]>(localStorage.getItem(teamsStorageKey()), []);
-  if (!Array.isArray(arr)) return [];
-  const teams = arr
-    .filter(Boolean)
-    .map((t) => ({
-      id: String(t.id || ""),
-      sport: String(t.sport || "petanque"),
-      name: String(t.name || "Team"),
-      logoDataUrl: sanitizeStoredImage(t.logoDataUrl) || undefined,
-      logoUrl: t.logoUrl ? String(t.logoUrl) : undefined,
-      createdAt: Number(t.createdAt || Date.now()),
-      updatedAt: Number(t.updatedAt || Date.now()),
-    }))
-    .filter((t) => !!t.id);
-  for (const team of teams) {
-    const src = String(team.logoDataUrl || team.logoUrl || "").trim();
-    if (!src || r2BackfilledTeamIds.has(team.id)) continue;
-    r2BackfilledTeamIds.add(team.id);
-    void captureUserMediaFallback(teamLogoMediaKey(team.id), src, { kind: "team_logo", updatedAt: team.updatedAt })
-      .catch(() => r2BackfilledTeamIds.delete(team.id));
-  }
-  return teams;
+  return loadCanonicalTeams();
 }
 
+/** @deprecated Utiliser petanqueTeamsStore.saveTeams(). */
 export function saveTeams(next: Team[]) {
-  const clean = (next || []).map((t: any) => ({ ...t, logoDataUrl: sanitizeStoredImage(t?.logoDataUrl) || undefined }));
-  setJsonWithQuotaRecovery(teamsStorageKey(), clean, (list: any[]) =>
-    (list || []).map((t: any) => ({
-      ...t,
-      logoDataUrl: undefined,
-      logoUrl: keepNonInlineImageRef(t?.logoUrl),
-    }))
-  );
-  // Le logo utilisateur est écrit séparément dans R2 AVANT qu'une future
-  // récupération de quota localStorage puisse supprimer son DataURL local.
-  for (const team of next || []) {
-    const src = String((team as any)?.logoDataUrl || (team as any)?.logoUrl || "").trim();
-    if (!team?.id || !src) continue;
-    void captureUserMediaFallback(teamLogoMediaKey(team.id), src, {
-      kind: "team_logo",
-      updatedAt: Number(team.updatedAt || Date.now()),
-    }).catch((error) => console.warn("[teamsStore] R2 team logo mirror failed", error));
-  }
+  return saveCanonicalTeams(Array.isArray(next) ? next : []);
 }
 
+/** @deprecated Utiliser petanqueTeamsStore.loadTeamsBySport(). */
 export function loadTeamsBySport(sport: TeamSport): Team[] {
-  const key = String(sport || "").toLowerCase();
-  return loadTeams().filter((t) => String(t.sport || "").toLowerCase() === key);
+  return loadCanonicalTeamsBySport(sport);
 }
 
-function uid(): string {
-  // uuid si dispo, sinon fallback
-  const c: any = globalThis.crypto as any;
-  if (c && typeof c.randomUUID === "function") return c.randomUUID();
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
+/** @deprecated Utiliser petanqueTeamsStore.createTeam(). */
 export function createTeam(input: {
   sport: TeamSport;
   name: string;
-  logoDataUrl?: string;
-  logoUrl?: string;
+  logoDataUrl?: string | null;
+  logoUrl?: string | null;
+  allSports?: boolean;
+  sportIds?: TeamSport[];
+  teamKind?: "leisure" | "club";
+  clubName?: string | null;
+  clubId?: string | null;
 }): Team {
-  const now = Date.now();
-  const team: Team = {
-    id: uid(),
+  const created = createCanonicalTeam({
     sport: input.sport,
-    name: input.name.trim() || "Team",
-    logoDataUrl: sanitizeStoredImage(input.logoDataUrl) || undefined,
-    logoUrl: input.logoUrl,
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  const prev = loadTeams();
-  saveTeams([team, ...prev]);
-  return team;
+    name: input.name,
+    logoDataUrl: input.logoDataUrl ?? input.logoUrl ?? null,
+    allSports: input.allSports,
+    sportIds: input.sportIds,
+    teamKind: input.teamKind,
+    clubName: input.clubName,
+    clubId: input.clubId,
+  });
+  // logoUrl est conservé si l’appel legacy en fournit un qui n’est pas déjà
+  // devenu logoDataUrl dans la normalisation canonique.
+  if (input.logoUrl && created.logoUrl !== input.logoUrl) {
+    return updateCanonicalTeam(created.id, { logoUrl: input.logoUrl }) || created;
+  }
+  return created;
 }
 
+/** @deprecated Utiliser petanqueTeamsStore.updateTeam(). */
 export function updateTeam(
   id: string,
-  patch: Partial<Omit<Team, "id" | "createdAt">>
+  patch: Partial<Omit<Team, "id" | "createdAt">>,
 ): Team | null {
-  const prev = loadTeams();
-  const i = prev.findIndex((t) => t.id === id);
-  if (i === -1) return null;
-
-  const now = Date.now();
-  const next: Team = {
-    ...prev[i],
-    ...patch,
-    id: prev[i].id,
-    createdAt: prev[i].createdAt,
-    updatedAt: now,
-  };
-
-  const out = [...prev];
-  out[i] = next;
-  saveTeams(out);
-  return next;
+  return updateCanonicalTeam(id, patch);
 }
 
+/** @deprecated Utiliser petanqueTeamsStore.deleteTeam(). */
 export function deleteTeam(id: string) {
-  const prev = loadTeams();
-  saveTeams(prev.filter((t) => t.id !== id));
-  void Promise.allSettled([
-    deleteAccountR2Media(teamLogoMediaKey(id)),
-    deleteDirectR2MediaFallback(teamLogoMediaKey(id)),
-  ]);
+  return deleteCanonicalTeam(id);
 }
 
-// ---------------------------
-// DataURL helper (logo upload)
-// ---------------------------
 export function fileToDataUrl(file: File): Promise<string> {
-  return fileToCompressedImageDataUrl(file, { maxSize: 256, quality: 0.78 });
+  return canonicalFileToDataUrl(file);
 }

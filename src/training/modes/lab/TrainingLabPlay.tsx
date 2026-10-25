@@ -5,6 +5,7 @@ import TrainingResultModal from "../../ui/TrainingResultModal";
 import { appendTrainingVisit, recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
 import { getTrainingExercise } from "../../catalog/trainingExerciseCatalog";
 import { buildTrainingLiveAdaptation, buildTrainingLiveStepCoach, type TrainingLiveAdaptation } from "../../profile/trainingLiveCoach";
+import { buildTrainingSessionReview } from "../../profile/trainingSessionReview";
 import { isDoubleDart, makeTrainingStats, trainingDartMatches, type TrainingDart } from "../../lib/trainingDarts";
 import { clearTrainingProgramDraft, loadTrainingProgramSessions, recordTrainingProgramSession, saveTrainingProgramDraft } from "../../profile/trainingPlanTracker";
 import type { TrainingExerciseFamily } from "../../catalog/trainingExerciseCatalog";
@@ -52,6 +53,7 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
   const [careerMessage, setCareerMessage] = React.useState<{ xp: number; text: string } | null>(null);
   const [liveAdaptation, setLiveAdaptation] = React.useState<TrainingLiveAdaptation | null>(null);
   const programTrackedRef = React.useRef(false);
+  const plannedProgramIdsRef = React.useRef<string[]>(initialProgramIds.slice());
 
   const isProgram = programIds.length > 1;
   const totalSteps = programIds.length;
@@ -235,6 +237,12 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
     return { rows, steps, successes, darts, accuracy, performance, best };
   }, [programResults]);
 
+  const sessionReview = React.useMemo(() => buildTrainingSessionReview({
+    plannedExerciseIds: plannedProgramIdsRef.current,
+    actualExerciseIds: programIds,
+    rows: programSummary.rows as any,
+  }), [programIds, programSummary.rows]);
+
   React.useEffect(() => {
     if (!programSummaryOpen || programTrackedRef.current || !isProgram || programSummary.steps < totalSteps) return;
     programTrackedRef.current = true;
@@ -246,6 +254,9 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
       programTitle: String(config?.programTitle || "Programme Training"),
       durationMin: Math.max(0, Number(config?.programDurationMin) || 0),
       exerciseIds: programSummary.rows.map((row) => row.exerciseId),
+      plannedExerciseIds: plannedProgramIdsRef.current,
+      adaptationCount: sessionReview.adaptations.length,
+      targetHitCount: sessionReview.targetMet,
       families: Array.from(new Set(programSummary.rows.map((row) => row.family))) as TrainingExerciseFamily[],
       steps: programSummary.steps,
       successes: programSummary.successes,
@@ -261,8 +272,7 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
       const levelUp = afterCareer.level.level > beforeCareer.level.level;
       setCareerMessage({ xp: gainedXp, text: levelUp ? `NIVEAU ${afterCareer.level.level} DÉBLOQUÉ • ${afterCareer.level.title}` : `${afterCareer.xp} XP CARRIÈRE` });
       const prefs = loadTrainingLabPreferences();
-      const weakestStep = [...programSummary.rows].sort((a, b) => a.performanceScore - b.performanceScore)[0];
-      const nextFamily = (weakestStep?.family || currentRecord.families[0] || "precision") as TrainingExerciseFamily;
+      const nextFamily = (sessionReview.nextFamily || currentRecord.families[0] || "precision") as TrainingExerciseFamily;
       const loadAfter = buildTrainingLoadSummary([currentRecord, ...previous], prefs.weeklySessionTarget);
       const advice = buildPostSessionCoach(previous, currentRecord, nextFamily, loadAfter);
       setPostSessionCoach(advice);
@@ -271,7 +281,7 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
     if (programSummary.performance > previousBest && programSummary.performance > 0) {
       setProgramRecordMessage(previous.length ? `NOUVEAU RECORD DE SÉANCE • ${Math.round(programSummary.performance)}/100` : `PREMIÈRE RÉFÉRENCE • ${Math.round(programSummary.performance)}/100`);
     }
-  }, [config?.programDurationMin, config?.programId, config?.programTitle, isProgram, programSummary, programSummaryOpen, totalSteps]);
+  }, [config?.programDurationMin, config?.programId, config?.programTitle, isProgram, programSummary, programSummaryOpen, sessionReview, totalSteps]);
 
   const s = stateRef.current;
   const target = exercise.engine === "target_hits" ? exercise.target || "—" : exercise.engine === "sequence" ? sequence[Math.min(s.progress, Math.max(0, sequence.length - 1))] || "—" : exercise.engine === "checkout" ? String(Math.max(0, goal - s.checkoutTotal)) : String(Math.max(0, goal - s.points));
@@ -343,6 +353,29 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
         {programSummary.best && <div style={{ marginTop: 10, padding: 10, borderRadius: 12, background: "rgba(39,220,255,.07)", border: "1px solid rgba(39,220,255,.16)", fontSize: 10 }}>
           <b>Meilleure étape :</b> {programSummary.best.exerciseTitle} • {programSummary.best.performanceScore}/100
         </div>}
+
+        <div style={{ marginTop: 10, padding: 11, borderRadius: 13, background: "linear-gradient(135deg,rgba(39,220,255,.055),rgba(140,90,255,.045))", border: "1px solid rgba(39,220,255,.17)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+            <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1, opacity: .55 }}>PLAN PRÉVU → RÉALISÉ</div><div style={{ marginTop: 3, fontSize: 11.5, fontWeight: 950 }}>{sessionReview.headline}</div></div>
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <span style={{ padding: "4px 7px", borderRadius: 999, background: "rgba(255,255,255,.045)", fontSize: 8, fontWeight: 900 }}>STABLE • {Math.round(sessionReview.adherencePct)}%</span>
+              <span style={{ padding: "4px 7px", borderRadius: 999, background: sessionReview.adaptations.length ? "rgba(255,184,76,.08)" : "rgba(80,255,174,.07)", fontSize: 8, fontWeight: 900 }}>ADAPT. • {sessionReview.adaptations.length}</span>
+              <span style={{ padding: "4px 7px", borderRadius: 999, background: "rgba(255,255,255,.045)", fontSize: 8, fontWeight: 900 }}>CIBLES • {sessionReview.targetMet}/{sessionReview.targetTotal}</span>
+            </div>
+          </div>
+          <div style={{ marginTop: 5, fontSize: 9.3, lineHeight: 1.42, opacity: .68 }}>{sessionReview.body}</div>
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(1, sessionReview.phases.length)},minmax(0,1fr))`, gap: 6, marginTop: 9 }}>
+            {sessionReview.phases.map((phase) => <div key={phase.phase} style={{ padding: 8, borderRadius: 10, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.055)", textAlign: "center" }}>
+              <div style={{ fontSize: 7, fontWeight: 950, opacity: .48 }}>{phase.label}</div>
+              <div style={{ marginTop: 3, fontSize: 12, fontWeight: 950 }}>{Math.round(phase.averagePerformance)}<span style={{ fontSize: 7, opacity: .45 }}>/100</span></div>
+              <div style={{ marginTop: 2, fontSize: 7.5, opacity: .5 }}>{phase.targetMet}/{phase.steps} cibles • {Math.round(phase.averageAccuracy)}% préc.</div>
+            </div>)}
+          </div>
+          {sessionReview.adaptations.length > 0 && <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+            {sessionReview.adaptations.map((adaptation) => { const planned = getTrainingExercise(adaptation.plannedExerciseId); const actual = getTrainingExercise(adaptation.actualExerciseId); return <div key={`${adaptation.stepIndex}-${adaptation.actualExerciseId}`} style={{ fontSize: 8.3, opacity: .62 }}>Étape {adaptation.stepIndex + 1} • <span style={{ textDecoration: "line-through", opacity: .62 }}>{planned?.title || adaptation.plannedExerciseId}</span> → <b style={{ color: "#ffd86b" }}>{actual?.title || adaptation.actualExerciseId}</b></div>; })}
+          </div>}
+          <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.06)", fontSize: 8.7, lineHeight: 1.4, opacity: .65 }}><b style={{ color: "#27dcff" }}>SUITE AWENA :</b> {sessionReview.nextReason}</div>
+        </div>
 
         {programRecordMessage && <div style={{ marginTop: 8, padding: 10, borderRadius: 12, background: "rgba(255,216,107,.08)", border: "1px solid rgba(255,216,107,.24)", color: "#ffd86b", fontSize: 9.5, fontWeight: 950, textAlign: "center", letterSpacing: .5 }}>{programRecordMessage}</div>}
 

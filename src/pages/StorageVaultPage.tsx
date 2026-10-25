@@ -11,7 +11,9 @@ import tickerStorageBackupFr from "../assets/tickers/ticker_storage_backup_fr.we
 import tickerStorageBackupEn from "../assets/tickers/ticker_storage_backup_en.webp";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { apiPost, buildApiUrl, ensureAccountBackendAccessToken, readNasAccessToken } from "../lib/apiClient";
-import { exportCloudSnapshot, importCloudSnapshot, loadStore } from "../lib/storage";
+import { exportCloudSnapshot, importCloudSnapshot, loadStore, saveStore } from "../lib/storage";
+import { isLegacyMigrationCandidate } from "../data/legacyMigrationV1";
+import { analyzeLegacySnapshotAgainstCurrent, migrateLegacySnapshotIntoCurrent } from "../lib/legacyMigrationRuntime";
 import {
   createLocalMemorySlot,
   createLocalMemorySlotFromSnapshot,
@@ -69,6 +71,7 @@ import {
 } from "../lib/cloudStorageApi";
 import { restoreCloudBackupFromJson } from "../lib/cloudBackup";
 import { recordStatsDiagnosticEvent } from "../lib/statsDiagnosticsTrace";
+import { beginBackupPerfStep } from "../lib/backupPerformanceDiagnostics";
 import {
   getDirectR2Status,
   getDirectR2Usage,
@@ -907,9 +910,13 @@ function buildBackupDetails(entry: SaveEntry, payloadInput: any): BackupDetails 
     .sort((a, b) => b.count - a.count || a.sport.localeCompare(b.sport, "fr"));
 
   const fallbackImages = n(summary.images || (summary.mediaRefs + summary.dataImages));
-  const userMediaCount = payload?.userMediaFallbacks?.media && typeof payload.userMediaFallbacks.media === "object"
+  const mediaVaultV2Count = payload?.mediaVaultV2?.assets && typeof payload.mediaVaultV2.assets === "object"
+    ? Object.keys(payload.mediaVaultV2.assets).length
+    : 0;
+  const legacyUserMediaCount = payload?.userMediaFallbacks?.media && typeof payload.userMediaFallbacks.media === "object"
     ? Object.keys(payload.userMediaFallbacks.media).length
     : 0;
+  const userMediaCount = Math.max(mediaVaultV2Count, legacyUserMediaCount);
   const avatarFallbackCount = payload?.avatarFallbacks?.profiles && typeof payload.avatarFallbacks.profiles === "object"
     ? Object.keys(payload.avatarFallbacks.profiles).length
     : 0;
@@ -1643,6 +1650,18 @@ function installPreparedBackupInvalidation(): void {
 
 installPreparedBackupInvalidation();
 
+async function flushRuntimeStoreBeforeBackup(): Promise<void> {
+  try {
+    const live = (window as any)?.__appStore?.store;
+    if (!live || typeof live !== "object") return;
+    const finish = beginBackupPerfStep("store", "flush-before-backup");
+    await saveStore(live, { skipAsyncNormalize: true });
+    finish({ ok: true, count: Array.isArray(live?.profiles) ? live.profiles.length : 0 });
+  } catch (error: any) {
+    console.warn("[StorageVault] runtime store flush before backup failed", error);
+  }
+}
+
 async function prepareCurrentBackupOnce(
   kind: PreparedBackupKind = "full",
   onProgress?: (progress: number, message: string) => void,
@@ -1651,32 +1670,49 @@ async function prepareCurrentBackupOnce(
   if (inFlight) return inFlight;
 
   const cached = preparedBackupCache.get(kind);
-  if (cached && cached.revision === preparedBackupRevision && Date.now() - cached.preparedAt < 90_000) return cached;
+  if (cached && cached.revision === preparedBackupRevision && Date.now() - cached.preparedAt < 10_000) return cached;
 
-  const revisionAtStart = preparedBackupRevision;
   const promise = (async () => {
+    await flushRuntimeStoreBeforeBackup();
     const exportOptions = kind === "cloud-fast"
       ? { mediaMirror: "background" as const, includeEmbeddedMedia: false, includeAvatarFallbacks: false }
       : { mediaMirror: "skip" as const, includeEmbeddedMedia: true, includeAvatarFallbacks: true };
-    const snapshot = normalizeCloudPayload(unwrapSnapshotEnvelope(await exportCloudSnapshot({
-      ...exportOptions,
-      onProgress: (progress, message) => onProgress?.(progress, message),
-    })));
-    if (!looksLikeCloudSnapshot(snapshot) && !looksLikeCloudBackupV1(snapshot)) {
-      throw new Error("L’état courant ne contient pas une sauvegarde Multisports exploitable.");
-    }
-    const summary = strictSummaryForRestore(snapshot);
-    const snapshotJson = JSON.stringify(snapshot);
-    const prepared: PreparedBackup = {
-      kind,
-      revision: revisionAtStart,
-      snapshot,
-      snapshotJson,
-      summary,
-      bytes: new TextEncoder().encode(snapshotJson).byteLength,
-      preparedAt: Date.now(),
+
+    const build = async (revision: number): Promise<PreparedBackup> => {
+      const finishPerf = beginBackupPerfStep("backup", `prepare-${kind}`, { meta: { revision } });
+      const snapshot = normalizeCloudPayload(unwrapSnapshotEnvelope(await exportCloudSnapshot({
+        ...exportOptions,
+        onProgress: (progress, message) => onProgress?.(progress, message),
+      })));
+      if (!looksLikeCloudSnapshot(snapshot) && !looksLikeCloudBackupV1(snapshot)) {
+        finishPerf({ ok: false, detail: "snapshot invalide" });
+        throw new Error("L’état courant ne contient pas une sauvegarde Multisports exploitable.");
+      }
+      const summary = strictSummaryForRestore(snapshot);
+      const snapshotJson = JSON.stringify(snapshot);
+      const prepared: PreparedBackup = {
+        kind,
+        revision,
+        snapshot,
+        snapshotJson,
+        summary,
+        bytes: new TextEncoder().encode(snapshotJson).byteLength,
+        preparedAt: Date.now(),
+      };
+      finishPerf({ ok: true, bytes: prepared.bytes, count: Number(summary.matches || 0) });
+      return prepared;
     };
-    if (revisionAtStart === preparedBackupRevision) preparedBackupCache.set(kind, prepared);
+
+    let revision = preparedBackupRevision;
+    let prepared = await build(revision);
+    // Si une partie/profil change pendant l'assemblage, ne jamais envoyer la
+    // photographie déjà périmée. On reconstruit immédiatement UNE fois.
+    if (revision !== preparedBackupRevision) {
+      onProgress?.(2, "Données modifiées pendant le snapshot : reconstruction rapide…");
+      revision = preparedBackupRevision;
+      prepared = await build(revision);
+    }
+    if (prepared.revision === preparedBackupRevision) preparedBackupCache.set(kind, prepared);
     return prepared;
   })();
 
@@ -2732,11 +2768,14 @@ export default function StorageVaultPage({ go }: Props) {
   ): Promise<{ summary: VaultSummary }> => {
     const report = options?.report || (() => {});
     const provider = options?.provider || backupProvider;
+    const finishRestorePerf = beginBackupPerfStep("restore", `vault-${provider}`, { meta: { provider, reason, label } });
     report(54, "Préparation du snapshot téléchargé…", "prepare");
     const snapshot = normalizeCloudPayload(unwrapSnapshotEnvelope(payload));
     const isBackupV1 = looksLikeCloudBackupV1(snapshot);
     if (!looksLikeCloudSnapshot(snapshot) && !isBackupV1) throw new Error("Snapshot restaurable introuvable dans ce bloc.");
     const summary = isBackupV1 ? strictSummaryForCloudPayload(snapshot) : strictSummaryForRestore(snapshot);
+    const legacyMigration = isLegacyMigrationCandidate(snapshot);
+    const legacyPlan = legacyMigration ? await analyzeLegacySnapshotAgainstCurrent(snapshot) : null;
     recordStatsDiagnosticEvent("restore.begin", {
       provider,
       reason,
@@ -2753,12 +2792,15 @@ export default function StorageVaultPage({ go }: Props) {
 
     const isNativeRestore = Capacitor.isNativePlatform();
     const targetLabel = provider === "cloud" ? "Cloudflare R2" : provider === "google_drive" ? "Google Drive" : "compte NAS";
-    const restoreFlowText = isNativeRestore
-      ? "L’application va créer une sécurité puis remplacer uniquement les données locales par cette sauvegarde. Aucune autre source ne sera chargée en arrière-plan."
-      : `L’application va créer une sécurité, restaurer le navigateur, synchroniser vers ${targetLabel}, puis recharger.`;
+    const restoreFlowText = legacyMigration
+      ? `WAVE 9 va MIGRER ce backup ancien sans effacer l’état actuel : doublons ignorés, alias explicites réparés, données ambiguës conservées comme incomplètes/quarantaine. ${legacyPlan?.summary?.repaired || 0} partie(s) réparée(s), ${legacyPlan?.summary?.duplicate || 0} doublon(s), ${legacyPlan?.summary?.quarantined || 0} quarantaine(s).`
+      : isNativeRestore
+        ? "L’application va créer une sécurité puis remplacer uniquement les données locales par cette sauvegarde. Aucune autre source ne sera chargée en arrière-plan."
+        : `L’application va créer une sécurité, restaurer le navigateur, synchroniser vers ${targetLabel}, puis recharger.`;
     if (!options?.skipConfirm) {
+      const actionLabel = legacyMigration ? "Migrer" : "Restaurer";
       const ok = window.confirm(
-        `Restaurer "${label}" ?\n\n` +
+        `${actionLabel} "${label}" ?\n\n` +
         `${summary.matches} parties • ${summary.historyRows} lignes historique • ${summary.profiles} profils • ${summary.statsBlocks} stats\n\n` +
         restoreFlowText
       );
@@ -2781,9 +2823,17 @@ export default function StorageVaultPage({ go }: Props) {
       await createLocalMemorySlot("Sécurité avant restauration", "before-restore").catch(() => null);
     }
 
-    report(64, "Import des parties, profils et médias dans l’appareil…", "import");
+    report(64, legacyMigration ? "Migration legacy non destructive…" : "Import des parties, profils et médias dans l’appareil…", "import");
     let importReport: any = null;
-    if (isBackupV1) {
+    let legacyMigrationReport: any = null;
+    if (legacyMigration) {
+      legacyMigrationReport = await migrateLegacySnapshotIntoCurrent(snapshot, {
+        onProgress: (progress, message) => {
+          report(64 + Math.round(Math.max(0, Math.min(100, progress)) * 0.26), message, "import");
+        },
+      });
+      if (!legacyMigrationReport?.ok) throw new Error("Migration legacy impossible.");
+    } else if (isBackupV1) {
       const restored = await restoreCloudBackupFromJson({ json: JSON.stringify(snapshot), mode: "replace", rebuild: true });
       if (!restored.ok) throw new Error(restored.error || "Restauration CloudBackup impossible.");
     } else {
@@ -2798,44 +2848,55 @@ export default function StorageVaultPage({ go }: Props) {
     }
     restoreAuth();
 
-    try {
-      const manifestTime = Date.parse(String((snapshot as any)?.backupManifest?.createdAt || (snapshot as any)?.exportedAt || "")) || 0;
-      const deltaProvider = provider === "nas" ? "founder_nas" : provider === "cloud" ? "cloud_r2" : provider;
-      const deltas = await fetchRemoteIncrementalChanges(deltaProvider).catch(() => []);
-      if (Array.isArray(deltas) && deltas.length) {
-        report(89, `Application de ${deltas.length} changement(s) plus récent(s)…`, "import");
-        await applyIncrementalChanges(deltas, { since: manifestTime });
+    if (!legacyMigration) {
+      try {
+        const manifestTime = Date.parse(String((snapshot as any)?.backupManifest?.createdAt || (snapshot as any)?.exportedAt || "")) || 0;
+        const deltaProvider = provider === "nas" ? "founder_nas" : provider === "cloud" ? "cloud_r2" : provider;
+        const deltas = await fetchRemoteIncrementalChanges(deltaProvider).catch(() => []);
+        if (Array.isArray(deltas) && deltas.length) {
+          report(89, `Application de ${deltas.length} changement(s) plus récent(s)…`, "import");
+          await applyIncrementalChanges(deltas, { since: manifestTime });
+        }
+      } catch (deltaError) {
+        console.warn("[StorageVault] incremental replay skipped", deltaError);
       }
-    } catch (deltaError) {
-      console.warn("[StorageVault] incremental replay skipped", deltaError);
     }
 
     report(90, "Contrôle des statistiques restaurées…", "rebuild");
     try {
-      const expectedStats = Number(summary.statsMatches || summary.statsBlocks || 0);
-      const expectedHistory = Math.max(Number(summary.historyRows || 0), Number(summary.matches || 0));
+      const expectedStats = legacyMigration
+        ? Number(legacyMigrationReport?.importedMatches || 0)
+        : Number(summary.statsMatches || summary.statsBlocks || 0);
+      const expectedHistory = legacyMigration
+        ? Number(legacyMigrationReport?.importedMatches || 0)
+        : Math.max(Number(summary.historyRows || 0), Number(summary.matches || 0));
       let restoredStats: any = await loadStatsIndex().catch(() => null);
       const snapshotStatsCount = Number(restoredStats?.totals?.matches || 0);
 
-      // V123 : l'index embarqué dans une ancienne sauvegarde peut lui-même être
-      // incomplet (ex. 10 X01 alors que 55+ parties sont dans l'historique). On le
-      // charge d'abord pour le premier paint, puis on reconstruit TOUJOURS l'index
-      // depuis l'historique qui vient réellement d'être restauré. Ainsi la source de
-      // vérité est la même sur PC, Android, Drive et NAS.
-      if (expectedHistory > 0) {
-        report(91, `Reconstruction des stats depuis ${expectedHistory} partie(s) restaurée(s)…`, "rebuild");
+      // FAST RESTORE V132 : si le snapshot embarque déjà un index statistique
+      // cohérent, on ne rescane plus immédiatement tout l'historique. Le premier
+      // affichage utilise l'index restauré et une vérification/reconstruction est
+      // marquée dirty pour le prochain vrai créneau Stats/idle.
+      const expectedStatsFloor = expectedStats > 0 ? Math.max(1, Math.floor(expectedStats * 0.85)) : 0;
+      const snapshotLooksUsable = snapshotStatsCount > 0 && (expectedStatsFloor <= 0 || snapshotStatsCount >= expectedStatsFloor);
+      if (!snapshotLooksUsable && (expectedHistory > 0 || expectedStats > 0)) {
+        const finishStatsPerf = beginBackupPerfStep("stats", "restore-rebuild", { meta: { expectedHistory, expectedStats, snapshotStatsCount } });
+        report(91, `Index stats incomplet : reconstruction depuis ${expectedHistory || expectedStats} partie(s)…`, "rebuild");
         restoredStats = await refreshStatsIndexFromHistoryNow({
           includeNonFinished: true,
           persist: true,
-          reason: `restore-stats-v123:${reason}`,
+          reason: `restore-stats-v132:${reason}`,
         });
-      } else if (expectedStats > 0 && snapshotStatsCount <= 0) {
-        report(91, "Index stats absent : reconstruction immédiate…", "rebuild");
-        restoredStats = await refreshStatsIndexFromHistoryNow({
+        finishStatsPerf({ ok: true, count: Number(restoredStats?.totals?.matches || 0) });
+      } else if (snapshotLooksUsable) {
+        report(91, `Index stats restauré (${snapshotStatsCount}) : vérification complète différée.`, "rebuild");
+        markStatsIndexDirty(`restore-background-verify:${reason}`);
+        void scheduleStatsIndexRefresh({
           includeNonFinished: true,
           persist: true,
-          reason: `restore-stats-v123:${reason}`,
-        });
+          debounceMs: 1800,
+          reason: `restore-background-verify:${reason}`,
+        }).catch(() => null);
       }
 
       const restoredCount = Number(restoredStats?.totals?.matches || 0);
@@ -2858,7 +2919,7 @@ export default function StorageVaultPage({ go }: Props) {
       if (expectedHistory >= 5 && restoredCount < Math.floor(expectedHistory * 0.5)) {
         throw new Error(`Restauration statistiques incomplète : ${restoredCount} partie(s) indexée(s) pour ${expectedHistory} partie(s) restaurée(s).`);
       }
-      clearStatsIndexDirty();
+      if (!snapshotLooksUsable) clearStatsIndexDirty();
       try {
         window.dispatchEvent(new CustomEvent("dc-stats-index-updated", {
           detail: { reason: `restore:${reason}`, restored: true, rebuiltFromHistory: expectedHistory > 0, totals: restoredStats?.totals || null },
@@ -2872,10 +2933,12 @@ export default function StorageVaultPage({ go }: Props) {
 
     report(91, "Contrôle final des profils restaurés…", "finalize");
     try {
-      const expectedProfiles = Math.max(
-        Number(summary.profiles || 0),
-        Number(importReport?.portable?.expected?.profiles || 0),
-      );
+      const expectedProfiles = legacyMigration
+        ? Number(legacyMigrationReport?.plan?.summary?.profilesImportable || 0)
+        : Math.max(
+            Number(summary.profiles || 0),
+            Number(importReport?.portable?.expected?.profiles || 0),
+          );
       const runtimeAlreadyRefreshed = importReport?.runtimeRefreshed === true;
       let actualProfiles = Number(importReport?.portable?.restored?.profiles || 0);
       let restoredStore: any = null;
@@ -2933,7 +2996,7 @@ export default function StorageVaultPage({ go }: Props) {
       // le snapshot complet vers /sync/push. Sur le Web ce POST peut dépasser la
       // limite HTTP (413) alors que l’archive NAS est déjà stockée côté serveur.
       // L’archive est promue via /sync/slots/:id/restore avec un corps minuscule.
-      if (!options?.skipAccountSync) {
+      if (!options?.skipAccountSync && !legacyMigration) {
         report(94, `Synchronisation de l’état restauré vers ${targetLabel}…`, "finalize");
         if (provider === "cloud") {
           await uploadCurrentSnapshotToCloudVault(`restore-cloud:${reason}`, `État restauré — ${label}`);
@@ -2946,11 +3009,16 @@ export default function StorageVaultPage({ go }: Props) {
           await pushSnapshotToAccount(snapshot, reason);
         }
       } else {
-        report(94, "Archive NAS déjà présente : aucun renvoi volumineux vers /sync/push.", "finalize");
+        report(94, legacyMigration
+          ? "Migration legacy locale terminée : aucun ancien snapshot n’est repoussé comme nouvelle autorité distante."
+          : "Archive NAS déjà présente : aucun renvoi volumineux vers /sync/push.", "finalize");
       }
-      setMessage(`Restauration terminée : ${summary.matches} partie(s), ${summary.profiles} profil(s), ${summary.statsBlocks} bloc(s) stats. Rechargement…`);
-      report(100, "Restauration terminée. Rechargement…", "finalize");
+      setMessage(legacyMigration
+        ? `Migration legacy terminée : ${legacyMigrationReport?.importedMatches || 0} partie(s) ajoutée(s), ${legacyMigrationReport?.duplicateMatches || 0} doublon(s), ${legacyMigrationReport?.quarantinedMatches || 0} quarantaine(s). Rechargement…`
+        : `Restauration terminée : ${summary.matches} partie(s), ${summary.profiles} profil(s), ${summary.statsBlocks} bloc(s) stats. Rechargement…`);
+      report(100, legacyMigration ? "Migration legacy terminée. Rechargement…" : "Restauration terminée. Rechargement…", "finalize");
       recordStatsDiagnosticEvent("restore.complete", { provider, reason, matches: Number(summary.matches || 0), historyRows: Number(summary.historyRows || 0), statsBlocks: Number(summary.statsBlocks || 0) });
+      finishRestorePerf({ ok: true, count: Number(summary.matches || 0) });
       window.setTimeout(() => window.location.reload(), 900);
       return { summary };
     }
@@ -2976,11 +3044,14 @@ export default function StorageVaultPage({ go }: Props) {
     } catch {}
 
     if (!options?.background) {
-      setMessage(`Restauration terminée : ${summary.matches} partie(s), ${summary.profiles} profil(s), ${summary.statsBlocks} bloc(s) stats. État appliqué sans rechargement.`);
+      setMessage(legacyMigration
+        ? `Migration legacy terminée : ${legacyMigrationReport?.importedMatches || 0} partie(s) ajoutée(s), ${legacyMigrationReport?.duplicateMatches || 0} doublon(s), ${legacyMigrationReport?.quarantinedMatches || 0} quarantaine(s).`
+        : `Restauration terminée : ${summary.matches} partie(s), ${summary.profiles} profil(s), ${summary.statsBlocks} bloc(s) stats. État appliqué sans rechargement.`);
       await refresh(provider).catch(() => undefined);
     }
-    report(100, "Restauration terminée. Les données sont disponibles dans l’application.", "finalize");
+    report(100, legacyMigration ? "Migration legacy terminée. Les données compatibles sont disponibles." : "Restauration terminée. Les données sont disponibles dans l’application.", "finalize");
     recordStatsDiagnosticEvent("restore.complete", { provider, reason, matches: Number(summary.matches || 0), historyRows: Number(summary.historyRows || 0), statsBlocks: Number(summary.statsBlocks || 0) });
+    finishRestorePerf({ ok: true, count: Number(summary.matches || 0) });
     return { summary };
   };
 
@@ -3198,6 +3269,9 @@ ${label}`)) return;
       const snapshot = unwrapSnapshotEnvelope(parsed);
       const summary = strictSummaryForRestore(snapshot);
       const quality = assessSave(summary);
+      const legacyPreview = isLegacyMigrationCandidate(snapshot)
+        ? await analyzeLegacySnapshotAgainstCurrent(snapshot).catch(() => null)
+        : null;
       const timestamp = file.lastModified ? new Date(file.lastModified).toISOString() : new Date().toISOString();
       const slot: MemorySlot = {
         id: `file_${file.name}_${file.lastModified || Date.now()}`,
@@ -3224,9 +3298,11 @@ ${label}`)) return;
       setImportedRestoreEntry(entry);
       setRestoreSource("file");
       setRestoreView("current");
-      setMessage(quality.restorable
-        ? `Fichier prêt : ${summary.matches} partie(s) · ${summary.profiles} profil(s) · ${summary.statsMatches || summary.statsBlocks} partie(s) avec stats.`
-        : `Fichier lu, mais restauration déconseillée : ${quality.reason}`);
+      setMessage(legacyPreview
+        ? `Ancien backup prêt pour WAVE 9 : ${legacyPreview.summary.matchesTotal} partie(s) · ${legacyPreview.summary.repaired} réparée(s) · ${legacyPreview.summary.incomplete} incomplète(s) · ${legacyPreview.summary.quarantined} quarantaine(s) · ${legacyPreview.summary.profileAliasesSkipped} ancien(s) profil(s) absorbé(s) comme alias.`
+        : quality.restorable
+          ? `Fichier prêt : ${summary.matches} partie(s) · ${summary.profiles} profil(s) · ${summary.statsMatches || summary.statsBlocks} partie(s) avec stats.`
+          : `Fichier lu, mais restauration déconseillée : ${quality.reason}`);
     } catch (error: any) {
       setImportedRestoreEntry(null);
       setMessage(`Lecture du fichier impossible : ${error?.message || error}`);
@@ -3695,6 +3771,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
       successMessage: (result: any) => String(result?.message || `Sauvegarde ${destinationLabel} terminée.`),
       run: async (report) => {
         const startedAt = performance.now();
+        const finishBackupPerf = beginBackupPerfStep("backup", `destination-${destination}`, { meta: { destination } });
         const elapsed = () => `${Math.max(1, Math.round(performance.now() - startedAt))} ms`;
         const localLabel = `Sauvegarde ${destinationLabel} — ${new Date().toLocaleString("fr-FR")}`;
 
@@ -3734,6 +3811,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
             createdAt: String(slot.updatedAt || slot.createdAt || new Date().toISOString()),
             summary: prepared.summary as any,
           }).catch(() => null);
+          finishBackupPerf({ ok: true, bytes: compressed.byteLength, count: Number(prepared.summary.matches || 0) });
           return {
             message: `Sauvegarde locale créée en ${elapsed()} · ${prepared.summary.matches} partie(s) · ${prepared.summary.profiles} profil(s) · ${formatStorageBytes(compressed.byteLength)} compressés.`,
           };
@@ -3762,6 +3840,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
           const verifiedMeta = await getPersonalCloudBackupMeta(destination);
           if (!verifiedMeta) throw new Error(`${personalCloudProviderLabel(destination)} n'a pas confirmé la sauvegarde après l'envoi.`);
           report(99, "Sauvegarde cloud confirmée.");
+          finishBackupPerf({ ok: true, bytes: prepared.bytes, count: Number(prepared.summary.matches || 0) });
           return { message: `Sauvegarde ${personalCloudProviderLabel(destination)} terminée et vérifiée en ${elapsed()} · ${prepared.summary.matches} partie(s) · ${prepared.summary.profiles} profil(s).` };
         }
 
@@ -3818,6 +3897,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
               premiumRequired: u.premiumRequired !== false,
             });
           }
+          finishBackupPerf({ ok: true, bytes: prepared.bytes, count: Number(prepared.summary.matches || 0) });
           return {
             message: `Sauvegarde Cloud R2 créée en ${elapsed()} · ${prepared.summary.matches} partie(s) · ${formatStorageBytes(prepared.bytes)} · médias poursuivis séparément en arrière-plan.`,
           };
@@ -3826,7 +3906,9 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         // NAS : un seul gzip est produit puis réutilisé à la fois pour le réseau
         // et pour la copie locale. Les deux écritures sont lancées en parallèle.
         report(30, "Compression unique du snapshot NAS…");
+        const finishNasCompressionPerf = beginBackupPerfStep("backup", "nas-compression", { meta: { rawBytes: prepared.bytes } });
         const compressed = await getPreparedGzip(prepared);
+        finishNasCompressionPerf({ ok: true, bytes: compressed.byteLength, count: Number(prepared.summary.matches || 0) });
         const localSafetyPromise = createLocalMemorySlotFromSnapshot(
           prepared.snapshot,
           `Sécurité locale avant NAS — ${new Date().toLocaleString("fr-FR")}`,
@@ -3848,6 +3930,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         }
         const version = Number(prepared.snapshot?._v || prepared.snapshot?.v || 2) || 2;
         report(58, `Envoi NAS compressé (${formatStorageBytes(compressed.byteLength)})…`);
+        const finishNasUploadPerf = beginBackupPerfStep("network", "nas-upload", { meta: { compressedBytes: compressed.byteLength } });
         const response = await pushSnapshotToNasFast(
           prepared.snapshotJson,
           version,
@@ -3862,6 +3945,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
             report(progress, `Envoi NAS ${modeLabel} : ${formatStorageBytes(sentBytes)} / ${formatStorageBytes(totalBytes)}`);
           },
         );
+        finishNasUploadPerf({ ok: true, bytes: compressed.byteLength, count: Number(prepared.summary.matches || 0) });
         report(90, "Confirmation et indexation NAS…");
         void localSafetyPromise;
         const nasSlot: NasSlot = {
@@ -3878,6 +3962,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         });
         setBackupProvider("nas");
         writePreferredRemoteSource("nas");
+        finishBackupPerf({ ok: true, bytes: compressed.byteLength, count: Number(prepared.summary.matches || 0) });
         return {
           message: `Sauvegarde NAS créée en ${elapsed()} · ${prepared.summary.matches} partie(s) · ${formatStorageBytes(compressed.byteLength)} envoyés · copie locale parallèle.`,
         };
@@ -3949,6 +4034,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
     // Plus aucun POST de promotion bloquant avant l'import local.
     launchNativeRestore(entry, "nas", async (report) => {
       report(4, `Connexion au NAS pour préparer ${entry.title}…`, "download");
+      const finishNasDownloadPerf = beginBackupPerfStep("network", "nas-download", { meta: { slotId: id } });
       const pulled = await pullNasMemorySlot(id, {
         summaryHint: normalizeSummary(entry.summary),
         onProgress: (loadedBytes, totalBytes) => {
@@ -3960,6 +4046,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
           report(progress, `Téléchargement NAS : ${sizeText}`, "download");
         },
       });
+      finishNasDownloadPerf({ ok: true, count: Number(entry.summary?.matches || 0) });
       report(52, "Téléchargement NAS terminé. Décompression et import local…", "prepare");
       const result = await restoreSnapshotIntoBrowserAndAccount(
         pulled.payload,

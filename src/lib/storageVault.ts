@@ -2,8 +2,8 @@ import LZString from "lz-string";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import { gzipSync, gunzipSync, strFromU8, strToU8 } from "fflate";
 import { apiDelete, apiGet, apiGetBytes, apiPost } from "./apiClient";
-import { exportCloudSnapshot, getStorageUser, importCloudSnapshot } from "./storage";
-import { pushNasAccountSnapshot } from "./manualNasSync";
+import { getStorageUser, importCloudSnapshot } from "./storage";
+import { pushNasPreparedArtifact } from "./manualNasSync";
 
 type AnyRecord = Record<string, any>;
 
@@ -481,6 +481,29 @@ function statsIndexMatchCount(snapshot: any): number {
 
 export function summarizeVaultPayload(value: any): VaultSummary {
   const root = tryParse(value);
+  // WAVE 7 : les artefacts canoniques sont compressés. Leur résumé est embarqué
+  // dans l'enveloppe pour que les listes Local/NAS/R2 n'aient jamais à
+  // décompresser plusieurs dizaines de Mo juste pour afficher une carte.
+  if (root?.kind === "mss_canonical_backup_artifact_v1" && root?.summary && typeof root.summary === "object") {
+    const summary: any = root.summary || {};
+    return {
+      bytes: Number(root.packedBytes || root.payloadBytes || 0),
+      keys: 0,
+      profiles: Number(summary.profiles || 0),
+      matches: Number(summary.matches || summary.historyRows || 0),
+      historyRows: Number(summary.historyRows || summary.matches || 0),
+      statsBlocks: 0,
+      mediaRefs: 0,
+      dataImages: 0,
+      teams: Number(summary.teams || 0),
+      bots: Number(summary.bots || 0),
+      dartsets: Number(summary.dartsets || 0),
+      sports: [],
+      names: [],
+      exportedAt: String(summary.exportedAt || root.createdAt || "") || null,
+      probableContent: ["artefact canonique WAVE 7", "History V4", "Media Vault V2"],
+    };
+  }
   const seen = new WeakSet<object>();
   const sports: string[] = [];
   const names: string[] = [];
@@ -630,9 +653,13 @@ export function summarizeVaultPayload(value: any): VaultSummary {
   if (matches > 0) statsMatches = Math.min(statsMatches, matches);
   if (statsMatches > 0) statsBlocks = statsMatches;
 
-  const mediaVaultCount = root?.userMediaFallbacks?.media && typeof root.userMediaFallbacks.media === "object"
+  const mediaVaultV2Count = root?.mediaVaultV2?.assets && typeof root.mediaVaultV2.assets === "object"
+    ? Object.keys(root.mediaVaultV2.assets).length
+    : 0;
+  const legacyMediaVaultCount = root?.userMediaFallbacks?.media && typeof root.userMediaFallbacks.media === "object"
     ? Object.keys(root.userMediaFallbacks.media).length
     : 0;
+  const mediaVaultCount = Math.max(mediaVaultV2Count, legacyMediaVaultCount);
   const avatarFallbackCount = root?.avatarFallbacks?.profiles && typeof root.avatarFallbacks.profiles === "object"
     ? Object.keys(root.avatarFallbacks.profiles).length
     : 0;
@@ -775,8 +802,15 @@ export async function createLocalMemorySlotFromSnapshot(
 }
 
 export async function createLocalMemorySlot(label = "Bloc local", source: MemorySlot["source"] = "manual"): Promise<MemorySlot> {
-  const payload = await exportCloudSnapshot();
-  return createLocalMemorySlotFromSnapshot(payload, label, source);
+  const { buildCanonicalBackupArtifact } = await import("./backup/backupEngineV1");
+  const built = await buildCanonicalBackupArtifact();
+  return createLocalMemorySlotFromSnapshot(
+    built.artifact,
+    label,
+    source,
+    summarizeVaultPayload(built.artifact),
+    built.artifactJson,
+  );
 }
 
 export async function deleteLocalMemorySlot(id: string): Promise<void> {
@@ -1156,8 +1190,11 @@ export async function restoreNasMemorySlot(slotId: string): Promise<{ slot: NasS
   return { slot: pulled.slot, summary: pulled.summary };
 }
 
-export async function createNasVersionedSnapshot(): Promise<any> {
-  return pushNasAccountSnapshot();
+export async function createNasVersionedSnapshot(preparedArtifact?: any, summary?: VaultSummary | Record<string, any>): Promise<any> {
+  if (preparedArtifact) return pushNasPreparedArtifact(preparedArtifact, summary || {});
+  const { buildCanonicalBackupArtifact } = await import("./backup/backupEngineV1");
+  const built = await buildCanonicalBackupArtifact();
+  return pushNasPreparedArtifact(built.artifact, built.summary);
 }
 
 

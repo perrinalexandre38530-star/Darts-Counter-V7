@@ -18,10 +18,8 @@ import { setAvatarCache as setAvatarCacheLib, resetAvatarCacheRuntime } from "./
 import { buildAvatarFallbackSnapshot, importAvatarFallbackSnapshot } from "./avatarR2Fallback";
 import {
   captureStoreUserMedia,
-  exportUserMediaFallbackSnapshot,
   importUserMediaFromSnapshot,
   hydrateStoreUserMedia,
-  resolveUserMediaFallback,
   galleryItemMediaKey,
   avatarAiGalleryMediaKey,
   dartSetMainMediaKey,
@@ -29,17 +27,35 @@ import {
   teamLogoMediaKey,
   teamCoverMediaKey,
   readLocalUserMediaFallback,
+  migrateLegacyUserMediaFallbackToV2,
 } from "./userMediaFallback";
-import { getAllDartSets, replaceAllDartSets } from "./dartSetsStore";
-import { loadBots as loadStoredBots, restoreBotsFromSnapshot } from "./bots";
-import { loadTeams as loadStoredTeams, saveTeams as saveStoredTeams } from "./petanqueTeamsStore";
+import { getAllDartSets, replaceAllDartSets, getCanonicalDartSetMediaRefs } from "./dartSetsStore";
+import { loadBots as loadStoredBots, restoreBotsFromSnapshot, getCanonicalBotMediaRef } from "./bots";
+import { loadTeams as loadStoredTeams, saveTeams as saveStoredTeams, getCanonicalTeamMediaRefs } from "./petanqueTeamsStore";
 import { exportLocalTournamentsSnapshot, importLocalTournamentsSnapshot } from "./tournaments/storeLocal";
 import { createCooperativeYielder } from "./mainThreadYield";
 import { listActivities, saveActivity } from "../activity/activityStore";
 import { loadRunningRoutes, saveRunningRoutes } from "../activity/runningRoutes";
 import { listRunningSessionDrafts, saveRunningSessionDraft } from "../activity/runningSessionDrafts";
 import { listOutdoorOfflineRoutePacks, prepareOutdoorOfflineRoutePack } from "../activity/outdoorOfflineCache";
-import { recordIncrementalChange } from "./incrementalBackupJournal";
+import { recordIncrementalChange, recordIncrementalChangesBatch } from "./incrementalBackupJournal";
+import { beginBackupPerfStep, recordBackupPerfEvent } from "./backupPerformanceDiagnostics";
+import { isCanonicalBackupArtifact, stageCanonicalBackupArtifact } from "./backup/canonicalBackupArtifact";
+import { buildBackupManifestV2, validateBackupManifestV2 } from "../data/backupManifestV2";
+import {
+  isRegisteredPortableLocalStorageKey,
+  persistentLocalStorageRule,
+  portableLocalStorageKeysForDomain,
+} from "../data/dataRegistry";
+import { accountOwnedTeams, mergeAccountTeamsPreservingOrganizations } from "../data/organizationDataBoundary";
+import {
+  clearMediaVaultV2All,
+  clearMediaVaultV2ForOwner,
+  collectRequiredMediaKeysFromSnapshot,
+  exportMediaVaultV2Snapshot,
+  importMediaVaultV2Snapshot,
+  validateMediaVaultV2Snapshot,
+} from "../data/mediaVaultV2";
 
 const STORAGE_DIAG_ENABLED = false; // PERF V2: désactive les logs verbeux par défaut (les slows restent dans runtimeDiag)
 const STORE_WRITE_MODE: "plain" | "gzip" = "plain";
@@ -186,8 +202,13 @@ function shouldScanForRicherPersistedStore(store: any): boolean {
 let storeMediaCaptureInFlight = false;
 let pendingStoreMediaCapture: any = null;
 let storeMediaCaptureTimer: any = null;
+let lastStoreMediaCaptureAt = 0;
+const STORE_MEDIA_CAPTURE_MIN_INTERVAL_MS = 30_000;
 
 function scheduleStoreUserMediaCapture(store: any): void {
+  try {
+    if (typeof sessionStorage !== "undefined" && sessionStorage.getItem("dc_cloud_restore_in_progress_v2") === "1") return;
+  } catch {}
   pendingStoreMediaCapture = store;
   if (storeMediaCaptureInFlight || storeMediaCaptureTimer != null) return;
 
@@ -203,8 +224,9 @@ function scheduleStoreUserMediaCapture(store: any): void {
       dartSets: Array.isArray((latest as any)?.dartSets) ? (latest as any).dartSets.length : 0,
     });
     try {
-      await captureStoreUserMedia(latest, { mirrorR2: false });
+      await captureStoreUserMedia(latest, { mirrorR2: false, mirrorAccount: false });
     } catch {} finally {
+      lastStoreMediaCaptureAt = Date.now();
       endFreezeOperation(__freezeMediaOp);
     }
     storeMediaCaptureInFlight = false;
@@ -212,7 +234,9 @@ function scheduleStoreUserMediaCapture(store: any): void {
   };
 
   try {
-    storeMediaCaptureTimer = setTimeout(() => { void run(); }, 900);
+    const waitForCooldown = Math.max(0, STORE_MEDIA_CAPTURE_MIN_INTERVAL_MS - (Date.now() - lastStoreMediaCaptureAt));
+    const delay = Math.max(900, waitForCooldown);
+    storeMediaCaptureTimer = setTimeout(() => { void run(); }, delay);
   } catch {
     void run();
   }
@@ -1532,24 +1556,25 @@ async function migrateLegacyStoreIfNeeded() {
    ✅ CLOUD SNAPSHOT (LOCAL) — inclut IndexedDB + localStorage(dc_* ET dc-*)
 ============================================================ */
 // ✅ IMPORTANT : ton app a des clés en dc_ ET en dc- selon les versions
-const LS_PREFIXES = ["dc_", "dc-", "dc:", "msc_organizations_v1", "msc_organization_workspace_v1"] as const;
-const USER_CREATED_APP_KEYS = new Set<string>([
-  // Clés historiques sans préfixe dc_* mais contenant des données créées par l'utilisateur.
+const LS_PREFIXES = ["dc_", "dc-", "dc:"] as const;
+const LEGACY_USER_CREATED_APP_KEYS = new Set<string>([
+  // Compat historique. Les clés modernes mss-/mss_/msc_ sont décidées
+  // explicitement par le Data Registry WAVE 5.
   "babyfoot_league_store_v1",
   "pingpong_history",
   "settings_x01",
   "cloudStatsEnabled",
 ]);
-const USER_CREATED_APP_PREFIXES = [
-  "babyfoot_",
-  "settings_",
-] as const;
 function isDcKey(k: string) {
   return LS_PREFIXES.some((p) => k.startsWith(p));
 }
 function isAppUserCreatedLocalStorageKey(k: string) {
   const key = String(k || "");
-  return isDcKey(key) || USER_CREATED_APP_KEYS.has(key) || USER_CREATED_APP_PREFIXES.some((p) => key.startsWith(p));
+  const rule = persistentLocalStorageRule(key);
+  if (rule) return rule.portable === true;
+  // Compatibilité des anciennes familles Darts Counter : elles restent
+  // exportables tant qu'elles ne sont pas encore migrées dans le registre.
+  return isDcKey(key) || LEGACY_USER_CREATED_APP_KEYS.has(key);
 }
 
 const LS_EXCLUDE = new Set<string>([
@@ -1607,6 +1632,8 @@ const LS_LARGE_PAYLOAD_KEYS = new Set<string>([
 ]);
 
 function maxLocalStorageExportLenForKey(key: string): number {
+  // WAVE 2 : le registre d'identités doit toujours voyager avec le compte.
+  if (String(key || "").startsWith("dc_identity_aliases_v1")) return 2_500_000;
   return LS_LARGE_PAYLOAD_KEYS.has(key) ? 2_500_000 : 250_000;
 }
 
@@ -1644,10 +1671,8 @@ export function installLocalStorageDcHook() {
     ls.setItem = (key: string, value: string) => {
       originalSetItem(key, value);
       try {
-        if (key && isDcKey(key) && !LS_EXCLUDE.has(key) && !isSensitiveAuthStorageKey(key)) {
-          emitCloudChange(`ls:set:${key}`);
-        }
         if (key && isAppUserCreatedLocalStorageKey(key) && !LS_EXCLUDE.has(key) && !isSensitiveAuthStorageKey(key)) {
+          emitCloudChange(`ls:set:${key}`);
           window.dispatchEvent(new CustomEvent(ACCOUNT_LOCAL_STORAGE_MUTATION_EVENT, { detail: { key, op: "set" } }));
         }
       } catch {}
@@ -1656,10 +1681,8 @@ export function installLocalStorageDcHook() {
     ls.removeItem = (key: string) => {
       originalRemoveItem(key);
       try {
-        if (key && isDcKey(key) && !LS_EXCLUDE.has(key) && !isSensitiveAuthStorageKey(key)) {
-          emitCloudChange(`ls:del:${key}`);
-        }
         if (key && isAppUserCreatedLocalStorageKey(key) && !LS_EXCLUDE.has(key) && !isSensitiveAuthStorageKey(key)) {
+          emitCloudChange(`ls:del:${key}`);
           window.dispatchEvent(new CustomEvent(ACCOUNT_LOCAL_STORAGE_MUTATION_EVENT, { detail: { key, op: "remove" } }));
         }
       } catch {}
@@ -1845,17 +1868,28 @@ export async function storageEstimate() {
 
 function shouldExportLocalStorageDcKey(key: string, value: string | null): boolean {
   // Les tokens/session Supabase-NAS ne font JAMAIS partie d'une sauvegarde.
-  // Cette règle s'applique aussi aux anciens snapshots à l'import.
-  if (!key || !isAppUserCreatedLocalStorageKey(key) || LS_EXCLUDE.has(key) || isSensitiveAuthStorageKey(key)) return false;
+  if (!key || LS_EXCLUDE.has(key) || isSensitiveAuthStorageKey(key)) return false;
+
+  // WAVE 5 : une clé moderne déclarée dans le registre est gouvernée par son
+  // contrat explicite. Un nom contenant "history" ne doit plus exclure par
+  // accident `pingpong_history`, qui est une vraie donnée utilisateur.
+  const registered = persistentLocalStorageRule(key);
+  if (registered) {
+    // Une donnée explicitement portable ne doit plus disparaître silencieusement
+    // à cause d'un plafond hérité de Darts Counter. Si localStorage a accepté la
+    // valeur, le snapshot portable doit l'embarquer intégralement.
+    return registered.portable === true;
+  }
+
+  // Compat legacy dc_* : conserver l'ancien filtre jusqu'à migration complète.
+  if (!isAppUserCreatedLocalStorageKey(key)) return false;
   const lower = key.toLowerCase();
   if (
     lower.includes("history") ||
     lower.includes("stats") ||
     lower.includes("matchcache") ||
     lower.includes("historycache")
-  ) {
-    return false;
-  }
+  ) return false;
   if (typeof value === "string" && value.length > maxLocalStorageExportLenForKey(key)) return false;
   return true;
 }
@@ -1876,21 +1910,21 @@ function exportLocalStorageDc(): Record<string, string> {
   return out;
 }
 
-const RUNNING_BACKUP_LOCAL_KEYS = [
-  "mss-running-plan-v1",
-  "mss-running-audio-coach-v1",
-  "mss-running-segments-v1",
-  "mss-running-race-calendar-v1",
-  "mss-running-active-sessions-v1",
-  "mss-running-shoes-v1",
-  "mss-outdoor-route-extras-v1",
-  "mss-running-race-goal-v1",
-  "mss-outdoor-long-distance-v1",
-  "mss-running-performance-activity-v1",
-  "mss-running-privacy-v1",
-] as const;
+/** WAVE 5 — surface portable commune pour les moteurs de backup secondaires. */
+export function exportPortableLocalStorageData(): Record<string, string> {
+  return exportLocalStorageDc();
+}
 
-type RunningBackupSnapshot = {
+export function importPortableLocalStorageData(map: Record<string, string> | null | undefined): void {
+  if (!map || typeof map !== "object") return;
+  importLocalStorageDc(map);
+}
+
+// WAVE 5 : aucune préférence RUNNING portable ne doit être oubliée parce
+// qu'une nouvelle clé a été ajoutée dans un écran. Le registre est l'autorité.
+const RUNNING_BACKUP_LOCAL_KEYS = portableLocalStorageKeysForDomain("running");
+
+export type RunningBackupSnapshot = {
   _v: 2;
   exportedAt: string;
   activities: any[];
@@ -1990,6 +2024,41 @@ async function importRunningBackupSnapshot(snapshot: any, report: (progress: num
   report(96, "Sorties, parcours, photos et réglages RUNNING restaurés.");
 }
 
+export type RegisteredAppDataSnapshotV1 = {
+  _v: 1;
+  exportedAt: string;
+  localStorage: Record<string, string>;
+  running: RunningBackupSnapshot;
+};
+
+/**
+ * WAVE 5 — bloc portable commun aux moteurs de sauvegarde secondaires
+ * (Sync Center / ancien CloudBackup). Il réutilise exactement le même contrat
+ * localStorage que le snapshot principal et le snapshot RUNNING complet.
+ */
+export async function exportRegisteredAppDataSnapshot(): Promise<RegisteredAppDataSnapshotV1> {
+  return {
+    _v: 1,
+    exportedAt: new Date().toISOString(),
+    localStorage: exportPortableLocalStorageData(),
+    running: await exportRunningBackupSnapshot(),
+  };
+}
+
+export async function importRegisteredAppDataSnapshot(
+  snapshot: any,
+  report: (progress: number, message: string) => void = () => {},
+): Promise<void> {
+  if (!snapshot || typeof snapshot !== "object") return;
+  if (snapshot.localStorage && typeof snapshot.localStorage === "object") {
+    importPortableLocalStorageData(snapshot.localStorage as Record<string, string>);
+  }
+  const running = snapshot.running || snapshot.outdoorActivities;
+  if (running && typeof running === "object") {
+    await importRunningBackupSnapshot(running, report);
+  }
+}
+
 function importLocalStorageDc(map: Record<string, string>) {
   if (typeof window === "undefined") return;
   if (!map || typeof map !== "object") return;
@@ -2070,7 +2139,7 @@ function injectCollectionsIntoSnapshotStore(idbDump: Record<string, any>): Recor
     // ✅ NAS BACKUP TEAMS: Profiles > Teams écrit dans localStorage (dc-teams-v1),
     // pas toujours dans le store principal. On l'injecte explicitement pour que
     // le backup NAS soit restaurable même si la clé localStorage est trop lourde.
-    const teams = loadStoredTeams();
+    const teams = accountOwnedTeams(loadStoredTeams());
     if (Array.isArray(teams)) baseStore.teams = teams;
 
     nextIdb[storeKey] = sanitizeStoreForPersistence(baseStore as any);
@@ -2696,16 +2765,20 @@ async function saveStoreInternal<T extends Store>(store: T, opts?: SaveOpts): Pr
       const journalProfiles = Array.isArray((compat.store as any)?.profiles)
         ? (compat.store as any).profiles
         : (Array.isArray((guardedInput as any)?.profiles) ? (guardedInput as any).profiles : []);
+      const changes: any[] = [];
       for (const profile of journalProfiles) {
         const id = String((profile as any)?.id || "").trim();
-        if (id) void recordIncrementalChange({ entityType: "profile", entityId: id, payload: profile, updatedAt: Number((profile as any)?.updatedAt || Date.now()) });
+        if (id) changes.push({ entityType: "profile", entityId: id, payload: profile, updatedAt: Number((profile as any)?.updatedAt || Date.now()) });
       }
-      void recordIncrementalChange({
+      changes.push({
         entityType: "store_meta",
         entityId: "main",
         payload: { activeProfileId: (persistedStore as any)?.activeProfileId ?? null },
         updatedAt: Date.now(),
       });
+      // Une transaction unique remplace 60+ ouvertures IndexedDB lorsque le
+      // compte contient beaucoup de profils.
+      void recordIncrementalChangesBatch(changes).catch(() => undefined);
     } catch {}
     const endedAt = storageNowMs();
     const totalMs = Math.round((endedAt - startedAt) * 10) / 10;
@@ -2730,6 +2803,19 @@ async function saveStoreInternal<T extends Store>(store: T, opts?: SaveOpts): Pr
     }
     if (totalMs >= 50) {
       runtimeDiag(totalMs >= 120 ? "storage:saveStore:slow" : "storage:saveStore", diagPayload);
+      recordBackupPerfEvent({
+        operationId: `store:${Date.now()}`,
+        operation: "store",
+        phase: "saveStore",
+        startedAt: Date.now() - totalMs,
+        endedAt: Date.now(),
+        durationMs: totalMs,
+        ok: true,
+        bytes: payloadBytes,
+        count: Number(diagPayload.profiles || 0),
+        detail: `${totalMs} ms`,
+        meta: diagPayload,
+      });
     }
   } catch (err) {
     console.error("[storage] saveStore error:", err);
@@ -2923,6 +3009,15 @@ export async function exportAll(onProgress?: (progress: number, message: string)
     console.warn("[storage] export history snapshot failed", error);
     return { _v: 1, rows: {} };
   });
+
+  // WAVE 6: stats are a derived cache, never a portable authority. A new
+  // History V4 snapshot must rebuild dc_stats_index_v2 after restore.
+  if (Number((history as any)?.historySchemaVersion || 0) === 4) {
+    for (const key of Object.keys(nextIdbDump)) {
+      if (key === "dc_stats_index_v2" || key.startsWith("dc_stats_index_v2:")) delete nextIdbDump[key];
+    }
+  }
+
   report(72, "Snapshot local principal assemblé.");
 
   return {
@@ -2939,6 +3034,14 @@ export async function exportAll(onProgress?: (progress: number, message: string)
   };
 }
 
+function storageKeyAlreadyCarriesAccountScope(key: string): boolean {
+  const parts = String(key || "").split(":").slice(1).filter(Boolean);
+  if (!parts.length) return false;
+  const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const legacyUserLike = /^usr_[a-z0-9_-]{8,}$/i;
+  return parts.some((part) => uuidLike.test(part) || legacyUserLike.test(part));
+}
+
 async function importIdbEntryRaw(rawKey: string, value: any): Promise<void> {
   const key = String(rawKey || "").trim();
   if (!key) return;
@@ -2950,13 +3053,19 @@ async function importIdbEntryRaw(rawKey: string, value: any): Promise<void> {
 
   const targets = new Set<string>();
   targets.add(key);
-  if (isStoreLikeKey) targets.add(STORE_KEY);
+
+  const currentUid = getStorageUser();
+  const currentScopedStoreKey = currentUid ? `${STORE_KEY}:${currentUid}` : STORE_KEY;
+  // Un ancien `store:<uidLegacy>` doit rester consultable pour la migration,
+  // mais ne doit jamais écraser le store canonique du compte actuellement connecté.
+  if (isStoreLikeKey && (key === STORE_KEY || key === currentScopedStoreKey)) {
+    targets.add(STORE_KEY);
+  }
 
   // ✅ Compat snapshots legacy/non-namespacés:
   // si la clé importée n'est pas déjà scoped pour l'utilisateur courant,
   // on écrit AUSSI la version scoped afin que loadStore()/getKV("store")
   // relisent correctement le store après reconnexion.
-  const currentUid = getStorageUser();
   if (currentUid) {
     if (isStoreLikeKey) {
       // Ne jamais transformer `store:<uidA>` en `store:<uidA>:<uidB>`.
@@ -2964,7 +3073,13 @@ async function importIdbEntryRaw(rawKey: string, value: any): Promise<void> {
       if (key === STORE_KEY) targets.add(scopedStorageKey(STORE_KEY));
     } else {
       const alreadyScopedForCurrentUser = key.endsWith(`:${currentUid}`);
-      if (!alreadyScopedForCurrentUser) {
+      const alreadyCarriesAnyAccountScope = storageKeyAlreadyCarriesAccountScope(key);
+      // WAVE 0 DATA GUARD:
+      // Une clé déjà scopée pour un ancien compte/profil ne doit JAMAIS être
+      // rescopée avec l'utilisateur courant. C'est ce qui fabriquait des clés
+      // récursives du type agenda:<uidA>:<uidB>:usr_<uidC>:<uidA> à chaque restore.
+      // On conserve la clé legacy telle quelle pour la future migration contrôlée.
+      if (!alreadyScopedForCurrentUser && !alreadyCarriesAnyAccountScope) {
         const scoped = scopedStorageKey(key);
         if (scoped !== key) targets.add(scoped);
       }
@@ -3027,7 +3142,11 @@ function markRestoredStatsIndex(idx: any): any {
   if (!idx || typeof idx !== "object") return idx;
   return {
     ...idx,
-    version: Number(idx?.version || 2) || 2,
+    // Legacy stats-only backups remain readable during WAVE 6. New V4
+    // snapshots no longer export this cache, but an old restored index is
+    // promoted to the current cache schema so the synthetic-history guard can
+    // preserve its aggregates until legacy migration (WAVE 9).
+    version: 4,
     rebuiltAt: Number(idx?.rebuiltAt || Date.now()) || Date.now(),
     meta: {
       ...(idx?.meta && typeof idx.meta === "object" ? idx.meta : {}),
@@ -3287,7 +3406,11 @@ export async function importAll(
     try {
       const rawRows = dump?.history?.rows && typeof dump.history.rows === "object" ? dump.history.rows : {};
       const hasRealHistoryRows = Object.keys(rawRows).length > 0;
-      if (dump.history && dump.history._v === 1 && hasRealHistoryRows) {
+      const historyTombstones = dump?.history?.tombstones && typeof dump.history.tombstones === "object"
+        ? Object.keys(dump.history.tombstones).length
+        : 0;
+      const hasCanonicalHistoryV4 = Number(dump?.history?.historySchemaVersion || 0) === 4 || historyTombstones > 0;
+      if (dump.history && dump.history._v === 1 && (hasRealHistoryRows || hasCanonicalHistoryV4)) {
         report(46, `Restauration des ${Object.keys(rawRows).length} partie(s)…`);
         await importHistoryDump(dump.history, {
           replace: historyReplace,
@@ -3304,6 +3427,14 @@ export async function importAll(
         } else if (dump.history && dump.history._v === 1) {
           await importHistoryDump(dump.history, { replace: historyReplace, preserveExisting: !historyReplace });
         }
+      }
+      if (hasCanonicalHistoryV4) {
+        // Never let a restored derived index override canonical History V4.
+        await idbDel(scopedStorageKey("dc_stats_index_v2")).catch(() => {});
+        try {
+          localStorage.removeItem(scopedStorageKey("dc_stats_quick_v1"));
+          localStorage.removeItem(scopedStorageKey("dc-stats-index-v1"));
+        } catch {}
       }
       try { if (typeof window !== "undefined") window.dispatchEvent(new Event("dc-history-updated")); } catch {}
     } catch (e) {
@@ -3587,7 +3718,7 @@ async function exportPortableAccountData(): Promise<any> {
   const profiles = Array.isArray(currentStore?.profiles) ? effectivePortableProfiles(currentStore.profiles).map(sanitizePortableProfile) : [];
   const dartSets = getAllDartSets();
   const bots = loadStoredBots();
-  const teams = loadStoredTeams();
+  const teams = accountOwnedTeams(loadStoredTeams());
 
   // ÉQUIPES MULTI-APPAREILS : les snapshots cloud rapides retirent volontairement
   // les data:image du store principal. Les logos/couvertures d'équipe doivent
@@ -3595,7 +3726,7 @@ async function exportPortableAccountData(): Promise<any> {
   // (Google Drive, NAS, fichier, etc.). On capture donc d'abord le média local
   // puis on embarque un petit bloc dédié dans portableAccountData.
   try {
-    await captureStoreUserMedia({ teams }, { mirrorR2: false });
+    await captureStoreUserMedia({ teams }, { mirrorR2: false, mirrorAccount: false });
   } catch {}
   const teamMedia: Record<string, { logoDataUrl?: string; coverDataUrl?: string }> = {};
   for (const team of Array.isArray(teams) ? teams : []) {
@@ -3620,22 +3751,36 @@ async function exportPortableAccountData(): Promise<any> {
     const customPhoto = set?.kind === "photo" || Boolean(set?.photoAssetId || set?.mainImageAssetId);
     return {
       ...(set || {}),
-      ...(customPhoto ? {
-        r2MainMediaKey: dartSetMainMediaKey(id),
-        r2ThumbMediaKey: dartSetThumbMediaKey(id),
-        mediaUpdatedAt: Number(set?.mediaUpdatedAt || set?.createdAt || set?.updatedAt || 0) || undefined,
-      } : {}),
+      ...(customPhoto ? (() => {
+        const refs = getCanonicalDartSetMediaRefs(set);
+        return {
+          mainMediaKey: refs.main,
+          thumbMediaKey: refs.thumb,
+          r2MainMediaKey: refs.main,
+          r2ThumbMediaKey: refs.thumb,
+          mediaUpdatedAt: Number(set?.mediaUpdatedAt || set?.createdAt || set?.updatedAt || 0) || undefined,
+        };
+      })() : {}),
     };
   });
+  const portableBots = (Array.isArray(sanitizedCollections?.bots) ? sanitizedCollections.bots : bots).map((bot: any) => ({
+    ...(bot || {}),
+    avatarMediaKey: getCanonicalBotMediaRef(bot) || bot?.avatarMediaKey || null,
+  }));
+  const portableTeams = (Array.isArray(sanitizedCollections?.teams) ? sanitizedCollections.teams : teams).map((team: any) => {
+    const refs = getCanonicalTeamMediaRefs(team);
+    return { ...(team || {}), logoMediaKey: refs.logo, coverMediaKey: refs.cover };
+  });
+
   return {
     _v: PORTABLE_ACCOUNT_DATA_VERSION,
     exportedAt: new Date().toISOString(),
     userId: getStorageUser(),
     activeProfileId: currentStore?.activeProfileId ?? null,
     profiles: Array.isArray(sanitizedCollections?.profiles) ? sanitizedCollections.profiles : profiles,
-    bots: Array.isArray(sanitizedCollections?.bots) ? sanitizedCollections.bots : bots,
+    bots: portableBots,
     dartSets: portableDartSets,
-    teams: Array.isArray(sanitizedCollections?.teams) ? sanitizedCollections.teams : teams,
+    teams: portableTeams,
     teamMedia,
     avatarGalleries: gallery.galleries,
     legacyAiGallery: gallery.legacyAiGallery,
@@ -3665,7 +3810,10 @@ async function restoreGalleryMetadata(portable: any): Promise<number> {
       let src = String(raw?.src || raw?.dataUrl || raw?.avatarDataUrl || raw?.imageDataUrl || raw?.url || "").trim();
       if (!src) {
         const mediaKey = String(raw?.mediaKey || (legacyAi ? avatarAiGalleryMediaKey(id) : galleryItemMediaKey(id)));
-        src = await resolveUserMediaFallback(mediaKey, "", { kind: legacyAi ? "avatar_ai_gallery" : "gallery_item" }).catch(() => "");
+        // RESTORE FAST PATH: le coffre média du snapshot a déjà été importé
+        // juste avant. Ne jamais rescanner Local Vault / fichier / R2 ici : une
+        // galerie sans image ne doit pas bloquer les profils à 85 %.
+        src = await readLocalUserMediaFallback(mediaKey).catch(() => "");
       }
       // Ne jamais perdre la métadonnée d’une entrée de galerie uniquement parce
       // que son média n’est pas encore disponible localement. Les snapshots NAS/R2
@@ -3800,7 +3948,7 @@ async function countRestoredPortableData(): Promise<PortableAccountRestoreCounts
     profiles: effectivePortableProfiles(store?.profiles).length,
     bots: Array.isArray(loadStoredBots()) ? loadStoredBots().length : 0,
     dartSets: Array.isArray(getAllDartSets()) ? getAllDartSets().length : 0,
-    teams: Array.isArray(loadStoredTeams()) ? loadStoredTeams().length : 0,
+    teams: accountOwnedTeams(loadStoredTeams()).length,
     galleryItems: Number(gallery.count || 0),
     tournaments: Number(tournaments?.counts?.tournaments || tournaments?.tournaments?.length || 0) || 0,
   };
@@ -3828,6 +3976,7 @@ async function restorePortableAccountData(
   if (!portable || typeof portable !== "object") return null;
   const progress = (value: number, message: string) => { try { opts?.onProgress?.(value, message); } catch {} };
   progress(2, "Préparation des données de compte…");
+  const portableOperationId = `portable:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`;
   const report: PortableAccountRestoreReport = {
     ok: true,
     expected: expectedPortableCounts(portable),
@@ -3842,6 +3991,7 @@ async function restorePortableAccountData(
     console.warn(`[storage] ${scope}`, error);
   };
 
+  const finishPortableStorePerf = beginBackupPerfStep("restore", "portable-store", { operationId: portableOperationId });
   try {
     const current: any = (await loadStore().catch(() => null)) || {};
     const remoteProfiles = effectivePortableProfiles(portable?.profiles);
@@ -3864,7 +4014,7 @@ async function restorePortableAccountData(
     if (Array.isArray(portable?.dartSets)) mergedStore.dartSets = portable.dartSets;
     if (Array.isArray(portable?.teams)) {
       const teamMedia = portable?.teamMedia && typeof portable.teamMedia === "object" ? portable.teamMedia : {};
-      mergedStore.teams = portable.teams.map((team: any) => {
+      const portableAccountTeams = portable.teams.map((team: any) => {
         const id = String(team?.id || "").trim();
         const media = id && teamMedia[id] && typeof teamMedia[id] === "object" ? teamMedia[id] : null;
         return media ? {
@@ -3873,6 +4023,7 @@ async function restorePortableAccountData(
           ...(media.coverDataUrl ? { coverDataUrl: media.coverDataUrl } : {}),
         } : team;
       });
+      mergedStore.teams = mergeAccountTeamsPreservingOrganizations(current?.teams || loadStoredTeams(), portableAccountTeams);
     }
     progress(12, "Restauration des profils et données principales…");
     // Le snapshot portable contient déjà son coffre média local. Ne jamais
@@ -3886,6 +4037,7 @@ async function restorePortableAccountData(
   } catch (error) {
     recordError("portable account store restore failed", error);
   }
+  finishPortableStorePerf({ ok: report.errors.length === 0, count: Number(report.expected.profiles || 0) });
 
   try {
     if (Array.isArray(portable?.bots)) restoreBotsFromSnapshot(portable.bots as any[]);
@@ -3896,6 +4048,7 @@ async function restorePortableAccountData(
     else if (Array.isArray(portable?.dartSets)) replaceAllDartSets(portable.dartSets as any[]);
   } catch (error) { recordError("portable dartsets restore failed", error); }
   progress(58, "Dartsets restaurés. Activation des équipes…");
+  const finishPortableTeamsPerf = beginBackupPerfStep("restore", "portable-teams", { operationId: portableOperationId });
   try {
     if (Array.isArray(portable?.teams)) {
       // Priorité au média embarqué avec le profil : il rend la restauration
@@ -3913,9 +4066,10 @@ async function restorePortableAccountData(
       const hydratedTeams = await hydrateStoreUserMedia({ teams: portableTeamsWithMedia }, { allowRemote: false })
         .then((result) => Array.isArray(result?.store?.teams) ? result.store.teams : portableTeamsWithMedia)
         .catch(() => portableTeamsWithMedia);
-      saveStoredTeams(hydratedTeams as any[]);
+      saveStoredTeams(mergeAccountTeamsPreservingOrganizations(loadStoredTeams(), hydratedTeams as any[]));
     }
   } catch (error) { recordError("portable teams restore failed", error); }
+  finishPortableTeamsPerf({ ok: true, count: Array.isArray(portable?.teams) ? portable.teams.length : 0 });
   progress(70, "Équipes restaurées. Préférences et galeries…");
   try {
     const critical = portable?.criticalLocalStorage && typeof portable.criticalLocalStorage === "object" ? portable.criticalLocalStorage : {};
@@ -3935,7 +4089,9 @@ async function restorePortableAccountData(
   } catch (error) { recordError("portable competitions restore failed", error); }
 
   progress(92, "Contrôle des données de compte restaurées…");
+  const finishPortableValidatePerf = beginBackupPerfStep("restore", "portable-validate", { operationId: portableOperationId });
   await revalidatePortableRestoreReport(report);
+  finishPortableValidatePerf({ ok: report.ok, count: Number(report.restored.profiles || 0), detail: report.errors.length ? `${report.errors.length} avertissement(s)` : undefined });
   progress(100, "Profils, bots, dartsets et équipes restaurés.");
 
   if (typeof window !== "undefined") {
@@ -4059,7 +4215,7 @@ function sanitizeStoreForCloud(store: any) {
   }
 
   if (Array.isArray((clone as any).teams)) {
-    (clone as any).teams = (clone as any).teams.map((team: any) => {
+    (clone as any).teams = accountOwnedTeams((clone as any).teams).map((team: any) => {
       const out: any = { ...(team || {}) };
       // Ne jamais retirer les logos de bibliothèque (/assets/team_logo_XXX.webp) du snapshot NAS.
       // On supprime uniquement le base64 inline, trop lourd pour la sauvegarde.
@@ -4094,6 +4250,7 @@ export type CloudSnapshotExportOptions = {
 };
 
 export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {}): Promise<CloudSnapshot> {
+  const finishPerf = beginBackupPerfStep("backup", "snapshot-total", { meta: { mediaMirror: opts.mediaMirror ?? "await", embeddedMedia: opts.includeEmbeddedMedia !== false } });
   const __freezeOp = beginFreezeOperation("storage.exportCloudSnapshot", {
     mediaMirror: opts.mediaMirror ?? "await",
     includeEmbeddedMedia: opts.includeEmbeddedMedia !== false,
@@ -4124,19 +4281,19 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
 
       if (opts.includeEmbeddedMedia !== false) {
         // NAS / local / fichier : la copie IndexedDB locale doit être terminée
-        // AVANT exportUserMediaFallbackSnapshot(). Aucun upload R2 n'est imposé
+        // AVANT l’export Media Vault V2. Aucun upload R2 n'est imposé
         // lorsque mediaMirror="skip".
         await Promise.race([
-          captureStoreUserMedia(mediaSource, { mirrorR2: mediaMirror === "await" }),
+          captureStoreUserMedia(mediaSource, { mirrorR2: mediaMirror === "await", mirrorAccount: false }),
           new Promise<void>((resolve) => setTimeout(resolve, 10_000)),
         ]);
 
         if (mediaMirror === "background") {
-          void captureStoreUserMedia(mediaSource, { mirrorR2: true })
+          void captureStoreUserMedia(mediaSource, { mirrorR2: true, mirrorAccount: false })
             .catch((mediaMirrorError) => console.warn("[storage] background R2 media mirror incomplete", mediaMirrorError));
         }
       } else if (mediaMirror !== "skip") {
-        const job = captureStoreUserMedia(mediaSource, { mirrorR2: true });
+        const job = captureStoreUserMedia(mediaSource, { mirrorR2: true, mirrorAccount: false });
         if (mediaMirror === "await") await job;
         else void job.catch((mediaMirrorError) => console.warn("[storage] background R2 media mirror incomplete", mediaMirrorError));
       }
@@ -4174,21 +4331,41 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
       console.warn("[storage] organization backup export skipped", organizationError);
     }
 
-    // MEDIA UTILISATEUR MULTI-SOURCE : le store normal retire volontairement
-    // les gros data:image. On embarque donc aussi le coffre média indépendant
-    // dans TOUT snapshot portable (R2, NAS, Local, fichier/SD/USB).
+    // WAVE 4 — MEDIA VAULT V2 : chaque média portable est un asset account-scoped
+    // identifié par SHA-256. Contrairement au coffre V1, aucun plafond arbitraire
+    // de 500 entrées / 14 M caractères n'est appliqué au snapshot V2.
+    // Les nouveaux snapshots ne dupliquent plus les pixels dans userMediaFallbacks.
     if (opts.includeEmbeddedMedia !== false) {
-      report(86, "Archivage des médias embarqués…");
+      report(84, "Migration locale des médias vers Media Vault V2…");
       try {
-        const userMediaFallbacks = await Promise.race([
-          exportUserMediaFallbackSnapshot(),
-          new Promise<any>((resolve) => setTimeout(() => resolve({ media: {} }), 10_000)),
-        ]);
-        if (Object.keys(userMediaFallbacks.media || {}).length > 0) {
-          clone.userMediaFallbacks = userMediaFallbacks;
+        const requiredMediaKeys = collectRequiredMediaKeysFromSnapshot(clone);
+        await migrateLegacyUserMediaFallbackToV2({
+          keys: requiredMediaKeys,
+          onProgress: (completed, total) => {
+            if (total > 0) report(84 + Math.round((completed / total) * 2), `Indexation Media Vault V2 : ${completed}/${total}`);
+          },
+        });
+        report(87, "Contrôle et archivage des assets Media Vault V2…");
+        const mediaVaultV2 = await exportMediaVaultV2Snapshot({
+          ownerUserId: String(getStorageUser() || "").trim() || null,
+          requiredKeys: requiredMediaKeys,
+          onProgress: (completed, total) => {
+            if (total > 0) report(87 + Math.round((completed / total) * 3), `Archivage Media Vault V2 : ${completed}/${total}`);
+          },
+        });
+        if (mediaVaultV2.summary.integrityErrors.length > 0 || mediaVaultV2.summary.missingRequiredRefs.length > 0) {
+          const err: any = new Error(
+            `Media Vault V2 incomplet : ${mediaVaultV2.summary.missingRequiredRefs.length} référence(s) manquante(s), ${mediaVaultV2.summary.integrityErrors.length} erreur(s) d’intégrité.`,
+          );
+          err.code = "MEDIA_VAULT_V2_INTEGRITY";
+          throw err;
         }
-      } catch (mediaError) {
-        console.warn("[storage] user media fallback export skipped", mediaError);
+        if (mediaVaultV2.summary.assets > 0 || mediaVaultV2.summary.refs > 0) clone.mediaVaultV2 = mediaVaultV2;
+      } catch (mediaV2Error: any) {
+        console.warn("[storage] Media Vault V2 export failed", mediaV2Error);
+        const err: any = mediaV2Error instanceof Error ? mediaV2Error : new Error(String(mediaV2Error || "Media Vault V2 export failed"));
+        err.code = err.code || "MEDIA_VAULT_V2_EXPORT";
+        throw err;
       }
     }
 
@@ -4230,18 +4407,22 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
     // Toutes les nouvelles sauvegardes portent explicitement leur propriétaire.
     // Le coordinateur peut ainsi refuser sans ambiguïté un fichier d'un autre compte.
     const ownerId = String(getStorageUser() || "").trim();
-    clone.backupManifest = {
-      ...(clone?.backupManifest && typeof clone.backupManifest === "object" ? clone.backupManifest : {}),
-      _v: 1,
-      userId: ownerId || null,
-      createdAt: new Date().toISOString(),
-      schemaVersion: 1,
-    };
+    report(96, "Construction du manifeste d’intégrité V2…");
+    clone.backupManifest = await buildBackupManifestV2(clone, ownerId || null);
+    if (clone.backupManifest?.status === "invalid") {
+      const err: any = new Error(`Snapshot invalide : ${(clone.backupManifest?.warnings || []).slice(0, 6).join(" ")}`);
+      err.code = "BACKUP_MANIFEST_INVALID";
+      throw err;
+    }
 
     report(100, "Snapshot local prêt.");
+    try { finishPerf({ ok: true, bytes: safeJsonStringify(clone, "").length, count: Object.keys((clone as any)?.history?.rows || {}).length }); } catch {}
     return clone;
   } catch (err) {
     console.warn("[storage] exportCloudSnapshot sanitize failed", err);
+    try { finishPerf({ ok: false, detail: String((err as any)?.message || err || "snapshot failed") }); } catch {}
+    const code = String((err as any)?.code || "");
+    if (code === "MEDIA_VAULT_V2_INTEGRITY" || code === "MEDIA_VAULT_V2_EXPORT" || code === "BACKUP_MANIFEST_INVALID") throw err;
     return dump;
   }
   } finally {
@@ -4250,19 +4431,60 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
 }
 
 export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnapshotImportOptions): Promise<CloudSnapshotImportReport> {
+  const restoreOperationId = `restore:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`;
+  const finishRestorePerf = beginBackupPerfStep("restore", "import-total", { operationId: restoreOperationId, meta: { mode: opts?.mode ?? "replace" } });
   const __freezeOp = beginFreezeOperation("storage.importCloudSnapshot", { mode: opts?.mode ?? "replace" });
-  dump = unwrapNasSnapshotPayload(dump) as any;
   const mode = opts?.mode ?? "replace";
   const report = opts?.onProgress || (() => {});
   const yieldIfNeeded = createCooperativeYielder(10);
   let portableReport: PortableAccountRestoreReport | null = null;
   let runtimeRefreshed = false;
+  let stagingCleanup: (() => Promise<void>) | null = null;
+  dump = unwrapNasSnapshotPayload(dump) as any;
   try { sessionStorage.setItem("dc_cloud_restore_in_progress_v2", "1"); } catch {}
 
   try {
+    // WAVE 7 — les nouveaux backups passent d'abord par une zone de staging
+    // indépendante. L'artefact est relu depuis IndexedDB, décompressé et son
+    // SHA-256 est vérifié avant que le moindre nettoyage local ne puisse avoir lieu.
+    if (isCanonicalBackupArtifact(dump)) {
+      report(0, "Staging et vérification SHA-256 de la sauvegarde…");
+      const staged = await stageCanonicalBackupArtifact(dump, {
+        expectedOwnerUserId: String(getStorageUser() || "").trim() || null,
+      });
+      dump = staged.snapshot as any;
+      stagingCleanup = staged.cleanup;
+    }
+    // WAVE 1 — un snapshot V2 invalide est refusé AVANT tout nuke/écriture.
+    // Les snapshots historiques sans manifeste restent compatibles et seront
+    // migrés plus tard par les importeurs legacy dédiés.
+    const manifestValidation = validateBackupManifestV2(dump);
+    if (!manifestValidation.ok) {
+      throw new Error(`Snapshot invalide : ${manifestValidation.errors.join(" ")}`);
+    }
+    if (manifestValidation.warnings.length > 0 && !manifestValidation.legacy) {
+      console.warn("[storage] Manifest V2 warnings", manifestValidation.warnings);
+    }
+
+    // WAVE 4 : valider SHA-256 + références du Media Vault V2 AVANT tout nuke.
+    // Un backup dont les pixels sont corrompus ne doit jamais effacer le coffre
+    // local sain puis découvrir le problème seulement à 65 % de la restauration.
+    if ((dump as any)?.mediaVaultV2 || (dump as any)?.media_vault_v2) {
+      report(0, "Contrôle d’intégrité Media Vault V2…");
+      const requiredMediaKeys = collectRequiredMediaKeysFromSnapshot(dump);
+      const mediaValidation = await validateMediaVaultV2Snapshot(dump, {
+        ownerUserId: String(getStorageUser() || "").trim() || null,
+        requiredKeys: requiredMediaKeys,
+      });
+      if (!mediaValidation.ok) {
+        throw new Error(`Media Vault V2 invalide : ${mediaValidation.errors.slice(0, 8).join(" ")}`);
+      }
+    }
+
     if (mode === "replace") {
       report(1, "Nettoyage sécurisé de l’ancien état local…");
       await nukeAll();
+      await clearMediaVaultV2ForOwner(String(getStorageUser() || "").trim() || null).catch(() => undefined);
       clearLocalStorageDc();
       resetAvatarCacheRuntime({ clearPersistent: true });
       await yieldIfNeeded(true);
@@ -4272,10 +4494,12 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
     }
 
     report(4, "Restauration du stockage et de l’historique…");
+    const finishCoreImportPerf = beginBackupPerfStep("restore", "storage-history", { operationId: restoreOperationId });
     await importAll(dump, {
       historyReplace: mode !== "merge",
       onProgress: (progress, message) => report(4 + Math.round(progress * 0.56), message),
     });
+    finishCoreImportPerf({ ok: true, count: Object.keys((dump as any)?.history?.rows || {}).length });
     await yieldIfNeeded(true);
 
     // Contrôle structurel immédiat : une restauration complète ne doit jamais
@@ -4308,19 +4532,32 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
       }
     }
 
-  // MEDIA UTILISATEUR MULTI-SOURCE : réhydrate le coffre IndexedDB dédié
-  // avant même que le NAS soit à nouveau disponible.
+  // WAVE 4 : réhydrate d'abord le coffre V2 vérifié, puis garde l'importeur V1
+  // uniquement pour les sauvegardes historiques et les médias encore legacy.
   try {
+    const finishMediaImportPerf = beginBackupPerfStep("media", "restore-local-media", { operationId: restoreOperationId });
+    if ((dump as any)?.mediaVaultV2 || (dump as any)?.media_vault_v2) {
+      const mediaV2Report = await importMediaVaultV2Snapshot(dump, {
+        ownerUserId: String(getStorageUser() || "").trim() || null,
+        onProgress: (completed, total, message) => {
+          const ratio = total > 0 ? completed / total : 1;
+          report(62 + Math.round(ratio * 10), message);
+        },
+      });
+      if (!mediaV2Report.ok) throw new Error(mediaV2Report.errors.slice(0, 8).join(" "));
+    }
     // Compat anciens snapshots : scanne aussi les profils/dartsets directement
-    // dans le snapshot lorsque le bloc userMediaFallbacks n'existait pas encore.
+    // lorsque le bloc V2 n'existait pas encore.
     await importUserMediaFromSnapshot(dump, {
       onProgress: (completed, total, message) => {
         const ratio = total > 0 ? completed / total : 1;
-        report(62 + Math.round(ratio * 14), message);
+        report(72 + Math.round(ratio * 4), message);
       },
     });
+    finishMediaImportPerf({ ok: true });
   } catch (mediaError) {
-    console.warn("[storage] user media fallback import skipped", mediaError);
+    console.warn("[storage] user media restore failed", mediaError);
+    throw mediaError;
   }
   await yieldIfNeeded(true);
 
@@ -4338,12 +4575,14 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
   // catégories que les anciens snapshots pouvaient laisser vides.
   try {
     report(80, "Restauration des profils, bots, dartsets et équipes…");
+    const finishPortablePerf = beginBackupPerfStep("restore", "profiles-bots-dartsets-teams", { operationId: restoreOperationId });
     portableReport = await restorePortableAccountData(
       (dump as any)?.portableAccountData || (dump as any)?.portable_account_data || null,
       {
         onProgress: (value, message) => report(80 + Math.round(Math.max(0, Math.min(100, value)) * 0.07), message),
       },
     );
+    finishPortablePerf({ ok: portableReport?.ok !== false, count: Number(portableReport?.restored?.profiles || 0), detail: portableReport?.errors?.length ? `${portableReport.errors.length} avertissement(s)` : undefined });
   } catch (portableError) {
     console.warn("[storage] portable account data import skipped", portableError);
     portableReport = {
@@ -4400,10 +4639,10 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
       // après avoir restauré le coffre média, sinon les logos disparaissent au reboot.
       const currentTeams = loadStoredTeams();
       const sourceTeams = Array.isArray(currentTeams) && currentTeams.length ? currentTeams : teams;
-      const hydratedTeams = await hydrateStoreUserMedia({ teams: sourceTeams }, { allowRemote: true })
+      const hydratedTeams = await hydrateStoreUserMedia({ teams: sourceTeams }, { allowRemote: false })
         .then((result) => Array.isArray(result?.store?.teams) ? result.store.teams : sourceTeams)
         .catch(() => sourceTeams);
-      saveStoredTeams(hydratedTeams as any[]);
+      saveStoredTeams(mergeAccountTeamsPreservingOrganizations(loadStoredTeams(), hydratedTeams as any[]));
       try { window.dispatchEvent(new Event("dc-teams-updated")); } catch {}
       try { window.dispatchEvent(new Event("dc:teams-changed")); } catch {}
     } catch (e) {
@@ -4437,8 +4676,23 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
   }
 
   report(100, "Import local terminé. Données restaurées disponibles.");
+  try { finishRestorePerf({ ok: true, count: Object.keys((dump as any)?.history?.rows || {}).length }); } catch {}
   } finally {
+    try { await stagingCleanup?.(); } catch {}
     try { sessionStorage.removeItem("dc_cloud_restore_in_progress_v2"); } catch {}
+    // La réplication distante ne doit jamais ralentir l'import local. Elle repart
+    // seulement APRES libération du verrou de restauration.
+    try {
+      if (typeof window !== "undefined") {
+        window.setTimeout(() => {
+          try {
+            window.dispatchEvent(new CustomEvent("dc:account-owned-force-sync", {
+              detail: { reason: `restore-post-local:${mode}` },
+            }));
+          } catch {}
+        }, 1800);
+      }
+    } catch {}
     endFreezeOperation(__freezeOp);
   }
   return { mode, portable: portableReport, runtimeRefreshed };
@@ -4535,6 +4789,9 @@ export async function nukeAll(): Promise<void> {
 export async function wipeAllLocalData(): Promise<void> {
   try {
     await nukeAll();
+  } catch {}
+  try {
+    await clearMediaVaultV2All();
   } catch {}
 
   try {

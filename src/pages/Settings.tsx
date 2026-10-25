@@ -2730,11 +2730,13 @@ function AccountPages({
         backupJson: exported.backupJson,
         title: `Sauvegarde cloud manuelle — ${new Date().toLocaleString("fr-FR")}`,
         metadata: {
-          appVersion: backupObj.appVersion || "unknown",
-          exportedAt: backupObj.exportedAt || new Date().toISOString(),
-          historyCount: Array.isArray(backupObj.history) ? backupObj.history.length : 0,
-          profilesCount: Array.isArray(backupObj.localProfiles) ? backupObj.localProfiles.length : 0,
-          dartsetsCount: Array.isArray(backupObj.dartsets) ? backupObj.dartsets.length : 0,
+          appVersion: backupObj.appVersion || "wave7",
+          exportedAt: backupObj.createdAt || backupObj.exportedAt || new Date().toISOString(),
+          historyCount: Number(backupObj?.summary?.historyRows || backupObj?.summary?.matches || (Array.isArray(backupObj.history) ? backupObj.history.length : 0)),
+          profilesCount: Number(backupObj?.summary?.profiles || (Array.isArray(backupObj.localProfiles) ? backupObj.localProfiles.length : 0)),
+          dartsetsCount: Number(backupObj?.summary?.dartsets || (Array.isArray(backupObj.dartsets) ? backupObj.dartsets.length : 0)),
+          artifactId: backupObj?.artifactId || null,
+          payloadSha256: backupObj?.payloadSha256 || null,
           rawSizeBytes: rawSize,
         },
       });
@@ -2780,7 +2782,7 @@ function AccountPages({
       setCloudBackupResult({
         status: "ok",
         title: "Restauration cloud terminée",
-        detail: `Fusion effectuée : ${Array.isArray(backup.history) ? backup.history.length : 0} parties · ${Array.isArray(backup.localProfiles) ? backup.localProfiles.length : 0} profils · ${Array.isArray(backup.dartsets) ? backup.dartsets.length : 0} sets.`,
+        detail: `Fusion effectuée : ${Number(backup?.summary?.historyRows || backup?.summary?.matches || (Array.isArray(backup.history) ? backup.history.length : 0))} parties · ${Number(backup?.summary?.profiles || (Array.isArray(backup.localProfiles) ? backup.localProfiles.length : 0))} profils · ${Number(backup?.summary?.dartsets || (Array.isArray(backup.dartsets) ? backup.dartsets.length : 0))} sets.`,
       });
       const reload = window.confirm("Restauration terminée. Recharger l’application maintenant pour afficher les données restaurées ?");
       if (reload) window.location.reload();

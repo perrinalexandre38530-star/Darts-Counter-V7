@@ -6,13 +6,15 @@
 // - ne touche pas au flux NAS
 // ============================================
 
-import { History } from "../history";
-import { loadStore, saveStore } from "../storage";
+import { importHistoryDump } from "../historyCloud";
+import { getStorageUser, importCloudSnapshot, importRegisteredAppDataSnapshot, loadStore, saveStore } from "../storage";
 import type { Store } from "../types";
 import { cancelScheduledStatsIndexRefresh, scheduleStatsIndexRefresh } from "../stats/rebuildStatsFromHistory";
 import { setAllDartSets, getAllDartSets } from "../dartSetsStore";
 import { isCloudBackup, type CloudBackup } from "./cloudBackupTypes";
 import { importUserMediaFallbackSnapshot } from "../userMediaFallback";
+import { collectRequiredMediaKeysFromSnapshot, importMediaVaultV2Snapshot, validateMediaVaultV2Snapshot } from "../../data/mediaVaultV2";
+import { isCanonicalBackupArtifact, validateCanonicalBackupArtifact } from "../backup/canonicalBackupArtifact";
 
 export type RestoreMode = "replace" | "merge";
 
@@ -64,15 +66,55 @@ export async function restoreCloudBackupFromJson(args: {
     return { ok: false, error: "JSON invalide" };
   }
 
+  // WAVE 7 — format canonique. Il est validé ici pour fournir une erreur
+  // immédiate à l'UI, puis importCloudSnapshot refait la validation + staging
+  // avant commit. Les CloudBackup V1/V2/V3 restent supportés plus bas.
+  if (isCanonicalBackupArtifact(parsed)) {
+    try {
+      const checked = await validateCanonicalBackupArtifact(parsed, {
+        expectedOwnerUserId: String(getStorageUser() || "").trim() || null,
+      });
+      if (!checked.ok) return { ok: false, error: checked.errors.join(" ") };
+      await importCloudSnapshot(parsed as any, { mode });
+      return { ok: true, backup: parsed as any };
+    } catch (error: any) {
+      return { ok: false, error: `Restauration canonique impossible: ${String(error?.message || error)}` };
+    }
+  }
+
   if (!isCloudBackup(parsed)) {
-    return { ok: false, error: "Format CloudBackup invalide" };
+    return { ok: false, error: "Format de sauvegarde invalide" };
   }
 
   const backup: CloudBackup = parsed;
 
+  // WAVE 5 — restaurer d'abord les domaines applicatifs complémentaires.
+  // Les CloudBackup V1 n'ont pas ce bloc : compatibilité totale par absence.
   try {
-    await importUserMediaFallbackSnapshot((parsed as any)?.userMediaFallbacks || (parsed as any)?.user_media_fallbacks || null);
-  } catch {}
+    if ((backup as any).appData) {
+      await importRegisteredAppDataSnapshot((backup as any).appData);
+    }
+  } catch (error: any) {
+    return { ok: false, error: `Restauration des données MULTISPORTS impossible: ${String(error?.message || error)}` };
+  }
+
+  try {
+    if ((parsed as any)?.mediaVaultV2 || (parsed as any)?.media_vault_v2) {
+      const portableShape = { portableAccountData: { profiles: backup.localProfiles, dartSets: backup.dartsets } };
+      const requiredKeys = collectRequiredMediaKeysFromSnapshot(portableShape);
+      const validation = await validateMediaVaultV2Snapshot(parsed, {
+        ownerUserId: String(getStorageUser() || "").trim() || null,
+        requiredKeys,
+      });
+      if (!validation.ok) return { ok: false, error: `Media Vault V2 invalide: ${validation.errors.slice(0, 6).join(" ")}` };
+      const imported = await importMediaVaultV2Snapshot(parsed, { ownerUserId: String(getStorageUser() || "").trim() || null });
+      if (!imported.ok) return { ok: false, error: `Import Media Vault V2 incomplet: ${imported.errors.slice(0, 6).join(" ")}` };
+    } else {
+      await importUserMediaFallbackSnapshot((parsed as any)?.userMediaFallbacks || (parsed as any)?.user_media_fallbacks || null);
+    }
+  } catch (error: any) {
+    return { ok: false, error: `Restauration média impossible: ${String(error?.message || error)}` };
+  }
 
   const storeAny = (await loadStore<any>().catch(() => null)) || {};
 
@@ -135,25 +177,30 @@ export async function restoreCloudBackupFromJson(args: {
     cancelScheduledStatsIndexRefresh();
   } catch {}
 
-  let importedHistoryRows = 0;
-
-  try {
-    if (mode === "replace") {
-      await History.clear?.();
-    }
-  } catch {}
-
   const rows = Array.isArray(backup.history) ? backup.history : [];
+  const rowsById: Record<string, any> = {};
   for (const rec of rows) {
-    try {
-      await History.upsert?.(rec as any);
-      importedHistoryRows++;
-    } catch {
-      // ne jamais casser tout le restore pour une seule ligne
-    }
+    const id = String((rec as any)?.id || (rec as any)?.matchId || "").trim();
+    if (id) rowsById[id] = rec;
   }
+  const historyV4 = (backup as any)?.historyV4;
+  try {
+    await importHistoryDump({
+      _v: 1,
+      rows: rowsById,
+      ...(Number(historyV4?.schemaVersion || 0) === 4
+        ? { historySchemaVersion: 4 as const, tombstones: historyV4?.tombstones || {} }
+        : {}),
+    }, {
+      replace: mode === "replace",
+      preserveExisting: mode !== "replace",
+    });
+  } catch (error: any) {
+    return { ok: false, error: `Restauration History impossible: ${String(error?.message || error)}` };
+  }
+  const importedHistoryRows = Object.keys(rowsById).length;
 
-  if (rebuild && importedHistoryRows > 0) {
+  if (rebuild && (importedHistoryRows > 0 || Number(historyV4?.schemaVersion || 0) === 4)) {
     try {
       await scheduleStatsIndexRefresh({
         includeNonFinished: true,

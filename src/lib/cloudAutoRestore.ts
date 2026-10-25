@@ -174,7 +174,8 @@ function looksLikeCloudSnapshot(value: any): boolean {
     value.store ||
     value.data ||
     value.tournaments ||
-    value.competitions
+    value.competitions ||
+    (value.kind === "mss_canonical_backup_artifact_v1" && value.data && value.payloadSha256)
   );
 }
 
@@ -290,6 +291,12 @@ function countHistoryRows(snapshot: any): number {
 
 function summarizeSnapshot(snapshot: any) {
   const normalized = unwrapSnapshotEnvelope(snapshot);
+  if (normalized?.kind === "mss_canonical_backup_artifact_v1") {
+    return {
+      profiles: Number(normalized?.summary?.profiles || 0),
+      matches: Number(normalized?.summary?.historyRows || normalized?.summary?.matches || 0),
+    };
+  }
   return {
     profiles: countProfilesFromSnapshot(normalized),
     matches: countHistoryRows(normalized),
@@ -311,13 +318,13 @@ async function summarizeLocalState() {
 
 function profileCountFromCloudSlot(slot: CloudObjectIndexItem | null | undefined): number {
   const meta: any = slot?.metadata && typeof slot.metadata === "object" ? slot.metadata : {};
-  return Number(meta.profilesCount || meta.profiles || meta.localProfiles || 0) || 0;
+  return Number(meta.profilesCount || meta.profiles || meta.localProfiles || meta?.summary?.profiles || 0) || 0;
 }
 
 function cloudSlotScore(slot: CloudObjectIndexItem): number {
   const meta: any = slot?.metadata && typeof slot.metadata === "object" ? slot.metadata : {};
-  const history = Number(meta.historyCount || meta.historyRows || meta.matches || 0) || 0;
-  const profiles = Number(meta.profilesCount || meta.profiles || 0) || 0;
+  const history = Number(meta.historyCount || meta.historyRows || meta.matches || meta?.summary?.historyRows || meta?.summary?.matches || 0) || 0;
+  const profiles = Number(meta.profilesCount || meta.profiles || meta?.summary?.profiles || 0) || 0;
   const time = Date.parse(String(slot.updated_at || slot.created_at || "")) || 0;
   return history * 10000 + profiles * 1000 + time / 1_000_000;
 }

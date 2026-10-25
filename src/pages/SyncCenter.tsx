@@ -211,6 +211,18 @@ const setAutoBackupEnabledPersist = (v: boolean) => {
       return;
     }
 
+    // ✅ WAVE 7 — artefact canonique unifié
+    if (parsed?.kind === "mss_canonical_backup_artifact_v1") {
+      const res = await restoreCloudBackupFromJson({
+        json: JSON.stringify(parsed),
+        mode: "merge",
+        rebuild: true,
+      });
+      if (!(res as any).ok) throw new Error((res as any).error ?? "Restore canonical artifact failed");
+      try { setTimeout(() => window.location.reload(), 300); } catch {}
+      return;
+    }
+
     // ✅ CloudBackup (Recovery)
     if (parsed?.version && parsed?.history && parsed?.localProfiles && parsed?.dartsets) {
       // ⚠️ IMPORTANT
@@ -479,11 +491,11 @@ const setAutoBackupEnabledPersist = (v: boolean) => {
     try {
       const list = getAutoBackups();
       const latest = list?.[0];
-      if (!latest?.backup) {
+      if (!latest?.payload) {
         setLocalMessage(t("syncCenter.autobackup.none", "Aucune sauvegarde auto disponible."));
         return;
       }
-      await saveJsonToDevice(latest.backup, "dc_recovery_autobackup_latest.json");
+      await saveJsonToDevice(latest.payload, "dc_recovery_autobackup_latest.json");
       setLocalMessage(t("syncCenter.autobackup.exported", "Dernier auto-backup exporté."));
     } catch (e) {
       console.error(e);

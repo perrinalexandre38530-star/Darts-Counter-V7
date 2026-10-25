@@ -109,6 +109,62 @@ export async function recordIncrementalChange(args: {
   }
 }
 
+
+export async function recordIncrementalChangesBatch(items: Array<{
+  entityType: IncrementalEntityType;
+  entityId: string;
+  op?: "upsert" | "delete";
+  payload?: any;
+  updatedAt?: number;
+}>): Promise<number> {
+  if (incrementalRecordingSuppressDepth > 0 || typeof indexedDB === "undefined" || !Array.isArray(items) || !items.length) return 0;
+  const normalized = items.map((args) => {
+    const entityType = args.entityType || "generic";
+    const entityId = String(args.entityId || "default").trim() || "default";
+    const op = args.op || "upsert";
+    const updatedAt = Number(args.updatedAt || Date.now());
+    const json = op === "delete" ? "delete" : stableJson(args.payload);
+    const revision = hashText(`${op}|${json}`);
+    return { key: changeKey(entityType, entityId), entityType, entityId, op, updatedAt, revision, payload: args.payload };
+  });
+  const db = await openDb();
+  try {
+    const tx = db.transaction(STORE_CHANGES, "readwrite");
+    const store = tx.objectStore(STORE_CHANGES);
+    let changed = 0;
+    for (const item of normalized) {
+      const existing = await new Promise<IncrementalChange | null>((resolve) => {
+        const req = store.get(item.key);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+      });
+      if (existing?.revision === item.revision && existing?.op === item.op) continue;
+      const row: IncrementalChange = {
+        key: item.key,
+        entityType: item.entityType,
+        entityId: item.entityId,
+        op: item.op,
+        updatedAt: item.updatedAt,
+        revision: item.revision,
+        ...(item.op === "upsert" ? { payload: item.payload } : {}),
+      };
+      store.put(row);
+      changed += 1;
+    }
+    await new Promise<void>((resolve) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+      tx.onabort = () => resolve();
+    });
+    if (changed) {
+      try { window.dispatchEvent(new CustomEvent("dc:incremental-backup-change", { detail: { batch: true, changed } })); } catch {}
+    }
+    return changed;
+  } finally {
+    db.close();
+  }
+}
+
 export async function listIncrementalChanges(): Promise<IncrementalChange[]> {
   if (typeof indexedDB === "undefined") return [];
   const db = await openDb();
