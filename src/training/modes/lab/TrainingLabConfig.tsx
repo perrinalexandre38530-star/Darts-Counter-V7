@@ -32,11 +32,16 @@ import { buildTrainingDailyPlan } from "../../profile/trainingDailyPlan";
 import { buildTrainingSessionHistoryCoach } from "../../profile/trainingSessionHistoryCoach";
 import { buildTrainingCoachingEffectiveness, chooseCoachingEffectiveNextFamily } from "../../profile/trainingCoachingEffectiveness";
 import { buildTrainingAssessment } from "../../profile/trainingAssessment";
+import { buildTrainingSkillPath } from "../../profile/trainingSkillPath";
+import { buildTrainingDiagnosticBoard } from "../../profile/trainingDiagnosticBoard";
 
 const familyOrder: TrainingExerciseFamily[] = ["scoring", "doubles", "checkout", "precision", "bull", "regularity"];
 type HubTab = "program" | "exercises" | "diagnosis" | "progress";
 type ProgramPanel = "today" | "week" | "cycle" | "library";
 type ProgressPanel = "overview" | "skills" | "coach" | "cycles" | "history";
+type ExercisePanel = "path" | "catalog" | "favorites";
+type DiagnosisPanel = "overview" | "skill" | "goal";
+type SkillProgressPanel = "mastery" | "badges" | "records";
 
 function HubGlyph({ name, size = 17 }: { name: string; size?: number }) {
   const common = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
@@ -113,6 +118,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
   const nextRecommendation = React.useMemo(() => { void revision; return loadTrainingNextRecommendation(); }, [revision]);
   const progression = React.useMemo(() => buildTrainingProgression(sessions), [sessions]);
   const goalStatuses = React.useMemo(() => buildTrainingGoalStatuses(diagnosis, preferences.familyGoals), [diagnosis, preferences.familyGoals]);
+  const diagnosticBoard = React.useMemo(() => buildTrainingDiagnosticBoard(diagnosis, goalStatuses, recommendedFamily), [diagnosis, goalStatuses, recommendedFamily]);
   const career = React.useMemo(() => buildTrainingCareer(programSessions, progression, weeklyPlan), [programSessions, progression, weeklyPlan]);
   const missionBoard = React.useMemo(() => buildTrainingMissionBoard(programSessions, progression, recommendedFamily, preferences.weeklySessionTarget, cycleComparison), [programSessions, progression, recommendedFamily, preferences.weeklySessionTarget, cycleComparison]);
   const coachHistory = React.useMemo(() => buildTrainingCoachHistory(programSessions, preferences.weeklySessionTarget, recommendedFamily), [programSessions, preferences.weeklySessionTarget, recommendedFamily]);
@@ -127,6 +133,11 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
   const [tab, setTab] = React.useState<HubTab>("program");
   const [programPanel, setProgramPanel] = React.useState<ProgramPanel>("today");
   const [progressPanel, setProgressPanel] = React.useState<ProgressPanel>("overview");
+  const [exercisePanel, setExercisePanel] = React.useState<ExercisePanel>("path");
+  const [diagnosisPanel, setDiagnosisPanel] = React.useState<DiagnosisPanel>("overview");
+  const [diagnosisFamily, setDiagnosisFamily] = React.useState<TrainingExerciseFamily>(recommendedFamily);
+  const [skillProgressPanel, setSkillProgressPanel] = React.useState<SkillProgressPanel>("mastery");
+  const [difficultyFilter, setDifficultyFilter] = React.useState<0 | 1 | 2 | 3 | 4 | 5>(0);
   const [family, setFamily] = React.useState<TrainingExerciseFamily>(recommendedFamily);
   const firstInFamily = React.useMemo(() => TRAINING_EXERCISE_CATALOG.find((e) => e.family === family) || TRAINING_EXERCISE_CATALOG[0], [family]);
   const [exerciseId, setExerciseId] = React.useState(firstInFamily.id);
@@ -143,8 +154,13 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
   React.useEffect(() => {
     if (programId.startsWith("coach_")) setProgramId(coachProgram.id);
   }, [coachProgram.id]);
+  React.useEffect(() => {
+    if (!familyOrder.includes(diagnosisFamily)) setDiagnosisFamily(recommendedFamily);
+  }, [diagnosisFamily, recommendedFamily]);
 
   const exercises = TRAINING_EXERCISE_CATALOG.filter((e) => e.family === family);
+  const filteredExercises = exercises.filter((exercise) => difficultyFilter === 0 || exercise.difficulty === difficultyFilter);
+  const skillPath = React.useMemo(() => buildTrainingSkillPath(family, progression), [family, progression]);
   const selected = TRAINING_EXERCISE_CATALOG.find((e) => e.id === exerciseId) || firstInFamily;
   const selectedProgram = programs.find((p) => p.id === programId) || (programId.startsWith("custom_") ? customProgram : coachProgram);
   const labSessions = sessions.filter((row) => row.modeId === "training_lab").slice(0, 12);
@@ -242,6 +258,16 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
     { id: "coach", label: "COACH", icon: "coach" },
     { id: "cycles", label: "CYCLES", icon: "cycle" },
     { id: "history", label: "HISTORIQUE", icon: "history" },
+  ];
+  const diagnosisPanels: Array<{ id: DiagnosisPanel; label: string; icon: string }> = [
+    { id: "overview", label: "SYNTHÈSE", icon: "diagnosis" },
+    { id: "skill", label: "COMPÉTENCE", icon: "skills" },
+    { id: "goal", label: "OBJECTIF", icon: "progress" },
+  ];
+  const skillProgressPanels: Array<{ id: SkillProgressPanel; label: string }> = [
+    { id: "mastery", label: "MAÎTRISES" },
+    { id: "badges", label: "BADGES" },
+    { id: "records", label: "RECORDS" },
   ];
 
   return (
@@ -620,63 +646,153 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
           </div>}
 
           {tab === "exercises" && <div>
-            {!!favoriteExercises.length && <>
-              <div style={{ margin: "10px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#ffd86b" }}>★ MES EXERCICES FAVORIS</div>
-              <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4 }}>
-                {favoriteExercises.map((favorite: any) => <button key={favorite.id} type="button" onClick={() => { setFamily(favorite.family); setExerciseId(favorite.id); }} style={{ flex: "0 0 auto", padding: "7px 9px", borderRadius: 999, border: exerciseId === favorite.id ? "1px solid #ffd86b" : "1px solid rgba(255,216,107,.18)", background: exerciseId === favorite.id ? "rgba(255,216,107,.10)" : "rgba(255,255,255,.035)", color: "inherit", fontSize: 9, fontWeight: 850, cursor: "pointer" }}>{favorite.title}</button>)}
-              </div>
-            </>}
-            <div style={{ margin: "10px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>COMPÉTENCE</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(138px,1fr))", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 8, position: "sticky", top: 54, zIndex: 2, padding: "5px 0", background: "rgba(8,10,16,.78)", backdropFilter: "blur(12px)" }}>
+              {[
+                { id: "path" as ExercisePanel, label: "PARCOURS", icon: "progress", status: `NIV. ${skillPath.currentLevel}/5` },
+                { id: "catalog" as ExercisePanel, label: "CATALOGUE", icon: "exercises", status: `${filteredExercises.length} EX.` },
+                { id: "favorites" as ExercisePanel, label: "FAVORIS", icon: "library", status: `${favoriteExercises.length}` },
+              ].map((item) => <button key={item.id} type="button" onClick={() => setExercisePanel(item.id)} style={{ minWidth: 0, padding: "7px 3px", borderRadius: 10, border: exercisePanel === item.id ? "1px solid rgba(39,220,255,.55)" : "1px solid rgba(255,255,255,.075)", background: exercisePanel === item.id ? "rgba(39,220,255,.11)" : "rgba(255,255,255,.025)", color: "inherit", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}><HubGlyph name={item.icon} size={15} /><span style={{ fontSize: 7.2, fontWeight: 950 }}>{item.label}</span><span style={{ fontSize: 6.2, opacity: .46 }}>{item.status}</span></button>)}
+            </div>
+
+            <div style={{ margin: "10px 0 8px", fontSize: 10, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>COMPÉTENCE</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 5 }}>
               {familyOrder.map((id) => {
                 const row = diagnosis.find((x) => x.family === id);
                 const active = family === id;
                 const recommended = id === recommendedFamily;
-                return <button key={id} type="button" onClick={() => setFamily(id)} style={{ textAlign: "left", padding: 11, borderRadius: 14, border: active ? "1px solid #27dcff" : "1px solid rgba(255,255,255,.12)", background: active ? "rgba(39,220,255,.13)" : "rgba(255,255,255,.035)", color: "inherit", cursor: "pointer" }}>
-                  <div style={{ fontSize: 11, fontWeight: 950 }}>{TRAINING_FAMILY_META[id].label}{recommended ? " ★" : ""}</div>
-                  <div style={{ marginTop: 5, fontSize: 10, opacity: .68 }}>{row?.sessions ? `${row.sessions} séances • ${pct(row.accuracyPct)}` : "À découvrir"}</div>
+                return <button key={id} type="button" onClick={() => setFamily(id)} title={TRAINING_FAMILY_META[id].label} style={{ minWidth: 0, padding: "8px 3px", borderRadius: 11, border: active ? "1px solid #27dcff" : "1px solid rgba(255,255,255,.09)", background: active ? "rgba(39,220,255,.13)" : "rgba(255,255,255,.025)", color: "inherit", cursor: "pointer", textAlign: "center" }}>
+                  <div style={{ fontSize: 7.3, fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis" }}>{TRAINING_FAMILY_META[id].label}{recommended ? " ★" : ""}</div>
+                  <div style={{ marginTop: 3, fontSize: 6.5, opacity: .48 }}>{row?.sessions ? `${Math.round(row.recentScore)}/100` : "NOUVEAU"}</div>
                 </button>;
               })}
             </div>
 
-            <div style={{ margin: "16px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>EXERCICES — {exercises.length}</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 9 }}>
-              {exercises.map((exercise) => {
-                const active = exercise.id === exerciseId;
-                return <button key={exercise.id} type="button" onClick={() => setExerciseId(exercise.id)} style={{ textAlign: "left", padding: 13, borderRadius: 15, border: active ? "1px solid #27dcff" : "1px solid rgba(255,255,255,.12)", background: active ? "linear-gradient(135deg,rgba(39,220,255,.14),rgba(39,220,255,.04))" : "rgba(255,255,255,.035)", color: "inherit", cursor: "pointer" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><b style={{ fontSize: 12 }}>{exercise.title}</b><span style={{ fontSize: 10, opacity: .62 }}>{"★".repeat(exercise.difficulty)}</span></div>
-                  <div style={{ marginTop: 6, fontSize: 10.5, lineHeight: 1.35, opacity: .72 }}>{exercise.subtitle}</div>
-                  <div style={{ marginTop: 8, fontSize: 9.5, opacity: .55 }}>{exercise.maxDarts} fléchettes max</div>
-                </button>;
-              })}
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
-              <button type="button" onClick={() => toggleExerciseFavorite(selected.id)} style={{ padding: "8px 11px", borderRadius: 10, border: favoriteExerciseIds.has(selected.id) ? "1px solid rgba(255,216,107,.55)" : "1px solid rgba(255,255,255,.12)", background: favoriteExerciseIds.has(selected.id) ? "rgba(255,216,107,.10)" : "rgba(255,255,255,.04)", color: "inherit", fontSize: 9, fontWeight: 900, cursor: "pointer" }}>{favoriteExerciseIds.has(selected.id) ? "★ FAVORI" : "☆ AJOUTER AUX FAVORIS"}</button>
+            {exercisePanel === "path" && <>
+              <div style={{ marginTop: 10, padding: 13, borderRadius: 15, border: "1px solid rgba(39,220,255,.22)", background: "linear-gradient(135deg,rgba(39,220,255,.08),rgba(140,90,255,.04))" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 0, flex: "1 1 280px" }}>
+                    <div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>PARCOURS {skillPath.label}</div>
+                    <div style={{ marginTop: 4, fontSize: 13, fontWeight: 950 }}>{skillPath.headline}</div>
+                    <div style={{ marginTop: 4, fontSize: 9, opacity: .62, lineHeight: 1.4 }}>{skillPath.body}</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}><b style={{ fontSize: 18 }}>{Math.round(skillPath.score)}</b><div style={{ fontSize: 7, opacity: .45 }}>NIVEAU RÉCENT</div></div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5, marginTop: 10 }}>
+                  {skillPath.steps.map((step) => <button key={step.level} type="button" disabled={!step.unlocked || !step.exercise} onClick={() => { if (step.exercise) setExerciseId(step.exercise.id); }} style={{ minWidth: 0, padding: "9px 4px", borderRadius: 10, border: step.exercise?.id === exerciseId ? "1px solid #27dcff" : step.mastered ? "1px solid rgba(80,255,174,.22)" : "1px solid rgba(255,255,255,.07)", background: step.exercise?.id === exerciseId ? "rgba(39,220,255,.10)" : step.mastered ? "rgba(80,255,174,.05)" : "rgba(255,255,255,.025)", color: "inherit", opacity: step.unlocked ? 1 : .34, cursor: step.unlocked && step.exercise ? "pointer" : "default" }}>
+                    <div style={{ fontSize: 12, fontWeight: 950 }}>{step.mastered ? "✓" : step.unlocked ? step.level : "⌁"}</div>
+                    <div style={{ marginTop: 2, fontSize: 6.5, fontWeight: 950 }}>{step.label}</div>
+                    <div style={{ marginTop: 2, fontSize: 5.8, opacity: .42 }}>{step.exerciseCount} EX.</div>
+                  </button>)}
+                </div>
+              </div>
+
+              <div style={{ marginTop: 9, padding: 12, borderRadius: 14, border: "1px solid rgba(255,216,107,.18)", background: "rgba(255,216,107,.045)" }}>
+                <div style={{ fontSize: 7.5, fontWeight: 950, letterSpacing: .9, color: "#ffd86b" }}>PROCHAIN EXERCICE AWENA</div>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginTop: 5, flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 0, flex: "1 1 240px" }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 950 }}>{skillPath.recommendedExercise.title}</div>
+                    <div style={{ marginTop: 3, fontSize: 8.5, opacity: .58 }}>{skillPath.recommendedExercise.subtitle}</div>
+                  </div>
+                  <button type="button" onClick={() => setExerciseId(skillPath.recommendedExercise.id)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,216,107,.24)", background: "rgba(255,216,107,.07)", color: "inherit", fontSize: 8, fontWeight: 950, cursor: "pointer" }}>SÉLECTIONNER</button>
+                </div>
+              </div>
+            </>}
+
+            {exercisePanel === "catalog" && <>
+              <div style={{ display: "flex", gap: 5, overflowX: "auto", padding: "9px 0 3px" }}>
+                {[0,1,2,3,4,5].map((value) => <button key={value} type="button" onClick={() => setDifficultyFilter(value as 0 | 1 | 2 | 3 | 4 | 5)} style={{ flex: "0 0 auto", padding: "6px 8px", borderRadius: 999, border: difficultyFilter === value ? "1px solid rgba(39,220,255,.50)" : "1px solid rgba(255,255,255,.08)", background: difficultyFilter === value ? "rgba(39,220,255,.10)" : "rgba(255,255,255,.025)", color: "inherit", fontSize: 7.5, fontWeight: 900, cursor: "pointer" }}>{value === 0 ? "TOUS" : `NIV. ${value}`}</button>)}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(205px,1fr))", gap: 7, marginTop: 7 }}>
+                {filteredExercises.map((exercise) => {
+                  const active = exercise.id === exerciseId;
+                  return <button key={exercise.id} type="button" onClick={() => setExerciseId(exercise.id)} style={{ textAlign: "left", padding: 10, borderRadius: 12, border: active ? "1px solid #27dcff" : "1px solid rgba(255,255,255,.09)", background: active ? "rgba(39,220,255,.09)" : "rgba(255,255,255,.025)", color: "inherit", cursor: "pointer" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 7 }}><b style={{ fontSize: 10 }}>{exercise.title}</b><span style={{ fontSize: 8, opacity: .55 }}>{"★".repeat(exercise.difficulty)}</span></div>
+                    <div style={{ marginTop: 4, fontSize: 8.2, lineHeight: 1.3, opacity: .58 }}>{exercise.subtitle}</div>
+                  </button>;
+                })}
+              </div>
+            </>}
+
+            {exercisePanel === "favorites" && <>
+              {!favoriteExercises.length ? <div style={{ marginTop: 10, padding: 14, borderRadius: 13, border: "1px dashed rgba(255,255,255,.12)", textAlign: "center", fontSize: 9, opacity: .5 }}>Aucun exercice favori. Sélectionne un exercice puis utilise ☆ AJOUTER AUX FAVORIS.</div> : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(205px,1fr))", gap: 7, marginTop: 10 }}>
+                {favoriteExercises.map((favorite: any) => <button key={favorite.id} type="button" onClick={() => { setFamily(favorite.family); setExerciseId(favorite.id); }} style={{ textAlign: "left", padding: 10, borderRadius: 12, border: exerciseId === favorite.id ? "1px solid #ffd86b" : "1px solid rgba(255,216,107,.16)", background: exerciseId === favorite.id ? "rgba(255,216,107,.08)" : "rgba(255,255,255,.025)", color: "inherit", cursor: "pointer" }}><div style={{ fontSize: 10, fontWeight: 950 }}>★ {favorite.title}</div><div style={{ marginTop: 4, fontSize: 8.2, opacity: .56 }}>{TRAINING_FAMILY_META[favorite.family as TrainingExerciseFamily].label} • niv. {favorite.difficulty}</div></button>)}
+              </div>}
+            </>}
+
+            <div style={{ marginTop: 10, padding: 11, borderRadius: 13, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.025)", display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ minWidth: 0, flex: "1 1 230px" }}>
+                <div style={{ fontSize: 7.3, fontWeight: 950, opacity: .48 }}>EXERCICE SÉLECTIONNÉ • NIVEAU {selected.difficulty}</div>
+                <div style={{ marginTop: 3, fontSize: 11.5, fontWeight: 950 }}>{selected.title}</div>
+                <div style={{ marginTop: 3, fontSize: 8.5, opacity: .56 }}>{selected.maxDarts} fléchettes max • {selected.subtitle}</div>
+              </div>
+              <button type="button" onClick={() => toggleExerciseFavorite(selected.id)} style={{ padding: "8px 10px", borderRadius: 10, border: favoriteExerciseIds.has(selected.id) ? "1px solid rgba(255,216,107,.55)" : "1px solid rgba(255,255,255,.12)", background: favoriteExerciseIds.has(selected.id) ? "rgba(255,216,107,.10)" : "rgba(255,255,255,.04)", color: "inherit", fontSize: 8, fontWeight: 900, cursor: "pointer" }}>{favoriteExerciseIds.has(selected.id) ? "★ FAVORI" : "☆ FAVORI"}</button>
             </div>
             <TrainingStartButton disabled={!resolved.length} label={resolved.length > 1 ? `LANCER — ${resolved.length} JOUEURS` : "LANCER L'EXERCICE"} onClick={startExercise} />
           </div>}
 
           {tab === "diagnosis" && <div>
-            <div style={{ margin: "10px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>PROFIL DE COMPÉTENCES</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 9 }}>
-              {diagnosis.map((row) => {
-                const recommended = row.family === recommendedFamily;
-                const trend = row.trend > 3 ? `↗ +${Math.round(row.trend)}` : row.trend < -3 ? `↘ ${Math.round(row.trend)}` : "→ stable";
-                return <div key={row.family} style={{ padding: 13, borderRadius: 15, border: recommended ? "1px solid rgba(39,220,255,.5)" : "1px solid rgba(255,255,255,.1)", background: recommended ? "rgba(39,220,255,.08)" : "rgba(255,255,255,.03)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><b style={{ fontSize: 11.5 }}>{row.label}{recommended ? " ★" : ""}</b><span style={{ fontSize: 10, opacity: .65 }}>{trend}</span></div>
-                  <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,.07)", overflow: "hidden", marginTop: 10 }}><div style={{ width: `${Math.max(2, Math.min(100, row.recentScore))}%`, height: "100%", background: "linear-gradient(90deg,#27dcff,#8c5aff)" }} /></div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 6, marginTop: 9, textAlign: "center" }}>
-                    <div><b style={{ fontSize: 12 }}>{Math.round(row.recentScore)}</b><div style={{ fontSize: 8, opacity: .5 }}>INDICE</div></div>
-                    <div><b style={{ fontSize: 12 }}>{pct(row.accuracyPct)}</b><div style={{ fontSize: 8, opacity: .5 }}>PRÉCISION</div></div>
-                    <div><b style={{ fontSize: 12 }}>{pct(row.successPct)}</b><div style={{ fontSize: 8, opacity: .5 }}>RÉUSSITE</div></div>
-                  </div>
-                  <div style={{ marginTop: 8, fontSize: 9, opacity: .5 }}>{row.sessions} séance{row.sessions > 1 ? "s" : ""} analysée{row.sessions > 1 ? "s" : ""}</div>
-                </div>;
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5, marginTop: 8, position: "sticky", top: 54, zIndex: 2, padding: "5px 0", background: "rgba(8,10,16,.78)", backdropFilter: "blur(12px)" }}>
+              {diagnosisPanels.map((item) => {
+                const status = item.id === "overview" ? `${Math.round(diagnosticBoard.overallScore)}/100` : item.id === "skill" ? TRAINING_FAMILY_META[diagnosisFamily].label.toUpperCase() : `${diagnosticBoard.reachedGoals}/6 ATTEINTS`;
+                return <button key={item.id} type="button" onClick={() => setDiagnosisPanel(item.id)} style={{ minWidth: 0, padding: "7px 3px", borderRadius: 10, border: diagnosisPanel === item.id ? "1px solid rgba(39,220,255,.55)" : "1px solid rgba(255,255,255,.075)", background: diagnosisPanel === item.id ? "rgba(39,220,255,.11)" : "rgba(255,255,255,.025)", color: "inherit", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}><HubGlyph name={item.icon} size={15} /><span style={{ fontSize: 7.2, fontWeight: 950 }}>{item.label}</span><span style={{ fontSize: 6.2, opacity: .46 }}>{status}</span></button>;
               })}
             </div>
-            <button type="button" onClick={() => { setProgramId(coachProgram.id); setTab("program"); }} style={{ width: "100%", marginTop: 13, padding: 12, borderRadius: 13, border: "1px solid rgba(39,220,255,.4)", background: "rgba(39,220,255,.12)", color: "inherit", fontWeight: 950, cursor: "pointer" }}>UTILISER LE PROGRAMME RECOMMANDÉ</button>
-          </div>}
 
+            {diagnosisPanel === "overview" && <>
+              <div style={{ marginTop: 9, padding: 13, borderRadius: 15, border: "1px solid rgba(39,220,255,.20)", background: "linear-gradient(135deg,rgba(39,220,255,.065),rgba(140,90,255,.035))" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 200, flex: 1 }}><div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>DIAGNOSTIC AWENA</div><div style={{ marginTop: 3, fontSize: 13, fontWeight: 950 }}>Priorité • {diagnosticBoard.priorityLabel}</div><div style={{ marginTop: 4, fontSize: 8.5, lineHeight: 1.4, opacity: .56 }}>{prescription.body}</div></div>
+                  <button type="button" onClick={() => { prepareRecommendedSession(actionCoach.durationMin, diagnosticBoard.priorityFamily); setTab("program"); setProgramPanel("library"); }} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(39,220,255,.30)", background: "rgba(39,220,255,.09)", color: "inherit", fontSize: 8, fontWeight: 950, cursor: "pointer" }}>PRÉPARER LA SÉANCE</button>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 10 }}>
+                  {[
+                    ["NIVEAU", Math.round(diagnosticBoard.overallScore)],
+                    ["COUVERTURE", `${diagnosticBoard.coverage}%`],
+                    ["OBJECTIFS", `${diagnosticBoard.reachedGoals}/6`],
+                    ["FIABILITÉ", diagnosticBoard.confidence],
+                  ].map(([label, value]) => <div key={String(label)} style={{ padding: 8, borderRadius: 10, textAlign: "center", background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.055)" }}><b style={{ fontSize: 11.5 }}>{value}</b><div style={{ marginTop: 2, fontSize: 6.4, opacity: .42 }}>{label}</div></div>)}
+                </div>
+                <div style={{ marginTop: 8, fontSize: 7.8, opacity: .5 }}>Point fort : <b style={{ color: "#8cffcb" }}>{diagnosticBoard.strongestLabel}</b>{diagnosticBoard.strongestFamily ? ` • ${Math.round(diagnosticBoard.strongestScore)}/100` : ""} • données : {diagnosticBoard.totalSessions} séances ciblées.</div>
+              </div>
+
+              <div style={{ margin: "12px 0 7px", fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#ffd86b" }}>SIGNAUX À TRAITER</div>
+              {!diagnosticBoard.alerts.length ? <div style={{ padding: 12, borderRadius: 12, border: "1px solid rgba(80,255,174,.14)", background: "rgba(80,255,174,.035)", fontSize: 8.8, opacity: .65 }}>Aucun signal prioritaire détecté. Le plan peut rester équilibré.</div> : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 6 }}>
+                {diagnosticBoard.alerts.map((alert) => <button key={alert.id} type="button" onClick={() => { if (alert.family) setDiagnosisFamily(alert.family); setDiagnosisPanel("skill"); }} style={{ textAlign: "left", padding: 10, borderRadius: 12, border: alert.level === "priority" ? "1px solid rgba(255,184,76,.22)" : "1px solid rgba(255,255,255,.07)", background: alert.level === "priority" ? "rgba(255,184,76,.045)" : "rgba(255,255,255,.022)", color: "inherit", cursor: "pointer" }}><b style={{ fontSize: 8.8 }}>{alert.title}</b><div style={{ marginTop: 3, fontSize: 7.7, lineHeight: 1.35, opacity: .52 }}>{alert.body}</div></button>)}
+              </div>}
+            </>}
+
+            {diagnosisPanel === "skill" && <>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 4, marginTop: 9 }}>
+                {familyOrder.map((familyId) => { const row = diagnosis.find((item) => item.family === familyId); return <button key={familyId} type="button" onClick={() => setDiagnosisFamily(familyId)} style={{ minWidth: 0, padding: "7px 2px", borderRadius: 9, border: diagnosisFamily === familyId ? "1px solid rgba(39,220,255,.50)" : "1px solid rgba(255,255,255,.065)", background: diagnosisFamily === familyId ? "rgba(39,220,255,.09)" : "rgba(255,255,255,.02)", color: "inherit", cursor: "pointer" }}><div style={{ fontSize: 6.6, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{TRAINING_FAMILY_META[familyId].label.toUpperCase()}</div><div style={{ marginTop: 2, fontSize: 7.8, opacity: .5 }}>{row?.sessions ? Math.round(row.recentScore) : "—"}</div></button>; })}
+              </div>
+              {(() => {
+                const row = diagnosis.find((item) => item.family === diagnosisFamily)!;
+                const prog = progression.find((item) => item.family === diagnosisFamily);
+                const mastery = career.mastery.find((item) => item.family === diagnosisFamily);
+                const path = buildTrainingSkillPath(diagnosisFamily, progression);
+                const trend = row.trend > 3 ? `+${Math.round(row.trend)}` : Math.round(row.trend);
+                return <div style={{ marginTop: 9, padding: 13, borderRadius: 15, border: diagnosisFamily === recommendedFamily ? "1px solid rgba(39,220,255,.30)" : "1px solid rgba(255,255,255,.085)", background: "rgba(255,255,255,.025)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}><div><div style={{ fontSize: 8, opacity: .45 }}>COMPÉTENCE</div><div style={{ marginTop: 2, fontSize: 14, fontWeight: 950 }}>{row.label}{diagnosisFamily === recommendedFamily ? " ★" : ""}</div></div><div style={{ textAlign: "right" }}><b style={{ fontSize: 18 }}>{row.sessions ? Math.round(row.recentScore) : "—"}</b><div style={{ fontSize: 6.8, opacity: .42 }}>INDICE RÉCENT</div></div></div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 10, textAlign: "center" }}>
+                    <div><b style={{ fontSize: 11 }}>{pct(row.accuracyPct)}</b><div style={{ fontSize: 6.4, opacity: .42 }}>PRÉCISION</div></div><div><b style={{ fontSize: 11 }}>{pct(row.successPct)}</b><div style={{ fontSize: 6.4, opacity: .42 }}>RÉUSSITE</div></div><div><b style={{ fontSize: 11, color: row.trend >= 0 ? "#8cffcb" : "#ffd86b" }}>{trend}</b><div style={{ fontSize: 6.4, opacity: .42 }}>TENDANCE</div></div><div><b style={{ fontSize: 11 }}>{mastery?.tier || "—"}</b><div style={{ fontSize: 6.4, opacity: .42 }}>MAÎTRISE</div></div>
+                  </div>
+                  <div style={{ marginTop: 9, padding: 9, borderRadius: 10, background: "rgba(140,90,255,.045)", border: "1px solid rgba(140,90,255,.10)", fontSize: 8.2, lineHeight: 1.4 }}>Parcours niveau <b>{path.currentLevel}/5 • {path.steps[path.currentLevel - 1]?.label}</b>. Record {Math.round(prog?.bestScore || 0)}/100 • {row.sessions} séance{row.sessions > 1 ? "s" : ""} analysée{row.sessions > 1 ? "s" : ""}.</div>
+                  <button type="button" onClick={() => { setFamily(diagnosisFamily); setExerciseId(path.recommendedExercise.id); setExercisePanel("path"); setTab("exercises"); }} style={{ width: "100%", marginTop: 9, padding: 9, borderRadius: 10, border: "1px solid rgba(39,220,255,.24)", background: "rgba(39,220,255,.07)", color: "inherit", fontSize: 8, fontWeight: 950, cursor: "pointer" }}>OUVRIR LE PARCOURS {row.label.toUpperCase()}</button>
+                </div>;
+              })()}
+            </>}
+
+            {diagnosisPanel === "goal" && <>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 4, marginTop: 9 }}>
+                {familyOrder.map((familyId) => { const status = goalStatuses.find((item) => item.family === familyId); return <button key={familyId} type="button" onClick={() => setDiagnosisFamily(familyId)} style={{ minWidth: 0, padding: "7px 2px", borderRadius: 9, border: diagnosisFamily === familyId ? "1px solid rgba(255,216,107,.45)" : "1px solid rgba(255,255,255,.065)", background: diagnosisFamily === familyId ? "rgba(255,216,107,.08)" : "rgba(255,255,255,.02)", color: "inherit", cursor: "pointer" }}><div style={{ fontSize: 6.6, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{TRAINING_FAMILY_META[familyId].label.toUpperCase()}</div><div style={{ marginTop: 2, fontSize: 7.5, color: status?.reached ? "#8cffcb" : "inherit", opacity: .7 }}>{Math.round(status?.current || 0)}/{status?.goal || 0}</div></button>; })}
+              </div>
+              {(() => { const status = goalStatuses.find((item) => item.family === diagnosisFamily)!; const deadline = preferences.familyGoalDeadlines[diagnosisFamily] || ""; return <div style={{ marginTop: 9, padding: 13, borderRadius: 15, border: status.reached ? "1px solid rgba(80,255,174,.20)" : "1px solid rgba(255,216,107,.18)", background: status.reached ? "rgba(80,255,174,.035)" : "rgba(255,216,107,.03)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}><div><div style={{ fontSize: 8, opacity: .45 }}>OBJECTIF • {status.label.toUpperCase()}</div><div style={{ marginTop: 3, fontSize: 13, fontWeight: 950 }}>{status.reached ? "Objectif atteint" : `Encore ${Math.ceil(status.gap)} pts à gagner`}</div></div><b style={{ fontSize: 18, color: status.reached ? "#8cffcb" : "#ffd86b" }}>{Math.round(status.current)}<span style={{ fontSize: 8, opacity: .45 }}>/{status.goal}</span></b></div>
+                <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,.07)", overflow: "hidden", marginTop: 10 }}><div style={{ height: "100%", width: `${Math.max(2, Math.min(100, (status.current / Math.max(1, status.goal)) * 100))}%`, background: status.reached ? "linear-gradient(90deg,#8cffcb,#27dcff)" : "linear-gradient(90deg,#ffd86b,#27dcff)" }} /></div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginTop: 10, alignItems: "end" }}><div><div style={{ fontSize: 7.5, opacity: .45, marginBottom: 4 }}>DATE CIBLE</div><input type="date" value={deadline} onChange={(event) => updateGoalDeadline(diagnosisFamily, event.target.value)} style={{ width: "100%", boxSizing: "border-box", padding: "7px 8px", borderRadius: 9, border: "1px solid rgba(255,255,255,.09)", background: "rgba(0,0,0,.18)", color: "inherit", fontSize: 8.5 }} /></div><div style={{ display: "flex", gap: 5 }}><button type="button" onClick={() => updateGoal(diagnosisFamily, status.goal - 5)} style={{ width: 32, height: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.04)", color: "inherit", cursor: "pointer" }}>−</button><button type="button" onClick={() => updateGoal(diagnosisFamily, status.goal + 5)} style={{ width: 32, height: 30, borderRadius: 8, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.04)", color: "inherit", cursor: "pointer" }}>+</button></div></div>
+              </div>; })()}
+            </>}
+          </div>}
           {tab === "progress" && <div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5, marginTop: 8, position: "sticky", top: 54, zIndex: 2, padding: "5px 0", background: "rgba(8,10,16,.78)", backdropFilter: "blur(12px)" }}>
               {progressPanels.map((item) => {
@@ -684,6 +800,10 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 return <button key={item.id} type="button" onClick={() => setProgressPanel(item.id)} style={{ minWidth: 0, padding: "6px 2px", borderRadius: 9, border: progressPanel === item.id ? "1px solid rgba(39,220,255,.50)" : "1px solid rgba(255,255,255,.07)", background: progressPanel === item.id ? "rgba(39,220,255,.10)" : "rgba(255,255,255,.02)", color: "inherit", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}><HubGlyph name={item.icon} size={14} /><span style={{ fontSize: 6.7, fontWeight: 950 }}>{item.label}</span><span style={{ fontSize: 5.9, opacity: .44 }}>{status}</span></button>;
               })}
             </div>
+
+            {progressPanel === "skills" && <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5, marginTop: 7 }}>
+              {skillProgressPanels.map((item) => <button key={item.id} type="button" onClick={() => setSkillProgressPanel(item.id)} style={{ padding: "7px 4px", borderRadius: 9, border: skillProgressPanel === item.id ? "1px solid rgba(185,156,255,.42)" : "1px solid rgba(255,255,255,.065)", background: skillProgressPanel === item.id ? "rgba(140,90,255,.08)" : "rgba(255,255,255,.02)", color: "inherit", fontSize: 7.2, fontWeight: 950, cursor: "pointer" }}>{item.label}</button>)}
+            </div>}
 
             {progressPanel === "overview" && <>
             <div style={{ marginTop: 8, padding: 14, borderRadius: 16, border: "1px solid rgba(255,216,107,.22)", background: "linear-gradient(135deg,rgba(255,216,107,.08),rgba(140,90,255,.055))" }}>
@@ -700,22 +820,20 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
             </div>
             </>}
 
-            {progressPanel === "skills" && <>
-            <div style={{ margin: "12px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#b99cff" }}>MAÎTRISES</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 7 }}>
-              {career.mastery.map((item) => <div key={`mastery-${item.family}`} style={{ padding: 10, borderRadius: 12, border: "1px solid rgba(185,156,255,.12)", background: "rgba(140,90,255,.03)" }}>
-                <div style={{ fontSize: 8, opacity: .5 }}>{item.label.toUpperCase()}</div>
-                <div style={{ marginTop: 3, fontSize: 13, fontWeight: 950 }}>{item.tier}</div>
-                <div style={{ marginTop: 3, fontSize: 8, opacity: .48 }}>{Math.round(item.score)}/100 • {item.sessions} séances</div>
-                {item.nextTarget && <div style={{ marginTop: 5, fontSize: 7.3, color: "#ffd86b", opacity: .82 }}>PROCHAIN PALIER {item.nextTarget}/100</div>}
+            {progressPanel === "skills" && skillProgressPanel === "mastery" && <>
+            <div style={{ margin: "10px 0 7px", fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#b99cff" }}>MAÎTRISES</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
+              {career.mastery.map((item) => <div key={`mastery-${item.family}`} style={{ padding: 9, borderRadius: 11, border: "1px solid rgba(185,156,255,.12)", background: "rgba(140,90,255,.03)" }}>
+                <div style={{ fontSize: 7.2, opacity: .5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.label.toUpperCase()}</div><div style={{ marginTop: 2, fontSize: 11.5, fontWeight: 950 }}>{item.tier}</div><div style={{ marginTop: 2, fontSize: 7.3, opacity: .46 }}>{Math.round(item.score)}/100 • {item.sessions} séances</div>{item.nextTarget && <div style={{ marginTop: 4, fontSize: 6.6, color: "#ffd86b" }}>PALIER {item.nextTarget}</div>}
               </div>)}
             </div>
+            </>}
 
-            <div style={{ margin: "14px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#ffd86b" }}>BADGES TRAINING</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 7 }}>
-              {career.badges.map((badge) => <div key={badge.id} style={{ padding: 10, borderRadius: 12, border: badge.unlocked ? "1px solid rgba(255,216,107,.26)" : "1px solid rgba(255,255,255,.07)", background: badge.unlocked ? "rgba(255,216,107,.055)" : "rgba(255,255,255,.02)", opacity: badge.unlocked ? 1 : .58 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 7 }}><b style={{ fontSize: 9.5 }}>{badge.unlocked ? "◆ " : "◇ "}{badge.title}</b><span style={{ fontSize: 8, color: badge.unlocked ? "#ffd86b" : "inherit" }}>{badge.unlocked ? "DÉBLOQUÉ" : `${Math.min(badge.progress,badge.target)}/${badge.target}`}</span></div>
-                <div style={{ marginTop: 4, fontSize: 8, lineHeight: 1.35, opacity: .5 }}>{badge.description}</div>
+            {progressPanel === "skills" && skillProgressPanel === "badges" && <>
+            <div style={{ margin: "10px 0 7px", fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#ffd86b" }}>BADGES TRAINING • {career.unlockedBadges}/{career.totalBadges}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 6 }}>
+              {career.badges.map((badge) => <div key={badge.id} style={{ padding: 9, borderRadius: 11, border: badge.unlocked ? "1px solid rgba(255,216,107,.26)" : "1px solid rgba(255,255,255,.07)", background: badge.unlocked ? "rgba(255,216,107,.055)" : "rgba(255,255,255,.02)", opacity: badge.unlocked ? 1 : .58 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 7 }}><b style={{ fontSize: 8.8 }}>{badge.unlocked ? "◆ " : "◇ "}{badge.title}</b><span style={{ fontSize: 7.2, color: badge.unlocked ? "#ffd86b" : "inherit" }}>{badge.unlocked ? "OK" : `${Math.min(badge.progress,badge.target)}/${badge.target}`}</span></div><div style={{ marginTop: 3, fontSize: 7.4, lineHeight: 1.3, opacity: .48 }}>{badge.description}</div>
               </div>)}
             </div>
             </>}
@@ -773,49 +891,24 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
             </div>
             </>}
 
-            {progressPanel === "skills" && <>
-            <div style={{ margin: "12px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>PROGRESSION PAR COMPÉTENCE</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 8 }}>
-              {progression.map((row) => {
-                const deltaLabel = row.delta > 2 ? `+${Math.round(row.delta)}` : row.delta < -2 ? `${Math.round(row.delta)}` : "stable";
-                const points = row.points;
-                const maxScore = Math.max(100, ...points.map((point) => point.score));
-                return <div key={row.family} style={{ padding: 12, borderRadius: 14, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.025)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}><b style={{ fontSize: 10.5 }}>{row.label}</b><span style={{ fontSize: 9, opacity: .58 }}>{deltaLabel}</span></div>
-                  <div style={{ marginTop: 9, height: 44, display: "flex", gap: 3, alignItems: "end" }}>
-                    {points.length ? points.map((point, index) => <div key={`${point.endedAt}-${index}`} title={`${Math.round(point.score)}/100`} style={{ flex: 1, minWidth: 4, height: `${Math.max(5, (point.score / maxScore) * 100)}%`, borderRadius: "4px 4px 2px 2px", background: point.success ? "linear-gradient(180deg,#27dcff,#8c5aff)" : "rgba(255,255,255,.18)" }} />) : <div style={{ fontSize: 9, opacity: .45, alignSelf: "center" }}>Pas encore de données</div>}
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 5, marginTop: 9, textAlign: "center" }}>
-                    <div><b style={{ fontSize: 11 }}>{Math.round(row.recentAverage)}</b><div style={{ fontSize: 7, opacity: .45 }}>RÉCENT</div></div>
-                    <div><b style={{ fontSize: 11 }}>{Math.round(row.bestScore)}</b><div style={{ fontSize: 7, opacity: .45 }}>RECORD</div></div>
-                    <div><b style={{ fontSize: 11 }}>{row.streak}</b><div style={{ fontSize: 7, opacity: .45 }}>SÉRIE</div></div>
-                  </div>
-                  {(() => {
-                    const goal = goalStatuses.find((status) => status.family === row.family);
-                    const target = goal?.goal || preferences.familyGoals[row.family];
-                    const current = goal?.current || row.recentAverage;
-                    const reached = current >= target;
-                    return <div style={{ marginTop: 10, paddingTop: 9, borderTop: "1px solid rgba(255,255,255,.06)" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                        <span style={{ fontSize: 8.5, opacity: .58 }}>OBJECTIF PERSONNEL</span>
-                        <b style={{ fontSize: 10, color: reached ? "#8cffcb" : "#ffd86b" }}>{target}/100</b>
-                      </div>
-                      <div style={{ height: 6, borderRadius: 999, background: "rgba(255,255,255,.07)", overflow: "hidden", marginTop: 6 }}>
-                        <div style={{ height: "100%", width: `${Math.max(2, Math.min(100, (current / Math.max(1, target)) * 100))}%`, background: reached ? "linear-gradient(90deg,#8cffcb,#27dcff)" : "linear-gradient(90deg,#ffd86b,#27dcff)" }} />
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 5, marginTop: 7 }}>
-                        <button type="button" onClick={() => updateGoal(row.family, target - 5)} style={{ width: 28, height: 26, borderRadius: 8, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.04)", color: "inherit", cursor: "pointer" }}>−</button>
-                        <button type="button" onClick={() => updateGoal(row.family, target + 5)} style={{ width: 28, height: 26, borderRadius: 8, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.04)", color: "inherit", cursor: "pointer" }}>+</button>
-                      </div>
-                      <div style={{ marginTop: 8 }}>
-                        <div style={{ fontSize: 7.5, opacity: .45, marginBottom: 4 }}>DATE CIBLE</div>
-                        <input type="date" value={preferences.familyGoalDeadlines[row.family] || ""} onChange={(event) => updateGoalDeadline(row.family, event.target.value)} style={{ width: "100%", boxSizing: "border-box", padding: "6px 7px", borderRadius: 8, border: "1px solid rgba(255,255,255,.09)", background: "rgba(0,0,0,.18)", color: "inherit", fontSize: 8.5 }} />
-                      </div>
-                    </div>;
-                  })()}
-                </div>;
-              })}
+            {progressPanel === "skills" && skillProgressPanel === "mastery" && <>
+            <div style={{ margin: "12px 0 7px", fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>ÉVOLUTION DÉTAILLÉE</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 4, marginBottom: 7 }}>
+              {familyOrder.map((familyId) => <button key={`progress-family-${familyId}`} type="button" onClick={() => setDiagnosisFamily(familyId)} style={{ minWidth: 0, padding: "6px 2px", borderRadius: 8, border: diagnosisFamily === familyId ? "1px solid rgba(39,220,255,.45)" : "1px solid rgba(255,255,255,.06)", background: diagnosisFamily === familyId ? "rgba(39,220,255,.08)" : "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer", fontSize: 6.4, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{TRAINING_FAMILY_META[familyId].label.toUpperCase()}</button>)}
             </div>
+            {(() => {
+              const row = progression.find((item) => item.family === diagnosisFamily) || progression[0];
+              if (!row) return null;
+              const deltaLabel = row.delta > 2 ? `+${Math.round(row.delta)}` : row.delta < -2 ? `${Math.round(row.delta)}` : "stable";
+              const points = row.points;
+              const maxScore = Math.max(100, ...points.map((point) => point.score));
+              return <div style={{ padding: 12, borderRadius: 14, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.025)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}><b style={{ fontSize: 10.5 }}>{row.label}</b><span style={{ fontSize: 9, color: row.delta >= 0 ? "#8cffcb" : "#ffd86b", opacity: .78 }}>{deltaLabel}</span></div>
+                <div style={{ marginTop: 9, height: 52, display: "flex", gap: 3, alignItems: "end" }}>{points.length ? points.map((point, index) => <div key={`${point.endedAt}-${index}`} title={`${Math.round(point.score)}/100`} style={{ flex: 1, minWidth: 4, height: `${Math.max(5, (point.score / maxScore) * 100)}%`, borderRadius: "4px 4px 2px 2px", background: point.success ? "linear-gradient(180deg,#27dcff,#8c5aff)" : "rgba(255,255,255,.18)" }} />) : <div style={{ fontSize: 9, opacity: .45, alignSelf: "center" }}>Pas encore de données</div>}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 5, marginTop: 9, textAlign: "center" }}><div><b style={{ fontSize: 11 }}>{Math.round(row.recentAverage)}</b><div style={{ fontSize: 7, opacity: .45 }}>RÉCENT</div></div><div><b style={{ fontSize: 11 }}>{Math.round(row.previousAverage)}</b><div style={{ fontSize: 7, opacity: .45 }}>AVANT</div></div><div><b style={{ fontSize: 11 }}>{Math.round(row.bestScore)}</b><div style={{ fontSize: 7, opacity: .45 }}>RECORD</div></div><div><b style={{ fontSize: 11 }}>{row.streak}</b><div style={{ fontSize: 7, opacity: .45 }}>SÉRIE</div></div></div>
+                <div style={{ marginTop: 8, fontSize: 7.6, opacity: .5 }}>Objectifs et échéances sont désormais regroupés dans <b>DIAGNOSTIC → OBJECTIF</b>.</div>
+              </div>;
+            })()}
             </>}
 
             {progressPanel === "cycles" && <>
@@ -848,8 +941,8 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
             </div>}
             </>}
 
-            {progressPanel === "skills" && <>
-            <div style={{ margin: "12px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#ffd86b" }}>RECORDS PERSONNELS</div>
+            {progressPanel === "skills" && skillProgressPanel === "records" && <>
+            <div style={{ margin: "10px 0 7px", fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#ffd86b" }}>RECORDS PERSONNELS</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 7 }}>
               {progression.map((row) => <div key={`record-${row.family}`} style={{ padding: 10, borderRadius: 12, border: "1px solid rgba(255,216,107,.12)", background: "rgba(255,216,107,.035)" }}>
                 <div style={{ fontSize: 8.5, opacity: .55 }}>{row.label.toUpperCase()}</div>

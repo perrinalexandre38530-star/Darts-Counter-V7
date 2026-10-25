@@ -30,6 +30,7 @@ import { getAccountLatestBackup, registerAccountLatestBackup, type AccountLatest
 import { loadStoragePrefs } from "../storagePlans";
 import { fetchRemoteIncrementalChanges } from "../incrementalRemoteSync";
 import { applyIncrementalChanges } from "../incrementalRestore";
+import { shouldSuppressAutomaticRestore } from "../restoreAuthority";
 
 export type AccountBackupSource = "local" | "nas" | "r2" | "google_drive" | "onedrive" | "dropbox" | "external" | "legacy-auto";
 
@@ -881,6 +882,14 @@ export async function restoreLatestBackupForSignedInUser(
   if (typeof window === "undefined") return false;
   const uid = String(userId || "").trim();
   if (!uid || !accountStillActive(uid)) return false;
+
+  // Après une restauration choisie manuellement, ne jamais lancer en parallèle
+  // une auto-restauration "latest" susceptible de remettre l'ancien état.
+  if (!opts?.force && shouldSuppressAutomaticRestore(uid)) {
+    saveDiagnostic(uid, { ok: true, restored: false, reason: "manual-restore-authority-guard" });
+    emitAccountSync(uid, "done", 100, "Restauration manuelle conservée comme autorité", { restored: false });
+    return false;
+  }
 
   const existing = inFlightByUser.get(uid);
   if (existing) return existing;

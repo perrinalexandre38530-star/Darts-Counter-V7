@@ -13,6 +13,7 @@ import { useAuthOnline } from "../hooks/useAuthOnline";
 import { apiPost, buildApiUrl, ensureAccountBackendAccessToken, readNasAccessToken } from "../lib/apiClient";
 import { exportCloudSnapshot, importCloudSnapshot, loadStore, saveStore } from "../lib/storage";
 import { isLegacyMigrationCandidate } from "../data/legacyMigrationV1";
+import { writeAuthoritativeRestorePending } from "../lib/restoreAuthority";
 import { analyzeLegacySnapshotAgainstCurrent, migrateLegacySnapshotIntoCurrent, restoreLegacySnapshotAuthoritatively } from "../lib/legacyMigrationRuntime";
 import {
   createLocalMemorySlot,
@@ -2766,6 +2767,8 @@ export default function StorageVaultPage({ go }: Props) {
       skipAccountSync?: boolean;
       /** Explicit remote Restore uses the selected backup as authority; file import remains merge-safe. */
       legacyStrategy?: "merge" | "authoritative";
+      /** Prevent stale account/auto-latest state from replacing this explicit user choice after reload. */
+      explicitAuthority?: boolean;
     },
   ): Promise<{ summary: VaultSummary }> => {
     const report = options?.report || (() => {});
@@ -2999,6 +3002,20 @@ export default function StorageVaultPage({ go }: Props) {
     } catch (e) {
       console.warn("[StorageVault] live store refresh after restore failed", e);
       throw e;
+    }
+
+    // L'utilisateur vient de choisir explicitement CETTE sauvegarde. On persiste
+    // l'autorité avant le reload : au prochain démarrage accountOwnedSync devra
+    // pousser cet état vers le compte AVANT toute lecture distante.
+    if (options?.explicitAuthority) {
+      writeAuthoritativeRestorePending({
+        userId: getVaultCurrentUserId() || "",
+        provider,
+        reason,
+        label,
+        matches: Number(summary.matches || 0),
+        profiles: Number(summary.profiles || 0),
+      });
     }
 
     report(96, "Données appliquées. Le recalcul des statistiques est différé au prochain temps libre…", "finalize");
@@ -4083,7 +4100,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         pulled.payload,
         `restore-nas:${id}`,
         entry.title,
-        { skipConfirm: true, background: true, provider: "nas", report, skipAccountSync: true, legacyStrategy: "authoritative" },
+        { skipConfirm: true, background: true, provider: "nas", report, skipAccountSync: true, legacyStrategy: "authoritative", explicitAuthority: true },
       );
       if (id !== "latest") {
         void apiPost(`/sync/slots/${encodeURIComponent(id)}/restore`, {}, { manual: true, timeoutMs: 8_000 })
@@ -4105,7 +4122,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         pulled.payload,
         `restore-cloud:${slot.id}`,
         entry.title,
-        { skipConfirm: true, background: true, provider: "cloud", report, skipAccountSync: true, legacyStrategy: "authoritative" },
+        { skipConfirm: true, background: true, provider: "cloud", report, skipAccountSync: true, legacyStrategy: "authoritative", explicitAuthority: true },
       );
     });
   };
@@ -4139,7 +4156,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         snapshot,
         `restore-google-drive:${backupId || slot.id}`,
         entry.title,
-        { skipConfirm: true, background: true, provider: "google_drive", report, legacyStrategy: "authoritative" },
+        { skipConfirm: true, background: true, provider: "google_drive", report, legacyStrategy: "authoritative", explicitAuthority: true },
       );
     };
 
@@ -4157,7 +4174,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         payload,
         `restore-local:${slot.id}`,
         entry.title,
-        { skipConfirm: true, background: true, provider: "nas", report, skipAccountSync: true, legacyStrategy: "authoritative" },
+        { skipConfirm: true, background: true, provider: "nas", report, skipAccountSync: true, legacyStrategy: "authoritative", explicitAuthority: true },
       );
     });
   };

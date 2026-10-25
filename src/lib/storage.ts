@@ -4060,7 +4060,7 @@ async function restorePortableAccountData(
     // Le snapshot portable contient déjà son coffre média local. Ne jamais
     // attendre R2/NAS pendant cette étape : une restauration locale doit rester
     // déterministe et ne pas se figer à 85 % sur une requête distante.
-    const hydrated = await hydrateStoreUserMedia(mergedStore, { allowRemote: false }).catch(() => ({ store: mergedStore, changed: false }));
+    const hydrated = await hydrateStoreUserMedia(mergedStore, { allowRemote: false, localOnly: true }).catch(() => ({ store: mergedStore, changed: false }));
     mergedStore = hydrated?.store || mergedStore;
     restoredDartSetsForRuntime = Array.isArray(mergedStore?.dartSets) ? mergedStore.dartSets : null;
     // Diff local : si le store correspond déjà au backup, aucune recompression /
@@ -4105,7 +4105,7 @@ async function restorePortableAccountData(
           ...(media.coverDataUrl ? { coverDataUrl: media.coverDataUrl } : {}),
         } : team;
       });
-      const hydratedTeams = await hydrateStoreUserMedia({ teams: portableTeamsWithMedia }, { allowRemote: false })
+      const hydratedTeams = await hydrateStoreUserMedia({ teams: portableTeamsWithMedia }, { allowRemote: false, localOnly: true })
         .then((result) => Array.isArray(result?.store?.teams) ? result.store.teams : portableTeamsWithMedia)
         .catch(() => portableTeamsWithMedia);
       const currentTeams = loadStoredTeams();
@@ -4674,7 +4674,7 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
     const canonical = Array.isArray(getAllDartSets()) && getAllDartSets().length > 0
       ? getAllDartSets()
       : dartSets;
-    const hydratedDartSets = await hydrateStoreUserMedia({ dartSets: canonical }, { allowRemote: false })
+    const hydratedDartSets = await hydrateStoreUserMedia({ dartSets: canonical }, { allowRemote: false, localOnly: true })
       .then((result) => Array.isArray(result?.store?.dartSets) ? result.store.dartSets : canonical)
       .catch(() => canonical);
     if (safeJsonStringify(getAllDartSets()) !== safeJsonStringify(hydratedDartSets)) {
@@ -4702,7 +4702,7 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
       // après avoir restauré le coffre média, sinon les logos disparaissent au reboot.
       const currentTeams = loadStoredTeams();
       const sourceTeams = Array.isArray(currentTeams) && currentTeams.length ? currentTeams : teams;
-      const hydratedTeams = await hydrateStoreUserMedia({ teams: sourceTeams }, { allowRemote: false })
+      const hydratedTeams = await hydrateStoreUserMedia({ teams: sourceTeams }, { allowRemote: false, localOnly: true })
         .then((result) => Array.isArray(result?.store?.teams) ? result.store.teams : sourceTeams)
         .catch(() => sourceTeams);
       const beforeTeams = loadStoredTeams();

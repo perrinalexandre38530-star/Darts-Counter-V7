@@ -996,7 +996,7 @@ async function hydrateFromR2BackupsOnce(): Promise<void> {
 export async function resolveUserMediaFallback(
   keyInput: string,
   primarySourceInput = "",
-  opts: { kind?: UserMediaKind | string; allowR2?: boolean; mirrorRecoveredToR2?: boolean } = {},
+  opts: { kind?: UserMediaKind | string; allowR2?: boolean; mirrorRecoveredToR2?: boolean; localOnly?: boolean } = {},
 ): Promise<string> {
   const key = cleanKey(keyInput);
   if (!key) return "";
@@ -1006,6 +1006,13 @@ export async function resolveUserMediaFallback(
   const task = (async () => {
     let found = await readLocalUserMediaFallback(key);
     if (found) return found;
+
+    // RESTORE FAST PATH : lorsque le Media Vault V2 vient juste d'être importé,
+    // une absence signifie simplement que ce média n'était pas dans le backup.
+    // Ne rescanner ni les anciens slots locaux, ni le fichier/SD mémorisé, ni R2
+    // pour chaque profil/team/dartset : ces scans répétés causaient le palier
+    // 81-83 % de plusieurs minutes. L'UI pourra faire un fallback lazy ensuite.
+    if (opts.localOnly === true) return "";
 
     const kind = String(opts.kind || key.split(":")[0] || "user_image");
 
@@ -1277,7 +1284,7 @@ function dartSetMediaIds(raw: any): string[] {
 
 export async function hydrateStoreUserMedia(
   storeInput: any,
-  opts: { allowRemote?: boolean } = {},
+  opts: { allowRemote?: boolean; localOnly?: boolean } = {},
 ): Promise<{ store: any; changed: boolean }> {
   if (!storeInput || typeof storeInput !== "object") return { store: storeInput, changed: false };
   const store = { ...storeInput };
@@ -1288,7 +1295,7 @@ export async function hydrateStoreUserMedia(
     const id = String(p?.id || "").trim();
     if (!id) return;
     const primary = firstImage(p?.avatarDataUrl, p?.avatarUrl, p?.avatar, p?.photoUrl, p?.avatarPath);
-    const fallback = await resolveUserMediaFallback(profileAvatarMediaKey(id), primary, { kind: "profile_avatar", allowR2: opts.allowRemote !== false });
+    const fallback = await resolveUserMediaFallback(profileAvatarMediaKey(id), primary, { kind: "profile_avatar", allowR2: opts.allowRemote !== false, localOnly: opts.localOnly === true });
     if (fallback && p.avatarDataUrl !== fallback) {
       p.avatarDataUrl = fallback;
       changed = true;
@@ -1301,7 +1308,7 @@ export async function hydrateStoreUserMedia(
     const id = String(b?.id || b?.botId || "").trim();
     if (!id) return;
     const primary = firstImage(b?.avatarDataUrl, b?.avatarFullDataUrl, b?.avatarThumbDataUrl, b?.avatarUrl, b?.avatar, b?.photoDataUrl);
-    const fallback = await resolveUserMediaFallback(botAvatarMediaKey(id), primary, { kind: "bot_avatar", allowR2: opts.allowRemote !== false });
+    const fallback = await resolveUserMediaFallback(botAvatarMediaKey(id), primary, { kind: "bot_avatar", allowR2: opts.allowRemote !== false, localOnly: opts.localOnly === true });
     if (fallback && b.avatarDataUrl !== fallback) {
       b.avatarDataUrl = fallback;
       changed = true;
@@ -1336,8 +1343,8 @@ export async function hydrateStoreUserMedia(
     ]);
 
     const [main, thumb] = await Promise.all([
-      localMain || resolveUserMediaFallback(String(d?.r2MainMediaKey || dartSetMainMediaKey(id)), mainPrimary, { kind: "dartset_main", allowR2: opts.allowRemote !== false }),
-      localThumb || resolveUserMediaFallback(String(d?.r2ThumbMediaKey || dartSetThumbMediaKey(id)), thumbPrimary, { kind: "dartset_thumb", allowR2: opts.allowRemote !== false }),
+      localMain || resolveUserMediaFallback(String(d?.r2MainMediaKey || dartSetMainMediaKey(id)), mainPrimary, { kind: "dartset_main", allowR2: opts.allowRemote !== false, localOnly: opts.localOnly === true }),
+      localThumb || resolveUserMediaFallback(String(d?.r2ThumbMediaKey || dartSetThumbMediaKey(id)), thumbPrimary, { kind: "dartset_thumb", allowR2: opts.allowRemote !== false, localOnly: opts.localOnly === true }),
     ]);
     if (main && d.mainImageUrl !== main) { d.mainImageUrl = main; changed = true; }
     if (thumb && d.thumbImageUrl !== thumb) { d.thumbImageUrl = thumb; changed = true; }
@@ -1351,8 +1358,8 @@ export async function hydrateStoreUserMedia(
     const primary = firstImage(t?.logoDataUrl, t?.logoUrl, t?.avatarUrl, t?.imageUrl, t?.logo);
     const coverPrimary = firstImage(t?.coverDataUrl, t?.coverUrl, t?.bannerDataUrl, t?.bannerUrl);
     const [logo, cover] = await Promise.all([
-      resolveUserMediaFallback(teamLogoMediaKey(id), primary, { kind: "team_logo", allowR2: opts.allowRemote !== false }),
-      resolveUserMediaFallback(teamCoverMediaKey(id), coverPrimary, { kind: "team_cover", allowR2: opts.allowRemote !== false }),
+      resolveUserMediaFallback(teamLogoMediaKey(id), primary, { kind: "team_logo", allowR2: opts.allowRemote !== false, localOnly: opts.localOnly === true }),
+      resolveUserMediaFallback(teamCoverMediaKey(id), coverPrimary, { kind: "team_cover", allowR2: opts.allowRemote !== false, localOnly: opts.localOnly === true }),
     ]);
     if (logo && t.logoDataUrl !== logo) { t.logoDataUrl = logo; changed = true; }
     if (cover && t.coverDataUrl !== cover) { t.coverDataUrl = cover; changed = true; }

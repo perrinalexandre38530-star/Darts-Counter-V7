@@ -47,6 +47,7 @@ import { ACCOUNT_LOCAL_STORAGE_MUTATION_EVENT } from "./storage";
 import { accountScopedLocalStorageKey } from "./accountScope";
 import { collectCanonicalEntityMediaRefs } from "../data/canonicalEntityStores";
 import { accountOwnedTeams, mergeAccountTeamsPreservingOrganizations } from "../data/organizationDataBoundary";
+import { readAuthoritativeRestorePending, sealAuthoritativeRestore } from "./restoreAuthority";
 
 export const ACCOUNT_OWNED_STORE_MUTATED_EVENT = "dc:account-owned-store-mutated";
 export const ACCOUNT_OWNED_SYNC_STATUS_EVENT = "dc:account-owned-sync-status";
@@ -1245,6 +1246,13 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
       statsNamespaceReady = true;
     });
 
+    // Un restore manuel explicite gagne sur l'ancien cloud. Tant qu'il n'est pas
+    // scellé, aucune collection distante ne doit être appliquée localement.
+    if (readAuthoritativeRestorePending(userId)) {
+      await sealPendingAuthoritativeRestore("initial-sync");
+      return;
+    }
+
     await syncCollection(DOC.profiles, () => serializeProfiles(options.getProfiles(), userId), applyProfilesPayload);
     await syncCollection(DOC.bots, () => serializeBots(), applyBotsPayload);
     await syncCollection(DOC.teams, () => serializeTeams(), applyTeamsPayload, (rows) => accountOwnedTeams(rows));
@@ -1399,6 +1407,31 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     emitStatus({ state: "synced", direction: "up", userId, reason, forced: true, at: Date.now() });
   };
 
+  const sealPendingAuthoritativeRestore = async (trigger = "authoritative-restore") => {
+    const marker = readAuthoritativeRestorePending(userId);
+    if (!marker) return false;
+    // Tant que le restore local ou une panne réseau est actif, NE JAMAIS tirer
+    // l'ancien distant : on conserve simplement le marker et on réessaiera.
+    if (stopped || tableUnavailable || remotePaused() || restoreInProgress()) {
+      emitStatus({ state: "restore-authority-pending", userId, trigger, marker });
+      return true;
+    }
+    try {
+      await forcePushAllLocalToAccount(`${trigger}:${marker.provider || "manual"}`);
+      if (tableUnavailable || remotePaused()) {
+        emitStatus({ state: "restore-authority-pending", userId, trigger, marker });
+        return true;
+      }
+      sealAuthoritativeRestore(userId);
+      emitStatus({ state: "restore-authority-sealed", direction: "up", userId, trigger, marker, at: Date.now() });
+      return true;
+    } catch (error) {
+      console.warn("[account-sync] authoritative restore seal deferred", error);
+      emitStatus({ state: "restore-authority-pending", userId, trigger, marker, error: String((error as any)?.message || error) });
+      return true;
+    }
+  };
+
   const onAccountMediaSynced = (event: Event) => {
     if (stopped || tableUnavailable || remotePaused() || remoteApplyDepth > 0) return;
     const kind = cleanId((event as CustomEvent)?.detail?.kind).toLowerCase();
@@ -1418,6 +1451,10 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     // Les CustomEvent contournaient auparavant le garde du bridge global.
     // Pendant un restore, aucune réplication distante ne doit partir.
     if (remotePaused()) return;
+    if (readAuthoritativeRestorePending(userId)) {
+      void sealPendingAuthoritativeRestore(cleanId(detail?.reason) || "external");
+      return;
+    }
     void forcePushAllLocalToAccount(cleanId(detail?.reason) || "external").catch((error) => console.warn("[account-sync] forced sync failed", error));
   };
   const onStatsIndexUpdated = () => scheduleLocalPush(DOC.statsIndex, pushStatsIndex, 650);
@@ -1466,6 +1503,10 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
 
   const onFocusOrOnline = () => {
     if (stopped || remotePaused() || document.visibilityState === "hidden") return;
+    if (readAuthoritativeRestorePending(userId)) {
+      void sealPendingAuthoritativeRestore("focus-online");
+      return;
+    }
     void refreshRemoteDocuments();
   };
   const onVisibility = () => {
@@ -1531,6 +1572,10 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
 
   pollTimer = window.setInterval(() => {
     if (stopped || remotePaused() || document.visibilityState === "hidden") return;
+    if (readAuthoritativeRestorePending(userId)) {
+      void sealPendingAuthoritativeRestore("poll");
+      return;
+    }
     void refreshRemoteDocuments();
   }, POLL_MS);
 
