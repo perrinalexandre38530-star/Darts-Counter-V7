@@ -38,13 +38,31 @@ const pickKind = (row: any, decoded: any) => {
 const pickStatus = (row: any, decoded: any): "in_progress" | "finished" => {
   const finishedTokens = new Set(["finished", "finish", "done", "match_end", "match-end", "ended", "complete", "completed"]);
   const liveTokens = new Set(["in_progress", "inprogress", "playing", "live", "running", "started", "active"]);
-  const tokens = [
-    row?.status,
+  const norm = (value: any) => String(value ?? "").trim().toLowerCase();
+  const summary = row?.summary || decoded?.summary || {};
+
+  const hasIrreversibleFinish =
+    summary?.finished === true || summary?.result?.finished === true ||
+    row?.payload?.summary?.finished === true || decoded?.summary?.finished === true ||
+    row?.resume?.state?.finished === true || row?.payload?.state?.finished === true || row?.payload?.stateSnapshot?.finished === true ||
+    !!row?.finishedAt || !!summary?.finishedAt || !!row?.payload?.finishedAt;
+  if (hasIrreversibleFinish) return "finished";
+
+  const rootStatus = norm(row?.status);
+  if (finishedTokens.has(rootStatus)) return "finished";
+  if (liveTokens.has(rootStatus)) return "in_progress";
+
+  const matchTokens = [
     row?.summary?.status,
     row?.payload?.status,
     row?.payload?.summary?.status,
     decoded?.status,
     decoded?.summary?.status,
+  ].map(norm).filter(Boolean);
+  if (matchTokens.some((token) => finishedTokens.has(token))) return "finished";
+  if (matchTokens.some((token) => liveTokens.has(token))) return "in_progress";
+
+  const snapshotTokens = [
     row?.resume?.state?.status,
     row?.resume?.state?.phase,
     row?.payload?.state?.status,
@@ -53,30 +71,16 @@ const pickStatus = (row: any, decoded: any): "in_progress" | "finished" => {
     row?.payload?.stateSnapshot?.phase,
     decoded?.state?.status,
     decoded?.state?.phase,
-  ].map((value) => String(value ?? "").trim().toLowerCase()).filter(Boolean);
-
-  const summary = row?.summary || decoded?.summary || {};
-  const hasIrreversibleFinish =
-    summary?.finished === true || summary?.result?.finished === true ||
-    row?.payload?.summary?.finished === true || decoded?.summary?.finished === true ||
-    !!row?.finishedAt || !!summary?.finishedAt || !!row?.payload?.finishedAt;
-  if (hasIrreversibleFinish) return "finished";
-
-  const hasLiveSnapshot = Boolean(row?.resume?.state || row?.resume?.config || row?.resume?.livePayload);
-  const hasLiveToken = tokens.some((token) => liveTokens.has(token));
-  const hasFinishedToken = tokens.some((token) => finishedTokens.has(token));
-
-  // Une ancienne ligne `finished` reste récupérable si elle possède toujours son
-  // snapshot live. Seuls finished=true / finishedAt rendent la fin irréversible.
-  if (hasLiveToken || hasLiveSnapshot) return "in_progress";
-  if (hasFinishedToken) return "finished";
+  ].map(norm).filter(Boolean);
+  if (snapshotTokens.some((token) => finishedTokens.has(token))) return "finished";
+  if (snapshotTokens.some((token) => liveTokens.has(token))) return "in_progress";
 
   const winnerId =
     row?.winnerId || summary?.winnerId || summary?.result?.winnerId ||
     row?.payload?.winnerId || row?.payload?.summary?.winnerId ||
     decoded?.winnerId || decoded?.summary?.winnerId || decoded?.result?.winnerId || null;
   if (winnerId) return "finished";
-  return "in_progress";
+  return "finished";
 };
 
 export async function normalizeHistoryRow(row: SavedMatch): Promise<NormalizedMatch> {

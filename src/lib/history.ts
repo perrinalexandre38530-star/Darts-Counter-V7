@@ -139,31 +139,15 @@ function inferHistoryStatus(rec: any): "in_progress" | "finished" {
   try {
     const finishedTokens = new Set(["finished", "finish", "done", "match_end", "match-end", "ended", "complete", "completed"]);
     const liveTokens = new Set(["in_progress", "inprogress", "playing", "live", "running", "started", "active"]);
-    const tokens = [
-      rec?.status,
-      rec?.summary?.status,
-      rec?.payload?.status,
-      rec?.payload?.summary?.status,
-      rec?.decoded?.status,
-      rec?.decoded?.summary?.status,
-      rec?.resume?.status,
-      rec?.resume?.state?.status,
-      rec?.resume?.state?.phase,
-      rec?.payload?.state?.status,
-      rec?.payload?.state?.phase,
-      rec?.payload?.stateSnapshot?.status,
-      rec?.payload?.stateSnapshot?.phase,
-      rec?.decoded?.state?.status,
-      rec?.decoded?.state?.phase,
-    ].map((value) => String(value ?? "").trim().toLowerCase()).filter(Boolean);
+    const norm = (value: any) => String(value ?? "").trim().toLowerCase();
 
-    // Marqueurs de fin réels. Un simple bloc stats/rankings n'est PAS une preuve
-    // de fin : de nombreux moteurs calculent ces valeurs pendant la partie.
     const summary: any = rec?.summary || {};
     const payload: any = rec?.payload || {};
     const decoded: any = rec?.decoded || {};
     const resumeState: any = rec?.resume?.state || {};
     const payloadState: any = payload?.stateSnapshot || payload?.state || {};
+
+    // 1) Une vraie preuve de fin est irréversible.
     const hasIrreversibleFinish =
       summary?.finished === true || summary?.result?.finished === true ||
       payload?.summary?.finished === true || payload?.result?.finished === true ||
@@ -172,28 +156,51 @@ function inferHistoryStatus(rec: any): "in_progress" | "finished" {
       !!rec?.finishedAt || !!summary?.finishedAt || !!payload?.finishedAt;
     if (hasIrreversibleFinish) return "finished";
 
-    const resume: any = rec?.resume || {};
-    const hasLiveSnapshot = Boolean(resume?.state || resume?.config || resume?.livePayload || (Array.isArray(resume?.darts) && resume.darts.length > 0));
-    const hasLiveToken = tokens.some((token) => liveTokens.has(token));
-    const hasFinishedToken = tokens.some((token) => finishedTokens.has(token));
+    // 2) Le statut persistant de la ligne est l'autorité. Un vieux resume.state
+    // conservé pour les stats ne doit JAMAIS réouvrir une partie terminée.
+    const rootStatus = norm(rec?.status);
+    if (finishedTokens.has(rootStatus)) return "finished";
+    if (liveTokens.has(rootStatus)) return "in_progress";
 
-    // AUTO-RÉPARATION des anciens faux "finished" : un snapshot live conservé
-    // signifie que la partie reste relançable, sauf preuve irréversible de fin.
-    if (hasLiveToken || hasLiveSnapshot) return "in_progress";
-    if (hasFinishedToken) return "finished";
+    // 3) Ensuite seulement, les statuts de niveau match/summary.
+    const matchTokens = [
+      summary?.status,
+      payload?.status,
+      payload?.summary?.status,
+      decoded?.status,
+      decoded?.summary?.status,
+    ].map(norm).filter(Boolean);
+    if (matchTokens.some((token) => finishedTokens.has(token))) return "finished";
+    if (matchTokens.some((token) => liveTokens.has(token))) return "in_progress";
 
-    // Sans marqueur live, un gagnant peut enfin être considéré comme final.
+    // 4) Les tokens du snapshot servent uniquement pour les anciens records sans
+    // statut racine. La simple présence d'un snapshot n'est PAS une preuve de live.
+    const snapshotTokens = [
+      rec?.resume?.status,
+      resumeState?.status,
+      resumeState?.phase,
+      payload?.state?.status,
+      payload?.state?.phase,
+      payload?.stateSnapshot?.status,
+      payload?.stateSnapshot?.phase,
+      decoded?.state?.status,
+      decoded?.state?.phase,
+    ].map(norm).filter(Boolean);
+    if (snapshotTokens.some((token) => finishedTokens.has(token))) return "finished";
+    if (snapshotTokens.some((token) => liveTokens.has(token))) return "in_progress";
+
+    // 5) Winner uniquement en absence de tout statut live explicite.
     const winnerId =
       rec?.winnerId || summary?.winnerId || summary?.result?.winnerId ||
       payload?.winnerId || payload?.summary?.winnerId || payload?.result?.winnerId ||
       decoded?.winnerId || decoded?.summary?.winnerId || decoded?.result?.winnerId || null;
     if (winnerId) return "finished";
 
-    // Fallback conservateur : mieux vaut laisser une partie relançable que la
-    // classer à tort en terminée et perdre l'action REPRENDRE.
-    return "in_progress";
+    // Intégrité > reprise hasardeuse : un ancien record ambigu ne doit jamais
+    // proposer REPRENDRE et démarrer un moteur à zéro.
+    return "finished";
   } catch {
-    return "in_progress";
+    return "finished";
   }
 }
 

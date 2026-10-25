@@ -502,46 +502,49 @@ function detectKindMode(rec: any, decoded: any | null) {
 function detectStatus(rec: any, decoded: any | null): "finished" | "in_progress" {
   const finishedTokens = new Set(["finished", "finish", "done", "match_end", "match-end", "ended", "complete", "completed"]);
   const liveTokens = new Set(["inprogress", "in_progress", "playing", "live", "running", "started", "active"]);
+  const norm = (value: any) => safeLower(value || "");
   const d = decoded || {};
-  const tokens = [
-    rec?.status,
+  const s = rec?.summary || rec?.payload?.summary || {};
+
+  const hasIrreversibleFinish =
+    !!rec?.finishedAt || !!s?.finishedAt || !!rec?.payload?.finishedAt ||
+    s?.finished === true || s?.result?.finished === true ||
+    d?.summary?.finished === true || d?.result?.finished === true ||
+    rec?.resume?.state?.finished === true || rec?.payload?.state?.finished === true || rec?.payload?.stateSnapshot?.finished === true;
+  if (hasIrreversibleFinish) return "finished";
+
+  const rootStatus = norm(rec?.status);
+  if (finishedTokens.has(rootStatus)) return "finished";
+  if (liveTokens.has(rootStatus)) return "in_progress";
+
+  const matchTokens = [
     rec?.summary?.status,
     rec?.payload?.status,
     rec?.payload?.summary?.status,
+    d?.status,
+    d?.summary?.status,
+  ].map(norm).filter(Boolean);
+  if (matchTokens.some((token) => finishedTokens.has(token))) return "finished";
+  if (matchTokens.some((token) => liveTokens.has(token))) return "in_progress";
+
+  const snapshotTokens = [
     rec?.resume?.state?.status,
     rec?.resume?.state?.phase,
     rec?.payload?.state?.status,
     rec?.payload?.state?.phase,
     rec?.payload?.stateSnapshot?.status,
     rec?.payload?.stateSnapshot?.phase,
-    d?.status,
-    d?.summary?.status,
     d?.state?.status,
     d?.state?.phase,
-  ].map((value) => safeLower(value || "")).filter(Boolean);
+  ].map(norm).filter(Boolean);
+  if (snapshotTokens.some((token) => finishedTokens.has(token))) return "finished";
+  if (snapshotTokens.some((token) => liveTokens.has(token))) return "in_progress";
 
-  const s = rec?.summary || rec?.payload?.summary || {};
   const winnerId =
     rec?.winnerId || s?.winnerId || s?.result?.winnerId || rec?.payload?.winnerId ||
     rec?.payload?.summary?.winnerId || d?.winnerId || d?.summary?.winnerId || d?.result?.winnerId || null;
-
-  const hasIrreversibleFinish =
-    !!rec?.finishedAt || !!s?.finishedAt || !!rec?.payload?.finishedAt ||
-    s?.finished === true || s?.result?.finished === true ||
-    d?.summary?.finished === true || d?.result?.finished === true;
-  if (hasIrreversibleFinish) return "finished";
-
-  const hasLiveSnapshot = Boolean(rec?.resume?.state || rec?.resume?.config || rec?.resume?.livePayload);
-  const hasLiveToken = tokens.some((token) => liveTokens.has(token));
-  const hasFinishedToken = tokens.some((token) => finishedTokens.has(token));
-
-  // Répare les faux `finished` historiques conservant encore un snapshot live.
-  if (hasLiveToken || hasLiveSnapshot) return "in_progress";
-  if (hasFinishedToken) return "finished";
-
-  // Winner seulement en absence totale de snapshot/statut live.
   if (winnerId) return "finished";
-  return "in_progress";
+  return "finished";
 }
 
 function extractPlayers(rec: any, decoded: any | null): PlayerLite[] {

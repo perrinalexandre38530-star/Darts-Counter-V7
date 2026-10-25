@@ -753,33 +753,13 @@ function statusOf(e: SavedEntry): "finished" | "in_progress" {
   const anyE: any = e as any;
   const finishedTokens = new Set(["finished", "finish", "done", "match_end", "match-end", "ended", "complete", "completed"]);
   const liveTokens = new Set(["in_progress", "inprogress", "playing", "live", "running", "started", "active"]);
-  const tokens = [
-    anyE?.status,
-    anyE?.summary?.status,
-    anyE?.payload?.status,
-    anyE?.payload?.summary?.status,
-    anyE?.decoded?.status,
-    anyE?.decoded?.summary?.status,
-    anyE?.resume?.status,
-    anyE?.resume?.state?.status,
-    anyE?.resume?.state?.phase,
-    anyE?.payload?.state?.status,
-    anyE?.payload?.state?.phase,
-    anyE?.payload?.stateSnapshot?.status,
-    anyE?.payload?.stateSnapshot?.phase,
-    anyE?.decoded?.state?.status,
-    anyE?.decoded?.state?.phase,
-  ].map((value) => String(value ?? "").trim().toLowerCase()).filter(Boolean);
-
+  const norm = (value: any) => String(value ?? "").trim().toLowerCase();
   const summary: any = anyE?.summary || {};
   const payload: any = anyE?.payload || {};
   const decoded: any = anyE?.decoded || {};
   const resumeState: any = anyE?.resume?.state || {};
   const payloadState: any = payload?.stateSnapshot || payload?.state || {};
 
-  // Les marqueurs de fin explicites et irréversibles gagnent toujours.
-  // IMPORTANT : winnerId n'est volontairement PAS ici. Plusieurs moteurs
-  // conservent le gagnant du dernier leg / de la dernière manche pendant le live.
   const hasIrreversibleFinish =
     summary?.finished === true || summary?.result?.finished === true ||
     payload?.summary?.finished === true || payload?.result?.finished === true ||
@@ -788,26 +768,44 @@ function statusOf(e: SavedEntry): "finished" | "in_progress" {
     !!anyE?.finishedAt || !!summary?.finishedAt || !!payload?.finishedAt;
   if (hasIrreversibleFinish) return "finished";
 
-  const hasLiveSnapshot = Boolean(anyE?.resume?.state || anyE?.resume?.config || anyE?.resume?.livePayload);
-  const hasLiveToken = tokens.some((token) => liveTokens.has(token));
-  const hasFinishedToken = tokens.some((token) => finishedTokens.has(token));
+  // Le statut racine est l'autorité UI. La présence d'un snapshot ne peut plus
+  // transformer une partie terminée en partie à reprendre.
+  const rootStatus = norm(anyE?.status);
+  if (finishedTokens.has(rootStatus)) return "finished";
+  if (liveTokens.has(rootStatus)) return "in_progress";
 
-  // AUTO-RÉPARATION LEGACY : d'anciennes lignes ont pu recevoir status=finished
-  // après un leg/round tout en conservant un vrai snapshot de reprise. Le snapshot
-  // live gagne sur ce token obsolète tant qu'aucune preuve irréversible de fin
-  // (finishedAt / finished=true) n'existe.
-  if (hasLiveToken || hasLiveSnapshot) return "in_progress";
-  if (hasFinishedToken) return "finished";
+  const matchTokens = [
+    summary?.status,
+    payload?.status,
+    payload?.summary?.status,
+    decoded?.status,
+    decoded?.summary?.status,
+  ].map(norm).filter(Boolean);
+  if (matchTokens.some((token) => finishedTokens.has(token))) return "finished";
+  if (matchTokens.some((token) => liveTokens.has(token))) return "in_progress";
 
-  // Sans aucun marqueur live, un gagnant final reste une preuve raisonnable de fin.
+  const snapshotTokens = [
+    anyE?.resume?.status,
+    resumeState?.status,
+    resumeState?.phase,
+    payload?.state?.status,
+    payload?.state?.phase,
+    payload?.stateSnapshot?.status,
+    payload?.stateSnapshot?.phase,
+    decoded?.state?.status,
+    decoded?.state?.phase,
+  ].map(norm).filter(Boolean);
+  if (snapshotTokens.some((token) => finishedTokens.has(token))) return "finished";
+  if (snapshotTokens.some((token) => liveTokens.has(token))) return "in_progress";
+
   const winnerId =
     anyE?.winnerId || summary?.winnerId || summary?.result?.winnerId ||
     payload?.winnerId || payload?.summary?.winnerId || payload?.result?.winnerId ||
     decoded?.winnerId || decoded?.summary?.winnerId || decoded?.result?.winnerId || null;
   if (winnerId) return "finished";
 
-  // Fallback conservateur : garder REPRENDRE plutôt que perdre une partie live.
-  return "in_progress";
+  // Ancien record ambigu : pas de REPRENDRE destructeur.
+  return "finished";
 }
 
 function modeLabel(e: SavedEntry) {
@@ -4911,6 +4909,30 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
 
   async function goResume(e: SavedEntry, preview?: boolean) {
     const resumeId = e.resumeId || matchLink(e) || e.id;
+
+    // SÉCURITÉ HISTORIQUE : ne jamais lancer un moteur depuis une carte UI légère.
+    // On recharge d'abord la ligne IndexedDB complète et on revalide son statut.
+    // Cela empêche une ancienne partie terminée possédant encore resume.state de
+    // repartir à zéro puis d'écraser son historique.
+    if (!preview) {
+      try {
+        const full = await History.get(String(resumeId || ""));
+        if (full) {
+          e = {
+            ...(e as any),
+            ...(full as any),
+            resume: (full as any)?.resume || (e as any)?.resume,
+          } as SavedEntry;
+        }
+      } catch (error) {
+        console.warn("[HistoryPage] resume hydration failed", error);
+      }
+      if (statusOf(e) !== "in_progress") {
+        await loadHistory().catch(() => {});
+        window.alert("Cette partie est terminée et ne peut pas être reprise.");
+        return;
+      }
+    }
 
     // GOLF
     if (baseMode(e) === "golf") {
