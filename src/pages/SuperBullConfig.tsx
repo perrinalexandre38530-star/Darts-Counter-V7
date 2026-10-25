@@ -150,7 +150,13 @@ export default function SuperBullConfig(props: any) {
   const humanProfiles = React.useMemo(() => storeProfiles.filter((p) => !isBotLike(p)), [storeProfiles]);
   const botProfiles = React.useMemo(loadUserBots, []);
   const teamCatalog = React.useMemo(() => {
-    try { return loadTeamsBySport("darts") || []; } catch { return []; }
+    try {
+      return (loadTeamsBySport("darts") || []).filter(
+        (team: any) => Array.isArray(team?.playerIds) && team.playerIds.length > 0
+      );
+    } catch {
+      return [];
+    }
   }, []);
   const allArcadeItems = React.useMemo(() => [...humanProfiles, ...botProfiles], [humanProfiles, botProfiles]);
   const profileById = React.useMemo(() => new Map(allArcadeItems.map((p: any) => [String(p.id), p])), [allArcadeItems]);

@@ -36,44 +36,43 @@ const BSS_INPUT_COLORS: Array<{ id:BssInputColor; hex:string; label:string }> = 
   { id:"green", hex:"#199b58", label:"Vert" },
   { id:"white", hex:"#f2f1ea", label:"Blanc" },
 ];
-const BSS_COLOR_CHALLENGES = new Set(["color","color_area","color_bed","color_target","color_bonus","three_colors"]);
-const BSS_AREA_CHALLENGES = new Set(["big_single","small_single","color_area","area_parity","area_range","area_bonus"]);
-const BSS_BOARD_ORDER=[20,1,18,4,13,6,10,15,2,17,3,19,7,16,8,11,14,9,12,5];
-const BSS_RED_NUMBERS=new Set([20,12,14,8,7,3,2,10,13,18]);
-function bssChallengeNeedsColor(challenge:any){ return BSS_COLOR_CHALLENGES.has(String(challenge?.kind||"")); }
-function bssChallengeNeedsArea(challenge:any){ return BSS_AREA_CHALLENGES.has(String(challenge?.kind||"")); }
-function bssUiMeta(d:any){
-  const label=String(d?.label||"");
-  if(!label.startsWith("BSSMETA")) return {color:null as BssInputColor|null,area:null as BssInputArea|null};
-  const parts=Object.fromEntries(label.split("|").slice(1).map((chunk:string)=>{const [k,v]=chunk.split("=");return [k,v];}));
-  return { color:(BSS_INPUT_COLORS.some(c=>c.id===parts.c)?parts.c:null) as BssInputColor|null, area:(parts.a==="big"||parts.a==="small"?parts.a:null) as BssInputArea|null };
-}
-function bssHitColor(color:BssInputColor|null){ return color==="red"?"#ff5362":color==="green"?"#58e89b":color==="white"?"#fffdf4":color==="black"?"#aeb5c2":"currentColor"; }
-function bssPhysicalUiColor(d:any):BssInputColor|null {
-  if(!d||Number(d.v)===0)return null;
-  if(Number(d.v)===25)return Number(d.mult)===2?"red":"green";
-  const n=Number(d.v||0); if(n<1||n>20)return bssUiMeta(d).color;
-  if(Number(d.mult)===2||Number(d.mult)===3)return BSS_RED_NUMBERS.has(n)?"red":"green";
-  const idx=BSS_BOARD_ORDER.indexOf(n); return idx>=0&&idx%2===0?"black":"white";
-}
-function formatBssThrowHit(d:any, challenge:any){
-  if(!d) return "—";
-  if(Number(d.v)===0) return "MISS";
-  if(Number(d.v)===25) return d.mult===2?"BULL":"1/2 BULL";
-  const meta=bssUiMeta(d);
-  const showArea=bssChallengeNeedsArea(challenge);
-  const showColor=bssChallengeNeedsColor(challenge);
-  const physicalColor=bssPhysicalUiColor(d);
-  const prefix=d.mult===3?"T":d.mult===2?"D":showArea&&meta.area==="big"?"G":showArea&&meta.area==="small"?"P":"S";
-  const base=`${prefix}${d.v}`;
-  if(!showColor||!physicalColor) return base;
-  const color=bssColorLabel(physicalColor);
-  return <span style={{display:"inline-flex",alignItems:"center",gap:4,whiteSpace:"nowrap"}}><span>{base}</span><strong style={{color:bssHitColor(physicalColor),fontSize:".78em",letterSpacing:.25}}>{color}</strong></span>;
-}
 function bssColorLabel(color:any){ return BSS_INPUT_COLORS.find(c=>c.id===String(color))?.label.toUpperCase() || String(color||"COULEUR").toUpperCase(); }
 function bssInputLabel(color:BssInputColor|null, area:BssInputArea|null, previous?:string){
   const bits=["BSSMETA", color?`c=${color}`:"", area?`a=${area}`:""].filter(Boolean);
   return bits.length>1?bits.join("|"):(previous||undefined);
+}
+
+const BSS_BOARD_ORDER=[20,1,18,4,13,6,10,15,2,17,3,19,7,16,8,11,14,9,12,5];
+const BSS_RED_NUMBERS=new Set([20,12,14,8,7,3,2,10,13,18]);
+const BSS_COLOR_KINDS=new Set(["color","color_area","color_bed","color_target","color_bonus","three_colors"]);
+const BSS_AREA_KINDS=new Set(["big_single","small_single","color_area","area_parity","area_range","area_bonus"]);
+function bssUiMeta(d:any){
+  const raw=String(d?.label||"");
+  if(!raw.startsWith("BSSMETA")) return {area:null as BssInputArea|null};
+  const parts=Object.fromEntries(raw.split("|").slice(1).map((chunk:string)=>{const [k,v]=chunk.split("=");return[k,v];}));
+  return {area:(parts.a==="big"||parts.a==="small"?parts.a:null) as BssInputArea|null};
+}
+function bssPhysicalColor(d:any):BssInputColor|null{
+  const v=Number(d?.v||0), m=Number(d?.mult||1);
+  if(v===25) return m===2?"red":"green";
+  if(v<1||v>20) return null;
+  if(m===2||m===3) return BSS_RED_NUMBERS.has(v)?"red":"green";
+  const idx=BSS_BOARD_ORDER.indexOf(v); return idx>=0&&idx%2===0?"black":"white";
+}
+function bssHitView(d:any, showColor:boolean, showArea:boolean){
+  if(!d) return {main:"—",suffix:"",tone:"empty"};
+  const v=Number(d.v||0),m=Number(d.mult||1),area=bssUiMeta(d).area;
+  if(v===0) return {main:"MISS",suffix:"",tone:"miss"};
+  if(v===25&&m===2) return {main:"BULL",suffix:"",tone:"bull50"};
+  if(v===25) return {main:"1/2 BULL",suffix:"",tone:"bull25"};
+  let main=""; let tone="simple";
+  if(m===3){main=`T${v}`;tone="triple";}
+  else if(m===2){main=`D${v}`;tone="double";}
+  else if(showArea&&area==="big"){main=`G${v}`;tone="big";}
+  else if(showArea&&area==="small"){main=`P${v}`;tone="small";}
+  else {main=`S${v}`;tone="simple";}
+  const color=showColor?bssPhysicalColor(d):null;
+  return {main,suffix:color?bssColorLabel(color):"",tone,color};
 }
 
 function panel(extra: any = {}) {
@@ -289,12 +288,13 @@ export default function BssKingPlay(props: any) {
   const backToConfig = React.useCallback(() => go?.("bss_king_config", { launchMode: configLaunchMode }), [go, configLaunchMode]);
   const activeColor = active ? COLORS[Math.max(0, state.players.findIndex((p: any) => p.id === active.id)) % COLORS.length] : GOLD;
   const throneMode = Boolean(active && state.throneReady?.[active.id]);
-  const challenge = throneMode ? { kind: "throne", title: "PRENDS LE TRÔNE", subtitle: config.rules.throneFinish === "dbull" ? "DBULL 50 obligatoire" : "BULL 25 ou DBULL 50", icon: "👑" } : state.challenge;
+  const challenge = throneMode ? { kind: "throne", title: "PRENDS LE TRÔNE", subtitle: config.rules.throneFinish === "dbull" ? "BULL 50 obligatoire" : "1/2 BULL 25 ou BULL 50", icon: "👑" } : state.challenge;
   const objective = React.useMemo(() => bssObjective(challenge, config.rules.throneFinish), [challenge, config.rules.throneFinish]);
   const objectiveCompact = React.useMemo(() => bssObjectiveCompact(challenge, config.rules.throneFinish), [challenge, config.rules.throneFinish]);
-  const needsColorInput = React.useMemo(() => bssChallengeNeedsColor(challenge), [challenge]);
-  const needsAreaInput = React.useMemo(() => bssChallengeNeedsArea(challenge), [challenge]);
   const pointsHelp = React.useMemo(() => getPointsHelp(challenge, config.rules.throneFinish), [challenge, config.rules.throneFinish]);
+  const usesColorInput = BSS_COLOR_KINDS.has(String(challenge?.kind||""));
+  const usesAreaInput = BSS_AREA_KINDS.has(String(challenge?.kind||""));
+  const hitViews = React.useMemo(() => [0,1,2].map(i=>bssHitView(currentThrow[i], usesColorInput, usesAreaInput)), [currentThrow, usesColorInput, usesAreaInput]);
   const activeBadges = Number(state.badges[active?.id] || 0);
   const badgesRemaining = Math.max(0, Number(config.rules.badgesToThrone || 0) - activeBadges);
   const winReminder = throneMode
@@ -321,7 +321,7 @@ export default function BssKingPlay(props: any) {
     setCurrentThrow((prev: UIDart[]) => prev.length >= 3 ? prev : [...prev, decorateBssInputDart(dart)]);
     resetBssInputSelectors();
   }, [decorateBssInputDart, resetBssInputSelectors]);
-  const throneLabel = config.rules.throneFinish === "dbull" ? "DBULL ONLY" : "BULL / DBULL";
+  const throneLabel = config.rules.throneFinish === "dbull" ? "BULL 50 ONLY" : "1/2 BULL / BULL";
   const modeMood = config.rules.chaosEnabled ? "CHAOS ACTIVÉ" : "MODE CLASSIQUE";
   const ranking = React.useMemo(() => [...state.players].map((p: any, i: number) => ({ p, badges: Number(state.badges[p.id] || 0), influence: Number(state.influence[p.id] || 0), i })).sort((a, b) => b.badges - a.badges || b.influence - a.influence || a.i - b.i), [state.players, state.badges, state.influence]);
   const roundHistory = React.useMemo(() => {
@@ -338,11 +338,10 @@ export default function BssKingPlay(props: any) {
       for (const v of visits) scoreById[String(v.playerId)] = Number(v.score || 0);
       const rows = state.players.map((p:any, i:number)=>({ p, score:Number(scoreById[p.id] || 0), i })).sort((a,b)=>b.score-a.score||a.i-b.i);
       const best = rows[0]?.score || 0;
-      const played=(state.playedChallenges||[]).find((x:any)=>Number(x.round)===Number(round));
       const winners = best > 0 ? rows.filter((x:any)=>x.score===best) : [];
-      return { round, rows, best, winnerId: played?.winnerId ?? (winners.length === 1 ? winners[0].p.id : null), tie: played ? Boolean(played.tie) : winners.length > 1, meritWinner:Boolean(played?.meritWinner), tieBreakReason:String(played?.tieBreakReason||""), complete: visits.length >= state.players.length };
+      return { round, rows, best, winnerId: winners.length === 1 ? winners[0].p.id : null, tie: winners.length > 1, complete: visits.length >= state.players.length };
     });
-  }, [state.visits, state.players, state.playedChallenges]);
+  }, [state.visits, state.players]);
   const currentRoundRanking = React.useMemo(() => state.players.map((p:any,i:number)=>({p,score:Number(state.roundScores[p.id]||0),played:(state.roundPlayedIds||[]).includes(p.id),i})).sort((a,b)=>b.score-a.score||a.i-b.i), [state.players,state.roundScores,state.roundPlayedIds]);
   const winner = state.winnerId ? profileById.get(String(state.winnerId)) || state.players.find((p: any) => p.id === state.winnerId) : null;
 
@@ -505,7 +504,7 @@ export default function BssKingPlay(props: any) {
             <div className="bss-modal-body">
               {overlayTab === "main" ? <div className="bss-objective-detail"><span>OBJECTIF ACTUEL · TOURNÉE {state.round}</span><h2>{objective.goal}</h2><div className="bss-rich-list">{objectiveBullets.map((line:string,i:number)=><div key={i}><b>{i+1}.</b><span>{line}</span></div>)}</div><div className="bss-objective-callout">{winReminder}</div></div> : null}
               {overlayTab === "scale" ? <div className="bss-list-cards">{pointsHelp.map((line:string,i:number)=>{const bits=String(line||"").split("·").map((part:string)=>part.trim()).filter(Boolean);return <div key={i}><b>{i===0?"POINTS BSS":i===1?"À QUOI SERVENT-ILS ?":`RÈGLE ${i-1}`}</b><span>{bits[0]||line}</span>{bits.length>1?<ul>{bits.slice(1).map((bit:string,idx:number)=><li key={idx}>{bit}</li>)}</ul>:null}</div>;})}</div> : null}
-              {overlayTab === "all" ? <div className="bss-objective-grid">{upcomingChallenges.map((c:any,idx:number)=>{const d=bssObjective(c,config.rules.throneFinish);const current=idx===0;return <div key={`${c.kind}-${idx}`} className={current?"is-current":""}><small>{current?`TOURNÉE ${state.round} · EN COURS`:`TOURNÉE ${state.round+idx} · À JOUER`}</small><b>{d.goal}</b><p>{d.scoring}</p></div>;})}{state.replayChallenges?.length?<div><small>RÉSERVE ÉGALITÉS</small><b>{state.replayChallenges.length} objectif(s) en attente</b><p>Si le plan complet est consommé, les tournées terminées à égalité seront rejouées automatiquement.</p></div>:null}</div> : null}
+              {overlayTab === "all" ? <div className="bss-objective-grid">{upcomingChallenges.map((c:any,idx:number)=>{const d=bssObjective(c,config.rules.throneFinish);const current=idx===0;return <div key={`${c.kind}-${idx}`} className={current?"is-current":""}><small>{current?`TOURNÉE ${state.round} · EN COURS`:`TOURNÉE ${state.round+idx} · À JOUER`}</small><b>{d.goal}</b><p>{d.scoring}</p></div>;})}{state.replayChallenges?.length?<div><small>RÉSERVE ÉGALITÉS</small><b>{state.replayChallenges.length} contrat(s) en attente</b><p>Si le plan complet est consommé, les tournées terminées à égalité seront rejouées automatiquement.</p></div>:null}</div> : null}
               {overlayTab === "done" ? (playedChallenges.length ? <div className="bss-objective-grid">{playedChallenges.map((row:any,idx:number)=>{const d=bssObjective(row.challenge,config.rules.throneFinish);const winnerNames=(row.winnerIds||[]).map((id:string)=>state.players.find((p:any)=>p.id===id)?.name||"Joueur");const result=row.tie?`Égalité à ${row.bestScore} pts BSS · ${winnerNames.join(" / ")}`:row.winnerId?`${winnerNames[0]||"Joueur"} gagne l'écusson avec ${row.bestScore} pts BSS.`:row.blank?"Aucun point marqué sur cette tournée.":"Tournée terminée.";return <div key={`${row.round}-${idx}`}><small>TOURNÉE {row.round}</small><b>{d.goal}</b><p>{result}</p></div>;})}</div> : <p className="bss-empty">Aucune tournée effectuée pour le moment.</p>) : null}
               {overlayTab === "win" ? <div className="bss-win-steps">{[
                 ["1","JOUE LA TOURNÉE","Tous les joueurs tentent le même objectif avec jusqu’à 3 fléchettes."],
@@ -530,7 +529,7 @@ export default function BssKingPlay(props: any) {
             <div className="bss-modal-body">
               {overlayTab === "global" ? <div className="bss-ranking-list">{ranking.map(({p,badges,influence}:any,idx:number)=>{const prof=profileById.get(String(p.id))||p;const on=String(p.id)===String(active?.id);return <div key={p.id} className={on?"is-active":""}><strong>{idx+1}</strong><ProfileAvatar profile={prof} size={40} showStars={false} ringColor={on?activeColor:"rgba(255,255,255,.14)"}/><div><b>{p.name}</b><span>{badges} écusson{badges!==1?"s":""} · {influence} pts BSS</span></div><em>{state.throneReady?.[p.id]?"TRÔNE":""}</em></div>})}</div> : null}
               {overlayTab === "round" ? <div className="bss-ranking-list">{currentRoundRanking.map(({p,score,played}:any,idx:number)=>{const prof=profileById.get(String(p.id))||p;const on=String(p.id)===String(active?.id);return <div key={p.id} className={on?"is-active":""}><strong>{idx+1}</strong><ProfileAvatar profile={prof} size={40} showStars={false} ringColor={on?activeColor:"rgba(255,255,255,.14)"}/><div><b>{p.name}</b><span>{played?"Tournée jouée":"À jouer"}</span></div><em>{score} pts</em></div>})}</div> : null}
-              {overlayTab === "history" ? <div className="bss-round-history">{roundHistory.length ? roundHistory.map((r:any)=><div key={r.round}><header><b>TOURNÉE {r.round}</b><span>{r.winnerId ? `${state.players.find((p:any)=>p.id===r.winnerId)?.name || "Joueur"} +1 écusson${r.meritWinner ? ` · mérite : ${r.tieBreakReason}` : ""}` : r.tie ? "Égalité parfaite · aucun écusson" : r.complete ? "Aucun écusson" : "En cours"}</span></header><section>{r.rows.map((x:any)=><span key={x.p.id} className={r.winnerId===x.p.id?"is-winner":""}>{x.p.name}<b>{x.score}</b></span>)}</section></div>) : <p className="bss-empty">Aucune tournée terminée pour le moment.</p>}</div> : null}
+              {overlayTab === "history" ? <div className="bss-round-history">{roundHistory.length ? roundHistory.map((r:any)=><div key={r.round}><header><b>TOURNÉE {r.round}</b><span>{r.winnerId ? `${state.players.find((p:any)=>p.id===r.winnerId)?.name || "Joueur"} +1 écusson` : r.tie ? "Égalité · aucun écusson" : r.complete ? "Aucun écusson" : "En cours"}</span></header><section>{r.rows.map((x:any)=><span key={x.p.id} className={r.winnerId===x.p.id?"is-winner":""}>{x.p.name}<b>{x.score}</b></span>)}</section></div>) : <p className="bss-empty">Aucune tournée terminée pour le moment.</p>}</div> : null}
               {overlayTab === "progress" ? <div className="bss-throne-progress">{ranking.map(({p,badges,influence}:any)=>{const prof=profileById.get(String(p.id))||p;const ratio=Math.min(1,badges/Math.max(1,config.rules.badgesToThrone));return <div key={p.id}><ProfileAvatar profile={prof} size={42} showStars={false} ringColor={state.throneReady?.[p.id]?GOLD:"rgba(255,255,255,.16)"}/><div><b>{p.name}</b><span>{badges}/{config.rules.badgesToThrone} écussons · {influence} pts BSS</span><i><u style={{width:`${ratio*100}%`}}/></i></div><strong>{state.throneReady?.[p.id]?"👑":""}</strong></div>})}</div> : null}
             </div>
           </> : null}
@@ -582,39 +581,45 @@ export default function BssKingPlay(props: any) {
         </div>
 
         <div className="bss-input-column">
-          {!activeIsBot ? <NewModeInput
-            currentThrow={currentThrow}
-            setCurrentThrow={setCurrentThrow}
-            multiplier={multiplier}
-            setMultiplier={selectBssMultiplier}
-            onValidate={validate}
-            onCancel={() => { setCurrentThrow([]); resetBssInputSelectors(); }}
-            dartDecorator={decorateBssInputDart}
-            keypadExtraMainButtons={needsAreaInput ? [
-              { label: "GROS", onClick: () => selectBssArea("big"), active: selectedArea === "big", tone: "orange", title: "Gros simple" },
-              { label: "PETIT", onClick: () => selectBssArea("small"), active: selectedArea === "small", tone: "yellow", title: "Petit simple" },
-            ] : null}
-            keypadColorButtons={needsColorInput ? BSS_INPUT_COLORS.map((c) => ({
-              color: c.hex,
-              onClick: () => setSelectedColor((v) => v === c.id ? null : c.id),
-              active: selectedColor === c.id,
-              title: c.label,
-              ariaLabel: "Couleur " + c.label,
-            })) : null}
-            keypadPreviewFormatter={(dart:any) => formatBssThrowHit(dart, challenge)}
-            keypadLatchMultiplier
-            keypadSecondaryAction={{ label: "BULL", onClick: () => appendBssInputDart({ v:25, mult:1 }), tone: "green", title: "Bull 25" }}
-            keypadAuxActionOverride={{ label: "DBULL", icon: <span style={{fontWeight:1000}}>DBULL</span>, onClick: () => appendBssInputDart({ v:25, mult:2 }), tone: "gold", title: "DBULL 50" }}
-            preferredMethod={config.scoreInputMethod}
-            minDartsToValidate={1}
-            validateLabel={throneMode ? "TRÔNE" : "VALIDER"}
-            accent={activeColor}
-            fitMinScale={0.42}
-            keypadFooterHideBull
-            keypadActionRowLayout="triple"
-            keypadFooterLeftSlot={<div className="bss-keypad-footer-points-wrap"><div className="bss-keypad-footer-points"><b>+{liveBssPoints}</b></div><span>PTS BSS</span></div>}
-            centerSlot={<div className="bss-keypad-score-box"><span>SCORE</span><b>{liveVisitScore}</b>{(selectedColor||selectedArea)?<small>{[selectedColor?BSS_INPUT_COLORS.find(c=>c.id===selectedColor)?.label:null,selectedArea==="big"?"GROS":selectedArea==="small"?"PETIT":null].filter(Boolean).join(" · ")}</small>:null}</div>}
-          /> : <div className="bss-bot-panel"><ProfileAvatar profile={activeProfile} size={88} showStars={false} ringColor={activeColor}/><b>{active?.name}</b><span>Le BOT BSS prépare sa tournée…</span></div>}
+          {!activeIsBot ? <div className="bss-human-input-shell">
+            <div className="bss-hit-preview" aria-label="Volée en cours">
+              {hitViews.map((hit:any,idx:number)=><span key={idx} className={`bss-hit-chip is-${hit.tone} ${hit.color?`color-${hit.color}`:""}`}><b>{hit.main}</b>{hit.suffix?<em>{hit.suffix}</em>:null}</span>)}
+            </div>
+            <NewModeInput
+              currentThrow={currentThrow}
+              setCurrentThrow={setCurrentThrow}
+              multiplier={multiplier}
+              setMultiplier={selectBssMultiplier}
+              onValidate={validate}
+              onCancel={() => { setCurrentThrow([]); resetBssInputSelectors(); }}
+              dartDecorator={decorateBssInputDart}
+              onDartCommitted={resetBssInputSelectors}
+              keypadExtraMainButtons={usesAreaInput ? [
+                { label: "GROS", onClick: () => selectBssArea("big"), active: selectedArea === "big", tone: "orange", title: "Gros simple" },
+                { label: "PETIT", onClick: () => selectBssArea("small"), active: selectedArea === "small", tone: "yellow", title: "Petit simple" },
+              ] : null}
+              keypadColorButtons={usesColorInput ? BSS_INPUT_COLORS.map((c) => ({
+                color: c.hex,
+                onClick: () => setSelectedColor((v) => v === c.id ? null : c.id),
+                active: selectedColor === c.id,
+                title: c.label,
+                ariaLabel: "Couleur " + c.label,
+              })) : null}
+              keypadLatchMultiplier
+              keypadSecondaryAction={{ label: "1/2 BULL", onClick: () => appendBssInputDart({ v:25, mult:1 }), tone: "bull25", title: "1/2 BULL · 25" }}
+              keypadAuxActionOverride={{ label: "BULL", icon: <span style={{fontWeight:1000}}>BULL</span>, onClick: () => appendBssInputDart({ v:25, mult:2 }), tone: "bull50", title: "BULL · 50" }}
+              preferredMethod={config.scoreInputMethod}
+              minDartsToValidate={1}
+              validateLabel={throneMode ? "TRÔNE" : "VALIDER"}
+              accent={activeColor}
+              fitMinScale={0.42}
+              hidePreview
+              keypadFooterHideBull
+              keypadActionRowLayout="triple"
+              keypadFooterLeftSlot={<div className="bss-keypad-footer-points-wrap"><div className="bss-keypad-footer-points"><b>+{liveBssPoints}</b></div><span>PTS BSS</span></div>}
+              centerSlot={<div className="bss-keypad-score-box"><span>SCORE</span><b>{liveVisitScore}</b>{(selectedColor||selectedArea)?<small>{[selectedColor?BSS_INPUT_COLORS.find(c=>c.id===selectedColor)?.label:null,selectedArea==="big"?"GROS":selectedArea==="small"?"PETIT":null].filter(Boolean).join(" · ")}</small>:null}</div>}
+            />
+          </div> : <div className="bss-bot-panel"><ProfileAvatar profile={activeProfile} size={88} showStars={false} ringColor={activeColor}/><b>{active?.name}</b><span>Le BOT BSS prépare sa tournée…</span></div>}
         </div>
       </div>
     </main>
@@ -652,11 +657,13 @@ export default function BssKingPlay(props: any) {
       @media (max-width:620px){.bss-player-ribbon{padding-left:6px;padding-right:6px;gap:7px;margin-top:14px}.bss-ribbon-player{flex-basis:112px;min-width:112px;height:72px}.bss-ribbon-player.is-active{flex-basis:130px}.bss-ribbon-name{font-size:9px}.bss-ribbon-meter{height:38px;padding:0 5px;font-size:10px}.bss-active-card{min-height:172px}.bss-status-pill{grid-template-columns:22px minmax(0,1fr);padding:3px 4px}.bss-status-pill small{font-size:5.5px}.bss-status-pill b{font-size:7.4px}.bss-active-content{grid-template-columns:minmax(0,1.18fr) minmax(108px,.72fr);gap:5px;padding:4px 5px 6px}.bss-active-name{font-size:13px}.bss-score-metrics{grid-template-columns:minmax(0,1fr) 62px 72px;gap:4px;margin-top:4px}.bss-live-score{height:70px}.bss-live-score b{font-size:36px}.bss-shape-metric{height:72px;padding:5px 8px 7px}.bss-shape-metric b{font-size:13px}.bss-metric-item>span{font-size:4.8px}.bss-objective-card{padding:7px 5px;background-size:cover,100% 100%}.bss-objective-card>b{font-size:10px}.bss-tool-row{justify-content:space-around}.bss-tool-icon{width:42px;height:42px}.bss-modal-backdrop{padding:7px}.bss-modal{max-height:88dvh}.bss-objective-grid{grid-template-columns:1fr}.bss-modal-tabs button{min-width:82px}.bss-modal.is-ranking::before{background-size:cover,88% auto}}
       @media (max-height:720px) and (orientation:landscape){.bss-player-ribbon{flex:0 0 74px;min-height:74px}.bss-ribbon-player{height:62px}.bss-main-grid{grid-template-columns:minmax(0,.9fr) minmax(360px,1.1fr);grid-template-rows:1fr}.bss-left-column{display:flex}.bss-active-card{min-height:0;height:min(278px,calc(100dvh - 140px))}.bss-tool-row{flex:0 0 46px;height:46px}.bss-tool-icon{width:40px;height:40px}.bss-keypad-score-box{max-width:74px;padding:4px 6px}.bss-keypad-score-box b{font-size:20px}.bss-keypad-score-box small{font-size:5.2px}.bss-keypad-footer-points-wrap{max-width:70px;gap:1px}.bss-keypad-footer-points-wrap>span{font-size:5.6px}.bss-keypad-footer-points{width:70px;height:36px}.bss-keypad-footer-points b{font-size:11px}.bss-objective-card{background-size:cover,auto 88%}.bss-modal.is-ranking::before{background-size:cover,66% auto}}
 
+      .bss-human-input-shell{height:100%;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);gap:6px}.bss-human-input-shell>[data-mss-play-input="1"]{height:100%!important;min-height:0}.bss-hit-preview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:0 4px}.bss-hit-chip{min-width:0;min-height:34px;border-radius:12px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.035);display:flex;align-items:center;justify-content:center;gap:6px;padding:5px 7px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.015)}.bss-hit-chip b{font-size:11px;line-height:1;font-weight:1200;white-space:nowrap}.bss-hit-chip em{font-style:normal;font-size:6.6px;line-height:1;font-weight:1100;letter-spacing:.35px;white-space:nowrap}.bss-hit-chip.is-empty{color:#727781}.bss-hit-chip.is-simple{color:#fff;background:rgba(255,255,255,.045)}.bss-hit-chip.is-double{color:#bfeaff;background:rgba(46,150,193,.20);border-color:rgba(155,215,255,.42)}.bss-hit-chip.is-triple{color:#ffccff;background:rgba(179,68,151,.20);border-color:rgba(255,208,255,.42)}.bss-hit-chip.is-big{color:#ffefd7;background:linear-gradient(180deg,rgba(245,138,31,.38),rgba(185,79,0,.28));border-color:rgba(255,190,112,.55)}.bss-hit-chip.is-small{color:#fff3b8;background:linear-gradient(180deg,rgba(255,224,94,.34),rgba(155,112,6,.24));border-color:rgba(255,235,155,.55)}.bss-hit-chip.is-bull25{color:#8be0b8;background:rgba(22,92,66,.35);border-color:rgba(139,224,184,.45)}.bss-hit-chip.is-bull50{color:#ffd8de;background:linear-gradient(180deg,rgba(255,86,106,.28),rgba(78,0,10,.40));border-color:rgba(255,152,165,.48)}.bss-hit-chip.is-miss{color:#ffbc6e;background:rgba(255,146,47,.10)}.bss-hit-chip.color-red em{color:#ff6978}.bss-hit-chip.color-green em{color:#65e9a2}.bss-hit-chip.color-black em{color:#d9dce4}.bss-hit-chip.color-white em{color:#fff}
       /* BSS KING V21 additions */
       .bss-keypad-score-box{min-width:0;width:100%;max-width:82px;margin:0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:4px 7px;border-radius:14px;border:1px solid rgba(240,199,106,.48);background:linear-gradient(180deg,rgba(240,199,106,.18),rgba(22,17,10,.96));box-shadow:0 0 0 1px rgba(255,220,150,.08),0 10px 24px rgba(0,0,0,.30);text-align:center;line-height:1;overflow:hidden}.bss-keypad-score-box span{color:${GOLD};font-size:7px;font-weight:1000;letter-spacing:.45px}.bss-keypad-score-box b{color:#fff;font-size:22px;font-weight:1250;line-height:.9}.bss-keypad-score-box small{display:block;width:100%;overflow:hidden;text-overflow:ellipsis;color:#d7dbe4;font-size:5.8px;font-weight:1000;letter-spacing:.25px;white-space:nowrap}
       .bss-keypad-footer-points-wrap{width:100%;max-width:86px;margin:0 auto;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:2px;text-align:center}.bss-keypad-footer-points-wrap>span{display:block;color:#d7dbe4;font-size:6.2px;font-weight:1100;letter-spacing:.42px;line-height:1}.bss-keypad-footer-points{width:86px;height:48px;display:flex;align-items:center;justify-content:center;background-image:url(${bssPtsBssBlock});background-position:center;background-repeat:no-repeat;background-size:contain;filter:drop-shadow(0 4px 10px rgba(0,0,0,.35));text-align:center}.bss-keypad-footer-points b{display:block;color:#ff9f1c;font-size:14px;font-weight:1200;text-shadow:0 1px 4px rgba(0,0,0,.85)}
       .bss-rich-list{max-width:620px;margin:10px auto 0;display:grid;gap:6px;text-align:left}.bss-rich-list>div{display:grid;grid-template-columns:18px minmax(0,1fr);gap:8px;align-items:start;padding:8px 10px;border-radius:12px;border:1px solid rgba(255,255,255,.075);background:rgba(255,255,255,.03)}.bss-rich-list b{color:var(--bss-accent);font-size:10px}.bss-rich-list span{color:#ddd8df;font-size:10.4px;line-height:1.45}
       .bss-list-cards ul{margin:6px 0 0 16px;padding:0;color:#c9c4cc;font-size:9.1px;line-height:1.45}.bss-list-cards li+li{margin-top:3px}.bss-objective-grid>div.is-current{border-color:color-mix(in srgb,var(--bss-accent) 55%,rgba(255,255,255,.1));box-shadow:0 0 0 1px color-mix(in srgb,var(--bss-accent) 30%,transparent),0 10px 24px rgba(0,0,0,.24)}
+      @media (max-height:720px) and (orientation:landscape){.bss-human-input-shell{gap:4px}.bss-hit-preview{gap:6px;padding:0}.bss-hit-chip{min-height:28px;padding:4px 5px}.bss-hit-chip b{font-size:9px}.bss-hit-chip em{font-size:5.6px}}
     `}</style>
   </div>;
 }

@@ -16,7 +16,7 @@ type KeypadAuxAction = {
   onClick: () => void;
   disabled?: boolean;
   active?: boolean;
-  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "red" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "red" | "bull25" | "bull50" | "dark";
   title?: string;
   ariaLabel?: string;
   /** L’icône remplit toute la surface de la touche (ex: visuel ZONES du Gros 6). */
@@ -27,7 +27,7 @@ type KeypadExtraMainButton = {
   label: React.ReactNode;
   onClick: () => void;
   active?: boolean;
-  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "red" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "red" | "bull25" | "bull50" | "dark";
   title?: string;
   ariaLabel?: string;
 };
@@ -46,7 +46,7 @@ type KeypadSecondaryAction = {
   onClick: () => void;
   disabled?: boolean;
   active?: boolean;
-  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "red" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "red" | "bull25" | "bull50" | "dark";
   title?: string;
   ariaLabel?: string;
 };
@@ -55,7 +55,7 @@ type KeypadFooterAction = {
   label: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
-  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "red" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "red" | "bull25" | "bull50" | "dark";
   title?: string;
   ariaLabel?: string;
 };
@@ -86,8 +86,6 @@ type Props = {
 
   /** Masquer les 3 badges d’aperçu (si affichés ailleurs) */
   hidePreview?: boolean;
-  /** Formateur optionnel des 3 hits de volée (ex: T12 ROUGE / G20 NOIR). */
-  previewFormatter?: (dart?: UIDart, index?: number) => React.ReactNode;
 
   /** Masquer le total (centre entre BULL & VALIDER) */
   hideTotal?: boolean;
@@ -357,7 +355,6 @@ export default function Keypad({
   onBull,
   onValidate,
   hidePreview = false,
-  previewFormatter = null,
   hideTotal = false,
   centerSlot = null,
   auxAction = null,
@@ -395,8 +392,8 @@ export default function Keypad({
   const extraButtons = Array.isArray(extraMainButtons) ? extraMainButtons.filter(Boolean).slice(0, 2) : [];
   const colorRowButtons = Array.isArray(colorButtons) ? colorButtons.filter(Boolean).slice(0, 4) : [];
   const usePtit1ActionRows = layoutVariant === "ptit1" && extraButtons.length >= 2 && !!secondaryAction && !!auxAction;
-  const useExtendedMainRow = extraButtons.length > 0;
   const useTripleActionRow = actionRowLayout === "triple" && !!secondaryAction && !!auxAction;
+  const useExtendedMainRow = extraButtons.length > 0 || useTripleActionRow;
 
   const extraButtonStyle = (active = false, tone: KeypadExtraMainButton['tone'] = 'dark'): React.CSSProperties => {
     const tones = {
@@ -457,6 +454,12 @@ export default function Keypad({
       red: active
         ? { background: 'linear-gradient(180deg, rgba(255,106,114,.35), rgba(78,0,10,.48))', color: '#fff3f5', border: '1px solid rgba(255,176,185,.62)', boxShadow: '0 0 22px rgba(255,74,96,.22)' }
         : { background: 'linear-gradient(180deg, rgba(255,86,106,.18), rgba(0,0,0,.32))', color: '#ffe6ea', border: '1px solid rgba(255,152,165,.32)', boxShadow: 'none' },
+      bull25: active
+        ? { background: 'rgba(22,92,66,.48)', color: '#a8f0cd', border: '1px solid rgba(139,224,184,.62)', boxShadow: '0 0 20px rgba(80,210,150,.18)' }
+        : { background: 'rgba(22,92,66,.35)', color: '#8be0b8', border: '1px solid rgba(139,224,184,.28)', boxShadow: 'none' },
+      bull50: active
+        ? { background: 'linear-gradient(180deg, rgba(211,47,65,.52), rgba(78,0,10,.58))', color: '#ffe1e6', border: '1px solid rgba(255,145,157,.68)', boxShadow: '0 0 20px rgba(220,40,62,.24)' }
+        : { background: 'linear-gradient(180deg, rgba(173,30,48,.36), rgba(55,0,8,.46))', color: '#ffb7c1', border: '1px solid rgba(255,120,137,.34)', boxShadow: 'none' },
       dark: active
         ? { background: 'linear-gradient(180deg, rgba(180,255,30,.24), rgba(0,0,0,.38))', color: '#d8ff66', border: '1px solid rgba(180,255,30,.55)', boxShadow: '0 0 22px rgba(180,255,30,.22)' }
         : { background: 'rgba(255,255,255,.055)', color: 'rgba(255,255,255,.92)', border: '1px solid rgba(255,255,255,.12)', boxShadow: 'none' },
@@ -490,9 +493,9 @@ export default function Keypad({
             width: "100%",
           }}
         >
-          <span style={{ ...chip, color: "#eec7ff" }}>{previewFormatter ? previewFormatter(currentThrow[0], 0) : fmt(currentThrow[0])}</span>
-          <span style={{ ...chip, color: "#cfe6ff" }}>{previewFormatter ? previewFormatter(currentThrow[1], 1) : fmt(currentThrow[1])}</span>
-          <span style={{ ...chip, color: "#ffe7c0" }}>{previewFormatter ? previewFormatter(currentThrow[2], 2) : fmt(currentThrow[2])}</span>
+          <span style={{ ...chip, color: "#eec7ff" }}>{fmt(currentThrow[0])}</span>
+          <span style={{ ...chip, color: "#cfe6ff" }}>{fmt(currentThrow[1])}</span>
+          <span style={{ ...chip, color: "#ffe7c0" }}>{fmt(currentThrow[2])}</span>
         </div>
       )}
 

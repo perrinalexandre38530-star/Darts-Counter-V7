@@ -153,8 +153,6 @@ type Props = {
 
   /** Masquer les 3 badges d’aperçu (si affichés ailleurs) */
   hidePreview?: boolean;
-  /** Formateur optionnel des hits affichés dans le keypad. */
-  keypadPreviewFormatter?: (dart?: UIDart, index?: number) => React.ReactNode;
   /** Masquer le total */
   hideTotal?: boolean;
   /** Remplace le centre */
@@ -286,7 +284,6 @@ export default function ScoreInputHub({
   guideLabel = "",
   dartboardGuideTargets = null,
   hidePreview,
-  keypadPreviewFormatter = null,
   hideTotal,
   centerSlot,
   disabled = false,
@@ -534,7 +531,6 @@ export default function ScoreInputHub({
       onBull={onBull}
       onValidate={handleValidateFromKeypad}
       hidePreview={hidePreview}
-      previewFormatter={keypadPreviewFormatter}
       hideTotal={hideTotal}
       centerSlot={centerSlot}
       auxAction={keypadAuxAction}

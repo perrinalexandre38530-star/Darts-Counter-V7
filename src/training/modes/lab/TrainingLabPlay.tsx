@@ -4,6 +4,7 @@ import TrainingDartPad from "../../ui/TrainingDartPad";
 import TrainingResultModal from "../../ui/TrainingResultModal";
 import { appendTrainingVisit, recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
 import { getTrainingExercise } from "../../catalog/trainingExerciseCatalog";
+import { buildTrainingLiveAdaptation, buildTrainingLiveStepCoach, type TrainingLiveAdaptation } from "../../profile/trainingLiveCoach";
 import { isDoubleDart, makeTrainingStats, trainingDartMatches, type TrainingDart } from "../../lib/trainingDarts";
 import { clearTrainingProgramDraft, loadTrainingProgramSessions, recordTrainingProgramSession, saveTrainingProgramDraft } from "../../profile/trainingPlanTracker";
 import type { TrainingExerciseFamily } from "../../catalog/trainingExerciseCatalog";
@@ -30,10 +31,11 @@ type ProgramStepResult = {
 const emptyRun = (): RunState => ({ darts: 0, hits: 0, points: 0, progress: 0, checkoutTotal: 0 });
 
 export default function TrainingLabPlay({ config, onExit }: { config: any; onExit: () => void }) {
-  const programIds = React.useMemo(() => {
+  const initialProgramIds = React.useMemo(() => {
     const ids = Array.isArray(config?.programExerciseIds) ? config.programExerciseIds.map(String).filter(Boolean) : [];
     return ids.length ? ids : [String(config?.exerciseId || "")].filter(Boolean);
   }, [config?.exerciseId, config?.programExerciseIds]);
+  const [programIds, setProgramIds] = React.useState<string[]>(initialProgramIds);
   const initialStepIndex = Math.max(0, Math.min(programIds.length - 1, Number(config?.resumeStepIndex) || 0));
   const [stepIndex, setStepIndex] = React.useState(initialStepIndex);
   const exercise = React.useMemo(() => getTrainingExercise(programIds[Math.min(stepIndex, programIds.length - 1)] || config?.exerciseId), [config?.exerciseId, programIds, stepIndex]);
@@ -48,11 +50,13 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
   const [programRecordMessage, setProgramRecordMessage] = React.useState<string | null>(null);
   const [postSessionCoach, setPostSessionCoach] = React.useState<ReturnType<typeof buildPostSessionCoach> | null>(null);
   const [careerMessage, setCareerMessage] = React.useState<{ xp: number; text: string } | null>(null);
+  const [liveAdaptation, setLiveAdaptation] = React.useState<TrainingLiveAdaptation | null>(null);
   const programTrackedRef = React.useRef(false);
 
   const isProgram = programIds.length > 1;
   const totalSteps = programIds.length;
   const sequence = exercise.sequence || [];
+  const liveStepCoach = React.useMemo(() => buildTrainingLiveStepCoach(exercise, stepIndex, totalSteps), [exercise, stepIndex, totalSteps]);
   const goal = exercise.engine === "target_hits" ? Math.max(1, exercise.hitsGoal || 1) : exercise.engine === "sequence" ? Math.max(1, sequence.length) : exercise.engine === "score_darts" ? Math.max(1, exercise.scoreGoal || 1) : Math.max(1, exercise.checkoutScore || 1);
 
   const resetForNextExercise = React.useCallback(() => {
@@ -61,6 +65,7 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
     startedAtRef.current = Date.now();
     endedRef.current = false;
     setResult(null);
+    setLiveAdaptation(null);
     force();
   }, []);
 
@@ -100,7 +105,28 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
       accuracyPct,
       performanceScore,
     };
+    let adaptation: TrainingLiveAdaptation | null = null;
     if (isProgram) {
+      const nextId = programIds[stepIndex + 1];
+      const nextExercise = nextId ? getTrainingExercise(nextId) : null;
+      adaptation = buildTrainingLiveAdaptation({
+        exercise,
+        result: { success, performanceScore, accuracyPct, completionPct },
+        stepIndex,
+        totalSteps,
+        nextExercise,
+        usedExerciseIds: programIds.slice(0, stepIndex + 1),
+        adaptive: !!config?.adaptiveDailyPlan,
+      });
+      setLiveAdaptation(adaptation);
+      if (adaptation.replacementExerciseId && stepIndex + 1 < programIds.length) {
+        setProgramIds((ids) => ids.map((id, index) => index === stepIndex + 1 ? adaptation!.replacementExerciseId! : id));
+      }
+    }
+    if (isProgram) {
+      const adaptedProgramIds = adaptation?.replacementExerciseId && stepIndex + 1 < programIds.length
+        ? programIds.map((id, index) => index === stepIndex + 1 ? adaptation!.replacementExerciseId! : id)
+        : programIds;
       setProgramResults((rows) => {
         const next = [...rows];
         next[stepIndex] = stepResult;
@@ -108,7 +134,7 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
           programId: String(config?.programId || "program"),
           programTitle: String(config?.programTitle || "Programme Training"),
           durationMin: Math.max(0, Number(config?.programDurationMin) || 0),
-          exerciseIds: programIds,
+          exerciseIds: adaptedProgramIds,
           focusFamily: (config?.programFocusFamily || config?.family || "balanced") as TrainingExerciseFamily | "balanced",
           nextStepIndex: Math.min(totalSteps - 1, stepIndex + 1),
           completedSteps: next.filter(Boolean) as any,
@@ -272,6 +298,14 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
         { label: isProgram ? "ÉTAPE" : "RESTE", value: isProgram ? `${stepIndex + 1}/${totalSteps}` : Math.max(0, exercise.maxDarts - s.darts) },
       ]}
     >
+      {isProgram && <div style={{ marginBottom: 10, padding: 11, borderRadius: 14, border: "1px solid rgba(39,220,255,.18)", background: "linear-gradient(135deg,rgba(39,220,255,.075),rgba(140,90,255,.05))" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>AWENA • {liveStepCoach.phaseLabel}</div>
+          <div style={{ fontSize: 8, fontWeight: 900, opacity: .55 }}>CIBLE PERF. {liveStepCoach.targetScore}/100</div>
+        </div>
+        <div style={{ marginTop: 5, fontSize: 10.5, fontWeight: 900 }}>{liveStepCoach.objective}</div>
+        <div style={{ marginTop: 4, fontSize: 9.5, lineHeight: 1.4, opacity: .68 }}>{liveStepCoach.cue}</div>
+      </div>}
       <TrainingDartPad disabled={!!result} onVisit={onVisit} notice={<div style={{ fontSize: 10.5, textAlign: "center", opacity: .68 }}>{isProgram ? "Chaque étape est enregistrée séparément pour affiner le diagnostic Awena." : "Chaque volée est enregistrée avec sa télémétrie exacte pour alimenter Diagnostic et Progression."}</div>} />
     </TrainingPlayLayout>
     <TrainingResultModal
@@ -284,7 +318,10 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
         { label: "PROGRESSION", value: `${Math.round(result.metrics.completionPct)}%` },
         { label: "PRÉCISION", value: `${Math.round(result.metrics.accuracyPct)}%` },
         { label: "PERFORMANCE", value: `${result.metrics.performanceScore}/100` },
+        ...(isProgram && liveAdaptation ? [{ label: "AWENA", value: liveAdaptation.headline }] : []),
       ] : []}
+      note={isProgram && liveAdaptation ? <div style={{ padding: 10, borderRadius: 12, background: liveAdaptation.tone === "positive" ? "rgba(80,255,174,.07)" : liveAdaptation.tone === "caution" ? "rgba(255,184,76,.07)" : "rgba(39,220,255,.06)", border: liveAdaptation.tone === "positive" ? "1px solid rgba(80,255,174,.20)" : liveAdaptation.tone === "caution" ? "1px solid rgba(255,184,76,.20)" : "1px solid rgba(39,220,255,.18)" }}><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1, opacity: .58 }}>FEEDBACK AWENA</div><div style={{ marginTop: 3, fontSize: 11, fontWeight: 950 }}>{liveAdaptation.headline}</div><div style={{ marginTop: 4, fontSize: 9.5, lineHeight: 1.4, opacity: .7 }}>{liveAdaptation.body}</div><div style={{ marginTop: 6, fontSize: 8, fontWeight: 900, color: "#27dcff" }}>{liveAdaptation.nextLabel}</div></div> : null}
+      actionLabel={isProgram ? (stepIndex + 1 < totalSteps ? "ÉTAPE SUIVANTE" : "VOIR LE BILAN") : "TERMINER"}
       onClose={closeResult}
     />
 

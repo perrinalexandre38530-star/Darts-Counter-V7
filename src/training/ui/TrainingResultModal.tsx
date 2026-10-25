@@ -13,6 +13,8 @@ export default function TrainingResultModal({
   stats,
   metrics = [],
   onClose,
+  actionLabel = "RETOUR AU TRAINING",
+  note = null,
 }: {
   open: boolean;
   success: boolean;
@@ -20,6 +22,8 @@ export default function TrainingResultModal({
   stats: TrainingStats;
   metrics?: TrainingResultMetric[];
   onClose: () => void;
+  actionLabel?: string;
+  note?: React.ReactNode;
 }) {
   if (!open) return null;
 
@@ -141,6 +145,8 @@ export default function TrainingResultModal({
           </div>
         ) : null}
 
+        {note ? <div style={{ marginTop: 10 }}>{note}</div> : null}
+
         <button
           type="button"
           onClick={onClose}
@@ -158,7 +164,7 @@ export default function TrainingResultModal({
             cursor: "pointer",
           }}
         >
-          RETOUR AU TRAINING
+          {actionLabel}
         </button>
       </div>
     </div>

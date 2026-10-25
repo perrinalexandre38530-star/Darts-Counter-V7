@@ -1418,6 +1418,27 @@ function _historyRowsMerge(...groups: SavedMatch[][]): SavedMatch[] {
   );
 }
 
+function _historyRowsMergeAuthoritative(primary: SavedMatch[], fallback: SavedMatch[]): SavedMatch[] {
+  const byId = new Map<string, SavedMatch>();
+  for (const raw of primary || []) {
+    const rec: any = raw || {};
+    const id = String(rec?.matchId ?? rec?.id ?? rec?.resumeId ?? "").trim();
+    if (!id) continue;
+    byId.set(id, rec as SavedMatch);
+  }
+  // Le fallback localStorage/sessionStorage n'est plus un concurrent d'IndexedDB.
+  // Il sert uniquement de filet de secours pour les IDs réellement absents d'IDB.
+  for (const raw of fallback || []) {
+    const rec: any = raw || {};
+    const id = String(rec?.matchId ?? rec?.id ?? rec?.resumeId ?? "").trim();
+    if (!id || byId.has(id)) continue;
+    byId.set(id, rec as SavedMatch);
+  }
+  return Array.from(byId.values()).sort(
+    (a: any, b: any) => Number(b?.updatedAt ?? b?.createdAt ?? 0) - Number(a?.updatedAt ?? a?.createdAt ?? 0)
+  );
+}
+
 type _LegacyRowsCache = {
   scopeKey: string;
   localRaw: string | null;
@@ -2339,7 +2360,7 @@ async function listUncached(): Promise<SavedMatch[]> {
       .filter(isHistoryRowUsable)
       .map((r: any) => normalizeHistoryRow(r)) as SavedMatch[];
 
-    const normalized = _historyRowsMerge(normalizedIdb, fallbackRows)
+    const normalized = _historyRowsMergeAuthoritative(normalizedIdb, fallbackRows)
       .filter((r: any) => !isHistoryDeletedByTombstone(r))
       .filter(isHistoryRowUsable)
       .map((r: any) => normalizeHistoryRow(r)) as SavedMatch[];
@@ -3424,6 +3445,26 @@ function _isInProgressRecord(rec: any): boolean {
   try { return inferHistoryStatus(rec) === "in_progress"; } catch { return false; }
 }
 
+function buildIncrementalMatchChangePayload(headerLike: any, payloadCompressed?: string): any {
+  const header: any = toHeaderRecord({ ...(headerLike || {}) });
+  const id = String(header?.matchId || header?.id || "").trim();
+  return {
+    matchId: id,
+    id,
+    sport: header?.sport || null,
+    kind: header?.kind || null,
+    status: header?.status || inferHistoryStatus(header),
+    createdAt: Number(header?.createdAt || 0) || Date.now(),
+    updatedAt: Number(header?.updatedAt || 0) || Date.now(),
+    players: Array.isArray(header?.players) ? stripAvatarDataFromPlayers(header.players) || [] : [],
+    winnerId: header?.winnerId ?? null,
+    summary: header?.summary || null,
+    game: header?.game || null,
+    header,
+    ...(payloadCompressed ? { payloadCompressed } : {}),
+  };
+}
+
 // ============================================================
 // LIVE CHECKPOINT — gameplay hot path
 // ------------------------------------------------------------
@@ -3464,6 +3505,7 @@ export async function upsertInProgressCheckpoint(rec: SavedMatch): Promise<void>
   // surprisingly expensive under load.
   let wrote = false;
   let downgradedFinished = false;
+  let staleCheckpointIgnored = false;
   await withStoreName(STORE_HEADERS, "readwrite", (st) =>
     new Promise<void>((resolve, reject) => {
       const getReq = st.get(id);
@@ -3474,6 +3516,16 @@ export async function upsertInProgressCheckpoint(rec: SavedMatch): Promise<void>
         // Never allow a late live checkpoint to downgrade a finished match.
         if (existingHeader && inferHistoryStatus(existingHeader) === "finished") {
           downgradedFinished = true;
+          resolve();
+          return;
+        }
+
+        // Ordre monotone par match : un autosave asynchrone plus ancien ne doit
+        // jamais repasser au-dessus d'un checkpoint plus récent.
+        const existingUpdatedAt = Number(existingHeader?.updatedAt || existingHeader?.createdAt || 0) || 0;
+        const incomingUpdatedAt = Number(incoming?.updatedAt || incoming?.resume?.updatedAt || now) || now;
+        if (existingHeader && existingUpdatedAt > incomingUpdatedAt) {
+          staleCheckpointIgnored = true;
           resolve();
           return;
         }
@@ -3548,9 +3600,27 @@ export async function upsertInProgressCheckpoint(rec: SavedMatch): Promise<void>
     try { _resumeIndexRemove(id); } catch {}
     return;
   }
+  if (staleCheckpointIgnored) return;
   if (wrote) {
     invalidateHistoryListReadCache();
     try { _resumeIndexAdd(id); } catch {}
+    // Le journal incrémental doit connaître AUSSI les parties live. Sinon une
+    // sauvegarde manuelle peut annoncer "à jour" alors que le match vient de bouger.
+    try {
+      const header = toHeaderRecord({
+        ...incoming,
+        id,
+        matchId: id,
+        status: "in_progress",
+        updatedAt: Number(incoming?.updatedAt || now) || now,
+      });
+      await recordIncrementalChange({
+        entityType: "match",
+        entityId: id,
+        payload: buildIncrementalMatchChangePayload(header),
+        updatedAt: Number(header?.updatedAt || now) || now,
+      });
+    } catch {}
   }
 }
 
@@ -4421,6 +4491,20 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     });
 
     invalidateHistoryListReadCache();
+
+    // Journal incrémental : toute création/modification de partie doit être
+    // transportable entre deux checkpoints complets. On embarque le header et le
+    // payload déjà compressé pour les parties finalisées.
+    if (!isCloudImporting()) {
+      try {
+        await recordIncrementalChange({
+          entityType: "match",
+          entityId: String(safe.id),
+          payload: buildIncrementalMatchChangePayload(safe, payloadCompressed),
+          updatedAt: Number((safe as any)?.updatedAt || Date.now()) || Date.now(),
+        });
+      } catch {}
+    }
 
     // TERRITORIES : reflète toute partie riche (locale/importée/R2)
     // dans l'index local utilisé par StatsTerritories et les classements.

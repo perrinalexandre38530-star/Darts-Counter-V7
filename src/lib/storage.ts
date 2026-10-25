@@ -2588,7 +2588,14 @@ type SaveOpts = {
   skipAsyncNormalize?: boolean;
 };
 
-export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Promise<void> {
+// HIST/BACKUP STABILITY V30 — toutes les écritures du store principal passent
+// désormais par une file unique par scope. Plusieurs services peuvent appeler
+// saveStore() en parallèle (UI, sync compte, restauration, NAS/R2). Sans cette
+// sérialisation, une sauvegarde construite plus tôt pouvait terminer après une
+// mutation plus récente et réécrire IndexedDB avec un état ancien.
+const saveStoreQueueByScope = new Map<string, Promise<void>>();
+
+async function saveStoreInternal<T extends Store>(store: T, opts?: SaveOpts): Promise<void> {
   invalidateLoadStoreBurstCache(getActiveStoreScopeKey());
   const guardedInput = await protectProfilesAgainstEmptyOverwrite(guardStoreShape(store), "saveStore");
   const __freezeOp = beginFreezeOperation("storage.saveStore", {
@@ -2737,8 +2744,32 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
   }
 }
 
+export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Promise<void> {
+  const scopeKey = getActiveStoreScopeKey();
+  const previous = saveStoreQueueByScope.get(scopeKey) || Promise.resolve();
+  const queued = previous
+    .catch(() => undefined)
+    .then(() => saveStoreInternal(store, opts));
+  saveStoreQueueByScope.set(scopeKey, queued);
+  try {
+    await queued;
+  } finally {
+    if (saveStoreQueueByScope.get(scopeKey) === queued) {
+      saveStoreQueueByScope.delete(scopeKey);
+    }
+  }
+}
+
+async function drainPendingStoreWrites(scopeKey = getActiveStoreScopeKey()): Promise<void> {
+  const pending = saveStoreQueueByScope.get(scopeKey);
+  if (!pending) return;
+  try { await pending; } catch {}
+}
+
 export async function clearStore(): Promise<void> {
-  invalidateLoadStoreBurstCache(getActiveStoreScopeKey());
+  const scopeKey = getActiveStoreScopeKey();
+  await drainPendingStoreWrites(scopeKey);
+  invalidateLoadStoreBurstCache(scopeKey);
   try {
     await idbDel(scopedStorageKey(STORE_KEY));
     lastSavedStoreJsonByScope.delete(scopedStorageKey(STORE_KEY));
@@ -3144,6 +3175,10 @@ export async function importAll(
 ): Promise<void> {
   dump = unwrapNasSnapshotPayload(dump);
   if (!dump) return;
+  // Une restauration ne commence jamais pendant qu'une ancienne écriture du
+  // store attend encore dans la file. Sinon cette écriture peut terminer après
+  // l'import et ressusciter l'état précédant la sauvegarde restaurée.
+  await drainPendingStoreWrites();
   const historyReplace = opts?.historyReplace ?? true;
   const report = opts?.onProgress || (() => {});
   const yieldIfNeeded = createCooperativeYielder(10);
@@ -4483,6 +4518,7 @@ async function normalizeLocalProfilesInStore(): Promise<void> {
 }
 
 export async function nukeAll(): Promise<void> {
+  await drainPendingStoreWrites();
   try {
     await idbClear();
   } catch (err) {
@@ -4567,6 +4603,7 @@ export async function migrateFromLocalStorage(keys: string[]) {
    RESET COMPLET : garder uniquement le profil actif (sans stats)
 ============================================================ */
 export async function nukeAllKeepActiveProfile(): Promise<void> {
+  await drainPendingStoreWrites();
   let activeProfile: Profile | null = null;
 
   try {

@@ -27,6 +27,8 @@ import { buildTrainingCycleCoach } from "../../profile/trainingCycleCoach";
 import { buildTrainingBlockCoach, buildTrainingCycleHistory } from "../../profile/trainingBlockCoach";
 import { buildTrainingAdaptationCoach } from "../../profile/trainingAdaptationCoach";
 import { buildTrainingBlockHandoff, buildTrainingBlockReviews } from "../../profile/trainingBlockReview";
+import { buildTrainingActionCoach } from "../../profile/trainingActionCoach";
+import { buildTrainingDailyPlan } from "../../profile/trainingDailyPlan";
 
 const familyOrder: TrainingExerciseFamily[] = ["scoring", "doubles", "checkout", "precision", "bull", "regularity"];
 type HubTab = "program" | "exercises" | "diagnosis" | "progress";
@@ -82,6 +84,8 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
   const blockReviews = React.useMemo(() => buildTrainingBlockReviews(programSessions, recommendedFamily, 4), [programSessions, recommendedFamily]);
   const cycleHistory = React.useMemo(() => buildTrainingCycleHistory(programSessions, 6), [programSessions]);
   const weekCoachPlan = React.useMemo(() => buildTrainingWeekCoachPlan(programSessions, preferences.weeklySessionTarget, recommendedFamily, loadSummary), [programSessions, preferences.weeklySessionTarget, recommendedFamily, loadSummary]);
+  const actionCoach = React.useMemo(() => buildTrainingActionCoach(adaptationCoach, loadSummary, weekCoachPlan, cycleCoach, blockCoach), [adaptationCoach, loadSummary, weekCoachPlan, cycleCoach, blockCoach]);
+  const dailyPlan = React.useMemo(() => buildTrainingDailyPlan(actionCoach, loadSummary), [actionCoach, loadSummary]);
   const nextRecommendation = React.useMemo(() => { void revision; return loadTrainingNextRecommendation(); }, [revision]);
   const progression = React.useMemo(() => buildTrainingProgression(sessions), [sessions]);
   const goalStatuses = React.useMemo(() => buildTrainingGoalStatuses(diagnosis, preferences.familyGoals), [diagnosis, preferences.familyGoals]);
@@ -126,7 +130,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
     ...buildTrainingParticipantConfig(participants, profiles),
   });
 
-  const startProgram = (program: TrainingProgramDefinition) => onStart({
+  const startProgram = (program: TrainingProgramDefinition, extras: Record<string, unknown> = {}) => onStart({
     programId: program.id,
     programTitle: program.title,
     programDurationMin: program.durationMin,
@@ -135,6 +139,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
     family: program.focusFamily && program.focusFamily !== "balanced" ? program.focusFamily : recommendedFamily,
     programFocusFamily: program.focusFamily || "balanced",
     sessionKind: "program",
+    ...extras,
     ...buildTrainingParticipantConfig(participants, profiles),
   });
 
@@ -244,6 +249,36 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
           </div>
 
           {tab === "program" && <div>
+            <div style={{ marginTop: 10, padding: 14, borderRadius: 17, border: actionCoach.tone === "amber" ? "1px solid rgba(255,184,76,.34)" : actionCoach.tone === "green" ? "1px solid rgba(80,255,174,.30)" : actionCoach.tone === "violet" ? "1px solid rgba(185,156,255,.32)" : "1px solid rgba(39,220,255,.32)", background: actionCoach.tone === "amber" ? "linear-gradient(135deg,rgba(255,184,76,.10),rgba(140,90,255,.035))" : actionCoach.tone === "green" ? "linear-gradient(135deg,rgba(80,255,174,.08),rgba(39,220,255,.035))" : actionCoach.tone === "violet" ? "linear-gradient(135deg,rgba(140,90,255,.10),rgba(39,220,255,.035))" : "linear-gradient(135deg,rgba(39,220,255,.11),rgba(140,90,255,.045))" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                <div style={{ minWidth: 0, flex: "1 1 300px" }}>
+                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1.1, color: actionCoach.tone === "amber" ? "#ffd86b" : actionCoach.tone === "green" ? "#8cffcb" : actionCoach.tone === "violet" ? "#b99cff" : "#27dcff" }}>{actionCoach.eyebrow}</div>
+                  <div style={{ marginTop: 4, fontSize: 14, fontWeight: 950 }}>{actionCoach.title}</div>
+                  <div style={{ marginTop: 5, fontSize: 9.8, lineHeight: 1.45, opacity: .68 }}>{actionCoach.body}</div>
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  <button type="button" disabled={!resolved.length} onClick={() => startProgram(dailyPlan.program, { adaptiveDailyPlan: true, dailyPlanDateKey: dailyPlan.dateKey })} style={{ padding: "9px 11px", borderRadius: 11, border: "1px solid rgba(255,255,255,.22)", background: "rgba(255,255,255,.10)", color: "inherit", fontSize: 8.8, fontWeight: 950, cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .45, whiteSpace: "nowrap" }}>LANCER LE PLAN DU JOUR</button>
+                  <button type="button" onClick={() => prepareRecommendedSession(actionCoach.durationMin, actionCoach.family)} style={{ padding: "9px 11px", borderRadius: 11, border: "1px solid rgba(255,255,255,.10)", background: "rgba(0,0,0,.16)", color: "inherit", fontSize: 8.2, fontWeight: 900, cursor: "pointer", whiteSpace: "nowrap", opacity: .78 }}>AJUSTER</button>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 10 }}>
+                {[actionCoach.weekText, actionCoach.cycleText, actionCoach.blockText].map((text, index) => <div key={index} style={{ padding: "8px 9px", borderRadius: 10, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", fontSize: 7.8, lineHeight: 1.35, opacity: .62 }}>{text}</div>)}
+              </div>
+              <div style={{ marginTop: 10, padding: 10, borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(0,0,0,.14)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+                  <div style={{ fontSize: 8.2, fontWeight: 950, letterSpacing: .8, opacity: .58 }}>PLAN DU JOUR • {dailyPlan.durationMin} MIN • {dailyPlan.familyLabel}</div>
+                  <div style={{ fontSize: 7.4, opacity: .42 }}>INTENSITÉ {dailyPlan.intensity.toUpperCase()}</div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(1, dailyPlan.phases.length)},minmax(0,1fr))`, gap: 6, marginTop: 8 }}>
+                  {dailyPlan.phases.map((phase) => <div key={phase.id} style={{ padding: 8, borderRadius: 10, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.055)", minWidth: 0 }}>
+                    <div style={{ fontSize: 7.2, fontWeight: 950, opacity: .52 }}>{phase.label}</div>
+                    <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 3 }}>
+                      {phase.exerciseIds.map((id, index) => { const ex = TRAINING_EXERCISE_CATALOG.find((exercise) => exercise.id === id); return <div key={`${phase.id}-${id}-${index}`} style={{ fontSize: 7.7, lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ex?.title || id}</div>; })}
+                    </div>
+                  </div>)}
+                </div>
+              </div>
+            </div>
             <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: "1px solid rgba(80,255,174,.24)", background: "linear-gradient(135deg,rgba(80,255,174,.09),rgba(39,220,255,.045))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <div>

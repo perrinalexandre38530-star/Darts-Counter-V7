@@ -117,6 +117,11 @@ mustInclude(registry, [
   '"super_bull",',
 ], "registre");
 
+mustInclude(config, [
+  'loadTeamsBySport("darts")',
+  'Array.isArray(team?.playerIds) && team.playerIds.length > 0',
+], "équipes SUPER BULL valides");
+
 mustInclude(quick, ["isQuickPartyRecord", "quickPartyParticipants", "quickPartyProfileLinks"], "contrat Partie Rapide");
 
 assert.ok(exists("src/assets/superbull/superbull_horizontal_hero.webp"), "asset SUPER BULL WebP manquant");
