@@ -15,7 +15,7 @@ import {
   TRAINING_FAMILY_META,
   type TrainingExerciseFamily,
 } from "../../catalog/trainingExerciseCatalog";
-import { buildCoachProgram, buildCustomProgram, TRAINING_PROGRAMS, type TrainingProgramDefinition, type TrainingProgramBuildOptions } from "../../catalog/trainingProgramCatalog";
+import { buildCoachProgram, buildCustomProgram, TRAINING_ASSESSMENT_PROGRAM, TRAINING_PROGRAMS, type TrainingProgramDefinition, type TrainingProgramBuildOptions } from "../../catalog/trainingProgramCatalog";
 import { loadTrainingLabPreferences, setTrainingFamilyGoal, setTrainingFamilyGoalDeadline, setTrainingWeeklySessionTarget, toggleFavoriteExercise, toggleFavoriteProgram, type TrainingLabPreferences } from "../../preferences/trainingLabPreferences";
 import { buildTrainingCycleComparison, buildTrainingWeeklyPlanStats, clearTrainingProgramDraft, loadTrainingProgramDraft, loadTrainingProgramSessions } from "../../profile/trainingPlanTracker";
 import { buildTrainingLoadSummary } from "../../profile/trainingLoadCoach";
@@ -29,6 +29,9 @@ import { buildTrainingAdaptationCoach } from "../../profile/trainingAdaptationCo
 import { buildTrainingBlockHandoff, buildTrainingBlockReviews } from "../../profile/trainingBlockReview";
 import { buildTrainingActionCoach } from "../../profile/trainingActionCoach";
 import { buildTrainingDailyPlan } from "../../profile/trainingDailyPlan";
+import { buildTrainingSessionHistoryCoach } from "../../profile/trainingSessionHistoryCoach";
+import { buildTrainingCoachingEffectiveness, chooseCoachingEffectiveNextFamily } from "../../profile/trainingCoachingEffectiveness";
+import { buildTrainingAssessment } from "../../profile/trainingAssessment";
 
 const familyOrder: TrainingExerciseFamily[] = ["scoring", "doubles", "checkout", "precision", "bull", "regularity"];
 type HubTab = "program" | "exercises" | "diagnosis" | "progress";
@@ -72,12 +75,16 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
   }, [revision]);
   const weeklyPlan = React.useMemo(() => buildTrainingWeeklyPlanStats(programSessions, preferences.weeklySessionTarget), [programSessions, preferences.weeklySessionTarget]);
   const cycleComparison = React.useMemo(() => buildTrainingCycleComparison(programSessions, 4), [programSessions]);
+  const liveCoachHistory = React.useMemo(() => buildTrainingSessionHistoryCoach(programSessions, 6), [programSessions]);
+  const assessment = React.useMemo(() => buildTrainingAssessment(programSessions, sessions), [programSessions, sessions]);
   const programDraft = React.useMemo(() => { void revision; return loadTrainingProgramDraft(); }, [revision]);
   const loadSummary = React.useMemo(() => buildTrainingLoadSummary(programSessions, preferences.weeklySessionTarget), [programSessions, preferences.weeklySessionTarget]);
   const diagnosis = React.useMemo(() => buildTrainingDiagnosis(sessions), [sessions]);
   const rawRecommendedFamily = React.useMemo(() => chooseGoalPriorityFamily(diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines), [diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines]);
   const cycleCoach = React.useMemo(() => buildTrainingCycleCoach(programSessions, diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines), [programSessions, diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines]);
-  const recommendedFamily = cycleCoach.priority?.family || rawRecommendedFamily;
+  const cycleRecommendedFamily = cycleCoach.priority?.family || rawRecommendedFamily;
+  const coachingEffectiveness = React.useMemo(() => buildTrainingCoachingEffectiveness(programSessions, 10), [programSessions]);
+  const recommendedFamily = React.useMemo(() => chooseCoachingEffectiveNextFamily(cycleRecommendedFamily, coachingEffectiveness), [cycleRecommendedFamily, coachingEffectiveness]);
   const blockCoach = React.useMemo(() => buildTrainingBlockCoach(programSessions, cycleCoach), [programSessions, cycleCoach]);
   const adaptationCoach = React.useMemo(() => buildTrainingAdaptationCoach(programSessions, cycleCoach, blockCoach, loadSummary), [programSessions, cycleCoach, blockCoach, loadSummary]);
   const blockHandoff = React.useMemo(() => buildTrainingBlockHandoff(programSessions, recommendedFamily), [programSessions, recommendedFamily]);
@@ -207,7 +214,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
 
   return (
     <TrainingShell
-      header={<TrainingHeader title="Centre d'entraînement" tickerId="training_challenges" onBack={onExit} rules={<><p>Le centre regroupe programmes guidés, exercices unitaires, diagnostic et progression.</p><p>Awena utilise tes résultats Training enregistrés pour déterminer le prochain axe à travailler.</p></>} />}
+      header={<TrainingHeader title="Centre d'entraînement" tickerId="training_center" onBack={onExit} rules={<><p>Le centre regroupe programmes guidés, exercices unitaires, diagnostic et progression.</p><p>Awena utilise tes résultats Training enregistrés pour déterminer le prochain axe à travailler.</p></>} />}
       body={
         <div style={{ width: "min(940px,100%)", margin: "0 auto", paddingBottom: 26 }}>
           <TrainingParticipantsSelector profiles={profiles} value={participants} onChange={setParticipants} />
@@ -279,6 +286,26 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 </div>
               </div>
             </div>
+            <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: assessment.due ? "1px solid rgba(255,216,107,.30)" : "1px solid rgba(185,156,255,.20)", background: assessment.due ? "linear-gradient(135deg,rgba(255,216,107,.085),rgba(140,90,255,.035))" : "linear-gradient(135deg,rgba(140,90,255,.065),rgba(39,220,255,.035))" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+                <div style={{ minWidth: 0, flex: "1 1 260px" }}>
+                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: assessment.due ? "#ffd86b" : "#b99cff" }}>BILAN DE NIVEAU • 6 COMPÉTENCES</div>
+                  <div style={{ marginTop: 4, fontSize: 13, fontWeight: 950 }}>{assessment.headline}</div>
+                  <div style={{ marginTop: 4, fontSize: 9.2, lineHeight: 1.45, opacity: .62 }}>{assessment.body}</div>
+                </div>
+                <button type="button" disabled={!resolved.length} onClick={() => startProgram(TRAINING_ASSESSMENT_PROGRAM, { adaptiveDailyPlan: false })} style={{ padding: "9px 11px", borderRadius: 11, border: "1px solid rgba(255,216,107,.25)", background: "rgba(255,216,107,.08)", color: "inherit", fontSize: 8.4, fontWeight: 950, cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .45, whiteSpace: "nowrap" }}>{assessment.available ? "REJOUER LE BILAN" : "LANCER LE BILAN"}</button>
+              </div>
+              {assessment.available && <>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 10 }}>
+                  <div style={{ padding: 8, borderRadius: 10, textAlign: "center", background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 12 }}>{Math.round(assessment.overallScore)}</b><div style={{ fontSize: 6.8, opacity: .42 }}>NIVEAU</div></div>
+                  <div style={{ padding: 8, borderRadius: 10, textAlign: "center", background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 12 }}>{Math.round(assessment.accuracyPct)}%</b><div style={{ fontSize: 6.8, opacity: .42 }}>PRÉCISION</div></div>
+                  <div style={{ padding: 8, borderRadius: 10, textAlign: "center", background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 12, color: "#8cffcb" }}>{assessment.strongestLabel}</b><div style={{ fontSize: 6.8, opacity: .42 }}>POINT FORT</div></div>
+                  <div style={{ padding: 8, borderRadius: 10, textAlign: "center", background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 12, color: "#ffd86b" }}>{assessment.weakestLabel}</b><div style={{ fontSize: 6.8, opacity: .42 }}>À TRAVAILLER</div></div>
+                </div>
+                <div style={{ marginTop: 7, fontSize: 7.8, opacity: .5 }}>{new Date(assessment.endedAt).toLocaleDateString()} • {assessment.sessionsSinceAssessment} séance{assessment.sessionsSinceAssessment > 1 ? "s" : ""} depuis le bilan{assessment.delta == null ? "" : ` • évolution ${assessment.delta >= 0 ? "+" : ""}${Math.round(assessment.delta)} pts`}</div>
+              </>}
+            </div>
+
             <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: "1px solid rgba(80,255,174,.24)", background: "linear-gradient(135deg,rgba(80,255,174,.09),rgba(39,220,255,.045))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <div>
@@ -759,6 +786,63 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 <div style={{ marginTop: 3, fontSize: 18, fontWeight: 950 }}>{Math.round(row.bestScore)}<span style={{ fontSize: 9, opacity: .5 }}>/100</span></div>
                 <div style={{ marginTop: 3, fontSize: 8, opacity: .45 }}>{row.sessions} séance{row.sessions > 1 ? "s" : ""} • série {row.streak}</div>
               </div>)}
+            </div>
+
+            <div style={{ margin: "16px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#ffd86b" }}>RÉFÉRENCE DE NIVEAU</div>
+            <div style={{ padding: 12, borderRadius: 14, border: "1px solid rgba(255,216,107,.16)", background: "linear-gradient(135deg,rgba(255,216,107,.045),rgba(140,90,255,.025))" }}>
+              {!assessment.available ? <div style={{ fontSize: 9, opacity: .58 }}>Aucun bilan standardisé enregistré. Lance le Bilan de niveau depuis PROGRAMME pour obtenir une référence comparable sur les 6 compétences.</div> : <>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "baseline" }}>
+                  <div><b style={{ fontSize: 11 }}>{assessment.headline}</b><div style={{ marginTop: 3, fontSize: 8, opacity: .48 }}>{new Date(assessment.endedAt).toLocaleDateString()} • couverture {assessment.coverage}%</div></div>
+                  <div style={{ fontSize: 18, fontWeight: 950 }}>{Math.round(assessment.overallScore)}<span style={{ fontSize: 8, opacity: .45 }}>/100</span></div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 10 }}>
+                  {assessment.familyScores.map((row) => <div key={row.family} style={{ padding: 8, borderRadius: 10, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.055)" }}><div style={{ fontSize: 6.8, opacity: .42 }}>{row.label}</div><b style={{ display: "block", marginTop: 2, fontSize: 12 }}>{Math.round(row.score)}</b><div style={{ marginTop: 2, fontSize: 6.8, opacity: .38 }}>{Math.round(row.accuracyPct)}% précision</div></div>)}
+                </div>
+                <div style={{ marginTop: 8, fontSize: 7.8, opacity: .5 }}>Point fort : <b style={{ color: "#8cffcb" }}>{assessment.strongestLabel}</b> • axe prioritaire : <b style={{ color: "#ffd86b" }}>{assessment.weakestLabel}</b>{assessment.delta == null ? "" : ` • évolution globale ${assessment.delta >= 0 ? "+" : ""}${Math.round(assessment.delta)} pts`}</div>
+              </>}
+            </div>
+
+            <div style={{ margin: "16px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>LIVE COACH • 6 DERNIÈRES SÉANCES</div>
+            <div style={{ padding: 12, borderRadius: 14, border: "1px solid rgba(39,220,255,.16)", background: "linear-gradient(135deg,rgba(39,220,255,.045),rgba(140,90,255,.03))" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+                <div style={{ minWidth: 180, flex: 1 }}><b style={{ fontSize: 10.5 }}>{liveCoachHistory.headline}</b><div style={{ marginTop: 4, fontSize: 8.5, lineHeight: 1.4, opacity: .58 }}>{liveCoachHistory.body}</div></div>
+                <div style={{ display: "flex", gap: 5, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  <span style={{ padding: "4px 7px", borderRadius: 999, background: "rgba(255,255,255,.04)", fontSize: 7.5, fontWeight: 900 }}>STABLE • {Math.round(liveCoachHistory.adherenceAverage)}%</span>
+                  <span style={{ padding: "4px 7px", borderRadius: 999, background: "rgba(255,255,255,.04)", fontSize: 7.5, fontWeight: 900 }}>CIBLES • {Math.round(liveCoachHistory.targetRate)}%</span>
+                  <span style={{ padding: "4px 7px", borderRadius: 999, background: "rgba(255,255,255,.04)", fontSize: 7.5, fontWeight: 900 }}>ADAPTÉES • {liveCoachHistory.adaptedSessions}/{Math.max(1, liveCoachHistory.sampleSize)}</span>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 10 }}>
+                {[
+                  ["ÉCHAUFF.", liveCoachHistory.warmupAverage],
+                  ["BLOC", liveCoachHistory.coreAverage],
+                  ["FINISH", liveCoachHistory.finishAverage],
+                ].map(([label, value]) => <div key={String(label)} style={{ padding: 8, borderRadius: 10, textAlign: "center", background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.055)" }}><b style={{ fontSize: 12 }}>{Number(value) > 0 ? Math.round(Number(value)) : "—"}</b><div style={{ marginTop: 2, fontSize: 6.8, opacity: .42 }}>{label}</div></div>)}
+              </div>
+              {liveCoachHistory.recurringFamily && <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.055)", fontSize: 8.2, opacity: .62 }}>Signal récurrent : <b style={{ color: "#ffd86b" }}>{liveCoachHistory.recurringFamilyLabel}</b> • {liveCoachHistory.recurringFamilyCount}/{liveCoachHistory.sampleSize} séances. Ce signal peut désormais peser davantage que l'incident isolé de la dernière séance.</div>}
+              <div style={{ marginTop: 7, fontSize: 7.8, opacity: .48 }}>Plans stables : <b>{liveCoachHistory.stableSessions}</b> • plans adaptés : <b>{liveCoachHistory.adaptedSessions}</b>{liveCoachHistory.stableAverage > 0 && liveCoachHistory.adaptedAverage > 0 ? ` • perf. stable ${Math.round(liveCoachHistory.stableAverage)} vs adaptée ${Math.round(liveCoachHistory.adaptedAverage)}` : ""}</div>
+            </div>
+
+
+            <div style={{ margin: "16px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#8cffcb" }}>EFFICACITÉ DU COACHING • 10 SÉANCES</div>
+            <div style={{ padding: 12, borderRadius: 14, border: coachingEffectiveness.adaptationEffect === "negative" ? "1px solid rgba(255,184,76,.22)" : "1px solid rgba(80,255,174,.16)", background: coachingEffectiveness.adaptationEffect === "negative" ? "linear-gradient(135deg,rgba(255,184,76,.055),rgba(140,90,255,.025))" : "linear-gradient(135deg,rgba(80,255,174,.045),rgba(39,220,255,.025))" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+                <div style={{ minWidth: 180, flex: 1 }}><b style={{ fontSize: 10.5 }}>{coachingEffectiveness.headline}</b><div style={{ marginTop: 4, fontSize: 8.5, lineHeight: 1.4, opacity: .6 }}>{coachingEffectiveness.body}</div></div>
+                <span style={{ padding: "5px 8px", borderRadius: 999, background: coachingEffectiveness.adaptationEffect === "positive" ? "rgba(80,255,174,.10)" : coachingEffectiveness.adaptationEffect === "negative" ? "rgba(255,184,76,.10)" : "rgba(255,255,255,.045)", fontSize: 7.5, fontWeight: 950 }}>{coachingEffectiveness.adaptationEffectLabel}</span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 10 }}>
+                {[
+                  ["GAIN APRÈS ADAPT.", coachingEffectiveness.sampleSize >= 3 ? `${coachingEffectiveness.postAdaptationLift >= 0 ? "+" : ""}${Math.round(coachingEffectiveness.postAdaptationLift)}` : "—"],
+                  ["TAUX ADAPT.", `${Math.round(coachingEffectiveness.recentAdaptationRate)}%`],
+                  ["PERF. STABLE", coachingEffectiveness.stableAverage > 0 ? Math.round(coachingEffectiveness.stableAverage) : "—"],
+                  ["PERF. ADAPTÉE", coachingEffectiveness.adaptedAverage > 0 ? Math.round(coachingEffectiveness.adaptedAverage) : "—"],
+                ].map(([label, value]) => <div key={String(label)} style={{ padding: 8, borderRadius: 10, textAlign: "center", background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.055)" }}><b style={{ fontSize: 11.5 }}>{value}</b><div style={{ marginTop: 2, fontSize: 6.4, opacity: .42 }}>{label}</div></div>)}
+              </div>
+              {coachingEffectiveness.stagnatingFamily && <div style={{ marginTop: 8, padding: 9, borderRadius: 10, background: "rgba(255,216,107,.055)", border: "1px solid rgba(255,216,107,.14)", fontSize: 8.2, lineHeight: 1.4 }}>
+                <b style={{ color: "#ffd86b" }}>FOCUS EN STAGNATION :</b> {coachingEffectiveness.stagnatingFamilyLabel} • {coachingEffectiveness.stagnationSamples} prescriptions suivies • évolution {coachingEffectiveness.stagnationDelta >= 0 ? "+" : ""}{Math.round(coachingEffectiveness.stagnationDelta)} pts.
+                {coachingEffectiveness.relayFamily && <> Relais conseillé : <b style={{ color: "#8cffcb" }}>{coachingEffectiveness.relayFamilyLabel}</b>.</>}
+              </div>}
+              <div style={{ marginTop: 7, fontSize: 7.7, opacity: .48 }}>Évolution du taux d'adaptation : <b>{coachingEffectiveness.adaptationRateDelta >= 0 ? "+" : ""}{Math.round(coachingEffectiveness.adaptationRateDelta)} pts</b> vs période précédente. Awena privilégie désormais la stabilité si les adaptations n'apportent plus de gain mesurable.</div>
             </div>
 
             <div style={{ margin: "16px 0 8px", fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#b99cff" }}>HISTORIQUE DES PLANS</div>

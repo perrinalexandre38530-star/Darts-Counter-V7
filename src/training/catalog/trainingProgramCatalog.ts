@@ -8,7 +8,7 @@ export type TrainingProgramDefinition = {
   title: string;
   subtitle: string;
   durationMin: 15 | 30 | 45;
-  level: "Express" | "Progression" | "Compétition" | "Coach" | "Personnalisé";
+  level: "Express" | "Progression" | "Compétition" | "Coach" | "Personnalisé" | "Évaluation";
   exerciseIds: string[];
   accent?: string;
   focusFamily?: TrainingExerciseFamily | "balanced";
@@ -20,7 +20,19 @@ export type TrainingProgramBuildOptions = {
   intensity: "accessible" | "standard" | "intense";
 };
 
+export const TRAINING_ASSESSMENT_PROGRAM: TrainingProgramDefinition = {
+  id: "assessment_30",
+  title: "BILAN DE NIVEAU",
+  subtitle: "6 tests standardisés • une référence par compétence • à rejouer pour mesurer la progression réelle.",
+  durationMin: 30,
+  level: "Évaluation",
+  exerciseIds: ["score_300_18", "d16_8_hits", "checkout_61", "precision_20_19_18", "bull_10_hits", "repeat_t20_6"],
+  focusFamily: "balanced",
+  accent: "#ffd86b",
+};
+
 export const TRAINING_PROGRAMS: TrainingProgramDefinition[] = [
+  TRAINING_ASSESSMENT_PROGRAM,
   {
     id: "express_15",
     title: "EXPRESS 15",

@@ -6,6 +6,8 @@ import { appendTrainingVisit, recordSoloTrainingResult } from "../../stats/train
 import { getTrainingExercise } from "../../catalog/trainingExerciseCatalog";
 import { buildTrainingLiveAdaptation, buildTrainingLiveStepCoach, type TrainingLiveAdaptation } from "../../profile/trainingLiveCoach";
 import { buildTrainingSessionReview } from "../../profile/trainingSessionReview";
+import { chooseHistoryAwareNextFamily } from "../../profile/trainingSessionHistoryCoach";
+import { buildTrainingCoachingEffectiveness, chooseCoachingEffectiveNextFamily } from "../../profile/trainingCoachingEffectiveness";
 import { isDoubleDart, makeTrainingStats, trainingDartMatches, type TrainingDart } from "../../lib/trainingDarts";
 import { clearTrainingProgramDraft, loadTrainingProgramSessions, recordTrainingProgramSession, saveTrainingProgramDraft } from "../../profile/trainingPlanTracker";
 import type { TrainingExerciseFamily } from "../../catalog/trainingExerciseCatalog";
@@ -257,6 +259,12 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
       plannedExerciseIds: plannedProgramIdsRef.current,
       adaptationCount: sessionReview.adaptations.length,
       targetHitCount: sessionReview.targetMet,
+      targetTotalCount: sessionReview.targetTotal,
+      adherencePct: sessionReview.adherencePct,
+      warmupPerformance: sessionReview.phases.find((phase) => phase.phase === "warmup")?.averagePerformance || 0,
+      corePerformance: sessionReview.phases.find((phase) => phase.phase === "core")?.averagePerformance || 0,
+      finishPerformance: sessionReview.phases.find((phase) => phase.phase === "finish")?.averagePerformance || 0,
+      nextFamily: sessionReview.nextFamily,
       families: Array.from(new Set(programSummary.rows.map((row) => row.family))) as TrainingExerciseFamily[],
       steps: programSummary.steps,
       successes: programSummary.successes,
@@ -272,7 +280,10 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
       const levelUp = afterCareer.level.level > beforeCareer.level.level;
       setCareerMessage({ xp: gainedXp, text: levelUp ? `NIVEAU ${afterCareer.level.level} DÉBLOQUÉ • ${afterCareer.level.title}` : `${afterCareer.xp} XP CARRIÈRE` });
       const prefs = loadTrainingLabPreferences();
-      const nextFamily = (sessionReview.nextFamily || currentRecord.families[0] || "precision") as TrainingExerciseFamily;
+      const immediateFamily = (sessionReview.nextFamily || currentRecord.families[0] || "precision") as TrainingExerciseFamily;
+      const historyAwareFamily = chooseHistoryAwareNextFamily(immediateFamily, [currentRecord, ...previous]);
+      const coachingEffectiveness = buildTrainingCoachingEffectiveness([currentRecord, ...previous], 10);
+      const nextFamily = chooseCoachingEffectiveNextFamily(historyAwareFamily, coachingEffectiveness);
       const loadAfter = buildTrainingLoadSummary([currentRecord, ...previous], prefs.weeklySessionTarget);
       const advice = buildPostSessionCoach(previous, currentRecord, nextFamily, loadAfter);
       setPostSessionCoach(advice);
@@ -291,7 +302,7 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
   return <>
     <TrainingPlayLayout
       title={title}
-      tickerId="training_challenges"
+      tickerId="training_center"
       onExit={handleExit}
       participant={config?.activeParticipant}
       participantIndex={Number(config?.activeParticipantIndex || 0) + 1}

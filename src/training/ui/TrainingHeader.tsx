@@ -5,6 +5,8 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import tickerTrainingFr from "../../assets/tickers/ticker_menu_training_fr.png";
 import tickerTrainingEn from "../../assets/tickers/ticker_menu_training_en.png";
+import tickerTrainingCenterFr from "../../assets/tickers/ticker_training_center_fr.webp";
+import tickerTrainingCenterEn from "../../assets/tickers/ticker_training_center_en.webp";
 
 const TICKERS = import.meta.glob("../../assets/tickers/*.{png,webp}", {
   eager: true,
@@ -56,8 +58,10 @@ export default function TrainingHeader({ title, rules, onBack, tickerId }: Props
   const [open, setOpen] = React.useState(false);
 
   const modeTicker = React.useMemo(() => findModeTicker(tickerId || title), [tickerId, title]);
+  const isTrainingCenter = tickerId === "training_center";
+  const trainingCenterTicker = lang === "fr" ? tickerTrainingCenterFr : tickerTrainingCenterEn;
   const fallbackTicker = lang === "fr" ? tickerTrainingFr : tickerTrainingEn;
-  const ticker = modeTicker || fallbackTicker;
+  const ticker = isTrainingCenter ? trainingCenterTicker : (modeTicker || fallbackTicker);
   const accent = "#27dcff";
 
   return (
@@ -87,7 +91,7 @@ export default function TrainingHeader({ title, rules, onBack, tickerId }: Props
             height: "100%",
             objectFit: "cover",
             objectPosition: "center",
-            opacity: modeTicker ? 0.72 : 0.48,
+            opacity: isTrainingCenter || modeTicker ? 0.72 : 0.48,
             filter: "saturate(1.08) contrast(1.08)",
           }}
         />

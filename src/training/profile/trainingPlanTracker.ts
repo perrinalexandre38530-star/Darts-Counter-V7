@@ -12,6 +12,12 @@ export type TrainingProgramSessionRecord = {
   plannedExerciseIds: string[];
   adaptationCount: number;
   targetHitCount: number;
+  targetTotalCount: number;
+  adherencePct: number;
+  warmupPerformance: number;
+  corePerformance: number;
+  finishPerformance: number;
+  nextFamily: TrainingExerciseFamily | null;
   families: TrainingExerciseFamily[];
   steps: number;
   successes: number;
@@ -39,6 +45,12 @@ function sanitizeRecord(input: any): TrainingProgramSessionRecord | null {
     plannedExerciseIds,
     adaptationCount: Math.max(0, Math.round(Number(input.adaptationCount) || 0)),
     targetHitCount: Math.max(0, Math.round(Number(input.targetHitCount) || 0)),
+    targetTotalCount: Math.max(0, Math.round(Number(input.targetTotalCount) || 0)),
+    adherencePct: Math.max(0, Math.min(100, Number(input.adherencePct) || 0)),
+    warmupPerformance: Math.max(0, Math.min(100, Number(input.warmupPerformance) || 0)),
+    corePerformance: Math.max(0, Math.min(100, Number(input.corePerformance) || 0)),
+    finishPerformance: Math.max(0, Math.min(100, Number(input.finishPerformance) || 0)),
+    nextFamily: input.nextFamily ? String(input.nextFamily) as TrainingExerciseFamily : null,
     families,
     steps: Math.max(0, Math.round(Number(input.steps) || exerciseIds.length)),
     successes: Math.max(0, Math.round(Number(input.successes) || 0)),

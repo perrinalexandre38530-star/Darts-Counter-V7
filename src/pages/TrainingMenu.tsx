@@ -32,6 +32,8 @@ import BackDot from "../components/BackDot";
 import { PageAdBanner } from "../monetization/AdSlot";
 import tickerTrainingFr from "../assets/tickers/ticker_menu_training_fr.png";
 import tickerTrainingEn from "../assets/tickers/ticker_menu_training_en.png";
+import tickerTrainingCenterFr from "../assets/tickers/ticker_training_center_fr.webp";
+import tickerTrainingCenterEn from "../assets/tickers/ticker_training_center_en.webp";
 import { dartsGameRegistry } from "../games/dartsGameRegistry";
 import { devClickable, devVisuallyDisabled } from "../lib/devGate";
 import { getTrainingDetailedSessions } from "../training/stats/trainingStatsHub";
@@ -337,7 +339,7 @@ export default function TrainingMenu({ go }: Props) {
       accentHex: "#27dcff",
       accentBorder: "rgba(39,220,255,0.42)",
       accentGlow: "rgba(39,220,255,0.6)",
-      tickerSrc: findTickerSmart("training_challenges"),
+      tickerSrc: lang === "fr" ? tickerTrainingCenterFr : tickerTrainingCenterEn,
     };
 
     const challengesCard: ModeDef = {
@@ -356,8 +358,8 @@ export default function TrainingMenu({ go }: Props) {
       tickerSrc: findTickerSmart("training_challenges"),
     };
 
-    return [labCard, evolution, x01, clock, doubleIOCard, challengesCard];
-  }, [t, regById]);
+    return [evolution, labCard, x01, clock, doubleIOCard, challengesCard];
+  }, [t, lang, regById]);
 
   const extraModes: ModeDef[] = React.useMemo(() => {
     const comingSoon = t("training.menu.comingSoon", "En développement");
