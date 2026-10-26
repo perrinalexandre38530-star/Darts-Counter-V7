@@ -11,6 +11,10 @@ export default defineConfig({
     outDir: "dist",
     sourcemap: false,
     emptyOutDir: true,
+    // OFFLINE-FIRST W9: manifest de build servi dans dist/manifest.json.
+    // Le Service Worker l'utilise pour pré-cacher tous les chunks JS/CSS,
+    // y compris les routes React lazy qui n'ont jamais encore été ouvertes.
+    manifest: "manifest.json",
     rollupOptions: {
       output: {
         manualChunks: undefined,

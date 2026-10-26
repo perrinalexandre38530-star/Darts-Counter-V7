@@ -22,6 +22,7 @@ const trainingHook = read('src/training/sync/useTrainingAutoSync.ts');
 const sw = read('public/sw.js');
 const storagePlans = read('src/lib/storagePlans.ts');
 const diagnostics = read('src/components/settings/BackupDiagnosticsPanel.tsx');
+const viteConfig = read('vite.config.ts');
 
 expect('Global sync orchestrator starts from main', main.includes('initGlobalSyncOrchestrator()'));
 expect('Offline runtime exposes remote-work guard', offline.includes('shouldAttemptRemoteWork'));
@@ -39,6 +40,8 @@ expect('Training delegates auto-sync to global orchestrator', trainingHook.inclu
 expect('Browser storage quota estimation exists', storagePlans.includes('estimateBrowserStorage'));
 expect('Backup diagnostics show LOCAL authority', diagnostics.includes('LOCAL / IndexedDB') && diagnostics.includes('Synchronisation globale'));
 expect('PWA service worker contains offline shell fallback', /cache|offline/i.test(sw) && /fetch/i.test(sw));
+expect('Vite build emits manifest for offline precache', /manifest\s*:\s*["']manifest\.json["']/.test(viteConfig));
+expect('Service worker precaches Vite manifest chunks', sw.includes('readViteManifestAssets') && sw.includes('PRECACHE_APP_SHELL') && sw.includes('/manifest.json'));
 expect('App contains local/offline gate policy', /offline|local/i.test(app));
 
-console.log('\n✅ OFFLINE-FIRST FINAL CONTRACT 17/17');
+console.log('\n✅ OFFLINE-FIRST FINAL CONTRACT 19/19');

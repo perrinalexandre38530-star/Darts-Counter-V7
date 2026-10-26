@@ -827,6 +827,15 @@ async function registerServiceWorkerProd() {
         window.location.reload();
       });
 
+      // OFFLINE-FIRST W9: une fois le SW actif, redemande un pré-cache du
+      // manifest complet. C'est non bloquant et garantit que les chunks lazy
+      // du build courant sont présents avant une coupure réseau ultérieure.
+      void navigator.serviceWorker.ready.then((readyReg) => {
+        try {
+          (readyReg.active || reg.active || reg.waiting)?.postMessage({ type: "PRECACHE_APP_SHELL" });
+        } catch {}
+      }).catch(() => {});
+
       console.log("✅ Service Worker enregistré :", reg.scope);
     } catch (err) {
       console.warn("⚠️ SW register error", err);

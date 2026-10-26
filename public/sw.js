@@ -1,28 +1,69 @@
 // /public/sw.js — minimal PWA SW, cache-safe + Push appels entrants
-const SW_VERSION = "dc-sw-2026-10-26-offline-shell-v8";
+const SW_VERSION = "dc-sw-2026-10-26-offline-shell-v9";
 const CONTENT_PACK_CACHE_PREFIX = "mss-content-packs-";
 const CONTENT_PACK_CACHE = "mss-content-packs-v3";
 const MAP_TILE_CACHE = "mss-map-tiles-v1";
 const APP_SHELL_CACHE = SW_VERSION;
-const APP_SHELL_SEED = ["/", "/index.html", "/manifest.webmanifest", "/app-512.png"];
+const APP_SHELL_SEED = ["/", "/index.html", "/manifest.json", "/manifest.webmanifest", "/app-192.png", "/app-512.png"];
 const MAP_TILE_CACHE_LIMIT = 360;
 let mapTileWriteCount = 0;
 
+function isPrecacheCodeAsset(pathname) {
+  return /\.(?:js|mjs|css|woff2?|ttf|otf)$/i.test(String(pathname || ""));
+}
+
+async function readViteManifestAssets() {
+  try {
+    const response = await fetch(new Request("/manifest.json", { cache: "no-store", credentials: "same-origin" }));
+    if (!response?.ok) return [];
+    const manifest = await response.json();
+    const urls = new Set();
+    for (const entry of Object.values(manifest || {})) {
+      if (!entry || typeof entry !== "object") continue;
+      const file = String(entry.file || "").trim();
+      if (file && isPrecacheCodeAsset(file)) urls.add(`/${file.replace(/^\/+/, "")}`);
+      const css = Array.isArray(entry.css) ? entry.css : [];
+      for (const item of css) {
+        const value = String(item || "").trim();
+        if (value) urls.add(`/${value.replace(/^\/+/, "")}`);
+      }
+    }
+    return Array.from(urls);
+  } catch {
+    return [];
+  }
+}
+
+async function precacheAppShell() {
+  try {
+    const cache = await caches.open(APP_SHELL_CACHE);
+    const manifestAssets = await readViteManifestAssets();
+    const urls = Array.from(new Set([...APP_SHELL_SEED, ...manifestAssets]));
+    let cachedAssets = 0;
+    for (const url of urls) {
+      try {
+        const response = await fetch(new Request(url, { cache: "no-store", credentials: "same-origin" }));
+        if (!response?.ok) continue;
+        await cache.put(url, response.clone());
+        cachedAssets += 1;
+      } catch {}
+    }
+    try {
+      await cache.put("/__mss_offline_ready__", new Response(JSON.stringify({
+        version: SW_VERSION,
+        cachedAt: Date.now(),
+        cachedAssets,
+        manifestAssets: manifestAssets.length,
+      }), { headers: { "content-type": "application/json" } }));
+    } catch {}
+  } catch {}
+}
+
 self.addEventListener("install", (event) => {
   self.skipWaiting();
-  // OFFLINE-FIRST W3: précharge le minimum indispensable à une ouverture PWA.
-  // Un échec partiel ne doit jamais empêcher l'installation du SW.
-  event.waitUntil((async () => {
-    try {
-      const cache = await caches.open(APP_SHELL_CACHE);
-      for (const url of APP_SHELL_SEED) {
-        try {
-          const response = await fetch(url, { cache: "no-store" });
-          if (response?.ok) await cache.put(url, response.clone());
-        } catch {}
-      }
-    } catch {}
-  })());
+  // OFFLINE-FIRST W9: le shell ET tous les chunks Vite sont installés avant
+  // le test mode avion. Une route lazy jamais ouverte reste donc démarrable.
+  event.waitUntil(precacheAppShell());
 });
 
 self.addEventListener("activate", (event) => {
@@ -39,6 +80,10 @@ self.addEventListener("message", (event) => {
   const type = event?.data?.type;
   if (type === "SKIP_WAITING") {
     self.skipWaiting();
+    return;
+  }
+  if (type === "PRECACHE_APP_SHELL") {
+    event.waitUntil(precacheAppShell());
     return;
   }
   if (type === "PURGE_CACHES") {
