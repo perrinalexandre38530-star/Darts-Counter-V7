@@ -1,20 +1,123 @@
-// /public/sw.js — minimal PWA SW, cache-safe + Push appels entrants
-const SW_VERSION = "dc-sw-2026-09-06-auth-network-v7";
+// /public/sw.js — PWA SW offline-first + Push appels entrants
+const SW_VERSION = "dc-sw-2026-10-26-offline-first-v1";
+const APP_SHELL_CACHE = `${SW_VERSION}-app-shell`;
+const RUNTIME_STATIC_CACHE = `${SW_VERSION}-runtime-static`;
 const CONTENT_PACK_CACHE_PREFIX = "mss-content-packs-";
 const CONTENT_PACK_CACHE = "mss-content-packs-v3";
 const MAP_TILE_CACHE = "mss-map-tiles-v1";
 const MAP_TILE_CACHE_LIMIT = 360;
 let mapTileWriteCount = 0;
 
-self.addEventListener("install", () => {
-  self.skipWaiting();
+const CORE_SHELL_URLS = [
+  "/",
+  "/index.html",
+  "/manifest.json",
+  "/manifest.webmanifest",
+  "/app-192.png",
+  "/app-512.png",
+];
+
+function sameOrigin(url) {
+  try { return new URL(url, self.location.origin).origin === self.location.origin; }
+  catch { return false; }
+}
+
+function normalizePath(url) {
+  try {
+    const u = new URL(url, self.location.origin);
+    return `${u.pathname}${u.search}`;
+  } catch {
+    return String(url || "");
+  }
+}
+
+function isCodeAssetPath(pathname) {
+  return /\.(?:js|mjs|css|woff2?|ttf|otf)$/i.test(String(pathname || ""));
+}
+
+function isRuntimeStaticPath(pathname) {
+  return /\.(?:png|jpe?g|webp|gif|svg|ico|avif|mp3|m4a|wav|ogg|json)$/i.test(String(pathname || ""));
+}
+
+async function cacheResponse(cache, request, response) {
+  if (!response || !response.ok) return false;
+  try {
+    await cache.put(request, response.clone());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function fetchAndCache(cache, url) {
+  try {
+    const request = new Request(url, { method: "GET", cache: "reload", credentials: "same-origin" });
+    const response = await fetch(request);
+    if (!response?.ok) return false;
+    return await cacheResponse(cache, request, response);
+  } catch {
+    return false;
+  }
+}
+
+async function readViteManifestUrls() {
+  try {
+    const response = await fetch(new Request("/manifest.json", { cache: "no-store", credentials: "same-origin" }));
+    if (!response?.ok) return [];
+    const manifest = await response.json();
+    const urls = new Set();
+
+    for (const entry of Object.values(manifest || {})) {
+      const file = entry && typeof entry === "object" ? entry.file : null;
+      if (file && isCodeAssetPath(file)) urls.add(`/${String(file).replace(/^\/+/, "")}`);
+      const css = Array.isArray(entry?.css) ? entry.css : [];
+      for (const item of css) {
+        if (item) urls.add(`/${String(item).replace(/^\/+/, "")}`);
+      }
+    }
+
+    return Array.from(urls);
+  } catch {
+    return [];
+  }
+}
+
+async function precacheAppShell() {
+  const cache = await caches.open(APP_SHELL_CACHE);
+  const manifestUrls = await readViteManifestUrls();
+  const urls = Array.from(new Set([...CORE_SHELL_URLS, ...manifestUrls]));
+
+  // Best effort par fichier : un asset optionnel manquant ne doit JAMAIS faire
+  // échouer l'installation du SW entier.
+  for (const url of urls) {
+    await fetchAndCache(cache, url);
+  }
+
+  try {
+    await cache.put("/__mss_offline_ready__", new Response(JSON.stringify({
+      version: SW_VERSION,
+      cachedAt: Date.now(),
+      codeAssets: manifestUrls.length,
+    }), { headers: { "content-type": "application/json" } }));
+  } catch {}
+}
+
+self.addEventListener("install", (event) => {
+  event.waitUntil((async () => {
+    await precacheAppShell();
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
     try {
       const names = await caches.keys();
-      await Promise.all(names.filter((name) => name !== SW_VERSION && name !== CONTENT_PACK_CACHE && name !== MAP_TILE_CACHE).map((name) => caches.delete(name).catch(() => false)));
+      await Promise.all(names.filter((name) => {
+        if (name === APP_SHELL_CACHE || name === RUNTIME_STATIC_CACHE || name === CONTENT_PACK_CACHE || name === MAP_TILE_CACHE) return false;
+        if (name.startsWith(CONTENT_PACK_CACHE_PREFIX)) return false;
+        return name.startsWith("dc-sw-") || name.includes("app-shell") || name.includes("runtime-static");
+      }).map((name) => caches.delete(name).catch(() => false)));
     } catch {}
     await self.clients.claim();
   })());
@@ -24,6 +127,10 @@ self.addEventListener("message", (event) => {
   const type = event?.data?.type;
   if (type === "SKIP_WAITING") {
     self.skipWaiting();
+    return;
+  }
+  if (type === "PRECACHE_APP_SHELL") {
+    event.waitUntil(precacheAppShell());
     return;
   }
   if (type === "PURGE_CACHES") {
@@ -52,9 +159,9 @@ self.addEventListener("message", (event) => {
   }
 });
 
-// Les packs Cloudflare sont explicitement installables. Ils sont les seuls médias
-// lourds servis cache-first. Le reste de l'application reste network-first pour
-// ne jamais ressusciter un vieux chunk Vite.
+// Les packs Cloudflare sont explicitement installables. Ils restent les médias
+// lourds servis cache-first. Le shell applicatif est désormais également mis en
+// cache afin de permettre un vrai démarrage/rechargement sans réseau.
 function parseContentPackRange(value, total) {
   const match = /^bytes=(\d*)-(\d*)$/i.exec(String(value || "").trim());
   if (!match || !Number.isFinite(total) || total <= 0) return null;
@@ -153,11 +260,69 @@ async function serveContentPackRequest(request) {
   }
 }
 
+async function serveNavigationRequest(request) {
+  const cache = await caches.open(APP_SHELL_CACHE);
+  try {
+    const response = await fetch(request);
+    if (response?.ok) {
+      // Les routes utilisent HashRouter, mais on garde aussi la dernière réponse
+      // navigation en secours pour Cloudflare Pages/PWA.
+      try { await cache.put("/index.html", response.clone()); } catch {}
+      return response;
+    }
+  } catch {}
+
+  return (
+    await cache.match("/index.html") ||
+    await cache.match("/") ||
+    new Response("Application hors ligne indisponible : shell non installé.", {
+      status: 503,
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    })
+  );
+}
+
+async function serveCodeAssetRequest(request) {
+  const shellCache = await caches.open(APP_SHELL_CACHE);
+  const cached = await shellCache.match(request, { ignoreSearch: false });
+  if (cached) return cached;
+
+  try {
+    const response = await fetch(request);
+    if (response?.ok) {
+      await cacheResponse(shellCache, request, response);
+      return response;
+    }
+    return response;
+  } catch {
+    // Les chunks Vite sont hashés : ignoreSearch n'est volontairement pas utilisé.
+    return new Response("", { status: 504, statusText: "Offline code asset unavailable" });
+  }
+}
+
+async function serveRuntimeStaticRequest(request) {
+  const cache = await caches.open(RUNTIME_STATIC_CACHE);
+  const cached = await cache.match(request, { ignoreVary: true });
+  if (cached) return cached;
+
+  try {
+    const response = await fetch(request);
+    if (response && response.ok) {
+      void cacheResponse(cache, request, response);
+    }
+    return response;
+  } catch {
+    return cached || new Response("", { status: 504, statusText: "Offline asset unavailable" });
+  }
+}
+
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   let url = null;
   try { url = new URL(event.request.url); } catch {}
-  const isContentPack = !!url && url.pathname.includes("/mss-content-packs/");
+  if (!url) return;
+
+  const isContentPack = url.pathname.includes("/mss-content-packs/");
   if (isContentPack) {
     event.respondWith(serveContentPackRequest(event.request));
     return;
@@ -166,11 +331,27 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(serveMapTileRequest(event.request));
     return;
   }
-  // Le SW n'a aucune raison d'intercepter le shell/auth/navigation générale.
-  // L'ancien fallback fabriquait un HTTP 503 "Network unavailable" qui polluait
-  // la console (et pouvait gêner un retour OAuth) lors d'une micro-coupure.
-  // On laisse donc le navigateur gérer normalement tous les GET non spécialisés.
-  return;
+
+  // Les API/auth/cloud ne doivent jamais être simulées hors ligne. Elles échouent
+  // normalement tandis que le store local reste fonctionnel et met ses mutations
+  // en queue pour la reconnexion.
+  if (url.origin !== self.location.origin) return;
+  if (/^\/api(?:\/|$)/i.test(url.pathname)) return;
+
+  if (event.request.mode === "navigate" || event.request.destination === "document") {
+    event.respondWith(serveNavigationRequest(event.request));
+    return;
+  }
+
+  if (isCodeAssetPath(url.pathname) || url.pathname.startsWith("/assets/")) {
+    event.respondWith(serveCodeAssetRequest(event.request));
+    return;
+  }
+
+  if (isRuntimeStaticPath(url.pathname)) {
+    event.respondWith(serveRuntimeStaticRequest(event.request));
+    return;
+  }
 });
 
 self.addEventListener("notificationclick", (event) => {
