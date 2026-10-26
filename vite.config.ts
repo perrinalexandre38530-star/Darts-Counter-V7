@@ -11,6 +11,11 @@ export default defineConfig({
     outDir: "dist",
     sourcemap: false,
     emptyOutDir: true,
+    // OFFLINE-FIRST WAVE 1B:
+    // Génère /manifest.json dans dist. Le Service Worker s'en sert pour
+    // pré-cacher TOUS les chunks/assets Vite (y compris les imports lazy), afin
+    // qu'une recharge en mode avion puisse relancer l'application complète.
+    manifest: "manifest.json",
     rollupOptions: {
       output: {
         manualChunks: undefined,
