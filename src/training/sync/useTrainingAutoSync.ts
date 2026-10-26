@@ -1,9 +1,10 @@
 import { useEffect } from "react";
 import { useAuthOnline } from "../../hooks/useAuthOnline";
+import { shouldAttemptRemoteWork } from "../../lib/offlineFirstRuntime";
 import { trainingSyncQueueTry, trainingSyncQueueEnqueueSoon } from "./trainingSyncQueue";
 
 export function useTrainingAutoSync(enabled: boolean = true) {
-  const { user, online } = useAuthOnline();
+  const { user } = useAuthOnline();
 
   useEffect(() => {
     if (!enabled) return;
@@ -14,34 +15,35 @@ export function useTrainingAutoSync(enabled: boolean = true) {
   }, [user, enabled]);
 
   useEffect(() => {
-    if (!enabled) return;
-    if (!user || !online) return;
+    if (!enabled || !user) return;
 
     let alive = true;
 
-    // ✅ Best-effort, mais sans spam Supabase
-    trainingSyncQueueEnqueueSoon();
-    trainingSyncQueueTry(user.id);
-
-    const onFocus = () => {
-      if (!alive) return;
+    const trySync = () => {
+      if (!alive || !shouldAttemptRemoteWork()) return;
+      // Best-effort, sans spam : l'enregistrement local/queue existe déjà.
       trainingSyncQueueEnqueueSoon();
-      trainingSyncQueueTry(user.id);
+      void trainingSyncQueueTry(user.id);
     };
 
-    window.addEventListener("focus", onFocus);
+    // Premier essai uniquement si le runtime est réellement déclaré en ligne.
+    trySync();
 
-    // ⚠️ IMPORTANT: ne pas ping le serveur toutes les 15s.
-    // 2 minutes est largement suffisant (et la queue ne sync que s'il y a des events).
-    const t = window.setInterval(() => {
-      if (!alive) return;
-      trainingSyncQueueTry(user.id);
-    }, 120000);
+    const onFocus = () => trySync();
+    const onOnline = () => trySync();
+
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("online", onOnline, { passive: true });
+
+    // Pas de polling réseau hors ligne. En ligne, 2 minutes est largement
+    // suffisant et la queue ne pousse que les événements en attente.
+    const t = window.setInterval(trySync, 120000);
 
     return () => {
       alive = false;
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener("online", onOnline);
       window.clearInterval(t);
     };
-  }, [user, online, enabled]);
+  }, [user, enabled]);
 }
