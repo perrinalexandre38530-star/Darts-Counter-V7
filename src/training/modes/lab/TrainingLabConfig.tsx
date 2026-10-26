@@ -415,7 +415,6 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 <div style={{ marginTop: 7, fontSize: 7.8, opacity: .5 }}>{new Date(assessment.endedAt).toLocaleDateString()} • {assessment.sessionsSinceAssessment} séance{assessment.sessionsSinceAssessment > 1 ? "s" : ""} depuis le bilan{assessment.delta == null ? "" : ` • évolution ${assessment.delta >= 0 ? "+" : ""}${Math.round(assessment.delta)} pts`}</div>
               </>}
             </div>
-            </div>
             </>}
 
             {programPanel === "week" && <>
