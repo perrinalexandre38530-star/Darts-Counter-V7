@@ -55,6 +55,19 @@ function persistDiagnostics(state: OfflineFirstState): void {
   } catch {}
 }
 
+function readKnownLocalAccountId(): string {
+  try {
+    return String(
+      localStorage.getItem("dc_user_id") ||
+      (window as any).__dc_primary_auth_user_id ||
+      (window as any).__dc_last_signed_in_user_id ||
+      "",
+    ).trim();
+  } catch {
+    return "";
+  }
+}
+
 /**
  * Compatibility bridge for the V102 account gate.
  *
@@ -64,8 +77,13 @@ function persistDiagnostics(state: OfflineFirstState): void {
  *
  * While OFFLINE ONLY, expose the exact same cached identity with no expiration
  * and in degraded/local mode. We never invent a user id and never change the
- * storage namespace. As soon as connectivity returns, the original cached
- * session is returned untouched and Supabase can refresh normally.
+ * storage namespace. If the cached auth object itself is missing but V102 still
+ * has its canonical dc_user_id, rebuild only the minimal local identity from
+ * that SAME id. Explicit logout removes dc_user_id and is also enforced again
+ * inside useAuthOnline, so this bridge cannot undo a deliberate logout.
+ *
+ * As soon as connectivity returns, the original cached session is returned
+ * untouched and Supabase can refresh normally.
  */
 function installOfflineCachedAuthBridge(): void {
   if (cachedAuthBridgeInstalled) return;
@@ -76,15 +94,42 @@ function installOfflineCachedAuthBridge(): void {
     if (!original) return;
     api.loadAuthFromLS = () => {
       const cached = original();
-      if (!cached || readOnlineHint()) return cached;
-      const userId = String(
+      if (readOnlineHint()) return cached;
+
+      const cachedUserId = String(
         cached?.supabaseUserId ||
         cached?.user?.user_metadata?.supabase_user_id ||
         cached?.user?.id ||
         cached?.userId ||
         "",
       ).trim();
+      const userId = cachedUserId || readKnownLocalAccountId();
       if (!userId) return cached;
+
+      if (!cached) {
+        return {
+          token: "",
+          refreshToken: "",
+          expiresAt: null,
+          userId,
+          supabaseUserId: userId,
+          canonicalUserId: userId,
+          authProvider: "supabase_failover",
+          degradedMode: true,
+          profile: null,
+          user: {
+            id: userId,
+            nickname: "Player",
+            user_metadata: {
+              supabase_user_id: userId,
+              canonical_user_id: userId,
+              degraded_mode: true,
+              auth_provider: "supabase_failover",
+            },
+          },
+        };
+      }
+
       return {
         ...cached,
         expiresAt: null,
