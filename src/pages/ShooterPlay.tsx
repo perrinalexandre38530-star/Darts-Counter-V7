@@ -843,7 +843,7 @@ export default function ShooterPlay(props: any) {
                   onCancel={cancelOrUndo}
                   onBackspace={() => setThrowDarts((prev) => prev.slice(0, -1))}
                   onNumber={(n) => addDart(n)}
-                  onBull={() => addDart(25)}
+                  onBull={(bull) => addDart(25, bull === 50 ? 2 : 1)}
                   onValidate={validateVisit}
                   centerSlot={goldVisitScore}
                   noticeSlot={keypadStatus}

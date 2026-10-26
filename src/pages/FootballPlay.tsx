@@ -11,6 +11,7 @@ import Keypad from "../components/Keypad"; // contrat historique conservé, remp
 import PageHeader from "../components/PageHeader";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { useTheme } from "../contexts/ThemeContext";
+import { useLang } from "../contexts/LangContext";
 import type { GameDart } from "../lib/types-game";
 import {
   buildFootballMatchStats,
@@ -437,6 +438,9 @@ function dartPreviewLabel(dart?: UiDart) {
 }
 
 function CompactFootballPad({ currentThrow, multiplier, targets, targetColor, action, notice, recommendation, projection, onSimple, onDouble, onTriple, onNumber, onBull, onCancel, onBackspace, onValidate, disabled }: any) {
+  const { lang } = useLang();
+  const bull25Label = lang === "fr" ? "1/2 BULL" : "BULL";
+  const bull50Label = lang === "fr" ? "BULL" : "DBULL";
   const rows = [[0, 1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12, 13], [14, 15, 16, 17, 18, 19, 20]];
   const targetSet = new Set(action === "classic_shot" || action === "classic_possession" ? [] : targets);
   const selectedEffect = actionMeta(action).effects[Math.max(0, Math.min(2, Number(multiplier || 1) - 1))] || "";
@@ -477,8 +481,9 @@ function CompactFootballPad({ currentThrow, multiplier, targets, targetColor, ac
       disabled={disabled}
     >{number === 0 ? "MISS" : <><span>{number}</span>{recommendation?.target === number ? <small>PLAN</small> : targetSet.has(number) ? <small>CIBLE</small> : null}</>}</button>)}</div>)}
 
-    <div className="football-pad-footer">
-      <button type="button" className={`football-pad-bull ${multiplier === 2 ? "is-dbull" : ""} ${recommendation?.target === 25 ? "is-recommended" : ""}`} onClick={onBull} disabled={disabled}>{multiplier === 2 ? "DBULL" : "BULL"}</button>
+    <div className="football-pad-footer football-pad-footer--dual-bull">
+      <button type="button" className={`football-pad-bull is-bull25 ${recommendation?.target === 25 ? "is-recommended" : ""}`} onClick={() => onBull(25)} disabled={disabled}>{bull25Label}</button>
+      <button type="button" className={`football-pad-bull is-dbull ${recommendation?.target === 25 ? "is-recommended" : ""}`} onClick={() => onBull(50)} disabled={disabled}>{bull50Label}</button>
       <button type="button" className="football-pad-backspace" onClick={onBackspace} disabled={disabled || !currentThrow.length}>⌫</button>
       <button type="button" className="football-pad-validate" onClick={onValidate} disabled={disabled || !currentThrow.length}>VALIDER · {currentThrow.length}/3</button>
     </div>
@@ -896,7 +901,7 @@ export default function FootballPlay(props: any) {
           onCancel={cancelOrUndo}
           onBackspace={() => setThrowDarts((previous) => previous.slice(0, -1))}
           onNumber={(number: number) => addDart(number)}
-          onBull={() => addDart(25)}
+          onBull={(bull) => addDart(25, bull === 50 ? 2 : 1)}
           onValidate={() => commitVisit()}
           disabled={botThinking || state.phase === "finished"}
         />}

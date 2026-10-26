@@ -1283,7 +1283,7 @@ export default function PtitHunPlay(props: any) {
           keypadDisableSegmentNumbers={!segmentZoneSelected}
           keypadAuxActionOverride={{ label: fr ? "ZONE SPÉCIALES" : "SPECIAL ZONES", icon: <img src={gros6ZonesKeypad} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} />, onClick: () => setSpecialOpen(true), tone: "gold", title: fr ? "Ouvrir les zones spéciales" : "Open special zones", ariaLabel: fr ? "Ouvrir les zones spéciales" : "Open special zones", fullBleedIcon: true }}
           keypadSecondaryAction={currentThrow.length < 3 ? { icon: <span style={{ fontSize: 10.5, fontWeight: 1100, letterSpacing: .4 }}>MISS</span>, onClick: () => appendKeypadDart({ v: 0, mult: 1 } as any), tone: "red", title: fr ? "Ajouter un MISS" : "Add a MISS", ariaLabel: fr ? "Ajouter un MISS" : "Add a MISS" } : null}
-          keypadFooterAction={currentThrow.length >= 3 ? { label: fr ? "VALIDER" : "VALIDATE", title: fr ? "Valider la volée" : "Validate visit", tone: "gold", onClick: validate } : { label: "DBULL", title: "Double Bull", tone: "green", onClick: addDbull }}
+          keypadFooterAction={currentThrow.length >= 3 ? { label: fr ? "VALIDER" : "VALIDATE", title: fr ? "Valider la volée" : "Validate visit", tone: "gold", onClick: validate } : { label: "DBULL", title: "Double Bull", tone: "bull50", onClick: addDbull }}
           hidePreview
           hideTotal
           showPlaceholders={false}

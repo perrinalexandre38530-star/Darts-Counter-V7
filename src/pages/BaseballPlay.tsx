@@ -731,7 +731,7 @@ export default function BaseballPlay(props: any) {
                 onBackspace={() => setThrowDarts((previous) => previous.slice(0, -1))}
                 onCancel={cancelOrUndo}
                 onNumber={(number) => addDart(number)}
-                onBull={() => addDart(25, multiplier === 2 ? 2 : 1)}
+                onBull={(bull) => addDart(25, bull === 50 ? 2 : 1)}
                 onValidate={validateVisit}
                 hidePreview={false}
                 centerSlot={<span style={{ display: "inline-block", minWidth: 56, textAlign: "center", padding: "8px 14px", borderRadius: 14, background: "rgba(255,187,51,.12)", border: "1px solid rgba(255,187,51,.4)", color: "#ffc63a", fontWeight: 900, fontSize: 22, lineHeight: 1, boxShadow: "0 0 16px rgba(255,170,0,.22)" }}>{state.rules.gameVariant === "attack_defense" ? previewPower : previewRuns}</span>}

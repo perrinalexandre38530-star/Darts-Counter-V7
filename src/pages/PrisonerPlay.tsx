@@ -523,7 +523,7 @@ export default function PrisonerPlay(props: any) {
             onCancel={cancelOrUndo}
             onBackspace={() => setThrowDarts((prev) => prev.slice(0, -1))}
             onNumber={(n: number) => addDart(n)}
-            onBull={() => addDart(25, multiplier === 2 ? 2 : 1)}
+            onBull={(bull) => addDart(25, bull === 50 ? 2 : 1)}
             onValidate={validateVisit}
             hidePreview
             hideTotal

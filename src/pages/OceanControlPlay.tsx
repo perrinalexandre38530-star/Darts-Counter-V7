@@ -11,6 +11,7 @@ import Keypad from "../components/Keypad"; // conservé pour le contrat d’int�
 import PageHeader from "../components/PageHeader";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { useTheme } from "../contexts/ThemeContext";
+import { useLang } from "../contexts/LangContext";
 import type { GameDart } from "../lib/types-game";
 import {
   buildOceanControlMatchStats,
@@ -450,6 +451,9 @@ function playOceanResultSfx(visit: any, finished = false) {
 }
 
 function CompactDartPad({ currentThrow, multiplier, onSimple, onDouble, onTriple, onNumber, onBull, onCancel, onBackspace, onValidate, noticeSlot, disabled = false }: any) {
+  const { lang } = useLang();
+  const bull25Label = lang === "fr" ? "1/2 BULL" : "BULL";
+  const bull50Label = lang === "fr" ? "BULL" : "DBULL";
   const rows = [
     [0, 1, 2, 3, 4, 5, 6],
     [7, 8, 9, 10, 11, 12, 13],
@@ -475,8 +479,9 @@ function CompactDartPad({ currentThrow, multiplier, onSimple, onDouble, onTriple
       {rows.map((row, rowIndex) => <div key={rowIndex} className="ocean-pad-grid-row">{row.map((n) => <button key={n} type="button" className={`ocean-pad-cell ${n === 0 ? "is-miss" : ""}`} onClick={() => onNumber(n)} disabled={disabled} title={n === 0 ? "MISS" : String(n)}>{n === 0 ? "MISS" : n}</button>)}</div>)}
     </div>
 
-    <div className="ocean-pad-footer-row">
-      <button type="button" className={`ocean-pad-bull ${multiplier === 2 ? "is-dbull" : ""}`} onClick={onBull} disabled={disabled}>{multiplier === 2 ? "DBULL" : "BULL"}</button>
+    <div className="ocean-pad-footer-row ocean-pad-footer-row--dual-bull">
+      <button type="button" className="ocean-pad-bull is-bull25" onClick={() => onBull(25)} disabled={disabled}>{bull25Label}</button>
+      <button type="button" className="ocean-pad-bull is-dbull" onClick={() => onBull(50)} disabled={disabled}>{bull50Label}</button>
       <button type="button" className="ocean-pad-backspace" onClick={onBackspace} disabled={disabled || !currentThrow.length}>⌫</button>
       <button type="button" className="ocean-pad-validate" onClick={onValidate} disabled={disabled || !currentThrow.length}>VALIDER</button>
     </div>
@@ -610,6 +615,7 @@ function PlacementScreen({ state, profilesById, ready, onReady, orientation, set
 
 export default function OceanControlPlay(props: any) {
   const { theme } = useTheme();
+  const { lang } = useLang();
   const config = React.useMemo(() => normalizeConfig(props), []);
   const store = props?.store;
   const go = props?.go ?? props?.setTab;
@@ -1143,12 +1149,13 @@ export default function OceanControlPlay(props: any) {
             <button type="button" className={`ocean-pad-mode ${multiplier === 3 ? "is-active is-triple" : ""}`} onClick={() => setMultiplier(3)} disabled={botThinking}>TRIPLE</button>
             <button type="button" className="ocean-pad-undo" onClick={cancelOrUndo} disabled={botThinking}>↶</button>
           </div>
-          <div className="ocean-pad-footer-row">
-            <button type="button" className={`ocean-pad-bull ${multiplier === 2 ? "is-dbull" : ""}`} onClick={() => addDart(25)} disabled={botThinking}>{multiplier === 2 ? "DBULL" : "BULL"}</button>
+          <div className="ocean-pad-footer-row ocean-pad-footer-row--dual-bull">
+            <button type="button" className="ocean-pad-bull is-bull25" onClick={() => addDart(25, 1)} disabled={botThinking}>{lang === "fr" ? "1/2 BULL" : "BULL"}</button>
+            <button type="button" className="ocean-pad-bull is-dbull" onClick={() => addDart(25, 2)} disabled={botThinking}>{lang === "fr" ? "BULL" : "DBULL"}</button>
             <button type="button" className="ocean-pad-backspace" onClick={() => setThrowDarts((prev) => prev.slice(0, -1))} disabled={botThinking || !throwDarts.length}>⌫</button>
             <button onClick={() => commitVisit()} disabled={!throwDarts.length || botThinking} className="ocean-pad-validate">VALIDER</button>
           </div>
-        </div> : <CompactDartPad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={() => setMultiplier(1)} onDouble={() => setMultiplier(2)} onTriple={() => setMultiplier(3)} onCancel={cancelOrUndo} onBackspace={() => setThrowDarts((prev) => prev.slice(0, -1))} onNumber={(n) => addDart(n)} onBull={() => addDart(25)} onValidate={() => commitVisit()} noticeSlot={noticeSlot} disabled={botThinking} />}
+        </div> : <CompactDartPad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={() => setMultiplier(1)} onDouble={() => setMultiplier(2)} onTriple={() => setMultiplier(3)} onCancel={cancelOrUndo} onBackspace={() => setThrowDarts((prev) => prev.slice(0, -1))} onNumber={(n) => addDart(n)} onBull={(bull: 25 | 50) => addDart(25, bull === 50 ? 2 : 1)} onValidate={() => commitVisit()} noticeSlot={noticeSlot} disabled={botThinking} />}
       </section>
     </main>
 

@@ -2192,12 +2192,12 @@ function PlaySection(props: PlaySectionProps) {
     setPadMultiplier(1);
   }, [padMultiplier, setIsMiss, setSelectedMult, setSelectedValue]);
 
-  const chooseBull = React.useCallback(() => {
+  const chooseBull = React.useCallback((bull: 25 | 50) => {
     setIsMiss(false);
     setSelectedValue("BULL");
-    setSelectedMult(padMultiplier === 2 ? 2 : 1);
+    setSelectedMult(bull === 50 ? 2 : 1);
     setPadMultiplier(1);
-  }, [padMultiplier, setIsMiss, setSelectedMult, setSelectedValue]);
+  }, [setIsMiss, setSelectedMult, setSelectedValue]);
 
   const validatePending = React.useCallback(() => {
     if (!hasPending) return;

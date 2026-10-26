@@ -1632,7 +1632,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
               onBackspace={cancelInput}
               onCancel={cancelInput}
               onNumber={(number) => { const selected = multiplierRef.current; addDart(number, selected); }}
-              onBull={() => { const selected = multiplierRef.current === 2 ? 2 : 1; addDart(25, selected); }}
+              onBull={(bull) => addDart(25, bull === 50 ? 2 : 1)}
               onValidate={validateVisit}
               hidePreview={false}
               centerSlot={<span style={{ display: "inline-block", minWidth: 58, textAlign: "center", padding: "8px 14px", borderRadius: 14, background: "rgba(255,187,51,.12)", border: "1px solid rgba(255,187,51,.4)", color: "#ffc63a", fontWeight: 900, fontSize: 22, lineHeight: 1, boxShadow: "0 0 16px rgba(255,170,0,.22)" }}>{config.variant === "classic" ? volleyScore(darts) : (darts.length ? darts.map((d:any) => dartLabel(d)).join(" · ") : 0)}</span>}

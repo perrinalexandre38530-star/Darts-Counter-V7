@@ -72,7 +72,7 @@ export default function TrainingDartPad({
           const safeMult: 1 | 2 | 3 = n === 0 ? 1 : multiplier;
           append({ v: n, mult: safeMult } as UIDart);
         }}
-        onBull={() => append({ v: 25, mult: multiplier === 2 ? 2 : 1 } as UIDart)}
+        onBull={(bull) => append({ v: 25, mult: bull === 50 ? 2 : 1 } as UIDart)}
         onValidate={validate}
         noticeSlot={
           validationHint ? (

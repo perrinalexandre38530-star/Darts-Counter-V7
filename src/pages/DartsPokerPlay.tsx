@@ -572,7 +572,7 @@ export default function DartsPokerPlay(props: any) {
 
       {state.phase === "powers"
         ? <PowerPhasePanel hand={activeHand} playerName={playerName(activeProfile)} evaluation={liveEvaluation} onChoice={useChoice} onExchange={exchangeCard} onValidate={validateHand} />
-        : <Keypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={() => setMultiplier(1)} onDouble={() => setMultiplier(2)} onTriple={() => setMultiplier(3)} onCancel={cancelOrUndo} onBackspace={() => setThrowDarts([])} onNumber={(n) => addDart(n)} onBull={() => addDart(25)} onValidate={() => commitVisit()} centerSlot={centerScore} noticeSlot={keypadNotice} validateAttention={throwDarts.length === 1} hidePreview safeBottomPad />}
+        : <Keypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={() => setMultiplier(1)} onDouble={() => setMultiplier(2)} onTriple={() => setMultiplier(3)} onCancel={cancelOrUndo} onBackspace={() => setThrowDarts([])} onNumber={(n) => addDart(n)} onBull={(bull) => addDart(25, bull === 50 ? 2 : 1)} onValidate={() => commitVisit()} centerSlot={centerScore} noticeSlot={keypadNotice} validateAttention={throwDarts.length === 1} hidePreview safeBottomPad />}
     </main>
 
     {showGameplayGuide ? <GameplayGuideModal onClose={dismissGameplayGuide} /> : null}

@@ -369,9 +369,9 @@ export default function BatardPlay(props: any) {
     if (m !== 1) setMultiplier(1);
   }
 
-  function addBull() {
+  function addBull(bull: 25 | 50) {
     if (finished || botThinking || currentThrow.length >= 3) return;
-    const m = multiplier === 2 ? 2 : 1;
+    const m: 1 | 2 = bull === 50 ? 2 : 1;
     setCurrentThrow((prev) => [...prev, { v: 25, mult: m } as UIDart]);
     if (multiplier !== 1) setMultiplier(1);
   }

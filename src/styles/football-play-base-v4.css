@@ -541,16 +541,22 @@
 }
 
 .football-pad-bull {
-  color: #65e5aa;
-  border-color: rgba(101, 229, 170, .55);
-  background: rgba(101, 229, 170, .10);
+  color: #9be7c2;
+  border-color: rgba(139,224,184,.30);
+  background: linear-gradient(180deg,rgba(38,117,84,.42),rgba(12,58,42,.50));
   font-size: 8px;
+}
+.football-pad-footer--dual-bull {
+  grid-template-columns: minmax(58px,.72fr) minmax(58px,.72fr) 42px minmax(0,1.12fr);
+}
+.football-pad-bull.is-bull25 {
+  box-shadow: inset 0 0 0 1px rgba(139,224,184,.04);
 }
 
 .football-pad-bull.is-dbull {
-  color: #35d0ff;
-  border-color: rgba(53, 208, 255, .60);
-  background: rgba(53, 208, 255, .11);
+  color: #e9a7b0;
+  border-color: rgba(220,115,128,.30);
+  background: linear-gradient(180deg,rgba(154,48,60,.42),rgba(66,14,22,.52));
 }
 
 .football-pad-backspace {

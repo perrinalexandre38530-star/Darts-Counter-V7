@@ -4459,11 +4459,11 @@ export default function DepartementsPlay(props: any) {
             setCurrentThrow((prev) => [...prev, { v: n, mult: multiplier }]);
             setMultiplier(1);
           }}
-          onBull={() => {
-            if (multiplier === 2) playTerritoriesSfx("dbull");
+          onBull={(bull) => {
+            if (bull === 50) playTerritoriesSfx("dbull");
             else playTerritoriesSfx("bull");
             if (currentThrow.length >= 3) return;
-            setCurrentThrow((prev) => [...prev, { v: 25, mult: multiplier === 2 ? 2 : 1 }]);
+            setCurrentThrow((prev) => [...prev, { v: 25, mult: bull === 50 ? 2 : 1 }]);
             setMultiplier(1);
           }}
           onBackspace={() => {

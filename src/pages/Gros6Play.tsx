@@ -1157,7 +1157,7 @@ export default function Gros6Play({ store, go, config, onFinish, initialSnapshot
             keypadFooterAction={{
               label: "DBULL",
               onClick: submitDoubleBull,
-              tone: "green",
+              tone: "bull50",
               title: L("Double Bull", "Double Bull"),
               ariaLabel: L("Double Bull", "Double Bull"),
             }}

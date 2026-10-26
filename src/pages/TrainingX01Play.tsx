@@ -1406,14 +1406,14 @@ export default function TrainingX01Play({
     setMultiplier(1);
   }
 
-  function handleBull() {
+  function handleBull(bull: 25 | 50) {
     // partie terminée ou bust verrouillé => on ignore
     if (remaining <= 0 || bustLocked) return;
 
     if (!started) setStarted(true);
     if (currentThrow.length >= 3) return;
 
-    const d: UIDart = { v: 25, mult: multiplier === 2 ? 2 : 1 };
+    const d: UIDart = { v: 25, mult: bull === 50 ? 2 : 1 };
     const nextThrow = [...currentThrow, d];
     const after = remaining - throwTotal(nextThrow);
 
