@@ -10,6 +10,7 @@
 // - This module never performs a network request by itself.
 // ============================================================
 
+import { ensurePersisted } from "./deviceStore";
 import { onlineApi } from "./onlineApi";
 
 type ConnectivityState = "online" | "offline";
@@ -159,17 +160,8 @@ function publish(force = false): void {
 
 async function requestPersistentStorageBestEffort(): Promise<void> {
   try {
-    const storage: any = typeof navigator !== "undefined" ? navigator.storage : null;
-    if (!storage) return;
-    if (typeof storage.persisted === "function" && (await storage.persisted())) {
-      persistentStorage = true;
-      publish(true);
-      return;
-    }
-    if (typeof storage.persist === "function") {
-      persistentStorage = (await storage.persist()) === true;
-      publish(true);
-    }
+    persistentStorage = await ensurePersisted();
+    publish(true);
   } catch {
     // Persistence is a bonus. IndexedDB remains usable if the browser refuses it.
     persistentStorage = false;
