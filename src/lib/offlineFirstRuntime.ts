@@ -28,6 +28,7 @@ const DIAG_KEY = "msc_offline_first_state_v1";
 let started = false;
 let persistentStorage: boolean | null = null;
 let cachedAuthBridgeInstalled = false;
+let diagnosticOnlineOverride: boolean | null = null;
 let currentState: OfflineFirstState = {
   connectivity: "online",
   onlineHint: true,
@@ -36,6 +37,7 @@ let currentState: OfflineFirstState = {
 };
 
 function readOnlineHint(): boolean {
+  if (diagnosticOnlineOverride !== null) return diagnosticOnlineOverride;
   if (typeof navigator === "undefined") return true;
   return navigator.onLine !== false;
 }
@@ -189,6 +191,23 @@ export function initOfflineFirstRuntime(): void {
   }, 0);
 }
 
+
+/**
+ * Diagnostic-only logical connectivity override.
+ * It never changes the device radio/network and is intentionally in-memory:
+ * a reload always returns to the real navigator.onLine state.
+ */
+export function setOfflineFirstDiagnosticOnlineOverride(online: boolean | null): void {
+  diagnosticOnlineOverride = typeof online === "boolean" ? online : null;
+  if (typeof window !== "undefined") {
+    if (!started) initOfflineFirstRuntime();
+    publish(true);
+  }
+}
+
+export function getOfflineFirstDiagnosticOnlineOverride(): boolean | null {
+  return diagnosticOnlineOverride;
+}
 export function getOfflineFirstState(): OfflineFirstState {
   if (!started && typeof window !== "undefined") initOfflineFirstRuntime();
   const onlineHint = readOnlineHint();

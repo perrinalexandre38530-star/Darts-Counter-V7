@@ -10,6 +10,7 @@ import { getDirectR2Status, getDirectR2Usage } from "../../lib/directR2BackupApi
 import { clearBackupPerfEvents, readBackupPerfEvents, summarizeBackupPerfEvents, type BackupPerfEvent } from "../../lib/backupPerformanceDiagnostics";
 import { shouldAttemptRemoteWork } from "../../lib/offlineFirstRuntime";
 import { getGlobalSyncState } from "../../lib/sync/syncOrchestrator";
+import { readOfflineFirstSelfTestReport, runOfflineFirstSelfTest, type OfflineFirstSelfTestReport } from "../../lib/offlineFirstSelfTest";
 
 const REPORT_KEY = "dc_backup_diagnostic_report_v140";
 
@@ -81,6 +82,8 @@ export default function BackupDiagnosticsPanel({ theme }: { theme: ThemeLike }) 
   const restore = useBackgroundRestoreState();
   const [busy, setBusy] = React.useState(false);
   const [report, setReport] = React.useState<BackupDiagnosticReport | null>(() => parseStoredJson(REPORT_KEY));
+  const [selfTestBusy, setSelfTestBusy] = React.useState(false);
+  const [selfTest, setSelfTest] = React.useState<OfflineFirstSelfTestReport | null>(() => readOfflineFirstSelfTestReport());
 
   const text = theme.text || "#f4fbff";
   const soft = theme.textSoft || "#a8b8c6";
@@ -270,6 +273,24 @@ export default function BackupDiagnosticsPanel({ theme }: { theme: ThemeLike }) 
     }
   }, [busy]);
 
+  const runSelfTest = React.useCallback(async () => {
+    if (selfTestBusy) return;
+    setSelfTestBusy(true);
+    try {
+      const result = await runOfflineFirstSelfTest();
+      setSelfTest(result);
+    } finally {
+      setSelfTestBusy(false);
+    }
+  }, [selfTestBusy]);
+
+  const copySelfTest = React.useCallback(async () => {
+    if (!selfTest) return;
+    const txt = JSON.stringify(selfTest, null, 2);
+    try { await navigator.clipboard.writeText(txt); }
+    catch { try { window.prompt("Copie le rapport Offline-First :", txt); } catch {} }
+  }, [selfTest]);
+
   const copy = React.useCallback(async () => {
     if (!report) return;
     const txt = JSON.stringify(report, null, 2);
@@ -307,6 +328,27 @@ export default function BackupDiagnosticsPanel({ theme }: { theme: ThemeLike }) 
       <div style={{ color: text, fontWeight: 900, fontSize: 15 }}>Sauvegardes / restaurations</div>
       <div style={{ color: soft, fontSize: 11, lineHeight: 1.45, marginTop: 4 }}>
         Lecture seule : NAS, Google Drive, R2, fichier/SD/USB, journal incrémental et progression réelle des opérations.
+      </div>
+
+      <div style={{ marginTop: 12, border: `1px solid ${selfTest?.verdict === "FAIL" ? "rgba(255,90,90,.55)" : selfTest?.verdict === "WARN" ? "rgba(255,211,106,.5)" : "rgba(101,230,168,.42)"}`, borderRadius: 12, padding: 11, background: "rgba(255,255,255,.02)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div>
+            <div style={{ color: text, fontWeight: 950, fontSize: 12.5 }}>AUTOTEST OFFLINE-FIRST</div>
+            <div style={{ color: soft, fontSize: 10.5, lineHeight: 1.4, marginTop: 3 }}>Simulation sûre : IndexedDB, profils, historique, stats, blocage cloud, files de sync et Service Worker. Aucune vraie partie n’est créée.</div>
+          </div>
+          {selfTest ? <div style={{ color: selfTest.verdict === "PASS" ? "#65e6a8" : selfTest.verdict === "WARN" ? "#ffd36a" : "#ff8a8a", fontWeight: 1000, fontSize: 13 }}>{selfTest.verdict === "PASS" ? "✓ OK" : selfTest.verdict === "WARN" ? "⚠ À SURVEILLER" : "✕ À CORRIGER"}</div> : null}
+        </div>
+        <div style={{ marginTop: 9, display: "flex", gap: 7, flexWrap: "wrap" }}>
+          <button type="button" onClick={() => void runSelfTest()} disabled={selfTestBusy} style={{ borderRadius: 10, border: "1px solid rgba(101,230,168,.55)", background: "rgba(101,230,168,.08)", color: "#65e6a8", padding: "9px 12px", fontWeight: 950, cursor: selfTestBusy ? "wait" : "pointer" }}>{selfTestBusy ? "TEST EN COURS…" : "LANCER AUTOTEST"}</button>
+          <button type="button" onClick={() => void copySelfTest()} disabled={!selfTest} style={{ borderRadius: 10, border: `1px solid ${border}`, background: "rgba(255,255,255,.03)", color: selfTest ? text : soft, padding: "9px 12px", fontWeight: 800, cursor: selfTest ? "pointer" : "default" }}>COPIER AUTOTEST</button>
+        </div>
+        {selfTest ? <div style={{ marginTop: 9, display: "grid", gap: 5 }}>
+          <div style={{ color: soft, fontSize: 9.5 }}>Dernier test : {formatDate(selfTest.generatedAt)} · {(selfTest.durationMs / 1000).toFixed(selfTest.durationMs >= 10000 ? 0 : 1)} s</div>
+          {selfTest.checks.map((check) => <div key={check.id} style={{ display: "grid", gridTemplateColumns: "10px minmax(0,1fr)", gap: 7, alignItems: "start", paddingTop: 4 }}>
+            <span style={{ width: 8, height: 8, marginTop: 3, borderRadius: 99, background: statusColor(check.status) }} />
+            <div><strong style={{ color: text, fontSize: 10.5 }}>{check.label}</strong><div style={{ color: soft, fontSize: 9.7, lineHeight: 1.35, marginTop: 1 }}>{check.detail}</div></div>
+          </div>)}
+        </div> : null}
       </div>
 
       <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>

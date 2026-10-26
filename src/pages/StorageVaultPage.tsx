@@ -2,6 +2,7 @@ import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import * as React from "react";
 import { Capacitor } from "@capacitor/core";
 import BackDot from "../components/BackDot";
+import BackupDiagnosticsPanel from "../components/settings/BackupDiagnosticsPanel";
 import InfoDot from "../components/InfoDot";
 import { gzipSync, strToU8 } from "fflate";
 import { useTheme } from "../contexts/ThemeContext";
@@ -4604,6 +4605,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
 
         {tab === "diagnostic" && (
           <div style={{ display: "grid", gap: 8 }}>
+            <BackupDiagnosticsPanel theme={theme} />
             <div style={{ ...panel, padding: 10, borderRadius: 16 }}>
               <CompactSectionTitle title="MODE EXPERT" color={amber} info={<div style={{ display: "grid", gap: 8 }}><div>Recherche sans restaurer dans IndexedDB et localStorage : parties, ID, dates, profils/joueurs, modes, sets/dartsets, stores et clés.</div><div><b>Astuce :</b> saisis plusieurs mots, par exemple <b>X01 Vincent 22/08/2026</b>. Tous les mots doivent être présents.</div><div>Les données médias lourdes ne sont pas indexées.</div></div>} right={<span style={{ color: muted, fontSize: 10, fontWeight: 900 }}>{filteredTechnicalBlocks.length}/{technicalCount}</span>}/>
 
