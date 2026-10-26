@@ -259,7 +259,7 @@ export default function BotPagedSelector({
               return (
                 <div key={bot.id} style={{ display: "grid", justifyItems: "center", gap: 6, minWidth: 0 }}>
                   <div style={{ position: "relative", width: 82, height: 82, display: "grid", placeItems: "center", overflow: "visible" }}>
-                    {level > 0 ? <ProfileStarRing botLevel={level} anchorSize={72} starSize={10} gapPx={-5} /> : null}
+                    {Number((bot as any)?.avg3d ?? (bot as any)?.avg3D) > 0 ? <ProfileStarRing avg3d={Number((bot as any)?.avg3d ?? (bot as any)?.avg3D)} anchorSize={72} starSize={10} gapPx={-5} /> : level > 0 ? <ProfileStarRing botLevel={level} anchorSize={72} starSize={10} gapPx={-5} /> : null}
                     <div style={{ width: 66, height: 66, borderRadius: "50%", overflow: "hidden", border: `2px solid ${accent}88`, boxShadow: `0 0 14px ${accent}55`, background: "rgba(0,0,0,.55)", display: "grid", placeItems: "center" }}>
                       {src ? <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: accent, fontWeight: 950 }}>BOT</span>}
                     </div>
@@ -352,7 +352,7 @@ export default function BotPagedSelector({
                       title={bot.name}
                     >
                       <div style={{ position: "relative", width: 104, height: 104, display: "grid", placeItems: "center", overflow: "visible", marginTop: 6 }}>
-                        {level > 0 ? <ProfileStarRing botLevel={level} anchorSize={94} starSize={13} gapPx={-5} /> : null}
+                        {Number((bot as any)?.avg3d ?? (bot as any)?.avg3D) > 0 ? <ProfileStarRing avg3d={Number((bot as any)?.avg3d ?? (bot as any)?.avg3D)} anchorSize={94} starSize={13} gapPx={-5} /> : level > 0 ? <ProfileStarRing botLevel={level} anchorSize={94} starSize={13} gapPx={-5} /> : null}
                         <div
                           style={{
                             width: 86,
@@ -374,6 +374,7 @@ export default function BotPagedSelector({
                       <div style={{ color: active ? "#fff" : "#cbd1e8", fontSize: 12, fontWeight: 950, textAlign: "center", maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {bot.name}
                       </div>
+                      {Number((bot as any)?.bssStars) > 0 ? <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: .3 }}>{Number((bot as any).bssStars)}★ · niveau BSS</div> : null}
                       {bot?.firefighterRole ? <div style={{ color: "#8f9bb4", fontSize: 8.5, fontWeight: 850, textAlign: "center", lineHeight: 1.2, minHeight: 20 }}>
                         {bot.firefighterRole} · {level || 0}/5
                       </div> : null}

@@ -17,6 +17,7 @@ import { BotTeamsSection, PillButton, X01_PRO_BOTS, TeamsSection, SelectedPartic
 import { findRememberedGeneratedTeam } from "../../lib/teamAutoShuffle";
 import { CRADOS_BOTS, CRADOS_BOT_TEAMS } from "../../lib/dartsCradosBots";
 import { BSS_KING_BOTS, BSS_KING_PLAYABLE_CHARACTERS } from "../../lib/bssKingBots";
+import { getX01ProfileStarData } from "../../lib/x01ProfileStarring";
 import { useAwenaOptional } from "../../awena/AwenaProvider";
 import { PremiumAwenaButton } from "../newModes/PremiumPartyModeUi";
 import "./PremiumPartyModeUi.css";
@@ -107,6 +108,17 @@ function isBotLike(profile: any) {
   return Boolean(profile?.isBot || profile?.bot || profile?.type === "bot" || profile?.kind === "bot" || profile?.botLevel);
 }
 
+
+function bssHumanStarLevel(profile: any): number {
+  try {
+    const data = getX01ProfileStarData(profile);
+    if (data?.kind === "avg3d") {
+      const avg = Math.max(0, Math.min(100, Number(data.value) || 0));
+      return Math.max(0, Math.min(10, Math.floor(avg / 5) / 2));
+    }
+  } catch {}
+  return 0;
+}
 function avatarOf(value: any): string | null {
   return value?.avatarDataUrl ?? value?.avatarUrl ?? value?.avatar ?? value?.photoDataUrl ?? null;
 }
@@ -341,6 +353,16 @@ export default function NewDartsModeConfig(props: Props) {
   }, [humanProfiles, bots]);
 
   const selectedProfiles = selectedIds.map((id) => profileById.get(String(id))).filter(Boolean);
+  const bssSelectedHumanStars = React.useMemo(() => {
+    if (mode !== "bss_king") return 0;
+    const values = selectedProfiles.filter((p:any)=>!isBotLike(p)).map((p:any)=>bssHumanStarLevel(p)).filter((v:number)=>v>0);
+    if (!values.length) return 0;
+    return Math.round((values.reduce((a:number,b:number)=>a+b,0)/values.length)*2)/2;
+  }, [mode, selectedIds.join("|"), profileById]);
+  const bssRecommendedBots = React.useMemo(() => {
+    if (mode !== "bss_king" || !(bssSelectedHumanStars > 0)) return [];
+    return [...BSS_KING_BOTS].sort((a:any,b:any)=>Math.abs(Number(a.bssStars)-bssSelectedHumanStars)-Math.abs(Number(b.bssStars)-bssSelectedHumanStars) || Number(a.sortOrder)-Number(b.sortOrder)).slice(0,3);
+  }, [mode, bssSelectedHumanStars]);
   const botCount = selectedProfiles.filter(isBotLike).length;
   const cradosCpuBotCount = mode === "crados" ? selectedProfiles.filter((p: any) => isBotLike(p) && p?.source !== "crados_official").length : botCount;
   const maxReached = selectedProfiles.length >= definition.maxPlayers;
@@ -770,7 +792,10 @@ export default function NewDartsModeConfig(props: Props) {
       </div>
       {botsOpen ? <BotPagedSelector bots={bots} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} label={mode === "bss_king" ? "BOTS BSS KING" : mode === "crados" ? "BOTS CRADOS + CPU" : mode === "ptit_hun" && !ptitHunFr ? "AI BOTS" : "BOTS IA"} modalTitle={mode === "bss_king" ? "Choisir les BOTS BSS KING" : mode === "crados" ? "Choisir les BOTS CRADOS" : mode === "ptit_hun" && !ptitHunFr ? "Choose AI BOTS" : "Choisir des BOTS IA"} showCheckbox={false} showSelectedSummary={false} /> : null}
       {(mode === "crados" ? cradosCpuBotCount > 0 : botCount > 0) && botsOpen && mode !== "bss_king" ? <div style={{ marginTop: 10 }}><OptionRow label={mode === "crados" ? "Secours difficulté BOTS CPU" : mode === "ptit_hun" && !ptitHunFr ? "AI difficulty" : "Difficulté IA"}><OptionSelect value={botLevel} options={[{ value: "easy", label: mode === "ptit_hun" && !ptitHunFr ? "Easy" : "Facile" }, { value: "normal", label: "Normal" }, { value: "hard", label: mode === "ptit_hun" && !ptitHunFr ? "Hard" : "Difficile" }]} onChange={setBotLevel} /></OptionRow></div> : null}
-      {mode === "bss_king" && botsOpen ? <div style={{ marginTop: 9, color: soft, fontSize: 10.7, lineHeight: 1.45 }}>Difficulté individuelle verrouillée par personnage : CHAUVE #1 → OUINX #16. Tous les BOTS conservent un niveau relevé.</div> : null}
+      {mode === "bss_king" && botsOpen ? <div style={{ marginTop: 9, padding: 9, borderRadius: 11, border: `1px solid ${accent}2f`, background: `${accent}08`, color: soft, fontSize: 10.7, lineHeight: 1.45 }}>
+        <div><b style={{color:accent}}>Étoiles = niveau réel comparable aux joueurs.</b> Un BOT 4★ vise désormais un niveau proche d'un joueur humain autour de 4★, avec erreurs et variations de forme.</div>
+        {bssSelectedHumanStars > 0 ? <div style={{marginTop:5}}>Ton groupe humain est estimé à <b style={{color:"#fff"}}>{bssSelectedHumanStars}★</b>. BOTS proches : <b style={{color:accent}}>{bssRecommendedBots.map((b:any)=>`${b.name} ${b.bssStars}★`).join(" · ")}</b></div> : <div style={{marginTop:5}}>Sélectionne un joueur avec un niveau X01 actuel connu pour afficher automatiquement les adversaires conseillés.</div>}
+      </div> : null}
     </div> : null}
     <div style={{ marginTop: 10, color: validSelection ? accent : "#ff9baa", fontSize: 11.5, fontWeight: 900 }}>{validSelection ? (mode === "ptit_hun" && !ptitHunFr ? `${selectedProfiles.length} participant${selectedProfiles.length > 1 ? "s" : ""} selected` : `${selectedProfiles.length} participant${selectedProfiles.length > 1 ? "s" : ""} sélectionné${selectedProfiles.length > 1 ? "s" : ""}`) : (mode === "ptit_hun" && !ptitHunFr ? `Select ${definition.minPlayers} to ${definition.maxPlayers} participants.` : `Sélectionne ${definition.minPlayers} à ${definition.maxPlayers} participants.`)}</div>
     {maxReached ? <div style={{ marginTop: 6, color: soft, fontSize: 10.5 }}>{mode === "ptit_hun" && !ptitHunFr ? `Maximum reached: ${definition.maxPlayers} participants.` : <>Maximum atteint : {definition.maxPlayers} participants.</>}</div> : null}

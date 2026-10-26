@@ -392,8 +392,43 @@ export function playBssVisit(input:BssState,dartsRaw:GameDart[]):BssState{
   return s;
 }
 
-function hit(level:BssBotLevel,override?:number){const n=Number(override);if(Number.isFinite(n)&&n>0&&n<=1)return Math.max(.25,Math.min(.99,n));return level==="hard"?.86:level==="easy"?.46:.66;}
-function missOr(d:GameDart,level:BssBotLevel,override?:number):GameDart{return Math.random()<hit(level,override)?d:{bed:"MISS"};}
+function hit(level:BssBotLevel,override?:number){
+  const n=Number(override);
+  if(Number.isFinite(n)&&n>0&&n<=1)return Math.max(.12,Math.min(.94,n));
+  return level==="hard"?.72:level==="easy"?.34:.52;
+}
+function bssBotAdjacentNumber(raw:any){
+  const n=Math.max(1,Math.min(20,Number(raw)||20));
+  const idx=BOARD_ORDER.indexOf(n);
+  if(idx<0)return Math.max(1,Math.min(20,n+(Math.random()<.5?-1:1)));
+  const dir=Math.random()<.5?-1:1;
+  return BOARD_ORDER[(idx+dir+BOARD_ORDER.length)%BOARD_ORDER.length];
+}
+function bssBotNearMiss(d:GameDart):GameDart{
+  if(!d||d.bed==="MISS")return {bed:"MISS"};
+  if(d.bed==="IB")return Math.random()<.72?{bed:"OB"}:{bed:"MISS"};
+  if(d.bed==="OB")return Math.random()<.62?{bed:"S",number:Math.random()<.5?20:1}:{bed:"MISS"};
+  const n=Math.max(1,Math.min(20,Number((d as any).number)||20));
+  const adjacent=bssBotAdjacentNumber(n);
+  if(d.bed==="T"){
+    if(Math.random()<.58)return {bed:"S",number:n,ring:(d as any).ring};
+    return {bed:Math.random()<.68?"S":"T",number:adjacent};
+  }
+  if(d.bed==="D"){
+    if(Math.random()<.62)return {bed:"S",number:n,ring:(d as any).ring};
+    return {bed:Math.random()<.75?"S":"D",number:adjacent};
+  }
+  const area=bssDartMeta(d as any).area;
+  return {bed:"S",number:adjacent,ring:area?bssMetaRing(singleColorForNumber(adjacent),area):undefined} as any;
+}
+function missOr(d:GameDart,level:BssBotLevel,override?:number):GameDart{
+  const exact=hit(level,override);
+  const near=Math.max(.08,Math.min(.38,(1-exact)*.65));
+  const r=Math.random();
+  if(r<exact)return d;
+  if(r<exact+near)return bssBotNearMiss(d);
+  return {bed:"MISS"};
+}
 function botColorDart(color:BssChallengeColor):GameDart{
   if(color==="red") return Math.random()<.18?{bed:"IB"}:{bed:"T",number:20};
   if(color==="green") return Math.random()<.18?{bed:"OB"}:{bed:"T",number:19};
@@ -408,6 +443,11 @@ function exactBotDarts(target:number):GameDart[]{
 }
 export function pickBssBotDarts(input:BssState, level:BssBotLevel="normal", hitRateOverride?:number):GameDart[]{
   const s=cloneBssState(input); const p=s.players[s.activePlayerIndex]; if(!p)return[]; const throne=Boolean(s.throneReady[p.id]); const c:any=throne?{kind:"throne",target:0}:s.challenge;
+  // Forme du moment : un même BOT peut avoir une bonne ou mauvaise tournée.
+  // La somme de deux tirages donne une variation centrée, plus naturelle qu'un bruit uniforme.
+  const baseRate=hit(level,hitRateOverride);
+  const formSwing=((Math.random()+Math.random())-1)*.10;
+  hitRateOverride=Math.max(.12,Math.min(.94,baseRate+formSwing));
   if(c.kind==="color_bed"){ const color=c.targetColor||"red", bed=c.targetBed||"D", number=color==="red"?20:19; return [1,2,3].map(()=>missOr({bed,number},level,hitRateOverride)); }
   if(c.kind==="area_parity"){ const number=c.targetParity==="odd"?19:20, area=c.targetArea||"big"; return [1,2,3].map(()=>missOr({bed:"S",number,ring:bssMetaRing(singleColorForNumber(number),area)} as any,level,hitRateOverride)); }
   if(c.kind==="area_range"){ const number=c.targetRange==="low"?10:20, area=c.targetArea||"big"; return [1,2,3].map(()=>missOr({bed:"S",number,ring:bssMetaRing(singleColorForNumber(number),area)} as any,level,hitRateOverride)); }

@@ -274,6 +274,7 @@ export default function BssKingPlay(props: any) {
   const active = state.players[state.activePlayerIndex], activeProfile = active ? profileById.get(String(active.id)) || active : null;
   const activeIsBot = !!activeProfile && isBotProfile(activeProfile, botIds);
   const activeBotHitRate = Number(activeProfile?.bssHitRate);
+  const activeBotStars = Number(activeProfile?.bssStars || 0);
   const configLaunchMode = config.quickParty === true || config.partyMode === "quick" ? "quick" : "arcade";
   const backToConfig = React.useCallback(() => go?.("bss_king_config", { launchMode: configLaunchMode }), [go, configLaunchMode]);
   const activeColor = active ? COLORS[Math.max(0, state.players.findIndex((p: any) => p.id === active.id)) % COLORS.length] : GOLD;
@@ -535,7 +536,7 @@ export default function BssKingPlay(props: any) {
         </section>
       </div> : null}
       {botRecap ? <div className="bss-bot-recap-backdrop" role="presentation"><section className="bss-bot-recap" role="dialog" aria-modal="true">
-        <div className="bss-bot-recap-head"><ProfileAvatar profile={botRecap.profile||botRecap.player} size={54} showStars={false} ringColor={activeColor}/><div><small>BOT BSS · TOURNÉE</small><h3>{String(botRecap.player?.name||"BOT").toUpperCase()}</h3><span>{botRecap.objective}</span></div></div>
+        <div className="bss-bot-recap-head"><ProfileAvatar profile={botRecap.profile||botRecap.player} size={54} showStars={false} ringColor={activeColor}/><div><small>BOT BSS · {Number(botRecap.profile?.bssStars)>0 ? `${Number(botRecap.profile.bssStars)}★` : "TOURNÉE"}</small><h3>{String(botRecap.player?.name||"BOT").toUpperCase()}</h3><span>{botRecap.objective}</span></div></div>
         <div className="bss-bot-recap-hits">{(botRecap.darts||[]).map((d:any,i:number)=>{const v=bssHitVisual(d,lang,challengeUsesColor(botRecap.challenge));return <span key={i} data-i18n-skip="true" style={{color:v.color,background:v.background,borderColor:v.border,boxShadow:v.colorAccent?`inset 0 -3px 0 ${v.colorAccent}88`:undefined}}>{v.label}</span>})}</div>
         <div className="bss-bot-recap-score"><div><small>PTS BSS</small><b>+{formatMetricValue(botRecap.score)}</b></div><div><small>ÉCUSSONS</small><b>{botRecap.badgesAfter}</b></div></div>
         <p>{botRecap.badgesAfter>botRecap.badgesBefore?"🏆 Le BOT remporte la tournée : +1 écusson.":(botRecap.events?.[0]||"Tournée du BOT terminée.")}</p>
@@ -618,7 +619,7 @@ export default function BssKingPlay(props: any) {
             keypadActionRowLayout="triple"
             keypadFooterLeftSlot={<div className="bss-keypad-footer-points-wrap"><div className="bss-keypad-footer-points"><b>+{liveBssPoints}</b></div><span>PTS BSS</span></div>}
             centerSlot={<div className="bss-keypad-score-box"><span>SCORE</span><b>{liveVisitScore}</b>{(selectedColor||selectedArea)?<small>{[selectedColor?BSS_INPUT_COLORS.find(c=>c.id===selectedColor)?.label:null,selectedArea==="big"?"GROS":selectedArea==="small"?"PETIT":null].filter(Boolean).join(" · ")}</small>:null}</div>}
-          /> : <div className="bss-bot-panel"><ProfileAvatar profile={activeProfile} size={88} showStars={false} ringColor={activeColor}/><b>{active?.name}</b><span>Le BOT BSS prépare sa tournée…</span></div>}
+          /> : <div className="bss-bot-panel"><ProfileAvatar profile={activeProfile} size={88} showStars={false} ringColor={activeColor}/><b>{active?.name}</b><span>{activeBotStars>0?`${activeBotStars}★ · `:""}Le BOT BSS prépare sa tournée…</span></div>}
         </div>
       </div>
     </main>

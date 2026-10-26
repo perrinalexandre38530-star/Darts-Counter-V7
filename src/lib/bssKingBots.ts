@@ -26,43 +26,49 @@ export type BssKingBot = {
   sortOrder: number;
   bssRank: number;
   bssHitRate: number;
+  /** Nombre d'étoiles humaines visées sur la couronne (AVG3D ~= étoiles x 10). */
+  bssStars: number;
+  /** Compatibilité sélecteur historique /5. */
   botLevel: number;
   profileStarring: number;
+  avg3d: number;
 };
 
 // Classement officiel BSS KING demandé : CHAUVE le plus fort, OUINX le moins fort.
-// Tous restent des adversaires relevés : la plage IA va de 96 % à 72 % de réussite
-// sur l'objectif choisi par le moteur, avec une décroissance régulière par rang.
+// V113 : le niveau n'est plus une plage artificielle 72–96 %.
+// Les étoiles BSS sont désormais comparables aux étoiles d'un joueur humain :
+// 4★ ~= AVG3D actuel 40, 6★ ~= AVG3D 60, etc.
 const RAW = [
-  ["chauve", "CHAUVE", chauveAvatar],
-  ["jm_pz", "J-M PZ", jmPzAvatar],
-  ["alexauto", "ALEXAUTO", alexautoAvatar],
-  ["giraille", "GIRAILLE", girailleAvatar],
-  ["pablo", "PABLO", pabloAvatar],
-  ["brissaille", "BRISSAILLE", brissailleAvatar],
-  ["trunk", "TRUNK", trunkAvatar],
-  ["mimo", "MIMO", mimoAvatar],
-  ["richkard", "RICHKARD", richkardAvatar],
-  ["yoyo", "YOYO", yoyoAvatar],
-  ["pepito", "PEPITO", pepitoAvatar],
-  ["pat", "PAT", patAvatar],
-  ["agent_k", "AGENT K", agentKAvatar],
-  ["coco", "COCO", cocoAvatar],
-  ["billy_boy", "BILLY BOY", billyBoyAvatar],
-  ["ouinx", "OUINX", ouinxAvatar],
+  ["chauve", "CHAUVE", chauveAvatar, 10],
+  ["jm_pz", "J-M PZ", jmPzAvatar, 9.5],
+  ["alexauto", "ALEXAUTO", alexautoAvatar, 9],
+  ["giraille", "GIRAILLE", girailleAvatar, 8],
+  ["pablo", "PABLO", pabloAvatar, 7.5],
+  ["brissaille", "BRISSAILLE", brissailleAvatar, 7],
+  ["trunk", "TRUNK", trunkAvatar, 6.5],
+  ["mimo", "MIMO", mimoAvatar, 6],
+  ["richkard", "RICHKARD", richkardAvatar, 5.5],
+  ["yoyo", "YOYO", yoyoAvatar, 5],
+  ["pepito", "PEPITO", pepitoAvatar, 4.5],
+  ["pat", "PAT", patAvatar, 4],
+  ["agent_k", "AGENT K", agentKAvatar, 3.5],
+  ["coco", "COCO", cocoAvatar, 3],
+  ["billy_boy", "BILLY BOY", billyBoyAvatar, 2],
+  ["ouinx", "OUINX", ouinxAvatar, 1],
 ] as const;
 
-function starsForRank(rank: number) {
-  if (rank <= 4) return 5;
-  if (rank <= 8) return 4.5;
-  if (rank <= 12) return 4;
-  return 3.5;
+function hitRateForStars(stars: number) {
+  const clamped = Math.max(1, Math.min(10, Number(stars) || 1));
+  const t = (clamped - 1) / 9;
+  // 1★ ~22 %, 4★ ~43 %, 6★ ~57 %, 8★ ~71 %, 10★ ~84 % de touche EXACTE.
+  // Le reste devient surtout une touche proche, puis un vrai MISS.
+  return Number((0.22 + 0.62 * Math.pow(t, 0.9)).toFixed(3));
 }
 
-export const BSS_KING_BOTS: BssKingBot[] = RAW.map(([slug, name, avatarDataUrl], index) => {
+export const BSS_KING_BOTS: BssKingBot[] = RAW.map(([slug, name, avatarDataUrl, stars], index) => {
   const rank = index + 1;
-  const hitRate = Number((0.96 - index * (0.24 / 15)).toFixed(3));
-  const stars = starsForRank(rank);
+  const avg3d = Number(stars) * 10;
+  const legacyLevel = Number((Number(stars) / 2).toFixed(2));
   return {
     id: `bss_${slug}`,
     name,
@@ -72,9 +78,11 @@ export const BSS_KING_BOTS: BssKingBot[] = RAW.map(([slug, name, avatarDataUrl],
     groupLabel: "BSS KING",
     sortOrder: rank,
     bssRank: rank,
-    bssHitRate: hitRate,
-    botLevel: stars,
-    profileStarring: stars,
+    bssHitRate: hitRateForStars(Number(stars)),
+    bssStars: Number(stars),
+    botLevel: legacyLevel,
+    profileStarring: legacyLevel,
+    avg3d,
   };
 });
 
