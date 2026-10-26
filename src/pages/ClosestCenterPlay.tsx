@@ -439,6 +439,7 @@ export default function ClosestCenterPlay(props:any) {
   const [showFinalPlayers, setShowFinalPlayers] = React.useState(false);
   const [showFinalStats, setShowFinalStats] = React.useState(false);
   const [showFinalCamera, setShowFinalCamera] = React.useState(false);
+  const [showRoundDetails, setShowRoundDetails] = React.useState(false);
   const [quickPanel, setQuickPanel] = React.useState<null | "score" | "players" | "camera" | "info">(null);
   const [status, setStatus] = React.useState(isManual
     ? (pointsMode === "petanque" ? "Saisie rapide : à la fin de la mène, choisis seulement l’équipe qui marque et ses fléchettes marquantes." : "Fin de manche : renseigne uniquement les fléchettes qui scorent.")
@@ -1827,22 +1828,13 @@ export default function ClosestCenterPlay(props:any) {
           </section>;
         })() : null}
 
-        {phase === "prepare" ? <section style={{...card,padding:landscape?12:11,borderColor:"rgba(255,213,140,.30)",background:"linear-gradient(135deg,rgba(255,189,69,.08),rgba(68,231,255,.035))"}}>
-          <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}>
-            <div><div style={{fontSize:9,color:"#ffd58c",fontWeight:1000,letterSpacing:1.1}}>PRÉPARER LA SUITE</div><h3 style={{...h3,margin:"3px 0 0",color:"#fff"}}>{pointsMode==="petanque"?`MÈNE ${round}`:`MANCHE ${round}`}</h3></div>
-            <div style={{textAlign:"right"}}><div style={{fontSize:9,color:"#81929f"}}>DÉPART</div><b style={{fontSize:14,color:teamAccent(roundStarterTeam)}}>ÉQUIPE {roundStarterTeam}</b></div>
+        {phase === "prepare" ? <section style={{...card,padding:landscape?10:9,borderColor:"rgba(255,213,140,.26)",background:"linear-gradient(135deg,rgba(255,189,69,.065),rgba(68,231,255,.025))"}}>
+          <div style={{display:"flex",alignItems:"center",gap:9}}>
+            <div style={{width:32,height:32,borderRadius:11,display:"grid",placeItems:"center",color:"#ffd58c",background:"rgba(255,189,69,.10)",border:"1px solid rgba(255,189,69,.24)"}}><PetanqueIcon name="action" size={17}/></div>
+            <div style={{minWidth:0,flex:1}}><b style={{display:"block",fontSize:10,color:"#fff"}}>PRÉPARER {pointsMode==="petanque"?`LA MÈNE ${round}`:`LA MANCHE ${round}`}</b><span style={{display:"block",fontSize:8,color:"#8495a3",marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{isManual?`Départ équipe ${roundStarterTeam} · vérifie que tout le monde est prêt`:`Départ équipe ${roundStarterTeam} · retire toutes les fléchettes et libère la cible`}</span></div>
+            <span style={{fontSize:9,fontWeight:1000,color:teamAccent(roundStarterTeam),padding:"5px 7px",borderRadius:999,border:`1px solid ${teamAccent(roundStarterTeam)}55`,background:`${teamAccent(roundStarterTeam)}10`}}>ÉQ. {roundStarterTeam}</span>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,alignItems:"center",marginTop:10,padding:"9px 10px",borderRadius:12,background:"rgba(255,255,255,.035)",border:"1px solid rgba(255,255,255,.08)"}}>
-            <div><span style={{fontSize:8,color:"#81929f",fontWeight:900}}>ÉQUIPE A</span><b style={{display:"block",fontSize:21,color:teamAccent("A")}}>{Number(teamTotals.A||0)}</b></div>
-            <b style={{fontSize:10,color:"#718491"}}>—</b>
-            <div style={{textAlign:"right"}}><span style={{fontSize:8,color:"#81929f",fontWeight:900}}>ÉQUIPE B</span><b style={{display:"block",fontSize:21,color:teamAccent("B")}}>{Number(teamTotals.B||0)}</b></div>
-          </div>
-          <div style={{marginTop:9,padding:"9px 10px",borderRadius:10,background:isManual?"rgba(143,255,194,.055)":"rgba(68,231,255,.055)",border:`1px solid ${isManual?"rgba(143,255,194,.18)":"rgba(68,231,255,.18)"}`,fontSize:10,lineHeight:1.45,color:"#c6d3dc"}}>
-            {isManual
-              ? <>Vérifie le score et les joueurs. Quand tout est prêt, démarre la nouvelle {pointsMode==="petanque"?"mène":"manche"}.</>
-              : <><b style={{color:"#fff"}}>Retire toutes les fléchettes.</b> La cible doit être totalement libre et le téléphone ne doit plus bouger. Le bouton ci-dessous capture immédiatement une nouvelle référence multi-frame.</>}
-          </div>
-          <button style={{...btn,width:"100%",marginTop:10,minHeight:42,borderColor:isManual?"#8fffc2":ACCENT,background:isManual?"rgba(57,217,138,.11)":`${ACCENT}14`}} onClick={startPreparedRound}>{isManual?`▶ DÉMARRER ${pointsMode==="petanque"?"LA MÈNE":"LA MANCHE"}`:"📷 CIBLE LIBRE · RÉARMER LA CAMÉRA"}</button>
+          <button style={{...btn,width:"100%",marginTop:8,minHeight:38,borderColor:isManual?"#8fffc2":ACCENT,background:isManual?"rgba(57,217,138,.10)":`${ACCENT}12`}} onClick={startPreparedRound}>{isManual?`▶ DÉMARRER ${pointsMode==="petanque"?"LA MÈNE":"LA MANCHE"}`:"📷 CIBLE LIBRE · RÉARMER"}</button>
         </section> : null}
 
         {!isManual && phase === "enroll" ? <section style={card}>
@@ -2010,7 +2002,8 @@ export default function ClosestCenterPlay(props:any) {
           </div> : null}
           {phase==="finished" && showFinalPlayers && cfg.teamMode && pointsMode==="petanque" ? <div style={{fontSize:10,color:"#8ea0ad",fontWeight:900,letterSpacing:.7,margin:"2px 0 5px"}}>CONTRIBUTIONS JOUEURS</div> : null}
           {currentRoundNull ? <div style={{padding:10,borderRadius:10,border:"1px solid #ffbd4555",background:"#ffbd4510",color:"#ffe0a6",fontSize:11,marginBottom:7}}><b>⚖️ MÈNE NULLE · 0 POINT</b><div style={{marginTop:3,color:"#c9d2da"}}>Égalité confirmée : aucun point ne sera ajouté. L’équipe qui avait commencé cette mène commencera la suivante.</div><button onClick={cancelNullRound} style={{...miniBtn,width:"100%",marginTop:7}}>↩ ANNULER LA MÈNE NULLE</button></div> : !isManual && phase === "roundEnd" && unresolvedPetanquePoint ? <div style={{padding:9,borderRadius:10,border:"1px solid #ffbd4555",background:"#ffbd4510",color:"#ffd796",fontSize:11,marginBottom:6}}>⚖️ Le point est indécidable dans la marge de précision. Reviens au contrôle de la cible et désigne explicitement l’équipe au point avant de valider.</div> : !isManual && phase === "roundEnd" && hasPrecisionTieRisk ? <div style={{padding:9,borderRadius:10,border:"1px solid #ffbd4555",background:"#ffbd4510",color:"#ffd796",fontSize:11,marginBottom:6}}>⚠️ Au moins deux impacts sont plus proches que la marge d’incertitude estimée. Un contrôle caméra rapproché est conseillé avant validation.</div> : null}
-          {(phase !== "finished" || showFinalPlayers) ? (phase === "finished" ? finalPlayerRanking.map((s:any)=>({playerId:s.playerId,points:s.points,distanceMm:null,playerStat:s})) : ranked).map((r:any,i:number) => {
+          {phase === "roundEnd" ? <button onClick={()=>setShowRoundDetails(v=>!v)} style={{...miniBtn,width:"100%",minHeight:32,marginBottom:showRoundDetails?6:0,borderColor:showRoundDetails?`${ACCENT}66`:"rgba(255,255,255,.12)",color:showRoundDetails?"#fff":"#aebdca",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><PetanqueIcon name="stats" size={14}/><span>{showRoundDetails?"MASQUER LES DÉTAILS":"VOIR LE DÉTAIL DE LA MÈNE"}</span></button> : null}
+          {((phase === "finished" && showFinalPlayers) || (phase === "roundEnd" && showRoundDetails)) ? (phase === "finished" ? finalPlayerRanking.map((s:any)=>({playerId:s.playerId,points:s.points,distanceMm:null,playerStat:s})) : ranked).map((r:any,i:number) => {
             const p = players.find((x:any) => String(x.id) === String(r.playerId));
             const teamFinal = phase==="finished" && cfg.teamMode && pointsMode==="petanque";
             return <div key={`${r.playerId}-${i}-${r.id||"final"}`} style={{display:"grid",gridTemplateColumns:"32px 1fr auto",gap:8,alignItems:"center",padding:"8px 0",borderBottom:"1px solid rgba(255,255,255,.07)"}}><b>{teamFinal?"•":`#${i+1}`}</b><div><b>{p?.name}</b>{p?.teamId ? <span style={{color:ACCENT,fontSize:11}}> · Team {p.teamId}</span> : null}{phase==="finished"&&r.playerStat?<div style={{fontSize:10,color:"#9fb0bf",marginTop:2}}>{isManual?`${r.playerStat.rankedDarts||0} fléchette(s) marquante(s) · ${r.playerStat.roundWins} mène(s) avec point le plus proche`:`meilleure ${r.playerStat.bestMm!=null?`${r.playerStat.bestMm.toFixed(1)} mm`:"—"} · moyenne ${r.playerStat.averageMm!=null?`${r.playerStat.averageMm.toFixed(1)} mm`:"—"} · ${r.playerStat.roundWins} mène(s) avec point le plus proche · ${r.playerStat.misses} MISS`}</div>:null}{r.distanceMm != null ? <div style={{fontSize:11,color:r.ambiguousWithPrevious?"#ffbd65":"#9fb0bf"}}>{isManual?`rang manuel #${r.rank || r.manualRank || i+1}`:`${r.distanceMm.toFixed(1)} mm ± ${Number(r.uncertaintyMm||0).toFixed(1)} mm · vision ${Math.round(r.confidence*100)} % · identité ${Math.round(r.identityConfidence*100)} %${r.ambiguousWithPrevious?` · départage ${Number(r.gapToPreviousMm||0).toFixed(2)} mm ≤ marge ${Number(r.ambiguityMarginMm||0).toFixed(2)} mm`:""}`}</div> : null}</div><b style={{color:ACCENT}}>{teamFinal?`${r.points||0} pts`:`+${r.points||0}`}</b></div>;

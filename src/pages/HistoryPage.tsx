@@ -21,6 +21,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { useSport, type SportId } from "../contexts/SportContext";
 import { History, type SavedMatch } from "../lib/history";
+import { saveStore } from "../lib/storage";
 import { loadLinkedProfileProjection } from "../lib/linkedProfileSync";
 import { isOnlineRecord } from "../lib/x01StatsSource";
 
@@ -4168,11 +4169,21 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
     }
   }
 
-  async function restoreFullHistoryDump(dump: any) {
+  async function restoreFullHistoryDump(dump: any, options?: { replace?: boolean; repairProfiles?: any[] }) {
     const rows = dump?.rows && typeof dump.rows === "object" ? Object.values(dump.rows) : [];
     if (!rows.length) {
       window.alert("Ce fichier d'historique ne contient aucune partie.");
       return;
+    }
+
+    const replaceRequested = options?.replace === true;
+    if (replaceRequested) {
+      const confirmed = window.confirm(
+        `Ce fichier est marqué comme restauration NETTOYÉE.\n\n` +
+        `OK = remplacer l'historique actuel par ses ${rows.length} parties (les parties absentes, notamment les tests EN COURS, seront supprimées).\n\n` +
+        `ANNULER = ne rien importer.`
+      );
+      if (!confirmed) return;
     }
 
     const before = await History.list().catch(() => [] as any[]);
@@ -4183,9 +4194,35 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
       try { History.reviveForExplicitImport(row as any); } catch {}
     }
 
-    // Merge par matchId : aucune duplication, et le garde anti-régression de
-    // historyCloud conserve toujours la version la plus riche d'un match existant.
-    await importHistoryDump(dump, { replace: false });
+    // Un export utilisateur normal reste un MERGE sans duplication. Un fichier
+    // explicitement marqué restoreMode=replace (comme notre historique réparé)
+    // devient autoritaire : cela permet réellement de supprimer les tests EN COURS
+    // qui n'existent plus dans le fichier nettoyé.
+    await importHistoryDump(dump, { replace: replaceRequested, preserveExisting: !replaceRequested });
+
+    // Les exports d'historique ordinaires ne touchent jamais aux profils. Le
+    // fichier de réparation peut toutefois embarquer les profils locaux exacts
+    // qui avaient été associés aux PARTIES RAPIDES avant de disparaître du store.
+    // On ne crée que les IDs absents et on conserve tous les profils déjà présents.
+    const repairProfiles = Array.isArray(options?.repairProfiles) ? options!.repairProfiles : [];
+    if (repairProfiles.length) {
+      const runtimeStore: any = (window as any)?.__appStore?.store || storeRef.current || {};
+      const currentProfiles = Array.isArray(runtimeStore?.profiles) ? runtimeStore.profiles : [];
+      const existingIds = new Set(currentProfiles.map((profile: any) => String(profile?.id || "").trim()).filter(Boolean));
+      const recoveredProfiles = repairProfiles
+        .map((profile: any) => ({ ...(profile || {}), id: String(profile?.id || profile?.profileId || "").trim(), name: String(profile?.name || "").trim() }))
+        .filter((profile: any) => profile.id && profile.name && !existingIds.has(profile.id));
+      if (recoveredProfiles.length) {
+        const nextStore: any = { ...runtimeStore, profiles: [...currentProfiles, ...recoveredProfiles] };
+        try {
+          const updateStore = (window as any)?.__appStore?.update;
+          if (typeof updateStore === "function") updateStore(() => nextStore);
+        } catch {}
+        storeRef.current = nextStore;
+        await saveStore(nextStore, { skipMediaCapture: true });
+        try { window.dispatchEvent(new CustomEvent("dc-profiles-recovered", { detail: { count: recoveredProfiles.length } })); } catch {}
+      }
+    }
 
     try {
       if (typeof window !== "undefined") window.dispatchEvent(new Event("dc-history-updated"));
@@ -4214,7 +4251,9 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
     setSub(newestImportedAt > 0 && newestImportedAt < startOf("year") ? "archives" : "year");
 
     window.alert(
-      `Historique restauré ✅\n${rows.length} partie(s) traitée(s) en une seule fois.\n${added} ajoutée(s) • ${merged} déjà présente(s) / mise(s) à jour.`
+      replaceRequested
+        ? `Historique nettoyé restauré ✅\n${rows.length} partie(s) conservée(s).\nLes parties absentes du fichier ont été supprimées de l'historique local.`
+        : `Historique restauré ✅\n${rows.length} partie(s) traitée(s) en une seule fois.\n${added} ajoutée(s) • ${merged} déjà présente(s) / mise(s) à jour.`
     );
   }
 
@@ -4227,7 +4266,10 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
 
       const fullHistoryDump = extractHistoryDumpFromJson(json);
       if (fullHistoryDump) {
-        await restoreFullHistoryDump(fullHistoryDump);
+        await restoreFullHistoryDump(fullHistoryDump, {
+          replace: String((json as any)?.restoreMode || "").toLowerCase() === "replace",
+          repairProfiles: Array.isArray((json as any)?.repairProfiles) ? (json as any).repairProfiles : [],
+        });
         return;
       }
 
@@ -4578,10 +4620,28 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
     await openFriendShare(await hydrateSavedEntry(entry));
   }
 
+  function sanitizeQuickProfileLinks(entry: any, links: Record<string, string>): Record<string, string> {
+    const participantIds = new Set(
+      quickPartyParticipants(entry)
+        .map((player: any) => String(player?.temporaryPlayerId || player?.id || "").trim())
+        .filter(Boolean),
+    );
+    const profileIds = new Set(
+      (Array.isArray(storeRef.current?.profiles) ? storeRef.current.profiles : [])
+        .map((profile: any) => String(profile?.id || "").trim())
+        .filter(Boolean),
+    );
+    return Object.fromEntries(
+      Object.entries(links || {})
+        .map(([tempId, profileId]) => [String(tempId || "").trim(), String(profileId || "").trim()])
+        .filter(([tempId, profileId]) => !!tempId && !!profileId && participantIds.has(tempId) && profileIds.has(profileId)),
+    );
+  }
+
   async function openQuickProfileLinks(entry: SavedEntry) {
     const full = await hydrateSavedEntry(entry);
     setQuickLinkEntry(full);
-    setQuickLinks(quickPartyProfileLinks(full));
+    setQuickLinks(sanitizeQuickProfileLinks(full, quickPartyProfileLinks(full)));
   }
 
   async function persistQuickProfileLinks() {
@@ -4589,7 +4649,7 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
     setQuickLinkBusy(true);
     try {
       const full: any = await hydrateSavedEntry(quickLinkEntry);
-      const links = { ...quickLinks };
+      const links = sanitizeQuickProfileLinks(full, { ...quickLinks });
       const next: any = {
         ...full,
         quickProfileLinks: links,
@@ -4598,6 +4658,7 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
         payload: { ...(full?.payload || {}), quickProfileLinks: links },
       };
       await History.upsert(next);
+      setQuickLinks(links);
       setQuickLinkEntry(next);
       await loadHistory();
     } finally {
@@ -4605,14 +4666,62 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
     }
   }
 
+  function remapQuickString(value: string, idMap: Record<string, string>): string {
+    if (idMap[value]) return idMap[value];
+    let next = value;
+    for (const [temporaryId, profileId] of Object.entries(idMap)) {
+      if (temporaryId && next.includes(temporaryId)) next = next.split(temporaryId).join(profileId);
+    }
+    return next;
+  }
+
+  function mergeRemappedQuickValue(previous: any, incoming: any): any {
+    if (previous == null) return incoming;
+    if (incoming == null) return previous;
+    if (Array.isArray(previous) && Array.isArray(incoming)) return dedupeRemappedQuickArray([...previous, ...incoming]);
+    if (typeof previous === "object" && typeof incoming === "object" && !Array.isArray(previous) && !Array.isArray(incoming)) {
+      const merged: any = { ...previous };
+      for (const [key, value] of Object.entries(incoming)) {
+        merged[key] = key in merged ? mergeRemappedQuickValue(merged[key], value) : value;
+      }
+      return merged;
+    }
+    return incoming;
+  }
+
+  function dedupeRemappedQuickArray(rows: any[]): any[] {
+    const out: any[] = [];
+    const byIdentity = new Map<string, number>();
+    for (const row of rows) {
+      if (!row || typeof row !== "object" || Array.isArray(row)) {
+        out.push(row);
+        continue;
+      }
+      const identity = String(row?.profileId || row?.playerId || row?.id || "").trim();
+      if (!identity) {
+        out.push(row);
+        continue;
+      }
+      const existingIndex = byIdentity.get(identity);
+      if (existingIndex == null) {
+        byIdentity.set(identity, out.length);
+        out.push(row);
+      } else {
+        out[existingIndex] = mergeRemappedQuickValue(out[existingIndex], row);
+      }
+    }
+    return out;
+  }
+
   function deepRemapQuickIds(value: any, idMap: Record<string, string>): any {
-    if (typeof value === "string") return idMap[value] || value;
-    if (Array.isArray(value)) return value.map((row) => deepRemapQuickIds(row, idMap));
+    if (typeof value === "string") return remapQuickString(value, idMap);
+    if (Array.isArray(value)) return dedupeRemappedQuickArray(value.map((row) => deepRemapQuickIds(row, idMap)));
     if (!value || typeof value !== "object") return value;
     const out: any = {};
     for (const [key, row] of Object.entries(value)) {
-      const mappedKey = idMap[key] || key;
-      out[mappedKey] = deepRemapQuickIds(row, idMap);
+      const mappedKey = remapQuickString(key, idMap);
+      const mappedValue = deepRemapQuickIds(row, idMap);
+      out[mappedKey] = mappedKey in out ? mergeRemappedQuickValue(out[mappedKey], mappedValue) : mappedValue;
     }
     return out;
   }
@@ -4626,9 +4735,13 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
     if ("profileStatsDeferred" in out) out.profileStatsDeferred = false;
     if ("temporaryParticipants" in out) out.temporaryParticipants = false;
     if ("quickProfileLinks" in out) delete out.quickProfileLinks;
-    if (out.id && profilesById[String(out.id)]) {
-      const profile = profilesById[String(out.id)];
+    const linkedProfileId = [out.profileId, out.id]
+      .map((id) => String(id || "").trim())
+      .find((id) => !!id && !!profilesById[id]);
+    if (linkedProfileId) {
+      const profile = profilesById[linkedProfileId];
       out.profileId = String(profile.id);
+      if (out.id && profilesById[String(out.id)]) out.id = String(profile.id);
       out.name = profile.name || out.name;
       out.avatarDataUrl = profile.avatarDataUrl ?? out.avatarDataUrl ?? null;
       out.avatarUrl = profile.avatarUrl ?? out.avatarUrl ?? null;
@@ -4670,6 +4783,17 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
     setQuickLinkBusy(true);
     try {
       const full: any = await hydrateSavedEntry(quickLinkEntry);
+      const fullLooksFinished =
+        String(full?.status || "").toLowerCase() === "finished" ||
+        full?.summary?.finished === true ||
+        full?.payload?.summary?.finished === true ||
+        !!(full?.winnerId || full?.summary?.winnerId || full?.payload?.winnerId || full?.payload?.summary?.winnerId);
+      if (!fullLooksFinished) {
+        window.alert("Cette partie rapide n'est pas terminée. Termine-la avant de la transférer dans PARTIES TERMINÉES.");
+        return;
+      }
+
+      const transferredAt = Date.now();
       let converted: any = deepRemapQuickIds(full, idMap);
       converted = normalizeTransferredQuickRecord(converted, profilesById);
       converted.quickParty = false;
@@ -4677,14 +4801,19 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
       converted.profileStatsDeferred = false;
       converted.temporaryParticipants = false;
       converted.convertedFromQuickParty = true;
-      converted.quickPartyConvertedAt = Date.now();
-      converted.updatedAt = Date.now();
+      converted.quickPartyConvertedAt = transferredAt;
+      converted.updatedAt = transferredAt;
+      converted.status = "finished";
+      converted.finishedAt = Number(converted?.finishedAt || converted?.summary?.finishedAt || transferredAt) || transferredAt;
       delete converted.quickProfileLinks;
       if (converted.summary && typeof converted.summary === "object") {
         converted.summary.quickParty = false;
         converted.summary.partyMode = "arcade";
         converted.summary.profileStatsDeferred = false;
         converted.summary.temporaryParticipants = false;
+        converted.summary.finished = true;
+        converted.summary.status = "finished";
+        converted.summary.finishedAt = Number(converted.summary.finishedAt || converted.finishedAt) || converted.finishedAt;
         delete converted.summary.quickProfileLinks;
       }
       if (converted.config && typeof converted.config === "object") {
@@ -4698,6 +4827,18 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
         converted.payload.partyMode = "arcade";
         converted.payload.profileStatsDeferred = false;
         converted.payload.temporaryParticipants = false;
+        converted.payload.status = "finished";
+        converted.payload.finishedAt = Number(converted.payload.finishedAt || converted.finishedAt) || converted.finishedAt;
+        if (converted.payload.summary && typeof converted.payload.summary === "object") {
+          converted.payload.summary.quickParty = false;
+          converted.payload.summary.partyMode = "arcade";
+          converted.payload.summary.profileStatsDeferred = false;
+          converted.payload.summary.temporaryParticipants = false;
+          converted.payload.summary.finished = true;
+          converted.payload.summary.status = "finished";
+          converted.payload.summary.finishedAt = Number(converted.payload.summary.finishedAt || converted.finishedAt) || converted.finishedAt;
+          delete converted.payload.summary.quickProfileLinks;
+        }
         if (converted.payload.config && typeof converted.payload.config === "object") {
           converted.payload.config.quickParty = false;
           converted.payload.config.partyMode = "arcade";
@@ -4706,18 +4847,20 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
         }
         delete converted.payload.quickProfileLinks;
       }
-      // IMPORTANT : une partie rapide peut encore être "in_progress" au moment
-      // du transfert. History.upsert utilise normalement un checkpoint léger
-      // pour ces parties, qui ne réécrit pas tous les marqueurs quickParty.
-      // On force donc UNE écriture complète, sans persister ce flag interne.
-      try {
-        Object.defineProperty(converted, "__forceFullInProgress", {
-          value: true,
-          enumerable: false,
-          configurable: true,
-        });
-      } catch {}
+      if (converted.resume && typeof converted.resume === "object") {
+        converted.resume.status = "finished";
+        converted.resume.finished = true;
+        if (converted.resume.state && typeof converted.resume.state === "object") {
+          converted.resume.state.status = "finished";
+          if (String(converted.resume.state.phase || "").toLowerCase() === "playing") {
+            converted.resume.state.phase = "finished";
+          }
+        }
+      }
 
+      // La conversion est désormais toujours un enregistrement TERMINÉ : on évite
+      // le checkpoint live/in_progress qui laissait auparavant des marqueurs quick
+      // résiduels et faisait tomber la partie dans « EN COURS ».
       await History.upsert(converted);
 
       // Le transfert doit être visible immédiatement. Ne pas bloquer la fermeture
@@ -4725,7 +4868,7 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
       // sur mobile avec un historique important).
       setQuickLinkEntry(null);
       setQuickLinks({});
-      setTab(String(converted?.status || "").toLowerCase() === "finished" ? "done" : "running");
+      setTab("done");
       await loadHistory();
       window.alert("Partie transférée dans l'historique avec profils ✅");
 

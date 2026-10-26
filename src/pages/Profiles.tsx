@@ -17,6 +17,7 @@ import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import ProfileStarRing from "../components/ProfileStarRing";
 import type { Store, Profile } from "../lib/types";
+import { saveStore } from "../lib/storage";
 import {
   getBasicProfileStats,
   getBasicProfileStatsAsync,
@@ -3170,7 +3171,9 @@ ANNULER : créer un nouveau profil distinct portant le même nom.`
       scheduleProfilesPersist("profiles_add", nextStoreSnapshot, { cloud: false, delayMs: 5000 });
     }
   
-    // ✅ 3) Si tu as un state local "profiles", mets-le juste pour l’UI (SANS saveStore ici)
+    // ✅ 3) UI immédiate + commit local DURABLE avant toute navigation.
+    // Le simple timer différé pouvait être annulé au démontage de la page : le
+    // profil apparaissait, puis disparaissait au prochain reload/hydrate.
     setProfilesSafe?.((prev: any[]) => {
       const arr = Array.isArray(prev) ? prev : [];
       return [
@@ -3178,6 +3181,17 @@ ANNULER : créer un nouveau profil distinct portant le même nom.`
         p,
       ];
     });
+
+    if (nextStoreSnapshot) {
+      try {
+        await saveStore(nextStoreSnapshot, { skipMediaCapture: true });
+        await markNasDirtySafe("profiles_add");
+      } catch (error) {
+        console.error("[Profiles] création profil : commit local immédiat échoué", error);
+        setToast({ type: "error", message: "Le profil n'a pas pu être enregistré localement. Réessaie avant de quitter cette page." });
+        return undefined;
+      }
+    }
 
     if (restoreArchived) {
       consumeDeletedLocalProfileArchive(String(p.id || ""));

@@ -29,7 +29,22 @@ export function quickPartyParticipants(value: any): any[] {
     value?.config?.players,
     value?.config?.playersList,
   ];
-  const src = pools.find((rows) => Array.isArray(rows) && rows.length) || [];
+
+  const allRows = pools.flatMap((rows) => Array.isArray(rows) ? rows : []);
+  const isTemporaryQuickPlayer = (player: any) => {
+    const id = String(player?.temporaryPlayerId || player?.id || "").trim();
+    return !!player?.temporaryPlayerId || player?.isTemporary === true || /^quick[-_:]/i.test(id);
+  };
+
+  // Après une association partielle, certains anciens historiques contiennent
+  // à la fois le profil canonique ET l'ancien joueur quick-* dans `players`.
+  // Toujours privilégier les vrais participants temporaires ; sinon le modal
+  // croit que le profil canonique est lui-même un joueur rapide et affiche
+  // "déjà associé" alors que l'association visible est incohérente.
+  const tempRows = allRows.filter(isTemporaryQuickPlayer);
+  const fallbackRows = pools.find((rows) => Array.isArray(rows) && rows.length) || [];
+  const src = tempRows.length ? tempRows : fallbackRows;
+
   const seen = new Set<string>();
   return src.filter((player: any) => {
     const id = String(player?.temporaryPlayerId || player?.id || "").trim();

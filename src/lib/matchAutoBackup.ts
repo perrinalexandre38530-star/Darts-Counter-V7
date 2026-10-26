@@ -818,10 +818,19 @@ export async function createSelectedDestinationCheckpointIfDue(reason = "sync-or
   }
 
   if (provider === "nas_founder") {
-    const { pushNasAccountSnapshot } = await import("./manualNasSync");
-    await pushNasAccountSnapshot();
-    await markIncrementalCheckpoint({ provider: "founder_nas", reason });
-    return { due: true, provider, status: "completed" };
+    // NAS V124 : ne plus transformer un checkpoint automatique en gros POST
+    // /sync/push. Avec un historique/médias volumineux ce chemin dépassait la
+    // limite du transport (413) et pouvait se déclencher pendant une simple
+    // association de profils. On envoie uniquement le journal incrémental.
+    // Le snapshot complet NAS reste une action manuelle explicite (transport
+    // chunké/diagnostiqué) et c'est lui seul qui pourra compacter le journal.
+    const { flushIncrementalRemoteSyncForProvider } = await import("./incrementalRemoteSync");
+    const result = await flushIncrementalRemoteSyncForProvider("founder_nas", { forceProbe: true });
+    if (result.error) throw new Error(result.error);
+    if (!result.supported || result.synced < result.attempted) {
+      return { due: true, provider, status: "manual-only" };
+    }
+    return { due: true, provider, status: "manual-only" };
   }
 
   // File/SD/USB require a user-granted target/permission. Keep journal deltas
@@ -976,11 +985,17 @@ export async function saveMatchBackupAfterHistoryUpsert(args: {
     return;
   }
   if (provider === "nas_founder") {
-    await pushMatchBackupToNas(item).catch((error) => {
+    // V124 : le journal contient déjà la révision complète ci-dessus. Le POST
+    // legacy /sync/match-backups est donc redondant et, sur les grosses parties,
+    // renvoie actuellement 500. Un seul chemin NAS automatique : les deltas.
+    const { flushIncrementalRemoteSyncForProvider } = await import("./incrementalRemoteSync");
+    const result = await flushIncrementalRemoteSyncForProvider("founder_nas");
+    if (result.error) {
       try {
-        localStorage.setItem("dc_match_backup_last_nas_error", JSON.stringify({ at: nowIso(), message: error?.message || String(error) }));
+        localStorage.setItem("dc_match_backup_last_nas_error", JSON.stringify({ at: nowIso(), message: result.error }));
       } catch {}
-    });
+    }
+    return;
   }
 }
 
