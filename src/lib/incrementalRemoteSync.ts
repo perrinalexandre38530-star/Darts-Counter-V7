@@ -2,6 +2,7 @@ import { apiGet, apiPost } from './apiClient';
 import { getPersonalCloudStatus } from './personalCloudApi';
 import { downloadCloudObject, listCloudObjects, uploadCloudObject } from './cloudStorageApi';
 import { loadStoragePrefs } from './storagePlans';
+import { initOfflineFirstRuntime, shouldAttemptRemoteWork } from './offlineFirstRuntime';
 import {
   listIncrementalChanges,
   markIncrementalProviderSynced,
@@ -40,6 +41,7 @@ function nasIncrementalKnownSupported(forceProbe = false): boolean {
 
 async function personalCloudSupportsIncremental(provider: 'google_drive' | 'onedrive' | 'dropbox'): Promise<boolean> {
   if (personalCloudIncrementalSupport.has(provider)) return personalCloudIncrementalSupport.get(provider) === true;
+  if (!shouldAttemptRemoteWork()) return false;
   try {
     const status: any = await getPersonalCloudStatus(provider);
     // Un backend ancien sait gérer les sauvegardes complètes mais ne connaît pas
@@ -64,6 +66,10 @@ function isRemoteProvider(provider: string): boolean {
 
 async function uploadBundle(provider: string, changes: IncrementalChange[], opts: { forceProbe?: boolean } = {}): Promise<boolean> {
   if (!changes.length) return true;
+  // OFFLINE-FIRST: never spend time probing NAS/Drive/R2 while Android/browser
+  // explicitly reports no connectivity. The local IndexedDB journal is the queue
+  // and remains untouched until an online event schedules a new flush.
+  if (!shouldAttemptRemoteWork()) return false;
   if (opts.forceProbe) runtimeUnsupportedProviders.delete(provider);
   if (runtimeUnsupportedProviders.has(provider)) return false;
   const bundle = {
@@ -140,6 +146,7 @@ export async function flushIncrementalRemoteSyncForProvider(
     const changes = await listUnsyncedIncrementalChanges(normalized);
     result.attempted = changes.length;
     if (!changes.length) return result;
+    if (!shouldAttemptRemoteWork()) return result;
     const uploaded = await uploadBundle(normalized, changes, opts);
     result.supported = uploaded;
     if (!uploaded) return result;
@@ -165,6 +172,7 @@ export async function flushIncrementalRemoteSync(): Promise<IncrementalSyncResul
     const changes = await listUnsyncedIncrementalChanges(provider);
     result.attempted = changes.length;
     if (!changes.length) return;
+    if (!shouldAttemptRemoteWork()) return;
     const uploaded = await uploadBundle(provider, changes);
     result.supported = uploaded;
     if (!uploaded) return;
@@ -189,7 +197,7 @@ export async function flushIncrementalRemoteSync(): Promise<IncrementalSyncResul
 }
 
 export function scheduleIncrementalRemoteSync(): void {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined' || !shouldAttemptRemoteWork()) return;
   if (timer != null) window.clearTimeout(timer);
   timer = window.setTimeout(() => {
     timer = null;
@@ -200,15 +208,19 @@ export function scheduleIncrementalRemoteSync(): void {
 export function initIncrementalRemoteSync(): void {
   if (started || typeof window === 'undefined') return;
   started = true;
+  initOfflineFirstRuntime();
   window.addEventListener('dc:incremental-backup-change', scheduleIncrementalRemoteSync as EventListener, { passive: true });
   window.addEventListener('online', scheduleIncrementalRemoteSync, { passive: true });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') void flushIncrementalRemoteSync();
+    if (document.visibilityState === 'hidden' && shouldAttemptRemoteWork()) void flushIncrementalRemoteSync();
   }, { passive: true });
-  window.setTimeout(scheduleIncrementalRemoteSync, 2500);
+  // Initial flush is online-only. Offline boot keeps the journal completely local
+  // and fast; the browser's `online` event will resume it automatically.
+  if (shouldAttemptRemoteWork()) window.setTimeout(scheduleIncrementalRemoteSync, 2500);
 }
 
 export async function fetchRemoteIncrementalChanges(provider = selectedProvider()): Promise<IncrementalChange[]> {
+  if (!shouldAttemptRemoteWork()) return [];
   if (provider === 'founder_nas') {
     if (runtimeUnsupportedProviders.has(provider) || !nasIncrementalKnownSupported()) return [];
     const res: any = await apiGet('/account/incremental-changes?limit=200', { timeoutMs: 15_000 }).catch((error: any) => {
