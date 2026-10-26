@@ -1,5 +1,5 @@
 import React from "react";
-import { loadStoragePrefs, formatStorageBytes } from "../../lib/storagePlans";
+import { loadStoragePrefs, formatStorageBytes, estimateBrowserStorage } from "../../lib/storagePlans";
 import { getExternalBackupStatus } from "../../lib/externalBackupTarget";
 import { getBackgroundBackupState, subscribeBackgroundBackup, type BackgroundBackupState } from "../../lib/backgroundBackup";
 import { getBackgroundRestoreState, subscribeBackgroundRestore, type BackgroundRestoreState } from "../../lib/backgroundRestore";
@@ -8,8 +8,10 @@ import { getNasSyncState } from "../../lib/manualNasSync";
 import { getPersonalCloudStatus } from "../../lib/personalCloudApi";
 import { getDirectR2Status, getDirectR2Usage } from "../../lib/directR2BackupApi";
 import { clearBackupPerfEvents, readBackupPerfEvents, summarizeBackupPerfEvents, type BackupPerfEvent } from "../../lib/backupPerformanceDiagnostics";
+import { shouldAttemptRemoteWork } from "../../lib/offlineFirstRuntime";
+import { getGlobalSyncState } from "../../lib/sync/syncOrchestrator";
 
-const REPORT_KEY = "dc_backup_diagnostic_report_v132";
+const REPORT_KEY = "dc_backup_diagnostic_report_v140";
 
 type ThemeLike = {
   text?: string;
@@ -27,7 +29,7 @@ type DiagnosticCheck = {
 };
 
 type BackupDiagnosticReport = {
-  version: "v132";
+  version: "v140";
   generatedAt: string;
   destination: string;
   checks: DiagnosticCheck[];
@@ -92,6 +94,37 @@ export default function BackupDiagnosticsPanel({ theme }: { theme: ThemeLike }) 
       const checks: DiagnosticCheck[] = [];
       const prefs = loadStoragePrefs();
       const nas = getNasSyncState();
+      const online = shouldAttemptRemoteWork();
+      const globalSync = getGlobalSyncState();
+
+      // WAVE 7 — LOCAL is the operational authority. Surface its real quota
+      // first, before any cloud/provider checks.
+      try {
+        const local = await estimateBrowserStorage();
+        let persisted: boolean | null = null;
+        try { persisted = typeof navigator?.storage?.persisted === "function" ? await navigator.storage.persisted() : null; } catch {}
+        const percent = local.quota > 0 ? (local.usage / local.quota) * 100 : 0;
+        const status: DiagnosticCheck["status"] = percent >= 95 ? "fail" : percent >= 85 ? "warn" : "ok";
+        checks.push({
+          id: "local",
+          label: "LOCAL / IndexedDB",
+          status,
+          detail: `${formatStorageBytes(local.usage)} utilisés · ${formatStorageBytes(local.free)} libres${local.quota ? ` · ${percent.toFixed(1)}% du quota` : ""}${persisted === true ? " · stockage persistant" : persisted === false ? " · persistance non garantie" : ""}`,
+          data: { ...local, percentUsed: percent, persisted },
+        });
+      } catch (error: any) {
+        checks.push({ id: "local", label: "LOCAL / IndexedDB", status: "warn", detail: String(error?.message || error || "Quota local indisponible") });
+      }
+
+      checks.push({
+        id: "sync",
+        label: "Synchronisation globale",
+        status: !online ? "info" : globalSync.status === "backoff" ? "warn" : globalSync.status === "running" || globalSync.status === "scheduled" ? "info" : "ok",
+        detail: !online
+          ? "Mode hors ligne : aucune requête distante. Les files restent locales et seront reprises automatiquement."
+          : `État ${globalSync.status} · dernier succès ${formatDate(globalSync.lastSuccessAt)}${globalSync.nextAttemptAt ? ` · prochain essai ${formatDate(globalSync.nextAttemptAt)}` : ""}`,
+        data: globalSync,
+      });
 
       let external: any = null;
       let drive: any = null;
@@ -149,32 +182,40 @@ export default function BackupDiagnosticsPanel({ theme }: { theme: ThemeLike }) 
       });
 
       try {
-        drive = await getPersonalCloudStatus("google_drive");
-        checks.push({
+        if (!online) {
+          checks.push({ id: "drive", label: "Google Drive", status: "info", detail: `Hors ligne · ${Math.max(0, Number(unsynced.google_drive || 0))} changement(s) en attente locale.` });
+        } else {
+          drive = await getPersonalCloudStatus("google_drive");
+          checks.push({
           id: "drive",
           label: "Google Drive",
           status: drive?.connected ? "ok" : drive?.configured ? "warn" : "info",
           detail: drive?.connected
             ? `Connecté${drive.accountLabel ? ` · ${drive.accountLabel}` : ""} · changements non envoyés ${Math.max(0, Number(unsynced.google_drive || 0))}`
             : drive?.configured ? "Configuré mais non connecté." : "Aucune connexion Google Drive active.",
-          data: { ...drive, unsynced: unsynced.google_drive },
-        });
+            data: { ...drive, unsynced: unsynced.google_drive },
+          });
+        }
       } catch (error: any) {
         checks.push({ id: "drive", label: "Google Drive", status: "warn", detail: String(error?.message || error || "Statut Drive indisponible") });
       }
 
       try {
-        r2Status = await getDirectR2Status();
-        try { r2Usage = await getDirectR2Usage(); } catch {}
-        checks.push({
+        if (!online) {
+          checks.push({ id: "r2", label: "Cloud R2 PREMIUM", status: "info", detail: `Hors ligne · aucune écriture R2 · ${Math.max(0, Number(unsynced.cloud_r2 || 0))} changement(s) en attente locale.` });
+        } else {
+          r2Status = await getDirectR2Status();
+          try { r2Usage = await getDirectR2Usage(); } catch {}
+          checks.push({
           id: "r2",
           label: "Cloud R2",
           status: r2Status?.ok ? "ok" : "warn",
           detail: r2Status?.ok
             ? `Route R2 disponible${r2Usage ? ` · ${formatStorageBytes(Number(r2Usage.usedBytes || 0))} utilisés` : ""}`
             : String(r2Status?.error || "Route R2 non confirmée"),
-          data: { status: r2Status, usage: r2Usage, unsynced: unsynced.cloud_r2 },
-        });
+            data: { status: r2Status, usage: r2Usage, unsynced: unsynced.cloud_r2 },
+          });
+        }
       } catch (error: any) {
         checks.push({ id: "r2", label: "Cloud R2", status: "warn", detail: String(error?.message || error || "Statut R2 indisponible") });
       }
@@ -202,7 +243,7 @@ export default function BackupDiagnosticsPanel({ theme }: { theme: ThemeLike }) 
       });
 
       const result: BackupDiagnosticReport = {
-        version: "v132",
+        version: "v140",
         generatedAt: new Date().toISOString(),
         destination: String(prefs.selectedDestination || "app_local"),
         checks,
@@ -211,6 +252,8 @@ export default function BackupDiagnosticsPanel({ theme }: { theme: ThemeLike }) 
         performance: { recent: perf.recent, slowest: perf.slowest },
         raw: {
           prefs,
+          online,
+          globalSync,
           external,
           nas,
           drive,

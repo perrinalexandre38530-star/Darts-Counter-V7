@@ -29,6 +29,7 @@ export function saveTrainingEvent(ev: TrainingEvent) {
   all.push(ev);
   try {
     localStorage.setItem(KEY, JSON.stringify(all));
+    try { window.dispatchEvent(new CustomEvent("dc:training-sync-queued", { detail: { id: ev.id, at: Date.now() } })); } catch {}
   } catch {
     // ignore quota errors
   }

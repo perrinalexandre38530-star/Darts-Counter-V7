@@ -1,47 +1,18 @@
 import { useEffect } from "react";
 import { useAuthOnline } from "../../hooks/useAuthOnline";
-import { trainingSyncQueueTry, trainingSyncQueueEnqueueSoon } from "./trainingSyncQueue";
+import { requestGlobalSync } from "../../lib/sync/syncOrchestrator";
 
 export function useTrainingAutoSync(enabled: boolean = true) {
-  const { user, online } = useAuthOnline();
+  const { user } = useAuthOnline();
 
   useEffect(() => {
-    if (!enabled) return;
-    if (!user) return;
+    if (!enabled || !user) return;
     try {
       localStorage.setItem("dc_user_id", user.id);
     } catch {}
+
+    // OFFLINE-FIRST W6 : plus de timer/focus/online propre au Training.
+    // Le coordinateur global pilote la queue et son backoff.
+    requestGlobalSync("training-auth-ready", { delayMs: 1_000 });
   }, [user, enabled]);
-
-  useEffect(() => {
-    if (!enabled) return;
-    if (!user || !online) return;
-
-    let alive = true;
-
-    // ✅ Best-effort, mais sans spam Supabase
-    trainingSyncQueueEnqueueSoon();
-    trainingSyncQueueTry(user.id);
-
-    const onFocus = () => {
-      if (!alive) return;
-      trainingSyncQueueEnqueueSoon();
-      trainingSyncQueueTry(user.id);
-    };
-
-    window.addEventListener("focus", onFocus);
-
-    // ⚠️ IMPORTANT: ne pas ping le serveur toutes les 15s.
-    // 2 minutes est largement suffisant (et la queue ne sync que s'il y a des events).
-    const t = window.setInterval(() => {
-      if (!alive) return;
-      trainingSyncQueueTry(user.id);
-    }, 120000);
-
-    return () => {
-      alive = false;
-      window.removeEventListener("focus", onFocus);
-      window.clearInterval(t);
-    };
-  }, [user, online, enabled]);
 }

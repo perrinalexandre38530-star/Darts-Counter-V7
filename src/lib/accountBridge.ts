@@ -684,7 +684,11 @@ function mergeAccountIntoLocalProfile(localProfile: any, accountProfile: any, us
   const onlineAvatarIsFresher = !!onlineAvatar && !localPreviewPending && (
     !hasAvatarMedia(localOrAccountAvatarSource) ||
     (onlineAvatarTs > 0 && onlineAvatarTs > localAvatarTs) ||
-    (onlineLooksCanonical && String(onlineAvatar) !== localAvatarUrl)
+    // Compat anciens comptes sans avatarUpdatedAt : l'URL publique Supabase
+    // peut encore initialiser un cache qui n'a AUCUNE révision locale. Dès qu'un
+    // appareil possède une vraie révision avatar, un distant sans révision ne
+    // peut plus faire revenir silencieusement une ancienne photo.
+    (localAvatarTs <= 0 && onlineLooksCanonical && String(onlineAvatar) !== localAvatarUrl)
   );
   const avatarSource = onlineAvatarIsFresher
     ? { avatarUrl: onlineAvatar, avatarUpdatedAt: onlineAvatarTs || Date.now() }

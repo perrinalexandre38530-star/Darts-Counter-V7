@@ -1,13 +1,28 @@
 // /public/sw.js — minimal PWA SW, cache-safe + Push appels entrants
-const SW_VERSION = "dc-sw-2026-09-06-auth-network-v7";
+const SW_VERSION = "dc-sw-2026-10-26-offline-shell-v8";
 const CONTENT_PACK_CACHE_PREFIX = "mss-content-packs-";
 const CONTENT_PACK_CACHE = "mss-content-packs-v3";
 const MAP_TILE_CACHE = "mss-map-tiles-v1";
+const APP_SHELL_CACHE = SW_VERSION;
+const APP_SHELL_SEED = ["/", "/index.html", "/manifest.webmanifest", "/app-512.png"];
 const MAP_TILE_CACHE_LIMIT = 360;
 let mapTileWriteCount = 0;
 
-self.addEventListener("install", () => {
+self.addEventListener("install", (event) => {
   self.skipWaiting();
+  // OFFLINE-FIRST W3: précharge le minimum indispensable à une ouverture PWA.
+  // Un échec partiel ne doit jamais empêcher l'installation du SW.
+  event.waitUntil((async () => {
+    try {
+      const cache = await caches.open(APP_SHELL_CACHE);
+      for (const url of APP_SHELL_SEED) {
+        try {
+          const response = await fetch(url, { cache: "no-store" });
+          if (response?.ok) await cache.put(url, response.clone());
+        } catch {}
+      }
+    } catch {}
+  })());
 });
 
 self.addEventListener("activate", (event) => {
@@ -153,6 +168,35 @@ async function serveContentPackRequest(request) {
   }
 }
 
+function isSameOriginAppRequest(request, url) {
+  if (!request || !url || url.origin !== self.location.origin) return false;
+  if (request.mode === "navigate") return true;
+  const destination = String(request.destination || "");
+  return ["script", "style", "font", "image"].includes(destination);
+}
+
+async function serveAppRequestNetworkFirst(request) {
+  const cache = await caches.open(APP_SHELL_CACHE);
+  try {
+    const response = await fetch(request);
+    if (response && response.ok) {
+      try { await cache.put(request, response.clone()); } catch {}
+      if (request.mode === "navigate") {
+        try { await cache.put("/index.html", response.clone()); } catch {}
+      }
+    }
+    return response;
+  } catch {
+    const cached = await cache.match(request, { ignoreSearch: request.mode === "navigate" });
+    if (cached) return cached;
+    if (request.mode === "navigate") {
+      const shell = await cache.match("/index.html") || await cache.match("/");
+      if (shell) return shell;
+    }
+    return new Response("", { status: 503, statusText: "Offline asset unavailable" });
+  }
+}
+
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   let url = null;
@@ -166,10 +210,14 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(serveMapTileRequest(event.request));
     return;
   }
-  // Le SW n'a aucune raison d'intercepter le shell/auth/navigation générale.
-  // L'ancien fallback fabriquait un HTTP 503 "Network unavailable" qui polluait
-  // la console (et pouvait gêner un retour OAuth) lors d'une micro-coupure.
-  // On laisse donc le navigateur gérer normalement tous les GET non spécialisés.
+  // OFFLINE-FIRST W3: network-first pour le shell et les assets locaux. En ligne,
+  // on prend toujours la version fraîche; hors ligne, on retombe sur le dernier
+  // exemplaire réellement chargé. Cela évite le vieux comportement cache-first
+  // qui pouvait ressusciter des chunks Vite obsolètes.
+  if (isSameOriginAppRequest(event.request, url)) {
+    event.respondWith(serveAppRequestNetworkFirst(event.request));
+    return;
+  }
   return;
 });
 

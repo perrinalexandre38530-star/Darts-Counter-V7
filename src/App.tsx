@@ -92,6 +92,7 @@ import { applyOrganizationPlayContext } from "./organizations/organizationPlayCo
 // MONETIZATION_V1
 import { interceptMonetizedNavigation, markCompletedMatchForAds } from "./monetization/MonetizationManager";
 import { recordFreezeNavigation } from "./lib/freezeWatch";
+import { isRuntimeOffline, subscribeConnectivity } from "./lib/offlineFirstRuntime";
 
 import AccountStart from "./pages/AccountStart";
 import AuthV7Login from "./pages/AuthV7Login";
@@ -1397,6 +1398,42 @@ type Tab =
   | "enculette_config"
   | "enculette_play"
   | "auth_reset";
+
+// OFFLINE-FIRST WAVE 2 — seules ces routes exigent réellement le cloud.
+// Tout le reste de l’application (jeux, profils locaux, historique, stats,
+// training, tournois locaux, réglages, etc.) reste accessible sans session.
+const ONLINE_ONLY_TABS = new Set<string>([
+  "friends",
+  "online",
+  "online_clubs",
+  "messages",
+  "spectator",
+  "organizations",
+  "organization_home",
+  "organization_more",
+  "organization_calendar",
+  "organization_members",
+  "organization_teams",
+  "organization_competitions",
+  "organization_stats",
+  "organization_communication",
+  "organization_federations",
+  "organization_venue",
+  "organization_venue_scan",
+  "organization_venue_board",
+  "organization_admin",
+  "stats_online",
+  "x01_online_setup",
+  "esports_rooms",
+  "esports_matches",
+  "esports_tournaments",
+  "esports_profile",
+  "esports_stats",
+]);
+
+function isOnlineOnlyTab(tab: any): boolean {
+  return ONLINE_ONLY_TABS.has(String(tab || ""));
+}
 
 const THEME_PREVIEW_TAB_PARAM = "dcThemePreviewTab";
 const THEME_PREVIEW_ALLOWED_TABS: Tab[] = ["home", "games", "profiles", "stats", "online"];
@@ -2883,7 +2920,11 @@ useEffect(() => {
     // Toujours signaler la mutation au synchroniseur privé : sa signature
     // inclut l'intégralité des profils locaux, contrairement à la signature
     // performance du store qui peut volontairement ignorer certains champs.
-    try { window.dispatchEvent(new Event(ACCOUNT_OWNED_STORE_MUTATED_EVENT)); } catch {}
+    try {
+      window.dispatchEvent(new CustomEvent(ACCOUNT_OWNED_STORE_MUTATED_EVENT, {
+        detail: { profiles: Array.isArray((snapshot as any)?.profiles) ? (snapshot as any).profiles : [] },
+      }));
+    } catch {}
     const nextSignature = buildStorePersistSignatureForPerf(snapshot as any);
     if (!pendingStorePersistRef.current && nextSignature === lastPersistSignatureRef.current) {
       return;
@@ -4584,6 +4625,11 @@ useEffect(() => {
     // ================================
     const upsertPromise = persistFinishedMatchForAds(saved, String(saved.kind || "game"));
 
+    // LOCAL-FIRST WAVE 4: every online mirror/upload is chained AFTER the
+    // canonical IndexedDB commit. A failed local save therefore cannot produce a
+    // remote-only match or online stats row.
+    void upsertPromise.then((localSaved) => {
+      if (!localSaved) return;
     try {
       const payloadAny: any = saved.payload ?? {};
       const lobbyCode = String(payloadAny?.lobbyCode || payloadAny?.onlineLobbyCode || "").trim().toUpperCase();
@@ -4710,13 +4756,34 @@ useEffect(() => {
           .catch(() => {});
       }
     } catch {}
+    });
+
     const shouldNavigate = options?.navigate !== false;
     const nav = () => {
       if (shouldNavigate) go("statsHub", { tab: "history" });
     };
 
-    if (shouldNavigate) void upsertPromise.finally(() => nav());
-    else void upsertPromise;
+    const onLocalPersistFailed = () => {
+      try {
+        window.dispatchEvent(new CustomEvent("msc:local-match-save-failed", {
+          detail: { id: String(saved?.id || ""), kind: String(saved?.kind || "game"), at: Date.now() },
+        }));
+      } catch {}
+      try {
+        window.alert("La partie n'a pas pu être enregistrée localement. Elle reste affichée afin que tu puisses réessayer sans perdre le résultat.");
+      } catch {}
+    };
+
+    if (shouldNavigate) {
+      void upsertPromise.then((localSaved) => {
+        if (localSaved) nav();
+        else onLocalPersistFailed();
+      });
+    } else {
+      void upsertPromise.then((localSaved) => {
+        if (!localSaved) onLocalPersistFailed();
+      });
+    }
 
   }
 
@@ -5314,6 +5381,7 @@ const unifiedStats = (() => {
             onLogin={() => go("auth_v7_login")}
             onCreate={() => go("auth_v7_signup")}
             onForgot={() => go("auth_forgot")}
+            onLocal={() => go("profiles", { view: "me", autoCreate: true, localOnly: true })}
           />
         );
         break;
@@ -5336,6 +5404,7 @@ const unifiedStats = (() => {
             onLogin={() => go("auth_v7_login")}
             onCreate={() => go("auth_v7_signup")}
             onForgot={() => go("auth_forgot")}
+            onLocal={() => go("profiles", { view: "me", autoCreate: true, localOnly: true })}
           />
         );
         break;
@@ -7653,11 +7722,11 @@ case "babyfoot_team_edit":
 
   const isAuthShell = AUTH_SHELL_TABS.has(tab);
   const isStandaloneCompanion = isStandalonePublicHash(String(window.location.hash || "")) || tab === "x01_device_camera" || tab === "public_landing";
-  // La TV autonome doit afficher le même chrome que l'application : BottomNav
-  // paysage, sélecteur de sport, Awena, thèmes et routes réelles. La session
-  // online reste requise uniquement sur téléphone/web classique.
+  // OFFLINE-FIRST WAVE 2 : le chrome principal appartient au mode LOCAL,
+  // pas au compte cloud. BottomNav / Awena / sélecteur de sport restent donc
+  // disponibles même sans réseau ou sans session. Les routes réellement ONLINE
+  // sont filtrées séparément par AppGate.
   const appChromeAllowed =
-    (isSamsungTvNativeApp || (online?.ready && online.status === "signed_in")) &&
     !isAuthShell &&
     !isStandaloneCompanion;
   const showSportQuickSwitch = SPORT_QUICK_SWITCH_ALLOWED_TABS.has(tab) && appChromeAllowed;
@@ -7915,11 +7984,14 @@ function AccountSyncBanner() {
 function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: any; children: React.ReactNode }) {
   const { status, ready } = useAuthOnline();
   const samsungTvNativeApp = isSamsungTvNativeAppMode();
+  const [offline, setOffline] = React.useState(() => isRuntimeOffline());
+
+  React.useEffect(() => subscribeConnectivity((state) => {
+    setOffline(state.connectivity === "offline");
+  }), []);
+
   if (tab === "public_landing") return <>{children}</>;
 
-  // Les seuls écrans accessibles sans compte sont le tunnel d'authentification
-  // et la caméra compagnon X01 ouverte directement depuis un QR code. Cette
-  // dernière n'offre aucun accès à la navigation générale de l'application.
   const isAuthFlow =
     tab === "auth_reset" ||
     tab === "auth_callback" ||
@@ -7930,24 +8002,56 @@ function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: an
     tab === "auth_v7_signup";
 
   const isStandaloneCompanion = tab === "x01_device_camera";
-  const needsSession = !isAuthFlow && !isStandaloneCompanion;
+  const onlineOnly = isOnlineOnlyTab(tab);
 
+  // LOCAL FIRST : aucune route locale n'est plus redirigée vers l'auth.
+  // Une session Supabase peut continuer à se restaurer en arrière-plan sans
+  // bloquer jeux, historique, stats, profils locaux ou réglages.
   React.useEffect(() => {
-    if (samsungTvNativeApp) return;
-    if (!ready || !needsSession || status === "signed_in") return;
+    if (samsungTvNativeApp || isAuthFlow || isStandaloneCompanion || !onlineOnly) return;
+    if (offline || !ready || status === "signed_in") return;
     go("account_start");
-  }, [ready, needsSession, status, go, samsungTvNativeApp]);
+  }, [ready, status, go, samsungTvNativeApp, isAuthFlow, isStandaloneCompanion, onlineOnly, offline]);
 
   if (samsungTvNativeApp || isAuthFlow || isStandaloneCompanion) {
     return <>{children}</>;
+  }
+
+  if (!onlineOnly) {
+    return <>
+      {!offline && status === "signed_in" ? <AccountSyncBanner /> : null}
+      {children}
+    </>;
+  }
+
+  if (offline) {
+    return (
+      <div className="container" style={{ minHeight: "100dvh", display: "grid", placeItems: "center", padding: 28, textAlign: "center" }}>
+        <div style={{ width: "min(92vw, 460px)", padding: 22, borderRadius: 22, border: "1px solid rgba(255,198,58,.26)", background: "rgba(7,10,14,.94)", boxShadow: "0 18px 55px rgba(0,0,0,.52)" }}>
+          <div style={{ fontSize: 28, marginBottom: 8 }}>📴</div>
+          <div style={{ fontWeight: 950, fontSize: 19 }}>Mode local hors ligne</div>
+          <div style={{ marginTop: 8, opacity: 0.78, fontSize: 13, lineHeight: 1.45 }}>
+            Cette fonction utilise le service Online. Tes jeux, profils locaux, historique, statistiques et entraînements restent disponibles sans connexion.
+          </div>
+          <button
+            type="button"
+            onClick={() => go("gameSelect")}
+            style={{ marginTop: 16, width: "100%", borderRadius: 999, padding: "12px 14px", border: "none", fontWeight: 950, background: "linear-gradient(180deg,#ffc63a,#ffb300)", color: "#1b1508", cursor: "pointer" }}
+          >
+            RETOUR AU MODE LOCAL
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (!ready || status === "checking") {
     return (
       <div className="container" style={{ minHeight: "100dvh", display: "grid", placeItems: "center", padding: 40, textAlign: "center" }}>
         <div>
-          <div style={{ fontWeight: 950, fontSize: 18 }}>Vérification du compte…</div>
-          <div style={{ marginTop: 7, opacity: 0.72, fontSize: 12 }}>MULTISPORTS SCORING nécessite une connexion active.</div>
+          <div style={{ fontWeight: 950, fontSize: 18 }}>Vérification du compte Online…</div>
+          <div style={{ marginTop: 7, opacity: 0.72, fontSize: 12 }}>Le mode local reste disponible pendant cette vérification.</div>
+          <button type="button" onClick={() => go("gameSelect")} style={{ marginTop: 14, borderRadius: 999, padding: "10px 13px", border: "1px solid rgba(255,198,58,.35)", background: "rgba(255,198,58,.08)", color: "#ffe29a", fontWeight: 900, cursor: "pointer" }}>MODE LOCAL</button>
         </div>
       </div>
     );
@@ -7957,8 +8061,9 @@ function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: an
     return (
       <div className="container" style={{ minHeight: "100dvh", display: "grid", placeItems: "center", padding: 40, textAlign: "center" }}>
         <div>
-          <div style={{ fontWeight: 950, fontSize: 18 }}>Connexion obligatoire</div>
-          <div style={{ marginTop: 7, opacity: 0.72, fontSize: 12 }}>Redirection vers la page de connexion…</div>
+          <div style={{ fontWeight: 950, fontSize: 18 }}>Connexion requise pour cette fonction</div>
+          <div style={{ marginTop: 7, opacity: 0.72, fontSize: 12 }}>Le compte n’est jamais obligatoire pour jouer en local.</div>
+          <button type="button" onClick={() => go("gameSelect")} style={{ marginTop: 14, borderRadius: 999, padding: "10px 13px", border: "1px solid rgba(255,198,58,.35)", background: "rgba(255,198,58,.08)", color: "#ffe29a", fontWeight: 900, cursor: "pointer" }}>MODE LOCAL</button>
         </div>
       </div>
     );

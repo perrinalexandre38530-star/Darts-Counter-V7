@@ -116,14 +116,20 @@ function localizeFrenchBullTerms(value: string): string {
   const INNER = "__MSS_INNER_BULL__";
   let text = String(value);
 
-  // Protéger d'abord toutes les écritures qui désignent explicitement la zone 50.
+  // Idempotence : protéger d'abord les libellés français déjà localisés.
+  // Sans cela, "1/2 BULL" repassait dans le MutationObserver et devenait
+  // "1/2 1/2 BULL".
+  text = text.replace(/\b1\s*\/\s*2\s+BULL\s*25\b/gi, `${OUTER} 25`);
+  text = text.replace(/\b1\s*\/\s*2\s+BULL\b/gi, OUTER);
+
+  // Protéger ensuite toutes les écritures historiques qui désignent la zone 50.
   text = text.replace(/\bD[\s-]?BULL\s*50\b/gi, `${INNER} 50`);
   text = text.replace(/\bDOUBLE\s+BULL\s*50\b/gi, `${INNER} 50`);
   text = text.replace(/\bBULL\s*50\b/gi, `${INNER} 50`);
   text = text.replace(/\bD[\s-]?BULL\b/gi, INNER);
   text = text.replace(/\bDOUBLE\s+BULL\b/gi, INNER);
 
-  // Les BULL restants correspondent à la zone 25 dans les libellés historiques.
+  // Les BULL historiques restants correspondent à la zone 25.
   text = text.replace(/\bBULL\s*25\b/gi, `${OUTER} 25`);
   text = text.replace(/\bBULL\b/gi, OUTER);
 

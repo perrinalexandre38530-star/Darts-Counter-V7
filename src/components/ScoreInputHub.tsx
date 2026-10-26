@@ -38,7 +38,7 @@ type ExternalKeypadAuxAction = {
   onClick: () => void;
   disabled?: boolean;
   active?: boolean;
-  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "red" | "bull25" | "bull50" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "dark";
   title?: string;
   ariaLabel?: string;
   fullBleedIcon?: boolean;
@@ -50,7 +50,7 @@ type ExternalKeypadSecondaryAction = {
   onClick: () => void;
   disabled?: boolean;
   active?: boolean;
-  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "red" | "bull25" | "bull50" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "dark";
   title?: string;
   ariaLabel?: string;
 };
@@ -59,7 +59,7 @@ type ExternalKeypadFooterAction = {
   label: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
-  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "red" | "bull25" | "bull50" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "dark";
   title?: string;
   ariaLabel?: string;
 };
@@ -68,7 +68,7 @@ type ExternalKeypadExtraMainButton = {
   label: React.ReactNode;
   onClick: () => void;
   active?: boolean;
-  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "red" | "bull25" | "bull50" | "dark";
+  tone?: "blue" | "teal" | "magenta" | "violet" | "green" | "gold" | "orange" | "yellow" | "dark";
   title?: string;
   ariaLabel?: string;
 };
@@ -153,6 +153,7 @@ type Props = {
 
   /** Masquer les 3 badges d’aperçu (si affichés ailleurs) */
   hidePreview?: boolean;
+  keypadPreviewRenderer?: (dart: Dart | undefined, index: number) => React.ReactNode;
   /** Masquer le total */
   hideTotal?: boolean;
   /** Remplace le centre */
@@ -284,6 +285,7 @@ export default function ScoreInputHub({
   guideLabel = "",
   dartboardGuideTargets = null,
   hidePreview,
+  keypadPreviewRenderer,
   hideTotal,
   centerSlot,
   disabled = false,
@@ -328,14 +330,6 @@ export default function ScoreInputHub({
   }, [method, onMethodChange]);
 
   const allowPresets = enablePresets && (!!onSetVisitDarts || !!onDirectDart);
-  const handleBullPress = React.useCallback((bull: 25 | 50) => {
-    const dart = { v: 25, mult: bull === 50 ? 2 : 1 } as UIDart;
-    if (onDirectDart) {
-      onDirectDart(dart);
-      return;
-    }
-    onBull(bull);
-  }, [onBull, onDirectDart]);
   const showSwitcher = !hideSwitcher && !hideTabs && switcherMode !== "hidden";
   const safeCurrentThrow = Array.isArray(currentThrow) ? currentThrow : [];
   const currentTotal = throwTotal(safeCurrentThrow);
@@ -536,9 +530,10 @@ export default function ScoreInputHub({
       onBackspace={onBackspace}
       onCancel={onCancel}
       onNumber={onNumber}
-      onBull={handleBullPress}
+      onBull={onBull}
       onValidate={handleValidateFromKeypad}
       hidePreview={hidePreview}
+      previewRenderer={keypadPreviewRenderer}
       hideTotal={hideTotal}
       centerSlot={centerSlot}
       auxAction={keypadAuxAction}
@@ -619,7 +614,7 @@ export default function ScoreInputHub({
           currentThrow={safeCurrentThrow}
           currentTotal={currentTotal}
           onDirectDart={onDirectDart}
-          onBull={handleBullPress}
+          onBull={onBull}
           onSimple={onSimple}
           onDouble={onDouble}
           onTriple={onTriple}

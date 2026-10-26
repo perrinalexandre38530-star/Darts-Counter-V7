@@ -17,6 +17,7 @@
     "test:auth": "node ./src/tools/test-auth-spine.mjs",
     "test:x01v3": "node ./tools/run-ts-regressions.mjs --only tools/test-x01v3-regression.ts",
     "test:sync": "node ./tools/test-cloud-sync.mjs",
+    "test:offline-first-final": "node ./tools/test-offline-first-final-v1.mjs",
     "test:ci": "npm run version:check && npm run typecheck && npm run build && npm run test:auth && npm run test:sync && npm run test:cloud-routing && npm run test:nearby && npm run test:regressions && npm run test:monetization && npm run test:android-bootstrap && npm run test:android-store-v1 && npm run test:account-restore && npm run test:admob-native && npm run test:play-billing && npm run test:play-privacy && npm run test:navigation-performance",
     "compress-images": "node ./src/tools/compress-images.js",
     "switch-to-webp": "node ./src/tools/replace-imports-to-webp.mjs",

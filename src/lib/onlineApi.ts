@@ -59,6 +59,13 @@ import { loadStoragePrefs } from "./storagePlans";
 import { buildMissingSocialProfilePatch, buildSocialProfileCreatePayload, extractSocialProfileSeed } from "./socialProfileImport";
 import { scheduleRuntimeIdle } from "./runtimePerformance";
 import { purgeObsoleteDerivedStatsCaches, reclaimDerivedStatsStorageForCriticalWrite } from "./statsRenderCacheStorage";
+import {
+  clearQueuedAccountProfileUpdate,
+  markQueuedAccountProfileAttempt,
+  mergeAccountProfilePatches,
+  queueAccountProfileUpdate,
+  readQueuedAccountProfileUpdate,
+} from "./accountProfileOutbox";
 
 export const CLOUD_STORE_KEY = "main";
 
@@ -2180,7 +2187,193 @@ async function deleteAccount(): Promise<void> {
 // ============================================================
 // Profil
 // ============================================================
+
+function profileUserIdFromCachedSession(): string {
+  try {
+    const cached: any = loadAuthFromLS();
+    return String(
+      cached?.supabaseUserId ||
+      cached?.user?.user_metadata?.supabase_user_id ||
+      cached?.user?.id ||
+      cached?.userId ||
+      ""
+    ).trim();
+  } catch {
+    return "";
+  }
+}
+
+function profileNetworkHintAvailable(): boolean {
+  try { return typeof navigator === "undefined" || navigator.onLine !== false; } catch { return true; }
+}
+
+function isRetryableProfileSyncError(error: any): boolean {
+  if (!profileNetworkHintAvailable()) return true;
+  if (isSupabaseTransientUnavailableError(error)) return true;
+  const text = String(error?.message || error || "").toLowerCase();
+  return /failed to fetch|networkerror|network error|load failed|timeout|timed out|connection|offline|fetch failed/.test(text);
+}
+
+function profileRevision(value: any, key: "identityUpdatedAt" | "avatarUpdatedAt"): number {
+  const pi = value?.privateInfo || value?.private_info || value || {};
+  const raw = pi?.[key] ?? pi?.[key === "identityUpdatedAt" ? "identity_updated_at" : "avatar_updated_at"] ?? 0;
+  const num = Number(raw || 0);
+  if (Number.isFinite(num) && num > 0) return num;
+  const parsed = raw ? Date.parse(String(raw)) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function ensureProfilePatchRevisions(patchInput: UpdateProfilePayload): UpdateProfilePayload {
+  const patch: any = mergeAccountProfilePatches({}, patchInput as any);
+  const privateInfo: Record<string, any> = patch.privateInfo && typeof patch.privateInfo === "object" ? { ...patch.privateInfo } : {};
+  const identityKeys = ["nickname","displayName","country","surname","firstName","lastName","birthDate","city","email","phone"];
+  const touchesIdentity = identityKeys.some((key) => Object.prototype.hasOwnProperty.call(patch, key));
+  if (touchesIdentity && profileRevision(privateInfo, "identityUpdatedAt") <= 0) {
+    privateInfo.identityUpdatedAt = Date.now();
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "avatarUrl") && profileRevision(privateInfo, "avatarUpdatedAt") <= 0) {
+    privateInfo.avatarUpdatedAt = Date.now();
+  }
+  if (Object.keys(privateInfo).length) patch.privateInfo = privateInfo;
+  return patch as UpdateProfilePayload;
+}
+
+function applyProfilePatchToCachedProfile(userId: string, patch: UpdateProfilePayload): OnlineProfile {
+  const current: any = loadAuthFromLS();
+  const base: any = current?.profile && typeof current.profile === "object" ? current.profile : {};
+  const privateInfo = mergeAccountProfilePatches(base?.privateInfo || {}, (patch as any)?.privateInfo || {});
+  const preferences = mergeAccountProfilePatches(base?.preferences || {}, (patch as any)?.preferences || {});
+  const next: any = {
+    ...base,
+    id: String(base?.id || userId),
+    userId,
+    displayName: patch.displayName !== undefined ? patch.displayName : (patch.nickname !== undefined ? patch.nickname : base?.displayName),
+    nickname: patch.nickname !== undefined ? patch.nickname : base?.nickname,
+    avatarUrl: patch.avatarUrl !== undefined ? patch.avatarUrl : base?.avatarUrl,
+    country: patch.country !== undefined ? patch.country : base?.country,
+    surname: patch.surname !== undefined ? patch.surname : base?.surname,
+    firstName: patch.firstName !== undefined ? patch.firstName : base?.firstName,
+    lastName: patch.lastName !== undefined ? patch.lastName : base?.lastName,
+    birthDate: patch.birthDate !== undefined ? patch.birthDate : base?.birthDate,
+    city: patch.city !== undefined ? patch.city : base?.city,
+    email: patch.email !== undefined ? patch.email : base?.email,
+    phone: patch.phone !== undefined ? patch.phone : base?.phone,
+    preferences,
+    privateInfo,
+    avatarUpdatedAt: Math.max(Number(base?.avatarUpdatedAt || 0) || 0, profileRevision(privateInfo, "avatarUpdatedAt")) || undefined,
+    updatedAt: Date.now(),
+  };
+  if (current && (String(current?.user?.id || "") === userId || String(current?.supabaseUserId || "") === userId)) {
+    saveAuthToLS({ ...current, profile: next, supabaseUserId: userId });
+  }
+  try {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("dc:account-profile-cloud-updated", {
+        detail: { userId, profile: next, source: "onlineApi.updateProfile.local-outbox", pending: true },
+      }));
+    }
+  } catch {}
+  return next as OnlineProfile;
+}
+
+function stripOlderQueuedProfileFields(patchInput: UpdateProfilePayload, remoteRow: any): UpdateProfilePayload {
+  const patch: any = mergeAccountProfilePatches({}, patchInput as any);
+  const remotePrivate = remoteRow?.private_info && typeof remoteRow.private_info === "object" ? remoteRow.private_info : {};
+  const localPrivate = patch?.privateInfo && typeof patch.privateInfo === "object" ? patch.privateInfo : {};
+  const localIdentityTs = profileRevision(localPrivate, "identityUpdatedAt");
+  const remoteIdentityTs = profileRevision(remotePrivate, "identityUpdatedAt");
+  if (remoteIdentityTs > 0 && remoteIdentityTs > localIdentityTs) {
+    for (const key of ["nickname","displayName","country","surname","firstName","lastName","birthDate","city","email","phone"]) delete patch[key];
+    if (patch.privateInfo && typeof patch.privateInfo === "object") {
+      for (const key of ["nickname","country","firstName","lastName","birthDate","city","email","phone","identityUpdatedAt","identity_updated_at"]) delete patch.privateInfo[key];
+    }
+  }
+  const localAvatarTs = profileRevision(localPrivate, "avatarUpdatedAt");
+  const remoteAvatarTs = profileRevision(remotePrivate, "avatarUpdatedAt");
+  if (remoteAvatarTs > 0 && remoteAvatarTs > localAvatarTs) {
+    delete patch.avatarUrl;
+    if (patch.privateInfo && typeof patch.privateInfo === "object") {
+      delete patch.privateInfo.avatarUpdatedAt;
+      delete patch.privateInfo.avatar_updated_at;
+    }
+  }
+  return patch as UpdateProfilePayload;
+}
+
+async function currentRemoteProfileRowForConflict(userId: string): Promise<any | null> {
+  if (!userId || !profileNetworkHintAvailable()) return null;
+  try {
+    const table = await resolveProfilesTable();
+    const { data, error } = await supabase.from(table).select("*").eq("id", userId).limit(1).maybeSingle();
+    // Pour vider une outbox on exige une lecture de conflit fiable. En cas de
+    // panne, mieux vaut conserver la mutation locale et réessayer que pousser
+    // aveuglément au-dessus d'un profil potentiellement plus récent.
+    if (error) throw error;
+    return data || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function flushQueuedAccountProfileUpdate(userIdInput?: string | null): Promise<OnlineProfile | null> {
+  const userId = String(userIdInput || profileUserIdFromCachedSession() || "").trim();
+  if (!userId || !profileNetworkHintAvailable()) return null;
+  const pending = readQueuedAccountProfileUpdate(userId);
+  if (!pending) return null;
+  try {
+    const remoteRow = await currentRemoteProfileRowForConflict(userId);
+    const safePatch = remoteRow ? stripOlderQueuedProfileFields(pending.patch as UpdateProfilePayload, remoteRow) : pending.patch as UpdateProfilePayload;
+    const profile = await updateProfileRemote(safePatch);
+    clearQueuedAccountProfileUpdate(userId);
+    return profile;
+  } catch (error) {
+    markQueuedAccountProfileAttempt(userId, error);
+    if (!isRetryableProfileSyncError(error)) throw error;
+    return null;
+  }
+}
+
 async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile> {
+  patch = ensureProfilePatchRevisions(patch);
+  const userIdHint = profileUserIdFromCachedSession();
+  const pending = userIdHint ? readQueuedAccountProfileUpdate(userIdHint) : null;
+
+  if (!profileNetworkHintAvailable()) {
+    if (!userIdHint) throw new Error("Profil local disponible, mais aucun compte n'est identifié pour la synchronisation.");
+    const effectivePatch = mergeAccountProfilePatches(pending?.patch || {}, patch as any) as UpdateProfilePayload;
+    queueAccountProfileUpdate(userIdHint, effectivePatch as any, { attempted: false });
+    return applyProfilePatchToCachedProfile(userIdHint, effectivePatch);
+  }
+
+  // Si une ancienne mutation offline existe, elle passe d'abord par le filtre
+  // de conflit. On ne mélange jamais aveuglément un vieux patch en attente avec
+  // une nouvelle action utilisateur effectuée maintenant en ligne.
+  if (userIdHint && pending) {
+    try { await flushQueuedAccountProfileUpdate(userIdHint); } catch (error) {
+      if (!isRetryableProfileSyncError(error)) throw error;
+    }
+    const remaining = readQueuedAccountProfileUpdate(userIdHint);
+    if (remaining) {
+      const deferredPatch = mergeAccountProfilePatches(remaining.patch || {}, patch as any) as UpdateProfilePayload;
+      queueAccountProfileUpdate(userIdHint, deferredPatch as any, { attempted: false });
+      return applyProfilePatchToCachedProfile(userIdHint, deferredPatch);
+    }
+  }
+
+  try {
+    const profile = await updateProfileRemote(patch);
+    const userId = String((profile as any)?.userId || (profile as any)?.id || userIdHint || "").trim();
+    if (userId) clearQueuedAccountProfileUpdate(userId);
+    return profile;
+  } catch (error) {
+    const userId = userIdHint || profileUserIdFromCachedSession();
+    if (!userId || !isRetryableProfileSyncError(error)) throw error;
+    queueAccountProfileUpdate(userId, patch as any, { error, attempted: true });
+    return applyProfilePatchToCachedProfile(userId, patch);
+  }
+}
+
+async function updateProfileRemote(patch: UpdateProfilePayload): Promise<OnlineProfile> {
   // Le profil léger du compte est canonique dans Supabase, indépendamment de la
   // destination NAS/R2/Drive choisie pour les sauvegardes. C'était la source du
   // bug multi-appareils : un téléphone pouvait relire/écrire le vieux profil NAS
@@ -2915,6 +3108,7 @@ export const onlineApi = {
   deleteAccount,
 
   updateProfile,
+  flushQueuedAccountProfileUpdate,
   uploadAvatarImage,
   uploadMediaAsset,
   bulkResolveMediaAssets,

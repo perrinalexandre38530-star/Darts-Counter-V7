@@ -3148,7 +3148,13 @@ ANNULER : créer un nouveau profil distinct portant le même nom.`
       ];
   
       const shouldMakeActive = !!(privateInfo as any)?.onlineUserId;
-      const fallbackActiveId = s?.activeProfileId ?? (Array.isArray(s?.profiles) ? s.profiles[0]?.id ?? null : null);
+      // OFFLINE-FIRST WAVE 2 : sur une installation neuve sans compte, le
+      // premier profil local doit immédiatement devenir le profil actif.
+      // Pour un store qui possède déjà un actif, on conserve strictement celui-ci.
+      const fallbackActiveId =
+        s?.activeProfileId ??
+        (Array.isArray(s?.profiles) ? s.profiles[0]?.id ?? null : null) ??
+        p.id;
       const nextStore = {
         ...s,
         profiles: nextProfiles,

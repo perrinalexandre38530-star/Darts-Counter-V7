@@ -12,6 +12,7 @@ type Props = {
   onLogin: () => void;
   onCreate: () => void;
   onForgot: () => void;
+  onLocal?: () => void;
 };
 
 type AuthPageCopy = {
@@ -322,12 +323,22 @@ const LANGUAGE_OPTIONS: LangOption[] = [
   { code: "cs", flag: "🇨🇿", short: "CS", label: "Čeština" },
 ];
 
-export default function AccountStart({ onLogin, onCreate, onForgot }: Props) {
+export default function AccountStart({ onLogin, onCreate, onForgot, onLocal }: Props) {
   const [socialBusy, setSocialBusy] = React.useState<SocialAuthProvider | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [showLangMenu, setShowLangMenu] = React.useState(false);
-  const { lang, setLang } = useLang();
+  const { lang, setLang, t } = useLang();
   const copy = AUTH_PAGE_COPY[lang] || AUTH_PAGE_COPY.fr;
+  const localModeLabel = t(
+    "account.local.continue",
+    lang === "fr" ? "Continuer en mode local" : "Continue in local mode"
+  );
+  const localModeHint = t(
+    "account.local.hint",
+    lang === "fr"
+      ? "Joue sans compte et sans Internet. Tes données restent sur cet appareil et pourront être synchronisées plus tard."
+      : "Play without an account or Internet. Your data stays on this device and can be synced later."
+  );
   const currentLangOption = LANGUAGE_OPTIONS.find((option) => option.code === lang) || LANGUAGE_OPTIONS[0];
   const langDockRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -436,11 +447,27 @@ export default function AccountStart({ onLogin, onCreate, onForgot }: Props) {
           <button className="btn" onClick={onForgot} style={forgotBtnStyle}>
             {copy.forgotPassword}
           </button>
+
+          {onLocal ? (
+            <div style={{ marginTop: 4, display: "grid", gap: 7 }}>
+              <button className="btn" onClick={onLocal} style={localBtnStyle}>
+                📴 {localModeLabel}
+              </button>
+              <div style={localHintStyle}>{localModeHint}</div>
+            </div>
+          ) : null}
         </div>
 
         {error ? <div style={errorStyle}>{error}</div> : null}
 
-        <div style={securityStyle}>{copy.security}</div>
+        <div style={securityStyle}>
+          {t(
+            "account.local.security",
+            lang === "fr"
+              ? "🔒 Le compte Online est facultatif pour jouer en local. Il sert aux fonctions Online et à la synchronisation cloud."
+              : "🔒 An Online account is optional for local play. It is used for Online features and cloud sync."
+          )}
+        </div>
       </div>
     </div>
   );
@@ -611,6 +638,24 @@ const forgotBtnStyle: React.CSSProperties = {
   border: "none",
   cursor: "pointer",
   textDecoration: "underline",
+};
+
+const localBtnStyle: React.CSSProperties = {
+  borderRadius: 999,
+  padding: "12px 14px",
+  fontWeight: 950,
+  background: "linear-gradient(180deg, rgba(77,221,255,.16), rgba(77,221,255,.07))",
+  color: "#dffbff",
+  border: "1px solid rgba(77,221,255,.36)",
+  cursor: "pointer",
+  boxShadow: "0 0 20px rgba(77,221,255,.08)",
+};
+
+const localHintStyle: React.CSSProperties = {
+  fontSize: 10.8,
+  lineHeight: 1.4,
+  color: "rgba(215,246,255,.72)",
+  padding: "0 10px",
 };
 
 const errorStyle: React.CSSProperties = {

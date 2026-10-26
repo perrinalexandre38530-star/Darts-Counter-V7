@@ -44,12 +44,13 @@ export type BssChallenge = {
   targetRange?:"low"|"high";
 };
 export type BssStats = { darts:number; visits:number; challengeWins:number; badgesWon:number; influence:number; bulls:number; dbulls:number; doubles:number; triples:number; misses:number; throneAttempts:number; bestVisit:number; };
-export type BssVisit = { id:string; playerId:string; round:number; challenge:BssChallenge; darts:GameDart[]; score:number; events:string[]; };
-export type BssPlayedChallenge = { round:number; challenge:BssChallenge; winnerId:string|null; winnerIds:string[]; tie:boolean; blank:boolean; bestScore:number; };
+export type BssMerit = { dartsUsed:number; decisiveDart:number; rawTotal:number; bestHit:number; };
+export type BssVisit = { id:string; playerId:string; round:number; challenge:BssChallenge; darts:GameDart[]; score:number; merit?:BssMerit; events:string[]; };
+export type BssPlayedChallenge = { round:number; challenge:BssChallenge; winnerId:string|null; winnerIds:string[]; tie:boolean; blank:boolean; bestScore:number; meritWinnerId?:string|null; };
 export type BssState = {
   sport:"darts"; mode:"bss_king"; config:BssConfigPayload; players:Player[];
   badges:Record<string,number>; influence:Record<string,number>; statsByPlayer:Record<string,BssStats>;
-  activePlayerIndex:number; round:number; challenge:BssChallenge; challengeQueue:BssChallenge[]; playedChallenges:BssPlayedChallenge[]; replayChallenges:BssChallenge[]; roundScores:Record<string,number>;
+  activePlayerIndex:number; round:number; challenge:BssChallenge; challengeQueue:BssChallenge[]; playedChallenges:BssPlayedChallenge[]; replayChallenges:BssChallenge[]; roundScores:Record<string,number>; roundMerit:Record<string,BssMerit>;
   roundPlayedIds:string[]; throneReady:Record<string,boolean>; phase:"playing"|"finished"; winnerId:string|null;
   visits:BssVisit[]; events:string[]; startedAt:number; finishedAt?:number;
 };
@@ -193,7 +194,7 @@ export function createBssState(players:Player[], raw:any):BssState {
   const config=normalizeBssConfig(raw); const ps=(players||[]).map((p,i)=>({id:String(p?.id||`p${i+1}`),name:String(p?.name||`Joueur ${i+1}`)}));
   const challengeQueue=createChallengePlan(config.rules.chaosEnabled);
   const challenge=challengeQueue.shift()||randomChallenge(config.rules.chaosEnabled);
-  return {sport:"darts",mode:"bss_king",config,players:ps,badges:Object.fromEntries(ps.map(p=>[p.id,0])),influence:Object.fromEntries(ps.map(p=>[p.id,0])),statsByPlayer:Object.fromEntries(ps.map(p=>[p.id,blankStats()])),activePlayerIndex:0,round:1,challenge,challengeQueue,playedChallenges:[],replayChallenges:[],roundScores:Object.fromEntries(ps.map(p=>[p.id,0])),roundPlayedIds:[],throneReady:Object.fromEntries(ps.map(p=>[p.id,false])),phase:"playing",winnerId:null,visits:[],events:["Bienvenue chez les BSS : le trône attend son KING."],startedAt:Date.now()};
+  return {sport:"darts",mode:"bss_king",config,players:ps,badges:Object.fromEntries(ps.map(p=>[p.id,0])),influence:Object.fromEntries(ps.map(p=>[p.id,0])),statsByPlayer:Object.fromEntries(ps.map(p=>[p.id,blankStats()])),activePlayerIndex:0,round:1,challenge,challengeQueue,playedChallenges:[],replayChallenges:[],roundScores:Object.fromEntries(ps.map(p=>[p.id,0])),roundMerit:Object.fromEntries(ps.map(p=>[p.id,{dartsUsed:99,decisiveDart:99,rawTotal:0,bestHit:0}])),roundPlayedIds:[],throneReady:Object.fromEntries(ps.map(p=>[p.id,false])),phase:"playing",winnerId:null,visits:[],events:["Bienvenue chez les BSS : le trône attend son KING."],startedAt:Date.now()};
 }
 export function cloneBssState(raw:BssState):BssState {
   const s:any=clone(raw);
@@ -202,6 +203,7 @@ export function cloneBssState(raw:BssState):BssState {
   if(!Array.isArray(s.challengeQueue)) s.challengeQueue=createChallengePlan(s?.config?.rules?.chaosEnabled!==false);
   if(!Array.isArray(s.playedChallenges)) s.playedChallenges=[];
   if(!Array.isArray(s.replayChallenges)) s.replayChallenges=[];
+  if(!s.roundMerit||typeof s.roundMerit!=="object") s.roundMerit=Object.fromEntries((s.players||[]).map((p:any)=>[p.id,{dartsUsed:99,decisiveDart:99,rawTotal:0,bestHit:0}]));
   return s;
 }
 
@@ -227,16 +229,16 @@ function dartSingleArea(d:any):"big"|"small"|null {
   if(!d||d.bed!=="S") return null;
   return bssDartMeta(d).area;
 }
-function dartBoardColor(d:any):BssChallengeColor|null {
+export function getBssDartBoardColor(d:any):BssChallengeColor|null {
   if(!d||d.bed==="MISS")return null;
-  // La couleur BSS est toujours celle de la vraie zone de la cible.
-  // La couleur sélectionnée au keypad sert de guide, jamais à falsifier la géométrie réelle.
   if(d.bed==="IB")return "red";
   if(d.bed==="OB")return "green";
   const n=Number(d.number||0); if(n<1||n>20)return null;
   if(d.bed==="D"||d.bed==="T") return RED_NUMBERS.has(n)?"red":"green";
-  const idx=BOARD_ORDER.indexOf(n); return idx>=0&&idx%2===0?"black":"white";
+  return singleColorForNumber(n);
 }
+export function getBssDartSingleArea(d:any):"big"|"small"|null { return dartSingleArea(d); }
+function dartBoardColor(d:any):BssChallengeColor|null { return getBssDartBoardColor(d); }
 function dartScore(d:any,c:BssChallenge){
   if(!d||d.bed==="MISS")return 0;
   if(c.kind==="throne") return d.bed==="IB"?2:d.bed==="OB"?1:0;
@@ -338,76 +340,53 @@ export function evaluateBssVisit(darts:GameDart[], challenge:BssChallenge){
   return three.reduce((sum,d)=>sum+dartScore(d,challenge),0);
 }
 
-type BssMerit = { dartsUsed:number; completionDart:number; rawTotal:number; bestHit:number; };
-function visitMerit(dartsRaw:GameDart[], challenge:BssChallenge, finalScore:number):BssMerit {
-  const darts=(dartsRaw||[]).slice(0,3);
-  const dartsUsed=Math.max(1,darts.length);
-  let completionDart=dartsUsed;
-  if(finalScore>0){
-    for(let i=1;i<=darts.length;i++){
-      if(evaluateBssVisit(darts.slice(0,i),challenge)===finalScore){ completionDart=i; break; }
-    }
+export function evaluateBssMerit(darts:GameDart[], challenge:BssChallenge, score=evaluateBssVisit(darts,challenge)):BssMerit {
+  const three=(darts||[]).slice(0,3);
+  let decisiveDart=score>0?three.length||99:99;
+  if(score>0){
+    for(let i=1;i<=three.length;i++){ if(evaluateBssVisit(three.slice(0,i),challenge)===score){ decisiveDart=i; break; } }
   }
-  const relevant=darts.filter(d=>challenge.kind==="no_miss" ? d?.bed!=="MISS" : evaluateBssVisit([d],challenge)>0);
-  const rawValues=(relevant.length?relevant:darts.filter(d=>d?.bed!=="MISS")).map(rawDartScore);
-  return { dartsUsed, completionDart, rawTotal:rawValues.reduce((a,b)=>a+b,0), bestHit:rawValues.length?Math.max(...rawValues):0 };
+  const values=three.map(rawDartScore);
+  return { dartsUsed:three.length||99, decisiveDart, rawTotal:values.reduce((a,b)=>a+b,0), bestHit:values.length?Math.max(...values):0 };
 }
-function compareMerit(a:BssMerit,b:BssMerit){
-  return a.dartsUsed-b.dartsUsed || a.completionDart-b.completionDart || b.rawTotal-a.rawTotal || b.bestHit-a.bestHit;
+function compareMerit(a?:BssMerit,b?:BssMerit){
+  const aa=a||{dartsUsed:99,decisiveDart:99,rawTotal:0,bestHit:0};
+  const bb=b||{dartsUsed:99,decisiveDart:99,rawTotal:0,bestHit:0};
+  return aa.dartsUsed-bb.dartsUsed || aa.decisiveDart-bb.decisiveDart || bb.rawTotal-aa.rawTotal || bb.bestHit-aa.bestHit;
 }
-function sameMerit(a:BssMerit,b:BssMerit){ return compareMerit(a,b)===0; }
+function sameMerit(a?:BssMerit,b?:BssMerit){ return compareMerit(a,b)===0 && compareMerit(b,a)===0; }
 
 function finishRound(s:BssState){
-  const rows=s.players.map(p=>({id:p.id,score:Number(s.roundScores[p.id]||0)})).sort((a,b)=>b.score-a.score);
-  const best=rows[0]?.score||0;
-  const scoreLeaders=best>0?rows.filter(r=>r.score===best):[];
+  const rows=s.players.map(p=>({id:p.id,score:Number(s.roundScores[p.id]||0),merit:s.roundMerit?.[p.id]})).sort((a,b)=>b.score-a.score||compareMerit(a.merit,b.merit));
+  const best=rows[0]?.score||0; const scoreLeaders=best>0?rows.filter(r=>r.score===best):[];
   const previous=clone(s.challenge);
   const roundNumber=s.round;
-  let winnerId:string|null=null; let winnerIds:string[]=[]; let tie=false; let blank=false;
-
-  if(scoreLeaders.length===1){
-    winnerId=scoreLeaders[0].id; winnerIds=[winnerId];
-  } else if(scoreLeaders.length>1){
-    const visits=(s.visits||[]).filter(v=>Number(v.round)===roundNumber && scoreLeaders.some(r=>r.id===v.playerId));
-    const ranked=scoreLeaders.map(row=>{
-      const visit=visits.find(v=>v.playerId===row.id);
-      return { ...row, merit:visitMerit(visit?.darts||[], previous, row.score) };
-    }).sort((a,b)=>compareMerit(a.merit,b.merit));
-    if(ranked.length && (ranked.length===1 || !sameMerit(ranked[0].merit,ranked[1].merit))){
-      winnerId=ranked[0].id; winnerIds=[winnerId];
-      const p=s.players.find(x=>x.id===winnerId);
-      s.events.push(`${p?.name||"Joueur"} départage l’égalité au mérite.`);
-    } else {
-      tie=true; winnerIds=ranked.map(r=>r.id);
-    }
+  let winnerId:string|null=null; let winnerIds:string[]=[]; let tie=false; let blank=false; let meritWinnerId:string|null=null;
+  if(scoreLeaders.length===1){ winnerId=scoreLeaders[0].id; winnerIds=[winnerId]; }
+  else if(scoreLeaders.length>1){
+    const ranked=[...scoreLeaders].sort((a,b)=>compareMerit(a.merit,b.merit));
+    if(ranked.length>1&&!sameMerit(ranked[0].merit,ranked[1].merit)){ winnerId=ranked[0].id; winnerIds=[winnerId]; meritWinnerId=winnerId; }
+    else { tie=true; winnerIds=ranked.filter(r=>sameMerit(r.merit,ranked[0].merit)).map(r=>r.id); }
   } else blank=true;
-
   if(winnerId){
-    const p=s.players.find(x=>x.id===winnerId);
-    s.badges[winnerId]=Number(s.badges[winnerId]||0)+1;
-    const st=s.statsByPlayer[winnerId]; st.challengeWins++; st.badgesWon++;
-    s.events.push(`${p?.name||"Joueur"} remporte la tournée ${s.round} et gagne un écusson BSS.`);
+    const p=s.players.find(x=>x.id===winnerId); s.badges[winnerId]=Number(s.badges[winnerId]||0)+1; const st=s.statsByPlayer[winnerId]||(s.statsByPlayer[winnerId]=blankStats()); st.challengeWins++; st.badgesWon++;
+    s.events.push(`${p?.name||"Joueur"} remporte la tournée ${s.round}${meritWinnerId?" au mérite":""} et gagne un écusson BSS.`);
     if(s.badges[winnerId]>=s.config.rules.badgesToThrone&&!s.throneReady[winnerId]){ s.throneReady[winnerId]=true; s.events.push(`${p?.name||"Joueur"} a assez d’écussons : PROCHAINE ÉTAPE, LE TRÔNE !`); }
-  } else if(tie){
-    s.replayChallenges.push(previous);
-    s.events.push(`Égalité parfaite sur la tournée ${s.round} : aucun écusson distribué. Le défi sera rejoué plus tard.`);
-  } else if(blank){
-    s.events.push(`Tournée ${s.round} blanche : personne ne marque.`);
-  }
-
-  s.playedChallenges.push({ round:roundNumber, challenge:previous, winnerId, winnerIds, tie, blank, bestScore:best });
-  s.round+=1; s.roundScores=Object.fromEntries(s.players.map(p=>[p.id,0])); s.roundPlayedIds=[]; s.challenge=pullNextChallenge(s,previous);
+  } else if(tie){ s.replayChallenges.push(previous); s.events.push(`Égalité parfaite sur la tournée ${s.round} : aucun écusson distribué. Le défi sera rejoué plus tard.`); }
+  else s.events.push(`Tournée ${s.round} blanche : personne ne marque.`);
+  s.playedChallenges.push({ round:roundNumber, challenge:previous, winnerId, winnerIds, tie, blank, bestScore:best, meritWinnerId });
+  s.round+=1; s.roundScores=Object.fromEntries(s.players.map(p=>[p.id,0])); s.roundMerit=Object.fromEntries(s.players.map(p=>[p.id,{dartsUsed:99,decisiveDart:99,rawTotal:0,bestHit:0}])); s.roundPlayedIds=[]; s.challenge=pullNextChallenge(s,previous);
 }
 
 export function playBssVisit(input:BssState,dartsRaw:GameDart[]):BssState{
   const s=cloneBssState(input); if(s.phase!=="playing"||!s.players.length)return s; const p=s.players[s.activePlayerIndex]; if(!p)return s;
   const darts=(dartsRaw||[]).slice(0,3); const throne=Boolean(s.throneReady[p.id]); const challenge:BssChallenge=throne?{kind:"throne",title:"PRENDS LE TRÔNE",subtitle:s.config.rules.throneFinish==="dbull"?"Touche 1 DBULL 50 pour gagner":"Touche 1 Bull 25 ou 1 DBULL 50 pour gagner",icon:"👑"}:s.challenge;
-  const st=s.statsByPlayer[p.id]||(s.statsByPlayer[p.id]=blankStats()); st.visits++; st.darts+=darts.length; let score=evaluateBssVisit(darts,challenge); st.bestVisit=Math.max(st.bestVisit,score); st.influence+=score; s.influence[p.id]=Number(s.influence[p.id]||0)+score;
+  const st=s.statsByPlayer[p.id]||(s.statsByPlayer[p.id]=blankStats()); st.visits++; st.darts+=darts.length; let score=evaluateBssVisit(darts,challenge); const merit=evaluateBssMerit(darts,challenge,score); st.bestVisit=Math.max(st.bestVisit,score); st.influence+=score; s.influence[p.id]=Number(s.influence[p.id]||0)+score;
   for(const d of darts){ if(d?.bed==="MISS")st.misses++; if(d?.bed==="D")st.doubles++; if(d?.bed==="T")st.triples++; if(d?.bed==="OB")st.bulls++; if(d?.bed==="IB")st.dbulls++; }
   const events:string[]=[];
-  if(throne){ st.throneAttempts++; const hasDbull=darts.some(d=>d?.bed==="IB"),hasBull=darts.some(d=>d?.bed==="OB"); const crowned=s.config.rules.throneFinish==="dbull"?hasDbull:(hasDbull||hasBull); if(crowned){ s.phase="finished"; s.winnerId=p.id; s.finishedAt=Date.now(); events.push(hasDbull?`${p.name} plante le DBULL et devient BSS KING !`:`${p.name} touche le BULL et s’assoit sur le trône BSS !`); s.events.push(...events); s.visits.push({id:uid("bssv"),playerId:p.id,round:s.round,challenge,darts,score,events}); return s; } events.push(`${p.name} rate le couronnement. Le trône reste libre.`); s.roundScores[p.id]=0; s.roundPlayedIds.push(p.id); }
-  else { s.roundScores[p.id]=score; events.push(score>0?`${p.name} marque ${score} point${score>1?"s":""} sur cette tournée.`:`${p.name} ne marque aucun point sur cette tournée.`); s.roundPlayedIds.push(p.id); }
-  s.events.push(...events); s.visits.push({id:uid("bssv"),playerId:p.id,round:s.round,challenge,darts,score,events});
+  if(throne){ st.throneAttempts++; const hasDbull=darts.some(d=>d?.bed==="IB"),hasBull=darts.some(d=>d?.bed==="OB"); const crowned=s.config.rules.throneFinish==="dbull"?hasDbull:(hasDbull||hasBull); if(crowned){ s.phase="finished"; s.winnerId=p.id; s.finishedAt=Date.now(); events.push(hasDbull?`${p.name} plante le DBULL et devient BSS KING !`:`${p.name} touche le BULL et s’assoit sur le trône BSS !`); s.events.push(...events); s.visits.push({id:uid("bssv"),playerId:p.id,round:s.round,challenge,darts,score,merit,events}); return s; } events.push(`${p.name} rate le couronnement. Le trône reste libre.`); s.roundScores[p.id]=0; s.roundPlayedIds.push(p.id); }
+  else { s.roundScores[p.id]=score; s.roundMerit[p.id]=merit; events.push(score>0?`${p.name} marque ${score} point${score>1?"s":""} sur cette tournée.`:`${p.name} ne marque aucun point sur cette tournée.`); s.roundPlayedIds.push(p.id); }
+  s.events.push(...events); s.visits.push({id:uid("bssv"),playerId:p.id,round:s.round,challenge,darts,score,merit,events});
   s.activePlayerIndex=(s.activePlayerIndex+1)%s.players.length;
   if(s.roundPlayedIds.length>=s.players.length) finishRound(s);
   return s;

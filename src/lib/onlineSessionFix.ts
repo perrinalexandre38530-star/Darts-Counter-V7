@@ -1,5 +1,6 @@
 import { isNasProviderEnabled } from "./serverConfig";
 import { supabase } from "./supabaseClient";
+import { shouldAttemptRemoteWork } from "./offlineFirstRuntime";
 import {
   clearSupabaseBrowserAuthStorage,
   isInvalidRefreshSessionError,
@@ -20,6 +21,9 @@ async function invalidateBrokenSupabaseSession(error: any): Promise<void> {
 
 export async function rehydrateSupabaseSession(): Promise<void> {
   if (isNasProviderEnabled()) return;
+  // OFFLINE-FIRST W3: la session locale est suffisante pour jouer. Ne jamais
+  // lancer de restauration/refresh Supabase tant que le runtime est hors ligne.
+  if (!shouldAttemptRemoteWork()) return;
   if (rehydrateInFlight) return rehydrateInFlight;
 
   rehydrateInFlight = (async () => {

@@ -1,7 +1,9 @@
 import { loadTrainingEvents, markEventSynced } from "./trainingEventStore";
+import { shouldAttemptRemoteWork } from "../../lib/offlineFirstRuntime";
 import { supabase } from "../../lib/supabaseClient";
 
 export async function syncTrainingEvents(currentUserId: string) {
+  if (!shouldAttemptRemoteWork()) return;
   const events = loadTrainingEvents().filter((e) => !e.synced);
   if (!events.length) return;
 
@@ -21,6 +23,21 @@ export async function syncTrainingEvents(currentUserId: string) {
       created_at: new Date(ev.createdAt).toISOString(),
     });
 
-    if (!error) markEventSynced(ev.id);
+    if (!error) {
+      markEventSynced(ev.id);
+      continue;
+    }
+
+    // IDEMPOTENCE W6 : si le même event_id a déjà été reçu par Supabase
+    // (reconnect, crash entre insert et mark local), le cloud est déjà correct.
+    if (String((error as any)?.code || "") === "23505") {
+      markEventSynced(ev.id);
+      continue;
+    }
+
+    // Une vraie erreur doit remonter jusqu'à trainingSyncQueueTry afin que son
+    // backoff persistant reste actif. L'ancienne version avalait l'erreur puis
+    // remettait la queue à zéro malgré des événements encore pending.
+    throw error;
   }
 }

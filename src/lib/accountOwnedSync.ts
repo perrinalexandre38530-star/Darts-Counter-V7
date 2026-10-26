@@ -48,14 +48,16 @@ import { accountScopedLocalStorageKey } from "./accountScope";
 import { collectCanonicalEntityMediaRefs } from "../data/canonicalEntityStores";
 import { accountOwnedTeams, mergeAccountTeamsPreservingOrganizations } from "../data/organizationDataBoundary";
 import { readAuthoritativeRestorePending, sealAuthoritativeRestore } from "./restoreAuthority";
+import { shouldAttemptRemoteWork } from "./offlineFirstRuntime";
+import { getBoundAccountProfileId } from "./canonicalAccountProfile";
 
 export const ACCOUNT_OWNED_STORE_MUTATED_EVENT = "dc:account-owned-store-mutated";
 export const ACCOUNT_OWNED_SYNC_STATUS_EVENT = "dc:account-owned-sync-status";
 export const ACCOUNT_OWNED_FORCE_SYNC_EVENT = "dc:account-owned-force-sync";
+export const ACCOUNT_OWNED_SYNC_CYCLE_EVENT = "msc:account-owned-sync-cycle";
 
 const TABLE = "account_sync_documents";
 const DEFAULT_DOCUMENT_ID = "default";
-const POLL_MS = 120_000;
 const LOCAL_DEBOUNCE_MS = 420;
 const HISTORY_BATCH_SIZE = 10;
 const REVISION_KEY = "mss_account_owned_sync_revisions_v1";
@@ -248,7 +250,16 @@ function revisionKey(type: string, id = DEFAULT_DOCUMENT_ID): string {
 function isCanonicalAccountProfile(profile: any, userId: string): boolean {
   const uid = cleanId(userId);
   if (!uid || !profile) return false;
+  const boundProfileId = cleanId(getBoundAccountProfileId(uid));
+  const profileId = cleanId(profile?.id);
+  // W5 : le binding persistant COMPTE -> MON PROFIL est une preuve suffisante,
+  // même si un ancien snapshot a perdu privateInfo.onlineUserId. Sans ce test,
+  // le profil canonique pouvait réapparaître dans `local_profiles` et être
+  // recréé comme doublon sur un autre appareil.
+  if (boundProfileId && profileId === boundProfileId) return true;
+  if (profileId === `online:${uid}`) return true;
   const pi = profile?.privateInfo || {};
+  if (boundProfileId && cleanId(pi?.canonicalLocalProfileId || pi?.canonicalProfileId) === boundProfileId) return true;
   const ids = [
     profile?.id,
     profile?.onlineUserId,
@@ -265,6 +276,7 @@ function isCanonicalAccountProfile(profile: any, userId: string): boolean {
     pi?.supabaseUserId,
     pi?.userId,
     pi?.user_id,
+    ...(Array.isArray(pi?.linkedAccountIds) ? pi.linkedAccountIds : []),
   ].map(cleanId).filter(Boolean);
   return ids.includes(uid);
 }
@@ -394,8 +406,32 @@ function mergeById(localInput: any[], remoteInput: any[]): any[] {
     }
     const localTs = itemTimestamp(prev);
     const remoteTs = itemTimestamp(item);
-    // Realtime/serveur gagne les égalités et les objets sans timestamp.
-    map.set(id, remoteTs >= localTs ? { ...prev, ...item } : { ...item, ...prev });
+    // W5 : une égalité ou l'absence de timestamp ne constitue PAS une preuve
+    // que le serveur est plus récent. Le local gagne donc les égalités ; le
+    // distant ne remplace un objet existant que s'il porte une révision stricte
+    // plus récente. Cela protège les modifications faites hors ligne.
+    map.set(id, remoteTs > localTs ? { ...prev, ...item } : { ...item, ...prev });
+  }
+  return Array.from(map.values());
+}
+
+
+function mergeByIdPreferLocal(localInput: any[], remoteInput: any[]): any[] {
+  const local = Array.isArray(localInput) ? localInput : [];
+  const remote = Array.isArray(remoteInput) ? remoteInput : [];
+  const map = new Map<string, any>();
+  // D'abord le distant pour conserver les objets créés sur un autre appareil.
+  for (const item of remote) {
+    const id = cleanId(item?.id);
+    if (id) map.set(id, item);
+  }
+  // Puis le local : la révision de COLLECTION a déjà prouvé qu'il est plus
+  // récent que le document distant, donc il gagne les conflits par ID.
+  for (const item of local) {
+    const id = cleanId(item?.id);
+    if (!id) continue;
+    const prev = map.get(id);
+    map.set(id, prev ? { ...prev, ...item } : item);
   }
   return Array.from(map.values());
 }
@@ -672,13 +708,16 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
   let tableUnavailable = false;
   let remotePausedUntil = 0;
   let lastTransientNoticeAt = 0;
-  let pollTimer: number | null = null;
 
   const restoreInProgress = () => {
     try { return typeof sessionStorage !== "undefined" && sessionStorage.getItem("dc_cloud_restore_in_progress_v2") === "1"; }
     catch { return false; }
   };
-  const remotePaused = () => restoreInProgress() || Date.now() < remotePausedUntil || isSupabaseRestCircuitOpen();
+  const remotePaused = () =>
+    !shouldAttemptRemoteWork() ||
+    restoreInProgress() ||
+    Date.now() < remotePausedUntil ||
+    isSupabaseRestCircuitOpen();
   const pauseRemote = (error: any, action: string) => {
     const retryMs = Math.max(20_000, supabaseRestRetryAfterMs() || 0);
     remotePausedUntil = Math.max(remotePausedUntil, Date.now() + retryMs);
@@ -693,6 +732,10 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
   const localTimers = new Map<string, number>();
   const revisions = readRevisions(userId);
   const signatures = new Map<string, string>();
+  // Empreinte locale indépendante du réseau. Elle permet de détecter une vraie
+  // mutation des profils même lorsque Supabase est hors ligne et que le timer
+  // d'upload ne peut pas être armé.
+  let localProfilesFingerprint = fingerprint(serializeProfiles(options.getProfiles(), userId));
   // Empêche de retraiter en Realtime nos propres écritures. Sans ce garde, un
   // upsert local peut être reçu par le websocket avant que la Promise Supabase
   // ne rende la main, ce qui déclenchait parfois une réapplication concurrente
@@ -723,6 +766,17 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
   const setRevision = (type: string, id: string, ts: number) => {
     revisions[revisionKey(type, id)] = Math.max(getRevision(type, id), Number(ts || 0) || 0);
     persistRevisions();
+  };
+
+  const markLocalProfilesRevisionIfChanged = (profilesInput?: any[]): boolean => {
+    if (remoteApplyDepth > 0) return false;
+    const payload = serializeProfiles(Array.isArray(profilesInput) ? profilesInput : options.getProfiles(), userId);
+    const nextFingerprint = fingerprint(payload);
+    if (nextFingerprint === localProfilesFingerprint) return false;
+    localProfilesFingerprint = nextFingerprint;
+    setRevision(DOC.profiles, DEFAULT_DOCUMENT_ID, Date.now());
+    emitStatus({ state: "local-dirty", type: DOC.profiles, userId, at: Date.now() });
+    return true;
   };
 
   const runRemoteApply = async <T>(fn: () => Promise<T> | T): Promise<T> => {
@@ -815,8 +869,13 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
   const applyProfilesPayload = async (payload: any) => {
     const rows = collectionPayloadItems(payload);
     if (!rows) return;
-    const hydrated = await hydrateProfiles(rows);
+    // Un ancien document account_sync peut encore contenir MON PROFIL. Le
+    // binding persistant permet de l'écarter avant hydratation, donc aucun clone
+    // technique ne peut être réinjecté dans le store React.
+    const accountOwnedRows = getAccountOwnedLocalProfiles(rows, userId);
+    const hydrated = await hydrateProfiles(accountOwnedRows);
     await options.applyLocalProfiles(hydrated);
+    localProfilesFingerprint = fingerprint(serializeProfiles(hydrated, userId));
   };
 
   const applyBotsPayload = async (payload: any) => {
@@ -945,7 +1004,16 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     const remoteRevision = Number(remote.client_updated_at || 0) || toTimestamp(remote.updated_at);
 
     if (localRevision > remoteRevision) {
-      await pushDocument(type, localPayload, DEFAULT_DOCUMENT_ID, localRevision);
+      if (type === DOC.profiles) {
+        // Le local plus récent ne doit pas effacer un profil créé entre-temps
+        // sur un autre appareil. Union distante + priorité locale par ID.
+        const mergedLocalAuthority = mergeByIdPreferLocal(localPayload, remotePayload);
+        await runRemoteApply(() => applyMerged(mergedLocalAuthority));
+        localProfilesFingerprint = fingerprint(serializeProfiles(mergedLocalAuthority, userId));
+        await pushDocument(type, mergedLocalAuthority, DEFAULT_DOCUMENT_ID, localRevision);
+      } else {
+        await pushDocument(type, localPayload, DEFAULT_DOCUMENT_ID, localRevision);
+      }
       return;
     }
 
@@ -1237,8 +1305,8 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     }
   };
 
-  const initialSync = async () => {
-    emitStatus({ state: "starting", userId });
+  const initialSync = async (cycleOptions: { awaitHistory?: boolean; reason?: string } = {}) => {
+    emitStatus({ state: "starting", userId, reason: cycleOptions.reason || "initial" });
     // Avant toute lecture cloud, verrouiller les anciennes sources stats brutes
     // sur le bon compte local (évite compte A -> compte B sur le même téléphone).
     await runRemoteApply(async () => {
@@ -1253,7 +1321,12 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
       return;
     }
 
-    await syncCollection(DOC.profiles, () => serializeProfiles(options.getProfiles(), userId), applyProfilesPayload);
+    await syncCollection(
+      DOC.profiles,
+      () => serializeProfiles(options.getProfiles(), userId),
+      applyProfilesPayload,
+      (rows) => getAccountOwnedLocalProfiles(rows, userId),
+    );
     await syncCollection(DOC.bots, () => serializeBots(), applyBotsPayload);
     await syncCollection(DOC.teams, () => serializeTeams(), applyTeamsPayload, (rows) => accountOwnedTeams(rows));
     await syncCollection(DOC.gallery, () => serializeGallery(userId), applyGalleryPayload);
@@ -1272,13 +1345,48 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     await syncScalarDocument(DOC.organizationWorkspace, loadOrganizationWorkspace(userId), applyOrganizationWorkspacePayload);
 
     if (!tableUnavailable && !remotePaused()) {
-      emitStatus({ state: "ready", userId });
-      // L'historique peut être volumineux : il arrive après les objets UI rapides.
-      window.setTimeout(() => { void bootstrapHistory().catch((error) => console.warn("[account-sync] history bootstrap failed", error)); }, 900);
+      emitStatus({ state: "ready", userId, reason: cycleOptions.reason || "initial" });
+      // L'historique peut être volumineux. Au boot on le laisse hors critical path ;
+      // au reconnect demandé par l'orchestrateur W6 on l'attend afin de republier
+      // aussi les parties terminées hors ligne avant de considérer le cycle repris.
+      if (cycleOptions.awaitHistory) {
+        await bootstrapHistory();
+      } else {
+        window.setTimeout(() => { void bootstrapHistory().catch((error) => console.warn("[account-sync] history bootstrap failed", error)); }, 900);
+      }
     }
   };
 
-  const onStoreMutated = () => scheduleLocalPush(DOC.profiles, pushProfiles);
+  let syncCycleInFlight: Promise<void> | null = null;
+  let queuedHistoryCycle = false;
+  const runAccountOwnedSyncCycle = async (cycleOptions: { awaitHistory?: boolean; reason?: string } = {}) => {
+    if (cycleOptions.awaitHistory) queuedHistoryCycle = true;
+    if (syncCycleInFlight) return syncCycleInFlight;
+    syncCycleInFlight = (async () => {
+      const awaitHistory = queuedHistoryCycle || cycleOptions.awaitHistory === true;
+      queuedHistoryCycle = false;
+      await initialSync({ ...cycleOptions, awaitHistory });
+    })().finally(() => {
+      syncCycleInFlight = null;
+      if (queuedHistoryCycle && !stopped && shouldAttemptRemoteWork()) {
+        const shouldHistory = queuedHistoryCycle;
+        queuedHistoryCycle = false;
+        void runAccountOwnedSyncCycle({ awaitHistory: shouldHistory, reason: "queued" });
+      }
+    });
+    return syncCycleInFlight;
+  };
+
+  const onStoreMutated = (event: Event) => {
+    // App joint le snapshot de profils à l'événement : on ne dépend donc pas du
+    // prochain render React pour voir la mutation qui vient juste d'être validée.
+    const profilesSnapshot = (event as CustomEvent<any>)?.detail?.profiles;
+    // Même hors ligne, mémoriser immédiatement une révision locale. Le push peut
+    // attendre ; la preuve que le local est plus récent, elle, ne doit jamais se
+    // perdre au redémarrage.
+    if (!markLocalProfilesRevisionIfChanged(Array.isArray(profilesSnapshot) ? profilesSnapshot : undefined)) return;
+    scheduleLocalPush(DOC.profiles, pushProfiles);
+  };
   const onBotsChanged = () => scheduleLocalPush(DOC.bots, pushBots);
   const onTeamsChanged = () => scheduleLocalPush(DOC.teams, pushTeams);
   const onGalleryChanged = (event: Event) => {
@@ -1501,16 +1609,49 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     }
   };
 
-  const onFocusOrOnline = () => {
-    if (stopped || remotePaused() || document.visibilityState === "hidden") return;
+  const runLightweightRefresh = () => {
+    if (stopped || document.visibilityState === "hidden") return;
+    // Un vrai retour réseau autorise un retry immédiat ; le circuit-breaker
+    // Supabase reste de toute façon prioritaire dans remotePaused().
+    if (shouldAttemptRemoteWork()) remotePausedUntil = 0;
+    if (remotePaused()) return;
+    ensureRealtimeChannel();
     if (readAuthoritativeRestorePending(userId)) {
       void sealPendingAuthoritativeRestore("focus-online");
       return;
     }
+    // W5 : le document profiles est resynchronisé explicitement au reconnect.
+    // Une mutation faite en mode avion a déjà augmenté sa révision locale ;
+    // syncCollection poussera donc le local si le cloud est plus ancien.
+    void syncCollection(
+      DOC.profiles,
+      () => serializeProfiles(options.getProfiles(), userId),
+      applyProfilesPayload,
+      (rows) => getAccountOwnedLocalProfiles(rows, userId),
+    ).catch((error) => console.warn("[account-sync] profile reconnect sync failed", error));
     void refreshRemoteDocuments();
   };
-  const onVisibility = () => {
-    if (document.visibilityState === "visible") onFocusOrOnline();
+  const onOrchestratedSyncCycle = (event: Event) => {
+    const detail: any = (event as CustomEvent)?.detail || {};
+    const requestedUserId = cleanId(detail?.userId);
+    if (requestedUserId && requestedUserId !== userId) return;
+    if (stopped || !shouldAttemptRemoteWork()) return;
+    // Un retour réseau explicite annule uniquement notre cooldown local. Le
+    // circuit-breaker Supabase global reste prioritaire dans remotePaused().
+    remotePausedUntil = 0;
+    if (remotePaused()) return;
+    ensureRealtimeChannel();
+    const reason = cleanId(detail?.reason) || "orchestrator";
+    if (detail?.includeHistory === true || reason === "online") {
+      void runAccountOwnedSyncCycle({
+        awaitHistory: detail?.includeHistory === true,
+        reason,
+      }).catch((error) => console.warn("[account-sync] orchestrated cycle failed", error));
+      return;
+    }
+    // Focus/visible/heartbeat : refresh léger. Les changements locaux courants
+    // ont leurs révisions/timers ; le reconnect complet est réservé à `online`.
+    runLightweightRefresh();
   };
 
   const globalForceSync = async (detail?: any) => {
@@ -1533,12 +1674,12 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
   window.addEventListener(ORGANIZATION_WORKSPACE_EVENT, onWorkspaceChanged as EventListener);
   window.addEventListener(ACCOUNT_LOCAL_STORAGE_MUTATION_EVENT, onLocalStorageMutation as EventListener);
   window.addEventListener(ACCOUNT_HISTORY_LOCAL_CHANGE_EVENT, onHistoryChanged as EventListener);
-  window.addEventListener("focus", onFocusOrOnline);
-  window.addEventListener("online", onFocusOrOnline);
-  document.addEventListener("visibilitychange", onVisibility);
+  window.addEventListener(ACCOUNT_OWNED_SYNC_CYCLE_EVENT, onOrchestratedSyncCycle as EventListener);
 
-  try {
-    channel = supabase
+  const ensureRealtimeChannel = () => {
+    if (stopped || channel || !shouldAttemptRemoteWork()) return;
+    try {
+      channel = supabase
       .channel(`account-owned:${userId}:${Math.random().toString(36).slice(2, 8)}`)
       .on(
         "postgres_changes",
@@ -1566,27 +1707,23 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
         },
       )
       .subscribe((status: string) => emitStatus({ state: "realtime", status, userId }));
-  } catch (error) {
-    console.warn("[account-sync] realtime subscribe failed", error);
-  }
-
-  pollTimer = window.setInterval(() => {
-    if (stopped || remotePaused() || document.visibilityState === "hidden") return;
-    if (readAuthoritativeRestorePending(userId)) {
-      void sealPendingAuthoritativeRestore("poll");
-      return;
+    } catch (error) {
+      channel = null;
+      console.warn("[account-sync] realtime subscribe failed", error);
     }
-    void refreshRemoteDocuments();
-  }, POLL_MS);
+  };
 
-  void initialSync().catch((error) => console.warn("[account-sync] initial sync failed", error));
+  // OFFLINE-FIRST W3: aucune ouverture websocket au boot si le téléphone est
+  // hors ligne. Le canal est créé au retour du réseau.
+  ensureRealtimeChannel();
+
+
+  void runAccountOwnedSyncCycle({ reason: "boot", awaitHistory: false }).catch((error) => console.warn("[account-sync] initial sync failed", error));
 
   return () => {
     stopped = true;
     for (const timer of localTimers.values()) window.clearTimeout(timer);
     localTimers.clear();
-    if (pollTimer != null) window.clearInterval(pollTimer);
-    pollTimer = null;
     window.removeEventListener(ACCOUNT_OWNED_STORE_MUTATED_EVENT, onStoreMutated as EventListener);
     window.removeEventListener("dc:bots-changed", onBotsChanged as EventListener);
     window.removeEventListener("dc:teams-changed", onTeamsChanged as EventListener);
@@ -1598,9 +1735,7 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     window.removeEventListener(ORGANIZATION_WORKSPACE_EVENT, onWorkspaceChanged as EventListener);
     window.removeEventListener(ACCOUNT_LOCAL_STORAGE_MUTATION_EVENT, onLocalStorageMutation as EventListener);
     window.removeEventListener(ACCOUNT_HISTORY_LOCAL_CHANGE_EVENT, onHistoryChanged as EventListener);
-    window.removeEventListener("focus", onFocusOrOnline);
-    window.removeEventListener("online", onFocusOrOnline);
-    document.removeEventListener("visibilitychange", onVisibility);
+    window.removeEventListener(ACCOUNT_OWNED_SYNC_CYCLE_EVENT, onOrchestratedSyncCycle as EventListener);
     try {
       if ((window as any).__forceAccountOwnedSyncNow === globalForceSync) {
         delete (window as any).__forceAccountOwnedSyncNow;

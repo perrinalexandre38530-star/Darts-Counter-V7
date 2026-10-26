@@ -20,7 +20,8 @@ import { ensureNativeAdMobReady } from "./monetization/nativeAdMob";
 import { isConstrainedRuntimeDevice, isGameplayRuntime, isRuntimeHidden, scheduleRuntimeIdle } from "./lib/runtimePerformance";
 import { initNativeSocialAuthBridge } from "./lib/socialAuth";
 import { initNativePersonalCloudBridge } from "./lib/personalCloudApi";
-import { initIncrementalRemoteSync } from "./lib/incrementalRemoteSync";
+import { initGlobalSyncOrchestrator } from "./lib/sync/syncOrchestrator";
+import { shouldAttemptRemoteWork } from "./lib/offlineFirstRuntime";
 import { initKeepAwakeRuntime } from "./lib/keepAwake";
 import { installResponsiveLayout } from "./lib/responsiveLayout";
 import { recordReactFreezeCommit, startFreezeWatchIfEnabled } from "./lib/freezeWatch";
@@ -47,8 +48,9 @@ startMemoryWatchdog();
 // Écran actif par défaut : natif Android + Screen Wake Lock web/PWA.
 initKeepAwakeRuntime();
 
-// Journal incrémental distant : petits changements uniquement, jamais un snapshot complet.
-initIncrementalRemoteSync();
+// OFFLINE-FIRST W6 : coordinateur unique de toutes les files de synchronisation.
+// Le gameplay ne l'attend jamais ; il reprend automatiquement au reconnect.
+initGlobalSyncOrchestrator();
 
 // Android : AdMob/UMP ne fait plus partie du critical path du boot/auth.
 // Le SDK natif + consentement peuvent déclencher I/O, réseau et callbacks JNI.
@@ -560,7 +562,9 @@ async function prepareNativeContentPackServiceWorker() {
         scope: "/",
         updateViaCache: "none",
       });
-    } else {
+    } else if (shouldAttemptRemoteWork()) {
+      // OFFLINE-FIRST W3: la vérification réseau du script SW ne doit jamais
+      // participer au boot en mode avion. Le SW existant reste utilisable.
       try { await contentPackReg.update(); } catch {}
     }
 
@@ -909,15 +913,26 @@ async function devUnregisterSW() {
       } catch {}
     }
 
-    // Capacitor embarque déjà les chunks dans l'APK/AAB : aucun cache applicatif natif.
-    // Seul un SW dédié aux content packs est conservé pour les images/vidéos distantes.
-    if (isCapacitorNativeRuntime()) {
-      await prepareNativeContentPackServiceWorker();
-    } else if (import.meta.env.PROD) {
-      await registerServiceWorkerProd();
-    } else {
-      await devUnregisterSW();
-    }
+    // OFFLINE-FIRST W3 — aucun Service Worker / cache distant dans le chemin
+    // critique. Capacitor contient déjà l'application complète dans l'APK/AAB.
+    // Les SW (packs natifs / PWA) sont initialisés APRES le premier rendu.
+    const schedulePostRenderServiceWorkerBootstrap = () => {
+      window.setTimeout(() => {
+        void (async () => {
+          try {
+            if (isCapacitorNativeRuntime()) {
+              await prepareNativeContentPackServiceWorker();
+            } else if (import.meta.env.PROD) {
+              await registerServiceWorkerProd();
+            } else {
+              await devUnregisterSW();
+            }
+          } catch (error) {
+            console.warn("[boot] post-render Service Worker bootstrap skipped", error);
+          }
+        })();
+      }, 0);
+    };
 
     const container = document.getElementById("root");
     if (!container) throw new Error("❌ Élément #root introuvable dans index.html");
@@ -973,6 +988,10 @@ async function devUnregisterSW() {
       }
       renderRoot(mod.default);
     }
+
+    // Le rendu local est désormais prioritaire. La mécanique SW/cache démarre
+    // ensuite sans pouvoir retarder l'accès aux jeux, profils, historique ou stats.
+    schedulePostRenderServiceWorkerBootstrap();
 
     // ✅ si ça render, on peut enlever safe mode + reset compteurs recovery
     setSafeMode(false);

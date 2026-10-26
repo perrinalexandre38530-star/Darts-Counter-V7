@@ -5,8 +5,9 @@ import { buildCanonicalBackupArtifact } from "./backup/backupEngineV1";
 import { loadStoragePrefs } from "./storagePlans";
 import { queueExternalBackup } from "./externalBackupTarget";
 import { uploadPersonalCloudSnapshot, isPersonalCloudProvider, type PersonalCloudProvider } from "./personalCloudApi";
-import { getDirectR2Usage, isDirectR2PremiumWriteAllowed } from "./directR2BackupApi";
+import { createDirectR2Backup, getDirectR2Usage, isDirectR2PremiumWriteAllowed } from "./directR2BackupApi";
 import { isRuntimeHidden, shouldDeferHeavyRuntimeWork } from "./runtimePerformance";
+import { shouldAttemptRemoteWork } from "./offlineFirstRuntime";
 import { recordIncrementalChange, shouldCreateIncrementalCheckpoint, markIncrementalCheckpoint } from "./incrementalBackupJournal";
 import {
   CLOUD_VAULT_OBJECT_TYPE,
@@ -93,10 +94,42 @@ function installDeferredPersonalCloudListeners(): void {
 
   try { document.addEventListener("visibilitychange", flushWhenHidden, { passive: true }); } catch {}
   try { window.addEventListener("pagehide", flushWhenHidden, { passive: true }); } catch {}
+  try {
+    window.addEventListener("online", () => {
+      if (!deferredPersonalCloudSnapshot || !shouldAttemptRemoteWork()) return;
+      const job = deferredPersonalCloudSnapshot;
+      deferredPersonalCloudSnapshot = null;
+      window.setTimeout(() => {
+        if (shouldDeferHeavyRuntimeWork()) {
+          deferredPersonalCloudSnapshot = job;
+          return;
+        }
+        void runPersonalCloudFullSnapshot(job);
+      }, 600);
+    }, { passive: true });
+  } catch {}
 }
 
 function queuePersonalCloudFullSnapshot(provider: PersonalCloudProvider, metadata: Record<string, any>): void {
   const job: DeferredPersonalCloudSnapshot = { provider, metadata };
+
+  // LOCAL-FIRST WAVE 4: never build/upload a full personal-cloud snapshot while
+  // the runtime is offline. Keep the latest requested checkpoint in memory and
+  // flush it when connectivity returns. The incremental journal remains durable
+  // in IndexedDB in the meantime.
+  if (!shouldAttemptRemoteWork()) {
+    deferredPersonalCloudSnapshot = job;
+    installDeferredPersonalCloudListeners();
+    try {
+      localStorage.setItem("dc_personal_cloud_deferred_snapshot_v1", JSON.stringify({
+        at: nowIso(),
+        provider,
+        reason: metadata?.reason || "history-upsert",
+        offline: true,
+      }));
+    } catch {}
+    return;
+  }
 
   if (shouldDeferHeavyRuntimeWork()) {
     deferredPersonalCloudSnapshot = job;
@@ -679,7 +712,8 @@ export async function deleteLocalMatchBackup(id: string): Promise<void> {
 
 
 export async function pushMatchBackupToCloud(item: MatchBackupItem): Promise<void> {
-  if (!readNasAccessToken()) return;
+  // WAVE 7: R2 PREMIUM is authenticated independently from the founder NAS.
+  // Never require a NAS token for a cloud copy.
   if (!(await shouldUseCloudR2())) return;
   const clean: MatchBackupItem = {
     ...item,
@@ -700,12 +734,11 @@ export async function pushMatchBackupToCloud(item: MatchBackupItem): Promise<voi
 }
 
 async function pushLatestSnapshotToCloud(reason: string): Promise<void> {
-  if (!readNasAccessToken()) return;
   if (!(await shouldUseCloudR2())) return;
 
   // Le backup de la partie elle-même est déjà envoyé juste avant. Sur mobile,
-  // le gros snapshot compte complet est pris en charge par la file de backup
-  // complet hors premier plan : ne jamais le reconstruire pendant la navigation.
+  // ne jamais reconstruire le gros snapshot pendant la navigation. Le marqueur
+  // persistant est repris par l'orchestrateur au passage hidden/background.
   if (shouldDeferHeavyRuntimeWork()) {
     try {
       localStorage.setItem("dc_cloud_auto_full_backup_deferred_v1", JSON.stringify({
@@ -720,18 +753,16 @@ async function pushLatestSnapshotToCloud(reason: string): Promise<void> {
   try {
     const last = Number(localStorage.getItem("dc_cloud_auto_full_backup_last_at_v1") || "0") || 0;
     if (last > 0 && now - last < CLOUD_FULL_SNAPSHOT_MIN_INTERVAL_MS) return;
-    localStorage.setItem("dc_cloud_auto_full_backup_last_at_v1", String(now));
   } catch {}
+
   const built = await buildCanonicalBackupArtifact();
   const json = built.artifactJson;
-  await uploadCloudObject({
-    objectType: CLOUD_VAULT_OBJECT_TYPE,
-    sport: "system",
+  // WAVE 7: full R2 checkpoints use the direct Supabase-authenticated route,
+  // completely independent from the founder NAS/proxy.
+  await createDirectR2Backup({
+    snapshotJson: json,
     title: `Sauvegarde cloud automatique — ${new Date().toLocaleString("fr-FR")}`,
-    objectKey: CLOUD_MATCH_FULL_SNAPSHOT_KEY,
-    mimeType: "application/json",
-    content: json,
-    gzip: true,
+    summary: built.summary as any,
     metadata: {
       source: "match_auto_backup_cloud_r2",
       backupKind: "auto_full_snapshot",
@@ -740,10 +771,67 @@ async function pushLatestSnapshotToCloud(reason: string): Promise<void> {
       rawSizeBytes: json.length,
       artifactId: built.artifact.artifactId,
       payloadSha256: built.artifact.payloadSha256,
-      summary: built.summary,
     },
   });
+  try {
+    localStorage.setItem("dc_cloud_auto_full_backup_last_at_v1", String(Date.now()));
+    localStorage.removeItem("dc_cloud_auto_full_backup_deferred_v1");
+  } catch {}
   await markIncrementalCheckpoint({ provider: "cloud_r2", reason }).catch(() => undefined);
+}
+
+/**
+ * WAVE 7 — full checkpoint/compaction for the ACTIVE backup destination.
+ * Called by the global orchestrator only when a checkpoint is due. Heavy work
+ * is never forced in the foreground on constrained devices.
+ */
+export async function createSelectedDestinationCheckpointIfDue(reason = "sync-orchestrator"): Promise<{
+  due: boolean;
+  provider: string;
+  status: "not-due" | "local-compacted" | "deferred" | "completed" | "manual-only" | "offline";
+}> {
+  const provider = await getActiveStorageProviderCached().catch(() => "local_device");
+  const due = await shouldCreateIncrementalCheckpoint().catch(() => false);
+  const hasDeferredR2 = (() => {
+    try { return !!localStorage.getItem("dc_cloud_auto_full_backup_deferred_v1"); } catch { return false; }
+  })();
+  if (!due && !(provider === "cloud_r2" && hasDeferredR2)) return { due: false, provider, status: "not-due" };
+
+  if (provider === "local_device") {
+    await markIncrementalCheckpoint({ provider: "app_local", reason: `${reason}:local-compaction` });
+    return { due: true, provider, status: "local-compacted" };
+  }
+  if (!shouldAttemptRemoteWork()) return { due: true, provider, status: "offline" };
+  if (shouldDeferHeavyRuntimeWork()) return { due: true, provider, status: "deferred" };
+
+  if (isPersonalCloudProvider(provider)) {
+    await runPersonalCloudFullSnapshot({
+      provider,
+      metadata: { reason, exportedAt: new Date().toISOString(), ownerId: currentOwnerId() },
+    });
+    return { due: true, provider, status: "completed" };
+  }
+
+  if (provider === "cloud_r2") {
+    await pushLatestSnapshotToCloud(reason);
+    return { due: true, provider, status: "completed" };
+  }
+
+  if (provider === "nas_founder") {
+    const { pushNasAccountSnapshot } = await import("./manualNasSync");
+    await pushNasAccountSnapshot();
+    await markIncrementalCheckpoint({ provider: "founder_nas", reason });
+    return { due: true, provider, status: "completed" };
+  }
+
+  // File/SD/USB require a user-granted target/permission. Keep journal deltas
+  // intact until the user runs the manual backup; never clear them pre-emptively.
+  if (provider === "external_file") {
+    queueExternalBackup("incremental-checkpoint");
+    return { due: true, provider, status: "manual-only" };
+  }
+
+  return { due: true, provider, status: "manual-only" };
 }
 
 export async function pushMatchBackupToNas(item: MatchBackupItem): Promise<void> {
@@ -796,7 +884,8 @@ export async function deleteNasMatchBackup(id: string): Promise<void> {
 
 
 export async function listCloudMatchBackups(): Promise<MatchBackupItem[]> {
-  if (!readNasAccessToken()) return [];
+  // W8: R2 is a standalone PREMIUM provider authenticated through the account,
+  // never through the founder NAS token.
   if (!(await shouldUseCloudR2())) return [];
   const rows = await listCloudObjects({ objectType: CLOUD_MATCH_BACKUP_OBJECT_TYPE, limit: 500 }).catch(() => []);
   return rows
@@ -810,7 +899,7 @@ export async function pullCloudMatchBackup(idOrItem: string | MatchBackupItem): 
   const objectId = typeof idOrItem === "string"
     ? String(idOrItem || "").trim()
     : String(idOrItem.cloudObjectId || idOrItem.id || "").trim();
-  if (!objectId || !readNasAccessToken()) return null;
+  if (!objectId) return null;
   const downloaded = await downloadCloudObject(objectId).catch(() => null);
   if (!downloaded?.ok) return null;
   return normalizeDownloadedCloudMatch(downloaded, objectId);
@@ -842,6 +931,12 @@ export async function saveMatchBackupAfterHistoryUpsert(args: {
     revisionId: item.revisionId || null, payloadFingerprint: item.payloadFingerprint || null,
   }, updatedAt: item.updatedAt || Date.now() });
   const provider = await getActiveStorageProviderCached().catch(() => "local_device");
+
+  // LOCAL-FIRST WAVE 4: the durable local match backup + incremental journal are
+  // already committed above. Remote providers are strictly secondary and must
+  // never be contacted while offline. Their journal entries stay pending and
+  // will be synchronized by the reconnect pipeline.
+  if (!shouldAttemptRemoteWork()) return;
 
   if (provider === "external_file") {
     if (args.source !== "history-prewrite-revision") queueExternalBackup("history-upsert");

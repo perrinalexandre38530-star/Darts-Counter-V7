@@ -4617,6 +4617,27 @@ export async function upsert(rec: SavedMatch): Promise<void> {
       }
     } catch {}
 
+    // LOCAL-FIRST WAVE 4 — commit receipt. At this exact point the canonical
+    // History V4 write is durable, the local incremental journal has been
+    // recorded for local mutations, and the local stats index has been marked
+    // dirty/scheduled. Remote work starts only below this marker.
+    try {
+      if (typeof window !== "undefined") {
+        const receipt = {
+          id: String(safe.id || ""),
+          kind: String((safe as any)?.kind || "game"),
+          status: String((safe as any)?.status || ""),
+          updatedAt: Number((safe as any)?.updatedAt || Date.now()) || Date.now(),
+          committedAt: Date.now(),
+          storage: "indexeddb-history-v4",
+          stats: "local-index-dirty",
+          source: isCloudImporting() ? "cloud-import" : "local",
+        };
+        localStorage.setItem("msc_last_local_match_commit_v1", JSON.stringify(receipt));
+        window.dispatchEvent(new CustomEvent("msc:local-match-committed", { detail: receipt }));
+      }
+    } catch {}
+
     // ================================
     // ✅ PUSH SNAPSHOT TO CLOUD (debounced)
     // ================================

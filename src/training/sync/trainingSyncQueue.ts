@@ -1,3 +1,4 @@
+import { shouldAttemptRemoteWork } from "../../lib/offlineFirstRuntime";
 import { syncTrainingEvents } from "./trainingSyncEngine";
 
 type QueueState = {
@@ -31,6 +32,7 @@ let running = false;
 
 export async function trainingSyncQueueTry(userId: string) {
   if (!userId) return;
+  if (!shouldAttemptRemoteWork()) return;
   if (running) return;
 
   const s = loadState();

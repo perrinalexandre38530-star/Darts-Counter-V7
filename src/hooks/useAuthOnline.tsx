@@ -497,6 +497,13 @@ async function safeLoadProfileBestEffort(user: User): Promise<OnlineProfile | nu
 
   const task = (async () => {
     try {
+      // OFFLINE-FIRST W5 : publier d'abord les mutations de MON PROFIL qui ont
+      // été validées localement pendant une coupure. Le flush compare les
+      // révisions identité/avatar avec le row distant avant toute écriture.
+      try { await (onlineApi as any).flushQueuedAccountProfileUpdate?.(userId); } catch (error) {
+        if (!isSupabaseTransientUnavailableError(error)) console.warn("[useAuthOnline] profile outbox flush skipped", error);
+      }
+
       // PRIORITÉ ABSOLUE : ligne Supabase publique du compte courant.
       // C'est elle qui rend le pseudo/avatar identiques sur PC, téléphone et
       // tout nouvel appareil, même si le cache local/NAS est ancien ou vide.
@@ -1103,9 +1110,9 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 
     const refreshProfile = () => {
       if (disposed) return;
-      // safeLoadProfileBestEffort sait maintenant renvoyer le dernier profil
-      // valide sans réseau quand PostgREST est suspendu. On ne coupe donc plus
-      // ici la réhydratation de l'identité locale.
+      // safeLoadProfileBestEffort vide d'abord la petite outbox de MON PROFIL
+      // puis relit Supabase. En panne réseau, il conserve le dernier profil
+      // local valide sans bloquer l'interface.
       void safeLoadProfileBestEffort(user).then(commit).catch((error) => {
         if (!isSupabaseTransientUnavailableError(error)) {
           console.warn("[useAuthOnline] account profile refresh skipped", error);

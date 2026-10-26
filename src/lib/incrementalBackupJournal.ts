@@ -34,6 +34,11 @@ const LAST_CHECKPOINT_KEY = "lastCheckpoint";
 const SYNC_META_PREFIX = "synced:";
 const MAX_PENDING_BEFORE_CHECKPOINT = 500;
 const MAX_CHECKPOINT_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+// WAVE 7: a brand-new installation must eventually create its first full
+// checkpoint. Previously lastCheckpointAt=0 disabled checkpoints forever unless
+// a manual full backup happened first.
+const INITIAL_CHECKPOINT_PENDING = 25;
+const INITIAL_CHECKPOINT_AGE_MS = 6 * 60 * 60 * 1000;
 let incrementalRecordingSuppressDepth = 0;
 
 function openDb(): Promise<IDBDatabase> {
@@ -220,7 +225,18 @@ export async function markIncrementalProviderSynced(provider: string, changes: I
   } finally { db.close(); }
 }
 
-export async function getIncrementalBackupStats(): Promise<{ pending: number; lastCheckpointAt: number; oldestChangeAt: number | null; newestChangeAt: number | null }> {
+export type IncrementalBackupStats = {
+  pending: number;
+  lastCheckpointAt: number;
+  oldestChangeAt: number | null;
+  newestChangeAt: number | null;
+  lastCheckpointProvider: string | null;
+  lastCheckpointReason: string | null;
+  compactedChanges: number;
+  checkpointCount: number;
+};
+
+export async function getIncrementalBackupStats(): Promise<IncrementalBackupStats> {
   const changes = await listIncrementalChanges();
   const db = await openDb();
   try {
@@ -230,11 +246,16 @@ export async function getIncrementalBackupStats(): Promise<{ pending: number; la
       req.onsuccess = () => resolve(req.result || null);
       req.onerror = () => resolve(null);
     });
+    const checkpoint = meta?.value && typeof meta.value === "object" ? meta.value : {};
     return {
       pending: changes.length,
-      lastCheckpointAt: Number(meta?.value?.at || 0),
+      lastCheckpointAt: Number(checkpoint?.at || 0),
       oldestChangeAt: changes.length ? Number(changes[0]?.updatedAt || 0) : null,
       newestChangeAt: changes.length ? Number(changes[changes.length - 1]?.updatedAt || 0) : null,
+      lastCheckpointProvider: String(checkpoint?.provider || "").trim() || null,
+      lastCheckpointReason: String(checkpoint?.reason || "").trim() || null,
+      compactedChanges: Math.max(0, Number(checkpoint?.compactedChanges || 0) || 0),
+      checkpointCount: Math.max(0, Number(checkpoint?.checkpointCount || 0) || 0),
     };
   } finally { db.close(); }
 }
@@ -243,22 +264,43 @@ export async function shouldCreateIncrementalCheckpoint(now = Date.now()): Promi
   const stats = await getIncrementalBackupStats();
   if (!stats.pending) return false;
   if (stats.pending >= MAX_PENDING_BEFORE_CHECKPOINT) return true;
-  if (!stats.lastCheckpointAt) return false;
+  if (!stats.lastCheckpointAt) {
+    if (stats.pending >= INITIAL_CHECKPOINT_PENDING) return true;
+    const oldestAt = Number(stats.oldestChangeAt || 0);
+    return oldestAt > 0 && now - oldestAt >= INITIAL_CHECKPOINT_AGE_MS;
+  }
   return now - stats.lastCheckpointAt >= MAX_CHECKPOINT_AGE_MS;
 }
 
 export async function markIncrementalCheckpoint(metadata: Record<string, any> = {}): Promise<void> {
   if (typeof indexedDB === "undefined") return;
+  // Count before compaction so diagnostics can prove that the journal was
+  // actually compacted after a durable full checkpoint.
+  const before = await listIncrementalChanges().catch(() => [] as IncrementalChange[]);
+  const previous = await getIncrementalBackupStats().catch(() => null);
   const db = await openDb();
   try {
     const tx = db.transaction([STORE_CHANGES, STORE_META], "readwrite");
     tx.objectStore(STORE_CHANGES).clear();
-    tx.objectStore(STORE_META).put({ key: LAST_CHECKPOINT_KEY, value: { at: Date.now(), ...metadata } });
+    tx.objectStore(STORE_META).put({
+      key: LAST_CHECKPOINT_KEY,
+      value: {
+        at: Date.now(),
+        compactedChanges: before.length,
+        checkpointCount: Math.max(0, Number(previous?.checkpointCount || 0)) + 1,
+        ...metadata,
+      },
+    });
     await new Promise<void>((resolve) => {
       tx.oncomplete = () => resolve();
       tx.onerror = () => resolve();
       tx.onabort = () => resolve();
     });
+    try {
+      window.dispatchEvent(new CustomEvent("msc:incremental-checkpoint", {
+        detail: { compactedChanges: before.length, provider: metadata?.provider || null, reason: metadata?.reason || null },
+      }));
+    } catch {}
   } finally { db.close(); }
 }
 

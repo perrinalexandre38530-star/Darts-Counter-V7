@@ -31,6 +31,7 @@ import { loadStoragePrefs } from "../storagePlans";
 import { fetchRemoteIncrementalChanges } from "../incrementalRemoteSync";
 import { applyIncrementalChanges } from "../incrementalRestore";
 import { shouldSuppressAutomaticRestore } from "../restoreAuthority";
+import { shouldAttemptRemoteWork } from "../offlineFirstRuntime";
 
 export type AccountBackupSource = "local" | "nas" | "r2" | "google_drive" | "onedrive" | "dropbox" | "external" | "legacy-auto";
 
@@ -882,6 +883,14 @@ export async function restoreLatestBackupForSignedInUser(
   if (typeof window === "undefined") return false;
   const uid = String(userId || "").trim();
   if (!uid || !accountStillActive(uid)) return false;
+  // OFFLINE-FIRST W8: never scan NAS/R2/Drive from the login bootstrap while
+  // offline. Local data stays authoritative and the global orchestrator will
+  // re-run the sync cycle when connectivity returns.
+  if (!shouldAttemptRemoteWork()) {
+    saveDiagnostic(uid, { ok: true, restored: false, reason: "offline-local-authority" });
+    emitAccountSync(uid, "done", 100, "Mode hors ligne — données locales conservées", { restored: false });
+    return false;
+  }
 
   // Après une restauration choisie manuellement, ne jamais lancer en parallèle
   // une auto-restauration "latest" susceptible de remettre l'ancien état.

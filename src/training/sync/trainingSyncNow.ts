@@ -1,19 +1,17 @@
-import { trainingSyncQueueEnqueueSoon, trainingSyncQueueTry } from "./trainingSyncQueue";
+import { requestGlobalSync } from "../../lib/sync/syncOrchestrator";
+import { trainingSyncQueueEnqueueSoon } from "./trainingSyncQueue";
 
 let lastKick = 0;
 
 export async function trainingSyncNowBestEffort() {
   try {
     const now = Date.now();
-    if (now - lastKick < 1500) return;
+    if (now - lastKick < 700) return;
     lastKick = now;
 
+    // LOCAL-FIRST : rendre la queue immédiatement éligible, puis rendre la main.
+    // Aucun await réseau ne doit se glisser dans l'enregistrement Training.
     trainingSyncQueueEnqueueSoon();
-
-    const userId = (typeof localStorage !== "undefined" && localStorage.getItem("dc_user_id")) || "";
-    if (!userId) return;
-    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
-
-    await trainingSyncQueueTry(userId);
+    requestGlobalSync("training-event", { delayMs: 650 });
   } catch {}
 }
