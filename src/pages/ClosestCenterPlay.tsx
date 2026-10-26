@@ -1814,27 +1814,18 @@ export default function ClosestCenterPlay(props:any) {
           </div>
         </section> : null}
 
-        {pointsMode==="petanque" && phase==="play" && petanqueTeamToPlay && (!isManual || (manualEntryMode==="guided" && manualStage==="throws")) ? <section style={{...card,padding:10,borderColor:petanqueTeamToPlay==="A"?"rgba(255,77,95,.32)":"rgba(61,165,255,.32)"}}>
-          <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",marginBottom:7}}>
-            <div><b style={{fontSize:11,color:petanqueTeamToPlay==="A"?"#ff8f9c":"#83c8ff"}}>ÉQUIPE {petanqueTeamToPlay} À JOUER</b><div style={{fontSize:9,color:"#8193a1",marginTop:2}}>{livePointTeam?`Le point est à l’équipe ${livePointTeam}`:"Début de mène"} · {Number(teamDartsRemaining[petanqueTeamToPlay]||0)} fléchette(s) en main</div></div>
-            {((isManual ? manualRoundThrows.length===0 : roundValidatedImpacts.length===0) && (isManual || !turnArmed)) ? <div style={{display:"flex",gap:5}}>
-              <button onClick={()=>setRoundStarterTeam("A")} style={{...miniBtn,borderColor:roundStarterTeam==="A"?"#ff8f9c":"rgba(255,255,255,.12)",color:roundStarterTeam==="A"?"#ffb6be":"#93a2ae"}}>A COMMENCE</button>
-              <button onClick={()=>setRoundStarterTeam("B")} style={{...miniBtn,borderColor:roundStarterTeam==="B"?"#83c8ff":"rgba(255,255,255,.12)",color:roundStarterTeam==="B"?"#b9ddff":"#93a2ae"}}>B COMMENCE</button>
-            </div> : null}
-          </div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-            {players.map((p:any,i:number)=>{
-              if(String(p.teamId||"A")!==petanqueTeamToPlay) return null;
-              const used=Number(activeRoundUsed[String(p.id)]||0);
-              const remaining=Math.max(0,dartsPerPlayer-used);
-              const active=i===playerIndex;
-              return <button key={p.id} disabled={remaining<=0 || (!isManual && turnArmed)} onClick={()=>setPlayerIndex(i)} style={{minHeight:36,maxWidth:190,padding:"5px 8px 5px 5px",borderRadius:999,border:`1px solid ${active?playerColor(players,p.id):"rgba(255,255,255,.10)"}`,background:active?`${playerColor(players,p.id)}16`:"rgba(255,255,255,.025)",color:remaining>0?"#fff":"#65727d",fontWeight:900,opacity:remaining>0?1:.48,display:"flex",alignItems:"center",gap:6,cursor:remaining>0?"pointer":"default"}}>
-                <span style={{width:25,height:25,borderRadius:"50%",display:"grid",placeItems:"center",overflow:"hidden",flex:"0 0 auto",border:`1px solid ${playerColor(players,p.id)}77`,background:"#0b151d",fontSize:9}}>{p.avatar?<img src={p.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:String(p.name||"?").slice(0,1).toUpperCase()}</span>
-                <span style={{minWidth:0,textAlign:"left"}}><b style={{display:"block",fontSize:9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}</b><span style={{display:"block",fontSize:7,color:active?playerColor(players,p.id):"#8fa0ad"}}>{remaining} EN MAIN</span></span>
-              </button>;
-            })}
-          </div>
-        </section> : null}
+        {pointsMode==="petanque" && phase==="play" && petanqueTeamToPlay && (!isManual || (manualEntryMode==="guided" && manualStage==="throws")) ? (()=>{
+          const eligible = players.map((p:any,i:number)=>({p,i,remaining:Math.max(0,dartsPerPlayer-Number(activeRoundUsed[String(p.id)]||0))})).filter((x:any)=>String(x.p.teamId||"A")===petanqueTeamToPlay && x.remaining>0);
+          const showStarter = (isManual ? manualRoundThrows.length===0 : roundValidatedImpacts.length===0) && (isManual || !turnArmed);
+          return <section style={{padding:landscape?6:7,borderRadius:13,border:`1px solid ${petanqueTeamToPlay==="A"?"rgba(255,77,95,.25)":"rgba(61,165,255,.25)"}`,background:petanqueTeamToPlay==="A"?"rgba(255,77,95,.055)":"rgba(61,165,255,.055)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
+              <span style={{width:8,height:8,borderRadius:99,background:teamAccent(petanqueTeamToPlay),boxShadow:`0 0 10px ${teamAccent(petanqueTeamToPlay)}`,flex:"0 0 auto"}}/>
+              <div style={{minWidth:0,flex:1}}><b style={{display:"block",fontSize:9,color:teamAccent(petanqueTeamToPlay),letterSpacing:.5}}>ÉQUIPE {petanqueTeamToPlay} À JOUER</b><span style={{display:"block",fontSize:7,color:"#80929f",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{livePointTeam?`POINT · ÉQUIPE ${livePointTeam}`:"DÉBUT DE MÈNE"} · {Number(teamDartsRemaining[petanqueTeamToPlay]||0)} EN MAIN</span></div>
+              {showStarter ? <div style={{display:"flex",gap:4,flex:"0 0 auto"}}><button onClick={()=>setRoundStarterTeam("A")} style={{...miniBtn,minHeight:26,padding:"3px 6px",fontSize:8,borderColor:roundStarterTeam==="A"?"#ff8f9c":"rgba(255,255,255,.10)",color:roundStarterTeam==="A"?"#ffb6be":"#81919d"}}>A</button><button onClick={()=>setRoundStarterTeam("B")} style={{...miniBtn,minHeight:26,padding:"3px 6px",fontSize:8,borderColor:roundStarterTeam==="B"?"#83c8ff":"rgba(255,255,255,.10)",color:roundStarterTeam==="B"?"#b9ddff":"#81919d"}}>B</button></div> : null}
+            </div>
+            {eligible.length>1 ? <div style={{display:"flex",gap:5,overflowX:"auto",paddingTop:6,scrollbarWidth:"none"}}>{eligible.map(({p,i,remaining}:any)=>{const active=i===playerIndex;return <button key={p.id} disabled={!isManual && turnArmed} onClick={()=>setPlayerIndex(i)} style={{flex:"0 0 auto",minHeight:28,maxWidth:150,padding:"3px 7px 3px 4px",borderRadius:999,border:`1px solid ${active?playerColor(players,p.id):"rgba(255,255,255,.09)"}`,background:active?`${playerColor(players,p.id)}14`:"rgba(255,255,255,.02)",color:"#fff",display:"flex",alignItems:"center",gap:5,opacity:(!isManual&&turnArmed)?.55:1,cursor:(!isManual&&turnArmed)?"default":"pointer"}}><span style={{width:20,height:20,borderRadius:"50%",overflow:"hidden",display:"grid",placeItems:"center",border:`1px solid ${playerColor(players,p.id)}66`,background:"#0a141c",fontSize:8,fontWeight:1000}}>{p.avatar?<img src={p.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:String(p.name||"?").slice(0,1).toUpperCase()}</span><span style={{minWidth:0,textAlign:"left"}}><b style={{display:"block",fontSize:8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}</b><span style={{display:"block",fontSize:6,color:active?playerColor(players,p.id):"#81919d"}}>{remaining} EN MAIN</span></span></button>})}</div> : eligible.length===1 ? <div style={{paddingTop:5,fontSize:7,color:"#7f909c",display:"flex",alignItems:"center",gap:5}}><PetanqueIcon name="players" size={11}/><span>Seul {eligible[0].p.name} peut encore lancer · {eligible[0].remaining} en main</span></div> : null}
+          </section>;
+        })() : null}
 
         {phase === "prepare" ? <section style={{...card,padding:landscape?12:11,borderColor:"rgba(255,213,140,.30)",background:"linear-gradient(135deg,rgba(255,189,69,.08),rgba(68,231,255,.035))"}}>
           <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}>

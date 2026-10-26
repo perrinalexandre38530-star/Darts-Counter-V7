@@ -11,6 +11,7 @@
 
 export const IDENTITY_ALIAS_REGISTRY_VERSION = 1 as const;
 export const IDENTITY_ALIAS_KEY_PREFIX = "dc_identity_aliases_v1";
+export const IDENTITY_ALIASES_UPDATED_EVENT = "dc-identity-aliases-updated";
 
 export type IdentityAliasKind =
   | "profile"
@@ -171,7 +172,19 @@ export function readIdentityAliasRegistry(accountUserId?: any): IdentityAliasReg
 function writeIdentityAliasRegistry(registry: IdentityAliasRegistry): void {
   if (typeof localStorage === "undefined") return;
   try {
-    localStorage.setItem(identityAliasStorageKey(registry.accountUserId), JSON.stringify({ ...registry, updatedAt: now() }));
+    const persisted = { ...registry, updatedAt: now() };
+    localStorage.setItem(identityAliasStorageKey(registry.accountUserId), JSON.stringify(persisted));
+    try {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent(IDENTITY_ALIASES_UPDATED_EVENT, {
+          detail: {
+            accountUserId: persisted.accountUserId,
+            updatedAt: persisted.updatedAt,
+            canonicalProfiles: Object.keys(persisted.profiles || {}).length,
+          },
+        }));
+      }
+    } catch {}
   } catch (error) {
     console.warn("[identity] unable to persist alias registry", error);
   }
@@ -381,6 +394,53 @@ export function resolveCanonicalProfileIdFromAlias(aliasId: any, accountUserId?:
   if (!id) return "";
   const registry = readIdentityAliasRegistry(accountUserId);
   return aliasOwner(registry, id) || "";
+}
+
+export function listIdentityIdsForCanonicalProfile(profileOrAliasId: any, accountUserId?: any): string[] {
+  const id = cleanId(profileOrAliasId);
+  if (!id) return [];
+
+  const registries: IdentityAliasRegistry[] = [];
+  const seenKeys = new Set<string>();
+  const addRegistry = (uid?: any) => {
+    const key = identityAliasStorageKey(uid);
+    if (seenKeys.has(key)) return;
+    seenKeys.add(key);
+    registries.push(readIdentityAliasRegistry(uid));
+  };
+
+  if (cleanId(accountUserId)) {
+    addRegistry(accountUserId);
+  } else {
+    // Certains écrans (notamment Home/X01) ne connaissent pas encore l'UID du
+    // compte au premier render. On peut néanmoins résoudre l'identité de manière
+    // exacte en inspectant uniquement les registres WAVE 2 présents localement.
+    // Aucun rapprochement par nom n'est effectué.
+    addRegistry(undefined);
+    try {
+      if (typeof localStorage !== "undefined") {
+        for (let i = 0; i < localStorage.length; i += 1) {
+          const key = String(localStorage.key(i) || "");
+          if (!key.startsWith(`${IDENTITY_ALIAS_KEY_PREFIX}:`)) continue;
+          const uid = key.slice(IDENTITY_ALIAS_KEY_PREFIX.length + 1);
+          if (uid) addRegistry(uid);
+        }
+      }
+    } catch {}
+  }
+
+  for (const registry of registries) {
+    const canonical = aliasOwner(registry, id) || (registry.profiles[id] ? id : "");
+    if (!canonical) continue;
+    const record = registry.profiles[canonical];
+    return unique([
+      canonical,
+      ...(record?.aliases || []).map((alias) => alias.id),
+      ...(record?.accountUserIds || []),
+    ]);
+  }
+
+  return [id];
 }
 
 export function canonicalizeProfileIdExact(aliasId: any, profileIds: any[], accountUserId?: any): string {

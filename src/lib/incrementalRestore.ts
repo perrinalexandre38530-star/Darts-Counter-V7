@@ -16,6 +16,21 @@ function meaningful(value: any): boolean {
   return true;
 }
 
+function stable(value: any): string {
+  try {
+    const sort = (v: any): any => {
+      if (Array.isArray(v)) return v.map(sort);
+      if (!v || typeof v !== 'object') return v;
+      const out: Record<string, any> = {};
+      for (const key of Object.keys(v).sort()) out[key] = sort(v[key]);
+      return out;
+    };
+    return JSON.stringify(sort(value));
+  } catch {
+    return '';
+  }
+}
+
 function mergeProfile(current: any, incoming: any, remoteUpdatedAt: number): any {
   const merged: any = { ...(current || {}) };
   for (const [key, value] of Object.entries(incoming || {})) {
@@ -58,24 +73,37 @@ export async function applyIncrementalChanges(changes: IncrementalChange[], opts
           for (const change of profileRows) {
             if (change.entityType === 'store_meta') {
               if (change.payload && typeof change.payload === 'object') {
-                nextStore = { ...nextStore, ...change.payload };
-                dirty = true;
-                applied += 1;
+                const candidate = { ...nextStore, ...change.payload };
+                if (stable(candidate) !== stable(nextStore)) {
+                  nextStore = candidate;
+                  dirty = true;
+                  applied += 1;
+                } else {
+                  skipped += 1;
+                }
               } else skipped += 1;
               continue;
             }
             const id = String(change.entityId || '');
             const idx = profiles.findIndex((p: any) => String(p?.id || '') === id);
             if (change.op === 'delete') {
-              if (idx >= 0) profiles.splice(idx, 1);
-              dirty = true;
-              applied += 1;
+              if (idx >= 0) {
+                profiles.splice(idx, 1);
+                dirty = true;
+                applied += 1;
+              } else {
+                skipped += 1;
+              }
               continue;
             }
             if (!change.payload || typeof change.payload !== 'object') { skipped += 1; continue; }
             const incoming: any = change.payload;
             const current: any = idx >= 0 ? profiles[idx] : null;
             const merged = mergeProfile(current, incoming, Number(change.updatedAt || incoming?.updatedAt || 0) || 0);
+            if (current && stable(current) === stable(merged)) {
+              skipped += 1;
+              continue;
+            }
             if (idx >= 0) profiles[idx] = merged;
             else profiles.push(merged);
             dirty = true;
@@ -100,11 +128,20 @@ export async function applyIncrementalChanges(changes: IncrementalChange[], opts
           const id = String(change.entityId || '');
           const idx = teams.findIndex((team) => String(team?.id || '') === id);
           if (change.op === 'delete') {
-            if (idx >= 0) teams.splice(idx, 1);
-            dirty = true;
-            applied += 1;
+            if (idx >= 0) {
+              teams.splice(idx, 1);
+              dirty = true;
+              applied += 1;
+            } else {
+              skipped += 1;
+            }
           } else if (change.payload && typeof change.payload === 'object') {
             const team = change.payload as TeamEntity;
+            const current = idx >= 0 ? teams[idx] : null;
+            if (current && stable(current) === stable(team)) {
+              skipped += 1;
+              continue;
+            }
             if (idx >= 0) teams[idx] = team;
             else teams.push(team);
             dirty = true;
@@ -131,10 +168,23 @@ export async function applyIncrementalChanges(changes: IncrementalChange[], opts
           if (text) { try { payload = JSON.parse(text); } catch {} }
         }
         const header = p.header && typeof p.header === 'object' ? p.header : {};
+        const matchId = String(p.matchId || change.entityId || p.id || '').trim();
+        if (!matchId) { skipped += 1; continue; }
+        try {
+          const current: any = typeof (History as any).getCanonicalV4 === 'function'
+            ? await (History as any).getCanonicalV4(matchId)
+            : await (History as any).get?.(matchId);
+          const currentUpdatedAt = Number(current?.updatedAt || current?.finishedAt || current?.createdAt || 0) || 0;
+          const incomingUpdatedAt = Number(p.updatedAt || header.updatedAt || change.updatedAt || 0) || 0;
+          if (current && incomingUpdatedAt > 0 && currentUpdatedAt >= incomingUpdatedAt) {
+            skipped += 1;
+            continue;
+          }
+        } catch {}
         const rec: any = {
           ...header,
-          id: p.matchId || change.entityId || p.id,
-          matchId: p.matchId || change.entityId || p.id,
+          id: matchId,
+          matchId,
           sport: p.sport || header.sport || payload?.sport || 'darts',
           kind: p.kind || header.kind || payload?.kind || payload?.mode || 'match',
           status: p.status || header.status || 'finished',

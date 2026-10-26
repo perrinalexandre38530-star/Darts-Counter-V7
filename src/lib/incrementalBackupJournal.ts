@@ -32,8 +32,8 @@ const STORE_CHANGES = "changes";
 const STORE_META = "meta";
 const LAST_CHECKPOINT_KEY = "lastCheckpoint";
 const SYNC_META_PREFIX = "synced:";
-const MAX_PENDING_BEFORE_CHECKPOINT = 50;
-const MAX_CHECKPOINT_AGE_MS = 24 * 60 * 60 * 1000;
+const MAX_PENDING_BEFORE_CHECKPOINT = 500;
+const MAX_CHECKPOINT_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 let incrementalRecordingSuppressDepth = 0;
 
 function openDb(): Promise<IDBDatabase> {
@@ -131,13 +131,15 @@ export async function recordIncrementalChangesBatch(items: Array<{
   try {
     const tx = db.transaction(STORE_CHANGES, "readwrite");
     const store = tx.objectStore(STORE_CHANGES);
+    const existingRows = await new Promise<IncrementalChange[]>((resolve) => {
+      const req = store.getAll();
+      req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : []);
+      req.onerror = () => resolve([]);
+    });
+    const existingByKey = new Map(existingRows.map((row) => [String(row?.key || ""), row]));
     let changed = 0;
     for (const item of normalized) {
-      const existing = await new Promise<IncrementalChange | null>((resolve) => {
-        const req = store.get(item.key);
-        req.onsuccess = () => resolve(req.result || null);
-        req.onerror = () => resolve(null);
-      });
+      const existing = existingByKey.get(item.key) || null;
       if (existing?.revision === item.revision && existing?.op === item.op) continue;
       const row: IncrementalChange = {
         key: item.key,
@@ -149,6 +151,7 @@ export async function recordIncrementalChangesBatch(items: Array<{
         ...(item.op === "upsert" ? { payload: item.payload } : {}),
       };
       store.put(row);
+      existingByKey.set(item.key, row);
       changed += 1;
     }
     await new Promise<void>((resolve) => {
@@ -185,18 +188,19 @@ export async function listUnsyncedIncrementalChanges(provider: string): Promise<
   const db = await openDb();
   try {
     const tx = db.transaction(STORE_META, "readonly");
-    const store = tx.objectStore(STORE_META);
-    const out: IncrementalChange[] = [];
-    for (const change of changes) {
-      const key = `${SYNC_META_PREFIX}${provider}:${change.key}`;
-      const row = await new Promise<JournalMeta | null>((resolve) => {
-        const req = store.get(key);
-        req.onsuccess = () => resolve(req.result || null);
-        req.onerror = () => resolve(null);
-      });
-      if (String(row?.value?.revision || "") !== String(change.revision || "")) out.push(change);
+    const rows = await new Promise<JournalMeta[]>((resolve) => {
+      const req = tx.objectStore(STORE_META).getAll();
+      req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : []);
+      req.onerror = () => resolve([]);
+    });
+    const synced = new Map<string, string>();
+    const prefix = `${SYNC_META_PREFIX}${provider}:`;
+    for (const row of rows) {
+      const key = String(row?.key || "");
+      if (!key.startsWith(prefix)) continue;
+      synced.set(key.slice(prefix.length), String(row?.value?.revision || ""));
     }
-    return out;
+    return changes.filter((change) => synced.get(change.key) !== String(change.revision || ""));
   } finally { db.close(); }
 }
 

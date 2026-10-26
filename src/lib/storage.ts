@@ -508,7 +508,84 @@ function pickBestStoreWithProfilesFromSnapshot(dump: any): { store: any; profile
   return candidates[0] || null;
 }
 
-async function forceRestoreProfilesFromSnapshotIntoCurrentStore(dump: any, reason: string): Promise<boolean> {
+async function registerIdentityAliasesFromSnapshotForStats(dump: any): Promise<number> {
+  try {
+    const accountUserId = String(getStorageUser() || "").trim() || null;
+    const byId = new Map<string, any>();
+    const portableProfiles = effectivePortableProfiles(
+      (dump as any)?.portableAccountData?.profiles ||
+      (dump as any)?.portable_account_data?.profiles ||
+      [],
+    );
+    for (const profile of portableProfiles) {
+      const id = String(profile?.id || "").trim();
+      if (id) byId.set(id, profile);
+    }
+    const best = pickBestStoreWithProfilesFromSnapshot(dump);
+    for (const profile of best?.profiles || []) {
+      const id = String(profile?.id || "").trim();
+      if (id && !byId.has(id)) byId.set(id, profile);
+    }
+
+    const knownIds = new Set(byId.keys());
+    let registered = 0;
+    for (const profile of byId.values()) {
+      const pi: any = profile?.privateInfo || profile?.private_info || {};
+      const profileId = String(profile?.id || "").trim();
+      if (!profileId) continue;
+      const declaredCanonical = String(
+        pi?.canonicalLocalProfileId ||
+        profile?.canonicalLocalProfileId ||
+        profileId
+      ).trim();
+      const canonicalProfileId = declaredCanonical && knownIds.has(declaredCanonical)
+        ? declaredCanonical
+        : profileId;
+      const canonicalProfile = byId.get(canonicalProfileId) || profile;
+      const legacyProfileIds = [
+        ...(profileId !== canonicalProfileId ? [profileId] : []),
+        ...(Array.isArray(pi?.linkedLocalProfileIds) ? pi.linkedLocalProfileIds : []),
+        ...(Array.isArray(profile?.linkedLocalProfileIds) ? profile.linkedLocalProfileIds : []),
+        ...(Array.isArray(pi?.legacyProfileIds) ? pi.legacyProfileIds : []),
+      ].filter(Boolean);
+      const accountIds = [
+        pi?.accountUserId,
+        pi?.onlineUserId,
+        profile?.accountUserId,
+        profile?.onlineUserId,
+        ...(Array.isArray(pi?.linkedAccountIds) ? pi.linkedAccountIds : []),
+      ].filter(Boolean);
+      // Les profils ordinaires n'ont pas besoin d'un registre d'alias : leur ID
+      // est déjà canonique. Ne persister que les identités qui portent une preuve
+      // explicite évite 60 écritures localStorage + 60 refresh Stats pendant restore.
+      const hasExplicitIdentityEvidence =
+        canonicalProfileId !== profileId ||
+        legacyProfileIds.length > 0 ||
+        accountIds.length > 0;
+      if (!hasExplicitIdentityEvidence) continue;
+      try {
+        registerCanonicalIdentity({
+          accountUserId,
+          canonicalProfileId,
+          profile: canonicalProfile,
+          legacyProfileIds,
+          accountIds,
+        });
+        registered += 1;
+      } catch {}
+    }
+    return registered;
+  } catch (error) {
+    console.warn("[storage] snapshot identity alias bootstrap skipped", error);
+    return 0;
+  }
+}
+
+async function forceRestoreProfilesFromSnapshotIntoCurrentStore(
+  dump: any,
+  reason: string,
+  authoritative = false,
+): Promise<boolean> {
   try {
     const best = pickBestStoreWithProfilesFromSnapshot(dump);
     if (!best?.profiles?.length) return false;
@@ -528,7 +605,10 @@ async function forceRestoreProfilesFromSnapshotIntoCurrentStore(dump: any, reaso
     const incomingStore = best.store || {};
     const incomingProfiles = validProfileList(best.profiles).map(normalizeRestoredLocalProfileMarkers);
     const currentProfiles = validProfileList(currentStore?.profiles).map(normalizeRestoredLocalProfileMarkers);
-    const profiles = mergeProfilesForSafety(incomingProfiles, currentProfiles).map(normalizeRestoredLocalProfileMarkers);
+    const profiles = (authoritative
+      ? incomingProfiles
+      : mergeProfilesForSafety(incomingProfiles, currentProfiles)
+    ).map(normalizeRestoredLocalProfileMarkers);
 
     if (!profiles.length) return false;
 
@@ -536,7 +616,7 @@ async function forceRestoreProfilesFromSnapshotIntoCurrentStore(dump: any, reaso
     const currentActive = String(currentStore?.activeProfileId || "").trim();
     const activeProfileId =
       (incomingActive && profiles.some((p) => String(p?.id || "") === incomingActive) ? incomingActive : "") ||
-      (currentActive && profiles.some((p) => String(p?.id || "") === currentActive) ? currentActive : "") ||
+      (!authoritative && currentActive && profiles.some((p) => String(p?.id || "") === currentActive) ? currentActive : "") ||
       String(profiles[0]?.id || "") ||
       null;
 
@@ -552,33 +632,24 @@ async function forceRestoreProfilesFromSnapshotIntoCurrentStore(dump: any, reaso
     } as any);
 
     const json = safeJsonStringify(nextStore);
-    const payload = await persistPayloadForKey(key, json);
-    await idbSet(key, payload);
-    // Miroir non scopé indispensable : après restore/reload, si l'identité
-    // online n'est pas encore détectée, loadStore() lit d'abord "store".
-    // Sans ce miroir, les 46 profils sont bien restaurés dans store:<uid>,
-    // mais la page Profils repart sur un store vide/non scopé.
-    try { await idbSet(STORE_KEY, await persistPayloadForKey(STORE_KEY, json)); } catch {}
+    const currentJson = safeJsonStringify(guardStoreShape(currentStore as any));
 
-    // Android peut relire le compte avec l'UUID Supabase OU l'identifiant NAS
-    // historique après le reload. On écrit le même store complet sur tous les
-    // scopes simples connus du snapshot pour éviter le retour à `profiles: [actif]`.
-    const aliases = knownStoreScopeAliasesFromSnapshot(dump);
-    for (const alias of aliases) {
-      try {
-        const aliasKey = `${STORE_KEY}:${alias}`;
-        const aliasActiveProfileId = profiles.some((profile) => String(profile?.id || "") === alias)
-          ? alias
-          : activeProfileId;
-        const aliasStore = { ...nextStore, profiles, activeProfileId: aliasActiveProfileId };
-        const aliasJson = safeJsonStringify(aliasStore);
-        await idbSet(aliasKey, await persistPayloadForKey(aliasKey, aliasJson));
-        lastSavedStoreJsonByScope.set(aliasKey, aliasJson);
-      } catch {}
+    // Une restauration récente contient déjà le store dans idbDump. L'ancien
+    // code le recompressait ensuite 2 à N fois (scope courant + base + chaque
+    // ancien UID du snapshot), ce qui expliquait plusieurs minutes sur Android.
+    // Désormais : zéro écriture si identique, sinon UNE écriture canonique +
+    // un miroir base en texte brut (loadStore sait relire les deux).
+    if (currentJson !== json) {
+      const payload = await persistPayloadForKey(key, json);
+      await idbSet(key, payload);
+      if (key !== STORE_KEY) {
+        try { await idbSet(STORE_KEY, json); } catch {}
+      }
     }
 
-    // Nettoie uniquement les anciennes clés récursives `store:a:b:c` créées
-    // par les vieux imports. Les scopes simples `store:<uid>` sont conservés.
+    // Les anciens scopes simples restent des archives legacy consultables par
+    // le migrateur, mais on ne réplique plus le nouveau store vers eux. Cela
+    // évite à une ancienne identité Supabase/NAS de redevenir autoritaire au boot.
     try {
       const keys = await idbKeys();
       for (const rawKey of keys) {
@@ -598,6 +669,8 @@ async function forceRestoreProfilesFromSnapshotIntoCurrentStore(dump: any, reaso
         profiles: profiles.length,
         activeProfileId,
         key,
+        authoritative,
+        skippedWrite: currentJson === json,
       });
     } catch {}
 
@@ -3373,7 +3446,7 @@ export async function importAll(
     // réécriture du meilleur bloc profiles trouvé dans le snapshot vers la clé
     // courante `store:<userId>` AVANT le reload React.
     try {
-      await forceRestoreProfilesFromSnapshotIntoCurrentStore(dump, "importAll:explicit-profiles-restore");
+      await forceRestoreProfilesFromSnapshotIntoCurrentStore(dump, "importAll:explicit-profiles-restore", historyReplace);
     } catch (e) {
       console.warn("[storage] importAll explicit profiles restore failed", e);
     }
@@ -4036,37 +4109,37 @@ async function restorePortableAccountData(
       : currentActiveId && restoredProfileIds.has(currentActiveId)
         ? currentActiveId
         : String((restoredProfiles[0] as any)?.id || "").trim() || null;
-    let mergedStore: any = {
+    // Le store principal ne doit transporter ici QUE la partition profil.
+    // Bots/DartSets/Teams ont leurs stores canoniques juste en dessous. Les remettre
+    // aussi dans mergedStore forçait saveStore() à sérialiser/recompresser un gros
+    // objet alors que ces collections allaient être restaurées une seconde fois.
+    const mergedStore: any = {
       ...(current || {}),
       profiles: restoredProfiles,
       activeProfileId: restoredActiveId,
     };
-    if (Array.isArray(portable?.bots)) mergedStore.bots = portable.bots;
-    if (Array.isArray(portable?.dartSets)) mergedStore.dartSets = portable.dartSets;
-    if (Array.isArray(portable?.teams)) {
-      const teamMedia = portable?.teamMedia && typeof portable.teamMedia === "object" ? portable.teamMedia : {};
-      const portableAccountTeams = portable.teams.map((team: any) => {
-        const id = String(team?.id || "").trim();
-        const media = id && teamMedia[id] && typeof teamMedia[id] === "object" ? teamMedia[id] : null;
-        return media ? {
-          ...(team || {}),
-          ...(media.logoDataUrl ? { logoDataUrl: media.logoDataUrl, logoMediaKey: team?.logoMediaKey || teamLogoMediaKey(id) } : {}),
-          ...(media.coverDataUrl ? { coverDataUrl: media.coverDataUrl } : {}),
-        } : team;
-      });
-      mergedStore.teams = mergeAccountTeamsPreservingOrganizations(current?.teams || loadStoredTeams(), portableAccountTeams);
-    }
     progress(12, "Restauration des profils et données principales…");
     // MOBILE RECOVERY V94: le Media Vault a déjà été importé juste avant.
     // Ne pas relire 60+ médias IndexedDB ici : même en localOnly, ces lectures
     // répétées étaient le vrai palier 81-83 % sur Android. On restaure d'abord
     // les métadonnées en un seul batch ; l'hydratation image se fera ensuite
     // en tâche de fond et ne bloque plus la restauration.
-    restoredDartSetsForRuntime = Array.isArray(mergedStore?.dartSets) ? mergedStore.dartSets : null;
-    // Diff local : si le store correspond déjà au backup, aucune recompression /
-    // réécriture IndexedDB n'est faite. Sinon une seule écriture batch remplace
-    // les dizaines de saveStore() de l'ancien restore.
-    if (safeJsonStringify(current) !== safeJsonStringify(mergedStore)) {
+    restoredDartSetsForRuntime = Array.isArray(portable?.dartSets)
+      ? portable.dartSets
+      : (Array.isArray(current?.dartSets) ? current.dartSets : null);
+    // Diff profil uniquement. importAll() a déjà restauré le store complet juste
+    // avant ; comparer tout le store (dartsets/teams/bots/médias inclus) déclenchait
+    // presque toujours une seconde écriture inutile. Si profils + actif sont déjà
+    // identiques, cette étape devient O(nombre de profils) et passe immédiatement.
+    const currentProfilePartition = {
+      profiles: Array.isArray(current?.profiles) ? current.profiles : [],
+      activeProfileId: current?.activeProfileId ?? null,
+    };
+    const nextProfilePartition = {
+      profiles: restoredProfiles,
+      activeProfileId: restoredActiveId,
+    };
+    if (safeJsonStringify(currentProfilePartition) !== safeJsonStringify(nextProfilePartition)) {
       await saveStore(mergedStore as any, { skipAsyncNormalize: true, skipMediaCapture: true, suppressIncremental: true });
     }
     progress(34, "Profils restaurés. Activation des collections…");
@@ -4589,6 +4662,13 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
         }
       }
     }
+
+    // Les alias d'identité doivent exister AVANT le rebuild Stats. Sur un téléphone
+    // vierge, le registre WAVE 2 n'existe pas encore alors que l'historique contient
+    // encore les anciens IDs usr_*/UUID. Sans ce bootstrap, l'index est correct mais
+    // rangé sous l'ancien ID : Stats détaillé retrouve Ninja, Home affiche 0.
+    await registerIdentityAliasesFromSnapshotForStats(dump);
+    await yieldIfNeeded(true);
 
     // MOBILE/PC SOURCE UNIQUE : History vient d'être restauré, donc on reconstruit
     // immédiatement l'index Stats AVANT les profils/médias. Sur Android le scheduler

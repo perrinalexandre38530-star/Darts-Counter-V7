@@ -65,6 +65,7 @@ import { getOrRebuildStatsIndex, loadStatsQuickMirrorSync, type StatsIndex as Ca
 import { getX01StatsContext, x01ContextMatchesFilter, type X01StatsContextFilter } from "./x01StatsContext";
 import { writeDerivedStatsCacheRaw } from "./statsRenderCacheStorage";
 import { getCanonicalAccountProfileId } from "./canonicalAccountProfile";
+import { IDENTITY_ALIASES_UPDATED_EVENT, listIdentityIdsForCanonicalProfile } from "../data/identityAliases";
 
 /* ============================================================
    Types publics
@@ -192,7 +193,7 @@ function loadQuickStatsBagSync(): Record<string, QuickStatsEntry> | null {
     for (const [pid, entry] of Object.entries(mirror.byPlayer)) {
       bag[String(pid)] = statsIndexEntryToQuickStats(entry);
     }
-    return bag;
+    return canonicalizeQuickStatsBag(bag);
   } catch {
     return null;
   }
@@ -223,6 +224,64 @@ function statsIndexEntryToQuickStats(entry: any): QuickStatsEntry {
   };
 }
 
+function mergeQuickStatsEntry(a: QuickStatsEntry | null | undefined, b: QuickStatsEntry | null | undefined): QuickStatsEntry {
+  const left = a || ({} as QuickStatsEntry);
+  const right = b || ({} as QuickStatsEntry);
+  const darts = (Number(left.darts || 0) || 0) + (Number(right.darts || 0) || 0);
+  const totalScore =
+    (Number((left as any).totalScore ?? (left as any).points ?? 0) || 0) +
+    (Number((right as any).totalScore ?? (right as any).points ?? 0) || 0);
+  const games = (Number(left.games ?? (left as any).matches ?? 0) || 0) + (Number(right.games ?? (right as any).matches ?? 0) || 0);
+  const wins = (Number(left.wins || 0) || 0) + (Number(right.wins || 0) || 0);
+  const weightedAvg3 = darts > 0
+    ? (totalScore / darts) * 3
+    : games > 0
+      ? (((Number(left.avg3 || 0) || 0) * (Number(left.games ?? (left as any).matches ?? 0) || 0)) +
+         ((Number(right.avg3 || 0) || 0) * (Number(right.games ?? (right as any).matches ?? 0) || 0))) / games
+      : Math.max(Number(left.avg3 || 0) || 0, Number(right.avg3 || 0) || 0);
+  const buckets: Record<string, number> = { ...((left as any).buckets || {}) };
+  for (const [key, value] of Object.entries((right as any).buckets || {})) {
+    buckets[key] = (Number(buckets[key] || 0) || 0) + (Number(value || 0) || 0);
+  }
+  return {
+    games,
+    matches: games,
+    darts,
+    avg3: weightedAvg3,
+    bestVisit: Math.max(Number(left.bestVisit || 0) || 0, Number(right.bestVisit || 0) || 0),
+    bestCheckout: Math.max(Number(left.bestCheckout || 0) || 0, Number(right.bestCheckout || 0) || 0),
+    wins,
+    winRate: games > 0 ? Math.round((wins / games) * 100) : 0,
+    points: totalScore,
+    totalScore,
+    buckets,
+  };
+}
+
+function canonicalizeQuickStatsBag(input: Record<string, QuickStatsEntry>): Record<string, QuickStatsEntry> {
+  const canonical: Record<string, QuickStatsEntry> = {};
+  const aliasesByCanonical = new Map<string, Set<string>>();
+
+  for (const [rawId, entry] of Object.entries(input || {})) {
+    const ids = listIdentityIdsForCanonicalProfile(rawId);
+    const canonicalId = String(ids[0] || rawId || "").trim();
+    if (!canonicalId) continue;
+    canonical[canonicalId] = mergeQuickStatsEntry(canonical[canonicalId], entry);
+    const aliasSet = aliasesByCanonical.get(canonicalId) || new Set<string>();
+    for (const id of ids) if (id) aliasSet.add(String(id));
+    aliasSet.add(String(rawId));
+    aliasesByCanonical.set(canonicalId, aliasSet);
+  }
+
+  const out: Record<string, QuickStatsEntry> = { ...canonical };
+  for (const [canonicalId, aliasSet] of aliasesByCanonical.entries()) {
+    const entry = canonical[canonicalId];
+    if (!entry) continue;
+    for (const aliasId of aliasSet) out[aliasId] = entry;
+  }
+  return out;
+}
+
 // Hydratation immédiate au chargement du module : premier paint synchrone.
 __quickStatsBag = loadQuickStatsBagSync();
 
@@ -233,8 +292,8 @@ async function hydrateQuickStatsBagFromIndex(force = false): Promise<Record<stri
   for (const [pid, entry] of Object.entries(idx?.byPlayer || {})) {
     bag[pid] = statsIndexEntryToQuickStats(entry);
   }
-  __quickStatsBag = bag;
-  return bag;
+  __quickStatsBag = canonicalizeQuickStatsBag(bag);
+  return __quickStatsBag;
 }
 
 function ensureQuickStatsBoot() {
@@ -252,6 +311,14 @@ function ensureQuickStatsBoot() {
         });
         window.addEventListener("dc-history-updated", () => {
           clearStatsIndexCache();
+        });
+        window.addEventListener(IDENTITY_ALIASES_UPDATED_EVENT, () => {
+          // Le registre d'identité peut être reconstruit APRES un restore.
+          // Reprojeter immédiatement le même index sur tous les alias explicites
+          // évite Home=0 pendant que Stats détaillé sait déjà retrouver Ninja.
+          clearStatsIndexCache();
+          __quickStatsBag = null;
+          void hydrateQuickStatsBagFromIndex(true);
         });
       }
     } catch {}

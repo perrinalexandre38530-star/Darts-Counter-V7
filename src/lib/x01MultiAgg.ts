@@ -4,6 +4,7 @@
 // ============================================================
 
 import type { SavedMatch, PlayerLite } from "./types";
+import { listIdentityIdsForCanonicalProfile } from "../data/identityAliases";
 
 const N = (x: any) => (Number.isFinite(Number(x)) ? Number(x) : 0);
 
@@ -339,14 +340,28 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
 
     const players = pickPlayers(rec);
     const pname = x01NormName(playerName);
-    const matched = players.find((p: any) => x01PlayerIds(p).some((id) => x01IdMatches(id, playerId))) || (pname ? players.find((p: any) => x01NormName(p?.name || p?.displayName || p?.nickname) === pname) : undefined);
-    // Legacy/restored X01 rows may only preserve the player's name. If the row
-    // matched the selected profile by normalized name, it is a valid session even
-    // without an id. Rejecting those rows was the reason old histories could show
-    // ~10 sessions while 50+ X01 matches were actually present.
+    const explicitIdentityIds = listIdentityIdsForCanonicalProfile(playerId)
+      .map((id) => String(id || "").replace(/^online:/, "").trim())
+      .filter(Boolean);
+    const acceptedIds = Array.from(new Set([String(playerId || "").replace(/^online:/, "").trim(), ...explicitIdentityIds].filter(Boolean)));
+
+    let matched = players.find((p: any) =>
+      x01PlayerIds(p).some((id) => acceptedIds.some((wanted) => x01IdMatches(id, wanted)))
+    );
+
+    // Un nom seul ne doit jamais fusionner deux profils portant le même nom.
+    // On ne garde le fallback legacy que pour une ligne historique qui ne
+    // contient AUCUN identifiant joueur exploitable.
+    if (!matched && pname) {
+      matched = players.find((p: any) => {
+        const ids = x01PlayerIds(p);
+        if (ids.length > 0) return false;
+        return x01NormName(p?.name || p?.displayName || p?.nickname) === pname;
+      });
+    }
     if (!matched) continue;
 
-    const matchedIds = Array.from(new Set([...x01PlayerIds(matched), String(playerId || "")].filter(Boolean)));
+    const matchedIds = Array.from(new Set([...x01PlayerIds(matched), ...acceptedIds].filter(Boolean)));
     const canonicalMatchedId = String(matched.id || matched.playerId || matched.profileId || matchedIds[0] || "");
     const order = players.map((p: any) => String(p?.id || p?.playerId || p?.profileId || "")).filter(Boolean);
     const visits = extractVisits(rec, canonicalMatchedId, order);
