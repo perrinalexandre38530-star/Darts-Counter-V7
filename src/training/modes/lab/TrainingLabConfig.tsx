@@ -668,6 +668,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 <span>• Relais : <b>{cycleCoach.secondary.label}</b></span>
               </div>
             </div>
+            </div>
             </>}
 
             {programPanel === "week" && <>
