@@ -110,7 +110,6 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
   const cycleCoach = React.useMemo(() => buildTrainingCycleCoach(programSessions, diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines), [programSessions, diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines]);
   const cycleRecommendedFamily = cycleCoach.priority?.family || rawRecommendedFamily;
   const coachingEffectiveness = React.useMemo(() => buildTrainingCoachingEffectiveness(programSessions, 10), [programSessions]);
-  const coachDashboard = React.useMemo(() => buildTrainingCoachDashboard(coachHistory, liveCoachHistory, coachingEffectiveness), [coachHistory, liveCoachHistory, coachingEffectiveness]);
   const recommendedFamily = React.useMemo(() => chooseCoachingEffectiveNextFamily(cycleRecommendedFamily, coachingEffectiveness), [cycleRecommendedFamily, coachingEffectiveness]);
   const blockCoach = React.useMemo(() => buildTrainingBlockCoach(programSessions, cycleCoach), [programSessions, cycleCoach]);
   const adaptationCoach = React.useMemo(() => buildTrainingAdaptationCoach(programSessions, cycleCoach, blockCoach, loadSummary), [programSessions, cycleCoach, blockCoach, loadSummary]);
@@ -127,6 +126,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
   const career = React.useMemo(() => buildTrainingCareer(programSessions, progression, weeklyPlan), [programSessions, progression, weeklyPlan]);
   const missionBoard = React.useMemo(() => buildTrainingMissionBoard(programSessions, progression, recommendedFamily, preferences.weeklySessionTarget, cycleComparison), [programSessions, progression, recommendedFamily, preferences.weeklySessionTarget, cycleComparison]);
   const coachHistory = React.useMemo(() => buildTrainingCoachHistory(programSessions, preferences.weeklySessionTarget, recommendedFamily), [programSessions, preferences.weeklySessionTarget, recommendedFamily]);
+  const coachDashboard = React.useMemo(() => buildTrainingCoachDashboard(coachHistory, liveCoachHistory, coachingEffectiveness), [coachHistory, liveCoachHistory, coachingEffectiveness]);
   const prescription = React.useMemo(() => buildGoalAwareCoachPrescription(diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines), [diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines]);
   const coachProgram = React.useMemo(() => buildCoachProgram(recommendedFamily), [recommendedFamily]);
   const programs = React.useMemo(() => {
