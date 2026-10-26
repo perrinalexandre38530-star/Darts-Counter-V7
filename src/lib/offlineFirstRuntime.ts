@@ -7,8 +7,10 @@
 //   remote service is reachable.
 // - Local writes remain authoritative. Remote work must call
 //   shouldAttemptRemoteWork() and keep its local queue intact on failure.
-// - No network request is ever performed from this module.
+// - This module never performs a network request by itself.
 // ============================================================
+
+import { onlineApi } from "./onlineApi";
 
 type ConnectivityState = "online" | "offline";
 
@@ -24,6 +26,7 @@ const DIAG_KEY = "msc_offline_first_state_v1";
 
 let started = false;
 let persistentStorage: boolean | null = null;
+let cachedAuthBridgeInstalled = false;
 let currentState: OfflineFirstState = {
   connectivity: "online",
   onlineHint: true,
@@ -49,6 +52,47 @@ function buildState(changedAt = Date.now()): OfflineFirstState {
 function persistDiagnostics(state: OfflineFirstState): void {
   try {
     localStorage.setItem(DIAG_KEY, JSON.stringify(state));
+  } catch {}
+}
+
+/**
+ * Compatibility bridge for the V102 account gate.
+ *
+ * V102 already persists the canonical account session locally and Android's
+ * auth provider has a fast local boot path. The only thing that prevented this
+ * path after a long offline period was the cached network-token expiration.
+ *
+ * While OFFLINE ONLY, expose the exact same cached identity with no expiration
+ * and in degraded/local mode. We never invent a user id and never change the
+ * storage namespace. As soon as connectivity returns, the original cached
+ * session is returned untouched and Supabase can refresh normally.
+ */
+function installOfflineCachedAuthBridge(): void {
+  if (cachedAuthBridgeInstalled) return;
+  cachedAuthBridgeInstalled = true;
+  try {
+    const api: any = onlineApi as any;
+    const original = typeof api?.loadAuthFromLS === "function" ? api.loadAuthFromLS.bind(api) : null;
+    if (!original) return;
+    api.loadAuthFromLS = () => {
+      const cached = original();
+      if (!cached || readOnlineHint()) return cached;
+      const userId = String(
+        cached?.supabaseUserId ||
+        cached?.user?.user_metadata?.supabase_user_id ||
+        cached?.user?.id ||
+        cached?.userId ||
+        "",
+      ).trim();
+      if (!userId) return cached;
+      return {
+        ...cached,
+        expiresAt: null,
+        degradedMode: true,
+        authProvider: cached?.authProvider || "supabase_failover",
+        supabaseUserId: String(cached?.supabaseUserId || userId),
+      };
+    };
   } catch {}
 }
 
@@ -91,6 +135,7 @@ async function requestPersistentStorageBestEffort(): Promise<void> {
 export function initOfflineFirstRuntime(): void {
   if (started || typeof window === "undefined") return;
   started = true;
+  installOfflineCachedAuthBridge();
   currentState = buildState();
   try {
     document.documentElement.dataset.mscConnectivity = currentState.connectivity;
@@ -109,7 +154,8 @@ export function initOfflineFirstRuntime(): void {
 
 export function getOfflineFirstState(): OfflineFirstState {
   if (!started && typeof window !== "undefined") initOfflineFirstRuntime();
-  return { ...currentState, onlineHint: readOnlineHint(), connectivity: readOnlineHint() ? "online" : "offline" };
+  const onlineHint = readOnlineHint();
+  return { ...currentState, onlineHint, connectivity: onlineHint ? "online" : "offline" };
 }
 
 export function isRuntimeOffline(): boolean {
