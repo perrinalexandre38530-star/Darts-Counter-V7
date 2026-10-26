@@ -36,6 +36,8 @@ import { buildTrainingSkillPath } from "../../profile/trainingSkillPath";
 import { buildTrainingSkillCertification } from "../../profile/trainingSkillCertification";
 import { buildTrainingDiagnosticBoard } from "../../profile/trainingDiagnosticBoard";
 import { buildTrainingCoachDashboard } from "../../profile/trainingCoachDashboard";
+import { buildTrainingPlayerJourney } from "../../profile/trainingPlayerJourney";
+import { buildTrainingQuickStart } from "../../profile/trainingQuickStart";
 
 const familyOrder: TrainingExerciseFamily[] = ["scoring", "doubles", "checkout", "precision", "bull", "regularity"];
 type HubTab = "program" | "exercises" | "diagnosis" | "progress";
@@ -46,6 +48,7 @@ type DiagnosisPanel = "overview" | "skill" | "goal";
 type SkillProgressPanel = "mastery" | "badges" | "records";
 type CoachPanel = "brief" | "live" | "effectiveness" | "weeks";
 type HistoryPanel = "plans" | "exercises";
+type TrainingViewMode = "essential" | "complete";
 
 function HubGlyph({ name, size = 17 }: { name: string; size?: number }) {
   const common = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
@@ -127,6 +130,8 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
   const missionBoard = React.useMemo(() => buildTrainingMissionBoard(programSessions, progression, recommendedFamily, preferences.weeklySessionTarget, cycleComparison), [programSessions, progression, recommendedFamily, preferences.weeklySessionTarget, cycleComparison]);
   const coachHistory = React.useMemo(() => buildTrainingCoachHistory(programSessions, preferences.weeklySessionTarget, recommendedFamily), [programSessions, preferences.weeklySessionTarget, recommendedFamily]);
   const coachDashboard = React.useMemo(() => buildTrainingCoachDashboard(coachHistory, liveCoachHistory, coachingEffectiveness), [coachHistory, liveCoachHistory, coachingEffectiveness]);
+  const allSkillCertifications = React.useMemo(() => familyOrder.map((familyId) => buildTrainingSkillCertification(buildTrainingSkillPath(familyId, progression), sessions)), [progression, sessions]);
+  const playerJourney = React.useMemo(() => buildTrainingPlayerJourney({ completedPrograms: career.completedPrograms, coveredFamilies: progression.filter((row) => row.sessions > 0).length, averagePerformance: career.averagePerformance, certifiedLevels: allSkillCertifications.map((item) => item.certifiedLevel) }), [career.completedPrograms, career.averagePerformance, progression, allSkillCertifications]);
   const prescription = React.useMemo(() => buildGoalAwareCoachPrescription(diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines), [diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines]);
   const coachProgram = React.useMemo(() => buildCoachProgram(recommendedFamily), [recommendedFamily]);
   const programs = React.useMemo(() => {
@@ -144,6 +149,12 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
   const [skillProgressPanel, setSkillProgressPanel] = React.useState<SkillProgressPanel>("mastery");
   const [coachPanel, setCoachPanel] = React.useState<CoachPanel>("brief");
   const [historyPanel, setHistoryPanel] = React.useState<HistoryPanel>("plans");
+  const [viewMode, setViewMode] = React.useState<TrainingViewMode>(() => {
+    try { return window.localStorage.getItem("dc_training_center_view_mode") === "complete" ? "complete" : "essential"; } catch { return "essential"; }
+  });
+  const [showQuickGuide, setShowQuickGuide] = React.useState(() => {
+    try { return window.localStorage.getItem("dc_training_quick_guide_seen") !== "1"; } catch { return true; }
+  });
   const [showCoachDetails, setShowCoachDetails] = React.useState(false);
   const [showPlanDetails, setShowPlanDetails] = React.useState(false);
   const [showMissionDetails, setShowMissionDetails] = React.useState(false);
@@ -156,8 +167,25 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
   const [customDuration, setCustomDuration] = React.useState<15 | 30 | 45>(30);
   const [customFocus, setCustomFocus] = React.useState<TrainingExerciseFamily | "balanced">("balanced");
   const [customIntensity, setCustomIntensity] = React.useState<TrainingProgramBuildOptions["intensity"]>("standard");
+  React.useEffect(() => {
+    try { window.localStorage.setItem("dc_training_center_view_mode", viewMode); } catch {}
+    if (viewMode === "essential") {
+      setProgramPanel("today");
+      setExercisePanel("path");
+      setDiagnosisPanel("overview");
+      setProgressPanel("overview");
+    }
+  }, [viewMode]);
   const customProgram = React.useMemo(() => buildCustomProgram({ durationMin: customDuration, focusFamily: customFocus, intensity: customIntensity }), [customDuration, customFocus, customIntensity]);
   const resolved = resolveTrainingParticipants(participants, profiles);
+  const quickStart = React.useMemo(() => buildTrainingQuickStart({
+    hasDraft: Boolean(programDraft),
+    assessmentAvailable: assessment.available,
+    assessmentDue: assessment.due,
+    hasFollowup: Boolean(nextRecommendation),
+    dailyDurationMin: dailyPlan.durationMin,
+    dailyFocusLabel: TRAINING_FAMILY_META[dailyPlan.family].label,
+  }), [programDraft, assessment.available, assessment.due, nextRecommendation, dailyPlan.durationMin, dailyPlan.family]);
 
   React.useEffect(() => {
     if (!TRAINING_EXERCISE_CATALOG.some((e) => e.id === exerciseId && e.family === family)) setExerciseId(firstInFamily.id);
@@ -238,6 +266,20 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
     setPreferences(setTrainingWeeklySessionTarget(preferences, value));
   };
 
+  const dismissQuickGuide = () => {
+    setShowQuickGuide(false);
+    try { window.localStorage.setItem("dc_training_quick_guide_seen", "1"); } catch {}
+  };
+
+  const runQuickStart = () => {
+    if (!resolved.length) return;
+    dismissQuickGuide();
+    if (quickStart.kind === "resume" && programDraft) { resumeProgramDraft(); return; }
+    if (quickStart.kind === "assessment") { startProgram(TRAINING_ASSESSMENT_PROGRAM, { adaptiveDailyPlan: false }); return; }
+    if (quickStart.kind === "followup" && nextRecommendation) { prepareRecommendedSession(nextRecommendation.durationMin, nextRecommendation.family); return; }
+    startProgram(dailyPlan.program, { adaptiveDailyPlan: true });
+  };
+
   const prepareRecommendedSession = (duration: 15 | 30 | 45, focus: TrainingExerciseFamily | "balanced") => {
     setCustomDuration(duration);
     setCustomFocus(focus);
@@ -307,6 +349,27 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
       header={<TrainingHeader title="Centre d'entraînement" tickerId="training_center" onBack={onExit} rules={<><p>Le centre regroupe programmes guidés, exercices unitaires, diagnostic et progression.</p><p>Awena utilise tes résultats Training enregistrés pour déterminer le prochain axe à travailler.</p></>} />}
       body={
         <div style={{ width: "min(940px,100%)", margin: "0 auto", paddingBottom: 26 }}>
+          {showQuickGuide && <div role="dialog" aria-modal="true" aria-label="Guide express du centre d'entraînement" style={{ position: "fixed", inset: 0, zIndex: 1000, display: "grid", placeItems: "center", padding: 16, background: "rgba(3,5,10,.82)", backdropFilter: "blur(12px)" }}>
+            <div style={{ width: "min(620px,100%)", maxHeight: "86vh", overflow: "auto", padding: 18, borderRadius: 20, border: "1px solid rgba(39,220,255,.24)", background: "linear-gradient(160deg,rgba(14,18,28,.98),rgba(8,10,16,.98))", boxShadow: "0 24px 80px rgba(0,0,0,.45)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
+                <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1.1, color: "#27dcff" }}>GUIDE EXPRESS</div><div style={{ marginTop: 4, fontSize: 19, fontWeight: 950 }}>Tu n'as besoin de retenir que 3 choses</div><div style={{ marginTop: 5, fontSize: 9.5, opacity: .58, lineHeight: 1.45 }}>Tout le reste est calculé automatiquement par Awena et reste disponible en mode COMPLET si tu veux creuser.</div></div>
+                <button type="button" onClick={dismissQuickGuide} style={{ width: 32, height: 32, borderRadius: 10, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.03)", color: "inherit", fontSize: 16, cursor: "pointer" }}>×</button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 15 }}>
+                {[
+                  ["1", "AUJOURD'HUI", "Awena te dit quoi faire maintenant. Tu peux simplement lancer le plan proposé."],
+                  ["2", "S'ENTRAÎNER", "Tu veux choisir toi-même ? Parcours les compétences et lance un exercice ciblé."],
+                  ["3", "MON NIVEAU", "Regarde où tu en es. Les progrès détaillés sont rangés dans MES PROGRÈS."],
+                ].map(([n, title, body]) => <div key={n} style={{ padding: 12, borderRadius: 14, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)" }}><div style={{ width: 27, height: 27, display: "grid", placeItems: "center", borderRadius: 9, background: "rgba(39,220,255,.10)", border: "1px solid rgba(39,220,255,.18)", fontWeight: 950 }}>{n}</div><div style={{ marginTop: 8, fontSize: 9.5, fontWeight: 950 }}>{title}</div><div style={{ marginTop: 4, fontSize: 8, lineHeight: 1.45, opacity: .54 }}>{body}</div></div>)}
+              </div>
+              <div style={{ marginTop: 14, padding: 13, borderRadius: 15, border: "1px solid rgba(80,255,174,.20)", background: "rgba(80,255,174,.045)" }}>
+                <div style={{ fontSize: 7.5, fontWeight: 950, letterSpacing: .8, color: "#8cffcb" }}>{quickStart.eyebrow}</div>
+                <div style={{ marginTop: 3, fontSize: 14, fontWeight: 950 }}>{quickStart.title}</div>
+                <div style={{ marginTop: 4, fontSize: 8.8, opacity: .58, lineHeight: 1.4 }}>{quickStart.body}</div>
+                <button type="button" disabled={!resolved.length} onClick={runQuickStart} style={{ width: "100%", marginTop: 10, padding: "11px 12px", borderRadius: 12, border: "1px solid rgba(80,255,174,.35)", background: "rgba(80,255,174,.10)", color: "inherit", fontSize: 9, fontWeight: 950, cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .45 }}>{resolved.length ? quickStart.cta : "CHOISIS D'ABORD UN JOUEUR"}</button>
+              </div>
+            </div>
+          </div>}
           <TrainingParticipantsSelector profiles={profiles} value={participants} onChange={setParticipants} />
 
           <div style={{ marginTop: 10, padding: 10, borderRadius: 14, border: "1px solid rgba(39,220,255,.28)", background: "linear-gradient(135deg,rgba(39,220,255,.12),rgba(140,90,255,.07))" }}>
@@ -322,6 +385,15 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
               <span style={{ fontSize: 9, padding: "4px 7px", borderRadius: 999, background: "rgba(140,90,255,.10)", border: "1px solid rgba(140,90,255,.18)" }}>OBJECTIF {prescription.goal}/100</span>
               <span style={{ fontSize: 9, padding: "4px 7px", borderRadius: 999, background: prescription.gap <= 0 ? "rgba(80,255,174,.10)" : "rgba(255,184,76,.08)", border: prescription.gap <= 0 ? "1px solid rgba(80,255,174,.20)" : "1px solid rgba(255,184,76,.16)" }}>{prescription.gap <= 0 ? "OBJECTIF ATTEINT" : `ÉCART ${Math.ceil(prescription.gap)} PTS`}</span>
             </div>}
+          </div>
+
+          <div style={{ marginTop: 9, display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", padding: 8, borderRadius: 12, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.018)" }}>
+            <div style={{ minWidth: 0 }}><div style={{ fontSize: 8.5, fontWeight: 950 }}>AFFICHAGE</div><div style={{ marginTop: 2, fontSize: 7.2, opacity: .45 }}>{viewMode === "essential" ? "L'essentiel, sans jargon ni écrans techniques." : "Toutes les analyses et réglages avancés."}</div></div>
+            <div style={{ display: "flex", gap: 4, flex: "0 0 auto" }}>
+              <button type="button" aria-label="Ouvrir le guide express" onClick={() => setShowQuickGuide(true)} style={{ width: 30, height: 30, borderRadius: 9, border: "1px solid rgba(39,220,255,.18)", background: "rgba(39,220,255,.05)", color: "inherit", fontSize: 12, fontWeight: 950, cursor: "pointer" }}>?</button>
+              <button type="button" onClick={() => setViewMode("essential")} style={{ padding: "6px 8px", borderRadius: 9, border: viewMode === "essential" ? "1px solid rgba(80,255,174,.40)" : "1px solid rgba(255,255,255,.07)", background: viewMode === "essential" ? "rgba(80,255,174,.08)" : "rgba(255,255,255,.02)", color: "inherit", fontSize: 7.2, fontWeight: 950, cursor: "pointer" }}>ESSENTIEL</button>
+              <button type="button" onClick={() => setViewMode("complete")} style={{ padding: "6px 8px", borderRadius: 9, border: viewMode === "complete" ? "1px solid rgba(185,156,255,.40)" : "1px solid rgba(255,255,255,.07)", background: viewMode === "complete" ? "rgba(140,90,255,.08)" : "rgba(255,255,255,.02)", color: "inherit", fontSize: 7.2, fontWeight: 950, cursor: "pointer" }}>COMPLET</button>
+            </div>
           </div>
 
           {tab === "program" && programDraft && <div style={{ marginTop: 10, padding: 12, borderRadius: 15, border: "1px solid rgba(255,216,107,.28)", background: "linear-gradient(135deg,rgba(255,216,107,.08),rgba(140,90,255,.045))", display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -350,12 +422,12 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
           </div>
 
           {tab === "program" && <div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 8, position: "sticky", top: 54, zIndex: 2, padding: "5px 0", background: "rgba(8,10,16,.78)", backdropFilter: "blur(12px)" }}>
+            {viewMode === "complete" && <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 8, position: "sticky", top: 54, zIndex: 2, padding: "5px 0", background: "rgba(8,10,16,.78)", backdropFilter: "blur(12px)" }}>
               {programPanels.map((item) => {
                 const status = item.id === "today" ? `${dailyPlan.durationMin} MIN` : item.id === "week" ? `${weeklyPlan.completed}/${weeklyPlan.target}` : item.id === "cycle" ? `${cycleCoach.completedSessions}/${cycleCoach.cycleSize}` : `${programs.length} PLANS`;
                 return <button key={item.id} type="button" onClick={() => setProgramPanel(item.id)} style={{ minWidth: 0, padding: "7px 3px", borderRadius: 10, border: programPanel === item.id ? "1px solid rgba(39,220,255,.55)" : "1px solid rgba(255,255,255,.075)", background: programPanel === item.id ? "rgba(39,220,255,.11)" : "rgba(255,255,255,.025)", color: "inherit", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}><HubGlyph name={item.icon} size={15} /><span style={{ fontSize: 7.2, fontWeight: 950 }}>{item.label}</span><span style={{ fontSize: 6.2, opacity: .46 }}>{status}</span></button>;
               })}
-            </div>
+            </div>}
 
             {programPanel === "today" && <>
             <div style={{ marginTop: 8, padding: 14, borderRadius: 17, border: actionCoach.tone === "amber" ? "1px solid rgba(255,184,76,.34)" : actionCoach.tone === "green" ? "1px solid rgba(80,255,174,.30)" : actionCoach.tone === "violet" ? "1px solid rgba(185,156,255,.32)" : "1px solid rgba(39,220,255,.32)", background: actionCoach.tone === "amber" ? "linear-gradient(135deg,rgba(255,184,76,.10),rgba(140,90,255,.035))" : actionCoach.tone === "green" ? "linear-gradient(135deg,rgba(80,255,174,.08),rgba(39,220,255,.035))" : actionCoach.tone === "violet" ? "linear-gradient(135deg,rgba(140,90,255,.10),rgba(39,220,255,.035))" : "linear-gradient(135deg,rgba(39,220,255,.11),rgba(140,90,255,.045))" }}>
@@ -414,6 +486,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 </div>
                 <div style={{ marginTop: 7, fontSize: 7.8, opacity: .5 }}>{new Date(assessment.endedAt).toLocaleDateString()} • {assessment.sessionsSinceAssessment} séance{assessment.sessionsSinceAssessment > 1 ? "s" : ""} depuis le bilan{assessment.delta == null ? "" : ` • évolution ${assessment.delta >= 0 ? "+" : ""}${Math.round(assessment.delta)} pts`}</div>
               </>}
+            </div>
             </div>
             </>}
 
@@ -695,13 +768,13 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
           </div>}
 
           {tab === "exercises" && <div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 8, position: "sticky", top: 54, zIndex: 2, padding: "5px 0", background: "rgba(8,10,16,.78)", backdropFilter: "blur(12px)" }}>
+            {viewMode === "complete" && <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 8, position: "sticky", top: 54, zIndex: 2, padding: "5px 0", background: "rgba(8,10,16,.78)", backdropFilter: "blur(12px)" }}>
               {[
                 { id: "path" as ExercisePanel, label: "PARCOURS", icon: "progress", status: `NIV. ${skillPath.currentLevel}/5` },
                 { id: "catalog" as ExercisePanel, label: "CATALOGUE", icon: "exercises", status: `${filteredExercises.length} EX.` },
                 { id: "favorites" as ExercisePanel, label: "FAVORIS", icon: "library", status: `${favoriteExercises.length}` },
               ].map((item) => <button key={item.id} type="button" onClick={() => setExercisePanel(item.id)} style={{ minWidth: 0, padding: "7px 3px", borderRadius: 10, border: exercisePanel === item.id ? "1px solid rgba(39,220,255,.55)" : "1px solid rgba(255,255,255,.075)", background: exercisePanel === item.id ? "rgba(39,220,255,.11)" : "rgba(255,255,255,.025)", color: "inherit", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}><HubGlyph name={item.icon} size={15} /><span style={{ fontSize: 7.2, fontWeight: 950 }}>{item.label}</span><span style={{ fontSize: 6.2, opacity: .46 }}>{item.status}</span></button>)}
-            </div>
+            </div>}
 
             <div style={{ margin: "10px 0 8px", fontSize: 10, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>COMPÉTENCE</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 5 }}>
@@ -798,12 +871,12 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
           </div>}
 
           {tab === "diagnosis" && <div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5, marginTop: 8, position: "sticky", top: 54, zIndex: 2, padding: "5px 0", background: "rgba(8,10,16,.78)", backdropFilter: "blur(12px)" }}>
+            {viewMode === "complete" && <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5, marginTop: 8, position: "sticky", top: 54, zIndex: 2, padding: "5px 0", background: "rgba(8,10,16,.78)", backdropFilter: "blur(12px)" }}>
               {diagnosisPanels.map((item) => {
                 const status = item.id === "overview" ? `${Math.round(diagnosticBoard.overallScore)}/100` : item.id === "skill" ? TRAINING_FAMILY_META[diagnosisFamily].label.toUpperCase() : `${diagnosticBoard.reachedGoals}/6 ATTEINTS`;
                 return <button key={item.id} type="button" onClick={() => setDiagnosisPanel(item.id)} style={{ minWidth: 0, padding: "7px 3px", borderRadius: 10, border: diagnosisPanel === item.id ? "1px solid rgba(39,220,255,.55)" : "1px solid rgba(255,255,255,.075)", background: diagnosisPanel === item.id ? "rgba(39,220,255,.11)" : "rgba(255,255,255,.025)", color: "inherit", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}><HubGlyph name={item.icon} size={15} /><span style={{ fontSize: 7.2, fontWeight: 950 }}>{item.label}</span><span style={{ fontSize: 6.2, opacity: .46 }}>{status}</span></button>;
               })}
-            </div>
+            </div>}
 
             {diagnosisPanel === "overview" && <>
               <div style={{ marginTop: 9, padding: 13, borderRadius: 15, border: "1px solid rgba(39,220,255,.20)", background: "linear-gradient(135deg,rgba(39,220,255,.065),rgba(140,90,255,.035))" }}>
@@ -861,12 +934,12 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
             </>}
           </div>}
           {tab === "progress" && <div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5, marginTop: 8, position: "sticky", top: 54, zIndex: 2, padding: "5px 0", background: "rgba(8,10,16,.78)", backdropFilter: "blur(12px)" }}>
+            {viewMode === "complete" && <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5, marginTop: 8, position: "sticky", top: 54, zIndex: 2, padding: "5px 0", background: "rgba(8,10,16,.78)", backdropFilter: "blur(12px)" }}>
               {progressPanels.map((item) => {
                 const status = item.id === "overview" ? `NIV. ${career.level.level}` : item.id === "skills" ? `${progression.filter((row) => row.sessions > 0).length}/6` : item.id === "coach" ? `${liveCoachHistory.sampleSize} SÉANCES` : item.id === "cycles" ? `${cycleHistory.length} CYCLES` : `${programSessions.length} PLANS`;
                 return <button key={item.id} type="button" onClick={() => setProgressPanel(item.id)} style={{ minWidth: 0, padding: "6px 2px", borderRadius: 9, border: progressPanel === item.id ? "1px solid rgba(39,220,255,.50)" : "1px solid rgba(255,255,255,.07)", background: progressPanel === item.id ? "rgba(39,220,255,.10)" : "rgba(255,255,255,.02)", color: "inherit", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}><HubGlyph name={item.icon} size={14} /><span style={{ fontSize: 6.7, fontWeight: 950 }}>{item.label}</span><span style={{ fontSize: 5.9, opacity: .44 }}>{status}</span></button>;
               })}
-            </div>
+            </div>}
 
             {progressPanel === "coach" && <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5, marginTop: 7 }}>
               {coachPanels.map((item) => <button key={item.id} type="button" onClick={() => setCoachPanel(item.id)} style={{ padding: "7px 3px", borderRadius: 9, border: coachPanel === item.id ? "1px solid rgba(80,255,174,.38)" : "1px solid rgba(255,255,255,.065)", background: coachPanel === item.id ? "rgba(80,255,174,.07)" : "rgba(255,255,255,.02)", color: "inherit", fontSize: 6.9, fontWeight: 950, cursor: "pointer" }}>{item.label}</button>)}
@@ -880,6 +953,16 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
             </div>}
 
             {progressPanel === "overview" && <>
+            <div style={{ marginTop: 8, padding: 12, borderRadius: 15, border: "1px solid rgba(39,220,255,.18)", background: "linear-gradient(135deg,rgba(39,220,255,.055),rgba(80,255,174,.025))" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+                <div><div style={{ fontSize: 7.6, fontWeight: 950, letterSpacing: .9, color: "#27dcff" }}>TA ROUTE JOUEUR</div><div style={{ marginTop: 3, fontSize: 12.5, fontWeight: 950 }}>{playerJourney.headline}</div></div>
+                <b style={{ fontSize: 15 }}>{playerJourney.progressPct}%</b>
+              </div>
+              <div style={{ marginTop: 4, fontSize: 8.2, opacity: .56, lineHeight: 1.38 }}>{playerJourney.body}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 4, marginTop: 9 }}>
+                {playerJourney.stages.map((stage, index) => <div key={stage.id} title={stage.description} style={{ minWidth: 0, padding: "7px 2px", borderRadius: 9, textAlign: "center", border: stage.completed ? "1px solid rgba(80,255,174,.20)" : index === playerJourney.currentIndex ? "1px solid rgba(39,220,255,.28)" : "1px solid rgba(255,255,255,.06)", background: stage.completed ? "rgba(80,255,174,.05)" : index === playerJourney.currentIndex ? "rgba(39,220,255,.055)" : "rgba(255,255,255,.018)" }}><div style={{ fontSize: 10, fontWeight: 950 }}>{stage.completed ? "✓" : index + 1}</div><div style={{ marginTop: 2, fontSize: 5.8, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{stage.shortLabel}</div></div>)}
+              </div>
+            </div>
             <div style={{ marginTop: 8, padding: 14, borderRadius: 16, border: "1px solid rgba(255,216,107,.22)", background: "linear-gradient(135deg,rgba(255,216,107,.08),rgba(140,90,255,.055))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start", flexWrap: "wrap" }}>
                 <div>
@@ -912,7 +995,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
             </div>
             </>}
 
-            {progressPanel === "overview" && <>
+            {viewMode === "complete" && progressPanel === "overview" && <>
             <div style={{ marginTop: 10, padding: 13, borderRadius: 15, border: "1px solid rgba(39,220,255,.16)", background: "linear-gradient(135deg,rgba(39,220,255,.055),rgba(140,90,255,.035))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <div>
