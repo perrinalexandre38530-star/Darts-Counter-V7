@@ -3265,13 +3265,10 @@ const HistoryAPI = {
       const mergedRows = mergeHistoryRowsFast(rowsLocal, cachedLinkedRows);
       kickLinkedProjectionRefresh(localProfiles);
       return enhanceHistoryRowsLight(mergedRows);
-    } catch {
-      const anyStore = store as any;
-      return enhanceHistoryRowsLight(
-        safeArray<SavedEntry>(anyStore.history)
-          .filter(isUsableSavedEntry)
-          .map((r) => normalizeSavedEntry(r)),
-      );
+    } catch (error) {
+      // V123 SINGLE SOURCE: never replace a failed canonical read with store.history.
+      // That fallback was a second truth and caused visible 89 -> 60 -> 0 flicker.
+      throw error;
     }
   },
   async enrich(rows: SavedEntry[]): Promise<SavedEntry[]> {

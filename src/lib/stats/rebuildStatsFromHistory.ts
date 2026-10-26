@@ -1355,23 +1355,16 @@ export function cancelScheduledStatsIndexRefresh(): void {
   }
 }
 
-async function loadHistoryRowsForStats(includeNonFinished: boolean): Promise<{ History: any; rows: any[]; source: "history-v4-rebuild" | "history-rebuild" }> {
+async function loadHistoryRowsForStats(includeNonFinished: boolean): Promise<{ History: any; rows: any[]; source: "history-v4-rebuild" }> {
   const { History } = await import("../history");
-  try {
-    if (typeof (History as any)?.listCanonicalForStats === "function") {
-      const canonical = await (History as any).listCanonicalForStats();
-      const rows = Array.isArray(canonical)
-        ? (includeNonFinished ? canonical : canonical.filter((row: any) => isFinishedHistoryStatus(row?.status)))
-        : [];
-      return { History, rows, source: "history-v4-rebuild" };
-    }
-  } catch (error) {
-    console.warn("[stats-index] History V4 read fallback", error);
+  if (typeof (History as any)?.listCanonicalForStats !== "function") {
+    throw new Error("History V4 canonical reader unavailable");
   }
-  const legacy = includeNonFinished
-    ? await History.list()
-    : ((await (History as any).listFinished?.()) ?? (await History.list()));
-  return { History, rows: Array.isArray(legacy) ? legacy : [], source: "history-rebuild" };
+  const canonical = await (History as any).listCanonicalForStats();
+  const rows = Array.isArray(canonical)
+    ? (includeNonFinished ? canonical : canonical.filter((row: any) => isFinishedHistoryStatus(row?.status)))
+    : [];
+  return { History, rows, source: "history-v4-rebuild" };
 }
 
 export async function getOrRebuildStatsIndex(options?: {
@@ -1383,39 +1376,14 @@ export async function getOrRebuildStatsIndex(options?: {
   // on le renvoie immédiatement. Avant, chaque ouverture de stats pouvait relire tout
   // l'historique puis recharger les détails un par un, ce qui explosait à 15–20s après restore.
   const cached = await loadStatsIndex().catch(() => null);
-  if (!options?.force && isValidStatsIndex(cached)) {
-    // Même si l'index vient d'être marqué dirty, on ne bloque jamais le rendu.
-    // On renvoie la dernière valeur connue et on rafraîchit silencieusement.
-    if (isStatsIndexDirty()) {
-      void scheduleStatsIndexRefresh({
-        includeNonFinished: options?.includeNonFinished,
-        persist: options?.persist,
-        debounceMs: 40,
-        reason: "stats-read-dirty-background",
-      });
-    }
+  if (!options?.force && isValidStatsIndex(cached) && !isStatsIndexDirty()) {
     return cached as StatsIndex;
   }
+  // V123: a DIRTY index is never displayed as an alternative truth. Rebuild it
+  // from canonical History V4 before returning it to the UI.
 
-  // RESTORE FIX : certains backups NAS / latest.json contiennent un vrai
-  // dc_stats_index_v2 mais pas les lignes d'historique détaillées.
-  // Dans ce cas, forcer un rebuild depuis History.list() vide écrasait les stats
-  // restaurées par un index vide. Si l'historique est vide et qu'un index restauré
-  // existe, on garde l'index restauré comme source de vérité exploitable.
-  try {
-    const { rows } = await loadHistoryRowsForStats(!!options?.includeNonFinished);
-    if ((!Array.isArray(rows) || rows.length === 0) && statsIndexHasData(cached)) {
-      return cached as StatsIndex;
-    }
-    // Latest.json peut restaurer des cartes d'historique synthétiques générées
-    // depuis dc_stats_index_v2. Elles servent à réafficher l'historique, mais
-    // ne doivent JAMAIS déclencher un rebuild qui écraserait l'index réel.
-    if (isRestoredStatsIndex(cached) && rowsAreStatsOnlyRestored(rows as any[])) {
-      return cached as StatsIndex;
-    }
-  } catch {
-    if (statsIndexHasData(cached)) return cached as StatsIndex;
-  }
+  // V123 SINGLE SOURCE: caches/restored stats indexes are projections only.
+  // They never override an empty or changed canonical History V4 dataset.
 
   return rebuildStatsFromHistory(options);
 }

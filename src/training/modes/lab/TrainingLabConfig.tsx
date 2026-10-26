@@ -372,19 +372,48 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
           </div>}
           <TrainingParticipantsSelector profiles={profiles} value={participants} onChange={setParticipants} />
 
-          <div style={{ marginTop: 10, padding: 10, borderRadius: 14, border: "1px solid rgba(39,220,255,.28)", background: "linear-gradient(135deg,rgba(39,220,255,.12),rgba(140,90,255,.07))" }}>
-            <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1.2, color: "#27dcff" }}>COACH AWENA</div>
-            <div style={{ marginTop: 3, fontSize: 12.5, fontWeight: 950 }}>{prescription.title}</div>
-            <div style={{ marginTop: 3, fontSize: 9.2, lineHeight: 1.35, opacity: .72 }}>{prescription.body}</div>
-            <div style={{ marginTop: 7, display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <button type="button" onClick={() => setShowCoachDetails((v) => !v)} style={{ padding: "5px 8px", borderRadius: 999, border: "1px solid rgba(39,220,255,.18)", background: "rgba(39,220,255,.06)", color: "inherit", fontSize: 7.4, fontWeight: 900, cursor: "pointer" }}>{showCoachDetails ? "MASQUER LES DÉTAILS" : "POURQUOI CE CONSEIL ?"}</button>
-              <span style={{ fontSize: 7.4, opacity: .48 }}>Awena adapte le plan à tes dernières séances</span>
+          {viewMode === "essential" && <div style={{ marginTop: 10, padding: 12, borderRadius: 17, border: "1px solid rgba(39,220,255,.18)", background: "linear-gradient(145deg,rgba(39,220,255,.065),rgba(140,90,255,.035))" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1, color: "#8cffcb" }}>DÉMARRE ICI</div>
+                <div style={{ marginTop: 3, fontSize: 15, fontWeight: 950 }}>Qu'est-ce que tu veux faire ?</div>
+                <div style={{ marginTop: 3, fontSize: 8.3, opacity: .5 }}>Choisis une seule action. Awena s'occupe du reste.</div>
+              </div>
+              <div style={{ padding: "5px 8px", borderRadius: 999, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.06)", fontSize: 7, fontWeight: 900, opacity: .72 }}>{quickStart.eyebrow}</div>
             </div>
-            {showCoachDetails && <div style={{ marginTop: 7, display: "flex", gap: 7, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 9, padding: "4px 7px", borderRadius: 999, background: "rgba(39,220,255,.10)", border: "1px solid rgba(39,220,255,.18)" }}>ACTUEL {Math.round(prescription.current)}/100</span>
-              <span style={{ fontSize: 9, padding: "4px 7px", borderRadius: 999, background: "rgba(140,90,255,.10)", border: "1px solid rgba(140,90,255,.18)" }}>OBJECTIF {prescription.goal}/100</span>
-              <span style={{ fontSize: 9, padding: "4px 7px", borderRadius: 999, background: prescription.gap <= 0 ? "rgba(80,255,174,.10)" : "rgba(255,184,76,.08)", border: prescription.gap <= 0 ? "1px solid rgba(80,255,174,.20)" : "1px solid rgba(255,184,76,.16)" }}>{prescription.gap <= 0 ? "OBJECTIF ATTEINT" : `ÉCART ${Math.ceil(prescription.gap)} PTS`}</span>
-            </div>}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginTop: 10 }}>
+              <button type="button" disabled={!resolved.length} onClick={runQuickStart} style={{ minWidth: 0, padding: "11px 8px", borderRadius: 13, border: "1px solid rgba(80,255,174,.28)", background: "linear-gradient(145deg,rgba(80,255,174,.10),rgba(39,220,255,.04))", color: "inherit", cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .45, textAlign: "left" }}>
+                <div style={{ fontSize: 14 }}>▶</div><div style={{ marginTop: 5, fontSize: 8.6, fontWeight: 950 }}>JOUER MAINTENANT</div><div style={{ marginTop: 3, fontSize: 7, lineHeight: 1.3, opacity: .52 }}>{resolved.length ? quickStart.cta : "Choisis d'abord un joueur"}</div>
+              </button>
+              <button type="button" onClick={() => { setTab("exercises"); setExercisePanel("path"); }} style={{ minWidth: 0, padding: "11px 8px", borderRadius: 13, border: "1px solid rgba(255,216,107,.20)", background: "rgba(255,216,107,.045)", color: "inherit", cursor: "pointer", textAlign: "left" }}>
+                <div style={{ fontSize: 14 }}>◎</div><div style={{ marginTop: 5, fontSize: 8.6, fontWeight: 950 }}>TRAVAILLER UN POINT</div><div style={{ marginTop: 3, fontSize: 7, lineHeight: 1.3, opacity: .52 }}>Choisis une compétence ou suis ton parcours.</div>
+              </button>
+              <button type="button" onClick={() => { setTab("diagnosis"); setDiagnosisPanel("overview"); }} style={{ minWidth: 0, padding: "11px 8px", borderRadius: 13, border: "1px solid rgba(185,156,255,.20)", background: "rgba(140,90,255,.045)", color: "inherit", cursor: "pointer", textAlign: "left" }}>
+                <div style={{ fontSize: 14 }}>↗</div><div style={{ marginTop: 5, fontSize: 8.6, fontWeight: 950 }}>VOIR OÙ J'EN SUIS</div><div style={{ marginTop: 3, fontSize: 7, lineHeight: 1.3, opacity: .52 }}>{Math.round(assessment.overallScore || career.averagePerformance || 0)}/100 • {playerJourney.headline}</div>
+              </button>
+            </div>
+          </div>}
+
+          <div style={{ marginTop: 10, padding: viewMode === "essential" ? 8 : 10, borderRadius: 14, border: "1px solid rgba(39,220,255,.28)", background: "linear-gradient(135deg,rgba(39,220,255,.12),rgba(140,90,255,.07))" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: 1.1, color: "#27dcff" }}>{viewMode === "essential" ? "CONSEIL AWENA" : "COACH AWENA"}</div>
+                <div style={{ marginTop: 3, fontSize: viewMode === "essential" ? 10.5 : 12.5, fontWeight: 950 }}>{prescription.title}</div>
+                {viewMode === "complete" && <div style={{ marginTop: 3, fontSize: 9.2, lineHeight: 1.35, opacity: .72 }}>{prescription.body}</div>}
+              </div>
+              {viewMode === "essential" && <span style={{ fontSize: 7.2, padding: "4px 7px", borderRadius: 999, background: prescription.gap <= 0 ? "rgba(80,255,174,.10)" : "rgba(255,184,76,.08)", border: prescription.gap <= 0 ? "1px solid rgba(80,255,174,.18)" : "1px solid rgba(255,184,76,.14)" }}>{prescription.gap <= 0 ? "OBJECTIF OK" : `${Math.ceil(prescription.gap)} PTS À GAGNER`}</span>}
+            </div>
+            {viewMode === "complete" && <>
+              <div style={{ marginTop: 7, display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <button type="button" onClick={() => setShowCoachDetails((v) => !v)} style={{ padding: "5px 8px", borderRadius: 999, border: "1px solid rgba(39,220,255,.18)", background: "rgba(39,220,255,.06)", color: "inherit", fontSize: 7.4, fontWeight: 900, cursor: "pointer" }}>{showCoachDetails ? "MASQUER LES DÉTAILS" : "POURQUOI CE CONSEIL ?"}</button>
+                <span style={{ fontSize: 7.4, opacity: .48 }}>Awena adapte le plan à tes dernières séances</span>
+              </div>
+              {showCoachDetails && <div style={{ marginTop: 7, display: "flex", gap: 7, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 9, padding: "4px 7px", borderRadius: 999, background: "rgba(39,220,255,.10)", border: "1px solid rgba(39,220,255,.18)" }}>ACTUEL {Math.round(prescription.current)}/100</span>
+                <span style={{ fontSize: 9, padding: "4px 7px", borderRadius: 999, background: "rgba(140,90,255,.10)", border: "1px solid rgba(140,90,255,.18)" }}>OBJECTIF {prescription.goal}/100</span>
+                <span style={{ fontSize: 9, padding: "4px 7px", borderRadius: 999, background: prescription.gap <= 0 ? "rgba(80,255,174,.10)" : "rgba(255,184,76,.08)", border: prescription.gap <= 0 ? "1px solid rgba(80,255,174,.20)" : "1px solid rgba(255,184,76,.16)" }}>{prescription.gap <= 0 ? "OBJECTIF ATTEINT" : `ÉCART ${Math.ceil(prescription.gap)} PTS`}</span>
+              </div>}
+            </>}
           </div>
 
           <div style={{ marginTop: 9, display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", padding: 8, borderRadius: 12, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.018)" }}>

@@ -705,10 +705,16 @@ export async function captureUserMediaFallback(
     const explicitUpdatedAt = Number(opts.updatedAt || 0);
     const updatedAt = explicitUpdatedAt > 0 ? explicitUpdatedAt : Date.now();
     const canRemote = canAttemptDirectR2FromStoredSession();
+    // V122: les assets livrés avec l'application (/assets/...) existent déjà sur
+    // tous les appareils avec cette build. Les recopier vers account-media/R2 est
+    // inutile et provoquait des rafales de POST 500 (portraits BSS, bots, etc.)
+    // pendant les sauvegardes. Seuls les médias réellement utilisateur sont mirés.
+    const normalizedSource = source.replace(/^\.\//, "/");
+    const bundledAsset = normalizedSource.startsWith("/assets/") || normalizedSource.startsWith("assets/");
     // Account media sync is NOT the premium R2 backup. It follows the signed-in
     // account even when Drive/NAS/SD/Local is the selected backup destination.
-    const mirrorAccount = opts.mirrorAccount !== false && canRemote;
-    const mirrorR2 = opts.mirrorR2 !== false && canRemote;
+    const mirrorAccount = opts.mirrorAccount !== false && canRemote && !bundledAsset;
+    const mirrorR2 = opts.mirrorR2 !== false && canRemote && !bundledAsset;
     const sourceSig = sourceSignature(source);
 
     // Dédup locale AVANT FileReader/canvas/IDB. C'était le point chaud principal :

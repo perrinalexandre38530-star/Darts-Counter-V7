@@ -301,10 +301,26 @@ export async function ensureHistoryV4Backfill(): Promise<{ migrated: number; act
     const meta = await reqValue<any>(metaTx.objectStore(HISTORY_V4_INDEX).get(META_ID)).catch(() => null);
     await txDone(metaTx).catch(() => {});
     if (Number(meta?.schemaVersion || 0) === HISTORY_V4_SCHEMA_VERSION && Number(meta?.migratedAt || 0) > 0) {
-      const countTx = db.transaction(HISTORY_V4_INDEX, "readonly");
-      const all = await getAll(countTx.objectStore(HISTORY_V4_INDEX)).catch(() => []);
-      await txDone(countTx).catch(() => {});
-      return { migrated: 0, active: all.filter((row) => row?.kind === "match" && !row?.deleted).length };
+      // V123 SINGLE SOURCE: le marqueur de migration ne suffit pas. Certains anciens
+      // restores/imports ont encore pu écrire dans les stores legacy APRÈS la création
+      // du marqueur V4. On vérifie donc qu'aucune ligne legacy absente/plus récente
+      // n'attend d'être absorbée par History V4 avant de considérer le backfill terminé.
+      const probeTx = db.transaction([LEGACY_HEADERS, HISTORY_V4_INDEX], "readonly");
+      const [legacyHeadersProbe, all] = await Promise.all([
+        getAll(probeTx.objectStore(LEGACY_HEADERS)).catch(() => []),
+        getAll(probeTx.objectStore(HISTORY_V4_INDEX)).catch(() => []),
+      ]);
+      await txDone(probeTx).catch(() => {});
+      const activeRows = all.filter((row) => row?.kind === "match" && !row?.deleted);
+      const byId = new Map(activeRows.map((row) => [cleanId(row?.id), row]));
+      const needsReconcile = legacyHeadersProbe.some((row) => {
+        const id = cleanId(row?.id || row?.matchId);
+        if (!id) return false;
+        const current = byId.get(id);
+        if (!current) return true;
+        return toTs(row?.updatedAt) > toTs(current?.updatedAt);
+      });
+      if (!needsReconcile) return { migrated: 0, active: activeRows.length };
     }
 
     const readTx = db.transaction([LEGACY_HEADERS, LEGACY_DETAILS, HISTORY_V4_HEADERS, HISTORY_V4_INDEX], "readonly");
@@ -445,16 +461,20 @@ export async function reviveCanonicalHistoryV4(idsInput: Iterable<any>): Promise
 export async function listCanonicalHistoryV4(options?: { hydratePayload?: boolean; includeDeleted?: boolean }): Promise<any[]> {
   await ensureHistoryV4Backfill();
   const db = await openHistoryV4Db();
-  const tx = db.transaction([HISTORY_V4_HEADERS, HISTORY_V4_PAYLOADS, HISTORY_V4_TOMBSTONES, HISTORY_V4_INDEX], "readonly");
-  const [headers, payloads, tombstones, indexes] = await Promise.all([
+  const stores = options?.hydratePayload
+    ? [HISTORY_V4_HEADERS, HISTORY_V4_PAYLOADS, HISTORY_V4_TOMBSTONES, HISTORY_V4_INDEX]
+    : [HISTORY_V4_HEADERS, HISTORY_V4_TOMBSTONES, HISTORY_V4_INDEX];
+  const tx = db.transaction(stores, "readonly");
+  const [headers, tombstones, indexes] = await Promise.all([
     getAll(tx.objectStore(HISTORY_V4_HEADERS)),
-    getAll(tx.objectStore(HISTORY_V4_PAYLOADS)),
     getAll(tx.objectStore(HISTORY_V4_TOMBSTONES)),
     getAll(tx.objectStore(HISTORY_V4_INDEX)),
   ]);
+  let payloads: any[] = [];
+  if (options?.hydratePayload) payloads = await getAll(tx.objectStore(HISTORY_V4_PAYLOADS));
   await txDone(tx).catch(() => {});
 
-  const payloadById = new Map(payloads.map((row) => [cleanId(row?.id), row]));
+  const payloadById = options?.hydratePayload ? new Map(payloads.map((row) => [cleanId(row?.id), row])) : new Map<string, any>();
   const tombstoneIds = new Set(tombstones.map((row) => cleanId(row?.id)).filter(Boolean));
   const indexById = new Map(indexes.filter((row) => row?.kind === "match").map((row) => [cleanId(row?.id), row]));
   const out: any[] = [];
@@ -463,9 +483,10 @@ export async function listCanonicalHistoryV4(options?: { hydratePayload?: boolea
     if (!id) continue;
     const deleted = tombstoneIds.has(id) || indexById.get(id)?.deleted === true;
     if (deleted && !options?.includeDeleted) continue;
-    const payloadRow = payloadById.get(id) || null;
-    const row: any = { ...header, id, matchId: cleanId(header?.matchId || id) || id, payloadCompressed: String(payloadRow?.payloadCompressed || "") };
+    const row: any = { ...header, id, matchId: cleanId(header?.matchId || id) || id };
     if (options?.hydratePayload) {
+      const payloadRow = payloadById.get(id) || null;
+      row.payloadCompressed = String(payloadRow?.payloadCompressed || "");
       const payload = decodePayload(row.payloadCompressed);
       if (payload && typeof payload === "object") row.payload = payload;
     }
@@ -479,8 +500,44 @@ export async function listCanonicalHistoryV4(options?: { hydratePayload?: boolea
 export async function getCanonicalHistoryV4(idInput: any, options?: { hydratePayload?: boolean; includeDeleted?: boolean }): Promise<any | null> {
   const wanted = cleanId(idInput);
   if (!wanted) return null;
-  const rows = await listCanonicalHistoryV4({ hydratePayload: options?.hydratePayload, includeDeleted: options?.includeDeleted });
-  return rows.find((row) => cleanId(row?.id) === wanted || cleanId(row?.matchId) === wanted) || null;
+  await ensureHistoryV4Backfill();
+  const db = await openHistoryV4Db();
+
+  const stores = options?.hydratePayload
+    ? [HISTORY_V4_HEADERS, HISTORY_V4_PAYLOADS, HISTORY_V4_TOMBSTONES, HISTORY_V4_INDEX]
+    : [HISTORY_V4_HEADERS, HISTORY_V4_TOMBSTONES, HISTORY_V4_INDEX];
+  const tx = db.transaction(stores, "readonly");
+  const headers = tx.objectStore(HISTORY_V4_HEADERS);
+  let header = await reqValue<any>(headers.get(wanted)).catch(() => null);
+  if (!header) {
+    try { header = await reqValue<any>(headers.index("by_matchId").get(wanted)).catch(() => null); } catch {}
+  }
+  if (!header) {
+    await txDone(tx).catch(() => {});
+    return null;
+  }
+
+  const id = cleanId(header?.id || header?.matchId || wanted);
+  const [tombstone, indexRow] = await Promise.all([
+    reqValue<any>(tx.objectStore(HISTORY_V4_TOMBSTONES).get(id)).catch(() => null),
+    reqValue<any>(tx.objectStore(HISTORY_V4_INDEX).get(id)).catch(() => null),
+  ]);
+  const deleted = !!tombstone || indexRow?.deleted === true;
+  if (deleted && !options?.includeDeleted) {
+    await txDone(tx).catch(() => {});
+    return null;
+  }
+
+  const row: any = { ...header, id, matchId: cleanId(header?.matchId || id) || id };
+  if (options?.hydratePayload) {
+    const payloadRow = await reqValue<any>(tx.objectStore(HISTORY_V4_PAYLOADS).get(id)).catch(() => null);
+    row.payloadCompressed = String(payloadRow?.payloadCompressed || "");
+    const payload = decodePayload(row.payloadCompressed);
+    if (payload && typeof payload === "object") row.payload = payload;
+  }
+  await txDone(tx).catch(() => {});
+  if (deleted) row.deleted = true;
+  return row;
 }
 
 export async function listHistoryV4Tombstones(): Promise<HistoryV4Tombstone[]> {

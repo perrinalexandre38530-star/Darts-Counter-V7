@@ -394,6 +394,7 @@ export default function ClosestCenterPlay(props:any) {
   const matchIdRef = React.useRef(String(props.params?.resumeId || `closest-center-${Date.now()}-${Math.random().toString(36).slice(2,8)}`));
   const hydratedRef = React.useRef(false);
   const [diagnostics, setDiagnostics] = React.useState<any[]>(() => loadClosestCenterDiagnostics().slice(-120));
+  const [resumeNotice, setResumeNotice] = React.useState<string | null>(null);
 
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
   const streamRef = React.useRef<MediaStream | null>(null);
@@ -601,20 +602,32 @@ export default function ClosestCenterPlay(props:any) {
           : st.manualStage === "score"
             ? "♻️ Partie manuelle reprise. Termine la saisie des seuls points marqués."
             : "♻️ Partie manuelle reprise. Continue la mène lancer par lancer.");
+        setResumeNotice(st.phase === "prepare"
+          ? `REPRISE · MÈNE ${Number(st.round||1)} PRÊTE · DÉMARRE LA SUITE`
+          : st.phase === "roundEnd"
+            ? `REPRISE · FIN DE MÈNE · VALIDE LE RÉSULTAT`
+            : st.manualEntryMode === "quick"
+              ? "REPRISE · SAISIE RAPIDE · RENSEIGNE SEULEMENT LES POINTS"
+              : "REPRISE · CONTINUE LA MÈNE");
       } else {
         setPlayerIndex(0);
         const enrolled = Object.keys(st.signatures || {}).length >= players.length;
         if (st.phase === "roundEnd" && enrolled) {
           setPhase("roundEnd");
           setStatus("♻️ Fin de mène restaurée. Les mesures déjà validées sont conservées : termine le départage éventuel puis valide la mène.");
+          setResumeNotice("REPRISE · FIN DE MÈNE · DÉPARTAGE / VALIDATION");
         } else if (st.phase === "prepare" && enrolled) {
           setPhase("prepare");
           setStatus(`♻️ Mène ${Number(st.round||1)} prête. Retire toutes les fléchettes et libère complètement la cible avant de réarmer la caméra.`);
+          setResumeNotice(`REPRISE · MÈNE ${Number(st.round||1)} · LIBÈRE LA CIBLE PUIS RÉARME`);
         } else {
           setPhase(enrolled ? "baseline" : "enroll");
           setStatus(enrolled
             ? "♻️ Partie reprise. Pour garantir la précision, recapture obligatoirement une cible vide avant de continuer."
             : "♻️ Partie reprise. Termine l’enrôlement IA des fléchettes avant de continuer.");
+          setResumeNotice(enrolled
+            ? "REPRISE · RECAPTURE UNE CIBLE VIDE AVANT DE CONTINUER"
+            : "REPRISE · TERMINE L’ENRÔLEMENT IA");
         }
       }
       hydratedRef.current = true;
@@ -1683,6 +1696,12 @@ export default function ClosestCenterPlay(props:any) {
   }, [phase, allScores, teamTotals, impacts, inputMode, isManual, cameraQuality, sessionDiagnostics, petanqueStats, winner?.playerId, winningTeamId, cfg.rounds, cfg.targetScore, cfg.formatMode, cfg.teamMode, cfg.pointsMode, round, players, pointsMode, dartsPerPlayer, roundResults, manualEntryMode]);
 
 
+  React.useEffect(() => {
+    if (!resumeNotice) return;
+    const t = window.setTimeout(() => setResumeNotice(null), 12000);
+    return () => window.clearTimeout(t);
+  }, [resumeNotice]);
+
   const jumpTo = React.useCallback((id:string) => {
     try { document.getElementById(id)?.scrollIntoView({ behavior:"smooth", block:"nearest", inline:"nearest" }); } catch {}
   }, []);
@@ -1740,7 +1759,7 @@ export default function ClosestCenterPlay(props:any) {
 
   if (!players.length) return <div style={{padding:20,color:"white"}}>Configuration introuvable. <button onClick={() => go?.("closest_center_config")}>Retour</button></div>;
 
-  return <div style={{height:"100%",minHeight:0,display:"flex",flexDirection:"column",overflow:"hidden",background:"radial-gradient(circle at 50% -20%,#10273a 0,#071019 32%,#03070d 72%)",color:"#fff"}}>
+  return <div onPointerDownCapture={()=>{ if (resumeNotice) setResumeNotice(null); }} style={{height:"100%",minHeight:0,display:"flex",flexDirection:"column",overflow:"hidden",background:"radial-gradient(circle at 50% -20%,#10273a 0,#071019 32%,#03070d 72%)",color:"#fff"}}>
     <PageHeader tickerSrc={ticker} tickerAlt="DARTS PÉTANQUE" tickerHeight={landscape?46:(compactHeight?54:62)} left={<BackDot onClick={() => go?.("closest_center_config")} color={ACCENT}/>} />
 
     <section id="cc-score" style={{margin:`${compactHeight?5:7}px 10px 0`,border:"1px solid rgba(255,255,255,.11)",background:"linear-gradient(180deg,rgba(16,27,38,.98),rgba(6,12,19,.98))",borderRadius:16,padding:compactHeight?5:7,display:"grid",gridTemplateColumns:"minmax(0,1fr) auto minmax(0,1fr)",gap:6,alignItems:"center",boxShadow:"0 12px 30px rgba(0,0,0,.24)"}}>
@@ -1798,6 +1817,7 @@ export default function ClosestCenterPlay(props:any) {
             </div> : null}
           </div>
         </section>
+        {resumeNotice ? <div style={{display:"flex",alignItems:"center",gap:7,padding:"6px 8px",borderRadius:11,border:"1px solid rgba(68,231,255,.26)",background:"linear-gradient(90deg,rgba(68,231,255,.08),rgba(255,255,255,.025))",color:"#dffaff",fontSize:8,fontWeight:1000,letterSpacing:.45,boxShadow:"0 8px 20px rgba(0,0,0,.16)"}}><PetanqueIcon name="history" size={13}/><span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{resumeNotice}</span></div> : null}
         {statusIsCritical ? <div role="alert" style={{padding:"7px 9px",borderRadius:11,border:"1px solid rgba(255,189,117,.30)",background:"rgba(255,159,120,.07)",color:"#ffd0b8",fontSize:9,fontWeight:900,lineHeight:1.35}}>{status}</div> : null}
 
         {!isManual && pointsMode==="petanque" && (phase==="play" || phase==="roundEnd") && cameraPointNeedsDecision ? <section style={{...card,padding:9,borderColor:"rgba(255,189,69,.48)",background:"rgba(255,189,69,.065)"}}>

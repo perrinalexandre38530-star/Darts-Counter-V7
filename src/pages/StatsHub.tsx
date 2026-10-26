@@ -1553,9 +1553,11 @@ function useHistoryAPI(enabled = true, focusMode?: string | null): SavedMatch[] 
         } catch {
           // ignore
         }
-      } catch {
+      } catch (error) {
+        // V123 SINGLE SOURCE: a transient canonical-history read failure must not
+        // zero the UI. Keep the last rendered projection until History V4 is readable.
         if (!mounted) return;
-        setRows([]);
+        console.warn("[StatsHub] canonical History V4 read failed; keeping previous rows", error);
       }
     };
 

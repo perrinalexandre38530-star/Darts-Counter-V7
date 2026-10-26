@@ -734,19 +734,21 @@ function buildHeaders(init?: RequestInit, requestPath = ""): HeadersInit {
   // au provider NAS courant. Quand la session active est Supabase, envoyer son
   // access token au backend permet au middleware hybride de retrouver le même
   // compte canonique. Cela supprime la dépendance aléatoire à un ancien JWT NAS.
+  const isPersonalCloudRoute = normalizedPath.startsWith("/account/personal-cloud/");
   const acceptsAccountSession =
-    normalizedPath.startsWith("/account/personal-cloud/") ||
+    isPersonalCloudRoute ||
     normalizedPath.startsWith("/account/backups/") ||
     normalizedPath.startsWith("/sync/");
 
-  // /sync/* accepte désormais le bridge Supabase -> NAS pour les comptes NAS
-  // autorisés. Cela permet de sauvegarder sur le NAS depuis une session publique
-  // valide sans exiger qu'un ancien JWT NAS soit encore présent sur cet appareil.
+  // V122 DRIVE AUTH: Google Drive appartient au compte public MULTISPORTS. Un
+  // ancien JWT NAS peut rester présent après un redémarrage / clear partiel et
+  // provoquer des 401 en boucle alors que Supabase est encore connecté. Pour le
+  // cloud personnel, la session Supabase fraîche est donc PRIORITAIRE. /sync/*
+  // garde au contraire le JWT NAS en priorité pour compatibilité historique.
   const token = acceptsAccountSession
-    // Le backend NAS historique vérifie son propre JWT. Le token Supabase reste
-    // un fallback de compatibilité, mais dès qu'un jeton de service NAS existe
-    // il doit être prioritaire.
-    ? (readNasAccessToken() || readAccountAccessToken())
+    ? (isPersonalCloudRoute
+        ? (readAccountAccessToken() || readNasAccessToken())
+        : (readNasAccessToken() || readAccountAccessToken()))
     : readNasAccessToken();
 
   if (token && !baseHeaders.has("Authorization")) {
@@ -790,16 +792,19 @@ async function doFetch(path: string, init?: RequestInit, options?: ApiRequestOpt
     : requestTimeoutFor(normalizedPath, requestMethod);
   const proxyBase = sameOriginApiProxyBase();
 
+  const isPersonalCloudRoute = normalizedPath.startsWith("/account/personal-cloud/");
   const isAccountBackendRoute =
-    normalizedPath.startsWith("/account/personal-cloud/") ||
+    isPersonalCloudRoute ||
     normalizedPath.startsWith("/account/backups/") ||
     normalizedPath.startsWith("/sync/");
 
-  // Après un nettoyage complet du navigateur, la session Supabase revient avant
-  // le JWT technique NAS. Les routes de sauvegarde historiques utilisent encore
-  // ce JWT côté serveur : on le recrée AVANT la première requête pour éviter le
-  // faux 401 visible dans la console et garder le compte principal sur Supabase.
-  if (isAccountBackendRoute && !readNasAccessToken()) {
+  // V122: Drive ne doit plus dépendre du bridge NAS. Rafraîchir d'abord la
+  // session Supabase publique, puis seulement utiliser un JWT NAS en fallback.
+  if (isPersonalCloudRoute) {
+    if (!readAccountAccessToken()) {
+      await readFreshPublicSupabaseSession(false).catch(() => null);
+    }
+  } else if (isAccountBackendRoute && !readNasAccessToken()) {
     await recoverNasAuthToken("missing_token").catch(() => "");
   }
 

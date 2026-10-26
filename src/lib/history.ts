@@ -1818,12 +1818,18 @@ async function withStoreName<T>(
     tx.onerror = () => finishReject(tx.error || new Error("IndexedDB tx error"));
     tx.onabort = () => finishReject(tx.error || new Error("IndexedDB tx aborted"));
 
+    // V122 STABILITY: 8 s était beaucoup trop agressif sur Android/WebView quand
+    // l'historique contient des centaines de lignes ou quand une sauvegarde tourne.
+    // Un timeout de lecture déclenchait alors le fallback localStorage incomplet,
+    // d'où les compteurs 89 / 60 / 0 selon la charge. Les écritures ont encore
+    // davantage de marge afin de ne jamais abandonner un commit valide.
+    const txTimeoutMs = mode === "readonly" ? 45_000 : 90_000;
     const to = window.setTimeout(() => {
-      finishReject(new Error("IndexedDB tx timeout"));
+      finishReject(new Error(`IndexedDB tx timeout (${txTimeoutMs}ms)`));
       try {
         tx.abort();
       } catch {}
-    }, 8000);
+    }, txTimeoutMs);
 
     const clearTo = () => window.clearTimeout(to);
 
@@ -1875,12 +1881,13 @@ async function withStores<T>(
     tx.onerror = () => finishReject(tx.error || new Error("IndexedDB tx error"));
     tx.onabort = () => finishReject(tx.error || new Error("IndexedDB tx aborted"));
 
+    const txTimeoutMs = mode === "readonly" ? 45_000 : 90_000;
     const to = window.setTimeout(() => {
-      finishReject(new Error("IndexedDB tx timeout"));
+      finishReject(new Error(`IndexedDB tx timeout (${txTimeoutMs}ms)`));
       try {
         tx.abort();
       } catch {}
-    }, 8000);
+    }, txTimeoutMs);
     const clearTo = () => window.clearTimeout(to);
 
     Promise.resolve()
@@ -2302,108 +2309,21 @@ async function migrateFromLocalStorageOnce() {
 /* =========================
    Lectures
 ========================= */
-async function listUncached(): Promise<SavedMatch[]> {
+async function listUncached(_retryOnIdbFailure = true): Promise<SavedMatch[]> {
+  // V123 SINGLE SOURCE OF TRUTH
+  // History V4 is now the ONLY read authority for History, Stats and backups.
+  // ensureHistoryV4Backfill() absorbs any remaining legacy rows first; once that
+  // migration is complete, localStorage/history_headers are never used as a
+  // competing runtime source.
   await migrateFromLocalStorageOnce();
+  await ensureHistoryV4Backfill();
 
-  try {
-    const rows: any[] = await withStoreName(STORE_HEADERS, "readonly", async (st) => {
-      const readWithIndex = async () =>
-        await new Promise<any[]>((resolve, reject) => {
-          try {
-            // @ts-ignore
-            const hasIndex = st.indexNames && st.indexNames.contains("by_updatedAt");
-            if (!hasIndex) throw new Error("no_index");
-            const ix = st.index("by_updatedAt");
-            const req = ix.openCursor(undefined, "prev");
-            const out: any[] = [];
-            req.onsuccess = () => {
-              const cur = req.result as IDBCursorWithValue | null;
-              if (cur) {
-                out.push({ ...cur.value });
-                cur.continue();
-              } else resolve(out);
-            };
-            req.onerror = () => reject(req.error);
-          } catch (e) {
-            reject(e);
-          }
-        });
+  const canonical = await listCanonicalHistoryV4({ hydratePayload: false, includeDeleted: false });
+  const normalized = (Array.isArray(canonical) ? canonical : [])
+    .filter(isHistoryRowUsable)
+    .map((r: any) => normalizeHistoryRow(r)) as SavedMatch[];
 
-      const readWithoutIndex = async () =>
-        await new Promise<any[]>((resolve, reject) => {
-          const req = st.openCursor();
-          const out: any[] = [];
-          req.onsuccess = () => {
-            const cur = req.result as IDBCursorWithValue | null;
-            if (cur) {
-              out.push({ ...cur.value });
-              cur.continue();
-            } else {
-              out.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-              resolve(out);
-            }
-          };
-          req.onerror = () => reject(req.error);
-        });
-
-      try {
-        return await readWithIndex();
-      } catch {
-        return await readWithoutIndex();
-      }
-    });
-
-    const byMatch = new Map<string, any>();
-    for (const r0 of rows || []) {
-      const r: any = r0;
-      if (!r) continue;
-      if (isHistoryDeletedByTombstone(r)) continue;
-      let key = getCanonicalMatchId(r) ?? String(r?.matchId ?? "");
-      if (!key) key = String(r?.id ?? "");
-      if (!key) continue;
-
-      const existing = byMatch.get(key);
-      const tNew = Number(r?.updatedAt ?? r?.createdAt ?? 0);
-      const out = normalizeHistoryRow({ ...r, id: key, matchId: key } as any);
-      if (Array.isArray(out.players)) out.players = stripAvatarDataFromPlayers(out.players) || [];
-
-      if (!existing) byMatch.set(key, out);
-      else {
-        const tOld = Number(existing?.updatedAt ?? existing?.createdAt ?? 0);
-        if (tNew >= tOld) byMatch.set(key, out);
-      }
-    }
-
-    const normalizedIdb = Array.from(byMatch.values())
-      .filter(isHistoryRowUsable)
-      .map((r: any) => normalizeHistoryRow(r)) as SavedMatch[];
-
-    // ✅ ANDROID / PWA FIX V5
-    // IndexedDB peut rester LISIBLE mais refuser l'ÉCRITURE d'une grosse partie.
-    // upsert() bascule alors vers localStorage/sessionStorage.
-    // L'ancien list() ignorait ce fallback tant qu'IndexedDB restait lisible :
-    // message "importée" mais carte invisible dans Historique.
-    const fallbackRows = readLegacyRowsSafe()
-      .filter((r: any) => !isHistoryDeletedByTombstone(r))
-      .filter(isHistoryRowUsable)
-      .map((r: any) => normalizeHistoryRow(r)) as SavedMatch[];
-
-    const normalized = _historyRowsMergeAuthoritative(normalizedIdb, fallbackRows)
-      .filter((r: any) => !isHistoryDeletedByTombstone(r))
-      .filter(isHistoryRowUsable)
-      .map((r: any) => normalizeHistoryRow(r)) as SavedMatch[];
-
-    // ✅ PERF HISTORIQUE: ancien code = comparaison en O(n²) entre toutes les parties finies
-    // et toutes les cartes en cours. Avec une restauration NAS de milliers de lignes,
-    // cela pouvait bloquer l’ouverture de l’historique pendant 15–20s.
-    return _filterStaleInProgressFast(normalized) as SavedMatch[];
-  } catch {
-    const rows = readLegacyRowsSafe();
-    const normalized = rows
-      .filter((r: any) => !isHistoryDeletedByTombstone(r))
-      .map((r: any) => normalizeHistoryRow(r)) as SavedMatch[];
-    return _filterStaleInProgressFast(normalized) as SavedMatch[];
-  }
+  return _filterStaleInProgressFast(normalized) as SavedMatch[];
 }
 
 let __historyListInFlight: Promise<SavedMatch[]> | null = null;
@@ -3050,217 +2970,27 @@ export async function auditHistoryDecodePerformance(options?: {
 async function getUncached(id: string): Promise<SavedMatch | null> {
   await migrateFromLocalStorageOnce();
 
-  // ✅ MOBILE V6 : get() et list() doivent avoir la même notion de "supprimé".
-  // Sans ceci, get() pouvait retrouver physiquement une ligne que list() masquait.
-  if (isHistoryDeletedByTombstone(String(id || ""))) return null;
-
-  const __freezeOp = beginFreezeOperation("history.get", { id: String(id || "") });
+  // V123 SINGLE SOURCE OF TRUTH: direct canonical read. Do not hydrate from the
+  // legacy split stores or localStorage during normal rendering.
   try {
-    let rec: any = null;
-    let workerRead: HistoryWorkerDecodeResult | null = null;
-
-    // P0 V15 SAFE — on Android the IndexedDB read itself is moved to the same
-    // worker as payload decoding. This preserves every Stats/Home/Profile wiring:
-    // callers still receive the exact same SavedMatch shape, but IDBRequest.onsuccess
-    // no longer materializes a large history record on the UI thread.
-    if (isAndroidHistoryRuntime()) {
-      const workerReadMarker = beginFreezeOperation("history.get.workerRead", { id: String(id || "") });
-      try {
-        workerRead = await runHistoryDecodeLane(() => readHistoryRecordOffMainThread(id));
-        if (workerRead?.action === "read-decode") {
-          rec = { header: workerRead.header || null, detail: null };
-        }
-      } finally {
-        endFreezeOperation(workerReadMarker, {
-          found: !!workerRead?.found,
-          idbMs: Math.round(Number(workerRead?.idbMs || 0)),
-          totalMs: Math.round(Number(workerRead?.totalMs || 0)),
-        });
+    const canonical = await getCanonicalHistoryV4(id, { hydratePayload: true, includeDeleted: false });
+    if (canonical) {
+      const normalized = normalizeHistoryRow(canonical as any) as SavedMatch;
+      if (Array.isArray((normalized as any).players)) {
+        (normalized as any).players = stripAvatarDataFromPlayers((normalized as any).players) || [];
       }
+      return normalized;
     }
-
-    // Desktop / worker-unavailable fallback: unchanged existing IndexedDB path.
-    if (!workerRead) {
-      const __idbFreezeOp = beginFreezeOperation("history.get.idbRead", { id: String(id || "") });
-      try {
-        rec = await withStores([STORE_HEADERS, STORE_DETAILS], "readonly", async (stores) => {
-        const headers = stores[STORE_HEADERS];
-        const details = stores[STORE_DETAILS];
-
-        const getHeaderDirect = () =>
-          new Promise<any>((resolve) => {
-            const req = headers.get(id);
-            req.onsuccess = () => resolve(req.result || null);
-            req.onerror = () => resolve(null);
-          });
-
-        const getHeaderByMatchId = () =>
-          new Promise<any>((resolve) => {
-            try {
-              // @ts-ignore
-              const hasIx = headers.indexNames && headers.indexNames.contains("by_matchId");
-              if (!hasIx) return resolve(null);
-              const req = headers.index("by_matchId").get(id);
-              req.onsuccess = () => resolve(req.result || null);
-              req.onerror = () => resolve(null);
-            } catch {
-              resolve(null);
-            }
-          });
-
-        const scanHeader = () =>
-          new Promise<any>((resolve) => {
-            const req = headers.openCursor();
-            req.onsuccess = () => {
-              const cur = req.result as IDBCursorWithValue | null;
-              if (!cur) return resolve(null);
-              const v: any = cur.value;
-              if (v?.matchId === id) return resolve(v);
-              cur.continue();
-            };
-            req.onerror = () => resolve(null);
-          });
-
-        let header = await getHeaderDirect();
-        if (!header) {
-          let hasMatchIdIndex = false;
-          try { hasMatchIdIndex = !!headers.indexNames?.contains("by_matchId"); } catch {}
-          header = hasMatchIdIndex ? await getHeaderByMatchId() : await scanHeader();
-        }
-
-        // V14 DETAIL FIX: si l’appelant demande un id composite "matchId:playerId",
-        // retenter automatiquement avec la partie avant ':' pour retrouver le vrai match.
-        if (!header && String(id || "").includes(":")) {
-          const baseId = String(id).split(":")[0]?.trim();
-          if (baseId) {
-            header =
-              (await new Promise<any>((resolve) => {
-                const req = headers.get(baseId);
-                req.onsuccess = () => resolve(req.result || null);
-                req.onerror = () => resolve(null);
-              })) ||
-              (await new Promise<any>((resolve) => {
-                try {
-                  // @ts-ignore
-                  const hasIx = headers.indexNames && headers.indexNames.contains("by_matchId");
-                  if (!hasIx) return resolve(null);
-                  const req = headers.index("by_matchId").get(baseId);
-                  req.onsuccess = () => resolve(req.result || null);
-                  req.onerror = () => resolve(null);
-                } catch {
-                  resolve(null);
-                }
-              }));
-          }
-        }
-
-        if (!header) return null;
-
-        const detail = await new Promise<any>((resolve) => {
-          const req = details.get(String(header?.id ?? id));
-          req.onsuccess = () => resolve(req.result || null);
-          req.onerror = () => resolve(null);
-        });
-
-        return { header, detail };
-        });
-      } finally {
-        endFreezeOperation(__idbFreezeOp, { found: !!rec?.header });
-      }
-    }
-
-    if (!rec?.header) {
-      const rows = readLegacyRowsSafe();
-      return (rows.find((r) => r.id === id || r.matchId === id) || null) as SavedMatch | null;
-    }
-
-    const header = { ...(rec.header || {}) };
-    const detail = rec.detail || null;
-
-    let payload: any | null = workerRead?.action === "read-decode" && workerRead?.found
-      ? (workerRead.value ?? null)
-      : null;
-
-    // Desktop / worker-unavailable fallback keeps the existing decode path.
-    // No Stats wiring is bypassed: the same decoded payload is returned to every caller.
-    if (!workerRead) {
-      payload = await runHistoryDecodeLane(() =>
-        decodePayloadCompressedOffMainThread(detail?.payloadCompressed, {
-          id: String(id),
-          stage: "get",
-        })
-      );
-
-      if (!payload && typeof detail?.payloadCompressed === "string") {
-        const t = String(detail.payloadCompressed || "").trim();
-        if (t.startsWith("{") || t.startsWith("[")) {
-          payload = safeJsonParse(t, {
-            id: String(id),
-            stage: "get:payloadCompressed:direct",
-          });
-        }
-      }
-    }
-
-    // V3 FIX : si le payload principal a été compacté/corrompu/ancien,
-    // on reconstruit une base exploitable depuis header.resume.
-    // Cela répare la reprise X01 et évite "configuration absente".
-    try {
-      const resume = (header as any)?.resume;
-      const isLiveHeader = inferHistoryStatus(header) === "in_progress";
-      const needsResumeMerge =
-        resume &&
-        typeof resume === "object" &&
-        (isLiveHeader ||
-          !payload ||
-          typeof payload !== "object" ||
-          ((payload as any)?.config == null && (resume as any)?.config != null) ||
-          (!Array.isArray((payload as any)?.darts) && Array.isArray((resume as any)?.darts)));
-
-      if (needsResumeMerge) {
-        // For a live match, the header checkpoint is intentionally newer than the
-        // heavy detail payload. Prefer it so a deferred detail write can never make
-        // resume lose the latest visit.
-        payload = {
-          ...(payload && typeof payload === "object" ? payload : {}),
-          ...(isLiveHeader && resume?.livePayload && typeof resume.livePayload === "object" ? resume.livePayload : {}),
-          ...(resume?.config ? { config: resume.config } : {}),
-          ...(resume?.state ? { state: resume.state } : {}),
-          ...(Array.isArray(resume?.darts) ? { darts: resume.darts } : {}),
-        };
-      }
-    } catch {}
-
-    // PERFORMANCE / INTEGRITY:
-    // History.get() is intentionally READ-ONLY.
-    // A previous implementation tried to compare every finished match against the
-    // local revision vault on each read, then called upsert() from inside get().
-    // StatsHub can hydrate dozens of matches at once, so a simple page read could
-    // trigger dozens of IndexedDB scans + writes + dc-history-updated events and
-    // enter a repair/reload loop. Integrity repair now happens only on write/import
-    // paths (upsert / snapshot merge), never while rendering a page.
-
-    const mid = getCanonicalMatchId({ ...header, payload }) ?? header.matchId ?? null;
-    if (mid) header.matchId = String(mid);
-
-    if (Array.isArray(header.players)) {
-      header.players = stripAvatarDataFromPlayers(header.players);
-    }
-
-    return normalizeHistoryRow({
-      ...header,
-      payload: stripAvatarDataFromPayload(payload),
-    } as any) as SavedMatch;
-  } catch (e) {
-    console.warn("[history.get] fallback localStorage:", e);
-    const rows = readLegacyRowsSafe();
-    const hit = rows.find((r) => r.id === id || r.matchId === id) || null;
-    return hit ? (normalizeHistoryRow(hit as any) as SavedMatch) : null;
-  } finally {
-    endFreezeOperation(__freezeOp);
+  } catch (error) {
+    console.error("[history.get] History V4 canonical read failed", error);
+    throw error;
   }
-}
 
+  // A missing canonical row is genuinely missing after V4 backfill. Returning
+  // null is safer than resurrecting an obsolete mirror and reintroducing a
+  // second source of truth.
+  return null;
+}
 
 export async function get(id: string): Promise<SavedMatch | null> {
   const key = String(id || "").trim();

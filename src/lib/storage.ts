@@ -3424,16 +3424,9 @@ export async function importAll(
     }
     await yieldIfNeeded(true);
 
-    // ✅ Si un vrai dc_stats_index_v2 est présent, on le réécrit explicitement
-    // sur la clé scopée de l'utilisateur courant. C'est le bloc qui contient
-    // les 51 parties/stats quand history.rows est vide.
-    try {
-      if (storageStatsIndexHasData(restoredStatsIndex)) {
-        await importIdbEntryRaw("dc_stats_index_v2", restoredStatsIndex);
-      }
-    } catch (e) {
-      console.warn("[storage] importAll restored stats index preserve failed", e);
-    }
+    // V123 SINGLE SOURCE: dc_stats_index_v2 is a derived cache only.
+    // Never restore it as data authority. Stats are rebuilt from canonical
+    // History V4 after the history import has completed successfully.
 
     // 2) restore localStorage (dc_* + dc-*)
     report(32, "Restauration des préférences locales…");
@@ -3509,11 +3502,14 @@ export async function importAll(
           },
         });
       } else {
-        const syntheticHistory = buildSyntheticHistoryDumpFromStatsIndex(restoredStatsIndex);
-        if (syntheticHistory?.rows && Object.keys(syntheticHistory.rows).length > 0) {
-          await importHistoryDump(syntheticHistory, { replace: historyReplace, preserveExisting: !historyReplace });
-          try { localStorage.setItem("dc_history_restored_from_stats_index_v1", "1"); } catch {}
-        } else if (dump.history && dump.history._v === 1) {
+        // V123 SINGLE SOURCE: never fabricate History rows from a Stats cache.
+        // If a backup has no real History payload, it is incomplete for match
+        // restoration and must not overwrite the current canonical history.
+        const statsOnlyCount = Number(restoredStatsIndex?.totals?.matches || 0);
+        if (statsOnlyCount > 0) {
+          throw new Error(`Sauvegarde incomplète : ${statsOnlyCount} match(s) présents uniquement dans l'index Stats, sans historique canonique.`);
+        }
+        if (dump.history && dump.history._v === 1) {
           await importHistoryDump(dump.history, { replace: historyReplace, preserveExisting: !historyReplace });
         }
       }
