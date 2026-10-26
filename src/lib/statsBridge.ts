@@ -244,7 +244,14 @@ function ensureQuickStatsBoot() {
       if (typeof window !== "undefined" && !(window as any).__dcQuickStatsBridgeHooked) {
         (window as any).__dcQuickStatsBridgeHooked = true;
         window.addEventListener("dc-stats-index-updated", () => {
+          // L'index central vient de changer : invalider AUSSI l'ancien index mémoire
+          // StatsBridge. Sinon Home peut rester à 0/87 alors que Stats affiche déjà
+          // les valeurs reconstruites depuis History.
+          clearStatsIndexCache();
           void hydrateQuickStatsBagFromIndex(true);
+        });
+        window.addEventListener("dc-history-updated", () => {
+          clearStatsIndexCache();
         });
       }
     } catch {}
@@ -2295,10 +2302,22 @@ export const StatsBridge = {
   },
 
   async getBasicProfileStatsAsync(profileId: string): Promise<BasicProfileStats> {
-    // SOURCE UNIQUE : même agrégateur que Stats / Résumés essentiels / Classements.
-    // Important : ne PAS repasser par loadX01SamplesForProfile ici, car cet ancien
-    // extracteur ne couvre pas exactement le même périmètre et provoquait Home=20/100%
-    // pendant que le centre Stats affichait X01=22/50%.
+    // HOME FAST PATH : le Stats Index central est reconstruit juste après History.
+    // Sur Android, l'utiliser en priorité évite de réhydrater 50+ matchs uniquement
+    // pour le premier écran. Si le profil exact n'existe pas dans l'index, on garde
+    // le chemin détaillé historique ci-dessous.
+    try {
+      const bag = await hydrateQuickStatsBagFromIndex(false);
+      const quick = bag?.[String(profileId || "")];
+      if (quick && Number(quick.games || 0) > 0) {
+        return {
+          games: Number(quick.games || 0), wins: Number(quick.wins || 0), winRate: Number(quick.winRate || 0),
+          darts: Number(quick.darts || 0), avg3: Number(quick.avg3 || 0), bestVisit: Number(quick.bestVisit || 0),
+          bestCheckout: Number(quick.bestCheckout || 0), coTotal: 0,
+        };
+      }
+    } catch {}
+    // SOURCE UNIQUE détaillée : fallback History pour profils non encore indexés.
     const x01 = await getX01ProfileStats(profileId, "all", "all");
     return {
       games: x01.games,

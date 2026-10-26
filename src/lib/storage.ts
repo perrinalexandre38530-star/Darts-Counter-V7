@@ -48,7 +48,7 @@ import {
   portableLocalStorageKeysForDomain,
 } from "../data/dataRegistry";
 import { accountOwnedTeams, mergeAccountTeamsPreservingOrganizations } from "../data/organizationDataBoundary";
-import { resolveCanonicalProfileIdFromAlias } from "../data/identityAliases";
+import { resolveCanonicalProfileIdFromAlias, registerCanonicalIdentity } from "../data/identityAliases";
 import {
   clearMediaVaultV2All,
   clearMediaVaultV2ForOwner,
@@ -4057,11 +4057,11 @@ async function restorePortableAccountData(
       mergedStore.teams = mergeAccountTeamsPreservingOrganizations(current?.teams || loadStoredTeams(), portableAccountTeams);
     }
     progress(12, "Restauration des profils et données principales…");
-    // Le snapshot portable contient déjà son coffre média local. Ne jamais
-    // attendre R2/NAS pendant cette étape : une restauration locale doit rester
-    // déterministe et ne pas se figer à 85 % sur une requête distante.
-    const hydrated = await hydrateStoreUserMedia(mergedStore, { allowRemote: false, localOnly: true }).catch(() => ({ store: mergedStore, changed: false }));
-    mergedStore = hydrated?.store || mergedStore;
+    // MOBILE RECOVERY V94: le Media Vault a déjà été importé juste avant.
+    // Ne pas relire 60+ médias IndexedDB ici : même en localOnly, ces lectures
+    // répétées étaient le vrai palier 81-83 % sur Android. On restaure d'abord
+    // les métadonnées en un seul batch ; l'hydratation image se fera ensuite
+    // en tâche de fond et ne bloque plus la restauration.
     restoredDartSetsForRuntime = Array.isArray(mergedStore?.dartSets) ? mergedStore.dartSets : null;
     // Diff local : si le store correspond déjà au backup, aucune recompression /
     // réécriture IndexedDB n'est faite. Sinon une seule écriture batch remplace
@@ -4105,11 +4105,11 @@ async function restorePortableAccountData(
           ...(media.coverDataUrl ? { coverDataUrl: media.coverDataUrl } : {}),
         } : team;
       });
-      const hydratedTeams = await hydrateStoreUserMedia({ teams: portableTeamsWithMedia }, { allowRemote: false, localOnly: true })
-        .then((result) => Array.isArray(result?.store?.teams) ? result.store.teams : portableTeamsWithMedia)
-        .catch(() => portableTeamsWithMedia);
       const currentTeams = loadStoredTeams();
-      const nextTeams = mergeAccountTeamsPreservingOrganizations(currentTeams, hydratedTeams as any[]);
+      // Même principe que pour les profils : aucune hydratation média synchrone
+      // pendant le restore. Les logos déjà embarqués restent présents, les autres
+      // seront résolus paresseusement après le retour UI.
+      const nextTeams = mergeAccountTeamsPreservingOrganizations(currentTeams, portableTeamsWithMedia as any[]);
       if (safeJsonStringify(currentTeams) !== safeJsonStringify(nextTeams)) {
         await withIncrementalRecordingSuppressed(async () => { saveStoredTeams(nextTeams); });
       }
@@ -4590,6 +4590,22 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
       }
     }
 
+    // MOBILE/PC SOURCE UNIQUE : History vient d'être restauré, donc on reconstruit
+    // immédiatement l'index Stats AVANT les profils/médias. Sur Android le scheduler
+    // différé empêchait Home d'être alimenté alors que les pages Stats détaillées
+    // retrouvaient déjà les matchs. On invalide aussi le cache mémoire StatsBridge.
+    report(61, "Reconstruction des statistiques depuis l’historique…");
+    try {
+      const bridge = await import("./statsBridge");
+      try { bridge.clearStatsIndexCache?.(); } catch {}
+      const statsMod = await import("./stats/rebuildStatsFromHistory");
+      await statsMod.refreshStatsIndexFromHistoryNow({ persist: true, reason: "restore-history-ready" });
+      try { bridge.clearStatsIndexCache?.(); } catch {}
+    } catch (statsRestoreError) {
+      console.warn("[storage] stats rebuild after history restore deferred", statsRestoreError);
+    }
+    await yieldIfNeeded(true);
+
   // WAVE 4 : réhydrate d'abord le coffre V2 vérifié, puis garde l'importeur V1
   // uniquement pour les sauvegardes historiques et les médias encore legacy.
   try {
@@ -4674,11 +4690,8 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
     const canonical = Array.isArray(getAllDartSets()) && getAllDartSets().length > 0
       ? getAllDartSets()
       : dartSets;
-    const hydratedDartSets = await hydrateStoreUserMedia({ dartSets: canonical }, { allowRemote: false, localOnly: true })
-      .then((result) => Array.isArray(result?.store?.dartSets) ? result.store.dartSets : canonical)
-      .catch(() => canonical);
-    if (safeJsonStringify(getAllDartSets()) !== safeJsonStringify(hydratedDartSets)) {
-      writeDartSetsToLocalStorage(hydratedDartSets);
+    if (safeJsonStringify(getAllDartSets()) !== safeJsonStringify(canonical)) {
+      writeDartSetsToLocalStorage(canonical);
     }
     await yieldIfNeeded(true);
   }
@@ -4702,11 +4715,8 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
       // après avoir restauré le coffre média, sinon les logos disparaissent au reboot.
       const currentTeams = loadStoredTeams();
       const sourceTeams = Array.isArray(currentTeams) && currentTeams.length ? currentTeams : teams;
-      const hydratedTeams = await hydrateStoreUserMedia({ teams: sourceTeams }, { allowRemote: false, localOnly: true })
-        .then((result) => Array.isArray(result?.store?.teams) ? result.store.teams : sourceTeams)
-        .catch(() => sourceTeams);
       const beforeTeams = loadStoredTeams();
-      const afterTeams = mergeAccountTeamsPreservingOrganizations(beforeTeams, hydratedTeams as any[]);
+      const afterTeams = mergeAccountTeamsPreservingOrganizations(beforeTeams, sourceTeams as any[]);
       if (safeJsonStringify(beforeTeams) !== safeJsonStringify(afterTeams)) {
         saveStoredTeams(afterTeams);
       }
@@ -4822,6 +4832,33 @@ async function normalizeLocalProfilesInStore(): Promise<void> {
   const dedupedById = Array.from(byId.values());
   const accountUserId = String(getStorageUser() || "").trim() || null;
   const canonicalIds = new Set(dedupedById.map((p: any) => String(p?.id || "").trim()).filter(Boolean));
+
+  // Les vieux backups contiennent déjà des preuves fortes dans privateInfo
+  // (canonicalLocalProfileId / linkedLocalProfileIds / accountUserId). Un téléphone
+  // vierge n'a toutefois pas encore le registre WAVE 2. On le reconstruit ici à
+  // partir de CES LIENS EXPLICITES uniquement — jamais à partir du nom.
+  for (const profile of dedupedById) {
+    const pi: any = profile?.privateInfo || profile?.private_info || {};
+    const canonicalId = String(pi?.canonicalLocalProfileId || profile?.canonicalLocalProfileId || "").trim();
+    if (!canonicalId || !canonicalIds.has(canonicalId)) continue;
+    const canonicalProfile = dedupedById.find((candidate: any) => String(candidate?.id || "").trim() === canonicalId) || profile;
+    try {
+      registerCanonicalIdentity({
+        accountUserId,
+        canonicalProfileId: canonicalId,
+        profile: canonicalProfile,
+        legacyProfileIds: [
+          ...(String(profile?.id || "").trim() && String(profile?.id || "").trim() !== canonicalId ? [String(profile.id).trim()] : []),
+          ...(Array.isArray(pi?.linkedLocalProfileIds) ? pi.linkedLocalProfileIds : []),
+        ],
+        accountIds: [
+          pi?.accountUserId,
+          pi?.onlineUserId,
+          ...(Array.isArray(pi?.linkedAccountIds) ? pi.linkedAccountIds : []),
+        ].filter(Boolean),
+      });
+    } catch {}
+  }
   const cleaned = dedupedById.filter((p: any) => {
     const pid = String(p?.id || "").trim();
     if (!pid) return false;
