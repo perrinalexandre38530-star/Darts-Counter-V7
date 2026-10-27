@@ -73,6 +73,35 @@ function extractAuthTokenFromObject(value: any): string {
   ).trim();
 }
 
+function extractPublicSupabaseAccessToken(value: any): string {
+  if (!value || typeof value !== "object") return "";
+
+  const provider = String(value?.authProvider || value?.auth_provider || "").trim().toLowerCase();
+
+  // Une session issue du bridge contient DEUX credentials :
+  // - token/accessToken        => JWT backend (NAS/API)
+  // - supabaseAccessToken      => JWT public Supabase
+  // Pour Google Drive / personal-cloud, le JWT Supabase doit toujours gagner.
+  const explicitSupabase = String(
+    value?.supabaseAccessToken ||
+      value?.supabase_access_token ||
+      value?.session?.supabaseAccessToken ||
+      value?.session?.supabase_access_token ||
+      value?.data?.supabaseAccessToken ||
+      value?.data?.supabase_access_token ||
+      ""
+  ).trim();
+  if (explicitSupabase && isFreshSupabaseAccessToken(explicitSupabase, 15_000)) return explicitSupabase;
+
+  // En session pure Supabase/failover, token/accessToken est bien le JWT Supabase.
+  if (provider === "supabase" || provider === "supabase_failover" || value?.degradedMode === true) {
+    const candidate = extractAuthTokenFromObject(value);
+    if (candidate && isFreshSupabaseAccessToken(candidate, 15_000)) return candidate;
+  }
+
+  return "";
+}
+
 function looksLikeBearerToken(raw: string): boolean {
   const value = String(raw || "").trim();
   if (!value) return false;
@@ -384,9 +413,12 @@ function clearNasAuthBecauseUnauthorized(sourcePath = "") {
     return;
   }
 
+  const personalCloud401 = String(sourcePath || "").startsWith("/account/personal-cloud/");
   try {
-    window.localStorage.removeItem("dc_nas_access_token_v1");
-    window.localStorage.removeItem("dc_nas_refresh_token_v1");
+    if (!personalCloud401) {
+      window.localStorage.removeItem("dc_nas_access_token_v1");
+      window.localStorage.removeItem("dc_nas_refresh_token_v1");
+    }
     // CRITIQUE: dc_online_auth_supabase_v1 porte aussi la session publique du
     // compte MULTISPORTS. Un 401 NAS ne doit jamais détruire cette session,
     // sinon Google Drive et toutes les sauvegardes compte tombent en cascade.
@@ -422,7 +454,7 @@ function readPublicAccountSessionForNasBridge(): { accessToken: string; nickname
 
   if (!isPublicAccountSession) return null;
 
-  const accessToken = extractAuthTokenFromObject(parsed);
+  const accessToken = extractPublicSupabaseAccessToken(parsed);
   if (!accessToken || !looksLikeBearerToken(accessToken)) return null;
 
   const nickname = String(
@@ -450,9 +482,16 @@ function persistFreshCompatSupabaseToken(accessToken: string, userId: string): v
       const provider = String(parsed?.authProvider || parsed?.auth_provider || "").trim().toLowerCase();
       const isPublic = provider === "supabase" || provider === "supabase_failover" || parsed?.degradedMode === true || !!parsed?.supabaseUserId;
       if (!isPublic) continue;
-      parsed.token = accessToken;
-      parsed.accessToken = accessToken;
-      parsed.access_token = accessToken;
+      // Ne jamais écraser le JWT backend d'une session bridge avec le JWT public.
+      // On maintient un champ Supabase explicite et on ne met à jour token/accessToken
+      // que pour les sessions Supabase pures/failover.
+      parsed.supabaseAccessToken = accessToken;
+      parsed.supabase_access_token = accessToken;
+      if (provider === "supabase" || provider === "supabase_failover" || parsed?.degradedMode === true) {
+        parsed.token = accessToken;
+        parsed.accessToken = accessToken;
+        parsed.access_token = accessToken;
+      }
       if (userId) parsed.supabaseUserId = userId;
       storage.setItem("dc_online_auth_supabase_v1", JSON.stringify(parsed));
     } catch {}
@@ -728,8 +767,8 @@ export function readAccountAccessToken(): string {
       !!parsed?.supabaseUserId;
 
     if (isPublicAccountSession) {
-      const publicToken = extractAuthTokenFromObject(parsed);
-      if (publicToken && isFreshSupabaseAccessToken(publicToken, 15_000)) return publicToken;
+      const publicToken = extractPublicSupabaseAccessToken(parsed);
+      if (publicToken) return publicToken;
     }
   }
 
