@@ -80,11 +80,24 @@ export type SportLiveLocaleProfile = {
   fallbackRegions: SportLiveRegion[];
 };
 
+export type SportLiveEvent = {
+  id: string;
+  title: string;
+  subtitle?: string | null;
+  startsAt?: string | null;
+  dateLabel?: string | null;
+  status: "live" | "upcoming" | "result" | "info";
+  sourceName?: string | null;
+  sourceUrl?: string | null;
+  watchUrl?: string | null;
+  resultLabel?: string | null;
+};
+
 export type SportLiveOverview = {
   sport: SportLiveSportId;
   automaticData: boolean;
   configured: boolean;
-  provider: "dartsapi" | "official_links";
+  provider: "dartsapi" | "tabletennisapi" | "itsf_official" | "molkky_world" | "fipjp_official" | "official_links";
   plan?: string | null;
   dataAsOf?: string | null;
   liveAvailable: boolean;
@@ -92,5 +105,6 @@ export type SportLiveOverview = {
   live: DartsLiveMatch[];
   fixtures: DartsLiveFixture[];
   results: DartsLiveResult[];
+  events?: SportLiveEvent[];
   warnings?: string[];
 };

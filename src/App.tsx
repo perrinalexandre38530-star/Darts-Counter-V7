@@ -7639,6 +7639,7 @@ case "babyfoot_team_edit":
   // ni dans les pages Play, Cast, Viewer, Auth, sous-pages Stats/Tournois/Profils, etc.
   const SPORT_QUICK_SWITCH_ALLOWED_TABS = new Set<Tab>([
     "home",        // Accueil
+    "live",        // LIVE SPORTS : même médaillon flottant que la Home
     "organization_home", // Accueil organisation : mêmes contrôles flottants que Home
     "profiles",    // Profils
     "games",       // Local
@@ -7762,7 +7763,7 @@ case "babyfoot_team_edit":
             collisionKey={String(tab)}
             landscapeHeaderDocked={landscapeHeaderDocked}
             onAfterSwitch={() => {
-              if (tab === "home" || tab === "organization_home" || tab === "games" || tab === "stats" || tab === "statsHub" || tab === "tournaments") return;
+              if (tab === "home" || tab === "live" || tab === "organization_home" || tab === "games" || tab === "stats" || tab === "statsHub" || tab === "tournaments") return;
               go("home");
             }}
           />

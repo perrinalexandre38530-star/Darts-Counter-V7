@@ -1,12 +1,15 @@
 import type { SportId } from "../contexts/SportContext";
-import { fetchDartsLiveOverview } from "../dartsLive/liveApi";
-import type { SportLiveOverview } from "./types";
+import type { SportLiveOverview, SportLiveSportId } from "./types";
 
-const CACHE_PREFIX = "msc_sport_live_cache_v1:";
+const CACHE_PREFIX = "msc_sport_live_cache_v2:";
+
+function isSupportedSport(value: SportId): value is SportLiveSportId {
+  return ["darts", "petanque", "pingpong", "babyfoot", "molkky", "padel", "badminton", "cornhole", "palet", "bowling"].includes(String(value));
+}
 
 function emptyOverview(sport: SportId): SportLiveOverview {
   return {
-    sport,
+    sport: (isSupportedSport(sport) ? sport : "darts") as SportLiveSportId,
     automaticData: false,
     configured: false,
     provider: "official_links",
@@ -17,6 +20,7 @@ function emptyOverview(sport: SportId): SportLiveOverview {
     live: [],
     fixtures: [],
     results: [],
+    events: [],
     warnings: [],
   };
 }
@@ -44,14 +48,30 @@ export function getCachedSportLiveOverview(sport: SportId): SportLiveOverview | 
 }
 
 export async function fetchSportLiveOverview(sport: SportId, signal?: AbortSignal): Promise<SportLiveOverview> {
-  if (sport !== "darts") return emptyOverview(sport);
+  if (!isSupportedSport(sport)) return emptyOverview(sport);
 
   try {
-    const darts = await fetchDartsLiveOverview(signal);
+    const response = await fetch(`/api/sports-live/${encodeURIComponent(sport)}/overview`, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      signal,
+    });
+    const body = await response.json().catch(() => null) as any;
+    if (!response.ok) {
+      throw new Error(String(body?.message || body?.error || `LIVE SPORTS HTTP ${response.status}`));
+    }
     const overview: SportLiveOverview = {
-      ...darts,
+      ...emptyOverview(sport),
+      ...(body || {}),
       sport,
-      automaticData: !!darts.configured,
+      automaticData: !!body?.automaticData,
+      configured: !!body?.configured,
+      live: Array.isArray(body?.live) ? body.live : [],
+      fixtures: Array.isArray(body?.fixtures) ? body.fixtures : [],
+      results: Array.isArray(body?.results) ? body.results : [],
+      events: Array.isArray(body?.events) ? body.events : [],
+      warnings: Array.isArray(body?.warnings) ? body.warnings : [],
     };
     writeCache(sport, overview);
     return overview;

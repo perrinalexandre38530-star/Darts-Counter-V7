@@ -5,7 +5,6 @@ import type { SportId } from "../contexts/SportContext";
 import type { DartsLiveFixture, DartsLiveMatch, DartsLivePlayer, DartsLiveResult } from "../dartsLive/types";
 import {
   SPORT_LIVE_META,
-  SPORT_LIVE_ORDER,
   SPORT_LIVE_REGION_LABELS,
   getAvailableRegions,
   getLocaleProfile,
@@ -13,7 +12,7 @@ import {
   getSportSources,
 } from "./catalog";
 import { fetchSportLiveOverview, getCachedSportLiveOverview } from "./liveApi";
-import type { SportLiveOverview, SportLiveRegion, SportLiveSource } from "./types";
+import type { SportLiveEvent, SportLiveOverview, SportLiveRegion, SportLiveSource } from "./types";
 import { isLiveSportsSupportedSport } from "./support";
 
 type View = "overview" | "live" | "fixtures" | "results" | "sources";
@@ -29,6 +28,16 @@ type TickerItem = {
 };
 
 const REFRESH_MS = 15 * 60 * 1000;
+
+function refreshIntervalFor(sport: SportId, feed: SportLiveOverview | null) {
+  if (!feed?.configured) return null;
+  if (feed.liveAvailable) {
+    if (sport === "pingpong") return 30 * 1000;
+    if (sport === "darts") return 2 * 60 * 1000;
+  }
+  if (sport === "babyfoot" || sport === "molkky" || sport === "petanque") return 30 * 60 * 1000;
+  return REFRESH_MS;
+}
 
 function niceRound(value: string | null | undefined) {
   const raw = String(value || "").trim();
@@ -127,7 +136,7 @@ function LiveStyles() {
         align-items: flex-end;
         justify-content: space-between;
         gap: 12px;
-        padding: 8px 2px 14px;
+        padding: 8px 66px 14px 2px;
         border-bottom: 1px solid var(--live-line);
       }
       .msc-live-kicker { font-size: 11px; letter-spacing: 1.7px; font-weight: 1000; color: #aeb5bf; }
@@ -139,21 +148,6 @@ function LiveStyles() {
         color: #fff; background: #10151b; font-size: 19px; font-weight: 1000; cursor: pointer;
       }
       .msc-live-refresh:disabled { opacity: .45; cursor: default; }
-      .msc-live-sports {
-        display: flex; gap: 8px; overflow-x: auto; padding: 13px 0 11px; scrollbar-width: none;
-        border-bottom: 1px solid var(--live-line);
-      }
-      .msc-live-sports::-webkit-scrollbar { display:none; }
-      .msc-live-sport {
-        flex: 0 0 auto; display:flex; align-items:center; gap:8px; min-height:46px; padding: 8px 13px;
-        border-radius: 14px; border: 1px solid #2b333d; background: #0d1116; color: #c9d0d8;
-        font-weight: 950; font-size: 12px; cursor:pointer;
-      }
-      .msc-live-sport.is-active {
-        color:#fff; border-color: var(--live-accent); background: linear-gradient(180deg,var(--live-accent),var(--live-accent-dark));
-        box-shadow: 0 8px 18px var(--live-accent-shadow);
-      }
-      .msc-live-sport-icon { font-size: 19px; line-height:1; }
       .msc-score-ticker {
         display:grid; grid-template-columns: 112px 1fr; margin: 12px -12px 0; min-height:72px;
         border-top:1px solid #272e36; border-bottom:1px solid #272e36; background:#0a0d11; overflow:hidden;
@@ -213,6 +207,25 @@ function LiveStyles() {
       .msc-source-link {
         flex:0 0 auto; display:inline-flex; align-items:center; gap:5px; min-height:29px; padding:5px 8px; border-radius:7px;
         border:1px solid #3d4854; color:#e5e9ee; background:#0b0f14; text-decoration:none; font-size:10.5px; font-weight:900;
+      }
+      .msc-event-card {
+        display:grid; grid-template-columns:64px minmax(0,1fr) auto; gap:12px; align-items:center;
+        padding:12px; margin-bottom:9px; border:1px solid #29313a; border-radius:13px; background:#0d1116;
+      }
+      .msc-event-date {
+        min-height:54px; display:grid; place-items:center; padding:7px 5px; border-radius:10px; text-align:center;
+        background:#151b22; border:1px solid #323b45; color:#f1f4f7; font-size:10px; line-height:1.15; font-weight:1000;
+      }
+      .msc-event-title { font-size:14px; font-weight:1000; line-height:1.18; }
+      .msc-event-sub { margin-top:4px; color:#8f99a5; font-size:11px; line-height:1.3; }
+      .msc-event-result { margin-top:6px; color:#ffd45b; font-size:11.5px; font-weight:1000; }
+      .msc-event-link {
+        min-height:32px; display:inline-flex; align-items:center; justify-content:center; padding:6px 9px; border-radius:8px;
+        border:1px solid #3b4651; color:#fff; text-decoration:none; background:#131920; font-size:10px; font-weight:1000;
+      }
+      @media (max-width:520px) {
+        .msc-event-card { grid-template-columns:58px minmax(0,1fr); }
+        .msc-event-card .msc-event-link { grid-column:1 / -1; width:100%; }
       }
       .msc-match-body {
         position:relative; display:grid; grid-template-columns:minmax(0,1fr) 94px minmax(0,1fr); align-items:center; gap:8px;
@@ -275,23 +288,6 @@ function LiveStyles() {
         .msc-match-code { min-width:48px; }
       }
     `}</style>
-  );
-}
-
-function SportSelector({ sport, setSport }: { sport: SportId; setSport: (sport: SportId) => void }) {
-  return (
-    <div className="msc-live-sports">
-      {SPORT_LIVE_ORDER.map((id) => {
-        const meta = SPORT_LIVE_META[id];
-        const active = id === sport;
-        return (
-          <button key={id} type="button" className={`msc-live-sport${active ? " is-active" : ""}`} onClick={() => setSport(id)} aria-pressed={active}>
-            <span className="msc-live-sport-icon">{meta.icon}</span>
-            <span>{meta.shortLabel.toUpperCase()}</span>
-          </button>
-        );
-      })}
-    </div>
   );
 }
 
@@ -446,6 +442,25 @@ function ResultMatchCard({ item, source, lang }: { item: DartsLiveResult; source
   );
 }
 
+function OfficialEventCard({ event }: { event: SportLiveEvent }) {
+  const href = event.watchUrl || event.sourceUrl || null;
+  const statusLabel = event.status === "live" ? "LIVE" : event.status === "result" ? "RÉSULTAT" : event.status === "upcoming" ? "À VENIR" : "INFO";
+  return (
+    <article className="msc-event-card">
+      <div className="msc-event-date">
+        <div>{statusLabel}</div>
+        {event.dateLabel ? <div style={{ marginTop: 4, opacity: .75 }}>{event.dateLabel}</div> : null}
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div className="msc-event-title" translate="no" data-i18n-skip="true">{event.title}</div>
+        {event.subtitle ? <div className="msc-event-sub" translate="no" data-i18n-skip="true">{event.subtitle}</div> : null}
+        {event.resultLabel ? <div className="msc-event-result" translate="no" data-i18n-skip="true">{event.resultLabel}</div> : null}
+      </div>
+      {href ? <a className="msc-event-link" href={href} target="_blank" rel="noreferrer noopener">{event.watchUrl ? "▶ REGARDER" : "OUVRIR"}</a> : null}
+    </article>
+  );
+}
+
 function EmptySection({ title, copy, sources }: { title: string; copy: string; sources: SportLiveSource[] }) {
   const usable = sources.filter((source) => source.scoresUrl || source.watchUrl || source.resultsUrl || source.calendarUrl || source.homeUrl).slice(0, 4);
   return (
@@ -513,6 +528,16 @@ function buildTicker(feed: SportLiveOverview | null, lang: string, sportLabel: s
       meta: `${row.competition || "Résultat"} · ${formatDate(row.playedOn, lang)}`,
     });
   });
+  (feed?.events || []).slice(0, 5).forEach((event) => {
+    items.push({
+      id: `event-${event.id}`,
+      sport: sportLabel,
+      label: event.title,
+      score: event.resultLabel || undefined,
+      meta: `${event.status === "result" ? "Résultat" : event.status === "live" ? "Live" : "Événement"} · ${event.dateLabel || event.sourceName || "Officiel"}`,
+      live: event.status === "live",
+    });
+  });
   if (!items.length) {
     sources.slice(0, 3).forEach((source) => {
       items.push({
@@ -528,7 +553,7 @@ function buildTicker(feed: SportLiveOverview | null, lang: string, sportLabel: s
 
 export default function SportLiveHub() {
   const { lang } = useLang();
-  const { sport, setSport } = useSport();
+  const { sport } = useSport();
   const supportedSport = isLiveSportsSupportedSport(sport);
   const liveSport = supportedSport ? sport : "darts";
   const meta = SPORT_LIVE_META[liveSport];
@@ -540,7 +565,7 @@ export default function SportLiveHub() {
   const [view, setView] = React.useState<View>("overview");
   const [region, setRegion] = React.useState<RegionFilter>("recommended");
   const [feed, setFeed] = React.useState<SportLiveOverview | null>(() => getCachedSportLiveOverview(liveSport));
-  const [loading, setLoading] = React.useState(liveSport === "darts");
+  const [loading, setLoading] = React.useState(true);
   const [feedError, setFeedError] = React.useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = React.useState<number | null>(null);
 
@@ -555,7 +580,7 @@ export default function SportLiveHub() {
     let active = true;
     const controller = new AbortController();
     const run = async (quiet = false) => {
-      if (!quiet) setLoading(liveSport === "darts");
+      if (!quiet) setLoading(true);
       try {
         const next = await fetchSportLiveOverview(liveSport, controller.signal);
         if (!active) return;
@@ -570,16 +595,17 @@ export default function SportLiveHub() {
       }
     };
     void run(false);
-    const timer = liveSport === "darts" ? window.setInterval(() => void run(true), REFRESH_MS) : null;
+    const refreshMs = refreshIntervalFor(liveSport, feed);
+    const timer = refreshMs ? window.setInterval(() => void run(true), refreshMs) : null;
     return () => {
       active = false;
       controller.abort();
       if (timer !== null) window.clearInterval(timer);
     };
-  }, [liveSport]);
+  }, [liveSport, !!feed?.configured, !!feed?.liveAvailable]);
 
   const refresh = React.useCallback(async () => {
-    setLoading(liveSport === "darts");
+    setLoading(true);
     setFeedError(null);
     try {
       const next = await fetchSportLiveOverview(liveSport);
@@ -601,6 +627,10 @@ export default function SportLiveHub() {
   const liveRows = feed?.live || [];
   const fixtureRows = feed?.fixtures || [];
   const resultRows = feed?.results || [];
+  const eventRows = feed?.events || [];
+  const liveEvents = eventRows.filter((event) => event.status === "live");
+  const upcomingEvents = eventRows.filter((event) => event.status === "upcoming" || event.status === "info");
+  const resultEvents = eventRows.filter((event) => event.status === "result");
   const sourceForCards = recommended.find((source) => !!source.watchUrl) || recommended.find((source) => !!source.scoresUrl) || recommended[0] || null;
   const ticker = React.useMemo(() => buildTicker(feed, lang, meta.label, recommended), [feed, lang, meta.label, recommended]);
   const isOnline = typeof navigator === "undefined" ? true : navigator.onLine;
@@ -628,13 +658,14 @@ export default function SportLiveHub() {
         </button>
       </header>
 
-      <SportSelector sport={sport} setSport={setSport} />
       <ScoreTicker items={ticker} sportLabel={meta.label} />
 
       <div className="msc-info-strip">
         <span className="msc-info-chip">{isOnline ? "● ONLINE" : "○ HORS LIGNE"}</span>
         <span className="msc-info-chip">{localeProfile.label}</span>
         <span className="msc-info-chip">{recommended.length} SOURCES OFFICIELLES</span>
+        {feed?.configured ? <span className="msc-info-chip">AUTO · {String(feed.provider || "DATA").toUpperCase()}</span> : null}
+        {feed?.configured && feed?.plan ? <span className="msc-info-chip">PLAN {String(feed.plan).toUpperCase()}</span> : null}
         {updatedAt ? <span className="msc-info-chip">MAJ {new Date(updatedAt).toLocaleTimeString()}</span> : null}
         {feedError ? <span className="msc-info-chip">DONNÉES LIVE INDISPONIBLES</span> : null}
       </div>
@@ -654,7 +685,7 @@ export default function SportLiveHub() {
       {!supportedSport ? (
         <section className="msc-live-section">
           <SectionHeader title="INDISPONIBLE" />
-          <EmptySection title="LIVE SPORTS n’est pas encore câblé pour ce sport." copy="Choisis une discipline disponible dans le sélecteur ci-dessus. Aucun résultat d’un autre sport n’est affiché à sa place." sources={[]} />
+          <EmptySection title="LIVE SPORTS n’est pas encore câblé pour ce sport." copy="Utilise le logo flottant du sport, en haut à droite comme sur la Home, pour changer de discipline. Aucun résultat d’un autre sport n’est affiché à sa place." sources={[]} />
         </section>
       ) : null}
 
@@ -662,21 +693,21 @@ export default function SportLiveHub() {
         <>
           <section className="msc-live-section">
             <SectionHeader title="EN DIRECT" count={liveRows.length ? `${liveRows.length} match${liveRows.length > 1 ? "s" : ""}` : ""} />
-            {liveRows.length ? liveRows.slice(0, 4).map((item) => <LiveMatchCard key={item.id} item={item} source={sourceForCards} />) : (
+            {liveRows.length ? liveRows.slice(0, 4).map((item) => <LiveMatchCard key={item.id} item={item} source={sourceForCards} />) : liveEvents.length ? liveEvents.slice(0, 4).map((event) => <OfficialEventCard key={event.id} event={event} />) : (
               <EmptySection title="Aucun match en direct pour le moment" copy="Dès qu’un provider de score est disponible, le match apparaîtra ici automatiquement. Les sources officielles restent accessibles." sources={recommended.filter((source) => source.scoresUrl || source.watchUrl)} />
             )}
           </section>
 
           <section className="msc-live-section">
             <SectionHeader title="À VENIR" count={fixtureRows.length ? `${fixtureRows.length} match${fixtureRows.length > 1 ? "s" : ""}` : ""} />
-            {fixtureRows.length ? fixtureRows.slice(0, 4).map((item) => <FixtureMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />) : (
+            {fixtureRows.length ? fixtureRows.slice(0, 4).map((item) => <FixtureMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />) : upcomingEvents.length ? upcomingEvents.slice(0, 6).map((event) => <OfficialEventCard key={event.id} event={event} />) : (
               <EmptySection title="Programme officiel" copy="Consulte les calendriers des circuits officiels de cette discipline." sources={recommended.filter((source) => source.calendarUrl)} />
             )}
           </section>
 
           <section className="msc-live-section">
             <SectionHeader title="RÉSULTATS" count={resultRows.length ? `${resultRows.length} match${resultRows.length > 1 ? "s" : ""}` : ""} />
-            {resultRows.length ? resultRows.slice(0, 5).map((item) => <ResultMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />) : (
+            {resultRows.length ? resultRows.slice(0, 5).map((item) => <ResultMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />) : resultEvents.length ? resultEvents.slice(0, 6).map((event) => <OfficialEventCard key={event.id} event={event} />) : (
               <EmptySection title="Derniers résultats" copy="Retrouve les résultats sur les sources officielles. Ils seront affichés ici directement dès qu’un flux de données compatible sera connecté." sources={recommended.filter((source) => source.resultsUrl)} />
             )}
           </section>
@@ -686,21 +717,21 @@ export default function SportLiveHub() {
       {supportedSport && view === "live" ? (
         <section className="msc-live-section">
           <SectionHeader title="EN DIRECT" count={liveRows.length ? `${liveRows.length} match${liveRows.length > 1 ? "s" : ""}` : ""} />
-          {liveRows.length ? liveRows.map((item) => <LiveMatchCard key={item.id} item={item} source={sourceForCards} />) : <EmptySection title="Aucun direct détecté" copy="Les liens de suivi et de diffusion officiels restent disponibles ci-dessous." sources={recommended.filter((source) => source.scoresUrl || source.watchUrl)} />}
+          {liveRows.length ? liveRows.map((item) => <LiveMatchCard key={item.id} item={item} source={sourceForCards} />) : liveEvents.length ? liveEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Aucun direct détecté" copy="Les liens de suivi et de diffusion officiels restent disponibles ci-dessous." sources={recommended.filter((source) => source.scoresUrl || source.watchUrl)} />}
         </section>
       ) : null}
 
       {supportedSport && view === "fixtures" ? (
         <section className="msc-live-section">
           <SectionHeader title="À VENIR" count={fixtureRows.length ? `${fixtureRows.length} match${fixtureRows.length > 1 ? "s" : ""}` : ""} />
-          {fixtureRows.length ? fixtureRows.map((item) => <FixtureMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />) : <EmptySection title="Calendriers officiels" copy="Aucune donnée automatique n’est chargée. Consulte les calendriers officiels disponibles." sources={recommended.filter((source) => source.calendarUrl)} />}
+          {fixtureRows.length ? fixtureRows.map((item) => <FixtureMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />) : upcomingEvents.length ? upcomingEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Calendriers officiels" copy="Aucune donnée automatique n’est chargée. Consulte les calendriers officiels disponibles." sources={recommended.filter((source) => source.calendarUrl)} />}
         </section>
       ) : null}
 
       {supportedSport && view === "results" ? (
         <section className="msc-live-section">
           <SectionHeader title="RÉSULTATS" count={resultRows.length ? `${resultRows.length} match${resultRows.length > 1 ? "s" : ""}` : ""} />
-          {resultRows.length ? resultRows.map((item) => <ResultMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />) : <EmptySection title="Résultats officiels" copy="Aucun résultat automatique n’est chargé pour l’instant. Ouvre une source officielle pour consulter les derniers scores." sources={recommended.filter((source) => source.resultsUrl)} />}
+          {resultRows.length ? resultRows.map((item) => <ResultMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />) : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Résultats officiels" copy="Aucun résultat automatique n’est chargé pour l’instant. Ouvre une source officielle pour consulter les derniers scores." sources={recommended.filter((source) => source.resultsUrl)} />}
         </section>
       ) : null}
 
