@@ -13,10 +13,20 @@ import {
 import { appendTrainingVisit, recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
 
 const DOUBLES_8_TARGETS = [20, 18, 16, 12, 10, 8, 4, 2] as const;
+const normalizeDoublesTargets = (value: any): number[] => {
+  const raw = Array.isArray(value) && value.length ? value : DOUBLES_8_TARGETS;
+  const out: number[] = [];
+  for (const item of raw) { const n = Math.max(1, Math.min(20, Math.round(Number(item) || 20))); if (!out.includes(n)) out.push(n); }
+  return out.length ? out : [...DOUBLES_8_TARGETS];
+};
 
 export default function ChallengesPlay({ config, onExit }: { config: any; onExit: () => void }) {
   const challengeId = String(config?.challengeId || config?.id || "3_DOUBLES_9");
-  const maxDarts = Math.max(1, Math.floor(Number(config?.darts || (challengeId === "DOUBLES_8_BONUS" ? 75 : challengeId === "CHECKOUT_40_3" ? 3 : 9))));
+  const doublesTargets = normalizeDoublesTargets(config?.doublesTargets);
+  const doubles8VisitsMax = doublesTargets.length * 3 + 1;
+  const doubles8MaxDarts = doublesTargets.length * 9 + 3;
+  const doubles8MaxScore = doublesTargets.length * 300 + 150;
+  const maxDarts = Math.max(1, Math.floor(Number(challengeId === "DOUBLES_8_BONUS" ? doubles8MaxDarts : config?.darts || (challengeId === "CHECKOUT_40_3" ? 3 : 9))));
   const bonusDouble = Math.max(1, Math.min(20, Math.floor(Number(config?.bonusDouble || 20))));
   const sequence = Array.isArray(config?.seq) ? config.seq.map(String) : ["BULL", "T20", "D20"];
   const startedAtRef = React.useRef(Date.now());
@@ -39,7 +49,7 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
     challengeId === "BULL_T20_D20"
       ? "BULL → T20 → D20"
       : challengeId === "DOUBLES_8_BONUS"
-      ? "8 DOUBLES · 9 FLÉCHETTES"
+      ? (doublesTargets.length === DOUBLES_8_TARGETS.length && doublesTargets.every((n, i) => n === DOUBLES_8_TARGETS[i]) ? "8 DOUBLES · 9 FLÉCHETTES" : `${doublesTargets.length} DOUBLE${doublesTargets.length > 1 ? 'S' : ''} PERSONNALISÉ${doublesTargets.length > 1 ? 'S' : ''}`)
       : challengeId === "CHECKOUT_40_3"
       ? "CHECKOUT 40"
       : "3 DOUBLES / 9";
@@ -57,7 +67,7 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
           : challengeId === "BULL_T20_D20"
           ? Math.min(1, data.sequenceIndex / Math.max(1, sequence.length))
           : challengeId === "DOUBLES_8_BONUS"
-          ? Math.min(1, data.doubles8Visits / 25)
+          ? Math.min(1, data.doubles8Visits / doubles8VisitsMax)
           : success
           ? 1
           : 0;
@@ -82,6 +92,7 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
         bonusDouble,
         bonusHits: data.bonusHits,
         perDoubleHits: { ...data.perDoubleHits },
+        doublesTargets: [...doublesTargets],
       };
 
       recordSoloTrainingResult({
@@ -99,7 +110,7 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
       });
       setResult({ success, stats, metrics });
     },
-    [bonusDouble, challengeId, config, maxDarts, sequence.length, title]
+    [bonusDouble, challengeId, config, doubles8VisitsMax, doublesTargets, maxDarts, sequence.length, title]
   );
 
   const onVisit = React.useCallback(
@@ -125,8 +136,8 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
 
       if (challengeId === "DOUBLES_8_BONUS") {
         const visitIndex = Math.max(0, visitHistoryRef.current.length - 1);
-        const bonusVisit = visitIndex >= 24;
-        const target = bonusVisit ? bonusDouble : DOUBLES_8_TARGETS[Math.min(DOUBLES_8_TARGETS.length - 1, Math.floor(visitIndex / 3))];
+        const bonusVisit = visitIndex >= doublesTargets.length * 3;
+        const target = bonusVisit ? bonusDouble : doublesTargets[Math.min(doublesTargets.length - 1, Math.floor(visitIndex / 3))];
         const targetHits = darts.filter((dart) => dart.v === target && dart.mult === 2).length;
         data.darts += darts.length;
         data.hits += targetHits;
@@ -139,7 +150,7 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
           data.points += targetHits >= 3 ? 100 : targetHits === 2 ? 30 : targetHits === 1 ? 10 : 0;
         }
         rerender();
-        if (data.doubles8Visits >= 25 || data.darts >= maxDarts) finish(true);
+        if (data.doubles8Visits >= doubles8VisitsMax || data.darts >= maxDarts) finish(true);
         return;
       }
 
@@ -180,12 +191,12 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
 
       rerender();
     },
-    [bonusDouble, challengeId, finish, maxDarts, sequence]
+    [bonusDouble, challengeId, doubles8VisitsMax, doublesTargets, finish, maxDarts, sequence]
   );
 
   const data = dataRef.current;
-  const doubles8VisitIndex = Math.max(0, Math.min(24, data.doubles8Visits));
-  const doubles8Target = doubles8VisitIndex >= 24 ? bonusDouble : DOUBLES_8_TARGETS[Math.min(DOUBLES_8_TARGETS.length - 1, Math.floor(doubles8VisitIndex / 3))];
+  const doubles8VisitIndex = Math.max(0, Math.min(doubles8VisitsMax - 1, data.doubles8Visits));
+  const doubles8Target = doubles8VisitIndex >= doublesTargets.length * 3 ? bonusDouble : doublesTargets[Math.min(doublesTargets.length - 1, Math.floor(doubles8VisitIndex / 3))];
   const currentTarget =
     challengeId === "3_DOUBLES_9"
       ? "DOUBLE"
@@ -205,7 +216,7 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
       ? 1
       : 0;
   const progressMax =
-    challengeId === "3_DOUBLES_9" ? 3 : challengeId === "BULL_T20_D20" ? sequence.length : challengeId === "DOUBLES_8_BONUS" ? 25 : 1;
+    challengeId === "3_DOUBLES_9" ? 3 : challengeId === "BULL_T20_D20" ? sequence.length : challengeId === "DOUBLES_8_BONUS" ? doubles8VisitsMax : 1;
 
   return (
     <>
@@ -225,20 +236,20 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
                 : challengeId === "BULL_T20_D20"
                 ? "Valide BULL, puis T20, puis D20 dans cet ordre en douze fléchettes maximum."
                 : challengeId === "DOUBLES_8_BONUS"
-                ? `Joue D20, D18, D16, D12, D10, D8, D4 et D2 : trois volées par double. 1 touche = 10 pts, 2 = 30 pts, 3 = 100 pts. Termine par une volée bonus sur D${bonusDouble}, +50 pts par touche.`
+                ? `Joue ${doublesTargets.map((n) => `D${n}`).join(', ')} : trois volées par double. 1 touche = 10 pts, 2 = 30 pts, 3 = 100 pts. Termine par une volée bonus sur D${bonusDouble}, +50 pts par touche.`
                 : "Fais exactement 40 en trois fléchettes maximum et termine sur un double."}
             </p>
           </>
         }
         eyebrow={title}
         target={currentTarget}
-        targetHint={challengeId === "DOUBLES_8_BONUS" ? `Volée ${Math.min(25, data.doubles8Visits + 1)} / 25 · ${data.darts} / ${maxDarts} fléchettes` : `${data.darts} / ${maxDarts} fléchettes utilisées`}
+        targetHint={challengeId === "DOUBLES_8_BONUS" ? `Volée ${Math.min(doubles8VisitsMax, data.doubles8Visits + 1)} / ${doubles8VisitsMax} · ${data.darts} / ${maxDarts} fléchettes` : `${data.darts} / ${maxDarts} fléchettes utilisées`}
         progress={{ value: progressValue, max: progressMax, label: "OBJECTIF" }}
         kpis={[
           { label: "DARTS", value: `${data.darts}/${maxDarts}` },
           { label: "VALIDÉS", value: data.hits },
           { label: "POINTS", value: data.points },
-          { label: challengeId === "DOUBLES_8_BONUS" ? "VOLÉES" : "RESTE", value: challengeId === "DOUBLES_8_BONUS" ? `${data.doubles8Visits}/25` : Math.max(0, maxDarts - data.darts) },
+          { label: challengeId === "DOUBLES_8_BONUS" ? "VOLÉES" : "RESTE", value: challengeId === "DOUBLES_8_BONUS" ? `${data.doubles8Visits}/${doubles8VisitsMax}` : Math.max(0, maxDarts - data.darts) },
         ]}
       >
         <TrainingDartPad
@@ -249,7 +260,7 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
               {challengeId === "CHECKOUT_40_3"
                 ? "Saisis ta tentative puis valide la volée : le défi s'arrête immédiatement."
                 : challengeId === "DOUBLES_8_BONUS"
-                ? "Valide chaque volée de 3 fléchettes. Le double cible change automatiquement toutes les 3 volées ; la 25e est la volée bonus."
+                ? `Valide chaque volée de 3 fléchettes. Le double cible change automatiquement toutes les 3 volées ; la ${doubles8VisitsMax}e est la volée bonus.`
                 : "Le défi s'arrête dès que l'objectif est atteint ou la limite de fléchettes consommée."}
             </div>
           }
@@ -269,7 +280,7 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
             ? [
                 { label: "DÉFI", value: result.metrics.title },
                 { label: "DARTS UTILISÉES", value: `${result.metrics.dartsUsed}/${result.metrics.maxDarts}` },
-                ...(challengeId === "DOUBLES_8_BONUS" ? [{ label: "SCORE CHALLENGE", value: `${Math.round(result.metrics.score)} / 2550` }, { label: `BONUS D${result.metrics.bonusDouble}`, value: `${result.metrics.bonusHits} touche${result.metrics.bonusHits > 1 ? "s" : ""} · ${result.metrics.bonusHits * 50} pts` }] : []),
+                ...(challengeId === "DOUBLES_8_BONUS" ? [{ label: "SCORE CHALLENGE", value: `${Math.round(result.metrics.score)} / ${doubles8MaxScore}` }, { label: `BONUS D${result.metrics.bonusDouble}`, value: `${result.metrics.bonusHits} touche${result.metrics.bonusHits > 1 ? "s" : ""} · ${result.metrics.bonusHits * 50} pts` }] : []),
                 { label: "PROGRESSION", value: `${Math.round(result.metrics.completionPct)}%` },
                 { label: "PRÉCISION", value: `${Math.round(result.metrics.accuracyPct)}%` },
               ]

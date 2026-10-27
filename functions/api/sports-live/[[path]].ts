@@ -58,6 +58,68 @@ function isoDate(d: Date) {
   return d.toISOString().slice(0, 10);
 }
 
+const EN_MONTHS: Record<string, number> = {
+  jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, apr: 3, april: 3, may: 4,
+  jun: 5, june: 5, jul: 6, july: 6, aug: 7, august: 7, sep: 8, sept: 8, september: 8,
+  oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11,
+};
+
+const FR_MONTHS: Record<string, number> = {
+  janv: 0, janvier: 0, fevr: 1, fevrier: 1, févr: 1, février: 1, mars: 2, avr: 3, avril: 3, mai: 4,
+  juin: 5, juil: 6, juillet: 6, aout: 7, août: 7, sept: 8, septembre: 8, oct: 9, octobre: 9,
+  nov: 10, novembre: 10, dec: 11, déc: 11, decembre: 11, décembre: 11,
+};
+
+function dayUtc(year: number, month: number, day: number) {
+  return new Date(Date.UTC(year, month, day, 12, 0, 0));
+}
+
+function inferYear(month: number, explicitYear?: number | null) {
+  if (explicitYear && explicitYear >= 2000) return explicitYear;
+  const now = new Date();
+  const currentYear = now.getUTCFullYear();
+  const currentMonth = now.getUTCMonth();
+  // Calendars that omit the year generally mean the nearest season occurrence.
+  if (month + 5 < currentMonth) return currentYear + 1;
+  return currentYear;
+}
+
+function classifyDates(start: Date | null, end: Date | null): "live" | "upcoming" | "info" {
+  if (!start) return "info";
+  const today = dayUtc(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()).getTime();
+  const from = dayUtc(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()).getTime();
+  const untilDate = end || start;
+  const until = dayUtc(untilDate.getUTCFullYear(), untilDate.getUTCMonth(), untilDate.getUTCDate()).getTime();
+  if (today >= from && today <= until) return "live";
+  if (today < from) return "upcoming";
+  return "info";
+}
+
+function parseEnglishDateRange(label: string): { start: Date | null; end: Date | null } {
+  const raw = String(label || "").replace(/[–—]/g, "-").trim();
+  // 20-22 February 2026 / 14 - 18 Oct '26 / 14 Oct 2026
+  let m = raw.match(/^(\d{1,2})(?:\s*-\s*(\d{1,2}))?\s+([A-Za-z]+)(?:\s+(?:'?(\d{2})|(20\d{2})))?$/i);
+  if (!m) return { start: null, end: null };
+  const month = EN_MONTHS[m[3].toLowerCase().replace(/\.$/, "")];
+  if (month === undefined) return { start: null, end: null };
+  const explicit = m[5] ? Number(m[5]) : m[4] ? 2000 + Number(m[4]) : null;
+  const year = inferYear(month, explicit);
+  const d1 = Number(m[1]);
+  const d2 = Number(m[2] || m[1]);
+  return { start: dayUtc(year, month, d1), end: dayUtc(year, month, d2) };
+}
+
+function parseFrenchDate(label: string): { start: Date | null; end: Date | null } {
+  const raw = String(label || "").toLowerCase().replace(/\./g, "").replace(/[–—]/g, "-").trim();
+  const m = raw.match(/^(\d{1,2})(?:\s*-\s*(\d{1,2}))?\s+([a-zàâäéèêëîïôöùûüç]+)\s+(20\d{2})$/i);
+  if (!m) return { start: null, end: null };
+  const key = m[3].normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const month = FR_MONTHS[m[3]] ?? FR_MONTHS[key];
+  if (month === undefined) return { start: null, end: null };
+  const year = Number(m[4]);
+  return { start: dayUtc(year, month, Number(m[1])), end: dayUtc(year, month, Number(m[2] || m[1])) };
+}
+
 async function apiFetch(base: string, key: string, path: string) {
   const response = await fetch(`${base}${path}`, {
     headers: {
@@ -207,11 +269,7 @@ function payloadRows(body: any, keys: string[] = []): any[] {
 async function dartsOverview(key: string) {
   const usage = await apiFetch(DARTS_BASE, key, "/usage");
   if (!usage.ok) {
-    return {
-      status: usage.status,
-      ttl: 300,
-      payload: { configured: false, automaticData: false, provider: "dartsapi", liveAvailable: false, liveReason: "Clé DartsAPI invalide ou indisponible.", live: [], fixtures: [], results: [], warnings: [`DartsAPI usage HTTP ${usage.status}`] },
-    };
+    return officialDartsFallbackOverview(`DartsAPI indisponible (HTTP ${usage.status}) : fallback PDC officiel activé.`);
   }
   const plan = str(usage.body?.data?.plan?.key || usage.body?.meta?.plan || "free").toLowerCase();
   const hasLive = plan !== "free" && plan !== "archive";
@@ -299,6 +357,99 @@ async function tableTennisOverview(key: string) {
 }
 
 
+
+const PDC_EUROPEAN_TOUR = "https://www.pdc.tv/tournament/european-darts-open-et10?page=33";
+
+function parsePdcOfficialEvents(html: string): NormalEvent[] {
+  const lines = htmlLines(html);
+  const out: NormalEvent[] = [];
+  const dateRe = /^(\d{1,2}(?:-\d{1,2})?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+20\d{2})$/i;
+
+  for (let i = 0; i < lines.length && out.length < 14; i += 1) {
+    const line = lines[i];
+    if (!dateRe.test(line)) continue;
+    let title = "";
+    for (let k = i - 1; k >= Math.max(0, i - 4); k -= 1) {
+      const candidate = lines[k];
+      if (candidate.length >= 5 && candidate.length <= 100 && !looksLikeNoise(candidate) && !dateRe.test(candidate)) {
+        title = candidate;
+        break;
+      }
+    }
+    if (!title) continue;
+    const lowered = title.toLowerCase();
+    if (!/(darts|trophy|open|grand prix|championship|masters|tour)/i.test(title)) continue;
+    const range = parseEnglishDateRange(line);
+    out.push({
+      id: `pdc-${out.length}-${title.replace(/[^a-z0-9]+/gi, "-").toLowerCase().slice(0, 44)}`,
+      title,
+      subtitle: "Professional Darts Corporation",
+      startsAt: range.start?.toISOString() || null,
+      dateLabel: line,
+      status: classifyDates(range.start, range.end),
+      sourceName: "PDC",
+      sourceUrl: PDC_EUROPEAN_TOUR,
+      watchUrl: "https://video.pdc.tv/",
+    });
+  }
+
+  const latest = lines.findIndex((line) => /latest news/i.test(line));
+  if (latest >= 0) {
+    const slice = lines.slice(latest + 1, latest + 45);
+    for (const line of slice) {
+      if (out.filter((row) => row.status === "result").length >= 5) break;
+      if (line.length < 18 || line.length > 160) continue;
+      if (!/(wins|beats|edges|powers past|storms to|stuns|claims|clinches|champion)/i.test(line)) continue;
+      out.push({
+        id: `pdc-result-${out.length}-${line.replace(/[^a-z0-9]+/gi, "-").toLowerCase().slice(0, 42)}`,
+        title: line.replace(/\s*\|.*$/, "").trim(),
+        subtitle: "Dernier résultat / actualité PDC",
+        status: "result",
+        sourceName: "PDC",
+        sourceUrl: PDC_EUROPEAN_TOUR,
+        resultLabel: "Résultat officiel PDC",
+      });
+    }
+  }
+
+  return uniqEvents(out).slice(0, 18);
+}
+
+async function officialDartsFallbackOverview(reason: string) {
+  try {
+    const html = await fetchOfficialHtml(PDC_EUROPEAN_TOUR);
+    const events = parsePdcOfficialEvents(html);
+    return {
+      status: 200,
+      ttl: 1800,
+      payload: {
+        sport: "darts",
+        configured: true,
+        automaticData: true,
+        provider: "pdc_official",
+        plan: "public",
+        dataAsOf: new Date().toISOString(),
+        liveAvailable: false,
+        liveReason: reason,
+        live: [], fixtures: [], results: [], events,
+        warnings: [
+          reason,
+          events.length ? "Fallback PDC officiel actif : calendrier et résultats/actus publiques chargés automatiquement." : "PDC accessible mais aucune donnée structurée exploitable détectée."
+        ],
+      },
+    };
+  } catch (error: any) {
+    return {
+      status: 200, ttl: 300,
+      payload: {
+        sport: "darts", configured: false, automaticData: false, provider: "pdc_official", plan: "public",
+        dataAsOf: null, liveAvailable: false, liveReason: reason, live: [], fixtures: [], results: [], events: [],
+        warnings: [reason, `Fallback PDC indisponible : ${str(error?.message || error)}`],
+      },
+    };
+  }
+}
+
 const ITSF_HOME = "https://www.tablesoccer.org/";
 const MOLKKY_CALENDAR = "https://www.molkky.world/fr/tournois/";
 const MOLKKY_WORLDS = "https://www.international-molkky.org/world-championships";
@@ -376,6 +527,9 @@ function parseItsfEvents(html: string): NormalEvent[] {
   const lines = htmlLines(html);
   const out: NormalEvent[] = [];
   const dateRe = /^(\d{1,2}(?:\s*-\s*\d{1,2})?\s+[A-Za-z]{3,9}(?:\s*'\s*\d{2}|\s+\d{4})?)$/;
+  const progressIndex = lines.findIndex((line) => /tournaments in progress/i.test(line));
+  const upcomingIndex = lines.findIndex((line) => /upcoming tournaments/i.test(line));
+  const latestIndexBoundary = lines.findIndex((line) => /latest results/i.test(line));
 
   for (let i = 0; i < lines.length - 1 && out.length < 12; i += 1) {
     const line = lines[i];
@@ -390,12 +544,18 @@ function parseItsfEvents(html: string): NormalEvent[] {
       }
     }
     if (!title) continue;
+    const range = parseEnglishDateRange(line);
+    const inProgressSection = progressIndex >= 0 && i > progressIndex && (upcomingIndex < 0 || i < upcomingIndex);
+    const inUpcomingSection = upcomingIndex >= 0 && i > upcomingIndex && (latestIndexBoundary < 0 || i < latestIndexBoundary);
+    const dateStatus = classifyDates(range.start, range.end);
+    const status: NormalEvent["status"] = inProgressSection ? "live" : inUpcomingSection ? "upcoming" : dateStatus;
     out.push({
       id: `itsf-${out.length}-${title.replace(/[^a-z0-9]+/gi, "-").toLowerCase().slice(0, 48)}`,
       title,
-      subtitle: "Tournoi ITSF / Coral",
+      subtitle: inProgressSection ? "Tournoi ITSF / Coral · en cours" : "Tournoi ITSF / Coral",
+      startsAt: range.start?.toISOString() || null,
       dateLabel: line,
-      status: "upcoming",
+      status,
       sourceName: "ITSF / Coral",
       sourceUrl: ITSF_HOME,
     });
@@ -445,12 +605,14 @@ function parseMolkkyEvents(calendarHtml: string, worldsHtml: string): NormalEven
     if (!title && i > 0 && !looksLikeNoise(lines[i - 1])) title = lines[i - 1];
     if (!title || title.length < 3 || title.length > 120) continue;
     const country = line.slice((match.index || 0) + dateLabel.length).replace(/^\s*[|·-]\s*/, "").trim();
+    const range = parseFrenchDate(dateLabel);
     out.push({
       id: `molkky-${out.length}-${title.replace(/[^a-z0-9]+/gi, "-").toLowerCase().slice(0, 42)}`,
       title,
       subtitle: country || "Tournoi Mölkky",
+      startsAt: range.start?.toISOString() || null,
       dateLabel,
-      status: "upcoming",
+      status: classifyDates(range.start, range.end),
       sourceName: "Mölkky World",
       sourceUrl: MOLKKY_CALENDAR,
     });
@@ -484,12 +646,15 @@ function parseFipjpEvents(html: string): NormalEvent[] {
   const out: NormalEvent[] = [];
   const worldMatch = text.match(/Men.?s Triples and Precision Shooting World Pétanque Championships live[\s\S]{0,220}?from\s+(\d{1,2})\s+to\s+(\d{1,2})\s+([A-Za-z]+)\s+(20\d{2})/i);
   if (worldMatch) {
+    const dateLabel = `${worldMatch[1]}-${worldMatch[2]} ${worldMatch[3]} ${worldMatch[4]}`;
+    const range = parseEnglishDateRange(dateLabel);
     out.push({
       id: `fipjp-worlds-${worldMatch[4]}`,
       title: "Men’s Triples & Precision Shooting World Championships",
       subtitle: "FIPJP · Khon Kaen, Thailand",
-      dateLabel: `${worldMatch[1]}–${worldMatch[2]} ${worldMatch[3]} ${worldMatch[4]}`,
-      status: "upcoming",
+      startsAt: range.start?.toISOString() || null,
+      dateLabel,
+      status: classifyDates(range.start, range.end),
       sourceName: "FIPJP",
       sourceUrl: FIPJP_HOME,
       watchUrl: "https://www.youtube.com/@FIPJP",
@@ -625,7 +790,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
   if (sport === "darts") {
     const key = str(context.env?.DARTS_API_KEY).trim();
-    if (!key) return json({ sport, configured: false, automaticData: false, provider: "dartsapi", plan: null, dataAsOf: null, liveAvailable: false, liveReason: "DARTS_API_KEY non configurée côté Cloudflare.", live: [], fixtures: [], results: [], warnings: ["Ajoute DARTS_API_KEY dans les secrets Cloudflare Pages pour charger automatiquement les vrais scores Darts."] }, 200, 300);
+    if (!key) return cachedResponse(context, () => officialDartsFallbackOverview("DARTS_API_KEY absente : calendrier/résultats publics PDC chargés en fallback. Le score LIVE chiffré nécessite DartsAPI Live ou DartConnect API."));
     return cachedResponse(context, () => dartsOverview(key));
   }
 

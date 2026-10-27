@@ -84,6 +84,9 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
     const certificationMode = config?.sessionKind === "certification";
     const certificationRequiredScore = Math.max(0, Math.min(100, Math.round(Number(config?.certificationRequiredScore) || 0)));
     const certificationPassed = certificationMode ? success && performanceScore >= certificationRequiredScore : success;
+    const dailyChallengeMode = config?.sessionKind === "daily_challenge";
+    const dailyChallengeRequiredScore = Math.max(0, Math.min(100, Math.round(Number(config?.dailyChallengeRequiredScore) || 0)));
+    const dailyChallengePassed = dailyChallengeMode ? success && performanceScore >= dailyChallengeRequiredScore : certificationPassed;
     const metrics = {
       exerciseId: exercise.id,
       exerciseTitle: exercise.title,
@@ -103,12 +106,15 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
       certificationTargetLevel: certificationMode ? Math.max(1, Math.min(5, Math.round(Number(config?.certificationTargetLevel) || 1))) : null,
       certificationRequiredScore: certificationMode ? certificationRequiredScore : null,
       certificationPassed: certificationMode ? certificationPassed : null,
+      dailyChallengeDateKey: dailyChallengeMode ? String(config?.dailyChallengeDateKey || "") : null,
+      dailyChallengeRequiredScore: dailyChallengeMode ? dailyChallengeRequiredScore : null,
+      dailyChallengePassed: dailyChallengeMode ? dailyChallengePassed : null,
     };
     const stepResult: ProgramStepResult = {
       exerciseId: exercise.id,
       exerciseTitle: exercise.title,
       family: exercise.family,
-      success: certificationPassed,
+      success: dailyChallengePassed,
       darts: s.darts,
       hits: s.hits,
       points: s.points,
@@ -163,11 +169,11 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
       darts: s.darts,
       hits: s.hits,
       points: s.points,
-      success: certificationPassed,
+      success: dailyChallengePassed,
       metrics,
       visitHistory: visitHistoryRef.current,
     });
-    setResult({ success: certificationPassed, metrics, stats: makeTrainingStats({ darts: s.darts, hits: s.hits, points: s.points, startedAt: startedAtRef.current, endedAt }) });
+    setResult({ success: dailyChallengePassed, metrics, stats: makeTrainingStats({ darts: s.darts, hits: s.hits, points: s.points, startedAt: startedAtRef.current, endedAt }) });
   }, [config, exercise, goal, isProgram, programIds, stepIndex, totalSteps]);
 
   const onVisit = React.useCallback((rawVisit: TrainingDart[]) => {

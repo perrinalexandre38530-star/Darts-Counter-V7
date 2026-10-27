@@ -670,12 +670,18 @@ export default function SportLiveHub() {
         {feedError ? <span className="msc-info-chip">DONNÉES LIVE INDISPONIBLES</span> : null}
       </div>
 
+      {feed?.warnings?.length ? (
+        <div style={{ marginTop: 8, padding: "8px 10px", border: "1px solid rgba(255,255,255,.08)", borderRadius: 10, background: "rgba(0,0,0,.28)", color: "#8f99a5", fontSize: 10.5, lineHeight: 1.35 }}>
+          {feed.warnings[0]}
+        </div>
+      ) : null}
+
       <nav className="msc-live-tabs" aria-label="Rubriques LIVE SPORTS">
         {([
           ["overview", "À LA UNE"],
-          ["live", `EN DIRECT${liveRows.length ? ` · ${liveRows.length}` : ""}`],
-          ["fixtures", `À VENIR${fixtureRows.length ? ` · ${fixtureRows.length}` : ""}`],
-          ["results", `RÉSULTATS${resultRows.length ? ` · ${resultRows.length}` : ""}`],
+          ["live", `EN DIRECT${(liveRows.length + liveEvents.length) ? ` · ${liveRows.length + liveEvents.length}` : ""}`],
+          ["fixtures", `À VENIR${(fixtureRows.length + upcomingEvents.length) ? ` · ${fixtureRows.length + upcomingEvents.length}` : ""}`],
+          ["results", `RÉSULTATS${(resultRows.length + resultEvents.length) ? ` · ${resultRows.length + resultEvents.length}` : ""}`],
           ["sources", "SOURCES"],
         ] as Array<[View, string]>).map(([key, label]) => (
           <button key={key} className={`msc-live-tab${view === key ? " is-active" : ""}`} type="button" onClick={() => setView(key)}>{label}</button>
@@ -692,21 +698,21 @@ export default function SportLiveHub() {
       {supportedSport && view === "overview" ? (
         <>
           <section className="msc-live-section">
-            <SectionHeader title="EN DIRECT" count={liveRows.length ? `${liveRows.length} match${liveRows.length > 1 ? "s" : ""}` : ""} />
+            <SectionHeader title="EN DIRECT" count={(liveRows.length + liveEvents.length) ? `${liveRows.length + liveEvents.length} direct${(liveRows.length + liveEvents.length) > 1 ? "s" : ""}` : ""} />
             {liveRows.length ? liveRows.slice(0, 4).map((item) => <LiveMatchCard key={item.id} item={item} source={sourceForCards} />) : liveEvents.length ? liveEvents.slice(0, 4).map((event) => <OfficialEventCard key={event.id} event={event} />) : (
               <EmptySection title="Aucun match en direct pour le moment" copy="Dès qu’un provider de score est disponible, le match apparaîtra ici automatiquement. Les sources officielles restent accessibles." sources={recommended.filter((source) => source.scoresUrl || source.watchUrl)} />
             )}
           </section>
 
           <section className="msc-live-section">
-            <SectionHeader title="À VENIR" count={fixtureRows.length ? `${fixtureRows.length} match${fixtureRows.length > 1 ? "s" : ""}` : ""} />
+            <SectionHeader title="À VENIR" count={(fixtureRows.length + upcomingEvents.length) ? `${fixtureRows.length + upcomingEvents.length} événement${(fixtureRows.length + upcomingEvents.length) > 1 ? "s" : ""}` : ""} />
             {fixtureRows.length ? fixtureRows.slice(0, 4).map((item) => <FixtureMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />) : upcomingEvents.length ? upcomingEvents.slice(0, 6).map((event) => <OfficialEventCard key={event.id} event={event} />) : (
               <EmptySection title="Programme officiel" copy="Consulte les calendriers des circuits officiels de cette discipline." sources={recommended.filter((source) => source.calendarUrl)} />
             )}
           </section>
 
           <section className="msc-live-section">
-            <SectionHeader title="RÉSULTATS" count={resultRows.length ? `${resultRows.length} match${resultRows.length > 1 ? "s" : ""}` : ""} />
+            <SectionHeader title="RÉSULTATS" count={(resultRows.length + resultEvents.length) ? `${resultRows.length + resultEvents.length} résultat${(resultRows.length + resultEvents.length) > 1 ? "s" : ""}` : ""} />
             {resultRows.length ? resultRows.slice(0, 5).map((item) => <ResultMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />) : resultEvents.length ? resultEvents.slice(0, 6).map((event) => <OfficialEventCard key={event.id} event={event} />) : (
               <EmptySection title="Derniers résultats" copy="Retrouve les résultats sur les sources officielles. Ils seront affichés ici directement dès qu’un flux de données compatible sera connecté." sources={recommended.filter((source) => source.resultsUrl)} />
             )}
@@ -716,21 +722,21 @@ export default function SportLiveHub() {
 
       {supportedSport && view === "live" ? (
         <section className="msc-live-section">
-          <SectionHeader title="EN DIRECT" count={liveRows.length ? `${liveRows.length} match${liveRows.length > 1 ? "s" : ""}` : ""} />
+          <SectionHeader title="EN DIRECT" count={(liveRows.length + liveEvents.length) ? `${liveRows.length + liveEvents.length} direct${(liveRows.length + liveEvents.length) > 1 ? "s" : ""}` : ""} />
           {liveRows.length ? liveRows.map((item) => <LiveMatchCard key={item.id} item={item} source={sourceForCards} />) : liveEvents.length ? liveEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Aucun direct détecté" copy="Les liens de suivi et de diffusion officiels restent disponibles ci-dessous." sources={recommended.filter((source) => source.scoresUrl || source.watchUrl)} />}
         </section>
       ) : null}
 
       {supportedSport && view === "fixtures" ? (
         <section className="msc-live-section">
-          <SectionHeader title="À VENIR" count={fixtureRows.length ? `${fixtureRows.length} match${fixtureRows.length > 1 ? "s" : ""}` : ""} />
+          <SectionHeader title="À VENIR" count={(fixtureRows.length + upcomingEvents.length) ? `${fixtureRows.length + upcomingEvents.length} événement${(fixtureRows.length + upcomingEvents.length) > 1 ? "s" : ""}` : ""} />
           {fixtureRows.length ? fixtureRows.map((item) => <FixtureMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />) : upcomingEvents.length ? upcomingEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Calendriers officiels" copy="Aucune donnée automatique n’est chargée. Consulte les calendriers officiels disponibles." sources={recommended.filter((source) => source.calendarUrl)} />}
         </section>
       ) : null}
 
       {supportedSport && view === "results" ? (
         <section className="msc-live-section">
-          <SectionHeader title="RÉSULTATS" count={resultRows.length ? `${resultRows.length} match${resultRows.length > 1 ? "s" : ""}` : ""} />
+          <SectionHeader title="RÉSULTATS" count={(resultRows.length + resultEvents.length) ? `${resultRows.length + resultEvents.length} résultat${(resultRows.length + resultEvents.length) > 1 ? "s" : ""}` : ""} />
           {resultRows.length ? resultRows.map((item) => <ResultMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />) : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Résultats officiels" copy="Aucun résultat automatique n’est chargé pour l’instant. Ouvre une source officielle pour consulter les derniers scores." sources={recommended.filter((source) => source.resultsUrl)} />}
         </section>
       ) : null}

@@ -150,7 +150,15 @@ function activeSessionIsPublicSupabase(): boolean {
   if (!raw) return false;
   const parsed = safeParseJson<any>(raw, null);
   const provider = String(parsed?.authProvider || parsed?.auth_provider || "").trim().toLowerCase();
-  return provider === "supabase" || provider === "supabase_failover" || parsed?.degradedMode === true;
+  return (
+    provider === "supabase" ||
+    provider === "supabase_failover" ||
+    provider === "supabase_bridge" ||
+    parsed?.degradedMode === true ||
+    !!parsed?.supabaseUserId ||
+    !!parsed?.supabaseAccessToken ||
+    !!parsed?.supabase_access_token
+  );
 }
 
 function tokenFromStoredValue(raw: string): string {
@@ -769,6 +777,12 @@ export function readAccountAccessToken(): string {
     if (isPublicAccountSession) {
       const publicToken = extractPublicSupabaseAccessToken(parsed);
       if (publicToken) return publicToken;
+
+      // Une session publique/bridge ne doit JAMAIS retomber sur parsed.token :
+      // dans supabase_bridge, ce champ contient le JWT backend/NAS. Si le token
+      // Supabase public est expiré ou absent, on retourne vide et le caller force
+      // un refresh Supabase. Envoyer le JWT NAS à personal-cloud produit un 401.
+      return "";
     }
   }
 
@@ -796,7 +810,9 @@ function buildHeaders(init?: RequestInit, requestPath = ""): HeadersInit {
   // garde au contraire le JWT NAS en priorité pour compatibilité historique.
   const token = acceptsAccountSession
     ? (isPersonalCloudRoute
-        ? (readAccountAccessToken() || readNasAccessToken())
+        // Invariant : personal-cloud n'accepte ici QUE le credential public.
+        // Aucun fallback NAS/backend n'est autorisé.
+        ? readAccountAccessToken()
         : (readNasAccessToken() || readAccountAccessToken()))
     : readNasAccessToken();
 

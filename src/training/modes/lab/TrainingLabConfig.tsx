@@ -38,6 +38,7 @@ import { buildTrainingDiagnosticBoard } from "../../profile/trainingDiagnosticBo
 import { buildTrainingCoachDashboard } from "../../profile/trainingCoachDashboard";
 import { buildTrainingPlayerJourney } from "../../profile/trainingPlayerJourney";
 import { buildTrainingQuickStart } from "../../profile/trainingQuickStart";
+import { buildTrainingDailyChallenge } from "../../profile/trainingDailyChallenge";
 
 const familyOrder: TrainingExerciseFamily[] = ["scoring", "doubles", "checkout", "precision", "bull", "regularity"];
 type HubTab = "program" | "exercises" | "diagnosis" | "progress";
@@ -132,6 +133,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
   const coachDashboard = React.useMemo(() => buildTrainingCoachDashboard(coachHistory, liveCoachHistory, coachingEffectiveness), [coachHistory, liveCoachHistory, coachingEffectiveness]);
   const allSkillCertifications = React.useMemo(() => familyOrder.map((familyId) => buildTrainingSkillCertification(buildTrainingSkillPath(familyId, progression), sessions)), [progression, sessions]);
   const playerJourney = React.useMemo(() => buildTrainingPlayerJourney({ completedPrograms: career.completedPrograms, coveredFamilies: progression.filter((row) => row.sessions > 0).length, averagePerformance: career.averagePerformance, certifiedLevels: allSkillCertifications.map((item) => item.certifiedLevel) }), [career.completedPrograms, career.averagePerformance, progression, allSkillCertifications]);
+  const dailyChallenge = React.useMemo(() => buildTrainingDailyChallenge(recommendedFamily, progression, sessions), [recommendedFamily, progression, sessions]);
   const prescription = React.useMemo(() => buildGoalAwareCoachPrescription(diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines), [diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines]);
   const coachProgram = React.useMemo(() => buildCoachProgram(recommendedFamily), [recommendedFamily]);
   const programs = React.useMemo(() => {
@@ -219,6 +221,15 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
     certificationFamily: skillCertification.family,
     certificationTargetLevel: skillCertification.targetLevel,
     certificationRequiredScore: skillCertification.requiredScore,
+    ...buildTrainingParticipantConfig(participants, profiles),
+  });
+
+  const startDailyChallenge = () => onStart({
+    exerciseId: dailyChallenge.exerciseId,
+    family: dailyChallenge.family,
+    sessionKind: "daily_challenge",
+    dailyChallengeDateKey: dailyChallenge.dateKey,
+    dailyChallengeRequiredScore: dailyChallenge.requiredScore,
     ...buildTrainingParticipantConfig(participants, profiles),
   });
 
@@ -459,6 +470,20 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
             </div>}
 
             {programPanel === "today" && <>
+            <div style={{ marginTop: 8, padding: 11, borderRadius: 15, border: dailyChallenge.completed ? "1px solid rgba(80,255,174,.26)" : "1px solid rgba(255,216,107,.24)", background: dailyChallenge.completed ? "linear-gradient(135deg,rgba(80,255,174,.075),rgba(39,220,255,.025))" : "linear-gradient(135deg,rgba(255,216,107,.07),rgba(140,90,255,.025))" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 7.3, fontWeight: 950, letterSpacing: .8, color: dailyChallenge.completed ? "#8cffcb" : "#ffd86b" }}>{dailyChallenge.completed ? "✓ DÉFI VALIDÉ" : "★ DÉFI DU JOUR"}</div>
+                  <div style={{ marginTop: 3, fontSize: 11.5, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dailyChallenge.headline}</div>
+                  <div style={{ marginTop: 3, fontSize: 7.8, opacity: .55, lineHeight: 1.35 }}>{dailyChallenge.body}</div>
+                </div>
+                <div style={{ flex: "0 0 auto", textAlign: "right" }}>
+                  <div style={{ fontSize: 7, opacity: .5 }}>SÉRIE</div>
+                  <div style={{ fontSize: 13, fontWeight: 950 }}>{dailyChallenge.streakDays} 🔥</div>
+                </div>
+              </div>
+              {!dailyChallenge.completed && <button type="button" disabled={!resolved.length} onClick={startDailyChallenge} style={{ width: "100%", marginTop: 8, padding: "9px 10px", borderRadius: 10, border: "1px solid rgba(255,216,107,.30)", background: "rgba(255,216,107,.08)", color: "inherit", fontSize: 8.3, fontWeight: 950, cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .45 }}>RELEVER LE DÉFI · {dailyChallenge.exerciseTitle}</button>}
+            </div>
             <div style={{ marginTop: 8, padding: 14, borderRadius: 17, border: actionCoach.tone === "amber" ? "1px solid rgba(255,184,76,.34)" : actionCoach.tone === "green" ? "1px solid rgba(80,255,174,.30)" : actionCoach.tone === "violet" ? "1px solid rgba(185,156,255,.32)" : "1px solid rgba(39,220,255,.32)", background: actionCoach.tone === "amber" ? "linear-gradient(135deg,rgba(255,184,76,.10),rgba(140,90,255,.035))" : actionCoach.tone === "green" ? "linear-gradient(135deg,rgba(80,255,174,.08),rgba(39,220,255,.035))" : actionCoach.tone === "violet" ? "linear-gradient(135deg,rgba(140,90,255,.10),rgba(39,220,255,.035))" : "linear-gradient(135deg,rgba(39,220,255,.11),rgba(140,90,255,.045))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
                 <div style={{ minWidth: 0, flex: "1 1 300px" }}>
