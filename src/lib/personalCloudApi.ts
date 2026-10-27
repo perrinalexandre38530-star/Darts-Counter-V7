@@ -1,5 +1,5 @@
 import { registerPlugin } from "@capacitor/core";
-import { apiDelete, apiGet, apiGetBytes, apiPost, buildApiUrl, ensureAccountBackendAccessToken } from "./apiClient";
+import { apiDelete, apiGet, apiGetBytes, apiPost, buildApiUrl, ensurePublicAccountAccessToken } from "./apiClient";
 import { getRuntimePlatform } from "./nativePlatform";
 
 export type PersonalCloudProvider = "google_drive" | "onedrive" | "dropbox";
@@ -317,7 +317,7 @@ async function uploadGoogleDriveRawJob(
     unsupported.code = "raw_drive_unsupported";
     throw unsupported;
   }
-  const token = await ensureAccountBackendAccessToken();
+  const token = await ensurePublicAccountAccessToken();
   if (!token) throw new Error("Session MULTISPORTS indisponible pour Google Drive.");
 
   const compactMeta = {

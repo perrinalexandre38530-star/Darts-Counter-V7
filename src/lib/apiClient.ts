@@ -582,20 +582,30 @@ async function recoverNasAuthToken(reason: "missing_token" | "401"): Promise<str
   return nasAuthRecoveryInFlight;
 }
 
-export async function ensureAccountBackendAccessToken(): Promise<string> {
-  // Les routes /account/personal-cloud/* et /sync/* acceptent aussi la session
-  // Supabase du compte. Il est inutile de fabriquer d'abord un JWT NAS technique
-  // quand un access token public frais est deja disponible : cela ajoute une
-  // dependance reseau et faisait echouer Drive pendant certaines pannes data-plane.
-  const existingNas = readNasAccessToken();
-  if (existingNas) return existingNas;
-
-  const publicAccountToken = readAccountAccessToken();
-  if (publicAccountToken) return publicAccountToken;
-
-  const recoveredNas = await recoverNasAuthToken("missing_token");
-  if (recoveredNas) return recoveredNas;
+/**
+ * Jeton du COMPTE PUBLIC. Utilise par Google Drive / personal-cloud.
+ * Il doit rester totalement independant du droit d'acces au NAS prive.
+ */
+export async function ensurePublicAccountAccessToken(forceRefresh = false): Promise<string> {
+  const live = await readFreshPublicSupabaseSession(forceRefresh).catch(() => null);
+  if (live?.accessToken) return live.accessToken;
   return readAccountAccessToken();
+}
+
+/**
+ * Jeton technique du BACKEND NAS. Reserve aux routes NAS privees / legacy.
+ * Ne doit jamais etre utilise par Google Drive ou personal-cloud.
+ */
+export async function ensureNasBackendAccessToken(): Promise<string> {
+  const existingNas = readNasAccessToken();
+  if (existingNas && isUsableNasAccessToken(existingNas)) return existingNas;
+  const recoveredNas = await recoverNasAuthToken("missing_token");
+  return recoveredNas && isUsableNasAccessToken(recoveredNas) ? recoveredNas : "";
+}
+
+/** @deprecated Utiliser ensurePublicAccountAccessToken ou ensureNasBackendAccessToken explicitement. */
+export async function ensureAccountBackendAccessToken(): Promise<string> {
+  return ensurePublicAccountAccessToken(false);
 }
 
 async function readResponseText(

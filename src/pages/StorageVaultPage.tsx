@@ -11,7 +11,7 @@ import { useLang } from "../contexts/LangContext";
 import tickerStorageBackupFr from "../assets/tickers/ticker_storage_backup_fr.webp";
 import tickerStorageBackupEn from "../assets/tickers/ticker_storage_backup_en.webp";
 import { useAuthOnline } from "../hooks/useAuthOnline";
-import { apiPost, buildApiUrl, ensureAccountBackendAccessToken, readNasAccessToken } from "../lib/apiClient";
+import { apiPost, buildApiUrl, ensureNasBackendAccessToken, readNasAccessToken } from "../lib/apiClient";
 import { exportCloudSnapshot, importCloudSnapshot, loadStore, saveStore } from "../lib/storage";
 import { isLegacyMigrationCandidate } from "../data/legacyMigrationV1";
 import { writeAuthoritativeRestorePending } from "../lib/restoreAuthority";
@@ -442,12 +442,11 @@ async function ensureNasTokenFromOnlineRuntime(authLike?: any): Promise<string> 
   let token = persistNasAuthForVault(authLike) || readNasAccessToken();
   if (token) return token;
 
-  // Le compte principal reste Supabase. Pour les routes NAS historiques (/sync,
-  // Google Drive servi par le backend privé), on recrée uniquement le JWT NAS
-  // technique via le bridge serveur. Ne jamais renvoyer le JWT Supabase comme
-  // s'il s'agissait d'un JWT NAS : authRequired côté serveur le refuse en 401.
+  // Le compte principal reste Supabase. Pour les routes NAS privees historiques (/sync),
+  // on recree uniquement le JWT NAS technique via le bridge serveur. Google Drive
+  // n'utilise PLUS ce chemin : personal-cloud est authentifie par Supabase.
   try {
-    token = await ensureAccountBackendAccessToken();
+    token = await ensureNasBackendAccessToken();
     if (token) return token;
   } catch {}
 
