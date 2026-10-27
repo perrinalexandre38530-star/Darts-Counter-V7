@@ -1,4 +1,16 @@
 import type { SportId } from "../contexts/SportContext";
+
+export type SportLiveSportId =
+  | "darts"
+  | "petanque"
+  | "pingpong"
+  | "babyfoot"
+  | "molkky"
+  | "padel"
+  | "badminton"
+  | "cornhole"
+  | "palet"
+  | "bowling";
 import type { DartsLiveFixture, DartsLiveMatch, DartsLiveResult } from "../dartsLive/types";
 
 export type SportLiveRegion =
@@ -37,7 +49,7 @@ export type SportLiveSourceKind =
 
 export type SportLiveSource = {
   id: string;
-  sport: SportId;
+  sport: SportLiveSportId;
   name: string;
   shortName?: string;
   description: string;
@@ -54,7 +66,7 @@ export type SportLiveSource = {
 };
 
 export type SportLiveMeta = {
-  id: SportId;
+  id: SportLiveSportId;
   icon: string;
   label: string;
   shortLabel: string;
@@ -69,7 +81,7 @@ export type SportLiveLocaleProfile = {
 };
 
 export type SportLiveOverview = {
-  sport: SportId;
+  sport: SportLiveSportId;
   automaticData: boolean;
   configured: boolean;
   provider: "dartsapi" | "official_links";

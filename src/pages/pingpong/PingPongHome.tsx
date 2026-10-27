@@ -17,6 +17,7 @@ import { useLang } from "../../contexts/LangContext";
 import type { Store, Profile } from "../../lib/types";
 import ActiveProfileCard, { type ActiveProfileStats } from "../../components/home/ActiveProfileCard";
 import ArcadeTicker, { type ArcadeTickerItem } from "../../components/home/ArcadeTicker";
+import LiveSportsHomeCard from "../../components/home/LiveSportsHomeCard";
 import { PageAdBanner } from "../../monetization/AdSlot";
 
 import { loadPingPongState, newPingPongState, savePingPongState } from "../../lib/pingpongStore";
@@ -533,6 +534,10 @@ export default function PingPongHome({ store, go }: Props) {
         <section className="msc-landscape-primary msc-home-primary msc-sport-home-primary">
           <div className="msc-home-ad msc-home-ad--top" style={{ ...sectionWrap, marginBottom: 0 }}>
             <PageAdBanner placement="home" slotKey="page-home-pingpong-under-header" />
+          </div>
+
+          <div style={sectionWrap}>
+            <LiveSportsHomeCard sport="pingpong" onClick={() => go("live")} />
           </div>
 
           <div className="msc-home-profile-slot msc-sport-home-profile" style={{ ...sectionWrap }}>

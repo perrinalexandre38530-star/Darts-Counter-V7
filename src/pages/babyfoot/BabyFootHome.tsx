@@ -15,6 +15,7 @@ import { useLang } from "../../contexts/LangContext";
 import type { Store, Profile } from "../../lib/types";
 import ActiveProfileCard from "../../components/home/ActiveProfileCard";
 import ArcadeTicker, { type ArcadeTickerItem } from "../../components/home/ArcadeTicker";
+import LiveSportsHomeCard from "../../components/home/LiveSportsHomeCard";
 import { PageAdBanner } from "../../monetization/AdSlot";
 import SportHomeWelcomeHeader from "../../components/home/SportHomeWelcomeHeader";
 
@@ -795,6 +796,10 @@ export default function BabyFootHome({ store, go }: Props) {
         <section className="msc-landscape-primary msc-home-primary msc-sport-home-primary">
           <div className="msc-home-ad msc-home-ad--top" style={{ ...sectionWrap, marginBottom: 0 }}>
             <PageAdBanner placement="home" slotKey="page-home-babyfoot-under-header" />
+          </div>
+
+          <div style={sectionWrap}>
+            <LiveSportsHomeCard sport="babyfoot" onClick={() => go("live")} />
           </div>
 
           {activeProfile && (

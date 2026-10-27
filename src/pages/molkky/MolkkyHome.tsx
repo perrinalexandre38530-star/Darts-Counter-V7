@@ -13,6 +13,7 @@ import { useLang } from "../../contexts/LangContext";
 import type { Store, Profile } from "../../lib/types";
 import ActiveProfileCard from "../../components/home/ActiveProfileCard";
 import ArcadeTicker, { type ArcadeTickerItem } from "../../components/home/ArcadeTicker";
+import LiveSportsHomeCard from "../../components/home/LiveSportsHomeCard";
 import { PageAdBanner } from "../../monetization/AdSlot";
 
 import { useHistory } from "../../hooks/useHistory";
@@ -267,6 +268,10 @@ export default function MolkkyHome({ store, go }: Props) {
         <section className="msc-landscape-primary msc-home-primary msc-sport-home-primary">
           <div className="msc-home-ad msc-home-ad--top" style={{ ...sectionWrap, marginBottom: 0 }}>
             <PageAdBanner placement="home" slotKey="page-home-molkky-under-header" />
+          </div>
+
+          <div style={sectionWrap}>
+            <LiveSportsHomeCard sport="molkky" onClick={() => go("live")} />
           </div>
 
           <div className="msc-home-profile-slot msc-sport-home-profile" style={{ ...sectionWrap }}>

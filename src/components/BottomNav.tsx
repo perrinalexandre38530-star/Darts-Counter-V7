@@ -8,6 +8,7 @@ import { shouldHideOnlineMessagingForCurrentRuntime } from "../config/androidSto
 import { dismissBackgroundBackupState, useBackgroundBackupState } from "../lib/backgroundBackup";
 import { dismissBackgroundRestoreState, useBackgroundRestoreState } from "../lib/backgroundRestore";
 import { isConstrainedRuntimeDevice } from "../lib/runtimePerformance";
+import { isLiveSportsSupportedSport } from "../sportsLive/support";
 
 /**
  * BottomNav
@@ -23,6 +24,7 @@ import { isConstrainedRuntimeDevice } from "../lib/runtimePerformance";
 type TabKey =
   | "home"
   | "games"
+  | "live"
   | "agenda"
   | "running_plan"
   | "fit_plan"
@@ -114,6 +116,15 @@ function Icon({ name, size = 22 }: { name: TabKey; size?: number }) {
           <path {...p} d="M19 12h2" />
           <path {...p} d="M12 21v-2" />
           <path {...p} d="M3 12h2" />
+        </svg>
+      );
+
+    case "live":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none" />
+          <path {...p} d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4" />
+          <path {...p} d="M4.9 4.9a10 10 0 0 0 0 14.2M19.1 4.9a10 10 0 0 1 0 14.2" />
         </svg>
       );
 
@@ -338,6 +349,10 @@ export default function BottomNav({
   // Baby-Foot utilise le hub Online existant via l'onglet `friends`.
   const sportLc = String(sport).toLowerCase();
   const hideOnline = shouldHideOnlineMessagingForCurrentRuntime() || sportLc === "petanque" || sportLc === "pingpong" || sportLc === "running" || sportLc === "fit";
+  const showLiveSports = isLiveSportsSupportedSport(sport);
+  const liveSportsTabs: NavItem[] = showLiveSports
+    ? [{ k: "live", label: "LIVE", icon: <Icon name="live" /> }]
+    : [];
 
   // Couleurs pilotées par le thème
   const bg = (theme as any)?.navBg ?? theme.card ?? "#050608";
@@ -398,7 +413,7 @@ export default function BottomNav({
     };
   }, [hideOnline]);
 
-  const tabs: NavItem[] = organizationMode
+  const tabs = (organizationMode
     ? [
         { k: "organization_home", label: tr("Accueil", "Home", "Inicio"), icon: <Icon name="organization_home" /> },
         { k: "organization_calendar", label: tr("Agenda", "Agenda", "Agenda"), icon: <Icon name="organization_calendar" /> },
@@ -456,6 +471,7 @@ export default function BottomNav({
         ]
       : [
         { k: "home", label: t("nav.home", tr("Accueil", "Home", "Inicio")), icon: <Icon name="home" /> },
+        ...liveSportsTabs,
         { k: "agenda", label: tr("Agenda", "Agenda", "Agenda"), icon: <Icon name="agenda" /> },
 
         ...(hideOnline ? [] : [
@@ -473,7 +489,7 @@ export default function BottomNav({
         { k: "stats", label: t("nav.stats", "Stats"), icon: <Icon name="stats" /> },
         { k: "settings", label: t("nav.settings", tr("Réglages", "Settings", "Ajustes")), icon: <Icon name="settings" /> },
         { k: "cast_host", label: t("nav.screens", tr("Écrans", "Screens", "Pantallas")), icon: <Icon name="cast_host" /> },
-      ];
+      ]) as NavItem[];
 
   const tap = (k: NavItem["k"]) => {
     (navigator as any)?.vibrate?.(8);

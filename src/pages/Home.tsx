@@ -19,6 +19,7 @@ import ArcadeTicker, {
 } from "../components/home/ArcadeTicker";
 import { InlineAdBanner } from "../monetization/AdSlot";
 import SportWelcomeWatermark from "../components/home/SportWelcomeWatermark";
+import LiveSportsHomeCard from "../components/home/LiveSportsHomeCard";
 import { canRequestBannerAds, getVerifiedAdFreeState, loadMonetizationPrefs, subscribeMonetizationPrefs, subscribeVerifiedEntitlements } from "../monetization/prefs";
 import footHomeCover01 from "../assets/tickers/foot-01.webp";
 import footHomeCover02 from "../assets/tickers/foot-02.webp";
@@ -3004,6 +3005,8 @@ React.useEffect(() => {
               style={{ marginBottom: 16 }}
             />
           </div>
+
+          <LiveSportsHomeCard sport={sport} onClick={() => go("live")} />
   
         {/* Carte joueur actif */}
           {activeProfile && (

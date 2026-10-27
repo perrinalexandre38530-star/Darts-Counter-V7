@@ -191,6 +191,7 @@ const BattleRoyalePlay = React.lazy(() => import("./pages/BattleRoyalePlay"));
 
 // ✅ NEW: Spectator
 const SpectatorPage = React.lazy(() => import("./pages/SpectatorPage"));
+const SportLiveHub = React.lazy(() => import("./sportsLive/SportLiveHub"));
 
 // Historique
 import { History } from "./lib/history";
@@ -1250,6 +1251,7 @@ type Tab =
   | "friends"
   | "online"
   | "messages"
+  | "live"
   | "spectator"
   | "settings"
   | "organizations"
@@ -3242,6 +3244,11 @@ useEffect(() => {
         setTab("messages");
         return;
       }
+      if (h.startsWith("#/live")) {
+        setRouteParams(null);
+        setTab("live");
+        return;
+      }
       if (h.startsWith("#/spectator")) {
         setRouteParams(null);
         setTab("spectator");
@@ -3468,6 +3475,7 @@ useEffect(() => {
         window.location.hash = `#/organization/${sectionMap[String(next)] || "home"}${suffix}`;
       }
       else if (next === "messages") window.location.hash = "#/messages";
+      else if (next === "live") window.location.hash = "#/live";
       else if (next === "spectator") window.location.hash = "#/spectator";
       else if (next === "cast_host") {
         const screenTab = String(params?.screenTab || "").toLowerCase();
@@ -3485,6 +3493,7 @@ useEffect(() => {
           h.startsWith("#/auth/") ||
           h.startsWith("#/online") ||
           h.startsWith("#/messages") ||
+          h.startsWith("#/live") ||
           h.startsWith("#/spectator") ||
           h.startsWith("#/cast") ||
           h.startsWith("#/viewer") ||
@@ -5795,6 +5804,10 @@ case "babyfoot_team_edit":
         page = <MessagesPage store={store} update={update} go={go} params={routeParams} />;
         break;
 
+      case "live":
+        page = <SportLiveHub />;
+        break;
+
       case "spectator":
         page = <SpectatorPage store={store} update={update} go={go} />;
         break;
@@ -7646,6 +7659,7 @@ case "babyfoot_team_edit":
 
   const LANDSCAPE_HEADER_DOCK_TABS = new Set<Tab>([
     "home",
+    "live",
     "organization_home",
     "agenda",
     "messages",

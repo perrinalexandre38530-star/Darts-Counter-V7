@@ -14,6 +14,7 @@ import {
 } from "./catalog";
 import { fetchSportLiveOverview, getCachedSportLiveOverview } from "./liveApi";
 import type { SportLiveOverview, SportLiveRegion, SportLiveSource } from "./types";
+import { isLiveSportsSupportedSport } from "./support";
 
 type View = "live" | "fixtures" | "results" | "sources";
 type RegionFilter = "recommended" | "all" | SportLiveRegion;
@@ -188,32 +189,34 @@ function OfficialLinksView({ sources, mode }: { sources: SportLiveSource[]; mode
 export default function SportLiveHub() {
   const { lang } = useLang();
   const { sport, setSport } = useSport();
-  const meta = SPORT_LIVE_META[sport];
+  const supportedSport = isLiveSportsSupportedSport(sport);
+  const liveSport = supportedSport ? sport : "darts";
+  const meta = SPORT_LIVE_META[liveSport];
   const localeProfile = React.useMemo(() => getLocaleProfile(lang), [lang]);
-  const preferredRegions = React.useMemo(() => getAvailableRegions(sport, lang), [sport, lang]);
-  const recommended = React.useMemo(() => getRecommendedSportSources(sport, lang), [sport, lang]);
-  const allSportSources = React.useMemo(() => getSportSources(sport), [sport]);
+  const preferredRegions = React.useMemo(() => getAvailableRegions(liveSport, lang), [liveSport, lang]);
+  const recommended = React.useMemo(() => getRecommendedSportSources(liveSport, lang), [liveSport, lang]);
+  const allSportSources = React.useMemo(() => getSportSources(liveSport), [liveSport]);
 
   const [view, setView] = React.useState<View>("live");
   const [region, setRegion] = React.useState<RegionFilter>("recommended");
-  const [feed, setFeed] = React.useState<SportLiveOverview | null>(() => getCachedSportLiveOverview(sport));
-  const [loading, setLoading] = React.useState(sport === "darts");
+  const [feed, setFeed] = React.useState<SportLiveOverview | null>(() => getCachedSportLiveOverview(liveSport));
+  const [loading, setLoading] = React.useState(liveSport === "darts");
   const [feedError, setFeedError] = React.useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = React.useState<number | null>(null);
 
   React.useEffect(() => {
     setRegion("recommended");
-    setFeed(getCachedSportLiveOverview(sport));
+    setFeed(getCachedSportLiveOverview(liveSport));
     setFeedError(null);
-  }, [sport, lang]);
+  }, [liveSport, lang]);
 
   React.useEffect(() => {
     let active = true;
     const controller = new AbortController();
     const run = async (quiet = false) => {
-      if (!quiet) setLoading(sport === "darts");
+      if (!quiet) setLoading(liveSport === "darts");
       try {
-        const next = await fetchSportLiveOverview(sport, controller.signal);
+        const next = await fetchSportLiveOverview(liveSport, controller.signal);
         if (!active) return;
         setFeed(next);
         setFeedError(null);
@@ -227,19 +230,19 @@ export default function SportLiveHub() {
     };
 
     void run(false);
-    const timer = sport === "darts" ? window.setInterval(() => void run(true), REFRESH_MS) : null;
+    const timer = liveSport === "darts" ? window.setInterval(() => void run(true), REFRESH_MS) : null;
     return () => {
       active = false;
       controller.abort();
       if (timer !== null) window.clearInterval(timer);
     };
-  }, [sport]);
+  }, [liveSport]);
 
   const refresh = React.useCallback(async () => {
-    setLoading(sport === "darts");
+    setLoading(liveSport === "darts");
     setFeedError(null);
     try {
-      const next = await fetchSportLiveOverview(sport);
+      const next = await fetchSportLiveOverview(liveSport);
       setFeed(next);
       setUpdatedAt(Date.now());
     } catch (error: any) {
@@ -247,7 +250,7 @@ export default function SportLiveHub() {
     } finally {
       setLoading(false);
     }
-  }, [sport]);
+  }, [liveSport]);
 
   const sources = React.useMemo(() => {
     if (region === "all") return allSportSources;
@@ -259,11 +262,24 @@ export default function SportLiveHub() {
   const hasFixtures = !!feed?.fixtures?.length;
   const hasResults = !!feed?.results?.length;
   const isOnline = typeof navigator === "undefined" ? true : navigator.onLine;
-  const isDartsApi = sport === "darts";
+  const isDartsApi = liveSport === "darts";
+
+  if (!supportedSport) {
+    return (
+      <div style={{ display: "grid", gap: 13 }}>
+        <SportSelector sport={sport} setSport={setSport} />
+        <Card>
+          <div style={{ fontWeight: 1000, fontSize: 15, color: "#ff9aaa" }}>LIVE SPORTS n’est pas encore câblé pour ce sport.</div>
+          <div style={{ marginTop: 6, opacity: .76, fontSize: 12.5, lineHeight: 1.45 }}>Choisis une discipline disponible dans le sélecteur ci-dessus. Aucun résultat d’un autre sport n’est affiché à la place.</div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "grid", gap: 13 }}>
       <SportSelector sport={sport} setSport={setSport} />
+
 
       <Card>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>

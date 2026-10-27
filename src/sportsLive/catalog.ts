@@ -4,22 +4,12 @@ import {
   getAvailableRegions as getDartsAvailableRegions,
   getRecommendedSources as getDartsRecommendedSources,
 } from "../dartsLive/sources";
-import type { SportLiveLocaleProfile, SportLiveMeta, SportLiveRegion, SportLiveSource } from "./types";
+import type { SportLiveLocaleProfile, SportLiveMeta, SportLiveRegion, SportLiveSource, SportLiveSportId } from "./types";
+import { LIVE_SPORTS_APP_ORDER } from "./support";
 
-export const SPORT_LIVE_ORDER: SportId[] = [
-  "darts",
-  "petanque",
-  "pingpong",
-  "babyfoot",
-  "molkky",
-  "padel",
-  "badminton",
-  "cornhole",
-  "palet",
-  "bowling",
-];
+export const SPORT_LIVE_ORDER: SportId[] = LIVE_SPORTS_APP_ORDER;
 
-export const SPORT_LIVE_META: Record<SportId, SportLiveMeta> = {
+export const SPORT_LIVE_META: Record<SportLiveSportId, SportLiveMeta> = {
   darts: { id: "darts", icon: "🎯", label: "Fléchettes", shortLabel: "Darts", accent: "#ffcf5a" },
   petanque: { id: "petanque", icon: "🟠", label: "Pétanque", shortLabel: "Pétanque", accent: "#ffb65a" },
   pingpong: { id: "pingpong", icon: "🏓", label: "Ping-Pong", shortLabel: "Ping-Pong", accent: "#70d8ff" },
@@ -222,11 +212,11 @@ export function getLocaleProfile(locale: string | null | undefined): SportLiveLo
   return SPORT_LIVE_LOCALE_PROFILES[key] || SPORT_LIVE_LOCALE_PROFILES.en;
 }
 
-export function getSportSources(sport: SportId): SportLiveSource[] {
+export function getSportSources(sport: SportLiveSportId): SportLiveSource[] {
   return SPORT_LIVE_SOURCES.filter((source) => source.sport === sport);
 }
 
-export function getRecommendedSportSources(sport: SportId, locale: string | null | undefined): SportLiveSource[] {
+export function getRecommendedSportSources(sport: SportLiveSportId, locale: string | null | undefined): SportLiveSource[] {
   if (sport === "darts") {
     return getDartsRecommendedSources(locale).map((source) => ({ ...source, sport: "darts" as const, regions: source.regions as SportLiveRegion[] }));
   }
@@ -251,7 +241,7 @@ export function getRecommendedSportSources(sport: SportId, locale: string | null
   return scored.length ? scored.map((item) => item.source) : sources;
 }
 
-export function getAvailableRegions(sport: SportId, locale: string | null | undefined): SportLiveRegion[] {
+export function getAvailableRegions(sport: SportLiveSportId, locale: string | null | undefined): SportLiveRegion[] {
   if (sport === "darts") return getDartsAvailableRegions(locale) as SportLiveRegion[];
   const profile = getLocaleProfile(locale);
   const sourceRegions = new Set(getSportSources(sport).flatMap((source) => source.regions));

@@ -12,6 +12,7 @@ import { useLang } from "../../contexts/LangContext";
 import type { Store, Profile } from "../../lib/types";
 import ActiveProfileCard from "../../components/home/ActiveProfileCard";
 import ArcadeTicker, { type ArcadeTickerItem } from "../../components/home/ArcadeTicker";
+import LiveSportsHomeCard from "../../components/home/LiveSportsHomeCard";
 import { PageAdBanner } from "../../monetization/AdSlot";
 
 import { loadPetanqueState } from "../../lib/petanqueStore";
@@ -852,6 +853,10 @@ const secondaryTicker = tickerItems.length
       <section className="msc-landscape-primary msc-home-primary msc-sport-home-primary">
       <div className="msc-home-ad msc-home-ad--top" style={{ ...sectionWrap, marginBottom: 0 }}>
         <PageAdBanner placement="home" slotKey="page-home-petanque-under-header" />
+      </div>
+
+      <div style={sectionWrap}>
+        <LiveSportsHomeCard sport="petanque" onClick={() => go("live")} />
       </div>
 
       {/* ✅ Carte joueur actif (mêmes extérieurs) */}
