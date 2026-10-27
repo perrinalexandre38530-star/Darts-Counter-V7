@@ -808,6 +808,18 @@ async function doFetch(path: string, init?: RequestInit, options?: ApiRequestOpt
     await recoverNasAuthToken("missing_token").catch(() => "");
   }
 
+  // En session Supabase publique, /auth/me est un probe du backend NAS legacy.
+  // Il n'apporte aucune information utile au compte courant et génère des 401
+  // parasites lorsque le JWT technique NAS n'existe pas/plus.
+  if (normalizedPath === "/auth/me" && requestMethod === "GET" && activeSessionIsPublicSupabase() && !canUseNasOnlineApi()) {
+    return {
+      ok: true,
+      skipped: true,
+      provider: "supabase",
+      code: "legacy_nas_auth_probe_disabled",
+    };
+  }
+
   // Invariant d'architecture : en mode public/hybride, AUCUNE route /online/*
   // ne doit retomber sur l'API NAS. Les fonctions publiques migrées parlent
   // directement à Supabase. Les anciennes lectures encore non migrées sont
@@ -925,6 +937,15 @@ async function doFetch(path: string, init?: RequestInit, options?: ApiRequestOpt
 
       clearResponseDeadline();
       clearResponseDeadline = () => {};
+
+      // Le cloud personnel est rattaché au compte Supabase. Sur 401 on force
+      // d'abord le refresh de CETTE session, sans fabriquer un JWT NAS.
+      if (isPersonalCloudRoute) {
+        const refreshed = await readFreshPublicSupabaseSession(true).catch(() => null);
+        if (!refreshed?.accessToken) break;
+        continue;
+      }
+
       const recoveredToken = await recoverNasAuthToken("401");
       if (!recoveredToken) break;
     }

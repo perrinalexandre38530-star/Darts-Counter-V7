@@ -9,7 +9,7 @@ import { resolveTeamLogoSrc } from '../assets/teamLogoLibrary';
 import type { Profile } from '../lib/types';
 import { getChallengeObjectiveImage } from '../lib/challengeObjectiveVisuals';
 import { recordProfileUsageForMode } from '../lib/profileUsage';
-import { DEFAULT_CUSTOM_SEQUENCE, DEFAULT_HALF_IT_SEQUENCE, exerciseTitle, objectiveLabel, type ChallengeExerciseType, type ChallengeObjectiveToken, type ChallengeScoreMode } from '../lib/challengeExercises';
+import { DEFAULT_CUSTOM_SEQUENCE, DEFAULT_HALF_IT_SEQUENCE, DOUBLES_8_TARGETS, exerciseTitle, objectiveLabel, type ChallengeExerciseType, type ChallengeObjectiveToken, type ChallengeScoreMode } from '../lib/challengeExercises';
 
 export type ChallengeTarget='1'|'2'|'3'|'4'|'5'|'6'|'7'|'8'|'9'|'10'|'11'|'12'|'13'|'14'|'15'|'16'|'17'|'18'|'19'|'20'|'bull'|'bull25'|'bull50'|'any-double'|'any-triple';
 export type ChallengeRule='all'|'single'|'double'|'triple'|'bull'|'bull25'|'bull50';
@@ -35,6 +35,7 @@ export type ChallengeConfigData={
   groupingMin?:number;
   groupingMax?:number;
   groupingHits?:2|3;
+  doublesBonusTarget?:number;
 };
 
 type ConfigMode='guided'|'complete';
@@ -57,6 +58,7 @@ type ChallengePreset={
  groupingMin:number;
  groupingMax:number;
  groupingHits:2|3;
+ doublesBonusTarget:number;
 };
 
 const CHALLENGE_DRAFT_KEY='dc_challenge_config_draft_v2';
@@ -75,6 +77,7 @@ const presetDescriptor=(preset:ChallengePreset|null)=>{
  if(type==='clock')return `${preset.clockIncludeBull?'1 → 20 + BULL':'1 → 20'} · ${preset.clockScoreMode==='real'?'VALEUR RÉELLE':'S1 / D2 / T3'}`;
  if(type==='half-it')return `HALF-IT · DÉPART ${preset.halfItStartScore||40}`;
  if(type==='sequence')return `SÉQUENCE · ${Math.max(1,preset.sequenceObjectives?.length||0)} OBJECTIFS`;
+ if(type==='doubles8')return `8 DOUBLES · BONUS D${Math.max(1,Math.min(20,Number(preset.doublesBonusTarget||20)))}`;
  return `GROUPEMENT ${Math.min(preset.groupingMin||15,preset.groupingMax||20)}–${Math.max(preset.groupingMin||15,preset.groupingMax||20)} · ×${preset.groupingHits||2}`;
 };
 
@@ -111,6 +114,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
  const [groupingMin,setGroupingMin]=React.useState(15);
  const [groupingMax,setGroupingMax]=React.useState(20);
  const [groupingHits,setGroupingHits]=React.useState<2|3>(2);
+ const [doublesBonusTarget,setDoublesBonusTarget]=React.useState(20);
  const [soundsEnabled,setSoundsEnabled]=React.useState<boolean>(()=>{try{return localStorage.getItem('dc_challenge_sounds_v1')!=='0'}catch{return true}});
  const [lastPlayedPreset,setLastPlayedPreset]=React.useState<ChallengePreset|null>(()=>readChallengePreset(CHALLENGE_LAST_PLAYED_KEY));
  const [favoritePreset,setFavoritePreset]=React.useState<ChallengePreset|null>(()=>readChallengePreset(CHALLENGE_FAVORITE_KEY));
@@ -140,6 +144,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
   setGroupingMin(Math.max(1,Math.min(20,Number(preset.groupingMin||15))));
   setGroupingMax(Math.max(1,Math.min(20,Number(preset.groupingMax||20))));
   setGroupingHits(preset.groupingHits===3?3:2);
+  setDoublesBonusTarget(Math.max(1,Math.min(20,Number(preset.doublesBonusTarget||20))));
   setSoundsEnabled(preset.soundsEnabled!==false);
   setMatchMode(nextMatch);
   setParticipantSource(preset.participantSource==='team'?'team':'direct');
@@ -164,8 +169,8 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
  const currentPreset=React.useMemo<ChallengePreset>(()=>({
   target,visits,rule,configMode:mode,matchMode,participantSource,soundsEnabled,exerciseType,
   clockIncludeBull,clockScoreMode,halfItStartScore,sequenceObjectives:[...sequenceObjectives],sequenceScoreMode,
-  groupingMin,groupingMax,groupingHits
- }),[target,visits,rule,mode,matchMode,participantSource,soundsEnabled,exerciseType,clockIncludeBull,clockScoreMode,halfItStartScore,sequenceObjectives,sequenceScoreMode,groupingMin,groupingMax,groupingHits]);
+  groupingMin,groupingMax,groupingHits,doublesBonusTarget
+ }),[target,visits,rule,mode,matchMode,participantSource,soundsEnabled,exerciseType,clockIncludeBull,clockScoreMode,halfItStartScore,sequenceObjectives,sequenceScoreMode,groupingMin,groupingMax,groupingHits,doublesBonusTarget]);
 
  React.useEffect(()=>{if(presetHydrated)writeChallengePreset(CHALLENGE_DRAFT_KEY,currentPreset)},[presetHydrated,currentPreset]);
 
@@ -255,9 +260,9 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
  const toggleChallengeSounds=(enabled:boolean)=>{setSoundsEnabled(enabled);try{localStorage.setItem('dc_challenge_sounds_v1',enabled?'1':'0')}catch{}};
 
  const resolvedSequence=exerciseType==='half-it'?[...DEFAULT_HALF_IT_SEQUENCE]:sequenceObjectives;
- const resolvedVisits=exerciseType==='clock'?(clockIncludeBull?21:20):(exerciseType==='half-it'||exerciseType==='sequence'?Math.max(1,resolvedSequence.length):visits);
- const resolvedTarget:ChallengeTarget=exerciseType==='classic'?target:exerciseType==='grouping'?String(Math.min(groupingMin,groupingMax)) as ChallengeTarget:(resolvedSequence[0]&&/^([1-9]|1[0-9]|20)$/.test(String(resolvedSequence[0]))?resolvedSequence[0] as ChallengeTarget:'20');
- const resolvedRule:ChallengeRule=exerciseType==='classic'?rule:'all';
+ const resolvedVisits=exerciseType==='clock'?(clockIncludeBull?21:20):exerciseType==='doubles8'?25:(exerciseType==='half-it'||exerciseType==='sequence'?Math.max(1,resolvedSequence.length):visits);
+ const resolvedTarget:ChallengeTarget=exerciseType==='classic'?target:exerciseType==='grouping'?String(Math.min(groupingMin,groupingMax)) as ChallengeTarget:exerciseType==='doubles8'?'20':(resolvedSequence[0]&&/^([1-9]|1[0-9]|20)$/.test(String(resolvedSequence[0]))?resolvedSequence[0] as ChallengeTarget:'20');
+ const resolvedRule:ChallengeRule=exerciseType==='classic'?rule:exerciseType==='doubles8'?'double':'all';
  const exerciseValid=exerciseType!=='sequence'||sequenceObjectives.length>0;
  const exerciseSummary=exerciseType==='classic'?`OBJECTIF ${targetText(target)}`:exerciseTitle({target:resolvedTarget,rule:resolvedRule,visits:resolvedVisits,exerciseType});
  const exerciseRuleSummary=exerciseType==='classic'
@@ -268,6 +273,8 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
     ? `Départ ${halfItStartScore} · échec de volée = score ÷2`
     : exerciseType==='sequence'
      ? `${sequenceObjectives.length} objectifs · ${sequenceScoreMode==='real'?'valeur réelle':'S=1 · D=2 · T=3'}`
+     : exerciseType==='doubles8'
+      ? `D20 · D18 · D16 · D12 · D10 · D8 · D4 · D2 · 3 volées chacun · bonus D${doublesBonusTarget}`
      : `${Math.min(groupingMin,groupingMax)}–${Math.max(groupingMin,groupingMax)} · ${groupingHits} fléchettes minimum sur le même secteur · ${visits} tours`;
 
  const chooseExercise=(next:ChallengeExerciseType)=>{
@@ -276,6 +283,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
   if(next==='half-it'){setHalfItStartScore(40);}
   if(next==='sequence'&&!sequenceObjectives.length)setSequenceObjectives([...DEFAULT_CUSTOM_SEQUENCE]);
   if(next==='grouping'){setRule('all');}
+  if(next==='doubles8'){setRule('double');setDoublesBonusTarget(20);}
  };
 
  const replayPreset=(preset:ChallengePreset|null)=>applyPreset(preset,{jumpToPlayers:true,resetPlayers:true});
@@ -297,6 +305,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
    groupingMin:Math.min(groupingMin,groupingMax),
    groupingMax:Math.max(groupingMin,groupingMax),
    groupingHits,
+   doublesBonusTarget,
    playerIds,
    teamIds:participantSource==='team'?teamIds:[],
    participantMode:'players',
@@ -346,6 +355,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
     ['half-it','HALF-IT','15 · 16 · Double · 17 · 18 · Triple · 19 · 20 · Bull.','½'],
     ['sequence','SÉQUENCE','Construisez votre propre suite d’objectifs tour par tour.','≡'],
     ['grouping','GROUPEMENT','Au moins 2 fléchettes dans le même secteur choisi.','◉'],
+    ['doubles8','8 DOUBLES · 9 FLÉCHETTES','D20 · D18 · D16 · D12 · D10 · D8 · D4 · D2, puis une volée bonus.','⑧'],
    ] as Array<[ChallengeExerciseType,string,string,string]>).map(([id,label,detail,icon])=><button type="button" key={id} className={'exercise-card '+(exerciseType===id?'on':'')} onClick={()=>chooseExercise(id)}><i>{icon}</i><span><b>{label}</b><small>{detail}</small></span></button>)}
   </div>
  </Section>;
@@ -360,13 +370,15 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
 
  const sequenceStage=<Section title="SÉQUENCE PERSONNALISÉE" subtitle="Ajoutez les objectifs dans l’ordre où ils devront être joués." key="sequence"><div className="sequence-editor"><div className="sequence-preview editable">{sequenceObjectives.map((item,i)=><span key={`${item}-${i}`}><b>{i+1}</b>{objectiveLabel(item)}<button type="button" aria-label="Retirer" onClick={()=>setSequenceObjectives(prev=>prev.filter((_,index)=>index!==i))}>×</button></span>)}</div><div className="sequence-add"><select value={sequencePicker} onChange={e=>setSequencePicker(e.target.value as ChallengeObjectiveToken)}>{Array.from({length:20},(_,i)=>String(i+1)).map(x=><option key={x} value={x}>SECTEUR {x}</option>)}<option value="any-double">DOUBLE LIBRE</option><option value="any-triple">TRIPLE LIBRE</option><option value="bull">BULL</option></select><button type="button" onClick={()=>setSequenceObjectives(prev=>[...prev,sequencePicker])}>+ AJOUTER</button><button type="button" onClick={()=>setSequenceObjectives([...DEFAULT_CUSTOM_SEQUENCE])}>PRESET</button><button type="button" className="danger" onClick={()=>setSequenceObjectives([])}>VIDER</button></div></div><div className="advanced-block compact"><h3>CALCUL DES POINTS</h3><div className="binary-row"><button type="button" className={sequenceScoreMode==='real'?'on':''} onClick={()=>setSequenceScoreMode('real')}>VALEUR RÉELLE</button><button type="button" className={sequenceScoreMode==='challenge'?'on':''} onClick={()=>setSequenceScoreMode('challenge')}>S=1 · D=2 · T=3</button></div></div>{!sequenceObjectives.length&&<div className="selection-status ko"><span>!</span><b>Ajoutez au moins un objectif à la séquence.</b></div>}</Section>;
 
+ const doubles8Stage=<Section title="8 DOUBLES · 9 FLÉCHETTES" subtitle="Pour chaque double : 3 volées de 3 fléchettes. Barème par volée : 1 touche = 10 pts · 2 = 30 pts · 3 = 100 pts." key="doubles8"><div className="sequence-preview">{DOUBLES_8_TARGETS.map((item,i)=><span key={item}><b>{i+1}</b>D{item}</span>)}</div><div className="advanced-block compact"><h3>DOUBLE DE LA VOLÉE BONUS</h3><div className="range-select"><label>DOUBLE <select value={doublesBonusTarget} onChange={e=>setDoublesBonusTarget(Math.max(1,Math.min(20,Number(e.target.value)||20)))}>{Array.from({length:20},(_,i)=>i+1).map(n=><option key={n} value={n}>D{n}</option>)}</select></label></div></div><div className="grouping-example"><b>BONUS FINAL</b><span>1 seule volée sur D{doublesBonusTarget} → <strong>+50 pts par touche</strong></span><small>24 volées sur les 8 doubles + 1 volée bonus = 75 fléchettes maximum. Score théorique maximal : 2550 points.</small></div></Section>;
+
  const groupingStage=<Section title="GROUPEMENT" subtitle="Une volée ne marque que si le même secteur autorisé reçoit le nombre minimal de fléchettes." key="grouping"><div className="grouping-presets"><button type="button" onClick={()=>{setGroupingMin(15);setGroupingMax(20);setGroupingHits(2)}}>15–20 · ×2</button><button type="button" onClick={()=>{setGroupingMin(1);setGroupingMax(20);setGroupingHits(2)}}>1–20 · ×2</button><button type="button" onClick={()=>{setGroupingMin(15);setGroupingMax(20);setGroupingHits(3)}}>15–20 · ×3</button></div><div className="grouping-config"><div className="advanced-block"><h3>FOURCHETTE DE SECTEURS</h3><div className="range-select"><label>DE <select value={groupingMin} onChange={e=>setGroupingMin(Number(e.target.value))}>{Array.from({length:20},(_,i)=>i+1).map(n=><option key={n} value={n}>{n}</option>)}</select></label><span>→</span><label>À <select value={groupingMax} onChange={e=>setGroupingMax(Number(e.target.value))}>{Array.from({length:20},(_,i)=>i+1).map(n=><option key={n} value={n}>{n}</option>)}</select></label></div></div><div className="advanced-block"><h3>VALIDATION DE LA VOLÉE</h3><div className="binary-row"><button type="button" className={groupingHits===2?'on':''} onClick={()=>setGroupingHits(2)}><b>2 FLÉCHETTES</b><small>minimum dans le même secteur</small></button><button type="button" className={groupingHits===3?'on':''} onClick={()=>setGroupingHits(3)}><b>3 FLÉCHETTES</b><small>triplet obligatoire</small></button></div></div></div><div className="grouping-example"><b>EXEMPLE</b><span>D18 + S18 + T20 → <strong>54 pts</strong></span><small>Le D18 et le S18 valident le secteur 18. Le T20 isolé ne compte pas.</small></div></Section>;
 
  const audioStage=<Section title="SONS CHALLENGE" subtitle="Jingle d’intro, impacts S / D / T / MISS et musique de fin de partie." key="audio"><div className="audio-toggle-row"><button type="button" className={soundsEnabled?'on':''} onClick={()=>toggleChallengeSounds(true)}><b>SONS ON</b><span>Jingles et impacts activés</span></button><button type="button" className={!soundsEnabled?'on off':''} onClick={()=>toggleChallengeSounds(false)}><b>SONS OFF</b><span>Challenge totalement silencieux</span></button></div></Section>;
 
- const exerciseSettings=exerciseType==='classic'?[targetStage,visitsStage,ruleStage]:exerciseType==='clock'?[clockStage]:exerciseType==='half-it'?[halfItStage]:exerciseType==='sequence'?[sequenceStage]:[visitsStage,groupingStage];
+ const exerciseSettings=exerciseType==='classic'?[targetStage,visitsStage,ruleStage]:exerciseType==='clock'?[clockStage]:exerciseType==='half-it'?[halfItStage]:exerciseType==='sequence'?[sequenceStage]:exerciseType==='doubles8'?[doubles8Stage]:[visitsStage,groupingStage];
  const stages=[formatStage,playersStage,exerciseStage,...exerciseSettings,audioStage];
- const stepLabels=['FORMAT','JOUEURS','EXERCICE',...(exerciseType==='classic'?['CIBLE','TOURS','OBJECTIF']:exerciseType==='clock'?['HORLOGE']:exerciseType==='half-it'?['HALF-IT']:exerciseType==='sequence'?['SÉQUENCE']:['TOURS','GROUPEMENT']),'SONS'];
+ const stepLabels=['FORMAT','JOUEURS','EXERCICE',...(exerciseType==='classic'?['CIBLE','TOURS','OBJECTIF']:exerciseType==='clock'?['HORLOGE']:exerciseType==='half-it'?['HALF-IT']:exerciseType==='sequence'?['SÉQUENCE']:exerciseType==='doubles8'?['8 DOUBLES']:['TOURS','GROUPEMENT']),'SONS'];
  const currentStepValid=step===0?Boolean(matchMode):step===1?selectionValid:(exerciseType==='sequence'&&step===3?sequenceObjectives.length>0:true);
  React.useEffect(()=>{setStep(prev=>Math.min(prev,Math.max(0,stages.length-1)))},[exerciseType,stages.length]);
  const shown=mode==='complete'?stages:[stages[step]];

@@ -1,4 +1,4 @@
-export type ChallengeExerciseType='classic'|'clock'|'half-it'|'sequence'|'grouping';
+export type ChallengeExerciseType='classic'|'clock'|'half-it'|'sequence'|'grouping'|'doubles8';
 export type ChallengeScoreMode='challenge'|'real';
 export type ChallengeObjectiveToken='1'|'2'|'3'|'4'|'5'|'6'|'7'|'8'|'9'|'10'|'11'|'12'|'13'|'14'|'15'|'16'|'17'|'18'|'19'|'20'|'bull'|'any-double'|'any-triple';
 export type ChallengeHit='S'|'D'|'T'|'25'|'50'|'MISS';
@@ -16,19 +16,21 @@ export type ChallengeExerciseConfigLike={
  groupingMin?:number;
  groupingMax?:number;
  groupingHits?:2|3;
+ doublesBonusTarget?:number;
 };
 
 export type ChallengeEntryLike={hit:ChallengeHit;segment?:number|null};
 
 export const DEFAULT_HALF_IT_SEQUENCE:ChallengeObjectiveToken[]=['15','16','any-double','17','18','any-triple','19','20','bull'];
 export const DEFAULT_CUSTOM_SEQUENCE:ChallengeObjectiveToken[]=['20','any-double','18','any-triple','bull'];
+export const DOUBLES_8_TARGETS=[20,18,16,12,10,8,4,2] as const;
 
 const classicValues:Record<ChallengeHit,number>={S:1,D:2,T:3,'25':1,'50':2,MISS:0};
 const clampSector=(value:any,fallback:number)=>Math.max(1,Math.min(20,Math.round(Number(value)||fallback)));
 
 export function challengeExerciseType(cfg:ChallengeExerciseConfigLike):ChallengeExerciseType{
  const value=String(cfg?.exerciseType||'classic').toLowerCase();
- return value==='clock'||value==='half-it'||value==='sequence'||value==='grouping'?value:'classic';
+ return value==='clock'||value==='half-it'||value==='sequence'||value==='grouping'||value==='doubles8'?value:'classic';
 }
 
 export function normalizedSequence(cfg:ChallengeExerciseConfigLike):ChallengeObjectiveToken[]{
@@ -53,6 +55,11 @@ export function objectiveForVisit(cfg:ChallengeExerciseConfigLike,visitIndex:num
   return sequence[Math.max(0,Math.min(sequence.length-1,visitIndex))]||'20';
  }
  if(type==='grouping')return `group:${clampSector(cfg.groupingMin,15)}-${clampSector(cfg.groupingMax,20)}`;
+ if(type==='doubles8'){
+  if(visitIndex>=24)return `bonus-double:${clampSector(cfg.doublesBonusTarget,20)}`;
+  const target=DOUBLES_8_TARGETS[Math.max(0,Math.min(DOUBLES_8_TARGETS.length-1,Math.floor(visitIndex/3)))];
+  return `double:${target}`;
+ }
  return String(cfg.target||'20');
 }
 
@@ -60,6 +67,8 @@ export function objectiveLabel(objective:string,cfg?:ChallengeExerciseConfigLike
  if(objective==='any-double')return 'DOUBLE LIBRE';
  if(objective==='any-triple')return 'TRIPLE LIBRE';
  if(objective==='bull'||objective==='bull25'||objective==='bull50')return 'BULL';
+ if(objective.startsWith('bonus-double:'))return `BONUS D${clampSector(objective.split(':')[1],20)}`;
+ if(objective.startsWith('double:'))return `D${clampSector(objective.split(':')[1],20)}`;
  if(objective.startsWith('group:')){
   const min=clampSector(cfg?.groupingMin,15),max=clampSector(cfg?.groupingMax,20),hits=Math.max(2,Math.min(3,Number(cfg?.groupingHits||2)));
   return `${Math.min(min,max)}–${Math.max(min,max)} · ${hits} MÊME SECTEUR`;
@@ -69,6 +78,7 @@ export function objectiveLabel(objective:string,cfg?:ChallengeExerciseConfigLike
 
 export function objectiveBoardKey(objective:string,cfg?:ChallengeExerciseConfigLike):string{
  if(objective.startsWith('group:'))return String(clampSector(cfg?.groupingMax,20));
+ if(objective.startsWith('bonus-double:')||objective.startsWith('double:'))return String(clampSector(objective.split(':')[1],20));
  if(objective==='bull25'||objective==='bull50')return 'bull';
  return objective;
 }
@@ -79,6 +89,7 @@ export function exerciseTitle(cfg:ChallengeExerciseConfigLike):string{
   case 'half-it':return 'HALF-IT';
   case 'sequence':return 'SÉQUENCE';
   case 'grouping':return 'GROUPEMENT';
+  case 'doubles8':return '8 DOUBLES · 9 FLÉCHETTES';
   default:return 'CIBLE FIXE';
  }
 }
@@ -89,6 +100,7 @@ export function challengeObjectiveKeyTarget(cfg:ChallengeExerciseConfigLike):str
  if(type==='clock')return `clock-${cfg.clockScoreMode==='real'?'real':'hits'}-${cfg.clockIncludeBull?'bull':'20'}`;
  if(type==='half-it')return `halfit-${Math.max(0,Math.round(Number(cfg.halfItStartScore??40)||0))}-${normalizedSequence(cfg).join('.')}`;
  if(type==='sequence')return `sequence-${cfg.sequenceScoreMode==='challenge'?'hits':'real'}-${normalizedSequence(cfg).join('.')}`;
+ if(type==='doubles8')return `doubles8-bonus-d${clampSector(cfg.doublesBonusTarget,20)}`;
  const a=clampSector(cfg.groupingMin,15),b=clampSector(cfg.groupingMax,20),hits=Math.max(2,Math.min(3,Number(cfg.groupingHits||2)));
  return `grouping-${Math.min(a,b)}-${Math.max(a,b)}-x${hits}`;
 }
@@ -98,6 +110,7 @@ export function challengeOnlineTargetLabel(value:string):string{
  if(value.startsWith('halfit-'))return 'HALF-IT';
  if(value.startsWith('sequence-'))return 'SÉQUENCE';
  if(value.startsWith('grouping-'))return 'GROUPEMENT';
+ if(value.startsWith('doubles8-'))return '8 DOUBLES';
  if(value==='any-double')return 'DOUBLES';
  if(value==='any-triple')return 'TRIPLES';
  if(value==='bull'||value==='bull25'||value==='bull50')return 'BULL';
@@ -215,6 +228,17 @@ export function evaluateChallengeEntries(entries:ChallengeEntryLike[],cfg:Challe
     const points=classicHitValue(entry.hit,String(cfg.rule||'all'),String(cfg.target||'20'),entry.segment);
     entryPoints[start+j]=points;
     entrySuccessful[start+j]=points>0;
+    score+=points;
+   });
+  }else if(type==='doubles8'){
+   const bonusVisit=visitIndex>=24;
+   let doubleHits=0;
+   visit.forEach((entry,j)=>{
+    if(entry.hit!=='D')return;
+    entrySuccessful[start+j]=true;
+    doubleHits++;
+    const points=bonusVisit?50:doubleHits===1?10:doubleHits===2?20:70;
+    entryPoints[start+j]=points;
     score+=points;
    });
   }else if(type==='grouping'){
@@ -448,6 +472,7 @@ export function challengeExerciseConfigFromRules(rules:any,objectiveOverride?:st
   groupingMin:clampSector(stored?.groupingMin,15),
   groupingMax:clampSector(stored?.groupingMax,20),
   groupingHits:Number(stored?.groupingHits)===3?3:2,
+  doublesBonusTarget:clampSector(stored?.doublesBonusTarget,20),
  };
  if(type==='clock'){
   common.target='1';common.rule='all';common.visits=common.clockIncludeBull?21:20;
@@ -457,6 +482,8 @@ export function challengeExerciseConfigFromRules(rules:any,objectiveOverride?:st
   common.visits=Math.max(1,sequence.length);
   const first=String(sequence[0]||'20');
   common.target=/^([1-9]|1[0-9]|20)$/.test(first)?first:'20';common.rule='all';
+ }else if(type==='doubles8'){
+  common.target='20';common.rule='double';common.visits=25;common.doublesBonusTarget=clampSector(common.doublesBonusTarget,20);
  }else if(type==='grouping'){
   const lo=Math.min(common.groupingMin,common.groupingMax),hi=Math.max(common.groupingMin,common.groupingMax);
   common.groupingMin=lo;common.groupingMax=hi;common.target=String(lo);common.rule='all';
@@ -473,5 +500,6 @@ export function maxChallengePointsPerDart(cfg:ChallengeExerciseConfigLike):numbe
  if(type==='classic')return Math.max(1,...(['S','D','T','25','50'] as ChallengeHit[]).map(hit=>classicHitValue(hit,String(cfg.rule||'all'),String(cfg.target||'20'),20)));
  if(type==='clock'&&cfg.clockScoreMode!=='real')return 3;
  if(type==='sequence'&&cfg.sequenceScoreMode==='challenge')return 3;
+ if(type==='doubles8')return 34;
  return 60;
 }

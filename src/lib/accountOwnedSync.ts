@@ -171,10 +171,36 @@ function isSensitiveKey(key: string): boolean {
   return /(^|_)(password|passwd|secret|access_token|refresh_token|authorization|pkce|code_verifier)($|_)/.test(k);
 }
 
+function sanitizeUnicodeScalarString(input: string): string {
+  const s = String(input || "");
+  let out = "";
+  for (let i = 0; i < s.length; i += 1) {
+    const code = s.charCodeAt(i);
+    // PostgreSQL json/jsonb refuse les surrogates UTF-16 orphelins et U+0000.
+    if (code === 0) { out += "\uFFFD"; continue; }
+    if (code >= 0xD800 && code <= 0xDBFF) {
+      const next = i + 1 < s.length ? s.charCodeAt(i + 1) : 0;
+      if (next >= 0xDC00 && next <= 0xDFFF) {
+        out += s[i] + s[i + 1];
+        i += 1;
+      } else {
+        out += "\uFFFD";
+      }
+      continue;
+    }
+    if (code >= 0xDC00 && code <= 0xDFFF) { out += "\uFFFD"; continue; }
+    out += s[i];
+  }
+  return out;
+}
+
 function cloudSafe(value: any, depth = 0, seen?: WeakSet<object>): any {
   if (depth > 28) return null;
   if (value == null) return value;
-  if (typeof value === "string") return isInlineImage(value) ? null : value;
+  if (typeof value === "string") {
+    if (isInlineImage(value)) return null;
+    return sanitizeUnicodeScalarString(value);
+  }
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   if (typeof value === "boolean") return value;
   if (typeof value === "bigint") return Number(value);
@@ -196,8 +222,9 @@ function cloudSafe(value: any, depth = 0, seen?: WeakSet<object>): any {
     const out: Record<string, any> = {};
     for (const [key, raw] of Object.entries(value)) {
       if (isSensitiveKey(key)) continue;
+      const safeKey = sanitizeUnicodeScalarString(key);
       const cleaned = cloudSafe(raw, depth + 1, refs);
-      if (cleaned !== undefined) out[key] = cleaned;
+      if (cleaned !== undefined) out[safeKey] = cleaned;
     }
     return out;
   }
@@ -1166,7 +1193,11 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     const failedIds: string[] = [];
     for (let i = 0; i < rows.length; i += HISTORY_BATCH_SIZE) {
       if (stopped || tableUnavailable || remotePaused()) break;
-      const batch = rows.slice(i, i + HISTORY_BATCH_SIZE);
+      const batch = rows.slice(i, i + HISTORY_BATCH_SIZE).map((row) => ({
+        ...row,
+        document_id: sanitizeUnicodeScalarString(cleanId(row?.document_id)),
+        payload: cloudSafe(row?.payload) ?? {},
+      }));
       for (const row of batch) markOutbound(DOC.historyMatch, cleanId(row?.document_id), Number(row?.client_updated_at || 0));
       const { error } = await supabase.from(TABLE).upsert(batch as any, { onConflict: "owner_user_id,document_type,document_id" });
       if (!error) {
