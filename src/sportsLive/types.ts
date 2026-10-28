@@ -6,6 +6,7 @@ export type SportLiveSportId =
   | "pingpong"
   | "babyfoot"
   | "molkky"
+  | "foot"
   | "padel"
   | "badminton"
   | "cornhole"
@@ -125,7 +126,7 @@ export type SportLiveOverview = {
   sport: SportLiveSportId;
   automaticData: boolean;
   configured: boolean;
-  provider: "dartsapi" | "pdc_official" | "tabletennisapi" | "itsf_official" | "molkky_world" | "fipjp_official" | "official_links";
+  provider: "dartsapi" | "pdc_official" | "tabletennisapi" | "thesportsdb" | "football_data" | "itsf_official" | "molkky_world" | "fipjp_official" | "official_links";
   plan?: string | null;
   dataAsOf?: string | null;
   liveAvailable: boolean;

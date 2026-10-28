@@ -15,6 +15,7 @@ export const SPORT_LIVE_META: Record<SportLiveSportId, SportLiveMeta> = {
   pingpong: { id: "pingpong", icon: "🏓", label: "Ping-Pong", shortLabel: "Ping-Pong", accent: "#70d8ff" },
   babyfoot: { id: "babyfoot", icon: "⚽", label: "Baby-foot", shortLabel: "Baby-foot", accent: "#7fe2a9" },
   molkky: { id: "molkky", icon: "🪵", label: "Mölkky", shortLabel: "Mölkky", accent: "#d9b37c" },
+  foot: { id: "foot", icon: "⚽", label: "Football", shortLabel: "Foot", accent: "#49e77b" },
   padel: { id: "padel", icon: "🎾", label: "Padel", shortLabel: "Padel", accent: "#d7ff75" },
   badminton: { id: "badminton", icon: "🏸", label: "Badminton", shortLabel: "Badminton", accent: "#d3a4ff" },
   cornhole: { id: "cornhole", icon: "🟫", label: "Cornhole", shortLabel: "Cornhole", accent: "#ff9b74" },
@@ -75,6 +76,30 @@ export const SPORT_LIVE_LOCALE_PROFILES: Record<string, SportLiveLocaleProfile> 
 };
 
 const OTHER_SPORT_SOURCES: SportLiveSource[] = [
+
+  // FOOTBALL
+  {
+    id: "foot-thesportsdb", sport: "foot", name: "TheSportsDB Football", shortName: "TheSportsDB",
+    description: "Résultats, calendrier, équipes et métadonnées football via API JSON.", kind: "live_scores",
+    regions: ["global", "europe", "france", "uk_ireland", "north_america", "latin_america", "asia", "oceania"], official: false,
+    homeUrl: "https://www.thesportsdb.com/", scoresUrl: "https://www.thesportsdb.com/", resultsUrl: "https://www.thesportsdb.com/", calendarUrl: "https://www.thesportsdb.com/", badges: ["SCORES", "API", "MONDE"]
+  },
+  {
+    id: "foot-football-data", sport: "foot", name: "football-data.org", shortName: "Football-Data",
+    description: "API football structurée : scores, matchs, classements et grandes compétitions européennes/mondiales.", kind: "live_scores",
+    regions: ["global", "europe", "france", "uk_ireland", "spain", "dach", "italy", "portugal", "benelux"], official: false,
+    homeUrl: "https://www.football-data.org/", scoresUrl: "https://www.football-data.org/", resultsUrl: "https://www.football-data.org/", calendarUrl: "https://www.football-data.org/", badges: ["FOOT", "SCORES", "EUROPE"]
+  },
+  {
+    id: "foot-fifa", sport: "foot", name: "FIFA", shortName: "FIFA",
+    description: "Compétitions mondiales, calendriers et actualités officielles du football international.", kind: "governing_body",
+    regions: ["global"], official: true, homeUrl: "https://www.fifa.com/", resultsUrl: "https://www.fifa.com/tournaments", calendarUrl: "https://www.fifa.com/tournaments", badges: ["FIFA", "MONDE"]
+  },
+  {
+    id: "foot-uefa", sport: "foot", name: "UEFA", shortName: "UEFA",
+    description: "Compétitions européennes, résultats, calendrier et actualités officielles.", kind: "governing_body",
+    regions: ["europe", "france", "uk_ireland", "spain", "dach", "italy", "portugal", "benelux", "eastern_europe", "balkans", "nordic_baltic"], official: true, homeUrl: "https://www.uefa.com/", scoresUrl: "https://www.uefa.com/uefachampionsleague/fixtures-results/", resultsUrl: "https://www.uefa.com/uefachampionsleague/fixtures-results/", calendarUrl: "https://www.uefa.com/", badges: ["UEFA", "EUROPE"]
+  },
   // PÉTANQUE
   {
     id: "petanque-fipjp", sport: "petanque", name: "Fédération Internationale de Pétanque et Jeu Provençal", shortName: "FIPJP",

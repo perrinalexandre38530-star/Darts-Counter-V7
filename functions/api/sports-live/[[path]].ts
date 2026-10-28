@@ -2,6 +2,7 @@ type Env = {
   DARTS_API_KEY?: string;
   TABLE_TENNIS_API_KEY?: string;
   OPENAI_API_KEY?: string;
+  FOOTBALL_DATA_API_KEY?: string;
   LIVE_INTELLIGENCE_MODEL?: string;
 };
 
@@ -122,13 +123,23 @@ function parseFrenchDate(label: string): { start: Date | null; end: Date | null 
   return { start: dayUtc(year, month, Number(m[1])), end: dayUtc(year, month, Number(m[2] || m[1])) };
 }
 
+async function timedFetch(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = 4500) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.max(500, timeoutMs));
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function apiFetch(base: string, key: string, path: string) {
-  const response = await fetch(`${base}${path}`, {
+  const response = await timedFetch(`${base}${path}`, {
     headers: {
       Accept: "application/json",
       Authorization: `Bearer ${key}`,
     },
-  });
+  }, 5000);
   const body = await response.json().catch(() => ({ error: "invalid_json", message: `HTTP ${response.status}` })) as any;
   return { ok: response.ok, status: response.status, body };
 }
@@ -503,12 +514,12 @@ function htmlLines(html: string): string[] {
 }
 
 async function fetchOfficialHtml(url: string) {
-  const response = await fetch(url, {
+  const response = await timedFetch(url, {
     headers: {
       Accept: "text/html,application/xhtml+xml",
       "User-Agent": "MULTISPORTS-SCORING-LIVE/1.0 (+https://multisports-scoring.pages.dev)",
     },
-  });
+  }, 5000);
   if (!response.ok) throw new Error(`HTTP ${response.status} ${url}`);
   return response.text();
 }
@@ -807,6 +818,11 @@ const INTELLIGENCE_SPECS: Record<string, { label: string; query: string; domains
     query: "Molkky Mölkky tournament results world championship",
     domains: ["molkky.world", "international-molkky.org"],
   },
+  foot: {
+    label: "football / soccer",
+    query: "football soccer results scores fixtures championships",
+    domains: ["fifa.com", "uefa.com", "lequipe.fr", "bbc.com", "skysports.com", "espn.com", "football-data.org", "thesportsdb.com"],
+  },
   padel: {
     label: "padel",
     query: "padel FIP Premier Padel results scores tournament",
@@ -867,6 +883,32 @@ const DARTS_LOCALE_QUERY_PACKS: Record<string, string[]> = {
   ja: ["ダーツ 結果 PDC WDF", "Japan darts results"],
   zh: ["飞镖 比赛 结果 PDC WDF", "China darts results"],
 };
+
+const FOOT_LOCALE_QUERY_PACKS: Record<string, string[]> = {
+  fr: ["football France Ligue 1 résultats scores", "football équipe de France résultats", "football Ligue des champions résultats France"],
+  en: ["football Premier League results scores", "football England Scotland Wales Ireland results", "soccer USA Canada Australia results"],
+  es: ["fútbol España LaLiga resultados", "fútbol Latinoamérica resultados", "Champions League resultados fútbol"],
+  de: ["Fußball Deutschland Bundesliga Ergebnisse", "Fußball Österreich Schweiz Ergebnisse", "Champions League Ergebnisse"],
+  it: ["calcio Italia Serie A risultati", "Champions League calcio risultati"],
+  nl: ["voetbal Nederland Eredivisie uitslagen", "voetbal België uitslagen", "Champions League uitslagen"],
+  pt: ["futebol Portugal resultados", "futebol Brasil resultados", "Champions League resultados"],
+  pl: ["piłka nożna Polska wyniki", "Liga Mistrzów wyniki piłka nożna"],
+  da: ["fodbold Danmark resultater", "Champions League fodbold resultater"],
+  no: ["fotball Norge resultater", "Champions League fotball resultater"],
+  sv: ["fotboll Sverige resultat", "Champions League fotboll resultat"],
+  is: ["fótbolti Ísland úrslit", "Champions League football results"],
+  cs: ["fotbal Česko výsledky", "Liga mistrů fotbal výsledky"],
+  ro: ["fotbal România rezultate", "Champions League rezultate"],
+  sr: ["fudbal Srbija rezultati", "Liga šampiona rezultati"],
+  hr: ["nogomet Hrvatska rezultati", "Liga prvaka rezultati"],
+  ru: ["футбол результаты", "Лига чемпионов результаты"],
+  tr: ["futbol Türkiye sonuçları", "Şampiyonlar Ligi sonuçları"],
+  ar: ["نتائج كرة القدم", "دوري أبطال أوروبا نتائج"],
+  hi: ["football India results", "football Asia results", "Champions League results"],
+  ja: ["サッカー 試合 結果", "Jリーグ 結果", "チャンピオンズリーグ 結果"],
+  zh: ["足球 比赛 结果 中国", "中超 结果", "欧冠 足球 结果"],
+};
+
 
 
 type NewsEdition = {
@@ -1017,6 +1059,14 @@ function globalQueriesFor(sport: string) {
       "site:modussuperseries.com darts results fixtures",
     );
   }
+  if (sport === "foot") {
+    out.push(
+      "football FIFA UEFA worldwide results scores",
+      "football Champions League results fixtures",
+      "football World Cup qualifiers results",
+      "soccer Premier League LaLiga Bundesliga Serie A Ligue 1 results",
+    );
+  }
   return Array.from(new Set(out)).slice(0, 6);
 }
 
@@ -1027,6 +1077,12 @@ function localQueriesFor(sport: string, lang: string) {
   if (sport === "darts") {
     return Array.from(new Set([
       ...(DARTS_LOCALE_QUERY_PACKS[code] || DARTS_LOCALE_QUERY_PACKS.en || []),
+      `${spec.query} results scores`,
+    ])).slice(0, 4);
+  }
+  if (sport === "foot") {
+    return Array.from(new Set([
+      ...(FOOT_LOCALE_QUERY_PACKS[code] || FOOT_LOCALE_QUERY_PACKS.en || []),
       `${spec.query} results scores`,
     ])).slice(0, 4);
   }
@@ -1133,13 +1189,13 @@ async function fetchNewsImage(sourceUrl: string | null | undefined) {
   const url = absoluteHttpUrl(String(sourceUrl || ""));
   if (!url) return null;
   try {
-    const response = await fetch(url, {
+    const response = await timedFetch(url, {
       redirect: "follow",
       headers: {
         Accept: "text/html,application/xhtml+xml",
         "User-Agent": "MULTISPORTS-SCORING-LIVE/1.0",
       },
-    });
+    }, 2200);
     if (!response.ok) return null;
     const type = String(response.headers.get("content-type") || "").toLowerCase();
     if (!type.includes("text/html") && !type.includes("application/xhtml+xml")) return null;
@@ -1151,13 +1207,13 @@ async function fetchNewsImage(sourceUrl: string | null | undefined) {
 }
 
 async function enrichNewsImages(rows: IntelligenceNews[]) {
-  const first = rows.slice(0, 8);
+  const first = rows.slice(0, 5);
   const enriched = await Promise.all(first.map(async (row) => {
     if (row.imageUrl) return row;
     const imageUrl = await fetchNewsImage(row.sourceUrl);
     return imageUrl ? { ...row, imageUrl } : row;
   }));
-  return [...enriched, ...rows.slice(8)];
+  return [...enriched, ...rows.slice(5)];
 }
 
 function classifyHeadline(title: string, summary = ""): IntelligenceKind {
@@ -1227,9 +1283,9 @@ async function googleNewsIntelligence(sport: string, lang: string): Promise<Inte
   const feeds = await Promise.allSettled(plans.map(async (plan, qIndex) => {
     const recencyQuery = `${plan.query} when:${plan.recencyDays}d`;
     const url = `https://news.google.com/rss/search?q=${encodeURIComponent(recencyQuery)}&hl=${encodeURIComponent(plan.edition.hl)}&gl=${encodeURIComponent(plan.edition.gl)}&ceid=${encodeURIComponent(plan.edition.ceid)}`;
-    const response = await fetch(url, {
+    const response = await timedFetch(url, {
       headers: { Accept: "application/rss+xml, application/xml, text/xml", "User-Agent": "MULTISPORTS-SCORING-LIVE/1.0" },
-    });
+    }, 3500);
     if (!response.ok) throw new Error(`News RSS HTTP ${response.status}`);
     const xml = await response.text();
     const perFeedLimit = plan.scope === "local" ? 22 : plan.scope === "regional" ? 18 : 16;
@@ -1287,6 +1343,106 @@ async function googleNewsIntelligence(sport: string, lang: string): Promise<Inte
   });
 
   return balanced.slice(0, 72);
+}
+
+
+function bingRealUrl(raw: string) {
+  try {
+    const url = new URL(raw);
+    const real = url.searchParams.get("url");
+    return absoluteHttpUrl(real ? decodeURIComponent(real) : raw) || absoluteHttpUrl(raw);
+  } catch {
+    return absoluteHttpUrl(raw);
+  }
+}
+
+function bingMarket(edition: NewsEdition) {
+  const hl = String(edition.hl || "en-US");
+  if (hl.includes("-")) return hl;
+  return `${hl}-${edition.gl || "US"}`;
+}
+
+async function bingNewsIntelligence(sport: string, lang: string): Promise<IntelligenceNews[]> {
+  const spec = INTELLIGENCE_SPECS[sport];
+  if (!spec) return [];
+  const plans = intelligenceFeedPlansFor(sport, lang).slice(0, 9);
+  const feeds = await Promise.allSettled(plans.map(async (plan, qIndex) => {
+    const url = `https://www.bing.com/news/search?q=${encodeURIComponent(plan.query)}&format=rss&setmkt=${encodeURIComponent(bingMarket(plan.edition))}`;
+    const response = await timedFetch(url, {
+      headers: { Accept: "application/rss+xml, application/xml, text/xml", "User-Agent": "MULTISPORTS-SCORING-LIVE/1.0" },
+    }, 3200);
+    if (!response.ok) throw new Error(`Bing News RSS HTTP ${response.status}`);
+    const xml = await response.text();
+    const items = [...xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)].slice(0, 12);
+    return items.map((match, index) => {
+      const block = match[1];
+      const title = xmlTag(block, "title");
+      const summary = xmlTag(block, "description");
+      const publishedRaw = xmlTag(block, "pubDate");
+      const parsed = new Date(publishedRaw);
+      const publishedAt = Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+      const rawLink = xmlTag(block, "link");
+      const sourceUrl = bingRealUrl(rawLink);
+      const sourceName = xmlSource(block) || "Bing News";
+      const imageUrl = xmlImage(block);
+      const kind = classifyHeadline(title, summary);
+      const explicitScore = explicitScoreFromText(`${title} ${summary}`);
+      return {
+        id: `bing-${sport}-${plan.scope}-${qIndex}-${index}-${normalizeHeadlineKey(title).replace(/\s+/g, "-").slice(0, 42)}`,
+        title,
+        summary: summary && summary !== title ? summary.slice(0, 320) : null,
+        publishedAt,
+        sourceName,
+        sourceUrl,
+        imageUrl,
+        kind,
+        resultLabel: kind === "result" ? (explicitScore ? `Score ${explicitScore}` : "Résultat publié") : null,
+        scope: plan.scope,
+        scopeLabel: plan.scopeLabel,
+      } satisfies IntelligenceNews;
+    }).filter((row) => row.title.length >= 8);
+  }));
+  return uniqNews(feeds.flatMap((result) => result.status === "fulfilled" ? result.value : []))
+    .sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")))
+    .slice(0, 60);
+}
+
+async function yahooSoccerNews(lang: string): Promise<IntelligenceNews[]> {
+  try {
+    const response = await timedFetch("https://sports.yahoo.com/soccer/rss/", {
+      headers: { Accept: "application/rss+xml, application/xml, text/xml", "User-Agent": "MULTISPORTS-SCORING-LIVE/1.0" },
+    }, 3200);
+    if (!response.ok) return [];
+    const xml = await response.text();
+    const items = [...xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)].slice(0, 28);
+    return items.map((match, index) => {
+      const block = match[1];
+      const title = xmlTag(block, "title");
+      const summary = xmlTag(block, "description");
+      const publishedRaw = xmlTag(block, "pubDate");
+      const parsed = new Date(publishedRaw);
+      const publishedAt = Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+      const sourceUrl = absoluteHttpUrl(xmlTag(block, "link"));
+      const imageUrl = xmlImage(block);
+      const kind = classifyHeadline(title, summary);
+      const explicitScore = explicitScoreFromText(`${title} ${summary}`);
+      return {
+        id: `yahoo-foot-${index}-${normalizeHeadlineKey(title).replace(/\s+/g, "-").slice(0, 42)}`,
+        title,
+        summary: summary && summary !== title ? summary.slice(0, 320) : null,
+        publishedAt,
+        sourceName: "Yahoo Sports",
+        sourceUrl,
+        imageUrl,
+        kind,
+        resultLabel: kind === "result" ? (explicitScore ? `Score ${explicitScore}` : "Résultat publié") : null,
+        scope: "world" as IntelligenceScope,
+        scopeLabel: "Monde",
+      } satisfies IntelligenceNews;
+    }).filter((row) => row.title.length >= 8);
+  } catch {
+    return [];
+  }
 }
 
 function extractOpenAIText(body: any): string {
@@ -1380,10 +1536,14 @@ async function directDartsResults(lang: string): Promise<{ results: NormalResult
   const fixtures: NormalMatch[] = [];
   const events: NormalEvent[] = [];
 
-  try {
-    const html = await fetchOfficialHtml("https://modussuperseries.com/results");
-    const lines = htmlLines(html);
-    for (let i = 0; i < lines.length - 2 && results.length < 32; i += 1) {
+  const [modusReq, nzReq] = await Promise.allSettled([
+    fetchOfficialHtml("https://modussuperseries.com/results"),
+    fetchOfficialHtml("https://dartsnz.nz/results/"),
+  ]);
+
+  if (modusReq.status === "fulfilled") {
+    const lines = htmlLines(modusReq.value);
+    for (let i = 0; i < lines.length - 2 && results.length < 36; i += 1) {
       if (!/^Match\s+\d+$/i.test(lines[i])) continue;
       const a = parseLeadingScoreName(lines[i + 1]);
       const b = parseLeadingScoreName(lines[i + 2]);
@@ -1400,35 +1560,210 @@ async function directDartsResults(lang: string): Promise<{ results: NormalResult
         raw: { source: "MODUS" },
       });
     }
-  } catch {}
+  }
 
-  {
-    try {
-      const html = await fetchOfficialHtml("https://dartsnz.nz/results/");
-      const lines = htmlLines(html);
-      let section = "Darts New Zealand";
-      for (let i = 0; i < lines.length - 3 && results.length < 44; i += 1) {
-        if (/^(Mens|Ladies|Mixed|Open|Youth).{0,60}$/i.test(lines[i])) section = lines[i].slice(0, 80);
-        if (!/^Final$/i.test(lines[i])) continue;
-        const candidates = lines.slice(i + 1, i + 6).map(parseTrailingScoreName).filter(Boolean) as Array<{score:number;name:string}>;
-        if (candidates.length < 2) continue;
-        const a = candidates[0], b = candidates[1];
-        const winner = a.score >= b.score ? a : b;
-        const loser = a.score >= b.score ? b : a;
-        results.push({
-          id: `dartsnz-${i}-${winner.name}-${loser.name}`.replace(/[^a-z0-9-]+/gi, "-").slice(0, 120),
-          playedOn: null,
-          competition: `Darts New Zealand · ${section}`,
-          round: "Final",
-          winner: { name: winner.name, score: winner.score },
-          loser: { name: loser.name, score: loser.score },
-          raw: { source: "Darts New Zealand" },
-        });
-      }
-    } catch {}
+  if (nzReq.status === "fulfilled") {
+    const lines = htmlLines(nzReq.value);
+    let section = "Darts New Zealand";
+    for (let i = 0; i < lines.length - 3 && results.length < 52; i += 1) {
+      if (/^(Mens|Ladies|Mixed|Open|Youth).{0,60}$/i.test(lines[i])) section = lines[i].slice(0, 80);
+      if (!/^Final$/i.test(lines[i])) continue;
+      const candidates = lines.slice(i + 1, i + 6).map(parseTrailingScoreName).filter(Boolean) as Array<{score:number;name:string}>;
+      if (candidates.length < 2) continue;
+      const a = candidates[0], b = candidates[1];
+      const winner = a.score >= b.score ? a : b;
+      const loser = a.score >= b.score ? b : a;
+      results.push({
+        id: `dartsnz-${i}-${winner.name}-${loser.name}`.replace(/[^a-z0-9-]+/gi, "-").slice(0, 120),
+        playedOn: null,
+        competition: `Darts New Zealand · ${section}`,
+        round: "Final",
+        winner: { name: winner.name, score: winner.score },
+        loser: { name: loser.name, score: loser.score },
+        raw: { source: "Darts New Zealand" },
+      });
+    }
   }
 
   return { results, fixtures, events };
+}
+
+const SPORTSDB_BASE = "https://www.thesportsdb.com/api/v1/json/123";
+const FOOTBALL_DATA_BASE = "https://api.football-data.org/v4";
+
+function dateOffsetIso(offsetDays: number) {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + offsetDays);
+  return d.toISOString().slice(0, 10);
+}
+
+function sportsDbPlayers(row: any): NormalPlayer[] {
+  return [
+    { id: str(row?.idHomeTeam) || null, name: str(row?.strHomeTeam) || "—", score: num(row?.intHomeScore) },
+    { id: str(row?.idAwayTeam) || null, name: str(row?.strAwayTeam) || "—", score: num(row?.intAwayScore) },
+  ];
+}
+
+function sportsDbStartsAt(row: any) {
+  const date = str(row?.dateEvent);
+  const time = str(row?.strTime || row?.strTimestamp);
+  if (str(row?.strTimestamp)) return str(row?.strTimestamp);
+  if (!date) return null;
+  const iso = `${date}T${time || "12:00:00"}`;
+  const d = new Date(iso);
+  return Number.isFinite(d.getTime()) ? d.toISOString() : date;
+}
+
+async function sportsDbFootballOverview() {
+  const offsets = [-2, -1, 0, 1, 2, 3];
+  const settled = await Promise.allSettled(offsets.map(async (offset) => {
+    const date = dateOffsetIso(offset);
+    const response = await timedFetch(`${SPORTSDB_BASE}/eventsday.php?d=${encodeURIComponent(date)}&s=Soccer`, {
+      headers: { Accept: "application/json", "User-Agent": "MULTISPORTS-SCORING-LIVE/1.0" },
+    }, 3500);
+    if (!response.ok) throw new Error(`TheSportsDB HTTP ${response.status}`);
+    const body = await response.json().catch(() => ({})) as any;
+    return arr(body?.events);
+  }));
+  const rows = settled.flatMap((item) => item.status === "fulfilled" ? item.value : []);
+  const seen = new Set<string>();
+  const live: NormalMatch[] = [];
+  const fixtures: NormalMatch[] = [];
+  const results: NormalResult[] = [];
+  const events: NormalEvent[] = [];
+
+  rows.forEach((row, index) => {
+    const id = str(row?.idEvent) || `sportsdb-foot-${index}`;
+    if (seen.has(id)) return;
+    seen.add(id);
+    const players = sportsDbPlayers(row);
+    const [home, away] = players;
+    const competition = str(row?.strLeague || row?.strLeagueAlternate) || "Football";
+    const round = str(row?.intRound || row?.strSeason) || null;
+    const startsAt = sportsDbStartsAt(row);
+    const status = str(row?.strStatus || row?.strPostponed).toLowerCase();
+    const hasScore = home?.score !== null && home?.score !== undefined && away?.score !== null && away?.score !== undefined;
+    const isLive = /live|in progress|1st half|2nd half|halftime|extra time|penalties/.test(status);
+    const date = str(row?.dateEvent) || null;
+    const match: NormalMatch = { id, competition, round, startsAt, date, players, raw: row };
+    if (isLive) {
+      live.push(match);
+      return;
+    }
+    if (hasScore) {
+      const hs = Number(home.score), as = Number(away.score);
+      if (hs === as) {
+        events.push({
+          id: `draw-${id}`,
+          title: `${home.name} ${hs}-${as} ${away.name}`,
+          subtitle: competition,
+          startsAt,
+          dateLabel: date,
+          status: "result",
+          sourceName: "TheSportsDB",
+          sourceUrl: str(row?.strEventOfficial || row?.strVideo) || "https://www.thesportsdb.com/",
+          resultLabel: `${hs}-${as} · Match nul`,
+        });
+      } else {
+        const winner = hs > as ? home : away;
+        const loser = hs > as ? away : home;
+        results.push({ id, playedOn: date, competition, round, winner, loser, raw: row });
+      }
+      return;
+    }
+    fixtures.push(match);
+  });
+
+  return { live: live.slice(0, 30), fixtures: fixtures.slice(0, 50), results: results.slice(0, 50), events: events.slice(0, 30) };
+}
+
+function footballDataPlayers(row: any): NormalPlayer[] {
+  const score = row?.score?.fullTime || row?.score?.regularTime || row?.score?.halfTime || {};
+  return [
+    { id: str(row?.homeTeam?.id) || null, name: str(row?.homeTeam?.name || row?.homeTeam?.shortName) || "—", score: num(score?.home) },
+    { id: str(row?.awayTeam?.id) || null, name: str(row?.awayTeam?.name || row?.awayTeam?.shortName) || "—", score: num(score?.away) },
+  ];
+}
+
+async function footballDataOverview(key: string) {
+  const dateFrom = dateOffsetIso(-2);
+  const dateTo = dateOffsetIso(5);
+  const response = await timedFetch(`${FOOTBALL_DATA_BASE}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`, {
+    headers: { Accept: "application/json", "X-Auth-Token": key },
+  }, 4500);
+  if (!response.ok) throw new Error(`football-data.org HTTP ${response.status}`);
+  const body = await response.json().catch(() => ({})) as any;
+  const rows = arr(body?.matches);
+  const live: NormalMatch[] = [];
+  const fixtures: NormalMatch[] = [];
+  const results: NormalResult[] = [];
+  const events: NormalEvent[] = [];
+  rows.forEach((row, index) => {
+    const id = str(row?.id) || `football-data-${index}`;
+    const players = footballDataPlayers(row);
+    const [home, away] = players;
+    const competition = str(row?.competition?.name) || "Football";
+    const round = str(row?.stage || row?.matchday) || null;
+    const startsAt = str(row?.utcDate) || null;
+    const date = startsAt ? startsAt.slice(0, 10) : null;
+    const status = str(row?.status).toUpperCase();
+    const match: NormalMatch = { id, competition, round, startsAt, date, players, raw: row };
+    if (["IN_PLAY", "PAUSED", "LIVE"].includes(status)) { live.push(match); return; }
+    if (status === "FINISHED" && home?.score != null && away?.score != null) {
+      if (Number(home.score) === Number(away.score)) {
+        events.push({ id: `draw-${id}`, title: `${home.name} ${home.score}-${away.score} ${away.name}`, subtitle: competition, startsAt, dateLabel: date, status: "result", sourceName: "football-data.org", sourceUrl: "https://www.football-data.org/", resultLabel: `${home.score}-${away.score} · Match nul` });
+      } else {
+        const winner = Number(home.score) > Number(away.score) ? home : away;
+        const loser = Number(home.score) > Number(away.score) ? away : home;
+        results.push({ id, playedOn: date, competition, round, winner, loser, raw: row });
+      }
+      return;
+    }
+    fixtures.push(match);
+  });
+  return { live: live.slice(0, 40), fixtures: fixtures.slice(0, 60), results: results.slice(0, 60), events: events.slice(0, 30) };
+}
+
+async function footballOverview(env: Env) {
+  const warnings: string[] = [];
+  let provider = "thesportsdb";
+  let data = { live: [] as NormalMatch[], fixtures: [] as NormalMatch[], results: [] as NormalResult[], events: [] as NormalEvent[] };
+  const footballDataKey = str(env?.FOOTBALL_DATA_API_KEY).trim();
+  if (footballDataKey) {
+    try {
+      data = await footballDataOverview(footballDataKey);
+      provider = "football_data";
+    } catch (error: any) {
+      warnings.push(`football-data.org indisponible : ${str(error?.message || error)}. Fallback TheSportsDB activé.`);
+    }
+  }
+  if (!data.live.length && !data.fixtures.length && !data.results.length && !data.events.length) {
+    try {
+      data = await sportsDbFootballOverview();
+      provider = "thesportsdb";
+    } catch (error: any) {
+      warnings.push(`TheSportsDB indisponible : ${str(error?.message || error)}`);
+    }
+  }
+  return {
+    status: 200,
+    ttl: data.live.length ? 60 : 600,
+    payload: {
+      sport: "foot",
+      configured: data.live.length + data.fixtures.length + data.results.length + data.events.length > 0,
+      automaticData: true,
+      provider,
+      plan: provider === "football_data" ? "api" : "free",
+      dataAsOf: new Date().toISOString(),
+      liveAvailable: data.live.length > 0,
+      liveReason: data.live.length ? null : "Aucun match live détecté dans les flux football actuels.",
+      live: data.live,
+      fixtures: data.fixtures,
+      results: data.results,
+      events: data.events,
+      warnings,
+    },
+  };
 }
 
 function uniqNormalResults(rows: NormalResult[]) {
@@ -1460,15 +1795,23 @@ function newsToEvent(row: IntelligenceNews, sport: string): NormalEvent | null {
 
 async function enrichWithLiveIntelligence(env: Env, sport: string, lang: string, base: { status: number; ttl: number; payload: any }) {
   const warnings = arr(base.payload?.warnings).map(str).filter(Boolean);
-  let rss: IntelligenceNews[] = [];
+  let google: IntelligenceNews[] = [];
+  let bing: IntelligenceNews[] = [];
+  let yahoo: IntelligenceNews[] = [];
   let ai: IntelligenceNews[] = [];
-  try {
-    rss = await googleNewsIntelligence(sport, lang);
-  } catch (error: any) {
-    warnings.push(`Fil actualités web indisponible : ${str(error?.message || error)}`);
-  }
 
-  // L'IA web est un enrichissement facultatif. Le RSS garantit qu'il y a du contenu même sans clé OpenAI.
+  const newsSettled = await Promise.allSettled([
+    googleNewsIntelligence(sport, lang),
+    bingNewsIntelligence(sport, lang),
+    sport === "foot" ? yahooSoccerNews(lang) : Promise.resolve([] as IntelligenceNews[]),
+  ]);
+  if (newsSettled[0].status === "fulfilled") google = newsSettled[0].value;
+  else warnings.push(`Google News indisponible : ${str(newsSettled[0].reason?.message || newsSettled[0].reason)}`);
+  if (newsSettled[1].status === "fulfilled") bing = newsSettled[1].value;
+  else warnings.push(`Bing News indisponible : ${str(newsSettled[1].reason?.message || newsSettled[1].reason)}`);
+  if (newsSettled[2].status === "fulfilled") yahoo = newsSettled[2].value;
+
+  // L'IA web est un enrichissement facultatif. Les RSS Google+Bing (+Yahoo Foot) assurent le contenu sans clé OpenAI.
   if (str(env?.OPENAI_API_KEY).trim()) {
     try {
       ai = await openAiWebIntelligence(env, sport, lang);
@@ -1477,7 +1820,9 @@ async function enrichWithLiveIntelligence(env: Env, sport: string, lang: string,
     }
   }
 
-  const mergedNews = uniqNews([...ai, ...rss]).sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || ""))).slice(0, 72);
+  const mergedNews = uniqNews([...ai, ...google, ...bing, ...yahoo])
+    .sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")))
+    .slice(0, sport === "foot" ? 96 : 84);
   const news = await enrichNewsImages(mergedNews);
   const intelligenceEvents = news.map((row) => newsToEvent(row, sport)).filter(Boolean) as NormalEvent[];
   let direct = { results: [] as NormalResult[], fixtures: [] as NormalMatch[], events: [] as NormalEvent[] };
@@ -1485,7 +1830,7 @@ async function enrichWithLiveIntelligence(env: Env, sport: string, lang: string,
     try { direct = await directDartsResults(lang); } catch {}
   }
   const mergedEvents = uniqEvents([...(arr(base.payload?.events) as NormalEvent[]), ...direct.events, ...intelligenceEvents]).slice(0, 40);
-  const provider = ai.length ? "openai_web" : rss.length ? "news_rss" : "none";
+  const provider = ai.length ? "openai_web" : (google.length || bing.length || yahoo.length) ? "news_rss" : "none";
 
   return {
     ...base,
@@ -1506,7 +1851,7 @@ async function enrichWithLiveIntelligence(env: Env, sport: string, lang: string,
         localCount: news.filter((item) => item.scope === "local").length,
         regionalCount: news.filter((item) => item.scope === "regional").length,
         worldCount: news.filter((item) => item.scope === "world" || !item.scope).length,
-        queryCount: intelligenceFeedPlansFor(sport, lang).length,
+        queryCount: intelligenceFeedPlansFor(sport, lang).length + (sport === "foot" ? 1 : 0),
         directResultCount: direct.results.length,
         updatedAt: new Date().toISOString(),
       },
@@ -1563,6 +1908,10 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         : { status: 200, ttl: 900, payload: { sport, configured: false, automaticData: false, provider: "tabletennisapi", plan: null, dataAsOf: null, liveAvailable: false, liveReason: "TABLE_TENNIS_API_KEY non configurée côté Cloudflare.", live: [], fixtures: [], results: [], events: [], warnings: ["LIVE Intelligence charge quand même l'actualité Ping-Pong ; ajoute TABLE_TENNIS_API_KEY pour les scores structurés."] } };
       return enrichWithLiveIntelligence(context.env, sport, lang, base);
     });
+  }
+
+  if (sport === "foot") {
+    return cachedResponse(context, async () => enrichWithLiveIntelligence(context.env, sport, lang, await footballOverview(context.env)));
   }
 
   if (sport === "babyfoot" || sport === "molkky" || sport === "petanque") {

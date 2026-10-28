@@ -1,10 +1,10 @@
 import type { SportId } from "../contexts/SportContext";
 import type { SportLiveOverview, SportLiveSportId } from "./types";
 
-const CACHE_PREFIX = "msc_sport_live_cache_v6:";
+const CACHE_PREFIX = "msc_sport_live_cache_v7:";
 
 function isSupportedSport(value: SportId): value is SportLiveSportId {
-  return ["darts", "petanque", "pingpong", "babyfoot", "molkky", "padel", "badminton", "cornhole", "palet", "bowling"].includes(String(value));
+  return ["darts", "petanque", "pingpong", "babyfoot", "molkky", "foot", "padel", "badminton", "cornhole", "palet", "bowling"].includes(String(value));
 }
 
 function emptyOverview(sport: SportId): SportLiveOverview {
@@ -54,7 +54,7 @@ export async function fetchSportLiveOverview(sport: SportId, signal?: AbortSigna
 
   try {
     const locale = String(lang || document.documentElement.lang || "fr").toLowerCase();
-    const response = await fetch(`/api/sports-live/${encodeURIComponent(sport)}/overview?lang=${encodeURIComponent(locale)}&v=7`, {
+    const response = await fetch(`/api/sports-live/${encodeURIComponent(sport)}/overview?lang=${encodeURIComponent(locale)}&v=8`, {
       method: "GET",
       headers: { Accept: "application/json" },
       cache: "no-store",
