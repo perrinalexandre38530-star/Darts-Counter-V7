@@ -810,9 +810,11 @@ function buildHeaders(init?: RequestInit, requestPath = ""): HeadersInit {
   // garde au contraire le JWT NAS en priorité pour compatibilité historique.
   const token = acceptsAccountSession
     ? (isPersonalCloudRoute
-        // Invariant : personal-cloud n'accepte ici QUE le credential public.
-        // Aucun fallback NAS/backend n'est autorisé.
-        ? readAccountAccessToken()
+        // personal-cloud accepte deux credentials de COMPTE côté serveur :
+        // 1) JWT Supabase public (prioritaire), 2) JWT backend valide (fallback).
+        // Le fallback backend ne confère aucun droit NAS supplémentaire : les
+        // routes NAS privées restent protégées par leur middleware dédié.
+        ? (readAccountAccessToken() || readNasAccessToken())
         : (readNasAccessToken() || readAccountAccessToken()))
     : readNasAccessToken();
 
@@ -866,8 +868,23 @@ async function doFetch(path: string, init?: RequestInit, options?: ApiRequestOpt
   // V122: Drive ne doit plus dépendre du bridge NAS. Rafraîchir d'abord la
   // session Supabase publique, puis seulement utiliser un JWT NAS en fallback.
   if (isPersonalCloudRoute) {
-    if (!readAccountAccessToken()) {
+    if (!readAccountAccessToken() && !readNasAccessToken()) {
       await readFreshPublicSupabaseSession(false).catch(() => null);
+    }
+
+    // Offline-first / anti-spam : si le compte ne possède actuellement aucun
+    // credential exploitable, une lecture automatique du cloud personnel ne
+    // doit pas générer une rafale de 401. L'état local reste l'autorité et le
+    // cloud sera retenté quand une session valide réapparaîtra.
+    if (requestMethod === "GET" && options?.manual !== true && !readAccountAccessToken() && !readNasAccessToken()) {
+      return {
+        ok: false,
+        connected: false,
+        skipped: true,
+        authRequired: true,
+        provider: "google_drive",
+        code: "personal_cloud_auth_unavailable",
+      };
     }
   } else if (isAccountBackendRoute && !readNasAccessToken()) {
     await recoverNasAuthToken("missing_token").catch(() => "");
@@ -1003,11 +1020,12 @@ async function doFetch(path: string, init?: RequestInit, options?: ApiRequestOpt
       clearResponseDeadline();
       clearResponseDeadline = () => {};
 
-      // Le cloud personnel est rattaché au compte Supabase. Sur 401 on force
-      // d'abord le refresh de CETTE session, sans fabriquer un JWT NAS.
+      // Cloud personnel : sur 401, rafraîchir d'abord Supabase. Si Supabase
+      // n'est pas restaurable mais qu'un JWT backend de compte est encore
+      // valide, le second essai l'utilisera via buildHeaders().
       if (isPersonalCloudRoute) {
         const refreshed = await readFreshPublicSupabaseSession(true).catch(() => null);
-        if (!refreshed?.accessToken) break;
+        if (!refreshed?.accessToken && !readNasAccessToken()) break;
         continue;
       }
 
