@@ -482,6 +482,18 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                   <div style={{ fontSize: 13, fontWeight: 950 }}>{dailyChallenge.streakDays} 🔥</div>
                 </div>
               </div>
+              <div style={{ marginTop: 8, padding: "8px 9px", borderRadius: 11, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.055)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                  <div style={{ fontSize: 7.2, fontWeight: 900, opacity: .62 }}>PROCHAIN TROPHÉE</div>
+                  <div style={{ fontSize: 7.2, fontWeight: 950, color: dailyChallenge.nextMilestoneDays ? "#ffd86b" : "#8cffcb" }}>{dailyChallenge.nextMilestoneDays ? `${dailyChallenge.nextMilestoneDays} J · ${dailyChallenge.nextMilestoneLabel}` : dailyChallenge.nextMilestoneLabel}</div>
+                </div>
+                <div style={{ marginTop: 6, height: 5, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.06)" }}><div style={{ width: `${Math.max(3, dailyChallenge.milestoneProgressPct)}%`, height: "100%", background: "linear-gradient(90deg,#ffd86b,#ffb86b)" }} /></div>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 5, marginTop: 7 }}>
+                  {dailyChallenge.milestones.map((milestone) => <div key={milestone.days} title={`${milestone.days} jours • ${milestone.label}`} style={{ flex: 1, minWidth: 0, textAlign: "center", padding: "5px 3px", borderRadius: 8, border: milestone.unlocked ? "1px solid rgba(255,216,107,.20)" : "1px solid rgba(255,255,255,.04)", background: milestone.unlocked ? "rgba(255,216,107,.07)" : "rgba(255,255,255,.015)", opacity: milestone.unlocked ? 1 : .42 }}>
+                    <div style={{ fontSize: 10 }}>{milestone.icon}</div><div style={{ marginTop: 1, fontSize: 6.6, fontWeight: 950 }}>{milestone.days}J</div>
+                  </div>)}
+                </div>
+              </div>
               {!dailyChallenge.completed && <button type="button" disabled={!resolved.length} onClick={startDailyChallenge} style={{ width: "100%", marginTop: 8, padding: "9px 10px", borderRadius: 10, border: "1px solid rgba(255,216,107,.30)", background: "rgba(255,216,107,.08)", color: "inherit", fontSize: 8.3, fontWeight: 950, cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .45 }}>RELEVER LE DÉFI · {dailyChallenge.exerciseTitle}</button>}
             </div>
             <div style={{ marginTop: 8, padding: 14, borderRadius: 17, border: actionCoach.tone === "amber" ? "1px solid rgba(255,184,76,.34)" : actionCoach.tone === "green" ? "1px solid rgba(80,255,174,.30)" : actionCoach.tone === "violet" ? "1px solid rgba(185,156,255,.32)" : "1px solid rgba(39,220,255,.32)", background: actionCoach.tone === "amber" ? "linear-gradient(135deg,rgba(255,184,76,.10),rgba(140,90,255,.035))" : actionCoach.tone === "green" ? "linear-gradient(135deg,rgba(80,255,174,.08),rgba(39,220,255,.035))" : actionCoach.tone === "violet" ? "linear-gradient(135deg,rgba(140,90,255,.10),rgba(39,220,255,.035))" : "linear-gradient(135deg,rgba(39,220,255,.11),rgba(140,90,255,.045))" }}>

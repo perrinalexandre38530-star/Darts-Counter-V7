@@ -2,6 +2,13 @@ import { TRAINING_EXERCISE_CATALOG, TRAINING_FAMILY_META, type TrainingExerciseF
 import type { TrainingFamilyProgression } from "../coach/trainingDiagnosis";
 import type { TrainingDetailedSession } from "../stats/trainingStatsHub";
 
+export type TrainingDailyChallengeMilestone = {
+  days: number;
+  label: string;
+  icon: string;
+  unlocked: boolean;
+};
+
 export type TrainingDailyChallenge = {
   dateKey: string;
   family: TrainingExerciseFamily;
@@ -13,6 +20,10 @@ export type TrainingDailyChallenge = {
   completed: boolean;
   bestScore: number;
   streakDays: number;
+  nextMilestoneDays: number | null;
+  nextMilestoneLabel: string;
+  milestoneProgressPct: number;
+  milestones: TrainingDailyChallengeMilestone[];
   headline: string;
   body: string;
 };
@@ -89,6 +100,19 @@ export function buildTrainingDailyChallenge(
   const completed = todayRows.some(challengePass);
   const familyLabel = TRAINING_FAMILY_META[family].label;
   const streakDays = challengeStreak(sessions);
+  const milestoneDefs = [
+    { days: 3, label: "Série lancée", icon: "✦" },
+    { days: 7, label: "Semaine parfaite", icon: "★" },
+    { days: 14, label: "Rythme solide", icon: "◆" },
+    { days: 30, label: "Routine en or", icon: "♛" },
+  ];
+  const milestones = milestoneDefs.map((item) => ({ ...item, unlocked: streakDays >= item.days }));
+  const nextMilestone = milestoneDefs.find((item) => streakDays < item.days) || null;
+  const previousMilestoneDays = [...milestoneDefs].reverse().find((item) => streakDays >= item.days)?.days || 0;
+  const nextMilestoneDays = nextMilestone?.days ?? null;
+  const milestoneProgressPct = nextMilestone
+    ? Math.max(0, Math.min(100, ((streakDays - previousMilestoneDays) / Math.max(1, nextMilestone.days - previousMilestoneDays)) * 100))
+    : 100;
   return {
     dateKey,
     family,
@@ -100,6 +124,10 @@ export function buildTrainingDailyChallenge(
     completed,
     bestScore,
     streakDays,
+    nextMilestoneDays,
+    nextMilestoneLabel: nextMilestone?.label || "Tous les trophées débloqués",
+    milestoneProgressPct,
+    milestones,
     headline: completed ? "Défi du jour réussi" : `Défi du jour • ${familyLabel}`,
     body: completed
       ? `Validé à ${Math.round(bestScore)}/100. Reviens demain pour prolonger la série.`

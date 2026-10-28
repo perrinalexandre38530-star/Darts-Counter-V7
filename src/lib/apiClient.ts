@@ -314,6 +314,8 @@ const ONLINE_BACKEND_COOLDOWN_MS = 20_000;
 const DATABASE_BACKEND_COOLDOWN_MS = 30_000;
 let onlineBackendCooldownUntil = 0;
 let databaseBackendCooldownUntil = 0;
+let personalCloudAuthCooldownUntil = 0;
+const PERSONAL_CLOUD_AUTH_COOLDOWN_MS = 60_000;
 let backendHealthyUntil = 0;
 let backendHealthProbeInFlight: Promise<boolean> | null = null;
 
@@ -860,6 +862,18 @@ async function doFetch(path: string, init?: RequestInit, options?: ApiRequestOpt
   const proxyBase = sameOriginApiProxyBase();
 
   const isPersonalCloudRoute = normalizedPath.startsWith("/account/personal-cloud/");
+
+  // AUDIT V147: après un 401 Drive, les hooks automatiques ne doivent plus
+  // marteler le backend. Le local reste autoritaire; une action manuelle peut
+  // toujours retenter immédiatement.
+  if (isPersonalCloudRoute && requestMethod === "GET" && options?.manual !== true && Date.now() < personalCloudAuthCooldownUntil) {
+    return {
+      ok: false, connected: false, skipped: true, authRequired: true,
+      provider: "google_drive", code: "personal_cloud_auth_cooldown",
+      retryAfterMs: Math.max(0, personalCloudAuthCooldownUntil - Date.now()),
+    };
+  }
+
   const isAccountBackendRoute =
     isPersonalCloudRoute ||
     normalizedPath.startsWith("/account/backups/") ||
@@ -1036,6 +1050,9 @@ async function doFetch(path: string, init?: RequestInit, options?: ApiRequestOpt
     if (!res) continue;
 
     if (!res.ok) {
+      if (res.status === 401 && isPersonalCloudRoute) {
+        personalCloudAuthCooldownUntil = Date.now() + PERSONAL_CLOUD_AUTH_COOLDOWN_MS;
+      }
       if (res.status === 401) clearNasAuthBecauseUnauthorized(normalizedPath);
       const errPayload = await parseJsonSafe(res).catch(() => null).finally(clearResponseDeadline);
       clearResponseDeadline = () => {};
@@ -1082,6 +1099,7 @@ async function doFetch(path: string, init?: RequestInit, options?: ApiRequestOpt
         : await parseJsonSafe(res, options?.onDownloadProgress);
       rememberWorkingApiUrl(apiBase);
       if (normalizedPath.startsWith("/online/")) onlineBackendCooldownUntil = 0;
+      if (isPersonalCloudRoute) personalCloudAuthCooldownUntil = 0;
       databaseBackendCooldownUntil = 0;
       backendHealthyUntil = Date.now() + 15_000;
       return parsed;
