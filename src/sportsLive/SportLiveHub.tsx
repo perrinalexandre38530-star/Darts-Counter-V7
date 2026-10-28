@@ -17,6 +17,7 @@ import { isLiveSportsSupportedSport } from "./support";
 
 type View = "overview" | "live" | "fixtures" | "results" | "news" | "sources";
 type RegionFilter = "recommended" | "all" | SportLiveRegion;
+type FloatingPanel = "news" | "results" | "fixtures" | "sources" | null;
 
 type TickerItem = {
   id: string;
@@ -115,7 +116,7 @@ function LiveStyles() {
         position: relative;
         isolation: isolate;
         margin: -4px -2px 0;
-        padding: 14px 12px 104px;
+        padding: 10px 10px 96px;
         min-height: calc(100vh - 90px);
         color: var(--live-text);
         background: linear-gradient(180deg,#07090c 0%,#090c10 42%,#07090c 100%);
@@ -136,72 +137,72 @@ function LiveStyles() {
         align-items: flex-end;
         justify-content: space-between;
         gap: 12px;
-        padding: 8px 66px 14px 2px;
+        padding: 5px 62px 9px 2px;
         border-bottom: 1px solid var(--live-line);
       }
-      .msc-live-kicker { font-size: 11px; letter-spacing: 1.7px; font-weight: 1000; color: #aeb5bf; }
-      .msc-live-title { margin-top: 2px; font-size: clamp(29px,7vw,44px); line-height: .98; font-weight: 1000; letter-spacing: -.7px; }
+      .msc-live-kicker { font-size: 9px; letter-spacing: 1.45px; font-weight: 1000; color: #aeb5bf; }
+      .msc-live-title { margin-top: 2px; font-size: clamp(24px,6vw,34px); line-height: .98; font-weight: 1000; letter-spacing: -.7px; }
       .msc-live-title strong { color: var(--live-accent); }
-      .msc-live-subtitle { margin-top: 7px; font-size: 13px; color: #aeb5bf; font-weight: 750; }
+      .msc-live-subtitle { margin-top: 5px; font-size: 11px; color: #aeb5bf; font-weight: 750; }
       .msc-live-refresh {
-        width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--live-line);
-        color: #fff; background: #10151b; font-size: 19px; font-weight: 1000; cursor: pointer;
+        width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--live-line);
+        color: #fff; background: #10151b; font-size: 16px; font-weight: 1000; cursor: pointer;
       }
       .msc-live-refresh:disabled { opacity: .45; cursor: default; }
       .msc-score-ticker {
-        display:grid; grid-template-columns: 98px 1fr; margin: 10px -12px 0; min-height:58px;
+        display:grid; grid-template-columns: 82px 1fr; margin: 8px -10px 0; min-height:48px;
         border-top:1px solid #272e36; border-bottom:1px solid #272e36; background:#0a0d11; overflow:hidden;
       }
       .msc-score-ticker-label {
-        display:flex; align-items:center; justify-content:center; text-align:center; padding:8px 7px;
-        background: linear-gradient(135deg,#d31e35,#7b0f1f); color:#fff; font-size:11px; font-weight:1000; letter-spacing:.2px;
+        display:flex; align-items:center; justify-content:center; text-align:center; padding:6px 5px;
+        background: linear-gradient(135deg,#d31e35,#7b0f1f); color:#fff; font-size:9.5px; font-weight:1000; letter-spacing:.2px;
       }
       .msc-score-ticker-window { overflow:hidden; }
-      .msc-score-ticker-track { display:inline-flex; min-width:max-content; white-space:nowrap; animation: mscScoreRail 28s linear infinite; }
+      .msc-score-ticker-track { display:inline-flex; min-width:max-content; white-space:nowrap; animation: mscScoreRail 24s linear infinite; }
       .msc-score-ticker-track.is-static { animation:none; }
       .msc-score-ticker-item {
-        min-width:206px; min-height:58px; display:flex; flex-direction:column; justify-content:center; padding:7px 14px;
+        min-width:178px; min-height:48px; display:flex; flex-direction:column; justify-content:center; padding:5px 11px;
         border-right:1px solid #252b32;
       }
-      .msc-score-ticker-sport { font-size:10px; color:#828c98; text-transform:uppercase; font-weight:900; }
-      .msc-score-ticker-main { margin-top:3px; font-size:12.5px; font-weight:950; }
-      .msc-score-ticker-score { color:#ff4359; margin-left:7px; font-size:18px; font-weight:1000; }
-      .msc-score-ticker-meta { margin-top:2px; font-size:9.5px; color:#818b96; }
+      .msc-score-ticker-sport { font-size:8.5px; color:#828c98; text-transform:uppercase; font-weight:900; }
+      .msc-score-ticker-main { margin-top:3px; font-size:11px; font-weight:950; }
+      .msc-score-ticker-score { color:#ff4359; margin-left:7px; font-size:10.5px; font-weight:1000; }
+      .msc-score-ticker-meta { margin-top:2px; font-size:8.5px; color:#818b96; }
       @keyframes mscScoreRail { from { transform:translateX(0); } to { transform:translateX(-50%); } }
       @media (prefers-reduced-motion: reduce) { .msc-score-ticker-track { animation:none; } }
       .msc-live-tabs {
-        display:flex; gap:3px; overflow-x:auto; padding: 13px 0 4px; scrollbar-width:none;
+        display:flex; gap:3px; overflow-x:auto; padding: 9px 0 2px; scrollbar-width:none;
       }
       .msc-live-tabs::-webkit-scrollbar { display:none; }
       .msc-live-tab {
-        flex:0 0 auto; min-height:39px; padding:8px 12px; border:0; border-bottom:2px solid transparent;
-        background:transparent; color:#87919d; font-size:11px; font-weight:1000; cursor:pointer; letter-spacing:.25px;
+        flex:0 0 auto; min-height:33px; padding:6px 9px; border:0; border-bottom:2px solid transparent;
+        background:transparent; color:#87919d; font-size:9.5px; font-weight:1000; cursor:pointer; letter-spacing:.25px;
       }
       .msc-live-tab.is-active { color:#fff; border-bottom-color:var(--live-accent); }
-      .msc-live-section { margin-top:18px; }
+      .msc-live-section { margin-top:13px; }
       .msc-live-section-head { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
-      .msc-live-section-mark { width:5px; height:35px; border-radius:1px; background:var(--live-accent); }
-      .msc-live-section-title { font-size:27px; line-height:1; font-weight:1000; letter-spacing:.15px; white-space:nowrap; }
+      .msc-live-section-mark { width:5px; height:28px; border-radius:1px; background:var(--live-accent); }
+      .msc-live-section-title { font-size:21px; line-height:1; font-weight:1000; letter-spacing:.15px; white-space:nowrap; }
       .msc-live-section-line { height:2px; flex:1; min-width:24px; background:linear-gradient(90deg,var(--live-accent),transparent); }
-      .msc-live-section-count { font-size:12px; color:#89939e; font-weight:900; white-space:nowrap; }
+      .msc-live-section-count { font-size:10px; color:#89939e; font-weight:900; white-space:nowrap; }
       .msc-match-card {
-        overflow:hidden; border:1px solid #29313a; border-radius:14px; background:#0d1116; margin-bottom:10px;
+        overflow:hidden; border:1px solid #29313a; border-radius:11px; background:#0d1116; margin-bottom:10px;
         box-shadow:0 7px 18px rgba(0,0,0,.24);
       }
       .msc-match-top {
-        min-height:47px; display:flex; align-items:center; gap:10px; padding:0 10px 0 0;
+        min-height:40px; display:flex; align-items:center; gap:10px; padding:0 10px 0 0;
         background:#11161c; border-bottom:1px solid #29313a;
       }
       .msc-match-code {
         align-self:stretch; min-width:58px; display:grid; place-items:center; padding:0 8px;
-        color:#121212; background:var(--live-accent); font-size:16px; font-weight:1000;
+        color:#121212; background:var(--live-accent); font-size:10px; font-weight:1000;
       }
       .msc-match-heading { min-width:0; flex:1; }
-      .msc-match-comp { font-size:13px; font-weight:1000; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-      .msc-match-round { margin-top:2px; font-size:10.5px; color:#8d97a3; }
+      .msc-match-comp { font-size:10px; font-weight:1000; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .msc-match-round { margin-top:2px; font-size:9px; color:#8d97a3; }
       .msc-status {
-        flex:0 0 auto; padding:5px 9px; border-radius:7px; border:1px solid #47515c; color:#dfe3e8;
-        font-size:10.5px; font-weight:1000; background:#181e25;
+        flex:0 0 auto; padding:4px 7px; border-radius:7px; border:1px solid #47515c; color:#dfe3e8;
+        font-size:9px; font-weight:1000; background:#181e25;
       }
       .msc-status.is-live { color:#fff; background:#d92037; border-color:#ff3f55; box-shadow:0 0 12px rgba(255,48,72,.23); }
       .msc-source-link {
@@ -210,15 +211,15 @@ function LiveStyles() {
       }
       .msc-event-card {
         display:grid; grid-template-columns:64px minmax(0,1fr) auto; gap:12px; align-items:center;
-        padding:12px; margin-bottom:9px; border:1px solid #29313a; border-radius:13px; background:#0d1116;
+        padding:9px; margin-bottom:7px; border:1px solid #29313a; border-radius:13px; background:#0d1116;
       }
       .msc-event-date {
-        min-height:54px; display:grid; place-items:center; padding:7px 5px; border-radius:10px; text-align:center;
-        background:#151b22; border:1px solid #323b45; color:#f1f4f7; font-size:10px; line-height:1.15; font-weight:1000;
+        min-height:45px; display:grid; place-items:center; padding:7px 5px; border-radius:10px; text-align:center;
+        background:#151b22; border:1px solid #323b45; color:#f1f4f7; font-size:9px; line-height:1.1; font-weight:1000;
       }
-      .msc-event-title { font-size:14px; font-weight:1000; line-height:1.18; }
-      .msc-event-sub { margin-top:4px; color:#8f99a5; font-size:11px; line-height:1.3; }
-      .msc-event-result { margin-top:6px; color:#ffd45b; font-size:11.5px; font-weight:1000; }
+      .msc-event-title { font-size:12.5px; font-weight:1000; line-height:1.15; }
+      .msc-event-sub { margin-top:4px; color:#8f99a5; font-size:9.5px; line-height:1.3; }
+      .msc-event-result { margin-top:6px; color:#ffd45b; font-size:10px; font-weight:1000; }
       .msc-event-link {
         min-height:32px; display:inline-flex; align-items:center; justify-content:center; padding:6px 9px; border-radius:8px;
         border:1px solid #3b4651; color:#fff; text-decoration:none; background:#131920; font-size:10px; font-weight:1000;
@@ -229,62 +230,62 @@ function LiveStyles() {
       }
       .msc-match-body {
         position:relative; display:grid; grid-template-columns:minmax(0,1fr) 94px minmax(0,1fr); align-items:center; gap:8px;
-        padding:16px 10px 13px; background:
+        padding:11px 9px 10px; background:
           linear-gradient(90deg,var(--live-accent-faint),transparent 30%,transparent 70%,var(--live-accent-faint)),
           #090d11;
       }
       .msc-player { min-width:0; display:flex; align-items:center; gap:9px; }
       .msc-player.is-right { flex-direction:row-reverse; text-align:right; }
       .msc-player-badge {
-        flex:0 0 46px; width:46px; height:46px; border-radius:50%; display:grid; place-items:center; font-size:14px; font-weight:1000;
+        flex:0 0 38px; width:38px; height:38px; border-radius:50%; display:grid; place-items:center; font-size:10.5px; font-weight:1000;
         border:1px solid var(--live-accent); color:#fff; background:linear-gradient(145deg,#1c242d,#0b0f13);
         box-shadow:0 0 0 3px rgba(255,255,255,.025);
       }
-      .msc-player-name { font-size:clamp(13px,3.5vw,18px); line-height:1.06; font-weight:1000; overflow:hidden; text-overflow:ellipsis; }
-      .msc-player-meta { margin-top:5px; font-size:9.5px; color:#818c98; font-weight:900; }
+      .msc-player-name { font-size:clamp(11.5px,3.1vw,15px); line-height:1.06; font-weight:1000; overflow:hidden; text-overflow:ellipsis; }
+      .msc-player-meta { margin-top:3px; font-size:8.5px; color:#818c98; font-weight:900; }
       .msc-score-box {
-        padding:10px 5px; border-radius:8px; border:1px solid #a92334; background:linear-gradient(180deg,#351019,#19090e);
-        text-align:center; font-size:28px; line-height:1; font-weight:1000; font-variant-numeric:tabular-nums; letter-spacing:.5px;
+        padding:8px 4px; border-radius:8px; border:1px solid #a92334; background:linear-gradient(180deg,#351019,#19090e);
+        text-align:center; font-size:23px; line-height:1; font-weight:1000; font-variant-numeric:tabular-nums; letter-spacing:.5px;
       }
       .msc-score-sep { color:#8e4650; padding:0 2px; }
       .msc-match-foot {
-        display:flex; align-items:center; justify-content:center; gap:7px; min-height:35px; padding:7px 10px;
-        border-top:1px solid #222a32; background:#0a0e12; color:#9aa4af; font-size:10.5px; font-weight:850; text-align:center;
+        display:flex; align-items:center; justify-content:center; gap:7px; min-height:28px; padding:7px 10px;
+        border-top:1px solid #222a32; background:#0a0e12; color:#9aa4af; font-size:9px; font-weight:850; text-align:center;
       }
       .msc-dot { width:7px; height:7px; border-radius:50%; background:var(--live-accent); box-shadow:0 0 9px var(--live-accent); }
       .msc-empty-card {
-        border:1px solid #29313a; border-radius:14px; background:#0d1116; padding:18px 16px; text-align:center;
+        border:1px solid #29313a; border-radius:11px; background:#0d1116; padding:12px 11px; text-align:center;
       }
-      .msc-empty-title { font-size:15px; font-weight:1000; }
-      .msc-empty-copy { margin-top:5px; font-size:11.5px; color:#8f99a5; line-height:1.45; }
+      .msc-empty-title { font-size:13px; font-weight:1000; }
+      .msc-empty-copy { margin-top:5px; font-size:10px; color:#8f99a5; line-height:1.45; }
       .msc-news-grid { display:grid; gap:9px; }
       .msc-news-card {
-        display:grid; grid-template-columns:104px minmax(0,1fr) auto; gap:12px; align-items:center;
-        min-height:96px; padding:8px 10px 8px 8px; border:1px solid #29313a; border-radius:13px; background:#0d1116; overflow:hidden;
+        display:grid; grid-template-columns:76px minmax(0,1fr) auto; gap:12px; align-items:center;
+        min-height:76px; padding:6px 8px 6px 6px; border:1px solid #29313a; border-radius:13px; background:#0d1116; overflow:hidden;
       }
       .msc-news-card.no-image { grid-template-columns:minmax(0,1fr) auto; padding:13px 14px; }
       .msc-news-card.is-result { border-left:4px solid #f4d445; }
       .msc-news-card.is-live { border-left:4px solid var(--live-accent); }
       .msc-news-card.is-upcoming { border-left:4px solid #64b8ff; }
-      .msc-news-thumb { align-self:stretch; min-height:78px; border-radius:9px; overflow:hidden; background:#151b22; display:block; }
-      .msc-news-thumb img { width:100%; height:100%; min-height:78px; object-fit:cover; display:block; }
+      .msc-news-thumb { align-self:stretch; min-height:62px; border-radius:9px; overflow:hidden; background:#151b22; display:block; }
+      .msc-news-thumb img { width:100%; height:100%; min-height:62px; object-fit:cover; display:block; }
       .msc-news-top { display:flex; gap:7px; align-items:center; flex-wrap:wrap; margin-bottom:6px; }
       .msc-news-kind { font-size:9px; font-weight:1000; letter-spacing:.45px; color:#111; padding:4px 7px; border-radius:999px; background:#e8edf2; }
       .msc-news-kind.is-result { background:#f4d445; }
       .msc-news-kind.is-live { background:#ff3048; color:#fff; }
       .msc-news-kind.is-upcoming { background:#64b8ff; color:#08131d; }
       .msc-news-source { font-size:9.5px; color:#8f99a5; font-weight:900; }
-      .msc-news-title { font-size:14px; line-height:1.22; font-weight:1000; }
-      .msc-news-summary { margin-top:5px; color:#929ca7; font-size:11px; line-height:1.38; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-      .msc-news-result { margin-top:7px; color:#f4d445; font-size:12px; font-weight:1000; }
+      .msc-news-title { font-size:12px; line-height:1.18; font-weight:1000; }
+      .msc-news-summary { margin-top:5px; color:#929ca7; font-size:9.5px; line-height:1.38; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+      .msc-news-result { margin-top:7px; color:#f4d445; font-size:10.5px; font-weight:1000; }
       .msc-news-link { display:inline-flex; align-items:center; justify-content:center; min-height:34px; padding:7px 10px; border-radius:8px; border:1px solid #3a4652; color:#fff; background:#141a21; text-decoration:none; font-size:10px; font-weight:1000; }
-      .msc-news-lead { position:relative; min-height:230px; border:1px solid #29313a; border-radius:15px; overflow:hidden; background:#0d1116; }
+      .msc-news-lead { position:relative; min-height:158px; border:1px solid #29313a; border-radius:15px; overflow:hidden; background:#0d1116; }
       .msc-news-lead-media { position:absolute; inset:0; }
       .msc-news-lead-media img { width:100%; height:100%; object-fit:cover; display:block; filter:saturate(.92) contrast(1.03); }
       .msc-news-lead-shade { position:absolute; inset:0; background:linear-gradient(180deg,rgba(6,8,12,.04) 15%,rgba(6,8,12,.50) 53%,rgba(6,8,12,.98) 100%); }
-      .msc-news-lead-content { position:relative; z-index:1; min-height:230px; display:flex; flex-direction:column; justify-content:flex-end; padding:16px; }
-      .msc-news-lead-title { max-width:760px; font-size:clamp(21px,5.3vw,31px); line-height:1.04; font-weight:1000; text-shadow:0 2px 10px rgba(0,0,0,.65); }
-      .msc-news-lead-summary { margin-top:7px; max-width:760px; color:#d4d9df; font-size:12px; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+      .msc-news-lead-content { position:relative; z-index:1; min-height:158px; display:flex; flex-direction:column; justify-content:flex-end; padding:11px; }
+      .msc-news-lead-title { max-width:760px; font-size:clamp(17px,4.5vw,23px); line-height:1.04; font-weight:1000; text-shadow:0 2px 10px rgba(0,0,0,.65); }
+      .msc-news-lead-summary { margin-top:7px; max-width:760px; color:#d4d9df; font-size:10px; line-height:1.3; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
       .msc-news-lead-link { align-self:flex-start; margin-top:10px; min-height:32px; padding:6px 10px; border-radius:8px; background:#fff; color:#0b0e12; text-decoration:none; font-size:10px; font-weight:1000; }
       @media (max-width:520px) {
         .msc-news-card { grid-template-columns:82px minmax(0,1fr); gap:9px; }
@@ -293,30 +294,60 @@ function LiveStyles() {
         .msc-news-lead { min-height:205px; }
         .msc-news-lead-content { min-height:205px; padding:13px; }
       }
-      .msc-source-rail { display:grid; gap:7px; margin-top:11px; }
+      .msc-source-rail { display:grid; gap:7px; margin-top:7px; }
       .msc-source-row {
-        display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center; padding:11px 12px;
+        display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center; padding:8px 9px;
         border:1px solid #29313a; border-radius:10px; background:#0b0f14;
       }
-      .msc-source-name { font-size:13px; font-weight:1000; }
-      .msc-source-desc { margin-top:3px; font-size:10.5px; line-height:1.35; color:#87919d; }
+      .msc-source-name { font-size:10px; font-weight:1000; }
+      .msc-source-desc { margin-top:3px; font-size:9px; line-height:1.25; color:#87919d; }
       .msc-source-actions { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
       .msc-mini-link {
-        display:inline-flex; align-items:center; justify-content:center; min-height:30px; padding:5px 9px; border-radius:7px;
+        display:inline-flex; align-items:center; justify-content:center; min-height:30px; padding:4px 7px; border-radius:7px;
         border:1px solid #39434e; color:#e7ebef; background:#11171e; text-decoration:none; font-size:10px; font-weight:1000;
       }
       .msc-mini-link.is-primary { background:#f4d445; border-color:#f4d445; color:#131313; }
       .msc-info-strip {
-        display:flex; gap:7px; overflow-x:auto; padding:9px 0 2px; scrollbar-width:none;
+        display:flex; gap:7px; overflow-x:auto; padding:6px 0 1px; scrollbar-width:none;
       }
       .msc-info-chip {
-        flex:0 0 auto; padding:5px 9px; border-radius:999px; border:1px solid #2c353f; background:#0c1116; color:#8f99a5; font-size:9.5px; font-weight:950;
+        flex:0 0 auto; padding:4px 7px; border-radius:999px; border:1px solid #2c353f; background:#0c1116; color:#8f99a5; font-size:8.5px; font-weight:950;
       }
       .msc-region-row { display:flex; gap:6px; overflow-x:auto; padding-bottom:3px; scrollbar-width:none; }
       .msc-region-btn {
         flex:0 0 auto; border:1px solid #2d3741; background:#0c1116; color:#9aa4af; border-radius:999px; padding:6px 9px; font-size:9.5px; font-weight:1000; cursor:pointer;
       }
       .msc-region-btn.is-active { color:#15120a; border-color:#f4d445; background:#f4d445; }
+
+      .msc-quick-dock {
+        position: fixed; left: 10px; bottom: 88px; z-index: 64; display:flex; gap:6px; padding:5px;
+        border:1px solid #303943; border-radius:999px; background:rgba(7,10,14,.94); box-shadow:0 10px 28px rgba(0,0,0,.42); backdrop-filter:blur(10px);
+      }
+      .msc-quick-btn {
+        width:34px; height:34px; border-radius:50%; border:1px solid #37414b; background:#10161c; color:#eef2f6;
+        display:grid; place-items:center; font-size:15px; cursor:pointer;
+      }
+      .msc-quick-btn:active { transform:scale(.96); }
+      .msc-float-overlay {
+        position:fixed; inset:0; z-index:120; background:rgba(0,0,0,.64); backdrop-filter:blur(4px); display:flex; align-items:flex-end; justify-content:center; padding:10px 10px 78px;
+      }
+      .msc-float-panel {
+        width:min(720px,100%); max-height:min(72vh,720px); overflow:auto; border:1px solid #38424d; border-radius:18px 18px 14px 14px;
+        background:#0a0e13; box-shadow:0 -18px 60px rgba(0,0,0,.55); padding:10px;
+      }
+      .msc-float-head { position:sticky; top:-10px; z-index:2; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 4px 9px; background:#0a0e13; border-bottom:1px solid #242d36; }
+      .msc-float-title { font-size:15px; font-weight:1000; }
+      .msc-float-close { width:32px; height:32px; border-radius:50%; border:1px solid #39434d; background:#141a21; color:#fff; font-size:16px; cursor:pointer; }
+      .msc-more-btn {
+        width:100%; min-height:32px; border-radius:9px; border:1px solid #35404b; background:#10161c; color:#dfe5ea; font-size:9.5px; font-weight:1000; cursor:pointer;
+      }
+      .msc-compact-list { display:grid; gap:6px; }
+      .msc-compact-row { display:grid; grid-template-columns:64px minmax(0,1fr) auto; gap:8px; align-items:center; padding:7px 8px; border:1px solid #28313a; border-radius:9px; background:#0c1116; }
+      .msc-compact-tag { font-size:8.5px; font-weight:1000; color:#ff6375; }
+      .msc-compact-main { min-width:0; font-size:10.5px; font-weight:950; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .msc-compact-score { font-size:11px; font-weight:1000; color:#f4d445; white-space:nowrap; }
+      @media (max-width:520px) { .msc-quick-dock { bottom:82px; } .msc-float-overlay { padding-bottom:70px; } }
+
       @media (max-width: 390px) {
         .msc-match-body { grid-template-columns:minmax(0,1fr) 78px minmax(0,1fr); gap:5px; }
         .msc-player-badge { width:38px; height:38px; flex-basis:38px; font-size:12px; }
@@ -663,6 +694,22 @@ function buildTicker(feed: SportLiveOverview | null, lang: string, sportLabel: s
   return items.slice(0, 8);
 }
 
+function FloatingDrawer({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  React.useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <div className="msc-float-overlay" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="msc-float-panel" onClick={(event) => event.stopPropagation()}>
+        <div className="msc-float-head"><div className="msc-float-title">{title}</div><button className="msc-float-close" type="button" onClick={onClose}>×</button></div>
+        <div style={{ paddingTop: 8 }}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function SportLiveHub() {
   const { lang } = useLang();
   const { sport } = useSport();
@@ -680,12 +727,14 @@ export default function SportLiveHub() {
   const [loading, setLoading] = React.useState(true);
   const [feedError, setFeedError] = React.useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = React.useState<number | null>(null);
+  const [floatingPanel, setFloatingPanel] = React.useState<FloatingPanel>(null);
 
   React.useEffect(() => {
     setRegion("recommended");
     setView("overview");
     setFeed(getCachedSportLiveOverview(liveSport));
     setFeedError(null);
+    setFloatingPanel(null);
   }, [liveSport, lang]);
 
   React.useEffect(() => {
@@ -776,19 +825,10 @@ export default function SportLiveHub() {
       <div className="msc-info-strip">
         <span className="msc-info-chip">{isOnline ? "● ONLINE" : "○ HORS LIGNE"}</span>
         <span className="msc-info-chip">{localeProfile.label}</span>
-        <span className="msc-info-chip">{recommended.length} SOURCES OFFICIELLES</span>
-        {feed?.configured ? <span className="msc-info-chip">AUTO · {String(feed.provider || "DATA").toUpperCase()}</span> : null}
-        {feed?.intelligence?.enabled ? <span className="msc-info-chip">INTELLIGENCE · {feed.intelligence.provider === "openai_web" ? "IA WEB" : "ACTUS WEB"} · {feed.intelligence.count}</span> : null}
-        {feed?.configured && feed?.plan ? <span className="msc-info-chip">PLAN {String(feed.plan).toUpperCase()}</span> : null}
-        {updatedAt ? <span className="msc-info-chip">MAJ {new Date(updatedAt).toLocaleTimeString()}</span> : null}
-        {feedError ? <span className="msc-info-chip">DONNÉES LIVE INDISPONIBLES</span> : null}
+        {updatedAt ? <span className="msc-info-chip">MAJ {new Date(updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span> : null}
+        {feedError ? <span className="msc-info-chip" style={{ color: "#ff7180" }}>LIVE PARTIEL</span> : null}
       </div>
 
-      {feed?.warnings?.length ? (
-        <div style={{ marginTop: 8, padding: "8px 10px", border: "1px solid rgba(255,255,255,.08)", borderRadius: 10, background: "rgba(0,0,0,.28)", color: "#8f99a5", fontSize: 10.5, lineHeight: 1.35 }}>
-          {feed.warnings[0]}
-        </div>
-      ) : null}
 
       <nav className="msc-live-tabs" aria-label="Rubriques LIVE SPORTS">
         {([
@@ -796,8 +836,6 @@ export default function SportLiveHub() {
           ["live", `EN DIRECT${(liveRows.length + liveEvents.length) ? ` · ${liveRows.length + liveEvents.length}` : ""}`],
           ["fixtures", `À VENIR${(fixtureRows.length + upcomingEvents.length) ? ` · ${fixtureRows.length + upcomingEvents.length}` : ""}`],
           ["results", `RÉSULTATS${(resultRows.length + resultEvents.length) ? ` · ${resultRows.length + resultEvents.length}` : ""}`],
-          ["news", `ACTUS${newsRows.length ? ` · ${newsRows.length}` : ""}`],
-          ["sources", "SOURCES"],
         ] as Array<[View, string]>).map(([key, label]) => (
           <button key={key} className={`msc-live-tab${view === key ? " is-active" : ""}`} type="button" onClick={() => setView(key)}>{label}</button>
         ))}
@@ -813,34 +851,53 @@ export default function SportLiveHub() {
       {supportedSport && view === "overview" ? (
         <>
           <section className="msc-live-section">
-            <SectionHeader title="ACTUS & RÉSULTATS DU WEB" count={newsRows.length ? `${newsRows.length} info${newsRows.length > 1 ? "s" : ""}` : ""} />
+            <SectionHeader title="À LA UNE" count={newsRows.length ? `${newsRows.length} actus` : ""} />
             {newsRows.length ? (
-              <div className="msc-news-grid">
+              <>
                 <LeadNewsCard item={newsRows.find((item) => !!item.imageUrl) || newsRows[0]} lang={lang} />
-                {newsRows.filter((item) => item.id !== (newsRows.find((row) => !!row.imageUrl) || newsRows[0])?.id).slice(0, 5).map((item) => <NewsCard key={item.id} item={item} lang={lang} />)}
+                <div style={{ marginTop: 7 }}><button className="msc-more-btn" type="button" onClick={() => setFloatingPanel("news")}>TOUTES LES ACTUS · {newsRows.length}</button></div>
+              </>
+            ) : <EmptySection title="Actualités en cours de chargement" copy="LIVE Intelligence recherche les dernières informations publiées." sources={recommended.slice(0, 1)} />}
+          </section>
+
+          {(liveRows.length + liveEvents.length) > 0 ? (
+            <section className="msc-live-section">
+              <SectionHeader title="EN DIRECT" count={`${liveRows.length + liveEvents.length}`} />
+              <div className="msc-compact-list">
+                {liveRows.slice(0, 2).map((item) => {
+                  const [left, right] = item.players || [];
+                  return <div className="msc-compact-row" key={item.id}><div className="msc-compact-tag">● LIVE</div><div className="msc-compact-main" translate="no">{left?.name || "—"} · {right?.name || "—"}</div><div className="msc-compact-score">{scoreValue(left?.score)}-{scoreValue(right?.score)}</div></div>;
+                })}
+                {!liveRows.length ? liveEvents.slice(0, 2).map((event) => <div className="msc-compact-row" key={event.id}><div className="msc-compact-tag">● LIVE</div><div className="msc-compact-main" translate="no">{event.title}</div><div className="msc-compact-score">{event.resultLabel || "EN COURS"}</div></div>) : null}
               </div>
-            ) : <EmptySection title="Recherche d’actualités en cours" copy="LIVE Intelligence cherche automatiquement les dernières actualités et résultats publiés pour cette discipline." sources={recommended.slice(0, 3)} />}
+              <div style={{ marginTop: 7 }}><button className="msc-more-btn" type="button" onClick={() => setView("live")}>OUVRIR LES DIRECTS</button></div>
+            </section>
+          ) : null}
+
+          <section className="msc-live-section">
+            <SectionHeader title="DERNIERS RÉSULTATS" count={`${resultRows.length + resultEvents.length}`} />
+            <div className="msc-compact-list">
+              {resultRows.slice(0, 3).map((item) => (
+                <div className="msc-compact-row" key={item.id}><div className="msc-compact-tag">RÉSULTAT</div><div className="msc-compact-main" translate="no">{item.winner.name} · {item.loser.name}</div><div className="msc-compact-score">{scoreValue(item.winner.score)}-{scoreValue(item.loser.score)}</div></div>
+              ))}
+              {!resultRows.length ? resultEvents.slice(0, 3).map((event) => (
+                <div className="msc-compact-row" key={event.id}><div className="msc-compact-tag">RÉSULTAT</div><div className="msc-compact-main" translate="no">{event.title}</div><div className="msc-compact-score">{event.resultLabel || "PUBLIÉ"}</div></div>
+              )) : null}
+            </div>
+            <div style={{ marginTop: 7 }}><button className="msc-more-btn" type="button" onClick={() => setFloatingPanel("results")}>VOIR TOUS LES RÉSULTATS</button></div>
           </section>
 
           <section className="msc-live-section">
-            <SectionHeader title="EN DIRECT" count={(liveRows.length + liveEvents.length) ? `${liveRows.length + liveEvents.length} direct${(liveRows.length + liveEvents.length) > 1 ? "s" : ""}` : ""} />
-            {liveRows.length ? liveRows.slice(0, 4).map((item) => <LiveMatchCard key={item.id} item={item} source={sourceForCards} />) : liveEvents.length ? liveEvents.slice(0, 4).map((event) => <OfficialEventCard key={event.id} event={event} />) : (
-              <EmptySection title="Aucun match en direct pour le moment" copy="Dès qu’un provider de score est disponible, le match apparaîtra ici automatiquement. Les sources officielles restent accessibles." sources={recommended.filter((source) => source.scoresUrl || source.watchUrl)} />
-            )}
-          </section>
-
-          <section className="msc-live-section">
-            <SectionHeader title="À VENIR" count={(fixtureRows.length + upcomingEvents.length) ? `${fixtureRows.length + upcomingEvents.length} événement${(fixtureRows.length + upcomingEvents.length) > 1 ? "s" : ""}` : ""} />
-            {fixtureRows.length ? fixtureRows.slice(0, 4).map((item) => <FixtureMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />) : upcomingEvents.length ? upcomingEvents.slice(0, 6).map((event) => <OfficialEventCard key={event.id} event={event} />) : (
-              <EmptySection title="Programme officiel" copy="Consulte les calendriers des circuits officiels de cette discipline." sources={recommended.filter((source) => source.calendarUrl)} />
-            )}
-          </section>
-
-          <section className="msc-live-section">
-            <SectionHeader title="RÉSULTATS" count={(resultRows.length + resultEvents.length) ? `${resultRows.length + resultEvents.length} résultat${(resultRows.length + resultEvents.length) > 1 ? "s" : ""}` : ""} />
-            {resultRows.length ? resultRows.slice(0, 5).map((item) => <ResultMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />) : resultEvents.length ? resultEvents.slice(0, 6).map((event) => <OfficialEventCard key={event.id} event={event} />) : (
-              <EmptySection title="Derniers résultats" copy="Retrouve les résultats sur les sources officielles. Ils seront affichés ici directement dès qu’un flux de données compatible sera connecté." sources={recommended.filter((source) => source.resultsUrl)} />
-            )}
+            <SectionHeader title="À VENIR" count={`${fixtureRows.length + upcomingEvents.length}`} />
+            <div className="msc-compact-list">
+              {fixtureRows.slice(0, 2).map((item) => (
+                <div className="msc-compact-row" key={item.id}><div className="msc-compact-tag" style={{ color: "#64b8ff" }}>À VENIR</div><div className="msc-compact-main" translate="no">{item.players.map((p) => p.name).filter(Boolean).join(" vs ") || item.competition || "Match"}</div><div className="msc-compact-score" style={{ color: "#dbe5ee" }}>{item.startsAt ? formatDateTime(item.startsAt, lang) : formatDate(item.date, lang)}</div></div>
+              ))}
+              {!fixtureRows.length ? upcomingEvents.slice(0, 2).map((event) => (
+                <div className="msc-compact-row" key={event.id}><div className="msc-compact-tag" style={{ color: "#64b8ff" }}>À VENIR</div><div className="msc-compact-main" translate="no">{event.title}</div><div className="msc-compact-score" style={{ color: "#dbe5ee" }}>{event.dateLabel || "BIENTÔT"}</div></div>
+              )) : null}
+            </div>
+            <div style={{ marginTop: 7 }}><button className="msc-more-btn" type="button" onClick={() => setFloatingPanel("fixtures")}>OUVRIR LE PROGRAMME COMPLET</button></div>
           </section>
         </>
       ) : null}
@@ -884,6 +941,21 @@ export default function SportLiveHub() {
           <SourceDirectory sources={sources} />
         </section>
       ) : null}
+
+      {supportedSport ? (
+        <div className="msc-quick-dock" aria-label="Accès rapides LIVE SPORTS">
+          <button className="msc-quick-btn" type="button" onClick={() => setFloatingPanel("news")} aria-label="Actualités">📰</button>
+          <button className="msc-quick-btn" type="button" onClick={() => setFloatingPanel("results")} aria-label="Résultats">🏆</button>
+          <button className="msc-quick-btn" type="button" onClick={() => setFloatingPanel("fixtures")} aria-label="Programme">🗓</button>
+          <button className="msc-quick-btn" type="button" onClick={() => setFloatingPanel("sources")} aria-label="Sources">🌍</button>
+        </div>
+      ) : null}
+
+      {floatingPanel === "news" ? <FloatingDrawer title={`ACTUALITÉS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{newsRows.length ? <div className="msc-news-grid">{newsRows.map((item) => <NewsCard key={item.id} item={item} lang={lang} />)}</div> : <EmptySection title="Aucune actualité détectée" copy="Réessaie l’actualisation dans quelques instants." sources={recommended.slice(0, 2)} />}</FloatingDrawer> : null}
+      {floatingPanel === "results" ? <FloatingDrawer title={`RÉSULTATS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{resultRows.length ? resultRows.map((item) => <ResultMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />) : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Aucun résultat détecté" copy="Les sources officielles restent disponibles." sources={recommended.filter((source) => source.resultsUrl).slice(0, 2)} />}</FloatingDrawer> : null}
+      {floatingPanel === "fixtures" ? <FloatingDrawer title={`PROGRAMME · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{fixtureRows.length ? fixtureRows.map((item) => <FixtureMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />) : upcomingEvents.length ? upcomingEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Aucun événement à venir" copy="Consulte les calendriers officiels." sources={recommended.filter((source) => source.calendarUrl).slice(0, 2)} />}</FloatingDrawer> : null}
+      {floatingPanel === "sources" ? <FloatingDrawer title={`SOURCES · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}><SourceDirectory sources={sources} /></FloatingDrawer> : null}
+
     </div>
   );
 }
