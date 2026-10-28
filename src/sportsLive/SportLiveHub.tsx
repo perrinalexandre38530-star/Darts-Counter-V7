@@ -275,6 +275,10 @@ function LiveStyles() {
       .msc-news-kind.is-live { background:#ff3048; color:#fff; }
       .msc-news-kind.is-upcoming { background:#64b8ff; color:#08131d; }
       .msc-news-source { font-size:9.5px; color:#8f99a5; font-weight:900; }
+      .msc-news-scope { font-size:8.5px; font-weight:1000; letter-spacing:.35px; padding:3px 6px; border-radius:999px; border:1px solid rgba(255,255,255,.12); color:#c8d0d8; background:rgba(255,255,255,.045); }
+      .msc-news-scope.is-local { color:#ffe779; border-color:rgba(255,231,121,.25); background:rgba(255,231,121,.07); }
+      .msc-news-scope.is-regional { color:#78d9ff; border-color:rgba(120,217,255,.24); background:rgba(120,217,255,.07); }
+      .msc-news-scope.is-world { color:#a9f7c4; border-color:rgba(169,247,196,.22); background:rgba(169,247,196,.07); }
       .msc-news-title { font-size:12px; line-height:1.18; font-weight:1000; }
       .msc-news-summary { margin-top:5px; color:#929ca7; font-size:9.5px; line-height:1.38; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
       .msc-news-result { margin-top:7px; color:#f4d445; font-size:10.5px; font-weight:1000; }
@@ -542,6 +546,7 @@ function NewsCard({ item, lang }: { item: SportLiveNewsItem; lang: string }) {
       <div style={{ minWidth: 0 }}>
         <div className="msc-news-top">
           <span className={`msc-news-kind${kindClass}`}>{kindLabel}</span>
+          {item.scope ? <span className={`msc-news-scope is-${item.scope}`}>{item.scopeLabel || (item.scope === "local" ? "LOCAL" : item.scope === "regional" ? "RÉGIONAL" : "MONDE")}</span> : null}
           <span className="msc-news-source">{item.sourceName || "WEB"}{item.publishedAt ? ` · ${formatDate(item.publishedAt, lang)}` : ""}</span>
         </div>
         <div className="msc-news-title" translate="no" data-i18n-skip="true">{item.title}</div>
@@ -562,6 +567,7 @@ function LeadNewsCard({ item, lang }: { item: SportLiveNewsItem; lang: string })
       <div className="msc-news-lead-content">
         <div className="msc-news-top">
           <span className={`msc-news-kind${item.kind === "result" ? " is-result" : item.kind === "live" ? " is-live" : item.kind === "upcoming" ? " is-upcoming" : ""}`}>{kindLabel}</span>
+          {item.scope ? <span className={`msc-news-scope is-${item.scope}`}>{item.scopeLabel || (item.scope === "local" ? "LOCAL" : item.scope === "regional" ? "RÉGIONAL" : "MONDE")}</span> : null}
           <span className="msc-news-source">{item.sourceName || "WEB"}{item.publishedAt ? ` · ${formatDate(item.publishedAt, lang)}` : ""}</span>
         </div>
         <div className="msc-news-lead-title" translate="no" data-i18n-skip="true">{item.title}</div>
@@ -825,6 +831,13 @@ export default function SportLiveHub() {
       <div className="msc-info-strip">
         <span className="msc-info-chip">{isOnline ? "● ONLINE" : "○ HORS LIGNE"}</span>
         <span className="msc-info-chip">{localeProfile.label}</span>
+        {feed?.intelligence?.enabled ? (
+          <>
+            <span className="msc-info-chip">LOCAL {feed.intelligence.localCount ?? 0}</span>
+            <span className="msc-info-chip">RÉGIONAL {feed.intelligence.regionalCount ?? 0}</span>
+            <span className="msc-info-chip">MONDE {feed.intelligence.worldCount ?? 0}</span>
+          </>
+        ) : null}
         {updatedAt ? <span className="msc-info-chip">MAJ {new Date(updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span> : null}
         {feedError ? <span className="msc-info-chip" style={{ color: "#ff7180" }}>LIVE PARTIEL</span> : null}
       </div>

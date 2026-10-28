@@ -766,6 +766,7 @@ async function officialEventOverview(sport: "babyfoot" | "molkky" | "petanque") 
 
 
 type IntelligenceKind = "news" | "result" | "live" | "upcoming";
+type IntelligenceScope = "local" | "regional" | "world";
 type IntelligenceNews = {
   id: string;
   title: string;
@@ -776,6 +777,8 @@ type IntelligenceNews = {
   imageUrl?: string | null;
   kind: IntelligenceKind;
   resultLabel?: string | null;
+  scope?: IntelligenceScope;
+  scopeLabel?: string | null;
 };
 
 const INTELLIGENCE_SPECS: Record<string, { label: string; query: string; domains: string[] }> = {
@@ -803,6 +806,31 @@ const INTELLIGENCE_SPECS: Record<string, { label: string; query: string; domains
     label: "Mölkky",
     query: "Molkky Mölkky tournament results world championship",
     domains: ["molkky.world", "international-molkky.org"],
+  },
+  padel: {
+    label: "padel",
+    query: "padel FIP Premier Padel results scores tournament",
+    domains: ["padelfip.com", "premierpadel.com", "fft.fr"],
+  },
+  badminton: {
+    label: "badminton",
+    query: "badminton BWF results scores tournament",
+    domains: ["bwfbadminton.com", "ffbad.org"],
+  },
+  cornhole: {
+    label: "cornhole",
+    query: "cornhole ACL ACO results scores tournament",
+    domains: ["iplayacl.com", "americancornhole.com", "ofch.fr"],
+  },
+  palet: {
+    label: "palet",
+    query: "palet championnat coupe résultats compétition",
+    domains: ["le-palet.com"],
+  },
+  bowling: {
+    label: "bowling",
+    query: "bowling IBF PBA results scores tournament",
+    domains: ["bowling.sport", "pba.com", "ffbsq.fr"],
   },
 };
 
@@ -840,21 +868,210 @@ const DARTS_LOCALE_QUERY_PACKS: Record<string, string[]> = {
   zh: ["飞镖 比赛 结果 PDC WDF", "China darts results"],
 };
 
-function intelligenceQueriesFor(sport: string, lang: string) {
+
+type NewsEdition = {
+  hl: string;
+  gl: string;
+  ceid: string;
+  label: string;
+};
+
+type IntelligenceFeedPlan = {
+  query: string;
+  edition: NewsEdition;
+  scope: IntelligenceScope;
+  scopeLabel: string;
+  recencyDays: number;
+};
+
+const WORLD_NEWS_EDITIONS: NewsEdition[] = [
+  { hl: "en-GB", gl: "GB", ceid: "GB:en", label: "Monde" },
+  { hl: "en-US", gl: "US", ceid: "US:en", label: "Monde" },
+];
+
+const REGIONAL_SCOPE_BY_LANG: Record<string, { label: string; edition: NewsEdition; queries: string[] }> = {
+  fr: {
+    label: "Europe",
+    edition: { hl: "en-GB", gl: "GB", ceid: "GB:en", label: "Europe" },
+    queries: ["darts Europe PDC WDF European Tour results scores", "darts Europe tournament results"],
+  },
+  en: {
+    label: "Anglophone",
+    edition: { hl: "en-US", gl: "US", ceid: "US:en", label: "Anglophone" },
+    queries: ["darts UK Ireland USA Canada Australia New Zealand results", "darts CDC Australia New Zealand WDF results"],
+  },
+  es: {
+    label: "Espagne + Amérique latine",
+    edition: { hl: "es-419", gl: "MX", ceid: "MX:es-419", label: "Espagne + Amérique latine" },
+    queries: ["dardos España Latinoamérica Caribe resultados", "darts CDLC Latin America Caribbean results"],
+  },
+  de: {
+    label: "Europe DACH",
+    edition: { hl: "de", gl: "DE", ceid: "DE:de", label: "Europe DACH" },
+    queries: ["Darts Europa Deutschland Österreich Schweiz Ergebnisse", "PDC Europe WDF Ergebnisse"],
+  },
+  it: {
+    label: "Europe",
+    edition: { hl: "it", gl: "IT", ceid: "IT:it", label: "Europe" },
+    queries: ["darts Europa risultati PDC WDF", "freccette Europa risultati"],
+  },
+  nl: {
+    label: "Benelux + Europe",
+    edition: { hl: "nl", gl: "NL", ceid: "NL:nl", label: "Benelux + Europe" },
+    queries: ["darts Benelux Europa uitslagen PDC WDF", "darts België Nederland uitslagen"],
+  },
+  pt: {
+    label: "Portugal + Brésil",
+    edition: { hl: "pt-BR", gl: "BR", ceid: "BR:pt-419", label: "Portugal + Brésil" },
+    queries: ["dardos Portugal Brasil resultados", "darts resultados Europa Brasil"],
+  },
+  pl: {
+    label: "Europe",
+    edition: { hl: "en-GB", gl: "GB", ceid: "GB:en", label: "Europe" },
+    queries: ["darts Poland Europe WDF results", "PDC Europe darts results"],
+  },
+  da: {
+    label: "Nordique + Baltique",
+    edition: { hl: "en-GB", gl: "GB", ceid: "GB:en", label: "Nordique + Baltique" },
+    queries: ["PDC Nordic Baltic darts results", "Denmark Sweden Norway Finland darts results"],
+  },
+  no: {
+    label: "Nordique + Baltique",
+    edition: { hl: "en-GB", gl: "GB", ceid: "GB:en", label: "Nordique + Baltique" },
+    queries: ["PDC Nordic Baltic darts results", "Norway Sweden Denmark darts results"],
+  },
+  sv: {
+    label: "Nordique + Baltique",
+    edition: { hl: "sv", gl: "SE", ceid: "SE:sv", label: "Nordique + Baltique" },
+    queries: ["PDC Nordic Baltic dart resultat", "Sverige Norge Danmark dart resultat"],
+  },
+  is: {
+    label: "Nordique + Baltique",
+    edition: { hl: "en-GB", gl: "GB", ceid: "GB:en", label: "Nordique + Baltique" },
+    queries: ["PDC Nordic Baltic darts results", "Iceland Nordic darts results"],
+  },
+  cs: {
+    label: "Europe centrale",
+    edition: { hl: "cs", gl: "CZ", ceid: "CZ:cs", label: "Europe centrale" },
+    queries: ["šipky Česko Slovensko Evropa výsledky", "WDF Central Europe darts results"],
+  },
+  ro: {
+    label: "Europe de l’Est",
+    edition: { hl: "ro", gl: "RO", ceid: "RO:ro", label: "Europe de l’Est" },
+    queries: ["darts România Europa rezultate", "WDF Eastern Europe darts results"],
+  },
+  sr: {
+    label: "Balkans + Europe",
+    edition: { hl: "sr", gl: "RS", ceid: "RS:sr", label: "Balkans + Europe" },
+    queries: ["pikado Srbija Balkan rezultati", "WDF Balkans darts results"],
+  },
+  hr: {
+    label: "Balkans + Europe",
+    edition: { hl: "hr", gl: "HR", ceid: "HR:hr", label: "Balkans + Europe" },
+    queries: ["pikado Hrvatska Balkan rezultati", "WDF Balkans darts results"],
+  },
+  ru: {
+    label: "Europe de l’Est",
+    edition: { hl: "en-GB", gl: "GB", ceid: "GB:en", label: "Europe de l’Est" },
+    queries: ["darts Eastern Europe WDF results", "darts Europe results"],
+  },
+  tr: {
+    label: "Europe + Moyen-Orient",
+    edition: { hl: "tr", gl: "TR", ceid: "TR:tr", label: "Europe + Moyen-Orient" },
+    queries: ["dart Türkiye Avrupa sonuçları", "darts Middle East Europe results"],
+  },
+  ar: {
+    label: "Moyen-Orient",
+    edition: { hl: "ar", gl: "AE", ceid: "AE:ar", label: "Moyen-Orient" },
+    queries: ["الدارتس الشرق الأوسط نتائج", "darts Middle East Arab results"],
+  },
+  hi: {
+    label: "Asie",
+    edition: { hl: "en-IN", gl: "IN", ceid: "IN:en", label: "Asie" },
+    queries: ["darts Asia India WDF results", "PDC Asian Tour darts results"],
+  },
+  ja: {
+    label: "Asie",
+    edition: { hl: "ja", gl: "JP", ceid: "JP:ja", label: "Asie" },
+    queries: ["ダーツ アジア 結果 PDC WDF", "PDC Asian Tour darts results"],
+  },
+  zh: {
+    label: "Asie",
+    edition: { hl: "en-SG", gl: "SG", ceid: "SG:en", label: "Asie" },
+    queries: ["darts China Asia PDC WDF results", "PDC Asian Tour darts results"],
+  },
+};
+
+function globalQueriesFor(sport: string) {
+  const spec = INTELLIGENCE_SPECS[sport];
+  if (!spec) return [];
+  const out = [
+    `${spec.query} worldwide results scores`,
+    `${spec.query} world live fixtures`,
+  ];
+  if (sport === "darts") {
+    out.push(
+      "darts PDC WDF MODUS worldwide results scores",
+      "site:pdc.tv darts results",
+      "site:dartswdf.com darts results",
+      "site:modussuperseries.com darts results fixtures",
+    );
+  }
+  return Array.from(new Set(out)).slice(0, 6);
+}
+
+function localQueriesFor(sport: string, lang: string) {
   const spec = INTELLIGENCE_SPECS[sport];
   if (!spec) return [];
   const code = String(lang || "fr").toLowerCase().split(/[-_]/)[0];
-  const queries = [
-    `${spec.query} results scores`,
-    `${spec.query} live fixtures`,
-    ...(sport === "darts" ? (DARTS_LOCALE_QUERY_PACKS[code] || DARTS_LOCALE_QUERY_PACKS.en) : []),
-  ];
   if (sport === "darts") {
-    queries.push("site:modussuperseries.com darts results fixtures");
-    queries.push("site:pdc.tv darts results");
-    queries.push("site:dartswdf.com darts results");
+    return Array.from(new Set([
+      ...(DARTS_LOCALE_QUERY_PACKS[code] || DARTS_LOCALE_QUERY_PACKS.en || []),
+      `${spec.query} results scores`,
+    ])).slice(0, 4);
   }
-  return Array.from(new Set(queries)).slice(0, 8);
+  return [`${spec.query} results scores`, `${spec.query} live fixtures`];
+}
+
+function intelligenceFeedPlansFor(sport: string, lang: string): IntelligenceFeedPlan[] {
+  const code = String(lang || "fr").toLowerCase().split(/[-_]/)[0];
+  const localEdition = { ...localeForNews(lang), label: "Local" };
+  const regional = REGIONAL_SCOPE_BY_LANG[code] || REGIONAL_SCOPE_BY_LANG.en;
+  const plans: IntelligenceFeedPlan[] = [];
+
+  localQueriesFor(sport, lang).forEach((query) => {
+    plans.push({ query, edition: localEdition, scope: "local", scopeLabel: code.toUpperCase(), recencyDays: 90 });
+  });
+
+  const regionalQueries = sport === "darts"
+    ? regional.queries
+    : [`${INTELLIGENCE_SPECS[sport]?.query || sport} ${regional.label} results`, `${INTELLIGENCE_SPECS[sport]?.query || sport} ${regional.label} live`];
+  regionalQueries.slice(0, 2).forEach((query) => {
+    plans.push({ query, edition: regional.edition, scope: "regional", scopeLabel: regional.label, recencyDays: 60 });
+  });
+
+  globalQueriesFor(sport).forEach((query, index) => {
+    plans.push({
+      query,
+      edition: WORLD_NEWS_EDITIONS[index % WORLD_NEWS_EDITIONS.length],
+      scope: "world",
+      scopeLabel: "Monde",
+      recencyDays: 45,
+    });
+  });
+
+  const seen = new Set<string>();
+  return plans.filter((plan) => {
+    const key = `${plan.scope}|${plan.edition.gl}|${plan.query.toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 12);
+}
+
+// Kept for diagnostics / AI prompt metadata.
+function intelligenceQueriesFor(sport: string, lang: string) {
+  return intelligenceFeedPlansFor(sport, lang).map((plan) => plan.query);
 }
 
 function stripTags(value: string) {
@@ -1001,21 +1218,22 @@ function localeForNews(lang: string) {
   return map[code] || map.en;
 }
 
+
 async function googleNewsIntelligence(sport: string, lang: string): Promise<IntelligenceNews[]> {
   const spec = INTELLIGENCE_SPECS[sport];
   if (!spec) return [];
-  const locale = localeForNews(lang);
-  const queries = intelligenceQueriesFor(sport, lang);
+  const plans = intelligenceFeedPlansFor(sport, lang);
 
-  const feeds = await Promise.allSettled(queries.map(async (query, qIndex) => {
-    const recencyQuery = `${query} when:30d`;
-    const url = `https://news.google.com/rss/search?q=${encodeURIComponent(recencyQuery)}&hl=${encodeURIComponent(locale.hl)}&gl=${encodeURIComponent(locale.gl)}&ceid=${encodeURIComponent(locale.ceid)}`;
+  const feeds = await Promise.allSettled(plans.map(async (plan, qIndex) => {
+    const recencyQuery = `${plan.query} when:${plan.recencyDays}d`;
+    const url = `https://news.google.com/rss/search?q=${encodeURIComponent(recencyQuery)}&hl=${encodeURIComponent(plan.edition.hl)}&gl=${encodeURIComponent(plan.edition.gl)}&ceid=${encodeURIComponent(plan.edition.ceid)}`;
     const response = await fetch(url, {
       headers: { Accept: "application/rss+xml, application/xml, text/xml", "User-Agent": "MULTISPORTS-SCORING-LIVE/1.0" },
     });
     if (!response.ok) throw new Error(`News RSS HTTP ${response.status}`);
     const xml = await response.text();
-    const items = [...xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)].slice(0, 16);
+    const perFeedLimit = plan.scope === "local" ? 22 : plan.scope === "regional" ? 18 : 16;
+    const items = [...xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)].slice(0, perFeedLimit);
     return items.map((match, index) => {
       const block = match[1];
       let title = xmlTag(block, "title");
@@ -1031,7 +1249,7 @@ async function googleNewsIntelligence(sport: string, lang: string): Promise<Inte
       const kind = classifyHeadline(title, summary);
       const explicitScore = explicitScoreFromText(`${title} ${summary}`);
       return {
-        id: `news-${sport}-${qIndex}-${index}-${normalizeHeadlineKey(title).replace(/\s+/g, "-").slice(0, 42)}`,
+        id: `news-${sport}-${plan.scope}-${qIndex}-${index}-${normalizeHeadlineKey(title).replace(/\s+/g, "-").slice(0, 42)}`,
         title,
         summary: summary && summary !== title ? summary.slice(0, 320) : null,
         publishedAt,
@@ -1040,14 +1258,35 @@ async function googleNewsIntelligence(sport: string, lang: string): Promise<Inte
         imageUrl,
         kind,
         resultLabel: kind === "result" ? (explicitScore ? `Score ${explicitScore}` : "Résultat publié") : null,
+        scope: plan.scope,
+        scopeLabel: plan.scopeLabel,
       } satisfies IntelligenceNews;
     }).filter((row) => row.title.length >= 8);
   }));
 
   const rows = feeds.flatMap((result) => result.status === "fulfilled" ? result.value : []);
-  return uniqNews(rows)
-    .sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")))
-    .slice(0, 36);
+  const unique = uniqNews(rows)
+    .sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")));
+
+  // Guarantee visibility of LOCAL + REGIONAL + WORLD before filling with the newest remaining stories.
+  const balanced: IntelligenceNews[] = [];
+  const used = new Set<string>();
+  for (const scope of ["local", "regional", "world"] as IntelligenceScope[]) {
+    unique.filter((row) => row.scope === scope).slice(0, 8).forEach((row) => {
+      if (!used.has(row.id)) {
+        used.add(row.id);
+        balanced.push(row);
+      }
+    });
+  }
+  unique.forEach((row) => {
+    if (!used.has(row.id)) {
+      used.add(row.id);
+      balanced.push(row);
+    }
+  });
+
+  return balanced.slice(0, 72);
 }
 
 function extractOpenAIText(body: any): string {
@@ -1075,7 +1314,7 @@ async function openAiWebIntelligence(env: Env, sport: string, lang: string): Pro
   if (!key || !spec) return [];
   const model = str(env?.LIVE_INTELLIGENCE_MODEL).trim() || "gpt-6-luna";
   const today = new Date().toISOString().slice(0, 10);
-  const prompt = `Today is ${today}. Search the web for the latest verified ${spec.label} competition news, official results, current live events and upcoming official events from the last 14 days and the next 14 days. Prioritize official federation/tour sources and reputable sports media. Return ONLY valid JSON with this exact shape: {"items":[{"title":"...","summary":"...","publishedAt":"ISO date or null","sourceName":"...","sourceUrl":"https://...","imageUrl":"https://... or null","kind":"news|result|live|upcoming","resultLabel":"explicit published score/result or null"}]}. Maximum 24 items. For darts, cover both the global circuits and the local/regional circuits relevant to the requested language (France/francophone for fr; UK/Ireland + North America + Oceania for en; Spain + Latin America for es; DACH for de; Benelux for nl; Italy for it; Nordic/Baltic for da/no/sv/is; Poland/Czechia/Balkans/Eastern Europe for their locales; Asia/Middle East for zh/ja/hi/ar). IMPORTANT: never invent a score, winner, date or live status. resultLabel may contain a numeric score ONLY when a searched source explicitly states that score. Language for title/summary: ${lang || "fr"}.`;
+  const prompt = `Today is ${today}. Search the web for the latest verified ${spec.label} competition news, official results, current live events and upcoming official events from the last 14 days and the next 14 days. Prioritize official federation/tour sources and reputable sports media. Return ONLY valid JSON with this exact shape: {"items":[{"title":"...","summary":"...","publishedAt":"ISO date or null","sourceName":"...","sourceUrl":"https://...","imageUrl":"https://... or null","kind":"news|result|live|upcoming","resultLabel":"explicit published score/result or null","scope":"local|regional|world","scopeLabel":"country/region/world label"}]}. Maximum 40 items. ALWAYS cover three mandatory scopes: (1) local sources relevant to the requested language/country, (2) regional/continental sources, and (3) worldwide sources and major international circuits. The selected language is a priority, never a geographic filter. For example fr must include France/francophone + Europe + World; zh must include China + Asia + World; ja must include Japan + Asia + World; en must include UK/Ireland + North America + Oceania + World. IMPORTANT: never invent a score, winner, date or live status. resultLabel may contain a numeric score ONLY when a searched source explicitly states that score. Language for title/summary: ${lang || "fr"}.`;
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -1111,6 +1350,8 @@ async function openAiWebIntelligence(env: Env, sport: string, lang: string): Pro
       imageUrl: absoluteHttpUrl(str(item?.imageUrl)) || null,
       kind,
       resultLabel: kind === "result" ? (str(item?.resultLabel).trim().slice(0, 120) || "Résultat publié") : null,
+      scope: (["local", "regional", "world"] as string[]).includes(str(item?.scope).toLowerCase()) ? str(item?.scope).toLowerCase() as IntelligenceScope : "world",
+      scopeLabel: str(item?.scopeLabel).trim().slice(0, 80) || "Monde",
     };
   }).filter(Boolean) as IntelligenceNews[];
   return uniqNews(rows).slice(0, 24);
@@ -1161,8 +1402,7 @@ async function directDartsResults(lang: string): Promise<{ results: NormalResult
     }
   } catch {}
 
-  const code = String(lang || "fr").toLowerCase().split(/[-_]/)[0];
-  if (code === "en") {
+  {
     try {
       const html = await fetchOfficialHtml("https://dartsnz.nz/results/");
       const lines = htmlLines(html);
@@ -1237,7 +1477,7 @@ async function enrichWithLiveIntelligence(env: Env, sport: string, lang: string,
     }
   }
 
-  const mergedNews = uniqNews([...ai, ...rss]).sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || ""))).slice(0, 40);
+  const mergedNews = uniqNews([...ai, ...rss]).sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || ""))).slice(0, 72);
   const news = await enrichNewsImages(mergedNews);
   const intelligenceEvents = news.map((row) => newsToEvent(row, sport)).filter(Boolean) as NormalEvent[];
   let direct = { results: [] as NormalResult[], fixtures: [] as NormalMatch[], events: [] as NormalEvent[] };
@@ -1263,7 +1503,10 @@ async function enrichWithLiveIntelligence(env: Env, sport: string, lang: string,
         provider,
         aiEnabled: !!str(env?.OPENAI_API_KEY).trim(),
         count: news.length,
-        queryCount: intelligenceQueriesFor(sport, lang).length,
+        localCount: news.filter((item) => item.scope === "local").length,
+        regionalCount: news.filter((item) => item.scope === "regional").length,
+        worldCount: news.filter((item) => item.scope === "world" || !item.scope).length,
+        queryCount: intelligenceFeedPlansFor(sport, lang).length,
         directResultCount: direct.results.length,
         updatedAt: new Date().toISOString(),
       },

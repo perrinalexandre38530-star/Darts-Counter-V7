@@ -104,6 +104,8 @@ export type SportLiveNewsItem = {
   imageUrl?: string | null;
   kind: "news" | "result" | "live" | "upcoming";
   resultLabel?: string | null;
+  scope?: "local" | "regional" | "world";
+  scopeLabel?: string | null;
 };
 
 export type SportLiveIntelligence = {
@@ -111,6 +113,11 @@ export type SportLiveIntelligence = {
   provider: "openai_web" | "news_rss" | "none";
   aiEnabled: boolean;
   count: number;
+  localCount?: number;
+  regionalCount?: number;
+  worldCount?: number;
+  queryCount?: number;
+  directResultCount?: number;
   updatedAt?: string | null;
 };
 
