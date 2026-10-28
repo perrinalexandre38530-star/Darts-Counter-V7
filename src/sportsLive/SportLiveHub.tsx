@@ -12,10 +12,10 @@ import {
   getSportSources,
 } from "./catalog";
 import { fetchSportLiveOverview, getCachedSportLiveOverview } from "./liveApi";
-import type { SportLiveEvent, SportLiveOverview, SportLiveRegion, SportLiveSource } from "./types";
+import type { SportLiveEvent, SportLiveNewsItem, SportLiveOverview, SportLiveRegion, SportLiveSource } from "./types";
 import { isLiveSportsSupportedSport } from "./support";
 
-type View = "overview" | "live" | "fixtures" | "results" | "sources";
+type View = "overview" | "live" | "fixtures" | "results" | "news" | "sources";
 type RegionFilter = "recommended" | "all" | SportLiveRegion;
 
 type TickerItem = {
@@ -257,6 +257,25 @@ function LiveStyles() {
       }
       .msc-empty-title { font-size:15px; font-weight:1000; }
       .msc-empty-copy { margin-top:5px; font-size:11.5px; color:#8f99a5; line-height:1.45; }
+      .msc-news-grid { display:grid; gap:9px; }
+      .msc-news-card {
+        display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; align-items:center;
+        padding:13px 14px; border:1px solid #29313a; border-radius:13px; background:#0d1116;
+      }
+      .msc-news-card.is-result { border-left:4px solid #f4d445; }
+      .msc-news-card.is-live { border-left:4px solid var(--live-accent); }
+      .msc-news-card.is-upcoming { border-left:4px solid #64b8ff; }
+      .msc-news-top { display:flex; gap:7px; align-items:center; flex-wrap:wrap; margin-bottom:6px; }
+      .msc-news-kind { font-size:9px; font-weight:1000; letter-spacing:.45px; color:#111; padding:4px 7px; border-radius:999px; background:#e8edf2; }
+      .msc-news-kind.is-result { background:#f4d445; }
+      .msc-news-kind.is-live { background:#ff3048; color:#fff; }
+      .msc-news-kind.is-upcoming { background:#64b8ff; color:#08131d; }
+      .msc-news-source { font-size:9.5px; color:#8f99a5; font-weight:900; }
+      .msc-news-title { font-size:14px; line-height:1.22; font-weight:1000; }
+      .msc-news-summary { margin-top:5px; color:#929ca7; font-size:11px; line-height:1.38; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+      .msc-news-result { margin-top:7px; color:#f4d445; font-size:11.5px; font-weight:1000; }
+      .msc-news-link { display:inline-flex; align-items:center; justify-content:center; min-height:34px; padding:7px 10px; border-radius:8px; border:1px solid #3a4652; color:#fff; background:#141a21; text-decoration:none; font-size:10px; font-weight:1000; }
+      @media (max-width:520px) { .msc-news-card { grid-template-columns:1fr; } .msc-news-link { width:100%; } }
       .msc-source-rail { display:grid; gap:7px; margin-top:11px; }
       .msc-source-row {
         display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center; padding:11px 12px;
@@ -461,6 +480,26 @@ function OfficialEventCard({ event }: { event: SportLiveEvent }) {
   );
 }
 
+
+function NewsCard({ item, lang }: { item: SportLiveNewsItem; lang: string }) {
+  const kindLabel = item.kind === "result" ? "RÉSULTAT" : item.kind === "live" ? "LIVE" : item.kind === "upcoming" ? "À VENIR" : "ACTU";
+  const kindClass = item.kind === "result" ? " is-result" : item.kind === "live" ? " is-live" : item.kind === "upcoming" ? " is-upcoming" : "";
+  return (
+    <article className={`msc-news-card${kindClass}`}>
+      <div style={{ minWidth: 0 }}>
+        <div className="msc-news-top">
+          <span className={`msc-news-kind${kindClass}`}>{kindLabel}</span>
+          <span className="msc-news-source">{item.sourceName || "WEB"}{item.publishedAt ? ` · ${formatDate(item.publishedAt, lang)}` : ""}</span>
+        </div>
+        <div className="msc-news-title" translate="no" data-i18n-skip="true">{item.title}</div>
+        {item.summary ? <div className="msc-news-summary" translate="no" data-i18n-skip="true">{item.summary}</div> : null}
+        {item.resultLabel ? <div className="msc-news-result" translate="no" data-i18n-skip="true">{item.resultLabel}</div> : null}
+      </div>
+      {item.sourceUrl ? <a className="msc-news-link" href={item.sourceUrl} target="_blank" rel="noreferrer noopener">LIRE</a> : null}
+    </article>
+  );
+}
+
 function EmptySection({ title, copy, sources }: { title: string; copy: string; sources: SportLiveSource[] }) {
   const usable = sources.filter((source) => source.scoresUrl || source.watchUrl || source.resultsUrl || source.calendarUrl || source.homeUrl).slice(0, 4);
   return (
@@ -538,6 +577,17 @@ function buildTicker(feed: SportLiveOverview | null, lang: string, sportLabel: s
       live: event.status === "live",
     });
   });
+  (feed?.news || []).slice(0, 5).forEach((item) => {
+    if (items.length >= 8) return;
+    items.push({
+      id: `news-${item.id}`,
+      sport: sportLabel,
+      label: item.title,
+      score: item.resultLabel || undefined,
+      meta: `${item.kind === "result" ? "Résultat" : item.kind === "live" ? "Live" : item.kind === "upcoming" ? "À venir" : "Actu"} · ${item.sourceName || "Web"}`,
+      live: item.kind === "live",
+    });
+  });
   if (!items.length) {
     sources.slice(0, 3).forEach((source) => {
       items.push({
@@ -582,7 +632,7 @@ export default function SportLiveHub() {
     const run = async (quiet = false) => {
       if (!quiet) setLoading(true);
       try {
-        const next = await fetchSportLiveOverview(liveSport, controller.signal);
+        const next = await fetchSportLiveOverview(liveSport, controller.signal, lang);
         if (!active) return;
         setFeed(next);
         setFeedError(null);
@@ -602,13 +652,13 @@ export default function SportLiveHub() {
       controller.abort();
       if (timer !== null) window.clearInterval(timer);
     };
-  }, [liveSport, !!feed?.configured, !!feed?.liveAvailable]);
+  }, [liveSport, lang, !!feed?.configured, !!feed?.liveAvailable]);
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
     setFeedError(null);
     try {
-      const next = await fetchSportLiveOverview(liveSport);
+      const next = await fetchSportLiveOverview(liveSport, undefined, lang);
       setFeed(next);
       setUpdatedAt(Date.now());
     } catch (error: any) {
@@ -616,7 +666,7 @@ export default function SportLiveHub() {
     } finally {
       setLoading(false);
     }
-  }, [liveSport]);
+  }, [liveSport, lang]);
 
   const sources = React.useMemo(() => {
     if (region === "all") return allSportSources;
@@ -628,6 +678,7 @@ export default function SportLiveHub() {
   const fixtureRows = feed?.fixtures || [];
   const resultRows = feed?.results || [];
   const eventRows = feed?.events || [];
+  const newsRows = feed?.news || [];
   const liveEvents = eventRows.filter((event) => event.status === "live");
   const upcomingEvents = eventRows.filter((event) => event.status === "upcoming" || event.status === "info");
   const resultEvents = eventRows.filter((event) => event.status === "result");
@@ -665,6 +716,7 @@ export default function SportLiveHub() {
         <span className="msc-info-chip">{localeProfile.label}</span>
         <span className="msc-info-chip">{recommended.length} SOURCES OFFICIELLES</span>
         {feed?.configured ? <span className="msc-info-chip">AUTO · {String(feed.provider || "DATA").toUpperCase()}</span> : null}
+        {feed?.intelligence?.enabled ? <span className="msc-info-chip">INTELLIGENCE · {feed.intelligence.provider === "openai_web" ? "IA WEB" : "ACTUS WEB"} · {feed.intelligence.count}</span> : null}
         {feed?.configured && feed?.plan ? <span className="msc-info-chip">PLAN {String(feed.plan).toUpperCase()}</span> : null}
         {updatedAt ? <span className="msc-info-chip">MAJ {new Date(updatedAt).toLocaleTimeString()}</span> : null}
         {feedError ? <span className="msc-info-chip">DONNÉES LIVE INDISPONIBLES</span> : null}
@@ -682,6 +734,7 @@ export default function SportLiveHub() {
           ["live", `EN DIRECT${(liveRows.length + liveEvents.length) ? ` · ${liveRows.length + liveEvents.length}` : ""}`],
           ["fixtures", `À VENIR${(fixtureRows.length + upcomingEvents.length) ? ` · ${fixtureRows.length + upcomingEvents.length}` : ""}`],
           ["results", `RÉSULTATS${(resultRows.length + resultEvents.length) ? ` · ${resultRows.length + resultEvents.length}` : ""}`],
+          ["news", `ACTUS${newsRows.length ? ` · ${newsRows.length}` : ""}`],
           ["sources", "SOURCES"],
         ] as Array<[View, string]>).map(([key, label]) => (
           <button key={key} className={`msc-live-tab${view === key ? " is-active" : ""}`} type="button" onClick={() => setView(key)}>{label}</button>
@@ -697,6 +750,11 @@ export default function SportLiveHub() {
 
       {supportedSport && view === "overview" ? (
         <>
+          <section className="msc-live-section">
+            <SectionHeader title="ACTUS & RÉSULTATS DU WEB" count={newsRows.length ? `${newsRows.length} info${newsRows.length > 1 ? "s" : ""}` : ""} />
+            {newsRows.length ? <div className="msc-news-grid">{newsRows.slice(0, 6).map((item) => <NewsCard key={item.id} item={item} lang={lang} />)}</div> : <EmptySection title="Recherche d’actualités en cours" copy="LIVE Intelligence cherche automatiquement les dernières actualités et résultats publiés pour cette discipline." sources={recommended.slice(0, 3)} />}
+          </section>
+
           <section className="msc-live-section">
             <SectionHeader title="EN DIRECT" count={(liveRows.length + liveEvents.length) ? `${liveRows.length + liveEvents.length} direct${(liveRows.length + liveEvents.length) > 1 ? "s" : ""}` : ""} />
             {liveRows.length ? liveRows.slice(0, 4).map((item) => <LiveMatchCard key={item.id} item={item} source={sourceForCards} />) : liveEvents.length ? liveEvents.slice(0, 4).map((event) => <OfficialEventCard key={event.id} event={event} />) : (
@@ -738,6 +796,13 @@ export default function SportLiveHub() {
         <section className="msc-live-section">
           <SectionHeader title="RÉSULTATS" count={(resultRows.length + resultEvents.length) ? `${resultRows.length + resultEvents.length} résultat${(resultRows.length + resultEvents.length) > 1 ? "s" : ""}` : ""} />
           {resultRows.length ? resultRows.map((item) => <ResultMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />) : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Résultats officiels" copy="Aucun résultat automatique n’est chargé pour l’instant. Ouvre une source officielle pour consulter les derniers scores." sources={recommended.filter((source) => source.resultsUrl)} />}
+        </section>
+      ) : null}
+
+      {supportedSport && view === "news" ? (
+        <section className="msc-live-section">
+          <SectionHeader title="ACTUS" count={newsRows.length ? `${newsRows.length}` : ""} />
+          {newsRows.length ? <div className="msc-news-grid">{newsRows.map((item) => <NewsCard key={item.id} item={item} lang={lang} />)}</div> : <EmptySection title="Aucune actualité détectée" copy="Le moteur LIVE Intelligence tente automatiquement les sources web récentes. Réessaie avec le bouton d’actualisation." sources={recommended.slice(0, 4)} />}
         </section>
       ) : null}
 

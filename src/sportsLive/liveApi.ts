@@ -1,7 +1,7 @@
 import type { SportId } from "../contexts/SportContext";
 import type { SportLiveOverview, SportLiveSportId } from "./types";
 
-const CACHE_PREFIX = "msc_sport_live_cache_v2:";
+const CACHE_PREFIX = "msc_sport_live_cache_v3:";
 
 function isSupportedSport(value: SportId): value is SportLiveSportId {
   return ["darts", "petanque", "pingpong", "babyfoot", "molkky", "padel", "badminton", "cornhole", "palet", "bowling"].includes(String(value));
@@ -21,6 +21,8 @@ function emptyOverview(sport: SportId): SportLiveOverview {
     fixtures: [],
     results: [],
     events: [],
+    news: [],
+    intelligence: null,
     warnings: [],
   };
 }
@@ -47,11 +49,12 @@ export function getCachedSportLiveOverview(sport: SportId): SportLiveOverview | 
   return readCache(sport);
 }
 
-export async function fetchSportLiveOverview(sport: SportId, signal?: AbortSignal): Promise<SportLiveOverview> {
+export async function fetchSportLiveOverview(sport: SportId, signal?: AbortSignal, lang?: string): Promise<SportLiveOverview> {
   if (!isSupportedSport(sport)) return emptyOverview(sport);
 
   try {
-    const response = await fetch(`/api/sports-live/${encodeURIComponent(sport)}/overview`, {
+    const locale = String(lang || document.documentElement.lang || "fr").toLowerCase();
+    const response = await fetch(`/api/sports-live/${encodeURIComponent(sport)}/overview?lang=${encodeURIComponent(locale)}&v=4`, {
       method: "GET",
       headers: { Accept: "application/json" },
       cache: "no-store",
@@ -71,6 +74,8 @@ export async function fetchSportLiveOverview(sport: SportId, signal?: AbortSigna
       fixtures: Array.isArray(body?.fixtures) ? body.fixtures : [],
       results: Array.isArray(body?.results) ? body.results : [],
       events: Array.isArray(body?.events) ? body.events : [],
+      news: Array.isArray(body?.news) ? body.news : [],
+      intelligence: body?.intelligence && typeof body.intelligence === "object" ? body.intelligence : null,
       warnings: Array.isArray(body?.warnings) ? body.warnings : [],
     };
     writeCache(sport, overview);

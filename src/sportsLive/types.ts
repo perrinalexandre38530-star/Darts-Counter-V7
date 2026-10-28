@@ -93,6 +93,26 @@ export type SportLiveEvent = {
   resultLabel?: string | null;
 };
 
+
+export type SportLiveNewsItem = {
+  id: string;
+  title: string;
+  summary?: string | null;
+  publishedAt?: string | null;
+  sourceName?: string | null;
+  sourceUrl?: string | null;
+  kind: "news" | "result" | "live" | "upcoming";
+  resultLabel?: string | null;
+};
+
+export type SportLiveIntelligence = {
+  enabled: boolean;
+  provider: "openai_web" | "news_rss" | "none";
+  aiEnabled: boolean;
+  count: number;
+  updatedAt?: string | null;
+};
+
 export type SportLiveOverview = {
   sport: SportLiveSportId;
   automaticData: boolean;
@@ -106,5 +126,7 @@ export type SportLiveOverview = {
   fixtures: DartsLiveFixture[];
   results: DartsLiveResult[];
   events?: SportLiveEvent[];
+  news?: SportLiveNewsItem[];
+  intelligence?: SportLiveIntelligence | null;
   warnings?: string[];
 };

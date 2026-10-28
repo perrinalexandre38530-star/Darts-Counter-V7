@@ -1,6 +1,8 @@
 type Env = {
   DARTS_API_KEY?: string;
   TABLE_TENNIS_API_KEY?: string;
+  OPENAI_API_KEY?: string;
+  LIVE_INTELLIGENCE_MODEL?: string;
 };
 
 type NormalPlayer = { id?: string | null; name: string; score?: number | null };
@@ -473,6 +475,8 @@ function decodeHtml(input: string) {
     .replace(/&nbsp;/gi, " ")
     .replace(/&amp;/gi, "&")
     .replace(/&quot;/gi, '"')
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
     .replace(/&#39;|&apos;/gi, "'")
     .replace(/&eacute;/gi, "é")
     .replace(/&egrave;/gi, "è")
@@ -759,6 +763,279 @@ async function officialEventOverview(sport: "babyfoot" | "molkky" | "petanque") 
   }
 }
 
+
+
+type IntelligenceKind = "news" | "result" | "live" | "upcoming";
+type IntelligenceNews = {
+  id: string;
+  title: string;
+  summary?: string | null;
+  publishedAt?: string | null;
+  sourceName?: string | null;
+  sourceUrl?: string | null;
+  kind: IntelligenceKind;
+  resultLabel?: string | null;
+};
+
+const INTELLIGENCE_SPECS: Record<string, { label: string; query: string; domains: string[] }> = {
+  darts: {
+    label: "darts / fléchettes",
+    query: "darts PDC WDF results scores tournament",
+    domains: ["pdc.tv", "dartswdf.com", "dartconnect.com", "modussuperseries.com", "ffdarts.fr"],
+  },
+  pingpong: {
+    label: "table tennis / ping-pong",
+    query: "table tennis WTT ITTF results scores",
+    domains: ["worldtabletennis.com", "ittf.com", "fftt.com"],
+  },
+  petanque: {
+    label: "pétanque",
+    query: "petanque pétanque FIPJP results championnat résultats",
+    domains: ["fipjp.org", "ffpjp.org"],
+  },
+  babyfoot: {
+    label: "table soccer / baby-foot",
+    query: "table soccer ITSF results foosball tournament",
+    domains: ["tablesoccer.org"],
+  },
+  molkky: {
+    label: "Mölkky",
+    query: "Molkky Mölkky tournament results world championship",
+    domains: ["molkky.world", "international-molkky.org"],
+  },
+};
+
+function stripTags(value: string) {
+  return decodeHtml(String(value || "").replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, "$1").replace(/<[^>]+>/g, " "))
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function xmlTag(block: string, tag: string) {
+  const m = block.match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"));
+  return m ? stripTags(m[1]) : "";
+}
+
+function xmlSource(block: string) {
+  const m = block.match(/<source\b[^>]*>([\s\S]*?)<\/source>/i);
+  return m ? stripTags(m[1]) : "";
+}
+
+function classifyHeadline(title: string, summary = ""): IntelligenceKind {
+  const text = `${title} ${summary}`.toLowerCase();
+  if (/\b(live|en direct|direct live|livescore|live score)\b/.test(text)) return "live";
+  if (/\b(result|results|résultat|résultats|wins?|winner|champion|beats?|defeats?|claims?|clinches?|edges?|victory|final score|score final|s'impose|remporte|vainqueur)\b/.test(text)) return "result";
+  if (/\b(schedule|calendar|fixture|upcoming|draw|programme|calendrier|à venir|prochain|next tournament|entries)\b/.test(text)) return "upcoming";
+  return "news";
+}
+
+function normalizeHeadlineKey(value: string) {
+  return String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim().slice(0, 120);
+}
+
+function explicitScoreFromText(value: string): string | null {
+  const text = String(value || "");
+  const match = text.match(/(?:^|\s|\()([0-9]{1,3})\s*[-–:]\s*([0-9]{1,3})(?=\s|\)|$)/);
+  if (!match) return null;
+  return `${match[1]}-${match[2]}`;
+}
+
+function uniqNews(rows: IntelligenceNews[]) {
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    const key = normalizeHeadlineKey(row.title);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function localeForNews(lang: string) {
+  const code = String(lang || "fr").toLowerCase().split(/[-_]/)[0];
+  const map: Record<string, { hl: string; gl: string; ceid: string }> = {
+    fr: { hl: "fr", gl: "FR", ceid: "FR:fr" },
+    en: { hl: "en-GB", gl: "GB", ceid: "GB:en" },
+    es: { hl: "es", gl: "ES", ceid: "ES:es" },
+    de: { hl: "de", gl: "DE", ceid: "DE:de" },
+    it: { hl: "it", gl: "IT", ceid: "IT:it" },
+    nl: { hl: "nl", gl: "NL", ceid: "NL:nl" },
+    pt: { hl: "pt-PT", gl: "PT", ceid: "PT:pt-150" },
+    pl: { hl: "pl", gl: "PL", ceid: "PL:pl" },
+    da: { hl: "da", gl: "DK", ceid: "DK:da" },
+    no: { hl: "no", gl: "NO", ceid: "NO:no" },
+    sv: { hl: "sv", gl: "SE", ceid: "SE:sv" },
+    cs: { hl: "cs", gl: "CZ", ceid: "CZ:cs" },
+    tr: { hl: "tr", gl: "TR", ceid: "TR:tr" },
+    ru: { hl: "ru", gl: "RU", ceid: "RU:ru" },
+    ja: { hl: "ja", gl: "JP", ceid: "JP:ja" },
+    zh: { hl: "zh-CN", gl: "CN", ceid: "CN:zh-Hans" },
+  };
+  return map[code] || map.en;
+}
+
+async function googleNewsIntelligence(sport: string, lang: string): Promise<IntelligenceNews[]> {
+  const spec = INTELLIGENCE_SPECS[sport];
+  if (!spec) return [];
+  const locale = localeForNews(lang);
+  const recencyQuery = `${spec.query} when:14d`;
+  const url = `https://news.google.com/rss/search?q=${encodeURIComponent(recencyQuery)}&hl=${encodeURIComponent(locale.hl)}&gl=${encodeURIComponent(locale.gl)}&ceid=${encodeURIComponent(locale.ceid)}`;
+  const response = await fetch(url, {
+    headers: { Accept: "application/rss+xml, application/xml, text/xml", "User-Agent": "MULTISPORTS-SCORING-LIVE/1.0" },
+  });
+  if (!response.ok) throw new Error(`News RSS HTTP ${response.status}`);
+  const xml = await response.text();
+  const items = [...xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)].slice(0, 18);
+  return uniqNews(items.map((match, index) => {
+    const block = match[1];
+    let title = xmlTag(block, "title");
+    const sourceName = xmlSource(block) || "Actualité web";
+    const suffix = ` - ${sourceName}`;
+    if (title.endsWith(suffix)) title = title.slice(0, -suffix.length).trim();
+    const summary = xmlTag(block, "description");
+    const publishedRaw = xmlTag(block, "pubDate");
+    const parsed = new Date(publishedRaw);
+    const publishedAt = Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+    const sourceUrl = xmlTag(block, "link") || null;
+    const kind = classifyHeadline(title, summary);
+    const explicitScore = explicitScoreFromText(`${title} ${summary}`);
+    return {
+      id: `news-${sport}-${index}-${normalizeHeadlineKey(title).replace(/\s+/g, "-").slice(0, 42)}`,
+      title,
+      summary: summary && summary !== title ? summary.slice(0, 280) : null,
+      publishedAt,
+      sourceName,
+      sourceUrl,
+      kind,
+      resultLabel: kind === "result" ? (explicitScore ? `Score ${explicitScore}` : "Résultat publié") : null,
+    } satisfies IntelligenceNews;
+  }).filter((row) => row.title.length >= 8)).slice(0, 12);
+}
+
+function extractOpenAIText(body: any): string {
+  if (typeof body?.output_text === "string" && body.output_text.trim()) return body.output_text.trim();
+  for (const item of arr(body?.output)) {
+    if (item?.type !== "message") continue;
+    for (const content of arr(item?.content)) {
+      if ((content?.type === "output_text" || content?.type === "text") && typeof content?.text === "string") return content.text.trim();
+    }
+  }
+  return "";
+}
+
+function parseAiJson(text: string): any {
+  const clean = String(text || "").replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  const start = clean.indexOf("{");
+  const end = clean.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  try { return JSON.parse(clean.slice(start, end + 1)); } catch { return null; }
+}
+
+async function openAiWebIntelligence(env: Env, sport: string, lang: string): Promise<IntelligenceNews[]> {
+  const key = str(env?.OPENAI_API_KEY).trim();
+  const spec = INTELLIGENCE_SPECS[sport];
+  if (!key || !spec) return [];
+  const model = str(env?.LIVE_INTELLIGENCE_MODEL).trim() || "gpt-6-luna";
+  const today = new Date().toISOString().slice(0, 10);
+  const prompt = `Today is ${today}. Search the web for the latest verified ${spec.label} competition news, official results, current live events and upcoming official events from the last 14 days and the next 14 days. Prioritize official federation/tour sources and reputable sports media. Return ONLY valid JSON with this exact shape: {"items":[{"title":"...","summary":"...","publishedAt":"ISO date or null","sourceName":"...","sourceUrl":"https://...","kind":"news|result|live|upcoming","resultLabel":"explicit published score/result or null"}]}. Maximum 8 items. IMPORTANT: never invent a score, winner, date or live status. resultLabel may contain a numeric score ONLY when a searched source explicitly states that score. Language for title/summary: ${lang || "fr"}.`;
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      Authorization: `Bearer ${key}`,
+    },
+    body: JSON.stringify({
+      model,
+      reasoning: { effort: "low" },
+      tools: [{ type: "web_search", search_context_size: "low" }],
+      tool_choice: "auto",
+      include: ["web_search_call.action.sources"],
+      input: prompt,
+    }),
+  });
+  if (!response.ok) throw new Error(`OpenAI web search HTTP ${response.status}`);
+  const body = await response.json().catch(() => null) as any;
+  const parsed = parseAiJson(extractOpenAIText(body));
+  const rows = arr(parsed?.items).map((item, index): IntelligenceNews | null => {
+    const title = str(item?.title).trim();
+    const sourceUrl = str(item?.sourceUrl).trim();
+    if (!title || !/^https:\/\//i.test(sourceUrl)) return null;
+    const requested = str(item?.kind).toLowerCase();
+    const kind: IntelligenceKind = (["news", "result", "live", "upcoming"] as string[]).includes(requested) ? requested as IntelligenceKind : classifyHeadline(title, str(item?.summary));
+    const date = new Date(str(item?.publishedAt));
+    return {
+      id: `ai-${sport}-${index}-${normalizeHeadlineKey(title).replace(/\s+/g, "-").slice(0, 42)}`,
+      title,
+      summary: str(item?.summary).trim().slice(0, 320) || null,
+      publishedAt: Number.isFinite(date.getTime()) ? date.toISOString() : null,
+      sourceName: str(item?.sourceName).trim() || "Web",
+      sourceUrl,
+      kind,
+      resultLabel: kind === "result" ? (str(item?.resultLabel).trim().slice(0, 120) || "Résultat publié") : null,
+    };
+  }).filter(Boolean) as IntelligenceNews[];
+  return uniqNews(rows).slice(0, 8);
+}
+
+function newsToEvent(row: IntelligenceNews, sport: string): NormalEvent | null {
+  if (row.kind === "news") return null;
+  return {
+    id: `intel-event-${row.id}`,
+    title: row.title,
+    subtitle: row.summary || row.sourceName || "Actualité sportive",
+    startsAt: row.publishedAt || null,
+    dateLabel: row.publishedAt ? row.publishedAt.slice(0, 10) : null,
+    status: row.kind === "result" ? "result" : row.kind === "live" ? "live" : "upcoming",
+    sourceName: row.sourceName || "Web",
+    sourceUrl: row.sourceUrl || null,
+    resultLabel: row.kind === "result" ? row.resultLabel || "Résultat publié" : null,
+  };
+}
+
+async function enrichWithLiveIntelligence(env: Env, sport: string, lang: string, base: { status: number; ttl: number; payload: any }) {
+  const warnings = arr(base.payload?.warnings).map(str).filter(Boolean);
+  let rss: IntelligenceNews[] = [];
+  let ai: IntelligenceNews[] = [];
+  try {
+    rss = await googleNewsIntelligence(sport, lang);
+  } catch (error: any) {
+    warnings.push(`Fil actualités web indisponible : ${str(error?.message || error)}`);
+  }
+
+  // L'IA web est un enrichissement facultatif. Le RSS garantit qu'il y a du contenu même sans clé OpenAI.
+  if (str(env?.OPENAI_API_KEY).trim()) {
+    try {
+      ai = await openAiWebIntelligence(env, sport, lang);
+    } catch (error: any) {
+      warnings.push(`LIVE Intelligence IA indisponible : ${str(error?.message || error)}`);
+    }
+  }
+
+  const news = uniqNews([...ai, ...rss]).sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || ""))).slice(0, 14);
+  const intelligenceEvents = news.map((row) => newsToEvent(row, sport)).filter(Boolean) as NormalEvent[];
+  const mergedEvents = uniqEvents([...(arr(base.payload?.events) as NormalEvent[]), ...intelligenceEvents]).slice(0, 28);
+  const provider = ai.length ? "openai_web" : rss.length ? "news_rss" : "none";
+
+  return {
+    ...base,
+    ttl: Math.min(base.ttl || 1800, ai.length ? 1800 : 900),
+    payload: {
+      ...base.payload,
+      configured: !!base.payload?.configured || news.length > 0,
+      automaticData: !!base.payload?.automaticData || news.length > 0,
+      events: mergedEvents,
+      news,
+      intelligence: {
+        enabled: news.length > 0,
+        provider,
+        aiEnabled: !!str(env?.OPENAI_API_KEY).trim(),
+        count: news.length,
+        updatedAt: new Date().toISOString(),
+      },
+      warnings,
+    },
+  };
+}
+
 async function cachedResponse(context: any, loader: () => Promise<{ status: number; ttl: number; payload: any }>) {
   const cache = (caches as any).default;
   const cacheKey = new Request(context.request.url, { method: "GET" });
@@ -786,23 +1063,32 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const path = Array.isArray(raw) ? raw : String(raw || "").split("/").filter(Boolean);
   const sport = str(path[0] || "darts").toLowerCase();
   const action = str(path[1] || "overview").toLowerCase();
+  const lang = str(new URL(context.request.url).searchParams.get("lang") || "fr").toLowerCase();
   if (action !== "overview") return json({ error: "not_found", message: "Unknown LIVE SPORTS endpoint." }, 404, 60);
 
   if (sport === "darts") {
     const key = str(context.env?.DARTS_API_KEY).trim();
-    if (!key) return cachedResponse(context, () => officialDartsFallbackOverview("DARTS_API_KEY absente : calendrier/résultats publics PDC chargés en fallback. Le score LIVE chiffré nécessite DartsAPI Live ou DartConnect API."));
-    return cachedResponse(context, () => dartsOverview(key));
+    return cachedResponse(context, async () => {
+      const base = key
+        ? await dartsOverview(key)
+        : await officialDartsFallbackOverview("DARTS_API_KEY absente : LIVE Intelligence complète les actualités/résultats publics. Le score LIVE chiffré nécessite DartsAPI Live ou DartConnect API.");
+      return enrichWithLiveIntelligence(context.env, sport, lang, base);
+    });
   }
 
   if (sport === "pingpong") {
     const key = str(context.env?.TABLE_TENNIS_API_KEY).trim();
-    if (!key) return json({ sport, configured: false, automaticData: false, provider: "tabletennisapi", plan: null, dataAsOf: null, liveAvailable: false, liveReason: "TABLE_TENNIS_API_KEY non configurée côté Cloudflare.", live: [], fixtures: [], results: [], warnings: ["Ajoute TABLE_TENNIS_API_KEY dans les secrets Cloudflare Pages pour charger automatiquement les vrais scores Ping-Pong."] }, 200, 300);
-    return cachedResponse(context, () => tableTennisOverview(key));
+    return cachedResponse(context, async () => {
+      const base = key
+        ? await tableTennisOverview(key)
+        : { status: 200, ttl: 900, payload: { sport, configured: false, automaticData: false, provider: "tabletennisapi", plan: null, dataAsOf: null, liveAvailable: false, liveReason: "TABLE_TENNIS_API_KEY non configurée côté Cloudflare.", live: [], fixtures: [], results: [], events: [], warnings: ["LIVE Intelligence charge quand même l'actualité Ping-Pong ; ajoute TABLE_TENNIS_API_KEY pour les scores structurés."] } };
+      return enrichWithLiveIntelligence(context.env, sport, lang, base);
+    });
   }
 
   if (sport === "babyfoot" || sport === "molkky" || sport === "petanque") {
-    return cachedResponse(context, () => officialEventOverview(sport));
+    return cachedResponse(context, async () => enrichWithLiveIntelligence(context.env, sport, lang, await officialEventOverview(sport)));
   }
 
-  return json({ sport, configured: false, automaticData: false, provider: "official_links", plan: null, dataAsOf: null, liveAvailable: false, liveReason: "Aucun provider structuré n'est encore branché pour ce sport.", live: [], fixtures: [], results: [], warnings: [] }, 200, 600);
+  return cachedResponse(context, async () => enrichWithLiveIntelligence(context.env, sport, lang, { status: 200, ttl: 900, payload: { sport, configured: false, automaticData: false, provider: "official_links", plan: null, dataAsOf: null, liveAvailable: false, liveReason: "Aucun provider score structuré n'est encore branché pour ce sport.", live: [], fixtures: [], results: [], events: [], warnings: [] } }));
 };
