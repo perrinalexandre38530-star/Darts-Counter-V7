@@ -101,6 +101,7 @@ export type SportLiveNewsItem = {
   publishedAt?: string | null;
   sourceName?: string | null;
   sourceUrl?: string | null;
+  imageUrl?: string | null;
   kind: "news" | "result" | "live" | "upcoming";
   resultLabel?: string | null;
 };

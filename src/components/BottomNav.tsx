@@ -471,7 +471,6 @@ export default function BottomNav({
         ]
       : [
         { k: "home", label: t("nav.home", tr("Accueil", "Home", "Inicio")), icon: <Icon name="home" /> },
-        ...liveSportsTabs,
         { k: "agenda", label: tr("Agenda", "Agenda", "Agenda"), icon: <Icon name="agenda" /> },
 
         ...(hideOnline ? [] : [
@@ -489,6 +488,7 @@ export default function BottomNav({
         { k: "stats", label: t("nav.stats", "Stats"), icon: <Icon name="stats" /> },
         { k: "settings", label: t("nav.settings", tr("Réglages", "Settings", "Ajustes")), icon: <Icon name="settings" /> },
         { k: "cast_host", label: t("nav.screens", tr("Écrans", "Screens", "Pantallas")), icon: <Icon name="cast_host" /> },
+        ...liveSportsTabs,
       ]) as NavItem[];
 
   const tap = (k: NavItem["k"]) => {

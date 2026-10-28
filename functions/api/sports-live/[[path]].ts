@@ -773,6 +773,7 @@ type IntelligenceNews = {
   publishedAt?: string | null;
   sourceName?: string | null;
   sourceUrl?: string | null;
+  imageUrl?: string | null;
   kind: IntelligenceKind;
   resultLabel?: string | null;
 };
@@ -819,6 +820,76 @@ function xmlTag(block: string, tag: string) {
 function xmlSource(block: string) {
   const m = block.match(/<source\b[^>]*>([\s\S]*?)<\/source>/i);
   return m ? stripTags(m[1]) : "";
+}
+
+function absoluteHttpUrl(value: string, base?: string | null) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  try {
+    const url = base ? new URL(raw, base) : new URL(raw);
+    return /^https?:$/i.test(url.protocol) ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function xmlImage(block: string) {
+  const media = block.match(/<(?:media:content|media:thumbnail)\b[^>]*\burl=["']([^"']+)["'][^>]*>/i);
+  if (media) return absoluteHttpUrl(decodeHtml(media[1]));
+  const enclosure = block.match(/<enclosure\b[^>]*\burl=["']([^"']+)["'][^>]*\btype=["']image\/[^"']+["'][^>]*>/i);
+  if (enclosure) return absoluteHttpUrl(decodeHtml(enclosure[1]));
+  const description = block.match(/<description\b[^>]*>([\s\S]*?)<\/description>/i)?.[1] || "";
+  const img = description.match(/<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/i);
+  return img ? absoluteHttpUrl(decodeHtml(img[1])) : null;
+}
+
+function ogImageFromHtml(html: string, pageUrl: string) {
+  const head = String(html || "").slice(0, 220_000);
+  const patterns = [
+    /<meta\b[^>]*property=["']og:image(?::secure_url)?["'][^>]*content=["']([^"']+)["'][^>]*>/i,
+    /<meta\b[^>]*content=["']([^"']+)["'][^>]*property=["']og:image(?::secure_url)?["'][^>]*>/i,
+    /<meta\b[^>]*name=["']twitter:image(?::src)?["'][^>]*content=["']([^"']+)["'][^>]*>/i,
+    /<meta\b[^>]*content=["']([^"']+)["'][^>]*name=["']twitter:image(?::src)?["'][^>]*>/i,
+  ];
+  for (const pattern of patterns) {
+    const match = head.match(pattern);
+    if (match?.[1]) {
+      const url = absoluteHttpUrl(decodeHtml(match[1]), pageUrl);
+      if (url) return url;
+    }
+  }
+  return null;
+}
+
+async function fetchNewsImage(sourceUrl: string | null | undefined) {
+  const url = absoluteHttpUrl(String(sourceUrl || ""));
+  if (!url) return null;
+  try {
+    const response = await fetch(url, {
+      redirect: "follow",
+      headers: {
+        Accept: "text/html,application/xhtml+xml",
+        "User-Agent": "MULTISPORTS-SCORING-LIVE/1.0",
+      },
+    });
+    if (!response.ok) return null;
+    const type = String(response.headers.get("content-type") || "").toLowerCase();
+    if (!type.includes("text/html") && !type.includes("application/xhtml+xml")) return null;
+    const html = await response.text();
+    return ogImageFromHtml(html, response.url || url);
+  } catch {
+    return null;
+  }
+}
+
+async function enrichNewsImages(rows: IntelligenceNews[]) {
+  const first = rows.slice(0, 8);
+  const enriched = await Promise.all(first.map(async (row) => {
+    if (row.imageUrl) return row;
+    const imageUrl = await fetchNewsImage(row.sourceUrl);
+    return imageUrl ? { ...row, imageUrl } : row;
+  }));
+  return [...enriched, ...rows.slice(8)];
 }
 
 function classifyHeadline(title: string, summary = ""): IntelligenceKind {
@@ -896,6 +967,7 @@ async function googleNewsIntelligence(sport: string, lang: string): Promise<Inte
     const parsed = new Date(publishedRaw);
     const publishedAt = Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
     const sourceUrl = xmlTag(block, "link") || null;
+    const imageUrl = xmlImage(block);
     const kind = classifyHeadline(title, summary);
     const explicitScore = explicitScoreFromText(`${title} ${summary}`);
     return {
@@ -905,6 +977,7 @@ async function googleNewsIntelligence(sport: string, lang: string): Promise<Inte
       publishedAt,
       sourceName,
       sourceUrl,
+      imageUrl,
       kind,
       resultLabel: kind === "result" ? (explicitScore ? `Score ${explicitScore}` : "Résultat publié") : null,
     } satisfies IntelligenceNews;
@@ -936,7 +1009,7 @@ async function openAiWebIntelligence(env: Env, sport: string, lang: string): Pro
   if (!key || !spec) return [];
   const model = str(env?.LIVE_INTELLIGENCE_MODEL).trim() || "gpt-6-luna";
   const today = new Date().toISOString().slice(0, 10);
-  const prompt = `Today is ${today}. Search the web for the latest verified ${spec.label} competition news, official results, current live events and upcoming official events from the last 14 days and the next 14 days. Prioritize official federation/tour sources and reputable sports media. Return ONLY valid JSON with this exact shape: {"items":[{"title":"...","summary":"...","publishedAt":"ISO date or null","sourceName":"...","sourceUrl":"https://...","kind":"news|result|live|upcoming","resultLabel":"explicit published score/result or null"}]}. Maximum 8 items. IMPORTANT: never invent a score, winner, date or live status. resultLabel may contain a numeric score ONLY when a searched source explicitly states that score. Language for title/summary: ${lang || "fr"}.`;
+  const prompt = `Today is ${today}. Search the web for the latest verified ${spec.label} competition news, official results, current live events and upcoming official events from the last 14 days and the next 14 days. Prioritize official federation/tour sources and reputable sports media. Return ONLY valid JSON with this exact shape: {"items":[{"title":"...","summary":"...","publishedAt":"ISO date or null","sourceName":"...","sourceUrl":"https://...","imageUrl":"https://... or null","kind":"news|result|live|upcoming","resultLabel":"explicit published score/result or null"}]}. Maximum 8 items. IMPORTANT: never invent a score, winner, date or live status. resultLabel may contain a numeric score ONLY when a searched source explicitly states that score. Language for title/summary: ${lang || "fr"}.`;
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -969,6 +1042,7 @@ async function openAiWebIntelligence(env: Env, sport: string, lang: string): Pro
       publishedAt: Number.isFinite(date.getTime()) ? date.toISOString() : null,
       sourceName: str(item?.sourceName).trim() || "Web",
       sourceUrl,
+      imageUrl: absoluteHttpUrl(str(item?.imageUrl)) || null,
       kind,
       resultLabel: kind === "result" ? (str(item?.resultLabel).trim().slice(0, 120) || "Résultat publié") : null,
     };
@@ -1010,7 +1084,8 @@ async function enrichWithLiveIntelligence(env: Env, sport: string, lang: string,
     }
   }
 
-  const news = uniqNews([...ai, ...rss]).sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || ""))).slice(0, 14);
+  const mergedNews = uniqNews([...ai, ...rss]).sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || ""))).slice(0, 14);
+  const news = await enrichNewsImages(mergedNews);
   const intelligenceEvents = news.map((row) => newsToEvent(row, sport)).filter(Boolean) as NormalEvent[];
   const mergedEvents = uniqEvents([...(arr(base.payload?.events) as NormalEvent[]), ...intelligenceEvents]).slice(0, 28);
   const provider = ai.length ? "openai_web" : rss.length ? "news_rss" : "none";

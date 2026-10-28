@@ -149,24 +149,24 @@ function LiveStyles() {
       }
       .msc-live-refresh:disabled { opacity: .45; cursor: default; }
       .msc-score-ticker {
-        display:grid; grid-template-columns: 112px 1fr; margin: 12px -12px 0; min-height:72px;
+        display:grid; grid-template-columns: 98px 1fr; margin: 10px -12px 0; min-height:58px;
         border-top:1px solid #272e36; border-bottom:1px solid #272e36; background:#0a0d11; overflow:hidden;
       }
       .msc-score-ticker-label {
-        display:flex; align-items:center; justify-content:center; text-align:center; padding:10px 8px;
-        background: linear-gradient(135deg,#b01427,#6f0e1b); color:#fff; font-size:13px; font-weight:1000; letter-spacing:.2px;
+        display:flex; align-items:center; justify-content:center; text-align:center; padding:8px 7px;
+        background: linear-gradient(135deg,#d31e35,#7b0f1f); color:#fff; font-size:11px; font-weight:1000; letter-spacing:.2px;
       }
       .msc-score-ticker-window { overflow:hidden; }
-      .msc-score-ticker-track { display:inline-flex; min-width:max-content; white-space:nowrap; animation: mscScoreRail 36s linear infinite; }
+      .msc-score-ticker-track { display:inline-flex; min-width:max-content; white-space:nowrap; animation: mscScoreRail 28s linear infinite; }
       .msc-score-ticker-track.is-static { animation:none; }
       .msc-score-ticker-item {
-        min-width:220px; min-height:72px; display:flex; flex-direction:column; justify-content:center; padding:9px 16px;
+        min-width:206px; min-height:58px; display:flex; flex-direction:column; justify-content:center; padding:7px 14px;
         border-right:1px solid #252b32;
       }
       .msc-score-ticker-sport { font-size:10px; color:#828c98; text-transform:uppercase; font-weight:900; }
-      .msc-score-ticker-main { margin-top:3px; font-size:13px; font-weight:950; }
-      .msc-score-ticker-score { color:#ff4359; margin-left:6px; font-size:15px; }
-      .msc-score-ticker-meta { margin-top:3px; font-size:10.5px; color:#818b96; }
+      .msc-score-ticker-main { margin-top:3px; font-size:12.5px; font-weight:950; }
+      .msc-score-ticker-score { color:#ff4359; margin-left:7px; font-size:18px; font-weight:1000; }
+      .msc-score-ticker-meta { margin-top:2px; font-size:9.5px; color:#818b96; }
       @keyframes mscScoreRail { from { transform:translateX(0); } to { transform:translateX(-50%); } }
       @media (prefers-reduced-motion: reduce) { .msc-score-ticker-track { animation:none; } }
       .msc-live-tabs {
@@ -259,12 +259,15 @@ function LiveStyles() {
       .msc-empty-copy { margin-top:5px; font-size:11.5px; color:#8f99a5; line-height:1.45; }
       .msc-news-grid { display:grid; gap:9px; }
       .msc-news-card {
-        display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; align-items:center;
-        padding:13px 14px; border:1px solid #29313a; border-radius:13px; background:#0d1116;
+        display:grid; grid-template-columns:104px minmax(0,1fr) auto; gap:12px; align-items:center;
+        min-height:96px; padding:8px 10px 8px 8px; border:1px solid #29313a; border-radius:13px; background:#0d1116; overflow:hidden;
       }
+      .msc-news-card.no-image { grid-template-columns:minmax(0,1fr) auto; padding:13px 14px; }
       .msc-news-card.is-result { border-left:4px solid #f4d445; }
       .msc-news-card.is-live { border-left:4px solid var(--live-accent); }
       .msc-news-card.is-upcoming { border-left:4px solid #64b8ff; }
+      .msc-news-thumb { align-self:stretch; min-height:78px; border-radius:9px; overflow:hidden; background:#151b22; display:block; }
+      .msc-news-thumb img { width:100%; height:100%; min-height:78px; object-fit:cover; display:block; }
       .msc-news-top { display:flex; gap:7px; align-items:center; flex-wrap:wrap; margin-bottom:6px; }
       .msc-news-kind { font-size:9px; font-weight:1000; letter-spacing:.45px; color:#111; padding:4px 7px; border-radius:999px; background:#e8edf2; }
       .msc-news-kind.is-result { background:#f4d445; }
@@ -272,10 +275,24 @@ function LiveStyles() {
       .msc-news-kind.is-upcoming { background:#64b8ff; color:#08131d; }
       .msc-news-source { font-size:9.5px; color:#8f99a5; font-weight:900; }
       .msc-news-title { font-size:14px; line-height:1.22; font-weight:1000; }
-      .msc-news-summary { margin-top:5px; color:#929ca7; font-size:11px; line-height:1.38; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
-      .msc-news-result { margin-top:7px; color:#f4d445; font-size:11.5px; font-weight:1000; }
+      .msc-news-summary { margin-top:5px; color:#929ca7; font-size:11px; line-height:1.38; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+      .msc-news-result { margin-top:7px; color:#f4d445; font-size:12px; font-weight:1000; }
       .msc-news-link { display:inline-flex; align-items:center; justify-content:center; min-height:34px; padding:7px 10px; border-radius:8px; border:1px solid #3a4652; color:#fff; background:#141a21; text-decoration:none; font-size:10px; font-weight:1000; }
-      @media (max-width:520px) { .msc-news-card { grid-template-columns:1fr; } .msc-news-link { width:100%; } }
+      .msc-news-lead { position:relative; min-height:230px; border:1px solid #29313a; border-radius:15px; overflow:hidden; background:#0d1116; }
+      .msc-news-lead-media { position:absolute; inset:0; }
+      .msc-news-lead-media img { width:100%; height:100%; object-fit:cover; display:block; filter:saturate(.92) contrast(1.03); }
+      .msc-news-lead-shade { position:absolute; inset:0; background:linear-gradient(180deg,rgba(6,8,12,.04) 15%,rgba(6,8,12,.50) 53%,rgba(6,8,12,.98) 100%); }
+      .msc-news-lead-content { position:relative; z-index:1; min-height:230px; display:flex; flex-direction:column; justify-content:flex-end; padding:16px; }
+      .msc-news-lead-title { max-width:760px; font-size:clamp(21px,5.3vw,31px); line-height:1.04; font-weight:1000; text-shadow:0 2px 10px rgba(0,0,0,.65); }
+      .msc-news-lead-summary { margin-top:7px; max-width:760px; color:#d4d9df; font-size:12px; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+      .msc-news-lead-link { align-self:flex-start; margin-top:10px; min-height:32px; padding:6px 10px; border-radius:8px; background:#fff; color:#0b0e12; text-decoration:none; font-size:10px; font-weight:1000; }
+      @media (max-width:520px) {
+        .msc-news-card { grid-template-columns:82px minmax(0,1fr); gap:9px; }
+        .msc-news-card .msc-news-link { grid-column:1 / -1; width:100%; min-height:30px; }
+        .msc-news-card.no-image { grid-template-columns:1fr; }
+        .msc-news-lead { min-height:205px; }
+        .msc-news-lead-content { min-height:205px; padding:13px; }
+      }
       .msc-source-rail { display:grid; gap:7px; margin-top:11px; }
       .msc-source-row {
         display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center; padding:11px 12px;
@@ -485,7 +502,12 @@ function NewsCard({ item, lang }: { item: SportLiveNewsItem; lang: string }) {
   const kindLabel = item.kind === "result" ? "RÉSULTAT" : item.kind === "live" ? "LIVE" : item.kind === "upcoming" ? "À VENIR" : "ACTU";
   const kindClass = item.kind === "result" ? " is-result" : item.kind === "live" ? " is-live" : item.kind === "upcoming" ? " is-upcoming" : "";
   return (
-    <article className={`msc-news-card${kindClass}`}>
+    <article className={`msc-news-card${kindClass}${item.imageUrl ? "" : " no-image"}`}>
+      {item.imageUrl ? (
+        <a className="msc-news-thumb" href={item.sourceUrl || item.imageUrl} target="_blank" rel="noreferrer noopener" aria-label={item.title}>
+          <img src={item.imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" onError={(event) => { (event.currentTarget.parentElement as HTMLElement | null)?.style.setProperty("display", "none"); }} />
+        </a>
+      ) : null}
       <div style={{ minWidth: 0 }}>
         <div className="msc-news-top">
           <span className={`msc-news-kind${kindClass}`}>{kindLabel}</span>
@@ -496,6 +518,26 @@ function NewsCard({ item, lang }: { item: SportLiveNewsItem; lang: string }) {
         {item.resultLabel ? <div className="msc-news-result" translate="no" data-i18n-skip="true">{item.resultLabel}</div> : null}
       </div>
       {item.sourceUrl ? <a className="msc-news-link" href={item.sourceUrl} target="_blank" rel="noreferrer noopener">LIRE</a> : null}
+    </article>
+  );
+}
+
+function LeadNewsCard({ item, lang }: { item: SportLiveNewsItem; lang: string }) {
+  const kindLabel = item.kind === "result" ? "RÉSULTAT" : item.kind === "live" ? "LIVE" : item.kind === "upcoming" ? "À VENIR" : "À LA UNE";
+  return (
+    <article className="msc-news-lead">
+      {item.imageUrl ? <div className="msc-news-lead-media"><img src={item.imageUrl} alt="" loading="eager" referrerPolicy="no-referrer" /></div> : null}
+      <div className="msc-news-lead-shade" />
+      <div className="msc-news-lead-content">
+        <div className="msc-news-top">
+          <span className={`msc-news-kind${item.kind === "result" ? " is-result" : item.kind === "live" ? " is-live" : item.kind === "upcoming" ? " is-upcoming" : ""}`}>{kindLabel}</span>
+          <span className="msc-news-source">{item.sourceName || "WEB"}{item.publishedAt ? ` · ${formatDate(item.publishedAt, lang)}` : ""}</span>
+        </div>
+        <div className="msc-news-lead-title" translate="no" data-i18n-skip="true">{item.title}</div>
+        {item.summary ? <div className="msc-news-lead-summary" translate="no" data-i18n-skip="true">{item.summary}</div> : null}
+        {item.resultLabel ? <div className="msc-news-result" translate="no" data-i18n-skip="true">{item.resultLabel}</div> : null}
+        {item.sourceUrl ? <a className="msc-news-lead-link" href={item.sourceUrl} target="_blank" rel="noreferrer noopener">LIRE L’ARTICLE</a> : null}
+      </div>
     </article>
   );
 }
@@ -547,7 +589,32 @@ function SourceDirectory({ sources }: { sources: SportLiveSource[] }) {
 
 function buildTicker(feed: SportLiveOverview | null, lang: string, sportLabel: string, sources: SportLiveSource[]): TickerItem[] {
   const items: TickerItem[] = [];
+
+  // Priorité au dernier résultat publié : le ruban doit d'abord se comporter
+  // comme un ticker de journal sportif, puis compléter avec LIVE / actualités.
+  (feed?.results || []).slice(0, 6).forEach((row) => {
+    items.push({
+      id: `result-${row.id}`,
+      sport: sportLabel,
+      label: `${row.winner?.name || "—"} - ${row.loser?.name || "—"}`,
+      score: `${scoreValue(row.winner?.score)}-${scoreValue(row.loser?.score)}`,
+      meta: `${row.competition || "Résultat"} · ${formatDate(row.playedOn, lang)}`,
+    });
+  });
+
+  (feed?.news || []).filter((item) => item.kind === "result").slice(0, 5).forEach((item) => {
+    if (items.length >= 8) return;
+    items.push({
+      id: `news-result-${item.id}`,
+      sport: sportLabel,
+      label: item.title,
+      score: item.resultLabel || undefined,
+      meta: `Résultat · ${item.sourceName || "Web"}`,
+    });
+  });
+
   (feed?.live || []).slice(0, 4).forEach((row) => {
+    if (items.length >= 8) return;
     const [a, b] = row.players || [];
     items.push({
       id: `live-${row.id}`,
@@ -558,36 +625,31 @@ function buildTicker(feed: SportLiveOverview | null, lang: string, sportLabel: s
       live: true,
     });
   });
-  (feed?.results || []).slice(0, 5).forEach((row) => {
-    items.push({
-      id: `result-${row.id}`,
-      sport: sportLabel,
-      label: `${row.winner?.name || "—"} - ${row.loser?.name || "—"}`,
-      score: `${scoreValue(row.winner?.score)}-${scoreValue(row.loser?.score)}`,
-      meta: `${row.competition || "Résultat"} · ${formatDate(row.playedOn, lang)}`,
-    });
-  });
-  (feed?.events || []).slice(0, 5).forEach((event) => {
+
+  (feed?.events || []).filter((event) => event.status === "result" || event.status === "live").slice(0, 5).forEach((event) => {
+    if (items.length >= 8) return;
     items.push({
       id: `event-${event.id}`,
       sport: sportLabel,
       label: event.title,
       score: event.resultLabel || undefined,
-      meta: `${event.status === "result" ? "Résultat" : event.status === "live" ? "Live" : "Événement"} · ${event.dateLabel || event.sourceName || "Officiel"}`,
+      meta: `${event.status === "result" ? "Résultat" : "Live"} · ${event.dateLabel || event.sourceName || "Officiel"}`,
       live: event.status === "live",
     });
   });
-  (feed?.news || []).slice(0, 5).forEach((item) => {
+
+  (feed?.news || []).filter((item) => item.kind !== "result").slice(0, 4).forEach((item) => {
     if (items.length >= 8) return;
     items.push({
       id: `news-${item.id}`,
       sport: sportLabel,
       label: item.title,
       score: item.resultLabel || undefined,
-      meta: `${item.kind === "result" ? "Résultat" : item.kind === "live" ? "Live" : item.kind === "upcoming" ? "À venir" : "Actu"} · ${item.sourceName || "Web"}`,
+      meta: `${item.kind === "live" ? "Live" : item.kind === "upcoming" ? "À venir" : "Actu"} · ${item.sourceName || "Web"}`,
       live: item.kind === "live",
     });
   });
+
   if (!items.length) {
     sources.slice(0, 3).forEach((source) => {
       items.push({
@@ -752,7 +814,12 @@ export default function SportLiveHub() {
         <>
           <section className="msc-live-section">
             <SectionHeader title="ACTUS & RÉSULTATS DU WEB" count={newsRows.length ? `${newsRows.length} info${newsRows.length > 1 ? "s" : ""}` : ""} />
-            {newsRows.length ? <div className="msc-news-grid">{newsRows.slice(0, 6).map((item) => <NewsCard key={item.id} item={item} lang={lang} />)}</div> : <EmptySection title="Recherche d’actualités en cours" copy="LIVE Intelligence cherche automatiquement les dernières actualités et résultats publiés pour cette discipline." sources={recommended.slice(0, 3)} />}
+            {newsRows.length ? (
+              <div className="msc-news-grid">
+                <LeadNewsCard item={newsRows.find((item) => !!item.imageUrl) || newsRows[0]} lang={lang} />
+                {newsRows.filter((item) => item.id !== (newsRows.find((row) => !!row.imageUrl) || newsRows[0])?.id).slice(0, 5).map((item) => <NewsCard key={item.id} item={item} lang={lang} />)}
+              </div>
+            ) : <EmptySection title="Recherche d’actualités en cours" copy="LIVE Intelligence cherche automatiquement les dernières actualités et résultats publiés pour cette discipline." sources={recommended.slice(0, 3)} />}
           </section>
 
           <section className="msc-live-section">

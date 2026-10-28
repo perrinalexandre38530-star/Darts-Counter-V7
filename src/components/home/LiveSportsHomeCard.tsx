@@ -39,18 +39,17 @@ export default function LiveSportsHomeCard({ sport, onClick, style }: Props) {
       style={{
         width: "100%",
         display: "grid",
-        gridTemplateColumns: "54px minmax(0,1fr) auto",
-        gap: 12,
+        gridTemplateColumns: "32px minmax(0,1fr) auto",
+        gap: 8,
         alignItems: "center",
-        minHeight: 86,
-        margin: "10px 0 14px",
-        padding: "12px 14px",
-        borderRadius: 20,
-        border: "1px solid rgba(255,66,83,.44)",
-        background:
-          "radial-gradient(110% 160% at 0% 50%, rgba(255,40,58,.22), transparent 52%), linear-gradient(135deg, rgba(22,8,12,.98), rgba(8,10,16,.98))",
+        minHeight: 46,
+        margin: "5px 0 8px",
+        padding: "6px 10px",
+        borderRadius: 13,
+        border: "1px solid rgba(255,66,83,.40)",
+        background: "linear-gradient(90deg, rgba(138,14,31,.92), rgba(12,14,20,.96) 42%, rgba(7,9,13,.98))",
         color: theme.text ?? "#fff",
-        boxShadow: "0 16px 32px rgba(0,0,0,.42), 0 0 24px rgba(255,48,68,.09)",
+        boxShadow: "0 8px 18px rgba(0,0,0,.26)",
         cursor: "pointer",
         textAlign: "left",
         position: "relative",
@@ -61,51 +60,31 @@ export default function LiveSportsHomeCard({ sport, onClick, style }: Props) {
       <span
         aria-hidden
         style={{
-          width: 50,
-          height: 50,
-          borderRadius: 16,
+          width: 30,
+          height: 30,
+          borderRadius: 999,
           display: "grid",
           placeItems: "center",
-          border: "1px solid rgba(255,103,115,.50)",
-          background: "linear-gradient(145deg, rgba(255,46,65,.30), rgba(255,46,65,.08))",
-          color: "#ff5366",
-          boxShadow: "0 0 18px rgba(255,46,65,.28)",
+          border: "1px solid rgba(255,255,255,.28)",
+          background: "rgba(255,48,71,.16)",
+          color: "#ff6576",
         }}
       >
-        <svg width="29" height="29" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none" />
           <path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4" />
           <path d="M4.9 4.9a10 10 0 0 0 0 14.2M19.1 4.9a10 10 0 0 1 0 14.2" />
         </svg>
       </span>
 
-      <span style={{ minWidth: 0 }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <strong style={{ fontSize: 17, lineHeight: 1.05, letterSpacing: .6, color: "#fff" }}>LIVE SPORTS</strong>
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              minHeight: 20,
-              padding: "2px 7px",
-              borderRadius: 999,
-              background: "#ff3047",
-              color: "#fff",
-              fontSize: 9.5,
-              fontWeight: 1000,
-              letterSpacing: .7,
-              boxShadow: "0 0 12px rgba(255,48,71,.38)",
-            }}
-          >
-            ● LIVE
-          </span>
-        </span>
-        <span style={{ display: "block", marginTop: 5, fontSize: 11.5, lineHeight: 1.35, color: theme.textSoft ?? "rgba(255,255,255,.72)" }}>
+      <span style={{ minWidth: 0, display: "flex", alignItems: "baseline", gap: 8, overflow: "hidden" }}>
+        <strong style={{ flex: "0 0 auto", fontSize: 13, lineHeight: 1, letterSpacing: .45, color: "#fff" }}>LIVE SPORTS</strong>
+        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10.5, lineHeight: 1.2, color: theme.textSoft ?? "rgba(255,255,255,.72)" }}>
           {subtitle}
         </span>
       </span>
 
-      <span aria-hidden style={{ color: "#ff5366", fontSize: 26, fontWeight: 1000, lineHeight: 1 }}>›</span>
+      <span aria-hidden style={{ color: "#ff6576", fontSize: 18, fontWeight: 1000, lineHeight: 1 }}>›</span>
     </button>
   );
 }
