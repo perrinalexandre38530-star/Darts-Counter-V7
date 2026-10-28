@@ -806,6 +806,57 @@ const INTELLIGENCE_SPECS: Record<string, { label: string; query: string; domains
   },
 };
 
+
+const DARTS_LOCALE_QUERY_PACKS: Record<string, string[]> = {
+  fr: [
+    "fléchettes résultats France FFDarts WDF",
+    "darts PDC WDF MODUS résultats scores",
+    "fléchettes Belgique Suisse Canada résultats darts",
+  ],
+  en: [
+    "darts results England Scotland Wales Ireland PDC WDF",
+    "darts results USA Canada CDC",
+    "darts results Australia New Zealand",
+  ],
+  es: ["dardos resultados España WDF", "darts resultados Latinoamérica Caribe CDLC"],
+  de: ["Darts Ergebnisse Deutschland DDV PDC", "Darts Ergebnisse Österreich Schweiz"],
+  it: ["freccette risultati Italia steel darts", "darts risultati Italia WDF"],
+  nl: ["darts uitslagen Nederland NDB", "darts uitslagen België"],
+  pt: ["dardos resultados Portugal", "darts resultados Brasil Portugal"],
+  pl: ["dart wyniki Polska PDO", "darts wyniki Polska WDF"],
+  da: ["dart resultater Danmark DDU", "PDC Nordic Baltic resultater"],
+  no: ["dart resultater Norge", "PDC Nordic Baltic results"],
+  sv: ["dart resultat Sverige", "PDC Nordic Baltic results"],
+  is: ["dart úrslit Ísland", "PDC Nordic Baltic results"],
+  cs: ["šipky výsledky Česko", "darts Czech results WDF"],
+  ro: ["darts rezultate România", "WDF darts Eastern Europe results"],
+  sr: ["pikado rezultati Srbija", "WDF darts Balkans results"],
+  hr: ["pikado rezultati Hrvatska", "WDF darts Balkans results"],
+  ru: ["дартс результаты WDF", "darts Eastern Europe results"],
+  tr: ["dart sonuçları Türkiye", "WDF darts Turkey results"],
+  ar: ["نتائج الدارتس", "darts Middle East results"],
+  hi: ["darts results India", "WDF Asia darts results"],
+  ja: ["ダーツ 結果 PDC WDF", "Japan darts results"],
+  zh: ["飞镖 比赛 结果 PDC WDF", "China darts results"],
+};
+
+function intelligenceQueriesFor(sport: string, lang: string) {
+  const spec = INTELLIGENCE_SPECS[sport];
+  if (!spec) return [];
+  const code = String(lang || "fr").toLowerCase().split(/[-_]/)[0];
+  const queries = [
+    `${spec.query} results scores`,
+    `${spec.query} live fixtures`,
+    ...(sport === "darts" ? (DARTS_LOCALE_QUERY_PACKS[code] || DARTS_LOCALE_QUERY_PACKS.en) : []),
+  ];
+  if (sport === "darts") {
+    queries.push("site:modussuperseries.com darts results fixtures");
+    queries.push("site:pdc.tv darts results");
+    queries.push("site:dartswdf.com darts results");
+  }
+  return Array.from(new Set(queries)).slice(0, 8);
+}
+
 function stripTags(value: string) {
   return decodeHtml(String(value || "").replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, "$1").replace(/<[^>]+>/g, " "))
     .replace(/\s+/g, " ")
@@ -940,6 +991,12 @@ function localeForNews(lang: string) {
     ru: { hl: "ru", gl: "RU", ceid: "RU:ru" },
     ja: { hl: "ja", gl: "JP", ceid: "JP:ja" },
     zh: { hl: "zh-CN", gl: "CN", ceid: "CN:zh-Hans" },
+    ro: { hl: "ro", gl: "RO", ceid: "RO:ro" },
+    sr: { hl: "sr", gl: "RS", ceid: "RS:sr" },
+    hr: { hl: "hr", gl: "HR", ceid: "HR:hr" },
+    ar: { hl: "ar", gl: "AE", ceid: "AE:ar" },
+    hi: { hl: "hi", gl: "IN", ceid: "IN:hi" },
+    is: { hl: "is", gl: "IS", ceid: "IS:is" },
   };
   return map[code] || map.en;
 }
@@ -948,40 +1005,49 @@ async function googleNewsIntelligence(sport: string, lang: string): Promise<Inte
   const spec = INTELLIGENCE_SPECS[sport];
   if (!spec) return [];
   const locale = localeForNews(lang);
-  const recencyQuery = `${spec.query} when:14d`;
-  const url = `https://news.google.com/rss/search?q=${encodeURIComponent(recencyQuery)}&hl=${encodeURIComponent(locale.hl)}&gl=${encodeURIComponent(locale.gl)}&ceid=${encodeURIComponent(locale.ceid)}`;
-  const response = await fetch(url, {
-    headers: { Accept: "application/rss+xml, application/xml, text/xml", "User-Agent": "MULTISPORTS-SCORING-LIVE/1.0" },
-  });
-  if (!response.ok) throw new Error(`News RSS HTTP ${response.status}`);
-  const xml = await response.text();
-  const items = [...xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)].slice(0, 18);
-  return uniqNews(items.map((match, index) => {
-    const block = match[1];
-    let title = xmlTag(block, "title");
-    const sourceName = xmlSource(block) || "Actualité web";
-    const suffix = ` - ${sourceName}`;
-    if (title.endsWith(suffix)) title = title.slice(0, -suffix.length).trim();
-    const summary = xmlTag(block, "description");
-    const publishedRaw = xmlTag(block, "pubDate");
-    const parsed = new Date(publishedRaw);
-    const publishedAt = Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
-    const sourceUrl = xmlTag(block, "link") || null;
-    const imageUrl = xmlImage(block);
-    const kind = classifyHeadline(title, summary);
-    const explicitScore = explicitScoreFromText(`${title} ${summary}`);
-    return {
-      id: `news-${sport}-${index}-${normalizeHeadlineKey(title).replace(/\s+/g, "-").slice(0, 42)}`,
-      title,
-      summary: summary && summary !== title ? summary.slice(0, 280) : null,
-      publishedAt,
-      sourceName,
-      sourceUrl,
-      imageUrl,
-      kind,
-      resultLabel: kind === "result" ? (explicitScore ? `Score ${explicitScore}` : "Résultat publié") : null,
-    } satisfies IntelligenceNews;
-  }).filter((row) => row.title.length >= 8)).slice(0, 12);
+  const queries = intelligenceQueriesFor(sport, lang);
+
+  const feeds = await Promise.allSettled(queries.map(async (query, qIndex) => {
+    const recencyQuery = `${query} when:30d`;
+    const url = `https://news.google.com/rss/search?q=${encodeURIComponent(recencyQuery)}&hl=${encodeURIComponent(locale.hl)}&gl=${encodeURIComponent(locale.gl)}&ceid=${encodeURIComponent(locale.ceid)}`;
+    const response = await fetch(url, {
+      headers: { Accept: "application/rss+xml, application/xml, text/xml", "User-Agent": "MULTISPORTS-SCORING-LIVE/1.0" },
+    });
+    if (!response.ok) throw new Error(`News RSS HTTP ${response.status}`);
+    const xml = await response.text();
+    const items = [...xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)].slice(0, 16);
+    return items.map((match, index) => {
+      const block = match[1];
+      let title = xmlTag(block, "title");
+      const sourceName = xmlSource(block) || "Actualité web";
+      const suffix = ` - ${sourceName}`;
+      if (title.endsWith(suffix)) title = title.slice(0, -suffix.length).trim();
+      const summary = xmlTag(block, "description");
+      const publishedRaw = xmlTag(block, "pubDate");
+      const parsed = new Date(publishedRaw);
+      const publishedAt = Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+      const sourceUrl = xmlTag(block, "link") || null;
+      const imageUrl = xmlImage(block);
+      const kind = classifyHeadline(title, summary);
+      const explicitScore = explicitScoreFromText(`${title} ${summary}`);
+      return {
+        id: `news-${sport}-${qIndex}-${index}-${normalizeHeadlineKey(title).replace(/\s+/g, "-").slice(0, 42)}`,
+        title,
+        summary: summary && summary !== title ? summary.slice(0, 320) : null,
+        publishedAt,
+        sourceName,
+        sourceUrl,
+        imageUrl,
+        kind,
+        resultLabel: kind === "result" ? (explicitScore ? `Score ${explicitScore}` : "Résultat publié") : null,
+      } satisfies IntelligenceNews;
+    }).filter((row) => row.title.length >= 8);
+  }));
+
+  const rows = feeds.flatMap((result) => result.status === "fulfilled" ? result.value : []);
+  return uniqNews(rows)
+    .sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")))
+    .slice(0, 36);
 }
 
 function extractOpenAIText(body: any): string {
@@ -1009,7 +1075,7 @@ async function openAiWebIntelligence(env: Env, sport: string, lang: string): Pro
   if (!key || !spec) return [];
   const model = str(env?.LIVE_INTELLIGENCE_MODEL).trim() || "gpt-6-luna";
   const today = new Date().toISOString().slice(0, 10);
-  const prompt = `Today is ${today}. Search the web for the latest verified ${spec.label} competition news, official results, current live events and upcoming official events from the last 14 days and the next 14 days. Prioritize official federation/tour sources and reputable sports media. Return ONLY valid JSON with this exact shape: {"items":[{"title":"...","summary":"...","publishedAt":"ISO date or null","sourceName":"...","sourceUrl":"https://...","imageUrl":"https://... or null","kind":"news|result|live|upcoming","resultLabel":"explicit published score/result or null"}]}. Maximum 8 items. IMPORTANT: never invent a score, winner, date or live status. resultLabel may contain a numeric score ONLY when a searched source explicitly states that score. Language for title/summary: ${lang || "fr"}.`;
+  const prompt = `Today is ${today}. Search the web for the latest verified ${spec.label} competition news, official results, current live events and upcoming official events from the last 14 days and the next 14 days. Prioritize official federation/tour sources and reputable sports media. Return ONLY valid JSON with this exact shape: {"items":[{"title":"...","summary":"...","publishedAt":"ISO date or null","sourceName":"...","sourceUrl":"https://...","imageUrl":"https://... or null","kind":"news|result|live|upcoming","resultLabel":"explicit published score/result or null"}]}. Maximum 24 items. For darts, cover both the global circuits and the local/regional circuits relevant to the requested language (France/francophone for fr; UK/Ireland + North America + Oceania for en; Spain + Latin America for es; DACH for de; Benelux for nl; Italy for it; Nordic/Baltic for da/no/sv/is; Poland/Czechia/Balkans/Eastern Europe for their locales; Asia/Middle East for zh/ja/hi/ar). IMPORTANT: never invent a score, winner, date or live status. resultLabel may contain a numeric score ONLY when a searched source explicitly states that score. Language for title/summary: ${lang || "fr"}.`;
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -1047,7 +1113,94 @@ async function openAiWebIntelligence(env: Env, sport: string, lang: string): Pro
       resultLabel: kind === "result" ? (str(item?.resultLabel).trim().slice(0, 120) || "Résultat publié") : null,
     };
   }).filter(Boolean) as IntelligenceNews[];
-  return uniqNews(rows).slice(0, 8);
+  return uniqNews(rows).slice(0, 24);
+}
+
+function parseLeadingScoreName(line: string) {
+  const m = String(line || "").trim().match(/^(\d{1,2})\s+(.{2,90})$/);
+  if (!m) return null;
+  const score = Number(m[1]);
+  const name = m[2].trim();
+  if (!Number.isFinite(score) || !name || /^match\b/i.test(name)) return null;
+  return { score, name };
+}
+
+function parseTrailingScoreName(line: string) {
+  const m = String(line || "").trim().match(/^(.{2,100}?)\s+(\d{1,2})$/);
+  if (!m) return null;
+  const score = Number(m[2]);
+  const name = m[1].trim();
+  if (!Number.isFinite(score) || !name || /^match\b/i.test(name)) return null;
+  return { score, name };
+}
+
+async function directDartsResults(lang: string): Promise<{ results: NormalResult[]; fixtures: NormalMatch[]; events: NormalEvent[] }> {
+  const results: NormalResult[] = [];
+  const fixtures: NormalMatch[] = [];
+  const events: NormalEvent[] = [];
+
+  try {
+    const html = await fetchOfficialHtml("https://modussuperseries.com/results");
+    const lines = htmlLines(html);
+    for (let i = 0; i < lines.length - 2 && results.length < 32; i += 1) {
+      if (!/^Match\s+\d+$/i.test(lines[i])) continue;
+      const a = parseLeadingScoreName(lines[i + 1]);
+      const b = parseLeadingScoreName(lines[i + 2]);
+      if (!a || !b || (a.score === 0 && b.score === 0)) continue;
+      const winner = a.score >= b.score ? a : b;
+      const loser = a.score >= b.score ? b : a;
+      results.push({
+        id: `modus-${i}-${winner.name}-${loser.name}`.replace(/[^a-z0-9-]+/gi, "-").slice(0, 120),
+        playedOn: null,
+        competition: "MODUS Super Series",
+        round: lines[i],
+        winner: { name: winner.name, score: winner.score },
+        loser: { name: loser.name, score: loser.score },
+        raw: { source: "MODUS" },
+      });
+    }
+  } catch {}
+
+  const code = String(lang || "fr").toLowerCase().split(/[-_]/)[0];
+  if (code === "en") {
+    try {
+      const html = await fetchOfficialHtml("https://dartsnz.nz/results/");
+      const lines = htmlLines(html);
+      let section = "Darts New Zealand";
+      for (let i = 0; i < lines.length - 3 && results.length < 44; i += 1) {
+        if (/^(Mens|Ladies|Mixed|Open|Youth).{0,60}$/i.test(lines[i])) section = lines[i].slice(0, 80);
+        if (!/^Final$/i.test(lines[i])) continue;
+        const candidates = lines.slice(i + 1, i + 6).map(parseTrailingScoreName).filter(Boolean) as Array<{score:number;name:string}>;
+        if (candidates.length < 2) continue;
+        const a = candidates[0], b = candidates[1];
+        const winner = a.score >= b.score ? a : b;
+        const loser = a.score >= b.score ? b : a;
+        results.push({
+          id: `dartsnz-${i}-${winner.name}-${loser.name}`.replace(/[^a-z0-9-]+/gi, "-").slice(0, 120),
+          playedOn: null,
+          competition: `Darts New Zealand · ${section}`,
+          round: "Final",
+          winner: { name: winner.name, score: winner.score },
+          loser: { name: loser.name, score: loser.score },
+          raw: { source: "Darts New Zealand" },
+        });
+      }
+    } catch {}
+  }
+
+  return { results, fixtures, events };
+}
+
+function uniqNormalResults(rows: NormalResult[]) {
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    const names = [row.winner?.name, row.loser?.name].map((v) => normalizeHeadlineKey(String(v || ""))).sort().join("|");
+    const scores = [row.winner?.score, row.loser?.score].map((v) => v == null ? "" : String(v)).sort().join("|");
+    const key = `${normalizeHeadlineKey(String(row.competition || ""))}|${names}|${scores}`;
+    if (!names || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function newsToEvent(row: IntelligenceNews, sport: string): NormalEvent | null {
@@ -1084,10 +1237,14 @@ async function enrichWithLiveIntelligence(env: Env, sport: string, lang: string,
     }
   }
 
-  const mergedNews = uniqNews([...ai, ...rss]).sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || ""))).slice(0, 14);
+  const mergedNews = uniqNews([...ai, ...rss]).sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || ""))).slice(0, 40);
   const news = await enrichNewsImages(mergedNews);
   const intelligenceEvents = news.map((row) => newsToEvent(row, sport)).filter(Boolean) as NormalEvent[];
-  const mergedEvents = uniqEvents([...(arr(base.payload?.events) as NormalEvent[]), ...intelligenceEvents]).slice(0, 28);
+  let direct = { results: [] as NormalResult[], fixtures: [] as NormalMatch[], events: [] as NormalEvent[] };
+  if (sport === "darts") {
+    try { direct = await directDartsResults(lang); } catch {}
+  }
+  const mergedEvents = uniqEvents([...(arr(base.payload?.events) as NormalEvent[]), ...direct.events, ...intelligenceEvents]).slice(0, 40);
   const provider = ai.length ? "openai_web" : rss.length ? "news_rss" : "none";
 
   return {
@@ -1097,6 +1254,8 @@ async function enrichWithLiveIntelligence(env: Env, sport: string, lang: string,
       ...base.payload,
       configured: !!base.payload?.configured || news.length > 0,
       automaticData: !!base.payload?.automaticData || news.length > 0,
+      results: uniqNormalResults([...direct.results, ...(arr(base.payload?.results) as NormalResult[])]).slice(0, 60),
+      fixtures: [...direct.fixtures, ...(arr(base.payload?.fixtures) as NormalMatch[])].slice(0, 40),
       events: mergedEvents,
       news,
       intelligence: {
@@ -1104,6 +1263,8 @@ async function enrichWithLiveIntelligence(env: Env, sport: string, lang: string,
         provider,
         aiEnabled: !!str(env?.OPENAI_API_KEY).trim(),
         count: news.length,
+        queryCount: intelligenceQueriesFor(sport, lang).length,
+        directResultCount: direct.results.length,
         updatedAt: new Date().toISOString(),
       },
       warnings,
