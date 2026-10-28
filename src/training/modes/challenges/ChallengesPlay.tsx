@@ -20,6 +20,48 @@ const normalizeDoublesTargets = (value: any): number[] => {
   return out.length ? out : [...DOUBLES_8_TARGETS];
 };
 
+function DoublesObjectivePad({ target, disabled, onVisit }: { target: number; disabled?: boolean; onVisit: (visit: TrainingDart[]) => void }) {
+  const [pending, setPending] = React.useState<TrainingDart[]>([]);
+
+  React.useEffect(() => { setPending([]); }, [target]);
+
+  const push = React.useCallback((hit: boolean) => {
+    if (disabled) return;
+    const dart: TrainingDart = hit
+      ? { v: target, mult: 2, score: target * 2, label: `D${target}`, miss: false, bull: false, dbull: false }
+      : { v: 0, mult: 1, score: 0, label: "MISS", miss: true, bull: false, dbull: false };
+    setPending((prev) => {
+      const next = [...prev, dart].slice(0, 3);
+      if (next.length === 3) {
+        queueMicrotask(() => onVisit(next));
+        return [];
+      }
+      return next;
+    });
+  }, [disabled, onVisit, target]);
+
+  return (
+    <div style={{ display: "grid", gap: 10, padding: "4px 0 10px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>
+        {[0, 1, 2].map((index) => (
+          <div key={index} style={{ minHeight: 42, display: "grid", placeItems: "center", borderRadius: 12, border: "1px solid rgba(255,255,255,.12)", background: pending[index] ? "rgba(255,255,255,.08)" : "rgba(255,255,255,.035)", color: pending[index]?.miss ? "#9ba3b3" : "#fff", fontSize: 12, fontWeight: 950 }}>
+            {pending[index]?.label || `#${index + 1}`}
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <button type="button" disabled={disabled} onClick={() => push(true)} style={{ minHeight: 82, borderRadius: 18, border: "1px solid rgba(255,65,84,.72)", background: "linear-gradient(180deg,rgba(255,58,78,.96),rgba(158,18,36,.98))", color: "#fff", fontSize: 24, fontWeight: 1100, boxShadow: "0 10px 28px rgba(255,40,64,.18)" }}>
+          D{target}<span style={{ display: "block", marginTop: 4, fontSize: 9, letterSpacing: 1.1, opacity: .78 }}>TOUCHÉ</span>
+        </button>
+        <button type="button" disabled={disabled} onClick={() => push(false)} style={{ minHeight: 82, borderRadius: 18, border: "1px solid rgba(148,158,177,.38)", background: "linear-gradient(180deg,rgba(37,44,57,.98),rgba(16,20,28,.98))", color: "#e7ebf2", fontSize: 22, fontWeight: 1100 }}>
+          MISS<span style={{ display: "block", marginTop: 4, fontSize: 9, letterSpacing: 1.1, opacity: .65 }}>RATÉ</span>
+        </button>
+      </div>
+      <div style={{ textAlign: "center", fontSize: 10.5, opacity: .7 }}>3 essais par volée · l'objectif change automatiquement après les 3 volées prévues.</div>
+    </div>
+  );
+}
+
 export default function ChallengesPlay({ config, onExit }: { config: any; onExit: () => void }) {
   const challengeId = String(config?.challengeId || config?.id || "3_DOUBLES_9");
   const doublesTargets = normalizeDoublesTargets(config?.doublesTargets);
@@ -201,7 +243,7 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
     challengeId === "3_DOUBLES_9"
       ? "DOUBLE"
       : challengeId === "DOUBLES_8_BONUS"
-      ? `${doubles8VisitIndex >= 24 ? "BONUS · " : ""}D${doubles8Target}`
+      ? `${doubles8VisitIndex >= doublesTargets.length * 3 ? "BONUS · " : ""}D${doubles8Target}`
       : challengeId === "CHECKOUT_40_3"
       ? "40"
       : sequence[Math.min(data.sequenceIndex, sequence.length - 1)] || "—";
@@ -252,19 +294,21 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
           { label: challengeId === "DOUBLES_8_BONUS" ? "VOLÉES" : "RESTE", value: challengeId === "DOUBLES_8_BONUS" ? `${data.doubles8Visits}/${doubles8VisitsMax}` : Math.max(0, maxDarts - data.darts) },
         ]}
       >
-        <TrainingDartPad
-          disabled={!!result}
-          onVisit={onVisit}
-          notice={
-            <div style={{ fontSize: 10.5, textAlign: "center", opacity: 0.68 }}>
-              {challengeId === "CHECKOUT_40_3"
-                ? "Saisis ta tentative puis valide la volée : le défi s'arrête immédiatement."
-                : challengeId === "DOUBLES_8_BONUS"
-                ? `Valide chaque volée de 3 fléchettes. Le double cible change automatiquement toutes les 3 volées ; la ${doubles8VisitsMax}e est la volée bonus.`
-                : "Le défi s'arrête dès que l'objectif est atteint ou la limite de fléchettes consommée."}
-            </div>
-          }
-        />
+        {challengeId === "DOUBLES_8_BONUS" ? (
+          <DoublesObjectivePad target={doubles8Target} disabled={!!result} onVisit={onVisit} />
+        ) : (
+          <TrainingDartPad
+            disabled={!!result}
+            onVisit={onVisit}
+            notice={
+              <div style={{ fontSize: 10.5, textAlign: "center", opacity: 0.68 }}>
+                {challengeId === "CHECKOUT_40_3"
+                  ? "Saisis ta tentative puis valide la volée : le défi s'arrête immédiatement."
+                  : "Le défi s'arrête dès que l'objectif est atteint ou la limite de fléchettes consommée."}
+              </div>
+            }
+          />
+        )}
       </TrainingPlayLayout>
 
       <TrainingResultModal
