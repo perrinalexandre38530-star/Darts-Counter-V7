@@ -851,6 +851,89 @@ const INTELLIGENCE_SPECS: Record<string, { label: string; query: string; domains
 };
 
 
+const SPORT_SOURCE_DOMAINS: Record<string, string[]> = {
+  darts: ["pdc.tv", "dartswdf.com", "modussuperseries.com", "dartconnect.com", "ffdarts.fr", "ddv-online.de", "dartsaustralia.com", "dartsnz.nz", "champdarts.com"],
+  pingpong: ["ittf.com", "worldtabletennis.com", "ettu.org", "fftt.com", "tabletennisengland.co.uk"],
+  petanque: ["fipjp.org", "ffpjp.org", "compet.ffpjp.org", "boulistenaute.com"],
+  babyfoot: ["tablesoccer.org", "ffbabyfoot.fr"],
+  molkky: ["molkky.world", "international-molkky.org", "ff-molkky.fr"],
+  foot: ["fifa.com", "uefa.com", "ligue1.com", "premierleague.com", "laliga.com", "legaseriea.it", "bundesliga.com", "espn.com", "skysports.com", "lequipe.fr"],
+  padel: ["padelfip.com", "premierpadel.com", "fft.fr", "padelmagazine.fr"],
+  badminton: ["bwfbadminton.com", "badmintoneurope.com", "ffbad.org"],
+  cornhole: ["iplayacl.com", "americancornhole.com", "ofch.fr"],
+  palet: ["le-palet.com"],
+  bowling: ["pba.com", "bowling.sport", "ffbsq.org", "ffbsq.fr"],
+};
+
+const MEDIA_DOMAINS_BY_LANG: Record<string, string[]> = {
+  fr: ["lequipe.fr", "eurosport.fr", "rmcsport.bfmtv.com"],
+  en: ["espn.com", "skysports.com", "sports.yahoo.com"],
+  es: ["marca.com", "as.com", "mundodeportivo.com"],
+  de: ["sport1.de", "eurosport.de", "kicker.de"],
+  it: ["gazzetta.it", "eurosport.it", "corrieredellosport.it"],
+  nl: ["nos.nl", "sportnieuws.nl", "ad.nl"],
+  pt: ["abola.pt", "record.pt", "ojogo.pt"],
+  pl: ["sport.pl", "przegladsportowy.onet.pl", "tvpsport.pl"],
+  da: ["dr.dk", "tv2.dk", "bold.dk"],
+  no: ["nrk.no", "tv2.no", "vg.no"],
+  sv: ["svt.se", "aftonbladet.se", "expressen.se"],
+  is: ["visir.is", "mbl.is"],
+  cs: ["sport.cz", "idnes.cz", "ceskatelevize.cz"],
+  ro: ["gsp.ro", "digisport.ro", "prosport.ro"],
+  sr: ["sportklub.n1info.rs", "mozzartsport.com"],
+  hr: ["sportske.jutarnji.hr", "gol.dnevnik.hr"],
+  ru: ["championat.com", "sports.ru"],
+  tr: ["ntvspor.net", "fanatik.com.tr", "trtspor.com.tr"],
+  ar: ["kooora.com", "beinsports.com", "alarabiya.net"],
+  hi: ["sportsstar.thehindu.com", "timesofindia.indiatimes.com"],
+  ja: ["sports.yahoo.co.jp", "number.bunshun.jp", "nikkansports.com"],
+  zh: ["sports.sina.com.cn", "sports.qq.com", "163.com"],
+};
+
+const DIRECT_EDITORIAL_PAGES: Record<string, Array<{ url: string; sourceName: string; scope: IntelligenceScope; scopeLabel: string }>> = {
+  darts: [
+    { url: "https://www.pdc.tv/news", sourceName: "PDC", scope: "world", scopeLabel: "Monde" },
+    { url: "https://dartswdf.com/news", sourceName: "WDF", scope: "world", scopeLabel: "Monde" },
+  ],
+  pingpong: [
+    { url: "https://www.ittf.com/news/", sourceName: "ITTF", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.fftt.com/actualites/", sourceName: "FFTT", scope: "local", scopeLabel: "FR" },
+  ],
+  petanque: [
+    { url: "https://fipjp.org/index.php/fr/", sourceName: "FIPJP", scope: "world", scopeLabel: "Monde" },
+  ],
+  babyfoot: [
+    { url: "https://www.tablesoccer.org/", sourceName: "ITSF", scope: "world", scopeLabel: "Monde" },
+  ],
+  molkky: [
+    { url: "https://www.molkky.world/fr", sourceName: "Mölkky World", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.molkky.world/fr/tournois/", sourceName: "Mölkky World", scope: "world", scopeLabel: "Monde" },
+  ],
+  foot: [
+    { url: "https://www.uefa.com/news-media/news/", sourceName: "UEFA", scope: "regional", scopeLabel: "Europe" },
+    { url: "https://www.fifa.com/en/news", sourceName: "FIFA", scope: "world", scopeLabel: "Monde" },
+  ],
+  padel: [
+    { url: "https://www.padelfip.com/news/", sourceName: "FIP Padel", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.padelfip.com/titles-and-finals/", sourceName: "FIP Padel", scope: "world", scopeLabel: "Monde" },
+  ],
+  badminton: [
+    { url: "https://badmintoneurope.com/web/corporate/news", sourceName: "Badminton Europe", scope: "regional", scopeLabel: "Europe" },
+    { url: "https://bwfbadminton.com/", sourceName: "BWF", scope: "world", scopeLabel: "Monde" },
+  ],
+  cornhole: [
+    { url: "https://www.iplayacl.com/about/acl-information/acl-news", sourceName: "ACL", scope: "world", scopeLabel: "Monde" },
+  ],
+  palet: [
+    { url: "https://www.le-palet.com/", sourceName: "Palet FNSMR", scope: "local", scopeLabel: "FR" },
+  ],
+  bowling: [
+    { url: "https://www.pba.com/press-media-gallery/news", sourceName: "PBA", scope: "world", scopeLabel: "Monde" },
+    { url: "https://bowling.sport/", sourceName: "IBF", scope: "world", scopeLabel: "Monde" },
+  ],
+};
+
+
 const DARTS_LOCALE_QUERY_PACKS: Record<string, string[]> = {
   fr: [
     "fléchettes résultats France FFDarts WDF",
@@ -1047,46 +1130,35 @@ const REGIONAL_SCOPE_BY_LANG: Record<string, { label: string; edition: NewsEditi
 function globalQueriesFor(sport: string) {
   const spec = INTELLIGENCE_SPECS[sport];
   if (!spec) return [];
+  const domains = SPORT_SOURCE_DOMAINS[sport] || spec.domains || [];
   const out = [
     `${spec.query} worldwide results scores`,
     `${spec.query} world live fixtures`,
+    `${spec.label} latest news results rankings performance`,
+    ...domains.slice(0, 8).map((domain) => `site:${domain} ${spec.label} results news`),
   ];
-  if (sport === "darts") {
-    out.push(
-      "darts PDC WDF MODUS worldwide results scores",
-      "site:pdc.tv darts results",
-      "site:dartswdf.com darts results",
-      "site:modussuperseries.com darts results fixtures",
-    );
-  }
-  if (sport === "foot") {
-    out.push(
-      "football FIFA UEFA worldwide results scores",
-      "football Champions League results fixtures",
-      "football World Cup qualifiers results",
-      "soccer Premier League LaLiga Bundesliga Serie A Ligue 1 results",
-    );
-  }
-  return Array.from(new Set(out)).slice(0, 6);
+  if (sport === "darts") out.push("darts PDC WDF MODUS worldwide results scores", "PDC European Tour Players Championship results");
+  if (sport === "foot") out.push("football FIFA UEFA worldwide results scores", "Champions League Premier League LaLiga Bundesliga Serie A Ligue 1 results");
+  if (sport === "padel") out.push("Premier Padel FIP Tour results finals rankings", "padel world cup results FIP");
+  if (sport === "pingpong") out.push("WTT ITTF results champions rankings", "table tennis Europe Asia results");
+  if (sport === "badminton") out.push("BWF World Tour results winners rankings", "Badminton Europe results");
+  return Array.from(new Set(out)).slice(0, 14);
 }
 
 function localQueriesFor(sport: string, lang: string) {
   const spec = INTELLIGENCE_SPECS[sport];
   if (!spec) return [];
   const code = String(lang || "fr").toLowerCase().split(/[-_]/)[0];
-  if (sport === "darts") {
-    return Array.from(new Set([
-      ...(DARTS_LOCALE_QUERY_PACKS[code] || DARTS_LOCALE_QUERY_PACKS.en || []),
-      `${spec.query} results scores`,
-    ])).slice(0, 4);
+  const base: string[] = [];
+  if (sport === "darts") base.push(...(DARTS_LOCALE_QUERY_PACKS[code] || DARTS_LOCALE_QUERY_PACKS.en || []));
+  else if (sport === "foot") base.push(...(FOOT_LOCALE_QUERY_PACKS[code] || FOOT_LOCALE_QUERY_PACKS.en || []));
+  else base.push(`${spec.query} results scores`, `${spec.query} latest news performance rankings`);
+
+  const mediaDomains = MEDIA_DOMAINS_BY_LANG[code] || MEDIA_DOMAINS_BY_LANG.en || [];
+  for (const domain of mediaDomains.slice(0, 3)) {
+    base.push(`site:${domain} ${spec.label} results news`);
   }
-  if (sport === "foot") {
-    return Array.from(new Set([
-      ...(FOOT_LOCALE_QUERY_PACKS[code] || FOOT_LOCALE_QUERY_PACKS.en || []),
-      `${spec.query} results scores`,
-    ])).slice(0, 4);
-  }
-  return [`${spec.query} results scores`, `${spec.query} live fixtures`];
+  return Array.from(new Set(base)).slice(0, 7);
 }
 
 function intelligenceFeedPlansFor(sport: string, lang: string): IntelligenceFeedPlan[] {
@@ -1096,14 +1168,18 @@ function intelligenceFeedPlansFor(sport: string, lang: string): IntelligenceFeed
   const plans: IntelligenceFeedPlan[] = [];
 
   localQueriesFor(sport, lang).forEach((query) => {
-    plans.push({ query, edition: localEdition, scope: "local", scopeLabel: code.toUpperCase(), recencyDays: 90 });
+    plans.push({ query, edition: localEdition, scope: "local", scopeLabel: code.toUpperCase(), recencyDays: 120 });
   });
 
   const regionalQueries = sport === "darts"
     ? regional.queries
-    : [`${INTELLIGENCE_SPECS[sport]?.query || sport} ${regional.label} results`, `${INTELLIGENCE_SPECS[sport]?.query || sport} ${regional.label} live`];
-  regionalQueries.slice(0, 2).forEach((query) => {
-    plans.push({ query, edition: regional.edition, scope: "regional", scopeLabel: regional.label, recencyDays: 60 });
+    : [
+        `${INTELLIGENCE_SPECS[sport]?.query || sport} ${regional.label} results`,
+        `${INTELLIGENCE_SPECS[sport]?.query || sport} ${regional.label} latest news`,
+        `${INTELLIGENCE_SPECS[sport]?.label || sport} Europe Asia Americas results rankings`,
+      ];
+  regionalQueries.slice(0, 3).forEach((query) => {
+    plans.push({ query, edition: regional.edition, scope: "regional", scopeLabel: regional.label, recencyDays: 90 });
   });
 
   globalQueriesFor(sport).forEach((query, index) => {
@@ -1112,7 +1188,7 @@ function intelligenceFeedPlansFor(sport: string, lang: string): IntelligenceFeed
       edition: WORLD_NEWS_EDITIONS[index % WORLD_NEWS_EDITIONS.length],
       scope: "world",
       scopeLabel: "Monde",
-      recencyDays: 45,
+      recencyDays: 90,
     });
   });
 
@@ -1122,7 +1198,7 @@ function intelligenceFeedPlansFor(sport: string, lang: string): IntelligenceFeed
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
-  }).slice(0, 12);
+  }).slice(0, 22);
 }
 
 // Kept for diagnostics / AI prompt metadata.
@@ -1243,6 +1319,82 @@ function uniqNews(rows: IntelligenceNews[]) {
     seen.add(key);
     return true;
   });
+}
+
+
+async function directEditorialIntelligence(sport: string): Promise<IntelligenceNews[]> {
+  const pages = (DIRECT_EDITORIAL_PAGES[sport] || []).slice(0, 4);
+  if (!pages.length) return [];
+  const settled = await Promise.allSettled(pages.map(async (page, pageIndex) => {
+    const response = await timedFetch(page.url, {
+      redirect: "follow",
+      headers: {
+        Accept: "text/html,application/xhtml+xml",
+        "User-Agent": "MULTISPORTS-SCORING-LIVE/1.0 (+https://multisports-scoring.pages.dev)",
+      },
+    }, 3200);
+    if (!response.ok) throw new Error(`${page.sourceName} HTTP ${response.status}`);
+    const html = await response.text();
+    const rows: IntelligenceNews[] = [];
+    const seen = new Set<string>();
+    const anchorRx = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    let match: RegExpExecArray | null;
+    while ((match = anchorRx.exec(html)) && rows.length < 28) {
+      const href = absoluteHttpUrl(decodeHtml(match[1]), response.url || page.url);
+      const title = stripTags(match[2]);
+      const key = normalizeHeadlineKey(title);
+      if (!href || title.length < 28 || title.length > 220 || !key || seen.has(key)) continue;
+      if (/^(home|news|results|resultats|calendar|calendrier|ranking|rankings|read more|voir plus|view all|menu|contact|login|sign in)$/i.test(title)) continue;
+      if (/privacy|cookie|terms|newsletter|facebook|instagram|youtube|twitter|linkedin/i.test(title)) continue;
+      seen.add(key);
+      const kind = classifyHeadline(title, "");
+      const explicitScore = explicitScoreFromText(title);
+      rows.push({
+        id: `direct-${sport}-${pageIndex}-${rows.length}-${key.replace(/\s+/g, "-").slice(0, 42)}`,
+        title,
+        summary: `${page.sourceName} · publication officielle`,
+        publishedAt: null,
+        sourceName: page.sourceName,
+        sourceUrl: href,
+        imageUrl: null,
+        kind,
+        resultLabel: kind === "result" ? (explicitScore ? `Score ${explicitScore}` : "Résultat publié") : null,
+        scope: page.scope,
+        scopeLabel: page.scopeLabel,
+      });
+    }
+    return rows;
+  }));
+  return uniqNews(settled.flatMap((item) => item.status === "fulfilled" ? item.value : [])).slice(0, 72);
+}
+
+async function padelFipFinalEvents(): Promise<NormalEvent[]> {
+  try {
+    const url = "https://www.padelfip.com/titles-and-finals/";
+    const html = await fetchOfficialHtml(url);
+    const rows = [...html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)].slice(0, 36);
+    const events: NormalEvent[] = [];
+    for (let i = 0; i < rows.length; i++) {
+      const text = stripTags(rows[i][1]);
+      const score = text.match(/\b\d{1,2}\s*-\s*\d{1,2}(?:\s*\/\s*\d{1,2}\s*-\s*\d{1,2})+/)?.[0]?.replace(/\s+/g, "") || null;
+      if (!score || text.length < 20) continue;
+      events.push({
+        id: `padel-fip-final-${i}-${normalizeHeadlineKey(text).slice(0, 36)}`,
+        title: text.slice(0, 210),
+        subtitle: "FIP · Titles & Finals",
+        startsAt: null,
+        dateLabel: null,
+        status: "result",
+        sourceName: "FIP Padel",
+        sourceUrl: url,
+        resultLabel: score,
+      });
+      if (events.length >= 18) break;
+    }
+    return events;
+  } catch {
+    return [];
+  }
 }
 
 function localeForNews(lang: string) {
@@ -1798,18 +1950,22 @@ async function enrichWithLiveIntelligence(env: Env, sport: string, lang: string,
   let google: IntelligenceNews[] = [];
   let bing: IntelligenceNews[] = [];
   let yahoo: IntelligenceNews[] = [];
+  let directEditorial: IntelligenceNews[] = [];
   let ai: IntelligenceNews[] = [];
 
   const newsSettled = await Promise.allSettled([
     googleNewsIntelligence(sport, lang),
     bingNewsIntelligence(sport, lang),
     sport === "foot" ? yahooSoccerNews(lang) : Promise.resolve([] as IntelligenceNews[]),
+    directEditorialIntelligence(sport),
   ]);
   if (newsSettled[0].status === "fulfilled") google = newsSettled[0].value;
   else warnings.push(`Google News indisponible : ${str(newsSettled[0].reason?.message || newsSettled[0].reason)}`);
   if (newsSettled[1].status === "fulfilled") bing = newsSettled[1].value;
   else warnings.push(`Bing News indisponible : ${str(newsSettled[1].reason?.message || newsSettled[1].reason)}`);
   if (newsSettled[2].status === "fulfilled") yahoo = newsSettled[2].value;
+  if (newsSettled[3].status === "fulfilled") directEditorial = newsSettled[3].value;
+  else warnings.push(`Sources éditoriales directes indisponibles : ${str(newsSettled[3].reason?.message || newsSettled[3].reason)}`);
 
   // L'IA web est un enrichissement facultatif. Les RSS Google+Bing (+Yahoo Foot) assurent le contenu sans clé OpenAI.
   if (str(env?.OPENAI_API_KEY).trim()) {
@@ -1820,17 +1976,18 @@ async function enrichWithLiveIntelligence(env: Env, sport: string, lang: string,
     }
   }
 
-  const mergedNews = uniqNews([...ai, ...google, ...bing, ...yahoo])
+  const mergedNews = uniqNews([...ai, ...google, ...bing, ...yahoo, ...directEditorial])
     .sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")))
-    .slice(0, sport === "foot" ? 96 : 84);
+    .slice(0, sport === "foot" ? 140 : 120);
   const news = await enrichNewsImages(mergedNews);
   const intelligenceEvents = news.map((row) => newsToEvent(row, sport)).filter(Boolean) as NormalEvent[];
   let direct = { results: [] as NormalResult[], fixtures: [] as NormalMatch[], events: [] as NormalEvent[] };
   if (sport === "darts") {
     try { direct = await directDartsResults(lang); } catch {}
   }
-  const mergedEvents = uniqEvents([...(arr(base.payload?.events) as NormalEvent[]), ...direct.events, ...intelligenceEvents]).slice(0, 40);
-  const provider = ai.length ? "openai_web" : (google.length || bing.length || yahoo.length) ? "news_rss" : "none";
+  const extraStructuredEvents = sport === "padel" ? await padelFipFinalEvents() : [];
+  const mergedEvents = uniqEvents([...(arr(base.payload?.events) as NormalEvent[]), ...direct.events, ...extraStructuredEvents, ...intelligenceEvents]).slice(0, 80);
+  const provider = ai.length ? "openai_web" : (google.length || bing.length || yahoo.length || directEditorial.length) ? "news_rss" : "none";
 
   return {
     ...base,
@@ -1851,8 +2008,8 @@ async function enrichWithLiveIntelligence(env: Env, sport: string, lang: string,
         localCount: news.filter((item) => item.scope === "local").length,
         regionalCount: news.filter((item) => item.scope === "regional").length,
         worldCount: news.filter((item) => item.scope === "world" || !item.scope).length,
-        queryCount: intelligenceFeedPlansFor(sport, lang).length + (sport === "foot" ? 1 : 0),
-        directResultCount: direct.results.length,
+        queryCount: intelligenceFeedPlansFor(sport, lang).length + (sport === "foot" ? 1 : 0) + (DIRECT_EDITORIAL_PAGES[sport]?.length || 0),
+        directResultCount: direct.results.length + extraStructuredEvents.length,
         updatedAt: new Date().toISOString(),
       },
       warnings,

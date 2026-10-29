@@ -100,6 +100,32 @@ const OTHER_SPORT_SOURCES: SportLiveSource[] = [
     description: "Compétitions européennes, résultats, calendrier et actualités officielles.", kind: "governing_body",
     regions: ["europe", "france", "uk_ireland", "spain", "dach", "italy", "portugal", "benelux", "eastern_europe", "balkans", "nordic_baltic"], official: true, homeUrl: "https://www.uefa.com/", scoresUrl: "https://www.uefa.com/uefachampionsleague/fixtures-results/", resultsUrl: "https://www.uefa.com/uefachampionsleague/fixtures-results/", calendarUrl: "https://www.uefa.com/", badges: ["UEFA", "EUROPE"]
   },
+  {
+    id: "foot-ligue1", sport: "foot", name: "Ligue 1", shortName: "Ligue 1",
+    description: "Actualités, calendrier, résultats et classement du championnat de France.", kind: "results",
+    regions: ["france", "francophone", "europe"], locales: ["fr"], official: true, homeUrl: "https://ligue1.com/", resultsUrl: "https://ligue1.com/", calendarUrl: "https://ligue1.com/", badges: ["FRANCE", "LIGUE 1"]
+  },
+  {
+    id: "foot-premierleague", sport: "foot", name: "Premier League", shortName: "Premier League",
+    description: "Actualités, fixtures, résultats et classement officiels de Premier League.", kind: "results",
+    regions: ["uk_ireland", "europe", "global"], locales: ["en"], official: true, homeUrl: "https://www.premierleague.com/", resultsUrl: "https://www.premierleague.com/results", calendarUrl: "https://www.premierleague.com/fixtures", badges: ["UK", "PREMIER LEAGUE"]
+  },
+  {
+    id: "foot-laliga", sport: "foot", name: "LaLiga", shortName: "LaLiga",
+    description: "Résultats, calendrier, classement et actualités officielles du championnat espagnol.", kind: "results",
+    regions: ["spain", "europe", "global"], locales: ["es"], official: true, homeUrl: "https://www.laliga.com/", resultsUrl: "https://www.laliga.com/en-GB/results", calendarUrl: "https://www.laliga.com/en-GB/laliga-easports/calendar", badges: ["ESPAGNE", "LALIGA"]
+  },
+  {
+    id: "foot-bundesliga", sport: "foot", name: "Bundesliga", shortName: "Bundesliga",
+    description: "Résultats, calendrier, classement et actualités officielles du championnat allemand.", kind: "results",
+    regions: ["dach", "europe", "global"], locales: ["de"], official: true, homeUrl: "https://www.bundesliga.com/", resultsUrl: "https://www.bundesliga.com/en/bundesliga/matchday", calendarUrl: "https://www.bundesliga.com/en/bundesliga/matchday", badges: ["ALLEMAGNE", "BUNDESLIGA"]
+  },
+  {
+    id: "foot-seriea", sport: "foot", name: "Lega Serie A", shortName: "Serie A",
+    description: "Résultats, calendrier et actualités officielles de Serie A.", kind: "results",
+    regions: ["italy", "europe", "global"], locales: ["it"], official: true, homeUrl: "https://www.legaseriea.it/", resultsUrl: "https://www.legaseriea.it/en/serie-a", calendarUrl: "https://www.legaseriea.it/en/serie-a", badges: ["ITALIE", "SERIE A"]
+  },
+
   // PÉTANQUE
   {
     id: "petanque-fipjp", sport: "petanque", name: "Fédération Internationale de Pétanque et Jeu Provençal", shortName: "FIPJP",
@@ -129,6 +155,12 @@ const OTHER_SPORT_SOURCES: SportLiveSource[] = [
     regions: ["france", "francophone"], locales: ["fr"], official: true, homeUrl: "https://www.fftt.com/", scoresUrl: "https://www.fftt.com/competition/", resultsUrl: "https://www.fftt.com/competition/", badges: ["FRANCE", "LIVE"]
   },
 
+  {
+    id: "pingpong-ettu", sport: "pingpong", name: "European Table Tennis Union", shortName: "ETTU",
+    description: "Actualités, championnats européens, résultats et compétitions continentales.", kind: "results",
+    regions: ["europe", "global"], official: true, homeUrl: "https://www.ettu.org/", resultsUrl: "https://www.ettu.org/", calendarUrl: "https://www.ettu.org/", badges: ["EUROPE", "ETTU"]
+  },
+
   // BABY-FOOT / TABLE SOCCER
   {
     id: "babyfoot-itsf", sport: "babyfoot", name: "International Table Soccer Federation", shortName: "ITSF",
@@ -151,6 +183,12 @@ const OTHER_SPORT_SOURCES: SportLiveSource[] = [
     id: "molkky-ffm", sport: "molkky", name: "Fédération Française de Mölkky", shortName: "FFM",
     description: "Calendrier français et informations sur les tournois officiels nationaux et internationaux.", kind: "calendar",
     regions: ["france", "francophone"], locales: ["fr"], official: true, homeUrl: "https://ff-molkky.fr/", calendarUrl: "https://ff-molkky.fr/partout-dans-le-monde/", badges: ["FRANCE", "FFM"]
+  },
+
+  {
+    id: "molkky-world", sport: "molkky", name: "Mölkky World", shortName: "Mölkky World",
+    description: "Calendrier international, tournois, événements à la une et fiches de compétitions.", kind: "calendar",
+    regions: ["global", "europe", "france", "oceania", "asia"], official: false, homeUrl: "https://www.molkky.world/", resultsUrl: "https://www.molkky.world/tournaments", calendarUrl: "https://www.molkky.world/tournaments", badges: ["MONDE", "TOURNOIS"]
   },
 
   // PADEL
@@ -180,6 +218,12 @@ const OTHER_SPORT_SOURCES: SportLiveSource[] = [
     id: "badminton-ffbad", sport: "badminton", name: "Fédération Française de Badminton", shortName: "FFBaD",
     description: "Compétitions françaises, classements et résultats officiels.", kind: "results",
     regions: ["france", "francophone"], locales: ["fr"], official: true, homeUrl: "https://www.ffbad.org/", resultsUrl: "https://www.ffbad.org/", badges: ["FRANCE", "FFBaD"]
+  },
+
+  {
+    id: "badminton-europe", sport: "badminton", name: "Badminton Europe", shortName: "BEC",
+    description: "Actualités, résultats, championnats et circuits européens de badminton.", kind: "results",
+    regions: ["europe", "global"], official: true, homeUrl: "https://badmintoneurope.com/", resultsUrl: "https://badmintoneurope.com/", calendarUrl: "https://badmintoneurope.com/", badges: ["EUROPE", "BEC"]
   },
 
   // CORNHOLE
