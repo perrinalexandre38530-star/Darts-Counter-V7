@@ -287,10 +287,10 @@ async function dartsOverview(key: string) {
   const plan = str(usage.body?.data?.plan?.key || usage.body?.meta?.plan || "free").toLowerCase();
   const hasLive = plan !== "free" && plan !== "archive";
   const now = new Date();
-  const future = new Date(now.getTime() + 7 * 86400000);
+  const future = new Date(now.getTime() + 21 * 86400000);
   const calls = [
-    apiFetch(DARTS_BASE, key, `/fixtures?from=${isoDate(now)}&to=${isoDate(future)}&limit=60`),
-    apiFetch(DARTS_BASE, key, "/results?limit=50"),
+    apiFetch(DARTS_BASE, key, `/fixtures?from=${isoDate(now)}&to=${isoDate(future)}&limit=120`),
+    apiFetch(DARTS_BASE, key, "/results?limit=120"),
   ];
   const [fixtures, results] = await Promise.all(calls);
   const live = hasLive ? await apiFetch(DARTS_BASE, key, "/live") : { ok: false, status: 402, body: { data: [] } };
@@ -318,7 +318,7 @@ async function dartsOverview(key: string) {
   };
 }
 
-async function tableTennisOverview(key: string) {
+async function tableTennisOverview(key: string, depth: "fast" | "deep" = "fast") {
   const usage = await apiFetch(TT_BASE, key, "/usage");
   if (!usage.ok) {
     return {
@@ -329,7 +329,8 @@ async function tableTennisOverview(key: string) {
   }
   const plan = str(usage.body?.data?.plan?.key || usage.body?.data?.plan || usage.body?.meta?.plan || "free").toLowerCase();
   const hasLive = plan === "live" || plan === "complete";
-  const today = isoDate(new Date());
+  const todayDate = new Date();
+  const today = isoDate(todayDate);
 
   const [todayMatches, yesterday] = await Promise.all([
     apiFetch(TT_BASE, key, `/matches?date=${today}&per_page=200`),
@@ -337,21 +338,45 @@ async function tableTennisOverview(key: string) {
   ]);
   const live = hasLive ? await apiFetch(TT_BASE, key, "/live") : { ok: false, status: 403, body: { data: [] } };
 
+  let extraRows: any[] = [];
+  let extraFailures = 0;
+  if (depth === "deep") {
+    const offsets = [-6, -5, -4, -3, -2, 1, 2, 3, 4, 5, 6, 7];
+    const settled = await Promise.allSettled(offsets.map(async (offset) => {
+      const d = new Date(todayDate);
+      d.setUTCDate(d.getUTCDate() + offset);
+      const response = await apiFetch(TT_BASE, key, `/matches?date=${isoDate(d)}&per_page=200`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return payloadRows(response.body, ["matches"]);
+    }));
+    extraRows = settled.flatMap((item) => item.status === "fulfilled" ? item.value : []);
+    extraFailures = settled.filter((item) => item.status === "rejected").length;
+  }
+
   const todayRows = todayMatches.ok ? payloadRows(todayMatches.body, ["matches"]) : [];
-  const liveRows = live.ok ? payloadRows(live.body, ["matches", "live"]) : todayRows.filter((row) => str(row?.status).toLowerCase() === "live");
-  const fixtureRows = todayRows.filter((row) => ["scheduled", "upcoming", "not_started"].includes(str(row?.status).toLowerCase()));
-  const finishedToday = todayRows.filter((row) => str(row?.status).toLowerCase() === "finished");
+  const allRowsRaw = [...todayRows, ...extraRows];
+  const seen = new Set<string>();
+  const allRows = allRowsRaw.filter((row, index) => {
+    const keyValue = str(row?.id || row?.match_id) || `${ttCompetition(row)}|${str(row?.date)}|${ttPlayers(row).map((p) => p.name).join("|")}|${index}`;
+    if (seen.has(keyValue)) return false;
+    seen.add(keyValue);
+    return true;
+  });
+  const liveRows = live.ok ? payloadRows(live.body, ["matches", "live"]) : allRows.filter((row) => str(row?.status).toLowerCase() === "live");
+  const fixtureRows = allRows.filter((row) => ["scheduled", "upcoming", "not_started"].includes(str(row?.status).toLowerCase()));
+  const finishedRows = allRows.filter((row) => str(row?.status).toLowerCase() === "finished");
   const yesterdayRows = yesterday.ok ? payloadRows(yesterday.body, ["results", "matches"]) : [];
-  const resultRows = [...finishedToday, ...yesterdayRows].slice(0, 80);
+  const resultRows = [...finishedRows, ...yesterdayRows];
 
   const warnings: string[] = [];
   if (!todayMatches.ok) warnings.push(`Matchs Ping-Pong indisponibles (${todayMatches.status}).`);
   if (!yesterday.ok) warnings.push(`Résultats Ping-Pong indisponibles (${yesterday.status}).`);
-  if (!hasLive) warnings.push("La clé gratuite charge les vrais matchs/résultats du jour ; le flux /live à ~10 s nécessite le plan Live/Complete.");
+  if (extraFailures) warnings.push(`${extraFailures} journée(s) Ping-Pong profonde(s) indisponible(s), les autres restent chargées.`);
+  if (!hasLive) warnings.push("La clé gratuite charge les vrais matchs/résultats ; le flux /live à ~10 s nécessite le plan Live/Complete.");
 
   return {
     status: 200,
-    ttl: hasLive ? 20 : 3600,
+    ttl: hasLive ? 20 : depth === "deep" ? 1800 : 900,
     payload: {
       sport: "pingpong",
       configured: true,
@@ -361,14 +386,13 @@ async function tableTennisOverview(key: string) {
       dataAsOf: new Date().toISOString(),
       liveAvailable: !!live.ok,
       liveReason: live.ok ? null : "Le direct Ping-Pong à haute fréquence nécessite un plan Table Tennis API Live/Complete.",
-      live: liveRows.map(normalizeTtMatch),
-      fixtures: fixtureRows.map(normalizeTtMatch),
-      results: resultRows.map(normalizeTtResult),
+      live: liveRows.map(normalizeTtMatch).slice(0, 80),
+      fixtures: fixtureRows.map(normalizeTtMatch).slice(0, depth === "deep" ? 240 : 100),
+      results: resultRows.map(normalizeTtResult).slice(0, depth === "deep" ? 300 : 120),
       warnings,
     },
   };
 }
-
 
 
 const PDC_EUROPEAN_TOUR = "https://www.pdc.tv/tournament/european-darts-open-et10?page=33";
@@ -378,7 +402,7 @@ function parsePdcOfficialEvents(html: string): NormalEvent[] {
   const out: NormalEvent[] = [];
   const dateRe = /^(\d{1,2}(?:-\d{1,2})?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+20\d{2})$/i;
 
-  for (let i = 0; i < lines.length && out.length < 14; i += 1) {
+  for (let i = 0; i < lines.length && out.length < 36; i += 1) {
     const line = lines[i];
     if (!dateRe.test(line)) continue;
     let title = "";
@@ -425,7 +449,7 @@ function parsePdcOfficialEvents(html: string): NormalEvent[] {
     }
   }
 
-  return uniqEvents(out).slice(0, 18);
+  return uniqEvents(out).slice(0, 48);
 }
 
 async function officialDartsFallbackOverview(reason: string) {
@@ -519,7 +543,7 @@ async function fetchOfficialHtml(url: string) {
       Accept: "text/html,application/xhtml+xml",
       "User-Agent": "MULTISPORTS-SCORING-LIVE/1.0 (+https://multisports-scoring.pages.dev)",
     },
-  }, 5000);
+  }, 3200);
   if (!response.ok) throw new Error(`HTTP ${response.status} ${url}`);
   return response.text();
 }
@@ -546,7 +570,7 @@ function parseItsfEvents(html: string): NormalEvent[] {
   const upcomingIndex = lines.findIndex((line) => /upcoming tournaments/i.test(line));
   const latestIndexBoundary = lines.findIndex((line) => /latest results/i.test(line));
 
-  for (let i = 0; i < lines.length - 1 && out.length < 12; i += 1) {
+  for (let i = 0; i < lines.length - 1 && out.length < 30; i += 1) {
     const line = lines[i];
     if (!dateRe.test(line)) continue;
     let title = "";
@@ -579,7 +603,7 @@ function parseItsfEvents(html: string): NormalEvent[] {
   const latestIndex = lines.findIndex((line) => /latest results/i.test(line));
   if (latestIndex >= 0) {
     const slice = lines.slice(latestIndex + 1, latestIndex + 80);
-    for (let i = 1; i < slice.length && out.filter((row) => row.status === "result").length < 8; i += 1) {
+    for (let i = 1; i < slice.length && out.filter((row) => row.status === "result").length < 16; i += 1) {
       if (!/winner$/i.test(slice[i])) continue;
       const winnerName = slice[i - 1];
       if (!winnerName || looksLikeNoise(winnerName) || /winner$/i.test(winnerName)) continue;
@@ -603,7 +627,7 @@ function parseItsfEvents(html: string): NormalEvent[] {
     }
   }
 
-  return uniqEvents(out).slice(0, 18);
+  return uniqEvents(out).slice(0, 48);
 }
 
 function parseMolkkyEvents(calendarHtml: string, worldsHtml: string): NormalEvent[] {
@@ -611,7 +635,7 @@ function parseMolkkyEvents(calendarHtml: string, worldsHtml: string): NormalEven
   const out: NormalEvent[] = [];
   const frDate = /(\d{1,2}\s+(?:janv(?:ier)?|févr(?:ier)?|mars|avr(?:il)?|mai|juin|juil(?:let)?|août|sept(?:embre)?|oct(?:obre)?|nov(?:embre)?|déc(?:embre)?)\.?\s+20\d{2})/i;
 
-  for (let i = 0; i < lines.length && out.length < 14; i += 1) {
+  for (let i = 0; i < lines.length && out.length < 36; i += 1) {
     const line = lines[i];
     const match = line.match(frDate);
     if (!match) continue;
@@ -653,7 +677,7 @@ function parseMolkkyEvents(calendarHtml: string, worldsHtml: string): NormalEven
     }
   }
 
-  return uniqEvents(out).slice(0, 18);
+  return uniqEvents(out).slice(0, 48);
 }
 
 function parseFipjpEvents(html: string): NormalEvent[] {
@@ -893,50 +917,77 @@ const MEDIA_DOMAINS_BY_LANG: Record<string, string[]> = {
 const DIRECT_EDITORIAL_PAGES: Record<string, Array<{ url: string; sourceName: string; scope: IntelligenceScope; scopeLabel: string }>> = {
   darts: [
     { url: "https://www.pdc.tv/news", sourceName: "PDC", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.pdc.tv/calendar/", sourceName: "PDC Calendar", scope: "world", scopeLabel: "Monde" },
     { url: "https://dartswdf.com/news", sourceName: "WDF", scope: "world", scopeLabel: "Monde" },
+    { url: "https://dartswdf.com/calendar", sourceName: "WDF Calendar", scope: "world", scopeLabel: "Monde" },
+    { url: "https://modussuperseries.com/results", sourceName: "MODUS", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.dartconnect.com/fans/", sourceName: "DartConnect", scope: "world", scopeLabel: "Monde" },
     { url: "https://www.dartsnews.com/", sourceName: "DartsNews", scope: "world", scopeLabel: "Monde" },
     { url: "https://www.live-darts.com/", sourceName: "Live Darts", scope: "world", scopeLabel: "Monde" },
     { url: "https://www.flechettes.info/", sourceName: "Flechettes.info", scope: "local", scopeLabel: "FR" },
-    { url: "https://dartsinfo.co.uk/", sourceName: "DartsInfo", scope: "world", scopeLabel: "Monde" },
+    { url: "https://dartsinfo.co.uk/", sourceName: "DartsInfo", scope: "regional", scopeLabel: "UK & Europe" },
+    { url: "https://dartsnz.nz/results/", sourceName: "Darts New Zealand", scope: "regional", scopeLabel: "Océanie" },
+    { url: "https://www.dartsaustralia.com/", sourceName: "Darts Australia", scope: "regional", scopeLabel: "Océanie" },
   ],
   pingpong: [
     { url: "https://www.ittf.com/news/", sourceName: "ITTF", scope: "world", scopeLabel: "Monde" },
+    { url: "https://worldtabletennis.com/", sourceName: "World Table Tennis", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.ettu.org/en/n/news/", sourceName: "ETTU", scope: "regional", scopeLabel: "Europe" },
     { url: "https://www.fftt.com/actualites/", sourceName: "FFTT", scope: "local", scopeLabel: "FR" },
+    { url: "https://www.tabletennisengland.co.uk/news/", sourceName: "Table Tennis England", scope: "regional", scopeLabel: "UK" },
   ],
   petanque: [
     { url: "https://fipjp.org/index.php/fr/", sourceName: "FIPJP", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.ffpjp.org/", sourceName: "FFPJP", scope: "local", scopeLabel: "FR" },
+    { url: "https://www.boulistenaute.com/", sourceName: "Boulistenaute", scope: "local", scopeLabel: "Francophonie" },
   ],
   babyfoot: [
     { url: "https://www.tablesoccer.org/", sourceName: "ITSF", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.ffbabyfoot.fr/", sourceName: "FFBabyFoot", scope: "local", scopeLabel: "FR" },
   ],
   molkky: [
     { url: "https://www.molkky.world/fr", sourceName: "Mölkky World", scope: "world", scopeLabel: "Monde" },
     { url: "https://www.molkky.world/fr/tournois/", sourceName: "Mölkky World", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.international-molkky.org/world-championships", sourceName: "International Mölkky", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.ff-molkky.fr/", sourceName: "FF Mölkky", scope: "local", scopeLabel: "FR" },
   ],
   foot: [
     { url: "https://www.uefa.com/news-media/news/", sourceName: "UEFA", scope: "regional", scopeLabel: "Europe" },
+    { url: "https://www.uefa.com/uefachampionsleague/fixtures-results/", sourceName: "UEFA Champions League", scope: "regional", scopeLabel: "Europe" },
     { url: "https://www.fifa.com/en/news", sourceName: "FIFA", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.premierleague.com/en/news", sourceName: "Premier League", scope: "regional", scopeLabel: "UK" },
+    { url: "https://ligue1.com/", sourceName: "Ligue 1", scope: "local", scopeLabel: "FR" },
+    { url: "https://www.espn.com/soccer/", sourceName: "ESPN Soccer", scope: "world", scopeLabel: "Monde" },
   ],
   padel: [
     { url: "https://www.padelfip.com/news/", sourceName: "FIP Padel", scope: "world", scopeLabel: "Monde" },
     { url: "https://www.padelfip.com/titles-and-finals/", sourceName: "FIP Padel", scope: "world", scopeLabel: "Monde" },
+    { url: "https://premierpadel.com/en/tournaments", sourceName: "Premier Padel", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.fft.fr/nos-sports/padel", sourceName: "FFT Padel", scope: "local", scopeLabel: "FR" },
+    { url: "https://padelmagazine.fr/", sourceName: "Padel Magazine", scope: "local", scopeLabel: "Francophonie" },
   ],
   badminton: [
-    { url: "https://badmintoneurope.com/web/corporate/news", sourceName: "Badminton Europe", scope: "regional", scopeLabel: "Europe" },
     { url: "https://bwfbadminton.com/", sourceName: "BWF", scope: "world", scopeLabel: "Monde" },
+    { url: "https://bwfbadminton.com/calendar/", sourceName: "BWF Calendar", scope: "world", scopeLabel: "Monde" },
+    { url: "https://badmintoneurope.com/web/corporate/news", sourceName: "Badminton Europe", scope: "regional", scopeLabel: "Europe" },
+    { url: "https://www.ffbad.org/", sourceName: "FFBaD", scope: "local", scopeLabel: "FR" },
   ],
   cornhole: [
     { url: "https://www.iplayacl.com/about/acl-information/acl-news", sourceName: "ACL", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.iplayacl.com/", sourceName: "ACL", scope: "regional", scopeLabel: "Amérique du Nord" },
+    { url: "https://americancornhole.com/results/", sourceName: "ACO", scope: "regional", scopeLabel: "Amérique du Nord" },
+    { url: "https://www.ofch.fr/evenements/", sourceName: "OFCH", scope: "local", scopeLabel: "FR" },
   ],
   palet: [
     { url: "https://www.le-palet.com/", sourceName: "Palet FNSMR", scope: "local", scopeLabel: "FR" },
   ],
   bowling: [
     { url: "https://www.pba.com/press-media-gallery/news", sourceName: "PBA", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.pba.com/schedule/pba-tour", sourceName: "PBA Tour", scope: "regional", scopeLabel: "Amérique du Nord" },
     { url: "https://bowling.sport/", sourceName: "IBF", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.ffbsq.fr/", sourceName: "FFBSQ", scope: "local", scopeLabel: "FR" },
   ],
 };
-
 
 const DARTS_LOCALE_QUERY_PACKS: Record<string, string[]> = {
   fr: [
@@ -994,6 +1045,32 @@ const FOOT_LOCALE_QUERY_PACKS: Record<string, string[]> = {
   hi: ["football India results", "football Asia results", "Champions League results"],
   ja: ["サッカー 試合 結果", "Jリーグ 結果", "チャンピオンズリーグ 結果"],
   zh: ["足球 比赛 结果 中国", "中超 结果", "欧冠 足球 结果"],
+};
+
+
+const LOCALE_REGION_TERMS: Record<string, string> = {
+  fr: "France francophonie Europe",
+  en: "UK Ireland USA Canada Australia New Zealand",
+  es: "España Latinoamérica Caribe",
+  de: "Deutschland Österreich Schweiz DACH",
+  it: "Italia Europa",
+  nl: "Nederland België Benelux",
+  pt: "Portugal Brasil lusófono",
+  pl: "Polska Europa",
+  da: "Danmark Nordic Baltic",
+  no: "Norge Nordic Baltic",
+  sv: "Sverige Nordic Baltic",
+  is: "Ísland Nordic",
+  cs: "Česko Slovensko Europe",
+  ro: "România Eastern Europe",
+  sr: "Srbija Balkan",
+  hr: "Hrvatska Balkan",
+  ru: "Eastern Europe",
+  tr: "Türkiye Europe Middle East",
+  ar: "Middle East Arab",
+  hi: "India South Asia",
+  ja: "Japan Asia",
+  zh: "China Asia",
 };
 
 
@@ -1156,7 +1233,14 @@ function localQueriesFor(sport: string, lang: string) {
   const base: string[] = [];
   if (sport === "darts") base.push(...(DARTS_LOCALE_QUERY_PACKS[code] || DARTS_LOCALE_QUERY_PACKS.en || []));
   else if (sport === "foot") base.push(...(FOOT_LOCALE_QUERY_PACKS[code] || FOOT_LOCALE_QUERY_PACKS.en || []));
-  else base.push(`${spec.query} results scores`, `${spec.query} latest news performance rankings`);
+  else {
+    const localTerms = LOCALE_REGION_TERMS[code] || LOCALE_REGION_TERMS.en;
+    base.push(
+      `${spec.query} ${localTerms} results scores`,
+      `${spec.label} ${localTerms} latest news performance rankings`,
+      `${spec.label} ${localTerms} calendar fixtures championship tournament`,
+    );
+  }
 
   const mediaDomains = MEDIA_DOMAINS_BY_LANG[code] || MEDIA_DOMAINS_BY_LANG.en || [];
   for (const domain of mediaDomains.slice(0, 3)) {
@@ -1203,6 +1287,14 @@ function intelligenceFeedPlansFor(sport: string, lang: string): IntelligenceFeed
     seen.add(key);
     return true;
   }).slice(0, 22);
+}
+
+function coreIntelligenceFeedPlansFor(sport: string, lang: string): IntelligenceFeedPlan[] {
+  const all = intelligenceFeedPlansFor(sport, lang);
+  const local = all.filter((plan) => plan.scope === "local").slice(0, 3);
+  const regional = all.filter((plan) => plan.scope === "regional").slice(0, 3);
+  const world = all.filter((plan) => plan.scope === "world").slice(0, 4);
+  return [...local, ...regional, ...world];
 }
 
 // Kept for diagnostics / AI prompt metadata.
@@ -1326,8 +1418,8 @@ function uniqNews(rows: IntelligenceNews[]) {
 }
 
 
-async function directEditorialIntelligence(sport: string): Promise<IntelligenceNews[]> {
-  const pages = (DIRECT_EDITORIAL_PAGES[sport] || []).slice(0, sport === "darts" ? 6 : 5);
+async function directEditorialIntelligence(sport: string, maxPages = 6): Promise<IntelligenceNews[]> {
+  const pages = (DIRECT_EDITORIAL_PAGES[sport] || []).slice(0, Math.max(1, maxPages));
   if (!pages.length) return [];
   const settled = await Promise.allSettled(pages.map(async (page, pageIndex) => {
     const response = await timedFetch(page.url, {
@@ -1426,7 +1518,7 @@ async function padelFipFinalEvents(): Promise<NormalEvent[]> {
   try {
     const url = "https://www.padelfip.com/titles-and-finals/";
     const html = await fetchOfficialHtml(url);
-    const rows = [...html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)].slice(0, 36);
+    const rows = [...html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)].slice(0, 90);
     const events: NormalEvent[] = [];
     for (let i = 0; i < rows.length; i++) {
       const text = stripTags(rows[i][1]);
@@ -1443,7 +1535,7 @@ async function padelFipFinalEvents(): Promise<NormalEvent[]> {
         sourceUrl: url,
         resultLabel: score,
       });
-      if (events.length >= 18) break;
+      if (events.length >= 36) break;
     }
     return events;
   } catch {
@@ -1481,10 +1573,10 @@ function localeForNews(lang: string) {
 }
 
 
-async function googleNewsIntelligence(sport: string, lang: string): Promise<IntelligenceNews[]> {
+async function googleNewsIntelligence(sport: string, lang: string, depth: "core" | "deep" = "deep"): Promise<IntelligenceNews[]> {
   const spec = INTELLIGENCE_SPECS[sport];
   if (!spec) return [];
-  const plans = intelligenceFeedPlansFor(sport, lang);
+  const plans = depth === "core" ? coreIntelligenceFeedPlansFor(sport, lang) : intelligenceFeedPlansFor(sport, lang);
 
   const feeds = await Promise.allSettled(plans.map(async (plan, qIndex) => {
     const recencyQuery = `${plan.query} when:${plan.recencyDays}d`;
@@ -1568,10 +1660,10 @@ function bingMarket(edition: NewsEdition) {
   return `${hl}-${edition.gl || "US"}`;
 }
 
-async function bingNewsIntelligence(sport: string, lang: string): Promise<IntelligenceNews[]> {
+async function bingNewsIntelligence(sport: string, lang: string, depth: "core" | "deep" = "deep"): Promise<IntelligenceNews[]> {
   const spec = INTELLIGENCE_SPECS[sport];
   if (!spec) return [];
-  const plans = intelligenceFeedPlansFor(sport, lang).slice(0, 9);
+  const plans = (depth === "core" ? coreIntelligenceFeedPlansFor(sport, lang) : intelligenceFeedPlansFor(sport, lang)).slice(0, depth === "core" ? 5 : 12);
   const feeds = await Promise.allSettled(plans.map(async (plan, qIndex) => {
     const url = `https://www.bing.com/news/search?q=${encodeURIComponent(plan.query)}&format=rss&setmkt=${encodeURIComponent(bingMarket(plan.edition))}`;
     const response = await timedFetch(url, {
@@ -1677,7 +1769,7 @@ async function openAiWebIntelligence(env: Env, sport: string, lang: string): Pro
   const model = str(env?.LIVE_INTELLIGENCE_MODEL).trim() || "gpt-6-luna";
   const today = new Date().toISOString().slice(0, 10);
   const prompt = `Today is ${today}. Search the web for the latest verified ${spec.label} competition news, official results, current live events and upcoming official events from the last 14 days and the next 14 days. Prioritize official federation/tour sources and reputable sports media. Return ONLY valid JSON with this exact shape: {"items":[{"title":"...","summary":"...","publishedAt":"ISO date or null","sourceName":"...","sourceUrl":"https://...","imageUrl":"https://... or null","kind":"news|result|live|upcoming","resultLabel":"explicit published score/result or null","scope":"local|regional|world","scopeLabel":"country/region/world label"}]}. Maximum 40 items. ALWAYS cover three mandatory scopes: (1) local sources relevant to the requested language/country, (2) regional/continental sources, and (3) worldwide sources and major international circuits. The selected language is a priority, never a geographic filter. For example fr must include France/francophone + Europe + World; zh must include China + Asia + World; ja must include Japan + Asia + World; en must include UK/Ireland + North America + Oceania + World. IMPORTANT: never invent a score, winner, date or live status. resultLabel may contain a numeric score ONLY when a searched source explicitly states that score. Language for title/summary: ${lang || "fr"}.`;
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const response = await timedFetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -1691,7 +1783,7 @@ async function openAiWebIntelligence(env: Env, sport: string, lang: string): Pro
       include: ["web_search_call.action.sources"],
       input: prompt,
     }),
-  });
+  }, 7500);
   if (!response.ok) throw new Error(`OpenAI web search HTTP ${response.status}`);
   const body = await response.json().catch(() => null) as any;
   const parsed = parseAiJson(extractOpenAIText(body));
@@ -1783,15 +1875,15 @@ function parseDartsInfoResults(html: string): NormalResult[] {
   return out;
 }
 
-async function directDartsResults(lang: string): Promise<{ results: NormalResult[]; fixtures: NormalMatch[]; events: NormalEvent[] }> {
+async function directDartsResults(lang: string, depth: "fast" | "deep" = "deep"): Promise<{ results: NormalResult[]; fixtures: NormalMatch[]; events: NormalEvent[] }> {
   const results: NormalResult[] = [];
   const fixtures: NormalMatch[] = [];
   const events: NormalEvent[] = [];
 
   const [modusReq, nzReq, dartsInfoReq, modusHomeReq] = await Promise.allSettled([
     fetchOfficialHtml("https://modussuperseries.com/results"),
-    fetchOfficialHtml("https://dartsnz.nz/results/"),
-    fetchOfficialHtml("https://dartsinfo.co.uk/"),
+    depth === "deep" ? fetchOfficialHtml("https://dartsnz.nz/results/") : Promise.resolve(""),
+    depth === "deep" ? fetchOfficialHtml("https://dartsinfo.co.uk/") : Promise.resolve(""),
     fetchOfficialHtml("https://modussuperseries.com/"),
   ]);
 
@@ -1898,8 +1990,8 @@ function sportsDbStartsAt(row: any) {
   return Number.isFinite(d.getTime()) ? d.toISOString() : date;
 }
 
-async function sportsDbFootballOverview() {
-  const offsets = [-2, -1, 0, 1, 2, 3];
+async function sportsDbFootballOverview(depth: "fast" | "deep" = "fast") {
+  const offsets = depth === "deep" ? [-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7] : [-1, 0, 1, 2];
   const settled = await Promise.allSettled(offsets.map(async (offset) => {
     const date = dateOffsetIso(offset);
     const response = await timedFetch(`${SPORTSDB_BASE}/eventsday.php?d=${encodeURIComponent(date)}&s=Soccer`, {
@@ -1958,7 +2050,7 @@ async function sportsDbFootballOverview() {
     fixtures.push(match);
   });
 
-  return { live: live.slice(0, 30), fixtures: fixtures.slice(0, 50), results: results.slice(0, 50), events: events.slice(0, 30) };
+  return { live: live.slice(0, 60), fixtures: fixtures.slice(0, depth === "deep" ? 220 : 80), results: results.slice(0, depth === "deep" ? 240 : 80), events: events.slice(0, depth === "deep" ? 120 : 40) };
 }
 
 function footballDataPlayers(row: any): NormalPlayer[] {
@@ -1969,9 +2061,9 @@ function footballDataPlayers(row: any): NormalPlayer[] {
   ];
 }
 
-async function footballDataOverview(key: string) {
-  const dateFrom = dateOffsetIso(-2);
-  const dateTo = dateOffsetIso(5);
+async function footballDataOverview(key: string, depth: "fast" | "deep" = "fast") {
+  const dateFrom = dateOffsetIso(depth === "deep" ? -7 : -1);
+  const dateTo = dateOffsetIso(depth === "deep" ? 7 : 3);
   const response = await timedFetch(`${FOOTBALL_DATA_BASE}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`, {
     headers: { Accept: "application/json", "X-Auth-Token": key },
   }, 4500);
@@ -2005,17 +2097,17 @@ async function footballDataOverview(key: string) {
     }
     fixtures.push(match);
   });
-  return { live: live.slice(0, 40), fixtures: fixtures.slice(0, 60), results: results.slice(0, 60), events: events.slice(0, 30) };
+  return { live: live.slice(0, 60), fixtures: fixtures.slice(0, depth === "deep" ? 220 : 90), results: results.slice(0, depth === "deep" ? 240 : 90), events: events.slice(0, depth === "deep" ? 120 : 40) };
 }
 
-async function footballOverview(env: Env) {
+async function footballOverview(env: Env, depth: "fast" | "deep" = "fast") {
   const warnings: string[] = [];
   let provider = "thesportsdb";
   let data = { live: [] as NormalMatch[], fixtures: [] as NormalMatch[], results: [] as NormalResult[], events: [] as NormalEvent[] };
   const footballDataKey = str(env?.FOOTBALL_DATA_API_KEY).trim();
   if (footballDataKey) {
     try {
-      data = await footballDataOverview(footballDataKey);
+      data = await footballDataOverview(footballDataKey, depth);
       provider = "football_data";
     } catch (error: any) {
       warnings.push(`football-data.org indisponible : ${str(error?.message || error)}. Fallback TheSportsDB activé.`);
@@ -2023,7 +2115,7 @@ async function footballOverview(env: Env) {
   }
   if (!data.live.length && !data.fixtures.length && !data.results.length && !data.events.length) {
     try {
-      data = await sportsDbFootballOverview();
+      data = await sportsDbFootballOverview(depth);
       provider = "thesportsdb";
     } catch (error: any) {
       warnings.push(`TheSportsDB indisponible : ${str(error?.message || error)}`);
@@ -2077,7 +2169,14 @@ function newsToEvent(row: IntelligenceNews, sport: string): NormalEvent | null {
   };
 }
 
-async function enrichWithLiveIntelligence(env: Env, sport: string, lang: string, base: { status: number; ttl: number; payload: any }) {
+async function enrichWithLiveIntelligence(
+  env: Env,
+  sport: string,
+  lang: string,
+  base: { status: number; ttl: number; payload: any },
+  depth: "core" | "deep" = "core",
+) {
+  const deep = depth === "deep";
   const warnings = arr(base.payload?.warnings).map(str).filter(Boolean);
   let google: IntelligenceNews[] = [];
   let bing: IntelligenceNews[] = [];
@@ -2086,24 +2185,28 @@ async function enrichWithLiveIntelligence(env: Env, sport: string, lang: string,
   let directRss: IntelligenceNews[] = [];
   let ai: IntelligenceNews[] = [];
 
+  // CORE is intentionally bounded so the journal appears quickly after the
+  // structured feed. DEEP runs later from the frontend and can fan out widely.
+  const directPageBudget = deep ? (sport === "darts" ? 12 : 8) : (sport === "darts" ? 5 : 4);
   const newsSettled = await Promise.allSettled([
-    googleNewsIntelligence(sport, lang),
-    bingNewsIntelligence(sport, lang),
+    googleNewsIntelligence(sport, lang, deep ? "deep" : "core"),
+    deep ? bingNewsIntelligence(sport, lang, "deep") : Promise.resolve([] as IntelligenceNews[]),
     sport === "foot" ? yahooSoccerNews(lang) : Promise.resolve([] as IntelligenceNews[]),
-    directEditorialIntelligence(sport),
+    directEditorialIntelligence(sport, directPageBudget),
     sport === "darts" ? directDartsNewsFeeds() : Promise.resolve([] as IntelligenceNews[]),
   ]);
   if (newsSettled[0].status === "fulfilled") google = newsSettled[0].value;
   else warnings.push(`Google News indisponible : ${str(newsSettled[0].reason?.message || newsSettled[0].reason)}`);
   if (newsSettled[1].status === "fulfilled") bing = newsSettled[1].value;
-  else warnings.push(`Bing News indisponible : ${str(newsSettled[1].reason?.message || newsSettled[1].reason)}`);
+  else if (deep) warnings.push(`Bing News indisponible : ${str(newsSettled[1].reason?.message || newsSettled[1].reason)}`);
   if (newsSettled[2].status === "fulfilled") yahoo = newsSettled[2].value;
   if (newsSettled[3].status === "fulfilled") directEditorial = newsSettled[3].value;
   else warnings.push(`Sources éditoriales directes indisponibles : ${str(newsSettled[3].reason?.message || newsSettled[3].reason)}`);
   if (newsSettled[4].status === "fulfilled") directRss = newsSettled[4].value;
 
-  // L'IA web est un enrichissement facultatif. Les RSS Google+Bing (+Yahoo Foot) assurent le contenu sans clé OpenAI.
-  if (str(env?.OPENAI_API_KEY).trim()) {
+  // AI web and page-image crawling are deliberately DEEP-only. They can never
+  // delay the first structured result cards nor the normal news layer.
+  if (deep && str(env?.OPENAI_API_KEY).trim()) {
     try {
       ai = await openAiWebIntelligence(env, sport, lang);
     } catch (error: any) {
@@ -2113,37 +2216,44 @@ async function enrichWithLiveIntelligence(env: Env, sport: string, lang: string,
 
   const mergedNews = uniqNews([...ai, ...directRss, ...google, ...bing, ...yahoo, ...directEditorial])
     .sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")))
-    .slice(0, sport === "foot" ? 140 : 120);
-  const news = await enrichNewsImages(mergedNews);
+    .slice(0, deep ? (sport === "foot" ? 220 : 180) : (sport === "foot" ? 130 : 110));
+  const news = deep ? await enrichNewsImages(mergedNews) : mergedNews;
   const intelligenceEvents = news.map((row) => newsToEvent(row, sport)).filter(Boolean) as NormalEvent[];
+
   let direct = { results: [] as NormalResult[], fixtures: [] as NormalMatch[], events: [] as NormalEvent[] };
-  if (sport === "darts") {
-    try { direct = await directDartsResults(lang); } catch {}
+  if (deep && sport === "darts") {
+    try { direct = await directDartsResults(lang, "deep"); } catch {}
   }
-  const extraStructuredEvents = sport === "padel" ? await padelFipFinalEvents() : [];
-  const mergedEvents = uniqEvents([...(arr(base.payload?.events) as NormalEvent[]), ...direct.events, ...extraStructuredEvents, ...intelligenceEvents]).slice(0, 80);
+  const extraStructuredEvents = deep && sport === "padel" ? await padelFipFinalEvents() : [];
+  const mergedEvents = uniqEvents([
+    ...(arr(base.payload?.events) as NormalEvent[]),
+    ...direct.events,
+    ...extraStructuredEvents,
+    ...intelligenceEvents,
+  ]).slice(0, deep ? 180 : 110);
   const provider = ai.length ? "openai_web" : (google.length || bing.length || yahoo.length || directEditorial.length || directRss.length) ? "news_rss" : "none";
+  const selectedPlans = deep ? intelligenceFeedPlansFor(sport, lang) : coreIntelligenceFeedPlansFor(sport, lang);
 
   return {
     ...base,
-    ttl: Math.min(base.ttl || 1800, ai.length ? 1800 : 900),
+    ttl: Math.min(base.ttl || 1800, deep ? 1800 : 600),
     payload: {
       ...base.payload,
-      configured: !!base.payload?.configured || news.length > 0,
-      automaticData: !!base.payload?.automaticData || news.length > 0,
-      results: uniqNormalResults([...direct.results, ...(arr(base.payload?.results) as NormalResult[]) ]).slice(0, sport === "darts" ? 120 : 80),
-      fixtures: [...direct.fixtures, ...(arr(base.payload?.fixtures) as NormalMatch[])].slice(0, 40),
+      configured: !!base.payload?.configured || news.length > 0 || direct.results.length > 0,
+      automaticData: !!base.payload?.automaticData || news.length > 0 || direct.results.length > 0,
+      results: uniqNormalResults([...direct.results, ...(arr(base.payload?.results) as NormalResult[])]).slice(0, deep ? (sport === "darts" ? 180 : 120) : 100),
+      fixtures: [...direct.fixtures, ...(arr(base.payload?.fixtures) as NormalMatch[])].slice(0, deep ? 100 : 70),
       events: mergedEvents,
       news,
       intelligence: {
         enabled: news.length > 0,
         provider,
-        aiEnabled: !!str(env?.OPENAI_API_KEY).trim(),
+        aiEnabled: deep && !!str(env?.OPENAI_API_KEY).trim(),
         count: news.length,
         localCount: news.filter((item) => item.scope === "local").length,
         regionalCount: news.filter((item) => item.scope === "regional").length,
         worldCount: news.filter((item) => item.scope === "world" || !item.scope).length,
-        queryCount: intelligenceFeedPlansFor(sport, lang).length + (sport === "foot" ? 1 : 0) + (DIRECT_EDITORIAL_PAGES[sport]?.length || 0) + (sport === "darts" ? 2 : 0),
+        queryCount: selectedPlans.length + (deep ? Math.min(12, selectedPlans.length) : 0) + (sport === "foot" ? 1 : 0) + Math.min(directPageBudget, DIRECT_EDITORIAL_PAGES[sport]?.length || 0) + (sport === "darts" ? 2 : 0),
         directResultCount: direct.results.length + extraStructuredEvents.length,
         updatedAt: new Date().toISOString(),
       },
@@ -2151,7 +2261,6 @@ async function enrichWithLiveIntelligence(env: Env, sport: string, lang: string,
     },
   };
 }
-
 
 async function fastOverview(env: Env, sport: string, lang: string) {
   if (sport === "darts") {
@@ -2170,7 +2279,7 @@ async function fastOverview(env: Env, sport: string, lang: string) {
         });
     const [base, direct] = await Promise.all([
       basePromise,
-      directDartsResults(lang).catch(() => ({ results: [] as NormalResult[], fixtures: [] as NormalMatch[], events: [] as NormalEvent[] })),
+      directDartsResults(lang, "fast").catch(() => ({ results: [] as NormalResult[], fixtures: [] as NormalMatch[], events: [] as NormalEvent[] })),
     ]);
     return {
       ...base,
@@ -2246,13 +2355,40 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     return cachedResponse(context, async () => fastOverview(context.env, sport, lang));
   }
 
+  const isDeep = phase === "deep";
+
+  // FULL is the fast journal layer. Structured scores were already requested by
+  // phase=fast, so do not fetch the same slow federation/API pages twice before
+  // returning news. The frontend merges both phases and keeps the structured rows.
+  if (!isDeep) {
+    const provider = sport === "pingpong" ? "tabletennisapi" : sport === "darts" ? "pdc_official" : "official_links";
+    const base = {
+      status: 200,
+      ttl: 600,
+      payload: {
+        sport,
+        configured: false,
+        automaticData: false,
+        provider,
+        plan: "journal-core",
+        dataAsOf: new Date().toISOString(),
+        liveAvailable: false,
+        liveReason: "Données structurées chargées séparément par le flux rapide.",
+        live: [], fixtures: [], results: [], events: [], news: [], warnings: [],
+      },
+    };
+    return cachedResponse(context, async () => enrichWithLiveIntelligence(context.env, sport, lang, base, "core"));
+  }
+
+  // DEEP runs after the page is usable. It can afford broader official sources,
+  // deeper result history, Bing, optional OpenAI web search and media enrichment.
   if (sport === "darts") {
     const key = str(context.env?.DARTS_API_KEY).trim();
     return cachedResponse(context, async () => {
       const base = key
         ? await dartsOverview(key)
-        : await officialDartsFallbackOverview("DARTS_API_KEY absente : LIVE Intelligence complète les actualités/résultats publics. Le score LIVE chiffré nécessite DartsAPI Live ou DartConnect API.");
-      return enrichWithLiveIntelligence(context.env, sport, lang, base);
+        : await officialDartsFallbackOverview("DARTS_API_KEY absente : collecteurs publics PDC/MODUS/WDF/DartConnect utilisés ; le score LIVE chiffré nécessite un provider compatible LIVE.");
+      return enrichWithLiveIntelligence(context.env, sport, lang, base, "deep");
     });
   }
 
@@ -2260,19 +2396,33 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     const key = str(context.env?.TABLE_TENNIS_API_KEY).trim();
     return cachedResponse(context, async () => {
       const base = key
-        ? await tableTennisOverview(key)
-        : { status: 200, ttl: 900, payload: { sport, configured: false, automaticData: false, provider: "tabletennisapi", plan: null, dataAsOf: null, liveAvailable: false, liveReason: "TABLE_TENNIS_API_KEY non configurée côté Cloudflare.", live: [], fixtures: [], results: [], events: [], warnings: ["LIVE Intelligence charge quand même l'actualité Ping-Pong ; ajoute TABLE_TENNIS_API_KEY pour les scores structurés."] } };
-      return enrichWithLiveIntelligence(context.env, sport, lang, base);
+        ? await tableTennisOverview(key, "deep")
+        : { status: 200, ttl: 900, payload: { sport, configured: false, automaticData: false, provider: "tabletennisapi", plan: "deep", dataAsOf: null, liveAvailable: false, liveReason: "TABLE_TENNIS_API_KEY non configurée côté Cloudflare.", live: [], fixtures: [], results: [], events: [], warnings: ["LIVE Intelligence charge quand même l'actualité Ping-Pong ; ajoute TABLE_TENNIS_API_KEY pour les scores structurés."] } };
+      return enrichWithLiveIntelligence(context.env, sport, lang, base, "deep");
     });
   }
 
   if (sport === "foot") {
-    return cachedResponse(context, async () => enrichWithLiveIntelligence(context.env, sport, lang, await footballOverview(context.env)));
+    return cachedResponse(context, async () => enrichWithLiveIntelligence(context.env, sport, lang, await footballOverview(context.env, "deep"), "deep"));
   }
 
   if (sport === "babyfoot" || sport === "molkky" || sport === "petanque") {
-    return cachedResponse(context, async () => enrichWithLiveIntelligence(context.env, sport, lang, await officialEventOverview(sport)));
+    return cachedResponse(context, async () => enrichWithLiveIntelligence(context.env, sport, lang, await officialEventOverview(sport), "deep"));
   }
 
-  return cachedResponse(context, async () => enrichWithLiveIntelligence(context.env, sport, lang, { status: 200, ttl: 900, payload: { sport, configured: false, automaticData: false, provider: "official_links", plan: null, dataAsOf: null, liveAvailable: false, liveReason: "Aucun provider score structuré n'est encore branché pour ce sport.", live: [], fixtures: [], results: [], events: [], warnings: [] } }));
+  return cachedResponse(context, async () => enrichWithLiveIntelligence(context.env, sport, lang, {
+    status: 200,
+    ttl: 900,
+    payload: {
+      sport,
+      configured: false,
+      automaticData: false,
+      provider: "official_links",
+      plan: "deep",
+      dataAsOf: new Date().toISOString(),
+      liveAvailable: false,
+      liveReason: "Collecteurs directs, calendriers officiels et LIVE Intelligence utilisés pour ce sport.",
+      live: [], fixtures: [], results: [], events: [], warnings: [],
+    },
+  }, "deep"));
 };

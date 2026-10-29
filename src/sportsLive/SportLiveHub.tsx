@@ -11,7 +11,7 @@ import {
   getRecommendedSportSources,
   getSportSources,
 } from "./catalog";
-import { fetchSportLiveOverview, getCachedSportLiveOverview } from "./liveApi";
+import { fetchSportLiveOverview, getCachedSportLiveOverview, getCachedSportLiveOverviewSavedAt, mergeSportLiveOverview } from "./liveApi";
 import type { SportLiveEvent, SportLiveNewsItem, SportLiveOverview, SportLiveRegion, SportLiveSource } from "./types";
 import { isLiveSportsSupportedSport } from "./support";
 
@@ -732,76 +732,132 @@ export default function SportLiveHub() {
   const [feed, setFeed] = React.useState<SportLiveOverview | null>(() => getCachedSportLiveOverview(liveSport, lang));
   const [loading, setLoading] = React.useState(() => !getCachedSportLiveOverview(liveSport, lang));
   const [feedError, setFeedError] = React.useState<string | null>(null);
-  const [updatedAt, setUpdatedAt] = React.useState<number | null>(null);
+  const [updatedAt, setUpdatedAt] = React.useState<number | null>(() => getCachedSportLiveOverviewSavedAt(liveSport, lang));
   const [floatingPanel, setFloatingPanel] = React.useState<FloatingPanel>(null);
 
+  const applyFeed = React.useCallback((next: SportLiveOverview) => {
+    setFeed((previous) => mergeSportLiveOverview(previous, next));
+    setUpdatedAt(Date.now());
+  }, []);
+
   React.useEffect(() => {
+    const cached = getCachedSportLiveOverview(liveSport, lang);
     setRegion("recommended");
     setView("overview");
-    setFeed(getCachedSportLiveOverview(liveSport, lang));
+    setFeed(cached);
+    setLoading(!cached);
+    setUpdatedAt(getCachedSportLiveOverviewSavedAt(liveSport, lang));
     setFeedError(null);
     setFloatingPanel(null);
   }, [liveSport, lang]);
 
+  // Progressive pipeline: local cache is rendered synchronously by state above,
+  // then structured scores/results, then the news journal, then the expensive
+  // deep enrichment while the page is already fully usable.
   React.useEffect(() => {
     let active = true;
-    const fastController = new AbortController();
-    const fullController = new AbortController();
+    const controllers = new Set<AbortController>();
+    let deepTimer: number | null = null;
+    let idleHandle: number | null = null;
 
-    const loadProgressive = async (quiet = false) => {
-      const cached = getCachedSportLiveOverview(liveSport, lang);
-      if (!quiet && !cached) setLoading(true);
-
+    const phase = async (name: "fast" | "full" | "deep") => {
+      const controller = new AbortController();
+      controllers.add(controller);
       try {
-        const fast = await fetchSportLiveOverview(liveSport, fastController.signal, lang, "fast");
-        if (!active) return;
-        setFeed(fast);
+        const next = await fetchSportLiveOverview(liveSport, controller.signal, lang, name);
+        if (!active) return false;
+        applyFeed(next);
         setFeedError(null);
-        setUpdatedAt(Date.now());
-        if (!quiet) setLoading(false);
+        return true;
       } catch (error: any) {
-        if (active && error?.name !== "AbortError" && !cached) {
-          setFeedError(String(error?.message || error || "LIVE indisponible"));
-          if (!quiet) setLoading(false);
-        }
-      }
-
-      try {
-        const full = await fetchSportLiveOverview(liveSport, fullController.signal, lang, "full");
-        if (!active) return;
-        setFeed(full);
-        setFeedError(null);
-        setUpdatedAt(Date.now());
-      } catch (error: any) {
-        if (!active || error?.name === "AbortError") return;
+        if (!active || error?.name === "AbortError") return false;
         if (!getCachedSportLiveOverview(liveSport, lang)) setFeedError(String(error?.message || error || "LIVE partiel"));
+        return false;
+      } finally {
+        controllers.delete(controller);
       }
     };
 
-    void loadProgressive(false);
-    const refreshMs = refreshIntervalFor(liveSport, feed);
-    const timer = refreshMs ? window.setInterval(() => void loadProgressive(true), refreshMs) : null;
+    const scheduleDeep = () => {
+      const run = () => { if (active) void phase("deep"); };
+      if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+        idleHandle = (window as any).requestIdleCallback(run, { timeout: 1800 });
+      } else {
+        deepTimer = window.setTimeout(run, 900);
+      }
+    };
+
+    const load = async () => {
+      const cached = getCachedSportLiveOverview(liveSport, lang);
+      if (!cached) setLoading(true);
+      await phase("fast");
+      if (active) setLoading(false);
+      await phase("full");
+      if (active) scheduleDeep();
+    };
+
+    void load();
     return () => {
       active = false;
-      fastController.abort();
-      fullController.abort();
-      if (timer !== null) window.clearInterval(timer);
+      controllers.forEach((controller) => controller.abort());
+      if (deepTimer !== null) window.clearTimeout(deepTimer);
+      if (idleHandle !== null && typeof (window as any).cancelIdleCallback === "function") (window as any).cancelIdleCallback(idleHandle);
     };
-  }, [liveSport, lang, !!feed?.configured, !!feed?.liveAvailable]);
+  }, [liveSport, lang, applyFeed]);
+
+  // Automatic refresh stays light: structured data first, then the normal news
+  // layer. The deep/AI/media layer is reserved for initial idle time or a manual
+  // refresh so it cannot hammer slow sources every 30 seconds/minutes.
+  React.useEffect(() => {
+    const refreshMs = refreshIntervalFor(liveSport, feed);
+    if (!refreshMs) return;
+    let active = true;
+    let controller: AbortController | null = null;
+    const timer = window.setInterval(() => {
+      void (async () => {
+        controller?.abort();
+        controller = new AbortController();
+        try {
+          const fast = await fetchSportLiveOverview(liveSport, controller.signal, lang, "fast");
+          if (!active) return;
+          applyFeed(fast);
+          const full = await fetchSportLiveOverview(liveSport, controller.signal, lang, "full");
+          if (!active) return;
+          applyFeed(full);
+          setFeedError(null);
+        } catch (error: any) {
+          if (active && error?.name !== "AbortError" && !getCachedSportLiveOverview(liveSport, lang)) {
+            setFeedError(String(error?.message || error || "LIVE partiel"));
+          }
+        }
+      })();
+    }, refreshMs);
+    return () => {
+      active = false;
+      controller?.abort();
+      window.clearInterval(timer);
+    };
+  }, [liveSport, lang, !!feed?.configured, !!feed?.liveAvailable, applyFeed]);
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
     setFeedError(null);
     try {
-      const next = await fetchSportLiveOverview(liveSport, undefined, lang, "full");
-      setFeed(next);
-      setUpdatedAt(Date.now());
+      const fast = await fetchSportLiveOverview(liveSport, undefined, lang, "fast");
+      applyFeed(fast);
+      setLoading(false);
+      const full = await fetchSportLiveOverview(liveSport, undefined, lang, "full");
+      applyFeed(full);
+      // Deep enrichment deliberately happens after the visible refresh is done.
+      void fetchSportLiveOverview(liveSport, undefined, lang, "deep")
+        .then((deep) => applyFeed(deep))
+        .catch(() => undefined);
     } catch (error: any) {
       setFeedError(String(error?.message || error || "LIVE indisponible"));
     } finally {
       setLoading(false);
     }
-  }, [liveSport, lang]);
+  }, [liveSport, lang, applyFeed]);
 
   const sources = React.useMemo(() => {
     if (region === "all") return allSportSources;
