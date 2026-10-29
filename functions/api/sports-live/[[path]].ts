@@ -6,7 +6,7 @@ type Env = {
   LIVE_INTELLIGENCE_MODEL?: string;
 };
 
-type NormalPlayer = { id?: string | null; name: string; score?: number | null };
+type NormalPlayer = { id?: string | null; name: string; score?: number | null; countryCode?: string | null; photoUrl?: string | null };
 type NormalMatch = {
   id: string;
   competition?: string | null;
@@ -15,6 +15,8 @@ type NormalMatch = {
   date?: string | null;
   players: NormalPlayer[];
   raw?: unknown;
+  sourceName?: string | null;
+  sourceUrl?: string | null;
 };
 type NormalResult = {
   id: string;
@@ -24,6 +26,8 @@ type NormalResult = {
   winner: NormalPlayer;
   loser: NormalPlayer;
   raw?: unknown;
+  sourceName?: string | null;
+  sourceUrl?: string | null;
 };
 
 const DARTS_BASE = "https://api.dartsapi.com/v1";
@@ -145,10 +149,14 @@ async function apiFetch(base: string, key: string, path: string) {
 }
 
 function dartPlayer(v: any): NormalPlayer {
+  const countryRaw = str(v?.country_code || v?.countryCode || v?.country?.code || v?.nationality_code || v?.nation_code).trim().toUpperCase();
+  const photoUrl = str(v?.photo_url || v?.photoUrl || v?.image_url || v?.image || v?.avatar_url || v?.headshot).trim();
   return {
     id: str(v?.player_id || v?.id) || null,
     name: str(v?.name || v?.player_name) || "—",
     score: num(v?.score ?? v?.legs ?? v?.sets),
+    countryCode: /^[A-Z]{2}$/.test(countryRaw) ? countryRaw : null,
+    photoUrl: /^https?:\/\//i.test(photoUrl) ? photoUrl : null,
   };
 }
 
@@ -172,6 +180,8 @@ function normalizeDartMatch(v: any, i: number): NormalMatch {
     date: str(v?.date) || null,
     players: dartPlayers(v),
     raw: v,
+    sourceName: "DartsAPI",
+    sourceUrl: "https://dartsapi.com/",
   };
 }
 
@@ -185,6 +195,8 @@ function normalizeDartResult(v: any, i: number): NormalResult {
     winner: v?.winner ? dartPlayer(v.winner) : (players[0] || { name: "—", score: null }),
     loser: v?.loser ? dartPlayer(v.loser) : (players[1] || { name: "—", score: null }),
     raw: v,
+    sourceName: "DartsAPI",
+    sourceUrl: "https://dartsapi.com/",
   };
 }
 
@@ -876,7 +888,7 @@ const INTELLIGENCE_SPECS: Record<string, { label: string; query: string; domains
 
 
 const SPORT_SOURCE_DOMAINS: Record<string, string[]> = {
-  darts: ["pdc.tv", "dartswdf.com", "modussuperseries.com", "dartconnect.com", "dartsinfo.co.uk", "dartsnews.com", "live-darts.com", "flechettes.info", "flashscore.com", "ffdarts.fr", "ddv-online.de", "dartsaustralia.com", "dartsnz.nz", "champdarts.com"],
+  darts: ["pdc.tv", "dartswdf.com", "modussuperseries.com", "dartconnect.com", "leaderboard.dartconnect.com", "dartsinfo.co.uk", "dartsnews.com", "live-darts.com", "flechettes.info", "ffdarts.fr", "ddv-online.de", "ndbdarts.nl", "dartsbelgium.be", "champdarts.com", "adodarts.com", "dartscanada.com", "dartsaustralia.com", "dartsnz.nz", "pdcnordic.tv", "bedarts.be", "jsfd.or.jp", "japan-darts.com", "darts.or.jp"],
   pingpong: ["ittf.com", "worldtabletennis.com", "ettu.org", "fftt.com", "tabletennisengland.co.uk"],
   petanque: ["fipjp.org", "ffpjp.org", "compet.ffpjp.org", "boulistenaute.com"],
   babyfoot: ["tablesoccer.org", "ffbabyfoot.fr"],
@@ -928,6 +940,17 @@ const DIRECT_EDITORIAL_PAGES: Record<string, Array<{ url: string; sourceName: st
     { url: "https://dartsinfo.co.uk/", sourceName: "DartsInfo", scope: "regional", scopeLabel: "UK & Europe" },
     { url: "https://dartsnz.nz/results/", sourceName: "Darts New Zealand", scope: "regional", scopeLabel: "Océanie" },
     { url: "https://www.dartsaustralia.com/", sourceName: "Darts Australia", scope: "regional", scopeLabel: "Océanie" },
+    { url: "https://www.ffdarts.fr/category/resultat/", sourceName: "FFDarts Résultats", scope: "local", scopeLabel: "France" },
+    { url: "https://champdarts.com/news/", sourceName: "CDC", scope: "regional", scopeLabel: "Amérique du Nord / Caraïbes" },
+    { url: "https://champdarts.com/blog/blog-single-author-full/", sourceName: "CDC Résultats", scope: "regional", scopeLabel: "Amérique du Nord / Caraïbes" },
+    { url: "https://leaderboard.dartconnect.com/", sourceName: "DartConnect Leaderboards", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.live-darts.com/pdc-darts-news/", sourceName: "LiveDarts PDC", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.live-darts.com/pdc-darts-news/european-tour/", sourceName: "LiveDarts European Tour", scope: "regional", scopeLabel: "Europe" },
+    { url: "https://pdc-nordic.tv/", sourceName: "PDC Nordic & Baltic", scope: "regional", scopeLabel: "Nordique / Baltique" },
+    { url: "https://bedarts.be/startpagina/nieuws/", sourceName: "BeDarts", scope: "regional", scopeLabel: "Benelux" },
+    { url: "https://jsfd.or.jp/", sourceName: "JSFD", scope: "regional", scopeLabel: "Japon / Asie" },
+    { url: "https://japan-darts.com/", sourceName: "JDO", scope: "regional", scopeLabel: "Japon / Asie" },
+    { url: "https://www.darts.or.jp/news/?page=0", sourceName: "Japan Darts Association", scope: "regional", scopeLabel: "Japon / Asie" },
   ],
   pingpong: [
     { url: "https://www.ittf.com/news/", sourceName: "ITTF", scope: "world", scopeLabel: "Monde" },
@@ -1379,13 +1402,20 @@ async function fetchNewsImage(sourceUrl: string | null | undefined) {
 }
 
 async function enrichNewsImages(rows: IntelligenceNews[]) {
-  const first = rows.slice(0, 5);
-  const enriched = await Promise.all(first.map(async (row) => {
-    if (row.imageUrl) return row;
-    const imageUrl = await fetchNewsImage(row.sourceUrl);
-    return imageUrl ? { ...row, imageUrl } : row;
-  }));
-  return [...enriched, ...rows.slice(5)];
+  // Media enrichment is DEEP-only. Enrich a useful newspaper-sized front page,
+  // but cap concurrency so a slow publisher can never stall the whole response.
+  const limit = Math.min(24, rows.length);
+  const enriched = rows.slice();
+  for (let start = 0; start < limit; start += 6) {
+    const batch = rows.slice(start, Math.min(start + 6, limit));
+    const resolved = await Promise.all(batch.map(async (row) => {
+      if (row.imageUrl) return row;
+      const imageUrl = await fetchNewsImage(row.sourceUrl);
+      return imageUrl ? { ...row, imageUrl } : row;
+    }));
+    resolved.forEach((row, index) => { enriched[start + index] = row; });
+  }
+  return enriched;
 }
 
 function classifyHeadline(title: string, summary = ""): IntelligenceKind {
@@ -1417,6 +1447,27 @@ function uniqNews(rows: IntelligenceNews[]) {
   });
 }
 
+function diversifyNews(rows: IntelligenceNews[], max: number) {
+  const unique = uniqNews(rows);
+  const buckets = new Map<string, IntelligenceNews[]>();
+  unique.forEach((row) => {
+    const key = `${row.scope || "world"}|${String(row.sourceName || "WEB").toLowerCase()}`;
+    const bucket = buckets.get(key) || []; bucket.push(row); buckets.set(key, bucket);
+  });
+  const keys = Array.from(buckets.keys());
+  const out: IntelligenceNews[] = [];
+  let index = 0;
+  while (out.length < max && keys.some((key) => index < (buckets.get(key)?.length || 0))) {
+    for (const key of keys) {
+      const row = buckets.get(key)?.[index];
+      if (row) out.push(row);
+      if (out.length >= max) break;
+    }
+    index += 1;
+  }
+  return out;
+}
+
 
 async function directEditorialIntelligence(sport: string, maxPages = 6): Promise<IntelligenceNews[]> {
   const pages = (DIRECT_EDITORIAL_PAGES[sport] || []).slice(0, Math.max(1, maxPages));
@@ -1437,7 +1488,8 @@ async function directEditorialIntelligence(sport: string, maxPages = 6): Promise
     let match: RegExpExecArray | null;
     while ((match = anchorRx.exec(html)) && rows.length < 28) {
       const href = absoluteHttpUrl(decodeHtml(match[1]), response.url || page.url);
-      const title = stripTags(match[2]);
+      const anchorHtml = match[2];
+      const title = stripTags(anchorHtml);
       const key = normalizeHeadlineKey(title);
       if (!href || title.length < 28 || title.length > 220 || !key || seen.has(key)) continue;
       if (/^(home|news|results|resultats|calendar|calendrier|ranking|rankings|read more|voir plus|view all|menu|contact|login|sign in)$/i.test(title)) continue;
@@ -1452,7 +1504,10 @@ async function directEditorialIntelligence(sport: string, maxPages = 6): Promise
         publishedAt: null,
         sourceName: page.sourceName,
         sourceUrl: href,
-        imageUrl: null,
+        imageUrl: (() => {
+          const img = anchorHtml.match(/<img\b[^>]*(?:src|data-src)=["']([^"']+)["'][^>]*>/i)?.[1];
+          return img ? absoluteHttpUrl(decodeHtml(img), response.url || page.url) : null;
+        })(),
         kind,
         resultLabel: kind === "result" ? (explicitScore ? `Score ${explicitScore}` : "Résultat publié") : null,
         scope: page.scope,
@@ -1506,12 +1561,15 @@ async function genericRssIntelligence(url: string, sourceName: string, scope: In
 
 async function directDartsNewsFeeds(): Promise<IntelligenceNews[]> {
   const feeds = await Promise.allSettled([
-    genericRssIntelligence("https://dartsnews.com/sitemap/news.xml", "DartsNews", "world", "Monde", "darts", 48),
+    genericRssIntelligence("https://dartsnews.com/sitemap/news.xml", "DartsNews", "world", "Monde", "darts", 72),
+    genericRssIntelligence("https://www.live-darts.com/feed/", "LiveDarts", "world", "Monde", "darts", 56),
+    genericRssIntelligence("https://champdarts.com/feed/", "CDC", "regional", "Amérique du Nord / Caraïbes", "darts", 48),
+    genericRssIntelligence("https://www.ffdarts.fr/feed/", "FFDarts", "local", "France", "darts", 40),
     genericRssIntelligence("https://www.thesun.co.uk/sport/darts/feed/", "The Sun Darts", "world", "Monde", "darts", 28),
   ]);
   return uniqNews(feeds.flatMap((row) => row.status === "fulfilled" ? row.value : []))
     .sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")))
-    .slice(0, 64);
+    .slice(0, 120);
 }
 
 async function padelFipFinalEvents(): Promise<NormalEvent[]> {
@@ -1768,7 +1826,7 @@ async function openAiWebIntelligence(env: Env, sport: string, lang: string): Pro
   if (!key || !spec) return [];
   const model = str(env?.LIVE_INTELLIGENCE_MODEL).trim() || "gpt-6-luna";
   const today = new Date().toISOString().slice(0, 10);
-  const prompt = `Today is ${today}. Search the web for the latest verified ${spec.label} competition news, official results, current live events and upcoming official events from the last 14 days and the next 14 days. Prioritize official federation/tour sources and reputable sports media. Return ONLY valid JSON with this exact shape: {"items":[{"title":"...","summary":"...","publishedAt":"ISO date or null","sourceName":"...","sourceUrl":"https://...","imageUrl":"https://... or null","kind":"news|result|live|upcoming","resultLabel":"explicit published score/result or null","scope":"local|regional|world","scopeLabel":"country/region/world label"}]}. Maximum 40 items. ALWAYS cover three mandatory scopes: (1) local sources relevant to the requested language/country, (2) regional/continental sources, and (3) worldwide sources and major international circuits. The selected language is a priority, never a geographic filter. For example fr must include France/francophone + Europe + World; zh must include China + Asia + World; ja must include Japan + Asia + World; en must include UK/Ireland + North America + Oceania + World. IMPORTANT: never invent a score, winner, date or live status. resultLabel may contain a numeric score ONLY when a searched source explicitly states that score. Language for title/summary: ${lang || "fr"}.`;
+  const prompt = `Today is ${today}. Search the web broadly for the latest verified ${spec.label} competition news, official match results, current live events, rankings/performances and upcoming official events from the last 30 days and the next 30 days. Cover the user-language area AND Europe/continental circuits AND the rest of the world; never let one country or one federation dominate. For darts explicitly include PDC, WDF, MODUS, DartConnect/DCTV, CDC North America/Latin America, PDC Nordic & Baltic, France, Benelux/DACH, Australia and New Zealand when relevant. Prioritize official federation/tour sources and reputable specialist sports media. Return ONLY valid JSON with this exact shape: {"items":[{"title":"...","summary":"...","publishedAt":"ISO date or null","sourceName":"...","sourceUrl":"https://...","imageUrl":"https://... or null","kind":"news|result|live|upcoming","resultLabel":"explicit published score/result or null","scope":"local|regional|world","scopeLabel":"country/region/world label"}]}. Maximum 40 items. ALWAYS cover three mandatory scopes: (1) local sources relevant to the requested language/country, (2) regional/continental sources, and (3) worldwide sources and major international circuits. The selected language is a priority, never a geographic filter. For example fr must include France/francophone + Europe + World; zh must include China + Asia + World; ja must include Japan + Asia + World; en must include UK/Ireland + North America + Oceania + World. IMPORTANT: never invent a score, winner, date or live status. resultLabel may contain a numeric score ONLY when a searched source explicitly states that score. Language for title/summary: ${lang || "fr"}.`;
   const response = await timedFetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -1870,7 +1928,90 @@ function parseDartsInfoResults(html: string): NormalResult[] {
       winner,
       loser,
       raw: { source: "DartsInfo", sourceUrl: "https://dartsinfo.co.uk/" },
+      sourceName: "DartsInfo", sourceUrl: "https://dartsinfo.co.uk/",
     });
+  }
+  return out;
+}
+
+function cleanScoreSide(value: string) {
+  return String(value || "")
+    .replace(/\(\d{1,3}\)/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^(?:Quarterfinals?|Semifinals?|Final|Round of \d+|Last \d+)\s*/i, "")
+    .trim()
+    .slice(0, 100);
+}
+
+function parseGenericDartsScoreLines(html: string, sourceName: string, sourceUrl: string, competition: string, limit = 90): NormalResult[] {
+  const lines = htmlLines(html);
+  const out: NormalResult[] = [];
+  let round: string | null = null;
+  for (let i = 0; i < lines.length && out.length < limit; i += 1) {
+    const line = lines[i];
+    if (/^(quarter-?finals?|semi-?finals?|final|round (?:of )?\d+|last \d+)$/i.test(line)) { round = line; continue; }
+    const match = line.match(/^(.{2,100}?)\s+(\d{1,2})\s*[-–—]\s*(\d{1,2})\s+(.{2,100})$/);
+    if (!match) continue;
+    const left = cleanScoreSide(match[1]);
+    const right = cleanScoreSide(match[4]);
+    const aScore = Number(match[2]);
+    const bScore = Number(match[3]);
+    if (!left || !right || left === right || aScore === bScore || /^(october|september|august|july|june|may|april|march|february|january)\b/i.test(left)) continue;
+    const winner = aScore > bScore ? { name: left, score: aScore } : { name: right, score: bScore };
+    const loser = aScore > bScore ? { name: right, score: bScore } : { name: left, score: aScore };
+    out.push({
+      id: `${sourceName}-${i}-${winner.name}-${loser.name}`.replace(/[^a-z0-9-]+/gi, "-").slice(0, 120),
+      playedOn: null, competition, round, winner, loser,
+      raw: { source: sourceName, sourceUrl }, sourceName, sourceUrl,
+    });
+  }
+  return out;
+}
+
+async function liveDartsStructuredResults(): Promise<NormalResult[]> {
+  const hub = "https://www.live-darts.com/pdc-darts-news/";
+  try {
+    const html = await fetchOfficialHtml(hub);
+    const links: Array<{ url: string; title: string }> = [];
+    const seen = new Set<string>();
+    const rx = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = rx.exec(html)) && links.length < 7) {
+      const title = stripTags(m[2]);
+      if (!/(results|live scores|schedule of play|draw)/i.test(title) || !/2026|darts/i.test(title)) continue;
+      const url = absoluteHttpUrl(decodeHtml(m[1]), hub);
+      if (!url || seen.has(url) || !/live-darts\.com/i.test(url)) continue;
+      seen.add(url); links.push({ url, title });
+    }
+    const settled = await Promise.allSettled(links.map(async ({ url, title }) => {
+      const page = await fetchOfficialHtml(url);
+      return parseGenericDartsScoreLines(page, "LiveDarts", url, title.replace(/\s*\|.*$/, "").slice(0, 90), 70);
+    }));
+    return uniqNormalResults(settled.flatMap((row) => row.status === "fulfilled" ? row.value : [])).slice(0, 160);
+  } catch { return []; }
+}
+
+function resultSourceKey(row: NormalResult) {
+  return String(row.sourceName || (row.raw as any)?.source || "OTHER").toUpperCase();
+}
+
+function diversifyDartsResults(rows: NormalResult[], max = 180) {
+  const unique = uniqNormalResults(rows);
+  const buckets = new Map<string, NormalResult[]>();
+  unique.forEach((row) => {
+    const key = resultSourceKey(row);
+    const bucket = buckets.get(key) || []; bucket.push(row); buckets.set(key, bucket);
+  });
+  const keys = Array.from(buckets.keys());
+  const out: NormalResult[] = [];
+  let index = 0;
+  while (out.length < max && keys.some((key) => index < (buckets.get(key)?.length || 0))) {
+    for (const key of keys) {
+      const row = buckets.get(key)?.[index];
+      if (row) out.push(row);
+      if (out.length >= max) break;
+    }
+    index += 1;
   }
   return out;
 }
@@ -1880,11 +2021,13 @@ async function directDartsResults(lang: string, depth: "fast" | "deep" = "deep")
   const fixtures: NormalMatch[] = [];
   const events: NormalEvent[] = [];
 
-  const [modusReq, nzReq, dartsInfoReq, modusHomeReq] = await Promise.allSettled([
+  const [modusReq, nzReq, dartsInfoReq, modusHomeReq, cdcReq, liveDartsReq] = await Promise.allSettled([
     fetchOfficialHtml("https://modussuperseries.com/results"),
     depth === "deep" ? fetchOfficialHtml("https://dartsnz.nz/results/") : Promise.resolve(""),
     depth === "deep" ? fetchOfficialHtml("https://dartsinfo.co.uk/") : Promise.resolve(""),
     fetchOfficialHtml("https://modussuperseries.com/"),
+    depth === "deep" ? fetchOfficialHtml("https://champdarts.com/blog/blog-single-author-full/") : Promise.resolve(""),
+    depth === "deep" ? liveDartsStructuredResults() : Promise.resolve([] as NormalResult[]),
   ]);
 
   if (modusReq.status === "fulfilled") {
@@ -1903,7 +2046,7 @@ async function directDartsResults(lang: string, depth: "fast" | "deep" = "deep")
         round: lines[i],
         winner: { name: winner.name, score: winner.score },
         loser: { name: loser.name, score: loser.score },
-        raw: { source: "MODUS" },
+        raw: { source: "MODUS", sourceUrl: "https://modussuperseries.com/results" }, sourceName: "MODUS", sourceUrl: "https://modussuperseries.com/results",
       });
     }
   }
@@ -1926,7 +2069,7 @@ async function directDartsResults(lang: string, depth: "fast" | "deep" = "deep")
         round: "Final",
         winner: { name: winner.name, score: winner.score },
         loser: { name: loser.name, score: loser.score },
-        raw: { source: "Darts New Zealand" },
+        raw: { source: "Darts New Zealand", sourceUrl: "https://dartsnz.nz/results/" }, sourceName: "Darts New Zealand", sourceUrl: "https://dartsnz.nz/results/",
       });
     }
   }
@@ -1934,6 +2077,11 @@ async function directDartsResults(lang: string, depth: "fast" | "deep" = "deep")
   if (dartsInfoReq.status === "fulfilled") {
     results.push(...parseDartsInfoResults(dartsInfoReq.value));
   }
+
+  if (cdcReq.status === "fulfilled" && cdcReq.value) {
+    results.push(...parseGenericDartsScoreLines(cdcReq.value, "CDC", "https://champdarts.com/blog/blog-single-author-full/", "CDC · North America / Latin America", 110));
+  }
+  if (liveDartsReq.status === "fulfilled") results.push(...liveDartsReq.value);
 
   if (modusHomeReq.status === "fulfilled") {
     const lines = htmlLines(modusHomeReq.value);
@@ -1956,12 +2104,12 @@ async function directDartsResults(lang: string, depth: "fast" | "deep" = "deep")
         startsAt: starts.toISOString(),
         date: starts.toISOString().slice(0, 10),
         players: [{ name: a }, { name: b }],
-        raw: { source: "MODUS", sourceUrl: "https://modussuperseries.com/" },
+        raw: { source: "MODUS", sourceUrl: "https://modussuperseries.com/" }, sourceName: "MODUS", sourceUrl: "https://modussuperseries.com/",
       });
     }
   }
 
-  return { results: uniqNormalResults(results).slice(0, 120), fixtures: fixtures.slice(0, 48), events };
+  return { results: diversifyDartsResults(results, depth === "deep" ? 180 : 80), fixtures: fixtures.slice(0, 48), events };
 }
 
 const SPORTSDB_BASE = "https://www.thesportsdb.com/api/v1/json/123";
@@ -2187,7 +2335,7 @@ async function enrichWithLiveIntelligence(
 
   // CORE is intentionally bounded so the journal appears quickly after the
   // structured feed. DEEP runs later from the frontend and can fan out widely.
-  const directPageBudget = deep ? (sport === "darts" ? 12 : 8) : (sport === "darts" ? 5 : 4);
+  const directPageBudget = deep ? (sport === "darts" ? 20 : 8) : (sport === "darts" ? 7 : 4);
   const newsSettled = await Promise.allSettled([
     googleNewsIntelligence(sport, lang, deep ? "deep" : "core"),
     deep ? bingNewsIntelligence(sport, lang, "deep") : Promise.resolve([] as IntelligenceNews[]),
@@ -2214,9 +2362,9 @@ async function enrichWithLiveIntelligence(
     }
   }
 
-  const mergedNews = uniqNews([...ai, ...directRss, ...google, ...bing, ...yahoo, ...directEditorial])
-    .sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")))
-    .slice(0, deep ? (sport === "foot" ? 220 : 180) : (sport === "foot" ? 130 : 110));
+  const chronologicalNews = uniqNews([...ai, ...directRss, ...google, ...bing, ...yahoo, ...directEditorial])
+    .sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")));
+  const mergedNews = diversifyNews(chronologicalNews, deep ? (sport === "foot" ? 220 : sport === "darts" ? 240 : 180) : (sport === "foot" ? 130 : sport === "darts" ? 150 : 110));
   const news = deep ? await enrichNewsImages(mergedNews) : mergedNews;
   const intelligenceEvents = news.map((row) => newsToEvent(row, sport)).filter(Boolean) as NormalEvent[];
 
@@ -2241,7 +2389,7 @@ async function enrichWithLiveIntelligence(
       ...base.payload,
       configured: !!base.payload?.configured || news.length > 0 || direct.results.length > 0,
       automaticData: !!base.payload?.automaticData || news.length > 0 || direct.results.length > 0,
-      results: uniqNormalResults([...direct.results, ...(arr(base.payload?.results) as NormalResult[])]).slice(0, deep ? (sport === "darts" ? 180 : 120) : 100),
+      results: sport === "darts" ? diversifyDartsResults([...direct.results, ...(arr(base.payload?.results) as NormalResult[])], deep ? 220 : 120) : uniqNormalResults([...direct.results, ...(arr(base.payload?.results) as NormalResult[])]).slice(0, deep ? 120 : 100),
       fixtures: [...direct.fixtures, ...(arr(base.payload?.fixtures) as NormalMatch[])].slice(0, deep ? 100 : 70),
       events: mergedEvents,
       news,
@@ -2288,7 +2436,7 @@ async function fastOverview(env: Env, sport: string, lang: string) {
         ...base.payload,
         configured: !!base.payload?.configured || direct.results.length > 0 || direct.fixtures.length > 0,
         automaticData: true,
-        results: uniqNormalResults([...direct.results, ...(arr(base.payload?.results) as NormalResult[])]).slice(0, 120),
+        results: diversifyDartsResults([...direct.results, ...(arr(base.payload?.results) as NormalResult[])], 120),
         fixtures: [...direct.fixtures, ...(arr(base.payload?.fixtures) as NormalMatch[])].slice(0, 60),
         events: uniqEvents([...(arr(base.payload?.events) as NormalEvent[]), ...direct.events]).slice(0, 60),
         news: arr(base.payload?.news),

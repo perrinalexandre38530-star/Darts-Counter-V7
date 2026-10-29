@@ -97,6 +97,48 @@ function playerInitials(name?: string | null) {
   return `${parts[0][0] || ""}${parts[parts.length - 1][0] || ""}`.toUpperCase();
 }
 
+const KNOWN_DARTS_COUNTRIES: Record<string, string> = {
+  "luke littler":"GB", "luke humphries":"GB", "michael van gerwen":"NL", "gerwyn price":"GB", "gary anderson":"GB",
+  "rob cross":"GB", "peter wright":"GB", "stephen bunting":"GB", "james wade":"GB", "dave chisnall":"GB",
+  "jonny clayton":"GB", "nathan aspinall":"GB", "ross smith":"GB", "ryan searle":"GB", "chris dobey":"GB",
+  "danny noppert":"NL", "gian van veen":"NL", "wessel nijman":"NL", "kevin doets":"NL", "niels zonneveld":"NL",
+  "dirk van duijvenbode":"NL", "jermaine wattimena":"NL", "michael smith":"GB", "cameron menzies":"GB", "martin schindler":"DE",
+  "niko springer":"DE", "ricardo pietreczko":"DE", "gabriel clemens":"DE", "krzysztof ratajski":"PL", "karel sedlacek":"CZ",
+  "mensur suljovic":"AT", "damon heta":"AU", "simon whitlock":"AU", "ryan joyce":"GB", "william o'connor":"IE",
+  "william o’connor":"IE", "brendan dolan":"GB", "josh rock":"GB", "daryl gurney":"GB", "kim huybrechts":"BE",
+  "dimitri van den bergh":"BE", "jeffrey de graaf":"SE", "raymond van barneveld":"NL", "beau greaves":"GB", "fallon sherrock":"GB",
+  "leonard gates":"US", "adam sevada":"US", "fred krueger":"US", "alex spellman":"US", "joey lynaugh":"US",
+  "david cameron":"CA", "matt campbell":"CA", "jeff smith":"CA", "jim long":"CA", "brayden hall":"CA",
+  "rashad sweeting":"BS", "jesus salate":"AR", "haupai puha":"NZ", "ben robb":"NZ", "mark cleaver":"NZ",
+};
+
+function normalizedPlayerName(name?: string | null) {
+  return String(name || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function inferredCountryCode(player?: DartsLivePlayer | null, sourceName?: string | null) {
+  const explicit = String(player?.countryCode || "").trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(explicit)) return explicit;
+  const known = KNOWN_DARTS_COUNTRIES[normalizedPlayerName(player?.name)];
+  if (known) return known;
+  if (/darts new zealand|\bdnz\b/i.test(String(sourceName || ""))) return "NZ";
+  return null;
+}
+
+function countryFlag(code?: string | null) {
+  const cc = String(code || "").trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(cc)) return "";
+  return String.fromCodePoint(...cc.split("").map((char) => 127397 + char.charCodeAt(0)));
+}
+
+function itemSource(item: any, fallback?: SportLiveSource | null) {
+  const raw = item?.raw && typeof item.raw === "object" ? item.raw : {};
+  return {
+    name: String(item?.sourceName || raw?.source || fallback?.shortName || fallback?.name || "OFFICIEL"),
+    url: String(item?.sourceUrl || raw?.sourceUrl || bestPrimaryLink(fallback) || "") || null,
+  };
+}
+
 function sourceLabel(source?: SportLiveSource | null) {
   return source?.shortName || source?.name || "OFFICIEL";
 }
@@ -253,6 +295,24 @@ function LiveStyles() {
         border-top:1px solid #222a32; background:#0a0e12; color:#9aa4af; font-size:9px; font-weight:850; text-align:center;
       }
       .msc-dot { width:7px; height:7px; border-radius:50%; background:var(--live-accent); box-shadow:0 0 9px var(--live-accent); }
+      .msc-result-card { margin-bottom:7px; overflow:hidden; border:1px solid #29313a; border-radius:10px; background:#0b0f14; }
+      .msc-result-head { min-height:25px; display:flex; align-items:center; gap:7px; padding:4px 7px; border-bottom:1px solid #202831; background:#10151b; }
+      .msc-result-comp { min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:9px; font-weight:1000; color:#cbd2da; }
+      .msc-result-round { flex:0 0 auto; font-size:8px; color:#7f8995; font-weight:850; }
+      .msc-result-date { flex:0 0 auto; font-size:8px; color:#aab2bc; font-weight:900; }
+      .msc-result-source { flex:0 0 auto; max-width:92px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:3px 6px; border-radius:999px; border:1px solid #39434d; color:#cfd6de; text-decoration:none; font-size:7.5px; font-weight:1000; }
+      .msc-result-body { display:grid; grid-template-columns:minmax(0,1fr) 44px; gap:6px; padding:5px 7px 6px; }
+      .msc-result-teams { display:grid; gap:2px; min-width:0; }
+      .msc-result-team { min-width:0; display:grid; grid-template-columns:27px minmax(0,1fr); gap:6px; align-items:center; min-height:28px; }
+      .msc-result-team.is-winner .msc-result-name { color:#fff; font-weight:1000; }
+      .msc-result-avatar { width:27px; height:27px; border-radius:50%; display:grid; place-items:center; overflow:hidden; border:1px solid #3a4652; background:#151b22; font-size:13px; font-weight:1000; }
+      .msc-result-avatar img { width:100%; height:100%; object-fit:cover; display:block; }
+      .msc-result-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#c3cad2; font-size:10.5px; font-weight:900; line-height:1.05; }
+      .msc-result-country { margin-left:5px; font-size:10px; vertical-align:1px; }
+      .msc-result-scores { display:grid; grid-template-rows:1fr 1fr; align-items:center; justify-items:center; border-left:1px solid #28313a; font-variant-numeric:tabular-nums; }
+      .msc-result-score { width:100%; text-align:center; font-size:18px; line-height:1; font-weight:1000; color:#aeb7c0; }
+      .msc-result-score.is-winner { color:#f4d445; }
+      @media (max-width:390px) { .msc-result-source { max-width:72px; } .msc-result-comp { font-size:8.5px; } }
       .msc-empty-card {
         border:1px solid #29313a; border-radius:11px; background:#0d1116; padding:12px 11px; text-align:center;
       }
@@ -498,18 +558,39 @@ function FixtureMatchCard({ item, source, lang }: { item: DartsLiveFixture; sour
 }
 
 function ResultMatchCard({ item, source, lang }: { item: DartsLiveResult; source?: SportLiveSource | null; lang: string }) {
+  const origin = itemSource(item, source);
+  const rows = [
+    { player: item.winner, winner: true },
+    { player: item.loser, winner: false },
+  ];
   return (
-    <MatchCard
-      competition={item.competition}
-      round={item.round}
-      status="TERMINÉ"
-      left={item.winner}
-      right={item.loser}
-      leftScore={scoreValue(item.winner?.score)}
-      rightScore={scoreValue(item.loser?.score)}
-      source={source}
-      footer={`Résultat officiel · ${formatDate(item.playedOn, lang)}`}
-    />
+    <article className="msc-result-card">
+      <div className="msc-result-head">
+        <div className="msc-result-comp" translate="no" data-i18n-skip="true">{item.competition || "Compétition officielle"}</div>
+        {item.round ? <div className="msc-result-round">{niceRound(item.round)}</div> : null}
+        <div className="msc-result-date">{formatDate(item.playedOn, lang)}</div>
+        {origin.url ? <a className="msc-result-source" href={origin.url} target="_blank" rel="noreferrer noopener">{origin.name}</a> : <span className="msc-result-source">{origin.name}</span>}
+      </div>
+      <div className="msc-result-body">
+        <div className="msc-result-teams">
+          {rows.map(({ player, winner }) => {
+            const flag = countryFlag(inferredCountryCode(player, origin.name));
+            return (
+              <div className={`msc-result-team${winner ? " is-winner" : ""}`} key={`${item.id}-${winner ? "w" : "l"}`}>
+                <div className="msc-result-avatar">
+                  {player?.photoUrl ? <img src={player.photoUrl} alt="" loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : (flag || playerInitials(player?.name))}
+                </div>
+                <div className="msc-result-name" translate="no" data-i18n-skip="true">{player?.name || "À confirmer"}{flag ? <span className="msc-result-country">{flag}</span> : null}</div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="msc-result-scores">
+          <div className="msc-result-score is-winner">{scoreValue(item.winner?.score)}</div>
+          <div className="msc-result-score">{scoreValue(item.loser?.score)}</div>
+        </div>
+      </div>
+    </article>
   );
 }
 

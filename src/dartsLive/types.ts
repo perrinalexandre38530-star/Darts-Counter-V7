@@ -60,6 +60,8 @@ export type DartsLivePlayer = {
   id?: string | null;
   name: string;
   score?: number | null;
+  countryCode?: string | null;
+  photoUrl?: string | null;
 };
 
 export type DartsLiveFixture = {
@@ -69,6 +71,9 @@ export type DartsLiveFixture = {
   startsAt?: string | null;
   date?: string | null;
   players: DartsLivePlayer[];
+  raw?: unknown;
+  sourceName?: string | null;
+  sourceUrl?: string | null;
 };
 
 export type DartsLiveResult = {
@@ -78,6 +83,9 @@ export type DartsLiveResult = {
   round?: string | null;
   winner: DartsLivePlayer;
   loser: DartsLivePlayer;
+  raw?: unknown;
+  sourceName?: string | null;
+  sourceUrl?: string | null;
 };
 
 export type DartsLiveMatch = {
@@ -87,6 +95,8 @@ export type DartsLiveMatch = {
   startsAt?: string | null;
   players: DartsLivePlayer[];
   raw?: unknown;
+  sourceName?: string | null;
+  sourceUrl?: string | null;
 };
 
 export type DartsLiveApiOverview = {
