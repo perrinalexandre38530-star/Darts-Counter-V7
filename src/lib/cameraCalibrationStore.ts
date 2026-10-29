@@ -61,12 +61,32 @@ export type CameraCalibrationV2 = {
   projectiveConfidence?: number;
   projectiveErrorMm?: number;
   rings?: CameraBoardRingRatios;
+  sourceId?: string;
+  sourceFingerprint?: {
+    deviceId?: string;
+    groupId?: string;
+    width?: number;
+    height?: number;
+    videoWidth?: number;
+    videoHeight?: number;
+    aspect?: number;
+    zoom?: number;
+    facingMode?: string;
+    frameRate?: number;
+  } | null;
   updatedAt: number;
 };
 
 export type CameraCalibration = CameraCalibrationV1 | CameraCalibrationV2;
 
 const LS_KEY = "dc:camera:calibration:v1";
+const SOURCE_KEY_PREFIX = "dc:camera:calibration:source:v1:";
+
+function sourceStorageKey(sourceId?:string|null){
+  const id=String(sourceId||"").trim();
+  if(!id) return LS_KEY;
+  return `${SOURCE_KEY_PREFIX}${encodeURIComponent(id)}`;
+}
 
 function finiteNumber(value: any): number | null {
   const n = Number(value);
@@ -123,6 +143,8 @@ function normalizeCameraCalibration(obj: any): CameraCalibration | null {
       projectiveConfidence: finiteNumber(obj.projectiveConfidence) ?? undefined,
       projectiveErrorMm: finiteNumber(obj.projectiveErrorMm) ?? undefined,
       rings: normalizeRings(obj.rings),
+      sourceId: obj.sourceId ? String(obj.sourceId) : undefined,
+      sourceFingerprint: obj.sourceFingerprint && typeof obj.sourceFingerprint === "object" ? { ...obj.sourceFingerprint } : undefined,
       updatedAt: Number(obj.updatedAt || Date.now()),
     };
   }
@@ -162,32 +184,51 @@ function normalizeCameraCalibration(obj: any): CameraCalibration | null {
   return null;
 }
 
-export function loadCameraCalibration(): CameraCalibration | null {
+export function loadCameraCalibration(sourceId?:string|null): CameraCalibration | null {
   try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return null;
-    return normalizeCameraCalibration(JSON.parse(raw));
+    const key=sourceStorageKey(sourceId);
+    const raw = localStorage.getItem(key);
+    if (raw) return normalizeCameraCalibration(JSON.parse(raw));
+
+    // Never attach an unscoped historical calibration to a new scoring
+    // source blindly: camera position/zoom may differ. We only migrate a
+    // legacy entry when it already declares the same source id.
+    if(sourceId){
+      const legacy=localStorage.getItem(LS_KEY);
+      if(legacy){
+        const normalized=normalizeCameraCalibration(JSON.parse(legacy));
+        if(normalized && (normalized as any).sourceId===sourceId){
+          localStorage.setItem(key,JSON.stringify(normalized));
+          return normalized;
+        }
+      }
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
-export function saveCameraCalibration(cal: CameraCalibration | any): void {
+export function saveCameraCalibration(cal: CameraCalibration | any, sourceId?:string|null): void {
   try {
     const normalized = normalizeCameraCalibration(cal);
     if (!normalized) return;
-    localStorage.setItem(LS_KEY, JSON.stringify(normalized));
+    localStorage.setItem(sourceStorageKey(sourceId), JSON.stringify(normalized));
   } catch {
     // ignore
   }
 }
 
-export function clearCameraCalibration(): void {
+export function clearCameraCalibration(sourceId?:string|null): void {
   try {
-    localStorage.removeItem(LS_KEY);
+    localStorage.removeItem(sourceStorageKey(sourceId));
   } catch {
     // ignore
   }
+}
+
+export function hasCameraCalibrationForSource(sourceId:string):boolean{
+  return !!loadCameraCalibration(sourceId);
 }
 
 

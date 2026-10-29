@@ -124,8 +124,8 @@ export function normalizeWave61Config(modeId: string, raw: any): Wave61Config {
   const selectedIds = Array.isArray(raw?.selectedIds) ? raw.selectedIds.map(String) : [];
   const difficulty: Wave61Difficulty = raw?.difficulty === "easy" || raw?.difficulty === "hard" ? raw.difficulty : "normal";
   const botLevel: Wave61Difficulty = raw?.botLevel === "easy" || raw?.botLevel === "hard" ? raw.botLevel : difficulty;
-  const forcedRounds = modeId === "nine_dart_century" ? 3 : modeId === "double_down" ? 9 : modeId === "athletisme" ? 6 : null;
-  const forcedGoal = modeId === "nine_dart_century" ? 100 : modeId === "shove_a_penny" ? 7 * clamp(Number(raw?.modeOptions?.marksPerBox || 3), 2, 5) : modeId === "green_vs_red" ? clamp(Number(raw?.modeOptions?.finishSteps || 10), 3, 10) : null;
+  const forcedRounds = modeId === "nine_dart_century" ? 3 : modeId === "double_down" ? 9 : modeId === "green_vs_red" ? 11 : modeId === "athletisme" ? 6 : null;
+  const forcedGoal = modeId === "nine_dart_century" ? 100 : modeId === "shove_a_penny" ? 7 * clamp(Number(raw?.modeOptions?.marksPerBox || 3), 2, 5) : modeId === "green_vs_red" ? 11 : null;
   return {
     modeId,
     selectedIds,
@@ -526,7 +526,7 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
     phase: "playing",
     winnerId: null,
     winnerTeamId: null,
-    scores: Object.fromEntries(ids.map((id) => [id, modeId === "radin" ? modeOptionNumber(config, "startWallet", 100, 20, 500) : 0])),
+    scores: Object.fromEntries(ids.map((id) => [id, modeId === "radin" ? modeOptionNumber(config, "startWallet", 100, 20, 500) : modeId === "double_down" ? modeOptionNumber(config, "startScore", 40, 0, 100) : 0])),
     progress: Object.fromEntries(ids.map((id) => [id, 0])),
     health: Object.fromEntries(ids.map((id) => [id, 100])),
     lives: Object.fromEntries(ids.map((id) => [id, config.lives || 0])),
@@ -555,6 +555,8 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
       colinStepByPlayer: modeId === "colin_maillard" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       doubleDownHistory: [],
       centuryBustsByPlayer: Object.fromEntries(ids.map((id) => [id, 0])),
+      centuryLockedByPlayer: modeId === "nine_dart_century" ? Object.fromEntries(ids.map((id) => [id, false])) : {},
+      centuryDartsAtLockByPlayer: modeId === "nine_dart_century" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       shoveMarksByPlayer: modeId === "shove_a_penny" ? Object.fromEntries(ids.map((id) => [id, blankShoveMarks()])) : {},
       shoveHistory: [],
       greenRedColorByPlayer: modeId === "green_vs_red" ? Object.fromEntries(ids.map((id, i) => [id, config.participantMode === "teams" ? (teamByPlayer[id] === "B" ? "GREEN" : "RED") : greenRedColorForIndex(i)])) : {},
@@ -1153,7 +1155,8 @@ function dartMatchesTarget(d: GameDart, target: Wave61Target, difficulty: Wave61
 
 function primaryValue(state: Wave61State, playerId: string): number {
   if (state.family === "survival" || state.family === "combat") return Number(state.health[playerId] || 0) + Number(state.lives[playerId] || 0) * 100 + Number(state.scores[playerId] || 0) / 1000;
-  if (state.modeId === "shove_a_penny" || state.modeId === "green_vs_red") return Number(state.progress[playerId] || 0) * 1000 + Number(state.scores[playerId] || 0);
+  if (state.modeId === "shove_a_penny") return Number(state.progress[playerId] || 0) * 1000 + Number(state.scores[playerId] || 0);
+  if (state.modeId === "green_vs_red") return Number(state.scores[playerId] || 0);
   if (state.family === "score") return Number(state.scores[playerId] || 0);
   return Number(state.progress[playerId] || 0) * 1000 + Number(state.scores[playerId] || 0);
 }
@@ -1441,26 +1444,33 @@ function processShoveAPenny(state: Wave61State, playerId: string, darts: GameDar
   const marksPerBox = modeOptionNumber(state.config, "marksPerBox", 3, 2, 5);
   const overflowRule = modeOptionNumber(state.config, "overflowRule", 1, 0, 2);
   const overflowBonus = modeOptionNumber(state.config, "overflowBonus", 25, 0, 100);
+  const currentTarget = SHOVE_TARGETS.find((n) => Number(marks[String(n)] || 0) < marksPerBox) ?? null;
+  if (currentTarget == null) { finishWith(state, playerId); return { delta: 0, hits: 0 }; }
+  const currentKey = String(currentTarget);
   let gained = 0, hits = 0, bonusScore = 0;
   for (const d of darts) {
     const { key, marks: amount } = shoveMarkValue(d);
     if (!key || !amount) continue;
+    if (key !== currentKey) {
+      events.push(`• ${wave61DartLabel(d)} hors case · cible ${currentTarget === 25 ? "BULL" : currentTarget}`);
+      continue;
+    }
     hits += 1;
-    const before = Number(marks[key] || 0);
+    const before = Number(marks[currentKey] || 0);
     const room = Math.max(0, marksPerBox - before);
     const own = Math.min(room, amount);
     const overflow = Math.max(0, amount - own);
-    marks[key] = before + own;
+    marks[currentKey] = before + own;
     gained += own;
-    if (own) events.push(`🪙 ${key === "25" ? "BULL" : key} +${own} marque(s)`);
+    if (own) events.push(`🪙 ${currentTarget === 25 ? "BULL" : currentTarget} +${own} marque(s)`);
     if (overflow > 0) {
       if (overflowRule === 1) {
         const oppId = nextOpponentId(state, playerId);
         if (oppId) {
           const opp = marksByPlayer[oppId] || (marksByPlayer[oppId] = blankShoveMarks());
-          const oppRoom = Math.max(0, marksPerBox - Number(opp[key] || 0));
+          const oppRoom = Math.max(0, marksPerBox - Number(opp[currentKey] || 0));
           const shove = Math.min(oppRoom, overflow);
-          opp[key] = Number(opp[key] || 0) + shove;
+          opp[currentKey] = Number(opp[currentKey] || 0) + shove;
           if (shove) events.push(`↪ ${shove} surplus poussé(s) à ${state.players.find((p) => p.id === oppId)?.name || "l'adversaire"}`);
         }
       } else if (overflowRule === 2) {
@@ -1473,7 +1483,7 @@ function processShoveAPenny(state: Wave61State, playerId: string, darts: GameDar
   const total = SHOVE_TARGETS.reduce((sum, n) => sum + Number(marks[String(n)] || 0), 0);
   state.progress[playerId] = total;
   state.scores[playerId] = Number(state.scores[playerId] || 0) + gained * 25 + bonusScore;
-  state.special.shoveHistory = [...(state.special.shoveHistory || []), { playerId, gained, total }].slice(-20);
+  state.special.shoveHistory = [...(state.special.shoveHistory || []), { playerId, target: currentTarget, gained, total }].slice(-30);
   if (total >= SHOVE_TARGETS.length * marksPerBox) finishWith(state, playerId);
   return { delta: gained, hits };
 }
@@ -1482,43 +1492,43 @@ function processGreenVsRed(state: Wave61State, playerId: string, darts: GameDart
   const color = String(state.special?.greenRedColorByPlayer?.[playerId] || "RED") as "RED" | "GREEN";
   const ownPath = color === "GREEN" ? GREEN_RING : RED_RING;
   const otherPath = color === "GREEN" ? RED_RING : GREEN_RING;
-  const finishSteps = modeOptionNumber(state.config, "finishSteps", ownPath.length, 3, ownPath.length);
-  const tripleAdvance = modeOptionNumber(state.config, "tripleAdvance", 2, 1, 3);
-  const wrongColorAdvance = modeOptionNumber(state.config, "wrongColorAdvance", 1, 0, 3);
-  let step = Number(state.special?.greenRedStepByPlayer?.[playerId] || 0);
+  const step = Math.min(10, Number(state.roundIndex || 0));
+  const wrongPct = modeOptionNumber(state.config, "wrongColorPenaltyPct", 100, 0, 100) / 100;
   let delta = 0, hits = 0;
-  for (const d of darts) {
-    if (step >= finishSteps) break;
-    const n = Number(d?.number || 0);
-    const ringHit = d?.bed === "D" || d?.bed === "T";
-    if (!ringHit) continue;
-    if (n === ownPath[step]) {
-      const advance = d.bed === "T" ? tripleAdvance : 1;
-      step = Math.min(finishSteps, step + advance);
-      hits += 1;
-      delta += advance;
-      events.push(`${color === "RED" ? "🔴" : "🟢"} ${d.bed}${n} · +${advance} étape(s)`);
-    } else if ((otherPath as readonly number[]).includes(n)) {
-      const oppId = nextOpponentId(state, playerId);
-      if (oppId && wrongColorAdvance > 0) {
-        const oppStep = Number(state.special?.greenRedStepByPlayer?.[oppId] || 0);
-        state.special.greenRedStepByPlayer[oppId] = Math.min(finishSteps, oppStep + wrongColorAdvance);
-        state.progress[oppId] = state.special.greenRedStepByPlayer[oppId];
-        events.push(`⚠️ Mauvaise couleur · +${wrongColorAdvance} à ${state.players.find((p) => p.id === oppId)?.name || "l'adversaire"}`);
-        // A gifted step can itself cross the finish line. Resolve it now instead
-        // of leaving the match alive until that opponent's next turn.
-        if (state.special.greenRedStepByPlayer[oppId] >= finishSteps) {
-          finishWith(state, oppId, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[oppId] || null : null);
-          break;
-        }
-      } else if (oppId) events.push("⚠️ Mauvaise couleur · bonus adverse désactivé");
+  const countedBeds = new Set<string>();
+  if (step >= 10) {
+    for (const d of darts) {
+      if (d?.bed !== "OB" && d?.bed !== "IB") continue;
+      const key = String(d.bed);
+      if (countedBeds.has(key)) continue;
+      countedBeds.add(key);
+      const value = wave61DartScore(d);
+      delta += value; hits += 1;
+      events.push(`🎯 ${d.bed === "IB" ? "DBULL" : "BULL"} · +${value}`);
+    }
+  } else {
+    const ownTarget = Number(ownPath[step]);
+    const otherTarget = Number(otherPath[step]);
+    for (const d of darts) {
+      if (d?.bed !== "D" && d?.bed !== "T") continue;
+      const n = Number(d.number || 0);
+      if (n === ownTarget) {
+        if (countedBeds.has(String(d.bed))) { events.push(`• ${wave61DartLabel(d)} déjà compté sur cette étape`); continue; }
+        countedBeds.add(String(d.bed));
+        const value = wave61DartScore(d);
+        delta += value; hits += 1;
+        events.push(`${color === "RED" ? "🔴" : "🟢"} ${wave61DartLabel(d)} · +${value}`);
+      } else if (n === otherTarget) {
+        const penalty = Math.round(wave61DartScore(d) * wrongPct);
+        delta -= penalty;
+        events.push(`⚠️ Couleur adverse ${wave61DartLabel(d)} · -${penalty}`);
+      }
     }
   }
-  state.special.greenRedStepByPlayer[playerId] = step;
-  state.progress[playerId] = step;
-  state.scores[playerId] = Number(state.scores[playerId] || 0) + delta * 40;
-  state.special.greenRedHistory = [...(state.special.greenRedHistory || []), { playerId, color, step }].slice(-20);
-  if (step >= finishSteps) finishWith(state, playerId, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] || null : null);
+  state.scores[playerId] = Math.max(0, Number(state.scores[playerId] || 0) + delta);
+  state.progress[playerId] = step + 1;
+  state.special.greenRedStepByPlayer[playerId] = step + 1;
+  state.special.greenRedHistory = [...(state.special.greenRedHistory || []), { playerId, color, step: step + 1, delta, score: state.scores[playerId] }].slice(-30);
   return { delta, hits };
 }
 
@@ -3690,38 +3700,43 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
     state.progress[player.id] = state.roundIndex + 1;
     state.special.doubleDownHistory = [...(state.special.doubleDownHistory || []), { playerId: player.id, round: state.roundIndex + 1, target: target?.label, hits, score: state.scores[player.id] }].slice(-30);
   } else if (state.modeId === "nine_dart_century") {
-    const projected = Number(state.scores[player.id] || 0) + visitScore;
-    if (projected > state.config.goal) {
-      state.special.centuryBustsByPlayer[player.id] = Number(state.special.centuryBustsByPlayer?.[player.id] || 0) + 1;
-      const busts = Number(state.special.centuryBustsByPlayer[player.id] || 0);
-      const bustBack = modeOptionNumber(state.config, "bustBack", 0, 0, 50);
-      const resetAfter = modeOptionNumber(state.config, "bustResetAfter", 0, 0, 6);
-      if (resetAfter > 0 && busts >= resetAfter) {
-        state.scores[player.id] = 0; state.progress[player.id] = 0;
-        state.special.centuryBustsByPlayer[player.id] = 0;
-        events.push(`💥 BUST #${busts} · remise à zéro`);
-      } else if (bustBack > 0) {
-        state.scores[player.id] = Math.max(0, Number(state.scores[player.id] || 0) - bustBack);
-        state.progress[player.id] = state.scores[player.id];
-        events.push(`💥 BUST · ${projected} dépasse ${state.config.goal} · recul ${bustBack}`);
-      } else events.push(`💥 BUST · ${projected} dépasse ${state.config.goal}`);
+    const locked = !!state.special?.centuryLockedByPlayer?.[player.id];
+    if (locked) {
       delta = 0;
+      events.push(`⏹ Score verrouillé à ${state.scores[player.id]}/${state.config.goal}`);
     } else {
-      delta = visitScore; state.scores[player.id] = projected; state.progress[player.id] = projected;
-      events.push(`🎯 ${state.scores[player.id]}/${state.config.goal} après ${Math.min(9, st.darts)} fléchette(s)`);
+      let running = Number(state.scores[player.id] || 0);
+      const dartsBeforeVisit = Math.max(0, Number(st.darts || 0) - darts.length);
+      for (let i = 0; i < darts.length; i++) {
+        running += wave61DartScore(darts[i]);
+        if (running >= state.config.goal) {
+          state.special.centuryLockedByPlayer[player.id] = true;
+          state.special.centuryDartsAtLockByPlayer[player.id] = dartsBeforeVisit + i + 1;
+          if (running > state.config.goal) {
+            state.special.centuryBustsByPlayer[player.id] = 1;
+            events.push(`💥 ${running} · dépassement : score verrouillé`);
+          } else events.push(`🎯 100 EXACT en ${dartsBeforeVisit + i + 1} fléchette(s)`);
+          break;
+        }
+      }
+      delta = running - Number(state.scores[player.id] || 0);
+      state.scores[player.id] = running;
+      state.progress[player.id] = running;
+      if (running < state.config.goal) events.push(`🎯 ${running}/${state.config.goal} après ${Math.min(9, Number(st.darts || 0))} fléchette(s)`);
     }
-    if (state.scores[player.id] === state.config.goal) finishWith(state, player.id);
   } else if (state.modeId === "shove_a_penny") {
     const result = processShoveAPenny(state, player.id, darts, events); delta = result.delta; hits = result.hits;
   } else if (state.modeId === "green_vs_red") {
     const result = processGreenVsRed(state, player.id, darts, events); delta = result.delta; hits = result.hits;
   } else if (state.modeId === "hi_score") {
     const scoreFactor = modeOptionNumber(state.config, "scoreMultiplierPct", 100, 50, 200) / 100;
+    const fatBull = modeOptionBool(state.config, "fatBull", false);
+    const adjustedVisitScore = darts.reduce((sum, d) => sum + (fatBull && d?.bed === "OB" ? 50 : wave61DartScore(d)), 0);
     const bulls = bullCount(darts);
     const misses = darts.filter((d) => !d || d.bed === "MISS").length;
     const bullBonus = bulls * modeOptionNumber(state.config, "bullBonus", 0, 0, 100);
     const missPenalty = misses * modeOptionNumber(state.config, "missPenalty", 0, 0, 100);
-    delta = Math.max(0, Math.round(visitScore * scoreFactor) + bullBonus - missPenalty);
+    delta = Math.max(0, Math.round(adjustedVisitScore * scoreFactor) + bullBonus - missPenalty);
     state.scores[player.id] = Number(state.scores[player.id] || 0) + delta;
     state.progress[player.id] = state.scores[player.id];
     events.push(`🏁 HI SCORE · +${delta} · total ${state.scores[player.id]}${bullBonus ? ` · BULL +${bullBonus}` : ""}${missPenalty ? ` · MISS -${missPenalty}` : ""}`);
@@ -4008,6 +4023,22 @@ function advanceWave61Turn(state: Wave61State): Wave61State {
       }
       return state;
     }
+    if (state.modeId === "nine_dart_century") {
+      const goal = Number(state.config.goal || 100);
+      const under = state.players.filter((p) => Number(state.scores[p.id] || 0) <= goal);
+      const pool = under.length ? under : state.players;
+      const ranked = [...pool].sort((a, b) => {
+        const as = Number(state.scores[a.id] || 0), bs = Number(state.scores[b.id] || 0);
+        if (under.length) {
+          if (bs !== as) return bs - as;
+          const ad = Number(state.special?.centuryDartsAtLockByPlayer?.[a.id] || 99), bd = Number(state.special?.centuryDartsAtLockByPlayer?.[b.id] || 99);
+          return ad - bd;
+        }
+        return as - bs;
+      });
+      if (ranked[0]) finishWith(state, ranked[0].id);
+      return state;
+    }
     if (state.config.participantMode === "teams") {
       const team = bestTeam(state);
       if (team) finishWith(state, team.playerId, team.teamId);
@@ -4189,13 +4220,12 @@ export function wave61PrimaryMetric(state: Wave61State, playerId: string): { val
     return { value: Number(state.progress[playerId] || 0), label: "MARQUES", sub: `${state.progress[playerId] || 0}/${maxMarks} · ${state.scores[playerId] || 0} pts` };
   }
   if (state.modeId === "green_vs_red") {
-    const finishSteps = modeOptionNumber(state.config, "finishSteps", 10, 3, 10);
-    return { value: Number(state.progress[playerId] || 0), label: "ÉTAPES", sub: `${state.special?.greenRedColorByPlayer?.[playerId] || "RED"} · /${finishSteps}` };
+    return { value: Number(state.scores[playerId] || 0), label: "PTS", sub: `${state.special?.greenRedColorByPlayer?.[playerId] || "RED"} · étape ${Math.min(11, Number(state.progress[playerId] || 0))}/11` };
   }
   if (state.modeId === "sniper") return { value: Number(state.progress[playerId] || 0), label: "MISSIONS", sub: `${state.progress[playerId] || 0}/${state.config.goal || 12}` };
   if (state.modeId === "luciole") return { value: Number(state.progress[playerId] || 0), label: "LUCIOLES", sub: `${state.progress[playerId] || 0}/${state.config.goal || 10}` };
   if (state.modeId === "golden_dart") return { value: Number(state.progress[playerId] || 0), label: "OR", sub: `${state.progress[playerId] || 0}/${state.config.goal || 7}` };
-  if (state.modeId === "nine_dart_century") return { value: Number(state.scores[playerId] || 0), label: "PTS", sub: `${Math.min(9, stats.darts)} darts · ${state.special?.centuryBustsByPlayer?.[playerId] || 0} bust` };
+  if (state.modeId === "nine_dart_century") return { value: Number(state.scores[playerId] || 0), label: "PTS", sub: `${Math.min(9, stats.darts)} darts · ${Number(state.scores[playerId] || 0) > Number(state.config.goal || 100) ? "BUST" : Number(state.scores[playerId] || 0) === Number(state.config.goal || 100) ? "EXACT" : `reste ${Math.max(0, Number(state.config.goal || 100) - Number(state.scores[playerId] || 0))}`}` };
   if (state.family === "score") return { value: Number(state.scores[playerId] || 0), label: "PTS", sub: `best ${stats.bestVisit}` };
   if (state.family === "survival") return { value: Number(state.health[playerId] || 0), label: "PV", sub: `${state.lives[playerId] || 0} vie(s) · ${state.scores[playerId] || 0} pts` };
   if (state.family === "combat") return { value: Number(state.health[playerId] || 0), label: "PV", sub: `${stats.damage || 0} dégâts` };

@@ -142,6 +142,67 @@ function sourceLabel(source?: SportLiveSource | null) {
   return source?.shortName || source?.name || "OFFICIEL";
 }
 
+function hostFromUrl(value?: string | null) {
+  try {
+    const url = new URL(String(value || ""));
+    return url.hostname || null;
+  } catch {
+    return null;
+  }
+}
+
+function faviconUrl(value?: string | null, size = 64) {
+  const host = hostFromUrl(value);
+  if (!host) return null;
+  return `https://www.google.com/s2/favicons?sz=${size}&domain_url=${encodeURIComponent(`https://${host}`)}`;
+}
+
+function normalizedText(value?: string | null) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+function sourceImageFromSource(source?: SportLiveSource | null) {
+  return faviconUrl(bestPrimaryLink(source) || source?.homeUrl || null, 64);
+}
+
+function sourceImageFromItem(item: { sourceUrl?: string | null } | null | undefined, fallback?: SportLiveSource | null) {
+  return faviconUrl(item?.sourceUrl || bestPrimaryLink(fallback) || fallback?.homeUrl || null, 64);
+}
+
+function findCompetitionImage(competition: string, rows: DartsLiveResult[], newsRows: SportLiveNewsItem[], sources: SportLiveSource[]) {
+  const comp = normalizedText(competition);
+  const terms = comp.split(/\s+/).filter((part) => part.length >= 4 && !["darts", "open", "tour", "cup", "the", "and", "stage", "final"].includes(part));
+  const relatedNews = newsRows.find((item) => {
+    if (!item?.imageUrl) return false;
+    const hay = normalizedText(`${item.title} ${item.summary || ""}`);
+    if (!hay) return false;
+    if (comp && hay.includes(comp)) return true;
+    return terms.length ? terms.filter((term) => hay.includes(term)).length >= Math.min(2, terms.length) : false;
+  });
+  if (relatedNews?.imageUrl) return relatedNews.imageUrl;
+  const row = rows.find(Boolean);
+  const rowSource = itemSource(row, sources.find((source) => {
+    const sourceName = normalizedText(row?.sourceName || "");
+    return sourceName && [source.name, source.shortName].some((candidate) => normalizedText(candidate).includes(sourceName) || sourceName.includes(normalizedText(candidate)));
+  }) || null);
+  return faviconUrl(rowSource.url, 96);
+}
+
+function competitionVisualTone(value?: string | null) {
+  const key = normalizedText(value);
+  if (/pdc|players|european|uk open|matchplay|masters|trophy/.test(key)) return "is-red";
+  if (/wdf|world|world cup|world championship|world masters/.test(key)) return "is-blue";
+  if (/modus/.test(key)) return "is-purple";
+  if (/cdc|north america|latin|caribbean/.test(key)) return "is-gold";
+  if (/new zealand|dnz|austral/.test(key)) return "is-green";
+  return "is-neutral";
+}
+
 function competitionKey(value?: string | null) {
   return String(value || "Compétition officielle").replace(/\s+/g, " ").trim();
 }
@@ -325,7 +386,7 @@ function LiveStyles() {
       }
       .msc-status.is-live { color:#fff; background:#d92037; border-color:#ff3f55; box-shadow:0 0 12px rgba(255,48,72,.23); }
       .msc-source-link {
-        flex:0 0 auto; display:inline-flex; align-items:center; gap:5px; min-height:29px; padding:5px 8px; border-radius:7px;
+        flex:0 0 auto; display:inline-flex; align-items:center; gap:6px; min-height:29px; padding:5px 8px; border-radius:7px;
         border:1px solid #3d4854; color:#e5e9ee; background:#0b0f14; text-decoration:none; font-size:10.5px; font-weight:900;
       }
       .msc-event-card {
@@ -355,6 +416,8 @@ function LiveStyles() {
       }
       .msc-player { min-width:0; display:flex; align-items:center; gap:9px; }
       .msc-player.is-right { flex-direction:row-reverse; text-align:right; }
+      .msc-player-flag { margin-left:6px; }
+      .msc-player-badge img { width:100%; height:100%; object-fit:cover; display:block; }
       .msc-player-badge {
         flex:0 0 38px; width:38px; height:38px; border-radius:50%; display:grid; place-items:center; font-size:10.5px; font-weight:1000;
         border:1px solid var(--live-accent); color:#fff; background:linear-gradient(145deg,#1c242d,#0b0f13);
@@ -377,7 +440,11 @@ function LiveStyles() {
       .msc-result-comp { min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:9px; font-weight:1000; color:#cbd2da; }
       .msc-result-round { flex:0 0 auto; font-size:8px; color:#7f8995; font-weight:850; }
       .msc-result-date { flex:0 0 auto; font-size:8px; color:#aab2bc; font-weight:900; }
-      .msc-result-source { flex:0 0 auto; max-width:92px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:3px 6px; border-radius:999px; border:1px solid #39434d; color:#cfd6de; text-decoration:none; font-size:7.5px; font-weight:1000; }
+      .msc-result-source {
+        flex:0 0 auto; display:inline-flex; align-items:center; gap:6px; max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:3px 6px; border-radius:999px; border:1px solid #39434d; color:#cfd6de; text-decoration:none; font-size:7.5px; font-weight:1000; }
+      .msc-result-source span { overflow:hidden; text-overflow:ellipsis; }
+      
+      .msc-source-link img, .msc-result-source img, .msc-news-source img { width:16px; height:16px; border-radius:5px; object-fit:cover; display:block; background:#111820; }
       .msc-result-body { display:grid; grid-template-columns:minmax(0,1fr) 44px; gap:6px; padding:5px 7px 6px; }
       .msc-result-teams { display:grid; gap:2px; min-width:0; }
       .msc-result-team { min-width:0; display:grid; grid-template-columns:27px minmax(0,1fr); gap:6px; align-items:center; min-height:28px; }
@@ -393,9 +460,16 @@ function LiveStyles() {
       .msc-live-warning { margin:7px 0 0; padding:6px 8px; border:1px solid rgba(255,80,96,.25); border-radius:8px; background:rgba(255,48,72,.07); color:#ff8995; font-size:8.5px; font-weight:900; text-align:center; }
       .msc-competition-dock { display:flex; gap:6px; overflow-x:auto; padding:8px 0 6px; scrollbar-width:none; }
       .msc-competition-dock::-webkit-scrollbar { display:none; }
-      .msc-competition-btn { flex:0 0 auto; min-width:39px; height:39px; display:flex; align-items:center; justify-content:center; gap:5px; padding:0 8px; border:1px solid #2b333c; border-radius:13px; background:#0d1217; color:#98a2ad; cursor:pointer; }
-      .msc-competition-btn.is-active { border-color:var(--live-accent); color:#fff; background:linear-gradient(180deg,rgba(255,48,72,.16),#0d1217); box-shadow:0 0 0 1px rgba(255,48,72,.08),0 0 15px rgba(255,48,72,.09); }
+      .msc-competition-btn { flex:0 0 auto; min-width:46px; height:46px; display:flex; align-items:center; justify-content:center; gap:7px; padding:0 10px; border:1px solid #2b333c; border-radius:16px; background:linear-gradient(180deg,#121921,#0b1015); color:#98a2ad; cursor:pointer; box-shadow: inset 0 0 0 1px rgba(255,255,255,.03), 0 10px 22px rgba(0,0,0,.2); }
+      .msc-competition-btn.is-active { border-color:var(--live-accent); color:#fff; background:linear-gradient(180deg,rgba(255,48,72,.22),#0d1217); box-shadow:0 0 0 1px rgba(255,48,72,.09), 0 0 0 2px rgba(255,48,72,.04), 0 12px 28px rgba(255,48,72,.16); }
       .msc-competition-icon { font-size:16px; line-height:1; }
+      .msc-competition-visual { width:28px; height:28px; border-radius:999px; overflow:hidden; display:grid; place-items:center; background:radial-gradient(circle at 30% 30%, rgba(255,255,255,.22), rgba(255,255,255,.04)); box-shadow: inset 0 0 0 1px rgba(255,255,255,.06), 0 0 0 2px rgba(0,0,0,.18), 0 0 16px rgba(72,198,255,.09); flex:0 0 28px; }
+      .msc-competition-visual img { width:100%; height:100%; object-fit:cover; display:block; }
+      .msc-competition-btn.is-red .msc-competition-visual { box-shadow: inset 0 0 0 1px rgba(255,255,255,.06), 0 0 0 2px rgba(255,48,72,.15), 0 0 16px rgba(255,48,72,.18); }
+      .msc-competition-btn.is-blue .msc-competition-visual { box-shadow: inset 0 0 0 1px rgba(255,255,255,.06), 0 0 0 2px rgba(93,145,255,.15), 0 0 16px rgba(93,145,255,.18); }
+      .msc-competition-btn.is-purple .msc-competition-visual { box-shadow: inset 0 0 0 1px rgba(255,255,255,.06), 0 0 0 2px rgba(172,104,255,.15), 0 0 16px rgba(172,104,255,.18); }
+      .msc-competition-btn.is-gold .msc-competition-visual { box-shadow: inset 0 0 0 1px rgba(255,255,255,.06), 0 0 0 2px rgba(255,196,72,.16), 0 0 16px rgba(255,196,72,.18); }
+      .msc-competition-btn.is-green .msc-competition-visual { box-shadow: inset 0 0 0 1px rgba(255,255,255,.06), 0 0 0 2px rgba(86,214,140,.16), 0 0 16px rgba(86,214,140,.18); }
       .msc-competition-label { display:none; max-width:148px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:8.5px; font-weight:1000; }
       .msc-competition-btn.is-active .msc-competition-label { display:block; }
       .msc-competition-count { min-width:15px; height:15px; display:grid; place-items:center; padding:0 3px; border-radius:999px; background:#1c242c; color:#aeb7c1; font-size:7px; font-weight:1000; }
@@ -403,15 +477,23 @@ function LiveStyles() {
       .msc-competition-groups { display:grid; gap:11px; }
       .msc-competition-group { overflow:hidden; border:1px solid #252d35; border-radius:12px; background:#090d11; }
       .msc-competition-head { min-height:38px; display:grid; grid-template-columns:25px minmax(0,1fr) auto; align-items:center; gap:7px; padding:7px 8px; background:linear-gradient(90deg,rgba(255,48,72,.11),rgba(255,255,255,.02)); border-bottom:1px solid #252d35; }
-      .msc-competition-head-icon { width:25px; height:25px; display:grid; place-items:center; border-radius:8px; background:#151b21; font-size:14px; }
+      .msc-competition-head-icon { width:34px; height:34px; display:grid; place-items:center; border-radius:11px; overflow:hidden; background:#151b21; font-size:14px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06), 0 0 18px rgba(94,198,255,.12); }
+      .msc-competition-head-icon img { width:100%; height:100%; object-fit:cover; display:block; }
       .msc-competition-head-title { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10.5px; font-weight:1000; }
       .msc-competition-head-count { color:#89939e; font-size:8px; font-weight:950; }
+      .msc-competition-head.is-red { background:linear-gradient(90deg,rgba(255,48,72,.15),rgba(255,255,255,.02)); }
+      .msc-competition-head.is-blue { background:linear-gradient(90deg,rgba(93,145,255,.14),rgba(255,255,255,.02)); }
+      .msc-competition-head.is-purple { background:linear-gradient(90deg,rgba(172,104,255,.14),rgba(255,255,255,.02)); }
+      .msc-competition-head.is-gold { background:linear-gradient(90deg,rgba(255,196,72,.14),rgba(255,255,255,.02)); }
+      .msc-competition-head.is-green { background:linear-gradient(90deg,rgba(86,214,140,.14),rgba(255,255,255,.02)); }
       .msc-round-group { padding:6px 6px 2px; }
       .msc-round-group + .msc-round-group { border-top:1px solid #1f262e; }
       .msc-round-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:2px 2px 6px; color:#d0d6dd; font-size:8.5px; font-weight:1000; text-transform:uppercase; letter-spacing:.35px; }
       .msc-round-head span:last-child { color:#707b86; font-size:7.5px; }
       .msc-round-group .msc-result-card { margin-bottom:5px; border-radius:8px; }
-      @media (max-width:390px) { .msc-result-source { max-width:72px; } .msc-result-comp { font-size:8.5px; } .msc-competition-label { max-width:112px; } }
+      @media (max-width:390px) { .msc-result-source {
+        display:inline-flex; align-items:center; gap:6px;
+ max-width:72px; } .msc-result-comp { font-size:8.5px; } .msc-competition-label { max-width:112px; } }
       .msc-empty-card {
         border:1px solid #29313a; border-radius:11px; background:#0d1116; padding:12px 11px; text-align:center;
       }
@@ -433,7 +515,9 @@ function LiveStyles() {
       .msc-news-kind.is-result { background:#f4d445; }
       .msc-news-kind.is-live { background:#ff3048; color:#fff; }
       .msc-news-kind.is-upcoming { background:#64b8ff; color:#08131d; }
-      .msc-news-source { font-size:9.5px; color:#8f99a5; font-weight:900; }
+      .msc-news-source {
+        display:inline-flex; align-items:center; gap:6px;
+ font-size:9.5px; color:#8f99a5; font-weight:900; }
       .msc-news-scope { font-size:8.5px; font-weight:1000; letter-spacing:.35px; padding:3px 6px; border-radius:999px; border:1px solid rgba(255,255,255,.12); color:#c8d0d8; background:rgba(255,255,255,.045); }
       .msc-news-scope.is-local { color:#ffe779; border-color:rgba(255,231,121,.25); background:rgba(255,231,121,.07); }
       .msc-news-scope.is-regional { color:#78d9ff; border-color:rgba(120,217,255,.24); background:rgba(120,217,255,.07); }
@@ -459,9 +543,11 @@ function LiveStyles() {
       }
       .msc-source-rail { display:grid; gap:7px; margin-top:7px; }
       .msc-source-row {
-        display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center; padding:8px 9px;
+        display:grid; grid-template-columns:36px minmax(0,1fr) auto; gap:10px; align-items:center; padding:8px 9px;
         border:1px solid #29313a; border-radius:10px; background:#0b0f14;
       }
+      .msc-source-logo { width:36px; height:36px; border-radius:11px; display:grid; place-items:center; overflow:hidden; background:#121820; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06), 0 0 18px rgba(96,192,255,.12); }
+      .msc-source-logo img { width:100%; height:100%; object-fit:cover; display:block; }
       .msc-source-name { font-size:10px; font-weight:1000; }
       .msc-source-desc { margin-top:3px; font-size:9px; line-height:1.25; color:#87919d; }
       .msc-source-actions { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
@@ -525,7 +611,9 @@ function LiveStyles() {
 
       @media (max-width: 390px) {
         .msc-match-body { grid-template-columns:minmax(0,1fr) 78px minmax(0,1fr); gap:5px; }
-        .msc-player-badge { width:38px; height:38px; flex-basis:38px; font-size:12px; }
+        .msc-player-flag { margin-left:6px; }
+      .msc-player-badge img { width:100%; height:100%; object-fit:cover; display:block; }
+      .msc-player-badge { width:38px; height:38px; flex-basis:38px; font-size:12px; }
         .msc-score-box { font-size:23px; }
         .msc-match-code { min-width:48px; }
       }
@@ -576,12 +664,13 @@ function SectionHeader({ title, count }: { title: string; count?: string }) {
   );
 }
 
-function PlayerBlock({ player, right = false }: { player?: DartsLivePlayer | null; right?: boolean }) {
+function PlayerBlock({ player, right = false, sourceName }: { player?: DartsLivePlayer | null; right?: boolean; sourceName?: string | null }) {
+  const flag = countryFlag(inferredCountryCode(player, sourceName));
   return (
     <div className={`msc-player${right ? " is-right" : ""}`} translate="no" data-i18n-skip="true">
-      <div className="msc-player-badge">{playerInitials(player?.name)}</div>
+      <div className="msc-player-badge">{player?.photoUrl ? <img src={player.photoUrl} alt="" loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : (flag || playerInitials(player?.name))}</div>
       <div style={{ minWidth: 0 }}>
-        <div className="msc-player-name">{player?.name || "À confirmer"}</div>
+        <div className="msc-player-name">{player?.name || "À confirmer"}{flag ? <span className="msc-player-flag">{flag}</span> : null}</div>
         <div className="msc-player-meta">{player?.id ? String(player.id).toUpperCase() : "COMPÉTITEUR"}</div>
       </div>
     </div>
@@ -598,6 +687,8 @@ function MatchCard({
   leftScore,
   rightScore,
   source,
+  sourceName,
+  sourceUrl,
   footer,
 }: {
   competition?: string | null;
@@ -609,9 +700,12 @@ function MatchCard({
   leftScore: string;
   rightScore: string;
   source?: SportLiveSource | null;
+  sourceName?: string | null;
+  sourceUrl?: string | null;
   footer: string;
 }) {
-  const link = bestPrimaryLink(source);
+  const link = sourceUrl || bestPrimaryLink(source);
+  const sourceLogo = sourceImageFromItem({ sourceUrl: link }, source);
   return (
     <article className="msc-match-card">
       <div className="msc-match-top">
@@ -621,12 +715,12 @@ function MatchCard({
           <div className="msc-match-round">{niceRound(round) || "Match"}</div>
         </div>
         <div className={`msc-status${live ? " is-live" : ""}`}>{status}</div>
-        {link ? <a className="msc-source-link" href={link} target="_blank" rel="noreferrer noopener">▣ {sourceLabel(source)}</a> : null}
+        {link ? <a className="msc-source-link" href={link} target="_blank" rel="noreferrer noopener">{sourceLogo ? <img src={sourceLogo} alt="" loading="lazy" referrerPolicy="no-referrer" /> : null}<span>{sourceName || sourceLabel(source)}</span></a> : null}
       </div>
       <div className="msc-match-body">
-        <PlayerBlock player={left} />
+        <PlayerBlock player={left} sourceName={sourceName || source?.name} />
         <div className="msc-score-box">{rightScore ? <>{leftScore}<span className="msc-score-sep">-</span>{rightScore}</> : leftScore}</div>
-        <PlayerBlock player={right} right />
+        <PlayerBlock player={right} right sourceName={sourceName || source?.name} />
       </div>
       <div className="msc-match-foot"><span className="msc-dot" />{footer}</div>
     </article>
@@ -646,7 +740,9 @@ function LiveMatchCard({ item, source }: { item: DartsLiveMatch; source?: SportL
       leftScore={scoreValue(left?.score)}
       rightScore={scoreValue(right?.score)}
       source={source}
-      footer={source ? `Suivi officiel · ${sourceLabel(source)}` : "Score en direct"}
+      sourceName={item.sourceName || source?.shortName || source?.name}
+      sourceUrl={item.sourceUrl || bestPrimaryLink(source)}
+      footer={item.sourceName || source ? `Suivi officiel · ${item.sourceName || sourceLabel(source)}` : "Score en direct"}
     />
   );
 }
@@ -663,13 +759,16 @@ function FixtureMatchCard({ item, source, lang }: { item: DartsLiveFixture; sour
       leftScore="VS"
       rightScore=""
       source={source}
-      footer={source ? `À suivre · ${sourceLabel(source)}` : "Programme officiel"}
+      sourceName={item.sourceName || source?.shortName || source?.name}
+      sourceUrl={item.sourceUrl || bestPrimaryLink(source)}
+      footer={item.sourceName || source ? `À suivre · ${item.sourceName || sourceLabel(source)}` : "Programme officiel"}
     />
   );
 }
 
 function ResultMatchCard({ item, source, lang }: { item: DartsLiveResult; source?: SportLiveSource | null; lang: string }) {
   const origin = itemSource(item, source);
+  const sourceLogo = sourceImageFromItem({ sourceUrl: origin.url }, source);
   const rows = [
     { player: item.winner, winner: true },
     { player: item.loser, winner: false },
@@ -679,7 +778,7 @@ function ResultMatchCard({ item, source, lang }: { item: DartsLiveResult; source
       <div className="msc-result-head">
         <div className="msc-result-date">{formatDate(item.playedOn, lang)}</div>
         <div className="msc-result-head-spacer" />
-        {origin.url ? <a className="msc-result-source" href={origin.url} target="_blank" rel="noreferrer noopener">{origin.name}</a> : <span className="msc-result-source">{origin.name}</span>}
+        {origin.url ? <a className="msc-result-source" href={origin.url} target="_blank" rel="noreferrer noopener">{sourceLogo ? <img src={sourceLogo} alt="" loading="lazy" referrerPolicy="no-referrer" /> : null}<span>{origin.name}</span></a> : <span className="msc-result-source">{sourceLogo ? <img src={sourceLogo} alt="" loading="lazy" referrerPolicy="no-referrer" /> : null}<span>{origin.name}</span></span>}
       </div>
       <div className="msc-result-body">
         <div className="msc-result-teams">
@@ -704,7 +803,7 @@ function ResultMatchCard({ item, source, lang }: { item: DartsLiveResult; source
   );
 }
 
-function GroupedResults({ rows, source, lang }: { rows: DartsLiveResult[]; source?: SportLiveSource | null; lang: string }) {
+function GroupedResults({ rows, source, lang, newsRows, allSources }: { rows: DartsLiveResult[]; source?: SportLiveSource | null; lang: string; newsRows: SportLiveNewsItem[]; allSources: SportLiveSource[] }) {
   const competitions = React.useMemo(() => {
     const map = new Map<string, DartsLiveResult[]>();
     rows.forEach((row) => {
@@ -718,9 +817,11 @@ function GroupedResults({ rows, source, lang }: { rows: DartsLiveResult[]; sourc
         name,
         matches: [...matches].sort((a, b) => dateTs(b.playedOn) - dateTs(a.playedOn)),
         latest: Math.max(...matches.map((match) => dateTs(match.playedOn)), 0),
+        imageUrl: findCompetitionImage(name, matches, newsRows, allSources),
+        tone: competitionVisualTone(name),
       }))
       .sort((a, b) => (b.latest - a.latest) || (b.matches.length - a.matches.length) || a.name.localeCompare(b.name));
-  }, [rows]);
+  }, [rows, newsRows, allSources]);
   const [selected, setSelected] = React.useState("__all__");
   React.useEffect(() => {
     if (selected !== "__all__" && !competitions.some((item) => item.name === selected)) setSelected("__all__");
@@ -730,16 +831,16 @@ function GroupedResults({ rows, source, lang }: { rows: DartsLiveResult[]; sourc
     <>
       <div className="msc-competition-dock" aria-label="Compétitions">
         <button className={`msc-competition-btn${selected === "__all__" ? " is-active" : ""}`} type="button" onClick={() => setSelected("__all__")} title="Toutes les compétitions">
-          <span className="msc-competition-icon">🏟️</span><span className="msc-competition-label">TOUTES</span><span className="msc-competition-count">{rows.length}</span>
+          <span className="msc-competition-visual"><span className="msc-competition-icon">🏟️</span></span><span className="msc-competition-label">TOUTES</span><span className="msc-competition-count">{rows.length}</span>
         </button>
-        {competitions.map(({ name, matches }) => (
-          <button key={name} className={`msc-competition-btn${selected === name ? " is-active" : ""}`} type="button" onClick={() => setSelected(name)} title={name}>
-            <span className="msc-competition-icon">{competitionIcon(name)}</span><span className="msc-competition-label" translate="no">{name}</span><span className="msc-competition-count">{matches.length}</span>
+        {competitions.map(({ name, matches, imageUrl, tone }) => (
+          <button key={name} className={`msc-competition-btn ${tone}${selected === name ? " is-active" : ""}`} type="button" onClick={() => setSelected(name)} title={name}>
+            <span className="msc-competition-visual">{imageUrl ? <img src={imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : <span className="msc-competition-icon">{competitionIcon(name)}</span>}</span><span className="msc-competition-label" translate="no">{name}</span><span className="msc-competition-count">{matches.length}</span>
           </button>
         ))}
       </div>
       <div className="msc-competition-groups">
-        {visible.map(({ name, matches }) => {
+        {visible.map(({ name, matches, imageUrl, tone }) => {
           const rounds = new Map<string, DartsLiveResult[]>();
           matches.forEach((match) => {
             const round = normalizedRound(match.round);
@@ -750,8 +851,8 @@ function GroupedResults({ rows, source, lang }: { rows: DartsLiveResult[]; sourc
           const orderedRounds = Array.from(rounds.entries()).sort(([a], [b]) => roundOrder(a) - roundOrder(b));
           return (
             <section className="msc-competition-group" key={name}>
-              <div className="msc-competition-head">
-                <span className="msc-competition-head-icon">{competitionIcon(name)}</span>
+              <div className={`msc-competition-head ${tone}`}>
+                <span className="msc-competition-head-icon">{imageUrl ? <img src={imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : competitionIcon(name)}</span>
                 <div className="msc-competition-head-title" translate="no" data-i18n-skip="true">{name}</div>
                 <span className="msc-competition-head-count">{matches.length}</span>
               </div>
@@ -792,6 +893,7 @@ function OfficialEventCard({ event }: { event: SportLiveEvent }) {
 function NewsCard({ item, lang }: { item: SportLiveNewsItem; lang: string }) {
   const kindLabel = item.kind === "result" ? "RÉSULTAT" : item.kind === "live" ? "LIVE" : item.kind === "upcoming" ? "À VENIR" : "ACTU";
   const kindClass = item.kind === "result" ? " is-result" : item.kind === "live" ? " is-live" : item.kind === "upcoming" ? " is-upcoming" : "";
+  const sourceLogo = sourceImageFromItem({ sourceUrl: item.sourceUrl });
   return (
     <article className={`msc-news-card${kindClass}${item.imageUrl ? "" : " no-image"}`}>
       {item.imageUrl ? (
@@ -803,7 +905,7 @@ function NewsCard({ item, lang }: { item: SportLiveNewsItem; lang: string }) {
         <div className="msc-news-top">
           <span className={`msc-news-kind${kindClass}`}>{kindLabel}</span>
           {item.scope ? <span className={`msc-news-scope is-${item.scope}`}>{item.scopeLabel || (item.scope === "local" ? "LOCAL" : item.scope === "regional" ? "RÉGIONAL" : "MONDE")}</span> : null}
-          <span className="msc-news-source">{item.sourceName || "WEB"}{item.publishedAt ? ` · ${formatDate(item.publishedAt, lang)}` : ""}</span>
+          <span className="msc-news-source">{sourceLogo ? <img src={sourceLogo} alt="" loading="lazy" referrerPolicy="no-referrer" /> : null}<span>{item.sourceName || "WEB"}{item.publishedAt ? ` · ${formatDate(item.publishedAt, lang)}` : ""}</span></span>
         </div>
         <div className="msc-news-title" translate="no" data-i18n-skip="true">{item.title}</div>
         {item.summary ? <div className="msc-news-summary" translate="no" data-i18n-skip="true">{item.summary}</div> : null}
@@ -816,6 +918,7 @@ function NewsCard({ item, lang }: { item: SportLiveNewsItem; lang: string }) {
 
 function LeadNewsCard({ item, lang }: { item: SportLiveNewsItem; lang: string }) {
   const kindLabel = item.kind === "result" ? "RÉSULTAT" : item.kind === "live" ? "LIVE" : item.kind === "upcoming" ? "À VENIR" : "À LA UNE";
+  const sourceLogo = sourceImageFromItem({ sourceUrl: item.sourceUrl });
   return (
     <article className="msc-news-lead">
       {item.imageUrl ? <div className="msc-news-lead-media"><img src={item.imageUrl} alt="" loading="eager" referrerPolicy="no-referrer" /></div> : null}
@@ -824,7 +927,7 @@ function LeadNewsCard({ item, lang }: { item: SportLiveNewsItem; lang: string })
         <div className="msc-news-top">
           <span className={`msc-news-kind${item.kind === "result" ? " is-result" : item.kind === "live" ? " is-live" : item.kind === "upcoming" ? " is-upcoming" : ""}`}>{kindLabel}</span>
           {item.scope ? <span className={`msc-news-scope is-${item.scope}`}>{item.scopeLabel || (item.scope === "local" ? "LOCAL" : item.scope === "regional" ? "RÉGIONAL" : "MONDE")}</span> : null}
-          <span className="msc-news-source">{item.sourceName || "WEB"}{item.publishedAt ? ` · ${formatDate(item.publishedAt, lang)}` : ""}</span>
+          <span className="msc-news-source">{sourceLogo ? <img src={sourceLogo} alt="" loading="lazy" referrerPolicy="no-referrer" /> : null}<span>{item.sourceName || "WEB"}{item.publishedAt ? ` · ${formatDate(item.publishedAt, lang)}` : ""}</span></span>
         </div>
         <div className="msc-news-lead-title" translate="no" data-i18n-skip="true">{item.title}</div>
         {item.summary ? <div className="msc-news-lead-summary" translate="no" data-i18n-skip="true">{item.summary}</div> : null}
@@ -845,6 +948,7 @@ function EmptySection({ title, copy, sources }: { title: string; copy: string; s
         <div className="msc-source-rail">
           {usable.map((source) => (
             <div className="msc-source-row" key={source.id}>
+              <div className="msc-source-logo">{sourceImageFromSource(source) ? <img src={sourceImageFromSource(source)!} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span>🌐</span>}</div>
               <div style={{ minWidth: 0, textAlign: "left" }}>
                 <div className="msc-source-name" translate="no" data-i18n-skip="true">{source.name}</div>
                 <div className="msc-source-desc">{source.description}</div>
@@ -865,6 +969,7 @@ function SourceDirectory({ sources }: { sources: SportLiveSource[] }) {
     <div className="msc-source-rail">
       {sources.map((source) => (
         <div className="msc-source-row" key={source.id}>
+          <div className="msc-source-logo">{sourceImageFromSource(source) ? <img src={sourceImageFromSource(source)!} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span>🌐</span>}</div>
           <div style={{ minWidth: 0 }}>
             <div className="msc-source-name" translate="no" data-i18n-skip="true">{source.name}</div>
             <div className="msc-source-desc">{source.description}</div>
@@ -1245,7 +1350,7 @@ export default function SportLiveHub() {
       {supportedSport && view === "results" ? (
         <section className="msc-live-section">
           <SectionHeader title="RÉSULTATS" count={(resultRows.length + resultEvents.length) ? `${resultRows.length + resultEvents.length} résultat${(resultRows.length + resultEvents.length) > 1 ? "s" : ""}` : ""} />
-          {resultRows.length ? <GroupedResults rows={resultRows} source={sourceForCards} lang={lang} /> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Résultats officiels" copy="Aucun résultat automatique n’est chargé pour l’instant. Ouvre une source officielle pour consulter les derniers scores." sources={recommended.filter((source) => source.resultsUrl)} />}
+          {resultRows.length ? <GroupedResults rows={resultRows} source={sourceForCards} lang={lang} newsRows={newsRows} allSources={allSportSources} /> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Résultats officiels" copy="Aucun résultat automatique n’est chargé pour l’instant. Ouvre une source officielle pour consulter les derniers scores." sources={recommended.filter((source) => source.resultsUrl)} />}
         </section>
       ) : null}
 
@@ -1278,7 +1383,7 @@ export default function SportLiveHub() {
       ) : null}
 
       {floatingPanel === "news" ? <FloatingDrawer title={`ACTUALITÉS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{newsRows.length ? <div className="msc-news-grid">{newsRows.map((item) => <NewsCard key={item.id} item={item} lang={lang} />)}</div> : <EmptySection title="Aucune actualité détectée" copy="Réessaie l’actualisation dans quelques instants." sources={recommended.slice(0, 2)} />}</FloatingDrawer> : null}
-      {floatingPanel === "results" ? <FloatingDrawer title={`RÉSULTATS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{resultRows.length ? <GroupedResults rows={resultRows} source={sourceForCards} lang={lang} /> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Aucun résultat détecté" copy="Les sources officielles restent disponibles." sources={recommended.filter((source) => source.resultsUrl).slice(0, 2)} />}</FloatingDrawer> : null}
+      {floatingPanel === "results" ? <FloatingDrawer title={`RÉSULTATS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{resultRows.length ? <GroupedResults rows={resultRows} source={sourceForCards} lang={lang} newsRows={newsRows} allSources={allSportSources} /> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Aucun résultat détecté" copy="Les sources officielles restent disponibles." sources={recommended.filter((source) => source.resultsUrl).slice(0, 2)} />}</FloatingDrawer> : null}
       {floatingPanel === "fixtures" ? <FloatingDrawer title={`PROGRAMME · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{fixtureRows.length ? fixtureRows.map((item) => <FixtureMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />) : upcomingEvents.length ? upcomingEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Aucun événement à venir" copy="Consulte les calendriers officiels." sources={recommended.filter((source) => source.calendarUrl).slice(0, 2)} />}</FloatingDrawer> : null}
       {floatingPanel === "sources" ? <FloatingDrawer title={`SOURCES · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}><SourceDirectory sources={sources} /></FloatingDrawer> : null}
 

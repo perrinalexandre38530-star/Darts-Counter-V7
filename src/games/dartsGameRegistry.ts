@@ -1580,6 +1580,11 @@ const READY_IDS = new Set<string>([
   "pendu",
   "menteur",
   "crados",
+  "shove_a_penny",
+  "double_down",
+  "nine_dart_century",
+  "green_vs_red",
+  "hi_score",
 
   // ✅ LOTERIE — mode PARTY disponible
   "loterie",

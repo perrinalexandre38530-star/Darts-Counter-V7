@@ -1,9 +1,13 @@
 import React from "react";
 import type { Profile } from "../../../lib/types";
-import { useCurrentProfile } from "../../../hooks/useCurrentProfile";
 import TrainingShell from "../../shell/TrainingShell";
 import TrainingHeader from "../../ui/TrainingHeader";
 import TrainingStartButton from "../../ui/TrainingStartButton";
+import TrainingParticipantsSelector, {
+  buildTrainingParticipantConfig,
+  resolveTrainingParticipants,
+  useTrainingParticipantSelection,
+} from "../../ui/TrainingParticipantsSelector";
 import { getTrainingDetailedSessions } from "../../stats/trainingStatsHub";
 import { buildGoalAwareCoachPrescription, buildTrainingDiagnosis, buildTrainingGoalStatuses, buildTrainingProgression, chooseGoalPriorityFamily } from "../../coach/trainingDiagnosis";
 import {
@@ -11,6 +15,7 @@ import {
   TRAINING_FAMILY_META,
   type TrainingExerciseFamily,
 } from "../../catalog/trainingExerciseCatalog";
+import { MABULL_REFERENCE_CATALOG, MABULL_REFERENCE_STATS, type MabullReferenceKind } from "../../catalog/mabullReferenceCatalog";
 import { buildCoachProgram, buildCustomProgram, TRAINING_ASSESSMENT_PROGRAM, TRAINING_PROGRAMS, type TrainingProgramDefinition, type TrainingProgramBuildOptions } from "../../catalog/trainingProgramCatalog";
 import { loadTrainingLabPreferences, setTrainingFamilyGoal, setTrainingFamilyGoalDeadline, setTrainingWeeklySessionTarget, toggleFavoriteExercise, toggleFavoriteProgram, type TrainingLabPreferences } from "../../preferences/trainingLabPreferences";
 import { buildTrainingCycleComparison, buildTrainingWeeklyPlanStats, clearTrainingProgramDraft, loadTrainingProgramDraft, loadTrainingProgramSessions } from "../../profile/trainingPlanTracker";
@@ -41,6 +46,7 @@ type HubTab = "program" | "exercises" | "diagnosis" | "progress";
 type ProgramPanel = "today" | "week" | "cycle" | "library";
 type ProgressPanel = "overview" | "skills" | "coach" | "cycles" | "history";
 type ExercisePanel = "path" | "catalog" | "favorites";
+type CatalogSource = "playable" | "mabull";
 type DiagnosisPanel = "overview" | "skill" | "goal";
 type SkillProgressPanel = "mastery" | "badges" | "records";
 type CoachPanel = "brief" | "live" | "effectiveness" | "weeks";
@@ -100,43 +106,8 @@ function pct(value: number) {
   return `${Math.round(Number(value) || 0)}%`;
 }
 
-function buildAccountParticipantConfig(profile: Profile | null) {
-  if (!profile?.id) {
-    return {
-      participantMode: "players" as const,
-      selectedPlayerIds: [] as string[],
-      selectedBotIds: [] as string[],
-      selectedTeamIds: [] as string[],
-      selectedTeamPlayerIds: {} as Record<string, string[]>,
-      teamSize: 1,
-      trainingParticipants: [] as any[],
-    };
-  }
-  const row: any = profile as any;
-  return {
-    participantMode: "players" as const,
-    selectedPlayerIds: [String(profile.id)],
-    selectedBotIds: [] as string[],
-    selectedTeamIds: [] as string[],
-    selectedTeamPlayerIds: {} as Record<string, string[]>,
-    teamSize: 1,
-    trainingParticipants: [{
-      id: String(profile.id),
-      name: String(row.name || row.displayName || "Mon compte"),
-      avatarDataUrl: row.avatarDataUrl || null,
-      avatarUrl: row.avatarUrl || row.avatar || null,
-      teamId: null,
-      teamName: null,
-      teamLogo: null,
-    }],
-  };
-}
-
 export default function TrainingLabConfig({ profiles, onStart, onExit }: { profiles?: Profile[]; onStart: (cfg: any) => void; onExit: () => void; }) {
-  const currentProfile = useCurrentProfile();
-  const accountProfile = currentProfile || null;
-  const accountParticipantConfig = React.useMemo(() => buildAccountParticipantConfig(accountProfile), [accountProfile]);
-  const accountReady = Boolean(accountProfile?.id);
+  const [participants, setParticipants] = useTrainingParticipantSelection(profiles);
   const [preferences, setPreferences] = React.useState<TrainingLabPreferences>(() => loadTrainingLabPreferences());
   const [revision, setRevision] = React.useState(0);
   React.useEffect(() => {
@@ -162,17 +133,17 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
 
   const sessions = React.useMemo(() => {
     void revision;
-    return accountProfile?.id ? getTrainingDetailedSessions({ participantId: String(accountProfile.id), limit: 300 }) : [];
-  }, [revision, accountProfile?.id]);
+    return getTrainingDetailedSessions({ limit: 300 });
+  }, [revision]);
   const programSessions = React.useMemo(() => {
     void revision;
-    return accountProfile?.id ? loadTrainingProgramSessions(String(accountProfile.id)) : [];
-  }, [revision, accountProfile?.id]);
+    return loadTrainingProgramSessions();
+  }, [revision]);
   const weeklyPlan = React.useMemo(() => buildTrainingWeeklyPlanStats(programSessions, preferences.weeklySessionTarget), [programSessions, preferences.weeklySessionTarget]);
   const cycleComparison = React.useMemo(() => buildTrainingCycleComparison(programSessions, 4), [programSessions]);
   const liveCoachHistory = React.useMemo(() => buildTrainingSessionHistoryCoach(programSessions, 6), [programSessions]);
   const assessment = React.useMemo(() => buildTrainingAssessment(programSessions, sessions), [programSessions, sessions]);
-  const programDraft = React.useMemo(() => { void revision; return accountProfile?.id ? loadTrainingProgramDraft(String(accountProfile.id)) : null; }, [revision, accountProfile?.id]);
+  const programDraft = React.useMemo(() => { void revision; return loadTrainingProgramDraft(); }, [revision]);
   const loadSummary = React.useMemo(() => buildTrainingLoadSummary(programSessions, preferences.weeklySessionTarget), [programSessions, preferences.weeklySessionTarget]);
   const diagnosis = React.useMemo(() => buildTrainingDiagnosis(sessions), [sessions]);
   const rawRecommendedFamily = React.useMemo(() => chooseGoalPriorityFamily(diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines), [diagnosis, preferences.familyGoals, preferences.familyGoalDeadlines]);
@@ -188,7 +159,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
   const weekCoachPlan = React.useMemo(() => buildTrainingWeekCoachPlan(programSessions, preferences.weeklySessionTarget, recommendedFamily, loadSummary), [programSessions, preferences.weeklySessionTarget, recommendedFamily, loadSummary]);
   const actionCoach = React.useMemo(() => buildTrainingActionCoach(adaptationCoach, loadSummary, weekCoachPlan, cycleCoach, blockCoach), [adaptationCoach, loadSummary, weekCoachPlan, cycleCoach, blockCoach]);
   const dailyPlan = React.useMemo(() => buildTrainingDailyPlan(actionCoach, loadSummary), [actionCoach, loadSummary]);
-  const nextRecommendation = React.useMemo(() => { void revision; return accountProfile?.id ? loadTrainingNextRecommendation(String(accountProfile.id)) : null; }, [revision, accountProfile?.id]);
+  const nextRecommendation = React.useMemo(() => { void revision; return loadTrainingNextRecommendation(); }, [revision]);
   const progression = React.useMemo(() => buildTrainingProgression(sessions), [sessions]);
   const goalStatuses = React.useMemo(() => buildTrainingGoalStatuses(diagnosis, preferences.familyGoals), [diagnosis, preferences.familyGoals]);
   const diagnosticBoard = React.useMemo(() => buildTrainingDiagnosticBoard(diagnosis, goalStatuses, recommendedFamily), [diagnosis, goalStatuses, recommendedFamily]);
@@ -211,6 +182,8 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
   const [programPanel, setProgramPanel] = React.useState<ProgramPanel>("today");
   const [progressPanel, setProgressPanel] = React.useState<ProgressPanel>("overview");
   const [exercisePanel, setExercisePanel] = React.useState<ExercisePanel>("path");
+  const [catalogSource, setCatalogSource] = React.useState<CatalogSource>("playable");
+  const [mabullKind, setMabullKind] = React.useState<MabullReferenceKind | "all">("all");
   const [diagnosisPanel, setDiagnosisPanel] = React.useState<DiagnosisPanel>("overview");
   const [diagnosisFamily, setDiagnosisFamily] = React.useState<TrainingExerciseFamily>(recommendedFamily);
   const [skillProgressPanel, setSkillProgressPanel] = React.useState<SkillProgressPanel>("mastery");
@@ -246,7 +219,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
     }
   }, [viewMode]);
   const customProgram = React.useMemo(() => buildCustomProgram({ durationMin: customDuration, focusFamily: customFocus, intensity: customIntensity }), [customDuration, customFocus, customIntensity]);
-  const resolved = accountParticipantConfig.trainingParticipants;
+  const resolved = resolveTrainingParticipants(participants, profiles);
   const quickStart = React.useMemo(() => buildTrainingQuickStart({
     hasDraft: Boolean(programDraft),
     assessmentAvailable: assessment.available,
@@ -268,6 +241,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
 
   const exercises = TRAINING_EXERCISE_CATALOG.filter((e) => e.family === family);
   const filteredExercises = exercises.filter((exercise) => difficultyFilter === 0 || exercise.difficulty === difficultyFilter);
+  const filteredMabullItems = React.useMemo(() => MABULL_REFERENCE_CATALOG.filter((item) => mabullKind === "all" || item.kind === mabullKind), [mabullKind]);
   const skillPath = React.useMemo(() => buildTrainingSkillPath(family, progression), [family, progression]);
   const skillCertification = React.useMemo(() => buildTrainingSkillCertification(skillPath, sessions), [skillPath, sessions]);
   const selected = TRAINING_EXERCISE_CATALOG.find((e) => e.id === exerciseId) || firstInFamily;
@@ -278,7 +252,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
     exerciseId: selected.id,
     family: selected.family,
     sessionKind: "exercise",
-    ...accountParticipantConfig,
+    ...buildTrainingParticipantConfig(participants, profiles),
   });
 
   const startCertification = () => onStart({
@@ -288,7 +262,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
     certificationFamily: skillCertification.family,
     certificationTargetLevel: skillCertification.targetLevel,
     certificationRequiredScore: skillCertification.requiredScore,
-    ...accountParticipantConfig,
+    ...buildTrainingParticipantConfig(participants, profiles),
   });
 
   const startDailyChallenge = () => onStart({
@@ -297,7 +271,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
     sessionKind: "daily_challenge",
     dailyChallengeDateKey: dailyChallenge.dateKey,
     dailyChallengeRequiredScore: dailyChallenge.requiredScore,
-    ...accountParticipantConfig,
+    ...buildTrainingParticipantConfig(participants, profiles),
   });
 
   const startProgram = (program: TrainingProgramDefinition, extras: Record<string, unknown> = {}) => onStart({
@@ -310,7 +284,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
     programFocusFamily: program.focusFamily || "balanced",
     sessionKind: "program",
     ...extras,
-    ...accountParticipantConfig,
+    ...buildTrainingParticipantConfig(participants, profiles),
   });
 
   const favoriteExerciseIds = new Set(preferences.favoriteExerciseIds);
@@ -350,7 +324,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
   };
 
   const runQuickStart = () => {
-    if (!accountReady) return;
+    if (!resolved.length) return;
     dismissQuickGuide();
     if (quickStart.kind === "resume" && programDraft) { resumeProgramDraft(); return; }
     if (quickStart.kind === "assessment") { startProgram(TRAINING_ASSESSMENT_PROGRAM, { adaptiveDailyPlan: false }); return; }
@@ -378,7 +352,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
       sessionKind: "program",
       resumeStepIndex: programDraft.nextStepIndex,
       resumeProgramResults: programDraft.completedSteps,
-      ...accountParticipantConfig,
+      ...buildTrainingParticipantConfig(participants, profiles),
     });
   };
 
@@ -449,21 +423,11 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 <div style={{ fontSize: 7.5, fontWeight: 950, letterSpacing: .8, color: "#8cffcb" }}>{quickStart.eyebrow}</div>
                 <div style={{ marginTop: 3, fontSize: 14, fontWeight: 950 }}>{quickStart.title}</div>
                 <div style={{ marginTop: 4, fontSize: 8.8, opacity: .58, lineHeight: 1.4 }}>{quickStart.body}</div>
-                <button type="button" disabled={!accountReady} onClick={runQuickStart} style={{ width: "100%", marginTop: 10, padding: "11px 12px", borderRadius: 12, border: "1px solid rgba(80,255,174,.35)", background: "rgba(80,255,174,.10)", color: "inherit", fontSize: 9, fontWeight: 950, cursor: accountReady ? "pointer" : "not-allowed", opacity: accountReady ? 1 : .45 }}>{resolved.length ? quickStart.cta : "CHOISIS D'ABORD UN JOUEUR"}</button>
+                <button type="button" disabled={!resolved.length} onClick={runQuickStart} style={{ width: "100%", marginTop: 10, padding: "11px 12px", borderRadius: 12, border: "1px solid rgba(80,255,174,.35)", background: "rgba(80,255,174,.10)", color: "inherit", fontSize: 9, fontWeight: 950, cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .45 }}>{resolved.length ? quickStart.cta : "CHOISIS D'ABORD UN JOUEUR"}</button>
               </div>
             </div>
           </div>}
-
-          <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: 13, border: accountReady ? "1px solid rgba(80,255,174,.16)" : "1px solid rgba(255,184,76,.20)", background: accountReady ? "rgba(80,255,174,.035)" : "rgba(255,184,76,.045)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-              {accountProfile && (((accountProfile as any).avatarDataUrl || (accountProfile as any).avatarUrl || (accountProfile as any).avatar)) ? <img src={(accountProfile as any).avatarDataUrl || (accountProfile as any).avatarUrl || (accountProfile as any).avatar} alt="" style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover", border: "1px solid rgba(255,255,255,.10)" }} /> : <div style={{ width: 30, height: 30, borderRadius: "50%", display: "grid", placeItems: "center", background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", fontSize: 13 }}>👤</div>}
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 7, fontWeight: 950, letterSpacing: .8, color: accountReady ? "#8cffcb" : "#ffcf74" }}>{accountReady ? "ENTRAÎNEMENT PERSONNEL" : "COMPTE REQUIS"}</div>
-                <div style={{ marginTop: 2, fontSize: 9.5, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{accountReady ? String((accountProfile as any)?.name || (accountProfile as any)?.displayName || "Mon compte") : "Connecte-toi pour utiliser le Centre"}</div>
-              </div>
-            </div>
-            <div style={{ fontSize: 6.7, fontWeight: 900, opacity: .48, textAlign: "right" }}>{accountReady ? "Stats • objectifs • défis • Awena" : "Aucun joueur/team à sélectionner"}</div>
-          </div>
+          <TrainingParticipantsSelector profiles={profiles} value={participants} onChange={setParticipants} />
 
           {viewMode === "essential" && <div style={{ marginTop: 10, padding: 12, borderRadius: 17, border: "1px solid rgba(39,220,255,.18)", background: "linear-gradient(145deg,rgba(39,220,255,.065),rgba(140,90,255,.035))" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -475,7 +439,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
               <div style={{ padding: "5px 8px", borderRadius: 999, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.06)", fontSize: 7, fontWeight: 900, opacity: .72 }}>{quickStart.eyebrow}</div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginTop: 10 }}>
-              <button type="button" disabled={!accountReady} onClick={runQuickStart} style={{ minWidth: 0, padding: "11px 8px", borderRadius: 13, border: "1px solid rgba(80,255,174,.28)", background: "linear-gradient(145deg,rgba(80,255,174,.10),rgba(39,220,255,.04))", color: "inherit", cursor: accountReady ? "pointer" : "not-allowed", opacity: accountReady ? 1 : .45, textAlign: "left" }}>
+              <button type="button" disabled={!resolved.length} onClick={runQuickStart} style={{ minWidth: 0, padding: "11px 8px", borderRadius: 13, border: "1px solid rgba(80,255,174,.28)", background: "linear-gradient(145deg,rgba(80,255,174,.10),rgba(39,220,255,.04))", color: "inherit", cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .45, textAlign: "left" }}>
                 <div style={{ fontSize: 14 }}>▶</div><div style={{ marginTop: 5, fontSize: 8.6, fontWeight: 950 }}>JOUER MAINTENANT</div><div style={{ marginTop: 3, fontSize: 7, lineHeight: 1.3, opacity: .52 }}>{resolved.length ? quickStart.cta : "Choisis d'abord un joueur"}</div>
               </button>
               <button type="button" onClick={() => { setTab("exercises"); setExercisePanel("path"); }} style={{ minWidth: 0, padding: "11px 8px", borderRadius: 13, border: "1px solid rgba(255,216,107,.20)", background: "rgba(255,216,107,.045)", color: "inherit", cursor: "pointer", textAlign: "left" }}>
@@ -525,8 +489,8 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
               <div style={{ marginTop: 3, fontSize: 8.8, opacity: .6 }}>Étape {programDraft.nextStepIndex + 1}/{programDraft.exerciseIds.length} • {programDraft.completedSteps.length} étape{programDraft.completedSteps.length > 1 ? "s" : ""} déjà enregistrée{programDraft.completedSteps.length > 1 ? "s" : ""} • sauvegardé {new Date(programDraft.savedAt).toLocaleString()}</div>
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <button type="button" disabled={!accountReady} onClick={resumeProgramDraft} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,216,107,.38)", background: "rgba(255,216,107,.10)", color: "inherit", fontSize: 8.5, fontWeight: 950, cursor: accountReady ? "pointer" : "not-allowed", opacity: accountReady ? 1 : .45 }}>REPRENDRE À L’ÉTAPE {programDraft.nextStepIndex + 1}</button>
-              <button type="button" onClick={() => clearTrainingProgramDraft(accountProfile?.id ? String(accountProfile.id) : null)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.035)", color: "inherit", fontSize: 8.5, fontWeight: 850, cursor: "pointer" }}>ABANDONNER</button>
+              <button type="button" disabled={!resolved.length} onClick={resumeProgramDraft} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,216,107,.38)", background: "rgba(255,216,107,.10)", color: "inherit", fontSize: 8.5, fontWeight: 950, cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .45 }}>REPRENDRE À L’ÉTAPE {programDraft.nextStepIndex + 1}</button>
+              <button type="button" onClick={() => clearTrainingProgramDraft()} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.035)", color: "inherit", fontSize: 8.5, fontWeight: 850, cursor: "pointer" }}>ABANDONNER</button>
             </div>
           </div>}
 
@@ -579,7 +543,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                   </div>)}
                 </div>
               </div>
-              {!dailyChallenge.completed && <button type="button" disabled={!accountReady} onClick={startDailyChallenge} style={{ width: "100%", marginTop: 8, padding: "9px 10px", borderRadius: 10, border: "1px solid rgba(255,216,107,.30)", background: "rgba(255,216,107,.08)", color: "inherit", fontSize: 8.3, fontWeight: 950, cursor: accountReady ? "pointer" : "not-allowed", opacity: accountReady ? 1 : .45 }}>RELEVER LE DÉFI · {dailyChallenge.exerciseTitle}</button>}
+              {!dailyChallenge.completed && <button type="button" disabled={!resolved.length} onClick={startDailyChallenge} style={{ width: "100%", marginTop: 8, padding: "9px 10px", borderRadius: 10, border: "1px solid rgba(255,216,107,.30)", background: "rgba(255,216,107,.08)", color: "inherit", fontSize: 8.3, fontWeight: 950, cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .45 }}>RELEVER LE DÉFI · {dailyChallenge.exerciseTitle}</button>}
             </div>}
             {(viewMode === "complete" || todayPanel === "plan") && <div style={{ marginTop: 8, padding: 14, borderRadius: 17, border: actionCoach.tone === "amber" ? "1px solid rgba(255,184,76,.34)" : actionCoach.tone === "green" ? "1px solid rgba(80,255,174,.30)" : actionCoach.tone === "violet" ? "1px solid rgba(185,156,255,.32)" : "1px solid rgba(39,220,255,.32)", background: actionCoach.tone === "amber" ? "linear-gradient(135deg,rgba(255,184,76,.10),rgba(140,90,255,.035))" : actionCoach.tone === "green" ? "linear-gradient(135deg,rgba(80,255,174,.08),rgba(39,220,255,.035))" : actionCoach.tone === "violet" ? "linear-gradient(135deg,rgba(140,90,255,.10),rgba(39,220,255,.035))" : "linear-gradient(135deg,rgba(39,220,255,.11),rgba(140,90,255,.045))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -589,7 +553,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                   <div style={{ marginTop: 5, fontSize: 9.8, lineHeight: 1.45, opacity: .68 }}>{actionCoach.body}</div>
                 </div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                  <button type="button" disabled={!accountReady} onClick={() => startProgram(dailyPlan.program, { adaptiveDailyPlan: true, dailyPlanDateKey: dailyPlan.dateKey })} style={{ padding: "9px 11px", borderRadius: 11, border: "1px solid rgba(255,255,255,.22)", background: "rgba(255,255,255,.10)", color: "inherit", fontSize: 8.8, fontWeight: 950, cursor: accountReady ? "pointer" : "not-allowed", opacity: accountReady ? 1 : .45, whiteSpace: "nowrap" }}>LANCER LE PLAN DU JOUR</button>
+                  <button type="button" disabled={!resolved.length} onClick={() => startProgram(dailyPlan.program, { adaptiveDailyPlan: true, dailyPlanDateKey: dailyPlan.dateKey })} style={{ padding: "9px 11px", borderRadius: 11, border: "1px solid rgba(255,255,255,.22)", background: "rgba(255,255,255,.10)", color: "inherit", fontSize: 8.8, fontWeight: 950, cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .45, whiteSpace: "nowrap" }}>LANCER LE PLAN DU JOUR</button>
                   <button type="button" onClick={() => prepareRecommendedSession(actionCoach.durationMin, actionCoach.family)} style={{ padding: "9px 11px", borderRadius: 11, border: "1px solid rgba(255,255,255,.10)", background: "rgba(0,0,0,.16)", color: "inherit", fontSize: 8.2, fontWeight: 900, cursor: "pointer", whiteSpace: "nowrap", opacity: .78 }}>AJUSTER</button>
                 </div>
               </div>
@@ -626,7 +590,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                   <div style={{ marginTop: 4, fontSize: 13, fontWeight: 950 }}>{assessment.headline}</div>
                   <div style={{ marginTop: 4, fontSize: 9.2, lineHeight: 1.45, opacity: .62 }}>{assessment.body}</div>
                 </div>
-                <button type="button" disabled={!accountReady} onClick={() => startProgram(TRAINING_ASSESSMENT_PROGRAM, { adaptiveDailyPlan: false })} style={{ padding: "9px 11px", borderRadius: 11, border: "1px solid rgba(255,216,107,.25)", background: "rgba(255,216,107,.08)", color: "inherit", fontSize: 8.4, fontWeight: 950, cursor: accountReady ? "pointer" : "not-allowed", opacity: accountReady ? 1 : .45, whiteSpace: "nowrap" }}>{assessment.available ? "REJOUER LE BILAN" : "LANCER LE BILAN"}</button>
+                <button type="button" disabled={!resolved.length} onClick={() => startProgram(TRAINING_ASSESSMENT_PROGRAM, { adaptiveDailyPlan: false })} style={{ padding: "9px 11px", borderRadius: 11, border: "1px solid rgba(255,216,107,.25)", background: "rgba(255,216,107,.08)", color: "inherit", fontSize: 8.4, fontWeight: 950, cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .45, whiteSpace: "nowrap" }}>{assessment.available ? "REJOUER LE BILAN" : "LANCER LE BILAN"}</button>
               </div>
               {assessment.available && <>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 10 }}>
@@ -914,7 +878,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
               <button type="button" onClick={() => toggleProgramFavorite(selectedProgram)} style={{ padding: "8px 11px", borderRadius: 10, border: favoriteProgramIds.has(selectedProgram.id) ? "1px solid rgba(255,216,107,.55)" : "1px solid rgba(255,255,255,.12)", background: favoriteProgramIds.has(selectedProgram.id) ? "rgba(255,216,107,.10)" : "rgba(255,255,255,.04)", color: "inherit", fontSize: 9, fontWeight: 900, cursor: "pointer" }}>{favoriteProgramIds.has(selectedProgram.id) ? "★ RETIRER DES FAVORIS" : selectedProgram.id.startsWith("custom_") ? "★ ENREGISTRER CETTE SÉANCE" : "☆ AJOUTER AUX FAVORIS"}</button>
             </div>
-            <TrainingStartButton disabled={!accountReady} label={resolved.length > 1 ? `LANCER LE PROGRAMME — ${resolved.length} JOUEURS` : `LANCER ${selectedProgram.title}`} onClick={() => startProgram(selectedProgram)} />
+            <TrainingStartButton disabled={!resolved.length} label={resolved.length > 1 ? `LANCER LE PROGRAMME — ${resolved.length} JOUEURS` : `LANCER ${selectedProgram.title}`} onClick={() => startProgram(selectedProgram)} />
             </>}
           </div>}
 
@@ -978,6 +942,27 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
             </>}
 
             {exercisePanel === "catalog" && <>
+              <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+                {[
+                  { id: "playable", label: "JOUABLE", status: `${TRAINING_EXERCISE_CATALOG.length}` },
+                  { id: "mabull", label: "MABULL 55", status: `${MABULL_REFERENCE_STATS.total}` },
+                ].map((item) => { const active = catalogSource === item.id; return <button key={item.id} type="button" onClick={() => setCatalogSource(item.id as CatalogSource)} style={{ minWidth: 38, height: 34, padding: active ? "0 10px" : "0 9px", borderRadius: 11, border: active ? "1px solid rgba(39,220,255,.32)" : "1px solid rgba(255,255,255,.08)", background: active ? "rgba(39,220,255,.09)" : "rgba(255,255,255,.025)", color: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, cursor: "pointer", fontSize: 8, fontWeight: 950 }}><span>{item.id === "playable" ? "◎" : "▦"}</span>{active && <><span>{item.label}</span><span style={{ opacity: .45 }}>{item.status}</span></>}</button>; })}
+              </div>
+              {catalogSource === "mabull" && <div style={{ marginTop: 8, padding: 10, borderRadius: 12, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.02)" }}>
+                <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
+                  {[{ id: "all", label: "TOUS", icon: "▦" }, { id: "exercise", label: "EXERCICES", icon: "◎" }, { id: "technique", label: "TECHNIQUE", icon: "♙" }].map((item) => { const active = mabullKind === item.id; return <button key={item.id} type="button" onClick={() => setMabullKind(item.id as MabullReferenceKind | "all")} style={{ minWidth: 34, height: 31, padding: active ? "0 9px" : "0 8px", borderRadius: 10, border: active ? "1px solid rgba(185,156,255,.28)" : "1px solid rgba(255,255,255,.07)", background: active ? "rgba(185,156,255,.08)" : "rgba(255,255,255,.02)", color: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5, cursor: "pointer", fontSize: 7.5, fontWeight: 950 }}><span>{item.icon}</span>{active && <span>{item.label}</span>}</button>; })}
+                  <span style={{ marginLeft: "auto", fontSize: 7.2, opacity: .42 }}>{MABULL_REFERENCE_STATS.exercises} exercices • {MABULL_REFERENCE_STATS.techniques} technique • {MABULL_REFERENCE_STATS.mapped} déjà reliés</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 6, marginTop: 8 }}>
+                  {filteredMabullItems.map((item) => <div key={item.id} style={{ padding: 9, borderRadius: 11, border: item.status === "mapped" ? "1px solid rgba(80,255,174,.13)" : item.kind === "technique" ? "1px solid rgba(80,255,174,.10)" : "1px solid rgba(255,255,255,.065)", background: item.status === "mapped" ? "rgba(80,255,174,.025)" : "rgba(255,255,255,.018)" }}>
+                    <div style={{ display: "flex", gap: 7, alignItems: "center" }}><span style={{ opacity: .5 }}>{item.kind === "technique" ? "♙" : "◎"}</span><b style={{ minWidth: 0, flex: 1, fontSize: 8.7, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</b><span style={{ fontSize: 6.4, fontWeight: 900, color: item.status === "mapped" ? "#8cffcb" : item.kind === "technique" ? "#8cffcb" : "#ffd86b" }}>{item.status === "mapped" ? "RELIÉ" : item.kind === "technique" ? "TECH" : "RÈGLES"}</span></div>
+                    <div style={{ marginTop: 5, display: "flex", gap: 4, flexWrap: "wrap" }}>{item.tags.slice(0, 3).map((tag) => <span key={tag} style={{ padding: "2px 5px", borderRadius: 999, background: "rgba(255,255,255,.035)", fontSize: 6.2, opacity: .55 }}>{tag}</span>)}</div>
+                    {item.status === "mapped" && item.mappedExerciseId && <button type="button" onClick={() => { const mapped = TRAINING_EXERCISE_CATALOG.find((exercise) => exercise.id === item.mappedExerciseId); if (mapped) { setFamily(mapped.family); setExerciseId(mapped.id); setCatalogSource("playable"); } }} style={{ marginTop: 7, width: "100%", padding: 6, borderRadius: 8, border: "1px solid rgba(80,255,174,.16)", background: "rgba(80,255,174,.05)", color: "inherit", fontSize: 6.8, fontWeight: 950, cursor: "pointer" }}>OUVRIR L'ÉQUIVALENT JOUABLE</button>}
+                  </div>)}
+                </div>
+                <div style={{ marginTop: 8, fontSize: 7.2, lineHeight: 1.4, opacity: .44 }}>Référentiel relevé depuis le catalogue MaBULL fourni. Les entrées “RÈGLES” ne sont pas lancées tant que leur mécanique exacte n'a pas été relevée.</div>
+              </div>}
+              {catalogSource === "playable" && <>
               <div style={{ display: "flex", gap: 5, overflowX: "auto", padding: "9px 0 3px" }}>
                 {[0,1,2,3,4,5].map((value) => <button key={value} type="button" onClick={() => setDifficultyFilter(value as 0 | 1 | 2 | 3 | 4 | 5)} style={{ flex: "0 0 auto", padding: "6px 8px", borderRadius: 999, border: difficultyFilter === value ? "1px solid rgba(39,220,255,.50)" : "1px solid rgba(255,255,255,.08)", background: difficultyFilter === value ? "rgba(39,220,255,.10)" : "rgba(255,255,255,.025)", color: "inherit", fontSize: 7.5, fontWeight: 900, cursor: "pointer" }}>{value === 0 ? "TOUS" : `NIV. ${value}`}</button>)}
               </div>
@@ -990,6 +975,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                   </button>;
                 })}
               </div>
+              </>}
             </>}
 
             {exercisePanel === "favorites" && <>
@@ -1006,7 +992,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
               </div>
               <button type="button" onClick={() => toggleExerciseFavorite(selected.id)} style={{ padding: "8px 10px", borderRadius: 10, border: favoriteExerciseIds.has(selected.id) ? "1px solid rgba(255,216,107,.55)" : "1px solid rgba(255,255,255,.12)", background: favoriteExerciseIds.has(selected.id) ? "rgba(255,216,107,.10)" : "rgba(255,255,255,.04)", color: "inherit", fontSize: 8, fontWeight: 900, cursor: "pointer" }}>{favoriteExerciseIds.has(selected.id) ? "★ FAVORI" : "☆ FAVORI"}</button>
             </div>
-            <TrainingStartButton disabled={!accountReady} label={resolved.length > 1 ? `LANCER — ${resolved.length} JOUEURS` : "LANCER L'EXERCICE"} onClick={startExercise} />
+            <TrainingStartButton disabled={!resolved.length} label={resolved.length > 1 ? `LANCER — ${resolved.length} JOUEURS` : "LANCER L'EXERCICE"} onClick={startExercise} />
           </div>}
 
           {tab === "diagnosis" && <div>

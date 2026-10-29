@@ -14,6 +14,8 @@ import { useLang } from "../contexts/LangContext";
 import { saveCameraCalibration, loadCameraCalibration, fitCameraBoardHomography, type CameraCalibrationV2 } from "../lib/cameraCalibrationStore";
 import { useAwenaOptional } from "../awena/AwenaProvider";
 import { awenaProcedurePromptForRoute } from "../awena/AwenaProceduralAcademy";
+import { createLocalClosestCenterCameraSource } from "../lib/closestCenterCameraSource";
+import { loadCameraScoringPreferences } from "../lib/cameraScoringPreferences";
 
 type Props = {
   go: (tab: any, params?: any) => void;
@@ -30,8 +32,11 @@ export default function CameraScoringCalibration({ go, params }: Props) {
 
   const returnTab = params?.returnTab ?? "games";
   const returnParams = params?.returnParams;
+  const cameraSourceId = params?.cameraSourceId || returnParams?.config?.cameraSourceId || null;
 
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
+  const cameraSourceRef = React.useRef<any>(null);
+  const [sourceFingerprint, setSourceFingerprint] = React.useState<any>(null);
   const [err, setErr] = React.useState<string | null>(null);
   const [ready, setReady] = React.useState(false);
 
@@ -44,23 +49,23 @@ export default function CameraScoringCalibration({ go, params }: Props) {
   const [fitInfo, setFitInfo] = React.useState<any>(null);
 
   React.useEffect(() => {
-    const existing:any = loadCameraCalibration();
+    const existing:any = loadCameraCalibration(cameraSourceId);
     if (existing) setCenter({ x: existing.cx, y: existing.cy });
-  }, []);
+  }, [cameraSourceId]);
 
   React.useEffect(() => {
-    let stream: MediaStream | null = null;
+    const prefs=loadCameraScoringPreferences();
+    const source=createLocalClosestCenterCameraSource(videoRef.current,{
+      sourceId:cameraSourceId || undefined,
+      maxCaptureSide:prefs.maxCaptureSide,
+    });
+    cameraSourceRef.current=source;
     const run = async () => {
       try {
         setErr(null);
         setReady(false);
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
-          audio: false,
-        });
-        if (!videoRef.current) return;
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        await source.open();
+        setSourceFingerprint(source.hardwareFingerprint());
         setReady(true);
       } catch (e: any) {
         setErr(e?.message || "Caméra indisponible");
@@ -68,11 +73,10 @@ export default function CameraScoringCalibration({ go, params }: Props) {
     };
     run();
     return () => {
-      try {
-        stream?.getTracks()?.forEach((t) => t.stop());
-      } catch {}
+      source.close();
+      if(cameraSourceRef.current===source) cameraSourceRef.current=null;
     };
-  }, []);
+  }, [cameraSourceId]);
 
   function viewToVideoNorm(e:React.MouseEvent){
     const el=e.currentTarget as HTMLDivElement, rect=el.getBoundingClientRect(), video=videoRef.current;
@@ -116,9 +120,10 @@ export default function CameraScoringCalibration({ go, params }: Props) {
       v:2,cx:center.x,cy:center.y,rx,ry,r:(rx+ry)/2,a20:-Math.PI/2,phi:0,
       method:"manual-projective-5pt",confidence:fitInfo.confidence,zoneConfidence:fitInfo.confidence,
       homography:fitInfo.homography,projectiveConfidence:fitInfo.confidence,projectiveErrorMm:fitInfo.errorMm,
+      sourceId:cameraSourceId || undefined,sourceFingerprint:sourceFingerprint || cameraSourceRef.current?.hardwareFingerprint?.() || undefined,
       updatedAt:Date.now(),
     };
-    saveCameraCalibration(cal); go(returnTab, returnParams);
+    saveCameraCalibration(cal, cameraSourceId); go(returnTab, returnParams);
   }
 
   const stepText = [
@@ -152,7 +157,7 @@ export default function CameraScoringCalibration({ go, params }: Props) {
         }}
       >
         <BackDot
-          onClick={() => go("camera_scoring_setup", { returnTab, returnParams })}
+          onClick={() => cameraSourceId ? go(returnTab, returnParams) : go("camera_scoring_setup", { returnTab, returnParams })}
           title={t("common.back", "Retour")}
           size={36}
           color={primary}

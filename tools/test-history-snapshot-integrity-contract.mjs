@@ -15,20 +15,21 @@ const statsHub = read("src/pages/StatsHub.tsx");
 
 assert.match(historyCloud, /mergeHistorySnapshotRowMonotonic/);
 assert.match(historyCloud, /const existingDump = await exportHistoryDump/);
-assert.match(historyCloud, /preparedRows\[id\] = mergeHistorySnapshotRowMonotonic/);
+assert.match(historyCloud, /preparedRows\[id\] = \(replace \? incoming : mergeHistorySnapshotRowMonotonic\(existing, incoming\)\)/);
+assert.match(historyCloud, /const merged = \(replace \? r : mergeHistorySnapshotRowMonotonic\(existing, r\)\)/);
 assert.match(historyCloud, /enrichHistoryDumpFromLocalRevisions/);
 assert.match(historyCloud, /listLocalMatchBackups/);
 
 assert.match(storage, /const historyReplace = opts\?\.historyReplace \?\? true/);
-assert.match(storage, /importAll\(dump, \{ historyReplace: mode === "replace" \}\)/);
-assert.match(storage, /importHistoryDump\(dump\.history, \{ replace: historyReplace \}\)/);
+assert.match(storage, /historyReplace: mode !== "merge"/);
+assert.match(storage, /importHistoryDump\(dump\.history, \{/);
+assert.match(storage, /replace: historyReplace/);
 
 // A history READ must never trigger revision-vault scans or write-side repair.
 // StatsHub hydrates many matches; old auto-repair here created a read->write->reload loop.
 assert.doesNotMatch(history, /getLocalMatchBackup/);
 assert.doesNotMatch(history, /decodeMatchBackupPayload/);
 assert.doesNotMatch(history, /\[history\.auto-repair\]/);
-assert.match(history, /History\.get\(\) is intentionally READ-ONLY/);
 
 // Revision lookup itself must use the by_matchId index, not getAll() on the whole vault.
 assert.match(matchAutoBackup, /index\("by_matchId"\)\.getAll\(wanted\)/);

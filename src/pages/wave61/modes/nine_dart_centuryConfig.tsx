@@ -4,11 +4,10 @@ import Wave61SharedConfig, { type Wave61DedicatedOption } from "../../Wave61Shar
 export const WAVE61_MODE_ID = "nine_dart_century" as const;
 
 const DEDICATED_OPTIONS: Wave61DedicatedOption[] = [
-  { key: "bustBack", label: "Recul après BUST", type: "select", defaultValue: 0, options: [{ value: 0, label: "0 · Score conservé" },{ value: 10, label: "-10 points" },{ value: 20, label: "-20 points" }] },
-  { key: "bustResetAfter", label: "BUSTS avant remise à zéro", type: "select", defaultValue: 0, options: [{ value: 0, label: "OFF" },{ value: 2, label: "2 BUSTS" },{ value: 3, label: "3 BUSTS" }] },
+  { key: "targetScore", label: "Objectif", type: "select", defaultValue: 100, options: [{ value: 100, label: "100 · Classique" }] },
 ];
 
-const DEDICATED_INTRO = "Le principe reste 100 exact en 9 fléchettes, avec des variantes optionnelles de recul ou de remise à zéro après plusieurs BUSTS.";
+const DEDICATED_INTRO = "3 rounds / 9 fléchettes. Le meilleur résultat est 100 exact. Sinon gagne le score le plus proche sans dépasser ; si tous les joueurs dépassent, le plus petit dépassement l’emporte.";
 
 export default function DedicatedWave61Config(props: any) {
   return <Wave61SharedConfig {...props} forcedModeId={WAVE61_MODE_ID} dedicatedOptions={DEDICATED_OPTIONS} dedicatedIntro={DEDICATED_INTRO} />;

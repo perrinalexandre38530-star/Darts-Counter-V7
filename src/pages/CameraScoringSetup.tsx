@@ -68,7 +68,8 @@ export default function CameraScoringSetup({ go, params }: Props) {
 
   const returnTab = params?.returnTab ?? "games";
   const returnParams = params?.returnParams;
-  const localCal = loadCameraCalibration();
+  const cameraSourceId = params?.cameraSourceId || returnParams?.config?.cameraSourceId || null;
+  const localCal = loadCameraCalibration(cameraSourceId);
 
   const initialPhone = readX01PhoneCompanionPrefs();
   const initialSession = initialPhone?.phoneSessionId || initialPhone?.code ? {
@@ -259,8 +260,8 @@ export default function CameraScoringSetup({ go, params }: Props) {
             <div style={{ fontWeight: 900, color: cal ? "#9ff0c2" : "#ffd0d0" }}>{cal ? "Calibration locale OK" : "Calibration locale manquante"}</div>
           </div>
           <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 10 }}>
-            <button type="button" onClick={() => go("camera_scoring_calibration", { returnTab, returnParams })} style={buttonStyle(primary, primarySoft, true)}>{cal ? "Recalibrer cet appareil" : "Calibrer cet appareil"}</button>
-            <button type="button" onClick={() => { clearCameraCalibration(); setCal(null); }} style={buttonStyle(primary, primarySoft, false)}>Effacer</button>
+            <button type="button" onClick={() => go("camera_scoring_calibration", { returnTab, returnParams, cameraSourceId })} style={buttonStyle(primary, primarySoft, true)}>{cal ? "Recalibrer cet appareil" : "Calibrer cet appareil"}</button>
+            <button type="button" onClick={() => { clearCameraCalibration(cameraSourceId); setCal(null); }} style={buttonStyle(primary, primarySoft, false)}>Effacer</button>
           </div>
         </div>
       )}

@@ -23,6 +23,12 @@ import {
 } from "../lib/closestCenterVisionEngine";
 import { getTicker } from "../lib/tickers";
 import { loadCameraScoringPreferences } from "../lib/cameraScoringPreferences";
+import {
+  CLOSEST_CENTER_LOCAL_SOURCE_ID,
+  createLocalClosestCenterCameraSource,
+  describeClosestCenterCameraSource,
+  normalizeClosestCenterCameraSourceId,
+} from "../lib/closestCenterCameraSource";
 import { appendClosestCenterDiagnostic, buildClosestCenterQualityReport, loadClosestCenterDiagnostics, summarizeClosestCenterDiagnostics } from "../lib/closestCenterDiagnostics";
 import { History } from "../lib/history";
 import { buildClosestCenterStats } from "../lib/closestCenterStats";
@@ -67,95 +73,6 @@ function phaseLabel(phase:string) {
   return String(phase || "").toUpperCase();
 }
 
-function capture(video: HTMLVideoElement | null, crop?: { x:number; y:number; w:number; h:number }, maxCaptureSide = 1920) {
-  if (!video?.videoWidth || !video.videoHeight) return null;
-  const c = document.createElement("canvas");
-  const srcW = video.videoWidth, srcH = video.videoHeight;
-  if (crop) {
-    c.width = 480; c.height = 480;
-  } else {
-    // Preserve the native camera aspect ratio. Never stretch 16:9 into 4:3: that
-    // would move calibrated points and directly corrupt millimetre measurements.
-    const maxSide = Math.max(1280, Number(maxCaptureSide || 1920));
-    const scale = Math.min(1, maxSide / Math.max(srcW, srcH));
-    c.width = Math.max(640, Math.round(srcW * scale));
-    c.height = Math.max(360, Math.round(srcH * scale));
-  }
-  const ctx = c.getContext("2d", { willReadFrequently: true });
-  if (!ctx) return null;
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  if (crop) {
-    ctx.drawImage(video, crop.x * srcW, crop.y * srcH, crop.w * srcW, crop.h * srcH, 0, 0, c.width, c.height);
-  } else {
-    ctx.drawImage(video, 0, 0, srcW, srcH, 0, 0, c.width, c.height);
-  }
-  return ctx.getImageData(0, 0, c.width, c.height);
-}
-
-async function captureBurst(video: HTMLVideoElement | null, count = 5, delayMs = 55, maxCaptureSide = 1920) {
-  const frames: ImageData[] = [];
-  const waitFreshFrame = async () => {
-    if (!video) return;
-    const rvfc = (video as any).requestVideoFrameCallback;
-    if (typeof rvfc === "function") {
-      await new Promise<void>(resolve => { let done=false; const t=window.setTimeout(()=>{if(!done){done=true;resolve();}},Math.max(90,delayMs*2)); rvfc.call(video,()=>{if(done)return;done=true;window.clearTimeout(t);resolve();}); });
-    } else await new Promise(resolve => window.setTimeout(resolve, delayMs));
-  };
-  for (let i = 0; i < count; i++) {
-    if (i > 0) await waitFreshFrame();
-    const frame = capture(video, undefined, maxCaptureSide);
-    if (frame) frames.push(frame);
-  }
-  return frames;
-}
-
-async function captureSettledBurst(video: HTMLVideoElement | null, cal: CameraCalibration, count = 5, delayMs = 55, maxCaptureSide = 1920) {
-  // Capture a couple of extra fresh frames so autofocus / auto-exposure have a
-  // chance to converge. We keep only the most recent stable window instead of
-  // relying on an arbitrary fixed wait that would slow down every device.
-  const wanted = Math.max(3, Number(count || 5));
-  const raw = await captureBurst(video, wanted + 2, delayMs, maxCaptureSide);
-  if (raw.length < wanted) return { ok:false, frames:raw, reason:'capture', metrics:null as any };
-  const metrics = raw.map(frame => assessPrecisionReadiness(frame, cal));
-  const windowFrames = raw.slice(-wanted);
-  const windowMetrics = metrics.slice(-wanted);
-  const spread = (values:number[]) => values.length ? Math.max(...values) - Math.min(...values) : 99;
-  const sharpnessSpread = spread(windowMetrics.map(x => Number(x.sharpness || 0)));
-  const exposureSpread = spread(windowMetrics.map(x => Number(x.exposure || 0)));
-  const confidenceSpread = spread(windowMetrics.map(x => Number(x.confidence || 0)));
-  const minSharpness = Math.min(...windowMetrics.map(x => Number(x.sharpness || 0)));
-  const minExposure = Math.min(...windowMetrics.map(x => Number(x.exposure || 0)));
-  const settled = sharpnessSpread <= .14 && exposureSpread <= .14 && confidenceSpread <= .13 && minSharpness >= .38 && minExposure >= .34;
-  return {
-    ok:settled, frames:windowFrames, reason:settled?'ok':'settling',
-    metrics:{sharpnessSpread,exposureSpread,confidenceSpread,minSharpness,minExposure}
-  };
-}
-
-
-
-function cameraHardwareFingerprint(stream:MediaStream|null, video:HTMLVideoElement|null){
-  try{
-    const track=stream?.getVideoTracks?.()[0];
-    if(!track) return null;
-    const st:any=track.getSettings?.()||{};
-    const vw=Number(video?.videoWidth||st.width||0), vh=Number(video?.videoHeight||st.height||0);
-    return {
-      deviceId:String(st.deviceId||''),
-      groupId:String(st.groupId||''),
-      width:Number(st.width||vw||0),
-      height:Number(st.height||vh||0),
-      videoWidth:vw,
-      videoHeight:vh,
-      aspect:vh>0?vw/vh:0,
-      zoom:Number(st.zoom||1),
-      facingMode:String(st.facingMode||''),
-      frameRate:Number(st.frameRate||0),
-    };
-  }catch{return null;}
-}
-
 function compareCameraHardwareLock(base:any,current:any){
   const reasons:string[]=[];
   if(!base||!current) return {ok:false,reasons:['Flux caméra indisponible']};
@@ -168,22 +85,6 @@ function compareCameraHardwareLock(base:any,current:any){
   if(base.aspect&&current.aspect&&Math.abs(base.aspect-current.aspect)>.004) reasons.push('orientation/cadrage capteur changé');
   if(Number.isFinite(base.zoom)&&Number.isFinite(current.zoom)&&Math.abs(base.zoom-current.zoom)>.025) reasons.push(`zoom ${base.zoom.toFixed(2)}→${current.zoom.toFixed(2)}`);
   return {ok:reasons.length===0,reasons};
-}
-
-async function tunePrecisionTrack(stream:MediaStream|null){
-  try{
-    const track=stream?.getVideoTracks?.()[0]; if(!track) return;
-    const caps:any=track.getCapabilities?.()||{};
-    const advanced:any={};
-    if(Array.isArray(caps.focusMode)&&caps.focusMode.includes("continuous")) advanced.focusMode="continuous";
-    if(Array.isArray(caps.exposureMode)&&caps.exposureMode.includes("continuous")) advanced.exposureMode="continuous";
-    if(Array.isArray(caps.whiteBalanceMode)&&caps.whiteBalanceMode.includes("continuous")) advanced.whiteBalanceMode="continuous";
-    if(caps.zoom && Number.isFinite(caps.zoom.min) && Number.isFinite(caps.zoom.max)){
-      const target=Math.min(caps.zoom.max,Math.max(caps.zoom.min,1.15));
-      if(target>1) advanced.zoom=target;
-    }
-    if(Object.keys(advanced).length) await track.applyConstraints({advanced:[advanced]} as any).catch(()=>{});
-  }catch{}
 }
 
 function extractImpactPatch(after: ImageData, d: any) {
@@ -389,6 +290,8 @@ export default function ClosestCenterPlay(props:any) {
   const dartsPerPlayer = Math.max(1, Math.min(3, Number(cfg.dartsPerPlayer || 3)));
   const dartsPerTeam = Math.max(dartsPerPlayer, Number(cfg.dartsPerTeam || dartsPerPlayer * Math.max(1, Number(cfg.sideSize || 1))));
   const ticker = getTicker("closest_center") || getTicker("darts_games") || "";
+  const cameraSourceId = normalizeClosestCenterCameraSourceId(cfg.cameraSourceId || CLOSEST_CENTER_LOCAL_SOURCE_ID);
+  const cameraSourceDescriptor = React.useMemo(() => describeClosestCenterCameraSource(cameraSourceId), [cameraSourceId]);
   const [cameraPrefs] = React.useState(() => loadCameraScoringPreferences());
   const sessionIdRef = React.useRef(`petanque-${Date.now()}-${Math.random().toString(36).slice(2,8)}`);
   const matchIdRef = React.useRef(String(props.params?.resumeId || `closest-center-${Date.now()}-${Math.random().toString(36).slice(2,8)}`));
@@ -398,6 +301,7 @@ export default function ClosestCenterPlay(props:any) {
 
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
   const streamRef = React.useRef<MediaStream | null>(null);
+  const cameraSourceRef = React.useRef<any>(null);
   const autoRereadRunningRef = React.useRef(false);
   const preflightRunningRef = React.useRef(false);
   const roundCommitLockRef = React.useRef(false);
@@ -405,7 +309,7 @@ export default function ClosestCenterPlay(props:any) {
   const [camError, setCamError] = React.useState("");
   const [cameraHardwareState, setCameraHardwareState] = React.useState<any>(null);
   const [ready, setReady] = React.useState(false);
-  const [cal] = React.useState<CameraCalibration | null>(() => loadCameraCalibration());
+  const [cal] = React.useState<CameraCalibration | null>(() => loadCameraCalibration(cameraSourceId));
   const [phase, setPhase] = React.useState<"enroll"|"baseline"|"prepare"|"play"|"review"|"roundEnd"|"finished">(isManual ? "play" : "enroll");
   const [enrollIndex, setEnrollIndex] = React.useState(0);
   const [samples, setSamples] = React.useState<Record<string,any[]>>({});
@@ -452,27 +356,42 @@ export default function ClosestCenterPlay(props:any) {
   React.useEffect(() => {
     if (isManual) { setReady(true); setCamError(""); return; }
     let dead = false;
+    const source=createLocalClosestCenterCameraSource(videoRef.current,{
+      sourceId:cameraSourceId,
+      maxCaptureSide:cameraPrefs.maxCaptureSide,
+    });
+    cameraSourceRef.current=source;
     (async () => {
       try {
-        const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: Math.max(1920, cameraPrefs.maxCaptureSide) }, height: { ideal: Math.round(Math.max(1920, cameraPrefs.maxCaptureSide) * 9 / 16) }, frameRate: { ideal: 30, min: 24 } }, audio: false });
-        if (dead) { s.getTracks().forEach(t => t.stop()); return; }
+        const s = await source.open();
+        if (dead) { source.close(); return; }
         streamRef.current = s;
-        await tunePrecisionTrack(s);
-        if (videoRef.current) {
-          videoRef.current.srcObject = s;
-          await videoRef.current.play().catch(() => {});
-        }
         setReady(true);
       } catch (e:any) {
         setCamError(e?.message || "Caméra indisponible");
       }
     })();
-    return () => { dead = true; streamRef.current?.getTracks().forEach(t => t.stop()); };
-  }, [cameraPrefs.maxCaptureSide, isManual]);
+    return () => {
+      dead = true;
+      source.close();
+      if(cameraSourceRef.current===source) cameraSourceRef.current=null;
+      streamRef.current=null;
+    };
+  }, [cameraPrefs.maxCaptureSide, cameraSourceId, isManual]);
+
+  const verifyCalibrationSource = React.useCallback(() => {
+    if (isManual || !cal || !(cal as any)?.sourceFingerprint) return true;
+    const currentFp=cameraSourceRef.current?.hardwareFingerprint?.() || null;
+    const check=compareCameraHardwareLock((cal as any).sourceFingerprint,currentFp);
+    if(check.ok) return true;
+    setCameraHardwareState({ ...check, locked:true, baseline:(cal as any).sourceFingerprint, current:currentFp, checkedAt:Date.now(), calibrationMismatch:true });
+    setStatus(`❌ La calibration appartient à une autre configuration caméra : ${check.reasons.join(" · ")}. Recalibre la source active avant de jouer.`);
+    return false;
+  }, [isManual, cal]);
 
   const verifyCameraHardwareLock = React.useCallback((stage:string) => {
     if (isManual) return true;
-    const currentFp=cameraHardwareFingerprint(streamRef.current,videoRef.current);
+    const currentFp=cameraSourceRef.current?.hardwareFingerprint?.() || null;
     const baseFp=cameraHardwareLockRef.current;
     if(!baseFp){
       setCameraHardwareState(currentFp?{ok:true,locked:false,current:currentFp}:null);
@@ -663,7 +582,7 @@ export default function ClosestCenterPlay(props:any) {
   }, [round, current?.id, current?.name]);
 
   const scanSample = () => {
-    const img = capture(videoRef.current, { x:.25, y:.2, w:.5, h:.6 });
+    const img = cameraSourceRef.current?.captureFrame?.({ x:.25, y:.2, w:.5, h:.6 }, cameraPrefs.maxCaptureSide);
     if (!img || !current) return;
     const sig = buildDartVisualSignature(img);
     const arr = [...(samples[current.id] || []), sig].slice(0, 3);
@@ -697,12 +616,14 @@ export default function ClosestCenterPlay(props:any) {
 
   const captureBaseline = async () => {
     if (!cal) { setStatus("❌ Calibration caméra nécessaire pour mesurer les distances avec précision."); return; }
+    if (!verifyCalibrationSource()) return;
     if (cal.v !== 2 || !Array.isArray((cal as any).homography)) {
       setStatus("❌ PETANQUE précision + exige la calibration projective 5 points. Ouvre la calibration caméra et calibre Centre + D20 + D6 + D3 + D11.");
       return;
     }
     setStatus("Calibration précision : acquisition multi-frame de la cible vide…");
-    const settledBaseline = await captureSettledBurst(videoRef.current, cal, cameraPrefs.baselineFrames, cameraPrefs.frameDelayMs, cameraPrefs.maxCaptureSide);
+    const settledBaseline = await cameraSourceRef.current?.captureSettledBurst?.(cal, cameraPrefs.baselineFrames, cameraPrefs.frameDelayMs, cameraPrefs.maxCaptureSide);
+    if (!settledBaseline) { setStatus("❌ Source caméra indisponible."); return; }
     if (!settledBaseline.ok) {
       traceCamera("baseline", "reject", "camera-settling", "Autofocus/exposition non stabilisés", settledBaseline.metrics || {});
       setStatus("⏳ CAMÉRA EN COURS DE STABILISATION · Attends une seconde sans toucher au téléphone puis relance la baseline.");
@@ -724,7 +645,7 @@ export default function ClosestCenterPlay(props:any) {
       setStatus(`⚠️ Niveau ${tier.toUpperCase()} insuffisant pour le profil ${cameraPrefs.profile.toUpperCase()} (${readiness.mmPerPixel.toFixed(2)} mm/pixel). Rapproche la caméra ou améliore la netteté.`);
       return;
     }
-    const hardwareFp=cameraHardwareFingerprint(streamRef.current,videoRef.current);
+    const hardwareFp=cameraSourceRef.current?.hardwareFingerprint?.() || null;
     cameraHardwareLockRef.current=hardwareFp;
     setCameraHardwareState(hardwareFp?{ok:true,locked:true,baseline:hardwareFp,current:hardwareFp,checkedAt:Date.now()}:null);
     setBefore(img);
@@ -754,7 +675,8 @@ export default function ClosestCenterPlay(props:any) {
     setStatus("🛡️ Contrôle avant volée : stabilité, perspective et netteté…");
     try {
       const count = Math.max(3, Math.min(5, cameraPrefs.baselineFrames));
-      const settledBurst = await captureSettledBurst(videoRef.current, cal, count, cameraPrefs.frameDelayMs, cameraPrefs.maxCaptureSide);
+      const settledBurst = await cameraSourceRef.current?.captureSettledBurst?.(cal, count, cameraPrefs.frameDelayMs, cameraPrefs.maxCaptureSide);
+      if (!settledBurst) { setStatus("❌ Source caméra indisponible."); return; }
       if (!settledBurst.ok) {
         traceCamera("preflight", "reject", "camera-settling", "Autofocus/exposition non stabilisés avant lancer", settledBurst.metrics || {});
         setPreflightInfo({ok:false,reason:"camera-settling",...(settledBurst.metrics||{})});
@@ -812,7 +734,8 @@ export default function ClosestCenterPlay(props:any) {
     if (!verifyCameraHardwareLock('analysis')) return;
     if (!turnArmed) { setStatus(`🛡️ Lance d’abord CONTRÔLE AVANT VOLÉE, puis seulement ${expectedTurnDarts} fléchette${expectedTurnDarts>1?"s":""}.`); return; }
     setStatus("IA précision : lecture multi-frame en cours…");
-    const settledAnalysis = await captureSettledBurst(videoRef.current, cal, cameraPrefs.analysisFrames, cameraPrefs.frameDelayMs, cameraPrefs.maxCaptureSide);
+    const settledAnalysis = await cameraSourceRef.current?.captureSettledBurst?.(cal, cameraPrefs.analysisFrames, cameraPrefs.frameDelayMs, cameraPrefs.maxCaptureSide);
+    if (!settledAnalysis) { setStatus("❌ Source caméra indisponible."); return; }
     if (!settledAnalysis.ok) {
       traceCamera("analysis", "reject", "camera-settling", "Autofocus/exposition non stabilisés pendant analyse", settledAnalysis.metrics || {});
       setStatus("⏳ Analyse différée : autofocus/exposition encore instables. Ne touche pas à la cible, attends un instant puis relance.");
@@ -965,7 +888,8 @@ export default function ClosestCenterPlay(props:any) {
     if (!cal || !before || !current || pendingConsensus.length !== expectedTurnDarts) return;
     if (!verifyCameraHardwareLock('reread')) return;
     setStatus("🔬 Relecture précision indépendante : seconde acquisition multi-frame…");
-    const settledReread = await captureSettledBurst(videoRef.current, cal, cameraPrefs.rereadFrames, Math.max(30, cameraPrefs.frameDelayMs - 4), cameraPrefs.maxCaptureSide);
+    const settledReread = await cameraSourceRef.current?.captureSettledBurst?.(cal, cameraPrefs.rereadFrames, Math.max(30, cameraPrefs.frameDelayMs - 4), cameraPrefs.maxCaptureSide);
+    if (!settledReread) { setStatus("❌ Source caméra indisponible."); return; }
     if (!settledReread.ok) {
       traceCamera("reread", "reject", "camera-settling", "Autofocus/exposition non stabilisés pendant relecture", settledReread.metrics || {});
       setStatus("⏳ Seconde lecture différée : caméra encore en stabilisation. Garde tout immobile puis relance.");
@@ -2099,6 +2023,7 @@ export default function ClosestCenterPlay(props:any) {
       {quickPanel==="players" ? <div style={{display:"grid",gap:6}}>{players.map((p:any)=>{const team=String(p.teamId||"");const remain=Math.max(0,dartsPerPlayer-Number(activeRoundUsed[String(p.id)]||0));return <div key={p.id} style={{display:"grid",gridTemplateColumns:"10px 1fr auto",gap:8,alignItems:"center",padding:"8px 9px",borderRadius:12,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.025)"}}><span style={{width:8,height:8,borderRadius:99,background:playerColor(players,p.id),boxShadow:`0 0 10px ${playerColor(players,p.id)}`}}/><div style={{minWidth:0}}><b style={{display:"block",fontSize:11,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}</b><span style={{fontSize:8,color:"#8193a1"}}>ÉQUIPE {team||"—"}</span></div><b style={{fontSize:10,color:remain?"#8fffc2":"#738493"}}>{remain}/{dartsPerPlayer} EN MAIN</b></div>})}</div> : null}
       {quickPanel==="camera" ? <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
         {(phase==="enroll" || phase==="baseline" || phase==="prepare" || phase==="roundEnd") ? <div style={{gridColumn:"1/-1",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:4}}>{[["enroll","ENRÔLER"],["baseline","RÉF."],["play","JOUER"],["roundEnd","CLASSER"]].map(([key,label])=>{const order:any={enroll:0,baseline:1,play:2,review:2,roundEnd:3,prepare:3,finished:4};const mine:any={enroll:0,baseline:1,play:2,roundEnd:3};const done=order[phase]>=mine[key];const here=(key==="play"?(phase==="play"||phase==="review"):phase===key)||(phase==="prepare"&&key==="roundEnd");return <div key={key} style={{padding:"6px 3px",borderRadius:9,textAlign:"center",border:`1px solid ${here?ACCENT:done?`${ACCENT}44`:"rgba(255,255,255,.07)"}`,background:here?`${ACCENT}18`:done?`${ACCENT}08`:"rgba(255,255,255,.02)"}}><span style={{fontSize:7,fontWeight:1000,color:here?"#fff":done?ACCENT:"#667783"}}>{label}</span></div>})}</div> : null}
+        <div style={quickKpi}><span>SOURCE</span><b>{cameraSourceDescriptor.label.toUpperCase()}</b></div>
         <div style={quickKpi}><span>PHASE</span><b>{phaseLabel(phase)}</b></div>
         <div style={quickKpi}><span>QUALITÉ</span><b>{cameraQuality.grade} · {cameraQuality.score}/100</b></div>
         {(phase==="baseline" || phase==="prepare" || phase==="play" || phase==="review") ? <div style={quickKpi}><span>MATÉRIEL</span><b style={{color:cameraHardwareState?.ok===false?"#ff8f7d":"#8fffc2"}}>{cameraHardwareState?.locked?(cameraHardwareState.ok===false?"MODIFIÉ":"VERROUILLÉ"):"—"}</b></div> : null}

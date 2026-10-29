@@ -5,5 +5,5 @@ export const WAVE61_MODE_ID = "shove_a_penny" as const;
 
 /** Écran Play dédié à shove_a_penny. */
 export default function DedicatedWave61Play(props: any) {
-  return <Wave61SharedPlay {...props} forcedModeId={WAVE61_MODE_ID} dedicatedPlayHint="Ferme 15 à 20 puis BULL ; exploite les surplus selon la règle choisie pour gêner l’adversaire ou scorer." />;
+  return <Wave61SharedPlay {...props} forcedModeId={WAVE61_MODE_ID} dedicatedPlayHint="Ferme 15 → 16 → 17 → 18 → 19 → 20 → BULL dans cet ordre. Les surplus d’une case déjà fermée sont poussés au joueur suivant en règle classique." />;
 }

@@ -29,7 +29,12 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
 import { loadX01ProfileStatsForStarring } from "../lib/x01ProfileStarring";
 import statsCenterTicker from "../assets/tickers/ticker_statistics_center_universal.webp";
+import tickerHistoriqueFr from "../assets/tickers/ticker_historique.png";
+import tickerHistoryEn from "../assets/tickers/ticker_history.png";
 import BackDot from "../components/BackDot";
+import InfoDot from "../components/InfoDot";
+import PageHeader from "../components/PageHeader";
+import { useLang } from "../contexts/LangContext";
 import { PageAdBanner } from "../monetization/AdSlot";
 import type { Dart as UIDart } from "../lib/types";
 import {
@@ -6004,6 +6009,7 @@ go,
 
   
   const { sport } = useSport();
+  const { lang } = useLang();
   const effectiveSport = lc(sportOverride || sport);
   const isDiceSport = effectiveSport.includes("dice");
   const isMolkkySport = effectiveSport === "molkky";
@@ -9744,13 +9750,34 @@ if (tab === "training") {
 }
 
 if (tab === "history") {
+  const historyTickerSrc = lang === "fr" ? tickerHistoriqueFr : tickerHistoryEn;
+  const historyInfoTitle = lang === "fr" ? "Historique" : "History";
+  const historyInfoContent = (
+    <div style={{ lineHeight: 1.55 }}>
+      <b>{lang === "fr" ? "HISTORIQUE" : "HISTORY"}</b>
+      <br /><br />
+      {lang === "fr"
+        ? "Retrouve ici toutes les parties enregistrées, les parties en cours, les parties rapides et les parties reçues."
+        : "Find here all saved matches, in-progress matches, quick matches, and received matches."}
+      <br /><br />
+      {lang === "fr"
+        ? "Tu peux aussi filtrer, exporter, importer, reprendre une partie et ouvrir ses statistiques détaillées."
+        : "You can also filter, export, import, resume a match, and open its detailed statistics."}
+    </div>
+  );
+
   return (
     <div className="msc-landscape-page-shell msc-statshub-history-layout" style={{ padding: 16, paddingBottom: 80 }}>
-      <div className="msc-landscape-header msc-statshub-simple-header">
-        <BackDot onClick={() => go("stats" as any)} />
-        <div className="msc-statshub-simple-title">HISTORIQUE</div>
-        <div aria-hidden style={{ width: 42, height: 42 }} />
-      </div>
+      <PageHeader
+        tickerSrc={historyTickerSrc}
+        tickerAlt={historyInfoTitle}
+        tickerHeight={92}
+        tickerFit="contain"
+        tickerEdgeFade="strong"
+        tickerBottomGap={10}
+        left={<div style={{ marginLeft: 6 }}><BackDot onClick={() => go("stats" as any)} color="#38d8ff" glow="rgba(56,216,255,.65)" /></div>}
+        right={<div style={{ marginRight: 6 }}><InfoDot title={historyInfoTitle} color="#38d8ff" glow="rgba(56,216,255,.65)" content={historyInfoContent} /></div>}
+      />
       <section className="msc-landscape-primary msc-statshub-history-primary">
         <PageAdBanner placement="history" slotKey="page-history-stats-hub-under-header" style={{ marginBottom: 12 }} />
       </section>
@@ -9759,7 +9786,7 @@ if (tab === "history") {
         {isMolkkySport ? (
           <MolkkyStatsHistoryPage store={store as any} go={go} />
         ) : (
-          <HistoryPage store={store as any} go={go} />
+          <HistoryPage store={store as any} go={go} showTopTicker={false} />
         )}
       </div>
       </aside>

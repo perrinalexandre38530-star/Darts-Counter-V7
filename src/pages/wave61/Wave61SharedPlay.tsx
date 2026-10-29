@@ -108,11 +108,11 @@ function familyRules(spec: any, preset: any) {
     face_mystere: "Chaque secteur représente un suspect. Une mauvaise accusation révèle un nouvel indice et élimine automatiquement les suspects incompatibles.",
     colin_maillard: "Mémorise une séquence cachée de six secteurs. Utilise l'aperçu de 2 secondes avant de lancer puis reproduis la suite dans l'ordre.",
     replicat: "Le premier joueur crée la référence. Ensuite chaque volée doit copier la précédente : numéros en Facile, segments exacts en Normal, séquence parfaite en Difficile.",
-    double_down: "Parcours 15 · 16 · DOUBLE · 17 · 18 · TRIPLE · 19 · 20 · BULL. Si aucun dart ne valide le contrat du round, le score est divisé par deux.",
-    nine_dart_century: "Neuf fléchettes maximum pour atteindre 100 sans dépasser. Un dépassement provoque un BUST de la volée ; 100 exact gagne immédiatement.",
-    shove_a_penny: "Complète trois marques sur 15, 16, 17, 18, 19, 20 et BULL. Les surplus au-delà de trois sont poussés vers l'adversaire suivant.",
-    green_vs_red: "Chaque joueur suit une piste ROUGE ou VERTE sur les anneaux D/T. Un triple avance plus vite ; toucher la couleur adverse peut l'aider.",
-    hi_score: "Nombre de rounds configurable : additionne simplement le score de toutes les volées. Le meilleur total à la fin gagne.",
+    double_down: "Départ classique à 40. Parcours 15 · 16 · DOUBLE · 17 · 18 · TRIPLE · 19 · 20 · BULL. Seules les touches du contrat scorent ; 0/3 divise le score cumulé par deux.",
+    nine_dart_century: "Trois volées / neuf fléchettes pour faire 100 exact ou s’en approcher. Les scores ≤100 sont prioritaires ; si tout le monde dépasse, le plus petit dépassement gagne.",
+    shove_a_penny: "Ferme dans l’ordre 15, 16, 17, 18, 19, 20 puis BULL. Trois marques ferment une case ; les surplus au-delà de la fermeture sont poussés au joueur suivant en règle classique.",
+    green_vs_red: "Duel à 2 joueurs. Vert suit 1·4·6·15·17·19·16·11·9·5 ; Rouge suit 20·12·14·8·7·3·2·10·13·18. Seuls D/T du numéro courant marquent ; la cible adverse retire des points. Finale au BULL.",
+    hi_score: "Huit rounds par défaut. Chaque dart vaut sa valeur normale, sans checkout ni bust. Le plus gros total final gagne ; Fat Bull et pénalités MISS restent des variantes optionnelles.",
     sniper: "Une série de contrats de précision s'enchaîne. Plus la difficulté monte, plus le lit exact S/D/T/BULL devient obligatoire.",
     luciole: "La cible s'illumine brièvement au début du tour puis disparaît. Mémorise le secteur et touche-le avant que la luciole suivante apparaisse.",
     golden_dart: "Une cible dorée secrète se cache parmi les 20 secteurs. Chaque erreur révèle un indice ; trouve-la pour gagner une marque d'or et passer à la suivante.",
@@ -422,33 +422,57 @@ function ReplicatPanel({ state, accent }: any) {
 function DoubleDownPanel({ state, accent, target }: any) {
   const seq = ["15", "16", "DOUBLE", "17", "18", "TRIPLE", "19", "20", "BULL"];
   const round = Math.min(seq.length - 1, Number(state?.roundIndex || 0));
-  return <div style={{ ...panelStyle(accent + "55"), padding: 10 }}>
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><b style={{ color: accent, fontSize: 10 }}>DOUBLE DOWN · CONTRATS</b><span style={{ color: SOFT, fontSize: 9 }}>{target?.label || seq[round]}</span></div>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(9,1fr)", gap: 4, marginTop: 8 }}>{seq.map((x,i)=><div key={x+i} style={{ minHeight: 34, borderRadius: 8, display:"grid", placeItems:"center", border:`1px solid ${i===round?accent+"88":"rgba(255,255,255,.08)"}`, background:i<round?`${accent}14`:i===round?`${accent}20`:"rgba(255,255,255,.025)", color:i<=round?"#fff":"#697181", fontSize:8.5, fontWeight:1000 }}>{i<round?"✓":x}</div>)}</div>
-    <div style={{ marginTop: 7, color: SOFT, fontSize: 9.3 }}>Aucun hit sur le contrat = score ÷ 2.</div>
+  const active = state.players?.[state.activePlayerIndex];
+  const history = (state.special?.doubleDownHistory || []).filter((h:any)=>h.playerId===active?.id);
+  const last = history[history.length - 1];
+  return <div style={{ ...panelStyle(accent + "55"), padding: 10, display:"grid", gap:9 }}>
+    <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
+      <div><b style={{ color: accent, fontSize: 10 }}>DOUBLE DOWN · 9 CONTRATS</b><div style={{color:SOFT,fontSize:8.6}}>Départ {state.config?.modeOptions?.startScore ?? 40} pts · 0 touche = score sanctionné</div></div>
+      <div style={{borderRadius:12,padding:"7px 10px",background:`${accent}12`,border:`1px solid ${accent}55`,textAlign:"right"}}><div style={{fontSize:8,color:SOFT}}>CONTRAT ACTIF</div><b style={{color:"#fff",fontSize:15}}>{target?.label || seq[round]}</b></div>
+    </div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(9,minmax(38px,1fr))", gap: 4, overflowX:"auto" }}>{seq.map((x,i)=><div key={x+i} style={{ minHeight: 40, borderRadius: 9, display:"grid", placeItems:"center", border:`1px solid ${i===round?accent+"aa":"rgba(255,255,255,.08)"}`, background:i<round?`${accent}16`:i===round?`${accent}28`:"rgba(255,255,255,.025)", color:i<=round?"#fff":"#697181", fontSize:8.6, fontWeight:1100, boxShadow:i===round?`0 0 18px ${accent}22`:"none" }}>{i<round?"✓":x}</div>)}</div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+      <div style={{borderRadius:10,padding:"7px 8px",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.07)"}}><span style={{fontSize:8,color:SOFT}}>DERNIÈRE VALIDATION</span><div style={{fontWeight:1000,fontSize:11,color:last?.hits?accent:"#ff8d98"}}>{last ? `${last.hits}/3 touche(s)` : "—"}</div></div>
+      <div style={{borderRadius:10,padding:"7px 8px",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.07)"}}><span style={{fontSize:8,color:SOFT}}>SCORE JOUEUR ACTIF</span><div style={{fontWeight:1100,fontSize:17}}>{Math.round(Number(state.scores?.[active?.id]||0))}</div></div>
+    </div>
   </div>;
 }
 
 function CenturyPanel({ state, accent }: any) {
-  return <div style={{ ...panelStyle(accent + "55"), padding: 10 }}>
-    <div style={{ color: accent, fontSize: 10, fontWeight: 1100 }}>9 DART CENTURY · OBJECTIF {state?.config?.goal || 100}</div>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 6, marginTop: 8 }}>{state.players.map((p:any)=>{ const st=state.statsByPlayer?.[p.id]||{}; const score=Number(state.scores?.[p.id]||0); return <div key={p.id} style={{borderRadius:10,padding:"7px 8px",background:"rgba(255,255,255,.035)",border:"1px solid rgba(255,255,255,.08)"}}><div style={{fontSize:9,color:SOFT,fontWeight:900}}>{p.name}</div><div style={{fontSize:18,color:"#fff",fontWeight:1100}}>{score}<span style={{fontSize:9,color:SOFT}}> / {state.config.goal}</span></div><div style={{fontSize:8.5,color:score>state.config.goal?"#ff8d8d":accent}}>{Math.min(9,Number(st.darts||0))}/9 darts · {state.special?.centuryBustsByPlayer?.[p.id]||0} bust</div></div>})}</div>
+  const goal=Number(state?.config?.goal||100);
+  return <div style={{ ...panelStyle(accent + "55"), padding: 10, display:"grid", gap:8 }}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}><div><b style={{ color: accent, fontSize: 10 }}>9 DART CENTURY · OBJECTIF {goal}</b><div style={{color:SOFT,fontSize:8.5}}>≤100 : le plus haut gagne · si tous dépassent : le plus petit dépassement gagne</div></div><span style={{borderRadius:999,padding:"5px 8px",border:`1px solid ${accent}55`,color:accent,fontSize:8.5,fontWeight:1000}}>3 ROUNDS · 9 DARTS</span></div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 6 }}>{state.players.map((p:any)=>{ const st=state.statsByPlayer?.[p.id]||{}; const score=Number(state.scores?.[p.id]||0); const over=score>goal; const exact=score===goal; const remain=Math.max(0,goal-score); const pct=Math.min(100,(Math.min(score,goal)/goal)*100); return <div key={p.id} style={{borderRadius:12,padding:"8px",background:exact?`${accent}18`:over?"rgba(255,75,90,.08)":"rgba(255,255,255,.035)",border:`1px solid ${exact?accent+"77":over?"rgba(255,90,100,.35)":"rgba(255,255,255,.08)"}`,display:"grid",gap:4}}><div style={{display:"flex",justifyContent:"space-between",gap:6}}><b style={{fontSize:9,color:"#fff"}}>{p.name}</b><span style={{fontSize:8,color:exact?accent:over?"#ff8d98":SOFT}}>{exact?"EXACT":over?"BUST":`${remain} À FAIRE`}</span></div><div style={{fontSize:22,color:over?"#ff9ca6":"#fff",fontWeight:1200}}>{score}<span style={{fontSize:9,color:SOFT}}> / {goal}</span></div><div style={{height:5,borderRadius:999,background:"rgba(255,255,255,.06)",overflow:"hidden"}}><div style={{height:"100%",width:`${pct}%`,background:exact?accent:over?"#ff6575":accent}}/></div><div style={{fontSize:8.3,color:SOFT}}>{Math.min(9,Number(st.darts||0))}/9 darts{state.special?.centuryDartsAtLockByPlayer?.[p.id]?` · verrouillé au dart ${state.special.centuryDartsAtLockByPlayer[p.id]}`:""}</div></div>})}</div>
   </div>;
 }
 
 function ShovePennyPanel({ state, accent }: any) {
   const targets = [15,16,17,18,19,20,25];
-  return <div style={{ ...panelStyle(accent + "55"), padding: 10 }}>
-    <div style={{ color: accent, fontSize: 10, fontWeight: 1100, marginBottom: 7 }}>SHOVE A PENNY · 3 MARQUES PAR CASE</div>
-    <div style={{ overflowX:"auto" }}><table style={{width:"100%",borderCollapse:"separate",borderSpacing:4,fontSize:9}}><thead><tr><th style={{color:SOFT,textAlign:"left"}}>JOUEUR</th>{targets.map(n=><th key={n} style={{color:SOFT}}>{n===25?"BULL":n}</th>)}</tr></thead><tbody>{state.players.map((p:any)=>{ const marks=state.special?.shoveMarksByPlayer?.[p.id]||{}; return <tr key={p.id}><td style={{color:"#fff",fontWeight:1000,whiteSpace:"nowrap"}}>{p.name}</td>{targets.map(n=>{const m=Number(marks[String(n)]||0);return <td key={n} style={{textAlign:"center",minWidth:34,borderRadius:8,padding:"6px 4px",background:m>=3?`${accent}1c`:"rgba(255,255,255,.035)",border:`1px solid ${m>=3?accent+"66":"rgba(255,255,255,.08)"}`,color:m>=3?accent:"#fff",fontWeight:1100}}>{m}/3</td>})}</tr>})}</tbody></table></div>
+  const need=Math.max(2,Number(state.config?.modeOptions?.marksPerBox||3));
+  return <div style={{ ...panelStyle(accent + "55"), padding: 10, display:"grid",gap:8 }}>
+    <div><b style={{ color: accent, fontSize: 10 }}>SHOVE A PENNY · PARCOURS ORDONNÉ</b><div style={{color:SOFT,fontSize:8.5}}>15 → 16 → 17 → 18 → 19 → 20 → BULL · {need} marques par case</div></div>
+    <div style={{ overflowX:"auto" }}><table style={{width:"100%",borderCollapse:"separate",borderSpacing:4,fontSize:9}}><thead><tr><th style={{color:SOFT,textAlign:"left"}}>JOUEUR</th>{targets.map(n=><th key={n} style={{color:SOFT}}>{n===25?"BULL":n}</th>)}</tr></thead><tbody>{state.players.map((p:any)=>{ const marks=state.special?.shoveMarksByPlayer?.[p.id]||{}; const current=targets.find(n=>Number(marks[String(n)]||0)<need); return <tr key={p.id}><td style={{color:"#fff",fontWeight:1000,whiteSpace:"nowrap"}}>{p.name}</td>{targets.map(n=>{const m=Number(marks[String(n)]||0); const closed=m>=need; const active=n===current; return <td key={n} style={{textAlign:"center",minWidth:38,borderRadius:8,padding:"7px 4px",background:closed?`${accent}1c`:active?`${accent}0e`:"rgba(255,255,255,.025)",border:`1px solid ${active?accent+"aa":closed?accent+"55":"rgba(255,255,255,.07)"}`,color:closed?accent:active?"#fff":"#6d7483",fontWeight:1100,boxShadow:active?`0 0 14px ${accent}20`:"none"}}>{closed?"✓":`${m}/${need}`}</td>})}</tr>})}</tbody></table></div>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap",fontSize:8.5,color:SOFT}}><span>Simple = 1 marque</span><span>·</span><span>Double = 2</span><span>·</span><span>Triple = 3</span><span>·</span><span>BULL/DBULL = 1/2</span></div>
   </div>;
 }
 
 function GreenRedPanel({ state, accent }: any) {
-  const red=[20,18,13,10,2,3,7,8,14,12], green=[1,4,6,15,17,19,16,11,9,5];
-  return <div style={{ ...panelStyle(accent + "55"), padding: 10 }}>
-    <div style={{ color: accent, fontSize: 10, fontWeight: 1100 }}>GREEN VS RED · PARCOURS D/T</div>
-    <div style={{ display:"grid",gap:7,marginTop:8 }}>{state.players.map((p:any)=>{const color=String(state.special?.greenRedColorByPlayer?.[p.id]||"RED"); const path=color==="GREEN"?green:red; const step=Number(state.special?.greenRedStepByPlayer?.[p.id]||0); return <div key={p.id}><div style={{display:"flex",justifyContent:"space-between",fontSize:9,marginBottom:4}}><b style={{color:color==="RED"?"#ff6b72":"#67e59b"}}>{p.name} · {color}</b><span style={{color:SOFT}}>{Math.min(step,10)}/10</span></div><div style={{display:"grid",gridTemplateColumns:"repeat(10,1fr)",gap:3}}>{path.map((n,i)=><div key={n} style={{minHeight:30,borderRadius:7,display:"grid",placeItems:"center",background:i<step?(color==="RED"?"rgba(255,70,82,.18)":"rgba(70,230,140,.16)"):i===step?"rgba(255,255,255,.08)":"rgba(255,255,255,.025)",border:`1px solid ${i===step?(color==="RED"?"#ff6b72aa":"#67e59baa"):"rgba(255,255,255,.06)"}`,color:i<=step?"#fff":"#5f6674",fontSize:8.5,fontWeight:1000}}>{n}</div>)}</div></div>})}</div>
+  const red=[20,12,14,8,7,3,2,10,13,18];
+  const green=[1,4,6,15,17,19,16,11,9,5];
+  const step=Math.min(10,Number(state.roundIndex||0));
+  return <div style={{ ...panelStyle(accent + "55"), padding: 10, display:"grid",gap:8 }}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}><div><b style={{color:accent,fontSize:10}}>GREEN VS RED · DUEL ÉLECTRONIQUE</b><div style={{color:SOFT,fontSize:8.5}}>D/T du numéro courant · un D et un T maximum · mauvaise couleur = points retirés</div></div><span style={{fontSize:9,fontWeight:1100,color:step>=10?accent:"#fff"}}>ÉTAPE {step+1}/11</span></div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>{state.players.slice(0,2).map((p:any)=>{const color=String(state.special?.greenRedColorByPlayer?.[p.id]||"RED"); const path=color==="GREEN"?green:red; const c=color==="GREEN"?"#67e59b":"#ff6b72"; const target=step>=10?"BULL":path[step]; return <div key={p.id} style={{borderRadius:13,padding:"9px",border:`1px solid ${c}55`,background:`${c}0d`,display:"grid",gap:6}}><div style={{display:"flex",justifyContent:"space-between",gap:6}}><b style={{color:c,fontSize:10}}>{p.name} · {color}</b><b style={{fontSize:13}}>{Math.round(Number(state.scores?.[p.id]||0))} PTS</b></div><div style={{fontSize:23,fontWeight:1200,color:"#fff"}}>{target}</div><div style={{display:"grid",gridTemplateColumns:"repeat(10,1fr)",gap:2}}>{path.map((n,i)=><span key={n} style={{height:20,borderRadius:5,display:"grid",placeItems:"center",fontSize:7.2,fontWeight:900,background:i===step?`${c}30`:i<step?`${c}14`:"rgba(255,255,255,.025)",border:`1px solid ${i===step?c+"aa":"rgba(255,255,255,.05)"}`,color:i<=step?"#fff":"#626a78"}}>{n}</span>)}</div></div>})}</div>
+  </div>;
+}
+
+function HiScorePanel({ state, accent }: any) {
+  const active=state.players?.[state.activePlayerIndex];
+  const totals=state.players.map((p:any)=>Number(state.scores?.[p.id]||0));
+  const leader=Math.max(0,...totals);
+  return <div style={{ ...panelStyle(accent + "55"), padding: 10, display:"grid",gap:8 }}>
+    <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><div><b style={{color:accent,fontSize:10}}>HI SCORE · TABLEAU DE RENDEMENT</b><div style={{color:SOFT,fontSize:8.5}}>Chaque dart compte · meilleur total après {state.config?.rounds||8} rounds</div></div><span style={{fontSize:9,color:accent,fontWeight:1100}}>LEADER {leader}</span></div>
+    <div style={{display:"grid",gap:6}}>{state.players.map((p:any)=>{const visits=(state.visits||[]).filter((v:any)=>v.playerId===p.id); const scores=visits.map((v:any)=>Number(v.delta||0)); const best=Math.max(0,...scores); const avg=scores.length?scores.reduce((a:number,b:number)=>a+b,0)/scores.length:0; const total=Number(state.scores?.[p.id]||0); const gap=leader-total; return <div key={p.id} style={{borderRadius:11,padding:"7px 8px",background:p.id===active?.id?`${accent}0f`:"rgba(255,255,255,.025)",border:`1px solid ${p.id===active?.id?accent+"55":"rgba(255,255,255,.07)"}`,display:"grid",gap:5}}><div style={{display:"flex",justifyContent:"space-between",gap:8}}><b style={{fontSize:9,color:"#fff"}}>{p.name}</b><b style={{fontSize:14,color:gap===0?accent:"#fff"}}>{Math.round(total)} PTS</b></div><div style={{display:"grid",gridTemplateColumns:`repeat(${Math.max(1,state.config?.rounds||8)},minmax(16px,1fr))`,gap:2,alignItems:"end",minHeight:32}}>{Array.from({length:state.config?.rounds||8}).map((_,i)=>{const v=scores[i]||0; const h=Math.max(3,Math.round((v/180)*28)); return <div key={i} title={`R${i+1}: ${v}`} style={{height:h,borderRadius:3,background:v===best&&v>0?accent:"rgba(255,255,255,.16)"}}/>})}</div><div style={{display:"flex",justifyContent:"space-between",fontSize:8,color:SOFT}}><span>Moy. {avg.toFixed(1)} / volée</span><span>Best {best}</span><span>{gap===0?"EN TÊTE":`−${Math.round(gap)}`}</span></div></div>})}</div>
   </div>;
 }
 
@@ -660,6 +684,7 @@ export default function Wave61SharedPlay(props: any) {
       {spec.id === "nine_dart_century" ? <CenturyPanel state={state} accent={accent} /> : null}
       {spec.id === "shove_a_penny" ? <ShovePennyPanel state={state} accent={accent} /> : null}
       {spec.id === "green_vs_red" ? <GreenRedPanel state={state} accent={accent} /> : null}
+      {spec.id === "hi_score" ? <HiScorePanel state={state} accent={accent} /> : null}
       {spec.id === "sniper" ? <SniperPanel state={state} accent={accent} /> : null}
       {spec.id === "luciole" ? <LuciolePanel state={state} accent={accent} reveal={lucioleReveal} /> : null}
       {spec.id === "golden_dart" ? <GoldenDartPanel state={state} accent={accent} /> : null}

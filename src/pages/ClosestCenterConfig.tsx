@@ -6,6 +6,7 @@ import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import { getTicker } from "../lib/tickers";
 import petanqueExplainPortrait from "../assets/petanque_explain/petanque_explain_vertical.webp";
 import petanqueExplainLandscape from "../assets/petanque_explain/petanque_explain_horizontal.webp";
+import { CLOSEST_CENTER_LOCAL_SOURCE_ID, describeClosestCenterCameraSource } from "../lib/closestCenterCameraSource";
 
 const ACCENT = "#44e7ff";
 
@@ -41,6 +42,8 @@ export default function ClosestCenterConfig(props: any) {
   const [teamMap, setTeamMap] = React.useState<Record<string,"A"|"B">>({});
   const [pointsMode, setPointsMode] = React.useState<"petanque"|"descending"|"winner">("petanque");
   const [inputMode, setInputMode] = React.useState<"camera"|"manual">("camera");
+  const [cameraSourceId] = React.useState<string>(CLOSEST_CENTER_LOCAL_SOURCE_ID);
+  const cameraSource = React.useMemo(() => describeClosestCenterCameraSource(cameraSourceId), [cameraSourceId]);
   const [configMode, setConfigMode] = React.useState<"guided"|"complete">("guided");
   const [guidedStep, setGuidedStep] = React.useState(0);
   const [landscape, setLandscape] = React.useState(() => typeof window !== "undefined" ? window.innerWidth > window.innerHeight && window.innerWidth >= 760 : false);
@@ -124,6 +127,7 @@ export default function ClosestCenterConfig(props: any) {
         dartsPerTeam:fmt.darts*fmt.sideSize,
         inputMode,
         cameraOnly: inputMode === "camera",
+        cameraSourceId,
       }
     });
   };
@@ -186,6 +190,14 @@ export default function ClosestCenterConfig(props: any) {
       <button style={{...modeBtn(inputMode==="manual"),display:"flex",alignItems:"center",justifyContent:"center",gap:8,textAlign:"center"}} onClick={()=>setInputMode("manual")}><ConfigIcon name="manual"/>MANUEL · LOCAL</button>
     </div>
     {inputMode==="camera"?<>
+      <div style={{marginTop:10,padding:"9px 10px",borderRadius:14,border:"1px solid rgba(68,231,255,.24)",background:"rgba(68,231,255,.06)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+        <div style={{minWidth:0}}>
+          <div style={{fontSize:9,fontWeight:1000,letterSpacing:1,color:ACCENT}}>SOURCE DE SCORING</div>
+          <div style={{fontSize:12,fontWeight:900,color:"#fff",marginTop:2}}>{cameraSource.label}</div>
+          <div style={{fontSize:10,color:"#91a2b1",marginTop:2}}>Une seule source fournit à la fois l’aperçu et les frames analysées.</div>
+        </div>
+        <span style={{padding:"5px 8px",borderRadius:999,border:"1px solid rgba(143,255,194,.28)",color:"#8fffc2",fontSize:9,fontWeight:1000,whiteSpace:"nowrap"}}>ACTIVE</span>
+      </div>
       <ol style={{margin:"12px 0 0",paddingLeft:20,color:"#cad5e1",lineHeight:1.6,fontSize:13}}>
         <li>Enrôlement IA des fléchettes de chaque joueur.</li>
         <li>Calibration projective 5 points.</li>
@@ -194,7 +206,7 @@ export default function ClosestCenterConfig(props: any) {
         <li>L’IA mesure tous les impacts pour appliquer automatiquement la règle choisie.</li>
       </ol>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}>
-        <button onClick={()=>go?.("camera_scoring_setup",{returnTab:"closest_center_config"})} style={navBtn}>📷 CONFIGURER / CALIBRER</button>
+        <button onClick={()=>go?.("camera_scoring_calibration",{returnTab:"closest_center_config",cameraSourceId})} style={navBtn}>CALIBRER LA SOURCE</button>
         <button disabled={!canStart} onClick={start} style={{...navBtn,borderColor:ACCENT,background:`${ACCENT}18`,opacity:canStart?1:.4}}>▶ LANCER</button>
       </div>
     </>:<>

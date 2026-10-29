@@ -3738,9 +3738,11 @@ function ScaledCard({
 export default function HistoryPage({
   store,
   go,
+  showTopTicker = true,
 }: {
   store: Store;
   go: (to: string, params?: any) => void;
+  showTopTicker?: boolean;
 }) {
   const { theme } = useTheme();
   const { t, lang } = useLang();
@@ -5762,16 +5764,18 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
 
   return (
     <div style={S.page}>
-      <PageHeader
-        tickerSrc={historyTickerSrc}
-        tickerAlt={lang === "fr" ? "Historique" : "History"}
-        tickerHeight={92}
-        tickerFit="contain"
-        tickerEdgeFade="strong"
-        tickerBottomGap={14}
-      />
+      {showTopTicker ? (
+        <PageHeader
+          tickerSrc={historyTickerSrc}
+          tickerAlt={lang === "fr" ? "Historique" : "History"}
+          tickerHeight={92}
+          tickerFit="contain"
+          tickerEdgeFade="strong"
+          tickerBottomGap={14}
+        />
+      ) : null}
 
-      <ScaledKpiRow baseStyle={{ ...S.kpiRow, marginTop: 8 }}>
+      <ScaledKpiRow baseStyle={{ ...S.kpiRow, marginTop: showTopTicker ? 8 : 0 }}>
         <div style={S.kpiCard(tab === "all", theme.primary)} onClick={() => setTab("all")}>
           <div style={S.kpiLabel}>ALL</div>
           <div style={S.kpiValue}>{allItems.length}</div>
