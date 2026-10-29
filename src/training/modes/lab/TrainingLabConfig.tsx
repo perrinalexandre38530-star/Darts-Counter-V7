@@ -63,7 +63,40 @@ function HubGlyph({ name, size = 17 }: { name: string; size?: number }) {
   if (name === "progress") return <svg {...common}><path d="M4 18l5-5 4 3 7-9"/><path d="M15 7h5v5"/></svg>;
   if (name === "diagnosis") return <svg {...common}><circle cx="11" cy="11" r="6"/><path d="m16 16 5 5M8 11h6M11 8v6"/></svg>;
   if (name === "exercises") return <svg {...common}><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>;
+  if (name === "scoring") return <svg {...common}><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 4v3M20 12h-3"/></svg>;
+  if (name === "doubles") return <svg {...common}><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="5"/><path d="M6.4 6.4l2.1 2.1M17.6 17.6l-2.1-2.1"/></svg>;
+  if (name === "checkout") return <svg {...common}><path d="M5 21V4"/><path d="M5 5h11l-2 4 2 4H5"/></svg>;
+  if (name === "precision") return <svg {...common}><circle cx="12" cy="12" r="7"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/><circle cx="12" cy="12" r="1.5"/></svg>;
+  if (name === "bull") return <svg {...common}><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/></svg>;
+  if (name === "regularity") return <svg {...common}><path d="M3 12c2.2-5 4.4 5 6.6 0s4.4-5 6.6 0 4.4 5 4.8 0"/></svg>;
+  if (name === "mastery") return <svg {...common}><path d="M12 3 5 6v5c0 4.8 3 8 7 10 4-2 7-5.2 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>;
+  if (name === "badges") return <svg {...common}><circle cx="12" cy="9" r="5"/><path d="m9 14-2 7 5-3 5 3-2-7"/></svg>;
+  if (name === "records") return <svg {...common}><path d="M8 4h8v4a4 4 0 0 1-8 0V4Z"/><path d="M6 6H4v2a4 4 0 0 0 4 4M18 6h2v2a4 4 0 0 1-4 4M12 12v5M8 21h8M9 17h6"/></svg>;
+  if (name === "live") return <svg {...common}><path d="M3 12h4l2-5 4 10 2-5h6"/></svg>;
+  if (name === "effectiveness") return <svg {...common}><path d="m4 17 5-5 4 3 7-8"/><path d="M16 7h4v4"/></svg>;
+  if (name === "plans") return <svg {...common}><rect x="4" y="4" width="12" height="14" rx="2"/><path d="M8 8h5M8 12h5M8 16h3M16 7h4v13H8"/></svg>;
   return <svg {...common}><path d="M4 12h16M12 4v16"/></svg>;
+}
+
+type CompactNavItem = { id: string; label: string; icon: string; status?: string };
+
+function CompactIconNav({ items, activeId, onChange, tone = "cyan", stickyTop }: { items: CompactNavItem[]; activeId: string; onChange: (id: string) => void; tone?: "cyan" | "green" | "purple" | "gold"; stickyTop?: number }) {
+  const palette = tone === "green"
+    ? { border: "rgba(80,255,174,.42)", bg: "rgba(80,255,174,.085)", glow: "rgba(80,255,174,.12)" }
+    : tone === "purple"
+      ? { border: "rgba(185,156,255,.42)", bg: "rgba(140,90,255,.085)", glow: "rgba(140,90,255,.12)" }
+      : tone === "gold"
+        ? { border: "rgba(255,216,107,.42)", bg: "rgba(255,216,107,.08)", glow: "rgba(255,216,107,.10)" }
+        : { border: "rgba(39,220,255,.50)", bg: "rgba(39,220,255,.10)", glow: "rgba(39,220,255,.12)" };
+  return <div style={{ display: "flex", alignItems: "stretch", gap: 5, marginTop: 8, padding: "5px 0", ...(stickyTop === undefined ? {} : { position: "sticky" as const, top: stickyTop, zIndex: 3, background: "rgba(8,10,16,.80)", backdropFilter: "blur(12px)" }) }}>
+    {items.map((item) => {
+      const active = item.id === activeId;
+      return <button key={item.id} type="button" aria-label={item.label} title={item.label} onClick={() => onChange(item.id)} style={{ minWidth: active ? 92 : 42, flex: active ? "1 1 auto" : "0 0 42px", height: 42, padding: active ? "5px 9px" : 0, borderRadius: 12, border: active ? `1px solid ${palette.border}` : "1px solid rgba(255,255,255,.075)", background: active ? palette.bg : "rgba(255,255,255,.022)", boxShadow: active ? `0 0 18px ${palette.glow}` : "none", color: "inherit", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: active ? "flex-start" : "center", gap: 7, overflow: "hidden", transition: "flex .18s ease,min-width .18s ease,background .18s ease" }}>
+        <span style={{ display: "grid", placeItems: "center", flex: "0 0 auto" }}><HubGlyph name={item.icon} size={active ? 17 : 16} /></span>
+        {active && <span style={{ minWidth: 0, textAlign: "left" }}><span style={{ display: "block", fontSize: 7.6, lineHeight: 1.05, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.label}</span>{item.status && <span style={{ display: "block", marginTop: 2, fontSize: 6.1, lineHeight: 1, opacity: .46, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.status}</span>}</span>}
+      </button>;
+    })}
+  </div>;
 }
 
 function pct(value: number) {
@@ -339,20 +372,20 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
     { id: "skill", label: "COMPÉTENCE", icon: "skills" },
     { id: "goal", label: "MON OBJECTIF", icon: "progress" },
   ];
-  const skillProgressPanels: Array<{ id: SkillProgressPanel; label: string }> = [
-    { id: "mastery", label: "MAÎTRISES" },
-    { id: "badges", label: "BADGES" },
-    { id: "records", label: "RECORDS" },
+  const skillProgressPanels: Array<{ id: SkillProgressPanel; label: string; icon: string }> = [
+    { id: "mastery", label: "MAÎTRISES", icon: "mastery" },
+    { id: "badges", label: "BADGES", icon: "badges" },
+    { id: "records", label: "RECORDS", icon: "records" },
   ];
-  const coachPanels: Array<{ id: CoachPanel; label: string }> = [
-    { id: "brief", label: "SYNTHÈSE" },
-    { id: "live", label: "LIVE" },
-    { id: "effectiveness", label: "EFFICACITÉ" },
-    { id: "weeks", label: "SEMAINES" },
+  const coachPanels: Array<{ id: CoachPanel; label: string; icon: string }> = [
+    { id: "brief", label: "SYNTHÈSE", icon: "coach" },
+    { id: "live", label: "LIVE", icon: "live" },
+    { id: "effectiveness", label: "EFFICACITÉ", icon: "effectiveness" },
+    { id: "weeks", label: "SEMAINES", icon: "week" },
   ];
-  const historyPanels: Array<{ id: HistoryPanel; label: string }> = [
-    { id: "plans", label: "PLANS" },
-    { id: "exercises", label: "EXERCICES" },
+  const historyPanels: Array<{ id: HistoryPanel; label: string; icon: string }> = [
+    { id: "plans", label: "PLANS", icon: "plans" },
+    { id: "exercises", label: "EXERCICES", icon: "exercises" },
   ];
 
   return (
@@ -457,17 +490,10 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
             <button type="button" onClick={() => { setTab("program"); prepareRecommendedSession(nextRecommendation.durationMin, nextRecommendation.family); }} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(185,156,255,.28)", background: "rgba(140,90,255,.10)", color: "inherit", fontSize: 8.5, fontWeight: 950, cursor: "pointer" }}>REPRENDRE LE FIL</button>
           </div>}
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 12, position: "sticky", top: 0, zIndex: 3, padding: "6px 0", backdropFilter: "blur(10px)" }}>
-            {tabs.map((item) => <button key={item.id} type="button" onClick={() => setTab(item.id)} style={{ minWidth: 0, padding: "7px 4px", borderRadius: 11, border: tab === item.id ? "1px solid #27dcff" : "1px solid rgba(255,255,255,.10)", background: tab === item.id ? "rgba(39,220,255,.15)" : "rgba(0,0,0,.2)", color: "inherit", fontSize: 8, fontWeight: 950, letterSpacing: .35, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}><HubGlyph name={item.icon} size={16} /><span>{item.label}</span></button>)}
-          </div>
+          <CompactIconNav items={tabs} activeId={tab} onChange={(id) => setTab(id as HubTab)} stickyTop={0} />
 
           {tab === "program" && <div>
-            {viewMode === "complete" && <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 8, position: "sticky", top: 54, zIndex: 2, padding: "5px 0", background: "rgba(8,10,16,.78)", backdropFilter: "blur(12px)" }}>
-              {programPanels.map((item) => {
-                const status = item.id === "today" ? `${dailyPlan.durationMin} MIN` : item.id === "week" ? `${weeklyPlan.completed}/${weeklyPlan.target}` : item.id === "cycle" ? `${cycleCoach.completedSessions}/${cycleCoach.cycleSize}` : `${programs.length} PLANS`;
-                return <button key={item.id} type="button" onClick={() => setProgramPanel(item.id)} style={{ minWidth: 0, padding: "7px 3px", borderRadius: 10, border: programPanel === item.id ? "1px solid rgba(39,220,255,.55)" : "1px solid rgba(255,255,255,.075)", background: programPanel === item.id ? "rgba(39,220,255,.11)" : "rgba(255,255,255,.025)", color: "inherit", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}><HubGlyph name={item.icon} size={15} /><span style={{ fontSize: 7.2, fontWeight: 950 }}>{item.label}</span><span style={{ fontSize: 6.2, opacity: .46 }}>{status}</span></button>;
-              })}
-            </div>}
+            {viewMode === "complete" && <CompactIconNav items={programPanels.map((item) => ({ ...item, status: item.id === "today" ? `${dailyPlan.durationMin} MIN` : item.id === "week" ? `${weeklyPlan.completed}/${weeklyPlan.target}` : item.id === "cycle" ? `${cycleCoach.completedSessions}/${cycleCoach.cycleSize}` : `${programs.length} PLANS` }))} activeId={programPanel} onChange={(id) => setProgramPanel(id as ProgramPanel)} stickyTop={48} />}
 
             {programPanel === "today" && <>
             <div style={{ marginTop: 8, padding: 11, borderRadius: 15, border: dailyChallenge.completed ? "1px solid rgba(80,255,174,.26)" : "1px solid rgba(255,216,107,.24)", background: dailyChallenge.completed ? "linear-gradient(135deg,rgba(80,255,174,.075),rgba(39,220,255,.025))" : "linear-gradient(135deg,rgba(255,216,107,.07),rgba(140,90,255,.025))" }}>
@@ -843,26 +869,14 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
           </div>}
 
           {tab === "exercises" && <div>
-            {viewMode === "complete" && <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 8, position: "sticky", top: 54, zIndex: 2, padding: "5px 0", background: "rgba(8,10,16,.78)", backdropFilter: "blur(12px)" }}>
-              {[
-                { id: "path" as ExercisePanel, label: "PARCOURS", icon: "progress", status: `NIV. ${skillPath.currentLevel}/5` },
-                { id: "catalog" as ExercisePanel, label: "CATALOGUE", icon: "exercises", status: `${filteredExercises.length} EX.` },
-                { id: "favorites" as ExercisePanel, label: "FAVORIS", icon: "library", status: `${favoriteExercises.length}` },
-              ].map((item) => <button key={item.id} type="button" onClick={() => setExercisePanel(item.id)} style={{ minWidth: 0, padding: "7px 3px", borderRadius: 10, border: exercisePanel === item.id ? "1px solid rgba(39,220,255,.55)" : "1px solid rgba(255,255,255,.075)", background: exercisePanel === item.id ? "rgba(39,220,255,.11)" : "rgba(255,255,255,.025)", color: "inherit", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}><HubGlyph name={item.icon} size={15} /><span style={{ fontSize: 7.2, fontWeight: 950 }}>{item.label}</span><span style={{ fontSize: 6.2, opacity: .46 }}>{item.status}</span></button>)}
-            </div>}
+            {viewMode === "complete" && <CompactIconNav items={[
+              { id: "path", label: "PARCOURS", icon: "progress", status: `NIV. ${skillPath.currentLevel}/5` },
+              { id: "catalog", label: "CATALOGUE", icon: "exercises", status: `${filteredExercises.length} EX.` },
+              { id: "favorites", label: "FAVORIS", icon: "library", status: `${favoriteExercises.length}` },
+            ]} activeId={exercisePanel} onChange={(id) => setExercisePanel(id as ExercisePanel)} stickyTop={48} />}
 
-            <div style={{ margin: "10px 0 8px", fontSize: 10, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>COMPÉTENCE</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 5 }}>
-              {familyOrder.map((id) => {
-                const row = diagnosis.find((x) => x.family === id);
-                const active = family === id;
-                const recommended = id === recommendedFamily;
-                return <button key={id} type="button" onClick={() => setFamily(id)} title={TRAINING_FAMILY_META[id].label} style={{ minWidth: 0, padding: "8px 3px", borderRadius: 11, border: active ? "1px solid #27dcff" : "1px solid rgba(255,255,255,.09)", background: active ? "rgba(39,220,255,.13)" : "rgba(255,255,255,.025)", color: "inherit", cursor: "pointer", textAlign: "center" }}>
-                  <div style={{ fontSize: 7.3, fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis" }}>{TRAINING_FAMILY_META[id].label}{recommended ? " ★" : ""}</div>
-                  <div style={{ marginTop: 3, fontSize: 6.5, opacity: .48 }}>{row?.sessions ? `${Math.round(row.recentScore)}/100` : "NOUVEAU"}</div>
-                </button>;
-              })}
-            </div>
+            <div style={{ margin: "10px 0 4px", fontSize: 8.2, fontWeight: 950, letterSpacing: .8, color: "#27dcff", opacity: .72 }}>COMPÉTENCE</div>
+            <CompactIconNav items={familyOrder.map((id) => { const row = diagnosis.find((x) => x.family === id); return { id, label: `${TRAINING_FAMILY_META[id].label}${id === recommendedFamily ? " ★" : ""}`, icon: id, status: row?.sessions ? `${Math.round(row.recentScore)}/100` : "NOUVEAU" }; })} activeId={family} onChange={(id) => setFamily(id as TrainingExerciseFamily)} />
 
             {exercisePanel === "path" && <>
               <div style={{ marginTop: 10, padding: 13, borderRadius: 15, border: "1px solid rgba(39,220,255,.22)", background: "linear-gradient(135deg,rgba(39,220,255,.08),rgba(140,90,255,.04))" }}>
@@ -946,12 +960,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
           </div>}
 
           {tab === "diagnosis" && <div>
-            {viewMode === "complete" && <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5, marginTop: 8, position: "sticky", top: 54, zIndex: 2, padding: "5px 0", background: "rgba(8,10,16,.78)", backdropFilter: "blur(12px)" }}>
-              {diagnosisPanels.map((item) => {
-                const status = item.id === "overview" ? `${Math.round(diagnosticBoard.overallScore)}/100` : item.id === "skill" ? TRAINING_FAMILY_META[diagnosisFamily].label.toUpperCase() : `${diagnosticBoard.reachedGoals}/6 ATTEINTS`;
-                return <button key={item.id} type="button" onClick={() => setDiagnosisPanel(item.id)} style={{ minWidth: 0, padding: "7px 3px", borderRadius: 10, border: diagnosisPanel === item.id ? "1px solid rgba(39,220,255,.55)" : "1px solid rgba(255,255,255,.075)", background: diagnosisPanel === item.id ? "rgba(39,220,255,.11)" : "rgba(255,255,255,.025)", color: "inherit", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}><HubGlyph name={item.icon} size={15} /><span style={{ fontSize: 7.2, fontWeight: 950 }}>{item.label}</span><span style={{ fontSize: 6.2, opacity: .46 }}>{status}</span></button>;
-              })}
-            </div>}
+            {viewMode === "complete" && <CompactIconNav items={diagnosisPanels.map((item) => ({ ...item, status: item.id === "overview" ? `${Math.round(diagnosticBoard.overallScore)}/100` : item.id === "skill" ? TRAINING_FAMILY_META[diagnosisFamily].label.toUpperCase() : `${diagnosticBoard.reachedGoals}/6 ATTEINTS` }))} activeId={diagnosisPanel} onChange={(id) => setDiagnosisPanel(id as DiagnosisPanel)} stickyTop={48} />}
 
             {diagnosisPanel === "overview" && <>
               <div style={{ marginTop: 9, padding: 13, borderRadius: 15, border: "1px solid rgba(39,220,255,.20)", background: "linear-gradient(135deg,rgba(39,220,255,.065),rgba(140,90,255,.035))" }}>
@@ -977,9 +986,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
             </>}
 
             {diagnosisPanel === "skill" && <>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 4, marginTop: 9 }}>
-                {familyOrder.map((familyId) => { const row = diagnosis.find((item) => item.family === familyId); return <button key={familyId} type="button" onClick={() => setDiagnosisFamily(familyId)} style={{ minWidth: 0, padding: "7px 2px", borderRadius: 9, border: diagnosisFamily === familyId ? "1px solid rgba(39,220,255,.50)" : "1px solid rgba(255,255,255,.065)", background: diagnosisFamily === familyId ? "rgba(39,220,255,.09)" : "rgba(255,255,255,.02)", color: "inherit", cursor: "pointer" }}><div style={{ fontSize: 6.6, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{TRAINING_FAMILY_META[familyId].label.toUpperCase()}</div><div style={{ marginTop: 2, fontSize: 7.8, opacity: .5 }}>{row?.sessions ? Math.round(row.recentScore) : "—"}</div></button>; })}
-              </div>
+              <CompactIconNav items={familyOrder.map((familyId) => { const row = diagnosis.find((item) => item.family === familyId); return { id: familyId, label: TRAINING_FAMILY_META[familyId].label.toUpperCase(), icon: familyId, status: row?.sessions ? `${Math.round(row.recentScore)}/100` : "—" }; })} activeId={diagnosisFamily} onChange={(id) => setDiagnosisFamily(id as TrainingExerciseFamily)} />
               {(() => {
                 const row = diagnosis.find((item) => item.family === diagnosisFamily)!;
                 const prog = progression.find((item) => item.family === diagnosisFamily);
@@ -998,9 +1005,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
             </>}
 
             {diagnosisPanel === "goal" && <>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 4, marginTop: 9 }}>
-                {familyOrder.map((familyId) => { const status = goalStatuses.find((item) => item.family === familyId); return <button key={familyId} type="button" onClick={() => setDiagnosisFamily(familyId)} style={{ minWidth: 0, padding: "7px 2px", borderRadius: 9, border: diagnosisFamily === familyId ? "1px solid rgba(255,216,107,.45)" : "1px solid rgba(255,255,255,.065)", background: diagnosisFamily === familyId ? "rgba(255,216,107,.08)" : "rgba(255,255,255,.02)", color: "inherit", cursor: "pointer" }}><div style={{ fontSize: 6.6, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{TRAINING_FAMILY_META[familyId].label.toUpperCase()}</div><div style={{ marginTop: 2, fontSize: 7.5, color: status?.reached ? "#8cffcb" : "inherit", opacity: .7 }}>{Math.round(status?.current || 0)}/{status?.goal || 0}</div></button>; })}
-              </div>
+              <CompactIconNav items={familyOrder.map((familyId) => { const status = goalStatuses.find((item) => item.family === familyId); return { id: familyId, label: TRAINING_FAMILY_META[familyId].label.toUpperCase(), icon: familyId, status: `${Math.round(status?.current || 0)}/${status?.goal || 0}` }; })} activeId={diagnosisFamily} onChange={(id) => setDiagnosisFamily(id as TrainingExerciseFamily)} tone="gold" />
               {(() => { const status = goalStatuses.find((item) => item.family === diagnosisFamily)!; const deadline = preferences.familyGoalDeadlines[diagnosisFamily] || ""; return <div style={{ marginTop: 9, padding: 13, borderRadius: 15, border: status.reached ? "1px solid rgba(80,255,174,.20)" : "1px solid rgba(255,216,107,.18)", background: status.reached ? "rgba(80,255,174,.035)" : "rgba(255,216,107,.03)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}><div><div style={{ fontSize: 8, opacity: .45 }}>OBJECTIF • {status.label.toUpperCase()}</div><div style={{ marginTop: 3, fontSize: 13, fontWeight: 950 }}>{status.reached ? "Objectif atteint" : `Encore ${Math.ceil(status.gap)} pts à gagner`}</div></div><b style={{ fontSize: 18, color: status.reached ? "#8cffcb" : "#ffd86b" }}>{Math.round(status.current)}<span style={{ fontSize: 8, opacity: .45 }}>/{status.goal}</span></b></div>
                 <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,.07)", overflow: "hidden", marginTop: 10 }}><div style={{ height: "100%", width: `${Math.max(2, Math.min(100, (status.current / Math.max(1, status.goal)) * 100))}%`, background: status.reached ? "linear-gradient(90deg,#8cffcb,#27dcff)" : "linear-gradient(90deg,#ffd86b,#27dcff)" }} /></div>
@@ -1009,23 +1014,12 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
             </>}
           </div>}
           {tab === "progress" && <div>
-            {viewMode === "complete" && <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5, marginTop: 8, position: "sticky", top: 54, zIndex: 2, padding: "5px 0", background: "rgba(8,10,16,.78)", backdropFilter: "blur(12px)" }}>
-              {progressPanels.map((item) => {
-                const status = item.id === "overview" ? `NIV. ${career.level.level}` : item.id === "skills" ? `${progression.filter((row) => row.sessions > 0).length}/6` : item.id === "coach" ? `${liveCoachHistory.sampleSize} SÉANCES` : item.id === "cycles" ? `${cycleHistory.length} CYCLES` : `${programSessions.length} PLANS`;
-                return <button key={item.id} type="button" onClick={() => setProgressPanel(item.id)} style={{ minWidth: 0, padding: "6px 2px", borderRadius: 9, border: progressPanel === item.id ? "1px solid rgba(39,220,255,.50)" : "1px solid rgba(255,255,255,.07)", background: progressPanel === item.id ? "rgba(39,220,255,.10)" : "rgba(255,255,255,.02)", color: "inherit", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}><HubGlyph name={item.icon} size={14} /><span style={{ fontSize: 6.7, fontWeight: 950 }}>{item.label}</span><span style={{ fontSize: 5.9, opacity: .44 }}>{status}</span></button>;
-              })}
-            </div>}
+            {viewMode === "complete" && <CompactIconNav items={progressPanels.map((item) => ({ ...item, status: item.id === "overview" ? `NIV. ${career.level.level}` : item.id === "skills" ? `${progression.filter((row) => row.sessions > 0).length}/6` : item.id === "coach" ? `${liveCoachHistory.sampleSize} SÉANCES` : item.id === "cycles" ? `${cycleHistory.length} CYCLES` : `${programSessions.length} PLANS` }))} activeId={progressPanel} onChange={(id) => setProgressPanel(id as ProgressPanel)} stickyTop={48} />}
 
-            {progressPanel === "coach" && <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5, marginTop: 7 }}>
-              {coachPanels.map((item) => <button key={item.id} type="button" onClick={() => setCoachPanel(item.id)} style={{ padding: "7px 3px", borderRadius: 9, border: coachPanel === item.id ? "1px solid rgba(80,255,174,.38)" : "1px solid rgba(255,255,255,.065)", background: coachPanel === item.id ? "rgba(80,255,174,.07)" : "rgba(255,255,255,.02)", color: "inherit", fontSize: 6.9, fontWeight: 950, cursor: "pointer" }}>{item.label}</button>)}
-            </div>}
-            {progressPanel === "history" && <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 5, marginTop: 7 }}>
-              {historyPanels.map((item) => <button key={item.id} type="button" onClick={() => setHistoryPanel(item.id)} style={{ padding: "7px 4px", borderRadius: 9, border: historyPanel === item.id ? "1px solid rgba(185,156,255,.40)" : "1px solid rgba(255,255,255,.065)", background: historyPanel === item.id ? "rgba(140,90,255,.075)" : "rgba(255,255,255,.02)", color: "inherit", fontSize: 7.2, fontWeight: 950, cursor: "pointer" }}>{item.label}</button>)}
-            </div>}
+            {progressPanel === "coach" && <CompactIconNav items={coachPanels} activeId={coachPanel} onChange={(id) => setCoachPanel(id as CoachPanel)} tone="green" />}
+            {progressPanel === "history" && <CompactIconNav items={historyPanels} activeId={historyPanel} onChange={(id) => setHistoryPanel(id as HistoryPanel)} tone="purple" />}
 
-            {progressPanel === "skills" && <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5, marginTop: 7 }}>
-              {skillProgressPanels.map((item) => <button key={item.id} type="button" onClick={() => setSkillProgressPanel(item.id)} style={{ padding: "7px 4px", borderRadius: 9, border: skillProgressPanel === item.id ? "1px solid rgba(185,156,255,.42)" : "1px solid rgba(255,255,255,.065)", background: skillProgressPanel === item.id ? "rgba(140,90,255,.08)" : "rgba(255,255,255,.02)", color: "inherit", fontSize: 7.2, fontWeight: 950, cursor: "pointer" }}>{item.label}</button>)}
-            </div>}
+            {progressPanel === "skills" && <CompactIconNav items={skillProgressPanels} activeId={skillProgressPanel} onChange={(id) => setSkillProgressPanel(id as SkillProgressPanel)} tone="purple" />}
 
             {progressPanel === "overview" && <>
             <div style={{ marginTop: 8, padding: 12, borderRadius: 15, border: "1px solid rgba(39,220,255,.18)", background: "linear-gradient(135deg,rgba(39,220,255,.055),rgba(80,255,174,.025))" }}>
@@ -1136,9 +1130,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
 
             {progressPanel === "skills" && skillProgressPanel === "mastery" && <>
             <div style={{ margin: "12px 0 7px", fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>ÉVOLUTION DÉTAILLÉE</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 4, marginBottom: 7 }}>
-              {familyOrder.map((familyId) => <button key={`progress-family-${familyId}`} type="button" onClick={() => setDiagnosisFamily(familyId)} style={{ minWidth: 0, padding: "6px 2px", borderRadius: 8, border: diagnosisFamily === familyId ? "1px solid rgba(39,220,255,.45)" : "1px solid rgba(255,255,255,.06)", background: diagnosisFamily === familyId ? "rgba(39,220,255,.08)" : "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer", fontSize: 6.4, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{TRAINING_FAMILY_META[familyId].label.toUpperCase()}</button>)}
-            </div>
+            <CompactIconNav items={familyOrder.map((familyId) => ({ id: familyId, label: TRAINING_FAMILY_META[familyId].label.toUpperCase(), icon: familyId }))} activeId={diagnosisFamily} onChange={(id) => setDiagnosisFamily(id as TrainingExerciseFamily)} />
             {(() => {
               const row = progression.find((item) => item.family === diagnosisFamily) || progression[0];
               if (!row) return null;
