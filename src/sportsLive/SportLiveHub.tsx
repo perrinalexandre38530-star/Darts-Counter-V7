@@ -7,11 +7,10 @@ import {
   SPORT_LIVE_META,
   SPORT_LIVE_REGION_LABELS,
   getAvailableRegions,
-  getLocaleProfile,
   getRecommendedSportSources,
   getSportSources,
 } from "./catalog";
-import { fetchSportLiveOverview, getCachedSportLiveOverview, getCachedSportLiveOverviewSavedAt, mergeSportLiveOverview } from "./liveApi";
+import { fetchSportLiveOverview, getCachedSportLiveOverview, mergeSportLiveOverview } from "./liveApi";
 import type { SportLiveEvent, SportLiveNewsItem, SportLiveOverview, SportLiveRegion, SportLiveSource } from "./types";
 import { isLiveSportsSupportedSport } from "./support";
 
@@ -141,6 +140,47 @@ function itemSource(item: any, fallback?: SportLiveSource | null) {
 
 function sourceLabel(source?: SportLiveSource | null) {
   return source?.shortName || source?.name || "OFFICIEL";
+}
+
+function competitionKey(value?: string | null) {
+  return String(value || "Compétition officielle").replace(/\s+/g, " ").trim();
+}
+
+function competitionIcon(value?: string | null) {
+  const name = competitionKey(value).toLowerCase();
+  if (/modus/.test(name)) return "⚡";
+  if (/world championship|world cup|world masters|wdf/.test(name)) return "🌐";
+  if (/players championship|pdc|european|euro|grand prix|matchplay|uk open|masters|trophy/.test(name)) return "🎯";
+  if (/cdc|north america|latin|caribbean/.test(name)) return "🌎";
+  if (/new zealand|dnz/.test(name)) return "🥝";
+  if (/austral/.test(name)) return "🇦🇺";
+  if (/france|ffd/.test(name)) return "🇫🇷";
+  if (/nordic|baltic/.test(name)) return "❄️";
+  if (/asian|asia|japan|china/.test(name)) return "🌏";
+  return "🏆";
+}
+
+function normalizedRound(value?: string | null) {
+  const round = niceRound(value);
+  if (!round || /^Match\s+\d+$/i.test(round)) return "MATCHS";
+  return round
+    .replace(/^Qf$/i, "Quarter-finals")
+    .replace(/^Sf$/i, "Semi-finals")
+    .replace(/^Quarterfinals$/i, "Quarter-finals")
+    .replace(/^Semifinals$/i, "Semi-finals");
+}
+
+function roundOrder(value: string) {
+  const round = value.toLowerCase();
+  const last = round.match(/last\s+(\d+)/i);
+  if (last) return 1000 - Number(last[1]);
+  const numeric = round.match(/round(?: of)?\s+(\d+)/i);
+  if (numeric) return 1000 - Number(numeric[1]);
+  if (/quarter/.test(round)) return 2000;
+  if (/semi/.test(round)) return 3000;
+  if (/final/.test(round)) return 4000;
+  if (/match/.test(round)) return 500;
+  return 1200;
 }
 
 function LiveStyles() {
@@ -312,7 +352,29 @@ function LiveStyles() {
       .msc-result-scores { display:grid; grid-template-rows:1fr 1fr; align-items:center; justify-items:center; border-left:1px solid #28313a; font-variant-numeric:tabular-nums; }
       .msc-result-score { width:100%; text-align:center; font-size:18px; line-height:1; font-weight:1000; color:#aeb7c0; }
       .msc-result-score.is-winner { color:#f4d445; }
-      @media (max-width:390px) { .msc-result-source { max-width:72px; } .msc-result-comp { font-size:8.5px; } }
+      .msc-result-head-spacer { flex:1; }
+      .msc-live-warning { margin:7px 0 0; padding:6px 8px; border:1px solid rgba(255,80,96,.25); border-radius:8px; background:rgba(255,48,72,.07); color:#ff8995; font-size:8.5px; font-weight:900; text-align:center; }
+      .msc-competition-dock { display:flex; gap:6px; overflow-x:auto; padding:8px 0 6px; scrollbar-width:none; }
+      .msc-competition-dock::-webkit-scrollbar { display:none; }
+      .msc-competition-btn { flex:0 0 auto; min-width:39px; height:39px; display:flex; align-items:center; justify-content:center; gap:5px; padding:0 8px; border:1px solid #2b333c; border-radius:13px; background:#0d1217; color:#98a2ad; cursor:pointer; }
+      .msc-competition-btn.is-active { border-color:var(--live-accent); color:#fff; background:linear-gradient(180deg,rgba(255,48,72,.16),#0d1217); box-shadow:0 0 0 1px rgba(255,48,72,.08),0 0 15px rgba(255,48,72,.09); }
+      .msc-competition-icon { font-size:16px; line-height:1; }
+      .msc-competition-label { display:none; max-width:148px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:8.5px; font-weight:1000; }
+      .msc-competition-btn.is-active .msc-competition-label { display:block; }
+      .msc-competition-count { min-width:15px; height:15px; display:grid; place-items:center; padding:0 3px; border-radius:999px; background:#1c242c; color:#aeb7c1; font-size:7px; font-weight:1000; }
+      .msc-competition-btn.is-active .msc-competition-count { background:var(--live-accent); color:#fff; }
+      .msc-competition-groups { display:grid; gap:11px; }
+      .msc-competition-group { overflow:hidden; border:1px solid #252d35; border-radius:12px; background:#090d11; }
+      .msc-competition-head { min-height:38px; display:grid; grid-template-columns:25px minmax(0,1fr) auto; align-items:center; gap:7px; padding:7px 8px; background:linear-gradient(90deg,rgba(255,48,72,.11),rgba(255,255,255,.02)); border-bottom:1px solid #252d35; }
+      .msc-competition-head-icon { width:25px; height:25px; display:grid; place-items:center; border-radius:8px; background:#151b21; font-size:14px; }
+      .msc-competition-head-title { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10.5px; font-weight:1000; }
+      .msc-competition-head-count { color:#89939e; font-size:8px; font-weight:950; }
+      .msc-round-group { padding:6px 6px 2px; }
+      .msc-round-group + .msc-round-group { border-top:1px solid #1f262e; }
+      .msc-round-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:2px 2px 6px; color:#d0d6dd; font-size:8.5px; font-weight:1000; text-transform:uppercase; letter-spacing:.35px; }
+      .msc-round-head span:last-child { color:#707b86; font-size:7.5px; }
+      .msc-round-group .msc-result-card { margin-bottom:5px; border-radius:8px; }
+      @media (max-width:390px) { .msc-result-source { max-width:72px; } .msc-result-comp { font-size:8.5px; } .msc-competition-label { max-width:112px; } }
       .msc-empty-card {
         border:1px solid #29313a; border-radius:11px; background:#0d1116; padding:12px 11px; text-align:center;
       }
@@ -566,9 +628,8 @@ function ResultMatchCard({ item, source, lang }: { item: DartsLiveResult; source
   return (
     <article className="msc-result-card">
       <div className="msc-result-head">
-        <div className="msc-result-comp" translate="no" data-i18n-skip="true">{item.competition || "Compétition officielle"}</div>
-        {item.round ? <div className="msc-result-round">{niceRound(item.round)}</div> : null}
         <div className="msc-result-date">{formatDate(item.playedOn, lang)}</div>
+        <div className="msc-result-head-spacer" />
         {origin.url ? <a className="msc-result-source" href={origin.url} target="_blank" rel="noreferrer noopener">{origin.name}</a> : <span className="msc-result-source">{origin.name}</span>}
       </div>
       <div className="msc-result-body">
@@ -591,6 +652,65 @@ function ResultMatchCard({ item, source, lang }: { item: DartsLiveResult; source
         </div>
       </div>
     </article>
+  );
+}
+
+function GroupedResults({ rows, source, lang }: { rows: DartsLiveResult[]; source?: SportLiveSource | null; lang: string }) {
+  const competitions = React.useMemo(() => {
+    const map = new Map<string, DartsLiveResult[]>();
+    rows.forEach((row) => {
+      const key = competitionKey(row.competition);
+      const bucket = map.get(key) || [];
+      bucket.push(row);
+      map.set(key, bucket);
+    });
+    return Array.from(map.entries()).map(([name, matches]) => ({ name, matches }));
+  }, [rows]);
+  const [selected, setSelected] = React.useState("__all__");
+  React.useEffect(() => {
+    if (selected !== "__all__" && !competitions.some((item) => item.name === selected)) setSelected("__all__");
+  }, [competitions, selected]);
+  const visible = selected === "__all__" ? competitions : competitions.filter((item) => item.name === selected);
+  return (
+    <>
+      <div className="msc-competition-dock" aria-label="Compétitions">
+        <button className={`msc-competition-btn${selected === "__all__" ? " is-active" : ""}`} type="button" onClick={() => setSelected("__all__")} title="Toutes les compétitions">
+          <span className="msc-competition-icon">🏟️</span><span className="msc-competition-label">TOUTES</span><span className="msc-competition-count">{rows.length}</span>
+        </button>
+        {competitions.map(({ name, matches }) => (
+          <button key={name} className={`msc-competition-btn${selected === name ? " is-active" : ""}`} type="button" onClick={() => setSelected(name)} title={name}>
+            <span className="msc-competition-icon">{competitionIcon(name)}</span><span className="msc-competition-label" translate="no">{name}</span><span className="msc-competition-count">{matches.length}</span>
+          </button>
+        ))}
+      </div>
+      <div className="msc-competition-groups">
+        {visible.map(({ name, matches }) => {
+          const rounds = new Map<string, DartsLiveResult[]>();
+          matches.forEach((match) => {
+            const round = normalizedRound(match.round);
+            const bucket = rounds.get(round) || [];
+            bucket.push(match);
+            rounds.set(round, bucket);
+          });
+          const orderedRounds = Array.from(rounds.entries()).sort(([a], [b]) => roundOrder(a) - roundOrder(b));
+          return (
+            <section className="msc-competition-group" key={name}>
+              <div className="msc-competition-head">
+                <span className="msc-competition-head-icon">{competitionIcon(name)}</span>
+                <div className="msc-competition-head-title" translate="no" data-i18n-skip="true">{name}</div>
+                <span className="msc-competition-head-count">{matches.length}</span>
+              </div>
+              {orderedRounds.map(([round, roundRows]) => (
+                <div className="msc-round-group" key={`${name}-${round}`}>
+                  <div className="msc-round-head"><span>{round}</span><span>{roundRows.length} match{roundRows.length > 1 ? "s" : ""}</span></div>
+                  {roundRows.map((item) => <ResultMatchCard key={item.id} item={item} source={source} lang={lang} />)}
+                </div>
+              ))}
+            </section>
+          );
+        })}
+      </div>
+    </>
   );
 }
 
@@ -803,7 +923,6 @@ export default function SportLiveHub() {
   const supportedSport = isLiveSportsSupportedSport(sport);
   const liveSport = supportedSport ? sport : "darts";
   const meta = SPORT_LIVE_META[liveSport];
-  const localeProfile = React.useMemo(() => getLocaleProfile(lang), [lang]);
   const preferredRegions = React.useMemo(() => getAvailableRegions(liveSport, lang), [liveSport, lang]);
   const recommended = React.useMemo(() => getRecommendedSportSources(liveSport, lang), [liveSport, lang]);
   const allSportSources = React.useMemo(() => getSportSources(liveSport), [liveSport]);
@@ -813,12 +932,10 @@ export default function SportLiveHub() {
   const [feed, setFeed] = React.useState<SportLiveOverview | null>(() => getCachedSportLiveOverview(liveSport, lang));
   const [loading, setLoading] = React.useState(() => !getCachedSportLiveOverview(liveSport, lang));
   const [feedError, setFeedError] = React.useState<string | null>(null);
-  const [updatedAt, setUpdatedAt] = React.useState<number | null>(() => getCachedSportLiveOverviewSavedAt(liveSport, lang));
   const [floatingPanel, setFloatingPanel] = React.useState<FloatingPanel>(null);
 
   const applyFeed = React.useCallback((next: SportLiveOverview) => {
     setFeed((previous) => mergeSportLiveOverview(previous, next));
-    setUpdatedAt(Date.now());
   }, []);
 
   React.useEffect(() => {
@@ -827,7 +944,6 @@ export default function SportLiveHub() {
     setView("overview");
     setFeed(cached);
     setLoading(!cached);
-    setUpdatedAt(getCachedSportLiveOverviewSavedAt(liveSport, lang));
     setFeedError(null);
     setFloatingPanel(null);
   }, [liveSport, lang]);
@@ -956,7 +1072,6 @@ export default function SportLiveHub() {
   const resultEvents = eventRows.filter((event) => event.status === "result");
   const sourceForCards = recommended.find((source) => !!source.watchUrl) || recommended.find((source) => !!source.scoresUrl) || recommended[0] || null;
   const ticker = React.useMemo(() => buildTicker(feed, lang, meta.label, recommended), [feed, lang, meta.label, recommended]);
-  const isOnline = typeof navigator === "undefined" ? true : navigator.onLine;
 
   const cssVars = {
     "--live-accent": "#ff3048",
@@ -983,19 +1098,7 @@ export default function SportLiveHub() {
 
       <ScoreTicker items={ticker} sportLabel={meta.label} />
 
-      <div className="msc-info-strip">
-        <span className="msc-info-chip">{isOnline ? "● ONLINE" : "○ HORS LIGNE"}</span>
-        <span className="msc-info-chip">{localeProfile.label}</span>
-        {feed?.intelligence?.enabled ? (
-          <>
-            <span className="msc-info-chip">LOCAL {feed.intelligence.localCount ?? 0}</span>
-            <span className="msc-info-chip">RÉGIONAL {feed.intelligence.regionalCount ?? 0}</span>
-            <span className="msc-info-chip">MONDE {feed.intelligence.worldCount ?? 0}</span>
-          </>
-        ) : null}
-        {updatedAt ? <span className="msc-info-chip">MAJ {new Date(updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span> : null}
-        {feedError ? <span className="msc-info-chip" style={{ color: "#ff7180" }}>LIVE PARTIEL</span> : null}
-      </div>
+      {feedError ? <div className="msc-live-warning">LIVE PARTIEL · certaines sources n’ont pas répondu</div> : null}
 
 
       <nav className="msc-live-tabs" aria-label="Rubriques LIVE SPORTS">
@@ -1087,7 +1190,7 @@ export default function SportLiveHub() {
       {supportedSport && view === "results" ? (
         <section className="msc-live-section">
           <SectionHeader title="RÉSULTATS" count={(resultRows.length + resultEvents.length) ? `${resultRows.length + resultEvents.length} résultat${(resultRows.length + resultEvents.length) > 1 ? "s" : ""}` : ""} />
-          {resultRows.length ? resultRows.map((item) => <ResultMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />) : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Résultats officiels" copy="Aucun résultat automatique n’est chargé pour l’instant. Ouvre une source officielle pour consulter les derniers scores." sources={recommended.filter((source) => source.resultsUrl)} />}
+          {resultRows.length ? <GroupedResults rows={resultRows} source={sourceForCards} lang={lang} /> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Résultats officiels" copy="Aucun résultat automatique n’est chargé pour l’instant. Ouvre une source officielle pour consulter les derniers scores." sources={recommended.filter((source) => source.resultsUrl)} />}
         </section>
       ) : null}
 
@@ -1120,7 +1223,7 @@ export default function SportLiveHub() {
       ) : null}
 
       {floatingPanel === "news" ? <FloatingDrawer title={`ACTUALITÉS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{newsRows.length ? <div className="msc-news-grid">{newsRows.map((item) => <NewsCard key={item.id} item={item} lang={lang} />)}</div> : <EmptySection title="Aucune actualité détectée" copy="Réessaie l’actualisation dans quelques instants." sources={recommended.slice(0, 2)} />}</FloatingDrawer> : null}
-      {floatingPanel === "results" ? <FloatingDrawer title={`RÉSULTATS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{resultRows.length ? resultRows.map((item) => <ResultMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />) : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Aucun résultat détecté" copy="Les sources officielles restent disponibles." sources={recommended.filter((source) => source.resultsUrl).slice(0, 2)} />}</FloatingDrawer> : null}
+      {floatingPanel === "results" ? <FloatingDrawer title={`RÉSULTATS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{resultRows.length ? <GroupedResults rows={resultRows} source={sourceForCards} lang={lang} /> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Aucun résultat détecté" copy="Les sources officielles restent disponibles." sources={recommended.filter((source) => source.resultsUrl).slice(0, 2)} />}</FloatingDrawer> : null}
       {floatingPanel === "fixtures" ? <FloatingDrawer title={`PROGRAMME · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{fixtureRows.length ? fixtureRows.map((item) => <FixtureMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />) : upcomingEvents.length ? upcomingEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Aucun événement à venir" copy="Consulte les calendriers officiels." sources={recommended.filter((source) => source.calendarUrl).slice(0, 2)} />}</FloatingDrawer> : null}
       {floatingPanel === "sources" ? <FloatingDrawer title={`SOURCES · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}><SourceDirectory sources={sources} /></FloatingDrawer> : null}
 

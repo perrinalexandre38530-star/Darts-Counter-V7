@@ -951,6 +951,15 @@ const DIRECT_EDITORIAL_PAGES: Record<string, Array<{ url: string; sourceName: st
     { url: "https://jsfd.or.jp/", sourceName: "JSFD", scope: "regional", scopeLabel: "Japon / Asie" },
     { url: "https://japan-darts.com/", sourceName: "JDO", scope: "regional", scopeLabel: "Japon / Asie" },
     { url: "https://www.darts.or.jp/news/?page=0", sourceName: "Japan Darts Association", scope: "regional", scopeLabel: "Japon / Asie" },
+    { url: "https://allthingsdarts.dartscores.co.uk/results", sourceName: "All Things Darts", scope: "world", scopeLabel: "PDC / Monde" },
+    { url: "https://allthingsdarts.dartscores.co.uk/past-tournaments", sourceName: "All Things Darts Archive", scope: "world", scopeLabel: "PDC / Monde" },
+    { url: "https://www.dartsdatabase.co.uk/", sourceName: "The Darts Database", scope: "world", scopeLabel: "PDC / WDF / Monde" },
+    { url: "https://www.englanddarts.co.uk/darts/", sourceName: "England Darts", scope: "regional", scopeLabel: "Angleterre" },
+    { url: "https://www.sdadarts.com/", sourceName: "Scottish Darts Association", scope: "regional", scopeLabel: "Écosse" },
+    { url: "https://welshdarts.wales/", sourceName: "Welsh Darts Organisation", scope: "regional", scopeLabel: "Pays de Galles" },
+    { url: "https://www.ndfc.ca/", sourceName: "NDFC Canada", scope: "regional", scopeLabel: "Canada" },
+    { url: "https://www.ndbdarts.nl/", sourceName: "Nederlandse Darts Bond", scope: "regional", scopeLabel: "Pays-Bas / Benelux" },
+    { url: "https://ddv-online.de/", sourceName: "Deutscher Dart-Verband", scope: "regional", scopeLabel: "Allemagne / DACH" },
   ],
   pingpong: [
     { url: "https://www.ittf.com/news/", sourceName: "ITTF", scope: "world", scopeLabel: "Monde" },
@@ -1968,6 +1977,137 @@ function parseGenericDartsScoreLines(html: string, sourceName: string, sourceUrl
   return out;
 }
 
+function parseDartsNzResults(html: string): NormalResult[] {
+  const lines = htmlLines(html);
+  const out: NormalResult[] = [];
+  let section = "Darts New Zealand";
+  let round: string | null = null;
+  let pending: { score: number; name: string; index: number } | null = null;
+  const roundRx = /^(Last\s+\d+|Quarter-?finals?|Semi-?finals?|Final)$/i;
+  const sectionRx = /^(Mens|Ladies|Mixed|Open|Youth|Junior|Pairs|Teams?).{0,70}$/i;
+  for (let i = 0; i < lines.length && out.length < 180; i += 1) {
+    const line = lines[i];
+    if (sectionRx.test(line) && !roundRx.test(line)) {
+      section = line.slice(0, 90);
+      pending = null;
+      continue;
+    }
+    if (roundRx.test(line)) {
+      round = line.replace(/^Quarterfinals$/i, "Quarter-finals").replace(/^Semifinals$/i, "Semi-finals");
+      pending = null;
+      continue;
+    }
+    if (/^Winner$/i.test(line)) { pending = null; continue; }
+    if (!round) continue;
+    const candidate = parseTrailingScoreName(line);
+    if (!candidate) continue;
+    if (!pending) { pending = { ...candidate, index: i }; continue; }
+    const a = pending;
+    const b = candidate;
+    pending = null;
+    if (a.name === b.name || a.score === b.score) continue;
+    const winner = a.score > b.score ? a : b;
+    const loser = a.score > b.score ? b : a;
+    out.push({
+      id: `dartsnz-${section}-${round}-${a.index}-${winner.name}-${loser.name}`.replace(/[^a-z0-9-]+/gi, "-").slice(0, 150),
+      playedOn: null,
+      competition: `Darts New Zealand · ${section}`,
+      round,
+      winner: { name: winner.name, score: winner.score, countryCode: "NZ" },
+      loser: { name: loser.name, score: loser.score, countryCode: "NZ" },
+      raw: { source: "Darts New Zealand", sourceUrl: "https://dartsnz.nz/results/" },
+      sourceName: "Darts New Zealand", sourceUrl: "https://dartsnz.nz/results/",
+    });
+  }
+  return uniqNormalResults(out);
+}
+
+const DARTS_COUNTRY_CODES: Record<string, string> = {
+  "england":"GB", "scotland":"GB", "wales":"GB", "northern ireland":"GB", "ireland":"IE",
+  "netherlands":"NL", "germany":"DE", "belgium":"BE", "australia":"AU", "new zealand":"NZ",
+  "canada":"CA", "usa":"US", "united states":"US", "czechia":"CZ", "czech republic":"CZ", "poland":"PL",
+  "austria":"AT", "sweden":"SE", "denmark":"DK", "norway":"NO", "finland":"FI", "france":"FR",
+  "spain":"ES", "italy":"IT", "portugal":"PT", "japan":"JP", "china":"CN"
+};
+const DARTS_COUNTRY_WORDS = new Set(Object.keys(DARTS_COUNTRY_CODES));
+function parseAllThingsPlayerLine(line: string): NormalPlayer | null {
+  let value = String(line || "").replace(/\s+/g, " ").trim();
+  if (!value) return null;
+  for (const country of Object.keys(DARTS_COUNTRY_CODES).sort((a, b) => b.length - a.length)) {
+    const rx = new RegExp(`\\s+${country.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
+    if (rx.test(value)) return { name: value.replace(rx, "").trim(), countryCode: DARTS_COUNTRY_CODES[country] };
+  }
+  return { name: value };
+}
+function plausibleDartsPlayerLine(line: string) {
+  const value = String(line || "").trim();
+  if (value.length < 3 || value.length > 80) return false;
+  if (DARTS_COUNTRY_WORDS.has(value.toLowerCase())) return false;
+  if (/^(final|result|semi|quarter|round|best of|match report|leg-by-leg|more match|archive|past pdc|completed|pdc match|today|yesterday|tomorrow|results)$/i.test(value)) return false;
+  if (/^\d+(?:\.\d+)?%?$/.test(value) || /^\d{1,2}\s+\d{1,2}$/.test(value) || /^[A-Z]{1,3}$/.test(value)) return false;
+  if (/(3-dart avg|180s|checkout|100\+|140\+|highest checkout)/i.test(value)) return false;
+  return /[a-zÀ-ÿ]/i.test(value);
+}
+
+function parseAllThingsDartsResultPage(html: string, sourceUrl: string, fallbackCompetition = "PDC · résultats récents"): NormalResult[] {
+  const lines = htmlLines(html);
+  const out: NormalResult[] = [];
+  for (let i = 0; i < lines.length && out.length < 180; i += 1) {
+    const score = lines[i].match(/^(\d{1,2})\s+(\d{1,2})$/);
+    if (!score || Number(score[1]) === Number(score[2])) continue;
+    let left: NormalPlayer | null = null;
+    let right: NormalPlayer | null = null;
+    let competition = fallbackCompetition;
+    let round: string | null = null;
+    for (let j = i - 1; j >= Math.max(0, i - 7); j -= 1) {
+      if (!left && plausibleDartsPlayerLine(lines[j])) left = parseAllThingsPlayerLine(lines[j]);
+      if (/(championship|trophy|masters|grand prix|open|matchplay|world series|premier league)/i.test(lines[j])) {
+        competition = lines[j].replace(/\s+(Final|Semi-finals?|Quarter-finals?|Round of \d+)$/i, "").trim().slice(0, 100) || fallbackCompetition;
+        const rm = lines[j].match(/(Final|Semi-finals?|Quarter-finals?|Round of \d+)$/i);
+        if (rm) round = rm[1];
+        break;
+      }
+    }
+    for (let j = i + 1; j <= Math.min(lines.length - 1, i + 7); j += 1) {
+      if (plausibleDartsPlayerLine(lines[j])) { right = parseAllThingsPlayerLine(lines[j]); break; }
+    }
+    if (!left || !right || left.name === right.name) continue;
+    const aScore = Number(score[1]);
+    const bScore = Number(score[2]);
+    const leftScored: NormalPlayer = { ...left, score: aScore };
+    const rightScored: NormalPlayer = { ...right, score: bScore };
+    const winner = aScore > bScore ? leftScored : rightScored;
+    const loser = aScore > bScore ? rightScored : leftScored;
+    out.push({
+      id: `allthings-${competition}-${round || "match"}-${i}-${winner.name}-${loser.name}`.replace(/[^a-z0-9-]+/gi, "-").slice(0, 150),
+      playedOn: null, competition, round, winner, loser,
+      raw: { source: "All Things Darts", sourceUrl }, sourceName: "All Things Darts", sourceUrl,
+    });
+  }
+  return uniqNormalResults(out);
+}
+
+async function allThingsDartsStructuredResults(): Promise<NormalResult[]> {
+  const hub = "https://allthingsdarts.dartscores.co.uk/past-tournaments";
+  try {
+    const html = await fetchOfficialHtml(hub);
+    const links: Array<{ url: string; title: string }> = [{ url: "https://allthingsdarts.dartscores.co.uk/results", title: "PDC · résultats récents" }];
+    const seen = new Set(links.map((row) => row.url));
+    const rx = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = rx.exec(html)) && links.length < 8) {
+      const title = stripTags(m[2]).replace(/\s+/g, " ").trim();
+      if (!/(players championship|championship|trophy|masters|grand prix|open|matchplay|world series)/i.test(title)) continue;
+      const url = absoluteHttpUrl(decodeHtml(m[1]), hub);
+      if (!url || seen.has(url) || !/allthingsdarts\.dartscores\.co\.uk/i.test(url)) continue;
+      seen.add(url);
+      links.push({ url, title: title.slice(0, 100) });
+    }
+    const settled = await Promise.allSettled(links.map(async ({ url, title }) => parseAllThingsDartsResultPage(await fetchOfficialHtml(url), url, title)));
+    return uniqNormalResults(settled.flatMap((row) => row.status === "fulfilled" ? row.value : [])).slice(0, 300);
+  } catch { return []; }
+}
+
 async function liveDartsStructuredResults(): Promise<NormalResult[]> {
   const hub = "https://www.live-darts.com/pdc-darts-news/";
   try {
@@ -2021,13 +2161,14 @@ async function directDartsResults(lang: string, depth: "fast" | "deep" = "deep")
   const fixtures: NormalMatch[] = [];
   const events: NormalEvent[] = [];
 
-  const [modusReq, nzReq, dartsInfoReq, modusHomeReq, cdcReq, liveDartsReq] = await Promise.allSettled([
+  const [modusReq, nzReq, dartsInfoReq, modusHomeReq, cdcReq, liveDartsReq, allThingsReq] = await Promise.allSettled([
     fetchOfficialHtml("https://modussuperseries.com/results"),
     depth === "deep" ? fetchOfficialHtml("https://dartsnz.nz/results/") : Promise.resolve(""),
     depth === "deep" ? fetchOfficialHtml("https://dartsinfo.co.uk/") : Promise.resolve(""),
     fetchOfficialHtml("https://modussuperseries.com/"),
     depth === "deep" ? fetchOfficialHtml("https://champdarts.com/blog/blog-single-author-full/") : Promise.resolve(""),
     depth === "deep" ? liveDartsStructuredResults() : Promise.resolve([] as NormalResult[]),
+    depth === "deep" ? allThingsDartsStructuredResults() : Promise.resolve([] as NormalResult[]),
   ]);
 
   if (modusReq.status === "fulfilled") {
@@ -2051,27 +2192,8 @@ async function directDartsResults(lang: string, depth: "fast" | "deep" = "deep")
     }
   }
 
-  if (nzReq.status === "fulfilled") {
-    const lines = htmlLines(nzReq.value);
-    let section = "Darts New Zealand";
-    for (let i = 0; i < lines.length - 3 && results.length < 90; i += 1) {
-      if (/^(Mens|Ladies|Mixed|Open|Youth).{0,60}$/i.test(lines[i])) section = lines[i].slice(0, 80);
-      if (!/^Final$/i.test(lines[i])) continue;
-      const candidates = lines.slice(i + 1, i + 6).map(parseTrailingScoreName).filter(Boolean) as Array<{score:number;name:string}>;
-      if (candidates.length < 2) continue;
-      const a = candidates[0], b = candidates[1];
-      const winner = a.score >= b.score ? a : b;
-      const loser = a.score >= b.score ? b : a;
-      results.push({
-        id: `dartsnz-${i}-${winner.name}-${loser.name}`.replace(/[^a-z0-9-]+/gi, "-").slice(0, 120),
-        playedOn: null,
-        competition: `Darts New Zealand · ${section}`,
-        round: "Final",
-        winner: { name: winner.name, score: winner.score },
-        loser: { name: loser.name, score: loser.score },
-        raw: { source: "Darts New Zealand", sourceUrl: "https://dartsnz.nz/results/" }, sourceName: "Darts New Zealand", sourceUrl: "https://dartsnz.nz/results/",
-      });
-    }
+  if (nzReq.status === "fulfilled" && nzReq.value) {
+    results.push(...parseDartsNzResults(nzReq.value));
   }
 
   if (dartsInfoReq.status === "fulfilled") {
@@ -2082,6 +2204,7 @@ async function directDartsResults(lang: string, depth: "fast" | "deep" = "deep")
     results.push(...parseGenericDartsScoreLines(cdcReq.value, "CDC", "https://champdarts.com/blog/blog-single-author-full/", "CDC · North America / Latin America", 110));
   }
   if (liveDartsReq.status === "fulfilled") results.push(...liveDartsReq.value);
+  if (allThingsReq.status === "fulfilled") results.push(...allThingsReq.value);
 
   if (modusHomeReq.status === "fulfilled") {
     const lines = htmlLines(modusHomeReq.value);
@@ -2109,7 +2232,7 @@ async function directDartsResults(lang: string, depth: "fast" | "deep" = "deep")
     }
   }
 
-  return { results: diversifyDartsResults(results, depth === "deep" ? 180 : 80), fixtures: fixtures.slice(0, 48), events };
+  return { results: diversifyDartsResults(results, depth === "deep" ? 420 : 100), fixtures: fixtures.slice(0, 64), events };
 }
 
 const SPORTSDB_BASE = "https://www.thesportsdb.com/api/v1/json/123";
@@ -2389,7 +2512,7 @@ async function enrichWithLiveIntelligence(
       ...base.payload,
       configured: !!base.payload?.configured || news.length > 0 || direct.results.length > 0,
       automaticData: !!base.payload?.automaticData || news.length > 0 || direct.results.length > 0,
-      results: sport === "darts" ? diversifyDartsResults([...direct.results, ...(arr(base.payload?.results) as NormalResult[])], deep ? 220 : 120) : uniqNormalResults([...direct.results, ...(arr(base.payload?.results) as NormalResult[])]).slice(0, deep ? 120 : 100),
+      results: sport === "darts" ? diversifyDartsResults([...direct.results, ...(arr(base.payload?.results) as NormalResult[])], deep ? 480 : 140) : uniqNormalResults([...direct.results, ...(arr(base.payload?.results) as NormalResult[])]).slice(0, deep ? 120 : 100),
       fixtures: [...direct.fixtures, ...(arr(base.payload?.fixtures) as NormalMatch[])].slice(0, deep ? 100 : 70),
       events: mergedEvents,
       news,
