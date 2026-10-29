@@ -852,7 +852,7 @@ const INTELLIGENCE_SPECS: Record<string, { label: string; query: string; domains
 
 
 const SPORT_SOURCE_DOMAINS: Record<string, string[]> = {
-  darts: ["pdc.tv", "dartswdf.com", "modussuperseries.com", "dartconnect.com", "ffdarts.fr", "ddv-online.de", "dartsaustralia.com", "dartsnz.nz", "champdarts.com"],
+  darts: ["pdc.tv", "dartswdf.com", "modussuperseries.com", "dartconnect.com", "dartsinfo.co.uk", "dartsnews.com", "live-darts.com", "flechettes.info", "flashscore.com", "ffdarts.fr", "ddv-online.de", "dartsaustralia.com", "dartsnz.nz", "champdarts.com"],
   pingpong: ["ittf.com", "worldtabletennis.com", "ettu.org", "fftt.com", "tabletennisengland.co.uk"],
   petanque: ["fipjp.org", "ffpjp.org", "compet.ffpjp.org", "boulistenaute.com"],
   babyfoot: ["tablesoccer.org", "ffbabyfoot.fr"],
@@ -894,6 +894,10 @@ const DIRECT_EDITORIAL_PAGES: Record<string, Array<{ url: string; sourceName: st
   darts: [
     { url: "https://www.pdc.tv/news", sourceName: "PDC", scope: "world", scopeLabel: "Monde" },
     { url: "https://dartswdf.com/news", sourceName: "WDF", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.dartsnews.com/", sourceName: "DartsNews", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.live-darts.com/", sourceName: "Live Darts", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.flechettes.info/", sourceName: "Flechettes.info", scope: "local", scopeLabel: "FR" },
+    { url: "https://dartsinfo.co.uk/", sourceName: "DartsInfo", scope: "world", scopeLabel: "Monde" },
   ],
   pingpong: [
     { url: "https://www.ittf.com/news/", sourceName: "ITTF", scope: "world", scopeLabel: "Monde" },
@@ -1323,7 +1327,7 @@ function uniqNews(rows: IntelligenceNews[]) {
 
 
 async function directEditorialIntelligence(sport: string): Promise<IntelligenceNews[]> {
-  const pages = (DIRECT_EDITORIAL_PAGES[sport] || []).slice(0, 4);
+  const pages = (DIRECT_EDITORIAL_PAGES[sport] || []).slice(0, sport === "darts" ? 6 : 5);
   if (!pages.length) return [];
   const settled = await Promise.allSettled(pages.map(async (page, pageIndex) => {
     const response = await timedFetch(page.url, {
@@ -1366,6 +1370,56 @@ async function directEditorialIntelligence(sport: string): Promise<IntelligenceN
     return rows;
   }));
   return uniqNews(settled.flatMap((item) => item.status === "fulfilled" ? item.value : [])).slice(0, 72);
+}
+
+
+async function genericRssIntelligence(url: string, sourceName: string, scope: IntelligenceScope, scopeLabel: string, sport: string, limit = 36): Promise<IntelligenceNews[]> {
+  try {
+    const response = await timedFetch(url, {
+      redirect: "follow",
+      headers: { Accept: "application/rss+xml, application/xml, text/xml", "User-Agent": "MULTISPORTS-SCORING-LIVE/1.0" },
+    }, 2800);
+    if (!response.ok) return [];
+    const xml = await response.text();
+    const items = [...xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)].slice(0, limit);
+    return items.map((match, index) => {
+      const block = match[1];
+      const title = xmlTag(block, "title");
+      const summary = xmlTag(block, "description");
+      const publishedRaw = xmlTag(block, "pubDate");
+      const parsed = new Date(publishedRaw);
+      const publishedAt = Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+      const sourceUrl = xmlTag(block, "link") || null;
+      const imageUrl = xmlImage(block);
+      const kind = classifyHeadline(title, summary);
+      const explicitScore = explicitScoreFromText(`${title} ${summary}`);
+      return {
+        id: `rss-${sport}-${sourceName}-${index}-${normalizeHeadlineKey(title).replace(/\s+/g, "-").slice(0, 42)}`,
+        title,
+        summary: summary && summary !== title ? summary.slice(0, 320) : null,
+        publishedAt,
+        sourceName,
+        sourceUrl,
+        imageUrl,
+        kind,
+        resultLabel: kind === "result" ? (explicitScore ? `Score ${explicitScore}` : "Résultat publié") : null,
+        scope,
+        scopeLabel,
+      } satisfies IntelligenceNews;
+    }).filter((row) => row.title.length >= 8);
+  } catch {
+    return [];
+  }
+}
+
+async function directDartsNewsFeeds(): Promise<IntelligenceNews[]> {
+  const feeds = await Promise.allSettled([
+    genericRssIntelligence("https://dartsnews.com/sitemap/news.xml", "DartsNews", "world", "Monde", "darts", 48),
+    genericRssIntelligence("https://www.thesun.co.uk/sport/darts/feed/", "The Sun Darts", "world", "Monde", "darts", 28),
+  ]);
+  return uniqNews(feeds.flatMap((row) => row.status === "fulfilled" ? row.value : []))
+    .sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")))
+    .slice(0, 64);
 }
 
 async function padelFipFinalEvents(): Promise<NormalEvent[]> {
@@ -1683,19 +1737,67 @@ function parseTrailingScoreName(line: string) {
   return { score, name };
 }
 
+
+function cleanDartsInfoName(value: string) {
+  return String(value || "")
+    .replace(/[🏴🇦-🇿]/gu, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^(?:Latest results|Event Results|All results|Recently finished)\s*/i, "")
+    .trim()
+    .slice(0, 90);
+}
+
+function parseDartsInfoResults(html: string): NormalResult[] {
+  const lines = htmlLines(html);
+  const out: NormalResult[] = [];
+  let competition = "DartsInfo · résultats récents";
+  for (let i = 0; i < lines.length && out.length < 80; i += 1) {
+    const line = lines[i];
+    const eventLabel = line.match(/^Latest results\s+(.{4,100})$/i);
+    if (eventLabel) {
+      competition = eventLabel[1].trim();
+      continue;
+    }
+    const score = line.match(/(\d{1,2})\s*[–—-]\s*(\d{1,2})/);
+    if (!score || score.index == null) continue;
+    const left = cleanDartsInfoName(line.slice(0, score.index));
+    let tail = line.slice(score.index + score[0].length).trim();
+    tail = tail.split(/(?:→|·\s*(?:Final|Semi|Quarter|Last|Round|Sun|Mon|Tue|Wed|Thu|Fri|Sat)\b)/i)[0];
+    const right = cleanDartsInfoName(tail);
+    if (left.length < 2 || right.length < 2 || left.length > 90 || right.length > 90) continue;
+    const aScore = Number(score[1]);
+    const bScore = Number(score[2]);
+    if (!Number.isFinite(aScore) || !Number.isFinite(bScore) || aScore === bScore) continue;
+    const winner = aScore > bScore ? { name: left, score: aScore } : { name: right, score: bScore };
+    const loser = aScore > bScore ? { name: right, score: bScore } : { name: left, score: aScore };
+    out.push({
+      id: `dartsinfo-${i}-${winner.name}-${loser.name}`.replace(/[^a-z0-9-]+/gi, "-").slice(0, 120),
+      playedOn: null,
+      competition,
+      round: null,
+      winner,
+      loser,
+      raw: { source: "DartsInfo", sourceUrl: "https://dartsinfo.co.uk/" },
+    });
+  }
+  return out;
+}
+
 async function directDartsResults(lang: string): Promise<{ results: NormalResult[]; fixtures: NormalMatch[]; events: NormalEvent[] }> {
   const results: NormalResult[] = [];
   const fixtures: NormalMatch[] = [];
   const events: NormalEvent[] = [];
 
-  const [modusReq, nzReq] = await Promise.allSettled([
+  const [modusReq, nzReq, dartsInfoReq, modusHomeReq] = await Promise.allSettled([
     fetchOfficialHtml("https://modussuperseries.com/results"),
     fetchOfficialHtml("https://dartsnz.nz/results/"),
+    fetchOfficialHtml("https://dartsinfo.co.uk/"),
+    fetchOfficialHtml("https://modussuperseries.com/"),
   ]);
 
   if (modusReq.status === "fulfilled") {
     const lines = htmlLines(modusReq.value);
-    for (let i = 0; i < lines.length - 2 && results.length < 36; i += 1) {
+    for (let i = 0; i < lines.length - 2 && results.length < 70; i += 1) {
       if (!/^Match\s+\d+$/i.test(lines[i])) continue;
       const a = parseLeadingScoreName(lines[i + 1]);
       const b = parseLeadingScoreName(lines[i + 2]);
@@ -1717,7 +1819,7 @@ async function directDartsResults(lang: string): Promise<{ results: NormalResult
   if (nzReq.status === "fulfilled") {
     const lines = htmlLines(nzReq.value);
     let section = "Darts New Zealand";
-    for (let i = 0; i < lines.length - 3 && results.length < 52; i += 1) {
+    for (let i = 0; i < lines.length - 3 && results.length < 90; i += 1) {
       if (/^(Mens|Ladies|Mixed|Open|Youth).{0,60}$/i.test(lines[i])) section = lines[i].slice(0, 80);
       if (!/^Final$/i.test(lines[i])) continue;
       const candidates = lines.slice(i + 1, i + 6).map(parseTrailingScoreName).filter(Boolean) as Array<{score:number;name:string}>;
@@ -1737,7 +1839,37 @@ async function directDartsResults(lang: string): Promise<{ results: NormalResult
     }
   }
 
-  return { results, fixtures, events };
+  if (dartsInfoReq.status === "fulfilled") {
+    results.push(...parseDartsInfoResults(dartsInfoReq.value));
+  }
+
+  if (modusHomeReq.status === "fulfilled") {
+    const lines = htmlLines(modusHomeReq.value);
+    const start = lines.findIndex((line) => /Upcoming Fixtures/i.test(line));
+    const slice = start >= 0 ? lines.slice(start + 1, start + 90) : lines;
+    for (let i = 0; i < slice.length - 2 && fixtures.length < 36; i += 1) {
+      const time = slice[i].match(/^(\d{1,2}:\d{2})$/)?.[1];
+      if (!time) continue;
+      const a = slice[i + 1];
+      const b = slice[i + 2];
+      if (!a || !b || /watch live/i.test(a) || /watch live/i.test(b) || a.length > 80 || b.length > 80) continue;
+      const now = new Date();
+      const [hh, mm] = time.split(":").map(Number);
+      const starts = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), hh, mm));
+      if (starts.getTime() < now.getTime() - 2 * 3600_000) starts.setUTCDate(starts.getUTCDate() + 1);
+      fixtures.push({
+        id: `modus-fixture-${i}-${a}-${b}`.replace(/[^a-z0-9-]+/gi, "-").slice(0, 120),
+        competition: "MODUS Super Series",
+        round: "Upcoming fixture",
+        startsAt: starts.toISOString(),
+        date: starts.toISOString().slice(0, 10),
+        players: [{ name: a }, { name: b }],
+        raw: { source: "MODUS", sourceUrl: "https://modussuperseries.com/" },
+      });
+    }
+  }
+
+  return { results: uniqNormalResults(results).slice(0, 120), fixtures: fixtures.slice(0, 48), events };
 }
 
 const SPORTSDB_BASE = "https://www.thesportsdb.com/api/v1/json/123";
@@ -1951,6 +2083,7 @@ async function enrichWithLiveIntelligence(env: Env, sport: string, lang: string,
   let bing: IntelligenceNews[] = [];
   let yahoo: IntelligenceNews[] = [];
   let directEditorial: IntelligenceNews[] = [];
+  let directRss: IntelligenceNews[] = [];
   let ai: IntelligenceNews[] = [];
 
   const newsSettled = await Promise.allSettled([
@@ -1958,6 +2091,7 @@ async function enrichWithLiveIntelligence(env: Env, sport: string, lang: string,
     bingNewsIntelligence(sport, lang),
     sport === "foot" ? yahooSoccerNews(lang) : Promise.resolve([] as IntelligenceNews[]),
     directEditorialIntelligence(sport),
+    sport === "darts" ? directDartsNewsFeeds() : Promise.resolve([] as IntelligenceNews[]),
   ]);
   if (newsSettled[0].status === "fulfilled") google = newsSettled[0].value;
   else warnings.push(`Google News indisponible : ${str(newsSettled[0].reason?.message || newsSettled[0].reason)}`);
@@ -1966,6 +2100,7 @@ async function enrichWithLiveIntelligence(env: Env, sport: string, lang: string,
   if (newsSettled[2].status === "fulfilled") yahoo = newsSettled[2].value;
   if (newsSettled[3].status === "fulfilled") directEditorial = newsSettled[3].value;
   else warnings.push(`Sources éditoriales directes indisponibles : ${str(newsSettled[3].reason?.message || newsSettled[3].reason)}`);
+  if (newsSettled[4].status === "fulfilled") directRss = newsSettled[4].value;
 
   // L'IA web est un enrichissement facultatif. Les RSS Google+Bing (+Yahoo Foot) assurent le contenu sans clé OpenAI.
   if (str(env?.OPENAI_API_KEY).trim()) {
@@ -1976,7 +2111,7 @@ async function enrichWithLiveIntelligence(env: Env, sport: string, lang: string,
     }
   }
 
-  const mergedNews = uniqNews([...ai, ...google, ...bing, ...yahoo, ...directEditorial])
+  const mergedNews = uniqNews([...ai, ...directRss, ...google, ...bing, ...yahoo, ...directEditorial])
     .sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")))
     .slice(0, sport === "foot" ? 140 : 120);
   const news = await enrichNewsImages(mergedNews);
@@ -1987,7 +2122,7 @@ async function enrichWithLiveIntelligence(env: Env, sport: string, lang: string,
   }
   const extraStructuredEvents = sport === "padel" ? await padelFipFinalEvents() : [];
   const mergedEvents = uniqEvents([...(arr(base.payload?.events) as NormalEvent[]), ...direct.events, ...extraStructuredEvents, ...intelligenceEvents]).slice(0, 80);
-  const provider = ai.length ? "openai_web" : (google.length || bing.length || yahoo.length || directEditorial.length) ? "news_rss" : "none";
+  const provider = ai.length ? "openai_web" : (google.length || bing.length || yahoo.length || directEditorial.length || directRss.length) ? "news_rss" : "none";
 
   return {
     ...base,
@@ -1996,7 +2131,7 @@ async function enrichWithLiveIntelligence(env: Env, sport: string, lang: string,
       ...base.payload,
       configured: !!base.payload?.configured || news.length > 0,
       automaticData: !!base.payload?.automaticData || news.length > 0,
-      results: uniqNormalResults([...direct.results, ...(arr(base.payload?.results) as NormalResult[])]).slice(0, 60),
+      results: uniqNormalResults([...direct.results, ...(arr(base.payload?.results) as NormalResult[]) ]).slice(0, sport === "darts" ? 120 : 80),
       fixtures: [...direct.fixtures, ...(arr(base.payload?.fixtures) as NormalMatch[])].slice(0, 40),
       events: mergedEvents,
       news,
@@ -2008,13 +2143,71 @@ async function enrichWithLiveIntelligence(env: Env, sport: string, lang: string,
         localCount: news.filter((item) => item.scope === "local").length,
         regionalCount: news.filter((item) => item.scope === "regional").length,
         worldCount: news.filter((item) => item.scope === "world" || !item.scope).length,
-        queryCount: intelligenceFeedPlansFor(sport, lang).length + (sport === "foot" ? 1 : 0) + (DIRECT_EDITORIAL_PAGES[sport]?.length || 0),
+        queryCount: intelligenceFeedPlansFor(sport, lang).length + (sport === "foot" ? 1 : 0) + (DIRECT_EDITORIAL_PAGES[sport]?.length || 0) + (sport === "darts" ? 2 : 0),
         directResultCount: direct.results.length + extraStructuredEvents.length,
         updatedAt: new Date().toISOString(),
       },
       warnings,
     },
   };
+}
+
+
+async function fastOverview(env: Env, sport: string, lang: string) {
+  if (sport === "darts") {
+    const key = str(env?.DARTS_API_KEY).trim();
+    const basePromise = key
+      ? dartsOverview(key)
+      : Promise.resolve({
+          status: 200,
+          ttl: 120,
+          payload: {
+            sport: "darts", configured: false, automaticData: true, provider: "official_links", plan: "fast",
+            dataAsOf: new Date().toISOString(), liveAvailable: false,
+            liveReason: "Chargement rapide des résultats publics ; enrichissement complet en cours.",
+            live: [], fixtures: [], results: [], events: [], news: [], warnings: [],
+          },
+        });
+    const [base, direct] = await Promise.all([
+      basePromise,
+      directDartsResults(lang).catch(() => ({ results: [] as NormalResult[], fixtures: [] as NormalMatch[], events: [] as NormalEvent[] })),
+    ]);
+    return {
+      ...base,
+      ttl: 120,
+      payload: {
+        ...base.payload,
+        configured: !!base.payload?.configured || direct.results.length > 0 || direct.fixtures.length > 0,
+        automaticData: true,
+        results: uniqNormalResults([...direct.results, ...(arr(base.payload?.results) as NormalResult[])]).slice(0, 120),
+        fixtures: [...direct.fixtures, ...(arr(base.payload?.fixtures) as NormalMatch[])].slice(0, 60),
+        events: uniqEvents([...(arr(base.payload?.events) as NormalEvent[]), ...direct.events]).slice(0, 60),
+        news: arr(base.payload?.news),
+        intelligence: {
+          enabled: false,
+          provider: "fast_structured",
+          aiEnabled: false,
+          count: 0,
+          localCount: 0,
+          regionalCount: 0,
+          worldCount: 0,
+          queryCount: 0,
+          directResultCount: direct.results.length,
+          updatedAt: new Date().toISOString(),
+        },
+      },
+    };
+  }
+
+  if (sport === "pingpong") {
+    const key = str(env?.TABLE_TENNIS_API_KEY).trim();
+    if (key) return tableTennisOverview(key);
+    return { status: 200, ttl: 180, payload: { sport, configured: false, automaticData: false, provider: "official_links", plan: "fast", dataAsOf: new Date().toISOString(), liveAvailable: false, liveReason: "Enrichissement complet en cours.", live: [], fixtures: [], results: [], events: [], news: [], warnings: [] } };
+  }
+
+  if (sport === "foot") return footballOverview(env);
+  if (sport === "babyfoot" || sport === "molkky" || sport === "petanque") return officialEventOverview(sport);
+  return { status: 200, ttl: 180, payload: { sport, configured: false, automaticData: false, provider: "official_links", plan: "fast", dataAsOf: new Date().toISOString(), liveAvailable: false, liveReason: "Enrichissement complet en cours.", live: [], fixtures: [], results: [], events: [], news: [], warnings: [] } };
 }
 
 async function cachedResponse(context: any, loader: () => Promise<{ status: number; ttl: number; payload: any }>) {
@@ -2044,8 +2237,14 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const path = Array.isArray(raw) ? raw : String(raw || "").split("/").filter(Boolean);
   const sport = str(path[0] || "darts").toLowerCase();
   const action = str(path[1] || "overview").toLowerCase();
-  const lang = str(new URL(context.request.url).searchParams.get("lang") || "fr").toLowerCase();
+  const requestUrl = new URL(context.request.url);
+  const lang = str(requestUrl.searchParams.get("lang") || "fr").toLowerCase();
+  const phase = str(requestUrl.searchParams.get("phase") || "full").toLowerCase();
   if (action !== "overview") return json({ error: "not_found", message: "Unknown LIVE SPORTS endpoint." }, 404, 60);
+
+  if (phase === "fast") {
+    return cachedResponse(context, async () => fastOverview(context.env, sport, lang));
+  }
 
   if (sport === "darts") {
     const key = str(context.env?.DARTS_API_KEY).trim();

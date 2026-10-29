@@ -1,7 +1,8 @@
 import type { SportId } from "../contexts/SportContext";
 import type { SportLiveOverview, SportLiveSportId } from "./types";
 
-const CACHE_PREFIX = "msc_sport_live_cache_v8:";
+const CACHE_PREFIX = "msc_sport_live_cache_v10:";
+const LEGACY_CACHE_PREFIX = "msc_sport_live_cache_v8:";
 
 function isSupportedSport(value: SportId): value is SportLiveSportId {
   return ["darts", "petanque", "pingpong", "babyfoot", "molkky", "foot", "padel", "badminton", "cornhole", "palet", "bowling"].includes(String(value));
@@ -27,9 +28,17 @@ function emptyOverview(sport: SportId): SportLiveOverview {
   };
 }
 
-function readCache(sport: SportId): SportLiveOverview | null {
+function localeCode(lang?: string) {
+  return String(lang || document.documentElement.lang || "fr").toLowerCase().split(/[-_]/)[0] || "fr";
+}
+
+function cacheKey(sport: SportId, lang?: string) {
+  return `${CACHE_PREFIX}${sport}:${localeCode(lang)}`;
+}
+
+function readCache(sport: SportId, lang?: string): SportLiveOverview | null {
   try {
-    const raw = localStorage.getItem(`${CACHE_PREFIX}${sport}`);
+    const raw = localStorage.getItem(cacheKey(sport, lang)) || localStorage.getItem(`${LEGACY_CACHE_PREFIX}${sport}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed?.data || parsed?.sport !== sport) return null;
@@ -39,22 +48,24 @@ function readCache(sport: SportId): SportLiveOverview | null {
   }
 }
 
-function writeCache(sport: SportId, data: SportLiveOverview) {
+function writeCache(sport: SportId, lang: string | undefined, data: SportLiveOverview) {
   try {
-    localStorage.setItem(`${CACHE_PREFIX}${sport}`, JSON.stringify({ sport, savedAt: Date.now(), data }));
+    localStorage.setItem(cacheKey(sport, lang), JSON.stringify({ sport, lang: localeCode(lang), savedAt: Date.now(), data }));
   } catch {}
 }
 
-export function getCachedSportLiveOverview(sport: SportId): SportLiveOverview | null {
-  return readCache(sport);
+export function getCachedSportLiveOverview(sport: SportId, lang?: string): SportLiveOverview | null {
+  return readCache(sport, lang);
 }
 
-export async function fetchSportLiveOverview(sport: SportId, signal?: AbortSignal, lang?: string): Promise<SportLiveOverview> {
+export type SportLiveFetchPhase = "fast" | "full";
+
+export async function fetchSportLiveOverview(sport: SportId, signal?: AbortSignal, lang?: string, phase: SportLiveFetchPhase = "full"): Promise<SportLiveOverview> {
   if (!isSupportedSport(sport)) return emptyOverview(sport);
 
   try {
-    const locale = String(lang || document.documentElement.lang || "fr").toLowerCase();
-    const response = await fetch(`/api/sports-live/${encodeURIComponent(sport)}/overview?lang=${encodeURIComponent(locale)}&v=9`, {
+    const locale = localeCode(lang);
+    const response = await fetch(`/api/sports-live/${encodeURIComponent(sport)}/overview?lang=${encodeURIComponent(locale)}&phase=${encodeURIComponent(phase)}&v=10`, {
       method: "GET",
       headers: { Accept: "application/json" },
       cache: "no-store",
@@ -78,10 +89,10 @@ export async function fetchSportLiveOverview(sport: SportId, signal?: AbortSigna
       intelligence: body?.intelligence && typeof body.intelligence === "object" ? body.intelligence : null,
       warnings: Array.isArray(body?.warnings) ? body.warnings : [],
     };
-    writeCache(sport, overview);
+    writeCache(sport, lang, overview);
     return overview;
   } catch (error) {
-    const cached = readCache(sport);
+    const cached = readCache(sport, lang);
     if (cached) {
       return {
         ...cached,

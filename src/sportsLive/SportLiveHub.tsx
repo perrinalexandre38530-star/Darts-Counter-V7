@@ -729,8 +729,8 @@ export default function SportLiveHub() {
 
   const [view, setView] = React.useState<View>("overview");
   const [region, setRegion] = React.useState<RegionFilter>("recommended");
-  const [feed, setFeed] = React.useState<SportLiveOverview | null>(() => getCachedSportLiveOverview(liveSport));
-  const [loading, setLoading] = React.useState(true);
+  const [feed, setFeed] = React.useState<SportLiveOverview | null>(() => getCachedSportLiveOverview(liveSport, lang));
+  const [loading, setLoading] = React.useState(() => !getCachedSportLiveOverview(liveSport, lang));
   const [feedError, setFeedError] = React.useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = React.useState<number | null>(null);
   const [floatingPanel, setFloatingPanel] = React.useState<FloatingPanel>(null);
@@ -738,35 +738,53 @@ export default function SportLiveHub() {
   React.useEffect(() => {
     setRegion("recommended");
     setView("overview");
-    setFeed(getCachedSportLiveOverview(liveSport));
+    setFeed(getCachedSportLiveOverview(liveSport, lang));
     setFeedError(null);
     setFloatingPanel(null);
   }, [liveSport, lang]);
 
   React.useEffect(() => {
     let active = true;
-    const controller = new AbortController();
-    const run = async (quiet = false) => {
-      if (!quiet) setLoading(true);
+    const fastController = new AbortController();
+    const fullController = new AbortController();
+
+    const loadProgressive = async (quiet = false) => {
+      const cached = getCachedSportLiveOverview(liveSport, lang);
+      if (!quiet && !cached) setLoading(true);
+
       try {
-        const next = await fetchSportLiveOverview(liveSport, controller.signal, lang);
+        const fast = await fetchSportLiveOverview(liveSport, fastController.signal, lang, "fast");
         if (!active) return;
-        setFeed(next);
+        setFeed(fast);
+        setFeedError(null);
+        setUpdatedAt(Date.now());
+        if (!quiet) setLoading(false);
+      } catch (error: any) {
+        if (active && error?.name !== "AbortError" && !cached) {
+          setFeedError(String(error?.message || error || "LIVE indisponible"));
+          if (!quiet) setLoading(false);
+        }
+      }
+
+      try {
+        const full = await fetchSportLiveOverview(liveSport, fullController.signal, lang, "full");
+        if (!active) return;
+        setFeed(full);
         setFeedError(null);
         setUpdatedAt(Date.now());
       } catch (error: any) {
         if (!active || error?.name === "AbortError") return;
-        setFeedError(String(error?.message || error || "LIVE indisponible"));
-      } finally {
-        if (active && !quiet) setLoading(false);
+        if (!getCachedSportLiveOverview(liveSport, lang)) setFeedError(String(error?.message || error || "LIVE partiel"));
       }
     };
-    void run(false);
+
+    void loadProgressive(false);
     const refreshMs = refreshIntervalFor(liveSport, feed);
-    const timer = refreshMs ? window.setInterval(() => void run(true), refreshMs) : null;
+    const timer = refreshMs ? window.setInterval(() => void loadProgressive(true), refreshMs) : null;
     return () => {
       active = false;
-      controller.abort();
+      fastController.abort();
+      fullController.abort();
       if (timer !== null) window.clearInterval(timer);
     };
   }, [liveSport, lang, !!feed?.configured, !!feed?.liveAvailable]);
@@ -775,7 +793,7 @@ export default function SportLiveHub() {
     setLoading(true);
     setFeedError(null);
     try {
-      const next = await fetchSportLiveOverview(liveSport, undefined, lang);
+      const next = await fetchSportLiveOverview(liveSport, undefined, lang, "full");
       setFeed(next);
       setUpdatedAt(Date.now());
     } catch (error: any) {
