@@ -137,6 +137,21 @@ const OTHER_SPORT_SOURCES: SportLiveSource[] = [
     description: "Compétitions fédérales françaises, calendriers, championnats et résultats officiels.", kind: "results",
     regions: ["france", "francophone"], locales: ["fr"], official: true, homeUrl: "https://compet.ffpjp.org/", resultsUrl: "https://compet.ffpjp.org/", calendarUrl: "https://compet.ffpjp.org/", badges: ["FRANCE", "FFPJP"]
   },
+  {
+    id: "petanque-cep", sport: "petanque", name: "Confédération Européenne de Pétanque", shortName: "CEP",
+    description: "Championnats d'Europe, compétitions continentales et informations officielles européennes.", kind: "governing_body",
+    regions: ["europe", "global"], official: true, homeUrl: "https://www.cep-petanque.com/", resultsUrl: "https://www.cep-petanque.com/", calendarUrl: "https://www.cep-petanque.com/", badges: ["EUROPE", "CEP"]
+  },
+  {
+    id: "petanque-petanqueland", sport: "petanque", name: "PetanqueLand", shortName: "PetanqueLand",
+    description: "Agrégateur francophone orienté résultats, agenda, directs et replays officiels.", kind: "results",
+    regions: ["france", "francophone", "europe"], locales: ["fr"], official: false, homeUrl: "https://www.petanqueland.fr/", resultsUrl: "https://www.petanqueland.fr/officiels-petanque/", badges: ["FR", "RÉSULTATS", "DIRECT"]
+  },
+  {
+    id: "petanque-oeil-bouliste", sport: "petanque", name: "L’Œil du Bouliste", shortName: "Œil du Bouliste",
+    description: "Agenda de compétitions et résultats vérifiés avec renvois vers les sources officielles.", kind: "results",
+    regions: ["france", "francophone", "europe"], locales: ["fr"], official: false, homeUrl: "https://www.loeildubouliste.fr/", resultsUrl: "https://www.loeildubouliste.fr/competitions", badges: ["AGENDA", "RÉSULTATS"]
+  },
 
   // TENNIS DE TABLE / PING-PONG
   {
@@ -159,6 +174,11 @@ const OTHER_SPORT_SOURCES: SportLiveSource[] = [
     id: "pingpong-ettu", sport: "pingpong", name: "European Table Tennis Union", shortName: "ETTU",
     description: "Actualités, championnats européens, résultats et compétitions continentales.", kind: "results",
     regions: ["europe", "global"], official: true, homeUrl: "https://www.ettu.org/", resultsUrl: "https://www.ettu.org/", calendarUrl: "https://www.ettu.org/", badges: ["EUROPE", "ETTU"]
+  },
+  {
+    id: "pingpong-england", sport: "pingpong", name: "Table Tennis England", shortName: "TT England",
+    description: "Résultats, compétitions nationales, actualités et calendriers en Angleterre.", kind: "results",
+    regions: ["uk_ireland", "europe"], locales: ["en"], official: true, homeUrl: "https://www.tabletennisengland.co.uk/", resultsUrl: "https://www.tabletennisengland.co.uk/", calendarUrl: "https://www.tabletennisengland.co.uk/", badges: ["UK", "RESULTS"]
   },
 
   // BABY-FOOT / TABLE SOCCER
@@ -190,6 +210,11 @@ const OTHER_SPORT_SOURCES: SportLiveSource[] = [
     description: "Calendrier international, tournois, événements à la une et fiches de compétitions.", kind: "calendar",
     regions: ["global", "europe", "france", "oceania", "asia"], official: false, homeUrl: "https://www.molkky.world/", resultsUrl: "https://www.molkky.world/tournaments", calendarUrl: "https://www.molkky.world/tournaments", badges: ["MONDE", "TOURNOIS"]
   },
+  {
+    id: "molkky-molkkify", sport: "molkky", name: "Molkkify / Aptus Cup", shortName: "Molkkify",
+    description: "Tableaux et résultats détaillés de compétitions Mölkky, avec tours et scores partie par partie.", kind: "live_scores",
+    regions: ["global", "europe", "asia", "oceania", "north_america"], official: false, homeUrl: "https://ac.molkkify.app/", scoresUrl: "https://ac.molkkify.app/results", resultsUrl: "https://ac.molkkify.app/results", badges: ["SCORES", "TABLEAUX"]
+  },
 
   // PADEL
   {
@@ -206,6 +231,11 @@ const OTHER_SPORT_SOURCES: SportLiveSource[] = [
     id: "padel-fft", sport: "padel", name: "Fédération Française de Tennis · Padel", shortName: "FFT Padel",
     description: "Compétitions nationales françaises de padel, championnats, calendriers et palmarès.", kind: "calendar",
     regions: ["france", "francophone"], locales: ["fr"], official: true, homeUrl: "https://www.fft.fr/nos-sports/padel", resultsUrl: "https://www.fft.fr/nos-sports/padel/competitions-padel", calendarUrl: "https://www.fft.fr/nos-sports/padel/competitions-padel", badges: ["FRANCE", "FFT"]
+  },
+  {
+    id: "padel-score", sport: "padel", name: "PadelScore", shortName: "PadelScore",
+    description: "Calendrier professionnel, tournois Premier Padel/FIP, tableaux et historique de résultats.", kind: "results",
+    regions: ["global", "europe", "spain", "latin_america", "arab_middle_east"], locales: ["es", "en"], official: false, homeUrl: "https://www.padelscore.org/", scoresUrl: "https://www.padelscore.org/calendario", resultsUrl: "https://www.padelscore.org/calendario", calendarUrl: "https://www.padelscore.org/calendario", badges: ["PRO", "SCORES", "CALENDRIER"]
   },
 
   // BADMINTON
@@ -224,6 +254,11 @@ const OTHER_SPORT_SOURCES: SportLiveSource[] = [
     id: "badminton-europe", sport: "badminton", name: "Badminton Europe", shortName: "BEC",
     description: "Actualités, résultats, championnats et circuits européens de badminton.", kind: "results",
     regions: ["europe", "global"], official: true, homeUrl: "https://badmintoneurope.com/", resultsUrl: "https://badmintoneurope.com/", calendarUrl: "https://badmintoneurope.com/", badges: ["EUROPE", "BEC"]
+  },
+  {
+    id: "badminton-tournamentsoftware", sport: "badminton", name: "BWF Tournament Software", shortName: "BWF TS",
+    description: "Tableaux, ordre des matchs, scores et résultats détaillés de nombreux tournois internationaux.", kind: "live_scores",
+    regions: ["global", "europe", "asia", "north_america", "oceania"], official: false, homeUrl: "https://bwf.tournamentsoftware.com/", scoresUrl: "https://bwf.tournamentsoftware.com/", resultsUrl: "https://bwf.tournamentsoftware.com/", badges: ["SCORES", "TABLEAUX"]
   },
 
   // CORNHOLE
@@ -265,6 +300,11 @@ const OTHER_SPORT_SOURCES: SportLiveSource[] = [
     id: "bowling-ffbsq", sport: "bowling", name: "Fédération Française de Bowling et de Sport de Quilles", shortName: "FFBSQ",
     description: "Fédération française : compétitions, disciplines, calendriers et informations officielles.", kind: "governing_body",
     regions: ["france", "francophone"], locales: ["fr"], official: true, homeUrl: "https://www.ffbsq.fr/", badges: ["FRANCE", "FFBSQ"]
+  },
+  {
+    id: "bowling-etbf", sport: "bowling", name: "European Tenpin Bowling Federation", shortName: "ETBF",
+    description: "Circuit européen, championnats, calendrier et résultats officiels de bowling tenpin.", kind: "governing_body",
+    regions: ["europe", "global"], official: true, homeUrl: "https://etbf.eu/", resultsUrl: "https://etbf.eu/", calendarUrl: "https://etbf.eu/", badges: ["EUROPE", "ETBF"]
   },
 ];
 

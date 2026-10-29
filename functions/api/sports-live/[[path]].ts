@@ -963,14 +963,21 @@ const DIRECT_EDITORIAL_PAGES: Record<string, Array<{ url: string; sourceName: st
   ],
   pingpong: [
     { url: "https://www.ittf.com/news/", sourceName: "ITTF", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.ittf.com/2026-events-calendar/", sourceName: "ITTF Calendar", scope: "world", scopeLabel: "Monde" },
     { url: "https://worldtabletennis.com/", sourceName: "World Table Tennis", scope: "world", scopeLabel: "Monde" },
     { url: "https://www.ettu.org/en/n/news/", sourceName: "ETTU", scope: "regional", scopeLabel: "Europe" },
+    { url: "https://www.ettu.org/en/events/", sourceName: "ETTU Events", scope: "regional", scopeLabel: "Europe" },
     { url: "https://www.fftt.com/actualites/", sourceName: "FFTT", scope: "local", scopeLabel: "FR" },
+    { url: "https://www.fftt.com/competition/", sourceName: "FFTT Compétitions", scope: "local", scopeLabel: "FR" },
     { url: "https://www.tabletennisengland.co.uk/news/", sourceName: "Table Tennis England", scope: "regional", scopeLabel: "UK" },
   ],
   petanque: [
     { url: "https://fipjp.org/index.php/fr/", sourceName: "FIPJP", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.cep-petanque.com/", sourceName: "CEP Pétanque", scope: "regional", scopeLabel: "Europe" },
     { url: "https://www.ffpjp.org/", sourceName: "FFPJP", scope: "local", scopeLabel: "FR" },
+    { url: "https://compet.ffpjp.org/", sourceName: "FFPJP Compétitions", scope: "local", scopeLabel: "FR" },
+    { url: "https://www.petanqueland.fr/officiels-petanque/", sourceName: "PetanqueLand", scope: "local", scopeLabel: "Francophonie" },
+    { url: "https://www.loeildubouliste.fr/competitions", sourceName: "L’Œil du Bouliste", scope: "local", scopeLabel: "Francophonie" },
     { url: "https://www.boulistenaute.com/", sourceName: "Boulistenaute", scope: "local", scopeLabel: "Francophonie" },
   ],
   babyfoot: [
@@ -981,6 +988,8 @@ const DIRECT_EDITORIAL_PAGES: Record<string, Array<{ url: string; sourceName: st
     { url: "https://www.molkky.world/fr", sourceName: "Mölkky World", scope: "world", scopeLabel: "Monde" },
     { url: "https://www.molkky.world/fr/tournois/", sourceName: "Mölkky World", scope: "world", scopeLabel: "Monde" },
     { url: "https://www.international-molkky.org/world-championships", sourceName: "International Mölkky", scope: "world", scopeLabel: "Monde" },
+    { url: "https://ac.molkkify.app/results", sourceName: "Molkkify Results", scope: "world", scopeLabel: "Monde" },
+    { url: "https://ff-molkky.fr/partout-dans-le-monde/", sourceName: "FF Mölkky International", scope: "regional", scopeLabel: "Europe / Monde" },
     { url: "https://www.ff-molkky.fr/", sourceName: "FF Mölkky", scope: "local", scopeLabel: "FR" },
   ],
   foot: [
@@ -994,13 +1003,16 @@ const DIRECT_EDITORIAL_PAGES: Record<string, Array<{ url: string; sourceName: st
   padel: [
     { url: "https://www.padelfip.com/news/", sourceName: "FIP Padel", scope: "world", scopeLabel: "Monde" },
     { url: "https://www.padelfip.com/titles-and-finals/", sourceName: "FIP Padel", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.padelfip.com/events/", sourceName: "FIP Events", scope: "world", scopeLabel: "Monde" },
     { url: "https://premierpadel.com/en/tournaments", sourceName: "Premier Padel", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.padelscore.org/calendario", sourceName: "PadelScore", scope: "world", scopeLabel: "Monde" },
     { url: "https://www.fft.fr/nos-sports/padel", sourceName: "FFT Padel", scope: "local", scopeLabel: "FR" },
     { url: "https://padelmagazine.fr/", sourceName: "Padel Magazine", scope: "local", scopeLabel: "Francophonie" },
   ],
   badminton: [
     { url: "https://bwfbadminton.com/", sourceName: "BWF", scope: "world", scopeLabel: "Monde" },
     { url: "https://bwfbadminton.com/calendar/", sourceName: "BWF Calendar", scope: "world", scopeLabel: "Monde" },
+    { url: "https://bwf.tournamentsoftware.com/", sourceName: "BWF Tournament Software", scope: "world", scopeLabel: "Monde" },
     { url: "https://badmintoneurope.com/web/corporate/news", sourceName: "Badminton Europe", scope: "regional", scopeLabel: "Europe" },
     { url: "https://www.ffbad.org/", sourceName: "FFBaD", scope: "local", scopeLabel: "FR" },
   ],
@@ -1017,6 +1029,7 @@ const DIRECT_EDITORIAL_PAGES: Record<string, Array<{ url: string; sourceName: st
     { url: "https://www.pba.com/press-media-gallery/news", sourceName: "PBA", scope: "world", scopeLabel: "Monde" },
     { url: "https://www.pba.com/schedule/pba-tour", sourceName: "PBA Tour", scope: "regional", scopeLabel: "Amérique du Nord" },
     { url: "https://bowling.sport/", sourceName: "IBF", scope: "world", scopeLabel: "Monde" },
+    { url: "https://etbf.eu/", sourceName: "ETBF", scope: "regional", scopeLabel: "Europe" },
     { url: "https://www.ffbsq.fr/", sourceName: "FFBSQ", scope: "local", scopeLabel: "FR" },
   ],
 };
@@ -1254,8 +1267,14 @@ function globalQueriesFor(sport: string) {
   if (sport === "foot") out.push("football FIFA UEFA worldwide results scores", "Champions League Premier League LaLiga Bundesliga Serie A Ligue 1 results");
   if (sport === "padel") out.push("Premier Padel FIP Tour results finals rankings", "padel world cup results FIP");
   if (sport === "pingpong") out.push("WTT ITTF results champions rankings", "table tennis Europe Asia results");
-  if (sport === "badminton") out.push("BWF World Tour results winners rankings", "Badminton Europe results");
-  return Array.from(new Set(out)).slice(0, 14);
+  if (sport === "badminton") out.push("BWF World Tour results winners rankings", "Badminton Europe results", "BWF tournamentsoftware scores draws results");
+  if (sport === "petanque") out.push("FIPJP CEP petanque world european championship results", "petanque national tour results France Europe world");
+  if (sport === "molkky") out.push("Molkky world championship results Molkkify", "Molkky European championship results");
+  if (sport === "babyfoot") out.push("ITSF World Series table soccer results rankings", "foosball world cup results ITSF");
+  if (sport === "cornhole") out.push("ACL cornhole results brackets rankings", "ACO cornhole world championship results");
+  if (sport === "bowling") out.push("PBA IBF ETBF bowling results standings", "bowling world championships results");
+  if (sport === "palet") out.push("palet Coupe de France résultats FNSMR", "palet Vendée résultats championnat");
+  return Array.from(new Set(out)).slice(0, 18);
 }
 
 function localQueriesFor(sport: string, lang: string) {
@@ -1318,14 +1337,14 @@ function intelligenceFeedPlansFor(sport: string, lang: string): IntelligenceFeed
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
-  }).slice(0, 22);
+  }).slice(0, 28);
 }
 
 function coreIntelligenceFeedPlansFor(sport: string, lang: string): IntelligenceFeedPlan[] {
   const all = intelligenceFeedPlansFor(sport, lang);
-  const local = all.filter((plan) => plan.scope === "local").slice(0, 3);
-  const regional = all.filter((plan) => plan.scope === "regional").slice(0, 3);
-  const world = all.filter((plan) => plan.scope === "world").slice(0, 4);
+  const local = all.filter((plan) => plan.scope === "local").slice(0, 4);
+  const regional = all.filter((plan) => plan.scope === "regional").slice(0, 4);
+  const world = all.filter((plan) => plan.scope === "world").slice(0, 5);
   return [...local, ...regional, ...world];
 }
 
@@ -2458,7 +2477,7 @@ async function enrichWithLiveIntelligence(
 
   // CORE is intentionally bounded so the journal appears quickly after the
   // structured feed. DEEP runs later from the frontend and can fan out widely.
-  const directPageBudget = deep ? (sport === "darts" ? 20 : 8) : (sport === "darts" ? 7 : 4);
+  const directPageBudget = deep ? (sport === "darts" ? 22 : 14) : (sport === "darts" ? 8 : 6);
   const newsSettled = await Promise.allSettled([
     googleNewsIntelligence(sport, lang, deep ? "deep" : "core"),
     deep ? bingNewsIntelligence(sport, lang, "deep") : Promise.resolve([] as IntelligenceNews[]),
@@ -2487,7 +2506,7 @@ async function enrichWithLiveIntelligence(
 
   const chronologicalNews = uniqNews([...ai, ...directRss, ...google, ...bing, ...yahoo, ...directEditorial])
     .sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")));
-  const mergedNews = diversifyNews(chronologicalNews, deep ? (sport === "foot" ? 220 : sport === "darts" ? 240 : 180) : (sport === "foot" ? 130 : sport === "darts" ? 150 : 110));
+  const mergedNews = diversifyNews(chronologicalNews, deep ? (sport === "foot" ? 240 : sport === "darts" ? 280 : 220) : (sport === "foot" ? 150 : sport === "darts" ? 180 : 135));
   const news = deep ? await enrichNewsImages(mergedNews) : mergedNews;
   const intelligenceEvents = news.map((row) => newsToEvent(row, sport)).filter(Boolean) as NormalEvent[];
 
@@ -2501,7 +2520,7 @@ async function enrichWithLiveIntelligence(
     ...direct.events,
     ...extraStructuredEvents,
     ...intelligenceEvents,
-  ]).slice(0, deep ? 180 : 110);
+  ]).slice(0, deep ? 240 : 140);
   const provider = ai.length ? "openai_web" : (google.length || bing.length || yahoo.length || directEditorial.length || directRss.length) ? "news_rss" : "none";
   const selectedPlans = deep ? intelligenceFeedPlansFor(sport, lang) : coreIntelligenceFeedPlansFor(sport, lang);
 
@@ -2512,8 +2531,8 @@ async function enrichWithLiveIntelligence(
       ...base.payload,
       configured: !!base.payload?.configured || news.length > 0 || direct.results.length > 0,
       automaticData: !!base.payload?.automaticData || news.length > 0 || direct.results.length > 0,
-      results: sport === "darts" ? diversifyDartsResults([...direct.results, ...(arr(base.payload?.results) as NormalResult[])], deep ? 480 : 140) : uniqNormalResults([...direct.results, ...(arr(base.payload?.results) as NormalResult[])]).slice(0, deep ? 120 : 100),
-      fixtures: [...direct.fixtures, ...(arr(base.payload?.fixtures) as NormalMatch[])].slice(0, deep ? 100 : 70),
+      results: sport === "darts" ? diversifyDartsResults([...direct.results, ...(arr(base.payload?.results) as NormalResult[])], deep ? 480 : 140) : uniqNormalResults([...direct.results, ...(arr(base.payload?.results) as NormalResult[])]).slice(0, deep ? 180 : 120),
+      fixtures: [...direct.fixtures, ...(arr(base.payload?.fixtures) as NormalMatch[])].slice(0, deep ? 140 : 90),
       events: mergedEvents,
       news,
       intelligence: {

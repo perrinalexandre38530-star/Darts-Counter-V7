@@ -188,6 +188,7 @@ const NEXT_RECOMMENDATION_KEY = "dc_training_next_recommendation_v1";
 
 export type TrainingNextRecommendation = {
   savedAt: number;
+  participantId: string | null;
   durationMin: 15 | 30 | 45;
   family: TrainingExerciseFamily;
   familyLabel: string;
@@ -195,9 +196,10 @@ export type TrainingNextRecommendation = {
   body: string;
 };
 
-export function saveTrainingNextRecommendation(advice: TrainingPostSessionCoach) {
+export function saveTrainingNextRecommendation(advice: TrainingPostSessionCoach, participantId?: string | null) {
   const value: TrainingNextRecommendation = {
     savedAt: Date.now(),
+    participantId: participantId ? String(participantId) : null,
     durationMin: advice.nextDurationMin,
     family: advice.nextFamily,
     familyLabel: advice.nextFamilyLabel,
@@ -211,15 +213,18 @@ export function saveTrainingNextRecommendation(advice: TrainingPostSessionCoach)
   return value;
 }
 
-export function loadTrainingNextRecommendation(): TrainingNextRecommendation | null {
+export function loadTrainingNextRecommendation(participantId?: string | null): TrainingNextRecommendation | null {
   try {
     const raw = JSON.parse(localStorage.getItem(NEXT_RECOMMENDATION_KEY) || "null");
     if (!raw || typeof raw !== "object") return null;
+    const pid = participantId == null ? "" : String(participantId);
+    if (pid && String(raw.participantId || "") !== pid) return null;
     const duration = Number(raw.durationMin);
     const family = String(raw.family || "") as TrainingExerciseFamily;
     if (![15, 30, 45].includes(duration) || !TRAINING_FAMILY_META[family]) return null;
     return {
       savedAt: Number(raw.savedAt) || Date.now(),
+      participantId: raw.participantId ? String(raw.participantId) : null,
       durationMin: duration as 15 | 30 | 45,
       family,
       familyLabel: String(raw.familyLabel || TRAINING_FAMILY_META[family].label),

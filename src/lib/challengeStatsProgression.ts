@@ -99,6 +99,7 @@ function aggregateObjectives(rows:ChallengeProgressRow[]){
   const map=new Map<string,{attempts:number;validated:number}>();
   for(const row of rows){
     for(const [objective,raw] of Object.entries(row?.exerciseStats?.objectiveStats||{})){
+      if(String(objective).startsWith('bonus-double:'))continue;
       const src:any=raw||{};
       const dst=map.get(objective)||{attempts:0,validated:0};
       dst.attempts+=finite(src.attempts,0);

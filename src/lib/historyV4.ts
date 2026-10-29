@@ -40,6 +40,16 @@ export type HistoryV4IndexRow = {
   lastBackfillAt?: number;
 };
 
+
+export type HistoryV4AuthorityStamp = {
+  schemaVersion: 4;
+  activeRows: number;
+  finishedRows: number;
+  maxUpdatedAt: number;
+  revisionSum: number;
+  fingerprint: string;
+};
+
 export type HistoryV4Snapshot = {
   schemaVersion: 4;
   rows: Record<string, any>;
@@ -63,6 +73,21 @@ function toTs(value: any): number {
     if (Number.isFinite(parsed) && parsed > 0) return parsed;
   }
   return 0;
+}
+
+
+function fnv1a32(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+function indexRowIsFinished(row: HistoryV4IndexRow): boolean {
+  const status = String(row?.status || "").trim().toLowerCase();
+  return ["finished", "done", "ended", "complete", "completed", "match_end"].includes(status) || toTs(row?.finishedAt) > 0;
 }
 
 function detectHistoryScopeUserId(): string | null {
@@ -629,6 +654,43 @@ export async function importHistoryV4Snapshot(
   }
 
   return { imported, tombstoned: tombstoneRows.length };
+}
+
+
+export async function getHistoryV4AuthorityStamp(): Promise<HistoryV4AuthorityStamp> {
+  await ensureHistoryV4Backfill();
+  const db = await openHistoryV4Db();
+  const tx = db.transaction(HISTORY_V4_INDEX, "readonly");
+  const rows = await getAll(tx.objectStore(HISTORY_V4_INDEX));
+  await txDone(tx).catch(() => {});
+
+  const active = rows
+    .filter((row: HistoryV4IndexRow) => row?.kind === "match" && !row?.deleted)
+    .sort((a: HistoryV4IndexRow, b: HistoryV4IndexRow) => cleanId(a?.id).localeCompare(cleanId(b?.id)));
+
+  let finishedRows = 0;
+  let maxUpdatedAt = 0;
+  let revisionSum = 0;
+  const fingerprintParts: string[] = [];
+  for (const row of active) {
+    const id = cleanId(row?.id || row?.matchId);
+    const updatedAt = toTs(row?.updatedAt);
+    const revision = Math.max(0, Number(row?.revision || 0) || 0);
+    if (indexRowIsFinished(row)) finishedRows += 1;
+    if (updatedAt > maxUpdatedAt) maxUpdatedAt = updatedAt;
+    revisionSum += revision;
+    fingerprintParts.push(`${id}|${String(row?.status || "")}|${updatedAt}|${toTs(row?.finishedAt)}|${revision}`);
+  }
+
+  const body = fingerprintParts.join("\n");
+  return {
+    schemaVersion: HISTORY_V4_SCHEMA_VERSION,
+    activeRows: active.length,
+    finishedRows,
+    maxUpdatedAt,
+    revisionSum,
+    fingerprint: `${active.length}:${finishedRows}:${maxUpdatedAt}:${revisionSum}:${fnv1a32(body)}`,
+  };
 }
 
 export async function historyV4Diagnostics(): Promise<{ schemaVersion: 4; active: number; totalHeaders: number; tombstones: number; payloads: number }> {

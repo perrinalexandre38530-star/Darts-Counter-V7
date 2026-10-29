@@ -19,6 +19,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { Store } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
+import PageHeader from "../components/PageHeader";
 import { useSport, type SportId } from "../contexts/SportContext";
 import { History, type SavedMatch } from "../lib/history";
 import { saveStore } from "../lib/storage";
@@ -47,6 +48,8 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import CargoHistoryScoreBlock from "../components/history/CargoHistoryScoreBlock";
 import OceanControlHistoryScoreBlock from "../components/history/OceanControlHistoryScoreBlock";
 import FootballHistoryScoreBlock from "../components/history/FootballHistoryScoreBlock";
+import tickerHistoriqueFr from "../assets/tickers/ticker_historique.png";
+import tickerHistoryEn from "../assets/tickers/ticker_history.png";
 
 
 /* ---------- Icônes ---------- */
@@ -3740,7 +3743,7 @@ export default function HistoryPage({
   go: (to: string, params?: any) => void;
 }) {
   const { theme } = useTheme();
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const { sport } = useSport();
   const S = useMemo(() => makeStyles(theme), [theme]);
 
@@ -5755,11 +5758,20 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
     } as any;
   }
 
+  const historyTickerSrc = lang === "fr" ? tickerHistoriqueFr : tickerHistoryEn;
+
   return (
     <div style={S.page}>
-      <div style={S.title}>HISTORIQUE</div>
+      <PageHeader
+        tickerSrc={historyTickerSrc}
+        tickerAlt={lang === "fr" ? "Historique" : "History"}
+        tickerHeight={92}
+        tickerFit="contain"
+        tickerEdgeFade="strong"
+        tickerBottomGap={14}
+      />
 
-      <ScaledKpiRow baseStyle={S.kpiRow}>
+      <ScaledKpiRow baseStyle={{ ...S.kpiRow, marginTop: 8 }}>
         <div style={S.kpiCard(tab === "all", theme.primary)} onClick={() => setTab("all")}>
           <div style={S.kpiLabel}>ALL</div>
           <div style={S.kpiValue}>{allItems.length}</div>

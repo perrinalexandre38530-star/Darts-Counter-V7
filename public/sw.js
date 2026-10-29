@@ -1,5 +1,5 @@
 // /public/sw.js — minimal PWA SW, cache-safe + Push appels entrants
-const SW_VERSION = "dc-sw-2026-10-26-offline-shell-v9";
+const SW_VERSION = "dc-sw-2026-10-29-offline-shell-v10";
 const CONTENT_PACK_CACHE_PREFIX = "mss-content-packs-";
 const CONTENT_PACK_CACHE = "mss-content-packs-v3";
 const MAP_TILE_CACHE = "mss-map-tiles-v1";
@@ -34,36 +34,63 @@ async function readViteManifestAssets() {
   }
 }
 
-async function precacheAppShell() {
-  try {
-    const cache = await caches.open(APP_SHELL_CACHE);
-    const manifestAssets = await readViteManifestAssets();
-    const urls = Array.from(new Set([...APP_SHELL_SEED, ...manifestAssets]));
-    let cachedAssets = 0;
-    for (const url of urls) {
-      try {
-        const response = await fetch(new Request(url, { cache: "no-store", credentials: "same-origin" }));
-        if (!response?.ok) continue;
-        await cache.put(url, response.clone());
-        cachedAssets += 1;
-      } catch {}
-    }
+async function precacheAppShell(options = {}) {
+  const strict = options.strict === true;
+  const cache = await caches.open(APP_SHELL_CACHE);
+  const manifestAssets = await readViteManifestAssets();
+
+  // Sans chunks Vite, index.html seul est inutilisable hors ligne. Pendant
+  // l'installation d'une nouvelle version on refuse donc d'activer un SW vide.
+  if (strict && manifestAssets.length === 0) {
+    throw new Error("offline-precache: Vite manifest absent ou vide");
+  }
+
+  const urls = Array.from(new Set([...APP_SHELL_SEED, ...manifestAssets]));
+  const failed = [];
+  let cachedAssets = 0;
+
+  for (const url of urls) {
     try {
-      await cache.put("/__mss_offline_ready__", new Response(JSON.stringify({
-        version: SW_VERSION,
-        cachedAt: Date.now(),
-        cachedAssets,
-        manifestAssets: manifestAssets.length,
-      }), { headers: { "content-type": "application/json" } }));
-    } catch {}
-  } catch {}
+      const response = await fetch(new Request(url, { cache: "no-store", credentials: "same-origin" }));
+      if (!response?.ok) {
+        failed.push(url);
+        continue;
+      }
+      await cache.put(url, response.clone());
+      cachedAssets += 1;
+    } catch {
+      failed.push(url);
+    }
+  }
+
+  const failedCodeAssets = failed.filter((url) => manifestAssets.includes(url));
+  const shellReady = manifestAssets.length > 0 && failedCodeAssets.length === 0;
+
+  await cache.put("/__mss_offline_ready__", new Response(JSON.stringify({
+    version: SW_VERSION,
+    cachedAt: Date.now(),
+    cachedAssets,
+    manifestAssets: manifestAssets.length,
+    failedAssets: failed.length,
+    failedCodeAssets,
+    ready: shellReady,
+  }), { headers: { "content-type": "application/json", "cache-control": "no-store" } }));
+
+  if (strict && !shellReady) {
+    throw new Error(`offline-precache: ${failedCodeAssets.length} chunk(s) obligatoire(s) non cache(s)`);
+  }
+
+  return { ready: shellReady, cachedAssets, manifestAssets: manifestAssets.length, failed };
 }
 
 self.addEventListener("install", (event) => {
-  self.skipWaiting();
-  // OFFLINE-FIRST W9: le shell ET tous les chunks Vite sont installés avant
-  // le test mode avion. Une route lazy jamais ouverte reste donc démarrable.
-  event.waitUntil(precacheAppShell());
+  // OFFLINE-FIRST V161 FIX: l'installation n'est considérée terminée qu'après
+  // le pré-cache du shell/chunks. skipWaiting est inclus dans waitUntil afin
+  // d'éviter une activation anticipée avec un cache encore vide.
+  event.waitUntil((async () => {
+    await precacheAppShell({ strict: true });
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener("activate", (event) => {

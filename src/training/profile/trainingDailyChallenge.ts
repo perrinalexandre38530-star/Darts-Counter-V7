@@ -27,6 +27,12 @@ export type TrainingDailyChallenge = {
   exerciseId: string;
   exerciseTitle: string;
   difficulty: number;
+  baseLevel: number;
+  challengeLevel: number;
+  levelDelta: -1 | 0 | 1;
+  adaptationLabel: string;
+  recentChallengeAverage: number;
+  recentChallengeDays: number;
   requiredScore: number;
   completed: boolean;
   bestScore: number;
@@ -116,6 +122,62 @@ function chooseDailyFamily(
   return pool[seededIndex(`${dateKey}:rotation`, pool.length)]?.family || candidates[0].family;
 }
 
+
+type RecentChallengeForm = {
+  average: number;
+  days: number;
+  passRate: number;
+};
+
+function recentChallengeForm(
+  sessions: TrainingDetailedSession[],
+  family: TrainingExerciseFamily,
+  today: string
+): RecentChallengeForm {
+  const bestByDay = new Map<string, { score: number; passed: boolean }>();
+  const ordered = [...sessions]
+    .filter((row) => {
+      if (row.modeId !== "training_lab" || row.config?.sessionKind !== "daily_challenge") return false;
+      const rowFamily = String(row.metrics?.family || row.config?.family || "") as TrainingExerciseFamily;
+      return rowFamily === family;
+    })
+    .sort((a, b) => Number(b.endedAt || 0) - Number(a.endedAt || 0));
+
+  for (const row of ordered) {
+    const key = String(row.config?.dailyChallengeDateKey || dateKeyAt(row.endedAt));
+    if (!key || key === today) continue;
+    const score = Math.max(0, Math.min(100, Number(row.metrics?.performanceScore ?? row.metrics?.score ?? 0) || 0));
+    const passed = challengePass(row);
+    const current = bestByDay.get(key);
+    if (!current || score > current.score) bestByDay.set(key, { score, passed: passed || current?.passed === true });
+    else if (passed && current && !current.passed) bestByDay.set(key, { ...current, passed: true });
+    if (bestByDay.size >= 4) break;
+  }
+
+  const rows = [...bestByDay.values()];
+  if (!rows.length) return { average: 0, days: 0, passRate: 0 };
+  return {
+    average: rows.reduce((sum, row) => sum + row.score, 0) / rows.length,
+    days: rows.length,
+    passRate: rows.filter((row) => row.passed).length / rows.length,
+  };
+}
+
+function adaptChallengeLevel(baseLevel: number, form: RecentChallengeForm) {
+  let delta: -1 | 0 | 1 = 0;
+  if (form.days >= 2) {
+    if (form.average >= 84 && form.passRate >= 0.66) delta = 1;
+    else if (form.average <= 54 || form.passRate <= 0.34) delta = -1;
+  }
+  const level = Math.max(1, Math.min(5, baseLevel + delta));
+  if (level === baseLevel) delta = 0;
+  return {
+    level,
+    delta,
+    label: delta > 0 ? "Niveau relevé" : delta < 0 ? "Niveau allégé" : "Niveau stable",
+  };
+}
+
 function buildReward(bestScore: number, requiredScore: number): TrainingDailyChallengeReward {
   const thresholds = [
     { tier: "bronze" as const, label: "Bronze", icon: "●", score: requiredScore },
@@ -168,12 +230,15 @@ export function buildTrainingDailyChallenge(
   const dateKey = todayKey();
   const preferredFamily = family;
   const challengeFamily = chooseDailyFamily(preferredFamily, progression, sessions, dateKey);
-  const level = recentLevel(challengeFamily, progression);
+  const baseLevel = recentLevel(challengeFamily, progression);
+  const form = recentChallengeForm(sessions, challengeFamily, dateKey);
+  const adaptation = adaptChallengeLevel(baseLevel, form);
+  const level = adaptation.level;
   const exact = TRAINING_EXERCISE_CATALOG.filter((exercise) => exercise.family === challengeFamily && exercise.difficulty === level);
   const fallback = TRAINING_EXERCISE_CATALOG.filter((exercise) => exercise.family === challengeFamily)
     .sort((a, b) => Math.abs(a.difficulty - level) - Math.abs(b.difficulty - level));
   const pool = exact.length ? exact : fallback;
-  const exercise = pool[seededIndex(`${dateKey}:${challengeFamily}`, pool.length)] || TRAINING_EXERCISE_CATALOG[0];
+  const exercise = pool[seededIndex(`${dateKey}:${challengeFamily}:L${level}`, pool.length)] || TRAINING_EXERCISE_CATALOG[0];
   const requiredScore = Math.min(82, 58 + level * 5);
   const todayRows = sessions.filter((row) => row.modeId === "training_lab" && row.config?.sessionKind === "daily_challenge" && row.config?.dailyChallengeDateKey === dateKey);
   const bestScore = todayRows.reduce((best, row) => Math.max(best, Number(row.metrics?.performanceScore ?? row.metrics?.score ?? 0) || 0), 0);
@@ -205,6 +270,12 @@ export function buildTrainingDailyChallenge(
     exerciseId: exercise.id,
     exerciseTitle: exercise.title,
     difficulty: exercise.difficulty,
+    baseLevel,
+    challengeLevel: level,
+    levelDelta: adaptation.delta,
+    adaptationLabel: adaptation.label,
+    recentChallengeAverage: form.average,
+    recentChallengeDays: form.days,
     requiredScore,
     completed,
     bestScore,
@@ -217,6 +288,6 @@ export function buildTrainingDailyChallenge(
     headline: completed ? "Défi du jour réussi" : `Défi du jour • ${familyLabel}`,
     body: completed
       ? `Validé à ${Math.round(bestScore)}/100. Reviens demain pour prolonger la série.`
-      : `${exercise.title} • objectif ${requiredScore}/100. Une réussite suffit pour valider la journée.`,
+      : `${exercise.title} • niv. ${level}/5 • objectif ${requiredScore}/100. Une réussite suffit pour valider la journée.`,
   };
 }

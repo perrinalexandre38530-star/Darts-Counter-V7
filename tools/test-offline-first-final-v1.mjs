@@ -23,6 +23,7 @@ const sw = read('public/sw.js');
 const storagePlans = read('src/lib/storagePlans.ts');
 const diagnostics = read('src/components/settings/BackupDiagnosticsPanel.tsx');
 const viteConfig = read('vite.config.ts');
+const headers = read('public/_headers');
 
 expect('Global sync orchestrator starts from main', main.includes('initGlobalSyncOrchestrator()'));
 expect('Offline runtime exposes remote-work guard', offline.includes('shouldAttemptRemoteWork'));
@@ -44,4 +45,9 @@ expect('Vite build emits manifest for offline precache', /manifest\s*:\s*["']man
 expect('Service worker precaches Vite manifest chunks', sw.includes('readViteManifestAssets') && sw.includes('PRECACHE_APP_SHELL') && sw.includes('/manifest.json'));
 expect('App contains local/offline gate policy', /offline|local/i.test(app));
 
-console.log('\n✅ OFFLINE-FIRST FINAL CONTRACT 19/19');
+expect('SW registration cannot miss an already-fired load event', main.includes('document.readyState === "complete"') && main.includes('installProdServiceWorker'));
+expect('Offline chunk failure never purges SW/cache', /hardRecoverFromChunkFailure[\s\S]{0,700}!shouldAttemptRemoteWork\(\)/.test(main) && /recoverDynamicImportOnce[\s\S]{0,500}!shouldAttemptRemoteWork\(\)/.test(main));
+expect('SW install refuses empty/incomplete Vite precache', sw.includes('strict: true') && sw.includes('failedCodeAssets') && sw.includes('Vite manifest absent ou vide'));
+expect('Cloudflare never serves a stale Vite manifest', /\/manifest\.json[\s\S]{0,120}Cache-Control: no-store/.test(headers));
+
+console.log('\n✅ OFFLINE-FIRST FINAL CONTRACT 23/23');

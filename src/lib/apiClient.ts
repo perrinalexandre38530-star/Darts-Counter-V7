@@ -172,7 +172,7 @@ function tokenFromStoredValue(raw: string): string {
     const parsed = safeParseJson<any>(value, null);
     const isSupabaseFailover =
       parsed?.degradedMode === true ||
-      String(parsed?.authProvider || parsed?.auth_provider || "") === "supabase_failover";
+      (["supabase_failover", "supabase_bridge"].includes(String(parsed?.authProvider || parsed?.auth_provider || "").trim().toLowerCase()));
     if (isSupabaseFailover) return "";
     return extractAuthTokenFromObject(parsed);
   }
@@ -199,6 +199,7 @@ export function readNasAccessToken(): string {
     const isPublicSupabase =
       provider === "supabase" ||
       provider === "supabase_failover" ||
+      provider === "supabase_bridge" ||
       parsed?.degradedMode === true;
 
     if (!isPublicSupabase) {
@@ -459,6 +460,7 @@ function readPublicAccountSessionForNasBridge(): { accessToken: string; nickname
   const isPublicAccountSession =
     provider === "supabase" ||
     provider === "supabase_failover" ||
+    provider === "supabase_bridge" ||
     parsed?.degradedMode === true ||
     !!parsed?.supabaseUserId;
 
@@ -490,7 +492,7 @@ function persistFreshCompatSupabaseToken(accessToken: string, userId: string): v
       const parsed = safeParseJson<any>(raw, null);
       if (!parsed || typeof parsed !== "object") continue;
       const provider = String(parsed?.authProvider || parsed?.auth_provider || "").trim().toLowerCase();
-      const isPublic = provider === "supabase" || provider === "supabase_failover" || parsed?.degradedMode === true || !!parsed?.supabaseUserId;
+      const isPublic = provider === "supabase" || provider === "supabase_failover" || provider === "supabase_bridge" || parsed?.degradedMode === true || !!parsed?.supabaseUserId;
       if (!isPublic) continue;
       // Ne jamais écraser le JWT backend d'une session bridge avec le JWT public.
       // On maintient un champ Supabase explicite et on ne met à jour token/accessToken
@@ -773,6 +775,7 @@ export function readAccountAccessToken(): string {
     const isPublicAccountSession =
       provider === "supabase" ||
       provider === "supabase_failover" ||
+      provider === "supabase_bridge" ||
       parsed?.degradedMode === true ||
       !!parsed?.supabaseUserId;
 

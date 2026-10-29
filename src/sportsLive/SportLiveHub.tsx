@@ -183,6 +183,43 @@ function roundOrder(value: string) {
   return 1200;
 }
 
+
+function dateTs(value?: string | null) {
+  const ts = value ? Date.parse(value) : NaN;
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function orderNewsEditorial(rows: SportLiveNewsItem[]) {
+  const scopeWeight: Record<string, number> = { local: 3, regional: 2, world: 1 };
+  const kindWeight: Record<string, number> = { live: 5, result: 4, news: 3, upcoming: 2 };
+  const sorted = [...rows].sort((a, b) => {
+    const fresh = dateTs(b.publishedAt) - dateTs(a.publishedAt);
+    if (Math.abs(fresh) > 6 * 60 * 60 * 1000) return fresh;
+    const kind = (kindWeight[b.kind] || 0) - (kindWeight[a.kind] || 0);
+    if (kind) return kind;
+    const image = Number(!!b.imageUrl) - Number(!!a.imageUrl);
+    if (image) return image;
+    return (scopeWeight[b.scope || ""] || 0) - (scopeWeight[a.scope || ""] || 0);
+  });
+
+  // Newspaper-style interleaving: keep freshness, but avoid long runs from the
+  // same provider or geographic scope when other verified items are available.
+  const queue = [...sorted];
+  const out: SportLiveNewsItem[] = [];
+  while (queue.length) {
+    const recent = out.slice(-2);
+    let index = queue.findIndex((candidate) => {
+      const source = String(candidate.sourceName || "").toLowerCase();
+      const sameSource = recent.some((item) => String(item.sourceName || "").toLowerCase() === source && source);
+      const sameScope = recent.length >= 2 && recent.every((item) => item.scope && item.scope === candidate.scope);
+      return !sameSource && !sameScope;
+    });
+    if (index < 0) index = 0;
+    out.push(queue.splice(index, 1)[0]);
+  }
+  return out;
+}
+
 function LiveStyles() {
   return (
     <style>{`
@@ -446,7 +483,7 @@ function LiveStyles() {
       .msc-region-btn.is-active { color:#15120a; border-color:#f4d445; background:#f4d445; }
 
       .msc-quick-dock {
-        position: fixed; left: 10px; bottom: 88px; z-index: 64; display:flex; gap:6px; padding:5px;
+        position: fixed; left: 50%; transform:translateX(-50%); bottom: 88px; z-index: 64; display:flex; gap:6px; padding:5px;
         border:1px solid #303943; border-radius:999px; background:rgba(7,10,14,.94); box-shadow:0 10px 28px rgba(0,0,0,.42); backdrop-filter:blur(10px);
       }
       .msc-quick-btn {
@@ -455,11 +492,11 @@ function LiveStyles() {
       }
       .msc-quick-btn:active { transform:scale(.96); }
       .msc-float-overlay {
-        position:fixed; inset:0; z-index:120; background:rgba(0,0,0,.64); backdrop-filter:blur(4px); display:flex; align-items:flex-end; justify-content:center; padding:10px 10px 78px;
+        position:fixed; inset:0; z-index:120; background:rgba(0,0,0,.64); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; padding:72px 12px 82px;
       }
       .msc-float-panel {
-        width:min(720px,100%); max-height:min(72vh,720px); overflow:auto; border:1px solid #38424d; border-radius:18px 18px 14px 14px;
-        background:#0a0e13; box-shadow:0 -18px 60px rgba(0,0,0,.55); padding:10px;
+        width:min(760px,100%); max-height:min(76vh,760px); overflow:auto; border:1px solid #38424d; border-radius:18px;
+        background:#0a0e13; box-shadow:0 18px 60px rgba(0,0,0,.58); padding:10px;
       }
       .msc-float-head { position:sticky; top:-10px; z-index:2; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 4px 9px; background:#0a0e13; border-bottom:1px solid #242d36; }
       .msc-float-title { font-size:15px; font-weight:1000; }
@@ -472,7 +509,19 @@ function LiveStyles() {
       .msc-compact-tag { font-size:8.5px; font-weight:1000; color:#ff6375; }
       .msc-compact-main { min-width:0; font-size:10.5px; font-weight:950; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
       .msc-compact-score { font-size:11px; font-weight:1000; color:#f4d445; white-space:nowrap; }
-      @media (max-width:520px) { .msc-quick-dock { bottom:82px; } .msc-float-overlay { padding-bottom:70px; } }
+      @media (max-width:520px) { .msc-quick-dock { bottom:82px; } .msc-float-overlay { padding:62px 8px 70px; } }
+      @media (orientation:landscape) and (max-height:620px) {
+        .msc-live-root { padding-bottom:72px; }
+        .msc-quick-dock { bottom:14px; }
+        .msc-float-overlay { padding:12px 72px 14px; align-items:center; }
+        .msc-float-panel { width:min(980px,calc(100vw - 150px)); max-height:calc(100vh - 28px); border-radius:16px; }
+        .msc-float-head { top:-10px; }
+        .msc-news-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+        .msc-news-card { grid-template-columns:70px minmax(0,1fr); }
+        .msc-news-card .msc-news-link { grid-column:1 / -1; min-height:28px; }
+        .msc-competition-groups { grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; }
+        .msc-competition-dock { justify-content:center; }
+      }
 
       @media (max-width: 390px) {
         .msc-match-body { grid-template-columns:minmax(0,1fr) 78px minmax(0,1fr); gap:5px; }
@@ -664,7 +713,13 @@ function GroupedResults({ rows, source, lang }: { rows: DartsLiveResult[]; sourc
       bucket.push(row);
       map.set(key, bucket);
     });
-    return Array.from(map.entries()).map(([name, matches]) => ({ name, matches }));
+    return Array.from(map.entries())
+      .map(([name, matches]) => ({
+        name,
+        matches: [...matches].sort((a, b) => dateTs(b.playedOn) - dateTs(a.playedOn)),
+        latest: Math.max(...matches.map((match) => dateTs(match.playedOn)), 0),
+      }))
+      .sort((a, b) => (b.latest - a.latest) || (b.matches.length - a.matches.length) || a.name.localeCompare(b.name));
   }, [rows]);
   const [selected, setSelected] = React.useState("__all__");
   React.useEffect(() => {
@@ -1064,9 +1119,9 @@ export default function SportLiveHub() {
 
   const liveRows = feed?.live || [];
   const fixtureRows = feed?.fixtures || [];
-  const resultRows = feed?.results || [];
+  const resultRows = React.useMemo(() => [...(feed?.results || [])].sort((a, b) => dateTs(b.playedOn) - dateTs(a.playedOn)), [feed?.results]);
   const eventRows = feed?.events || [];
-  const newsRows = feed?.news || [];
+  const newsRows = React.useMemo(() => orderNewsEditorial(feed?.news || []), [feed?.news]);
   const liveEvents = eventRows.filter((event) => event.status === "live");
   const upcomingEvents = eventRows.filter((event) => event.status === "upcoming" || event.status === "info");
   const resultEvents = eventRows.filter((event) => event.status === "result");

@@ -57,6 +57,7 @@ function DoublesObjectivePad({ target, disabled, onVisit }: { target: number; di
           MISS<span style={{ display: "block", marginTop: 4, fontSize: 9, letterSpacing: 1.1, opacity: .65 }}>RATÉ</span>
         </button>
       </div>
+      {pending.length > 0 ? <button type="button" disabled={disabled} onClick={() => setPending((prev) => prev.slice(0, -1))} style={{ minHeight: 38, borderRadius: 11, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.045)", color: "#d9e1ec", fontSize: 10, fontWeight: 950, letterSpacing: .7 }}>↶ ANNULER LA DERNIÈRE FLÉCHETTE</button> : null}
       <div style={{ textAlign: "center", fontSize: 10.5, opacity: .7 }}>3 essais par volée · l'objectif change automatiquement après les 3 volées prévues.</div>
     </div>
   );
@@ -81,8 +82,12 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
     doubles: 0,
     sequenceIndex: 0,
     doubles8Visits: 0,
+    regularHits: 0,
+    regularPoints: 0,
     bonusHits: 0,
     perDoubleHits: {} as Record<string, number>,
+    perDoubleAttempts: {} as Record<string, number>,
+    perDoublePoints: {} as Record<string, number>,
   });
   const [, rerender] = React.useReducer((value) => value + 1, 0);
   const [result, setResult] = React.useState<any>(null);
@@ -120,6 +125,15 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
         startedAt: startedAtRef.current,
         endedAt,
       });
+      const doublesBreakdown = doublesTargets.map((target) => {
+        const key = String(target);
+        const attempts = Number(data.perDoubleAttempts[key] || 0);
+        const hits = Number(data.perDoubleHits[key] || 0);
+        return { target, attempts, hits, points: Number(data.perDoublePoints[key] || 0), accuracyPct: attempts > 0 ? (hits / attempts) * 100 : 0 };
+      });
+      const playedDoubles = doublesBreakdown.filter((row) => row.attempts > 0);
+      const bestDouble = playedDoubles.slice().sort((a, b) => b.accuracyPct - a.accuracyPct || b.hits - a.hits || b.points - a.points)[0] || null;
+      const weakestDouble = playedDoubles.slice().sort((a, b) => a.accuracyPct - b.accuracyPct || a.hits - b.hits || a.points - b.points)[0] || null;
       const metrics = {
         challengeId,
         title,
@@ -133,7 +147,15 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
         score: challengeId === "DOUBLES_8_BONUS" ? data.points : success ? 100 : completion * 100,
         bonusDouble,
         bonusHits: data.bonusHits,
+        regularHits: data.regularHits,
+        regularScore: data.regularPoints,
+        bonusScore: data.bonusHits * 50,
         perDoubleHits: { ...data.perDoubleHits },
+        perDoubleAttempts: { ...data.perDoubleAttempts },
+        perDoublePoints: { ...data.perDoublePoints },
+        doublesBreakdown,
+        bestDouble,
+        weakestDouble,
         doublesTargets: [...doublesTargets],
       };
 
@@ -184,12 +206,18 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
         data.darts += darts.length;
         data.hits += targetHits;
         data.doubles8Visits += 1;
-        data.perDoubleHits[String(target)] = (data.perDoubleHits[String(target)] || 0) + targetHits;
         if (bonusVisit) {
           data.bonusHits += targetHits;
           data.points += targetHits * 50;
         } else {
-          data.points += targetHits >= 3 ? 100 : targetHits === 2 ? 30 : targetHits === 1 ? 10 : 0;
+          const key = String(target);
+          const visitPoints = targetHits >= 3 ? 100 : targetHits === 2 ? 30 : targetHits === 1 ? 10 : 0;
+          data.regularHits += targetHits;
+          data.regularPoints += visitPoints;
+          data.perDoubleHits[key] = (data.perDoubleHits[key] || 0) + targetHits;
+          data.perDoubleAttempts[key] = (data.perDoubleAttempts[key] || 0) + darts.length;
+          data.perDoublePoints[key] = (data.perDoublePoints[key] || 0) + visitPoints;
+          data.points += visitPoints;
         }
         rerender();
         if (data.doubles8Visits >= doubles8VisitsMax || data.darts >= maxDarts) finish(true);
@@ -324,7 +352,13 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
             ? [
                 { label: "DÉFI", value: result.metrics.title },
                 { label: "DARTS UTILISÉES", value: `${result.metrics.dartsUsed}/${result.metrics.maxDarts}` },
-                ...(challengeId === "DOUBLES_8_BONUS" ? [{ label: "SCORE CHALLENGE", value: `${Math.round(result.metrics.score)} / ${doubles8MaxScore}` }, { label: `BONUS D${result.metrics.bonusDouble}`, value: `${result.metrics.bonusHits} touche${result.metrics.bonusHits > 1 ? "s" : ""} · ${result.metrics.bonusHits * 50} pts` }] : []),
+                ...(challengeId === "DOUBLES_8_BONUS" ? [
+                  { label: "SCORE CHALLENGE", value: `${Math.round(result.metrics.score)} / ${doubles8MaxScore}` },
+                  { label: "PHASE PRINCIPALE", value: `${result.metrics.regularScore} pts · ${result.metrics.regularHits}/${doublesTargets.length * 9} touches` },
+                  { label: `BONUS D${result.metrics.bonusDouble}`, value: `${result.metrics.bonusHits} touche${result.metrics.bonusHits > 1 ? "s" : ""} · ${result.metrics.bonusScore} pts` },
+                  ...(result.metrics.bestDouble ? [{ label: "DOUBLE FORT", value: `D${result.metrics.bestDouble.target} · ${Math.round(result.metrics.bestDouble.accuracyPct)}% · ${result.metrics.bestDouble.hits}/${result.metrics.bestDouble.attempts}` }] : []),
+                  ...(result.metrics.weakestDouble ? [{ label: "DOUBLE À TRAVAILLER", value: `D${result.metrics.weakestDouble.target} · ${Math.round(result.metrics.weakestDouble.accuracyPct)}% · ${result.metrics.weakestDouble.hits}/${result.metrics.weakestDouble.attempts}` }] : []),
+                ] : []),
                 { label: "PROGRESSION", value: `${Math.round(result.metrics.completionPct)}%` },
                 { label: "PRÉCISION", value: `${Math.round(result.metrics.accuracyPct)}%` },
               ]

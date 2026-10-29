@@ -14,6 +14,7 @@ import { beginFreezeOperation, endFreezeOperation } from "../freezeWatch";
 import { getAccountLocalStorageItem, setAccountLocalStorageItem, removeAccountLocalStorageItem } from "../accountScope";
 import { recordStatsDiagnosticEvent } from "../statsDiagnosticsTrace";
 import { resolveCanonicalProfileIdFromAlias } from "../../data/identityAliases";
+import { getHistoryV4AuthorityStamp, type HistoryV4AuthorityStamp } from "../historyV4";
 
 // ----------------------------
 // Types génériques (safe)
@@ -84,6 +85,10 @@ export type StatsIndexMeta = {
   includeNonFinished: boolean;
   historyUpdatedAt?: number;
   historySchemaVersion?: 4;
+  historyCount?: number;
+  historyFinishedCount?: number;
+  historyRevisionSum?: number;
+  historyFingerprint?: string;
 };
 
 export type StatsIndex = {
@@ -154,8 +159,10 @@ async function yieldStatsIndexWork(): Promise<void> {
 
 
 export type StatsQuickMirror = {
-  version: 2;
+  version: 3;
   updatedAt: number;
+  historyFingerprint: string;
+  historyCount: number;
   byPlayer: Record<string, {
     matches: number;
     wins: number;
@@ -176,7 +183,8 @@ export function loadStatsQuickMirrorSync(): StatsQuickMirror | null {
     const raw = getAccountLocalStorageItem(STATS_QUICK_MIRROR_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (!parsed || parsed.version !== 2 || typeof parsed.byPlayer !== "object") return null;
+    if (!parsed || parsed.version !== 3 || typeof parsed.byPlayer !== "object") return null;
+    if (!String(parsed.historyFingerprint || "").trim()) return null;
     return parsed as StatsQuickMirror;
   } catch {
     return null;
@@ -202,7 +210,14 @@ function saveStatsQuickMirror(idx: StatsIndex): void {
         lastMatchAt: Number(e.lastMatchAt || 0) || undefined,
       };
     }
-    const mirror: StatsQuickMirror = { version: 2, updatedAt: Date.now(), byPlayer };
+    const mirror: StatsQuickMirror = {
+      version: 3,
+      updatedAt: Date.now(),
+      historyFingerprint: String(idx?.meta?.historyFingerprint || ""),
+      historyCount: Number(idx?.meta?.historyCount || 0) || 0,
+      byPlayer,
+    };
+    if (!mirror.historyFingerprint) return;
     setAccountLocalStorageItem(STATS_QUICK_MIRROR_KEY, JSON.stringify(mirror));
   } catch {
     // Cache UX uniquement : ne doit jamais bloquer les stats.
@@ -214,6 +229,19 @@ export function markStatsIndexDirty(reason = "unknown"): void {
   try {
     if (typeof localStorage !== "undefined") {
       setAccountLocalStorageItem(STATS_DIRTY_KEY, JSON.stringify({ dirty: true, reason, at: Date.now() }));
+      // Any History mutation immediately invalidates synchronous visual/quick projections.
+      // They may be rebuilt later, but must never survive as an alternative truth.
+      removeAccountLocalStorageItem(STATS_QUICK_MIRROR_KEY);
+      try {
+        const staleKeys: string[] = [];
+        for (let i = 0; i < localStorage.length; i += 1) {
+          const key = String(localStorage.key(i) || "");
+          if (key.startsWith("dc_stats_render_profile_v4:")) staleKeys.push(key);
+        }
+        for (const key of staleKeys) localStorage.removeItem(key);
+        localStorage.removeItem("dc_stats_render_cache_v4");
+        localStorage.removeItem("dc_stats_render_cache_v4_legacy");
+      } catch {}
     }
   } catch {}
   try {
@@ -391,6 +419,10 @@ export async function loadStatsIndex(): Promise<StatsIndex | null> {
           includeNonFinished: Boolean(fromKv?.meta?.includeNonFinished),
           historyUpdatedAt: Number(fromKv?.meta?.historyUpdatedAt || 0) || undefined,
           historySchemaVersion: Number(fromKv?.meta?.historySchemaVersion || 0) === 4 ? 4 : undefined,
+          historyCount: Number(fromKv?.meta?.historyCount || 0) || 0,
+          historyFinishedCount: Number(fromKv?.meta?.historyFinishedCount || 0) || 0,
+          historyRevisionSum: Number(fromKv?.meta?.historyRevisionSum || 0) || 0,
+          historyFingerprint: String(fromKv?.meta?.historyFingerprint || "") || undefined,
         },
       };
     }
@@ -420,6 +452,10 @@ export async function saveStatsIndex(idx: StatsIndex): Promise<void> {
       includeNonFinished: Boolean(idx?.meta?.includeNonFinished),
       historyUpdatedAt: Number(idx?.meta?.historyUpdatedAt || 0) || undefined,
       historySchemaVersion: Number(idx?.meta?.historySchemaVersion || 0) === 4 ? 4 : undefined,
+      historyCount: Number(idx?.meta?.historyCount || 0) || 0,
+      historyFinishedCount: Number(idx?.meta?.historyFinishedCount || 0) || 0,
+      historyRevisionSum: Number(idx?.meta?.historyRevisionSum || 0) || 0,
+      historyFingerprint: String(idx?.meta?.historyFingerprint || "") || undefined,
     },
   };
 
@@ -1367,6 +1403,19 @@ async function loadHistoryRowsForStats(includeNonFinished: boolean): Promise<{ H
   return { History, rows, source: "history-v4-rebuild" };
 }
 
+function statsIndexMatchesHistoryAuthority(idx: StatsIndex | null, stamp: HistoryV4AuthorityStamp | null): boolean {
+  if (!idx || !stamp) return false;
+  const meta = idx.meta;
+  if (!meta || Number(meta.historySchemaVersion || 0) !== 4) return false;
+  if (!String(meta.historyFingerprint || "").trim()) return false;
+  return (
+    String(meta.historyFingerprint) === String(stamp.fingerprint) &&
+    Number(meta.historyCount || 0) === Number(stamp.activeRows || 0) &&
+    Number(meta.historyFinishedCount || 0) === Number(stamp.finishedRows || 0) &&
+    Number(meta.historyRevisionSum || 0) === Number(stamp.revisionSum || 0)
+  );
+}
+
 export async function getOrRebuildStatsIndex(options?: {
   includeNonFinished?: boolean;
   persist?: boolean;
@@ -1377,7 +1426,9 @@ export async function getOrRebuildStatsIndex(options?: {
   // l'historique puis recharger les détails un par un, ce qui explosait à 15–20s après restore.
   const cached = await loadStatsIndex().catch(() => null);
   if (!options?.force && isValidStatsIndex(cached) && !isStatsIndexDirty()) {
-    return cached as StatsIndex;
+    const authority = await getHistoryV4AuthorityStamp().catch(() => null);
+    if (statsIndexMatchesHistoryAuthority(cached, authority)) return cached as StatsIndex;
+    markStatsIndexDirty("history-authority-mismatch");
   }
   // V123: a DIRTY index is never displayed as an alternative truth. Rebuild it
   // from canonical History V4 before returning it to the UI.
@@ -1399,7 +1450,10 @@ export async function rebuildStatsFromHistory(options?: {
 
   // History V4 is the canonical authority. Legacy list/get remain a fallback
   // only while old devices/snapshots are transitioning.
-  const { History, rows: list, source: historySource } = await loadHistoryRowsForStats(includeNonFinished);
+  const [{ History, rows: list, source: historySource }, authority] = await Promise.all([
+    loadHistoryRowsForStats(includeNonFinished),
+    getHistoryV4AuthorityStamp().catch(() => null),
+  ]);
 
   const idx = createEmptyStatsIndex(includeNonFinished);
   idx.rebuiltAt = Date.now();
@@ -1409,19 +1463,13 @@ export async function rebuildStatsFromHistory(options?: {
     includeNonFinished,
     historyUpdatedAt: computeHistoryUpdatedAt(Array.isArray(list) ? list : []),
     ...(historySource === "history-v4-rebuild" ? { historySchemaVersion: 4 as const } : {}),
+    historyCount: Number(authority?.activeRows || 0) || 0,
+    historyFinishedCount: Number(authority?.finishedRows || 0) || 0,
+    historyRevisionSum: Number(authority?.revisionSum || 0) || 0,
+    historyFingerprint: String(authority?.fingerprint || "") || undefined,
   };
 
   const rows: any[] = Array.isArray(list) ? list : [];
-
-  // RESTORE FIX : ne pas écraser un index restauré par latest.json/NAS
-  // quand l'historique détaillé est absent du snapshot.
-  if (rows.length === 0 || rowsAreStatsOnlyRestored(rows)) {
-    const cached = await loadStatsIndex().catch(() => null);
-    if (statsIndexHasData(cached)) {
-      clearStatsIndexDirty();
-      return cached as StatsIndex;
-    }
-  }
 
   // Hydratation par petits lots parallèles. L'ancien parcours faisait un
   // History.get() séquentiel par match, très lent après une grosse restauration.

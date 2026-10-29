@@ -231,6 +231,19 @@ const DC_CHUNK_HARD_RECOVER_TS_KEY = "dc_chunk_hard_recover_ts_v1";
 async function hardRecoverFromChunkFailure(reason: any) {
   try { rememberChunkFailure(reason); } catch {}
 
+  // OFFLINE-FIRST V161 FIX: ne JAMAIS détruire le SW/cache lorsqu'il n'y a
+  // pas de réseau. Un chunk manquant hors ligne doit rester une erreur locale
+  // récupérable; purger CacheStorage ici provoquait ensuite ERR_INTERNET_DISCONNECTED.
+  if (!shouldAttemptRemoteWork()) {
+    try {
+      localStorage.setItem("dc_offline_chunk_failure_v1", JSON.stringify({
+        at: Date.now(),
+        message: String(reason?.message || reason || "dynamic import offline failure"),
+      }));
+    } catch {}
+    return;
+  }
+
   const now = Date.now();
   let last = 0;
   try { last = Number(localStorage.getItem(DC_CHUNK_HARD_RECOVER_TS_KEY) || "0") || 0; } catch {}
@@ -352,6 +365,15 @@ function isDynImportFail(x: any) {
 
 async function recoverDynamicImportOnce() {
   try {
+    // OFFLINE-FIRST V161 FIX: en mode avion, ne jamais déclencher de reload
+    // cache-bust ni programmer une purge des Service Workers/caches.
+    if (!shouldAttemptRemoteWork()) {
+      try {
+        localStorage.setItem("dc_offline_dyn_import_failure_v1", JSON.stringify({ at: Date.now() }));
+      } catch {}
+      return false;
+    }
+
     const failCount = getDynImportFailCount() + 1;
     setDynImportFailCount(failCount);
 
@@ -797,7 +819,7 @@ async function registerServiceWorkerProd() {
 
   if (!("serviceWorker" in navigator)) return;
 
-  window.addEventListener("load", async () => {
+  const installProdServiceWorker = async () => {
     try {
       // 1) Désenregistre tout SW hérité (sauf /sw.js)
       const regs = await navigator.serviceWorker.getRegistrations();
@@ -840,7 +862,18 @@ async function registerServiceWorkerProd() {
     } catch (err) {
       console.warn("⚠️ SW register error", err);
     }
-  });
+  };
+
+  // OFFLINE-FIRST V161 FIX: registerServiceWorkerProd() est volontairement
+  // appelé après le premier rendu. À ce moment-là, window.load peut déjà avoir
+  // eu lieu. Dans l'ancien code, le listener était alors posé trop tard et le
+  // SW n'était JAMAIS enregistré. On exécute immédiatement si la page est déjà
+  // chargée, sinon on attend load une seule fois.
+  if (document.readyState === "complete") {
+    void installProdServiceWorker();
+  } else {
+    window.addEventListener("load", () => { void installProdServiceWorker(); }, { once: true });
+  }
 }
 
 async function devUnregisterSW() {

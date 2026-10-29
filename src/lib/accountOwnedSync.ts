@@ -18,12 +18,7 @@ import { isOfficialBotId } from "./officialBots";
 import { loadTeams, saveTeams, type TeamEntity } from "./petanqueTeamsStore";
 import { getAllDartSets, setAllDartSets, type DartSet } from "./dartSetsStore";
 import { AVATAR_GALLERY_EVENT, readAvatarGallery, writeAvatarGallery, type AvatarGalleryItem } from "./avatarGallery";
-import {
-  loadStatsIndex,
-  saveStatsIndex,
-  scheduleStatsIndexRefresh,
-  type StatsIndex,
-} from "./stats/rebuildStatsFromHistory";
+import { scheduleStatsIndexRefresh } from "./stats/rebuildStatsFromHistory";
 import {
   ORGANIZATION_WORKSPACE_EVENT,
   loadOrganizationWorkspace,
@@ -118,16 +113,8 @@ const STATS_SOURCE_EXACT_KEYS = new Set([
   "dc_molkky_history_v1_migrated_to_v2",
   "pingpong_history",
   "babyfoot_league_store_v1",
-  "dc-player-stats-v1",
-  "dc-quick-stats",
-  "dc5_stats_committed_leg_ids_v1",
-  "dc_online_stats_excluded_ids_v1",
-  "dc_online_stats_deleted_ids_v1",
 ]);
-const STATS_SOURCE_PREFIXES = [
-  "dc_stats_cricket_profile_v2:",
-  "dc_stats_x01_legs_sets_v2:",
-] as const;
+const STATS_SOURCE_PREFIXES = [] as const;
 
 function emitStatus(detail: any) {
   try {
@@ -937,18 +924,6 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     setAllDartSets(hydrated);
   };
 
-  const applyStatsIndexPayload = async (payload: any) => {
-    const idx = payload && typeof payload === "object" ? payload as StatsIndex : null;
-    if (idx && Number((idx as any)?.version || 0) > 0) {
-      await saveStatsIndex(idx);
-      try {
-        window.dispatchEvent(new CustomEvent("dc-stats-index-updated", {
-          detail: { reason: "account-realtime-stats", rebuiltAt: Number((idx as any)?.rebuiltAt || Date.now()) },
-        }));
-      } catch {}
-    }
-  };
-
   const applyStatsSourcesPayload = async (payload: any) => {
     const values = sanitizeStatsSources(payload?.values && typeof payload.values === "object" ? payload.values : payload || {});
     applyStatsSourceValues(values, true);
@@ -1000,7 +975,9 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
       else if (type === DOC.teams) await applyTeamsPayload(row.payload);
       else if (type === DOC.gallery) await applyGalleryPayload(row.payload);
       else if (type === DOC.dartSets) await applyDartSetsPayload(row.payload);
-      else if (type === DOC.statsIndex) await applyStatsIndexPayload(row.payload);
+      else if (type === DOC.statsIndex) {
+        // Legacy remote cache: ignored. History rows are the only stats authority.
+      }
       else if (type === DOC.statsSources) await applyStatsSourcesPayload(row.payload);
       else if (type === DOC.organizationWorkspace) await applyOrganizationWorkspacePayload(row.payload);
     });
@@ -1116,14 +1093,6 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     const sig = fingerprint(payload);
     if (signatures.get(sigKey) === sig) return;
     await pushDocument(DOC.dartSets, payload);
-  };
-  const pushStatsIndex = async () => {
-    const idx = await loadStatsIndex().catch(() => null);
-    if (!idx) return;
-    const sigKey = revisionKey(DOC.statsIndex);
-    const sig = fingerprint(idx);
-    if (signatures.get(sigKey) === sig) return;
-    await pushDocument(DOC.statsIndex, idx, DEFAULT_DOCUMENT_ID, Number((idx as any)?.rebuiltAt || Date.now()));
   };
   const pushStatsSources = async () => {
     const values = sanitizeStatsSources(readStatsSources());
@@ -1363,14 +1332,6 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     await syncCollection(DOC.gallery, () => serializeGallery(userId), applyGalleryPayload);
     await syncCollection(DOC.dartSets, () => serializeDartSets(), applyDartSetsPayload);
 
-    const currentStats = await loadStatsIndex().catch(() => null);
-    if (currentStats) {
-      await syncScalarDocument(DOC.statsIndex, currentStats, applyStatsIndexPayload, Number((currentStats as any)?.rebuiltAt || 0));
-    } else {
-      const remoteStats = await fetchDocument(DOC.statsIndex);
-      if (remoteStats) await applyRemoteRow(remoteStats, true);
-    }
-
     const statsValues = sanitizeStatsSources(readStatsSources());
     await syncScalarDocument(DOC.statsSources, { values: statsValues }, applyStatsSourcesPayload);
     await syncScalarDocument(DOC.organizationWorkspace, loadOrganizationWorkspace(userId), applyOrganizationWorkspacePayload);
@@ -1536,8 +1497,6 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     await pushDocument(DOC.teams, serializeTeams(), DEFAULT_DOCUMENT_ID, ts + 2);
     await pushDocument(DOC.gallery, serializeGallery(userId), DEFAULT_DOCUMENT_ID, ts + 3);
     await pushDocument(DOC.dartSets, serializeDartSets(), DEFAULT_DOCUMENT_ID, ts + 4);
-    const idx = await loadStatsIndex().catch(() => null);
-    if (idx) await pushDocument(DOC.statsIndex, idx, DEFAULT_DOCUMENT_ID, ts + 5);
     const statsValues = sanitizeStatsSources(readStatsSources());
     writeStatsMirror(userId, statsValues);
     await pushDocument(DOC.statsSources, { values: statsValues }, DEFAULT_DOCUMENT_ID, ts + 6);
@@ -1596,7 +1555,6 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     }
     void forcePushAllLocalToAccount(cleanId(detail?.reason) || "external").catch((error) => console.warn("[account-sync] forced sync failed", error));
   };
-  const onStatsIndexUpdated = () => scheduleLocalPush(DOC.statsIndex, pushStatsIndex, 650);
   const onWorkspaceChanged = () => scheduleLocalPush(DOC.organizationWorkspace, pushOrganizationWorkspace);
   const onLocalStorageMutation = (event: Event) => {
     if (!statsNamespaceReady || remoteApplyDepth > 0) return;
@@ -1701,7 +1659,6 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
   window.addEventListener("dc-dartsets-updated", onDartSetsChanged as EventListener);
   window.addEventListener(ACCOUNT_MEDIA_SYNCED_EVENT, onAccountMediaSynced as EventListener);
   window.addEventListener(ACCOUNT_OWNED_FORCE_SYNC_EVENT, onForceSync as EventListener);
-  window.addEventListener("dc-stats-index-updated", onStatsIndexUpdated as EventListener);
   window.addEventListener(ORGANIZATION_WORKSPACE_EVENT, onWorkspaceChanged as EventListener);
   window.addEventListener(ACCOUNT_LOCAL_STORAGE_MUTATION_EVENT, onLocalStorageMutation as EventListener);
   window.addEventListener(ACCOUNT_HISTORY_LOCAL_CHANGE_EVENT, onHistoryChanged as EventListener);
@@ -1762,7 +1719,6 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     window.removeEventListener("dc-dartsets-updated", onDartSetsChanged as EventListener);
     window.removeEventListener(ACCOUNT_MEDIA_SYNCED_EVENT, onAccountMediaSynced as EventListener);
     window.removeEventListener(ACCOUNT_OWNED_FORCE_SYNC_EVENT, onForceSync as EventListener);
-    window.removeEventListener("dc-stats-index-updated", onStatsIndexUpdated as EventListener);
     window.removeEventListener(ORGANIZATION_WORKSPACE_EVENT, onWorkspaceChanged as EventListener);
     window.removeEventListener(ACCOUNT_LOCAL_STORAGE_MUTATION_EVENT, onLocalStorageMutation as EventListener);
     window.removeEventListener(ACCOUNT_HISTORY_LOCAL_CHANGE_EVENT, onHistoryChanged as EventListener);

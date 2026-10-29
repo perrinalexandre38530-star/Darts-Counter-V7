@@ -34,6 +34,7 @@ type ProgramStepResult = {
 const emptyRun = (): RunState => ({ darts: 0, hits: 0, points: 0, progress: 0, checkoutTotal: 0 });
 
 export default function TrainingLabPlay({ config, onExit }: { config: any; onExit: () => void }) {
+  const accountParticipantId = String(config?.activeParticipant?.id || config?.selectedPlayerIds?.[0] || "").trim() || null;
   const initialProgramIds = React.useMemo(() => {
     const ids = Array.isArray(config?.programExerciseIds) ? config.programExerciseIds.map(String).filter(Boolean) : [];
     return ids.length ? ids : [String(config?.exerciseId || "")].filter(Boolean);
@@ -155,6 +156,7 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
           focusFamily: (config?.programFocusFamily || config?.family || "balanced") as TrainingExerciseFamily | "balanced",
           nextStepIndex: Math.min(totalSteps - 1, stepIndex + 1),
           completedSteps: next.filter(Boolean) as any,
+          participantId: accountParticipantId,
         });
         return next;
       });
@@ -174,7 +176,7 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
       visitHistory: visitHistoryRef.current,
     });
     setResult({ success: dailyChallengePassed, metrics, stats: makeTrainingStats({ darts: s.darts, hits: s.hits, points: s.points, startedAt: startedAtRef.current, endedAt }) });
-  }, [config, exercise, goal, isProgram, programIds, stepIndex, totalSteps]);
+  }, [accountParticipantId, config, exercise, goal, isProgram, programIds, stepIndex, totalSteps]);
 
   const onVisit = React.useCallback((rawVisit: TrainingDart[]) => {
     if (endedRef.current || !rawVisit.length) return;
@@ -221,10 +223,11 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
         focusFamily: (config?.programFocusFamily || config?.family || "balanced") as TrainingExerciseFamily | "balanced",
         nextStepIndex: result ? Math.min(totalSteps - 1, stepIndex + 1) : stepIndex,
         completedSteps: programResults.filter(Boolean) as any,
+        participantId: accountParticipantId,
       });
     }
     onExit();
-  }, [config, isProgram, onExit, programIds, programResults, programSummaryOpen, result, stepIndex, totalSteps]);
+  }, [accountParticipantId, config, isProgram, onExit, programIds, programResults, programSummaryOpen, result, stepIndex, totalSteps]);
 
   const closeResult = React.useCallback(() => {
     if (isProgram && stepIndex + 1 < totalSteps) {
@@ -261,8 +264,8 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
   React.useEffect(() => {
     if (!programSummaryOpen || programTrackedRef.current || !isProgram || programSummary.steps < totalSteps) return;
     programTrackedRef.current = true;
-    clearTrainingProgramDraft();
-    const previous = loadTrainingProgramSessions();
+    clearTrainingProgramDraft(accountParticipantId);
+    const previous = loadTrainingProgramSessions(accountParticipantId);
     const previousBest = previous.reduce((best, row) => Math.max(best, row.performanceScore), 0);
     const currentRecord = recordTrainingProgramSession({
       programId: String(config?.programId || "program"),
@@ -284,9 +287,10 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
       darts: programSummary.darts,
       accuracyPct: programSummary.accuracy,
       performanceScore: programSummary.performance,
+      participantId: accountParticipantId,
     });
     if (currentRecord) {
-      const beforeProgression = buildTrainingProgression(getTrainingDetailedSessions({ limit: 300 }));
+      const beforeProgression = buildTrainingProgression(getTrainingDetailedSessions({ participantId: accountParticipantId, limit: 300 }));
       const beforeCareer = buildTrainingCareer(previous, beforeProgression);
       const afterCareer = buildTrainingCareer([currentRecord, ...previous], beforeProgression);
       const gainedXp = trainingProgramXp(currentRecord);
@@ -300,12 +304,12 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
       const loadAfter = buildTrainingLoadSummary([currentRecord, ...previous], prefs.weeklySessionTarget);
       const advice = buildPostSessionCoach(previous, currentRecord, nextFamily, loadAfter);
       setPostSessionCoach(advice);
-      saveTrainingNextRecommendation(advice);
+      saveTrainingNextRecommendation(advice, accountParticipantId);
     }
     if (programSummary.performance > previousBest && programSummary.performance > 0) {
       setProgramRecordMessage(previous.length ? `NOUVEAU RECORD DE SÉANCE • ${Math.round(programSummary.performance)}/100` : `PREMIÈRE RÉFÉRENCE • ${Math.round(programSummary.performance)}/100`);
     }
-  }, [config?.programDurationMin, config?.programId, config?.programTitle, isProgram, programSummary, programSummaryOpen, sessionReview, totalSteps]);
+  }, [accountParticipantId, config?.programDurationMin, config?.programId, config?.programTitle, isProgram, programSummary, programSummaryOpen, sessionReview, totalSteps]);
 
   const s = stateRef.current;
   const target = exercise.engine === "target_hits" ? exercise.target || "—" : exercise.engine === "sequence" ? sequence[Math.min(s.progress, Math.max(0, sequence.length - 1))] || "—" : exercise.engine === "checkout" ? String(Math.max(0, goal - s.checkoutTotal)) : String(Math.max(0, goal - s.points));
@@ -427,7 +431,7 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
           </div>)}
         </div>
 
-        <button type="button" onClick={() => { clearTrainingProgramDraft(); onExit(); }} style={{ width: "100%", marginTop: 14, padding: 12, borderRadius: 12, border: "1px solid rgba(39,220,255,.45)", background: "linear-gradient(135deg,rgba(39,220,255,.20),rgba(140,90,255,.18))", color: "inherit", fontWeight: 950, cursor: "pointer" }}>TERMINER LA SÉANCE</button>
+        <button type="button" onClick={() => { clearTrainingProgramDraft(accountParticipantId); onExit(); }} style={{ width: "100%", marginTop: 14, padding: 12, borderRadius: 12, border: "1px solid rgba(39,220,255,.45)", background: "linear-gradient(135deg,rgba(39,220,255,.20),rgba(140,90,255,.18))", color: "inherit", fontWeight: 950, cursor: "pointer" }}>TERMINER LA SÉANCE</button>
       </div>
     </div>}
   </>;

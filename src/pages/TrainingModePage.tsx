@@ -1,5 +1,6 @@
 import React from "react";
 import { useAuthOnline } from "../hooks/useAuthOnline";
+import { useCurrentProfile } from "../hooks/useCurrentProfile";
 import { syncTrainingEvents } from "../training/sync/trainingSyncEngine";
 import type { Profile } from "../lib/types";
 import { getLastConfig, setLastConfig } from "../training/lib/trainingPersist";
@@ -100,6 +101,7 @@ function normalizeQueue(config: any, profiles?: Profile[]): TrainingQueuedPartic
 
 export default function TrainingModePage({ modeId, onExit, profiles }: Props) {
   const { user, online } = useAuthOnline();
+  const currentProfile = useCurrentProfile();
   const id = canonicalTrainingId(modeId);
   const [phase, setPhase] = React.useState<"config" | "play" | "summary">("config");
   const [config, setConfig] = React.useState<any>(() => getLastConfig(id));
@@ -128,7 +130,17 @@ export default function TrainingModePage({ modeId, onExit, profiles }: Props) {
   }, [onExit, online, user?.id]);
 
   const beginRun = React.useCallback((baseConfig: any) => {
-    const queue = normalizeQueue(baseConfig, profiles);
+    const requestedQueue = normalizeQueue(baseConfig, profiles);
+    const accountQueue: TrainingQueuedParticipant[] = currentProfile?.id ? [{
+      id: String(currentProfile.id),
+      name: String((currentProfile as any).name || (currentProfile as any).displayName || "Mon compte"),
+      avatarDataUrl: (currentProfile as any).avatarDataUrl || null,
+      avatarUrl: (currentProfile as any).avatarUrl || (currentProfile as any).avatar || null,
+      teamId: null,
+      teamName: null,
+      teamLogo: null,
+    }] : [];
+    const queue = id === "training_lab" ? accountQueue : requestedQueue;
     if (!queue.length) return;
     const groupSessionId = makeGroupSessionId(id);
     const next = {
@@ -137,6 +149,10 @@ export default function TrainingModePage({ modeId, onExit, profiles }: Props) {
       training: true,
       startedFrom: "training_hub",
       groupSessionId,
+      participantMode: id === "training_lab" ? "players" : baseConfig?.participantMode,
+      selectedTeamIds: id === "training_lab" ? [] : baseConfig?.selectedTeamIds,
+      selectedTeamPlayerIds: id === "training_lab" ? {} : baseConfig?.selectedTeamPlayerIds,
+      teamSize: id === "training_lab" ? 1 : baseConfig?.teamSize,
       trainingParticipants: queue,
       selectedPlayerIds: queue.map((participant) => participant.id),
     };
@@ -146,7 +162,7 @@ export default function TrainingModePage({ modeId, onExit, profiles }: Props) {
     setParticipantIndex(0);
     setSummary(null);
     setPhase("play");
-  }, [id, profiles]);
+  }, [currentProfile, id, profiles]);
 
   const start = React.useCallback((nextConfig: any) => beginRun(nextConfig), [beginRun]);
 

@@ -229,8 +229,21 @@ export async function runOfflineFirstSelfTest(): Promise<OfflineFirstSelfTestRep
       if (!("serviceWorker" in navigator)) return { status: "info", detail: "Service Worker non applicable sur ce runtime natif/navigateur." };
       const registration = await navigator.serviceWorker.getRegistration().catch(() => null);
       const controller = navigator.serviceWorker.controller;
-      if (registration || controller) return { status: "ok", detail: `Service Worker ${controller ? "contrôleur actif" : "enregistré"} · shell PWA disponible pour le fallback cache.` };
-      return { status: "warn", detail: "Aucun Service Worker actif sur cette session. Sur Android natif ce n’est pas bloquant ; sur PWA, recharge une fois en ligne." };
+      let marker: any = null;
+      try {
+        const response = typeof caches !== "undefined" ? await caches.match("/__mss_offline_ready__") : null;
+        marker = response ? await response.json().catch(() => null) : null;
+      } catch {}
+      const manifestAssets = Number(marker?.manifestAssets || 0);
+      const failedCodeAssets = Array.isArray(marker?.failedCodeAssets) ? marker.failedCodeAssets.length : Number(marker?.failedAssets || 0);
+      const shellReady = marker?.ready === true && manifestAssets > 0 && failedCodeAssets === 0;
+      if (controller && shellReady) {
+        return { status: "ok", detail: `Service Worker contrôleur actif · ${manifestAssets} chunk(s) Vite pré-caché(s) · shell OFFLINE READY.` };
+      }
+      if (registration || controller) {
+        return { status: "warn", detail: `Service Worker présent mais shell incomplet : contrôleur ${controller ? "oui" : "non"}, manifest ${manifestAssets}, échecs ${failedCodeAssets}. Rester en ligne et recharger une fois.` };
+      }
+      return { status: "warn", detail: "Aucun Service Worker actif sur cette session. Sur PWA/web, le mode hors ligne ne peut pas démarrer tant qu’une session en ligne n’a pas installé le shell." };
     });
   } finally {
     setOfflineFirstDiagnosticOnlineOverride(null);

@@ -24,6 +24,7 @@ export type TrainingProgramSessionRecord = {
   darts: number;
   accuracyPct: number;
   performanceScore: number;
+  participantId: string | null;
 };
 
 function sanitizeRecord(input: any): TrainingProgramSessionRecord | null {
@@ -57,14 +58,21 @@ function sanitizeRecord(input: any): TrainingProgramSessionRecord | null {
     darts: Math.max(0, Math.round(Number(input.darts) || 0)),
     accuracyPct: Math.max(0, Math.min(100, Number(input.accuracyPct) || 0)),
     performanceScore: Math.max(0, Math.min(100, Number(input.performanceScore) || 0)),
+    participantId: input.participantId ? String(input.participantId) : null,
   };
 }
 
-export function loadTrainingProgramSessions(): TrainingProgramSessionRecord[] {
+export function loadTrainingProgramSessions(participantId?: string | null): TrainingProgramSessionRecord[] {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) || "[]");
     if (!Array.isArray(raw)) return [];
-    return raw.map(sanitizeRecord).filter(Boolean).sort((a, b) => b!.endedAt - a!.endedAt).slice(0, 160) as TrainingProgramSessionRecord[];
+    const pid = participantId == null ? "" : String(participantId);
+    return raw
+      .map(sanitizeRecord)
+      .filter(Boolean)
+      .filter((row) => !pid || row!.participantId === pid)
+      .sort((a, b) => b!.endedAt - a!.endedAt)
+      .slice(0, 160) as TrainingProgramSessionRecord[];
   } catch {
     return [];
   }
@@ -153,6 +161,7 @@ export type TrainingProgramDraft = {
   focusFamily: TrainingExerciseFamily | "balanced";
   nextStepIndex: number;
   completedSteps: TrainingProgramDraftStep[];
+  participantId: string | null;
 };
 
 function sanitizeDraftStep(input: any): TrainingProgramDraftStep | null {
@@ -171,10 +180,12 @@ function sanitizeDraftStep(input: any): TrainingProgramDraftStep | null {
   };
 }
 
-export function loadTrainingProgramDraft(): TrainingProgramDraft | null {
+export function loadTrainingProgramDraft(participantId?: string | null): TrainingProgramDraft | null {
   try {
     const raw = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null");
     if (!raw || typeof raw !== "object") return null;
+    const pid = participantId == null ? "" : String(participantId);
+    if (pid && String(raw.participantId || "") !== pid) return null;
     const exerciseIds = Array.isArray(raw.exerciseIds) ? raw.exerciseIds.map(String).filter(Boolean) : [];
     if (exerciseIds.length < 2) return null;
     const completedSteps = (Array.isArray(raw.completedSteps) ? raw.completedSteps : []).map(sanitizeDraftStep).filter(Boolean) as TrainingProgramDraftStep[];
@@ -188,6 +199,7 @@ export function loadTrainingProgramDraft(): TrainingProgramDraft | null {
       focusFamily: (raw.focusFamily === "balanced" ? "balanced" : String(raw.focusFamily || "precision")) as TrainingExerciseFamily | "balanced",
       nextStepIndex,
       completedSteps,
+      participantId: raw.participantId ? String(raw.participantId) : null,
     };
   } catch {
     return null;
@@ -201,6 +213,7 @@ export function saveTrainingProgramDraft(input: Omit<TrainingProgramDraft, "save
     exerciseIds: input.exerciseIds.map(String).filter(Boolean),
     nextStepIndex: Math.max(0, Math.min(Math.max(0, input.exerciseIds.length - 1), Math.round(Number(input.nextStepIndex) || 0))),
     completedSteps: input.completedSteps.map((row) => sanitizeDraftStep(row)).filter(Boolean) as TrainingProgramDraftStep[],
+    participantId: input.participantId ? String(input.participantId) : null,
   };
   try {
     localStorage.setItem(DRAFT_KEY, JSON.stringify(value));
@@ -209,8 +222,12 @@ export function saveTrainingProgramDraft(input: Omit<TrainingProgramDraft, "save
   return value;
 }
 
-export function clearTrainingProgramDraft() {
+export function clearTrainingProgramDraft(participantId?: string | null) {
   try {
+    if (participantId) {
+      const current = loadTrainingProgramDraft();
+      if (current && current.participantId && current.participantId !== String(participantId)) return;
+    }
     localStorage.removeItem(DRAFT_KEY);
     window.dispatchEvent(new Event("dc-training-program-draft-updated"));
   } catch {}

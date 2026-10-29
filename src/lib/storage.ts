@@ -3398,6 +3398,21 @@ export async function importAll(
     const lsDump = dump.localStorage || {};
     const restoredStatsIndex = markRestoredStatsIndex(pickBestRestorableStatsIndexFromDump(dump));
 
+    // V162 AUTHORITY LOCK: fail BEFORE mutating local state when a replace restore
+    // contains only a derived Stats cache and no canonical History payload.
+    if (historyReplace) {
+      const rawRows = dump?.history?.rows && typeof dump.history.rows === "object" ? dump.history.rows : {};
+      const historyTombstones = dump?.history?.tombstones && typeof dump.history.tombstones === "object"
+        ? Object.keys(dump.history.tombstones).length
+        : 0;
+      const hasCanonicalHistoryV4 = Number(dump?.history?.historySchemaVersion || 0) === 4 || historyTombstones > 0;
+      const hasRealHistoryRows = Object.keys(rawRows).length > 0;
+      const statsOnlyCount = Number(restoredStatsIndex?.totals?.matches || 0);
+      if (!hasRealHistoryRows && !hasCanonicalHistoryV4 && statsOnlyCount > 0) {
+        throw new Error(`Sauvegarde incomplète : ${statsOnlyCount} match(s) présents uniquement dans l'index Stats, sans historique canonique. Restauration annulée avant toute modification locale.`);
+      }
+    }
+
     // 1) restore KV (IDB kv)
     // Les anciens snapshots peuvent contenir des dizaines de copies récursives
     // `store:uidA:uidB:...` et `dc_stats_index_v2:uidA:uidB:...`.
@@ -3523,8 +3538,25 @@ export async function importAll(
       }
       try { if (typeof window !== "undefined") window.dispatchEvent(new Event("dc-history-updated")); } catch {}
     } catch (e) {
-      console.warn("[storage] importAll history restore failed", e);
+      console.error("[storage] importAll history restore failed", e);
+      if (historyReplace) throw e;
     }
+
+    // Derived stats are never restored as data. Force a clean rebuild from the
+    // canonical History that has just been imported.
+    await idbDel(scopedStorageKey("dc_stats_index_v2")).catch(() => {});
+    try {
+      localStorage.removeItem(scopedStorageKey("dc_stats_quick_v1"));
+      localStorage.removeItem(scopedStorageKey("dc-stats-index-v1"));
+      const staleRenderKeys: string[] = [];
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = String(localStorage.key(i) || "");
+        if (key.startsWith("dc_stats_render_profile_v4:")) staleRenderKeys.push(key);
+      }
+      for (const key of staleRenderKeys) localStorage.removeItem(key);
+      localStorage.removeItem("dc_stats_render_cache_v4");
+      localStorage.removeItem("dc_stats_render_cache_v4_legacy");
+    } catch {}
     await yieldIfNeeded(true);
 
     // 4) ✅ NAS BACKUP : restore ligues/tournois créés.

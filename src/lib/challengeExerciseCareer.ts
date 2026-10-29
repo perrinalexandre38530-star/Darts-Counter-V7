@@ -193,9 +193,10 @@ export function buildChallengeExerciseCareer(records:any[],cfg:ChallengeExercise
     objective:String(row.objective),label:objectiveLabel(String(row.objective),cfg),attempts:finite(row.attempts,0),validated:finite(row.validated,0),perfect:finite(row.perfect,0),points:finite(row.points,0),cuts:finite(row.cuts,0),validationRate:row.attempts?Math.round((finite(row.validated,0)/finite(row.attempts,1))*1000)/10:0,
   }));
   const attempted=objectives.filter(row=>row.attempts>0);
-  const strongestObjective=attempted.slice().sort((a,b)=>b.validationRate-a.validationRate||b.validated-a.validated||b.points-a.points)[0]||null;
-  const weakestObjective=attempted.slice().sort((a,b)=>a.validationRate-b.validationRate||b.attempts-a.attempts||a.points-b.points)[0]||null;
-  const dangerObjective=attempted.slice().sort((a,b)=>b.cuts-a.cuts||a.validationRate-b.validationRate||b.attempts-a.attempts)[0]||null;
+  const strengthCandidates=wantedType==='doubles8'?attempted.filter(row=>!row.objective.startsWith('bonus-double:')):attempted;
+  const strongestObjective=strengthCandidates.slice().sort((a,b)=>b.validationRate-a.validationRate||b.validated-a.validated||b.points-a.points)[0]||null;
+  const weakestObjective=strengthCandidates.slice().sort((a,b)=>a.validationRate-b.validationRate||b.attempts-a.attempts||a.points-b.points)[0]||null;
+  const dangerObjective=strengthCandidates.slice().sort((a,b)=>b.cuts-a.cuts||a.validationRate-b.validationRate||b.attempts-a.attempts)[0]||null;
   const groupingSectors:ChallengeCareerSector[]=Object.entries(aggregate.groupingSectors).map(([sector,hits])=>({sector:Number(sector),hits:finite(hits,0)})).filter(row=>row.sector>=1&&row.sector<=20).sort((a,b)=>b.hits-a.hits||b.sector-a.sector);
   const recent=aggregate.recent.sort((a:any,b:any)=>a.playedAt-b.playedAt).slice(-6);
   const trendDelta=recent.length>=2?Math.round((recent[recent.length-1].validationRate-recent[recent.length-2].validationRate)*10)/10:0;

@@ -443,6 +443,7 @@ export default function ClosestCenterPlay(props:any) {
   const [showFinalCamera, setShowFinalCamera] = React.useState(false);
   const [showRoundDetails, setShowRoundDetails] = React.useState(false);
   const [showDecisionDetails, setShowDecisionDetails] = React.useState(false);
+  const [showReviewDetails, setShowReviewDetails] = React.useState(false);
   const [quickPanel, setQuickPanel] = React.useState<null | "players" | "camera" | "info">(null);
   const [status, setStatus] = React.useState(isManual
     ? (pointsMode === "petanque" ? "Saisie rapide : à la fin de la mène, choisis seulement l’équipe qui marque et ses fléchettes marquantes." : "Fin de manche : renseigne uniquement les fléchettes qui scorent.")
@@ -2002,24 +2003,39 @@ export default function ClosestCenterPlay(props:any) {
           </button> : null}
         </section> : null}
 
-        {!isManual && phase === "play" && !cameraPointNeedsDecision ? <section style={card}>
-          <h3 style={h3}>{pointsMode==="petanque"?`MÈNE ${round}`:`MANCHE ${round}/${cfg.rounds}`} · {current?.name}</h3>
-          <div style={{fontSize:12,color:"#b9c7d4",lineHeight:1.5}}>{turnArmed?`Référence pré-volée verrouillée. Lance maintenant exactement ${expectedTurnDarts} fléchette${expectedTurnDarts>1?"s":""}, ne touche ni à la cible ni au téléphone, puis analyse.`:"Avant de lancer, l’IA vérifie la perspective, la stabilité et la netteté puis capture une référence fraîche. Cette étape évite qu’un micro-déplacement entre deux joueurs fausse les millimètres."}</div>
-          {!turnArmed ? <button style={{...btn,width:"100%",marginTop:10,borderColor:"#8fffc2",background:"rgba(57,217,138,.12)"}} onClick={runPreflightCheck}>🛡️ {pointsMode==="petanque"?"CONTRÔLE AVANT LANCER":"CONTRÔLE AVANT VOLÉE"}</button> : <button style={{...btn,width:"100%",marginTop:10}} onClick={analyze}>🧠 {expectedTurnDarts===1?"ANALYSER LA FLÉCHETTE":`ANALYSER LES ${expectedTurnDarts} FLÉCHETTES`}</button>}
-          {pointsMode==="petanque" ? <button style={{...miniBtn,width:"100%",marginTop:7,minHeight:34,borderColor:"rgba(255,189,117,.35)",color:"#ffd2a5"}} onClick={recordCameraMiss}>↗ MISS / HORS CIBLE / FLÉCHETTE TOMBÉE</button> : null}
+        {!isManual && phase === "play" && !cameraPointNeedsDecision ? <section style={{...card,padding:landscape?10:9}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+            <div style={{minWidth:0}}><div style={{fontSize:8,color:"#7f919e",fontWeight:1000,letterSpacing:1}}>CAMÉRA · {pointsMode==="petanque"?`MÈNE ${round}`:`MANCHE ${round}/${cfg.rounds}`}</div><b style={{display:"block",fontSize:13,marginTop:2}}>{current?.name}</b></div>
+            <span style={{fontSize:8,fontWeight:1000,color:turnArmed?"#8fffc2":"#9fb0bc",padding:"4px 7px",borderRadius:999,border:`1px solid ${turnArmed?"rgba(143,255,194,.28)":"rgba(255,255,255,.1)"}`,background:turnArmed?"rgba(57,217,138,.08)":"rgba(255,255,255,.025)"}}>{turnArmed?"PRÊT À ANALYSER":"À SÉCURISER"}</span>
+          </div>
+          <div style={{fontSize:10,color:"#9fb0bc",lineHeight:1.35,marginTop:6}}>{turnArmed?`Lance ${expectedTurnDarts===1?"la fléchette":`les ${expectedTurnDarts} fléchettes`} puis analyse.`:"Sécurise la vue avant le lancer."}</div>
+          {!turnArmed ? <button style={{...btn,width:"100%",marginTop:8,borderColor:"#8fffc2",background:"rgba(57,217,138,.12)",display:"flex",alignItems:"center",justifyContent:"center",gap:7}} onClick={runPreflightCheck}><PetanqueIcon name="check" size={17}/><span>{pointsMode==="petanque"?"SÉCURISER LE LANCER":"SÉCURISER LA VOLÉE"}</span></button> : <button style={{...btn,width:"100%",marginTop:8,display:"flex",alignItems:"center",justifyContent:"center",gap:7}} onClick={analyze}><PetanqueIcon name="camera" size={17}/><span>{expectedTurnDarts===1?"ANALYSER LA FLÉCHETTE":`ANALYSER LES ${expectedTurnDarts} FLÉCHETTES`}</span></button>}
+          {pointsMode==="petanque" ? <button style={{...miniBtn,width:"100%",marginTop:6,minHeight:31,borderColor:"rgba(255,189,117,.28)",color:"#ffd2a5"}} onClick={recordCameraMiss}>MISS / HORS CIBLE / TOMBÉE</button> : null}
         </section> : null}
 
-        {!isManual && phase === "review" ? <section style={card}>
-          <h3 style={h3}>CONTRÔLE IA · {current?.name}</h3>
-          <div style={{fontSize:11,color:"#aab9c6",lineHeight:1.5,marginBottom:8}}>Aucun point n’est encore enregistré. Vérifie les propriétaires et la précision. Une seconde lecture indépendante devient obligatoire dès qu’une pointe dépasse le seuil d’incertitude. {cameraPrefs.strictDartIdentification?"L’identification stricte bloque aussi toute attribution ambiguë tant qu’elle n’est pas confirmée.":""}</div>
+        {!isManual && phase === "review" ? <section style={{...card,padding:landscape?10:9}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:7}}>
+            <div><div style={{fontSize:8,color:"#7f919e",fontWeight:1000,letterSpacing:1}}>CONTRÔLE IA</div><b style={{fontSize:13}}>{current?.name}</b></div>
+            <button type="button" onClick={()=>setShowReviewDetails(v=>!v)} style={{...miniBtn,minHeight:28,padding:"4px 8px",fontSize:8}}>{showReviewDetails?"MASQUER":"DÉTAILS"}</button>
+          </div>
           {pendingImpacts.map((impact:any, i:number) => {
             const p = players.find((x:any) => String(x.id) === String(impact.playerId));
-            return <div key={impact.id} style={{padding:"9px 0",borderBottom:"1px solid rgba(255,255,255,.07)"}}>
-              <div style={{display:"grid",gridTemplateColumns:"28px 1fr auto",gap:8,alignItems:"center"}}><b>#{i+1}</b><div><b>{p?.name || "Joueur ?"}</b><div style={{fontSize:10,color:impact.needsReview||impact.precisionTieRisk?"#ffbd65":"#9fb0bf"}}>identité attendue {Math.round(impact.identityConfidence*100)} % · mesure {Math.round(impact.confidence*100)} % · frames {Math.round((impact.frameAgreement||1)*100)} %{impact.rereadAgreement!=null?` · relecture ${Math.round(impact.rereadAgreement*100)} %`:""}{impact.precisionTieRisk?" · ⚠ départage serré":""}{impact.identityMismatch?" · ⚠ signature différente du joueur attendu":""}</div>{impact.identityMismatch?<div style={{fontSize:10,color:"#ff8b98",marginTop:3}}>L’IA pense reconnaître une autre fléchette. Vérifie le joueur avant validation.</div>:null}</div><b style={{color:ACCENT}}>{impact.distanceMm.toFixed(1)} ± {impact.uncertaintyMm.toFixed(1)} mm</b></div>
-              {impact.needsReview ? <button onClick={() => cyclePendingOwner(impact.id)} style={{...miniBtn,marginTop:6}}>⚠️ CORRIGER LE JOUEUR →</button> : null}
+            const warning=!!(impact.needsReview||impact.precisionTieRisk||impact.identityMismatch);
+            return <div key={impact.id} style={{padding:"7px 8px",marginTop:5,borderRadius:11,border:`1px solid ${warning?"rgba(255,189,101,.28)":"rgba(255,255,255,.08)"}`,background:warning?"rgba(255,189,101,.045)":"rgba(255,255,255,.025)"}}>
+              <div style={{display:"grid",gridTemplateColumns:"26px minmax(0,1fr) auto",gap:7,alignItems:"center"}}>
+                <span style={{width:24,height:24,borderRadius:999,display:"grid",placeItems:"center",fontSize:9,fontWeight:1000,background:warning?"rgba(255,189,101,.12)":"rgba(68,231,255,.08)",color:warning?"#ffcf8a":ACCENT}}>#{i+1}</span>
+                <div style={{minWidth:0}}><b style={{fontSize:11}}>{p?.name || "Joueur ?"}</b><div style={{fontSize:8,color:warning?"#ffbd65":"#8395a2",marginTop:1}}>{impact.identityMismatch?"IDENTITÉ À CONFIRMER":impact.precisionTieRisk?"MESURE SERRÉE":impact.needsReview?"À CONTRÔLER":"MESURE VALIDABLE"}</div></div>
+                <b style={{color:ACCENT,fontSize:12,whiteSpace:"nowrap"}}>{impact.distanceMm.toFixed(1)} ± {impact.uncertaintyMm.toFixed(1)} mm</b>
+              </div>
+              {showReviewDetails ? <div style={{fontSize:8,color:"#91a3af",lineHeight:1.45,marginTop:5,paddingTop:5,borderTop:"1px solid rgba(255,255,255,.06)"}}>Identité {Math.round(impact.identityConfidence*100)} % · mesure {Math.round(impact.confidence*100)} % · frames {Math.round((impact.frameAgreement||1)*100)} %{impact.rereadAgreement!=null?` · relecture ${Math.round(impact.rereadAgreement*100)} %`:""}{impact.identityMismatch?" · signature différente du joueur attendu":""}</div> : null}
+              {impact.needsReview ? <button onClick={() => cyclePendingOwner(impact.id)} style={{...miniBtn,marginTop:6,minHeight:29,borderColor:"rgba(255,189,101,.24)",color:"#ffd29a"}}>CORRIGER LE JOUEUR</button> : null}
             </div>;
           })}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}><button style={btn} onClick={precisionReread}>🔬 RELECTURE PRÉCISION{precisionRereads ? ` (${precisionRereads})` : ""}</button><button style={btn} onClick={reanalyze}>↻ RÉANALYSER</button><button style={{...btn,background:`${ACCENT}2b`}} onClick={confirmAnalysis}>✓ VALIDER L’ANALYSE</button></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginTop:8}}>
+            <button style={{...miniBtn,minHeight:34,display:"flex",alignItems:"center",justifyContent:"center",gap:6}} onClick={precisionReread}><PetanqueIcon name="target" size={15}/><span>RELECTURE{precisionRereads ? ` · ${precisionRereads}` : ""}</span></button>
+            <button style={{...miniBtn,minHeight:34,display:"flex",alignItems:"center",justifyContent:"center",gap:6}} onClick={reanalyze}><PetanqueIcon name="undo" size={15}/><span>RÉANALYSER</span></button>
+            <button style={{...btn,gridColumn:"1 / -1",minHeight:38,background:`${ACCENT}2b`,display:"flex",alignItems:"center",justifyContent:"center",gap:7}} onClick={confirmAnalysis}><PetanqueIcon name="check" size={17}/><span>VALIDER L’ANALYSE</span></button>
+          </div>
         </section> : null}
 
         {phase === "finished" ? <>

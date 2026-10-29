@@ -5397,10 +5397,13 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
     if (t === 'half-it' || key.startsWith('halfit-')) return 'HALF-IT';
     if (t === 'sequence' || key.startsWith('sequence-')) return 'SÉQUENCE';
     if (t === 'grouping' || key.startsWith('grouping-')) return 'GROUPEMENT';
+    if (t === 'doubles8' || key.startsWith('doubles8-')) return key.startsWith('doubles8-custom-') ? 'DOUBLES PERSO' : '8 DOUBLES';
     return 'CIBLE FIXE';
   };
   const objectiveName = (value: any) => {
     const key = String(value || '');
+    if (key.startsWith('bonus-double:')) return `BONUS D${Math.max(1, Math.min(20, N(key.split(':')[1], 20)))}`;
+    if (key.startsWith('double:')) return `D${Math.max(1, Math.min(20, N(key.split(':')[1], 20)))}`;
     if (key === 'any-double') return 'DOUBLE LIBRE';
     if (key === 'any-triple') return 'TRIPLE LIBRE';
     if (key === 'bull' || key === 'bull25' || key === 'bull50') return 'BULL';
@@ -5425,6 +5428,12 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
     }
     if (type === 'sequence' || key.startsWith('sequence-')) {
       return `SÉQUENCE · ${key.includes('sequence-hits-') ? 'POINTS' : 'VALEUR RÉELLE'}`;
+    }
+    if (type === 'doubles8' || key.startsWith('doubles8-')) {
+      const custom = key.match(/^doubles8-custom-([0-9.]+)-bonus-d(\d+)$/i);
+      if (custom) return `DOUBLES PERSO · ${custom[1].split('.').filter(Boolean).map((value: string) => `D${value}`).join(' · ')} · BONUS D${custom[2]}`;
+      const bonus = key.match(/bonus-d(\d+)$/i);
+      return `8 DOUBLES${bonus ? ` · BONUS D${bonus[1]}` : ''}`;
     }
     return `CIBLE ${challengeTargetLabel(option?.target)} · ${challengeRuleLabel(option?.rule)}`;
   };
@@ -5529,6 +5538,12 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
     let groupingDoublets = 0;
     let groupingTriplets = 0;
     let groupingPoints = 0;
+    let doublesRegularHits = 0;
+    let doublesRegularDarts = 0;
+    let doublesRegularScore = 0;
+    let doublesBonusHits = 0;
+    let doublesBonusDarts = 0;
+    let doublesBonusScore = 0;
     for (const row of exerciseRows) {
       const stats = row.exerciseStats || {};
       const validation = N(stats.validationRate);
@@ -5541,6 +5556,12 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
       groupingDoublets += N(stats.groupingDoublets);
       groupingTriplets += N(stats.groupingTriplets);
       groupingPoints += N(stats.groupingPoints);
+      doublesRegularHits += N(stats.doublesRegularHits);
+      doublesRegularDarts += N(stats.doublesRegularDarts);
+      doublesRegularScore += N(stats.doublesRegularScore);
+      doublesBonusHits += N(stats.doublesBonusHits);
+      doublesBonusDarts += N(stats.doublesBonusDarts);
+      doublesBonusScore += N(stats.doublesBonusScore);
       for (const [objective, raw] of Object.entries(stats.objectiveStats || {})) {
         const src: any = raw || {};
         const dst = objectiveMap.get(objective) || { objective, attempts: 0, validated: 0, perfect: 0, points: 0, cuts: 0 };
@@ -5569,9 +5590,10 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
       label: objectiveName(item.objective),
       validationRate: item.attempts ? (item.validated / item.attempts) * 100 : 0,
     })).filter((item: any) => item.attempts > 0);
-    const strongest = objectives.slice().sort((a: any, b: any) => b.validationRate - a.validationRate || b.validated - a.validated || b.points - a.points)[0] || null;
-    const weakest = objectives.slice().sort((a: any, b: any) => a.validationRate - b.validationRate || b.attempts - a.attempts || a.points - b.points)[0] || null;
-    const danger = objectives.slice().sort((a: any, b: any) => b.cuts - a.cuts || a.validationRate - b.validationRate || b.attempts - a.attempts)[0] || null;
+    const objectiveCandidates = objectives.filter((item: any) => !String(item.objective || '').startsWith('bonus-double:'));
+    const strongest = objectiveCandidates.slice().sort((a: any, b: any) => b.validationRate - a.validationRate || b.validated - a.validated || b.points - a.points)[0] || null;
+    const weakest = objectiveCandidates.slice().sort((a: any, b: any) => a.validationRate - b.validationRate || b.attempts - a.attempts || a.points - b.points)[0] || null;
+    const danger = objectiveCandidates.slice().sort((a: any, b: any) => b.cuts - a.cuts || a.validationRate - b.validationRate || b.attempts - a.attempts)[0] || null;
     const topSector = [...sectorHits.entries()].map(([sector, hits]) => ({ sector, hits })).sort((a, b) => b.hits - a.hits || b.sector - a.sector)[0] || null;
     const recent = exerciseRows.slice(-8).map((row: any) => ({ at: row.at, score: row.score, validationRate: N(row.exerciseStats?.validationRate) }));
     const trendDelta = recent.length >= 2 ? recent[recent.length - 1].validationRate - recent[recent.length - 2].validationRate : 0;
@@ -5587,6 +5609,12 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
       groupingDoublets,
       groupingTriplets,
       groupingPoints,
+      doublesRegularHits,
+      doublesRegularDarts,
+      doublesRegularScore,
+      doublesBonusHits,
+      doublesBonusDarts,
+      doublesBonusScore,
       strongest,
       weakest,
       danger,
@@ -5663,7 +5691,7 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
             >{option.exerciseType === 'classic' ? '🎯' : '⚡'} {challengeConfigLabel(option)} · 🔁 {option.visits} <small style={{ opacity: .65 }}>({option.count})</small></button>;
           })}
         </div>
-        {activeConfig && <div style={{ marginTop: 5, fontSize: 8, color: T.text70, lineHeight: 1.3 }}>Affichage actuel : {challengeConfigLabel(activeConfig)} · {activeConfig.visits} tours.</div>}
+        {activeConfig && <div style={{ marginTop: 5, fontSize: 8, color: T.text70, lineHeight: 1.3 }}>Affichage actuel : {challengeConfigLabel(activeConfig)} · {activeConfig.visits} {activeConfig.exerciseType === 'doubles8' ? 'volées' : 'tours'}.</div>}
       </div>}
 
       {exercisePortfolio.length > 0 && <div style={{ ...box, marginBottom: 9, padding: 12, borderColor: 'rgba(255,255,255,.12)', background: 'linear-gradient(180deg,rgba(20,23,31,.84),rgba(5,8,13,.92))' }}>
@@ -5706,6 +5734,11 @@ function ChallengeStatsPanel({ records, playerId, playerName }: { records: any[]
           <div style={{ borderRadius: 10, background: 'rgba(255,255,255,.035)', padding: 8 }}><div style={statLabel}>SECTEUR FORT</div><div style={{ ...statValue, color: '#20d995' }}>{exerciseCareer.topSector ? exerciseCareer.topSector.sector : '—'}</div><small style={{ opacity: .6 }}>{exerciseCareer.topSector ? `${exerciseCareer.topSector.hits} hits groupés` : 'Aucun groupement'}</small></div>
           <div style={{ borderRadius: 10, background: 'rgba(255,255,255,.035)', padding: 8 }}><div style={statLabel}>TRIPLETS CUMULÉS</div><div style={{ ...statValue, color: '#20d995' }}>{exerciseCareer.groupingTriplets}</div><small style={{ opacity: .6 }}>{exerciseCareer.groupingPoints} pts groupés</small></div>
           <div style={{ borderRadius: 10, background: 'rgba(255,255,255,.035)', padding: 8 }}><div style={statLabel}>DOUBLETS CUMULÉS</div><div style={{ ...statValue, color: '#20d995' }}>{exerciseCareer.groupingDoublets}</div></div>
+        </div> : exerciseCareer.type === 'doubles8' ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(135px,100%),1fr))', gap: 6, marginTop: 7 }}>
+          <div style={{ borderRadius: 10, background: 'rgba(32,217,149,.07)', border: '1px solid rgba(32,217,149,.16)', padding: 8 }}><div style={statLabel}>DOUBLE HISTORIQUE FORT</div><b style={{ display: 'block', marginTop: 3, color: '#20d995' }}>{exerciseCareer.strongest?.label || '—'}</b><small style={{ opacity: .62 }}>{exerciseCareer.strongest ? `${exerciseCareer.strongest.validationRate.toFixed(1)}% · ${exerciseCareer.strongest.validated}/${exerciseCareer.strongest.attempts} volées` : 'Aucune donnée'}</small></div>
+          <div style={{ borderRadius: 10, background: 'rgba(255,98,104,.06)', border: '1px solid rgba(255,98,104,.15)', padding: 8 }}><div style={statLabel}>DOUBLE À TRAVAILLER</div><b style={{ display: 'block', marginTop: 3, color: '#ff7a80' }}>{exerciseCareer.weakest?.label || '—'}</b><small style={{ opacity: .62 }}>{exerciseCareer.weakest ? `${exerciseCareer.weakest.validationRate.toFixed(1)}% · ${exerciseCareer.weakest.validated}/${exerciseCareer.weakest.attempts} volées` : 'Aucune donnée'}</small></div>
+          <div style={{ borderRadius: 10, background: 'rgba(65,185,255,.06)', border: '1px solid rgba(65,185,255,.14)', padding: 8 }}><div style={statLabel}>PHASE PRINCIPALE</div><b style={{ display: 'block', marginTop: 3, color: '#41b9ff' }}>{exerciseCareer.doublesRegularScore} pts</b><small style={{ opacity: .62 }}>{exerciseCareer.doublesRegularHits}/{exerciseCareer.doublesRegularDarts} touches · {exerciseCareer.doublesRegularDarts ? (exerciseCareer.doublesRegularHits / exerciseCareer.doublesRegularDarts * 100).toFixed(1) : '0.0'}%</small></div>
+          <div style={{ borderRadius: 10, background: 'rgba(255,176,28,.06)', border: '1px solid rgba(255,176,28,.16)', padding: 8 }}><div style={statLabel}>BONUS CUMULÉ</div><b style={{ display: 'block', marginTop: 3, color: '#ffb01c' }}>{exerciseCareer.doublesBonusScore} pts</b><small style={{ opacity: .62 }}>{exerciseCareer.doublesBonusHits}/{exerciseCareer.doublesBonusDarts} touches bonus</small></div>
         </div> : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(145px,100%),1fr))', gap: 6, marginTop: 7 }}>
           <div style={{ borderRadius: 10, background: 'rgba(32,217,149,.07)', border: '1px solid rgba(32,217,149,.16)', padding: 8 }}><div style={statLabel}>OBJECTIF HISTORIQUE FORT</div><b style={{ display: 'block', marginTop: 3, color: '#20d995' }}>{exerciseCareer.strongest?.label || '—'}</b><small style={{ opacity: .62 }}>{exerciseCareer.strongest ? `${exerciseCareer.strongest.validationRate.toFixed(1)}% · ${exerciseCareer.strongest.validated}/${exerciseCareer.strongest.attempts}` : 'Aucune donnée'}</small></div>
           <div style={{ borderRadius: 10, background: 'rgba(255,98,104,.06)', border: '1px solid rgba(255,98,104,.15)', padding: 8 }}><div style={statLabel}>{exerciseCareer.type === 'half-it' ? 'ZONE LA PLUS DANGEREUSE' : 'OBJECTIF À TRAVAILLER'}</div><b style={{ display: 'block', marginTop: 3, color: '#ff7a80' }}>{(exerciseCareer.type === 'half-it' ? exerciseCareer.danger : exerciseCareer.weakest)?.label || '—'}</b><small style={{ opacity: .62 }}>{exerciseCareer.type === 'half-it' && exerciseCareer.danger ? `${exerciseCareer.danger.cuts} × ÷2 · ${exerciseCareer.danger.validationRate.toFixed(1)}%` : exerciseCareer.weakest ? `${exerciseCareer.weakest.validationRate.toFixed(1)}% · ${exerciseCareer.weakest.validated}/${exerciseCareer.weakest.attempts}` : 'Aucune donnée'}</small></div>
@@ -6399,13 +6432,11 @@ const combinedHistory = React.useMemo(() => {
   const authoritativeIds = new Set(
     api.map((r: any) => String(r?.id ?? r?.matchId ?? r?.resumeId ?? "")).filter(Boolean)
   );
-  const source = api.length > 0
-    ? [
-        ...api,
-        ...mem.filter((r: any) => authoritativeIds.has(String(r?.id ?? r?.matchId ?? r?.resumeId ?? ""))),
-        ...store.filter((r: any) => authoritativeIds.has(String(r?.id ?? r?.matchId ?? r?.resumeId ?? ""))),
-      ]
-    : [...mem, ...store];
+  const source = [
+    ...api,
+    ...mem.filter((r: any) => authoritativeIds.has(String(r?.id ?? r?.matchId ?? r?.resumeId ?? ""))),
+    ...store.filter((r: any) => authoritativeIds.has(String(r?.id ?? r?.matchId ?? r?.resumeId ?? ""))),
+  ];
   const sourceWithLinked = [...source, ...linked].filter((row: any) => !isQuickPartyRecord(row));
 
   const byId = new Map<string, SavedMatch>();
@@ -7246,18 +7277,6 @@ const computedDashboard = React.useMemo(() => {
       Number((base as any)?.avg3Overall || 0) > 0 ||
       Number((base as any)?.bestVisit || 0) > 0 ||
       Object.values((base as any)?.sessionsByMode || {}).some((v: any) => Number(v || 0) > 0);
-
-    if (!hasBaseData && quick && normalizedHistoryLoaded && nmEffective.length === 0) {
-      return buildDashboardForPlayer(selectedPlayer as any, records as any, {
-        avg3: (quick as any).avg3,
-        avg3Overall: (quick as any).avg3,
-        bestVisit: (quick as any).bestVisit,
-        bestCheckout: (quick as any).bestCheckout,
-        winRatePct: (quick as any).winRatePct,
-        distribution: (quick as any).buckets,
-        buckets: (quick as any).buckets,
-      } as any) as any;
-    }
 
     return base;
   } catch {
