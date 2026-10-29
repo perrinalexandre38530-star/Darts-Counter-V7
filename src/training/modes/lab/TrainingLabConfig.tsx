@@ -476,12 +476,21 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                   <div style={{ fontSize: 7.3, fontWeight: 950, letterSpacing: .8, color: dailyChallenge.completed ? "#8cffcb" : "#ffd86b" }}>{dailyChallenge.completed ? "✓ DÉFI VALIDÉ" : "★ DÉFI DU JOUR"}</div>
                   <div style={{ marginTop: 3, fontSize: 11.5, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dailyChallenge.headline}</div>
                   <div style={{ marginTop: 3, fontSize: 7.8, opacity: .55, lineHeight: 1.35 }}>{dailyChallenge.body}</div>
+                  <div style={{ marginTop: 5, display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 6px", borderRadius: 999, background: dailyChallenge.rotated ? "rgba(185,156,255,.08)" : "rgba(39,220,255,.07)", border: dailyChallenge.rotated ? "1px solid rgba(185,156,255,.16)" : "1px solid rgba(39,220,255,.14)", fontSize: 6.7, fontWeight: 900, opacity: .78 }}>{dailyChallenge.rotated ? "↻" : "◎"} {dailyChallenge.rotationLabel}</div>
                 </div>
-                <div style={{ flex: "0 0 auto", textAlign: "right" }}>
+                <div style={{ flex: "0 0 auto", textAlign: "right", minWidth: 66 }}>
                   <div style={{ fontSize: 7, opacity: .5 }}>SÉRIE</div>
                   <div style={{ fontSize: 13, fontWeight: 950 }}>{dailyChallenge.streakDays} 🔥</div>
+                  <div style={{ marginTop: 5, padding: "4px 6px", borderRadius: 8, background: dailyChallenge.completed ? "rgba(255,216,107,.08)" : "rgba(255,255,255,.025)", border: dailyChallenge.completed ? "1px solid rgba(255,216,107,.16)" : "1px solid rgba(255,255,255,.05)" }}>
+                    <div style={{ fontSize: 6.2, opacity: .48 }}>MÉDAILLE</div>
+                    <div style={{ marginTop: 1, fontSize: 7.6, fontWeight: 950, color: dailyChallenge.completed ? "#ffd86b" : "inherit" }}>{dailyChallenge.reward.icon} {dailyChallenge.reward.label}</div>
+                  </div>
                 </div>
               </div>
+              {(dailyChallenge.completed || dailyChallenge.bestScore > 0) && <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "7px 9px", borderRadius: 10, background: "rgba(255,216,107,.035)", border: "1px solid rgba(255,216,107,.08)" }}>
+                <div style={{ fontSize: 7.2, fontWeight: 900, opacity: .62 }}>MEILLEUR DU JOUR <strong style={{ color: "inherit", opacity: 1 }}>{Math.round(dailyChallenge.bestScore)}/100</strong></div>
+                <div style={{ fontSize: 7.2, fontWeight: 950, color: dailyChallenge.reward.nextScore ? "#ffd86b" : "#8cffcb" }}>{dailyChallenge.reward.nextScore ? `${dailyChallenge.reward.nextLabel} À ${dailyChallenge.reward.nextScore}` : "DIAMANT DÉCROCHÉ"}</div>
+              </div>}
               <div style={{ marginTop: 8, padding: "8px 9px", borderRadius: 11, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.055)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
                   <div style={{ fontSize: 7.2, fontWeight: 900, opacity: .62 }}>PROCHAIN TROPHÉE</div>
