@@ -50,6 +50,7 @@ type SkillProgressPanel = "mastery" | "badges" | "records";
 type CoachPanel = "brief" | "live" | "effectiveness" | "weeks";
 type HistoryPanel = "plans" | "exercises";
 type TrainingViewMode = "essential" | "complete";
+type TodayPanel = "plan" | "challenge" | "assessment";
 
 function HubGlyph({ name, size = 17 }: { name: string; size?: number }) {
   const common = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
@@ -184,6 +185,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
   const [skillProgressPanel, setSkillProgressPanel] = React.useState<SkillProgressPanel>("mastery");
   const [coachPanel, setCoachPanel] = React.useState<CoachPanel>("brief");
   const [historyPanel, setHistoryPanel] = React.useState<HistoryPanel>("plans");
+  const [todayPanel, setTodayPanel] = React.useState<TodayPanel>("plan");
   const [viewMode, setViewMode] = React.useState<TrainingViewMode>(() => {
     try { return window.localStorage.getItem("dc_training_center_view_mode") === "complete" ? "complete" : "essential"; } catch { return "essential"; }
   });
@@ -206,6 +208,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
     try { window.localStorage.setItem("dc_training_center_view_mode", viewMode); } catch {}
     if (viewMode === "essential") {
       setProgramPanel("today");
+      setTodayPanel("plan");
       setExercisePanel("path");
       setDiagnosisPanel("overview");
       setProgressPanel("overview");
@@ -387,6 +390,11 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
     { id: "plans", label: "PLANS", icon: "plans" },
     { id: "exercises", label: "EXERCICES", icon: "exercises" },
   ];
+  const todayPanels: Array<{ id: TodayPanel; label: string; icon: string; status: string }> = [
+    { id: "plan", label: "PLAN DU JOUR", icon: "today", status: `${dailyPlan.durationMin} MIN` },
+    { id: "challenge", label: "DÉFI", icon: "badges", status: dailyChallenge.completed ? "VALIDÉ" : `${dailyChallenge.requiredScore}/100` },
+    { id: "assessment", label: "BILAN", icon: "diagnosis", status: assessment.due ? "À FAIRE" : assessment.available ? `${Math.round(assessment.overallScore)}/100` : "NOUVEAU" },
+  ];
 
   return (
     <TrainingShell
@@ -496,7 +504,8 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
             {viewMode === "complete" && <CompactIconNav items={programPanels.map((item) => ({ ...item, status: item.id === "today" ? `${dailyPlan.durationMin} MIN` : item.id === "week" ? `${weeklyPlan.completed}/${weeklyPlan.target}` : item.id === "cycle" ? `${cycleCoach.completedSessions}/${cycleCoach.cycleSize}` : `${programs.length} PLANS` }))} activeId={programPanel} onChange={(id) => setProgramPanel(id as ProgramPanel)} stickyTop={48} />}
 
             {programPanel === "today" && <>
-            <div style={{ marginTop: 8, padding: 11, borderRadius: 15, border: dailyChallenge.completed ? "1px solid rgba(80,255,174,.26)" : "1px solid rgba(255,216,107,.24)", background: dailyChallenge.completed ? "linear-gradient(135deg,rgba(80,255,174,.075),rgba(39,220,255,.025))" : "linear-gradient(135deg,rgba(255,216,107,.07),rgba(140,90,255,.025))" }}>
+            {viewMode === "essential" && <CompactIconNav items={todayPanels} activeId={todayPanel} onChange={(id) => setTodayPanel(id as TodayPanel)} tone="gold" />}
+            {(viewMode === "complete" || todayPanel === "challenge") && <div style={{ marginTop: 8, padding: 11, borderRadius: 15, border: dailyChallenge.completed ? "1px solid rgba(80,255,174,.26)" : "1px solid rgba(255,216,107,.24)", background: dailyChallenge.completed ? "linear-gradient(135deg,rgba(80,255,174,.075),rgba(39,220,255,.025))" : "linear-gradient(135deg,rgba(255,216,107,.07),rgba(140,90,255,.025))" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 7.3, fontWeight: 950, letterSpacing: .8, color: dailyChallenge.completed ? "#8cffcb" : "#ffd86b" }}>{dailyChallenge.completed ? "✓ DÉFI VALIDÉ" : "★ DÉFI DU JOUR"}</div>
@@ -530,8 +539,8 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 </div>
               </div>
               {!dailyChallenge.completed && <button type="button" disabled={!resolved.length} onClick={startDailyChallenge} style={{ width: "100%", marginTop: 8, padding: "9px 10px", borderRadius: 10, border: "1px solid rgba(255,216,107,.30)", background: "rgba(255,216,107,.08)", color: "inherit", fontSize: 8.3, fontWeight: 950, cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .45 }}>RELEVER LE DÉFI · {dailyChallenge.exerciseTitle}</button>}
-            </div>
-            <div style={{ marginTop: 8, padding: 14, borderRadius: 17, border: actionCoach.tone === "amber" ? "1px solid rgba(255,184,76,.34)" : actionCoach.tone === "green" ? "1px solid rgba(80,255,174,.30)" : actionCoach.tone === "violet" ? "1px solid rgba(185,156,255,.32)" : "1px solid rgba(39,220,255,.32)", background: actionCoach.tone === "amber" ? "linear-gradient(135deg,rgba(255,184,76,.10),rgba(140,90,255,.035))" : actionCoach.tone === "green" ? "linear-gradient(135deg,rgba(80,255,174,.08),rgba(39,220,255,.035))" : actionCoach.tone === "violet" ? "linear-gradient(135deg,rgba(140,90,255,.10),rgba(39,220,255,.035))" : "linear-gradient(135deg,rgba(39,220,255,.11),rgba(140,90,255,.045))" }}>
+            </div>}
+            {(viewMode === "complete" || todayPanel === "plan") && <div style={{ marginTop: 8, padding: 14, borderRadius: 17, border: actionCoach.tone === "amber" ? "1px solid rgba(255,184,76,.34)" : actionCoach.tone === "green" ? "1px solid rgba(80,255,174,.30)" : actionCoach.tone === "violet" ? "1px solid rgba(185,156,255,.32)" : "1px solid rgba(39,220,255,.32)", background: actionCoach.tone === "amber" ? "linear-gradient(135deg,rgba(255,184,76,.10),rgba(140,90,255,.035))" : actionCoach.tone === "green" ? "linear-gradient(135deg,rgba(80,255,174,.08),rgba(39,220,255,.035))" : actionCoach.tone === "violet" ? "linear-gradient(135deg,rgba(140,90,255,.10),rgba(39,220,255,.035))" : "linear-gradient(135deg,rgba(39,220,255,.11),rgba(140,90,255,.045))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
                 <div style={{ minWidth: 0, flex: "1 1 300px" }}>
                   <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1.1, color: actionCoach.tone === "amber" ? "#ffd86b" : actionCoach.tone === "green" ? "#8cffcb" : actionCoach.tone === "violet" ? "#b99cff" : "#27dcff" }}>{actionCoach.eyebrow}</div>
@@ -568,8 +577,8 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                   </div>)}
                 </div>
               </div>
-            </div>
-            <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: assessment.due ? "1px solid rgba(255,216,107,.30)" : "1px solid rgba(185,156,255,.20)", background: assessment.due ? "linear-gradient(135deg,rgba(255,216,107,.085),rgba(140,90,255,.035))" : "linear-gradient(135deg,rgba(140,90,255,.065),rgba(39,220,255,.035))" }}>
+            </div>}
+            {(viewMode === "complete" || todayPanel === "assessment") && <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: assessment.due ? "1px solid rgba(255,216,107,.30)" : "1px solid rgba(185,156,255,.20)", background: assessment.due ? "linear-gradient(135deg,rgba(255,216,107,.085),rgba(140,90,255,.035))" : "linear-gradient(135deg,rgba(140,90,255,.065),rgba(39,220,255,.035))" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
                 <div style={{ minWidth: 0, flex: "1 1 260px" }}>
                   <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: assessment.due ? "#ffd86b" : "#b99cff" }}>BILAN DE NIVEAU • 6 COMPÉTENCES</div>
@@ -587,7 +596,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 </div>
                 <div style={{ marginTop: 7, fontSize: 7.8, opacity: .5 }}>{new Date(assessment.endedAt).toLocaleDateString()} • {assessment.sessionsSinceAssessment} séance{assessment.sessionsSinceAssessment > 1 ? "s" : ""} depuis le bilan{assessment.delta == null ? "" : ` • évolution ${assessment.delta >= 0 ? "+" : ""}${Math.round(assessment.delta)} pts`}</div>
               </>}
-            </div>
+            </div>}
             </>}
 
             {programPanel === "week" && <>
