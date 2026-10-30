@@ -113,12 +113,49 @@ function rowKey(row: any, fallback: string) {
   return `${fallback}:${competition}|${title}|${winner}|${loser}|${players}|${date}`;
 }
 
+
+function newsTokens(value: unknown) {
+  const stop = new Set(["the","a","an","and","or","of","to","in","on","for","with","at","from","is","are","was","were","be","this","that","as","by","de","du","des","la","le","les","un","une","et","en","sur","pour","avec","dans","au","aux","darts","dart","football","soccer","live","result","results","news"]);
+  return normalizedKey(value).split(/\s+/).filter((token) => token.length >= 3 && !stop.has(token));
+}
+
+function newsSimilarity(a: any, b: any) {
+  const aTokens = newsTokens(a?.title);
+  const bTokens = newsTokens(b?.title);
+  if (!aTokens.length || !bTokens.length) return 0;
+  const aa = new Set(aTokens);
+  const bb = new Set(bTokens);
+  let common = 0;
+  aa.forEach((token) => { if (bb.has(token)) common += 1; });
+  return common / Math.max(1, Math.min(aa.size, bb.size));
+}
+
+function newsDay(value: any) {
+  const raw = String(value?.publishedAt || value?.date || "");
+  return raw.slice(0, 10);
+}
+
+function isDuplicateNews(candidate: any, accepted: any[]) {
+  return accepted.some((current) => {
+    const exact = rowKey(candidate, "news") === rowKey(current, "news");
+    if (exact) return true;
+    const sameDay = !newsDay(candidate) || !newsDay(current) || newsDay(candidate) === newsDay(current);
+    if (!sameDay) return false;
+    const similarity = newsSimilarity(candidate, current);
+    if (similarity >= 0.82) return true;
+    const candidateSource = normalizedKey(candidate?.sourceName || "");
+    const currentSource = normalizedKey(current?.sourceName || "");
+    return !!candidateSource && candidateSource === currentSource && similarity >= 0.68;
+  });
+}
+
 function mergeRows<T>(fresh: T[] | undefined, previous: T[] | undefined, limit: number, kind: string): T[] {
   const out: T[] = [];
   const seen = new Set<string>();
   for (const row of [...(fresh || []), ...(previous || [])]) {
     const key = rowKey(row, kind);
     if (seen.has(key)) continue;
+    if (kind === "news" && isDuplicateNews(row, out as any[])) continue;
     seen.add(key);
     out.push(row);
     if (out.length >= limit) break;

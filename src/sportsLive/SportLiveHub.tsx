@@ -250,7 +250,39 @@ function dateTs(value?: string | null) {
   return Number.isFinite(ts) ? ts : 0;
 }
 
+function newsTitleTokens(value?: string | null) {
+  const stop = new Set(["the","a","an","and","or","of","to","in","on","for","with","at","from","is","are","was","were","be","this","that","as","by","de","du","des","la","le","les","un","une","et","en","sur","pour","avec","dans","au","aux","darts","dart","football","soccer","live","result","results","news"]);
+  return normalizedText(value).split(/\s+/).filter((token) => token.length >= 3 && !stop.has(token));
+}
+
+function newsTitleSimilarity(a?: string | null, b?: string | null) {
+  const aa = new Set(newsTitleTokens(a));
+  const bb = new Set(newsTitleTokens(b));
+  if (!aa.size || !bb.size) return 0;
+  let common = 0;
+  aa.forEach((token) => { if (bb.has(token)) common += 1; });
+  return common / Math.max(1, Math.min(aa.size, bb.size));
+}
+
+function dedupeNewsRows(rows: SportLiveNewsItem[]) {
+  const out: SportLiveNewsItem[] = [];
+  rows.forEach((item) => {
+    const day = String(item.publishedAt || "").slice(0, 10);
+    const duplicate = out.some((existing) => {
+      const otherDay = String(existing.publishedAt || "").slice(0, 10);
+      if (day && otherDay && day !== otherDay) return false;
+      const similarity = newsTitleSimilarity(item.title, existing.title);
+      if (similarity >= 0.82) return true;
+      const sameSource = normalizedText(item.sourceName) && normalizedText(item.sourceName) === normalizedText(existing.sourceName);
+      return !!sameSource && similarity >= 0.68;
+    });
+    if (!duplicate) out.push(item);
+  });
+  return out;
+}
+
 function orderNewsEditorial(rows: SportLiveNewsItem[]) {
+  rows = dedupeNewsRows(rows);
   const scopeWeight: Record<string, number> = { local: 3, regional: 2, world: 1 };
   const kindWeight: Record<string, number> = { live: 5, result: 4, news: 3, upcoming: 2 };
   const sorted = [...rows].sort((a, b) => {
@@ -522,24 +554,35 @@ function LiveStyles() {
       .msc-news-scope.is-local { color:#ffe779; border-color:rgba(255,231,121,.25); background:rgba(255,231,121,.07); }
       .msc-news-scope.is-regional { color:#78d9ff; border-color:rgba(120,217,255,.24); background:rgba(120,217,255,.07); }
       .msc-news-scope.is-world { color:#a9f7c4; border-color:rgba(169,247,196,.22); background:rgba(169,247,196,.07); }
-      .msc-news-title { font-size:12px; line-height:1.18; font-weight:1000; }
-      .msc-news-summary { margin-top:5px; color:#929ca7; font-size:9.5px; line-height:1.38; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+      .msc-news-title { font-size:12px; line-height:1.22; font-weight:1000; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+      .msc-news-summary { margin-top:6px; color:#9ea8b3; font-size:9.5px; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
       .msc-news-result { margin-top:7px; color:#f4d445; font-size:10.5px; font-weight:1000; }
       .msc-news-link { display:inline-flex; align-items:center; justify-content:center; min-height:34px; padding:7px 10px; border-radius:8px; border:1px solid #3a4652; color:#fff; background:#141a21; text-decoration:none; font-size:10px; font-weight:1000; }
-      .msc-news-lead { position:relative; min-height:158px; border:1px solid #29313a; border-radius:15px; overflow:hidden; background:#0d1116; }
-      .msc-news-lead-media { position:absolute; inset:0; }
-      .msc-news-lead-media img { width:100%; height:100%; object-fit:cover; display:block; filter:saturate(.92) contrast(1.03); }
-      .msc-news-lead-shade { position:absolute; inset:0; background:linear-gradient(180deg,rgba(6,8,12,.04) 15%,rgba(6,8,12,.50) 53%,rgba(6,8,12,.98) 100%); }
-      .msc-news-lead-content { position:relative; z-index:1; min-height:158px; display:flex; flex-direction:column; justify-content:flex-end; padding:11px; }
-      .msc-news-lead-title { max-width:760px; font-size:clamp(17px,4.5vw,23px); line-height:1.04; font-weight:1000; text-shadow:0 2px 10px rgba(0,0,0,.65); }
-      .msc-news-lead-summary { margin-top:7px; max-width:760px; color:#d4d9df; font-size:10px; line-height:1.3; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-      .msc-news-lead-link { align-self:flex-start; margin-top:10px; min-height:32px; padding:6px 10px; border-radius:8px; background:#fff; color:#0b0e12; text-decoration:none; font-size:10px; font-weight:1000; }
+      .msc-news-lead { display:grid; grid-template-columns:minmax(150px,42%) minmax(0,1fr); min-height:188px; border:1px solid #29313a; border-radius:15px; overflow:hidden; background:#0d1116; }
+      .msc-news-lead.is-no-image { grid-template-columns:1fr; }
+      .msc-news-lead-media { position:relative; min-height:188px; background:#121820; overflow:hidden; }
+      .msc-news-lead-media::after { content:""; position:absolute; inset:0; box-shadow:inset -18px 0 30px rgba(5,8,12,.22); pointer-events:none; }
+      .msc-news-lead-media img { width:100%; height:100%; min-height:188px; object-fit:cover; object-position:center; display:block; filter:saturate(.96) contrast(1.03); }
+      .msc-news-lead-shade { display:none; }
+      .msc-news-lead-content { min-width:0; display:flex; flex-direction:column; justify-content:center; padding:15px 16px; background:linear-gradient(145deg,#11171e,#0b1015); }
+      .msc-news-lead-title { max-width:760px; font-size:clamp(17px,4.2vw,23px); line-height:1.08; font-weight:1000; text-wrap:balance; }
+      .msc-news-lead-summary { margin-top:8px; max-width:760px; color:#b5bec7; font-size:10px; line-height:1.42; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+      .msc-news-lead-link { align-self:flex-start; margin-top:12px; min-height:32px; padding:6px 10px; border-radius:8px; background:#fff; color:#0b0e12; text-decoration:none; font-size:10px; font-weight:1000; }
       @media (max-width:520px) {
-        .msc-news-card { grid-template-columns:82px minmax(0,1fr); gap:9px; }
+        .msc-news-card { grid-template-columns:92px minmax(0,1fr); gap:10px; align-items:start; }
         .msc-news-card .msc-news-link { grid-column:1 / -1; width:100%; min-height:30px; }
         .msc-news-card.no-image { grid-template-columns:1fr; }
-        .msc-news-lead { min-height:205px; }
-        .msc-news-lead-content { min-height:205px; padding:13px; }
+        .msc-news-thumb { min-height:86px; }
+        .msc-news-thumb img { min-height:86px; }
+        .msc-news-lead { grid-template-columns:1fr; min-height:0; }
+        .msc-news-lead-media { min-height:190px; aspect-ratio:16/9; }
+        .msc-news-lead-media img { min-height:190px; }
+        .msc-news-lead-content { min-height:0; padding:13px 14px 14px; }
+      }
+      @media (orientation:landscape) and (min-width:700px) {
+        .msc-news-lead { grid-template-columns:minmax(220px,38%) minmax(0,1fr); min-height:176px; }
+        .msc-news-lead-media, .msc-news-lead-media img { min-height:176px; }
+        .msc-news-grid { grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; }
       }
       .msc-source-rail { display:grid; gap:7px; margin-top:7px; }
       .msc-source-row {
@@ -920,7 +963,7 @@ function LeadNewsCard({ item, lang }: { item: SportLiveNewsItem; lang: string })
   const kindLabel = item.kind === "result" ? "RÉSULTAT" : item.kind === "live" ? "LIVE" : item.kind === "upcoming" ? "À VENIR" : "À LA UNE";
   const sourceLogo = sourceImageFromItem({ sourceUrl: item.sourceUrl });
   return (
-    <article className="msc-news-lead">
+    <article className={`msc-news-lead${item.imageUrl ? "" : " is-no-image"}`}>
       {item.imageUrl ? <div className="msc-news-lead-media"><img src={item.imageUrl} alt="" loading="eager" referrerPolicy="no-referrer" /></div> : null}
       <div className="msc-news-lead-shade" />
       <div className="msc-news-lead-content">
