@@ -131,13 +131,21 @@ export const PERSISTENT_LOCAL_STORAGE_RULES: readonly PersistentLocalStorageRule
   { key: "msc_avatar_ia_gallery_v1", domain: "media", scope: "account", portable: true, maxBytes: 2_500_000 },
   { key: "msc_avatar_ai_credits_v1", domain: "media", scope: "technical", portable: false },
 
-  // Baby-foot / Ping-pong historiques encore en localStorage.
+  // Baby-foot reste portable. Les anciens historiques multisports sont désormais
+  // des caches dérivés de History V4 : ils ne voyagent plus dans les backups.
   { key: "babyfoot_league_store_v1", domain: "babyfoot", scope: "account", portable: true, maxBytes: 2_500_000 },
   { key: "babyfoot_state_v3", domain: "babyfoot", scope: "account", portable: true, maxBytes: 1_500_000 },
   { key: "babyfoot_state_v2", domain: "babyfoot", scope: "account", portable: true, maxBytes: 1_500_000 },
   { key: "babyfoot_league_create_draft_v1", domain: "babyfoot", scope: "account", portable: true },
   { key: "babyfoot_league_return_create", domain: "babyfoot", scope: "device", portable: false },
-  { key: "pingpong_history", domain: "pingpong", scope: "account", portable: true, maxBytes: 2_500_000 },
+  { key: "pingpong_history", domain: "stats_cache", scope: "cache", portable: false, notes: "W2: cache dérivé de History V4." },
+  { key: "dc-petanque-history-v1", domain: "stats_cache", scope: "cache", portable: false, notes: "W2: cache dérivé de History V4." },
+  { key: "dc_molkky_history_v2", domain: "stats_cache", scope: "cache", portable: false, notes: "W2: cache/résumé local dérivé de History V4 ; une session active reste locale." },
+  { key: "dc_molkky_history_v1", domain: "stats_cache", scope: "cache", portable: false, notes: "Legacy migration input only." },
+  { key: "dc_molkky_history_v1_migrated_to_v2", domain: "stats_cache", scope: "technical", portable: false },
+  { key: "dc_darts_firefighter_history_v1", domain: "stats_cache", scope: "cache", portable: false, notes: "W2: cache dérivé de History V4." },
+  { key: "dc_territories_history_v1", domain: "stats_cache", scope: "cache", portable: false, notes: "W2: cache dérivé de History V4." },
+  { key: "mss_multisport_history_cache_owner_v1", domain: "stats_cache", scope: "technical", portable: false },
 
   // Données sociales/locales non portables.
   { key: "mss_nearby_encounters_v1", domain: "settings", scope: "device", portable: false },

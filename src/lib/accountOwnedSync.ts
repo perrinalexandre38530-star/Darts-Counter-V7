@@ -105,15 +105,11 @@ const STATS_SOURCE_EXACT_KEYS = new Set([
   "dc_training_stats_v1",
   "dc_training_sessions_v3",
   "dc_training_group_sessions_v4",
-  "dc_darts_firefighter_history_v1",
-  "dc-petanque-history-v1",
-  "dc_territories_history_v1",
-  "dc_molkky_history_v2",
-  "dc_molkky_history_v1",
-  "dc_molkky_history_v1_migrated_to_v2",
-  "pingpong_history",
   "babyfoot_league_store_v1",
 ]);
+// W2 SINGLE SOURCE: per-sport match histories no longer travel in stats_sources.
+ // History V4/history_match is their only cross-device authority. These legacy
+ // keys remain local derived caches or one-time migration inputs.
 const STATS_SOURCE_PREFIXES = [] as const;
 
 function emitStatus(detail: any) {

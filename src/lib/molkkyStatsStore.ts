@@ -7,6 +7,7 @@
 // ============================================
 
 import type { MolkkyState } from "../pages/molkky/engine/molkkyEngine";
+import { History } from "./history";
 
 export type MolkkyHistoryEntry = {
   id: string;
@@ -25,6 +26,49 @@ export type MolkkyHistoryEntry = {
 const LS_V2 = "dc_molkky_history_v2";
 const LS_V1 = "dc_molkky_history_v1";
 const LS_MIGRATED = "dc_molkky_history_v1_migrated_to_v2";
+
+let canonicalTimer: number | null = null;
+let canonicalPending: MolkkyHistoryEntry | null = null;
+
+function toCanonicalMolkkyRecord(entry: MolkkyHistoryEntry): any {
+  const state: any = entry?.state && typeof entry.state === "object" ? entry.state : null;
+  const summary: any = entry?.summary || {};
+  const players = Array.isArray(state?.players) && state.players.length ? state.players : Array.isArray(summary?.players) ? summary.players : [];
+  const winnerId = String(state?.winnerPlayerId || summary?.winnerPlayerId || "") || null;
+  return {
+    id: String(entry.id),
+    matchId: String(entry.id),
+    kind: "molkky",
+    sport: "molkky",
+    status: entry.finished ? "finished" : "in_progress",
+    createdAt: Number(entry.createdAt || Date.now()),
+    updatedAt: Number(entry.updatedAt || Date.now()),
+    finishedAt: entry.finished ? Number(state?.finishedAt || entry.updatedAt || Date.now()) : undefined,
+    players,
+    winnerId,
+    summary: { ...summary, kind: "molkky", mode: entry.mode || "classic" },
+    payload: { kind: "molkky", sport: "molkky", mode: entry.mode || "classic", state, players, winnerId, summary, legacy: entry.legacy },
+    resume: !entry.finished && state ? { state, mode: entry.mode || "classic" } : undefined,
+  };
+}
+
+function scheduleCanonicalMolkkyWrite(entry: MolkkyHistoryEntry) {
+  canonicalPending = entry;
+  const flush = () => {
+    const pending = canonicalPending;
+    canonicalPending = null;
+    canonicalTimer = null;
+    if (!pending) return;
+    void History.upsert(toCanonicalMolkkyRecord(pending)).catch(() => {});
+  };
+  if (entry.finished) {
+    if (canonicalTimer != null) { try { clearTimeout(canonicalTimer); } catch {} canonicalTimer = null; }
+    flush();
+    return;
+  }
+  if (canonicalTimer != null) { try { clearTimeout(canonicalTimer); } catch {} }
+  canonicalTimer = setTimeout(flush, 450) as any;
+}
 
 function safeParse(raw: string | null) {
   if (!raw) return null;
@@ -156,17 +200,26 @@ export function saveMolkkyHistoryEntry(entry: MolkkyHistoryEntry) {
   // keep chronological order by createdAt
   all.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   localStorage.setItem(LS_V2, JSON.stringify(all));
+  scheduleCanonicalMolkkyWrite(next);
 }
 
 // Replace entirely
 export function saveMolkkyHistory(history: MolkkyHistoryEntry[]) {
+  const before = loadMolkkyHistory();
   const arr = Array.isArray(history) ? history : [];
-  const safe = arr.filter((x) => x && x.id && (x.sport === "molkky" || x.kind === "molkky"));
+  const safe = arr.filter((x: any) => x && x.id && (x.sport === "molkky" || x.kind === "molkky"));
   localStorage.setItem(LS_V2, JSON.stringify(safe));
+
+  const keep = new Set(safe.map((x: any) => String(x.id)));
+  const removed = before.filter((x) => !keep.has(String(x.id)));
+  for (const row of safe) scheduleCanonicalMolkkyWrite(row as MolkkyHistoryEntry);
+  for (const row of removed) void History.remove(String(row.id)).catch(() => {});
 }
 
 export function clearMolkkyHistory() {
+  const before = loadMolkkyHistory();
   localStorage.removeItem(LS_V2);
+  for (const row of before) void History.remove(String(row.id)).catch(() => {});
 }
 
 // Legacy helper (kept for compatibility with older code)

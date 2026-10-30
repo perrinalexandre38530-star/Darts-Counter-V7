@@ -56,3 +56,32 @@ export function buildMabullConversionQueue(limit = 3) {
     .sort((a, b) => (rank.get(a.id) ?? 999) - (rank.get(b.id) ?? 999) || a.title.localeCompare(b.title, 'fr'))
     .slice(0, Math.max(1, limit));
 }
+
+export type MabullTechniqueTrack = 'setup' | 'gesture' | 'routine';
+
+export const MABULL_TECHNIQUE_TRACK_META: Record<MabullTechniqueTrack, { label: string; shortLabel: string; icon: string; description: string }> = {
+  setup: { label: 'POSTURE & ALIGNEMENT', shortLabel: 'Posture', icon: 'precision', description: 'Position des pieds, appuis et placement du coude.' },
+  gesture: { label: 'GESTE DE LANCER', shortLabel: 'Geste', icon: 'skills', description: 'Armement, lâcher, extension et suivi du bras.' },
+  routine: { label: 'RYTHME & ROUTINE', shortLabel: 'Routine', icon: 'regularity', description: 'Rythme, routine mentale et importance du regard.' },
+};
+
+export const MABULL_TECHNIQUE_TRACK_ORDER: MabullTechniqueTrack[] = ['setup', 'gesture', 'routine'];
+
+export function getMabullTechniqueTrack(item: MabullReferenceItem): MabullTechniqueTrack {
+  const haystack = `${item.title} ${item.tags.join(' ')}`.toLowerCase();
+  if (haystack.includes('posture') || haystack.includes('alignement') || haystack.includes('pied') || haystack.includes('coude')) return 'setup';
+  if (haystack.includes('geste') || haystack.includes('release') || haystack.includes('bras') || haystack.includes('follow') || haystack.includes('pull-back')) return 'gesture';
+  return 'routine';
+}
+
+export function buildMabullTechniqueTracks() {
+  return MABULL_TECHNIQUE_TRACK_ORDER.map((track) => {
+    const items = MABULL_REFERENCE_CATALOG.filter((item) => item.kind === 'technique' && getMabullTechniqueTrack(item) === track);
+    return {
+      track,
+      ...MABULL_TECHNIQUE_TRACK_META[track],
+      items,
+      total: items.length,
+    };
+  });
+}

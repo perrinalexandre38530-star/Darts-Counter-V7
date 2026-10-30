@@ -112,6 +112,7 @@ export default function PetanqueStatsLeaderboardsPage({ go, params }: Props) {
   const [subTab, setSubTab] = React.useState<SubTab>(params?.subTab ?? "players");
   const [period, setPeriod] = React.useState<PeriodKey>("ALL");
   const [metric, setMetric] = React.useState<MetricKey>("wins");
+  const historyRevision = useHistoryCacheRevision("dc-petanque-history-updated");
 
   const matchesAll = React.useMemo(() => {
     try {
@@ -119,7 +120,7 @@ export default function PetanqueStatsLeaderboardsPage({ go, params }: Props) {
     } catch {
       return [];
     }
-  }, []);
+  }, [historyRevision]);
 
   const matches = React.useMemo(() => {
     const cutoff = periodCutoffMs(period);

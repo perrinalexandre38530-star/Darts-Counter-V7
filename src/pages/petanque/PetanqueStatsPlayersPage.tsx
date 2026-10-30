@@ -11,6 +11,7 @@ import { useLang } from "../../contexts/LangContext";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import BackDot from "../../components/BackDot";
 import statsCenterTicker from "../../assets/tickers/ticker_statistics_center_universal.webp";
+import { useHistoryCacheRevision } from "../../hooks/useHistoryCacheRevision";
 import {
   aggregateDuos,
   aggregatePlayers,
@@ -36,8 +37,9 @@ export default function PetanqueStatsPlayersPage({ store, go }: Props) {
 
   const [q, setQ] = React.useState("");
   const [sort, setSort] = React.useState<"wins" | "wr" | "diff" | "played">("wr");
+  const historyRevision = useHistoryCacheRevision("dc-petanque-history-updated");
 
-  const matches = React.useMemo(() => getPetanqueMatches(), []);
+  const matches = React.useMemo(() => getPetanqueMatches(), [historyRevision]);
   const playersAgg = React.useMemo(() => aggregatePlayers(matches), [matches]);
   const duosAgg = React.useMemo(() => aggregateDuos(matches), [matches]);
   const vsAgg = React.useMemo(() => aggregateVs(matches), [matches]);

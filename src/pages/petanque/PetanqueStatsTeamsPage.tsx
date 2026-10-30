@@ -12,6 +12,7 @@ import { useLang } from "../../contexts/LangContext";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import BackDot from "../../components/BackDot";
 import teamStatsTicker from "../../assets/tickers/ticker_team_statistics_universal.webp";
+import { useHistoryCacheRevision } from "../../hooks/useHistoryCacheRevision";
 import { aggregatePetanqueByTeam, getPetanqueMatches, listPetanquePlayersFromMatches } from "../../lib/petanqueStats";
 
 type Props = {
@@ -56,8 +57,9 @@ export default function PetanqueStatsTeamsPage({ store, go }: Props) {
 
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<"winrate" | "wins" | "diff" | "pf">("winrate");
+  const historyRevision = useHistoryCacheRevision("dc-petanque-history-updated");
 
-  const matches = useMemo(() => getPetanqueMatches(), []);
+  const matches = useMemo(() => getPetanqueMatches(), [historyRevision]);
   const playersIndex = useMemo(() => listPetanquePlayersFromMatches(matches), [matches]);
   const teams = useMemo(() => aggregatePetanqueByTeam(matches), [matches]);
 

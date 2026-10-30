@@ -23,7 +23,7 @@ import { useSport } from "../contexts/SportContext";
 import ProfileAvatar from "../components/ProfileAvatar";
 import RankingsTickerHeader from "../components/RankingsTickerHeader";
 import { History } from "../lib/history";
-import { loadTerritoriesHistory, type TerritoriesMatch } from "../lib/territories/territoriesStats";
+import { loadTerritoriesHistory, loadTerritoriesHistoryUnified, type TerritoriesMatch } from "../lib/territories/territoriesStats";
 // Optionnel (si tu l’as dans ton projet). On n’en dépend pas pour éviter de casser.
 import { computeKillerAgg } from "../lib/statsKillerAgg";
 import { isOnlineRecord, idLooseMatch, normText, isX01Record, sampleFromRec, collectPlayers } from "../lib/x01StatsSource";
@@ -1661,9 +1661,10 @@ function computeRowsFromHistory(
 
 function computeRowsFromTerritories(
   profiles: ProfileLite[],
-  metric: MetricKey
+  metric: MetricKey,
+  matchesInput?: TerritoriesMatch[]
 ): Row[] {
-  const matches = loadTerritoriesHistory();
+  const matches = Array.isArray(matchesInput) ? matchesInput : loadTerritoriesHistory();
 
   const byId = new Map<string, ProfileLite>();
   for (const p of profiles) byId.set(p.id, p);
@@ -2101,6 +2102,25 @@ export default function StatsLeaderboardsPage({ store, go, sportOverride }: Prop
   const [batardFailPolicy, setBatardFailPolicy] = React.useState<string>("all");
   const [batardScoreOnlyValid, setBatardScoreOnlyValid] = React.useState<string>("all"); // all|true|false
   const [historySource, setHistorySource] = React.useState<any[]>([]);
+  const [territoriesHistory, setTerritoriesHistory] = React.useState<TerritoriesMatch[]>(() => loadTerritoriesHistory());
+
+  React.useEffect(() => {
+    let alive = true;
+    const refresh = () => {
+      void loadTerritoriesHistoryUnified()
+        .then((rows) => { if (alive) setTerritoriesHistory(Array.isArray(rows) ? rows : []); })
+        .catch(() => { if (alive) setTerritoriesHistory([]); });
+    };
+    refresh();
+    const onUpdated = () => refresh();
+    try { window.addEventListener("dc-territories-updated", onUpdated); } catch {}
+    try { window.addEventListener("dc-history-updated", onUpdated); } catch {}
+    return () => {
+      alive = false;
+      try { window.removeEventListener("dc-territories-updated", onUpdated); } catch {}
+      try { window.removeEventListener("dc-history-updated", onUpdated); } catch {}
+    };
+  }, [store?.history]);
 
 
   const batardFilterOptions = React.useMemo(() => {
@@ -2238,7 +2258,7 @@ export default function StatsLeaderboardsPage({ store, go, sportOverride }: Prop
           });
     // ✅ TERRITORIES : hors History (localStorage)
     if (mode === "territories") {
-      const base = computeRowsFromTerritories(profiles || [], metric);
+      const base = computeRowsFromTerritories(profiles || [], metric, territoriesHistory);
       return sortRows(sanitizeAndFilter(base));
     }
 
@@ -2265,7 +2285,7 @@ export default function StatsLeaderboardsPage({ store, go, sportOverride }: Prop
     // ✅ autres modes
     const baseRows = computeRowsFromHistory(historyFiltered, profiles, mode, scope, period, { includeBots });
     return sortRows(sanitizeAndFilter(baseRows));
-  }, [historySource, profiles, mode, scope, metric, period, includeBots, profileIds, batardPreset, batardWinMode, batardFailPolicy, batardScoreOnlyValid]);
+  }, [historySource, territoriesHistory, profiles, mode, scope, metric, period, includeBots, profileIds, batardPreset, batardWinMode, batardFailPolicy, batardScoreOnlyValid]);
 
   const hasData = rows.length > 0;
   const currentMetricLabel = metricLabel(metric, sport) || t("stats.leaderboards.metric", "Stat");

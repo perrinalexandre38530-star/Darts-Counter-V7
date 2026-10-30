@@ -2033,11 +2033,13 @@ const onAdd = React.useCallback(
           const winnerTeam = a === b ? null : a > b ? "A" : "B";
           const players = Array.isArray((next as any).players) ? (next as any).players : [];
 
+          const stableMatchId = String((next as any)?.matchId || (next as any)?.gameId || `petanque-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
           const rec = {
-            id: `petanque-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            id: stableMatchId,
+            matchId: stableMatchId,
             kind: "petanque",
             status: "finished",
-            createdAt: Number((next as any).startedAt ?? Date.now()),
+            createdAt: Number((next as any).createdAt ?? (next as any).startedAt ?? Date.now()),
             updatedAt: Date.now(),
             players,
             winnerId: winnerTeam,

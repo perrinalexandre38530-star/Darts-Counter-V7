@@ -6,6 +6,7 @@
 // =============================================================
 
 import * as React from "react";
+import { useHistoryCacheRevision } from "../../hooks/useHistoryCacheRevision";
 import type { Store, Profile } from "../../lib/types";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
@@ -84,6 +85,7 @@ export default function MolkkyStatsHistoryPage({ store, go }: Props) {
   const [query, setQuery] = React.useState<string>("");
   const [period, setPeriod] = React.useState<PeriodKey>("A");
   const [rows, setRows] = React.useState<any[]>([]);
+  const historyRevision = useHistoryCacheRevision("dc-molkky-history-updated");
 
   const reload = React.useCallback(() => {
     const list = (loadMolkkyMatches() as any[]) || [];
@@ -92,7 +94,7 @@ export default function MolkkyStatsHistoryPage({ store, go }: Props) {
 
   React.useEffect(() => {
     reload();
-  }, [reload]);
+  }, [reload, historyRevision]);
 
   const filtered = React.useMemo(() => {
     const start = periodStart(period);

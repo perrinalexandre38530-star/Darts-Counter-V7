@@ -9,7 +9,18 @@ import { loadPingPongHistory } from "../../lib/pingpongHistory";
 
 export default function PingPongStats() {
   const { theme } = useTheme();
-  const history = loadPingPongHistory();
+  const [history, setHistory] = React.useState(() => loadPingPongHistory());
+
+  React.useEffect(() => {
+    const refresh = () => setHistory(loadPingPongHistory());
+    refresh();
+    try { window.addEventListener("dc-pingpong-history-updated", refresh); } catch {}
+    try { window.addEventListener("dc-history-updated", refresh); } catch {}
+    return () => {
+      try { window.removeEventListener("dc-pingpong-history-updated", refresh); } catch {}
+      try { window.removeEventListener("dc-history-updated", refresh); } catch {}
+    };
+  }, []);
 
   const matches = history.filter(h => h.mode !== "training");
   const wins = matches.filter(h => h.winnerId).length;

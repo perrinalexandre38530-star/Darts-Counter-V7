@@ -7,6 +7,7 @@
 // ============================================
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useHistoryCacheRevision } from "../../hooks/useHistoryCacheRevision";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 
@@ -56,6 +57,8 @@ export default function MolkkyStatsLocalsPage({ go, embedded }: Props) {
     }
   }, []);
 
+  const historyRevision = useHistoryCacheRevision("dc-molkky-history-updated");
+
   const profiles = useMemo(() => {
     // ✅ IMPORTANT: le profil actif ne doit PAS être affiché ici.
     // Tri commun: profils les plus utilisés dans ce sport, puis alphabétique.
@@ -68,7 +71,7 @@ export default function MolkkyStatsLocalsPage({ go, embedded }: Props) {
     } catch {
       return [];
     }
-  }, []);
+  }, [historyRevision]);
 
   const playerAgg = useMemo(() => aggregatePlayers(matches), [matches]);
 

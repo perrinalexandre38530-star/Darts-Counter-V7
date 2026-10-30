@@ -195,7 +195,31 @@ export default function MolkkyPlay({ go, params, onFinish }: Props) {
     if (isFinished(next)) {
       const summary = buildSummary(next);
       try {
-        onFinish?.(summary);
+        const now = Date.now();
+        const finalId = String(historyId || (next as any)?.id || `molkky-${now}`);
+        onFinish?.({
+          id: finalId,
+          matchId: finalId,
+          kind: "molkky",
+          sport: "molkky",
+          status: "finished",
+          createdAt: createdAtRef.current || Number((next as any)?.startedAt || now) || now,
+          updatedAt: now,
+          finishedAt: Number((next as any)?.finishedAt || now) || now,
+          players: Array.isArray((next as any)?.players) ? (next as any).players : [],
+          winnerId: (next as any)?.winnerPlayerId || (summary as any)?.winnerPlayerId || null,
+          summary,
+          payload: {
+            kind: "molkky",
+            sport: "molkky",
+            mode: preset,
+            state: next,
+            config: (next as any)?.config || configParam,
+            players: Array.isArray((next as any)?.players) ? (next as any).players : [],
+            winnerId: (next as any)?.winnerPlayerId || (summary as any)?.winnerPlayerId || null,
+            summary,
+          },
+        } as any);
       } catch {}
       // fallback navigation (if route exists in your branch)
       try {

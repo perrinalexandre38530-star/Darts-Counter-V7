@@ -20,6 +20,8 @@
 // - loadPetanqueHistory() exporté (utilisé par pages Stats)
 // ============================================
 
+import { History } from "./history";
+
 export type PetanqueTeamId = "A" | "B";
 
 export type PetanqueEnd = {
@@ -439,15 +441,46 @@ export function undoLastMeasurement(st: PetanqueState): PetanqueState {
 }
 
 // --------------------------------------------
-// HISTORY (local)
+// HISTORY — History V4 authority + legacy derived cache
 // --------------------------------------------
+function petanqueStateToHistoryRecord(st: PetanqueState): any {
+  const safe = ensureState(st);
+  const scoreA = Number(safe.scoreA || 0);
+  const scoreB = Number(safe.scoreB || 0);
+  const winnerTeam = scoreA === scoreB ? null : scoreA > scoreB ? "A" : "B";
+  return {
+    id: String(safe.matchId),
+    matchId: String(safe.matchId),
+    kind: "petanque",
+    sport: "petanque",
+    status: safe.status === "finished" ? "finished" : "in_progress",
+    createdAt: Number(safe.createdAt || Date.now()),
+    updatedAt: Number(safe.updatedAt || Date.now()),
+    finishedAt: safe.status === "finished" ? Number(safe.finishedAt || safe.updatedAt || Date.now()) : undefined,
+    players: Array.isArray(safe.players) ? safe.players : [],
+    winnerId: winnerTeam,
+    summary: {
+      kind: "petanque",
+      mode: safe.mode,
+      scoreA,
+      scoreB,
+      targetScore: safe.targetScore,
+      winnerTeam,
+      endsCount: Array.isArray(safe.ends) ? safe.ends.length : 0,
+    },
+    payload: { ...safe, kind: "petanque", sport: "petanque", winnerTeam },
+  };
+}
+
 export function appendPetanqueHistory(st: PetanqueState) {
   try {
     const safe = ensureState(st);
     const raw = localStorage.getItem(KEY_HISTORY);
     const list = raw ? (safeParse<PetanqueState[]>(raw) ?? []) : [];
-    list.unshift(safe);
-    localStorage.setItem(KEY_HISTORY, JSON.stringify(list.slice(0, 200)));
+    const next = [safe, ...list.filter((row: any) => String(row?.matchId || row?.gameId || "") !== String(safe.matchId))];
+    // Derived cache only; History V4 keeps the lifetime collection.
+    localStorage.setItem(KEY_HISTORY, JSON.stringify(next));
+    void History.upsert(petanqueStateToHistoryRecord(safe)).catch(() => {});
   } catch {}
 }
 
@@ -511,6 +544,17 @@ export function clearPetanqueHistory() {
   try {
     localStorage.removeItem(KEY_HISTORY);
   } catch {}
+  void (async () => {
+    try {
+      const rows: any[] = await (History as any).list();
+      const matches = (Array.isArray(rows) ? rows : []).filter((rec: any) => {
+        const tag = [rec?.kind, rec?.sport, rec?.mode, rec?.payload?.kind, rec?.payload?.sport, rec?.summary?.mode]
+          .filter(Boolean).map((v) => String(v).toLowerCase()).join("|");
+        return tag.includes("petanque") || tag.includes("pétanque");
+      });
+      await Promise.all(matches.map((rec: any) => History.remove(String(rec?.id || rec?.matchId || ""))));
+    } catch {}
+  })();
 }
 
 // --------------------------------------------

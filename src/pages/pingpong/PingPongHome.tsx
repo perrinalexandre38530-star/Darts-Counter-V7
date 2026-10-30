@@ -276,9 +276,20 @@ export default function PingPongHome({ store, go }: Props) {
   const { t, lang } = useLang();
 
   const activeProfile = useMemo(() => safeActiveProfile(store), [store]);
+  const [historyRevision, setHistoryRevision] = useState(0);
+
+  useEffect(() => {
+    const refresh = () => setHistoryRevision((value) => value + 1);
+    try { window.addEventListener("dc-pingpong-history-updated", refresh); } catch {}
+    try { window.addEventListener("dc-history-updated", refresh); } catch {}
+    return () => {
+      try { window.removeEventListener("dc-pingpong-history-updated", refresh); } catch {}
+      try { window.removeEventListener("dc-history-updated", refresh); } catch {}
+    };
+  }, []);
 
   // -------------------------------------------------------------
-  // ✅ KPI Ping-Pong (LOCAL) pour "Vue globale" du profil actif
+  // ✅ KPI Ping-Pong (cache dérivé de History V4) pour "Vue globale" du profil actif
   // -------------------------------------------------------------
   const ppGlobalStats = useMemo(() => {
     const profId = String(activeProfile?.id ?? "").trim();
@@ -340,7 +351,7 @@ export default function PingPongHome({ store, go }: Props) {
     const diff = pointsFor - pointsAgainst;
 
     return { played, wins, losses, winRate, pointsFor, pointsAgainst, diff, avgPts };
-  }, [activeProfile?.id]);
+  }, [activeProfile?.id, historyRevision]);
 
   // -------------------------------------------------------------
   // ✅ Resume de match via pingpongStore

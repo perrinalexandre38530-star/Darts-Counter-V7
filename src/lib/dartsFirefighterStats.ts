@@ -136,23 +136,23 @@ export function pushDartsFirefighterStats(record: any) {
 }
 
 export async function loadDartsFirefighterStatsUnified(): Promise<any[]> {
-  const byId = new Map(loadDartsFirefighterStatsCache().map((row) => [String(row.id), row]));
-  try {
-    const api: any = History as any;
-    const light = typeof api?.listFinished === "function" ? await api.listFinished() : await api.list();
-    const candidates = (Array.isArray(light) ? light : []).filter(isDartsFirefighterRecord);
-    for (let i = 0; i < candidates.length; i += 16) {
-      const batch = candidates.slice(i, i + 16);
-      const rows = await Promise.all(batch.map(async (rec: any) => {
-        const id = String(rec?.id || rec?.matchId || "");
-        try { return id && typeof api?.get === "function" ? (await api.get(id)) || rec : rec; } catch { return rec; }
-      }));
-      rows.forEach((row) => {
-        const normalized = normalizeDartsFirefighterRecord(row);
-        if (normalized) byId.set(String(normalized.id), normalized);
-      });
-    }
-  } catch {}
+  // W2 SINGLE SOURCE: History V4 is the lifetime authority. The localStorage key
+  // is only an instant visual cache and must never resurrect rows absent from History.
+  const byId = new Map<string, any>();
+  const api: any = History as any;
+  const light = typeof api?.listFinished === "function" ? await api.listFinished() : await api.list();
+  const candidates = (Array.isArray(light) ? light : []).filter(isDartsFirefighterRecord);
+  for (let i = 0; i < candidates.length; i += 16) {
+    const batch = candidates.slice(i, i + 16);
+    const rows = await Promise.all(batch.map(async (rec: any) => {
+      const id = String(rec?.id || rec?.matchId || "");
+      try { return id && typeof api?.get === "function" ? (await api.get(id)) || rec : rec; } catch { return rec; }
+    }));
+    rows.forEach((row) => {
+      const normalized = normalizeDartsFirefighterRecord(row);
+      if (normalized) byId.set(String(normalized.id), normalized);
+    });
+  }
   const out = Array.from(byId.values()).sort((a, b) => b.ts - a.ts);
   try { localStorage.setItem(DARTS_FIREFIGHTER_STATS_KEY, JSON.stringify(out.slice(0, 250))); } catch {}
   return out;

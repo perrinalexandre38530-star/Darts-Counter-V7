@@ -196,6 +196,7 @@ const SportLiveHub = React.lazy(() => import("./sportsLive/SportLiveHub"));
 
 // Historique
 import { History } from "./lib/history";
+import { installMultisportHistoryAuthorityBridge } from "./lib/multisportHistoryAuthority";
 import { getX01CriticalCheckpoint } from "./lib/x01CriticalCheckpoint";
 import { recordProfileUsageFromMatch } from "./lib/profileUsage";
 
@@ -3771,6 +3772,40 @@ useEffect(() => {
       cancelled = true;
     };
   }, [loading, online?.ready, (online as any)?.user?.id]);
+
+  // ============================================================
+  // MULTISPORT HISTORY AUTHORITY W2
+  // History V4 remains authoritative even with no signed-in account. The bridge
+  // waits for the current IndexedDB scope to be loaded, then derives the old
+  // per-sport localStorage caches from that scope. On login/logout the effect is
+  // recreated against the new account/local scope, never in parallel.
+  // ============================================================
+  React.useEffect(() => {
+    if (isSamsungTvNativeApp || loading || !online?.ready) return;
+
+    let cancelled = false;
+    let cleanupAuthority: (() => void) | null = null;
+    let waitTimer: number | null = null;
+
+    const startWhenScopeReady = () => {
+      if (cancelled) return;
+      if (!bootStoreLoadedRef.current) {
+        waitTimer = window.setTimeout(startWhenScopeReady, 180);
+        return;
+      }
+      const scopeId = String(loadedStoreScopeRef.current || getStorageUser() || "local").trim() || "local";
+      cleanupAuthority = installMultisportHistoryAuthorityBridge(scopeId);
+    };
+
+    startWhenScopeReady();
+    return () => {
+      cancelled = true;
+      if (waitTimer != null) window.clearTimeout(waitTimer);
+      waitTimer = null;
+      try { cleanupAuthority?.(); } catch {}
+      cleanupAuthority = null;
+    };
+  }, [isSamsungTvNativeApp, loading, online?.ready, (online as any)?.user?.id]);
 
   // ============================================================
   // ACCOUNT OWNED DATA SYNC V118

@@ -7,6 +7,7 @@
 import React, { useMemo, useState } from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
+import { useHistoryCacheRevision } from "../../hooks/useHistoryCacheRevision";
 import { getPetanqueMatches, normalizePetanqueRecord } from "../../lib/petanqueStats";
 
 type Props = {
@@ -36,6 +37,7 @@ export default function PetanqueStatsMatchesPage({ go }: Props) {
   const { t } = useLang();
 
   const [q, setQ] = useState("");
+  const historyRevision = useHistoryCacheRevision("dc-petanque-history-updated");
 
   const rows = useMemo(() => {
     const raw = getPetanqueMatches();
@@ -51,7 +53,7 @@ export default function PetanqueStatsMatchesPage({ go }: Props) {
         .join(" ");
       return a.includes(qq) || b.includes(qq) || names.includes(qq);
     });
-  }, [q]);
+  }, [q, historyRevision]);
 
   return (
     <div style={{ padding: 16 }}>

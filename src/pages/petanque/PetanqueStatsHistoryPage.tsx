@@ -8,6 +8,7 @@ import React, { useMemo, useState } from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import ProfileAvatar from "../../components/ProfileAvatar";
+import { useHistoryCacheRevision } from "../../hooks/useHistoryCacheRevision";
 
 import { getPetanqueMatches, normalizePetanqueRecord } from "../../lib/petanqueStats";
 
@@ -38,6 +39,7 @@ export default function PetanqueStatsHistoryPage({ store, go }: Props) {
   const { t } = useLang();
 
   const [q, setQ] = useState("");
+  const historyRevision = useHistoryCacheRevision("dc-petanque-history-updated");
 
   const list = useMemo(() => {
     const records = getPetanqueMatches();
@@ -57,7 +59,7 @@ export default function PetanqueStatsHistoryPage({ store, go }: Props) {
       const hay = `${x.title} ${x.players} ${x.dateStr}`.toLowerCase();
       return hay.includes(qq);
     });
-  }, [q]);
+  }, [q, historyRevision]);
 
   const kpi = useMemo(() => {
     const total = list.length;

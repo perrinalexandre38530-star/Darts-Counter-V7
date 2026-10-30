@@ -8,6 +8,7 @@
 // ============================================
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useHistoryCacheRevision } from "../../hooks/useHistoryCacheRevision";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 
@@ -48,6 +49,7 @@ export default function MolkkyStatsPlayersPage({ go, embedded }: Props) {
   }, [store]);
 
   const activeProfileId = (store as any)?.activeProfileId || "";
+  const historyRevision = useHistoryCacheRevision("dc-molkky-history-updated");
 
   const matches = useMemo(() => {
     try {
@@ -55,7 +57,7 @@ export default function MolkkyStatsPlayersPage({ go, embedded }: Props) {
     } catch {
       return [];
     }
-  }, []);
+  }, [historyRevision]);
 
   const playerAgg = useMemo(() => aggregatePlayers(matches), [matches]);
 

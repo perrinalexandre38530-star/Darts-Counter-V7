@@ -7,6 +7,7 @@
 
 import { pickLegacyBilingualText } from "../../i18n/legacyLocalizedText";
 import * as React from "react";
+import { useHistoryCacheRevision } from "../../hooks/useHistoryCacheRevision";
 import type { Store, Profile } from "../../lib/types";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
@@ -127,6 +128,7 @@ export default function MolkkyStatsLeaderboardsPage({ store, go, params }: Props
   const [period, setPeriod] = React.useState<PeriodKey>("ALL");
   const [includeBots, setIncludeBots] = React.useState<boolean>(true); // placeholder (visuel)
   const [metric, setMetric] = React.useState<MetricKey>("matches");
+  const historyRevision = useHistoryCacheRevision("dc-molkky-history-updated");
 
   const metricList: MetricKey[] = React.useMemo(
     () => ["matches", "wins", "winRate", "avgPts", "avgTurns", "exact50", "over50", "bestStreak"],
@@ -217,7 +219,7 @@ export default function MolkkyStatsLeaderboardsPage({ store, go, params }: Props
 
     out.sort((a, b) => metricValue(b, metric) - metricValue(a, metric));
     return out;
-  }, [period, metric, profileById, includeBots]);
+  }, [period, metric, profileById, includeBots, historyRevision]);
 
   const T = theme;
   const accent = T.accent || T.gold || "#c8ff00";

@@ -407,28 +407,27 @@ function writeTerritoriesLocalCache(items: TerritoriesMatch[]) {
  * à l'ancien appareil.
  */
 export async function loadTerritoriesHistoryUnified(): Promise<TerritoriesMatch[]> {
+  // W2 SINGLE SOURCE: History V4 is the lifetime authority. The localStorage key
+  // is only a fast visual cache and must never add rows missing from History.
   const byId = new Map<string, TerritoriesMatch>();
-  for (const item of loadTerritoriesHistory()) byId.set(String(item.id), item);
-  try {
-    const api: any = History as any;
-    const light = typeof api?.listFinished === "function" ? await api.listFinished() : await api.list();
-    const candidates = (Array.isArray(light) ? light : []).filter((rec: any) => isTerritoriesHistoryRecord(rec));
-    const batchSize = 16;
-    for (let i = 0; i < candidates.length; i += batchSize) {
-      const batch = candidates.slice(i, i + batchSize);
-      const fullRows = await Promise.all(batch.map(async (rec: any) => {
-        const id = String(rec?.id ?? rec?.matchId ?? "").trim();
-        if (!id || typeof api?.get !== "function") return rec;
-        try { return (await api.get(id)) || rec; } catch { return rec; }
-      }));
-      for (const rec of fullRows) {
-        const item = territoriesFromHistoryRecord(rec);
-        if (item) byId.set(String(item.id), item);
-      }
+  const api: any = History as any;
+  const light = typeof api?.listFinished === "function" ? await api.listFinished() : await api.list();
+  const candidates = (Array.isArray(light) ? light : []).filter((rec: any) => isTerritoriesHistoryRecord(rec));
+  const batchSize = 16;
+  for (let i = 0; i < candidates.length; i += batchSize) {
+    const batch = candidates.slice(i, i + batchSize);
+    const fullRows = await Promise.all(batch.map(async (rec: any) => {
+      const id = String(rec?.id ?? rec?.matchId ?? "").trim();
+      if (!id || typeof api?.get !== "function") return rec;
+      try { return (await api.get(id)) || rec; } catch { return rec; }
+    }));
+    for (const rec of fullRows) {
+      const item = territoriesFromHistoryRecord(rec);
+      if (item) byId.set(String(item.id), item);
     }
-  } catch {}
+  }
   const out = Array.from(byId.values()).sort((a,b) => Number(b.ts || 0) - Number(a.ts || 0));
-  if (out.length) writeTerritoriesLocalCache(out);
+  writeTerritoriesLocalCache(out);
   return out;
 }
 
@@ -657,5 +656,14 @@ export function clearTerritoriesHistory() {
     localStorage.removeItem(KEY);
   } catch {}
 
-  emitTerritoriesUpdated();
+  // W2 SINGLE SOURCE: clearing the UI cache must also mutate the canonical
+  // History V4 collection, otherwise the rows would reappear on next reconcile.
+  void (async () => {
+    try {
+      const rows: any[] = await (History as any).list();
+      const matches = (Array.isArray(rows) ? rows : []).filter((rec: any) => isTerritoriesHistoryRecord(rec));
+      await Promise.all(matches.map((rec: any) => History.remove(String(rec?.id || rec?.matchId || ""))));
+    } catch {}
+    emitTerritoriesUpdated();
+  })();
 }
