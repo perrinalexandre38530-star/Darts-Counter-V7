@@ -874,11 +874,6 @@ const INTELLIGENCE_SPECS: Record<string, { label: string; query: string; domains
     query: "cornhole ACL ACO results scores tournament",
     domains: ["iplayacl.com", "americancornhole.com", "ofch.fr"],
   },
-  palet: {
-    label: "palet",
-    query: "palet championnat coupe résultats compétition",
-    domains: ["le-palet.com"],
-  },
   bowling: {
     label: "bowling",
     query: "bowling IBF PBA results scores tournament",
@@ -888,17 +883,16 @@ const INTELLIGENCE_SPECS: Record<string, { label: string; query: string; domains
 
 
 const SPORT_SOURCE_DOMAINS: Record<string, string[]> = {
-  darts: ["pdc.tv", "dartswdf.com", "modussuperseries.com", "dartconnect.com", "leaderboard.dartconnect.com", "dartsinfo.co.uk", "dartsnews.com", "live-darts.com", "flechettes.info", "ffdarts.fr", "ddv-online.de", "ndbdarts.nl", "dartsbelgium.be", "champdarts.com", "adodarts.com", "dartscanada.com", "dartsaustralia.com", "dartsnz.nz", "pdcnordic.tv", "bedarts.be", "jsfd.or.jp", "japan-darts.com", "darts.or.jp"],
-  pingpong: ["ittf.com", "worldtabletennis.com", "ettu.org", "fftt.com", "tabletennisengland.co.uk"],
-  petanque: ["fipjp.org", "ffpjp.org", "compet.ffpjp.org", "boulistenaute.com"],
-  babyfoot: ["tablesoccer.org", "ffbabyfoot.fr"],
-  molkky: ["molkky.world", "international-molkky.org", "ff-molkky.fr"],
-  foot: ["fifa.com", "uefa.com", "ligue1.com", "premierleague.com", "laliga.com", "legaseriea.it", "bundesliga.com", "espn.com", "skysports.com", "lequipe.fr"],
-  padel: ["padelfip.com", "premierpadel.com", "fft.fr", "padelmagazine.fr"],
-  badminton: ["bwfbadminton.com", "badmintoneurope.com", "ffbad.org"],
-  cornhole: ["iplayacl.com", "americancornhole.com", "ofch.fr"],
-  palet: ["le-palet.com"],
-  bowling: ["pba.com", "bowling.sport", "ffbsq.org", "ffbsq.fr"],
+  darts: ["pdc.tv", "dartswdf.com", "modussuperseries.com", "dartconnect.com", "leaderboard.dartconnect.com", "dartsdatabase.co.uk", "idarts.nl", "mastercaller.com", "allthingsdarts.dartscores.co.uk", "dartsinfo.co.uk", "dartsnews.com", "live-darts.com", "flechettes.info", "ffdarts.fr", "ddv-online.de", "ndbdarts.nl", "dartsbelgium.be", "champdarts.com", "adodarts.com", "dartscanada.com", "dartsaustralia.com", "dartsnz.nz", "pdcnordic.tv", "bedarts.be", "jsfd.or.jp", "japan-darts.com", "darts.or.jp"],
+  pingpong: ["ittf.com", "worldtabletennis.com", "ettu.org", "fftt.com", "tabletennisengland.co.uk", "tournamentsoftware.com"],
+  petanque: ["fipjp.org", "ffpjp.org", "compet.ffpjp.org", "boulistenaute.com", "petanqueland.com", "cep-petanque.com", "loeildubouliste.fr"],
+  babyfoot: ["tablesoccer.org", "ffbabyfoot.fr", "foosball.com"],
+  molkky: ["molkky.world", "international-molkky.org", "ff-molkky.fr", "molkkify.app"],
+  foot: ["fifa.com", "uefa.com", "ligue1.com", "premierleague.com", "laliga.com", "legaseriea.it", "bundesliga.com", "fff.fr", "laurafoot.fff.fr", "fulltime.thefa.com", "thefa.com", "fussball.de", "lnd.it", "tuttocampo.it", "rfef.es", "futbol-regional.es", "soccerway.com", "sofascore.com", "flashscore.com", "transfermarkt.com", "worldfootball.net", "uslleaguetwo.com", "npsl.com", "league1canada.ca", "mlsnextpro.com", "footballaustralia.com.au", "jfl.or.jp", "espn.com", "skysports.com", "lequipe.fr", "kicker.de", "marca.com", "gazzetta.it"],
+  padel: ["padelfip.com", "premierpadel.com", "fft.fr", "padelmagazine.fr", "padelmanager.com", "padelscore.org", "tournamentsoftware.com"],
+  badminton: ["bwfbadminton.com", "bwf.tournamentsoftware.com", "tournamentsoftware.com", "badmintoneurope.com", "ffbad.org", "badmintonengland.co.uk"],
+  cornhole: ["iplayacl.com", "americancornhole.com", "scoreholio.com", "ofch.fr"],
+  bowling: ["pba.com", "bowling.sport", "etbf.eu", "bowl.com", "lanetalk.com", "bowlingresults.info", "ffbsq.org", "ffbsq.fr"],
 };
 
 const MEDIA_DOMAINS_BY_LANG: Record<string, string[]> = {
@@ -960,6 +954,8 @@ const DIRECT_EDITORIAL_PAGES: Record<string, Array<{ url: string; sourceName: st
     { url: "https://www.ndfc.ca/", sourceName: "NDFC Canada", scope: "regional", scopeLabel: "Canada" },
     { url: "https://www.ndbdarts.nl/", sourceName: "Nederlandse Darts Bond", scope: "regional", scopeLabel: "Pays-Bas / Benelux" },
     { url: "https://ddv-online.de/", sourceName: "Deutscher Dart-Verband", scope: "regional", scopeLabel: "Allemagne / DACH" },
+    { url: "https://stats.idarts.nl/Dashboard/Home", sourceName: "iDarts", scope: "world", scopeLabel: "Monde / database" },
+    { url: "https://mastercaller.com/", sourceName: "Mastercaller", scope: "world", scopeLabel: "Monde / database" },
   ],
   pingpong: [
     { url: "https://www.ittf.com/news/", sourceName: "ITTF", scope: "world", scopeLabel: "Monde" },
@@ -970,6 +966,7 @@ const DIRECT_EDITORIAL_PAGES: Record<string, Array<{ url: string; sourceName: st
     { url: "https://www.fftt.com/actualites/", sourceName: "FFTT", scope: "local", scopeLabel: "FR" },
     { url: "https://www.fftt.com/competition/", sourceName: "FFTT Compétitions", scope: "local", scopeLabel: "FR" },
     { url: "https://www.tabletennisengland.co.uk/news/", sourceName: "Table Tennis England", scope: "regional", scopeLabel: "UK" },
+    { url: "https://www.tournamentsoftware.com/", sourceName: "Tournament Software", scope: "world", scopeLabel: "Tournois / Monde" },
   ],
   petanque: [
     { url: "https://fipjp.org/index.php/fr/", sourceName: "FIPJP", scope: "world", scopeLabel: "Monde" },
@@ -979,10 +976,12 @@ const DIRECT_EDITORIAL_PAGES: Record<string, Array<{ url: string; sourceName: st
     { url: "https://www.petanqueland.fr/officiels-petanque/", sourceName: "PetanqueLand", scope: "local", scopeLabel: "Francophonie" },
     { url: "https://www.loeildubouliste.fr/competitions", sourceName: "L’Œil du Bouliste", scope: "local", scopeLabel: "Francophonie" },
     { url: "https://www.boulistenaute.com/", sourceName: "Boulistenaute", scope: "local", scopeLabel: "Francophonie" },
+    { url: "https://www.petanqueland.fr/", sourceName: "PétanqueLand", scope: "local", scopeLabel: "France / clubs" },
   ],
   babyfoot: [
     { url: "https://www.tablesoccer.org/", sourceName: "ITSF", scope: "world", scopeLabel: "Monde" },
     { url: "https://www.ffbabyfoot.fr/", sourceName: "FFBabyFoot", scope: "local", scopeLabel: "FR" },
+    { url: "https://www.foosball.com/", sourceName: "Foosball USA", scope: "regional", scopeLabel: "Amérique du Nord" },
   ],
   molkky: [
     { url: "https://www.molkky.world/fr", sourceName: "Mölkky World", scope: "world", scopeLabel: "Monde" },
@@ -993,12 +992,28 @@ const DIRECT_EDITORIAL_PAGES: Record<string, Array<{ url: string; sourceName: st
     { url: "https://www.ff-molkky.fr/", sourceName: "FF Mölkky", scope: "local", scopeLabel: "FR" },
   ],
   foot: [
-    { url: "https://www.uefa.com/news-media/news/", sourceName: "UEFA", scope: "regional", scopeLabel: "Europe" },
     { url: "https://www.uefa.com/uefachampionsleague/fixtures-results/", sourceName: "UEFA Champions League", scope: "regional", scopeLabel: "Europe" },
-    { url: "https://www.fifa.com/en/news", sourceName: "FIFA", scope: "world", scopeLabel: "Monde" },
-    { url: "https://www.premierleague.com/en/news", sourceName: "Premier League", scope: "regional", scopeLabel: "UK" },
-    { url: "https://ligue1.com/", sourceName: "Ligue 1", scope: "local", scopeLabel: "FR" },
-    { url: "https://www.espn.com/soccer/", sourceName: "ESPN Soccer", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.uefa.com/uefaeuropaleague/fixtures-results/", sourceName: "UEFA Europa League", scope: "regional", scopeLabel: "Europe" },
+    { url: "https://www.fifa.com/en/tournaments", sourceName: "FIFA", scope: "world", scopeLabel: "Monde" },
+    { url: "https://ligue1.com/", sourceName: "Ligue 1", scope: "local", scopeLabel: "France" },
+    { url: "https://www.fff.fr/competition", sourceName: "FFF Compétitions", scope: "local", scopeLabel: "France / fédéral" },
+    { url: "https://laurafoot.fff.fr/competitions/", sourceName: "LAuRAFoot", scope: "local", scopeLabel: "France / régional" },
+    { url: "https://fulltime.thefa.com/", sourceName: "FA Full-Time", scope: "regional", scopeLabel: "Angleterre / grassroots" },
+    { url: "https://www.thefa.com/competitions/grassroots", sourceName: "The FA Grassroots", scope: "regional", scopeLabel: "Angleterre / grassroots" },
+    { url: "https://www.fussball.de/homepage", sourceName: "FUSSBALL.DE", scope: "regional", scopeLabel: "Allemagne / amateur" },
+    { url: "https://www.tuttocampo.it/Italia/Dilettanti", sourceName: "Tuttocampo Dilettanti", scope: "regional", scopeLabel: "Italie / amateur" },
+    { url: "https://www.lnd.it/", sourceName: "LND", scope: "regional", scopeLabel: "Italie / amateur" },
+    { url: "https://rfef.es/", sourceName: "RFEF", scope: "regional", scopeLabel: "Espagne" },
+    { url: "https://www.futbol-regional.es/", sourceName: "Fútbol Regional", scope: "regional", scopeLabel: "Espagne / amateur" },
+    { url: "https://www.soccerway.com/matches/", sourceName: "Soccerway", scope: "world", scopeLabel: "Monde / divisions" },
+    { url: "https://www.sofascore.com/football", sourceName: "Sofascore", scope: "world", scopeLabel: "Monde / divisions" },
+    { url: "https://www.flashscore.com/football/", sourceName: "Flashscore", scope: "world", scopeLabel: "Monde / live" },
+    { url: "https://www.uslleaguetwo.com/", sourceName: "USL League Two", scope: "regional", scopeLabel: "USA / semi-pro" },
+    { url: "https://www.npsl.com/", sourceName: "NPSL", scope: "regional", scopeLabel: "USA / semi-pro" },
+    { url: "https://league1canada.ca/", sourceName: "League1 Canada", scope: "regional", scopeLabel: "Canada / semi-pro" },
+    { url: "https://www.mlsnextpro.com/schedule/", sourceName: "MLS NEXT Pro", scope: "regional", scopeLabel: "USA / développement" },
+    { url: "https://www.jfl.or.jp/", sourceName: "JFL", scope: "regional", scopeLabel: "Japon / semi-pro" },
+    { url: "https://www.espn.com/soccer/scoreboard", sourceName: "ESPN Soccer", scope: "world", scopeLabel: "Monde" },
   ],
   padel: [
     { url: "https://www.padelfip.com/news/", sourceName: "FIP Padel", scope: "world", scopeLabel: "Monde" },
@@ -1008,6 +1023,8 @@ const DIRECT_EDITORIAL_PAGES: Record<string, Array<{ url: string; sourceName: st
     { url: "https://www.padelscore.org/calendario", sourceName: "PadelScore", scope: "world", scopeLabel: "Monde" },
     { url: "https://www.fft.fr/nos-sports/padel", sourceName: "FFT Padel", scope: "local", scopeLabel: "FR" },
     { url: "https://padelmagazine.fr/", sourceName: "Padel Magazine", scope: "local", scopeLabel: "Francophonie" },
+    { url: "https://padelmanager.com/", sourceName: "Padel Manager", scope: "regional", scopeLabel: "Espagne / clubs" },
+    { url: "https://www.tournamentsoftware.com/", sourceName: "Tournament Software Padel", scope: "world", scopeLabel: "Tournois / Monde" },
   ],
   badminton: [
     { url: "https://bwfbadminton.com/", sourceName: "BWF", scope: "world", scopeLabel: "Monde" },
@@ -1015,15 +1032,15 @@ const DIRECT_EDITORIAL_PAGES: Record<string, Array<{ url: string; sourceName: st
     { url: "https://bwf.tournamentsoftware.com/", sourceName: "BWF Tournament Software", scope: "world", scopeLabel: "Monde" },
     { url: "https://badmintoneurope.com/web/corporate/news", sourceName: "Badminton Europe", scope: "regional", scopeLabel: "Europe" },
     { url: "https://www.ffbad.org/", sourceName: "FFBaD", scope: "local", scopeLabel: "FR" },
+    { url: "https://www.badmintonengland.co.uk/", sourceName: "Badminton England", scope: "regional", scopeLabel: "UK / clubs" },
+    { url: "https://www.tournamentsoftware.com/", sourceName: "Tournament Software", scope: "world", scopeLabel: "Tournois / Monde" },
   ],
   cornhole: [
     { url: "https://www.iplayacl.com/about/acl-information/acl-news", sourceName: "ACL", scope: "world", scopeLabel: "Monde" },
     { url: "https://www.iplayacl.com/", sourceName: "ACL", scope: "regional", scopeLabel: "Amérique du Nord" },
     { url: "https://americancornhole.com/results/", sourceName: "ACO", scope: "regional", scopeLabel: "Amérique du Nord" },
     { url: "https://www.ofch.fr/evenements/", sourceName: "OFCH", scope: "local", scopeLabel: "FR" },
-  ],
-  palet: [
-    { url: "https://www.le-palet.com/", sourceName: "Palet FNSMR", scope: "local", scopeLabel: "FR" },
+    { url: "https://scoreholio.com/", sourceName: "Scoreholio", scope: "regional", scopeLabel: "Amérique du Nord / amateur" },
   ],
   bowling: [
     { url: "https://www.pba.com/press-media-gallery/news", sourceName: "PBA", scope: "world", scopeLabel: "Monde" },
@@ -1031,6 +1048,9 @@ const DIRECT_EDITORIAL_PAGES: Record<string, Array<{ url: string; sourceName: st
     { url: "https://bowling.sport/", sourceName: "IBF", scope: "world", scopeLabel: "Monde" },
     { url: "https://etbf.eu/", sourceName: "ETBF", scope: "regional", scopeLabel: "Europe" },
     { url: "https://www.ffbsq.fr/", sourceName: "FFBSQ", scope: "local", scopeLabel: "FR" },
+    { url: "https://bowl.com/tournaments", sourceName: "USBC", scope: "regional", scopeLabel: "USA / amateur" },
+    { url: "https://www.lanetalk.com/", sourceName: "Lanetalk", scope: "world", scopeLabel: "Clubs / Monde" },
+    { url: "https://www.bowlingresults.info/", sourceName: "Bowling Results", scope: "world", scopeLabel: "Tournois / Monde" },
   ],
 };
 
@@ -1068,28 +1088,28 @@ const DARTS_LOCALE_QUERY_PACKS: Record<string, string[]> = {
 };
 
 const FOOT_LOCALE_QUERY_PACKS: Record<string, string[]> = {
-  fr: ["football France Ligue 1 résultats scores", "football équipe de France résultats", "football Ligue des champions résultats France"],
-  en: ["football Premier League results scores", "football England Scotland Wales Ireland results", "soccer USA Canada Australia results"],
-  es: ["fútbol España LaLiga resultados", "fútbol Latinoamérica resultados", "Champions League resultados fútbol"],
-  de: ["Fußball Deutschland Bundesliga Ergebnisse", "Fußball Österreich Schweiz Ergebnisse", "Champions League Ergebnisse"],
-  it: ["calcio Italia Serie A risultati", "Champions League calcio risultati"],
-  nl: ["voetbal Nederland Eredivisie uitslagen", "voetbal België uitslagen", "Champions League uitslagen"],
-  pt: ["futebol Portugal resultados", "futebol Brasil resultados", "Champions League resultados"],
-  pl: ["piłka nożna Polska wyniki", "Liga Mistrzów wyniki piłka nożna"],
-  da: ["fodbold Danmark resultater", "Champions League fodbold resultater"],
-  no: ["fotball Norge resultater", "Champions League fotball resultater"],
-  sv: ["fotboll Sverige resultat", "Champions League fotboll resultat"],
-  is: ["fótbolti Ísland úrslit", "Champions League football results"],
-  cs: ["fotbal Česko výsledky", "Liga mistrů fotbal výsledky"],
-  ro: ["fotbal România rezultate", "Champions League rezultate"],
-  sr: ["fudbal Srbija rezultati", "Liga šampiona rezultati"],
-  hr: ["nogomet Hrvatska rezultati", "Liga prvaka rezultati"],
-  ru: ["футбол результаты", "Лига чемпионов результаты"],
-  tr: ["futbol Türkiye sonuçları", "Şampiyonlar Ligi sonuçları"],
-  ar: ["نتائج كرة القدم", "دوري أبطال أوروبا نتائج"],
-  hi: ["football India results", "football Asia results", "Champions League results"],
-  ja: ["サッカー 試合 結果", "Jリーグ 結果", "チャンピオンズリーグ 結果"],
-  zh: ["足球 比赛 结果 中国", "中超 结果", "欧冠 足球 结果"],
+  fr: ["football France résultats Ligue 1 Ligue 2 National", "FFF compétitions résultats National 2 National 3", "football amateur résultats ligue régionale district France", "Coupe de France résultats clubs amateurs", "football féminin jeunes U19 U17 résultats France"],
+  en: ["Premier League Championship League One League Two results", "FA Full-Time grassroots football results county league", "non league football results National League Northern Premier Southern Isthmian", "Scotland Wales Ireland football lower league results", "USA Canada Australia semi pro amateur soccer results"],
+  es: ["fútbol España LaLiga Segunda Primera Federación resultados", "fútbol regional amateur España resultados", "fútbol Latinoamérica ligas regionales resultados"],
+  de: ["Fußball Deutschland Bundesliga 2 Bundesliga 3 Liga Ergebnisse", "FUSSBALL.DE Amateur Regionalliga Oberliga Ergebnisse", "Fußball Österreich Schweiz untere Ligen Ergebnisse"],
+  it: ["calcio Serie A B C risultati", "calcio dilettanti Serie D Eccellenza Promozione risultati", "Tuttocampo risultati calcio regionale giovanile femminile"],
+  nl: ["voetbal Nederland Eredivisie Eerste Divisie Tweede Divisie uitslagen", "amateurvoetbal uitslagen Nederland België"],
+  pt: ["futebol Portugal Liga 2 Liga 3 resultados", "futebol distrital amador Portugal resultados", "futebol Brasil estaduais séries inferiores resultados"],
+  pl: ["piłka nożna Polska Ekstraklasa I liga II liga wyniki", "piłka nożna regionalna amatorska Polska wyniki"],
+  da: ["fodbold Danmark Superliga 1 division 2 division resultater", "dansk serie amatør fodbold resultater"],
+  no: ["fotball Norge Eliteserien OBOS PostNord Norsk Tipping liga resultater", "breddefotball resultater Norge"],
+  sv: ["fotboll Sverige Allsvenskan Superettan Ettan Division 2 resultat", "breddfotboll resultat Sverige"],
+  is: ["fótbolti Ísland úrslit deildir", "Iceland lower league football results"],
+  cs: ["fotbal Česko liga FNL ČFL MSFL výsledky", "amatérský regionální fotbal výsledky"],
+  ro: ["fotbal România Liga 1 Liga 2 Liga 3 rezultate", "fotbal județean rezultate"],
+  sr: ["fudbal Srbija SuperLiga Prva Liga Srpska liga rezultati", "amaterski fudbal rezultati"],
+  hr: ["nogomet Hrvatska HNL Prva NL Druga NL rezultati", "županijski amaterski nogomet rezultati"],
+  ru: ["футбол результаты низшие лиги региональные", "football Eastern Europe lower league results"],
+  tr: ["futbol Türkiye Süper Lig 1 Lig 2 Lig 3 Lig sonuçları", "amatör futbol sonuçları Türkiye"],
+  ar: ["نتائج كرة القدم الدوريات المحلية والهواة", "football Middle East lower league results"],
+  hi: ["football India ISL I League I League 2 results", "India state league amateur football results"],
+  ja: ["サッカー Jリーグ JFL 地域リーグ 結果", "日本 サッカー アマチュア 地域 結果"],
+  zh: ["足球 中国 中超 中甲 中乙 结果", "中国 足球 地方 联赛 业余 结果"],
 };
 
 
@@ -1259,12 +1279,14 @@ function globalQueriesFor(sport: string) {
   const domains = SPORT_SOURCE_DOMAINS[sport] || spec.domains || [];
   const out = [
     `${spec.query} worldwide results scores`,
+    `${spec.label} amateur semi pro regional league club tournament results scores`,
+    `${spec.label} national regional local championship results brackets draws`,
     `${spec.query} world live fixtures`,
     `${spec.label} latest news results rankings performance`,
-    ...domains.slice(0, 8).map((domain) => `site:${domain} ${spec.label} results news`),
+    ...domains.slice(0, 14).map((domain) => `site:${domain} ${spec.label} results news`),
   ];
   if (sport === "darts") out.push("darts PDC WDF MODUS worldwide results scores", "PDC European Tour Players Championship results");
-  if (sport === "foot") out.push("football FIFA UEFA worldwide results scores", "Champions League Premier League LaLiga Bundesliga Serie A Ligue 1 results");
+  if (sport === "foot") out.push("football FIFA UEFA worldwide results scores", "Champions League Europa Conference League results", "football lower divisions semi pro amateur grassroots results worldwide", "football regional county state provincial league results", "women youth reserve academy football results", "FA Full-Time grassroots results", "FUSSBALL.DE amateur results", "Tuttocampo dilettanti results", "FFF regional district football results");
   if (sport === "padel") out.push("Premier Padel FIP Tour results finals rankings", "padel world cup results FIP");
   if (sport === "pingpong") out.push("WTT ITTF results champions rankings", "table tennis Europe Asia results");
   if (sport === "badminton") out.push("BWF World Tour results winners rankings", "Badminton Europe results", "BWF tournamentsoftware scores draws results");
@@ -1273,8 +1295,7 @@ function globalQueriesFor(sport: string) {
   if (sport === "babyfoot") out.push("ITSF World Series table soccer results rankings", "foosball world cup results ITSF");
   if (sport === "cornhole") out.push("ACL cornhole results brackets rankings", "ACO cornhole world championship results");
   if (sport === "bowling") out.push("PBA IBF ETBF bowling results standings", "bowling world championships results");
-  if (sport === "palet") out.push("palet Coupe de France résultats FNSMR", "palet Vendée résultats championnat");
-  return Array.from(new Set(out)).slice(0, 18);
+  return Array.from(new Set(out)).slice(0, 30);
 }
 
 function localQueriesFor(sport: string, lang: string) {
@@ -1297,7 +1318,7 @@ function localQueriesFor(sport: string, lang: string) {
   for (const domain of mediaDomains.slice(0, 3)) {
     base.push(`site:${domain} ${spec.label} results news`);
   }
-  return Array.from(new Set(base)).slice(0, 7);
+  return Array.from(new Set(base)).slice(0, 11);
 }
 
 function intelligenceFeedPlansFor(sport: string, lang: string): IntelligenceFeedPlan[] {
@@ -1337,14 +1358,14 @@ function intelligenceFeedPlansFor(sport: string, lang: string): IntelligenceFeed
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
-  }).slice(0, 28);
+  }).slice(0, 42);
 }
 
 function coreIntelligenceFeedPlansFor(sport: string, lang: string): IntelligenceFeedPlan[] {
   const all = intelligenceFeedPlansFor(sport, lang);
-  const local = all.filter((plan) => plan.scope === "local").slice(0, 4);
-  const regional = all.filter((plan) => plan.scope === "regional").slice(0, 4);
-  const world = all.filter((plan) => plan.scope === "world").slice(0, 5);
+  const local = all.filter((plan) => plan.scope === "local").slice(0, 5);
+  const regional = all.filter((plan) => plan.scope === "regional").slice(0, 5);
+  const world = all.filter((plan) => plan.scope === "world").slice(0, 7);
   return [...local, ...regional, ...world];
 }
 
@@ -1518,13 +1539,14 @@ async function directEditorialIntelligence(sport: string, maxPages = 6): Promise
       const href = absoluteHttpUrl(decodeHtml(match[1]), response.url || page.url);
       const anchorHtml = match[2];
       const title = stripTags(anchorHtml);
+      const explicitScore = explicitScoreFromText(title);
       const key = normalizeHeadlineKey(title);
-      if (!href || title.length < 28 || title.length > 220 || !key || seen.has(key)) continue;
+      const minTitleLength = sport === "foot" && explicitScore ? 8 : 28;
+      if (!href || title.length < minTitleLength || title.length > 220 || !key || seen.has(key)) continue;
       if (/^(home|news|results|resultats|calendar|calendrier|ranking|rankings|read more|voir plus|view all|menu|contact|login|sign in)$/i.test(title)) continue;
       if (/privacy|cookie|terms|newsletter|facebook|instagram|youtube|twitter|linkedin/i.test(title)) continue;
       seen.add(key);
-      const kind = classifyHeadline(title, "");
-      const explicitScore = explicitScoreFromText(title);
+      const kind = explicitScore ? "result" as IntelligenceKind : classifyHeadline(title, "");
       rows.push({
         id: `direct-${sport}-${pageIndex}-${rows.length}-${key.replace(/\s+/g, "-").slice(0, 42)}`,
         title,
@@ -1726,7 +1748,7 @@ async function googleNewsIntelligence(sport: string, lang: string, depth: "core"
     }
   });
 
-  return balanced.slice(0, 72);
+  return balanced.slice(0, 120);
 }
 
 
@@ -1749,7 +1771,7 @@ function bingMarket(edition: NewsEdition) {
 async function bingNewsIntelligence(sport: string, lang: string, depth: "core" | "deep" = "deep"): Promise<IntelligenceNews[]> {
   const spec = INTELLIGENCE_SPECS[sport];
   if (!spec) return [];
-  const plans = (depth === "core" ? coreIntelligenceFeedPlansFor(sport, lang) : intelligenceFeedPlansFor(sport, lang)).slice(0, depth === "core" ? 5 : 12);
+  const plans = (depth === "core" ? coreIntelligenceFeedPlansFor(sport, lang) : intelligenceFeedPlansFor(sport, lang)).slice(0, depth === "core" ? 7 : 18);
   const feeds = await Promise.allSettled(plans.map(async (plan, qIndex) => {
     const url = `https://www.bing.com/news/search?q=${encodeURIComponent(plan.query)}&format=rss&setmkt=${encodeURIComponent(bingMarket(plan.edition))}`;
     const response = await timedFetch(url, {
@@ -1788,7 +1810,7 @@ async function bingNewsIntelligence(sport: string, lang: string, depth: "core" |
   }));
   return uniqNews(feeds.flatMap((result) => result.status === "fulfilled" ? result.value : []))
     .sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")))
-    .slice(0, 60);
+    .slice(0, 100);
 }
 
 async function yahooSoccerNews(lang: string): Promise<IntelligenceNews[]> {
@@ -1854,7 +1876,7 @@ async function openAiWebIntelligence(env: Env, sport: string, lang: string): Pro
   if (!key || !spec) return [];
   const model = str(env?.LIVE_INTELLIGENCE_MODEL).trim() || "gpt-6-luna";
   const today = new Date().toISOString().slice(0, 10);
-  const prompt = `Today is ${today}. Search the web broadly for the latest verified ${spec.label} competition news, official match results, current live events, rankings/performances and upcoming official events from the last 30 days and the next 30 days. Cover the user-language area AND Europe/continental circuits AND the rest of the world; never let one country or one federation dominate. For darts explicitly include PDC, WDF, MODUS, DartConnect/DCTV, CDC North America/Latin America, PDC Nordic & Baltic, France, Benelux/DACH, Australia and New Zealand when relevant. Prioritize official federation/tour sources and reputable specialist sports media. Return ONLY valid JSON with this exact shape: {"items":[{"title":"...","summary":"...","publishedAt":"ISO date or null","sourceName":"...","sourceUrl":"https://...","imageUrl":"https://... or null","kind":"news|result|live|upcoming","resultLabel":"explicit published score/result or null","scope":"local|regional|world","scopeLabel":"country/region/world label"}]}. Maximum 40 items. ALWAYS cover three mandatory scopes: (1) local sources relevant to the requested language/country, (2) regional/continental sources, and (3) worldwide sources and major international circuits. The selected language is a priority, never a geographic filter. For example fr must include France/francophone + Europe + World; zh must include China + Asia + World; ja must include Japan + Asia + World; en must include UK/Ireland + North America + Oceania + World. IMPORTANT: never invent a score, winner, date or live status. resultLabel may contain a numeric score ONLY when a searched source explicitly states that score. Language for title/summary: ${lang || "fr"}.`;
+  const prompt = `Today is ${today}. Search the web broadly for the latest verified ${spec.label} competition news, explicit match results and scores, current live events, rankings/performances and upcoming events from the last 60 days and the next 45 days. Include professional, semi-professional, national federation, regional, county/state/provincial, club, grassroots and amateur tournaments whenever public results exist. Cover the user-language area AND Europe/continental circuits AND the rest of the world; never let one country or one federation dominate. For darts explicitly include PDC, WDF, MODUS, DartConnect/DCTV, CDC North America/Latin America, PDC Nordic & Baltic, France, Benelux/DACH, Australia and New Zealand when relevant. Prioritize official federation/tour/league/club result pages, tournament platforms, brackets and reputable specialist sports media. Search beyond top-tier professional circuits: lower divisions, qualifiers, youth, women, veterans, county/state/provincial, regional and amateur events are all valuable when verifiable. Return ONLY valid JSON with this exact shape: {"items":[{"title":"...","summary":"...","publishedAt":"ISO date or null","sourceName":"...","sourceUrl":"https://...","imageUrl":"https://... or null","kind":"news|result|live|upcoming","resultLabel":"explicit published score/result or null","scope":"local|regional|world","scopeLabel":"country/region/world label"}]}. Maximum 70 items. Prefer concrete result items with explicit scores and competition/round names over generic previews. ALWAYS cover three mandatory scopes: (1) local sources relevant to the requested language/country, (2) regional/continental sources, and (3) worldwide sources and major international circuits. The selected language is a priority, never a geographic filter. For example fr must include France/francophone + Europe + World; zh must include China + Asia + World; ja must include Japan + Asia + World; en must include UK/Ireland + North America + Oceania + World. IMPORTANT: never invent a score, winner, date or live status. resultLabel may contain a numeric score ONLY when a searched source explicitly states that score. Language for title/summary: ${lang || "fr"}.`;
   const response = await timedFetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -2444,6 +2466,41 @@ function uniqNormalResults(rows: NormalResult[]) {
   });
 }
 
+
+function intelligenceNewsToStructuredResult(row: IntelligenceNews, sport: string): NormalResult | null {
+  if (row.kind !== "result") return null;
+  const text = `${row.title || ""} ${row.resultLabel || ""}`.replace(/\s+/g, " ").trim();
+  // Strict conversion only: require two named sides and an explicit numeric score.
+  const patterns = [
+    /^(.{2,80}?)\s+(\d{1,3})\s*[-–:]\s*(\d{1,3})\s+(.{2,80}?)(?:\s+[|·].*)?$/i,
+    /^(.{2,80}?)\s+(?:beat|beats|defeated|defeats|bt|batt?u|vence|gagne contre)\s+(.{2,80}?)\s+(\d{1,3})\s*[-–:]\s*(\d{1,3})/i,
+  ];
+  let left = "", right = "", a = NaN, b = NaN;
+  const first = text.match(patterns[0]);
+  if (first) { left = first[1].trim(); a = Number(first[2]); b = Number(first[3]); right = first[4].trim(); }
+  else {
+    const second = text.match(patterns[1]);
+    if (second) { left = second[1].trim(); right = second[2].trim(); a = Number(second[3]); b = Number(second[4]); }
+  }
+  if (!left || !right || !Number.isFinite(a) || !Number.isFinite(b) || a === b) return null;
+  if (left.length > 80 || right.length > 80 || /\b(results?|scores?|round|final|championship|tournament)\b/i.test(left) && left.split(/\s+/).length > 8) return null;
+  const lp: NormalPlayer = { name: left, score: a };
+  const rp: NormalPlayer = { name: right, score: b };
+  const winner = a > b ? lp : rp;
+  const loser = a > b ? rp : lp;
+  return {
+    id: `intel-result-${sport}-${normalizeHeadlineKey(`${left}-${a}-${b}-${right}`).replace(/\s+/g, "-").slice(0, 90)}`,
+    playedOn: row.publishedAt || null,
+    competition: row.scopeLabel ? `${row.scopeLabel} · ${row.sourceName || "Résultats"}` : (row.sourceName || "Résultats publiés"),
+    round: null,
+    winner,
+    loser,
+    raw: { source: row.sourceName || "Web", sourceUrl: row.sourceUrl || null },
+    sourceName: row.sourceName || "Web",
+    sourceUrl: row.sourceUrl || null,
+  };
+}
+
 function newsToEvent(row: IntelligenceNews, sport: string): NormalEvent | null {
   if (row.kind === "news") return null;
   return {
@@ -2477,7 +2534,7 @@ async function enrichWithLiveIntelligence(
 
   // CORE is intentionally bounded so the journal appears quickly after the
   // structured feed. DEEP runs later from the frontend and can fan out widely.
-  const directPageBudget = deep ? (sport === "darts" ? 22 : 14) : (sport === "darts" ? 8 : 6);
+  const directPageBudget = deep ? (sport === "darts" ? 28 : sport === "foot" ? 48 : 20) : (sport === "darts" ? 10 : sport === "foot" ? 16 : 8);
   const newsSettled = await Promise.allSettled([
     googleNewsIntelligence(sport, lang, deep ? "deep" : "core"),
     deep ? bingNewsIntelligence(sport, lang, "deep") : Promise.resolve([] as IntelligenceNews[]),
@@ -2509,6 +2566,7 @@ async function enrichWithLiveIntelligence(
   const mergedNews = diversifyNews(chronologicalNews, deep ? (sport === "foot" ? 240 : sport === "darts" ? 280 : 220) : (sport === "foot" ? 150 : sport === "darts" ? 180 : 135));
   const news = deep ? await enrichNewsImages(mergedNews) : mergedNews;
   const intelligenceEvents = news.map((row) => newsToEvent(row, sport)).filter(Boolean) as NormalEvent[];
+  const intelligenceResults = news.map((row) => intelligenceNewsToStructuredResult(row, sport)).filter(Boolean) as NormalResult[];
 
   let direct = { results: [] as NormalResult[], fixtures: [] as NormalMatch[], events: [] as NormalEvent[] };
   if (deep && sport === "darts") {
@@ -2531,7 +2589,7 @@ async function enrichWithLiveIntelligence(
       ...base.payload,
       configured: !!base.payload?.configured || news.length > 0 || direct.results.length > 0,
       automaticData: !!base.payload?.automaticData || news.length > 0 || direct.results.length > 0,
-      results: sport === "darts" ? diversifyDartsResults([...direct.results, ...(arr(base.payload?.results) as NormalResult[])], deep ? 480 : 140) : uniqNormalResults([...direct.results, ...(arr(base.payload?.results) as NormalResult[])]).slice(0, deep ? 180 : 120),
+      results: sport === "darts" ? diversifyDartsResults([...direct.results, ...intelligenceResults, ...(arr(base.payload?.results) as NormalResult[])], deep ? 640 : 180) : uniqNormalResults([...direct.results, ...intelligenceResults, ...(arr(base.payload?.results) as NormalResult[])]).slice(0, deep ? 420 : 180),
       fixtures: [...direct.fixtures, ...(arr(base.payload?.fixtures) as NormalMatch[])].slice(0, deep ? 140 : 90),
       events: mergedEvents,
       news,
@@ -2544,7 +2602,7 @@ async function enrichWithLiveIntelligence(
         regionalCount: news.filter((item) => item.scope === "regional").length,
         worldCount: news.filter((item) => item.scope === "world" || !item.scope).length,
         queryCount: selectedPlans.length + (deep ? Math.min(12, selectedPlans.length) : 0) + (sport === "foot" ? 1 : 0) + Math.min(directPageBudget, DIRECT_EDITORIAL_PAGES[sport]?.length || 0) + (sport === "darts" ? 2 : 0),
-        directResultCount: direct.results.length + extraStructuredEvents.length,
+        directResultCount: direct.results.length + intelligenceResults.length + extraStructuredEvents.length,
         updatedAt: new Date().toISOString(),
       },
       warnings,

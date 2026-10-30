@@ -471,6 +471,10 @@ export const DARTS_LIVE_SOURCES: DartsLiveSource[] = [
     calendarUrl: "https://dartswdf.com/calendar",
     badges: ["WDF", "ASIA"],
   },
+
+  { id:"dartconnect_leaderboard", name:"DartConnect Leaderboards", shortName:"DCTV", description:"Classements et performances sur un très grand nombre de circuits professionnels, semi-pros, leagues, county et amateurs.", kind:"results", regions:["global","europe","uk_ireland","north_america","oceania","asia"], official:false, homeUrl:"https://leaderboard.dartconnect.com/", resultsUrl:"https://leaderboard.dartconnect.com/", badges:["SEMI-PRO","AMATEUR","LEAGUES"] },
+  { id:"idarts_stats", name:"iDarts Statistics", shortName:"iDarts", description:"Base de résultats PDC/WDF/BDO et autres événements classés avec statistiques joueurs et tournois.", kind:"results", regions:["global","europe","uk_ireland","north_america","oceania","asia"], official:false, homeUrl:"https://stats.idarts.nl/Dashboard/Home", resultsUrl:"https://stats.idarts.nl/Dashboard/Home", badges:["DATABASE","RESULTATS"] },
+  { id:"mastercaller", name:"Mastercaller", shortName:"Mastercaller", description:"Base mondiale de joueurs, tournois, classements et résultats darts couvrant de nombreux circuits.", kind:"results", regions:["global","europe","uk_ireland","north_america","oceania","asia"], official:false, homeUrl:"https://mastercaller.com/", resultsUrl:"https://mastercaller.com/", badges:["DATABASE","WORLD"] },
 ];
 
 export function getLocaleProfile(locale: string | null | undefined): DartsLiveLocaleProfile {

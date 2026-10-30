@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React from "react";
+import QRCode from "qrcode";
 import BackDot from "../components/BackDot";
 import PageHeader from "../components/PageHeader";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
@@ -7,6 +8,8 @@ import { getTicker } from "../lib/tickers";
 import petanqueExplainPortrait from "../assets/petanque_explain/petanque_explain_vertical.webp";
 import petanqueExplainLandscape from "../assets/petanque_explain/petanque_explain_horizontal.webp";
 import { CLOSEST_CENTER_LOCAL_SOURCE_ID, describeClosestCenterCameraSource } from "../lib/closestCenterCameraSource";
+import { saveCameraCalibration } from "../lib/cameraCalibrationStore";
+import { createClosestCenterCompanionSession, fetchClosestCenterCompanionEvents, fetchClosestCenterCompanionStatus } from "../lib/closestCenterCompanionClient";
 
 const ACCENT = "#44e7ff";
 
@@ -42,13 +45,53 @@ export default function ClosestCenterConfig(props: any) {
   const [teamMap, setTeamMap] = React.useState<Record<string,"A"|"B">>({});
   const [pointsMode, setPointsMode] = React.useState<"petanque"|"descending"|"winner">("petanque");
   const [inputMode, setInputMode] = React.useState<"camera"|"manual">("camera");
-  const [cameraSourceId] = React.useState<string>(CLOSEST_CENTER_LOCAL_SOURCE_ID);
+  const [cameraSourceId, setCameraSourceId] = React.useState<string>(CLOSEST_CENTER_LOCAL_SOURCE_ID);
   const cameraSource = React.useMemo(() => describeClosestCenterCameraSource(cameraSourceId), [cameraSourceId]);
+  const [companionSession,setCompanionSession] = React.useState<any>(null);
+  const [companionQr,setCompanionQr] = React.useState("");
+  const [companionStatus,setCompanionStatus] = React.useState<any>(null);
+  const companionSeqRef = React.useRef(0);
   const [configMode, setConfigMode] = React.useState<"guided"|"complete">("guided");
   const [guidedStep, setGuidedStep] = React.useState(0);
   const [landscape, setLandscape] = React.useState(() => typeof window !== "undefined" ? window.innerWidth > window.innerHeight && window.innerWidth >= 760 : false);
 
   const ticker = getTicker("closest_center") || getTicker("darts_games") || "";
+
+
+  React.useEffect(() => {
+    if (!companionSession?.joinUrl) { setCompanionQr(""); return; }
+    QRCode.toDataURL(companionSession.joinUrl,{margin:1,width:220,errorCorrectionLevel:"M"}).then(setCompanionQr).catch(()=>setCompanionQr(""));
+  }, [companionSession?.joinUrl]);
+
+  React.useEffect(() => {
+    const code=companionSession?.code;
+    if(!code) return;
+    let dead=false;
+    const tick=async()=>{
+      try{
+        const st=await fetchClosestCenterCompanionStatus(code);
+        if(!dead) setCompanionStatus(st);
+        const batch=await fetchClosestCenterCompanionEvents(code,companionSeqRef.current);
+        for(const ev of batch.events){
+          companionSeqRef.current=Math.max(companionSeqRef.current,Number(ev.id||ev.seq||0)||0);
+          const payload=ev.payload||{};
+          if(payload.kind==="closest_center_calibration" && payload.calibration){
+            saveCameraCalibration(payload.calibration,companionSession.sourceId);
+            if(!dead) setCompanionStatus((prev:any)=>({...prev,calibrated:true,connected:true,cameraReady:true,message:"Calibration 5 points reçue"}));
+          }
+        }
+      }catch{}
+    };
+    tick(); const id=window.setInterval(tick,700);
+    return()=>{dead=true;window.clearInterval(id);};
+  }, [companionSession?.code, companionSession?.sourceId]);
+
+  const createCompanion = async () => {
+    try{
+      const session=await createClosestCenterCompanionSession();
+      companionSeqRef.current=0; setCompanionSession(session); setCompanionStatus(null); setCameraSourceId(session.sourceId);
+    }catch(e:any){ setCompanionStatus({connected:false,message:e?.message||"Création de liaison impossible"}); }
+  };
 
   React.useEffect(() => {
     const sync = () => setLandscape(window.innerWidth > window.innerHeight && window.innerWidth >= 760);
@@ -101,7 +144,8 @@ export default function ClosestCenterConfig(props: any) {
 
   const exactPlayers = selectedIds.length === fmt.total;
   const exactTeams = exactPlayers && teamCounts.A === fmt.sideSize && teamCounts.B === fmt.sideSize;
-  const canStart = exactPlayers && exactTeams;
+  const companionReady = cameraSource.kind !== "phone_companion" || (!!companionStatus?.connected && !!companionStatus?.cameraReady && !!companionStatus?.calibrated);
+  const canStart = exactPlayers && exactTeams && (inputMode !== "camera" || companionReady);
 
   const start = () => {
     if (!canStart) return;
@@ -190,13 +234,23 @@ export default function ClosestCenterConfig(props: any) {
       <button style={{...modeBtn(inputMode==="manual"),display:"flex",alignItems:"center",justifyContent:"center",gap:8,textAlign:"center"}} onClick={()=>setInputMode("manual")}><ConfigIcon name="manual"/>MANUEL · LOCAL</button>
     </div>
     {inputMode==="camera"?<>
-      <div style={{marginTop:10,padding:"9px 10px",borderRadius:14,border:"1px solid rgba(68,231,255,.24)",background:"rgba(68,231,255,.06)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
-        <div style={{minWidth:0}}>
-          <div style={{fontSize:9,fontWeight:1000,letterSpacing:1,color:ACCENT}}>SOURCE DE SCORING</div>
-          <div style={{fontSize:12,fontWeight:900,color:"#fff",marginTop:2}}>{cameraSource.label}</div>
-          <div style={{fontSize:10,color:"#91a2b1",marginTop:2}}>Une seule source fournit à la fois l’aperçu et les frames analysées.</div>
+      <div style={{marginTop:10,padding:"9px 10px",borderRadius:14,border:"1px solid rgba(68,231,255,.24)",background:"rgba(68,231,255,.06)",display:"grid",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+          <div style={{minWidth:0}}>
+            <div style={{fontSize:9,fontWeight:1000,letterSpacing:1,color:ACCENT}}>SOURCE DE SCORING</div>
+            <div style={{fontSize:12,fontWeight:900,color:"#fff",marginTop:2}}>{cameraSource.label}</div>
+            <div style={{fontSize:10,color:"#91a2b1",marginTop:2}}>Une seule caméra fournit les frames analysées. Aucun double scoring.</div>
+          </div>
+          <span style={{padding:"5px 8px",borderRadius:999,border:`1px solid ${cameraSource.kind==="phone_companion"?(companionReady?"rgba(143,255,194,.35)":"rgba(255,190,110,.35)"):"rgba(143,255,194,.28)"}`,color:cameraSource.kind==="phone_companion"?(companionReady?"#8fffc2":"#ffd18c"):"#8fffc2",fontSize:9,fontWeight:1000,whiteSpace:"nowrap"}}>{cameraSource.kind==="phone_companion"?(companionReady?"PRÊTE":"À RELIER"):"ACTIVE"}</span>
         </div>
-        <span style={{padding:"5px 8px",borderRadius:999,border:"1px solid rgba(143,255,194,.28)",color:"#8fffc2",fontSize:9,fontWeight:1000,whiteSpace:"nowrap"}}>ACTIVE</span>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
+          <button style={modeBtn(cameraSource.kind==="local_device")} onClick={()=>setCameraSourceId(CLOSEST_CENTER_LOCAL_SOURCE_ID)}>CET APPAREIL</button>
+          <button style={modeBtn(cameraSource.kind==="phone_companion")} onClick={()=>{ if(companionSession?.sourceId) setCameraSourceId(companionSession.sourceId); else void createCompanion(); }}>TÉLÉPHONE COMPAGNON</button>
+        </div>
+        {cameraSource.kind==="phone_companion" ? <div style={{display:"grid",gridTemplateColumns:companionQr?"132px 1fr":"1fr",gap:10,alignItems:"center",padding:8,borderRadius:12,background:"rgba(0,0,0,.20)"}}>
+          {companionQr?<div style={{width:132,height:132,borderRadius:12,background:"#fff",padding:6}}><img src={companionQr} alt="QR téléphone compagnon" style={{width:"100%",height:"100%",display:"block"}}/></div>:null}
+          <div style={{minWidth:0}}><b style={{fontSize:11}}>LIAISON COMPAGNON</b><div style={{fontSize:9,color:"#91a2b1",lineHeight:1.4,marginTop:4}}>{companionStatus?.connected?"Téléphone connecté. Effectue la calibration 5 points sur ce téléphone, puis laisse-le fixe face à la cible.":"Scanne le QR avec le téléphone qui restera fixé face à la cible."}</div><div style={{fontSize:9,color:companionStatus?.calibrated?"#8fffc2":"#ffd18c",fontWeight:1000,marginTop:5}}>{companionStatus?.calibrated?"CALIBRATION 5 POINTS REÇUE":"CALIBRATION EN ATTENTE"}</div><button onClick={()=>void createCompanion()} style={{...navBtn,minHeight:32,marginTop:7,padding:"5px 8px"}}>NOUVELLE LIAISON</button></div>
+        </div> : null}
       </div>
       <ol style={{margin:"12px 0 0",paddingLeft:20,color:"#cad5e1",lineHeight:1.6,fontSize:13}}>
         <li>Enrôlement IA des fléchettes de chaque joueur.</li>
@@ -206,7 +260,7 @@ export default function ClosestCenterConfig(props: any) {
         <li>L’IA mesure tous les impacts pour appliquer automatiquement la règle choisie.</li>
       </ol>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}>
-        <button onClick={()=>go?.("camera_scoring_calibration",{returnTab:"closest_center_config",cameraSourceId})} style={navBtn}>CALIBRER LA SOURCE</button>
+        {cameraSource.kind==="local_device"?<button onClick={()=>go?.("camera_scoring_calibration",{returnTab:"closest_center_config",cameraSourceId})} style={navBtn}>CALIBRER LA SOURCE</button>:<button onClick={()=>void createCompanion()} style={navBtn}>RELIER / RECALIBRER</button>}
         <button disabled={!canStart} onClick={start} style={{...navBtn,borderColor:ACCENT,background:`${ACCENT}18`,opacity:canStart?1:.4}}>▶ LANCER</button>
       </div>
     </>:<>

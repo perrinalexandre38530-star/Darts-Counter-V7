@@ -10,7 +10,6 @@ export type SportLiveSportId =
   | "padel"
   | "badminton"
   | "cornhole"
-  | "palet"
   | "bowling";
 import type { DartsLiveFixture, DartsLiveMatch, DartsLiveResult } from "../dartsLive/types";
 

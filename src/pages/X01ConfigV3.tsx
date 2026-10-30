@@ -6575,7 +6575,7 @@ export function TeamsSection({
         maxWidth: "100%",
         minWidth: 0,
         boxSizing: "border-box",
-        overflow: "hidden",
+        overflow: "visible",
         background: cardBg,
         borderRadius: 18,
         padding: 12,
@@ -6602,7 +6602,7 @@ export function TeamsSection({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(138px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))",
           gap: 8,
           marginBottom: 12,
         }}
@@ -6769,7 +6769,7 @@ export function TeamsSection({
                 Aucune équipe fléchettes enregistrée. Crée-les dans Profils → Teams Fléchettes.
               </div>
             ) : (
-              <div style={{ display: "flex", gap: 12, overflowX: "auto", overflowY: "hidden", padding: "2px 4px 12px", margin: "0 -4px", scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch", overscrollBehaviorX: "contain" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(180px,100%),1fr))", gap: 10, padding: "2px 0 8px", minWidth: 0 }}>
                 {allStoredTeams.map((team: any) => {
                   const baseId = String(team?.id || "");
                   const ids = (Array.isArray(team?.playerIds) ? team.playerIds : []).map((x: any) => String(x || "")).filter(Boolean);
@@ -6777,7 +6777,7 @@ export function TeamsSection({
                   const remaining = ids.filter((id: string) => !used.has(id)).length;
                   const logo = team?.logoDataUrl || team?.logoUrl || team?.avatarDataUrl || undefined;
                   return (
-                    <button key={baseId} type="button" disabled={remaining <= 0} onClick={() => openStoredTeamPicker(team)} style={{ textAlign: "center", borderRadius: 20, padding: "14px 12px 12px", border: remaining > 0 ? `1px solid ${primary}66` : "1px solid rgba(255,255,255,0.06)", background: remaining > 0 ? "rgba(8,10,20,0.90)" : "rgba(255,255,255,0.025)", color: remaining > 0 ? "#f5f7ff" : "#656a82", cursor: remaining > 0 ? "pointer" : "not-allowed", flex: "0 0 min(68vw, 230px)", minHeight: 174, scrollSnapAlign: "start" }}>
+                    <button key={baseId} type="button" disabled={remaining <= 0} onClick={() => openStoredTeamPicker(team)} style={{ textAlign: "center", borderRadius: 20, padding: "14px 12px 12px", border: remaining > 0 ? `1px solid ${primary}66` : "1px solid rgba(255,255,255,0.06)", background: remaining > 0 ? "rgba(8,10,20,0.90)" : "rgba(255,255,255,0.025)", color: remaining > 0 ? "#f5f7ff" : "#656a82", cursor: remaining > 0 ? "pointer" : "not-allowed", width: "100%", minWidth: 0, minHeight: 154 }}>
                       <div style={{ display: "grid", justifyItems: "center", gap: 8, minWidth: 0 }}>
                         <ProfileAvatar name={team?.name || "Équipe"} dataUrl={logo} size={66} />
                         <div style={{ width: "100%", minWidth: 0 }}>
@@ -6806,7 +6806,7 @@ export function TeamsSection({
                   <button type="button" onClick={() => { setTeamPicker(null); setTeamPickerInstanceId(null); setTeamPickerPlayerIds([]); }} style={{ width: 40, height: 40, borderRadius: 14, border: `1px solid ${primary}77`, background: "rgba(255,255,255,.04)", color: "#fff", fontWeight: 950, cursor: "pointer", fontSize: 18 }}>×</button>
                 </div>
                 <div className="dc-scroll-thin" style={{ padding: 14, overflowY: "auto" }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))", gap: 10 }}>
                     {(Array.isArray(teamPicker?.playerIds) ? teamPicker.playerIds : [])
                       .map((pid: any) => String(pid || ""))
                       .filter((pid: string) => {

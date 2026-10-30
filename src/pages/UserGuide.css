@@ -127,3 +127,62 @@
     scroll-margin-top:calc(var(--msc-guide-mobile-nav-height,104px) + 68px) !important;
   }
 }
+
+/* V195 portrait sticky repair: keep the category selector attached to the REAL app scroll container.
+   Do not use fixed positioning here: the app shell / containment rules can create another containing block. */
+.msc-guide-root{
+  contain:none !important;
+  overflow-x:clip !important;
+}
+.msc-guide-main{
+  overflow-x:clip !important;
+}
+
+@media (max-width:900px) and (orientation:portrait){
+  .msc-guide-root{
+    padding-top:0 !important;
+    overflow-x:clip !important;
+  }
+
+  .msc-guide-sidebar{
+    position:-webkit-sticky !important;
+    position:sticky !important;
+    top:0 !important;
+    left:auto !important;
+    right:auto !important;
+    width:100% !important;
+    height:auto !important;
+    max-height:none !important;
+    z-index:100 !important;
+    flex:none !important;
+    background:#020202 !important;
+    border-bottom:1px solid #242424 !important;
+    box-shadow:0 10px 24px rgba(0,0,0,.42) !important;
+    backdrop-filter:blur(16px);
+  }
+
+  .msc-guide-brand{
+    height:56px !important;
+    flex:0 0 56px;
+  }
+
+  .msc-guide-sidebar-scroll{
+    flex:0 0 auto !important;
+    width:100% !important;
+    overflow-x:auto !important;
+    overflow-y:hidden !important;
+    background:#020202 !important;
+    -webkit-overflow-scrolling:touch;
+  }
+
+  .msc-guide-topbar{
+    position:-webkit-sticky !important;
+    position:sticky !important;
+    top:var(--msc-guide-mobile-nav-height,104px) !important;
+    z-index:90 !important;
+  }
+
+  .msc-guide-section{
+    scroll-margin-top:calc(var(--msc-guide-mobile-nav-height,104px) + 68px) !important;
+  }
+}

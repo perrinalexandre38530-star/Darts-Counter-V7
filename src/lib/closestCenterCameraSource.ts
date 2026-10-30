@@ -1,5 +1,6 @@
 import { assessPrecisionReadiness } from "./closestCenterVisionEngine";
 import type { CameraCalibration } from "./cameraCalibrationStore";
+import { fetchClosestCenterCompanionStatus, requestClosestCenterCompanionBurst } from "./closestCenterCompanionClient";
 
 export type ClosestCenterCameraSourceKind = "local_device" | "phone_companion";
 
@@ -174,4 +175,85 @@ export function createLocalClosestCenterCameraSource(
     },
     hardwareFingerprint(){ return cameraSourceHardwareFingerprint(stream,video); }
   };
+}
+
+
+export type ClosestCenterCameraSource = {
+  descriptor: ClosestCenterCameraSourceDescriptor;
+  open: () => Promise<MediaStream | null>;
+  close: () => void;
+  getStream: () => MediaStream | null;
+  captureFrame?: (crop?:{x:number;y:number;w:number;h:number}, maxCaptureSide?:number) => ImageData | null;
+  captureEnrollmentFrame?: (crop?:{x:number;y:number;w:number;h:number}, maxCaptureSide?:number) => Promise<ImageData | null>;
+  captureBurst: (count?:number,delayMs?:number,maxCaptureSide?:number) => Promise<ImageData[]>;
+  captureSettledBurst: (cal:CameraCalibration,count?:number,delayMs?:number,maxCaptureSide?:number) => Promise<{ok:boolean;frames:ImageData[];reason:string;metrics:any}>;
+  hardwareFingerprint: () => any;
+};
+
+export function createPhoneCompanionClosestCenterCameraSource(
+  sourceId:string,
+  opts?:{maxCaptureSide?:number}
+): ClosestCenterCameraSource {
+  const descriptor=describeClosestCenterCameraSource(sourceId);
+  const sessionId=String(sourceId||"").split(":").pop()||"";
+  const maxSideDefault=Math.max(1280,Number(opts?.maxCaptureSide||1920));
+  let fingerprint:any=null;
+  let opened=false;
+
+  async function remoteBurst(count=5,delayMs=55,maxCaptureSide=maxSideDefault){
+    if(!opened) await source.open();
+    const result=await requestClosestCenterCompanionBurst(sessionId,{count,delayMs,maxCaptureSide,timeoutMs:16000});
+    fingerprint=result.fingerprint||fingerprint;
+    return result.frames;
+  }
+
+  const source:ClosestCenterCameraSource={
+    descriptor,
+    async open(){
+      const status:any=await fetchClosestCenterCompanionStatus(sessionId);
+      if(!status?.connected || !status?.cameraReady) throw new Error("Téléphone compagnon non connecté ou caméra non prête.");
+      fingerprint=status?.hardwareFingerprint||fingerprint;
+      opened=true;
+      return null;
+    },
+    close(){opened=false;},
+    getStream(){return null;},
+    async captureEnrollmentFrame(crop={x:.25,y:.2,w:.5,h:.6},maxCaptureSide=maxSideDefault){
+      if(!opened) await source.open();
+      const result=await requestClosestCenterCompanionBurst(sessionId,{count:1,delayMs:55,maxCaptureSide,timeoutMs:12000,crop});
+      fingerprint=result.fingerprint||fingerprint;
+      return result.frames[0]||null;
+    },
+    async captureBurst(count=5,delayMs=55,maxCaptureSide=maxSideDefault){
+      return remoteBurst(count,delayMs,maxCaptureSide);
+    },
+    async captureSettledBurst(cal,count=5,delayMs=55,maxCaptureSide=maxSideDefault){
+      const wanted=Math.max(3,Number(count||5));
+      const raw=await remoteBurst(wanted+2,delayMs,maxCaptureSide);
+      if(raw.length<wanted) return {ok:false,frames:raw,reason:"capture",metrics:null};
+      const metrics=raw.map(frame=>assessPrecisionReadiness(frame,cal));
+      const windowFrames=raw.slice(-wanted), windowMetrics=metrics.slice(-wanted);
+      const spread=(values:number[])=>values.length?Math.max(...values)-Math.min(...values):99;
+      const sharpnessSpread=spread(windowMetrics.map(x=>Number(x.sharpness||0)));
+      const exposureSpread=spread(windowMetrics.map(x=>Number(x.exposure||0)));
+      const confidenceSpread=spread(windowMetrics.map(x=>Number(x.confidence||0)));
+      const minSharpness=Math.min(...windowMetrics.map(x=>Number(x.sharpness||0)));
+      const minExposure=Math.min(...windowMetrics.map(x=>Number(x.exposure||0)));
+      const settled=sharpnessSpread<=.14&&exposureSpread<=.14&&confidenceSpread<=.13&&minSharpness>=.38&&minExposure>=.34;
+      return {ok:settled,frames:windowFrames,reason:settled?"ok":"settling",metrics:{sharpnessSpread,exposureSpread,confidenceSpread,minSharpness,minExposure}};
+    },
+    hardwareFingerprint(){return fingerprint;},
+  };
+  return source;
+}
+
+export function createClosestCenterCameraSource(
+  video:HTMLVideoElement|null,
+  sourceId:string,
+  opts?:{maxCaptureSide?:number}
+): ClosestCenterCameraSource {
+  const descriptor=describeClosestCenterCameraSource(sourceId);
+  return descriptor.kind==="phone_companion"
+    ? createPhoneCompanionClosestCenterCameraSource(sourceId,opts)
+    : createLocalClosestCenterCameraSource(video,{sourceId,maxCaptureSide:opts?.maxCaptureSide});
 }

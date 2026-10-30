@@ -89,6 +89,9 @@ export default function Wave61SharedConfig(props: any) {
   const [selectedBotTeamIds, setSelectedBotTeamIds] = React.useState<string[]>(Array.isArray(saved.selectedBotTeamIds) ? saved.selectedBotTeamIds.map(String) : []);
   const [savedTeamMemberSelections, setSavedTeamMemberSelections] = React.useState<Record<string, string[]>>(saved.savedTeamMemberSelections && typeof saved.savedTeamMemberSelections === "object" ? saved.savedTeamMemberSelections : {});
   const greenRedFormat = spec.id === "green_vs_red" ? String(modeOptions?.matchFormat || "duel") : "";
+  const greenRedTeamSize = spec.id === "green_vs_red" && [2, 3, 4].includes(Number(modeOptions?.teamPlayersPerSide))
+    ? Number(modeOptions?.teamPlayersPerSide)
+    : 2;
   const effectiveParticipantMode: "players" | "teams" = spec.id === "green_vs_red"
     ? (greenRedFormat === "teams" ? "teams" : "players")
     : participantMode;
@@ -310,12 +313,17 @@ export default function Wave61SharedConfig(props: any) {
   return <div className="page wave61-config-screen" data-wave61-config="1" style={{ minHeight: "100dvh", paddingBottom: 88, background: `radial-gradient(circle at 50% 0%,${accent}14,transparent 34%)` }}>
     <div className="wave61-config-header"><PageHeader tickerSrc={modeTicker || undefined} tickerAlt={spec.label} title={modeTicker ? undefined : spec.label} subtitle={modeTicker ? undefined : familyText} tickerHeight={82} tickerBottomGap={8} tickerFit="cover" left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("games", { gamesView: "all" })} color={accent} glow={`${accent}88`} /></div>} right={awena?.enabled !== false ? <div style={{ marginRight: 7 }}><PremiumAwenaButton awena={awena} route={`${spec.id}_config`} mode={spec.id} screenLabel={`${spec.label} · Configuration`} accent={accent} /></div> : null} /></div>
     <div className="wave61-config-body" style={{ padding: "8px 10px 20px", maxWidth: 980, margin: "0 auto", display: "grid", gap: 10 }}>
-      <section className="wave61-config-participants" style={card}>
+      <section className="wave61-config-participants" style={spec.id === "green_vs_red" && greenRedFormat === "teams" ? { padding:0, background:"transparent", border:"none", boxShadow:"none" } : card}>
         {spec.id === "green_vs_red" ? <>
-          <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>Participants</div>
-          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
-            <PillButton label="Joueurs" active={greenRedFormat!=="teams"} onClick={()=>setModeOptions((prev)=>({...prev,matchFormat:greenRedFormat==="teams"?"duel":greenRedFormat}))} primary={accent} primarySoft={`${accent}1c`} />
-            <PillButton label="Équipes" active={greenRedFormat==="teams"} onClick={()=>setModeOptions((prev)=>({...prev,matchFormat:"teams"}))} primary={accent} primarySoft={`${accent}1c`} />
+          <div style={greenRedFormat === "teams" ? { ...card, marginBottom:10 } : undefined}>
+            <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>Participants</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:greenRedFormat === "teams" ? 10 : 12}}>
+              <PillButton label="Joueurs" active={greenRedFormat!=="teams"} onClick={()=>setModeOptions((prev)=>({...prev,matchFormat:greenRedFormat==="teams"?"duel":greenRedFormat}))} primary={accent} primarySoft={`${accent}1c`} />
+              <PillButton label="Équipes" active={greenRedFormat==="teams"} onClick={()=>setModeOptions((prev)=>({...prev,matchFormat:"teams"}))} primary={accent} primarySoft={`${accent}1c`} />
+            </div>
+            {greenRedFormat === "teams" ? <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:7}}>
+              {[2,3,4].map((size)=><button key={size} type="button" onClick={()=>setModeOptions((prev)=>({...prev,teamPlayersPerSide:size}))} style={{...pill(greenRedTeamSize===size),minWidth:0,padding:"7px 6px"}}>{size}v{size}<div style={{fontSize:8,opacity:.72,marginTop:1}}>{size*2} joueurs</div></button>)}
+            </div> : null}
           </div>
 
           {greenRedFormat !== "teams" ? <>
@@ -353,12 +361,13 @@ export default function Wave61SharedConfig(props: any) {
               savedTeamMemberSelections={savedTeamMemberSelections}
               toggleSavedTeamMember={toggleSavedTeamMember}
               teamCountOverride={2}
+              teamSizeOverride={greenRedTeamSize}
               allowSaveGeneratedTeams={true}
               primary={accent}
               primarySoft={`${accent}1c`}
             />
             <div style={{ marginTop: 10, color: valid ? accent : "#ff97aa", fontSize: 11, fontWeight: 900 }}>
-              {valid ? `2 équipes prêtes · ${activeTeamPlayerIds.length} joueurs · ${teamSizes[0]} vs ${teamSizes[1]}` : "Compose exactement 2 équipes équilibrées de 2, 3 ou 4 joueurs (4 / 6 / 8 participants)."}
+              {valid ? `2 équipes prêtes · ${activeTeamPlayerIds.length} joueurs · ${teamSizes[0]} vs ${teamSizes[1]}` : `Choisis exactement 2 équipes de ${greenRedTeamSize} joueurs (${greenRedTeamSize}v${greenRedTeamSize}).`}
             </div>
           </>}
         </> : <>

@@ -25,7 +25,7 @@ import { getTicker } from "../lib/tickers";
 import { loadCameraScoringPreferences } from "../lib/cameraScoringPreferences";
 import {
   CLOSEST_CENTER_LOCAL_SOURCE_ID,
-  createLocalClosestCenterCameraSource,
+  createClosestCenterCameraSource,
   describeClosestCenterCameraSource,
   normalizeClosestCenterCameraSourceId,
 } from "../lib/closestCenterCameraSource";
@@ -356,8 +356,7 @@ export default function ClosestCenterPlay(props:any) {
   React.useEffect(() => {
     if (isManual) { setReady(true); setCamError(""); return; }
     let dead = false;
-    const source=createLocalClosestCenterCameraSource(videoRef.current,{
-      sourceId:cameraSourceId,
+    const source=createClosestCenterCameraSource(videoRef.current,cameraSourceId,{
       maxCaptureSide:cameraPrefs.maxCaptureSide,
     });
     cameraSourceRef.current=source;
@@ -365,7 +364,7 @@ export default function ClosestCenterPlay(props:any) {
       try {
         const s = await source.open();
         if (dead) { source.close(); return; }
-        streamRef.current = s;
+        streamRef.current = s || null;
         setReady(true);
       } catch (e:any) {
         setCamError(e?.message || "Caméra indisponible");
@@ -581,13 +580,21 @@ export default function ClosestCenterPlay(props:any) {
     return entry;
   }, [round, current?.id, current?.name]);
 
-  const scanSample = () => {
-    const img = cameraSourceRef.current?.captureFrame?.({ x:.25, y:.2, w:.5, h:.6 }, cameraPrefs.maxCaptureSide);
-    if (!img || !current) return;
-    const sig = buildDartVisualSignature(img);
-    const arr = [...(samples[current.id] || []), sig].slice(0, 3);
-    setSamples(v => ({ ...v, [current.id]: arr }));
-    setStatus(`Scan ${arr.length}/3 enregistré pour ${current.name}.`);
+  const scanSample = async () => {
+    if (!current) return;
+    try {
+      let img:ImageData|null = null;
+      if (cameraSourceDescriptor.kind === "local_device") {
+        img = cameraSourceRef.current?.captureFrame?.({ x:.25, y:.2, w:.5, h:.6 }, cameraPrefs.maxCaptureSide) || null;
+      } else {
+        img = await cameraSourceRef.current?.captureEnrollmentFrame?.({ x:.25, y:.2, w:.5, h:.6 }, cameraPrefs.maxCaptureSide) || null;
+      }
+      if (!img) { setStatus("❌ Capture d’enrôlement indisponible."); return; }
+      const sig = buildDartVisualSignature(img);
+      const arr = [...(samples[current.id] || []), sig].slice(0, 3);
+      setSamples(v => ({ ...v, [current.id]: arr }));
+      setStatus(`Scan ${arr.length}/3 enregistré pour ${current.name}.`);
+    } catch (e:any) { setStatus(`❌ ${e?.message || "Capture d’enrôlement impossible"}`); }
   };
 
   const validatePlayerEnrollment = () => {
@@ -1724,7 +1731,7 @@ export default function ClosestCenterPlay(props:any) {
     <div style={{flex:1,minHeight:0,overflow:landscape?"hidden":"auto",display:"grid",gridTemplateColumns:landscape?(isManual?"minmax(230px,.54fr) minmax(0,1.46fr)":"minmax(0,1.58fr) minmax(300px,.78fr)"):"1fr",gridTemplateRows:landscape?"minmax(0,1fr)":(!isManual?"minmax(250px,40vh) auto":"auto"),gap:landscape?8:10,padding:landscape?8:10,paddingBottom:landscape?8:72,maxWidth:isManual&&!landscape?980:undefined,width:"100%",margin:isManual&&!landscape?"0 auto":undefined,alignItems:"stretch"}}>
       {isManual && landscape ? playerRail : null}
       {!isManual ? <div id="cc-camera" style={{position:"relative",minHeight:landscape?0:250,borderRadius:18,overflow:"hidden",border:"1px solid rgba(68,231,255,.3)",background:"#000",boxShadow:"0 16px 40px rgba(0,0,0,.32)"}}>
-        <><video ref={videoRef} muted playsInline style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+        <>{cameraSourceDescriptor.kind === "phone_companion" ? <div style={{position:"absolute",inset:0,display:"grid",placeItems:"center",background:"radial-gradient(circle at 50% 45%,rgba(68,231,255,.12),rgba(0,0,0,.96) 68%)"}}><div style={{maxWidth:320,textAlign:"center",padding:18}}><div style={{width:54,height:54,borderRadius:18,margin:"0 auto 10px",display:"grid",placeItems:"center",border:`1px solid ${ACCENT}66`,background:"rgba(68,231,255,.08)",color:ACCENT}}><PetanqueIcon name="camera" size={27}/></div><b style={{fontSize:14}}>CAMÉRA SUR LE TÉLÉPHONE COMPAGNON</b><div style={{fontSize:10,color:"#91a3b0",lineHeight:1.4,marginTop:6}}>L’aperçu reste sur le téléphone fixé face à la cible. Cet écran demande uniquement les bursts nécessaires au scoring.</div></div></div> : <video ref={videoRef} muted playsInline style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>}
         <div style={{position:"absolute",left:10,top:10,zIndex:3,display:"flex",gap:6,flexWrap:"wrap",pointerEvents:"none"}}>
           <span style={{padding:"5px 8px",borderRadius:999,background:"rgba(2,8,14,.82)",border:`1px solid ${ACCENT}55`,fontSize:9,fontWeight:1000,color:ACCENT}}>IA · {phaseLabel(phase)}</span>
         </div>

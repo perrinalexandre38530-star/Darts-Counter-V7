@@ -248,6 +248,7 @@ const ChallengeLeaderboardPage = React.lazy(() => import("./pages/ChallengeLeade
 const CameraScoringSetup = React.lazy(() => import("./pages/CameraScoringSetup"));
 const CameraScoringCalibration = React.lazy(() => import("./pages/CameraScoringCalibration"));
 const X01DeviceCameraPage = React.lazy(() => import("./pages/X01DeviceCameraPage"));
+const ClosestCenterDeviceCameraPage = React.lazy(() => import("./pages/ClosestCenterDeviceCameraPage"));
 
 // 🌟 Nouveau : SYNC / Partage stats locales
 
@@ -468,8 +469,13 @@ function isX01DevicePublicHash(hash: string): boolean {
   return h === "#/x01-device" || h === "#/x01-device/" || h.startsWith("#/x01-device/");
 }
 
+function isClosestCenterDevicePublicHash(hash: string): boolean {
+  const h = String(hash || "");
+  return h === "#/closest-center-device" || h === "#/closest-center-device/" || h.startsWith("#/closest-center-device/");
+}
+
 function isStandalonePublicHash(hash: string): boolean {
-  return isX01DevicePublicHash(hash);
+  return isX01DevicePublicHash(hash) || isClosestCenterDevicePublicHash(hash);
 }
 
 
@@ -1310,6 +1316,7 @@ type Tab =
   | "camera_scoring_setup"
   | "camera_scoring_calibration"
   | "x01_device_camera"
+  | "closest_center_device_camera"
   | "sync_center"
   | "auth_callback"
   | "darts_mode_config"
@@ -3265,6 +3272,13 @@ useEffect(() => {
         setTab("x01_device_camera");
         return;
       }
+      if (h.startsWith("#/closest-center-device/")) {
+        const sessionId = h.replace(/^#\/closest-center-device\//, "").split(/[?#]/)[0] || null;
+        setShowSplash(false);
+        setRouteParams(sessionId ? { sessionId } : null);
+        setTab("closest_center_device_camera");
+        return;
+      }
       if (h === "#/cast" || h === "#/cast/" || h === "#/screens" || h === "#/screens/") {
         setRouteParams(null);
         setTab("cast_host");
@@ -3508,6 +3522,7 @@ useEffect(() => {
       else if (next === "viewer_join") window.location.hash = "#/viewer/join";
       else if (next === "viewer_display") window.location.hash = `#/viewer/${params?.sessionId || routeParams?.sessionId || ""}`;
       else if (next === "x01_device_camera") window.location.hash = `#/x01-device/${params?.sessionId || routeParams?.sessionId || ""}`;
+      else if (next === "closest_center_device_camera") window.location.hash = `#/closest-center-device/${params?.sessionId || routeParams?.sessionId || ""}`;
       else {
         const h = String(window.location.hash || "");
         if (
@@ -6511,6 +6526,10 @@ case "babyfoot_team_edit":
         page = <X01DeviceCameraPage go={go} params={routeParams} />;
         break;
 
+      case "closest_center_device_camera":
+        page = <ClosestCenterDeviceCameraPage go={go} params={routeParams} />;
+        break;
+
       case "x01_end":
         page = <X01End go={go} params={routeParams} />;
         break;
@@ -7591,6 +7610,7 @@ case "babyfoot_team_edit":
     "x01",
     "x01_play_v3",
     "x01_device_camera",
+    "closest_center_device_camera",
     "cricket",
     "killer_play",
     "shanghai_play",
@@ -7761,7 +7781,7 @@ case "babyfoot_team_edit":
         : undefined;
 
   const isAuthShell = AUTH_SHELL_TABS.has(tab);
-  const isStandaloneCompanion = isStandalonePublicHash(String(window.location.hash || "")) || tab === "x01_device_camera" || tab === "public_landing";
+  const isStandaloneCompanion = isStandalonePublicHash(String(window.location.hash || "")) || tab === "x01_device_camera" || tab === "closest_center_device_camera" || tab === "public_landing";
   // OFFLINE-FIRST WAVE 2 : le chrome principal appartient au mode LOCAL,
   // pas au compte cloud. BottomNav / Awena / sélecteur de sport restent donc
   // disponibles même sans réseau ou sans session. Les routes réellement ONLINE
@@ -7836,7 +7856,7 @@ case "babyfoot_team_edit":
             sport={String(activeSport || "")}
             go={go}
             landscapeHeaderDocked={landscapeHeaderDocked}
-            inGame={!showBottomNav && HIDE_BOTTOM_NAV_TABS.has(tab) && tab !== "gameSelect" && tab !== "x01_device_camera"}
+            inGame={!showBottomNav && HIDE_BOTTOM_NAV_TABS.has(tab) && tab !== "gameSelect" && tab !== "x01_device_camera" && tab !== "closest_center_device_camera"}
           />
         )}
 
@@ -8041,7 +8061,7 @@ function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: an
     tab === "auth_v7_login" ||
     tab === "auth_v7_signup";
 
-  const isStandaloneCompanion = tab === "x01_device_camera";
+  const isStandaloneCompanion = tab === "x01_device_camera" || tab === "closest_center_device_camera";
   const onlineOnly = isOnlineOnlyTab(tab);
 
   // LOCAL FIRST : aucune route locale n'est plus redirigée vers l'auth.

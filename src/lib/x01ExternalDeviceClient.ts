@@ -135,10 +135,10 @@ async function rawJson(url: string, init?: RequestInit) {
   return json;
 }
 
-export async function createX01DeviceSession(): Promise<X01DeviceSession> {
+export async function createX01DeviceSession(kind = "x01_phone_companion_v1"): Promise<X01DeviceSession> {
   const json = await rawJson(buildDeviceApiUrl("/x01-device/session"), {
     method: "POST",
-    body: JSON.stringify({ kind: "x01_phone_companion_v1" }),
+    body: JSON.stringify({ kind }),
   });
   const code = cleanCode(json?.code || json?.sessionId || json?.id);
   if (!code) throw new Error("Session téléphone invalide : code absent.");

@@ -125,6 +125,9 @@ function x01DeviceStatus(session: X01DeviceSession) {
     updatedAt: session.updatedAt,
     expiresAt: session.expiresAt,
     eventSeq: session.seq || 0,
+    purpose: st.purpose || null,
+    cameraReady: !!st.cameraReady,
+    hardwareFingerprint: st.hardwareFingerprint || null,
   };
 }
 
@@ -181,6 +184,11 @@ async function handleX01DeviceStatusPost(request: Request, code: string): Promis
     deviceKind: String(body.deviceKind || session.status?.deviceKind || "phone_camera").slice(0, 80),
     message: String(body.message || session.status?.message || "").slice(0, 180),
     lastSeenAt: Number(body.lastSeenAt || now) || now,
+    purpose: String(body.purpose || session.status?.purpose || "").slice(0, 80),
+    cameraReady: body.cameraReady !== undefined ? !!body.cameraReady : !!session.status?.cameraReady,
+    hardwareFingerprint: body.hardwareFingerprint && typeof body.hardwareFingerprint === "object"
+      ? body.hardwareFingerprint
+      : (session.status?.hardwareFingerprint || null),
   };
   session.updatedAt = now;
   session.expiresAt = now + X01_DEVICE_TTL_MS;
