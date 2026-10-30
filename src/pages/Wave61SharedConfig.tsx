@@ -10,6 +10,7 @@ import { useAwenaOptional } from "../awena/AwenaProvider";
 import { PremiumAwenaButton } from "./newModes/PremiumPartyModeUi";
 import "./newModes/PremiumPartyModeUi.css";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
+import ProfileAvatar from "../components/ProfileAvatar";
 import { useTheme } from "../contexts/ThemeContext";
 import { DARTS_WAVE_61 } from "../games/dartsWave61";
 import { getWave61Preset } from "../games/dartsWave61Families";
@@ -163,26 +164,57 @@ export default function Wave61SharedConfig(props: any) {
     <div className="wave61-config-header"><PageHeader tickerSrc={modeTicker || undefined} tickerAlt={spec.label} title={modeTicker ? undefined : spec.label} subtitle={modeTicker ? undefined : familyText} tickerHeight={82} tickerBottomGap={8} tickerFit="cover" left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("games", { gamesView: "all" })} color={accent} glow={`${accent}88`} /></div>} right={awena?.enabled !== false ? <div style={{ marginRight: 7 }}><PremiumAwenaButton awena={awena} route={`${spec.id}_config`} mode={spec.id} screenLabel={`${spec.label} · Configuration`} accent={accent} /></div> : null} /></div>
     <div className="wave61-config-body" style={{ padding: "8px 10px 20px", maxWidth: 980, margin: "0 auto", display: "grid", gap: 10 }}>
       <section className="wave61-config-participants" style={card}>
-        <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>Participants</div>
-        {spec.id === "green_vs_red" ? <div style={{ display:"grid", gridTemplateColumns:"repeat(3,minmax(0,1fr))", gap:6, marginBottom:10 }}>
-          {[
-            ["duel","DUEL","2"],
-            ["teams","TEAM","4·6·8"],
-            ["multi_random","MULTI","3→10"],
-          ].map(([value,label,count]) => <button key={value} type="button" onClick={()=>setModeOptions((prev)=>({...prev,matchFormat:value}))} style={{...pill(greenRedFormat===value),minWidth:0,padding:"7px 5px",display:"grid",gap:2}}>
-            <span>{label}</span><span style={{fontSize:8,opacity:.7}}>{count} JOUEURS</span>
-          </button>)}
-        </div> : null}
-        {spec.supportsTeams && spec.id !== "green_vs_red" ? <div style={{ display: "flex", gap: 8, marginBottom: 12 }}><button style={pill(participantMode === "players")} onClick={() => setParticipantMode("players")}>JOUEURS</button><button style={pill(participantMode === "teams")} onClick={() => setParticipantMode("teams")}>2 ÉQUIPES AUTO</button></div> : null}
-        <PlayerPagedSelector usageMode={spec.id} profiles={humanProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} pageSize={9} modalTitle="Choisir des joueurs" showSelectedSummary={true} />
-        {spec.supportsBots ? <div style={{ marginTop: 10 }}>
-          <button type="button" onClick={() => setBotsOpen((v) => !v)} style={pill(botsOpen)}>{botsOpen ? "☑ BOTS OUVERTS" : "☐ AJOUTER DES BOTS"}</button>
-          {botsOpen ? <div style={{ marginTop: 10 }}><BotPagedSelector bots={botProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} label="BOTS IA" showCheckbox={false} showSelectedSummary={false} /></div> : null}
-        </div> : null}
-        <div style={{ marginTop: 10, color: valid ? accent : "#ff97aa", fontSize: 11, fontWeight: 900 }}>{valid ? `${selectedProfiles.length} participant(s) prêt(s)${botCount ? ` · ${botCount} BOT(S)` : ""}` : spec.id === "green_vs_red" ? (greenRedFormat === "teams" ? "GREEN VS RED TEAM accepte 4, 6 ou 8 participants." : greenRedFormat === "multi_random" ? "GREEN VS RED MULTI accepte de 3 à 10 participants." : "GREEN VS RED DUEL demande exactement 2 participants.") : `Sélectionne au moins ${minPlayers} participant(s).`}</div>
-        {spec.id === "green_vs_red" && greenRedFormat === "teams" ? <div style={{ marginTop: 7, color: "#9299ad", fontSize: 10.5 }}>TEAM VERTE / TEAM ROUGE : répartition équilibrée automatique, 2/3/4 joueurs par camp.</div> : effectiveParticipantMode === "teams" ? <div style={{ marginTop: 7, color: "#9299ad", fontSize: 10.5 }}>Répartition Wave61 automatique A/B en alternance.</div> : null}
-        {spec.id === "green_vs_red" && greenRedFormat === "multi_random" ? <div style={{ marginTop: 7, color: "#9299ad", fontSize: 10.5 }}>MULTI : chaque joueur reçoit VERT ou ROUGE aléatoirement au lancement, avec répartition équilibrée.</div> : null}
+        {spec.id === "green_vs_red" ? <>
+          <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>Type de partie</div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(2,minmax(0,1fr))", gap:10, marginBottom:12 }}>
+            <button type="button" onClick={()=>setModeOptions((prev)=>({...prev,matchFormat:greenRedFormat==="teams"?"duel":greenRedFormat}))} style={{borderRadius:18,border:`1px solid ${greenRedFormat!=="teams"?accent:"rgba(255,255,255,.10)"}`,background:greenRedFormat!=="teams"?`${accent}16`:"rgba(255,255,255,.035)",color:"#fff",padding:13,textAlign:"left",cursor:"pointer"}}>
+              <div style={{color:accent,fontWeight:1000,fontSize:17}}>Joueurs</div>
+              <div style={{color:"#aeb2d3",fontSize:11,marginTop:3}}>Duel 1v1 ou multi-joueurs.</div>
+            </button>
+            <button type="button" onClick={()=>setModeOptions((prev)=>({...prev,matchFormat:"teams"}))} style={{borderRadius:18,border:`1px solid ${greenRedFormat==="teams"?accent:"rgba(255,255,255,.10)"}`,background:greenRedFormat==="teams"?`${accent}16`:"rgba(255,255,255,.035)",color:"#fff",padding:13,textAlign:"left",cursor:"pointer"}}>
+              <div style={{color:accent,fontWeight:1000,fontSize:17}}>Équipes</div>
+              <div style={{color:"#aeb2d3",fontSize:11,marginTop:3}}>TEAM VERTE contre TEAM ROUGE.</div>
+            </button>
+          </div>
+          {greenRedFormat !== "teams" ? <div style={{marginBottom:12}}>
+            <div style={{fontSize:11,color:"#c8cbe4",marginBottom:7}}>Format joueurs</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <button type="button" onClick={()=>{setModeOptions((prev)=>({...prev,matchFormat:"duel"}));setSelectedIds((prev)=>prev.slice(0,2));}} style={pill(greenRedFormat==="duel")}>Duel 1v1</button>
+              <button type="button" onClick={()=>setModeOptions((prev)=>({...prev,matchFormat:"multi_random"}))} style={pill(greenRedFormat==="multi_random")}>Multi · 3 à 10</button>
+            </div>
+            <div style={{marginTop:8,fontSize:10,color:"#8f94b5"}}>Duel = exactement 2 joueurs. Multi = couleurs VERT/ROUGE attribuées automatiquement au lancement.</div>
+          </div> : <div style={{marginBottom:12}}>
+            <div style={{fontSize:11,color:"#c8cbe4",marginBottom:7}}>Composition des équipes</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[4,6,8].map((n)=><span key={n} style={{...pill(selectedProfiles.length===n),display:"inline-grid",placeItems:"center",minWidth:64,cursor:"default"}}>{n} joueurs</span>)}</div>
+            <div style={{marginTop:8,fontSize:10,color:"#8f94b5"}}>Répartition automatique équilibrée : TEAM VERTE / TEAM ROUGE, soit 2, 3 ou 4 joueurs par camp.</div>
+          </div>}
+
+          {selectedProfiles.length ? <div style={{margin:"2px 0 10px",padding:9,borderRadius:15,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.025)"}}>
+            <div style={{color:accent,fontSize:9,fontWeight:1000,letterSpacing:.8,textTransform:"uppercase",marginBottom:7}}>Profils sélectionnés</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(105px,1fr))",gap:7}}>{selectedProfiles.map((p:any)=><div key={p.id} style={{display:"grid",gridTemplateColumns:"32px minmax(0,1fr) 22px",gap:6,alignItems:"center",padding:"6px 7px",borderRadius:12,border:"1px solid rgba(255,255,255,.08)",background:"rgba(0,0,0,.20)",minWidth:0}}>
+              <ProfileAvatar profile={p} size={32}/><div style={{minWidth:0}}><div style={{color:"#fff",fontSize:10.5,fontWeight:950,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}</div><div style={{color:isBotLike(p)?accent:"#7f8798",fontSize:8,fontWeight:900}}>{isBotLike(p)?"BOT IA":"JOUEUR"}</div></div><button type="button" aria-label={`Retirer ${p.name}`} onClick={()=>togglePlayer(p.id)} style={{width:22,height:22,borderRadius:999,border:`1px solid ${accent}66`,background:"rgba(0,0,0,.34)",color:accent,fontWeight:1000,cursor:"pointer"}}>×</button>
+            </div>)}</div>
+          </div> : null}
+
+          <PlayerPagedSelector usageMode={spec.id} profiles={humanProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} pageSize={9} modalTitle={greenRedFormat==="teams"?"Choisir les joueurs des équipes":"Choisir des joueurs"} showSelectedSummary={false} />
+          <div style={{ marginTop: 10, color: valid ? accent : "#ff97aa", fontSize: 11, fontWeight: 900 }}>{valid ? `${selectedProfiles.length} participant(s) prêt(s)${botCount ? ` · ${botCount} BOT(S)` : ""}` : greenRedFormat === "teams" ? "GREEN VS RED TEAM accepte 4, 6 ou 8 participants." : greenRedFormat === "multi_random" ? "GREEN VS RED MULTI accepte de 3 à 10 participants." : "GREEN VS RED DUEL demande exactement 2 participants."}</div>
+        </> : <>
+          <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>Participants</div>
+          {spec.supportsTeams ? <div style={{ display: "flex", gap: 8, marginBottom: 12 }}><button style={pill(participantMode === "players")} onClick={() => setParticipantMode("players")}>JOUEURS</button><button style={pill(participantMode === "teams")} onClick={() => setParticipantMode("teams")}>2 ÉQUIPES AUTO</button></div> : null}
+          <PlayerPagedSelector usageMode={spec.id} profiles={humanProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} pageSize={9} modalTitle="Choisir des joueurs" showSelectedSummary={true} />
+          {spec.supportsBots ? <div style={{ marginTop: 10 }}><button type="button" onClick={() => setBotsOpen((v) => !v)} style={pill(botsOpen)}>{botsOpen ? "☑ BOTS OUVERTS" : "☐ AJOUTER DES BOTS"}</button>{botsOpen ? <div style={{ marginTop: 10 }}><BotPagedSelector bots={botProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} label="BOTS IA" showCheckbox={false} showSelectedSummary={false} /></div> : null}</div> : null}
+          <div style={{ marginTop: 10, color: valid ? accent : "#ff97aa", fontSize: 11, fontWeight: 900 }}>{valid ? `${selectedProfiles.length} participant(s) prêt(s)${botCount ? ` · ${botCount} BOT(S)` : ""}` : `Sélectionne au moins ${minPlayers} participant(s).`}</div>
+          {effectiveParticipantMode === "teams" ? <div style={{ marginTop: 7, color: "#9299ad", fontSize: 10.5 }}>Répartition Wave61 automatique A/B en alternance.</div> : null}
+        </>}
       </section>
+
+      {spec.id === "green_vs_red" && spec.supportsBots ? <section className="wave61-config-bots" style={card}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap",marginBottom:9}}>
+          <div><div style={{color:accent,fontSize:11,fontWeight:1000,letterSpacing:1,textTransform:"uppercase"}}>Bots IA</div><div style={{color:"#7f8798",fontSize:9.5,marginTop:2}}>Ajoute des bots avec le même sélecteur que X01.</div></div>
+          <button type="button" aria-pressed={botsOpen} onClick={()=>setBotsOpen((v)=>!v)} style={{...pill(botsOpen),minHeight:32,padding:"5px 10px"}}>{botsOpen?"☑ ON":"☐ OFF"}</button>
+        </div>
+        {botsOpen ? <BotPagedSelector bots={botProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} label="BOTS IA" showCheckbox={false} showSelectedSummary={false} /> : null}
+      </section> : null}
 
       <section className="wave61-config-engine" style={card}>
         <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>Moteur · {preset.label}</div>

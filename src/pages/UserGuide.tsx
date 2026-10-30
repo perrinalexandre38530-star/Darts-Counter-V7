@@ -57,6 +57,9 @@ export default function UserGuide({ go, params }: Props) {
   );
   const [active, setActive] = React.useState("start");
   const isFirstLogin = params?.source === "first_login";
+  const rootRef = React.useRef<HTMLElement | null>(null);
+  const sidebarRef = React.useRef<HTMLElement | null>(null);
+  const topbarRef = React.useRef<HTMLElement | null>(null);
   const navScrollRef = React.useRef<HTMLDivElement | null>(null);
   const navButtonRefs = React.useRef<Record<string, HTMLButtonElement | null>>({});
   const sectionIds = React.useMemo(() => NAV.map((item) => item.id), []);
@@ -70,45 +73,82 @@ export default function UserGuide({ go, params }: Props) {
     } catch {}
   }, [isFirstLogin, params?.userId]);
 
-  const jump = React.useCallback((id: string) => {
-    setActive(id);
-    try {
-      const target = document.getElementById(`guide-${id}`);
-      if (!target) return;
-      const isMobile = typeof window !== "undefined" && window.innerWidth <= 900;
-      const isSmallMobile = typeof window !== "undefined" && window.innerWidth <= 600;
-      const offset = isMobile ? (isSmallMobile ? 142 : 134) : 92;
-      const top = target.getBoundingClientRect().top + window.scrollY - offset;
-      window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
-    } catch {}
+  const getContentAnchor = React.useCallback(() => {
+    if (typeof window === "undefined") return 88;
+    const mobile = window.innerWidth <= 900;
+    const topbarHeight = topbarRef.current?.getBoundingClientRect().height || (mobile ? 58 : 74);
+    const navHeight = mobile ? (sidebarRef.current?.getBoundingClientRect().height || 106) : 0;
+    return Math.ceil(navHeight + topbarHeight + 14);
   }, []);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
-    const sections = sectionIds
-      .map((id) => document.getElementById(`guide-${id}`))
-      .filter(Boolean) as HTMLElement[];
-    if (!sections.length) return;
+    const root = rootRef.current;
+    const sidebar = sidebarRef.current;
+    if (!root || !sidebar) return;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
-        if (visible[0]?.target?.id) {
-          setActive(String(visible[0].target.id).replace(/^guide-/, ""));
-        }
-      },
-      {
-        root: null,
-        rootMargin: "-18% 0px -52% 0px",
-        threshold: [0.1, 0.25, 0.4, 0.6],
+    const syncMobileHeaderHeight = () => {
+      const mobile = window.innerWidth <= 900;
+      const height = mobile ? Math.ceil(sidebar.getBoundingClientRect().height) : 0;
+      root.style.setProperty("--msc-guide-mobile-nav-height", `${height}px`);
+    };
+
+    syncMobileHeaderHeight();
+    const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(syncMobileHeaderHeight) : null;
+    resizeObserver?.observe(sidebar);
+    window.addEventListener("resize", syncMobileHeaderHeight, { passive: true });
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", syncMobileHeaderHeight);
+    };
+  }, []);
+
+  const jump = React.useCallback((id: string) => {
+    setActive(id);
+    try {
+      const target = document.getElementById(`guide-${id}`);
+      if (!target || typeof window === "undefined") return;
+      const top = target.getBoundingClientRect().top + window.scrollY - getContentAnchor();
+      window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    } catch {}
+  }, [getContentAnchor]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    let raf = 0;
+
+    const syncActiveSection = () => {
+      raf = 0;
+      const anchor = getContentAnchor() + 8;
+      let current = sectionIds[0] || "start";
+
+      for (const id of sectionIds) {
+        const section = document.getElementById(`guide-${id}`);
+        if (!section) continue;
+        const rect = section.getBoundingClientRect();
+        if (rect.top <= anchor) current = id;
+        else break;
       }
-    );
 
-    sections.forEach((section) => observer.observe(section));
-    return () => observer.disconnect();
-  }, [sectionIds]);
+      const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 8;
+      if (nearBottom && sectionIds.length) current = sectionIds[sectionIds.length - 1];
+      setActive((previous) => previous === current ? previous : current);
+    };
+
+    const scheduleSync = () => {
+      if (raf) return;
+      raf = window.requestAnimationFrame(syncActiveSection);
+    };
+
+    syncActiveSection();
+    window.addEventListener("scroll", scheduleSync, { passive: true });
+    window.addEventListener("resize", scheduleSync, { passive: true });
+    return () => {
+      if (raf) window.cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", scheduleSync);
+      window.removeEventListener("resize", scheduleSync);
+    };
+  }, [getContentAnchor, sectionIds]);
 
   React.useEffect(() => {
     const scroller = navScrollRef.current;
@@ -128,8 +168,8 @@ export default function UserGuide({ go, params }: Props) {
   const groups = ["discover", "play", "progress", "help"];
 
   return (
-    <main className="msc-guide-root">
-      <aside className="msc-guide-sidebar" aria-label={L("Navigation du mode d'emploi", "User guide navigation", "Navegación de la guía")}> 
+    <main className="msc-guide-root" ref={rootRef}>
+      <aside className="msc-guide-sidebar" ref={sidebarRef} aria-label={L("Navigation du mode d'emploi", "User guide navigation", "Navegación de la guía")}> 
         <div className="msc-guide-brand">
           <span>MULTISPORTS</span> <strong>SCORING</strong>
         </div>
@@ -156,7 +196,7 @@ export default function UserGuide({ go, params }: Props) {
       </aside>
 
       <section className="msc-guide-main">
-        <header className="msc-guide-topbar">
+        <header className="msc-guide-topbar" ref={topbarRef}>
           <div className="msc-guide-breadcrumb"><span>MULTISPORTS SCORING</span><i>/</i><strong>{L("Mode d'emploi", "User guide", "Guía de uso")}</strong></div>
           <button type="button" className="msc-guide-close" onClick={closeGuide}>← {L("Retour", "Back", "Volver")}</button>
         </header>

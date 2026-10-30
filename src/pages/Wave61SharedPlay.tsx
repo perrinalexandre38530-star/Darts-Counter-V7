@@ -401,6 +401,43 @@ function GreenRedPanel({ state }: any) {
   </section>;
 }
 
+function GreenRedSituationPanel({ state, profiles }: any) {
+  const profileById = new Map((profiles || []).map((p:any) => [String(p.id), p]));
+  const format = String(state?.config?.modeOptions?.matchFormat || "duel");
+  const rows = (state?.players || []).map((p:any) => {
+    const id = String(p?.id || "");
+    const color = String(state?.special?.greenRedColorByPlayer?.[id] || "GREEN");
+    const step = Math.min(10, Number(state?.special?.greenRedStepByPlayer?.[id] || 0));
+    const path = color === "RED" ? GVR_RED_PATH : GVR_GREEN_PATH;
+    const target = step >= 10 ? "BULL" : `D/T ${path[step]}`;
+    return { ...p, id, color, tone: color === "RED" ? GVR_RED : GVR_GREEN, step, target, score: Number(state?.scores?.[id] || 0), profile: profileById.get(id) || p };
+  });
+  const green = rows.filter((r:any) => r.color === "GREEN");
+  const red = rows.filter((r:any) => r.color === "RED");
+  const sum = (arr:any[]) => arr.reduce((acc:any, r:any) => acc + Number(r.score || 0), 0);
+  const progress = (arr:any[]) => arr.length ? Math.round(arr.reduce((acc:any, r:any) => acc + r.step, 0) / arr.length) : 0;
+  const active = rows.find((r:any) => r.id === String(state?.players?.[state?.activePlayerIndex]?.id || ""));
+  const lastVisit = Array.isArray(state?.visits) && state.visits.length ? state.visits[state.visits.length - 1] : null;
+  const lastPlayer = lastVisit ? rows.find((r:any) => r.id === String(lastVisit.playerId)) : null;
+  const dartLabel = (d:any) => {
+    if (!d || Number(d.v) === 0) return "MISS";
+    if (Number(d.v) === 25) return Number(d.mult) === 2 ? "BULL 50" : "1/2 BULL 25";
+    return `${Number(d.mult) === 3 ? "T" : Number(d.mult) === 2 ? "D" : "S"}${Number(d.v)}`;
+  };
+  const side = (label:string, items:any[], tone:string) => <div style={{borderRadius:14,border:`1px solid ${tone}45`,background:`linear-gradient(180deg,${tone}0d,rgba(7,10,16,.96))`,padding:"8px 9px",minWidth:0}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6}}><b style={{color:tone,fontSize:8.5,letterSpacing:.7}}>{label}</b><strong style={{color:"#fff",fontSize:18,lineHeight:1}}>{sum(items)}</strong></div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:6,marginTop:5,color:"#8993a3",fontSize:7.5,fontWeight:900}}><span>{items.length} JOUEUR{items.length>1?"S":""}</span><span>ÉTAPE MOY. {progress(items)}/11</span></div>
+  </div>;
+  return <section data-green-red-situation="1" style={{...panelStyle((active?.tone || GVR_GREEN)+"45"),padding:8,background:"linear-gradient(145deg,rgba(255,255,255,.018),rgba(5,8,14,.98))"}}>
+    <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",marginBottom:6}}><div style={{color:active?.tone || GVR_GREEN,fontSize:8.8,fontWeight:1100,letterSpacing:.7}}>SITUATION DE PARTIE</div><div style={{color:SOFT,fontSize:7.2,fontWeight:950}}>{format === "teams" ? "TEAM" : format === "multi_random" ? "MULTI" : "DUEL"}</div></div>
+    <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",gap:6}}>{side("TEAM / PISTE VERTE",green,GVR_GREEN)}{side("TEAM / PISTE ROUGE",red,GVR_RED)}</div>
+    <div style={{display:"grid",gridTemplateColumns:lastVisit?"minmax(0,1fr) minmax(0,1fr)":"1fr",gap:6,marginTop:6}}>
+      <div style={{borderRadius:12,border:`1px solid ${(active?.tone || GVR_GREEN)}38`,background:"rgba(255,255,255,.022)",padding:"7px 8px",minWidth:0}}><div style={{color:SOFT,fontSize:7,fontWeight:950}}>PROCHAINE CIBLE</div><div style={{marginTop:2,color:active?.tone || GVR_GREEN,fontSize:13,fontWeight:1150,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{active ? `${active.name} · ${active.target}` : "—"}</div></div>
+      {lastVisit ? <div style={{borderRadius:12,border:"1px solid rgba(255,255,255,.07)",background:"rgba(255,255,255,.022)",padding:"7px 8px",minWidth:0}}><div style={{color:SOFT,fontSize:7,fontWeight:950}}>DERNIÈRE VOLÉE</div><div style={{marginTop:2,color:lastPlayer?.tone || "#fff",fontSize:9.5,fontWeight:1050,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{lastPlayer?.name || "Joueur"} · {(lastVisit.darts || []).map(dartLabel).join(" · ") || "—"}</div></div> : null}
+    </div>
+  </section>;
+}
+
 function GreenVsRedInput({ state, activePlayer, currentThrow, setCurrentThrow, multiplier, setMultiplier, onValidate }: any) {
   const playerId = String(activePlayer?.id || "");
   const ownColor = String(state?.special?.greenRedColorByPlayer?.[playerId] || "GREEN") as "GREEN" | "RED";
@@ -1076,6 +1113,7 @@ export default function Wave61SharedPlay(props: any) {
           {notice ? <div style={{ borderRadius:11,padding:"6px 8px",background:`${accent}0d`,border:`1px solid ${accent}2d`,color:"#eef1f8",fontSize:9.2,fontWeight:850,lineHeight:1.25 }}>{notice}</div> : null}
 
           {renderModeSpecificPanel()}
+          {spec.id === "green_vs_red" ? <GreenRedSituationPanel state={state} profiles={profiles} /> : null}
 
           {spec.id !== "green_vs_red" ? <div style={{ ...panelStyle(accent+"3d"), padding:8, display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:8, alignItems:"center" }}>
             <div style={{ minWidth:0 }}><div style={{ color:accent,fontSize:8,fontWeight:1100,letterSpacing:.7 }}>OBJECTIF ACTIF</div><div style={{ color:"#fff",fontSize:14,fontWeight:1100,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{classicObjective}</div>{dedicatedPlayHint ? <div style={{ color:SOFT,fontSize:8.6,lineHeight:1.3,marginTop:2 }}>{dedicatedPlayHint}</div> : null}</div>
