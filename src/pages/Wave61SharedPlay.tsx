@@ -388,7 +388,11 @@ function GreenRedPanel({ state }: any) {
   const path = color === "GREEN" ? GVR_GREEN_PATH : GVR_RED_PATH;
   const tone = color === "RED" ? GVR_RED : GVR_GREEN;
   const step = Math.min(10, Number(state?.special?.greenRedStepByPlayer?.[activeId] || 0));
-  const cells = [...path, "BULL"] as any[];
+  const bullRule = String(state?.config?.modeOptions?.bullRule || "classic");
+  const bullLabel = bullRule === "color_lock"
+    ? (color === "GREEN" ? "1/2 BULL 25" : "BULL 50")
+    : "BULL 25/50";
+  const cells = [...path, bullLabel] as any[];
 
   return <section data-green-red-objective-rail="1" style={{...panelStyle(tone+"55"),padding:"8px 9px",background:`linear-gradient(145deg,${tone}0d,rgba(5,8,14,.98))`}}>
     <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
@@ -396,7 +400,7 @@ function GreenRedPanel({ state }: any) {
       <div style={{color:SOFT,fontSize:7.5,fontWeight:950}}>ÉTAPE {step+1}/11</div>
     </div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(11,minmax(0,1fr))",gap:3,marginTop:5}}>
-      {cells.map((n:any,i:number)=><div key={`${n}-${i}`} style={{minHeight:31,borderRadius:7,display:"grid",placeItems:"center",background:i<step?`${tone}20`:i===step?`${tone}16`:"rgba(255,255,255,.022)",border:`1px solid ${i===step?tone+"cc":i<step?tone+"55":"rgba(255,255,255,.055)"}`,color:i<=step?"#fff":"#59616e",fontSize:i===10?6.7:8.4,fontWeight:1100,boxShadow:i===step?`0 0 13px ${tone}25`:"none"}}>{i<step?"✓":n}</div>)}
+      {cells.map((n:any,i:number)=><div key={`${n}-${i}`} title={i===10?bullLabel:undefined} style={{minHeight:31,borderRadius:7,display:"grid",placeItems:"center",textAlign:"center",lineHeight:1.02,padding:i===10?"2px 1px":0,background:i<step?`${tone}20`:i===step?`${tone}16`:"rgba(255,255,255,.022)",border:`1px solid ${i===step?tone+"cc":i<step?tone+"55":"rgba(255,255,255,.055)"}`,color:i<=step?"#fff":"#59616e",fontSize:i===10?5.4:8.4,fontWeight:1100,boxShadow:i===step?`0 0 13px ${tone}25`:"none"}}>{i<step?"✓":i===10?<span>{bullRule==="color_lock"?(color==="GREEN"?<>½BULL<br/>25</>:<>BULL<br/>50</>):<>BULL<br/>25/50</>}</span>:n}</div>)}
     </div>
   </section>;
 }
@@ -404,36 +408,94 @@ function GreenRedPanel({ state }: any) {
 function GreenRedSituationPanel({ state, profiles }: any) {
   const profileById = new Map((profiles || []).map((p:any) => [String(p.id), p]));
   const format = String(state?.config?.modeOptions?.matchFormat || "duel");
+  const bullRule = String(state?.config?.modeOptions?.bullRule || "classic");
   const rows = (state?.players || []).map((p:any) => {
     const id = String(p?.id || "");
     const color = String(state?.special?.greenRedColorByPlayer?.[id] || "GREEN");
     const step = Math.min(10, Number(state?.special?.greenRedStepByPlayer?.[id] || 0));
     const path = color === "RED" ? GVR_RED_PATH : GVR_GREEN_PATH;
-    const target = step >= 10 ? "BULL" : `D/T ${path[step]}`;
+    const target = step >= 10
+      ? (bullRule === "color_lock" ? (color === "GREEN" ? "½ BULL 25" : "BULL 50") : "BULL 25 / 50")
+      : `D/T ${path[step]}`;
     return { ...p, id, color, tone: color === "RED" ? GVR_RED : GVR_GREEN, step, target, score: Number(state?.scores?.[id] || 0), profile: profileById.get(id) || p };
   });
   const green = rows.filter((r:any) => r.color === "GREEN");
   const red = rows.filter((r:any) => r.color === "RED");
   const sum = (arr:any[]) => arr.reduce((acc:any, r:any) => acc + Number(r.score || 0), 0);
-  const progress = (arr:any[]) => arr.length ? Math.round(arr.reduce((acc:any, r:any) => acc + r.step, 0) / arr.length) : 0;
+  const progressPct = (arr:any[]) => arr.length ? Math.round((arr.reduce((acc:any, r:any) => acc + r.step, 0) / (arr.length * 10)) * 100) : 0;
   const active = rows.find((r:any) => r.id === String(state?.players?.[state?.activePlayerIndex]?.id || ""));
   const lastVisit = Array.isArray(state?.visits) && state.visits.length ? state.visits[state.visits.length - 1] : null;
   const lastPlayer = lastVisit ? rows.find((r:any) => r.id === String(lastVisit.playerId)) : null;
+  const lastProfile:any = lastPlayer?.profile || null;
+
   const dartLabel = (d:any) => {
-    if (!d || Number(d.v) === 0) return "MISS";
-    if (Number(d.v) === 25) return Number(d.mult) === 2 ? "BULL 50" : "1/2 BULL 25";
-    return `${Number(d.mult) === 3 ? "T" : Number(d.mult) === 2 ? "D" : "S"}${Number(d.v)}`;
+    const bed = String(d?.bed || "").toUpperCase();
+    if (!d || bed === "MISS") return "MISS";
+    if (bed === "IB") return "BULL 50";
+    if (bed === "OB") return "½ BULL";
+    const n = Number(d?.number || 0);
+    return `${bed || "S"}${Number.isFinite(n) && n > 0 ? n : ""}`;
   };
-  const side = (label:string, items:any[], tone:string) => <div style={{borderRadius:14,border:`1px solid ${tone}45`,background:`linear-gradient(180deg,${tone}0d,rgba(7,10,16,.96))`,padding:"8px 9px",minWidth:0}}>
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6}}><b style={{color:tone,fontSize:8.5,letterSpacing:.7}}>{label}</b><strong style={{color:"#fff",fontSize:18,lineHeight:1}}>{sum(items)}</strong></div>
-    <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:6,marginTop:5,color:"#8993a3",fontSize:7.5,fontWeight:900}}><span>{items.length} JOUEUR{items.length>1?"S":""}</span><span>ÉTAPE MOY. {progress(items)}/11</span></div>
-  </div>;
+  const dartTone = (d:any) => {
+    const bed = String(d?.bed || "").toUpperCase();
+    if (!d) return "#59616e";
+    if (bed === "MISS") return "#ff5c69";
+    if (bed === "IB") return "#ff4655";
+    if (bed === "OB") return "#3fd88a";
+    if (bed === "T") return "#d85ed3";
+    if (bed === "D") return "#4ebfe7";
+    return "#dce5f1";
+  };
+
+  const side = (label:string, items:any[], tone:string) => {
+    const pct = progressPct(items);
+    return <div style={{borderRadius:14,border:`1px solid ${tone}42`,background:`linear-gradient(145deg,${tone}10,rgba(7,10,16,.97))`,padding:"8px 9px",minWidth:0,position:"relative",overflow:"hidden"}}>
+      <div style={{position:"absolute",inset:"auto -18px -24px auto",width:70,height:70,borderRadius:999,background:`${tone}0b`}}/>
+      <div style={{display:"grid",gridTemplateColumns:"auto minmax(0,1fr) auto",gap:6,alignItems:"center",position:"relative"}}>
+        <span style={{width:17,height:17,borderRadius:999,display:"grid",placeItems:"center",border:`1px solid ${tone}88`,background:`${tone}20`,color:tone,fontSize:9}}>●</span>
+        <b style={{color:tone,fontSize:8.3,letterSpacing:.65,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{label}</b>
+        <strong style={{color:"#fff",fontSize:20,lineHeight:1,fontWeight:1200}}>{sum(items)}</strong>
+      </div>
+      <div style={{height:4,borderRadius:999,background:"rgba(255,255,255,.055)",overflow:"hidden",marginTop:7}}>
+        <div style={{height:"100%",width:`${Math.max(0,Math.min(100,pct))}%`,borderRadius:999,background:tone,boxShadow:`0 0 10px ${tone}66`}}/>
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",gap:6,marginTop:4,color:"#7f8998",fontSize:7.2,fontWeight:900}}>
+        <span>{items.length} J.</span><span>{pct}%</span>
+      </div>
+    </div>;
+  };
+
+  const lastDarts = Array.isArray(lastVisit?.darts) ? lastVisit.darts.slice(0,3) : [];
   return <section data-green-red-situation="1" style={{...panelStyle((active?.tone || GVR_GREEN)+"45"),padding:8,background:"linear-gradient(145deg,rgba(255,255,255,.018),rgba(5,8,14,.98))"}}>
-    <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",marginBottom:6}}><div style={{color:active?.tone || GVR_GREEN,fontSize:8.8,fontWeight:1100,letterSpacing:.7}}>SITUATION DE PARTIE</div><div style={{color:SOFT,fontSize:7.2,fontWeight:950}}>{format === "teams" ? "TEAM" : format === "multi_random" ? "MULTI" : "DUEL"}</div></div>
-    <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",gap:6}}>{side("TEAM / PISTE VERTE",green,GVR_GREEN)}{side("TEAM / PISTE ROUGE",red,GVR_RED)}</div>
-    <div style={{display:"grid",gridTemplateColumns:lastVisit?"minmax(0,1fr) minmax(0,1fr)":"1fr",gap:6,marginTop:6}}>
-      <div style={{borderRadius:12,border:`1px solid ${(active?.tone || GVR_GREEN)}38`,background:"rgba(255,255,255,.022)",padding:"7px 8px",minWidth:0}}><div style={{color:SOFT,fontSize:7,fontWeight:950}}>PROCHAINE CIBLE</div><div style={{marginTop:2,color:active?.tone || GVR_GREEN,fontSize:13,fontWeight:1150,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{active ? `${active.name} · ${active.target}` : "—"}</div></div>
-      {lastVisit ? <div style={{borderRadius:12,border:"1px solid rgba(255,255,255,.07)",background:"rgba(255,255,255,.022)",padding:"7px 8px",minWidth:0}}><div style={{color:SOFT,fontSize:7,fontWeight:950}}>DERNIÈRE VOLÉE</div><div style={{marginTop:2,color:lastPlayer?.tone || "#fff",fontSize:9.5,fontWeight:1050,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{lastPlayer?.name || "Joueur"} · {(lastVisit.darts || []).map(dartLabel).join(" · ") || "—"}</div></div> : null}
+    <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",marginBottom:6}}>
+      <div style={{color:active?.tone || GVR_GREEN,fontSize:8.8,fontWeight:1100,letterSpacing:.7}}>SITUATION</div>
+      <div style={{color:SOFT,fontSize:7.2,fontWeight:950,padding:"2px 6px",borderRadius:999,border:"1px solid rgba(255,255,255,.07)"}}>{format === "teams" ? "TEAM" : format === "multi_random" ? "MULTI" : "DUEL"}</div>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",gap:6}}>
+      {side("VERT",green,GVR_GREEN)}{side("ROUGE",red,GVR_RED)}
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"minmax(0,.9fr) minmax(0,1.1fr)",gap:6,marginTop:6}}>
+      <div style={{borderRadius:13,border:`1px solid ${(active?.tone || GVR_GREEN)}45`,background:`linear-gradient(145deg,${active?.tone || GVR_GREEN}12,rgba(7,10,16,.96))`,padding:"7px 8px",display:"grid",gridTemplateColumns:"26px minmax(0,1fr)",gap:7,alignItems:"center",minWidth:0}}>
+        <div style={{width:26,height:26,borderRadius:9,display:"grid",placeItems:"center",border:`1px solid ${(active?.tone || GVR_GREEN)}66`,color:active?.tone || GVR_GREEN,fontSize:16}}>◎</div>
+        <div style={{minWidth:0}}>
+          <div style={{color:"#7f8998",fontSize:6.8,fontWeight:950,letterSpacing:.55}}>PROCHAINE CIBLE</div>
+          <div style={{marginTop:1,color:"#fff",fontSize:12.5,fontWeight:1200,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{active?.target || "—"}</div>
+        </div>
+      </div>
+      <div style={{borderRadius:13,border:"1px solid rgba(255,255,255,.07)",background:"rgba(255,255,255,.022)",padding:"6px 7px",minWidth:0}}>
+        <div style={{display:"grid",gridTemplateColumns:"22px minmax(0,1fr)",gap:6,alignItems:"center",marginBottom:5}}>
+          <div style={{width:22,height:22,borderRadius:999,overflow:"hidden",border:`1px solid ${lastPlayer?.tone || "rgba(255,255,255,.16)"}`,background:"rgba(255,255,255,.04)",display:"grid",placeItems:"center",fontSize:8,fontWeight:1000}}>
+            {lastProfile?.avatarDataUrl || lastProfile?.avatarUrl ? <img src={lastProfile.avatarDataUrl || lastProfile.avatarUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : String(lastPlayer?.name || "—").slice(0,1).toUpperCase()}
+          </div>
+          <div style={{minWidth:0}}>
+            <div style={{color:"#7f8998",fontSize:6.7,fontWeight:950,letterSpacing:.5}}>DERNIÈRE VOLÉE</div>
+            <div style={{color:lastPlayer?.tone || "#dce5f1",fontSize:8.3,fontWeight:1050,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{lastPlayer?.name || "Aucune volée"}</div>
+          </div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:4}}>
+          {Array.from({length:3},(_,i)=>lastDarts[i]).map((d:any,i:number)=>{const tone=dartTone(d);return <div key={i} style={{minHeight:25,borderRadius:8,display:"grid",placeItems:"center",border:`1px solid ${d?tone+"88":"rgba(255,255,255,.055)"}`,background:d?`${tone}16`:"rgba(255,255,255,.018)",color:d?tone:"#4e5662",fontSize:7.7,fontWeight:1150,boxShadow:d?`inset 0 -2px 0 ${tone}45`:"none"}}>{d?dartLabel(d):"—"}</div>})}
+        </div>
+      </div>
     </div>
   </section>;
 }

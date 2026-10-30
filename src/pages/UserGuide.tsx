@@ -73,12 +73,25 @@ export default function UserGuide({ go, params }: Props) {
     } catch {}
   }, [isFirstLogin, params?.userId]);
 
-  const getContentAnchor = React.useCallback(() => {
-    if (typeof window === "undefined") return 88;
-    const mobile = window.innerWidth <= 900;
-    const topbarHeight = topbarRef.current?.getBoundingClientRect().height || (mobile ? 58 : 74);
-    const navHeight = mobile ? (sidebarRef.current?.getBoundingClientRect().height || 106) : 0;
-    return Math.ceil(navHeight + topbarHeight + 14);
+  const getScrollContainer = React.useCallback((): HTMLElement | Window => {
+    if (typeof window === "undefined") return window as any;
+    let node = rootRef.current?.parentElement || null;
+    while (node) {
+      const style = window.getComputedStyle(node);
+      const overflowY = style.overflowY;
+      const canScroll = /(auto|scroll|overlay)/.test(overflowY) && node.scrollHeight > node.clientHeight + 2;
+      if (canScroll) return node;
+      node = node.parentElement;
+    }
+    return window;
+  }, []);
+
+  const getTargetViewportTop = React.useCallback(() => {
+    if (typeof window === "undefined") return 0;
+    const topbarBottom = topbarRef.current?.getBoundingClientRect().bottom;
+    if (Number.isFinite(topbarBottom)) return Math.ceil(Number(topbarBottom) + 12);
+    const sidebarBottom = sidebarRef.current?.getBoundingClientRect().bottom || 0;
+    return Math.ceil(sidebarBottom + 70);
   }, []);
 
   React.useEffect(() => {
@@ -105,33 +118,40 @@ export default function UserGuide({ go, params }: Props) {
 
   const jump = React.useCallback((id: string) => {
     setActive(id);
+    if (typeof window === "undefined") return;
     try {
       const target = document.getElementById(`guide-${id}`);
-      if (!target || typeof window === "undefined") return;
-      const top = target.getBoundingClientRect().top + window.scrollY - getContentAnchor();
-      window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+      if (!target) return;
+      const scrollContainer = getScrollContainer();
+      const desiredTop = getTargetViewportTop();
+      const delta = target.getBoundingClientRect().top - desiredTop;
+
+      if (scrollContainer === window) {
+        window.scrollTo({ top: Math.max(0, window.scrollY + delta), behavior: "smooth" });
+      } else {
+        const element = scrollContainer as HTMLElement;
+        element.scrollTo({ top: Math.max(0, element.scrollTop + delta), behavior: "smooth" });
+      }
     } catch {}
-  }, [getContentAnchor]);
+  }, [getScrollContainer, getTargetViewportTop]);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
+    const scrollContainer = getScrollContainer();
     let raf = 0;
 
     const syncActiveSection = () => {
       raf = 0;
-      const anchor = getContentAnchor() + 8;
+      const anchor = getTargetViewportTop() + 4;
       let current = sectionIds[0] || "start";
 
       for (const id of sectionIds) {
         const section = document.getElementById(`guide-${id}`);
         if (!section) continue;
-        const rect = section.getBoundingClientRect();
-        if (rect.top <= anchor) current = id;
+        if (section.getBoundingClientRect().top <= anchor) current = id;
         else break;
       }
 
-      const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 8;
-      if (nearBottom && sectionIds.length) current = sectionIds[sectionIds.length - 1];
       setActive((previous) => previous === current ? previous : current);
     };
 
@@ -141,14 +161,17 @@ export default function UserGuide({ go, params }: Props) {
     };
 
     syncActiveSection();
-    window.addEventListener("scroll", scheduleSync, { passive: true });
+    if (scrollContainer === window) window.addEventListener("scroll", scheduleSync, { passive: true });
+    else (scrollContainer as HTMLElement).addEventListener("scroll", scheduleSync, { passive: true });
     window.addEventListener("resize", scheduleSync, { passive: true });
+
     return () => {
       if (raf) window.cancelAnimationFrame(raf);
-      window.removeEventListener("scroll", scheduleSync);
+      if (scrollContainer === window) window.removeEventListener("scroll", scheduleSync);
+      else (scrollContainer as HTMLElement).removeEventListener("scroll", scheduleSync);
       window.removeEventListener("resize", scheduleSync);
     };
-  }, [getContentAnchor, sectionIds]);
+  }, [getScrollContainer, getTargetViewportTop, sectionIds]);
 
   React.useEffect(() => {
     const scroller = navScrollRef.current;
