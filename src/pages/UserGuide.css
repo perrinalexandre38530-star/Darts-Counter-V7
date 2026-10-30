@@ -4,3 +4,63 @@
 @media (max-width:900px){.msc-guide-root{grid-template-columns:1fr}.msc-guide-sidebar{position:sticky;height:auto;top:0;border-right:0;border-bottom:1px solid #1b1b1b}.msc-guide-brand{height:56px;padding:0 16px;font-size:15px}.msc-guide-sidebar-scroll{display:flex;gap:8px;overflow-x:auto;padding:9px 10px 10px}.msc-guide-nav-group{display:contents}.msc-guide-group-label,.msc-guide-sidebar-footer{display:none}.msc-guide-nav-item{width:auto;flex:0 0 auto;background:#0c0c0c;border:1px solid #222;padding:8px 10px;font-size:12px}.msc-guide-nav-item.is-active{border-color:#6a2023}.msc-guide-topbar{top:106px;height:58px;padding:0 14px}.msc-guide-breadcrumb span,.msc-guide-breadcrumb i{display:none}.msc-guide-content{width:min(100% - 26px,780px);padding-top:24px}.msc-guide-grid.three{grid-template-columns:1fr}.msc-guide-grid.two{grid-template-columns:1fr 1fr}}
 @media (max-width:600px){.msc-guide-topbar{top:106px}.msc-guide-content{width:calc(100% - 22px)}.msc-guide-section{padding-bottom:40px}.msc-guide-grid.two{grid-template-columns:1fr}.msc-guide-hero-card{padding:19px 18px;border-radius:16px}.msc-guide-hero-card p{font-size:14px}.msc-guide-step{grid-template-columns:40px 1fr;gap:12px}.msc-guide-step-icon{width:38px;height:38px}.msc-guide-timeline:before{left:19px}.msc-guide-step h2{font-size:15px}.msc-guide-step p{font-size:12.5px}.msc-guide-close{font-size:11px;padding:7px 9px}.msc-guide-awena{align-items:flex-start}.msc-guide-awena-orb{width:42px;height:42px;flex:0 0 auto}}
 @media (orientation:landscape) and (max-height:620px) and (min-width:700px){.msc-guide-root{grid-template-columns:255px minmax(0,1fr)}.msc-guide-sidebar{height:100vh;position:sticky}.msc-guide-brand{height:54px}.msc-guide-sidebar-scroll{padding-top:8px}.msc-guide-nav-item{padding:7px 10px;font-size:12px}.msc-guide-nav-group{margin-bottom:7px}.msc-guide-group-label{font-size:9px;padding-bottom:4px}.msc-guide-sidebar-footer{padding:7px 18px}.msc-guide-topbar{height:54px;top:0}.msc-guide-content{padding-top:22px}.msc-guide-section{scroll-margin-top:70px}}
+
+/* V182 responsive containment fix: never let the guide overflow the app viewport. */
+.msc-guide-root,
+.msc-guide-root *{box-sizing:border-box}
+.msc-guide-root{width:100%;max-width:100%;overflow-x:hidden;contain:layout paint}
+.msc-guide-sidebar,.msc-guide-main,.msc-guide-topbar,.msc-guide-content,.msc-guide-section,.msc-guide-hero-card,.msc-guide-first-login,.msc-guide-grid,.msc-guide-info-card,.msc-guide-timeline,.msc-guide-step,.msc-guide-step>div,.msc-guide-callout,.msc-guide-awena{min-width:0;max-width:100%}
+.msc-guide-main{width:100%;overflow-x:hidden}
+.msc-guide-content{box-sizing:border-box}
+.msc-guide-grid{grid-template-columns:minmax(0,1fr)}
+.msc-guide-grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.msc-guide-grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.msc-guide-section h1,.msc-guide-lead,.msc-guide-hero-card p,.msc-guide-first-login p,.msc-guide-info-copy,.msc-guide-step h2,.msc-guide-step p,.msc-guide-callout p,.msc-guide-awena p{max-width:100%;overflow-wrap:anywhere;word-break:normal}
+
+@media (max-width:900px){
+  .msc-guide-root{display:block;width:100%;max-width:100vw}
+  .msc-guide-sidebar{width:100%;max-width:100%;overflow:hidden}
+  .msc-guide-sidebar-scroll{width:100%;max-width:100%;overscroll-behavior-x:contain;scrollbar-width:none}
+  .msc-guide-sidebar-scroll::-webkit-scrollbar{display:none}
+  .msc-guide-main{width:100%;max-width:100%}
+  .msc-guide-topbar{width:100%;max-width:100%;left:0;right:0}
+  .msc-guide-content{width:100%;max-width:780px;margin-inline:auto;padding:24px 16px 90px}
+  .msc-guide-grid.two,.msc-guide-grid.three{grid-template-columns:minmax(0,1fr)}
+  .msc-guide-info-card,.msc-guide-hero-card,.msc-guide-callout,.msc-guide-awena{width:100%;margin-inline:auto}
+  .msc-guide-step{grid-template-columns:44px minmax(0,1fr);width:100%}
+}
+
+@media (max-width:600px){
+  .msc-guide-brand{justify-content:center;text-align:center;padding-inline:12px}
+  .msc-guide-sidebar-scroll{padding:8px 10px 10px;gap:7px}
+  .msc-guide-nav-item{max-width:min(78vw,260px);white-space:normal;line-height:1.2}
+  .msc-guide-topbar{padding-inline:12px}
+  .msc-guide-content{width:100%;max-width:100%;margin:0 auto;padding:20px 12px 88px}
+  .msc-guide-section{width:100%;margin-inline:auto;padding-bottom:36px}
+  .msc-guide-section-label{text-align:left;margin-bottom:16px}
+  .msc-guide-hero-card{padding:16px}
+  .msc-guide-first-login{padding:12px}
+  .msc-guide-grid{gap:10px}
+  .msc-guide-info-card{padding:14px}
+  .msc-guide-timeline{width:100%}
+  .msc-guide-timeline:before{left:18px}
+  .msc-guide-step{grid-template-columns:38px minmax(0,1fr);gap:10px;padding-bottom:28px}
+  .msc-guide-step-icon{width:36px;height:36px}
+  .msc-guide-step>div{padding-right:0}
+  .msc-guide-step h2{font-size:14px;line-height:1.3}
+  .msc-guide-step p{font-size:12px;line-height:1.55}
+  .msc-guide-callout{padding:15px 14px}
+  .msc-guide-awena{padding:15px;gap:12px}
+  .msc-guide-primary-button{width:min(100%,320px)}
+}
+
+@media (max-width:420px){
+  .msc-guide-content{padding-inline:10px}
+  .msc-guide-topbar{height:54px}
+  .msc-guide-breadcrumb{font-size:12px;min-width:0;overflow:hidden}
+  .msc-guide-breadcrumb strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .msc-guide-close{flex:0 0 auto}
+  .msc-guide-step{grid-template-columns:34px minmax(0,1fr);gap:9px}
+  .msc-guide-step-icon{width:32px;height:32px;font-size:12px}
+  .msc-guide-timeline:before{left:16px}
+}
