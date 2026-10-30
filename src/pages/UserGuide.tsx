@@ -57,6 +57,9 @@ export default function UserGuide({ go, params }: Props) {
   );
   const [active, setActive] = React.useState("start");
   const isFirstLogin = params?.source === "first_login";
+  const navScrollRef = React.useRef<HTMLDivElement | null>(null);
+  const navButtonRefs = React.useRef<Record<string, HTMLButtonElement | null>>({});
+  const sectionIds = React.useMemo(() => NAV.map((item) => item.id), []);
 
   React.useEffect(() => {
     if (!isFirstLogin) return;
@@ -67,12 +70,55 @@ export default function UserGuide({ go, params }: Props) {
     } catch {}
   }, [isFirstLogin, params?.userId]);
 
-  const jump = (id: string) => {
+  const jump = React.useCallback((id: string) => {
     setActive(id);
     try {
-      document.getElementById(`guide-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const target = document.getElementById(`guide-${id}`);
+      if (!target) return;
+      const isMobile = typeof window !== "undefined" && window.innerWidth <= 900;
+      const isSmallMobile = typeof window !== "undefined" && window.innerWidth <= 600;
+      const offset = isMobile ? (isSmallMobile ? 142 : 134) : 92;
+      const top = target.getBoundingClientRect().top + window.scrollY - offset;
+      window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
     } catch {}
-  };
+  }, []);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sections = sectionIds
+      .map((id) => document.getElementById(`guide-${id}`))
+      .filter(Boolean) as HTMLElement[];
+    if (!sections.length) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
+        if (visible[0]?.target?.id) {
+          setActive(String(visible[0].target.id).replace(/^guide-/, ""));
+        }
+      },
+      {
+        root: null,
+        rootMargin: "-18% 0px -52% 0px",
+        threshold: [0.1, 0.25, 0.4, 0.6],
+      }
+    );
+
+    sections.forEach((section) => observer.observe(section));
+    return () => observer.disconnect();
+  }, [sectionIds]);
+
+  React.useEffect(() => {
+    const scroller = navScrollRef.current;
+    const button = navButtonRefs.current[active];
+    if (!scroller || !button) return;
+    if (typeof window !== "undefined" && window.innerWidth > 900) return;
+    const buttonCenter = button.offsetLeft + button.offsetWidth / 2;
+    const targetLeft = Math.max(0, buttonCenter - scroller.clientWidth / 2);
+    scroller.scrollTo({ left: targetLeft, behavior: "smooth" });
+  }, [active]);
 
   const closeGuide = () => {
     if (isFirstLogin) go("gameSelect");
@@ -88,12 +134,12 @@ export default function UserGuide({ go, params }: Props) {
           <span>MULTISPORTS</span> <strong>SCORING</strong>
         </div>
 
-        <div className="msc-guide-sidebar-scroll">
+        <div className="msc-guide-sidebar-scroll" ref={navScrollRef}>
           {groups.map((group) => (
             <section key={group} className="msc-guide-nav-group">
               <div className="msc-guide-group-label">{L(...GROUP_LABELS[group])}</div>
               {NAV.filter((item) => item.group === group).map((item) => (
-                <button key={item.id} type="button" className={`msc-guide-nav-item ${active === item.id ? "is-active" : ""}`} onClick={() => jump(item.id)}>
+                <button key={item.id} type="button" className={`msc-guide-nav-item ${active === item.id ? "is-active" : ""}`} ref={(node) => { navButtonRefs.current[item.id] = node; }} onClick={() => jump(item.id)}>
                   <span className="msc-guide-nav-icon">{item.icon}</span>
                   <span>{L(item.labelFr, item.labelEn, item.labelEs)}</span>
                 </button>
@@ -116,10 +162,12 @@ export default function UserGuide({ go, params }: Props) {
         </header>
 
         <article className="msc-guide-content">
-          <section id="guide-start" className="msc-guide-section">
-            <div className="msc-guide-kicker">MULTISPORTS SCORING</div>
-            <h1>{L("Mode d'emploi", "User guide", "Guía de uso")}</h1>
-            <p className="msc-guide-lead">{L("Comment fonctionne MULTISPORTS SCORING ?", "How does MULTISPORTS SCORING work?", "¿Cómo funciona MULTISPORTS SCORING?")}</p>
+          <section id="guide-start" className="msc-guide-section msc-guide-start-section">
+            <div className="msc-guide-start-head">
+              <div className="msc-guide-kicker">MULTISPORTS SCORING</div>
+              <h1>{L("Mode d'emploi", "User guide", "Guía de uso")}</h1>
+              <p className="msc-guide-lead">{L("Comment fonctionne MULTISPORTS SCORING ?", "How does MULTISPORTS SCORING work?", "¿Cómo funciona MULTISPORTS SCORING?")}</p>
+            </div>
 
             <div className="msc-guide-hero-card">
               <p>{L(
@@ -135,6 +183,14 @@ export default function UserGuide({ go, params }: Props) {
                 <div><strong>{L("Bienvenue !", "Welcome!", "¡Bienvenido!")}</strong><p>{L("Ce guide s'affiche automatiquement uniquement lors de ta première connexion. Tu pourras toujours le rouvrir depuis Réglages > Mode d'emploi.", "This guide opens automatically only on your first sign-in. You can reopen it anytime from Settings > User guide.", "Esta guía se abre automáticamente solo en tu primer inicio de sesión. Podrás volver a abrirla desde Ajustes > Guía de uso.")}</p></div>
               </div>
             ) : null}
+
+            <div className="msc-guide-section-label msc-guide-subsection-label">{L("LES BASES À CONNAÎTRE", "THE BASICS TO KNOW", "LO BÁSICO QUE HAY QUE SABER")}</div>
+            <div className="msc-guide-feature-grid">
+              <InfoCard icon="👤" title={L("Mon Profil", "My Profile", "Mi perfil")}>{L("Ton identité principale dans l'application : nom, avatar, pays, matériel, progression et statistiques personnelles.", "Your main identity in the app: name, avatar, country, equipment, progress and personal statistics.", "Tu identidad principal en la app: nombre, avatar, país, material, progreso y estadísticas personales.")}</InfoCard>
+              <InfoCard icon="👥" title={L("Profils locaux", "Local profiles", "Perfiles locales")}>{L("Les joueurs de la maison ou de tes amis, créés pour jouer facilement en local et les réutiliser d'une partie à l'autre.", "Home or friends players, created so you can play locally easily and reuse them from one game to the next.", "Los jugadores de casa o tus amigos, creados para jugar fácilmente en local y reutilizarlos de una partida a otra.")}</InfoCard>
+              <InfoCard icon="⚡" title={L("Partie Rapide", "Quick Game", "Partida rápida")}>{L("Le moyen le plus simple pour lancer une partie tout de suite, avec des joueurs temporaires et une configuration légère.", "The simplest way to start a game right away, with temporary players and a light setup.", "La forma más simple de iniciar una partida enseguida, con jugadores temporales y una configuración ligera.")}</InfoCard>
+              <InfoCard icon="♛" title="ARCADE">{L("Le mode complet pour jouer avec tes profils, tes équipes, tes bots, tes statistiques et toutes les options avancées.", "The full mode to play with your profiles, teams, bots, statistics and all advanced options.", "El modo completo para jugar con tus perfiles, equipos, bots, estadísticas y todas las opciones avanzadas.")}</InfoCard>
+            </div>
           </section>
 
           <section id="guide-philosophy" className="msc-guide-section">
