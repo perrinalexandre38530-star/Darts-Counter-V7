@@ -6099,6 +6099,7 @@ export function TeamsSection({
   const selectedBot = new Set((selectedBotTeamIds || []).map(String));
   const teamByPlayer = React.useMemo(() => new Map((profiles || []).map((p: any) => [String(p.id), p])), [profiles]);
   const [teamPicker, setTeamPicker] = React.useState<any | null>(null);
+  const [teamPickerInstanceId, setTeamPickerInstanceId] = React.useState<string | null>(null);
   const [teamPickerPlayerIds, setTeamPickerPlayerIds] = React.useState<string[]>([]);
   const [teamPickerStatsById, setTeamPickerStatsById] = React.useState<Record<string, any>>({});
   const [autoTeamsOpen, setAutoTeamsOpen] = React.useState(false);
@@ -6384,14 +6385,31 @@ export function TeamsSection({
     const available = ids.filter((id: string) => !used.has(id));
     if (available.length <= 0) return;
     setTeamPicker(team);
-    setTeamPickerPlayerIds(available.slice(0, configuredTeamSize || 1));
+    setTeamPickerInstanceId(null);
+    setTeamPickerPlayerIds(configuredTeamSize > 0 ? available.slice(0, configuredTeamSize) : available);
+  };
+
+  const editStoredTeamSelection = (item: any) => {
+    const team = item?.team || null;
+    const instanceId = String(item?.instanceId || "");
+    if (!team || !instanceId) return;
+    const chosen = Array.isArray(item?.chosen) ? item.chosen.map(String).filter(Boolean) : [];
+    const fallback = (Array.isArray(team?.playerIds) ? team.playerIds : []).map((x: any) => String(x || "")).filter(Boolean);
+    setTeamPicker(team);
+    setTeamPickerInstanceId(instanceId);
+    setTeamPickerPlayerIds(chosen.length ? chosen : (configuredTeamSize > 0 ? fallback.slice(0, configuredTeamSize) : fallback));
   };
 
   React.useEffect(() => {
     let cancelled = false;
+    const editableIds = new Set(
+      teamPickerInstanceId && Array.isArray(savedTeamMemberSelections?.[teamPickerInstanceId])
+        ? savedTeamMemberSelections[teamPickerInstanceId].map(String)
+        : []
+    );
     const ids = (Array.isArray(teamPicker?.playerIds) ? teamPicker.playerIds : [])
       .map((pid: any) => String(pid || ""))
-      .filter((pid: string) => pid && !(usedStoredPlayersByBase[String(teamPicker?.id || "")] || new Set<string>()).has(pid));
+      .filter((pid: string) => pid && (!(usedStoredPlayersByBase[String(teamPicker?.id || "")] || new Set<string>()).has(pid) || editableIds.has(pid)));
     if (!teamPicker || ids.length <= 0) {
       setTeamPickerStatsById({});
       return () => { cancelled = true; };
@@ -6407,15 +6425,19 @@ export function TeamsSection({
       setTeamPickerStatsById(next);
     }).catch(() => { if (!cancelled) setTeamPickerStatsById({}); });
     return () => { cancelled = true; };
-  }, [teamPicker?.id, teamPicker?.playerIds, usedStoredPlayersByBase, teamByPlayer]);
+  }, [teamPicker?.id, teamPicker?.playerIds, teamPickerInstanceId, savedTeamMemberSelections, usedStoredPlayersByBase, teamByPlayer]);
 
   const validateStoredTeamPicker = () => {
     const teamId = String(teamPicker?.id || "");
     const ids = (teamPickerPlayerIds || []).map(String).filter(Boolean);
     if (!teamId || ids.length <= 0 || (configuredTeamSize > 0 && ids.length !== configuredTeamSize)) return;
-    if (addStoredTeamSelection) addStoredTeamSelection(teamId, ids);
+    if (teamPickerInstanceId) {
+      removeStoredTeamSelection?.(teamPickerInstanceId);
+      addStoredTeamSelection?.(teamId, ids);
+    } else if (addStoredTeamSelection) addStoredTeamSelection(teamId, ids);
     else toggleStoredTeam(teamId);
     setTeamPicker(null);
+    setTeamPickerInstanceId(null);
     setTeamPickerPlayerIds([]);
   };
 
@@ -6721,13 +6743,16 @@ export function TeamsSection({
                   const logo = item.team?.logoDataUrl || item.team?.logoUrl || item.team?.avatarUrl || undefined;
                   const names = (item.chosen || []).map((id: string) => teamByPlayer.get(String(id))?.name).filter(Boolean).join(", ");
                   return (
-                    <div key={item.instanceId} style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 8, borderRadius: 999, padding: "6px 8px", border: `1px solid ${primary}66`, background: `${primary}12`, color: "#fff", maxWidth: 260 }}>
-                      <ProfileAvatar name={item.team?.name || "Équipe"} dataUrl={logo} size={30} />
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 12, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.team?.name || "Équipe"}</div>
-                        <div style={{ fontSize: 10, color: "#9da3c0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{names || `${item.chosen?.length || 0} joueur`}</div>
-                      </div>
-                      <button type="button" onClick={() => removeStoredTeamSelection && removeStoredTeamSelection(item.instanceId)} style={{ border: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.25)", color: "#ff7aa8", borderRadius: 999, width: 26, height: 26, cursor: "pointer", fontWeight: 950 }}>×</button>
+                    <div key={item.instanceId} style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 8, borderRadius: 999, padding: "6px 8px", border: `1px solid ${primary}66`, background: `${primary}12`, color: "#fff", maxWidth: 320 }}>
+                      <button type="button" onClick={() => editStoredTeamSelection(item)} style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, border: "none", background: "transparent", color: "inherit", padding: 0, margin: 0, textAlign: "left", cursor: "pointer" }}>
+                        <ProfileAvatar name={item.team?.name || "Équipe"} dataUrl={logo} size={30} />
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.team?.name || "Équipe"}</div>
+                          <div style={{ fontSize: 10, color: "#9da3c0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{names || `${item.chosen?.length || 0} joueur`}</div>
+                        </div>
+                        <span style={{ color: primary, fontSize: 10, fontWeight: 950, whiteSpace: "nowrap" }}>Modifier</span>
+                      </button>
+                      <button type="button" onClick={() => removeStoredTeamSelection && removeStoredTeamSelection(item.instanceId)} style={{ border: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.25)", color: "#ff7aa8", borderRadius: 999, width: 26, height: 26, cursor: "pointer", fontWeight: 950, flex: "0 0 auto" }}>×</button>
                     </div>
                   );
                 })}
@@ -6768,7 +6793,7 @@ export function TeamsSection({
           </div>
 
           {teamPicker ? (
-            <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.72)", display: "grid", placeItems: "center", padding: 12 }} onClick={() => setTeamPicker(null)}>
+            <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.72)", display: "grid", placeItems: "center", padding: 12 }} onClick={() => { setTeamPicker(null); setTeamPickerInstanceId(null); setTeamPickerPlayerIds([]); }}>
               <div style={{ width: "min(680px, 96vw)", maxHeight: "90vh", overflow: "hidden", borderRadius: 24, background: "linear-gradient(180deg, rgba(7,18,35,.98), rgba(3,6,16,.98))", border: `1px solid ${primary}88`, boxShadow: `0 22px 70px rgba(0,0,0,.78), 0 0 28px ${primary}44`, display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
                 <div style={{ padding: "12px 14px 10px", borderBottom: `1px solid ${primary}44`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
@@ -6778,13 +6803,16 @@ export function TeamsSection({
                       <div style={{ color: "#fff", fontWeight: 950, fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{teamPicker?.name || "Équipe"}</div>
                     </div>
                   </div>
-                  <button type="button" onClick={() => setTeamPicker(null)} style={{ width: 40, height: 40, borderRadius: 14, border: `1px solid ${primary}77`, background: "rgba(255,255,255,.04)", color: "#fff", fontWeight: 950, cursor: "pointer", fontSize: 18 }}>×</button>
+                  <button type="button" onClick={() => { setTeamPicker(null); setTeamPickerInstanceId(null); setTeamPickerPlayerIds([]); }} style={{ width: 40, height: 40, borderRadius: 14, border: `1px solid ${primary}77`, background: "rgba(255,255,255,.04)", color: "#fff", fontWeight: 950, cursor: "pointer", fontSize: 18 }}>×</button>
                 </div>
                 <div className="dc-scroll-thin" style={{ padding: 14, overflowY: "auto" }}>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
                     {(Array.isArray(teamPicker?.playerIds) ? teamPicker.playerIds : [])
                       .map((pid: any) => String(pid || ""))
-                      .filter((pid: string) => !(usedStoredPlayersByBase[String(teamPicker?.id || "")] || new Set<string>()).has(pid))
+                      .filter((pid: string) => {
+                        const editableIds = new Set(teamPickerInstanceId && Array.isArray(savedTeamMemberSelections?.[teamPickerInstanceId]) ? savedTeamMemberSelections[teamPickerInstanceId].map(String) : []);
+                        return !(usedStoredPlayersByBase[String(teamPicker?.id || "")] || new Set<string>()).has(pid) || editableIds.has(pid);
+                      })
                       .map((pid: string) => {
                         const p = teamByPlayer.get(pid);
                         if (!p) return null;
@@ -6852,7 +6880,7 @@ export function TeamsSection({
                       })}
                   </div>
                   <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
-                    <button type="button" onClick={() => setTeamPicker(null)} style={{ borderRadius: 999, padding: "10px 15px", border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.04)", color: "#fff", fontWeight: 900, cursor: "pointer" }}>Annuler</button>
+                    <button type="button" onClick={() => { setTeamPicker(null); setTeamPickerInstanceId(null); setTeamPickerPlayerIds([]); }} style={{ borderRadius: 999, padding: "10px 15px", border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.04)", color: "#fff", fontWeight: 900, cursor: "pointer" }}>Annuler</button>
                     <button type="button" disabled={teamPickerPlayerIds.length <= 0 || (configuredTeamSize > 0 && teamPickerPlayerIds.length !== configuredTeamSize)} onClick={validateStoredTeamPicker} style={{ borderRadius: 999, padding: "10px 18px", border: `1px solid ${primary}`, background: teamPickerPlayerIds.length > 0 && (!configuredTeamSize || teamPickerPlayerIds.length === configuredTeamSize) ? `${primary}22` : "rgba(255,255,255,.04)", color: teamPickerPlayerIds.length > 0 && (!configuredTeamSize || teamPickerPlayerIds.length === configuredTeamSize) ? primary : "#777", fontWeight: 950, cursor: teamPickerPlayerIds.length > 0 && (!configuredTeamSize || teamPickerPlayerIds.length === configuredTeamSize) ? "pointer" : "not-allowed" }}>Valider</button>
                   </div>
                 </div>

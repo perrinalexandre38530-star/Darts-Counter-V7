@@ -4,7 +4,6 @@ import React from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
-import { UndoMiniIcon } from "../components/Keypad";
 import { useAwenaOptional } from "../awena/AwenaProvider";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { useViewport } from "../hooks/useViewport";
@@ -329,14 +328,6 @@ const GVR_RED_PATH = [20, 12, 14, 8, 7, 3, 2, 10, 13, 18] as const;
 const GVR_GREEN = "#44e58f";
 const GVR_RED = "#ff5c69";
 
-function GreenRedToolIcon({ kind, size = 22 }: { kind: "ranking" | "players" | "stats" | "history"; size?: number }) {
-  const p = { fill:"none", stroke:"currentColor", strokeWidth:1.9, strokeLinecap:"round", strokeLinejoin:"round" } as const;
-  if (kind === "ranking") return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"><path {...p} d="M8 4h8v3.5c0 3-1.7 5.2-4 5.2s-4-2.2-4-5.2V4Z"/><path {...p} d="M8 6H5.5C5.5 9 6.7 10.5 9 10.8M16 6h2.5c0 3-1.2 4.5-3.5 4.8M12 12.7V17M9 20h6M10 17h4"/></svg>;
-  if (kind === "players") return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"><circle {...p} cx="9" cy="8" r="3"/><circle {...p} cx="16.5" cy="9" r="2.3"/><path {...p} d="M3.8 19c.5-3.6 2.4-5.4 5.2-5.4s4.7 1.8 5.2 5.4M14.1 14.4c.7-.5 1.6-.8 2.6-.8 2.2 0 3.7 1.5 4.1 4.3"/></svg>;
-  if (kind === "stats") return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"><path {...p} d="M4 19V6M4 19h16"/><path {...p} d="m7 15 4-4 3 2 5-6"/><path {...p} d="M16.5 7H19v2.5"/></svg>;
-  return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"><path {...p} d="M6 4.5h9l3 3V19a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 5 19V6A1.5 1.5 0 0 1 6.5 4.5Z"/><path {...p} d="M15 4.5V8h3M8 11h8M8 14h8M8 17h5"/></svg>;
-}
-
 
 function greenRedSeriesSpec(stateOrConfig: any) {
   const cfg = stateOrConfig?.config || stateOrConfig || {};
@@ -370,7 +361,7 @@ function GreenRedDuelScoreboard({ state, profiles }: any) {
       {align==="right" ? <div style={{width:24,height:24,borderRadius:999,overflow:"hidden",border:`1.5px solid ${tone}`,background:`${tone}18`,display:"grid",placeItems:"center",fontSize:9,fontWeight:1100}}>{avatar?<img src={avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:String(p?.name||"?").slice(0,1).toUpperCase()}</div> : null}
     </div>;
   };
-  return <div data-green-red-series-scoreboard="1" data-green-red-duel-scoreboard="1" style={{height:34,flex:"0 0 34px",margin:"10px 8px 4px",padding:"3px 8px",borderRadius:11,border:"1px solid rgba(255,255,255,.09)",background:"linear-gradient(180deg,rgba(13,17,25,.98),rgba(5,8,14,.99))",display:"grid",gridTemplateColumns:"minmax(0,1fr) auto minmax(0,1fr)",gap:8,alignItems:"center",boxShadow:"0 5px 16px rgba(0,0,0,.24)"}}>
+  return <div data-green-red-series-scoreboard="1" data-green-red-duel-scoreboard="1" style={{height:34,flex:"0 0 34px",margin:"0 8px 4px",padding:"3px 8px",borderRadius:11,border:"1px solid rgba(255,255,255,.09)",background:"linear-gradient(180deg,rgba(13,17,25,.98),rgba(5,8,14,.99))",display:"grid",gridTemplateColumns:"minmax(0,1fr) auto minmax(0,1fr)",gap:8,alignItems:"center",boxShadow:"0 5px 16px rgba(0,0,0,.24)"}}>
     {side(left,"left")}
     <div style={{display:"flex",alignItems:"baseline",justifyContent:"center",gap:5,minWidth:82}}>
       <strong style={{color:"#fff",fontSize:16,lineHeight:1,fontWeight:1200}}>{Number(wins?.[String(left?.id)] || 0)}</strong>
@@ -388,11 +379,7 @@ function GreenRedPanel({ state }: any) {
   const path = color === "GREEN" ? GVR_GREEN_PATH : GVR_RED_PATH;
   const tone = color === "RED" ? GVR_RED : GVR_GREEN;
   const step = Math.min(10, Number(state?.special?.greenRedStepByPlayer?.[activeId] || 0));
-  const bullRule = String(state?.config?.modeOptions?.bullRule || "classic");
-  const bullLabel = bullRule === "color_lock"
-    ? (color === "GREEN" ? "1/2 BULL 25" : "BULL 50")
-    : "BULL 25/50";
-  const cells = [...path, bullLabel] as any[];
+  const cells = [...path, "BULL"] as any[];
 
   return <section data-green-red-objective-rail="1" style={{...panelStyle(tone+"55"),padding:"8px 9px",background:`linear-gradient(145deg,${tone}0d,rgba(5,8,14,.98))`}}>
     <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
@@ -400,102 +387,7 @@ function GreenRedPanel({ state }: any) {
       <div style={{color:SOFT,fontSize:7.5,fontWeight:950}}>ÉTAPE {step+1}/11</div>
     </div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(11,minmax(0,1fr))",gap:3,marginTop:5}}>
-      {cells.map((n:any,i:number)=><div key={`${n}-${i}`} title={i===10?bullLabel:undefined} style={{minHeight:31,borderRadius:7,display:"grid",placeItems:"center",textAlign:"center",lineHeight:1.02,padding:i===10?"2px 1px":0,background:i<step?`${tone}20`:i===step?`${tone}16`:"rgba(255,255,255,.022)",border:`1px solid ${i===step?tone+"cc":i<step?tone+"55":"rgba(255,255,255,.055)"}`,color:i<=step?"#fff":"#59616e",fontSize:i===10?5.4:8.4,fontWeight:1100,boxShadow:i===step?`0 0 13px ${tone}25`:"none"}}>{i<step?"✓":i===10?<span>{bullRule==="color_lock"?(color==="GREEN"?<>½BULL<br/>25</>:<>BULL<br/>50</>):<>BULL<br/>25/50</>}</span>:n}</div>)}
-    </div>
-  </section>;
-}
-
-function GreenRedSituationPanel({ state, profiles }: any) {
-  const profileById = new Map((profiles || []).map((p:any) => [String(p.id), p]));
-  const format = String(state?.config?.modeOptions?.matchFormat || "duel");
-  const bullRule = String(state?.config?.modeOptions?.bullRule || "classic");
-  const rows = (state?.players || []).map((p:any) => {
-    const id = String(p?.id || "");
-    const color = String(state?.special?.greenRedColorByPlayer?.[id] || "GREEN");
-    const step = Math.min(10, Number(state?.special?.greenRedStepByPlayer?.[id] || 0));
-    const path = color === "RED" ? GVR_RED_PATH : GVR_GREEN_PATH;
-    const target = step >= 10
-      ? (bullRule === "color_lock" ? (color === "GREEN" ? "½ BULL 25" : "BULL 50") : "BULL 25 / 50")
-      : `D/T ${path[step]}`;
-    return { ...p, id, color, tone: color === "RED" ? GVR_RED : GVR_GREEN, step, target, score: Number(state?.scores?.[id] || 0), profile: profileById.get(id) || p };
-  });
-  const green = rows.filter((r:any) => r.color === "GREEN");
-  const red = rows.filter((r:any) => r.color === "RED");
-  const sum = (arr:any[]) => arr.reduce((acc:any, r:any) => acc + Number(r.score || 0), 0);
-  const progressPct = (arr:any[]) => arr.length ? Math.round((arr.reduce((acc:any, r:any) => acc + r.step, 0) / (arr.length * 10)) * 100) : 0;
-  const active = rows.find((r:any) => r.id === String(state?.players?.[state?.activePlayerIndex]?.id || ""));
-  const lastVisit = Array.isArray(state?.visits) && state.visits.length ? state.visits[state.visits.length - 1] : null;
-  const lastPlayer = lastVisit ? rows.find((r:any) => r.id === String(lastVisit.playerId)) : null;
-  const lastProfile:any = lastPlayer?.profile || null;
-
-  const dartLabel = (d:any) => {
-    const bed = String(d?.bed || "").toUpperCase();
-    if (!d || bed === "MISS") return "MISS";
-    if (bed === "IB") return "BULL 50";
-    if (bed === "OB") return "½ BULL";
-    const n = Number(d?.number || 0);
-    return `${bed || "S"}${Number.isFinite(n) && n > 0 ? n : ""}`;
-  };
-  const dartTone = (d:any) => {
-    const bed = String(d?.bed || "").toUpperCase();
-    if (!d) return "#59616e";
-    if (bed === "MISS") return "#ff5c69";
-    if (bed === "IB") return "#ff4655";
-    if (bed === "OB") return "#3fd88a";
-    if (bed === "T") return "#d85ed3";
-    if (bed === "D") return "#4ebfe7";
-    return "#dce5f1";
-  };
-
-  const side = (label:string, items:any[], tone:string) => {
-    const pct = progressPct(items);
-    return <div style={{borderRadius:14,border:`1px solid ${tone}42`,background:`linear-gradient(145deg,${tone}10,rgba(7,10,16,.97))`,padding:"8px 9px",minWidth:0,position:"relative",overflow:"hidden"}}>
-      <div style={{position:"absolute",inset:"auto -18px -24px auto",width:70,height:70,borderRadius:999,background:`${tone}0b`}}/>
-      <div style={{display:"grid",gridTemplateColumns:"auto minmax(0,1fr) auto",gap:6,alignItems:"center",position:"relative"}}>
-        <span style={{width:17,height:17,borderRadius:999,display:"grid",placeItems:"center",border:`1px solid ${tone}88`,background:`${tone}20`,color:tone,fontSize:9}}>●</span>
-        <b style={{color:tone,fontSize:8.3,letterSpacing:.65,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{label}</b>
-        <strong style={{color:"#fff",fontSize:20,lineHeight:1,fontWeight:1200}}>{sum(items)}</strong>
-      </div>
-      <div style={{height:4,borderRadius:999,background:"rgba(255,255,255,.055)",overflow:"hidden",marginTop:7}}>
-        <div style={{height:"100%",width:`${Math.max(0,Math.min(100,pct))}%`,borderRadius:999,background:tone,boxShadow:`0 0 10px ${tone}66`}}/>
-      </div>
-      <div style={{display:"flex",justifyContent:"space-between",gap:6,marginTop:4,color:"#7f8998",fontSize:7.2,fontWeight:900}}>
-        <span>{items.length} J.</span><span>{pct}%</span>
-      </div>
-    </div>;
-  };
-
-  const lastDarts = Array.isArray(lastVisit?.darts) ? lastVisit.darts.slice(0,3) : [];
-  return <section data-green-red-situation="1" style={{...panelStyle((active?.tone || GVR_GREEN)+"45"),padding:8,background:"linear-gradient(145deg,rgba(255,255,255,.018),rgba(5,8,14,.98))"}}>
-    <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",marginBottom:6}}>
-      <div style={{color:active?.tone || GVR_GREEN,fontSize:8.8,fontWeight:1100,letterSpacing:.7}}>SITUATION</div>
-      <div style={{color:SOFT,fontSize:7.2,fontWeight:950,padding:"2px 6px",borderRadius:999,border:"1px solid rgba(255,255,255,.07)"}}>{format === "teams" ? "TEAM" : format === "multi_random" ? "MULTI" : "DUEL"}</div>
-    </div>
-    <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",gap:6}}>
-      {side("VERT",green,GVR_GREEN)}{side("ROUGE",red,GVR_RED)}
-    </div>
-    <div style={{display:"grid",gridTemplateColumns:"minmax(0,.9fr) minmax(0,1.1fr)",gap:6,marginTop:6}}>
-      <div style={{borderRadius:13,border:`1px solid ${(active?.tone || GVR_GREEN)}45`,background:`linear-gradient(145deg,${active?.tone || GVR_GREEN}12,rgba(7,10,16,.96))`,padding:"7px 8px",display:"grid",gridTemplateColumns:"26px minmax(0,1fr)",gap:7,alignItems:"center",minWidth:0}}>
-        <div style={{width:26,height:26,borderRadius:9,display:"grid",placeItems:"center",border:`1px solid ${(active?.tone || GVR_GREEN)}66`,color:active?.tone || GVR_GREEN,fontSize:16}}>◎</div>
-        <div style={{minWidth:0}}>
-          <div style={{color:"#7f8998",fontSize:6.8,fontWeight:950,letterSpacing:.55}}>PROCHAINE CIBLE</div>
-          <div style={{marginTop:1,color:"#fff",fontSize:12.5,fontWeight:1200,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{active?.target || "—"}</div>
-        </div>
-      </div>
-      <div style={{borderRadius:13,border:"1px solid rgba(255,255,255,.07)",background:"rgba(255,255,255,.022)",padding:"6px 7px",minWidth:0}}>
-        <div style={{display:"grid",gridTemplateColumns:"22px minmax(0,1fr)",gap:6,alignItems:"center",marginBottom:5}}>
-          <div style={{width:22,height:22,borderRadius:999,overflow:"hidden",border:`1px solid ${lastPlayer?.tone || "rgba(255,255,255,.16)"}`,background:"rgba(255,255,255,.04)",display:"grid",placeItems:"center",fontSize:8,fontWeight:1000}}>
-            {lastProfile?.avatarDataUrl || lastProfile?.avatarUrl ? <img src={lastProfile.avatarDataUrl || lastProfile.avatarUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : String(lastPlayer?.name || "—").slice(0,1).toUpperCase()}
-          </div>
-          <div style={{minWidth:0}}>
-            <div style={{color:"#7f8998",fontSize:6.7,fontWeight:950,letterSpacing:.5}}>DERNIÈRE VOLÉE</div>
-            <div style={{color:lastPlayer?.tone || "#dce5f1",fontSize:8.3,fontWeight:1050,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{lastPlayer?.name || "Aucune volée"}</div>
-          </div>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:4}}>
-          {Array.from({length:3},(_,i)=>lastDarts[i]).map((d:any,i:number)=>{const tone=dartTone(d);return <div key={i} style={{minHeight:25,borderRadius:8,display:"grid",placeItems:"center",border:`1px solid ${d?tone+"88":"rgba(255,255,255,.055)"}`,background:d?`${tone}16`:"rgba(255,255,255,.018)",color:d?tone:"#4e5662",fontSize:7.7,fontWeight:1150,boxShadow:d?`inset 0 -2px 0 ${tone}45`:"none"}}>{d?dartLabel(d):"—"}</div>})}
-        </div>
-      </div>
+      {cells.map((n:any,i:number)=><div key={`${n}-${i}`} style={{minHeight:31,borderRadius:7,display:"grid",placeItems:"center",background:i<step?`${tone}20`:i===step?`${tone}16`:"rgba(255,255,255,.022)",border:`1px solid ${i===step?tone+"cc":i<step?tone+"55":"rgba(255,255,255,.055)"}`,color:i<=step?"#fff":"#59616e",fontSize:i===10?6.7:8.4,fontWeight:1100,boxShadow:i===step?`0 0 13px ${tone}25`:"none"}}>{i<step?"✓":n}</div>)}
     </div>
   </section>;
 }
@@ -539,7 +431,7 @@ function GreenVsRedInput({ state, activePlayer, currentThrow, setCurrentThrow, m
   const dartLabel = (d:any) => {
     if (!d) return "—";
     if (Number(d.v) === 0) return "MISS";
-    if (Number(d.v) === 25) return Number(d.mult) === 2 ? "BULL 50" : "1/2 BULL 25";
+    if (Number(d.v) === 25) return Number(d.mult) === 2 ? "BULL 50" : "BULL 25";
     return `${Number(d.mult) === 3 ? "T" : Number(d.mult) === 2 ? "D" : "S"}${d.v}`;
   };
   const dartTone = (d:any) => {
@@ -550,16 +442,11 @@ function GreenVsRedInput({ state, activePlayer, currentThrow, setCurrentThrow, m
     if (Number(d.mult) === 2) return "#4ebfe7";
     return ownTone;
   };
-  const keypadBase:React.CSSProperties = {
-    height:"clamp(44px,8.5vw,52px)",touchAction:"manipulation",WebkitTapHighlightColor:"transparent",borderRadius:16,
-    border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.04)",color:"#fff",fontWeight:800,cursor:"pointer",minWidth:0
-  };
-  const doubleStyle:React.CSSProperties = { ...keypadBase, background:"rgba(46,150,193,.2)", color:"#bfeaff", borderColor:multiplier===2?"#9bd7ff":"rgba(255,255,255,.08)" };
-  const tripleStyle:React.CSSProperties = { ...keypadBase, background:"rgba(179,68,151,.2)", color:"#ffccff", borderColor:multiplier===3?"#ffd0ff":"rgba(255,255,255,.08)" };
-  const missStyle:React.CSSProperties = { ...keypadBase, background:"linear-gradient(180deg, rgba(255,86,106,.18), rgba(0,0,0,.32))", color:"#ffe6ea", border:"1px solid rgba(255,152,165,.32)" };
-  const cancelStyle:React.CSSProperties = { ...keypadBase, background:"linear-gradient(180deg, rgba(255,198,58,.96), rgba(255,175,0,.90))", color:"#1a1a1a", border:"1px solid rgba(255,180,0,.34)", boxShadow:"0 10px 22px rgba(255,170,0,.24)", fontWeight:1000 };
-  const halfBullStyle:React.CSSProperties = { ...keypadBase, background:"rgba(22,92,66,.35)", color:"#8be0b8", border:"1px solid rgba(139,224,184,.42)" };
-  const bull50Style:React.CSSProperties = { ...keypadBase, background:"linear-gradient(180deg,rgba(255,86,106,.28),rgba(72,5,15,.88))", color:"#ffd8dc", border:"1px solid rgba(255,126,142,.48)" };
+  const keyStyle = (tone:string, active=false, solid=false):React.CSSProperties => ({
+    minHeight:40,borderRadius:12,border:`1px solid ${active?tone+"dd":tone+"66"}`,
+    background:solid?`linear-gradient(180deg,${tone},${tone}cc)`:active?`linear-gradient(180deg,${tone}32,${tone}17)`:`linear-gradient(180deg,rgba(20,24,34,.98),rgba(7,10,16,.99))`,
+    color:solid?"#111":"#fff",fontWeight:1100,fontSize:10.5,cursor:"pointer",boxShadow:active?`0 0 14px ${tone}30`:"none",touchAction:"manipulation"
+  });
 
   return <div data-green-red-keypad="1" style={{...panelStyle(ownTone+"55"),height:"100%",minHeight:0,overflow:"hidden",padding:8,display:"flex",flexDirection:"column",gap:6,background:`linear-gradient(180deg,${ownTone}08,rgba(5,7,12,.995) 25%)`}}>
     <div data-green-red-visit-preview="1" style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:5}}>
@@ -568,10 +455,10 @@ function GreenVsRedInput({ state, activePlayer, currentThrow, setCurrentThrow, m
 
     {!isBullStage ? <>
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:5}}>
-        <button type="button" onClick={()=>setMultiplier(multiplier===2?1:2)} style={doubleStyle} aria-pressed={multiplier===2}>DOUBLE</button>
-        <button type="button" onClick={()=>setMultiplier(multiplier===3?1:3)} style={tripleStyle} aria-pressed={multiplier===3}>TRIPLE</button>
-        <button type="button" onClick={appendMiss} disabled={full} style={{...missStyle,opacity:full?.45:1}}>MISS</button>
-        <button type="button" onClick={cancelLast} disabled={!currentThrow.length&&multiplier===1} style={{...cancelStyle,opacity:(!currentThrow.length&&multiplier===1)?.45:1}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:5}}><UndoMiniIcon size={18}/><span style={{fontSize:9,whiteSpace:"nowrap"}}>ANNULER</span></span></button>
+        <button type="button" onClick={()=>setMultiplier(multiplier===2?1:2)} style={keyStyle("#4ebfe7",multiplier===2)}>DOUBLE</button>
+        <button type="button" onClick={()=>setMultiplier(multiplier===3?1:3)} style={keyStyle("#d85ed3",multiplier===3)}>TRIPLE</button>
+        <button type="button" onClick={appendMiss} disabled={full} style={{...keyStyle("#ff5c69",false),opacity:full?.45:1}}>MISS</button>
+        <button type="button" onClick={cancelLast} disabled={!currentThrow.length&&multiplier===1} style={{...keyStyle("#f5b522",false,true),opacity:(!currentThrow.length&&multiplier===1)?.45:1}}>ANNULER</button>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:5,flex:"1 1 auto",minHeight:0}}>
         {ownPath.map((n:number)=>{
@@ -581,12 +468,12 @@ function GreenVsRedInput({ state, activePlayer, currentThrow, setCurrentThrow, m
       </div>
     </> : <>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5}}>
-        <button type="button" onClick={appendMiss} disabled={full} style={{...missStyle,opacity:full?.45:1}}>MISS</button>
-        <button type="button" onClick={cancelLast} disabled={!currentThrow.length} style={{...cancelStyle,opacity:!currentThrow.length?.45:1}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:5}}><UndoMiniIcon size={18}/><span style={{fontSize:9,whiteSpace:"nowrap"}}>ANNULER</span></span></button>
+        <button type="button" onClick={appendMiss} disabled={full} style={{...keyStyle("#ff5c69",false),opacity:full?.45:1}}>MISS</button>
+        <button type="button" onClick={cancelLast} disabled={!currentThrow.length} style={{...keyStyle("#f5b522",false,true),opacity:!currentThrow.length?.45:1}}>ANNULER</button>
       </div>
       <div style={{display:"grid",gridTemplateColumns:bullRule==="color_lock"?"1fr":"1fr 1fr",gap:7,flex:"1 1 auto",minHeight:0}}>
-        {bullRule!=="color_lock"||ownBullBed==="OB"?<button type="button" onClick={()=>appendBull(false)} disabled={full} style={{...halfBullStyle,height:"auto",minHeight:68,fontSize:13}}>1/2 BULL<div style={{fontSize:8.2,marginTop:2,color:"#63efaa"}}>25{bullRule==="color_bonus"&&ownColor==="GREEN"&&greenBullBonus?` +${greenBullBonus}`:""}</div></button>:null}
-        {bullRule!=="color_lock"||ownBullBed==="IB"?<button type="button" onClick={()=>appendBull(true)} disabled={full} style={{...bull50Style,height:"auto",minHeight:68,fontSize:13}}>BULL<div style={{fontSize:8.2,marginTop:2,color:"#ff7c86"}}>50{bullRule==="color_bonus"&&ownColor==="RED"&&redBullBonus?` +${redBullBonus}`:""}</div></button>:null}
+        {bullRule!=="color_lock"||ownBullBed==="OB"?<button type="button" onClick={()=>appendBull(false)} disabled={full} style={{...keyStyle("#3fd88a",false),minHeight:68,fontSize:13}}>BULL 25<div style={{fontSize:8.2,marginTop:2,color:"#63efaa"}}>25{bullRule==="color_bonus"&&ownColor==="GREEN"&&greenBullBonus?` +${greenBullBonus}`:""}</div></button>:null}
+        {bullRule!=="color_lock"||ownBullBed==="IB"?<button type="button" onClick={()=>appendBull(true)} disabled={full} style={{...keyStyle("#ff4655",false),minHeight:68,fontSize:13}}>BULL<div style={{fontSize:8.2,marginTop:2,color:"#ff7c86"}}>50{bullRule==="color_bonus"&&ownColor==="RED"&&redBullBonus?` +${redBullBonus}`:""}</div></button>:null}
       </div>
     </>}
     <button type="button" onClick={onValidate} disabled={!currentThrow.length} style={{minHeight:42,borderRadius:13,border:`1px solid ${currentThrow.length?ownTone+"aa":"rgba(255,255,255,.08)"}`,background:currentThrow.length?`linear-gradient(180deg,${ownTone}34,${ownTone}18)`:"rgba(255,255,255,.03)",color:currentThrow.length?"#fff":"#59616e",fontWeight:1150,fontSize:10.8,letterSpacing:.45,cursor:currentThrow.length?"pointer":"not-allowed"}}>VALIDER LA VOLÉE</button>
@@ -1045,7 +932,7 @@ export default function Wave61SharedPlay(props: any) {
             const step=Math.min(10,Number(state.special?.greenRedStepByPlayer?.[id]||0));
             const bull=String(config?.modeOptions?.bullRule||"classic");
             const targetLabel=step>=10?"BULL":`D/T ${path[step]}`;
-            return <><div style={{...panelStyle(tone+"55"),padding:12,textAlign:"center"}}><div style={{color:tone,fontSize:9,fontWeight:1100,letterSpacing:.8}}>PISTE ACTUELLE · {color}</div><div style={{color:"#fff",fontSize:28,fontWeight:1200,marginTop:4}}>{targetLabel}</div><div style={{color:SOFT,fontSize:9.5,marginTop:4}}>Étape {step+1}/11 · Score {Number(state.scores?.[id]||0)}</div></div><div style={{...panelStyle("rgba(255,255,255,.10)"),padding:11,color:"#dce2ed",fontSize:10.5,lineHeight:1.55}}>Sur les 10 secteurs, seuls DOUBLE et TRIPLE du secteur courant font progresser. La frise suit l'ordre officiel de la couleur du joueur. À l'étape finale : {bull==="color_lock"?"BULL DE COULEUR — Vert=25, Rouge=50.":bull==="color_bonus"?"BULL BONUS — les deux Bulls sont valables, celui de ta couleur reçoit le bonus configuré.":"CLASSIQUE — 1/2 BULL 25 et BULL 50 sont valables."}</div></>;
+            return <><div style={{...panelStyle(tone+"55"),padding:12,textAlign:"center"}}><div style={{color:tone,fontSize:9,fontWeight:1100,letterSpacing:.8}}>PISTE ACTUELLE · {color}</div><div style={{color:"#fff",fontSize:28,fontWeight:1200,marginTop:4}}>{targetLabel}</div><div style={{color:SOFT,fontSize:9.5,marginTop:4}}>Étape {step+1}/11 · Score {Number(state.scores?.[id]||0)}</div></div><div style={{...panelStyle("rgba(255,255,255,.10)"),padding:11,color:"#dce2ed",fontSize:10.5,lineHeight:1.55}}>Sur les 10 secteurs, seuls DOUBLE et TRIPLE du secteur courant font progresser. La frise suit l'ordre officiel de la couleur du joueur. À l'étape finale : {bull==="color_lock"?"BULL DE COULEUR — Vert=25, Rouge=50.":bull==="color_bonus"?"BULL BONUS — les deux Bulls sont valables, celui de ta couleur reçoit le bonus configuré.":"CLASSIQUE — BULL 25 et BULL 50 sont valables."}</div></>;
           })()}
         </div> : null}
 
@@ -1088,10 +975,10 @@ export default function Wave61SharedPlay(props: any) {
     const visitCount = activePlayer ? (state.visits || []).filter((v:any)=>String(v.playerId)===String(activePlayer.id)).length : 0;
     const tickerHeight = isLandscapeTablet ? 54 : 82;
     const quickButtons = (spec.id === "green_vs_red" ? [
-      { id:"ranking", label:"CLASSEMENT" },
-      { id:"players", label:"LISTE DE JOUEURS", wide:true },
-      { id:"stats", label:"STATS" },
-      { id:"history", label:"LOGS" },
+      { id:"ranking", icon:"🏆", label:"CLASSEMENT" },
+      { id:"players", icon:"👥", label:"JOUEURS", wide:true },
+      { id:"stats", icon:"▥", label:"STATS" },
+      { id:"history", icon:"↺", label:"LOGS" },
     ] : [
       { id:"rules", icon:"◎", label:"RÈGLES" },
       { id:"settings", icon:"⚙", label:"RÉGLAGES" },
@@ -1103,22 +990,24 @@ export default function Wave61SharedPlay(props: any) {
     const gvrTone = gvrColor === "RED" ? GVR_RED : GVR_GREEN;
     const gvrPath = gvrColor === "RED" ? GVR_RED_PATH : GVR_GREEN_PATH;
     const gvrStep = spec.id === "green_vs_red" ? Math.min(10, Number(state.special?.greenRedStepByPlayer?.[gvrActiveId] || 0)) : 0;
-    const gvrTargetLabel = spec.id === "green_vs_red" ? (gvrStep >= 10 ? "BULL" : `D/T ${gvrPath[gvrStep]}`) : classicObjective;
+    const gvrBullRule = String(state?.config?.modeOptions?.bullRule || "classic");
+    const gvrBullTargetLabel = gvrBullRule === "color_lock" ? (gvrColor === "GREEN" ? "BULL 25" : "BULL 50") : "BULL";
+    const gvrTargetLabel = spec.id === "green_vs_red" ? (gvrStep >= 10 ? gvrBullTargetLabel : `D/T ${gvrPath[gvrStep]}`) : classicObjective;
     const gvrAvatar = activeProfile?.avatarDataUrl || activeProfile?.avatarUrl || activeProfile?.avatar || null;
 
-    return <div data-wave61-classic-five={spec.id} data-green-red-ui-version={spec.id === "green_vs_red" ? "v6" : undefined} style={{ height:"calc(var(--vh,1vh) * 100 - 18px)", minHeight:0, overflow:"hidden", display:"flex", flexDirection:"column", background:`radial-gradient(circle at 50% 0%,${accent}14,transparent 34%),#070a11` }}>
+    return <div data-wave61-classic-five={spec.id} style={{ height:"calc(var(--vh,1vh) * 100 - 18px)", minHeight:0, overflow:"hidden", display:"flex", flexDirection:"column", background:`radial-gradient(circle at 50% 0%,${accent}14,transparent 34%),#070a11` }}>
       <PageHeader
         tickerSrc={modeTicker || undefined}
         tickerAlt={spec.label}
         tickerHeight={tickerHeight}
-        tickerBottomGap={spec.id==="green_vs_red" ? (isLandscapeTablet?8:12) : (isLandscapeTablet?3:5)}
+        tickerBottomGap={isLandscapeTablet?3:5}
         tickerFit="cover"
         left={<BackDot onClick={()=>go?.("wave61_config",{gameId:spec.id})} color={spec.id==="green_vs_red"?gvrTone:accent} glow={`${spec.id==="green_vs_red"?gvrTone:accent}88`} />}
         right={<InfoDot title={`${spec.label} — règles`} color={spec.id==="green_vs_red"?gvrTone:accent} glow={`${spec.id==="green_vs_red"?gvrTone:accent}77`} content={familyRules(spec,preset)} />}
       />
       {spec.id === "green_vs_red" ? <GreenRedDuelScoreboard state={state} profiles={profiles} /> : null}
 
-      {adviceText && spec.id !== "green_vs_red" ? <div role="status" aria-live="polite" style={{ position:"fixed", zIndex:95, top:tickerHeight+10, right:8, width:"min(330px,calc(100vw - 16px))", borderRadius:14, padding:"7px 8px", display:"grid", gridTemplateColumns:"34px minmax(0,1fr)", gap:7, alignItems:"center", border:`1px solid ${accent}70`, background:"rgba(8,11,19,.97)", boxShadow:`0 12px 30px rgba(0,0,0,.5),0 0 20px ${accent}18` }}>
+      {adviceText ? <div role="status" aria-live="polite" style={{ position:"fixed", zIndex:95, top:tickerHeight+10, right:8, width:"min(330px,calc(100vw - 16px))", borderRadius:14, padding:"7px 8px", display:"grid", gridTemplateColumns:"34px minmax(0,1fr)", gap:7, alignItems:"center", border:`1px solid ${accent}70`, background:"rgba(8,11,19,.97)", boxShadow:`0 12px 30px rgba(0,0,0,.5),0 0 20px ${accent}18` }}>
         <img src="/awena/awena-avatar.webp" alt="Awena" style={{ width:34,height:34,borderRadius:"50%",objectFit:"cover",border:`1px solid ${accent}88` }}/>
         <div><div style={{ color:accent,fontSize:7.5,fontWeight:1100,letterSpacing:.8 }}>AWENA · CONSEIL</div><div style={{ color:"#fff",fontSize:9,lineHeight:1.3,fontWeight:850,marginTop:1 }}>{adviceText}</div></div>
       </div> : null}
@@ -1136,18 +1025,19 @@ export default function Wave61SharedPlay(props: any) {
           {spec.id === "green_vs_red" ? <section data-green-red-active-player="1" style={{ position:"relative",overflow:"hidden",minHeight:118,borderRadius:18,border:`1px solid ${gvrTone}70`,background:`radial-gradient(circle at 12% 50%,${gvrTone}24,transparent 35%),linear-gradient(145deg,${gvrTone}10,rgba(5,8,14,.98))`,boxShadow:`inset 0 0 38px ${gvrTone}0c,0 12px 28px rgba(0,0,0,.28)`,display:"grid",gridTemplateColumns:"minmax(0,1fr) 112px",gap:8,alignItems:"stretch",padding:8 }}>
             <div aria-hidden style={{position:"absolute",left:-24,top:"50%",transform:"translateY(-50%)",width:132,height:132,opacity:.18,filter:"saturate(.9)",pointerEvents:"none"}}>{gvrAvatar?<img src={gvrAvatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:999}}/>:<div style={{width:"100%",height:"100%",borderRadius:999,display:"grid",placeItems:"center",fontSize:58,fontWeight:1200,color:gvrTone,border:`2px solid ${gvrTone}55`}}>{String(activePlayer?.name||"?").slice(0,1).toUpperCase()}</div>}</div>
             <div style={{position:"relative",zIndex:1,minWidth:0,display:"grid",placeItems:"center",alignContent:"center",paddingLeft:44,textAlign:"center"}}>
-              <div style={{color:gvrTone,fontSize:8,fontWeight:1100,letterSpacing:1}}>{gvrColor} · ÉTAPE {gvrStep+1}/11</div>
-              <div style={{color:"#fff",fontSize:12,fontWeight:1100,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"100%"}}>{activePlayer?.name || "—"}</div>
-              <div style={{color:gvrTone,fontSize:40,lineHeight:1,fontWeight:1250,letterSpacing:-1.4,textShadow:`0 0 18px ${gvrTone}45`,marginTop:2}}>{Math.round(Number(state.scores?.[gvrActiveId]||0))}</div>
-              <div style={{display:"flex",gap:10,justifyContent:"center",marginTop:4,color:SOFT,fontSize:7,fontWeight:950}}><span>{dartsPlayed} FLÉCHETTES</span><span>{visitCount} VOLÉES</span></div>
+              <div style={{color:gvrTone,fontSize:15,fontWeight:1200,letterSpacing:.55,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"100%",textTransform:"uppercase"}}>{activePlayer?.name || "—"}</div>
+              <div style={{color:"#f5f7ff",fontSize:7.6,fontWeight:1050,letterSpacing:.85,marginTop:2}}>{gvrColor} · ÉTAPE {gvrStep+1}/11</div>
+              <div style={{color:gvrTone,fontSize:40,lineHeight:1,fontWeight:1250,letterSpacing:-1.4,textShadow:`0 0 18px ${gvrTone}45`,marginTop:3}}>{Math.round(Number(state.scores?.[gvrActiveId]||0))}</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:6,marginTop:6,width:"100%",maxWidth:170}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,borderRadius:10,padding:"5px 6px",border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.04)"}}><span style={{color:gvrTone,fontSize:11,lineHeight:1}}>🎯</span><span style={{width:1,height:12,background:"rgba(255,255,255,.12)"}}/><strong style={{color:"#fff",fontSize:10.5,fontWeight:1150,lineHeight:1}}>{dartsPlayed}</strong></div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,borderRadius:10,padding:"5px 6px",border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.04)"}}><span style={{color:gvrTone,fontSize:11,lineHeight:1}}>↺</span><span style={{width:1,height:12,background:"rgba(255,255,255,.12)"}}/><strong style={{color:"#fff",fontSize:10.5,fontWeight:1150,lineHeight:1}}>{visitCount}</strong></div>
+              </div>
             </div>
-            <button type="button" onClick={()=>setQuickPanel("objective")} style={{position:"relative",zIndex:1,minWidth:0,borderRadius:15,border:`1px solid ${gvrTone}70`,background:`linear-gradient(180deg,${gvrTone}22,rgba(7,10,16,.95))`,color:"#fff",display:"grid",placeItems:"center",alignContent:"center",gap:3,padding:7,cursor:"pointer",boxShadow:`inset 0 0 20px ${gvrTone}0e`}}>
-              <span style={{color:gvrTone,fontSize:7.2,fontWeight:1100,letterSpacing:.7}}>OBJECTIF</span>
+            <button type="button" onClick={()=>setQuickPanel("objective")} style={{position:"relative",zIndex:1,minWidth:0,borderRadius:15,border:`1px solid ${gvrTone}70`,background:`linear-gradient(180deg,${gvrTone}22,rgba(7,10,16,.95))`,color:"#fff",display:"grid",placeItems:"center",alignContent:"center",gap:4,padding:"8px 7px",cursor:"pointer",boxShadow:`inset 0 0 20px ${gvrTone}0e`}}>
+              <small style={{fontSize:6.8,color:gvrTone,fontWeight:1050,letterSpacing:.9}}>PISTE {gvrColor}</small>
+              <span style={{color:"#fff",fontSize:7.1,fontWeight:1100,letterSpacing:.7}}>OBJECTIF</span>
               <strong style={{fontSize:gvrStep>=10?15:20,lineHeight:1,color:"#fff"}}>{gvrTargetLabel}</strong>
-              <small style={{fontSize:6.7,color:gvrTone,fontWeight:1000}}>PISTE {gvrColor}</small>
-              <span style={{fontSize:14,color:gvrTone,lineHeight:1}}>›</span>
             </button>
-            <button type="button" onClick={doUndo} disabled={!undo.length} aria-label="Annuler la dernière volée" style={{position:"absolute",right:7,top:7,zIndex:2,width:29,height:29,borderRadius:10,border:"1px solid rgba(255,255,255,.10)",background:"rgba(0,0,0,.34)",color:undo.length?gvrTone:"#56606d",fontSize:13,cursor:undo.length?"pointer":"default"}}>↶</button>
           </section> : <div style={{ ...panelStyle(accent+"62"), padding:9, background:`linear-gradient(145deg,${accent}12,rgba(5,8,14,.97))` }}>
             <div style={{ display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",marginBottom:6 }}>
               <div><div style={{ color:accent,fontSize:8.5,fontWeight:1100,letterSpacing:.9 }}>{spec.label.toUpperCase()} · ROUND {roundLabel}/{config.rounds}</div><div style={{ color:"#fff",fontSize:13.5,fontWeight:1100,marginTop:2 }}>{activePlayer?.name || "—"} joue</div></div>
@@ -1161,21 +1051,13 @@ export default function Wave61SharedPlay(props: any) {
             </div>
           </div>}
 
-          <div data-green-red-tool-strip={spec.id==="green_vs_red"?"1":undefined} style={{ display:"grid",gridTemplateColumns:spec.id==="green_vs_red"?".68fr 2fr .68fr .68fr":"repeat(4,minmax(0,1fr))",gap:5 }}>
-            {quickButtons.map((b:any)=>{
-              const toolTone=spec.id==="green_vs_red"?gvrTone:accent;
-              const isGvr=spec.id==="green_vs_red";
-              const isPlayers=isGvr&&b.id==="players";
-              return <button key={b.id} type="button" onClick={()=>setQuickPanel(b.id as any)} title={b.label} aria-label={b.label} style={{ position:"relative",overflow:"hidden",minHeight:isGvr?42:48,borderRadius:13,border:`1px solid ${toolTone}${isPlayers?"66":"38"}`,background:isPlayers&&modeTicker?`linear-gradient(90deg,rgba(3,8,10,.82),${toolTone}28,rgba(3,8,10,.82)),url(${modeTicker}) center/cover no-repeat`:`linear-gradient(180deg,${toolTone}0b,rgba(7,10,16,.96))`,color:toolTone,display:"grid",placeItems:"center",cursor:"pointer",minWidth:0,boxShadow:isPlayers?`inset 0 0 22px rgba(0,0,0,.52),0 0 14px ${toolTone}12`:"none" }}>
-                {isGvr?<GreenRedToolIcon kind={b.id as any} size={isPlayers?25:21}/>:<><span style={{ color:toolTone,fontSize:17,lineHeight:1 }}>{b.icon}</span><span style={{ fontSize:6.6,fontWeight:1000,letterSpacing:.4,whiteSpace:"nowrap" }}>{b.label}</span></>}
-              </button>;
-            })}
+          <div style={{ display:"grid",gridTemplateColumns:spec.id==="green_vs_red"?"1fr 1.55fr 1fr 1fr":"repeat(4,minmax(0,1fr))",gap:6 }}>
+            {quickButtons.map((b:any)=>{const toolTone=spec.id==="green_vs_red"?gvrTone:accent;return <button key={b.id} type="button" onClick={()=>setQuickPanel(b.id as any)} style={{ minHeight:48,borderRadius:13,border:`1px solid ${toolTone}32`,background:`linear-gradient(180deg,${toolTone}08,rgba(7,10,16,.96))`,color:"#dfe5ef",display:"grid",placeItems:"center",alignContent:"center",gap:1,cursor:"pointer",minWidth:0 }}><span style={{ color:toolTone,fontSize:17,lineHeight:1 }}>{b.icon}</span><span style={{ fontSize:6.6,fontWeight:1000,letterSpacing:.4,whiteSpace:"nowrap" }}>{b.label}</span></button>})}
           </div>
 
           {notice ? <div style={{ borderRadius:11,padding:"6px 8px",background:`${accent}0d`,border:`1px solid ${accent}2d`,color:"#eef1f8",fontSize:9.2,fontWeight:850,lineHeight:1.25 }}>{notice}</div> : null}
 
           {renderModeSpecificPanel()}
-          {spec.id === "green_vs_red" ? <GreenRedSituationPanel state={state} profiles={profiles} /> : null}
 
           {spec.id !== "green_vs_red" ? <div style={{ ...panelStyle(accent+"3d"), padding:8, display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:8, alignItems:"center" }}>
             <div style={{ minWidth:0 }}><div style={{ color:accent,fontSize:8,fontWeight:1100,letterSpacing:.7 }}>OBJECTIF ACTIF</div><div style={{ color:"#fff",fontSize:14,fontWeight:1100,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{classicObjective}</div>{dedicatedPlayHint ? <div style={{ color:SOFT,fontSize:8.6,lineHeight:1.3,marginTop:2 }}>{dedicatedPlayHint}</div> : null}</div>
@@ -1204,7 +1086,7 @@ export default function Wave61SharedPlay(props: any) {
     return <div data-wave61-landscape="three-zone" style={{ height: "100dvh", minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", background: `radial-gradient(circle at 50% 0%,${accent}13,transparent 35%)` }}>
       <PageHeader title={spec.label} subtitle={`${preset.label} · moteur V${WAVE61_ENGINE_VERSION}`} left={<BackDot onClick={() => go?.("wave61_config", { gameId: spec.id })} color={accent} glow={`${accent}88`} />} right={<InfoDot title={`${spec.label} — règles`} color={accent} glow={`${accent}77`} content={familyRules(spec, preset)} />} />
       {modeTicker ? <div data-wave61-landscape-ticker="1" style={{ flex: `0 0 ${tickerHeight}px`, minHeight: 0, padding: "3px 8px 2px", display: "grid", placeItems: "center" }}><img src={modeTicker} alt={spec.label} style={{ width: "min(760px,58vw)", height: tickerHeight - 5, objectFit: "cover", borderRadius: 13, display: "block", border: `1px solid ${accent}44`, boxShadow: `0 8px 24px rgba(0,0,0,.34)` }} /></div> : null}
-      {adviceText && spec.id !== "green_vs_red" ? <div role="status" aria-live="polite" style={{ position: "fixed", zIndex: 95, top: compactHeight ? 56 : 76, right: 10, width: "min(350px,34vw)", borderRadius: 14, padding: "7px 9px", display: "grid", gridTemplateColumns: "34px minmax(0,1fr) auto", gap: 7, alignItems: "center", border: `1px solid ${accent}70`, background: "linear-gradient(145deg,rgba(12,15,26,.97),rgba(5,7,13,.98))", boxShadow: `0 14px 34px rgba(0,0,0,.48),0 0 22px ${accent}20` }}>
+      {adviceText ? <div role="status" aria-live="polite" style={{ position: "fixed", zIndex: 95, top: compactHeight ? 56 : 76, right: 10, width: "min(350px,34vw)", borderRadius: 14, padding: "7px 9px", display: "grid", gridTemplateColumns: "34px minmax(0,1fr) auto", gap: 7, alignItems: "center", border: `1px solid ${accent}70`, background: "linear-gradient(145deg,rgba(12,15,26,.97),rgba(5,7,13,.98))", boxShadow: `0 14px 34px rgba(0,0,0,.48),0 0 22px ${accent}20` }}>
         <img src="/awena/awena-avatar.webp" alt="Awena" style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover", border: `1px solid ${accent}88` }} />
         <div><div style={{ color: accent, fontSize: 7.8, fontWeight: 1100, letterSpacing: .8 }}>AWENA · CONSEIL</div><div style={{ marginTop: 1, color: "#fff", fontSize: 9.2, fontWeight: 850, lineHeight: 1.28 }}>{adviceText}</div></div>
         {awenaCommentaryEnabled ? <button type="button" aria-label="Répéter le conseil Awena" onClick={() => { lastVoiceAtRef.current = Date.now(); void awena?.say?.(adviceText).catch(() => undefined); }} style={{ width: 28, height: 28, borderRadius: 9, border: `1px solid ${accent}55`, background: `${accent}12`, color: accent, cursor: "pointer" }}>🔊</button> : null}
@@ -1243,7 +1125,7 @@ export default function Wave61SharedPlay(props: any) {
   return <div style={{ minHeight: "calc(var(--vh,1vh) * 100)", paddingBottom: 18, background: `radial-gradient(circle at 50% 0%,${accent}13,transparent 35%)` }}>
     <PageHeader title={spec.label} subtitle={`${preset.label} · moteur V${WAVE61_ENGINE_VERSION}`} left={<BackDot onClick={() => go?.("wave61_config", { gameId: spec.id })} color={accent} glow={`${accent}88`} />} right={<InfoDot title={`${spec.label} — règles`} color={accent} glow={`${accent}77`} content={familyRules(spec, preset)} />} />
     {modeTicker ? <div style={{ padding: "5px 8px 1px", maxWidth: 1040, margin: "0 auto" }}><img src={modeTicker} alt={spec.label} style={{ width: "100%", maxHeight: 210, aspectRatio: "800 / 230", objectFit: "cover", borderRadius: 14, display: "block", border: `1px solid ${accent}44`, boxShadow: `0 10px 30px rgba(0,0,0,.36)` }} /></div> : null}
-    {adviceText && spec.id !== "green_vs_red" ? <div role="status" aria-live="polite" style={{ position: "fixed", zIndex: 95, top: 86, right: 12, width: "min(360px,calc(100vw - 24px))", borderRadius: 16, padding: "9px 10px", display: "grid", gridTemplateColumns: "42px minmax(0,1fr) auto", gap: 9, alignItems: "center", border: `1px solid ${accent}70`, background: "linear-gradient(145deg,rgba(12,15,26,.97),rgba(5,7,13,.98))", boxShadow: `0 16px 42px rgba(0,0,0,.48),0 0 26px ${accent}20` }}>
+    {adviceText ? <div role="status" aria-live="polite" style={{ position: "fixed", zIndex: 95, top: 86, right: 12, width: "min(360px,calc(100vw - 24px))", borderRadius: 16, padding: "9px 10px", display: "grid", gridTemplateColumns: "42px minmax(0,1fr) auto", gap: 9, alignItems: "center", border: `1px solid ${accent}70`, background: "linear-gradient(145deg,rgba(12,15,26,.97),rgba(5,7,13,.98))", boxShadow: `0 16px 42px rgba(0,0,0,.48),0 0 26px ${accent}20` }}>
       <img src="/awena/awena-avatar.webp" alt="Awena" style={{ width: 42, height: 42, borderRadius: "50%", objectFit: "cover", border: `1px solid ${accent}88`, boxShadow: `0 0 14px ${accent}35` }} />
       <div><div style={{ color: accent, fontSize: 8.8, fontWeight: 1100, letterSpacing: 1 }}>AWENA · CONSEIL CIBLE</div><div style={{ marginTop: 2, color: "#fff", fontSize: 10.4, fontWeight: 850, lineHeight: 1.35 }}>{adviceText}</div></div>
       {awenaCommentaryEnabled ? <button type="button" aria-label="Répéter le conseil Awena" onClick={() => { lastVoiceAtRef.current = Date.now(); void awena?.say?.(adviceText).catch(() => undefined); }} style={{ width: 32, height: 32, borderRadius: 10, border: `1px solid ${accent}55`, background: `${accent}12`, color: accent, fontWeight: 1100, cursor: "pointer" }}>🔊</button> : null}

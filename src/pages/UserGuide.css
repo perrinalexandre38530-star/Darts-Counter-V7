@@ -75,3 +75,55 @@
   .msc-guide-step-icon{width:32px;height:32px;font-size:12px}
   .msc-guide-timeline:before{left:16px}
 }
+
+/* V190 portrait UX: keep the guide category selector permanently visible. */
+@media (max-width:900px) and (orientation:portrait){
+  .msc-guide-root{
+    padding-top:var(--msc-guide-mobile-nav-height,106px);
+  }
+
+  .msc-guide-sidebar{
+    position:fixed !important;
+    top:0 !important;
+    left:0;
+    right:0;
+    width:100%;
+    height:auto !important;
+    max-height:none;
+    z-index:60 !important;
+    background:rgba(2,2,2,.985);
+    border-bottom:1px solid #202020;
+    box-shadow:0 12px 30px rgba(0,0,0,.34);
+    backdrop-filter:blur(16px);
+  }
+
+  .msc-guide-brand{
+    position:relative;
+    z-index:2;
+  }
+
+  .msc-guide-sidebar-scroll{
+    position:relative;
+    z-index:2;
+    background:rgba(2,2,2,.985);
+  }
+
+  .msc-guide-topbar{
+    position:sticky;
+    top:var(--msc-guide-mobile-nav-height,106px) !important;
+    z-index:50 !important;
+  }
+
+  .msc-guide-section{
+    scroll-margin-top:calc(var(--msc-guide-mobile-nav-height,106px) + 72px) !important;
+  }
+}
+
+@media (max-width:600px) and (orientation:portrait){
+  .msc-guide-root{
+    padding-top:var(--msc-guide-mobile-nav-height,104px);
+  }
+  .msc-guide-section{
+    scroll-margin-top:calc(var(--msc-guide-mobile-nav-height,104px) + 68px) !important;
+  }
+}
