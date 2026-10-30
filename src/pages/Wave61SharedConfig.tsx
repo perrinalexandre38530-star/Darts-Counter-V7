@@ -74,6 +74,10 @@ export default function Wave61SharedConfig(props: any) {
   const [selectedIds, setSelectedIds] = React.useState<string[]>(Array.isArray(saved.selectedIds) ? saved.selectedIds.map(String).slice(0, spec.maxPlayers) : []);
   const [botsOpen, setBotsOpen] = React.useState(saved.botsOpen === true);
   const [participantMode, setParticipantMode] = React.useState<"players" | "teams">(saved.participantMode === "teams" && spec.supportsTeams ? "teams" : "players");
+  const greenRedFormat = spec.id === "green_vs_red" ? String(modeOptions?.matchFormat || "duel") : "";
+  const effectiveParticipantMode: "players" | "teams" = spec.id === "green_vs_red"
+    ? (greenRedFormat === "teams" ? "teams" : "players")
+    : participantMode;
   const [difficulty, setDifficulty] = React.useState<"easy" | "normal" | "hard">(saved.difficulty === "easy" || saved.difficulty === "hard" ? saved.difficulty : "normal");
   const [botLevel, setBotLevel] = React.useState<"easy" | "normal" | "hard">(saved.botLevel === "easy" || saved.botLevel === "hard" ? saved.botLevel : "normal");
   const [rounds, setRounds] = React.useState(Number(lockedRounds ?? saved.rounds ?? preset.defaultRounds));
@@ -106,7 +110,14 @@ export default function Wave61SharedConfig(props: any) {
 
   const selectedProfiles = selectedIds.map((id) => profileById.get(id)).filter(Boolean);
   const minPlayers = Math.min(spec.maxPlayers, preset.minPlayers);
-  const valid = selectedProfiles.length >= minPlayers && (spec.id !== "green_vs_red" || selectedProfiles.length === 2);
+  const greenRedCountValid = spec.id !== "green_vs_red"
+    ? true
+    : greenRedFormat === "teams"
+      ? [4, 6, 8].includes(selectedProfiles.length)
+      : greenRedFormat === "multi_random"
+        ? selectedProfiles.length >= 3 && selectedProfiles.length <= 10
+        : selectedProfiles.length === 2;
+  const valid = selectedProfiles.length >= minPlayers && greenRedCountValid;
   const botCount = selectedProfiles.filter(isBotLike).length;
   const familyText = `${preset.label} · moteur mutualisé V${WAVE61_ENGINE_VERSION}`;
   const modeTicker = React.useMemo(() => getTicker(spec.id), [spec.id]);
@@ -117,7 +128,7 @@ export default function Wave61SharedConfig(props: any) {
     const orderedIds = randomOrder ? shuffle(baseIds) : baseIds;
     const playersList = orderedIds.map((id) => profileById.get(id)).filter(Boolean).map((p: any) => ({ ...p, id: String(p.id), name: p?.name || p?.displayName || "Joueur" }));
     const teamByPlayer: Record<string, string> = {};
-    if (participantMode === "teams") orderedIds.forEach((id, index) => { teamByPlayer[id] = index % 2 === 0 ? "A" : "B"; });
+    if (effectiveParticipantMode === "teams") orderedIds.forEach((id, index) => { teamByPlayer[id] = index % 2 === 0 ? "A" : "B"; });
     const payload = {
       modeId: spec.id,
       selectedIds: orderedIds,
@@ -125,7 +136,7 @@ export default function Wave61SharedConfig(props: any) {
       playersList,
       botIds: playersList.filter(isBotLike).map((p: any) => String(p.id)),
       botsEnabled: playersList.some(isBotLike),
-      participantMode,
+      participantMode: effectiveParticipantMode,
       teamByPlayer,
       difficulty,
       botLevel,
@@ -153,14 +164,24 @@ export default function Wave61SharedConfig(props: any) {
     <div className="wave61-config-body" style={{ padding: "8px 10px 20px", maxWidth: 980, margin: "0 auto", display: "grid", gap: 10 }}>
       <section className="wave61-config-participants" style={card}>
         <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>Participants</div>
-        {spec.supportsTeams ? <div style={{ display: "flex", gap: 8, marginBottom: 12 }}><button style={pill(participantMode === "players")} onClick={() => setParticipantMode("players")}>JOUEURS</button><button style={pill(participantMode === "teams")} onClick={() => setParticipantMode("teams")}>2 ÉQUIPES AUTO</button></div> : null}
+        {spec.id === "green_vs_red" ? <div style={{ display:"grid", gridTemplateColumns:"repeat(3,minmax(0,1fr))", gap:6, marginBottom:10 }}>
+          {[
+            ["duel","DUEL","2"],
+            ["teams","TEAM","4·6·8"],
+            ["multi_random","MULTI","3→10"],
+          ].map(([value,label,count]) => <button key={value} type="button" onClick={()=>setModeOptions((prev)=>({...prev,matchFormat:value}))} style={{...pill(greenRedFormat===value),minWidth:0,padding:"7px 5px",display:"grid",gap:2}}>
+            <span>{label}</span><span style={{fontSize:8,opacity:.7}}>{count} JOUEURS</span>
+          </button>)}
+        </div> : null}
+        {spec.supportsTeams && spec.id !== "green_vs_red" ? <div style={{ display: "flex", gap: 8, marginBottom: 12 }}><button style={pill(participantMode === "players")} onClick={() => setParticipantMode("players")}>JOUEURS</button><button style={pill(participantMode === "teams")} onClick={() => setParticipantMode("teams")}>2 ÉQUIPES AUTO</button></div> : null}
         <PlayerPagedSelector usageMode={spec.id} profiles={humanProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} pageSize={9} modalTitle="Choisir des joueurs" showSelectedSummary={true} />
         {spec.supportsBots ? <div style={{ marginTop: 10 }}>
           <button type="button" onClick={() => setBotsOpen((v) => !v)} style={pill(botsOpen)}>{botsOpen ? "☑ BOTS OUVERTS" : "☐ AJOUTER DES BOTS"}</button>
           {botsOpen ? <div style={{ marginTop: 10 }}><BotPagedSelector bots={botProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} label="BOTS IA" showCheckbox={false} showSelectedSummary={false} /></div> : null}
         </div> : null}
-        <div style={{ marginTop: 10, color: valid ? accent : "#ff97aa", fontSize: 11, fontWeight: 900 }}>{valid ? `${selectedProfiles.length} participant(s) prêt(s)${botCount ? ` · ${botCount} BOT(S)` : ""}` : spec.id === "green_vs_red" ? "GREEN VS RED se joue exactement à 2 participants." : `Sélectionne au moins ${minPlayers} participant(s).`}</div>
-        {participantMode === "teams" ? <div style={{ marginTop: 7, color: "#9299ad", fontSize: 10.5 }}>Répartition Wave61 automatique A/B en alternance. Le sélecteur d'équipes complet sera affiné lors de la finalisation de chaque mode.</div> : null}
+        <div style={{ marginTop: 10, color: valid ? accent : "#ff97aa", fontSize: 11, fontWeight: 900 }}>{valid ? `${selectedProfiles.length} participant(s) prêt(s)${botCount ? ` · ${botCount} BOT(S)` : ""}` : spec.id === "green_vs_red" ? (greenRedFormat === "teams" ? "GREEN VS RED TEAM accepte 4, 6 ou 8 participants." : greenRedFormat === "multi_random" ? "GREEN VS RED MULTI accepte de 3 à 10 participants." : "GREEN VS RED DUEL demande exactement 2 participants.") : `Sélectionne au moins ${minPlayers} participant(s).`}</div>
+        {spec.id === "green_vs_red" && greenRedFormat === "teams" ? <div style={{ marginTop: 7, color: "#9299ad", fontSize: 10.5 }}>TEAM VERTE / TEAM ROUGE : répartition équilibrée automatique, 2/3/4 joueurs par camp.</div> : effectiveParticipantMode === "teams" ? <div style={{ marginTop: 7, color: "#9299ad", fontSize: 10.5 }}>Répartition Wave61 automatique A/B en alternance.</div> : null}
+        {spec.id === "green_vs_red" && greenRedFormat === "multi_random" ? <div style={{ marginTop: 7, color: "#9299ad", fontSize: 10.5 }}>MULTI : chaque joueur reçoit VERT ou ROUGE aléatoirement au lancement, avec répartition équilibrée.</div> : null}
       </section>
 
       <section className="wave61-config-engine" style={card}>
@@ -189,7 +210,7 @@ export default function Wave61SharedConfig(props: any) {
       {dedicatedOptions.length ? <section className="wave61-config-dedicated" style={{ ...card, borderColor: `${accent}4d` }}>
         <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>Réglages propres à {spec.label}</div>
         {dedicatedIntro ? <div style={{ color: "#aeb5c8", fontSize: 10.5, lineHeight: 1.5, marginBottom: 8 }}>{dedicatedIntro}</div> : null}
-        {dedicatedOptions.map((option) => {
+        {dedicatedOptions.filter((option) => !(spec.id === "green_vs_red" && option.key === "matchFormat")).map((option) => {
           const value = modeOptions?.[option.key] ?? option.defaultValue;
           const setValue = (next: any) => setModeOptions((prev) => ({ ...prev, [option.key]: next }));
           return <div key={option.key} style={{ marginBottom: 4 }}>

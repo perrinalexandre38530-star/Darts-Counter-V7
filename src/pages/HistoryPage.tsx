@@ -5079,6 +5079,24 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
       }
     }
 
+    // Reprise universelle opt-in : tout moteur peut enregistrer resume.route
+    // dans son record Historique. HistoryPage n'a alors plus besoin d'un patch
+    // spécifique pour ce mode.
+    {
+      const anyE: any = e as any;
+      const payload: any = anyE?.decoded || (anyE?.payload && typeof anyE.payload === "object" ? anyE.payload : {}) || {};
+      const explicitResumeRoute = String(anyE?.resume?.route || payload?.resumeRoute || anyE?.game?.resumeRoute || "").trim();
+      if (explicitResumeRoute && statusOf(e) === "in_progress") {
+        const config = anyE?.resume?.config || payload?.config || anyE?.summary?.config || null;
+        const snapshot = anyE?.resume?.state || payload?.stateSnapshot || payload?.state || payload?.snapshot || null;
+        const resumeModeId = String(anyE?.resume?.modeId || snapshot?.modeId || anyE?.modeId || anyE?.game?.modeId || baseMode(e) || "");
+        const params = { rec: e, resumeId, config, snapshot, mode: resumeModeId || baseMode(e), gameId: resumeModeId || undefined, from: preview ? "history_preview" : "history", preview: !!preview };
+        const ok = safeGo([explicitResumeRoute], params);
+        if (!ok) go(explicitResumeRoute as any, params);
+        return;
+      }
+    }
+
     // GOLF
     if (baseMode(e) === "golf") {
       const ok = safeGo(["golf_play", "golf"], {
@@ -5157,6 +5175,34 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
     }
 
     const inferredMode = inferGameFilterKey(e, "darts");
+
+    // WAVE61 : reprise générique de TOUS les modes du catalogue mutualisé.
+    // Le record contient config + stateSnapshot + volée brouillon ; aucun mapping
+    // individuel n'est nécessaire pour les 65+ modes Wave61.
+    {
+      let recForResume: any = e;
+      const lightPayload: any = (e as any)?.decoded || ((e as any)?.payload && typeof (e as any).payload === "object" ? (e as any).payload : null) || {};
+      const lightState: any = (e as any)?.resume?.state || lightPayload?.stateSnapshot || lightPayload?.state || null;
+      const looksWave61 = (e as any)?.resume?.mode === "wave61" || lightState?.mode === "wave61";
+      if (looksWave61 && statusOf(e) === "in_progress") {
+        try {
+          const full = await History.get(String(resumeId || (e as any)?.id || (e as any)?.matchId || ""));
+          if (full) recForResume = { ...(e as any), ...(full as any), resume: (full as any)?.resume || (e as any)?.resume };
+        } catch (error) {
+          console.warn("[HistoryPage] Wave61 resume hydration failed", error);
+        }
+        const payload: any = (recForResume as any)?.decoded || ((recForResume as any)?.payload && typeof (recForResume as any).payload === "object" ? (recForResume as any).payload : null) || {};
+        const snapshot: any = (recForResume as any)?.resume?.state || payload?.stateSnapshot || payload?.state || null;
+        const modeId = String((recForResume as any)?.resume?.modeId || snapshot?.modeId || (recForResume as any)?.modeId || (recForResume as any)?.game?.modeId || inferredMode || "");
+        const config = (recForResume as any)?.resume?.config || payload?.config || snapshot?.config || (recForResume as any)?.summary?.config || null;
+        if (modeId && snapshot?.mode === "wave61") {
+          const params = { rec: recForResume, resumeId, gameId: modeId, config, snapshot, mode: modeId, from: preview ? "history_preview" : "history", preview: !!preview };
+          const ok = safeGo(["wave61_play"], params);
+          if (!ok) go("wave61_play", params);
+          return;
+        }
+      }
+    }
 
     // CHALLENGE : reprise exacte à n'importe quel moment (config + journal de touches + joueur/tour actif).
     if (isChallengeHistoryEntry(e) && statusOf(e) === "in_progress") {

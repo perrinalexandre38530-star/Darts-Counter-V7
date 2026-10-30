@@ -102,6 +102,7 @@ import AuthReset from "./pages/AuthReset";
 
 import SplashScreen from "./components/SplashScreen";
 import PublicLandingPage from "./pages/PublicLandingPage";
+const UserGuide = React.lazy(() => import("./pages/UserGuide"));
 import { getStartupIntroEnabled } from "./lib/startupAudioPrefs";
 
 // ✅ NEW: AUDIO SPLASH global (persistant)
@@ -1176,6 +1177,8 @@ function mergeStoreIntoCloudSnapshot(snapshot: any, seedOverride?: any) {
   return cleanStore;
 }
 
+const AUTH_FIRST_GUIDE_EXCLUDED_TABS = new Set(["public_landing", "auth_callback", "auth_reset", "auth_forgot", "auth_start", "account_start", "auth_v7_login", "auth_v7_signup", "user_guide"]);
+
 type Tab =
   | "public_landing"
   | "account_start"
@@ -1254,6 +1257,7 @@ type Tab =
   | "live"
   | "spectator"
   | "settings"
+  | "user_guide"
   | "organizations"
   | "organization_home"
   | "organization_calendar"
@@ -3359,6 +3363,23 @@ useEffect(() => {
     if (intercepted) return;
     commitGo(next, params);
   }
+
+  const firstUserGuideOpenedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (loading || showSplash || firstUserGuideOpenedRef.current) return;
+    if (!online?.ready || online.status !== "signed_in") return;
+    if (AUTH_FIRST_GUIDE_EXCLUDED_TABS.has(tab as any)) return;
+
+    const user = (online as any)?.user || (online as any)?.session?.user || null;
+    const userId = String(user?.id || (online as any)?.userId || "").trim();
+    const key = userId ? `msc_user_guide_seen_v1:${userId}` : "msc_user_guide_seen_v1";
+    try {
+      if (localStorage.getItem(key) === "1") return;
+    } catch {}
+
+    firstUserGuideOpenedRef.current = true;
+    commitGo("user_guide", { source: "first_login", userId });
+  }, [loading, showSplash, online?.ready, online?.status, tab]);
 
   function commitGo(next: Tab, params?: any) {
     const nextParams = mergeOnlineRouteContext(routeParams, next, params);
@@ -5814,6 +5835,10 @@ case "babyfoot_team_edit":
 
       case "settings":
         page = <Settings go={go} params={routeParams} />;
+        break;
+
+      case "user_guide":
+        page = <UserGuide go={go} params={routeParams} />;
         break;
 
       case "organizations":

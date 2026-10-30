@@ -6358,6 +6358,13 @@ export function Settings({ go, params }: Props) {
         {tab === "menu" && (
           <div className="msc-settings-menu-secondary" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <SettingsMenuCard
+              title={L("MODE D’EMPLOI", "USER GUIDE", "GUÍA DE USO")}
+              subtitle={L("Découvrir l’application, lancer une partie, comprendre profils, historique, statistiques, sauvegardes et écrans externes.", "Learn the app, start a game, understand profiles, history, statistics, backups and external screens.", "Descubre la aplicación, inicia una partida y comprende perfiles, historial, estadísticas, copias y pantallas externas.")}
+              theme={theme}
+              rightHint={L("GUIDE", "GUIDE", "GUÍA")}
+              onClick={() => go?.("user_guide", { source: "settings" })}
+            />
+            <SettingsMenuCard
               title={t("settings.menu.lang", L("Langues", "Languages", "Idiomas"))}
               subtitle={t("settings.menu.lang.sub", L("Choisis la langue de l’interface et explore la carte linguistique.", "Choose the interface language and explore the language map.", "Elige el idioma de la interfaz y explora el mapa lingüístico."))}
               theme={theme}

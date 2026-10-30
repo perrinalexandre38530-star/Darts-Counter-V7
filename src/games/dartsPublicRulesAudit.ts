@@ -35,18 +35,17 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
   },
   "green_vs_red": {
     "status": 'available',
-    "sources": ["src/pages/Wave61SharedConfig.tsx", "src/pages/Wave61SharedPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
+    "sources": ["src/pages/wave61/modes/green_vs_redConfig.tsx", "src/pages/wave61/modes/green_vs_redPlay.tsx", "src/pages/Wave61SharedPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61.ts"],
     "options": [
-      "Chaque joueur reçoit une piste ROUGE ou VERTE",
-      "La progression se fait uniquement sur les anneaux DOUBLE ou TRIPLE du secteur actuellement demandé",
-      "DOUBLE sur la bonne cible : +1 étape",
-      "TRIPLE sur la bonne cible : +2 étapes",
-      "Toucher avec D/T un numéro appartenant à la piste de la couleur adverse peut faire avancer l’adversaire suivant de +1 étape",
-      "OBJECTIF FIXE DU MOTEUR : terminer les 10 étapes de sa piste",
-      "Le score interne ajoute 40 points par étape gagnée",
-      "En mode équipes, la couleur est attribuée selon le camp ; la victoire peut être rattachée à l’équipe",
-      "Le moteur exige au moins 2 participants",
-      "BOTS IA, difficulté, ordre aléatoire et saisie Keypad / Cible interactive sont disponibles"
+      "DUEL STRICT : exactement 2 participants",
+      "Joueur 1 = VERT : 1, 4, 6, 15, 17, 19, 16, 11, 9, 5 puis BULL",
+      "Joueur 2 = ROUGE : 20, 12, 14, 8, 7, 3, 2, 10, 13, 18 puis BULL",
+      "Sur les 10 secteurs numérotés, seuls DOUBLE et TRIPLE du numéro courant marquent",
+      "Un DOUBLE et un TRIPLE maximum du même numéro peuvent être comptés pendant le round",
+      "Tout DOUBLE/TRIPLE appartenant à la couleur adverse retire sa valeur du score",
+      "Round 11 : 1/2 BULL 25 et BULL 50 sont tous les deux valables, une fois chacun",
+      "Le joueur ayant le plus de points après les 11 rounds gagne",
+      "KEYPAD DÉDIÉ : piste de la couleur active par défaut, bascule adverse pour saisir une faute, puis keypad BULL seul en finale"
     ]
   },
   "shove_a_penny": {

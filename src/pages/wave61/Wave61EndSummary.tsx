@@ -135,8 +135,33 @@ export default function Wave61EndSummary({ state, profiles, accent, familyLabel 
   const teamRows = teamMode
     ? Object.entries(state?.teamScores || {}).map(([id, score]) => ({ id, score: n(score), winner: String(state?.winnerTeamId || "") === String(id) })).sort((a, b) => (a.winner === b.winner ? b.score - a.score : a.winner ? -1 : 1))
     : [];
+  const isGreenRed = state?.modeId === "green_vs_red";
+  const greenRedFormat = String(state?.config?.modeOptions?.matchFormat || "duel");
+  const greenRedBullRule = String(state?.config?.modeOptions?.bullRule || "classic");
+  const greenRedRuleLabel = greenRedBullRule === "color_lock" ? "BULL DE COULEUR" : greenRedBullRule === "color_bonus" ? "BULL BONUS" : "CLASSIQUE";
 
   return <div style={{ display: "grid", gap: 9, textAlign: "left" }}>
+    {isGreenRed ? <div data-green-red-final-table="1" style={{ ...card(accent), padding: 8 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", gap:8, alignItems:"center", marginBottom:7 }}>
+        <div style={{ color:accent, fontSize:9, fontWeight:1050, letterSpacing:.8 }}>GREEN VS RED · TABLEAU FINAL</div>
+        <div style={{ color:SOFT, fontSize:8.3, fontWeight:900 }}>{greenRedFormat === "teams" ? "TEAM" : greenRedFormat === "multi_random" ? "MULTI ALÉATOIRE" : "DUEL"} · {greenRedRuleLabel}</div>
+      </div>
+      <div style={{ overflowX:"auto", borderRadius:10, border:"1px solid rgba(255,255,255,.08)" }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", minWidth:620, fontSize:9 }}>
+          <thead><tr style={{ color:accent, background:"rgba(255,255,255,.035)", textAlign:"left" }}><th style={{padding:7}}>#</th><th style={{padding:7}}>Joueur</th><th style={{padding:7}}>Couleur</th><th style={{padding:7}}>Score</th><th style={{padding:7}}>Étape</th><th style={{padding:7}}>Doubles</th><th style={{padding:7}}>Triples</th><th style={{padding:7}}>Bulls</th><th style={{padding:7}}>Pénalités</th><th style={{padding:7}}>Bonus Bull</th></tr></thead>
+          <tbody>{rows.map((row:any)=><tr key={row.id} style={{ borderTop:"1px solid rgba(255,255,255,.055)", color:row.winner?"#fff":"#cbd1dd", background:row.winner?`${accent}0c`:"transparent" }}>
+            <td style={{padding:7,fontWeight:1000}}>{row.rank}</td>
+            <td style={{padding:7,fontWeight:950}}>{row.name}{row.team ? ` · TEAM ${row.team === "A" ? "VERTE" : "ROUGE"}` : ""}</td>
+            <td style={{padding:7,fontWeight:1000,color:String(state?.special?.greenRedColorByPlayer?.[row.id]||"GREEN")==="RED"?"#ff5c69":"#44e58f"}}>{String(state?.special?.greenRedColorByPlayer?.[row.id]||"GREEN")}</td>
+            <td style={{padding:7,fontWeight:1100}}>{Math.round(row.score)}</td>
+            <td style={{padding:7}}>{Math.min(11,n(state?.special?.greenRedStepByPlayer?.[row.id]))}/11</td>
+            <td style={{padding:7}}>{row.doubles}</td><td style={{padding:7}}>{row.triples}</td><td style={{padding:7}}>{row.bulls}</td>
+            <td style={{padding:7}}>-{n(state?.special?.greenRedPenaltyByPlayer?.[row.id])}</td>
+            <td style={{padding:7}}>+{n(state?.special?.greenRedBullBonusByPlayer?.[row.id])}</td>
+          </tr>)}</tbody>
+        </table>
+      </div>
+    </div> : null}
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(105px,1fr))", gap: 6 }}>
       {[
         ["FLÈCHES", stats.totalDarts],

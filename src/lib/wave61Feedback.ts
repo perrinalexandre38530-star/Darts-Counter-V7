@@ -26,7 +26,7 @@ export const WAVE61_GUIDANCE: Record<string, GuidanceMeta> = {
   double_down: { verb: "Valide le contrat", fallback: "Sécurise au moins une touche sur le contrat du round pour éviter la sanction." },
   nine_dart_century: { verb: "Construis ton 100", fallback: "Reste sous 100 puis ferme exactement ; un dépassement déclenche le BUST." },
   shove_a_penny: { verb: "Ferme une case", fallback: "Complète d’abord la prochaine case inachevée avant de chercher les surplus." },
-  green_vs_red: { verb: "Suis ta couleur", fallback: "Reste sur ta piste ; le triple accélère mais la mauvaise couleur peut aider l’autre camp." },
+  green_vs_red: { verb: "Suis ta couleur", fallback: "Vise D ou T sur le numéro courant de ta couleur ; toucher un D/T adverse retire sa valeur. La dernière étape se joue au BULL." },
   hi_score: { verb: "Maximise la volée", fallback: "Si tu es à l’aise, construis la volée autour du T20 et sécurise tes trois darts." },
   un_deux_trois_soleil: { verb: "Avance au bon moment", fallback: "Quand le jeu annonce SOLEIL, ne bouge plus : le BULL te protège." },
   le_loup: { verb: "Cours ou chasse", fallback: "Suis la cible active ; un BULL peut offrir la protection qui change la manche." },
