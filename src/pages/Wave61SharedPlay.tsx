@@ -2,8 +2,9 @@
 // Architecture V10+ : socle Wave61 partagé, enrichi par passes dédiées.
 import React from "react";
 import BackDot from "../components/BackDot";
-import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
+import { PremiumAwenaButton } from "./newModes/PremiumPartyModeUi";
+import "./newModes/PremiumPartyModeUi.css";
 import { useAwenaOptional } from "../awena/AwenaProvider";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { useViewport } from "../hooks/useViewport";
@@ -393,6 +394,38 @@ export default function Wave61SharedPlay(props: any) {
   const targetAdviceEnabled = config?.targetAdviceEnabled !== false;
   const awenaCommentaryEnabled = config?.awenaCommentaryEnabled !== false;
   const wave61SfxEnabled = config?.wave61SfxEnabled !== false;
+  const electronicClassic = ["double_down", "nine_dart_century", "shove_a_penny", "green_vs_red", "hi_score"].includes(spec.id);
+  const GREEN_PATH = [1,4,6,15,17,19,16,11,9,5];
+  const RED_PATH = [20,12,14,8,7,3,2,10,13,18];
+  const greenRedStep = Math.min(10, Number(state?.roundIndex || 0));
+  const appendClassicDart = React.useCallback((dart: UIDart) => {
+    setCurrentThrow((prev) => prev.length >= 3 ? prev : [...prev, dart]);
+  }, []);
+  const appendGreenRedColor = React.useCallback((color: "GREEN" | "RED") => {
+    if (greenRedStep >= 10) return;
+    const n = color === "GREEN" ? GREEN_PATH[greenRedStep] : RED_PATH[greenRedStep];
+    const mult = multiplier === 3 ? 3 : 2;
+    appendClassicDart({ v: n, mult, label: color });
+  }, [greenRedStep, multiplier, appendClassicDart]);
+  const classicInputProps: any = electronicClassic ? {
+    keypadLatchMultiplier: true,
+    keypadSecondaryAction: { label: "BULL", icon: <span style={{fontWeight:1000}}>BULL</span>, onClick: () => appendClassicDart({ v:25, mult:1 }), tone: "green", title: "BULL 25" },
+    keypadAuxActionOverride: { label: "DBULL", icon: <span style={{fontWeight:1000}}>DBULL</span>, onClick: () => appendClassicDart({ v:25, mult:2 }), tone: "red", title: "DBULL 50" },
+    keypadFooterHideBull: true,
+    keypadActionRowLayout: "triple",
+    ...(spec.id === "green_vs_red" && greenRedStep < 10 ? {
+      keypadExtraMainButtons: [
+        { label: "GREEN", onClick: () => appendGreenRedColor("GREEN"), tone: "green", title: `GREEN · ${GREEN_PATH[greenRedStep]}` },
+        { label: "RED", onClick: () => appendGreenRedColor("RED"), tone: "orange", title: `RED · ${RED_PATH[greenRedStep]}` },
+      ],
+      guideSegmentNumbers: [GREEN_PATH[greenRedStep], RED_PATH[greenRedStep]],
+      guideMultiplier: multiplier === 3 ? 3 : 2,
+      guideColor: String(state?.special?.greenRedColorByPlayer?.[activePlayer?.id] || "RED") === "GREEN" ? "#45e979" : "#ff4d5a",
+      guideLabel: `GREEN ${GREEN_PATH[greenRedStep]} · RED ${RED_PATH[greenRedStep]} · DOUBLE/TRIPLE`,
+    } : {}),
+    ...(spec.id === "green_vs_red" && greenRedStep >= 10 ? { guideBull: true, guideLabel: "FINALE BULL / DBULL" } : {}),
+    ...(["double_down", "shove_a_penny"].includes(spec.id) && target?.kind === "number" ? { guideSegmentNumbers: [Number(target.value)], guideLabel: target.label || "CIBLE ACTIVE" } : {}),
+  } : {};
 
   const buildRecord = React.useCallback((s: Wave61State, status: "in_progress" | "finished") => {
     const rankings = buildWave61EndRows(s, profiles);
@@ -655,8 +688,7 @@ export default function Wave61SharedPlay(props: any) {
     const familyBadge = state.family === "survival" || state.family === "combat" ? "⚔️ SURVIE" : state.family === "ascent" ? "⛰️ ASCENSION" : state.family === "conquest" ? "🗺️ CONQUÊTE" : state.family === "deduction" ? "🧩 INDICES" : state.family === "rhythm" ? "⚡ COMBO" : state.family === "race" ? "🏁 COURSE" : state.family === "mission" ? "🗝️ MISSION" : "🎯 ACTION";
 
     return <div data-wave61-landscape="three-zone" style={{ height: "100dvh", minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", background: `radial-gradient(circle at 50% 0%,${accent}13,transparent 35%)` }}>
-      <PageHeader title={spec.label} subtitle={`${preset.label} · moteur V${WAVE61_ENGINE_VERSION}`} left={<BackDot onClick={() => go?.("wave61_config", { gameId: spec.id })} color={accent} glow={`${accent}88`} />} right={<InfoDot title={`${spec.label} — règles`} color={accent} glow={`${accent}77`} content={familyRules(spec, preset)} />} />
-      {modeTicker ? <div data-wave61-landscape-ticker="1" style={{ flex: `0 0 ${tickerHeight}px`, minHeight: 0, padding: "3px 8px 2px", display: "grid", placeItems: "center" }}><img src={modeTicker} alt={spec.label} style={{ width: "min(760px,58vw)", height: tickerHeight - 5, objectFit: "cover", borderRadius: 13, display: "block", border: `1px solid ${accent}44`, boxShadow: `0 8px 24px rgba(0,0,0,.34)` }} /></div> : null}
+      <PageHeader tickerSrc={modeTicker || undefined} tickerAlt={spec.label} title={modeTicker ? undefined : spec.label} subtitle={modeTicker ? undefined : `${preset.label} · moteur V${WAVE61_ENGINE_VERSION}`} tickerHeight={tickerHeight} tickerBottomGap={4} tickerFit="cover" left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("wave61_config", { gameId: spec.id })} color={accent} glow={`${accent}88`} /></div>} right={awena?.enabled !== false ? <div style={{ marginRight: 7 }}><PremiumAwenaButton awena={awena} route={`${spec.id}_play`} mode={spec.id} screenLabel={`${spec.label} · Partie`} accent={accent} /></div> : null} />
       {adviceText ? <div role="status" aria-live="polite" style={{ position: "fixed", zIndex: 95, top: compactHeight ? 56 : 76, right: 10, width: "min(350px,34vw)", borderRadius: 14, padding: "7px 9px", display: "grid", gridTemplateColumns: "34px minmax(0,1fr) auto", gap: 7, alignItems: "center", border: `1px solid ${accent}70`, background: "linear-gradient(145deg,rgba(12,15,26,.97),rgba(5,7,13,.98))", boxShadow: `0 14px 34px rgba(0,0,0,.48),0 0 22px ${accent}20` }}>
         <img src="/awena/awena-avatar.webp" alt="Awena" style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover", border: `1px solid ${accent}88` }} />
         <div><div style={{ color: accent, fontSize: 7.8, fontWeight: 1100, letterSpacing: .8 }}>AWENA · CONSEIL</div><div style={{ marginTop: 1, color: "#fff", fontSize: 9.2, fontWeight: 850, lineHeight: 1.28 }}>{adviceText}</div></div>
@@ -687,15 +719,14 @@ export default function Wave61SharedPlay(props: any) {
         </section>
 
         <section data-wave61-zone="input" style={{ minWidth: 0, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-          {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} fitMinScale={compactHeight ? 0.28 : 0.34} /> : <div style={{ ...panelStyle(accent + "35"), height: "100%", display: "grid", placeItems: "center", textAlign: "center", color: SOFT, fontSize: 12, padding: 14 }}><div><div style={{ fontSize: 34 }}>🤖</div><b style={{ color: accent }}>{activePlayer?.name}</b><div style={{ marginTop: 6 }}>calcule son prochain lancer…</div></div></div>}
+          {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} fitMinScale={compactHeight ? 0.28 : 0.34} {...classicInputProps} /> : <div style={{ ...panelStyle(accent + "35"), height: "100%", display: "grid", placeItems: "center", textAlign: "center", color: SOFT, fontSize: 12, padding: 14 }}><div><div style={{ fontSize: 34 }}>🤖</div><b style={{ color: accent }}>{activePlayer?.name}</b><div style={{ marginTop: 6 }}>calcule son prochain lancer…</div></div></div>}
         </section>
       </div>}
     </div>;
   }
 
   return <div style={{ minHeight: "calc(var(--vh,1vh) * 100)", paddingBottom: 18, background: `radial-gradient(circle at 50% 0%,${accent}13,transparent 35%)` }}>
-    <PageHeader title={spec.label} subtitle={`${preset.label} · moteur V${WAVE61_ENGINE_VERSION}`} left={<BackDot onClick={() => go?.("wave61_config", { gameId: spec.id })} color={accent} glow={`${accent}88`} />} right={<InfoDot title={`${spec.label} — règles`} color={accent} glow={`${accent}77`} content={familyRules(spec, preset)} />} />
-    {modeTicker ? <div style={{ padding: "5px 8px 1px", maxWidth: 1040, margin: "0 auto" }}><img src={modeTicker} alt={spec.label} style={{ width: "100%", maxHeight: 210, aspectRatio: "800 / 230", objectFit: "cover", borderRadius: 14, display: "block", border: `1px solid ${accent}44`, boxShadow: `0 10px 30px rgba(0,0,0,.36)` }} /></div> : null}
+    <PageHeader tickerSrc={modeTicker || undefined} tickerAlt={spec.label} title={modeTicker ? undefined : spec.label} subtitle={modeTicker ? undefined : `${preset.label} · moteur V${WAVE61_ENGINE_VERSION}`} tickerHeight={82} tickerBottomGap={8} tickerFit="cover" left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("wave61_config", { gameId: spec.id })} color={accent} glow={`${accent}88`} /></div>} right={awena?.enabled !== false ? <div style={{ marginRight: 7 }}><PremiumAwenaButton awena={awena} route={`${spec.id}_play`} mode={spec.id} screenLabel={`${spec.label} · Partie`} accent={accent} /></div> : null} />
     {adviceText ? <div role="status" aria-live="polite" style={{ position: "fixed", zIndex: 95, top: 86, right: 12, width: "min(360px,calc(100vw - 24px))", borderRadius: 16, padding: "9px 10px", display: "grid", gridTemplateColumns: "42px minmax(0,1fr) auto", gap: 9, alignItems: "center", border: `1px solid ${accent}70`, background: "linear-gradient(145deg,rgba(12,15,26,.97),rgba(5,7,13,.98))", boxShadow: `0 16px 42px rgba(0,0,0,.48),0 0 26px ${accent}20` }}>
       <img src="/awena/awena-avatar.webp" alt="Awena" style={{ width: 42, height: 42, borderRadius: "50%", objectFit: "cover", border: `1px solid ${accent}88`, boxShadow: `0 0 14px ${accent}35` }} />
       <div><div style={{ color: accent, fontSize: 8.8, fontWeight: 1100, letterSpacing: 1 }}>AWENA · CONSEIL CIBLE</div><div style={{ marginTop: 2, color: "#fff", fontSize: 10.4, fontWeight: 850, lineHeight: 1.35 }}>{adviceText}</div></div>
@@ -801,7 +832,7 @@ export default function Wave61SharedPlay(props: any) {
           <div style={{ minWidth: 76, minHeight: 76, borderRadius: 18, border: `1px solid ${accent}66`, background: `${accent}0d`, display: "grid", placeItems: "center", textAlign: "center", color: accent, fontWeight: 1100, fontSize: 11 }}>{state.family === "survival" || state.family === "combat" ? "⚔️\nSURVIE" : state.family === "ascent" ? "⛰️\nASCENSION" : state.family === "conquest" ? "🗺️\nCONQUÊTE" : state.family === "deduction" ? "🧩\nINDICES" : state.family === "rhythm" ? "⚡\nCOMBO" : state.family === "race" ? "🏁\nCOURSE" : state.family === "mission" ? "🗝️\nMISSION" : "🎯\nACTION"}</div>
         </div>
 
-        {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} /> : <div style={{ ...panelStyle(accent + "35"), textAlign: "center", color: SOFT, fontSize: 11, padding: 14 }}><b style={{ color: accent }}>{activePlayer?.name}</b> calcule son prochain lancer…</div>}
+        {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} {...classicInputProps} /> : <div style={{ ...panelStyle(accent + "35"), textAlign: "center", color: SOFT, fontSize: 11, padding: 14 }}><b style={{ color: accent }}>{activePlayer?.name}</b> calcule son prochain lancer…</div>}
         <VisitTimeline visits={state.visits} profiles={profiles} accent={accent} title="ACTIONS DU MOTEUR" limit={5} />
       </> : <ModeEndPanel title={spec.label} winner={state.winnerId} profiles={profiles} legWins={{ [state.winnerId || ""]: 1 }} accent={accent} onReplay={replay} onStats={() => go?.("darts_mode_summary", { rec: buildRecord(state, "finished"), mode: spec.id, from: "game_end" })} onHistory={() => go?.("statsHub", { tab: "history", mode: spec.id, focusMatchId: matchIdRef.current })} onConfig={() => go?.("wave61_config", { gameId: spec.id })} onGames={() => go?.("games", { gamesView: "all" })} extra={<Wave61EndSummary state={state} profiles={profiles} accent={accent} familyLabel={preset.label} />} />}
     </div>

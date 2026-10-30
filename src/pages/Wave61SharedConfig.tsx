@@ -2,11 +2,13 @@
 import React from "react";
 import BackDot from "../components/BackDot";
 import BotPagedSelector from "../components/BotPagedSelector";
-import InfoDot from "../components/InfoDot";
 import OptionRow from "../components/OptionRow";
 import OptionSelect from "../components/OptionSelect";
 import OptionToggle from "../components/OptionToggle";
 import PageHeader from "../components/PageHeader";
+import { useAwenaOptional } from "../awena/AwenaProvider";
+import { PremiumAwenaButton } from "./newModes/PremiumPartyModeUi";
+import "./newModes/PremiumPartyModeUi.css";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import { useTheme } from "../contexts/ThemeContext";
 import { DARTS_WAVE_61 } from "../games/dartsWave61";
@@ -41,6 +43,7 @@ function shuffle<T>(items: T[]) { const out = [...items]; for (let i = out.lengt
 
 export default function Wave61SharedConfig(props: any) {
   const go = props?.go ?? props?.setTab;
+  const awena = useAwenaOptional();
   const store = props?.store ?? props?.params?.store ?? null;
   const rawModeId = String(props?.forcedModeId || props?.params?.gameId || props?.gameId || "");
   const modeId = rawModeId === "galaxyes" ? "galaxies" : rawModeId;
@@ -146,8 +149,7 @@ export default function Wave61SharedConfig(props: any) {
   const pill = (active: boolean): React.CSSProperties => ({ minHeight: 36, padding: "7px 12px", borderRadius: 999, border: `1px solid ${active ? accent : "rgba(255,255,255,.12)"}`, background: active ? `${accent}1c` : "rgba(255,255,255,.035)", color: active ? "#fff" : "#aeb5c8", fontWeight: 950 });
 
   return <div className="page wave61-config-screen" data-wave61-config="1" style={{ minHeight: "100dvh", paddingBottom: 88, background: `radial-gradient(circle at 50% 0%,${accent}14,transparent 34%)` }}>
-    <div className="wave61-config-header"><PageHeader title={spec.label} subtitle={familyText} left={<BackDot onClick={() => go?.("games", { gamesView: "all" })} color={accent} glow={`${accent}88`} />} right={<InfoDot title={`${spec.label} — moteur ${preset.label}`} color={accent} glow={`${accent}77`} content={<div style={{ lineHeight: 1.55 }}><b>{spec.infoBody}</b>{dedicatedIntro ? <><br /><br /><b style={{ color: accent }}>CONFIGURATION DÉDIÉE</b><br />{dedicatedIntro}</> : null}<br /><br />Architecture dédiée : ce mode passe par son propre fichier Config tout en réutilisant le moteur mutualisé <b>{preset.label}</b>.</div>} />} /></div>
-    {modeTicker ? <div className="wave61-config-ticker" style={{ padding: "6px 10px 2px", maxWidth: 980, margin: "0 auto" }}><img src={modeTicker} alt={spec.label} style={{ width: "100%", aspectRatio: "800 / 230", objectFit: "cover", borderRadius: 16, display: "block", border: `1px solid ${accent}44`, boxShadow: `0 12px 34px rgba(0,0,0,.38)` }} /></div> : null}
+    <div className="wave61-config-header"><PageHeader tickerSrc={modeTicker || undefined} tickerAlt={spec.label} title={modeTicker ? undefined : spec.label} subtitle={modeTicker ? undefined : familyText} tickerHeight={82} tickerBottomGap={8} tickerFit="cover" left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("games", { gamesView: "all" })} color={accent} glow={`${accent}88`} /></div>} right={awena?.enabled !== false ? <div style={{ marginRight: 7 }}><PremiumAwenaButton awena={awena} route={`${spec.id}_config`} mode={spec.id} screenLabel={`${spec.label} · Configuration`} accent={accent} /></div> : null} /></div>
     <div className="wave61-config-body" style={{ padding: "8px 10px 20px", maxWidth: 980, margin: "0 auto", display: "grid", gap: 10 }}>
       <section className="wave61-config-participants" style={card}>
         <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>Participants</div>
