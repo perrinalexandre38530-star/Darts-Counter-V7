@@ -69,6 +69,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 app.use((req, res, next) => {
+  res.setHeader("X-MSS-Backend-Build", "V169_SINGLE_SOURCE_BACKUP_AUTH_LOCK");
   const origin = String(req.headers.origin || "");
   const allowed = !origin || corsAllowedOrigins.some((entry) => entry instanceof RegExp ? entry.test(origin) : String(entry).toLowerCase() === origin.toLowerCase());
   if (allowed && origin) {
@@ -1195,6 +1196,12 @@ async function authRequired(req, res, next) {
   } catch (error) {
     return res.status(401).json({ error: "Session invalide" });
   }
+}
+
+// V169 single-source auth lock: all account backup / personal-cloud routes
+// go through this named middleware so the contract cannot silently drift.
+async function personalCloudAuthRequired(req, res, next) {
+  return authRequired(req, res, next);
 }
 
 
@@ -8338,6 +8345,23 @@ function personalCloudCallbackTarget(decoded,provider,status,errorMessage){
   }
   return fallback;
 }
+app.get("/account/personal-cloud/google_drive/status", personalCloudAuthRequired, async (req, res) => {
+  try {
+    const provider = "google_drive";
+    const row = await personalCloudTokenRow(req.user.id, provider);
+    return res.json({
+      provider,
+      configured: personalCloudConfigured(provider),
+      connected: !!(row?.refresh_token || row?.access_token),
+      accountLabel: row?.account_label || null,
+      updatedAt: row?.updated_at || null,
+      incrementalSupported: true,
+      capabilities: { incremental: true },
+    });
+  } catch (error) {
+    return sendDatabaseAwareError(res, error, "Erreur statut cloud personnel");
+  }
+});
 app.get("/account/personal-cloud/:provider/status", authRequired, async(req,res)=>{try{const provider=String(req.params.provider);if(!PERSONAL_CLOUD_PROVIDERS.has(provider))return res.status(404).json({error:"Provider inconnu"});const cfg=personalCloudConfig(provider);const row=await personalCloudTokenRow(req.user.id,provider);res.json({provider,configured:personalCloudConfigured(provider),connected:!!(row?.refresh_token||row?.access_token),accountLabel:row?.account_label||null,updatedAt:row?.updated_at||null,incrementalSupported:true,capabilities:{incremental:true}});}catch(e){sendDatabaseAwareError(res,e,"Erreur statut cloud personnel");}});
 app.get("/account/personal-cloud/:provider/connect-url", authRequired, async(req,res)=>{const provider=String(req.params.provider);if(!PERSONAL_CLOUD_PROVIDERS.has(provider))return res.status(404).json({error:"Provider inconnu"});const cfg=personalCloudConfig(provider);if(!personalCloudConfigured(provider))return res.status(503).json({error:`${provider} n'est pas configuré côté serveur (client ID / secret manquant).`});const redirect=personalCloudRedirectUri(req,provider);const state=personalCloudState(req.user.id,provider,req.query.returnTo);let url="";if(provider==="google_drive")url=`https://accounts.google.com/o/oauth2/v2/auth?${new URLSearchParams({client_id:cfg.clientId,redirect_uri:redirect,response_type:"code",scope:"https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file",access_type:"offline",include_granted_scopes:"true",prompt:"consent",state}).toString()}`;if(provider==="onedrive")url=`https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${new URLSearchParams({client_id:cfg.clientId,redirect_uri:redirect,response_type:"code",scope:"offline_access Files.ReadWrite.AppFolder",state}).toString()}`;if(provider==="dropbox")url=`https://www.dropbox.com/oauth2/authorize?${new URLSearchParams({client_id:cfg.clientId,redirect_uri:redirect,response_type:"code",token_access_type:"offline",state}).toString()}`;res.json({ok:true,url});});
 app.get("/account/personal-cloud/:provider/callback", async(req,res)=>{
@@ -8607,7 +8631,7 @@ function startGoogleDriveBackupJob(userId, runner) {
   return job;
 }
 
-app.post("/account/personal-cloud/google_drive/backups/raw/jobs", authRequired, express.raw({ type: ["application/gzip", "application/octet-stream"], limit: "64mb" }), async (req, res) => {
+app.post("/account/personal-cloud/google_drive/backups/raw/jobs", personalCloudAuthRequired, express.raw({ type: ["application/gzip", "application/octet-stream"], limit: "64mb" }), async (req, res) => {
   try {
     const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || []);
     if (buffer.length < 2 || buffer[0] !== 0x1f || buffer[1] !== 0x8b) return res.status(400).json({ ok: false, error: "Gzip Google Drive invalide." });
@@ -8622,7 +8646,7 @@ app.post("/account/personal-cloud/google_drive/backups/raw/jobs", authRequired, 
   }
 });
 
-app.post("/account/personal-cloud/google_drive/backups/jobs", authRequired, async (req, res) => {
+app.post("/account/personal-cloud/google_drive/backups/jobs", personalCloudAuthRequired, async (req, res) => {
   try {
     const snapshotJson = String(req.body?.snapshotJson || "");
     if (!snapshotJson) return res.status(400).json({ ok: false, error: "Snapshot Google Drive vide." });
@@ -8637,14 +8661,14 @@ app.post("/account/personal-cloud/google_drive/backups/jobs", authRequired, asyn
   }
 });
 
-app.get("/account/personal-cloud/google_drive/backups/jobs/:jobId", authRequired, async (req, res) => {
+app.get("/account/personal-cloud/google_drive/backups/jobs/:jobId", personalCloudAuthRequired, async (req, res) => {
   cleanupGoogleDriveBackupJobs();
   const job = googleDriveBackupJobs.get(String(req.params.jobId || ""));
   if (!job || String(job.userId) !== String(req.user.id)) return res.status(404).json({ ok: false, error: "Tâche Google Drive introuvable." });
   return res.json({ ok: true, job: { jobId: job.jobId, status: job.status, result: job.result, error: job.error } });
 });
 
-app.post("/account/personal-cloud/google_drive/backups", authRequired, async (req, res) => {
+app.post("/account/personal-cloud/google_drive/backups", personalCloudAuthRequired, async (req, res) => {
   try {
     const snapshotJson = String(req.body?.snapshotJson || "");
     if (!snapshotJson) return res.status(400).json({ ok: false, error: "Snapshot Google Drive vide." });
@@ -8656,7 +8680,7 @@ app.post("/account/personal-cloud/google_drive/backups", authRequired, async (re
   }
 });
 
-app.get("/account/personal-cloud/google_drive/backups", authRequired, async (req, res) => {
+app.get("/account/personal-cloud/google_drive/backups", personalCloudAuthRequired, async (req, res) => {
   try {
     const limit = Math.max(1, Math.min(100, Number(req.query?.limit || 100) || 100));
     const token = await refreshPersonalCloudAccess(req.user.id, "google_drive");
@@ -8668,7 +8692,7 @@ app.get("/account/personal-cloud/google_drive/backups", authRequired, async (req
   }
 });
 
-app.get("/account/personal-cloud/google_drive/backups/:id/raw", authRequired, async (req, res) => {
+app.get("/account/personal-cloud/google_drive/backups/:id/raw", personalCloudAuthRequired, async (req, res) => {
   try {
     const token = await refreshPersonalCloudAccess(req.user.id, "google_drive");
     const source = await googleDriveDownloadFileBuffer(token, req.params.id);
@@ -8684,7 +8708,7 @@ app.get("/account/personal-cloud/google_drive/backups/:id/raw", authRequired, as
   }
 });
 
-app.get("/account/personal-cloud/google_drive/backups/:id", authRequired, async (req, res) => {
+app.get("/account/personal-cloud/google_drive/backups/:id", personalCloudAuthRequired, async (req, res) => {
   try {
     const token = await refreshPersonalCloudAccess(req.user.id, "google_drive");
     const source = await googleDriveDownloadFileBuffer(token, req.params.id);
@@ -8699,6 +8723,47 @@ app.get("/account/personal-cloud/:provider/backup", authRequired, async(req,res)
 app.get("/account/personal-cloud/:provider/backup/meta", authRequired, async(req,res)=>{try{const provider=String(req.params.provider),token=await refreshPersonalCloudAccess(req.user.id,provider),found=await personalCloudDownload(provider,token);if(!found)return res.status(404).json({error:"Aucune sauvegarde"});const envelope=JSON.parse(found.buffer.toString("utf8"));if(String(envelope.ownerUserId||"")!==String(req.user.id))return res.status(403).json({error:"Sauvegarde d'un autre compte refusée"});res.json({ok:true,backup:{updatedAt:envelope.updatedAt,metadata:envelope.metadata||{},provider}});}catch(e){res.status(Number(e?.statusCode||500)).json({ok:false,error:e?.message||"Métadonnées cloud personnel impossibles"});}});
 
 
+
+// V169 account-scoped latest-backup pointer. Stored in profiles.preferences
+// to avoid a new schema/table and to keep the pointer tied to the authenticated account.
+app.get("/account/backups/latest", personalCloudAuthRequired, async (req, res) => {
+  try {
+    const result = await pool.query(`SELECT preferences FROM profiles WHERE user_id = $1 LIMIT 1`, [req.user.id]);
+    const latest = result.rows?.[0]?.preferences?.latestBackup || null;
+    return res.json({ ok: true, latest });
+  } catch (error) {
+    return sendDatabaseAwareError(res, error, "Lecture du pointeur de sauvegarde impossible");
+  }
+});
+
+app.post("/account/backups/latest", personalCloudAuthRequired, async (req, res) => {
+  try {
+    const allowedProviders = new Set(["local", "nas", "r2", "google_drive", "onedrive", "dropbox", "external"]);
+    const provider = String(req.body?.provider || "").trim();
+    const backupId = String(req.body?.backupId || "").trim();
+    const createdAt = String(req.body?.createdAt || "").trim();
+    if (!allowedProviders.has(provider)) return res.status(400).json({ ok: false, error: "Provider de sauvegarde invalide" });
+    if (!backupId || !createdAt) return res.status(400).json({ ok: false, error: "Pointeur de sauvegarde incomplet" });
+    const latest = {
+      provider, backupId, createdAt,
+      updatedAt: req.body?.updatedAt || new Date().toISOString(),
+      revision: Number.isFinite(Number(req.body?.revision)) ? Number(req.body.revision) : undefined,
+      checksum: req.body?.checksum ?? null,
+      sizeBytes: Number.isFinite(Number(req.body?.sizeBytes)) ? Number(req.body.sizeBytes) : undefined,
+      summary: req.body?.summary && typeof req.body.summary === "object" ? req.body.summary : {},
+      metadata: req.body?.metadata && typeof req.body.metadata === "object" ? req.body.metadata : {},
+    };
+    await pool.query(`
+      UPDATE profiles
+      SET preferences = jsonb_set(COALESCE(preferences, '{}'::jsonb), '{latestBackup}', $2::jsonb, true),
+          updated_at = NOW()
+      WHERE user_id = $1
+    `, [req.user.id, JSON.stringify(latest)]);
+    return res.json({ ok: true, latest });
+  } catch (error) {
+    return sendDatabaseAwareError(res, error, "Enregistrement du pointeur de sauvegarde impossible");
+  }
+});
 
 // -----------------------------------------------------------------------------
 // SYNCHRONISATION INCRÉMENTALE V1

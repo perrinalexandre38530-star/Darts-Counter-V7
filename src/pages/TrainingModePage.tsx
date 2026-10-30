@@ -258,6 +258,7 @@ export default function TrainingModePage({ modeId, onExit, profiles }: Props) {
   }, [activeParticipant, config, participantIndex, queue.length]);
 
   const configProps = { profiles, onStart: start, onExit: exitAndSync };
+  const labConfigProps = { ...configProps, accountProfile: currentProfile || null };
   const playProps = { config: activePlayConfig, onExit: finishOrAdvance };
 
   if (phase === "summary" && summary) {
@@ -274,7 +275,7 @@ export default function TrainingModePage({ modeId, onExit, profiles }: Props) {
       case "training_challenges": return <ChallengesConfig {...configProps} />;
       case "training_super_bull": return <SuperBullConfig {...configProps} />;
       case "training_evolution": return <EvolutionConfig {...configProps} />;
-      case "training_lab": return <TrainingLabConfig {...configProps} />;
+      case "training_lab": return <TrainingLabConfig {...labConfigProps} />;
       default:
         return <div style={{ padding: 18 }}><button type="button" onClick={exitAndSync}>← Retour</button><p>Mode Training inconnu : {id}</p></div>;
     }
