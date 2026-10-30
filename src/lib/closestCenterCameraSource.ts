@@ -202,7 +202,7 @@ export function createPhoneCompanionClosestCenterCameraSource(
 
   async function remoteBurst(count=5,delayMs=55,maxCaptureSide=maxSideDefault){
     if(!opened) await source.open();
-    const result=await requestClosestCenterCompanionBurst(sessionId,{count,delayMs,maxCaptureSide,timeoutMs:16000});
+    const result=await requestClosestCenterCompanionBurst(sessionId,{count,delayMs,maxCaptureSide,timeoutMs:16000,retries:1});
     fingerprint=result.fingerprint||fingerprint;
     return result.frames;
   }
@@ -220,7 +220,7 @@ export function createPhoneCompanionClosestCenterCameraSource(
     getStream(){return null;},
     async captureEnrollmentFrame(crop={x:.25,y:.2,w:.5,h:.6},maxCaptureSide=maxSideDefault){
       if(!opened) await source.open();
-      const result=await requestClosestCenterCompanionBurst(sessionId,{count:1,delayMs:55,maxCaptureSide,timeoutMs:12000,crop});
+      const result=await requestClosestCenterCompanionBurst(sessionId,{count:1,delayMs:55,maxCaptureSide,timeoutMs:12000,crop,retries:1});
       fingerprint=result.fingerprint||fingerprint;
       return result.frames[0]||null;
     },

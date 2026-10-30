@@ -132,6 +132,19 @@ function ActionTile({ icon, title, body, tone = "cyan", onClick, disabled = fals
   </button>;
 }
 
+function FloatingDetailSheet({ title, eyebrow, icon = "coach", onClose, children }: { title: string; eyebrow?: string; icon?: string; onClose: () => void; children: React.ReactNode }) {
+  return <div role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, zIndex: 1100, display: "grid", placeItems: "end center", padding: 12, background: "rgba(3,5,10,.72)", backdropFilter: "blur(10px)" }} onClick={onClose}>
+    <div onClick={(event) => event.stopPropagation()} style={{ width: "min(620px,100%)", maxHeight: "76vh", overflow: "auto", padding: 14, borderRadius: 20, border: "1px solid rgba(39,220,255,.18)", background: "linear-gradient(160deg,rgba(14,18,28,.99),rgba(8,10,16,.99))", boxShadow: "0 22px 70px rgba(0,0,0,.55)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+        <span style={{ width: 34, height: 34, borderRadius: 11, display: "grid", placeItems: "center", background: "rgba(39,220,255,.08)", border: "1px solid rgba(39,220,255,.15)", color: "#27dcff" }}><HubGlyph name={icon} size={17} /></span>
+        <div style={{ minWidth: 0, flex: 1 }}>{eyebrow && <div style={{ fontSize: 6.8, fontWeight: 950, letterSpacing: .9, color: "#27dcff" }}>{eyebrow}</div>}<div style={{ marginTop: eyebrow ? 2 : 0, fontSize: 13.5, fontWeight: 950 }}>{title}</div></div>
+        <button type="button" aria-label="Fermer" onClick={onClose} style={{ width: 32, height: 32, borderRadius: 10, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", color: "inherit", fontSize: 16, cursor: "pointer" }}>×</button>
+      </div>
+      <div style={{ marginTop: 12 }}>{children}</div>
+    </div>
+  </div>;
+}
+
 function pct(value: number) {
   return `${Math.round(Number(value) || 0)}%`;
 }
@@ -249,6 +262,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
   const [showPlanDetails, setShowPlanDetails] = React.useState(false);
   const [showMissionDetails, setShowMissionDetails] = React.useState(false);
   const [showCycleDetails, setShowCycleDetails] = React.useState(false);
+  const [detailSheet, setDetailSheet] = React.useState<null | "coach" | "display" | "resume" | "followup" | `mabull:${string}`>(null);
   const [difficultyFilter, setDifficultyFilter] = React.useState<0 | 1 | 2 | 3 | 4 | 5>(0);
   const [family, setFamily] = React.useState<TrainingExerciseFamily>(recommendedFamily);
   const firstInFamily = React.useMemo(() => TRAINING_EXERCISE_CATALOG.find((e) => e.family === family) || TRAINING_EXERCISE_CATALOG[0], [family]);
@@ -480,6 +494,38 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
               </div>
             </div>
           </div>}
+          {detailSheet === "coach" && <FloatingDetailSheet title={prescription.title} eyebrow="CONSEIL AWENA" icon="coach" onClose={() => setDetailSheet(null)}>
+            <div style={{ fontSize: 9, lineHeight: 1.55, opacity: .7 }}>{prescription.body}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginTop: 12 }}>
+              <MetricChip icon="progress" label="ACTUEL" value={`${Math.round(prescription.current)}/100`} tone="cyan" />
+              <MetricChip icon="diagnosis" label="OBJECTIF" value={`${prescription.goal}/100`} tone="purple" />
+              <MetricChip icon="skills" label="ÉCART" value={prescription.gap <= 0 ? "Atteint" : `${Math.ceil(prescription.gap)} pts`} tone={prescription.gap <= 0 ? "green" : "gold"} />
+            </div>
+          </FloatingDetailSheet>}
+          {detailSheet === "display" && <FloatingDetailSheet title="Affichage du Centre" eyebrow="PRÉFÉRENCES" icon="progress" onClose={() => setDetailSheet(null)}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
+              <ActionTile icon="today" tone="green" title="ESSENTIEL" body="Interface légère : seulement les actions et repères importants." onClick={() => { setViewMode("essential"); setDetailSheet(null); }} />
+              <ActionTile icon="progress" tone="purple" title="COMPLET" body="Toutes les analyses, cycles, historiques et réglages avancés." onClick={() => { setViewMode("complete"); setDetailSheet(null); }} />
+            </div>
+            <button type="button" onClick={() => { setDetailSheet(null); setShowQuickGuide(true); }} style={{ width: "100%", marginTop: 9, padding: 9, borderRadius: 11, border: "1px solid rgba(39,220,255,.15)", background: "rgba(39,220,255,.05)", color: "inherit", fontSize: 7.5, fontWeight: 950, cursor: "pointer" }}>OUVRIR LE GUIDE EXPRESS</button>
+          </FloatingDetailSheet>}
+          {detailSheet === "resume" && programDraft && <FloatingDetailSheet title={programDraft.programTitle} eyebrow="PROGRAMME INTERROMPU" icon="history" onClose={() => setDetailSheet(null)}>
+            <div style={{ fontSize: 9, lineHeight: 1.5, opacity: .68 }}>Étape {programDraft.nextStepIndex + 1}/{programDraft.exerciseIds.length} • {programDraft.completedSteps.length} déjà enregistrée{programDraft.completedSteps.length > 1 ? "s" : ""}.</div>
+            <div style={{ marginTop: 4, fontSize: 7.2, opacity: .42 }}>Sauvegardé {new Date(programDraft.savedAt).toLocaleString()}</div>
+            <div style={{ display: "flex", gap: 7, marginTop: 11 }}>
+              <button type="button" disabled={!resolved.length} onClick={() => { setDetailSheet(null); resumeProgramDraft(); }} style={{ flex: 1, padding: 10, borderRadius: 11, border: "1px solid rgba(255,216,107,.32)", background: "rgba(255,216,107,.08)", color: "inherit", fontSize: 8, fontWeight: 950, cursor: "pointer" }}>REPRENDRE</button>
+              <button type="button" onClick={() => { clearTrainingProgramDraft(accountParticipantId || null); setDetailSheet(null); }} style={{ padding: "10px 12px", borderRadius: 11, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.025)", color: "inherit", fontSize: 8, fontWeight: 900, cursor: "pointer" }}>ABANDONNER</button>
+            </div>
+          </FloatingDetailSheet>}
+          {detailSheet === "followup" && nextRecommendation && <FloatingDetailSheet title={nextRecommendation.headline} eyebrow="SUITE CONSEILLÉE" icon="cycle" onClose={() => setDetailSheet(null)}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><MetricChip icon="today" label="DURÉE" value={`${nextRecommendation.durationMin} min`} tone="cyan" /><MetricChip icon={nextRecommendation.family} label="FOCUS" value={nextRecommendation.familyLabel} tone="purple" /></div>
+            <div style={{ marginTop: 10, fontSize: 8.8, lineHeight: 1.5, opacity: .66 }}>{nextRecommendation.body}</div>
+            <button type="button" onClick={() => { setDetailSheet(null); setTab("program"); prepareRecommendedSession(nextRecommendation.durationMin, nextRecommendation.family); }} style={{ width: "100%", marginTop: 11, padding: 10, borderRadius: 11, border: "1px solid rgba(185,156,255,.28)", background: "rgba(140,90,255,.08)", color: "inherit", fontSize: 8, fontWeight: 950, cursor: "pointer" }}>PRÉPARER CETTE SÉANCE</button>
+          </FloatingDetailSheet>}
+          {detailSheet?.startsWith("mabull:") && (() => { const item = MABULL_REFERENCE_CATALOG.find((row) => row.id === detailSheet.slice(7)); if (!item) return null; return <FloatingDetailSheet title={item.title} eyebrow={item.status === "mapped" ? "ÉQUIVALENT JOUABLE" : item.kind === "technique" ? "FICHE TECHNIQUE" : "RÈGLES À RELEVER"} icon={item.family || "coach"} onClose={() => setDetailSheet(null)}>
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{item.tags.map((tag) => <span key={tag} style={{ padding: "4px 7px", borderRadius: 999, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.055)", fontSize: 6.5, opacity: .68 }}>{tag}</span>)}</div>
+            {item.status === "mapped" && item.mappedExerciseId ? <div style={{ marginTop: 11, fontSize: 8.8, lineHeight: 1.5, opacity: .7 }}>Cette entrée possède déjà un équivalent sûr dans notre moteur Training.</div> : item.kind === "technique" ? <div style={{ marginTop: 11, fontSize: 8.8, lineHeight: 1.5, opacity: .7 }}>Cette fiche attend son contenu détaillé : objectif pédagogique, points clés, erreurs fréquentes et consigne pratique.</div> : <div style={{ marginTop: 11 }}><div style={{ fontSize: 8.4, fontWeight: 950 }}>POUR LA RENDRE JOUABLE</div><div style={{ marginTop: 6, display: "grid", gap: 5, fontSize: 7.6, lineHeight: 1.4, opacity: .64 }}><span>① Objectif exact de l’exercice</span><span>② Nombre de fléchettes / tours / vies</span><span>③ Règle de score ou de progression</span><span>④ Condition de réussite / fin</span></div></div>}
+          </FloatingDetailSheet>; })()}
           <div style={{ marginTop: 10, padding: 12, borderRadius: 18, border: "1px solid rgba(39,220,255,.18)", background: "linear-gradient(145deg,rgba(39,220,255,.055),rgba(255,255,255,.02))" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{ width: 44, height: 44, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center", flex: "0 0 auto", border: "1px solid rgba(39,220,255,.28)", background: "rgba(39,220,255,.08)", fontSize: 15, fontWeight: 950 }}>
@@ -517,60 +563,27 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
             </div>
           </div>}
 
-          <div style={{ marginTop: 10, padding: viewMode === "essential" ? 8 : 10, borderRadius: 14, border: "1px solid rgba(39,220,255,.28)", background: "linear-gradient(135deg,rgba(39,220,255,.12),rgba(140,90,255,.07))" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: 1.1, color: "#27dcff" }}>{viewMode === "essential" ? "CONSEIL AWENA" : "COACH AWENA"}</div>
-                <div style={{ marginTop: 3, fontSize: viewMode === "essential" ? 10.5 : 12.5, fontWeight: 950 }}>{prescription.title}</div>
-                {viewMode === "complete" && <div style={{ marginTop: 3, fontSize: 9.2, lineHeight: 1.35, opacity: .72 }}>{prescription.body}</div>}
+          {viewMode === "essential" ? <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 6, alignItems: "center" }}>
+            <button type="button" onClick={() => setDetailSheet("coach")} style={{ minWidth: 0, height: 44, padding: "0 10px", borderRadius: 13, border: "1px solid rgba(39,220,255,.20)", background: "linear-gradient(135deg,rgba(39,220,255,.08),rgba(140,90,255,.035))", color: "inherit", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, textAlign: "left" }}>
+              <span style={{ width: 27, height: 27, borderRadius: 9, display: "grid", placeItems: "center", background: "rgba(39,220,255,.08)", color: "#27dcff" }}><HubGlyph name="coach" size={14}/></span>
+              <span style={{ minWidth: 0, flex: 1 }}><span style={{ display: "block", fontSize: 6.4, fontWeight: 950, color: "#27dcff", letterSpacing: .7 }}>AWENA</span><span style={{ display: "block", marginTop: 2, fontSize: 8.1, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{prescription.title}</span></span>
+              <span style={{ fontSize: 6.5, fontWeight: 950, opacity: .6 }}>{prescription.gap <= 0 ? "✓" : `+${Math.ceil(prescription.gap)}`}</span>
+            </button>
+            {programDraft && <button type="button" title="Programme interrompu" aria-label="Programme interrompu" onClick={() => setDetailSheet("resume")} style={{ width: 44, height: 44, borderRadius: 13, border: "1px solid rgba(255,216,107,.22)", background: "rgba(255,216,107,.06)", color: "#ffd86b", cursor: "pointer", display: "grid", placeItems: "center", position: "relative" }}><HubGlyph name="history" size={16}/><span style={{ position: "absolute", right: 5, top: 4, width: 7, height: 7, borderRadius: 999, background: "#ffd86b" }}/></button>}
+            <button type="button" title="Affichage et guide" aria-label="Affichage et guide" onClick={() => setDetailSheet("display")} style={{ width: 44, height: 44, borderRadius: 13, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.02)", color: "inherit", cursor: "pointer", display: "grid", placeItems: "center" }}><HubGlyph name="progress" size={16}/></button>
+          </div> : <>
+            <div style={{ marginTop: 10, padding: 10, borderRadius: 14, border: "1px solid rgba(39,220,255,.28)", background: "linear-gradient(135deg,rgba(39,220,255,.12),rgba(140,90,255,.07))" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <div style={{ minWidth: 0, flex: 1 }}><div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: 1.1, color: "#27dcff" }}>COACH AWENA</div><div style={{ marginTop: 3, fontSize: 12.5, fontWeight: 950 }}>{prescription.title}</div><div style={{ marginTop: 3, fontSize: 9.2, lineHeight: 1.35, opacity: .72 }}>{prescription.body}</div></div>
+                <button type="button" onClick={() => setDetailSheet("coach")} style={{ width: 34, height: 34, borderRadius: 10, border: "1px solid rgba(39,220,255,.18)", background: "rgba(39,220,255,.05)", color: "inherit", cursor: "pointer", display: "grid", placeItems: "center" }}><HubGlyph name="diagnosis" size={15}/></button>
               </div>
-              {viewMode === "essential" && <span style={{ fontSize: 7.2, padding: "4px 7px", borderRadius: 999, background: prescription.gap <= 0 ? "rgba(80,255,174,.10)" : "rgba(255,184,76,.08)", border: prescription.gap <= 0 ? "1px solid rgba(80,255,174,.18)" : "1px solid rgba(255,184,76,.14)" }}>{prescription.gap <= 0 ? "OBJECTIF OK" : `${Math.ceil(prescription.gap)} PTS À GAGNER`}</span>}
             </div>
-            {viewMode === "complete" && <>
-              <div style={{ marginTop: 7, display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <button type="button" onClick={() => setShowCoachDetails((v) => !v)} style={{ padding: "5px 8px", borderRadius: 999, border: "1px solid rgba(39,220,255,.18)", background: "rgba(39,220,255,.06)", color: "inherit", fontSize: 7.4, fontWeight: 900, cursor: "pointer" }}>{showCoachDetails ? "MASQUER LES DÉTAILS" : "POURQUOI CE CONSEIL ?"}</button>
-                <span style={{ fontSize: 7.4, opacity: .48 }}>Awena adapte le plan à tes dernières séances</span>
-              </div>
-              {showCoachDetails && <div style={{ marginTop: 7, display: "flex", gap: 7, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 9, padding: "4px 7px", borderRadius: 999, background: "rgba(39,220,255,.10)", border: "1px solid rgba(39,220,255,.18)" }}>ACTUEL {Math.round(prescription.current)}/100</span>
-                <span style={{ fontSize: 9, padding: "4px 7px", borderRadius: 999, background: "rgba(140,90,255,.10)", border: "1px solid rgba(140,90,255,.18)" }}>OBJECTIF {prescription.goal}/100</span>
-                <span style={{ fontSize: 9, padding: "4px 7px", borderRadius: 999, background: prescription.gap <= 0 ? "rgba(80,255,174,.10)" : "rgba(255,184,76,.08)", border: prescription.gap <= 0 ? "1px solid rgba(80,255,174,.20)" : "1px solid rgba(255,184,76,.16)" }}>{prescription.gap <= 0 ? "OBJECTIF ATTEINT" : `ÉCART ${Math.ceil(prescription.gap)} PTS`}</span>
-              </div>}
-            </>}
-          </div>
+            <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}><button type="button" onClick={() => setDetailSheet("display")} style={{ padding: "7px 9px", borderRadius: 10, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.02)", color: "inherit", fontSize: 7.2, fontWeight: 950, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}><HubGlyph name="progress" size={13}/> AFFICHAGE / GUIDE</button></div>
+          </>}
 
-          <div style={{ marginTop: 9, display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", padding: 9, borderRadius: 13, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.018)" }}>
-            <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ width: 28, height: 28, borderRadius: 9, display: "grid", placeItems: "center", background: "rgba(39,220,255,.06)", border: "1px solid rgba(39,220,255,.14)", color: "#27dcff" }}><HubGlyph name="exercises" size={14} /></div>
-              <div style={{ minWidth: 0 }}><div style={{ fontSize: 8.2, fontWeight: 950 }}>AFFICHAGE</div><div style={{ marginTop: 2, fontSize: 6.9, opacity: .48 }}>{viewMode === "essential" ? "Vue simple et légère." : "Vue complète avec toutes les analyses."}</div></div>
-            </div>
-            <div style={{ display: "flex", gap: 4, flex: "0 0 auto" }}>
-              <button type="button" aria-label="Ouvrir le guide express" title="Guide express" onClick={() => setShowQuickGuide(true)} style={{ width: 31, height: 31, borderRadius: 10, border: "1px solid rgba(39,220,255,.18)", background: "rgba(39,220,255,.05)", color: "inherit", cursor: "pointer", display: "grid", placeItems: "center" }}><HubGlyph name="coach" size={14} /></button>
-              <button type="button" title="Mode essentiel" onClick={() => setViewMode("essential")} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 8px", borderRadius: 10, border: viewMode === "essential" ? "1px solid rgba(80,255,174,.40)" : "1px solid rgba(255,255,255,.07)", background: viewMode === "essential" ? "rgba(80,255,174,.08)" : "rgba(255,255,255,.02)", color: "inherit", fontSize: 7, fontWeight: 950, cursor: "pointer" }}><HubGlyph name="today" size={13} /> ESSENTIEL</button>
-              <button type="button" title="Mode complet" onClick={() => setViewMode("complete")} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 8px", borderRadius: 10, border: viewMode === "complete" ? "1px solid rgba(185,156,255,.40)" : "1px solid rgba(255,255,255,.07)", background: viewMode === "complete" ? "rgba(140,90,255,.08)" : "rgba(255,255,255,.02)", color: "inherit", fontSize: 7, fontWeight: 950, cursor: "pointer" }}><HubGlyph name="progress" size={13} /> COMPLET</button>
-            </div>
-          </div>
+          {tab === "program" && viewMode === "complete" && programDraft && <div style={{ marginTop: 10, padding: 10, borderRadius: 14, border: "1px solid rgba(255,216,107,.24)", background: "rgba(255,216,107,.045)", display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 30, height: 30, borderRadius: 10, display: "grid", placeItems: "center", background: "rgba(255,216,107,.08)", color: "#ffd86b" }}><HubGlyph name="history" size={15}/></span><div style={{ minWidth: 0, flex: 1 }}><div style={{ fontSize: 7, fontWeight: 950, color: "#ffd86b" }}>PROGRAMME INTERROMPU</div><div style={{ marginTop: 2, fontSize: 8.4, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{programDraft.programTitle} · étape {programDraft.nextStepIndex + 1}/{programDraft.exerciseIds.length}</div></div><button type="button" onClick={() => setDetailSheet("resume")} style={{ padding: "7px 9px", borderRadius: 9, border: "1px solid rgba(255,216,107,.20)", background: "rgba(255,216,107,.06)", color: "inherit", fontSize: 7, fontWeight: 950, cursor: "pointer" }}>OUVRIR</button></div>}
 
-          {tab === "program" && programDraft && <div style={{ marginTop: 10, padding: 12, borderRadius: 15, border: "1px solid rgba(255,216,107,.28)", background: "linear-gradient(135deg,rgba(255,216,107,.08),rgba(140,90,255,.045))", display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <div style={{ minWidth: 0, flex: "1 1 280px" }}>
-              <div style={{ fontSize: 8, fontWeight: 950, color: "#ffd86b", letterSpacing: 1 }}>PROGRAMME INTERROMPU</div>
-              <div style={{ marginTop: 3, fontSize: 11, fontWeight: 950 }}>{programDraft.programTitle}</div>
-              <div style={{ marginTop: 3, fontSize: 8.8, opacity: .6 }}>Étape {programDraft.nextStepIndex + 1}/{programDraft.exerciseIds.length} • {programDraft.completedSteps.length} étape{programDraft.completedSteps.length > 1 ? "s" : ""} déjà enregistrée{programDraft.completedSteps.length > 1 ? "s" : ""} • sauvegardé {new Date(programDraft.savedAt).toLocaleString()}</div>
-            </div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <button type="button" disabled={!resolved.length} onClick={resumeProgramDraft} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,216,107,.38)", background: "rgba(255,216,107,.10)", color: "inherit", fontSize: 8.5, fontWeight: 950, cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .45 }}>REPRENDRE À L’ÉTAPE {programDraft.nextStepIndex + 1}</button>
-              <button type="button" onClick={() => clearTrainingProgramDraft(accountParticipantId || null)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.035)", color: "inherit", fontSize: 8.5, fontWeight: 850, cursor: "pointer" }}>ABANDONNER</button>
-            </div>
-          </div>}
-
-          {tab === "program" && nextRecommendation && <div style={{ marginTop: 10, padding: 11, borderRadius: 14, border: "1px solid rgba(185,156,255,.20)", background: "rgba(140,90,255,.055)", display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <div style={{ minWidth: 0, flex: "1 1 260px" }}>
-              <div style={{ fontSize: 8, fontWeight: 950, color: "#b99cff", letterSpacing: 1 }}>SUITE DE LA DERNIÈRE SÉANCE</div>
-              <div style={{ marginTop: 3, fontSize: 10.5, fontWeight: 950 }}>{nextRecommendation.headline}</div>
-              <div style={{ marginTop: 3, fontSize: 8.8, opacity: .58 }}>{nextRecommendation.durationMin} min • {nextRecommendation.familyLabel} • {nextRecommendation.body}</div>
-            </div>
-            <button type="button" onClick={() => { setTab("program"); prepareRecommendedSession(nextRecommendation.durationMin, nextRecommendation.family); }} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(185,156,255,.28)", background: "rgba(140,90,255,.10)", color: "inherit", fontSize: 8.5, fontWeight: 950, cursor: "pointer" }}>REPRENDRE LE FIL</button>
-          </div>}
+          {tab === "program" && nextRecommendation && <button type="button" onClick={() => setDetailSheet("followup")} style={{ width: "100%", marginTop: 8, padding: "8px 10px", borderRadius: 12, border: "1px solid rgba(185,156,255,.14)", background: "rgba(140,90,255,.035)", color: "inherit", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, textAlign: "left" }}><span style={{ width: 26, height: 26, borderRadius: 9, display: "grid", placeItems: "center", background: "rgba(185,156,255,.07)", color: "#b99cff" }}><HubGlyph name="cycle" size={13}/></span><span style={{ minWidth: 0, flex: 1 }}><span style={{ display: "block", fontSize: 6.4, fontWeight: 950, color: "#b99cff" }}>SUITE CONSEILLÉE</span><span style={{ display: "block", marginTop: 2, fontSize: 7.8, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nextRecommendation.headline}</span></span><span style={{ fontSize: 6.7, opacity: .5 }}>{nextRecommendation.durationMin}′</span></button>}
 
           <CompactIconNav items={tabs} activeId={tab} onChange={(id) => setTab(id as HubTab)} stickyTop={0} />
 
@@ -1040,9 +1053,9 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 6, marginTop: 8 }}>
                   {filteredMabullItems.map((item) => <div key={item.id} style={{ padding: 9, borderRadius: 11, border: item.status === "mapped" ? "1px solid rgba(80,255,174,.13)" : item.kind === "technique" ? "1px solid rgba(80,255,174,.10)" : "1px solid rgba(255,255,255,.065)", background: item.status === "mapped" ? "rgba(80,255,174,.025)" : "rgba(255,255,255,.018)" }}>
-                    <div style={{ display: "flex", gap: 7, alignItems: "center" }}><span style={{ opacity: .5 }}>{item.kind === "technique" ? "♙" : "◎"}</span><b style={{ minWidth: 0, flex: 1, fontSize: 8.7, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</b><span style={{ fontSize: 6.4, fontWeight: 900, color: item.status === "mapped" ? "#8cffcb" : item.kind === "technique" ? "#8cffcb" : "#ffd86b" }}>{item.status === "mapped" ? "RELIÉ" : item.kind === "technique" ? "TECH" : "RÈGLES"}</span></div>
-                    <div style={{ marginTop: 5, display: "flex", gap: 4, flexWrap: "wrap" }}>{item.tags.slice(0, 3).map((tag) => <span key={tag} style={{ padding: "2px 5px", borderRadius: 999, background: "rgba(255,255,255,.035)", fontSize: 6.2, opacity: .55 }}>{tag}</span>)}</div>
-                    {item.status === "mapped" && item.mappedExerciseId && <button type="button" onClick={() => { const mapped = TRAINING_EXERCISE_CATALOG.find((exercise) => exercise.id === item.mappedExerciseId); if (mapped) { setFamily(mapped.family); setExerciseId(mapped.id); setCatalogSource("playable"); } }} style={{ marginTop: 7, width: "100%", padding: 6, borderRadius: 8, border: "1px solid rgba(80,255,174,.16)", background: "rgba(80,255,174,.05)", color: "inherit", fontSize: 6.8, fontWeight: 950, cursor: "pointer" }}>OUVRIR L'ÉQUIVALENT JOUABLE</button>}
+                    <div style={{ display: "flex", gap: 7, alignItems: "center" }}><span style={{ width: 24, height: 24, borderRadius: 8, display: "grid", placeItems: "center", color: item.kind === "technique" ? "#8cffcb" : item.status === "mapped" ? "#8cffcb" : "#ffd86b", background: "rgba(255,255,255,.025)" }}><HubGlyph name={item.family || "coach"} size={12}/></span><b style={{ minWidth: 0, flex: 1, fontSize: 8.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</b><button type="button" title="Voir les détails" aria-label={`Détails ${item.title}`} onClick={() => setDetailSheet(`mabull:${item.id}`)} style={{ width: 27, height: 27, borderRadius: 9, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)", color: item.status === "mapped" ? "#8cffcb" : item.kind === "technique" ? "#8cffcb" : "#ffd86b", cursor: "pointer", display: "grid", placeItems: "center" }}><HubGlyph name="diagnosis" size={12}/></button></div>
+                    <div style={{ marginTop: 5, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}><span style={{ fontSize: 6.1, fontWeight: 900, color: item.status === "mapped" ? "#8cffcb" : item.kind === "technique" ? "#8cffcb" : "#ffd86b" }}>{item.status === "mapped" ? "JOUABLE" : item.kind === "technique" ? "TECHNIQUE" : "RÈGLES À RELEVER"}</span><span style={{ fontSize: 6, opacity: .38 }}>{item.tags.slice(0,2).join(" · ")}</span></div>
+                    {item.status === "mapped" && item.mappedExerciseId && <button type="button" onClick={() => { const mapped = TRAINING_EXERCISE_CATALOG.find((exercise) => exercise.id === item.mappedExerciseId); if (mapped) { setFamily(mapped.family); setExerciseId(mapped.id); setCatalogSource("playable"); } }} style={{ marginTop: 7, width: "100%", padding: 6, borderRadius: 8, border: "1px solid rgba(80,255,174,.16)", background: "rgba(80,255,174,.05)", color: "inherit", fontSize: 6.8, fontWeight: 950, cursor: "pointer" }}>OUVRIR L'ÉQUIVALENT</button>}
                   </div>)}
                 </div>
                 <div style={{ marginTop: 8, fontSize: 7.2, lineHeight: 1.4, opacity: .44 }}>Référentiel relevé depuis le catalogue MaBULL fourni. Les entrées “RÈGLES” ne sont pas lancées tant que leur mécanique exacte n'a pas été relevée.</div>
@@ -1081,9 +1094,9 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
                   <div style={{ minWidth: 0 }}><div style={{ fontSize: 8.3, fontWeight: 950 }}>{selectedTechniqueTrack.label}</div><div style={{ marginTop: 2, fontSize: 6.9, lineHeight: 1.35, opacity: .5 }}>{selectedTechniqueTrack.description}</div></div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 6, marginTop: 9 }}>
-                  {selectedTechniqueTrack.items.map((item) => <div key={item.id} style={{ padding: 9, borderRadius: 11, border: "1px solid rgba(80,255,174,.10)", background: "rgba(255,255,255,.018)" }}>
-                    <div style={{ display: "flex", gap: 7, alignItems: "center" }}><span style={{ width: 22, height: 22, borderRadius: 8, display: "grid", placeItems: "center", background: "rgba(80,255,174,.06)", color: "#8cffcb" }}><HubGlyph name="coach" size={12} /></span><b style={{ minWidth: 0, flex: 1, fontSize: 8.3, lineHeight: 1.2 }}>{item.title}</b><span style={{ fontSize: 5.8, fontWeight: 950, color: "#8cffcb", opacity: .8 }}>À DOCUMENTER</span></div>
-                  </div>)}
+                  {selectedTechniqueTrack.items.map((item) => <button type="button" onClick={() => setDetailSheet(`mabull:${item.id}`)} key={item.id} style={{ padding: 9, borderRadius: 11, border: "1px solid rgba(80,255,174,.10)", background: "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer", textAlign: "left" }}>
+                    <div style={{ display: "flex", gap: 7, alignItems: "center" }}><span style={{ width: 24, height: 24, borderRadius: 8, display: "grid", placeItems: "center", background: "rgba(80,255,174,.06)", color: "#8cffcb" }}><HubGlyph name="coach" size={12} /></span><b style={{ minWidth: 0, flex: 1, fontSize: 8.1, lineHeight: 1.2 }}>{item.title}</b><HubGlyph name="diagnosis" size={12}/></div>
+                  </button>)}
                 </div>
               </div>}
             </>}

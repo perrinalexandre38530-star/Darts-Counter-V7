@@ -144,7 +144,9 @@ export default function ClosestCenterConfig(props: any) {
 
   const exactPlayers = selectedIds.length === fmt.total;
   const exactTeams = exactPlayers && teamCounts.A === fmt.sideSize && teamCounts.B === fmt.sideSize;
-  const companionReady = cameraSource.kind !== "phone_companion" || (!!companionStatus?.connected && !!companionStatus?.cameraReady && !!companionStatus?.calibrated);
+  const companionLastSeen = Number(companionStatus?.lastSeenAt || 0) || 0;
+  const companionFresh = companionLastSeen > 0 && Date.now() - companionLastSeen <= 8000;
+  const companionReady = cameraSource.kind !== "phone_companion" || (!!companionStatus?.connected && !!companionStatus?.cameraReady && !!companionStatus?.calibrated && companionFresh);
   const canStart = exactPlayers && exactTeams && (inputMode !== "camera" || companionReady);
 
   const start = () => {
@@ -241,7 +243,7 @@ export default function ClosestCenterConfig(props: any) {
             <div style={{fontSize:12,fontWeight:900,color:"#fff",marginTop:2}}>{cameraSource.label}</div>
             <div style={{fontSize:10,color:"#91a2b1",marginTop:2}}>Une seule caméra fournit les frames analysées. Aucun double scoring.</div>
           </div>
-          <span style={{padding:"5px 8px",borderRadius:999,border:`1px solid ${cameraSource.kind==="phone_companion"?(companionReady?"rgba(143,255,194,.35)":"rgba(255,190,110,.35)"):"rgba(143,255,194,.28)"}`,color:cameraSource.kind==="phone_companion"?(companionReady?"#8fffc2":"#ffd18c"):"#8fffc2",fontSize:9,fontWeight:1000,whiteSpace:"nowrap"}}>{cameraSource.kind==="phone_companion"?(companionReady?"PRÊTE":"À RELIER"):"ACTIVE"}</span>
+          <span style={{padding:"5px 8px",borderRadius:999,border:`1px solid ${cameraSource.kind==="phone_companion"?(companionReady?"rgba(143,255,194,.35)":"rgba(255,190,110,.35)"):"rgba(143,255,194,.28)"}`,color:cameraSource.kind==="phone_companion"?(companionReady?"#8fffc2":"#ffd18c"):"#8fffc2",fontSize:9,fontWeight:1000,whiteSpace:"nowrap"}}>{cameraSource.kind==="phone_companion"?(companionReady?"PRÊTE":(companionStatus?.connected&&!companionFresh?"HORS LIGNE":"À RELIER")):"ACTIVE"}</span>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
           <button style={modeBtn(cameraSource.kind==="local_device")} onClick={()=>setCameraSourceId(CLOSEST_CENTER_LOCAL_SOURCE_ID)}>CET APPAREIL</button>
@@ -249,7 +251,7 @@ export default function ClosestCenterConfig(props: any) {
         </div>
         {cameraSource.kind==="phone_companion" ? <div style={{display:"grid",gridTemplateColumns:companionQr?"132px 1fr":"1fr",gap:10,alignItems:"center",padding:8,borderRadius:12,background:"rgba(0,0,0,.20)"}}>
           {companionQr?<div style={{width:132,height:132,borderRadius:12,background:"#fff",padding:6}}><img src={companionQr} alt="QR téléphone compagnon" style={{width:"100%",height:"100%",display:"block"}}/></div>:null}
-          <div style={{minWidth:0}}><b style={{fontSize:11}}>LIAISON COMPAGNON</b><div style={{fontSize:9,color:"#91a2b1",lineHeight:1.4,marginTop:4}}>{companionStatus?.connected?"Téléphone connecté. Effectue la calibration 5 points sur ce téléphone, puis laisse-le fixe face à la cible.":"Scanne le QR avec le téléphone qui restera fixé face à la cible."}</div><div style={{fontSize:9,color:companionStatus?.calibrated?"#8fffc2":"#ffd18c",fontWeight:1000,marginTop:5}}>{companionStatus?.calibrated?"CALIBRATION 5 POINTS REÇUE":"CALIBRATION EN ATTENTE"}</div><button onClick={()=>void createCompanion()} style={{...navBtn,minHeight:32,marginTop:7,padding:"5px 8px"}}>NOUVELLE LIAISON</button></div>
+          <div style={{minWidth:0}}><b style={{fontSize:11}}>LIAISON COMPAGNON</b><div style={{fontSize:9,color:"#91a2b1",lineHeight:1.4,marginTop:4}}>{companionReady?"Téléphone compagnon prêt pour le scoring.":(companionStatus?.connected&&!companionFresh?"Téléphone non joignable ou en veille. Rallume l’écran compagnon.":companionStatus?.connected?"Téléphone connecté. Effectue la calibration 5 points sur ce téléphone, puis laisse-le fixe face à la cible.":"Scanne le QR avec le téléphone qui restera fixé face à la cible.")}</div><div style={{fontSize:9,color:companionStatus?.calibrated?"#8fffc2":"#ffd18c",fontWeight:1000,marginTop:5}}>{companionStatus?.calibrated?"CALIBRATION 5 POINTS REÇUE":"CALIBRATION EN ATTENTE"}</div><button onClick={()=>void createCompanion()} style={{...navBtn,minHeight:32,marginTop:7,padding:"5px 8px"}}>NOUVELLE LIAISON</button></div>
         </div> : null}
       </div>
       <ol style={{margin:"12px 0 0",paddingLeft:20,color:"#cad5e1",lineHeight:1.6,fontSize:13}}>

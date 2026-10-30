@@ -327,7 +327,63 @@ const GVR_GREEN_PATH = [1, 4, 6, 15, 17, 19, 16, 11, 9, 5] as const;
 const GVR_RED_PATH = [20, 12, 14, 8, 7, 3, 2, 10, 13, 18] as const;
 const GVR_GREEN = "#44e58f";
 const GVR_RED = "#ff5c69";
+const GVR_DARTBOARD_ORDER = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5] as const;
 
+function gvrPolar(cx:number, cy:number, r:number, deg:number){
+  const rad=(deg-90)*(Math.PI/180);
+  return { x: cx + r*Math.cos(rad), y: cy + r*Math.sin(rad) };
+}
+function gvrRingSlicePath(cx:number, cy:number, innerR:number, outerR:number, startDeg:number, endDeg:number){
+  const outerStart=gvrPolar(cx,cy,outerR,startDeg);
+  const outerEnd=gvrPolar(cx,cy,outerR,endDeg);
+  const innerEnd=gvrPolar(cx,cy,innerR,endDeg);
+  const innerStart=gvrPolar(cx,cy,innerR,startDeg);
+  const large=Math.abs(endDeg-startDeg)>180?1:0;
+  return `M ${outerStart.x} ${outerStart.y} A ${outerR} ${outerR} 0 ${large} 1 ${outerEnd.x} ${outerEnd.y} L ${innerEnd.x} ${innerEnd.y} A ${innerR} ${innerR} 0 ${large} 0 ${innerStart.x} ${innerStart.y} Z`;
+}
+function GreenRedDartIcon({ color, size = 12 }: { color: string; size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 64 28" aria-hidden="true" style={{ display:"block", transform:"scaleX(-1)" }}>
+    <path fill={color} d="M62 3 46 9l-8 3-17 5-5-3-7 2 4 4-7 2-2 5 6-1 7-2 6 3 13-4 10-3 18-5-2-4 2-5z"/>
+    <path fill={color} d="m19 17 6-2 4 6-3 1-7-5z" opacity=".95"/>
+  </svg>;
+}
+function GreenRedTargetBoard({ color, step, bullRule, size = 70, label }: { color: "GREEN" | "RED"; step: number; bullRule: string; size?: number; label?: string }) {
+  const tone = color === "RED" ? GVR_RED : GVR_GREEN;
+  const path = color === "RED" ? GVR_RED_PATH : GVR_GREEN_PATH;
+  const targetNumber = step >= 10 ? null : Number(path[step] || path[0]);
+  const bull25Active = step >= 10 && (bullRule !== "color_lock" || color === "GREEN");
+  const bull50Active = step >= 10 && (bullRule !== "color_lock" || color === "RED");
+  const ringOutline = "rgba(255,255,255,.20)";
+  return <div style={{ display:"grid", justifyItems:"center", gap:4 }}>
+    <svg width={size} height={size} viewBox="0 0 220 220" aria-hidden="true" style={{ display:"block", filter:`drop-shadow(0 0 12px ${tone}33)` }}>
+      <circle cx="110" cy="110" r="104" fill="rgba(5,7,12,.98)" stroke="rgba(255,255,255,.16)" strokeWidth="2.5" />
+      {GVR_DARTBOARD_ORDER.map((num, index) => {
+        const start = -99 + index * 18;
+        const end = start + 18;
+        const alt = index % 2 === 0;
+        const doubleBase = alt ? "#1ec33d" : "#ff2828";
+        const tripleBase = alt ? "#1ec33d" : "#ff2828";
+        const singleBase = alt ? "#f0f0f0" : "#090b10";
+        const isTarget = targetNumber === num;
+        return <g key={num}>
+          <path d={gvrRingSlicePath(110,110,82,100,start,end)} fill={doubleBase} opacity={isTarget ? 1 : .95} stroke={isTarget ? tone : ringOutline} strokeWidth={isTarget ? 5.5 : 1.1} />
+          <path d={gvrRingSlicePath(110,110,57,82,start,end)} fill={singleBase} stroke={ringOutline} strokeWidth="1" />
+          <path d={gvrRingSlicePath(110,110,47,57,start,end)} fill={tripleBase} opacity={isTarget ? 1 : .95} stroke={isTarget ? tone : ringOutline} strokeWidth={isTarget ? 5.5 : 1.1} />
+          <path d={gvrRingSlicePath(110,110,18,47,start,end)} fill={singleBase} stroke={ringOutline} strokeWidth="1" />
+          <text x={gvrPolar(110,110,116,start+9).x} y={gvrPolar(110,110,116,start+9).y} fill="#cfd6e3" fontSize="11" fontWeight="900" textAnchor="middle" dominantBaseline="middle">{num}</text>
+        </g>;
+      })}
+      <circle cx="110" cy="110" r="18" fill="#1ec33d" stroke={bull25Active ? tone : "rgba(255,255,255,.22)"} strokeWidth={bull25Active ? 5.5 : 1.5} />
+      <circle cx="110" cy="110" r="9" fill="#ff2828" stroke={bull50Active ? tone : "rgba(255,255,255,.22)"} strokeWidth={bull50Active ? 5.5 : 1.5} />
+      <circle cx="110" cy="110" r="100" fill="none" stroke="rgba(255,255,255,.20)" strokeWidth="1.6" />
+      <circle cx="110" cy="110" r="82" fill="none" stroke="rgba(255,255,255,.16)" strokeWidth="1" />
+      <circle cx="110" cy="110" r="57" fill="none" stroke="rgba(255,255,255,.16)" strokeWidth="1" />
+      <circle cx="110" cy="110" r="47" fill="none" stroke="rgba(255,255,255,.16)" strokeWidth="1" />
+      {targetNumber ? <circle cx={gvrPolar(110,110,69,-99 + GVR_DARTBOARD_ORDER.indexOf(targetNumber) * 18 + 9).x} cy={gvrPolar(110,110,69,-99 + GVR_DARTBOARD_ORDER.indexOf(targetNumber) * 18 + 9).y} r="4" fill={tone} opacity=".95"/> : null}
+    </svg>
+    {label ? <div style={{ color:tone, fontSize:7.1, fontWeight:1050, letterSpacing:.55, textAlign:"center", lineHeight:1.15 }}>{label}</div> : null}
+  </div>;
+}
 
 function GreenRedToolIcon({ kind, size = 22 }: { kind: "ranking" | "players" | "stats" | "history"; size?: number }) {
   const p = { fill:"none", stroke:"currentColor", strokeWidth:1.9, strokeLinecap:"round", strokeLinejoin:"round" } as const;
@@ -550,23 +606,38 @@ function GreenVsRedInput({ state, activePlayer, currentThrow, setCurrentThrow, m
     if (Number(d.mult) === 2) return "#4ebfe7";
     return ownTone;
   };
+  const visitSlotStyle = (d:any):React.CSSProperties => {
+    const tone = dartTone(d);
+    return {
+      minHeight: 34,
+      borderRadius: 12,
+      border: `1px solid ${d ? tone + "88" : "rgba(255,255,255,.08)"}`,
+      background: d ? `linear-gradient(180deg,${tone}18,rgba(7,10,16,.98))` : "linear-gradient(180deg,rgba(18,23,33,.98),rgba(7,10,16,.98))",
+      display: "grid",
+      placeItems: "center",
+      color: d ? tone : "#59616e",
+      fontSize: 9.6,
+      fontWeight: 1150,
+      boxShadow: d ? `inset 0 -2px 0 ${tone}55` : "inset 0 -2px 0 rgba(255,255,255,.04)",
+    };
+  };
   const keyStyle = (tone:string, active=false, solid=false):React.CSSProperties => ({
-    minHeight:40,borderRadius:12,border:`1px solid ${active?tone+"dd":tone+"66"}`,
-    background:solid?`linear-gradient(180deg,${tone},${tone}cc)`:active?`linear-gradient(180deg,${tone}32,${tone}17)`:`linear-gradient(180deg,rgba(20,24,34,.98),rgba(7,10,16,.99))`,
-    color:solid?"#111":"#fff",fontWeight:1100,fontSize:10.5,cursor:"pointer",boxShadow:active?`0 0 14px ${tone}30`:"none",touchAction:"manipulation"
+    minHeight:44,borderRadius:14,border:`1px solid ${active?tone+"aa":solid?tone+"90":"rgba(255,255,255,.12)"}`,
+    background:solid?`linear-gradient(180deg,${tone}e6,${tone}bf)`:active?`linear-gradient(180deg,${tone}24,rgba(8,12,18,.98))`:`linear-gradient(180deg,rgba(18,23,33,.98),rgba(7,10,16,.99))`,
+    color:solid?"#111":"#fff",fontWeight:1100,fontSize:10.5,cursor:"pointer",boxShadow:active?`0 0 14px ${tone}26,inset 0 0 0 1px ${tone}22`:"inset 0 -2px 0 rgba(255,255,255,.04)",touchAction:"manipulation"
   });
 
   return <div data-green-red-keypad="1" style={{...panelStyle(ownTone+"55"),height:"100%",minHeight:0,overflow:"hidden",padding:8,display:"flex",flexDirection:"column",gap:6,background:`linear-gradient(180deg,${ownTone}08,rgba(5,7,12,.995) 25%)`}}>
     <div data-green-red-visit-preview="1" style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:5}}>
-      {Array.from({length:3},(_,i)=>currentThrow[i]).map((d:any,i:number)=>{const tone=dartTone(d);return <div key={i} style={{minHeight:32,borderRadius:10,border:`1px solid ${d?tone+"88":"rgba(255,255,255,.07)"}`,background:d?`${tone}16`:"rgba(255,255,255,.025)",display:"grid",placeItems:"center",color:d?tone:"#59616e",fontSize:9.5,fontWeight:1150,boxShadow:d?`inset 0 -2px 0 ${tone}55`:"none"}}>{dartLabel(d)}</div>})}
+      {Array.from({length:3},(_,i)=>currentThrow[i]).map((d:any,i:number)=><div key={i} style={visitSlotStyle(d)}>{dartLabel(d)}</div>)}
     </div>
 
     {!isBullStage ? <>
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:5}}>
         <button type="button" onClick={()=>setMultiplier(multiplier===2?1:2)} style={keyStyle("#4ebfe7",multiplier===2)}>DOUBLE</button>
         <button type="button" onClick={()=>setMultiplier(multiplier===3?1:3)} style={keyStyle("#d85ed3",multiplier===3)}>TRIPLE</button>
-        <button type="button" onClick={appendMiss} disabled={full} style={{...keyStyle("#ff5c69",false),opacity:full?.45:1}}>MISS</button>
-        <button type="button" onClick={cancelLast} disabled={!currentThrow.length&&multiplier===1} style={{...keyStyle("#f5b522",false,true),opacity:(!currentThrow.length&&multiplier===1)?.45:1}}>ANNULER</button>
+        <button type="button" onClick={appendMiss} disabled={full} style={{...keyStyle("#ff5c69",false),opacity:full ? .45 : 1}}>MISS</button>
+        <button type="button" onClick={cancelLast} disabled={!currentThrow.length&&multiplier===1} style={{...keyStyle("#f5b522",false,true),opacity: (!currentThrow.length && multiplier===1) ? .45 : 1}}>ANNULER</button>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:5,flex:"1 1 auto",minHeight:0}}>
         {ownPath.map((n:number)=>{
@@ -576,8 +647,8 @@ function GreenVsRedInput({ state, activePlayer, currentThrow, setCurrentThrow, m
       </div>
     </> : <>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5}}>
-        <button type="button" onClick={appendMiss} disabled={full} style={{...keyStyle("#ff5c69",false),opacity:full?.45:1}}>MISS</button>
-        <button type="button" onClick={cancelLast} disabled={!currentThrow.length} style={{...keyStyle("#f5b522",false,true),opacity:!currentThrow.length?.45:1}}>ANNULER</button>
+        <button type="button" onClick={appendMiss} disabled={full} style={{...keyStyle("#ff5c69",false),opacity:full ? .45 : 1}}>MISS</button>
+        <button type="button" onClick={cancelLast} disabled={!currentThrow.length} style={{...keyStyle("#f5b522",false,true),opacity: !currentThrow.length ? .45 : 1}}>ANNULER</button>
       </div>
       <div style={{display:"grid",gridTemplateColumns:bullRule==="color_lock"?"1fr":"1fr 1fr",gap:7,flex:"1 1 auto",minHeight:0}}>
         {bullRule!=="color_lock"||ownBullBed==="OB"?<button type="button" onClick={()=>appendBull(false)} disabled={full} style={{...keyStyle("#3fd88a",false),minHeight:68,fontSize:13}}>BULL 25<div style={{fontSize:8.2,marginTop:2,color:"#63efaa"}}>25{bullRule==="color_bonus"&&ownColor==="GREEN"&&greenBullBonus?` +${greenBullBonus}`:""}</div></button>:null}
@@ -1039,8 +1110,8 @@ export default function Wave61SharedPlay(props: any) {
             const path=color==="RED"?GVR_RED_PATH:GVR_GREEN_PATH;
             const step=Math.min(10,Number(state.special?.greenRedStepByPlayer?.[id]||0));
             const bull=String(config?.modeOptions?.bullRule||"classic");
-            const targetLabel=step>=10?"BULL":`D/T ${path[step]}`;
-            return <><div style={{...panelStyle(tone+"55"),padding:12,textAlign:"center"}}><div style={{color:tone,fontSize:9,fontWeight:1100,letterSpacing:.8}}>PISTE ACTUELLE · {color}</div><div style={{color:"#fff",fontSize:28,fontWeight:1200,marginTop:4}}>{targetLabel}</div><div style={{color:SOFT,fontSize:9.5,marginTop:4}}>Étape {step+1}/11 · Score {Number(state.scores?.[id]||0)}</div></div><div style={{...panelStyle("rgba(255,255,255,.10)"),padding:11,color:"#dce2ed",fontSize:10.5,lineHeight:1.55}}>Sur les 10 secteurs, seuls DOUBLE et TRIPLE du secteur courant font progresser. La frise suit l'ordre officiel de la couleur du joueur. À l'étape finale : {bull==="color_lock"?"BULL DE COULEUR — Vert=25, Rouge=50.":bull==="color_bonus"?"BULL BONUS — les deux Bulls sont valables, celui de ta couleur reçoit le bonus configuré.":"CLASSIQUE — BULL 25 et BULL 50 sont valables."}</div></>;
+            const targetLabel=step>=10?(bull==="color_lock"?(color==="GREEN"?"BULL 25":"BULL 50"):"BULL"):`D/T ${path[step]}`;
+            return <><div style={{...panelStyle(tone+"55"),padding:12,textAlign:"center",display:"grid",justifyItems:"center",gap:8}}><div style={{color:tone,fontSize:9,fontWeight:1100,letterSpacing:.8}}>PISTE ACTUELLE · {color}</div><GreenRedTargetBoard color={color as any} step={step} bullRule={bull} size={112} label={targetLabel} /><div style={{color:SOFT,fontSize:9.5}}>Étape {step+1}/11 · Score {Number(state.scores?.[id]||0)}</div></div><div style={{...panelStyle("rgba(255,255,255,.10)"),padding:11,color:"#dce2ed",fontSize:10.5,lineHeight:1.55}}>Sur les 10 secteurs, seuls DOUBLE et TRIPLE du secteur courant font progresser. La frise suit l'ordre officiel de la couleur du joueur. À l'étape finale : {bull==="color_lock"?"BULL DE COULEUR — Vert = BULL 25, Rouge = BULL 50.":bull==="color_bonus"?"BULL BONUS — BULL 25 et BULL 50 sont valables ; celui de ta couleur reçoit le bonus configuré.":"CLASSIQUE — BULL 25 et BULL 50 sont valables."}</div></>;
           })()}
         </div> : null}
 
@@ -1137,14 +1208,15 @@ export default function Wave61SharedPlay(props: any) {
               <div style={{color:"#f5f7ff",fontSize:7.6,fontWeight:1050,letterSpacing:.85,marginTop:2}}>{gvrColor} · ÉTAPE {gvrStep+1}/11</div>
               <div style={{color:gvrTone,fontSize:40,lineHeight:1,fontWeight:1250,letterSpacing:-1.4,textShadow:`0 0 18px ${gvrTone}45`,marginTop:3}}>{Math.round(Number(state.scores?.[gvrActiveId]||0))}</div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:6,marginTop:6,width:"100%",maxWidth:170}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,borderRadius:10,padding:"5px 6px",border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.04)"}}><span style={{color:gvrTone,fontSize:11,lineHeight:1}}>🎯</span><span style={{width:1,height:12,background:"rgba(255,255,255,.12)"}}/><strong style={{color:"#fff",fontSize:10.5,fontWeight:1150,lineHeight:1}}>{dartsPlayed}</strong></div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,borderRadius:10,padding:"5px 6px",border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.04)"}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:12,height:12,color:gvrTone,lineHeight:1}}><GreenRedDartIcon color={gvrTone} size={12} /></span><span style={{width:1,height:12,background:"rgba(255,255,255,.12)"}}/><strong style={{color:"#fff",fontSize:10.5,fontWeight:1150,lineHeight:1}}>{dartsPlayed}</strong></div>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,borderRadius:10,padding:"5px 6px",border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.04)"}}><span style={{color:gvrTone,fontSize:11,lineHeight:1}}>↺</span><span style={{width:1,height:12,background:"rgba(255,255,255,.12)"}}/><strong style={{color:"#fff",fontSize:10.5,fontWeight:1150,lineHeight:1}}>{visitCount}</strong></div>
               </div>
             </div>
             <button type="button" onClick={()=>setQuickPanel("objective")} style={{position:"relative",zIndex:1,minWidth:0,borderRadius:15,border:`1px solid ${gvrTone}70`,background:`linear-gradient(180deg,${gvrTone}22,rgba(7,10,16,.95))`,color:"#fff",display:"grid",placeItems:"center",alignContent:"center",gap:4,padding:"8px 7px",cursor:"pointer",boxShadow:`inset 0 0 20px ${gvrTone}0e`}}>
               <small style={{fontSize:6.8,color:gvrTone,fontWeight:1050,letterSpacing:.9}}>PISTE {gvrColor}</small>
               <span style={{color:"#fff",fontSize:7.1,fontWeight:1100,letterSpacing:.7}}>OBJECTIF</span>
-              <strong style={{fontSize:gvrStep>=10?15:20,lineHeight:1,color:"#fff"}}>{gvrTargetLabel}</strong>
+              <GreenRedTargetBoard color={gvrColor as any} step={gvrStep} bullRule={gvrBullRule} size={70} />
+              <strong style={{fontSize:gvrStep>=10?13:15,lineHeight:1.05,color:"#fff",textAlign:"center"}}>{gvrTargetLabel}</strong>
             </button>
           </section> : <div style={{ ...panelStyle(accent+"62"), padding:9, background:`linear-gradient(145deg,${accent}12,rgba(5,8,14,.97))` }}>
             <div style={{ display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",marginBottom:6 }}>

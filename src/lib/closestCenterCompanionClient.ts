@@ -71,51 +71,70 @@ export async function postClosestCenterCompanionEvent(sessionId: string, payload
 
 export async function requestClosestCenterCompanionBurst(
   sessionId: string,
-  options: { count: number; delayMs: number; maxCaptureSide: number; timeoutMs?: number; crop?: {x:number;y:number;w:number;h:number} }
+  options: { count: number; delayMs: number; maxCaptureSide: number; timeoutMs?: number; crop?: {x:number;y:number;w:number;h:number}; retries?: number }
 ): Promise<{ frames: ImageData[]; fingerprint: any }> {
-  const requestId = `cc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const count = Math.max(1, Math.min(12, Number(options.count || 1)));
   const delayMs = Math.max(25, Math.min(250, Number(options.delayMs || 55)));
   const maxCaptureSide = Math.max(960, Math.min(2400, Number(options.maxCaptureSide || 1920)));
-  const startStatus = await fetchClosestCenterCompanionStatus(sessionId);
-  let after = Number((startStatus as any)?.eventSeq || 0) || 0;
+  const retries = Math.max(0, Math.min(2, Number(options.retries ?? 1)));
+  const timeoutMs = Math.max(5000, Number(options.timeoutMs || 14000));
+  let lastError: any = null;
 
-  await postClosestCenterCompanionEvent(sessionId, {
-    kind: "closest_center_capture_request",
-    type: "closest_center_capture_request",
-    requestId,
-    count,
-    delayMs,
-    maxCaptureSide,
-    crop: options.crop || null,
-    requestedAt: Date.now(),
-  });
-
-  const deadline = Date.now() + Math.max(5000, Number(options.timeoutMs || 14000));
-  const received = new Map<number, { dataUrl: string; fingerprint?: any }>();
-  let fingerprint: any = null;
-
-  while (Date.now() < deadline) {
-    await new Promise(resolve => setTimeout(resolve, 120));
-    const batch = await fetchClosestCenterCompanionEvents(sessionId, after);
-    for (const ev of batch.events) {
-      after = Math.max(after, Number(ev.id || ev.seq || 0) || 0);
-      const p = ev.payload || {};
-      if (p.kind !== "closest_center_capture_frame" || p.requestId !== requestId) continue;
-      const index = Number(p.index || 0);
-      if (typeof p.dataUrl === "string" && p.dataUrl.startsWith("data:image/")) {
-        received.set(index, { dataUrl: p.dataUrl, fingerprint: p.fingerprint });
-        fingerprint = p.fingerprint || fingerprint;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const status: any = await fetchClosestCenterCompanionStatus(sessionId);
+      const lastSeenAt = Number(status?.lastSeenAt || 0) || 0;
+      const stale = !lastSeenAt || Date.now() - lastSeenAt > 8000;
+      if (!status?.connected || !status?.cameraReady || stale) {
+        throw new Error(stale ? "Téléphone compagnon hors ligne ou en veille." : "Téléphone compagnon non prêt.");
       }
-    }
-    if (received.size >= count) break;
-  }
 
-  if (received.size < count) throw new Error(`Téléphone compagnon : ${received.size}/${count} frame(s) reçue(s).`);
-  const ordered = [...received.entries()].sort((a,b)=>a[0]-b[0]).slice(0,count);
-  const frames: ImageData[] = [];
-  for (const [, item] of ordered) frames.push(await dataUrlToImageData(item.dataUrl));
-  return { frames, fingerprint };
+      const requestId = `cc-${Date.now()}-${attempt}-${Math.random().toString(36).slice(2, 8)}`;
+      let after = Number(status?.eventSeq || 0) || 0;
+      await postClosestCenterCompanionEvent(sessionId, {
+        kind: "closest_center_capture_request",
+        type: "closest_center_capture_request",
+        requestId,
+        attempt,
+        count,
+        delayMs,
+        maxCaptureSide,
+        crop: options.crop || null,
+        requestedAt: Date.now(),
+      });
+
+      const deadline = Date.now() + timeoutMs;
+      const received = new Map<number, { dataUrl: string; fingerprint?: any }>();
+      let fingerprint: any = null;
+      while (Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 120));
+        const batch = await fetchClosestCenterCompanionEvents(sessionId, after);
+        for (const ev of batch.events) {
+          after = Math.max(after, Number(ev.id || ev.seq || 0) || 0);
+          const p = ev.payload || {};
+          if (p.requestId !== requestId) continue;
+          if (p.kind === "closest_center_capture_error") throw new Error(String(p.message || "Capture compagnon impossible."));
+          if (p.kind !== "closest_center_capture_frame") continue;
+          const index = Number(p.index || 0);
+          if (typeof p.dataUrl === "string" && p.dataUrl.startsWith("data:image/")) {
+            received.set(index, { dataUrl: p.dataUrl, fingerprint: p.fingerprint });
+            fingerprint = p.fingerprint || fingerprint;
+          }
+        }
+        if (received.size >= count) break;
+      }
+
+      if (received.size < count) throw new Error(`Téléphone compagnon : ${received.size}/${count} frame(s) reçue(s).`);
+      const ordered = [...received.entries()].sort((a,b)=>a[0]-b[0]).slice(0,count);
+      const frames: ImageData[] = [];
+      for (const [, item] of ordered) frames.push(await dataUrlToImageData(item.dataUrl));
+      return { frames, fingerprint };
+    } catch (error) {
+      lastError = error;
+      if (attempt < retries) await new Promise(resolve => setTimeout(resolve, 450 * (attempt + 1)));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Téléphone compagnon indisponible.");
 }
 
 async function dataUrlToImageData(dataUrl: string): Promise<ImageData> {

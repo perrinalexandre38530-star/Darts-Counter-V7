@@ -61,6 +61,8 @@ export default function ClosestCenterDeviceCameraPage({go,params}:any){
   const streamRef=React.useRef<MediaStream|null>(null);
   const lastSeqRef=React.useRef(0);
   const busyRef=React.useRef(false);
+  const processedRequestsRef=React.useRef(new Set<string>());
+  const wakeLockRef=React.useRef<any>(null);
   const [ready,setReady]=React.useState(false);
   const [message,setMessage]=React.useState("Connexion à la caméra…");
   const [step,setStep]=React.useState(0);
@@ -72,8 +74,15 @@ export default function ClosestCenterDeviceCameraPage({go,params}:any){
 
   React.useEffect(()=>{
     let dead=false;
-    (async()=>{
+    const openCamera=async()=>{
       try{
+        const current=streamRef.current;
+        const live=current?.getVideoTracks?.().some(t=>t.readyState==="live");
+        if(live){
+          if(videoRef.current && videoRef.current.srcObject!==current){videoRef.current.srcObject=current;await videoRef.current.play().catch(()=>{});}
+          setReady(true); return;
+        }
+        try{current?.getTracks().forEach(t=>t.stop());}catch{}
         const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30,min:24}},audio:false});
         if(dead){stream.getTracks().forEach(t=>t.stop());return;}
         streamRef.current=stream;
@@ -85,13 +94,18 @@ export default function ClosestCenterDeviceCameraPage({go,params}:any){
           if(Array.isArray(caps.whiteBalanceMode)&&caps.whiteBalanceMode.includes("continuous")) advanced.whiteBalanceMode="continuous";
           if(Object.keys(advanced).length) await track.applyConstraints({advanced:[advanced]} as any).catch(()=>{});
         }catch{}
+        track.addEventListener?.("ended",()=>{if(!dead){setReady(false);setMessage("Caméra suspendue · réouverture automatique…");}});
         if(videoRef.current){videoRef.current.srcObject=stream; await videoRef.current.play().catch(()=>{});}
-        setReady(true); setMessage("Caméra prête · calibre les 5 points.");
+        setReady(true); setMessage(calibrated?"Caméra reprise · source prête.":"Caméra prête · calibre les 5 points.");
         await updateClosestCenterCompanionStatus(sessionId,{linked:true,connected:true,cameraReady:true,deviceLabel:/android/i.test(navigator.userAgent)?"Téléphone Android":"Téléphone compagnon",deviceKind:"closest_center_phone_camera",purpose:"closest_center",hardwareFingerprint:cameraFingerprint(stream,videoRef.current),message:"Caméra Pétanque prête",lastSeenAt:Date.now()});
-      }catch(e:any){setMessage(e?.message||"Caméra indisponible");}
-    })();
-    return()=>{dead=true;try{streamRef.current?.getTracks().forEach(t=>t.stop());}catch{};updateClosestCenterCompanionStatus(sessionId,{connected:false,cameraReady:false,message:"Téléphone déconnecté",lastSeenAt:Date.now()}).catch(()=>{});};
-  },[sessionId]);
+      }catch(e:any){setReady(false);setMessage(e?.message||"Caméra indisponible");}
+    };
+    const requestWakeLock=async()=>{try{const wl=(navigator as any).wakeLock;if(wl?.request){wakeLockRef.current=await wl.request("screen");}}catch{}};
+    const onVisibility=()=>{if(document.visibilityState==="visible"){void requestWakeLock();void openCamera();}else{updateClosestCenterCompanionStatus(sessionId,{connected:false,cameraReady:false,message:"Téléphone en arrière-plan",lastSeenAt:Date.now()}).catch(()=>{});}};
+    void openCamera(); void requestWakeLock();
+    document.addEventListener("visibilitychange",onVisibility);
+    return()=>{dead=true;document.removeEventListener("visibilitychange",onVisibility);try{wakeLockRef.current?.release?.();}catch{};try{streamRef.current?.getTracks().forEach(t=>t.stop());}catch{};updateClosestCenterCompanionStatus(sessionId,{connected:false,cameraReady:false,message:"Téléphone déconnecté",lastSeenAt:Date.now()}).catch(()=>{});};
+  },[sessionId,calibrated]);
 
   React.useEffect(()=>{
     if(!sessionId||!ready) return;
@@ -104,6 +118,10 @@ export default function ClosestCenterDeviceCameraPage({go,params}:any){
           lastSeqRef.current=Math.max(lastSeqRef.current,Number(ev.id||ev.seq||0)||0);
           const p=ev.payload||{};
           if(p.kind!=="closest_center_capture_request") continue;
+          const requestId=String(p.requestId||"");
+          if(!requestId || processedRequestsRef.current.has(requestId)) continue;
+          processedRequestsRef.current.add(requestId);
+          if(processedRequestsRef.current.size>80){processedRequestsRef.current=new Set([requestId]);}
           busyRef.current=true; setServing(true); setMessage("Capture demandée par le match…");
           try{
             const video=videoRef.current;
@@ -117,7 +135,11 @@ export default function ClosestCenterDeviceCameraPage({go,params}:any){
               await postClosestCenterCompanionEvent(sessionId,{kind:"closest_center_capture_frame",type:"closest_center_capture_frame",requestId:p.requestId,index:i,total:count,dataUrl,fingerprint:cameraFingerprint(streamRef.current,video),deviceTs:Date.now()});
             }
             setMessage(`Burst envoyé · ${count} frame${count>1?"s":""}`);
-          }catch(e:any){setMessage(e?.message||"Capture impossible");}
+          }catch(e:any){
+            const errorMessage=e?.message||"Capture impossible";
+            setMessage(errorMessage);
+            await postClosestCenterCompanionEvent(sessionId,{kind:"closest_center_capture_error",type:"closest_center_capture_error",requestId:p.requestId,message:errorMessage,deviceTs:Date.now()}).catch(()=>{});
+          }
           finally{busyRef.current=false;setServing(false);}
         }
       }catch{}
@@ -128,7 +150,11 @@ export default function ClosestCenterDeviceCameraPage({go,params}:any){
 
   React.useEffect(()=>{
     if(!sessionId||!ready) return;
-    const id=window.setInterval(()=>updateClosestCenterCompanionStatus(sessionId,{linked:true,connected:true,cameraReady:true,calibrated,deviceKind:"closest_center_phone_camera",purpose:"closest_center",hardwareFingerprint:cameraFingerprint(streamRef.current,videoRef.current),message:calibrated?"Téléphone calibré et prêt":"Calibration requise",lastSeenAt:Date.now()}).catch(()=>{}),2500);
+    const id=window.setInterval(()=>{
+      const track=streamRef.current?.getVideoTracks?.()[0];
+      const live=track?.readyState==="live" && document.visibilityState==="visible";
+      updateClosestCenterCompanionStatus(sessionId,{linked:true,connected:live,cameraReady:live,calibrated,deviceKind:"closest_center_phone_camera",purpose:"closest_center",hardwareFingerprint:cameraFingerprint(streamRef.current,videoRef.current),message:live?(calibrated?"Téléphone calibré et prêt":"Calibration requise"):"Téléphone en veille / arrière-plan",lastSeenAt:Date.now()}).catch(()=>{});
+    },1200);
     return()=>window.clearInterval(id);
   },[sessionId,ready,calibrated]);
 
