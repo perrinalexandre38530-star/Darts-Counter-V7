@@ -98,6 +98,40 @@ function CompactIconNav({ items, activeId, onChange, tone = "cyan", stickyTop }:
   </div>;
 }
 
+function MetricChip({ icon, label, value, tone = "cyan" }: { icon: string; label: string; value: string; tone?: "cyan" | "green" | "gold" | "purple" }) {
+  const palette = tone === "green"
+    ? { bg: "rgba(80,255,174,.08)", border: "rgba(80,255,174,.18)", color: "#8cffcb" }
+    : tone === "gold"
+      ? { bg: "rgba(255,216,107,.08)", border: "rgba(255,216,107,.18)", color: "#ffd86b" }
+      : tone === "purple"
+        ? { bg: "rgba(185,156,255,.08)", border: "rgba(185,156,255,.18)", color: "#b99cff" }
+        : { bg: "rgba(39,220,255,.08)", border: "rgba(39,220,255,.18)", color: "#27dcff" };
+  return <div style={{ minWidth: 0, display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 8px", borderRadius: 999, background: palette.bg, border: `1px solid ${palette.border}` }}>
+    <span style={{ display: "grid", placeItems: "center", width: 18, height: 18, borderRadius: 999, background: "rgba(0,0,0,.16)", color: palette.color }}><HubGlyph name={icon} size={11} /></span>
+    <span style={{ minWidth: 0 }}>
+      <span style={{ display: "block", fontSize: 6.1, lineHeight: 1, letterSpacing: .7, fontWeight: 900, opacity: .58 }}>{label}</span>
+      <span style={{ display: "block", marginTop: 2, fontSize: 7.2, lineHeight: 1.05, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</span>
+    </span>
+  </div>;
+}
+
+function ActionTile({ icon, title, body, tone = "cyan", onClick, disabled = false }: { icon: string; title: string; body: string; tone?: "cyan" | "green" | "gold" | "purple"; onClick: () => void; disabled?: boolean }) {
+  const palette = tone === "green"
+    ? { border: "rgba(80,255,174,.24)", bg: "linear-gradient(160deg,rgba(80,255,174,.08),rgba(39,220,255,.03))", iconBg: "rgba(80,255,174,.10)", iconBorder: "rgba(80,255,174,.18)", color: "#8cffcb" }
+    : tone === "gold"
+      ? { border: "rgba(255,216,107,.20)", bg: "linear-gradient(160deg,rgba(255,216,107,.07),rgba(255,255,255,.025))", iconBg: "rgba(255,216,107,.10)", iconBorder: "rgba(255,216,107,.18)", color: "#ffd86b" }
+      : tone === "purple"
+        ? { border: "rgba(185,156,255,.20)", bg: "linear-gradient(160deg,rgba(140,90,255,.08),rgba(255,255,255,.025))", iconBg: "rgba(185,156,255,.10)", iconBorder: "rgba(185,156,255,.18)", color: "#b99cff" }
+        : { border: "rgba(39,220,255,.22)", bg: "linear-gradient(160deg,rgba(39,220,255,.08),rgba(255,255,255,.025))", iconBg: "rgba(39,220,255,.10)", iconBorder: "rgba(39,220,255,.18)", color: "#27dcff" };
+  return <button type="button" disabled={disabled} onClick={onClick} style={{ minWidth: 0, padding: "12px 10px", borderRadius: 14, border: `1px solid ${palette.border}`, background: palette.bg, color: "inherit", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? .45 : 1, textAlign: "left", display: "flex", flexDirection: "column", gap: 8 }}>
+    <span style={{ width: 28, height: 28, borderRadius: 10, display: "grid", placeItems: "center", background: palette.iconBg, border: `1px solid ${palette.iconBorder}`, color: palette.color }}><HubGlyph name={icon} size={15} /></span>
+    <span style={{ display: "block", minWidth: 0 }}>
+      <span style={{ display: "block", fontSize: 8.1, fontWeight: 950 }}>{title}</span>
+      <span style={{ display: "block", marginTop: 3, fontSize: 6.9, lineHeight: 1.35, opacity: .56 }}>{body}</span>
+    </span>
+  </button>;
+}
+
 function pct(value: number) {
   return `${Math.round(Number(value) || 0)}%`;
 }
@@ -443,37 +477,40 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
               </div>
             </div>
           </div>}
-          <div style={{ marginTop: 10, padding: 11, borderRadius: 16, border: "1px solid rgba(39,220,255,.18)", background: "linear-gradient(145deg,rgba(39,220,255,.055),rgba(255,255,255,.02))", display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 42, height: 42, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center", flex: "0 0 auto", border: "1px solid rgba(39,220,255,.28)", background: "rgba(39,220,255,.08)", fontSize: 15, fontWeight: 950 }}>
-              {accountParticipant?.avatarUrl || accountParticipant?.avatarDataUrl ? <img src={String(accountParticipant.avatarUrl || accountParticipant.avatarDataUrl)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (accountParticipant?.name || "M").slice(0,1).toUpperCase()}
+          <div style={{ marginTop: 10, padding: 12, borderRadius: 18, border: "1px solid rgba(39,220,255,.18)", background: "linear-gradient(145deg,rgba(39,220,255,.055),rgba(255,255,255,.02))" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 44, height: 44, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center", flex: "0 0 auto", border: "1px solid rgba(39,220,255,.28)", background: "rgba(39,220,255,.08)", fontSize: 15, fontWeight: 950 }}>
+                {accountParticipant?.avatarUrl || accountParticipant?.avatarDataUrl ? <img src={String(accountParticipant.avatarUrl || accountParticipant.avatarDataUrl)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (accountParticipant?.name || "M").slice(0,1).toUpperCase()}
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 7.1, letterSpacing: 1, fontWeight: 950, color: "#27dcff" }}>ENTRAÎNEMENT PERSONNEL</div>
+                <div style={{ marginTop: 3, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 0, fontSize: 12.6, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{accountParticipant?.name || "Compte utilisateur requis"}</div>
+                  <span style={{ padding: "4px 7px", borderRadius: 999, fontSize: 6.7, fontWeight: 950, border: "1px solid rgba(80,255,174,.18)", background: "rgba(80,255,174,.07)", color: "#8cffcb" }}>SOLO</span>
+                </div>
+                <div style={{ marginTop: 3, fontSize: 7.2, lineHeight: 1.35, opacity: .52 }}>{accountParticipant ? "Ton compte pilote le centre, les statistiques et toute la progression." : "Connecte ou active un profil de compte pour utiliser le Centre."}</div>
+              </div>
             </div>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 7.4, letterSpacing: .9, fontWeight: 950, color: "#27dcff" }}>ENTRAÎNEMENT PERSONNEL</div>
-              <div style={{ marginTop: 2, fontSize: 12, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{accountParticipant?.name || "Compte utilisateur requis"}</div>
-              <div style={{ marginTop: 2, fontSize: 7.5, opacity: .5 }}>{accountParticipant ? "Ce Centre utilise uniquement ton compte, tes stats et ta progression." : "Connecte ou active un profil de compte pour utiliser le Centre."}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 10 }}>
+              <MetricChip icon="history" label="SÉANCES" value={`${labSessions.length} enregistrées`} tone="cyan" />
+              <MetricChip icon="today" label="PLAN" value={`${dailyPlan.durationMin} min aujourd’hui`} tone="green" />
+              <MetricChip icon="progress" label="NIVEAU" value={`${Math.round(assessment.overallScore || career.averagePerformance || 0)}/100`} tone="gold" />
             </div>
-            <span style={{ padding: "4px 7px", borderRadius: 999, fontSize: 6.8, fontWeight: 950, border: "1px solid rgba(80,255,174,.18)", background: "rgba(80,255,174,.07)", color: "#8cffcb" }}>SOLO</span>
           </div>
 
-          {viewMode === "essential" && <div style={{ marginTop: 10, padding: 12, borderRadius: 17, border: "1px solid rgba(39,220,255,.18)", background: "linear-gradient(145deg,rgba(39,220,255,.065),rgba(140,90,255,.035))" }}>
+          {viewMode === "essential" && <div style={{ marginTop: 10, padding: 13, borderRadius: 18, border: "1px solid rgba(39,220,255,.18)", background: "linear-gradient(145deg,rgba(39,220,255,.065),rgba(140,90,255,.035))" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <div>
-                <div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1, color: "#8cffcb" }}>DÉMARRE ICI</div>
-                <div style={{ marginTop: 3, fontSize: 15, fontWeight: 950 }}>Qu'est-ce que tu veux faire ?</div>
-                <div style={{ marginTop: 3, fontSize: 8.3, opacity: .5 }}>Choisis une seule action. Awena s'occupe du reste.</div>
+                <div style={{ fontSize: 7.8, fontWeight: 950, letterSpacing: 1, color: "#8cffcb" }}>DÉMARRE ICI</div>
+                <div style={{ marginTop: 3, fontSize: 15, fontWeight: 950 }}>Une action, puis on joue.</div>
+                <div style={{ marginTop: 3, fontSize: 7.8, opacity: .54 }}>Choisis simplement l’écran qui correspond à ton besoin.</div>
               </div>
-              <div style={{ padding: "5px 8px", borderRadius: 999, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.06)", fontSize: 7, fontWeight: 900, opacity: .72 }}>{quickStart.eyebrow}</div>
+              <div style={{ padding: "5px 8px", borderRadius: 999, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.06)", fontSize: 6.8, fontWeight: 900, opacity: .72 }}>{quickStart.eyebrow}</div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginTop: 10 }}>
-              <button type="button" disabled={!resolved.length} onClick={runQuickStart} style={{ minWidth: 0, padding: "11px 8px", borderRadius: 13, border: "1px solid rgba(80,255,174,.28)", background: "linear-gradient(145deg,rgba(80,255,174,.10),rgba(39,220,255,.04))", color: "inherit", cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .45, textAlign: "left" }}>
-                <div style={{ fontSize: 14 }}>▶</div><div style={{ marginTop: 5, fontSize: 8.6, fontWeight: 950 }}>JOUER MAINTENANT</div><div style={{ marginTop: 3, fontSize: 7, lineHeight: 1.3, opacity: .52 }}>{resolved.length ? quickStart.cta : "Compte utilisateur requis"}</div>
-              </button>
-              <button type="button" onClick={() => { setTab("exercises"); setExercisePanel("path"); }} style={{ minWidth: 0, padding: "11px 8px", borderRadius: 13, border: "1px solid rgba(255,216,107,.20)", background: "rgba(255,216,107,.045)", color: "inherit", cursor: "pointer", textAlign: "left" }}>
-                <div style={{ fontSize: 14 }}>◎</div><div style={{ marginTop: 5, fontSize: 8.6, fontWeight: 950 }}>TRAVAILLER UN POINT</div><div style={{ marginTop: 3, fontSize: 7, lineHeight: 1.3, opacity: .52 }}>Choisis une compétence ou suis ton parcours.</div>
-              </button>
-              <button type="button" onClick={() => { setTab("diagnosis"); setDiagnosisPanel("overview"); }} style={{ minWidth: 0, padding: "11px 8px", borderRadius: 13, border: "1px solid rgba(185,156,255,.20)", background: "rgba(140,90,255,.045)", color: "inherit", cursor: "pointer", textAlign: "left" }}>
-                <div style={{ fontSize: 14 }}>↗</div><div style={{ marginTop: 5, fontSize: 8.6, fontWeight: 950 }}>VOIR OÙ J'EN SUIS</div><div style={{ marginTop: 3, fontSize: 7, lineHeight: 1.3, opacity: .52 }}>{Math.round(assessment.overallScore || career.averagePerformance || 0)}/100 • {playerJourney.headline}</div>
-              </button>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 11 }}>
+              <ActionTile icon="today" tone="green" disabled={!resolved.length} onClick={runQuickStart} title="JOUER MAINTENANT" body={resolved.length ? quickStart.cta : "Compte utilisateur requis"} />
+              <ActionTile icon="exercises" tone="gold" onClick={() => { setTab("exercises"); setExercisePanel("path"); }} title="TRAVAILLER UN POINT" body="Choisis une compétence ou laisse-toi guider par le parcours." />
+              <ActionTile icon="diagnosis" tone="purple" onClick={() => { setTab("diagnosis"); setDiagnosisPanel("overview"); }} title="VOIR MON NIVEAU" body={`${Math.round(assessment.overallScore || career.averagePerformance || 0)}/100 • ${playerJourney.headline}`} />
             </div>
           </div>}
 
@@ -499,12 +536,15 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
             </>}
           </div>
 
-          <div style={{ marginTop: 9, display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", padding: 8, borderRadius: 12, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.018)" }}>
-            <div style={{ minWidth: 0 }}><div style={{ fontSize: 8.5, fontWeight: 950 }}>AFFICHAGE</div><div style={{ marginTop: 2, fontSize: 7.2, opacity: .45 }}>{viewMode === "essential" ? "L'essentiel, sans jargon ni écrans techniques." : "Toutes les analyses et réglages avancés."}</div></div>
+          <div style={{ marginTop: 9, display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", padding: 9, borderRadius: 13, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.018)" }}>
+            <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 9, display: "grid", placeItems: "center", background: "rgba(39,220,255,.06)", border: "1px solid rgba(39,220,255,.14)", color: "#27dcff" }}><HubGlyph name="exercises" size={14} /></div>
+              <div style={{ minWidth: 0 }}><div style={{ fontSize: 8.2, fontWeight: 950 }}>AFFICHAGE</div><div style={{ marginTop: 2, fontSize: 6.9, opacity: .48 }}>{viewMode === "essential" ? "Vue simple et légère." : "Vue complète avec toutes les analyses."}</div></div>
+            </div>
             <div style={{ display: "flex", gap: 4, flex: "0 0 auto" }}>
-              <button type="button" aria-label="Ouvrir le guide express" onClick={() => setShowQuickGuide(true)} style={{ width: 30, height: 30, borderRadius: 9, border: "1px solid rgba(39,220,255,.18)", background: "rgba(39,220,255,.05)", color: "inherit", fontSize: 12, fontWeight: 950, cursor: "pointer" }}>?</button>
-              <button type="button" onClick={() => setViewMode("essential")} style={{ padding: "6px 8px", borderRadius: 9, border: viewMode === "essential" ? "1px solid rgba(80,255,174,.40)" : "1px solid rgba(255,255,255,.07)", background: viewMode === "essential" ? "rgba(80,255,174,.08)" : "rgba(255,255,255,.02)", color: "inherit", fontSize: 7.2, fontWeight: 950, cursor: "pointer" }}>ESSENTIEL</button>
-              <button type="button" onClick={() => setViewMode("complete")} style={{ padding: "6px 8px", borderRadius: 9, border: viewMode === "complete" ? "1px solid rgba(185,156,255,.40)" : "1px solid rgba(255,255,255,.07)", background: viewMode === "complete" ? "rgba(140,90,255,.08)" : "rgba(255,255,255,.02)", color: "inherit", fontSize: 7.2, fontWeight: 950, cursor: "pointer" }}>COMPLET</button>
+              <button type="button" aria-label="Ouvrir le guide express" title="Guide express" onClick={() => setShowQuickGuide(true)} style={{ width: 31, height: 31, borderRadius: 10, border: "1px solid rgba(39,220,255,.18)", background: "rgba(39,220,255,.05)", color: "inherit", cursor: "pointer", display: "grid", placeItems: "center" }}><HubGlyph name="coach" size={14} /></button>
+              <button type="button" title="Mode essentiel" onClick={() => setViewMode("essential")} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 8px", borderRadius: 10, border: viewMode === "essential" ? "1px solid rgba(80,255,174,.40)" : "1px solid rgba(255,255,255,.07)", background: viewMode === "essential" ? "rgba(80,255,174,.08)" : "rgba(255,255,255,.02)", color: "inherit", fontSize: 7, fontWeight: 950, cursor: "pointer" }}><HubGlyph name="today" size={13} /> ESSENTIEL</button>
+              <button type="button" title="Mode complet" onClick={() => setViewMode("complete")} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 8px", borderRadius: 10, border: viewMode === "complete" ? "1px solid rgba(185,156,255,.40)" : "1px solid rgba(255,255,255,.07)", background: viewMode === "complete" ? "rgba(140,90,255,.08)" : "rgba(255,255,255,.02)", color: "inherit", fontSize: 7, fontWeight: 950, cursor: "pointer" }}><HubGlyph name="progress" size={13} /> COMPLET</button>
             </div>
           </div>
 
