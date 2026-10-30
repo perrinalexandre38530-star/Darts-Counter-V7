@@ -680,6 +680,13 @@ export default function Games({ setTab, params }: Props) {
 
     const tab = String(g?.tab || "");
     if (tab) {
+      // Wave61 partage une route de configuration unique : le gameId est
+      // indispensable pour que le dispatcher charge le bon écran dédié.
+      // Sans ce paramètre, Wave61Config retombe sur DARTS_WAVE_61[0]
+      // (actuellement TUG RUSH), ce qui faisait ouvrir toutes les cartes dessus.
+      if (tab === "wave61_config") {
+        return `tab:wave61_config?gameId=${encodeURIComponent(String(g?.id || ""))}`;
+      }
       if (/config/i.test(tab)) return `tab:${tab}`;
       if (/_play$/i.test(tab)) return `tab:${tab.replace(/_play$/i, "_config")}`;
       if (/Play$/i.test(tab)) return `tab:${tab.replace(/Play$/i, "Config")}`;
@@ -1972,7 +1979,9 @@ export default function Games({ setTab, params }: Props) {
                           }
                           const gameParams = g.variantId
                             ? { gameId: g.id, baseGame: g.baseGame, variantId: g.variantId }
-                            : undefined;
+                            : g.tab === "wave61_config"
+                              ? { gameId: g.id }
+                              : undefined;
                           if (String(g.id) === "x01") {
                             void openX01WithFirstRules(() => navigate(g.tab, gameParams));
                             return;

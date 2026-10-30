@@ -16,6 +16,7 @@ import {
   type TrainingExerciseFamily,
 } from "../../catalog/trainingExerciseCatalog";
 import { MABULL_REFERENCE_CATALOG, MABULL_REFERENCE_STATS, type MabullReferenceKind } from "../../catalog/mabullReferenceCatalog";
+import { buildMabullCatalogCoverage, buildMabullConversionQueue, getMabullItemSection, MABULL_SECTION_META, MABULL_SECTION_ORDER, type MabullCatalogSection } from "../../catalog/mabullCatalogPlan";
 import { buildCoachProgram, buildCustomProgram, TRAINING_ASSESSMENT_PROGRAM, TRAINING_PROGRAMS, type TrainingProgramDefinition, type TrainingProgramBuildOptions } from "../../catalog/trainingProgramCatalog";
 import { loadTrainingLabPreferences, setTrainingFamilyGoal, setTrainingFamilyGoalDeadline, setTrainingWeeklySessionTarget, toggleFavoriteExercise, toggleFavoriteProgram, type TrainingLabPreferences } from "../../preferences/trainingLabPreferences";
 import { buildTrainingCycleComparison, buildTrainingWeeklyPlanStats, clearTrainingProgramDraft, loadTrainingProgramDraft, loadTrainingProgramSessions } from "../../profile/trainingPlanTracker";
@@ -184,6 +185,7 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
   const [exercisePanel, setExercisePanel] = React.useState<ExercisePanel>("path");
   const [catalogSource, setCatalogSource] = React.useState<CatalogSource>("playable");
   const [mabullKind, setMabullKind] = React.useState<MabullReferenceKind | "all">("all");
+  const [mabullSection, setMabullSection] = React.useState<MabullCatalogSection | "all">("all");
   const [diagnosisPanel, setDiagnosisPanel] = React.useState<DiagnosisPanel>("overview");
   const [diagnosisFamily, setDiagnosisFamily] = React.useState<TrainingExerciseFamily>(recommendedFamily);
   const [skillProgressPanel, setSkillProgressPanel] = React.useState<SkillProgressPanel>("mastery");
@@ -241,7 +243,9 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
 
   const exercises = TRAINING_EXERCISE_CATALOG.filter((e) => e.family === family);
   const filteredExercises = exercises.filter((exercise) => difficultyFilter === 0 || exercise.difficulty === difficultyFilter);
-  const filteredMabullItems = React.useMemo(() => MABULL_REFERENCE_CATALOG.filter((item) => mabullKind === "all" || item.kind === mabullKind), [mabullKind]);
+  const mabullCoverage = React.useMemo(() => buildMabullCatalogCoverage(), []);
+  const mabullConversionQueue = React.useMemo(() => buildMabullConversionQueue(3), []);
+  const filteredMabullItems = React.useMemo(() => MABULL_REFERENCE_CATALOG.filter((item) => (mabullKind === "all" || item.kind === mabullKind) && (mabullSection === "all" || getMabullItemSection(item) === mabullSection)), [mabullKind, mabullSection]);
   const skillPath = React.useMemo(() => buildTrainingSkillPath(family, progression), [family, progression]);
   const skillCertification = React.useMemo(() => buildTrainingSkillCertification(skillPath, sessions), [skillPath, sessions]);
   const selected = TRAINING_EXERCISE_CATALOG.find((e) => e.id === exerciseId) || firstInFamily;
@@ -952,6 +956,16 @@ export default function TrainingLabConfig({ profiles, onStart, onExit }: { profi
                 <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
                   {[{ id: "all", label: "TOUS", icon: "▦" }, { id: "exercise", label: "EXERCICES", icon: "◎" }, { id: "technique", label: "TECHNIQUE", icon: "♙" }].map((item) => { const active = mabullKind === item.id; return <button key={item.id} type="button" onClick={() => setMabullKind(item.id as MabullReferenceKind | "all")} style={{ minWidth: 34, height: 31, padding: active ? "0 9px" : "0 8px", borderRadius: 10, border: active ? "1px solid rgba(185,156,255,.28)" : "1px solid rgba(255,255,255,.07)", background: active ? "rgba(185,156,255,.08)" : "rgba(255,255,255,.02)", color: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5, cursor: "pointer", fontSize: 7.5, fontWeight: 950 }}><span>{item.icon}</span>{active && <span>{item.label}</span>}</button>; })}
                   <span style={{ marginLeft: "auto", fontSize: 7.2, opacity: .42 }}>{MABULL_REFERENCE_STATS.exercises} exercices • {MABULL_REFERENCE_STATS.techniques} technique • {MABULL_REFERENCE_STATS.mapped} déjà reliés</span>
+                </div>
+                <div style={{ marginTop: 8, padding: 9, borderRadius: 11, border: "1px solid rgba(255,255,255,.065)", background: "rgba(255,255,255,.015)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <button type="button" onClick={() => setMabullSection("all")} title="Toutes les familles" aria-label="Toutes les familles" style={{ width: mabullSection === "all" ? 82 : 36, height: 34, borderRadius: 10, border: mabullSection === "all" ? "1px solid rgba(39,220,255,.30)" : "1px solid rgba(255,255,255,.07)", background: mabullSection === "all" ? "rgba(39,220,255,.075)" : "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, overflow: "hidden" }}><span>▦</span>{mabullSection === "all" && <span style={{ fontSize: 7, fontWeight: 950 }}>TOUT</span>}</button>
+                    {MABULL_SECTION_ORDER.map((section) => { const meta = MABULL_SECTION_META[section]; const coverage = mabullCoverage.find((row) => row.section === section); const active = mabullSection === section; return <button key={section} type="button" onClick={() => setMabullSection(section)} title={meta.label} aria-label={meta.label} style={{ minWidth: active ? 94 : 36, height: 34, padding: active ? "0 8px" : 0, borderRadius: 10, border: active ? "1px solid rgba(185,156,255,.28)" : "1px solid rgba(255,255,255,.07)", background: active ? "rgba(185,156,255,.07)" : "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: active ? "flex-start" : "center", gap: 6, overflow: "hidden" }}><HubGlyph name={meta.icon} size={15}/>{active && <span style={{ minWidth: 0, textAlign: "left" }}><b style={{ display: "block", fontSize: 6.7, whiteSpace: "nowrap" }}>{meta.shortLabel.toUpperCase()}</b><span style={{ display: "block", fontSize: 5.8, opacity: .45 }}>{coverage?.mapped || 0}/{coverage?.total || 0} jouable</span></span>}</button>; })}
+                  </div>
+                </div>
+                <div style={{ marginTop: 8, padding: 10, borderRadius: 12, border: "1px solid rgba(255,216,107,.13)", background: "rgba(255,216,107,.025)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><div><div style={{ fontSize: 7, fontWeight: 950, color: "#ffd86b", letterSpacing: .8 }}>PROCHAINES RÈGLES À RELEVER</div><div style={{ marginTop: 2, fontSize: 7.1, opacity: .48 }}>Priorité de conversion vers des exercices jouables.</div></div><b style={{ fontSize: 11 }}>{MABULL_REFERENCE_STATS.mapped}/{MABULL_REFERENCE_STATS.exercises}</b></div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 5, marginTop: 7 }}>{mabullConversionQueue.map((item, index) => <div key={item.id} style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.022)", border: "1px solid rgba(255,255,255,.055)" }}><div style={{ display: "flex", gap: 6, alignItems: "center" }}><span style={{ width: 20, height: 20, borderRadius: 7, display: "grid", placeItems: "center", background: "rgba(255,216,107,.08)", fontSize: 7, fontWeight: 950 }}>{index + 1}</span><div style={{ minWidth: 0 }}><b style={{ display: "block", fontSize: 7.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</b><span style={{ display: "block", marginTop: 1, fontSize: 5.9, opacity: .42 }}>{MABULL_SECTION_META[getMabullItemSection(item)].label}</span></div></div></div>)}</div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 6, marginTop: 8 }}>
                   {filteredMabullItems.map((item) => <div key={item.id} style={{ padding: 9, borderRadius: 11, border: item.status === "mapped" ? "1px solid rgba(80,255,174,.13)" : item.kind === "technique" ? "1px solid rgba(80,255,174,.10)" : "1px solid rgba(255,255,255,.065)", background: item.status === "mapped" ? "rgba(80,255,174,.025)" : "rgba(255,255,255,.018)" }}>
