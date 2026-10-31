@@ -117,15 +117,15 @@ export function PlayerCard({profile,active,accent,value,subValue,badge,wins=0,mu
 
 export function ModeEndPanel({title,winner,profiles,legWins,accent,onReplay,onConfig,onGames,onStats,onHistory,extra}:any){
   const w=profiles.find((p:any)=>String(p.id)===String(winner))||profiles[0];
-  return <div style={{...panelStyle(accent+"66"),padding:16,textAlign:"center",boxShadow:`0 0 30px ${accent}20,0 18px 46px rgba(0,0,0,.48)`}}>
+  return <div style={{...panelStyle(accent+"66"),width:"100%",maxWidth:"100%",minWidth:0,boxSizing:"border-box",overflow:"hidden",padding:"clamp(10px,3vw,16px)",textAlign:"center",boxShadow:`0 0 30px ${accent}20,0 18px 46px rgba(0,0,0,.48)`}}>
     <div style={{color:accent,fontWeight:1100,fontSize:11,letterSpacing:1.3}}>PARTIE TERMINÉE</div>
     <div style={{display:"grid",placeItems:"center",marginTop:10}}><ProfileAvatar profile={w} size={82} showStars={false} ringColor={accent}/></div>
-    <div style={{marginTop:8,color:"#fff",fontSize:24,fontWeight:1100}}>{playerName(w)}</div>
-    <div style={{marginTop:3,color:SOFT,fontSize:11}}>remporte {title} · {Number(legWins?.[winner]||0)} manche{Number(legWins?.[winner]||0)>1?"s":""}</div>
-    {extra?<div style={{marginTop:12}}>{extra}</div>:null}
-    {(onStats || onHistory) ? <div style={{display:"grid",gridTemplateColumns:onStats&&onHistory?"1fr 1fr":"1fr",gap:8,marginTop:14}}>{onStats?<button type="button" onClick={onStats} style={actionStyle(accent)}>📊 STATS</button>:null}{onHistory?<button type="button" onClick={onHistory} style={actionStyle("#7dc8ff")}>🕘 HISTORIQUE</button>:null}</div>:null}
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:(onStats||onHistory)?8:14}}><button type="button" onClick={onReplay} style={actionStyle(accent)}>↻ REJOUER</button><button type="button" onClick={onConfig} style={actionStyle("#9ea7bb")}>CONFIGURATION</button></div>
-    <button type="button" onClick={onGames} style={{...actionStyle("#fff"),width:"100%",marginTop:8}}>RETOUR AUX JEUX</button>
+    <div style={{marginTop:8,color:"#fff",fontSize:"clamp(20px,7vw,24px)",fontWeight:1100,overflowWrap:"anywhere"}}>{playerName(w)}</div>
+    <div style={{marginTop:3,color:SOFT,fontSize:11,overflowWrap:"anywhere"}}>remporte {title} · {Number(legWins?.[winner]||0)} manche{Number(legWins?.[winner]||0)>1?"s":""}</div>
+    {extra?<div style={{marginTop:12,width:"100%",maxWidth:"100%",minWidth:0,overflow:"hidden"}}>{extra}</div>:null}
+    {(onStats || onHistory) ? <div style={{display:"grid",gridTemplateColumns:onStats&&onHistory?"repeat(2,minmax(0,1fr))":"minmax(0,1fr)",gap:8,marginTop:14}}>{onStats?<button type="button" onClick={onStats} style={{...actionStyle(accent),minWidth:0}}>📊 STATS</button>:null}{onHistory?<button type="button" onClick={onHistory} style={{...actionStyle("#7dc8ff"),minWidth:0}}>🕘 HISTORIQUE</button>:null}</div>:null}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:8,marginTop:(onStats||onHistory)?8:14}}><button type="button" onClick={onReplay} style={{...actionStyle(accent),minWidth:0}}>↻ REJOUER</button><button type="button" onClick={onConfig} style={{...actionStyle("#9ea7bb"),minWidth:0}}>CONFIGURATION</button></div>
+    <button type="button" onClick={onGames} style={{...actionStyle("#fff"),width:"100%",minWidth:0,marginTop:8}}>RETOUR AUX JEUX</button>
   </div>;
 }
 

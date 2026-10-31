@@ -911,19 +911,19 @@ const SPORT_SOURCE_DOMAINS: Record<string, string[]> = {
   petanque: ["fipjp.org", "ffpjp.org", "compet.ffpjp.org", "boulistenaute.com", "petanqueland.com", "cep-petanque.com", "loeildubouliste.fr"],
   babyfoot: ["tablesoccer.org", "ffbabyfoot.fr", "foosball.com"],
   molkky: ["molkky.world", "international-molkky.org", "ff-molkky.fr", "molkkify.app"],
-  foot: ["fifa.com", "uefa.com", "conmebol.com", "concacaf.com", "the-afc.com", "cafonline.com", "oceaniafootball.com", "ligue1.com", "fff.fr", "premierleague.com", "efl.com", "thenationalleague.org.uk", "fulltime.thefa.com", "spfl.co.uk", "slfl.co.uk", "knvb.nl", "rbfa.be", "fpf.pt", "laliga.com", "rfef.es", "marcadores.rfef.es", "bundesliga.com", "dfb.de", "fussball.de", "legaseriea.it", "lnd.it", "tuttocampo.it", "fai.ie", "aleagues.com.au", "footballaustralia.com.au", "ussoccer.com", "uslsoccer.com", "canadasoccer.com", "cbf.com.br", "afa.com.ar", "jleague.co", "kleague.com", "soccerway.com", "sofascore.com", "flashscore.com", "transfermarkt.com", "worldfootball.net", "espn.com", "skysports.com", "lequipe.fr", "kicker.de", "marca.com", "gazzetta.it"],
-  archery:["worldarchery.sport","ianseo.net","ffta.fr"],
-  pickleball:["ppatour.com","theapp.global","usapickleball.org"],
-  frisbee:["wfdf.sport","usaultimate.org"],
+  foot: ["fifa.com", "uefa.com", "conmebol.com", "concacaf.com", "the-afc.com", "cafonline.com", "oceaniafootball.com", "ligue1.com", "fff.fr", "premierleague.com", "efl.com", "thenationalleague.org.uk", "fulltime.thefa.com", "spfl.co.uk", "slfl.co.uk", "knvb.nl", "rbfa.be", "fpf.pt", "laliga.com", "rfef.es", "marcadores.rfef.es", "bundesliga.com", "dfb.de", "fussball.de", "legaseriea.it", "lnd.it", "tuttocampo.it", "fai.ie", "aleagues.com.au", "footballaustralia.com.au", "ussoccer.com", "uslsoccer.com", "canadasoccer.com", "cbf.com.br", "afa.com.ar", "jleague.co", "kleague.com", "soccerway.com", "sofascore.com", "flashscore.com", "transfermarkt.com", "worldfootball.net", "espn.com", "skysports.com", "lequipe.fr", "kicker.de", "marca.com", "gazzetta.it", "liguesdefoot.fr", "rsssf.org"],
+  archery:["worldarchery.sport","ianseo.net","ffta.fr","wam.mx"],
+  pickleball:["ppatour.com","theapp.global","usapickleball.org","pickleball.com","gpapickleball.org"],
+  frisbee:["wfdf.sport","usaultimate.org","ultimatefederation.eu","ultimatestats.org"],
   billiards:["wpapool.com","umb-carom.org","matchroompool.com"],
-  basket:["fiba.basketball","nba.com","euroleaguebasketball.net","ffbb.com"],
-  rugby:["world.rugby","sixnationsrugby.com","epcrugby.com","lnr.fr"],
+  basket:["fiba.basketball","nba.com","euroleaguebasketball.net","ffbb.com","feuille-de-match.fr"],
+  rugby:["world.rugby","sixnationsrugby.com","epcrugby.com","lnr.fr","rugbyamateur.fr"],
   volleyball:["volleyballworld.com","cev.eu","ffvolley.org"],
   tennis:["atptour.com","wtatennis.com","itftennis.com","tenup.fft.fr"],
   chess:["fide.com","chess-results.com","lichess.org"],
   esports:["esl.com","liquipedia.net"],
-  padel: ["padelfip.com", "premierpadel.com", "fft.fr", "padelmagazine.fr", "padelmanager.com", "padelscore.org", "tournamentsoftware.com"],
-  badminton: ["bwfbadminton.com", "bwf.tournamentsoftware.com", "tournamentsoftware.com", "badmintoneurope.com", "ffbad.org", "badmintonengland.co.uk"],
+  padel: ["padelfip.com", "premierpadel.com", "fft.fr", "padelmagazine.fr", "padelmanager.com", "padelscore.org", "tournamentsoftware.com", "padelmatchs.fr"],
+  badminton: ["bwfbadminton.com", "bwf.tournamentsoftware.com", "tournamentsoftware.com", "badmintoneurope.com", "ffbad.org", "ffbad.tournamentsoftware.com", "badmintonengland.co.uk"],
   cornhole: ["iplayacl.com", "americancornhole.com", "scoreholio.com", "ofch.fr"],
   bowling: ["pba.com", "bowling.sport", "etbf.eu", "bowl.com", "lanetalk.com", "bowlingresults.info", "ffbsq.org", "ffbsq.fr"],
 };
@@ -963,6 +963,38 @@ function competitionMetaFor(sport: string, competition?: string | null, sourceNa
     else if (/\br3\b|regional 3|bezirksliga/.test(raw)) { meta.family="regional"; meta.level="amateur"; meta.tier="R3"; }
     else if (/district|county|kreis|grassroots|sunday league|provincial|departemental|departmental/.test(raw)) { meta.family="amateur"; meta.level="grassroots"; meta.tier="District / Local"; }
     else if (meta.family === "other") meta.family="domestic_league";
+  }
+  if (sport === "rugby") {
+    if (/top 14/.test(raw)) { meta.family="domestic_league"; meta.level="pro"; meta.tier="D1"; }
+    else if (/pro d2/.test(raw)) { meta.family="domestic_league"; meta.level="pro"; meta.tier="D2"; }
+    else if (/nationale 2/.test(raw)) { meta.family="domestic_league"; meta.level="semi_pro"; meta.tier="D4"; }
+    else if (/nationale\b/.test(raw)) { meta.family="domestic_league"; meta.level="semi_pro"; meta.tier="D3"; }
+    else if (/federale 1|fédérale 1/.test(raw)) { meta.family="amateur"; meta.level="amateur"; meta.tier="Fédérale 1"; }
+    else if (/federale 2|fédérale 2/.test(raw)) { meta.family="amateur"; meta.level="amateur"; meta.tier="Fédérale 2"; }
+    else if (/federale 3|fédérale 3/.test(raw)) { meta.family="amateur"; meta.level="amateur"; meta.tier="Fédérale 3"; }
+    else if (/regionale|régionale/.test(raw)) { meta.family="regional"; meta.level="grassroots"; meta.tier=(raw.match(/(?:regionale|régionale)\s*([123])/i)?.[1] ? `R${raw.match(/(?:regionale|régionale)\s*([123])/i)?.[1]}` : "Régional"); }
+  }
+  if (sport === "basket") {
+    if (/nba|euroleague/.test(raw)) { meta.family="domestic_league"; meta.level="elite"; meta.tier=/nba/.test(raw)?"NBA":"EuroLeague"; }
+    else if (/betclic elite|pro a/.test(raw)) { meta.family="domestic_league"; meta.level="pro"; meta.tier="D1"; }
+    else if (/pro b/.test(raw)) { meta.family="domestic_league"; meta.level="pro"; meta.tier="D2"; }
+    else if (/nm1|nationale masculine 1/.test(raw)) { meta.family="domestic_league"; meta.level="semi_pro"; meta.tier="NM1"; }
+    else if (/nm2|nationale masculine 2/.test(raw)) { meta.family="domestic_league"; meta.level="amateur"; meta.tier="NM2"; }
+    else if (/nm3|nationale masculine 3/.test(raw)) { meta.family="amateur"; meta.level="amateur"; meta.tier="NM3"; }
+    else if (/regional|régional|departemental|départemental/.test(raw)) { meta.family="regional"; meta.level="grassroots"; meta.tier=/depart/.test(raw)?"Départemental":"Régional"; }
+  }
+  if (sport === "volleyball") {
+    if (/ligue a|spikeleague/.test(raw)) { meta.family="domestic_league"; meta.level="pro"; meta.tier="D1"; }
+    else if (/ligue b/.test(raw)) { meta.family="domestic_league"; meta.level="pro"; meta.tier="D2"; }
+    else if (/elite/.test(raw)) { meta.family="domestic_league"; meta.level="semi_pro"; meta.tier="Élite"; }
+    else if (/nationale 2/.test(raw)) { meta.family="amateur"; meta.level="amateur"; meta.tier="N2"; }
+    else if (/nationale 3/.test(raw)) { meta.family="amateur"; meta.level="amateur"; meta.tier="N3"; }
+    else if (/regional|régional/.test(raw)) { meta.family="regional"; meta.level="grassroots"; meta.tier="Régional"; }
+  }
+  if (["tennis","padel","badminton","pingpong","archery","pickleball","frisbee","chess"].includes(sport)) {
+    if (/world|masters|grand slam|world tour|world cup|championship/.test(raw) && meta.level === "mixed") meta.level="elite";
+    if (/challenger|future|futures|itf|bronze|silver|semi-pro|semi pro/.test(raw)) meta.level="semi_pro";
+    if (/club|regional|régional|departemental|départemental|amateur|local/.test(raw)) { meta.level="amateur"; if (meta.family === "other") meta.family="amateur"; }
   }
   return meta;
 }
@@ -1068,6 +1100,8 @@ const DIRECT_EDITORIAL_PAGES: Record<string, Array<{ url: string; sourceName: st
     { url: "https://www.ff-molkky.fr/", sourceName: "FF Mölkky", scope: "local", scopeLabel: "FR" },
   ],
   foot: [
+    { url: "https://www.liguesdefoot.fr/championnats/", sourceName: "LiguesDeFoot", scope: "local", scopeLabel: "France / régional / district" },
+    { url: "https://www.rsssf.org/results-eur.html", sourceName: "RSSSF Europe", scope: "world", scopeLabel: "Europe / lower leagues" },
     { url: "https://www.uefa.com/uefachampionsleague/fixtures-results/", sourceName: "UEFA Champions League", scope: "regional", scopeLabel: "Europe" },
     { url: "https://www.uefa.com/uefaeuropaleague/fixtures-results/", sourceName: "UEFA Europa League", scope: "regional", scopeLabel: "Europe" },
     { url: "https://www.fifa.com/en/tournaments", sourceName: "FIFA", scope: "world", scopeLabel: "Monde" },
@@ -1119,6 +1153,7 @@ const DIRECT_EDITORIAL_PAGES: Record<string, Array<{ url: string; sourceName: st
     { url: "https://www.kleague.com/", sourceName: "K League", scope: "regional", scopeLabel: "Corée du Sud" },
   ],
   padel: [
+    { url: "https://www.padelmatchs.fr/", sourceName: "PadelMatchs", scope: "local", scopeLabel: "Francophonie / clubs" },
     { url: "https://www.padelfip.com/news/", sourceName: "FIP Padel", scope: "world", scopeLabel: "Monde" },
     { url: "https://www.padelfip.com/titles-and-finals/", sourceName: "FIP Padel", scope: "world", scopeLabel: "Monde" },
     { url: "https://www.padelfip.com/events/", sourceName: "FIP Events", scope: "world", scopeLabel: "Monde" },
@@ -1130,6 +1165,7 @@ const DIRECT_EDITORIAL_PAGES: Record<string, Array<{ url: string; sourceName: st
     { url: "https://www.tournamentsoftware.com/", sourceName: "Tournament Software Padel", scope: "world", scopeLabel: "Tournois / Monde" },
   ],
   badminton: [
+    { url: "https://ffbad.tournamentsoftware.com/tournaments", sourceName: "FFBaD TournamentSoftware", scope: "local", scopeLabel: "France / clubs" },
     { url: "https://bwfbadminton.com/", sourceName: "BWF", scope: "world", scopeLabel: "Monde" },
     { url: "https://bwfbadminton.com/calendar/", sourceName: "BWF Calendar", scope: "world", scopeLabel: "Monde" },
     { url: "https://bwf.tournamentsoftware.com/", sourceName: "BWF Tournament Software", scope: "world", scopeLabel: "Monde" },
@@ -1154,6 +1190,52 @@ const DIRECT_EDITORIAL_PAGES: Record<string, Array<{ url: string; sourceName: st
     { url: "https://bowl.com/tournaments", sourceName: "USBC", scope: "regional", scopeLabel: "USA / amateur" },
     { url: "https://www.lanetalk.com/", sourceName: "Lanetalk", scope: "world", scopeLabel: "Clubs / Monde" },
     { url: "https://www.bowlingresults.info/", sourceName: "Bowling Results", scope: "world", scopeLabel: "Tournois / Monde" },
+  ],
+  basket: [
+    { url: "https://competitions.ffbb.com/", sourceName: "FFBB Compétitions", scope: "local", scopeLabel: "France / national → départemental" },
+    { url: "https://www.feuille-de-match.fr/", sourceName: "Feuille de Match", scope: "local", scopeLabel: "France / amateur" },
+    { url: "https://www.fiba.basketball/", sourceName: "FIBA", scope: "world", scopeLabel: "Monde" },
+  ],
+  rugby: [
+    { url: "https://rugbyamateur.fr/resultats/", sourceName: "Rugby Amateur", scope: "local", scopeLabel: "France / Fédérale / Régionale" },
+    { url: "https://rugbyamateur.fr/calendrier-resultats/", sourceName: "Rugby Amateur Archives", scope: "local", scopeLabel: "France / régional" },
+    { url: "https://www.world.rugby/", sourceName: "World Rugby", scope: "world", scopeLabel: "Monde" },
+  ],
+  archery: [
+    { url: "https://www.ianseo.net/", sourceName: "Ianseo", scope: "world", scopeLabel: "Monde / clubs / amateur" },
+    { url: "https://wam.mx/", sourceName: "World Archery México", scope: "regional", scopeLabel: "Amérique latine" },
+  ],
+  pickleball: [
+    { url: "https://pickleball.com/results", sourceName: "Pickleball.com", scope: "world", scopeLabel: "Monde / tournois" },
+    { url: "https://www.gpapickleball.org/tournaments", sourceName: "GPA", scope: "world", scopeLabel: "Monde" },
+  ],
+  frisbee: [
+    { url: "https://emucc-schedule.ultimatefederation.eu/", sourceName: "Ultimate Federation Live", scope: "regional", scopeLabel: "Europe / live" },
+    { url: "https://archive.ultimatestats.org/", sourceName: "Ultimate Results Archive", scope: "world", scopeLabel: "Monde / archives" },
+  ],
+  billiards: [
+    { url: "https://wpapool.com/", sourceName: "WPA", scope: "world", scopeLabel: "Pool / Monde" },
+    { url: "https://matchroompool.com/", sourceName: "Matchroom Pool", scope: "world", scopeLabel: "Pro / Monde" },
+    { url: "https://www.umb-carom.org/", sourceName: "UMB", scope: "world", scopeLabel: "Carambole / Monde" },
+  ],
+  volleyball: [
+    { url: "https://en.volleyballworld.com/", sourceName: "Volleyball World", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.cev.eu/", sourceName: "CEV", scope: "regional", scopeLabel: "Europe" },
+    { url: "https://www.ffvolley.org/", sourceName: "FFVolley", scope: "local", scopeLabel: "France / amateur" },
+  ],
+  tennis: [
+    { url: "https://www.atptour.com/en/scores", sourceName: "ATP", scope: "world", scopeLabel: "ATP" },
+    { url: "https://www.wtatennis.com/scores", sourceName: "WTA", scope: "world", scopeLabel: "WTA" },
+    { url: "https://www.itftennis.com/en/tournament-calendar/", sourceName: "ITF", scope: "world", scopeLabel: "ITF / semi-pro" },
+    { url: "https://tenup.fft.fr/", sourceName: "FFT Ten'Up", scope: "local", scopeLabel: "France / clubs" },
+  ],
+  chess: [
+    { url: "https://www.fide.com/", sourceName: "FIDE", scope: "world", scopeLabel: "Monde" },
+    { url: "https://chess-results.com/", sourceName: "Chess-Results", scope: "world", scopeLabel: "Tournois / amateur" },
+  ],
+  esports: [
+    { url: "https://esl.com/", sourceName: "ESL", scope: "world", scopeLabel: "Monde" },
+    { url: "https://liquipedia.net/", sourceName: "Liquipedia", scope: "world", scopeLabel: "Multi-jeux" },
   ],
 };
 
@@ -1188,18 +1270,9 @@ const DARTS_LOCALE_QUERY_PACKS: Record<string, string[]> = {
   hi: ["darts results India", "WDF Asia darts results"],
   ja: ["ダーツ 結果 PDC WDF", "Japan darts results"],
   zh: ["飞镖 比赛 结果 PDC WDF", "China darts results"],
-  archery:[{url:"https://www.worldarchery.sport/competition",sourceName:"World Archery",scope:"world",scopeLabel:"Monde"},{url:"https://www.ianseo.net/",sourceName:"Ianseo",scope:"world",scopeLabel:"Clubs / Monde"}],
-  pickleball:[{url:"https://ppatour.com/",sourceName:"PPA Tour",scope:"world",scopeLabel:"Pro / Monde"},{url:"https://usapickleball.org/",sourceName:"USA Pickleball",scope:"regional",scopeLabel:"USA / Amateur"}],
-  frisbee:[{url:"https://wfdf.sport/",sourceName:"WFDF",scope:"world",scopeLabel:"Monde"},{url:"https://play.usaultimate.org/events/tournament/?ViewAll=true",sourceName:"USA Ultimate",scope:"regional",scopeLabel:"USA / Clubs"}],
-  billiards:[{url:"https://wpapool.com/",sourceName:"WPA",scope:"world",scopeLabel:"Pool / Monde"},{url:"https://matchroompool.com/",sourceName:"Matchroom Pool",scope:"world",scopeLabel:"Pro / Monde"}],
-  basket:[{url:"https://www.fiba.basketball/",sourceName:"FIBA",scope:"world",scopeLabel:"Monde"},{url:"https://www.nba.com/games",sourceName:"NBA",scope:"regional",scopeLabel:"USA"},{url:"https://resultats.ffbb.com/",sourceName:"FFBB",scope:"local",scopeLabel:"France / amateur"}],
-  rugby:[{url:"https://www.world.rugby/",sourceName:"World Rugby",scope:"world",scopeLabel:"Monde"},{url:"https://www.sixnationsrugby.com/",sourceName:"Six Nations",scope:"regional",scopeLabel:"Europe"},{url:"https://www.lnr.fr/",sourceName:"LNR",scope:"local",scopeLabel:"France"}],
-  volleyball:[{url:"https://en.volleyballworld.com/",sourceName:"Volleyball World",scope:"world",scopeLabel:"Monde"},{url:"https://www.cev.eu/",sourceName:"CEV",scope:"regional",scopeLabel:"Europe"},{url:"https://www.ffvolley.org/",sourceName:"FFVolley",scope:"local",scopeLabel:"France / amateur"}],
-  tennis:[{url:"https://www.atptour.com/en/scores",sourceName:"ATP",scope:"world",scopeLabel:"ATP"},{url:"https://www.wtatennis.com/scores",sourceName:"WTA",scope:"world",scopeLabel:"WTA"},{url:"https://www.itftennis.com/en/tournament-calendar/",sourceName:"ITF",scope:"world",scopeLabel:"ITF / semi-pro"},{url:"https://tenup.fft.fr/",sourceName:"FFT Ten'Up",scope:"local",scopeLabel:"France / clubs"}],
-  chess:[{url:"https://www.fide.com/",sourceName:"FIDE",scope:"world",scopeLabel:"Monde"},{url:"https://chess-results.com/",sourceName:"Chess-Results",scope:"world",scopeLabel:"Tournois / amateur"}],
-  esports:[{url:"https://esl.com/",sourceName:"ESL",scope:"world",scopeLabel:"Monde"},{url:"https://liquipedia.net/",sourceName:"Liquipedia",scope:"world",scopeLabel:"Multi-jeux"}],
 
 };
+
 
 const FOOT_LOCALE_QUERY_PACKS: Record<string, string[]> = {
   fr: ["football France résultats Ligue 1 Ligue 2 National", "FFF compétitions résultats National 2 National 3", "football amateur résultats R1 R2 R3 district France", "Coupe de France résultats clubs amateurs", "football féminin jeunes U19 U17 résultats France", "football Europe résultats Premier League Championship Bundesliga 2 Bundesliga Serie A B C D LaLiga Segunda", "Champions League Europa League Conference League résultats", "football Afrique Asie Amérique du Sud CONMEBOL Libertadores AFC CAF résultats"],
@@ -2590,6 +2663,7 @@ function intelligenceNewsToStructuredResult(row: IntelligenceNews, sport: string
     /^(.{2,80}?)\s+(?:beat|beats|defeated|defeats|bt|batt?u|vence|gagne contre)\s+(.{2,80}?)\s+(\d{1,3})\s*[-–:]\s*(\d{1,3})/i,
   ];
   let left = "", right = "", a = NaN, b = NaN;
+  let competitionHint = "";
   const first = text.match(patterns[0]);
   if (first) { left = first[1].trim(); a = Number(first[2]); b = Number(first[3]); right = first[4].trim(); }
   else {
@@ -2605,9 +2679,9 @@ function intelligenceNewsToStructuredResult(row: IntelligenceNews, sport: string
   return {
     id: `intel-result-${sport}-${normalizeHeadlineKey(`${left}-${a}-${b}-${right}`).replace(/\s+/g, "-").slice(0, 90)}`,
     playedOn: row.publishedAt || null,
-    competition: row.scopeLabel ? `${row.scopeLabel} · ${row.sourceName || "Résultats"}` : (row.sourceName || "Résultats publiés"),
+    competition: competitionHint || (row.scopeLabel ? `${row.scopeLabel} · ${row.sourceName || "Résultats"}` : (row.sourceName || "Résultats publiés")),
     round: null,
-    competitionMeta: competitionMetaFor(sport, row.scopeLabel || row.sourceName || null, row.sourceName || null, row.sourceUrl || null),
+    competitionMeta: competitionMetaFor(sport, competitionHint || row.scopeLabel || row.sourceName || null, row.sourceName || null, row.sourceUrl || null),
     winner,
     loser,
     raw: { source: row.sourceName || "Web", sourceUrl: row.sourceUrl || null },

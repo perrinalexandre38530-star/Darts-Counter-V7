@@ -1,0 +1,18 @@
+import fs from "node:fs";
+const read=(f)=>fs.readFileSync(f,"utf8");
+const assert=(c,m)=>{if(!c)throw new Error(m)};
+const engine=read("src/lib/gameEngines/wave61Engine.ts");
+const cfg=read("src/pages/wave61/modes/green_vs_redConfig.tsx");
+const play=read("src/pages/Wave61SharedPlay.tsx");
+const end=read("src/pages/wave61/Wave61EndSummary.tsx");
+const sharedCfg=read("src/pages/Wave61SharedConfig.tsx");
+assert(cfg.includes('key: "transferMissPoints"'),"MISS fixe configurable absent");
+assert(cfg.includes('key: "transferBaseErrorPoints"'),"Erreur de base configurable absente");
+assert(engine.includes('if (!d || d.bed === "MISS") return transferMissPoints;'),"MISS n'utilise pas la valeur fixe");
+assert(engine.includes('state.statsByPlayer[transferRecipient.id].score'),"Stats receveur non synchronisées");
+assert(engine.includes('miss${transferMissPoints}'),"Variant ID n'inclut pas le MISS");
+assert(play.includes("OFFERT À L'ADV."),"Récap transfert non explicite");
+assert(end.includes('["OFFERTS"'),"Tableau final transfert non explicite");
+assert(sharedCfg.includes("transferMissPoints == null") && sharedCfg.includes("transferMissMultiplier"),"Migration ancien réglage MISS absente");
+console.log("✅ GREEN VS RED V221 — MSS TRANSFERT câblé config → moteur → récap → stats");
+console.log("✅ MISS configuré = valeur fixe exacte offerte à l’adversaire");

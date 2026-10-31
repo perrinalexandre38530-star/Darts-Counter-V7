@@ -1,0 +1,10 @@
+import fs from 'node:fs';
+const e=fs.readFileSync(new URL('../src/lib/gameEngines/wave61Engine.ts', import.meta.url),'utf8');
+const c=fs.readFileSync(new URL('../src/pages/wave61/modes/green_vs_redConfig.tsx', import.meta.url),'utf8');
+const p=fs.readFileSync(new URL('../src/pages/Wave61SharedPlay.tsx', import.meta.url),'utf8');
+const s=fs.readFileSync(new URL('../src/pages/DartsModeSummaryPage.tsx', import.meta.url),'utf8');
+for (const x of ['contractRule','official_unique','unlimited','scoreModel','hit_count','board_value','bullAccess','color_anytime','penaltyModel','penaltyTargetSingle','penaltyOppDouble','penaltyOppTriple']) if(!c.includes(x)) throw new Error('Config variant missing '+x);
+for (const x of ['dartResults','rawBoardPoints','variantId: `gvr:','scoreModel === "hit_count" ? 1','contractRule === "official_unique"','bullAccess === "color_anytime"']) if(!e.includes(x)) throw new Error('Engine variant missing '+x);
+for (const x of ['Array.from({length:20}','ADVERSE','BULL 25','BULL 50','1 TOUCHE = 1 PT','greenRedResult']) if(!p.includes(x)) throw new Error('Keypad/recap variant missing '+x);
+for (const x of ['variantLabel','VARIANTE ·','validResults','greenRedVariantId']) if(!s.includes(x)) throw new Error('Stats variant missing '+x);
+console.log('✅ V218 GREEN VS RED variants: official/unlimited, hit-count/board-value, bull-anytime, graduated penalties, full keypad, recap and variant stats guarded.');

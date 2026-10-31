@@ -3,12 +3,12 @@ import type { SportLiveOverview, SportLiveSportId } from "./types";
 
 const CACHE_PREFIX = "msc_sport_live_cache_v11:";
 const LEGACY_CACHE_PREFIXES = ["msc_sport_live_cache_v10:", "msc_sport_live_cache_v8:"];
-const CACHE_RESULT_LIMIT = 360;
-const CACHE_FIXTURE_LIMIT = 180;
-const CACHE_EVENT_LIMIT = 260;
-const CACHE_NEWS_LIMIT = 320;
+const CACHE_RESULT_LIMIT = 900;
+const CACHE_FIXTURE_LIMIT = 420;
+const CACHE_EVENT_LIMIT = 420;
+const CACHE_NEWS_LIMIT = 520;
 
-function isSupportedSport(value: SportId): value is SportLiveSportId {
+function isSupportedSport(value: SportId): boolean {
   return ["darts", "petanque", "pingpong", "babyfoot", "molkky", "foot", "padel", "badminton", "cornhole", "bowling"].includes(String(value));
 }
 

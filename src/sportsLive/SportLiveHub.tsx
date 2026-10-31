@@ -260,16 +260,29 @@ function familyLabel(value?: string | null) {
   return labels[String(value || "")] || "";
 }
 
-function competitionCategory(row?: DartsLiveResult | null) {
+function competitionGeography(row?: DartsLiveResult | null) {
   const meta = competitionMetaOf(row);
   if (!meta) return "AUTRES";
   if (meta.family === "national_teams") return "SÉLECTIONS";
   if (meta.family === "world" || meta.continent === "Monde") return "MONDE";
-  if (meta.level === "grassroots" || meta.level === "amateur" || meta.family === "amateur") return "AMATEUR";
   if (meta.countryName) return String(meta.countryName).toUpperCase();
   if (meta.continent) return String(meta.continent).toUpperCase();
   if (meta.family === "continental") return "CONTINENTAL";
   return "AUTRES";
+}
+
+function competitionLevelGroup(row?: DartsLiveResult | null) {
+  const meta = competitionMetaOf(row);
+  if (!meta) return "AUTRES";
+  if (meta.family === "national_teams") return "SÉLECTIONS";
+  if (meta.family === "youth" || meta.age) return "JEUNES";
+  if (meta.gender === "women" || meta.family === "women") return "FÉMININ";
+  if (meta.level === "grassroots") return "GRASSROOTS";
+  if (meta.level === "amateur" || meta.family === "amateur" || meta.family === "regional") return "AMATEUR";
+  if (meta.level === "semi_pro") return "SEMI-PRO";
+  if (meta.level === "pro") return "PRO";
+  if (meta.level === "elite" || meta.family === "world" || meta.family === "continental") return "ÉLITE";
+  return familyLabel(meta.family).toUpperCase() || "AUTRES";
 }
 
 function categoryIcon(label: string) {
@@ -282,6 +295,10 @@ function categoryIcon(label: string) {
   if (/afrique/.test(key)) return "🌍";
   if (/amerique/.test(key)) return "🌎";
   if (/amateur|grassroots/.test(key)) return "🏘️";
+  if (/semi/.test(key)) return "🛠️";
+  if (/pro|elite/.test(key)) return "🏆";
+  if (/jeunes/.test(key)) return "🌱";
+  if (/feminin/.test(key)) return "♀";
   return "🏳️";
 }
 
@@ -538,6 +555,9 @@ function LiveStyles() {
       .msc-result-score.is-winner { color:#f4d445; }
       .msc-result-head-spacer { flex:1; }
       .msc-live-warning { margin:7px 0 0; padding:6px 8px; border:1px solid rgba(255,80,96,.25); border-radius:8px; background:rgba(255,48,72,.07); color:#ff8995; font-size:8.5px; font-weight:900; text-align:center; }
+      .msc-hierarchy-block { margin:4px 0 5px; padding:7px 8px 6px; border:1px solid #242c34; border-radius:12px; background:linear-gradient(180deg,rgba(255,255,255,.025),rgba(255,255,255,.008)); }
+      .msc-hierarchy-label { color:#7f8995; font-size:7.5px; font-weight:1000; letter-spacing:.65px; }
+      .msc-hierarchy-label.is-secondary { margin-top:5px; }
       .msc-category-dock { display:flex; gap:6px; overflow-x:auto; padding:2px 0 5px; scrollbar-width:none; }
       .msc-category-dock::-webkit-scrollbar { display:none; }
       .msc-category-btn { flex:0 0 auto; min-height:31px; display:inline-flex; align-items:center; gap:6px; padding:5px 9px; border:1px solid #2b343d; border-radius:999px; background:#0b1015; color:#909ba6; font-size:8px; font-weight:1000; cursor:pointer; }
@@ -917,42 +937,62 @@ function GroupedResults({ rows, source, lang, newsRows, allSources }: { rows: Da
         latest: Math.max(...matches.map((match) => dateTs(match.playedOn)), 0),
         imageUrl: findCompetitionImage(name, matches, newsRows, allSources),
         tone: competitionVisualTone(name),
-        category: competitionCategory(matches[0]),
+        geography: competitionGeography(matches[0]),
+        levelGroup: competitionLevelGroup(matches[0]),
         chips: competitionMetaChips(matches[0]),
       }))
       .sort((a, b) => (b.latest - a.latest) || (b.matches.length - a.matches.length) || a.name.localeCompare(b.name));
   }, [rows, newsRows, allSources]);
 
-  const categories = React.useMemo(() => {
+  const geographies = React.useMemo(() => {
     const counts = new Map<string, number>();
-    competitions.forEach((item) => counts.set(item.category, (counts.get(item.category) || 0) + item.matches.length));
+    competitions.forEach((item) => counts.set(item.geography, (counts.get(item.geography) || 0) + item.matches.length));
+    return Array.from(counts.entries()).sort((a,b) => b[1]-a[1] || a[0].localeCompare(b[0]));
+  }, [competitions]);
+  const levelGroups = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    competitions.forEach((item) => counts.set(item.levelGroup, (counts.get(item.levelGroup) || 0) + item.matches.length));
     return Array.from(counts.entries()).sort((a,b) => b[1]-a[1] || a[0].localeCompare(b[0]));
   }, [competitions]);
 
-  const [selectedCategory, setSelectedCategory] = React.useState("__all__");
+  const [selectedGeography, setSelectedGeography] = React.useState("__all__");
+  const [selectedLevel, setSelectedLevel] = React.useState("__all__");
   const [selected, setSelected] = React.useState("__all__");
   React.useEffect(() => {
     if (selected !== "__all__" && !competitions.some((item) => item.name === selected)) setSelected("__all__");
   }, [competitions, selected]);
-  React.useEffect(() => { setSelected("__all__"); }, [selectedCategory]);
+  React.useEffect(() => { setSelected("__all__"); }, [selectedGeography, selectedLevel]);
 
-  const categoryFiltered = selectedCategory === "__all__" ? competitions : competitions.filter((item) => item.category === selectedCategory);
-  const visible = selected === "__all__" ? categoryFiltered : categoryFiltered.filter((item) => item.name === selected);
-  const filteredCount = categoryFiltered.reduce((sum,item) => sum + item.matches.length, 0);
+  const hierarchyFiltered = competitions.filter((item) =>
+    (selectedGeography === "__all__" || item.geography === selectedGeography) &&
+    (selectedLevel === "__all__" || item.levelGroup === selectedLevel)
+  );
+  const visible = selected === "__all__" ? hierarchyFiltered : hierarchyFiltered.filter((item) => item.name === selected);
+  const filteredCount = hierarchyFiltered.reduce((sum,item) => sum + item.matches.length, 0);
 
   return (
     <>
-      <div className="msc-category-dock" aria-label="Catégories de compétitions">
-        <button className={`msc-category-btn${selectedCategory === "__all__" ? " is-active" : ""}`} type="button" onClick={() => setSelectedCategory("__all__")}>🧭 TOUTES · {rows.length}</button>
-        {categories.map(([category, count]) => (
-          <button key={category} className={`msc-category-btn${selectedCategory === category ? " is-active" : ""}`} type="button" onClick={() => setSelectedCategory(category)} title={category}>{categoryIcon(category)} {category} · {count}</button>
-        ))}
+      <div className="msc-hierarchy-block">
+        <div className="msc-hierarchy-label">ZONE / PAYS</div>
+        <div className="msc-category-dock" aria-label="Zones et pays">
+          <button className={`msc-category-btn${selectedGeography === "__all__" ? " is-active" : ""}`} type="button" onClick={() => setSelectedGeography("__all__")}>🧭 TOUT · {rows.length}</button>
+          {geographies.map(([category, count]) => (
+            <button key={category} className={`msc-category-btn${selectedGeography === category ? " is-active" : ""}`} type="button" onClick={() => setSelectedGeography(category)} title={category}>{categoryIcon(category)} {category} · {count}</button>
+          ))}
+        </div>
+        <div className="msc-hierarchy-label is-secondary">NIVEAU / CATÉGORIE</div>
+        <div className="msc-category-dock" aria-label="Niveaux de compétitions">
+          <button className={`msc-category-btn${selectedLevel === "__all__" ? " is-active" : ""}`} type="button" onClick={() => setSelectedLevel("__all__")}>TOUS NIVEAUX</button>
+          {levelGroups.map(([category, count]) => (
+            <button key={category} className={`msc-category-btn${selectedLevel === category ? " is-active" : ""}`} type="button" onClick={() => setSelectedLevel(category)} title={category}>{categoryIcon(category)} {category} · {count}</button>
+          ))}
+        </div>
       </div>
       <div className="msc-competition-dock" aria-label="Compétitions">
         <button className={`msc-competition-btn${selected === "__all__" ? " is-active" : ""}`} type="button" onClick={() => setSelected("__all__")} title="Toutes les compétitions">
           <span className="msc-competition-visual"><span className="msc-competition-icon">🏟️</span></span><span className="msc-competition-label">TOUTES</span><span className="msc-competition-count">{filteredCount}</span>
         </button>
-        {categoryFiltered.map(({ name, matches, imageUrl, tone }) => (
+        {hierarchyFiltered.map(({ name, matches, imageUrl, tone }) => (
           <button key={name} className={`msc-competition-btn ${tone}${selected === name ? " is-active" : ""}`} type="button" onClick={() => setSelected(name)} title={name}>
             <span className="msc-competition-visual">{imageUrl ? <img src={imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : <span className="msc-competition-icon">{competitionIcon(name)}</span>}</span><span className="msc-competition-label" translate="no">{name}</span><span className="msc-competition-count">{matches.length}</span>
           </button>

@@ -20,6 +20,7 @@ import { registerConfigUiLiteralSources } from "../i18n/configUiLiteralRegistry"
 import { registerMonetizationUiLiteralSources } from "../i18n/monetizationUiLiteralRegistry";
 import { registerAppUiLiteralSources } from "../i18n/appUiLiteralRegistry";
 import { postProcessCoreUiTranslation, registerCoreUiLiteralTranslations } from "../i18n/coreUiOverrides";
+import { localizeBullTerminology } from "../lib/dartsBullTerminology";
 
 // -----------------------------
 // Types publics
@@ -111,31 +112,7 @@ function getDictFor(code: Lang): Dict | undefined {
 // - zone 50 : BULL
 // Les moteurs continuent d'utiliser leurs identifiants historiques BULL / DBULL.
 function localizeFrenchBullTerms(value: string): string {
-  if (!value || !/bull/i.test(value)) return value;
-  const OUTER = "__MSS_OUTER_BULL__";
-  const INNER = "__MSS_INNER_BULL__";
-  let text = String(value);
-
-  // Idempotence : protéger d'abord les libellés français déjà localisés.
-  // Sans cela, "1/2 BULL" repassait dans le MutationObserver et devenait
-  // "1/2 1/2 BULL".
-  text = text.replace(/\b1\s*\/\s*2\s+BULL\s*25\b/gi, `${OUTER} 25`);
-  text = text.replace(/\b1\s*\/\s*2\s+BULL\b/gi, OUTER);
-
-  // Protéger ensuite toutes les écritures historiques qui désignent la zone 50.
-  text = text.replace(/\bD[\s-]?BULL\s*50\b/gi, `${INNER} 50`);
-  text = text.replace(/\bDOUBLE\s+BULL\s*50\b/gi, `${INNER} 50`);
-  text = text.replace(/\bBULL\s*50\b/gi, `${INNER} 50`);
-  text = text.replace(/\bD[\s-]?BULL\b/gi, INNER);
-  text = text.replace(/\bDOUBLE\s+BULL\b/gi, INNER);
-
-  // Les BULL historiques restants correspondent à la zone 25.
-  text = text.replace(/\bBULL\s*25\b/gi, `${OUTER} 25`);
-  text = text.replace(/\bBULL\b/gi, OUTER);
-
-  return text
-    .replaceAll(INNER, "BULL")
-    .replaceAll(OUTER, "1/2 BULL");
+  return localizeBullTerminology("fr", value);
 }
 
 // -----------------------------
@@ -332,7 +309,7 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
       const sourceChanged = !prev || source !== prev.source;
       const resolved = !sourceChanged && prev?.resolvedLang === lang ? prev.resolved : undefined;
       const translated = resolved || translateLiteral(source);
-      const applied = lang === "fr" ? localizeFrenchBullTerms(translated) : translated;
+      const applied = localizeBullTerminology(lang, translated);
       textState.set(node, { source, applied, resolved, resolvedLang: resolved ? lang : undefined });
       if (applied !== current) node.nodeValue = applied;
       if (lang !== "fr" && !resolved && getUiLiteralSourceLanguage(source)) scheduleTextResolve(node, source);
@@ -352,7 +329,7 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
       const sourceChanged = !prev || source !== prev.source;
       const resolved = !sourceChanged && prev?.resolvedLang === lang ? prev.resolved : undefined;
       const translated = resolved || translateLiteral(source);
-      const applied = lang === "fr" ? localizeFrenchBullTerms(translated) : translated;
+      const applied = localizeBullTerminology(lang, translated);
       map.set(attr, { source, applied, resolved, resolvedLang: resolved ? lang : undefined });
       if (applied !== current) el.setAttribute(attr, applied);
       if (lang !== "fr" && !resolved && getUiLiteralSourceLanguage(source)) scheduleAttrResolve(el, attr, source);
@@ -545,27 +522,28 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
       t: (key: string, fallback?: string) => {
         const dictCurrent = getDictFor(lang);
         const dictFr = getDictFor("fr") || {};
+        const bull = (value: string) => localizeBullTerminology(lang, value);
 
         // 1) Dictionnaire langue courante
         if (
           dictCurrent &&
           Object.prototype.hasOwnProperty.call(dictCurrent, key)
         ) {
-          return dictCurrent[key];
+          return bull(dictCurrent[key]);
         }
 
         // 2) English keeps its deterministic static fallback.
         if (lang === "en") {
           const dictEn = getDictFor("en") || {};
           if (Object.prototype.hasOwnProperty.call(dictEn, key)) {
-            return dictEn[key];
+            return bull(dictEn[key]);
           }
 
           const sourceFr =
             (Object.prototype.hasOwnProperty.call(dictFr, key) && dictFr[key]) ||
             fallback ||
             key;
-          return createUiLiteralTranslator(DICT_ANY, "en")(sourceFr);
+          return bull(createUiLiteralTranslator(DICT_ANY, "en")(sourceFr));
         }
 
         // 3) For every other selected language, NEVER fall back to English.
@@ -581,7 +559,7 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
           const sourceFr = (hasFr && dictFr[key]) || fallback || key;
 
           const deterministic = createUiLiteralTranslator(DICT_ANY, lang)(sourceFr);
-          if (deterministic !== sourceFr) return deterministic;
+          if (deterministic !== sourceFr) return bull(deterministic);
 
           // Most fallbacks are authored in French. Some legacy FR entries use
           // English technical wording ("Patch notes", "Winrate", ...). When a
@@ -590,18 +568,18 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
           if (!looksFrenchUiText(sourceFr) && hasEn) {
             const sourceEn = dictEn[key];
             registerUiLiteralTranslationSource(sourceEn, "en");
-            return sourceEn;
+            return bull(sourceEn);
           }
 
           registerUiLiteralTranslationSource(sourceFr, "fr");
-          return sourceFr;
+          return bull(sourceFr);
         }
 
         // 4) French only: FR dictionary then manual fallback.
         if (Object.prototype.hasOwnProperty.call(dictFr, key)) {
-          return dictFr[key];
+          return bull(dictFr[key]);
         }
-        return fallback ?? key;
+        return bull(fallback ?? key);
       },
     }),
     [lang]

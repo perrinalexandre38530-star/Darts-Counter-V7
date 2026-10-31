@@ -140,73 +140,69 @@ export default function Wave61EndSummary({ state, profiles, accent, familyLabel 
   const greenRedBullRule = String(state?.config?.modeOptions?.bullRule || "classic");
   const greenRedRuleLabel = greenRedBullRule === "color_lock" ? "BULL DE COULEUR" : greenRedBullRule === "color_bonus" ? "BULL BONUS" : "CLASSIQUE";
 
-  return <div style={{ display: "grid", gap: 9, textAlign: "left" }}>
-    {isGreenRed ? <div data-green-red-final-table="1" style={{ ...card(accent), padding: 8 }}>
-      <div style={{ display:"flex", justifyContent:"space-between", gap:8, alignItems:"center", marginBottom:7 }}>
-        <div style={{ color:accent, fontSize:9, fontWeight:1050, letterSpacing:.8 }}>GREEN VS RED · TABLEAU FINAL</div>
-        <div style={{ color:SOFT, fontSize:8.3, fontWeight:900 }}>{greenRedFormat === "teams" ? "TEAM" : greenRedFormat === "multi_random" ? "MULTI ALÉATOIRE" : "DUEL"} · {greenRedRuleLabel}</div>
+  return <div style={{ display:"grid",gap:9,textAlign:"left",width:"100%",maxWidth:"100%",minWidth:0,boxSizing:"border-box",overflow:"hidden" }}>
+    {isGreenRed ? <div data-green-red-final-table="1" style={{ ...card(accent),padding:8,width:"100%",maxWidth:"100%",minWidth:0,boxSizing:"border-box",overflow:"hidden" }}>
+      <div style={{ display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",marginBottom:7,flexWrap:"wrap" }}>
+        <div style={{ color:accent,fontSize:9,fontWeight:1050,letterSpacing:.8 }}>GREEN VS RED · TABLEAU FINAL</div>
+        <div style={{ color:SOFT,fontSize:8.3,fontWeight:900 }}>{greenRedFormat === "teams" ? "TEAM" : greenRedFormat === "multi_random" ? "MULTI ALÉATOIRE" : "DUEL"} · {greenRedRuleLabel}</div>
       </div>
-      <div style={{ overflowX:"auto", borderRadius:10, border:"1px solid rgba(255,255,255,.08)" }}>
-        <table style={{ width:"100%", borderCollapse:"collapse", minWidth:620, fontSize:9 }}>
-          <thead><tr style={{ color:accent, background:"rgba(255,255,255,.035)", textAlign:"left" }}><th style={{padding:7}}>#</th><th style={{padding:7}}>Joueur</th><th style={{padding:7}}>Couleur</th><th style={{padding:7}}>Score</th><th style={{padding:7}}>Étape</th><th style={{padding:7}}>Doubles</th><th style={{padding:7}}>Triples</th><th style={{padding:7}}>Bulls</th><th style={{padding:7}}>Pénalités</th><th style={{padding:7}}>Bonus Bull</th></tr></thead>
-          <tbody>{rows.map((row:any)=><tr key={row.id} style={{ borderTop:"1px solid rgba(255,255,255,.055)", color:row.winner?"#fff":"#cbd1dd", background:row.winner?`${accent}0c`:"transparent" }}>
-            <td style={{padding:7,fontWeight:1000}}>{row.rank}</td>
-            <td style={{padding:7,fontWeight:950}}>{row.name}{row.team ? ` · TEAM ${row.team === "A" ? "VERTE" : "ROUGE"}` : ""}</td>
-            <td style={{padding:7,fontWeight:1000,color:String(state?.special?.greenRedColorByPlayer?.[row.id]||"GREEN")==="RED"?"#ff5c69":"#44e58f"}}>{String(state?.special?.greenRedColorByPlayer?.[row.id]||"GREEN")}</td>
-            <td style={{padding:7,fontWeight:1100}}>{Math.round(row.score)}</td>
-            <td style={{padding:7}}>{Math.min(11,n(state?.special?.greenRedStepByPlayer?.[row.id]))}/11</td>
-            <td style={{padding:7}}>{row.doubles}</td><td style={{padding:7}}>{row.triples}</td><td style={{padding:7}}>{row.bulls}</td>
-            <td style={{padding:7}}>-{n(state?.special?.greenRedPenaltyByPlayer?.[row.id])}</td>
-            <td style={{padding:7}}>+{n(state?.special?.greenRedBullBonusByPlayer?.[row.id])}</td>
-          </tr>)}</tbody>
-        </table>
+      <div style={{ display:"grid",gap:6,minWidth:0 }}>
+        {rows.map((row:any)=>{
+          const color=String(state?.special?.greenRedColorByPlayer?.[row.id]||"GREEN");
+          const tone=color==="RED"?"#ff5c69":"#44e58f";
+          const step=Math.min(11,n(state?.special?.greenRedStepByPlayer?.[row.id]));
+          const penaltyModel=String(state?.config?.modeOptions?.penaltyModel||"transfer");
+          const penalty=n(state?.special?.greenRedPenaltyByPlayer?.[row.id]);
+          const bonus=n(state?.special?.greenRedBullBonusByPlayer?.[row.id]);
+          const transferGiven=n(state?.special?.greenRedTransferGivenByPlayer?.[row.id]);
+          const transferReceived=n(state?.special?.greenRedTransferReceivedByPlayer?.[row.id]);
+          return <div key={row.id} style={{ minWidth:0,borderRadius:11,border:`1px solid ${row.winner?accent+"70":"rgba(255,255,255,.08)"}`,background:row.winner?`${accent}0d`:"rgba(255,255,255,.02)",padding:8,display:"grid",gap:7 }}>
+            <div style={{ display:"grid",gridTemplateColumns:"24px minmax(0,1fr) auto",gap:7,alignItems:"center",minWidth:0 }}>
+              <b style={{ color:row.winner?accent:"#fff",fontSize:12 }}>#{row.rank}</b>
+              <div style={{ minWidth:0 }}><div style={{ color:"#fff",fontWeight:1050,fontSize:10.5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{row.name}</div><div style={{ color:tone,fontSize:8,fontWeight:1000,marginTop:1 }}>{color}{row.team?` · TEAM ${row.team === "A" ? "VERTE" : "ROUGE"}`:""}</div></div>
+              <strong style={{ color:"#fff",fontSize:18,lineHeight:1 }}>{Math.round(row.score)}</strong>
+            </div>
+            <div style={{ display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:5,minWidth:0 }}>
+              {(penaltyModel==="transfer"
+                ? [["ÉTAPE",`${step}/11`],["D / T",`${row.doubles} / ${row.triples}`],["BULLS",row.bulls],["OFFERTS",`+${transferGiven}`],["REÇUS",`+${transferReceived}`],["PRÉCISION",`${row.accuracy}%`]]
+                : [["ÉTAPE",`${step}/11`],["D / T",`${row.doubles} / ${row.triples}`],["BULLS",row.bulls],["PÉNALITÉ",`-${penalty}`],["BONUS",`+${bonus}`],["PRÉCISION",`${row.accuracy}%`]]
+              ).map(([label,value])=><div key={String(label)} style={{ minWidth:0,borderRadius:9,padding:"5px 4px",textAlign:"center",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.055)" }}><div style={{ color:SOFT,fontSize:6.8,fontWeight:950,letterSpacing:.3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{label}</div><div style={{ color:label==="PÉNALITÉ"&&penalty?"#ff7b88":label==="OFFERTS"&&transferGiven?"#ff7b88":label==="REÇUS"&&transferReceived?"#58d8ff":label==="BONUS"&&bonus?tone:"#fff",fontSize:10,fontWeight:1050,marginTop:2 }}>{value}</div></div>)}
+            </div>
+          </div>;
+        })}
       </div>
     </div> : null}
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(105px,1fr))", gap: 6 }}>
-      {[
-        ["FLÈCHES", stats.totalDarts],
-        ["PRÉCISION", `${stats.accuracy}%`],
-        ["BULLS", stats.bulls],
-        ["BEST VOLÉE", stats.bestVisit],
-        ["DOUBLES", stats.doubles],
-        ["TRIPLES", stats.triples],
-        ["BEST COMBO", stats.bestCombo],
-        ["TOUCHES", `${stats.totalHits}/${stats.totalDarts}`],
-      ].map(([label, value]) => <div key={String(label)} style={{ ...card(accent), textAlign: "center" }}><div style={{ color: accent, fontSize: 8.4, fontWeight: 1000, letterSpacing: .7 }}>{label}</div><div style={{ marginTop: 3, color: "#fff", fontSize: 18, fontWeight: 1100 }}>{value}</div></div>)}
+
+    <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(92px,100%),1fr))",gap:6,minWidth:0 }}>
+      {[["FLÈCHES",stats.totalDarts],["PRÉCISION",`${stats.accuracy}%`],["BULLS",stats.bulls],["BEST VOLÉE",stats.bestVisit],["DOUBLES",stats.doubles],["TRIPLES",stats.triples],["BEST COMBO",stats.bestCombo],["TOUCHES",`${stats.totalHits}/${stats.totalDarts}`]].map(([label,value]) => <div key={String(label)} style={{ ...card(accent),minWidth:0,textAlign:"center",boxSizing:"border-box" }}><div style={{ color:accent,fontSize:8,fontWeight:1000,letterSpacing:.5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{label}</div><div style={{ marginTop:3,color:"#fff",fontSize:17,fontWeight:1100 }}>{value}</div></div>)}
     </div>
 
-    <div style={{ ...card(accent), padding: 8 }}>
-      <div style={{ color: accent, fontSize: 9, fontWeight: 1050, letterSpacing: .8, marginBottom: 7 }}>RÉCOMPENSES DU MATCH</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(155px,1fr))", gap: 6 }}>
-        {awards.map((award: any) => <div key={award.key} style={{ borderRadius: 11, padding: 8, border: `1px solid ${award.key === "winner" ? accent + "77" : "rgba(255,255,255,.08)"}`, background: award.key === "winner" ? `${accent}10` : "rgba(255,255,255,.025)", display: "grid", gridTemplateColumns: "34px minmax(0,1fr)", gap: 7, alignItems: "center" }}>
-          <ProfileAvatar profile={award.row.profile} size={34} showStars={false} ringColor={award.key === "winner" ? accent : "rgba(255,255,255,.18)"} />
-          <div style={{ minWidth: 0 }}><div style={{ color: accent, fontSize: 8.1, fontWeight: 1100, letterSpacing: .6 }}>{award.icon} {award.label}</div><div style={{ color: "#fff", fontSize: 10.2, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{award.row.name}</div><div style={{ color: SOFT, fontSize: 8.4 }}>{award.value}</div></div>
+    <div style={{ ...card(accent),padding:8,minWidth:0,overflow:"hidden" }}>
+      <div style={{ color:accent,fontSize:9,fontWeight:1050,letterSpacing:.8,marginBottom:7 }}>RÉCOMPENSES DU MATCH</div>
+      <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(145px,100%),1fr))",gap:6,minWidth:0 }}>
+        {awards.map((award:any)=><div key={award.key} style={{ minWidth:0,borderRadius:11,padding:8,border:`1px solid ${award.key === "winner" ? accent+"77" : "rgba(255,255,255,.08)"}`,background:award.key === "winner" ? `${accent}10` : "rgba(255,255,255,.025)",display:"grid",gridTemplateColumns:"34px minmax(0,1fr)",gap:7,alignItems:"center" }}>
+          <ProfileAvatar profile={award.row.profile} size={34} showStars={false} ringColor={award.key === "winner" ? accent : "rgba(255,255,255,.18)"}/>
+          <div style={{ minWidth:0 }}><div style={{ color:accent,fontSize:8.1,fontWeight:1100,letterSpacing:.6 }}>{award.icon} {award.label}</div><div style={{ color:"#fff",fontSize:10.2,fontWeight:1000,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{award.row.name}</div><div style={{ color:SOFT,fontSize:8.4,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{award.value}</div></div>
         </div>)}
       </div>
     </div>
 
-    {teamRows.length ? <div style={{ ...card(accent), display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
-      <b style={{ color: accent, fontSize: 9.5 }}>ÉQUIPES</b>
-      {teamRows.map((team: any) => <span key={team.id} style={{ borderRadius: 999, padding: "5px 8px", border: `1px solid ${team.winner ? accent : "rgba(255,255,255,.13)"}`, background: team.winner ? `${accent}18` : "rgba(255,255,255,.035)", color: team.winner ? "#fff" : SOFT, fontSize: 9.3, fontWeight: 900 }}>{team.winner ? "🏆 " : ""}TEAM {team.id} · {Math.round(team.score)}</span>)}
-    </div> : null}
+    {teamRows.length ? <div style={{ ...card(accent),display:"flex",gap:7,flexWrap:"wrap",alignItems:"center",minWidth:0,overflow:"hidden" }}><b style={{ color:accent,fontSize:9.5 }}>ÉQUIPES</b>{teamRows.map((team:any)=><span key={team.id} style={{ maxWidth:"100%",borderRadius:999,padding:"5px 8px",border:`1px solid ${team.winner ? accent : "rgba(255,255,255,.13)"}`,background:team.winner?`${accent}18`:"rgba(255,255,255,.035)",color:team.winner?"#fff":SOFT,fontSize:9.3,fontWeight:900,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{team.winner?"🏆 ":""}TEAM {team.id} · {Math.round(team.score)}</span>)}</div> : null}
 
-    <div style={{ ...card(accent), padding: 8 }}>
-      <div style={{ color: accent, fontSize: 9, fontWeight: 1050, letterSpacing: .8, marginBottom: 7 }}>PODIUM · {String(familyLabel || "WAVE61").toUpperCase()}</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 6 }}>
-        {top.map((row: any) => <div key={row.id} style={{ display: "grid", gridTemplateColumns: "34px minmax(0,1fr)", gap: 7, alignItems: "center", borderRadius: 11, padding: 7, border: `1px solid ${row.winner ? accent + "88" : "rgba(255,255,255,.08)"}`, background: row.winner ? `${accent}12` : "rgba(255,255,255,.025)" }}>
-          <ProfileAvatar profile={row.profile} size={34} showStars={false} ringColor={row.winner ? accent : "rgba(255,255,255,.18)"} />
-          <div style={{ minWidth: 0 }}><div style={{ color: row.winner ? "#fff" : "#dce1eb", fontWeight: 1000, fontSize: 10.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.rank === 1 ? "🥇 " : row.rank === 2 ? "🥈 " : "🥉 "}{row.name}</div><div style={{ color: SOFT, fontSize: 8.8, marginTop: 2 }}>{metricText(row)} · {row.accuracy}%</div><div style={{ color: SOFT, fontSize: 7.8, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.metric?.sub || `${row.hits} touches`}</div></div>
-        </div>)}
+    <div style={{ ...card(accent),padding:8,minWidth:0,overflow:"hidden" }}>
+      <div style={{ color:accent,fontSize:9,fontWeight:1050,letterSpacing:.8,marginBottom:7 }}>PODIUM · {String(familyLabel || "WAVE61").toUpperCase()}</div>
+      <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(145px,100%),1fr))",gap:6,minWidth:0 }}>
+        {top.map((row:any)=><div key={row.id} style={{ minWidth:0,display:"grid",gridTemplateColumns:"34px minmax(0,1fr)",gap:7,alignItems:"center",borderRadius:11,padding:7,border:`1px solid ${row.winner ? accent+"88" : "rgba(255,255,255,.08)"}`,background:row.winner?`${accent}12`:"rgba(255,255,255,.025)" }}><ProfileAvatar profile={row.profile} size={34} showStars={false} ringColor={row.winner?accent:"rgba(255,255,255,.18)"}/><div style={{ minWidth:0 }}><div style={{ color:row.winner?"#fff":"#dce1eb",fontWeight:1000,fontSize:10.5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{row.rank===1?"🥇 ":row.rank===2?"🥈 ":"🥉 "}{row.name}</div><div style={{ color:SOFT,fontSize:8.8,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{metricText(row)} · {row.accuracy}%</div><div style={{ color:SOFT,fontSize:7.8,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{row.metric?.sub || `${row.hits} touches`}</div></div></div>)}
       </div>
     </div>
 
-    <div style={{ ...card(accent), padding: 8 }}>
-      <div style={{ color: accent, fontSize: 9, fontWeight: 1050, letterSpacing: .8, marginBottom: 7 }}>DÉTAILS JOUEURS · OBJECTIF DU MODE</div>
-      <div style={{ overflowX: "auto", borderRadius: 10, border: "1px solid rgba(255,255,255,.08)" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760, fontSize: 9.2 }}>
-        <thead><tr style={{ color: accent, background: "rgba(255,255,255,.035)", textAlign: "left" }}><th style={{ padding: 7 }}>#</th><th style={{ padding: 7 }}>Joueur</th><th style={{ padding: 7 }}>Objectif</th><th style={{ padding: 7 }}>Détail mode</th><th style={{ padding: 7 }}>Score</th><th style={{ padding: 7 }}>Flèches</th><th style={{ padding: 7 }}>Touches</th><th style={{ padding: 7 }}>Précision</th><th style={{ padding: 7 }}>S/D/T</th><th style={{ padding: 7 }}>Best</th></tr></thead>
-        <tbody>{rows.map((row: any) => <tr key={row.id} style={{ borderTop: "1px solid rgba(255,255,255,.055)", color: row.winner ? "#fff" : "#cbd1dd", background: row.winner ? `${accent}0c` : "transparent" }}><td style={{ padding: 7, fontWeight: 1000 }}>{row.rank}</td><td style={{ padding: 7, fontWeight: 900 }}>{row.name}{row.team ? ` · ${row.team}` : ""}</td><td style={{ padding: 7, color: row.winner ? accent : "#fff", fontWeight: 1000 }}>{metricText(row)}</td><td style={{ padding: 7, color: SOFT, maxWidth: 230 }}>{row.metric?.sub || "—"}</td><td style={{ padding: 7 }}>{Math.round(row.score)}</td><td style={{ padding: 7 }}>{row.darts}</td><td style={{ padding: 7 }}>{row.hits}</td><td style={{ padding: 7 }}>{row.accuracy}%</td><td style={{ padding: 7 }}>{row.doubles}/{row.triples}/{row.bulls}</td><td style={{ padding: 7 }}>{Math.max(row.bestVisit, row.bestCombo)}</td></tr>)}</tbody>
-      </table>
+    <div style={{ ...card(accent),padding:8,minWidth:0,overflow:"hidden" }}>
+      <div style={{ color:accent,fontSize:9,fontWeight:1050,letterSpacing:.8,marginBottom:7 }}>DÉTAILS JOUEURS · OBJECTIF DU MODE</div>
+      <div style={{ display:"grid",gap:6,minWidth:0 }}>
+        {rows.map((row:any)=><div key={row.id} style={{ minWidth:0,borderRadius:11,padding:8,border:`1px solid ${row.winner?accent+"66":"rgba(255,255,255,.07)"}`,background:row.winner?`${accent}0b`:"rgba(255,255,255,.02)" }}>
+          <div style={{ display:"grid",gridTemplateColumns:"24px minmax(0,1fr) auto",gap:7,alignItems:"center",minWidth:0 }}><b style={{ color:row.winner?accent:"#fff" }}>#{row.rank}</b><div style={{ minWidth:0 }}><div style={{ color:"#fff",fontSize:10.5,fontWeight:1000,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{row.name}</div><div style={{ color:SOFT,fontSize:8,marginTop:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{row.metric?.sub || "—"}</div></div><strong style={{ color:row.winner?accent:"#fff",fontSize:11 }}>{metricText(row)}</strong></div>
+          <div style={{ marginTop:6,display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:5,minWidth:0 }}>{[["SCORE",Math.round(row.score)],["FLÈCHES",row.darts],["TOUCHES",row.hits],["PRÉC.",`${row.accuracy}%`],["D",row.doubles],["T",row.triples],["BULL",row.bulls],["BEST",Math.max(row.bestVisit,row.bestCombo)]].map(([label,value])=><div key={String(label)} style={{ minWidth:0,textAlign:"center",padding:"4px 2px",borderRadius:8,background:"rgba(255,255,255,.025)" }}><div style={{ color:SOFT,fontSize:6.5,fontWeight:950 }}>{label}</div><div style={{ color:"#fff",fontSize:9.5,fontWeight:1050,marginTop:1 }}>{value}</div></div>)}</div>
+        </div>)}
       </div>
     </div>
   </div>;

@@ -1,9 +1,11 @@
 // @ts-nocheck
 // Architecture V10+ : socle Wave61 partagé, enrichi par passes dédiées.
 import React from "react";
+import { createPortal } from "react-dom";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
+import cricketDartSvg from "../ui_assets/cricket-dart.svg";
 import { useAwenaOptional } from "../awena/AwenaProvider";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { useViewport } from "../hooks/useViewport";
@@ -125,7 +127,7 @@ function familyRules(spec: any, preset: any) {
     double_down: "Parcours 15 · 16 · DOUBLE · 17 · 18 · TRIPLE · 19 · 20 · BULL. Si aucun dart ne valide le contrat du round, le score est divisé par deux.",
     nine_dart_century: "Neuf fléchettes maximum pour viser 100. À la fin, 100 exact est parfait ; sinon le plus proche sans dépasser gagne. Si tous dépassent, le plus petit dépassement l’emporte.",
     shove_a_penny: "Complète trois marques sur 15, 16, 17, 18, 19, 20 et BULL. Les surplus au-delà de trois sont poussés vers l'adversaire suivant.",
-    green_vs_red: "Trois formats : DUEL à 2, TEAM VERTE vs TEAM ROUGE à 4/6/8, ou MULTI aléatoire jusqu’à 10 joueurs. VERT suit 1·4·6·15·17·19·16·11·9·5·BULL ; ROUGE suit 20·12·14·8·7·3·2·10·13·18·BULL. Seuls DOUBLE/TRIPLE du secteur courant marquent, les D/T adverses pénalisent, et la finale BULL suit la variante choisie.",
+    green_vs_red: "Trois formats : DUEL, TEAM ou MULTI. VERT suit 1·4·6·15·17·19·16·11·9·5 ; ROUGE suit 20·12·14·8·7·3·2·10·13·18. Les variantes règlent le nombre de D/T comptables par volée, le scoring (touches ou valeurs réelles), l’accès au BULL et le barème des pénalités. Le simple peut être saisi uniquement pour enregistrer une erreur et sa pénalité ; il ne valide jamais un objectif GREEN VS RED.",
     hi_score: "Nombre de rounds configurable : additionne simplement le score de toutes les volées. Le meilleur total à la fin gagne.",
     sniper: "Une série de contrats de précision s'enchaîne. Plus la difficulté monte, plus le lit exact S/D/T/BULL devient obligatoire.",
     luciole: "La cible s'illumine brièvement au début du tour puis disparaît. Mémorise le secteur et touche-le avant que la luciole suivante apparaisse.",
@@ -341,10 +343,35 @@ function gvrRingSlicePath(cx:number, cy:number, innerR:number, outerR:number, st
   const large=Math.abs(endDeg-startDeg)>180?1:0;
   return `M ${outerStart.x} ${outerStart.y} A ${outerR} ${outerR} 0 ${large} 1 ${outerEnd.x} ${outerEnd.y} L ${innerEnd.x} ${innerEnd.y} A ${innerR} ${innerR} 0 ${large} 0 ${innerStart.x} ${innerStart.y} Z`;
 }
+function GreenRedAssetIcon({ src, color, size = 12, rotateDeg = 0 }: { src: string; color: string; size?: number; rotateDeg?: number }) {
+  return <span aria-hidden="true" style={{
+    display:"inline-block",
+    width:size,
+    height:size,
+    flex:"0 0 auto",
+    backgroundColor:color,
+    WebkitMaskImage:`url(${src})`,
+    maskImage:`url(${src})`,
+    WebkitMaskRepeat:"no-repeat",
+    maskRepeat:"no-repeat",
+    WebkitMaskPosition:"center",
+    maskPosition:"center",
+    WebkitMaskSize:"contain",
+    maskSize:"contain",
+    transform:`rotate(${rotateDeg}deg)`,
+    filter:`drop-shadow(0 0 3px ${color}44)`,
+  }} />;
+}
 function GreenRedDartIcon({ color, size = 12 }: { color: string; size?: number }) {
-  return <svg width={size} height={size} viewBox="0 0 64 28" aria-hidden="true" style={{ display:"block", transform:"scaleX(-1)" }}>
-    <path fill={color} d="M62 3 46 9l-8 3-17 5-5-3-7 2 4 4-7 2-2 5 6-1 7-2 6 3 13-4 10-3 18-5-2-4 2-5z"/>
-    <path fill={color} d="m19 17 6-2 4 6-3 1-7-5z" opacity=".95"/>
+  return <GreenRedAssetIcon src={cricketDartSvg} color={color} size={size} rotateDeg={0} />;
+}
+function GreenRedVisitIcon({ color, size = 12 }: { color: string; size?: number }) {
+  return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 120 88" style={{ display:"block",overflow:"visible",filter:`drop-shadow(0 0 3px ${color}44)` }}>
+    <g fill={color}>
+      <g transform="translate(28 45) rotate(-28)"><path d="M0-34C-5-34-10-30-13-25L-7-14H7L13-25C10-30 5-34 0-34Z"/><rect x="-2" y="-33" width="4" height="20" rx="1"/><path d="M-3-14H3L4-5H-4Z"/><path d="M-5-5H5L7 14L4 24H-4L-7 14Z"/><path d="M-2 24H2L0 39Z"/></g>
+      <g transform="translate(60 39)"><path d="M0-36C-5-36-10-32-13-27L-7-15H7L13-27C10-32 5-36 0-36Z"/><rect x="-2" y="-35" width="4" height="21" rx="1"/><path d="M-3-15H3L4-6H-4Z"/><path d="M-5-6H5L7 15L4 26H-4L-7 15Z"/><path d="M-2 26H2L0 43Z"/></g>
+      <g transform="translate(92 45) rotate(28)"><path d="M0-34C-5-34-10-30-13-25L-7-14H7L13-25C10-30 5-34 0-34Z"/><rect x="-2" y="-33" width="4" height="20" rx="1"/><path d="M-3-14H3L4-5H-4Z"/><path d="M-5-5H5L7 14L4 24H-4L-7 14Z"/><path d="M-2 24H2L0 39Z"/></g>
+    </g>
   </svg>;
 }
 function GreenRedTargetBoard({ color, step, bullRule, size = 70, label }: { color: "GREEN" | "RED"; step: number; bullRule: string; size?: number; label?: string }) {
@@ -353,35 +380,55 @@ function GreenRedTargetBoard({ color, step, bullRule, size = 70, label }: { colo
   const targetNumber = step >= 10 ? null : Number(path[step] || path[0]);
   const bull25Active = step >= 10 && (bullRule !== "color_lock" || color === "GREEN");
   const bull50Active = step >= 10 && (bullRule !== "color_lock" || color === "RED");
-  const ringOutline = "rgba(255,255,255,.20)";
-  return <div style={{ display:"grid", justifyItems:"center", gap:4 }}>
-    <svg width={size} height={size} viewBox="0 0 220 220" aria-hidden="true" style={{ display:"block", filter:`drop-shadow(0 0 12px ${tone}33)` }}>
-      <circle cx="110" cy="110" r="104" fill="rgba(5,7,12,.98)" stroke="rgba(255,255,255,.16)" strokeWidth="2.5" />
+  const ringOutline = "rgba(255,255,255,.18)";
+  const cx = 120;
+  const cy = 120;
+  const outerDoubleR = 98;
+  const innerDoubleR = 84;
+  const outerTripleR = 58;
+  const innerTripleR = 48;
+  const innerSingleR = 20;
+  const bullOuterR = 14;
+  const bullInnerR = 7.5;
+  const numberRadius = 113;
+  const targetIndex = targetNumber ? GVR_DARTBOARD_ORDER.indexOf(targetNumber as any) : -1;
+  const inactiveDark = "#2a2f39";
+  const inactiveLight = "#656d7a";
+  const highlightFill = `${tone}2a`;
+  const numberInactive = "#8a93a5";
+
+  return <div style={{ display:"grid", justifyItems:"center", gap:6 }}>
+    <svg width={size} height={size} viewBox="0 0 240 240" aria-hidden="true" style={{ display:"block", overflow:"visible", filter:`drop-shadow(0 0 12px ${tone}33)` }}>
+      <circle cx={cx} cy={cy} r="106" fill="rgba(5,7,12,.985)" stroke="rgba(255,255,255,.18)" strokeWidth="2.5" />
       {GVR_DARTBOARD_ORDER.map((num, index) => {
-        const start = -99 + index * 18;
+        const start = -9 + index * 18;
         const end = start + 18;
-        const alt = index % 2 === 0;
-        const doubleBase = alt ? "#1ec33d" : "#ff2828";
-        const tripleBase = alt ? "#1ec33d" : "#ff2828";
-        const singleBase = alt ? "#f0f0f0" : "#090b10";
         const isTarget = targetNumber === num;
+        const doubleBase = isTarget ? highlightFill : inactiveDark;
+        const tripleBase = isTarget ? highlightFill : inactiveDark;
+        const singleBase = inactiveLight;
+        const numberFill = isTarget ? tone : numberInactive;
+        const angle = start + 9;
         return <g key={num}>
-          <path d={gvrRingSlicePath(110,110,82,100,start,end)} fill={doubleBase} opacity={isTarget ? 1 : .95} stroke={isTarget ? tone : ringOutline} strokeWidth={isTarget ? 5.5 : 1.1} />
-          <path d={gvrRingSlicePath(110,110,57,82,start,end)} fill={singleBase} stroke={ringOutline} strokeWidth="1" />
-          <path d={gvrRingSlicePath(110,110,47,57,start,end)} fill={tripleBase} opacity={isTarget ? 1 : .95} stroke={isTarget ? tone : ringOutline} strokeWidth={isTarget ? 5.5 : 1.1} />
-          <path d={gvrRingSlicePath(110,110,18,47,start,end)} fill={singleBase} stroke={ringOutline} strokeWidth="1" />
-          <text x={gvrPolar(110,110,116,start+9).x} y={gvrPolar(110,110,116,start+9).y} fill="#cfd6e3" fontSize="11" fontWeight="900" textAnchor="middle" dominantBaseline="middle">{num}</text>
+          <path d={gvrRingSlicePath(cx,cy,innerDoubleR,outerDoubleR,start,end)} fill={doubleBase} stroke={ringOutline} strokeWidth="1.05" />
+          <path d={gvrRingSlicePath(cx,cy,outerTripleR,innerDoubleR,start,end)} fill={singleBase} stroke={ringOutline} strokeWidth="0.95" />
+          <path d={gvrRingSlicePath(cx,cy,innerTripleR,outerTripleR,start,end)} fill={tripleBase} stroke={ringOutline} strokeWidth="1.05" />
+          <path d={gvrRingSlicePath(cx,cy,innerSingleR,innerTripleR,start,end)} fill={singleBase} stroke={ringOutline} strokeWidth="0.95" />
+          {isTarget ? <>
+            <path d={gvrRingSlicePath(cx,cy,innerDoubleR,outerDoubleR,start,end)} fill="none" stroke={tone} strokeWidth="5.2" strokeLinejoin="round" />
+            <path d={gvrRingSlicePath(cx,cy,innerTripleR,outerTripleR,start,end)} fill="none" stroke={tone} strokeWidth="5.2" strokeLinejoin="round" />
+          </> : null}
+          <text x={gvrPolar(cx,cy,numberRadius,angle).x} y={gvrPolar(cx,cy,numberRadius,angle).y} fill={numberFill} fontSize="12.5" fontWeight="950" textAnchor="middle" dominantBaseline="middle">{num}</text>
         </g>;
       })}
-      <circle cx="110" cy="110" r="18" fill="#1ec33d" stroke={bull25Active ? tone : "rgba(255,255,255,.22)"} strokeWidth={bull25Active ? 5.5 : 1.5} />
-      <circle cx="110" cy="110" r="9" fill="#ff2828" stroke={bull50Active ? tone : "rgba(255,255,255,.22)"} strokeWidth={bull50Active ? 5.5 : 1.5} />
-      <circle cx="110" cy="110" r="100" fill="none" stroke="rgba(255,255,255,.20)" strokeWidth="1.6" />
-      <circle cx="110" cy="110" r="82" fill="none" stroke="rgba(255,255,255,.16)" strokeWidth="1" />
-      <circle cx="110" cy="110" r="57" fill="none" stroke="rgba(255,255,255,.16)" strokeWidth="1" />
-      <circle cx="110" cy="110" r="47" fill="none" stroke="rgba(255,255,255,.16)" strokeWidth="1" />
-      {targetNumber ? <circle cx={gvrPolar(110,110,69,-99 + GVR_DARTBOARD_ORDER.indexOf(targetNumber) * 18 + 9).x} cy={gvrPolar(110,110,69,-99 + GVR_DARTBOARD_ORDER.indexOf(targetNumber) * 18 + 9).y} r="4" fill={tone} opacity=".95"/> : null}
+      <circle cx={cx} cy={cy} r={bullOuterR} fill={bull25Active ? highlightFill : inactiveLight} stroke={bull25Active ? tone : "rgba(255,255,255,.24)"} strokeWidth={bull25Active ? 4.8 : 1.6} />
+      <circle cx={cx} cy={cy} r={bullInnerR} fill={bull50Active ? highlightFill : inactiveDark} stroke={bull50Active ? tone : "rgba(255,255,255,.24)"} strokeWidth={bull50Active ? 4.8 : 1.6} />
+      <circle cx={cx} cy={cy} r={outerDoubleR} fill="none" stroke="rgba(255,255,255,.20)" strokeWidth="1.5" />
+      <circle cx={cx} cy={cy} r={innerDoubleR} fill="none" stroke="rgba(255,255,255,.14)" strokeWidth="1" />
+      <circle cx={cx} cy={cy} r={outerTripleR} fill="none" stroke="rgba(255,255,255,.14)" strokeWidth="1" />
+      <circle cx={cx} cy={cy} r={innerTripleR} fill="none" stroke="rgba(255,255,255,.14)" strokeWidth="1" />
     </svg>
-    {label ? <div style={{ color:tone, fontSize:7.1, fontWeight:1050, letterSpacing:.55, textAlign:"center", lineHeight:1.15 }}>{label}</div> : null}
+    {label ? <div style={{ color:tone, fontSize:8.1, fontWeight:1080, letterSpacing:.55, textAlign:"center", lineHeight:1.15 }}>{label}</div> : null}
   </div>;
 }
 
@@ -556,17 +603,68 @@ function GreenRedSituationPanel({ state, profiles }: any) {
   </section>;
 }
 
+
+function Wave61VisitRecap({ recap, accent }: any) {
+  if (!recap) return null;
+  const tone = recap.tone || accent;
+  const dartLabel = (d:any) => wave61DartLabel(d);
+  const gvr = recap.greenRedResult || null;
+  const scoreMode = String(gvr?.scoreModel || "");
+  const scoringLabel = scoreMode === "hit_count" ? "1 touche valide = 1 pt" : scoreMode === "board_value" ? "Valeur réelle cible" : "";
+  const resultByIndex = Array.isArray(gvr?.dartResults) ? gvr.dartResults : [];
+  const resultTone = (item:any) => item?.result === "valid" ? tone : item?.result === "transfer" ? "#58d8ff" : item?.result === "penalty" ? "#ff6574" : item?.result === "duplicate" ? "#f5b522" : "#8c95a6";
+  const resultText = (item:any) => {
+    if (!item) return "—";
+    if (item.result === "valid") return `VALIDE · +${Number(item.points || 0)}`;
+    if (item.result === "penalty") return Number(item.penalty || 0) > 0 ? `PÉNALITÉ · -${Number(item.penalty || 0)}` : "HORS CONTRAT · 0";
+    if (item.result === "transfer") return Number(item.transfer || 0) > 0 ? `OFFERT · +${Number(item.transfer || 0)} ADV.` : "HORS CONTRAT · 0";
+    if (item.result === "duplicate") return "DÉJÀ COMPTÉ · 0";
+    return "0";
+  };
+  const scoreDelta = Number(recap.scoreAfter || 0) - Number(recap.scoreBefore || 0);
+  const overlay = <div role="status" aria-live="polite" aria-label="Résumé de la volée" style={{position:"fixed",inset:0,zIndex:2147483000,display:"grid",placeItems:"center",padding:"16px",background:"rgba(0,0,0,.46)",backdropFilter:"blur(5px)",pointerEvents:"auto"}}>
+    <div style={{width:"min(470px,calc(100vw - 24px))",maxWidth:"100%",minWidth:0,borderRadius:18,border:`1px solid ${tone}88`,background:"linear-gradient(180deg,rgba(18,22,33,.995),rgba(7,10,16,.995))",boxShadow:`0 24px 60px rgba(0,0,0,.72),0 0 28px ${tone}2e`,padding:12,display:"grid",gap:9,boxSizing:"border-box",overflow:"hidden"}}>
+      <div style={{display:"grid",gridTemplateColumns:"40px minmax(0,1fr) auto",gap:9,alignItems:"center",minWidth:0}}>
+        <div style={{width:40,height:40,borderRadius:999,overflow:"hidden",display:"grid",placeItems:"center",border:`1.5px solid ${tone}`,background:`${tone}14`,color:tone,fontWeight:1100}}>{recap.avatar?<img src={recap.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:String(recap.playerName||"?").slice(0,1).toUpperCase()}</div>
+        <div style={{minWidth:0}}><div style={{color:tone,fontSize:8,fontWeight:1100,letterSpacing:.7}}>{recap.isBot?"BOT IA · RÉCAP VOLÉE":"RÉCAP VOLÉE"}</div><div style={{color:"#fff",fontSize:14,fontWeight:1150,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{recap.playerName}</div><div style={{color:"#aeb5c8",fontSize:8.3,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Objectif · {recap.targetLabel || "—"}</div></div>
+        <div style={{textAlign:"right"}}><div style={{color:"#aeb5c8",fontSize:6.7,fontWeight:950}}>BILAN</div><div style={{color:scoreDelta>0?tone:scoreDelta<0?"#ff6574":"#fff",fontSize:20,fontWeight:1200,lineHeight:1}}>{scoreDelta>0?"+":""}{scoreDelta}</div></div>
+      </div>
+
+      {scoringLabel ? <div style={{borderRadius:9,padding:"6px 8px",background:`${tone}10`,border:`1px solid ${tone}35`,color:tone,fontSize:8.2,fontWeight:1000,textAlign:"center"}}>{scoringLabel}</div> : null}
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:6}}>
+        {Array.from({length:3},(_,i)=>recap.darts?.[i]).map((d:any,i:number)=>{const detail=resultByIndex[i];const dt=resultTone(detail);return <div key={i} style={{minWidth:0,borderRadius:12,border:`1px solid ${dt}88`,background:`linear-gradient(180deg,${dt}18,rgba(7,10,16,.98))`,padding:"8px 5px",display:"grid",gap:4,placeItems:"center",boxShadow:`inset 0 -2px 0 ${dt}44`}}><div style={{color:dt,fontSize:13,fontWeight:1200}}>{d?dartLabel(d):"—"}</div><div style={{color:dt,fontSize:6.5,fontWeight:1000,textAlign:"center",lineHeight:1.15}}>{resultText(detail)}</div></div>})}
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:5}}>
+        <div style={{borderRadius:9,padding:"6px 4px",textAlign:"center",background:"rgba(255,255,255,.028)",border:"1px solid rgba(255,255,255,.06)"}}><div style={{color:"#8f98aa",fontSize:6.4,fontWeight:950}}>TOUCHES VALIDES</div><div style={{color:tone,fontSize:11,fontWeight:1150,marginTop:2}}>{Number(recap.hits || 0)}/3</div></div>
+        <div style={{borderRadius:9,padding:"6px 4px",textAlign:"center",background:"rgba(255,255,255,.028)",border:"1px solid rgba(255,255,255,.06)"}}><div style={{color:"#8f98aa",fontSize:6.4,fontWeight:950}}>{gvr?.penaltyModel==="transfer"?"OFFERT À L'ADV.":"PÉNALITÉ"}</div><div style={{color:gvr?.penaltyModel==="transfer"?(recap.transferGivenDelta?"#58d8ff":"#fff"):(recap.penaltyDelta?"#ff6574":"#fff"),fontSize:11,fontWeight:1150,marginTop:2}}>{gvr?.penaltyModel==="transfer"?`+${Number(recap.transferGivenDelta||0)}`:(recap.penaltyDelta?`-${recap.penaltyDelta}`:"0")}</div></div>
+        <div style={{borderRadius:9,padding:"6px 4px",textAlign:"center",background:"rgba(255,255,255,.028)",border:"1px solid rgba(255,255,255,.06)"}}><div style={{color:"#8f98aa",fontSize:6.4,fontWeight:950}}>ÉTAPE</div><div style={{color:"#fff",fontSize:11,fontWeight:1150,marginTop:2}}>{recap.progressBefore} → {recap.progressAfter}</div></div>
+      </div>
+
+      <div style={{color:"#aeb5c8",fontSize:7.5,lineHeight:1.35,textAlign:"center"}}>{gvr?.contractRule==="official_unique"?"Règle officielle · 1 Double et 1 Triple maximum comptés dans la volée":gvr?.contractRule==="unlimited"?"Variante libre · jusqu’à 3 D/T valides dans la volée":""}</div>
+      <div style={{display:"grid",gap:4}}><div style={{height:4,borderRadius:999,overflow:"hidden",background:"rgba(255,255,255,.08)"}}><div style={{width:"100%",height:"100%",borderRadius:999,background:`linear-gradient(90deg,${tone},${tone}88)`,transformOrigin:"left center",animation:"wave61VisitRecapCountdown 3s linear forwards"}}/></div><div style={{color:"#8f98aa",fontSize:7.1,fontWeight:850,textAlign:"center"}}>Analyse automatique · 3 secondes</div></div>
+    </div>
+  </div>;
+  return typeof document !== "undefined" ? createPortal(overlay, document.body) : overlay;
+}
+
 function GreenVsRedInput({ state, activePlayer, currentThrow, setCurrentThrow, multiplier, setMultiplier, onValidate }: any) {
   const playerId = String(activePlayer?.id || "");
   const ownColor = String(state?.special?.greenRedColorByPlayer?.[playerId] || "GREEN") as "GREEN" | "RED";
   const step = Math.min(10, Number(state?.special?.greenRedStepByPlayer?.[playerId] || 0));
   const isBullStage = step >= 10;
   const ownPath = ownColor === "GREEN" ? GVR_GREEN_PATH : GVR_RED_PATH;
+  const oppPath = ownColor === "GREEN" ? GVR_RED_PATH : GVR_GREEN_PATH;
   const ownTone = ownColor === "GREEN" ? GVR_GREEN : GVR_RED;
+  const oppTone = ownColor === "GREEN" ? GVR_RED : GVR_GREEN;
   const targetNumber = !isBullStage ? Number(ownPath[step]) : null;
   const full = currentThrow.length >= 3;
-  const multiplierReady = multiplier === 2 || multiplier === 3;
   const bullRule = String(state?.config?.modeOptions?.bullRule || "classic");
+  const bullAccess = String(state?.config?.modeOptions?.bullAccess || "final_only");
+  const scoreModel = String(state?.config?.modeOptions?.scoreModel || "hit_count");
+  const contractRule = String(state?.config?.modeOptions?.contractRule || "official_unique");
+  const penaltyModel = String(state?.config?.modeOptions?.penaltyModel || "graded");
   const greenBullBonus = Number(state?.config?.modeOptions?.greenBullBonus || 0);
   const redBullBonus = Number(state?.config?.modeOptions?.redBullBonus || 0);
   const ownBullBed = ownColor === "GREEN" ? "OB" : "IB";
@@ -574,8 +672,9 @@ function GreenVsRedInput({ state, activePlayer, currentThrow, setCurrentThrow, m
   React.useEffect(() => { setMultiplier(1); }, [playerId, ownColor, step]);
 
   const appendNumber = (n:number) => {
-    if (full || !multiplierReady || isBullStage) return;
-    setCurrentThrow((prev:UIDart[]) => prev.length >= 3 ? prev : [...prev, { v:n, mult:multiplier }]);
+    if (full || isBullStage) return;
+    const mult = multiplier === 2 || multiplier === 3 ? multiplier : 1;
+    setCurrentThrow((prev:UIDart[]) => prev.length >= 3 ? prev : [...prev, { v:n, mult }]);
     setMultiplier(1);
   };
   const appendMiss = () => {
@@ -584,7 +683,7 @@ function GreenVsRedInput({ state, activePlayer, currentThrow, setCurrentThrow, m
     setMultiplier(1);
   };
   const appendBull = (inner:boolean) => {
-    if (full || !isBullStage) return;
+    if (full) return;
     setCurrentThrow((prev:UIDart[]) => prev.length >= 3 ? prev : [...prev, { v:25, mult:inner ? 2 : 1 }]);
     setMultiplier(1);
   };
@@ -604,59 +703,65 @@ function GreenVsRedInput({ state, activePlayer, currentThrow, setCurrentThrow, m
     if (Number(d.v) === 25) return Number(d.mult) === 2 ? "#ff4655" : "#3fd88a";
     if (Number(d.mult) === 3) return "#d85ed3";
     if (Number(d.mult) === 2) return "#4ebfe7";
-    return ownTone;
+    const n = Number(d.v || 0);
+    return ownPath.includes(n) ? ownTone : oppPath.includes(n) ? oppTone : "#c9ced8";
   };
   const visitSlotStyle = (d:any):React.CSSProperties => {
     const tone = dartTone(d);
-    return {
-      minHeight: 34,
-      borderRadius: 12,
-      border: `1px solid ${d ? tone + "88" : "rgba(255,255,255,.08)"}`,
-      background: d ? `linear-gradient(180deg,${tone}18,rgba(7,10,16,.98))` : "linear-gradient(180deg,rgba(18,23,33,.98),rgba(7,10,16,.98))",
-      display: "grid",
-      placeItems: "center",
-      color: d ? tone : "#59616e",
-      fontSize: 9.6,
-      fontWeight: 1150,
-      boxShadow: d ? `inset 0 -2px 0 ${tone}55` : "inset 0 -2px 0 rgba(255,255,255,.04)",
-    };
+    return { minHeight:32,borderRadius:11,border:`1px solid ${d ? tone+"88" : "rgba(255,255,255,.08)"}`,background:d?`linear-gradient(180deg,${tone}18,rgba(7,10,16,.98))`:"linear-gradient(180deg,rgba(18,23,33,.98),rgba(7,10,16,.98))",display:"grid",placeItems:"center",color:d?tone:"#59616e",fontSize:9.5,fontWeight:1150,boxShadow:d?`inset 0 -2px 0 ${tone}55`:"inset 0 -2px 0 rgba(255,255,255,.04)" };
   };
   const keyStyle = (tone:string, active=false, solid=false):React.CSSProperties => ({
-    minHeight:44,borderRadius:14,border:`1px solid ${active?tone+"aa":solid?tone+"90":"rgba(255,255,255,.12)"}`,
-    background:solid?`linear-gradient(180deg,${tone}e6,${tone}bf)`:active?`linear-gradient(180deg,${tone}24,rgba(8,12,18,.98))`:`linear-gradient(180deg,rgba(18,23,33,.98),rgba(7,10,16,.99))`,
-    color:solid?"#111":"#fff",fontWeight:1100,fontSize:10.5,cursor:"pointer",boxShadow:active?`0 0 14px ${tone}26,inset 0 0 0 1px ${tone}22`:"inset 0 -2px 0 rgba(255,255,255,.04)",touchAction:"manipulation"
+    minHeight:40,borderRadius:12,border:`1px solid ${active?tone+"bb":solid?tone+"90":"rgba(255,255,255,.12)"}`,
+    background:solid?`linear-gradient(180deg,${tone}e6,${tone}bf)`:active?`linear-gradient(180deg,${tone}2f,rgba(8,12,18,.98))`:`linear-gradient(180deg,rgba(18,23,33,.98),rgba(7,10,16,.99))`,
+    color:solid?"#111":"#fff",fontWeight:1100,fontSize:9.8,cursor:"pointer",boxShadow:active?`0 0 14px ${tone}32,inset 0 0 0 1px ${tone}22`:"inset 0 -2px 0 rgba(255,255,255,.04)",touchAction:"manipulation"
   });
+  const bull25ValidNow = isBullStage ? (bullRule !== "color_lock" || ownBullBed === "OB") : (bullAccess === "color_anytime" && ownBullBed === "OB");
+  const bull50ValidNow = isBullStage ? (bullRule !== "color_lock" || ownBullBed === "IB") : (bullAccess === "color_anytime" && ownBullBed === "IB");
 
-  return <div data-green-red-keypad="1" style={{...panelStyle(ownTone+"55"),height:"100%",minHeight:0,overflow:"hidden",padding:8,display:"flex",flexDirection:"column",gap:6,background:`linear-gradient(180deg,${ownTone}08,rgba(5,7,12,.995) 25%)`}}>
+  return <div data-green-red-keypad="1" style={{...panelStyle(ownTone+"55"),height:"100%",minHeight:0,overflow:"hidden",padding:7,display:"flex",flexDirection:"column",gap:5,background:`linear-gradient(180deg,${ownTone}08,rgba(5,7,12,.995) 25%)`}}>
     <div data-green-red-visit-preview="1" style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:5}}>
       {Array.from({length:3},(_,i)=>currentThrow[i]).map((d:any,i:number)=><div key={i} style={visitSlotStyle(d)}>{dartLabel(d)}</div>)}
     </div>
 
-    {!isBullStage ? <>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:5}}>
-        <button type="button" onClick={()=>setMultiplier(multiplier===2?1:2)} style={keyStyle("#4ebfe7",multiplier===2)}>DOUBLE</button>
-        <button type="button" onClick={()=>setMultiplier(multiplier===3?1:3)} style={keyStyle("#d85ed3",multiplier===3)}>TRIPLE</button>
-        <button type="button" onClick={appendMiss} disabled={full} style={{...keyStyle("#ff5c69",false),opacity:full ? .45 : 1}}>MISS</button>
-        <button type="button" onClick={cancelLast} disabled={!currentThrow.length&&multiplier===1} style={{...keyStyle("#f5b522",false,true),opacity: (!currentThrow.length && multiplier===1) ? .45 : 1}}>ANNULER</button>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:5,flex:"1 1 auto",minHeight:0}}>
-        {ownPath.map((n:number)=>{
-          const current=Number(n)===targetNumber;
-          return <button key={n} type="button" disabled={!multiplierReady||full} onClick={()=>appendNumber(Number(n))} style={{minHeight:39,borderRadius:11,border:`1px solid ${current?ownTone:ownTone+"55"}`,background:current?`linear-gradient(180deg,${ownTone}38,${ownTone}19)`:`linear-gradient(180deg,${ownTone}10,rgba(7,10,16,.98))`,color:(!multiplierReady||full)?"#56606f":"#fff",fontSize:13,fontWeight:1150,cursor:(!multiplierReady||full)?"not-allowed":"pointer",boxShadow:current?`0 0 15px ${ownTone}34`:"none",position:"relative"}}>{n}{current?<span style={{position:"absolute",right:4,top:2,fontSize:5.8,color:ownTone}}>CIBLE</span>:null}</button>
-        })}
-      </div>
-    </> : <>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5}}>
-        <button type="button" onClick={appendMiss} disabled={full} style={{...keyStyle("#ff5c69",false),opacity:full ? .45 : 1}}>MISS</button>
-        <button type="button" onClick={cancelLast} disabled={!currentThrow.length} style={{...keyStyle("#f5b522",false,true),opacity: !currentThrow.length ? .45 : 1}}>ANNULER</button>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:bullRule==="color_lock"?"1fr":"1fr 1fr",gap:7,flex:"1 1 auto",minHeight:0}}>
-        {bullRule!=="color_lock"||ownBullBed==="OB"?<button type="button" onClick={()=>appendBull(false)} disabled={full} style={{...keyStyle("#3fd88a",false),minHeight:68,fontSize:13}}>BULL 25<div style={{fontSize:8.2,marginTop:2,color:"#63efaa"}}>25{bullRule==="color_bonus"&&ownColor==="GREEN"&&greenBullBonus?` +${greenBullBonus}`:""}</div></button>:null}
-        {bullRule!=="color_lock"||ownBullBed==="IB"?<button type="button" onClick={()=>appendBull(true)} disabled={full} style={{...keyStyle("#ff4655",false),minHeight:68,fontSize:13}}>BULL<div style={{fontSize:8.2,marginTop:2,color:"#ff7c86"}}>50{bullRule==="color_bonus"&&ownColor==="RED"&&redBullBonus?` +${redBullBonus}`:""}</div></button>:null}
-      </div>
-    </>}
-    <button type="button" onClick={onValidate} disabled={!currentThrow.length} style={{minHeight:42,borderRadius:13,border:`1px solid ${currentThrow.length?ownTone+"aa":"rgba(255,255,255,.08)"}`,background:currentThrow.length?`linear-gradient(180deg,${ownTone}34,${ownTone}18)`:"rgba(255,255,255,.03)",color:currentThrow.length?"#fff":"#59616e",fontWeight:1150,fontSize:10.8,letterSpacing:.45,cursor:currentThrow.length?"pointer":"not-allowed"}}>VALIDER LA VOLÉE</button>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:5}}>
+      <button type="button" onClick={()=>setMultiplier(multiplier===2?1:2)} style={keyStyle("#4ebfe7",multiplier===2)}>DOUBLE</button>
+      <button type="button" onClick={()=>setMultiplier(multiplier===3?1:3)} style={keyStyle("#d85ed3",multiplier===3)}>TRIPLE</button>
+      <button type="button" onClick={appendMiss} disabled={full} style={{...keyStyle("#ff5c69",false),opacity:full ? .45 : 1}}>MISS</button>
+      <button type="button" onClick={cancelLast} disabled={!currentThrow.length&&multiplier===1} style={{...keyStyle("#f5b522",false,true),opacity:(!currentThrow.length&&multiplier===1) ? .45 : 1}}>ANNULER</button>
+    </div>
+
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5}}>
+      <button type="button" onClick={()=>appendBull(false)} disabled={full} style={{...keyStyle("#3fd88a",bull25ValidNow),minHeight:34,color:bull25ValidNow?"#8fffc4":"#c8ced8"}}>BULL 25{bull25ValidNow?<span style={{fontSize:6.4,marginLeft:4}}>VALIDE</span>:<span style={{fontSize:6.4,marginLeft:4}}>PÉNALITÉ</span>}</button>
+      <button type="button" onClick={()=>appendBull(true)} disabled={full} style={{...keyStyle("#ff4655",bull50ValidNow),minHeight:34,color:bull50ValidNow?"#ff9ca5":"#c8ced8"}}>BULL 50{bull50ValidNow?<span style={{fontSize:6.4,marginLeft:4}}>VALIDE</span>:<span style={{fontSize:6.4,marginLeft:4}}>PÉNALITÉ</span>}</button>
+    </div>
+
+    {!isBullStage ? <div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:4,flex:"1 1 auto",minHeight:0}}>
+      {Array.from({length:20},(_,i)=>i+1).map((n:number)=>{
+        const own=ownPath.includes(n); const target=n===targetNumber; const tone=own?ownTone:oppTone;
+        const multLabel=multiplier===3?"T":multiplier===2?"D":"S";
+        return <button key={n} type="button" disabled={full} onClick={()=>appendNumber(n)} style={{minHeight:33,borderRadius:10,border:`1px solid ${target?tone:tone+"55"}`,background:target?`linear-gradient(180deg,${tone}40,${tone}1c)`:`linear-gradient(180deg,${tone}12,rgba(7,10,16,.98))`,color:full?"#56606f":"#fff",fontSize:11.5,fontWeight:1150,cursor:full?"not-allowed":"pointer",boxShadow:target?`0 0 14px ${tone}35`:"none",position:"relative"}}>
+          {n}<span style={{position:"absolute",left:3,top:2,fontSize:5.2,color:tone,fontWeight:1000}}>{own?ownColor:"ADVERSE"}</span>{target?<span style={{position:"absolute",right:3,bottom:2,fontSize:5.2,color:tone}}>{multLabel}{n}</span>:null}
+        </button>;
+      })}
+    </div> : <div style={{flex:"1 1 auto",minHeight:0,display:"grid",placeItems:"center",borderRadius:12,border:`1px solid ${ownTone}33`,background:`${ownTone}08`,color:ownTone,fontSize:9.3,fontWeight:1050,textAlign:"center",padding:8}}>ÉTAPE FINALE · joue le BULL autorisé par la variante</div>}
+
+    <div style={{display:"flex",gap:5,alignItems:"center",justifyContent:"center",color:"#7f8999",fontSize:6.7,fontWeight:850,whiteSpace:"nowrap",overflow:"hidden"}}>
+      <span>{contractRule==="official_unique"?"OFFICIEL · 1D+1T max":"LIBRE · 3 D/T"}</span><span>•</span><span>{scoreModel==="hit_count"?"1 TOUCHE = 1 PT":"VALEUR CIBLE"}</span><span>•</span><span>{penaltyModel==="none"?"SANS PÉNALITÉ":penaltyModel==="official"?"PÉNALITÉ OFFICIELLE":penaltyModel==="transfer"?"TRANSFERT MSS":"PÉNALITÉS MSS"}</span>
+    </div>
+    <button type="button" onClick={onValidate} disabled={!currentThrow.length} style={{minHeight:39,borderRadius:12,border:`1px solid ${currentThrow.length?ownTone+"aa":"rgba(255,255,255,.08)"}`,background:currentThrow.length?`linear-gradient(180deg,${ownTone}34,${ownTone}18)`:"rgba(255,255,255,.03)",color:currentThrow.length?"#fff":"#59616e",fontWeight:1150,fontSize:10.4,letterSpacing:.45,cursor:currentThrow.length?"pointer":"not-allowed"}}>VALIDER LA VOLÉE</button>
   </div>;
+}
+
+function wave61BotDifficultyForProfile(profile: any, fallback: any = "normal"): "easy" | "normal" | "hard" {
+  const raw = profile?.botLevel ?? profile?.level ?? profile?.difficulty ?? profile?.skill ?? profile?.stars ?? profile?.profileStarring ?? "";
+  const s = String(raw ?? "").trim().toLowerCase().replace(",", ".");
+  const fraction = s.match(/(\d+(?:\.\d+)?)\s*\/\s*5/);
+  let n = fraction ? Number(fraction[1]) : Number((s.match(/\d+(?:\.5)?/) || [""])[0]);
+  if (Number.isFinite(n) && n > 5) n = n / 20;
+  if (Number.isFinite(n) && n > 0) return n >= 3.5 ? "hard" : n >= 2 ? "normal" : "easy";
+  if (/elite|legend|l[ée]gende|pro|hard|difficile|fort|strong/.test(s)) return "hard";
+  if (/easy|facile|rookie|beginner|d[ée]butant/.test(s)) return "easy";
+  return fallback === "easy" || fallback === "hard" ? fallback : "normal";
 }
 
 function HiScorePanel({ state, accent }: any) {
@@ -722,6 +827,7 @@ export default function Wave61SharedPlay(props: any) {
   const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(() => restoredMultiplier === 2 || restoredMultiplier === 3 ? restoredMultiplier : 1);
   const [undo, setUndo] = React.useState<Wave61State[]>([]);
   const [notice, setNotice] = React.useState("");
+  const [visitRecap, setVisitRecap] = React.useState<any>(null);
   const [adviceText, setAdviceText] = React.useState("");
   const [quickPanel, setQuickPanel] = React.useState<null | "rules" | "settings" | "players" | "history" | "ranking" | "stats" | "objective">(null);
   const adviceTimerRef = React.useRef<number | null>(null);
@@ -799,10 +905,10 @@ export default function Wave61SharedPlay(props: any) {
           avatarDataUrl: profile?.avatarDataUrl ?? null,
         };
       }),
-      game: { mode: spec.id, modeId: spec.id, engineFamily: s.family, engineVersion: WAVE61_ENGINE_VERSION, resumeRoute: "wave61_play" },
-      summary: { mode: spec.id, modeId: spec.id, family: s.family, winnerId: s.winnerId, winnerIds, winnerTeamId: s.winnerTeamId, finalScores: s.scores, finalProgress: s.progress, health: s.health, lives: s.lives, rankings, playerStats, statsByPlayer: s.statsByPlayer, matchStats, config: s.config },
-      resume: { mode: "wave61", modeId: spec.id, config: s.config, state: cloneWave61State(s), route: "wave61_play", currentThrow: currentThrow.slice(0, 3), multiplier, updatedAt: Date.now() },
-      payload: { kind: spec.id, mode: spec.id, modeId: spec.id, sport: "darts", winnerId: s.winnerId, winnerIds, winnerTeamId: s.winnerTeamId, config: s.config, stateSnapshot: cloneWave61State(s), currentThrow: currentThrow.slice(0, 3), multiplier, visits: s.visits, stats: { players: playerStats, match: matchStats } },
+      game: { mode: spec.id, modeId: spec.id, variantId: s.config?.variantId, engineFamily: s.family, engineVersion: WAVE61_ENGINE_VERSION, resumeRoute: "wave61_play" },
+      summary: { mode: spec.id, modeId: spec.id, variantId: s.config?.variantId, family: s.family, winnerId: s.winnerId, winnerIds, winnerTeamId: s.winnerTeamId, finalScores: s.scores, finalProgress: s.progress, health: s.health, lives: s.lives, rankings, playerStats, statsByPlayer: s.statsByPlayer, matchStats, config: s.config },
+      resume: { mode: "wave61", modeId: spec.id, variantId: s.config?.variantId, config: s.config, state: cloneWave61State(s), route: "wave61_play", currentThrow: currentThrow.slice(0, 3), multiplier, updatedAt: Date.now() },
+      payload: { kind: spec.id, mode: spec.id, modeId: spec.id, variantId: s.config?.variantId, sport: "darts", winnerId: s.winnerId, winnerIds, winnerTeamId: s.winnerTeamId, config: s.config, stateSnapshot: cloneWave61State(s), currentThrow: currentThrow.slice(0, 3), multiplier, visits: s.visits, stats: { players: playerStats, match: matchStats } },
     };
   }, [profiles, profileById, spec.id, currentThrow, multiplier]);
 
@@ -851,10 +957,51 @@ export default function Wave61SharedPlay(props: any) {
       }
     }
 
+    const last = next.visits[next.visits.length - 1];
+    const recapPlayerId = String(last?.playerId || previous.players?.[previous.activePlayerIndex]?.id || "");
+    const recapPlayer:any = profileById.get(recapPlayerId) || previous.players?.find((p:any)=>String(p.id)===recapPlayerId) || null;
+    if (last && recapPlayerId) {
+      const color = spec.id === "green_vs_red" ? String(next.special?.greenRedColorByPlayer?.[recapPlayerId] || previous.special?.greenRedColorByPlayer?.[recapPlayerId] || "GREEN") : "";
+      const tone = spec.id === "green_vs_red" ? (color === "RED" ? GVR_RED : GVR_GREEN) : accent;
+      const beforePenalty = Number(previous.special?.greenRedPenaltyByPlayer?.[recapPlayerId] || 0);
+      const afterPenalty = Number(next.special?.greenRedPenaltyByPlayer?.[recapPlayerId] || 0);
+      const beforeBonus = Number(previous.special?.greenRedBullBonusByPlayer?.[recapPlayerId] || 0);
+      const afterBonus = Number(next.special?.greenRedBullBonusByPlayer?.[recapPlayerId] || 0);
+      const beforeTransferGiven = Number(previous.special?.greenRedTransferGivenByPlayer?.[recapPlayerId] || 0);
+      const afterTransferGiven = Number(next.special?.greenRedTransferGivenByPlayer?.[recapPlayerId] || 0);
+      const beforeTransferReceived = Number(previous.special?.greenRedTransferReceivedByPlayer?.[recapPlayerId] || 0);
+      const afterTransferReceived = Number(next.special?.greenRedTransferReceivedByPlayer?.[recapPlayerId] || 0);
+      const greenRedResult = spec.id === "green_vs_red"
+        ? ([...(next.special?.greenRedHistory || [])].reverse().find((entry:any) => String(entry?.playerId || "") === recapPlayerId) || null)
+        : null;
+      setVisitRecap({
+        visitId: last.id,
+        playerId: recapPlayerId,
+        playerName: playerName(recapPlayer),
+        avatar: recapPlayer?.avatarDataUrl || recapPlayer?.avatarUrl || recapPlayer?.avatar || null,
+        isBot: isBotProfile(recapPlayer, botIds),
+        tone,
+        color,
+        darts: Array.isArray(last.darts) ? last.darts.slice(0,3) : [],
+        visitScore: Number(last.visitScore || 0),
+        delta: Number(last.delta || 0),
+        hits: Number(last.hits || 0),
+        events: Array.isArray(last.events) ? last.events.filter(Boolean) : [],
+        targetLabel: last.targetLabel || "",
+        scoreBefore: Number(previous.scores?.[recapPlayerId] || 0),
+        scoreAfter: Number(next.scores?.[recapPlayerId] || 0),
+        progressBefore: Number(previous.progress?.[recapPlayerId] || 0),
+        progressAfter: Number(next.progress?.[recapPlayerId] || 0),
+        penaltyDelta: Math.max(0, afterPenalty - beforePenalty),
+        transferGivenDelta: Math.max(0, afterTransferGiven - beforeTransferGiven),
+        transferReceivedDelta: Math.max(0, afterTransferReceived - beforeTransferReceived),
+        bonusDelta: Math.max(0, afterBonus - beforeBonus),
+        greenRedResult,
+      });
+    }
     setState(committed);
     setCurrentThrow([]);
     setMultiplier(1);
-    const last = next.visits[next.visits.length - 1];
     setNotice(seriesNotice || (committed.phase === "finished" ? `🏆 ${next.players.find((p) => p.id === next.winnerId)?.name || "Victoire"} remporte ${spec.label}` : (last?.events || []).join(" · ")));
     playWave61FeedbackTone(wave61ToneForVisit(next, last), wave61SfxEnabled);
     if (awenaCommentaryEnabled) {
@@ -865,10 +1012,10 @@ export default function Wave61SharedPlay(props: any) {
       }
     }
     persist(committed);
-  }, [state, spec.id, spec.label, config, players, persist, wave61SfxEnabled, awenaCommentaryEnabled, awena]);
+  }, [state, spec.id, spec.label, config, players, persist, wave61SfxEnabled, awenaCommentaryEnabled, awena, profileById, botIds, accent]);
 
   const validate = () => {
-    if (!currentThrow.length || state.phase === "finished" || activeIsBot) return;
+    if (!currentThrow.length || state.phase === "finished" || activeIsBot || visitRecap) return;
     commit(playWave61Visit(state, currentThrow.map(uiToGameDart)));
   };
 
@@ -879,20 +1026,52 @@ export default function Wave61SharedPlay(props: any) {
     setState(cloneWave61State(prev));
     setCurrentThrow([]);
     setMultiplier(1);
+    setVisitRecap(null);
     setNotice("Dernière volée annulée");
     persist(prev);
     return u.slice(0, -1);
   });
 
   React.useEffect(() => {
-    if (!activeIsBot || state.phase === "finished" || botBusy.current) return;
-    botBusy.current = true;
-    const timer = window.setTimeout(() => {
-      try { commit(playWave61Visit(state, pickWave61BotDarts(state, config.botLevel))); }
-      finally { botBusy.current = false; }
-    }, 620);
+    if (!visitRecap) return;
+    const timer = window.setTimeout(() => setVisitRecap((current:any) => current?.visitId === visitRecap.visitId ? null : current), 3000);
     return () => window.clearTimeout(timer);
-  }, [state, activeIsBot, activePlayer?.id]);
+  }, [visitRecap?.visitId]);
+
+  React.useEffect(() => {
+    if (!activeIsBot || state.phase === "finished" || visitRecap) return;
+    let cancelled = false;
+    const scheduledPlayerId = String(activePlayer?.id || "");
+    const timer = window.setTimeout(() => {
+      if (cancelled || botBusy.current) return;
+      botBusy.current = true;
+      try {
+        const botDifficulty = wave61BotDifficultyForProfile(activeProfile, config.botLevel);
+        const generated = pickWave61BotDarts(state, botDifficulty);
+        const botDarts = Array.isArray(generated) && generated.length
+          ? generated.slice(0, 3)
+          : ([{ bed: "MISS" }, { bed: "MISS" }, { bed: "MISS" }] as any);
+        commit(playWave61Visit(state, botDarts));
+      } catch (error) {
+        console.error("[Wave61][BOT] turn failed", { modeId: spec.id, playerId: scheduledPlayerId, error });
+        try {
+          commit(playWave61Visit(state, [{ bed: "MISS" }, { bed: "MISS" }, { bed: "MISS" }] as any));
+        } catch (fallbackError) {
+          console.error("[Wave61][BOT] fallback turn failed", { modeId: spec.id, playerId: scheduledPlayerId, error: fallbackError });
+          setNotice("BOT : impossible de jouer cette volée. Tour débloqué au prochain rafraîchissement.");
+        }
+      } finally {
+        botBusy.current = false;
+      }
+    }, 620);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      // Important pour React StrictMode : le premier montage est immédiatement
+      // nettoyé en développement. Le verrou ne doit jamais survivre à ce cleanup.
+      botBusy.current = false;
+    };
+  }, [state, activeIsBot, activePlayer?.id, activeProfile, config.botLevel, spec.id, commit, visitRecap]);
 
   React.useEffect(() => { if (state.phase === "playing") persist(state); }, []);
 
@@ -968,6 +1147,7 @@ export default function Wave61SharedPlay(props: any) {
     setUndo([]);
     setNotice("");
     setAdviceText("");
+    setVisitRecap(null);
     lastAdviceKeyRef.current = "";
     setCurrentThrow([]);
     setMultiplier(1);
@@ -1058,7 +1238,7 @@ export default function Wave61SharedPlay(props: any) {
   })();
 
   const classicInputHeight = spec.id === "green_vs_red"
-    ? "clamp(292px,43dvh,340px)"
+    ? (viewportH > 0 && viewportH < 760 ? "clamp(244px,32dvh,284px)" : "clamp(256px,35dvh,304px)")
     : viewportH > 0 && viewportH < 700
       ? "clamp(265px,39dvh,315px)"
       : "clamp(290px,41dvh,355px)";
@@ -1111,7 +1291,7 @@ export default function Wave61SharedPlay(props: any) {
             const step=Math.min(10,Number(state.special?.greenRedStepByPlayer?.[id]||0));
             const bull=String(config?.modeOptions?.bullRule||"classic");
             const targetLabel=step>=10?(bull==="color_lock"?(color==="GREEN"?"BULL 25":"BULL 50"):"BULL"):`D/T ${path[step]}`;
-            return <><div style={{...panelStyle(tone+"55"),padding:12,textAlign:"center",display:"grid",justifyItems:"center",gap:8}}><div style={{color:tone,fontSize:9,fontWeight:1100,letterSpacing:.8}}>PISTE ACTUELLE · {color}</div><GreenRedTargetBoard color={color as any} step={step} bullRule={bull} size={112} label={targetLabel} /><div style={{color:SOFT,fontSize:9.5}}>Étape {step+1}/11 · Score {Number(state.scores?.[id]||0)}</div></div><div style={{...panelStyle("rgba(255,255,255,.10)"),padding:11,color:"#dce2ed",fontSize:10.5,lineHeight:1.55}}>Sur les 10 secteurs, seuls DOUBLE et TRIPLE du secteur courant font progresser. La frise suit l'ordre officiel de la couleur du joueur. À l'étape finale : {bull==="color_lock"?"BULL DE COULEUR — Vert = BULL 25, Rouge = BULL 50.":bull==="color_bonus"?"BULL BONUS — BULL 25 et BULL 50 sont valables ; celui de ta couleur reçoit le bonus configuré.":"CLASSIQUE — BULL 25 et BULL 50 sont valables."}</div></>;
+            return <><div style={{...panelStyle(tone+"55"),padding:12,textAlign:"center",display:"grid",justifyItems:"center",gap:8}}><div style={{color:tone,fontSize:9,fontWeight:1100,letterSpacing:.8}}>PISTE ACTUELLE · {color}</div><div style={{color:"#fff",fontSize:24,fontWeight:1200,lineHeight:1}}>{targetLabel}</div><GreenRedTargetBoard color={color as any} step={step} bullRule={bull} size={168} label={targetLabel} /><div style={{color:SOFT,fontSize:9.5}}>Étape {step+1}/11 · Score {Number(state.scores?.[id]||0)}</div></div><div style={{...panelStyle("rgba(255,255,255,.10)"),padding:11,color:"#dce2ed",fontSize:10.5,lineHeight:1.55}}>La cible est volontairement grisée pour mieux lire l'objectif du joueur. Seules les couronnes DOUBLE et TRIPLE de la valeur courante restent colorées et entourées. Le numéro actif reprend la couleur du joueur. À l'étape finale : {bull==="color_lock"?"BULL DE COULEUR — Vert = BULL 25, Rouge = BULL 50.":bull==="color_bonus"?"BULL BONUS — BULL 25 et BULL 50 sont valables ; celui de ta couleur reçoit le bonus configuré.":"CLASSIQUE — BULL 25 et BULL 50 sont valables."}</div></>;
           })()}
         </div> : null}
 
@@ -1201,22 +1381,24 @@ export default function Wave61SharedPlay(props: any) {
           ? { minWidth:0,minHeight:0,overflowY:"auto",overscrollBehavior:"contain",padding:"0 2px 8px",display:"grid",gap:7,alignContent:"start" }
           : { flex:"1 1 auto",minHeight:0,overflowY:"auto",overscrollBehavior:"contain",padding:"5px 8px 7px",display:"grid",gap:7,alignContent:"start" }
         }>
-          {spec.id === "green_vs_red" ? <section data-green-red-active-player="1" style={{ position:"relative",overflow:"hidden",minHeight:118,borderRadius:18,border:`1px solid ${gvrTone}70`,background:`radial-gradient(circle at 12% 50%,${gvrTone}24,transparent 35%),linear-gradient(145deg,${gvrTone}10,rgba(5,8,14,.98))`,boxShadow:`inset 0 0 38px ${gvrTone}0c,0 12px 28px rgba(0,0,0,.28)`,display:"grid",gridTemplateColumns:"minmax(0,1fr) 112px",gap:8,alignItems:"stretch",padding:8 }}>
-            <div aria-hidden style={{position:"absolute",left:-24,top:"50%",transform:"translateY(-50%)",width:132,height:132,opacity:.18,filter:"saturate(.9)",pointerEvents:"none"}}>{gvrAvatar?<img src={gvrAvatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:999}}/>:<div style={{width:"100%",height:"100%",borderRadius:999,display:"grid",placeItems:"center",fontSize:58,fontWeight:1200,color:gvrTone,border:`2px solid ${gvrTone}55`}}>{String(activePlayer?.name||"?").slice(0,1).toUpperCase()}</div>}</div>
-            <div style={{position:"relative",zIndex:1,minWidth:0,display:"grid",placeItems:"center",alignContent:"center",paddingLeft:44,textAlign:"center"}}>
+          {spec.id === "green_vs_red" ? <section data-green-red-active-player="1" style={{ position:"relative",overflow:"hidden",minHeight:108,borderRadius:18,border:`1px solid ${gvrTone}70`,background:`radial-gradient(circle at 18% 50%,${gvrTone}20,transparent 34%),linear-gradient(145deg,${gvrTone}10,rgba(5,8,14,.985))`,boxShadow:`inset 0 0 38px ${gvrTone}0c,0 12px 28px rgba(0,0,0,.28)`,display:"grid",gridTemplateColumns:"78px minmax(0,1fr) 108px",gap:8,alignItems:"stretch",padding:8 }}>
+            <div style={{position:"relative",zIndex:1,display:"grid",placeItems:"center",minWidth:0}}>
+              <div style={{width:76,height:76,borderRadius:999,overflow:"hidden",border:`1.5px solid ${gvrTone}66`,background:`linear-gradient(180deg,${gvrTone}18,rgba(7,10,16,.96))`,boxShadow:`0 0 18px ${gvrTone}18,inset 0 0 20px rgba(255,255,255,.03)`}}>{gvrAvatar?<img src={gvrAvatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover",opacity:.72}}/>:<div style={{width:"100%",height:"100%",display:"grid",placeItems:"center",fontSize:34,fontWeight:1200,color:gvrTone}}>{String(activePlayer?.name||"?").slice(0,1).toUpperCase()}</div>}</div>
+            </div>
+            <div style={{position:"relative",zIndex:1,minWidth:0,display:"grid",alignContent:"center",justifyItems:"center",textAlign:"center",padding:"2px 0"}}>
               <div style={{color:gvrTone,fontSize:15,fontWeight:1200,letterSpacing:.55,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"100%",textTransform:"uppercase"}}>{activePlayer?.name || "—"}</div>
-              <div style={{color:"#f5f7ff",fontSize:7.6,fontWeight:1050,letterSpacing:.85,marginTop:2}}>{gvrColor} · ÉTAPE {gvrStep+1}/11</div>
-              <div style={{color:gvrTone,fontSize:40,lineHeight:1,fontWeight:1250,letterSpacing:-1.4,textShadow:`0 0 18px ${gvrTone}45`,marginTop:3}}>{Math.round(Number(state.scores?.[gvrActiveId]||0))}</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:6,marginTop:6,width:"100%",maxWidth:170}}>
+              <div style={{color:"#f5f7ff",fontSize:7.4,fontWeight:1050,letterSpacing:.8,marginTop:2}}>{gvrColor} · ÉTAPE {gvrStep+1}/11</div>
+              <div style={{color:gvrTone,fontSize:38,lineHeight:1,fontWeight:1250,letterSpacing:-1.35,textShadow:`0 0 18px ${gvrTone}45`,marginTop:2}}>{Math.round(Number(state.scores?.[gvrActiveId]||0))}</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:6,marginTop:6,width:"100%",maxWidth:178}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,borderRadius:10,padding:"5px 6px",border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.04)"}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:12,height:12,color:gvrTone,lineHeight:1}}><GreenRedDartIcon color={gvrTone} size={12} /></span><span style={{width:1,height:12,background:"rgba(255,255,255,.12)"}}/><strong style={{color:"#fff",fontSize:10.5,fontWeight:1150,lineHeight:1}}>{dartsPlayed}</strong></div>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,borderRadius:10,padding:"5px 6px",border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.04)"}}><span style={{color:gvrTone,fontSize:11,lineHeight:1}}>↺</span><span style={{width:1,height:12,background:"rgba(255,255,255,.12)"}}/><strong style={{color:"#fff",fontSize:10.5,fontWeight:1150,lineHeight:1}}>{visitCount}</strong></div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,borderRadius:10,padding:"5px 6px",border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.04)"}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:12,height:12,color:gvrTone,lineHeight:1}}><GreenRedVisitIcon color={gvrTone} size={12} /></span><span style={{width:1,height:12,background:"rgba(255,255,255,.12)"}}/><strong style={{color:"#fff",fontSize:10.5,fontWeight:1150,lineHeight:1}}>{visitCount}</strong></div>
               </div>
             </div>
-            <button type="button" onClick={()=>setQuickPanel("objective")} style={{position:"relative",zIndex:1,minWidth:0,borderRadius:15,border:`1px solid ${gvrTone}70`,background:`linear-gradient(180deg,${gvrTone}22,rgba(7,10,16,.95))`,color:"#fff",display:"grid",placeItems:"center",alignContent:"center",gap:4,padding:"8px 7px",cursor:"pointer",boxShadow:`inset 0 0 20px ${gvrTone}0e`}}>
+            <button type="button" onClick={()=>setQuickPanel("objective")} style={{position:"relative",zIndex:1,minWidth:0,borderRadius:15,border:`1px solid ${gvrTone}70`,background:`linear-gradient(180deg,${gvrTone}22,rgba(7,10,16,.95))`,color:"#fff",display:"grid",alignContent:"center",justifyItems:"center",gap:4,padding:"8px 7px",cursor:"pointer",boxShadow:`inset 0 0 20px ${gvrTone}0e`}}>
               <small style={{fontSize:6.8,color:gvrTone,fontWeight:1050,letterSpacing:.9}}>PISTE {gvrColor}</small>
               <span style={{color:"#fff",fontSize:7.1,fontWeight:1100,letterSpacing:.7}}>OBJECTIF</span>
-              <GreenRedTargetBoard color={gvrColor as any} step={gvrStep} bullRule={gvrBullRule} size={70} />
-              <strong style={{fontSize:gvrStep>=10?13:15,lineHeight:1.05,color:"#fff",textAlign:"center"}}>{gvrTargetLabel}</strong>
+              <strong style={{fontSize:gvrStep>=10?14:17,lineHeight:1.02,color:"#fff",textAlign:"center"}}>{gvrTargetLabel}</strong>
+              <span style={{fontSize:6.3,lineHeight:1.2,color:"#b8c0cf"}}>{gvrStep>=10?"BULL final" : "Double / Triple"}</span>
             </button>
           </section> : <div style={{ ...panelStyle(accent+"62"), padding:9, background:`linear-gradient(145deg,${accent}12,rgba(5,8,14,.97))` }}>
             <div style={{ display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",marginBottom:6 }}>
@@ -1261,6 +1443,8 @@ export default function Wave61SharedPlay(props: any) {
         </section>
       </div>}
       {renderClassicQuickModal()}
+      {visitRecap ? <Wave61VisitRecap recap={visitRecap} accent={spec.id === "green_vs_red" ? gvrTone : accent} /> : null}
+      <style>{`@keyframes wave61VisitRecapCountdown{from{transform:scaleX(1)}to{transform:scaleX(0)}}`}</style>
     </div>;
   }
 
@@ -1307,6 +1491,8 @@ export default function Wave61SharedPlay(props: any) {
           {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} fitMinScale={compactHeight ? 0.28 : 0.34} /> : <div style={{ ...panelStyle(accent + "35"), height: "100%", display: "grid", placeItems: "center", textAlign: "center", color: SOFT, fontSize: 12, padding: 14 }}><div><div style={{ fontSize: 34 }}>🤖</div><b style={{ color: accent }}>{activePlayer?.name}</b><div style={{ marginTop: 6 }}>calcule son prochain lancer…</div></div></div>}
         </section>
       </div>}
+      {visitRecap ? <Wave61VisitRecap recap={visitRecap} accent={accent} /> : null}
+      <style>{`@keyframes wave61VisitRecapCountdown{from{transform:scaleX(1)}to{transform:scaleX(0)}}`}</style>
     </div>;
   }
 

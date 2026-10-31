@@ -3,12 +3,13 @@ import type { GameDart, Player } from "../types-game";
 import { getWave61Preset, type Wave61Family } from "../../games/dartsWave61Families";
 
 // Legacy audit markers preserved: WAVE61_ENGINE_VERSION = 9, WAVE61_ENGINE_VERSION = 10, WAVE61_ENGINE_VERSION = 11, WAVE61_ENGINE_VERSION = 12, WAVE61_ENGINE_VERSION = 13, WAVE61_ENGINE_VERSION = 14, WAVE61_ENGINE_VERSION = 15, WAVE61_ENGINE_VERSION = 16, WAVE61_ENGINE_VERSION = 17.
-export const WAVE61_ENGINE_VERSION = 19;
+export const WAVE61_ENGINE_VERSION = 21;
 
 export type Wave61Difficulty = "easy" | "normal" | "hard";
 export type Wave61ParticipantMode = "players" | "teams";
 export type Wave61Config = {
   modeId: string;
+  variantId?: string;
   selectedIds: string[];
   players: number;
   playersList?: any[];
@@ -128,6 +129,7 @@ export function normalizeWave61Config(modeId: string, raw: any): Wave61Config {
   const forcedGoal = modeId === "nine_dart_century" ? 100 : modeId === "shove_a_penny" ? 7 * clamp(Number(raw?.modeOptions?.marksPerBox || 3), 2, 5) : modeId === "green_vs_red" ? 11 : null;
   return {
     modeId,
+    variantId: raw?.variantId ? String(raw.variantId) : undefined,
     selectedIds,
     players: Math.max(preset.minPlayers, Number(raw?.players || selectedIds.length || preset.minPlayers)),
     playersList: Array.isArray(raw?.playersList) ? raw.playersList : [],
@@ -581,7 +583,10 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
       greenRedColorByPlayer: modeId === "green_vs_red" ? greenRedColorAssignments(ids, config, teamByPlayer, seedText) : {},
       greenRedStepByPlayer: modeId === "green_vs_red" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       greenRedPenaltyByPlayer: modeId === "green_vs_red" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      greenRedTransferGivenByPlayer: modeId === "green_vs_red" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      greenRedTransferReceivedByPlayer: modeId === "green_vs_red" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       greenRedBullBonusByPlayer: modeId === "green_vs_red" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      greenRedVariantId: modeId === "green_vs_red" ? String(config?.variantId || `gvr:${String(config?.modeOptions?.contractRule || "official_unique")}:${String(config?.modeOptions?.scoreModel || "hit_count")}:${String(config?.modeOptions?.bullAccess || "final_only")}:${String(config?.modeOptions?.penaltyModel || "transfer")}:${String(config?.modeOptions?.bullRule || "classic")}:base${Number(config?.modeOptions?.transferBaseErrorPoints ?? 1)}:opp${Number(config?.modeOptions?.transferOppMultiplier ?? 2)}:miss${Number(config?.modeOptions?.transferMissPoints ?? config?.modeOptions?.transferMissMultiplier ?? 2)}`) : "",
       greenRedHistory: [],
       sniperContracts: modeId === "sniper" ? sniperContracts(seedText, Math.max(12, config.goal || 12)) : [],
       sniperStepByPlayer: modeId === "sniper" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
@@ -1130,7 +1135,7 @@ export function getWave61Target(state: Wave61State): Wave61Target {
     const color = String(state.special?.greenRedColorByPlayer?.[player?.id] || "GREEN") as "RED" | "GREEN";
     const path = color === "GREEN" ? GREEN_RING : RED_RING;
     const step = Math.min(10, Number(state.special?.greenRedStepByPlayer?.[player?.id] || 0));
-    if (step >= 10) return { kind: "bull", label: `${color === "RED" ? "🔴" : "🟢"} ${color} · BULL 25 / DBULL 50 · étape 11/11` };
+    if (step >= 10) return { kind: "bull", label: `${color === "RED" ? "🔴" : "🟢"} ${color} · BULL · étape 11/11` };
     return { kind: "number", value: path[step], label: `${color === "RED" ? "🔴" : "🟢"} ${color} · D/T ${path[step]} · étape ${step + 1}/11` };
   }
   if (state.modeId === "sniper") {
@@ -1515,72 +1520,191 @@ function processGreenVsRed(state: Wave61State, playerId: string, darts: GameDart
   const ownPath = color === "GREEN" ? GREEN_RING : RED_RING;
   const otherPath = color === "GREEN" ? RED_RING : GREEN_RING;
   const step = Math.min(10, Number(state.special?.greenRedStepByPlayer?.[playerId] ?? state.roundIndex ?? 0));
-  const wrongPct = modeOptionNumber(state.config, "wrongColorPenaltyPct", 100, 0, 100) / 100;
   const bullRule = String(state.config?.modeOptions?.bullRule || "classic");
+  const bullAccess = String(state.config?.modeOptions?.bullAccess || "final_only");
+  const contractRule = String(state.config?.modeOptions?.contractRule || "official_unique");
+  const scoreModel = String(state.config?.modeOptions?.scoreModel || "hit_count");
+  const penaltyModel = String(state.config?.modeOptions?.penaltyModel || "transfer");
+  const wrongPct = modeOptionNumber(state.config, "wrongColorPenaltyPct", 100, 0, 200) / 100;
+  const transferBaseErrorPoints = modeOptionNumber(state.config, "transferBaseErrorPoints", 1, 0, 20);
+  const transferOppMultiplier = modeOptionNumber(state.config, "transferOppMultiplier", 2, 1, 5);
+  // V221: MISS is an explicit fixed transfer. Keep the old key only as migration fallback.
+  const transferMissPoints = modeOptionNumber(state.config, "transferMissPoints", modeOptionNumber(state.config, "transferMissMultiplier", 2, 0, 50), 0, 50);
   const greenBullBonus = modeOptionNumber(state.config, "greenBullBonus", 25, 0, 200);
   const redBullBonus = modeOptionNumber(state.config, "redBullBonus", 50, 0, 200);
-  let delta = 0, hits = 0, penalties = 0, bullBonus = 0;
+  const penaltyMiss = modeOptionNumber(state.config, "penaltyMiss", 1, 0, 50);
+  const penaltyTargetSingle = modeOptionNumber(state.config, "penaltyTargetSingle", 1, 0, 50);
+  const penaltyOwnWrong = modeOptionNumber(state.config, "penaltyOwnWrong", 2, 0, 50);
+  const penaltyOppSingle = modeOptionNumber(state.config, "penaltyOppSingle", 3, 0, 50);
+  const penaltyOppDouble = modeOptionNumber(state.config, "penaltyOppDouble", 4, 0, 50);
+  const penaltyOppTriple = modeOptionNumber(state.config, "penaltyOppTriple", 5, 0, 50);
+  const ownBullBed = color === "GREEN" ? "OB" : "IB";
+  const ownTarget = step < 10 ? Number(ownPath[step]) : null;
+  let delta = 0, hits = 0, penalties = 0, bullBonus = 0, rawBoardPoints = 0, transferred = 0;
   const countedBeds = new Set<string>();
+  const dartResults: any[] = [];
 
-  if (step >= 10) {
-    for (const d of darts) {
-      if (d?.bed !== "OB" && d?.bed !== "IB") continue;
+  const activeIndex = Math.max(0, state.players.findIndex((p) => String(p.id) === String(playerId)));
+  const transferRecipient = (() => {
+    for (let offset = 1; offset <= state.players.length; offset++) {
+      const candidate = state.players[(activeIndex + offset) % state.players.length];
+      if (!candidate || String(candidate.id) === String(playerId)) continue;
+      const candidateColor = String(state.special?.greenRedColorByPlayer?.[candidate.id] || "GREEN");
+      if (candidateColor !== color) return candidate;
+    }
+    return state.players.find((p) => String(p.id) !== String(playerId)) || null;
+  })();
+
+  const addOfficialPenalty = (amount: number, label: string, d: GameDart) => {
+    const penalty = Math.max(0, Math.round(Number(amount || 0)));
+    if (penalty > 0) {
+      delta -= penalty;
+      penalties += penalty;
+      events.push(`⚠️ ${label} · -${penalty}`);
+    } else events.push(`• ${label} · 0`);
+    dartResults.push({ dart: d, result: penalty > 0 ? "penalty" : "miss", label, penalty, points: -penalty });
+  };
+
+  const addTransfer = (amount: number, label: string, d: GameDart) => {
+    const gift = Math.max(0, Math.round(Number(amount || 0)));
+    if (gift > 0 && transferRecipient) {
+      state.scores[transferRecipient.id] = Number(state.scores[transferRecipient.id] || 0) + gift;
+      transferred += gift;
+      penalties += gift;
+      state.special.greenRedTransferGivenByPlayer[playerId] = Number(state.special.greenRedTransferGivenByPlayer?.[playerId] || 0) + gift;
+      state.special.greenRedTransferReceivedByPlayer[transferRecipient.id] = Number(state.special.greenRedTransferReceivedByPlayer?.[transferRecipient.id] || 0) + gift;
+      // Keep the recipient stats in sync immediately: a transfer can occur before that player throws again.
+      if (state.statsByPlayer?.[transferRecipient.id]) state.statsByPlayer[transferRecipient.id].score = Number(state.scores[transferRecipient.id] || 0);
+      events.push(`🎁 ${label} · +${gift} à ${transferRecipient.name || "l'adversaire"}`);
+    } else events.push(`• ${label} · 0`);
+    dartResults.push({ dart: d, result: gift > 0 ? "transfer" : "miss", label, transfer: gift, recipientId: transferRecipient?.id || null, points: 0 });
+  };
+
+  const addValid = (d: GameDart, label: string, bonus = 0) => {
+    const board = wave61DartScore(d);
+    rawBoardPoints += board;
+    const awarded = scoreModel === "hit_count" ? 1 : board + bonus;
+    delta += awarded;
+    hits += 1;
+    if (bonus) bullBonus += bonus;
+    events.push(`${color === "RED" ? "🔴" : "🟢"} ${label} · +${awarded}${scoreModel === "hit_count" ? " touche" : ""}${bonus && scoreModel !== "hit_count" ? ` · bonus +${bonus}` : ""}`);
+    dartResults.push({ dart: d, result: "valid", label, points: awarded, rawBoardPoints: board, bonus: scoreModel === "hit_count" ? 0 : bonus });
+  };
+
+  const isOpponentColor = (d: GameDart) => {
+    const n = Number(d?.number || 0);
+    return ["S","D","T"].includes(String(d?.bed || "")) && otherPath.includes(n as any);
+  };
+
+  const transferAmount = (d: GameDart) => {
+    // MISS is intentionally fixed and independent from the target/value model.
+    // A config value of 10 MUST therefore mean exactly +10 to the opponent.
+    if (!d || d.bed === "MISS") return transferMissPoints;
+    if (scoreModel === "hit_count") {
+      const base = transferBaseErrorPoints;
+      return isOpponentColor(d) ? base * transferOppMultiplier : base;
+    }
+    const raw = Math.max(1, wave61DartScore(d));
+    return isOpponentColor(d) ? raw * transferOppMultiplier : raw;
+  };
+
+  const gradedPenalty = (d: GameDart) => {
+    if (penaltyModel === "none") return 0;
+    if (penaltyModel === "official") {
+      // Historical wording: hitting a wrong number of the opponent's colour subtracts "that amount".
+      // Singles, doubles and triples therefore use their actual board value; other misses do not penalise.
+      return isOpponentColor(d) ? Math.round(wave61DartScore(d) * wrongPct) : 0;
+    }
+    if (penaltyModel === "transfer") return transferAmount(d);
+    // Legacy graded MSS, kept for backwards compatibility with old saved games.
+    if (!d || d.bed === "MISS") return penaltyMiss;
+    const n = Number(d.number || 0);
+    if (d.bed === "S" && ownTarget != null && n === ownTarget) return penaltyTargetSingle;
+    if (d.bed === "S" && otherPath.includes(n as any)) return penaltyOppSingle;
+    if (d.bed === "D" && otherPath.includes(n as any)) return penaltyOppDouble;
+    if (d.bed === "T" && otherPath.includes(n as any)) return penaltyOppTriple;
+    if (["S","D","T"].includes(String(d.bed)) && ownPath.includes(n as any)) return penaltyOwnWrong;
+    if (d.bed === "OB" || d.bed === "IB") return d.bed === ownBullBed ? penaltyOwnWrong : penaltyOppTriple;
+    return penaltyMiss;
+  };
+
+  const applyInvalid = (d: GameDart, label: string) => {
+    const amount = gradedPenalty(d);
+    if (penaltyModel === "transfer") addTransfer(amount, label, d);
+    else addOfficialPenalty(amount, label, d);
+  };
+
+  const penaltyLabel = (d: GameDart) => {
+    if (!d || d.bed === "MISS") return "MISS";
+    const n = Number(d.number || 0);
+    if (d.bed === "S" && ownTarget != null && n === ownTarget) return `S${n} · simple de la cible`;
+    if (d.bed === "S" && otherPath.includes(n as any)) return `S${n} · couleur adverse`;
+    if ((d.bed === "D" || d.bed === "T") && otherPath.includes(n as any)) return `${wave61DartLabel(d)} · couleur adverse`;
+    if (["S","D","T"].includes(String(d.bed)) && ownPath.includes(n as any)) return `${wave61DartLabel(d)} · mauvaise valeur de ta piste`;
+    if (d.bed === "OB" || d.bed === "IB") return `${d.bed === "IB" ? "BULL 50" : "BULL 25"} hors contrat`;
+    return `${wave61DartLabel(d)} · hors contrat`;
+  };
+
+  for (const d of darts) {
+    if (!d || d.bed === "MISS") {
+      applyInvalid(d || ({ bed: "MISS" } as GameDart), "MISS");
+      continue;
+    }
+
+    const isBull = d.bed === "OB" || d.bed === "IB";
+    if (isBull) {
+      const isOwnColorBull = d.bed === ownBullBed;
+      const finalStage = step >= 10;
+      const anytimeAllowed = !finalStage && bullAccess === "color_anytime" && isOwnColorBull;
+      let finalAllowed = false;
+      if (finalStage) finalAllowed = bullRule === "color_lock" ? isOwnColorBull : true;
+      if (anytimeAllowed || finalAllowed) {
+        const key = String(d.bed);
+        if (contractRule === "official_unique" && countedBeds.has(`BULL:${key}`)) {
+          events.push(`• ${d.bed === "IB" ? "BULL 50" : "BULL 25"} déjà compté dans cette volée`);
+          dartResults.push({ dart: d, result: "duplicate", label: "Déjà compté", points: 0 });
+          continue;
+        }
+        countedBeds.add(`BULL:${key}`);
+        const bonus = finalStage && bullRule === "color_bonus" && isOwnColorBull && scoreModel !== "hit_count"
+          ? (color === "GREEN" ? greenBullBonus : redBullBonus)
+          : 0;
+        addValid(d, `${d.bed === "IB" ? "BULL 50" : "BULL 25"}${anytimeAllowed ? " · BULL DE COULEUR" : ""}`, bonus);
+      } else applyInvalid(d, penaltyLabel(d));
+      continue;
+    }
+
+    const n = Number(d.number || 0);
+    const isDT = d.bed === "D" || d.bed === "T";
+    if (step < 10 && isDT && n === ownTarget) {
       const key = String(d.bed);
-      if (countedBeds.has(key)) {
-        events.push(`• ${d.bed === "IB" ? "BULL 50" : "1/2 BULL 25"} déjà compté`);
+      if (contractRule === "official_unique" && countedBeds.has(key)) {
+        events.push(`• ${wave61DartLabel(d)} déjà compté · règle officielle 1×D / 1×T`);
+        dartResults.push({ dart: d, result: "duplicate", label: "Déjà compté", points: 0 });
         continue;
       }
       countedBeds.add(key);
-
-      const isOwnColorBull = (color === "GREEN" && d.bed === "OB") || (color === "RED" && d.bed === "IB");
-      if (bullRule === "color_lock" && !isOwnColorBull) {
-        events.push(`⚠️ BULL hors couleur · ${color === "GREEN" ? "VERT = 25" : "ROUGE = 50"} uniquement`);
-        continue;
-      }
-
-      const value = wave61DartScore(d);
-      let bonus = 0;
-      if (bullRule === "color_bonus" && isOwnColorBull) {
-        bonus = color === "GREEN" ? greenBullBonus : redBullBonus;
-        bullBonus += bonus;
-      }
-      delta += value + bonus;
-      hits += 1;
-      events.push(`🎯 ${d.bed === "IB" ? "BULL 50" : "1/2 BULL 25"} · +${value}${bonus ? ` + BONUS ${bonus}` : ""}`);
+      addValid(d, wave61DartLabel(d));
+      continue;
     }
-  } else {
-    const ownTarget = Number(ownPath[step]);
-    for (const d of darts) {
-      if (d?.bed !== "D" && d?.bed !== "T") continue;
-      const n = Number(d.number || 0);
-      if (n === ownTarget) {
-        if (countedBeds.has(String(d.bed))) {
-          events.push(`• ${wave61DartLabel(d)} déjà compté sur cette étape`);
-          continue;
-        }
-        countedBeds.add(String(d.bed));
-        const value = wave61DartScore(d);
-        delta += value;
-        hits += 1;
-        events.push(`${color === "RED" ? "🔴" : "🟢"} ${wave61DartLabel(d)} · +${value}`);
-      } else if (otherPath.includes(n as any)) {
-        const penalty = Math.round(wave61DartScore(d) * wrongPct);
-        delta -= penalty;
-        penalties += penalty;
-        events.push(`⚠️ Couleur adverse ${wave61DartLabel(d)} · -${penalty}`);
-      }
-    }
+
+    applyInvalid(d, penaltyLabel(d));
   }
 
-  state.scores[playerId] = Math.max(0, Number(state.scores[playerId] || 0) + delta);
+  const nextOwnScore = Number(state.scores[playerId] || 0) + delta;
+  state.scores[playerId] = penaltyModel === "official" ? nextOwnScore : Math.max(0, nextOwnScore);
   state.progress[playerId] = step + 1;
   state.special.greenRedStepByPlayer[playerId] = step + 1;
   state.special.greenRedPenaltyByPlayer[playerId] = Number(state.special.greenRedPenaltyByPlayer?.[playerId] || 0) + penalties;
   state.special.greenRedBullBonusByPlayer[playerId] = Number(state.special.greenRedBullBonusByPlayer?.[playerId] || 0) + bullBonus;
   state.special.greenRedHistory = [...(state.special.greenRedHistory || []), {
-    playerId, color, step: step + 1, delta, score: state.scores[playerId],
-    penalties, bullBonus, bullRule,
-  }].slice(-80);
+    playerId, color, step: step + 1, delta, score: state.scores[playerId], hits,
+    penalties, transferred, transferRecipientId: transferRecipient?.id || null,
+    bullBonus, bullRule, bullAccess, contractRule, scoreModel, penaltyModel,
+    transferConfig: { baseErrorPoints: transferBaseErrorPoints, opponentMultiplier: transferOppMultiplier, missPoints: transferMissPoints },
+    rawBoardPoints, dartResults,
+    variantId: `gvr:${contractRule}:${scoreModel}:${bullAccess}:${penaltyModel}:${bullRule}:base${transferBaseErrorPoints}:opp${transferOppMultiplier}:miss${transferMissPoints}`,
+  }].slice(-120);
   return { delta, hits };
 }
 
@@ -4119,22 +4243,57 @@ export function pickWave61BotDarts(state: Wave61State, level: Wave61Difficulty =
     return Array.from({ length: 3 }, () => ({ bed, number: targetNum } as GameDart));
   }
   if (state.modeId === "green_vs_red") {
+    const playerColor = String(state.special?.greenRedColorByPlayer?.[activeId] || "GREEN") as "GREEN" | "RED";
+    const ownPath = playerColor === "GREEN" ? GREEN_RING : RED_RING;
+    const oppPath = playerColor === "GREEN" ? RED_RING : GREEN_RING;
+    const contractRule = String(state.config?.modeOptions?.contractRule || "official_unique");
+    const bullAccess = String(state.config?.modeOptions?.bullAccess || "final_only");
+    const bullRule = String(state.config?.modeOptions?.bullRule || "classic");
+    const ownBull = playerColor === "GREEN" ? "OB" : "IB";
+    const botError = (targetNumber?: number): GameDart => {
+      const roll = Math.random();
+      if (roll < 0.28) return { bed: "MISS" } as GameDart;
+      if (targetNumber && roll < 0.48) return { bed: "S", number: targetNumber } as GameDart;
+      if (roll < 0.68) {
+        const n = ownPath[Math.floor(Math.random() * ownPath.length)];
+        return { bed: "S", number: Number(n) } as GameDart;
+      }
+      if (roll < 0.84) {
+        const n = oppPath[Math.floor(Math.random() * oppPath.length)];
+        return { bed: "S", number: Number(n) } as GameDart;
+      }
+      const n = oppPath[Math.floor(Math.random() * oppPath.length)];
+      return { bed: Math.random() < 0.58 ? "D" : "T", number: Number(n) } as GameDart;
+    };
     if (target?.kind === "bull") {
-      if (level === "hard") return [{ bed: "IB" } as GameDart, { bed: "OB" } as GameDart, { bed: "MISS" } as GameDart];
-      if (level === "normal") return [
-        Math.random() < chance ? ({ bed: "OB" } as GameDart) : ({ bed: "MISS" } as GameDart),
-        Math.random() < chance * 0.55 ? ({ bed: "IB" } as GameDart) : ({ bed: "MISS" } as GameDart),
-        { bed: "MISS" } as GameDart,
-      ];
-      return Array.from({ length: 3 }, () => Math.random() < chance * 0.35 ? ({ bed: "OB" } as GameDart) : ({ bed: "MISS" } as GameDart));
+      const validBullBeds: Array<"OB" | "IB"> = bullRule === "color_lock" ? [ownBull as "OB" | "IB"] : ["OB", "IB"];
+      const result: GameDart[] = [];
+      const used = new Set<string>();
+      for (let i = 0; i < 3; i++) {
+        if (Math.random() < chance) {
+          const bed = validBullBeds[Math.floor(Math.random() * validBullBeds.length)];
+          if (contractRule === "official_unique" && used.has(bed)) result.push(botError());
+          else { used.add(bed); result.push({ bed } as GameDart); }
+        } else result.push(botError());
+      }
+      return result;
     }
     if (target?.kind === "number") {
-      const beds: Array<"D" | "T"> = level === "hard" ? ["T", "D"] : ["D", "T"];
-      return [
-        Math.random() < chance ? ({ bed: beds[0], number: target.value } as GameDart) : missNear(target),
-        Math.random() < chance * (level === "hard" ? 0.95 : 0.72) ? ({ bed: beds[1], number: target.value } as GameDart) : missNear(target),
-        missNear(target),
-      ];
+      const result: GameDart[] = [];
+      const used = new Set<string>();
+      for (let i = 0; i < 3; i++) {
+        const bullChance = bullAccess === "color_anytime" ? (level === "hard" ? 0.12 : level === "normal" ? 0.07 : 0.04) : 0;
+        if (bullChance > 0 && Math.random() < bullChance) {
+          const key = `BULL:${ownBull}`;
+          if (contractRule !== "official_unique" || !used.has(key)) { used.add(key); result.push({ bed: ownBull } as GameDart); continue; }
+        }
+        if (Math.random() < chance) {
+          const bed: "D" | "T" = Math.random() < (level === "hard" ? 0.58 : 0.5) ? "T" : "D";
+          if (contractRule === "official_unique" && used.has(bed)) result.push(botError(target.value));
+          else { used.add(bed); result.push({ bed, number: target.value } as GameDart); }
+        } else result.push(botError(target.value));
+      }
+      return result;
     }
   }
   if (state.modeId === "sniper" && target) {

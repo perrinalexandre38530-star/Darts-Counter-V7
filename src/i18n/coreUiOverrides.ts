@@ -1,6 +1,7 @@
 // Core navigation/menu translations that must be deterministic in every selectable language.
 // These overrides intentionally win over historical dictionaries and the on-device fallback.
 import { registerUiLiteralTranslation } from "./uiLiteralSafety";
+import { localizeBullTerminology } from "../lib/dartsBullTerminology";
 
 export const CORE_UI_OVERRIDES: Record<string, Record<string, string>> = {
   "fr": {
@@ -1096,8 +1097,8 @@ const CORE_ENGLISH_POST_REPLACEMENTS: ReadonlyArray<[RegExp, string]> = [
 export function postProcessCoreUiTranslation(targetLanguage: string, value: string): string {
   const target = String(targetLanguage || "fr").toLowerCase().split("-")[0];
   const values = CORE_UI_OVERRIDES[target];
-  if (!values || target === "en") return value;
-  let out = String(value || "");
+  let out = localizeBullTerminology(target, String(value || ""));
+  if (!values || target === "en") return out;
   for (const [pattern, key] of CORE_ENGLISH_POST_REPLACEMENTS) {
     const replacement = values[key];
     if (!replacement) continue;
@@ -1105,5 +1106,5 @@ export function postProcessCoreUiTranslation(targetLanguage: string, value: stri
   }
   const syncWord = CORE_SYNC_WORD[target];
   if (syncWord) out = out.replace(/\bSYNC\b/gi, syncWord);
-  return out;
+  return localizeBullTerminology(target, out);
 }

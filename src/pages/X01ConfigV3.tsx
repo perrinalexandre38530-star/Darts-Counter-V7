@@ -1862,7 +1862,8 @@ export const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
                             background: "rgba(5,6,12,.72)",
                             border: `1px solid ${primary}`,
                             boxShadow: `0 0 12px ${primary}88`,
-                            overflow: "visible",
+                            overflowX: "hidden",
+        overflowY: "visible",
                           }}
                         >
                           <ProfileAvatar
@@ -6575,7 +6576,8 @@ export function TeamsSection({
         maxWidth: "100%",
         minWidth: 0,
         boxSizing: "border-box",
-        overflow: "visible",
+        overflowX: "hidden",
+        overflowY: "visible",
         background: cardBg,
         borderRadius: 18,
         padding: 12,
@@ -6602,7 +6604,7 @@ export function TeamsSection({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))",
+          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
           gap: 8,
           marginBottom: 12,
         }}
@@ -6849,7 +6851,8 @@ export function TeamsSection({
                               color: "#fff",
                             }}
                           >
-                            <div style={{ position: "relative", width: 98, height: 98, display: "grid", placeItems: "center", overflow: "visible", marginTop: 4 }}>
+                            <div style={{ position: "relative", width: 98, height: 98, display: "grid", placeItems: "center", overflowX: "hidden",
+        overflowY: "visible", marginTop: 4 }}>
                               {starData ? (
                                 <ProfileStarRing
                                   {...(starData.avg3d ? { avg3d: starData.avg3d } : { botLevel: starData.level })}
@@ -7306,13 +7309,16 @@ function x01AutoModeTab(primary: string, active: boolean): React.CSSProperties {
     border: active ? `1px solid ${primary}` : "1px solid rgba(255,255,255,.10)",
     background: active ? `linear-gradient(135deg, ${primary}2a, rgba(255,230,160,.16))` : "rgba(255,255,255,.035)",
     color: active ? "#fff" : "#cfd4ec",
-    padding: "10px 12px",
-    fontSize: 12,
+    padding: "10px 10px",
+    fontSize: 11,
     fontWeight: 1000,
     cursor: "pointer",
     boxShadow: active ? `0 0 18px ${primary}33` : "none",
-    whiteSpace: "nowrap",
+    whiteSpace: "normal",
+    lineHeight: 1.12,
     textAlign: "center",
+    minWidth: 0,
+    wordBreak: "break-word",
   };
 }
 

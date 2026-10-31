@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 88" preserveAspectRatio="xMidYMid meet">
+  <g fill="#fff">
+    <!-- left dart -->
+    <g transform="translate(28 45) rotate(-28)">
+      <path d="M0-34C-5-34-10-30-13-25L-7-14H7L13-25C10-30 5-34 0-34Z"/>
+      <rect x="-2" y="-33" width="4" height="20" rx="1"/>
+      <path d="M-3-14H3L4-5H-4Z"/>
+      <path d="M-5-5H5L7 14L4 24H-4L-7 14Z"/>
+      <path d="M-2 24H2L0 39Z"/>
+    </g>
+    <!-- center dart -->
+    <g transform="translate(60 39)">
+      <path d="M0-36C-5-36-10-32-13-27L-7-15H7L13-27C10-32 5-36 0-36Z"/>
+      <rect x="-2" y="-35" width="4" height="21" rx="1"/>
+      <path d="M-3-15H3L4-6H-4Z"/>
+      <path d="M-5-6H5L7 15L4 26H-4L-7 15Z"/>
+      <path d="M-2 26H2L0 43Z"/>
+    </g>
+    <!-- right dart -->
+    <g transform="translate(92 45) rotate(28)">
+      <path d="M0-34C-5-34-10-30-13-25L-7-14H7L13-25C10-30 5-34 0-34Z"/>
+      <rect x="-2" y="-33" width="4" height="20" rx="1"/>
+      <path d="M-3-14H3L4-5H-4Z"/>
+      <path d="M-5-5H5L7 14L4 24H-4L-7 14Z"/>
+      <path d="M-2 24H2L0 39Z"/>
+    </g>
+  </g>
+</svg>

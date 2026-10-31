@@ -679,6 +679,8 @@ function buildRows(rec: any, mode: ModeKind) {
   const progressMap = pick(rec?.summary?.finalProgress, rec?.payload?.stateSnapshot?.progress, rec?.resume?.state?.progress, {}) || {};
   const healthMap = pick(rec?.summary?.health, rec?.payload?.stateSnapshot?.health, rec?.resume?.state?.health, {}) || {};
   const livesMap = pick(rec?.summary?.lives, rec?.payload?.stateSnapshot?.lives, rec?.resume?.state?.lives, {}) || {};
+  const wave61ModeId = mode === "wave61" ? readWave61ModeId(rec) : "";
+  const wave61Special = pick(rec?.payload?.stateSnapshot?.special, rec?.resume?.state?.special, rec?.summary?.stateSnapshot?.special, {}) || {};
   const rows = seed.map((p, index) => {
     const id = playerId(p);
     const merged = { ...(playersById[id] || {}), ...(stats[id] || {}), ...(p || {}), id };
@@ -687,6 +689,12 @@ function buildRows(rec: any, mode: ModeKind) {
       merged.progress = pick(merged.progress, progressMap?.[id], 0);
       merged.health = pick(merged.health, healthMap?.[id], 0);
       merged.lives = pick(merged.lives, livesMap?.[id], 0);
+      if (wave61ModeId === "green_vs_red") {
+        const step = Math.max(0, Math.min(11, num(wave61Special?.greenRedStepByPlayer?.[id], 0)));
+        merged.greenRedStep = step;
+        merged.greenRedColor = String(wave61Special?.greenRedColorByPlayer?.[id] || "GREEN");
+        merged.progress = Math.round((step / 11) * 1000) / 10;
+      }
     }
     return {
       id,
@@ -1165,20 +1173,160 @@ function PtitHunSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; ac
 }
 
 function Wave61SummaryTables({ rec, rows, accent, familyLabel }: { rec: any; rows: any[]; accent: string; familyLabel: string }) {
+  const modeId = readWave61ModeId(rec);
   const match = pick(rec?.summary?.matchStats, rec?.payload?.stats?.match, {}) || {};
   const totalDarts = num(match?.totalDarts, rows.reduce((sum, row) => sum + num(row?.raw?.darts), 0));
   const totalHits = num(match?.totalHits, rows.reduce((sum, row) => sum + num(row?.raw?.hits), 0));
   const accuracy = num(match?.accuracy, totalDarts > 0 ? (totalHits / totalDarts) * 100 : 0);
-  const visits = num(match?.totalVisits, rows.reduce((sum, row) => sum + num(row?.raw?.visits), 0));
+  const totalVisits = num(match?.totalVisits, rows.reduce((sum, row) => sum + num(row?.raw?.visits), 0));
+  const visitHistory = asArray(pick(rec?.payload?.visits, rec?.payload?.stateSnapshot?.visits, rec?.resume?.state?.visits, rec?.summary?.state?.visits));
   const bulls = num(match?.bulls, rows.reduce((sum, row) => sum + num(row?.raw?.bulls), 0));
   const bestVisit = num(match?.bestVisit, Math.max(0, ...rows.map((row) => num(row?.raw?.bestVisit))));
   const winnerTeam = pick(rec?.winnerTeamId, rec?.summary?.winnerTeamId, rec?.payload?.stateSnapshot?.winnerTeamId);
+  const maxBy = (field: string) => rows.reduce((best: any, row: any) => {
+    const value = num(row?.raw?.[field]);
+    if (!best || value > num(best?.raw?.[field])) return row;
+    return best;
+  }, null as any);
+  const catastrophe = maxBy("worstVisitDelta");
+  const comeback = maxBy("bestScoreDrop");
+  const cleanKing = maxBy("bestCleanStreak");
+  const shieldKing = maxBy("shieldSaved");
+
+  if (modeId === "green_vs_red") {
+    const snapshot = pick(rec?.payload?.stateSnapshot, rec?.resume?.state, {}) || {};
+    const special = snapshot?.special || {};
+    const gvrOptions = snapshot?.config?.modeOptions || rec?.payload?.config?.modeOptions || rec?.summary?.config?.modeOptions || {};
+    const contractRule = String(gvrOptions?.contractRule || "official_unique");
+    const scoreModel = String(gvrOptions?.scoreModel || "hit_count");
+    const bullAccess = String(gvrOptions?.bullAccess || "final_only");
+    const penaltyModel = String(gvrOptions?.penaltyModel || "transfer");
+    const variantId = String(snapshot?.config?.variantId || rec?.payload?.variantId || rec?.summary?.variantId || special?.greenRedVariantId || "gvr:legacy");
+    const transferBase = Number(gvrOptions?.transferBaseErrorPoints ?? 1);
+    const transferOpp = Number(gvrOptions?.transferOppMultiplier ?? 2);
+    const transferMiss = Number(gvrOptions?.transferMissPoints ?? gvrOptions?.transferMissMultiplier ?? 2);
+    const penaltyLabel = penaltyModel === "official" ? "PÉNALITÉ OFFICIELLE" : penaltyModel === "transfer" ? `TRANSFERT MSS · ERR ${transferBase} · ADV ×${transferOpp} · MISS ${transferMiss}` : penaltyModel === "none" ? "SANS PÉNALITÉ" : "PÉNALITÉS MSS LEGACY";
+    const variantLabel = `${contractRule === "official_unique" ? "OFFICIEL 1D+1T" : "LIBRE 3 D/T"} · ${scoreModel === "hit_count" ? "1 TOUCHE = 1 PT" : "VALEUR CIBLE"} · ${bullAccess === "color_anytime" ? "BULL COULEUR À CHAQUE TOUR" : "BULL FINAL"} · ${penaltyLabel}`;
+    const visits = visitHistory;
+    const history = asArray(special?.greenRedHistory);
+    const colorByPlayer = special?.greenRedColorByPlayer || {};
+    const stepByPlayer = special?.greenRedStepByPlayer || {};
+    const penaltyByPlayer = special?.greenRedPenaltyByPlayer || {};
+    const transferGivenByPlayer = special?.greenRedTransferGivenByPlayer || {};
+    const transferReceivedByPlayer = special?.greenRedTransferReceivedByPlayer || {};
+    const bonusByPlayer = special?.greenRedBullBonusByPlayer || {};
+    const scoreByPlayer = snapshot?.scores || rec?.summary?.finalScores || {};
+    const GREEN = "#39e6a0";
+    const RED = "#ff586a";
+
+    const playerStats = rows.map((row:any) => {
+      const id = String(row.id);
+      const pv = visits.filter((v:any) => String(v?.playerId) === id);
+      const darts = pv.flatMap((v:any) => asArray(v?.darts));
+      const trajectory = history.filter((h:any) => String(h?.playerId) === id);
+      const validResults = trajectory.flatMap((h:any) => asArray(h?.dartResults)).filter((r:any) => String(r?.result) === "valid");
+      const validHits = validResults.length || pv.reduce((sum:number, v:any) => sum + num(v?.hits), 0);
+      const bulls = validResults.filter((r:any) => ["OB","IB"].includes(String(r?.dart?.bed || "").toUpperCase())).length;
+      const doubles = validResults.filter((r:any) => String(r?.dart?.bed || "").toUpperCase() === "D").length;
+      const triples = validResults.filter((r:any) => String(r?.dart?.bed || "").toUpperCase() === "T").length;
+      const bestVisit = trajectory.reduce((best:number, h:any) => Math.max(best, num(h?.delta)), 0);
+      const dartCount = darts.length;
+      const accuracy = dartCount > 0 ? (validHits / dartCount) * 100 : 0;
+      const color = String(colorByPlayer?.[id] || row?.raw?.greenRedColor || "GREEN");
+      const tone = color === "RED" ? RED : GREEN;
+      const step = Math.max(0, Math.min(11, num(stepByPlayer?.[id], row?.raw?.greenRedStep || 0)));
+      const score = num(scoreByPlayer?.[id], row?.raw?.score || row?.primary || 0);
+      const penalties = num(penaltyByPlayer?.[id], 0);
+      const transferGiven = num(transferGivenByPlayer?.[id], 0);
+      const transferReceived = num(transferReceivedByPlayer?.[id], 0);
+      const bonus = num(bonusByPlayer?.[id], 0);
+      return { ...row, id, color, tone, step, score, penalties, transferGiven, transferReceived, bonus, darts: dartCount, visits: pv.length, validHits, bulls, doubles, triples, bestVisit, accuracy, trajectory };
+    });
+
+    const totalDartsGvr = playerStats.reduce((s:number,p:any)=>s+p.darts,0);
+    const totalVisitsGvr = playerStats.reduce((s:number,p:any)=>s+p.visits,0);
+    const totalHitsGvr = playerStats.reduce((s:number,p:any)=>s+p.validHits,0);
+    const totalBullsGvr = playerStats.reduce((s:number,p:any)=>s+p.bulls,0);
+    const bestVisitGvr = playerStats.reduce((m:number,p:any)=>Math.max(m,p.bestVisit),0);
+    const globalAccuracy = totalDartsGvr ? (totalHitsGvr / totalDartsGvr) * 100 : 0;
+    const bestScore = [...playerStats].sort((a:any,b:any)=>b.score-a.score)[0];
+    const bestAccuracy = [...playerStats].sort((a:any,b:any)=>b.accuracy-a.accuracy)[0];
+    const bestVisitPlayer = [...playerStats].sort((a:any,b:any)=>b.bestVisit-a.bestVisit)[0];
+    const cleanest = [...playerStats].sort((a:any,b:any)=>a.penalties-b.penalties)[0];
+
+    const medallion = (p:any, size=42) => p?.avatar
+      ? <img src={String(p.avatar)} alt="" style={{width:size,height:size,borderRadius:999,objectFit:"cover",border:`2px solid ${p.tone || accent}`,boxShadow:`0 0 14px ${(p.tone || accent)}44`,flex:"0 0 auto"}}/>
+      : <div style={{width:size,height:size,borderRadius:999,display:"grid",placeItems:"center",background:`${p?.tone || accent}18`,border:`2px solid ${p?.tone || accent}`,color:p?.tone || accent,fontWeight:1100,flex:"0 0 auto"}}>{String(p?.name||"?").slice(0,1).toUpperCase()}</div>;
+
+    const recordCard = (label:string, p:any, value:string) => <div style={{minWidth:0,borderRadius:14,border:"1px solid rgba(255,255,255,.09)",background:"rgba(255,255,255,.035)",padding:9,display:"grid",gridTemplateColumns:"38px minmax(0,1fr)",gap:8,alignItems:"center"}}>
+      {medallion(p,38)}
+      <div style={{minWidth:0}}><div style={{fontSize:8.2,fontWeight:1000,color:"#aeb7c9",letterSpacing:.45}}>{label}</div><div style={{fontSize:12.5,fontWeight:1100,color:p?.tone || accent,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{value}</div></div>
+    </div>;
+
+    return <>
+      <section style={{...card(accent),overflow:"hidden",minWidth:0}}>
+        <div style={sectionTitle(accent)}>Performance GREEN VS RED</div>
+        <div style={{ display:"grid", gap:5, marginBottom:8 }}><div style={{color:accent,fontSize:8.2,fontWeight:1050,lineHeight:1.35}}>{variantLabel}</div><div style={{color:"#6f7889",fontSize:7.5,overflowWrap:"anywhere"}}>VARIANTE · {variantId}</div><div style={{ color: "#aeb5c8", fontSize: 10.5 }}>Ces statistiques sont rattachées à cette variante précise et ne doivent pas être comparées directement à un autre modèle de scoring.</div></div>
+        <div style={{ display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:8,minWidth:0 }}>
+          <Kpi label="Volées" value={totalVisitsGvr || "—"} accent={accent}/>
+          <Kpi label="Précision" value={totalDartsGvr ? `${Math.round(globalAccuracy*10)/10}%` : "—"} accent={accent}/>
+          <Kpi label="Bulls" value={totalBullsGvr} accent={accent}/>
+          <Kpi label="Best volée" value={bestVisitGvr || "—"} accent={accent}/>
+        </div>
+      </section>
+
+      <section style={{...card(accent),overflow:"hidden",minWidth:0}}>
+        <div style={sectionTitle(accent)}>Joueurs · pistes & efficacité</div>
+        <div style={{display:"grid",gap:9,minWidth:0}}>
+          {playerStats.map((p:any)=><div key={`gvr-player-${p.id}`} style={{minWidth:0,borderRadius:16,border:`1px solid ${p.tone}55`,background:`linear-gradient(145deg,${p.tone}12,rgba(255,255,255,.025))`,padding:10,display:"grid",gap:9}}>
+            <div style={{display:"grid",gridTemplateColumns:"46px minmax(0,1fr) auto",gap:9,alignItems:"center",minWidth:0}}>
+              {medallion(p,46)}
+              <div style={{minWidth:0}}><div style={{fontSize:14,fontWeight:1100,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}</div><div style={{fontSize:9,color:p.tone,fontWeight:1000,marginTop:2}}>{p.color} · ÉTAPE {p.step}/11</div></div>
+              <div style={{textAlign:"right"}}><div style={{fontSize:7.5,color:"#aeb5c8",fontWeight:950}}>SCORE</div><div style={{fontSize:24,lineHeight:1,fontWeight:1200,color:p.tone}}>{p.score}</div></div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:6,minWidth:0}}>
+              {(penaltyModel === 'transfer'
+                ? [['PRÉCISION',p.darts?`${Math.round(p.accuracy*10)/10}%`:'—'],['D / T',`${p.doubles} / ${p.triples}`],['BULLS',String(p.bulls)],['FLÈCHES',String(p.darts)],['OFFERTS',p.transferGiven?`+${p.transferGiven}`:'0'],['REÇUS',p.transferReceived?`+${p.transferReceived}`:'0']]
+                : [['PRÉCISION',p.darts?`${Math.round(p.accuracy*10)/10}%`:'—'],['D / T',`${p.doubles} / ${p.triples}`],['BULLS',String(p.bulls)],['FLÈCHES',String(p.darts)],['PÉNALITÉS',p.penalties?`-${p.penalties}`:'Aucune'],['BONUS',p.bonus?`+${p.bonus}`:'—']]
+              ).map(([label,value])=><div key={label} style={{minWidth:0,borderRadius:10,padding:"7px 5px",textAlign:"center",background:"rgba(255,255,255,.035)",border:"1px solid rgba(255,255,255,.07)"}}><div style={{fontSize:6.8,color:"#9fa9bb",fontWeight:950,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{label}</div><div style={{fontSize:11.5,color:(label==='PÉNALITÉS'&&p.penalties)?RED:(label==='REÇUS'&&p.transferReceived)?p.tone:'#fff',fontWeight:1100,marginTop:2}}>{value}</div></div>)}
+            </div>
+          </div>)}
+        </div>
+      </section>
+
+      <section style={{...card(accent),overflow:"hidden",minWidth:0}}>
+        <div style={sectionTitle(accent)}>Records de la partie</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:8,minWidth:0}}>
+          {recordCard("MEILLEUR SCORE",bestScore,bestScore?`${bestScore.score} pts`:"—")}
+          {recordCard("MEILLEURE PRÉCISION",bestAccuracy,bestAccuracy?.darts?`${Math.round(bestAccuracy.accuracy*10)/10}%`:"—")}
+          {recordCard("BEST VOLÉE",bestVisitPlayer,bestVisitPlayer?.bestVisit?String(bestVisitPlayer.bestVisit):"—")}
+          {penaltyModel === "transfer"
+            ? recordCard("MOINS DE POINTS OFFERTS",cleanest,cleanest?`${cleanest.transferGiven || 0} offert(s)`:"—")
+            : recordCard("PLUS PROPRE",cleanest,cleanest?(cleanest.penalties?`${cleanest.penalties} pénalité(s)`:"Aucune pénalité"):"—")}
+        </div>
+      </section>
+
+      <section style={{...card(accent),overflow:"hidden",minWidth:0}}>
+        <div style={sectionTitle(accent)}>Trajectoire des scores</div>
+        <div style={{ color:"#aeb5c8",fontSize:10.5,marginBottom:8 }}>Évolution réelle du score après chaque volée enregistrée.</div>
+        <div style={{display:"grid",gap:9,minWidth:0}}>
+          {playerStats.map((p:any)=><div key={`gvr-traj-${p.id}`} style={{minWidth:0,borderRadius:14,border:`1px solid ${p.tone}35`,background:"rgba(255,255,255,.025)",padding:9}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>{medallion(p,34)}<div style={{minWidth:0}}><div style={{fontWeight:1100,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}</div><div style={{fontSize:8,color:p.tone,fontWeight:950}}>{p.color}</div></div></div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:8,minWidth:0}}>
+              {p.trajectory.length ? p.trajectory.map((h:any,idx:number)=><span key={`${p.id}-${idx}`} style={{minWidth:34,borderRadius:9,padding:"5px 7px",textAlign:"center",border:`1px solid ${p.tone}40`,background:`${p.tone}10`,color:"#fff",fontSize:9,fontWeight:1000}}>{num(h?.score)}</span>) : <span style={{color:"#7f8998",fontSize:9}}>Aucune trajectoire enregistrée</span>}
+            </div>
+          </div>)}
+        </div>
+      </section>
+    </>;
+  }
+
   return <>
     <section style={card(accent)}>
       <div style={sectionTitle(accent)}>Performance Wave61</div>
       <div style={{ color: "#aeb5c8", fontSize: 11, marginBottom: 8 }}>{familyLabel}{winnerTeam ? ` · Team ${winnerTeam} victorieuse` : ""}</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8 }}>
-        <Kpi label="Volées" value={visits || "—"} accent={accent} />
+        <Kpi label="Volées" value={totalVisits || "—"} accent={accent} />
         <Kpi label="Précision" value={`${Math.round(accuracy * 10) / 10}%`} accent={accent} />
         <Kpi label="Bulls" value={bulls} accent={accent} />
         <Kpi label="Best volée" value={bestVisit} accent={accent} />
@@ -1193,12 +1341,12 @@ function Wave61SummaryTables({ rec, rows, accent, familyLabel }: { rec: any; row
         <Kpi label="Bouclier le plus rentable" value={shieldKing ? `${shieldKing.name} · ${num(shieldKing.raw?.shieldSaved)} sauvés` : "—"} accent={accent} />
       </div>
     </section>
-    {visits.length ? <section style={card(accent)}>
+    {visitHistory.length ? <section style={card(accent)}>
       <div style={sectionTitle(accent)}>Trajectoire anti-score</div>
       <div style={{ color: "#aeb5c8", fontSize: 11, marginBottom: 8 }}>Chaque ligne retrace les scores après les volées. Les marqueurs signalent les moments qui ont réellement retourné la partie.</div>
       <div style={{ display: "grid", gap: 8 }}>
         {rows.map((row: any) => {
-          const pv = visits.filter((v: any) => String(v?.playerId) === String(row.id));
+          const pv = visitHistory.filter((v: any) => String(v?.playerId) === String(row.id));
           const start = num(pick(rec?.summary?.config?.rules?.startScore, rec?.payload?.config?.rules?.startScore, 20), 20);
           const shown = pv.slice(-12);
           return <div key={`traj-${row.id}`} style={{ border: "1px solid rgba(255,255,255,.08)", borderRadius: 12, padding: 9, background: "rgba(255,255,255,.025)" }}>

@@ -14,7 +14,7 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import { useTheme } from "../contexts/ThemeContext";
 import { DARTS_WAVE_61 } from "../games/dartsWave61";
 import { getWave61Preset } from "../games/dartsWave61Families";
-import { loadBotPlayers } from "../lib/bots";
+import { loadBotPlayers, subscribeBotsChange } from "../lib/bots";
 import { recordProfileUsageForMode } from "../lib/profileUsage";
 import { getTicker } from "../lib/tickers";
 import { WAVE61_ENGINE_VERSION } from "../lib/gameEngines/wave61Engine";
@@ -23,14 +23,10 @@ import {
   BotTeamsSection,
   PillButton,
   TeamsSection,
+  X01_PRO_BOTS,
   buildX01DartsBotTeams,
 } from "./X01ConfigV3";
 
-const BUILTIN_BOTS = [
-  { id: "wave61_bot_easy", name: "Arcade Rookie", isBot: true, botLevel: "easy" },
-  { id: "wave61_bot_normal", name: "Arcade Pilot", isBot: true, botLevel: "normal" },
-  { id: "wave61_bot_hard", name: "Arcade Ace", isBot: true, botLevel: "hard" },
-];
 
 export type Wave61DedicatedOption = {
   key: string;
@@ -64,16 +60,61 @@ export default function Wave61SharedConfig(props: any) {
   const dedicatedOptions: Wave61DedicatedOption[] = Array.isArray(props?.dedicatedOptions) ? props.dedicatedOptions : [];
   const dedicatedIntro = String(props?.dedicatedIntro || "");
   const dedicatedDefaults = React.useMemo(() => Object.fromEntries(dedicatedOptions.map((option) => [option.key, option.defaultValue])), [spec.id]);
-  const [modeOptions, setModeOptions] = React.useState<Record<string, any>>(() => ({ ...dedicatedDefaults, ...(saved?.modeOptions && typeof saved.modeOptions === "object" ? saved.modeOptions : {}) }));
+  const [modeOptions, setModeOptions] = React.useState<Record<string, any>>(() => {
+    const savedModeOptions = saved?.modeOptions && typeof saved.modeOptions === "object" ? { ...saved.modeOptions } : {};
+    // GREEN VS RED V221 migration: the former transferMissMultiplier field already behaved
+    // as a fixed value in hit-count scoring. Preserve the user's saved setting explicitly.
+    if (spec.id === "green_vs_red" && savedModeOptions.transferMissPoints == null && savedModeOptions.transferMissMultiplier != null) {
+      savedModeOptions.transferMissPoints = Number(savedModeOptions.transferMissMultiplier);
+    }
+    return { ...dedicatedDefaults, ...savedModeOptions };
+  });
 
   const storeProfiles = Array.isArray(store?.profiles) ? store.profiles : [];
   const humanProfiles = React.useMemo(() => storeProfiles.filter((p: any) => !isBotLike(p)).map((p: any) => normalizeProfile(p)), [storeProfiles]);
+  const [storedBotProfiles, setStoredBotProfiles] = React.useState<any[]>(() => {
+    try { return loadBotPlayers(); } catch { return []; }
+  });
+  React.useEffect(() => subscribeBotsChange(() => {
+    try { setStoredBotProfiles(loadBotPlayers()); } catch { setStoredBotProfiles([]); }
+  }), []);
   const botProfiles = React.useMemo(() => {
     const map = new Map<string, any>();
-    BUILTIN_BOTS.forEach((b) => map.set(b.id, b));
-    try { loadBotPlayers().forEach((b: any) => map.set(String(b.id), normalizeProfile({ ...b, isBot: true }, true))); } catch {}
+    for (const bot of X01_PRO_BOTS || []) {
+      const normalized = normalizeProfile({ ...bot, isBot: true, bot: true, source: "pro", isProBot: true }, true);
+      if (normalized.id) map.set(normalized.id, normalized);
+    }
+    for (const bot of storedBotProfiles || []) {
+      const id = String(bot?.id || "");
+      if (!id) continue;
+      const isAwena = id === "bot_awena_official";
+      const normalized = normalizeProfile({
+        ...bot,
+        isBot: true,
+        bot: true,
+        source: isAwena ? "awena" : "cpu",
+        isUserBot: !isAwena,
+        groupLabel: isAwena ? "AWENA BOT" : "CPU Home",
+      }, true);
+      map.set(normalized.id, { ...(map.get(normalized.id) || {}), ...normalized });
+    }
+    for (const profile of storeProfiles || []) {
+      if (!isBotLike(profile)) continue;
+      const id = String(profile?.id || "");
+      if (!id) continue;
+      const isAwena = id === "bot_awena_official";
+      const normalized = normalizeProfile({
+        ...profile,
+        isBot: true,
+        bot: true,
+        source: isAwena ? "awena" : (String(profile?.source || "cpu") || "cpu"),
+        isUserBot: !isAwena && !/^bot_pro_/i.test(id),
+        groupLabel: isAwena ? "AWENA BOT" : (/^bot_pro_/i.test(id) ? undefined : "CPU Home"),
+      }, true);
+      map.set(normalized.id, { ...(map.get(normalized.id) || {}), ...normalized });
+    }
     return [...map.values()];
-  }, []);
+  }, [storedBotProfiles, storeProfiles]);
   const allProfiles = React.useMemo(() => [...humanProfiles, ...botProfiles], [humanProfiles, botProfiles]);
   const profileById = React.useMemo(() => new Map(allProfiles.map((p: any) => [String(p.id), p])), [allProfiles]);
 
@@ -280,8 +321,12 @@ export default function Wave61SharedConfig(props: any) {
       if (effectiveParticipantMode === "teams") orderedIds.forEach((id, index) => { teamByPlayer[id] = index % 2 === 0 ? "A" : "B"; });
     }
     const playersList = orderedIds.map((id) => profileById.get(id)).filter(Boolean).map((p: any) => ({ ...p, id: String(p.id), name: p?.name || p?.displayName || "Joueur" }));
+    const greenRedVariantId = spec.id === "green_vs_red"
+      ? `gvr:${String(modeOptions?.contractRule || "official_unique")}:${String(modeOptions?.scoreModel || "hit_count")}:${String(modeOptions?.bullAccess || "final_only")}:${String(modeOptions?.penaltyModel || "transfer")}:${String(modeOptions?.bullRule || "classic")}:base${Number(modeOptions?.transferBaseErrorPoints ?? 1)}:opp${Number(modeOptions?.transferOppMultiplier ?? 2)}:miss${Number(modeOptions?.transferMissPoints ?? modeOptions?.transferMissMultiplier ?? 2)}`
+      : undefined;
     const payload = {
       modeId: spec.id,
+      variantId: greenRedVariantId,
       selectedIds: orderedIds,
       players: orderedIds.length,
       playersList,
@@ -312,7 +357,7 @@ export default function Wave61SharedConfig(props: any) {
 
   return <div className="page wave61-config-screen" data-wave61-config="1" style={{ minHeight: "100dvh", paddingBottom: 88, background: `radial-gradient(circle at 50% 0%,${accent}14,transparent 34%)` }}>
     <div className="wave61-config-header"><PageHeader tickerSrc={modeTicker || undefined} tickerAlt={spec.label} title={modeTicker ? undefined : spec.label} subtitle={modeTicker ? undefined : familyText} tickerHeight={82} tickerBottomGap={8} tickerFit="cover" left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("games", { gamesView: "all" })} color={accent} glow={`${accent}88`} /></div>} right={awena?.enabled !== false ? <div style={{ marginRight: 7 }}><PremiumAwenaButton awena={awena} route={`${spec.id}_config`} mode={spec.id} screenLabel={`${spec.label} · Configuration`} accent={accent} /></div> : null} /></div>
-    <div className="wave61-config-body" style={{ padding: "8px 10px 20px", maxWidth: 980, margin: "0 auto", display: "grid", gap: 10 }}>
+    <div className="wave61-config-body" style={{ padding: "8px 10px 20px", maxWidth: 980, margin: "0 auto", display: "grid", gap: 10, width: "100%", minWidth: 0, overflowX: "hidden" }}>
       <section className="wave61-config-participants" style={spec.id === "green_vs_red" && greenRedFormat === "teams" ? { padding:0, background:"transparent", border:"none", boxShadow:"none" } : card}>
         {spec.id === "green_vs_red" ? <>
           <div style={greenRedFormat === "teams" ? { ...card, marginBottom:10 } : undefined}>
@@ -374,7 +419,7 @@ export default function Wave61SharedConfig(props: any) {
           <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>Participants</div>
           {spec.supportsTeams ? <div style={{ display: "flex", gap: 8, marginBottom: 12 }}><button style={pill(participantMode === "players")} onClick={() => setParticipantMode("players")}>JOUEURS</button><button style={pill(participantMode === "teams")} onClick={() => setParticipantMode("teams")}>2 ÉQUIPES AUTO</button></div> : null}
           <PlayerPagedSelector usageMode={spec.id} profiles={humanProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} pageSize={9} modalTitle="Choisir des joueurs" showSelectedSummary={true} />
-          {spec.supportsBots ? <div style={{ marginTop: 10 }}><button type="button" onClick={() => setBotsOpen((v) => !v)} style={pill(botsOpen)}>{botsOpen ? "☑ BOTS OUVERTS" : "☐ AJOUTER DES BOTS"}</button>{botsOpen ? <div style={{ marginTop: 10 }}><BotPagedSelector bots={botProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} label="BOTS IA" showCheckbox={false} showSelectedSummary={false} /></div> : null}</div> : null}
+          {spec.supportsBots ? <div style={{ marginTop: 10 }}><button type="button" onClick={() => setBotsOpen((v) => !v)} style={pill(botsOpen)}>{botsOpen ? "☑ BOTS OUVERTS" : "☐ AJOUTER DES BOTS"}</button>{botsOpen ? <div style={{ marginTop: 10 }}><BotPagedSelector bots={botProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} label="BOTS X01 · PRO / CPU / AWENA" showCheckbox={false} showSelectedSummary={false} /></div> : null}</div> : null}
           <div style={{ marginTop: 10, color: valid ? accent : "#ff97aa", fontSize: 11, fontWeight: 900 }}>{valid ? `${selectedProfiles.length} participant(s) prêt(s)${botCount ? ` · ${botCount} BOT(S)` : ""}` : `Sélectionne au moins ${minPlayers} participant(s).`}</div>
           {effectiveParticipantMode === "teams" ? <div style={{ marginTop: 7, color: "#9299ad", fontSize: 10.5 }}>Répartition Wave61 automatique A/B en alternance.</div> : null}
         </>}
@@ -385,7 +430,7 @@ export default function Wave61SharedConfig(props: any) {
           <div><div style={{color:accent,fontSize:11,fontWeight:1000,letterSpacing:1,textTransform:"uppercase"}}>Bots IA</div><div style={{color:"#7f8798",fontSize:9.5,marginTop:2}}>Même sélecteur BOT que X01.</div></div>
           <button type="button" aria-pressed={botsOpen} onClick={()=>setBotsOpen((v)=>!v)} style={{...pill(botsOpen),minHeight:32,padding:"5px 10px"}}>{botsOpen?"☑ ON":"☐ OFF"}</button>
         </div>
-        {botsOpen ? <BotPagedSelector bots={botProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} label="BOTS IA" showCheckbox={false} showSelectedSummary={false} /> : null}
+        {botsOpen ? <BotPagedSelector bots={botProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={accent} label="BOTS X01 · PRO / CPU / AWENA" showCheckbox={false} showSelectedSummary={false} /> : null}
       </section> : spec.id === "green_vs_red" && greenRedFormat === "teams" && teamsSourceMode !== "auto" ? <BotTeamsSection
         botTeams={botDartsTeams}
         selectedBotTeamIds={selectedBotTeamIds}
@@ -427,13 +472,32 @@ export default function Wave61SharedConfig(props: any) {
       {dedicatedOptions.length ? <section className="wave61-config-dedicated" style={{ ...card, borderColor: `${accent}4d` }}>
         <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>Réglages propres à {spec.label}</div>
         {dedicatedIntro ? <div style={{ color: "#aeb5c8", fontSize: 10.5, lineHeight: 1.5, marginBottom: 8 }}>{dedicatedIntro}</div> : null}
-        {dedicatedOptions.filter((option) => !(spec.id === "green_vs_red" && option.key === "matchFormat")).map((option) => {
+        {spec.id === "green_vs_red" ? (() => {
+          const optionMap = new Map(dedicatedOptions.map((option) => [option.key, option]));
+          const groups = [
+            { title: "FORMAT & MANCHES", keys: ["seriesFormat"] },
+            { title: "RÈGLE DE VOLÉE", keys: ["contractRule", "scoreModel"] },
+            { title: "BULL", keys: ["bullAccess", "bullRule", "greenBullBonus", "redBullBonus"] },
+            { title: "PÉNALITÉS", keys: ["penaltyModel", "transferBaseErrorPoints", "transferOppMultiplier", "transferMissPoints"] },
+          ];
+          return <div style={{ display:"grid", gap:9 }}>
+            {groups.map((group) => <div key={group.title} style={{ borderRadius:14, border:"1px solid rgba(255,255,255,.07)", background:"rgba(255,255,255,.025)", padding:8, minWidth:0 }}>
+              <div style={{ color:accent, fontSize:9, fontWeight:1100, letterSpacing:.8, marginBottom:5 }}>{group.title}</div>
+              {group.keys.map((key) => optionMap.get(key)).filter(Boolean).map((option:any) => {
+                const value = modeOptions?.[option.key] ?? option.defaultValue;
+                const setValue = (next:any) => setModeOptions((prev) => ({ ...prev, [option.key]: next }));
+                return <div key={option.key} style={{ marginBottom:4 }}>
+                  <OptionRow label={option.label}>{option.type === "toggle" ? <OptionToggle value={!!value} onChange={setValue} /> : option.type === "number" ? <input type="number" min={option.min} max={option.max} step={option.step || 1} value={value} onChange={(e) => setValue(Number(e.target.value))} style={{ width:72, borderRadius:10, border:"1px solid rgba(255,255,255,.14)", background:"rgba(0,0,0,.28)", color:"#fff", padding:"8px 7px", fontWeight:900 }} /> : <OptionSelect value={value} options={option.options || []} onChange={setValue} />}</OptionRow>
+                  {option.help ? <div style={{ color:"#777f91", fontSize:9.1, lineHeight:1.35, padding:"0 4px 5px" }}>{option.help}</div> : null}
+                </div>;
+              })}
+            </div>)}
+          </div>;
+        })() : dedicatedOptions.map((option) => {
           const value = modeOptions?.[option.key] ?? option.defaultValue;
           const setValue = (next: any) => setModeOptions((prev) => ({ ...prev, [option.key]: next }));
           return <div key={option.key} style={{ marginBottom: 4 }}>
-            <OptionRow label={option.label}>
-              {option.type === "toggle" ? <OptionToggle value={!!value} onChange={setValue} /> : option.type === "number" ? <input type="number" min={option.min} max={option.max} step={option.step || 1} value={value} onChange={(e) => setValue(Number(e.target.value))} style={{ width: 82, borderRadius: 10, border: "1px solid rgba(255,255,255,.14)", background: "rgba(0,0,0,.28)", color: "#fff", padding: "8px 9px", fontWeight: 900 }} /> : <OptionSelect value={value} options={option.options || []} onChange={setValue} />}
-            </OptionRow>
+            <OptionRow label={option.label}>{option.type === "toggle" ? <OptionToggle value={!!value} onChange={setValue} /> : option.type === "number" ? <input type="number" min={option.min} max={option.max} step={option.step || 1} value={value} onChange={(e) => setValue(Number(e.target.value))} style={{ width: 82, borderRadius: 10, border: "1px solid rgba(255,255,255,.14)", background: "rgba(0,0,0,.28)", color: "#fff", padding: "8px 9px", fontWeight: 900 }} /> : <OptionSelect value={value} options={option.options || []} onChange={setValue} />}</OptionRow>
             {option.help ? <div style={{ color: "#777f91", fontSize: 9.3, lineHeight: 1.35, padding: "0 4px 5px" }}>{option.help}</div> : null}
           </div>;
         })}
