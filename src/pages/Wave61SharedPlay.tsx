@@ -604,7 +604,7 @@ function GreenRedSituationPanel({ state, profiles }: any) {
 }
 
 
-function Wave61VisitRecap({ recap, accent }: any) {
+function Wave61VisitRecap({ recap, accent, onClose, durationMs = 3000 }: any) {
   if (!recap) return null;
   const tone = recap.tone || accent;
   const dartLabel = (d:any) => wave61DartLabel(d);
@@ -623,7 +623,7 @@ function Wave61VisitRecap({ recap, accent }: any) {
   };
   const scoreDelta = Number(recap.scoreAfter || 0) - Number(recap.scoreBefore || 0);
   const overlay = <div role="status" aria-live="polite" aria-label="Résumé de la volée" style={{position:"fixed",inset:0,zIndex:2147483000,display:"grid",placeItems:"center",padding:"16px",background:"rgba(0,0,0,.46)",backdropFilter:"blur(5px)",pointerEvents:"auto"}}>
-    <div style={{width:"min(470px,calc(100vw - 24px))",maxWidth:"100%",minWidth:0,borderRadius:18,border:`1px solid ${tone}88`,background:"linear-gradient(180deg,rgba(18,22,33,.995),rgba(7,10,16,.995))",boxShadow:`0 24px 60px rgba(0,0,0,.72),0 0 28px ${tone}2e`,padding:12,display:"grid",gap:9,boxSizing:"border-box",overflow:"hidden"}}>
+    <div style={{width:"min(470px,calc(100vw - 24px))",maxWidth:"100%",minWidth:0,borderRadius:18,border:`1px solid ${tone}88`,background:"linear-gradient(180deg,rgba(18,22,33,.995),rgba(7,10,16,.995))",boxShadow:`0 24px 60px rgba(0,0,0,.72),0 0 28px ${tone}2e`,padding:12,display:"grid",gap:9,boxSizing:"border-box",overflow:"hidden",position:"relative"}}><button type="button" aria-label="Fermer le récapitulatif" onClick={onClose} style={{position:"absolute",top:8,right:8,zIndex:3,width:32,height:32,borderRadius:11,border:"1px solid rgba(255,255,255,.13)",background:"rgba(9,12,18,.86)",color:"#fff",display:"grid",placeItems:"center",cursor:"pointer",boxShadow:"0 6px 18px rgba(0,0,0,.32)"}}><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
       <div style={{display:"grid",gridTemplateColumns:"40px minmax(0,1fr) auto",gap:9,alignItems:"center",minWidth:0}}>
         <div style={{width:40,height:40,borderRadius:999,overflow:"hidden",display:"grid",placeItems:"center",border:`1.5px solid ${tone}`,background:`${tone}14`,color:tone,fontWeight:1100}}>{recap.avatar?<img src={recap.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:String(recap.playerName||"?").slice(0,1).toUpperCase()}</div>
         <div style={{minWidth:0}}><div style={{color:tone,fontSize:8,fontWeight:1100,letterSpacing:.7}}>{recap.isBot?"BOT IA · RÉCAP VOLÉE":"RÉCAP VOLÉE"}</div><div style={{color:"#fff",fontSize:14,fontWeight:1150,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{recap.playerName}</div><div style={{color:"#aeb5c8",fontSize:8.3,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Objectif · {recap.targetLabel || "—"}</div></div>
@@ -643,7 +643,7 @@ function Wave61VisitRecap({ recap, accent }: any) {
       </div>
 
       <div style={{color:"#aeb5c8",fontSize:7.5,lineHeight:1.35,textAlign:"center"}}>{gvr?.contractRule==="official_unique"?"Règle officielle · 1 Double et 1 Triple maximum comptés dans la volée":gvr?.contractRule==="unlimited"?"Variante libre · jusqu’à 3 D/T valides dans la volée":""}</div>
-      <div style={{display:"grid",gap:4}}><div style={{height:4,borderRadius:999,overflow:"hidden",background:"rgba(255,255,255,.08)"}}><div style={{width:"100%",height:"100%",borderRadius:999,background:`linear-gradient(90deg,${tone},${tone}88)`,transformOrigin:"left center",animation:"wave61VisitRecapCountdown 3s linear forwards"}}/></div><div style={{color:"#8f98aa",fontSize:7.1,fontWeight:850,textAlign:"center"}}>Analyse automatique · 3 secondes</div></div>
+      <div style={{display:"grid",gap:4}}><div style={{height:4,borderRadius:999,overflow:"hidden",background:"rgba(255,255,255,.08)"}}><div style={{width:"100%",height:"100%",borderRadius:999,background:`linear-gradient(90deg,${tone},${tone}88)`,transformOrigin:"left center",animation:`wave61VisitRecapCountdown ${durationMs}ms linear forwards`}}/></div><div style={{color:"#8f98aa",fontSize:7.1,fontWeight:850,textAlign:"center"}}>Analyse automatique · {Math.round(durationMs/1000)} secondes</div></div>
     </div>
   </div>;
   return typeof document !== "undefined" ? createPortal(overlay, document.body) : overlay;
@@ -1034,7 +1034,7 @@ export default function Wave61SharedPlay(props: any) {
 
   React.useEffect(() => {
     if (!visitRecap) return;
-    const timer = window.setTimeout(() => setVisitRecap((current:any) => current?.visitId === visitRecap.visitId ? null : current), 3000);
+    const timer = window.setTimeout(() => setVisitRecap((current:any) => current?.visitId === visitRecap.visitId ? null : current), spec.id === "green_vs_red" ? 5000 : 3000);
     return () => window.clearTimeout(timer);
   }, [visitRecap?.visitId]);
 
@@ -1443,7 +1443,7 @@ export default function Wave61SharedPlay(props: any) {
         </section>
       </div>}
       {renderClassicQuickModal()}
-      {visitRecap ? <Wave61VisitRecap recap={visitRecap} accent={spec.id === "green_vs_red" ? gvrTone : accent} /> : null}
+      {visitRecap ? <Wave61VisitRecap recap={visitRecap} accent={spec.id === "green_vs_red" ? gvrTone : accent} onClose={()=>setVisitRecap(null)} durationMs={spec.id === "green_vs_red" ? 5000 : 3000} /> : null}
       <style>{`@keyframes wave61VisitRecapCountdown{from{transform:scaleX(1)}to{transform:scaleX(0)}}`}</style>
     </div>;
   }
@@ -1491,7 +1491,7 @@ export default function Wave61SharedPlay(props: any) {
           {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} fitMinScale={compactHeight ? 0.28 : 0.34} /> : <div style={{ ...panelStyle(accent + "35"), height: "100%", display: "grid", placeItems: "center", textAlign: "center", color: SOFT, fontSize: 12, padding: 14 }}><div><div style={{ fontSize: 34 }}>🤖</div><b style={{ color: accent }}>{activePlayer?.name}</b><div style={{ marginTop: 6 }}>calcule son prochain lancer…</div></div></div>}
         </section>
       </div>}
-      {visitRecap ? <Wave61VisitRecap recap={visitRecap} accent={accent} /> : null}
+      {visitRecap ? <Wave61VisitRecap recap={visitRecap} accent={accent} onClose={()=>setVisitRecap(null)} durationMs={spec.id === "green_vs_red" ? 5000 : 3000} /> : null}
       <style>{`@keyframes wave61VisitRecapCountdown{from{transform:scaleX(1)}to{transform:scaleX(0)}}`}</style>
     </div>;
   }
