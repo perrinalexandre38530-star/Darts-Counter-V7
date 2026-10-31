@@ -604,6 +604,52 @@ function GreenRedSituationPanel({ state, profiles }: any) {
   </section>;
 }
 
+function GreenRedSituationBanner({ state, onClick }: any) {
+  const activeId = String(state?.players?.[state?.activePlayerIndex]?.id || "");
+  const activeColor = String(state?.special?.greenRedColorByPlayer?.[activeId] || "GREEN");
+  const tone = activeColor === "RED" ? GVR_RED : GVR_GREEN;
+  const bullRule = String(state?.config?.modeOptions?.bullRule || "classic");
+  const step = Math.min(10, Number(state?.special?.greenRedStepByPlayer?.[activeId] || 0));
+  const path = activeColor === "RED" ? GVR_RED_PATH : GVR_GREEN_PATH;
+  const target = step >= 10
+    ? (bullRule === "color_lock" ? (activeColor === "GREEN" ? "BULL 25" : "BULL 50") : "BULL")
+    : `D/T ${path[step]}`;
+  const greenIds = (state?.players || []).filter((p:any)=>String(state?.special?.greenRedColorByPlayer?.[String(p.id)] || "GREEN") === "GREEN").map((p:any)=>String(p.id));
+  const redIds = (state?.players || []).filter((p:any)=>String(state?.special?.greenRedColorByPlayer?.[String(p.id)] || "GREEN") === "RED").map((p:any)=>String(p.id));
+  const greenScore = greenIds.reduce((sum:number,id:string)=>sum + Number(state?.scores?.[id] || 0), 0);
+  const redScore = redIds.reduce((sum:number,id:string)=>sum + Number(state?.scores?.[id] || 0), 0);
+  return <button
+    type="button"
+    data-green-red-situation-banner="1"
+    onClick={onClick}
+    style={{
+      minHeight:36,
+      width:"100%",
+      borderRadius:12,
+      border:`1px solid ${tone}4d`,
+      background:`linear-gradient(90deg,${tone}10,rgba(6,9,15,.97) 36%,rgba(6,9,15,.99))`,
+      display:"grid",
+      gridTemplateColumns:"auto minmax(0,1fr) auto auto auto",
+      alignItems:"center",
+      gap:7,
+      padding:"5px 8px",
+      color:"#fff",
+      cursor:"pointer",
+      minWidth:0,
+      boxShadow:`inset 0 0 18px ${tone}0b`,
+    }}
+  >
+    <span style={{width:18,height:18,borderRadius:999,display:"grid",placeItems:"center",border:`1px solid ${tone}78`,background:`${tone}18`,color:tone,fontSize:9}}>◎</span>
+    <span style={{minWidth:0,textAlign:"left"}}>
+      <b style={{display:"block",color:tone,fontSize:7.6,letterSpacing:.65,lineHeight:1}}>SITUATION</b>
+      <span style={{display:"block",marginTop:2,color:"#fff",fontSize:9.5,fontWeight:1100,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{target}</span>
+    </span>
+    <span style={{color:GVR_GREEN,fontSize:8.3,fontWeight:1100,whiteSpace:"nowrap"}}>VERT {greenScore}</span>
+    <span style={{color:GVR_RED,fontSize:8.3,fontWeight:1100,whiteSpace:"nowrap"}}>ROUGE {redScore}</span>
+    <span aria-hidden="true" style={{color:tone,fontSize:18,lineHeight:1}}>›</span>
+  </button>;
+}
+
 
 function Wave61VisitRecap({ recap, accent, onClose, durationMs = 3000 }: any) {
   if (!recap) return null;
@@ -709,47 +755,60 @@ function GreenVsRedInput({ state, activePlayer, currentThrow, setCurrentThrow, m
   };
   const visitSlotStyle = (d:any):React.CSSProperties => {
     const tone = dartTone(d);
-    return { minHeight:32,borderRadius:11,border:`1px solid ${d ? tone+"88" : "rgba(255,255,255,.08)"}`,background:d?`linear-gradient(180deg,${tone}18,rgba(7,10,16,.98))`:"linear-gradient(180deg,rgba(18,23,33,.98),rgba(7,10,16,.98))",display:"grid",placeItems:"center",color:d?tone:"#59616e",fontSize:9.5,fontWeight:1150,boxShadow:d?`inset 0 -2px 0 ${tone}55`:"inset 0 -2px 0 rgba(255,255,255,.04)" };
+    return { minHeight:24,borderRadius:9,border:`1px solid ${d ? tone+"88" : "rgba(255,255,255,.08)"}`,background:d?`linear-gradient(180deg,${tone}18,rgba(7,10,16,.98))`:"linear-gradient(180deg,rgba(18,23,33,.98),rgba(7,10,16,.98))",display:"grid",placeItems:"center",color:d?tone:"#59616e",fontSize:8.8,fontWeight:1150,boxShadow:d?`inset 0 -2px 0 ${tone}55`:"inset 0 -2px 0 rgba(255,255,255,.04)" };
   };
   const keyStyle = (tone:string, active=false, solid=false):React.CSSProperties => ({
-    minHeight:40,borderRadius:12,border:`1px solid ${active?tone+"bb":solid?tone+"90":"rgba(255,255,255,.12)"}`,
+    minHeight:32,borderRadius:11,border:`1px solid ${active?tone+"bb":solid?tone+"90":"rgba(255,255,255,.12)"}`,
     background:solid?`linear-gradient(180deg,${tone}e6,${tone}bf)`:active?`linear-gradient(180deg,${tone}2f,rgba(8,12,18,.98))`:`linear-gradient(180deg,rgba(18,23,33,.98),rgba(7,10,16,.99))`,
-    color:solid?"#111":"#fff",fontWeight:1100,fontSize:9.8,cursor:"pointer",boxShadow:active?`0 0 14px ${tone}32,inset 0 0 0 1px ${tone}22`:"inset 0 -2px 0 rgba(255,255,255,.04)",touchAction:"manipulation"
+    color:solid?"#111":"#fff",fontWeight:1100,fontSize:9.2,cursor:"pointer",boxShadow:active?`0 0 14px ${tone}32,inset 0 0 0 1px ${tone}22`:"inset 0 -2px 0 rgba(255,255,255,.04)",touchAction:"manipulation"
   });
+  const x01DoubleStyle:React.CSSProperties = {
+    minHeight:34,borderRadius:11,border:`1px solid ${multiplier===2?"#9bd7ff":"rgba(255,255,255,.08)"}`,
+    background:"rgba(46,150,193,.2)",color:"#bfeaff",fontWeight:1100,fontSize:9.6,cursor:"pointer",touchAction:"manipulation",
+    boxShadow:multiplier===2?"0 0 16px rgba(46,150,193,.22)":"none",
+  };
+  const x01TripleStyle:React.CSSProperties = {
+    minHeight:34,borderRadius:11,border:`1px solid ${multiplier===3?"#ffd0ff":"rgba(255,255,255,.08)"}`,
+    background:"rgba(179,68,151,.2)",color:"#ffccff",fontWeight:1100,fontSize:9.6,cursor:"pointer",touchAction:"manipulation",
+    boxShadow:multiplier===3?"0 0 16px rgba(179,68,151,.22)":"none",
+  };
+  const x01MissStyle:React.CSSProperties = {
+    minHeight:34,borderRadius:11,border:"1px solid rgba(255,152,165,.32)",
+    background:"linear-gradient(180deg,rgba(255,86,106,.18),rgba(0,0,0,.32))",color:"#ffe6ea",fontWeight:1100,fontSize:9.6,cursor:"pointer",touchAction:"manipulation",
+  };
+  const x01CancelStyle:React.CSSProperties = {
+    minHeight:34,borderRadius:11,border:"1px solid rgba(255,180,0,.34)",
+    background:"linear-gradient(180deg,rgba(255,198,58,.96),rgba(255,175,0,.90))",color:"#1a1a1a",fontWeight:1100,fontSize:9.2,cursor:"pointer",touchAction:"manipulation",
+    boxShadow:"0 8px 18px rgba(255,170,0,.20)",
+  };
   const bull25ValidNow = isBullStage ? (bullRule !== "color_lock" || ownBullBed === "OB") : (bullAccess === "color_anytime" && ownBullBed === "OB");
   const bull50ValidNow = isBullStage ? (bullRule !== "color_lock" || ownBullBed === "IB") : (bullAccess === "color_anytime" && ownBullBed === "IB");
 
-  return <div data-green-red-keypad="1" style={{...panelStyle(ownTone+"55"),height:"100%",minHeight:0,overflow:"hidden",padding:7,display:"flex",flexDirection:"column",gap:5,background:`linear-gradient(180deg,${ownTone}08,rgba(5,7,12,.995) 25%)`}}>
-    <div data-green-red-visit-preview="1" style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:5}}>
+  return <div data-green-red-keypad="1" style={{...panelStyle(ownTone+"55"),height:"100%",minHeight:0,overflow:"hidden",padding:6,display:"flex",flexDirection:"column",gap:4,background:`linear-gradient(180deg,${ownTone}08,rgba(5,7,12,.995) 25%)`}}>
+    <div data-green-red-visit-preview="1" style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:4}}>
       {Array.from({length:3},(_,i)=>currentThrow[i]).map((d:any,i:number)=><div key={i} style={visitSlotStyle(d)}>{dartLabel(d)}</div>)}
     </div>
 
-    <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:5}}>
-      <button type="button" onClick={()=>setMultiplier(multiplier===2?1:2)} style={keyStyle("#4ebfe7",multiplier===2)}>DOUBLE</button>
-      <button type="button" onClick={()=>setMultiplier(multiplier===3?1:3)} style={keyStyle("#d85ed3",multiplier===3)}>TRIPLE</button>
-      <button type="button" onClick={appendMiss} disabled={full} style={{...keyStyle("#ff5c69",false),opacity:full ? .45 : 1}}>MISS</button>
-      <button type="button" onClick={cancelLast} disabled={!currentThrow.length&&multiplier===1} style={{...keyStyle("#f5b522",false,true),opacity:(!currentThrow.length&&multiplier===1) ? .45 : 1}}>ANNULER</button>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:4}}>
+      <button type="button" onClick={()=>setMultiplier(multiplier===2?1:2)} style={x01DoubleStyle}>DOUBLE</button>
+      <button type="button" onClick={()=>setMultiplier(multiplier===3?1:3)} style={x01TripleStyle}>TRIPLE</button>
+      <button type="button" onClick={appendMiss} disabled={full} style={{...x01MissStyle,opacity:full ? .45 : 1}}>MISS</button>
+      <button type="button" onClick={cancelLast} disabled={!currentThrow.length&&multiplier===1} style={{...x01CancelStyle,opacity:(!currentThrow.length&&multiplier===1) ? .45 : 1}}>↶ ANNULER</button>
     </div>
 
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5}}>
-      <button type="button" onClick={()=>appendBull(false)} disabled={full} style={{...keyStyle("#3fd88a",bull25ValidNow),minHeight:34,color:bull25ValidNow?"#8fffc4":"#c8ced8"}}>BULL 25{bull25ValidNow?<span style={{fontSize:6.4,marginLeft:4}}>VALIDE</span>:<span style={{fontSize:6.4,marginLeft:4}}>PÉNALITÉ</span>}</button>
-      <button type="button" onClick={()=>appendBull(true)} disabled={full} style={{...keyStyle("#ff4655",bull50ValidNow),minHeight:34,color:bull50ValidNow?"#ff9ca5":"#c8ced8"}}>BULL 50{bull50ValidNow?<span style={{fontSize:6.4,marginLeft:4}}>VALIDE</span>:<span style={{fontSize:6.4,marginLeft:4}}>PÉNALITÉ</span>}</button>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}>
+      <button type="button" onClick={()=>appendBull(false)} disabled={full} title={bull25ValidNow?"BULL 25 valide":"BULL 25 pénalité"} style={{...keyStyle("#3fd88a",bull25ValidNow),minHeight:29,color:bull25ValidNow?"#8fffc4":"#c8ced8"}}>BULL 25</button>
+      <button type="button" onClick={()=>appendBull(true)} disabled={full} title={bull50ValidNow?"BULL 50 valide":"BULL 50 pénalité"} style={{...keyStyle("#ff4655",bull50ValidNow),minHeight:29,color:bull50ValidNow?"#ff9ca5":"#c8ced8"}}>BULL 50</button>
     </div>
 
-    {!isBullStage ? <div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:4,flex:"1 1 auto",minHeight:0}}>
+    {!isBullStage ? <div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gridTemplateRows:"repeat(4,minmax(0,1fr))",gap:3,flex:"1 1 auto",minHeight:0}}>
       {Array.from({length:20},(_,i)=>i+1).map((n:number)=>{
         const own=ownPath.includes(n); const target=n===targetNumber; const tone=own?ownTone:oppTone;
-        const multLabel=multiplier===3?"T":multiplier===2?"D":"S";
-        return <button key={n} type="button" disabled={full} onClick={()=>appendNumber(n)} style={{minHeight:33,borderRadius:10,border:`1px solid ${target?tone:tone+"55"}`,background:target?`linear-gradient(180deg,${tone}40,${tone}1c)`:`linear-gradient(180deg,${tone}12,rgba(7,10,16,.98))`,color:full?"#56606f":"#fff",fontSize:11.5,fontWeight:1150,cursor:full?"not-allowed":"pointer",boxShadow:target?`0 0 14px ${tone}35`:"none",position:"relative"}}>
-          {n}<span style={{position:"absolute",left:3,top:2,fontSize:5.2,color:tone,fontWeight:1000}}>{own?ownColor:"ADVERSE"}</span>{target?<span style={{position:"absolute",right:3,bottom:2,fontSize:5.2,color:tone}}>{multLabel}{n}</span>:null}
-        </button>;
+        return <button key={n} type="button" disabled={full} onClick={()=>appendNumber(n)} aria-label={`Secteur ${n}`} style={{minHeight:0,borderRadius:9,border:`1px solid ${target?tone:tone+"55"}`,background:target?`linear-gradient(180deg,${tone}40,${tone}1c)`:`linear-gradient(180deg,${tone}12,rgba(7,10,16,.98))`,color:full?"#56606f":"#fff",fontSize:12,fontWeight:1150,cursor:full?"not-allowed":"pointer",boxShadow:target?`0 0 14px ${tone}35`:"none"}}>{n}</button>;
       })}
     </div> : <div style={{flex:"1 1 auto",minHeight:0,display:"grid",placeItems:"center",borderRadius:12,border:`1px solid ${ownTone}33`,background:`${ownTone}08`,color:ownTone,fontSize:9.3,fontWeight:1050,textAlign:"center",padding:8}}>ÉTAPE FINALE · joue le BULL autorisé par la variante</div>}
 
-    <div style={{display:"flex",gap:5,alignItems:"center",justifyContent:"center",color:"#7f8999",fontSize:6.7,fontWeight:850,whiteSpace:"nowrap",overflow:"hidden"}}>
-      <span>{contractRule==="official_unique"?"OFFICIEL · 1D+1T max":"LIBRE · 3 D/T"}</span><span>•</span><span>{scoreModel==="hit_count"?"1 TOUCHE = 1 PT":"VALEUR CIBLE"}</span><span>•</span><span>{penaltyModel==="none"?"SANS PÉNALITÉ":penaltyModel==="official"?"PÉNALITÉ OFFICIELLE":penaltyModel==="transfer"?"TRANSFERT MSS":"PÉNALITÉS MSS"}</span>
-    </div>
-    <button type="button" onClick={onValidate} disabled={!currentThrow.length} style={{minHeight:39,borderRadius:12,border:`1px solid ${currentThrow.length?ownTone+"aa":"rgba(255,255,255,.08)"}`,background:currentThrow.length?`linear-gradient(180deg,${ownTone}34,${ownTone}18)`:"rgba(255,255,255,.03)",color:currentThrow.length?"#fff":"#59616e",fontWeight:1150,fontSize:10.4,letterSpacing:.45,cursor:currentThrow.length?"pointer":"not-allowed"}}>VALIDER LA VOLÉE</button>
+    <button type="button" onClick={onValidate} disabled={!currentThrow.length} style={{minHeight:31,borderRadius:10,border:`1px solid ${currentThrow.length?ownTone+"aa":"rgba(255,255,255,.08)"}`,background:currentThrow.length?`linear-gradient(180deg,${ownTone}34,${ownTone}18)`:"rgba(255,255,255,.03)",color:currentThrow.length?"#fff":"#59616e",fontWeight:1150,fontSize:9.7,letterSpacing:.4,cursor:currentThrow.length?"pointer":"not-allowed"}}>VALIDER LA VOLÉE</button>
   </div>;
 }
 
@@ -831,7 +890,7 @@ export default function Wave61SharedPlay(props: any) {
   const [notice, setNotice] = React.useState("");
   const [visitRecap, setVisitRecap] = React.useState<any>(null);
   const [adviceText, setAdviceText] = React.useState("");
-  const [quickPanel, setQuickPanel] = React.useState<null | "rules" | "settings" | "players" | "history" | "ranking" | "stats" | "objective">(null);
+  const [quickPanel, setQuickPanel] = React.useState<null | "rules" | "settings" | "players" | "history" | "ranking" | "stats" | "objective" | "situation">(null);
   const adviceTimerRef = React.useRef<number | null>(null);
   const adviceSpeechTimerRef = React.useRef<number | null>(null);
   const lastAdviceKeyRef = React.useRef("");
@@ -1240,7 +1299,7 @@ export default function Wave61SharedPlay(props: any) {
   })();
 
   const classicInputHeight = spec.id === "green_vs_red"
-    ? (viewportH > 0 && viewportH < 760 ? "clamp(244px,32dvh,284px)" : "clamp(256px,35dvh,304px)")
+    ? (viewportH > 0 && viewportH < 700 ? "268px" : viewportH > 0 && viewportH < 840 ? "282px" : "294px")
     : viewportH > 0 && viewportH < 700
       ? "clamp(265px,39dvh,315px)"
       : "clamp(290px,41dvh,355px)";
@@ -1255,6 +1314,7 @@ export default function Wave61SharedPlay(props: any) {
       ranking: "CLASSEMENT LIVE",
       stats: "STATISTIQUES DE LA PARTIE",
       objective: "OBJECTIFS DÉTAILLÉS",
+      situation: "SITUATION DE PARTIE",
     };
     const optionRows = Object.entries(config?.modeOptions || {});
     return <div
@@ -1295,6 +1355,10 @@ export default function Wave61SharedPlay(props: any) {
             const targetLabel=step>=10?(bull==="color_lock"?(color==="GREEN"?"BULL 25":"BULL 50"):"BULL"):`D/T ${path[step]}`;
             return <><div style={{...panelStyle(tone+"55"),padding:12,textAlign:"center",display:"grid",justifyItems:"center",gap:8}}><div style={{color:tone,fontSize:9,fontWeight:1100,letterSpacing:.8}}>PISTE ACTUELLE · {color}</div><div style={{color:"#fff",fontSize:24,fontWeight:1200,lineHeight:1}}>{targetLabel}</div><GreenRedTargetBoard color={color as any} step={step} bullRule={bull} size={168} label={targetLabel} /><div style={{color:SOFT,fontSize:9.5}}>Étape {step+1}/11 · Score {Number(state.scores?.[id]||0)}</div></div><div style={{...panelStyle("rgba(255,255,255,.10)"),padding:11,color:"#dce2ed",fontSize:10.5,lineHeight:1.55}}>La cible est volontairement grisée pour mieux lire l'objectif du joueur. Seules les couronnes DOUBLE et TRIPLE de la valeur courante restent colorées et entourées. Le numéro actif reprend la couleur du joueur. À l'étape finale : {bull==="color_lock"?"BULL DE COULEUR — Vert = BULL 25, Rouge = BULL 50.":bull==="color_bonus"?"BULL BONUS — BULL 25 et BULL 50 sont valables ; celui de ta couleur reçoit le bonus configuré.":"CLASSIQUE — BULL 25 et BULL 50 sont valables."}</div></>;
           })()}
+        </div> : null}
+
+        {quickPanel === "situation" && spec.id === "green_vs_red" ? <div style={{ marginTop:12 }}>
+          <GreenRedSituationPanel state={state} profiles={profiles} />
         </div> : null}
 
         {quickPanel === "ranking" ? <div style={{ marginTop:12, display:"grid", gap:6 }}>
@@ -1381,9 +1445,9 @@ export default function Wave61SharedPlay(props: any) {
       }>
         <section data-wave61-classic-info="1" style={isLandscapeTablet
           ? { minWidth:0,minHeight:0,overflowY:"auto",overscrollBehavior:"contain",padding:"0 2px 8px",display:"grid",gap:7,alignContent:"start" }
-          : { flex:"1 1 auto",minHeight:0,overflowY:"auto",overscrollBehavior:"contain",padding:"5px 8px 7px",display:"grid",gap:7,alignContent:"start" }
+          : { flex:"1 1 auto",minHeight:0,overflowY:spec.id==="green_vs_red"?"hidden":"auto",overscrollBehavior:"contain",padding:spec.id==="green_vs_red"?"4px 8px 5px":"5px 8px 7px",display:"grid",gap:spec.id==="green_vs_red"?5:7,alignContent:"start" }
         }>
-          {spec.id === "green_vs_red" ? <section data-green-red-active-player="1" style={{ position:"relative",overflow:"hidden",minHeight:108,borderRadius:18,border:`1px solid ${gvrTone}70`,background:`radial-gradient(circle at 18% 50%,${gvrTone}20,transparent 34%),linear-gradient(145deg,${gvrTone}10,rgba(5,8,14,.985))`,boxShadow:`inset 0 0 38px ${gvrTone}0c,0 12px 28px rgba(0,0,0,.28)`,display:"grid",gridTemplateColumns:"78px minmax(0,1fr) 108px",gap:8,alignItems:"stretch",padding:8 }}>
+          {spec.id === "green_vs_red" ? <section data-green-red-active-player="1" style={{ position:"relative",overflow:"hidden",minHeight:viewportH>0&&viewportH<760?98:104,borderRadius:18,border:`1px solid ${gvrTone}70`,background:`radial-gradient(circle at 18% 50%,${gvrTone}20,transparent 34%),linear-gradient(145deg,${gvrTone}10,rgba(5,8,14,.985))`,boxShadow:`inset 0 0 38px ${gvrTone}0c,0 12px 28px rgba(0,0,0,.28)`,display:"grid",gridTemplateColumns:"72px minmax(0,1fr) 102px",gap:7,alignItems:"stretch",padding:7 }}>
             <div style={{position:"relative",zIndex:1,display:"grid",placeItems:"center",minWidth:0}}>
               <div style={{width:76,height:76,borderRadius:999,overflow:"hidden",border:`1.5px solid ${gvrTone}66`,background:`linear-gradient(180deg,${gvrTone}18,rgba(7,10,16,.96))`,boxShadow:`0 0 18px ${gvrTone}18,inset 0 0 20px rgba(255,255,255,.03)`}}>{gvrAvatar?<img src={gvrAvatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover",opacity:.72}}/>:<div style={{width:"100%",height:"100%",display:"grid",placeItems:"center",fontSize:34,fontWeight:1200,color:gvrTone}}>{String(activePlayer?.name||"?").slice(0,1).toUpperCase()}</div>}</div>
             </div>
@@ -1429,7 +1493,7 @@ export default function Wave61SharedPlay(props: any) {
           {notice ? <div style={{ borderRadius:11,padding:"6px 8px",background:`${accent}0d`,border:`1px solid ${accent}2d`,color:"#eef1f8",fontSize:9.2,fontWeight:850,lineHeight:1.25 }}>{notice}</div> : null}
 
           {renderModeSpecificPanel()}
-          {spec.id === "green_vs_red" ? <GreenRedSituationPanel state={state} profiles={profiles} /> : null}
+          {spec.id === "green_vs_red" ? <GreenRedSituationBanner state={state} onClick={()=>setQuickPanel("situation")} /> : null}
 
           {spec.id !== "green_vs_red" ? <div style={{ ...panelStyle(accent+"3d"), padding:8, display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:8, alignItems:"center" }}>
             <div style={{ minWidth:0 }}><div style={{ color:accent,fontSize:8,fontWeight:1100,letterSpacing:.7 }}>OBJECTIF ACTIF</div><div style={{ color:"#fff",fontSize:14,fontWeight:1100,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{classicObjective}</div>{dedicatedPlayHint ? <div style={{ color:SOFT,fontSize:8.6,lineHeight:1.3,marginTop:2 }}>{dedicatedPlayHint}</div> : null}</div>
