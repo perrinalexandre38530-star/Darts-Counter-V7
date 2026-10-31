@@ -509,7 +509,7 @@ function GreenRedPanel({ state }: any) {
   </section>;
 }
 
-function GreenRedSituationPanel({ state, profiles }: any) {
+function GreenRedSituationPanel({ state, profiles, stretch = false }: any) {
   const profileById = new Map((profiles || []).map((p:any) => [String(p.id), p]));
   const format = String(state?.config?.modeOptions?.matchFormat || "duel");
   const bullRule = String(state?.config?.modeOptions?.bullRule || "classic");
@@ -570,7 +570,7 @@ function GreenRedSituationPanel({ state, profiles }: any) {
   };
 
   const lastDarts = Array.isArray(lastVisit?.darts) ? lastVisit.darts.slice(0,3) : [];
-  return <section data-green-red-situation="1" style={{...panelStyle((active?.tone || GVR_GREEN)+"45"),padding:8,background:"linear-gradient(145deg,rgba(255,255,255,.018),rgba(5,8,14,.98))"}}>
+  return <section data-green-red-situation="1" style={{...panelStyle((active?.tone || GVR_GREEN)+"45"),padding:8,background:"linear-gradient(145deg,rgba(255,255,255,.018),rgba(5,8,14,.98))",height:stretch?"100%":undefined,minHeight:0,boxSizing:"border-box",display:stretch?"grid":undefined,gridTemplateRows:stretch?"auto minmax(0,1fr) minmax(0,1fr)":undefined,alignContent:stretch?"stretch":undefined}}>
     <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",marginBottom:6}}>
       <div style={{color:active?.tone || GVR_GREEN,fontSize:8.8,fontWeight:1100,letterSpacing:.7}}>SITUATION</div>
       <div style={{color:SOFT,fontSize:7.2,fontWeight:950,padding:"2px 6px",borderRadius:999,border:"1px solid rgba(255,255,255,.07)"}}>{format === "teams" ? "TEAM" : format === "multi_random" ? "MULTI" : "DUEL"}</div>
@@ -797,8 +797,8 @@ function GreenVsRedInput({ state, activePlayer, currentThrow, setCurrentThrow, m
     </div>
 
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}>
-      <button type="button" onClick={()=>appendBull(false)} disabled={full} title={bull25ValidNow?"BULL 25 valide":"BULL 25 pénalité"} style={{...keyStyle("#3fd88a",bull25ValidNow),minHeight:29,color:bull25ValidNow?"#8fffc4":"#c8ced8"}}>BULL 25</button>
-      <button type="button" onClick={()=>appendBull(true)} disabled={full} title={bull50ValidNow?"BULL 50 valide":"BULL 50 pénalité"} style={{...keyStyle("#ff4655",bull50ValidNow),minHeight:29,color:bull50ValidNow?"#ff9ca5":"#c8ced8"}}>BULL 50</button>
+      <button type="button" onClick={()=>appendBull(false)} disabled={full} title={bull25ValidNow?"BULL 25 valide":"BULL 25 pénalité"} style={{...keyStyle("#3fd88a",true),minHeight:29,border:"1px solid rgba(63,216,138,.62)",background:"linear-gradient(180deg,rgba(63,216,138,.28),rgba(8,45,30,.58))",color:"#a8ffd0",opacity:full ? .45 : 1,boxShadow:"inset 0 -2px 0 rgba(63,216,138,.24),0 0 12px rgba(63,216,138,.10)"}}>BULL 25</button>
+      <button type="button" onClick={()=>appendBull(true)} disabled={full} title={bull50ValidNow?"BULL 50 valide":"BULL 50 pénalité"} style={{...keyStyle("#ff4655",true),minHeight:29,border:"1px solid rgba(255,70,85,.62)",background:"linear-gradient(180deg,rgba(255,70,85,.28),rgba(60,10,18,.58))",color:"#ffb3ba",opacity:full ? .45 : 1,boxShadow:"inset 0 -2px 0 rgba(255,70,85,.24),0 0 12px rgba(255,70,85,.10)"}}>BULL 50</button>
     </div>
 
     {!isBullStage ? <div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gridTemplateRows:"repeat(4,minmax(0,1fr))",gap:3,flex:"1 1 auto",minHeight:0}}>
@@ -808,7 +808,7 @@ function GreenVsRedInput({ state, activePlayer, currentThrow, setCurrentThrow, m
       })}
     </div> : <div style={{flex:"1 1 auto",minHeight:0,display:"grid",placeItems:"center",borderRadius:12,border:`1px solid ${ownTone}33`,background:`${ownTone}08`,color:ownTone,fontSize:9.3,fontWeight:1050,textAlign:"center",padding:8}}>ÉTAPE FINALE · joue le BULL autorisé par la variante</div>}
 
-    <button type="button" onClick={onValidate} disabled={!currentThrow.length} style={{minHeight:31,borderRadius:10,border:`1px solid ${currentThrow.length?ownTone+"aa":"rgba(255,255,255,.08)"}`,background:currentThrow.length?`linear-gradient(180deg,${ownTone}34,${ownTone}18)`:"rgba(255,255,255,.03)",color:currentThrow.length?"#fff":"#59616e",fontWeight:1150,fontSize:9.7,letterSpacing:.4,cursor:currentThrow.length?"pointer":"not-allowed"}}>VALIDER LA VOLÉE</button>
+    <button type="button" onClick={onValidate} disabled={!currentThrow.length} style={{...x01CancelStyle,minHeight:31,opacity:currentThrow.length ? 1 : .42,cursor:currentThrow.length?"pointer":"not-allowed"}}>VALIDER</button>
   </div>;
 }
 
@@ -1425,7 +1425,7 @@ export default function Wave61SharedPlay(props: any) {
         tickerSrc={modeTicker || undefined}
         tickerAlt={spec.label}
         tickerHeight={tickerHeight}
-        tickerBottomGap={spec.id==="green_vs_red" ? (isLandscapeTablet?8:12) : (isLandscapeTablet?3:5)}
+        tickerBottomGap={spec.id==="green_vs_red" ? (isLandscapeTablet?8:16) : (isLandscapeTablet?3:5)}
         tickerFit="cover"
         left={<BackDot onClick={()=>go?.("wave61_config",{gameId:spec.id})} color={spec.id==="green_vs_red"?gvrTone:accent} glow={`${spec.id==="green_vs_red"?gvrTone:accent}88`} />}
         right={<InfoDot title={`${spec.label} — règles`} color={spec.id==="green_vs_red"?gvrTone:accent} glow={`${spec.id==="green_vs_red"?gvrTone:accent}77`} content={familyRules(spec,preset)} />}
@@ -1445,9 +1445,9 @@ export default function Wave61SharedPlay(props: any) {
       }>
         <section data-wave61-classic-info="1" style={isLandscapeTablet
           ? { minWidth:0,minHeight:0,overflowY:"auto",overscrollBehavior:"contain",padding:"0 2px 8px",display:"grid",gap:7,alignContent:"start" }
-          : { flex:"1 1 auto",minHeight:0,overflowY:spec.id==="green_vs_red"?"hidden":"auto",overscrollBehavior:"contain",padding:spec.id==="green_vs_red"?"4px 8px 5px":"5px 8px 7px",display:"grid",gap:spec.id==="green_vs_red"?5:7,alignContent:"start" }
+          : { flex:"1 1 auto",minHeight:0,overflowY:spec.id==="green_vs_red"?"hidden":"auto",overscrollBehavior:"contain",padding:spec.id==="green_vs_red"?"7px 8px 4px":"5px 8px 7px",display:spec.id==="green_vs_red"?"flex":"grid",flexDirection:spec.id==="green_vs_red"?"column":undefined,gap:spec.id==="green_vs_red"?4:7,alignContent:"start" }
         }>
-          {spec.id === "green_vs_red" ? <section data-green-red-active-player="1" style={{ position:"relative",overflow:"hidden",minHeight:viewportH>0&&viewportH<760?98:104,borderRadius:18,border:`1px solid ${gvrTone}70`,background:`radial-gradient(circle at 18% 50%,${gvrTone}20,transparent 34%),linear-gradient(145deg,${gvrTone}10,rgba(5,8,14,.985))`,boxShadow:`inset 0 0 38px ${gvrTone}0c,0 12px 28px rgba(0,0,0,.28)`,display:"grid",gridTemplateColumns:"72px minmax(0,1fr) 102px",gap:7,alignItems:"stretch",padding:7 }}>
+          {spec.id === "green_vs_red" ? <section data-green-red-active-player="1" style={{ position:"relative",overflow:"hidden",minHeight:viewportH>0&&viewportH<760?98:104,flex:"0 0 auto",marginTop:2,borderRadius:18,border:`1px solid ${gvrTone}70`,background:`radial-gradient(circle at 18% 50%,${gvrTone}20,transparent 34%),linear-gradient(145deg,${gvrTone}10,rgba(5,8,14,.985))`,boxShadow:`inset 0 0 38px ${gvrTone}0c,0 12px 28px rgba(0,0,0,.28)`,display:"grid",gridTemplateColumns:"72px minmax(0,1fr) 102px",gap:7,alignItems:"stretch",padding:7 }}>
             <div style={{position:"relative",zIndex:1,display:"grid",placeItems:"center",minWidth:0}}>
               <div style={{width:76,height:76,borderRadius:999,overflow:"hidden",border:`1.5px solid ${gvrTone}66`,background:`linear-gradient(180deg,${gvrTone}18,rgba(7,10,16,.96))`,boxShadow:`0 0 18px ${gvrTone}18,inset 0 0 20px rgba(255,255,255,.03)`}}>{gvrAvatar?<img src={gvrAvatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover",opacity:.72}}/>:<div style={{width:"100%",height:"100%",display:"grid",placeItems:"center",fontSize:34,fontWeight:1200,color:gvrTone}}>{String(activePlayer?.name||"?").slice(0,1).toUpperCase()}</div>}</div>
             </div>
@@ -1493,7 +1493,7 @@ export default function Wave61SharedPlay(props: any) {
           {notice ? <div style={{ borderRadius:11,padding:"6px 8px",background:`${accent}0d`,border:`1px solid ${accent}2d`,color:"#eef1f8",fontSize:9.2,fontWeight:850,lineHeight:1.25 }}>{notice}</div> : null}
 
           {renderModeSpecificPanel()}
-          {spec.id === "green_vs_red" ? <GreenRedSituationBanner state={state} onClick={()=>setQuickPanel("situation")} /> : null}
+          {spec.id === "green_vs_red" ? <div style={{flex:"1 1 0",minHeight:viewportH>0&&viewportH<760?132:150,overflow:"hidden"}}><GreenRedSituationPanel state={state} profiles={profiles} stretch /></div> : null}
 
           {spec.id !== "green_vs_red" ? <div style={{ ...panelStyle(accent+"3d"), padding:8, display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:8, alignItems:"center" }}>
             <div style={{ minWidth:0 }}><div style={{ color:accent,fontSize:8,fontWeight:1100,letterSpacing:.7 }}>OBJECTIF ACTIF</div><div style={{ color:"#fff",fontSize:14,fontWeight:1100,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{classicObjective}</div>{dedicatedPlayHint ? <div style={{ color:SOFT,fontSize:8.6,lineHeight:1.3,marginTop:2 }}>{dedicatedPlayHint}</div> : null}</div>

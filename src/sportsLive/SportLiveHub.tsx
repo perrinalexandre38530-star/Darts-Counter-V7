@@ -553,6 +553,7 @@ function LiveStyles() {
       .msc-result-scores { display:grid; grid-template-rows:1fr 1fr; align-items:center; justify-items:center; border-left:1px solid #28313a; font-variant-numeric:tabular-nums; }
       .msc-result-score { width:100%; text-align:center; font-size:18px; line-height:1; font-weight:1000; color:#aeb7c0; }
       .msc-result-score.is-winner { color:#f4d445; }
+      .msc-result-score.is-draw { color:#d8e1ea; }
       .msc-result-head-spacer { flex:1; }
       .msc-live-warning { margin:7px 0 0; padding:6px 8px; border:1px solid rgba(255,80,96,.25); border-radius:8px; background:rgba(255,48,72,.07); color:#ff8995; font-size:8.5px; font-weight:900; text-align:center; }
       .msc-hierarchy-block { margin:4px 0 5px; padding:7px 8px 6px; border:1px solid #242c34; border-radius:12px; background:linear-gradient(180deg,rgba(255,255,255,.025),rgba(255,255,255,.008)); }
@@ -887,8 +888,9 @@ function FixtureMatchCard({ item, source, lang }: { item: DartsLiveFixture; sour
 function ResultMatchCard({ item, source, lang }: { item: DartsLiveResult; source?: SportLiveSource | null; lang: string }) {
   const origin = itemSource(item, source);
   const sourceLogo = sourceImageFromItem({ sourceUrl: origin.url }, source);
+  const isDraw = item.winner?.score != null && item.loser?.score != null && Number(item.winner.score) === Number(item.loser.score);
   const rows = [
-    { player: item.winner, winner: true },
+    { player: item.winner, winner: !isDraw },
     { player: item.loser, winner: false },
   ];
   return (
@@ -913,8 +915,8 @@ function ResultMatchCard({ item, source, lang }: { item: DartsLiveResult; source
           })}
         </div>
         <div className="msc-result-scores">
-          <div className="msc-result-score is-winner">{scoreValue(item.winner?.score)}</div>
-          <div className="msc-result-score">{scoreValue(item.loser?.score)}</div>
+          <div className={`msc-result-score${isDraw ? " is-draw" : " is-winner"}`}>{scoreValue(item.winner?.score)}</div>
+          <div className={`msc-result-score${isDraw ? " is-draw" : ""}`}>{scoreValue(item.loser?.score)}</div>
         </div>
       </div>
     </article>

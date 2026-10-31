@@ -10,10 +10,14 @@ export default function TrainingShell({
   header,
   body,
   footer,
+  fullWidth = false,
+  bodyPadding = 14,
 }: {
   header: React.ReactNode;
   body: React.ReactNode;
   footer?: React.ReactNode;
+  fullWidth?: boolean;
+  bodyPadding?: number | string;
 }) {
   const { theme } = useTheme();
 
@@ -25,10 +29,11 @@ export default function TrainingShell({
         background: theme.bg,
         color: theme.text,
         paddingBottom: 96,
+        ...(fullWidth ? { maxWidth: "none", width: "100%", margin: 0 } : {}),
       }}
     >
       {header}
-      <div style={{ padding: 14 }}>{body}</div>
+      <div style={{ padding: bodyPadding }}>{body}</div>
       {footer}
     </div>
   );
