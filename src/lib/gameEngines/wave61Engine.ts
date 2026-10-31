@@ -629,7 +629,17 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
       threeColorsBestVisitByPlayer: modeId === "three_colors" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       threeColorsPerfectBonusByPlayer: modeId === "three_colors" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       threeColorsPenaltyByPlayer: modeId === "three_colors" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      laSuiteValidVisitsByPlayer: modeId === "la_suite" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      laSuiteInvalidVisitsByPlayer: modeId === "la_suite" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      laSuiteBestVisitByPlayer: modeId === "la_suite" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      laSuiteLongestStreakByPlayer: modeId === "la_suite" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      laSuiteCurrentStreakByPlayer: modeId === "la_suite" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       colorCallSequence: modeId === "color_call" ? Array.from({ length: Math.max(80, config.rounds * Math.max(1, ids.length)) }, (_, i) => COLOR_CALL_COLORS[(hashText(seedText) + i * 3) % 4]) : [],
+      colorCallHitsByPlayer: modeId === "color_call" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      colorCallDartsByPlayer: modeId === "color_call" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      colorCallPerfectVisitsByPlayer: modeId === "color_call" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      colorCallBestVisitByPlayer: modeId === "color_call" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      colorCallHitsByColorByPlayer: modeId === "color_call" ? Object.fromEntries(ids.map((id) => [id, { BLACK:0, WHITE:0, GREEN:0, RED:0 }])) : {},
       colorModeHistory: [],
       sniperContracts: modeId === "sniper" ? sniperContracts(seedText, Math.max(12, config.goal || 12)) : [],
       sniperStepByPlayer: modeId === "sniper" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
@@ -1669,7 +1679,13 @@ function processLaSuite(state: Wave61State, playerId:string, darts:GameDart[], e
   const real=String(state.config?.modeOptions?.sequenceScoring||"real")==="real";
   const delta=valid?(real?darts.reduce((s,d)=>s+wave61DartScore(d),0):nums.reduce((s,n)=>s+n,0)):0;
   state.scores[playerId]=Number(state.scores[playerId]||0)+delta; state.progress[playerId]=state.scores[playerId];
+  state.special.laSuiteValidVisitsByPlayer=state.special.laSuiteValidVisitsByPlayer||{}; state.special.laSuiteInvalidVisitsByPlayer=state.special.laSuiteInvalidVisitsByPlayer||{}; state.special.laSuiteBestVisitByPlayer=state.special.laSuiteBestVisitByPlayer||{}; state.special.laSuiteLongestStreakByPlayer=state.special.laSuiteLongestStreakByPlayer||{}; state.special.laSuiteCurrentStreakByPlayer=state.special.laSuiteCurrentStreakByPlayer||{};
+  if(valid){ state.special.laSuiteValidVisitsByPlayer[playerId]=Number(state.special.laSuiteValidVisitsByPlayer[playerId]||0)+1; state.special.laSuiteCurrentStreakByPlayer[playerId]=Number(state.special.laSuiteCurrentStreakByPlayer[playerId]||0)+1; }
+  else { state.special.laSuiteInvalidVisitsByPlayer[playerId]=Number(state.special.laSuiteInvalidVisitsByPlayer[playerId]||0)+1; state.special.laSuiteCurrentStreakByPlayer[playerId]=0; }
+  state.special.laSuiteLongestStreakByPlayer[playerId]=Math.max(Number(state.special.laSuiteLongestStreakByPlayer[playerId]||0),Number(state.special.laSuiteCurrentStreakByPlayer[playerId]||0));
+  state.special.laSuiteBestVisitByPlayer[playerId]=Math.max(Number(state.special.laSuiteBestVisitByPlayer[playerId]||0),delta);
   events.push(valid?`🔢 Suite ${nums.join("-")} · +${delta}`:`🔢 ${nums.join("-")} · pas de suite · 0`);
+  state.special.colorModeHistory=[...(state.special.colorModeHistory||[]),{playerId,mode:"la_suite",numbers:nums,valid,delta,score:state.scores[playerId]}].slice(-120);
   return {delta,hits:valid?3:0};
 }
 function processColorCall(state: Wave61State, playerId:string, darts:GameDart[], events:string[]): {delta:number;hits:number}{
@@ -1677,8 +1693,11 @@ function processColorCall(state: Wave61State, playerId:string, darts:GameDart[],
   let delta=0,hits=0; for(const d of darts){ if(wave61BoardColor(d)===target){delta+=wave61DartScore(d);hits++;} }
   if(hits===3) delta+=modeOptionNumber(state.config,"perfectBonus",10,0,100);
   state.scores[playerId]=Number(state.scores[playerId]||0)+delta; state.progress[playerId]=state.scores[playerId];
+  state.special.colorCallHitsByPlayer=state.special.colorCallHitsByPlayer||{}; state.special.colorCallDartsByPlayer=state.special.colorCallDartsByPlayer||{}; state.special.colorCallPerfectVisitsByPlayer=state.special.colorCallPerfectVisitsByPlayer||{}; state.special.colorCallBestVisitByPlayer=state.special.colorCallBestVisitByPlayer||{}; state.special.colorCallHitsByColorByPlayer=state.special.colorCallHitsByColorByPlayer||{};
+  state.special.colorCallHitsByPlayer[playerId]=Number(state.special.colorCallHitsByPlayer[playerId]||0)+hits; state.special.colorCallDartsByPlayer[playerId]=Number(state.special.colorCallDartsByPlayer[playerId]||0)+darts.length; if(hits===3) state.special.colorCallPerfectVisitsByPlayer[playerId]=Number(state.special.colorCallPerfectVisitsByPlayer[playerId]||0)+1; state.special.colorCallBestVisitByPlayer[playerId]=Math.max(Number(state.special.colorCallBestVisitByPlayer[playerId]||0),delta);
+  const byColor={BLACK:0,WHITE:0,GREEN:0,RED:0,...(state.special.colorCallHitsByColorByPlayer[playerId]||{})}; byColor[target]=Number(byColor[target]||0)+hits; state.special.colorCallHitsByColorByPlayer[playerId]=byColor;
   events.push(`🎨 ${target} · ${hits}/3 touche(s) · +${delta}`);
-  state.special.colorModeHistory=[...(state.special.colorModeHistory||[]),{playerId,mode:"color_call",target,hits,delta,score:state.scores[playerId]}].slice(-60);
+  state.special.colorModeHistory=[...(state.special.colorModeHistory||[]),{playerId,mode:"color_call",target,hits,delta,score:state.scores[playerId]}].slice(-120);
   return {delta,hits};
 }
 
