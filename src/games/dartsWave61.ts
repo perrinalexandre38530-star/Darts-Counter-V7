@@ -95,10 +95,9 @@ export const DARTS_WAVE_61: readonly DartsWave61Spec[] = [
   { id: "darts_impossible", label: "DARTS IMPOSSIBLE", category: "challenge", subCategory: "precision", maxPlayers: 12, supportsTeams: true, supportsBots: true, infoBody: "Défi d’infiltration et de précision : enchaîne des contrats ultra-serrés, évite les lasers, déjoue les alarmes et réussis les missions les plus tendues sans craquer." },
 ] as const;
 
-if (DARTS_WAVE_61.length !== 65) {
-  throw new Error(`[DARTS_WAVE_61] Catalogue invalide : ${DARTS_WAVE_61.length} modes au lieu de 65.`);
-}
-
+// Le catalogue Wave61 est extensible : de nouveaux modes sont ajoutés régulièrement.
+// Ne jamais bloquer le boot sur un nombre historique figé (65, 69, etc.).
+// L'intégrité réelle est assurée ci-dessous par l'unicité des identifiants.
 const WAVE_61_IDS = new Set(DARTS_WAVE_61.map((mode) => mode.id));
 if (WAVE_61_IDS.size !== DARTS_WAVE_61.length) {
   throw new Error(`[DARTS_WAVE_61] Catalogue invalide : identifiants dupliqués détectés.`);

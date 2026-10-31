@@ -2,7 +2,7 @@ import React from "react";
 import { useAwenaOptional } from "../AwenaProvider";
 import { findAwenaMode, findAwenaModeById } from "../AwenaKnowledge";
 import { useTheme } from "../../contexts/ThemeContext";
-import { useLang } from "../../contexts/LangContext";
+import { useLangOptional, type Lang } from "../../contexts/LangContext";
 import { awenaUi } from "../AwenaLocale";
 import { awenaTranslation } from "../AwenaTranslation";
 import type { AwenaAction, AwenaSpeechCue } from "../awena.types";
@@ -221,7 +221,22 @@ export default function AwenaOverlay(props: Props) {
 
 function AwenaOverlayInner({ route, sport, go, inGame = false, landscapeHeaderDocked = false, awena }: Props & { awena: AwenaContextValue }) {
   const { theme } = useTheme() as any;
-  const { lang } = useLang();
+  const langContext = useLangOptional();
+  const lang = React.useMemo<Lang>(() => {
+    if (langContext?.lang) return langContext.lang;
+    if (typeof window !== "undefined") {
+      try {
+        const raw = window.localStorage.getItem("dc_lang_v1");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const candidate = String(parsed?.lang || "").toLowerCase();
+          const allowed = new Set(["fr","en","es","de","it","pt","nl","ru","zh","ja","ar","hi","tr","da","no","sv","is","pl","ro","sr","hr","cs"]);
+          if (allowed.has(candidate)) return candidate as Lang;
+        }
+      } catch {}
+    }
+    return "fr";
+  }, [langContext?.lang]);
   const ui = awenaUi(lang);
   const { settings, setSettings, runtime, setRuntime, messages, ask, say, stop, speechCue, panelOpen: open, openPanel, closePanel, togglePanel } = awena;
   const [input, setInput] = React.useState("");

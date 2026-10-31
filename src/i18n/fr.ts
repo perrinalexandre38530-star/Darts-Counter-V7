@@ -608,4 +608,19 @@ export const fr: Dict = {
   "lang.sr": "Serbe",
   "lang.hr": "Croate",
   "lang.cs": "Tchèque",
+
+  // Page publique — nouveaux modes VARIANTES V223
+  'landing.game.black_vs_white.label': 'BLACK VS WHITE',
+  'landing.game.black_vs_white.info': 'Variante débutant basée sur les simples noirs et blancs. Chaque joueur suit sa couleur ; les simples de sa piste marquent, tandis que D/T, couleur adverse et MISS peuvent devenir bonus ou pénalités selon la configuration.',
+  'landing.game.black_vs_white.objective': 'Marquer dans les simples de sa piste NOIRE ou BLANCHE et terminer avec le meilleur total.',
+  'landing.game.three_colors.label': 'LES 3 COULEURS',
+  'landing.game.three_colors.info': 'Sur une volée de trois fléchettes, toucher trois couleurs différentes parmi NOIR, BLANC, VERT et ROUGE. Une volée complète marque la somme réelle des trois impacts.',
+  'landing.game.three_colors.objective': 'Réussir trois couleurs différentes sur la même volée et cumuler le meilleur score sur les rounds choisis.',
+  'landing.game.la_suite.label': 'LA SUITE',
+  'landing.game.la_suite.info': 'Composer une suite de trois nombres consécutifs sur une même volée. Une suite valide marque ; sinon la volée vaut zéro. L’ordre peut être libre ou strict.',
+  'landing.game.la_suite.objective': 'Former trois nombres consécutifs sur une volée et terminer avec le meilleur total.',
+  'landing.game.color_call.label': 'COLOR CALL',
+  'landing.game.color_call.info': 'À chaque tour, une couleur est appelée parmi NOIR, BLANC, VERT et ROUGE. Seuls les impacts de cette couleur marquent, avec un bonus possible pour une volée parfaite.',
+  'landing.game.color_call.objective': 'Marquer le maximum de points en touchant la couleur demandée à chaque tour.',
+
 };

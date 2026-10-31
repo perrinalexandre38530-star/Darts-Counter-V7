@@ -594,8 +594,12 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
 // Hook
 // -----------------------------
 
+export function useLangOptional(): LangContextValue | undefined {
+  return React.useContext(LangContext);
+}
+
 export function useLang(): LangContextValue {
-  const ctx = React.useContext(LangContext);
+  const ctx = useLangOptional();
   if (!ctx) {
     throw new Error("useLang must be used within LangProvider");
   }

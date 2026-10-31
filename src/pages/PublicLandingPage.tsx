@@ -80,7 +80,7 @@ const LANDING_EXPLANATION_VISUALS = {
 } as const;
 
 const MSS_EXCLUSIVE_DARTS = new Set(["darts_firefighter", "crados", "bss_king", "attrape_moi", "loterie", "menteur", "president", "pendu", "cargo", "ptit_hun"]);
-const NEW_PUBLIC_DARTS = new Set(["bss_king", "ptit_hun", "mistigri", "corbeau_renard", "radin", "darts_impossible"]);
+const NEW_PUBLIC_DARTS = new Set(["bss_king", "ptit_hun", "mistigri", "corbeau_renard", "radin", "darts_impossible", "black_vs_white", "three_colors", "la_suite", "color_call"]);
 const DARTS_CATEGORY_LABEL: Record<string,string> = {
   classic: "GRANDS CLASSIQUES",
   variant: "VARIANTES",
@@ -202,6 +202,10 @@ const PUBLIC_RULE_CONFIG_COPY: Record<string,string> = {
   training_time_attack: "Réglez la durée du contre-la-montre et les paramètres disponibles. Le but est d’enchaîner le plus efficacement possible les objectifs demandés avant la fin du temps, avec un suivi du rythme et du résultat final.",
   training_repeat_master: "Choisissez la durée ou le nombre de répétitions de la session. Repeat Master demande de reproduire plusieurs fois la même cible ou séquence afin de travailler la constance et de mesurer le taux de réussite.",
   training_ghost: "Configurez la session et la référence à battre lorsqu’elle est proposée. Ghost Mode vous oppose à une performance de référence : chaque volée permet de voir si vous êtes en avance ou en retard et de travailler votre régularité sous pression.",
+  black_vs_white: "Choisissez les participants puis attribuez les pistes NOIRE et BLANCHE. Réglez le comportement des Doubles/Triples (bonus, neutre ou pénalité), le bonus BULL ainsi que les pénalités de mauvaise couleur, MISS et D/T. Le nombre de rounds détermine la durée de la partie.",
+  three_colors: "Choisissez les participants et le nombre de rounds. À chaque volée, vous devez obtenir trois couleurs différentes parmi NOIR, BLANC, VERT et ROUGE. Seules les volées complètes à trois couleurs marquent la somme réelle de leurs impacts.",
+  la_suite: "Choisissez les participants, le nombre de rounds, l’ordre LIBRE ou STRICT et le modèle de scoring. Une volée doit former trois nombres consécutifs ; sinon elle vaut zéro. En scoring réel, les multiplicateurs sont conservés ; en scoring secteurs, seuls les numéros sont additionnés.",
+  color_call: "Choisissez les participants, le nombre de rounds et le bonus de volée parfaite. À chaque tour, une couleur NOIRE, BLANCHE, VERTE ou ROUGE est appelée. Seuls les impacts correspondant à cette couleur marquent ; trois réussites sur la même volée peuvent déclencher le bonus configuré.",
 };
 
 function publicRuleConfigCopy(game: DartsGameDef, lang: Lang, tr: (key:string, fallback:string) => string) {
@@ -407,6 +411,7 @@ function DartsRulePage({ game, onBack, onOpenApp, lang, setLang, t }: { game: Da
     return () => { window.cancelAnimationFrame(a); window.clearTimeout(b); window.clearTimeout(c); window.clearTimeout(d); window.clearTimeout(e); };
   }, [game.id]);
   const exclusive = MSS_EXCLUSIVE_DARTS.has(game.id);
+  const publicLabel = tr(`game.${game.id}.label`, game.label);
   const audit = DARTS_PUBLIC_RULE_AUDIT[game.id];
   const development = isPublicDartsDevelopment(game);
   const objective = ptit1Copy ? ptit1Copy.principle : game.infoBody.split(".")[0] + ".";
@@ -427,11 +432,11 @@ function DartsRulePage({ game, onBack, onOpenApp, lang, setLang, t }: { game: Da
       </label>
       <button className="mssOpen" onClick={onOpenApp}>{tr("actions.openApp", "OUVRIR L’APPLICATION")}</button>
     </header>
-    <div className="mssRuleBreadcrumb"><button onClick={onBack}>{tr("rules.dartsModes", "MODES DE FLÉCHETTES")}</button><span>›</span><b>{game.label}</b><i>{development ? tr("status.development", "EN DÉVELOPPEMENT") : tr("status.available", "DISPONIBLE")}</i></div>
+    <div className="mssRuleBreadcrumb"><button onClick={onBack}>{tr("rules.dartsModes", "MODES DE FLÉCHETTES")}</button><span>›</span><b>{publicLabel}</b><i>{development ? tr("status.development", "EN DÉVELOPPEMENT") : tr("status.available", "DISPONIBLE")}</i></div>
     <section className="mssRuleHero">
       <div className="mssRuleHeroArt">
-        {ticker ? <img src={ticker} alt={`Visuel réel ${game.label} dans MULTISPORTS SCORING`} decoding="async" fetchPriority="high"/> :
-          <div className="mssRuleFallback"><img src={darts} alt=""/><span>MULTISPORTS SCORING</span><strong>{game.label}</strong></div>}
+        {ticker ? <img src={ticker} alt={`Visuel réel ${publicLabel} dans MULTISPORTS SCORING`} decoding="async" fetchPriority="high"/> :
+          <div className="mssRuleFallback"><img src={darts} alt=""/><span>MULTISPORTS SCORING</span><strong>{publicLabel}</strong></div>}
       </div>
       <div className="mssRuleHeroCopy">
         <div className="mssEyebrow">{exclusive ? tr("rules.exclusiveMode", "MODE EXCLUSIF MULTISPORTS SCORING") : tr(`category.${game.category}`, DARTS_CATEGORY_LABEL[game.category] || "MODE FLÉCHETTES")}</div>
@@ -483,13 +488,13 @@ function DartsRulePage({ game, onBack, onOpenApp, lang, setLang, t }: { game: Da
       {!development && <article><b>07</b><h2>{tr("rules.end", "FIN DE PARTIE")}</h2><p>{tr("rules.endBody", "La condition de fin et le classement appliqués sont ceux du moteur de ce mode. Les particularités confirmées figurent dans la section « Règles & paramètres » ci-dessus.")}</p></article>}
     </section>
     </>}
-    {sameCategoryGames.length > 0 && <section className="mssRuleRelated" id="autres-modes"><div className="mssRuleRelatedHead"><span>{tr("rules.discoverAlso", "À DÉCOUVRIR AUSSI")}</span><h2>{tr("rules.sameFamily", "D’autres modes de la même famille")}</h2></div><div className="mssRuleRelatedGrid">{sameCategoryGames.map((related) => { const art = landingTickerFor(related.id, lang); return <a key={related.id} href={publicDartsUrl(related.id)} onClick={(event) => openPublicDartsRule(event, related.id)}>{art ? <img src={art} alt="" loading="lazy" decoding="async"/> : <div className="mssRuleRelatedFallback"><img src={darts} alt=""/></div>}<span>{related.label}</span></a>; })}</div></section>}
+    {sameCategoryGames.length > 0 && <section className="mssRuleRelated" id="autres-modes"><div className="mssRuleRelatedHead"><span>{tr("rules.discoverAlso", "À DÉCOUVRIR AUSSI")}</span><h2>{tr("rules.sameFamily", "D’autres modes de la même famille")}</h2></div><div className="mssRuleRelatedGrid">{sameCategoryGames.map((related) => { const art = landingTickerFor(related.id, lang); return <a key={related.id} href={publicDartsUrl(related.id)} onClick={(event) => openPublicDartsRule(event, related.id)}>{art ? <img src={art} alt="" loading="lazy" decoding="async"/> : <div className="mssRuleRelatedFallback"><img src={darts} alt=""/></div>}<span>{tr(`game.${related.id}.label`, related.label)}</span></a>; })}</div></section>}
     <nav className="mssRulePager">
-      {previousGame ? <a href={publicDartsUrl(previousGame.id)} onClick={(event) => openPublicDartsRule(event, previousGame.id)}><small>{tr("rules.previous", "← MODE PRÉCÉDENT")}</small><strong>{previousGame.label}</strong></a> : <span/>}
+      {previousGame ? <a href={publicDartsUrl(previousGame.id)} onClick={(event) => openPublicDartsRule(event, previousGame.id)}><small>{tr("rules.previous", "← MODE PRÉCÉDENT")}</small><strong>{tr(`game.${previousGame.id}.label`, previousGame.label)}</strong></a> : <span/>}
       <button onClick={onBack}>{tr("rules.allModes", "TOUS LES MODES")}</button>
-      {nextGame ? <a href={publicDartsUrl(nextGame.id)} className="isNext" onClick={(event) => openPublicDartsRule(event, nextGame.id)}><small>{tr("rules.next", "MODE SUIVANT →")}</small><strong>{nextGame.label}</strong></a> : <span/>}
+      {nextGame ? <a href={publicDartsUrl(nextGame.id)} className="isNext" onClick={(event) => openPublicDartsRule(event, nextGame.id)}><small>{tr("rules.next", "MODE SUIVANT →")}</small><strong>{tr(`game.${nextGame.id}.label`, nextGame.label)}</strong></a> : <span/>}
     </nav>
-    <section className="mssRuleCta"><div><span>{development ? tr("rules.soonMss", "BIENTÔT DANS MSS") : tr("rules.readyTry", "PRÊT À ESSAYER ?")}</span><h2>{development ? `${game.label} ${tr("rules.isPreparing", "est actuellement en développement.")}` : `${game.label} ${tr("rules.isAvailableIn", "est disponible dans MULTISPORTS SCORING.")}`}</h2></div>{!development && <button onClick={onOpenApp}>{tr("actions.playInApp", "JOUER DANS L’APPLICATION")}</button>}</section>
+    <section className="mssRuleCta"><div><span>{development ? tr("rules.soonMss", "BIENTÔT DANS MSS") : tr("rules.readyTry", "PRÊT À ESSAYER ?")}</span><h2>{development ? `${publicLabel} ${tr("rules.isPreparing", "est actuellement en développement.")}` : `${publicLabel} ${tr("rules.isAvailableIn", "est disponible dans MULTISPORTS SCORING.")}`}</h2></div>{!development && <button onClick={onOpenApp}>{tr("actions.playInApp", "JOUER DANS L’APPLICATION")}</button>}</section>
   </main>;
 }
 
@@ -688,9 +693,10 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
           const ticker = landingTickerFor(game.id, lang);
           const exclusive = MSS_EXCLUSIVE_DARTS.has(game.id);
           const development = isPublicDartsDevelopment(game);
+          const publicLabel = tr(`game.${game.id}.label`, game.label);
           return <a className={`mssDartsModeCard${exclusive ? " isExclusive" : ""}${development ? " isDevelopment" : ""}`} href={publicDartsUrl(game.id)} key={game.id} onClick={(event) => openPublicDartsRule(event, game.id)}>
-            <div className="mssDartsModeVisual">{ticker ? <img src={ticker} alt={`Visuel ${game.label}`} loading="lazy" decoding="async"/> : <div className="mssDartsMiniFallback"><img src={darts} alt=""/><b>{String(index+1).padStart(2,"0")}</b></div>}<span>{development ? tr("status.development", "EN DÉVELOPPEMENT") : exclusive ? tr("status.exclusive", "EXCLUSIF MSS") : tr(`category.${game.category}`, DARTS_CATEGORY_LABEL[game.category])}</span>{NEW_PUBLIC_DARTS.has(game.id) && <i className="mssNewModeCorner">{tr("status.new", "NOUVEAU")}</i>}{exclusive && development && <i className="mssExclusiveCorner">{tr("status.exclusive", "EXCLUSIF MSS")}</i>}</div>
-            <div className="mssDartsModeText"><div className="mssModeTitleRow"><strong>{game.label}</strong></div><p>{development ? tr("darts.developmentCard", "Mode référencé dans le catalogue MSS. Développement du moteur en cours.") : tr(`game.${game.id}.info`, game.infoBody)}</p><small>{development ? tr("darts.discoverConcept", "DÉCOUVRIR LE CONCEPT →") : tr("darts.fullSheet", "VOIR LA FICHE COMPLÈTE →")}</small></div>
+            <div className="mssDartsModeVisual">{ticker ? <img src={ticker} alt={`Visuel ${publicLabel}`} loading="lazy" decoding="async"/> : <div className="mssDartsMiniFallback"><img src={darts} alt=""/><b>{String(index+1).padStart(2,"0")}</b></div>}<span>{development ? tr("status.development", "EN DÉVELOPPEMENT") : exclusive ? tr("status.exclusive", "EXCLUSIF MSS") : tr(`category.${game.category}`, DARTS_CATEGORY_LABEL[game.category])}</span>{NEW_PUBLIC_DARTS.has(game.id) && <i className="mssNewModeCorner">{tr("status.new", "NOUVEAU")}</i>}{exclusive && development && <i className="mssExclusiveCorner">{tr("status.exclusive", "EXCLUSIF MSS")}</i>}</div>
+            <div className="mssDartsModeText"><div className="mssModeTitleRow"><strong>{publicLabel}</strong></div><p>{development ? tr("darts.developmentCard", "Mode référencé dans le catalogue MSS. Développement du moteur en cours.") : tr(`game.${game.id}.info`, game.infoBody)}</p><small>{development ? tr("darts.discoverConcept", "DÉCOUVRIR LE CONCEPT →") : tr("darts.fullSheet", "VOIR LA FICHE COMPLÈTE →")}</small></div>
           </a>;
         })}
       </div>

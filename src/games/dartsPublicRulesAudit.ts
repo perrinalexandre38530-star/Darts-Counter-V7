@@ -48,6 +48,62 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
       "KEYPAD DÉDIÉ : piste de la couleur active par défaut, bascule adverse pour saisir une faute, puis keypad BULL seul en finale"
     ]
   },
+  "black_vs_white": {
+    "status": 'available',
+    "sources": ["src/pages/wave61/modes/black_vs_whiteConfig.tsx", "src/pages/wave61/modes/black_vs_whitePlay.tsx", "src/pages/Wave61SharedConfig.tsx", "src/pages/Wave61SharedPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61.ts"],
+    "options": [
+      "VARIANTE DÉBUTANT : chaque joueur reçoit une piste NOIRE ou BLANCHE",
+      "OBJECTIF : marquer principalement dans les SIMPLES de sa couleur",
+      "SIMPLE de sa couleur : marque la valeur du secteur",
+      "DOUBLE / TRIPLE : règle configurable BONUS / NEUTRE / PÉNALITÉ",
+      "BULL : bonus configurable 0 / +10 / +25 / +50",
+      "MAUVAISE COULEUR : pénalité configurable 0 / -5 / -10 / -20",
+      "MISS : pénalité configurable 0 / -5 / -10 / -20",
+      "D/T pénalisant : montant configurable 0 / -5 / -10 / -20",
+      "NOMBRE DE ROUNDS : configurable via le socle Wave61",
+      "JOUEURS / ÉQUIPES / BOTS IA pris en charge"
+    ]
+  },
+  "three_colors": {
+    "status": 'available',
+    "sources": ["src/pages/wave61/modes/three_colorsConfig.tsx", "src/pages/wave61/modes/three_colorsPlay.tsx", "src/pages/Wave61SharedConfig.tsx", "src/pages/Wave61SharedPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61.ts"],
+    "options": [
+      "OBJECTIF : réaliser 3 couleurs différentes sur la même volée",
+      "COULEURS prises en compte : NOIR / BLANC / VERT / ROUGE",
+      "Une volée est valide uniquement si ses 3 fléchettes appartiennent à 3 couleurs différentes",
+      "VOLÉE VALIDE : addition de la valeur réelle des 3 impacts",
+      "VOLÉE INVALIDE : 0 point",
+      "VICTOIRE : meilleur score après le nombre de rounds configuré",
+      "JOUEURS / ÉQUIPES / BOTS IA pris en charge"
+    ]
+  },
+  "la_suite": {
+    "status": 'available',
+    "sources": ["src/pages/wave61/modes/la_suiteConfig.tsx", "src/pages/wave61/modes/la_suitePlay.tsx", "src/pages/Wave61SharedConfig.tsx", "src/pages/Wave61SharedPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61.ts"],
+    "options": [
+      "OBJECTIF : réaliser 3 nombres consécutifs sur une seule volée",
+      "ORDRE LIBRE : une suite comme 4-6-5 est acceptée",
+      "ORDRE STRICT : les valeurs doivent être jouées dans l'ordre croissant",
+      "SCORING VALEUR RÉELLE : les multiplicateurs D/T conservent leur valeur",
+      "SCORING VALEUR DES NUMÉROS : seuls les numéros des secteurs sont additionnés",
+      "VOLÉE INVALIDE : 0 point",
+      "VICTOIRE : meilleur score après le nombre de rounds configuré",
+      "JOUEURS / ÉQUIPES / BOTS IA pris en charge"
+    ]
+  },
+  "color_call": {
+    "status": 'available',
+    "sources": ["src/pages/wave61/modes/color_callConfig.tsx", "src/pages/wave61/modes/color_callPlay.tsx", "src/pages/Wave61SharedConfig.tsx", "src/pages/Wave61SharedPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61.ts"],
+    "options": [
+      "OBJECTIF : une couleur est appelée à chaque tour",
+      "COULEURS possibles : NOIR / BLANC / VERT / ROUGE",
+      "Seuls les impacts appartenant à la couleur appelée marquent",
+      "Chaque impact valide conserve sa valeur réelle",
+      "VOLÉE PARFAITE : bonus configurable 0 / +10 / +25 / +50 lorsque les 3 fléchettes touchent la couleur demandée",
+      "VICTOIRE : meilleur score après le nombre de rounds configuré",
+      "JOUEURS / ÉQUIPES / BOTS IA pris en charge"
+    ]
+  },
   "shove_a_penny": {
     "status": 'available',
     "sources": ["src/pages/Wave61SharedConfig.tsx", "src/pages/Wave61SharedPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],

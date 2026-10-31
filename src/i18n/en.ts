@@ -681,6 +681,22 @@ export const en: Dict = {
   'landing.rules.isPreparing': 'is currently in development.',
   'landing.rules.isAvailableIn': 'is available in MULTISPORTS SCORING.',
   'landing.darts.developmentCard': 'Mode listed in the MSS catalogue. Game engine development is in progress.',
+  'landing.game.black_vs_white.label': 'BLACK VS WHITE',
+  'landing.game.black_vs_white.info': 'A beginner-friendly variant built around the black and white single segments. Score on your assigned colour while doubles, triples, the Bull and mistakes can become bonuses or penalties depending on the setup.',
+  'landing.game.black_vs_white.objective': 'Score on the single segments of your assigned BLACK or WHITE track and finish with the highest total.',
+  'landing.game.black_vs_white.configNarrative': 'Choose players, assign BLACK and WHITE tracks, then configure how doubles/triples behave, the Bull bonus and the penalties for wrong colour, MISS and D/T hits.',
+  'landing.game.three_colors.label': 'THREE COLORS',
+  'landing.game.three_colors.info': 'On each three-dart visit, hit three different colours among BLACK, WHITE, GREEN and RED. A complete three-colour visit scores the real value of all three hits.',
+  'landing.game.three_colors.objective': 'Complete a visit using three different board colours and build the highest score over the selected number of rounds.',
+  'landing.game.three_colors.configNarrative': 'Choose the participants and number of rounds. A visit scores only when all three darts land in three different colours; otherwise the visit scores zero.',
+  'landing.game.la_suite.label': 'THE SEQUENCE',
+  'landing.game.la_suite.info': 'Build three consecutive numbers in a single visit. A valid sequence scores; an invalid one scores zero. The order can be free or strictly ascending.',
+  'landing.game.la_suite.objective': 'Create three consecutive sector numbers in one visit and finish with the highest total.',
+  'landing.game.la_suite.configNarrative': 'Choose the participants, rounds, FREE or STRICT order and the scoring model: real hit values or sector numbers only.',
+  'landing.game.color_call.label': 'COLOR CALL',
+  'landing.game.color_call.info': 'A board colour is called every round: BLACK, WHITE, GREEN or RED. Only hits in the called colour score, with an optional bonus for a perfect three-hit visit.',
+  'landing.game.color_call.objective': 'Score as many points as possible by hitting the colour called for each turn.',
+  'landing.game.color_call.configNarrative': 'Choose the participants, number of rounds and perfect-visit bonus. Each turn calls one board colour and only matching hits score.',
 };
 
 export default en;
