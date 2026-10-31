@@ -163,7 +163,7 @@ const TICKERS: Record<string, string> = import.meta.glob(
   
    */
   
-  export function getTicker(key: string): string | null {
+  export function getTicker(key: string, lang?: string): string | null {
   
     const k0 = normalizeKey(key);
   
@@ -173,6 +173,14 @@ const TICKERS: Record<string, string> = import.meta.glob(
     // follow aliases once (then try again)
   
     const k = normalizeKey(ALIASES[k0] || k0);
+  
+    // Localised ticker convention: ticker_<id>_fr.webp / ticker_<id>_en.webp.
+    // Other languages intentionally use the generic ticker fallback.
+    const l = String(lang || "").trim().toLowerCase();
+    if (l === "fr" || l === "en") {
+      const localised = resolveByFilename(`${k}_${l}`) || resolveByFilename(`${k0}_${l}`);
+      if (localised) return localised;
+    }
   
     return resolveByFilename(k) || resolveByFilename(k0) || null;
   

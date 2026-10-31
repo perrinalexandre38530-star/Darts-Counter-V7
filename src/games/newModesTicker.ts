@@ -27,6 +27,10 @@ export const NEW_MODE_IDS: string[] = [
   "count_up",
   "prisoner",
   "encullette_vache",
+  "black_vs_white",
+  "three_colors",
+  "la_suite",
+  "color_call",
 ];
 
 // ✅ Auto-load des tickers via convention de nommage

@@ -9,6 +9,7 @@ import cricketDartSvg from "../ui_assets/cricket-dart.svg";
 import { useAwenaOptional } from "../awena/AwenaProvider";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { useViewport } from "../hooks/useViewport";
+import { useLang } from "../contexts/LangContext";
 import { DARTS_WAVE_61 } from "../games/dartsWave61";
 import { getWave61Preset } from "../games/dartsWave61Families";
 import { History } from "../lib/history";
@@ -815,6 +816,7 @@ export default function Wave61SharedPlay(props: any) {
   const classicFiveMode = ["double_down", "nine_dart_century", "shove_a_penny", "green_vs_red", "hi_score"].includes(spec.id);
   useFullscreenPlay({ enabled: true, lockBodyScroll: classicFiveMode });
   const preset = getWave61Preset(spec.id);
+  const { lang } = useLang();
   const rawConfig = props?.params?.config || resumeRecord?.resume?.config || resumeRecord?.payload?.config || {};
   const config = React.useMemo(() => normalizeWave61Config(spec.id, rawConfig), []);
   const profiles = React.useMemo(() => resolveModeProfiles(config, store), [config, store]);
@@ -848,7 +850,7 @@ export default function Wave61SharedPlay(props: any) {
   const activeIsBot = !!activeProfile && isBotProfile(activeProfile, botIds);
   const target = getWave61Target(state);
   const accent = preset.accent;
-  const modeTicker = React.useMemo(() => getTicker(spec.id), [spec.id]);
+  const modeTicker = React.useMemo(() => getTicker(spec.id, lang), [spec.id, lang]);
   const dedicatedPlayHint = String(props?.dedicatedPlayHint || "");
   const targetAdviceEnabled = config?.targetAdviceEnabled !== false;
   const awenaCommentaryEnabled = config?.awenaCommentaryEnabled !== false;

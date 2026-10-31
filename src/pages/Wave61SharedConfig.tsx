@@ -12,6 +12,7 @@ import "./newModes/PremiumPartyModeUi.css";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { useTheme } from "../contexts/ThemeContext";
+import { useLang } from "../contexts/LangContext";
 import { DARTS_WAVE_61 } from "../games/dartsWave61";
 import { getWave61Preset } from "../games/dartsWave61Families";
 import { loadBotPlayers, subscribeBotsChange } from "../lib/bots";
@@ -54,6 +55,7 @@ export default function Wave61SharedConfig(props: any) {
   const spec = DARTS_WAVE_61.find((m) => m.id === modeId) || DARTS_WAVE_61[0];
   const preset = getWave61Preset(spec.id);
   const { theme } = useTheme();
+  const { lang } = useLang();
   const accent = preset.accent || theme?.primary || "#ffb13b";
   const key = `dc_wave61_cfg_${spec.id}`;
   const saved = React.useMemo(() => { try { const parsed = JSON.parse(localStorage.getItem(key) || "null"); return parsed && typeof parsed === "object" ? parsed : {}; } catch { return {}; } }, [key]);
@@ -298,7 +300,7 @@ export default function Wave61SharedConfig(props: any) {
   const valid = participantProfiles.length >= minPlayers && greenRedCountValid;
   const botCount = participantProfiles.filter(isBotLike).length;
   const familyText = `${preset.label} · moteur mutualisé V${WAVE61_ENGINE_VERSION}`;
-  const modeTicker = React.useMemo(() => getTicker(spec.id), [spec.id]);
+  const modeTicker = React.useMemo(() => getTicker(spec.id, lang), [spec.id, lang]);
 
   function start() {
     if (!valid || typeof go !== "function") return;
