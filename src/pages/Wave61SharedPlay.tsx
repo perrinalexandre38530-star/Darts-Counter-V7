@@ -128,7 +128,9 @@ function familyRules(spec: any, preset: any) {
     double_down: "Parcours 15 · 16 · DOUBLE · 17 · 18 · TRIPLE · 19 · 20 · BULL. Si aucun dart ne valide le contrat du round, le score est divisé par deux.",
     nine_dart_century: "Neuf fléchettes maximum pour viser 100. À la fin, 100 exact est parfait ; sinon le plus proche sans dépasser gagne. Si tous dépassent, le plus petit dépassement l’emporte.",
     shove_a_penny: "Complète trois marques sur 15, 16, 17, 18, 19, 20 et BULL. Les surplus au-delà de trois sont poussés vers l'adversaire suivant.",
+    black_vs_white: "Même écran et mêmes formats que GREEN VS RED, mais avec les pistes NOIRE et BLANCHE : les simples de sa piste marquent, la piste adverse et les MISS pénalisent, les D/T et le BULL suivent la configuration. Le meilleur total après les rounds gagne.",
     green_vs_red: "Trois formats : DUEL, TEAM ou MULTI. VERT suit 1·4·6·15·17·19·16·11·9·5 ; ROUGE suit 20·12·14·8·7·3·2·10·13·18. Les variantes règlent le nombre de D/T comptables par volée, le scoring (touches ou valeurs réelles), l’accès au BULL et le barème des pénalités. Le simple peut être saisi uniquement pour enregistrer une erreur et sa pénalité ; il ne valide jamais un objectif GREEN VS RED.",
+    three_colors: "Chaque volée doit contenir trois couleurs différentes parmi NOIR, BLANC, VERT et ROUGE. Les simples donnent NOIR/BLANC, les doubles et triples VERT/ROUGE selon le secteur. Les Bulls peuvent représenter VERT/ROUGE selon la configuration. Une combinaison valide marque la somme configurée des trois impacts ; sinon la volée vaut 0 ou applique la pénalité choisie.",
     hi_score: "Nombre de rounds configurable : additionne simplement le score de toutes les volées. Le meilleur total à la fin gagne.",
     sniper: "Une série de contrats de précision s'enchaîne. Plus la difficulté monte, plus le lit exact S/D/T/BULL devient obligatoire.",
     luciole: "La cible s'illumine brièvement au début du tour puis disparaît. Mémorise le secteur et touche-le avant que la luciole suivante apparaisse.",
@@ -330,6 +332,14 @@ const GVR_GREEN_PATH = [1, 4, 6, 15, 17, 19, 16, 11, 9, 5] as const;
 const GVR_RED_PATH = [20, 12, 14, 8, 7, 3, 2, 10, 13, 18] as const;
 const GVR_GREEN = "#44e58f";
 const GVR_RED = "#ff5c69";
+const BW_BLACK_PATH = [20, 12, 14, 8, 7, 3, 2, 10, 13, 18] as const;
+const BW_WHITE_PATH = [1, 4, 6, 15, 17, 19, 16, 11, 9, 5] as const;
+const BW_BLACK = "#7b8493";
+const BW_WHITE = "#f2f5fb";
+function isColorDuelMode(id:any){ return id === "green_vs_red" || id === "black_vs_white"; }
+function isFinishedColorVariant(id:any){ return isColorDuelMode(id) || id === "three_colors"; }
+const THREE_COLORS_TONES:Record<string,string>={BLACK:"#7b8493",WHITE:"#f2f5fb",GREEN:GVR_GREEN,RED:GVR_RED};
+function blackWhiteToneFor(state:any,id:any){ return String(state?.special?.blackWhiteColorByPlayer?.[String(id)]||"BLACK") === "WHITE" ? BW_WHITE : BW_BLACK; }
 const GVR_DARTBOARD_ORDER = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5] as const;
 
 function gvrPolar(cx:number, cy:number, r:number, deg:number){
@@ -656,13 +666,14 @@ function Wave61VisitRecap({ recap, accent, onClose, durationMs = 3000 }: any) {
   const tone = recap.tone || accent;
   const dartLabel = (d:any) => wave61DartLabel(d);
   const gvr = recap.greenRedResult || null;
+  const three = recap.threeColorsResult || null;
   const scoreMode = String(gvr?.scoreModel || "");
-  const scoringLabel = scoreMode === "hit_count" ? "1 touche valide = 1 pt" : scoreMode === "board_value" ? "Valeur réelle cible" : "";
-  const resultByIndex = Array.isArray(gvr?.dartResults) ? gvr.dartResults : [];
-  const resultTone = (item:any) => item?.result === "valid" ? tone : item?.result === "transfer" ? "#58d8ff" : item?.result === "penalty" ? "#ff6574" : item?.result === "duplicate" ? "#f5b522" : "#8c95a6";
+  const scoringLabel = three ? (three.valid ? `3 COULEURS VALIDÉES · ${Number(three.baseScore||0)} pts${Number(three.bonus||0)?` + bonus ${Number(three.bonus||0)}`:""}` : `VOLÉE INCOMPLÈTE${Number(three.penalty||0)?` · -${Number(three.penalty||0)}`:" · 0"}`) : scoreMode === "hit_count" ? "1 touche valide = 1 pt" : scoreMode === "board_value" ? "Valeur réelle cible" : "";
+  const resultByIndex = Array.isArray(gvr?.dartResults) ? gvr.dartResults : three ? (three.colors||[]).map((color:any)=>({result:color?"valid":"penalty",points:0,color})) : [];
+  const resultTone = (item:any) => three && item?.color ? (THREE_COLORS_TONES[String(item.color) as keyof typeof THREE_COLORS_TONES] || tone) : item?.result === "valid" ? tone : item?.result === "transfer" ? "#58d8ff" : item?.result === "penalty" ? "#ff6574" : item?.result === "duplicate" ? "#f5b522" : "#8c95a6";
   const resultText = (item:any) => {
     if (!item) return "—";
-    if (item.result === "valid") return `VALIDE · +${Number(item.points || 0)}`;
+    if (item.result === "valid") return item.color ? String(item.color) : `VALIDE · +${Number(item.points || 0)}`;
     if (item.result === "penalty") return Number(item.penalty || 0) > 0 ? `PÉNALITÉ · -${Number(item.penalty || 0)}` : "HORS CONTRAT · 0";
     if (item.result === "transfer") return Number(item.transfer || 0) > 0 ? `OFFERT · +${Number(item.transfer || 0)} ADV.` : "HORS CONTRAT · 0";
     if (item.result === "duplicate") return "DÉJÀ COMPTÉ · 0";
@@ -686,7 +697,7 @@ function Wave61VisitRecap({ recap, accent, onClose, durationMs = 3000 }: any) {
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:5}}>
         <div style={{borderRadius:9,padding:"6px 4px",textAlign:"center",background:"rgba(255,255,255,.028)",border:"1px solid rgba(255,255,255,.06)"}}><div style={{color:"#8f98aa",fontSize:6.4,fontWeight:950}}>TOUCHES VALIDES</div><div style={{color:tone,fontSize:11,fontWeight:1150,marginTop:2}}>{Number(recap.hits || 0)}/3</div></div>
         <div style={{borderRadius:9,padding:"6px 4px",textAlign:"center",background:"rgba(255,255,255,.028)",border:"1px solid rgba(255,255,255,.06)"}}><div style={{color:"#8f98aa",fontSize:6.4,fontWeight:950}}>{gvr?.penaltyModel==="transfer"?"OFFERT À L'ADV.":"PÉNALITÉ"}</div><div style={{color:gvr?.penaltyModel==="transfer"?(recap.transferGivenDelta?"#58d8ff":"#fff"):(recap.penaltyDelta?"#ff6574":"#fff"),fontSize:11,fontWeight:1150,marginTop:2}}>{gvr?.penaltyModel==="transfer"?`+${Number(recap.transferGivenDelta||0)}`:(recap.penaltyDelta?`-${recap.penaltyDelta}`:"0")}</div></div>
-        <div style={{borderRadius:9,padding:"6px 4px",textAlign:"center",background:"rgba(255,255,255,.028)",border:"1px solid rgba(255,255,255,.06)"}}><div style={{color:"#8f98aa",fontSize:6.4,fontWeight:950}}>ÉTAPE</div><div style={{color:"#fff",fontSize:11,fontWeight:1150,marginTop:2}}>{recap.progressBefore} → {recap.progressAfter}</div></div>
+        <div style={{borderRadius:9,padding:"6px 4px",textAlign:"center",background:"rgba(255,255,255,.028)",border:"1px solid rgba(255,255,255,.06)"}}><div style={{color:"#8f98aa",fontSize:6.4,fontWeight:950}}>{three ? "SCORE" : "ÉTAPE"}</div><div style={{color:"#fff",fontSize:11,fontWeight:1150,marginTop:2}}>{three ? `${recap.scoreBefore} → ${recap.scoreAfter}` : `${recap.progressBefore} → ${recap.progressAfter}`}</div></div>
       </div>
 
       <div style={{color:"#aeb5c8",fontSize:7.5,lineHeight:1.35,textAlign:"center"}}>{gvr?.contractRule==="official_unique"?"Règle officielle · 1 Double et 1 Triple maximum comptés dans la volée":gvr?.contractRule==="unlimited"?"Variante libre · jusqu’à 3 D/T valides dans la volée":""}</div>
@@ -694,6 +705,40 @@ function Wave61VisitRecap({ recap, accent, onClose, durationMs = 3000 }: any) {
     </div>
   </div>;
   return typeof document !== "undefined" ? createPortal(overlay, document.body) : overlay;
+}
+
+function BlackWhitePanel({ state }: any) {
+  const p=state?.players?.[state?.activePlayerIndex]; const id=String(p?.id||""); const color=String(state?.special?.blackWhiteColorByPlayer?.[id]||"BLACK"); const tone=color==="WHITE"?BW_WHITE:BW_BLACK; const path=color==="WHITE"?BW_WHITE_PATH:BW_BLACK_PATH;
+  return <section data-black-white-situation="1" style={{...panelStyle(tone+"55"),padding:"8px 9px",background:`linear-gradient(145deg,${tone}0d,rgba(5,8,14,.98))`}}><div style={{display:"flex",justifyContent:"space-between",gap:8}}><b style={{color:tone,fontSize:8.8}}>PISTE {color === "WHITE" ? "BLANCHE" : "NOIRE"}</b><span style={{color:SOFT,fontSize:7.5}}>SECTEURS AUTORISÉS</span></div><div style={{display:"grid",gridTemplateColumns:"repeat(10,minmax(0,1fr))",gap:3,marginTop:5}}>{path.map((n:number)=><div key={n} style={{minHeight:31,borderRadius:7,display:"grid",placeItems:"center",background:`${tone}12`,border:`1px solid ${tone}55`,color:"#fff",fontSize:8.4,fontWeight:1100}}>{n}</div>)}</div></section>;
+}
+function BlackWhiteSituationPanel({ state, profiles, stretch=false }: any) {
+  const byId=new Map((profiles||[]).map((p:any)=>[String(p.id),p]));
+  const rows=(state?.players||[]).map((p:any)=>{const id=String(p.id);const color=String(state?.special?.blackWhiteColorByPlayer?.[id]||"BLACK");const tone=color==="WHITE"?BW_WHITE:BW_BLACK;return {...p,id,color,tone,score:Number(state?.scores?.[id]||0),profile:byId.get(id)||p,valid:Number(state?.special?.blackWhiteValidHitsByPlayer?.[id]||0),pen:Number(state?.special?.blackWhitePenaltyPointsByPlayer?.[id]||0)}});
+  const side=(label:string,items:any[],tone:string)=><div style={{borderRadius:14,border:`1px solid ${tone}42`,background:`linear-gradient(145deg,${tone}10,rgba(7,10,16,.97))`,padding:"8px 9px",minWidth:0}}><div style={{display:"flex",justifyContent:"space-between",gap:6}}><b style={{color:tone,fontSize:8.5}}>{label}</b><strong style={{color:"#fff",fontSize:14}}>{items.reduce((a:any,r:any)=>a+r.score,0)}</strong></div><div style={{display:"grid",gap:4,marginTop:5}}>{items.map((r:any)=><div key={r.id} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:6,fontSize:8}}><span style={{color:"#e9edf7",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name} · {r.valid} valides</span><b style={{color:tone}}>{r.score}</b></div>)}</div></div>;
+  return <section data-black-white-situation-panel="1" style={{...panelStyle("rgba(255,255,255,.08)"),padding:8,display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,height:stretch?"100%":undefined,minHeight:0}}>{side("PISTE NOIRE",rows.filter((r:any)=>r.color==="BLACK"),BW_BLACK)}{side("PISTE BLANCHE",rows.filter((r:any)=>r.color==="WHITE"),BW_WHITE)}</section>;
+}
+function BlackWhiteDuelScoreboard({ state, profiles }: any) {
+  const series=greenRedSeriesSpec(state); if(!series.enabled||!state||state.players?.length!==2)return null; const byId=new Map((profiles||[]).map((p:any)=>[String(p.id),p])); const [l,r]=state.players; const wins=state?.special?.blackWhiteMatchWins||{};
+  const side=(p:any,align:string)=>{const id=String(p?.id||"");const prof:any=byId.get(id)||p;const tone=blackWhiteToneFor(state,id);const av=prof?.avatarDataUrl||prof?.avatarUrl||prof?.avatar||null;return <div style={{display:"flex",alignItems:"center",justifyContent:align==="left"?"flex-start":"flex-end",gap:6,minWidth:0}}>{align==="left"?<div style={{width:24,height:24,borderRadius:999,overflow:"hidden",border:`1.5px solid ${tone}`}}>{av?<img src={av} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:null}</div>:null}<b style={{color:tone,fontSize:8.5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p?.name||"—"}</b>{align==="right"?<div style={{width:24,height:24,borderRadius:999,overflow:"hidden",border:`1.5px solid ${tone}`}}>{av?<img src={av} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:null}</div>:null}</div>};
+  return <div data-black-white-series-scoreboard="1" style={{height:34,flex:"0 0 34px",margin:"10px 8px 4px",padding:"3px 8px",borderRadius:11,border:"1px solid rgba(255,255,255,.09)",background:"linear-gradient(180deg,rgba(13,17,25,.98),rgba(5,8,14,.99))",display:"grid",gridTemplateColumns:"minmax(0,1fr) auto minmax(0,1fr)",gap:8,alignItems:"center"}}>{side(l,"left")}<div style={{display:"flex",gap:5,alignItems:"baseline"}}><strong>{Number(wins?.[String(l?.id)]||0)}</strong><span style={{color:"#7f8999",fontSize:7.2}}>{series.label}</span><strong>{Number(wins?.[String(r?.id)]||0)}</strong></div>{side(r,"right")}</div>;
+}
+function BlackWhiteInput({ state, activePlayer, currentThrow, setCurrentThrow, multiplier, setMultiplier, onValidate }: any) {
+  const id=String(activePlayer?.id||""); const color=String(state?.special?.blackWhiteColorByPlayer?.[id]||"BLACK"); const tone=color==="WHITE"?BW_WHITE:BW_BLACK; const path=color==="WHITE"?BW_WHITE_PATH:BW_BLACK_PATH; const full=currentThrow.length>=3;
+  React.useEffect(()=>setMultiplier(1),[id,color]); const push=(v:number,m:number)=>{if(full)return;setCurrentThrow((x:UIDart[])=>x.length>=3?x:[...x,{v,mult:m}]);setMultiplier(1)}; const cancel=()=>{if(multiplier!==1){setMultiplier(1);return;}setCurrentThrow((x:UIDart[])=>x.slice(0,-1));}; const lab=(d:any)=>!d?"—":Number(d.v)===0?"MISS":Number(d.v)===25?(Number(d.mult)===2?"BULL 50":"BULL 25"):`${Number(d.mult)===3?"T":Number(d.mult)===2?"D":"S"}${d.v}`;
+  const btn=(c:string,a=false,solid=false):React.CSSProperties=>({minHeight:34,borderRadius:11,border:`1px solid ${a?c:"rgba(255,255,255,.12)"}`,background:solid?`linear-gradient(180deg,${c},${c}cc)`:a?`${c}28`:"linear-gradient(180deg,rgba(18,23,33,.98),rgba(7,10,16,.99))",color:solid?"#111":"#fff",fontWeight:1100,fontSize:9.5});
+  return <div data-black-white-keypad="1" style={{...panelStyle(tone+"55"),height:"100%",padding:6,display:"flex",flexDirection:"column",gap:4,overflow:"hidden"}}><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:4}}>{Array.from({length:3},(_,i)=>currentThrow[i]).map((d:any,i)=><div key={i} style={{minHeight:24,borderRadius:9,border:`1px solid ${d?tone+"88":"rgba(255,255,255,.08)"}`,display:"grid",placeItems:"center",color:d?"#fff":"#59616e",fontSize:8.8,fontWeight:1150}}>{lab(d)}</div>)}</div><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:4}}><button onClick={()=>setMultiplier(multiplier===2?1:2)} style={btn("#4ebfe7",multiplier===2)}>DOUBLE</button><button onClick={()=>setMultiplier(multiplier===3?1:3)} style={btn("#d85ed3",multiplier===3)}>TRIPLE</button><button onClick={()=>push(0,1)} style={btn("#ff5c69")}>MISS</button><button onClick={cancel} style={btn("#f5b522",false,true)}>ANNULER</button></div><div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:4,flex:"1 1 auto",minHeight:0}}>{path.map((n:number)=><button key={n} onClick={()=>push(n,multiplier)} style={{...btn(tone),minHeight:34}}>{n}</button>)}</div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}><button onClick={()=>push(25,1)} style={btn("#3fd88a")}>BULL 25</button><button onClick={()=>push(25,2)} style={btn("#ff4655")}>BULL 50</button></div><button onClick={onValidate} disabled={!currentThrow.length} style={{...btn(tone,true),minHeight:36,opacity:currentThrow.length?1:.45}}>VALIDER LA VOLÉE</button></div>;
+}
+
+function threeColorFromUiDart(d:any){
+  if(!d)return null; const v=Number(d.v||0),m=Number(d.mult||1); if(v===0)return null; if(v===25)return m===2?"RED":"GREEN"; if(m===1)return BW_WHITE_PATH.includes(v as any)?"WHITE":"BLACK"; return BW_WHITE_PATH.includes(v as any)?"GREEN":"RED";
+}
+function ThreeColorsPanel({ state, accent }:any){
+  const p=state?.players?.[state?.activePlayerIndex]; const id=String(p?.id||""); const counts={BLACK:0,WHITE:0,GREEN:0,RED:0,...(state?.special?.threeColorsColorHitsByPlayer?.[id]||{})}; const hist=(state?.special?.colorModeHistory||[]); const last=[...hist].reverse().find((x:any)=>x?.mode==="three_colors"&&String(x?.playerId||"")===id);
+  return <section data-three-colors-situation="1" style={{...panelStyle(accent+"55"),padding:"8px 9px",background:"linear-gradient(145deg,rgba(255,255,255,.025),rgba(5,8,14,.98))"}}><div style={{display:"flex",justifyContent:"space-between",gap:8}}><b style={{color:accent,fontSize:8.8}}>SITUATION · 3 COULEURS</b><span style={{color:SOFT,fontSize:7.5}}>{Number(state?.special?.threeColorsValidVisitsByPlayer?.[id]||0)} OK · {Number(state?.special?.threeColorsInvalidVisitsByPlayer?.[id]||0)} NULLE(S)</span></div><div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:4,marginTop:5}}>{["BLACK","WHITE","GREEN","RED"].map(c=><div key={c} style={{minHeight:38,borderRadius:8,display:"grid",placeItems:"center",background:`${THREE_COLORS_TONES[c]}10`,border:`1px solid ${THREE_COLORS_TONES[c]}55`}}><div style={{color:THREE_COLORS_TONES[c],fontSize:7,fontWeight:1100}}>{c}</div><b style={{color:"#fff",fontSize:13}}>{Number((counts as any)[c]||0)}</b></div>)}</div>{last?<div style={{marginTop:5,borderRadius:8,padding:"5px 7px",border:"1px solid rgba(255,255,255,.07)",background:"rgba(255,255,255,.025)",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}><b style={{color:last.valid?"#7cf0ad":"#ff8b98",fontSize:7.5}}>{last.valid?"VOLÉE VALIDÉE":"VOLÉE NULLE"}</b>{(last.colors||[]).map((c:any,i:number)=><span key={i} style={{width:8,height:8,borderRadius:999,background:c?THREE_COLORS_TONES[String(c)]:"#333"}}/>)}<strong style={{color:"#fff",fontSize:9}}>{Number(last.delta||0)>=0?"+":""}{Number(last.delta||0)}</strong></div>:null}</section>;
+}
+function ThreeColorsInput({ currentThrow,setCurrentThrow,multiplier,setMultiplier,onValidate,accent }:any){
+  const full=currentThrow.length>=3; const push=(v:number,m:number)=>{if(full)return;setCurrentThrow((x:UIDart[])=>x.length>=3?x:[...x,{v,mult:m}]);setMultiplier(1)}; const cancel=()=>{if(multiplier!==1){setMultiplier(1);return;}setCurrentThrow((x:UIDart[])=>x.slice(0,-1));}; const label=(d:any)=>!d?"—":Number(d.v)===0?"MISS":Number(d.v)===25?(Number(d.mult)===2?"BULL 50":"BULL 25"):`${Number(d.mult)===3?"T":Number(d.mult)===2?"D":"S"}${d.v}`; const btn=(c:string,a=false):React.CSSProperties=>({minHeight:32,borderRadius:10,border:`1px solid ${a?c:"rgba(255,255,255,.12)"}`,background:a?`${c}28`:"linear-gradient(180deg,rgba(18,23,33,.98),rgba(7,10,16,.99))",color:"#fff",fontWeight:1100,fontSize:9});
+  return <div data-three-colors-keypad="1" style={{...panelStyle(accent+"55"),height:"100%",padding:6,display:"flex",flexDirection:"column",gap:4,overflow:"hidden"}}><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:4}}>{Array.from({length:3},(_,i)=>currentThrow[i]).map((d:any,i)=>{const c=threeColorFromUiDart(d);return <div key={i} style={{minHeight:25,borderRadius:9,border:`1px solid ${c?THREE_COLORS_TONES[c]+"88":"rgba(255,255,255,.08)"}`,display:"grid",gridTemplateColumns:"auto auto",gap:5,placeContent:"center",color:d?"#fff":"#59616e",fontSize:8.8,fontWeight:1150}}><span>{label(d)}</span>{c?<span style={{width:8,height:8,borderRadius:999,background:THREE_COLORS_TONES[c],alignSelf:"center"}}/>:null}</div>})}</div><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:4}}><button onClick={()=>setMultiplier(multiplier===2?1:2)} style={btn("#4ebfe7",multiplier===2)}>DOUBLE</button><button onClick={()=>setMultiplier(multiplier===3?1:3)} style={btn("#d85ed3",multiplier===3)}>TRIPLE</button><button onClick={()=>push(0,1)} style={btn("#ff5c69")}>MISS</button><button onClick={cancel} style={btn("#f5b522")}>ANNULER</button></div><div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:4,flex:"1 1 auto",minHeight:0}}>{Array.from({length:20},(_,i)=>i+1).map(n=>{const c=multiplier===1?(BW_WHITE_PATH.includes(n as any)?"WHITE":"BLACK"):(BW_WHITE_PATH.includes(n as any)?"GREEN":"RED");return <button key={n} onClick={()=>push(n,multiplier)} style={{...btn(THREE_COLORS_TONES[c]),minHeight:30,boxShadow:`inset 0 -2px 0 ${THREE_COLORS_TONES[c]}55`}}>{n}</button>})}</div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}><button onClick={()=>push(25,1)} style={btn(GVR_GREEN)}>BULL 25 · VERT</button><button onClick={()=>push(25,2)} style={btn(GVR_RED)}>BULL 50 · ROUGE</button></div><button onClick={onValidate} disabled={!currentThrow.length} style={{...btn(accent,true),minHeight:35,opacity:currentThrow.length?1:.45}}>VALIDER LA VOLÉE</button></div>;
 }
 
 function GreenVsRedInput({ state, activePlayer, currentThrow, setCurrentThrow, multiplier, setMultiplier, onValidate }: any) {
@@ -872,7 +917,7 @@ export default function Wave61SharedPlay(props: any) {
   const rawModeId = String(props?.forcedModeId || props?.params?.gameId || props?.gameId || resumeRecord?.modeId || resumeRecord?.game?.modeId || "");
   const modeId = rawModeId === "galaxyes" ? "galaxies" : rawModeId;
   const spec = DARTS_WAVE_61.find((m) => m.id === modeId) || DARTS_WAVE_61[0];
-  const classicFiveMode = ["double_down", "nine_dart_century", "shove_a_penny", "green_vs_red", "hi_score"].includes(spec.id);
+  const classicFiveMode = ["double_down", "nine_dart_century", "shove_a_penny", "green_vs_red", "black_vs_white", "three_colors", "hi_score"].includes(spec.id);
   useFullscreenPlay({ enabled: true, lockBodyScroll: classicFiveMode });
   const preset = getWave61Preset(spec.id);
   const { lang } = useLang();
@@ -942,6 +987,16 @@ export default function Wave61SharedPlay(props: any) {
       damageTaken: row.damageTaken,
       safeReveals: row.safeReveals,
       accuracy: row.accuracy,
+      ...(spec.id === "three_colors" ? {
+        threeColors: {
+          validVisits: Number(s.special?.threeColorsValidVisitsByPlayer?.[row.id] || 0),
+          invalidVisits: Number(s.special?.threeColorsInvalidVisitsByPlayer?.[row.id] || 0),
+          colorHits: { ...(s.special?.threeColorsColorHitsByPlayer?.[row.id] || {}) },
+          bestVisit: Number(s.special?.threeColorsBestVisitByPlayer?.[row.id] || 0),
+          bonusPoints: Number(s.special?.threeColorsPerfectBonusByPlayer?.[row.id] || 0),
+          penaltyPoints: Number(s.special?.threeColorsPenaltyByPlayer?.[row.id] || 0),
+        },
+      } : {}),
     }]));
     return {
       id: matchIdRef.current,
@@ -986,11 +1041,12 @@ export default function Wave61SharedPlay(props: any) {
 
     let committed = next;
     let seriesNotice = "";
-    if (spec.id === "green_vs_red" && next.phase === "finished") {
+    if (isColorDuelMode(spec.id) && next.phase === "finished") {
       const series = greenRedSeriesSpec(config);
       if (series.enabled) {
         const winnerKey = String(next.winnerTeamId ? `team:${next.winnerTeamId}` : (next.winnerId || ""));
-        const previousWins = { ...(previous.special?.greenRedMatchWins || {}) };
+        const winsKey=spec.id==="black_vs_white"?"blackWhiteMatchWins":"greenRedMatchWins";
+        const previousWins = { ...((previous.special as any)?.[winsKey] || {}) };
         if (winnerKey) previousWins[winnerKey] = Number(previousWins[winnerKey] || 0) + 1;
         const matchWon = winnerKey && Number(previousWins[winnerKey] || 0) >= series.winsTo;
 
@@ -1001,8 +1057,8 @@ export default function Wave61SharedPlay(props: any) {
           fresh.statsByPlayer = JSON.parse(JSON.stringify(next.statsByPlayer || {}));
           fresh.special = {
             ...(fresh.special || {}),
-            greenRedMatchWins: previousWins,
-            greenRedGameIndex: Number(previous.special?.greenRedGameIndex || 1) + 1,
+            [winsKey]: previousWins,
+            ...(spec.id==="black_vs_white"?{blackWhiteGameIndex:Number(previous.special?.blackWhiteGameIndex||1)+1}:{greenRedGameIndex:Number(previous.special?.greenRedGameIndex||1)+1}),
           };
           committed = fresh;
           finishedRef.current = false;
@@ -1011,8 +1067,8 @@ export default function Wave61SharedPlay(props: any) {
           committed = cloneWave61State(next);
           committed.special = {
             ...(committed.special || {}),
-            greenRedMatchWins: previousWins,
-            greenRedGameIndex: Number(previous.special?.greenRedGameIndex || 1),
+            [winsKey]: previousWins,
+            ...(spec.id==="black_vs_white"?{blackWhiteGameIndex:Number(previous.special?.blackWhiteGameIndex||1)}:{greenRedGameIndex:Number(previous.special?.greenRedGameIndex||1)}),
           };
         }
       }
@@ -1022,16 +1078,18 @@ export default function Wave61SharedPlay(props: any) {
     const recapPlayerId = String(last?.playerId || previous.players?.[previous.activePlayerIndex]?.id || "");
     const recapPlayer:any = profileById.get(recapPlayerId) || previous.players?.find((p:any)=>String(p.id)===recapPlayerId) || null;
     if (last && recapPlayerId) {
-      const color = spec.id === "green_vs_red" ? String(next.special?.greenRedColorByPlayer?.[recapPlayerId] || previous.special?.greenRedColorByPlayer?.[recapPlayerId] || "GREEN") : "";
-      const tone = spec.id === "green_vs_red" ? (color === "RED" ? GVR_RED : GVR_GREEN) : accent;
-      const beforePenalty = Number(previous.special?.greenRedPenaltyByPlayer?.[recapPlayerId] || 0);
-      const afterPenalty = Number(next.special?.greenRedPenaltyByPlayer?.[recapPlayerId] || 0);
+      const color = spec.id === "green_vs_red" ? String(next.special?.greenRedColorByPlayer?.[recapPlayerId] || previous.special?.greenRedColorByPlayer?.[recapPlayerId] || "GREEN") : spec.id === "black_vs_white" ? String(next.special?.blackWhiteColorByPlayer?.[recapPlayerId] || previous.special?.blackWhiteColorByPlayer?.[recapPlayerId] || "BLACK") : "";
+      const tone = spec.id === "green_vs_red" ? (color === "RED" ? GVR_RED : GVR_GREEN) : spec.id === "black_vs_white" ? (color === "WHITE" ? BW_WHITE : BW_BLACK) : accent;
+      const beforePenalty = Number(spec.id==="black_vs_white"?previous.special?.blackWhitePenaltyPointsByPlayer?.[recapPlayerId]:previous.special?.greenRedPenaltyByPlayer?.[recapPlayerId] || 0);
+      const afterPenalty = Number(spec.id==="black_vs_white"?next.special?.blackWhitePenaltyPointsByPlayer?.[recapPlayerId]:next.special?.greenRedPenaltyByPlayer?.[recapPlayerId] || 0);
       const beforeBonus = Number(previous.special?.greenRedBullBonusByPlayer?.[recapPlayerId] || 0);
       const afterBonus = Number(next.special?.greenRedBullBonusByPlayer?.[recapPlayerId] || 0);
       const beforeTransferGiven = Number(previous.special?.greenRedTransferGivenByPlayer?.[recapPlayerId] || 0);
       const afterTransferGiven = Number(next.special?.greenRedTransferGivenByPlayer?.[recapPlayerId] || 0);
       const beforeTransferReceived = Number(previous.special?.greenRedTransferReceivedByPlayer?.[recapPlayerId] || 0);
       const afterTransferReceived = Number(next.special?.greenRedTransferReceivedByPlayer?.[recapPlayerId] || 0);
+      const blackWhiteResult = spec.id === "black_vs_white" ? ([...(next.special?.colorModeHistory || [])].reverse().find((entry:any)=>entry?.mode==="black_vs_white"&&String(entry?.playerId||"")===recapPlayerId)||null) : null;
+      const threeColorsResult = spec.id === "three_colors" ? ([...(next.special?.colorModeHistory || [])].reverse().find((entry:any)=>entry?.mode==="three_colors"&&String(entry?.playerId||"")===recapPlayerId)||null) : null;
       const greenRedResult = spec.id === "green_vs_red"
         ? ([...(next.special?.greenRedHistory || [])].reverse().find((entry:any) => String(entry?.playerId || "") === recapPlayerId) || null)
         : null;
@@ -1048,7 +1106,7 @@ export default function Wave61SharedPlay(props: any) {
         delta: Number(last.delta || 0),
         hits: Number(last.hits || 0),
         events: Array.isArray(last.events) ? last.events.filter(Boolean) : [],
-        targetLabel: last.targetLabel || "",
+        targetLabel: last.targetLabel || (spec.id === "three_colors" ? "3 couleurs différentes" : ""),
         scoreBefore: Number(previous.scores?.[recapPlayerId] || 0),
         scoreAfter: Number(next.scores?.[recapPlayerId] || 0),
         progressBefore: Number(previous.progress?.[recapPlayerId] || 0),
@@ -1058,6 +1116,9 @@ export default function Wave61SharedPlay(props: any) {
         transferReceivedDelta: Math.max(0, afterTransferReceived - beforeTransferReceived),
         bonusDelta: Math.max(0, afterBonus - beforeBonus),
         greenRedResult,
+        blackWhiteResult,
+        threeColorsResult,
+        blackWhiteValidHits: Number(next.special?.blackWhiteValidHitsByPlayer?.[recapPlayerId]||0),
       });
     }
     setState(committed);
@@ -1095,7 +1156,7 @@ export default function Wave61SharedPlay(props: any) {
 
   React.useEffect(() => {
     if (!visitRecap) return;
-    const timer = window.setTimeout(() => setVisitRecap((current:any) => current?.visitId === visitRecap.visitId ? null : current), spec.id === "green_vs_red" ? 5000 : 3000);
+    const timer = window.setTimeout(() => setVisitRecap((current:any) => current?.visitId === visitRecap.visitId ? null : current), isColorDuelMode(spec.id) ? 5000 : 3000);
     return () => window.clearTimeout(timer);
   }, [visitRecap?.visitId]);
 
@@ -1228,7 +1289,7 @@ export default function Wave61SharedPlay(props: any) {
     {spec.id === "double_down" ? <DoubleDownPanel state={state} accent={accent} target={target} /> : null}
     {spec.id === "nine_dart_century" ? <CenturyPanel state={state} accent={accent} /> : null}
     {spec.id === "shove_a_penny" ? <ShovePennyPanel state={state} accent={accent} /> : null}
-    {spec.id === "green_vs_red" ? <GreenRedPanel state={state} /> : null}
+    {spec.id === "green_vs_red" ? <GreenRedPanel state={state} /> : spec.id === "black_vs_white" ? <BlackWhitePanel state={state} /> : null}
     {spec.id === "hi_score" ? <HiScorePanel state={state} accent={accent} /> : null}
     {spec.id === "sniper" ? <SniperPanel state={state} accent={accent} /> : null}
     {spec.id === "luciole" ? <LuciolePanel state={state} accent={accent} reveal={lucioleReveal} /> : null}
@@ -1294,11 +1355,12 @@ export default function Wave61SharedPlay(props: any) {
     if (spec.id === "nine_dart_century") return "100 en 9 fléchettes";
     if (spec.id === "shove_a_penny") return target?.label || "Fermer la case courante";
     if (spec.id === "green_vs_red") return target?.label || "D/T du numéro courant · finale BULL";
+    if (spec.id === "black_vs_white") return "Jouer uniquement les secteurs de sa piste";
     if (spec.id === "hi_score") return "Faire le plus gros score";
     return target?.label || "Objectif";
   })();
 
-  const classicInputHeight = spec.id === "green_vs_red"
+  const classicInputHeight = isFinishedColorVariant(spec.id)
     ? (viewportH > 0 && viewportH < 700 ? "268px" : viewportH > 0 && viewportH < 840 ? "282px" : "294px")
     : viewportH > 0 && viewportH < 700
       ? "clamp(265px,39dvh,315px)"
@@ -1344,9 +1406,10 @@ export default function Wave61SharedPlay(props: any) {
           {optionRows.length ? optionRows.map(([key,value]:any)=><div key={key} style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:10, padding:"8px 4px", borderBottom:"1px solid rgba(255,255,255,.06)", alignItems:"center" }}><span style={{ color:"#dfe4ef", fontSize:10, fontWeight:850 }}>{String(key).replace(/([A-Z])/g," $1").toUpperCase()}</span><b style={{ color:accent, fontSize:10 }}>{typeof value==="boolean"?(value?"ON":"OFF"):String(value)}</b></div>) : <div style={{ color:SOFT, fontSize:10.5 }}>Aucun réglage avancé pour cette partie.</div>}
         </div> : null}
 
-        {quickPanel === "objective" && spec.id === "green_vs_red" ? <div style={{ marginTop:12, display:"grid", gap:8 }}>
+        {quickPanel === "objective" && isColorDuelMode(spec.id) ? <div style={{ marginTop:12, display:"grid", gap:8 }}>
           {(() => {
             const id=String(activePlayer?.id||"");
+            if(spec.id==="black_vs_white"){const color=String(state.special?.blackWhiteColorByPlayer?.[id]||"BLACK");const tone=color==="WHITE"?BW_WHITE:BW_BLACK;const path=color==="WHITE"?BW_WHITE_PATH:BW_BLACK_PATH;return <><div style={{...panelStyle(tone+"55"),padding:12,textAlign:"center"}}><div style={{color:tone,fontSize:9,fontWeight:1100}}>PISTE {color==="WHITE"?"BLANCHE":"NOIRE"}</div><div style={{color:"#fff",fontSize:17,fontWeight:1200,marginTop:6}}>{path.join(" · ")}</div><div style={{color:SOFT,fontSize:9.5,marginTop:5}}>Score {Number(state.scores?.[id]||0)}</div></div><div style={{...panelStyle("rgba(255,255,255,.10)"),padding:11,color:"#dce2ed",fontSize:10.5,lineHeight:1.55}}>Les simples de ta piste marquent leur numéro. Les D/T, BULL, erreurs et MISS suivent les pénalités/bonus définis en configuration.</div></>;}
             const color=String(state.special?.greenRedColorByPlayer?.[id]||"GREEN");
             const tone=color==="RED"?GVR_RED:GVR_GREEN;
             const path=color==="RED"?GVR_RED_PATH:GVR_GREEN_PATH;
@@ -1357,21 +1420,23 @@ export default function Wave61SharedPlay(props: any) {
           })()}
         </div> : null}
 
-        {quickPanel === "situation" && spec.id === "green_vs_red" ? <div style={{ marginTop:12 }}>
-          <GreenRedSituationPanel state={state} profiles={profiles} />
+        {quickPanel === "situation" && isColorDuelMode(spec.id) ? <div style={{ marginTop:12 }}>
+          {spec.id==="black_vs_white"?<BlackWhiteSituationPanel state={state} profiles={profiles}/>:<GreenRedSituationPanel state={state} profiles={profiles} />}
         </div> : null}
 
+        {quickPanel === "objective" && spec.id === "three_colors" ? <div style={{marginTop:12,display:"grid",gap:8}}><div style={{...panelStyle(accent+"55"),padding:12,textAlign:"center"}}><div style={{color:accent,fontSize:9,fontWeight:1100}}>OBJECTIF DE LA VOLÉE</div><div style={{color:"#fff",fontSize:22,fontWeight:1200,marginTop:4}}>3 COULEURS DIFFÉRENTES</div><div style={{display:"flex",justifyContent:"center",gap:7,marginTop:8}}>{["BLACK","WHITE","GREEN","RED"].map(c=><span key={c} style={{width:17,height:17,borderRadius:999,background:THREE_COLORS_TONES[c],border:"1px solid rgba(255,255,255,.3)"}}/>)}</div></div><div style={{...panelStyle("rgba(255,255,255,.10)"),padding:11,color:"#dce2ed",fontSize:10.5,lineHeight:1.55}}>Les 3 fléchettes doivent former trois couleurs différentes. Score : {String(config?.modeOptions?.scoreMode||"real")==="base"?"somme des numéros sans multiplicateur":"valeur réelle des impacts"}. {String(config?.modeOptions?.bullColors||"colors")==="colors"?"BULL 25 = VERT et BULL 50 = ROUGE.":"Les Bulls sont neutres et ne peuvent pas compléter la combinaison."}</div></div> : null}
+
         {quickPanel === "ranking" ? <div style={{ marginTop:12, display:"grid", gap:6 }}>
-          {[...(state.players||[])].sort((a:any,b:any)=>Number(state.scores?.[b.id]||0)-Number(state.scores?.[a.id]||0)).map((p:any,i:number)=>{const id=String(p.id);const tone=spec.id==="green_vs_red"?greenRedToneFor(state,id):accent;return <div key={id} style={{display:"grid",gridTemplateColumns:"30px minmax(0,1fr) auto",gap:8,alignItems:"center",padding:"8px 9px",borderRadius:12,border:`1px solid ${tone}45`,background:"rgba(255,255,255,.025)"}}><b style={{color:tone}}>#{i+1}</b><div><b style={{color:"#fff",fontSize:10}}>{p.name}</b>{spec.id==="green_vs_red"?<div style={{color:tone,fontSize:8,marginTop:1}}>{String(state.special?.greenRedColorByPlayer?.[id]||"GREEN")} · étape {Number(state.special?.greenRedStepByPlayer?.[id]||0)}/11</div>:null}</div><strong style={{color:tone,fontSize:18}}>{Math.round(Number(state.scores?.[id]||0))}</strong></div>})}
+          {[...(state.players||[])].sort((a:any,b:any)=>Number(state.scores?.[b.id]||0)-Number(state.scores?.[a.id]||0)).map((p:any,i:number)=>{const id=String(p.id);const tone=spec.id==="green_vs_red"?greenRedToneFor(state,id):spec.id==="black_vs_white"?blackWhiteToneFor(state,id):accent;return <div key={id} style={{display:"grid",gridTemplateColumns:"30px minmax(0,1fr) auto",gap:8,alignItems:"center",padding:"8px 9px",borderRadius:12,border:`1px solid ${tone}45`,background:"rgba(255,255,255,.025)"}}><b style={{color:tone}}>#{i+1}</b><div><b style={{color:"#fff",fontSize:10}}>{p.name}</b>{spec.id==="green_vs_red"?<div style={{color:tone,fontSize:8,marginTop:1}}>{String(state.special?.greenRedColorByPlayer?.[id]||"GREEN")} · étape {Number(state.special?.greenRedStepByPlayer?.[id]||0)}/11</div>:spec.id==="black_vs_white"?<div style={{color:tone,fontSize:8,marginTop:1}}>PISTE {String(state.special?.blackWhiteColorByPlayer?.[id]||"BLACK")}</div>:spec.id==="three_colors"?<div style={{color:tone,fontSize:8,marginTop:1}}>{Number(state.special?.threeColorsValidVisitsByPlayer?.[id]||0)} volée(s) validée(s)</div>:null}</div><strong style={{color:tone,fontSize:18}}>{Math.round(Number(state.scores?.[id]||0))}</strong></div>})}
         </div> : null}
 
         {quickPanel === "stats" ? <div style={{ marginTop:12, display:"grid", gridTemplateColumns:"repeat(2,minmax(0,1fr))", gap:7 }}>
           {(() => {
             const id=String(activePlayer?.id||"");
             const s:any=state.statsByPlayer?.[id]||{};
-            const penalty=Number(state.special?.greenRedPenaltyByPlayer?.[id]||0);
-            const bonus=Number(state.special?.greenRedBullBonusByPlayer?.[id]||0);
-            const items=[["SCORE",Number(state.scores?.[id]||0)],["FLÉCHETTES",Number(s.darts||0)],["VOLÉES",(state.visits||[]).filter((v:any)=>String(v.playerId)===id).length],["DOUBLES",Number(s.doubles||0)],["TRIPLES",Number(s.triples||0)],["BULLS",Number(s.bulls||0)],["PÉNALITÉS",penalty],["BONUS BULL",bonus]];
+            const penalty=spec.id==="three_colors"?Number(state.special?.threeColorsPenaltyByPlayer?.[id]||0):Number(state.special?.greenRedPenaltyByPlayer?.[id]||0);
+            const bonus=spec.id==="three_colors"?Number(state.special?.threeColorsPerfectBonusByPlayer?.[id]||0):Number(state.special?.greenRedBullBonusByPlayer?.[id]||0);
+            const items=spec.id==="three_colors"?[["SCORE",Number(state.scores?.[id]||0)],["VOLÉES OK",Number(state.special?.threeColorsValidVisitsByPlayer?.[id]||0)],["VOLÉES 0",Number(state.special?.threeColorsInvalidVisitsByPlayer?.[id]||0)],["BEST",Number(state.special?.threeColorsBestVisitByPlayer?.[id]||0)],["DOUBLES",Number(s.doubles||0)],["TRIPLES",Number(s.triples||0)],["PÉNALITÉS",penalty],["BONUS",bonus]]:[["SCORE",Number(state.scores?.[id]||0)],["FLÉCHETTES",Number(s.darts||0)],["VOLÉES",(state.visits||[]).filter((v:any)=>String(v.playerId)===id).length],["DOUBLES",Number(s.doubles||0)],["TRIPLES",Number(s.triples||0)],["BULLS",Number(s.bulls||0)],["PÉNALITÉS",penalty],["BONUS BULL",bonus]];
             return items.map(([label,value]:any)=><div key={label} style={{...panelStyle(accent+"30"),padding:10,textAlign:"center"}}><div style={{color:SOFT,fontSize:7.5,fontWeight:950}}>{label}</div><b style={{display:"block",marginTop:3,color:label==="PÉNALITÉS"?GVR_RED:label==="BONUS BULL"?GVR_GREEN:accent,fontSize:20}}>{value}</b></div>);
           })()}
         </div> : null}
@@ -1380,9 +1445,9 @@ export default function Wave61SharedPlay(props: any) {
           {state.players.map((p:any,i:number)=>{
             const prof=profileById.get(String(p.id))||p;
             const metric=wave61PrimaryMetric(state,p.id);
-            const gvrC=spec.id==="green_vs_red"?String(state.special?.greenRedColorByPlayer?.[p.id]||"GREEN"):"";
+            const gvrC=spec.id==="green_vs_red"?String(state.special?.greenRedColorByPlayer?.[p.id]||"GREEN"):spec.id==="black_vs_white"?String(state.special?.blackWhiteColorByPlayer?.[p.id]||"BLACK"):"";
             const gvrTeam=spec.id==="green_vs_red"&&String(config?.modeOptions?.matchFormat||"duel")==="teams"?(gvrC==="GREEN"?"TEAM VERTE":"TEAM ROUGE"):"";
-            return <PlayerCard key={p.id} profile={prof} active={state.activePlayerIndex===i} accent={spec.id==="green_vs_red"?(gvrC==="RED"?GVR_RED:GVR_GREEN):accent} value={metric.value} subValue={spec.id==="green_vs_red"?`${gvrC}${gvrTeam?` · ${gvrTeam}`:""} · étape ${Number(state.special?.greenRedStepByPlayer?.[p.id]||0)}/11`:`${metric.label} · ${metric.sub}`} />;
+            return <PlayerCard key={p.id} profile={prof} active={state.activePlayerIndex===i} accent={spec.id==="green_vs_red"?(gvrC==="RED"?GVR_RED:GVR_GREEN):spec.id==="black_vs_white"?(gvrC==="WHITE"?BW_WHITE:BW_BLACK):accent} value={metric.value} subValue={spec.id==="green_vs_red"?`${gvrC}${gvrTeam?` · ${gvrTeam}`:""} · étape ${Number(state.special?.greenRedStepByPlayer?.[p.id]||0)}/11`:spec.id==="black_vs_white"?`PISTE ${gvrC} · ${Number(state.special?.blackWhiteValidHitsByPlayer?.[p.id]||0)} valides`:spec.id==="three_colors"?`${Number(state.special?.threeColorsValidVisitsByPlayer?.[p.id]||0)} volées 3 couleurs · ${Number(state.scores?.[p.id]||0)} pts`:`${metric.label} · ${metric.sub}`} />;
           })}
         </div> : null}
 
@@ -1399,7 +1464,7 @@ export default function Wave61SharedPlay(props: any) {
     const dartsPlayed = Number(activeStats?.darts || 0);
     const visitCount = activePlayer ? (state.visits || []).filter((v:any)=>String(v.playerId)===String(activePlayer.id)).length : 0;
     const tickerHeight = isLandscapeTablet ? 54 : 82;
-    const quickButtons = (spec.id === "green_vs_red" ? [
+    const quickButtons = (isFinishedColorVariant(spec.id) ? [
       { id:"ranking", label:"CLASSEMENT" },
       { id:"players", label:"LISTE DE JOUEURS", wide:true },
       { id:"stats", label:"STATS" },
@@ -1418,22 +1483,24 @@ export default function Wave61SharedPlay(props: any) {
     const gvrBullRule = String(state?.config?.modeOptions?.bullRule || "classic");
     const gvrBullTargetLabel = gvrBullRule === "color_lock" ? (gvrColor === "GREEN" ? "BULL 25" : "BULL 50") : "BULL";
     const gvrTargetLabel = spec.id === "green_vs_red" ? (gvrStep >= 10 ? gvrBullTargetLabel : `D/T ${gvrPath[gvrStep]}`) : classicObjective;
+    const bwActiveId=String(activePlayer?.id||""); const bwColor=spec.id==="black_vs_white"?String(state.special?.blackWhiteColorByPlayer?.[bwActiveId]||"BLACK"):""; const bwTone=bwColor==="WHITE"?BW_WHITE:BW_BLACK; const duelTone=spec.id==="black_vs_white"?bwTone:gvrTone; const duelColor=spec.id==="black_vs_white"?bwColor:gvrColor; const duelTargetLabel=spec.id==="black_vs_white"?"SECTEURS DE TA PISTE":gvrTargetLabel;
     const gvrAvatar = activeProfile?.avatarDataUrl || activeProfile?.avatarUrl || activeProfile?.avatar || null;
+    const threeId=String(activePlayer?.id||""); const threeValid=Number(state.special?.threeColorsValidVisitsByPlayer?.[threeId]||0); const threeInvalid=Number(state.special?.threeColorsInvalidVisitsByPlayer?.[threeId]||0);
 
     return <div data-wave61-classic-five={spec.id} style={{ height:"calc(var(--vh,1vh) * 100 - 18px)", minHeight:0, overflow:"hidden", display:"flex", flexDirection:"column", background:`radial-gradient(circle at 50% 0%,${accent}14,transparent 34%),#070a11` }}>
       <PageHeader
         tickerSrc={modeTicker || undefined}
         tickerAlt={spec.label}
         tickerHeight={tickerHeight}
-        tickerBottomGap={spec.id==="green_vs_red" ? (isLandscapeTablet?8:16) : (isLandscapeTablet?3:5)}
+        tickerBottomGap={isColorDuelMode(spec.id) ? (isLandscapeTablet?8:16) : (isLandscapeTablet?3:5)}
         tickerFit="cover"
-        left={<BackDot onClick={()=>go?.("wave61_config",{gameId:spec.id})} color={spec.id==="green_vs_red"?gvrTone:accent} glow={`${spec.id==="green_vs_red"?gvrTone:accent}88`} />}
-        right={<InfoDot title={`${spec.label} — règles`} color={spec.id==="green_vs_red"?gvrTone:accent} glow={`${spec.id==="green_vs_red"?gvrTone:accent}77`} content={familyRules(spec,preset)} />}
+        left={<BackDot onClick={()=>go?.("wave61_config",{gameId:spec.id})} color={isColorDuelMode(spec.id)?duelTone:accent} glow={`${isColorDuelMode(spec.id)?duelTone:accent}88`} />}
+        right={<InfoDot title={`${spec.label} — règles`} color={isColorDuelMode(spec.id)?duelTone:accent} glow={`${isColorDuelMode(spec.id)?duelTone:accent}77`} content={familyRules(spec,preset)} />}
       />
-      {spec.id === "green_vs_red" ? <div aria-hidden="true" style={{height:isLandscapeTablet?4:8,flex:`0 0 ${isLandscapeTablet?4:8}px`}} /> : null}
-      {spec.id === "green_vs_red" ? <GreenRedDuelScoreboard state={state} profiles={profiles} /> : null}
+      {isColorDuelMode(spec.id) ? <div aria-hidden="true" style={{height:isLandscapeTablet?4:8,flex:`0 0 ${isLandscapeTablet?4:8}px`}} /> : null}
+      {spec.id === "green_vs_red" ? <GreenRedDuelScoreboard state={state} profiles={profiles} /> : spec.id === "black_vs_white" ? <BlackWhiteDuelScoreboard state={state} profiles={profiles} /> : null}
 
-      {adviceText && spec.id !== "green_vs_red" ? <div role="status" aria-live="polite" style={{ position:"fixed", zIndex:95, top:tickerHeight+10, right:8, width:"min(330px,calc(100vw - 16px))", borderRadius:14, padding:"7px 8px", display:"grid", gridTemplateColumns:"34px minmax(0,1fr)", gap:7, alignItems:"center", border:`1px solid ${accent}70`, background:"rgba(8,11,19,.97)", boxShadow:`0 12px 30px rgba(0,0,0,.5),0 0 20px ${accent}18` }}>
+      {adviceText && !isColorDuelMode(spec.id) ? <div role="status" aria-live="polite" style={{ position:"fixed", zIndex:95, top:tickerHeight+10, right:8, width:"min(330px,calc(100vw - 16px))", borderRadius:14, padding:"7px 8px", display:"grid", gridTemplateColumns:"34px minmax(0,1fr)", gap:7, alignItems:"center", border:`1px solid ${accent}70`, background:"rgba(8,11,19,.97)", boxShadow:`0 12px 30px rgba(0,0,0,.5),0 0 20px ${accent}18` }}>
         <img src="/awena/awena-avatar.webp" alt="Awena" style={{ width:34,height:34,borderRadius:"50%",objectFit:"cover",border:`1px solid ${accent}88` }}/>
         <div><div style={{ color:accent,fontSize:7.5,fontWeight:1100,letterSpacing:.8 }}>AWENA · CONSEIL</div><div style={{ color:"#fff",fontSize:9,lineHeight:1.3,fontWeight:850,marginTop:1 }}>{adviceText}</div></div>
       </div> : null}
@@ -1446,28 +1513,28 @@ export default function Wave61SharedPlay(props: any) {
       }>
         <section data-wave61-classic-info="1" style={isLandscapeTablet
           ? { minWidth:0,minHeight:0,overflowY:"auto",overscrollBehavior:"contain",padding:"0 2px 8px",display:"grid",gap:7,alignContent:"start" }
-          : { flex:"1 1 auto",minHeight:0,overflowY:spec.id==="green_vs_red"?"hidden":"auto",overscrollBehavior:"contain",padding:spec.id==="green_vs_red"?"6px 8px 4px":"5px 8px 7px",display:spec.id==="green_vs_red"?"flex":"grid",flexDirection:spec.id==="green_vs_red"?"column":undefined,gap:spec.id==="green_vs_red"?4:7,alignContent:"start" }
+          : { flex:"1 1 auto",minHeight:0,overflowY:isColorDuelMode(spec.id)?"hidden":"auto",overscrollBehavior:"contain",padding:isColorDuelMode(spec.id)?"6px 8px 4px":"5px 8px 7px",display:isColorDuelMode(spec.id)?"flex":"grid",flexDirection:isColorDuelMode(spec.id)?"column":undefined,gap:isColorDuelMode(spec.id)?4:7,alignContent:"start" }
         }>
-          {spec.id === "green_vs_red" ? <section data-green-red-active-player="1" style={{ position:"relative",overflow:"hidden",minHeight:viewportH>0&&viewportH<760?98:104,flex:"0 0 auto",marginTop:0,borderRadius:18,border:`1px solid ${gvrTone}70`,background:`radial-gradient(circle at 18% 50%,${gvrTone}20,transparent 34%),linear-gradient(145deg,${gvrTone}10,rgba(5,8,14,.985))`,boxShadow:`inset 0 0 38px ${gvrTone}0c,0 12px 28px rgba(0,0,0,.28)`,display:"grid",gridTemplateColumns:"72px minmax(0,1fr) 102px",gap:7,alignItems:"stretch",padding:7 }}>
+          {isColorDuelMode(spec.id) ? <section data-color-duel-active-player={spec.id} style={{ position:"relative",overflow:"hidden",minHeight:viewportH>0&&viewportH<760?98:104,flex:"0 0 auto",marginTop:0,borderRadius:18,border:`1px solid ${duelTone}70`,background:`radial-gradient(circle at 18% 50%,${duelTone}20,transparent 34%),linear-gradient(145deg,${duelTone}10,rgba(5,8,14,.985))`,boxShadow:`inset 0 0 38px ${duelTone}0c,0 12px 28px rgba(0,0,0,.28)`,display:"grid",gridTemplateColumns:"72px minmax(0,1fr) 102px",gap:7,alignItems:"stretch",padding:7 }}>
             <div style={{position:"relative",zIndex:1,display:"grid",placeItems:"center",minWidth:0}}>
-              <div style={{width:76,height:76,borderRadius:999,overflow:"hidden",border:`1.5px solid ${gvrTone}66`,background:`linear-gradient(180deg,${gvrTone}18,rgba(7,10,16,.96))`,boxShadow:`0 0 18px ${gvrTone}18,inset 0 0 20px rgba(255,255,255,.03)`}}>{gvrAvatar?<img src={gvrAvatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover",opacity:.72}}/>:<div style={{width:"100%",height:"100%",display:"grid",placeItems:"center",fontSize:34,fontWeight:1200,color:gvrTone}}>{String(activePlayer?.name||"?").slice(0,1).toUpperCase()}</div>}</div>
+              <div style={{width:76,height:76,borderRadius:999,overflow:"hidden",border:`1.5px solid ${duelTone}66`,background:`linear-gradient(180deg,${duelTone}18,rgba(7,10,16,.96))`,boxShadow:`0 0 18px ${duelTone}18,inset 0 0 20px rgba(255,255,255,.03)`}}>{gvrAvatar?<img src={gvrAvatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover",opacity:.72}}/>:<div style={{width:"100%",height:"100%",display:"grid",placeItems:"center",fontSize:34,fontWeight:1200,color:duelTone}}>{String(activePlayer?.name||"?").slice(0,1).toUpperCase()}</div>}</div>
             </div>
             <div style={{position:"relative",zIndex:1,minWidth:0,display:"grid",alignContent:"center",justifyItems:"center",textAlign:"center",padding:"2px 0"}}>
-              <div style={{color:gvrTone,fontSize:15,fontWeight:1200,letterSpacing:.55,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"100%",textTransform:"uppercase"}}>{activePlayer?.name || "—"}</div>
-              <div style={{color:"#f5f7ff",fontSize:7.4,fontWeight:1050,letterSpacing:.8,marginTop:2}}>{gvrColor} · ÉTAPE {gvrStep+1}/11</div>
-              <div style={{color:gvrTone,fontSize:38,lineHeight:1,fontWeight:1250,letterSpacing:-1.35,textShadow:`0 0 18px ${gvrTone}45`,marginTop:2}}>{Math.round(Number(state.scores?.[gvrActiveId]||0))}</div>
+              <div style={{color:duelTone,fontSize:15,fontWeight:1200,letterSpacing:.55,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"100%",textTransform:"uppercase"}}>{activePlayer?.name || "—"}</div>
+              <div style={{color:"#f5f7ff",fontSize:7.4,fontWeight:1050,letterSpacing:.8,marginTop:2}}>{duelColor} · ÉTAPE {gvrStep+1}/11</div>
+              <div style={{color:duelTone,fontSize:38,lineHeight:1,fontWeight:1250,letterSpacing:-1.35,textShadow:`0 0 18px ${duelTone}45`,marginTop:2}}>{Math.round(Number(state.scores?.[gvrActiveId]||0))}</div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:6,marginTop:6,width:"100%",maxWidth:178}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,borderRadius:10,padding:"5px 6px",border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.04)"}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:12,height:12,color:gvrTone,lineHeight:1}}><GreenRedDartIcon color={gvrTone} size={12} /></span><span style={{width:1,height:12,background:"rgba(255,255,255,.12)"}}/><strong style={{color:"#fff",fontSize:10.5,fontWeight:1150,lineHeight:1}}>{dartsPlayed}</strong></div>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,borderRadius:10,padding:"5px 6px",border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.04)"}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:12,height:12,color:gvrTone,lineHeight:1}}><GreenRedVisitIcon color={gvrTone} size={12} /></span><span style={{width:1,height:12,background:"rgba(255,255,255,.12)"}}/><strong style={{color:"#fff",fontSize:10.5,fontWeight:1150,lineHeight:1}}>{visitCount}</strong></div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,borderRadius:10,padding:"5px 6px",border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.04)"}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:12,height:12,color:duelTone,lineHeight:1}}><GreenRedDartIcon color={duelTone} size={12} /></span><span style={{width:1,height:12,background:"rgba(255,255,255,.12)"}}/><strong style={{color:"#fff",fontSize:10.5,fontWeight:1150,lineHeight:1}}>{dartsPlayed}</strong></div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,borderRadius:10,padding:"5px 6px",border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.04)"}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:12,height:12,color:duelTone,lineHeight:1}}><GreenRedVisitIcon color={duelTone} size={12} /></span><span style={{width:1,height:12,background:"rgba(255,255,255,.12)"}}/><strong style={{color:"#fff",fontSize:10.5,fontWeight:1150,lineHeight:1}}>{visitCount}</strong></div>
               </div>
             </div>
-            <button type="button" onClick={()=>setQuickPanel("objective")} style={{position:"relative",zIndex:1,minWidth:0,borderRadius:15,border:`1px solid ${gvrTone}70`,background:`linear-gradient(180deg,${gvrTone}22,rgba(7,10,16,.95))`,color:"#fff",display:"grid",alignContent:"center",justifyItems:"center",gap:4,padding:"8px 7px",cursor:"pointer",boxShadow:`inset 0 0 20px ${gvrTone}0e`}}>
-              <small style={{fontSize:6.8,color:gvrTone,fontWeight:1050,letterSpacing:.9}}>PISTE {gvrColor}</small>
+            <button type="button" onClick={()=>setQuickPanel("objective")} style={{position:"relative",zIndex:1,minWidth:0,borderRadius:15,border:`1px solid ${duelTone}70`,background:`linear-gradient(180deg,${duelTone}22,rgba(7,10,16,.95))`,color:"#fff",display:"grid",alignContent:"center",justifyItems:"center",gap:4,padding:"8px 7px",cursor:"pointer",boxShadow:`inset 0 0 20px ${duelTone}0e`}}>
+              <small style={{fontSize:6.8,color:duelTone,fontWeight:1050,letterSpacing:.9}}>PISTE {duelColor}</small>
               <span style={{color:"#fff",fontSize:7.1,fontWeight:1100,letterSpacing:.7}}>OBJECTIF</span>
-              <strong style={{fontSize:gvrStep>=10?14:17,lineHeight:1.02,color:"#fff",textAlign:"center"}}>{gvrTargetLabel}</strong>
+              <strong style={{fontSize:gvrStep>=10?14:17,lineHeight:1.02,color:"#fff",textAlign:"center"}}>{duelTargetLabel}</strong>
               <span style={{fontSize:6.3,lineHeight:1.2,color:"#b8c0cf"}}>{gvrStep>=10?"BULL final" : "Double / Triple"}</span>
             </button>
-          </section> : <div style={{ ...panelStyle(accent+"62"), padding:9, background:`linear-gradient(145deg,${accent}12,rgba(5,8,14,.97))` }}>
+          </section> : spec.id === "three_colors" ? <section data-three-colors-active-player="1" style={{position:"relative",overflow:"hidden",minHeight:viewportH>0&&viewportH<760?98:104,flex:"0 0 auto",marginTop:0,borderRadius:18,border:`1px solid ${accent}70`,background:`radial-gradient(circle at 18% 50%,${accent}20,transparent 34%),linear-gradient(145deg,${accent}10,rgba(5,8,14,.985))`,boxShadow:`inset 0 0 38px ${accent}0c,0 12px 28px rgba(0,0,0,.28)`,display:"grid",gridTemplateColumns:"72px minmax(0,1fr) 102px",gap:7,alignItems:"stretch",padding:7}}><div style={{position:"absolute",left:0,right:0,top:0,height:3,display:"grid",gridTemplateColumns:"repeat(4,1fr)"}}>{["BLACK","WHITE","GREEN","RED"].map(c=><span key={c} style={{background:THREE_COLORS_TONES[c]}}/>)}</div><div style={{display:"grid",placeItems:"center"}}><div style={{width:76,height:76,borderRadius:999,overflow:"hidden",border:`1.5px solid ${accent}66`,background:`${accent}12`}}>{gvrAvatar?<img src={gvrAvatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover",opacity:.72}}/>:<div style={{width:"100%",height:"100%",display:"grid",placeItems:"center",fontSize:34,fontWeight:1200,color:accent}}>{String(activePlayer?.name||"?").slice(0,1).toUpperCase()}</div>}</div></div><div style={{display:"grid",alignContent:"center",justifyItems:"center",textAlign:"center"}}><div style={{color:accent,fontSize:15,fontWeight:1200,textTransform:"uppercase"}}>{activePlayer?.name||"—"}</div><div style={{color:"#f5f7ff",fontSize:7.4,fontWeight:1050,letterSpacing:.8,marginTop:2}}>ROUND {roundLabel}/{config.rounds}</div><div style={{color:accent,fontSize:38,lineHeight:1,fontWeight:1250,marginTop:2}}>{Math.round(Number(state.scores?.[threeId]||0))}</div><div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:6,marginTop:6,width:"100%",maxWidth:178}}><div style={{borderRadius:10,padding:"5px 6px",border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.04)",fontSize:8,color:SOFT}}><b style={{color:"#fff"}}>{threeValid}</b> OK</div><div style={{borderRadius:10,padding:"5px 6px",border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.04)",fontSize:8,color:SOFT}}><b style={{color:"#fff"}}>{threeInvalid}</b> NULLES</div></div></div><button type="button" onClick={()=>setQuickPanel("objective")} style={{borderRadius:15,border:`1px solid ${accent}70`,background:`linear-gradient(180deg,${accent}22,rgba(7,10,16,.95))`,color:"#fff",display:"grid",alignContent:"center",justifyItems:"center",gap:4,padding:"8px 7px",cursor:"pointer"}}><span style={{color:"#fff",fontSize:7.1,fontWeight:1100}}>OBJECTIF</span><strong style={{fontSize:16,lineHeight:1.02,color:"#fff",textAlign:"center"}}>3 COULEURS</strong><span style={{fontSize:6.3,color:"#b8c0cf"}}>différentes</span><span style={{display:"flex",gap:3}}>{["BLACK","WHITE","GREEN","RED"].map(c=><i key={c} style={{width:7,height:7,borderRadius:999,background:THREE_COLORS_TONES[c]}}/>)}</span></button></section> : <div style={{ ...panelStyle(accent+"62"), padding:9, background:`linear-gradient(145deg,${accent}12,rgba(5,8,14,.97))` }}>
             <div style={{ display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",marginBottom:6 }}>
               <div><div style={{ color:accent,fontSize:8.5,fontWeight:1100,letterSpacing:.9 }}>{spec.label.toUpperCase()} · ROUND {roundLabel}/{config.rounds}</div><div style={{ color:"#fff",fontSize:13.5,fontWeight:1100,marginTop:2 }}>{activePlayer?.name || "—"} joue</div></div>
               <button type="button" onClick={doUndo} disabled={!undo.length} style={{ ...actionStyle(accent,!undo.length),minHeight:36,padding:"0 10px",fontSize:9 }}>↶ UNDO</button>
@@ -1480,10 +1547,10 @@ export default function Wave61SharedPlay(props: any) {
             </div>
           </div>}
 
-          <div data-green-red-tool-strip={spec.id==="green_vs_red"?"1":undefined} style={{ display:"grid",gridTemplateColumns:spec.id==="green_vs_red"?".68fr 2fr .68fr .68fr":"repeat(4,minmax(0,1fr))",gap:5 }}>
+          <div data-color-duel-tool-strip={isFinishedColorVariant(spec.id)?spec.id:undefined} style={{ display:"grid",gridTemplateColumns:isFinishedColorVariant(spec.id)?".68fr 2fr .68fr .68fr":"repeat(4,minmax(0,1fr))",gap:5 }}>
             {quickButtons.map((b:any)=>{
-              const toolTone=spec.id==="green_vs_red"?gvrTone:accent;
-              const isGvr=spec.id==="green_vs_red";
+              const toolTone=isColorDuelMode(spec.id)?duelTone:accent;
+              const isGvr=isFinishedColorVariant(spec.id);
               const isPlayers=isGvr&&b.id==="players";
               return <button key={b.id} type="button" onClick={()=>setQuickPanel(b.id as any)} title={b.label} aria-label={b.label} style={{ position:"relative",overflow:"hidden",minHeight:isGvr?42:48,borderRadius:13,border:`1px solid ${toolTone}${isPlayers?"66":"38"}`,background:isPlayers&&modeTicker?`linear-gradient(90deg,rgba(3,8,10,.82),${toolTone}28,rgba(3,8,10,.82)),url(${modeTicker}) center/cover no-repeat`:`linear-gradient(180deg,${toolTone}0b,rgba(7,10,16,.96))`,color:toolTone,display:"grid",placeItems:"center",cursor:"pointer",minWidth:0,boxShadow:isPlayers?`inset 0 0 22px rgba(0,0,0,.52),0 0 14px ${toolTone}12`:"none" }}>
                 {isGvr?<GreenRedToolIcon kind={b.id as any} size={isPlayers?25:21}/>:<><span style={{ color:toolTone,fontSize:17,lineHeight:1 }}>{b.icon}</span><span style={{ fontSize:6.6,fontWeight:1000,letterSpacing:.4,whiteSpace:"nowrap" }}>{b.label}</span></>}
@@ -1494,9 +1561,9 @@ export default function Wave61SharedPlay(props: any) {
           {notice ? <div style={{ borderRadius:11,padding:"6px 8px",background:`${accent}0d`,border:`1px solid ${accent}2d`,color:"#eef1f8",fontSize:9.2,fontWeight:850,lineHeight:1.25 }}>{notice}</div> : null}
 
           {renderModeSpecificPanel()}
-          {spec.id === "green_vs_red" ? <div style={{flex:"1 1 0",minHeight:viewportH>0&&viewportH<760?132:150,overflow:"hidden"}}><GreenRedSituationPanel state={state} profiles={profiles} stretch /></div> : null}
+          {isColorDuelMode(spec.id) ? <div style={{flex:"1 1 0",minHeight:viewportH>0&&viewportH<760?132:150,overflow:"hidden"}}>{spec.id==="black_vs_white"?<BlackWhiteSituationPanel state={state} profiles={profiles} stretch />:<GreenRedSituationPanel state={state} profiles={profiles} stretch />}</div> : null}
 
-          {spec.id !== "green_vs_red" ? <div style={{ ...panelStyle(accent+"3d"), padding:8, display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:8, alignItems:"center" }}>
+          {!isFinishedColorVariant(spec.id) ? <div style={{ ...panelStyle(accent+"3d"), padding:8, display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:8, alignItems:"center" }}>
             <div style={{ minWidth:0 }}><div style={{ color:accent,fontSize:8,fontWeight:1100,letterSpacing:.7 }}>OBJECTIF ACTIF</div><div style={{ color:"#fff",fontSize:14,fontWeight:1100,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{classicObjective}</div>{dedicatedPlayHint ? <div style={{ color:SOFT,fontSize:8.6,lineHeight:1.3,marginTop:2 }}>{dedicatedPlayHint}</div> : null}</div>
             <div style={{ width:54,height:54,borderRadius:15,border:`1px solid ${accent}55`,background:`${accent}0d`,display:"grid",placeItems:"center",color:accent,fontSize:20 }}>🎯</div>
           </div> : null}
@@ -1506,11 +1573,11 @@ export default function Wave61SharedPlay(props: any) {
           ? { minWidth:0,minHeight:0,overflow:"hidden",display:"flex",flexDirection:"column" }
           : { flex:`0 0 ${classicInputHeight}`,height:classicInputHeight,minHeight:0,overflow:"hidden",padding:"0 8px max(6px,env(safe-area-inset-bottom))",background:"linear-gradient(180deg,rgba(4,7,12,.88),rgba(4,7,12,1))",borderTop:"1px solid rgba(255,255,255,.07)",boxShadow:"0 -12px 28px rgba(0,0,0,.42)" }
         }>
-          {!activeIsBot ? (spec.id === "green_vs_red" && config.scoreInputMethod !== "dartboard" ? <GreenVsRedInput state={state} activePlayer={activePlayer} currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} accent={accent} /> : <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} fitMinScale={isLandscapeTablet?0.30:0.36} guideSegmentNumbers={spec.id === "green_vs_red" && target?.kind === "number" ? [target.value] : null} guideBull={spec.id === "green_vs_red" && target?.kind === "bull"} />) : <div style={{ ...panelStyle(accent+"35"),height:"100%",display:"grid",placeItems:"center",textAlign:"center",color:SOFT,fontSize:11,padding:12 }}><div><div style={{fontSize:32}}>🤖</div><b style={{color:accent}}>{activePlayer?.name}</b><div style={{marginTop:5}}>calcule son prochain lancer…</div></div></div>}
+          {!activeIsBot ? (spec.id === "green_vs_red" && config.scoreInputMethod !== "dartboard" ? <GreenVsRedInput state={state} activePlayer={activePlayer} currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} accent={accent} /> : spec.id === "black_vs_white" && config.scoreInputMethod !== "dartboard" ? <BlackWhiteInput state={state} activePlayer={activePlayer} currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} /> : spec.id === "three_colors" && config.scoreInputMethod !== "dartboard" ? <ThreeColorsInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} accent={accent} /> : <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} fitMinScale={isLandscapeTablet?0.30:0.36} guideSegmentNumbers={spec.id === "green_vs_red" && target?.kind === "number" ? [target.value] : null} guideBull={spec.id === "green_vs_red" && target?.kind === "bull"} />) : <div style={{ ...panelStyle(accent+"35"),height:"100%",display:"grid",placeItems:"center",textAlign:"center",color:SOFT,fontSize:11,padding:12 }}><div><div style={{fontSize:32}}>🤖</div><b style={{color:accent}}>{activePlayer?.name}</b><div style={{marginTop:5}}>calcule son prochain lancer…</div></div></div>}
         </section>
       </div>}
       {renderClassicQuickModal()}
-      {visitRecap ? <Wave61VisitRecap recap={visitRecap} accent={spec.id === "green_vs_red" ? gvrTone : accent} onClose={()=>setVisitRecap(null)} durationMs={spec.id === "green_vs_red" ? 5000 : 3000} /> : null}
+      {visitRecap ? <Wave61VisitRecap recap={visitRecap} accent={isColorDuelMode(spec.id) ? duelTone : accent} onClose={()=>setVisitRecap(null)} durationMs={isFinishedColorVariant(spec.id) ? 5000 : 3000} /> : null}
       <style>{`@keyframes wave61VisitRecapCountdown{from{transform:scaleX(1)}to{transform:scaleX(0)}}`}</style>
     </div>;
   }
@@ -1558,7 +1625,7 @@ export default function Wave61SharedPlay(props: any) {
           {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} fitMinScale={compactHeight ? 0.28 : 0.34} /> : <div style={{ ...panelStyle(accent + "35"), height: "100%", display: "grid", placeItems: "center", textAlign: "center", color: SOFT, fontSize: 12, padding: 14 }}><div><div style={{ fontSize: 34 }}>🤖</div><b style={{ color: accent }}>{activePlayer?.name}</b><div style={{ marginTop: 6 }}>calcule son prochain lancer…</div></div></div>}
         </section>
       </div>}
-      {visitRecap ? <Wave61VisitRecap recap={visitRecap} accent={accent} onClose={()=>setVisitRecap(null)} durationMs={spec.id === "green_vs_red" ? 5000 : 3000} /> : null}
+      {visitRecap ? <Wave61VisitRecap recap={visitRecap} accent={accent} onClose={()=>setVisitRecap(null)} durationMs={isColorDuelMode(spec.id) ? 5000 : 3000} /> : null}
       <style>{`@keyframes wave61VisitRecapCountdown{from{transform:scaleX(1)}to{transform:scaleX(0)}}`}</style>
     </div>;
   }
@@ -1609,7 +1676,7 @@ export default function Wave61SharedPlay(props: any) {
       {spec.id === "double_down" ? <DoubleDownPanel state={state} accent={accent} target={target} /> : null}
       {spec.id === "nine_dart_century" ? <CenturyPanel state={state} accent={accent} /> : null}
       {spec.id === "shove_a_penny" ? <ShovePennyPanel state={state} accent={accent} /> : null}
-      {spec.id === "green_vs_red" ? <><GreenRedDuelScoreboard state={state} profiles={profiles} accent={accent} /><GreenRedPanel state={state} accent={accent} /></> : null}
+      {spec.id === "green_vs_red" ? <><GreenRedDuelScoreboard state={state} profiles={profiles} accent={accent} /><GreenRedPanel state={state} accent={accent} /></> : spec.id === "black_vs_white" ? <><BlackWhiteDuelScoreboard state={state} profiles={profiles} /><BlackWhitePanel state={state} /></> : null}
       {spec.id === "sniper" ? <SniperPanel state={state} accent={accent} /> : null}
       {spec.id === "luciole" ? <LuciolePanel state={state} accent={accent} reveal={lucioleReveal} /> : null}
       {spec.id === "golden_dart" ? <GoldenDartPanel state={state} accent={accent} /> : null}

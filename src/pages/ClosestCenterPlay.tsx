@@ -1720,7 +1720,7 @@ export default function ClosestCenterPlay(props:any) {
             {idx===1?<b style={{fontSize:compactHeight?26:32,lineHeight:1,color:"#fff",fontVariantNumeric:"tabular-nums"}}>{score}</b>:null}
             <div style={{minWidth:0,textAlign:idx===0?"left":"right"}}>
               <div style={{fontSize:8,fontWeight:1000,color:teamTone,letterSpacing:1}}>ÉQUIPE {team}</div>
-              {pointsMode==="petanque" ? <div style={{display:"inline-flex",marginTop:4,padding:"3px 6px",borderRadius:999,border:`1px solid ${teamTargetState[team].matchPoint?"#ffd85a66":teamTargetState[team].reached?"#8fffc266":"rgba(255,255,255,.09)"}`,background:teamTargetState[team].matchPoint?"rgba(255,216,90,.10)":teamTargetState[team].reached?"rgba(143,255,194,.10)":"rgba(255,255,255,.025)",fontSize:7,fontWeight:1000,color:teamTargetState[team].matchPoint?"#ffd85a":teamTargetState[team].reached?"#8fffc2":"#91a2ae"}}>{teamTargetState[team].reached?"OBJECTIF":teamTargetState[team].matchPoint?"● BALLE DE MATCH":`RESTE ${teamTargetState[team].remaining}`}</div> : null}
+              {pointsMode==="petanque" ? <div style={{display:"inline-flex",marginTop:4,padding:"3px 6px",borderRadius:999,border:`1px solid ${teamTargetState[team].matchPoint?"#ffd85a66":teamTargetState[team].reached?"#8fffc266":"rgba(255,255,255,.09)"}`,background:teamTargetState[team].matchPoint?"rgba(255,216,90,.10)":teamTargetState[team].reached?"rgba(143,255,194,.10)":"rgba(255,255,255,.025)",fontSize:7,fontWeight:1000,color:teamTargetState[team].matchPoint?"#ffd85a":teamTargetState[team].reached?"#8fffc2":"#91a2ae"}}>{teamTargetState[team].reached?"OBJECTIF":teamTargetState[team].matchPoint?"● BALLE DE MATCH":`RESTE ${teamTargetState[team].remaining}`}</div> : null}{pointsMode==="petanque" ? <div style={{height:3,marginTop:5,borderRadius:99,overflow:"hidden",background:"rgba(255,255,255,.06)"}}><div style={{height:"100%",width:`${Math.min(100,Math.max(0,(score/Math.max(1,Number(cfg.targetScore||13)))*100))}%`,background:teamTone,boxShadow:`0 0 8px ${teamTone}`,transition:"width .25s ease"}}/></div> : null}
             </div>
             {idx===0?<b style={{fontSize:compactHeight?26:32,lineHeight:1,color:"#fff",fontVariantNumeric:"tabular-nums"}}>{score}</b>:null}
           </div>
@@ -1728,7 +1728,13 @@ export default function ClosestCenterPlay(props:any) {
       })}
     </section>
 
-    <div style={{flex:1,minHeight:0,overflow:landscape?"hidden":"auto",display:"grid",gridTemplateColumns:landscape?(isManual?"minmax(230px,.54fr) minmax(0,1.46fr)":"minmax(0,1.58fr) minmax(300px,.78fr)"):"1fr",gridTemplateRows:landscape?"minmax(0,1fr)":(!isManual?"minmax(250px,40vh) auto":"auto"),gap:landscape?8:10,padding:landscape?8:10,paddingBottom:landscape?8:72,maxWidth:isManual&&!landscape?980:undefined,width:"100%",margin:isManual&&!landscape?"0 auto":undefined,alignItems:"stretch"}}>
+    {!landscape ? <section id="cc-action" style={{margin:"6px 10px 0",padding:"7px 8px",borderRadius:13,border:`1px solid ${playAction.tone}55`,background:`linear-gradient(135deg,${playAction.tone}14,rgba(7,15,22,.96))`,display:"grid",gridTemplateColumns:"30px minmax(0,1fr) auto",gap:7,alignItems:"center",boxShadow:"0 10px 24px rgba(0,0,0,.22)"}}>
+      <div style={{width:30,height:30,borderRadius:10,display:"grid",placeItems:"center",color:playAction.tone,background:`${playAction.tone}12`,border:`1px solid ${playAction.tone}55`}}><PetanqueIcon name={phase==="finished"?"stats":phase==="roundEnd"?"check":phase==="prepare"?"action":!isManual?"target":"action"} size={16}/></div>
+      <div style={{minWidth:0}}><div style={{fontSize:6,color:playAction.tone,fontWeight:1000,letterSpacing:1}}>MAINTENANT</div><b style={{display:"block",fontSize:10,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{playAction.title}</b><div style={{fontSize:7,color:"#8799a6",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginTop:1}}>{playAction.hint}</div></div>
+      {current && phase!=="roundEnd" && phase!=="finished" ? <div style={{display:"flex",alignItems:"center",gap:5,padding:"3px 5px",borderRadius:999,border:`1px solid ${playerColor(players,current.id)}55`,background:`${playerColor(players,current.id)}10`,maxWidth:106}}><div style={{width:20,height:20,borderRadius:"50%",overflow:"hidden",border:`1px solid ${playerColor(players,current.id)}`,display:"grid",placeItems:"center",fontSize:8,fontWeight:1000}}>{current.avatar?<img src={current.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:String(current.name||"?").slice(0,1).toUpperCase()}</div><span style={{fontSize:7,fontWeight:1000,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{current.name}</span></div> : null}
+    </section> : null}
+
+    <div style={{flex:1,minHeight:0,overflow:landscape?"hidden":"auto",display:"grid",gridTemplateColumns:landscape?(isManual?"minmax(230px,.54fr) minmax(0,1.46fr)":"minmax(0,1.58fr) minmax(300px,.78fr)"):"1fr",gridTemplateRows:landscape?"minmax(0,1fr)":(!isManual?"minmax(220px,34vh) auto":"auto"),gap:landscape?8:8,padding:landscape?8:8,paddingBottom:landscape?8:72,maxWidth:isManual&&!landscape?980:undefined,width:"100%",margin:isManual&&!landscape?"0 auto":undefined,alignItems:"stretch"}}>
       {isManual && landscape ? playerRail : null}
       {!isManual ? <div id="cc-camera" style={{position:"relative",minHeight:landscape?0:250,borderRadius:18,overflow:"hidden",border:"1px solid rgba(68,231,255,.3)",background:"#000",boxShadow:"0 16px 40px rgba(0,0,0,.32)"}}>
         <>{cameraSourceDescriptor.kind === "phone_companion" ? <div style={{position:"absolute",inset:0,display:"grid",placeItems:"center",background:"radial-gradient(circle at 50% 45%,rgba(68,231,255,.12),rgba(0,0,0,.96) 68%)"}}><div style={{maxWidth:320,textAlign:"center",padding:18}}><div style={{width:54,height:54,borderRadius:18,margin:"0 auto 10px",display:"grid",placeItems:"center",border:`1px solid ${ACCENT}66`,background:"rgba(68,231,255,.08)",color:ACCENT}}><PetanqueIcon name="camera" size={27}/></div><b style={{fontSize:14}}>CAMÉRA SUR LE TÉLÉPHONE COMPAGNON</b><div style={{fontSize:10,color:"#91a3b0",lineHeight:1.4,marginTop:6}}>L’aperçu reste sur le téléphone fixé face à la cible. Cet écran demande uniquement les bursts nécessaires au scoring.</div></div></div> : <video ref={videoRef} muted playsInline style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>}
@@ -1755,7 +1761,7 @@ export default function ClosestCenterPlay(props:any) {
       </div> : null}
 
       <div style={{minHeight:0,overflow:landscape?"auto":"visible",display:"grid",gap:8,alignContent:"start",paddingRight:landscape?2:0}}>
-        <section id="cc-action" style={{...card,padding:landscape?8:9,borderColor:`${playAction.tone}55`,background:`linear-gradient(135deg,${playAction.tone}14,rgba(255,255,255,.02))`}}>
+        {landscape ? <section id="cc-action" style={{...card,padding:8,borderColor:`${playAction.tone}55`,background:`linear-gradient(135deg,${playAction.tone}14,rgba(255,255,255,.02))`}}>
           <div style={{display:"grid",gridTemplateColumns:(!isManual && current && phase!=="roundEnd" && phase!=="finished")?"34px minmax(0,1fr) auto":"34px minmax(0,1fr)",gap:8,alignItems:"center"}}>
             <div style={{width:34,height:34,borderRadius:11,display:"grid",placeItems:"center",color:playAction.tone,background:`${playAction.tone}12`,border:`1px solid ${playAction.tone}55`}}><PetanqueIcon name={phase==="finished"?"stats":phase==="roundEnd"?"check":phase==="prepare"?"action":!isManual?"target":"action"} size={18}/></div>
             <div style={{minWidth:0}}><div style={{fontSize:7,color:playAction.tone,fontWeight:1000,letterSpacing:1.15}}>MAINTENANT</div><b style={{display:"block",fontSize:landscape?11:12,marginTop:1,whiteSpace:"normal"}}>{playAction.title}</b><div style={{fontSize:8,color:"#91a3b0",lineHeight:1.3,marginTop:2}}>{playAction.hint}</div>{phase!=="finished" && matchPointTeams.length ? <div style={{fontSize:7,color:"#ffd85a",fontWeight:1000,marginTop:3}}>● BALLE DE MATCH · ÉQUIPE {matchPointTeams.join(" / ")}</div> : null}</div>
@@ -1764,7 +1770,7 @@ export default function ClosestCenterPlay(props:any) {
               <div style={{minWidth:0,textAlign:"right"}}><b style={{display:"block",fontSize:9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{current.name}</b><span style={{display:"block",fontSize:7,color:playerColor(players,current.id)}}>{current.teamId?`ÉQ. ${current.teamId} · `:""}{Math.max(0,dartsPerPlayer-Number(activeRoundUsed[String(current.id)]||0))} EN MAIN</span></div>
             </div> : null}
           </div>
-        </section>
+        </section> : null}
         {resumeNotice ? <div style={{display:"flex",alignItems:"center",gap:7,padding:"6px 8px",borderRadius:11,border:"1px solid rgba(68,231,255,.26)",background:"linear-gradient(90deg,rgba(68,231,255,.08),rgba(255,255,255,.025))",color:"#dffaff",fontSize:8,fontWeight:1000,letterSpacing:.45,boxShadow:"0 8px 20px rgba(0,0,0,.16)"}}><PetanqueIcon name="history" size={13}/><span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{resumeNotice}</span></div> : null}
         {statusIsCritical ? <div role="alert" style={{padding:"7px 9px",borderRadius:11,border:"1px solid rgba(255,189,117,.30)",background:"rgba(255,159,120,.07)",color:"#ffd0b8",fontSize:9,fontWeight:900,lineHeight:1.35}}>{status}</div> : null}
 
@@ -1810,15 +1816,15 @@ export default function ClosestCenterPlay(props:any) {
         </section> : null}
 
         {!isManual && phase === "enroll" ? <section style={card}>
-          <h3 style={h3}>ENRÔLEMENT · {current?.name}</h3>
+          <div style={{display:"flex",alignItems:"center",gap:7}}><PetanqueIcon name="players" size={16}/><h3 style={{...h3,margin:0}}>ENRÔLEMENT · {current?.name}</h3></div>
           <div style={{fontSize:12,color:"#b9c7d4",lineHeight:1.5}}>Présente les 3 fléchettes ensemble dans le cadre. Fais 3 scans légèrement différents. Les sets trop similaires sont signalés.</div>
-          <div style={{display:"flex",gap:8,marginTop:10}}><button style={btn} onClick={scanSample}>📷 SCANNER ({samples[current?.id]?.length || 0}/3)</button><button style={btn} onClick={validatePlayerEnrollment}>VALIDER →</button></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginTop:9}}><button style={{...btn,display:"flex",alignItems:"center",justifyContent:"center",gap:6}} onClick={scanSample}><PetanqueIcon name="camera" size={16}/>SCANNER ({samples[current?.id]?.length || 0}/3)</button><button style={{...btn,display:"flex",alignItems:"center",justifyContent:"center",gap:6}} onClick={validatePlayerEnrollment}><PetanqueIcon name="check" size={16}/>VALIDER</button></div>
         </section> : null}
 
         {!isManual && phase === "baseline" ? <section style={card}>
           <h3 style={h3}>CIBLE VIDE</h3>
           <div style={{fontSize:12,color:"#b9c7d4"}}>Téléphone fixe, cible entière visible, aucune fléchette plantée.</div>
-          <button style={{...btn,width:"100%",marginTop:10}} onClick={captureBaseline}>📷 CAPTURER LA RÉFÉRENCE</button>
+          <button style={{...btn,width:"100%",marginTop:8,display:"flex",alignItems:"center",justifyContent:"center",gap:7}} onClick={captureBaseline}><PetanqueIcon name="camera" size={17}/>CAPTURER LA RÉFÉRENCE</button>
         </section> : null}
 
         {isManual && phase === "play" ? <section style={{...card,borderColor:"rgba(143,255,194,.28)",padding:landscape?12:10,background:"linear-gradient(180deg,rgba(11,28,25,.88),rgba(5,14,17,.94))",boxShadow:"0 16px 36px rgba(0,0,0,.22)"}}>
@@ -1832,7 +1838,8 @@ export default function ClosestCenterPlay(props:any) {
           </div> : null}
 
           {pointsMode==="petanque" && manualEntryMode==="quick" ? <>
-            <div style={{fontSize:11,color:"#aebdca",lineHeight:1.45,marginBottom:9}}>À la fin de la mène, saisis uniquement <b>l’équipe qui marque</b> et les <b>fléchettes réellement marquantes</b>. Aucun autre lancer n’est à renseigner.</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:5,marginBottom:8}}>{[["1","ÉQUIPE"],["2","POINTS"],["3","VALIDER"]].map(([n,l],i)=>{const active=i===0&&!manualWinningTeam || i===1&&!!manualWinningTeam || i===2&&manualRanking.some(Boolean);return <div key={n} style={{padding:"6px 4px",borderRadius:10,textAlign:"center",border:`1px solid ${active?"rgba(143,255,194,.32)":"rgba(255,255,255,.07)"}`,background:active?"rgba(57,217,138,.08)":"rgba(255,255,255,.02)"}}><b style={{fontSize:9,color:active?"#8fffc2":"#71838f"}}>{n}</b><span style={{display:"block",fontSize:7,color:active?"#dfffee":"#71838f",fontWeight:1000,marginTop:1}}>{l}</span></div>})}</div>
+            <div style={{fontSize:9,color:"#92a4b1",lineHeight:1.35,marginBottom:8}}>Fin de mène : choisis l’équipe qui marque, ajoute seulement ses fléchettes marquantes, puis valide.</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginBottom:9}}>{(["A","B"] as const).map(team=><button key={team} onClick={()=>{setRoundNullDecision(null);setManualWinningTeam(team);setManualRanking(Array.from({length:8},()=>null));setManualStage("score");setStatus(`Équipe ${team} marque. Ajoute uniquement ses fléchettes marquantes.`);}} style={{...btn,minHeight:42,borderColor:manualWinningTeam===team?(team==="A"?"#ff8f9c":"#83c8ff"):"rgba(255,255,255,.14)",background:manualWinningTeam===team?(team==="A"?"rgba(255,77,95,.12)":"rgba(61,165,255,.12)"):"rgba(255,255,255,.025)"}}>ÉQUIPE {team} MARQUE</button>)}</div>
             <button onClick={()=>declareNullRound("manual_tie")} style={{...miniBtn,width:"100%",marginBottom:9,minHeight:34,borderColor:"rgba(255,189,69,.35)",color:"#ffe0a6"}}>⚖️ MÈNE NULLE · ÉGALITÉ · 0 POINT</button>
             {manualWinningTeam ? <div>

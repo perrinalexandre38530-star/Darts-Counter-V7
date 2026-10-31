@@ -33,6 +33,7 @@ import { applyIncrementalChanges } from "../incrementalRestore";
 import { shouldSuppressAutomaticRestore } from "../restoreAuthority";
 import { shouldAttemptRemoteWork } from "../offlineFirstRuntime";
 import { getCanonicalAccountScopeId } from "../canonicalAccountScope";
+import { assertLocalDataIntegrityReleaseGate } from "../historyIntegrityGate";
 
 export type AccountBackupSource = "local" | "nas" | "r2" | "google_drive" | "onedrive" | "dropbox" | "external" | "legacy-auto";
 
@@ -502,16 +503,18 @@ function legacyAutoCandidate(item: AutoBackupItem, index: number, userId: string
 async function scanLocal(userId: string): Promise<AccountBackupCandidate[]> {
   const slots = await listLocalMemorySlots().catch(() => []);
   const primary = slots.map(localCandidate).filter(Boolean) as AccountBackupCandidate[];
-  const legacy = (() => {
-    try {
-      return getAutoBackups()
-        .map((item, index) => legacyAutoCandidate(item, index, userId))
-        .filter(Boolean) as AccountBackupCandidate[];
-    } catch {
-      return [];
-    }
-  })();
-  return [...primary, ...legacy];
+  if (primary.length) return primary;
+
+  // W5: anciens auto-backups = secours de migration uniquement. Ils ne doivent
+  // plus concurrencer les slots canoniques récents ni pouvoir devenir le
+  // "meilleur" backup simplement grâce à leur date.
+  try {
+    return getAutoBackups()
+      .map((item, index) => legacyAutoCandidate(item, index, userId))
+      .filter(Boolean) as AccountBackupCandidate[];
+  } catch {
+    return [];
+  }
 }
 
 async function scanNas(userId: string): Promise<AccountBackupCandidate[]> {
@@ -824,6 +827,11 @@ async function restoreCandidate(userId: string, candidate: AccountBackupCandidat
       console.warn("[backupCoordinator] incremental replay skipped", deltaError);
     }
 
+    // W5: le checkpoint a déjà été validé par importCloudSnapshot, mais les
+    // deltas rejoués juste après peuvent eux aussi modifier History. Revalider
+    // History/Stats à la fin ferme définitivement la fenêtre de divergence.
+    await assertLocalDataIntegrityReleaseGate({ repairStats: true });
+
     restoreAuth();
     if (!accountStillActive(userId)) throw new Error("Le compte actif a changé pendant l'import : rollback.");
     try { setStorageUser(userId); } catch {}
@@ -932,9 +940,9 @@ export async function restoreLatestBackupForSignedInUser(
           return false;
         }
         latest = pickLatestBackupCandidate(scan.candidates);
-        if (latest) {
+        if (latest && latest.source !== "legacy-auto") {
           void registerAccountLatestBackup({
-            provider: latest.source === "legacy-auto" ? "local" : latest.source as any,
+            provider: latest.source as any,
             backupId: latest.id, createdAt: latest.updatedAt, revision: latest.revision,
             summary: (latest.summary || {}) as Record<string, any>,
           } as any).catch(() => null);

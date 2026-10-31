@@ -4,6 +4,12 @@ import Wave61SharedConfig, { type Wave61DedicatedOption } from "../../Wave61Shar
 export const WAVE61_MODE_ID = "black_vs_white" as const;
 
 const DEDICATED_OPTIONS: Wave61DedicatedOption[] = [
+  { key: "matchFormat", label: "Format de partie", type: "select", defaultValue: "duel", options: [
+    { value: "duel", label: "DUEL · 2 joueurs" }, { value: "teams", label: "TEAM · 4 / 6 / 8 joueurs" }, { value: "multi_random", label: "MULTI ALÉATOIRE · 3 à 10 joueurs" },
+  ], help: "Même structure de partie que GREEN VS RED : duel, équipes ou multi. Les pistes NOIRE/BLANCHE remplacent VERT/ROUGE." },
+  { key: "seriesFormat", label: "Scoreboard / manches", type: "select", defaultValue: "single", options: [
+    { value: "single", label: "1 MANCHE · sans scoreboard" }, { value: "bo3", label: "BO 3" }, { value: "bo5", label: "BO 5" }, { value: "bo7", label: "BO 7" }, { value: "ft3", label: "FT 3" }, { value: "ft5", label: "FT 5" }, { value: "ft7", label: "FT 7" }, { value: "ft9", label: "FT 9" }, { value: "ft11", label: "FT 11" },
+  ] },
   { key: "firstTrack", label: "Attribution des pistes", type: "select", defaultValue: "random", options: [
     { value: "random", label: "ALÉATOIRE · premier joueur tiré au sort" },
     { value: "black", label: "J1 NOIR · alternance NOIR / BLANC" },

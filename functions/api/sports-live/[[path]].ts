@@ -16,6 +16,8 @@ type CompetitionMeta = {
   gender?: "men" | "women" | "mixed" | null;
   age?: string | null;
   regionLabel?: string | null;
+  logoUrl?: string | null;
+  logoPageUrl?: string | null;
 };
 type NormalPlayer = { id?: string | null; name: string; score?: number | null; countryCode?: string | null; photoUrl?: string | null };
 type NormalMatch = {
@@ -46,6 +48,7 @@ type NormalResult = {
 const DARTS_BASE = "https://api.dartsapi.com/v1";
 const TT_BASE = "https://api.tabletennisapi.com/v1";
 const METHODS = "GET, OPTIONS";
+const COMPETITION_LOGO_AI_CACHE = new Map<string, { logoUrl: string; logoPageUrl?: string | null }>();
 
 function json(payload: unknown, status = 200, cacheSeconds = 60) {
   return new Response(JSON.stringify(payload), {
@@ -72,6 +75,166 @@ function num(v: unknown): number | null {
 
 function arr(v: unknown): any[] {
   return Array.isArray(v) ? v : [];
+}
+
+function normalizeText(value: unknown): string {
+  return str(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function competitionSlug(value: unknown): string {
+  return normalizeText(value).replace(/\s+/g, " ").trim();
+}
+
+function isDirectImageUrl(value: unknown): value is string {
+  const url = str(value).trim();
+  if (!/^https?:\/\//i.test(url)) return false;
+  return /\.(?:svg|png|webp|jpg|jpeg)(?:[?#].*)?$/i.test(url) || /(?:logo|badge|emblem|crest|brand)/i.test(url);
+}
+
+function logoHint(logoUrl: string | null | undefined, logoPageUrl?: string | null) {
+  return logoUrl ? { logoUrl, logoPageUrl: logoPageUrl || null } : null;
+}
+
+const KNOWN_COMPETITION_LOGOS: Array<{ sports?: string[]; pattern: RegExp; logoUrl: string; logoPageUrl?: string | null }> = [
+  { sports: ["darts"], pattern: /pdc qualifying school|q school/, logoUrl: "https://www.pdc.tv/sites/default/files/styles/square_medium/public/2022-12/PDC_QSchool_Logo.png", logoPageUrl: "https://www.pdc.tv/tournament/q-school" },
+  { sports: ["darts"], pattern: /players championship/, logoUrl: "https://www.pdc.tv/sites/default/files/styles/square_medium/public/2024-01/Players_Championship_Logo.png", logoPageUrl: "https://www.pdc.tv/tournaments/players-championship" },
+  { sports: ["darts"], pattern: /european darts championship/, logoUrl: "https://www.pdc.tv/sites/default/files/styles/square_medium/public/2024-01/European_Championship_Logo.png", logoPageUrl: "https://www.pdc.tv/tournament/european-championship" },
+  { sports: ["darts"], pattern: /dutch darts championship/, logoUrl: "https://www.pdc.tv/sites/default/files/styles/square_medium/public/2024-01/European_Tour_Logo.png", logoPageUrl: "https://www.pdc.tv/tournament/dutch-darts-championship" },
+  { sports: ["darts"], pattern: /australian darts masters/, logoUrl: "https://www.pdc.tv/sites/default/files/styles/square_medium/public/2024-01/World_Series_of_Darts_Logo.png", logoPageUrl: "https://www.pdc.tv/tournament/world-series-darts" },
+  { sports: ["darts"], pattern: /new zealand darts masters/, logoUrl: "https://www.pdc.tv/sites/default/files/styles/square_medium/public/2024-01/World_Series_of_Darts_Logo.png", logoPageUrl: "https://www.pdc.tv/tournament/world-series-darts" },
+  { sports: ["darts"], pattern: /world series of darts/, logoUrl: "https://www.pdc.tv/sites/default/files/styles/square_medium/public/2024-01/World_Series_of_Darts_Logo.png", logoPageUrl: "https://www.pdc.tv/tournaments/world-series-darts" },
+  { sports: ["darts"], pattern: /world grand prix/, logoUrl: "https://www.pdc.tv/sites/default/files/styles/square_medium/public/2024-01/World_Grand_Prix_Logo.png", logoPageUrl: "https://www.pdc.tv/tournament/world-grand-prix" },
+  { sports: ["darts"], pattern: /world matchplay/, logoUrl: "https://www.pdc.tv/sites/default/files/styles/square_medium/public/2024-01/World_Matchplay_Logo.png", logoPageUrl: "https://www.pdc.tv/tournament/betfred-world-matchplay" },
+  { sports: ["darts"], pattern: /uk open/, logoUrl: "https://www.pdc.tv/sites/default/files/styles/square_medium/public/2024-01/UK_Open_Logo.png", logoPageUrl: "https://www.pdc.tv/tournament/uk-open" },
+  { sports: ["darts"], pattern: /world championship|pdc world championship/, logoUrl: "https://www.pdc.tv/sites/default/files/styles/square_medium/public/2024-01/World_Championship_Logo.png", logoPageUrl: "https://www.pdc.tv/tournament/world-darts-championship" },
+  { sports: ["darts"], pattern: /wdf world masters|world masters/, logoUrl: "https://dartswdf.com/wp-content/uploads/2023/10/WDF-logo.png", logoPageUrl: "https://dartswdf.com/" },
+  { sports: ["darts"], pattern: /wdf|world darts federation/, logoUrl: "https://dartswdf.com/wp-content/uploads/2023/10/WDF-logo.png", logoPageUrl: "https://dartswdf.com/" },
+  { sports: ["darts"], pattern: /modus/, logoUrl: "https://dartsatlas.com/assets/images/pages/modus-logo.png", logoPageUrl: "https://www.modussuperseries.com/" },
+  { sports: ["darts"], pattern: /cdc|championship darts corporation/, logoUrl: "https://champdarts.com/wp-content/uploads/2021/09/cdc-logo.png", logoPageUrl: "https://champdarts.com/" },
+  { sports: ["darts"], pattern: /darts new zealand|dnz/, logoUrl: "https://www.dartsnz.com/wp-content/uploads/2021/08/DartsNZ-Logo.png", logoPageUrl: "https://www.dartsnz.com/" },
+  { sports: ["foot"], pattern: /premier league/, logoUrl: "https://brandlogos.net/wp-content/uploads/2022/10/premier-league-logo_brandlogos.net_xvxcc.png", logoPageUrl: "https://www.premierleague.com/" },
+  { sports: ["foot"], pattern: /ligue 1/, logoUrl: "https://upload.wikimedia.org/wikipedia/en/c/c7/Ligue1.png", logoPageUrl: "https://ligue1.com/" },
+  { sports: ["foot"], pattern: /ligue 2/, logoUrl: "https://upload.wikimedia.org/wikipedia/en/1/19/Ligue_2_BKT.png", logoPageUrl: "https://ligue2.fr/" },
+  { sports: ["foot"], pattern: /champions league/, logoUrl: "https://upload.wikimedia.org/wikipedia/en/b/bf/UEFA_Champions_League_logo_2.svg", logoPageUrl: "https://www.uefa.com/uefachampionsleague/" },
+  { sports: ["foot"], pattern: /europa league/, logoUrl: "https://upload.wikimedia.org/wikipedia/en/9/92/UEFA_Europa_League_logo_%282024%29.svg", logoPageUrl: "https://www.uefa.com/uefaeuropaleague/" },
+  { sports: ["foot"], pattern: /conference league/, logoUrl: "https://upload.wikimedia.org/wikipedia/en/0/0a/UEFA_Europa_Conference_League_logo.svg", logoPageUrl: "https://www.uefa.com/uefaconferenceleague/" },
+  { sports: ["foot"], pattern: /bundesliga/, logoUrl: "https://upload.wikimedia.org/wikipedia/en/d/df/Bundesliga_logo_%282017%29.svg", logoPageUrl: "https://www.bundesliga.com/" },
+  { sports: ["foot"], pattern: /laliga/, logoUrl: "https://upload.wikimedia.org/wikipedia/commons/1/13/LaLiga.svg", logoPageUrl: "https://www.laliga.com/" },
+  { sports: ["foot"], pattern: /serie a/, logoUrl: "https://upload.wikimedia.org/wikipedia/en/e/e1/Serie_A_logo_%282019%29.svg", logoPageUrl: "https://www.legaseriea.it/" },
+  { sports: ["basket"], pattern: /nba/, logoUrl: "https://upload.wikimedia.org/wikipedia/en/0/03/National_Basketball_Association_logo.svg", logoPageUrl: "https://www.nba.com/" },
+  { sports: ["basket"], pattern: /euroleague/, logoUrl: "https://upload.wikimedia.org/wikipedia/commons/7/75/EuroLeague_basketball_logo.svg", logoPageUrl: "https://www.euroleaguebasketball.net/euroleague/" },
+  { sports: ["rugby"], pattern: /top 14/, logoUrl: "https://upload.wikimedia.org/wikipedia/en/4/48/Top14logo.png", logoPageUrl: "https://top14.lnr.fr/" },
+  { sports: ["tennis"], pattern: /wimbledon/, logoUrl: "https://upload.wikimedia.org/wikipedia/en/b/bd/The_Championships_Wimbledon_logo.svg", logoPageUrl: "https://www.wimbledon.com/" },
+  { sports: ["tennis"], pattern: /roland garros|french open/, logoUrl: "https://upload.wikimedia.org/wikipedia/en/7/74/Roland_Garros_logo.svg", logoPageUrl: "https://www.rolandgarros.com/" },
+  { sports: ["tennis"], pattern: /us open/, logoUrl: "https://upload.wikimedia.org/wikipedia/en/6/67/US_Open_%28tennis%29_logo.svg", logoPageUrl: "https://www.usopen.org/" },
+  { sports: ["tennis"], pattern: /australian open/, logoUrl: "https://upload.wikimedia.org/wikipedia/en/8/8f/Australian_Open_logo.svg", logoPageUrl: "https://ausopen.com/" },
+  { sports: ["esports"], pattern: /counter strike|cs2|major/, logoUrl: "https://upload.wikimedia.org/wikipedia/commons/2/24/Counter-Strike_2_logo.svg", logoPageUrl: "https://www.hltv.org/" },
+  { sports: ["esports"], pattern: /valorant/, logoUrl: "https://upload.wikimedia.org/wikipedia/commons/f/fc/Valorant_logo_-_pink_color_version.svg", logoPageUrl: "https://www.vlr.gg/" },
+];
+
+function knownCompetitionLogoFor(sport: string, competition?: string | null, sourceName?: string | null, sourceUrl?: string | null) {
+  const raw = `${competition || ""} ${sourceName || ""} ${sourceUrl || ""}`;
+  const slug = competitionSlug(raw);
+  for (const rule of KNOWN_COMPETITION_LOGOS) {
+    if (rule.sports?.length && !rule.sports.includes(String(sport || "").toLowerCase())) continue;
+    if (rule.pattern.test(slug)) return logoHint(rule.logoUrl, rule.logoPageUrl || null);
+  }
+  return null;
+}
+
+function mergeCompetitionLogoMeta(meta: CompetitionMeta, sport: string, competition?: string | null, sourceName?: string | null, sourceUrl?: string | null): CompetitionMeta {
+  if (meta.logoUrl) return meta;
+  const known = knownCompetitionLogoFor(sport, competition, sourceName, sourceUrl);
+  if (!known) return meta;
+  return { ...meta, logoUrl: known.logoUrl, logoPageUrl: known.logoPageUrl || null };
+}
+
+async function openAiCompetitionLogos(env: Env, sport: string, competitions: string[]): Promise<Record<string, { logoUrl: string; logoPageUrl?: string | null }>> {
+  const key = str(env?.OPENAI_API_KEY).trim();
+  const unique = Array.from(new Set(competitions.map((value) => String(value || "").trim()).filter(Boolean)));
+  const unresolved = unique.filter((name) => !COMPETITION_LOGO_AI_CACHE.has(`${sport}::${competitionSlug(name)}`));
+  if (!key || !unresolved.length) {
+    return Object.fromEntries(unique.map((name) => {
+      const hit = COMPETITION_LOGO_AI_CACHE.get(`${sport}::${competitionSlug(name)}`);
+      return hit ? [name, hit] : [];
+    }).filter((entry) => entry.length) as any);
+  }
+  const batch = unresolved.slice(0, 32);
+  const model = str(env?.LIVE_INTELLIGENCE_MODEL).trim() || "gpt-6-luna";
+  const prompt = `For the sport "${sport}", find the real competition logo for each of these competitions when publicly available. Prefer the official competition logo image. If the official direct logo image is not easy to access, you may use a stable Wikimedia Commons / Wikipedia-hosted logo image that clearly matches the competition. Return ONLY valid JSON with shape {"items":[{"competition":"exact input","logoUrl":"https://... direct image url or null","pageUrl":"https://... official or reference page url or null"}]}. Never invent URLs. Competitions: ${batch.map((name, index) => `${index + 1}. ${name}`).join(" | ")}`;
+  const response = await timedFetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      Authorization: `Bearer ${key}`,
+    },
+    body: JSON.stringify({
+      model,
+      reasoning: { effort: "low" },
+      tools: [{ type: "web_search", search_context_size: "low" }],
+      tool_choice: "auto",
+      input: prompt,
+    }),
+  }, 9000);
+  if (!response.ok) throw new Error(`OpenAI competition logos HTTP ${response.status}`);
+  const body = await response.json().catch(() => null) as any;
+  const parsed = parseAiJson(extractOpenAIText(body));
+  const out: Record<string, { logoUrl: string; logoPageUrl?: string | null }> = {};
+  for (const item of arr(parsed?.items)) {
+    const competition = str(item?.competition).trim();
+    const logoUrl = str(item?.logoUrl).trim();
+    const pageUrl = str(item?.pageUrl).trim() || null;
+    if (!competition || !isDirectImageUrl(logoUrl)) continue;
+    const keyName = `${sport}::${competitionSlug(competition)}`;
+    const value = { logoUrl, logoPageUrl: /^https?:\/\//i.test(String(pageUrl || "")) ? pageUrl : null };
+    COMPETITION_LOGO_AI_CACHE.set(keyName, value);
+    out[competition] = value;
+  }
+  for (const name of unique) {
+    const hit = COMPETITION_LOGO_AI_CACHE.get(`${sport}::${competitionSlug(name)}`);
+    if (hit) out[name] = hit;
+  }
+  return out;
+}
+
+async function enrichCompetitionLogosInPayload(env: Env, sport: string, payload: any, deep = false) {
+  const rows = [
+    ...arr(payload?.results),
+    ...arr(payload?.fixtures),
+    ...arr(payload?.live),
+  ];
+  const uniqueCompetitions = Array.from(new Set(rows.map((row: any) => str(row?.competition).trim()).filter(Boolean)));
+  if (!uniqueCompetitions.length) return payload;
+  const missing = uniqueCompetitions.filter((competition) => {
+    const row = rows.find((item: any) => competitionSlug(item?.competition) === competitionSlug(competition));
+    return !str(row?.competitionMeta?.logoUrl).trim();
+  });
+  let aiMap: Record<string, { logoUrl: string; logoPageUrl?: string | null }> = {};
+  if (deep && missing.length && str(env?.OPENAI_API_KEY).trim()) {
+    try { aiMap = await openAiCompetitionLogos(env, sport, missing); } catch {}
+  }
+  const applyRows = (items: any[]) => items.map((row) => {
+    const competition = str(row?.competition).trim();
+    if (!competition) return row;
+    const existing = row?.competitionMeta || competitionMetaFor(sport, row?.competition, row?.sourceName, row?.sourceUrl);
+    const known = knownCompetitionLogoFor(sport, row?.competition, row?.sourceName, row?.sourceUrl);
+    const ai = aiMap[competition] || aiMap[uniqueCompetitions.find((name) => competitionSlug(name) === competitionSlug(competition)) || ""] || null;
+    const logo = existing?.logoUrl ? { logoUrl: existing.logoUrl, logoPageUrl: existing.logoPageUrl || null } : (known || ai || null);
+    if (!logo?.logoUrl) return { ...row, competitionMeta: existing };
+    return { ...row, competitionMeta: { ...existing, logoUrl: logo.logoUrl, logoPageUrl: logo.logoPageUrl || null } };
+  });
+  return {
+    ...payload,
+    results: applyRows(arr(payload?.results)),
+    fixtures: applyRows(arr(payload?.fixtures)),
+    live: applyRows(arr(payload?.live)),
+  };
 }
 
 function isoDate(d: Date) {
@@ -1007,7 +1170,7 @@ function competitionMetaFor(sport: string, competition?: string | null, sourceNa
     if (/challenger|future|futures|itf|bronze|silver|semi-pro|semi pro/.test(raw)) meta.level="semi_pro";
     if (/club|regional|régional|departemental|départemental|amateur|local/.test(raw)) { meta.level="amateur"; if (meta.family === "other") meta.family="amateur"; }
   }
-  return meta;
+  return mergeCompetitionLogoMeta(meta, sport, competition, sourceName, sourceUrl);
 }
 
 function applyCompetitionMeta<T extends { competition?: string | null; sourceName?: string | null; sourceUrl?: string | null; competitionMeta?: CompetitionMeta | null }>(sport: string, rows: T[]): T[] {
@@ -2932,31 +3095,34 @@ async function enrichWithLiveIntelligence(
   const provider = ai.length ? "openai_web" : (google.length || bing.length || yahoo.length || directEditorial.length || directRss.length) ? "news_rss" : "none";
   const selectedPlans = deep ? intelligenceFeedPlansFor(sport, lang) : coreIntelligenceFeedPlansFor(sport, lang);
 
+  const enrichedPayload = await enrichCompetitionLogosInPayload(env, sport, {
+    ...base.payload,
+    configured: !!base.payload?.configured || news.length > 0 || direct.results.length > 0,
+    automaticData: !!base.payload?.automaticData || news.length > 0 || direct.results.length > 0,
+    results: applyCompetitionMeta(sport, sport === "darts" ? diversifyDartsResults([...direct.results, ...intelligenceResults, ...(arr(base.payload?.results) as NormalResult[])], deep ? 640 : 180) : uniqNormalResults([...direct.results, ...intelligenceResults, ...(arr(base.payload?.results) as NormalResult[])]).slice(0, deep ? (sport === "foot" ? 980 : sport === "esports" ? 760 : 680) : (sport === "foot" ? 340 : 220))),
+    fixtures: applyCompetitionMeta(sport, [...direct.fixtures, ...(arr(base.payload?.fixtures) as NormalMatch[])].slice(0, deep ? (sport === "foot" ? 320 : sport === "esports" ? 240 : 220) : (sport === "foot" ? 160 : 110))),
+    live: applyCompetitionMeta(sport, arr(base.payload?.live) as NormalMatch[]),
+    events: mergedEvents,
+    news,
+    intelligence: {
+      enabled: news.length > 0,
+      provider,
+      aiEnabled: deep && !!str(env?.OPENAI_API_KEY).trim(),
+      count: news.length,
+      localCount: news.filter((item) => item.scope === "local").length,
+      regionalCount: news.filter((item) => item.scope === "regional").length,
+      worldCount: news.filter((item) => item.scope === "world" || !item.scope).length,
+      queryCount: selectedPlans.length + (deep ? Math.min(12, selectedPlans.length) : 0) + (sport === "foot" ? 1 : 0) + Math.min(directPageBudget, DIRECT_EDITORIAL_PAGES[sport]?.length || 0) + (sport === "darts" ? 2 : 0),
+      directResultCount: direct.results.length + intelligenceResults.length + extraStructuredEvents.length,
+      updatedAt: new Date().toISOString(),
+    },
+    warnings,
+  }, deep);
+
   return {
     ...base,
     ttl: Math.min(base.ttl || 1800, deep ? 1800 : 600),
-    payload: {
-      ...base.payload,
-      configured: !!base.payload?.configured || news.length > 0 || direct.results.length > 0,
-      automaticData: !!base.payload?.automaticData || news.length > 0 || direct.results.length > 0,
-      results: applyCompetitionMeta(sport, sport === "darts" ? diversifyDartsResults([...direct.results, ...intelligenceResults, ...(arr(base.payload?.results) as NormalResult[])], deep ? 640 : 180) : uniqNormalResults([...direct.results, ...intelligenceResults, ...(arr(base.payload?.results) as NormalResult[])]).slice(0, deep ? (sport === "foot" ? 980 : sport === "esports" ? 760 : 680) : (sport === "foot" ? 340 : 220))),
-      fixtures: applyCompetitionMeta(sport, [...direct.fixtures, ...(arr(base.payload?.fixtures) as NormalMatch[])].slice(0, deep ? (sport === "foot" ? 320 : sport === "esports" ? 240 : 220) : (sport === "foot" ? 160 : 110))),
-      events: mergedEvents,
-      news,
-      intelligence: {
-        enabled: news.length > 0,
-        provider,
-        aiEnabled: deep && !!str(env?.OPENAI_API_KEY).trim(),
-        count: news.length,
-        localCount: news.filter((item) => item.scope === "local").length,
-        regionalCount: news.filter((item) => item.scope === "regional").length,
-        worldCount: news.filter((item) => item.scope === "world" || !item.scope).length,
-        queryCount: selectedPlans.length + (deep ? Math.min(12, selectedPlans.length) : 0) + (sport === "foot" ? 1 : 0) + Math.min(directPageBudget, DIRECT_EDITORIAL_PAGES[sport]?.length || 0) + (sport === "darts" ? 2 : 0),
-        directResultCount: direct.results.length + intelligenceResults.length + extraStructuredEvents.length,
-        updatedAt: new Date().toISOString(),
-      },
-      warnings,
-    },
+    payload: enrichedPayload,
   };
 }
 

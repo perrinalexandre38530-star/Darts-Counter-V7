@@ -10,8 +10,8 @@ import {
   TRAINING_FAMILY_META,
   type TrainingExerciseFamily,
 } from "../../catalog/trainingExerciseCatalog";
-import { MABULL_REFERENCE_CATALOG, MABULL_REFERENCE_STATS, type MabullReferenceKind } from "../../catalog/mabullReferenceCatalog";
-import { buildMabullCatalogCoverage, buildMabullConversionQueue, buildMabullTechniqueTracks, getMabullItemSection, MABULL_SECTION_META, MABULL_SECTION_ORDER, MABULL_TECHNIQUE_TRACK_META, type MabullCatalogSection, type MabullTechniqueTrack } from "../../catalog/mabullCatalogPlan";
+import { MABULL_REFERENCE_CATALOG } from "../../catalog/mabullReferenceCatalog";
+import { buildMabullTechniqueTracks, MABULL_TECHNIQUE_TRACK_META, type MabullTechniqueTrack } from "../../catalog/mabullCatalogPlan";
 import { buildCoachProgram, buildCustomProgram, TRAINING_ASSESSMENT_PROGRAM, TRAINING_PROGRAMS, type TrainingProgramDefinition, type TrainingProgramBuildOptions } from "../../catalog/trainingProgramCatalog";
 import { loadTrainingLabPreferences, setTrainingFamilyGoal, setTrainingFamilyGoalDeadline, setTrainingWeeklySessionTarget, toggleFavoriteExercise, toggleFavoriteProgram, type TrainingLabPreferences } from "../../preferences/trainingLabPreferences";
 import { buildTrainingCycleComparison, buildTrainingWeeklyPlanStats, clearTrainingProgramDraft, loadTrainingProgramDraft, loadTrainingProgramSessions } from "../../profile/trainingPlanTracker";
@@ -42,7 +42,6 @@ type HubTab = "program" | "exercises" | "diagnosis" | "progress";
 type ProgramPanel = "today" | "week" | "cycle" | "library";
 type ProgressPanel = "overview" | "skills" | "coach" | "cycles" | "history";
 type ExercisePanel = "path" | "catalog" | "technique" | "favorites";
-type CatalogSource = "playable" | "mabull";
 type DiagnosisPanel = "overview" | "skill" | "goal";
 type SkillProgressPanel = "mastery" | "badges" | "records";
 type CoachPanel = "brief" | "live" | "effectiveness" | "weeks";
@@ -254,9 +253,6 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
   const [programPanel, setProgramPanel] = React.useState<ProgramPanel>("today");
   const [progressPanel, setProgressPanel] = React.useState<ProgressPanel>("overview");
   const [exercisePanel, setExercisePanel] = React.useState<ExercisePanel>("path");
-  const [catalogSource, setCatalogSource] = React.useState<CatalogSource>("playable");
-  const [mabullKind, setMabullKind] = React.useState<MabullReferenceKind | "all">("all");
-  const [mabullSection, setMabullSection] = React.useState<MabullCatalogSection | "all">("all");
   const [techniqueTrack, setTechniqueTrack] = React.useState<MabullTechniqueTrack>("setup");
   const [diagnosisPanel, setDiagnosisPanel] = React.useState<DiagnosisPanel>("overview");
   const [diagnosisFamily, setDiagnosisFamily] = React.useState<TrainingExerciseFamily>(recommendedFamily);
@@ -274,7 +270,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
   const [showPlanDetails, setShowPlanDetails] = React.useState(false);
   const [showMissionDetails, setShowMissionDetails] = React.useState(false);
   const [showCycleDetails, setShowCycleDetails] = React.useState(false);
-  const [detailSheet, setDetailSheet] = React.useState<null | "coach" | "display" | "resume" | "followup" | "plan" | "challenge" | "assessment" | "mabull-roadmap" | `mabull:${string}`>(null);
+  const [detailSheet, setDetailSheet] = React.useState<null | "coach" | "display" | "resume" | "followup" | "plan" | "challenge" | "assessment">(null);
   const [difficultyFilter, setDifficultyFilter] = React.useState<0 | 1 | 2 | 3 | 4 | 5>(0);
   const [family, setFamily] = React.useState<TrainingExerciseFamily>(recommendedFamily);
   const firstInFamily = React.useMemo(() => TRAINING_EXERCISE_CATALOG.find((e) => e.family === family) || TRAINING_EXERCISE_CATALOG[0], [family]);
@@ -315,23 +311,10 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
 
   const exercises = TRAINING_EXERCISE_CATALOG.filter((e) => e.family === family);
   const filteredExercises = exercises.filter((exercise) => difficultyFilter === 0 || exercise.difficulty === difficultyFilter);
-  const referenceExercises = React.useMemo(() => MABULL_REFERENCE_CATALOG.filter((item) => item.kind === "exercise" && item.family === family), [family]);
-  const unifiedCatalogItems = React.useMemo(() => {
-    const nativeItems = exercises
-      .filter((exercise) => difficultyFilter === 0 || exercise.difficulty === difficultyFilter)
-      .map((exercise) => ({ key: `native:${exercise.id}`, title: exercise.title, subtitle: exercise.subtitle, difficulty: exercise.difficulty, playable: true, exerciseId: exercise.id, referenceId: null as string | null }));
-    const referenceItems = referenceExercises
-      .filter((item) => !item.mappedExerciseId)
-      .map((item) => {
-        const mapped = item.mappedExerciseId ? TRAINING_EXERCISE_CATALOG.find((exercise) => exercise.id === item.mappedExerciseId) : undefined;
-        return { key: `ref:${item.id}`, title: item.title, subtitle: mapped?.subtitle || "Règles à compléter", difficulty: mapped?.difficulty || 0, playable: Boolean(mapped), exerciseId: mapped?.id || null, referenceId: item.id };
-      })
-      .filter((item) => difficultyFilter === 0 || (item.playable && item.difficulty === difficultyFilter));
-    return [...nativeItems, ...referenceItems].sort((a, b) => a.title.localeCompare(b.title, "fr"));
-  }, [exercises, referenceExercises, difficultyFilter]);
-  const mabullCoverage = React.useMemo(() => buildMabullCatalogCoverage(), []);
-  const mabullConversionQueue = React.useMemo(() => buildMabullConversionQueue(3), []);
-  const filteredMabullItems = React.useMemo(() => MABULL_REFERENCE_CATALOG.filter((item) => (mabullKind === "all" || item.kind === mabullKind) && (mabullSection === "all" || getMabullItemSection(item) === mabullSection)), [mabullKind, mabullSection]);
+  const unifiedCatalogItems = React.useMemo(() => exercises
+    .filter((exercise) => difficultyFilter === 0 || exercise.difficulty === difficultyFilter)
+    .map((exercise) => ({ key: `native:${exercise.id}`, title: exercise.title, subtitle: exercise.subtitle, difficulty: exercise.difficulty, playable: true, exerciseId: exercise.id }))
+    .sort((a, b) => a.title.localeCompare(b.title, "fr")), [exercises, difficultyFilter]);
   const mabullTechniqueItems = React.useMemo(() => MABULL_REFERENCE_CATALOG.filter((item) => item.kind === "technique"), []);
   const mabullTechniqueTracks = React.useMemo(() => buildMabullTechniqueTracks(), []);
   const selectedTechniqueTrack = mabullTechniqueTracks.find((row) => row.track === techniqueTrack) || mabullTechniqueTracks[0];
@@ -569,19 +552,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
             <div style={{ fontSize: 10.5, lineHeight: 1.5, opacity: .72 }}>{assessment.body}</div>
             {assessment.available && <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 12 }}><MetricChip icon="progress" label="NIVEAU" value={`${Math.round(assessment.overallScore)}/100`} tone="purple" /><MetricChip icon="precision" label="PRÉCISION" value={`${Math.round(assessment.accuracyPct)}%`} tone="cyan" /><MetricChip icon="mastery" label="POINT FORT" value={assessment.strongestLabel} tone="green" /><MetricChip icon="skills" label="À TRAVAILLER" value={assessment.weakestLabel} tone="gold" /></div>}
           </FloatingDetailSheet>}
-          {detailSheet === "mabull-roadmap" && <FloatingDetailSheet title="Exercices à compléter" eyebrow="CATALOGUE" icon="plans" onClose={() => setDetailSheet(null)}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
-              <MetricChip icon="exercises" label="JOUABLE" value={`${MABULL_REFERENCE_STATS.mapped}/${MABULL_REFERENCE_STATS.exercises}`} tone="green" />
-              <MetricChip icon="history" label="À RELEVER" value={`${MABULL_REFERENCE_STATS.exercises - MABULL_REFERENCE_STATS.mapped}`} tone="gold" />
-              <MetricChip icon="coach" label="TECHNIQUE" value={`${MABULL_REFERENCE_STATS.techniques}`} tone="purple" />
-            </div>
-            <div style={{ marginTop: 14, fontSize: 10, fontWeight: 950 }}>PROCHAINES FICHES À DOCUMENTER</div>
-            <div style={{ display: "grid", gap: 7, marginTop: 8 }}>{mabullConversionQueue.map((item, index) => <button key={item.id} type="button" onClick={() => setDetailSheet(`mabull:${item.id}`)} style={{ display: "flex", alignItems: "center", gap: 9, padding: 10, border: "none", borderBottom: "1px solid rgba(255,255,255,.06)", background: "transparent", color: "inherit", textAlign: "left", cursor: "pointer" }}><span style={{ width: 28, height: 28, borderRadius: 10, display: "grid", placeItems: "center", background: "rgba(255,216,107,.08)", color: "#ffd86b", fontWeight: 950 }}>{index + 1}</span><span style={{ minWidth: 0, flex: 1 }}><span style={{ display: "block", fontSize: 10, fontWeight: 950 }}>{item.title}</span><span style={{ display: "block", marginTop: 2, fontSize: 8.5, opacity: .5 }}>{MABULL_SECTION_META[getMabullItemSection(item)].label}</span></span><HubGlyph name="diagnosis" size={15}/></button>)}</div>
-          </FloatingDetailSheet>}
-          {detailSheet?.startsWith("mabull:") && (() => { const item = MABULL_REFERENCE_CATALOG.find((row) => row.id === detailSheet.slice(7)); if (!item) return null; return <FloatingDetailSheet title={item.title} eyebrow={item.status === "mapped" ? "ÉQUIVALENT JOUABLE" : item.kind === "technique" ? "FICHE TECHNIQUE" : "RÈGLES À RELEVER"} icon={item.family || "coach"} onClose={() => setDetailSheet(null)}>
-            <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{item.tags.map((tag) => <span key={tag} style={{ padding: "4px 7px", borderRadius: 999, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.055)", fontSize: 9, opacity: .68 }}>{tag}</span>)}</div>
-            {item.status === "mapped" && item.mappedExerciseId ? <div style={{ marginTop: 11, fontSize: 10.5, lineHeight: 1.5, opacity: .72 }}>Cette entrée possède déjà un équivalent sûr dans notre moteur Training.</div> : item.kind === "technique" ? <div style={{ marginTop: 11, fontSize: 10.5, lineHeight: 1.5, opacity: .72 }}>Cette fiche attend son contenu détaillé : objectif pédagogique, points clés, erreurs fréquentes et consigne pratique.</div> : <div style={{ marginTop: 11 }}><div style={{ fontSize: 10, fontWeight: 950 }}>POUR LA RENDRE JOUABLE</div><div style={{ marginTop: 6, display: "grid", gap: 5, fontSize: 9.5, lineHeight: 1.45, opacity: .68 }}><span>① Objectif exact de l’exercice</span><span>② Nombre de fléchettes / tours / vies</span><span>③ Règle de score ou de progression</span><span>④ Condition de réussite / fin</span></div></div>}
-          </FloatingDetailSheet>; })()}
+
 
           <PrimaryNav items={tabs} activeId={tab} onChange={(id) => setTab(id as HubTab)} />
 
@@ -1079,7 +1050,6 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
             {exercisePanel === "catalog" && <>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 10, paddingBottom: 9, borderBottom: "1px solid rgba(255,255,255,.07)" }}>
                 <div style={{ minWidth: 0 }}><div style={{ fontSize: 11.5, fontWeight: 950 }}>Tous les exercices</div><div style={{ marginTop: 2, fontSize: 9.2, opacity: .52 }}>{unifiedCatalogItems.length} exercices dans {TRAINING_FAMILY_META[family].label}</div></div>
-                <button type="button" onClick={() => setDetailSheet("mabull-roadmap")} title="Exercices à compléter" aria-label="Exercices à compléter" style={{ width: 40, height: 40, borderRadius: 12, border: "none", background: "rgba(255,216,107,.06)", color: "#ffd86b", cursor: "pointer", display: "grid", placeItems: "center", flex: "0 0 auto" }}><HubGlyph name="plans" size={17}/></button>
               </div>
               <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "10px 0 4px" }}>
                 {[0,1,2,3,4,5].map((value) => <button key={value} type="button" onClick={() => setDifficultyFilter(value as 0 | 1 | 2 | 3 | 4 | 5)} style={{ flex: "0 0 auto", minHeight: 36, padding: "0 11px", borderRadius: 10, border: difficultyFilter === value ? "1px solid rgba(39,220,255,.38)" : "1px solid rgba(255,255,255,.07)", background: difficultyFilter === value ? "rgba(39,220,255,.08)" : "transparent", color: "inherit", fontSize: 9.2, fontWeight: 900, cursor: "pointer" }}>{value === 0 ? "TOUS" : `NIVEAU ${value}`}</button>)}
@@ -1087,10 +1057,10 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,240px),1fr))", gap: 8, marginTop: 6 }}>
                 {unifiedCatalogItems.map((item) => {
                   const active = Boolean(item.exerciseId && item.exerciseId === exerciseId);
-                  return <button key={item.key} type="button" onClick={() => { if (item.playable && item.exerciseId) setExerciseId(item.exerciseId); else if (item.referenceId) setDetailSheet(`mabull:${item.referenceId}`); }} style={{ minWidth: 0, textAlign: "left", padding: "12px 11px", borderRadius: 12, border: active ? "1px solid rgba(39,220,255,.45)" : "1px solid rgba(255,255,255,.07)", background: active ? "rgba(39,220,255,.065)" : "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ width: 34, height: 34, flex: "0 0 auto", borderRadius: 11, display: "grid", placeItems: "center", background: item.playable ? "rgba(39,220,255,.07)" : "rgba(255,216,107,.06)", color: item.playable ? "#27dcff" : "#ffd86b" }}><HubGlyph name={family} size={16}/></span>
-                    <span style={{ minWidth: 0, flex: 1 }}><span style={{ display: "block", fontSize: 10.5, lineHeight: 1.15, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</span><span style={{ display: "block", marginTop: 4, fontSize: 9, lineHeight: 1.3, opacity: .52, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.playable ? item.subtitle : "À compléter avant de pouvoir jouer"}</span></span>
-                    <span style={{ flex: "0 0 auto", fontSize: 8.5, fontWeight: 950, color: item.playable ? "#8cffcb" : "#ffd86b" }}>{item.playable ? (item.difficulty ? `N${item.difficulty}` : "✓") : "…"}</span>
+                  return <button key={item.key} type="button" onClick={() => setExerciseId(item.exerciseId)} style={{ minWidth: 0, textAlign: "left", padding: "12px 11px", borderRadius: 12, border: active ? "1px solid rgba(39,220,255,.45)" : "1px solid rgba(255,255,255,.07)", background: active ? "rgba(39,220,255,.065)" : "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ width: 34, height: 34, flex: "0 0 auto", borderRadius: 11, display: "grid", placeItems: "center", background: "rgba(39,220,255,.07)", color: "#27dcff" }}><HubGlyph name={family} size={16}/></span>
+                    <span style={{ minWidth: 0, flex: 1 }}><span style={{ display: "block", fontSize: 10.5, lineHeight: 1.15, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</span><span style={{ display: "block", marginTop: 4, fontSize: 9, lineHeight: 1.3, opacity: .52, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.subtitle}</span></span>
+                    <span style={{ flex: "0 0 auto", fontSize: 8.5, fontWeight: 950, color: item.playable ? "#8cffcb" : "#ffd86b" }}>{item.difficulty ? `N${item.difficulty}` : "✓"}</span>
                   </button>;
                 })}
               </div>
@@ -1110,7 +1080,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
                   <div style={{ minWidth: 0 }}><div style={{ fontSize: 8.3, fontWeight: 950 }}>{selectedTechniqueTrack.label}</div><div style={{ marginTop: 2, fontSize: 8.8, lineHeight: 1.35, opacity: .5 }}>{selectedTechniqueTrack.description}</div></div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 6, marginTop: 9 }}>
-                  {selectedTechniqueTrack.items.map((item) => <button type="button" onClick={() => item.mappedExerciseId ? onStart({ exerciseId: item.mappedExerciseId, family: TRAINING_EXERCISE_CATALOG.find((e) => e.id === item.mappedExerciseId)?.family || "regularity", sessionKind: "exercise", ...accountParticipantConfig }) : setDetailSheet(`mabull:${item.id}`)} key={item.id} style={{ padding: 9, borderRadius: 11, border: "1px solid rgba(80,255,174,.10)", background: "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer", textAlign: "left" }}>
+                  {selectedTechniqueTrack.items.map((item) => <button type="button" onClick={() => item.mappedExerciseId && onStart({ exerciseId: item.mappedExerciseId, family: TRAINING_EXERCISE_CATALOG.find((e) => e.id === item.mappedExerciseId)?.family || "regularity", sessionKind: "exercise", ...accountParticipantConfig })} key={item.id} style={{ padding: 9, borderRadius: 11, border: "1px solid rgba(80,255,174,.10)", background: "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer", textAlign: "left" }}>
                     <div style={{ display: "flex", gap: 7, alignItems: "center" }}><span style={{ width: 24, height: 24, borderRadius: 8, display: "grid", placeItems: "center", background: "rgba(80,255,174,.06)", color: "#8cffcb" }}><HubGlyph name="coach" size={12} /></span><b style={{ minWidth: 0, flex: 1, fontSize: 8.1, lineHeight: 1.2 }}>{item.title}</b><HubGlyph name="diagnosis" size={12}/></div>
                   </button>)}
                 </div>

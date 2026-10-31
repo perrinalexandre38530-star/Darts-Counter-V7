@@ -9,6 +9,7 @@ import { getCanonicalAccountScopeId } from "./canonicalAccountScope";
 import LZString from "lz-string";
 import { mergeHistoryPayloadMonotonic, protectFinishedHistoryPayload } from "./historyIntegrity";
 import { createCooperativeYielder } from "./mainThreadYield";
+import { buildHistoryPortableIntegrityManifest, type HistoryPortableIntegrityManifest } from "./historyIntegrityGate";
 import {
   ensureHistoryV4Stores,
   exportHistoryV4Snapshot,
@@ -136,7 +137,15 @@ export type HistoryDumpV1 = {
   rows: Record<string, SavedMatch>;
   historySchemaVersion?: 4;
   tombstones?: Record<string, { id: string; matchId?: string; deletedAt: number; reason?: string; schemaVersion?: number }>;
+  integrity?: HistoryPortableIntegrityManifest;
 };
+
+function attachHistoryIntegrity(dump: HistoryDumpV1): HistoryDumpV1 {
+  return {
+    ...dump,
+    integrity: buildHistoryPortableIntegrityManifest(dump?.rows || {}),
+  };
+}
 
 
 function historyRowIsFinished(rec: any): boolean {
@@ -387,12 +396,13 @@ export async function exportHistoryDump(): Promise<HistoryDumpV1> {
       if (!deleted.has(String(id))) activeRows[String(id)] = row as SavedMatch;
     }
     if (Object.keys(activeRows).length > 0 || deleted.size > 0) {
-      return await enrichHistoryDumpFromLocalRevisions({
+      const enriched = await enrichHistoryDumpFromLocalRevisions({
         _v: 1,
         historySchemaVersion: HISTORY_V4_SCHEMA_VERSION,
         rows: activeRows,
         tombstones: canonical.tombstones,
       });
+      return attachHistoryIntegrity(enriched);
     }
   } catch (error) {
     console.warn("[historyCloud] canonical V4 export fallback", error);
@@ -429,7 +439,7 @@ export async function exportHistoryDump(): Promise<HistoryDumpV1> {
       tx.onerror = () => reject(tx.error);
       tx.onabort = () => reject(tx.error);
     });
-    return await enrichHistoryDumpFromLocalRevisions(dump);
+    return attachHistoryIntegrity(await enrichHistoryDumpFromLocalRevisions(dump));
   }
 
   // fallback legacy
@@ -450,10 +460,10 @@ export async function exportHistoryDump(): Promise<HistoryDumpV1> {
       tx.onerror = () => reject(tx.error);
       tx.onabort = () => reject(tx.error);
     });
-    return await enrichHistoryDumpFromLocalRevisions(dump);
+    return attachHistoryIntegrity(await enrichHistoryDumpFromLocalRevisions(dump));
   }
 
-  return { _v: 1, rows: {} };
+  return attachHistoryIntegrity({ _v: 1, rows: {} });
 }
 
 function toHeaderRecord(rec: any) {

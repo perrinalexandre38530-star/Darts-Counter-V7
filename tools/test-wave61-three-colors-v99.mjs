@@ -1,0 +1,12 @@
+import fs from 'node:fs';
+const engine=fs.readFileSync(new URL('../src/lib/gameEngines/wave61Engine.ts', import.meta.url),'utf8');
+const config=fs.readFileSync(new URL('../src/pages/wave61/modes/three_colorsConfig.tsx', import.meta.url),'utf8');
+const play=fs.readFileSync(new URL('../src/pages/Wave61SharedPlay.tsx', import.meta.url),'utf8');
+const end=fs.readFileSync(new URL('../src/pages/wave61/Wave61EndSummary.tsx', import.meta.url),'utf8');
+const landing=fs.readFileSync(new URL('../src/pages/PublicLandingPage.tsx', import.meta.url),'utf8');
+for (const x of ['processThreeColors','threeColorsValidVisitsByPlayer','threeColorsInvalidVisitsByPlayer','threeColorsColorHitsByPlayer','threeColorsBestVisitByPlayer','perfectVisitBonus','invalidVisitPenalty','bullColors','scoreMode','state.modeId === "three_colors"']) if(!engine.includes(x)) throw new Error('engine missing '+x);
+for (const x of ["Score d'une volée réussie",'Bonus volée 3 couleurs','BULL 25 / 50','Pénalité volée incomplète']) if(!config.includes(x)) throw new Error('config missing '+x);
+for (const x of ['data-three-colors-keypad="1"','data-three-colors-situation="1"','data-three-colors-active-player="1"','ThreeColorsInput','ThreeColorsPanel','3 COULEURS DIFFÉRENTES','threeColorsResult']) if(!play.includes(x)) throw new Error('play missing '+x);
+for (const x of ['data-three-colors-final-table="1"','LES 3 COULEURS · TABLEAU FINAL','threeColorsColorHitsByPlayer']) if(!end.includes(x)) throw new Error('end summary missing '+x);
+if(!landing.includes('three_colors')) throw new Error('public page missing three_colors');
+console.log('✅ LES 3 COULEURS V99 — moteur/config/IA/Play/keypad/récap/stats/finale/historique/public wiring présents.');

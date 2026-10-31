@@ -175,6 +175,8 @@ function sourceImageFromItem(item: { sourceUrl?: string | null } | null | undefi
 }
 
 function findCompetitionImage(competition: string, rows: DartsLiveResult[], newsRows: SportLiveNewsItem[], sources: SportLiveSource[]) {
+  const metaLogo = rows.map((row) => competitionMetaOf(row)?.logoUrl).find((value) => /^https?:\/\//i.test(String(value || "")));
+  if (metaLogo) return metaLogo as string;
   const comp = normalizedText(competition);
   const terms = comp.split(/\s+/).filter((part) => part.length >= 4 && !["darts", "open", "tour", "cup", "the", "and", "stage", "final"].includes(part));
   const relatedNews = newsRows.find((item) => {

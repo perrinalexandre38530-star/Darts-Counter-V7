@@ -11,6 +11,7 @@ import type { Store, Profile } from "./types";
 import { emitCloudChange } from "./cloudEvents";
 import { isSensitiveAuthStorageKey } from "./authSessionGuard";
 import { exportHistoryDump, importHistoryDump } from "./historyCloud";
+import { compareHistoryRowSets, assertLocalDataIntegrityReleaseGate } from "./historyIntegrityGate";
 import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS, makeAvatarPlaceholderDataUrl } from "./avatarSafe";
 import { runtimeDiag } from "./runtimeDiag";
 import { beginFreezeOperation, endFreezeOperation, recordFreezeWatchEvent } from "./freezeWatch";
@@ -3157,184 +3158,34 @@ async function importIdbEntryRaw(rawKey: string, value: any): Promise<void> {
 
 
 // ============================================================
-// ✅ RESTORE FALLBACK latest.json / NAS
-// Certains backups ne contiennent plus history.rows, mais contiennent encore
-// dc_stats_index_v2 avec matchIdsByMode. Dans ce cas on recrée des lignes
-// d'historique MINIMALES pour que HistoryPage revoie les parties, tout en
-// gardant l'index stats restauré comme source de vérité.
+// W5 LEGACY RESTORE GUARD
+// Old snapshots may still contain dc_stats_index_v2. This cache is never
+// restored and never used to fabricate History rows. We only inspect it during
+// preflight so a stats-only backup fails clearly before mutating local data.
 // ============================================================
-function storageStatsIndexHasData(idx: any): boolean {
-  try {
-    if (!idx || typeof idx !== "object") return false;
-    if (Number(idx?.totals?.matches || 0) > 0) return true;
-    const byPlayer = idx?.byPlayer && typeof idx.byPlayer === "object" ? idx.byPlayer : {};
-    return Object.values(byPlayer).some((p: any) => Number((p as any)?.matches || 0) > 0);
-  } catch { return false; }
-}
-
-function pickBestRestorableStatsIndexFromDump(dump: any): any | null {
+function countLegacyStatsOnlyMatchesFromDump(dump: any): number {
   try {
     const idb = dump?.idb && typeof dump.idb === "object" ? dump.idb : {};
     const currentUid = getStorageUser();
-    const candidates = Object.entries(idb)
-      .filter(([k, v]) => String(k).startsWith("dc_stats_index_v2") && storageStatsIndexHasData(v))
-      .map(([k, v]) => {
-        const idx: any = v || {};
-        const matches = Number(idx?.totals?.matches || 0) || 0;
-        const players = idx?.byPlayer && typeof idx.byPlayer === "object" ? Object.keys(idx.byPlayer).length : 0;
-        const scopedBonus = currentUid && String(k).includes(currentUid) ? 100000 : 0;
-        return { key: String(k), value: idx, score: scopedBonus + matches * 1000 + players };
-      })
-      .sort((a, b) => b.score - a.score);
-    return candidates[0]?.value || null;
-  } catch { return null; }
-}
-
-function markRestoredStatsIndex(idx: any): any {
-  if (!idx || typeof idx !== "object") return idx;
-  return {
-    ...idx,
-    // Legacy stats-only backups remain readable during WAVE 6. New V4
-    // snapshots no longer export this cache, but an old restored index is
-    // promoted to the current cache schema so the synthetic-history guard can
-    // preserve its aggregates until legacy migration (WAVE 9).
-    version: 4,
-    rebuiltAt: Number(idx?.rebuiltAt || Date.now()) || Date.now(),
-    meta: {
-      ...(idx?.meta && typeof idx.meta === "object" ? idx.meta : {}),
-      source: "restore-latest-json-stats-index",
-      restoredFromStatsIndex: true,
-      rowsScanned: Number(idx?.meta?.rowsScanned || idx?.totals?.matches || 0) || 0,
-      historyUpdatedAt: Number(idx?.meta?.historyUpdatedAt || idx?.rebuiltAt || Date.now()) || Date.now(),
-    },
-  };
-}
-
-function storageModeLabel(mode: string): string {
-  const m = String(mode || "unknown").toLowerCase();
-  if (m === "x01") return "X01";
-  if (m === "babyfoot") return "Baby-foot";
-  if (m === "cricket") return "Cricket";
-  if (m === "killer") return "Killer";
-  if (m === "golf") return "Golf";
-  if (m === "shanghai") return "Shanghai";
-  return m ? m.toUpperCase() : "MATCH";
-}
-
-function storageTsFromMatchId(id: string, fallback: number, offset: number): number {
-  try {
-    const s = String(id || "");
-    const m = s.match(/(?:^|[-_])(\d{13})(?:[-_]|$)/);
-    if (m) {
-      const n = Number(m[1]);
-      if (Number.isFinite(n) && n > 1000000000000) return n;
+    let bestMatches = 0;
+    let bestScopedMatches = 0;
+    for (const [rawKey, rawValue] of Object.entries(idb)) {
+      const key = String(rawKey || "");
+      if (!key.startsWith("dc_stats_index_v2")) continue;
+      const idx: any = rawValue || {};
+      const matches = Math.max(
+        0,
+        Number(idx?.totals?.matches || 0) || 0,
+        ...(Object.values(idx?.byMode && typeof idx.byMode === "object" ? idx.byMode : {})
+          .map((row: any) => Number(row?.matches || 0) || 0)),
+      );
+      bestMatches = Math.max(bestMatches, matches);
+      if (currentUid && key.includes(currentUid)) bestScopedMatches = Math.max(bestScopedMatches, matches);
     }
-  } catch {}
-  const base = Number(fallback || Date.now()) || Date.now();
-  return base - Math.max(0, offset) * 60000;
-}
-
-function storagePlayerModeScore(p: any, mode: string): number {
-  try {
-    const m = String(mode || "").toLowerCase();
-    let score = 0;
-    if (m && p?.[m] && typeof p[m] === "object") score += 5000;
-    if (m === "x01") {
-      score += Number(p?.dartsThrown || 0) > 0 || Number(p?.pointsScored || 0) > 0 || p?.buckets ? 2500 : 0;
-    }
-    score += (Number(p?.matches || 0) || 0) * 20;
-    score += (Number(p?.wins || 0) || 0) * 8;
-    score += Number(p?.lastMatchAt || 0) / 1000000000;
-    return score;
-  } catch { return 0; }
-}
-
-function storagePlayersForSyntheticHistory(idx: any, mode: string): any[] {
-  try {
-    const byPlayer = idx?.byPlayer && typeof idx.byPlayer === "object" ? idx.byPlayer : {};
-    const rows = Object.entries(byPlayer)
-      .map(([pid, raw]) => ({ pid: String(pid), raw: raw as any, score: storagePlayerModeScore(raw, mode) }))
-      .filter((x) => x.pid && x.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 8);
-    return rows.map(({ pid, raw }) => ({
-      id: String(raw?.playerId || pid),
-      playerId: String(raw?.playerId || pid),
-      profileId: String(raw?.playerId || pid),
-      name: String(raw?.name || raw?.displayName || raw?.nickname || pid),
-      matches: Number(raw?.matches || 0) || 0,
-      wins: Number(raw?.wins || 0) || 0,
-      losses: Number(raw?.losses || 0) || 0,
-      dartsThrown: Number(raw?.dartsThrown || 0) || 0,
-      pointsScored: Number(raw?.pointsScored || 0) || 0,
-      avg3: Number(raw?.avg3 || 0) || 0,
-      bestVisit: Number(raw?.bestVisit || 0) || 0,
-      bestCheckout: Number(raw?.bestCheckout || 0) || 0,
-      buckets: raw?.buckets && typeof raw.buckets === "object" ? raw.buckets : {},
-      ...(raw?.[String(mode).toLowerCase()] && typeof raw[String(mode).toLowerCase()] === "object" ? { [String(mode).toLowerCase()]: raw[String(mode).toLowerCase()] } : {}),
-    }));
-  } catch { return []; }
-}
-
-function buildSyntheticHistoryDumpFromStatsIndex(idx: any): any | null {
-  try {
-    if (!storageStatsIndexHasData(idx)) return null;
-    const rows: Record<string, any> = {};
-    const byMode = idx?.byMode && typeof idx.byMode === "object" ? idx.byMode : {};
-    const matchIdsByMode = idx?.matchIdsByMode && typeof idx.matchIdsByMode === "object" ? idx.matchIdsByMode : {};
-    const defaultTs = Number(idx?.meta?.historyUpdatedAt || idx?.rebuiltAt || Date.now()) || Date.now();
-
-    for (const [modeRaw, infoRaw] of Object.entries(byMode)) {
-      const mode = String(modeRaw || "unknown").toLowerCase();
-      const info: any = infoRaw || {};
-      const count = Number(info?.matches || 0) || 0;
-      if (!count) continue;
-      const rawIds = Array.isArray((matchIdsByMode as any)[mode]) ? (matchIdsByMode as any)[mode].filter(Boolean).map(String) : [];
-      const ids = rawIds.length ? rawIds : Array.from({ length: count }, (_, i) => `restored-${mode}-${defaultTs}-${i + 1}`);
-      const players = storagePlayersForSyntheticHistory(idx, mode);
-      const winner = players.find((p: any) => Number(p?.wins || 0) > 0) || players[0] || null;
-      const modeTs = Number(info?.lastMatchAt || defaultTs) || defaultTs;
-
-      ids.forEach((id: string, i: number) => {
-        const ts = storageTsFromMatchId(id, modeTs, i);
-        rows[id] = {
-          id,
-          matchId: id,
-          kind: mode,
-          mode,
-          sport: mode === "babyfoot" ? "babyfoot" : "darts",
-          status: "finished",
-          createdAt: ts,
-          updatedAt: ts,
-          finishedAt: ts,
-          players,
-          winnerId: winner?.id || winner?.playerId || null,
-          winnerName: winner?.name || null,
-          restoredFromStatsIndex: true,
-          statsOnly: true,
-          game: {
-            mode,
-            startScore: mode === "x01" ? 301 : undefined,
-            restoredFromStatsIndex: true,
-          },
-          summary: {
-            mode,
-            status: "finished",
-            title: `${storageModeLabel(mode)} restauré`,
-            restoredFromStatsIndex: true,
-            statsOnly: true,
-            players,
-            winnerId: winner?.id || winner?.playerId || null,
-            scoreLine: "Stats restaurées depuis dc_stats_index_v2 — détail des volées absent",
-            avg3ByPlayer: Object.fromEntries(players.map((p: any) => [String(p.id), Number(p.avg3 || 0) || 0])),
-            bestVisitByPlayer: Object.fromEntries(players.map((p: any) => [String(p.id), Number(p.bestVisit || 0) || 0])),
-          },
-        };
-      });
-    }
-
-    return Object.keys(rows).length ? { _v: 1, rows } : null;
-  } catch { return null; }
+    return bestScopedMatches || bestMatches;
+  } catch {
+    return 0;
+  }
 }
 
 export async function importAll(
@@ -3359,7 +3210,7 @@ export async function importAll(
   if ((dump._v === 1 || dump._v === 2) && dump.idb) {
     const idbDump = dump.idb || {};
     const lsDump = dump.localStorage || {};
-    const restoredStatsIndex = markRestoredStatsIndex(pickBestRestorableStatsIndexFromDump(dump));
+    const legacyStatsOnlyCount = countLegacyStatsOnlyMatchesFromDump(dump);
 
     // V162 AUTHORITY LOCK: fail BEFORE mutating local state when a replace restore
     // contains only a derived Stats cache and no canonical History payload.
@@ -3370,7 +3221,7 @@ export async function importAll(
         : 0;
       const hasCanonicalHistoryV4 = Number(dump?.history?.historySchemaVersion || 0) === 4 || historyTombstones > 0;
       const hasRealHistoryRows = Object.keys(rawRows).length > 0;
-      const statsOnlyCount = Number(restoredStatsIndex?.totals?.matches || 0);
+      const statsOnlyCount = legacyStatsOnlyCount;
       if (!hasRealHistoryRows && !hasCanonicalHistoryV4 && statsOnlyCount > 0) {
         throw new Error(`Sauvegarde incomplète : ${statsOnlyCount} match(s) présents uniquement dans l'index Stats, sans historique canonique. Restauration annulée avant toute modification locale.`);
       }
@@ -3458,11 +3309,10 @@ export async function importAll(
 
     await yieldIfNeeded(true);
 
-    // 3) ✅ CRITIQUE : restore DB historique (historyCloud)
-    // Si history.rows est vide mais dc_stats_index_v2 contient les matchIds,
-    // on reconstruit des cartes d'historique minimales. Elles ne recréent pas
-    // les volées perdues, mais elles font réapparaître les parties dans Historique
-    // et empêchent l'écran Stats de repartir d'un historique totalement vide.
+    // 3) ✅ CRITIQUE : restore DB historique (historyCloud).
+    // History V4 est la seule vérité des matchs. Un ancien stats_index peut être
+    // détecté pour expliquer une sauvegarde incomplète, mais il n'est jamais
+    // converti en fausses parties ni restauré comme autorité.
     try {
       const rawRows = dump?.history?.rows && typeof dump.history.rows === "object" ? dump.history.rows : {};
       const hasRealHistoryRows = Object.keys(rawRows).length > 0;
@@ -3483,7 +3333,7 @@ export async function importAll(
         // V123 SINGLE SOURCE: never fabricate History rows from a Stats cache.
         // If a backup has no real History payload, it is incomplete for match
         // restoration and must not overwrite the current canonical history.
-        const statsOnlyCount = Number(restoredStatsIndex?.totals?.matches || 0);
+        const statsOnlyCount = legacyStatsOnlyCount;
         if (statsOnlyCount > 0) {
           throw new Error(`Sauvegarde incomplète : ${statsOnlyCount} match(s) présents uniquement dans l'index Stats, sans historique canonique.`);
         }
@@ -4640,16 +4490,27 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
         : [];
       if (incomingIds.length > 0) {
         report(61, `Vérification des ${incomingIds.length} partie(s) restaurée(s)…`);
+        const incomingRows = Object.values<any>(incomingRowsObject || {});
         let restoredHistory = await exportHistoryDump().catch(() => ({ _v: 1 as const, rows: {} as Record<string, any> }));
-        let restoredCount = Object.keys(restoredHistory?.rows || {}).length;
-        if (restoredCount !== incomingIds.length) {
-          console.warn(`[storage] history restore count mismatch ${restoredCount}/${incomingIds.length}; retry authoritative import`);
+        let parity = compareHistoryRowSets(incomingRows, Object.values<any>(restoredHistory?.rows || {}));
+        if (!parity.idsEqual || !parity.finishedIdsEqual) {
+          console.warn("[storage] history restore ID-set mismatch; retry authoritative import", {
+            expected: parity.expected.activeIdsHash,
+            actual: parity.actual.activeIdsHash,
+            missing: parity.missingIds.slice(0, 12),
+            extra: parity.extraIds.slice(0, 12),
+          });
           await importHistoryDump((dump as any).history, { replace: true, preserveExisting: false });
           restoredHistory = await exportHistoryDump().catch(() => ({ _v: 1 as const, rows: {} as Record<string, any> }));
-          restoredCount = Object.keys(restoredHistory?.rows || {}).length;
+          parity = compareHistoryRowSets(incomingRows, Object.values<any>(restoredHistory?.rows || {}));
         }
-        if (restoredCount !== incomingIds.length) {
-          throw new Error(`Restauration historique incomplète : ${restoredCount}/${incomingIds.length} partie(s) réellement restaurée(s).`);
+        if (!parity.idsEqual || !parity.finishedIdsEqual) {
+          const missing = parity.missingIds.slice(0, 8).join(", ") || "—";
+          const extra = parity.extraIds.slice(0, 8).join(", ") || "—";
+          throw new Error(
+            `Restauration historique incomplète : hash attendu ${parity.expected.activeIdsHash}, obtenu ${parity.actual.activeIdsHash}; ` +
+            `IDs manquants [${missing}] ; IDs en trop [${extra}].`,
+          );
         }
       }
     }
@@ -4674,6 +4535,14 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
       try { bridge.clearStatsIndexCache?.(); } catch {}
     } catch (statsRestoreError) {
       console.warn("[storage] stats rebuild after history restore deferred", statsRestoreError);
+    }
+
+    // W4 RELEASE GATE : ne jamais considérer une restauration comme saine si
+    // Stats référence un ensemble de match IDs différent de History V4. Une
+    // réparation unique est autorisée ; l'échec persistant bloque la restauration.
+    if (mode !== "merge") {
+      report(62, "Release Gate History / Stats…");
+      await assertLocalDataIntegrityReleaseGate({ repairStats: true });
     }
     await yieldIfNeeded(true);
 

@@ -8,10 +8,22 @@ import { getTicker } from "../lib/tickers";
 import petanqueExplainPortrait from "../assets/petanque_explain/petanque_explain_vertical.webp";
 import petanqueExplainLandscape from "../assets/petanque_explain/petanque_explain_horizontal.webp";
 import { CLOSEST_CENTER_LOCAL_SOURCE_ID, describeClosestCenterCameraSource } from "../lib/closestCenterCameraSource";
-import { saveCameraCalibration } from "../lib/cameraCalibrationStore";
+import { loadCameraCalibration, saveCameraCalibration } from "../lib/cameraCalibrationStore";
+import { assessPrecisionReadiness } from "../lib/closestCenterVisionEngine";
 import { createClosestCenterCompanionSession, fetchClosestCenterCompanionEvents, fetchClosestCenterCompanionStatus, requestClosestCenterCompanionBurst } from "../lib/closestCenterCompanionClient";
 
 const ACCENT = "#44e7ff";
+
+async function dataUrlToImageData(dataUrl:string):Promise<ImageData|null>{
+  if(!dataUrl) return null;
+  try{
+    const img=new Image();
+    await new Promise<void>((resolve,reject)=>{img.onload=()=>resolve();img.onerror=()=>reject(new Error("image"));img.src=dataUrl;});
+    const c=document.createElement("canvas"); c.width=img.naturalWidth||img.width; c.height=img.naturalHeight||img.height;
+    const ctx=c.getContext("2d",{willReadFrequently:true}); if(!ctx) return null;
+    ctx.drawImage(img,0,0,c.width,c.height); return ctx.getImageData(0,0,c.width,c.height);
+  }catch{return null;}
+}
 
 type ConfigIconName = "concept"|"format"|"players"|"rule"|"camera"|"manual"|"play";
 function ConfigIcon({name,size=18}:{name:ConfigIconName;size?:number}){
@@ -53,12 +65,20 @@ export default function ClosestCenterConfig(props: any) {
   const [companionPreview,setCompanionPreview] = React.useState("");
   const [companionPreviewBusy,setCompanionPreviewBusy] = React.useState(false);
   const [companionPreviewTelemetry,setCompanionPreviewTelemetry] = React.useState<any>(null);
+  const [companionPreviewReadiness,setCompanionPreviewReadiness] = React.useState<any>(null);
+  const [localCalibration,setLocalCalibration] = React.useState<any>(()=>loadCameraCalibration(CLOSEST_CENTER_LOCAL_SOURCE_ID));
   const companionSeqRef = React.useRef(0);
   const [configMode, setConfigMode] = React.useState<"guided"|"complete">("guided");
   const [guidedStep, setGuidedStep] = React.useState(0);
   const [landscape, setLandscape] = React.useState(() => typeof window !== "undefined" ? window.innerWidth > window.innerHeight && window.innerWidth >= 760 : false);
 
   const ticker = getTicker("closest_center") || getTicker("darts_games") || "";
+
+  React.useEffect(()=>{
+    const refresh=()=>setLocalCalibration(loadCameraCalibration(CLOSEST_CENTER_LOCAL_SOURCE_ID));
+    refresh(); window.addEventListener("focus",refresh);
+    return()=>window.removeEventListener("focus",refresh);
+  },[cameraSourceId,inputMode,guidedStep]);
 
 
   React.useEffect(() => {
@@ -80,7 +100,7 @@ export default function ClosestCenterConfig(props: any) {
           const payload=ev.payload||{};
           if(payload.kind==="closest_center_calibration" && payload.calibration){
             saveCameraCalibration(payload.calibration,companionSession.sourceId);
-            if(!dead) setCompanionStatus((prev:any)=>({...prev,calibrated:true,connected:true,cameraReady:true,message:"Calibration 5 points reçue"}));
+            if(!dead){ setCompanionPreviewReadiness(null); setCompanionStatus((prev:any)=>({...prev,calibrated:true,connected:true,cameraReady:true,message:"Calibration 5 points reçue"})); }
           }
         }
       }catch{}
@@ -95,8 +115,12 @@ export default function ClosestCenterConfig(props: any) {
     setCompanionPreviewBusy(true);
     try{
       const result=await requestClosestCenterCompanionBurst(code,{count:1,delayMs:55,maxCaptureSide:720,timeoutMs:9000,retries:0});
-      setCompanionPreview(result.previewDataUrl||"");
+      const preview=result.previewDataUrl||"";
+      setCompanionPreview(preview);
       setCompanionPreviewTelemetry(result.telemetry||null);
+      const frame=await dataUrlToImageData(preview);
+      const cal=loadCameraCalibration(companionSession?.sourceId);
+      setCompanionPreviewReadiness(frame&&cal ? assessPrecisionReadiness(frame,cal) : null);
     }catch(e:any){
       setCompanionPreviewTelemetry({error:e?.message||"Aperçu impossible"});
     }finally{setCompanionPreviewBusy(false);}
@@ -105,7 +129,7 @@ export default function ClosestCenterConfig(props: any) {
   const createCompanion = async () => {
     try{
       const session=await createClosestCenterCompanionSession();
-      companionSeqRef.current=0; setCompanionSession(session); setCompanionStatus(null); setCompanionPreview(""); setCompanionPreviewTelemetry(null); setCameraSourceId(session.sourceId);
+      companionSeqRef.current=0; setCompanionSession(session); setCompanionStatus(null); setCompanionPreview(""); setCompanionPreviewTelemetry(null); setCompanionPreviewReadiness(null); setCameraSourceId(session.sourceId);
     }catch(e:any){ setCompanionStatus({connected:false,message:e?.message||"Création de liaison impossible"}); }
   };
 
@@ -163,7 +187,10 @@ export default function ClosestCenterConfig(props: any) {
   const companionLastSeen = Number(companionStatus?.lastSeenAt || 0) || 0;
   const companionFresh = companionLastSeen > 0 && Date.now() - companionLastSeen <= 8000;
   const companionReady = cameraSource.kind !== "phone_companion" || (!!companionStatus?.connected && !!companionStatus?.cameraReady && !!companionStatus?.calibrated && companionFresh);
-  const canStart = exactPlayers && exactTeams && (inputMode !== "camera" || companionReady);
+  const companionSourceReady = cameraSource.kind !== "phone_companion" || (companionReady && !!companionPreviewReadiness?.ok);
+  const localSourceReady = cameraSource.kind !== "local_device" || !!localCalibration;
+  const cameraSourceReady = inputMode !== "camera" || (cameraSource.kind === "phone_companion" ? companionSourceReady : localSourceReady);
+  const canStart = exactPlayers && exactTeams && cameraSourceReady;
 
   const start = () => {
     if (!canStart) return;
@@ -259,7 +286,7 @@ export default function ClosestCenterConfig(props: any) {
             <div style={{fontSize:12,fontWeight:900,color:"#fff",marginTop:2}}>{cameraSource.label}</div>
             <div style={{fontSize:10,color:"#91a2b1",marginTop:2}}>Une seule caméra fournit les frames analysées. Aucun double scoring.</div>
           </div>
-          <span style={{padding:"5px 8px",borderRadius:999,border:`1px solid ${cameraSource.kind==="phone_companion"?(companionReady?"rgba(143,255,194,.35)":"rgba(255,190,110,.35)"):"rgba(143,255,194,.28)"}`,color:cameraSource.kind==="phone_companion"?(companionReady?"#8fffc2":"#ffd18c"):"#8fffc2",fontSize:9,fontWeight:1000,whiteSpace:"nowrap"}}>{cameraSource.kind==="phone_companion"?(companionReady?"PRÊTE":(companionStatus?.connected&&!companionFresh?"HORS LIGNE":"À RELIER")):"ACTIVE"}</span>
+          <span style={{padding:"5px 8px",borderRadius:999,border:`1px solid ${cameraSourceReady?"rgba(143,255,194,.35)":"rgba(255,190,110,.35)"}`,color:cameraSourceReady?"#8fffc2":"#ffd18c",fontSize:9,fontWeight:1000,whiteSpace:"nowrap"}}>{cameraSource.kind==="phone_companion"?(companionSourceReady?"PRÊTE":!companionReady?(companionStatus?.connected&&!companionFresh?"HORS LIGNE":"À RELIER"):"À TESTER"):(localCalibration?"CALIBRÉE":"À CALIBRER")}</span>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
           <button style={modeBtn(cameraSource.kind==="local_device")} onClick={()=>setCameraSourceId(CLOSEST_CENTER_LOCAL_SOURCE_ID)}>CET APPAREIL</button>
@@ -272,7 +299,8 @@ export default function ClosestCenterConfig(props: any) {
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginTop:7}}><button disabled={!companionReady||companionPreviewBusy} onClick={()=>void testCompanionPreview()} style={{...navBtn,minHeight:32,padding:"5px 8px",opacity:(!companionReady||companionPreviewBusy)?.45:1}}>{companionPreviewBusy?"CAPTURE…":"APERÇU TEST"}</button><button onClick={()=>void createCompanion()} style={{...navBtn,minHeight:32,padding:"5px 8px"}}>NOUVELLE LIAISON</button></div>
           {companionPreviewTelemetry?.error?<div style={{fontSize:9,color:"#ff9c9c",marginTop:6,fontWeight:900}}>{companionPreviewTelemetry.error}</div>:companionPreviewTelemetry?<div style={{fontSize:8,color:"#8fffc2",marginTop:6,fontWeight:900}}>APERÇU REÇU · {companionPreviewTelemetry.totalMs} ms · {Math.round((companionPreviewTelemetry.bytes||0)/1024)} Ko</div>:null}</div>
         </div> : null}
-        {cameraSource.kind==="phone_companion" && companionPreview ? <div style={{marginTop:8,padding:6,borderRadius:12,border:"1px solid rgba(68,231,255,.20)",background:"#02070d"}}><div style={{fontSize:8,color:ACCENT,fontWeight:1000,letterSpacing:.8,margin:"2px 4px 6px"}}>DERNIER APERÇU TEST · NON UTILISÉ POUR LE SCORE</div><img src={companionPreview} alt="Aperçu caméra compagnon" style={{width:"100%",maxHeight:220,objectFit:"contain",display:"block",borderRadius:9,background:"#000"}}/></div> : null}
+        {cameraSource.kind==="phone_companion" && companionPreview ? <div style={{marginTop:8,padding:6,borderRadius:12,border:`1px solid ${companionPreviewReadiness?.ok?"rgba(143,255,194,.28)":"rgba(255,189,117,.28)"}`,background:"#02070d"}}><div style={{fontSize:8,color:companionPreviewReadiness?.ok?"#8fffc2":"#ffd2a5",fontWeight:1000,letterSpacing:.8,margin:"2px 4px 6px"}}>{companionPreviewReadiness?.ok?"SOURCE VALIDÉE · PRÊTE":"SOURCE À CORRIGER · APERÇU TEST"}</div><img src={companionPreview} alt="Aperçu caméra compagnon" style={{width:"100%",maxHeight:220,objectFit:"contain",display:"block",borderRadius:9,background:"#000"}}/>{companionPreviewReadiness?<div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5,marginTop:6,fontSize:8,textAlign:"center"}}><span style={healthChip}>MM/PX<br/><b>{Number(companionPreviewReadiness.mmPerPixel||0).toFixed(2)}</b></span><span style={healthChip}>NET<br/><b>{Math.round(Number(companionPreviewReadiness.sharpness||0)*100)}%</b></span><span style={healthChip}>EXP<br/><b>{Math.round(Number(companionPreviewReadiness.exposure||0)*100)}%</b></span><span style={healthChip}>CAL<br/><b>{Math.round(Number(companionPreviewReadiness.calibrationConfidence||0)*100)}%</b></span></div>:null}{companionPreviewReadiness&&!companionPreviewReadiness.ok?<div style={{fontSize:9,color:"#ffbd93",marginTop:6,lineHeight:1.35}}>{(Array.isArray(companionPreviewReadiness.reasons)&&companionPreviewReadiness.reasons.length?companionPreviewReadiness.reasons.join(" "):"Ajuste le cadrage, la netteté ou l’exposition puis relance APERÇU TEST.")}</div>:null}</div> : null}
+        {!cameraSourceReady ? <div style={{padding:"7px 9px",borderRadius:11,border:"1px solid rgba(255,189,117,.28)",background:"rgba(255,189,117,.06)",fontSize:9,color:"#ffd2a5",fontWeight:900,lineHeight:1.35}}>{cameraSource.kind==="local_device"?"Calibration obligatoire avant de lancer une partie caméra.":!companionReady?"Relie et calibre le téléphone compagnon avant de continuer.":"Lance APERÇU TEST et corrige le cadrage jusqu’à obtenir SOURCE VALIDÉE."}</div> : null}
       </div>
       <ol style={{margin:"12px 0 0",paddingLeft:20,color:"#cad5e1",lineHeight:1.6,fontSize:13}}>
         <li>Enrôlement IA des fléchettes de chaque joueur.</li>

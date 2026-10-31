@@ -5,6 +5,7 @@ import TrainingResultModal from "../../ui/TrainingResultModal";
 import { recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
 import { makeTrainingStats, trainingDartMatches, type TrainingDart } from "../../lib/trainingDarts";
 import { EXTENDED_RULE_BY_ID, type ExtendedTrainingRule } from "../../catalog/trainingLabExtendedRules";
+import { evaluateExtendedOutcome } from "../../profile/trainingExtendedOutcome";
 
 const clamp = (n:number,a:number,b:number)=>Math.max(a,Math.min(b,n));
 const visitScore=(v:TrainingDart[])=>v.reduce((s,d)=>s+d.score,0);
@@ -19,6 +20,18 @@ const finishSeq=[40,36,32,24,20,16,12,8,4,50];
 const halfTargets=[15,16,"double",17,18,"triple",19,20,"bull"] as const;
 const deadlineTargets=["D20","S20","T20","S20","BULL","DBULL","BULL","S3","T3","S3","D3","S3","T3","S3","BULL","DBULL","BULL","S20","T20","S20","D20"];
 const rainbowRoutes=[["D20","D10","D5"],["D16","D8","D4"],["D4","D2","D1"],["D12","D6","D3"],["DBULL","D18","D9"],["DBULL","D14","D7"]];
+const smallFinishSeq=[3,3,3,7,7,7,13,13,13];
+const endurance42 = [
+  {k:"sector",v:7},{k:"ordered",t:["S1","D2","T3"]},{k:"sector",v:8},{k:"ordered",t:["S4","S3","S2"]},
+  {k:"sector",v:9},{k:"double2"},{k:"sector",v:10},{k:"ordered",t:["S7","D8","T9"]},{k:"sector",v:11},{k:"ordered",t:["S11","S12","S13"]},
+  {k:"sector",v:12},{k:"finish",v:25},{k:"sector",v:13},{k:"finish",v:50},{k:"sector",v:14},{k:"ordered",t:["S20","D19","T18"]},
+  {k:"sector",v:15},{k:"ordered",t:["S17","S16","S15"]},{k:"sector",v:16},{k:"triple2"},{k:"sector",v:17},{k:"ordered",t:["S14","D13","T12"]},
+  {k:"sector",v:18},{k:"ordered",t:["S11","S10","S9"]},{k:"sector",v:19},{k:"finish",v:50},{k:"sector",v:20},{k:"finish",v:75},
+  {k:"shanghai",v:15},{k:"ordered",t:["S20","D6","T3"]},{k:"shanghai",v:16},{k:"ordered",t:["S6","D3","T11"]},
+  {k:"shanghai",v:17},{k:"ordered",t:["S3","D11","T20"]},{k:"shanghai",v:18},{k:"finish",v:75},{k:"shanghai",v:19},{k:"finish",v:100},
+  {k:"shanghai",v:20},{k:"finish",v:125},{k:"bull"},{k:"letters"}
+] as const;
+const exactOrdered=(visit:TrainingDart[],targets:readonly string[])=>targets.every((t,i)=>!!visit[i]&&trainingDartMatches(visit[i],t));
 const cardMissions=[
   {t:"40+ points en 3 fléchettes",k:"score",v:40,d:3},{t:"Un double en 9 fléchettes",k:"double",d:9,bonus:true},{t:"Finir 25 en 9 fléchettes",k:"finish",v:25,d:9,bonus:true},{t:"2 fléchettes dans le 20",k:"sector",v:20,c:2,d:3},
   {t:"Finir 40 en 6 fléchettes",k:"finish",v:40,d:6},{t:"Finir 55 en 6 fléchettes",k:"finish",v:55,d:6,bonus:true},{t:"Un triple en 6 fléchettes",k:"triple",d:6},{t:"Finir 121 en 12 fléchettes",k:"finish",v:121,d:12,bonus:true},
@@ -46,8 +59,8 @@ function targetText(rule:ExtendedTrainingRule,s:State){
     case "hardcore_clock": return `S${s.index+1}`;
     case "deadline": return deadlineTargets[s.index]||"FIN";
     case "brochette": return (rule.params?.targets||[])[s.index%3]||"—";
-    case "switcher": return `T${switcher[s.round]?.[s.index%3]===25?"BULL":switcher[s.round]?.[s.index%3]||20}`;
-    case "small_finishes": return [3,7,13][s.round%3]?.toString()||"3";
+    case "switcher": { const t=switcher[s.round]?.[s.index%3]||20; return t===25?"BULL":`T${t}`; }
+    case "small_finishes": return String(smallFinishSeq[s.round]||3);
     case "streak_sector": return String(rule.params?.sector||20);
     case "around_score": return s.round<20?String(s.round+1):"BULL";
     case "survival_score": return `≥ ${rule.params?.threshold||65}`;
@@ -59,8 +72,8 @@ function targetText(rule:ExtendedTrainingRule,s:State){
     case "double_or_nothing": return String(finishSeq[s.round]||40);
     case "five_elements": return s.points<4?`PILIER ${s.points+1}/4`:"NOYAU";
     case "card_missions": return `CARTE ${s.round+1}/32`;
-    case "endurance42": return `ÉTAPE ${s.round+1}/42`;
-    case "jdc": return s.round<6?String(10+s.round):s.round<27?`D${s.round-5}`:String(15+(s.round-27));
+    case "endurance42": { const e=endurance42[s.round] as any; return e?.v?`${e.k.toUpperCase()} ${e.v}`:e?.t?e.t.join(" • "):`ÉTAPE ${s.round+1}/42`; }
+    case "jdc": { const phase=s.aux.phase||1; if(phase===1)return String(10+(s.aux.step||0)); if(phase===2){const n=(s.aux.doubleIndex||1);return n<=20?`D${n}`:"DBULL";} return String(15+(s.aux.step||0)); }
     case "redemption": return `VOLÉE ${s.round+1}/12`;
     case "atomic": return `TOUR ${s.round+1}`;
     case "rainbow": return `ROUTE ${(s.round%6)+1} • CYCLE ${Math.floor(s.round/6)+1}/3`;
@@ -79,7 +92,9 @@ function missionSuccess(m:any,darts:TrainingDart[]){
 }
 
 export default function TrainingCustomExercisePlay({config,onExit,exercise}:{config:any;onExit:()=>void;exercise:any}){
-  const rule=EXTENDED_RULE_BY_ID[exercise.ruleId||exercise.id];
+  const resolvedRule=EXTENDED_RULE_BY_ID[exercise.ruleId||exercise.id];
+  const rule: ExtendedTrainingRule = resolvedRule || { id: String(exercise?.id || "unknown"), title: String(exercise?.title || "Exercice indisponible"), subtitle: "Définition d’exercice introuvable.", family: exercise?.family || "regularity", difficulty: 1, kind: "technique", params: { focus: "Cet exercice doit être réparé avant de pouvoir être joué." } };
+  const ruleMissing = !resolvedRule;
   const [state,setState]=React.useState<State>(()=>initial(rule));
   const stateRef=React.useRef(state); React.useEffect(()=>{stateRef.current=state},[state]);
   const startedAt=React.useRef(Date.now());
@@ -91,10 +106,13 @@ export default function TrainingCustomExercisePlay({config,onExit,exercise}:{con
   const finish=React.useCallback((success=true,finalState?:State)=>{
     if(finishedRef.current)return; finishedRef.current=true;
     const s=finalState||stateRef.current; const endedAt=Date.now();
-    const perf=clamp(Math.round((s.points>0?Math.min(100,s.points):Math.min(100,(s.hits/Math.max(1,s.darts))*100))),0,100);
-    const metrics={exerciseId:exercise.id,exerciseTitle:exercise.title,family:exercise.family,difficulty:exercise.difficulty,completionPct: success?100:Math.min(99,Math.round((s.round/Math.max(1,rule.rounds||20))*100)),accuracyPct:s.darts?(s.hits/s.darts)*100:0,performanceScore:perf,score:s.points,customRule:rule.kind};
-    recordSoloTrainingResult({modeId:"training_lab",config:{...config,exerciseId:exercise.id,family:exercise.family,customRule:rule.kind},participantIds,startedAt:startedAt.current,endedAt,darts:s.darts,hits:s.hits,points:s.points,success,metrics,visitHistory:[]});
-    setResult({success,metrics,stats:makeTrainingStats({darts:s.darts,hits:s.hits,points:Math.max(0,s.points),startedAt:startedAt.current,endedAt})});
+    const scorePoints = rule.kind==="bull_stack" ? Math.max(s.best,s.points) : rule.kind==="fish170" ? (s.best||99) : s.points;
+    const outcome = evaluateExtendedOutcome(rule, s, success);
+    const accuracyPct = s.darts ? (s.hits / s.darts) * 100 : 0;
+    const completionPct = rule.rounds ? Math.min(100, (s.round / Math.max(1, rule.rounds)) * 100) : success ? 100 : Math.min(99, outcome.performanceScore);
+    const metrics={exerciseId:exercise.id,exerciseTitle:exercise.title,family:exercise.family,difficulty:exercise.difficulty,completionPct,accuracyPct,performanceScore:outcome.performanceScore,score:scorePoints,customRule:rule.kind,objectivePassed:outcome.passed,objectiveMetric:outcome.metricLabel,objectiveValue:outcome.metricValue,objectiveTarget:outcome.targetValue,objectiveDirection:outcome.direction};
+    recordSoloTrainingResult({modeId:"training_lab",config:{...config,exerciseId:exercise.id,family:exercise.family,customRule:rule.kind},participantIds,startedAt:startedAt.current,endedAt,darts:s.darts,hits:s.hits,points:scorePoints,success:outcome.passed,metrics,visitHistory:[]});
+    setResult({success:outcome.passed,metrics,outcome,stats:makeTrainingStats({darts:s.darts,hits:s.hits,points:Math.max(0,s.points),startedAt:startedAt.current,endedAt})});
   },[config,exercise,participantIds,rule]);
 
   React.useEffect(()=>{ if(!rule.durationSec||result)return; const id=setInterval(()=>setSecondsLeft(x=>{if(x<=1){clearInterval(id); setTimeout(()=>finish(true),0); return 0;}return x-1}),1000); return()=>clearInterval(id);},[finish,result,rule.durationSec]);
@@ -131,32 +149,32 @@ export default function TrainingCustomExercisePlay({config,onExit,exercise}:{con
           else s.points+=vs; s.round++; if(s.round>=(rule.rounds||8))done(true);break;
         }
         case "bull_stack":{let add=0;for(const d of visit)if(d.v===25)add+=d.mult===2?50:25;if(add===0)s.points=0;else{s.points+=add;s.best=Math.max(s.best,s.points);}break;}
-        case "fish170":{s.remaining-=vs;if(s.remaining===0&&visit.some(d=>d.mult===2)){s.best=s.best?Math.min(s.best,s.darts):s.darts;s.points=s.best;s.remaining=170;}else if(s.remaining<2||s.darts%15===0)s.remaining=170;break;}
+        case "fish170":{s.aux.attemptDarts=(s.aux.attemptDarts||0)+visit.length;s.remaining-=vs;if(s.remaining===0&&visit.length&&visit[visit.length-1].mult===2){const used=s.aux.attemptDarts;s.best=s.best?Math.min(s.best,used):used;s.points=s.best;s.remaining=170;s.aux.attemptDarts=0;s.aux.attempt=(s.aux.attempt||1)+1;}else if(s.remaining<2||(s.aux.attemptDarts||0)>=15){s.remaining=170;s.aux.attemptDarts=0;s.aux.attempt=(s.aux.attempt||1)+1;}break;}
         case "hardcore_clock":{const target=s.index+1;const n=visit.filter(d=>d.v===target&&d.mult===1).length;if(n===3)s.index++;else if(n<=1)s.index=Math.max(0,s.index-1);s.round++;s.points=Math.max(s.points,s.index);if(s.index>=20)done(true);break;}
         case "cricket_count":{const target=cricket[s.round];for(const d of visit){if(target===25&&d.v===25)s.points+=d.mult===2?2:1;else if(d.v===target)s.points+=d.mult;}s.round++;if(s.round>=7)done(true);break;}
         case "bob27":{const target=s.round+1;let hits=visit.filter(d=>d.v===target&&d.mult===2).length;if(hits)s.points+=hits*(target*2);else s.points-=target*2;s.round++;if(s.round>=20)done(true);break;}
         case "half_it":{const target=halfTargets[s.round];let add=0;if(target==="double")add=visit.filter(d=>d.mult===2).reduce((a,d)=>a+d.score,0);else if(target==="triple")add=visit.filter(d=>d.mult===3).reduce((a,d)=>a+d.score,0);else if(target==="bull")add=visit.filter(d=>d.v===25).reduce((a,d)=>a+d.score,0);else add=visit.filter(d=>d.v===target).reduce((a,d)=>a+d.score,0);s.points=add?s.points+add:Math.ceil(s.points/2);s.round++;if(s.round>=9)done(true);break;}
         case "deadline":{for(const d of visit){const t=deadlineTargets[s.index];if(t&&trainingDartMatches(d,t))s.index++;if(s.index>=deadlineTargets.length){done(true);break;}}break;}
         case "brochette":{let n=0;(rule.params?.targets||[]).forEach((t:string,i:number)=>{if(visit[i]&&trainingDartMatches(visit[i],t))n++;});s.points+=n*n;s.round++;if(s.round>=8)done(true);break;}
-        case "switcher":{const targets=switcher[s.round]||[];visit.forEach((d,i)=>{const t=targets[i];if(t===25?d.v===25:d.v===t)s.points+=d.score;});s.round++;if(s.round>=8){if(s.points>0)s.points+=100;done(true);}break;}
-        case "double_or_nothing":{const target=finishSeq[s.round];if(isCheckout(visit,target)){s.aux.bonus=true;}else if(s.aux.bonus){s.points+=vs;s.aux.bonus=false;s.round++;}else s.round++;if(s.round>=10)done(true);break;}
-        case "small_finishes":{const target=[3,7,13][s.round%3];if(isCheckout(visit,target))s.points+=50;else if(Math.max(0,target-vs)%2===0)s.points+=10;s.round++;if(s.round>=9)done(true);break;}
+        case "switcher":{const targets=switcher[s.round]||[];let perfect=s.aux.perfect!==false;visit.forEach((d,i)=>{const t=targets[i];if(t===25?d.v===25:d.v===t)s.points+=d.score;const exact=t===25?d.v===25:(d.v===t&&d.mult===3);if(!exact)perfect=false;});s.aux.perfect=perfect;s.round++;if(s.round>=8){if(perfect)s.points+=100;done(true);}break;}
+        case "double_or_nothing":{const target=finishSeq[s.round];if(s.aux.bonus){s.points+=vs*(s.round===9?2:1);s.aux.bonus=false;s.round++;}else{const special=s.round===9;const ok=isCheckout(visit,target)&&(!special||visit[0]?.v===25);if(ok)s.aux.bonus=true;else s.round++;}if(s.round>=10)done(true);break;}
+        case "small_finishes":{const target=smallFinishSeq[s.round]||3;if(isCheckout(visit,target))s.points+=50;else{const rest=target-vs;if(rest>0&&rest%2===0)s.points+=10;}s.round++;if(s.round>=9)done(true);break;}
         case "streak_sector":{const sector=rule.params?.sector||20;for(const d of visit){if(d.v===sector){s.streak+=d.mult;s.bestStreak=Math.max(s.bestStreak,s.streak);}else s.streak=0;}s.points=s.bestStreak;break;}
-        case "redemption":{const score=vs;s.best=Math.max(s.best,score);s.worst=s.worst===null?score:Math.min(s.worst,score);s.aux.bestCount=(s.aux.bestCount||0)+(score===s.best?1:0);if((s.aux.bestCount||0)>=2&&s.worst!==null){s.worst=null;s.aux.bestCount=0;}s.points=s.worst??score;s.round++;if(s.round>=12)done(true);break;}
+        case "redemption":{const score=vs;if(score>s.best){s.best=score;s.aux.bestCount=1;}else if(score===s.best){s.aux.bestCount=(s.aux.bestCount||0)+1;}s.worst=s.worst===null?score:Math.min(s.worst,score);if((s.aux.bestCount||0)>=2&&s.worst!==null){s.worst=null;s.aux.bestCount=0;}s.points=s.worst??score;s.round++;if(s.round>=12)done(true);break;}
         case "around_score":{const target=s.round<20?s.round+1:25;for(const d of visit)if(d.v===target)s.points+=target===25?(d.mult===2?2:1):d.mult;s.round++;if(s.round>=21)done(true);break;}
         case "survival_score":{if(vs>=(rule.params?.threshold||65))s.points++;s.round++;if(s.round>=15)done(true);break;}
-        case "pekin":{const target=s.round<6?20-s.round:25;const marks=target===25?visit.filter(d=>d.v===25).length:countMarks(visit,target);s.aux.marks=(s.aux.marks||0)+marks;s.aux.used=(s.aux.used||0)+visit.length;if((s.aux.marks||0)>=5||s.aux.used>=9){if(s.aux.marks>=5)s.points+=Math.max(0,10-s.aux.used);s.round++;s.aux={};if(s.round>=7)done(true);}break;}
-        case "route_targets":{if(rule.params?.variant==="routourne"){const [a,b]=routourne[s.round]||[20,3];let hits=0;if(visit.some(d=>d.v===a&&d.mult===2))hits++;if(visit.some(d=>d.v===25))hits++;if(visit.some(d=>d.v===b&&d.mult===2))hits++;s.points+=hits===3?5:hits===2?3:hits===1?1:0;}else{s.points+=vs>=60?vs:0;}s.round++;if(s.round>=(rule.rounds||12))done(true);break;}
-        case "balanced_bull":{const target=s.round<6?20-s.round:15+(s.round-5);let sectorPts=0,bullPts=0;for(const d of visit){if(d.v===target)sectorPts+=d.mult;if(d.v===25)bullPts+=d.mult===2?2:1;}s.points+=sectorPts*bullPts;s.round++;if(s.round>=11)done(true);break;}
+        case "pekin":{const target=s.round<6?20-s.round:25;s.aux.used=(s.aux.used||0)+visit.length;if(target===25){s.aux.half=(s.aux.half||0)+visit.filter(d=>d.v===25&&d.mult===1).length;s.aux.dbull=(s.aux.dbull||0)+visit.filter(d=>d.v===25&&d.mult===2).length;const valid=(s.aux.half||0)>=3&&(s.aux.dbull||0)>=1;if(valid||s.aux.used>=9){if(valid)s.points+=Math.max(0,10-s.aux.used);s.round++;s.aux={};if(s.round>=7)done(true);}}else{const marks=countMarks(visit,target);s.aux.marks=(s.aux.marks||0)+marks;if((s.aux.marks||0)>=5||s.aux.used>=9){if(s.aux.marks>=5)s.points+=Math.max(0,10-s.aux.used);s.round++;s.aux={};if(s.round>=7)done(true);}}break;}
+        case "route_targets":{if(rule.params?.variant==="routourne"){const [a,b]=routourne[s.round]||[20,3];let hits=0;if(visit.some(d=>d.v===a&&d.mult===2))hits++;if(visit.some(d=>d.v===25))hits++;if(visit.some(d=>d.v===b&&d.mult===2))hits++;s.points+=hits===3?5:hits===2?3:hits===1?1:0;s.round++;if(s.round>=(rule.rounds||20))done(true);}else{const target=s.round<11?10+s.round:25;const phase=s.aux.phase||1;if(phase===1){s.aux.marks=target===25?visit.filter(d=>d.v===25).reduce((a,d)=>a+(d.mult===2?2:1),0):visit.filter(d=>d.v===target).reduce((a,d)=>a+d.mult,0);s.aux.phase=2;}else if(phase===2){s.aux.baseScore=vs;s.aux.phase=3;}else{const temp=(s.aux.marks||0)*(s.aux.baseScore||0);const checkoutTarget=Number(String(Math.max(0,temp)).slice(0,2))||0;const doubled=checkoutTarget>1&&isCheckout(visit,checkoutTarget);s.points+=temp*(doubled?2:1);s.round++;s.aux={};if(s.round>=(rule.rounds||12))done(true);}}break;}
+        case "balanced_bull":{const target=s.round<6?20-s.round:15+(s.round-5);if(!s.aux.phase||s.aux.phase==="sector"){s.aux.sectorPts=visit.filter(d=>d.v===target).reduce((a,d)=>a+d.mult,0);s.aux.phase="bull";}else{const bullPts=visit.filter(d=>d.v===25).reduce((a,d)=>a+(d.mult===2?2:1),0);s.points+=(s.aux.sectorPts||0)*bullPts;s.round++;s.aux={phase:"sector"};if(s.round>=11)done(true);}break;}
         case "deep_dive":{const target=15+s.round;const marks=countMarks(visit,target);const delta=marks===3?Math.max(0,3-visit.length)*target:-Math.abs(3-marks)*target;s.points+=delta;s.round++;if(s.round>=6)done(true);break;}
         case "risk7":{const marksBy=new Map<number,number>();for(const d of visit){if(!d.miss)marksBy.set(d.v,(marksBy.get(d.v)||0)+d.mult);}const candidates=[...marksBy.entries()].filter(([,m])=>m>=3);if(candidates.length){const [sec,m]=candidates.sort((a,b)=>b[1]-a[1])[0];s.aux.locked=s.aux.locked||{};const prev=s.aux.locked[sec]||0;if(m>prev){s.points+=(m-prev)*sec;s.aux.locked[sec]=m;}}break;}
-        case "surcharge":{const groups=new Map<string,TrainingDart[]>();for(const d of visit){if(d.miss)continue;const k=d.label;groups.set(k,[...(groups.get(k)||[]),d]);}let total=0;const sectorCount=new Map<number,number>();for(const [k,arr] of groups){if(arr.length===1)total+=arr[0].score;else if(arr.length>=2){} }for(const d of visit){if(!d.miss)sectorCount.set(d.v,(sectorCount.get(d.v)||0)+1);}for(const n of sectorCount.values())if(n===2)total+=50;else if(n===3)total+=100;s.points+=total;s.round++;if(s.round>=8)done(true);break;}
-        case "five_elements":{const triples=visit.filter(d=>d.mult===3&&d.v>=15&&d.v<=20).length;const inRange=visit.filter(d=>d.v>=15&&d.v<=20).length;if(s.points<4){if(triples>0&&inRange===3)s.points+=Math.min(3,triples);}else{if(visit.some(d=>d.v===25)&&inRange>=2){s.points=5;done(true);}}break;}
+        case "surcharge":{const groups=new Map<string,TrainingDart[]>();for(const d of visit){if(d.miss)continue;const k=d.label;groups.set(k,[...(groups.get(k)||[]),d]);}const valid=[...groups.values()].filter(arr=>arr.length===1).flat();let total=valid.reduce((a,d)=>a+d.score,0);const sectorCount=new Map<number,number>();for(const d of valid)sectorCount.set(d.v,(sectorCount.get(d.v)||0)+1);for(const n of sectorCount.values())if(n===2)total+=50;else if(n===3)total+=100;s.points+=total;s.round++;if(s.round>=8)done(true);break;}
+        case "five_elements":{const triples=visit.filter(d=>d.mult===3&&d.v>=15&&d.v<=20).length;const inRange=visit.filter(d=>d.v>=15&&d.v<=20).length;if(s.points<4){if(triples>0&&inRange===3)s.points=Math.min(4,s.points+Math.min(3,triples));}else{if(visit.some(d=>d.v===25)&&inRange>=2){s.points=5;done(true);}}break;}
         case "card_missions":{const m=cardMissions[s.round];const ok=missionSuccess(m,visit);if(ok){s.points++;if(m.bonus&&visit.length<=3)s.lives++;s.round++;}else s.lives--;if(s.round===8||s.round===16||s.round===24)s.lives++;if(s.lives<=0||s.round>=32)done(s.round>=32);break;}
-        case "endurance42":{s.points+=vs;s.round++;if(s.round>=42)done(true);break;}
-        case "jdc":{if(s.round<6){const t=10+s.round;for(const d of visit)if(d.v===t)s.points+=d.score;if(visit.filter(d=>d.v===t).some(d=>d.mult===1)&&visit.some(d=>d.v===t&&d.mult===2)&&visit.some(d=>d.v===t&&d.mult===3))s.points+=100;}else if(s.round<27){const d=s.round-5;if(visit[0]?.v===d&&visit[0]?.mult===2)s.points+=50;}else{const t=15+(s.round-27);for(const d of visit)if(d.v===t)s.points+=d.score;}s.round++;if(s.round>=33)done(true);break;}
-        case "atomic":{const temps=[...(s.aux.temps||Array(21).fill(0))];const fused=new Set<number>(s.aux.fused||[]);const heat=[((s.round*7)%20)+1,((s.round*11+3)%20)+1,((s.round*13+7)%20)+1];heat.forEach(sec=>{if(!fused.has(sec))temps[sec]+=1});for(const d of visit)if(d.v>=1&&d.v<=20&&!fused.has(d.v))temps[d.v]=Math.max(0,temps[d.v]-d.mult);for(let i=1;i<=20;i++)if(temps[i]>=5)fused.add(i);s.aux={temps,fused};s.round++;s.points=s.round;if(fused.size>=3)done(false);break;}
-        case "rainbow":{const route=rainbowRoutes[s.round%6];let n=0;route.forEach(t=>{if(visit.some(d=>trainingDartMatches(d,t)))n++;});let add=n===3?6:n===2?3:n===1?1:0;if(Math.floor(s.round/6)===2)add*=2;s.points+=add;s.aux.completed=s.aux.completed||new Set<number>();if(n===3)s.aux.completed.add(s.round%6);s.round++;if(s.round>=18){const c=s.aux.completed.size;s.points+=[0,2,4,8,16,32,64][c]||0;done(true);}break;}
+        case "endurance42":{const e=endurance42[s.round] as any;let add=0;if(e.k==="sector")add=visit.filter(d=>d.v===e.v).reduce((a,d)=>a+d.score,0);else if(e.k==="ordered")add=visit.reduce((a,d,i)=>a+(e.t[i]&&trainingDartMatches(d,e.t[i])?d.score:0),0);else if(e.k==="finish")add=isCheckout(visit,e.v)?e.v:0;else if(e.k==="shanghai"){const ok=visit.some(d=>d.v===e.v&&d.mult===1)&&visit.some(d=>d.v===e.v&&d.mult===2)&&visit.some(d=>d.v===e.v&&d.mult===3);add=visit.filter(d=>d.v===e.v).reduce((a,d)=>a+d.score,0)+(ok?100:0);}else if(e.k==="double2"){const by=new Map<number,number>();visit.filter(d=>d.mult===2).forEach(d=>by.set(d.v,(by.get(d.v)||0)+1));const hit=[...by.entries()].find(([,n])=>n>=2);if(hit)add=hit[0]*2*hit[1];}else if(e.k==="triple2"){const by=new Map<number,number>();visit.filter(d=>d.mult===3).forEach(d=>by.set(d.v,(by.get(d.v)||0)+1));const hit=[...by.entries()].find(([,n])=>n>=2);if(hit)add=hit[0]*3*hit[1];}else if(e.k==="bull")add=visit.filter(d=>d.v===25).reduce((a,d)=>a+d.score,0);else if(e.k==="letters"){if(visit[0]?.v===11)add+=60;if(visit[1]?.v===6)add+=60;if(visit[2]?.v===25)add+=60;}s.points+=add;s.round++;if(s.round>=42)done(true);break;}
+        case "jdc":{s.aux.phase=s.aux.phase||1;s.aux.step=s.aux.step||0;if(s.aux.phase===1){const t=10+s.aux.step;for(const d of visit)if(d.v===t)s.points+=d.score;if(visit.some(d=>d.v===t&&d.mult===1)&&visit.some(d=>d.v===t&&d.mult===2)&&visit.some(d=>d.v===t&&d.mult===3))s.points+=100;s.aux.step++;if(s.aux.step>=6){s.aux.phase=2;s.aux.doubleIndex=1;s.aux.step=0;}}else if(s.aux.phase===2){for(const d of visit){const n=s.aux.doubleIndex||1;if(n<=20){if(d.v===n&&d.mult===2)s.points+=50;}else if(n===21&&d.v===25&&d.mult===2)s.points+=100;s.aux.doubleIndex=n+1;if(s.aux.doubleIndex>21){s.aux.phase=3;s.aux.step=0;break;}}}else{const t=15+s.aux.step;for(const d of visit)if(d.v===t)s.points+=d.score;if(visit.some(d=>d.v===t&&d.mult===1)&&visit.some(d=>d.v===t&&d.mult===2)&&visit.some(d=>d.v===t&&d.mult===3))s.points+=100;s.aux.step++;if(s.aux.step>=6)done(true);}s.round++;break;}
+        case "atomic":{const temps=[...(s.aux.temps||Array(21).fill(0))];const fused=new Set<number>(s.aux.fused||[]);const heat:number[]=[];let seed=(s.round+1)*7919;while(heat.length<3){seed=(seed*1103515245+12345)&0x7fffffff;const sec=(seed%20)+1;if(!heat.includes(sec))heat.push(sec);}heat.forEach(sec=>{if(!fused.has(sec))temps[sec]+=1});for(const d of visit)if(d.v>=1&&d.v<=20&&!fused.has(d.v))temps[d.v]=Math.max(0,temps[d.v]-d.mult);for(let i=1;i<=20;i++)if(temps[i]>=5)fused.add(i);s.aux={temps,fused,heat};s.round++;s.points=s.round;if(fused.size>=3)done(false);break;}
+        case "rainbow":{const route=rainbowRoutes[s.round%6];let n=0;route.forEach((t,i)=>{if(visit[i]&&trainingDartMatches(visit[i],t))n++;});let add=n===3?6:n===2?3:n===1?1:0;if(Math.floor(s.round/6)===2)add*=2;s.points+=add;s.aux.completed=s.aux.completed||new Set<number>();if(n===3)s.aux.completed.add(s.round%6);s.round++;if(s.round>=18){const c=s.aux.completed.size;s.points+=[0,2,4,8,16,32,64][c]||0;done(true);}break;}
       }
       return s as State;
     });
@@ -167,6 +185,10 @@ export default function TrainingCustomExercisePlay({config,onExit,exercise}:{con
   const timeText=rule.durationSec?`${Math.floor(secondsLeft/60)}:${String(secondsLeft%60).padStart(2,"0")}`:null;
   const manual=rule.kind==="manual_hits";
   const technique=rule.kind==="technique";
+  if (ruleMissing) return <TrainingPlayLayout title="Centre d'entraînement" tickerId="training_center" onExit={onExit} participant={config?.activeParticipant}
+    eyebrow="EXERCICE INDISPONIBLE" target="—" targetHint="La définition de cet exercice est absente."
+    progress={{value:0,max:1,label:"ERREUR"}} kpis={[]}
+  ><div style={{padding:20,textAlign:"center",display:"grid",gap:12}}><div style={{fontSize:18,fontWeight:950}}>Impossible de lancer cet exercice</div><div style={{fontSize:13,opacity:.7,lineHeight:1.5}}>Le catalogue contient une référence sans règle de jeu associée. Reviens au Centre et choisis un autre exercice.</div><button type="button" onClick={onExit} style={{height:46,borderRadius:12,border:"1px solid rgba(255,255,255,.14)",background:"rgba(255,255,255,.06)",color:"inherit",fontWeight:950,cursor:"pointer"}}>RETOUR AU CENTRE</button></div></TrainingPlayLayout>;
   return <>
     <TrainingPlayLayout title="Centre d'entraînement" tickerId="training_center" onExit={onExit} participant={config?.activeParticipant}
       rules={<><p><b>{exercise.title}</b></p><p>{exercise.subtitle}</p><p>Objectif suivant : {rule.level1Label||"progresser"}.</p></>}
@@ -178,6 +200,6 @@ export default function TrainingCustomExercisePlay({config,onExit,exercise}:{con
         {(rule.params?.manualScores||[0,1]).map((v:number,i:number)=><button key={v} onClick={()=>manualHit(v)} style={{minHeight:80,borderRadius:14,border:"1px solid rgba(255,255,255,.12)",background:v?"rgba(80,255,174,.08)":"rgba(255,80,80,.06)",color:"inherit",fontWeight:950,cursor:"pointer"}}>{rule.params?.manualLabels?.[i]|| (v?"TOUCHÉ":"RATÉ")}<div style={{marginTop:5,fontSize:12,opacity:.6}}>+{v}</div></button>)}
       </div> : <TrainingDartPad disabled={!!result} onVisit={applyVisit} requireFullVisit={false} notice={<div style={{fontSize:11,textAlign:"center",opacity:.72}}>Saisis tes fléchettes normalement. Le moteur applique automatiquement les règles de l'exercice.</div>} />}
     </TrainingPlayLayout>
-    <TrainingResultModal open={!!result} success={!!result?.success} title={result?.success?"Séance terminée":"Séance arrêtée"} stats={result?.stats||makeTrainingStats({darts:0,hits:0,points:0,startedAt:Date.now()})} metrics={result?[{label:"EXERCICE",value:exercise.title},{label:"POINTS",value:s.points},{label:"FLÉCHETTES",value:s.darts},{label:"OBJECTIF",value:rule.level1Label||"—"}]:[]} onClose={onExit}/>
+    <TrainingResultModal open={!!result} success={!!result?.success} title={result?.success?"Objectif atteint":"Objectif à retenter"} stats={result?.stats||makeTrainingStats({darts:0,hits:0,points:0,startedAt:Date.now()})} metrics={result?[{label:"EXERCICE",value:exercise.title},{label:result.outcome?.metricLabel||"SCORE",value:result.outcome?.metricValue??s.points},{label:"PERFORMANCE",value:`${Math.round(result.metrics?.performanceScore||0)}/100`},{label:"OBJECTIF",value:rule.level1Label||"—"}]:[]} onClose={onExit}/>
   </>;
 }

@@ -80,7 +80,6 @@ export type CloudImportResult = {
 ========================= */
 import { computeCricketLegStats, type CricketHit } from "./StatsCricket";
 
-import { queueCompletedMatchAutoBackup } from "./completedMatchAutoBackup";
 import { saveMatchBackupAfterHistoryUpsert } from "./matchAutoBackup";
 import { scheduleStatsIndexRefresh } from "./stats/rebuildStatsFromHistory";
 import { encodeCompactMatch, estimateCompactBytes } from "./matchCompactCodec";
@@ -212,6 +211,19 @@ function inferHistoryStatus(rec: any): "in_progress" | "finished" {
     return "finished";
   } catch {
     return "finished";
+  }
+}
+
+function isDefinitelyFinishedForBackup(rec: any): boolean {
+  try {
+    const rawStatus = String(rec?.status || "").trim().toLowerCase();
+    const activeStatuses = new Set([
+      "in_progress", "inprogress", "playing", "live", "started",
+      "active", "pending", "running", "lobby",
+    ]);
+    return inferHistoryStatus(rec) === "finished" && !activeStatuses.has(rawStatus);
+  } catch {
+    return false;
   }
 }
 
@@ -4291,7 +4303,7 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     // - ne bloque jamais le gameplay ni l'historique si le NAS est lent
     // ================================
     try {
-      if (!isCloudImporting() && String((safe as any)?.status || "").toLowerCase() !== "in_progress") {
+      if (!isCloudImporting() && isDefinitelyFinishedForBackup(safe)) {
         // Archive aussi la version PRECEDENTE. Le stockage de sauvegardes est
         // content-addressed/dédupliqué : si elle existe déjà, aucun doublon utile
         // n'est créé. Si une vraie modification arrive, on conserve donc bien
@@ -4473,7 +4485,7 @@ export async function upsert(rec: SavedMatch): Promise<void> {
 
       // Même garde-fou en fallback compressé : sauvegarde par partie non bloquante.
       try {
-        if (String((trimmed as any)?.status || "").toLowerCase() !== "in_progress") {
+        if (isDefinitelyFinishedForBackup(trimmed)) {
           void saveMatchBackupAfterHistoryUpsert({
             header: trimmed,
             payload: payloadFallback,
@@ -4539,26 +4551,11 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     }
   }
 
-  // Sauvegarde complète après CHAQUE partie réellement terminée.
-  // IMPORTANT : plusieurs modes utilisent "live", "started", "active", etc.
-  // pendant le jeu. Tester seulement `status !== in_progress` déclenchait donc des
-  // sauvegardes lourdes en pleine partie. On s'appuie sur le normaliseur History
-  // et on exclut explicitement tous les états actifs connus.
-  try {
-    const rawStatus = String((safe as any)?.status || "").trim().toLowerCase();
-    const activeStatuses = new Set([
-      "in_progress", "inprogress", "playing", "live", "started",
-      "active", "pending", "running", "lobby",
-    ]);
-    const definitelyFinished = inferHistoryStatus(safe) === "finished" && !activeStatuses.has(rawStatus);
-    if (!isCloudImporting() && definitelyFinished) {
-      queueCompletedMatchAutoBackup({
-        matchId: String((safe as any)?.matchId || (safe as any)?.id || "match"),
-        updatedAt: (safe as any)?.updatedAt || (safe as any)?.finishedAt || Date.now(),
-        kind: String((safe as any)?.kind || "match"),
-      });
-    }
-  } catch {}
+  // W5 PIPELINE UNIQUE : aucun snapshot complet n'est déclenché ici.
+  // History.upsert a déjà persisté la partie, créé sa sauvegarde individuelle et
+  // alimenté le journal incrémental. L'événement msc:local-match-committed émis
+  // plus haut réveille l'orchestrateur global, qui envoie les deltas et ne crée
+  // un checkpoint complet que lorsqu'il est réellement dû.
 }
 
 // ============================================

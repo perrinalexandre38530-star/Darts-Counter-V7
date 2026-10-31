@@ -7,6 +7,7 @@ import { getAllDartSets } from "./dartSetsStore";
 import { readAvatarGallery } from "./avatarGallery";
 import { History } from "./history";
 import { loadStatsIndex } from "./stats/rebuildStatsFromHistory";
+import { hashHistoryIdSet, runLocalDataIntegrityReleaseGate } from "./historyIntegrityGate";
 import { listLocalMemorySlots } from "./storageVault";
 import { loadStoragePrefs } from "./storagePlans";
 import { getAccountOwnedLocalProfiles } from "./accountOwnedSync";
@@ -353,6 +354,26 @@ export async function runAccountSyncDiagnostic(options: { activeProbe?: boolean 
     data: localCounts,
   });
 
+  try {
+    const gate = await runLocalDataIntegrityReleaseGate({ repairStats: activeProbe });
+    add(checks, {
+      id: "history_stats_release_gate",
+      label: "Release Gate History / Stats",
+      status: gate.ok ? "ok" : "fail",
+      detail: gate.ok
+        ? `IDs alignés : ${gate.stats.actualCount} match(s) indexé(s) · History ${gate.history.manifest.activeIdsHash} · Stats ${gate.stats.actualIdsHash}.`
+        : `Divergence : attendus ${gate.stats.expectedCount}, Stats ${gate.stats.actualCount} · manquants ${gate.stats.missingIds.length} · en trop ${gate.stats.extraIds.length} · metadata ${gate.stats.metadataMatchesHistoryAuthority ? "OK" : "KO"}.`,
+      data: gate,
+    });
+  } catch (error: any) {
+    add(checks, {
+      id: "history_stats_release_gate",
+      label: "Release Gate History / Stats",
+      status: "fail",
+      detail: String(error?.message || error || "Contrôle History/Stats impossible"),
+    });
+  }
+
   // Ne jamais comparer R2 avec TOUT IndexedDB : ce coffre contient aussi des
   // miniatures obsolètes, avatars online, bots officiels et anciens essais. Le
   // diagnostic doit exiger uniquement les médias encore référencés par le compte.
@@ -473,14 +494,31 @@ export async function runAccountSyncDiagnostic(options: { activeProbe?: boolean 
     data: { inlineTypes: inlineRows.map((row: any) => row?.document_type), largestPayload },
   });
 
-  const remoteHistoryCount = Number(remoteCounts.history_match || 0);
-  const historyGap = Math.abs(remoteHistoryCount - finishedHistory.length);
+  const remoteHistoryRows = remoteMeta.filter((row: any) => !row?.deleted_at && String(row?.document_type || "") === "history_match");
+  const remoteHistoryIds = Array.from(new Set(remoteHistoryRows.map((row: any) => String(row?.document_id || "").trim()).filter(Boolean))).sort();
+  const localFinishedIds = Array.from(new Set(finishedHistory.map((row: any) => String(row?.id || row?.matchId || "").trim()).filter(Boolean))).sort();
+  const localFinishedSet = new Set(localFinishedIds);
+  const remoteHistorySet = new Set(remoteHistoryIds);
+  const missingRemoteIds = localFinishedIds.filter((id) => !remoteHistorySet.has(id));
+  const extraRemoteIds = remoteHistoryIds.filter((id) => !localFinishedSet.has(id));
+  const historyIdsEqual = missingRemoteIds.length === 0 && extraRemoteIds.length === 0 && localFinishedIds.length === remoteHistoryIds.length;
   add(checks, {
     id: "history_stats",
     label: "History / Stats du compte",
-    status: historyGap > 0 ? (activeProbe ? "fail" : "warn") : "ok",
-    detail: `History terminée locale ${finishedHistory.length} · History serveur ${remoteHistoryCount} · stats_index ${singletonByType.has("stats_index") ? "présent" : "absent"}.`,
-    data: { localFinished: finishedHistory.length, remoteHistory: remoteHistoryCount, statsIndexRemote: singletonByType.has("stats_index") },
+    status: historyIdsEqual ? "ok" : (activeProbe ? "fail" : "warn"),
+    detail: historyIdsEqual
+      ? `History locale/cloud alignée : ${localFinishedIds.length} partie(s) · hash ${hashHistoryIdSet(localFinishedIds)} · stats_index distant ${singletonByType.has("stats_index") ? "legacy présent" : "absent"}.`
+      : `History locale/cloud divergente : local ${localFinishedIds.length} (${hashHistoryIdSet(localFinishedIds)}) · cloud ${remoteHistoryIds.length} (${hashHistoryIdSet(remoteHistoryIds)}) · manquants cloud ${missingRemoteIds.length} · en trop cloud ${extraRemoteIds.length}.`,
+    data: {
+      localFinished: localFinishedIds.length,
+      remoteHistory: remoteHistoryIds.length,
+      localIdsHash: hashHistoryIdSet(localFinishedIds),
+      remoteIdsHash: hashHistoryIdSet(remoteHistoryIds),
+      historyIdsEqual,
+      missingRemoteIds: missingRemoteIds.slice(0, 40),
+      extraRemoteIds: extraRemoteIds.slice(0, 40),
+      statsIndexRemote: singletonByType.has("stats_index"),
+    },
   });
 
   // Realtime : l'abonnement seul est non destructif. En mode actif, on vérifie aussi écriture/événement/suppression.

@@ -4,8 +4,52 @@ import Wave61SharedConfig, { type Wave61DedicatedOption } from "../../Wave61Shar
 export const WAVE61_MODE_ID = "three_colors" as const;
 
 const DEDICATED_OPTIONS: Wave61DedicatedOption[] = [
+  {
+    key: "scoreMode",
+    label: "Score d'une volée réussie",
+    type: "select",
+    defaultValue: "real",
+    options: [
+      { value: "real", label: "VALEUR RÉELLE · somme des 3 impacts" },
+      { value: "base", label: "SECTEURS · somme des numéros sans multiplicateur" },
+    ],
+    help: "La règle standard utilise la valeur réelle de la cible. Le mode Secteurs neutralise Double/Triple pour une partie plus accessible.",
+  },
+  {
+    key: "perfectVisitBonus",
+    label: "Bonus volée 3 couleurs",
+    type: "number",
+    defaultValue: 0,
+    min: 0,
+    max: 100,
+    step: 5,
+    help: "Bonus ajouté uniquement lorsqu'une volée contient exactement 3 couleurs différentes valides.",
+  },
+  {
+    key: "bullColors",
+    label: "BULL 25 / 50",
+    type: "select",
+    defaultValue: "colors",
+    options: [
+      { value: "colors", label: "COULEURS · 25=VERT / 50=ROUGE" },
+      { value: "neutral", label: "NEUTRES · les Bulls ne comptent pas comme couleur" },
+    ],
+    help: "En mode Couleurs, les deux Bulls peuvent compléter une combinaison de trois couleurs. En mode Neutres, ils peuvent rapporter des points uniquement si la volée reste valide avec les trois autres impacts, ce qui est impossible sur une volée de 3 : ils rendent donc la volée invalide.",
+  },
+  {
+    key: "invalidVisitPenalty",
+    label: "Pénalité volée incomplète",
+    type: "number",
+    defaultValue: 0,
+    min: 0,
+    max: 100,
+    step: 5,
+    help: "0 = règle classique : une volée qui n'obtient pas trois couleurs différentes marque simplement 0.",
+  },
 ];
 
-const DEDICATED_INTRO = "Réussis trois couleurs différentes sur la même volée. Si les 3 couleurs sont présentes, la somme réelle des impacts est ajoutée.";
+const DEDICATED_INTRO = "LES 3 COULEURS se joue sur une volée complète de trois fléchettes. Chaque impact appartient à une couleur de cible : NOIR, BLANC, VERT ou ROUGE. Pour marquer, les trois fléchettes doivent former trois couleurs différentes. Une volée valide marque la somme configurée des impacts ; une volée incomplète vaut 0, sauf pénalité optionnelle. Le meilleur total après le nombre de rounds choisi gagne.";
 
-export default function DedicatedWave61Config(props: any) { return <Wave61SharedConfig {...props} forcedModeId={WAVE61_MODE_ID} dedicatedOptions={DEDICATED_OPTIONS} dedicatedIntro={DEDICATED_INTRO} />; }
+export default function DedicatedWave61Config(props: any) {
+  return <Wave61SharedConfig {...props} forcedModeId={WAVE61_MODE_ID} dedicatedOptions={DEDICATED_OPTIONS} dedicatedIntro={DEDICATED_INTRO} />;
+}

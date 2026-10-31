@@ -106,6 +106,8 @@ export type SportLiveCompetitionMeta = {
   gender?: "men" | "women" | "mixed" | null;
   age?: string | null;
   regionLabel?: string | null;
+  logoUrl?: string | null;
+  logoPageUrl?: string | null;
 };
 
 export type SportLiveEvent = {
