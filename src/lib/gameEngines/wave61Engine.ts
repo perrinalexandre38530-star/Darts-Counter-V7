@@ -3,7 +3,7 @@ import type { GameDart, Player } from "../types-game";
 import { getWave61Preset, type Wave61Family } from "../../games/dartsWave61Families";
 
 // Legacy audit markers preserved: WAVE61_ENGINE_VERSION = 9, WAVE61_ENGINE_VERSION = 10, WAVE61_ENGINE_VERSION = 11, WAVE61_ENGINE_VERSION = 12, WAVE61_ENGINE_VERSION = 13, WAVE61_ENGINE_VERSION = 14, WAVE61_ENGINE_VERSION = 15, WAVE61_ENGINE_VERSION = 16, WAVE61_ENGINE_VERSION = 17.
-export const WAVE61_ENGINE_VERSION = 21;
+export const WAVE61_ENGINE_VERSION = 22;
 
 export type Wave61Difficulty = "easy" | "normal" | "hard";
 export type Wave61ParticipantMode = "players" | "teams";
@@ -215,8 +215,18 @@ function wave61BoardColor(d: GameDart): BoardColor | null {
   if (d.bed === "D" || d.bed === "T") return GREEN_RING.includes(n as any) ? "GREEN" : "RED";
   return null;
 }
-function blackWhiteAssignments(ids:string[], seed:string){
-  const firstBlack = hashText(seed) % 2 === 0;
+function blackWhiteAssignments(ids:string[], seed:string, config?: Wave61Config){
+  const firstTrack = String(config?.modeOptions?.firstTrack || "random").toLowerCase();
+  const firstBlack = firstTrack === "black" ? true : firstTrack === "white" ? false : hashText(seed) % 2 === 0;
+  if (config?.participantMode === "teams") {
+    const byPlayer = config?.teamByPlayer || {};
+    const teamIds = Array.from(new Set(ids.map((id) => String(byPlayer[id] || "")).filter(Boolean)));
+    return Object.fromEntries(ids.map((id,i)=>{
+      const teamIndex = Math.max(0, teamIds.indexOf(String(byPlayer[id] || "")));
+      const slot = teamIds.length ? teamIndex : i;
+      return [id, ((slot%2===0)===firstBlack)?"BLACK":"WHITE"];
+    }));
+  }
   return Object.fromEntries(ids.map((id,i)=>[id, ((i%2===0)===firstBlack)?"BLACK":"WHITE"]));
 }
 const COLOR_CALL_COLORS: BoardColor[] = ["BLACK","WHITE","GREEN","RED"];
@@ -605,7 +615,14 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
       greenRedBullBonusByPlayer: modeId === "green_vs_red" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       greenRedVariantId: modeId === "green_vs_red" ? String(config?.variantId || `gvr:${String(config?.modeOptions?.contractRule || "official_unique")}:${String(config?.modeOptions?.scoreModel || "hit_count")}:${String(config?.modeOptions?.bullAccess || "final_only")}:${String(config?.modeOptions?.penaltyModel || "transfer")}:${String(config?.modeOptions?.bullRule || "classic")}:base${Number(config?.modeOptions?.transferBaseErrorPoints ?? 1)}:opp${Number(config?.modeOptions?.transferOppMultiplier ?? 2)}:miss${Number(config?.modeOptions?.transferMissPoints ?? config?.modeOptions?.transferMissMultiplier ?? 2)}`) : "",
       greenRedHistory: [],
-      blackWhiteColorByPlayer: modeId === "black_vs_white" ? blackWhiteAssignments(ids, seedText) : {},
+      blackWhiteColorByPlayer: modeId === "black_vs_white" ? blackWhiteAssignments(ids, seedText, config) : {},
+      blackWhiteValidHitsByPlayer: modeId === "black_vs_white" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      blackWhiteWrongColorByPlayer: modeId === "black_vs_white" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      blackWhiteMissesByPlayer: modeId === "black_vs_white" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      blackWhiteDtHitsByPlayer: modeId === "black_vs_white" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      blackWhiteBullPointsByPlayer: modeId === "black_vs_white" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      blackWhitePenaltyPointsByPlayer: modeId === "black_vs_white" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      blackWhitePerfectVisitsByPlayer: modeId === "black_vs_white" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       colorCallSequence: modeId === "color_call" ? Array.from({ length: Math.max(80, config.rounds * Math.max(1, ids.length)) }, (_, i) => COLOR_CALL_COLORS[(hashText(seedText) + i * 3) % 4]) : [],
       colorModeHistory: [],
       sniperContracts: modeId === "sniper" ? sniperContracts(seedText, Math.max(12, config.goal || 12)) : [],
@@ -1547,22 +1564,50 @@ function processShoveAPenny(state: Wave61State, playerId: string, darts: GameDar
 function processBlackVsWhite(state: Wave61State, playerId: string, darts: GameDart[], events: string[]): { delta:number; hits:number } {
   const own = String(state.special?.blackWhiteColorByPlayer?.[playerId] || "BLACK") as "BLACK"|"WHITE";
   const dtRule = String(state.config?.modeOptions?.dtRule || "bonus");
+  const bullRule = String(state.config?.modeOptions?.bullRule || "bonus");
   const bullBonus = modeOptionNumber(state.config,"bullBonus",25,0,100);
   const wrongPenalty = modeOptionNumber(state.config,"wrongColorPenalty",5,0,50);
   const missPenalty = modeOptionNumber(state.config,"missPenalty",5,0,50);
   const dtPenalty = modeOptionNumber(state.config,"dtPenalty",5,0,50);
-  let delta=0,hits=0;
+  const perfectBonus = modeOptionNumber(state.config,"perfectVisitBonus",0,0,100);
+  let delta=0,hits=0,wrong=0,misses=0,dtHits=0,bullPoints=0,penalties=0;
+  const dartResults:any[]=[];
   for(const d of darts){
-    if(!d || d.bed==="MISS"){ delta-=missPenalty; events.push(`MISS · -${missPenalty}`); continue; }
-    if(d.bed==="OB" || d.bed==="IB"){ delta+=bullBonus; hits++; events.push(`BULL bonus · +${bullBonus}`); continue; }
-    const color=wave61BoardColor(d); const n=Number(d.number||0);
-    if(d.bed==="S"){ if(color===own){delta+=n;hits++;events.push(`${own} S${n} · +${n}`);} else {delta-=wrongPenalty;events.push(`Couleur adverse · -${wrongPenalty}`);} continue; }
-    if(color===own && dtRule==="bonus"){ const pts=wave61DartScore(d);delta+=pts;hits++;events.push(`${wave61DartLabel(d)} bonus · +${pts}`); }
-    else if(color===own && dtRule==="neutral"){ delta+=n;hits++;events.push(`${wave61DartLabel(d)} neutralisé · +${n}`); }
-    else { delta-=dtPenalty;events.push(`${wave61DartLabel(d)} pénalité · -${dtPenalty}`); }
+    if(!d || d.bed==="MISS"){ delta-=missPenalty; penalties+=missPenalty; misses++; dartResults.push({result:"miss",points:-missPenalty}); events.push(`MISS · -${missPenalty}`); continue; }
+    if(d.bed==="OB" || d.bed==="IB"){
+      if(bullRule==="neutral"){ dartResults.push({result:"neutral",points:0}); events.push(`${wave61DartLabel(d)} · 0`); continue; }
+      if(bullRule==="penalty"){ delta-=dtPenalty; penalties+=dtPenalty; dartResults.push({result:"penalty",points:-dtPenalty}); events.push(`${wave61DartLabel(d)} pénalité · -${dtPenalty}`); continue; }
+      delta+=bullBonus; bullPoints+=bullBonus; hits++; dartResults.push({result:"bull",points:bullBonus}); events.push(`${wave61DartLabel(d)} bonus · +${bullBonus}`); continue;
+    }
+    const n=Number(d.number||0);
+    const color = d.bed === "S" ? wave61BoardColor(d) : (WHITE_SINGLES.includes(n as any) ? "WHITE" : "BLACK");
+    if(d.bed==="S"){
+      if(color===own){delta+=n;hits++;dartResults.push({result:"valid",points:n,color});events.push(`${own} S${n} · +${n}`);}
+      else {delta-=wrongPenalty;penalties+=wrongPenalty;wrong++;dartResults.push({result:"wrong",points:-wrongPenalty,color});events.push(`Couleur adverse · -${wrongPenalty}`);}
+      continue;
+    }
+    if(color===own && dtRule==="bonus"){ const pts=wave61DartScore(d);delta+=pts;hits++;dtHits++;dartResults.push({result:"valid_dt",points:pts,color});events.push(`${wave61DartLabel(d)} bonus · +${pts}`); }
+    else if(color===own && dtRule==="neutral"){ delta+=n;hits++;dtHits++;dartResults.push({result:"valid_dt",points:n,color});events.push(`${wave61DartLabel(d)} neutralisé · +${n}`); }
+    else { delta-=dtPenalty;penalties+=dtPenalty;dartResults.push({result:"penalty",points:-dtPenalty,color});events.push(`${wave61DartLabel(d)} pénalité · -${dtPenalty}`); }
   }
+  const perfect = darts.length===3 && hits===3 && penalties===0;
+  if(perfect && perfectBonus>0){ delta+=perfectBonus; events.push(`✨ Volée parfaite · +${perfectBonus}`); }
   state.scores[playerId]=Math.max(0,Number(state.scores[playerId]||0)+delta); state.progress[playerId]=state.scores[playerId];
-  state.special.colorModeHistory=[...(state.special.colorModeHistory||[]),{playerId,mode:"black_vs_white",delta,score:state.scores[playerId]}].slice(-60);
+  state.special.blackWhiteValidHitsByPlayer = state.special.blackWhiteValidHitsByPlayer || {};
+  state.special.blackWhiteWrongColorByPlayer = state.special.blackWhiteWrongColorByPlayer || {};
+  state.special.blackWhiteMissesByPlayer = state.special.blackWhiteMissesByPlayer || {};
+  state.special.blackWhiteDtHitsByPlayer = state.special.blackWhiteDtHitsByPlayer || {};
+  state.special.blackWhiteBullPointsByPlayer = state.special.blackWhiteBullPointsByPlayer || {};
+  state.special.blackWhitePenaltyPointsByPlayer = state.special.blackWhitePenaltyPointsByPlayer || {};
+  state.special.blackWhitePerfectVisitsByPlayer = state.special.blackWhitePerfectVisitsByPlayer || {};
+  state.special.blackWhiteValidHitsByPlayer[playerId]=Number(state.special.blackWhiteValidHitsByPlayer?.[playerId]||0)+hits;
+  state.special.blackWhiteWrongColorByPlayer[playerId]=Number(state.special.blackWhiteWrongColorByPlayer?.[playerId]||0)+wrong;
+  state.special.blackWhiteMissesByPlayer[playerId]=Number(state.special.blackWhiteMissesByPlayer?.[playerId]||0)+misses;
+  state.special.blackWhiteDtHitsByPlayer[playerId]=Number(state.special.blackWhiteDtHitsByPlayer?.[playerId]||0)+dtHits;
+  state.special.blackWhiteBullPointsByPlayer[playerId]=Number(state.special.blackWhiteBullPointsByPlayer?.[playerId]||0)+bullPoints;
+  state.special.blackWhitePenaltyPointsByPlayer[playerId]=Number(state.special.blackWhitePenaltyPointsByPlayer?.[playerId]||0)+penalties;
+  if(perfect) state.special.blackWhitePerfectVisitsByPlayer[playerId]=Number(state.special.blackWhitePerfectVisitsByPlayer?.[playerId]||0)+1;
+  state.special.colorModeHistory=[...(state.special.colorModeHistory||[]),{playerId,mode:"black_vs_white",own,delta,score:state.scores[playerId],hits,wrong,misses,dtHits,bullPoints,penalties,perfect,dartResults}].slice(-120);
   return {delta,hits};
 }
 function processThreeColors(state: Wave61State, playerId:string, darts:GameDart[], events:string[]): {delta:number;hits:number}{
@@ -4384,8 +4429,22 @@ export function pickWave61BotDarts(state: Wave61State, level: Wave61Difficulty =
     }
   }
   if (state.modeId === "black_vs_white") {
-    const own=String(state.special?.blackWhiteColorByPlayer?.[activeId]||"BLACK"); const pool=own==="WHITE"?WHITE_SINGLES:BLACK_SINGLES;
-    return Array.from({length:3},()=>Math.random()<chance?({bed:"S",number:Number(pool[Math.floor(Math.random()*pool.length)])} as GameDart):({bed:"MISS"} as GameDart));
+    const own=String(state.special?.blackWhiteColorByPlayer?.[activeId]||"BLACK");
+    const ownPool=own==="WHITE"?WHITE_SINGLES:BLACK_SINGLES;
+    const oppPool=own==="WHITE"?BLACK_SINGLES:WHITE_SINGLES;
+    const dtRule=String(state.config?.modeOptions?.dtRule||"bonus");
+    const bullRule=String(state.config?.modeOptions?.bullRule||"bonus");
+    return Array.from({length:3},()=>{
+      const roll=Math.random();
+      if(roll>=chance){
+        if(Math.random()<0.55) return {bed:"MISS"} as GameDart;
+        return {bed:"S",number:Number(oppPool[Math.floor(Math.random()*oppPool.length)])} as GameDart;
+      }
+      if(bullRule==="bonus" && Math.random() < (level==="hard"?0.12:level==="normal"?0.07:0.035)) return {bed:Math.random()<0.34?"IB":"OB"} as GameDart;
+      const n=Number(ownPool[Math.floor(Math.random()*ownPool.length)]);
+      if(dtRule!=="penalty" && Math.random() < (level==="hard"?0.28:level==="normal"?0.14:0.05)) return {bed:Math.random()<0.58?"T":"D",number:n} as GameDart;
+      return {bed:"S",number:n} as GameDart;
+    });
   }
   if (state.modeId === "three_colors") {
     const colors=[...COLOR_CALL_COLORS].sort(()=>Math.random()-.5).slice(0,3);

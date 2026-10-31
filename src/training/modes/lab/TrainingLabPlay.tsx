@@ -2,6 +2,7 @@ import React from "react";
 import TrainingPlayLayout from "../../ui/TrainingPlayLayout";
 import TrainingDartPad from "../../ui/TrainingDartPad";
 import TrainingResultModal from "../../ui/TrainingResultModal";
+import TrainingCustomExercisePlay from "./TrainingCustomExercisePlay";
 import { appendTrainingVisit, recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
 import { getTrainingExercise } from "../../catalog/trainingExerciseCatalog";
 import { buildTrainingLiveAdaptation, buildTrainingLiveStepCoach, type TrainingLiveAdaptation } from "../../profile/trainingLiveCoach";
@@ -33,7 +34,7 @@ type ProgramStepResult = {
 };
 const emptyRun = (): RunState => ({ darts: 0, hits: 0, points: 0, progress: 0, checkoutTotal: 0 });
 
-export default function TrainingLabPlay({ config, onExit }: { config: any; onExit: () => void }) {
+function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () => void }) {
   const accountParticipantId = String(config?.activeParticipant?.id || config?.selectedPlayerIds?.[0] || "").trim() || null;
   const initialProgramIds = React.useMemo(() => {
     const ids = Array.isArray(config?.programExerciseIds) ? config.programExerciseIds.map(String).filter(Boolean) : [];
@@ -435,4 +436,13 @@ export default function TrainingLabPlay({ config, onExit }: { config: any; onExi
       </div>
     </div>}
   </>;
+}
+
+
+export default function TrainingLabPlay(props: { config: any; onExit: () => void }) {
+  const ids = Array.isArray(props.config?.programExerciseIds) ? props.config.programExerciseIds.map(String).filter(Boolean) : [];
+  const exerciseId = ids.length ? ids[Math.max(0, Math.min(ids.length - 1, Number(props.config?.resumeStepIndex) || 0))] : String(props.config?.exerciseId || "");
+  const exercise = getTrainingExercise(exerciseId);
+  if (exercise?.engine === "custom") return <TrainingCustomExercisePlay config={props.config} onExit={props.onExit} exercise={exercise} />;
+  return <TrainingLabStandardPlay {...props} />;
 }

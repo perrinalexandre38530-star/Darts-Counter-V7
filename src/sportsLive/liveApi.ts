@@ -9,7 +9,7 @@ const CACHE_EVENT_LIMIT = 420;
 const CACHE_NEWS_LIMIT = 520;
 
 function isSupportedSport(value: SportId): boolean {
-  return ["darts", "petanque", "pingpong", "babyfoot", "molkky", "foot", "padel", "badminton", "cornhole", "bowling"].includes(String(value));
+  return ["darts", "petanque", "pingpong", "babyfoot", "molkky", "foot", "padel", "badminton", "cornhole", "bowling", "esports"].includes(String(value));
 }
 
 function emptyOverview(sport: SportId): SportLiveOverview {

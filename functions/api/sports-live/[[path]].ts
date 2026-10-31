@@ -926,8 +926,19 @@ const SPORT_SOURCE_DOMAINS: Record<string, string[]> = {
   badminton: ["bwfbadminton.com", "bwf.tournamentsoftware.com", "tournamentsoftware.com", "badmintoneurope.com", "ffbad.org", "ffbad.tournamentsoftware.com", "badmintonengland.co.uk"],
   cornhole: ["iplayacl.com", "americancornhole.com", "scoreholio.com", "cornholeplayers.com", "ofch.fr"],
   bowling: ["pba.com", "bowling.sport", "etbf.eu", "bowl.com", "lanetalk.com", "bowlingresults.info", "leaguesecretary.com", "ffbsq.org", "ffbsq.fr"],
+
 };
 
+SPORT_SOURCE_DOMAINS.esports.push("hltv.org","vlr.gg","faceit.com","challengermode.com","start.gg","battlefy.com","toornament.com","gosugamers.net");
+SPORT_SOURCE_DOMAINS.basket.push("championsleague.basketball","lnb.fr","ncaa.com","eurobasket.com");
+SPORT_SOURCE_DOMAINS.rugby.push("unitedrugby.com","premiershiprugby.com","rugbyeurope.eu","competitions.ffr.fr","super.rugby","majorleague.rugby","sarugby.co.za");
+SPORT_SOURCE_DOMAINS.volleyball.push("legavolley.it","plusliga.pl","svleague.jp","volleybox.net");
+SPORT_SOURCE_DOMAINS.tennis.push("tenniseurope.org","usta.com","competitions.lta.org.uk","tennis.com.au");
+SPORT_SOURCE_DOMAINS.chess.push("chess.com","chessmanager.com");
+SPORT_SOURCE_DOMAINS.billiards.push("epbf.com","azbilliards.com","kozoom.com","ultimatepoolgroup.com");
+SPORT_SOURCE_DOMAINS.archery.push("archerygb.org","usarchery.org","archeryeurope.org");
+SPORT_SOURCE_DOMAINS.pickleball.push("dupr.com","pickleballbrackets.com");
+SPORT_SOURCE_DOMAINS.frisbee.push("ukultimate.com","ultiworld.com");
 
 function competitionMetaFor(sport: string, competition?: string | null, sourceName?: string | null, sourceUrl?: string | null): CompetitionMeta {
   const raw = `${competition || ""} ${sourceName || ""} ${sourceUrl || ""}`.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, " ");
@@ -1262,7 +1273,74 @@ const DIRECT_EDITORIAL_PAGES: Record<string, Array<{ url: string; sourceName: st
     { url: "https://esl.com/", sourceName: "ESL", scope: "world", scopeLabel: "Monde" },
     { url: "https://liquipedia.net/", sourceName: "Liquipedia", scope: "world", scopeLabel: "Multi-jeux" },
   ],
+
 };
+
+// V232 — additional result-bearing sources for active and future LIVE sports.
+// These are deliberately page-level collectors: when a page exposes an explicit
+// score/table row, directEditorialIntelligence can promote it to structured results.
+DIRECT_EDITORIAL_PAGES.esports.push(
+  { url:"https://www.hltv.org/results", sourceName:"HLTV", scope:"world", scopeLabel:"CS2 / Monde" },
+  { url:"https://www.hltv.org/matches", sourceName:"HLTV Matches", scope:"world", scopeLabel:"CS2 / Monde" },
+  { url:"https://www.vlr.gg/matches/results", sourceName:"VLR", scope:"world", scopeLabel:"VALORANT / Monde" },
+  { url:"https://www.vlr.gg/matches", sourceName:"VLR Matches", scope:"world", scopeLabel:"VALORANT / Monde" },
+  { url:"https://www.start.gg/search/tournaments", sourceName:"start.gg", scope:"world", scopeLabel:"Fighting / Smash / communauté" },
+  { url:"https://www.toornament.com/en_US/tournaments", sourceName:"Toornament", scope:"world", scopeLabel:"Multi-jeux / communauté" },
+  { url:"https://www.gosugamers.net/matches", sourceName:"GosuGamers", scope:"world", scopeLabel:"Multi-jeux / Monde" }
+);
+DIRECT_EDITORIAL_PAGES.basket.push(
+  { url:"https://www.championsleague.basketball/games", sourceName:"Basketball Champions League", scope:"regional", scopeLabel:"Europe" },
+  { url:"https://www.euroleaguebasketball.net/eurocup/game-center/", sourceName:"EuroCup", scope:"regional", scopeLabel:"Europe" },
+  { url:"https://www.lnb.fr/elite/calendrier-resultats/", sourceName:"LNB", scope:"local", scopeLabel:"France / D1" },
+  { url:"https://www.ncaa.com/scoreboard/basketball-men/d1", sourceName:"NCAA", scope:"regional", scopeLabel:"USA / universitaire" },
+  { url:"https://www.eurobasket.com/", sourceName:"Eurobasket", scope:"world", scopeLabel:"Monde / divisions" }
+);
+DIRECT_EDITORIAL_PAGES.rugby.push(
+  { url:"https://www.unitedrugby.com/fixtures-results", sourceName:"URC", scope:"regional", scopeLabel:"Europe / Afrique" },
+  { url:"https://www.premiershiprugby.com/fixtures-results", sourceName:"Premiership Rugby", scope:"regional", scopeLabel:"Angleterre / D1" },
+  { url:"https://www.rugbyeurope.eu/competitions/", sourceName:"Rugby Europe", scope:"regional", scopeLabel:"Europe / sélections" },
+  { url:"https://competitions.ffr.fr/", sourceName:"FFR Compétitions", scope:"local", scopeLabel:"France / fédéral / amateur" },
+  { url:"https://super.rugby/superrugby/fixtures/", sourceName:"Super Rugby Pacific", scope:"regional", scopeLabel:"Océanie" },
+  { url:"https://www.majorleague.rugby/schedules/", sourceName:"Major League Rugby", scope:"regional", scopeLabel:"Amérique du Nord" },
+  { url:"https://www.sarugby.co.za/tournaments/", sourceName:"SA Rugby", scope:"regional", scopeLabel:"Afrique du Sud" }
+);
+DIRECT_EDITORIAL_PAGES.volleyball.push(
+  { url:"https://www.legavolley.it/match/", sourceName:"LegaVolley", scope:"regional", scopeLabel:"Italie / D1-D3" },
+  { url:"https://www.plusliga.pl/games.html", sourceName:"PlusLiga", scope:"regional", scopeLabel:"Pologne / D1" },
+  { url:"https://www.svleague.jp/en/schedule/", sourceName:"SV League", scope:"regional", scopeLabel:"Japon / pro" },
+  { url:"https://volleybox.net/matches", sourceName:"Volleybox", scope:"world", scopeLabel:"Monde / clubs" }
+);
+DIRECT_EDITORIAL_PAGES.tennis.push(
+  { url:"https://www.tenniseurope.org/calendarevent/", sourceName:"Tennis Europe", scope:"regional", scopeLabel:"Europe / juniors" },
+  { url:"https://playtennis.usta.com/tournaments", sourceName:"USTA", scope:"regional", scopeLabel:"USA / clubs / juniors" },
+  { url:"https://competitions.lta.org.uk/", sourceName:"LTA Competitions", scope:"regional", scopeLabel:"UK / clubs" },
+  { url:"https://tournaments.tennis.com.au/", sourceName:"Tennis Australia", scope:"regional", scopeLabel:"Australie / tournois" }
+);
+DIRECT_EDITORIAL_PAGES.chess.push(
+  { url:"https://www.chess.com/events", sourceName:"Chess.com Events", scope:"world", scopeLabel:"Monde" },
+  { url:"https://lichess.org/broadcast", sourceName:"Lichess Broadcasts", scope:"world", scopeLabel:"Monde / tournois" },
+  { url:"https://www.chessmanager.com/", sourceName:"ChessManager", scope:"world", scopeLabel:"Clubs / amateur" }
+);
+DIRECT_EDITORIAL_PAGES.billiards.push(
+  { url:"https://www.epbf.com/tournaments/", sourceName:"EPBF", scope:"regional", scopeLabel:"Europe / pool" },
+  { url:"https://www.azbilliards.com/tours_and_events/", sourceName:"AZBilliards", scope:"world", scopeLabel:"Pool / Monde" },
+  { url:"https://www.kozoom.com/en/billiard-carom/results", sourceName:"Kozoom", scope:"world", scopeLabel:"Carambole / Monde" },
+  { url:"https://www.ultimatepoolgroup.com/results", sourceName:"Ultimate Pool", scope:"regional", scopeLabel:"UK / Europe / pro-am" }
+);
+DIRECT_EDITORIAL_PAGES.archery.push(
+  { url:"https://archerygb.org/competitions", sourceName:"Archery GB", scope:"regional", scopeLabel:"UK / clubs" },
+  { url:"https://www.usarchery.org/events", sourceName:"USA Archery", scope:"regional", scopeLabel:"USA / clubs / youth" },
+  { url:"https://www.archeryeurope.org/competition/", sourceName:"World Archery Europe", scope:"regional", scopeLabel:"Europe" }
+);
+DIRECT_EDITORIAL_PAGES.pickleball.push(
+  { url:"https://pickleballbrackets.com/", sourceName:"PickleballBrackets", scope:"world", scopeLabel:"Monde / amateur" },
+  { url:"https://www.dupr.com/", sourceName:"DUPR", scope:"world", scopeLabel:"Monde / clubs / ratings" }
+);
+DIRECT_EDITORIAL_PAGES.frisbee.push(
+  { url:"https://www.ultimatefederation.eu/", sourceName:"European Ultimate Federation", scope:"regional", scopeLabel:"Europe" },
+  { url:"https://www.ukultimate.com/events", sourceName:"UK Ultimate", scope:"regional", scopeLabel:"UK / clubs" },
+  { url:"https://ultiworld.com/scoreboard/", sourceName:"Ultiworld Scoreboard", scope:"world", scopeLabel:"Monde / scoreboard" }
+);
 
 const DARTS_LOCALE_QUERY_PACKS: Record<string, string[]> = {
   fr: [
@@ -1590,7 +1668,7 @@ function intelligenceFeedPlansFor(sport: string, lang: string): IntelligenceFeed
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
-  }).slice(0, 42);
+  }).slice(0, 60);
 }
 
 function coreIntelligenceFeedPlansFor(sport: string, lang: string): IntelligenceFeedPlan[] {
@@ -2020,7 +2098,7 @@ async function googleNewsIntelligence(sport: string, lang: string, depth: "core"
     }
   });
 
-  return balanced.slice(0, 120);
+  return balanced.slice(0, 180);
 }
 
 
@@ -2148,7 +2226,7 @@ async function openAiWebIntelligence(env: Env, sport: string, lang: string): Pro
   if (!key || !spec) return [];
   const model = str(env?.LIVE_INTELLIGENCE_MODEL).trim() || "gpt-6-luna";
   const today = new Date().toISOString().slice(0, 10);
-  const prompt = `Today is ${today}. Search the web broadly for the latest verified ${spec.label} competition news, explicit match results and scores, current live events, rankings/performances and upcoming events from the last 60 days and the next 45 days. Include professional, semi-professional, national federation, regional, county/state/provincial, club, grassroots and amateur tournaments whenever public results exist. Cover the user-language area AND Europe/continental circuits AND the rest of the world; never let one country or one federation dominate. For darts explicitly include PDC, WDF, MODUS, DartConnect/DCTV, CDC North America/Latin America, PDC Nordic & Baltic, France, Benelux/DACH, Australia and New Zealand when relevant. Prioritize official federation/tour/league/club result pages, tournament platforms, brackets and reputable specialist sports media. Search beyond top-tier professional circuits: lower divisions, qualifiers, youth, women, veterans, county/state/provincial, regional and amateur events are all valuable when verifiable. Return ONLY valid JSON with this exact shape: {"items":[{"title":"...","summary":"...","publishedAt":"ISO date or null","sourceName":"...","sourceUrl":"https://...","imageUrl":"https://... or null","kind":"news|result|live|upcoming","resultLabel":"explicit published score/result or null","scope":"local|regional|world","scopeLabel":"country/region/world label"}]}. Maximum 70 items. Prefer concrete result items with explicit scores and competition/round names over generic previews. ALWAYS cover three mandatory scopes: (1) local sources relevant to the requested language/country, (2) regional/continental sources, and (3) worldwide sources and major international circuits. The selected language is a priority, never a geographic filter. For example fr must include France/francophone + Europe + World; zh must include China + Asia + World; ja must include Japan + Asia + World; en must include UK/Ireland + North America + Oceania + World. IMPORTANT: never invent a score, winner, date or live status. resultLabel may contain a numeric score ONLY when a searched source explicitly states that score. Language for title/summary: ${lang || "fr"}.`;
+  const prompt = `Today is ${today}. Search the web broadly for the latest verified ${spec.label} competition news, explicit match results and scores, current live events, rankings/performances and upcoming events from the last 60 days and the next 45 days. Include professional, semi-professional, national federation, regional, county/state/provincial, club, grassroots and amateur tournaments whenever public results exist. Cover the user-language area AND Europe/continental circuits AND the rest of the world; never let one country or one federation dominate. For darts explicitly include PDC, WDF, MODUS, DartConnect/DCTV, CDC North America/Latin America, PDC Nordic & Baltic, France, Benelux/DACH, Australia and New Zealand when relevant. Prioritize official federation/tour/league/club result pages, tournament platforms, brackets and reputable specialist sports media. Search beyond top-tier professional circuits: lower divisions, qualifiers, youth, women, veterans, county/state/provincial, regional and amateur events are all valuable when verifiable. Return ONLY valid JSON with this exact shape: {"items":[{"title":"...","summary":"...","publishedAt":"ISO date or null","sourceName":"...","sourceUrl":"https://...","imageUrl":"https://... or null","kind":"news|result|live|upcoming","resultLabel":"explicit published score/result or null","scope":"local|regional|world","scopeLabel":"country/region/world label"}]}. Maximum 100 items. Prefer concrete result items with explicit scores and competition/round names over generic previews. ALWAYS cover three mandatory scopes: (1) local sources relevant to the requested language/country, (2) regional/continental sources, and (3) worldwide sources and major international circuits. The selected language is a priority, never a geographic filter. For example fr must include France/francophone + Europe + World; zh must include China + Asia + World; ja must include Japan + Asia + World; en must include UK/Ireland + North America + Oceania + World. IMPORTANT: never invent a score, winner, date or live status. resultLabel may contain a numeric score ONLY when a searched source explicitly states that score. Language for title/summary: ${lang || "fr"}.`;
   const response = await timedFetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -2806,7 +2884,7 @@ async function enrichWithLiveIntelligence(
 
   // CORE is intentionally bounded so the journal appears quickly after the
   // structured feed. DEEP runs later from the frontend and can fan out widely.
-  const directPageBudget = deep ? (sport === "darts" ? 32 : sport === "foot" ? 84 : 40) : (sport === "darts" ? 12 : sport === "foot" ? 28 : 14);
+  const directPageBudget = deep ? (sport === "darts" ? 48 : sport === "foot" ? 120 : sport === "esports" ? 72 : 64) : (sport === "darts" ? 14 : sport === "foot" ? 32 : 18);
   const newsSettled = await Promise.allSettled([
     googleNewsIntelligence(sport, lang, deep ? "deep" : "core"),
     deep ? bingNewsIntelligence(sport, lang, "deep") : Promise.resolve([] as IntelligenceNews[]),
@@ -2835,7 +2913,7 @@ async function enrichWithLiveIntelligence(
 
   const chronologicalNews = uniqNews([...ai, ...directRss, ...google, ...bing, ...yahoo, ...directEditorial])
     .sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")));
-  const mergedNews = diversifyNews(chronologicalNews, deep ? (sport === "foot" ? 340 : sport === "darts" ? 320 : 280) : (sport === "foot" ? 180 : sport === "darts" ? 190 : 150));
+  const mergedNews = diversifyNews(chronologicalNews, deep ? (sport === "foot" ? 460 : sport === "darts" ? 400 : sport === "esports" ? 420 : 360) : (sport === "foot" ? 210 : sport === "darts" ? 210 : 170));
   const news = deep ? await enrichNewsImages(mergedNews) : mergedNews;
   const intelligenceEvents = news.map((row) => newsToEvent(row, sport)).filter(Boolean) as NormalEvent[];
   const intelligenceResults = news.map((row) => intelligenceNewsToStructuredResult(row, sport)).filter(Boolean) as NormalResult[];
@@ -2861,8 +2939,8 @@ async function enrichWithLiveIntelligence(
       ...base.payload,
       configured: !!base.payload?.configured || news.length > 0 || direct.results.length > 0,
       automaticData: !!base.payload?.automaticData || news.length > 0 || direct.results.length > 0,
-      results: applyCompetitionMeta(sport, sport === "darts" ? diversifyDartsResults([...direct.results, ...intelligenceResults, ...(arr(base.payload?.results) as NormalResult[])], deep ? 640 : 180) : uniqNormalResults([...direct.results, ...intelligenceResults, ...(arr(base.payload?.results) as NormalResult[])]).slice(0, deep ? (sport === "foot" ? 760 : 520) : (sport === "foot" ? 300 : 180))),
-      fixtures: applyCompetitionMeta(sport, [...direct.fixtures, ...(arr(base.payload?.fixtures) as NormalMatch[])].slice(0, deep ? (sport === "foot" ? 240 : 160) : (sport === "foot" ? 140 : 90))),
+      results: applyCompetitionMeta(sport, sport === "darts" ? diversifyDartsResults([...direct.results, ...intelligenceResults, ...(arr(base.payload?.results) as NormalResult[])], deep ? 640 : 180) : uniqNormalResults([...direct.results, ...intelligenceResults, ...(arr(base.payload?.results) as NormalResult[])]).slice(0, deep ? (sport === "foot" ? 980 : sport === "esports" ? 760 : 680) : (sport === "foot" ? 340 : 220))),
+      fixtures: applyCompetitionMeta(sport, [...direct.fixtures, ...(arr(base.payload?.fixtures) as NormalMatch[])].slice(0, deep ? (sport === "foot" ? 320 : sport === "esports" ? 240 : 220) : (sport === "foot" ? 160 : 110))),
       events: mergedEvents,
       news,
       intelligence: {

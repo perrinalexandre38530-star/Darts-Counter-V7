@@ -136,6 +136,7 @@ export default function Wave61EndSummary({ state, profiles, accent, familyLabel 
     ? Object.entries(state?.teamScores || {}).map(([id, score]) => ({ id, score: n(score), winner: String(state?.winnerTeamId || "") === String(id) })).sort((a, b) => (a.winner === b.winner ? b.score - a.score : a.winner ? -1 : 1))
     : [];
   const isGreenRed = state?.modeId === "green_vs_red";
+  const isBlackWhite = state?.modeId === "black_vs_white";
   const greenRedFormat = String(state?.config?.modeOptions?.matchFormat || "duel");
   const greenRedBullRule = String(state?.config?.modeOptions?.bullRule || "classic");
   const greenRedRuleLabel = greenRedBullRule === "color_lock" ? "BULL DE COULEUR" : greenRedBullRule === "color_bonus" ? "BULL BONUS" : "CLASSIQUE";
@@ -172,6 +173,36 @@ export default function Wave61EndSummary({ state, profiles, accent, familyLabel 
         })}
       </div>
     </div> : null}
+
+    {isBlackWhite ? <div data-black-white-final-table="1" style={{ ...card(accent),padding:8,width:"100%",maxWidth:"100%",minWidth:0,boxSizing:"border-box",overflow:"hidden" }}>
+      <div style={{ display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",marginBottom:7,flexWrap:"wrap" }}>
+        <div style={{ color:accent,fontSize:9,fontWeight:1050,letterSpacing:.8 }}>BLACK VS WHITE · TABLEAU FINAL</div>
+        <div style={{ color:SOFT,fontSize:8.3,fontWeight:900 }}>{state?.config?.rounds || 0} ROUNDS · meilleur total</div>
+      </div>
+      <div style={{ display:"grid",gap:6,minWidth:0 }}>
+        {rows.map((row:any)=>{
+          const color=String(state?.special?.blackWhiteColorByPlayer?.[row.id]||"BLACK");
+          const tone=color==="WHITE"?"#f4f6fb":"#aab2c2";
+          const valid=n(state?.special?.blackWhiteValidHitsByPlayer?.[row.id]);
+          const wrong=n(state?.special?.blackWhiteWrongColorByPlayer?.[row.id]);
+          const penalties=n(state?.special?.blackWhitePenaltyPointsByPlayer?.[row.id]);
+          const dt=n(state?.special?.blackWhiteDtHitsByPlayer?.[row.id]);
+          const bull=n(state?.special?.blackWhiteBullPointsByPlayer?.[row.id]);
+          const perfect=n(state?.special?.blackWhitePerfectVisitsByPlayer?.[row.id]);
+          return <div key={row.id} style={{ minWidth:0,borderRadius:11,border:`1px solid ${row.winner?accent+"70":"rgba(255,255,255,.08)"}`,background:row.winner?`${accent}0d`:"rgba(255,255,255,.02)",padding:8,display:"grid",gap:7 }}>
+            <div style={{ display:"grid",gridTemplateColumns:"24px minmax(0,1fr) auto",gap:7,alignItems:"center",minWidth:0 }}>
+              <b style={{ color:row.winner?accent:"#fff",fontSize:12 }}>#{row.rank}</b>
+              <div style={{ minWidth:0 }}><div style={{ color:"#fff",fontWeight:1050,fontSize:10.5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{row.name}</div><div style={{ color:tone,fontSize:8,fontWeight:1000,marginTop:1 }}>PISTE {color}</div></div>
+              <strong style={{ color:tone,fontSize:18,lineHeight:1 }}>{Math.round(row.score)}</strong>
+            </div>
+            <div style={{ display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:5,minWidth:0 }}>
+              {[["VALIDES",valid],["D / T",dt],["BULL +",bull],["MAUV. COUL.",wrong],["PÉNALITÉS",penalties],["PARFAITES",perfect],["PRÉCISION",`${row.accuracy}%`],["FLÈCHES",row.darts],["BEST",row.bestVisit]].map(([label,value])=><div key={String(label)} style={{ minWidth:0,borderRadius:9,padding:"5px 4px",textAlign:"center",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.055)" }}><div style={{ color:SOFT,fontSize:6.8,fontWeight:950,letterSpacing:.3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{label}</div><div style={{ color:label==="PÉNALITÉS"||label==="MAUV. COUL."?"#ff7b88":tone,fontSize:10,fontWeight:1050,marginTop:2 }}>{value}</div></div>)}
+            </div>
+          </div>;
+        })}
+      </div>
+    </div> : null}
+
 
     <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(92px,100%),1fr))",gap:6,minWidth:0 }}>
       {[["FLÈCHES",stats.totalDarts],["PRÉCISION",`${stats.accuracy}%`],["BULLS",stats.bulls],["BEST VOLÉE",stats.bestVisit],["DOUBLES",stats.doubles],["TRIPLES",stats.triples],["BEST COMBO",stats.bestCombo],["TOUCHES",`${stats.totalHits}/${stats.totalDarts}`]].map(([label,value]) => <div key={String(label)} style={{ ...card(accent),minWidth:0,textAlign:"center",boxSizing:"border-box" }}><div style={{ color:accent,fontSize:8,fontWeight:1000,letterSpacing:.5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{label}</div><div style={{ marginTop:3,color:"#fff",fontSize:17,fontWeight:1100 }}>{value}</div></div>)}

@@ -321,6 +321,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
       .filter((exercise) => difficultyFilter === 0 || exercise.difficulty === difficultyFilter)
       .map((exercise) => ({ key: `native:${exercise.id}`, title: exercise.title, subtitle: exercise.subtitle, difficulty: exercise.difficulty, playable: true, exerciseId: exercise.id, referenceId: null as string | null }));
     const referenceItems = referenceExercises
+      .filter((item) => !item.mappedExerciseId)
       .map((item) => {
         const mapped = item.mappedExerciseId ? TRAINING_EXERCISE_CATALOG.find((exercise) => exercise.id === item.mappedExerciseId) : undefined;
         return { key: `ref:${item.id}`, title: item.title, subtitle: mapped?.subtitle || "Règles à compléter", difficulty: mapped?.difficulty || 0, playable: Boolean(mapped), exerciseId: mapped?.id || null, referenceId: item.id };
@@ -1109,7 +1110,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
                   <div style={{ minWidth: 0 }}><div style={{ fontSize: 8.3, fontWeight: 950 }}>{selectedTechniqueTrack.label}</div><div style={{ marginTop: 2, fontSize: 8.8, lineHeight: 1.35, opacity: .5 }}>{selectedTechniqueTrack.description}</div></div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 6, marginTop: 9 }}>
-                  {selectedTechniqueTrack.items.map((item) => <button type="button" onClick={() => setDetailSheet(`mabull:${item.id}`)} key={item.id} style={{ padding: 9, borderRadius: 11, border: "1px solid rgba(80,255,174,.10)", background: "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer", textAlign: "left" }}>
+                  {selectedTechniqueTrack.items.map((item) => <button type="button" onClick={() => item.mappedExerciseId ? onStart({ exerciseId: item.mappedExerciseId, family: TRAINING_EXERCISE_CATALOG.find((e) => e.id === item.mappedExerciseId)?.family || "regularity", sessionKind: "exercise", ...accountParticipantConfig }) : setDetailSheet(`mabull:${item.id}`)} key={item.id} style={{ padding: 9, borderRadius: 11, border: "1px solid rgba(80,255,174,.10)", background: "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer", textAlign: "left" }}>
                     <div style={{ display: "flex", gap: 7, alignItems: "center" }}><span style={{ width: 24, height: 24, borderRadius: 8, display: "grid", placeItems: "center", background: "rgba(80,255,174,.06)", color: "#8cffcb" }}><HubGlyph name="coach" size={12} /></span><b style={{ minWidth: 0, flex: 1, fontSize: 8.1, lineHeight: 1.2 }}>{item.title}</b><HubGlyph name="diagnosis" size={12}/></div>
                   </button>)}
                 </div>

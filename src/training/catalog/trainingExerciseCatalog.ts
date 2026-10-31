@@ -1,5 +1,6 @@
+import { EXTENDED_TRAINING_RULES } from "./trainingLabExtendedRules";
 export type TrainingExerciseFamily = "scoring" | "doubles" | "checkout" | "precision" | "bull" | "regularity";
-export type TrainingExerciseEngine = "target_hits" | "sequence" | "checkout" | "score_darts";
+export type TrainingExerciseEngine = "target_hits" | "sequence" | "checkout" | "score_darts" | "custom";
 
 export type TrainingExerciseDefinition = {
   id: string;
@@ -15,6 +16,7 @@ export type TrainingExerciseDefinition = {
   checkoutScore?: number;
   scoreGoal?: number;
   tags?: string[];
+  ruleId?: string;
 };
 
 const clockSingles = Array.from({ length: 20 }, (_, i) => `S${i + 1}`);
@@ -71,6 +73,17 @@ export const TRAINING_EXERCISE_CATALOG: TrainingExerciseDefinition[] = [
   { id: "power_triplets", title: "Triples de puissance", subtitle: "T20 → T19 → T18, deux cycles propres.", family: "regularity", engine: "sequence", difficulty: 4, maxDarts: 24, sequence: powerTriples, tags: ["triples", "rhythm"] },
   { id: "repeat_t20_6", title: "Répétition T20", subtitle: "Six T20 sans changer de cible.", family: "regularity", engine: "target_hits", difficulty: 3, maxDarts: 30, target: "T20", hitsGoal: 6, tags: ["repeat", "T20"] },
   { id: "repeat_d16_5", title: "Répétition D16", subtitle: "Cinq D16 pour installer une routine stable.", family: "regularity", engine: "target_hits", difficulty: 3, maxDarts: 24, target: "D16", hitsGoal: 5, tags: ["repeat", "D16"] },
+  ...EXTENDED_TRAINING_RULES.map((rule) => ({
+    id: rule.id,
+    title: rule.title,
+    subtitle: rule.subtitle,
+    family: rule.family,
+    engine: "custom" as const,
+    difficulty: rule.difficulty,
+    maxDarts: Math.max(3, Number(rule.params?.maxDarts) || Number(rule.rounds || 0) * 3 || 999),
+    tags: [rule.kind, "mss"],
+    ruleId: rule.id,
+  })),
 ];
 
 export const TRAINING_FAMILY_META: Record<TrainingExerciseFamily, { label: string; description: string }> = {

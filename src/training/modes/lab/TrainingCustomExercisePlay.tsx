@@ -1,0 +1,183 @@
+import React from "react";
+import TrainingPlayLayout from "../../ui/TrainingPlayLayout";
+import TrainingDartPad from "../../ui/TrainingDartPad";
+import TrainingResultModal from "../../ui/TrainingResultModal";
+import { recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
+import { makeTrainingStats, trainingDartMatches, type TrainingDart } from "../../lib/trainingDarts";
+import { EXTENDED_RULE_BY_ID, type ExtendedTrainingRule } from "../../catalog/trainingLabExtendedRules";
+
+const clamp = (n:number,a:number,b:number)=>Math.max(a,Math.min(b,n));
+const visitScore=(v:TrainingDart[])=>v.reduce((s,d)=>s+d.score,0);
+const countSector=(v:TrainingDart[], sector:number)=>v.filter(d=>d.v===sector).length;
+const countMarks=(v:TrainingDart[], sector:number)=>v.reduce((s,d)=>s+(d.v===sector?d.mult:0),0);
+const isCheckout=(v:TrainingDart[], score:number)=>visitScore(v)===score && !!v.length && v[v.length-1].mult===2;
+const sectorsClock=Array.from({length:20},(_,i)=>i+1);
+const cricket=[20,19,18,17,16,15,25];
+const routourne:[[number,number],...[number,number][]] = [[20,3],[1,19],[18,7],[4,16],[13,8],[6,11],[10,14],[15,9],[2,12],[17,5],[3,20],[19,1],[7,18],[16,4],[8,13],[11,6],[14,10],[9,15],[12,2],[5,17]] as any;
+const switcher=[[20,20,14],[20,20,15],[20,20,16],[20,20,17],[20,20,18],[20,20,19],[20,20,20],[20,20,25]];
+const finishSeq=[40,36,32,24,20,16,12,8,4,50];
+const halfTargets=[15,16,"double",17,18,"triple",19,20,"bull"] as const;
+const deadlineTargets=["D20","S20","T20","S20","BULL","DBULL","BULL","S3","T3","S3","D3","S3","T3","S3","BULL","DBULL","BULL","S20","T20","S20","D20"];
+const rainbowRoutes=[["D20","D10","D5"],["D16","D8","D4"],["D4","D2","D1"],["D12","D6","D3"],["DBULL","D18","D9"],["DBULL","D14","D7"]];
+const cardMissions=[
+  {t:"40+ points en 3 fléchettes",k:"score",v:40,d:3},{t:"Un double en 9 fléchettes",k:"double",d:9,bonus:true},{t:"Finir 25 en 9 fléchettes",k:"finish",v:25,d:9,bonus:true},{t:"2 fléchettes dans le 20",k:"sector",v:20,c:2,d:3},
+  {t:"Finir 40 en 6 fléchettes",k:"finish",v:40,d:6},{t:"Finir 55 en 6 fléchettes",k:"finish",v:55,d:6,bonus:true},{t:"Un triple en 6 fléchettes",k:"triple",d:6},{t:"Finir 121 en 12 fléchettes",k:"finish",v:121,d:12,bonus:true},
+  {t:"50+ points en 3 fléchettes",k:"score",v:50,d:3},{t:"Un double en 6 fléchettes",k:"double",d:6},{t:"Finir 25 en 6 fléchettes",k:"finish",v:25,d:6},{t:"3 fléchettes dans le 20",k:"sector",v:20,c:3,d:3},
+  {t:"Finir 40 en 3 fléchettes",k:"finish",v:40,d:3},{t:"Finir 75 en 6 fléchettes",k:"finish",v:75,d:6,bonus:true},{t:"2 triples en 6 fléchettes",k:"triple",c:2,d:6,bonus:true},{t:"Finir 121 en 9 fléchettes",k:"finish",v:121,d:9,bonus:true},
+  {t:"60+ points en 3 fléchettes",k:"score",v:60,d:3},{t:"2 doubles en 6 fléchettes",k:"double",c:2,d:6},{t:"Finir 61 en 6 fléchettes",k:"finish",v:61,d:6},{t:"70+ points en 3 fléchettes",k:"score",v:70,d:3},
+  {t:"Finir 95 en 3 fléchettes",k:"finish",v:95,d:3},{t:"Finir 120 en 6 fléchettes",k:"finish",v:120,d:6},{t:"3 triples en 6 fléchettes",k:"triple",c:3,d:6,bonus:true},{t:"Finir 121 en 6 fléchettes",k:"finish",v:121,d:6},
+  {t:"80+ points en 3 fléchettes",k:"score",v:80,d:3},{t:"3 doubles en 6 fléchettes",k:"double",c:3,d:6,bonus:true},{t:"Finir 85 en 3 fléchettes",k:"finish",v:85,d:3},{t:"100+ points en 3 fléchettes",k:"score",v:100,d:3},
+  {t:"Finir 105 en 3 fléchettes",k:"finish",v:105,d:3},{t:"Finir 140 en 3 fléchettes",k:"finish",v:140,d:3},{t:"2 triples en 3 fléchettes",k:"triple",c:2,d:3},{t:"Finir 121 en 3 fléchettes",k:"finish",v:121,d:3},
+] as const;
+
+type State={darts:number;hits:number;points:number;round:number;index:number;remaining:number;best:number;worst:number|null;lives:number;streak:number;bestStreak:number;aux:any};
+function initial(rule:ExtendedTrainingRule):State{
+  return {darts:0,hits:0,points:rule.kind==="bob27"?27:rule.kind==="half_it"?40:0,round:0,index:0,remaining:rule.kind==="x01_restricted"?501:rule.kind==="fish170"?170:0,best:0,worst:null,lives:3,streak:0,bestStreak:0,aux: rule.kind==="atomic"?{temps:Array(21).fill(0),fused:new Set<number>()}:{}};
+}
+
+function targetText(rule:ExtendedTrainingRule,s:State){
+  switch(rule.kind){
+    case "progressive_checkout": return String((rule.params?.start||41)+s.index);
+    case "clock_speed": return rule.params?.doubles?`D${s.index+1}`:String(s.index+1);
+    case "x01_restricted": return `${s.remaining}`;
+    case "cricket_count": return cricket[s.round]===25?"BULL":String(cricket[s.round]||20);
+    case "bob27": return `D${Math.min(20,s.round+1)}`;
+    case "half_it": return String(halfTargets[s.round]||"—").toUpperCase();
+    case "hardcore_clock": return `S${s.index+1}`;
+    case "deadline": return deadlineTargets[s.index]||"FIN";
+    case "brochette": return (rule.params?.targets||[])[s.index%3]||"—";
+    case "switcher": return `T${switcher[s.round]?.[s.index%3]===25?"BULL":switcher[s.round]?.[s.index%3]||20}`;
+    case "small_finishes": return [3,7,13][s.round%3]?.toString()||"3";
+    case "streak_sector": return String(rule.params?.sector||20);
+    case "around_score": return s.round<20?String(s.round+1):"BULL";
+    case "survival_score": return `≥ ${rule.params?.threshold||65}`;
+    case "pekin": return s.round<6?String(20-s.round):"BULL";
+    case "route_targets": return rule.params?.variant==="routourne"?`D${routourne[s.round]?.[0]||20} • BULL • D${routourne[s.round]?.[1]||3}`:`TOUR ${s.round+1}`;
+    case "balanced_bull": return s.round<6?`${20-s.round} + BULL`:`${15+(s.round-5)} + BULL`;
+    case "deep_dive": return String(15+s.round);
+    case "risk7": return "VERROUILLER UN SECTEUR";
+    case "double_or_nothing": return String(finishSeq[s.round]||40);
+    case "five_elements": return s.points<4?`PILIER ${s.points+1}/4`:"NOYAU";
+    case "card_missions": return `CARTE ${s.round+1}/32`;
+    case "endurance42": return `ÉTAPE ${s.round+1}/42`;
+    case "jdc": return s.round<6?String(10+s.round):s.round<27?`D${s.round-5}`:String(15+(s.round-27));
+    case "redemption": return `VOLÉE ${s.round+1}/12`;
+    case "atomic": return `TOUR ${s.round+1}`;
+    case "rainbow": return `ROUTE ${(s.round%6)+1} • CYCLE ${Math.floor(s.round/6)+1}/3`;
+    case "technique": return "FOCUS TECHNIQUE";
+    default:return `TOUR ${s.round+1}`;
+  }
+}
+
+function missionSuccess(m:any,darts:TrainingDart[]){
+  if(m.k==="score") return visitScore(darts)>=m.v;
+  if(m.k==="double") return darts.filter(d=>d.mult===2).length>=(m.c||1);
+  if(m.k==="triple") return darts.filter(d=>d.mult===3).length>=(m.c||1);
+  if(m.k==="sector") return darts.filter(d=>d.v===m.v).length>=(m.c||1);
+  if(m.k==="finish") return isCheckout(darts,m.v);
+  return false;
+}
+
+export default function TrainingCustomExercisePlay({config,onExit,exercise}:{config:any;onExit:()=>void;exercise:any}){
+  const rule=EXTENDED_RULE_BY_ID[exercise.ruleId||exercise.id];
+  const [state,setState]=React.useState<State>(()=>initial(rule));
+  const stateRef=React.useRef(state); React.useEffect(()=>{stateRef.current=state},[state]);
+  const startedAt=React.useRef(Date.now());
+  const [result,setResult]=React.useState<any>(null);
+  const [secondsLeft,setSecondsLeft]=React.useState(rule.durationSec||0);
+  const finishedRef=React.useRef(false);
+  const participantIds=config?.selectedPlayerIds;
+
+  const finish=React.useCallback((success=true,finalState?:State)=>{
+    if(finishedRef.current)return; finishedRef.current=true;
+    const s=finalState||stateRef.current; const endedAt=Date.now();
+    const perf=clamp(Math.round((s.points>0?Math.min(100,s.points):Math.min(100,(s.hits/Math.max(1,s.darts))*100))),0,100);
+    const metrics={exerciseId:exercise.id,exerciseTitle:exercise.title,family:exercise.family,difficulty:exercise.difficulty,completionPct: success?100:Math.min(99,Math.round((s.round/Math.max(1,rule.rounds||20))*100)),accuracyPct:s.darts?(s.hits/s.darts)*100:0,performanceScore:perf,score:s.points,customRule:rule.kind};
+    recordSoloTrainingResult({modeId:"training_lab",config:{...config,exerciseId:exercise.id,family:exercise.family,customRule:rule.kind},participantIds,startedAt:startedAt.current,endedAt,darts:s.darts,hits:s.hits,points:s.points,success,metrics,visitHistory:[]});
+    setResult({success,metrics,stats:makeTrainingStats({darts:s.darts,hits:s.hits,points:Math.max(0,s.points),startedAt:startedAt.current,endedAt})});
+  },[config,exercise,participantIds,rule]);
+
+  React.useEffect(()=>{ if(!rule.durationSec||result)return; const id=setInterval(()=>setSecondsLeft(x=>{if(x<=1){clearInterval(id); setTimeout(()=>finish(true),0); return 0;}return x-1}),1000); return()=>clearInterval(id);},[finish,result,rule.durationSec]);
+
+  const applyVisit=React.useCallback((visit:TrainingDart[])=>{
+    if(result||!visit.length)return;
+    setState(prev=>{
+      let s:{[K in keyof State]:State[K]}={...prev,aux:{...prev.aux}};
+      s.darts+=visit.length; s.hits+=visit.filter(d=>!d.miss).length;
+      const vs=visitScore(visit);
+      const done=(ok=true)=>setTimeout(()=>finish(ok,s as State),0);
+      switch(rule.kind){
+        case "progressive_checkout":{
+          const target=(rule.params?.start||41)+s.index; const ok=isCheckout(visit,target);
+          if(rule.params?.refuge){ if(ok){ if(visit.length<=3)s.aux.refuge=target; s.index+=1;} else s.index=Math.max(0,(s.aux.refuge||rule.params.start)-rule.params.start); }
+          else if(ok)s.index+=1;
+          if(ok)s.points+=1;
+          if((rule.params?.start||41)+s.index>(rule.params?.end||80))done(true); break;
+        }
+        case "clock_speed":{
+          if(rule.params?.simpleClock){ const target=s.index+1; for(const d of visit){ if(d.v===target){s.index++;break;} } }
+          else if(rule.params?.doubles){ const target=s.index+1; for(const d of visit){ if(d.v===target&&d.mult===2){s.index++;break;} } }
+          else for(const d of visit){const target=s.index+1;if(d.v===target)s.index+=d.mult;}
+          if(s.index>=20)done(true);break;
+        }
+        case "x01_restricted":{
+          let score=0; for(const d of visit){ if(s.remaining<=170)score+=d.score; else if([18,19,20].includes(d.v)){ if(rule.params?.variant==="switch"){const dartPos=(s.darts-visit.length)+visit.indexOf(d);const required=[20,19,18][dartPos%3];if(d.v===required)score+=d.score;}else score+=d.score; } }
+          const next=s.remaining-score; if(next===0&&visit.some(d=>d.mult===2)){s.remaining=0;done(true);} else if(next>1)s.remaining=next; break;
+        }
+        case "round_score":{
+          if(rule.params?.mode==="checkout50"){ if(visit[0]?.v===25&&isCheckout(visit,50))s.points+=1; }
+          else if(rule.params?.target){ for(const d of visit)if(d.v===rule.params.target)s.points+=rule.params.multPoints?d.mult:1; }
+          else if(rule.params?.chooseSegment){const seg=s.aux.segment||20;for(const d of visit)if(d.v===seg)s.points+=d.score;}
+          else s.points+=vs; s.round++; if(s.round>=(rule.rounds||8))done(true);break;
+        }
+        case "bull_stack":{let add=0;for(const d of visit)if(d.v===25)add+=d.mult===2?50:25;if(add===0)s.points=0;else{s.points+=add;s.best=Math.max(s.best,s.points);}break;}
+        case "fish170":{s.remaining-=vs;if(s.remaining===0&&visit.some(d=>d.mult===2)){s.best=s.best?Math.min(s.best,s.darts):s.darts;s.points=s.best;s.remaining=170;}else if(s.remaining<2||s.darts%15===0)s.remaining=170;break;}
+        case "hardcore_clock":{const target=s.index+1;const n=visit.filter(d=>d.v===target&&d.mult===1).length;if(n===3)s.index++;else if(n<=1)s.index=Math.max(0,s.index-1);s.round++;s.points=Math.max(s.points,s.index);if(s.index>=20)done(true);break;}
+        case "cricket_count":{const target=cricket[s.round];for(const d of visit){if(target===25&&d.v===25)s.points+=d.mult===2?2:1;else if(d.v===target)s.points+=d.mult;}s.round++;if(s.round>=7)done(true);break;}
+        case "bob27":{const target=s.round+1;let hits=visit.filter(d=>d.v===target&&d.mult===2).length;if(hits)s.points+=hits*(target*2);else s.points-=target*2;s.round++;if(s.round>=20)done(true);break;}
+        case "half_it":{const target=halfTargets[s.round];let add=0;if(target==="double")add=visit.filter(d=>d.mult===2).reduce((a,d)=>a+d.score,0);else if(target==="triple")add=visit.filter(d=>d.mult===3).reduce((a,d)=>a+d.score,0);else if(target==="bull")add=visit.filter(d=>d.v===25).reduce((a,d)=>a+d.score,0);else add=visit.filter(d=>d.v===target).reduce((a,d)=>a+d.score,0);s.points=add?s.points+add:Math.ceil(s.points/2);s.round++;if(s.round>=9)done(true);break;}
+        case "deadline":{for(const d of visit){const t=deadlineTargets[s.index];if(t&&trainingDartMatches(d,t))s.index++;if(s.index>=deadlineTargets.length){done(true);break;}}break;}
+        case "brochette":{let n=0;(rule.params?.targets||[]).forEach((t:string,i:number)=>{if(visit[i]&&trainingDartMatches(visit[i],t))n++;});s.points+=n*n;s.round++;if(s.round>=8)done(true);break;}
+        case "switcher":{const targets=switcher[s.round]||[];visit.forEach((d,i)=>{const t=targets[i];if(t===25?d.v===25:d.v===t)s.points+=d.score;});s.round++;if(s.round>=8){if(s.points>0)s.points+=100;done(true);}break;}
+        case "double_or_nothing":{const target=finishSeq[s.round];if(isCheckout(visit,target)){s.aux.bonus=true;}else if(s.aux.bonus){s.points+=vs;s.aux.bonus=false;s.round++;}else s.round++;if(s.round>=10)done(true);break;}
+        case "small_finishes":{const target=[3,7,13][s.round%3];if(isCheckout(visit,target))s.points+=50;else if(Math.max(0,target-vs)%2===0)s.points+=10;s.round++;if(s.round>=9)done(true);break;}
+        case "streak_sector":{const sector=rule.params?.sector||20;for(const d of visit){if(d.v===sector){s.streak+=d.mult;s.bestStreak=Math.max(s.bestStreak,s.streak);}else s.streak=0;}s.points=s.bestStreak;break;}
+        case "redemption":{const score=vs;s.best=Math.max(s.best,score);s.worst=s.worst===null?score:Math.min(s.worst,score);s.aux.bestCount=(s.aux.bestCount||0)+(score===s.best?1:0);if((s.aux.bestCount||0)>=2&&s.worst!==null){s.worst=null;s.aux.bestCount=0;}s.points=s.worst??score;s.round++;if(s.round>=12)done(true);break;}
+        case "around_score":{const target=s.round<20?s.round+1:25;for(const d of visit)if(d.v===target)s.points+=target===25?(d.mult===2?2:1):d.mult;s.round++;if(s.round>=21)done(true);break;}
+        case "survival_score":{if(vs>=(rule.params?.threshold||65))s.points++;s.round++;if(s.round>=15)done(true);break;}
+        case "pekin":{const target=s.round<6?20-s.round:25;const marks=target===25?visit.filter(d=>d.v===25).length:countMarks(visit,target);s.aux.marks=(s.aux.marks||0)+marks;s.aux.used=(s.aux.used||0)+visit.length;if((s.aux.marks||0)>=5||s.aux.used>=9){if(s.aux.marks>=5)s.points+=Math.max(0,10-s.aux.used);s.round++;s.aux={};if(s.round>=7)done(true);}break;}
+        case "route_targets":{if(rule.params?.variant==="routourne"){const [a,b]=routourne[s.round]||[20,3];let hits=0;if(visit.some(d=>d.v===a&&d.mult===2))hits++;if(visit.some(d=>d.v===25))hits++;if(visit.some(d=>d.v===b&&d.mult===2))hits++;s.points+=hits===3?5:hits===2?3:hits===1?1:0;}else{s.points+=vs>=60?vs:0;}s.round++;if(s.round>=(rule.rounds||12))done(true);break;}
+        case "balanced_bull":{const target=s.round<6?20-s.round:15+(s.round-5);let sectorPts=0,bullPts=0;for(const d of visit){if(d.v===target)sectorPts+=d.mult;if(d.v===25)bullPts+=d.mult===2?2:1;}s.points+=sectorPts*bullPts;s.round++;if(s.round>=11)done(true);break;}
+        case "deep_dive":{const target=15+s.round;const marks=countMarks(visit,target);const delta=marks===3?Math.max(0,3-visit.length)*target:-Math.abs(3-marks)*target;s.points+=delta;s.round++;if(s.round>=6)done(true);break;}
+        case "risk7":{const marksBy=new Map<number,number>();for(const d of visit){if(!d.miss)marksBy.set(d.v,(marksBy.get(d.v)||0)+d.mult);}const candidates=[...marksBy.entries()].filter(([,m])=>m>=3);if(candidates.length){const [sec,m]=candidates.sort((a,b)=>b[1]-a[1])[0];s.aux.locked=s.aux.locked||{};const prev=s.aux.locked[sec]||0;if(m>prev){s.points+=(m-prev)*sec;s.aux.locked[sec]=m;}}break;}
+        case "surcharge":{const groups=new Map<string,TrainingDart[]>();for(const d of visit){if(d.miss)continue;const k=d.label;groups.set(k,[...(groups.get(k)||[]),d]);}let total=0;const sectorCount=new Map<number,number>();for(const [k,arr] of groups){if(arr.length===1)total+=arr[0].score;else if(arr.length>=2){} }for(const d of visit){if(!d.miss)sectorCount.set(d.v,(sectorCount.get(d.v)||0)+1);}for(const n of sectorCount.values())if(n===2)total+=50;else if(n===3)total+=100;s.points+=total;s.round++;if(s.round>=8)done(true);break;}
+        case "five_elements":{const triples=visit.filter(d=>d.mult===3&&d.v>=15&&d.v<=20).length;const inRange=visit.filter(d=>d.v>=15&&d.v<=20).length;if(s.points<4){if(triples>0&&inRange===3)s.points+=Math.min(3,triples);}else{if(visit.some(d=>d.v===25)&&inRange>=2){s.points=5;done(true);}}break;}
+        case "card_missions":{const m=cardMissions[s.round];const ok=missionSuccess(m,visit);if(ok){s.points++;if(m.bonus&&visit.length<=3)s.lives++;s.round++;}else s.lives--;if(s.round===8||s.round===16||s.round===24)s.lives++;if(s.lives<=0||s.round>=32)done(s.round>=32);break;}
+        case "endurance42":{s.points+=vs;s.round++;if(s.round>=42)done(true);break;}
+        case "jdc":{if(s.round<6){const t=10+s.round;for(const d of visit)if(d.v===t)s.points+=d.score;if(visit.filter(d=>d.v===t).some(d=>d.mult===1)&&visit.some(d=>d.v===t&&d.mult===2)&&visit.some(d=>d.v===t&&d.mult===3))s.points+=100;}else if(s.round<27){const d=s.round-5;if(visit[0]?.v===d&&visit[0]?.mult===2)s.points+=50;}else{const t=15+(s.round-27);for(const d of visit)if(d.v===t)s.points+=d.score;}s.round++;if(s.round>=33)done(true);break;}
+        case "atomic":{const temps=[...(s.aux.temps||Array(21).fill(0))];const fused=new Set<number>(s.aux.fused||[]);const heat=[((s.round*7)%20)+1,((s.round*11+3)%20)+1,((s.round*13+7)%20)+1];heat.forEach(sec=>{if(!fused.has(sec))temps[sec]+=1});for(const d of visit)if(d.v>=1&&d.v<=20&&!fused.has(d.v))temps[d.v]=Math.max(0,temps[d.v]-d.mult);for(let i=1;i<=20;i++)if(temps[i]>=5)fused.add(i);s.aux={temps,fused};s.round++;s.points=s.round;if(fused.size>=3)done(false);break;}
+        case "rainbow":{const route=rainbowRoutes[s.round%6];let n=0;route.forEach(t=>{if(visit.some(d=>trainingDartMatches(d,t)))n++;});let add=n===3?6:n===2?3:n===1?1:0;if(Math.floor(s.round/6)===2)add*=2;s.points+=add;s.aux.completed=s.aux.completed||new Set<number>();if(n===3)s.aux.completed.add(s.round%6);s.round++;if(s.round>=18){const c=s.aux.completed.size;s.points+=[0,2,4,8,16,32,64][c]||0;done(true);}break;}
+      }
+      return s as State;
+    });
+  },[finish,result,rule]);
+
+  const manualHit=(value:number)=>setState(prev=>{const s={...prev,darts:prev.darts+1,hits:prev.hits+(value>0?1:0),points:prev.points+value};return s});
+  const s=state;
+  const timeText=rule.durationSec?`${Math.floor(secondsLeft/60)}:${String(secondsLeft%60).padStart(2,"0")}`:null;
+  const manual=rule.kind==="manual_hits";
+  const technique=rule.kind==="technique";
+  return <>
+    <TrainingPlayLayout title="Centre d'entraînement" tickerId="training_center" onExit={onExit} participant={config?.activeParticipant}
+      rules={<><p><b>{exercise.title}</b></p><p>{exercise.subtitle}</p><p>Objectif suivant : {rule.level1Label||"progresser"}.</p></>}
+      eyebrow={exercise.title} target={targetText(rule,s)} targetHint={`${timeText?`${timeText} • `:""}${s.darts} fléchettes • ${s.points} pts`}
+      progress={{value:rule.rounds?Math.min(rule.rounds,s.round):Math.min(100,s.points),max:rule.rounds||100,label:rule.family.toUpperCase()}}
+      kpis={[{label:"DARTS",value:s.darts},{label:"POINTS",value:s.points},{label:"TOURS",value:rule.rounds?`${Math.min(s.round+1,rule.rounds)}/${rule.rounds}`:s.round+1},{label:"TEMPS",value:timeText||"—"}]}
+    >
+      {technique ? <div style={{padding:18,display:"grid",gap:14}}><div style={{padding:16,borderRadius:16,background:"rgba(39,220,255,.055)",border:"1px solid rgba(39,220,255,.16)",fontSize:14,lineHeight:1.55}}><b style={{display:"block",marginBottom:6,color:"#27dcff"}}>FOCUS DE LA SÉANCE</b>{rule.params?.focus}</div><div style={{fontSize:12,opacity:.68,lineHeight:1.5}}>Lance normalement pendant le chrono. Ne cherche pas le score : cherche une sensation stable et reproductible.</div><button type="button" onClick={()=>finish(true)} style={{height:48,borderRadius:14,border:"1px solid rgba(80,255,174,.28)",background:"rgba(80,255,174,.10)",color:"inherit",fontWeight:950,cursor:"pointer"}}>TERMINER LA SÉANCE</button></div> : manual ? <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:10,padding:12}}>
+        {(rule.params?.manualScores||[0,1]).map((v:number,i:number)=><button key={v} onClick={()=>manualHit(v)} style={{minHeight:80,borderRadius:14,border:"1px solid rgba(255,255,255,.12)",background:v?"rgba(80,255,174,.08)":"rgba(255,80,80,.06)",color:"inherit",fontWeight:950,cursor:"pointer"}}>{rule.params?.manualLabels?.[i]|| (v?"TOUCHÉ":"RATÉ")}<div style={{marginTop:5,fontSize:12,opacity:.6}}>+{v}</div></button>)}
+      </div> : <TrainingDartPad disabled={!!result} onVisit={applyVisit} requireFullVisit={false} notice={<div style={{fontSize:11,textAlign:"center",opacity:.72}}>Saisis tes fléchettes normalement. Le moteur applique automatiquement les règles de l'exercice.</div>} />}
+    </TrainingPlayLayout>
+    <TrainingResultModal open={!!result} success={!!result?.success} title={result?.success?"Séance terminée":"Séance arrêtée"} stats={result?.stats||makeTrainingStats({darts:0,hits:0,points:0,startedAt:Date.now()})} metrics={result?[{label:"EXERCICE",value:exercise.title},{label:"POINTS",value:s.points},{label:"FLÉCHETTES",value:s.darts},{label:"OBJECTIF",value:rule.level1Label||"—"}]:[]} onClose={onExit}/>
+  </>;
+}

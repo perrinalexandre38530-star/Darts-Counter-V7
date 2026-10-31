@@ -6,7 +6,7 @@ import type { SportId } from "../contexts/SportContext";
  * Future catalog sources may already exist, but they must not leak into the UI
  * until the corresponding sport is actually selectable in the application.
  */
-export type LiveSportsAppId = Extract<SportId, "darts" | "petanque" | "pingpong" | "babyfoot" | "molkky" | "foot">;
+export type LiveSportsAppId = Extract<SportId, "darts" | "petanque" | "pingpong" | "babyfoot" | "molkky" | "foot" | "esports">;
 
 export const LIVE_SPORTS_APP_ORDER: LiveSportsAppId[] = [
   "darts",
@@ -15,6 +15,7 @@ export const LIVE_SPORTS_APP_ORDER: LiveSportsAppId[] = [
   "babyfoot",
   "molkky",
   "foot",
+  "esports",
 ];
 
 const LIVE_SPORTS_APP_SET = new Set<LiveSportsAppId>(LIVE_SPORTS_APP_ORDER);

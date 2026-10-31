@@ -1,0 +1,12 @@
+import fs from 'node:fs';
+const engine=fs.readFileSync(new URL('../src/lib/gameEngines/wave61Engine.ts', import.meta.url),'utf8');
+const config=fs.readFileSync(new URL('../src/pages/wave61/modes/black_vs_whiteConfig.tsx', import.meta.url),'utf8');
+const play=fs.readFileSync(new URL('../src/pages/Wave61SharedPlay.tsx', import.meta.url),'utf8');
+const end=fs.readFileSync(new URL('../src/pages/wave61/Wave61EndSummary.tsx', import.meta.url),'utf8');
+const landing=fs.readFileSync(new URL('../src/pages/PublicLandingPage.tsx', import.meta.url),'utf8');
+for (const x of ['processBlackVsWhite','blackWhiteAssignments','firstTrack','blackWhiteValidHitsByPlayer','blackWhitePenaltyPointsByPlayer','blackWhitePerfectVisitsByPlayer','bullRule','perfectVisitBonus','WHITE_SINGLES.includes(n as any)','state.modeId === "black_vs_white"']) if(!engine.includes(x)) throw new Error('engine missing '+x);
+for (const x of ['Attribution des pistes','Doubles / Triples de sa piste','BULL 25 / BULL 50','Bonus 3 touches valides']) if(!config.includes(x)) throw new Error('config missing '+x);
+for (const x of ['data-black-white-keypad="1"','data-black-white-situation="1"','BlackWhiteInput','BlackWhitePanel','blackWhiteResult','blackWhiteValidHits']) if(!play.includes(x)) throw new Error('play missing '+x);
+for (const x of ['data-black-white-final-table="1"','BLACK VS WHITE · TABLEAU FINAL','blackWhitePenaltyPointsByPlayer']) if(!end.includes(x)) throw new Error('end summary missing '+x);
+if(!landing.includes('black_vs_white')) throw new Error('public page missing black_vs_white');
+console.log('✅ BLACK VS WHITE V98 — moteur/config/IA/Play/récap/stats/finale/historique/public wiring présents.');
