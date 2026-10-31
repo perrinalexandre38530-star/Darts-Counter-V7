@@ -129,12 +129,17 @@ export default function ClosestCenterDeviceCameraPage({go,params}:any){
             const count=Math.max(1,Math.min(12,Number(p.count||1)));
             const delayMs=Math.max(25,Math.min(250,Number(p.delayMs||55)));
             const maxSide=Math.max(960,Math.min(2400,Number(p.maxCaptureSide||1920)));
+            const burstStartedAt=Date.now();
+            let burstBytes=0;
             for(let i=0;i<count;i++){
               if(i>0) await waitFrame(video,delayMs);
               const dataUrl=captureDataUrl(video,maxSide,p.crop||null);
+              burstBytes+=Math.round((dataUrl.length*3)/4);
               await postClosestCenterCompanionEvent(sessionId,{kind:"closest_center_capture_frame",type:"closest_center_capture_frame",requestId:p.requestId,index:i,total:count,dataUrl,fingerprint:cameraFingerprint(streamRef.current,video),deviceTs:Date.now()});
             }
-            setMessage(`Burst envoyé · ${count} frame${count>1?"s":""}`);
+            const burstDurationMs=Math.max(0,Date.now()-burstStartedAt);
+            await updateClosestCenterCompanionStatus(sessionId,{lastCaptureAt:Date.now(),lastCaptureDurationMs:burstDurationMs,lastCaptureFrames:count,lastCaptureBytes:burstBytes,hardwareFingerprint:cameraFingerprint(streamRef.current,video),lastSeenAt:Date.now()}).catch(()=>{});
+            setMessage(`Burst envoyé · ${count} frame${count>1?"s":""} · ${burstDurationMs} ms`);
           }catch(e:any){
             const errorMessage=e?.message||"Capture impossible";
             setMessage(errorMessage);

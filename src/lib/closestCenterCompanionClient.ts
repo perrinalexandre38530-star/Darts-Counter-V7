@@ -72,7 +72,7 @@ export async function postClosestCenterCompanionEvent(sessionId: string, payload
 export async function requestClosestCenterCompanionBurst(
   sessionId: string,
   options: { count: number; delayMs: number; maxCaptureSide: number; timeoutMs?: number; crop?: {x:number;y:number;w:number;h:number}; retries?: number }
-): Promise<{ frames: ImageData[]; fingerprint: any }> {
+): Promise<{ frames: ImageData[]; fingerprint: any; previewDataUrl?: string; telemetry: { requestMs:number; firstFrameMs:number; transferMs:number; totalMs:number; bytes:number; attempt:number } }> {
   const count = Math.max(1, Math.min(12, Number(options.count || 1)));
   const delayMs = Math.max(25, Math.min(250, Number(options.delayMs || 55)));
   const maxCaptureSide = Math.max(960, Math.min(2400, Number(options.maxCaptureSide || 1920)));
@@ -81,6 +81,7 @@ export async function requestClosestCenterCompanionBurst(
   let lastError: any = null;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
+    const requestStartedAt = performance.now();
     try {
       const status: any = await fetchClosestCenterCompanionStatus(sessionId);
       const lastSeenAt = Number(status?.lastSeenAt || 0) || 0;
@@ -103,8 +104,10 @@ export async function requestClosestCenterCompanionBurst(
         requestedAt: Date.now(),
       });
 
+      const requestPostedAt = performance.now();
       const deadline = Date.now() + timeoutMs;
       const received = new Map<number, { dataUrl: string; fingerprint?: any }>();
+      let firstFrameAt = 0;
       let fingerprint: any = null;
       while (Date.now() < deadline) {
         await new Promise(resolve => setTimeout(resolve, 120));
@@ -118,6 +121,7 @@ export async function requestClosestCenterCompanionBurst(
           const index = Number(p.index || 0);
           if (typeof p.dataUrl === "string" && p.dataUrl.startsWith("data:image/")) {
             received.set(index, { dataUrl: p.dataUrl, fingerprint: p.fingerprint });
+            if (!firstFrameAt) firstFrameAt = performance.now();
             fingerprint = p.fingerprint || fingerprint;
           }
         }
@@ -128,7 +132,21 @@ export async function requestClosestCenterCompanionBurst(
       const ordered = [...received.entries()].sort((a,b)=>a[0]-b[0]).slice(0,count);
       const frames: ImageData[] = [];
       for (const [, item] of ordered) frames.push(await dataUrlToImageData(item.dataUrl));
-      return { frames, fingerprint };
+      const completedAt = performance.now();
+      const bytes = ordered.reduce((sum,[,item])=>sum+Math.round((item.dataUrl.length*3)/4),0);
+      return {
+        frames,
+        fingerprint,
+        previewDataUrl: ordered[0]?.[1]?.dataUrl,
+        telemetry:{
+          requestMs:Math.max(0,Math.round(requestPostedAt-requestStartedAt)),
+          firstFrameMs:firstFrameAt?Math.max(0,Math.round(firstFrameAt-requestPostedAt)):0,
+          transferMs:firstFrameAt?Math.max(0,Math.round(completedAt-firstFrameAt)):0,
+          totalMs:Math.max(0,Math.round(completedAt-requestStartedAt)),
+          bytes,
+          attempt,
+        }
+      };
     } catch (error) {
       lastError = error;
       if (attempt < retries) await new Promise(resolve => setTimeout(resolve, 450 * (attempt + 1)));

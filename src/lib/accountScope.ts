@@ -4,57 +4,20 @@
 // Objectif : 1 compte Supabase = 1 namespace local, sans cycle avec storage.ts.
 // ============================================================
 
-const STORAGE_USER_KEY = "dc_storage_user_id_v1";
-const AUTH_KEY = "dc_online_auth_supabase_v1";
+import { cleanCanonicalAccountScopeId, getCanonicalAccountScopeId, sanitizeCanonicalAccountScopePart } from "./canonicalAccountScope";
+
 const LEGACY_CLAIMS_KEY = "dc_account_legacy_key_claims_v1";
 
 function cleanId(value: unknown): string {
-  return String(value ?? "").trim();
-}
-
-function runtimePrimaryId(): string {
-  try {
-    return cleanId((globalThis as any)?.window?.__dc_primary_auth_user_id);
-  } catch {
-    return "";
-  }
-}
-
-function authStorageId(): string {
-  if (typeof localStorage === "undefined") return "";
-  try {
-    const raw = localStorage.getItem(AUTH_KEY) || "";
-    if (!raw) return "";
-    if (!(raw.startsWith("{") || raw.startsWith("["))) return cleanId(raw);
-    const parsed = JSON.parse(raw);
-    return cleanId(
-      parsed?.supabaseUserId ||
-      parsed?.user?.user_metadata?.supabase_user_id ||
-      parsed?.session?.user?.id ||
-      parsed?.user?.id ||
-      parsed?.userId ||
-      parsed?.canonicalUserId,
-    );
-  } catch {
-    return "";
-  }
+  return cleanCanonicalAccountScopeId(value);
 }
 
 export function getAccountScopeId(): string | null {
-  const runtime = runtimePrimaryId();
-  if (runtime) return runtime;
-  const auth = authStorageId();
-  if (auth) return auth;
-  try {
-    const explicit = cleanId(localStorage.getItem(STORAGE_USER_KEY));
-    return explicit || null;
-  } catch {
-    return null;
-  }
+  return getCanonicalAccountScopeId();
 }
 
 export function sanitizeAccountScopePart(value: unknown): string {
-  return cleanId(value).replace(/[^a-zA-Z0-9_.:-]/g, "_").slice(0, 160);
+  return sanitizeCanonicalAccountScopePart(value);
 }
 
 export function accountScopedLocalStorageKey(baseKey: string, userId?: string | null): string {

@@ -12,6 +12,8 @@
 // ============================================================
 
 import { initOfflineFirstRuntime, shouldAttemptRemoteWork } from "../offlineFirstRuntime";
+import { getCanonicalAccountScopeId } from "../canonicalAccountScope";
+import { isSupabaseRestCircuitOpen, supabaseRestRetryAfterMs } from "../supabaseClient";
 
 export const GLOBAL_SYNC_REQUEST_EVENT = "msc:sync-request";
 export const GLOBAL_SYNC_STATE_EVENT = "msc:sync-orchestrator-state";
@@ -81,15 +83,7 @@ function publish(patch: Partial<GlobalSyncState>): void {
 }
 
 function resolveUserId(): string {
-  try {
-    const direct = String(localStorage.getItem("dc_user_id") || "").trim();
-    if (direct) return direct;
-    const raw = localStorage.getItem("dc_online_auth_supabase_v1");
-    const cached = raw ? JSON.parse(raw) : null;
-    return String(cached?.supabaseUserId || cached?.user?.id || cached?.userId || "").trim();
-  } catch {
-    return "";
-  }
+  return String(getCanonicalAccountScopeId() || "").trim();
 }
 
 function makeRunId(): string {
@@ -188,10 +182,15 @@ async function runGlobalSync(): Promise<void> {
     // 2) Données privées du compte. Le sous-système garde ses révisions et ses
     // upserts idempotents ; l'orchestrateur ne fait que demander UNE passe.
     try {
-      window.dispatchEvent(new CustomEvent(ACCOUNT_OWNED_SYNC_CYCLE_EVENT, {
-        detail: { userId: userId || null, reason, includeHistory: includeAccountHistory, runId },
-      }));
-      steps["account-owned"] = { ok: true, detail: { requested: true, includeHistory: includeAccountHistory } };
+      if (isSupabaseRestCircuitOpen()) {
+        const retryMs = Math.max(1_000, supabaseRestRetryAfterMs());
+        steps["account-owned"] = { ok: true, skipped: true, detail: { reason: "supabase-circuit-open", retryMs } };
+      } else {
+        window.dispatchEvent(new CustomEvent(ACCOUNT_OWNED_SYNC_CYCLE_EVENT, {
+          detail: { userId: userId || null, reason, includeHistory: includeAccountHistory, runId },
+        }));
+        steps["account-owned"] = { ok: true, detail: { requested: true, includeHistory: includeAccountHistory } };
+      }
     } catch (error: any) {
       steps["account-owned"] = { ok: false, error: String(error?.message || error) };
     }

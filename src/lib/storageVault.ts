@@ -3,6 +3,7 @@ import { Capacitor, registerPlugin } from "@capacitor/core";
 import { gzipSync, gunzipSync, strFromU8, strToU8 } from "fflate";
 import { apiDelete, apiGet, apiGetBytes, apiPost } from "./apiClient";
 import { getStorageUser, importCloudSnapshot } from "./storage";
+import { getCanonicalAccountScopeId } from "./canonicalAccountScope";
 import { pushNasPreparedArtifact } from "./manualNasSync";
 
 type AnyRecord = Record<string, any>;
@@ -92,36 +93,17 @@ const MAX_LOCAL_SLOTS = 10;
 const NAS_MANUAL_PULL_TIMEOUT_MS = 120_000;
 
 
-const STORAGE_USER_LS_KEY = "dc_storage_user_id_v1";
-const AUTH_SESSION_LS_KEY = "dc_online_auth_supabase_v1";
-const FALLBACK_USER_KEYS = ["dc_user_id", STORAGE_USER_LS_KEY, AUTH_SESSION_LS_KEY];
-
 function normalizeOwnerId(value: unknown): string | null {
   const s = String(value ?? "").trim();
   return s ? s : null;
 }
 
 function readOwnerIdFromBrowser(): string | null {
-  if (typeof window === "undefined") return null;
+  const canonical = normalizeOwnerId(getCanonicalAccountScopeId());
+  if (canonical) return canonical;
   try {
     const direct = normalizeOwnerId(getStorageUser());
     if (direct) return direct;
-  } catch {}
-  try {
-    for (const key of FALLBACK_USER_KEYS) {
-      const raw = window.localStorage.getItem(key);
-      if (!raw) continue;
-      if (raw.startsWith("{") || raw.startsWith("[")) {
-        try {
-          const parsed = JSON.parse(raw);
-          const id = normalizeOwnerId(parsed?.userId || parsed?.user?.id || parsed?.session?.user?.id || parsed?.profile?.userId);
-          if (id) return id;
-        } catch {}
-      } else {
-        const id = normalizeOwnerId(raw);
-        if (id) return id;
-      }
-    }
   } catch {}
   return null;
 }

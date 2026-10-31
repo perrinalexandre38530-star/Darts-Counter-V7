@@ -1,6 +1,7 @@
 import LZString from "lz-string";
 import { apiDelete, apiGet, apiPost, readNasAccessToken } from "./apiClient";
 import { getStorageUser } from "./storage";
+import { getCanonicalAccountScopeId } from "./canonicalAccountScope";
 import { buildCanonicalBackupArtifact } from "./backup/backupEngineV1";
 import { loadStoragePrefs } from "./storagePlans";
 import { queueExternalBackup } from "./externalBackupTarget";
@@ -202,17 +203,7 @@ function currentOwnerId(): string | null {
     const direct = getStorageUser();
     if (direct) return String(direct);
   } catch {}
-  try {
-    const raw = localStorage.getItem("dc_user_id") || localStorage.getItem("dc_storage_user_id_v1") || localStorage.getItem("dc_online_auth_supabase_v1") || "";
-    if (!raw) return null;
-    if (raw.startsWith("{") || raw.startsWith("[")) {
-      const parsed = JSON.parse(raw);
-      return String(parsed?.userId || parsed?.user?.id || parsed?.session?.user?.id || "").trim() || null;
-    }
-    return String(raw).trim() || null;
-  } catch {
-    return null;
-  }
+  return getCanonicalAccountScopeId();
 }
 
 

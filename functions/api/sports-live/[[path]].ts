@@ -6,11 +6,23 @@ type Env = {
   LIVE_INTELLIGENCE_MODEL?: string;
 };
 
+type CompetitionMeta = {
+  continent?: string | null;
+  countryCode?: string | null;
+  countryName?: string | null;
+  family?: "national_teams" | "continental" | "domestic_league" | "domestic_cup" | "regional" | "amateur" | "youth" | "women" | "world" | "other" | null;
+  level?: "elite" | "pro" | "semi_pro" | "amateur" | "grassroots" | "mixed" | null;
+  tier?: string | null;
+  gender?: "men" | "women" | "mixed" | null;
+  age?: string | null;
+  regionLabel?: string | null;
+};
 type NormalPlayer = { id?: string | null; name: string; score?: number | null; countryCode?: string | null; photoUrl?: string | null };
 type NormalMatch = {
   id: string;
   competition?: string | null;
   round?: string | null;
+  competitionMeta?: CompetitionMeta | null;
   startsAt?: string | null;
   date?: string | null;
   players: NormalPlayer[];
@@ -23,6 +35,7 @@ type NormalResult = {
   playedOn?: string | null;
   competition?: string | null;
   round?: string | null;
+  competitionMeta?: CompetitionMeta | null;
   winner: NormalPlayer;
   loser: NormalPlayer;
   raw?: unknown;
@@ -879,6 +892,16 @@ const INTELLIGENCE_SPECS: Record<string, { label: string; query: string; domains
     query: "bowling IBF PBA results scores tournament",
     domains: ["bowling.sport", "pba.com", "ffbsq.fr"],
   },
+  archery: { label:"archery / tir à l'arc", query:"archery results scores tournament World Archery Ianseo", domains:["worldarchery.sport","ianseo.net","ffta.fr"] },
+  pickleball: { label:"pickleball", query:"pickleball PPA APP results scores tournament amateur", domains:["ppatour.com","theapp.global","usapickleball.org"] },
+  frisbee: { label:"ultimate frisbee / flying disc", query:"ultimate frisbee WFDF results scores tournament", domains:["wfdf.sport","usaultimate.org"] },
+  billiards: { label:"billiards / pool / carom", query:"billiards pool WPA UMB results scores tournament", domains:["wpapool.com","umb-carom.org","matchroompool.com"] },
+  basket: { label:"basketball", query:"basketball FIBA NBA EuroLeague results scores amateur", domains:["fiba.basketball","nba.com","euroleaguebasketball.net","ffbb.com"] },
+  rugby: { label:"rugby", query:"rugby World Rugby Six Nations Top 14 results scores amateur", domains:["world.rugby","sixnationsrugby.com","epcrugby.com","lnr.fr"] },
+  volleyball: { label:"volleyball", query:"volleyball FIVB CEV results scores amateur", domains:["volleyballworld.com","cev.eu","ffvolley.org"] },
+  tennis: { label:"tennis", query:"tennis ATP WTA ITF results scores tournament amateur clubs", domains:["atptour.com","wtatennis.com","itftennis.com","fft.fr","tenup.fft.fr"] },
+  chess: { label:"chess / échecs", query:"chess FIDE results tournament pairings amateur", domains:["fide.com","chess-results.com","lichess.org"] },
+  esports: { label:"esports", query:"esports results matches tournament ESL Liquipedia", domains:["esl.com","liquipedia.net"] },
 };
 
 
@@ -888,12 +911,65 @@ const SPORT_SOURCE_DOMAINS: Record<string, string[]> = {
   petanque: ["fipjp.org", "ffpjp.org", "compet.ffpjp.org", "boulistenaute.com", "petanqueland.com", "cep-petanque.com", "loeildubouliste.fr"],
   babyfoot: ["tablesoccer.org", "ffbabyfoot.fr", "foosball.com"],
   molkky: ["molkky.world", "international-molkky.org", "ff-molkky.fr", "molkkify.app"],
-  foot: ["fifa.com", "uefa.com", "ligue1.com", "premierleague.com", "laliga.com", "legaseriea.it", "bundesliga.com", "fff.fr", "laurafoot.fff.fr", "fulltime.thefa.com", "thefa.com", "fussball.de", "lnd.it", "tuttocampo.it", "rfef.es", "futbol-regional.es", "soccerway.com", "sofascore.com", "flashscore.com", "transfermarkt.com", "worldfootball.net", "uslleaguetwo.com", "npsl.com", "league1canada.ca", "mlsnextpro.com", "footballaustralia.com.au", "jfl.or.jp", "espn.com", "skysports.com", "lequipe.fr", "kicker.de", "marca.com", "gazzetta.it"],
+  foot: ["fifa.com", "uefa.com", "conmebol.com", "concacaf.com", "the-afc.com", "cafonline.com", "oceaniafootball.com", "ligue1.com", "fff.fr", "premierleague.com", "efl.com", "thenationalleague.org.uk", "fulltime.thefa.com", "spfl.co.uk", "slfl.co.uk", "knvb.nl", "rbfa.be", "fpf.pt", "laliga.com", "rfef.es", "marcadores.rfef.es", "bundesliga.com", "dfb.de", "fussball.de", "legaseriea.it", "lnd.it", "tuttocampo.it", "fai.ie", "aleagues.com.au", "footballaustralia.com.au", "ussoccer.com", "uslsoccer.com", "canadasoccer.com", "cbf.com.br", "afa.com.ar", "jleague.co", "kleague.com", "soccerway.com", "sofascore.com", "flashscore.com", "transfermarkt.com", "worldfootball.net", "espn.com", "skysports.com", "lequipe.fr", "kicker.de", "marca.com", "gazzetta.it"],
+  archery:["worldarchery.sport","ianseo.net","ffta.fr"],
+  pickleball:["ppatour.com","theapp.global","usapickleball.org"],
+  frisbee:["wfdf.sport","usaultimate.org"],
+  billiards:["wpapool.com","umb-carom.org","matchroompool.com"],
+  basket:["fiba.basketball","nba.com","euroleaguebasketball.net","ffbb.com"],
+  rugby:["world.rugby","sixnationsrugby.com","epcrugby.com","lnr.fr"],
+  volleyball:["volleyballworld.com","cev.eu","ffvolley.org"],
+  tennis:["atptour.com","wtatennis.com","itftennis.com","tenup.fft.fr"],
+  chess:["fide.com","chess-results.com","lichess.org"],
+  esports:["esl.com","liquipedia.net"],
   padel: ["padelfip.com", "premierpadel.com", "fft.fr", "padelmagazine.fr", "padelmanager.com", "padelscore.org", "tournamentsoftware.com"],
   badminton: ["bwfbadminton.com", "bwf.tournamentsoftware.com", "tournamentsoftware.com", "badmintoneurope.com", "ffbad.org", "badmintonengland.co.uk"],
   cornhole: ["iplayacl.com", "americancornhole.com", "scoreholio.com", "ofch.fr"],
   bowling: ["pba.com", "bowling.sport", "etbf.eu", "bowl.com", "lanetalk.com", "bowlingresults.info", "ffbsq.org", "ffbsq.fr"],
 };
+
+
+function competitionMetaFor(sport: string, competition?: string | null, sourceName?: string | null, sourceUrl?: string | null): CompetitionMeta {
+  const raw = `${competition || ""} ${sourceName || ""} ${sourceUrl || ""}`.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, " ");
+  const meta: CompetitionMeta = { family:"other", level:"mixed" };
+  const countryPatterns: Array<[RegExp,string,string,string]> = [
+    [/france|ligue 1|ligue 2|fff|national 2|national 3|\br1\b|\br2\b|\br3\b|laurafoot/,"FR","France","Europe"],
+    [/england|premier league|championship|league one|league two|fa full|national league|thefa/,"GB","Angleterre","Europe"],
+    [/scotland|spfl|highland|lowland/,"GB","Écosse","Europe"], [/wales|cymru/,"GB","Pays de Galles","Europe"],
+    [/ireland|fai\b|league of ireland/,"IE","Irlande","Europe"], [/spain|laliga|rfef|primera federacion|segunda federacion/,"ES","Espagne","Europe"],
+    [/germany|bundesliga|dfb|fussball|regionalliga|oberliga/,"DE","Allemagne","Europe"], [/italy|serie a|serie b|serie c|serie d|lnd|eccellenza|promozione/,"IT","Italie","Europe"],
+    [/portugal|liga portugal|fpf|campeonato de portugal/,"PT","Portugal","Europe"], [/netherlands|eredivisie|knvb|voetbal/,"NL","Pays-Bas","Europe"],
+    [/belgium|belgie|belgique|rbfa|jupiler/,"BE","Belgique","Europe"], [/brazil|brasil|brasileirao|cbf/,"BR","Brésil","Amérique du Sud"],
+    [/argentina|afa\b|primera nacional/,"AR","Argentine","Amérique du Sud"], [/usa|united states|mls|usl|npsl|ussoccer/,"US","États-Unis","Amérique du Nord"],
+    [/canada|cpl|league1 canada/,"CA","Canada","Amérique du Nord"], [/japan|j league|jfl/,"JP","Japon","Asie"], [/korea|k league/,"KR","Corée du Sud","Asie"],
+    [/australia|a league|npl/,"AU","Australie","Océanie"], [/new zealand|nz football/,"NZ","Nouvelle-Zélande","Océanie"],
+  ];
+  for (const [re, code, name, continent] of countryPatterns) if (re.test(raw)) { meta.countryCode=code; meta.countryName=name; meta.continent=continent; meta.regionLabel=name; break; }
+  if (/world cup|world championship|fifa|wdf world|world masters/.test(raw)) { meta.family="world"; meta.level="elite"; meta.regionLabel="Monde"; meta.continent="Monde"; }
+  if (/uefa|champions league|europa league|conference league|euro\b|conmebol|libertadores|sudamericana|concacaf|afc|caf|ofc|asian cup|copa america|six nations|cev|euroleague/.test(raw)) { meta.family="continental"; meta.level="elite"; if (!meta.regionLabel) meta.regionLabel=/afc|asian/.test(raw)?"Asie":/caf/.test(raw)?"Afrique":/ofc/.test(raw)?"Océanie":/conmebol|libertadores|sudamericana|copa america/.test(raw)?"Amérique du Sud":/concacaf/.test(raw)?"Amérique du Nord / Caraïbes":"Europe"; }
+  if (/national team|nations league|euro\b|world cup|copa america|gold cup|asian cup|can\b|qualif/.test(raw)) meta.family="national_teams";
+  if (/cup|coupe|copa del rey|fa cup|dfb pokal|coppa|open cup/.test(raw) && meta.family === "other") meta.family="domestic_cup";
+  if (/women|women's|feminin|feminine|femminile|frauen|dam|wsl|liga f/.test(raw)) meta.gender="women";
+  else if (/mixed|mixte/.test(raw)) meta.gender="mixed";
+  if (/u(?:1[3-9]|2[0-3])|under[- ]?(?:1[3-9]|2[0-3])|youth|junior|jeunes|juvenil/.test(raw)) { const m=raw.match(/u(?:1[3-9]|2[0-3])|under[- ]?(?:1[3-9]|2[0-3])/); meta.age=m?.[0]?.toUpperCase() || "Jeunes"; meta.family="youth"; }
+  if (sport === "foot") {
+    if (/ligue 1|premier league|laliga|bundesliga|serie a|eredivisie|primeira liga|j1|k league 1|a league/.test(raw)) { meta.family="domestic_league"; meta.level="pro"; meta.tier="D1"; }
+    else if (/ligue 2|championship|serie b|2 bundesliga|segunda division|j2|k league 2/.test(raw)) { meta.family="domestic_league"; meta.level="pro"; meta.tier="D2"; }
+    else if (/national 1|national\b|league one|serie c|3 liga|primera federacion|j3/.test(raw)) { meta.family="domestic_league"; meta.level="semi_pro"; meta.tier="D3"; }
+    else if (/national 2|league two|serie d|regionalliga|segunda federacion/.test(raw)) { meta.family="domestic_league"; meta.level="semi_pro"; meta.tier="D4"; }
+    else if (/national 3|oberliga|tercera federacion/.test(raw)) { meta.family="domestic_league"; meta.level="amateur"; meta.tier="D5"; }
+    else if (/\br1\b|regional 1|regional 1|eccellenza|verbandsliga/.test(raw)) { meta.family="regional"; meta.level="amateur"; meta.tier="R1"; }
+    else if (/\br2\b|regional 2|promozione|landesliga/.test(raw)) { meta.family="regional"; meta.level="amateur"; meta.tier="R2"; }
+    else if (/\br3\b|regional 3|bezirksliga/.test(raw)) { meta.family="regional"; meta.level="amateur"; meta.tier="R3"; }
+    else if (/district|county|kreis|grassroots|sunday league|provincial|departemental|departmental/.test(raw)) { meta.family="amateur"; meta.level="grassroots"; meta.tier="District / Local"; }
+    else if (meta.family === "other") meta.family="domestic_league";
+  }
+  return meta;
+}
+
+function applyCompetitionMeta<T extends { competition?: string | null; sourceName?: string | null; sourceUrl?: string | null; competitionMeta?: CompetitionMeta | null }>(sport: string, rows: T[]): T[] {
+  return rows.map((row) => ({ ...row, competitionMeta: row.competitionMeta || competitionMetaFor(sport, row.competition, row.sourceName, row.sourceUrl) }));
+}
 
 const MEDIA_DOMAINS_BY_LANG: Record<string, string[]> = {
   fr: ["lequipe.fr", "eurosport.fr", "rmcsport.bfmtv.com"],
@@ -1014,6 +1090,33 @@ const DIRECT_EDITORIAL_PAGES: Record<string, Array<{ url: string; sourceName: st
     { url: "https://www.mlsnextpro.com/schedule/", sourceName: "MLS NEXT Pro", scope: "regional", scopeLabel: "USA / développement" },
     { url: "https://www.jfl.or.jp/", sourceName: "JFL", scope: "regional", scopeLabel: "Japon / semi-pro" },
     { url: "https://www.espn.com/soccer/scoreboard", sourceName: "ESPN Soccer", scope: "world", scopeLabel: "Monde" },
+    { url: "https://www.uefa.com/uefaconferenceleague/fixtures-results/", sourceName: "UEFA Conference League", scope: "regional", scopeLabel: "Europe" },
+    { url: "https://www.uefa.com/uefanationsleague/fixtures-results/", sourceName: "UEFA Nations League", scope: "regional", scopeLabel: "Europe / sélections" },
+    { url: "https://www.conmebol.com/", sourceName: "CONMEBOL", scope: "regional", scopeLabel: "Amérique du Sud" },
+    { url: "https://www.concacaf.com/", sourceName: "Concacaf", scope: "regional", scopeLabel: "Amérique du Nord / Caraïbes" },
+    { url: "https://www.the-afc.com/", sourceName: "AFC", scope: "regional", scopeLabel: "Asie" },
+    { url: "https://www.cafonline.com/", sourceName: "CAF", scope: "regional", scopeLabel: "Afrique" },
+    { url: "https://www.oceaniafootball.com/", sourceName: "OFC", scope: "regional", scopeLabel: "Océanie" },
+    { url: "https://www.efl.com/", sourceName: "EFL", scope: "regional", scopeLabel: "Angleterre / D2-D4" },
+    { url: "https://www.thenationalleague.org.uk/", sourceName: "National League", scope: "regional", scopeLabel: "Angleterre / D5-D6" },
+    { url: "https://spfl.co.uk/", sourceName: "SPFL", scope: "regional", scopeLabel: "Écosse" },
+    { url: "https://slfl.co.uk/", sourceName: "Lowland League", scope: "regional", scopeLabel: "Écosse / semi-pro" },
+    { url: "https://www.knvb.nl/competities", sourceName: "KNVB", scope: "regional", scopeLabel: "Pays-Bas / pro + amateur" },
+    { url: "https://www.rbfa.be/", sourceName: "RBFA", scope: "regional", scopeLabel: "Belgique / national + provincial" },
+    { url: "https://www.fpf.pt/Competições", sourceName: "FPF", scope: "regional", scopeLabel: "Portugal / fédéral" },
+    { url: "https://marcadores.rfef.es/", sourceName: "Marcadores RFEF", scope: "regional", scopeLabel: "Espagne / fédéral" },
+    { url: "https://www.dfb.de/", sourceName: "DFB", scope: "regional", scopeLabel: "Allemagne / fédéral" },
+    { url: "https://lnd.it/seried/", sourceName: "LND Serie D", scope: "regional", scopeLabel: "Italie / D4" },
+    { url: "https://www.fai.ie/competitions/", sourceName: "FAI", scope: "regional", scopeLabel: "Irlande / pro + grassroots" },
+    { url: "https://aleagues.com.au/", sourceName: "A-Leagues", scope: "regional", scopeLabel: "Australie / NZ" },
+    { url: "https://www.footballaustralia.com.au/", sourceName: "Football Australia", scope: "regional", scopeLabel: "Australie / NPL" },
+    { url: "https://www.uslsoccer.com/", sourceName: "USL", scope: "regional", scopeLabel: "USA / D2-D4" },
+    { url: "https://www.ussoccer.com/", sourceName: "U.S. Soccer", scope: "regional", scopeLabel: "USA / fédéral" },
+    { url: "https://canadasoccer.com/", sourceName: "Canada Soccer", scope: "regional", scopeLabel: "Canada" },
+    { url: "https://www.cbf.com.br/", sourceName: "CBF", scope: "regional", scopeLabel: "Brésil / A-D" },
+    { url: "https://www.afa.com.ar/", sourceName: "AFA", scope: "regional", scopeLabel: "Argentine / pro + ascenso" },
+    { url: "https://www.jleague.co/", sourceName: "J.League", scope: "regional", scopeLabel: "Japon / J1-J3" },
+    { url: "https://www.kleague.com/", sourceName: "K League", scope: "regional", scopeLabel: "Corée du Sud" },
   ],
   padel: [
     { url: "https://www.padelfip.com/news/", sourceName: "FIP Padel", scope: "world", scopeLabel: "Monde" },
@@ -1085,11 +1188,22 @@ const DARTS_LOCALE_QUERY_PACKS: Record<string, string[]> = {
   hi: ["darts results India", "WDF Asia darts results"],
   ja: ["ダーツ 結果 PDC WDF", "Japan darts results"],
   zh: ["飞镖 比赛 结果 PDC WDF", "China darts results"],
+  archery:[{url:"https://www.worldarchery.sport/competition",sourceName:"World Archery",scope:"world",scopeLabel:"Monde"},{url:"https://www.ianseo.net/",sourceName:"Ianseo",scope:"world",scopeLabel:"Clubs / Monde"}],
+  pickleball:[{url:"https://ppatour.com/",sourceName:"PPA Tour",scope:"world",scopeLabel:"Pro / Monde"},{url:"https://usapickleball.org/",sourceName:"USA Pickleball",scope:"regional",scopeLabel:"USA / Amateur"}],
+  frisbee:[{url:"https://wfdf.sport/",sourceName:"WFDF",scope:"world",scopeLabel:"Monde"},{url:"https://play.usaultimate.org/events/tournament/?ViewAll=true",sourceName:"USA Ultimate",scope:"regional",scopeLabel:"USA / Clubs"}],
+  billiards:[{url:"https://wpapool.com/",sourceName:"WPA",scope:"world",scopeLabel:"Pool / Monde"},{url:"https://matchroompool.com/",sourceName:"Matchroom Pool",scope:"world",scopeLabel:"Pro / Monde"}],
+  basket:[{url:"https://www.fiba.basketball/",sourceName:"FIBA",scope:"world",scopeLabel:"Monde"},{url:"https://www.nba.com/games",sourceName:"NBA",scope:"regional",scopeLabel:"USA"},{url:"https://resultats.ffbb.com/",sourceName:"FFBB",scope:"local",scopeLabel:"France / amateur"}],
+  rugby:[{url:"https://www.world.rugby/",sourceName:"World Rugby",scope:"world",scopeLabel:"Monde"},{url:"https://www.sixnationsrugby.com/",sourceName:"Six Nations",scope:"regional",scopeLabel:"Europe"},{url:"https://www.lnr.fr/",sourceName:"LNR",scope:"local",scopeLabel:"France"}],
+  volleyball:[{url:"https://en.volleyballworld.com/",sourceName:"Volleyball World",scope:"world",scopeLabel:"Monde"},{url:"https://www.cev.eu/",sourceName:"CEV",scope:"regional",scopeLabel:"Europe"},{url:"https://www.ffvolley.org/",sourceName:"FFVolley",scope:"local",scopeLabel:"France / amateur"}],
+  tennis:[{url:"https://www.atptour.com/en/scores",sourceName:"ATP",scope:"world",scopeLabel:"ATP"},{url:"https://www.wtatennis.com/scores",sourceName:"WTA",scope:"world",scopeLabel:"WTA"},{url:"https://www.itftennis.com/en/tournament-calendar/",sourceName:"ITF",scope:"world",scopeLabel:"ITF / semi-pro"},{url:"https://tenup.fft.fr/",sourceName:"FFT Ten'Up",scope:"local",scopeLabel:"France / clubs"}],
+  chess:[{url:"https://www.fide.com/",sourceName:"FIDE",scope:"world",scopeLabel:"Monde"},{url:"https://chess-results.com/",sourceName:"Chess-Results",scope:"world",scopeLabel:"Tournois / amateur"}],
+  esports:[{url:"https://esl.com/",sourceName:"ESL",scope:"world",scopeLabel:"Monde"},{url:"https://liquipedia.net/",sourceName:"Liquipedia",scope:"world",scopeLabel:"Multi-jeux"}],
+
 };
 
 const FOOT_LOCALE_QUERY_PACKS: Record<string, string[]> = {
-  fr: ["football France résultats Ligue 1 Ligue 2 National", "FFF compétitions résultats National 2 National 3", "football amateur résultats ligue régionale district France", "Coupe de France résultats clubs amateurs", "football féminin jeunes U19 U17 résultats France"],
-  en: ["Premier League Championship League One League Two results", "FA Full-Time grassroots football results county league", "non league football results National League Northern Premier Southern Isthmian", "Scotland Wales Ireland football lower league results", "USA Canada Australia semi pro amateur soccer results"],
+  fr: ["football France résultats Ligue 1 Ligue 2 National", "FFF compétitions résultats National 2 National 3", "football amateur résultats R1 R2 R3 district France", "Coupe de France résultats clubs amateurs", "football féminin jeunes U19 U17 résultats France", "football Europe résultats Premier League Championship Bundesliga 2 Bundesliga Serie A B C D LaLiga Segunda", "Champions League Europa League Conference League résultats", "football Afrique Asie Amérique du Sud CONMEBOL Libertadores AFC CAF résultats"],
+  en: ["Premier League Championship League One League Two results", "FA Full-Time grassroots football results county league", "non league football results National League Northern Premier Southern Isthmian", "Scotland Wales Ireland football lower league results", "USA Canada Australia semi pro amateur soccer results", "UEFA Champions League Europa Conference League results", "CONMEBOL Libertadores Sudamericana results", "AFC CAF Concacaf OFC football results", "women youth reserve academy football results worldwide"],
   es: ["fútbol España LaLiga Segunda Primera Federación resultados", "fútbol regional amateur España resultados", "fútbol Latinoamérica ligas regionales resultados"],
   de: ["Fußball Deutschland Bundesliga 2 Bundesliga 3 Liga Ergebnisse", "FUSSBALL.DE Amateur Regionalliga Oberliga Ergebnisse", "Fußball Österreich Schweiz untere Ligen Ergebnisse"],
   it: ["calcio Serie A B C risultati", "calcio dilettanti Serie D Eccellenza Promozione risultati", "Tuttocampo risultati calcio regionale giovanile femminile"],
@@ -2333,7 +2447,7 @@ async function sportsDbFootballOverview(depth: "fast" | "deep" = "fast") {
     const hasScore = home?.score !== null && home?.score !== undefined && away?.score !== null && away?.score !== undefined;
     const isLive = /live|in progress|1st half|2nd half|halftime|extra time|penalties/.test(status);
     const date = str(row?.dateEvent) || null;
-    const match: NormalMatch = { id, competition, round, startsAt, date, players, raw: row };
+    const match: NormalMatch = { id, competition, round, startsAt, date, players, raw: row, sourceName: "TheSportsDB", sourceUrl: "https://www.thesportsdb.com/", competitionMeta: competitionMetaFor("foot", competition, "TheSportsDB", "https://www.thesportsdb.com/") };
     if (isLive) {
       live.push(match);
       return;
@@ -2355,7 +2469,7 @@ async function sportsDbFootballOverview(depth: "fast" | "deep" = "fast") {
       } else {
         const winner = hs > as ? home : away;
         const loser = hs > as ? away : home;
-        results.push({ id, playedOn: date, competition, round, winner, loser, raw: row });
+        results.push({ id, playedOn: date, competition, round, winner, loser, raw: row, sourceName: "TheSportsDB", sourceUrl: "https://www.thesportsdb.com/", competitionMeta: competitionMetaFor("foot", competition, "TheSportsDB", "https://www.thesportsdb.com/") });
       }
       return;
     }
@@ -2395,7 +2509,7 @@ async function footballDataOverview(key: string, depth: "fast" | "deep" = "fast"
     const startsAt = str(row?.utcDate) || null;
     const date = startsAt ? startsAt.slice(0, 10) : null;
     const status = str(row?.status).toUpperCase();
-    const match: NormalMatch = { id, competition, round, startsAt, date, players, raw: row };
+    const match: NormalMatch = { id, competition, round, startsAt, date, players, raw: row, sourceName: "football-data.org", sourceUrl: "https://www.football-data.org/", competitionMeta: competitionMetaFor("foot", competition, "football-data.org", "https://www.football-data.org/") };
     if (["IN_PLAY", "PAUSED", "LIVE"].includes(status)) { live.push(match); return; }
     if (status === "FINISHED" && home?.score != null && away?.score != null) {
       if (Number(home.score) === Number(away.score)) {
@@ -2403,7 +2517,7 @@ async function footballDataOverview(key: string, depth: "fast" | "deep" = "fast"
       } else {
         const winner = Number(home.score) > Number(away.score) ? home : away;
         const loser = Number(home.score) > Number(away.score) ? away : home;
-        results.push({ id, playedOn: date, competition, round, winner, loser, raw: row });
+        results.push({ id, playedOn: date, competition, round, winner, loser, raw: row, sourceName: "football-data.org", sourceUrl: "https://www.football-data.org/", competitionMeta: competitionMetaFor("foot", competition, "football-data.org", "https://www.football-data.org/") });
       }
       return;
     }
@@ -2445,9 +2559,9 @@ async function footballOverview(env: Env, depth: "fast" | "deep" = "fast") {
       dataAsOf: new Date().toISOString(),
       liveAvailable: data.live.length > 0,
       liveReason: data.live.length ? null : "Aucun match live détecté dans les flux football actuels.",
-      live: data.live,
-      fixtures: data.fixtures,
-      results: data.results,
+      live: applyCompetitionMeta("foot", data.live),
+      fixtures: applyCompetitionMeta("foot", data.fixtures),
+      results: applyCompetitionMeta("foot", data.results),
       events: data.events,
       warnings,
     },
@@ -2493,6 +2607,7 @@ function intelligenceNewsToStructuredResult(row: IntelligenceNews, sport: string
     playedOn: row.publishedAt || null,
     competition: row.scopeLabel ? `${row.scopeLabel} · ${row.sourceName || "Résultats"}` : (row.sourceName || "Résultats publiés"),
     round: null,
+    competitionMeta: competitionMetaFor(sport, row.scopeLabel || row.sourceName || null, row.sourceName || null, row.sourceUrl || null),
     winner,
     loser,
     raw: { source: row.sourceName || "Web", sourceUrl: row.sourceUrl || null },
@@ -2534,7 +2649,7 @@ async function enrichWithLiveIntelligence(
 
   // CORE is intentionally bounded so the journal appears quickly after the
   // structured feed. DEEP runs later from the frontend and can fan out widely.
-  const directPageBudget = deep ? (sport === "darts" ? 28 : sport === "foot" ? 48 : 20) : (sport === "darts" ? 10 : sport === "foot" ? 16 : 8);
+  const directPageBudget = deep ? (sport === "darts" ? 28 : sport === "foot" ? 72 : 28) : (sport === "darts" ? 10 : sport === "foot" ? 24 : 10);
   const newsSettled = await Promise.allSettled([
     googleNewsIntelligence(sport, lang, deep ? "deep" : "core"),
     deep ? bingNewsIntelligence(sport, lang, "deep") : Promise.resolve([] as IntelligenceNews[]),
@@ -2589,8 +2704,8 @@ async function enrichWithLiveIntelligence(
       ...base.payload,
       configured: !!base.payload?.configured || news.length > 0 || direct.results.length > 0,
       automaticData: !!base.payload?.automaticData || news.length > 0 || direct.results.length > 0,
-      results: sport === "darts" ? diversifyDartsResults([...direct.results, ...intelligenceResults, ...(arr(base.payload?.results) as NormalResult[])], deep ? 640 : 180) : uniqNormalResults([...direct.results, ...intelligenceResults, ...(arr(base.payload?.results) as NormalResult[])]).slice(0, deep ? 420 : 180),
-      fixtures: [...direct.fixtures, ...(arr(base.payload?.fixtures) as NormalMatch[])].slice(0, deep ? 140 : 90),
+      results: applyCompetitionMeta(sport, sport === "darts" ? diversifyDartsResults([...direct.results, ...intelligenceResults, ...(arr(base.payload?.results) as NormalResult[])], deep ? 640 : 180) : uniqNormalResults([...direct.results, ...intelligenceResults, ...(arr(base.payload?.results) as NormalResult[])]).slice(0, deep ? (sport === "foot" ? 760 : 520) : (sport === "foot" ? 300 : 180))),
+      fixtures: applyCompetitionMeta(sport, [...direct.fixtures, ...(arr(base.payload?.fixtures) as NormalMatch[])].slice(0, deep ? (sport === "foot" ? 240 : 160) : (sport === "foot" ? 140 : 90))),
       events: mergedEvents,
       news,
       intelligence: {

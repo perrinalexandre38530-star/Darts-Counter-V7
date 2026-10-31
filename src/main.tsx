@@ -190,6 +190,16 @@ async function startupHardResetIfRequested() {
     const byFlag = localStorage.getItem("dc_force_purge_sw") === "1";
     if (!byQuery && !byFlag) return false;
 
+    // OFFLINE-FIRST V206: une demande de réparation héritée ne doit JAMAIS
+    // détruire le dernier shell utilisable pendant une coupure réseau. Elle
+    // restera en attente et sera traitée au prochain démarrage réellement online.
+    if (!shouldAttemptRemoteWork()) {
+      try {
+        localStorage.setItem("dc_deferred_sw_purge_v1", JSON.stringify({ at: Date.now(), byQuery, byFlag }));
+      } catch {}
+      return false;
+    }
+
     if ("serviceWorker" in navigator) {
       const regs = await navigator.serviceWorker.getRegistrations();
       await Promise.all(regs.map((reg) => reg.unregister().catch(() => {})));
@@ -852,11 +862,16 @@ async function registerServiceWorkerProd() {
       // OFFLINE-FIRST W9: une fois le SW actif, redemande un pré-cache du
       // manifest complet. C'est non bloquant et garantit que les chunks lazy
       // du build courant sont présents avant une coupure réseau ultérieure.
-      void navigator.serviceWorker.ready.then((readyReg) => {
-        try {
-          (readyReg.active || reg.active || reg.waiting)?.postMessage({ type: "PRECACHE_APP_SHELL" });
-        } catch {}
-      }).catch(() => {});
+      const requestFullOfflineCache = () => {
+        if (!shouldAttemptRemoteWork()) return;
+        void navigator.serviceWorker.ready.then((readyReg) => {
+          try {
+            (readyReg.active || reg.active || reg.waiting)?.postMessage({ type: "PRECACHE_APP_SHELL" });
+          } catch {}
+        }).catch(() => {});
+      };
+      requestFullOfflineCache();
+      window.addEventListener("online", requestFullOfflineCache, { passive: true });
 
       console.log("✅ Service Worker enregistré :", reg.scope);
     } catch (err) {
@@ -864,16 +879,11 @@ async function registerServiceWorkerProd() {
     }
   };
 
-  // OFFLINE-FIRST V161 FIX: registerServiceWorkerProd() est volontairement
-  // appelé après le premier rendu. À ce moment-là, window.load peut déjà avoir
-  // eu lieu. Dans l'ancien code, le listener était alors posé trop tard et le
-  // SW n'était JAMAIS enregistré. On exécute immédiatement si la page est déjà
-  // chargée, sinon on attend load une seule fois.
-  if (document.readyState === "complete") {
-    void installProdServiceWorker();
-  } else {
-    window.addEventListener("load", () => { void installProdServiceWorker(); }, { once: true });
-  }
+  // OFFLINE-FIRST V206: cette fonction est déjà déclenchée APRÈS le premier
+  // rendu React. Attendre encore window.load retarde inutilement l'installation
+  // (et peut dépendre d'assets externes comme OpenCV). On enregistre donc le SW
+  // immédiatement, sans jamais bloquer l'UI.
+  void installProdServiceWorker();
 }
 
 async function devUnregisterSW() {
@@ -924,7 +934,7 @@ async function devUnregisterSW() {
       }
     })();
 
-    if (purgeInfo.byQuery || purgeInfo.byFlag) {
+    if ((purgeInfo.byQuery || purgeInfo.byFlag) && shouldAttemptRemoteWork()) {
       try {
         // Si déjà purgé une fois → on enlève ?purge=1 et on continue le boot normal
         if (localStorage.getItem(SW_PURGE_ONCE_KEY) === "1") {

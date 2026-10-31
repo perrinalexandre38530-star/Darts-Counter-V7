@@ -12,6 +12,7 @@
 
 import { ensurePersisted } from "./deviceStore";
 import { onlineApi } from "./onlineApi";
+import { getCanonicalAccountScopeId } from "./canonicalAccountScope";
 
 type ConnectivityState = "online" | "offline";
 
@@ -59,16 +60,7 @@ function persistDiagnostics(state: OfflineFirstState): void {
 }
 
 function readKnownLocalAccountId(): string {
-  try {
-    return String(
-      localStorage.getItem("dc_user_id") ||
-      (window as any).__dc_primary_auth_user_id ||
-      (window as any).__dc_last_signed_in_user_id ||
-      "",
-    ).trim();
-  } catch {
-    return "";
-  }
+  return String(getCanonicalAccountScopeId() || "").trim();
 }
 
 /**

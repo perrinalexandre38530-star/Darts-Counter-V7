@@ -12,83 +12,193 @@ function isPrecacheCodeAsset(pathname) {
   return /\.(?:js|mjs|css|woff2?|ttf|otf)$/i.test(String(pathname || ""));
 }
 
-async function readViteManifestAssets() {
+async function readViteManifest() {
   try {
     const response = await fetch(new Request("/manifest.json", { cache: "no-store", credentials: "same-origin" }));
-    if (!response?.ok) return [];
+    if (!response?.ok) return null;
     const manifest = await response.json();
-    const urls = new Set();
-    for (const entry of Object.values(manifest || {})) {
-      if (!entry || typeof entry !== "object") continue;
-      const file = String(entry.file || "").trim();
-      if (file && isPrecacheCodeAsset(file)) urls.add(`/${file.replace(/^\/+/, "")}`);
-      const css = Array.isArray(entry.css) ? entry.css : [];
-      for (const item of css) {
-        const value = String(item || "").trim();
-        if (value) urls.add(`/${value.replace(/^\/+/, "")}`);
-      }
-    }
-    return Array.from(urls);
+    return manifest && typeof manifest === "object" ? manifest : null;
   } catch {
-    return [];
+    return null;
   }
 }
 
-async function precacheAppShell(options = {}) {
-  const strict = options.strict === true;
-  const cache = await caches.open(APP_SHELL_CACHE);
-  const manifestAssets = await readViteManifestAssets();
+function manifestAssetUrl(value) {
+  const file = String(value || "").trim();
+  if (!file || !isPrecacheCodeAsset(file)) return null;
+  return `/${file.replace(/^\/+/, "")}`;
+}
 
-  // Sans chunks Vite, index.html seul est inutilisable hors ligne. Pendant
-  // l'installation d'une nouvelle version on refuse donc d'activer un SW vide.
-  if (strict && manifestAssets.length === 0) {
-    throw new Error("offline-precache: Vite manifest absent ou vide");
+function collectEntryAssets(entry, out) {
+  if (!entry || typeof entry !== "object") return;
+  const file = manifestAssetUrl(entry.file);
+  if (file) out.add(file);
+  const css = Array.isArray(entry.css) ? entry.css : [];
+  for (const item of css) {
+    const value = manifestAssetUrl(item);
+    if (value) out.add(value);
   }
+}
 
-  const urls = Array.from(new Set([...APP_SHELL_SEED, ...manifestAssets]));
-  const failed = [];
-  let cachedAssets = 0;
-
-  for (const url of urls) {
-    try {
-      const response = await fetch(new Request(url, { cache: "no-store", credentials: "same-origin" }));
-      if (!response?.ok) {
-        failed.push(url);
-        continue;
-      }
-      await cache.put(url, response.clone());
-      cachedAssets += 1;
-    } catch {
-      failed.push(url);
+function collectManifestGraph(manifest, rootKey, out, dynamicDepth = 0, visited = new Set()) {
+  const key = String(rootKey || "");
+  if (!key || visited.has(key)) return;
+  const entry = manifest?.[key];
+  if (!entry || typeof entry !== "object") return;
+  visited.add(key);
+  collectEntryAssets(entry, out);
+  for (const dep of Array.isArray(entry.imports) ? entry.imports : []) {
+    collectManifestGraph(manifest, dep, out, dynamicDepth, visited);
+  }
+  if (dynamicDepth > 0) {
+    for (const dep of Array.isArray(entry.dynamicImports) ? entry.dynamicImports : []) {
+      collectManifestGraph(manifest, dep, out, dynamicDepth - 1, visited);
     }
   }
+}
 
-  const failedCodeAssets = failed.filter((url) => manifestAssets.includes(url));
-  const shellReady = manifestAssets.length > 0 && failedCodeAssets.length === 0;
+function readManifestAssetSets(manifest) {
+  const all = new Set();
+  const core = new Set();
+  if (!manifest || typeof manifest !== "object") return { all: [], core: [] };
 
-  await cache.put("/__mss_offline_ready__", new Response(JSON.stringify({
-    version: SW_VERSION,
-    cachedAt: Date.now(),
-    cachedAssets,
-    manifestAssets: manifestAssets.length,
-    failedAssets: failed.length,
-    failedCodeAssets,
-    ready: shellReady,
-  }), { headers: { "content-type": "application/json", "cache-control": "no-store" } }));
+  for (const entry of Object.values(manifest)) collectEntryAssets(entry, all);
 
-  if (strict && !shellReady) {
-    throw new Error(`offline-precache: ${failedCodeAssets.length} chunk(s) obligatoire(s) non cache(s)`);
+  // Le boot V206 charge src/main.tsx puis importe dynamiquement ./App. On suit
+  // donc les imports statiques de l'entrée et UN niveau dynamique afin que
+  // main + App soient disponibles même au tout premier redémarrage hors ligne.
+  for (const [key, entry] of Object.entries(manifest)) {
+    if (entry?.isEntry === true) collectManifestGraph(manifest, key, core, 1);
   }
 
-  return { ready: shellReady, cachedAssets, manifestAssets: manifestAssets.length, failed };
+  // Routes locales les plus importantes : elles doivent rester ouvrables même
+  // si le pré-cache complet de la très grosse application (290+ lazy chunks)
+  // n'a pas encore fini.
+  const critical = /(?:^|\/)src\/(?:pages\/(?:Home|Games|Profiles|StatsShell|StatsHub|Settings|TrainingMenu)|App)\.(?:t|j)sx?$/i;
+  for (const key of Object.keys(manifest)) {
+    if (critical.test(String(key))) collectManifestGraph(manifest, key, core, 0);
+  }
+
+  return { all: Array.from(all), core: Array.from(core) };
+}
+
+async function cacheUrls(cache, urls, concurrency = 6) {
+  const queue = Array.from(new Set((urls || []).filter(Boolean)));
+  const failed = [];
+  let cachedAssets = 0;
+  let cursor = 0;
+
+  const worker = async () => {
+    while (true) {
+      const index = cursor++;
+      if (index >= queue.length) return;
+      const url = queue[index];
+      try {
+        const response = await fetch(new Request(url, { cache: "no-store", credentials: "same-origin" }));
+        if (!response?.ok) {
+          failed.push(url);
+          continue;
+        }
+        await cache.put(url, response.clone());
+        cachedAssets += 1;
+      } catch {
+        failed.push(url);
+      }
+    }
+  };
+
+  const count = Math.max(1, Math.min(Number(concurrency || 1), queue.length || 1));
+  await Promise.all(Array.from({ length: count }, () => worker()));
+  return { cachedAssets, failed, total: queue.length };
+}
+
+async function writeOfflineReadyMarker(cache, patch) {
+  let previous = {};
+  try {
+    const response = await cache.match("/__mss_offline_ready__");
+    previous = response ? await response.json().catch(() => ({})) : {};
+  } catch {}
+  const next = { ...previous, ...patch, version: SW_VERSION, updatedAt: Date.now() };
+  try {
+    await cache.put("/__mss_offline_ready__", new Response(JSON.stringify(next), {
+      headers: { "content-type": "application/json", "cache-control": "no-store" },
+    }));
+  } catch {}
+  return next;
+}
+
+async function precacheCoreShell() {
+  const cache = await caches.open(APP_SHELL_CACHE);
+  const manifest = await readViteManifest();
+  if (!manifest) throw new Error("offline-precache: Vite manifest absent");
+  const assets = readManifestAssetSets(manifest);
+  if (!assets.core.length) throw new Error("offline-precache: aucun chunk critique trouve");
+
+  const requiredSeed = ["/", "/index.html", "/manifest.json"];
+  const optionalSeed = APP_SHELL_SEED.filter((url) => !requiredSeed.includes(url));
+  const required = Array.from(new Set([...requiredSeed, ...assets.core]));
+  const requiredResult = await cacheUrls(cache, required, 6);
+  void cacheUrls(cache, optionalSeed, 4).catch(() => {});
+
+  const ready = requiredResult.failed.length === 0;
+  await writeOfflineReadyMarker(cache, {
+    ready,
+    coreReady: ready,
+    fullReady: false,
+    phase: ready ? "core-ready" : "core-failed",
+    coreAssets: assets.core.length,
+    manifestAssets: assets.all.length,
+    cachedAssets: requiredResult.cachedAssets,
+    failedAssets: requiredResult.failed.length,
+    failedCodeAssets: requiredResult.failed.filter((url) => assets.core.includes(url)),
+  });
+
+  if (!ready) throw new Error(`offline-precache: ${requiredResult.failed.length} ressource(s) critique(s) non cachee(s)`);
+  return { manifest, assets };
+}
+
+async function precacheFullApp() {
+  const cache = await caches.open(APP_SHELL_CACHE);
+  const manifest = await readViteManifest();
+  if (!manifest) {
+    await writeOfflineReadyMarker(cache, { fullReady: false, phase: "full-manifest-missing" });
+    return { ready: false, failed: ["/manifest.json"] };
+  }
+  const assets = readManifestAssetSets(manifest);
+  const urls = Array.from(new Set([...APP_SHELL_SEED, ...assets.all]));
+  await writeOfflineReadyMarker(cache, {
+    phase: "full-caching",
+    fullReady: false,
+    manifestAssets: assets.all.length,
+  });
+
+  // V206 contient environ 290 React.lazy. Les télécharger séquentiellement dans
+  // install faisait expirer l'installation du SW sur Android. Le cache complet
+  // se fait donc APRES activation, avec une concurrence bornée.
+  const result = await cacheUrls(cache, urls, 8);
+  const failedCodeAssets = result.failed.filter((url) => assets.all.includes(url));
+  const fullReady = failedCodeAssets.length === 0;
+  const marker = await writeOfflineReadyMarker(cache, {
+    ready: true,
+    coreReady: true,
+    fullReady,
+    phase: fullReady ? "full-ready" : "full-partial",
+    coreAssets: assets.core.length,
+    manifestAssets: assets.all.length,
+    cachedAssets: result.cachedAssets,
+    failedAssets: result.failed.length,
+    failedCodeAssets,
+    cachedAt: Date.now(),
+  });
+  return { ready: fullReady, failed: result.failed, marker };
 }
 
 self.addEventListener("install", (event) => {
-  // OFFLINE-FIRST V161 FIX: l'installation n'est considérée terminée qu'après
-  // le pré-cache du shell/chunks. skipWaiting est inclus dans waitUntil afin
-  // d'éviter une activation anticipée avec un cache encore vide.
+  // Le SW s'active dès que le shell CRITIQUE est garanti. Le pré-cache complet
+  // est volontairement exclu de install : sur V206, 290+ chunks lazy pouvaient
+  // maintenir l'installation en attente jusqu'à abandon par Chrome Android.
   event.waitUntil((async () => {
-    await precacheAppShell({ strict: true });
+    await precacheCoreShell();
     await self.skipWaiting();
   })());
 });
@@ -110,7 +220,7 @@ self.addEventListener("message", (event) => {
     return;
   }
   if (type === "PRECACHE_APP_SHELL") {
-    event.waitUntil(precacheAppShell());
+    event.waitUntil(precacheFullApp());
     return;
   }
   if (type === "PURGE_CACHES") {

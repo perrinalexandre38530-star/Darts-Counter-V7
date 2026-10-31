@@ -143,6 +143,20 @@ export function isRecoverableChunkLoadError(error: any): boolean {
 export async function recoverStaleChunkWithoutDataLoss(error?: any): Promise<boolean> {
   if (typeof window === "undefined" || !isRecoverableChunkLoadError(error)) return false;
 
+  // OFFLINE-FIRST V206: un chunk lazy manquant hors ligne ne doit surtout pas
+  // provoquer unregister(SW) + suppression CacheStorage + reload. C'était le
+  // dernier chemin automatique capable de transformer une page partiellement
+  // disponible en ERR_INTERNET_DISCONNECTED au prochain chargement.
+  try {
+    if (navigator.onLine === false) {
+      localStorage.setItem("dc_offline_recoverable_chunk_v1", JSON.stringify({
+        at: Date.now(),
+        message: String(error?.message || error || "chunk offline"),
+      }));
+      return false;
+    }
+  } catch {}
+
   const now = Date.now();
   let previous = 0;
   try { previous = Number(sessionStorage.getItem(CHUNK_RECOVERY_KEY) || "0") || 0; } catch {}

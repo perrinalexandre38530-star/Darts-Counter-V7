@@ -1,5 +1,6 @@
 import { saveConfiguredBackupNow } from "./configuredBackupNow";
 import { isRuntimeHidden, shouldDeferHeavyRuntimeWork } from "./runtimePerformance";
+import { getCanonicalAccountScopeId, sanitizeCanonicalAccountScopePart } from "./canonicalAccountScope";
 
 const LAST_SIGNATURE_PREFIX = "dc_match_full_backup_last_signature_v1";
 const LAST_RESULT_KEY = "dc_match_full_backup_last_result_v1";
@@ -56,12 +57,7 @@ function installDeferredFlushListeners(): void {
 }
 
 function currentUserScope(): string {
-  try {
-    const raw = localStorage.getItem("dc_storage_user_id_v1") || localStorage.getItem("dc_user_id") || "local";
-    return String(raw || "local").replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 80) || "local";
-  } catch {
-    return "local";
-  }
+  return sanitizeCanonicalAccountScopePart(getCanonicalAccountScopeId() || "local", 80) || "local";
 }
 
 function storageKey(): string {

@@ -245,6 +245,54 @@ function roundOrder(value: string) {
 }
 
 
+
+function competitionMetaOf(row?: DartsLiveResult | DartsLiveFixture | DartsLiveMatch | null) {
+  return (row as any)?.competitionMeta || null;
+}
+
+function levelLabel(value?: string | null) {
+  const labels: Record<string,string> = { elite:"Élite", pro:"Pro", semi_pro:"Semi-pro", amateur:"Amateur", grassroots:"Grassroots", mixed:"Mixte" };
+  return labels[String(value || "")] || "";
+}
+
+function familyLabel(value?: string | null) {
+  const labels: Record<string,string> = { national_teams:"Sélections", continental:"Continental", domestic_league:"Championnat", domestic_cup:"Coupe", regional:"Régional", amateur:"Amateur", youth:"Jeunes", women:"Féminin", world:"Monde", other:"Autre" };
+  return labels[String(value || "")] || "";
+}
+
+function competitionCategory(row?: DartsLiveResult | null) {
+  const meta = competitionMetaOf(row);
+  if (!meta) return "AUTRES";
+  if (meta.family === "national_teams") return "SÉLECTIONS";
+  if (meta.family === "world" || meta.continent === "Monde") return "MONDE";
+  if (meta.level === "grassroots" || meta.level === "amateur" || meta.family === "amateur") return "AMATEUR";
+  if (meta.countryName) return String(meta.countryName).toUpperCase();
+  if (meta.continent) return String(meta.continent).toUpperCase();
+  if (meta.family === "continental") return "CONTINENTAL";
+  return "AUTRES";
+}
+
+function categoryIcon(label: string) {
+  const key = label.toLowerCase();
+  if (/selection/.test(key)) return "🌐";
+  if (/monde/.test(key)) return "🌍";
+  if (/europe/.test(key)) return "🇪🇺";
+  if (/asie/.test(key)) return "🌏";
+  if (/oceanie/.test(key)) return "🌊";
+  if (/afrique/.test(key)) return "🌍";
+  if (/amerique/.test(key)) return "🌎";
+  if (/amateur|grassroots/.test(key)) return "🏘️";
+  return "🏳️";
+}
+
+function competitionMetaChips(row?: DartsLiveResult | null) {
+  const meta = competitionMetaOf(row);
+  if (!meta) return [] as string[];
+  return [meta.regionLabel || meta.countryName || meta.continent, familyLabel(meta.family), meta.tier, levelLabel(meta.level), meta.gender === "women" ? "Féminin" : meta.gender === "mixed" ? "Mixte" : null, meta.age]
+    .filter(Boolean)
+    .filter((value, index, all) => all.indexOf(value) === index) as string[];
+}
+
 function dateTs(value?: string | null) {
   const ts = value ? Date.parse(value) : NaN;
   return Number.isFinite(ts) ? ts : 0;
@@ -490,6 +538,13 @@ function LiveStyles() {
       .msc-result-score.is-winner { color:#f4d445; }
       .msc-result-head-spacer { flex:1; }
       .msc-live-warning { margin:7px 0 0; padding:6px 8px; border:1px solid rgba(255,80,96,.25); border-radius:8px; background:rgba(255,48,72,.07); color:#ff8995; font-size:8.5px; font-weight:900; text-align:center; }
+      .msc-category-dock { display:flex; gap:6px; overflow-x:auto; padding:2px 0 5px; scrollbar-width:none; }
+      .msc-category-dock::-webkit-scrollbar { display:none; }
+      .msc-category-btn { flex:0 0 auto; min-height:31px; display:inline-flex; align-items:center; gap:6px; padding:5px 9px; border:1px solid #2b343d; border-radius:999px; background:#0b1015; color:#909ba6; font-size:8px; font-weight:1000; cursor:pointer; }
+      .msc-category-btn.is-active { color:#fff; border-color:var(--live-accent); background:linear-gradient(180deg,rgba(255,48,72,.17),#0b1015); box-shadow:0 0 12px rgba(255,48,72,.08); }
+      .msc-taxonomy-row { display:flex; gap:5px; flex-wrap:wrap; margin-top:3px; }
+      .msc-taxonomy-chip { display:inline-flex; align-items:center; min-height:18px; padding:2px 6px; border-radius:999px; border:1px solid rgba(255,255,255,.10); background:rgba(255,255,255,.035); color:#9fa9b4; font-size:6.9px; font-weight:950; text-transform:uppercase; letter-spacing:.2px; }
+      .msc-competition-head-main { min-width:0; }
       .msc-competition-dock { display:flex; gap:6px; overflow-x:auto; padding:8px 0 6px; scrollbar-width:none; }
       .msc-competition-dock::-webkit-scrollbar { display:none; }
       .msc-competition-btn { flex:0 0 auto; min-width:46px; height:46px; display:flex; align-items:center; justify-content:center; gap:7px; padding:0 10px; border:1px solid #2b333c; border-radius:16px; background:linear-gradient(180deg,#121921,#0b1015); color:#98a2ad; cursor:pointer; box-shadow: inset 0 0 0 1px rgba(255,255,255,.03), 0 10px 22px rgba(0,0,0,.2); }
@@ -862,28 +917,49 @@ function GroupedResults({ rows, source, lang, newsRows, allSources }: { rows: Da
         latest: Math.max(...matches.map((match) => dateTs(match.playedOn)), 0),
         imageUrl: findCompetitionImage(name, matches, newsRows, allSources),
         tone: competitionVisualTone(name),
+        category: competitionCategory(matches[0]),
+        chips: competitionMetaChips(matches[0]),
       }))
       .sort((a, b) => (b.latest - a.latest) || (b.matches.length - a.matches.length) || a.name.localeCompare(b.name));
   }, [rows, newsRows, allSources]);
+
+  const categories = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    competitions.forEach((item) => counts.set(item.category, (counts.get(item.category) || 0) + item.matches.length));
+    return Array.from(counts.entries()).sort((a,b) => b[1]-a[1] || a[0].localeCompare(b[0]));
+  }, [competitions]);
+
+  const [selectedCategory, setSelectedCategory] = React.useState("__all__");
   const [selected, setSelected] = React.useState("__all__");
   React.useEffect(() => {
     if (selected !== "__all__" && !competitions.some((item) => item.name === selected)) setSelected("__all__");
   }, [competitions, selected]);
-  const visible = selected === "__all__" ? competitions : competitions.filter((item) => item.name === selected);
+  React.useEffect(() => { setSelected("__all__"); }, [selectedCategory]);
+
+  const categoryFiltered = selectedCategory === "__all__" ? competitions : competitions.filter((item) => item.category === selectedCategory);
+  const visible = selected === "__all__" ? categoryFiltered : categoryFiltered.filter((item) => item.name === selected);
+  const filteredCount = categoryFiltered.reduce((sum,item) => sum + item.matches.length, 0);
+
   return (
     <>
+      <div className="msc-category-dock" aria-label="Catégories de compétitions">
+        <button className={`msc-category-btn${selectedCategory === "__all__" ? " is-active" : ""}`} type="button" onClick={() => setSelectedCategory("__all__")}>🧭 TOUTES · {rows.length}</button>
+        {categories.map(([category, count]) => (
+          <button key={category} className={`msc-category-btn${selectedCategory === category ? " is-active" : ""}`} type="button" onClick={() => setSelectedCategory(category)} title={category}>{categoryIcon(category)} {category} · {count}</button>
+        ))}
+      </div>
       <div className="msc-competition-dock" aria-label="Compétitions">
         <button className={`msc-competition-btn${selected === "__all__" ? " is-active" : ""}`} type="button" onClick={() => setSelected("__all__")} title="Toutes les compétitions">
-          <span className="msc-competition-visual"><span className="msc-competition-icon">🏟️</span></span><span className="msc-competition-label">TOUTES</span><span className="msc-competition-count">{rows.length}</span>
+          <span className="msc-competition-visual"><span className="msc-competition-icon">🏟️</span></span><span className="msc-competition-label">TOUTES</span><span className="msc-competition-count">{filteredCount}</span>
         </button>
-        {competitions.map(({ name, matches, imageUrl, tone }) => (
+        {categoryFiltered.map(({ name, matches, imageUrl, tone }) => (
           <button key={name} className={`msc-competition-btn ${tone}${selected === name ? " is-active" : ""}`} type="button" onClick={() => setSelected(name)} title={name}>
             <span className="msc-competition-visual">{imageUrl ? <img src={imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : <span className="msc-competition-icon">{competitionIcon(name)}</span>}</span><span className="msc-competition-label" translate="no">{name}</span><span className="msc-competition-count">{matches.length}</span>
           </button>
         ))}
       </div>
       <div className="msc-competition-groups">
-        {visible.map(({ name, matches, imageUrl, tone }) => {
+        {visible.map(({ name, matches, imageUrl, tone, chips }) => {
           const rounds = new Map<string, DartsLiveResult[]>();
           matches.forEach((match) => {
             const round = normalizedRound(match.round);
@@ -896,7 +972,10 @@ function GroupedResults({ rows, source, lang, newsRows, allSources }: { rows: Da
             <section className="msc-competition-group" key={name}>
               <div className={`msc-competition-head ${tone}`}>
                 <span className="msc-competition-head-icon">{imageUrl ? <img src={imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : competitionIcon(name)}</span>
-                <div className="msc-competition-head-title" translate="no" data-i18n-skip="true">{name}</div>
+                <div className="msc-competition-head-main">
+                  <div className="msc-competition-head-title" translate="no" data-i18n-skip="true">{name}</div>
+                  {chips.length ? <div className="msc-taxonomy-row">{chips.map((chip) => <span className="msc-taxonomy-chip" key={`${name}-${chip}`}>{chip}</span>)}</div> : null}
+                </div>
                 <span className="msc-competition-head-count">{matches.length}</span>
               </div>
               {orderedRounds.map(([round, roundRows]) => (

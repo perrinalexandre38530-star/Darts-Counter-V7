@@ -8,6 +8,8 @@
 // - NAS fondateur : réservé admin, hors offres publiques
 // ============================================
 
+import { getCanonicalAccountScopeId } from "./canonicalAccountScope";
+
 export const MB = 1024 * 1024;
 export const GB = 1024 * MB;
 export const TB = 1024 * GB;
@@ -265,10 +267,7 @@ export type StoragePrefs = {
 export const STORAGE_PREFS_KEY = "dc_storage_prefs_v1";
 
 function storagePrefsUserId(): string {
-  if (typeof window === "undefined") return "";
-  try {
-    return String(window.localStorage.getItem("dc_storage_user_id_v1") || window.localStorage.getItem("dc_user_id") || "").trim();
-  } catch { return ""; }
+  return String(getCanonicalAccountScopeId() || "").trim();
 }
 
 function storagePrefsKey(): string {

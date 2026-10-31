@@ -1608,13 +1608,19 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
     // W5 : le document profiles est resynchronisé explicitement au reconnect.
     // Une mutation faite en mode avion a déjà augmenté sa révision locale ;
     // syncCollection poussera donc le local si le cloud est plus ancien.
-    void syncCollection(
-      DOC.profiles,
-      () => serializeProfiles(options.getProfiles(), userId),
-      applyProfilesPayload,
-      (rows) => getAccountOwnedLocalProfiles(rows, userId),
-    ).catch((error) => console.warn("[account-sync] profile reconnect sync failed", error));
-    void refreshRemoteDocuments();
+    void (async () => {
+      try {
+        await syncCollection(
+          DOC.profiles,
+          () => serializeProfiles(options.getProfiles(), userId),
+          applyProfilesPayload,
+          (rows) => getAccountOwnedLocalProfiles(rows, userId),
+        );
+        if (!remotePaused()) await refreshRemoteDocuments();
+      } catch (error) {
+        console.warn("[account-sync] reconnect refresh failed", error);
+      }
+    })();
   };
   const onOrchestratedSyncCycle = (event: Event) => {
     const detail: any = (event as CustomEvent)?.detail || {};
@@ -1701,8 +1707,22 @@ export function startAccountOwnedDataSync(options: StartOptions): Cleanup {
   // hors ligne. Le canal est créé au retour du réseau.
   ensureRealtimeChannel();
 
+  // Demande UNE passe au coordinateur global une fois le bridge réellement prêt.
+  // Si son boot de 2,5 s a déjà eu lieu sur un téléphone lent, cette demande
+  // garantit que la synchro du compte ne reste pas en attente jusqu'au heartbeat.
+  // Le coordinateur fusionne cette demande avec une passe déjà planifiée/en cours.
+  if (shouldAttemptRemoteWork()) {
+    try {
+      window.dispatchEvent(new CustomEvent("msc:sync-request", {
+        detail: { reason: "account-owned-ready", delayMs: 450, includeAccountHistory: false },
+      }));
+    } catch {}
+  }
 
-  void runAccountOwnedSyncCycle({ reason: "boot", awaitHistory: false }).catch((error) => console.warn("[account-sync] initial sync failed", error));
+  // W3: le boot distant est piloté uniquement par syncOrchestrator. Cela évite
+  // une seconde passe account_sync_documents concurrente au démarrage. Les
+  // mutations locales conservent leurs révisions et seront poussées au prochain
+  // cycle orchestré (boot/online/focus/heartbeat).
 
   return () => {
     stopped = true;

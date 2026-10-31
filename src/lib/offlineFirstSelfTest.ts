@@ -235,13 +235,20 @@ export async function runOfflineFirstSelfTest(): Promise<OfflineFirstSelfTestRep
         marker = response ? await response.json().catch(() => null) : null;
       } catch {}
       const manifestAssets = Number(marker?.manifestAssets || 0);
+      const coreAssets = Number(marker?.coreAssets || 0);
       const failedCodeAssets = Array.isArray(marker?.failedCodeAssets) ? marker.failedCodeAssets.length : Number(marker?.failedAssets || 0);
-      const shellReady = marker?.ready === true && manifestAssets > 0 && failedCodeAssets === 0;
-      if (controller && shellReady) {
-        return { status: "ok", detail: `Service Worker contrôleur actif · ${manifestAssets} chunk(s) Vite pré-caché(s) · shell OFFLINE READY.` };
+      const coreReady = marker?.coreReady === true || marker?.ready === true;
+      const fullReady = marker?.fullReady === true;
+      if (controller && coreReady && coreAssets > 0) {
+        return {
+          status: fullReady ? "ok" : "warn",
+          detail: fullReady
+            ? `Service Worker contrôleur actif · shell critique ${coreAssets} chunk(s) · application complète ${manifestAssets} chunk(s) OFFLINE READY.`
+            : `Service Worker contrôleur actif · shell critique OFFLINE READY (${coreAssets} chunk(s)). Pré-cache complet encore en cours/partiel : ${manifestAssets} chunk(s), ${failedCodeAssets} échec(s).`,
+        };
       }
       if (registration || controller) {
-        return { status: "warn", detail: `Service Worker présent mais shell incomplet : contrôleur ${controller ? "oui" : "non"}, manifest ${manifestAssets}, échecs ${failedCodeAssets}. Rester en ligne et recharger une fois.` };
+        return { status: "warn", detail: `Service Worker présent mais shell critique incomplet : contrôleur ${controller ? "oui" : "non"}, core ${coreAssets}, manifest ${manifestAssets}, échecs ${failedCodeAssets}.` };
       }
       return { status: "warn", detail: "Aucun Service Worker actif sur cette session. Sur PWA/web, le mode hors ligne ne peut pas démarrer tant qu’une session en ligne n’a pas installé le shell." };
     });

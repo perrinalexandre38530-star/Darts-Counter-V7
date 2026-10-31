@@ -9,7 +9,7 @@ import petanqueExplainPortrait from "../assets/petanque_explain/petanque_explain
 import petanqueExplainLandscape from "../assets/petanque_explain/petanque_explain_horizontal.webp";
 import { CLOSEST_CENTER_LOCAL_SOURCE_ID, describeClosestCenterCameraSource } from "../lib/closestCenterCameraSource";
 import { saveCameraCalibration } from "../lib/cameraCalibrationStore";
-import { createClosestCenterCompanionSession, fetchClosestCenterCompanionEvents, fetchClosestCenterCompanionStatus } from "../lib/closestCenterCompanionClient";
+import { createClosestCenterCompanionSession, fetchClosestCenterCompanionEvents, fetchClosestCenterCompanionStatus, requestClosestCenterCompanionBurst } from "../lib/closestCenterCompanionClient";
 
 const ACCENT = "#44e7ff";
 
@@ -50,6 +50,9 @@ export default function ClosestCenterConfig(props: any) {
   const [companionSession,setCompanionSession] = React.useState<any>(null);
   const [companionQr,setCompanionQr] = React.useState("");
   const [companionStatus,setCompanionStatus] = React.useState<any>(null);
+  const [companionPreview,setCompanionPreview] = React.useState("");
+  const [companionPreviewBusy,setCompanionPreviewBusy] = React.useState(false);
+  const [companionPreviewTelemetry,setCompanionPreviewTelemetry] = React.useState<any>(null);
   const companionSeqRef = React.useRef(0);
   const [configMode, setConfigMode] = React.useState<"guided"|"complete">("guided");
   const [guidedStep, setGuidedStep] = React.useState(0);
@@ -86,10 +89,23 @@ export default function ClosestCenterConfig(props: any) {
     return()=>{dead=true;window.clearInterval(id);};
   }, [companionSession?.code, companionSession?.sourceId]);
 
+  const testCompanionPreview = async () => {
+    const code=companionSession?.code;
+    if(!code||companionPreviewBusy) return;
+    setCompanionPreviewBusy(true);
+    try{
+      const result=await requestClosestCenterCompanionBurst(code,{count:1,delayMs:55,maxCaptureSide:720,timeoutMs:9000,retries:0});
+      setCompanionPreview(result.previewDataUrl||"");
+      setCompanionPreviewTelemetry(result.telemetry||null);
+    }catch(e:any){
+      setCompanionPreviewTelemetry({error:e?.message||"Aperçu impossible"});
+    }finally{setCompanionPreviewBusy(false);}
+  };
+
   const createCompanion = async () => {
     try{
       const session=await createClosestCenterCompanionSession();
-      companionSeqRef.current=0; setCompanionSession(session); setCompanionStatus(null); setCameraSourceId(session.sourceId);
+      companionSeqRef.current=0; setCompanionSession(session); setCompanionStatus(null); setCompanionPreview(""); setCompanionPreviewTelemetry(null); setCameraSourceId(session.sourceId);
     }catch(e:any){ setCompanionStatus({connected:false,message:e?.message||"Création de liaison impossible"}); }
   };
 
@@ -251,8 +267,12 @@ export default function ClosestCenterConfig(props: any) {
         </div>
         {cameraSource.kind==="phone_companion" ? <div style={{display:"grid",gridTemplateColumns:companionQr?"132px 1fr":"1fr",gap:10,alignItems:"center",padding:8,borderRadius:12,background:"rgba(0,0,0,.20)"}}>
           {companionQr?<div style={{width:132,height:132,borderRadius:12,background:"#fff",padding:6}}><img src={companionQr} alt="QR téléphone compagnon" style={{width:"100%",height:"100%",display:"block"}}/></div>:null}
-          <div style={{minWidth:0}}><b style={{fontSize:11}}>LIAISON COMPAGNON</b><div style={{fontSize:9,color:"#91a2b1",lineHeight:1.4,marginTop:4}}>{companionReady?"Téléphone compagnon prêt pour le scoring.":(companionStatus?.connected&&!companionFresh?"Téléphone non joignable ou en veille. Rallume l’écran compagnon.":companionStatus?.connected?"Téléphone connecté. Effectue la calibration 5 points sur ce téléphone, puis laisse-le fixe face à la cible.":"Scanne le QR avec le téléphone qui restera fixé face à la cible.")}</div><div style={{fontSize:9,color:companionStatus?.calibrated?"#8fffc2":"#ffd18c",fontWeight:1000,marginTop:5}}>{companionStatus?.calibrated?"CALIBRATION 5 POINTS REÇUE":"CALIBRATION EN ATTENTE"}</div><button onClick={()=>void createCompanion()} style={{...navBtn,minHeight:32,marginTop:7,padding:"5px 8px"}}>NOUVELLE LIAISON</button></div>
+          <div style={{minWidth:0}}><b style={{fontSize:11}}>LIAISON COMPAGNON</b><div style={{fontSize:9,color:"#91a2b1",lineHeight:1.4,marginTop:4}}>{companionReady?"Téléphone compagnon prêt pour le scoring.":(companionStatus?.connected&&!companionFresh?"Téléphone non joignable ou en veille. Rallume l’écran compagnon.":companionStatus?.connected?"Téléphone connecté. Effectue la calibration 5 points sur ce téléphone, puis laisse-le fixe face à la cible.":"Scanne le QR avec le téléphone qui restera fixé face à la cible.")}</div><div style={{fontSize:9,color:companionStatus?.calibrated?"#8fffc2":"#ffd18c",fontWeight:1000,marginTop:5}}>{companionStatus?.calibrated?"CALIBRATION 5 POINTS REÇUE":"CALIBRATION EN ATTENTE"}</div>
+          {companionStatus?.hardwareFingerprint?<div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:7,fontSize:8,fontWeight:900,color:"#9fb0bd"}}><span style={{padding:"4px 6px",borderRadius:999,background:"rgba(255,255,255,.05)"}}>{Number(companionStatus.hardwareFingerprint?.videoWidth||companionStatus.hardwareFingerprint?.width||0)||"?"}×{Number(companionStatus.hardwareFingerprint?.videoHeight||companionStatus.hardwareFingerprint?.height||0)||"?"}</span><span style={{padding:"4px 6px",borderRadius:999,background:"rgba(255,255,255,.05)"}}>HEARTBEAT {companionLastSeen?Math.max(0,Math.round((Date.now()-companionLastSeen)/1000)):"?"}s</span>{companionStatus?.lastCaptureDurationMs?<span style={{padding:"4px 6px",borderRadius:999,background:"rgba(255,255,255,.05)"}}>BURST {Math.round(companionStatus.lastCaptureDurationMs)} ms</span>:null}</div>:null}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginTop:7}}><button disabled={!companionReady||companionPreviewBusy} onClick={()=>void testCompanionPreview()} style={{...navBtn,minHeight:32,padding:"5px 8px",opacity:(!companionReady||companionPreviewBusy)?.45:1}}>{companionPreviewBusy?"CAPTURE…":"APERÇU TEST"}</button><button onClick={()=>void createCompanion()} style={{...navBtn,minHeight:32,padding:"5px 8px"}}>NOUVELLE LIAISON</button></div>
+          {companionPreviewTelemetry?.error?<div style={{fontSize:9,color:"#ff9c9c",marginTop:6,fontWeight:900}}>{companionPreviewTelemetry.error}</div>:companionPreviewTelemetry?<div style={{fontSize:8,color:"#8fffc2",marginTop:6,fontWeight:900}}>APERÇU REÇU · {companionPreviewTelemetry.totalMs} ms · {Math.round((companionPreviewTelemetry.bytes||0)/1024)} Ko</div>:null}</div>
         </div> : null}
+        {cameraSource.kind==="phone_companion" && companionPreview ? <div style={{marginTop:8,padding:6,borderRadius:12,border:"1px solid rgba(68,231,255,.20)",background:"#02070d"}}><div style={{fontSize:8,color:ACCENT,fontWeight:1000,letterSpacing:.8,margin:"2px 4px 6px"}}>DERNIER APERÇU TEST · NON UTILISÉ POUR LE SCORE</div><img src={companionPreview} alt="Aperçu caméra compagnon" style={{width:"100%",maxHeight:220,objectFit:"contain",display:"block",borderRadius:9,background:"#000"}}/></div> : null}
       </div>
       <ol style={{margin:"12px 0 0",paddingLeft:20,color:"#cad5e1",lineHeight:1.6,fontSize:13}}>
         <li>Enrôlement IA des fléchettes de chaque joueur.</li>

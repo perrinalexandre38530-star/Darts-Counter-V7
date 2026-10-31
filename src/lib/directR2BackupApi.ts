@@ -1,4 +1,5 @@
 import { supabase } from "./supabaseClient";
+import { getCanonicalAccountScopeId } from "./canonicalAccountScope";
 import { readNasAccessToken } from "./apiClient";
 import type { CloudObjectIndexItem } from "./cloudStorageApi";
 import { isPaidCloudPlanId, loadStoragePrefs, type StoragePlanId } from "./storagePlans";
@@ -281,14 +282,7 @@ function tokenFingerprint(token: string): string {
 }
 
 function currentStorageAccountId(): string {
-  if (typeof window === "undefined") return "";
-  try {
-    return String(
-      window.localStorage.getItem("dc_storage_user_id_v1") ||
-      window.localStorage.getItem("dc_user_id") ||
-      "",
-    ).trim();
-  } catch { return ""; }
+  return String(getCanonicalAccountScopeId() || "").trim();
 }
 
 function tokenMatchesCurrentAccount(token: string): boolean {

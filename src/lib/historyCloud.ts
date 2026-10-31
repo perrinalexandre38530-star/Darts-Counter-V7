@@ -5,6 +5,7 @@
 // ============================================================
 
 import type { SavedMatch } from "./history";
+import { getCanonicalAccountScopeId } from "./canonicalAccountScope";
 import LZString from "lz-string";
 import { mergeHistoryPayloadMonotonic, protectFinishedHistoryPayload } from "./historyIntegrity";
 import { createCooperativeYielder } from "./mainThreadYield";
@@ -18,23 +19,8 @@ import {
 const HISTORY_DB_BASE = "dc-store-v1";
 const DB_VER = 4;
 
-function detectHistoryScopeUserId(): string | null {
-  try {
-    if (typeof localStorage === "undefined") return null;
-    const raw = localStorage.getItem("dc_storage_user_id_v1") || localStorage.getItem("dc_user_id") || localStorage.getItem("dc_online_auth_supabase_v1") || "";
-    if (!raw) return null;
-    if (raw.startsWith("{") || raw.startsWith("[")) {
-      try {
-        const parsed = JSON.parse(raw);
-        return String(parsed?.userId || parsed?.user?.id || parsed?.session?.user?.id || "").trim() || null;
-      } catch { return null; }
-    }
-    return String(raw).trim() || null;
-  } catch { return null; }
-}
-
 function historyDbName(): string {
-  const uid = detectHistoryScopeUserId();
+  const uid = getCanonicalAccountScopeId();
   return uid ? `${HISTORY_DB_BASE}:${uid}` : HISTORY_DB_BASE;
 }
 const STORE_LEGACY = "history";

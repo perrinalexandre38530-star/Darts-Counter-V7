@@ -1,3 +1,4 @@
+import { getCanonicalAccountScopeId } from "./canonicalAccountScope";
 import LZString from "lz-string";
 
 export const HISTORY_V4_SCHEMA_VERSION = 4 as const;
@@ -90,27 +91,8 @@ function indexRowIsFinished(row: HistoryV4IndexRow): boolean {
   return ["finished", "done", "ended", "complete", "completed", "match_end"].includes(status) || toTs(row?.finishedAt) > 0;
 }
 
-function detectHistoryScopeUserId(): string | null {
-  try {
-    if (typeof localStorage === "undefined") return null;
-    const raw = localStorage.getItem("dc_storage_user_id_v1") || localStorage.getItem("dc_user_id") || localStorage.getItem("dc_online_auth_supabase_v1") || "";
-    if (!raw) return null;
-    if (raw.startsWith("{") || raw.startsWith("[")) {
-      try {
-        const parsed = JSON.parse(raw);
-        return cleanId(parsed?.userId || parsed?.user?.id || parsed?.session?.user?.id) || null;
-      } catch {
-        return null;
-      }
-    }
-    return cleanId(raw) || null;
-  } catch {
-    return null;
-  }
-}
-
 export function historyV4DbName(): string {
-  const uid = detectHistoryScopeUserId();
+  const uid = getCanonicalAccountScopeId();
   return uid ? `${HISTORY_DB_BASE_V4}:${uid}` : HISTORY_DB_BASE_V4;
 }
 

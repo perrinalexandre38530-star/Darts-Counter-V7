@@ -24,6 +24,7 @@ const storagePlans = read('src/lib/storagePlans.ts');
 const diagnostics = read('src/components/settings/BackupDiagnosticsPanel.tsx');
 const viteConfig = read('vite.config.ts');
 const headers = read('public/_headers');
+const appRecovery = read('src/lib/appRecovery.ts');
 
 expect('Global sync orchestrator starts from main', main.includes('initGlobalSyncOrchestrator()'));
 expect('Offline runtime exposes remote-work guard', offline.includes('shouldAttemptRemoteWork'));
@@ -42,12 +43,17 @@ expect('Browser storage quota estimation exists', storagePlans.includes('estimat
 expect('Backup diagnostics show LOCAL authority', diagnostics.includes('LOCAL / IndexedDB') && diagnostics.includes('Synchronisation globale'));
 expect('PWA service worker contains offline shell fallback', /cache|offline/i.test(sw) && /fetch/i.test(sw));
 expect('Vite build emits manifest for offline precache', /manifest\s*:\s*["']manifest\.json["']/.test(viteConfig));
-expect('Service worker precaches Vite manifest chunks', sw.includes('readViteManifestAssets') && sw.includes('PRECACHE_APP_SHELL') && sw.includes('/manifest.json'));
+expect('Service worker reads Vite manifest for offline chunks', sw.includes('readViteManifest') && sw.includes('PRECACHE_APP_SHELL') && sw.includes('/manifest.json'));
+expect('SW install only blocks on critical shell', sw.includes('precacheCoreShell') && sw.includes('event.waitUntil') && !/install[\s\S]{0,700}precacheFullApp/.test(sw));
+expect('Full app precache runs after activation/message', sw.includes('precacheFullApp') && sw.includes('cacheUrls(cache, urls, 8)'));
+expect('Large lazy app uses bounded concurrent cache workers', sw.includes('Promise.all(Array.from({ length: count }') && sw.includes('concurrency = 6'));
 expect('App contains local/offline gate policy', /offline|local/i.test(app));
 
-expect('SW registration cannot miss an already-fired load event', main.includes('document.readyState === "complete"') && main.includes('installProdServiceWorker'));
+expect('SW registration starts immediately after render', main.includes('void installProdServiceWorker();') && !/registerServiceWorkerProd[\s\S]{0,2600}addEventListener\(\"load\"/.test(main));
 expect('Offline chunk failure never purges SW/cache', /hardRecoverFromChunkFailure[\s\S]{0,700}!shouldAttemptRemoteWork\(\)/.test(main) && /recoverDynamicImportOnce[\s\S]{0,500}!shouldAttemptRemoteWork\(\)/.test(main));
-expect('SW install refuses empty/incomplete Vite precache', sw.includes('strict: true') && sw.includes('failedCodeAssets') && sw.includes('Vite manifest absent ou vide'));
+expect('Crash boundary stale-chunk recovery preserves caches offline', /recoverStaleChunkWithoutDataLoss[\s\S]{0,650}navigator\.onLine === false/.test(appRecovery));
+expect('Deferred startup purge preserves SW while offline', /startupHardResetIfRequested[\s\S]{0,700}!shouldAttemptRemoteWork\(\)/.test(main));
+expect('SW install refuses missing critical manifest/core', sw.includes('Vite manifest absent') && sw.includes('aucun chunk critique') && sw.includes('coreReady'));
 expect('Cloudflare never serves a stale Vite manifest', /\/manifest\.json[\s\S]{0,120}Cache-Control: no-store/.test(headers));
 
-console.log('\n✅ OFFLINE-FIRST FINAL CONTRACT 23/23');
+console.log('\n✅ OFFLINE-FIRST FINAL CONTRACT 28/28');

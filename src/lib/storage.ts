@@ -50,6 +50,11 @@ import {
 import { accountOwnedTeams, mergeAccountTeamsPreservingOrganizations } from "../data/organizationDataBoundary";
 import { resolveCanonicalProfileIdFromAlias, registerCanonicalIdentity } from "../data/identityAliases";
 import {
+  getCanonicalAccountScopeId,
+  runtimePrimaryAccountScopeId,
+  stableSupabaseAccountScopeIdFromAuthStorage,
+} from "./canonicalAccountScope";
+import {
   clearMediaVaultV2All,
   clearMediaVaultV2ForOwner,
   collectRequiredMediaKeysFromSnapshot,
@@ -1510,65 +1515,23 @@ function normalizeUserId(value: unknown): string | null {
 }
 
 function runtimePrimaryAuthUserId(): string | null {
-  try {
-    return normalizeUserId((window as any)?.__dc_primary_auth_user_id);
-  } catch {
-    return null;
-  }
+  return runtimePrimaryAccountScopeId();
 }
 
 function stableSupabaseUserIdFromAuthLS(): string | null {
-  if (typeof localStorage === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(AUTH_SESSION_LS_KEY) || "";
-    if (!raw) return null;
-    if (!(raw.startsWith("{") || raw.startsWith("["))) return null;
-    const parsed = safeJsonParse<any>(raw, null);
-    return normalizeUserId(
-      parsed?.supabaseUserId ||
-      parsed?.user?.user_metadata?.supabase_user_id ||
-      parsed?.session?.user?.id ||
-      (String(parsed?.authProvider || "").toLowerCase().startsWith("supabase") ? (parsed?.user?.id || parsed?.userId) : null)
-    );
-  } catch {
-    return null;
-  }
+  return stableSupabaseAccountScopeIdFromAuthStorage();
 }
 
 function detectUserIdFromAuthLS(): string | null {
-  if (typeof localStorage === "undefined") return null;
-  try {
-    // Pendant toute la durée de vie React, l'identité fournie par la vraie
-    // session Supabase est l'autorité absolue. Aucun bridge NAS, restauration
-    // ou ancien alias n'a le droit de changer de namespace derrière elle.
-    const runtimePrimary = runtimePrimaryAuthUserId();
-    if (runtimePrimary) return runtimePrimary;
-
-    const explicitScope = normalizeUserId(localStorage.getItem(STORAGE_USER_LS_KEY));
-    const stableSupabase = stableSupabaseUserIdFromAuthLS();
-    if (stableSupabase) {
-      if (explicitScope !== stableSupabase) {
-        try { localStorage.setItem(STORAGE_USER_LS_KEY, stableSupabase); } catch {}
+  const canonical = getCanonicalAccountScopeId();
+  if (canonical && typeof localStorage !== "undefined") {
+    try {
+      if (normalizeUserId(localStorage.getItem(STORAGE_USER_LS_KEY)) !== canonical) {
+        localStorage.setItem(STORAGE_USER_LS_KEY, canonical);
       }
-      return stableSupabase;
-    }
-
-    const raw = localStorage.getItem(AUTH_SESSION_LS_KEY) || "";
-    if (raw) {
-      if (raw.startsWith("{") || raw.startsWith("[")) {
-        const parsed = safeJsonParse<any>(raw, null);
-        const fallback = normalizeUserId(parsed?.userId || parsed?.user?.id || parsed?.canonicalUserId);
-        if (fallback) return fallback;
-      } else {
-        const fallback = normalizeUserId(raw);
-        if (fallback) return fallback;
-      }
-    }
-
-    return explicitScope;
-  } catch {
-    return null;
+    } catch {}
   }
+  return canonical;
 }
 
 export function getStorageUser(): string | null {

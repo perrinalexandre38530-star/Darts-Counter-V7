@@ -90,9 +90,9 @@ function CompactIconNav({ items, activeId, onChange, tone = "cyan", stickyTop }:
   return <div style={{ display: "flex", alignItems: "stretch", gap: 5, marginTop: 8, padding: "5px 0", ...(stickyTop === undefined ? {} : { position: "sticky" as const, top: stickyTop, zIndex: 3, background: "rgba(8,10,16,.80)", backdropFilter: "blur(12px)" }) }}>
     {items.map((item) => {
       const active = item.id === activeId;
-      return <button key={item.id} type="button" aria-label={item.label} title={item.label} onClick={() => onChange(item.id)} style={{ minWidth: active ? 92 : 42, flex: active ? "1 1 auto" : "0 0 42px", height: 42, padding: active ? "5px 9px" : 0, borderRadius: 12, border: active ? `1px solid ${palette.border}` : "1px solid rgba(255,255,255,.075)", background: active ? palette.bg : "rgba(255,255,255,.022)", boxShadow: active ? `0 0 18px ${palette.glow}` : "none", color: "inherit", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: active ? "flex-start" : "center", gap: 7, overflow: "hidden", transition: "flex .18s ease,min-width .18s ease,background .18s ease" }}>
+      return <button key={item.id} type="button" aria-label={item.label} title={item.label} onClick={() => onChange(item.id)} style={{ minWidth: active ? 92 : 42, flex: active ? "1 1 auto" : "0 0 42px", height: 46, padding: active ? "6px 11px" : 0, borderRadius: 12, border: active ? `1px solid ${palette.border}` : "1px solid rgba(255,255,255,.075)", background: active ? palette.bg : "rgba(255,255,255,.022)", boxShadow: "none", color: "inherit", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: active ? "flex-start" : "center", gap: 7, overflow: "hidden", transition: "flex .18s ease,min-width .18s ease,background .18s ease" }}>
         <span style={{ display: "grid", placeItems: "center", flex: "0 0 auto" }}><HubGlyph name={item.icon} size={active ? 17 : 16} /></span>
-        {active && <span style={{ minWidth: 0, textAlign: "left" }}><span style={{ display: "block", fontSize: 7.6, lineHeight: 1.05, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.label}</span>{item.status && <span style={{ display: "block", marginTop: 2, fontSize: 6.1, lineHeight: 1, opacity: .46, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.status}</span>}</span>}
+        {active && <span style={{ minWidth: 0, textAlign: "left" }}><span style={{ display: "block", fontSize: 9.2, lineHeight: 1.05, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.label}</span>{item.status && <span style={{ display: "block", marginTop: 2, fontSize: 7.6, lineHeight: 1, opacity: .46, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.status}</span>}</span>}
       </button>;
     })}
   </div>;
@@ -106,11 +106,11 @@ function MetricChip({ icon, label, value, tone = "cyan" }: { icon: string; label
       : tone === "purple"
         ? { bg: "rgba(185,156,255,.08)", border: "rgba(185,156,255,.18)", color: "#b99cff" }
         : { bg: "rgba(39,220,255,.08)", border: "rgba(39,220,255,.18)", color: "#27dcff" };
-  return <div style={{ minWidth: 0, display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 8px", borderRadius: 999, background: palette.bg, border: `1px solid ${palette.border}` }}>
+  return <div style={{ minWidth: 0, display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 6px", borderRadius: 10, background: "transparent", border: "none" }}>
     <span style={{ display: "grid", placeItems: "center", width: 18, height: 18, borderRadius: 999, background: "rgba(0,0,0,.16)", color: palette.color }}><HubGlyph name={icon} size={11} /></span>
     <span style={{ minWidth: 0 }}>
-      <span style={{ display: "block", fontSize: 6.1, lineHeight: 1, letterSpacing: .7, fontWeight: 900, opacity: .58 }}>{label}</span>
-      <span style={{ display: "block", marginTop: 2, fontSize: 7.2, lineHeight: 1.05, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</span>
+      <span style={{ display: "block", fontSize: 7.6, lineHeight: 1, letterSpacing: .7, fontWeight: 900, opacity: .58 }}>{label}</span>
+      <span style={{ display: "block", marginTop: 2, fontSize: 9, lineHeight: 1.1, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</span>
     </span>
   </div>;
 }
@@ -123,11 +123,11 @@ function ActionTile({ icon, title, body, tone = "cyan", onClick, disabled = fals
       : tone === "purple"
         ? { border: "rgba(185,156,255,.20)", bg: "linear-gradient(160deg,rgba(140,90,255,.08),rgba(255,255,255,.025))", iconBg: "rgba(185,156,255,.10)", iconBorder: "rgba(185,156,255,.18)", color: "#b99cff" }
         : { border: "rgba(39,220,255,.22)", bg: "linear-gradient(160deg,rgba(39,220,255,.08),rgba(255,255,255,.025))", iconBg: "rgba(39,220,255,.10)", iconBorder: "rgba(39,220,255,.18)", color: "#27dcff" };
-  return <button type="button" disabled={disabled} onClick={onClick} style={{ minWidth: 0, padding: "12px 10px", borderRadius: 14, border: `1px solid ${palette.border}`, background: palette.bg, color: "inherit", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? .45 : 1, textAlign: "left", display: "flex", flexDirection: "column", gap: 8 }}>
+  return <button type="button" disabled={disabled} onClick={onClick} style={{ minWidth: 0, padding: "12px 10px", borderRadius: 14, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)", color: "inherit", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? .45 : 1, textAlign: "left", display: "flex", flexDirection: "column", gap: 8 }}>
     <span style={{ width: 28, height: 28, borderRadius: 10, display: "grid", placeItems: "center", background: palette.iconBg, border: `1px solid ${palette.iconBorder}`, color: palette.color }}><HubGlyph name={icon} size={15} /></span>
     <span style={{ display: "block", minWidth: 0 }}>
-      <span style={{ display: "block", fontSize: 8.1, fontWeight: 950 }}>{title}</span>
-      <span style={{ display: "block", marginTop: 3, fontSize: 6.9, lineHeight: 1.35, opacity: .56 }}>{body}</span>
+      <span style={{ display: "block", fontSize: 10.2, fontWeight: 950 }}>{title}</span>
+      <span style={{ display: "block", marginTop: 3, fontSize: 8.8, lineHeight: 1.35, opacity: .56 }}>{body}</span>
     </span>
   </button>;
 }
@@ -137,7 +137,7 @@ function FloatingDetailSheet({ title, eyebrow, icon = "coach", onClose, children
     <div onClick={(event) => event.stopPropagation()} style={{ width: "min(620px,100%)", maxHeight: "76vh", overflow: "auto", padding: 14, borderRadius: 20, border: "1px solid rgba(39,220,255,.18)", background: "linear-gradient(160deg,rgba(14,18,28,.99),rgba(8,10,16,.99))", boxShadow: "0 22px 70px rgba(0,0,0,.55)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
         <span style={{ width: 34, height: 34, borderRadius: 11, display: "grid", placeItems: "center", background: "rgba(39,220,255,.08)", border: "1px solid rgba(39,220,255,.15)", color: "#27dcff" }}><HubGlyph name={icon} size={17} /></span>
-        <div style={{ minWidth: 0, flex: 1 }}>{eyebrow && <div style={{ fontSize: 6.8, fontWeight: 950, letterSpacing: .9, color: "#27dcff" }}>{eyebrow}</div>}<div style={{ marginTop: eyebrow ? 2 : 0, fontSize: 13.5, fontWeight: 950 }}>{title}</div></div>
+        <div style={{ minWidth: 0, flex: 1 }}>{eyebrow && <div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: .8, color: "#27dcff" }}>{eyebrow}</div>}<div style={{ marginTop: eyebrow ? 2 : 0, fontSize: 16, fontWeight: 950 }}>{title}</div></div>
         <button type="button" aria-label="Fermer" onClick={onClose} style={{ width: 32, height: 32, borderRadius: 10, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", color: "inherit", fontSize: 16, cursor: "pointer" }}>×</button>
       </div>
       <div style={{ marginTop: 12 }}>{children}</div>
@@ -262,7 +262,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
   const [showPlanDetails, setShowPlanDetails] = React.useState(false);
   const [showMissionDetails, setShowMissionDetails] = React.useState(false);
   const [showCycleDetails, setShowCycleDetails] = React.useState(false);
-  const [detailSheet, setDetailSheet] = React.useState<null | "coach" | "display" | "resume" | "followup" | `mabull:${string}`>(null);
+  const [detailSheet, setDetailSheet] = React.useState<null | "coach" | "display" | "resume" | "followup" | "plan" | "challenge" | "assessment" | "mabull-roadmap" | `mabull:${string}`>(null);
   const [difficultyFilter, setDifficultyFilter] = React.useState<0 | 1 | 2 | 3 | 4 | 5>(0);
   const [family, setFamily] = React.useState<TrainingExerciseFamily>(recommendedFamily);
   const firstInFamily = React.useMemo(() => TRAINING_EXERCISE_CATALOG.find((e) => e.family === family) || TRAINING_EXERCISE_CATALOG[0], [family]);
@@ -472,7 +472,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
     <TrainingShell
       header={<TrainingHeader title="Centre d'entraînement" tickerId="training_center" onBack={onExit} rules={<><p>Le centre regroupe programmes guidés, exercices unitaires, diagnostic et progression.</p><p>Awena utilise tes résultats Training enregistrés pour déterminer le prochain axe à travailler.</p></>} />}
       body={
-        <div style={{ width: "min(940px,100%)", margin: "0 auto", paddingBottom: 26 }}>
+        <div style={{ width: "100%", margin: 0, padding: "0 clamp(8px,2vw,22px) 26px" }}>
           {showQuickGuide && <div role="dialog" aria-modal="true" aria-label="Guide express du centre d'entraînement" style={{ position: "fixed", inset: 0, zIndex: 1000, display: "grid", placeItems: "center", padding: 16, background: "rgba(3,5,10,.82)", backdropFilter: "blur(12px)" }}>
             <div style={{ width: "min(620px,100%)", maxHeight: "86vh", overflow: "auto", padding: 18, borderRadius: 20, border: "1px solid rgba(39,220,255,.24)", background: "linear-gradient(160deg,rgba(14,18,28,.98),rgba(8,10,16,.98))", boxShadow: "0 24px 80px rgba(0,0,0,.45)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
@@ -488,7 +488,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
               </div>
               <div style={{ marginTop: 14, padding: 13, borderRadius: 15, border: "1px solid rgba(80,255,174,.20)", background: "rgba(80,255,174,.045)" }}>
                 <div style={{ fontSize: 7.5, fontWeight: 950, letterSpacing: .8, color: "#8cffcb" }}>{quickStart.eyebrow}</div>
-                <div style={{ marginTop: 3, fontSize: 14, fontWeight: 950 }}>{quickStart.title}</div>
+                <div style={{ marginTop: 3, fontSize: 17, fontWeight: 950 }}>{quickStart.title}</div>
                 <div style={{ marginTop: 4, fontSize: 8.8, opacity: .58, lineHeight: 1.4 }}>{quickStart.body}</div>
                 <button type="button" disabled={!resolved.length} onClick={runQuickStart} style={{ width: "100%", marginTop: 10, padding: "11px 12px", borderRadius: 12, border: "1px solid rgba(80,255,174,.35)", background: "rgba(80,255,174,.10)", color: "inherit", fontSize: 9, fontWeight: 950, cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .45 }}>{resolved.length ? quickStart.cta : "COMPTE UTILISATEUR REQUIS"}</button>
               </div>
@@ -522,10 +522,43 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
             <div style={{ marginTop: 10, fontSize: 8.8, lineHeight: 1.5, opacity: .66 }}>{nextRecommendation.body}</div>
             <button type="button" onClick={() => { setDetailSheet(null); setTab("program"); prepareRecommendedSession(nextRecommendation.durationMin, nextRecommendation.family); }} style={{ width: "100%", marginTop: 11, padding: 10, borderRadius: 11, border: "1px solid rgba(185,156,255,.28)", background: "rgba(140,90,255,.08)", color: "inherit", fontSize: 8, fontWeight: 950, cursor: "pointer" }}>PRÉPARER CETTE SÉANCE</button>
           </FloatingDetailSheet>}
+          {detailSheet === "plan" && <FloatingDetailSheet title="Plan du jour" eyebrow={`${dailyPlan.durationMin} MIN • ${dailyPlan.familyLabel}`} icon="today" onClose={() => setDetailSheet(null)}>
+            <div style={{ fontSize: 10.5, lineHeight: 1.5, opacity: .72 }}>{actionCoach.body}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
+              {dailyPlan.phases.map((phase) => <div key={phase.id} style={{ padding: 10, borderRadius: 12, background: "rgba(255,255,255,.025)" }}><div style={{ fontSize: 9, fontWeight: 950 }}>{phase.label}</div><div style={{ marginTop: 5, display: "grid", gap: 4 }}>{phase.exerciseIds.map((id) => { const ex = TRAINING_EXERCISE_CATALOG.find((exercise) => exercise.id === id); return <div key={id} style={{ fontSize: 9.5, opacity: .7 }}>{ex?.title || id}</div>; })}</div></div>)}
+            </div>
+          </FloatingDetailSheet>}
+          {detailSheet === "challenge" && <FloatingDetailSheet title={dailyChallenge.headline} eyebrow="DÉFI DU JOUR" icon="badges" onClose={() => setDetailSheet(null)}>
+            <div style={{ fontSize: 10.5, lineHeight: 1.5, opacity: .72 }}>{dailyChallenge.body}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
+              <MetricChip icon="badges" label="MÉDAILLE" value={`${dailyChallenge.reward.icon} ${dailyChallenge.reward.label}`} tone="gold" />
+              <MetricChip icon="history" label="SÉRIE" value={`${dailyChallenge.streakDays} jours`} tone="purple" />
+              <MetricChip icon="progress" label="MEILLEUR" value={`${Math.round(dailyChallenge.bestScore || 0)}/100`} tone="green" />
+            </div>
+            <div style={{ marginTop: 12, fontSize: 9.5, opacity: .62 }}>Prochain trophée : {dailyChallenge.nextMilestoneDays ? `${dailyChallenge.nextMilestoneDays} jours • ${dailyChallenge.nextMilestoneLabel}` : dailyChallenge.nextMilestoneLabel}</div>
+          </FloatingDetailSheet>}
+          {detailSheet === "assessment" && <FloatingDetailSheet title="Bilan de niveau" eyebrow="6 COMPÉTENCES" icon="diagnosis" onClose={() => setDetailSheet(null)}>
+            <div style={{ fontSize: 10.5, lineHeight: 1.5, opacity: .72 }}>{assessment.body}</div>
+            {assessment.available && <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 12 }}><MetricChip icon="progress" label="NIVEAU" value={`${Math.round(assessment.overallScore)}/100`} tone="purple" /><MetricChip icon="precision" label="PRÉCISION" value={`${Math.round(assessment.accuracyPct)}%`} tone="cyan" /><MetricChip icon="mastery" label="POINT FORT" value={assessment.strongestLabel} tone="green" /><MetricChip icon="skills" label="À TRAVAILLER" value={assessment.weakestLabel} tone="gold" /></div>}
+          </FloatingDetailSheet>}
+          {detailSheet === "mabull-roadmap" && <FloatingDetailSheet title="Conversion MaBULL 55" eyebrow="ROADMAP" icon="plans" onClose={() => setDetailSheet(null)}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+              <MetricChip icon="exercises" label="JOUABLE" value={`${MABULL_REFERENCE_STATS.mapped}/${MABULL_REFERENCE_STATS.exercises}`} tone="green" />
+              <MetricChip icon="history" label="À RELEVER" value={`${MABULL_REFERENCE_STATS.exercises - MABULL_REFERENCE_STATS.mapped}`} tone="gold" />
+              <MetricChip icon="coach" label="TECHNIQUE" value={`${MABULL_REFERENCE_STATS.techniques}`} tone="purple" />
+            </div>
+            <div style={{ marginTop: 14, fontSize: 10, fontWeight: 950 }}>PROCHAINES FICHES À DOCUMENTER</div>
+            <div style={{ display: "grid", gap: 7, marginTop: 8 }}>{mabullConversionQueue.map((item, index) => <button key={item.id} type="button" onClick={() => setDetailSheet(`mabull:${item.id}`)} style={{ display: "flex", alignItems: "center", gap: 9, padding: 10, border: "none", borderBottom: "1px solid rgba(255,255,255,.06)", background: "transparent", color: "inherit", textAlign: "left", cursor: "pointer" }}><span style={{ width: 28, height: 28, borderRadius: 10, display: "grid", placeItems: "center", background: "rgba(255,216,107,.08)", color: "#ffd86b", fontWeight: 950 }}>{index + 1}</span><span style={{ minWidth: 0, flex: 1 }}><span style={{ display: "block", fontSize: 10, fontWeight: 950 }}>{item.title}</span><span style={{ display: "block", marginTop: 2, fontSize: 8.5, opacity: .5 }}>{MABULL_SECTION_META[getMabullItemSection(item)].label}</span></span><HubGlyph name="diagnosis" size={15}/></button>)}</div>
+          </FloatingDetailSheet>}
           {detailSheet?.startsWith("mabull:") && (() => { const item = MABULL_REFERENCE_CATALOG.find((row) => row.id === detailSheet.slice(7)); if (!item) return null; return <FloatingDetailSheet title={item.title} eyebrow={item.status === "mapped" ? "ÉQUIVALENT JOUABLE" : item.kind === "technique" ? "FICHE TECHNIQUE" : "RÈGLES À RELEVER"} icon={item.family || "coach"} onClose={() => setDetailSheet(null)}>
             <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{item.tags.map((tag) => <span key={tag} style={{ padding: "4px 7px", borderRadius: 999, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.055)", fontSize: 6.5, opacity: .68 }}>{tag}</span>)}</div>
             {item.status === "mapped" && item.mappedExerciseId ? <div style={{ marginTop: 11, fontSize: 8.8, lineHeight: 1.5, opacity: .7 }}>Cette entrée possède déjà un équivalent sûr dans notre moteur Training.</div> : item.kind === "technique" ? <div style={{ marginTop: 11, fontSize: 8.8, lineHeight: 1.5, opacity: .7 }}>Cette fiche attend son contenu détaillé : objectif pédagogique, points clés, erreurs fréquentes et consigne pratique.</div> : <div style={{ marginTop: 11 }}><div style={{ fontSize: 8.4, fontWeight: 950 }}>POUR LA RENDRE JOUABLE</div><div style={{ marginTop: 6, display: "grid", gap: 5, fontSize: 7.6, lineHeight: 1.4, opacity: .64 }}><span>① Objectif exact de l’exercice</span><span>② Nombre de fléchettes / tours / vies</span><span>③ Règle de score ou de progression</span><span>④ Condition de réussite / fin</span></div></div>}
           </FloatingDetailSheet>; })()}
+
+          <CompactIconNav items={tabs} activeId={tab} onChange={(id) => setTab(id as HubTab)} stickyTop={0} />
+
+          {tab === "program" && <>
+          {viewMode === "complete" && <>
           <div style={{ marginTop: 10, padding: 12, borderRadius: 18, border: "1px solid rgba(39,220,255,.18)", background: "linear-gradient(145deg,rgba(39,220,255,.055),rgba(255,255,255,.02))" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{ width: 44, height: 44, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center", flex: "0 0 auto", border: "1px solid rgba(39,220,255,.28)", background: "rgba(39,220,255,.08)", fontSize: 15, fontWeight: 950 }}>
@@ -546,74 +579,62 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
               <MetricChip icon="progress" label="NIVEAU" value={`${Math.round(assessment.overallScore || career.averagePerformance || 0)}/100`} tone="gold" />
             </div>
           </div>
+          </>}
 
-          {viewMode === "essential" && <div style={{ marginTop: 10, padding: 13, borderRadius: 18, border: "1px solid rgba(39,220,255,.18)", background: "linear-gradient(145deg,rgba(39,220,255,.065),rgba(140,90,255,.035))" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <div>
-                <div style={{ fontSize: 7.8, fontWeight: 950, letterSpacing: 1, color: "#8cffcb" }}>DÉMARRE ICI</div>
-                <div style={{ marginTop: 3, fontSize: 15, fontWeight: 950 }}>Une action, puis on joue.</div>
-                <div style={{ marginTop: 3, fontSize: 7.8, opacity: .54 }}>Choisis simplement l’écran qui correspond à ton besoin.</div>
-              </div>
-              <div style={{ padding: "5px 8px", borderRadius: 999, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.06)", fontSize: 6.8, fontWeight: 900, opacity: .72 }}>{quickStart.eyebrow}</div>
+          {viewMode === "essential" ? <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, paddingBottom: 8, borderBottom: "1px solid rgba(255,255,255,.06)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+              <div style={{ width: 34, height: 34, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center", background: "rgba(39,220,255,.06)", flex: "0 0 auto" }}>{accountParticipant?.avatarUrl || accountParticipant?.avatarDataUrl ? <img src={String(accountParticipant.avatarUrl || accountParticipant.avatarDataUrl)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (accountParticipant?.name || "M").slice(0,1).toUpperCase()}</div>
+              <div style={{ minWidth: 0, fontSize: 10.5, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{accountParticipant?.name || "Mon compte"}</div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 11 }}>
-              <ActionTile icon="today" tone="green" disabled={!resolved.length} onClick={runQuickStart} title="JOUER MAINTENANT" body={resolved.length ? quickStart.cta : "Compte utilisateur requis"} />
-              <ActionTile icon="exercises" tone="gold" onClick={() => { setTab("exercises"); setExercisePanel("path"); }} title="TRAVAILLER UN POINT" body="Choisis une compétence ou laisse-toi guider par le parcours." />
-              <ActionTile icon="diagnosis" tone="purple" onClick={() => { setTab("diagnosis"); setDiagnosisPanel("overview"); }} title="VOIR MON NIVEAU" body={`${Math.round(assessment.overallScore || career.averagePerformance || 0)}/100 • ${playerJourney.headline}`} />
+            <div style={{ display: "flex", gap: 6, flex: "0 0 auto" }}>
+              <button type="button" title="Conseil Awena" aria-label="Conseil Awena" onClick={() => setDetailSheet("coach")} style={{ width: 38, height: 38, borderRadius: 12, border: "none", background: "rgba(39,220,255,.06)", color: "#27dcff", cursor: "pointer", display: "grid", placeItems: "center" }}><HubGlyph name="coach" size={17}/></button>
+              {programDraft && <button type="button" title="Reprendre le programme" aria-label="Reprendre le programme" onClick={() => setDetailSheet("resume")} style={{ width: 38, height: 38, borderRadius: 12, border: "none", background: "rgba(255,216,107,.07)", color: "#ffd86b", cursor: "pointer", display: "grid", placeItems: "center", position: "relative" }}><HubGlyph name="history" size={17}/><span style={{ position: "absolute", right: 5, top: 5, width: 7, height: 7, borderRadius: 999, background: "#ffd86b" }}/></button>}
+              {nextRecommendation && <button type="button" title="Suite conseillée" aria-label="Suite conseillée" onClick={() => setDetailSheet("followup")} style={{ width: 38, height: 38, borderRadius: 12, border: "none", background: "rgba(185,156,255,.07)", color: "#b99cff", cursor: "pointer", display: "grid", placeItems: "center" }}><HubGlyph name="cycle" size={17}/></button>}
+              <button type="button" title="Affichage et aide" aria-label="Affichage et aide" onClick={() => setDetailSheet("display")} style={{ width: 38, height: 38, borderRadius: 12, border: "none", background: "rgba(255,255,255,.035)", color: "inherit", cursor: "pointer", display: "grid", placeItems: "center" }}><HubGlyph name="progress" size={17}/></button>
             </div>
-          </div>}
-
-          {viewMode === "essential" ? <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 6, alignItems: "center" }}>
-            <button type="button" onClick={() => setDetailSheet("coach")} style={{ minWidth: 0, height: 44, padding: "0 10px", borderRadius: 13, border: "1px solid rgba(39,220,255,.20)", background: "linear-gradient(135deg,rgba(39,220,255,.08),rgba(140,90,255,.035))", color: "inherit", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, textAlign: "left" }}>
-              <span style={{ width: 27, height: 27, borderRadius: 9, display: "grid", placeItems: "center", background: "rgba(39,220,255,.08)", color: "#27dcff" }}><HubGlyph name="coach" size={14}/></span>
-              <span style={{ minWidth: 0, flex: 1 }}><span style={{ display: "block", fontSize: 6.4, fontWeight: 950, color: "#27dcff", letterSpacing: .7 }}>AWENA</span><span style={{ display: "block", marginTop: 2, fontSize: 8.1, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{prescription.title}</span></span>
-              <span style={{ fontSize: 6.5, fontWeight: 950, opacity: .6 }}>{prescription.gap <= 0 ? "✓" : `+${Math.ceil(prescription.gap)}`}</span>
-            </button>
-            {programDraft && <button type="button" title="Programme interrompu" aria-label="Programme interrompu" onClick={() => setDetailSheet("resume")} style={{ width: 44, height: 44, borderRadius: 13, border: "1px solid rgba(255,216,107,.22)", background: "rgba(255,216,107,.06)", color: "#ffd86b", cursor: "pointer", display: "grid", placeItems: "center", position: "relative" }}><HubGlyph name="history" size={16}/><span style={{ position: "absolute", right: 5, top: 4, width: 7, height: 7, borderRadius: 999, background: "#ffd86b" }}/></button>}
-            <button type="button" title="Affichage et guide" aria-label="Affichage et guide" onClick={() => setDetailSheet("display")} style={{ width: 44, height: 44, borderRadius: 13, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.02)", color: "inherit", cursor: "pointer", display: "grid", placeItems: "center" }}><HubGlyph name="progress" size={16}/></button>
           </div> : <>
-            <div style={{ marginTop: 10, padding: 10, borderRadius: 14, border: "1px solid rgba(39,220,255,.28)", background: "linear-gradient(135deg,rgba(39,220,255,.12),rgba(140,90,255,.07))" }}>
+            <div style={{ marginTop: 10, padding: "10px 0", borderBottom: "1px solid rgba(255,255,255,.06)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <div style={{ minWidth: 0, flex: 1 }}><div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: 1.1, color: "#27dcff" }}>COACH AWENA</div><div style={{ marginTop: 3, fontSize: 12.5, fontWeight: 950 }}>{prescription.title}</div><div style={{ marginTop: 3, fontSize: 9.2, lineHeight: 1.35, opacity: .72 }}>{prescription.body}</div></div>
-                <button type="button" onClick={() => setDetailSheet("coach")} style={{ width: 34, height: 34, borderRadius: 10, border: "1px solid rgba(39,220,255,.18)", background: "rgba(39,220,255,.05)", color: "inherit", cursor: "pointer", display: "grid", placeItems: "center" }}><HubGlyph name="diagnosis" size={15}/></button>
+                <div style={{ minWidth: 0, flex: 1 }}><div style={{ fontSize: 10, fontWeight: 950, color: "#27dcff" }}>COACH AWENA</div><div style={{ marginTop: 4, fontSize: 14, fontWeight: 950 }}>{prescription.title}</div></div>
+                <button type="button" onClick={() => setDetailSheet("coach")} style={{ width: 38, height: 38, borderRadius: 12, border: "none", background: "rgba(39,220,255,.06)", color: "#27dcff", cursor: "pointer", display: "grid", placeItems: "center" }}><HubGlyph name="diagnosis" size={17}/></button>
               </div>
             </div>
-            <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}><button type="button" onClick={() => setDetailSheet("display")} style={{ padding: "7px 9px", borderRadius: 10, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.02)", color: "inherit", fontSize: 7.2, fontWeight: 950, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}><HubGlyph name="progress" size={13}/> AFFICHAGE / GUIDE</button></div>
+            <div style={{ marginTop: 6, display: "flex", justifyContent: "flex-end" }}><button type="button" onClick={() => setDetailSheet("display")} style={{ width: 38, height: 38, borderRadius: 12, border: "none", background: "rgba(255,255,255,.03)", color: "inherit", cursor: "pointer", display: "grid", placeItems: "center" }} title="Affichage / guide"><HubGlyph name="progress" size={17}/></button></div>
           </>}
 
           {tab === "program" && viewMode === "complete" && programDraft && <div style={{ marginTop: 10, padding: 10, borderRadius: 14, border: "1px solid rgba(255,216,107,.24)", background: "rgba(255,216,107,.045)", display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 30, height: 30, borderRadius: 10, display: "grid", placeItems: "center", background: "rgba(255,216,107,.08)", color: "#ffd86b" }}><HubGlyph name="history" size={15}/></span><div style={{ minWidth: 0, flex: 1 }}><div style={{ fontSize: 7, fontWeight: 950, color: "#ffd86b" }}>PROGRAMME INTERROMPU</div><div style={{ marginTop: 2, fontSize: 8.4, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{programDraft.programTitle} · étape {programDraft.nextStepIndex + 1}/{programDraft.exerciseIds.length}</div></div><button type="button" onClick={() => setDetailSheet("resume")} style={{ padding: "7px 9px", borderRadius: 9, border: "1px solid rgba(255,216,107,.20)", background: "rgba(255,216,107,.06)", color: "inherit", fontSize: 7, fontWeight: 950, cursor: "pointer" }}>OUVRIR</button></div>}
 
-          {tab === "program" && nextRecommendation && <button type="button" onClick={() => setDetailSheet("followup")} style={{ width: "100%", marginTop: 8, padding: "8px 10px", borderRadius: 12, border: "1px solid rgba(185,156,255,.14)", background: "rgba(140,90,255,.035)", color: "inherit", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, textAlign: "left" }}><span style={{ width: 26, height: 26, borderRadius: 9, display: "grid", placeItems: "center", background: "rgba(185,156,255,.07)", color: "#b99cff" }}><HubGlyph name="cycle" size={13}/></span><span style={{ minWidth: 0, flex: 1 }}><span style={{ display: "block", fontSize: 6.4, fontWeight: 950, color: "#b99cff" }}>SUITE CONSEILLÉE</span><span style={{ display: "block", marginTop: 2, fontSize: 7.8, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nextRecommendation.headline}</span></span><span style={{ fontSize: 6.7, opacity: .5 }}>{nextRecommendation.durationMin}′</span></button>}
+          {tab === "program" && viewMode === "complete" && nextRecommendation && <button type="button" onClick={() => setDetailSheet("followup")} style={{ width: "100%", marginTop: 8, padding: "8px 10px", borderRadius: 12, border: "1px solid rgba(185,156,255,.14)", background: "rgba(140,90,255,.035)", color: "inherit", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, textAlign: "left" }}><span style={{ width: 26, height: 26, borderRadius: 9, display: "grid", placeItems: "center", background: "rgba(185,156,255,.07)", color: "#b99cff" }}><HubGlyph name="cycle" size={13}/></span><span style={{ minWidth: 0, flex: 1 }}><span style={{ display: "block", fontSize: 6.4, fontWeight: 950, color: "#b99cff" }}>SUITE CONSEILLÉE</span><span style={{ display: "block", marginTop: 2, fontSize: 7.8, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nextRecommendation.headline}</span></span><span style={{ fontSize: 6.7, opacity: .5 }}>{nextRecommendation.durationMin}′</span></button>}
 
-          <CompactIconNav items={tabs} activeId={tab} onChange={(id) => setTab(id as HubTab)} stickyTop={0} />
+          </>}
 
           {tab === "program" && <div>
             {viewMode === "complete" && <CompactIconNav items={programPanels.map((item) => ({ ...item, status: item.id === "today" ? `${dailyPlan.durationMin} MIN` : item.id === "week" ? `${weeklyPlan.completed}/${weeklyPlan.target}` : item.id === "cycle" ? `${cycleCoach.completedSessions}/${cycleCoach.cycleSize}` : `${programs.length} PLANS` }))} activeId={programPanel} onChange={(id) => setProgramPanel(id as ProgramPanel)} stickyTop={48} />}
 
             {programPanel === "today" && <>
             {viewMode === "essential" && <CompactIconNav items={todayPanels} activeId={todayPanel} onChange={(id) => setTodayPanel(id as TodayPanel)} tone="gold" />}
-            {(viewMode === "complete" || todayPanel === "challenge") && <div style={{ marginTop: 8, padding: 11, borderRadius: 15, border: dailyChallenge.completed ? "1px solid rgba(80,255,174,.26)" : "1px solid rgba(255,216,107,.24)", background: dailyChallenge.completed ? "linear-gradient(135deg,rgba(80,255,174,.075),rgba(39,220,255,.025))" : "linear-gradient(135deg,rgba(255,216,107,.07),rgba(140,90,255,.025))" }}>
+            {(viewMode === "complete" || todayPanel === "challenge") && <div style={{ marginTop: 10, padding: viewMode === "essential" ? "14px 2px" : 11, borderRadius: viewMode === "essential" ? 0 : 15, border: viewMode === "essential" ? "none" : (dailyChallenge.completed ? "1px solid rgba(80,255,174,.26)" : "1px solid rgba(255,216,107,.24)"), borderBottom: viewMode === "essential" ? "1px solid rgba(255,255,255,.06)" : undefined, background: viewMode === "essential" ? "transparent" : (dailyChallenge.completed ? "linear-gradient(135deg,rgba(80,255,174,.075),rgba(39,220,255,.025))" : "linear-gradient(135deg,rgba(255,216,107,.07),rgba(140,90,255,.025))") }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 7.3, fontWeight: 950, letterSpacing: .8, color: dailyChallenge.completed ? "#8cffcb" : "#ffd86b" }}>{dailyChallenge.completed ? "✓ DÉFI VALIDÉ" : "★ DÉFI DU JOUR"}</div>
-                  <div style={{ marginTop: 3, fontSize: 11.5, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dailyChallenge.headline}</div>
-                  <div style={{ marginTop: 3, fontSize: 7.8, opacity: .55, lineHeight: 1.35 }}>{dailyChallenge.body}</div>
-                  <div style={{ marginTop: 5, display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 6px", borderRadius: 999, background: dailyChallenge.rotated ? "rgba(185,156,255,.08)" : "rgba(39,220,255,.07)", border: dailyChallenge.rotated ? "1px solid rgba(185,156,255,.16)" : "1px solid rgba(39,220,255,.14)", fontSize: 6.7, fontWeight: 900, opacity: .78 }}>{dailyChallenge.rotated ? "↻" : "◎"} {dailyChallenge.rotationLabel}</div>
+                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: .6, color: dailyChallenge.completed ? "#8cffcb" : "#ffd86b" }}>{dailyChallenge.completed ? "✓ DÉFI VALIDÉ" : "★ DÉFI DU JOUR"}</div>
+                  <div style={{ marginTop: 3, fontSize: 15, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dailyChallenge.headline}</div>
+                  {viewMode === "complete" && <div style={{ marginTop: 5, fontSize: 10, opacity: .62, lineHeight: 1.4 }}>{dailyChallenge.body}</div>}
+                  {viewMode === "complete" && <div style={{ marginTop: 5, display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 6px", borderRadius: 999, background: dailyChallenge.rotated ? "rgba(185,156,255,.08)" : "rgba(39,220,255,.07)", border: dailyChallenge.rotated ? "1px solid rgba(185,156,255,.16)" : "1px solid rgba(39,220,255,.14)", fontSize: 8.5, fontWeight: 900, opacity: .78 }}>{dailyChallenge.rotated ? "↻" : "◎"} {dailyChallenge.rotationLabel}</div>}
                 </div>
                 <div style={{ flex: "0 0 auto", textAlign: "right", minWidth: 66 }}>
-                  <div style={{ fontSize: 7, opacity: .5 }}>SÉRIE</div>
-                  <div style={{ fontSize: 13, fontWeight: 950 }}>{dailyChallenge.streakDays} 🔥</div>
-                  <div style={{ marginTop: 5, padding: "4px 6px", borderRadius: 8, background: dailyChallenge.completed ? "rgba(255,216,107,.08)" : "rgba(255,255,255,.025)", border: dailyChallenge.completed ? "1px solid rgba(255,216,107,.16)" : "1px solid rgba(255,255,255,.05)" }}>
+                  <div style={{ fontSize: 9, opacity: .55 }}>SÉRIE</div>
+                  <div style={{ fontSize: 16, fontWeight: 950 }}>{dailyChallenge.streakDays} 🔥</div>
+                  {viewMode === "complete" && <div style={{ marginTop: 5, padding: "4px 6px", borderRadius: 8, background: dailyChallenge.completed ? "rgba(255,216,107,.08)" : "rgba(255,255,255,.025)", border: dailyChallenge.completed ? "1px solid rgba(255,216,107,.16)" : "1px solid rgba(255,255,255,.05)" }}>
                     <div style={{ fontSize: 6.2, opacity: .48 }}>MÉDAILLE</div>
                     <div style={{ marginTop: 1, fontSize: 7.6, fontWeight: 950, color: dailyChallenge.completed ? "#ffd86b" : "inherit" }}>{dailyChallenge.reward.icon} {dailyChallenge.reward.label}</div>
-                  </div>
+                  </div>}
                 </div>
               </div>
-              {(dailyChallenge.completed || dailyChallenge.bestScore > 0) && <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "7px 9px", borderRadius: 10, background: "rgba(255,216,107,.035)", border: "1px solid rgba(255,216,107,.08)" }}>
+              {viewMode === "complete" && (dailyChallenge.completed || dailyChallenge.bestScore > 0) && <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "7px 9px", borderRadius: 10, background: "rgba(255,216,107,.035)", border: "1px solid rgba(255,216,107,.08)" }}>
                 <div style={{ fontSize: 7.2, fontWeight: 900, opacity: .62 }}>MEILLEUR DU JOUR <strong style={{ color: "inherit", opacity: 1 }}>{Math.round(dailyChallenge.bestScore)}/100</strong></div>
                 <div style={{ fontSize: 7.2, fontWeight: 950, color: dailyChallenge.reward.nextScore ? "#ffd86b" : "#8cffcb" }}>{dailyChallenge.reward.nextScore ? `${dailyChallenge.reward.nextLabel} À ${dailyChallenge.reward.nextScore}` : "DIAMANT DÉCROCHÉ"}</div>
               </div>}
-              <div style={{ marginTop: 8, padding: "8px 9px", borderRadius: 11, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.055)" }}>
+              {viewMode === "complete" && <div style={{ marginTop: 8, padding: "8px 9px", borderRadius: 11, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.055)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
                   <div style={{ fontSize: 7.2, fontWeight: 900, opacity: .62 }}>PROCHAIN TROPHÉE</div>
                   <div style={{ fontSize: 7.2, fontWeight: 950, color: dailyChallenge.nextMilestoneDays ? "#ffd86b" : "#8cffcb" }}>{dailyChallenge.nextMilestoneDays ? `${dailyChallenge.nextMilestoneDays} J · ${dailyChallenge.nextMilestoneLabel}` : dailyChallenge.nextMilestoneLabel}</div>
@@ -624,29 +645,31 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
                     <div style={{ fontSize: 10 }}>{milestone.icon}</div><div style={{ marginTop: 1, fontSize: 6.6, fontWeight: 950 }}>{milestone.days}J</div>
                   </div>)}
                 </div>
-              </div>
+              </div>}
+              {viewMode === "essential" && <button type="button" onClick={() => setDetailSheet("challenge")} style={{ marginTop: 8, width: 40, height: 40, borderRadius: 12, border: "none", background: "rgba(255,216,107,.07)", color: "#ffd86b", cursor: "pointer", display: "grid", placeItems: "center" }} title="Détails du défi"><HubGlyph name="diagnosis" size={17}/></button>}
               {!dailyChallenge.completed && <button type="button" disabled={!resolved.length} onClick={startDailyChallenge} style={{ width: "100%", marginTop: 8, padding: "9px 10px", borderRadius: 10, border: "1px solid rgba(255,216,107,.30)", background: "rgba(255,216,107,.08)", color: "inherit", fontSize: 8.3, fontWeight: 950, cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .45 }}>RELEVER LE DÉFI · {dailyChallenge.exerciseTitle}</button>}
             </div>}
-            {(viewMode === "complete" || todayPanel === "plan") && <div style={{ marginTop: 8, padding: 14, borderRadius: 17, border: actionCoach.tone === "amber" ? "1px solid rgba(255,184,76,.34)" : actionCoach.tone === "green" ? "1px solid rgba(80,255,174,.30)" : actionCoach.tone === "violet" ? "1px solid rgba(185,156,255,.32)" : "1px solid rgba(39,220,255,.32)", background: actionCoach.tone === "amber" ? "linear-gradient(135deg,rgba(255,184,76,.10),rgba(140,90,255,.035))" : actionCoach.tone === "green" ? "linear-gradient(135deg,rgba(80,255,174,.08),rgba(39,220,255,.035))" : actionCoach.tone === "violet" ? "linear-gradient(135deg,rgba(140,90,255,.10),rgba(39,220,255,.035))" : "linear-gradient(135deg,rgba(39,220,255,.11),rgba(140,90,255,.045))" }}>
+            {(viewMode === "complete" || todayPanel === "plan") && <div style={{ marginTop: 10, padding: viewMode === "essential" ? "16px 2px" : 14, borderRadius: viewMode === "essential" ? 0 : 17, border: viewMode === "essential" ? "none" : (actionCoach.tone === "amber" ? "1px solid rgba(255,184,76,.34)" : actionCoach.tone === "green" ? "1px solid rgba(80,255,174,.30)" : actionCoach.tone === "violet" ? "1px solid rgba(185,156,255,.32)" : "1px solid rgba(39,220,255,.32)"), borderBottom: viewMode === "essential" ? "1px solid rgba(255,255,255,.06)" : undefined, background: viewMode === "essential" ? "transparent" : (actionCoach.tone === "amber" ? "linear-gradient(135deg,rgba(255,184,76,.10),rgba(140,90,255,.035))" : actionCoach.tone === "green" ? "linear-gradient(135deg,rgba(80,255,174,.08),rgba(39,220,255,.035))" : actionCoach.tone === "violet" ? "linear-gradient(135deg,rgba(140,90,255,.10),rgba(39,220,255,.035))" : "linear-gradient(135deg,rgba(39,220,255,.11),rgba(140,90,255,.045))") }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
                 <div style={{ minWidth: 0, flex: "1 1 300px" }}>
-                  <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1.1, color: actionCoach.tone === "amber" ? "#ffd86b" : actionCoach.tone === "green" ? "#8cffcb" : actionCoach.tone === "violet" ? "#b99cff" : "#27dcff" }}>{actionCoach.eyebrow}</div>
+                  <div style={{ fontSize: 10, fontWeight: 950, letterSpacing: .7, color: actionCoach.tone === "amber" ? "#ffd86b" : actionCoach.tone === "green" ? "#8cffcb" : actionCoach.tone === "violet" ? "#b99cff" : "#27dcff" }}>{actionCoach.eyebrow}</div>
                   <div style={{ marginTop: 4, fontSize: 14, fontWeight: 950 }}>{actionCoach.title}</div>
-                  <div style={{ marginTop: 5, fontSize: 9.8, lineHeight: 1.45, opacity: .68 }}>{actionCoach.body}</div>
+                  {viewMode === "complete" && <div style={{ marginTop: 6, fontSize: 10.5, lineHeight: 1.45, opacity: .68 }}>{actionCoach.body}</div>}
                 </div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
                   <button type="button" disabled={!resolved.length} onClick={() => startProgram(dailyPlan.program, { adaptiveDailyPlan: true, dailyPlanDateKey: dailyPlan.dateKey })} style={{ padding: "9px 11px", borderRadius: 11, border: "1px solid rgba(255,255,255,.22)", background: "rgba(255,255,255,.10)", color: "inherit", fontSize: 8.8, fontWeight: 950, cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .45, whiteSpace: "nowrap" }}>LANCER LE PLAN DU JOUR</button>
-                  <button type="button" onClick={() => prepareRecommendedSession(actionCoach.durationMin, actionCoach.family)} style={{ padding: "9px 11px", borderRadius: 11, border: "1px solid rgba(255,255,255,.10)", background: "rgba(0,0,0,.16)", color: "inherit", fontSize: 8.2, fontWeight: 900, cursor: "pointer", whiteSpace: "nowrap", opacity: .78 }}>AJUSTER</button>
+                  {viewMode === "complete" && <button type="button" onClick={() => prepareRecommendedSession(actionCoach.durationMin, actionCoach.family)} style={{ padding: "9px 11px", borderRadius: 11, border: "1px solid rgba(255,255,255,.10)", background: "rgba(0,0,0,.16)", color: "inherit", fontSize: 8.2, fontWeight: 900, cursor: "pointer", whiteSpace: "nowrap", opacity: .78 }}>AJUSTER</button>}
                 </div>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 10 }}>
+              {viewMode === "essential" && <button type="button" onClick={() => setDetailSheet("plan")} style={{ marginTop: 10, width: 40, height: 40, borderRadius: 12, border: "none", background: "rgba(39,220,255,.06)", color: "#27dcff", cursor: "pointer", display: "grid", placeItems: "center" }} title="Détails du plan"><HubGlyph name="diagnosis" size={17}/></button>}
+              {viewMode === "complete" && <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 10 }}>
                 {[
                   ["1", "ÉCHAUFFE-TOI", "Mets-toi en rythme"],
                   ["2", "POINT DU JOUR", dailyPlan.familyLabel],
                   ["3", "FINISH", "Termine proprement"],
                 ].map(([n, title, body]) => <div key={n} style={{ padding: "9px 7px", borderRadius: 11, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.065)", textAlign: "center" }}><div style={{ width: 20, height: 20, margin: "0 auto 4px", borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(39,220,255,.10)", border: "1px solid rgba(39,220,255,.20)", fontSize: 8, fontWeight: 950 }}>{n}</div><div style={{ fontSize: 7.3, fontWeight: 950 }}>{title}</div><div style={{ marginTop: 2, fontSize: 6.8, opacity: .46 }}>{body}</div></div>)}
-              </div>
-              <button type="button" onClick={() => setShowPlanDetails((v) => !v)} style={{ width: "100%", marginTop: 8, padding: 7, borderRadius: 9, border: "1px solid rgba(255,255,255,.08)", background: "rgba(0,0,0,.12)", color: "inherit", fontSize: 7.4, fontWeight: 900, cursor: "pointer", opacity: .78 }}>{showPlanDetails ? "MASQUER LE CONTENU DU PLAN" : `VOIR LE CONTENU DU PLAN · ${dailyPlan.program.exerciseIds.length} ÉTAPES`}</button>
+              </div>}
+              {viewMode === "complete" && <button type="button" onClick={() => setShowPlanDetails((v) => !v)} style={{ width: "100%", marginTop: 8, padding: 7, borderRadius: 9, border: "1px solid rgba(255,255,255,.08)", background: "rgba(0,0,0,.12)", color: "inherit", fontSize: 7.4, fontWeight: 900, cursor: "pointer", opacity: .78 }}>{showPlanDetails ? "MASQUER LE CONTENU DU PLAN" : `VOIR LE CONTENU DU PLAN · ${dailyPlan.program.exerciseIds.length} ÉTAPES`}</button>}
               <div style={{ display: showPlanDetails ? "grid" : "none", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 10 }}>
                 {[actionCoach.weekText, actionCoach.cycleText, actionCoach.blockText].map((text, index) => <div key={index} style={{ padding: "8px 9px", borderRadius: 10, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", fontSize: 7.8, lineHeight: 1.35, opacity: .62 }}>{text}</div>)}
               </div>
@@ -665,16 +688,17 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
                 </div>
               </div>
             </div>}
-            {(viewMode === "complete" || todayPanel === "assessment") && <div style={{ marginTop: 10, padding: 13, borderRadius: 16, border: assessment.due ? "1px solid rgba(255,216,107,.30)" : "1px solid rgba(185,156,255,.20)", background: assessment.due ? "linear-gradient(135deg,rgba(255,216,107,.085),rgba(140,90,255,.035))" : "linear-gradient(135deg,rgba(140,90,255,.065),rgba(39,220,255,.035))" }}>
+            {(viewMode === "complete" || todayPanel === "assessment") && <div style={{ marginTop: 10, padding: viewMode === "essential" ? "16px 2px" : 13, borderRadius: viewMode === "essential" ? 0 : 16, border: viewMode === "essential" ? "none" : (assessment.due ? "1px solid rgba(255,216,107,.30)" : "1px solid rgba(185,156,255,.20)"), borderBottom: viewMode === "essential" ? "1px solid rgba(255,255,255,.06)" : undefined, background: viewMode === "essential" ? "transparent" : (assessment.due ? "linear-gradient(135deg,rgba(255,216,107,.085),rgba(140,90,255,.035))" : "linear-gradient(135deg,rgba(140,90,255,.065),rgba(39,220,255,.035))") }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
                 <div style={{ minWidth: 0, flex: "1 1 260px" }}>
                   <div style={{ fontSize: 9.5, fontWeight: 950, letterSpacing: 1, color: assessment.due ? "#ffd86b" : "#b99cff" }}>BILAN DE NIVEAU • 6 COMPÉTENCES</div>
                   <div style={{ marginTop: 4, fontSize: 13, fontWeight: 950 }}>{assessment.headline}</div>
-                  <div style={{ marginTop: 4, fontSize: 9.2, lineHeight: 1.45, opacity: .62 }}>{assessment.body}</div>
+                  {viewMode === "complete" && <div style={{ marginTop: 5, fontSize: 10.5, lineHeight: 1.45, opacity: .66 }}>{assessment.body}</div>}
                 </div>
                 <button type="button" disabled={!resolved.length} onClick={() => startProgram(TRAINING_ASSESSMENT_PROGRAM, { adaptiveDailyPlan: false })} style={{ padding: "9px 11px", borderRadius: 11, border: "1px solid rgba(255,216,107,.25)", background: "rgba(255,216,107,.08)", color: "inherit", fontSize: 8.4, fontWeight: 950, cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .45, whiteSpace: "nowrap" }}>{assessment.available ? "REJOUER LE BILAN" : "LANCER LE BILAN"}</button>
               </div>
-              {assessment.available && <>
+              {viewMode === "essential" && <button type="button" onClick={() => setDetailSheet("assessment")} style={{ marginTop: 9, width: 40, height: 40, borderRadius: 12, border: "none", background: "rgba(185,156,255,.07)", color: "#b99cff", cursor: "pointer", display: "grid", placeItems: "center" }} title="Détails du bilan"><HubGlyph name="diagnosis" size={17}/></button>}
+              {viewMode === "complete" && assessment.available && <>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 10 }}>
                   <div style={{ padding: 8, borderRadius: 10, textAlign: "center", background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 12 }}>{Math.round(assessment.overallScore)}</b><div style={{ fontSize: 6.8, opacity: .42 }}>NIVEAU</div></div>
                   <div style={{ padding: 8, borderRadius: 10, textAlign: "center", background: "rgba(255,255,255,.03)" }}><b style={{ fontSize: 12 }}>{Math.round(assessment.accuracyPct)}%</b><div style={{ fontSize: 6.8, opacity: .42 }}>PRÉCISION</div></div>
@@ -1031,15 +1055,10 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
                   { id: "mabull", label: "MABULL 55", status: `${MABULL_REFERENCE_STATS.total}` },
                 ].map((item) => { const active = catalogSource === item.id; return <button key={item.id} type="button" onClick={() => setCatalogSource(item.id as CatalogSource)} style={{ minWidth: 38, height: 34, padding: active ? "0 10px" : "0 9px", borderRadius: 11, border: active ? "1px solid rgba(39,220,255,.32)" : "1px solid rgba(255,255,255,.08)", background: active ? "rgba(39,220,255,.09)" : "rgba(255,255,255,.025)", color: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, cursor: "pointer", fontSize: 8, fontWeight: 950 }}><span>{item.id === "playable" ? "◎" : "▦"}</span>{active && <><span>{item.label}</span><span style={{ opacity: .45 }}>{item.status}</span></>}</button>; })}
               </div>
-              {catalogSource === "mabull" && <div style={{ marginTop: 8, padding: 10, borderRadius: 12, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.02)" }}>
-                <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
-                  {[{ id: "all", label: "TOUS", icon: "▦" }, { id: "exercise", label: "EXERCICES", icon: "◎" }, { id: "technique", label: "TECHNIQUE", icon: "♙" }].map((item) => { const active = mabullKind === item.id; return <button key={item.id} type="button" onClick={() => setMabullKind(item.id as MabullReferenceKind | "all")} style={{ minWidth: 34, height: 31, padding: active ? "0 9px" : "0 8px", borderRadius: 10, border: active ? "1px solid rgba(185,156,255,.28)" : "1px solid rgba(255,255,255,.07)", background: active ? "rgba(185,156,255,.08)" : "rgba(255,255,255,.02)", color: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5, cursor: "pointer", fontSize: 7.5, fontWeight: 950 }}><span>{item.icon}</span>{active && <span>{item.label}</span>}</button>; })}
-                  <span style={{ marginLeft: "auto", fontSize: 7.2, opacity: .42 }}>{MABULL_REFERENCE_STATS.exercises} exercices • {MABULL_REFERENCE_STATS.techniques} technique • {MABULL_REFERENCE_STATS.mapped} déjà reliés</span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 8 }}>
-                  <MetricChip icon="exercises" label="JOUABLE" value={`${MABULL_REFERENCE_STATS.mapped}/${MABULL_REFERENCE_STATS.exercises}`} tone="green" />
-                  <MetricChip icon="history" label="À RELEVER" value={`${MABULL_REFERENCE_STATS.exercises - MABULL_REFERENCE_STATS.mapped} règles`} tone="gold" />
-                  <MetricChip icon="coach" label="TECHNIQUE" value={`${MABULL_REFERENCE_STATS.techniques} fiches`} tone="purple" />
+              {catalogSource === "mabull" && <div style={{ marginTop: 8 }}>
+                <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap", paddingBottom: 8, borderBottom: "1px solid rgba(255,255,255,.06)" }}>
+                  {[{ id: "all", label: "TOUS", icon: "▦" }, { id: "exercise", label: "EXERCICES", icon: "◎" }, { id: "technique", label: "TECHNIQUE", icon: "♙" }].map((item) => { const active = mabullKind === item.id; return <button key={item.id} type="button" onClick={() => setMabullKind(item.id as MabullReferenceKind | "all")} style={{ minWidth: active ? 88 : 38, height: 38, padding: active ? "0 10px" : 0, borderRadius: 11, border: "none", background: active ? "rgba(185,156,255,.08)" : "transparent", color: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, cursor: "pointer", fontSize: 9, fontWeight: 950 }}><span>{item.icon}</span>{active && <span>{item.label}</span>}</button>; })}
+                  <button type="button" onClick={() => setDetailSheet("mabull-roadmap")} title="Roadmap de conversion" aria-label="Roadmap de conversion" style={{ marginLeft: "auto", width: 38, height: 38, borderRadius: 11, border: "none", background: "rgba(255,216,107,.06)", color: "#ffd86b", cursor: "pointer", display: "grid", placeItems: "center" }}><HubGlyph name="plans" size={16}/></button>
                 </div>
                 <div style={{ marginTop: 8, padding: 9, borderRadius: 11, border: "1px solid rgba(255,255,255,.065)", background: "rgba(255,255,255,.015)" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
@@ -1047,18 +1066,12 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
                     {MABULL_SECTION_ORDER.map((section) => { const meta = MABULL_SECTION_META[section]; const coverage = mabullCoverage.find((row) => row.section === section); const active = mabullSection === section; return <button key={section} type="button" onClick={() => setMabullSection(section)} title={meta.label} aria-label={meta.label} style={{ minWidth: active ? 94 : 36, height: 34, padding: active ? "0 8px" : 0, borderRadius: 10, border: active ? "1px solid rgba(185,156,255,.28)" : "1px solid rgba(255,255,255,.07)", background: active ? "rgba(185,156,255,.07)" : "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: active ? "flex-start" : "center", gap: 6, overflow: "hidden" }}><HubGlyph name={meta.icon} size={15}/>{active && <span style={{ minWidth: 0, textAlign: "left" }}><b style={{ display: "block", fontSize: 6.7, whiteSpace: "nowrap" }}>{meta.shortLabel.toUpperCase()}</b><span style={{ display: "block", fontSize: 5.8, opacity: .45 }}>{coverage?.mapped || 0}/{coverage?.total || 0} jouable</span></span>}</button>; })}
                   </div>
                 </div>
-                <div style={{ marginTop: 8, padding: 10, borderRadius: 12, border: "1px solid rgba(255,216,107,.13)", background: "rgba(255,216,107,.025)" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><div><div style={{ fontSize: 7, fontWeight: 950, color: "#ffd86b", letterSpacing: .8 }}>PROCHAINES RÈGLES À RELEVER</div><div style={{ marginTop: 2, fontSize: 7.1, opacity: .48 }}>Priorité de conversion vers des exercices jouables.</div></div><b style={{ fontSize: 11 }}>{MABULL_REFERENCE_STATS.mapped}/{MABULL_REFERENCE_STATS.exercises}</b></div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 5, marginTop: 7 }}>{mabullConversionQueue.map((item, index) => <div key={item.id} style={{ padding: 7, borderRadius: 9, background: "rgba(255,255,255,.022)", border: "1px solid rgba(255,255,255,.055)" }}><div style={{ display: "flex", gap: 6, alignItems: "center" }}><span style={{ width: 20, height: 20, borderRadius: 7, display: "grid", placeItems: "center", background: "rgba(255,216,107,.08)", fontSize: 7, fontWeight: 950 }}>{index + 1}</span><div style={{ minWidth: 0 }}><b style={{ display: "block", fontSize: 7.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</b><span style={{ display: "block", marginTop: 1, fontSize: 5.9, opacity: .42 }}>{MABULL_SECTION_META[getMabullItemSection(item)].label}</span></div></div></div>)}</div>
-                </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 6, marginTop: 8 }}>
-                  {filteredMabullItems.map((item) => <div key={item.id} style={{ padding: 9, borderRadius: 11, border: item.status === "mapped" ? "1px solid rgba(80,255,174,.13)" : item.kind === "technique" ? "1px solid rgba(80,255,174,.10)" : "1px solid rgba(255,255,255,.065)", background: item.status === "mapped" ? "rgba(80,255,174,.025)" : "rgba(255,255,255,.018)" }}>
-                    <div style={{ display: "flex", gap: 7, alignItems: "center" }}><span style={{ width: 24, height: 24, borderRadius: 8, display: "grid", placeItems: "center", color: item.kind === "technique" ? "#8cffcb" : item.status === "mapped" ? "#8cffcb" : "#ffd86b", background: "rgba(255,255,255,.025)" }}><HubGlyph name={item.family || "coach"} size={12}/></span><b style={{ minWidth: 0, flex: 1, fontSize: 8.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</b><button type="button" title="Voir les détails" aria-label={`Détails ${item.title}`} onClick={() => setDetailSheet(`mabull:${item.id}`)} style={{ width: 27, height: 27, borderRadius: 9, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)", color: item.status === "mapped" ? "#8cffcb" : item.kind === "technique" ? "#8cffcb" : "#ffd86b", cursor: "pointer", display: "grid", placeItems: "center" }}><HubGlyph name="diagnosis" size={12}/></button></div>
-                    <div style={{ marginTop: 5, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}><span style={{ fontSize: 6.1, fontWeight: 900, color: item.status === "mapped" ? "#8cffcb" : item.kind === "technique" ? "#8cffcb" : "#ffd86b" }}>{item.status === "mapped" ? "JOUABLE" : item.kind === "technique" ? "TECHNIQUE" : "RÈGLES À RELEVER"}</span><span style={{ fontSize: 6, opacity: .38 }}>{item.tags.slice(0,2).join(" · ")}</span></div>
+                  {filteredMabullItems.map((item) => <div key={item.id} style={{ padding: "10px 2px", borderBottom: "1px solid rgba(255,255,255,.055)", background: "transparent" }}>
+                    <div style={{ display: "flex", gap: 7, alignItems: "center" }}><span style={{ width: 24, height: 24, borderRadius: 8, display: "grid", placeItems: "center", color: item.kind === "technique" ? "#8cffcb" : item.status === "mapped" ? "#8cffcb" : "#ffd86b", background: "rgba(255,255,255,.025)" }}><HubGlyph name={item.family || "coach"} size={12}/></span><b style={{ minWidth: 0, flex: 1, fontSize: 10.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</b><button type="button" title="Voir les détails" aria-label={`Détails ${item.title}`} onClick={() => setDetailSheet(`mabull:${item.id}`)} style={{ width: 27, height: 27, borderRadius: 9, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)", color: item.status === "mapped" ? "#8cffcb" : item.kind === "technique" ? "#8cffcb" : "#ffd86b", cursor: "pointer", display: "grid", placeItems: "center" }}><HubGlyph name="diagnosis" size={12}/></button></div>
                     {item.status === "mapped" && item.mappedExerciseId && <button type="button" onClick={() => { const mapped = TRAINING_EXERCISE_CATALOG.find((exercise) => exercise.id === item.mappedExerciseId); if (mapped) { setFamily(mapped.family); setExerciseId(mapped.id); setCatalogSource("playable"); } }} style={{ marginTop: 7, width: "100%", padding: 6, borderRadius: 8, border: "1px solid rgba(80,255,174,.16)", background: "rgba(80,255,174,.05)", color: "inherit", fontSize: 6.8, fontWeight: 950, cursor: "pointer" }}>OUVRIR L'ÉQUIVALENT</button>}
                   </div>)}
                 </div>
-                <div style={{ marginTop: 8, fontSize: 7.2, lineHeight: 1.4, opacity: .44 }}>Référentiel relevé depuis le catalogue MaBULL fourni. Les entrées “RÈGLES” ne sont pas lancées tant que leur mécanique exacte n'a pas été relevée.</div>
               </div>}
               {catalogSource === "playable" && <>
               <div style={{ display: "flex", gap: 5, overflowX: "auto", padding: "9px 0 3px" }}>
@@ -1091,7 +1104,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
               {selectedTechniqueTrack && <div style={{ marginTop: 8, padding: 11, borderRadius: 14, border: "1px solid rgba(255,255,255,.065)", background: "rgba(255,255,255,.018)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ width: 28, height: 28, borderRadius: 10, display: "grid", placeItems: "center", color: "#8cffcb", background: "rgba(80,255,174,.08)", border: "1px solid rgba(80,255,174,.14)" }}><HubGlyph name={selectedTechniqueTrack.icon} size={15} /></span>
-                  <div style={{ minWidth: 0 }}><div style={{ fontSize: 8.3, fontWeight: 950 }}>{selectedTechniqueTrack.label}</div><div style={{ marginTop: 2, fontSize: 6.9, lineHeight: 1.35, opacity: .5 }}>{selectedTechniqueTrack.description}</div></div>
+                  <div style={{ minWidth: 0 }}><div style={{ fontSize: 8.3, fontWeight: 950 }}>{selectedTechniqueTrack.label}</div><div style={{ marginTop: 2, fontSize: 8.8, lineHeight: 1.35, opacity: .5 }}>{selectedTechniqueTrack.description}</div></div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 6, marginTop: 9 }}>
                   {selectedTechniqueTrack.items.map((item) => <button type="button" onClick={() => setDetailSheet(`mabull:${item.id}`)} key={item.id} style={{ padding: 9, borderRadius: 11, border: "1px solid rgba(80,255,174,.10)", background: "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer", textAlign: "left" }}>

@@ -10,7 +10,17 @@ export type SportLiveSportId =
   | "padel"
   | "badminton"
   | "cornhole"
-  | "bowling";
+  | "bowling"
+  | "archery"
+  | "pickleball"
+  | "frisbee"
+  | "billiards"
+  | "basket"
+  | "rugby"
+  | "volleyball"
+  | "tennis"
+  | "chess"
+  | "esports";
 import type { DartsLiveFixture, DartsLiveMatch, DartsLiveResult } from "../dartsLive/types";
 
 export type SportLiveRegion =
@@ -37,7 +47,8 @@ export type SportLiveRegion =
   | "japan_asia"
   | "china_asia"
   | "europe"
-  | "asia";
+  | "asia"
+  | "africa";
 
 export type SportLiveSourceKind =
   | "governing_body"
@@ -63,6 +74,11 @@ export type SportLiveSource = {
   calendarUrl?: string;
   watchUrl?: string;
   badges?: string[];
+  countryCode?: string | null;
+  countryName?: string | null;
+  competitionFamily?: "national_teams" | "continental" | "domestic_league" | "domestic_cup" | "regional" | "amateur" | "youth" | "women" | "world" | "other";
+  competitionLevel?: "elite" | "pro" | "semi_pro" | "amateur" | "grassroots" | "mixed";
+  tierLabel?: string | null;
 };
 
 export type SportLiveMeta = {
@@ -78,6 +94,18 @@ export type SportLiveLocaleProfile = {
   label: string;
   preferredRegions: SportLiveRegion[];
   fallbackRegions: SportLiveRegion[];
+};
+
+export type SportLiveCompetitionMeta = {
+  continent?: string | null;
+  countryCode?: string | null;
+  countryName?: string | null;
+  family?: "national_teams" | "continental" | "domestic_league" | "domestic_cup" | "regional" | "amateur" | "youth" | "women" | "world" | "other" | null;
+  level?: "elite" | "pro" | "semi_pro" | "amateur" | "grassroots" | "mixed" | null;
+  tier?: string | null;
+  gender?: "men" | "women" | "mixed" | null;
+  age?: string | null;
+  regionLabel?: string | null;
 };
 
 export type SportLiveEvent = {

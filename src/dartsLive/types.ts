@@ -56,6 +56,18 @@ export type DartsLiveLocaleProfile = {
   fallbackRegions: DartsLiveRegion[];
 };
 
+export type DartsCompetitionMeta = {
+  continent?: string | null;
+  countryCode?: string | null;
+  countryName?: string | null;
+  family?: "national_teams" | "continental" | "domestic_league" | "domestic_cup" | "regional" | "amateur" | "youth" | "women" | "world" | "other" | null;
+  level?: "elite" | "pro" | "semi_pro" | "amateur" | "grassroots" | "mixed" | null;
+  tier?: string | null;
+  gender?: "men" | "women" | "mixed" | null;
+  age?: string | null;
+  regionLabel?: string | null;
+};
+
 export type DartsLivePlayer = {
   id?: string | null;
   name: string;
@@ -68,6 +80,7 @@ export type DartsLiveFixture = {
   id: string;
   competition?: string | null;
   round?: string | null;
+  competitionMeta?: DartsCompetitionMeta | null;
   startsAt?: string | null;
   date?: string | null;
   players: DartsLivePlayer[];
@@ -81,6 +94,7 @@ export type DartsLiveResult = {
   playedOn?: string | null;
   competition?: string | null;
   round?: string | null;
+  competitionMeta?: DartsCompetitionMeta | null;
   winner: DartsLivePlayer;
   loser: DartsLivePlayer;
   raw?: unknown;
@@ -92,6 +106,7 @@ export type DartsLiveMatch = {
   id: string;
   competition?: string | null;
   round?: string | null;
+  competitionMeta?: DartsCompetitionMeta | null;
   startsAt?: string | null;
   players: DartsLivePlayer[];
   raw?: unknown;
