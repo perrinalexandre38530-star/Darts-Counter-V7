@@ -83,6 +83,11 @@ function dedicatedGroupsForMode(modeId: string) {
       { title: "TROUPEAU & MEUTE", keys: ["flockSize", "wolfDifficulty"] },
       { title: "PATOU & BERGER", keys: ["patouPower", "shepherdSave"] },
     ],
+    une_ptite_raclette: [
+      { title: "SERVICE & RECETTE", keys: ["recipeCheese", "recipePotato", "recipeCharcuterie"] },
+      { title: "BONUS", keys: ["racletteBonus", "visitVarietyBonus"] },
+      { title: "AMBIANCE", keys: ["missPenalty"] },
+    ],
   };
   return groups[modeId] || null;
 }

@@ -45,6 +45,7 @@ type ProgramPanel = "today" | "week" | "cycle" | "library";
 type ProgressPanel = "overview" | "skills" | "coach" | "cycles" | "history";
 type ExercisePanel = "path" | "catalog" | "technique" | "favorites";
 type CatalogProgressFilter = "all" | "new" | "in_progress" | "mastered";
+type CatalogSort = "smart" | "name" | "difficulty" | "level";
 type DiagnosisPanel = "overview" | "skill" | "goal";
 type SkillProgressPanel = "mastery" | "badges" | "records";
 type CoachPanel = "brief" | "live" | "effectiveness" | "weeks";
@@ -286,6 +287,8 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
   const [detailSheet, setDetailSheet] = React.useState<null | "coach" | "display" | "resume" | "followup" | "plan" | "challenge" | "assessment">(null);
   const [difficultyFilter, setDifficultyFilter] = React.useState<0 | 1 | 2 | 3 | 4 | 5>(0);
   const [catalogProgressFilter, setCatalogProgressFilter] = React.useState<CatalogProgressFilter>("all");
+  const [catalogSearch, setCatalogSearch] = React.useState("");
+  const [catalogSort, setCatalogSort] = React.useState<CatalogSort>("smart");
   const [exerciseDetailId, setExerciseDetailId] = React.useState<string | null>(() => initialDetailExerciseId && TRAINING_EXERCISE_CATALOG.some((e) => e.id === initialDetailExerciseId) ? initialDetailExerciseId : null);
   const [family, setFamily] = React.useState<TrainingExerciseFamily>(recommendedFamily);
   const firstInFamily = React.useMemo(() => TRAINING_EXERCISE_CATALOG.find((e) => e.family === family) || TRAINING_EXERCISE_CATALOG[0], [family]);
@@ -344,14 +347,29 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
     .map((exercise) => {
       const personal = exerciseProgressionById.get(exercise.id) || buildTrainingExerciseProgression(exercise, []);
       return { key: `native:${exercise.id}`, title: exercise.title, subtitle: exercise.subtitle, difficulty: exercise.difficulty, playable: true, exerciseId: exercise.id, personal };
-    })
-    .sort((a, b) => a.title.localeCompare(b.title, "fr")), [exercises, difficultyFilter, exerciseProgressionById]);
-  const visibleCatalogItems = React.useMemo(() => unifiedCatalogItems.filter((item) => {
-    if (catalogProgressFilter === "new") return item.personal.level === 0;
-    if (catalogProgressFilter === "in_progress") return item.personal.level > 0 && !item.personal.mastered;
-    if (catalogProgressFilter === "mastered") return item.personal.mastered;
-    return true;
-  }), [unifiedCatalogItems, catalogProgressFilter]);
+    }), [exercises, difficultyFilter, exerciseProgressionById]);
+  const visibleCatalogItems = React.useMemo(() => {
+    const normalize = (value: string) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+    const query = normalize(catalogSearch);
+    const filtered = unifiedCatalogItems.filter((item) => {
+      if (catalogProgressFilter === "new" && item.personal.level !== 0) return false;
+      if (catalogProgressFilter === "in_progress" && !(item.personal.level > 0 && !item.personal.mastered)) return false;
+      if (catalogProgressFilter === "mastered" && !item.personal.mastered) return false;
+      if (query && !normalize(`${item.title} ${item.subtitle}`).includes(query)) return false;
+      return true;
+    });
+    const smartRank = (item: (typeof filtered)[number]) => {
+      if (item.personal.mastered) return 500 + item.difficulty;
+      if (item.personal.level > 0) return 50 - item.personal.level * 8 + item.difficulty;
+      return 200 + item.difficulty;
+    };
+    return [...filtered].sort((a, b) => {
+      if (catalogSort === "name") return a.title.localeCompare(b.title, "fr");
+      if (catalogSort === "difficulty") return a.difficulty - b.difficulty || a.title.localeCompare(b.title, "fr");
+      if (catalogSort === "level") return b.personal.level - a.personal.level || a.title.localeCompare(b.title, "fr");
+      return smartRank(a) - smartRank(b) || a.title.localeCompare(b.title, "fr");
+    });
+  }, [unifiedCatalogItems, catalogProgressFilter, catalogSearch, catalogSort]);
   const techniqueItems = React.useMemo(() => TRAINING_TECHNIQUE_ITEMS, []);
   const techniqueTracks = React.useMemo(() => buildTrainingTechniqueTracks(), []);
   const selectedTechniqueTrack = techniqueTracks.find((row) => row.track === techniqueTrack) || techniqueTracks[0];
@@ -1152,6 +1170,19 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                 </div>
               </div>
               <div style={{ marginTop: 9, display: "grid", gap: 8 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, alignItems: "center" }}>
+                  <label style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 7, minHeight: 38, padding: "0 10px", borderRadius: 11, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.025)" }}>
+                    <HubGlyph name="diagnosis" size={14}/>
+                    <input value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} placeholder="Rechercher un exercice…" aria-label="Rechercher un exercice" style={{ minWidth: 0, flex: 1, border: "none", outline: "none", background: "transparent", color: "inherit", fontSize: 9.2, fontWeight: 800 }} />
+                    {catalogSearch ? <button type="button" onClick={() => setCatalogSearch("")} aria-label="Effacer la recherche" style={{ border: "none", background: "transparent", color: "inherit", opacity: .5, cursor: "pointer", fontSize: 14 }}>×</button> : null}
+                  </label>
+                  <select value={catalogSort} onChange={(event) => setCatalogSort(event.target.value as CatalogSort)} aria-label="Trier le catalogue" style={{ minHeight: 38, maxWidth: 150, padding: "0 9px", borderRadius: 11, border: "1px solid rgba(255,255,255,.08)", background: "rgba(18,22,31,.98)", color: "inherit", fontSize: 8.2, fontWeight: 900 }}>
+                    <option value="smart">TRI · CONSEILLÉ</option>
+                    <option value="name">TRI · NOM</option>
+                    <option value="difficulty">TRI · DIFFICULTÉ</option>
+                    <option value="level">TRI · TON NIVEAU</option>
+                  </select>
+                </div>
                 <div>
                   <div style={{ fontSize: 7.2, fontWeight: 950, letterSpacing: .8, opacity: .46 }}>PROGRESSION</div>
                   <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "6px 0 2px" }}>
@@ -1170,7 +1201,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                   </div>
                 </div>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,240px),1fr))", gap: 8, marginTop: 6 }}>
+              {!visibleCatalogItems.length ? <div style={{ marginTop: 8, padding: 15, borderRadius: 13, border: "1px dashed rgba(255,255,255,.12)", textAlign: "center", background: "rgba(255,255,255,.015)" }}><div style={{ fontSize: 10, fontWeight: 950 }}>Aucun exercice ne correspond</div><div style={{ marginTop: 4, fontSize: 8.2, opacity: .5 }}>Modifie la recherche ou réinitialise les filtres.</div><button type="button" onClick={() => { setCatalogSearch(""); setCatalogProgressFilter("all"); setDifficultyFilter(0); setCatalogSort("smart"); }} style={{ marginTop: 9, padding: "7px 10px", borderRadius: 9, border: "1px solid rgba(39,220,255,.24)", background: "rgba(39,220,255,.07)", color: "inherit", fontSize: 7.8, fontWeight: 950, cursor: "pointer" }}>RÉINITIALISER</button></div> : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,240px),1fr))", gap: 8, marginTop: 6 }}>
                 {visibleCatalogItems.map((item) => {
                   const active = Boolean(item.exerciseId && item.exerciseId === exerciseId);
                   const personal = item.personal;
@@ -1180,7 +1211,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                     <span style={{ display: "grid", gap: 5, justifyItems: "end" }}><span style={{ padding: "4px 6px", borderRadius: 7, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.06)", fontSize: 7, fontWeight: 950, opacity: .64 }}>DIFF. {item.difficulty}</span><span style={{ padding: "4px 6px", borderRadius: 7, background: personal.mastered ? "rgba(80,255,174,.08)" : "rgba(140,90,255,.07)", border: personal.mastered ? "1px solid rgba(80,255,174,.16)" : "1px solid rgba(140,90,255,.14)", fontSize: 7.5, fontWeight: 950, color: personal.mastered ? "#8cffcb" : "#b99cff" }}>{personal.mastered ? "MAX" : `NIV. ${personal.level}/5`}</span></span>
                   </button>;
                 })}
-              </div>
+              </div>}
             </>}
 
             {exercisePanel === "technique" && <>

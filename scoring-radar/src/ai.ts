@@ -276,8 +276,9 @@ function parseClassifierOutput(output: unknown, candidates: Candidate[]): Analys
   return analyses;
 }
 
-async function classifyChunk(env: RadarEnv, candidates: Candidate[]): Promise<Analysis[]> {
-  const timeoutMs = intFromEnv(env.RADAR_CLASSIFY_TIMEOUT_MS, 20_000, 5_000, 90_000);
+async function classifyChunk(env: RadarEnv, candidates: Candidate[], timeoutOverrideMs?: number): Promise<Analysis[]> {
+  const configuredTimeoutMs = intFromEnv(env.RADAR_CLASSIFY_TIMEOUT_MS, 20_000, 5_000, 90_000);
+  const timeoutMs = timeoutOverrideMs ?? configuredTimeoutMs;
   const output = await withTimeout(env.AI.run(CLASSIFIER_MODEL, {
     messages: [
       { role: 'system', content: CLASSIFIER_SYSTEM_PROMPT },
@@ -302,14 +303,28 @@ async function classifyAdaptiveChunk(env: RadarEnv, candidates: Candidate[]): Pr
     return await classifyChunk(env, candidates);
   } catch (caught) {
     if (candidates.length <= 1) {
-      const error = caught instanceof Error ? caught.message : String(caught);
-      console.error(JSON.stringify({
-        event: 'radar_classify_candidate_skipped',
-        candidateId: candidates[0]?.id ?? null,
-        model: CLASSIFIER_MODEL,
-        error
-      }));
-      return candidates.map((candidate) => classifierFailureAnalysis(candidate, caught));
+      const candidate = candidates[0];
+      const configuredTimeoutMs = intFromEnv(env.RADAR_CLASSIFY_TIMEOUT_MS, 20_000, 5_000, 90_000);
+      const retryTimeoutMs = Math.min(90_000, Math.max(30_000, configuredTimeoutMs * 2));
+      try {
+        console.warn(JSON.stringify({
+          event: 'radar_classify_candidate_retry',
+          candidateId: candidate?.id ?? null,
+          model: CLASSIFIER_MODEL,
+          retryTimeoutMs,
+          firstError: caught instanceof Error ? caught.message : String(caught)
+        }));
+        return await classifyChunk(env, candidates, retryTimeoutMs);
+      } catch (retryCaught) {
+        const error = retryCaught instanceof Error ? retryCaught.message : String(retryCaught);
+        console.error(JSON.stringify({
+          event: 'radar_classify_candidate_skipped',
+          candidateId: candidate?.id ?? null,
+          model: CLASSIFIER_MODEL,
+          error
+        }));
+        return candidates.map((item) => classifierFailureAnalysis(item, retryCaught));
+      }
     }
 
     const error = caught instanceof Error ? caught.message : String(caught);

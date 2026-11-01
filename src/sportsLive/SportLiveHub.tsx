@@ -176,7 +176,11 @@ function sourceImageFromItem(item: { sourceUrl?: string | null } | null | undefi
 
 function competitionLogoSrc(sport: string, url?: string | null) {
   const raw = String(url || "").trim();
-  if (!/^https?:\/\//i.test(raw)) return raw || null;
+  if (!/^https?:\/\//i.test(raw)) return null;
+  try {
+    const parsed = new URL(raw);
+    if (!parsed.hostname || ["files", "styles", "image", "images"].includes(parsed.hostname.toLowerCase())) return null;
+  } catch { return null; }
   return `/api/sports-live/${encodeURIComponent(sport)}/logo?url=${encodeURIComponent(raw)}`;
 }
 
@@ -806,6 +810,13 @@ function LiveStyles() {
 
 
       .msc-results-browser { display:grid; grid-template-columns:164px minmax(0,1fr); gap:10px; align-items:start; min-height:420px; }
+      .msc-results-mobile-filters { display:none; }
+      .msc-score-filter { min-width:0; display:grid; gap:4px; }
+      .msc-score-filter label { color:#74808c; font-size:7px; font-weight:1000; letter-spacing:.55px; }
+      .msc-score-filter select { width:100%; min-height:38px; border:1px solid #303a45; border-radius:9px; padding:0 30px 0 10px; background:#0d1319; color:#f5f7fa; font-size:10px; font-weight:950; outline:none; }
+      .msc-score-filter select:focus { border-color:var(--live-accent); box-shadow:0 0 0 1px rgba(255,48,72,.12); }
+      .msc-score-summary { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:7px 9px; border:1px solid #27313b; border-radius:9px; background:#0b1015; color:#8d99a6; font-size:8px; font-weight:900; }
+      .msc-score-summary strong { color:#fff; font-size:9px; }
       .msc-results-nav { position:sticky; top:52px; max-height:calc(76vh - 76px); overflow:hidden; display:flex; flex-direction:column; gap:8px; padding:8px; border:1px solid #28323d; border-radius:14px; background:linear-gradient(180deg,#0d1319,#080c11); }
       .msc-results-nav-section { min-height:0; display:flex; flex-direction:column; gap:5px; }
       .msc-results-nav-section.is-competitions { flex:1 1 auto; min-height:120px; }
@@ -835,18 +846,18 @@ function LiveStyles() {
       .msc-archive-summary b { color:#fff; font-size:12px; }
       .msc-archive-summary small { color:#7e8a96; font-size:7px; font-weight:950; text-transform:uppercase; }
       @media (max-width:620px) {
-        .msc-results-browser { grid-template-columns:132px minmax(0,1fr); gap:7px; }
-        .msc-results-nav { top:48px; padding:6px; border-radius:12px; max-height:calc(76vh - 68px); }
-        .msc-results-nav-btn { grid-template-columns:30px minmax(0,1fr) auto; min-height:42px; padding:5px 6px; justify-content:start; }
-        .msc-results-nav-label { display:block; font-size:7.2px; }
-        .msc-results-nav-btn.is-active .msc-results-nav-label { display:block; padding:0; text-align:left; white-space:normal; font-size:7.4px; }
-        .msc-results-nav-count { min-width:18px; height:18px; font-size:6.5px; }
-        .msc-results-nav-title { font-size:6.8px; text-align:center; }
-        .msc-results-nav-section:not(.is-competitions) .msc-results-nav-list { max-height:136px; }
-        .msc-results-nav-section.is-competitions .msc-results-nav-list { max-height:280px; }
-        .msc-results-context { top:48px; font-size:7.6px; }
-        .msc-archive-summary { grid-template-columns:1fr 1fr; }
-        .msc-archive-summary > div:first-child { grid-column:1 / -1; }
+        .msc-results-browser { display:block; min-height:0; }
+        .msc-results-nav { display:none; }
+        .msc-results-mobile-filters { display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-bottom:8px; }
+        .msc-results-context { display:none; }
+        .msc-score-summary { grid-column:1 / -1; }
+        .msc-archive-summary { display:none; }
+        .msc-country-score-head { position:sticky; top:48px; z-index:2; border-radius:8px; margin:8px 0 5px; padding:7px 9px; }
+        .msc-competition-group { border-radius:9px; margin-bottom:7px; }
+        .msc-competition-head { grid-template-columns:34px minmax(0,1fr) auto; min-height:46px; padding:6px 8px; }
+        .msc-competition-head-title { font-size:10px; }
+        .msc-competition-subline { font-size:7px; gap:4px; }
+        .msc-round-head { padding:6px 8px; }
       }
       @media (orientation:landscape) and (min-width:700px) {
         .msc-results-browser { grid-template-columns:190px minmax(0,1fr); gap:12px; }
@@ -884,46 +895,7 @@ function LiveStyles() {
       @media (max-width:520px) { .msc-quick-dock { bottom:82px; } .msc-float-overlay { padding:62px 8px 70px; } }
       @media (orientation:landscape) and (max-height:620px) {
         .msc-live-root { padding-bottom:72px; }
-  
-      .msc-results-browser { display:grid; grid-template-columns:164px minmax(0,1fr); gap:10px; align-items:start; min-height:420px; }
-      .msc-results-nav { position:sticky; top:52px; max-height:calc(76vh - 76px); overflow:hidden; display:flex; flex-direction:column; gap:8px; padding:8px; border:1px solid #28323d; border-radius:14px; background:linear-gradient(180deg,#0d1319,#080c11); }
-      .msc-results-nav-section { min-height:0; display:flex; flex-direction:column; gap:5px; }
-      .msc-results-nav-section.is-competitions { flex:1 1 auto; min-height:120px; }
-      .msc-results-nav-title { padding:2px 4px; color:#7f8b98; font-size:8px; font-weight:1000; letter-spacing:.75px; }
-      .msc-results-nav-list { display:flex; flex-direction:column; gap:5px; overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; padding-right:2px; }
-      .msc-results-nav-section:not(.is-competitions) .msc-results-nav-list { max-height:154px; }
-      .msc-results-nav-section.is-competitions .msc-results-nav-list { flex:1 1 auto; max-height:310px; }
-      .msc-results-nav-btn { width:100%; min-height:42px; display:grid; grid-template-columns:30px minmax(0,1fr) auto; gap:7px; align-items:center; padding:5px 7px; border:1px solid #2b3540; border-radius:12px; background:linear-gradient(180deg,#111820,#0b1015); color:#98a5b2; text-align:left; cursor:pointer; box-shadow:inset 0 0 0 1px rgba(255,255,255,.02); }
-      .msc-results-nav-btn.is-active { color:#fff; border-color:var(--live-accent); background:linear-gradient(180deg,rgba(255,48,72,.18),#0d1217); box-shadow:0 0 0 1px rgba(255,48,72,.08),0 0 18px rgba(255,48,72,.12); }
-      .msc-results-nav-icon, .msc-results-nav-visual { width:30px; height:30px; border-radius:999px; display:grid; place-items:center; overflow:hidden; background:#17202a; box-shadow:inset 0 0 0 1px rgba(255,255,255,.06); font-size:16px; }
-      .msc-results-nav-visual img { width:82%; height:82%; object-fit:contain; display:block; }
-      .msc-results-nav-visual.is-fallback span { font-size:9px; font-weight:1000; letter-spacing:.2px; color:#e9f1f8; }
-      .msc-results-nav-label { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:8.6px; font-weight:1000; line-height:1.1; }
-      .msc-results-nav-count { min-width:21px; height:21px; display:grid; place-items:center; padding:0 4px; border-radius:999px; background:#1c2630; color:#9eabb8; font-size:7px; font-weight:1000; }
-      .msc-results-nav-btn.is-active .msc-results-nav-count { background:var(--live-accent); color:#fff; }
-      .msc-results-content { min-width:0; }
-      .msc-results-context { position:sticky; top:52px; z-index:1; display:flex; align-items:center; gap:6px; flex-wrap:wrap; min-height:34px; margin-bottom:8px; padding:6px 9px; border:1px solid #28323d; border-radius:10px; background:rgba(9,13,18,.96); backdrop-filter:blur(8px); color:#91a0ad; font-size:8.5px; font-weight:900; }
-      .msc-results-context strong { color:#fff; }
-      .msc-results-context em { margin-left:auto; color:#f4d445; font-style:normal; }
-      @media (max-width:620px) {
-        .msc-results-browser { grid-template-columns:132px minmax(0,1fr); gap:7px; }
-        .msc-results-nav { top:48px; padding:6px; border-radius:12px; max-height:calc(76vh - 68px); }
-        .msc-results-nav-btn { grid-template-columns:30px minmax(0,1fr) auto; min-height:42px; padding:5px 6px; justify-content:start; }
-        .msc-results-nav-label { display:block; font-size:7.2px; }
-        .msc-results-nav-btn.is-active .msc-results-nav-label { display:block; padding:0; text-align:left; white-space:normal; font-size:7.4px; }
-        .msc-results-nav-count { min-width:18px; height:18px; font-size:6.5px; }
-        .msc-results-nav-title { font-size:6.8px; text-align:center; }
-        .msc-results-nav-section:not(.is-competitions) .msc-results-nav-list { max-height:136px; }
-        .msc-results-nav-section.is-competitions .msc-results-nav-list { max-height:280px; }
-        .msc-results-context { top:48px; font-size:7.6px; }
-      }
-      @media (orientation:landscape) and (min-width:700px) {
-        .msc-results-browser { grid-template-columns:190px minmax(0,1fr); gap:12px; }
-        .msc-results-nav { max-height:calc(100vh - 78px); }
-        .msc-results-nav-section.is-competitions .msc-results-nav-list { max-height:calc(100vh - 360px); }
-        .msc-results-context { top:48px; }
-      }
-      .msc-quick-dock { bottom:14px; }
+        .msc-quick-dock { bottom:14px; }
         .msc-float-overlay { padding:12px 72px 14px; align-items:center; }
         .msc-float-panel { width:min(980px,calc(100vw - 150px)); max-height:calc(100vh - 28px); border-radius:16px; }
         .msc-float-head { top:-10px; }
@@ -1257,6 +1229,37 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
 
   return (
     <div className="msc-results-browser">
+      <div className="msc-results-mobile-filters" aria-label="Filtres des résultats">
+        <div className="msc-score-filter">
+          <label>CONTINENT</label>
+          <select value={selectedContinent} onChange={(e) => setSelectedContinent(e.target.value)}>
+            <option value="__all__">Tous les continents</option>
+            {continents.map(([name]) => <option key={name} value={name}>{name}</option>)}
+          </select>
+        </div>
+        <div className="msc-score-filter">
+          <label>PAYS</label>
+          <select value={selectedCountry} onChange={(e) => setSelectedCountry(e.target.value)}>
+            <option value="__all__">Tous les pays</option>
+            {countries.map((country) => <option key={country.key} value={country.key}>{country.label}</option>)}
+          </select>
+        </div>
+        <div className="msc-score-filter">
+          <label>COMPÉTITION</label>
+          <select value={selected} onChange={(e) => setSelected(e.target.value)}>
+            <option value="__all__">Toutes les compétitions</option>
+            {navigationCompetitions.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
+          </select>
+        </div>
+        <div className="msc-score-filter">
+          <label>SAISON</label>
+          <select value={selectedSeason} onChange={(e) => setSelectedSeason(e.target.value)}>
+            <option value="__all__">Toutes les saisons</option>
+            {seasons.map(([season]) => <option key={season} value={season}>{season}</option>)}
+          </select>
+        </div>
+        <div className="msc-score-summary"><strong>{visibleCount} résultat{visibleCount > 1 ? "s" : ""}</strong><span>{scoreCenterVisible.length} compétition{scoreCenterVisible.length > 1 ? "s" : ""}</span></div>
+      </div>
       <aside className="msc-results-nav" aria-label="Navigation des résultats">
         <div className="msc-results-nav-section">
           <div className="msc-results-nav-title">CONTINENT</div>
@@ -1996,7 +1999,7 @@ export default function SportLiveHub({ go }: { go?: (route: any, params?: any) =
         <section className="msc-live-section">
           <SectionHeader title="RÉSULTATS" count={(resultRows.length + resultEvents.length) ? `${resultRows.length + resultEvents.length} résultat${(resultRows.length + resultEvents.length) > 1 ? "s" : ""}` : ""} />
           <div className="msc-archive-summary" style={{ marginBottom: 8 }}>
-            <div><strong>{archiveLoading ? "ARCHIVES · CHARGEMENT…" : `ARCHIVES · ${archiveSeasonCount || 0} SAISON${archiveSeasonCount === 1 ? "" : "S"}`}</strong><span>{archiveStorage?.persistent ? "R2 CENTRAL" : "CACHE LOCAL"}</span></div>
+            <div><strong>{archiveLoading ? "ARCHIVES · CHARGEMENT…" : `ARCHIVES · ${archiveSeasonCount || 0} SAISON${archiveSeasonCount === 1 ? "" : "S"}`}</strong></div>
             <div><b>{archiveStorage?.competitions ?? competitionIndex.length}</b><small>compétitions</small></div>
             <div><b>{archiveStorage?.results ?? resultRows.length}</b><small>résultats</small></div>
           </div>
@@ -2033,7 +2036,7 @@ export default function SportLiveHub({ go }: { go?: (route: any, params?: any) =
       ) : null}
 
       {floatingPanel === "news" ? <FloatingDrawer title={`ACTUALITÉS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{newsRows.length ? <div className="msc-news-grid">{newsRows.map((item) => <NewsCard key={item.id} item={item} lang={lang} />)}</div> : <EmptySection title="Aucune actualité détectée" copy="Réessaie l’actualisation dans quelques instants." sources={recommended.slice(0, 2)} />}</FloatingDrawer> : null}
-      {floatingPanel === "results" ? <FloatingDrawer title={`RÉSULTATS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}><div className="msc-archive-summary" style={{ marginBottom: 8 }}><div><strong>{archiveLoading ? "ARCHIVES · CHARGEMENT…" : `ARCHIVES · ${archiveSeasonCount || 0} SAISON${archiveSeasonCount === 1 ? "" : "S"}`}</strong><span>{archiveStorage?.persistent ? "R2 CENTRAL" : "CACHE LOCAL"}</span></div><div><b>{archiveStorage?.competitions ?? competitionIndex.length}</b><small>compétitions</small></div><div><b>{archiveStorage?.results ?? resultRows.length}</b><small>résultats</small></div></div>{resultRows.length ? <><GroupedResults rows={resultRows} source={sourceForCards} lang={lang} newsRows={newsRows} allSources={allSportSources} sport={liveSport} competitionIndex={competitionIndex} />{resultEvents.length ? <div style={{ marginTop: 12 }}><div className="msc-round-head"><span>AUTRES RÉSULTATS / PODIUMS</span><span>{resultEvents.length}</span></div>{resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />)}</div> : null}</> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Aucun résultat détecté" copy="Les sources officielles restent disponibles." sources={recommended.filter((source) => source.resultsUrl).slice(0, 2)} />}</FloatingDrawer> : null}
+      {floatingPanel === "results" ? <FloatingDrawer title={`RÉSULTATS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}><div className="msc-archive-summary" style={{ marginBottom: 8 }}><div><strong>{archiveLoading ? "ARCHIVES · CHARGEMENT…" : `ARCHIVES · ${archiveSeasonCount || 0} SAISON${archiveSeasonCount === 1 ? "" : "S"}`}</strong></div><div><b>{Math.max(competitionIndex.length, archiveStorage?.competitions || 0)}</b><small>compétitions</small></div><div><b>{Math.max(resultRows.length, archiveStorage?.results || 0)}</b><small>résultats</small></div></div>{resultRows.length ? <><GroupedResults rows={resultRows} source={sourceForCards} lang={lang} newsRows={newsRows} allSources={allSportSources} sport={liveSport} competitionIndex={competitionIndex} />{resultEvents.length ? <div style={{ marginTop: 12 }}><div className="msc-round-head"><span>AUTRES RÉSULTATS / PODIUMS</span><span>{resultEvents.length}</span></div>{resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />)}</div> : null}</> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Aucun résultat détecté" copy="Les sources officielles restent disponibles." sources={recommended.filter((source) => source.resultsUrl).slice(0, 2)} />}</FloatingDrawer> : null}
       {floatingPanel === "fixtures" ? <FloatingDrawer title={`AGENDA · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}><div className="msc-empty-card"><div className="msc-empty-title">AGENDA MULTISPORTS</div><div className="msc-empty-copy">Le calendrier LIVE n’est plus dupliqué dans cette page. Les événements réels sont affichés dans l’Agenda principal avec le filtre LIVE.</div><button className="msc-more-btn" type="button" onClick={openAgenda}>OUVRIR L’AGENDA</button></div></FloatingDrawer> : null}
       {floatingPanel === "sources" ? <FloatingDrawer title={`SOURCES · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}><SourceDirectory sources={sources} /></FloatingDrawer> : null}
 

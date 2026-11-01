@@ -3,7 +3,7 @@ import type { GameDart, Player } from "../types-game";
 import { getWave61Preset, type Wave61Family } from "../../games/dartsWave61Families";
 
 // Legacy audit markers preserved: WAVE61_ENGINE_VERSION = 9, WAVE61_ENGINE_VERSION = 10, WAVE61_ENGINE_VERSION = 11, WAVE61_ENGINE_VERSION = 12, WAVE61_ENGINE_VERSION = 13, WAVE61_ENGINE_VERSION = 14, WAVE61_ENGINE_VERSION = 15, WAVE61_ENGINE_VERSION = 16, WAVE61_ENGINE_VERSION = 17.
-export const WAVE61_ENGINE_VERSION = 22;
+export const WAVE61_ENGINE_VERSION = 23;
 
 export type Wave61Difficulty = "easy" | "normal" | "hard";
 export type Wave61ParticipantMode = "players" | "teams";
@@ -230,6 +230,35 @@ function blackWhiteAssignments(ids:string[], seed:string, config?: Wave61Config)
   return Object.fromEntries(ids.map((id,i)=>[id, ((i%2===0)===firstBlack)?"BLACK":"WHITE"]));
 }
 const COLOR_CALL_COLORS: BoardColor[] = ["BLACK","WHITE","GREEN","RED"];
+const RACLETTE_NUMBERS = {
+  cheese: [19, 16, 13, 10, 7, 4, 1],
+  potato: [20, 17, 14, 11, 8, 5, 2],
+  charcuterie: [18, 15, 12, 9, 6, 3],
+} as const;
+function racletteIngredientForNumber(n: number): "cheese" | "potato" | "charcuterie" {
+  return n % 3 === 1 ? "cheese" : n % 3 === 2 ? "potato" : "charcuterie";
+}
+function racletteStockFor(state: Wave61State, playerId: string) {
+  const map = state.special.racletteStockByPlayer || (state.special.racletteStockByPlayer = {});
+  const stock = map[playerId] && typeof map[playerId] === "object" ? { cheese: 0, potato: 0, charcuterie: 0, ...map[playerId] } : { cheese: 0, potato: 0, charcuterie: 0 };
+  map[playerId] = stock;
+  return stock;
+}
+function racletteNeeds(state: Wave61State, playerId: string) {
+  const stock = racletteStockFor(state, playerId);
+  const recipeCheese = Math.max(2, Number(state.config?.modeOptions?.recipeCheese ?? 6));
+  const recipePotato = Math.max(1, Number(state.config?.modeOptions?.recipePotato ?? 3));
+  const recipeCharcuterie = Math.max(1, Number(state.config?.modeOptions?.recipeCharcuterie ?? 3));
+  return {
+    stock,
+    recipeCheese,
+    recipePotato,
+    recipeCharcuterie,
+    needCheese: Math.max(0, recipeCheese - Number(stock.cheese || 0)),
+    needPotato: Math.max(0, recipePotato - Number(stock.potato || 0)),
+    needCharcuterie: Math.max(0, recipeCharcuterie - Number(stock.charcuterie || 0)),
+  };
+}
 
 function blankShoveMarks() {
   return Object.fromEntries(SHOVE_TARGETS.map((n) => [String(n), 0]));
@@ -1200,6 +1229,18 @@ export function getWave61Target(state: Wave61State): Wave61Target {
   if (state.modeId === "color_call") {
     const color = String(state.special?.colorCallSequence?.[state.turnIndex % Math.max(1, state.special?.colorCallSequence?.length || 1)] || "BLACK");
     return { kind: "number", value: 0, label: `🎨 COULEUR CIBLE · ${color}` };
+  }
+  if (state.modeId === "une_ptite_raclette") {
+    const player = state.players[state.activePlayerIndex];
+    const served = Number(state.progress[player?.id] || 0);
+    const needs = racletteNeeds(state, player?.id);
+    const order = [
+      ["cheese", needs.needCheese, RACLETTE_NUMBERS.cheese[0]],
+      ["potato", needs.needPotato, RACLETTE_NUMBERS.potato[0]],
+      ["charcuterie", needs.needCharcuterie, RACLETTE_NUMBERS.charcuterie[0]],
+    ].sort((a, b) => Number(b[1]) - Number(a[1]));
+    const lead = order[0];
+    return { kind: "number", value: Number(lead?.[2] || 20), label: `🫕 ${served}/${Math.max(1, Number(state.config?.goal || 3))} raclettes · 🧀 ${needs.stock.cheese}/${needs.recipeCheese} · 🥔 ${needs.stock.potato}/${needs.recipePotato} · 🥓 ${needs.stock.charcuterie}/${needs.recipeCharcuterie}` };
   }
   if (state.modeId === "green_vs_red") {
     const player = state.players[state.activePlayerIndex];
@@ -4243,6 +4284,80 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
     if (sheepMap[player.id] <= 0) { state.eliminated[player.id] = true; events.push("💀 Troupeau perdu"); }
     const alive = state.players.filter((p)=>!state.eliminated[p.id]);
     if (alive.length === 1 && state.players.length > 1) finishWith(state, alive[0].id, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[alive[0].id] || null : null);
+  } else if (state.modeId === "une_ptite_raclette") {
+    const servedMap = state.special.racletteServedByPlayer || (state.special.racletteServedByPlayer = {});
+    const varietyMap = state.special.racletteVarietyBonusByPlayer || (state.special.racletteVarietyBonusByPlayer = {});
+    const missMap = state.special.racletteMissPenaltyByPlayer || (state.special.racletteMissPenaltyByPlayer = {});
+    const bullMap = state.special.racletteBullBonusByPlayer || (state.special.racletteBullBonusByPlayer = {});
+    const bestServeMap = state.special.racletteBestServeByPlayer || (state.special.racletteBestServeByPlayer = {});
+    const history = state.special.racletteHistory || (state.special.racletteHistory = []);
+    const stock = racletteStockFor(state, player.id);
+    const recipeCheese = Math.max(2, Number(state.config?.modeOptions?.recipeCheese ?? 6));
+    const recipePotato = Math.max(1, Number(state.config?.modeOptions?.recipePotato ?? 3));
+    const recipeCharcuterie = Math.max(1, Number(state.config?.modeOptions?.recipeCharcuterie ?? 3));
+    const racletteBonus = Math.max(10, Number(state.config?.modeOptions?.racletteBonus ?? 100));
+    const visitVarietyBonus = Math.max(0, Number(state.config?.modeOptions?.visitVarietyBonus ?? 15));
+    const missPenalty = Math.max(0, Number(state.config?.modeOptions?.missPenalty ?? 5));
+    const ingredientHits = new Set<string>();
+    let servedThisVisit = 0;
+    let varietyAwarded = 0;
+    let missPenaltyTotal = 0;
+    let bullBonusTotal = 0;
+    for (const d of darts) {
+      if (!d || d.bed === "MISS") {
+        if (missPenalty > 0) {
+          missPenaltyTotal += missPenalty;
+          state.scores[player.id] = Math.max(0, Number(state.scores[player.id] || 0) - missPenalty);
+          delta -= missPenalty;
+        }
+        continue;
+      }
+      if (d.bed === "OB" || d.bed === "IB") {
+        const portion = d.bed === "IB" ? 2 : 1;
+        stock.cheese += portion; stock.potato += portion; stock.charcuterie += portion;
+        ingredientHits.add("cheese"); ingredientHits.add("potato"); ingredientHits.add("charcuterie");
+        const bullBonus = d.bed === "IB" ? 20 : 5;
+        bullBonusTotal += bullBonus;
+        hits += 1;
+        state.scores[player.id] = Number(state.scores[player.id] || 0) + bullBonus;
+        delta += bullBonus;
+      } else {
+        const family = racletteIngredientForNumber(Number(d.number || 0));
+        const portion = d.bed === "T" ? 3 : d.bed === "D" ? 2 : 1;
+        stock[family] = Number(stock[family] || 0) + portion;
+        ingredientHits.add(family);
+        hits += 1;
+        const points = wave61DartScore(d);
+        state.scores[player.id] = Number(state.scores[player.id] || 0) + points;
+        delta += points;
+      }
+      while (stock.cheese >= recipeCheese && stock.potato >= recipePotato && stock.charcuterie >= recipeCharcuterie) {
+        stock.cheese -= recipeCheese;
+        stock.potato -= recipePotato;
+        stock.charcuterie -= recipeCharcuterie;
+        servedThisVisit += 1;
+        servedMap[player.id] = Number(servedMap[player.id] || 0) + 1;
+        state.scores[player.id] = Number(state.scores[player.id] || 0) + racletteBonus;
+        delta += racletteBonus;
+      }
+    }
+    if (ingredientHits.size === 3 && visitVarietyBonus > 0) {
+      varietyAwarded = visitVarietyBonus;
+      varietyMap[player.id] = Number(varietyMap[player.id] || 0) + visitVarietyBonus;
+      state.scores[player.id] = Number(state.scores[player.id] || 0) + visitVarietyBonus;
+      delta += visitVarietyBonus;
+    }
+    if (servedThisVisit > 0) bestServeMap[player.id] = Math.max(Number(bestServeMap[player.id] || 0), servedThisVisit);
+    if (missPenaltyTotal > 0) missMap[player.id] = Number(missMap[player.id] || 0) + missPenaltyTotal;
+    if (bullBonusTotal > 0) bullMap[player.id] = Number(bullMap[player.id] || 0) + bullBonusTotal;
+    state.progress[player.id] = Number(servedMap[player.id] || 0);
+    history.push({ playerId: player.id, served: servedThisVisit, stock: { ...stock }, recipe: { cheese: recipeCheese, potato: recipePotato, charcuterie: recipeCharcuterie }, varietyAwarded, missPenalty: missPenaltyTotal, bullBonus: bullBonusTotal, at: Date.now() });
+    if (servedThisVisit > 0) events.push(`🫕 ${servedThisVisit} raclette${servedThisVisit > 1 ? "s" : ""} servie${servedThisVisit > 1 ? "s" : ""} · +${servedThisVisit * racletteBonus}`);
+    if (varietyAwarded > 0) events.push(`🥒 Plateau complet · +${varietyAwarded}`);
+    if (bullBonusTotal > 0) events.push(`🔥 Coup de chaud BULL · +${bullBonusTotal}`);
+    if (missPenaltyTotal > 0) events.push(`❄️ Raclette refroidie · -${missPenaltyTotal}`);
+    events.push(`🧀 ${stock.cheese}/${recipeCheese} · 🥔 ${stock.potato}/${recipePotato} · 🥓 ${stock.charcuterie}/${recipeCharcuterie}`);
+    if (Number(state.config?.goal || 0) > 0 && Number(servedMap[player.id] || 0) >= Number(state.config.goal || 0)) finishWith(state, player.id, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[player.id] || null : null);
   } else if (state.modeId === "hi_score") {
     const scoreFactor = modeOptionNumber(state.config, "scoreMultiplierPct", 100, 50, 200) / 100;
     const fatBull = modeOptionBool(state.config, "fatBull", false);
@@ -4699,6 +4814,34 @@ export function pickWave61BotDarts(state: Wave61State, level: Wave61Difficulty =
       if(Math.random()<0.55) return {bed:"MISS"} as GameDart;
       const wrong=COLOR_CALL_COLORS.filter((x)=>x!==c)[Math.floor(Math.random()*3)];
       if(wrong==="BLACK") return {bed:"S",number:pick(BLACK_SINGLES)} as GameDart; if(wrong==="WHITE") return {bed:"S",number:pick(WHITE_SINGLES)} as GameDart; if(wrong==="GREEN") return {bed:"D",number:pick(GREEN_RING)} as GameDart; return {bed:"D",number:pick(RED_RING)} as GameDart;
+    });
+  }
+  if (state.modeId === "une_ptite_raclette") {
+    const needs = racletteNeeds(state, String(activeId || ""));
+    const families: Array<"cheese" | "potato" | "charcuterie"> = ["cheese", "potato", "charcuterie"];
+    const pick = (family: "cheese" | "potato" | "charcuterie") => {
+      const pool = RACLETTE_NUMBERS[family];
+      const maxIndex = level === "hard" ? 1 : level === "normal" ? 3 : pool.length;
+      return Number(pool[Math.floor(Math.random() * Math.min(maxIndex, pool.length))] || pool[0] || 20);
+    };
+    const ranked = [
+      ["cheese", needs.needCheese],
+      ["potato", needs.needPotato],
+      ["charcuterie", needs.needCharcuterie],
+    ].sort((a, b) => Number(b[1]) - Number(a[1])) as Array<["cheese" | "potato" | "charcuterie", number]>;
+    const goodDart = (family: "cheese" | "potato" | "charcuterie"): GameDart => {
+      const missingTotal = needs.needCheese + needs.needPotato + needs.needCharcuterie;
+      if (missingTotal <= 3 && Math.random() < (level === "hard" ? 0.16 : level === "normal" ? 0.08 : 0.03)) return { bed: Math.random() < 0.35 ? "IB" : "OB" } as GameDart;
+      const number = pick(family);
+      const bed = level === "hard" ? (Math.random() < 0.58 ? "T" : "D") : level === "normal" ? (Math.random() < 0.22 ? "T" : Math.random() < 0.62 ? "D" : "S") : (Math.random() < 0.28 ? "D" : "S");
+      return { bed, number } as GameDart;
+    };
+    return Array.from({ length: 3 }, (_, index) => {
+      const family = ranked[index % ranked.length]?.[1] > 0 ? ranked[index % ranked.length][0] : families[Math.floor(Math.random() * families.length)];
+      if (Math.random() < chance) return goodDart(family);
+      if (Math.random() < 0.52) return { bed: "MISS" } as GameDart;
+      const wrongFamily = families.filter((x) => x !== family)[Math.floor(Math.random() * 2)] || "cheese";
+      return { bed: "S", number: pick(wrongFamily) } as GameDart;
     });
   }
   if (state.modeId === "sniper" && target) {

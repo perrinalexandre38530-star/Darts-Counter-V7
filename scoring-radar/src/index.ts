@@ -1071,6 +1071,7 @@ export default {
         ? `${classificationFailures} candidat(s) non classé(s) après timeout IA`
         : null;
       const searchWarning = Array.isArray(details.search_errors) && details.search_errors.length > 0
+        && Number(progress?.new_candidates ?? 0) < maxCandidatesPerRun
         ? `${details.search_errors.length} recherche(s) Brave en avertissement`
         : null;
       const warningMessage = [searchWarning, classificationWarning, socialError].filter(Boolean).join(' • ') || null;

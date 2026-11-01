@@ -16,6 +16,11 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
     "sources": ["src/pages/wave61/modes/troupeau_en_dangerConfig.tsx", "src/pages/wave61/modes/troupeau_en_dangerPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61.ts"],
     "options": ["Défense d'un troupeau contre des vagues de loups", "Taille du troupeau configurable", "Difficulté de meute Facile / Standard / Difficile / Alpha", "Patou renforcé par les Bulls", "DBull peut déclencher un sauvetage du Berger", "Défaite si le troupeau tombe à zéro"]
   },
+  "une_ptite_raclette": {
+    "status": 'available',
+    "sources": ["src/pages/wave61/modes/une_ptite_racletteConfig.tsx", "src/pages/wave61/modes/une_ptite_raclettePlay.tsx", "src/pages/Wave61SharedConfig.tsx", "src/pages/Wave61SharedPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
+    "options": ["OBJECTIF : servir un nombre cible de raclettes", "Trois ingrédients à assembler : FROMAGE / POMMES DE TERRE / CHARCUTERIE", "Simples = 1 portion, Doubles = 2, Triples = 3", "BULL 25 et BULL 50 ajoutent des portions à tous les ingrédients et donnent un bonus de score", "Bonus « plateau complet » lorsqu'une volée touche les trois familles d'ingrédients", "MISS : pénalité configurable pour une raclette refroidie", "Le classement départage d'abord le nombre de raclettes servies puis le score total"]
+  },
   "un_deux_trois_soleil": {
     "status": 'available',
     "sources": ["src/pages/Wave61SharedConfig.tsx", "src/pages/Wave61SharedPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],
