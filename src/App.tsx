@@ -8085,7 +8085,7 @@ function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: an
     setOffline(state.connectivity === "offline");
   }), []);
 
-  if (tab === "public_landing") return <>{children}</>;
+  const isPublicLanding = tab === "public_landing";
 
   const isAuthFlow =
     tab === "auth_reset" ||
@@ -8103,10 +8103,14 @@ function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: an
   // Une session Supabase peut continuer à se restaurer en arrière-plan sans
   // bloquer jeux, historique, stats, profils locaux ou réglages.
   React.useEffect(() => {
-    if (samsungTvNativeApp || isAuthFlow || isStandaloneCompanion || !onlineOnly) return;
+    if (isPublicLanding || samsungTvNativeApp || isAuthFlow || isStandaloneCompanion || !onlineOnly) return;
     if (offline || !ready || status === "signed_in") return;
     go("account_start");
-  }, [ready, status, go, samsungTvNativeApp, isAuthFlow, isStandaloneCompanion, onlineOnly, offline]);
+  }, [ready, status, go, isPublicLanding, samsungTvNativeApp, isAuthFlow, isStandaloneCompanion, onlineOnly, offline]);
+
+  // Important: keep every hook above this return. Navigating Settings -> #/welcome
+  // must not change the number/order of hooks rendered by AppGate (React error #300).
+  if (isPublicLanding) return <>{children}</>;
 
   if (samsungTvNativeApp || isAuthFlow || isStandaloneCompanion) {
     return <>{children}</>;
