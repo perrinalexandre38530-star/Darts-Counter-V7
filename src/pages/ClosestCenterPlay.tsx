@@ -692,7 +692,7 @@ export default function ClosestCenterPlay(props:any) {
     if (!verifyCameraHardwareLock('preflight')) return;
     preflightRunningRef.current = true;
     setTurnArmed(false);
-    setStatus("🛡️ Contrôle avant volée : stabilité, perspective et netteté…");
+    setStatus(pointsMode==="petanque" ? "🛡️ Contrôle avant lancer : stabilité, perspective et netteté…" : "🛡️ Contrôle avant volée : stabilité, perspective et netteté…");
     try {
       const count = Math.max(3, Math.min(5, cameraPrefs.baselineFrames));
       const settledBurst = await cameraSourceRef.current?.captureSettledBurst?.(cal, count, cameraPrefs.frameDelayMs, cameraPrefs.maxCaptureSide);
@@ -704,21 +704,21 @@ export default function ClosestCenterPlay(props:any) {
         return;
       }
       const rawBurst = settledBurst.frames;
-      if (rawBurst.length < 3) { setStatus("❌ Contrôle avant volée incomplet : caméra non exploitable."); return; }
+      if (rawBurst.length < 3) { setStatus(pointsMode==="petanque" ? "❌ Contrôle avant lancer incomplet : caméra non exploitable." : "❌ Contrôle avant volée incomplet : caméra non exploitable."); return; }
       const geometryChecks = rawBurst.map(frame => assessProjectiveDrift(before, frame, cal));
       const worstGeometry = geometryChecks.reduce((w:any,x:any)=>x.regionalSpreadPx>w.regionalSpreadPx?x:w, geometryChecks[0]);
       if (cameraPrefs.strictProjectiveDrift && !geometryChecks.every((x:any)=>x.ok)) {
         setPreflightInfo({ok:false,reason:"drift",geometrySpreadPx:worstGeometry.regionalSpreadPx,confidence:worstGeometry.confidence});
-        traceCamera("preflight", "reject", "projective-drift", "Dérive projective avant volée", {spreadPx:worstGeometry.regionalSpreadPx,confidence:worstGeometry.confidence});
-        setStatus(`❌ Contrôle avant volée refusé : dérive projective ${worstGeometry.regionalSpreadPx.toFixed(2)} px. Replace le support avant de lancer.`);
+        traceCamera("preflight", "reject", "projective-drift", pointsMode==="petanque" ? "Dérive projective avant lancer" : "Dérive projective avant volée", {spreadPx:worstGeometry.regionalSpreadPx,confidence:worstGeometry.confidence});
+        setStatus(`❌ Contrôle avant ${pointsMode==="petanque"?"lancer":"volée"} refusé : dérive projective ${worstGeometry.regionalSpreadPx.toFixed(2)} px. Replace le support avant de lancer.`);
         return;
       }
       const registered = rawBurst.map(frame => registerFrameToReference(before, frame, cal));
       const good = registered.filter(x => x.registration.confidence >= .55 && Math.hypot(x.registration.dxPx,x.registration.dyPx) <= 8);
       if (good.length < 3) {
         setPreflightInfo({ok:false,reason:"registration",confidence:good.length/Math.max(1,registered.length)});
-        traceCamera("preflight", "reject", "registration", "Recalage pré-volée insuffisant", {goodFrames:good.length,totalFrames:registered.length});
-        setStatus("❌ Contrôle avant volée refusé : support/cadrage trop instable. Immobilise la caméra puis recommence.");
+        traceCamera("preflight", "reject", "registration", pointsMode==="petanque" ? "Recalage pré-lancer insuffisant" : "Recalage pré-volée insuffisant", {goodFrames:good.length,totalFrames:registered.length});
+        setStatus(pointsMode==="petanque" ? "❌ Contrôle avant lancer refusé : support/cadrage trop instable. Immobilise la caméra puis recommence." : "❌ Contrôle avant volée refusé : support/cadrage trop instable. Immobilise la caméra puis recommence.");
         return;
       }
       const frames = good.map(x=>x.frame);
@@ -735,15 +735,15 @@ export default function ClosestCenterPlay(props:any) {
       setRegistrationInfo({confidence:avgRegistration,maxShiftPx:maxShift,geometrySpreadPx:Math.max(...geometryChecks.map((x:any)=>x.regionalSpreadPx))});
       if (!readiness.ok || !tierMeets(tier, cameraPrefs.requiredTier) || !stabilitySamples.every((x:any)=>x.stable)) {
         setPreflightInfo({ok:false,reason:"quality",tier,confidence:readiness.confidence});
-        traceCamera("preflight", "reject", "quality", "Qualité/stabilité pré-volée insuffisante", {tier,profile:cameraPrefs.profile,readiness:readiness.confidence,stability:worstStability.confidence,maxShiftPx:maxShift});
-        setStatus(`❌ Contrôle avant volée refusé : qualité ${tier.toUpperCase()} / stabilité insuffisante pour ${cameraPrefs.profile.toUpperCase()}.`);
+        traceCamera("preflight", "reject", "quality", pointsMode==="petanque" ? "Qualité/stabilité pré-lancer insuffisante" : "Qualité/stabilité pré-volée insuffisante", {tier,profile:cameraPrefs.profile,readiness:readiness.confidence,stability:worstStability.confidence,maxShiftPx:maxShift});
+        setStatus(`❌ Contrôle avant ${pointsMode==="petanque"?"lancer":"volée"} refusé : qualité ${tier.toUpperCase()} / stabilité insuffisante pour ${cameraPrefs.profile.toUpperCase()}.`);
         return;
       }
       setBefore(refreshed);
       setPreflightInfo({ok:true,tier,confidence:Math.min(readiness.confidence,avgRegistration,worstStability.confidence),checkedAt:Date.now()});
       setTurnArmed(true);
-      traceCamera("preflight", "ok", "armed", "Volée armée avec référence fraîche", {tier,readiness:readiness.confidence,stability:worstStability.confidence,registration:avgRegistration,maxShiftPx:maxShift});
-      setStatus(`✅ Volée armée · ${tier.toUpperCase()} · référence fraîche capturée. ${current.name}: lance maintenant tes ${expectedTurnDarts} fléchette${expectedTurnDarts>1?"s":""}, puis ANALYSER.`);
+      traceCamera("preflight", "ok", "armed", pointsMode==="petanque" ? "Lancer armé avec référence fraîche" : "Volée armée avec référence fraîche", {tier,readiness:readiness.confidence,stability:worstStability.confidence,registration:avgRegistration,maxShiftPx:maxShift});
+      setStatus(pointsMode==="petanque" ? `✅ Lancer armé · ${tier.toUpperCase()} · référence fraîche capturée. ${current.name}: lance 1 fléchette, puis ANALYSER.` : `✅ Volée armée · ${tier.toUpperCase()} · référence fraîche capturée. ${current.name}: lance maintenant tes ${expectedTurnDarts} fléchette${expectedTurnDarts>1?"s":""}, puis ANALYSER.`);
     } finally {
       preflightRunningRef.current = false;
     }
@@ -752,7 +752,7 @@ export default function ClosestCenterPlay(props:any) {
   const analyze = async () => {
     if (!cal || !before || !current) return;
     if (!verifyCameraHardwareLock('analysis')) return;
-    if (!turnArmed) { setStatus(`🛡️ Lance d’abord CONTRÔLE AVANT VOLÉE, puis seulement ${expectedTurnDarts} fléchette${expectedTurnDarts>1?"s":""}.`); return; }
+    if (!turnArmed) { setStatus(pointsMode==="petanque" ? "🛡️ Lance d’abord CONTRÔLE AVANT LANCER, puis 1 fléchette." : `🛡️ Lance d’abord CONTRÔLE AVANT VOLÉE, puis seulement ${expectedTurnDarts} fléchette${expectedTurnDarts>1?"s":""}.`); return; }
     setStatus("IA précision : lecture multi-frame en cours…");
     const settledAnalysis = await cameraSourceRef.current?.captureSettledBurst?.(cal, cameraPrefs.analysisFrames, cameraPrefs.frameDelayMs, cameraPrefs.maxCaptureSide);
     if (!settledAnalysis) { setStatus("❌ Source caméra indisponible."); return; }
@@ -803,7 +803,7 @@ export default function ClosestCenterPlay(props:any) {
     setStability(stable);
     if (!stabilitySamples.every(x => x.stable)) {
       traceCamera("analysis", "reject", "stability", "Instabilité détectée pendant analyse", {confidence:stable.confidence,changedFraction:stable.changedFraction});
-      setStatus(`⚠️ Caméra déplacée ou cadrage instable. La volée n’est pas validée.`);
+      setStatus(pointsMode==="petanque" ? "⚠️ Caméra déplacée ou cadrage instable. Le lancer n’est pas validé." : "⚠️ Caméra déplacée ou cadrage instable. La volée n’est pas validée.");
       return;
     }
 
@@ -901,7 +901,7 @@ export default function ClosestCenterPlay(props:any) {
     traceCamera("analysis", proposedWithTieRisk.some((x:any)=>x.needsReview||x.precisionTieRisk) ? "warn" : "ok", "analysis-complete", "Analyse multi-frame terminée", {impacts:proposedWithTieRisk.length,review:proposedWithTieRisk.filter((x:any)=>x.needsReview).length,tieRisk:proposedWithTieRisk.filter((x:any)=>x.precisionTieRisk).length,avgUncertaintyMm:proposedWithTieRisk.reduce((s:any,x:any)=>s+Number(x.uncertaintyMm||0),0)/Math.max(1,proposedWithTieRisk.length),avgFrameAgreement:proposedWithTieRisk.reduce((s:any,x:any)=>s+Number(x.frameAgreement||0),0)/Math.max(1,proposedWithTieRisk.length)});
     const alerts = proposedWithTieRisk.filter((x:any) => x.needsReview).length;
     const tieAlerts = proposedWithTieRisk.filter((x:any) => x.precisionTieRisk).length;
-    setStatus(tieAlerts ? `⚠️ ${tieAlerts} impact(s) sont dans une zone de départage serré : relecture précision renforcée requise.` : alerts ? `${alerts} fléchette(s) demandent un contrôle avant validation.` : `Analyse multi-frame cohérente. Vérifie les ${expectedTurnDarts} impact(s) puis valide la volée.`);
+    setStatus(tieAlerts ? `⚠️ ${tieAlerts} impact(s) sont dans une zone de départage serré : relecture précision renforcée requise.` : alerts ? `${alerts} fléchette(s) demandent un contrôle avant validation.` : pointsMode==="petanque" ? "Analyse multi-frame cohérente. Vérifie la nouvelle pointe puis valide la fléchette." : `Analyse multi-frame cohérente. Vérifie les ${expectedTurnDarts} impact(s) puis valide la volée.`);
   };
 
   const precisionReread = async () => {
@@ -992,7 +992,7 @@ export default function ClosestCenterPlay(props:any) {
     setPendingConsensus([]);
     setPrecisionRereads(0);
     setPhase("play");
-    setStatus(`${current?.name}: garde ${expectedTurnDarts===1?"la fléchette":"les "+expectedTurnDarts+" fléchettes"} en place, stabilise le téléphone puis relance l’analyse. La référence pré-volée reste verrouillée.`);
+    setStatus(`${current?.name}: garde ${expectedTurnDarts===1?"la fléchette":"les "+expectedTurnDarts+" fléchettes"} en place, stabilise le téléphone puis relance l’analyse. La référence ${pointsMode==="petanque"?"pré-lancer":"pré-volée"} reste verrouillée.`);
   };
 
   const recordManualPetanqueThrow = (takesPoint:boolean) => {
@@ -1256,7 +1256,7 @@ export default function ClosestCenterPlay(props:any) {
     const identityCritical = pendingImpacts.some((x:any) => !x.manuallyConfirmedOwner && (!!x.identityMismatch || Number(x.identityConfidence||0) < cameraPrefs.minIdentityConfidence || Number(x.identityMargin||0) < cameraPrefs.minIdentityMargin));
     if (cameraPrefs.strictDartIdentification && identityCritical) {
       traceCamera("validation", "reject", "identity", "Validation bloquée par identification stricte", {minConfidence:cameraPrefs.minIdentityConfidence,minMargin:cameraPrefs.minIdentityMargin});
-      setStatus("❌ Identification stricte : au moins une fléchette n’est pas attribuée avec assez de certitude. Corrige/valide son joueur avant d’enregistrer la volée.");
+      setStatus(pointsMode==="petanque" ? "❌ Identification stricte : la fléchette n’est pas attribuée avec assez de certitude. Confirme son joueur avant de l’enregistrer." : "❌ Identification stricte : au moins une fléchette n’est pas attribuée avec assez de certitude. Corrige/valide son joueur avant d’enregistrer la volée.");
       return;
     }
     const measurementCritical = pendingImpacts.some((x:any) => Number(x.uncertaintyMm||99) > cameraPrefs.maxUncertaintyMm || Number(x.frameAgreement||0) < cameraPrefs.minFrameAgreement || Number(x.consensusSpreadMm||99) > cameraPrefs.maxConsensusSpreadMm);
@@ -1272,7 +1272,7 @@ export default function ClosestCenterPlay(props:any) {
     }
     const rereadWeak = precisionRereads > 0 && pendingImpacts.some((x:any) => x.rereadAgreement != null && Number(x.rereadAgreement) < cameraPrefs.minRereadAgreement);
     if (rereadWeak) {
-      setStatus("❌ Les deux lectures ne convergent pas assez pour valider une mesure de précision. Repositionne/stabilise puis réanalyse la volée.");
+      setStatus(pointsMode==="petanque" ? "❌ Les deux lectures ne convergent pas assez. Repositionne/stabilise puis réanalyse la fléchette." : "❌ Les deux lectures ne convergent pas assez pour valider une mesure de précision. Repositionne/stabilise puis réanalyse la volée.");
       return;
     }
     traceCamera("validation", "ok", "turn-accepted", pointsMode==="petanque" ? "Fléchette validée" : "Volée validée", {rereads:precisionRereads,avgUncertaintyMm:pendingImpacts.reduce((s:any,x:any)=>s+Number(x.uncertaintyMm||0),0)/Math.max(1,pendingImpacts.length),manualOwners:pendingImpacts.filter((x:any)=>x.manuallyConfirmedOwner).length});

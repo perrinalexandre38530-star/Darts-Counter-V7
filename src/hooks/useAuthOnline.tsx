@@ -561,10 +561,15 @@ function applyAuthFromSession(
     // setStorageUser. Tous les appels secondaires (NAS/backup/legacy) sont ainsi
     // forcés à rester dans ce namespace pendant toute la session React.
     try {
-      (window as any).__dc_primary_auth_user_id = String(user.id || "");
-      (window as any).__dc_last_signed_in_user_id = String(user.id || "");
-      setStorageUser(String(user.id || ""));
-      localStorage.setItem("dc_user_id", String(user.id || ""));
+      const stableStorageUid = String(
+        (user.user_metadata as any)?.supabase_user_id ||
+        user.id ||
+        ""
+      ).trim();
+      (window as any).__dc_primary_auth_user_id = stableStorageUid;
+      (window as any).__dc_last_signed_in_user_id = stableStorageUid;
+      setStorageUser(stableStorageUid);
+      localStorage.setItem("dc_user_id", stableStorageUid);
     } catch {}
     setState((s) => {
       const sameUser = String(s.user?.id || "") === String(user.id || "");

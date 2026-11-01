@@ -52,7 +52,6 @@ import { accountOwnedTeams, mergeAccountTeamsPreservingOrganizations } from "../
 import { resolveCanonicalProfileIdFromAlias, registerCanonicalIdentity } from "../data/identityAliases";
 import {
   getCanonicalAccountScopeId,
-  runtimePrimaryAccountScopeId,
   stableSupabaseAccountScopeIdFromAuthStorage,
 } from "./canonicalAccountScope";
 import {
@@ -534,8 +533,22 @@ async function registerIdentityAliasesFromSnapshotForStats(dump: any): Promise<n
     }
 
     const knownIds = new Set(byId.keys());
+    // Les profils qui déclarent explicitement leur identité canonique passent
+    // d'abord. Ainsi un vieux profil technique usr_* ne peut pas devenir
+    // temporairement l'autorité avant que le vrai profil local soit enregistré.
+    const orderedProfiles = Array.from(byId.values()).sort((a: any, b: any) => {
+      const score = (profile: any) => {
+        const pi: any = profile?.privateInfo || profile?.private_info || {};
+        const id = String(profile?.id || "").trim();
+        const declared = String(pi?.canonicalLocalProfileId || profile?.canonicalLocalProfileId || "").trim();
+        if (declared && declared === id) return 3;
+        if (declared) return 2;
+        return 1;
+      };
+      return score(b) - score(a);
+    });
     let registered = 0;
-    for (const profile of byId.values()) {
+    for (const profile of orderedProfiles) {
       const pi: any = profile?.privateInfo || profile?.private_info || {};
       const profileId = String(profile?.id || "").trim();
       if (!profileId) continue;
@@ -560,6 +573,8 @@ async function registerIdentityAliasesFromSnapshotForStats(dump: any): Promise<n
         profile?.accountUserId,
         profile?.onlineUserId,
         ...(Array.isArray(pi?.linkedAccountIds) ? pi.linkedAccountIds : []),
+        ...(Array.isArray(pi?.accountIdentityAliases) ? pi.accountIdentityAliases : []),
+        ...(Array.isArray(profile?.accountIdentityAliases) ? profile.accountIdentityAliases : []),
       ].filter(Boolean);
       // Les profils ordinaires n'ont pas besoin d'un registre d'alias : leur ID
       // est déjà canonique. Ne persister que les identités qui portent une preuve
@@ -1516,7 +1531,9 @@ function normalizeUserId(value: unknown): string | null {
 }
 
 function runtimePrimaryAuthUserId(): string | null {
-  return runtimePrimaryAccountScopeId();
+  // Toujours utiliser le scope canonique résolu : un alias NAS `usr_*` ne doit
+  // plus pouvoir reprendre la priorité sur le vrai UID Supabase persistant.
+  return getCanonicalAccountScopeId();
 }
 
 function stableSupabaseUserIdFromAuthLS(): string | null {
@@ -4530,7 +4547,7 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
             .map((row: any) => String(row?.id || row?.matchId || "").trim())
             .filter(Boolean)
         : [];
-      if (incomingIds.length > 0) {
+      if (incomingRowsObject) {
         report(61, `Vérification des ${incomingIds.length} partie(s) restaurée(s)…`);
         const incomingRows = Object.values<any>(incomingRowsObject || {});
         let restoredHistory = await exportHistoryDump().catch(() => ({ _v: 1 as const, rows: {} as Record<string, any> }));
@@ -4564,32 +4581,10 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
     await registerIdentityAliasesFromSnapshotForStats(dump);
     await yieldIfNeeded(true);
 
-    // MOBILE/PC SOURCE UNIQUE : History vient d'être restauré, donc on reconstruit
-    // immédiatement l'index Stats AVANT les profils/médias. Sur Android le scheduler
-    // différé empêchait Home d'être alimenté alors que les pages Stats détaillées
-    // retrouvaient déjà les matchs. On invalide aussi le cache mémoire StatsBridge.
-    report(61, "Reconstruction des statistiques depuis l’historique…");
-    try {
-      const bridge = await import("./statsBridge");
-      try { bridge.clearStatsIndexCache?.(); } catch {}
-      const statsMod = await import("./stats/rebuildStatsFromHistory");
-      await statsMod.refreshStatsIndexFromHistoryNow({ persist: true, reason: "restore-history-ready" });
-      try { bridge.clearStatsIndexCache?.(); } catch {}
-    } catch (statsRestoreError) {
-      console.warn("[storage] stats rebuild after history restore deferred", statsRestoreError);
-    }
-
-    // W4 RELEASE GATE : ne jamais considérer une restauration comme saine si
-    // Stats référence un ensemble de match IDs différent de History V4. Une
-    // réparation unique est autorisée ; l'échec persistant bloque la restauration.
-    if (mode !== "merge") {
-      report(62, "Release Gate History / Stats…");
-      const localReleaseGate = await assertLocalDataIntegrityReleaseGate({ repairStats: true });
-      // W8 : si la sauvegarde a été créée par la nouvelle architecture, vérifier
-      // aussi que l’appareil restauré reproduit exactement la signature portable
-      // du snapshot source. Les backups legacy restent compatibles.
-      assertCrossDeviceReleaseManifest((dump as any)?.releaseGate, localReleaseGate);
-    }
+    // Ne pas reconstruire Stats ici : les profils portables et leurs alias ne sont
+    // pas encore restaurés. Un rebuild à cet endroit rangeait correctement les
+    // matchs, mais parfois sous l'ancien ID usr_* ; Home et Profil lisaient ensuite
+    // le nouvel ID canonique. La reconstruction finale est faite après normalisation.
     await yieldIfNeeded(true);
 
   // WAVE 4 : réhydrate d'abord le coffre V2 vérifié, puis garde l'importeur V1
@@ -4664,6 +4659,32 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
     await normalizeLocalProfilesInStore();
   } catch (err) {
     console.warn("[storage] normalizeLocalProfilesInStore failed", err);
+  }
+  await yieldIfNeeded(true);
+
+  // ALIGNEMENT FINAL V132 : les profils et alias sont maintenant dans leur état
+  // définitif. Rejouer le bootstrap d'identité puis reconstruire UNE SEULE source
+  // Stats depuis History V4 garantit que Home / Profils / Centre Stats utilisent
+  // exactement les mêmes matchs et le même joueur canonique sur PC et Android.
+  report(90, "Alignement final Historique / Profils / Statistiques…");
+  await registerIdentityAliasesFromSnapshotForStats(dump);
+  try {
+    const bridge = await import("./statsBridge");
+    try { bridge.clearStatsIndexCache?.(); } catch {}
+    const statsMod = await import("./stats/rebuildStatsFromHistory");
+    await statsMod.refreshStatsIndexFromHistoryNow({ persist: true, reason: "restore-profile-identity-finalized" });
+    try { bridge.clearStatsIndexCache?.(); } catch {}
+  } catch (statsRestoreError) {
+    console.error("[storage] final stats rebuild after profile restore failed", statsRestoreError);
+    throw statsRestoreError;
+  }
+
+  // Release Gate seulement APRES l'alignement des identités. Pour une restauration
+  // autoritaire, un écart persistant History/Stats bloque explicitement le succès.
+  if (mode !== "merge") {
+    report(91, "Contrôle final History / Stats / appareil…");
+    const localReleaseGate = await assertLocalDataIntegrityReleaseGate({ repairStats: true });
+    assertCrossDeviceReleaseManifest((dump as any)?.releaseGate, localReleaseGate);
   }
   await yieldIfNeeded(true);
 

@@ -305,9 +305,15 @@ export default function ClosestCenterConfig(props: any) {
       <ol style={{margin:"12px 0 0",paddingLeft:20,color:"#cad5e1",lineHeight:1.6,fontSize:13}}>
         <li>Enrôlement IA des fléchettes de chaque joueur.</li>
         <li>Calibration projective 5 points.</li>
-        <li>Pré-contrôle avant chaque volée.</li>
-        <li>Le joueur lance exactement <b>{fmt.darts}</b> fléchette{fmt.darts>1?"s":""}.</li>
-        <li>L’IA mesure tous les impacts pour appliquer automatiquement la règle choisie.</li>
+        {pointsMode==="petanque" ? <>
+          <li>Pré-contrôle avant chaque lancer.</li>
+          <li>Le joueur sélectionné lance <b>1 fléchette à la fois</b> · {fmt.darts} en main au départ de la mène.</li>
+          <li>L’IA mesure uniquement la nouvelle pointe, puis l’application détermine quelle équipe doit rejouer.</li>
+        </> : <>
+          <li>Pré-contrôle avant chaque volée.</li>
+          <li>Le joueur lance exactement <b>{fmt.darts}</b> fléchette{fmt.darts>1?"s":""}.</li>
+          <li>L’IA mesure les impacts de la volée pour appliquer automatiquement la règle choisie.</li>
+        </>}
       </ol>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}>
         {cameraSource.kind==="local_device"?<button onClick={()=>go?.("camera_scoring_calibration",{returnTab:"closest_center_config",cameraSourceId})} style={navBtn}>CALIBRER LA SOURCE</button>:<button onClick={()=>void createCompanion()} style={navBtn}>RELIER / RECALIBRER</button>}

@@ -395,15 +395,17 @@ export async function exportHistoryDump(): Promise<HistoryDumpV1> {
     for (const [id, row] of Object.entries<any>(canonical.rows || {})) {
       if (!deleted.has(String(id))) activeRows[String(id)] = row as SavedMatch;
     }
-    if (Object.keys(activeRows).length > 0 || deleted.size > 0) {
-      const enriched = await enrichHistoryDumpFromLocalRevisions({
-        _v: 1,
-        historySchemaVersion: HISTORY_V4_SCHEMA_VERSION,
-        rows: activeRows,
-        tombstones: canonical.tombstones,
-      });
-      return attachHistoryIntegrity(enriched);
-    }
+    // History V4 est l'autorité même quand il est vide. Revenir vers les
+    // anciens stores dans ce cas pouvait ressusciter des parties obsolètes après
+    // une restauration autoritaire vide. Le fallback legacy ci-dessous ne sert
+    // plus qu'en cas d'échec réel d'accès au store canonique.
+    const enriched = await enrichHistoryDumpFromLocalRevisions({
+      _v: 1,
+      historySchemaVersion: HISTORY_V4_SCHEMA_VERSION,
+      rows: activeRows,
+      tombstones: canonical.tombstones,
+    });
+    return attachHistoryIntegrity(enriched);
   } catch (error) {
     console.warn("[historyCloud] canonical V4 export fallback", error);
   }

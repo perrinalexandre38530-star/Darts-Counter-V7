@@ -1013,6 +1013,79 @@ export function encodeCompactMatch(input: any): CompactMatchV1 | null {
   }
 }
 
+function finiteCompactNumber(...values: any[]): number | null {
+  for (const value of values) {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+/**
+ * Legacy X01 backups have existed in several compact layouts. In particular,
+ * `sc`/`score` has sometimes been a WIN flag (0/1), while `_sumpoints` is the
+ * actual scored-points counter. Pick the candidate that is coherent with the
+ * recorded AVG3 + darts instead of blindly trusting the shortest key.
+ */
+function decodeLegacyX01Scoring(n: any): { dartsThrown: number; pointsScored: number; avg3: number } {
+  const stats = n && typeof n === "object" ? n : {};
+  const dartsThrown = Math.max(0, finiteCompactNumber(
+    stats._sumdarts,
+    stats._sumDarts,
+    stats.dt,
+    stats.darts,
+    stats.dartsthrown,
+    stats.dartsThrown,
+  ) ?? 0);
+  const avg3 = Math.max(0, finiteCompactNumber(
+    stats.avg3,
+    stats.avg3d,
+    stats.avg3D,
+    stats.avg,
+    stats.average3darts,
+  ) ?? 0);
+
+  const candidates = [
+    stats._sumpoints,
+    stats._sumPoints,
+    stats.pointsscored,
+    stats.pointsScored,
+    stats.scored,
+    stats.totalscore,
+    stats.totalScore,
+    stats.points,
+    stats.pts,
+  ]
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value >= 0);
+
+  const expectedFromAverage = dartsThrown > 0 && avg3 > 0
+    ? (avg3 * dartsThrown) / 3
+    : null;
+
+  let pointsScored = 0;
+  if (expectedFromAverage != null) {
+    if (candidates.length) {
+      const closest = candidates.reduce((best, value) =>
+        Math.abs(value - expectedFromAverage) < Math.abs(best - expectedFromAverage) ? value : best,
+      candidates[0]);
+      // Old `pts` / `totalscore` fields can be duplicated. If every stored
+      // candidate is far from AVG3*darts/3, reconstruct the mathematically
+      // coherent value instead of importing a corrupt cache value.
+      const tolerance = Math.max(3, expectedFromAverage * 0.15);
+      pointsScored = Math.abs(closest - expectedFromAverage) <= tolerance
+        ? closest
+        : expectedFromAverage;
+    } else {
+      pointsScored = expectedFromAverage;
+    }
+  } else if (candidates.length) {
+    pointsScored = candidates[0];
+  }
+
+  return { dartsThrown, pointsScored: Math.max(0, pointsScored), avg3 };
+}
+
 export function decodeCompactMatch(compact: any): DecodedCompactMatch | null {
   try {
     if (!compact || compact.__compact !== "match.v1" || compact.v !== 1) return null;
@@ -1026,12 +1099,23 @@ export function decodeCompactMatch(compact: any): DecodedCompactMatch | null {
         stats: { ...(ps.n || {}), ...(ps.h || {}) },
         compactStats: ps,
       };
-      // Compat noms utilisés par les extracteurs actuels
-      if (ps.n?.dt != null) out.dartsThrown = ps.n.dt;
-      if (ps.n?.pts != null) out.pointsScored = ps.n.pts;
+      // Compat noms utilisés par les extracteurs actuels. X01 est traité à part :
+      // plusieurs anciens snapshots utilisaient `sc` comme flag victoire et
+      // `pts` comme compteur dupliqué. `_sumpoints` + AVG3/darts font foi.
+      if (compact.m === "x01") {
+        const x01 = decodeLegacyX01Scoring(ps.n || {});
+        if (x01.dartsThrown > 0) out.dartsThrown = x01.dartsThrown;
+        if (x01.pointsScored > 0 || x01.dartsThrown > 0) out.pointsScored = x01.pointsScored;
+        if (x01.avg3 > 0) out.avg3 = x01.avg3;
+      } else {
+        if (ps.n?.dt != null) out.dartsThrown = ps.n.dt;
+        if (ps.n?.pts != null) out.pointsScored = ps.n.pts;
+        if (ps.n?.avg3 != null) out.avg3 = ps.n.avg3;
+        if (ps.n?.avg != null && out.avg3 == null) out.avg3 = ps.n.avg;
+      }
+      // Conserver `score` pour les autres extracteurs/modes, mais jamais comme
+      // source de points X01.
       if (ps.n?.sc != null) out.score = ps.n.sc;
-      if (ps.n?.avg3 != null) out.avg3 = ps.n.avg3;
-      if (ps.n?.avg != null && out.avg3 == null) out.avg3 = ps.n.avg;
       if (ps.n?.vis != null) out.visits = ps.n.vis;
       if (ps.n?.bv != null) out.bestVisit = ps.n.bv;
       if (ps.n?.bc != null) out.bestCheckout = ps.n.bc;

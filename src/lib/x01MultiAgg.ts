@@ -297,6 +297,86 @@ function x01InferDartsFromScoredAvg(scored: number, avg3: number): number {
   return Math.abs(raw - rounded) <= 0.05 ? rounded : 0;
 }
 
+type X01ScoringMetrics = { pointsScored: number; dartsThrown: number; avg3: number };
+
+/**
+ * Normalize all historical X01 scoring layouts into one coherent triplet.
+ * Legacy backups sometimes use `score/sc` as a binary WIN flag and some builds
+ * duplicated `pts/totalscore`. AVG3 + darts gives us an independent consistency
+ * check, so prefer the candidate closest to avg3*darts/3 and reconstruct it when
+ * every stored counter is clearly incompatible.
+ */
+function x01ResolveScoringMetrics(
+  source: any,
+  fallback: { pointsScored?: number; dartsThrown?: number; avg3?: number } = {},
+): X01ScoringMetrics {
+  const src = source && typeof source === "object" ? source : {};
+  let dartsThrown = Math.max(0, x01ReadNum(
+    src?._sumdarts,
+    src?._sumDarts,
+    src?.darts,
+    src?.dt,
+    src?.dartsThrown,
+    fallback.dartsThrown,
+  ));
+  let avg3 = Math.max(0, x01ReadNum(
+    src?.avg3,
+    src?.avg3D,
+    src?.avg3d,
+    src?.avg,
+    fallback.avg3,
+  ));
+
+  const pointCandidates = [
+    src?._sumpoints,
+    src?._sumPoints,
+    src?.pointsScored,
+    src?.pointsscored,
+    src?.scored,
+    src?.totalScore,
+    src?.totalscore,
+    src?.points,
+    src?.pts,
+    fallback.pointsScored,
+  ]
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value >= 0);
+
+  // `score` was a real points counter in a few very old rows, but in the
+  // problematic snapshots it is a 0/1 win flag. Only consider non-binary values.
+  const legacyScore = Number(src?.score);
+  if (Number.isFinite(legacyScore) && legacyScore > 1) pointCandidates.push(legacyScore);
+
+  const expectedPoints = dartsThrown > 0 && avg3 > 0 ? (avg3 * dartsThrown) / 3 : 0;
+  let pointsScored = 0;
+  if (expectedPoints > 0) {
+    if (pointCandidates.length) {
+      const closest = pointCandidates.reduce((best, value) =>
+        Math.abs(value - expectedPoints) < Math.abs(best - expectedPoints) ? value : best,
+      pointCandidates[0]);
+      pointsScored = Math.abs(closest - expectedPoints) <= Math.max(3, expectedPoints * 0.15)
+        ? closest
+        : expectedPoints;
+    } else {
+      pointsScored = expectedPoints;
+    }
+  } else if (pointCandidates.length) {
+    pointsScored = pointCandidates[0];
+  }
+
+  if (!(dartsThrown > 0) && pointsScored > 0 && avg3 > 0) {
+    dartsThrown = x01InferDartsFromScoredAvg(pointsScored, avg3);
+  }
+  if (!(avg3 > 0) && dartsThrown > 0) {
+    avg3 = (pointsScored / dartsThrown) * 3;
+  }
+  return {
+    pointsScored: Math.max(0, pointsScored),
+    dartsThrown: Math.max(0, dartsThrown),
+    avg3: Math.max(0, avg3),
+  };
+}
+
 export function computeX01MultiAgg(records: SavedMatch[], playerId: string, playerName?: string) {
   const out = {
     sessions: 0,
@@ -327,7 +407,7 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
     first9_100: 0,
     first9_120: 0,
     first9_140: 0,
-    progression: [] as { avg3D: number; ts: number }[],
+    progression: [] as { avg3D: number; ts: number; pointsScored?: number; dartsThrown?: number }[],
   };
 
   const seen = new Set<string>();
@@ -457,40 +537,31 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
       out.checkoutAttempts += attemptsFromStats || (bestCO > 0 ? 1 : 0);
       out.checkoutHits += hitsFromStats || (bestCO > 0 ? 1 : 0);
       out.dartsCo += dartsCoFromStats || (bestCO > 0 ? Math.max(1, visits.find((v:any)=>v.finish)?.segments?.length || 1) : 0);
-      const startScore = x01ReadNum(
-        (rec as any)?.game?.startScore,
-        (rec as any)?.summary?.game?.startScore,
-        payload?.summary?.game?.startScore,
-        payload?.game?.startScore,
-        payload?.resume?.config?.startScore,
-        payload?.config?.startScore,
-        301
-      ) || 301;
-      const sourcePoints = x01ReadNum(statSource?.totalScore, statSource?.totalscore, statSource?._sumPoints, statSource?.points);
-      // Ne jamais laisser une sauvegarde online corrompue compter plus que le score de départ par leg terminé.
-      // Exemple vu: liveStats.totalScore=329 sur un X01 301 à cause d'un début de leg suivant conservé dans resume.state.
-      out.scoreTotal += Math.min(Math.max(sourcePoints || scored || 0, 0), startScore);
-      out.darts += Math.max(darts, x01ReadNum(statSource?.darts, statSource?.dt, statSource?.dartsThrown));
-      const avg3 = x01ReadNum(statSource?.avg3, statSource?.avg3D, statSource?.avg3d) || (darts > 0 ? (Math.min(scored, startScore) / darts) * 3 : 0);
+      const metrics = x01ResolveScoringMetrics(statSource, {
+        pointsScored: scored,
+        dartsThrown: darts,
+        avg3: darts > 0 ? (scored / darts) * 3 : 0,
+      });
+      // Une session X01 peut couvrir plusieurs legs/sets : ne jamais plafonner
+      // les points au score de départ (301/501), sinon le lifetime est amputé.
+      out.scoreTotal += metrics.pointsScored;
+      out.darts += metrics.dartsThrown;
+      const avg3 = metrics.avg3;
       out.sumAvg3D += avg3;
       out.bestAvg3D = Math.max(out.bestAvg3D, avg3);
       out.bestVisit = Math.max(out.bestVisit, bestVisit, x01ReadNum(statSource?.bestVisit, statSource?.bv));
       out.bestCheckout = Math.max(out.bestCheckout, bestCO, x01ReadNum(statSource?.bestCheckout, statSource?.bc));
-      out.progression.push({ avg3D: avg3, ts: (rec as any).updatedAt ?? (rec as any).createdAt ?? Date.now() });
+      out.progression.push({
+        avg3D: avg3,
+        ts: (rec as any).updatedAt ?? (rec as any).createdAt ?? Date.now(),
+        pointsScored: metrics.pointsScored,
+        dartsThrown: metrics.dartsThrown,
+      });
     } else if (detailed && typeof detailed === "object") {
-      const d = x01ReadNum(detailed.darts, detailed.dt, detailed.dartsThrown);
-      const avg3 = x01ReadNum(detailed.avg3, detailed.avg3D, detailed.avg3d);
-      const startScore = x01ReadNum(
-        (rec as any)?.game?.startScore,
-        (rec as any)?.summary?.game?.startScore,
-        payload?.summary?.game?.startScore,
-        payload?.game?.startScore,
-        payload?.resume?.config?.startScore,
-        payload?.config?.startScore,
-        301
-      ) || 301;
-      const sourcePoints = x01ReadNum(detailed.totalScore, detailed.totalscore, detailed._sumPoints, detailed.points);
-      out.scoreTotal += Math.min(Math.max(sourcePoints || (d > 0 && avg3 > 0 ? (avg3 / 3) * d : 0) || 0, 0), startScore);
+      const metrics = x01ResolveScoringMetrics({ ...(statSource || {}), ...(detailed || {}) });
+      const d = metrics.dartsThrown;
+      const avg3 = metrics.avg3;
+      out.scoreTotal += metrics.pointsScored;
       out.darts += d;
       out.sumAvg3D += avg3;
       out.bestAvg3D = Math.max(out.bestAvg3D, avg3);
@@ -542,7 +613,12 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
           if (k >= 1 && k <= 20) out.byNumber[k] += x01ReadNum(val?.S, val?.s) + x01ReadNum(val?.D, val?.d) + x01ReadNum(val?.T, val?.t);
         });
       }
-      out.progression.push({ avg3D: avg3, ts: (rec as any).updatedAt ?? (rec as any).createdAt ?? Date.now() });
+      out.progression.push({
+        avg3D: avg3,
+        ts: (rec as any).updatedAt ?? (rec as any).createdAt ?? Date.now(),
+        pointsScored: metrics.pointsScored,
+        dartsThrown: metrics.dartsThrown,
+      });
     } else {
       // Import / récupération compact : pas de replayDarts ni detailedByPlayer, mais le
       // résumé conserve les valeurs de partie (avg3d, score, remaining, rang, gagnant).
@@ -584,23 +660,15 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
         x01FindPlayerMapNumber(summary?.avg3ByPlayer, matchedIds, playerNames),
         x01FindPlayerMapNumber(summary?.average3ByPlayer, matchedIds, playerNames)
       );
-      const sourcePoints = x01ReadNum(
-        statSource?.scored,
-        statSource?.score,
-        statSource?.totalScore,
-        statSource?.totalscore,
-        statSource?.points,
-        statSource?._sumPoints,
-        hasRemaining && remaining >= 0 && remaining <= startScore ? startScore - remaining : 0
-      );
-      const safePoints = Math.min(Math.max(sourcePoints, 0), startScore);
-      const directDarts = x01ReadNum(statSource?.darts, statSource?.dt, statSource?.dartsThrown);
-      const inferredDarts = directDarts || x01InferDartsFromScoredAvg(safePoints, avg3);
+      const metrics = x01ResolveScoringMetrics(statSource, {
+        pointsScored: hasRemaining && remaining >= 0 && remaining <= startScore ? startScore - remaining : undefined,
+        avg3,
+      });
 
-      out.scoreTotal += safePoints;
-      out.darts += inferredDarts;
-      out.sumAvg3D += avg3;
-      out.bestAvg3D = Math.max(out.bestAvg3D, avg3);
+      out.scoreTotal += metrics.pointsScored;
+      out.darts += metrics.dartsThrown;
+      out.sumAvg3D += metrics.avg3;
+      out.bestAvg3D = Math.max(out.bestAvg3D, metrics.avg3);
       out.bestVisit = Math.max(out.bestVisit, x01ReadNum(statSource?.bestVisit, statSource?.bv, x01FindPlayerMapNumber(summary?.bestVisitByPlayer, matchedIds, playerNames)));
       out.bestCheckout = Math.max(out.bestCheckout, x01ReadNum(statSource?.bestCheckout, statSource?.bestCO, statSource?.bestCo, statSource?.bc, x01FindPlayerMapNumber(summary?.bestCheckoutByPlayer, matchedIds, playerNames)));
 
@@ -638,7 +706,12 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
       // V129: garder UNE entrée chronologique par match, même si l'AVG3D est absente.
       // Le niveau actuel doit sélectionner les 10 derniers MATCHS X01 d'abord,
       // puis calculer l'AVG3D avec les valeurs réellement disponibles dans cette fenêtre.
-      out.progression.push({ avg3D: avg3, ts: (rec as any).updatedAt ?? (rec as any).createdAt ?? Date.now() });
+      out.progression.push({
+        avg3D: metrics.avg3,
+        ts: (rec as any).updatedAt ?? (rec as any).createdAt ?? Date.now(),
+        pointsScored: metrics.pointsScored,
+        dartsThrown: metrics.dartsThrown,
+      });
     }
   }
 
@@ -668,12 +741,16 @@ export function computeX01LevelSnapshot(
   const lifetimeMatches = Math.max(0, Number(agg?.sessions || 0) || 0);
   const safeLimit = Math.max(1, Math.floor(Number(currentLimit || 10)) || 10);
 
-  let lifetimeAvg3D = 0;
-  if (lifetimeMatches > 0 && Number(agg?.sumAvg3D || 0) > 0) {
-    lifetimeAvg3D = Number(agg.sumAvg3D) / lifetimeMatches;
-  } else if (Number(agg?.darts || 0) > 0 && Number(agg?.scoreTotal || 0) > 0) {
-    lifetimeAvg3D = (Number(agg.scoreTotal) / Number(agg.darts)) * 3;
-  }
+  // Une seule définition partout : AVG3 lifetime = total points X01 / total
+  // fléchettes X01 × 3. La moyenne simple des moyennes de parties est seulement
+  // un fallback pour les très vieux enregistrements sans compteurs récupérables.
+  const lifetimeDarts = Math.max(0, Number(agg?.darts || 0) || 0);
+  const lifetimePoints = Math.max(0, Number(agg?.scoreTotal || 0) || 0);
+  let lifetimeAvg3D = lifetimeDarts > 0
+    ? (lifetimePoints / lifetimeDarts) * 3
+    : (lifetimeMatches > 0 && Number(agg?.sumAvg3D || 0) > 0
+      ? Number(agg.sumAvg3D) / lifetimeMatches
+      : 0);
 
   const progression = (Array.isArray(agg?.progression) ? agg.progression : [])
     .map((row: any) => {
@@ -682,6 +759,8 @@ export function computeX01LevelSnapshot(
       const parsedTs = typeof rawTs === "string" && !Number.isFinite(numericTs) ? Date.parse(rawTs) : numericTs;
       return {
         avg3D: Number(row?.avg3D ?? row?.avg3 ?? 0),
+        pointsScored: Math.max(0, Number(row?.pointsScored ?? row?.points ?? 0) || 0),
+        dartsThrown: Math.max(0, Number(row?.dartsThrown ?? row?.darts ?? 0) || 0),
         ts: Number.isFinite(parsedTs) ? Number(parsedTs) : 0,
       };
     })
@@ -689,15 +768,15 @@ export function computeX01LevelSnapshot(
     .sort((a: any, b: any) => a.ts - b.ts);
 
   // IMPORTANT V129 : on sélectionne d'abord les 10 derniers MATCHS X01.
-  // On ne sélectionne surtout pas les 10 dernières AVG3D valides, ce qui pourrait
-  // aller chercher un 11e/12e ancien match si une partie récente est incomplète.
   const currentRows = progression.slice(-safeLimit);
-  const validCurrentRows = currentRows.filter(
-    (row: any) => Number.isFinite(row.avg3D) && row.avg3D > 0
-  );
   const currentMatches = Math.min(lifetimeMatches, currentRows.length);
+  const currentDarts = currentRows.reduce((sum: number, row: any) => sum + (row.dartsThrown > 0 ? row.dartsThrown : 0), 0);
+  const currentPoints = currentRows.reduce((sum: number, row: any) => sum + (row.dartsThrown > 0 ? row.pointsScored : 0), 0);
+  const validCurrentRows = currentRows.filter((row: any) => Number.isFinite(row.avg3D) && row.avg3D > 0);
   const currentAvg3D = validCurrentRows.length > 0
-    ? validCurrentRows.reduce((sum: number, row: any) => sum + row.avg3D, 0) / validCurrentRows.length
+    ? (currentDarts > 0
+      ? (currentPoints / currentDarts) * 3
+      : validCurrentRows.reduce((sum: number, row: any) => sum + row.avg3D, 0) / validCurrentRows.length)
     : 0;
 
   return {

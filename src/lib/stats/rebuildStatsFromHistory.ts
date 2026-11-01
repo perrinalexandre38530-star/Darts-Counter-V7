@@ -705,10 +705,51 @@ function makeVisitBuckets(bestVisit: number): Record<string, number> {
 }
 
 function extractX01QuickMetrics(pl: any): { dartsThrown: number; pointsScored: number; bestVisit: number; bestCheckout: number; buckets: Record<string, number> } {
-  const dartsThrown =
-    Number(pl?.dartsThrown ?? pl?.darts ?? pl?.stats?.dartsThrown ?? pl?.stats?.dartsTotal ?? 0) || 0;
-  let pointsScored =
-    Number(pl?.pointsScored ?? pl?.scored ?? pl?.stats?.pointsScored ?? pl?.stats?.points ?? pl?.score ?? 0) || 0;
+  const dartsThrown = Math.max(0,
+    Number(
+      pl?.dartsThrown ??
+      pl?.darts ??
+      pl?.stats?._sumdarts ??
+      pl?.stats?._sumDarts ??
+      pl?.stats?.dartsThrown ??
+      pl?.stats?.dartsTotal ??
+      pl?.stats?.dt ??
+      0
+    ) || 0
+  );
+  const directAvg3 = Math.max(0, Number(
+    pl?.avg3 ?? pl?.avg3D ?? pl?.avg3d ?? pl?.stats?.avg3 ?? pl?.stats?.avg3D ?? pl?.stats?.avg3d ?? 0
+  ) || 0);
+  const expectedPoints = dartsThrown > 0 && directAvg3 > 0 ? (directAvg3 * dartsThrown) / 3 : 0;
+  const pointCandidates = [
+    pl?.pointsScored,
+    pl?.scored,
+    pl?.stats?.pointsScored,
+    pl?.stats?._sumpoints,
+    pl?.stats?._sumPoints,
+    pl?.stats?.scored,
+    pl?.stats?.totalScore,
+    pl?.stats?.totalscore,
+    pl?.stats?.points,
+    pl?.stats?.pts,
+  ]
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value >= 0);
+  let pointsScored = 0;
+  if (expectedPoints > 0) {
+    if (pointCandidates.length) {
+      const closest = pointCandidates.reduce((best, value) =>
+        Math.abs(value - expectedPoints) < Math.abs(best - expectedPoints) ? value : best,
+      pointCandidates[0]);
+      pointsScored = Math.abs(closest - expectedPoints) <= Math.max(3, expectedPoints * 0.15)
+        ? closest
+        : expectedPoints;
+    } else {
+      pointsScored = expectedPoints;
+    }
+  } else if (pointCandidates.length) {
+    pointsScored = pointCandidates[0];
+  }
   let bestVisit =
     Number(pl?.bestVisit ?? pl?.stats?.bestVisit ?? pl?.stats?.best_visit ?? 0) || 0;
   let bestCheckout =

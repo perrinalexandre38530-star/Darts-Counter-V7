@@ -125,6 +125,19 @@ function elapsedSince(startedAtMs: number): number {
 
 type ScanProfile = 'eco' | 'standard' | 'turbo';
 
+type ScanTriggerMessage = {
+  kind: 'scan_trigger';
+  runId: string;
+  profile: ScanProfile;
+  scheduledTime: number;
+};
+
+type RadarQueueMessage = Candidate | ScanTriggerMessage;
+
+function isScanTriggerMessage(value: RadarQueueMessage): value is ScanTriggerMessage {
+  return typeof value === 'object' && value !== null && 'kind' in value && value.kind === 'scan_trigger';
+}
+
 function normalizeScanProfile(value: string | undefined): ScanProfile {
   const raw = (value || '').trim().toLowerCase();
   if (raw === 'eco' || raw === 'turbo') return raw;
@@ -448,14 +461,39 @@ async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: Ex
     const body = await request.json().catch(() => ({})) as { profile?: string };
     const profile = normalizeScanProfile(body.profile || 'turbo');
     const started = Date.now();
+    const startedAt = new Date(started).toISOString();
     const runId = crypto.randomUUID();
-    ctx.waitUntil(runScheduled(env, started, runId, profile));
+
+    // A manual scan used to run in ctx.waitUntil(). That background lifetime can
+    // end while a long Turbo search is still running, leaving D1 frozen on
+    // brave_search. Persist the run first, then hand the durable work to Queue.
+    await startRun(env, runId, startedAt, `manual:${profile}`);
+    await updateRunProgress(env, runId, {
+      status: 'queued',
+      stage: 'scan_queued',
+      elapsedMs: 0,
+      details: {
+        profile,
+        trigger: 'admin_queue',
+        queued_at: startedAt
+      }
+    });
+
+    const trigger: ScanTriggerMessage = {
+      kind: 'scan_trigger',
+      runId,
+      profile,
+      scheduledTime: started
+    };
+    await env.CANDIDATE_QUEUE.send(trigger);
+
     return json({
       ok: true,
       run_id: runId,
-      status: 'starting',
+      status: 'queued',
       profile,
-      triggered_at: new Date(started).toISOString()
+      triggered_at: startedAt,
+      run: runProgressPayload(env, await getRunProgress(env, runId))
     }, 202);
   }
 
@@ -513,7 +551,7 @@ async function handleGo(request: Request, env: RadarEnv, url: URL): Promise<Resp
   return Response.redirect(safeDestination(env.APP_DESTINATION_URL, row), 302);
 }
 
-async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto.randomUUID(), requestedProfile?: string): Promise<void> {
+async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto.randomUUID(), requestedProfile?: string, prestarted = false): Promise<void> {
   const startedAt = new Date(scheduledTime).toISOString();
   const startedMs = Date.now();
   const markets = parseMarkets(env);
@@ -536,10 +574,15 @@ async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto
     source_rejected: 0,
     intent_rejected: 0,
     history_requalified: 0,
+    query_index: 0,
+    query_total: selectedMarkets.length * selectedIntents.length,
+    search_stopped_early: false,
     timings
   };
 
-  await startRun(env, runId, startedAt, selectedMarkets.map(marketKey).join(','));
+  if (!prestarted) {
+    await startRun(env, runId, startedAt, selectedMarkets.map(marketKey).join(','));
+  }
   await updateRunProgress(env, runId, {
     status: 'running',
     stage: 'starting',
@@ -556,6 +599,9 @@ async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto
   const searchErrors: string[] = [];
   let error: string | undefined;
   let currentStage = 'starting';
+  const searchBudgetMs = profile === 'turbo' ? 150_000 : profile === 'eco' ? 45_000 : 90_000;
+  const searchDeadline = startedMs + searchBudgetMs;
+  let stopSearchReason: string | null = null;
 
   try {
     if (selectedMarkets.length === 0) throw new Error('No radar market is configured');
@@ -564,11 +610,25 @@ async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto
     const historyRequalified = await requalifyHistoricalIntentShield(env);
     details.history_requalified = historyRequalified;
 
+    searchSweep:
     for (const market of selectedMarkets) {
       const marketLabel = marketKey(market);
       details.market = marketLabel;
 
       for (const selectedIntent of selectedIntents) {
+      if (pendingCandidates.length >= maxCandidatesPerRun) {
+        stopSearchReason = `Cap analyse atteint (${maxCandidatesPerRun})`;
+        details.search_stopped_early = true;
+        details.search_stop_reason = stopSearchReason;
+        break searchSweep;
+      }
+      if (Date.now() >= searchDeadline) {
+        stopSearchReason = `Budget de recherche atteint (${Math.round(searchBudgetMs / 1000)} s)`;
+        details.search_stopped_early = true;
+        details.search_stop_reason = stopSearchReason;
+        break searchSweep;
+      }
+      details.query_index = queries + 1;
       details.intent = selectedIntent.key;
       details.intent_description = selectedIntent.description;
       currentStage = 'localizing';
@@ -688,7 +748,20 @@ async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto
         queued: 0,
         details
       });
+      if (pendingCandidates.length >= maxCandidatesPerRun) {
+        stopSearchReason = `Cap analyse atteint (${maxCandidatesPerRun})`;
+        details.search_stopped_early = true;
+        details.search_stop_reason = stopSearchReason;
+        break searchSweep;
       }
+      }
+    }
+
+    details.query_index = queries;
+    details.queries_executed = queries;
+    if (stopSearchReason) {
+      searchErrors.push(stopSearchReason);
+      details.search_errors = searchErrors.slice(-12);
     }
 
     const searchFinishedAt = new Date().toISOString();
@@ -783,8 +856,42 @@ export default {
     await runScheduled(env, controller.scheduledTime);
   },
 
-  async queue(batch: MessageBatch<Candidate>, env: RadarEnv): Promise<void> {
-    const candidates = batch.messages.map((message) => message.body);
+  async queue(batch: MessageBatch<RadarQueueMessage>, env: RadarEnv): Promise<void> {
+    const messages = batch.messages.map((message) => message.body);
+    const triggers = messages.filter(isScanTriggerMessage);
+
+    // Manual scans are executed by Queue rather than ctx.waitUntil so Cloudflare
+    // gives the search pipeline a durable consumer lifetime.
+    for (const trigger of triggers) {
+      try {
+        await updateRunProgress(env, trigger.runId, {
+          status: 'running',
+          stage: 'starting',
+          elapsedMs: Math.max(0, Date.now() - trigger.scheduledTime),
+          details: {
+            profile: trigger.profile,
+            trigger: 'queue_consumer',
+            dequeued_at: new Date().toISOString()
+          }
+        });
+        await runScheduled(env, trigger.scheduledTime, trigger.runId, trigger.profile, true);
+      } catch (caught) {
+        const error = caught instanceof Error ? caught.message : String(caught);
+        await updateRunProgress(env, trigger.runId, {
+          status: 'failed',
+          stage: 'scan_trigger_failed',
+          finishedAt: new Date().toISOString(),
+          elapsedMs: Math.max(0, Date.now() - trigger.scheduledTime),
+          error
+        });
+        console.error(JSON.stringify({ event: 'radar_scan_trigger_error', runId: trigger.runId, error }));
+        throw caught;
+      }
+    }
+
+    const candidates = messages.filter((message): message is Candidate => !isScanTriggerMessage(message));
+    if (candidates.length === 0) return;
+
     const runIds = [...new Set(candidates.map((candidate) => candidate.runId).filter((id): id is string => Boolean(id)))];
     const progressByRun = new Map<string, RunProgressRow>();
     const detailsByRun = new Map<string, Record<string, unknown>>();
@@ -990,4 +1097,4 @@ export default {
       socialError
     }));
   }
-} satisfies ExportedHandler<RadarEnv, Candidate>;
+} satisfies ExportedHandler<RadarEnv, RadarQueueMessage>;

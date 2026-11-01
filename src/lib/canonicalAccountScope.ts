@@ -91,8 +91,33 @@ function legacyAuthFallbackScopeId(): string | null {
 }
 
 export function getCanonicalAccountScopeId(): string | null {
-  return runtimePrimaryAccountScopeId() ||
-    stableSupabaseAccountScopeIdFromAuthStorage() ||
+  const runtime = runtimePrimaryAccountScopeId();
+  const stableSupabase = stableSupabaseAccountScopeIdFromAuthStorage();
+
+  // PERSISTENCE LOCK V140:
+  // le bridge NAS peut exposer temporairement un alias technique `usr_*` avant
+  // que la session Supabase publique soit complètement réhydratée. Si on laisse
+  // cet alias gagner, History V4 ouvre une autre base IndexedDB et l'utilisateur
+  // a l'impression que toutes ses parties ont disparu à la reconnexion.
+  //
+  // Dès qu'une session persistée contient un vrai UID Supabase, cet UID reste
+  // donc l'autorité de stockage face aux aliases NAS connus. Un véritable changement
+  // de compte Supabase (runtime UUID différent) continue en revanche à gagner.
+  if (stableSupabase) {
+    if (!runtime || runtime === stableSupabase) return stableSupabase;
+    const parsed = readAuthPayload();
+    const canonicalAlias = cleanCanonicalAccountScopeId(
+      parsed?.canonicalUserId ||
+      parsed?.user?.user_metadata?.canonical_user_id ||
+      parsed?.user?.user_metadata?.nas_user_id ||
+      parsed?.userId,
+    );
+    const runtimeLooksTechnical = /^usr[_:-]/i.test(runtime) || (!!canonicalAlias && runtime === canonicalAlias);
+    if (runtimeLooksTechnical) return stableSupabase;
+  }
+
+  return runtime ||
+    stableSupabase ||
     explicitStorageAccountScopeId() ||
     legacyAuthFallbackScopeId();
 }

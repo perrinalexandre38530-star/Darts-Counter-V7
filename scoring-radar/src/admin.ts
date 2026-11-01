@@ -124,10 +124,10 @@ export function adminHtml(): string {
   }
 
   const STAGES = [
-    ['starting','Préparation'],['localizing','Requête / langue'],['brave_search','Brave Search'],['deduplicating','Déduplication'],
+    ['starting','Préparation'],['searching','Recherche web'],['deduplicating','Déduplication'],
     ['queueing','Mise en file'],['awaiting_classification','Attente IA'],['classifying','Analyse IA'],['social_growth','Social Growth']
   ];
-  const STAGE_PROGRESS = {starting:4,localizing:12,brave_search:30,deduplicating:45,queueing:55,awaiting_classification:63,classifying:80,social_growth:92,completed:100,social_growth_failed:100,classification_failed:100,watchdog_timeout:100,failed:100};
+  const STAGE_PROGRESS = {starting:4,searching:12,deduplicating:45,queueing:55,awaiting_classification:63,classifying:80,social_growth:92,completed:100,social_growth_failed:100,classification_failed:100,watchdog_timeout:100,failed:100};
   let activeRunId = null;
   let pollTimer = null;
   let clockTimer = null;
@@ -139,7 +139,7 @@ export function adminHtml(): string {
     return String(min).padStart(2,'0') + ':' + String(sec % 60).padStart(2,'0');
   }
   function isActive(run){ return run && ['running','processing','queued'].includes(run.status); }
-  function normalizedStage(stage){ if(stage==='classification_failed')return 'classifying'; if(stage==='social_growth_failed')return 'social_growth'; if(String(stage||'').endsWith('_failed'))return String(stage).slice(0,-7); return stage; }
+  function normalizedStage(stage){ if(stage==='localizing'||stage==='brave_search')return 'searching'; if(stage==='classification_failed')return 'classifying'; if(stage==='social_growth_failed')return 'social_growth'; if(String(stage||'').endsWith('_failed'))return normalizedStage(String(stage).slice(0,-7)); return stage; }
   function stageIndex(stage){ const normalized=normalizedStage(stage); return STAGES.findIndex((entry) => entry[0] === normalized); }
   function updateClock(){
     if (!lastRun) return;
@@ -160,14 +160,23 @@ export function adminHtml(): string {
     const active = isActive(run); const failed = run.status === 'failed'; const warning = run.status === 'completed_with_warnings';
     if (failed) monitor.classList.add('failed'); else if (!active) monitor.classList.add('done');
     runButton.disabled = active;
-    const normalized = normalizedStage(run.stage); const progress = STAGE_PROGRESS[run.stage] ?? STAGE_PROGRESS[normalized] ?? (active ? 10 : 100);
-    $('scanBar').style.width = String(progress) + '%';
+    const normalized = normalizedStage(run.stage);
+    let progress = STAGE_PROGRESS[run.stage] ?? STAGE_PROGRESS[normalized] ?? (active ? 10 : 100);
+    if (normalized === 'searching' && run.details) {
+      const qi = Math.max(0, Number(run.details.query_index || run.queries || 0));
+      const qt = Math.max(1, Number(run.details.query_total || 1));
+      progress = 12 + Math.min(1, qi / qt) * 30;
+    }
+    $('scanBar').style.width = String(Math.min(100, Math.max(0, progress))) + '%';
     if (failed) $('scanTitle').textContent = '❌ SCAN ÉCHOUÉ';
     else if (warning) $('scanTitle').textContent = '⚠️ SCAN TERMINÉ AVEC AVERTISSEMENT';
     else if (active && run.stalled) $('scanTitle').textContent = '⚠️ SCAN SEMBLE BLOQUÉ';
     else if (active) $('scanTitle').textContent = '🔎 SCAN EN COURS';
     else $('scanTitle').textContent = '✅ SCAN TERMINÉ';
-    $('scanSubtitle').textContent = 'ID ' + String(run.run_id || '').slice(0,8) + ' • étape : ' + String(run.stage || '—');
+    const qi = run.details ? Number(run.details.query_index || run.queries || 0) : 0;
+    const qt = run.details ? Number(run.details.query_total || 0) : 0;
+    const searchCounter = normalized === 'searching' && qt > 0 ? ' • recherche ' + Math.min(qi, qt) + '/' + qt : '';
+    $('scanSubtitle').textContent = 'ID ' + String(run.run_id || '').slice(0,8) + ' • étape : ' + String(run.stage || '—') + searchCounter;
     $('mQueries').textContent = run.queries ?? 0; $('mBrave').textContent = run.brave_results ?? 0; $('mNew').textContent = run.new_candidates ?? 0;
     $('mDuplicates').textContent = run.details && Number.isFinite(Number(run.details.duplicates)) ? Number(run.details.duplicates) : Math.max(0, Number(run.brave_results||0)-Number(run.new_candidates||0));
     $('mRejected').textContent = run.details && Number.isFinite(Number(run.details.source_rejected)) ? Number(run.details.source_rejected) : 0;
@@ -182,10 +191,13 @@ export function adminHtml(): string {
       else if (idx === current && active) { cls+=' active'; mark='⟳'; }
       else if (terminalFailure && idx === Math.max(0,current)) { cls+=' failed'; mark='✕'; label='Échec'; }
       const timings = run.details && run.details.timings && typeof run.details.timings === 'object' ? run.details.timings : {};
-      const t = Number(timings[entry[0]] || 0); const time = t > 0 ? (t/1000).toFixed(1) + ' s' : (finishedStep ? 'Terminé' : label);
+      const t = entry[0] === 'searching'
+        ? Number(timings.localizing || 0) + Number(timings.brave_search || 0)
+        : Number(timings[entry[0]] || 0);
+      const time = t > 0 ? (t/1000).toFixed(1) + ' s' : (finishedStep ? 'Terminé' : label);
       return '<div class="'+cls+'"><b>'+mark+' '+esc(entry[1])+'</b>'+esc(time)+'</div>';
     }).join('');
-    const detail=[]; if(run.details&&run.details.profile)detail.push('Profil : '+String(run.details.profile).toUpperCase()); if(run.details&&run.details.market)detail.push('Marché : '+run.details.market); if(run.details&&Array.isArray(run.details.intents))detail.push('Intents du run : '+run.details.intents.length); if(run.details&&run.details.intent)detail.push('Intent actif : '+run.details.intent); if(run.details&&run.details.freshness)detail.push('Fenêtre Brave : '+run.details.freshness); if(run.details&&Number(run.details.source_rejected||0)>0)detail.push('Sources rejetées : '+Number(run.details.source_rejected||0)); if(run.details&&Number(run.details.intent_rejected||0)>0)detail.push('Intent Shield : '+Number(run.details.intent_rejected||0)+' rejeté(s)'); if(run.details&&Number(run.details.history_requalified||0)>0)detail.push('Historique nettoyé : '+Number(run.details.history_requalified||0)); if(run.details&&Number(run.details.capacity_skipped||0)>0)detail.push('Cap analyse atteint : '+Number(run.details.capacity_skipped||0)+' reporté(s)'); if(run.details&&Array.isArray(run.details.search_errors)&&run.details.search_errors.length)detail.push('Recherches en avertissement : '+run.details.search_errors.length); if(run.details&&run.details.query_source)detail.push('Source requête : '+run.details.query_source); if(run.details&&run.details.query)detail.push('Requête : '+run.details.query); if(run.details&&run.details.classification){const c=run.details.classification;const failedCount=Number(c.failed||0);const model=String(c.model||'').replace('@cf/meta/','').replace('@cf/','');detail.push('Classification : '+Number(c.completed||0)+'/'+Number(c.total||0)+' • lots '+Number(c.chunk_size||0)+' • parallèle '+Number(c.concurrency||0)+(failedCount?' • échecs '+failedCount:'')+(model?' • modèle '+model:''));} if(Number(run.new_candidates||0)===0&&Number(run.brave_results||0)>0)detail.push('Tous les résultats étaient déjà connus pour cet intent'); if(run.stalled)detail.push('Aucune mise à jour depuis '+Math.round(Number(run.stale_for_ms||0)/1000)+' s');
+    const detail=[]; if(run.details&&run.details.profile)detail.push('Profil : '+String(run.details.profile).toUpperCase()); if(run.details&&run.details.market)detail.push('Marché : '+run.details.market); if(run.details&&Array.isArray(run.details.intents))detail.push('Intents du run : '+run.details.intents.length); if(run.details&&run.details.intent)detail.push('Intent actif : '+run.details.intent); if(run.details&&Number(run.details.query_total||0)>0)detail.push('Recherche : '+Math.min(Number(run.details.query_index||run.queries||0),Number(run.details.query_total))+'/'+Number(run.details.query_total)); if(run.details&&run.details.search_stop_reason)detail.push('Arrêt recherche : '+run.details.search_stop_reason); if(run.details&&run.details.freshness)detail.push('Fenêtre Brave : '+run.details.freshness); if(run.details&&Number(run.details.source_rejected||0)>0)detail.push('Sources rejetées : '+Number(run.details.source_rejected||0)); if(run.details&&Number(run.details.intent_rejected||0)>0)detail.push('Intent Shield : '+Number(run.details.intent_rejected||0)+' rejeté(s)'); if(run.details&&Number(run.details.history_requalified||0)>0)detail.push('Historique nettoyé : '+Number(run.details.history_requalified||0)); if(run.details&&Number(run.details.capacity_skipped||0)>0)detail.push('Cap analyse atteint : '+Number(run.details.capacity_skipped||0)+' reporté(s)'); if(run.details&&Array.isArray(run.details.search_errors)&&run.details.search_errors.length)detail.push('Recherches en avertissement : '+run.details.search_errors.length); if(run.details&&run.details.query_source)detail.push('Source requête : '+run.details.query_source); if(run.details&&run.details.query)detail.push('Requête : '+run.details.query); if(run.details&&run.details.classification){const c=run.details.classification;const failedCount=Number(c.failed||0);const model=String(c.model||'').replace('@cf/meta/','').replace('@cf/','');detail.push('Classification : '+Number(c.completed||0)+'/'+Number(c.total||0)+' • lots '+Number(c.chunk_size||0)+' • parallèle '+Number(c.concurrency||0)+(failedCount?' • échecs '+failedCount:'')+(model?' • modèle '+model:''));} if(Number(run.new_candidates||0)===0&&Number(run.brave_results||0)>0)detail.push('Tous les résultats étaient déjà connus pour cet intent'); if(run.stalled)detail.push('Aucune mise à jour depuis '+Math.round(Number(run.stale_for_ms||0)/1000)+' s');
     $('scanDetail').textContent = detail.join(' • ') || 'Progression enregistrée côté Worker.';
     const errorBox=$('scanError'); if(run.error){errorBox.textContent=(warning?'Avertissement : ':'Erreur : ')+run.error;errorBox.className='scanError visible';}else{errorBox.textContent='';errorBox.className='scanError';}
     updateClock();

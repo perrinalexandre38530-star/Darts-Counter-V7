@@ -92,7 +92,7 @@ const checks = [
   [admin.includes('Fenêtre Brave') && admin.includes('déjà connus'), 'dashboard explains freshness window and duplicate-only scans'],
 
   [index.includes("url.pathname === '/api/runs/latest'") && index.includes('getRunProgress'), 'run progress API'],
-  [index.includes('ctx.waitUntil(runScheduled'), 'manual scan starts asynchronously'],
+  [index.includes("kind: 'scan_trigger'") && index.includes('CANDIDATE_QUEUE.send(trigger)') && index.includes("trigger: 'admin_queue'"), 'manual scan uses durable queue trigger'],
   [index.includes('CANDIDATE_QUEUE.sendBatch'), 'candidate queue uses batch handoff'],
   [index.includes('watchdog_timeout'), 'stalled scan watchdog'],
   [admin.includes('scanMonitor') && admin.includes('pollRun'), 'live scan monitor with polling'],
