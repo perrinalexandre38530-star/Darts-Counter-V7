@@ -1,6 +1,21 @@
 export type PublicRuleAudit = { status: 'available'|'development'; sources: string[]; options: string[] };
 
 export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
+  "bim_bam_boum": {
+    "status": 'available',
+    "sources": ["src/pages/wave61/modes/bim_bam_boumConfig.tsx", "src/pages/wave61/modes/bim_bam_boumPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61.ts"],
+    "options": ["Combo en trois fléchettes BIM → BAM → BOUM", "Classique : Simple puis Double puis Triple sur le même secteur", "Bonus BOUM configurable", "SUPER BOUM après une série de combos", "Bots IA, équipes, historique et Undo via le socle Wave61"]
+  },
+  "saute_moutons": {
+    "status": 'available',
+    "sources": ["src/pages/wave61/modes/saute_moutonsConfig.tsx", "src/pages/wave61/modes/saute_moutonsPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61.ts"],
+    "options": ["Course sur piste", "Simple +1 / Double +2 / Triple +3", "Bull 25 et DBull 50 = grands bonds configurables", "Bonus lorsqu'un déplacement franchit un adversaire", "Victoire immédiate à l'arrivée"]
+  },
+  "troupeau_en_danger": {
+    "status": 'available',
+    "sources": ["src/pages/wave61/modes/troupeau_en_dangerConfig.tsx", "src/pages/wave61/modes/troupeau_en_dangerPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61.ts"],
+    "options": ["Défense d'un troupeau contre des vagues de loups", "Taille du troupeau configurable", "Difficulté de meute Facile / Standard / Difficile / Alpha", "Patou renforcé par les Bulls", "DBull peut déclencher un sauvetage du Berger", "Défaite si le troupeau tombe à zéro"]
+  },
   "un_deux_trois_soleil": {
     "status": 'available',
     "sources": ["src/pages/Wave61SharedConfig.tsx", "src/pages/Wave61SharedPlay.tsx", "src/lib/gameEngines/wave61Engine.ts", "src/games/dartsWave61Families.ts", "src/games/dartsWave61.ts"],

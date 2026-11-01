@@ -697,6 +697,18 @@ export const en: Dict = {
   'landing.game.color_call.info': 'A board colour is called every round: BLACK, WHITE, GREEN or RED. Only hits in the called colour score, with an optional bonus for a perfect three-hit visit.',
   'landing.game.color_call.objective': 'Score as many points as possible by hitting the colour called for each turn.',
   'landing.game.color_call.configNarrative': 'Choose the participants, number of rounds and perfect-visit bonus. Each turn calls one board colour and only matching hits score.',
+  'landing.game.bim_bam_boum.label': 'BIM BAM BOUM',
+  'landing.game.bim_bam_boum.info': 'A three-dart combo game: BIM sets it up, BAM powers it up and BOUM finishes it. The classic contract is Single → Double → Triple on the same number, with BOUM bonuses and SUPER BOUM streaks.',
+  'landing.game.bim_bam_boum.objective': 'Complete BIM → BAM → BOUM in one visit and build the biggest combo total.',
+  'landing.game.bim_bam_boum.configNarrative': 'Choose the combo contract, BOUM bonus, SUPER BOUM rule and optional failed-visit penalty.',
+  'landing.game.saute_moutons.label': 'LEAPFROG',
+  'landing.game.saute_moutons.info': 'A race across the board: Singles move 1 space, Doubles 2 and Triples 3. Bulls create big jumps and crossing another player triggers a leapfrog bonus.',
+  'landing.game.saute_moutons.objective': 'Move your sheep along the track and reach the finish before everyone else.',
+  'landing.game.saute_moutons.configNarrative': 'Choose the track length, leapfrog bonus and Bull jump power.',
+  'landing.game.troupeau_en_danger.label': 'FLOCK IN DANGER',
+  'landing.game.troupeau_en_danger.info': 'Defend the flock from waves of wolves with the Shepherd and the Patou. Weak defense costs sheep, while Bulls trigger the strongest protection actions.',
+  'landing.game.troupeau_en_danger.objective': 'Keep at least one sheep alive until the final wolf wave.',
+  'landing.game.troupeau_en_danger.configNarrative': 'Set flock size, wolf difficulty, Patou power and the Shepherd rescue rule.',
 };
 
 export default en;

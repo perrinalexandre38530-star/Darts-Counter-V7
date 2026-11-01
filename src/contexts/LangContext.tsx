@@ -58,9 +58,21 @@ type LangContextValue = {
   t: (key: string, fallback?: string) => string;
 };
 
-const LangContext = React.createContext<LangContextValue | undefined>(
-  undefined
-);
+// V109 hot-reload/WebContainer guard:
+// Vite can transiently evaluate the same module under different cache-busted URLs
+// (for example `LangContext.tsx?t=...`). If each evaluation creates its own
+// React context, a Provider from one module instance is invisible to a consumer
+// imported from the other instance and `useLang()` throws during boot.
+//
+// Keep a single context object for the lifetime of the page so Provider and
+// consumers always share the exact same React.Context, even across HMR reloads.
+const LANG_CONTEXT_GLOBAL_KEY = "__MSC_LANG_CONTEXT_V1__";
+const langGlobalScope = globalThis as any;
+
+const LangContext: React.Context<LangContextValue | undefined> =
+  (langGlobalScope[LANG_CONTEXT_GLOBAL_KEY] as React.Context<LangContextValue | undefined> | undefined) ??
+  (langGlobalScope[LANG_CONTEXT_GLOBAL_KEY] =
+    React.createContext<LangContextValue | undefined>(undefined));
 
 const STORAGE_KEY = "dc_lang_v1";
 

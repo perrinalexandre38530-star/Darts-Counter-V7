@@ -39,6 +39,9 @@ const FAMILY_PRESETS: Record<Wave61Family, Omit<Wave61FamilyPreset, "family">> =
 };
 
 const MODE_FAMILY: Record<string, Wave61Family> = {
+  bim_bam_boum: "score",
+  saute_moutons: "race",
+  troupeau_en_danger: "survival",
   tug_rush: "race",
   demineur: "deduction",
   heist_180: "mission",
@@ -111,6 +114,9 @@ const MODE_FAMILY: Record<string, Wave61Family> = {
 };
 
 const MODE_OVERRIDES: Record<string, Partial<Wave61FamilyPreset>> = {
+  bim_bam_boum: { minPlayers: 1, defaultRounds: 10, defaultGoal: 0 },
+  saute_moutons: { minPlayers: 1, defaultRounds: 20, defaultGoal: 20 },
+  troupeau_en_danger: { minPlayers: 1, defaultRounds: 8, defaultGoal: 0, defaultLives: 8 },
   tug_rush: { minPlayers: 2, defaultGoal: 60, defaultRounds: 15 },
   demineur: { defaultGoal: 15, defaultRounds: 16 },
   heist_180: { defaultGoal: 100, defaultRounds: 16 },

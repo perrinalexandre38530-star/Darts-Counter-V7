@@ -622,5 +622,17 @@ export const fr: Dict = {
   'landing.game.color_call.label': 'COLOR CALL',
   'landing.game.color_call.info': 'À chaque tour, une couleur est appelée parmi NOIR, BLANC, VERT et ROUGE. Seuls les impacts de cette couleur marquent, avec un bonus possible pour une volée parfaite.',
   'landing.game.color_call.objective': 'Marquer le maximum de points en touchant la couleur demandée à chaque tour.',
+  'landing.game.bim_bam_boum.label': 'BIM BAM BOUM',
+  'landing.game.bim_bam_boum.info': 'Jeu de combo en trois fléchettes : BIM prépare, BAM renforce et BOUM conclut. Le contrat classique demande Simple → Double → Triple sur un même secteur, avec bonus et SUPER BOUM.',
+  'landing.game.bim_bam_boum.objective': 'Enchaîner BIM → BAM → BOUM sur la même volée et construire les plus gros combos.',
+  'landing.game.bim_bam_boum.configNarrative': 'Choisissez le contrat de combo, le bonus BOUM, le SUPER BOUM et la pénalité éventuelle en cas de volée ratée.',
+  'landing.game.saute_moutons.label': 'SAUTE-MOUTONS',
+  'landing.game.saute_moutons.info': 'Une course sur la cible : Simple avance de 1, Double de 2, Triple de 3. Les Bulls déclenchent de grands bonds et franchir un adversaire active le bonus saute-mouton.',
+  'landing.game.saute_moutons.objective': 'Faire progresser son mouton sur la piste et atteindre l’arrivée avant les autres.',
+  'landing.game.saute_moutons.configNarrative': 'Choisissez la longueur du parcours, le bonus de dépassement et la puissance des Bulls.',
+  'landing.game.troupeau_en_danger.label': 'TROUPEAU EN DANGER',
+  'landing.game.troupeau_en_danger.info': 'Défendez un troupeau contre des vagues de loups avec le Berger et le Patou. Une défense insuffisante fait perdre des moutons ; les Bulls activent les protections les plus fortes.',
+  'landing.game.troupeau_en_danger.objective': 'Conserver au moins un mouton en vie jusqu’à la dernière vague.',
+  'landing.game.troupeau_en_danger.configNarrative': 'Réglez la taille du troupeau, la difficulté des loups, la puissance du Patou et le sauvetage du Berger.',
 
 };

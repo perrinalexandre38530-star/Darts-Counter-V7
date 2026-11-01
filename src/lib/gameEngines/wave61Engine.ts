@@ -4142,6 +4142,78 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
     const result = processLaSuite(state, player.id, darts, events); delta = result.delta; hits = result.hits;
   } else if (state.modeId === "color_call") {
     const result = processColorCall(state, player.id, darts, events); delta = result.delta; hits = result.hits;
+  } else if (state.modeId === "bim_bam_boum") {
+    const rule = String(state.config?.modeOptions?.comboRule || "same");
+    const bonus = Math.max(0, Number(state.config?.modeOptions?.comboBonus ?? 50));
+    const missPenalty = Math.max(0, Number(state.config?.modeOptions?.missPenalty ?? 0));
+    const [a,b,c] = darts;
+    const scoreA = wave61DartScore(a), scoreB = wave61DartScore(b), scoreC = wave61DartScore(c);
+    const sameNumber = a?.number && a?.number === b?.number && b?.number === c?.number;
+    const bedCombo = a?.bed === "S" && b?.bed === "D" && c?.bed === "T";
+    const progressive = scoreA > 0 && scoreA < scoreB && scoreB < scoreC;
+    const valid = rule === "progressive" ? progressive : rule === "beds" ? bedCombo : (bedCombo && sameNumber);
+    const streakMap = state.special.bimBamBoumStreakByPlayer || (state.special.bimBamBoumStreakByPlayer = {});
+    const bestMap = state.special.bimBamBoumBestStreakByPlayer || (state.special.bimBamBoumBestStreakByPlayer = {});
+    const comboMap = state.special.bimBamBoumCombosByPlayer || (state.special.bimBamBoumCombosByPlayer = {});
+    const superEnabled = state.config?.modeOptions?.superBoom !== false;
+    if (valid) {
+      const previous = Number(streakMap[player.id] || 0);
+      const superBoom = superEnabled && previous >= 3;
+      delta = scoreA + scoreB + scoreC + bonus * (superBoom ? 2 : 1);
+      hits = 3;
+      streakMap[player.id] = superBoom ? 0 : previous + 1;
+      bestMap[player.id] = Math.max(Number(bestMap[player.id] || 0), previous + 1);
+      comboMap[player.id] = Number(comboMap[player.id] || 0) + 1;
+      state.scores[player.id] = Number(state.scores[player.id] || 0) + delta;
+      state.progress[player.id] = Number(comboMap[player.id] || 0);
+      events.push(`${superBoom ? "💥 SUPER BOUM" : "💣 BIM → BAM → BOUM"} · +${delta}`);
+    } else {
+      streakMap[player.id] = 0;
+      delta = -missPenalty;
+      if (missPenalty) state.scores[player.id] = Math.max(0, Number(state.scores[player.id] || 0) - missPenalty);
+      events.push(`❌ Combo cassé${missPenalty ? ` · -${missPenalty}` : ""}`);
+    }
+  } else if (state.modeId === "saute_moutons") {
+    const trackLength = Math.max(6, Number(state.config?.modeOptions?.trackLength ?? state.config?.goal ?? 20));
+    const leapBonus = Math.max(0, Number(state.config?.modeOptions?.leapfrogBonus ?? 1));
+    const bull25Jump = Math.max(1, Number(state.config?.modeOptions?.bull25Jump ?? 4));
+    const bull50Jump = Math.max(1, Number(state.config?.modeOptions?.bull50Jump ?? 6));
+    let pos = Number(state.progress[player.id] || 0);
+    let totalJump = 0;
+    for (const d of darts) {
+      let jump = d?.bed === "D" ? 2 : d?.bed === "T" ? 3 : d?.bed === "OB" ? bull25Jump : d?.bed === "IB" ? bull50Jump : d?.bed === "S" ? 1 : 0;
+      if (jump <= 0) continue;
+      const before = pos; const intended = Math.min(trackLength, pos + jump);
+      const crossed = state.players.filter((p) => p.id !== player.id).some((p) => { const op=Number(state.progress[p.id]||0); return op > before && op <= intended; });
+      pos = Math.min(trackLength, intended + (crossed ? leapBonus : 0));
+      totalJump += (pos - before); hits += 1;
+      if (crossed && leapBonus) events.push(`🐑 Saute-mouton ! +${leapBonus} case${leapBonus>1?"s":""}`);
+      if (pos >= trackLength) break;
+    }
+    state.progress[player.id] = pos; state.scores[player.id] = pos; delta = totalJump;
+    events.push(`🏁 Course · +${totalJump} · case ${pos}/${trackLength}`);
+    if (pos >= trackLength) finishWith(state, player.id, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[player.id] || null : null);
+  } else if (state.modeId === "troupeau_en_danger") {
+    const maxFlock = Math.max(1, Number(state.config?.modeOptions?.flockSize ?? 8));
+    const sheepMap = state.special.flockRemainingByPlayer || (state.special.flockRemainingByPlayer = Object.fromEntries(state.players.map((p)=>[p.id,maxFlock])));
+    if (sheepMap[player.id] == null) sheepMap[player.id] = maxFlock;
+    const difficulty = String(state.config?.modeOptions?.wolfDifficulty || "normal");
+    const pressureBase = difficulty === "easy" ? 35 : difficulty === "hard" ? 75 : difficulty === "alpha" ? 95 : 55;
+    const pressure = pressureBase + Math.max(0, Math.floor(state.roundIndex / 2) * 5);
+    const patouPower = Math.max(0, Number(state.config?.modeOptions?.patouPower ?? 10));
+    const bullCountVisit = darts.filter((d)=>d?.bed === "OB" || d?.bed === "IB").length;
+    let defense = darts.reduce((sum,d)=>sum + wave61DartScore(d),0) + bullCountVisit * patouPower;
+    const shepherdSave = state.config?.modeOptions?.shepherdSave !== false && darts.some((d)=>d?.bed === "IB");
+    let lost = defense >= pressure ? 0 : Math.max(1, Math.ceil((pressure-defense)/35));
+    sheepMap[player.id] = Math.max(0, Number(sheepMap[player.id]||maxFlock) - lost);
+    if (shepherdSave && sheepMap[player.id] < maxFlock) { sheepMap[player.id] += 1; events.push("🧑‍🌾 Berger · 1 mouton sauvé"); }
+    delta = Math.max(0, defense); hits = darts.filter((d)=>d?.bed !== "MISS").length;
+    state.scores[player.id] = Number(state.scores[player.id]||0) + delta;
+    state.progress[player.id] = Number(sheepMap[player.id]||0);
+    events.push(defense >= pressure ? `🐕 Patou · vague repoussée (${defense}/${pressure})` : `🐺 Meute · ${lost} mouton${lost>1?"s":""} perdu${lost>1?"s":""} (${defense}/${pressure})`);
+    if (sheepMap[player.id] <= 0) { state.eliminated[player.id] = true; events.push("💀 Troupeau perdu"); }
+    const alive = state.players.filter((p)=>!state.eliminated[p.id]);
+    if (alive.length === 1 && state.players.length > 1) finishWith(state, alive[0].id, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[alive[0].id] || null : null);
   } else if (state.modeId === "hi_score") {
     const scoreFactor = modeOptionNumber(state.config, "scoreMultiplierPct", 100, 50, 200) / 100;
     const fatBull = modeOptionBool(state.config, "fatBull", false);

@@ -31,6 +31,9 @@ export const NEW_MODE_IDS: string[] = [
   "three_colors",
   "la_suite",
   "color_call",
+  "bim_bam_boum",
+  "saute_moutons",
+  "troupeau_en_danger",
 ];
 
 // ✅ Auto-load des tickers via convention de nommage
