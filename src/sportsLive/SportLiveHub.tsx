@@ -11,7 +11,7 @@ import {
   getSportSources,
 } from "./catalog";
 import { fetchSportLiveOverview, getCachedSportLiveOverview, mergeSportLiveOverview } from "./liveApi";
-import type { SportLiveEvent, SportLiveNewsItem, SportLiveOverview, SportLiveRegion, SportLiveSource } from "./types";
+import type { SportLiveCompetitionIndexEntry, SportLiveEvent, SportLiveNewsItem, SportLiveOverview, SportLiveRegion, SportLiveSource } from "./types";
 import { isLiveSportsSupportedSport } from "./support";
 
 type View = "overview" | "live" | "fixtures" | "results" | "news" | "sources";
@@ -693,12 +693,18 @@ function LiveStyles() {
       .msc-competition-count { min-width:15px; height:15px; display:grid; place-items:center; padding:0 3px; border-radius:999px; background:#1c242c; color:#aeb7c1; font-size:7px; font-weight:1000; }
       .msc-competition-btn.is-active .msc-competition-count { background:var(--live-accent); color:#fff; }
       .msc-competition-groups { display:grid; gap:11px; }
+      .msc-country-score-head { display:grid; grid-template-columns:28px minmax(0,1fr) auto; gap:8px; align-items:center; min-height:38px; padding:7px 9px; border:1px solid #34404b; border-radius:11px; background:linear-gradient(180deg,#151c24,#0d1319); box-shadow:0 8px 20px rgba(0,0,0,.18); }
+      .msc-country-score-flag { width:28px; height:28px; display:grid; place-items:center; border-radius:50%; background:#202a34; font-size:17px; box-shadow:inset 0 0 0 1px rgba(255,255,255,.06); }
+      .msc-country-score-head strong { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; letter-spacing:.45px; }
+      .msc-country-score-head > span:last-child { color:#8996a3; font-size:8px; font-weight:950; white-space:nowrap; }
       .msc-competition-group { overflow:hidden; border:1px solid #252d35; border-radius:12px; background:#090d11; }
       .msc-competition-head { min-height:38px; display:grid; grid-template-columns:25px minmax(0,1fr) auto; align-items:center; gap:7px; padding:7px 8px; background:linear-gradient(90deg,rgba(255,48,72,.11),rgba(255,255,255,.02)); border-bottom:1px solid #252d35; }
       .msc-competition-head-icon { width:34px; height:34px; display:grid; place-items:center; border-radius:11px; overflow:hidden; background:#151b21; font-size:14px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06), 0 0 18px rgba(94,198,255,.12); }
       .msc-competition-head-icon img { width:84%; height:84%; object-fit:contain; display:block; }
       .msc-competition-head-icon.is-fallback span { font-size:9px; font-weight:1000; color:#eaf2f8; }
       .msc-competition-head-title { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10.5px; font-weight:1000; }
+      .msc-competition-subline { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:2px; color:#7f8d9b; font-size:7.4px; font-weight:900; }
+      .msc-competition-subline span { display:inline-flex; align-items:center; gap:2px; }
       .msc-competition-head-count { color:#89939e; font-size:8px; font-weight:950; }
       .msc-competition-head.is-red { background:linear-gradient(90deg,rgba(255,48,72,.15),rgba(255,255,255,.02)); }
       .msc-competition-head.is-blue { background:linear-gradient(90deg,rgba(93,145,255,.14),rgba(255,255,255,.02)); }
@@ -821,6 +827,13 @@ function LiveStyles() {
       .msc-results-context { position:sticky; top:52px; z-index:1; display:flex; align-items:center; gap:6px; flex-wrap:wrap; min-height:34px; margin-bottom:8px; padding:6px 9px; border:1px solid #28323d; border-radius:10px; background:rgba(9,13,18,.96); backdrop-filter:blur(8px); color:#91a0ad; font-size:8.5px; font-weight:900; }
       .msc-results-context strong { color:#fff; }
       .msc-results-context em { margin-left:auto; color:#f4d445; font-style:normal; }
+      .msc-archive-summary { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:7px; align-items:stretch; }
+      .msc-archive-summary > div { min-width:0; display:flex; align-items:center; justify-content:center; gap:6px; padding:7px 9px; border:1px solid #2a3540; border-radius:10px; background:#0c1218; }
+      .msc-archive-summary > div:first-child { justify-content:flex-start; flex-wrap:wrap; }
+      .msc-archive-summary strong { color:#fff; font-size:9px; font-weight:1000; }
+      .msc-archive-summary span { padding:2px 5px; border-radius:999px; background:rgba(244,212,69,.12); color:#f4d445; font-size:6.8px; font-weight:1000; }
+      .msc-archive-summary b { color:#fff; font-size:12px; }
+      .msc-archive-summary small { color:#7e8a96; font-size:7px; font-weight:950; text-transform:uppercase; }
       @media (max-width:620px) {
         .msc-results-browser { grid-template-columns:132px minmax(0,1fr); gap:7px; }
         .msc-results-nav { top:48px; padding:6px; border-radius:12px; max-height:calc(76vh - 68px); }
@@ -832,6 +845,8 @@ function LiveStyles() {
         .msc-results-nav-section:not(.is-competitions) .msc-results-nav-list { max-height:136px; }
         .msc-results-nav-section.is-competitions .msc-results-nav-list { max-height:280px; }
         .msc-results-context { top:48px; font-size:7.6px; }
+        .msc-archive-summary { grid-template-columns:1fr 1fr; }
+        .msc-archive-summary > div:first-child { grid-column:1 / -1; }
       }
       @media (orientation:landscape) and (min-width:700px) {
         .msc-results-browser { grid-template-columns:190px minmax(0,1fr); gap:12px; }
@@ -1111,7 +1126,16 @@ function ResultMatchCard({ item, source, lang }: { item: DartsLiveResult; source
   );
 }
 
-function GroupedResults({ rows, source, lang, newsRows, allSources, sport }: { rows: DartsLiveResult[]; source?: SportLiveSource | null; lang: string; newsRows: SportLiveNewsItem[]; allSources: SportLiveSource[]; sport: string }) {
+function GroupedResults({ rows, source, lang, newsRows, allSources, sport, competitionIndex = [] }: { rows: DartsLiveResult[]; source?: SportLiveSource | null; lang: string; newsRows: SportLiveNewsItem[]; allSources: SportLiveSource[]; sport: string; competitionIndex?: SportLiveCompetitionIndexEntry[] }) {
+  const indexByCompetition = React.useMemo(() => {
+    const map = new Map<string, SportLiveCompetitionIndexEntry>();
+    competitionIndex.forEach((entry) => {
+      const keys = [entry.key, normalizedText(entry.name)];
+      keys.filter(Boolean).forEach((key) => map.set(String(key), entry));
+    });
+    return map;
+  }, [competitionIndex]);
+
   const competitions = React.useMemo(() => {
     const map = new Map<string, DartsLiveResult[]>();
     const displayNames = new Map<string, string>();
@@ -1128,23 +1152,31 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport }: { r
       .map(([groupKey, matches]) => {
         const name = displayNames.get(groupKey) || competitionKey(matches[0]?.competition);
         const reference = matches.find((match) => !!competitionMetaOf(match)) || matches[0];
-        const country = competitionCountry(reference);
+        const indexed = indexByCompetition.get(normalizedText(name)) || indexByCompetition.get(name.toLowerCase()) || null;
+        const country = indexed?.countryName
+          ? { key: indexed.countryCode || normalizedText(indexed.countryName), label: indexed.countryName, code: indexed.countryCode || null }
+          : competitionCountry(reference);
+        const indexedChips = [indexed?.tier, indexed?.level, indexed?.family].filter(Boolean).map((value) => String(value).replace(/_/g, " ").toUpperCase());
         return {
           name,
           matches: [...matches].sort((a, b) => dateTs(b.playedOn) - dateTs(a.playedOn)),
           latest: Math.max(...matches.map((match) => dateTs(match.playedOn)), 0),
-          imageUrl: findCompetitionImage(name, matches, newsRows, allSources),
+          imageUrl: indexed?.logoUrl || findCompetitionImage(name, matches, newsRows, allSources),
           tone: competitionVisualTone(name),
-          continent: competitionContinent(reference),
+          continent: indexed?.continent || competitionContinent(reference),
           countryKey: country.key,
           countryLabel: country.label,
           countryCode: country.code,
           levelGroup: competitionLevelGroup(reference),
-          chips: competitionMetaChips(reference),
+          chips: Array.from(new Set([...competitionMetaChips(reference), ...indexedChips])).slice(0, 5),
+          archiveSeasons: indexed?.seasons || [],
+          archiveCount: indexed?.resultCount || matches.length,
+          firstSeen: indexed?.firstSeen || null,
+          lastSeen: indexed?.lastSeen || null,
         };
       })
       .sort((a, b) => (b.latest - a.latest) || (b.matches.length - a.matches.length) || a.name.localeCompare(b.name));
-  }, [rows, newsRows, allSources, sport]);
+  }, [rows, newsRows, allSources, sport, indexByCompetition]);
 
   const continents = React.useMemo(() => {
     const counts = new Map<string, number>();
@@ -1215,6 +1247,11 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport }: { r
   const visible = competitionFiltered
     .map((item) => ({ ...item, matches: selectedSeason === "__all__" ? item.matches : item.matches.filter((match) => resultSeasonLabel(match.playedOn) === selectedSeason) }))
     .filter((item) => item.matches.length > 0);
+  const scoreCenterVisible = React.useMemo(() => [...visible].sort((a,b) => {
+    const countryCmp = a.countryLabel.localeCompare(b.countryLabel, lang || "fr");
+    if (countryCmp) return countryCmp;
+    return a.name.localeCompare(b.name, lang || "fr");
+  }), [visible, lang]);
   const filteredCount = competitionFiltered.reduce((sum,item) => sum + item.matches.length, 0);
   const visibleCount = visible.reduce((sum,item) => sum + item.matches.length, 0);
 
@@ -1290,7 +1327,7 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport }: { r
           <em>{visibleCount} résultat{visibleCount > 1 ? "s" : ""}</em>
         </div>
         <div className="msc-competition-groups">
-          {visible.map(({ name, matches, imageUrl, tone, chips, countryCode, countryLabel }) => {
+          {scoreCenterVisible.map(({ name, matches, imageUrl, tone, chips, countryCode, countryLabel, archiveSeasons, archiveCount, firstSeen, lastSeen }, index) => {
             const rounds = new Map<string, DartsLiveResult[]>();
             matches.forEach((match) => {
               const round = normalizedRound(match.round);
@@ -1299,23 +1336,40 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport }: { r
               rounds.set(round, bucket);
             });
             const orderedRounds = Array.from(rounds.entries()).sort(([a], [b]) => roundOrder(a) - roundOrder(b));
+            const previousCountry = index > 0 ? scoreCenterVisible[index - 1]?.countryLabel : null;
+            const showCountryHead = selectedCountry === "__all__" && previousCountry !== countryLabel;
             return (
-              <section className="msc-competition-group" key={name}>
-                <div className={`msc-competition-head ${tone}`}>
-                  <CompetitionMark sport={sport} name={name} logoUrl={imageUrl} className="msc-competition-head-icon" />
-                  <div className="msc-competition-head-main">
-                    <div className="msc-competition-head-title" translate="no" data-i18n-skip="true">{countryVisual(countryCode, countryLabel)} {name}</div>
-                    {chips.length ? <div className="msc-taxonomy-row">{chips.map((chip) => <span className="msc-taxonomy-chip" key={`${name}-${chip}`}>{chip}</span>)}</div> : null}
+              <React.Fragment key={`${countryLabel}-${name}`}>
+                {showCountryHead ? (
+                  <div className="msc-country-score-head">
+                    <span className="msc-country-score-flag">{countryVisual(countryCode, countryLabel)}</span>
+                    <strong>{countryLabel.toUpperCase()}</strong>
+                    <span>{scoreCenterVisible.filter((item) => item.countryLabel === countryLabel).reduce((sum, item) => sum + item.matches.length, 0)} résultats</span>
                   </div>
-                  <span className="msc-competition-head-count">{matches.length}</span>
-                </div>
-                {orderedRounds.map(([round, roundRows]) => (
-                  <div className="msc-round-group" key={`${name}-${round}`}>
-                    <div className="msc-round-head"><span>{round}</span><span>{roundRows.length} match{roundRows.length > 1 ? "s" : ""}</span></div>
-                    {roundRows.map((item) => <ResultMatchCard key={item.id} item={item} source={source} lang={lang} />)}
+                ) : null}
+                <section className="msc-competition-group">
+                  <div className={`msc-competition-head ${tone}`}>
+                    <CompetitionMark sport={sport} name={name} logoUrl={imageUrl} className="msc-competition-head-icon" />
+                    <div className="msc-competition-head-main">
+                      <div className="msc-competition-head-title" translate="no" data-i18n-skip="true">{name}</div>
+                      <div className="msc-competition-subline">
+                        <span>{countryVisual(countryCode, countryLabel)} {countryLabel}</span>
+                        {archiveSeasons?.length ? <span>{archiveSeasons.length} saison{archiveSeasons.length > 1 ? "s" : ""}</span> : null}
+                        {firstSeen || lastSeen ? <span>{firstSeen || "?"} → {lastSeen || "?"}</span> : null}
+                        {archiveCount > matches.length ? <span>{archiveCount} archivés</span> : null}
+                      </div>
+                      {chips.length ? <div className="msc-taxonomy-row">{chips.map((chip) => <span className="msc-taxonomy-chip" key={`${name}-${chip}`}>{chip}</span>)}</div> : null}
+                    </div>
+                    <span className="msc-competition-head-count">{matches.length}</span>
                   </div>
-                ))}
-              </section>
+                  {orderedRounds.map(([round, roundRows]) => (
+                    <div className="msc-round-group" key={`${name}-${round}`}>
+                      <div className="msc-round-head"><span>{round}</span><span>{roundRows.length} match{roundRows.length > 1 ? "s" : ""}</span></div>
+                      {roundRows.map((item) => <ResultMatchCard key={item.id} item={item} source={source} lang={lang} />)}
+                    </div>
+                  ))}
+                </section>
+              </React.Fragment>
             );
           })}
         </div>
@@ -1803,7 +1857,13 @@ export default function SportLiveHub({ go }: { go?: (route: any, params?: any) =
   const liveRows = feed?.live || [];
   const fixtureRows = feed?.fixtures || [];
   const resultRows = React.useMemo(() => [...(feed?.results || [])].sort((a, b) => dateTs(b.playedOn) - dateTs(a.playedOn)), [feed?.results]);
-  const archiveSeasonCount = React.useMemo(() => new Set(resultRows.map((row) => resultSeasonLabel(row.playedOn)).filter((value) => value !== "NON DATÉ")).size, [resultRows]);
+  const competitionIndex = feed?.competitionIndex || [];
+  const archiveStorage = feed?.archiveStorage || null;
+  const archiveSeasonCount = React.useMemo(() => {
+    const indexed = new Set(competitionIndex.flatMap((entry) => entry.seasons || []).filter((value) => value && value !== "UNKNOWN"));
+    if (indexed.size) return indexed.size;
+    return new Set(resultRows.map((row) => resultSeasonLabel(row.playedOn)).filter((value) => value !== "NON DATÉ")).size;
+  }, [resultRows, competitionIndex]);
   const eventRows = feed?.events || [];
   const newsRows = React.useMemo(() => orderNewsEditorial(feed?.news || []), [feed?.news]);
   const liveEvents = eventRows.filter((event) => event.status === "live");
@@ -1935,8 +1995,12 @@ export default function SportLiveHub({ go }: { go?: (route: any, params?: any) =
       {supportedSport && view === "results" ? (
         <section className="msc-live-section">
           <SectionHeader title="RÉSULTATS" count={(resultRows.length + resultEvents.length) ? `${resultRows.length + resultEvents.length} résultat${(resultRows.length + resultEvents.length) > 1 ? "s" : ""}` : ""} />
-          <div className="msc-results-context" style={{ marginBottom: 8 }}><strong>{archiveLoading ? "ARCHIVES · CHARGEMENT…" : `ARCHIVES · ${archiveSeasonCount || 0} SAISON${archiveSeasonCount === 1 ? "" : "S"}`}</strong><em>{resultRows.length} résultat{resultRows.length > 1 ? "s" : ""} disponibles</em></div>
-          {resultRows.length ? <><GroupedResults rows={resultRows} source={sourceForCards} lang={lang} newsRows={newsRows} allSources={allSportSources} sport={liveSport} />{resultEvents.length ? <div style={{ marginTop: 12 }}><div className="msc-round-head"><span>AUTRES RÉSULTATS / PODIUMS</span><span>{resultEvents.length}</span></div>{resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />)}</div> : null}</> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Résultats officiels" copy="Aucun résultat automatique n’est chargé pour l’instant. Ouvre une source officielle pour consulter les derniers scores." sources={recommended.filter((source) => source.resultsUrl)} />}
+          <div className="msc-archive-summary" style={{ marginBottom: 8 }}>
+            <div><strong>{archiveLoading ? "ARCHIVES · CHARGEMENT…" : `ARCHIVES · ${archiveSeasonCount || 0} SAISON${archiveSeasonCount === 1 ? "" : "S"}`}</strong><span>{archiveStorage?.persistent ? "R2 CENTRAL" : "CACHE LOCAL"}</span></div>
+            <div><b>{archiveStorage?.competitions ?? competitionIndex.length}</b><small>compétitions</small></div>
+            <div><b>{archiveStorage?.results ?? resultRows.length}</b><small>résultats</small></div>
+          </div>
+          {resultRows.length ? <><GroupedResults rows={resultRows} source={sourceForCards} lang={lang} newsRows={newsRows} allSources={allSportSources} sport={liveSport} competitionIndex={competitionIndex} />{resultEvents.length ? <div style={{ marginTop: 12 }}><div className="msc-round-head"><span>AUTRES RÉSULTATS / PODIUMS</span><span>{resultEvents.length}</span></div>{resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />)}</div> : null}</> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Résultats officiels" copy="Aucun résultat automatique n’est chargé pour l’instant. Ouvre une source officielle pour consulter les derniers scores." sources={recommended.filter((source) => source.resultsUrl)} />}
         </section>
       ) : null}
 
@@ -1969,7 +2033,7 @@ export default function SportLiveHub({ go }: { go?: (route: any, params?: any) =
       ) : null}
 
       {floatingPanel === "news" ? <FloatingDrawer title={`ACTUALITÉS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{newsRows.length ? <div className="msc-news-grid">{newsRows.map((item) => <NewsCard key={item.id} item={item} lang={lang} />)}</div> : <EmptySection title="Aucune actualité détectée" copy="Réessaie l’actualisation dans quelques instants." sources={recommended.slice(0, 2)} />}</FloatingDrawer> : null}
-      {floatingPanel === "results" ? <FloatingDrawer title={`RÉSULTATS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}><div className="msc-results-context" style={{ marginBottom: 8 }}><strong>{archiveLoading ? "ARCHIVES · CHARGEMENT…" : `ARCHIVES · ${archiveSeasonCount || 0} SAISON${archiveSeasonCount === 1 ? "" : "S"}`}</strong><em>{resultRows.length} résultat{resultRows.length > 1 ? "s" : ""}</em></div>{resultRows.length ? <><GroupedResults rows={resultRows} source={sourceForCards} lang={lang} newsRows={newsRows} allSources={allSportSources} sport={liveSport} />{resultEvents.length ? <div style={{ marginTop: 12 }}><div className="msc-round-head"><span>AUTRES RÉSULTATS / PODIUMS</span><span>{resultEvents.length}</span></div>{resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />)}</div> : null}</> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Aucun résultat détecté" copy="Les sources officielles restent disponibles." sources={recommended.filter((source) => source.resultsUrl).slice(0, 2)} />}</FloatingDrawer> : null}
+      {floatingPanel === "results" ? <FloatingDrawer title={`RÉSULTATS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}><div className="msc-archive-summary" style={{ marginBottom: 8 }}><div><strong>{archiveLoading ? "ARCHIVES · CHARGEMENT…" : `ARCHIVES · ${archiveSeasonCount || 0} SAISON${archiveSeasonCount === 1 ? "" : "S"}`}</strong><span>{archiveStorage?.persistent ? "R2 CENTRAL" : "CACHE LOCAL"}</span></div><div><b>{archiveStorage?.competitions ?? competitionIndex.length}</b><small>compétitions</small></div><div><b>{archiveStorage?.results ?? resultRows.length}</b><small>résultats</small></div></div>{resultRows.length ? <><GroupedResults rows={resultRows} source={sourceForCards} lang={lang} newsRows={newsRows} allSources={allSportSources} sport={liveSport} competitionIndex={competitionIndex} />{resultEvents.length ? <div style={{ marginTop: 12 }}><div className="msc-round-head"><span>AUTRES RÉSULTATS / PODIUMS</span><span>{resultEvents.length}</span></div>{resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />)}</div> : null}</> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Aucun résultat détecté" copy="Les sources officielles restent disponibles." sources={recommended.filter((source) => source.resultsUrl).slice(0, 2)} />}</FloatingDrawer> : null}
       {floatingPanel === "fixtures" ? <FloatingDrawer title={`AGENDA · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}><div className="msc-empty-card"><div className="msc-empty-title">AGENDA MULTISPORTS</div><div className="msc-empty-copy">Le calendrier LIVE n’est plus dupliqué dans cette page. Les événements réels sont affichés dans l’Agenda principal avec le filtre LIVE.</div><button className="msc-more-btn" type="button" onClick={openAgenda}>OUVRIR L’AGENDA</button></div></FloatingDrawer> : null}
       {floatingPanel === "sources" ? <FloatingDrawer title={`SOURCES · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}><SourceDirectory sources={sources} /></FloatingDrawer> : null}
 

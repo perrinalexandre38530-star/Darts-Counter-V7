@@ -152,6 +152,36 @@ export type SportLiveIntelligence = {
   updatedAt?: string | null;
 };
 
+export type SportLiveCompetitionIndexEntry = {
+  key: string;
+  name: string;
+  continent?: string | null;
+  countryCode?: string | null;
+  countryName?: string | null;
+  family?: SportLiveCompetitionMeta["family"];
+  level?: SportLiveCompetitionMeta["level"];
+  tier?: string | null;
+  logoUrl?: string | null;
+  logoPageUrl?: string | null;
+  seasons?: string[];
+  resultCount?: number;
+  fixtureCount?: number;
+  eventCount?: number;
+  firstSeen?: string | null;
+  lastSeen?: string | null;
+};
+
+export type SportLiveArchiveStorage = {
+  enabled: boolean;
+  persistent: boolean;
+  reused?: boolean;
+  updatedAt?: string | null;
+  results?: number;
+  fixtures?: number;
+  events?: number;
+  competitions?: number;
+};
+
 export type SportLiveOverview = {
   sport: SportLiveSportId;
   automaticData: boolean;
@@ -167,5 +197,7 @@ export type SportLiveOverview = {
   events?: SportLiveEvent[];
   news?: SportLiveNewsItem[];
   intelligence?: SportLiveIntelligence | null;
+  competitionIndex?: SportLiveCompetitionIndexEntry[];
+  archiveStorage?: SportLiveArchiveStorage | null;
   warnings?: string[];
 };

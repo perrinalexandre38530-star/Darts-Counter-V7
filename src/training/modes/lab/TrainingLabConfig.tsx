@@ -325,10 +325,25 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
 
   const exercises = TRAINING_EXERCISE_CATALOG.filter((e) => e.family === family);
   const filteredExercises = exercises.filter((exercise) => difficultyFilter === 0 || exercise.difficulty === difficultyFilter);
+  const exerciseProgressionById = React.useMemo(() => {
+    const map = new Map<string, ReturnType<typeof buildTrainingExerciseProgression>>();
+    TRAINING_EXERCISE_CATALOG.forEach((exercise) => map.set(exercise.id, buildTrainingExerciseProgression(exercise, sessions)));
+    return map;
+  }, [sessions]);
+  const familyProgressSummary = React.useMemo(() => {
+    const rows = exercises.map((exercise) => exerciseProgressionById.get(exercise.id)).filter(Boolean) as Array<ReturnType<typeof buildTrainingExerciseProgression>>;
+    const mastered = rows.filter((row) => row.mastered).length;
+    const started = rows.filter((row) => row.level > 0).length;
+    const averageLevel = rows.length ? rows.reduce((sum, row) => sum + row.level, 0) / rows.length : 0;
+    return { mastered, started, averageLevel };
+  }, [exercises, exerciseProgressionById]);
   const unifiedCatalogItems = React.useMemo(() => exercises
     .filter((exercise) => difficultyFilter === 0 || exercise.difficulty === difficultyFilter)
-    .map((exercise) => ({ key: `native:${exercise.id}`, title: exercise.title, subtitle: exercise.subtitle, difficulty: exercise.difficulty, playable: true, exerciseId: exercise.id }))
-    .sort((a, b) => a.title.localeCompare(b.title, "fr")), [exercises, difficultyFilter]);
+    .map((exercise) => {
+      const personal = exerciseProgressionById.get(exercise.id) || buildTrainingExerciseProgression(exercise, []);
+      return { key: `native:${exercise.id}`, title: exercise.title, subtitle: exercise.subtitle, difficulty: exercise.difficulty, playable: true, exerciseId: exercise.id, personal };
+    })
+    .sort((a, b) => a.title.localeCompare(b.title, "fr")), [exercises, difficultyFilter, exerciseProgressionById]);
   const techniqueItems = React.useMemo(() => TRAINING_TECHNIQUE_ITEMS, []);
   const techniqueTracks = React.useMemo(() => buildTrainingTechniqueTracks(), []);
   const selectedTechniqueTrack = techniqueTracks.find((row) => row.track === techniqueTrack) || techniqueTracks[0];
@@ -1120,19 +1135,26 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
             </>}
 
             {exercisePanel === "catalog" && <>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 10, paddingBottom: 9, borderBottom: "1px solid rgba(255,255,255,.07)" }}>
-                <div style={{ minWidth: 0 }}><div style={{ fontSize: 11.5, fontWeight: 950 }}>Tous les exercices</div><div style={{ marginTop: 2, fontSize: 9.2, opacity: .52 }}>{unifiedCatalogItems.length} exercices dans {TRAINING_FAMILY_META[family].label}</div></div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 10, paddingBottom: 9, borderBottom: "1px solid rgba(255,255,255,.07)", flexWrap: "wrap" }}>
+                <div style={{ minWidth: 0, flex: "1 1 220px" }}><div style={{ fontSize: 11.5, fontWeight: 950 }}>Tous les exercices</div><div style={{ marginTop: 2, fontSize: 9.2, opacity: .52 }}>{unifiedCatalogItems.length} exercices dans {TRAINING_FAMILY_META[family].label}</div></div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  <MetricChip icon="progress" label="COMMENCÉS" value={`${familyProgressSummary.started}/${exercises.length}`} tone="cyan" />
+                  <MetricChip icon="mastery" label="MAÎTRISÉS" value={`${familyProgressSummary.mastered}/${exercises.length}`} tone="green" />
+                  <MetricChip icon="skills" label="NIVEAU MOY." value={`${familyProgressSummary.averageLevel.toFixed(1)}/5`} tone="purple" />
+                </div>
               </div>
-              <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "10px 0 4px" }}>
-                {[0,1,2,3,4,5].map((value) => <button key={value} type="button" onClick={() => setDifficultyFilter(value as 0 | 1 | 2 | 3 | 4 | 5)} style={{ flex: "0 0 auto", minHeight: 36, padding: "0 11px", borderRadius: 10, border: difficultyFilter === value ? "1px solid rgba(39,220,255,.38)" : "1px solid rgba(255,255,255,.07)", background: difficultyFilter === value ? "rgba(39,220,255,.08)" : "transparent", color: "inherit", fontSize: 9.2, fontWeight: 900, cursor: "pointer" }}>{value === 0 ? "TOUS" : `NIVEAU ${value}`}</button>)}
+              <div style={{ marginTop: 9, fontSize: 7.2, fontWeight: 950, letterSpacing: .8, opacity: .46 }}>FILTRER PAR DIFFICULTÉ</div>
+              <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "6px 0 4px" }}>
+                {[0,1,2,3,4,5].map((value) => <button key={value} type="button" onClick={() => setDifficultyFilter(value as 0 | 1 | 2 | 3 | 4 | 5)} style={{ flex: "0 0 auto", minHeight: 36, padding: "0 11px", borderRadius: 10, border: difficultyFilter === value ? "1px solid rgba(39,220,255,.38)" : "1px solid rgba(255,255,255,.07)", background: difficultyFilter === value ? "rgba(39,220,255,.08)" : "transparent", color: "inherit", fontSize: 9.2, fontWeight: 900, cursor: "pointer" }}>{value === 0 ? "TOUTES" : `DIFFICULTÉ ${value}`}</button>)}
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,240px),1fr))", gap: 8, marginTop: 6 }}>
                 {unifiedCatalogItems.map((item) => {
                   const active = Boolean(item.exerciseId && item.exerciseId === exerciseId);
-                  return <button key={item.key} type="button" onClick={() => openExerciseDetail(item.exerciseId)} style={{ minWidth: 0, textAlign: "left", padding: "12px 11px", borderRadius: 12, border: active ? "1px solid rgba(39,220,255,.45)" : "1px solid rgba(255,255,255,.07)", background: active ? "rgba(39,220,255,.065)" : "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ width: 34, height: 34, flex: "0 0 auto", borderRadius: 11, display: "grid", placeItems: "center", background: "rgba(39,220,255,.07)", color: "#27dcff" }}><HubGlyph name={family} size={16}/></span>
-                    <span style={{ minWidth: 0, flex: 1 }}><span style={{ display: "block", fontSize: 10.5, lineHeight: 1.15, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</span><span style={{ display: "block", marginTop: 4, fontSize: 9, lineHeight: 1.3, opacity: .52, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.subtitle}</span></span>
-                    <span style={{ flex: "0 0 auto", fontSize: 8.5, fontWeight: 950, color: item.playable ? "#8cffcb" : "#ffd86b" }}>{item.difficulty ? `N${item.difficulty}` : "✓"}</span>
+                  const personal = item.personal;
+                  return <button key={item.key} type="button" onClick={() => openExerciseDetail(item.exerciseId)} style={{ minWidth: 0, textAlign: "left", padding: "12px 11px", borderRadius: 12, border: active ? "1px solid rgba(39,220,255,.45)" : personal.mastered ? "1px solid rgba(80,255,174,.18)" : "1px solid rgba(255,255,255,.07)", background: active ? "rgba(39,220,255,.065)" : personal.mastered ? "rgba(80,255,174,.026)" : "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer", display: "grid", gridTemplateColumns: "34px minmax(0,1fr) auto", alignItems: "center", gap: 10 }}>
+                    <span style={{ width: 34, height: 34, borderRadius: 11, display: "grid", placeItems: "center", background: personal.mastered ? "rgba(80,255,174,.07)" : "rgba(39,220,255,.07)", color: personal.mastered ? "#8cffcb" : "#27dcff" }}><HubGlyph name={family} size={16}/></span>
+                    <span style={{ minWidth: 0 }}><span style={{ display: "block", fontSize: 10.5, lineHeight: 1.15, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</span><span style={{ display: "block", marginTop: 4, fontSize: 8.6, lineHeight: 1.3, opacity: .52, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.subtitle}</span><span style={{ display: "block", marginTop: 5, fontSize: 7.5, lineHeight: 1.25, color: personal.mastered ? "#8cffcb" : personal.level > 0 ? "#b99cff" : "rgba(255,255,255,.42)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{personal.mastered ? "MAÎTRISE VALIDÉE" : personal.level > 0 ? `Prochain : ${personal.nextObjective}` : "Pas encore commencé"}</span></span>
+                    <span style={{ display: "grid", gap: 5, justifyItems: "end" }}><span style={{ padding: "4px 6px", borderRadius: 7, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.06)", fontSize: 7, fontWeight: 950, opacity: .64 }}>DIFF. {item.difficulty}</span><span style={{ padding: "4px 6px", borderRadius: 7, background: personal.mastered ? "rgba(80,255,174,.08)" : "rgba(140,90,255,.07)", border: personal.mastered ? "1px solid rgba(80,255,174,.16)" : "1px solid rgba(140,90,255,.14)", fontSize: 7.5, fontWeight: 950, color: personal.mastered ? "#8cffcb" : "#b99cff" }}>{personal.mastered ? "MAX" : `NIV. ${personal.level}/5`}</span></span>
                   </button>;
                 })}
               </div>
@@ -1161,7 +1183,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
 
             {exercisePanel === "favorites" && <>
               {!favoriteExercises.length ? <div style={{ marginTop: 10, padding: 14, borderRadius: 13, border: "1px dashed rgba(255,255,255,.12)", textAlign: "center", fontSize: 9, opacity: .5 }}>Aucun exercice favori. Sélectionne un exercice puis utilise ☆ AJOUTER AUX FAVORIS.</div> : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(205px,1fr))", gap: 7, marginTop: 10 }}>
-                {favoriteExercises.map((favorite: any) => <button key={favorite.id} type="button" onClick={() => openExerciseDetail(favorite.id)} style={{ textAlign: "left", padding: 10, borderRadius: 12, border: exerciseId === favorite.id ? "1px solid #ffd86b" : "1px solid rgba(255,216,107,.16)", background: exerciseId === favorite.id ? "rgba(255,216,107,.08)" : "rgba(255,255,255,.025)", color: "inherit", cursor: "pointer" }}><div style={{ fontSize: 10, fontWeight: 950 }}>★ {favorite.title}</div><div style={{ marginTop: 4, fontSize: 8.2, opacity: .56 }}>{TRAINING_FAMILY_META[favorite.family as TrainingExerciseFamily].label} • niv. {favorite.difficulty}</div></button>)}
+                {favoriteExercises.map((favorite: any) => { const personal = exerciseProgressionById.get(favorite.id) || buildTrainingExerciseProgression(favorite, []); return <button key={favorite.id} type="button" onClick={() => openExerciseDetail(favorite.id)} style={{ textAlign: "left", padding: 10, borderRadius: 12, border: exerciseId === favorite.id ? "1px solid #ffd86b" : personal.mastered ? "1px solid rgba(80,255,174,.18)" : "1px solid rgba(255,216,107,.16)", background: exerciseId === favorite.id ? "rgba(255,216,107,.08)" : personal.mastered ? "rgba(80,255,174,.025)" : "rgba(255,255,255,.025)", color: "inherit", cursor: "pointer" }}><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><div style={{ minWidth: 0, fontSize: 10, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>★ {favorite.title}</div><span style={{ flex: "0 0 auto", fontSize: 7.5, fontWeight: 950, color: personal.mastered ? "#8cffcb" : "#b99cff" }}>{personal.mastered ? "MAX" : `NIV. ${personal.level}/5`}</span></div><div style={{ marginTop: 4, fontSize: 8.2, opacity: .56 }}>{TRAINING_FAMILY_META[favorite.family as TrainingExerciseFamily].label} • difficulté {favorite.difficulty}/5</div><div style={{ marginTop: 4, fontSize: 7.4, color: personal.mastered ? "#8cffcb" : "rgba(255,255,255,.44)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{personal.mastered ? "Maîtrise validée" : personal.level > 0 ? personal.nextObjective : "Pas encore commencé"}</div></button>; })}
               </div>}
             </>}
 
