@@ -24,6 +24,22 @@ function json(payload: any, status = 200): Response {
   });
 }
 
+function isOptionalMediaRead(method: string, pathValue: string): boolean {
+  return method === "GET" && /^media\//i.test(String(pathValue || "").replace(/^\/+/, ""));
+}
+
+function mediaMissResponse(reason: string): Response {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "cache-control": "no-store",
+      "x-multisports-pages-proxy": "1",
+      "x-mss-media-missing": "1",
+      "x-mss-media-fallback-reason": String(reason || "unavailable").slice(0, 80),
+    },
+  });
+}
+
 export const onRequest: PagesFunction<Env> = async ({ request, env, params }) => {
   const pathValue = Array.isArray(params?.path) ? params.path.join("/") : String(params?.path || "");
   const base = String(env?.MULTISPORTS_BACKEND_URL || DEFAULT_BACKEND).trim().replace(/\/+$/, "");
@@ -50,6 +66,14 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, params }) =>
       redirect: "manual",
     });
 
+    // Les anciens avatars/logos peuvent encore référencer le NAS. Si le tunnel
+    // est indisponible, un média optionnel ne doit jamais devenir une erreur
+    // applicative 502. Les composants image peuvent alors utiliser leur fallback
+    // local/R2 sans polluer la console ni bloquer le rendu.
+    if (isOptionalMediaRead(method, pathValue) && upstream.status >= 500) {
+      return mediaMissResponse(`upstream-${upstream.status}`);
+    }
+
     const responseHeaders = new Headers(upstream.headers);
     for (const name of Array.from(responseHeaders.keys())) {
       if (HOP_BY_HOP.has(name.toLowerCase())) responseHeaders.delete(name);
@@ -63,6 +87,9 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, params }) =>
       headers: responseHeaders,
     });
   } catch (error: any) {
+    if (isOptionalMediaRead(method, pathValue)) {
+      return mediaMissResponse("backend-unreachable");
+    }
     return json({
       ok: false,
       code: "backend_proxy_unreachable",

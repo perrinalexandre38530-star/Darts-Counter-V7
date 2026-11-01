@@ -161,7 +161,13 @@ function activePublicSupabaseSession(): boolean {
     if (!raw) return false;
     const session: any = readJson<any>(raw, null);
     const provider = String(session?.authProvider || session?.auth_provider || "").trim().toLowerCase();
-    return provider === "supabase" || provider === "supabase_failover" || session?.degradedMode === true;
+    return provider === "supabase" ||
+      provider === "supabase_failover" ||
+      provider === "supabase_bridge" ||
+      session?.degradedMode === true ||
+      !!session?.supabaseUserId ||
+      !!session?.supabaseAccessToken ||
+      !!session?.supabase_access_token;
   } catch {
     return false;
   }

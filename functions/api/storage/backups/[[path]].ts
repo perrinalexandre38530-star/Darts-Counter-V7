@@ -273,12 +273,25 @@ async function readAccountMediaManifest(bucket: R2Bucket, userId: string, env: E
   let newest = 0;
 
   for (let page = 0; page < 24; page += 1) {
-    const listed: any = await (bucket as any).list({
+    const baseOptions: any = {
       prefix,
       limit: 1000,
       ...(cursor ? { cursor } : {}),
-      include: ["httpMetadata", "customMetadata"],
-    });
+    };
+    let listed: any;
+    try {
+      // API R2 récente : renvoie les métadonnées en une seule requête.
+      listed = await (bucket as any).list({
+        ...baseOptions,
+        include: ["httpMetadata", "customMetadata"],
+      });
+    } catch (error) {
+      // Compatibilité Cloudflare : certains déploiements/bindings plus anciens
+      // refusent encore l'option `include`. Un coffre média ne doit pas tomber en
+      // HTTP 500 pour cela : le listing basique contient déjà clé/taille/etag/date,
+      // ce qui suffit pour la déduplication et le quota.
+      listed = await (bucket as any).list(baseOptions);
+    }
     const objects: any[] = Array.isArray(listed?.objects) ? listed.objects : [];
     for (const object of objects) {
       const objectKey = String(object?.key || "");

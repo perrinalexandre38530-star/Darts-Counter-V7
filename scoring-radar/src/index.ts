@@ -551,7 +551,7 @@ async function handleGo(request: Request, env: RadarEnv, url: URL): Promise<Resp
   return Response.redirect(safeDestination(env.APP_DESTINATION_URL, row), 302);
 }
 
-async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto.randomUUID(), requestedProfile?: string, prestarted = false): Promise<void> {
+async function runScheduled(env: RadarEnv, scheduledTime: number, runId: string = crypto.randomUUID(), requestedProfile?: string, prestarted = false): Promise<void> {
   const startedAt = new Date(scheduledTime).toISOString();
   const startedMs = Date.now();
   const markets = parseMarkets(env);

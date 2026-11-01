@@ -44,6 +44,7 @@ type HubTab = "program" | "exercises" | "diagnosis" | "progress";
 type ProgramPanel = "today" | "week" | "cycle" | "library";
 type ProgressPanel = "overview" | "skills" | "coach" | "cycles" | "history";
 type ExercisePanel = "path" | "catalog" | "technique" | "favorites";
+type CatalogProgressFilter = "all" | "new" | "in_progress" | "mastered";
 type DiagnosisPanel = "overview" | "skill" | "goal";
 type SkillProgressPanel = "mastery" | "badges" | "records";
 type CoachPanel = "brief" | "live" | "effectiveness" | "weeks";
@@ -284,6 +285,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
   const [showCycleDetails, setShowCycleDetails] = React.useState(false);
   const [detailSheet, setDetailSheet] = React.useState<null | "coach" | "display" | "resume" | "followup" | "plan" | "challenge" | "assessment">(null);
   const [difficultyFilter, setDifficultyFilter] = React.useState<0 | 1 | 2 | 3 | 4 | 5>(0);
+  const [catalogProgressFilter, setCatalogProgressFilter] = React.useState<CatalogProgressFilter>("all");
   const [exerciseDetailId, setExerciseDetailId] = React.useState<string | null>(() => initialDetailExerciseId && TRAINING_EXERCISE_CATALOG.some((e) => e.id === initialDetailExerciseId) ? initialDetailExerciseId : null);
   const [family, setFamily] = React.useState<TrainingExerciseFamily>(recommendedFamily);
   const firstInFamily = React.useMemo(() => TRAINING_EXERCISE_CATALOG.find((e) => e.family === family) || TRAINING_EXERCISE_CATALOG[0], [family]);
@@ -344,6 +346,12 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
       return { key: `native:${exercise.id}`, title: exercise.title, subtitle: exercise.subtitle, difficulty: exercise.difficulty, playable: true, exerciseId: exercise.id, personal };
     })
     .sort((a, b) => a.title.localeCompare(b.title, "fr")), [exercises, difficultyFilter, exerciseProgressionById]);
+  const visibleCatalogItems = React.useMemo(() => unifiedCatalogItems.filter((item) => {
+    if (catalogProgressFilter === "new") return item.personal.level === 0;
+    if (catalogProgressFilter === "in_progress") return item.personal.level > 0 && !item.personal.mastered;
+    if (catalogProgressFilter === "mastered") return item.personal.mastered;
+    return true;
+  }), [unifiedCatalogItems, catalogProgressFilter]);
   const techniqueItems = React.useMemo(() => TRAINING_TECHNIQUE_ITEMS, []);
   const techniqueTracks = React.useMemo(() => buildTrainingTechniqueTracks(), []);
   const selectedTechniqueTrack = techniqueTracks.find((row) => row.track === techniqueTrack) || techniqueTracks[0];
@@ -485,23 +493,14 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
     try { window.localStorage.setItem("dc_training_quick_guide_seen", "1"); } catch {}
   };
 
-  const runQuickStart = () => {
-    if (!resolved.length) return;
-    dismissQuickGuide();
-    if (quickStart.kind === "resume" && programDraft) { resumeProgramDraft(); return; }
-    if (quickStart.kind === "assessment") { startProgram(TRAINING_ASSESSMENT_PROGRAM, { adaptiveDailyPlan: false }); return; }
-    if (quickStart.kind === "followup" && nextRecommendation) { prepareRecommendedSession(nextRecommendation.durationMin, nextRecommendation.family); return; }
-    startProgram(dailyPlan.program, { adaptiveDailyPlan: true });
-  };
-
-  const prepareRecommendedSession = (duration: 15 | 30 | 45, focus: TrainingExerciseFamily | "balanced") => {
+  function prepareRecommendedSession(duration: 15 | 30 | 45, focus: TrainingExerciseFamily | "balanced") {
     setCustomDuration(duration);
     setCustomFocus(focus);
     setCustomIntensity(loadSummary.status === "high" || loadSummary.status === "recovery" ? "accessible" : "standard");
     setProgramId(`custom_${duration}_${focus}_${loadSummary.status === "high" || loadSummary.status === "recovery" ? "accessible" : "standard"}`);
-  };
+  }
 
-  const resumeProgramDraft = () => {
+  function resumeProgramDraft() {
     if (!programDraft) return;
     onStart({
       programId: programDraft.programId,
@@ -516,7 +515,16 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
       resumeProgramResults: programDraft.completedSteps,
       ...accountParticipantConfig,
     });
-  };
+  }
+
+  function runQuickStart() {
+    if (!resolved.length) return;
+    dismissQuickGuide();
+    if (quickStart.kind === "resume" && programDraft) { resumeProgramDraft(); return; }
+    if (quickStart.kind === "assessment") { startProgram(TRAINING_ASSESSMENT_PROGRAM, { adaptiveDailyPlan: false }); return; }
+    if (quickStart.kind === "followup" && nextRecommendation) { prepareRecommendedSession(nextRecommendation.durationMin, nextRecommendation.family); return; }
+    startProgram(dailyPlan.program, { adaptiveDailyPlan: true });
+  }
 
   const tabs: Array<{ id: HubTab; label: string; icon: string }> = [
     { id: "program", label: "AUJOURD’HUI", icon: "today" },
@@ -1136,19 +1144,34 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
 
             {exercisePanel === "catalog" && <>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 10, paddingBottom: 9, borderBottom: "1px solid rgba(255,255,255,.07)", flexWrap: "wrap" }}>
-                <div style={{ minWidth: 0, flex: "1 1 220px" }}><div style={{ fontSize: 11.5, fontWeight: 950 }}>Tous les exercices</div><div style={{ marginTop: 2, fontSize: 9.2, opacity: .52 }}>{unifiedCatalogItems.length} exercices dans {TRAINING_FAMILY_META[family].label}</div></div>
+                <div style={{ minWidth: 0, flex: "1 1 220px" }}><div style={{ fontSize: 11.5, fontWeight: 950 }}>Tous les exercices</div><div style={{ marginTop: 2, fontSize: 9.2, opacity: .52 }}>{visibleCatalogItems.length} exercice{visibleCatalogItems.length > 1 ? "s" : ""} affiché{visibleCatalogItems.length > 1 ? "s" : ""} dans {TRAINING_FAMILY_META[family].label}</div></div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
                   <MetricChip icon="progress" label="COMMENCÉS" value={`${familyProgressSummary.started}/${exercises.length}`} tone="cyan" />
                   <MetricChip icon="mastery" label="MAÎTRISÉS" value={`${familyProgressSummary.mastered}/${exercises.length}`} tone="green" />
                   <MetricChip icon="skills" label="NIVEAU MOY." value={`${familyProgressSummary.averageLevel.toFixed(1)}/5`} tone="purple" />
                 </div>
               </div>
-              <div style={{ marginTop: 9, fontSize: 7.2, fontWeight: 950, letterSpacing: .8, opacity: .46 }}>FILTRER PAR DIFFICULTÉ</div>
-              <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "6px 0 4px" }}>
-                {[0,1,2,3,4,5].map((value) => <button key={value} type="button" onClick={() => setDifficultyFilter(value as 0 | 1 | 2 | 3 | 4 | 5)} style={{ flex: "0 0 auto", minHeight: 36, padding: "0 11px", borderRadius: 10, border: difficultyFilter === value ? "1px solid rgba(39,220,255,.38)" : "1px solid rgba(255,255,255,.07)", background: difficultyFilter === value ? "rgba(39,220,255,.08)" : "transparent", color: "inherit", fontSize: 9.2, fontWeight: 900, cursor: "pointer" }}>{value === 0 ? "TOUTES" : `DIFFICULTÉ ${value}`}</button>)}
+              <div style={{ marginTop: 9, display: "grid", gap: 8 }}>
+                <div>
+                  <div style={{ fontSize: 7.2, fontWeight: 950, letterSpacing: .8, opacity: .46 }}>PROGRESSION</div>
+                  <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "6px 0 2px" }}>
+                    {([
+                      ["all", "TOUS"],
+                      ["new", "À DÉCOUVRIR"],
+                      ["in_progress", "EN COURS"],
+                      ["mastered", "MAÎTRISÉS"],
+                    ] as Array<[CatalogProgressFilter,string]>).map(([value,label]) => <button key={value} type="button" onClick={() => setCatalogProgressFilter(value)} style={{ flex: "0 0 auto", minHeight: 34, padding: "0 10px", borderRadius: 10, border: catalogProgressFilter === value ? "1px solid rgba(185,156,255,.38)" : "1px solid rgba(255,255,255,.07)", background: catalogProgressFilter === value ? "rgba(140,90,255,.09)" : "transparent", color: "inherit", fontSize: 8.6, fontWeight: 900, cursor: "pointer" }}>{label}</button>)}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 7.2, fontWeight: 950, letterSpacing: .8, opacity: .46 }}>DIFFICULTÉ</div>
+                  <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "6px 0 2px" }}>
+                    {[0,1,2,3,4,5].map((value) => <button key={value} type="button" onClick={() => setDifficultyFilter(value as 0 | 1 | 2 | 3 | 4 | 5)} style={{ flex: "0 0 auto", minHeight: 34, padding: "0 10px", borderRadius: 10, border: difficultyFilter === value ? "1px solid rgba(39,220,255,.38)" : "1px solid rgba(255,255,255,.07)", background: difficultyFilter === value ? "rgba(39,220,255,.08)" : "transparent", color: "inherit", fontSize: 8.6, fontWeight: 900, cursor: "pointer" }}>{value === 0 ? "TOUTES" : `${value}/5`}</button>)}
+                  </div>
+                </div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,240px),1fr))", gap: 8, marginTop: 6 }}>
-                {unifiedCatalogItems.map((item) => {
+                {visibleCatalogItems.map((item) => {
                   const active = Boolean(item.exerciseId && item.exerciseId === exerciseId);
                   const personal = item.personal;
                   return <button key={item.key} type="button" onClick={() => openExerciseDetail(item.exerciseId)} style={{ minWidth: 0, textAlign: "left", padding: "12px 11px", borderRadius: 12, border: active ? "1px solid rgba(39,220,255,.45)" : personal.mastered ? "1px solid rgba(80,255,174,.18)" : "1px solid rgba(255,255,255,.07)", background: active ? "rgba(39,220,255,.065)" : personal.mastered ? "rgba(80,255,174,.026)" : "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer", display: "grid", gridTemplateColumns: "34px minmax(0,1fr) auto", alignItems: "center", gap: 10 }}>
