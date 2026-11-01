@@ -4,3 +4,12 @@ RADAR_ADMIN_TOKEN=replace_me_with_a_long_random_secret
 
 # Social Growth is intentionally review-only until official social OAuth/API connectors are configured.
 SOCIAL_AUTOPILOT_MODE=review
+
+# Acquisition scan defaults (can also be overridden in wrangler.jsonc).
+RADAR_SCAN_PROFILE=standard
+RADAR_INTENTS_PER_RUN=3
+RADAR_MAX_CANDIDATES_PER_RUN=20
+
+# Comma-separated domains allowed to embed /growth-widget.js.
+# Add only sites you own or partners that explicitly authorize the banner.
+RADAR_WIDGET_ALLOWED_HOSTS=multisports-scoring.pages.dev

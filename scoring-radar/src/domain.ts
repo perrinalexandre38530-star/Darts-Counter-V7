@@ -16,6 +16,10 @@ export type RadarSecrets = {
   RADAR_CLASSIFY_CHUNK_SIZE?: string;
   RADAR_CLASSIFY_CONCURRENCY?: string;
   RADAR_STALL_TIMEOUT_MS?: string;
+  RADAR_INTENTS_PER_RUN?: string;
+  RADAR_MAX_CANDIDATES_PER_RUN?: string;
+  RADAR_SCAN_PROFILE?: string;
+  RADAR_WIDGET_ALLOWED_HOSTS?: string;
   SOCIAL_AI_TIMEOUT_MS?: string;
 };
 
@@ -74,6 +78,10 @@ export type OpportunityRow = {
   suggested_reply: string | null;
   captured_at: string;
   analyzed_at: string | null;
+  outreach_status?: string | null;
+  outreach_note?: string | null;
+  outreach_updated_at?: string | null;
+  click_count?: number | null;
 };
 
 export type SocialPlatform = 'facebook_page' | 'instagram_reel' | 'youtube_short' | 'tiktok';

@@ -91,13 +91,14 @@ export async function localizeQuery(env: RadarEnv, market: Market, intent: Searc
   if (market.language === 'en') return { query: intent.canonicalQuery, source: 'canonical_en' };
 
   const key = marketKey(market);
-  const memoryKey = `${key}|${intent.key}`;
+  const cacheIntentKey = `${intent.key}:growth-v2`;
+  const memoryKey = `${key}|${cacheIntentKey}`;
   const memoryCached = memoryQueryCache.get(memoryKey);
   if (memoryCached && usefulLocalizedQuery(memoryCached, intent.canonicalQuery)) {
     return { query: memoryCached, source: 'memory_cache' };
   }
 
-  const cached = await getCachedQuery(env, key, intent.key);
+  const cached = await getCachedQuery(env, key, cacheIntentKey);
   if (cached && usefulLocalizedQuery(cached, intent.canonicalQuery)) {
     memoryQueryCache.set(memoryKey, cached);
     return { query: cached, source: 'd1_cache' };
@@ -117,7 +118,7 @@ export async function localizeQuery(env: RadarEnv, market: Market, intent: Searc
     }
 
     memoryQueryCache.set(memoryKey, translated);
-    await cacheQuery(env, key, intent.key, translated);
+    await cacheQuery(env, key, cacheIntentKey, translated);
     return { query: translated, source: 'm2m100' };
   } catch (error) {
     console.warn(JSON.stringify({
@@ -149,7 +150,7 @@ type ClassificationProgressCallback = (progress: ClassificationProgress) => void
 const CLASSIFIER_SYSTEM_PROMPT = `Classify public web search results for MULTISPORTS SCORING.
 Decide whether a real person is actively seeking a solution the app could legitimately help with.
 
-Supported themes: darts scoring/statistics, running/GPS/performance, multisport scoring, petanque/boules, table tennis, foosball, molkky, sport challenges, finding sport partners, rankings/sessions, wearable imports.
+Supported themes: darts scoring/statistics/training/leagues, running/GPS/performance/challenges, multisport scoring, petanque/boules, table tennis, foosball, molkky, casual-game scorekeeping, sport challenges, finding local sport partners/opponents, club/friends leaderboards, replacing paper scoring, rankings/sessions, wearable imports.
 
 Rules:
 - score 0-100: 90+ only for an explicit first-person app/recommendation request from a real user; 70-89 strong user need; 40-69 related discussion; below 40 weak.

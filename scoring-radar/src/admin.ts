@@ -4,19 +4,19 @@ export function adminHtml(): string {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>SCORING RADAR + SOCIAL GROWTH — MULTISPORTS SCORING</title>
+<title>SCORING RADAR — ACQUISITION ENGINE V2 — MULTISPORTS SCORING</title>
 <style>
   :root{color-scheme:dark;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#070a0f;color:#f7f9fc}
   *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#171f2e 0,#090d14 42%,#05070b 100%);min-height:100vh}
   button,input,select{font:inherit}.wrap{max-width:1380px;margin:0 auto;padding:24px}.top{display:flex;gap:16px;align-items:center;justify-content:space-between;flex-wrap:wrap}
   h1{font-size:clamp(26px,4vw,44px);margin:0;letter-spacing:.02em}.sub{color:#aeb9c9;margin:6px 0 0}.badge{border:1px solid #2f455f;border-radius:999px;padding:8px 12px;color:#9dd9ff;background:#0b1420}
   .panel{margin-top:20px;border:1px solid #263142;background:rgba(10,15,23,.86);border-radius:18px;padding:16px;box-shadow:0 18px 60px rgba(0,0,0,.3)}
-  .auth{display:grid;grid-template-columns:minmax(220px,1fr) 120px 130px 160px;gap:10px}.auth input,.auth button,.assetForm input,.assetForm select,.assetForm button{height:44px;border-radius:11px;border:1px solid #344358;background:#0c121c;color:#fff;padding:0 12px}.auth button,.assetForm button{cursor:pointer;font-weight:800;background:#16263a}.auth button.primary,.gold{background:#f1c40f!important;color:#090b0e!important;border-color:#f1c40f!important}.auth button:disabled{opacity:.55;cursor:not-allowed}
-  .stats{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px;margin-top:14px}.stat{padding:14px;border-radius:14px;background:#0c131d;border:1px solid #253246}.stat b{display:block;font-size:28px}.stat span{font-size:12px;color:#97a6b8;text-transform:uppercase;letter-spacing:.08em}
+  .auth{display:grid;grid-template-columns:minmax(220px,1fr) 120px 130px 150px 170px;gap:10px}.auth input,.auth select,.auth button,.assetForm input,.assetForm select,.assetForm button{height:44px;border-radius:11px;border:1px solid #344358;background:#0c121c;color:#fff;padding:0 12px}.auth button,.assetForm button{cursor:pointer;font-weight:800;background:#16263a}.auth button.primary,.gold{background:#f1c40f!important;color:#090b0e!important;border-color:#f1c40f!important}.auth button:disabled{opacity:.55;cursor:not-allowed}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:14px}.stat{padding:14px;border-radius:14px;background:#0c131d;border:1px solid #253246}.stat b{display:block;font-size:28px}.stat span{font-size:12px;color:#97a6b8;text-transform:uppercase;letter-spacing:.08em}
   .status{margin-top:10px;min-height:22px;color:#aab7c9}.status.err{color:#ff8c8c}.status.ok{color:#8df5b3}.status.warn{color:#ffd980}
   .headrow{display:flex;justify-content:space-between;gap:12px;align-items:end;flex-wrap:wrap}.headrow h2{margin:0}.headrow label{font-size:13px;color:#aeb9c9}.headrow input{width:90px;height:38px;margin-left:8px;border:1px solid #344358;border-radius:10px;background:#0c121c;color:#fff;padding:0 10px}
   .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}.card{border:1px solid #29374b;border-radius:16px;padding:15px;background:#0a1019}.card.hot{border-color:#d6ad15;box-shadow:inset 0 0 0 1px rgba(241,196,15,.15)}.card.pass{border-color:#2b7952}.card.reject{border-color:#6a3030;opacity:.86}
-  .meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pill{font-size:11px;border:1px solid #34465f;border-radius:999px;padding:5px 8px;color:#b7c5d8}.score{margin-left:auto;font-weight:900;font-size:19px;color:#f5d44c}.card h3{font-size:16px;margin:12px 0 7px}.snippet{font-size:13px;line-height:1.45;color:#aeb9c9;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}.reason{font-size:12px;color:#7fd9ff;margin-top:10px}.reply,.copybox{font-size:13px;line-height:1.45;background:#0d1722;border-radius:12px;padding:11px;margin-top:10px;white-space:pre-wrap}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}.actions a,.actions button,.actions select{border:1px solid #34465f;border-radius:10px;background:#101b28;color:#fff;text-decoration:none;padding:8px 10px;font-size:12px;cursor:pointer}.actions button.danger{border-color:#703939;color:#ffaaaa}
+  .meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pill{font-size:11px;border:1px solid #34465f;border-radius:999px;padding:5px 8px;color:#b7c5d8}.score{margin-left:auto;font-weight:900;font-size:19px;color:#f5d44c}.card h3{font-size:16px;margin:12px 0 7px}.snippet{font-size:13px;line-height:1.45;color:#aeb9c9;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}.reason{font-size:12px;color:#7fd9ff;margin-top:10px}.reply,.copybox{font-size:13px;line-height:1.45;background:#0d1722;border-radius:12px;padding:11px;margin-top:10px;white-space:pre-wrap}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}.actions a,.actions button,.actions select{border:1px solid #34465f;border-radius:10px;background:#101b28;color:#fff;text-decoration:none;padding:8px 10px;font-size:12px;cursor:pointer}.actions button.danger{border-color:#703939;color:#ffaaaa}.actions button.success{border-color:#2b7952;color:#9ff0bd}.outreach-new{color:#ffe06b}.outreach-copied{color:#8fd7ff}.outreach-contacted{color:#b7a8ff}.outreach-won{color:#8df5b3}.outreach-dismissed{color:#8793a3}.embedCode{margin-top:10px;background:#060b11;border:1px solid #2a3a4f;border-radius:11px;padding:10px;font:12px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace;color:#bde4ff;overflow:auto;white-space:nowrap}
   .qa{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:11px}.qa div{background:#0d1520;border-radius:10px;padding:8px;font-size:11px;color:#aeb9c9}.qa b{display:block;color:#fff;font-size:15px}.assetForm{display:grid;grid-template-columns:minmax(220px,1.4fr) minmax(160px,.7fr) 120px repeat(3,90px) 150px;gap:8px;margin-top:14px}.assetForm .wide{min-width:0}.check{height:44px;display:flex;align-items:center;gap:7px;padding:0 10px;border:1px solid #344358;border-radius:11px;background:#0c121c;color:#c4cfdb;font-size:12px}.check input{height:auto;margin:0;padding:0}
   .safeBox{margin-top:12px;padding:12px;border-radius:13px;border:1px solid #31516b;background:#0b1722;color:#b9d5e9;font-size:13px;line-height:1.45}.diagBox{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center}.diagButton{border:1px solid #d6ad15;border-radius:11px;background:#f1c40f;color:#090b0e;padding:10px 14px;font-weight:900;cursor:pointer}.diagButton:disabled{opacity:.55;cursor:not-allowed}.diagnosticResult{grid-column:1/-1;margin-top:2px;padding:10px;border-radius:11px;background:#0c151f;color:#aeb9c9;font-size:12px;line-height:1.5}.diagnosticResult.ok{border:1px solid #2b7952;color:#a8efc4}.diagnosticResult.warn{border:1px solid #806a20;color:#ffe28a}.diagnosticResult.err{border:1px solid #7d3333;color:#ffaaaa}.diagMetrics{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.diagMetrics span{border:1px solid #34465f;border-radius:999px;padding:5px 8px;color:#c5d2e2}.empty{padding:28px;text-align:center;color:#8c9aad}.foot{padding:22px 0;color:#718095;font-size:12px;text-align:center}
   .scanMonitor{margin-top:14px;border:1px solid #31435a;border-radius:16px;background:#09111a;padding:14px}.scanMonitor.failed{border-color:#7d3333}.scanMonitor.done{border-color:#2c6d4d}.scanTop{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}.scanTitle{font-weight:900;font-size:16px}.scanClock{font-variant-numeric:tabular-nums;color:#f6d65b;font-weight:900}.scanTrack{height:10px;background:#111d2b;border:1px solid #263b52;border-radius:999px;overflow:hidden;margin:12px 0}.scanBar{height:100%;width:0;background:linear-gradient(90deg,#f1c40f,#8de5ff);transition:width .35s ease}.scanMonitor.failed .scanBar{background:#ff7373}.scanMonitor.done .scanBar{background:#73dfa3}
@@ -26,11 +26,11 @@ export function adminHtml(): string {
 </style>
 </head>
 <body><main class="wrap">
-  <div class="top"><div><h1>SCORING RADAR + SOCIAL GROWTH</h1><p class="sub">Détection d'intentions + campagnes sociales sous contrôle qualité</p></div><div class="badge">SAFE MODE • QUALITY GATE • APPROVED MEDIA ONLY</div></div>
+  <div class="top"><div><h1>SCORING RADAR • ACQUISITION ENGINE V2</h1><p class="sub">Détection web publique → qualification IA → réponse prête → clic → conversion</p></div><div class="badge">SAFE MODE • QUALITY GATE • APPROVED MEDIA ONLY</div></div>
   <section class="panel">
     <div class="auth">
       <input id="token" type="password" autocomplete="off" placeholder="RADAR_ADMIN_TOKEN" />
-      <button id="save">Connexion</button><button id="refresh">Actualiser</button><button id="run" class="primary">Scanner maintenant</button>
+      <button id="save">Connexion</button><button id="refresh">Actualiser</button><select id="scanProfile" title="Intensité du scan"><option value="eco">ÉCO • 1×1×10</option><option value="standard">STANDARD • multi</option><option value="turbo" selected>TURBO • 4×6×20</option></select><button id="run" class="primary">Scanner maintenant</button>
     </div>
     <div id="status" class="status">Saisis le token administrateur du Worker.</div>
     <div id="scanMonitor" class="scanMonitor">
@@ -51,8 +51,9 @@ export function adminHtml(): string {
       <div id="scanError" class="scanError"></div>
     </div>
     <div class="stats">
-      <div class="stat"><b id="sSightings">—</b><span>Détections</span></div><div class="stat"><b id="sAnalyzed">—</b><span>Analysées</span></div><div class="stat"><b id="sEligible">—</b><span>Opportunités</span></div><div class="stat"><b id="sHot">—</b><span>Score 90+</span></div><div class="stat"><b id="sClicks">—</b><span>Clics</span></div>
+      <div class="stat"><b id="sSightings">—</b><span>Détections</span></div><div class="stat"><b id="sAnalyzed">—</b><span>Analysées</span></div><div class="stat"><b id="sEligible">—</b><span>Opportunités</span></div><div class="stat"><b id="sHot">—</b><span>Score 90+</span></div><div class="stat"><b id="sNew">—</b><span>À traiter</span></div><div class="stat"><b id="sContacted">—</b><span>Actions</span></div><div class="stat"><b id="sClicks">—</b><span>Clics</span></div><div class="stat"><b id="sWon">—</b><span>Conversions</span></div>
     </div>
+    <div class="safeBox"><b>Bandeau acquisition partenaires :</b> à intégrer uniquement sur un site que vous contrôlez ou qui vous autorise à l'afficher. Il ajoute un CTA discret vers l'application, avec UTM par domaine et fermeture mémorisée 7 jours.<div id="widgetCode" class="embedCode">&lt;script async src="/growth-widget.js"&gt;&lt;/script&gt;</div><div class="actions"><button id="copyWidget" type="button">Copier le code du bandeau</button></div></div>
   </section>
 
   <section class="panel">
@@ -76,7 +77,7 @@ export function adminHtml(): string {
   </section>
 
   <section class="panel">
-    <div class="headrow"><div><h2>Opportunités détectées</h2><div class="sub">Réponses générées dans la langue d'origine, affiliation transparente.</div></div><label>Score minimum <input id="minScore" type="number" min="0" max="100" value="70" /></label></div>
+    <div class="headrow"><div><h2>Opportunités détectées</h2><div class="sub">File d'acquisition : besoin public détecté → réponse prête → action humaine → suivi des clics/conversions.</div></div><label>Score minimum <input id="minScore" type="number" min="0" max="100" value="70" /></label></div>
     <div id="opps" class="grid"><div class="empty">Aucune donnée chargée.</div></div>
   </section>
   <div class="foot">Le mode actuel prépare et contrôle les campagnes. Les connecteurs de publication restent désactivés jusqu'à configuration OAuth/API des comptes sociaux.</div>
@@ -88,6 +89,7 @@ export function adminHtml(): string {
   const tokenInput = $('token');
   const runButton = $('run');
   const diagnosticButton = $('diagnosticSocial');
+  const scanProfile = $('scanProfile');
   tokenInput.value = sessionStorage.getItem('scoringRadarToken') || '';
   let authenticatedToken = '';
   const headers = () => ({ Authorization: 'Bearer ' + tokenInput.value.trim() });
@@ -182,7 +184,7 @@ export function adminHtml(): string {
       const t = Number(timings[entry[0]] || 0); const time = t > 0 ? (t/1000).toFixed(1) + ' s' : (finishedStep ? 'Terminé' : label);
       return '<div class="'+cls+'"><b>'+mark+' '+esc(entry[1])+'</b>'+esc(time)+'</div>';
     }).join('');
-    const detail=[]; if(run.details&&run.details.market)detail.push('Marché : '+run.details.market); if(run.details&&run.details.intent)detail.push('Intent : '+run.details.intent); if(run.details&&run.details.freshness)detail.push('Fenêtre Brave : '+run.details.freshness); if(run.details&&Number(run.details.source_rejected||0)>0)detail.push('Sources rejetées : '+Number(run.details.source_rejected||0)); if(run.details&&Number(run.details.intent_rejected||0)>0)detail.push('Intent Shield : '+Number(run.details.intent_rejected||0)+' rejeté(s)'); if(run.details&&Number(run.details.history_requalified||0)>0)detail.push('Historique nettoyé : '+Number(run.details.history_requalified||0)); if(run.details&&run.details.query_source)detail.push('Source requête : '+run.details.query_source); if(run.details&&run.details.query)detail.push('Requête : '+run.details.query); if(run.details&&run.details.classification){const c=run.details.classification;const failedCount=Number(c.failed||0);const model=String(c.model||'').replace('@cf/meta/','').replace('@cf/','');detail.push('Classification : '+Number(c.completed||0)+'/'+Number(c.total||0)+' • lots '+Number(c.chunk_size||0)+' • parallèle '+Number(c.concurrency||0)+(failedCount?' • échecs '+failedCount:'')+(model?' • modèle '+model:''));} if(Number(run.new_candidates||0)===0&&Number(run.brave_results||0)>0)detail.push('Tous les résultats étaient déjà connus pour cet intent'); if(run.stalled)detail.push('Aucune mise à jour depuis '+Math.round(Number(run.stale_for_ms||0)/1000)+' s');
+    const detail=[]; if(run.details&&run.details.profile)detail.push('Profil : '+String(run.details.profile).toUpperCase()); if(run.details&&run.details.market)detail.push('Marché : '+run.details.market); if(run.details&&Array.isArray(run.details.intents))detail.push('Intents du run : '+run.details.intents.length); if(run.details&&run.details.intent)detail.push('Intent actif : '+run.details.intent); if(run.details&&run.details.freshness)detail.push('Fenêtre Brave : '+run.details.freshness); if(run.details&&Number(run.details.source_rejected||0)>0)detail.push('Sources rejetées : '+Number(run.details.source_rejected||0)); if(run.details&&Number(run.details.intent_rejected||0)>0)detail.push('Intent Shield : '+Number(run.details.intent_rejected||0)+' rejeté(s)'); if(run.details&&Number(run.details.history_requalified||0)>0)detail.push('Historique nettoyé : '+Number(run.details.history_requalified||0)); if(run.details&&Number(run.details.capacity_skipped||0)>0)detail.push('Cap analyse atteint : '+Number(run.details.capacity_skipped||0)+' reporté(s)'); if(run.details&&Array.isArray(run.details.search_errors)&&run.details.search_errors.length)detail.push('Recherches en avertissement : '+run.details.search_errors.length); if(run.details&&run.details.query_source)detail.push('Source requête : '+run.details.query_source); if(run.details&&run.details.query)detail.push('Requête : '+run.details.query); if(run.details&&run.details.classification){const c=run.details.classification;const failedCount=Number(c.failed||0);const model=String(c.model||'').replace('@cf/meta/','').replace('@cf/','');detail.push('Classification : '+Number(c.completed||0)+'/'+Number(c.total||0)+' • lots '+Number(c.chunk_size||0)+' • parallèle '+Number(c.concurrency||0)+(failedCount?' • échecs '+failedCount:'')+(model?' • modèle '+model:''));} if(Number(run.new_candidates||0)===0&&Number(run.brave_results||0)>0)detail.push('Tous les résultats étaient déjà connus pour cet intent'); if(run.stalled)detail.push('Aucune mise à jour depuis '+Math.round(Number(run.stale_for_ms||0)/1000)+' s');
     $('scanDetail').textContent = detail.join(' • ') || 'Progression enregistrée côté Worker.';
     const errorBox=$('scanError'); if(run.error){errorBox.textContent=(warning?'Avertissement : ':'Erreur : ')+run.error;errorBox.className='scanError visible';}else{errorBox.textContent='';errorBox.className='scanError';}
     updateClock();
@@ -197,10 +199,15 @@ export function adminHtml(): string {
   }
   function followRun(run){ if(!run)return; renderRun(run); if(isActive(run)){activeRunId=run.run_id;if(pollTimer)clearTimeout(pollTimer);pollTimer=setTimeout(pollRun,500);} }
 
+  function hostLabel(url){try{return new URL(url).hostname.replace(/^www\./,'');}catch{return 'web';}}
+  async function setOutreach(id,status,note=''){
+    await request('/api/opportunities/'+encodeURIComponent(id)+'/outreach',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status,note})});
+  }
   function renderOpportunities(rows) {
     const root=$('opps'); if(!rows.length){root.innerHTML='<div class="empty">Aucune opportunité au-dessus du seuil actuel.</div>';return;}
-    root.innerHTML=rows.map((row)=>{const reply=row.reply_with_link||row.suggested_reply||'';const score=Number(row.score||0);return '<article class="card '+(score>=90?'hot':'')+'"><div class="meta"><span class="pill">'+esc(row.language||'und')+'</span><span class="pill">'+esc(row.market||'')+'</span><span class="pill">'+esc(row.category||'autre')+'</span><span class="score">'+score+'/100</span></div><h3>'+esc(row.title||row.source_url)+'</h3><div class="snippet">'+esc(row.snippet||'')+'</div><div class="reason">'+esc(row.reason||'')+'</div><div class="reply">'+esc(reply)+'</div><div class="actions"><a target="_blank" rel="noopener" href="'+esc(row.source_url)+'">Source</a><button data-copy="'+encodeURIComponent(reply)+'">Copier réponse</button><a class="gold" target="_blank" rel="noopener" href="'+esc(row.destination_link||row.tracked_link)+'">Tester destination</a></div></article>';}).join('');
-    root.querySelectorAll('[data-copy]').forEach((b)=>b.addEventListener('click',()=>copy(decodeURIComponent(b.dataset.copy||''))));
+    root.innerHTML=rows.map((row)=>{const reply=row.reply_with_link||row.suggested_reply||'';const score=Number(row.score||0);const outreach=String(row.outreach_status||'new');const clicks=Number(row.click_count||0);return '<article class="card '+(score>=90?'hot':'')+'"><div class="meta"><span class="pill">'+esc(hostLabel(row.source_url))+'</span><span class="pill">'+esc(row.language||'und')+'</span><span class="pill">'+esc(row.market||'')+'</span><span class="pill outreach-'+esc(outreach)+'">'+esc(outreach.toUpperCase())+'</span><span class="pill">'+clicks+' clic(s)</span><span class="score">'+score+'/100</span></div><h3>'+esc(row.title||row.source_url)+'</h3><div class="snippet">'+esc(row.snippet||'')+'</div><div class="reason">'+esc(row.reason||'')+'</div><div class="reply">'+esc(reply)+'</div><div class="actions"><a target="_blank" rel="noopener" href="'+esc(row.source_url)+'">Ouvrir la discussion</a><button class="gold" data-copy-reply="'+esc(row.id)+'" data-copy="'+encodeURIComponent(reply)+'">Copier réponse</button><button data-outreach="contacted" data-id="'+esc(row.id)+'">Marquer contacté</button><button class="success" data-outreach="won" data-id="'+esc(row.id)+'">Conversion</button><button class="danger" data-outreach="dismissed" data-id="'+esc(row.id)+'">Ignorer</button><a target="_blank" rel="noopener" href="'+esc(row.destination_link||row.tracked_link)+'">Tester destination</a></div></article>';}).join('');
+    root.querySelectorAll('[data-copy-reply]').forEach((b)=>b.addEventListener('click',async()=>{try{await copy(decodeURIComponent(b.dataset.copy||''));await setOutreach(b.dataset.copyReply,'copied');b.textContent='Copié ✓';}catch(e){setStatus('Erreur action : '+e.message,'err');}}));
+    root.querySelectorAll('[data-outreach]').forEach((b)=>b.addEventListener('click',async()=>{try{await setOutreach(b.dataset.id,b.dataset.outreach);setStatus('Opportunité mise à jour : '+b.dataset.outreach+'.','ok');load(false);}catch(e){setStatus('Erreur action : '+e.message,'err');}}));
   }
   function assetOptions(assets, selected){return '<option value="">Choisir média approuvé</option>'+assets.map((a)=>'<option value="'+esc(a.id)+'" '+(selected===a.id?'selected':'')+'>'+esc(a.title||a.url)+' • '+esc(a.media_type)+'</option>').join('');}
   function renderCampaigns(rows, assets){
@@ -240,7 +247,7 @@ export function adminHtml(): string {
       const [statsData,oppData,socialData,campaignData,assetData,runData]=await Promise.all([
         request('/api/stats'),request('/api/opportunities?minScore='+minScore+'&limit=200'),request('/api/social/stats'),request('/api/social/campaigns?limit=100'),request('/api/social/assets?approvedOnly=1'),request('/api/runs/latest')
       ]);
-      const stats=statsData.stats||{};$('sSightings').textContent=stats.sightings??0;$('sAnalyzed').textContent=stats.analyzed??0;$('sEligible').textContent=stats.eligible??0;$('sHot').textContent=stats.highIntent??0;$('sClicks').textContent=stats.clicks??0;
+      const stats=statsData.stats||{};$('sSightings').textContent=stats.sightings??0;$('sAnalyzed').textContent=stats.analyzed??0;$('sEligible').textContent=stats.eligible??0;$('sHot').textContent=stats.highIntent??0;$('sNew').textContent=stats.outreachNew??0;$('sContacted').textContent=stats.outreachContacted??0;$('sClicks').textContent=stats.clicks??0;$('sWon').textContent=stats.outreachWon??0;
       const ss=socialData.stats||{};$('cTotal').textContent=ss.total??0;$('cReady').textContent=ss.ready??0;$('cApproved').textContent=ss.approved??0;$('cRejected').textContent=ss.rejected??0;$('cAssets').textContent=ss.approvedAssets??0;$('socialMode').textContent='MODE '+String(socialData.mode||'review').toUpperCase();
       renderCampaigns(campaignData.campaigns||[],assetData.assets||[]);renderOpportunities(oppData.opportunities||[]);followRun(runData.run);
       const run=runData.run;
@@ -276,6 +283,13 @@ export function adminHtml(): string {
     }
   });
 
+  $('copyWidget').addEventListener('click',async()=>{
+    const src=location.origin+'/growth-widget.js';
+    const code='<script async src="'+src+'"><\\/script>';
+    await navigator.clipboard.writeText(code);
+    setStatus('Code du bandeau partenaire copié. À placer uniquement sur un site autorisé.','ok');
+  });
+
   $('assetForm').addEventListener('submit',async(e)=>{e.preventDefault();try{const body={url:$('assetUrl').value.trim(),title:$('assetTitle').value.trim(),mediaType:$('assetType').value,qualityScore:Number($('assetQuality').value),technicalScore:Number($('assetTechnical').value),brandScore:Number($('assetBrand').value),humanApproved:$('assetApproved').checked,platforms:['facebook_page','instagram_reel','youtube_short','tiktok']};const result=await request('/api/social/assets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});setStatus(result.humanApproved?'Média ajouté et approuvé.':'Média ajouté mais NON approuvé : vérifie les scores et la validation humaine.','ok');e.target.reset();$('assetQuality').value='95';$('assetTechnical').value='95';$('assetBrand').value='95';load(false);}catch(error){setStatus('Erreur ajout média : '+error.message,'err');}});
   $('save').addEventListener('click',()=>{authenticatedToken='';load();});
   $('refresh').addEventListener('click',()=>load()); $('minScore').addEventListener('change',()=>load(false));
@@ -284,9 +298,9 @@ export function adminHtml(): string {
     runButton.disabled=true; setStatus('Démarrage du scan…','ok');
     try{
       await ensureAuth();
-      const result=await request('/api/run',{method:'POST'}); activeRunId=result.run_id;
+      const result=await request('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile:scanProfile.value||'turbo'})}); activeRunId=result.run_id;
       if(result.run)renderRun(result.run); else renderRun({run_id:result.run_id,status:'running',stage:'starting',started_at:result.triggered_at,updated_at:result.triggered_at,elapsed_ms:0,queries:0,brave_results:0,new_candidates:0,queued:0,analyzed:0,eligible:0,high_intent:0,social_campaigns:0,error:null,details:{}});
-      setStatus(result.already_running?'Un scan était déjà actif : suivi repris.':'Scan démarré. Le bouton ne bloque plus le navigateur.','ok');
+      setStatus(result.already_running?'Un scan était déjà actif : suivi repris.':'Scan '+String(result.profile||scanProfile.value).toUpperCase()+' démarré.','ok');
       if(pollTimer)clearTimeout(pollTimer);pollTimer=setTimeout(pollRun,500);
     }catch(error){runButton.disabled=false;setStatus('Erreur démarrage scan : '+error.message,'err');}
   });

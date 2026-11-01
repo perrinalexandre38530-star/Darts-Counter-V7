@@ -1,92 +1,91 @@
-# SCORING RADAR + SOCIAL GROWTH IA
+# SCORING RADAR + SOCIAL GROWTH IA — Acquisition V2
 
-Cloudflare Worker for MULTISPORTS SCORING with two jobs:
+Cloudflare Worker d'acquisition pour MULTISPORTS SCORING.
 
-1. **SCORING RADAR** detects public, high-intent needs that the app could legitimately answer.
-2. **SOCIAL GROWTH IA** turns only the strongest needs into social campaign drafts and rejects weak creative before it can represent the brand.
+Il fait maintenant quatre choses :
 
-The current release is intentionally **SAFE MODE / REVIEW**. It prepares campaigns automatically, but live social publishing is locked until official OAuth/API connectors are configured for the owned Facebook/Instagram/YouTube/TikTok accounts.
+1. **Radar d'intention** : balaie le web public, les forums et communautés pour trouver des utilisateurs qui demandent réellement une solution de scoring/statistiques/sport.
+2. **Qualification IA** : filtre les pages commerciales, stores, SEO, faux signaux et ne garde que les demandes utiles.
+3. **File d'acquisition** : génère une réponse courte dans la langue d'origine, avec lien tracké, puis permet de suivre `NEW → COPIED → CONTACTED → WON / DISMISSED`.
+4. **Social Growth + bandeau partenaire** : prépare les campagnes sociales sous QA et fournit un bandeau promotionnel intégrable sur les sites autorisés.
 
-## Cost guardrail
+## Profils de scan
 
-The Worker is configured for **one Brave search per hour**:
+Le dashboard `/admin` propose :
 
-- cron: `0 * * * *`
-- `RADAR_MARKETS_PER_RUN=1`
-- one search-intent family per run
-- up to 10 results returned by that single search
+- **ÉCO** : 1 marché × 1 intention × 10 résultats.
+- **STANDARD** : valeurs de `wrangler.jsonc` (par défaut 2 marchés × 3 intentions × 20 résultats).
+- **TURBO** : jusqu'à 4 marchés × 6 intentions × 20 résultats.
 
-This replaces the previous 5-minute / multi-market cadence.
+Pour protéger la Queue et garder une classification stable, un run ne met en analyse que **20 nouveaux candidats maximum**. Les résultats supplémentaires ne sont pas perdus définitivement : ils pourront être repris lors des runs suivants.
 
-## Social quality gate
+Une erreur Brave sur une requête ne fait plus tomber tout le scan : elle est conservée comme avertissement et le Radar continue les autres marchés/intents.
 
-A strong radar opportunity (default score >= 85) can create at most one campaign for that source. The daily campaign-generation cap defaults to 2.
+## Intents couverts
 
-The social pipeline uses two independent AI passes:
+La V2 ajoute notamment :
 
-1. **Creative generator**: creates the hook, angle, platform copy and a media brief.
-2. **Creative QA**: acts as a strict creative director / brand-safety reviewer.
+- scoring Darts / X01 / Cricket / Killer ;
+- entraînement Darts ;
+- ligues, amis, classements Darts ;
+- running GPS, performances et challenges ;
+- scoring multisports ;
+- pétanque ;
+- ping-pong ;
+- baby-foot ;
+- Mölkky ;
+- jeux entre amis ;
+- recherche de partenaires/adversaires sportifs ;
+- classements de clubs/groupes ;
+- remplacement des feuilles de score papier ;
+- wearables / montres / GPS.
 
-Default pass thresholds:
+Les requêtes de traduction utilisent un cache `growth-v2`, afin de ne pas réutiliser les anciennes formulations V1.
 
-- overall creative quality >= 90
-- factual accuracy >= 95
-- brand credibility >= 90
-- usefulness >= 85
-- visual-plan quality >= 90
-- spam risk <= 10
-- cheap/cringe risk <= 10
+## Suivi des opportunités
 
-Anything below the threshold is stored as `rejected_by_qa` instead of being offered for approval.
+Chaque opportunité affiche :
 
-## Approved-media-only rule
+- le site source ;
+- la langue et le marché ;
+- le score IA ;
+- le texte de réponse prêt à copier ;
+- le nombre de clics ;
+- le statut de traitement.
 
-The Worker does **not** blindly generate and publish images or videos.
+Le bouton **Copier réponse** passe l'opportunité en `copied`. Le dashboard permet ensuite de la marquer `contacted`, `won` ou `dismissed`.
 
-A campaign can only be human-approved after an asset has been added to the approved media library and has all of these properties:
+Le lien inséré dans les réponses passe par `/go/:id`, puis redirige vers la page officielle avec les UTM. Les clics remontent donc dans le Radar.
 
-- human-approved
-- quality score >= 90
-- technical score >= 90
-- brand score >= 90
-- media type matches the campaign
+## Bandeau partenaire autorisé
 
-Recommended approved assets:
-
-- real screen recordings of MULTISPORTS SCORING
-- clean screenshots from the current app
-- already validated Awena exercise videos/visuals
-- approved product montages
-- approved logos or product footage
-
-Forbidden creative dependencies include fake UI, fake reviews, fake ratings, fabricated user counts and random AI-generated product screens.
-
-## TikTok-specific media rule
-
-TikTok's current Content Posting guidelines prohibit unwanted promotional branding/watermark treatment in media sent through the posting integration. The campaign generator therefore avoids requiring baked-in promotional watermarks/URLs/logo overlays for TikTok creative. Publication is not enabled until the TikTok app has the required scope/audit and the account flow is configured.
-
-## Admin dashboard
-
-Open:
+Le Worker expose :
 
 ```text
-https://<worker-host>/admin
+GET /growth-widget.js
 ```
 
-The dashboard now contains:
+Le dashboard donne le tag `<script>` à copier.
 
-- Radar opportunities
-- Social campaign QA scores
-- generated Facebook / Instagram / YouTube / TikTok copy
-- approved-media library
-- media-to-campaign assignment
-- approve / reject controls
+Le widget :
 
-Approval does not yet send the post live. That final step stays locked until the official platform connectors are configured.
+- s'affiche en bas de page ;
+- pointe vers MULTISPORTS SCORING avec UTM ;
+- peut être fermé ;
+- mémorise la fermeture 7 jours ;
+- n'est servi qu'aux domaines autorisés dans `RADAR_WIDGET_ALLOWED_HOSTS` lorsque cette liste est renseignée.
 
-## D1 schema update
+Ajouter uniquement des domaines que vous contrôlez ou des partenaires qui ont explicitement accepté d'afficher le bandeau.
 
-After deploying this version, apply the schema again. It is additive and uses `CREATE TABLE IF NOT EXISTS`:
+## Social Growth
+
+Le mode reste volontairement **review** : la génération et la QA sont automatiques, mais la publication directe n'est activée qu'après connexion des comptes sociaux via leurs APIs/OAuth officiels.
+
+Une campagne est soumise à des seuils élevés de qualité, exactitude, marque, utilité, qualité visuelle, risque spam et risque "cheap". Un média réel et approuvé reste obligatoire avant approbation finale.
+
+## Mise à jour D1 obligatoire
+
+La V2 ajoute la table `outreach_actions`. Le schéma est additif.
 
 ```bash
 cd scoring-radar
@@ -94,25 +93,18 @@ npm install
 npm run db:remote
 ```
 
-This adds:
-
-- `social_assets`
-- `social_campaigns`
-
-Existing Radar data remains intact.
+Les données Radar existantes restent conservées.
 
 ## Secrets
 
-Never place real secrets in source control.
+Ne jamais mettre les vraies valeurs dans Git :
 
 ```bash
 npx wrangler secret put BRAVE_SEARCH_API_KEY
 npx wrangler secret put RADAR_ADMIN_TOKEN
 ```
 
-Future publication connectors will add platform OAuth/access credentials as Worker secrets only.
-
-## Deploy
+## Déploiement
 
 ```bash
 cd scoring-radar
@@ -121,28 +113,22 @@ npm run typecheck
 npm run deploy
 ```
 
-Then verify:
+Puis ouvrir :
 
 ```text
-GET /health
+https://<worker-host>/admin
 ```
 
-and open `/admin`.
+## Endpoints utiles
 
-## Manual scan
-
-```text
-POST /api/run
-Authorization: Bearer <RADAR_ADMIN_TOKEN>
-```
-
-The scan still uses the same one-query logic as an hourly run; manual triggering is intended for testing, not high-frequency production use.
-
-## Social API endpoints
-
-Protected by `RADAR_ADMIN_TOKEN`:
+Protégés par `RADAR_ADMIN_TOKEN` :
 
 ```text
+POST /api/run                         body: { "profile": "eco|standard|turbo" }
+GET  /api/runs/latest
+GET  /api/opportunities
+POST /api/opportunities/:id/outreach body: { "status": "new|copied|contacted|won|dismissed" }
+GET  /api/stats
 GET  /api/social/stats
 GET  /api/social/campaigns
 GET  /api/social/assets?approvedOnly=1
@@ -152,19 +138,10 @@ POST /api/social/campaigns/:id/approve
 POST /api/social/campaigns/:id/reject
 ```
 
-## Live-publishing stage
+Public :
 
-The next stage is account connection, using only official APIs:
-
-- Facebook Page / Instagram professional account via Meta
-- YouTube Data API OAuth upload
-- TikTok Content Posting API after the required authorization/audit
-
-TikTok and YouTube can restrict API-originated uploads from unaudited/unverified API clients to private visibility, so those platform review steps must be completed before a true public autopilot is enabled.
-
-The recommended rollout remains:
-
-1. SAFE MODE (current): generate + QA + approved media + human approval.
-2. Connect one platform at a time.
-3. Test posts to private/unlisted destinations where supported.
-4. Enable live autopilot only after real-world visual checks and account/API validation.
+```text
+GET /go/:id
+GET /growth-widget.js
+GET /health
+```

@@ -61,11 +61,14 @@ export async function cacheQuery(env: RadarEnv, market: string, queryKey: string
 export async function listOpportunities(env: RadarEnv, minScore: number, limit: number): Promise<OpportunityRow[]> {
   const fetchLimit = Math.max(limit, Math.min(1000, limit * 5));
   const result = await env.DB.prepare(`
-    SELECT id, source, source_url, title, snippet, query_key, market, language, category, intent,
-           score, eligible, reason, suggested_reply, captured_at, analyzed_at
-    FROM sightings
-    WHERE status = 'analyzed' AND eligible = 1 AND score >= ?
-    ORDER BY score DESC, analyzed_at DESC
+    SELECT s.id, s.source, s.source_url, s.title, s.snippet, s.query_key, s.market, s.language, s.category, s.intent,
+           s.score, s.eligible, s.reason, s.suggested_reply, s.captured_at, s.analyzed_at,
+           COALESCE(o.status, 'new') AS outreach_status, o.note AS outreach_note, o.updated_at AS outreach_updated_at,
+           (SELECT COUNT(*) FROM clicks c WHERE c.sighting_id = s.id) AS click_count
+    FROM sightings s
+    LEFT JOIN outreach_actions o ON o.sighting_id = s.id
+    WHERE s.status = 'analyzed' AND s.eligible = 1 AND s.score >= ?
+    ORDER BY CASE COALESCE(o.status, 'new') WHEN 'new' THEN 0 WHEN 'copied' THEN 1 WHEN 'contacted' THEN 2 WHEN 'won' THEN 3 ELSE 4 END, s.score DESC, s.analyzed_at DESC
     LIMIT ?
   `).bind(minScore, fetchLimit).all<OpportunityRow>();
 
@@ -85,9 +88,11 @@ export async function listOpportunities(env: RadarEnv, minScore: number, limit: 
 
 export async function getOpportunity(env: RadarEnv, id: string): Promise<OpportunityRow | null> {
   return env.DB.prepare(`
-    SELECT id, source, source_url, title, snippet, query_key, market, language, category, intent,
-           score, eligible, reason, suggested_reply, captured_at, analyzed_at
-    FROM sightings WHERE id = ?
+    SELECT s.id, s.source, s.source_url, s.title, s.snippet, s.query_key, s.market, s.language, s.category, s.intent,
+           s.score, s.eligible, s.reason, s.suggested_reply, s.captured_at, s.analyzed_at,
+           COALESCE(o.status, 'new') AS outreach_status, o.note AS outreach_note, o.updated_at AS outreach_updated_at,
+           (SELECT COUNT(*) FROM clicks c WHERE c.sighting_id = s.id) AS click_count
+    FROM sightings s LEFT JOIN outreach_actions o ON o.sighting_id = s.id WHERE s.id = ?
   `).bind(id).first<OpportunityRow>();
 }
 
@@ -218,6 +223,9 @@ export async function getRadarStats(env: RadarEnv): Promise<{
   eligible: number;
   highIntent: number;
   clicks: number;
+  outreachNew: number;
+  outreachContacted: number;
+  outreachWon: number;
   latestRun: Record<string, unknown> | null;
 }> {
   const counts = await env.DB.prepare(`
@@ -249,6 +257,16 @@ export async function getRadarStats(env: RadarEnv): Promise<{
   }
 
   const clickRow = await env.DB.prepare('SELECT COUNT(*) AS clicks FROM clicks').first<{ clicks: number }>();
+  const outreach = await env.DB.prepare(`
+    SELECT
+      SUM(CASE WHEN status IN ('copied','contacted') THEN 1 ELSE 0 END) AS contacted_count,
+      SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END) AS won_count,
+      SUM(CASE WHEN status = 'dismissed' THEN 1 ELSE 0 END) AS dismissed_count
+    FROM outreach_actions o
+    JOIN sightings s ON s.id = o.sighting_id
+    WHERE s.status = 'analyzed' AND s.eligible = 1
+  `).first<{ contacted_count: number | null; won_count: number | null; dismissed_count: number | null }>();
+
   const latestRun = await env.DB.prepare(`
     SELECT id, started_at, finished_at, markets, queries, candidates, queued, error
     FROM run_log ORDER BY started_at DESC LIMIT 1
@@ -260,6 +278,9 @@ export async function getRadarStats(env: RadarEnv): Promise<{
     eligible,
     highIntent,
     clicks: Number(clickRow?.clicks ?? 0),
+    outreachNew: Math.max(0, eligible - Number(outreach?.contacted_count ?? 0) - Number(outreach?.won_count ?? 0) - Number(outreach?.dismissed_count ?? 0)),
+    outreachContacted: Number(outreach?.contacted_count ?? 0),
+    outreachWon: Number(outreach?.won_count ?? 0),
     latestRun: latestRun ?? null
   };
 }
@@ -296,6 +317,21 @@ export async function requalifyHistoricalIntentShield(env: RadarEnv, limit = 500
   if (updates.length === 0) return 0;
   await env.DB.batch(updates);
   return updates.length;
+}
+
+
+export async function setOutreachStatus(
+  env: RadarEnv,
+  sightingId: string,
+  status: 'new' | 'copied' | 'contacted' | 'won' | 'dismissed',
+  note = ''
+): Promise<void> {
+  const now = new Date().toISOString();
+  await env.DB.prepare(`
+    INSERT INTO outreach_actions (sighting_id, status, note, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(sighting_id) DO UPDATE SET status = excluded.status, note = excluded.note, updated_at = excluded.updated_at
+  `).bind(sightingId, status, note.slice(0, 800), now, now).run();
 }
 
 export async function countSocialCampaignsSince(env: RadarEnv, sinceIso: string): Promise<number> {

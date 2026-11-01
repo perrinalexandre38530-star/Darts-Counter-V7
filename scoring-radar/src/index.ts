@@ -24,6 +24,7 @@ import {
   logClick,
   requalifyHistoricalIntentShield,
   setSocialCampaignStatus,
+  setOutreachStatus,
   socialCampaignExistsForSighting,
   startRun,
   updateRunProgress
@@ -119,6 +120,42 @@ function runProgressPayload(env: RadarEnv, row: RunProgressRow | null) {
 
 function elapsedSince(startedAtMs: number): number {
   return Math.max(0, Date.now() - startedAtMs);
+}
+
+type ScanProfile = 'eco' | 'standard' | 'turbo';
+
+function normalizeScanProfile(value: string | undefined): ScanProfile {
+  const raw = (value || '').trim().toLowerCase();
+  if (raw === 'eco' || raw === 'turbo') return raw;
+  return 'standard';
+}
+
+function scanProfileConfig(env: RadarEnv, profile: ScanProfile) {
+  if (profile === 'eco') return { marketsPerRun: 1, intentsPerRun: 1, resultsPerQuery: 10 };
+  if (profile === 'turbo') return { marketsPerRun: 4, intentsPerRun: 6, resultsPerQuery: 20 };
+  return {
+    marketsPerRun: intFromEnv(env.RADAR_MARKETS_PER_RUN, 2, 1, 20),
+    intentsPerRun: intFromEnv(env.RADAR_INTENTS_PER_RUN, 3, 1, SEARCH_INTENTS.length),
+    resultsPerQuery: intFromEnv(env.RADAR_RESULTS_PER_QUERY, 20, 1, 20)
+  };
+}
+
+function growthWidgetJs(env: RadarEnv, request: Request): Response {
+  const allowed = (env.RADAR_WIDGET_ALLOWED_HOSTS || '').split(',').map((item) => item.trim().toLowerCase()).filter(Boolean);
+  const referer = request.headers.get('Referer');
+  let refererHost = '';
+  try { refererHost = referer ? new URL(referer).hostname.toLowerCase() : ''; } catch { refererHost = ''; }
+  if (allowed.length > 0 && (!refererHost || !allowed.some((host) => refererHost === host || refererHost.endsWith(`.${host}`)))) {
+    return new Response('/* MULTISPORTS SCORING growth widget: host not authorized */', { status: 403, headers: { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-store' } });
+  }
+
+  const base = new URL(env.APP_DESTINATION_URL);
+  base.searchParams.set('utm_source', 'partner_widget');
+  base.searchParams.set('utm_medium', 'referral_banner');
+  base.searchParams.set('utm_campaign', 'scoring_radar_growth');
+  const destination = JSON.stringify(base.toString());
+  const js = `(()=>{try{if(document.getElementById('mss-growth-widget'))return;const k='mssGrowthWidgetDismissedAt';const last=Number(localStorage.getItem(k)||0);if(last&&Date.now()-last<604800000)return;const host=location.hostname.replace(/^www\./,'');const a=${destination};const u=new URL(a);u.searchParams.set('utm_content',host.slice(0,80));const w=document.createElement('aside');w.id='mss-growth-widget';w.setAttribute('role','complementary');w.innerHTML='<div style="font-weight:900;font-size:15px">🎯 MULTISPORTS SCORING</div><div style="font-size:13px;line-height:1.35;opacity:.92">Scores, statistiques, défis et modes de jeu pour jouer entre amis.</div><div style="display:flex;gap:8px;margin-top:10px"><a target="_blank" rel="noopener" style="background:#f1c40f;color:#111;text-decoration:none;font-weight:900;padding:8px 12px;border-radius:9px" href="'+u.toString().replace(/&/g,'&amp;')+'">Découvrir l’app</a><button type="button" aria-label="Fermer" style="border:1px solid #526173;background:transparent;color:#fff;border-radius:9px;padding:8px 10px;cursor:pointer">Fermer</button></div>';w.style.cssText='position:fixed;right:18px;bottom:18px;z-index:2147483000;max-width:360px;padding:14px 15px;border:1px solid #33465f;border-radius:16px;background:#09111aeF;color:#fff;font-family:Inter,system-ui,sans-serif;box-shadow:0 18px 55px rgba(0,0,0,.42)';w.querySelector('button').onclick=()=>{localStorage.setItem(k,String(Date.now()));w.remove()};document.body.appendChild(w)}catch(e){console.warn('MSS growth widget',e)}})();`;
+  return new Response(js, { headers: { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=300', 'X-Content-Type-Options': 'nosniff' } });
 }
 
 async function maybeCreateSocialCampaign(
@@ -327,6 +364,19 @@ async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: Ex
     });
   }
 
+  const outreachMatch = url.pathname.match(/^\/api\/opportunities\/([^/]+)\/outreach$/);
+  if (request.method === 'POST' && outreachMatch) {
+    const sightingId = outreachMatch[1]!;
+    const row = await getOpportunity(env, sightingId);
+    if (!row) return json({ ok: false, error: 'opportunity_not_found' }, 404);
+    const body = await request.json().catch(() => ({})) as { status?: string; note?: string };
+    const allowed = new Set(['new', 'copied', 'contacted', 'won', 'dismissed']);
+    const status = typeof body.status === 'string' && allowed.has(body.status) ? body.status as 'new' | 'copied' | 'contacted' | 'won' | 'dismissed' : null;
+    if (!status) return json({ ok: false, error: 'invalid_outreach_status' }, 400);
+    await setOutreachStatus(env, sightingId, status, typeof body.note === 'string' ? body.note : '');
+    return json({ ok: true, sightingId, status });
+  }
+
   if (request.method === 'GET' && url.pathname === '/api/opportunities') {
     const minScore = intFromEnv(url.searchParams.get('minScore') ?? env.RADAR_MIN_SCORE, 70, 0, 100);
     const limit = intFromEnv(url.searchParams.get('limit') ?? undefined, 100, 1, 500);
@@ -338,7 +388,7 @@ async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: Ex
         ...row,
         tracked_link: `${publicBase}/go/${row.id}`,
         destination_link: safeDestination(env.APP_DESTINATION_URL, row),
-        reply_with_link: row.suggested_reply?.replace('{{APP_LINK}}', safeDestination(env.APP_DESTINATION_URL, row)) ?? null
+        reply_with_link: row.suggested_reply?.replace('{{APP_LINK}}', `${publicBase}/go/${row.id}`) ?? null
       }))
     });
   }
@@ -354,7 +404,7 @@ async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: Ex
         ...row,
         tracked_link: `${publicBase}/go/${row.id}`,
         destination_link: safeDestination(env.APP_DESTINATION_URL, row),
-        reply_with_link: row.suggested_reply?.replace('{{APP_LINK}}', safeDestination(env.APP_DESTINATION_URL, row)) ?? null
+        reply_with_link: row.suggested_reply?.replace('{{APP_LINK}}', `${publicBase}/go/${row.id}`) ?? null
       }
     });
   }
@@ -386,13 +436,16 @@ async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: Ex
       });
     }
 
+    const body = await request.json().catch(() => ({})) as { profile?: string };
+    const profile = normalizeScanProfile(body.profile || 'turbo');
     const started = Date.now();
     const runId = crypto.randomUUID();
-    ctx.waitUntil(runScheduled(env, started, runId));
+    ctx.waitUntil(runScheduled(env, started, runId, profile));
     return json({
       ok: true,
       run_id: runId,
       status: 'starting',
+      profile,
       triggered_at: new Date(started).toISOString()
     }, 202);
   }
@@ -451,20 +504,24 @@ async function handleGo(request: Request, env: RadarEnv, url: URL): Promise<Resp
   return Response.redirect(safeDestination(env.APP_DESTINATION_URL, row), 302);
 }
 
-async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto.randomUUID()): Promise<void> {
+async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto.randomUUID(), requestedProfile?: string): Promise<void> {
   const startedAt = new Date(scheduledTime).toISOString();
   const startedMs = Date.now();
   const markets = parseMarkets(env);
-  const marketsPerRun = intFromEnv(env.RADAR_MARKETS_PER_RUN, 5, 1, 20);
-  const resultsPerQuery = intFromEnv(env.RADAR_RESULTS_PER_QUERY, 10, 1, 20);
+  const profile = normalizeScanProfile(requestedProfile || env.RADAR_SCAN_PROFILE || 'standard');
+  const profileConfig = scanProfileConfig(env, profile);
+  const marketsPerRun = profileConfig.marketsPerRun;
+  const resultsPerQuery = profileConfig.resultsPerQuery;
+  const intentsPerRun = profileConfig.intentsPerRun;
   const hourlyTick = Math.floor(scheduledTime / 3_600_000);
   const { selected: selectedMarkets, runsPerSweep } = chooseMarketBatch(markets, marketsPerRun, hourlyTick);
-  const intentIndex = Math.floor(Math.abs(hourlyTick) / runsPerSweep) % SEARCH_INTENTS.length;
-  const selectedIntent = SEARCH_INTENTS[intentIndex]!;
+  const intentTick = Math.floor(Math.abs(hourlyTick) / runsPerSweep);
+  const { selected: selectedIntents } = chooseMarketBatch(SEARCH_INTENTS, intentsPerRun, intentTick);
   const timings: Record<string, number> = {};
   const details: Record<string, unknown> = {
-    intent: selectedIntent.key,
-    intent_description: selectedIntent.description,
+    profile,
+    intents: selectedIntents.map((intent) => intent.key),
+    intent_count: selectedIntents.length,
     freshness: (env.RADAR_FRESHNESS || 'pw').toLowerCase(),
     duplicates: 0,
     source_rejected: 0,
@@ -485,11 +542,15 @@ async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto
   let candidates = 0;
   let newCandidatesTotal = 0;
   let queued = 0;
+  const maxCandidatesPerRun = intFromEnv(env.RADAR_MAX_CANDIDATES_PER_RUN, 20, 1, 20);
+  const pendingCandidates: Candidate[] = [];
+  const searchErrors: string[] = [];
   let error: string | undefined;
   let currentStage = 'starting';
 
   try {
     if (selectedMarkets.length === 0) throw new Error('No radar market is configured');
+    if (selectedIntents.length === 0) throw new Error('No radar search intent is configured');
 
     const historyRequalified = await requalifyHistoricalIntentShield(env);
     details.history_requalified = historyRequalified;
@@ -498,6 +559,9 @@ async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto
       const marketLabel = marketKey(market);
       details.market = marketLabel;
 
+      for (const selectedIntent of selectedIntents) {
+      details.intent = selectedIntent.key;
+      details.intent_description = selectedIntent.description;
       currentStage = 'localizing';
       await updateRunProgress(env, runId, {
         status: 'running',
@@ -528,10 +592,25 @@ async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto
         details
       });
       const braveStarted = Date.now();
-      const found = await searchBrave(env, selectedIntent.key, queryText, market, resultsPerQuery, startedAt);
+      let found: Candidate[] = [];
+      try {
+        found = await searchBrave(env, selectedIntent.key, queryText, market, resultsPerQuery, startedAt);
+      } catch (caught) {
+        const message = caught instanceof Error ? caught.message : String(caught);
+        searchErrors.push(`${marketLabel}/${selectedIntent.key}: ${message}`.slice(0, 500));
+        details.search_errors = searchErrors.slice(-12);
+        console.warn(JSON.stringify({ event: 'radar_search_warning', runId, market: marketLabel, intent: selectedIntent.key, error: message }));
+      }
       timings.brave_search = (timings.brave_search ?? 0) + (Date.now() - braveStarted);
       queries += 1;
       candidates += found.length;
+      if (found.length === 0) {
+        await updateRunProgress(env, runId, {
+          status: 'running', stage: 'brave_search', elapsedMs: elapsedSince(startedMs), queries,
+          braveResults: candidates, newCandidates: newCandidatesTotal, queued, details
+        });
+        continue;
+      }
 
       currentStage = 'deduplicating';
       await updateRunProgress(env, runId, {
@@ -548,6 +627,7 @@ async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto
       const newCandidates: Candidate[] = [];
       let sourceRejected = 0;
       let intentRejected = 0;
+      let capacitySkipped = 0;
       for (const candidate of found) {
         const qualityReason = sourceQualityReason(candidate);
         if (qualityReason) {
@@ -573,72 +653,58 @@ async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto
           }));
           continue;
         }
+        if (pendingCandidates.length + newCandidates.length >= maxCandidatesPerRun) {
+          capacitySkipped += 1;
+          continue;
+        }
         const queueCandidate: Candidate = { ...candidate, runId };
         if (await insertCandidate(env, queueCandidate)) newCandidates.push(queueCandidate);
       }
       timings.deduplicating = (timings.deduplicating ?? 0) + (Date.now() - dedupeStarted);
-      newCandidatesTotal += newCandidates.length;
+      pendingCandidates.push(...newCandidates);
+      newCandidatesTotal = pendingCandidates.length;
       details.source_rejected = Number(details.source_rejected || 0) + sourceRejected;
       details.intent_rejected = Number(details.intent_rejected || 0) + intentRejected;
-      details.duplicates = Number(details.duplicates || 0) + Math.max(0, found.length - sourceRejected - intentRejected - newCandidates.length);
+      details.capacity_skipped = Number(details.capacity_skipped || 0) + capacitySkipped;
+      details.duplicates = Number(details.duplicates || 0) + Math.max(0, found.length - sourceRejected - intentRejected - capacitySkipped - newCandidates.length);
 
-      currentStage = newCandidates.length > 0 ? 'queueing' : 'deduplicating';
+      currentStage = 'deduplicating';
       await updateRunProgress(env, runId, {
-        status: newCandidates.length > 0 ? 'queued' : 'running',
+        status: 'running',
         stage: currentStage,
         elapsedMs: elapsedSince(startedMs),
         queries,
         braveResults: candidates,
         newCandidates: newCandidatesTotal,
-        queued,
+        queued: 0,
         details
       });
-
-      if (newCandidates.length > 0) {
-        // Record the handoff before sendBatch so a fast queue consumer cannot be overwritten by the scheduler.
-        queued += newCandidates.length;
-        await updateRunProgress(env, runId, {
-          status: 'queued',
-          stage: 'queueing',
-          elapsedMs: elapsedSince(startedMs),
-          queries,
-          braveResults: candidates,
-          newCandidates: newCandidatesTotal,
-          queued,
-          details
-        });
-
-        const queueStarted = Date.now();
-        await env.CANDIDATE_QUEUE.sendBatch(newCandidates.map((body) => ({ body })));
-        timings.queueing = (timings.queueing ?? 0) + (Date.now() - queueStarted);
-
-        const afterHandoff = await getRunProgress(env, runId);
-        if (afterHandoff?.status === 'queued' && afterHandoff.stage === 'queueing') {
-          await updateRunProgress(env, runId, { elapsedMs: elapsedSince(startedMs), details });
-        }
       }
     }
 
     const searchFinishedAt = new Date().toISOString();
-    if (queued > 0) {
-      const afterSearch = await getRunProgress(env, runId);
-      if (afterSearch?.status === 'queued' && afterSearch.stage === 'queueing') {
+    if (pendingCandidates.length > 0) {
+      queued = pendingCandidates.length;
+      currentStage = 'queueing';
+      await updateRunProgress(env, runId, {
+        status: 'queued', stage: currentStage, elapsedMs: elapsedSince(startedMs), queries,
+        braveResults: candidates, newCandidates: newCandidatesTotal, queued, details
+      });
+      const queueStarted = Date.now();
+      await env.CANDIDATE_QUEUE.sendBatch(pendingCandidates.map((body) => ({ body })));
+      timings.queueing = (timings.queueing ?? 0) + (Date.now() - queueStarted);
+      const afterHandoff = await getRunProgress(env, runId);
+      if (afterHandoff?.status === 'queued' && afterHandoff.stage === 'queueing') {
         currentStage = 'awaiting_classification';
         await updateRunProgress(env, runId, {
-          status: 'queued',
-          stage: currentStage,
-          elapsedMs: elapsedSince(startedMs),
-          queries,
-          braveResults: candidates,
-          newCandidates: newCandidatesTotal,
-          queued,
-          error: null,
-          details
+          status: 'queued', stage: currentStage, elapsedMs: elapsedSince(startedMs), queries,
+          braveResults: candidates, newCandidates: newCandidatesTotal, queued, error: searchErrors.length ? `${searchErrors.length} recherche(s) Brave en avertissement` : null, details
         });
       }
     } else {
+      const warning = searchErrors.length ? `${searchErrors.length} recherche(s) Brave en avertissement` : null;
       await updateRunProgress(env, runId, {
-        status: 'completed',
+        status: warning ? 'completed_with_warnings' : 'completed',
         stage: 'completed',
         finishedAt: searchFinishedAt,
         elapsedMs: elapsedSince(startedMs),
@@ -650,7 +716,7 @@ async function runScheduled(env: RadarEnv, scheduledTime: number, runId = crypto
         eligible: 0,
         highIntent: 0,
         socialCampaigns: 0,
-        error: null,
+        error: warning,
         details
       });
     }
@@ -680,7 +746,7 @@ export default {
     const url = new URL(request.url);
 
     if (request.method === 'GET' && url.pathname === '/health') {
-      return json({ ok: true, service: 'scoring-radar', version: '0.2.0' });
+      return json({ ok: true, service: 'scoring-radar', version: '0.3.0-growth-v2' });
     }
 
     if (request.method === 'GET' && (url.pathname === '/admin' || url.pathname === '/admin/')) {
@@ -691,6 +757,10 @@ export default {
 
     if (url.pathname.startsWith('/go/')) {
       return handleGo(request, env, url);
+    }
+
+    if (request.method === 'GET' && url.pathname === '/growth-widget.js') {
+      return growthWidgetJs(env, request);
     }
 
     if (url.pathname.startsWith('/api/')) {
@@ -884,7 +954,10 @@ export default {
       const classificationWarning = classificationFailures > 0
         ? `${classificationFailures} candidat(s) non classé(s) après timeout IA`
         : null;
-      const warningMessage = [classificationWarning, socialError].filter(Boolean).join(' • ') || null;
+      const searchWarning = Array.isArray(details.search_errors) && details.search_errors.length > 0
+        ? `${details.search_errors.length} recherche(s) Brave en avertissement`
+        : null;
+      const warningMessage = [searchWarning, classificationWarning, socialError].filter(Boolean).join(' • ') || null;
       const finishedAt = new Date().toISOString();
       await updateRunProgress(env, runId, {
         status: warningMessage ? 'completed_with_warnings' : 'completed',

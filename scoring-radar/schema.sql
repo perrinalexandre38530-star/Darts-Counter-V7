@@ -131,3 +131,15 @@ CREATE TABLE IF NOT EXISTS social_campaigns (
 
 CREATE INDEX IF NOT EXISTS idx_social_campaigns_status ON social_campaigns(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_social_campaigns_quality ON social_campaigns(quality_score DESC, created_at DESC);
+
+-- Acquisition workflow: human-controlled follow-up state for each detected need.
+CREATE TABLE IF NOT EXISTS outreach_actions (
+  sighting_id TEXT PRIMARY KEY,
+  status TEXT NOT NULL DEFAULT 'new',
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (sighting_id) REFERENCES sightings(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_outreach_actions_status ON outreach_actions(status, updated_at DESC);
