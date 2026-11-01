@@ -776,6 +776,7 @@ type NormalEvent = {
   sourceUrl?: string | null;
   watchUrl?: string | null;
   resultLabel?: string | null;
+  competitionMeta?: CompetitionMeta | null;
 };
 
 function decodeHtml(input: string) {
@@ -3421,6 +3422,7 @@ function newsToEvent(row: IntelligenceNews, sport: string): NormalEvent | null {
     sourceName: row.sourceName || "Web",
     sourceUrl: row.sourceUrl || null,
     resultLabel: row.kind === "result" ? row.resultLabel || "Résultat publié" : null,
+    competitionMeta: competitionMetaFor(sport, row.scopeLabel || row.title || null, row.sourceName || null, row.sourceUrl || null),
   };
 }
 

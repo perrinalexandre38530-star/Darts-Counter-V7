@@ -525,8 +525,14 @@ export async function importHistoryDump(
   // afin de ne réécrire que les matchs réellement différents. Le coût de lecture
   // est nettement inférieur au clear + réécriture de dizaines de gros payloads,
   // surtout lors d'une restauration vers un appareil déjà presque à jour.
-  const existingDump = await exportHistoryDump()
-    .catch(() => ({ _v: 1 as const, rows: {} as Record<string, SavedMatch> }));
+  // W7 PERF: pour le diff de restauration, nous n'avons besoin que des lignes
+  // V4 actuelles. exportHistoryDump() recalcule aussi révisions + manifeste/hash,
+  // travail utile pour un backup mais inutile ici. On prend donc le snapshot V4
+  // brut et on ne retombe sur l'export complet qu'en compatibilité legacy.
+  const existingDump = await exportHistoryV4Snapshot()
+    .then((current) => ({ _v: 1 as const, rows: (current?.rows || {}) as Record<string, SavedMatch> }))
+    .catch(() => exportHistoryDump()
+      .catch(() => ({ _v: 1 as const, rows: {} as Record<string, SavedMatch> })));
   const preparedRows: Record<string, SavedMatch> = {};
   const incomingRows = Object.values(dump.rows || {});
   const totalRows = incomingRows.length;

@@ -6,6 +6,7 @@ import { recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
 import { makeTrainingStats, trainingDartMatches, type TrainingDart } from "../../lib/trainingDarts";
 import { EXTENDED_RULE_BY_ID, type ExtendedTrainingRule } from "../../catalog/trainingLabExtendedRules";
 import { evaluateExtendedOutcome } from "../../profile/trainingExtendedOutcome";
+import { clearTrainingExerciseDraft, getEffectiveDraftSeconds, saveTrainingExerciseDraft } from "../../profile/trainingExerciseDraft";
 
 const clamp = (n:number,a:number,b:number)=>Math.max(a,Math.min(b,n));
 const visitScore=(v:TrainingDart[])=>v.reduce((s,d)=>s+d.score,0);
@@ -95,17 +96,26 @@ export default function TrainingCustomExercisePlay({config,onExit,exercise}:{con
   const resolvedRule=EXTENDED_RULE_BY_ID[exercise.ruleId||exercise.id];
   const rule: ExtendedTrainingRule = resolvedRule || { id: String(exercise?.id || "unknown"), title: String(exercise?.title || "Exercice indisponible"), subtitle: "Définition d’exercice introuvable.", family: exercise?.family || "regularity", difficulty: 1, kind: "technique", params: { focus: "Cet exercice doit être réparé avant de pouvoir être joué." } };
   const ruleMissing = !resolvedRule;
-  const [state,setState]=React.useState<State>(()=>initial(rule));
+  const participantId = String(config?.activeParticipant?.id || config?.selectedPlayerIds?.[0] || "").trim() || null;
+  const resumeExerciseDraft = config?.resumeExerciseDraft && String(config.resumeExerciseDraft.exerciseId || "") === String(exercise.id) ? config.resumeExerciseDraft : null;
+  const [state,setState]=React.useState<State>(()=>resumeExerciseDraft?.state ? { ...initial(rule), ...resumeExerciseDraft.state, aux: resumeExerciseDraft.state.aux || {} } : initial(rule));
   const stateRef=React.useRef(state); React.useEffect(()=>{stateRef.current=state},[state]);
-  const startedAt=React.useRef(Date.now());
+  const startedAt=React.useRef(Number(resumeExerciseDraft?.startedAt) || Date.now());
   const [result,setResult]=React.useState<any>(null);
-  const [secondsLeft,setSecondsLeft]=React.useState(rule.durationSec||0);
+  const resumedSeconds = getEffectiveDraftSeconds(resumeExerciseDraft);
+  const [secondsLeft,setSecondsLeft]=React.useState(resumedSeconds == null ? (rule.durationSec||0) : resumedSeconds);
   const finishedRef=React.useRef(false);
   const participantIds=config?.selectedPlayerIds;
+
+  const persistDraft=React.useCallback((nextState:State=stateRef.current,nextSeconds=secondsLeft)=>{
+    if(finishedRef.current || String(config?.sessionKind || "exercise") !== "exercise") return;
+    saveTrainingExerciseDraft({exerciseId:exercise.id,participantId,engine:"custom",savedAt:Date.now(),startedAt:startedAt.current,state:nextState,visitHistory:[],secondsLeft:rule.durationSec?nextSeconds:null});
+  },[config?.sessionKind,exercise.id,participantId,rule.durationSec,secondsLeft]);
 
   const finish=React.useCallback((success=true,finalState?:State)=>{
     if(finishedRef.current)return; finishedRef.current=true;
     const s=finalState||stateRef.current; const endedAt=Date.now();
+    clearTrainingExerciseDraft(exercise.id,participantId);
     const scorePoints = rule.kind==="bull_stack" ? Math.max(s.best,s.points) : rule.kind==="fish170" ? (s.best||99) : s.points;
     const outcome = evaluateExtendedOutcome(rule, s, success);
     const accuracyPct = s.darts ? (s.hits / s.darts) * 100 : 0;
@@ -113,7 +123,7 @@ export default function TrainingCustomExercisePlay({config,onExit,exercise}:{con
     const metrics={exerciseId:exercise.id,exerciseTitle:exercise.title,family:exercise.family,difficulty:exercise.difficulty,completionPct,accuracyPct,performanceScore:outcome.performanceScore,score:scorePoints,customRule:rule.kind,objectivePassed:outcome.passed,objectiveMetric:outcome.metricLabel,objectiveValue:outcome.metricValue,objectiveTarget:outcome.targetValue,objectiveDirection:outcome.direction};
     recordSoloTrainingResult({modeId:"training_lab",config:{...config,exerciseId:exercise.id,family:exercise.family,customRule:rule.kind},participantIds,startedAt:startedAt.current,endedAt,darts:s.darts,hits:s.hits,points:scorePoints,success:outcome.passed,metrics,visitHistory:[]});
     setResult({success:outcome.passed,metrics,outcome,stats:makeTrainingStats({darts:s.darts,hits:s.hits,points:Math.max(0,s.points),startedAt:startedAt.current,endedAt})});
-  },[config,exercise,participantIds,rule]);
+  },[config,exercise,participantId,participantIds,rule]);
 
   React.useEffect(()=>{ if(!rule.durationSec||result)return; const id=setInterval(()=>setSecondsLeft(x=>{if(x<=1){clearInterval(id); setTimeout(()=>finish(true),0); return 0;}return x-1}),1000); return()=>clearInterval(id);},[finish,result,rule.durationSec]);
 
@@ -176,21 +186,23 @@ export default function TrainingCustomExercisePlay({config,onExit,exercise}:{con
         case "atomic":{const temps=[...(s.aux.temps||Array(21).fill(0))];const fused=new Set<number>(s.aux.fused||[]);const heat:number[]=[];let seed=(s.round+1)*7919;while(heat.length<3){seed=(seed*1103515245+12345)&0x7fffffff;const sec=(seed%20)+1;if(!heat.includes(sec))heat.push(sec);}heat.forEach(sec=>{if(!fused.has(sec))temps[sec]+=1});for(const d of visit)if(d.v>=1&&d.v<=20&&!fused.has(d.v))temps[d.v]=Math.max(0,temps[d.v]-d.mult);for(let i=1;i<=20;i++)if(temps[i]>=5)fused.add(i);s.aux={temps,fused,heat};s.round++;s.points=s.round;if(fused.size>=3)done(false);break;}
         case "rainbow":{const route=rainbowRoutes[s.round%6];let n=0;route.forEach((t,i)=>{if(visit[i]&&trainingDartMatches(visit[i],t))n++;});let add=n===3?6:n===2?3:n===1?1:0;if(Math.floor(s.round/6)===2)add*=2;s.points+=add;s.aux.completed=s.aux.completed||new Set<number>();if(n===3)s.aux.completed.add(s.round%6);s.round++;if(s.round>=18){const c=s.aux.completed.size;s.points+=[0,2,4,8,16,32,64][c]||0;done(true);}break;}
       }
+      persistDraft(s as State,secondsLeft);
       return s as State;
     });
-  },[finish,result,rule]);
+  },[finish,persistDraft,result,rule,secondsLeft]);
 
-  const manualHit=(value:number)=>setState(prev=>{const s={...prev,darts:prev.darts+1,hits:prev.hits+(value>0?1:0),points:prev.points+value};return s});
+  const manualHit=(value:number)=>setState(prev=>{const s={...prev,darts:prev.darts+1,hits:prev.hits+(value>0?1:0),points:prev.points+value};persistDraft(s,secondsLeft);return s});
+  const handleExit=React.useCallback(()=>{ if(!result) persistDraft(stateRef.current,secondsLeft); onExit(); },[onExit,persistDraft,result,secondsLeft]);
   const s=state;
   const timeText=rule.durationSec?`${Math.floor(secondsLeft/60)}:${String(secondsLeft%60).padStart(2,"0")}`:null;
   const manual=rule.kind==="manual_hits";
   const technique=rule.kind==="technique";
-  if (ruleMissing) return <TrainingPlayLayout title="Centre d'entraînement" tickerId="training_center" onExit={onExit} participant={config?.activeParticipant}
+  if (ruleMissing) return <TrainingPlayLayout title="Centre d'entraînement" tickerId="training_center" onExit={handleExit} participant={config?.activeParticipant}
     eyebrow="EXERCICE INDISPONIBLE" target="—" targetHint="La définition de cet exercice est absente."
     progress={{value:0,max:1,label:"ERREUR"}} kpis={[]}
-  ><div style={{padding:20,textAlign:"center",display:"grid",gap:12}}><div style={{fontSize:18,fontWeight:950}}>Impossible de lancer cet exercice</div><div style={{fontSize:13,opacity:.7,lineHeight:1.5}}>Le catalogue contient une référence sans règle de jeu associée. Reviens au Centre et choisis un autre exercice.</div><button type="button" onClick={onExit} style={{height:46,borderRadius:12,border:"1px solid rgba(255,255,255,.14)",background:"rgba(255,255,255,.06)",color:"inherit",fontWeight:950,cursor:"pointer"}}>RETOUR AU CENTRE</button></div></TrainingPlayLayout>;
+  ><div style={{padding:20,textAlign:"center",display:"grid",gap:12}}><div style={{fontSize:18,fontWeight:950}}>Impossible de lancer cet exercice</div><div style={{fontSize:13,opacity:.7,lineHeight:1.5}}>Le catalogue contient une référence sans règle de jeu associée. Reviens au Centre et choisis un autre exercice.</div><button type="button" onClick={handleExit} style={{height:46,borderRadius:12,border:"1px solid rgba(255,255,255,.14)",background:"rgba(255,255,255,.06)",color:"inherit",fontWeight:950,cursor:"pointer"}}>RETOUR AU CENTRE</button></div></TrainingPlayLayout>;
   return <>
-    <TrainingPlayLayout title="Centre d'entraînement" tickerId="training_center" onExit={onExit} participant={config?.activeParticipant}
+    <TrainingPlayLayout title="Centre d'entraînement" tickerId="training_center" onExit={handleExit} participant={config?.activeParticipant}
       rules={<><p><b>{exercise.title}</b></p><p>{exercise.subtitle}</p><p>Objectif suivant : {rule.level1Label||"progresser"}.</p></>}
       eyebrow={exercise.title} target={targetText(rule,s)} targetHint={`${timeText?`${timeText} • `:""}${s.darts} fléchettes • ${s.points} pts`}
       progress={{value:rule.rounds?Math.min(rule.rounds,s.round):Math.min(100,s.points),max:rule.rounds||100,label:rule.family.toUpperCase()}}
@@ -200,6 +212,6 @@ export default function TrainingCustomExercisePlay({config,onExit,exercise}:{con
         {(rule.params?.manualScores||[0,1]).map((v:number,i:number)=><button key={v} onClick={()=>manualHit(v)} style={{minHeight:80,borderRadius:14,border:"1px solid rgba(255,255,255,.12)",background:v?"rgba(80,255,174,.08)":"rgba(255,80,80,.06)",color:"inherit",fontWeight:950,cursor:"pointer"}}>{rule.params?.manualLabels?.[i]|| (v?"TOUCHÉ":"RATÉ")}<div style={{marginTop:5,fontSize:12,opacity:.6}}>+{v}</div></button>)}
       </div> : <TrainingDartPad disabled={!!result} onVisit={applyVisit} requireFullVisit={false} notice={<div style={{fontSize:11,textAlign:"center",opacity:.72}}>Saisis tes fléchettes normalement. Le moteur applique automatiquement les règles de l'exercice.</div>} />}
     </TrainingPlayLayout>
-    <TrainingResultModal open={!!result} success={!!result?.success} title={result?.success?"Objectif atteint":"Objectif à retenter"} stats={result?.stats||makeTrainingStats({darts:0,hits:0,points:0,startedAt:Date.now()})} metrics={result?[{label:"EXERCICE",value:exercise.title},{label:result.outcome?.metricLabel||"SCORE",value:result.outcome?.metricValue??s.points},{label:"PERFORMANCE",value:`${Math.round(result.metrics?.performanceScore||0)}/100`},{label:"OBJECTIF",value:rule.level1Label||"—"}]:[]} onClose={onExit}/>
+    <TrainingResultModal open={!!result} success={!!result?.success} title={result?.success?"Objectif atteint":"Objectif à retenter"} stats={result?.stats||makeTrainingStats({darts:0,hits:0,points:0,startedAt:Date.now()})} metrics={result?[{label:"EXERCICE",value:exercise.title},{label:result.outcome?.metricLabel||"SCORE",value:result.outcome?.metricValue??s.points},{label:"PERFORMANCE",value:`${Math.round(result.metrics?.performanceScore||0)}/100`},{label:"OBJECTIF",value:rule.level1Label||"—"}]:[]} onClose={handleExit}/>
   </>;
 }

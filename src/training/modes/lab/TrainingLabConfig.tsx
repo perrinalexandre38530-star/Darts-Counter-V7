@@ -36,6 +36,7 @@ import { buildTrainingCoachDashboard } from "../../profile/trainingCoachDashboar
 import { buildTrainingPlayerJourney } from "../../profile/trainingPlayerJourney";
 import { buildTrainingQuickStart } from "../../profile/trainingQuickStart";
 import { buildTrainingDailyChallenge } from "../../profile/trainingDailyChallenge";
+import { clearTrainingExerciseDraft, getEffectiveDraftSeconds, hasMeaningfulTrainingExerciseDraft, loadTrainingExerciseDraft } from "../../profile/trainingExerciseDraft";
 
 const familyOrder: TrainingExerciseFamily[] = ["scoring", "doubles", "checkout", "precision", "bull", "regularity"];
 type HubTab = "program" | "exercises" | "diagnosis" | "progress";
@@ -332,6 +333,24 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
       setExerciseDetailId(target.id);
     }
   }, [initialDetailExerciseId]);
+  const detailExerciseDraft = React.useMemo(() => {
+    if (!detailExercise) return null;
+    return loadTrainingExerciseDraft(detailExercise.id, accountParticipantId || null);
+  }, [detailExercise, accountParticipantId, revision]);
+  const detailExerciseResumeAvailable = hasMeaningfulTrainingExerciseDraft(detailExerciseDraft);
+  const detailExerciseResumeLabel = React.useMemo(() => {
+    if (!detailExerciseDraft) return "";
+    const state: any = detailExerciseDraft.state || {};
+    const bits: string[] = [];
+    if (Number(state.darts || 0) > 0) bits.push(`${Number(state.darts)} fléchettes`);
+    if (Number(state.points || 0) !== 0) bits.push(`${Number(state.points)} pts`);
+    if (Number(state.round || 0) > 0) bits.push(`tour ${Number(state.round) + 1}`);
+    if (Number(state.progress || state.index || 0) > 0) bits.push(`progression ${Number(state.progress || state.index)}`);
+    const seconds = getEffectiveDraftSeconds(detailExerciseDraft);
+    if (seconds != null) bits.push(`${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")} restantes`);
+    return bits.length ? `Progression locale : ${bits.join(" • ")}` : "Une progression locale est disponible pour cet exercice.";
+  }, [detailExerciseDraft]);
+
   const detailSessionSummary = React.useMemo(() => {
     if (!detailExercise) return null;
     const rows = sessions.filter((row) => String(row?.metrics?.exerciseId || row?.config?.exerciseId || "") === detailExercise.id);
@@ -1021,7 +1040,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
           </div>}
 
           {tab === "exercises" && <div>
-            {detailExercise ? <TrainingExerciseDetail exercise={detailExercise} summary={detailSessionSummary} isFavorite={favoriteExerciseIds.has(detailExercise.id)} onToggleFavorite={() => toggleExerciseFavorite(detailExercise.id)} onBack={() => setExerciseDetailId(null)} onStart={() => onStart({ exerciseId: detailExercise.id, family: detailExercise.family, sessionKind: "exercise", returnExerciseDetailId: detailExercise.id, ...accountParticipantConfig })} /> : <>
+            {detailExercise ? <TrainingExerciseDetail exercise={detailExercise} summary={detailSessionSummary} resumeAvailable={detailExerciseResumeAvailable} resumeLabel={detailExerciseResumeLabel} isFavorite={favoriteExerciseIds.has(detailExercise.id)} onToggleFavorite={() => toggleExerciseFavorite(detailExercise.id)} onBack={() => setExerciseDetailId(null)} onStart={() => onStart({ exerciseId: detailExercise.id, family: detailExercise.family, sessionKind: "exercise", returnExerciseDetailId: detailExercise.id, ...accountParticipantConfig })} onResume={() => { const draft = loadTrainingExerciseDraft(detailExercise.id, accountParticipantId || null); if (!draft) return; onStart({ exerciseId: detailExercise.id, family: detailExercise.family, sessionKind: "exercise", returnExerciseDetailId: detailExercise.id, resumeExerciseDraft: draft, ...accountParticipantConfig }); }} onRestart={() => { clearTrainingExerciseDraft(detailExercise.id, accountParticipantId || null); onStart({ exerciseId: detailExercise.id, family: detailExercise.family, sessionKind: "exercise", returnExerciseDetailId: detailExercise.id, ...accountParticipantConfig }); }} /> : <>
             <CompactIconNav items={[
               { id: "path", label: "PARCOURS", icon: "progress", status: `NIV. ${skillPath.currentLevel}/5` },
               { id: "catalog", label: "CATALOGUE", icon: "exercises", status: `${unifiedCatalogItems.length} EX.` },

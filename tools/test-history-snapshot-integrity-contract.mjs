@@ -14,7 +14,8 @@ const historyPage = read("src/pages/HistoryPage.tsx");
 const statsHub = read("src/pages/StatsHub.tsx");
 
 assert.match(historyCloud, /mergeHistorySnapshotRowMonotonic/);
-assert.match(historyCloud, /const existingDump = await exportHistoryDump/);
+assert.match(historyCloud, /const existingDump = await exportHistoryV4Snapshot\(\)/);
+assert.match(historyCloud, /catch\(\(\) => exportHistoryDump\(\)/);
 assert.match(historyCloud, /preparedRows\[id\] = \(replace \? incoming : mergeHistorySnapshotRowMonotonic\(existing, incoming\)\)/);
 assert.match(historyCloud, /const merged = \(replace \? r : mergeHistorySnapshotRowMonotonic\(existing, r\)\)/);
 assert.match(historyCloud, /enrichHistoryDumpFromLocalRevisions/);

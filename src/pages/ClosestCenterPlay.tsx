@@ -1553,6 +1553,18 @@ export default function ClosestCenterPlay(props:any) {
     players.forEach((p:any) => { if (p.teamId) out[p.teamId] = (out[p.teamId] || 0) + (allScores[p.id] || 0); });
     return out;
   }, [players, allScores]);
+  const roundOutcome = React.useMemo(() => {
+    if (phase !== "roundEnd" || pointsMode !== "petanque") return null;
+    const beforeA=Number(teamTotals.A||0), beforeB=Number(teamTotals.B||0);
+    if (currentRoundNull) return { nullRound:true, unresolved:false, team:null as "A"|"B"|null, points:0, beforeA, beforeB, afterA:beforeA, afterB:beforeB };
+    if (unresolvedPetanquePoint || unresolvedPetanqueScore) return { nullRound:false, unresolved:true, team:null as "A"|"B"|null, points:0, beforeA, beforeB, afterA:beforeA, afterB:beforeB };
+    const scoring = ranked.filter((r:any)=>Number(r.points||0)>0);
+    const first = scoring[0];
+    const owner = first ? players.find((p:any)=>String(p.id)===String(first.playerId)) : null;
+    const team = (owner?.teamId === "A" || owner?.teamId === "B") ? owner.teamId as "A"|"B" : null;
+    const points = scoring.reduce((sum:number,r:any)=>sum+Number(r.points||0),0);
+    return { nullRound:false, unresolved:false, team, points, beforeA, beforeB, afterA:Number(projectedTeamTotals.A||beforeA), afterB:Number(projectedTeamTotals.B||beforeB) };
+  }, [phase, pointsMode, teamTotals, currentRoundNull, unresolvedPetanquePoint, unresolvedPetanqueScore, ranked, players, projectedTeamTotals]);
   const petanqueStats = React.useMemo(() => buildClosestCenterStats(players, impacts, allScores, pointsMode==="petanque" ? Number(round||1) : Number(cfg.rounds || round || 1), dartsPerPlayer), [players, impacts, allScores, cfg.rounds, round, pointsMode, dartsPerPlayer]);
   const finalPlayerRanking = React.useMemo(() => [...(petanqueStats.players || [])].sort((a:any,b:any)=>b.points-a.points||((a.bestMm??Infinity)-(b.bestMm??Infinity))), [petanqueStats]);
   const winner = finalPlayerRanking[0] || null;
@@ -1651,7 +1663,16 @@ export default function ClosestCenterPlay(props:any) {
   }, [quickPanel]);
 
   const jumpTo = React.useCallback((id:string) => {
-    try { document.getElementById(id)?.scrollIntoView({ behavior:"smooth", block:"nearest", inline:"nearest" }); } catch {}
+    try {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const viewportH = window.innerHeight || document.documentElement.clientHeight || 0;
+      const comfortablyVisible = rect.top >= 72 && rect.bottom <= Math.max(96, viewportH - 72);
+      if (comfortablyVisible) return;
+      const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+      el.scrollIntoView({ behavior:reducedMotion?"auto":"smooth", block:"nearest", inline:"nearest" });
+    } catch {}
   }, []);
 
   // FLOW ASSIST: when the engine advances to a new decision/validation step,
@@ -1758,7 +1779,7 @@ export default function ClosestCenterPlay(props:any) {
       })}
     </section>
 
-    {!landscape ? <section id="cc-action" style={{margin:"6px 10px 0",padding:"7px 8px",borderRadius:13,border:`1px solid ${playAction.tone}55`,background:`linear-gradient(135deg,${playAction.tone}14,rgba(7,15,22,.96))`,display:"grid",gridTemplateColumns:"30px minmax(0,1fr) auto",gap:7,alignItems:"center",boxShadow:"0 10px 24px rgba(0,0,0,.22)"}}>
+    {!landscape ? <section id="cc-action" style={{scrollMarginTop:76,margin:"6px 10px 0",padding:"7px 8px",borderRadius:13,border:`1px solid ${playAction.tone}55`,background:`linear-gradient(135deg,${playAction.tone}14,rgba(7,15,22,.96))`,display:"grid",gridTemplateColumns:"30px minmax(0,1fr) auto",gap:7,alignItems:"center",boxShadow:"0 10px 24px rgba(0,0,0,.22)"}}>
       <div style={{width:30,height:30,borderRadius:10,display:"grid",placeItems:"center",color:playAction.tone,background:`${playAction.tone}12`,border:`1px solid ${playAction.tone}55`}}><PetanqueIcon name={phase==="finished"?"stats":phase==="roundEnd"?"check":phase==="prepare"?"action":!isManual?"target":"action"} size={16}/></div>
       <div style={{minWidth:0}}><div style={{fontSize:6,color:playAction.tone,fontWeight:1000,letterSpacing:1}}>MAINTENANT</div><b style={{display:"block",fontSize:10,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{playAction.title}</b><div style={{fontSize:7,color:"#8799a6",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginTop:1}}>{playAction.hint}</div></div>
       {current && phase!=="roundEnd" && phase!=="finished" ? <div style={{display:"flex",alignItems:"center",gap:5,padding:"3px 5px",borderRadius:999,border:`1px solid ${playerColor(players,current.id)}55`,background:`${playerColor(players,current.id)}10`,maxWidth:106}}><div style={{width:20,height:20,borderRadius:"50%",overflow:"hidden",border:`1px solid ${playerColor(players,current.id)}`,display:"grid",placeItems:"center",fontSize:8,fontWeight:1000}}>{current.avatar?<img src={current.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:String(current.name||"?").slice(0,1).toUpperCase()}</div><span style={{fontSize:7,fontWeight:1000,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{current.name}</span></div> : null}
@@ -1792,7 +1813,7 @@ export default function ClosestCenterPlay(props:any) {
       </div> : null}
 
       <div style={{minHeight:0,overflow:landscape?"auto":"visible",display:"grid",gap:8,alignContent:"start",paddingRight:landscape?2:0}}>
-        {landscape ? <section id="cc-action" style={{...card,padding:8,borderColor:`${playAction.tone}55`,background:`linear-gradient(135deg,${playAction.tone}14,rgba(255,255,255,.02))`}}>
+        {landscape ? <section id="cc-action" style={{...card,scrollMarginTop:76,padding:8,borderColor:`${playAction.tone}55`,background:`linear-gradient(135deg,${playAction.tone}14,rgba(255,255,255,.02))`}}>
           <div style={{display:"grid",gridTemplateColumns:(!isManual && current && phase!=="roundEnd" && phase!=="finished")?"34px minmax(0,1fr) auto":"34px minmax(0,1fr)",gap:8,alignItems:"center"}}>
             <div style={{width:34,height:34,borderRadius:11,display:"grid",placeItems:"center",color:playAction.tone,background:`${playAction.tone}12`,border:`1px solid ${playAction.tone}55`}}><PetanqueIcon name={phase==="finished"?"stats":phase==="roundEnd"?"check":phase==="prepare"?"action":!isManual?"target":"action"} size={18}/></div>
             <div style={{minWidth:0}}><div style={{fontSize:7,color:playAction.tone,fontWeight:1000,letterSpacing:1.15}}>MAINTENANT</div><b style={{display:"block",fontSize:landscape?11:12,marginTop:1,whiteSpace:"normal"}}>{playAction.title}</b><div style={{fontSize:8,color:"#91a3b0",lineHeight:1.3,marginTop:2}}>{playAction.hint}</div>{phase!=="finished" && matchPointTeams.length ? <div style={{fontSize:7,color:"#ffd85a",fontWeight:1000,marginTop:3}}>● BALLE DE MATCH · ÉQUIPE {matchPointTeams.join(" / ")}</div> : null}</div>
@@ -1806,7 +1827,7 @@ export default function ClosestCenterPlay(props:any) {
         {resumeNotice ? <div style={{display:"flex",alignItems:"center",gap:7,padding:"6px 8px",borderRadius:11,border:"1px solid rgba(68,231,255,.26)",background:"linear-gradient(90deg,rgba(68,231,255,.08),rgba(255,255,255,.025))",color:"#dffaff",fontSize:8,fontWeight:1000,letterSpacing:.45,boxShadow:"0 8px 20px rgba(0,0,0,.16)"}}><PetanqueIcon name="history" size={13}/><span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{resumeNotice}</span></div> : null}
         {statusIsCritical ? <div role="alert" style={{padding:"7px 9px",borderRadius:11,border:"1px solid rgba(255,189,117,.30)",background:"rgba(255,159,120,.07)",color:"#ffd0b8",fontSize:9,fontWeight:900,lineHeight:1.35}}>{status}</div> : null}
 
-        {!isManual && pointsMode==="petanque" && (phase==="play" || phase==="roundEnd") && cameraPointNeedsDecision ? <section id="cc-decisions" style={{...card,padding:9,borderColor:"rgba(255,189,69,.48)",background:"rgba(255,189,69,.065)"}}>
+        {!isManual && pointsMode==="petanque" && (phase==="play" || phase==="roundEnd") && cameraPointNeedsDecision ? <section id="cc-decisions" style={{...card,scrollMarginTop:76,padding:9,borderColor:"rgba(255,189,69,.48)",background:"rgba(255,189,69,.065)"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}><div><div style={{fontSize:8,color:"#ffd58c",fontWeight:1000,letterSpacing:1}}>⚖️ DÉCISION</div><b style={{fontSize:12}}>Qui tient le point ?</b></div><button type="button" onClick={()=>setShowDecisionDetails(v=>!v)} style={{...miniBtn,minHeight:28,padding:"4px 7px",borderColor:"rgba(255,255,255,.12)",color:"#b9c6cf"}}>{showDecisionDetails?"MASQUER":"DÉTAILS"}</button></div>
           {showDecisionDetails ? <div style={{fontSize:9,color:"#9fb0bc",lineHeight:1.4,marginTop:6}}>Écart mesuré <b style={{color:"#fff"}}>{Number(cameraPointDecision?.gapMm||0).toFixed(2)} mm</b> · marge instrumentale <b style={{color:"#fff"}}>{Number(cameraPointDecision?.marginMm||0).toFixed(2)} mm</b>. La caméra ne peut pas départager honnêtement : contrôle visuellement la cible.</div> : null}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginTop:8}}>
@@ -1817,7 +1838,7 @@ export default function ClosestCenterPlay(props:any) {
         </section> : null}
 
 
-        {!isManual && pointsMode==="petanque" && phase==="roundEnd" && unresolvedPetanqueScore && cameraScoreDecision ? <section id="cc-decisions" style={{...card,padding:9,borderColor:"rgba(255,189,69,.48)",background:"rgba(255,189,69,.065)"}}>
+        {!isManual && pointsMode==="petanque" && phase==="roundEnd" && unresolvedPetanqueScore && cameraScoreDecision ? <section id="cc-decisions" style={{...card,scrollMarginTop:76,padding:9,borderColor:"rgba(255,189,69,.48)",background:"rgba(255,189,69,.065)"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}><div><div style={{fontSize:8,color:"#ffd58c",fontWeight:1000,letterSpacing:1}}>⚖️ DÉCISION</div><b style={{fontSize:12}}>Combien de points pour l’équipe {resolvedPointTeam} ?</b></div><button type="button" onClick={()=>setShowDecisionDetails(v=>!v)} style={{...miniBtn,minHeight:28,padding:"4px 7px",borderColor:"rgba(255,255,255,.12)",color:"#b9c6cf"}}>{showDecisionDetails?"MASQUER":"DÉTAILS"}</button></div>
           {showDecisionDetails ? <div style={{fontSize:9,color:"#9fb0bc",lineHeight:1.4,marginTop:6}}>La caméra garantit <b style={{color:"#fff"}}>{Number(cameraScoreDecision.certainPoints||1)}</b> point(s) et autorise au maximum <b style={{color:"#fff"}}>{Number(cameraScoreDecision.maxPoints||1)}</b>. Contrôle seulement la frontière avec la meilleure fléchette adverse.</div> : null}
           <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.max(1,Number(cameraScoreDecision.maxPoints||1)-Number(cameraScoreDecision.certainPoints||1)+1)},minmax(0,1fr))`,gap:7,marginTop:8}}>
@@ -1983,7 +2004,7 @@ export default function ClosestCenterPlay(props:any) {
           {pointsMode==="petanque" ? <button style={{...miniBtn,width:"100%",marginTop:6,minHeight:31,borderColor:"rgba(255,189,117,.28)",color:"#ffd2a5"}} onClick={recordCameraMiss}>MISS / HORS CIBLE / TOMBÉE</button> : null}
         </section> : null}
 
-        {!isManual && phase === "review" ? <section id="cc-review" style={{...card,padding:landscape?10:9}}>
+        {!isManual && phase === "review" ? <section id="cc-review" style={{...card,scrollMarginTop:76,padding:landscape?10:9}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:7}}>
             <div><div style={{fontSize:8,color:"#7f919e",fontWeight:1000,letterSpacing:1}}>CONTRÔLE IA</div><b style={{fontSize:13}}>{current?.name}</b></div>
             <button type="button" onClick={()=>setShowReviewDetails(v=>!v)} style={{...miniBtn,minHeight:28,padding:"4px 8px",fontSize:8}}>{showReviewDetails?"MASQUER":"DÉTAILS"}</button>
@@ -2046,8 +2067,13 @@ export default function ClosestCenterPlay(props:any) {
           </section> : null}
         </> : null}
 
-        {phase === "roundEnd" ? <section id="cc-result" style={card}>
+        {phase === "roundEnd" ? <section id="cc-result" style={{...card,scrollMarginTop:76}}>
           <h3 style={h3}>{pointsMode==="petanque" ? "POINTS DE LA MÈNE" : "CLASSEMENT DE LA MANCHE"}</h3>
+          {pointsMode==="petanque" && roundOutcome ? <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,alignItems:"stretch",padding:8,marginBottom:7,borderRadius:13,border:`1px solid ${roundOutcome.unresolved?"rgba(255,189,69,.42)":roundOutcome.nullRound?"rgba(255,189,69,.30)":roundOutcome.team==="A"?"rgba(255,95,112,.30)":"rgba(84,181,255,.30)"}`,background:roundOutcome.unresolved?"rgba(255,189,69,.055)":roundOutcome.nullRound?"rgba(255,189,69,.045)":"rgba(255,255,255,.025)"}}>
+            <div style={{padding:"7px 6px",borderRadius:10,background:"rgba(255,95,112,.055)",textAlign:"center"}}><span style={{display:"block",fontSize:7,fontWeight:1000,color:"#ff9aa5"}}>ÉQUIPE A</span><b style={{display:"block",fontSize:20,lineHeight:1.05,marginTop:3}}>{roundOutcome.afterA}</b><span style={{fontSize:7,color:"#7f919e"}}>AVANT {roundOutcome.beforeA}</span></div>
+            <div style={{minWidth:92,display:"grid",placeItems:"center",textAlign:"center",padding:"5px 4px"}}>{roundOutcome.unresolved?<><PetanqueIcon name="target" size={18}/><b style={{fontSize:9,color:"#ffd58c",marginTop:3}}>DÉCISION</b><span style={{fontSize:7,color:"#9aabb7"}}>requise</span></>:roundOutcome.nullRound?<><PetanqueIcon name="check" size={18}/><b style={{fontSize:10,color:"#ffd58c",marginTop:3}}>0 PT</b><span style={{fontSize:7,color:"#9aabb7"}}>MÈNE NULLE</span></>:<><b style={{fontSize:20,lineHeight:1,color:roundOutcome.team==="A"?"#ff9aa5":"#8bcfff"}}>+{roundOutcome.points}</b><span style={{fontSize:8,fontWeight:1000,color:roundOutcome.team==="A"?"#ff9aa5":"#8bcfff",marginTop:3}}>ÉQUIPE {roundOutcome.team||"—"}</span></>}</div>
+            <div style={{padding:"7px 6px",borderRadius:10,background:"rgba(84,181,255,.055)",textAlign:"center"}}><span style={{display:"block",fontSize:7,fontWeight:1000,color:"#8bcfff"}}>ÉQUIPE B</span><b style={{display:"block",fontSize:20,lineHeight:1.05,marginTop:3}}>{roundOutcome.afterB}</b><span style={{fontSize:7,color:"#7f919e"}}>AVANT {roundOutcome.beforeB}</span></div>
+          </div> : null}
           {currentRoundNull ? <div style={{padding:"7px 9px",borderRadius:10,border:"1px solid #ffbd4555",background:"#ffbd4510",color:"#ffe0a6",fontSize:10,marginBottom:6,display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}><b>⚖️ MÈNE NULLE · 0 PT</b><button onClick={cancelNullRound} style={{...miniBtn,minHeight:27,padding:"3px 7px"}}>↩ ANNULER</button></div> : !isManual && unresolvedPetanquePoint ? <div style={{padding:"7px 9px",borderRadius:10,border:"1px solid #ffbd4555",background:"#ffbd4510",color:"#ffd796",fontSize:10,marginBottom:6,fontWeight:900}}>⚖️ POINT À DÉPARTAGER AVANT VALIDATION</div> : !isManual && hasPrecisionTieRisk ? <div style={{padding:"7px 9px",borderRadius:10,border:"1px solid #ffbd4555",background:"#ffbd4510",color:"#ffd796",fontSize:10,marginBottom:6,fontWeight:900}}>⚠️ DÉPARTAGE SERRÉ · CONTRÔLE VISUEL CONSEILLÉ</div> : null}
           <button onClick={()=>setShowRoundDetails(v=>!v)} style={{...miniBtn,width:"100%",minHeight:32,marginBottom:showRoundDetails?6:0,borderColor:showRoundDetails?`${ACCENT}66`:"rgba(255,255,255,.12)",color:showRoundDetails?"#fff":"#aebdca",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><PetanqueIcon name="stats" size={14}/><span>{showRoundDetails?"MASQUER LES DÉTAILS":"VOIR LE DÉTAIL DE LA MÈNE"}</span></button>
           {showRoundDetails ? ranked.map((r:any,i:number) => {

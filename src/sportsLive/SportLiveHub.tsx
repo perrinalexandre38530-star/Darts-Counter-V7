@@ -1257,6 +1257,94 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport }: { r
   );
 }
 
+function eventMonthKey(event: SportLiveEvent) {
+  const raw = event.startsAt || event.dateLabel || null;
+  if (!raw) return "NON DATÉ";
+  const date = new Date(raw);
+  if (!Number.isFinite(date.getTime())) return "NON DATÉ";
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function eventMonthLabel(key: string, lang: string) {
+  if (key === "NON DATÉ") return key;
+  const [year, month] = key.split("-").map(Number);
+  const date = new Date(Date.UTC(year, Math.max(0, (month || 1) - 1), 1));
+  try { return new Intl.DateTimeFormat(lang || "fr", { month: "long", year: "numeric" }).format(date).toUpperCase(); } catch { return key; }
+}
+
+function CalendarBrowser({ events, lang }: { events: SportLiveEvent[]; lang: string }) {
+  const normalized = React.useMemo(() => events.map((event) => {
+    const meta = event.competitionMeta || null;
+    const continent = String(meta?.continent || meta?.regionLabel || "AUTRES");
+    const countryCode = meta?.countryCode || null;
+    const countryLabel = String(meta?.countryName || meta?.regionLabel || (continent === "Monde" ? "MONDE" : "AUTRES"));
+    const countryKey = `${countryCode || "xx"}:${normalizedText(countryLabel) || "autres"}`;
+    return { event, continent, countryCode, countryLabel, countryKey, month: eventMonthKey(event) };
+  }), [events]);
+
+  const continents = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    normalized.forEach((row) => counts.set(row.continent, (counts.get(row.continent) || 0) + 1));
+    return Array.from(counts.entries()).sort((a,b) => b[1]-a[1] || a[0].localeCompare(b[0]));
+  }, [normalized]);
+  const [continent, setContinent] = React.useState("__all__");
+  const [country, setCountry] = React.useState("__all__");
+  const [month, setMonth] = React.useState("__all__");
+
+  const continentRows = React.useMemo(() => normalized.filter((row) => continent === "__all__" || row.continent === continent), [normalized, continent]);
+  const countries = React.useMemo(() => {
+    const map = new Map<string, { key:string; label:string; code:string|null; count:number }>();
+    continentRows.forEach((row) => {
+      const current = map.get(row.countryKey) || { key:row.countryKey, label:row.countryLabel, code:row.countryCode, count:0 };
+      current.count += 1;
+      map.set(row.countryKey, current);
+    });
+    return Array.from(map.values()).sort((a,b) => b.count-a.count || a.label.localeCompare(b.label));
+  }, [continentRows]);
+  const countryRows = React.useMemo(() => continentRows.filter((row) => country === "__all__" || row.countryKey === country), [continentRows, country]);
+  const months = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    countryRows.forEach((row) => counts.set(row.month, (counts.get(row.month) || 0) + 1));
+    return Array.from(counts.entries()).sort(([a],[b]) => {
+      if (a === "NON DATÉ") return 1;
+      if (b === "NON DATÉ") return -1;
+      return a.localeCompare(b);
+    });
+  }, [countryRows]);
+  const visible = React.useMemo(() => countryRows.filter((row) => month === "__all__" || row.month === month).map((row) => row.event), [countryRows, month]);
+
+  React.useEffect(() => { setCountry("__all__"); setMonth("__all__"); }, [continent]);
+  React.useEffect(() => { setMonth("__all__"); }, [country]);
+  React.useEffect(() => { if (country !== "__all__" && !countries.some((item) => item.key === country)) setCountry("__all__"); }, [countries, country]);
+  React.useEffect(() => { if (month !== "__all__" && !months.some(([key]) => key === month)) setMonth("__all__"); }, [months, month]);
+
+  return (
+    <div className="msc-calendar-browser">
+      <aside className="msc-calendar-nav">
+        <div className="msc-results-nav-title">CONTINENT</div>
+        <div className="msc-results-nav-list">
+          <button className={`msc-results-nav-btn${continent === "__all__" ? " is-active" : ""}`} type="button" onClick={() => setContinent("__all__")}><span className="msc-results-nav-icon">🧭</span><span className="msc-results-nav-label">TOUS</span><span className="msc-results-nav-count">{events.length}</span></button>
+          {continents.map(([name,count]) => <button key={name} className={`msc-results-nav-btn${continent === name ? " is-active" : ""}`} type="button" onClick={() => setContinent(name)}><span className="msc-results-nav-icon">{continentIcon(name)}</span><span className="msc-results-nav-label">{name}</span><span className="msc-results-nav-count">{count}</span></button>)}
+        </div>
+        <div className="msc-results-nav-title" style={{marginTop:8}}>PAYS</div>
+        <div className="msc-results-nav-list">
+          <button className={`msc-results-nav-btn${country === "__all__" ? " is-active" : ""}`} type="button" onClick={() => setCountry("__all__")}><span className="msc-results-nav-icon">🏳️</span><span className="msc-results-nav-label">TOUS</span><span className="msc-results-nav-count">{continentRows.length}</span></button>
+          {countries.map((item) => <button key={item.key} className={`msc-results-nav-btn${country === item.key ? " is-active" : ""}`} type="button" onClick={() => setCountry(item.key)}><span className="msc-results-nav-icon">{countryVisual(item.code,item.label)}</span><span className="msc-results-nav-label">{item.label.toUpperCase()}</span><span className="msc-results-nav-count">{item.count}</span></button>)}
+        </div>
+        <div className="msc-results-nav-title" style={{marginTop:8}}>PÉRIODE</div>
+        <div className="msc-results-nav-list">
+          <button className={`msc-results-nav-btn${month === "__all__" ? " is-active" : ""}`} type="button" onClick={() => setMonth("__all__")}><span className="msc-results-nav-icon">🗓️</span><span className="msc-results-nav-label">TOUTES</span><span className="msc-results-nav-count">{countryRows.length}</span></button>
+          {months.map(([key,count]) => <button key={key} className={`msc-results-nav-btn${month === key ? " is-active" : ""}`} type="button" onClick={() => setMonth(key)}><span className="msc-results-nav-icon">📅</span><span className="msc-results-nav-label">{eventMonthLabel(key,lang)}</span><span className="msc-results-nav-count">{count}</span></button>)}
+        </div>
+      </aside>
+      <div className="msc-calendar-content">
+        <div className="msc-results-context"><span>{continent === "__all__" ? "Tous continents" : continent}</span><span>›</span><span>{country === "__all__" ? "Tous pays" : (countries.find((item)=>item.key===country)?.label || country)}</span><span>›</span><strong>{month === "__all__" ? "Toutes périodes" : eventMonthLabel(month,lang)}</strong><em>{visible.length} événement{visible.length>1?"s":""}</em></div>
+        {visible.map((event) => <OfficialEventCard key={event.id} event={event} />)}
+      </div>
+    </div>
+  );
+}
+
 function OfficialEventCard({ event }: { event: SportLiveEvent }) {
   const href = event.watchUrl || event.sourceUrl || null;
   const statusLabel = event.status === "live" ? "LIVE" : event.status === "result" ? "RÉSULTAT" : event.status === "upcoming" ? "À VENIR" : "INFO";
@@ -1758,7 +1846,7 @@ export default function SportLiveHub() {
         <section className="msc-live-section">
           <SectionHeader title="À VENIR" count={(fixtureRows.length + upcomingEvents.length) ? `${fixtureRows.length + upcomingEvents.length} événement${(fixtureRows.length + upcomingEvents.length) > 1 ? "s" : ""}` : ""} />
           {fixtureRows.map((item) => <FixtureMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />)}
-          {upcomingEvents.length ? <div style={{ marginTop: fixtureRows.length ? 12 : 0 }}><div className="msc-round-head"><span>CALENDRIER · TOURNOIS / ÉVÉNEMENTS</span><span>{upcomingEvents.length}</span></div>{upcomingEvents.map((event) => <OfficialEventCard key={event.id} event={event} />)}</div> : null}
+          {upcomingEvents.length ? <div style={{ marginTop: fixtureRows.length ? 12 : 0 }}><div className="msc-round-head"><span>CALENDRIER · TOURNOIS / ÉVÉNEMENTS</span><span>{upcomingEvents.length}</span></div><CalendarBrowser events={upcomingEvents} lang={lang} /></div> : null}
           {!fixtureRows.length && !upcomingEvents.length ? <EmptySection title="Calendriers officiels" copy="Aucune donnée automatique n’est chargée. Consulte les calendriers officiels disponibles." sources={recommended.filter((source) => source.calendarUrl)} /> : null}
         </section>
       ) : null}
@@ -1800,7 +1888,7 @@ export default function SportLiveHub() {
 
       {floatingPanel === "news" ? <FloatingDrawer title={`ACTUALITÉS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{newsRows.length ? <div className="msc-news-grid">{newsRows.map((item) => <NewsCard key={item.id} item={item} lang={lang} />)}</div> : <EmptySection title="Aucune actualité détectée" copy="Réessaie l’actualisation dans quelques instants." sources={recommended.slice(0, 2)} />}</FloatingDrawer> : null}
       {floatingPanel === "results" ? <FloatingDrawer title={`RÉSULTATS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{resultRows.length ? <><GroupedResults rows={resultRows} source={sourceForCards} lang={lang} newsRows={newsRows} allSources={allSportSources} sport={liveSport} />{resultEvents.length ? <div style={{ marginTop: 12 }}><div className="msc-round-head"><span>AUTRES RÉSULTATS / PODIUMS</span><span>{resultEvents.length}</span></div>{resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />)}</div> : null}</> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Aucun résultat détecté" copy="Les sources officielles restent disponibles." sources={recommended.filter((source) => source.resultsUrl).slice(0, 2)} />}</FloatingDrawer> : null}
-      {floatingPanel === "fixtures" ? <FloatingDrawer title={`PROGRAMME · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{fixtureRows.map((item) => <FixtureMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />)}{upcomingEvents.length ? <div style={{ marginTop: fixtureRows.length ? 12 : 0 }}><div className="msc-round-head"><span>CALENDRIER · TOURNOIS / ÉVÉNEMENTS</span><span>{upcomingEvents.length}</span></div>{upcomingEvents.map((event) => <OfficialEventCard key={event.id} event={event} />)}</div> : null}{!fixtureRows.length && !upcomingEvents.length ? <EmptySection title="Aucun événement à venir" copy="Consulte les calendriers officiels." sources={recommended.filter((source) => source.calendarUrl).slice(0, 2)} /> : null}</FloatingDrawer> : null}
+      {floatingPanel === "fixtures" ? <FloatingDrawer title={`PROGRAMME · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{fixtureRows.map((item) => <FixtureMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />)}{upcomingEvents.length ? <div style={{ marginTop: fixtureRows.length ? 12 : 0 }}><div className="msc-round-head"><span>CALENDRIER · TOURNOIS / ÉVÉNEMENTS</span><span>{upcomingEvents.length}</span></div><CalendarBrowser events={upcomingEvents} lang={lang} /></div> : null}{!fixtureRows.length && !upcomingEvents.length ? <EmptySection title="Aucun événement à venir" copy="Consulte les calendriers officiels." sources={recommended.filter((source) => source.calendarUrl).slice(0, 2)} /> : null}</FloatingDrawer> : null}
       {floatingPanel === "sources" ? <FloatingDrawer title={`SOURCES · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}><SourceDirectory sources={sources} /></FloatingDrawer> : null}
 
     </div>

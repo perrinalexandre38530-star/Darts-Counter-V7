@@ -121,6 +121,7 @@ export type SportLiveEvent = {
   sourceUrl?: string | null;
   watchUrl?: string | null;
   resultLabel?: string | null;
+  competitionMeta?: SportLiveCompetitionMeta | null;
 };
 
 

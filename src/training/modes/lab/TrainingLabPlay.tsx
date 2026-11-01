@@ -18,6 +18,7 @@ import { loadTrainingLabPreferences } from "../../preferences/trainingLabPrefere
 import { buildTrainingCareer, trainingProgramXp } from "../../profile/trainingCareer";
 import { buildTrainingProgression } from "../../coach/trainingDiagnosis";
 import { getTrainingDetailedSessions } from "../../stats/trainingStatsHub";
+import { clearTrainingExerciseDraft, saveTrainingExerciseDraft } from "../../profile/trainingExerciseDraft";
 
 type RunState = { darts: number; hits: number; points: number; progress: number; checkoutTotal: number };
 type ProgramStepResult = {
@@ -44,10 +45,11 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
   const initialStepIndex = Math.max(0, Math.min(programIds.length - 1, Number(config?.resumeStepIndex) || 0));
   const [stepIndex, setStepIndex] = React.useState(initialStepIndex);
   const exercise = React.useMemo(() => getTrainingExercise(programIds[Math.min(stepIndex, programIds.length - 1)] || config?.exerciseId), [config?.exerciseId, programIds, stepIndex]);
-  const startedAtRef = React.useRef(Date.now());
+  const resumeExerciseDraft = config?.resumeExerciseDraft && String(config.resumeExerciseDraft.exerciseId || "") === String(exercise.id) ? config.resumeExerciseDraft : null;
+  const startedAtRef = React.useRef(Number(resumeExerciseDraft?.startedAt) || Date.now());
   const endedRef = React.useRef(false);
-  const visitHistoryRef = React.useRef<any[]>([]);
-  const stateRef = React.useRef<RunState>(emptyRun());
+  const visitHistoryRef = React.useRef<any[]>(Array.isArray(resumeExerciseDraft?.visitHistory) ? resumeExerciseDraft.visitHistory : []);
+  const stateRef = React.useRef<RunState>(resumeExerciseDraft?.state ? { ...emptyRun(), ...resumeExerciseDraft.state } : emptyRun());
   const [, force] = React.useReducer((n) => n + 1, 0);
   const [result, setResult] = React.useState<any>(null);
   const [programResults, setProgramResults] = React.useState<ProgramStepResult[]>(() => Array.isArray(config?.resumeProgramResults) ? config.resumeProgramResults : []);
@@ -64,6 +66,20 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
   const sequence = exercise.sequence || [];
   const liveStepCoach = React.useMemo(() => buildTrainingLiveStepCoach(exercise, stepIndex, totalSteps), [exercise, stepIndex, totalSteps]);
   const goal = exercise.engine === "target_hits" ? Math.max(1, exercise.hitsGoal || 1) : exercise.engine === "sequence" ? Math.max(1, sequence.length) : exercise.engine === "score_darts" ? Math.max(1, exercise.scoreGoal || 1) : Math.max(1, exercise.checkoutScore || 1);
+  const individualExercise = !isProgram && String(config?.sessionKind || "exercise") === "exercise";
+  const persistIndividualDraft = React.useCallback(() => {
+    if (!individualExercise || endedRef.current) return;
+    saveTrainingExerciseDraft({
+      exerciseId: exercise.id,
+      participantId: accountParticipantId,
+      engine: "standard",
+      savedAt: Date.now(),
+      startedAt: startedAtRef.current,
+      state: { ...stateRef.current },
+      visitHistory: [...visitHistoryRef.current],
+      secondsLeft: null,
+    });
+  }, [accountParticipantId, exercise.id, individualExercise]);
 
   const resetForNextExercise = React.useCallback(() => {
     stateRef.current = emptyRun();
@@ -112,6 +128,7 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
       dailyChallengeRequiredScore: dailyChallengeMode ? dailyChallengeRequiredScore : null,
       dailyChallengePassed: dailyChallengeMode ? dailyChallengePassed : null,
     };
+    if (individualExercise) clearTrainingExerciseDraft(exercise.id, accountParticipantId);
     const stepResult: ProgramStepResult = {
       exerciseId: exercise.id,
       exerciseTitle: exercise.title,
@@ -177,7 +194,7 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
       visitHistory: visitHistoryRef.current,
     });
     setResult({ success: dailyChallengePassed, metrics, stats: makeTrainingStats({ darts: s.darts, hits: s.hits, points: s.points, startedAt: startedAtRef.current, endedAt }) });
-  }, [accountParticipantId, config, exercise, goal, isProgram, programIds, stepIndex, totalSteps]);
+  }, [accountParticipantId, config, exercise, goal, individualExercise, isProgram, programIds, stepIndex, totalSteps]);
 
   const onVisit = React.useCallback((rawVisit: TrainingDart[]) => {
     if (endedRef.current || !rawVisit.length) return;
@@ -211,8 +228,9 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
 
       if (s.darts >= exercise.maxDarts) { force(); finish(false); return; }
     }
+    persistIndividualDraft();
     force();
-  }, [exercise, finish, goal, sequence, stepIndex]);
+  }, [exercise, finish, goal, persistIndividualDraft, sequence, stepIndex]);
 
   const handleExit = React.useCallback(() => {
     if (isProgram && !programSummaryOpen) {
@@ -227,8 +245,9 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
         participantId: accountParticipantId,
       });
     }
+    if (individualExercise && !result) persistIndividualDraft();
     onExit();
-  }, [accountParticipantId, config, isProgram, onExit, programIds, programResults, programSummaryOpen, result, stepIndex, totalSteps]);
+  }, [accountParticipantId, config, individualExercise, isProgram, onExit, persistIndividualDraft, programIds, programResults, programSummaryOpen, result, stepIndex, totalSteps]);
 
   const closeResult = React.useCallback(() => {
     if (isProgram && stepIndex + 1 < totalSteps) {

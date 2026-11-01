@@ -3241,15 +3241,22 @@ export async function importAll(
       return true;
     });
     report(8, `Import du stockage principal : 0/${Math.max(1, idbEntries.length)}`);
-    for (let index = 0; index < idbEntries.length; index += 1) {
-      const [k, v] = idbEntries[index];
-      try {
-        await importIdbEntryRaw(String(k), v);
-      } catch (e) {
-        console.warn("[storage] importAll idb entry failed", k, e);
-      }
-      report(8 + Math.round(((index + 1) / Math.max(1, idbEntries.length)) * 22), `Import du stockage principal : ${index + 1}/${idbEntries.length}`);
-      await yieldIfNeeded();
+    // W7 PERF: les clés IndexedDB indépendantes peuvent être comparées/compressées
+    // par petits lots. On conserve une concurrence faible pour Android afin de
+    // réduire le temps total sans saturer le thread principal ni IndexedDB.
+    const restoreChunkSize = 3;
+    for (let base = 0; base < idbEntries.length; base += restoreChunkSize) {
+      const chunk = idbEntries.slice(base, Math.min(idbEntries.length, base + restoreChunkSize));
+      await Promise.all(chunk.map(async ([k, v]) => {
+        try {
+          await importIdbEntryRaw(String(k), v);
+        } catch (e) {
+          console.warn("[storage] importAll idb entry failed", k, e);
+        }
+      }));
+      const completed = Math.min(idbEntries.length, base + chunk.length);
+      report(8 + Math.round((completed / Math.max(1, idbEntries.length)) * 22), `Import du stockage principal : ${completed}/${idbEntries.length}`);
+      await yieldIfNeeded(true);
     }
     await yieldIfNeeded(true);
 
@@ -3643,8 +3650,12 @@ function exportCriticalLocalStorageValues(): Record<string, string> {
   return out;
 }
 
-async function exportPortableAccountData(): Promise<any> {
-  const currentStore: any = await loadCanonicalAccountStoreForSnapshot().catch(() => null);
+async function exportPortableAccountData(opts?: {
+  currentStore?: any;
+  tournaments?: any;
+  mediaAlreadyCaptured?: boolean;
+}): Promise<any> {
+  const currentStore: any = opts?.currentStore ?? await loadCanonicalAccountStoreForSnapshot().catch(() => null);
   const profiles = Array.isArray(currentStore?.profiles) ? effectivePortableProfiles(currentStore.profiles).map(sanitizePortableProfile) : [];
   const dartSets = getAllDartSets();
   const bots = loadStoredBots();
@@ -3655,9 +3666,11 @@ async function exportPortableAccountData(): Promise<any> {
   // néanmoins voyager AVEC le profil, quelle que soit la destination choisie
   // (Google Drive, NAS, fichier, etc.). On capture donc d'abord le média local
   // puis on embarque un petit bloc dédié dans portableAccountData.
-  try {
-    await captureStoreUserMedia({ teams }, { mirrorR2: false, mirrorAccount: false });
-  } catch {}
+  if (!opts?.mediaAlreadyCaptured) {
+    try {
+      await captureStoreUserMedia({ teams }, { mirrorR2: false, mirrorAccount: false });
+    } catch {}
+  }
   const teamMedia: Record<string, { logoDataUrl?: string; coverDataUrl?: string }> = {};
   for (const team of Array.isArray(teams) ? teams : []) {
     const id = String((team as any)?.id || "").trim();
@@ -3672,7 +3685,7 @@ async function exportPortableAccountData(): Promise<any> {
     }
   }
 
-  const tournaments = await exportLocalTournamentsSnapshot().catch(() => null);
+  const tournaments = opts?.tournaments ?? await exportLocalTournamentsSnapshot().catch(() => null);
   const gallery = exportAvatarGalleryMetadata();
   const sanitizedCollections = sanitizeStoreForCloud({ profiles, dartSets, bots, teams });
   const portableDartSets = (Array.isArray(sanitizedCollections?.dartSets) ? sanitizedCollections.dartSets : dartSets).map((set: any) => {
@@ -4219,6 +4232,17 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
   const report = (p: number, message: string) => { try { opts.onProgress?.(p, message); } catch {} };
   report(1, "Démarrage du snapshot local…");
   const dump = await exportAll((p, message) => report(Math.min(74, 2 + Math.round(p * 0.72)), message));
+  // W7 PERF: exportAll() a déjà relu et normalisé le store canonique. Réutiliser
+  // cette copie évite 2 à 3 lectures/décompressions IndexedDB supplémentaires
+  // pendant le même snapshot (médias, portableAccountData, avatarFallbacks).
+  const snapshotStore: any = (() => {
+    const idb = dump?.idb && typeof dump.idb === "object" ? dump.idb : {};
+    return idb[STORE_KEY] || idb[scopedStorageKey(STORE_KEY)] || null;
+  })();
+  const currentStoreForSnapshot: any = snapshotStore || await loadCanonicalAccountStoreForSnapshot().catch(() => null);
+  const snapshotTournaments: any = dump?.tournaments || dump?.competitions || null;
+  let embeddedMediaCaptureReady = false;
+
   report(75, "Consolidation des médias locaux…");
   const mediaMirror = opts.mediaMirror ?? "await";
   // IMPORTANT RESTAURATION MULTI-APPAREILS : un snapshot NAS/local/fichier doit
@@ -4230,7 +4254,7 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
   // Pour R2 direct allégé, le clic reste non bloquant : la réplication média
   // continue séparément en arrière-plan et n'est pas réembarquée dans le JSON.
   try {
-    const currentStore: any = await loadCanonicalAccountStoreForSnapshot();
+    const currentStore: any = currentStoreForSnapshot;
     if (currentStore) {
       const mediaSource = {
         ...(currentStore || {}),
@@ -4243,9 +4267,9 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
         // NAS / local / fichier : la copie IndexedDB locale doit être terminée
         // AVANT l’export Media Vault V2. Aucun upload R2 n'est imposé
         // lorsque mediaMirror="skip".
-        await Promise.race([
-          captureStoreUserMedia(mediaSource, { mirrorR2: mediaMirror === "await", mirrorAccount: false }),
-          new Promise<void>((resolve) => setTimeout(resolve, 10_000)),
+        embeddedMediaCaptureReady = await Promise.race([
+          captureStoreUserMedia(mediaSource, { mirrorR2: mediaMirror === "await", mirrorAccount: false }).then(() => true),
+          new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 10_000)),
         ]);
 
         if (mediaMirror === "background") {
@@ -4262,13 +4286,24 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
     console.warn("[storage] exact R2 media mirror preflight incomplete", mediaMirrorError);
   }
   try {
-    const clone: any = safeJsonParse(safeJsonStringify(dump || {}), dump || {});
+    // W7 PERF: ne plus JSON.stringify + JSON.parse l'intégralité du snapshot pour
+    // créer une copie de travail. Les étapes ci-dessous remplacent leurs blocs
+    // avant mutation ; une copie superficielle de l'enveloppe et d'idb suffit.
+    const clone: any = {
+      ...(dump || {}),
+      ...(dump?.idb && typeof dump.idb === "object" ? { idb: { ...dump.idb } } : {}),
+      ...(dump?.localStorage && typeof dump.localStorage === "object" ? { localStorage: { ...dump.localStorage } } : {}),
+    };
 
     // DONNÉES DE COMPTE CRITIQUES : copie canonique indépendante des clés
     // IndexedDB/localStorage historiques. Elle garantit le retour des profils
     // locaux, préférences, bots, dartsets, galeries et compétitions sur un nouvel appareil.
     try {
-      clone.portableAccountData = await exportPortableAccountData();
+      clone.portableAccountData = await exportPortableAccountData({
+        currentStore: currentStoreForSnapshot,
+        tournaments: snapshotTournaments,
+        mediaAlreadyCaptured: embeddedMediaCaptureReady,
+      });
     } catch (portableError) {
       console.warn("[storage] portable account data export skipped", portableError);
     }
@@ -4341,7 +4376,7 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
     if (opts.includeAvatarFallbacks !== false) {
       report(91, "Préparation des avatars de secours…");
       try {
-        const currentStore: any = await loadCanonicalAccountStoreForSnapshot();
+        const currentStore: any = currentStoreForSnapshot;
         const avatarFallbacks = await buildAvatarFallbackSnapshot(
           Array.isArray(currentStore?.profiles) ? currentStore.profiles : []
         );
@@ -4382,7 +4417,10 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
     }
 
     report(100, "Snapshot local prêt.");
-    try { finishPerf({ ok: true, bytes: safeJsonStringify(clone, "").length, count: Object.keys((clone as any)?.history?.rows || {}).length }); } catch {}
+    // La taille exacte sera calculée une seule fois par createCanonicalBackupArtifact
+    // lors de la sérialisation réellement nécessaire. Ne pas stringify une seconde
+    // fois le snapshot uniquement pour la télémétrie de performance.
+    try { finishPerf({ ok: true, count: Object.keys((clone as any)?.history?.rows || {}).length }); } catch {}
     return clone;
   } catch (err) {
     console.warn("[storage] exportCloudSnapshot sanitize failed", err);
