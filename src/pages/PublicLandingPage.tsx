@@ -80,7 +80,7 @@ const LANDING_EXPLANATION_VISUALS = {
 } as const;
 
 const MSS_EXCLUSIVE_DARTS = new Set(["darts_firefighter", "crados", "bss_king", "attrape_moi", "loterie", "menteur", "president", "pendu", "cargo", "ptit_hun"]);
-const NEW_PUBLIC_DARTS = new Set(["bss_king", "ptit_hun", "mistigri", "corbeau_renard", "radin", "darts_impossible", "black_vs_white", "three_colors", "la_suite", "color_call", "bim_bam_boum", "saute_moutons", "troupeau_en_danger"]);
+const NEW_PUBLIC_DARTS = new Set(["bss_king", "ptit_hun", "mistigri", "corbeau_renard", "radin", "darts_impossible", "black_vs_white", "three_colors", "la_suite", "color_call", "bim_bam_boum", "saute_moutons", "troupeau_en_danger", "une_ptite_raclette"]);
 const DARTS_CATEGORY_LABEL: Record<string,string> = {
   classic: "GRANDS CLASSIQUES",
   variant: "VARIANTES",

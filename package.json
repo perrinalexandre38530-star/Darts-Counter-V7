@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "start": "vite --host 0.0.0.0 --port 5173",
-    "build": "node ./tools/test-backup-auth-contract-v169.mjs && npm run test:stats-backup-architecture-lock && vite build",
+    "build": "node ./tools/test-backup-auth-contract-v169.mjs && npm run test:personal-cloud:v148 && npm run test:stats-backup-architecture-lock && vite build",
     "tv:samsung:build": "node ./tools/build-samsung-tv.mjs",
     "tv:samsung:check": "node ./tools/check-samsung-tv.mjs",
     "preview": "vite preview",
@@ -182,7 +182,8 @@
     "test:backup-checkpoint-compaction": "node ./tools/test-backup-checkpoint-compaction-v241.mjs",
     "test:cross-device-release-gate": "node ./tools/test-cross-device-release-gate-v111.mjs",
     "test:stats-backup-architecture-lock": "node --experimental-strip-types ./tools/test-stats-backup-architecture-lock-v121.mjs",
-    "test:legacy-backup-stats-realignment": "node --experimental-strip-types ./tools/test-legacy-backup-stats-realignment-v132.mjs"
+    "test:legacy-backup-stats-realignment": "node --experimental-strip-types ./tools/test-legacy-backup-stats-realignment-v132.mjs",
+    "test:personal-cloud:v148": "node ./tools/test-personal-cloud-google-onedrive-v148.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",

@@ -370,6 +370,16 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
       return smartRank(a) - smartRank(b) || a.title.localeCompare(b.title, "fr");
     });
   }, [unifiedCatalogItems, catalogProgressFilter, catalogSearch, catalogSort]);
+  const focusNowItems = React.useMemo(() => {
+    const rows = TRAINING_EXERCISE_CATALOG.map((exercise) => {
+      const personal = exerciseProgressionById.get(exercise.id) || buildTrainingExerciseProgression(exercise, []);
+      const priorityFamilyBoost = exercise.family === recommendedFamily ? -18 : 0;
+      const progressRank = personal.mastered ? 500 : personal.level > 0 ? 40 - personal.level * 7 : 180;
+      const difficultyFit = Math.abs(exercise.difficulty - Math.max(1, Math.min(5, personal.level || 1))) * 4;
+      return { exercise, personal, rank: progressRank + priorityFamilyBoost + difficultyFit };
+    });
+    return rows.filter((row) => !row.personal.mastered).sort((a, b) => a.rank - b.rank || a.exercise.title.localeCompare(b.exercise.title, "fr")).slice(0, 3);
+  }, [exerciseProgressionById, recommendedFamily]);
   const techniqueItems = React.useMemo(() => TRAINING_TECHNIQUE_ITEMS, []);
   const techniqueTracks = React.useMemo(() => buildTrainingTechniqueTracks(), []);
   const selectedTechniqueTrack = techniqueTracks.find((row) => row.track === techniqueTrack) || techniqueTracks[0];
@@ -1161,6 +1171,19 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
             </>}
 
             {exercisePanel === "catalog" && <>
+              <div style={{ marginTop: 10, padding: 12, borderRadius: 14, border: "1px solid rgba(185,156,255,.16)", background: "linear-gradient(180deg,rgba(140,90,255,.055),rgba(39,220,255,.025))" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                  <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: .9, color: "#b99cff" }}>À TRAVAILLER MAINTENANT</div><div style={{ marginTop: 3, fontSize: 9, opacity: .54 }}>Priorité à tes exercices en cours, à ta compétence cible et aux prochains paliers.</div></div>
+                  <span style={{ padding: "5px 8px", borderRadius: 9, border: "1px solid rgba(39,220,255,.14)", background: "rgba(39,220,255,.045)", fontSize: 7.4, fontWeight: 950, color: "#8fefff" }}>{TRAINING_FAMILY_META[recommendedFamily].label.toUpperCase()}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 7, marginTop: 9 }}>
+                  {focusNowItems.map(({ exercise, personal }, index) => <button key={exercise.id} type="button" onClick={() => openExerciseDetail(exercise.id)} style={{ minWidth: 0, textAlign: "left", padding: 10, borderRadius: 11, border: index === 0 ? "1px solid rgba(255,216,107,.28)" : "1px solid rgba(255,255,255,.07)", background: index === 0 ? "rgba(255,216,107,.055)" : "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><b style={{ minWidth: 0, fontSize: 9.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{exercise.title}</b><span style={{ flex: "0 0 auto", fontSize: 7.2, fontWeight: 950, color: personal.level > 0 ? "#b99cff" : "rgba(255,255,255,.48)" }}>NIV. {personal.level}/5</span></div>
+                    <div style={{ marginTop: 4, fontSize: 7.7, opacity: .52 }}>{TRAINING_FAMILY_META[exercise.family].label} • difficulté {exercise.difficulty}/5</div>
+                    <div style={{ marginTop: 5, fontSize: 7.5, color: index === 0 ? "#ffd86b" : "rgba(255,255,255,.48)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{personal.level > 0 ? personal.nextObjective : "Découvrir cet exercice"}</div>
+                  </button>)}
+                </div>
+              </div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 10, paddingBottom: 9, borderBottom: "1px solid rgba(255,255,255,.07)", flexWrap: "wrap" }}>
                 <div style={{ minWidth: 0, flex: "1 1 220px" }}><div style={{ fontSize: 11.5, fontWeight: 950 }}>Tous les exercices</div><div style={{ marginTop: 2, fontSize: 9.2, opacity: .52 }}>{visibleCatalogItems.length} exercice{visibleCatalogItems.length > 1 ? "s" : ""} affiché{visibleCatalogItems.length > 1 ? "s" : ""} dans {TRAINING_FAMILY_META[family].label}</div></div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>

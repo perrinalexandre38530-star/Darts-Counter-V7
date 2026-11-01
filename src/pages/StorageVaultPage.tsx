@@ -102,7 +102,7 @@ import {
   writeExternalBackupNow,
   type ExternalBackupStatus,
 } from "../lib/externalBackupTarget";
-import { connectPersonalCloud, downloadPersonalCloudSnapshot, downloadPersonalCloudSnapshotById, getPersonalCloudBackupMeta, getPersonalCloudStatus, isPersonalCloudProvider, listPersonalCloudBackups, personalCloudProviderLabel, uploadPersonalCloudSnapshot } from "../lib/personalCloudApi";
+import { connectPersonalCloud, downloadPersonalCloudSnapshot, downloadPersonalCloudSnapshotById, getPersonalCloudBackupMeta, getPersonalCloudStatus, isPersonalCloudProvider, listPersonalCloudBackups, personalCloudProviderLabel, uploadPersonalCloudSnapshot, type PersonalCloudProvider } from "../lib/personalCloudApi";
 import { registerAccountLatestBackup } from "../lib/latestBackupApi";
 import { fetchRemoteIncrementalChanges, flushIncrementalRemoteSyncForProvider } from "../lib/incrementalRemoteSync";
 import { applyIncrementalChanges } from "../lib/incrementalRestore";
@@ -123,8 +123,8 @@ type Props = { go?: (tab: any, params?: any) => void };
 type TabKey = "restore" | "backup" | "matches" | "diagnostic";
 type RestoreView = "current" | "archives" | "trash";
 type SaveSource = "nas" | "local" | "cloud" | "file" | "personal";
-type BackupProvider = "nas" | "cloud" | "google_drive";
-type RestoreSource = BackupProvider | "local" | "file" | "google_drive";
+type BackupProvider = "nas" | "cloud" | PersonalCloudProvider;
+type RestoreSource = BackupProvider | "local" | "file";
 type SaveGrade = "complete" | "history" | "stats-only" | "profiles-only" | "technical";
 
 type SaveQuality = {
@@ -2491,14 +2491,14 @@ export default function StorageVaultPage({ go }: Props) {
     ? localEntries[0] || null
     : restoreSource === "file"
       ? importedRestoreEntry
-      : restoreSource === "google_drive"
+      : isPersonalCloudProvider(restoreSource)
         ? personalRestoreEntries[0] || null
         : latestRemoteEntry;
   const currentRestoreArchives = restoreSource === "local"
     ? localEntries.slice(1)
     : restoreSource === "file"
       ? []
-      : restoreSource === "google_drive"
+      : isPersonalCloudProvider(restoreSource)
         ? personalRestoreEntries.slice(1)
         : archivedRemoteEntries;
   const headerSummary = normalizeSummary(currentRestoreEntry?.summary || latestRemoteEntry?.summary || localEntries[0]?.summary || {});
@@ -2796,7 +2796,7 @@ export default function StorageVaultPage({ go }: Props) {
     }
 
     const isNativeRestore = Capacitor.isNativePlatform();
-    const targetLabel = provider === "cloud" ? "Cloudflare R2" : provider === "google_drive" ? "Google Drive" : "compte NAS";
+    const targetLabel = provider === "cloud" ? "Cloudflare R2" : isPersonalCloudProvider(provider) ? personalCloudProviderLabel(provider) : "compte NAS";
     const authoritativeLegacy = legacyMigration && options?.legacyStrategy === "authoritative";
     const restoreFlowText = legacyMigration
       ? authoritativeLegacy
@@ -3030,11 +3030,10 @@ export default function StorageVaultPage({ go }: Props) {
         report(94, `Synchronisation de l’état restauré vers ${targetLabel}…`, "finalize");
         if (provider === "cloud") {
           await uploadCurrentSnapshotToCloudVault(`restore-cloud:${reason}`, `État restauré — ${label}`);
-        } else if (provider === "google_drive") {
-          // La source EST Google Drive : restaurer sur cet appareil ne doit surtout
-          // pas déclencher un /sync/push NAS de ~24 Mo. C'était la cause du faux
-          // « Restauration locale impossible ... timeout 10000ms ».
-          report(96, "Sauvegarde Google Drive restaurée sur cet appareil.", "finalize");
+        } else if (isPersonalCloudProvider(provider)) {
+          // La source EST un cloud personnel : restaurer sur cet appareil ne doit
+          // jamais déclencher ensuite un /sync/push NAS volumineux.
+          report(96, `Sauvegarde ${personalCloudProviderLabel(provider)} restaurée sur cet appareil.`, "finalize");
         } else {
           await pushSnapshotToAccount(snapshot, reason);
         }
@@ -3192,31 +3191,33 @@ ${label}`)) return;
       : "Source distante sélectionnée : NAS. Les sauvegardes privées du serveur sont affichées ci-dessous.");
   };
 
-  const selectGoogleDriveRestoreSource = async () => {
+  const listGoogleDriveRestoreBackups = () => listPersonalCloudBackups("google_drive", 100);
+
+  const selectPersonalCloudRestoreSource = async (provider: PersonalCloudProvider) => {
     lastUserActionAtRef.current = Date.now();
+    const label = personalCloudProviderLabel(provider);
     if (!hasConnectedAccount) {
-      setMessage("Connexion MULTISPORTS SCORING requise avant d’ouvrir Google Drive.");
+      setMessage(`Connexion MULTISPORTS SCORING requise avant d’ouvrir ${label}.`);
       return;
     }
     setBusy(true);
     try {
-      setMessage("Google Drive : inventaire des sauvegardes et anciennes archives…");
-      const status = await getPersonalCloudStatus("google_drive");
-      if (!status.configured) throw new Error("Google Drive n’est pas configuré côté serveur.");
+      setMessage(`${label} : inventaire des sauvegardes et archives…`);
+      const status = await getPersonalCloudStatus(provider);
+      if (!status.configured) throw new Error(`${label} n’est pas configuré côté serveur.`);
       if (!status.connected) {
-        setMessage("Connexion à Google Drive…");
-        await connectPersonalCloud("google_drive");
+        setMessage(`Connexion à ${label}…`);
+        await connectPersonalCloud(provider);
       }
 
-      // Lecture METADATA uniquement : aucune sauvegarde lourde n'est téléchargée
-      // ici. La liste serveur fusionne le dossier visible actuel + les anciennes
-      // sauvegardes appDataFolder afin que les backups historiques restent restaurables.
-      const backups = await listPersonalCloudBackups("google_drive", 100);
+      // Lecture des métadonnées uniquement. Le snapshot lourd n'est téléchargé
+      // qu'après confirmation explicite de restauration.
+      const backups = provider === "google_drive" ? await listGoogleDriveRestoreBackups() : await listPersonalCloudBackups(provider, 100);
       if (!backups.length) {
         setPersonalRestoreEntries([]);
-        setRestoreSource("google_drive");
+        setRestoreSource(provider);
         setRestoreView("current");
-        setMessage("Google Drive connecté, mais aucune sauvegarde MULTISPORTS SCORING n’y est disponible.");
+        setMessage(`${label} connecté, mais aucune sauvegarde MULTISPORTS SCORING n’y est disponible.`);
         return;
       }
 
@@ -3233,22 +3234,22 @@ ${label}`)) return;
               color: amber,
               score: 55,
               restorable: true,
-              reason: "Ancienne sauvegarde Drive sans résumé embarqué. Son intégrité sera contrôlée après téléchargement, avant tout remplacement local.",
+              reason: `Ancienne sauvegarde ${label} sans résumé embarqué. Son intégrité sera contrôlée après téléchargement, avant tout remplacement local.`,
             };
         const timestamp = String(meta.updatedAt || meta.createdAt || meta?.metadata?.exportedAt || new Date().toISOString());
         const backupId = String(meta.id || meta.fileId || meta.backupId || meta.providerFileId || "").trim();
         const slot: MemorySlot = {
-          id: backupId || `personal_google_drive_${idx}`,
+          id: backupId || `personal_${provider}_${idx}`,
           ownerId: getVaultCurrentUserId(),
           createdAt: timestamp,
           updatedAt: timestamp,
-          label: "Google Drive",
+          label,
           source: "manual",
-          payload: { __lazyPersonalCloud: true, provider: "google_drive", backupId: backupId || null },
+          payload: { __lazyPersonalCloud: true, provider, backupId: backupId || null },
           summary,
         };
         return {
-          key: `personal:google_drive:${backupId || idx}`,
+          key: `personal:${provider}:${backupId || idx}`,
           source: "personal",
           slot,
           summary,
@@ -3257,7 +3258,7 @@ ${label}`)) return;
           index: idx + 1,
           latest: idx === 0,
           quality,
-          title: idx === 0 ? "Sauvegarde Google Drive courante" : `Archive Google Drive ${String(idx).padStart(2, "0")}`,
+          title: idx === 0 ? `Sauvegarde ${label} courante` : `Archive ${label} ${String(idx).padStart(2, "0")}`,
           subtitle: hasSummary
             ? `${fmtDate(timestamp)} · ${summary.matches} partie(s) · ${summary.profiles} profil(s)`
             : `${fmtDate(timestamp)} · ancienne sauvegarde détectée · contenu vérifié au téléchargement`,
@@ -3265,12 +3266,12 @@ ${label}`)) return;
       });
 
       setPersonalRestoreEntries(entries);
-      setRestoreSource("google_drive");
+      setRestoreSource(provider);
       setRestoreView("current");
-      setMessage(`Google Drive prêt : ${entries.length} sauvegarde(s) trouvée(s), dont ${Math.max(0, entries.length - 1)} archive(s) historique(s). Aucun snapshot lourd téléchargé.`);
+      setMessage(`${label} prêt : ${entries.length} sauvegarde(s) trouvée(s), dont ${Math.max(0, entries.length - 1)} archive(s). Aucun snapshot lourd téléchargé.`);
     } catch (error: any) {
       setPersonalRestoreEntries([]);
-      setMessage(`Google Drive impossible : ${error?.message || error}`);
+      setMessage(`${label} impossible : ${error?.message || error}`);
     } finally {
       setBusy(false);
     }
@@ -4027,7 +4028,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
 
   const confirmBackgroundRestore = (entry: SaveEntry, provider: BackupProvider): boolean => {
     const summary = normalizeSummary(entry.summary || {});
-    const sourceLabel = provider === "cloud" ? "Cloud R2" : provider === "google_drive" ? "Google Drive" : entry.source === "local" || entry.source === "file" ? "cet appareil" : "NAS";
+    const sourceLabel = provider === "cloud" ? "Cloud R2" : isPersonalCloudProvider(provider) ? personalCloudProviderLabel(provider) : entry.source === "local" || entry.source === "file" ? "cet appareil" : "NAS";
     return window.confirm(
       `Restaurer "${entry.title}" depuis ${sourceLabel} ?\n\n` +
       `${summary.matches} parties • ${summary.historyRows} lignes historique • ${summary.profiles} profils • ${summary.statsBlocks} stats\n\n` +
@@ -4129,21 +4130,23 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
 
   const restorePersonal = async (entry: SaveEntry) => {
     const slot = entry.slot as MemorySlot;
-    const lazy = slot?.payload && typeof slot.payload === "object" && (slot.payload as any).__lazyPersonalCloud === true;
-    const backupId = String((slot?.payload as any)?.backupId || slot.id || "").trim();
+    const payload = slot?.payload as any;
+    const lazy = payload && typeof payload === "object" && payload.__lazyPersonalCloud === true;
+    const providerRaw = String(payload?.provider || "google_drive");
+    const provider: PersonalCloudProvider = isPersonalCloudProvider(providerRaw) ? providerRaw : "google_drive";
+    const label = personalCloudProviderLabel(provider);
+    const backupId = String(payload?.backupId || slot.id || "").trim();
 
-    // V130: Drive suit désormais le même vrai pipeline de progression que NAS/R2.
-    // Sélection = metadata instantanée ; téléchargement = seulement après Restaurer.
     const run = async (report: BackgroundRestoreReporter) => {
       let snapshot: any;
       if (lazy) {
-        report(4, "Google Drive : ouverture de la sauvegarde…", "download");
-        snapshot = backupId && backupId !== "personal_google_drive_latest"
-          ? await downloadPersonalCloudSnapshotById("google_drive", backupId, (percent, message) => {
+        report(4, `${label} : ouverture de la sauvegarde…`, "download");
+        snapshot = backupId && backupId !== `personal_${provider}_latest`
+          ? await downloadPersonalCloudSnapshotById(provider, backupId, (percent, message) => {
               const mapped = 5 + Math.round(Math.max(0, Math.min(100, percent)) * 0.45);
               report(mapped, message, percent >= 74 ? "prepare" : "download");
             })
-          : await downloadPersonalCloudSnapshot("google_drive", (percent, message) => {
+          : await downloadPersonalCloudSnapshot(provider, (percent, message) => {
               const mapped = 5 + Math.round(Math.max(0, Math.min(100, percent)) * 0.45);
               report(mapped, message, percent >= 74 ? "prepare" : "download");
             });
@@ -4151,17 +4154,16 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         snapshot = decodeMaybeCompressedNasPayload(slot.payload);
       }
 
-      report(50, "Google Drive : snapshot prêt. Import local…", "prepare");
+      report(50, `${label} : snapshot prêt. Import local…`, "prepare");
       return restoreSnapshotIntoBrowserAndAccount(
         snapshot,
-        `restore-google-drive:${backupId || slot.id}`,
+        `restore-${provider}:${backupId || slot.id}`,
         entry.title,
-        { skipConfirm: true, background: true, provider: "google_drive", report, legacyStrategy: "authoritative", explicitAuthority: true },
+        { skipConfirm: true, background: true, provider, report, legacyStrategy: "authoritative", explicitAuthority: true },
       );
     };
 
-    // Le job de fond fournit une progression persistante, même sur PWA Android.
-    launchNativeRestore(entry, "google_drive", run);
+    launchNativeRestore(entry, provider, run);
   };
 
   const restoreLocal = async (entry: SaveEntry) => {
@@ -4498,7 +4500,8 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
                   <VaultActionButton icon="nas" label="NAS privé" active={restoreSource === "nas"} onClick={() => void selectRemoteRestoreSource("nas")}/>
                 ) : null}
                 <VaultActionButton icon="cloud" label="Cloud R2" active={restoreSource === "cloud"} onClick={() => void selectRemoteRestoreSource("cloud")}/>
-                <VaultActionButton icon="cloud" label="Google Drive" active={restoreSource === "google_drive"} onClick={() => void selectGoogleDriveRestoreSource()}/>
+                <VaultActionButton icon="cloud" label="Google Drive" active={restoreSource === "google_drive"} onClick={() => void selectPersonalCloudRestoreSource("google_drive")}/>
+                <VaultActionButton icon="cloud" label="OneDrive" active={restoreSource === "onedrive"} onClick={() => void selectPersonalCloudRestoreSource("onedrive")}/>
                 <VaultActionButton icon="local" label="Cet appareil" active={restoreSource === "local"} onClick={selectLocalRestoreSource}/>
                 <VaultActionButton icon="file" label="Fichier / SD / Cloud perso" active={restoreSource === "file"} onClick={selectFileRestoreSource}/>
                 <input ref={restoreFileRef} type="file" accept="application/json,.json,.dcbackup" style={{ display: "none" }} onChange={(event) => void loadRestoreFile(event.currentTarget.files?.[0] || null)}/>
@@ -4514,7 +4517,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
             {restoreView === "current" && (currentRestoreEntry
               ? renderEntry(currentRestoreEntry)
               : <CompactEmpty
-                  title={restoreSource === "file" ? "Sélectionne un fichier de sauvegarde" : restoreSource === "local" ? "Aucune sauvegarde locale" : restoreSource === "google_drive" ? "Aucune sauvegarde Google Drive" : `Aucune sauvegarde ${restoreSource === "nas" ? "NAS" : "Cloud R2"} courante`}
+                  title={restoreSource === "file" ? "Sélectionne un fichier de sauvegarde" : restoreSource === "local" ? "Aucune sauvegarde locale" : isPersonalCloudProvider(restoreSource) ? `Aucune sauvegarde ${personalCloudProviderLabel(restoreSource)}` : `Aucune sauvegarde ${restoreSource === "nas" ? "NAS" : "Cloud R2"} courante`}
                   detail={restoreSource === "file" ? "Le fichier sera d’abord analysé et affiché. Rien ne sera restauré avant confirmation." : "Crée une sauvegarde depuis l’onglet Sauver, puis actualise."}
                 />)}
 

@@ -2291,6 +2291,8 @@ function AccountPages({
   const [cloudStorageStatus, setCloudStorageStatus] = React.useState<CloudStorageStatus | null>(null);
   const [googleDriveStatus, setGoogleDriveStatus] = React.useState<PersonalCloudStatus | null>(null);
   const [googleDriveBusy, setGoogleDriveBusy] = React.useState(false);
+  const [oneDriveStatus, setOneDriveStatus] = React.useState<PersonalCloudStatus | null>(null);
+  const [oneDriveBusy, setOneDriveBusy] = React.useState(false);
   const [cloudStorageTestLoading, setCloudStorageTestLoading] = React.useState(false);
   const [cloudStorageTestResult, setCloudStorageTestResult] = React.useState<{
     status: "ok" | "error" | "info";
@@ -2467,6 +2469,7 @@ function AccountPages({
   React.useEffect(() => {
     if (page !== "account_storage" || !isSignedIn) return;
     void refreshGoogleDriveStatus();
+    void refreshOneDriveStatus();
   }, [page, isSignedIn]);
 
   async function refreshGoogleDriveStatus() {
@@ -2500,6 +2503,39 @@ function AccountPages({
     } catch (e: any) {
       setMessage(`Déconnexion Google Drive impossible : ${e?.message || e}`);
     } finally { setGoogleDriveBusy(false); }
+  }
+
+  async function refreshOneDriveStatus() {
+    if (!isSignedIn) { setOneDriveStatus(null); return; }
+    try { setOneDriveStatus(await getPersonalCloudStatus("onedrive")); }
+    catch { setOneDriveStatus(null); }
+  }
+
+  async function handleOneDriveConnect() {
+    if (!isSignedIn) { setMessage("Connecte-toi d’abord à ton compte MULTISPORTS SCORING."); return; }
+    setOneDriveBusy(true);
+    try {
+      setMessage("Ouverture de OneDrive…");
+      await connectPersonalCloud("onedrive");
+      await refreshOneDriveStatus();
+      setMessage("OneDrive connecté à MULTISPORTS SCORING.");
+    } catch (e: any) {
+      setMessage(`Connexion OneDrive impossible : ${e?.message || e}`);
+    } finally {
+      setOneDriveBusy(false);
+    }
+  }
+
+  async function handleOneDriveDisconnect() {
+    if (!window.confirm("Déconnecter OneDrive de MULTISPORTS SCORING ? Les sauvegardes déjà présentes dans OneDrive ne seront pas supprimées.")) return;
+    setOneDriveBusy(true);
+    try {
+      await disconnectPersonalCloud("onedrive");
+      await refreshOneDriveStatus();
+      setMessage("OneDrive déconnecté. Tu peux le reconnecter à tout moment.");
+    } catch (e: any) {
+      setMessage(`Déconnexion OneDrive impossible : ${e?.message || e}`);
+    } finally { setOneDriveBusy(false); }
   }
 
   async function syncStoragePrefsToBackend(saved: typeof storagePrefs) {
@@ -3268,6 +3304,28 @@ function AccountPages({
                   <button type="button" disabled={googleDriveBusy} onClick={() => void handleGoogleDriveDisconnect()} style={{ borderRadius: 999, border: "1px solid rgba(255,107,107,0.65)", background: "rgba(255,107,107,0.10)", color: "#ff8c8c", padding: "8px 11px", fontSize: 11, fontWeight: 950, cursor: googleDriveBusy ? "not-allowed" : "pointer" }}>{googleDriveBusy ? "Patiente…" : "Déconnecter"}</button>
                 ) : (
                   <button type="button" disabled={googleDriveBusy || !isSignedIn || googleDriveStatus?.configured === false} onClick={() => void handleGoogleDriveConnect()} style={{ borderRadius: 999, border: "1px solid rgba(98,210,111,0.55)", background: "rgba(98,210,111,0.10)", color: "#9cffaa", padding: "8px 11px", fontSize: 11, fontWeight: 950, cursor: googleDriveBusy || !isSignedIn ? "not-allowed" : "pointer" }}>{googleDriveBusy ? "Ouverture…" : "Connecter Google Drive"}</button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ ...softCard, marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 11, color: theme.textSoft, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.6 }}>OneDrive</div>
+                <div style={{ marginTop: 4, fontWeight: 950, color: oneDriveStatus?.connected ? "#62d26f" : "#ffcc66" }}>
+                  {!isSignedIn ? "Compte MULTISPORTS SCORING requis" : oneDriveStatus?.connected ? "CONNECTÉ" : oneDriveStatus?.configured === false ? "NON CONFIGURÉ" : "DÉCONNECTÉ"}
+                </div>
+                <div style={{ marginTop: 5, fontSize: 10.8, color: theme.textSoft, lineHeight: 1.35 }}>
+                  Cloud personnel Microsoft OneDrive. MULTISPORTS SCORING utilise son dossier applicatif dédié ; tes autres fichiers OneDrive ne sont pas parcourus.
+                </div>
+              </div>
+              <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button type="button" disabled={oneDriveBusy || !isSignedIn} onClick={() => void refreshOneDriveStatus()} style={{ borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,0.055)", color: theme.text, padding: "8px 10px", fontSize: 11, fontWeight: 900, cursor: oneDriveBusy || !isSignedIn ? "not-allowed" : "pointer" }}>Actualiser</button>
+                {oneDriveStatus?.connected ? (
+                  <button type="button" disabled={oneDriveBusy} onClick={() => void handleOneDriveDisconnect()} style={{ borderRadius: 999, border: "1px solid rgba(255,107,107,0.65)", background: "rgba(255,107,107,0.10)", color: "#ff8c8c", padding: "8px 11px", fontSize: 11, fontWeight: 950, cursor: oneDriveBusy ? "not-allowed" : "pointer" }}>{oneDriveBusy ? "Patiente…" : "Déconnecter"}</button>
+                ) : (
+                  <button type="button" disabled={oneDriveBusy || !isSignedIn || oneDriveStatus?.configured === false} onClick={() => void handleOneDriveConnect()} style={{ borderRadius: 999, border: "1px solid rgba(98,210,111,0.55)", background: "rgba(98,210,111,0.10)", color: "#9cffaa", padding: "8px 11px", fontSize: 11, fontWeight: 950, cursor: oneDriveBusy || !isSignedIn ? "not-allowed" : "pointer" }}>{oneDriveBusy ? "Ouverture…" : "Connecter OneDrive"}</button>
                 )}
               </div>
             </div>

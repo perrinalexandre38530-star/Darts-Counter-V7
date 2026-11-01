@@ -34,6 +34,7 @@ export const NEW_MODE_IDS: string[] = [
   "bim_bam_boum",
   "saute_moutons",
   "troupeau_en_danger",
+  "une_ptite_raclette",
 ];
 
 // ✅ Auto-load des tickers via convention de nommage

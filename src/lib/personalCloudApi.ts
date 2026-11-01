@@ -174,14 +174,14 @@ async function waitForNativePersonalCloudCallback(provider: PersonalCloudProvide
     const result = readPersonalCloudCallbackResult();
     if (result?.provider === provider) {
       try { localStorage.removeItem(PERSONAL_CLOUD_CALLBACK_KEY); } catch {}
-      if (!result.ok) throw new Error(result.message || "Autorisation Google Drive refusée ou interrompue.");
+      if (!result.ok) throw new Error(result.message || `Autorisation ${personalCloudProviderLabel(provider)} refusée ou interrompue.`);
       const status = await getPersonalCloudStatus(provider);
-      if (!status.connected) throw new Error("Le retour OAuth a été reçu, mais Google Drive n'est pas encore connecté.");
+      if (!status.connected) throw new Error(`Le retour OAuth a été reçu, mais ${personalCloudProviderLabel(provider)} n'est pas encore connecté.`);
       return;
     }
     await new Promise((resolve) => window.setTimeout(resolve, 350));
   }
-  throw new Error("La connexion Google Drive a expiré. Réessaie depuis les réglages.");
+  throw new Error(`La connexion ${personalCloudProviderLabel(provider)} a expiré. Réessaie depuis les réglages.`);
 }
 
 export async function connectPersonalCloud(provider: PersonalCloudProvider): Promise<void> {
@@ -261,64 +261,86 @@ async function decodePayload(payload: any, onProgress?: PersonalCloudTransferPro
   return JSON.parse(text);
 }
 
-let latestDriveMetaCache: { at: number; value: any | null } | null = null;
-let driveBackupsCache: { at: number; value: any[] } | null = null;
+const ARCHIVE_PERSONAL_CLOUD_PROVIDERS = new Set<PersonalCloudProvider>(["google_drive", "onedrive"]);
+// Compatibilité des contrats V131 : les anciennes routes Google restent nommées
+// explicitement, même si le moteur est désormais mutualisé avec OneDrive.
+const GOOGLE_DRIVE_RAW_JOB_ENDPOINT = "/account/personal-cloud/google_drive/backups/raw/jobs";
+function googleDriveRawBackupEndpoint(id: string): string {
+  return `/account/personal-cloud/google_drive/backups/${encodeURIComponent(id)}/raw`;
+}
+const latestCloudMetaCache = new Map<PersonalCloudProvider, { at: number; value: any | null }>();
+const cloudBackupsCache = new Map<PersonalCloudProvider, { at: number; value: any[] }>();
 
-function invalidateGoogleDriveCaches(): void {
-  latestDriveMetaCache = null;
-  driveBackupsCache = null;
+function invalidatePersonalCloudCaches(provider: PersonalCloudProvider): void {
+  latestCloudMetaCache.delete(provider);
+  cloudBackupsCache.delete(provider);
 }
 
-async function pollGoogleDriveJob(jobId: string, onProgress?: PersonalCloudTransferProgress): Promise<any> {
+function personalCloudTransportCode(provider: PersonalCloudProvider): string {
+  return provider === "google_drive" ? "drive" : provider === "onedrive" ? "onedrive" : provider;
+}
+
+async function pollPersonalCloudJob(
+  provider: PersonalCloudProvider,
+  jobId: string,
+  onProgress?: PersonalCloudTransferProgress,
+): Promise<any> {
+  const label = personalCloudProviderLabel(provider);
+  const code = personalCloudTransportCode(provider);
   const deadline = Date.now() + 120_000;
   while (Date.now() < deadline) {
     try {
-      const state: any = await apiGet(`/account/personal-cloud/google_drive/backups/jobs/${encodeURIComponent(jobId)}`, { manual: true, timeoutMs: 10_000 });
+      const state: any = await apiGet(`/account/personal-cloud/${provider}/backups/jobs/${encodeURIComponent(jobId)}`, { manual: true, timeoutMs: 10_000 });
       const status = String(state?.job?.status || "").toLowerCase();
       onProgress?.(
         status === "queued" ? 62 : 82,
-        status === "queued" ? "Google Drive : transfert accepté, en attente d'écriture…" : "Google Drive : écriture du fichier…",
+        status === "queued" ? `${label} : transfert accepté, en attente d’écriture…` : `${label} : écriture du fichier…`,
       );
       if (status === "done") {
-        invalidateGoogleDriveCaches();
-        onProgress?.(92, "Google Drive a confirmé l’écriture.");
-        return state?.job?.result || { ok: true, provider: "google_drive" };
+        invalidatePersonalCloudCaches(provider);
+        onProgress?.(92, `${label} a confirmé l’écriture.`);
+        return state?.job?.result || { ok: true, provider };
       }
       if (status === "failed") {
-        const failed: any = new Error(state?.job?.error || "Sauvegarde Google Drive impossible.");
-        failed.code = "drive_job_failed";
+        const failed: any = new Error(state?.job?.error || `Sauvegarde ${label} impossible.`);
+        failed.code = `${code}_job_failed`;
         throw failed;
       }
     } catch (error: any) {
       const status = Number(error?.status || error?.statusCode || 0);
-      // Une tâche en mémoire peut disparaître lors d'un redémarrage du backend.
-      // Dans ce cas l'appelant retombe sur l'endpoint synchrone idempotent.
       if ([404, 410].includes(status)) {
-        const lost: any = new Error("Tâche Google Drive perdue après redémarrage du serveur.");
-        lost.code = "drive_job_lost";
+        const lost: any = new Error(`Tâche ${label} perdue après redémarrage du serveur.`);
+        lost.code = `${code}_job_lost`;
         throw lost;
       }
       throw error;
     }
     await new Promise((resolve) => window.setTimeout(resolve, 700));
   }
-  const timeout: any = new Error("Google Drive n'a pas confirmé la sauvegarde dans les 120 secondes.");
-  timeout.code = "drive_job_timeout";
+  const timeout: any = new Error(`${label} n’a pas confirmé la sauvegarde dans les 120 secondes.`);
+  timeout.code = `${code}_job_timeout`;
   throw timeout;
 }
 
-async function uploadGoogleDriveRawJob(
+async function pollGoogleDriveJob(jobId: string, onProgress?: PersonalCloudTransferProgress): Promise<any> {
+  return pollPersonalCloudJob("google_drive", jobId, onProgress);
+}
+
+async function uploadPersonalCloudRawJob(
+  provider: PersonalCloudProvider,
   packed: PackedBackup,
   metadata: Record<string, any>,
   onProgress?: PersonalCloudTransferProgress,
 ): Promise<any> {
+  const label = personalCloudProviderLabel(provider);
+  const code = personalCloudTransportCode(provider);
   if (packed.encoding !== "gzip-base64" || !packed.bytes.byteLength || typeof XMLHttpRequest === "undefined") {
-    const unsupported: any = new Error("Transport binaire Google Drive indisponible.");
-    unsupported.code = "raw_drive_unsupported";
+    const unsupported: any = new Error(`Transport binaire ${label} indisponible.`);
+    unsupported.code = `raw_${code}_unsupported`;
     throw unsupported;
   }
   const token = await ensurePublicAccountAccessToken();
-  if (!token) throw new Error("Session MULTISPORTS indisponible pour Google Drive.");
+  if (!token) throw new Error(`Session MULTISPORTS indisponible pour ${label}.`);
 
   const compactMeta = {
     title: "Sauvegarde MULTISPORTS SCORING",
@@ -328,7 +350,7 @@ async function uploadGoogleDriveRawJob(
 
   const started: any = await new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", buildApiUrl("/account/personal-cloud/google_drive/backups/raw/jobs"), true);
+    xhr.open("POST", buildApiUrl(provider === "google_drive" ? GOOGLE_DRIVE_RAW_JOB_ENDPOINT : `/account/personal-cloud/${provider}/backups/raw/jobs`), true);
     xhr.timeout = 45_000;
     xhr.setRequestHeader("Authorization", `Bearer ${token}`);
     xhr.setRequestHeader("Content-Type", "application/gzip");
@@ -338,15 +360,15 @@ async function uploadGoogleDriveRawJob(
       const ratio = total > 0 ? Math.max(0, Math.min(1, event.loaded / total)) : 0;
       const percent = 42 + Math.round(ratio * 18);
       const mb = (n: number) => `${(Math.max(0, n) / 1024 / 1024).toFixed(1)} Mo`;
-      onProgress?.(percent, `Envoi Google Drive : ${mb(event.loaded)} / ${mb(total)}`, event.loaded, total);
+      onProgress?.(percent, `Envoi ${label} : ${mb(event.loaded)} / ${mb(total)}`, event.loaded, total);
     };
-    xhr.onerror = () => reject(Object.assign(new Error("Transport binaire Google Drive inaccessible."), { status: xhr.status || 0 }));
-    xhr.ontimeout = () => reject(Object.assign(new Error("Le serveur n'a pas accepté la sauvegarde Google Drive assez vite."), { status: 408 }));
+    xhr.onerror = () => reject(Object.assign(new Error(`Transport binaire ${label} inaccessible.`), { status: xhr.status || 0 }));
+    xhr.ontimeout = () => reject(Object.assign(new Error(`Le serveur n’a pas accepté la sauvegarde ${label} assez vite.`), { status: 408 }));
     xhr.onload = () => {
       let data: any = null;
       try { data = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch {}
       if (xhr.status < 200 || xhr.status >= 300) {
-        const err: any = new Error(String(data?.message || data?.error || `Google Drive HTTP ${xhr.status}`));
+        const err: any = new Error(String(data?.message || data?.error || `${label} HTTP ${xhr.status}`));
         err.status = xhr.status;
         err.payload = data;
         reject(err);
@@ -358,8 +380,8 @@ async function uploadGoogleDriveRawJob(
   });
 
   const jobId = String(started?.job?.jobId || started?.jobId || "").trim();
-  if (!jobId) throw new Error("Google Drive n'a pas retourné d'identifiant de tâche.");
-  return pollGoogleDriveJob(jobId, onProgress);
+  if (!jobId) throw new Error(`${label} n’a pas retourné d’identifiant de tâche.`);
+  return pollPersonalCloudJob(provider, jobId, onProgress);
 }
 
 export async function uploadPersonalCloudSnapshot(
@@ -369,21 +391,21 @@ export async function uploadPersonalCloudSnapshot(
   onProgress?: PersonalCloudTransferProgress,
 ) {
   const packed = await gzipBase64(snapshotJson, onProgress);
-  if (provider === "google_drive") {
-    // Chemin rapide V131 : gzip binaire direct vers le backend, sans +33 % de
-    // base64 sur le réseau téléphone -> NAS. Le serveur construit ensuite le
-    // conteneur portable et l'écrit dans Drive en arrière-plan.
+  const label = personalCloudProviderLabel(provider);
+  const code = personalCloudTransportCode(provider);
+
+  if (ARCHIVE_PERSONAL_CLOUD_PROVIDERS.has(provider)) {
     try {
-      onProgress?.(40, `Google Drive : envoi du gzip (${(packed.bytes.byteLength / 1024 / 1024).toFixed(1)} Mo)…`);
-      const rawResult = await uploadGoogleDriveRawJob(packed, metadata, onProgress);
-      invalidateGoogleDriveCaches();
+      onProgress?.(40, `${label} : envoi du gzip (${(packed.bytes.byteLength / 1024 / 1024).toFixed(1)} Mo)…`);
+      const rawResult = await uploadPersonalCloudRawJob(provider, packed, metadata, onProgress);
+      invalidatePersonalCloudCaches(provider);
       return rawResult;
     } catch (rawError: any) {
       const rawStatus = Number(rawError?.status || rawError?.statusCode || 0);
-      const canFallback = rawError?.code === "raw_drive_unsupported" || rawError?.code === "drive_job_lost" || rawError?.code === "drive_job_timeout" ||
+      const canFallback = rawError?.code === `raw_${code}_unsupported` || rawError?.code === `${code}_job_lost` || rawError?.code === `${code}_job_timeout` ||
         [0, 401, 404, 405, 408, 409, 415, 429, 500, 502, 503, 504].includes(rawStatus);
       if (!canFallback) throw rawError;
-      console.warn("[personalCloud] Drive raw job indisponible, fallback JSON", rawError);
+      console.warn(`[personalCloud] ${label} raw job indisponible, fallback JSON`, rawError);
     }
 
     const wrapper = JSON.stringify({ __mssCompressedBackup: 1, encoding: packed.encoding, data: packed.data, metadata });
@@ -396,20 +418,18 @@ export async function uploadPersonalCloudSnapshot(
 
     let jobAccepted = false;
     try {
-      onProgress?.(48, "Google Drive : création de la tâche de compatibilité…");
-      const started: any = await apiPost(`/account/personal-cloud/google_drive/backups/jobs`, body, { timeoutMs: 20_000, manual: true });
+      onProgress?.(48, `${label} : création de la tâche de compatibilité…`);
+      const started: any = await apiPost(`/account/personal-cloud/${provider}/backups/jobs`, body, { timeoutMs: 20_000, manual: true });
       const jobId = String(started?.job?.jobId || started?.jobId || "").trim();
       if (jobId) {
         jobAccepted = true;
         try {
-          const result = await pollGoogleDriveJob(jobId, onProgress);
-          invalidateGoogleDriveCaches();
+          const result = await pollPersonalCloudJob(provider, jobId, onProgress);
+          invalidatePersonalCloudCaches(provider);
           return result;
         } catch (pollError: any) {
-          if (pollError?.code !== "drive_job_lost" && pollError?.code !== "drive_job_timeout") throw pollError;
-          console.warn("[personalCloud] Drive job non confirmée, reprise idempotente directe", pollError);
-          // La route directe réutilise/écrase le même fichier courant : elle est
-          // sûre même si la tâche précédente s'est terminée entre-temps.
+          if (pollError?.code !== `${code}_job_lost` && pollError?.code !== `${code}_job_timeout`) throw pollError;
+          console.warn(`[personalCloud] ${label} job non confirmée, reprise idempotente directe`, pollError);
           jobAccepted = false;
         }
       }
@@ -420,14 +440,14 @@ export async function uploadPersonalCloudSnapshot(
       const fallbackAllowed = [0, 404, 405, 408, 409, 429, 500, 501, 502, 503, 504].includes(status) ||
         /404|405|408|409|429|500|501|502|503|504|not found|cannot post|timeout|inaccessible/i.test(message);
       if (!fallbackAllowed) throw jobError;
-      console.warn("[personalCloud] Drive /jobs indisponible, fallback endpoint stable", jobError);
+      console.warn(`[personalCloud] ${label} /jobs indisponible, fallback endpoint stable`, jobError);
     }
 
-    onProgress?.(62, "Google Drive : envoi via le chemin de compatibilité…");
+    onProgress?.(62, `${label} : envoi via le chemin de compatibilité…`);
     try {
-      const direct = await apiPost(`/account/personal-cloud/google_drive/backups`, body, { timeoutMs: 180_000, manual: true });
-      invalidateGoogleDriveCaches();
-      onProgress?.(92, "Google Drive a confirmé l’écriture.");
+      const direct = await apiPost(`/account/personal-cloud/${provider}/backups`, body, { timeoutMs: 180_000, manual: true });
+      invalidatePersonalCloudCaches(provider);
+      onProgress?.(92, `${label} a confirmé l’écriture.`);
       return direct as any;
     } catch (directError: any) {
       const status = Number(directError?.status || directError?.statusCode || 0);
@@ -436,33 +456,33 @@ export async function uploadPersonalCloudSnapshot(
         /404|405|408|409|415|429|500|501|502|503|504|not found|cannot post|timeout|inaccessible/i.test(message);
       if (!legacyAllowed) throw directError;
 
-      // Compatibilité critique : certaines installations NAS encore en V1
-      // n'exposent que /backup (singulier). Le client récent doit continuer à
-      // sauvegarder au lieu d'échouer après les trois transports V131.
-      onProgress?.(70, "Google Drive : reprise via le backend compatible…");
-      const legacy = await apiPost(`/account/personal-cloud/google_drive/backup`, {
+      onProgress?.(70, `${label} : reprise via le backend compatible…`);
+      const legacy = await apiPost(`/account/personal-cloud/${provider}/backup`, {
         encoding: packed.encoding,
         data: packed.data,
         metadata,
       }, { timeoutMs: 180_000, manual: true });
-      invalidateGoogleDriveCaches();
-      onProgress?.(92, "Google Drive a confirmé l’écriture (mode compatible).");
+      invalidatePersonalCloudCaches(provider);
+      onProgress?.(92, `${label} a confirmé l’écriture (mode compatible).`);
       return legacy as any;
     }
   }
+
   return apiPost(`/account/personal-cloud/${provider}/backup`, { encoding: packed.encoding, data: packed.data, metadata }) as any;
 }
 
 export async function listPersonalCloudBackups(provider: PersonalCloudProvider, limit = 100): Promise<any[]> {
-  if (provider !== "google_drive") {
+  const capped = Math.max(1, Math.min(100, Number(limit || 100)));
+  if (!ARCHIVE_PERSONAL_CLOUD_PROVIDERS.has(provider)) {
     const meta = await getPersonalCloudBackupMeta(provider);
     return meta ? [meta] : [];
   }
-  const capped = Math.max(1, Math.min(100, Number(limit || 100)));
-  if (driveBackupsCache && Date.now() - driveBackupsCache.at < 15_000) return driveBackupsCache.value.slice(0, capped);
+  const cached = cloudBackupsCache.get(provider);
+  if (cached && Date.now() - cached.at < 15_000) return cached.value.slice(0, capped);
+
   let items: any[] = [];
   try {
-    const res: any = await apiGet(`/account/personal-cloud/google_drive/backups?limit=${capped}`, { manual: true, timeoutMs: 12_000 });
+    const res: any = await apiGet(`/account/personal-cloud/${provider}/backups?limit=${capped}`, { manual: true, timeoutMs: 12_000 });
     items = Array.isArray(res?.backups) ? res.backups : Array.isArray(res?.files) ? res.files : [];
   } catch (error: any) {
     const status = Number(error?.status || error?.statusCode || 0);
@@ -470,14 +490,12 @@ export async function listPersonalCloudBackups(provider: PersonalCloudProvider, 
     const legacyAllowed = [0, 404, 405, 501, 502, 503, 504].includes(status) || /404|405|501|not found|inaccessible/i.test(message);
     if (!legacyAllowed) throw error;
 
-    // Ancien backend : une seule sauvegarde courante. On l'expose sous un ID
-    // synthétique connu du downloader afin que l'UI Archives reste fonctionnelle.
-    const legacy: any = await apiGet(`/account/personal-cloud/google_drive/backup/meta`, { manual: true, timeoutMs: 12_000 }).catch(() => null);
+    const legacy: any = await apiGet(`/account/personal-cloud/${provider}/backup/meta`, { manual: true, timeoutMs: 12_000 }).catch(() => null);
     const meta = legacy?.backup || null;
     items = meta ? [{
-      id: "personal_google_drive_latest",
-      backupId: "personal_google_drive_latest",
-      provider: "google_drive",
+      id: `personal_${provider}_latest`,
+      backupId: `personal_${provider}_latest`,
+      provider,
       updatedAt: meta.updatedAt || meta.createdAt || meta?.metadata?.exportedAt || null,
       createdAt: meta.createdAt || meta.updatedAt || meta?.metadata?.exportedAt || null,
       metadata: meta.metadata || {},
@@ -485,34 +503,40 @@ export async function listPersonalCloudBackups(provider: PersonalCloudProvider, 
       legacy: true,
     }] : [];
   }
+
   const sorted = [...items].sort((a: any, b: any) => Date.parse(String(b?.updatedAt || b?.createdAt || 0)) - Date.parse(String(a?.updatedAt || a?.createdAt || 0)));
-  driveBackupsCache = { at: Date.now(), value: sorted };
-  latestDriveMetaCache = { at: Date.now(), value: sorted[0] || null };
+  cloudBackupsCache.set(provider, { at: Date.now(), value: sorted });
+  latestCloudMetaCache.set(provider, { at: Date.now(), value: sorted[0] || null });
   return sorted;
 }
 
-async function latestGoogleDriveBackup(force = false): Promise<any | null> {
-  if (!force && latestDriveMetaCache && Date.now() - latestDriveMetaCache.at < 15_000) {
-    return latestDriveMetaCache.value;
-  }
-  const items = await listPersonalCloudBackups("google_drive", 100);
+async function latestPersonalCloudBackup(provider: PersonalCloudProvider, force = false): Promise<any | null> {
+  const cached = latestCloudMetaCache.get(provider);
+  if (!force && cached && Date.now() - cached.at < 15_000) return cached.value;
+  const items = await listPersonalCloudBackups(provider, 100);
   const value = items[0] || null;
-  latestDriveMetaCache = { at: Date.now(), value };
+  latestCloudMetaCache.set(provider, { at: Date.now(), value });
   return value;
 }
 
 export async function getPersonalCloudBackupMeta(provider: PersonalCloudProvider, force = false): Promise<any | null> {
-  if (provider === "google_drive") return latestGoogleDriveBackup(force);
+  if (ARCHIVE_PERSONAL_CLOUD_PROVIDERS.has(provider)) return latestPersonalCloudBackup(provider, force);
   const res: any = await apiGet(`/account/personal-cloud/${provider}/backup/meta`).catch(() => null);
   return res?.backup || null;
 }
 
-async function decodeGoogleDriveGzipBytes(bytes: Uint8Array, onProgress?: PersonalCloudTransferProgress): Promise<any> {
-  if (typeof DecompressionStream === "undefined") throw Object.assign(new Error("Décompression gzip native indisponible."), { code: "drive_raw_decode_unsupported" });
-  onProgress?.(76, "Google Drive : décompression locale…");
+async function decodePersonalCloudGzipBytes(
+  provider: PersonalCloudProvider,
+  bytes: Uint8Array,
+  onProgress?: PersonalCloudTransferProgress,
+): Promise<any> {
+  const label = personalCloudProviderLabel(provider);
+  const code = personalCloudTransportCode(provider);
+  if (typeof DecompressionStream === "undefined") throw Object.assign(new Error("Décompression gzip native indisponible."), { code: `${code}_raw_decode_unsupported` });
+  onProgress?.(76, `${label} : décompression locale…`);
   const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
   const text = await new Response(stream).text();
-  onProgress?.(94, "Google Drive : contrôle du snapshot…");
+  onProgress?.(94, `${label} : contrôle du snapshot…`);
   return JSON.parse(text);
 }
 
@@ -523,90 +547,85 @@ export async function downloadPersonalCloudSnapshotById(
 ): Promise<any> {
   const id = String(backupId || "").trim();
   if (!id) throw new Error("Identifiant de sauvegarde cloud manquant.");
-  if (provider === "google_drive") {
-    if (id === "personal_google_drive_latest") {
-      onProgress?.(8, "Google Drive : téléchargement compatible…");
-      const legacy: any = await apiGet(`/account/personal-cloud/google_drive/backup`, {
-        manual: true,
-        timeoutMs: 180_000,
-        onDownloadProgress: (loadedBytes, totalBytes) => {
-          const ratio = totalBytes > 0 ? Math.max(0, Math.min(1, loadedBytes / totalBytes)) : 0;
-          onProgress?.(totalBytes > 0 ? 8 + Math.round(ratio * 64) : 12, "Téléchargement Google Drive…", loadedBytes, totalBytes);
-        },
-      });
-      return decodePayload(legacy, onProgress);
-    }
-    onProgress?.(4, "Connexion à Google Drive…");
-    // V131 : restauration binaire. Le backend renvoie un gzip brut même pour les
-    // anciennes sauvegardes JSON/base64. On évite ainsi une seconde enveloppe JSON
-    // et le surcoût réseau du base64. Les vieux backends restent compatibles.
-    try {
-      const raw = await apiGetBytes(`/account/personal-cloud/google_drive/backups/${encodeURIComponent(id)}/raw`, {
-        manual: true,
-        timeoutMs: 180_000,
-        onDownloadProgress: (loadedBytes, totalBytes) => {
-          const ratio = totalBytes > 0 ? Math.max(0, Math.min(1, loadedBytes / totalBytes)) : 0;
-          const percent = totalBytes > 0 ? 6 + Math.round(ratio * 66) : 12;
-          const mb = (n: number) => `${(Math.max(0, n) / 1024 / 1024).toFixed(1)} Mo`;
-          onProgress?.(percent, totalBytes > 0
-            ? `Téléchargement Google Drive : ${mb(loadedBytes)} / ${mb(totalBytes)}`
-            : `Téléchargement Google Drive : ${mb(loadedBytes)}`, loadedBytes, totalBytes);
-        },
-      });
-      const bytes = raw.bytes;
-      if (bytes.byteLength < 2 || bytes[0] !== 0x1f || bytes[1] !== 0x8b) throw Object.assign(new Error("Flux Google Drive gzip invalide."), { code: "drive_raw_invalid" });
-      return await decodeGoogleDriveGzipBytes(bytes, onProgress);
-    } catch (rawError: any) {
-      const status = Number(rawError?.status || rawError?.statusCode || 0);
-      const compatible = rawError?.code === "drive_raw_decode_unsupported" || rawError?.code === "drive_raw_invalid" ||
-        [404, 405, 406, 415, 501].includes(status);
-      if (!compatible) throw rawError;
-      console.warn("[personalCloud] restauration Drive binaire indisponible, fallback JSON", rawError);
-    }
+  if (!ARCHIVE_PERSONAL_CLOUD_PROVIDERS.has(provider)) return downloadPersonalCloudSnapshot(provider, onProgress);
 
-    try {
-      const res: any = await apiGet(`/account/personal-cloud/google_drive/backups/${encodeURIComponent(id)}`, {
-        manual: true,
-        timeoutMs: 180_000,
-        onDownloadProgress: (loadedBytes, totalBytes) => {
-          const ratio = totalBytes > 0 ? Math.max(0, Math.min(1, loadedBytes / totalBytes)) : 0;
-          const percent = totalBytes > 0 ? 6 + Math.round(ratio * 66) : 12;
-          const mb = (n: number) => `${(Math.max(0, n) / 1024 / 1024).toFixed(1)} Mo`;
-          onProgress?.(
-            percent,
-            totalBytes > 0
-              ? `Téléchargement Google Drive : ${mb(loadedBytes)} / ${mb(totalBytes)}`
-              : `Téléchargement Google Drive : ${mb(loadedBytes)}`,
-            loadedBytes,
-            totalBytes,
-          );
-        },
-      });
-      const raw = String(res?.snapshotJson || "");
-      if (!raw) throw new Error("Sauvegarde Google Drive vide.");
-      onProgress?.(74, "Snapshot Google Drive reçu. Lecture du conteneur…");
-      const parsed = JSON.parse(raw);
-      if (parsed?.__mssCompressedBackup === 1) return decodePayload(parsed, onProgress);
-      onProgress?.(94, "Snapshot Google Drive prêt à être restauré.");
-      return parsed;
-    } catch (error: any) {
-      const status = Number(error?.status || error?.statusCode || 0);
-      const compatible = [0, 404, 405, 501, 502, 503, 504].includes(status) || /404|405|501|not found|inaccessible/i.test(String(error?.message || error || ""));
-      if (!compatible) throw error;
-      const legacy: any = await apiGet(`/account/personal-cloud/google_drive/backup`, { manual: true, timeoutMs: 180_000 });
-      return decodePayload(legacy, onProgress);
-    }
+  const label = personalCloudProviderLabel(provider);
+  const code = personalCloudTransportCode(provider);
+  if (id === `personal_${provider}_latest`) {
+    onProgress?.(8, `${label} : téléchargement compatible…`);
+    const legacy: any = await apiGet(`/account/personal-cloud/${provider}/backup`, {
+      manual: true,
+      timeoutMs: 180_000,
+      onDownloadProgress: (loadedBytes, totalBytes) => {
+        const ratio = totalBytes > 0 ? Math.max(0, Math.min(1, loadedBytes / totalBytes)) : 0;
+        onProgress?.(totalBytes > 0 ? 8 + Math.round(ratio * 64) : 12, `Téléchargement ${label}…`, loadedBytes, totalBytes);
+      },
+    });
+    return decodePayload(legacy, onProgress);
   }
-  return downloadPersonalCloudSnapshot(provider, onProgress);
+
+  onProgress?.(4, `Connexion à ${label}…`);
+  try {
+    const rawPath = provider === "google_drive" ? googleDriveRawBackupEndpoint(id) : `/account/personal-cloud/${provider}/backups/${encodeURIComponent(id)}/raw`;
+    const raw = await apiGetBytes(rawPath, {
+      manual: true,
+      timeoutMs: 180_000,
+      onDownloadProgress: (loadedBytes, totalBytes) => {
+        const ratio = totalBytes > 0 ? Math.max(0, Math.min(1, loadedBytes / totalBytes)) : 0;
+        const percent = totalBytes > 0 ? 6 + Math.round(ratio * 66) : 12;
+        const mb = (n: number) => `${(Math.max(0, n) / 1024 / 1024).toFixed(1)} Mo`;
+        onProgress?.(percent, totalBytes > 0
+          ? `Téléchargement ${label} : ${mb(loadedBytes)} / ${mb(totalBytes)}`
+          : `Téléchargement ${label} : ${mb(loadedBytes)}`, loadedBytes, totalBytes);
+      },
+    });
+    const bytes = raw.bytes;
+    if (bytes.byteLength < 2 || bytes[0] !== 0x1f || bytes[1] !== 0x8b) throw Object.assign(new Error(`Flux ${label} gzip invalide.`), { code: `${code}_raw_invalid` });
+    return await decodePersonalCloudGzipBytes(provider, bytes, onProgress);
+  } catch (rawError: any) {
+    const status = Number(rawError?.status || rawError?.statusCode || 0);
+    const compatible = rawError?.code === `${code}_raw_decode_unsupported` || rawError?.code === `${code}_raw_invalid` ||
+      [404, 405, 406, 415, 501].includes(status);
+    if (!compatible) throw rawError;
+    console.warn(`[personalCloud] restauration ${label} binaire indisponible, fallback JSON`, rawError);
+  }
+
+  try {
+    const res: any = await apiGet(`/account/personal-cloud/${provider}/backups/${encodeURIComponent(id)}`, {
+      manual: true,
+      timeoutMs: 180_000,
+      onDownloadProgress: (loadedBytes, totalBytes) => {
+        const ratio = totalBytes > 0 ? Math.max(0, Math.min(1, loadedBytes / totalBytes)) : 0;
+        const percent = totalBytes > 0 ? 6 + Math.round(ratio * 66) : 12;
+        const mb = (n: number) => `${(Math.max(0, n) / 1024 / 1024).toFixed(1)} Mo`;
+        onProgress?.(percent, totalBytes > 0
+          ? `Téléchargement ${label} : ${mb(loadedBytes)} / ${mb(totalBytes)}`
+          : `Téléchargement ${label} : ${mb(loadedBytes)}`, loadedBytes, totalBytes);
+      },
+    });
+    const raw = String(res?.snapshotJson || "");
+    if (!raw) throw new Error(`Sauvegarde ${label} vide.`);
+    onProgress?.(74, `Snapshot ${label} reçu. Lecture du conteneur…`);
+    const parsed = JSON.parse(raw);
+    if (parsed?.__mssCompressedBackup === 1) return decodePayload(parsed, onProgress);
+    onProgress?.(94, `Snapshot ${label} prêt à être restauré.`);
+    return parsed;
+  } catch (error: any) {
+    const status = Number(error?.status || error?.statusCode || 0);
+    const compatible = [0, 404, 405, 501, 502, 503, 504].includes(status) || /404|405|501|not found|inaccessible/i.test(String(error?.message || error || ""));
+    if (!compatible) throw error;
+    const legacy: any = await apiGet(`/account/personal-cloud/${provider}/backup`, { manual: true, timeoutMs: 180_000 });
+    return decodePayload(legacy, onProgress);
+  }
 }
 
 export async function downloadPersonalCloudSnapshot(
   provider: PersonalCloudProvider,
   onProgress?: PersonalCloudTransferProgress,
 ): Promise<any> {
-  if (provider === "google_drive") {
-    const latest = await latestGoogleDriveBackup();
-    if (!latest?.id) throw new Error("Aucune sauvegarde Google Drive disponible.");
+  if (ARCHIVE_PERSONAL_CLOUD_PROVIDERS.has(provider)) {
+    const latest = await latestPersonalCloudBackup(provider);
+    if (!latest?.id) throw new Error(`Aucune sauvegarde ${personalCloudProviderLabel(provider)} disponible.`);
     return downloadPersonalCloudSnapshotById(provider, String(latest.id), onProgress);
   }
   onProgress?.(8, `Téléchargement ${personalCloudProviderLabel(provider)}…`);
