@@ -147,22 +147,26 @@ export type ClassificationProgress = {
 
 type ClassificationProgressCallback = (progress: ClassificationProgress) => void | Promise<void>;
 
-const CLASSIFIER_SYSTEM_PROMPT = `Classify public web search results for MULTISPORTS SCORING.
-Decide whether a real person is actively seeking a solution the app could legitimately help with.
+const CLASSIFIER_SYSTEM_PROMPT = `Classify public web search results for MULTISPORTS SCORING as a conversion-first acquisition analyst.
+Decide whether a real person is actively asking for a solution the app could legitimately help with RIGHT NOW.
 
-Supported themes: darts scoring/statistics/training/leagues, running/GPS/performance/challenges, multisport scoring, petanque/boules, table tennis, foosball, molkky, casual-game scorekeeping, sport challenges, finding local sport partners/opponents, club/friends leaderboards, replacing paper scoring, rankings/sessions, wearable imports.
+Supported themes: darts scoring/statistics/training/leagues, replacing DartCounter or paper scoring, running/GPS/performance/challenges, multisport scoring, petanque/boules, table tennis, foosball, molkky, casual-game scorekeeping, sport challenges, local sport partners/opponents, club/friends leaderboards, rankings/sessions and wearable imports.
 
-Rules:
-- score 0-100: 90+ only for an explicit first-person app/recommendation request from a real user; 70-89 strong user need; 40-69 related discussion; below 40 weak.
-- A product page, store listing, competitor page, editorial article, SEO listicle, news page or generic web page WITHOUT a real user asking for help MUST score 69 or lower and eligible=false, even if its content closely matches the search query.
-- eligible=true only when a useful, non-spammy reply to an actual user discussion/question would genuinely help.
-- reject news, SEO pages, stores, company/product pages, generic tutorials and content with no user need.
-- reject privacy/consent gates, cookie walls, access-denied pages, CAPTCHA/browser challenges, and placeholder snippets such as "We cannot provide a description for this page right now".
-- detect the source language from the text.
-- reason: max 18 words.
-- suggestedReply: only when eligible=true, same language as source, max 45 words, useful first and transparent about affiliation. Otherwise return "".
-- never impersonate a satisfied customer and never auto-post.
-- use {{APP_LINK}} for the tracked application link.
+Scoring rules:
+- 95-100: explicit first-person request for an app/recommendation/alternative with a supported concrete need.
+- 90-94: explicit problem or replacement intent where MULTISPORTS SCORING is a direct fit.
+- 75-89: clear user need but weaker purchase/download intent or incomplete fit.
+- 40-69: related discussion, generic hobby discovery, broad advice, inspiration or informational conversation.
+- below 40: weak/unrelated.
+- eligible=true ONLY for a specific real-user question/problem where replying with the app would add genuine value.
+- Generic requests such as "find a hobby", "what sport should I try", general sports discussion, news, tutorials, listicles, product pages, stores and competitor landing pages are NOT opportunities.
+- A forum/community page is NOT sufficient by itself: the snippet/title must contain an actual user need.
+- Product pages, store listings, SEO listicles, news and generic web pages MUST be eligible=false and score <=69.
+- Reject privacy/consent gates, cookie walls, access-denied pages, CAPTCHA/browser challenges and placeholder snippets.
+- Detect source language from the actual title/snippet, not from the market hint.
+- reason: max 18 words and state the concrete need or rejection reason.
+- suggestedReply: only when eligible=true, same language as source, 25-55 words. First answer the user's specific need, then be transparent about affiliation: say you work on/are affiliated with MULTISPORTS SCORING, mention only 1-2 directly relevant verified capabilities, and finish with {{APP_LINK}}. No slogans, no fake testimonial, no pressure, no irrelevant features.
+- never impersonate a customer, never claim personal experience and never auto-post.
 - return exactly one result for every supplied id.`;
 
 const CLASSIFIER_RESPONSE_FORMAT = {

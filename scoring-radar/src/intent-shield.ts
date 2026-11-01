@@ -63,6 +63,12 @@ const COMMERCIAL_TEXT_PATTERNS: RegExp[] = [
 ];
 
 const USER_SIGNAL_PATTERNS: RegExp[] = [
+  /\bis there (?:an?|any) app\b/i,
+  /\bany (?:good )?(?:app|application)s? for\b/i,
+  /\balternative to\b/i,
+  /\breplace (?:my |the )?(?:paper|spreadsheet|score sheet|scorecard)\b/i,
+  /\bhow do (?:you|people) (?:keep|track|record) (?:the )?(?:score|scores|stats|statistics)\b/i,
+  /\bneed (?:something|a way|an app) to (?:keep|track|record|manage)\b/i,
   /\b(?:i(?:'m| am)?\s+)?looking\s+for\b/i,
   /\b(?:can|could)\s+(?:anyone|someone)\s+(?:recommend|suggest)\b/i,
   /\b(?:what|which)\s+(?:app|application)\b/i,
@@ -175,13 +181,15 @@ export function intentShieldDecision(value: IntentShieldInput): IntentShieldDeci
     return { reject: true, reason: 'commercial_product_page', scoreCap: 25, userSignal, communitySignal, commercialSignal: true };
   }
 
-  if (!communitySignal && !userSignal) {
+  // A forum/community URL alone is not enough. We only want people who actually
+  // express a recommendation/problem/solution need, not generic community chatter.
+  if (!userSignal) {
     return {
       reject: false,
-      reason: 'no_real_user_intent_signal',
+      reason: communitySignal ? 'community_without_user_need' : 'no_real_user_intent_signal',
       scoreCap: 69,
       userSignal: false,
-      communitySignal: false,
+      communitySignal,
       commercialSignal
     };
   }
@@ -190,7 +198,7 @@ export function intentShieldDecision(value: IntentShieldInput): IntentShieldDeci
     reject: false,
     reason: null,
     scoreCap: 100,
-    userSignal,
+    userSignal: true,
     communitySignal,
     commercialSignal
   };

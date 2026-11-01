@@ -244,10 +244,12 @@ export async function generateAndAuditSocialDraft(
     messages: [
       {
         role: 'system',
-        content: `Create one concise, premium organic campaign for MULTISPORTS SCORING from the supplied market need.
+        content: `Create one concise, conversion-focused organic campaign for MULTISPORTS SCORING from the supplied HIGH-INTENT market need.
 
 Rules:
 - Never identify, quote or impersonate the source person.
+- The campaign MUST be anchored to the concrete sport/use-case in source_need. Never turn a vague source into generic 'find a hobby', generic motivation or broad lifestyle content.
+- If the source_need is not a concrete scoring/training/statistics/challenge/partner problem, make the creative explicitly product-led around the closest verified use-case; do not invent a different need.
 - Use ONLY these verified facts:\n- ${VERIFIED_PRODUCT_FACTS}
 - No hype, fake urgency, fake reviews, fake ratings, invented numbers or unsupported features.
 - Media must use only a human-approved asset library: real app screenshots/screen recordings, approved Awena videos/visuals, approved logos or approved product footage.
@@ -256,6 +258,7 @@ Rules:
 - facebook_page and youtube_short may use {{APP_LINK}}.
 - instagram_reel and tiktok must use a natural CTA without inventing a clickable caption link or baked-in promotional watermark.
 - Keep copy in the detected source language.
+- Lead with the concrete pain point, show one relevant product benefit, then one clear CTA. Avoid generic slogans such as 'find a new hobby', 'level up your life', 'discover your passion' or equivalent.
 - Keep each platform copy concise and adapted to its platform.`
       },
       {
@@ -297,7 +300,7 @@ Rules:
         role: 'system',
         content: `Audit this MULTISPORTS SCORING campaign strictly for public use.
 
-Reject cheap, generic, spammy, cringe, misleading or visually impossible creative. Reject any claim not supported by these verified facts:\n- ${VERIFIED_PRODUCT_FACTS}
+Reject cheap, generic, spammy, cringe, misleading, off-topic or visually impossible creative. Reject campaigns that are not clearly about the source sport/use-case or that use generic hobby/lifestyle hooks. Reject any claim not supported by these verified facts:\n- ${VERIFIED_PRODUCT_FACTS}
 
 PASS only if:
 qualityScore>=90, factualScore>=95, brandScore>=90, usefulnessScore>=85, visualScore>=90, spamRisk<=10, cringeRisk<=10.
