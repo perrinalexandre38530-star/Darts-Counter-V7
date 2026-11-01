@@ -37,6 +37,7 @@ import { buildTrainingPlayerJourney } from "../../profile/trainingPlayerJourney"
 import { buildTrainingQuickStart } from "../../profile/trainingQuickStart";
 import { buildTrainingDailyChallenge } from "../../profile/trainingDailyChallenge";
 import { clearTrainingExerciseDraft, getEffectiveDraftSeconds, hasMeaningfulTrainingExerciseDraft, loadTrainingExerciseDraft, pruneTrainingExerciseDrafts } from "../../profile/trainingExerciseDraft";
+import { buildTrainingExerciseProgression } from "../../profile/trainingExerciseProgression";
 
 const familyOrder: TrainingExerciseFamily[] = ["scoring", "doubles", "checkout", "precision", "bull", "regularity"];
 type HubTab = "program" | "exercises" | "diagnosis" | "progress";
@@ -389,6 +390,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
       lastEndedAt: Number(last?.endedAt || 0),
     };
   }, [detailExercise, sessions]);
+  const detailExerciseProgression = React.useMemo(() => detailExercise ? buildTrainingExerciseProgression(detailExercise, sessions) : null, [detailExercise, sessions]);
   const openExerciseDetail = (id: string) => { const exercise = TRAINING_EXERCISE_CATALOG.find((e) => e.id === id); if (!exercise) return; setFamily(exercise.family); setExerciseId(exercise.id); setExerciseDetailId(exercise.id); };
   const selectedProgram = programs.find((p) => p.id === programId) || (programId.startsWith("custom_") ? customProgram : coachProgram);
   const labSessions = sessions.filter((row) => row.modeId === "training_lab").slice(0, 12);
@@ -1057,7 +1059,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
           </div>}
 
           {tab === "exercises" && <div>
-            {detailExercise ? <TrainingExerciseDetail exercise={detailExercise} summary={detailSessionSummary} resumeAvailable={detailExerciseResumeAvailable} resumeLabel={detailExerciseResumeLabel} isFavorite={favoriteExerciseIds.has(detailExercise.id)} onToggleFavorite={() => toggleExerciseFavorite(detailExercise.id)} onBack={() => setExerciseDetailId(null)} onStart={() => onStart({ exerciseId: detailExercise.id, family: detailExercise.family, sessionKind: "exercise", returnExerciseDetailId: detailExercise.id, ...accountParticipantConfig })} onResume={() => { const draft = loadTrainingExerciseDraft(detailExercise.id, accountParticipantId || null); if (!draft) return; onStart({ exerciseId: detailExercise.id, family: detailExercise.family, sessionKind: "exercise", returnExerciseDetailId: detailExercise.id, resumeExerciseDraft: draft, ...accountParticipantConfig }); }} onRestart={() => { clearTrainingExerciseDraft(detailExercise.id, accountParticipantId || null); onStart({ exerciseId: detailExercise.id, family: detailExercise.family, sessionKind: "exercise", returnExerciseDetailId: detailExercise.id, ...accountParticipantConfig }); }} /> : <>
+            {detailExercise ? <TrainingExerciseDetail exercise={detailExercise} summary={detailSessionSummary} progression={detailExerciseProgression || undefined} resumeAvailable={detailExerciseResumeAvailable} resumeLabel={detailExerciseResumeLabel} isFavorite={favoriteExerciseIds.has(detailExercise.id)} onToggleFavorite={() => toggleExerciseFavorite(detailExercise.id)} onBack={() => setExerciseDetailId(null)} onStart={() => onStart({ exerciseId: detailExercise.id, family: detailExercise.family, sessionKind: "exercise", returnExerciseDetailId: detailExercise.id, ...accountParticipantConfig })} onResume={() => { const draft = loadTrainingExerciseDraft(detailExercise.id, accountParticipantId || null); if (!draft) return; onStart({ exerciseId: detailExercise.id, family: detailExercise.family, sessionKind: "exercise", returnExerciseDetailId: detailExercise.id, resumeExerciseDraft: draft, ...accountParticipantConfig }); }} onRestart={() => { clearTrainingExerciseDraft(detailExercise.id, accountParticipantId || null); onStart({ exerciseId: detailExercise.id, family: detailExercise.family, sessionKind: "exercise", returnExerciseDetailId: detailExercise.id, ...accountParticipantConfig }); }} /> : <>
             <CompactIconNav items={[
               { id: "path", label: "PARCOURS", icon: "progress", status: `NIV. ${skillPath.currentLevel}/5` },
               { id: "catalog", label: "CATALOGUE", icon: "exercises", status: `${unifiedCatalogItems.length} EX.` },

@@ -56,6 +56,32 @@ const RED = "#ef5261";
 const SOFT = "#aab1bf";
 const PLAYER_COLORS = [ORANGE, BLUE, GREEN, GOLD, RED, "#a78bfa", "#ff63b8", "#d4d8e5"];
 
+function TruckMiniIcon({ size = 24 }: { size?: number }) {
+  const stroke = { fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+    <path {...stroke} d="M3 6.5h10.5v9H3z" />
+    <path {...stroke} d="M13.5 10h3.2l2.8 3v2.5h-6z" />
+    <circle {...stroke} cx="7" cy="17.5" r="1.7" />
+    <circle {...stroke} cx="17" cy="17.5" r="1.7" />
+    <path {...stroke} d="M8.7 17.5h6.6M3 15.5h2.3M19.5 15.5H21" />
+  </svg>;
+}
+
+function QuickButton({ icon, label, value, color, onClick, disabled = false }: any) {
+  return <button type="button" onClick={onClick} disabled={disabled} style={{ minWidth: 0, minHeight: 54, borderRadius: 15, border: `1px solid ${color}${disabled ? "22" : "55"}`, background: disabled ? "rgba(255,255,255,.018)" : `linear-gradient(180deg,${color}12,rgba(4,6,10,.92))`, color: disabled ? "rgba(255,255,255,.28)" : "#fff", padding: "6px 7px", display: "grid", gridTemplateColumns: "28px minmax(0,1fr)", gap: 6, alignItems: "center", textAlign: "left", cursor: disabled ? "default" : "pointer", boxShadow: disabled ? "none" : `0 8px 20px ${color}10`, overflow: "hidden" }}>
+    <span aria-hidden style={{ width: 27, height: 27, borderRadius: 9, display: "grid", placeItems: "center", color: disabled ? "rgba(255,255,255,.28)" : color, border: `1px solid ${color}${disabled ? "22" : "44"}`, background: `${color}${disabled ? "08" : "12"}`, fontSize: 14, fontWeight: 1100 }}>{icon}</span>
+    <span style={{ minWidth: 0 }}><span style={{ display: "block", color: disabled ? "rgba(255,255,255,.28)" : color, fontSize: 6.8, fontWeight: 1100, letterSpacing: .45, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span><span style={{ display: "block", marginTop: 2, color: disabled ? "rgba(255,255,255,.24)" : "rgba(255,255,255,.78)", fontSize: 7.6, fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</span></span>
+  </button>;
+}
+
+function Kpi({ label, value, detail, color = ORANGE }: any) {
+  return <div style={{ minWidth: 0, borderRadius: 14, padding: "9px 10px", background: `linear-gradient(180deg,${color}0e,rgba(255,255,255,.018))`, border: `1px solid ${color}38`, boxShadow: `inset 0 0 18px ${color}08` }}>
+    <div style={{ color: SOFT, fontSize: 7.2, fontWeight: 1000, letterSpacing: .45, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
+    <div style={{ marginTop: 4, color, fontSize: 18, lineHeight: 1, fontWeight: 1150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
+    {detail ? <div style={{ marginTop: 4, color: "rgba(255,255,255,.48)", fontSize: 7.2, lineHeight: 1.25 }}>{detail}</div> : null}
+  </div>;
+}
+
 function panel(accent = "rgba(255,255,255,.10)"): React.CSSProperties {
   return {
     borderRadius: 18,

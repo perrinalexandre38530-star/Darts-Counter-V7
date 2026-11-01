@@ -2,6 +2,7 @@ import React from "react";
 import type { TrainingExerciseDefinition } from "../catalog/trainingExerciseCatalog";
 import { TRAINING_FAMILY_META } from "../catalog/trainingExerciseCatalog";
 import { buildTrainingExerciseDetail } from "../catalog/trainingExerciseDetails";
+import type { TrainingExerciseProgression } from "../profile/trainingExerciseProgression";
 
 type ExerciseSummary = {
   attempts: number;
@@ -14,7 +15,7 @@ type ExerciseSummary = {
   lastEndedAt: number;
 } | null;
 
-export default function TrainingExerciseDetail({ exercise, summary, resumeAvailable = false, resumeLabel, isFavorite, onToggleFavorite, onBack, onStart, onResume, onRestart }: { exercise: TrainingExerciseDefinition; summary?: ExerciseSummary; resumeAvailable?: boolean; resumeLabel?: string; isFavorite: boolean; onToggleFavorite: () => void; onBack: () => void; onStart: () => void; onResume?: () => void; onRestart?: () => void }) {
+export default function TrainingExerciseDetail({ exercise, summary, progression, resumeAvailable = false, resumeLabel, isFavorite, onToggleFavorite, onBack, onStart, onResume, onRestart }: { exercise: TrainingExerciseDefinition; summary?: ExerciseSummary; progression?: TrainingExerciseProgression; resumeAvailable?: boolean; resumeLabel?: string; isFavorite: boolean; onToggleFavorite: () => void; onBack: () => void; onStart: () => void; onResume?: () => void; onRestart?: () => void }) {
   const detail = buildTrainingExerciseDetail(exercise);
   const hasHistory = !!summary && summary.attempts > 0;
   const lastWhen = hasHistory && summary?.lastEndedAt ? new Date(summary.lastEndedAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }) : "—";
@@ -26,7 +27,7 @@ export default function TrainingExerciseDetail({ exercise, summary, resumeAvaila
     </div>
 
     <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
-      <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: .9, color: "#27dcff" }}>{TRAINING_FAMILY_META[exercise.family].label.toUpperCase()} • NIVEAU {exercise.difficulty}</div><div style={{ marginTop: 4, fontSize: "clamp(18px,2.5vw,28px)", lineHeight: 1.04, fontWeight: 1000 }}>{exercise.title}</div><div style={{ marginTop: 5, maxWidth: 760, fontSize: 10.5, lineHeight: 1.45, opacity: .58 }}>{exercise.subtitle}</div></div>
+      <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: .9, color: "#27dcff" }}>{TRAINING_FAMILY_META[exercise.family].label.toUpperCase()} • DIFFICULTÉ {exercise.difficulty}/5</div><div style={{ marginTop: 4, fontSize: "clamp(18px,2.5vw,28px)", lineHeight: 1.04, fontWeight: 1000 }}>{exercise.title}</div><div style={{ marginTop: 5, maxWidth: 760, fontSize: 10.5, lineHeight: 1.45, opacity: .58 }}>{exercise.subtitle}</div></div>
       <div style={{ padding: "7px 10px", borderRadius: 999, border: "1px solid rgba(39,220,255,.18)", background: "rgba(39,220,255,.05)", fontSize: 8.3, fontWeight: 950, whiteSpace: "nowrap" }}>{detail.format.toUpperCase()}</div>
     </div>
 
@@ -43,8 +44,8 @@ export default function TrainingExerciseDetail({ exercise, summary, resumeAvaila
         </section>
 
         <section style={{ marginTop: 10, padding: 14, borderRadius: 15, border: "1px solid rgba(255,85,85,.18)", background: "rgba(120,10,15,.07)" }}>
-          <div style={{ fontSize: 8.5, fontWeight: 950, color: "#ff6f7a" }}>PROCHAIN OBJECTIF • NIVEAU {Math.min(5, exercise.difficulty + 1)}</div>
-          <div style={{ marginTop: 6, fontSize: 12, fontWeight: 950 }}>{detail.nextObjective}</div>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}><div style={{ fontSize: 8.5, fontWeight: 950, color: "#ff6f7a" }}>PROCHAIN OBJECTIF • NIVEAU {progression?.level ?? 0} → {Math.min(5, (progression?.level ?? 0) + 1)}</div><div style={{ fontSize: 7.5, opacity: .5 }}>NIVEAU PERSONNEL</div></div>
+          <div style={{ marginTop: 6, fontSize: 12, fontWeight: 950 }}>{progression?.nextObjective || detail.nextObjective}</div>
         </section>
 
         <section style={{ marginTop: 10, padding: 14, borderRadius: 15, border: hasHistory ? "1px solid rgba(39,220,255,.18)" : "1px solid rgba(255,255,255,.075)", background: hasHistory ? "linear-gradient(135deg,rgba(39,220,255,.045),rgba(140,90,255,.025))" : "rgba(255,255,255,.018)" }}>
@@ -52,6 +53,7 @@ export default function TrainingExerciseDetail({ exercise, summary, resumeAvaila
             <div style={{ fontSize: 9, fontWeight: 950, letterSpacing: .8, color: hasHistory ? "#27dcff" : "inherit" }}>TON SUIVI</div>
             <div style={{ fontSize: 7.5, opacity: .42 }}>{hasHistory ? `DERNIÈRE • ${lastWhen}` : "AUCUNE TENTATIVE"}</div>
           </div>
+          <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 10px", borderRadius: 10, border: progression?.mastered ? "1px solid rgba(80,255,174,.18)" : "1px solid rgba(39,220,255,.14)", background: progression?.mastered ? "rgba(80,255,174,.035)" : "rgba(39,220,255,.025)" }}><span style={{ fontSize: 8, fontWeight: 950 }}>{progression?.mastered ? "MAÎTRISE" : `NIVEAU PERSONNEL ${progression?.level ?? 0}/5`}</span><span style={{ fontSize: 7.3, opacity: .55 }}>{progression?.currentObjective || "Premier objectif à valider"}</span></div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7, marginTop: 10 }}>
             {[
               ["TENTATIVES", summary?.attempts ?? 0],

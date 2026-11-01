@@ -7,6 +7,7 @@ import {
   attachSocialAsset,
   countSocialCampaignsSince,
   finishRun,
+  ensureRadarSchemaCompatibility,
   getActiveRunProgress,
   getLatestRunProgress,
   getOpportunity,
@@ -227,6 +228,14 @@ async function maybeCreateSocialCampaign(
 
 async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: ExecutionContext): Promise<Response> {
   if (!isAdminAuthorized(request, env)) return unauthorized();
+
+  try {
+    await ensureRadarSchemaCompatibility(env);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(JSON.stringify({ event: 'radar_schema_compatibility_failed', path: url.pathname, error: message }));
+    return json({ ok: false, error: 'database_schema_repair_failed', detail: message }, 500);
+  }
 
   if (request.method === 'GET' && url.pathname === '/api/auth/check') {
     return json({ ok: true });

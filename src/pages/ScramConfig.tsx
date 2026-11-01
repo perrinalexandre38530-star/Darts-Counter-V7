@@ -505,9 +505,14 @@ export default function ScramConfig(props: any) {
     };
   }
 
+  const playerModeSelectedIds = React.useMemo(
+    () => uniqueIds(selectedIds).filter((id) => byId.has(String(id))).slice(0, 8),
+    [selectedIds, byId]
+  );
+
   const playerModeTeams = React.useMemo(() => {
-    const left = selectedIds.filter((_, index) => index % 2 === 0);
-    const right = selectedIds.filter((_, index) => index % 2 === 1);
+    const left = playerModeSelectedIds.filter((_, index) => index % 2 === 0);
+    const right = playerModeSelectedIds.filter((_, index) => index % 2 === 1);
     const sideName = (ids: string[], fallback: string) => {
       if (ids.length === 1) {
         const profile: any = byId.get(String(ids[0]));
@@ -529,7 +534,7 @@ export default function ScramConfig(props: any) {
         playerIds: right,
       },
     ];
-  }, [selectedIds, byId]);
+  }, [playerModeSelectedIds, byId]);
 
   const manualTeamConfigs = React.useMemo(() => {
     const humanTeams = TEAM_IDS.map((teamId) => ({
@@ -562,16 +567,23 @@ export default function ScramConfig(props: any) {
     activeTeamConfigs.length === 2 &&
     activeTeamConfigs[0].playerIds.length > 0 &&
     activeTeamConfigs[0].playerIds.length === activeTeamConfigs[1].playerIds.length;
-  const validSelection =
-    activeTeamConfigs.length === 2 &&
-    sameTeamSize &&
-    activeUniquePlayerIds.length === activeTeamPlayerIds.length &&
-    activeUniquePlayerIds.length >= 2 &&
-    activeUniquePlayerIds.length <= 8;
+  const validPlayerCounts = [2, 4, 6, 8];
+  const validSelection = participantMode === "players"
+    ? validPlayerCounts.includes(playerModeSelectedIds.length) &&
+      activeTeamConfigs.length === 2 &&
+      sameTeamSize &&
+      activeUniquePlayerIds.length === playerModeSelectedIds.length
+    : activeTeamConfigs.length === 2 &&
+      sameTeamSize &&
+      activeUniquePlayerIds.length === activeTeamPlayerIds.length &&
+      activeUniquePlayerIds.length >= 2 &&
+      activeUniquePlayerIds.length <= 8;
 
   const selectionError = React.useMemo(() => {
     if (participantMode === "players") {
-      return "Sélectionne 2 joueurs pour un duel solo, ou 4, 6 ou 8 profils pour deux camps équilibrés.";
+      const count = playerModeSelectedIds.length;
+      if (count === 0) return "Sélectionne 2 joueurs pour un duel solo, ou 4, 6 ou 8 profils pour deux camps équilibrés.";
+      return `${count} joueur${count > 1 ? "s" : ""} sélectionné${count > 1 ? "s" : ""} · le Scram accepte exactement 2, 4, 6 ou 8 joueurs.`;
     }
     if (activeTeamConfigs.length !== 2) return "Le Scram se joue avec exactement 2 équipes.";
     if (!sameTeamSize) return "Les deux équipes doivent contenir le même nombre de joueurs.";
@@ -579,7 +591,7 @@ export default function ScramConfig(props: any) {
       return "Un même profil ne peut pas jouer dans les deux équipes.";
     }
     return "Sélection incomplète : choisis entre 1 et 4 joueurs dans chacune des deux équipes.";
-  }, [participantMode, activeTeamConfigs, sameTeamSize, activeUniquePlayerIds.length, activeTeamPlayerIds.length]);
+  }, [participantMode, playerModeSelectedIds.length, activeTeamConfigs, sameTeamSize, activeUniquePlayerIds.length, activeTeamPlayerIds.length]);
 
   const selectedBotCount = selectedProfiles.filter(isBotLike).length;
 

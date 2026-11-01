@@ -2,6 +2,114 @@ import type { Analysis, Candidate, OpportunityRow, RadarEnv, RunProgressRow } fr
 import { opportunityDedupeKey, sourceQualityReason } from './source-quality';
 import { intentShieldDecision, opportunityPassesIntentShield } from './intent-shield';
 
+async function tableColumns(env: RadarEnv, table: string): Promise<Set<string>> {
+  const result = await env.DB.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
+  return new Set((result.results ?? []).map((row: { name: string }) => row.name));
+}
+
+async function addMissingColumns(env: RadarEnv, table: string, columns: Array<[string, string]>): Promise<void> {
+  const existing = await tableColumns(env, table);
+  for (const [name, definition] of columns) {
+    if (existing.has(name)) continue;
+    await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`).run();
+  }
+}
+
+let schemaCompatibilityPromise: Promise<void> | null = null;
+
+/**
+ * Repairs older D1 databases in-place. CREATE TABLE IF NOT EXISTS does not add
+ * columns to tables that already exist, so long-lived Radar databases can be
+ * structurally older even after `npm run db:remote` succeeds.
+ */
+export async function ensureRadarSchemaCompatibility(env: RadarEnv): Promise<void> {
+  if (schemaCompatibilityPromise) return schemaCompatibilityPromise;
+  schemaCompatibilityPromise = (async () => {
+    await env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS outreach_actions (
+        sighting_id TEXT PRIMARY KEY,
+        status TEXT NOT NULL DEFAULT 'new',
+        note TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT '',
+        updated_at TEXT NOT NULL DEFAULT '',
+        FOREIGN KEY (sighting_id) REFERENCES sightings(id)
+      )
+    `).run();
+    await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_outreach_actions_status ON outreach_actions(status, updated_at DESC)').run();
+
+    await addMissingColumns(env, 'sightings', [
+      ['query_text', "TEXT NOT NULL DEFAULT ''"],
+      ['language_hint', "TEXT NOT NULL DEFAULT ''"],
+      ['language', 'TEXT'],
+      ['category', 'TEXT'],
+      ['intent', 'TEXT'],
+      ['score', 'INTEGER'],
+      ['eligible', 'INTEGER'],
+      ['reason', 'TEXT'],
+      ['suggested_reply', 'TEXT'],
+      ['analyzed_at', 'TEXT'],
+      ['created_at', "TEXT NOT NULL DEFAULT ''"]
+    ]);
+
+    await addMissingColumns(env, 'run_progress', [
+      ['finished_at', 'TEXT'],
+      ['elapsed_ms', 'INTEGER NOT NULL DEFAULT 0'],
+      ['queries', 'INTEGER NOT NULL DEFAULT 0'],
+      ['brave_results', 'INTEGER NOT NULL DEFAULT 0'],
+      ['new_candidates', 'INTEGER NOT NULL DEFAULT 0'],
+      ['queued', 'INTEGER NOT NULL DEFAULT 0'],
+      ['analyzed', 'INTEGER NOT NULL DEFAULT 0'],
+      ['eligible', 'INTEGER NOT NULL DEFAULT 0'],
+      ['high_intent', 'INTEGER NOT NULL DEFAULT 0'],
+      ['social_campaigns', 'INTEGER NOT NULL DEFAULT 0'],
+      ['error', 'TEXT'],
+      ['details_json', "TEXT NOT NULL DEFAULT '{}'" ]
+    ]);
+
+
+    await addMissingColumns(env, 'social_assets', [
+      ['title', "TEXT NOT NULL DEFAULT ''"],
+      ['platforms_json', "TEXT NOT NULL DEFAULT '[]'"],
+      ['quality_score', 'INTEGER NOT NULL DEFAULT 0'],
+      ['technical_score', 'INTEGER NOT NULL DEFAULT 0'],
+      ['brand_score', 'INTEGER NOT NULL DEFAULT 0'],
+      ['human_approved', 'INTEGER NOT NULL DEFAULT 0'],
+      ['notes', "TEXT NOT NULL DEFAULT ''"],
+      ['updated_at', "TEXT NOT NULL DEFAULT ''"]
+    ]);
+
+    await addMissingColumns(env, 'social_campaigns', [
+      ['language', "TEXT NOT NULL DEFAULT 'fr'"],
+      ['topic', "TEXT NOT NULL DEFAULT ''"],
+      ['angle', "TEXT NOT NULL DEFAULT ''"],
+      ['hook', "TEXT NOT NULL DEFAULT ''"],
+      ['call_to_action', "TEXT NOT NULL DEFAULT ''"],
+      ['hashtags_json', "TEXT NOT NULL DEFAULT '[]'"],
+      ['media_type', "TEXT NOT NULL DEFAULT 'video'"],
+      ['media_brief_json', "TEXT NOT NULL DEFAULT '{}'"],
+      ['platform_copy_json', "TEXT NOT NULL DEFAULT '{}'"],
+      ['quality_score', 'INTEGER NOT NULL DEFAULT 0'],
+      ['factual_score', 'INTEGER NOT NULL DEFAULT 0'],
+      ['brand_score', 'INTEGER NOT NULL DEFAULT 0'],
+      ['usefulness_score', 'INTEGER NOT NULL DEFAULT 0'],
+      ['visual_score', 'INTEGER NOT NULL DEFAULT 0'],
+      ['spam_risk', 'INTEGER NOT NULL DEFAULT 100'],
+      ['cringe_risk', 'INTEGER NOT NULL DEFAULT 100'],
+      ['qa_reason', "TEXT NOT NULL DEFAULT ''"],
+      ['status', "TEXT NOT NULL DEFAULT 'draft'"],
+      ['selected_asset_id', 'TEXT'],
+      ['updated_at', "TEXT NOT NULL DEFAULT ''"],
+      ['approved_at', 'TEXT'],
+      ['published_at', 'TEXT']
+    ]);
+  })().catch((error) => {
+    schemaCompatibilityPromise = null;
+    throw error;
+  });
+  return schemaCompatibilityPromise;
+}
+
+
 export async function insertCandidate(env: RadarEnv, candidate: Candidate): Promise<boolean> {
   const result = await env.DB.prepare(`
     INSERT OR IGNORE INTO sightings (

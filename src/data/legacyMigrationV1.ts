@@ -465,6 +465,28 @@ function analyzeHistory(
       continue;
     }
 
+    // W9 AUTHORITY LOCK: a stats_index is a derived cache, never evidence that a
+    // real match payload existed. Older migrations synthesized fake finished rows
+    // from matchIdsByMode; keep those IDs only in quarantine for diagnostics and
+    // never feed them into canonical History V4.
+    const statsOnlyEvidence = source === "stats-index" || !!raw?.legacyMigration?.statsOnly || !!raw?.summary?.restoredFromStatsIndex;
+    if (statsOnlyEvidence) {
+      quarantinedRows[id] = {
+        ...raw,
+        id,
+        matchId: clean(raw?.matchId || id) || id,
+        legacyMigration: {
+          ...(safeObject(raw?.legacyMigration)),
+          version: LEGACY_MIGRATION_VERSION,
+          statsOnly: true,
+          disposition: "quarantined",
+          migratedFrom: source,
+        },
+      };
+      actions.push({ matchId: id, disposition: "quarantined", reason: "stats-index-only-no-original-history", source });
+      continue;
+    }
+
     const repairs: Array<{ from: string; to: string }> = [];
     const rewritten = rewriteKnownIdentityFields({ ...raw, id, matchId: clean(raw?.matchId || id) || id }, aliasMap, repairs);
     const fp = legacyMatchFingerprint(rewritten);
@@ -480,10 +502,7 @@ function analyzeHistory(
 
     let disposition: LegacyMatchDisposition = "migrate";
     let reason = "legacy-row-valid";
-    if (source === "stats-index" || raw?.legacyMigration?.statsOnly) {
-      disposition = "incomplete";
-      reason = "stats-index-only-no-original-payload";
-    } else if (unresolved.length) {
+    if (unresolved.length) {
       disposition = "incomplete";
       reason = "unresolved-player-id-preserved";
     } else if (repairs.length) {
@@ -646,6 +665,8 @@ export function analyzeLegacySnapshot(input: any, options: LegacyMigrationAnalys
   if (identity.conflicts.length) warnings.push(`${identity.conflicts.length} conflit(s) d'alias explicite mis en quarantaine.`);
   const incompleteCount = history.actions.filter((action) => action.disposition === "incomplete").length;
   if (incompleteCount) warnings.push(`${incompleteCount} partie(s) conservée(s) comme incomplète(s) sans inventer de données.`);
+  const statsOnlyQuarantined = history.actions.filter((action) => action.reason === "stats-index-only-no-original-history").length;
+  if (statsOnlyQuarantined) warnings.push(`${statsOnlyQuarantined} entrée(s) stats-only ignorée(s) : les statistiques dérivées ne recréent jamais History V4.`);
   if (agenda.recursiveKeys.length) warnings.push(`${agenda.recursiveKeys.length} clé(s) Agenda récursive(s) seront consolidées en un seul dataset canonique.`);
 
   const counts = (disposition: LegacyMatchDisposition) => history.actions.filter((action) => action.disposition === disposition).length;

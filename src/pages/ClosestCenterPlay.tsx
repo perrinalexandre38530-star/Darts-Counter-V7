@@ -436,6 +436,19 @@ export default function ClosestCenterPlay(props:any) {
     A: teamRemaining(players, activeRoundUsed, dartsPerPlayer, "A"),
     B: teamRemaining(players, activeRoundUsed, dartsPerPlayer, "B"),
   }), [players, activeRoundUsed, dartsPerPlayer]);
+  const nextThrowHud = React.useMemo(() => {
+    if (pointsMode !== "petanque") return null;
+    if (phase !== "play") return null;
+    if (cameraPointNeedsDecision) return null;
+    if (isManual && (manualEntryMode !== "guided" || manualStage !== "throws")) return null;
+    const team = petanqueTeamToPlay || roundStarterTeam;
+    if (!team || Number(teamDartsRemaining[team] || 0) <= 0) return null;
+    const eligible = players.filter((p:any) => String(p.teamId || "A") === team && Math.max(0, dartsPerPlayer - Number(activeRoundUsed[String(p.id)] || 0)) > 0);
+    const selected = current && String(current.teamId || "A") === team && Math.max(0, dartsPerPlayer - Number(activeRoundUsed[String(current.id)] || 0)) > 0
+      ? current
+      : eligible[0] || null;
+    return { team, player:selected, remainingA:Number(teamDartsRemaining.A||0), remainingB:Number(teamDartsRemaining.B||0) };
+  }, [pointsMode, phase, cameraPointNeedsDecision, isManual, manualEntryMode, manualStage, petanqueTeamToPlay, roundStarterTeam, teamDartsRemaining, players, dartsPerPlayer, activeRoundUsed, current]);
   const livePointTeam = React.useMemo(() => {
     if (isManual && pointsMode==="petanque") {
       const lastPoint=[...manualThrows].filter((x:any)=>Number(x.round)===Number(round)).reverse().find((x:any)=>x.tookPoint);
@@ -1766,8 +1779,8 @@ export default function ClosestCenterPlay(props:any) {
         const score=Number(projectedTeamTotals?.[team]||0);
         const teamTone=team==="A"?"#ff8f9c":"#83c8ff";
         return <React.Fragment key={team}>
-          {idx===1?<div style={{display:"grid",placeItems:"center",padding:"0 3px",minWidth:68}}><div style={{fontSize:8,color:"#71818f",fontWeight:1000}}>MÈNE {round}</div><div style={{fontSize:9,color:ACCENT,fontWeight:1000,whiteSpace:"nowrap"}}>{pointsMode==="petanque"?`À ${Number(cfg.targetScore||13)}`:pointsMode==="descending"?"TOP 5":"PLUS PROCHE"}</div>{pointsMode==="petanque"?<div style={{fontSize:7,marginTop:2,color:livePointTeam?(livePointTeam==="A"?"#ff8f9c":"#83c8ff"):"#7d8d99",fontWeight:1000,whiteSpace:"nowrap"}}>{livePointTeam?`POINT ${livePointTeam}`:`DÉPART ${roundStarterTeam}`}</div>:null}</div>:null}
-          <div style={{gridColumn:idx===0?1:3,padding:"7px 10px",borderRadius:12,border:`1px solid ${team==="A"?"rgba(255,77,95,.28)":"rgba(61,165,255,.28)"}`,background:team==="A"?"rgba(255,77,95,.07)":"rgba(61,165,255,.07)",display:"grid",gridTemplateColumns:idx===0?"1fr auto":"auto 1fr",gap:7,alignItems:"center"}}>
+          {idx===1?<div style={{display:"grid",placeItems:"center",padding:"0 3px",minWidth:nextThrowHud?86:68,textAlign:"center"}}><div style={{fontSize:8,color:"#71818f",fontWeight:1000}}>MÈNE {round}</div><div style={{fontSize:9,color:ACCENT,fontWeight:1000,whiteSpace:"nowrap"}}>{pointsMode==="petanque"?`À ${Number(cfg.targetScore||13)}`:pointsMode==="descending"?"TOP 5":"PLUS PROCHE"}</div>{nextThrowHud ? <><div style={{fontSize:7,marginTop:2,color:nextThrowHud.team==="A"?"#ff9aa5":"#8bcfff",fontWeight:1000,whiteSpace:"nowrap"}}>À JOUER · ÉQ. {nextThrowHud.team}</div><div style={{fontSize:7,color:"#d7e1e8",fontWeight:900,maxWidth:86,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nextThrowHud.player?.name || "JOUEUR À CHOISIR"}</div><div style={{fontSize:6.5,color:"#7f919f",fontWeight:1000,whiteSpace:"nowrap"}}>A {nextThrowHud.remainingA} · B {nextThrowHud.remainingB}</div></> : pointsMode==="petanque"?<div style={{fontSize:7,marginTop:2,color:livePointTeam?(livePointTeam==="A"?"#ff8f9c":"#83c8ff"):"#7d8d99",fontWeight:1000,whiteSpace:"nowrap"}}>{livePointTeam?`POINT ${livePointTeam}`:`DÉPART ${roundStarterTeam}`}</div>:null}</div>:null}
+          <div style={{gridColumn:idx===0?1:3,padding:"7px 10px",borderRadius:12,border:`1px solid ${nextThrowHud?.team===team?teamTone:(team==="A"?"rgba(255,77,95,.28)":"rgba(61,165,255,.28)")}`,boxShadow:nextThrowHud?.team===team?`0 0 0 1px ${teamTone}33,0 0 18px ${teamTone}18`:undefined,background:team==="A"?"rgba(255,77,95,.07)":"rgba(61,165,255,.07)",display:"grid",gridTemplateColumns:idx===0?"1fr auto":"auto 1fr",gap:7,alignItems:"center",transition:"border-color .18s ease, box-shadow .18s ease"}}>
             {idx===1?<b style={{fontSize:compactHeight?26:32,lineHeight:1,color:"#fff",fontVariantNumeric:"tabular-nums"}}>{score}</b>:null}
             <div style={{minWidth:0,textAlign:idx===0?"left":"right"}}>
               <div style={{fontSize:8,fontWeight:1000,color:teamTone,letterSpacing:1}}>ÉQUIPE {team}</div>

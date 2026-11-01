@@ -789,20 +789,70 @@ function BlackWhiteInput({ state, activePlayer, currentThrow, setCurrentThrow, m
 }
 
 
+function liveDartValue(d:any){
+  const v=Number(d?.v||0), m=Number(d?.mult||1);
+  return Math.max(0,v*m);
+}
+function liveDartLabel(d:any){
+  if(!d || Number(d?.v||0)===0) return "MISS";
+  const v=Number(d.v||0),m=Number(d.mult||1);
+  if(v===25) return m===2?"DBULL 50":"BULL 25";
+  return `${m===3?"T":m===2?"D":"S"}${v}`;
+}
 function BimBamBoumPanel({ state, currentThrow, accent }:any){
   const p=state?.players?.[state?.activePlayerIndex]; const id=String(p?.id||"");
   const streak=Number(state?.special?.bimBamBoumStreakByPlayer?.[id]||0); const best=Number(state?.special?.bimBamBoumBestStreakByPlayer?.[id]||0); const combos=Number(state?.special?.bimBamBoumCombosByPlayer?.[id]||0);
   const tones=["#55b9ff","#ffd24b","#ff5a4f"]; const labels=["BIM","BAM","BOUM"];
-  return <section data-bim-bam-boum-situation="1" style={{...panelStyle(accent+"55"),padding:"8px 9px",background:"linear-gradient(145deg,rgba(28,70,145,.16),rgba(65,9,9,.14),rgba(5,8,14,.98))"}}><div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><b style={{color:accent,fontSize:8.8}}>SITUATION · BIM BAM BOUM</b><span style={{color:SOFT,fontSize:7.5}}>COMBOS {combos} · SÉRIE {streak} · BEST {best}</span></div><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:5,marginTop:6}}>{labels.map((lab,i)=>{const done=(currentThrow?.length||0)>i;return <div key={lab} style={{minHeight:43,borderRadius:10,border:`1px solid ${tones[i]}${done?"aa":"44"}`,background:`${tones[i]}${done?"20":"0b"}`,display:"grid",placeItems:"center",boxShadow:done?`0 0 16px ${tones[i]}33`:"none"}}><b style={{color:tones[i],fontSize:14}}>{lab}</b><span style={{color:done?"#fff":"#7d8795",fontSize:7,fontWeight:950}}>{done?"ARMÉ":"EN ATTENTE"}</span></div>})}</div><div style={{marginTop:6,height:5,borderRadius:999,background:"rgba(255,255,255,.07)",overflow:"hidden"}}><div style={{height:"100%",width:`${Math.min(100,(streak/3)*100)}%`,background:"linear-gradient(90deg,#55b9ff,#ffd24b,#ff5a4f)",transition:"width .2s"}}/></div></section>;
+  const liveScore=(currentThrow||[]).reduce((s:number,d:any)=>s+liveDartValue(d),0);
+  const ready=(currentThrow?.length||0)===3;
+  return <section data-bim-bam-boum-situation="1" style={{...panelStyle(accent+"55"),padding:"8px 9px",background:"linear-gradient(145deg,rgba(28,70,145,.16),rgba(65,9,9,.14),rgba(5,8,14,.98))"}}>
+    <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><b style={{color:accent,fontSize:8.8}}>SITUATION · BIM BAM BOUM</b><span style={{color:SOFT,fontSize:7.5}}>COMBOS {combos} · SÉRIE {streak} · BEST {best}</span></div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:5,marginTop:6}}>{labels.map((lab,i)=>{const dart=currentThrow?.[i],done=!!dart;return <div key={lab} style={{minHeight:48,borderRadius:10,border:`1px solid ${tones[i]}${done?"aa":"44"}`,background:`${tones[i]}${done?"20":"0b"}`,display:"grid",placeItems:"center",boxShadow:done?`0 0 16px ${tones[i]}33`:"none"}}><b style={{color:tones[i],fontSize:14}}>{lab}</b><span style={{color:done?"#fff":"#7d8795",fontSize:7.2,fontWeight:1000}}>{done?liveDartLabel(dart):"EN ATTENTE"}</span></div>})}</div>
+    <div data-bim-bam-boum-live-preview="1" style={{display:"grid",gridTemplateColumns:"1fr auto",gap:8,alignItems:"center",marginTop:6,padding:"5px 7px",borderRadius:9,background:"rgba(255,255,255,.035)",border:"1px solid rgba(255,255,255,.07)"}}>
+      <span style={{color:ready?"#fff":SOFT,fontSize:7.4,fontWeight:950}}>{ready?"COMBO PRÊT À VALIDER":"COMPLÈTE LES 3 TEMPS"}</span><b style={{color:ready?"#ffd24b":accent,fontSize:9.2}}>LIVE {liveScore} pts</b>
+    </div>
+    <div style={{marginTop:6,height:5,borderRadius:999,background:"rgba(255,255,255,.07)",overflow:"hidden"}}><div style={{height:"100%",width:`${Math.min(100,(streak/3)*100)}%`,background:"linear-gradient(90deg,#55b9ff,#ffd24b,#ff5a4f)",transition:"width .2s"}}/></div>
+  </section>;
 }
-function SauteMoutonsPanel({ state, accent }:any){
+function SauteMoutonsPanel({ state, currentThrow, accent }:any){
   const track=Math.max(6,Number(state?.config?.modeOptions?.trackLength??state?.config?.goal??20));
   const rows=(state?.players||[]).map((p:any)=>({id:String(p.id),name:p.name,pos:Number(state?.progress?.[p.id]||0)})).sort((a:any,b:any)=>b.pos-a.pos);
-  return <section data-saute-moutons-situation="1" style={{...panelStyle(accent+"55"),padding:"8px 9px",background:"linear-gradient(145deg,rgba(74,160,86,.10),rgba(5,8,14,.98))"}}><div style={{display:"flex",justifyContent:"space-between",gap:8}}><b style={{color:accent,fontSize:8.8}}>COURSE · SAUTE-MOUTONS</b><span style={{color:SOFT,fontSize:7.5}}>ARRIVÉE · CASE {track}</span></div><div style={{display:"grid",gap:5,marginTop:6}}>{rows.slice(0,6).map((r:any,i:number)=><div key={r.id} style={{display:"grid",gridTemplateColumns:"18px 70px minmax(0,1fr) 34px",gap:6,alignItems:"center"}}><b style={{color:i===0?"#ffd24b":"#9aa5b6",fontSize:8}}>#{i+1}</b><span style={{color:"#fff",fontSize:8,fontWeight:1000,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name}</span><div style={{height:8,borderRadius:999,background:"rgba(255,255,255,.07)",overflow:"hidden"}}><div style={{height:"100%",width:`${Math.min(100,(r.pos/track)*100)}%`,background:`linear-gradient(90deg,${accent},#ffd24b)`}}/></div><b style={{color:accent,fontSize:8,textAlign:"right"}}>{r.pos}/{track}</b></div>)}</div></section>;
+  const active=state?.players?.[state?.activePlayerIndex]; const activeId=String(active?.id||"");
+  const leapBonus=Math.max(0,Number(state?.config?.modeOptions?.leapfrogBonus??1));
+  const bull25=Math.max(1,Number(state?.config?.modeOptions?.bull25Jump??4)), bull50=Math.max(1,Number(state?.config?.modeOptions?.bull50Jump??6));
+  let projected=Number(state?.progress?.[activeId]||0), liveLeapfrogs=0;
+  for(const d of (currentThrow||[])){
+    const v=Number(d?.v||0),m=Number(d?.mult||1);
+    let jump=v===25?(m===2?bull50:bull25):(v===0?0:(m===3?3:m===2?2:1));
+    if(jump<=0) continue;
+    const before=projected, intended=Math.min(track,projected+jump);
+    const crossed=(state?.players||[]).filter((p:any)=>String(p.id)!==activeId).some((p:any)=>{const op=Number(state?.progress?.[p.id]||0);return op>before&&op<=intended;});
+    projected=Math.min(track,intended+(crossed?leapBonus:0)); if(crossed&&leapBonus) liveLeapfrogs++;
+  }
+  const base=Number(state?.progress?.[activeId]||0), gain=Math.max(0,projected-base);
+  return <section data-saute-moutons-situation="1" style={{...panelStyle(accent+"55"),padding:"8px 9px",background:"linear-gradient(145deg,rgba(74,160,86,.10),rgba(5,8,14,.98))"}}>
+    <div style={{display:"flex",justifyContent:"space-between",gap:8}}><b style={{color:accent,fontSize:8.8}}>COURSE · SAUTE-MOUTONS</b><span style={{color:SOFT,fontSize:7.5}}>ARRIVÉE · CASE {track}</span></div>
+    <div data-saute-moutons-live-preview="1" style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:7,alignItems:"center",marginTop:6,padding:"5px 7px",borderRadius:9,background:"rgba(255,255,255,.035)",border:"1px solid rgba(255,255,255,.07)"}}>
+      <b style={{color:"#fff",fontSize:7.7,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{active?.name||"JOUEUR ACTIF"}</b><span style={{color:liveLeapfrogs?"#ffd24b":SOFT,fontSize:7.3,fontWeight:950}}>{liveLeapfrogs?`🐑 +${liveLeapfrogs} SAUT${liveLeapfrogs>1?"S":""}`:"PROJECTION"}</span><b style={{color:accent,fontSize:9}}>+{gain} → {projected}/{track}</b>
+    </div>
+    <div style={{display:"grid",gap:5,marginTop:6}}>{rows.slice(0,6).map((r:any,i:number)=><div key={r.id} style={{display:"grid",gridTemplateColumns:"18px 70px minmax(0,1fr) 34px",gap:6,alignItems:"center",opacity:r.id===activeId?1:.82}}><b style={{color:i===0?"#ffd24b":"#9aa5b6",fontSize:8}}>#{i+1}</b><span style={{color:"#fff",fontSize:8,fontWeight:1000,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name}</span><div style={{height:8,borderRadius:999,background:"rgba(255,255,255,.07)",overflow:"hidden"}}><div style={{height:"100%",width:`${Math.min(100,(r.pos/track)*100)}%`,background:`linear-gradient(90deg,${accent},#ffd24b)`}}/></div><b style={{color:accent,fontSize:8,textAlign:"right"}}>{r.pos}/{track}</b></div>)}</div>
+  </section>;
 }
-function TroupeauDangerPanel({ state, accent }:any){
+function TroupeauDangerPanel({ state, currentThrow, accent }:any){
   const p=state?.players?.[state?.activePlayerIndex]; const id=String(p?.id||""); const max=Math.max(1,Number(state?.config?.modeOptions?.flockSize??8)); const left=Number(state?.special?.flockRemainingByPlayer?.[id]??max); const diff=String(state?.config?.modeOptions?.wolfDifficulty||"normal"); const pressure=(diff==="easy"?35:diff==="hard"?75:diff==="alpha"?95:55)+Math.max(0,Math.floor(Number(state?.roundIndex||0)/2)*5);
-  return <section data-troupeau-danger-situation="1" style={{...panelStyle("#ff654f66"),padding:"8px 9px",background:"linear-gradient(145deg,rgba(255,82,56,.12),rgba(5,8,14,.98))"}}><div style={{display:"flex",justifyContent:"space-between",gap:8}}><b style={{color:"#ff7b63",fontSize:8.8}}>SITUATION · TROUPEAU EN DANGER</b><span style={{color:SOFT,fontSize:7.5}}>MEUTE {diff.toUpperCase()} · PRESSION {pressure}</span></div><div style={{display:"grid",gridTemplateColumns:"1.1fr .9fr",gap:6,marginTop:6}}><div style={{borderRadius:10,border:"1px solid rgba(255,255,255,.09)",padding:"7px 8px",background:"rgba(255,255,255,.025)"}}><div style={{color:"#fff",fontSize:7.2,fontWeight:1000}}>MOUTONS RESTANTS</div><div style={{display:"flex",alignItems:"baseline",gap:6,marginTop:2}}><strong style={{color:"#ffd24b",fontSize:24}}>{left}</strong><span style={{color:SOFT,fontSize:8}}>/ {max}</span></div><div style={{height:6,borderRadius:999,background:"rgba(255,255,255,.07)",overflow:"hidden"}}><div style={{height:"100%",width:`${Math.max(0,Math.min(100,left/max*100))}%`,background:"linear-gradient(90deg,#ff6655,#ffd24b,#70df8a)"}}/></div></div><div style={{borderRadius:10,border:`1px solid ${accent}44`,padding:"7px 8px",background:`${accent}0c`,display:"grid",alignContent:"center"}}><b style={{color:accent,fontSize:8}}>🐕 PATOU</b><span style={{color:"#fff",fontSize:11,fontWeight:1100,marginTop:2}}>+{Number(state?.config?.modeOptions?.patouPower??10)} / BULL</span><span style={{color:SOFT,fontSize:7.2,marginTop:2}}>DBULL : sauvetage Berger {state?.config?.modeOptions?.shepherdSave===false?"OFF":"ON"}</span></div></div></section>;
+  const patouPower=Math.max(0,Number(state?.config?.modeOptions?.patouPower??10));
+  const bullCount=(currentThrow||[]).filter((d:any)=>Number(d?.v||0)===25).length;
+  const defense=(currentThrow||[]).reduce((s:number,d:any)=>s+liveDartValue(d),0)+bullCount*patouPower;
+  const projectedLoss=defense>=pressure?0:Math.max(1,Math.ceil((pressure-defense)/35));
+  const shepherdSave=state?.config?.modeOptions?.shepherdSave!==false&&(currentThrow||[]).some((d:any)=>Number(d?.v||0)===25&&Number(d?.mult||1)===2);
+  return <section data-troupeau-danger-situation="1" style={{...panelStyle("#ff654f66"),padding:"8px 9px",background:"linear-gradient(145deg,rgba(255,82,56,.12),rgba(5,8,14,.98))"}}>
+    <div style={{display:"flex",justifyContent:"space-between",gap:8}}><b style={{color:"#ff7b63",fontSize:8.8}}>SITUATION · TROUPEAU EN DANGER</b><span style={{color:SOFT,fontSize:7.5}}>MEUTE {diff.toUpperCase()} · PRESSION {pressure}</span></div>
+    <div data-troupeau-danger-live-preview="1" style={{display:"grid",gridTemplateColumns:"1fr auto",gap:8,alignItems:"center",marginTop:6,padding:"5px 7px",borderRadius:9,background:defense>=pressure?"rgba(70,190,105,.08)":"rgba(255,90,70,.07)",border:`1px solid ${defense>=pressure?"rgba(70,220,120,.28)":"rgba(255,100,80,.22)"}`}}>
+      <span style={{color:defense>=pressure?"#7cf09b":"#ff9a88",fontSize:7.5,fontWeight:1000}}>{defense>=pressure?"🐕 VAGUE REPOUSSÉE":currentThrow?.length?`🐺 RISQUE : -${Math.max(0,projectedLoss-(shepherdSave?1:0))} MOUTON${projectedLoss>1?"S":""}`:"🐺 PRÉPARE TA DÉFENSE"}</span>
+      <b style={{color:defense>=pressure?"#7cf09b":"#ffd24b",fontSize:9}}>DÉFENSE {defense}/{pressure}</b>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"1.1fr .9fr",gap:6,marginTop:6}}><div style={{borderRadius:10,border:"1px solid rgba(255,255,255,.09)",padding:"7px 8px",background:"rgba(255,255,255,.025)"}}><div style={{color:"#fff",fontSize:7.2,fontWeight:1000}}>MOUTONS RESTANTS</div><div style={{display:"flex",alignItems:"baseline",gap:6,marginTop:2}}><strong style={{color:"#ffd24b",fontSize:24}}>{left}</strong><span style={{color:SOFT,fontSize:8}}>/ {max}</span></div><div style={{height:6,borderRadius:999,background:"rgba(255,255,255,.07)",overflow:"hidden"}}><div style={{height:"100%",width:`${Math.max(0,Math.min(100,left/max*100))}%`,background:"linear-gradient(90deg,#ff6655,#ffd24b,#70df8a)"}}/></div></div><div style={{borderRadius:10,border:`1px solid ${accent}44`,padding:"7px 8px",background:`${accent}0c`,display:"grid",alignContent:"center"}}><b style={{color:accent,fontSize:8}}>🐕 PATOU</b><span style={{color:"#fff",fontSize:11,fontWeight:1100,marginTop:2}}>+{patouPower} / BULL</span><span style={{color:SOFT,fontSize:7.2,marginTop:2}}>DBULL : sauvetage Berger {state?.config?.modeOptions?.shepherdSave===false?"OFF":"ON"}</span></div></div>
+  </section>;
 }
 
 function threeColorFromUiDart(d:any){
@@ -1428,7 +1478,7 @@ export default function Wave61SharedPlay(props: any) {
     {spec.id === "nine_dart_century" ? <CenturyPanel state={state} accent={accent} /> : null}
     {spec.id === "shove_a_penny" ? <ShovePennyPanel state={state} accent={accent} /> : null}
     {spec.id === "green_vs_red" ? <GreenRedPanel state={state} /> : spec.id === "black_vs_white" ? <BlackWhitePanel state={state} /> : spec.id === "three_colors" ? <ThreeColorsPanel state={state} accent={accent} /> : spec.id === "la_suite" ? <LaSuitePanel state={state} accent={accent} /> : spec.id === "color_call" ? <ColorCallPanel state={state} accent={accent} /> : null}
-    {spec.id === "bim_bam_boum" ? <BimBamBoumPanel state={state} currentThrow={currentThrow} accent={accent} /> : spec.id === "saute_moutons" ? <SauteMoutonsPanel state={state} accent={accent} /> : spec.id === "troupeau_en_danger" ? <TroupeauDangerPanel state={state} accent={accent} /> : null}
+    {spec.id === "bim_bam_boum" ? <BimBamBoumPanel state={state} currentThrow={currentThrow} accent={accent} /> : spec.id === "saute_moutons" ? <SauteMoutonsPanel state={state} currentThrow={currentThrow} accent={accent} /> : spec.id === "troupeau_en_danger" ? <TroupeauDangerPanel state={state} currentThrow={currentThrow} accent={accent} /> : null}
     {spec.id === "hi_score" ? <HiScorePanel state={state} accent={accent} /> : null}
     {spec.id === "sniper" ? <SniperPanel state={state} accent={accent} /> : null}
     {spec.id === "luciole" ? <LuciolePanel state={state} accent={accent} reveal={lucioleReveal} /> : null}

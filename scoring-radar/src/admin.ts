@@ -104,7 +104,8 @@ export function adminHtml(): string {
         authenticatedToken = '';
         sessionStorage.removeItem('scoringRadarToken');
       }
-      const error = new Error(data.error || ('HTTP ' + response.status)); error.status = response.status; throw error;
+      const detail = data.detail ? ' — ' + data.detail : '';
+      const error = new Error((data.error || ('HTTP ' + response.status)) + detail); error.status = response.status; throw error;
     }
     return data;
   }

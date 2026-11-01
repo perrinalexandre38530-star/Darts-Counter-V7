@@ -424,11 +424,21 @@ function TurnResolutionScreen({ debrief, onContinue, onUndo }: any) {
   </div>;
 }
 
-function QuickButton({ icon, label, value, color, onClick }: any) {
-  return <button type="button" onClick={onClick} className="ocean-float-action" style={{ borderColor: `${color}66`, background: `linear-gradient(180deg,${color}20,rgba(3,10,16,.96))` }} title={`${label} · ${value}`}>
-    <span className="ocean-float-action__icon" style={{ color }}>{icon}</span>
+function OceanDockIcon({ name, size = 21 }: { name: "map" | "fleet" | "target" | "radar" | "stats" | "log"; size?: number }) {
+  const p = { fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  if (name === "map") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="m4 6 5-2 6 2 5-2v14l-5 2-6-2-5 2z"/><path {...p} d="M9 4v14M15 6v14"/></svg>;
+  if (name === "fleet") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M4 14h16l-2.5 4H6.5z"/><path {...p} d="M8 14V8h8v6M12 8V4M9.5 5.5h5"/><path {...p} d="M3 20c2 1 4 1 6 0 2 1 4 1 6 0 2 1 4 1 6 0"/></svg>;
+  if (name === "target") return <svg width={size} height={size} viewBox="0 0 24 24"><circle {...p} cx="12" cy="12" r="7"/><circle {...p} cx="12" cy="12" r="3"/><path {...p} d="M12 2v3M22 12h-3M12 22v-3M2 12h3"/></svg>;
+  if (name === "radar") return <svg width={size} height={size} viewBox="0 0 24 24"><circle {...p} cx="12" cy="12" r="8"/><path {...p} d="M12 12 17 7M12 4v2M20 12h-2M12 20v-2M4 12h2"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></svg>;
+  if (name === "stats") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>;
+  return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M5 3h11l3 3v15H5z"/><path {...p} d="M16 3v4h4M8 11h8M8 15h8M8 19h5"/></svg>;
+}
+
+function QuickButton({ icon, label, value, color, onClick, active = false }: any) {
+  return <button type="button" onClick={onClick} className={`ocean-float-action ${active ? "is-active" : ""}`} style={{ ["--dock-color" as any]: color }} title={`${label} · ${value}`}>
+    <span className="ocean-float-action__icon">{icon}</span>
     <span className="ocean-float-action__label">{label}</span>
-    <span className="ocean-float-action__badge" style={{ borderColor: `${color}66`, color }}>{String(value).split(" ")[0]}</span>
+    <span className="ocean-float-action__badge">{String(value).split(" ")[0]}</span>
   </button>;
 }
 
@@ -1055,88 +1065,41 @@ export default function OceanControlPlay(props: any) {
 
       {showGameplayHelp && state.visits.length === 0 && state.phase === "playing" ? <FirstRunGuide onClose={dismissGameplayHelp} /> : null}
 
-      <section className="ocean-next-action" style={{ ["--action-color" as any]: gameplayStep.tone }}>
-        <div className="ocean-next-action__step"><span>{gameplayStep.step}</span><small>ÉTAPE</small></div>
-        <div className="ocean-next-action__copy"><span>{gameplayStep.icon} QUE FAIRE MAINTENANT ?</span><strong>{gameplayStep.title}</strong><small>{gameplayStep.detail}</small></div>
+      <section className="ocean-command-dock" aria-label="Commandes OCEAN CONTROL">
+        <QuickButton icon={<OceanDockIcon name="map" />} label="CARTE" value={state.focusNumber || "—"} color={targetColor} active={Boolean(state.focusNumber)} onClick={() => setOverlay("map")} />
+        <QuickButton icon={<OceanDockIcon name="fleet" />} label="FLOTTE" value={`${oceanControlRemainingDecks(ownOwner)} navires`} color={ownColor} onClick={() => setOverlay("fleet")} />
+        <QuickButton icon={<OceanDockIcon name="target" />} label="CIBLES" value={`${state.owners.filter((owner) => owner.id !== ownOwner?.id && !owner.eliminated).length} ennemies`} color={RED} onClick={() => setOverlay("targets")} />
+        <QuickButton icon={<OceanDockIcon name="radar" />} label="TACTIQUE" value={`${latestSonar?.contactCount ?? 0} contacts`} color={CYAN} onClick={() => setOverlay("intel")} />
+        <QuickButton icon={<OceanDockIcon name="stats" />} label="STATS" value={`${oceanControlAccuracy(activeStats)}%`} color={GOLD} onClick={() => setOverlay("stats")} />
+        <QuickButton icon={<OceanDockIcon name="log" />} label="JOURNAL" value={`${state.visits.length} volées`} color="#a78bfa" onClick={() => setOverlay("log")} />
+      </section>
+
+      <section className="ocean-compact-status" style={{ ["--status-color" as any]: gameplayStep.tone }}>
+        <div className="ocean-compact-status__step"><span>{gameplayStep.icon}</span><b>{gameplayStep.title}</b></div>
+        <div className="ocean-compact-status__meta">
+          <span>CIBLE <strong>{targetOwner?.name || "—"}</strong></span>
+          <span>FOCUS <strong>{state.focusNumber || "—"}</strong></span>
+          <span>VOLÉE <strong>{throwDarts.length}/3</strong></span>
+        </div>
         <button type="button" disabled={botThinking} onClick={() => {
           if (!targetOwner) setOverlay("targets");
           else if (throwDarts.length >= 3) commitVisit();
-          else setOverlay(null);
-        }}>{gameplayStep.action}</button>
-      </section>
-
-      <section className="ocean-last-result" aria-live="polite">
-        <div className="ocean-last-result__head"><span>DERNIER RÉSULTAT</span><strong>{lastVisit ? `B${lastVisit.battle} · T${lastVisit.round}` : "EN ATTENTE"}</strong></div>
-        <div className="ocean-last-result__items">
-          {lastResultItems.length ? lastResultItems.map((item: any) => <span key={item.key} className={`is-${item.tone}`}><i>{item.icon}</i><strong>{item.label}</strong></span>) : <span className="is-idle"><i>🎯</i><strong>Choisis une zone puis lance ta première volée.</strong></span>}
-        </div>
-      </section>
-
-      <section className="ocean-grid-panel">
-        <div className="ocean-grid-heading">
-          <div>
-            <strong>CARTE TACTIQUE · GRILLE ENNEMIE</strong>
-            <span>{remainingCells} zones intactes · {targetDamagePercent}% détruit</span>
-          </div>
-          <button type="button" className="ocean-grid-help" onClick={() => setOverlay("intel")}>{latestSonar ? `SONAR ${latestSonar.contactCount}` : oceanControlVariantLabel(config.variant)}</button>
-        </div>
-        <div className="ocean-target-progress" aria-label={`${targetDamagePercent}% de la flotte ennemie détruite`}><span style={{ width: `${targetDamagePercent}%` }} /></div>
-        <div className="ocean-map-launcher" role="button" tabIndex={0} onClick={() => setOverlay("map")} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setOverlay("map"); } }}>
-          <div className="ocean-map-launcher__hero">
-            <div>
-              <strong>OUVRIR LA CARTE ENNEMIE</strong>
-              <span>{battlePhase.icon} {battlePhase.label} · {tacticalRecommendation ? `zone conseillée ${tacticalRecommendation.number}` : "analyse en cours"}</span>
-            </div>
-            <button type="button" className="ocean-map-launcher__cta" onClick={(event) => { event.stopPropagation(); setOverlay("map"); }}>OUVRIR</button>
-          </div>
-          <div className="ocean-map-launcher__preview">
-            <OceanGrid state={state} owner={targetOwner} onFocus={(number: number) => { chooseFocus(number); setOverlay("map"); }} sonarScan={latestSonar} recentCells={recentCells} shipColor={targetColor} heatmap={targetHeatmap} plannedCells={salvoPreview.plannedCells} compact />
-          </div>
-          <div className="ocean-map-legend-row"><StatusLegend /><span className="ocean-heat-legend"><i /> Pression de tir</span></div>
-        </div>
-        <ImpactFeedback feedback={impactFeedback} />
-        <div className="ocean-floating-dock" aria-label="Informations de partie">
-          <QuickButton icon="🗺️" label="CARTE" value={`${state.focusNumber || "—"}`} color={targetColor} onClick={() => setOverlay("map")} />
-          <QuickButton icon="⚓" label="FLOTTE" value={`${oceanControlRemainingDecks(ownOwner)} navires`} color={ownColor} onClick={() => setOverlay("fleet")} />
-          <QuickButton icon="🎯" label="CIBLES" value={`${state.owners.filter((owner) => owner.id !== ownOwner?.id && !owner.eliminated).length} ennemies`} color={RED} onClick={() => setOverlay("targets")} />
-          <QuickButton icon="📡" label="SONAR" value={`${latestSonar?.contactCount ?? 0} contacts`} color={CYAN} onClick={() => setOverlay("intel")} />
-          <QuickButton icon="📊" label="STATS" value={`${oceanControlAccuracy(activeStats)}% précision`} color={GOLD} onClick={() => setOverlay("stats")} />
-          <QuickButton icon="📖" label="JOURNAL" value={`${state.visits.length} volées`} color="#a78bfa" onClick={() => setOverlay("log")} />
-        </div>
+          else if (!state.focusNumber) setOverlay("map");
+        }}>{throwDarts.length >= 3 ? "VALIDER" : !targetOwner ? "CIBLE" : !state.focusNumber ? "FOCUS" : "PRÊT"}</button>
       </section>
 
       <section className="ocean-fire-control-panel">
-        <div className="ocean-fire-control-head">
+        <div className="ocean-fire-control-head ocean-fire-control-head--compact">
           <div>
             <strong>POSTE DE TIR</strong>
-            <span>Simple, double, triple, sonar Bull et frappe DBULL.</span>
+            <span>{state.focusNumber ? `Focus ${state.focusNumber} · Bull sonar · DBull frappe ciblée` : "S / D / T libres · ouvre CARTE pour Bull / DBull"}</span>
           </div>
-          <div className="ocean-weapon-pips">
-            <span className="is-simple">S</span>
-            <span className="is-double">D</span>
-            <span className="is-triple">T</span>
-            <span className="is-bull">B</span>
-            <span className="is-dbull">DB</span>
-          </div>
+          <button type="button" className="ocean-fire-map-shortcut" onClick={() => setOverlay("map")}><OceanDockIcon name="map" size={18} /><span>{state.focusNumber || "CARTE"}</span></button>
         </div>
-        <GameplayWeaponGuide multiplier={multiplier} tactical={config.variant === "tactical"} focusNumber={state.focusNumber} disabled={botThinking} onSelect={(item: any) => {
-          if (item.id === "B") {
-            setMultiplier(1);
-            if (!state.focusNumber) { setNotice("Bull = sonar : choisis d’abord la zone à scanner."); setOverlay("map"); }
-            else setNotice(`Bull = SONAR autour de la zone ${state.focusNumber}.`);
-          }
-          else if (item.id === "DB") {
-            setMultiplier(2);
-            if (!state.focusNumber) { setNotice("DBULL = frappe précise : choisis d’abord la zone à frapper."); setOverlay("map"); }
-            else setNotice(`DBULL = frappe de précision sur la zone ${state.focusNumber}.`);
-          }
-          else { setMultiplier(item.mult); setNotice(item.detail); }
-        }} />
-        <div className="ocean-focus-readout">
-          <span>FOCUS SPÉCIAL</span><strong style={{ color: state.focusNumber ? GOLD : SOFT }}>{state.focusNumber || "AUCUN"}</strong><small>{state.focusNumber ? "Bull = scanner autour · DBull = frapper cette zone · S/D/T restent libres." : "Optionnel pour S/D/T · obligatoire avant Bull ou DBull."}</small>
-          <button type="button" onClick={() => setOverlay("map")}>{state.focusNumber ? "CHANGER" : "CHOISIR UNE ZONE"}</button>
+        <div className="ocean-throw-summary">
+          {[0, 1, 2].map((index) => <span key={index} className={throwDarts[index] ? "is-filled" : ""}>{dartPreviewLabel(throwDarts[index])}</span>)}
+          <small>{noticeSlot}</small>
         </div>
-        <SalvoPreview preview={salvoPreview} />
         {config.scoreInputMethod === "dartboard" ? <div className="ocean-dartboard-input">
           <div className="ocean-pad-statusline">
             <div className="ocean-pad-statusline__notice">{noticeSlot}</div>

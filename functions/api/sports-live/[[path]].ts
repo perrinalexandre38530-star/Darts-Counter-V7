@@ -843,15 +843,133 @@ type CentralLiveArchive = {
   events: NormalEvent[];
 };
 
+type CentralCompetitionIndexEntry = {
+  key: string;
+  name: string;
+  continent?: string | null;
+  countryCode?: string | null;
+  countryName?: string | null;
+  family?: CompetitionMeta["family"];
+  level?: CompetitionMeta["level"];
+  tier?: string | null;
+  logoUrl?: string | null;
+  logoPageUrl?: string | null;
+  seasons: string[];
+  resultCount: number;
+  fixtureCount: number;
+  eventCount: number;
+  firstSeen?: string | null;
+  lastSeen?: string | null;
+};
+
+type CentralCompetitionIndex = {
+  version: 1;
+  sport: string;
+  lang: string;
+  updatedAt: string;
+  competitions: CentralCompetitionIndexEntry[];
+};
+
 const CENTRAL_ARCHIVE_LIMIT = 50_000;
 const CENTRAL_ARCHIVE_PREFIX = "sports-live-public/v1";
+const CENTRAL_ARCHIVE_FRESH_MS = 12 * 60 * 60 * 1000;
+const CENTRAL_CALENDAR_FRESH_MS = 3 * 60 * 60 * 1000;
 
 function safeArchiveSegment(value: string) {
   return String(value || "unknown").toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "unknown";
 }
 
+function shortStableHash(value: string) {
+  let h = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    h ^= value.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
+}
+
+function centralLogoAssetKey(sport: string, externalUrl: string) {
+  let ext = "img";
+  try {
+    const pathname = new URL(externalUrl).pathname;
+    const match = pathname.match(/\.([a-z0-9]{2,5})$/i);
+    if (match) ext = match[1].toLowerCase();
+  } catch {}
+  return `${CENTRAL_ARCHIVE_PREFIX}/logos/${safeArchiveSegment(sport)}/${shortStableHash(externalUrl)}.${ext}`;
+}
+
 function centralArchiveKey(sport: string, lang: string) {
   return `${CENTRAL_ARCHIVE_PREFIX}/${safeArchiveSegment(sport)}/${safeArchiveSegment(lang || "fr")}.json`;
+}
+
+function centralCompetitionIndexKey(sport: string, lang: string) {
+  return `${CENTRAL_ARCHIVE_PREFIX}/${safeArchiveSegment(sport)}/${safeArchiveSegment(lang || "fr")}.competitions.json`;
+}
+
+function archiveIsFresh(archive: CentralLiveArchive | null, maxAgeMs: number) {
+  if (!archive?.updatedAt) return false;
+  const ts = Date.parse(archive.updatedAt);
+  return Number.isFinite(ts) && Date.now() - ts <= maxAgeMs;
+}
+
+function seasonLabelFromDate(value?: string | null) {
+  const raw = String(value || "").trim();
+  if (!raw) return "UNKNOWN";
+  const m = raw.match(/(19|20)\d{2}/);
+  return m ? m[0] : "UNKNOWN";
+}
+
+function buildCentralCompetitionIndex(sport: string, lang: string, results: NormalResult[], fixtures: NormalMatch[], events: NormalEvent[]): CentralCompetitionIndex {
+  const map = new Map<string, CentralCompetitionIndexEntry>();
+  const touch = (name: string, meta: CompetitionMeta | null | undefined, kind: "result" | "fixture" | "event", dateValue?: string | null) => {
+    const cleanName = String(name || "Compétition").replace(/\s+/g, " ").trim() || "Compétition";
+    const key = competitionSlug(cleanName) || safeArchiveSegment(cleanName);
+    const entry = map.get(key) || {
+      key,
+      name: cleanName,
+      continent: meta?.continent || null,
+      countryCode: meta?.countryCode || null,
+      countryName: meta?.countryName || null,
+      family: meta?.family || null,
+      level: meta?.level || null,
+      tier: meta?.tier || null,
+      logoUrl: meta?.logoUrl || null,
+      logoPageUrl: meta?.logoPageUrl || null,
+      seasons: [],
+      resultCount: 0,
+      fixtureCount: 0,
+      eventCount: 0,
+      firstSeen: null,
+      lastSeen: null,
+    } satisfies CentralCompetitionIndexEntry;
+    if ((!entry.logoUrl || !entry.logoPageUrl) && meta) {
+      entry.logoUrl = entry.logoUrl || meta.logoUrl || null;
+      entry.logoPageUrl = entry.logoPageUrl || meta.logoPageUrl || null;
+    }
+    entry.continent = entry.continent || meta?.continent || null;
+    entry.countryCode = entry.countryCode || meta?.countryCode || null;
+    entry.countryName = entry.countryName || meta?.countryName || null;
+    entry.family = entry.family || meta?.family || null;
+    entry.level = entry.level || meta?.level || null;
+    entry.tier = entry.tier || meta?.tier || null;
+    if (kind === "result") entry.resultCount += 1;
+    else if (kind === "fixture") entry.fixtureCount += 1;
+    else entry.eventCount += 1;
+    const season = seasonLabelFromDate(dateValue);
+    if (!entry.seasons.includes(season)) entry.seasons.push(season);
+    const day = String(dateValue || "").slice(0, 10) || null;
+    if (day) {
+      if (!entry.firstSeen || day < entry.firstSeen) entry.firstSeen = day;
+      if (!entry.lastSeen || day > entry.lastSeen) entry.lastSeen = day;
+    }
+    map.set(key, entry);
+  };
+  for (const row of results) touch(String(row.competition || row.sourceName || "Résultats"), row.competitionMeta, "result", row.playedOn);
+  for (const row of fixtures) touch(String(row.competition || row.sourceName || "À venir"), row.competitionMeta, "fixture", row.startsAt || row.date);
+  for (const row of events) touch(String(row.subtitle || row.sourceName || row.title || "Événement"), row.competitionMeta, "event", row.startsAt || row.dateLabel);
+  const competitions = Array.from(map.values()).map((entry) => ({ ...entry, seasons: entry.seasons.sort((a,b) => b.localeCompare(a)) }))
+    .sort((a,b) => (b.resultCount + b.fixtureCount + b.eventCount) - (a.resultCount + a.fixtureCount + a.eventCount) || a.name.localeCompare(b.name));
+  return { version:1, sport, lang, updatedAt:new Date().toISOString(), competitions };
 }
 
 function centralResultKey(row: NormalResult) {
@@ -905,6 +1023,30 @@ async function readCentralLiveArchive(env: Env, sport: string, lang: string): Pr
   } catch { return null; }
 }
 
+async function readCentralCompetitionIndex(env: Env, sport: string, lang: string): Promise<CentralCompetitionIndex | null> {
+  const bucket = env?.USER_DATA_BUCKET;
+  if (!bucket) return null;
+  try {
+    const object = await bucket.get(centralCompetitionIndexKey(sport, lang));
+    if (!object) return null;
+    const parsed = JSON.parse(await object.text()) as CentralCompetitionIndex;
+    return parsed?.version === 1 && parsed?.sport === sport ? parsed : null;
+  } catch { return null; }
+}
+
+async function persistCentralCompetitionIndex(env: Env, sport: string, lang: string, results: NormalResult[], fixtures: NormalMatch[], events: NormalEvent[]) {
+  const bucket = env?.USER_DATA_BUCKET;
+  if (!bucket) return null;
+  const index = buildCentralCompetitionIndex(sport, lang, results, fixtures, events);
+  try {
+    await bucket.put(centralCompetitionIndexKey(sport, lang), JSON.stringify(index), {
+      httpMetadata:{ contentType:"application/json; charset=utf-8", cacheControl:"public, max-age=900" },
+      customMetadata:{ kind:"sports-live-competition-index", sport, lang, version:"1" },
+    });
+    return index;
+  } catch { return null; }
+}
+
 async function persistAndMergeCentralArchive(env: Env, sport: string, lang: string, payload: any) {
   const bucket = env?.USER_DATA_BUCKET;
   if (!bucket) return { ...payload, archiveStorage: { enabled:false, persistent:false, reason:"R2 binding unavailable" } };
@@ -918,7 +1060,8 @@ async function persistAndMergeCentralArchive(env: Env, sport: string, lang: stri
       httpMetadata:{ contentType:"application/json; charset=utf-8", cacheControl:"public, max-age=300" },
       customMetadata:{ kind:"sports-live-public", sport, lang, version:"1" },
     });
-    return { ...payload, results, fixtures, events, archiveStorage:{ enabled:true, persistent:true, updatedAt:doc.updatedAt, results:results.length, fixtures:fixtures.length, events:events.length } };
+    const competitionIndex = await persistCentralCompetitionIndex(env, sport, lang, results, fixtures, events);
+    return { ...payload, results, fixtures, events, competitionIndex:competitionIndex?.competitions || [], archiveStorage:{ enabled:true, persistent:true, updatedAt:doc.updatedAt, results:results.length, fixtures:fixtures.length, events:events.length, competitions:competitionIndex?.competitions.length || 0 } };
   } catch (error:any) {
     return { ...payload, results, fixtures, events, archiveStorage:{ enabled:true, persistent:false, reason:str(error?.message || error || "R2 write failed") } };
   }
@@ -2896,6 +3039,18 @@ const CALENDAR_GEOGRAPHY_SWEEPS = [
 ];
 
 async function archiveOverview(env: Env, sport: string, lang: string) {
+  const central = await readCentralLiveArchive(env, sport, lang);
+  if (archiveIsFresh(central, CENTRAL_ARCHIVE_FRESH_MS)) {
+    const index = await readCentralCompetitionIndex(env, sport, lang);
+    return { status:200, ttl:3600, payload:{
+      sport, configured:true, automaticData:true, provider:"official_links", plan:"archive-central",
+      dataAsOf:central!.updatedAt, liveAvailable:false, liveReason:"Archives centrales R2 réutilisées sans nouvelle collecte web.",
+      live:[], fixtures:central!.fixtures || [], results:central!.results || [], events:central!.events || [], news:[],
+      competitionIndex:index?.competitions || [],
+      archiveStorage:{ enabled:true, persistent:true, reused:true, updatedAt:central!.updatedAt, results:central!.results.length, fixtures:central!.fixtures.length, events:central!.events.length, competitions:index?.competitions.length || 0 },
+      warnings:[],
+    } };
+  }
   const pages = DIRECT_ARCHIVE_PAGES[sport] || [];
   const currentYear = new Date().getUTCFullYear();
   const archiveRanges: string[] = [];
@@ -2927,6 +3082,18 @@ async function archiveOverview(env: Env, sport: string, lang: string) {
 }
 
 async function calendarOverview(env: Env, sport: string, lang: string) {
+  const central = await readCentralLiveArchive(env, sport, lang);
+  if (archiveIsFresh(central, CENTRAL_CALENDAR_FRESH_MS) && (central?.fixtures?.length || central?.events?.length)) {
+    const index = await readCentralCompetitionIndex(env, sport, lang);
+    return { status:200, ttl:900, payload:{
+      sport, configured:true, automaticData:true, provider:"official_links", plan:"calendar-central",
+      dataAsOf:central!.updatedAt, liveAvailable:false, liveReason:"Calendrier central R2 réutilisé sans nouvelle collecte web.",
+      live:[], fixtures:central!.fixtures || [], results:[], events:(central!.events || []).filter((row) => row.status === "upcoming" || row.status === "live" || row.status === "info"), news:[],
+      competitionIndex:index?.competitions || [],
+      archiveStorage:{ enabled:true, persistent:true, reused:true, updatedAt:central!.updatedAt, results:central!.results.length, fixtures:central!.fixtures.length, events:central!.events.length, competitions:index?.competitions.length || 0 },
+      warnings:[],
+    } };
+  }
   const pages = DIRECT_CALENDAR_PAGES[sport] || [];
   const [directSettled, aiSettled] = await Promise.allSettled([
     directEditorialIntelligence(sport, Math.min(52, pages.length || 1), pages),
@@ -3734,14 +3901,47 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   if (action === "logo") {
     const external = safeExternalImageUrl(str(requestUrl.searchParams.get("url") || ""));
     if (!external) return json({ error: "invalid_logo_url" }, 400, 60);
+    const bucket = context.env?.USER_DATA_BUCKET;
+    const logoKey = centralLogoAssetKey(sport, external);
+    if (bucket) {
+      try {
+        const cachedLogo = await bucket.get(logoKey);
+        if (cachedLogo) {
+          const type = cachedLogo.httpMetadata?.contentType || cachedLogo.customMetadata?.contentType || "image/png";
+          const body = await cachedLogo.arrayBuffer();
+          return new Response(body, { status: 200, headers: { "content-type": type, "cache-control": "public, max-age=604800, s-maxage=2592000, stale-while-revalidate=7776000", "access-control-allow-origin": "*", "x-live-logo-cache": "r2-hit" } });
+        }
+      } catch {}
+    }
     try {
       const upstream = await timedFetch(external, { headers: { Accept: "image/avif,image/webp,image/png,image/svg+xml,image/jpeg,image/*;q=0.8", "User-Agent": "MULTISPORTS-SCORING-LIVE/1.0" } }, 5000);
       if (!upstream.ok) return json({ error: "logo_fetch_failed", status: upstream.status }, 502, 300);
-      const type = upstream.headers.get("content-type") || "";
-      if (!type.toLowerCase().startsWith("image/")) return json({ error: "not_an_image" }, 415, 300);
+      let type = upstream.headers.get("content-type") || "";
       const body = await upstream.arrayBuffer();
       if (body.byteLength > 5_000_000) return json({ error: "logo_too_large" }, 413, 300);
-      return new Response(body, { status: 200, headers: { "content-type": type, "cache-control": "public, max-age=86400, s-maxage=604800, stale-while-revalidate=2592000", "access-control-allow-origin": "*" } });
+      if (!type.toLowerCase().startsWith("image/")) {
+        const bytes = new Uint8Array(body.slice(0, 16));
+        const ascii = String.fromCharCode(...bytes);
+        const isPng = bytes[0] === 0x89 && ascii.slice(1,4) === "PNG";
+        const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8;
+        const isGif = ascii.startsWith("GIF8");
+        const textHead = new TextDecoder().decode(new Uint8Array(body.slice(0, 256))).trimStart().toLowerCase();
+        const isSvg = textHead.startsWith("<svg") || textHead.includes("<svg");
+        if (isPng) type = "image/png";
+        else if (isJpeg) type = "image/jpeg";
+        else if (isGif) type = "image/gif";
+        else if (isSvg) type = "image/svg+xml";
+        else return json({ error: "not_an_image" }, 415, 300);
+      }
+      if (bucket) {
+        try {
+          await bucket.put(logoKey, body, {
+            httpMetadata:{ contentType:type, cacheControl:"public, max-age=2592000" },
+            customMetadata:{ kind:"sports-live-logo", sport, sourceUrl:external.slice(0, 1024), contentType:type },
+          });
+        } catch {}
+      }
+      return new Response(body, { status: 200, headers: { "content-type": type, "cache-control": "public, max-age=604800, s-maxage=2592000, stale-while-revalidate=7776000", "access-control-allow-origin": "*", "x-live-logo-cache": bucket ? "r2-store" : "origin" } });
     } catch { return json({ error: "logo_fetch_failed" }, 502, 300); }
   }
   if (action !== "overview") return json({ error: "not_found", message: "Unknown LIVE SPORTS endpoint." }, 404, 60);

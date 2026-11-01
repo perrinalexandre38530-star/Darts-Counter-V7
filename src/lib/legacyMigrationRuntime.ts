@@ -168,6 +168,16 @@ export async function restoreLegacySnapshotAuthoritatively(
     portableLocalStoragePredicate: (key) => isRegisteredPortableLocalStorageKey(key),
   });
 
+  // W9 AUTHORITY LOCK: an authoritative restore must never replace canonical
+  // History with rows reconstructed from a derived stats_index. A stats-only
+  // legacy file may still be inspected/migrated for non-history data, but it is
+  // not a valid authoritative History restore source.
+  const statsOnlyEvidence = plan.history.actions.filter((action) => action.reason === "stats-index-only-no-original-history").length;
+  const acceptedHistoryRows = Object.keys(plan.history.acceptedRows || {}).length;
+  if (statsOnlyEvidence > 0 && acceptedHistoryRows === 0) {
+    throw new Error("Ce backup legacy ne contient pas l’historique original des parties. Les anciennes statistiques peuvent être récupérées comme données secondaires, mais elles ne peuvent pas recréer History V4.");
+  }
+
   reportProgress(12, "Enregistrement des alias d’identité explicites…");
   registerPlanIdentities(plan, accountUserId);
   const snapshot = buildLegacyMigrationSnapshot(plan, input);
