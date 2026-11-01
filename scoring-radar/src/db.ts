@@ -367,9 +367,9 @@ export async function getRadarStats(env: RadarEnv): Promise<{
   const clickRow = await env.DB.prepare('SELECT COUNT(*) AS clicks FROM clicks').first<{ clicks: number }>();
   const outreach = await env.DB.prepare(`
     SELECT
-      SUM(CASE WHEN status IN ('copied','contacted') THEN 1 ELSE 0 END) AS contacted_count,
-      SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END) AS won_count,
-      SUM(CASE WHEN status = 'dismissed' THEN 1 ELSE 0 END) AS dismissed_count
+      SUM(CASE WHEN o.status IN ('copied','contacted') THEN 1 ELSE 0 END) AS contacted_count,
+      SUM(CASE WHEN o.status = 'won' THEN 1 ELSE 0 END) AS won_count,
+      SUM(CASE WHEN o.status = 'dismissed' THEN 1 ELSE 0 END) AS dismissed_count
     FROM outreach_actions o
     JOIN sightings s ON s.id = o.sighting_id
     WHERE s.status = 'analyzed' AND s.eligible = 1

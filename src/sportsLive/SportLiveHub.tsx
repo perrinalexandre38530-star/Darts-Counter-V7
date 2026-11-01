@@ -180,25 +180,50 @@ function competitionLogoSrc(sport: string, url?: string | null) {
   return `/api/sports-live/${encodeURIComponent(sport)}/logo?url=${encodeURIComponent(raw)}`;
 }
 
-function findCompetitionImage(competition: string, rows: DartsLiveResult[], newsRows: SportLiveNewsItem[], sources: SportLiveSource[]) {
-  const metaLogo = rows.map((row) => competitionMetaOf(row)?.logoUrl).find((value) => /^https?:\/\//i.test(String(value || "")));
-  if (metaLogo) return metaLogo as string;
-  const comp = normalizedText(competition);
-  const terms = comp.split(/\s+/).filter((part) => part.length >= 4 && !["darts", "open", "tour", "cup", "the", "and", "stage", "final"].includes(part));
-  const relatedNews = newsRows.find((item) => {
-    if (!item?.imageUrl) return false;
-    const hay = normalizedText(`${item.title} ${item.summary || ""}`);
-    if (!hay) return false;
-    if (comp && hay.includes(comp)) return true;
-    return terms.length ? terms.filter((term) => hay.includes(term)).length >= Math.min(2, terms.length) : false;
-  });
-  if (relatedNews?.imageUrl) return relatedNews.imageUrl;
-  const row = rows.find(Boolean);
-  const rowSource = itemSource(row, sources.find((source) => {
-    const sourceName = normalizedText(row?.sourceName || "");
-    return sourceName && [source.name, source.shortName].some((candidate) => normalizedText(candidate).includes(sourceName) || sourceName.includes(normalizedText(candidate)));
-  }) || null);
-  return faviconUrl(rowSource.url, 96);
+function findCompetitionImage(competition: string, rows: DartsLiveResult[], _newsRows: SportLiveNewsItem[], _sources: SportLiveSource[]) {
+  // Competition selectors must never pretend a news photo or a source favicon is
+  // the official competition logo. Only a logo explicitly resolved in the
+  // competition metadata is eligible here. Otherwise the UI falls back to a
+  // deterministic text mark/abbreviation.
+  const metaLogo = rows
+    .map((row) => competitionMetaOf(row)?.logoUrl)
+    .find((value) => /^https?:\/\//i.test(String(value || "")));
+  return metaLogo ? String(metaLogo) : null;
+}
+
+function competitionInitials(name?: string | null) {
+  const clean = String(name || "").trim();
+  if (!clean) return "🏆";
+  const stop = new Set(["the","of","de","du","des","la","le","les","and","darts","open","tour","championship","championships","cup"]);
+  const words = clean.split(/\s+/).map((part) => part.replace(/[^\p{L}\p{N}]/gu, "")).filter(Boolean);
+  const significant = words.filter((word) => !stop.has(word.toLowerCase()));
+  const base = significant.length ? significant : words;
+  if (!base.length) return "🏆";
+  if (base.length === 1) return base[0].slice(0, 3).toUpperCase();
+  return base.slice(0, 3).map((word) => word[0]).join("").toUpperCase();
+}
+
+function CompetitionMark({ sport, name, logoUrl, className = "msc-results-nav-visual" }: { sport: string; name: string; logoUrl?: string | null; className?: string }) {
+  const [failed, setFailed] = React.useState(false);
+  React.useEffect(() => { setFailed(false); }, [logoUrl]);
+  const proxied = !failed && logoUrl ? competitionLogoSrc(sport, logoUrl) : null;
+  return (
+    <span className={`${className}${proxied ? " has-logo" : " is-fallback"}`} aria-hidden="true">
+      {proxied ? <img src={proxied} alt="" loading="lazy" onError={() => setFailed(true)} /> : <span>{competitionInitials(name)}</span>}
+    </span>
+  );
+}
+
+function PlayerAvatar({ player, sourceName, className }: { player?: DartsLivePlayer | null; sourceName?: string | null; className: string }) {
+  const [failed, setFailed] = React.useState(false);
+  React.useEffect(() => { setFailed(false); }, [player?.photoUrl]);
+  const flag = countryFlag(inferredCountryCode(player, sourceName));
+  const fallback = playerInitials(player?.name);
+  return (
+    <div className={className} aria-hidden="true">
+      {player?.photoUrl && !failed ? <img src={player.photoUrl} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} /> : <span>{fallback || flag || "?"}</span>}
+    </div>
+  );
 }
 
 function competitionVisualTone(value?: string | null) {
@@ -598,6 +623,7 @@ function LiveStyles() {
       .msc-player.is-right { flex-direction:row-reverse; text-align:right; }
       .msc-player-flag { margin-left:6px; }
       .msc-player-badge img { width:100%; height:100%; object-fit:cover; display:block; }
+      .msc-player-badge > span { font-size:11px; font-weight:1000; letter-spacing:.25px; }
       .msc-player-badge {
         flex:0 0 38px; width:38px; height:38px; border-radius:50%; display:grid; place-items:center; font-size:10.5px; font-weight:1000;
         border:1px solid var(--live-accent); color:#fff; background:linear-gradient(145deg,#1c242d,#0b0f13);
@@ -631,6 +657,7 @@ function LiveStyles() {
       .msc-result-team.is-winner .msc-result-name { color:#fff; font-weight:1000; }
       .msc-result-avatar { width:27px; height:27px; border-radius:50%; display:grid; place-items:center; overflow:hidden; border:1px solid #3a4652; background:#151b22; font-size:13px; font-weight:1000; }
       .msc-result-avatar img { width:100%; height:100%; object-fit:cover; display:block; }
+      .msc-result-avatar > span { font-size:10px; font-weight:1000; letter-spacing:.2px; }
       .msc-result-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#c3cad2; font-size:10.5px; font-weight:900; line-height:1.05; }
       .msc-result-country { margin-left:5px; font-size:10px; vertical-align:1px; }
       .msc-result-scores { display:grid; grid-template-rows:1fr 1fr; align-items:center; justify-items:center; border-left:1px solid #28313a; font-variant-numeric:tabular-nums; }
@@ -669,7 +696,8 @@ function LiveStyles() {
       .msc-competition-group { overflow:hidden; border:1px solid #252d35; border-radius:12px; background:#090d11; }
       .msc-competition-head { min-height:38px; display:grid; grid-template-columns:25px minmax(0,1fr) auto; align-items:center; gap:7px; padding:7px 8px; background:linear-gradient(90deg,rgba(255,48,72,.11),rgba(255,255,255,.02)); border-bottom:1px solid #252d35; }
       .msc-competition-head-icon { width:34px; height:34px; display:grid; place-items:center; border-radius:11px; overflow:hidden; background:#151b21; font-size:14px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06), 0 0 18px rgba(94,198,255,.12); }
-      .msc-competition-head-icon img { width:100%; height:100%; object-fit:cover; display:block; }
+      .msc-competition-head-icon img { width:84%; height:84%; object-fit:contain; display:block; }
+      .msc-competition-head-icon.is-fallback span { font-size:9px; font-weight:1000; color:#eaf2f8; }
       .msc-competition-head-title { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10.5px; font-weight:1000; }
       .msc-competition-head-count { color:#89939e; font-size:8px; font-weight:950; }
       .msc-competition-head.is-red { background:linear-gradient(90deg,rgba(255,48,72,.15),rgba(255,255,255,.02)); }
@@ -784,7 +812,8 @@ function LiveStyles() {
       .msc-results-nav-btn { width:100%; min-height:42px; display:grid; grid-template-columns:30px minmax(0,1fr) auto; gap:7px; align-items:center; padding:5px 7px; border:1px solid #2b3540; border-radius:12px; background:linear-gradient(180deg,#111820,#0b1015); color:#98a5b2; text-align:left; cursor:pointer; box-shadow:inset 0 0 0 1px rgba(255,255,255,.02); }
       .msc-results-nav-btn.is-active { color:#fff; border-color:var(--live-accent); background:linear-gradient(180deg,rgba(255,48,72,.18),#0d1217); box-shadow:0 0 0 1px rgba(255,48,72,.08),0 0 18px rgba(255,48,72,.12); }
       .msc-results-nav-icon, .msc-results-nav-visual { width:30px; height:30px; border-radius:999px; display:grid; place-items:center; overflow:hidden; background:#17202a; box-shadow:inset 0 0 0 1px rgba(255,255,255,.06); font-size:16px; }
-      .msc-results-nav-visual img { width:100%; height:100%; object-fit:cover; display:block; }
+      .msc-results-nav-visual img { width:82%; height:82%; object-fit:contain; display:block; }
+      .msc-results-nav-visual.is-fallback span { font-size:9px; font-weight:1000; letter-spacing:.2px; color:#e9f1f8; }
       .msc-results-nav-label { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:8.6px; font-weight:1000; line-height:1.1; }
       .msc-results-nav-count { min-width:21px; height:21px; display:grid; place-items:center; padding:0 4px; border-radius:999px; background:#1c2630; color:#9eabb8; font-size:7px; font-weight:1000; }
       .msc-results-nav-btn.is-active .msc-results-nav-count { background:var(--live-accent); color:#fff; }
@@ -793,11 +822,11 @@ function LiveStyles() {
       .msc-results-context strong { color:#fff; }
       .msc-results-context em { margin-left:auto; color:#f4d445; font-style:normal; }
       @media (max-width:620px) {
-        .msc-results-browser { grid-template-columns:92px minmax(0,1fr); gap:7px; }
+        .msc-results-browser { grid-template-columns:132px minmax(0,1fr); gap:7px; }
         .msc-results-nav { top:48px; padding:6px; border-radius:12px; max-height:calc(76vh - 68px); }
-        .msc-results-nav-btn { grid-template-columns:30px auto; min-height:40px; padding:4px; justify-content:start; }
-        .msc-results-nav-label { display:none; }
-        .msc-results-nav-btn.is-active .msc-results-nav-label { display:block; grid-column:1 / -1; padding:1px 2px 2px; text-align:center; white-space:normal; font-size:7px; }
+        .msc-results-nav-btn { grid-template-columns:30px minmax(0,1fr) auto; min-height:42px; padding:5px 6px; justify-content:start; }
+        .msc-results-nav-label { display:block; font-size:7.2px; }
+        .msc-results-nav-btn.is-active .msc-results-nav-label { display:block; padding:0; text-align:left; white-space:normal; font-size:7.4px; }
         .msc-results-nav-count { min-width:18px; height:18px; font-size:6.5px; }
         .msc-results-nav-title { font-size:6.8px; text-align:center; }
         .msc-results-nav-section:not(.is-competitions) .msc-results-nav-list { max-height:136px; }
@@ -852,7 +881,8 @@ function LiveStyles() {
       .msc-results-nav-btn { width:100%; min-height:42px; display:grid; grid-template-columns:30px minmax(0,1fr) auto; gap:7px; align-items:center; padding:5px 7px; border:1px solid #2b3540; border-radius:12px; background:linear-gradient(180deg,#111820,#0b1015); color:#98a5b2; text-align:left; cursor:pointer; box-shadow:inset 0 0 0 1px rgba(255,255,255,.02); }
       .msc-results-nav-btn.is-active { color:#fff; border-color:var(--live-accent); background:linear-gradient(180deg,rgba(255,48,72,.18),#0d1217); box-shadow:0 0 0 1px rgba(255,48,72,.08),0 0 18px rgba(255,48,72,.12); }
       .msc-results-nav-icon, .msc-results-nav-visual { width:30px; height:30px; border-radius:999px; display:grid; place-items:center; overflow:hidden; background:#17202a; box-shadow:inset 0 0 0 1px rgba(255,255,255,.06); font-size:16px; }
-      .msc-results-nav-visual img { width:100%; height:100%; object-fit:cover; display:block; }
+      .msc-results-nav-visual img { width:82%; height:82%; object-fit:contain; display:block; }
+      .msc-results-nav-visual.is-fallback span { font-size:9px; font-weight:1000; letter-spacing:.2px; color:#e9f1f8; }
       .msc-results-nav-label { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:8.6px; font-weight:1000; line-height:1.1; }
       .msc-results-nav-count { min-width:21px; height:21px; display:grid; place-items:center; padding:0 4px; border-radius:999px; background:#1c2630; color:#9eabb8; font-size:7px; font-weight:1000; }
       .msc-results-nav-btn.is-active .msc-results-nav-count { background:var(--live-accent); color:#fff; }
@@ -861,11 +891,11 @@ function LiveStyles() {
       .msc-results-context strong { color:#fff; }
       .msc-results-context em { margin-left:auto; color:#f4d445; font-style:normal; }
       @media (max-width:620px) {
-        .msc-results-browser { grid-template-columns:92px minmax(0,1fr); gap:7px; }
+        .msc-results-browser { grid-template-columns:132px minmax(0,1fr); gap:7px; }
         .msc-results-nav { top:48px; padding:6px; border-radius:12px; max-height:calc(76vh - 68px); }
-        .msc-results-nav-btn { grid-template-columns:30px auto; min-height:40px; padding:4px; justify-content:start; }
-        .msc-results-nav-label { display:none; }
-        .msc-results-nav-btn.is-active .msc-results-nav-label { display:block; grid-column:1 / -1; padding:1px 2px 2px; text-align:center; white-space:normal; font-size:7px; }
+        .msc-results-nav-btn { grid-template-columns:30px minmax(0,1fr) auto; min-height:42px; padding:5px 6px; justify-content:start; }
+        .msc-results-nav-label { display:block; font-size:7.2px; }
+        .msc-results-nav-btn.is-active .msc-results-nav-label { display:block; padding:0; text-align:left; white-space:normal; font-size:7.4px; }
         .msc-results-nav-count { min-width:18px; height:18px; font-size:6.5px; }
         .msc-results-nav-title { font-size:6.8px; text-align:center; }
         .msc-results-nav-section:not(.is-competitions) .msc-results-nav-list { max-height:136px; }
@@ -947,7 +977,7 @@ function PlayerBlock({ player, right = false, sourceName }: { player?: DartsLive
   const flag = countryFlag(inferredCountryCode(player, sourceName));
   return (
     <div className={`msc-player${right ? " is-right" : ""}`} translate="no" data-i18n-skip="true">
-      <div className="msc-player-badge">{player?.photoUrl ? <img src={player.photoUrl} alt="" loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : (flag || playerInitials(player?.name))}</div>
+      <PlayerAvatar player={player} sourceName={sourceName} className="msc-player-badge" />
       <div style={{ minWidth: 0 }}>
         <div className="msc-player-name">{player?.name || "À confirmer"}{flag ? <span className="msc-player-flag">{flag}</span> : null}</div>
         <div className="msc-player-meta">{player?.id ? String(player.id).toUpperCase() : "COMPÉTITEUR"}</div>
@@ -1066,9 +1096,7 @@ function ResultMatchCard({ item, source, lang }: { item: DartsLiveResult; source
             const flag = countryFlag(inferredCountryCode(player, origin.name));
             return (
               <div className={`msc-result-team${winner ? " is-winner" : ""}`} key={`${item.id}-${winner ? "w" : "l"}`}>
-                <div className="msc-result-avatar">
-                  {player?.photoUrl ? <img src={player.photoUrl} alt="" loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : (flag || playerInitials(player?.name))}
-                </div>
+                <PlayerAvatar player={player} sourceName={origin.name} className="msc-result-avatar" />
                 <div className="msc-result-name" translate="no" data-i18n-skip="true">{player?.name || "À confirmer"}{flag ? <span className="msc-result-country">{flag}</span> : null}</div>
               </div>
             );
@@ -1121,8 +1149,14 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport }: { r
   const continents = React.useMemo(() => {
     const counts = new Map<string, number>();
     competitions.forEach((item) => counts.set(item.continent, (counts.get(item.continent) || 0) + item.matches.length));
-    return Array.from(counts.entries()).sort((a,b) => b[1]-a[1] || a[0].localeCompare(b[0]));
-  }, [competitions]);
+    const order = ["Monde", "Europe", "Amérique du Nord", "Amérique du Nord / Caraïbes", "Amérique du Sud", "Asie", "Afrique", "Océanie", "Autres"];
+    return Array.from(counts.entries()).sort((a,b) => {
+      const ai = order.indexOf(a[0]);
+      const bi = order.indexOf(b[0]);
+      if (ai >= 0 || bi >= 0) return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi);
+      return a[0].localeCompare(b[0], lang || "fr");
+    });
+  }, [competitions, lang]);
 
   const [selectedContinent, setSelectedContinent] = React.useState("__all__");
   const [selectedCountry, setSelectedCountry] = React.useState("__all__");
@@ -1138,7 +1172,11 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport }: { r
       if (!current.code && item.countryCode) current.code = item.countryCode;
       map.set(item.countryKey, current);
     });
-    return Array.from(map.values()).sort((a,b) => b.count-a.count || a.label.localeCompare(b.label));
+    return Array.from(map.values()).sort((a,b) => {
+      if (a.key === "__world__") return -1;
+      if (b.key === "__world__") return 1;
+      return a.label.localeCompare(b.label, lang || "fr");
+    });
   }, [continentFiltered]);
 
   React.useEffect(() => {
@@ -1146,6 +1184,7 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport }: { r
   }, [countries, selectedCountry]);
 
   const hierarchyFiltered = React.useMemo(() => continentFiltered.filter((item) => selectedCountry === "__all__" || item.countryKey === selectedCountry), [continentFiltered, selectedCountry]);
+  const navigationCompetitions = React.useMemo(() => [...hierarchyFiltered].sort((a,b) => a.name.localeCompare(b.name, lang || "fr")), [hierarchyFiltered, lang]);
 
   React.useEffect(() => {
     if (selected !== "__all__" && !hierarchyFiltered.some((item) => item.name === selected)) setSelected("__all__");
@@ -1216,9 +1255,9 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport }: { r
             <button className={`msc-results-nav-btn${selected === "__all__" ? " is-active" : ""}`} type="button" onClick={() => setSelected("__all__")} title="Toutes les compétitions">
               <span className="msc-results-nav-visual">🏆</span><span className="msc-results-nav-label">TOUTES</span><span className="msc-results-nav-count">{filteredCount}</span>
             </button>
-            {hierarchyFiltered.map(({ name, matches, imageUrl }) => (
+            {navigationCompetitions.map(({ name, matches, imageUrl }) => (
               <button key={name} className={`msc-results-nav-btn${selected === name ? " is-active" : ""}`} type="button" onClick={() => setSelected(name)} title={name}>
-                <span className="msc-results-nav-visual">{imageUrl ? <img src={competitionLogoSrc(sport, imageUrl) || imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" onError={(event) => { if (event.currentTarget.src !== imageUrl) event.currentTarget.src = imageUrl; else event.currentTarget.style.display = "none"; }} /> : competitionIcon(name)}</span><span className="msc-results-nav-label" translate="no">{name}</span><span className="msc-results-nav-count">{matches.length}</span>
+                <CompetitionMark sport={sport} name={name} logoUrl={imageUrl} /><span className="msc-results-nav-label" translate="no">{name}</span><span className="msc-results-nav-count">{matches.length}</span>
               </button>
             ))}
           </div>
@@ -1263,7 +1302,7 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport }: { r
             return (
               <section className="msc-competition-group" key={name}>
                 <div className={`msc-competition-head ${tone}`}>
-                  <span className="msc-competition-head-icon">{imageUrl ? <img src={competitionLogoSrc(sport, imageUrl) || imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" onError={(event) => { if (event.currentTarget.src !== imageUrl) event.currentTarget.src = imageUrl; else event.currentTarget.style.display = "none"; }} /> : competitionIcon(name)}</span>
+                  <CompetitionMark sport={sport} name={name} logoUrl={imageUrl} className="msc-competition-head-icon" />
                   <div className="msc-competition-head-main">
                     <div className="msc-competition-head-title" translate="no" data-i18n-skip="true">{countryVisual(countryCode, countryLabel)} {name}</div>
                     {chips.length ? <div className="msc-taxonomy-row">{chips.map((chip) => <span className="msc-taxonomy-chip" key={`${name}-${chip}`}>{chip}</span>)}</div> : null}
@@ -1580,7 +1619,7 @@ function FloatingDrawer({ title, onClose, children }: { title: string; onClose: 
   );
 }
 
-export default function SportLiveHub() {
+export default function SportLiveHub({ go }: { go?: (route: any, params?: any) => void } = {}) {
   const { lang } = useLang();
   const { sport } = useSport();
   const supportedSport = isLiveSportsSupportedSport(sport);
@@ -1596,8 +1635,14 @@ export default function SportLiveHub() {
   const [loading, setLoading] = React.useState(() => !getCachedSportLiveOverview(liveSport, lang));
   const [feedError, setFeedError] = React.useState<string | null>(null);
   const [floatingPanel, setFloatingPanel] = React.useState<FloatingPanel>(null);
+  const [archiveLoading, setArchiveLoading] = React.useState(false);
   const archiveLoadedRef = React.useRef<string>("");
   const calendarLoadedRef = React.useRef<string>("");
+  const openAgenda = React.useCallback(() => {
+    try { localStorage.setItem("mss-agenda-live-filter", "1"); } catch {}
+    if (go) { go("agenda", { live: true, sport: liveSport }); return; }
+    try { window.location.hash = "#/agenda"; } catch {}
+  }, [go, liveSport]);
 
   const applyFeed = React.useCallback((next: SportLiveOverview) => {
     setFeed((previous) => mergeSportLiveOverview(previous, next));
@@ -1611,6 +1656,7 @@ export default function SportLiveHub() {
     setLoading(!cached);
     setFeedError(null);
     setFloatingPanel(null);
+    setArchiveLoading(false);
   }, [liveSport, lang]);
 
   // Progressive pipeline: local cache is rendered synchronously by state above,
@@ -1676,9 +1722,11 @@ export default function SportLiveHub() {
     const key = `${liveSport}:${lang}`;
     if (archiveLoadedRef.current === key) return;
     archiveLoadedRef.current = key;
+    setArchiveLoading(true);
     void fetchSportLiveOverview(liveSport, undefined, lang, "archive")
       .then((archive) => applyFeed(archive))
-      .catch(() => { archiveLoadedRef.current = ""; });
+      .catch(() => { archiveLoadedRef.current = ""; })
+      .finally(() => setArchiveLoading(false));
   }, [view, floatingPanel, liveSport, lang, applyFeed]);
 
   React.useEffect(() => {
@@ -1755,6 +1803,7 @@ export default function SportLiveHub() {
   const liveRows = feed?.live || [];
   const fixtureRows = feed?.fixtures || [];
   const resultRows = React.useMemo(() => [...(feed?.results || [])].sort((a, b) => dateTs(b.playedOn) - dateTs(a.playedOn)), [feed?.results]);
+  const archiveSeasonCount = React.useMemo(() => new Set(resultRows.map((row) => resultSeasonLabel(row.playedOn)).filter((value) => value !== "NON DATÉ")).size, [resultRows]);
   const eventRows = feed?.events || [];
   const newsRows = React.useMemo(() => orderNewsEditorial(feed?.news || []), [feed?.news]);
   const liveEvents = eventRows.filter((event) => event.status === "live");
@@ -1858,7 +1907,7 @@ export default function SportLiveHub() {
                 <div className="msc-compact-row" key={event.id}><div className="msc-compact-tag" style={{ color: "#64b8ff" }}>À VENIR</div><div className="msc-compact-main" translate="no">{event.title}</div><div className="msc-compact-score" style={{ color: "#dbe5ee" }}>{event.dateLabel || "BIENTÔT"}</div></div>
               )) : null}
             </div>
-            <div style={{ marginTop: 7 }}><button className="msc-more-btn" type="button" onClick={() => setFloatingPanel("fixtures")}>OUVRIR LE PROGRAMME COMPLET</button></div>
+            <div style={{ marginTop: 7 }}><button className="msc-more-btn" type="button" onClick={openAgenda}>OUVRIR DANS L’AGENDA</button></div>
           </section>
         </>
       ) : null}
@@ -1873,15 +1922,20 @@ export default function SportLiveHub() {
       {supportedSport && view === "fixtures" ? (
         <section className="msc-live-section">
           <SectionHeader title="À VENIR" count={(fixtureRows.length + upcomingEvents.length) ? `${fixtureRows.length + upcomingEvents.length} événement${(fixtureRows.length + upcomingEvents.length) > 1 ? "s" : ""}` : ""} />
-          {fixtureRows.map((item) => <FixtureMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />)}
-          {upcomingEvents.length ? <div style={{ marginTop: fixtureRows.length ? 12 : 0 }}><div className="msc-round-head"><span>CALENDRIER · TOURNOIS / ÉVÉNEMENTS</span><span>{upcomingEvents.length}</span></div><CalendarBrowser events={upcomingEvents} lang={lang} /></div> : null}
-          {!fixtureRows.length && !upcomingEvents.length ? <EmptySection title="Calendriers officiels" copy="Aucune donnée automatique n’est chargée. Consulte les calendriers officiels disponibles." sources={recommended.filter((source) => source.calendarUrl)} /> : null}
+          <div className="msc-empty-card" style={{ marginBottom: 10 }}>
+            <div className="msc-empty-title">AGENDA MULTISPORTS</div>
+            <div className="msc-empty-copy">Tous les événements LIVE sont intégrés à l’Agenda principal. Utilise le filtre LIVE pour les afficher ou les masquer.</div>
+            <button className="msc-more-btn" type="button" onClick={openAgenda}>OUVRIR L’AGENDA · FILTRE LIVE</button>
+          </div>
+          {fixtureRows.slice(0, 12).map((item) => <FixtureMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />)}
+          {!fixtureRows.length && !upcomingEvents.length ? <EmptySection title="Aucun événement détecté" copy="Les événements LIVE apparaissent dans l’Agenda dès qu’une date exploitable est disponible." sources={recommended.filter((source) => source.calendarUrl)} /> : null}
         </section>
       ) : null}
 
       {supportedSport && view === "results" ? (
         <section className="msc-live-section">
           <SectionHeader title="RÉSULTATS" count={(resultRows.length + resultEvents.length) ? `${resultRows.length + resultEvents.length} résultat${(resultRows.length + resultEvents.length) > 1 ? "s" : ""}` : ""} />
+          <div className="msc-results-context" style={{ marginBottom: 8 }}><strong>{archiveLoading ? "ARCHIVES · CHARGEMENT…" : `ARCHIVES · ${archiveSeasonCount || 0} SAISON${archiveSeasonCount === 1 ? "" : "S"}`}</strong><em>{resultRows.length} résultat{resultRows.length > 1 ? "s" : ""} disponibles</em></div>
           {resultRows.length ? <><GroupedResults rows={resultRows} source={sourceForCards} lang={lang} newsRows={newsRows} allSources={allSportSources} sport={liveSport} />{resultEvents.length ? <div style={{ marginTop: 12 }}><div className="msc-round-head"><span>AUTRES RÉSULTATS / PODIUMS</span><span>{resultEvents.length}</span></div>{resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />)}</div> : null}</> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Résultats officiels" copy="Aucun résultat automatique n’est chargé pour l’instant. Ouvre une source officielle pour consulter les derniers scores." sources={recommended.filter((source) => source.resultsUrl)} />}
         </section>
       ) : null}
@@ -1909,14 +1963,14 @@ export default function SportLiveHub() {
         <div className="msc-quick-dock" aria-label="Accès rapides LIVE SPORTS">
           <button className="msc-quick-btn" type="button" onClick={() => setFloatingPanel("news")} aria-label="Actualités">📰</button>
           <button className="msc-quick-btn" type="button" onClick={() => setFloatingPanel("results")} aria-label="Résultats">🏆</button>
-          <button className="msc-quick-btn" type="button" onClick={() => setFloatingPanel("fixtures")} aria-label="Programme">🗓</button>
+          <button className="msc-quick-btn" type="button" onClick={openAgenda} aria-label="Agenda LIVE">🗓</button>
           <button className="msc-quick-btn" type="button" onClick={() => setFloatingPanel("sources")} aria-label="Sources">🌍</button>
         </div>
       ) : null}
 
       {floatingPanel === "news" ? <FloatingDrawer title={`ACTUALITÉS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{newsRows.length ? <div className="msc-news-grid">{newsRows.map((item) => <NewsCard key={item.id} item={item} lang={lang} />)}</div> : <EmptySection title="Aucune actualité détectée" copy="Réessaie l’actualisation dans quelques instants." sources={recommended.slice(0, 2)} />}</FloatingDrawer> : null}
-      {floatingPanel === "results" ? <FloatingDrawer title={`RÉSULTATS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{resultRows.length ? <><GroupedResults rows={resultRows} source={sourceForCards} lang={lang} newsRows={newsRows} allSources={allSportSources} sport={liveSport} />{resultEvents.length ? <div style={{ marginTop: 12 }}><div className="msc-round-head"><span>AUTRES RÉSULTATS / PODIUMS</span><span>{resultEvents.length}</span></div>{resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />)}</div> : null}</> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Aucun résultat détecté" copy="Les sources officielles restent disponibles." sources={recommended.filter((source) => source.resultsUrl).slice(0, 2)} />}</FloatingDrawer> : null}
-      {floatingPanel === "fixtures" ? <FloatingDrawer title={`PROGRAMME · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{fixtureRows.map((item) => <FixtureMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />)}{upcomingEvents.length ? <div style={{ marginTop: fixtureRows.length ? 12 : 0 }}><div className="msc-round-head"><span>CALENDRIER · TOURNOIS / ÉVÉNEMENTS</span><span>{upcomingEvents.length}</span></div><CalendarBrowser events={upcomingEvents} lang={lang} /></div> : null}{!fixtureRows.length && !upcomingEvents.length ? <EmptySection title="Aucun événement à venir" copy="Consulte les calendriers officiels." sources={recommended.filter((source) => source.calendarUrl).slice(0, 2)} /> : null}</FloatingDrawer> : null}
+      {floatingPanel === "results" ? <FloatingDrawer title={`RÉSULTATS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}><div className="msc-results-context" style={{ marginBottom: 8 }}><strong>{archiveLoading ? "ARCHIVES · CHARGEMENT…" : `ARCHIVES · ${archiveSeasonCount || 0} SAISON${archiveSeasonCount === 1 ? "" : "S"}`}</strong><em>{resultRows.length} résultat{resultRows.length > 1 ? "s" : ""}</em></div>{resultRows.length ? <><GroupedResults rows={resultRows} source={sourceForCards} lang={lang} newsRows={newsRows} allSources={allSportSources} sport={liveSport} />{resultEvents.length ? <div style={{ marginTop: 12 }}><div className="msc-round-head"><span>AUTRES RÉSULTATS / PODIUMS</span><span>{resultEvents.length}</span></div>{resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />)}</div> : null}</> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Aucun résultat détecté" copy="Les sources officielles restent disponibles." sources={recommended.filter((source) => source.resultsUrl).slice(0, 2)} />}</FloatingDrawer> : null}
+      {floatingPanel === "fixtures" ? <FloatingDrawer title={`AGENDA · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}><div className="msc-empty-card"><div className="msc-empty-title">AGENDA MULTISPORTS</div><div className="msc-empty-copy">Le calendrier LIVE n’est plus dupliqué dans cette page. Les événements réels sont affichés dans l’Agenda principal avec le filtre LIVE.</div><button className="msc-more-btn" type="button" onClick={openAgenda}>OUVRIR L’AGENDA</button></div></FloatingDrawer> : null}
       {floatingPanel === "sources" ? <FloatingDrawer title={`SOURCES · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}><SourceDirectory sources={sources} /></FloatingDrawer> : null}
 
     </div>

@@ -19,6 +19,7 @@ import { buildTrainingCareer, trainingProgramXp } from "../../profile/trainingCa
 import { buildTrainingProgression } from "../../coach/trainingDiagnosis";
 import { getTrainingDetailedSessions } from "../../stats/trainingStatsHub";
 import { clearTrainingExerciseDraft, saveTrainingExerciseDraft } from "../../profile/trainingExerciseDraft";
+import { buildTrainingExercisePostSessionFeedback, getTrainingExerciseProgressionSnapshot, type TrainingExercisePostSessionFeedback } from "../../profile/trainingExerciseFeedback";
 
 type RunState = { darts: number; hits: number; points: number; progress: number; checkoutTotal: number };
 type ProgramStepResult = {
@@ -58,6 +59,7 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
   const [postSessionCoach, setPostSessionCoach] = React.useState<ReturnType<typeof buildPostSessionCoach> | null>(null);
   const [careerMessage, setCareerMessage] = React.useState<{ xp: number; text: string } | null>(null);
   const [liveAdaptation, setLiveAdaptation] = React.useState<TrainingLiveAdaptation | null>(null);
+  const [exerciseFeedback, setExerciseFeedback] = React.useState<TrainingExercisePostSessionFeedback | null>(null);
   const programTrackedRef = React.useRef(false);
   const plannedProgramIdsRef = React.useRef<string[]>(initialProgramIds.slice());
 
@@ -180,6 +182,7 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
       });
     }
 
+    const progressionBefore = individualExercise ? getTrainingExerciseProgressionSnapshot(exercise, accountParticipantId) : null;
     recordSoloTrainingResult({
       modeId: "training_lab",
       config: { ...config, exerciseId: exercise.id, family: exercise.family, programStep: stepIndex + 1 },
@@ -193,6 +196,9 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
       metrics,
       visitHistory: visitHistoryRef.current,
     });
+    if (individualExercise && progressionBefore) {
+      setExerciseFeedback(buildTrainingExercisePostSessionFeedback(exercise, accountParticipantId, progressionBefore, performanceScore));
+    }
     setResult({ success: dailyChallengePassed, metrics, stats: makeTrainingStats({ darts: s.darts, hits: s.hits, points: s.points, startedAt: startedAtRef.current, endedAt }) });
   }, [accountParticipantId, config, exercise, goal, individualExercise, isProgram, programIds, stepIndex, totalSteps]);
 
@@ -378,7 +384,7 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
         { label: "PERFORMANCE", value: `${result.metrics.performanceScore}/100` },
         ...(isProgram && liveAdaptation ? [{ label: "AWENA", value: liveAdaptation.headline }] : []),
       ] : []}
-      note={isProgram && liveAdaptation ? <div style={{ padding: 10, borderRadius: 12, background: liveAdaptation.tone === "positive" ? "rgba(80,255,174,.07)" : liveAdaptation.tone === "caution" ? "rgba(255,184,76,.07)" : "rgba(39,220,255,.06)", border: liveAdaptation.tone === "positive" ? "1px solid rgba(80,255,174,.20)" : liveAdaptation.tone === "caution" ? "1px solid rgba(255,184,76,.20)" : "1px solid rgba(39,220,255,.18)" }}><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1, opacity: .58 }}>FEEDBACK AWENA</div><div style={{ marginTop: 3, fontSize: 11, fontWeight: 950 }}>{liveAdaptation.headline}</div><div style={{ marginTop: 4, fontSize: 9.5, lineHeight: 1.4, opacity: .7 }}>{liveAdaptation.body}</div><div style={{ marginTop: 6, fontSize: 8, fontWeight: 900, color: "#27dcff" }}>{liveAdaptation.nextLabel}</div></div> : null}
+      note={isProgram && liveAdaptation ? <div style={{ padding: 10, borderRadius: 12, background: liveAdaptation.tone === "positive" ? "rgba(80,255,174,.07)" : liveAdaptation.tone === "caution" ? "rgba(255,184,76,.07)" : "rgba(39,220,255,.06)", border: liveAdaptation.tone === "positive" ? "1px solid rgba(80,255,174,.20)" : liveAdaptation.tone === "caution" ? "1px solid rgba(255,184,76,.20)" : "1px solid rgba(39,220,255,.18)" }}><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1, opacity: .58 }}>FEEDBACK AWENA</div><div style={{ marginTop: 3, fontSize: 11, fontWeight: 950 }}>{liveAdaptation.headline}</div><div style={{ marginTop: 4, fontSize: 9.5, lineHeight: 1.4, opacity: .7 }}>{liveAdaptation.body}</div><div style={{ marginTop: 6, fontSize: 8, fontWeight: 900, color: "#27dcff" }}>{liveAdaptation.nextLabel}</div></div> : exerciseFeedback ? <div style={{ padding: 10, borderRadius: 12, background: exerciseFeedback.levelUp ? "rgba(80,255,174,.07)" : "rgba(39,220,255,.06)", border: exerciseFeedback.levelUp ? "1px solid rgba(80,255,174,.22)" : "1px solid rgba(39,220,255,.18)" }}><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1, opacity: .58 }}>PROGRESSION PERSONNELLE</div><div style={{ marginTop: 4, fontSize: 12, fontWeight: 1000 }}>{exerciseFeedback.masteredNow ? "MAÎTRISE DÉBLOQUÉE" : exerciseFeedback.levelUp ? `NIVEAU ${exerciseFeedback.afterLevel}/5 DÉBLOQUÉ` : `NIVEAU ${exerciseFeedback.afterLevel}/5`}</div><div style={{ marginTop: 5, fontSize: 9.2, lineHeight: 1.42, opacity: .72 }}>{exerciseFeedback.newRecord ? `Nouveau record • ${exerciseFeedback.currentPerformance}/100. ` : ""}{exerciseFeedback.afterLevel >= 5 ? "Exercice maîtrisé." : `Prochain objectif : ${exerciseFeedback.nextObjective}`}</div></div> : null}
       actionLabel={isProgram ? (stepIndex + 1 < totalSteps ? "ÉTAPE SUIVANTE" : "VOIR LE BILAN") : "TERMINER"}
       onClose={closeResult}
     />

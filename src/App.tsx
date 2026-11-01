@@ -5876,7 +5876,7 @@ case "babyfoot_team_edit":
         break;
 
       case "live":
-        page = <SportLiveHub />;
+        page = <SportLiveHub go={go} />;
         break;
 
       case "spectator":

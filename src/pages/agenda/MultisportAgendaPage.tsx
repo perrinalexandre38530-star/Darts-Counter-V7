@@ -13,6 +13,9 @@ import { appSportMeta, enabledAppSports, type AppSportId } from "../../config/sp
 import { AGENDA_SPORT_ASSETS } from "./agendaSportAssets";
 import agendaTickerFr from "../../assets/tickers/ticker_agenda_fr.webp";
 import agendaTickerEn from "../../assets/tickers/ticker_agenda_en.webp";
+import { fetchSportLiveOverview, getCachedSportLiveOverview } from "../../sportsLive/liveApi";
+import { LIVE_SPORTS_APP_ORDER } from "../../sportsLive/support";
+import type { SportLiveOverview } from "../../sportsLive/types";
 import {
   collectMultisportAgendaEvents,
   createMultisportEvent,
@@ -72,6 +75,76 @@ function toDateInput(ts: number) { const d = new Date(ts); const pad = (n: numbe
 function inputToTimestamp(dateValue: string, timeValue: string) {
   const [y, m, d] = dateValue.split("-").map(Number); const [hh, mm] = timeValue.split(":").map(Number);
   const date = new Date(); date.setFullYear(y || date.getFullYear(), Math.max(0, (m || 1) - 1), d || 1); date.setHours(hh || 0, mm || 0, 0, 0); return date.getTime();
+}
+
+function liveEventTimestamp(value?: string | null) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed.getTime() : null;
+}
+
+function liveSportToAgendaSport(value: string): MultisportEventSport {
+  return value === "foot" ? "foot" : value as MultisportEventSport;
+}
+
+function mapLiveOverviewToAgenda(sportId: string, overview: SportLiveOverview): MultisportAgendaEvent[] {
+  const sport = liveSportToAgendaSport(sportId);
+  const meta = multisportSportMeta(sport);
+  const out: MultisportAgendaEvent[] = [];
+  for (const fixture of overview.fixtures || []) {
+    const startAt = liveEventTimestamp(fixture.startsAt || fixture.date || null);
+    if (!startAt) continue;
+    const participants = (fixture.players || []).map((player) => player?.name).filter(Boolean) as string[];
+    out.push({
+      id: `live:fixture:${sportId}:${fixture.id}`,
+      title: participants.length ? participants.join(" vs ") : (fixture.competition || "Événement sportif"),
+      sport,
+      discipline: fixture.competition || undefined,
+      type: "match",
+      source: "live",
+      sourceId: fixture.id,
+      startAt,
+      durationMin: 120,
+      notes: [fixture.competition, fixture.round, fixture.sourceName].filter(Boolean).join(" · "),
+      organizer: fixture.sourceName || undefined,
+      participants,
+      status: "planned",
+      route: "live",
+      routeParams: { sport: sportId, sourceUrl: fixture.sourceUrl || null, competition: fixture.competition || null },
+      accent: meta.accent,
+      readonly: true,
+    });
+  }
+  for (const event of overview.events || []) {
+    if (event.status === "result") continue;
+    const startAt = liveEventTimestamp(event.startsAt || event.dateLabel || null);
+    if (!startAt) continue;
+    out.push({
+      id: `live:event:${sportId}:${event.id}`,
+      title: event.title || event.subtitle || "Événement sportif",
+      sport,
+      discipline: event.subtitle || undefined,
+      type: /tournament|tournoi|open|championship|championnat|cup|coupe|masters/i.test(`${event.title} ${event.subtitle || ""}`) ? "tournament" : "other",
+      source: "live",
+      sourceId: event.id,
+      startAt,
+      durationMin: 120,
+      notes: [event.subtitle, event.sourceName].filter(Boolean).join(" · "),
+      organizer: event.sourceName || undefined,
+      status: event.status === "live" ? "confirmed" : "planned",
+      route: "live",
+      routeParams: { sport: sportId, sourceUrl: event.sourceUrl || null },
+      accent: meta.accent,
+      readonly: true,
+    });
+  }
+  const seen = new Set<string>();
+  return out.filter((event) => {
+    const key = `${event.sport}|${event.startAt}|${event.title.toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function enabledAgendaSports() {
@@ -240,6 +313,8 @@ export default function MultisportAgendaPage({ go, params }: Props) {
   const [cursor, setCursor] = React.useState(() => Date.now());
   const [createOpen, setCreateOpen] = React.useState(() => Boolean(params?.agendaCreate));
   const [sportFilter, setSportFilter] = React.useState<MultisportEventSport | "all">("all");
+  const [showLiveEvents, setShowLiveEvents] = React.useState(true);
+  const [liveAgendaEvents, setLiveAgendaEvents] = React.useState<MultisportAgendaEvent[]>([]);
   const [selectedEvent, setSelectedEvent] = React.useState<MultisportAgendaEvent | null>(null);
   const availableSports = React.useMemo(() => {
     const all = enabledAgendaSports();
@@ -269,6 +344,34 @@ export default function MultisportAgendaPage({ go, params }: Props) {
     return () => { alive = false; if (!isOrganizationAgenda) window.removeEventListener("dc:multisport-agenda-changed", refresh as EventListener); window.removeEventListener("focus", refresh); window.removeEventListener("storage", onStorage); };
   }, [refresh, isOrganizationAgenda]);
 
+  React.useEffect(() => {
+    if (isOrganizationAgenda) { setLiveAgendaEvents([]); return; }
+    let cancelled = false;
+    const applyRows = (rows: MultisportAgendaEvent[][]) => {
+      if (cancelled) return;
+      const seen = new Set<string>();
+      setLiveAgendaEvents(rows.flat().sort((a,b) => a.startAt - b.startAt).filter((event) => {
+        const key = `${event.sport}|${event.startAt}|${event.title.toLowerCase()}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }));
+    };
+    const cachedRows = LIVE_SPORTS_APP_ORDER.map((sport) => {
+      const cached = getCachedSportLiveOverview(sport as any, String(lang || "fr"));
+      return cached ? mapLiveOverviewToAgenda(String(sport), cached) : [];
+    });
+    applyRows(cachedRows);
+    void Promise.allSettled(LIVE_SPORTS_APP_ORDER.map(async (sport) => {
+      const overview = await fetchSportLiveOverview(sport as any, undefined, String(lang || "fr"), "calendar");
+      return mapLiveOverviewToAgenda(String(sport), overview);
+    })).then((settled) => {
+      const rows = settled.map((item) => item.status === "fulfilled" ? item.value : []);
+      applyRows(rows);
+    });
+    return () => { cancelled = true; };
+  }, [isOrganizationAgenda, lang]);
+
   const removeAgendaEvent = React.useCallback((event: MultisportAgendaEvent) => {
     if (isOrganizationAgenda && organizationAgenda && event.sourceId) {
       void deleteOrganizationEvent(organizationAgenda.userId, organizationAgenda.organizationId, event.sourceId).then(refresh);
@@ -278,7 +381,8 @@ export default function MultisportAgendaPage({ go, params }: Props) {
     refresh();
   }, [isOrganizationAgenda, organizationAgenda?.organizationId, organizationAgenda?.userId, refresh]);
 
-  const filteredEvents = React.useMemo(() => sportFilter === "all" ? events : events.filter((event) => event.sport === sportFilter), [events, sportFilter]);
+  const combinedEvents = React.useMemo(() => showLiveEvents ? [...events, ...liveAgendaEvents] : events, [events, liveAgendaEvents, showLiveEvents]);
+  const filteredEvents = React.useMemo(() => sportFilter === "all" ? combinedEvents : combinedEvents.filter((event) => event.sport === sportFilter), [combinedEvents, sportFilter]);
   const pending = React.useMemo(() => events.filter((event) => event.status === "pending"), [events]);
   const range = React.useMemo(() => {
     if (view === "today") { const start = localDayStart(cursor); return { start, end: start + DAY }; }
@@ -394,6 +498,7 @@ export default function MultisportAgendaPage({ go, params }: Props) {
         </div>
         <div className="msa-sport-filter">
           <button type="button" onClick={() => setSportFilter("all")} className="msa-sport-icon-btn" aria-label={t("Tous les sports", "All sports", "Todos los deportes")} title={t("Tous", "All", "Todos")} style={{ border: `1px solid ${sportFilter === "all" ? accent : "rgba(255,255,255,.10)"}`, background: sportFilter === "all" ? `${accent}1b` : "rgba(255,255,255,.025)", color: sportFilter === "all" ? accent : "#fff", fontWeight: 1000, fontSize: 8 }}>{t("TOUS", "ALL", "TODOS")}</button>
+          <button type="button" onClick={() => setShowLiveEvents((value) => !value)} className="msa-sport-icon-btn" aria-label={t("Afficher les événements LIVE", "Show LIVE events", "Mostrar eventos LIVE")} title={t("Événements LIVE", "LIVE events", "Eventos LIVE")} style={{ border: `1px solid ${showLiveEvents ? "#ff3048" : "rgba(255,255,255,.10)"}`, background: showLiveEvents ? "rgba(255,48,72,.16)" : "rgba(255,255,255,.025)", color: showLiveEvents ? "#ff3048" : "#fff", fontWeight: 1000, fontSize: 8 }}>LIVE</button>
           {availableSports.map((entry) => <button key={entry.id} type="button" className="msa-sport-icon-btn" onClick={() => setSportFilter(entry.id)} aria-label={entry.label} title={entry.label} style={{ border: `1px solid ${sportFilter === entry.id ? entry.accent : "rgba(255,255,255,.08)"}`, background: sportFilter === entry.id ? `${entry.accent}18` : "rgba(255,255,255,.022)", boxShadow: sportFilter === entry.id ? `0 0 14px ${entry.accent}28` : "none" }}><TintedSportLogo sport={entry.id} color={entry.accent} size={29}/></button>)}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 5 }}>
@@ -475,6 +580,7 @@ export default function MultisportAgendaPage({ go, params }: Props) {
           </div>
           <div className="msa-sport-rail">
             <button type="button" onClick={() => setSportFilter("all")} className="msa-sport-icon-btn" aria-label={t("Tous les sports", "All sports", "Todos los deportes")} title={t("Tous", "All", "Todos")} style={{ width: "100%", minHeight: 40, border: `1px solid ${sportFilter === "all" ? accent : "rgba(255,255,255,.10)"}`, background: sportFilter === "all" ? `${accent}1b` : "rgba(255,255,255,.025)", color: sportFilter === "all" ? accent : "#fff", fontWeight: 1000, fontSize: 7 }}>{t("TOUS", "ALL", "TODOS")}</button>
+            <button type="button" onClick={() => setShowLiveEvents((value) => !value)} className="msa-sport-icon-btn" aria-label={t("Afficher les événements LIVE", "Show LIVE events", "Mostrar eventos LIVE")} title={t("Événements LIVE", "LIVE events", "Eventos LIVE")} style={{ width: "100%", minHeight: 40, border: `1px solid ${showLiveEvents ? "#ff3048" : "rgba(255,255,255,.10)"}`, background: showLiveEvents ? "rgba(255,48,72,.16)" : "rgba(255,255,255,.025)", color: showLiveEvents ? "#ff3048" : "#fff", fontWeight: 1000, fontSize: 7 }}>LIVE</button>
             {availableSports.map((entry) => <button key={entry.id} type="button" className="msa-sport-icon-btn" onClick={() => setSportFilter(entry.id)} aria-label={entry.label} title={entry.label} style={{ width: "100%", minHeight: 38, border: `1px solid ${sportFilter === entry.id ? entry.accent : "rgba(255,255,255,.08)"}`, background: sportFilter === entry.id ? `${entry.accent}18` : "rgba(255,255,255,.022)", boxShadow: sportFilter === entry.id ? `0 0 12px ${entry.accent}28` : "none" }}><TintedSportLogo sport={entry.id} color={entry.accent} size={22}/></button>)}
           </div>
         </div>
@@ -682,7 +788,7 @@ function EventCard({ event, locale, onOpen, onDelete, conflict = false }: { even
   </button>;
 }
 
-function sourceLabel(source: MultisportAgendaEvent["source"]) { if (source === "fit_program") return "Programme FIT"; if (source === "multisport_program") return "Programme multisports"; if (source === "running_program") return "Programme running"; if (source === "running_race") return "Épreuve running"; if (source === "club") return "Club"; if (source === "team") return "Équipe"; if (source === "friend") return "Invitation"; return "Personnel"; }
+function sourceLabel(source: MultisportAgendaEvent["source"]) { if (source === "live") return "LIVE SPORTS"; if (source === "fit_program") return "Programme FIT"; if (source === "multisport_program") return "Programme multisports"; if (source === "running_program") return "Programme running"; if (source === "running_race") return "Épreuve running"; if (source === "club") return "Club"; if (source === "team") return "Équipe"; if (source === "friend") return "Invitation"; return "Personnel"; }
 function EmptyState({ text }: { text: string }) { return <div style={{ borderRadius: 18, border: "1px dashed rgba(255,255,255,.12)", background: "rgba(255,255,255,.02)", padding: "28px 18px", textAlign: "center", color: "rgba(255,255,255,.5)", fontSize: 10, lineHeight: 1.5 }}>{text}</div>; }
 
 function MonthGrid({ cursor, events, locale, onSelectDay }: { cursor: number; events: MultisportAgendaEvent[]; locale: string; onSelectDay: (day: number) => void }) {

@@ -7,7 +7,7 @@ import { APP_SPORT_CATALOG, appSportMeta, type AppSportId } from "../config/spor
 
 export type MultisportEventSport = AppSportId | "other";
 export type MultisportEventType = "workout" | "training" | "match" | "game" | "outing" | "race" | "tournament" | "league" | "leisure" | "recovery" | "club" | "challenge" | "other";
-export type MultisportEventSource = "manual" | "fit_program" | "multisport_program" | "running_program" | "running_race" | "friend" | "club" | "team" | "system";
+export type MultisportEventSource = "manual" | "fit_program" | "multisport_program" | "running_program" | "running_race" | "friend" | "club" | "team" | "system" | "live";
 export type MultisportEventStatus = "planned" | "pending" | "confirmed" | "declined" | "completed" | "cancelled";
 
 export type MultisportAgendaEvent = {

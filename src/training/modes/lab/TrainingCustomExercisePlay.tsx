@@ -7,6 +7,7 @@ import { makeTrainingStats, trainingDartMatches, type TrainingDart } from "../..
 import { EXTENDED_RULE_BY_ID, type ExtendedTrainingRule } from "../../catalog/trainingLabExtendedRules";
 import { evaluateExtendedOutcome } from "../../profile/trainingExtendedOutcome";
 import { clearTrainingExerciseDraft, getEffectiveDraftSeconds, saveTrainingExerciseDraft } from "../../profile/trainingExerciseDraft";
+import { buildTrainingExercisePostSessionFeedback, getTrainingExerciseProgressionSnapshot, type TrainingExercisePostSessionFeedback } from "../../profile/trainingExerciseFeedback";
 
 const clamp = (n:number,a:number,b:number)=>Math.max(a,Math.min(b,n));
 const visitScore=(v:TrainingDart[])=>v.reduce((s,d)=>s+d.score,0);
@@ -102,6 +103,7 @@ export default function TrainingCustomExercisePlay({config,onExit,exercise}:{con
   const stateRef=React.useRef(state); React.useEffect(()=>{stateRef.current=state},[state]);
   const startedAt=React.useRef(Number(resumeExerciseDraft?.startedAt) || Date.now());
   const [result,setResult]=React.useState<any>(null);
+  const [exerciseFeedback,setExerciseFeedback]=React.useState<TrainingExercisePostSessionFeedback|null>(null);
   const resumedSeconds = getEffectiveDraftSeconds(resumeExerciseDraft);
   const [secondsLeft,setSecondsLeft]=React.useState(resumedSeconds == null ? (rule.durationSec||0) : resumedSeconds);
   const finishedRef=React.useRef(false);
@@ -121,7 +123,10 @@ export default function TrainingCustomExercisePlay({config,onExit,exercise}:{con
     const accuracyPct = s.darts ? (s.hits / s.darts) * 100 : 0;
     const completionPct = rule.rounds ? Math.min(100, (s.round / Math.max(1, rule.rounds)) * 100) : success ? 100 : Math.min(99, outcome.performanceScore);
     const metrics={exerciseId:exercise.id,exerciseTitle:exercise.title,family:exercise.family,difficulty:exercise.difficulty,completionPct,accuracyPct,performanceScore:outcome.performanceScore,score:scorePoints,customRule:rule.kind,objectivePassed:outcome.passed,objectiveMetric:outcome.metricLabel,objectiveValue:outcome.metricValue,objectiveTarget:outcome.targetValue,objectiveDirection:outcome.direction};
+    const participantId=String(config?.activeParticipant?.id||participantIds?.[0]||"").trim()||null;
+    const progressionBefore=getTrainingExerciseProgressionSnapshot(exercise,participantId);
     recordSoloTrainingResult({modeId:"training_lab",config:{...config,exerciseId:exercise.id,family:exercise.family,customRule:rule.kind},participantIds,startedAt:startedAt.current,endedAt,darts:s.darts,hits:s.hits,points:scorePoints,success:outcome.passed,metrics,visitHistory:[]});
+    setExerciseFeedback(buildTrainingExercisePostSessionFeedback(exercise,participantId,progressionBefore,Number(metrics.performanceScore)||0));
     setResult({success:outcome.passed,metrics,outcome,stats:makeTrainingStats({darts:s.darts,hits:s.hits,points:Math.max(0,s.points),startedAt:startedAt.current,endedAt})});
   },[config,exercise,participantId,participantIds,rule]);
 
@@ -212,6 +217,6 @@ export default function TrainingCustomExercisePlay({config,onExit,exercise}:{con
         {(rule.params?.manualScores||[0,1]).map((v:number,i:number)=><button key={v} onClick={()=>manualHit(v)} style={{minHeight:80,borderRadius:14,border:"1px solid rgba(255,255,255,.12)",background:v?"rgba(80,255,174,.08)":"rgba(255,80,80,.06)",color:"inherit",fontWeight:950,cursor:"pointer"}}>{rule.params?.manualLabels?.[i]|| (v?"TOUCHÉ":"RATÉ")}<div style={{marginTop:5,fontSize:12,opacity:.6}}>+{v}</div></button>)}
       </div> : <TrainingDartPad disabled={!!result} onVisit={applyVisit} requireFullVisit={false} notice={<div style={{fontSize:11,textAlign:"center",opacity:.72}}>Saisis tes fléchettes normalement. Le moteur applique automatiquement les règles de l'exercice.</div>} />}
     </TrainingPlayLayout>
-    <TrainingResultModal open={!!result} success={!!result?.success} title={result?.success?"Objectif atteint":"Objectif à retenter"} stats={result?.stats||makeTrainingStats({darts:0,hits:0,points:0,startedAt:Date.now()})} metrics={result?[{label:"EXERCICE",value:exercise.title},{label:result.outcome?.metricLabel||"SCORE",value:result.outcome?.metricValue??s.points},{label:"PERFORMANCE",value:`${Math.round(result.metrics?.performanceScore||0)}/100`},{label:"OBJECTIF",value:rule.level1Label||"—"}]:[]} onClose={handleExit}/>
+    <TrainingResultModal open={!!result} success={!!result?.success} title={result?.success?"Objectif atteint":"Objectif à retenter"} stats={result?.stats||makeTrainingStats({darts:0,hits:0,points:0,startedAt:Date.now()})} metrics={result?[{label:"EXERCICE",value:exercise.title},{label:result.outcome?.metricLabel||"SCORE",value:result.outcome?.metricValue??s.points},{label:"PERFORMANCE",value:`${Math.round(result.metrics?.performanceScore||0)}/100`},{label:"NIVEAU",value:`${exerciseFeedback?.afterLevel??0}/5`}]:[]} note={exerciseFeedback?<div style={{padding:10,borderRadius:12,background:exerciseFeedback.levelUp?"rgba(80,255,174,.07)":"rgba(39,220,255,.06)",border:exerciseFeedback.levelUp?"1px solid rgba(80,255,174,.22)":"1px solid rgba(39,220,255,.18)"}}><div style={{fontSize:8,fontWeight:950,letterSpacing:1,opacity:.58}}>PROGRESSION PERSONNELLE</div><div style={{marginTop:4,fontSize:12,fontWeight:1000}}>{exerciseFeedback.masteredNow?"MAÎTRISE DÉBLOQUÉE":exerciseFeedback.levelUp?`NIVEAU ${exerciseFeedback.afterLevel}/5 DÉBLOQUÉ`:`NIVEAU ${exerciseFeedback.afterLevel}/5`}</div><div style={{marginTop:5,fontSize:9.2,lineHeight:1.42,opacity:.72}}>{exerciseFeedback.newRecord?`Nouveau record • ${exerciseFeedback.currentPerformance}/100. `:""}{exerciseFeedback.afterLevel>=5?"Exercice maîtrisé.":`Prochain objectif : ${exerciseFeedback.nextObjective}`}</div></div>:null} onClose={handleExit}/>
   </>;
 }
