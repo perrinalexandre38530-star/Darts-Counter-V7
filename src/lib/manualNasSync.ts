@@ -492,13 +492,53 @@ async function flushRuntimeStoreBeforeNasPush() {
 export async function pushNasPreparedArtifact(payload: any, summary: Record<string, any> = {}) {
   const api = await getOnlineApi();
   const startedAt = Date.now();
+
+  // W6B — frontière de checkpoint sur le chemin CANONIQUE réellement utilisé.
+  // L'artefact est déjà entièrement construit à cet instant. Toute mutation
+  // postérieure à ce cutoff doit donc rester dans le journal incrémental.
+  const checkpointCutoffMs = Date.now();
   const res = await api.pushStoreSnapshot(payload as any, Number(payload?._v || 1), { force: true, reason: "canonical-backup-artifact-v1" });
+
+  // Le backend NAS est un service séparé du projet Vite. On ne suppose plus que
+  // le server.js présent à la racine Git décrit les routes réellement déployées.
+  // La capability annoncée par /health décide si la compaction distante existe.
+  let remoteIncrementalCompaction = "unsupported";
+  try {
+    const { apiGet, apiDelete } = await import("./apiClient");
+    const health: any = await apiGet("/health", { manual: true, timeoutMs: 5_000 }).catch(() => null);
+    if (health?.capabilities?.incrementalCompaction === true) {
+      await apiDelete(`/account/incremental-changes?throughUpdatedAt=${encodeURIComponent(String(checkpointCutoffMs))}`);
+      remoteIncrementalCompaction = "done";
+    } else {
+      console.warn("[nasSync] backend NAS sans capability incrementalCompaction; compaction distante ignorée");
+    }
+  } catch (error) {
+    remoteIncrementalCompaction = "failed";
+    console.warn("[nasSync] remote incremental compaction skipped", error);
+  }
+
+  // La compaction locale ne se produit qu'après confirmation du snapshot NAS.
+  // Elle conserve toutes les mutations plus récentes que checkpointCutoffMs.
+  try {
+    const { markIncrementalCheckpoint } = await import("./incrementalBackupJournal");
+    await markIncrementalCheckpoint({
+      provider: "founder_nas",
+      reason: "canonical-backup-artifact-v1",
+      throughUpdatedAt: checkpointCutoffMs,
+      remoteIncrementalCompaction,
+    });
+  } catch (error) {
+    console.warn("[nasSync] local incremental compaction skipped", error);
+  }
+
   try { localStorage.setItem(LAST_PUSH_KEY, new Date().toISOString()); } catch {}
   clearNasSyncDirty();
   return {
     ...(res || {}),
     artifactId: String(payload?.artifactId || ""),
     payloadSha256: String(payload?.payloadSha256 || ""),
+    checkpointCutoffMs,
+    remoteIncrementalCompaction,
     summary: { ...(summary || {}), durationMs: Date.now() - startedAt, packedBytes: Number(payload?.packedBytes || 0) },
   };
 }

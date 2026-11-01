@@ -215,6 +215,13 @@ function competitionKey(value?: string | null) {
   return String(value || "Compétition officielle").replace(/\s+/g, " ").trim();
 }
 
+function resultSeasonLabel(value?: string | null) {
+  const raw = String(value || "").trim();
+  if (!raw) return "NON DATÉ";
+  const match = raw.match(/(20\d{2}|19\d{2})/);
+  return match?.[1] || "NON DATÉ";
+}
+
 function competitionIcon(value?: string | null) {
   const name = competitionKey(value).toLowerCase();
   if (/modus/.test(name)) return "⚡";
@@ -745,6 +752,8 @@ function LiveStyles() {
       .msc-results-nav { position:sticky; top:52px; max-height:calc(76vh - 76px); overflow:hidden; display:flex; flex-direction:column; gap:8px; padding:8px; border:1px solid #28323d; border-radius:14px; background:linear-gradient(180deg,#0d1319,#080c11); }
       .msc-results-nav-section { min-height:0; display:flex; flex-direction:column; gap:5px; }
       .msc-results-nav-section.is-competitions { flex:1 1 auto; min-height:120px; }
+      .msc-results-nav-section.is-seasons .msc-results-nav-list { max-height:148px; }
+      .msc-results-nav-section.is-seasons .msc-results-nav-list { max-height:148px; }
       .msc-results-nav-title { padding:2px 4px; color:#7f8b98; font-size:8px; font-weight:1000; letter-spacing:.75px; }
       .msc-results-nav-list { display:flex; flex-direction:column; gap:5px; overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; padding-right:2px; }
       .msc-results-nav-section:not(.is-competitions) .msc-results-nav-list { max-height:154px; }
@@ -1090,6 +1099,7 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport }: { r
   const [selectedContinent, setSelectedContinent] = React.useState("__all__");
   const [selectedCountry, setSelectedCountry] = React.useState("__all__");
   const [selected, setSelected] = React.useState("__all__");
+  const [selectedSeason, setSelectedSeason] = React.useState("__all__");
 
   const continentFiltered = React.useMemo(() => competitions.filter((item) => selectedContinent === "__all__" || item.continent === selectedContinent), [competitions, selectedContinent]);
   const countries = React.useMemo(() => {
@@ -1113,11 +1123,33 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport }: { r
     if (selected !== "__all__" && !hierarchyFiltered.some((item) => item.name === selected)) setSelected("__all__");
   }, [hierarchyFiltered, selected]);
 
-  React.useEffect(() => { setSelectedCountry("__all__"); setSelected("__all__"); }, [selectedContinent]);
-  React.useEffect(() => { setSelected("__all__"); }, [selectedCountry]);
+  React.useEffect(() => { setSelectedCountry("__all__"); setSelected("__all__"); setSelectedSeason("__all__"); }, [selectedContinent]);
+  React.useEffect(() => { setSelected("__all__"); setSelectedSeason("__all__"); }, [selectedCountry]);
+  React.useEffect(() => { setSelectedSeason("__all__"); }, [selected]);
 
-  const visible = selected === "__all__" ? hierarchyFiltered : hierarchyFiltered.filter((item) => item.name === selected);
-  const filteredCount = hierarchyFiltered.reduce((sum,item) => sum + item.matches.length, 0);
+  const competitionFiltered = selected === "__all__" ? hierarchyFiltered : hierarchyFiltered.filter((item) => item.name === selected);
+  const seasons = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    competitionFiltered.forEach((item) => item.matches.forEach((match) => {
+      const season = resultSeasonLabel(match.playedOn);
+      counts.set(season, (counts.get(season) || 0) + 1);
+    }));
+    return Array.from(counts.entries()).sort(([a],[b]) => {
+      if (a === "NON DATÉ") return 1;
+      if (b === "NON DATÉ") return -1;
+      return Number(b) - Number(a);
+    });
+  }, [competitionFiltered]);
+
+  React.useEffect(() => {
+    if (selectedSeason !== "__all__" && !seasons.some(([season]) => season === selectedSeason)) setSelectedSeason("__all__");
+  }, [seasons, selectedSeason]);
+
+  const visible = competitionFiltered
+    .map((item) => ({ ...item, matches: selectedSeason === "__all__" ? item.matches : item.matches.filter((match) => resultSeasonLabel(match.playedOn) === selectedSeason) }))
+    .filter((item) => item.matches.length > 0);
+  const filteredCount = competitionFiltered.reduce((sum,item) => sum + item.matches.length, 0);
+  const visibleCount = visible.reduce((sum,item) => sum + item.matches.length, 0);
 
   return (
     <div className="msc-results-browser">
@@ -1163,6 +1195,20 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport }: { r
             ))}
           </div>
         </div>
+
+        <div className="msc-results-nav-section is-seasons">
+          <div className="msc-results-nav-title">SAISONS</div>
+          <div className="msc-results-nav-list">
+            <button className={`msc-results-nav-btn${selectedSeason === "__all__" ? " is-active" : ""}`} type="button" onClick={() => setSelectedSeason("__all__")} title="Toutes les saisons">
+              <span className="msc-results-nav-icon">🗓️</span><span className="msc-results-nav-label">TOUTES</span><span className="msc-results-nav-count">{filteredCount}</span>
+            </button>
+            {seasons.map(([season, count]) => (
+              <button key={season} className={`msc-results-nav-btn${selectedSeason === season ? " is-active" : ""}`} type="button" onClick={() => setSelectedSeason(season)} title={`Saison ${season}`}>
+                <span className="msc-results-nav-icon">{season === "NON DATÉ" ? "?" : "📅"}</span><span className="msc-results-nav-label">{season}</span><span className="msc-results-nav-count">{count}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       </aside>
 
       <div className="msc-results-content">
@@ -1172,7 +1218,9 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport }: { r
           <span>{selectedCountry === "__all__" ? "Tous pays" : (countries.find((item) => item.key === selectedCountry)?.label || selectedCountry)}</span>
           <span>›</span>
           <strong>{selected === "__all__" ? "Toutes compétitions" : selected}</strong>
-          <em>{filteredCount} résultat{filteredCount > 1 ? "s" : ""}</em>
+          <span>›</span>
+          <strong>{selectedSeason === "__all__" ? "Toutes saisons" : selectedSeason}</strong>
+          <em>{visibleCount} résultat{visibleCount > 1 ? "s" : ""}</em>
         </div>
         <div className="msc-competition-groups">
           {visible.map(({ name, matches, imageUrl, tone, chips, countryCode, countryLabel }) => {

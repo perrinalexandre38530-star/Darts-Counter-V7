@@ -3,7 +3,7 @@ const read = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), 'utf8')
 const journal = read('src/lib/incrementalBackupJournal.ts');
 const auto = read('src/lib/matchAutoBackup.ts');
 const nas = read('src/lib/manualNasSync.ts');
-const backend = read('server.js');
+const pkg = JSON.parse(read('package.json'));
 function assert(ok, message) { if (!ok) throw new Error(`❌ ${message}`); console.log(`✅ ${message}`); }
 
 assert(journal.includes('throughUpdatedAt') && journal.includes('<= throughUpdatedAt'), 'W6 compacte seulement les deltas couverts par le checkpoint');
@@ -12,7 +12,13 @@ assert(journal.includes('retainedChanges') && journal.includes('SYNC_META_PREFIX
 assert(auto.includes('checkpointCutoffMs') && auto.includes('throughUpdatedAt: checkpointCutoffMs'), 'Les checkpoints cloud transmettent leur frontière temporelle');
 assert(auto.includes('createLocalMemorySlotFromSnapshot') && auto.includes('checkpointId: slot.id'), 'Le mode local crée un snapshot durable avant compaction');
 assert(auto.includes('Never compact if the durable local checkpoint failed'), 'Un échec de checkpoint local laisse le journal intact');
-assert(nas.includes('throughUpdatedAt=${encodeURIComponent(String(checkpointCutoffMs))}') && nas.includes('reason: "manual-nas-backup"'), 'Le backup NAS manuel compacte local et distant avec le même cutoff');
-assert(backend.includes('app.delete("/account/incremental-changes"') && backend.includes('updated_at_ms <= $2'), 'Le backend NAS compacte seulement les deltas antérieurs au checkpoint');
-assert(backend.includes('throughUpdatedAt requis'), 'Le backend refuse une compaction NAS sans frontière explicite');
-console.log('\n✅ W6 BACKUP CHECKPOINT COMPACTION CONTRACT OK');
+
+assert(nas.includes('export async function pushNasPreparedArtifact'), 'Le transport NAS canonique utilise pushNasPreparedArtifact');
+assert(nas.includes('reason: "canonical-backup-artifact-v1"') && nas.includes('throughUpdatedAt: checkpointCutoffMs'), 'Le chemin NAS canonique compacte le journal local avec la frontière du snapshot');
+assert(nas.includes('health?.capabilities?.incrementalCompaction === true'), 'La compaction NAS distante dépend de la capability annoncée par le vrai backend');
+assert(nas.includes('/account/incremental-changes?throughUpdatedAt=${encodeURIComponent(String(checkpointCutoffMs))}'), 'Le client appelle la route de compaction distante uniquement après snapshot durable');
+
+assert(String(pkg?.scripts?.dev || '').includes('vite') && String(pkg?.scripts?.start || '').includes('vite'), 'Le package application lance Vite, pas le server.js racine');
+assert(!String(pkg?.scripts?.start || '').includes('server.js'), 'Le server.js racine du projet n’est pas considéré comme backend NAS déployé');
+
+console.log('\n✅ W6B APP / NAS BOUNDARY + CHECKPOINT COMPACTION CONTRACT OK');

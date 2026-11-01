@@ -2742,7 +2742,7 @@ async function openAiWebIntelligence(env: Env, sport: string, lang: string): Pro
 }
 
 
-async function openAiFocusedHistory(env: Env, sport: string, lang: string, mode: "archive" | "calendar"): Promise<IntelligenceNews[]> {
+async function openAiFocusedHistory(env: Env, sport: string, lang: string, mode: "archive" | "calendar", rangeLabel?: string): Promise<IntelligenceNews[]> {
   const key = str(env?.OPENAI_API_KEY).trim();
   const spec = INTELLIGENCE_SPECS[sport];
   if (!key || !spec) return [];
@@ -2751,8 +2751,8 @@ async function openAiFocusedHistory(env: Env, sport: string, lang: string, mode:
   const currentYear = today.getUTCFullYear();
   const todayIso = today.toISOString().slice(0,10);
   const focus = mode === "archive"
-    ? `Search verified historical results for ${spec.label}. Cover the current season and at least the previous 5 seasons when public archives exist. Include official international competitions, every national federation/league you can verify, lower divisions, regional/county/state/provincial leagues, club competitions, qualifiers, youth, women, veterans and amateur tournaments. Prefer explicit match scores, final standings, winners/finalists and official archive pages. Do not focus only on elite competitions or English-language countries.`
-    : `Search verified upcoming ${spec.label} events from ${todayIso} through the next 12 months. Cover official world/continental tours, national federations, regional/county/state/provincial calendars, club leagues, qualifiers, youth, women, veterans and amateur tournaments. Prefer official calendar/event pages and provide event dates whenever stated.`;
+    ? `Search verified historical results for ${spec.label}. ${rangeLabel ? `Concentrate specifically on seasons/years ${rangeLabel}.` : "Cover the current season and historical archives."} Include official international competitions, every national federation/league you can verify, lower divisions, regional/county/state/provincial leagues, club competitions, qualifiers, youth, women, veterans and amateur tournaments. Prefer explicit match scores, final standings, winners/finalists and official archive pages. Do not focus only on elite competitions or English-language countries.`
+    : `Search verified upcoming ${spec.label} events from ${todayIso} through the next 18 months. Cover official world/continental tours, national federations, regional/county/state/provincial calendars, club leagues, qualifiers, youth, women, veterans and amateur tournaments. Prefer official calendar/event pages and provide event dates whenever stated.`;
   const prompt = `${focus} The app language is ${lang || "fr"}, but geography must remain worldwide. Return ONLY valid JSON with shape {"items":[{"title":"...","summary":"...","publishedAt":"ISO date or null","sourceName":"...","sourceUrl":"https://...","imageUrl":"https://... or null","kind":"news|result|live|upcoming","resultLabel":"explicit published score/result/date or null","scope":"local|regional|world","scopeLabel":"country/region/competition label"}]}. Maximum 120 items. Never invent a score, winner, date, competition or URL. For archive mode, result items are strongly preferred. For calendar mode, upcoming items are strongly preferred. Current year: ${currentYear}.`;
   const response = await timedFetch("https://api.openai.com/v1/responses", {
     method:"POST",
@@ -2788,19 +2788,28 @@ async function openAiFocusedHistory(env: Env, sport: string, lang: string, mode:
 
 async function archiveOverview(env: Env, sport: string, lang: string) {
   const pages = DIRECT_ARCHIVE_PAGES[sport] || [];
-  const [directSettled, aiSettled] = await Promise.allSettled([
-    directEditorialIntelligence(sport, Math.min(48, pages.length || 1), pages),
-    str(env?.OPENAI_API_KEY).trim() ? openAiFocusedHistory(env, sport, lang, "archive") : Promise.resolve([] as IntelligenceNews[]),
+  const currentYear = new Date().getUTCFullYear();
+  const archiveRanges = [
+    `${currentYear}-${currentYear - 4}`,
+    `${currentYear - 5}-${currentYear - 9}`,
+    `${currentYear - 10}-${currentYear - 15}`,
+  ];
+  const aiPromise = str(env?.OPENAI_API_KEY).trim()
+    ? Promise.allSettled(archiveRanges.map((range) => openAiFocusedHistory(env, sport, lang, "archive", range)))
+    : Promise.resolve([] as PromiseSettledResult<IntelligenceNews[]>[]);
+  const [directSettled, aiRanges] = await Promise.all([
+    Promise.allSettled([directEditorialIntelligence(sport, Math.min(72, pages.length || 1), pages)]),
+    aiPromise,
   ]);
-  const direct = directSettled.status === "fulfilled" ? directSettled.value : [];
-  const ai = aiSettled.status === "fulfilled" ? aiSettled.value : [];
+  const direct = directSettled[0]?.status === "fulfilled" ? directSettled[0].value : [];
+  const ai = aiRanges.flatMap((result) => result.status === "fulfilled" ? result.value : []);
   const rows = uniqNews([...direct, ...ai]);
   const results = applyCompetitionMeta(sport, uniqNormalResults(rows.map((row) => intelligenceNewsToStructuredResult(row, sport)).filter(Boolean) as NormalResult[])).slice(0, sport === "foot" ? 1500 : 900);
   const events = uniqEvents(rows.filter((row) => row.kind === "result").map((row) => newsToEvent(row, sport)).filter(Boolean) as NormalEvent[]).slice(0,500);
   const payload = await enrichCompetitionLogosInPayload(env, sport, {
     sport, configured: results.length > 0 || events.length > 0, automaticData: true, provider:"official_links", plan:"archive",
     dataAsOf:new Date().toISOString(), liveAvailable:false, liveReason:"Archives historiques chargées à la demande.", live:[], fixtures:[], results, events, news:[],
-    intelligence:{ enabled:rows.length>0, provider:ai.length?"openai_web":"news_rss", aiEnabled:ai.length>0, count:rows.length, localCount:rows.filter(r=>r.scope==='local').length, regionalCount:rows.filter(r=>r.scope==='regional').length, worldCount:rows.filter(r=>r.scope==='world'||!r.scope).length, queryCount:pages.length+(ai.length?1:0), directResultCount:results.length, updatedAt:new Date().toISOString() }, warnings:[],
+    intelligence:{ enabled:rows.length>0, provider:ai.length?"openai_web":"news_rss", aiEnabled:ai.length>0, count:rows.length, localCount:rows.filter(r=>r.scope==='local').length, regionalCount:rows.filter(r=>r.scope==='regional').length, worldCount:rows.filter(r=>r.scope==='world'||!r.scope).length, queryCount:pages.length+(ai.length?archiveRanges.length:0), directResultCount:results.length, updatedAt:new Date().toISOString() }, warnings:[],
   }, true);
   return { status:200, ttl:21600, payload };
 }

@@ -3,8 +3,22 @@ import type { TrainingExerciseDefinition } from "../catalog/trainingExerciseCata
 import { TRAINING_FAMILY_META } from "../catalog/trainingExerciseCatalog";
 import { buildTrainingExerciseDetail } from "../catalog/trainingExerciseDetails";
 
-export default function TrainingExerciseDetail({ exercise, isFavorite, onToggleFavorite, onBack, onStart }: { exercise: TrainingExerciseDefinition; isFavorite: boolean; onToggleFavorite: () => void; onBack: () => void; onStart: () => void }) {
+type ExerciseSummary = {
+  attempts: number;
+  bestPerformance: number;
+  lastPerformance: number;
+  lastAccuracy: number;
+  lastSuccess: boolean;
+  lastMetricLabel: string;
+  lastMetricValue: string;
+  lastEndedAt: number;
+} | null;
+
+export default function TrainingExerciseDetail({ exercise, summary, isFavorite, onToggleFavorite, onBack, onStart }: { exercise: TrainingExerciseDefinition; summary?: ExerciseSummary; isFavorite: boolean; onToggleFavorite: () => void; onBack: () => void; onStart: () => void }) {
   const detail = buildTrainingExerciseDetail(exercise);
+  const hasHistory = !!summary && summary.attempts > 0;
+  const lastWhen = hasHistory && summary?.lastEndedAt ? new Date(summary.lastEndedAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }) : "—";
+
   return <div style={{ marginTop: 10 }}>
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
       <button type="button" onClick={onBack} style={{ padding: "8px 11px", borderRadius: 10, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.035)", color: "inherit", fontSize: 8.3, fontWeight: 950, cursor: "pointer" }}>← RETOUR AU CATALOGUE</button>
@@ -32,6 +46,22 @@ export default function TrainingExerciseDetail({ exercise, isFavorite, onToggleF
           <div style={{ fontSize: 8.5, fontWeight: 950, color: "#ff6f7a" }}>PROCHAIN OBJECTIF • NIVEAU {Math.min(5, exercise.difficulty + 1)}</div>
           <div style={{ marginTop: 6, fontSize: 12, fontWeight: 950 }}>{detail.nextObjective}</div>
         </section>
+
+        <section style={{ marginTop: 10, padding: 14, borderRadius: 15, border: hasHistory ? "1px solid rgba(39,220,255,.18)" : "1px solid rgba(255,255,255,.075)", background: hasHistory ? "linear-gradient(135deg,rgba(39,220,255,.045),rgba(140,90,255,.025))" : "rgba(255,255,255,.018)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 9, fontWeight: 950, letterSpacing: .8, color: hasHistory ? "#27dcff" : "inherit" }}>TON SUIVI</div>
+            <div style={{ fontSize: 7.5, opacity: .42 }}>{hasHistory ? `DERNIÈRE • ${lastWhen}` : "AUCUNE TENTATIVE"}</div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7, marginTop: 10 }}>
+            {[
+              ["TENTATIVES", summary?.attempts ?? 0],
+              ["DERNIÈRE", hasHistory ? `${summary?.lastPerformance ?? 0}/100` : "—"],
+              ["RECORD", hasHistory ? `${summary?.bestPerformance ?? 0}/100` : "—"],
+              ["PRÉCISION", hasHistory ? `${summary?.lastAccuracy ?? 0}%` : "—"],
+            ].map(([label, value]) => <div key={String(label)} style={{ padding: "9px 6px", borderRadius: 11, textAlign: "center", background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.055)" }}><b style={{ fontSize: 11.5 }}>{value}</b><div style={{ marginTop: 3, fontSize: 6.5, opacity: .42 }}>{label}</div></div>)}
+          </div>
+          {hasHistory && <div style={{ marginTop: 9, padding: 9, borderRadius: 10, border: summary?.lastSuccess ? "1px solid rgba(80,255,174,.18)" : "1px solid rgba(255,184,76,.18)", background: summary?.lastSuccess ? "rgba(80,255,174,.035)" : "rgba(255,184,76,.035)", fontSize: 8.8, lineHeight: 1.4 }}><b style={{ color: summary?.lastSuccess ? "#8cffcb" : "#ffd86b" }}>{summary?.lastSuccess ? "OBJECTIF ATTEINT" : "OBJECTIF À RETENTER"}</b>{summary?.lastMetricLabel && summary?.lastMetricValue !== "" ? <span style={{ opacity: .64 }}> • {summary.lastMetricLabel} : {summary.lastMetricValue}</span> : null}</div>}
+        </section>
       </div>
 
       <div style={{ minWidth: 0, position: "sticky", top: 64 }}>
@@ -45,11 +75,11 @@ export default function TrainingExerciseDetail({ exercise, isFavorite, onToggleF
               {detail.previewActions.map((label, index) => <div key={label} style={{ minHeight: 54, padding: "8px 6px", borderRadius: 11, display: "grid", placeItems: "center", textAlign: "center", border: index === 0 ? "1px solid rgba(255,95,95,.30)" : "1px solid rgba(80,255,174,.16)", background: index === 0 ? "rgba(255,60,70,.035)" : "rgba(80,255,174,.025)", fontSize: 8.5, fontWeight: 950 }}>{label}</div>)}
             </div>
           </div>
-          <button type="button" onClick={onStart} style={{ width: "100%", marginTop: 12, minHeight: 46, padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(39,220,255,.36)", background: "linear-gradient(90deg,rgba(39,220,255,.18),rgba(140,90,255,.15))", color: "inherit", fontSize: 9.5, fontWeight: 1000, cursor: "pointer" }}>LANCER L'EXERCICE</button>
+          <button type="button" onClick={onStart} style={{ width: "100%", marginTop: 12, minHeight: 46, padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(39,220,255,.36)", background: "linear-gradient(90deg,rgba(39,220,255,.18),rgba(140,90,255,.15))", color: "inherit", fontSize: 9.5, fontWeight: 1000, cursor: "pointer" }}>{hasHistory ? "REJOUER L'EXERCICE" : "LANCER L'EXERCICE"}</button>
         </section>
       </div>
     </div>
 
-    <style>{`@media (max-width: 760px){.training-exercise-detail-grid{grid-template-columns:1fr!important}.training-exercise-detail-grid>div:last-child{position:static!important}}`}</style>
+    <style>{`@media (max-width: 760px){.training-exercise-detail-grid{grid-template-columns:1fr!important}.training-exercise-detail-grid>div:last-child{position:static!important}} @media (max-width:520px){.training-exercise-detail-grid section div[style*="repeat(4"]{grid-template-columns:repeat(2,minmax(0,1fr))!important}}`}</style>
   </div>;
 }

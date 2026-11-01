@@ -160,7 +160,7 @@ function pct(value: number) {
   return `${Math.round(Number(value) || 0)}%`;
 }
 
-export default function TrainingLabConfig({ profiles, accountProfile, onStart, onExit }: { profiles?: Profile[]; accountProfile?: Profile | null; onStart: (cfg: any) => void; onExit: () => void; }) {
+export default function TrainingLabConfig({ profiles, accountProfile, initialDetailExerciseId, onStart, onExit }: { profiles?: Profile[]; accountProfile?: Profile | null; initialDetailExerciseId?: string | null; onStart: (cfg: any) => void; onExit: () => void; }) {
   const accountParticipantId = accountProfile?.id ? String(accountProfile.id) : "";
   const accountParticipant = React.useMemo(() => accountParticipantId ? {
     id: accountParticipantId,
@@ -272,7 +272,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
   const [showCycleDetails, setShowCycleDetails] = React.useState(false);
   const [detailSheet, setDetailSheet] = React.useState<null | "coach" | "display" | "resume" | "followup" | "plan" | "challenge" | "assessment">(null);
   const [difficultyFilter, setDifficultyFilter] = React.useState<0 | 1 | 2 | 3 | 4 | 5>(0);
-  const [exerciseDetailId, setExerciseDetailId] = React.useState<string | null>(null);
+  const [exerciseDetailId, setExerciseDetailId] = React.useState<string | null>(() => initialDetailExerciseId && TRAINING_EXERCISE_CATALOG.some((e) => e.id === initialDetailExerciseId) ? initialDetailExerciseId : null);
   const [family, setFamily] = React.useState<TrainingExerciseFamily>(recommendedFamily);
   const firstInFamily = React.useMemo(() => TRAINING_EXERCISE_CATALOG.find((e) => e.family === family) || TRAINING_EXERCISE_CATALOG[0], [family]);
   const [exerciseId, setExerciseId] = React.useState(firstInFamily.id);
@@ -324,6 +324,35 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
   const skillCertification = React.useMemo(() => buildTrainingSkillCertification(skillPath, sessions), [skillPath, sessions]);
   const selected = TRAINING_EXERCISE_CATALOG.find((e) => e.id === exerciseId) || firstInFamily;
   const detailExercise = exerciseDetailId ? TRAINING_EXERCISE_CATALOG.find((e) => e.id === exerciseDetailId) || null : null;
+  React.useEffect(() => {
+    if (initialDetailExerciseId && TRAINING_EXERCISE_CATALOG.some((e) => e.id === initialDetailExerciseId)) {
+      const target = TRAINING_EXERCISE_CATALOG.find((e) => e.id === initialDetailExerciseId)!;
+      setFamily(target.family);
+      setExerciseId(target.id);
+      setExerciseDetailId(target.id);
+    }
+  }, [initialDetailExerciseId]);
+  const detailSessionSummary = React.useMemo(() => {
+    if (!detailExercise) return null;
+    const rows = sessions.filter((row) => String(row?.metrics?.exerciseId || row?.config?.exerciseId || "") === detailExercise.id);
+    if (!rows.length) return { attempts: 0, bestPerformance: 0, lastPerformance: 0, lastAccuracy: 0, lastSuccess: false, lastMetricLabel: "", lastMetricValue: "", lastEndedAt: 0 };
+    const last = rows[0];
+    const performanceOf = (row: any) => {
+      const raw = Number(row?.metrics?.performanceScore ?? row?.metrics?.score ?? 0);
+      return Number.isFinite(raw) ? Math.max(0, Math.min(100, Math.round(raw))) : 0;
+    };
+    const bestPerformance = rows.reduce((best, row) => Math.max(best, performanceOf(row)), 0);
+    return {
+      attempts: rows.length,
+      bestPerformance,
+      lastPerformance: performanceOf(last),
+      lastAccuracy: Math.max(0, Math.min(100, Math.round(Number(last?.accuracyPct) || 0))),
+      lastSuccess: !!last?.success,
+      lastMetricLabel: String(last?.metrics?.objectiveMetric || ""),
+      lastMetricValue: last?.metrics?.objectiveValue == null ? "" : String(last.metrics.objectiveValue),
+      lastEndedAt: Number(last?.endedAt || 0),
+    };
+  }, [detailExercise, sessions]);
   const openExerciseDetail = (id: string) => { const exercise = TRAINING_EXERCISE_CATALOG.find((e) => e.id === id); if (!exercise) return; setFamily(exercise.family); setExerciseId(exercise.id); setExerciseDetailId(exercise.id); };
   const selectedProgram = programs.find((p) => p.id === programId) || (programId.startsWith("custom_") ? customProgram : coachProgram);
   const labSessions = sessions.filter((row) => row.modeId === "training_lab").slice(0, 12);
@@ -992,7 +1021,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
           </div>}
 
           {tab === "exercises" && <div>
-            {detailExercise ? <TrainingExerciseDetail exercise={detailExercise} isFavorite={favoriteExerciseIds.has(detailExercise.id)} onToggleFavorite={() => toggleExerciseFavorite(detailExercise.id)} onBack={() => setExerciseDetailId(null)} onStart={() => onStart({ exerciseId: detailExercise.id, family: detailExercise.family, sessionKind: "exercise", ...accountParticipantConfig })} /> : <>
+            {detailExercise ? <TrainingExerciseDetail exercise={detailExercise} summary={detailSessionSummary} isFavorite={favoriteExerciseIds.has(detailExercise.id)} onToggleFavorite={() => toggleExerciseFavorite(detailExercise.id)} onBack={() => setExerciseDetailId(null)} onStart={() => onStart({ exerciseId: detailExercise.id, family: detailExercise.family, sessionKind: "exercise", returnExerciseDetailId: detailExercise.id, ...accountParticipantConfig })} /> : <>
             <CompactIconNav items={[
               { id: "path", label: "PARCOURS", icon: "progress", status: `NIV. ${skillPath.currentLevel}/5` },
               { id: "catalog", label: "CATALOGUE", icon: "exercises", status: `${unifiedCatalogItems.length} EX.` },

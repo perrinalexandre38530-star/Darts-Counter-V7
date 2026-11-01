@@ -1654,6 +1654,23 @@ export default function ClosestCenterPlay(props:any) {
     try { document.getElementById(id)?.scrollIntoView({ behavior:"smooth", block:"nearest", inline:"nearest" }); } catch {}
   }, []);
 
+  // FLOW ASSIST: when the engine advances to a new decision/validation step,
+  // bring that step into view automatically. This is intentionally visual only:
+  // no scoring state is changed and the user can still scroll normally.
+  const lastFlowAssistKey = React.useRef<string>("");
+  React.useEffect(() => {
+    let target = "";
+    if (phase === "review") target = "cc-review";
+    else if (phase === "roundEnd") target = (unresolvedPetanquePoint || unresolvedPetanqueScore || cameraPointNeedsDecision) ? "cc-decisions" : "cc-result";
+    else if (phase === "prepare") target = "cc-action";
+    if (!target) return;
+    const key = `${phase}:${round}:${target}`;
+    if (lastFlowAssistKey.current === key) return;
+    lastFlowAssistKey.current = key;
+    const t = window.setTimeout(() => jumpTo(target), 80);
+    return () => window.clearTimeout(t);
+  }, [phase, round, unresolvedPetanquePoint, unresolvedPetanqueScore, cameraPointNeedsDecision, jumpTo]);
+
   const teamAccent = (team:"A"|"B") => team === "A" ? "#ff5f70" : "#54b5ff";
   const manualKpis = [
     {label:"SAISIE", value: pointsMode === "petanque" ? (manualEntryMode === "quick" ? "RAPIDE" : "GUIDÉE") : (pointsMode === "descending" ? "TOP 5" : "PLUS PROCHE")},
@@ -1848,15 +1865,15 @@ export default function ClosestCenterPlay(props:any) {
             <span style={{fontSize:9,color:"#78909f",fontWeight:900}}>{String(cfg.formatMode||"duo").toUpperCase()} · {dartsPerPlayer} fl./joueur</span>
           </div>
           {pointsMode==="petanque" ? <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:9}}>
-            <button onClick={()=>{setManualEntryMode("quick");setManualThrows(v=>v.filter((x:any)=>Number(x.round)!==Number(round)));setManualStage("score");setManualWinningTeam(null);setManualRanking(Array.from({length:8},()=>null));setStatus("Saisie rapide : choisis l’équipe qui marque puis ajoute uniquement les fléchettes marquantes.");}} style={{...miniBtn,minHeight:36,borderColor:manualEntryMode==="quick"?"#8fffc2":"rgba(255,255,255,.14)",color:manualEntryMode==="quick"?"#dfffee":"#aab8c4",background:manualEntryMode==="quick"?"rgba(57,217,138,.10)":"rgba(255,255,255,.025)"}}>⚡ SAISIE RAPIDE</button>
-            <button onClick={()=>{setManualEntryMode("guided");setManualStage("throws");setManualWinningTeam(null);setManualRanking(Array.from({length:8},()=>null));setStatus("Suivi de mène : enregistre chaque lancer avec PREND LE POINT / NE PREND PAS LE POINT.");}} style={{...miniBtn,minHeight:36,borderColor:manualEntryMode==="guided"?ACCENT:"rgba(255,255,255,.14)",color:manualEntryMode==="guided"?"#eafcff":"#aab8c4",background:manualEntryMode==="guided"?`${ACCENT}12`:"rgba(255,255,255,.025)"}}>🎯 SUIVI DE MÈNE</button>
+            <button onClick={()=>{setManualEntryMode("quick");setManualThrows(v=>v.filter((x:any)=>Number(x.round)!==Number(round)));setManualStage("score");setManualWinningTeam(null);setManualRanking(Array.from({length:8},()=>null));setStatus("Saisie rapide : choisis l’équipe qui marque puis ajoute uniquement les fléchettes marquantes.");}} style={{...miniBtn,minHeight:36,borderColor:manualEntryMode==="quick"?"#8fffc2":"rgba(255,255,255,.14)",color:manualEntryMode==="quick"?"#dfffee":"#aab8c4",background:manualEntryMode==="quick"?"rgba(57,217,138,.10)":"rgba(255,255,255,.025)",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><PetanqueIcon name="action" size={14}/>SAISIE RAPIDE</button>
+            <button onClick={()=>{setManualEntryMode("guided");setManualStage("throws");setManualWinningTeam(null);setManualRanking(Array.from({length:8},()=>null));setStatus("Suivi de mène : enregistre chaque lancer avec PREND LE POINT / NE PREND PAS LE POINT.");}} style={{...miniBtn,minHeight:36,borderColor:manualEntryMode==="guided"?ACCENT:"rgba(255,255,255,.14)",color:manualEntryMode==="guided"?"#eafcff":"#aab8c4",background:manualEntryMode==="guided"?`${ACCENT}12`:"rgba(255,255,255,.025)",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><PetanqueIcon name="target" size={14}/>SUIVI DE MÈNE</button>
           </div> : null}
 
           {pointsMode==="petanque" && manualEntryMode==="quick" ? <>
             <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:5,marginBottom:8}}>{[["1","ÉQUIPE"],["2","POINTS"],["3","VALIDER"]].map(([n,l],i)=>{const active=i===0&&!manualWinningTeam || i===1&&!!manualWinningTeam || i===2&&manualRanking.some(Boolean);return <div key={n} style={{padding:"6px 4px",borderRadius:10,textAlign:"center",border:`1px solid ${active?"rgba(143,255,194,.32)":"rgba(255,255,255,.07)"}`,background:active?"rgba(57,217,138,.08)":"rgba(255,255,255,.02)"}}><b style={{fontSize:9,color:active?"#8fffc2":"#71838f"}}>{n}</b><span style={{display:"block",fontSize:7,color:active?"#dfffee":"#71838f",fontWeight:1000,marginTop:1}}>{l}</span></div>})}</div>
             <div style={{fontSize:9,color:"#92a4b1",lineHeight:1.35,marginBottom:8}}>Fin de mène : choisis l’équipe qui marque, ajoute seulement ses fléchettes marquantes, puis valide.</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginBottom:9}}>{(["A","B"] as const).map(team=><button key={team} onClick={()=>{setRoundNullDecision(null);setManualWinningTeam(team);setManualRanking(Array.from({length:8},()=>null));setManualStage("score");setStatus(`Équipe ${team} marque. Ajoute uniquement ses fléchettes marquantes.`);}} style={{...btn,minHeight:42,borderColor:manualWinningTeam===team?(team==="A"?"#ff8f9c":"#83c8ff"):"rgba(255,255,255,.14)",background:manualWinningTeam===team?(team==="A"?"rgba(255,77,95,.12)":"rgba(61,165,255,.12)"):"rgba(255,255,255,.025)"}}>ÉQUIPE {team} MARQUE</button>)}</div>
-            <button onClick={()=>declareNullRound("manual_tie")} style={{...miniBtn,width:"100%",marginBottom:9,minHeight:34,borderColor:"rgba(255,189,69,.35)",color:"#ffe0a6"}}>⚖️ MÈNE NULLE · ÉGALITÉ · 0 POINT</button>
+            <button onClick={()=>declareNullRound("manual_tie")} style={{...miniBtn,width:"100%",marginBottom:9,minHeight:34,borderColor:"rgba(255,189,69,.35)",color:"#ffe0a6",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><PetanqueIcon name="target" size={14}/>MÈNE NULLE · ÉGALITÉ · 0 POINT</button>
             {manualWinningTeam ? <div>
               <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",marginBottom:7}}><b style={{fontSize:11,color:"#fff"}}>FLÉCHETTES QUI MARQUENT</b><span style={{fontSize:11,color:"#8fffc2",fontWeight:1000}}>{manualRanking.filter(Boolean).length} point{manualRanking.filter(Boolean).length>1?"s":""}</span></div>
               <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.max(1,Math.min(4,players.filter((p:any)=>String(p.teamId)===manualWinningTeam).length))},minmax(0,1fr))`,gap:7}}>
@@ -1887,7 +1904,7 @@ export default function ClosestCenterPlay(props:any) {
                 <b style={{fontSize:11,color:playerColor(players,current.id)}}>{currentDartsRemaining} en main</b>
               </div> : null}
               <div style={{display:"grid",gridTemplateColumns:manualRoundThrows.length===0?"1fr":"1fr 1fr",gap:7,marginTop:9}}>
-                {manualRoundThrows.length===0 ? <button onClick={()=>recordManualPetanqueThrow(true)} style={{...btn,minHeight:44,borderColor:"#8fffc2",background:"rgba(57,217,138,.14)"}}>🎯 ENREGISTRER LE PREMIER LANCER</button> : <>
+                {manualRoundThrows.length===0 ? <button onClick={()=>recordManualPetanqueThrow(true)} style={{...btn,minHeight:44,borderColor:"#8fffc2",background:"rgba(57,217,138,.14)",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}><PetanqueIcon name="target" size={16}/>ENREGISTRER LE PREMIER LANCER</button> : <>
                   <button onClick={()=>recordManualPetanqueThrow(true)} style={{...btn,minHeight:44,borderColor:"#8fffc2",background:"rgba(57,217,138,.14)"}}>🎯 PREND LE POINT</button>
                   <button onClick={()=>recordManualPetanqueThrow(false)} style={{...btn,minHeight:44,borderColor:"#ffbd75",background:"rgba(255,189,117,.08)"}}>↔ NE PREND PAS LE POINT</button>
                 </>}

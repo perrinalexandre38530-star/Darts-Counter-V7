@@ -241,6 +241,16 @@ export default function TrainingModePage({ modeId, onExit, profiles }: Props) {
       participants: ranked,
     });
 
+    if (id === "training_lab" && String(config?.sessionKind || "exercise") === "exercise" && queue.length === 1) {
+      const returnExerciseDetailId = String(config?.exerciseId || "").trim();
+      const nextConfig = { ...(config || {}), returnExerciseDetailId, returnFromSessionAt: Date.now() };
+      setConfig(nextConfig);
+      setLastConfig(id, nextConfig);
+      setSummary(null);
+      setPhase("config");
+      return;
+    }
+
     setSummary(group);
     setPhase("summary");
   }, [activeParticipant, config, exitAndSync, id, participantIndex, queue]);
@@ -258,7 +268,7 @@ export default function TrainingModePage({ modeId, onExit, profiles }: Props) {
   }, [activeParticipant, config, participantIndex, queue.length]);
 
   const configProps = { profiles, onStart: start, onExit: exitAndSync };
-  const labConfigProps = { ...configProps, accountProfile: currentProfile || null };
+  const labConfigProps = { ...configProps, accountProfile: currentProfile || null, initialDetailExerciseId: id === "training_lab" ? String(config?.returnExerciseDetailId || "") || null : null };
   const playProps = { config: activePlayConfig, onExit: finishOrAdvance };
 
   if (phase === "summary" && summary) {
