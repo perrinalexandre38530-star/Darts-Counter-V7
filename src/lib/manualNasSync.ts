@@ -606,6 +606,9 @@ export async function pushNasAccountSnapshotLegacy() {
       console.warn("[nasSync] payload store count repaired before push", { snapshotProfiles, hydratedProfiles, snapshotTeams, hydratedTeams });
     } catch {}
   }
+  // W6 checkpoint boundary: the snapshot is complete at this instant. Any
+  // mutation committed after it must survive local/remote delta compaction.
+  const checkpointCutoffMs = Date.now();
   const payloadBytes = byteLengthOfJson(payload);
   const mediaSummary = typeof mediaSync.getLastMediaSyncSummary === "function" ? mediaSync.getLastMediaSyncSummary() : null;
   const afterStore: any = await loadStore().catch(() => hydratedStore || currentStore);
@@ -613,6 +616,27 @@ export async function pushNasAccountSnapshotLegacy() {
   const afterBaseSummary = summarizeStore(afterStore);
   const afterSummary = { ...afterBaseSummary, explicitCompetitions: explicitCompetitionsAfter, competitions: Math.max(afterBaseSummary.competitions || 0, explicitCompetitionsAfter.total || 0, countCompetitionsInSnapshot(payload)) };
   const res = await api.pushStoreSnapshot(payload as any, (payload as any)?._v ?? (payload as any)?.v ?? 2, { force: true, reason: "manual-nas-backup" });
+
+  // The full NAS snapshot is now durable. Compact only deltas that it actually
+  // covers; newer mutations remain pending. Remote cleanup is best-effort: a
+  // failed cleanup must never invalidate an otherwise successful backup.
+  try {
+    const { apiDelete } = await import("./apiClient");
+    await apiDelete(`/account/incremental-changes?throughUpdatedAt=${encodeURIComponent(String(checkpointCutoffMs))}`);
+  } catch (error) {
+    console.warn("[nasSync] remote incremental compaction skipped", error);
+  }
+  try {
+    const { markIncrementalCheckpoint } = await import("./incrementalBackupJournal");
+    await markIncrementalCheckpoint({
+      provider: "founder_nas",
+      reason: "manual-nas-backup",
+      throughUpdatedAt: checkpointCutoffMs,
+    });
+  } catch (error) {
+    console.warn("[nasSync] local incremental compaction skipped", error);
+  }
+
   try { localStorage.setItem(LAST_PUSH_KEY, new Date().toISOString()); } catch {}
   clearNasSyncDirty();
   const durationMs = Date.now() - startedAt;

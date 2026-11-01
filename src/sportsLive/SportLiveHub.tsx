@@ -174,6 +174,12 @@ function sourceImageFromItem(item: { sourceUrl?: string | null } | null | undefi
   return faviconUrl(item?.sourceUrl || bestPrimaryLink(fallback) || fallback?.homeUrl || null, 64);
 }
 
+function competitionLogoSrc(sport: string, url?: string | null) {
+  const raw = String(url || "").trim();
+  if (!/^https?:\/\//i.test(raw)) return raw || null;
+  return `/api/sports-live/${encodeURIComponent(sport)}/logo?url=${encodeURIComponent(raw)}`;
+}
+
 function findCompetitionImage(competition: string, rows: DartsLiveResult[], newsRows: SportLiveNewsItem[], sources: SportLiveSource[]) {
   const metaLogo = rows.map((row) => competitionMetaOf(row)?.logoUrl).find((value) => /^https?:\/\//i.test(String(value || "")));
   if (metaLogo) return metaLogo as string;
@@ -1045,7 +1051,7 @@ function ResultMatchCard({ item, source, lang }: { item: DartsLiveResult; source
   );
 }
 
-function GroupedResults({ rows, source, lang, newsRows, allSources }: { rows: DartsLiveResult[]; source?: SportLiveSource | null; lang: string; newsRows: SportLiveNewsItem[]; allSources: SportLiveSource[] }) {
+function GroupedResults({ rows, source, lang, newsRows, allSources, sport }: { rows: DartsLiveResult[]; source?: SportLiveSource | null; lang: string; newsRows: SportLiveNewsItem[]; allSources: SportLiveSource[]; sport: string }) {
   const competitions = React.useMemo(() => {
     const map = new Map<string, DartsLiveResult[]>();
     rows.forEach((row) => {
@@ -1152,7 +1158,7 @@ function GroupedResults({ rows, source, lang, newsRows, allSources }: { rows: Da
             </button>
             {hierarchyFiltered.map(({ name, matches, imageUrl }) => (
               <button key={name} className={`msc-results-nav-btn${selected === name ? " is-active" : ""}`} type="button" onClick={() => setSelected(name)} title={name}>
-                <span className="msc-results-nav-visual">{imageUrl ? <img src={imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : competitionIcon(name)}</span><span className="msc-results-nav-label" translate="no">{name}</span><span className="msc-results-nav-count">{matches.length}</span>
+                <span className="msc-results-nav-visual">{imageUrl ? <img src={competitionLogoSrc(sport, imageUrl) || imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" onError={(event) => { if (event.currentTarget.src !== imageUrl) event.currentTarget.src = imageUrl; else event.currentTarget.style.display = "none"; }} /> : competitionIcon(name)}</span><span className="msc-results-nav-label" translate="no">{name}</span><span className="msc-results-nav-count">{matches.length}</span>
               </button>
             ))}
           </div>
@@ -1181,7 +1187,7 @@ function GroupedResults({ rows, source, lang, newsRows, allSources }: { rows: Da
             return (
               <section className="msc-competition-group" key={name}>
                 <div className={`msc-competition-head ${tone}`}>
-                  <span className="msc-competition-head-icon">{imageUrl ? <img src={imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : competitionIcon(name)}</span>
+                  <span className="msc-competition-head-icon">{imageUrl ? <img src={competitionLogoSrc(sport, imageUrl) || imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" onError={(event) => { if (event.currentTarget.src !== imageUrl) event.currentTarget.src = imageUrl; else event.currentTarget.style.display = "none"; }} /> : competitionIcon(name)}</span>
                   <div className="msc-competition-head-main">
                     <div className="msc-competition-head-title" translate="no" data-i18n-skip="true">{countryVisual(countryCode, countryLabel)} {name}</div>
                     {chips.length ? <div className="msc-taxonomy-row">{chips.map((chip) => <span className="msc-taxonomy-chip" key={`${name}-${chip}`}>{chip}</span>)}</div> : null}
@@ -1426,6 +1432,8 @@ export default function SportLiveHub() {
   const [loading, setLoading] = React.useState(() => !getCachedSportLiveOverview(liveSport, lang));
   const [feedError, setFeedError] = React.useState<string | null>(null);
   const [floatingPanel, setFloatingPanel] = React.useState<FloatingPanel>(null);
+  const archiveLoadedRef = React.useRef<string>("");
+  const calendarLoadedRef = React.useRef<string>("");
 
   const applyFeed = React.useCallback((next: SportLiveOverview) => {
     setFeed((previous) => mergeSportLiveOverview(previous, next));
@@ -1494,6 +1502,31 @@ export default function SportLiveHub() {
       if (idleHandle !== null && typeof (window as any).cancelIdleCallback === "function") (window as any).cancelIdleCallback(idleHandle);
     };
   }, [liveSport, lang, applyFeed]);
+
+  // Heavy historical archives and the year-long calendar are demand-loaded.
+  // This keeps the LIVE landing page fast while allowing the results/programme
+  // drawers to grow into a long-term sports archive when the user opens them.
+  React.useEffect(() => {
+    const wantsArchive = view === "results" || floatingPanel === "results";
+    if (!wantsArchive) return;
+    const key = `${liveSport}:${lang}`;
+    if (archiveLoadedRef.current === key) return;
+    archiveLoadedRef.current = key;
+    void fetchSportLiveOverview(liveSport, undefined, lang, "archive")
+      .then((archive) => applyFeed(archive))
+      .catch(() => { archiveLoadedRef.current = ""; });
+  }, [view, floatingPanel, liveSport, lang, applyFeed]);
+
+  React.useEffect(() => {
+    const wantsCalendar = view === "fixtures" || floatingPanel === "fixtures";
+    if (!wantsCalendar) return;
+    const key = `${liveSport}:${lang}`;
+    if (calendarLoadedRef.current === key) return;
+    calendarLoadedRef.current = key;
+    void fetchSportLiveOverview(liveSport, undefined, lang, "calendar")
+      .then((calendar) => applyFeed(calendar))
+      .catch(() => { calendarLoadedRef.current = ""; });
+  }, [view, floatingPanel, liveSport, lang, applyFeed]);
 
   // Automatic refresh stays light: structured data first, then the normal news
   // layer. The deep/AI/media layer is reserved for initial idle time or a manual
@@ -1676,14 +1709,16 @@ export default function SportLiveHub() {
       {supportedSport && view === "fixtures" ? (
         <section className="msc-live-section">
           <SectionHeader title="À VENIR" count={(fixtureRows.length + upcomingEvents.length) ? `${fixtureRows.length + upcomingEvents.length} événement${(fixtureRows.length + upcomingEvents.length) > 1 ? "s" : ""}` : ""} />
-          {fixtureRows.length ? fixtureRows.map((item) => <FixtureMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />) : upcomingEvents.length ? upcomingEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Calendriers officiels" copy="Aucune donnée automatique n’est chargée. Consulte les calendriers officiels disponibles." sources={recommended.filter((source) => source.calendarUrl)} />}
+          {fixtureRows.map((item) => <FixtureMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />)}
+          {upcomingEvents.length ? <div style={{ marginTop: fixtureRows.length ? 12 : 0 }}><div className="msc-round-head"><span>CALENDRIER · TOURNOIS / ÉVÉNEMENTS</span><span>{upcomingEvents.length}</span></div>{upcomingEvents.map((event) => <OfficialEventCard key={event.id} event={event} />)}</div> : null}
+          {!fixtureRows.length && !upcomingEvents.length ? <EmptySection title="Calendriers officiels" copy="Aucune donnée automatique n’est chargée. Consulte les calendriers officiels disponibles." sources={recommended.filter((source) => source.calendarUrl)} /> : null}
         </section>
       ) : null}
 
       {supportedSport && view === "results" ? (
         <section className="msc-live-section">
           <SectionHeader title="RÉSULTATS" count={(resultRows.length + resultEvents.length) ? `${resultRows.length + resultEvents.length} résultat${(resultRows.length + resultEvents.length) > 1 ? "s" : ""}` : ""} />
-          {resultRows.length ? <GroupedResults rows={resultRows} source={sourceForCards} lang={lang} newsRows={newsRows} allSources={allSportSources} /> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Résultats officiels" copy="Aucun résultat automatique n’est chargé pour l’instant. Ouvre une source officielle pour consulter les derniers scores." sources={recommended.filter((source) => source.resultsUrl)} />}
+          {resultRows.length ? <><GroupedResults rows={resultRows} source={sourceForCards} lang={lang} newsRows={newsRows} allSources={allSportSources} sport={liveSport} />{resultEvents.length ? <div style={{ marginTop: 12 }}><div className="msc-round-head"><span>AUTRES RÉSULTATS / PODIUMS</span><span>{resultEvents.length}</span></div>{resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />)}</div> : null}</> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Résultats officiels" copy="Aucun résultat automatique n’est chargé pour l’instant. Ouvre une source officielle pour consulter les derniers scores." sources={recommended.filter((source) => source.resultsUrl)} />}
         </section>
       ) : null}
 
@@ -1716,8 +1751,8 @@ export default function SportLiveHub() {
       ) : null}
 
       {floatingPanel === "news" ? <FloatingDrawer title={`ACTUALITÉS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{newsRows.length ? <div className="msc-news-grid">{newsRows.map((item) => <NewsCard key={item.id} item={item} lang={lang} />)}</div> : <EmptySection title="Aucune actualité détectée" copy="Réessaie l’actualisation dans quelques instants." sources={recommended.slice(0, 2)} />}</FloatingDrawer> : null}
-      {floatingPanel === "results" ? <FloatingDrawer title={`RÉSULTATS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{resultRows.length ? <GroupedResults rows={resultRows} source={sourceForCards} lang={lang} newsRows={newsRows} allSources={allSportSources} /> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Aucun résultat détecté" copy="Les sources officielles restent disponibles." sources={recommended.filter((source) => source.resultsUrl).slice(0, 2)} />}</FloatingDrawer> : null}
-      {floatingPanel === "fixtures" ? <FloatingDrawer title={`PROGRAMME · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{fixtureRows.length ? fixtureRows.map((item) => <FixtureMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />) : upcomingEvents.length ? upcomingEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Aucun événement à venir" copy="Consulte les calendriers officiels." sources={recommended.filter((source) => source.calendarUrl).slice(0, 2)} />}</FloatingDrawer> : null}
+      {floatingPanel === "results" ? <FloatingDrawer title={`RÉSULTATS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{resultRows.length ? <><GroupedResults rows={resultRows} source={sourceForCards} lang={lang} newsRows={newsRows} allSources={allSportSources} sport={liveSport} />{resultEvents.length ? <div style={{ marginTop: 12 }}><div className="msc-round-head"><span>AUTRES RÉSULTATS / PODIUMS</span><span>{resultEvents.length}</span></div>{resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />)}</div> : null}</> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Aucun résultat détecté" copy="Les sources officielles restent disponibles." sources={recommended.filter((source) => source.resultsUrl).slice(0, 2)} />}</FloatingDrawer> : null}
+      {floatingPanel === "fixtures" ? <FloatingDrawer title={`PROGRAMME · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{fixtureRows.map((item) => <FixtureMatchCard key={item.id} item={item} source={sourceForCards} lang={lang} />)}{upcomingEvents.length ? <div style={{ marginTop: fixtureRows.length ? 12 : 0 }}><div className="msc-round-head"><span>CALENDRIER · TOURNOIS / ÉVÉNEMENTS</span><span>{upcomingEvents.length}</span></div>{upcomingEvents.map((event) => <OfficialEventCard key={event.id} event={event} />)}</div> : null}{!fixtureRows.length && !upcomingEvents.length ? <EmptySection title="Aucun événement à venir" copy="Consulte les calendriers officiels." sources={recommended.filter((source) => source.calendarUrl).slice(0, 2)} /> : null}</FloatingDrawer> : null}
       {floatingPanel === "sources" ? <FloatingDrawer title={`SOURCES · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}><SourceDirectory sources={sources} /></FloatingDrawer> : null}
 
     </div>

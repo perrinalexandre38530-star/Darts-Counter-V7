@@ -49,13 +49,20 @@ async function runPersonalCloudFullSnapshot(job: DeferredPersonalCloudSnapshot):
 
   deferredPersonalCloudRunning = (async () => {
     const built = await buildCanonicalBackupArtifact();
+    // Everything committed after this cutoff is newer than the full checkpoint
+    // payload and must remain in the incremental journal.
+    const checkpointCutoffMs = Date.now();
     await uploadPersonalCloudSnapshot(job.provider, built.artifactJson, {
       ...job.metadata,
       artifactId: built.artifact.artifactId,
       payloadSha256: built.artifact.payloadSha256,
       summary: built.summary,
     });
-    await markIncrementalCheckpoint({ provider: job.provider, reason: job.metadata?.reason || "auto-checkpoint" }).catch(() => undefined);
+    await markIncrementalCheckpoint({
+      provider: job.provider,
+      reason: job.metadata?.reason || "auto-checkpoint",
+      throughUpdatedAt: checkpointCutoffMs,
+    }).catch(() => undefined);
   })().catch((error) => {
     try {
       localStorage.setItem("dc_personal_cloud_last_error_v1", JSON.stringify({
@@ -747,6 +754,7 @@ async function pushLatestSnapshotToCloud(reason: string): Promise<void> {
   } catch {}
 
   const built = await buildCanonicalBackupArtifact();
+  const checkpointCutoffMs = Date.now();
   const json = built.artifactJson;
   // WAVE 7: full R2 checkpoints use the direct Supabase-authenticated route,
   // completely independent from the founder NAS/proxy.
@@ -768,7 +776,7 @@ async function pushLatestSnapshotToCloud(reason: string): Promise<void> {
     localStorage.setItem("dc_cloud_auto_full_backup_last_at_v1", String(Date.now()));
     localStorage.removeItem("dc_cloud_auto_full_backup_deferred_v1");
   } catch {}
-  await markIncrementalCheckpoint({ provider: "cloud_r2", reason }).catch(() => undefined);
+  await markIncrementalCheckpoint({ provider: "cloud_r2", reason, throughUpdatedAt: checkpointCutoffMs }).catch(() => undefined);
 }
 
 /**
@@ -789,8 +797,38 @@ export async function createSelectedDestinationCheckpointIfDue(reason = "sync-or
   if (!due && !(provider === "cloud_r2" && hasDeferredR2)) return { due: false, provider, status: "not-due" };
 
   if (provider === "local_device") {
-    await markIncrementalCheckpoint({ provider: "app_local", reason: `${reason}:local-compaction` });
-    return { due: true, provider, status: "local-compacted" };
+    // A local-only user still needs a durable full checkpoint before compaction.
+    // Previously this branch simply cleared the journal, which was fast but did
+    // not leave a restorable account snapshot behind.
+    if (shouldDeferHeavyRuntimeWork()) return { due: true, provider, status: "deferred" };
+    try {
+      const built = await buildCanonicalBackupArtifact();
+      const checkpointCutoffMs = Date.now();
+      const { createLocalMemorySlotFromSnapshot } = await import("./storageVault");
+      const slot = await createLocalMemorySlotFromSnapshot(
+        built.artifact,
+        `Checkpoint local automatique — ${new Date().toLocaleString("fr-FR")}`,
+        "auto",
+        built.summary as any,
+        built.artifactJson,
+      );
+      await markIncrementalCheckpoint({
+        provider: "app_local",
+        reason: `${reason}:local-checkpoint`,
+        checkpointId: slot.id,
+        throughUpdatedAt: checkpointCutoffMs,
+      });
+      return { due: true, provider, status: "local-compacted" };
+    } catch (error: any) {
+      try {
+        localStorage.setItem("dc_local_checkpoint_last_error_v1", JSON.stringify({
+          at: nowIso(),
+          message: error?.message || String(error),
+        }));
+      } catch {}
+      // Never compact if the durable local checkpoint failed.
+      return { due: true, provider, status: "deferred" };
+    }
   }
   if (!shouldAttemptRemoteWork()) return { due: true, provider, status: "offline" };
   if (shouldDeferHeavyRuntimeWork()) return { due: true, provider, status: "deferred" };

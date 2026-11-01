@@ -462,6 +462,59 @@ function greenRedSeriesSpec(stateOrConfig: any) {
   return { raw: "single", label: "1 MANCHE", winsTo: 1, enabled: false };
 }
 
+function variantSeriesWinsKey(modeId:any) {
+  if (modeId === "green_vs_red") return "greenRedMatchWins";
+  if (modeId === "black_vs_white") return "blackWhiteMatchWins";
+  if (modeId === "three_colors") return "threeColorsMatchWins";
+  if (modeId === "la_suite") return "laSuiteMatchWins";
+  if (modeId === "color_call") return "colorCallMatchWins";
+  return "variantMatchWins";
+}
+
+function variantSeriesGameIndexKey(modeId:any) {
+  if (modeId === "green_vs_red") return "greenRedGameIndex";
+  if (modeId === "black_vs_white") return "blackWhiteGameIndex";
+  if (modeId === "three_colors") return "threeColorsGameIndex";
+  if (modeId === "la_suite") return "laSuiteGameIndex";
+  if (modeId === "color_call") return "colorCallGameIndex";
+  return "variantGameIndex";
+}
+
+function carryVariantSeriesSpecial(fresh:any, completed:any, modeId:any) {
+  const out:any = { ...(fresh?.special || {}) };
+  const source:any = completed?.special || {};
+  const prefix = modeId === "three_colors" ? "threeColors" : modeId === "la_suite" ? "laSuite" : modeId === "color_call" ? "colorCall" : "";
+  if (prefix) {
+    Object.keys(source).forEach((key) => {
+      if (key.startsWith(prefix)) out[key] = JSON.parse(JSON.stringify(source[key]));
+    });
+    if (Array.isArray(source.colorModeHistory)) out.colorModeHistory = JSON.parse(JSON.stringify(source.colorModeHistory));
+  }
+  return out;
+}
+
+function VariantSeriesScoreboard({ state, profiles, modeId, accent }: any) {
+  const series = greenRedSeriesSpec(state);
+  if (!series.enabled || !state || !Array.isArray(state.players) || state.players.length < 2) return null;
+  const byId = new Map((profiles || []).map((p:any) => [String(p.id), p]));
+  const wins = state?.special?.[variantSeriesWinsKey(modeId)] || {};
+  const callTone = modeId === "color_call" ? (THREE_COLORS_TONES[colorCallTarget(state)] || accent) : accent;
+  return <div data-variant-series-scoreboard={modeId} style={{height:36,flex:"0 0 36px",margin:"10px 8px 4px",padding:"3px 5px",borderRadius:11,border:"1px solid rgba(255,255,255,.09)",background:"linear-gradient(180deg,rgba(13,17,25,.98),rgba(5,8,14,.99))",display:"grid",gridTemplateColumns:"auto minmax(0,1fr)",gap:6,alignItems:"center",boxShadow:"0 5px 16px rgba(0,0,0,.24)"}}>
+    <div style={{padding:"0 7px",color:"#8e98aa",fontSize:7.2,fontWeight:1100,letterSpacing:.7,whiteSpace:"nowrap"}}>{series.label}</div>
+    <div style={{display:"flex",alignItems:"center",gap:5,minWidth:0,overflowX:"auto",scrollbarWidth:"none"}}>
+      {(state.players || []).map((p:any) => {
+        const id=String(p.id); const prof:any=byId.get(id)||p; const avatar=prof?.avatarDataUrl||prof?.avatarUrl||prof?.avatar||null;
+        const tone = modeId === "three_colors" ? accent : modeId === "la_suite" ? accent : callTone;
+        return <div key={id} style={{flex:"0 0 auto",height:28,minWidth:78,maxWidth:126,padding:"2px 6px 2px 3px",borderRadius:999,border:`1px solid ${tone}45`,background:`${tone}0c`,display:"grid",gridTemplateColumns:"24px minmax(0,1fr) auto",gap:4,alignItems:"center"}}>
+          <div style={{width:22,height:22,borderRadius:999,overflow:"hidden",border:`1px solid ${tone}66`,display:"grid",placeItems:"center",fontSize:8,fontWeight:1100,color:tone}}>{avatar?<img src={avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:String(p?.name||"?").slice(0,1).toUpperCase()}</div>
+          <b style={{color:"#eef1f8",fontSize:7.4,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p?.name||"—"}</b>
+          <strong style={{color:tone,fontSize:13,fontWeight:1200}}>{Number(wins?.[id]||0)}</strong>
+        </div>;
+      })}
+    </div>
+  </div>;
+}
+
 function greenRedToneFor(state: any, playerId: any) {
   const color = String(state?.special?.greenRedColorByPlayer?.[String(playerId)] || "GREEN");
   return color === "RED" ? GVR_RED : GVR_GREEN;
@@ -759,9 +812,9 @@ function VariantPerformancePanel({ state, modeId, accent }:any){
   } else if(modeId==="three_colors"){
     const ok=Number(state?.special?.threeColorsValidVisitsByPlayer?.[id]||0), ko=Number(state?.special?.threeColorsInvalidVisitsByPlayer?.[id]||0), total=ok+ko; rows=[["VOLÉES OK",ok],["RÉUSSITE",total?`${Math.round(ok/total*100)}%`:"0%"],["BEST",Number(state?.special?.threeColorsBestVisitByPlayer?.[id]||0)],["PÉNALITÉS",Number(state?.special?.threeColorsPenaltyByPlayer?.[id]||0)]];
   } else if(modeId==="la_suite"){
-    const ok=Number(state?.special?.laSuiteValidVisitsByPlayer?.[id]||0), ko=Number(state?.special?.laSuiteInvalidVisitsByPlayer?.[id]||0), total=ok+ko; rows=[["SUITES OK",ok],["RÉUSSITE",total?`${Math.round(ok/total*100)}%`:"0%"],["BEST",Number(state?.special?.laSuiteBestVisitByPlayer?.[id]||0)],["SÉRIE MAX",Number(state?.special?.laSuiteLongestStreakByPlayer?.[id]||0)]];
+    const ok=Number(state?.special?.laSuiteValidVisitsByPlayer?.[id]||0), ko=Number(state?.special?.laSuiteInvalidVisitsByPlayer?.[id]||0), total=ok+ko; rows=[["SUITES OK",ok],["RÉUSSITE",total?`${Math.round(ok/total*100)}%`:"0%"],["SÉRIE MAX",Number(state?.special?.laSuiteLongestStreakByPlayer?.[id]||0)],["PÉNALITÉS",Number(state?.special?.laSuitePenaltyByPlayer?.[id]||0)]];
   } else if(modeId==="color_call"){
-    const hits=Number(state?.special?.colorCallHitsByPlayer?.[id]||0), cdarts=Number(state?.special?.colorCallDartsByPlayer?.[id]||0); tone=THREE_COLORS_TONES[colorCallTarget(state)]||accent; rows=[["TOUCHES",hits],["PRÉCISION",cdarts?`${Math.round(hits/cdarts*100)}%`:"0%"],["PARFAITES",Number(state?.special?.colorCallPerfectVisitsByPlayer?.[id]||0)],["BEST",Number(state?.special?.colorCallBestVisitByPlayer?.[id]||0)]];
+    const hits=Number(state?.special?.colorCallHitsByPlayer?.[id]||0), cdarts=Number(state?.special?.colorCallDartsByPlayer?.[id]||0); tone=THREE_COLORS_TONES[colorCallTarget(state)]||accent; rows=[["TOUCHES",hits],["PRÉCISION",cdarts?`${Math.round(hits/cdarts*100)}%`:"0%"],["PARFAITES",Number(state?.special?.colorCallPerfectVisitsByPlayer?.[id]||0)],["PÉNALITÉS",Number(state?.special?.colorCallPenaltyByPlayer?.[id]||0)]];
   }
   return <section data-variant-performance={modeId} style={{...panelStyle(tone+"45"),padding:"7px 8px",background:`linear-gradient(145deg,${tone}0d,rgba(5,8,14,.985))`}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}><b style={{color:tone,fontSize:8.3,fontWeight:1100,letterSpacing:.72}}>{headline}</b><span style={{color:SOFT,fontSize:7.2}}>{visits} volée(s) · {darts} fléchette(s)</span></div><div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:4,marginTop:5}}>{rows.map(([label,value]:any)=><div key={label} style={{borderRadius:9,border:"1px solid rgba(255,255,255,.07)",background:"rgba(255,255,255,.028)",padding:"6px 4px",textAlign:"center",minWidth:0}}><strong style={{display:"block",color:tone,fontSize:12,fontWeight:1200,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{value}</strong><span style={{display:"block",marginTop:2,color:SOFT,fontSize:6.3,fontWeight:950,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{label}</span></div>)}</div></section>;
 }
@@ -1039,10 +1092,10 @@ export default function Wave61SharedPlay(props: any) {
         },
       } : {}),
       ...(spec.id === "la_suite" ? {
-        laSuite: { validVisits:Number(s.special?.laSuiteValidVisitsByPlayer?.[row.id]||0), invalidVisits:Number(s.special?.laSuiteInvalidVisitsByPlayer?.[row.id]||0), bestVisit:Number(s.special?.laSuiteBestVisitByPlayer?.[row.id]||0), longestStreak:Number(s.special?.laSuiteLongestStreakByPlayer?.[row.id]||0) },
+        laSuite: { validVisits:Number(s.special?.laSuiteValidVisitsByPlayer?.[row.id]||0), invalidVisits:Number(s.special?.laSuiteInvalidVisitsByPlayer?.[row.id]||0), bestVisit:Number(s.special?.laSuiteBestVisitByPlayer?.[row.id]||0), longestStreak:Number(s.special?.laSuiteLongestStreakByPlayer?.[row.id]||0), bonusPoints:Number(s.special?.laSuiteBonusByPlayer?.[row.id]||0), penaltyPoints:Number(s.special?.laSuitePenaltyByPlayer?.[row.id]||0) },
       } : {}),
       ...(spec.id === "color_call" ? {
-        colorCall: { hits:Number(s.special?.colorCallHitsByPlayer?.[row.id]||0), darts:Number(s.special?.colorCallDartsByPlayer?.[row.id]||0), perfectVisits:Number(s.special?.colorCallPerfectVisitsByPlayer?.[row.id]||0), bestVisit:Number(s.special?.colorCallBestVisitByPlayer?.[row.id]||0), hitsByColor:{...(s.special?.colorCallHitsByColorByPlayer?.[row.id]||{})} },
+        colorCall: { hits:Number(s.special?.colorCallHitsByPlayer?.[row.id]||0), darts:Number(s.special?.colorCallDartsByPlayer?.[row.id]||0), wrongColor:Number(s.special?.colorCallWrongColorByPlayer?.[row.id]||0), misses:Number(s.special?.colorCallMissesByPlayer?.[row.id]||0), penaltyPoints:Number(s.special?.colorCallPenaltyByPlayer?.[row.id]||0), perfectVisits:Number(s.special?.colorCallPerfectVisitsByPlayer?.[row.id]||0), bestVisit:Number(s.special?.colorCallBestVisitByPlayer?.[row.id]||0), hitsByColor:{...(s.special?.colorCallHitsByColorByPlayer?.[row.id]||{})} },
       } : {}),
     }]));
     return {
@@ -1088,11 +1141,12 @@ export default function Wave61SharedPlay(props: any) {
 
     let committed = next;
     let seriesNotice = "";
-    if (isColorDuelMode(spec.id) && next.phase === "finished") {
+    if (isFinishedColorVariant(spec.id) && next.phase === "finished") {
       const series = greenRedSeriesSpec(config);
       if (series.enabled) {
         const winnerKey = String(next.winnerTeamId ? `team:${next.winnerTeamId}` : (next.winnerId || ""));
-        const winsKey=spec.id==="black_vs_white"?"blackWhiteMatchWins":"greenRedMatchWins";
+        const winsKey = variantSeriesWinsKey(spec.id);
+        const gameIndexKey = variantSeriesGameIndexKey(spec.id);
         const previousWins = { ...((previous.special as any)?.[winsKey] || {}) };
         if (winnerKey) previousWins[winnerKey] = Number(previousWins[winnerKey] || 0) + 1;
         const matchWon = winnerKey && Number(previousWins[winnerKey] || 0) >= series.winsTo;
@@ -1103,9 +1157,9 @@ export default function Wave61SharedPlay(props: any) {
           fresh.visits = [...(next.visits || [])];
           fresh.statsByPlayer = JSON.parse(JSON.stringify(next.statsByPlayer || {}));
           fresh.special = {
-            ...(fresh.special || {}),
+            ...carryVariantSeriesSpecial(fresh, next, spec.id),
             [winsKey]: previousWins,
-            ...(spec.id==="black_vs_white"?{blackWhiteGameIndex:Number(previous.special?.blackWhiteGameIndex||1)+1}:{greenRedGameIndex:Number(previous.special?.greenRedGameIndex||1)+1}),
+            [gameIndexKey]: Number((previous.special as any)?.[gameIndexKey] || 1) + 1,
           };
           committed = fresh;
           finishedRef.current = false;
@@ -1115,7 +1169,7 @@ export default function Wave61SharedPlay(props: any) {
           committed.special = {
             ...(committed.special || {}),
             [winsKey]: previousWins,
-            ...(spec.id==="black_vs_white"?{blackWhiteGameIndex:Number(previous.special?.blackWhiteGameIndex||1)}:{greenRedGameIndex:Number(previous.special?.greenRedGameIndex||1)}),
+            [gameIndexKey]: Number((previous.special as any)?.[gameIndexKey] || 1),
           };
         }
       }
@@ -1554,7 +1608,7 @@ export default function Wave61SharedPlay(props: any) {
         right={<InfoDot title={`${spec.label} — règles`} color={isColorDuelMode(spec.id)?duelTone:accent} glow={`${isColorDuelMode(spec.id)?duelTone:accent}77`} content={familyRules(spec,preset)} />}
       />
       {isColorDuelMode(spec.id) ? <div aria-hidden="true" style={{height:isLandscapeTablet?4:8,flex:`0 0 ${isLandscapeTablet?4:8}px`}} /> : null}
-      {spec.id === "green_vs_red" ? <GreenRedDuelScoreboard state={state} profiles={profiles} /> : spec.id === "black_vs_white" ? <BlackWhiteDuelScoreboard state={state} profiles={profiles} /> : null}
+      {spec.id === "green_vs_red" ? <GreenRedDuelScoreboard state={state} profiles={profiles} /> : spec.id === "black_vs_white" ? <BlackWhiteDuelScoreboard state={state} profiles={profiles} /> : ["three_colors","la_suite","color_call"].includes(spec.id) ? <VariantSeriesScoreboard state={state} profiles={profiles} modeId={spec.id} accent={accent} /> : null}
 
       {adviceText && !isColorDuelMode(spec.id) ? <div role="status" aria-live="polite" style={{ position:"fixed", zIndex:95, top:tickerHeight+10, right:8, width:"min(330px,calc(100vw - 16px))", borderRadius:14, padding:"7px 8px", display:"grid", gridTemplateColumns:"34px minmax(0,1fr)", gap:7, alignItems:"center", border:`1px solid ${accent}70`, background:"rgba(8,11,19,.97)", boxShadow:`0 12px 30px rgba(0,0,0,.5),0 0 20px ${accent}18` }}>
         <img src="/awena/awena-avatar.webp" alt="Awena" style={{ width:34,height:34,borderRadius:"50%",objectFit:"cover",border:`1px solid ${accent}88` }}/>

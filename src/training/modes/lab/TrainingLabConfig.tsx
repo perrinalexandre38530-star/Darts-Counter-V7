@@ -3,6 +3,7 @@ import type { Profile } from "../../../lib/types";
 import TrainingShell from "../../shell/TrainingShell";
 import TrainingHeader from "../../ui/TrainingHeader";
 import TrainingStartButton from "../../ui/TrainingStartButton";
+import TrainingExerciseDetail from "../../ui/TrainingExerciseDetail";
 import { getTrainingDetailedSessions } from "../../stats/trainingStatsHub";
 import { buildGoalAwareCoachPrescription, buildTrainingDiagnosis, buildTrainingGoalStatuses, buildTrainingProgression, chooseGoalPriorityFamily } from "../../coach/trainingDiagnosis";
 import {
@@ -10,8 +11,7 @@ import {
   TRAINING_FAMILY_META,
   type TrainingExerciseFamily,
 } from "../../catalog/trainingExerciseCatalog";
-import { MABULL_REFERENCE_CATALOG } from "../../catalog/mabullReferenceCatalog";
-import { buildMabullTechniqueTracks, MABULL_TECHNIQUE_TRACK_META, type MabullTechniqueTrack } from "../../catalog/mabullCatalogPlan";
+import { buildTrainingTechniqueTracks, TRAINING_TECHNIQUE_ITEMS, TRAINING_TECHNIQUE_TRACK_META, type TrainingTechniqueTrack } from "../../catalog/trainingTechniqueCatalog";
 import { buildCoachProgram, buildCustomProgram, TRAINING_ASSESSMENT_PROGRAM, TRAINING_PROGRAMS, type TrainingProgramDefinition, type TrainingProgramBuildOptions } from "../../catalog/trainingProgramCatalog";
 import { loadTrainingLabPreferences, setTrainingFamilyGoal, setTrainingFamilyGoalDeadline, setTrainingWeeklySessionTarget, toggleFavoriteExercise, toggleFavoriteProgram, type TrainingLabPreferences } from "../../preferences/trainingLabPreferences";
 import { buildTrainingCycleComparison, buildTrainingWeeklyPlanStats, clearTrainingProgramDraft, loadTrainingProgramDraft, loadTrainingProgramSessions } from "../../profile/trainingPlanTracker";
@@ -253,7 +253,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
   const [programPanel, setProgramPanel] = React.useState<ProgramPanel>("today");
   const [progressPanel, setProgressPanel] = React.useState<ProgressPanel>("overview");
   const [exercisePanel, setExercisePanel] = React.useState<ExercisePanel>("path");
-  const [techniqueTrack, setTechniqueTrack] = React.useState<MabullTechniqueTrack>("setup");
+  const [techniqueTrack, setTechniqueTrack] = React.useState<TrainingTechniqueTrack>("setup");
   const [diagnosisPanel, setDiagnosisPanel] = React.useState<DiagnosisPanel>("overview");
   const [diagnosisFamily, setDiagnosisFamily] = React.useState<TrainingExerciseFamily>(recommendedFamily);
   const [skillProgressPanel, setSkillProgressPanel] = React.useState<SkillProgressPanel>("mastery");
@@ -272,6 +272,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
   const [showCycleDetails, setShowCycleDetails] = React.useState(false);
   const [detailSheet, setDetailSheet] = React.useState<null | "coach" | "display" | "resume" | "followup" | "plan" | "challenge" | "assessment">(null);
   const [difficultyFilter, setDifficultyFilter] = React.useState<0 | 1 | 2 | 3 | 4 | 5>(0);
+  const [exerciseDetailId, setExerciseDetailId] = React.useState<string | null>(null);
   const [family, setFamily] = React.useState<TrainingExerciseFamily>(recommendedFamily);
   const firstInFamily = React.useMemo(() => TRAINING_EXERCISE_CATALOG.find((e) => e.family === family) || TRAINING_EXERCISE_CATALOG[0], [family]);
   const [exerciseId, setExerciseId] = React.useState(firstInFamily.id);
@@ -289,6 +290,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
       setProgressPanel("overview");
     }
   }, [viewMode]);
+  React.useEffect(() => { if (tab !== "exercises") setExerciseDetailId(null); }, [tab]);
   const customProgram = React.useMemo(() => buildCustomProgram({ durationMin: customDuration, focusFamily: customFocus, intensity: customIntensity }), [customDuration, customFocus, customIntensity]);
   const quickStart = React.useMemo(() => buildTrainingQuickStart({
     hasDraft: Boolean(programDraft),
@@ -315,12 +317,14 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
     .filter((exercise) => difficultyFilter === 0 || exercise.difficulty === difficultyFilter)
     .map((exercise) => ({ key: `native:${exercise.id}`, title: exercise.title, subtitle: exercise.subtitle, difficulty: exercise.difficulty, playable: true, exerciseId: exercise.id }))
     .sort((a, b) => a.title.localeCompare(b.title, "fr")), [exercises, difficultyFilter]);
-  const mabullTechniqueItems = React.useMemo(() => MABULL_REFERENCE_CATALOG.filter((item) => item.kind === "technique"), []);
-  const mabullTechniqueTracks = React.useMemo(() => buildMabullTechniqueTracks(), []);
-  const selectedTechniqueTrack = mabullTechniqueTracks.find((row) => row.track === techniqueTrack) || mabullTechniqueTracks[0];
+  const techniqueItems = React.useMemo(() => TRAINING_TECHNIQUE_ITEMS, []);
+  const techniqueTracks = React.useMemo(() => buildTrainingTechniqueTracks(), []);
+  const selectedTechniqueTrack = techniqueTracks.find((row) => row.track === techniqueTrack) || techniqueTracks[0];
   const skillPath = React.useMemo(() => buildTrainingSkillPath(family, progression), [family, progression]);
   const skillCertification = React.useMemo(() => buildTrainingSkillCertification(skillPath, sessions), [skillPath, sessions]);
   const selected = TRAINING_EXERCISE_CATALOG.find((e) => e.id === exerciseId) || firstInFamily;
+  const detailExercise = exerciseDetailId ? TRAINING_EXERCISE_CATALOG.find((e) => e.id === exerciseDetailId) || null : null;
+  const openExerciseDetail = (id: string) => { const exercise = TRAINING_EXERCISE_CATALOG.find((e) => e.id === id); if (!exercise) return; setFamily(exercise.family); setExerciseId(exercise.id); setExerciseDetailId(exercise.id); };
   const selectedProgram = programs.find((p) => p.id === programId) || (programId.startsWith("custom_") ? customProgram : coachProgram);
   const labSessions = sessions.filter((row) => row.modeId === "training_lab").slice(0, 12);
 
@@ -988,10 +992,11 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
           </div>}
 
           {tab === "exercises" && <div>
+            {detailExercise ? <TrainingExerciseDetail exercise={detailExercise} isFavorite={favoriteExerciseIds.has(detailExercise.id)} onToggleFavorite={() => toggleExerciseFavorite(detailExercise.id)} onBack={() => setExerciseDetailId(null)} onStart={() => onStart({ exerciseId: detailExercise.id, family: detailExercise.family, sessionKind: "exercise", ...accountParticipantConfig })} /> : <>
             <CompactIconNav items={[
               { id: "path", label: "PARCOURS", icon: "progress", status: `NIV. ${skillPath.currentLevel}/5` },
               { id: "catalog", label: "CATALOGUE", icon: "exercises", status: `${unifiedCatalogItems.length} EX.` },
-              { id: "technique", label: "TECHNIQUE", icon: "skills", status: `${mabullTechniqueItems.length}` },
+              { id: "technique", label: "TECHNIQUE", icon: "skills", status: `${techniqueItems.length}` },
               { id: "favorites", label: "FAVORIS", icon: "library", status: `${favoriteExercises.length}` },
             ]} activeId={exercisePanel} onChange={(id) => setExercisePanel(id as ExercisePanel)} stickyTop={56} />
 
@@ -1009,7 +1014,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
                   <div style={{ textAlign: "right" }}><b style={{ fontSize: 18 }}>{Math.round(skillPath.score)}</b><div style={{ fontSize: 7, opacity: .45 }}>NIVEAU RÉCENT</div></div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5, marginTop: 10 }}>
-                  {skillPath.steps.map((step) => <button key={step.level} type="button" disabled={!step.unlocked || !step.exercise} onClick={() => { if (step.exercise) setExerciseId(step.exercise.id); }} style={{ minWidth: 0, padding: "9px 4px", borderRadius: 10, border: step.exercise?.id === exerciseId ? "1px solid #27dcff" : step.mastered ? "1px solid rgba(80,255,174,.22)" : "1px solid rgba(255,255,255,.07)", background: step.exercise?.id === exerciseId ? "rgba(39,220,255,.10)" : step.mastered ? "rgba(80,255,174,.05)" : "rgba(255,255,255,.025)", color: "inherit", opacity: step.unlocked ? 1 : .34, cursor: step.unlocked && step.exercise ? "pointer" : "default" }}>
+                  {skillPath.steps.map((step) => <button key={step.level} type="button" disabled={!step.unlocked || !step.exercise} onClick={() => { if (step.exercise) openExerciseDetail(step.exercise.id); }} style={{ minWidth: 0, padding: "9px 4px", borderRadius: 10, border: step.exercise?.id === exerciseId ? "1px solid #27dcff" : step.mastered ? "1px solid rgba(80,255,174,.22)" : "1px solid rgba(255,255,255,.07)", background: step.exercise?.id === exerciseId ? "rgba(39,220,255,.10)" : step.mastered ? "rgba(80,255,174,.05)" : "rgba(255,255,255,.025)", color: "inherit", opacity: step.unlocked ? 1 : .34, cursor: step.unlocked && step.exercise ? "pointer" : "default" }}>
                     <div style={{ fontSize: 12, fontWeight: 950 }}>{step.mastered ? "✓" : step.unlocked ? step.level : "⌁"}</div>
                     <div style={{ marginTop: 2, fontSize: 6.5, fontWeight: 950 }}>{step.label}</div>
                     <div style={{ marginTop: 2, fontSize: 5.8, opacity: .42 }}>{step.exerciseCount} EX.</div>
@@ -1042,7 +1047,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
                     <div style={{ fontSize: 11.5, fontWeight: 950 }}>{skillPath.recommendedExercise.title}</div>
                     <div style={{ marginTop: 3, fontSize: 8.5, opacity: .58 }}>{skillPath.recommendedExercise.subtitle}</div>
                   </div>
-                  <button type="button" onClick={() => setExerciseId(skillPath.recommendedExercise.id)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,216,107,.24)", background: "rgba(255,216,107,.07)", color: "inherit", fontSize: 8, fontWeight: 950, cursor: "pointer" }}>SÉLECTIONNER</button>
+                  <button type="button" onClick={() => openExerciseDetail(skillPath.recommendedExercise.id)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,216,107,.24)", background: "rgba(255,216,107,.07)", color: "inherit", fontSize: 8, fontWeight: 950, cursor: "pointer" }}>SÉLECTIONNER</button>
                 </div>
               </div>
             </>}
@@ -1057,7 +1062,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,240px),1fr))", gap: 8, marginTop: 6 }}>
                 {unifiedCatalogItems.map((item) => {
                   const active = Boolean(item.exerciseId && item.exerciseId === exerciseId);
-                  return <button key={item.key} type="button" onClick={() => setExerciseId(item.exerciseId)} style={{ minWidth: 0, textAlign: "left", padding: "12px 11px", borderRadius: 12, border: active ? "1px solid rgba(39,220,255,.45)" : "1px solid rgba(255,255,255,.07)", background: active ? "rgba(39,220,255,.065)" : "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
+                  return <button key={item.key} type="button" onClick={() => openExerciseDetail(item.exerciseId)} style={{ minWidth: 0, textAlign: "left", padding: "12px 11px", borderRadius: 12, border: active ? "1px solid rgba(39,220,255,.45)" : "1px solid rgba(255,255,255,.07)", background: active ? "rgba(39,220,255,.065)" : "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
                     <span style={{ width: 34, height: 34, flex: "0 0 auto", borderRadius: 11, display: "grid", placeItems: "center", background: "rgba(39,220,255,.07)", color: "#27dcff" }}><HubGlyph name={family} size={16}/></span>
                     <span style={{ minWidth: 0, flex: 1 }}><span style={{ display: "block", fontSize: 10.5, lineHeight: 1.15, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</span><span style={{ display: "block", marginTop: 4, fontSize: 9, lineHeight: 1.3, opacity: .52, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.subtitle}</span></span>
                     <span style={{ flex: "0 0 auto", fontSize: 8.5, fontWeight: 950, color: item.playable ? "#8cffcb" : "#ffd86b" }}>{item.difficulty ? `N${item.difficulty}` : "✓"}</span>
@@ -1070,9 +1075,9 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
               <div style={{ marginTop: 10, paddingBottom: 9, borderBottom: "1px solid rgba(255,255,255,.07)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
                   <div><div style={{ fontSize: 12, fontWeight: 950 }}>Technique de lancer</div><div style={{ marginTop: 2, fontSize: 9.2, opacity: .5 }}>Posture, geste et routine.</div></div>
-                  <MetricChip icon="coach" label="FICHES" value={`${mabullTechniqueItems.length}`} tone="green" />
+                  <MetricChip icon="coach" label="FICHES" value={`${techniqueItems.length}`} tone="green" />
                 </div>
-                <CompactIconNav items={mabullTechniqueTracks.map((row) => ({ id: row.track, label: row.shortLabel.toUpperCase(), icon: MABULL_TECHNIQUE_TRACK_META[row.track].icon, status: `${row.total} fiches` }))} activeId={techniqueTrack} onChange={(id) => setTechniqueTrack(id as MabullTechniqueTrack)} tone="green" />
+                <CompactIconNav items={techniqueTracks.map((row) => ({ id: row.track, label: row.shortLabel.toUpperCase(), icon: TRAINING_TECHNIQUE_TRACK_META[row.track].icon, status: `${row.total} fiches` }))} activeId={techniqueTrack} onChange={(id) => setTechniqueTrack(id as TrainingTechniqueTrack)} tone="green" />
               </div>
               {selectedTechniqueTrack && <div style={{ marginTop: 8, padding: 11, borderRadius: 14, border: "1px solid rgba(255,255,255,.065)", background: "rgba(255,255,255,.018)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1080,7 +1085,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
                   <div style={{ minWidth: 0 }}><div style={{ fontSize: 8.3, fontWeight: 950 }}>{selectedTechniqueTrack.label}</div><div style={{ marginTop: 2, fontSize: 8.8, lineHeight: 1.35, opacity: .5 }}>{selectedTechniqueTrack.description}</div></div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 6, marginTop: 9 }}>
-                  {selectedTechniqueTrack.items.map((item) => <button type="button" onClick={() => item.mappedExerciseId && onStart({ exerciseId: item.mappedExerciseId, family: TRAINING_EXERCISE_CATALOG.find((e) => e.id === item.mappedExerciseId)?.family || "regularity", sessionKind: "exercise", ...accountParticipantConfig })} key={item.id} style={{ padding: 9, borderRadius: 11, border: "1px solid rgba(80,255,174,.10)", background: "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer", textAlign: "left" }}>
+                  {selectedTechniqueTrack.items.map((item) => <button type="button" onClick={() => openExerciseDetail(item.id)} key={item.id} style={{ padding: 9, borderRadius: 11, border: "1px solid rgba(80,255,174,.10)", background: "rgba(255,255,255,.018)", color: "inherit", cursor: "pointer", textAlign: "left" }}>
                     <div style={{ display: "flex", gap: 7, alignItems: "center" }}><span style={{ width: 24, height: 24, borderRadius: 8, display: "grid", placeItems: "center", background: "rgba(80,255,174,.06)", color: "#8cffcb" }}><HubGlyph name="coach" size={12} /></span><b style={{ minWidth: 0, flex: 1, fontSize: 8.1, lineHeight: 1.2 }}>{item.title}</b><HubGlyph name="diagnosis" size={12}/></div>
                   </button>)}
                 </div>
@@ -1089,19 +1094,22 @@ export default function TrainingLabConfig({ profiles, accountProfile, onStart, o
 
             {exercisePanel === "favorites" && <>
               {!favoriteExercises.length ? <div style={{ marginTop: 10, padding: 14, borderRadius: 13, border: "1px dashed rgba(255,255,255,.12)", textAlign: "center", fontSize: 9, opacity: .5 }}>Aucun exercice favori. Sélectionne un exercice puis utilise ☆ AJOUTER AUX FAVORIS.</div> : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(205px,1fr))", gap: 7, marginTop: 10 }}>
-                {favoriteExercises.map((favorite: any) => <button key={favorite.id} type="button" onClick={() => { setFamily(favorite.family); setExerciseId(favorite.id); }} style={{ textAlign: "left", padding: 10, borderRadius: 12, border: exerciseId === favorite.id ? "1px solid #ffd86b" : "1px solid rgba(255,216,107,.16)", background: exerciseId === favorite.id ? "rgba(255,216,107,.08)" : "rgba(255,255,255,.025)", color: "inherit", cursor: "pointer" }}><div style={{ fontSize: 10, fontWeight: 950 }}>★ {favorite.title}</div><div style={{ marginTop: 4, fontSize: 8.2, opacity: .56 }}>{TRAINING_FAMILY_META[favorite.family as TrainingExerciseFamily].label} • niv. {favorite.difficulty}</div></button>)}
+                {favoriteExercises.map((favorite: any) => <button key={favorite.id} type="button" onClick={() => openExerciseDetail(favorite.id)} style={{ textAlign: "left", padding: 10, borderRadius: 12, border: exerciseId === favorite.id ? "1px solid #ffd86b" : "1px solid rgba(255,216,107,.16)", background: exerciseId === favorite.id ? "rgba(255,216,107,.08)" : "rgba(255,255,255,.025)", color: "inherit", cursor: "pointer" }}><div style={{ fontSize: 10, fontWeight: 950 }}>★ {favorite.title}</div><div style={{ marginTop: 4, fontSize: 8.2, opacity: .56 }}>{TRAINING_FAMILY_META[favorite.family as TrainingExerciseFamily].label} • niv. {favorite.difficulty}</div></button>)}
               </div>}
             </>}
 
-            <div style={{ marginTop: 10, padding: 11, borderRadius: 13, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.025)", display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <div style={{ minWidth: 0, flex: "1 1 230px" }}>
-                <div style={{ fontSize: 7.3, fontWeight: 950, opacity: .48 }}>EXERCICE SÉLECTIONNÉ • NIVEAU {selected.difficulty}</div>
-                <div style={{ marginTop: 3, fontSize: 11.5, fontWeight: 950 }}>{selected.title}</div>
-                <div style={{ marginTop: 3, fontSize: 8.5, opacity: .56 }}>{selected.maxDarts} fléchettes max • {selected.subtitle}</div>
+            {exercisePanel !== "technique" && <>
+              <div style={{ marginTop: 10, padding: 11, borderRadius: 13, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.025)", display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <div style={{ minWidth: 0, flex: "1 1 230px" }}>
+                  <div style={{ fontSize: 7.3, fontWeight: 950, opacity: .48 }}>EXERCICE SÉLECTIONNÉ • NIVEAU {selected.difficulty}</div>
+                  <div style={{ marginTop: 3, fontSize: 11.5, fontWeight: 950 }}>{selected.title}</div>
+                  <div style={{ marginTop: 3, fontSize: 8.5, opacity: .56 }}>{selected.maxDarts} fléchettes max • {selected.subtitle}</div>
+                </div>
+                <button type="button" onClick={() => toggleExerciseFavorite(selected.id)} style={{ padding: "8px 10px", borderRadius: 10, border: favoriteExerciseIds.has(selected.id) ? "1px solid rgba(255,216,107,.55)" : "1px solid rgba(255,255,255,.12)", background: favoriteExerciseIds.has(selected.id) ? "rgba(255,216,107,.10)" : "rgba(255,255,255,.04)", color: "inherit", fontSize: 8, fontWeight: 900, cursor: "pointer" }}>{favoriteExerciseIds.has(selected.id) ? "★ FAVORI" : "☆ FAVORI"}</button>
               </div>
-              <button type="button" onClick={() => toggleExerciseFavorite(selected.id)} style={{ padding: "8px 10px", borderRadius: 10, border: favoriteExerciseIds.has(selected.id) ? "1px solid rgba(255,216,107,.55)" : "1px solid rgba(255,255,255,.12)", background: favoriteExerciseIds.has(selected.id) ? "rgba(255,216,107,.10)" : "rgba(255,255,255,.04)", color: "inherit", fontSize: 8, fontWeight: 900, cursor: "pointer" }}>{favoriteExerciseIds.has(selected.id) ? "★ FAVORI" : "☆ FAVORI"}</button>
-            </div>
-            <TrainingStartButton disabled={!resolved.length} label="LANCER L'EXERCICE" onClick={startExercise} />
+              <TrainingStartButton disabled={!resolved.length} label="LANCER L'EXERCICE" onClick={startExercise} />
+            </>}
+            </>}
           </div>}
 
           {tab === "diagnosis" && <div>

@@ -1,0 +1,12 @@
+import fs from 'node:fs';
+const engine=fs.readFileSync(new URL('../src/lib/gameEngines/wave61Engine.ts', import.meta.url),'utf8');
+const suiteCfg=fs.readFileSync(new URL('../src/pages/wave61/modes/la_suiteConfig.tsx', import.meta.url),'utf8');
+const callCfg=fs.readFileSync(new URL('../src/pages/wave61/modes/color_callConfig.tsx', import.meta.url),'utf8');
+const play=fs.readFileSync(new URL('../src/pages/Wave61SharedPlay.tsx', import.meta.url),'utf8');
+const end=fs.readFileSync(new URL('../src/pages/wave61/Wave61EndSummary.tsx', import.meta.url),'utf8');
+for(const token of ['perfectVisitBonus','invalidVisitPenalty','doublesTriples']) if(!suiteCfg.includes(token)) throw new Error(`LA SUITE config missing ${token}`);
+for(const token of ['callOrder','scoreMode','wrongColorPenalty','missPenalty','perfectBonus']) if(!callCfg.includes(token)) throw new Error(`COLOR CALL config missing ${token}`);
+for(const token of ['laSuiteBonusByPlayer','laSuitePenaltyByPlayer','colorCallWrongColorByPlayer','colorCallMissesByPlayer','colorCallPenaltyByPlayer','order === "cycle"','scoreMode === "hit"']) if(!engine.includes(token)) throw new Error(`engine missing ${token}`);
+for(const token of ['data-la-suite-keypad="1"','data-color-call-keypad="1"','data-variant-performance','laSuitePenaltyByPlayer','colorCallPenaltyByPlayer']) if(!play.includes(token)) throw new Error(`play missing ${token}`);
+for(const token of ['LA SUITE · TABLEAU FINAL','COLOR CALL · TABLEAU FINAL','MAUV. COULEUR','PÉNALITÉS']) if(!end.includes(token)) throw new Error(`end summary missing ${token}`);
+console.log('✅ V242 — LA SUITE + COLOR CALL: config avancée, moteurs, bots, suivi performance, historique et finales enrichis.');

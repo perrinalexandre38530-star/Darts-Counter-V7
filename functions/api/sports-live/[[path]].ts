@@ -155,6 +155,60 @@ function mergeCompetitionLogoMeta(meta: CompetitionMeta, sport: string, competit
   return { ...meta, logoUrl: known.logoUrl, logoPageUrl: known.logoPageUrl || null };
 }
 
+function absoluteAssetUrl(value: string, pageUrl: string): string | null {
+  try { return new URL(value, pageUrl).toString(); } catch { return null; }
+}
+
+function imageCandidateScore(src: string, alt: string, cls: string, competition: string) {
+  const hay = normalizeText(`${src} ${alt} ${cls}`);
+  const terms = competitionSlug(competition).split(/\s+/).filter((x) => x.length >= 4 && !["darts","championship","tournament","open","masters","series","stage","final"].includes(x));
+  let score = 0;
+  if (/logo|badge|emblem|crest|brand/.test(hay)) score += 18;
+  if (/header|hero|banner|poster/.test(hay)) score += 2;
+  for (const term of terms) if (hay.includes(term)) score += 4;
+  if (/favicon|avatar|player|sponsor|advert|social/.test(hay)) score -= 12;
+  return score;
+}
+
+async function discoverCompetitionLogoFromPage(pageUrl: string, competition: string): Promise<string | null> {
+  if (!/^https?:\/\//i.test(pageUrl)) return null;
+  try {
+    const response = await timedFetch(pageUrl, { headers: { Accept: "text/html,application/xhtml+xml", "User-Agent": "MULTISPORTS-SCORING-LIVE/1.0" } }, 4500);
+    if (!response.ok) return null;
+    const html = await response.text();
+    const candidates: Array<{ url: string; score: number }> = [];
+    for (const match of html.matchAll(/<img\b[^>]*>/gi)) {
+      const tag = match[0];
+      const src = (tag.match(/(?:src|data-src|data-lazy-src)=["']([^"']+)["']/i)?.[1] || "").trim();
+      if (!src) continue;
+      const alt = tag.match(/alt=["']([^"']*)["']/i)?.[1] || "";
+      const cls = `${tag.match(/class=["']([^"']*)["']/i)?.[1] || ""} ${tag.match(/title=["']([^"']*)["']/i)?.[1] || ""}`;
+      const url = absoluteAssetUrl(src, pageUrl);
+      if (!url || !/^https?:\/\//i.test(url)) continue;
+      candidates.push({ url, score: imageCandidateScore(url, alt, cls, competition) });
+    }
+    const og = html.match(/<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)["'][^>]+content=["']([^"']+)["']/i)?.[1]
+      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:og:image|twitter:image)["']/i)?.[1];
+    if (og) {
+      const url = absoluteAssetUrl(og, pageUrl);
+      if (url) candidates.push({ url, score: 8 });
+    }
+    candidates.sort((a,b) => b.score-a.score);
+    return candidates.find((item) => item.score >= 6)?.url || candidates[0]?.url || null;
+  } catch { return null; }
+}
+
+function safeExternalImageUrl(raw: string): string | null {
+  try {
+    const u = new URL(raw);
+    if (!/^https?:$/.test(u.protocol)) return null;
+    const h = u.hostname.toLowerCase();
+    if (h === "localhost" || h.endsWith(".local") || /^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h) || /^169\.254\./.test(h)) return null;
+    if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return null;
+    return u.toString();
+  } catch { return null; }
+}
+
 async function openAiCompetitionLogos(env: Env, sport: string, competitions: string[]): Promise<Record<string, { logoUrl: string; logoPageUrl?: string | null }>> {
   const key = str(env?.OPENAI_API_KEY).trim();
   const unique = Array.from(new Set(competitions.map((value) => String(value || "").trim()).filter(Boolean)));
@@ -167,7 +221,7 @@ async function openAiCompetitionLogos(env: Env, sport: string, competitions: str
   }
   const batch = unresolved.slice(0, 32);
   const model = str(env?.LIVE_INTELLIGENCE_MODEL).trim() || "gpt-6-luna";
-  const prompt = `For the sport "${sport}", find the real competition logo for each of these competitions when publicly available. Prefer the official competition logo image. If the official direct logo image is not easy to access, you may use a stable Wikimedia Commons / Wikipedia-hosted logo image that clearly matches the competition. Return ONLY valid JSON with shape {"items":[{"competition":"exact input","logoUrl":"https://... direct image url or null","pageUrl":"https://... official or reference page url or null"}]}. Never invent URLs. Competitions: ${batch.map((name, index) => `${index + 1}. ${name}`).join(" | ")}`;
+  const prompt = `For the sport "${sport}", identify the official page for each named competition and, only when clearly verified, its direct competition-logo image URL. Do not substitute a generic federation logo, player photo, article hero image, tournament venue photo or sponsor logo. Prefer official tournament pages; stable Wikimedia-hosted competition logos are acceptable only when official pages do not expose a usable logo. Return ONLY valid JSON: {"items":[{"competition":"exact input","pageUrl":"https://official competition page or null","logoUrl":"https://direct verified competition logo or null"}]}. Never invent URLs. Competitions: ${batch.map((name, index) => `${index + 1}. ${name}`).join(" | ")}`;
   const response = await timedFetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -188,11 +242,13 @@ async function openAiCompetitionLogos(env: Env, sport: string, competitions: str
   const out: Record<string, { logoUrl: string; logoPageUrl?: string | null }> = {};
   for (const item of arr(parsed?.items)) {
     const competition = str(item?.competition).trim();
-    const logoUrl = str(item?.logoUrl).trim();
-    const pageUrl = str(item?.pageUrl).trim() || null;
-    if (!competition || !isDirectImageUrl(logoUrl)) continue;
+    const pageUrl = safeExternalImageUrl(str(item?.pageUrl).trim()) || ( /^https?:\/\//i.test(str(item?.pageUrl).trim()) ? str(item?.pageUrl).trim() : null );
+    let logoUrl = safeExternalImageUrl(str(item?.logoUrl).trim());
+    if (!competition) continue;
+    if (!logoUrl && pageUrl) logoUrl = await discoverCompetitionLogoFromPage(pageUrl, competition);
+    if (!logoUrl) continue;
     const keyName = `${sport}::${competitionSlug(competition)}`;
-    const value = { logoUrl, logoPageUrl: /^https?:\/\//i.test(String(pageUrl || "")) ? pageUrl : null };
+    const value = { logoUrl, logoPageUrl: pageUrl || null };
     COMPETITION_LOGO_AI_CACHE.set(keyName, value);
     out[competition] = value;
   }
@@ -211,24 +267,53 @@ async function enrichCompetitionLogosInPayload(env: Env, sport: string, payload:
   ];
   const uniqueCompetitions = Array.from(new Set(rows.map((row: any) => str(row?.competition).trim()).filter(Boolean)));
   if (!uniqueCompetitions.length) return payload;
+
+  const resolvedMap: Record<string, { logoUrl: string; logoPageUrl?: string | null }> = {};
+  if (deep) {
+    const pageCandidates = uniqueCompetitions.slice(0, 40).map((competition) => {
+      const row = rows.find((item: any) => competitionSlug(item?.competition) === competitionSlug(competition));
+      const existing = row?.competitionMeta || competitionMetaFor(sport, row?.competition, row?.sourceName, row?.sourceUrl);
+      const known = knownCompetitionLogoFor(sport, row?.competition, row?.sourceName, row?.sourceUrl);
+      const pageUrl = str(existing?.logoPageUrl || known?.logoPageUrl || row?.sourceUrl).trim();
+      return { competition, pageUrl };
+    }).filter((item) => /^https?:\/\//i.test(item.pageUrl));
+    const settled = await Promise.allSettled(pageCandidates.map(async ({ competition, pageUrl }) => {
+      const logoUrl = await discoverCompetitionLogoFromPage(pageUrl, competition);
+      return logoUrl ? { competition, logoUrl, logoPageUrl: pageUrl } : null;
+    }));
+    for (const item of settled) {
+      if (item.status !== "fulfilled" || !item.value) continue;
+      resolvedMap[item.value.competition] = { logoUrl: item.value.logoUrl, logoPageUrl: item.value.logoPageUrl };
+      COMPETITION_LOGO_AI_CACHE.set(`${sport}::${competitionSlug(item.value.competition)}`, resolvedMap[item.value.competition]);
+    }
+  }
+
   const missing = uniqueCompetitions.filter((competition) => {
+    if (resolvedMap[competition]) return false;
     const row = rows.find((item: any) => competitionSlug(item?.competition) === competitionSlug(competition));
-    return !str(row?.competitionMeta?.logoUrl).trim();
+    const existing = row?.competitionMeta || competitionMetaFor(sport, row?.competition, row?.sourceName, row?.sourceUrl);
+    const known = knownCompetitionLogoFor(sport, row?.competition, row?.sourceName, row?.sourceUrl);
+    return !str(existing?.logoUrl || known?.logoUrl).trim();
   });
+
   let aiMap: Record<string, { logoUrl: string; logoPageUrl?: string | null }> = {};
   if (deep && missing.length && str(env?.OPENAI_API_KEY).trim()) {
     try { aiMap = await openAiCompetitionLogos(env, sport, missing); } catch {}
   }
+
   const applyRows = (items: any[]) => items.map((row) => {
     const competition = str(row?.competition).trim();
     if (!competition) return row;
     const existing = row?.competitionMeta || competitionMetaFor(sport, row?.competition, row?.sourceName, row?.sourceUrl);
     const known = knownCompetitionLogoFor(sport, row?.competition, row?.sourceName, row?.sourceUrl);
+    const direct = resolvedMap[competition] || resolvedMap[uniqueCompetitions.find((name) => competitionSlug(name) === competitionSlug(competition)) || ""] || null;
     const ai = aiMap[competition] || aiMap[uniqueCompetitions.find((name) => competitionSlug(name) === competitionSlug(competition)) || ""] || null;
-    const logo = existing?.logoUrl ? { logoUrl: existing.logoUrl, logoPageUrl: existing.logoPageUrl || null } : (known || ai || null);
+    const cached = COMPETITION_LOGO_AI_CACHE.get(`${sport}::${competitionSlug(competition)}`) || null;
+    const logo = direct || cached || ai || (existing?.logoUrl ? { logoUrl: existing.logoUrl, logoPageUrl: existing.logoPageUrl || null } : null) || known || null;
     if (!logo?.logoUrl) return { ...row, competitionMeta: existing };
-    return { ...row, competitionMeta: { ...existing, logoUrl: logo.logoUrl, logoPageUrl: logo.logoPageUrl || null } };
+    return { ...row, competitionMeta: { ...existing, logoUrl: logo.logoUrl, logoPageUrl: logo.logoPageUrl || existing?.logoPageUrl || null } };
   });
+
   return {
     ...payload,
     results: applyRows(arr(payload?.results)),
@@ -1115,8 +1200,11 @@ function competitionMetaFor(sport: string, competition?: string | null, sourceNa
     [/portugal|liga portugal|fpf|campeonato de portugal/,"PT","Portugal","Europe"], [/netherlands|eredivisie|knvb|voetbal/,"NL","Pays-Bas","Europe"],
     [/belgium|belgie|belgique|rbfa|jupiler/,"BE","Belgique","Europe"], [/brazil|brasil|brasileirao|cbf/,"BR","Brésil","Amérique du Sud"],
     [/argentina|afa\b|primera nacional/,"AR","Argentine","Amérique du Sud"], [/usa|united states|mls|usl|npsl|ussoccer/,"US","États-Unis","Amérique du Nord"],
-    [/canada|cpl|league1 canada/,"CA","Canada","Amérique du Nord"], [/japan|j league|jfl/,"JP","Japon","Asie"], [/korea|k league/,"KR","Corée du Sud","Asie"],
-    [/australia|a league|npl/,"AU","Australie","Océanie"], [/new zealand|nz football/,"NZ","Nouvelle-Zélande","Océanie"],
+    [/canada|cpl|league1 canada|ndfc/,"CA","Canada","Amérique du Nord"], [/japan|j league|jfl|jda|jdo|jsfd|darts\.or\.jp|japan-darts/,"JP","Japon","Asie"], [/korea|k league/,"KR","Corée du Sud","Asie"],
+    [/philippines|ndfp/,"PH","Philippines","Asie"], [/india|darts federation of india/,"IN","Inde","Asie"],
+    [/south africa|saodc|onlinedarts\.co\.za/,"ZA","Afrique du Sud","Afrique"], [/brazil|brasil|obdardos|organiza.*brasileira/,"BR","Brésil","Amérique du Sud"],
+    [/american darts organization|adodarts|\bado\b/,"US","États-Unis","Amérique du Nord"],
+    [/australia|a league|npl/,"AU","Australie","Océanie"], [/new zealand|nz football|dartsnz/,"NZ","Nouvelle-Zélande","Océanie"],
   ];
   for (const [re, code, name, continent] of countryPatterns) if (re.test(raw)) { meta.countryCode=code; meta.countryName=name; meta.continent=continent; meta.regionLabel=name; break; }
   if (/world cup|world championship|fifa|wdf world|world masters/.test(raw)) { meta.family="world"; meta.level="elite"; meta.regionLabel="Monde"; meta.continent="Monde"; }
@@ -1238,6 +1326,21 @@ const DIRECT_EDITORIAL_PAGES: Record<string, Array<{ url: string; sourceName: st
     { url: "https://ddv-online.de/", sourceName: "Deutscher Dart-Verband", scope: "regional", scopeLabel: "Allemagne / DACH" },
     { url: "https://stats.idarts.nl/Dashboard/Home", sourceName: "iDarts", scope: "world", scopeLabel: "Monde / database" },
     { url: "https://mastercaller.com/", sourceName: "Mastercaller", scope: "world", scopeLabel: "Monde / database" },
+    { url: "https://www.adodarts.com/ado-results/", sourceName: "American Darts Organization", scope: "regional", scopeLabel: "USA / national / amateur" },
+    { url: "https://www.adodarts.com/calendar/", sourceName: "ADO Calendar", scope: "regional", scopeLabel: "USA / qualifiers / amateur" },
+    { url: "https://www.dartsatlas.com/tournaments/search", sourceName: "Darts Atlas", scope: "world", scopeLabel: "Monde / ADC / amateur" },
+    { url: "https://www.dartsrec.com/tournaments?year=2026", sourceName: "DartsRec", scope: "world", scopeLabel: "PDC / archive" },
+    { url: "https://www.darts.or.jp/sokuhou/", sourceName: "Japan Darts Association", scope: "regional", scopeLabel: "Japon / national / régional" },
+    { url: "https://ndfpdarts.com/", sourceName: "NDFP Philippines", scope: "regional", scopeLabel: "Philippines / national / régional" },
+    { url: "https://dartsfederationofindia.com/tournaments-hub/", sourceName: "Darts Federation of India", scope: "regional", scopeLabel: "Inde / national / États" },
+    { url: "https://www.obdardos.com.br/", sourceName: "OBD Brasil", scope: "regional", scopeLabel: "Brésil / national / divisions" },
+    { url: "https://www.saodc.co.za/", sourceName: "SAODC", scope: "regional", scopeLabel: "Afrique du Sud / divisions" },
+    { url: "https://www.onlinedarts.co.za/", sourceName: "Online Darts ZA", scope: "world", scopeLabel: "Online / Afrique / amateur" },
+    { url: "https://www.darts.fi/", sourceName: "Suomen Dartsliitto", scope: "regional", scopeLabel: "Finlande / national" },
+    { url: "https://dart.se/", sourceName: "Svenska Dartförbundet", scope: "regional", scopeLabel: "Suède / national" },
+    { url: "https://darts.ch/", sourceName: "Swiss Darts Association", scope: "regional", scopeLabel: "Suisse / national" },
+    { url: "https://www.darts.ee/", sourceName: "Estonian Darts Federation", scope: "regional", scopeLabel: "Estonie / national" },
+    { url: "https://dartfo.com/", sourceName: "Faroe Islands Darts", scope: "regional", scopeLabel: "Îles Féroé / national" },
   ],
   pingpong: [
     { url: "https://www.ittf.com/news/", sourceName: "ITTF", scope: "world", scopeLabel: "Monde" },
@@ -1504,6 +1607,208 @@ DIRECT_EDITORIAL_PAGES.frisbee.push(
   { url:"https://www.ukultimate.com/events", sourceName:"UK Ultimate", scope:"regional", scopeLabel:"UK / clubs" },
   { url:"https://ultiworld.com/scoreboard/", sourceName:"Ultiworld Scoreboard", scope:"world", scopeLabel:"Monde / scoreboard" }
 );
+
+
+// V243 — dedicated archive and calendar layers. These are intentionally separate
+// from the normal journal feed so historical depth never delays the home screen.
+const DIRECT_ARCHIVE_PAGES: Record<string, Array<{ url:string; sourceName:string; scope:IntelligenceScope; scopeLabel:string }>> = {
+  darts: [
+    { url:"https://www.adodarts.com/ado-results/", sourceName:"ADO Past Tournaments", scope:"regional", scopeLabel:"USA / amateur / historique" },
+    { url:"https://dartswdf.com/", sourceName:"WDF", scope:"world", scopeLabel:"Monde / fédérations" },
+    { url:"https://www.dartconnect.com/leagues/", sourceName:"DartConnect Leagues", scope:"world", scopeLabel:"Ligues / historique complet" },
+    { url:"https://www.dartsatlas.com/tournaments/search", sourceName:"Darts Atlas", scope:"world", scopeLabel:"Clubs / amateur / tournois" },
+    { url:"https://www.dartsnz.com/", sourceName:"Darts New Zealand", scope:"regional", scopeLabel:"Nouvelle-Zélande" },
+    { url:"https://www.darts.or.jp/sokuhou/", sourceName:"Japan Darts Association", scope:"regional", scopeLabel:"Japon / historique" },
+    { url:"https://ndfpdarts.com/", sourceName:"NDFP Philippines", scope:"regional", scopeLabel:"Philippines" },
+    { url:"https://dartsfederationofindia.com/tournaments-hub/", sourceName:"Darts Federation of India", scope:"regional", scopeLabel:"Inde" },
+    { url:"https://www.obdardos.com.br/", sourceName:"OBD Brasil", scope:"regional", scopeLabel:"Brésil" },
+    { url:"https://www.saodc.co.za/", sourceName:"SAODC", scope:"regional", scopeLabel:"Afrique du Sud" },
+  ],
+  petanque: [
+    { url:"https://compet.ffpjp.org/", sourceName:"FFPJP Compétitions", scope:"local", scopeLabel:"France / fédéral" },
+    { url:"https://www.ffpjp.org/", sourceName:"FFPJP", scope:"local", scopeLabel:"France / archives" },
+    { url:"https://fipjp.org/", sourceName:"FIPJP", scope:"world", scopeLabel:"Monde" },
+    { url:"https://www.boulistenaute.com/", sourceName:"Boulistenaute", scope:"regional", scopeLabel:"Francophonie / historique" },
+  ],
+  pingpong: [
+    { url:"https://www.ittf.com/tournament-results/", sourceName:"ITTF Results", scope:"world", scopeLabel:"Monde / historique" },
+    { url:"https://worldtabletennis.com/eventslist", sourceName:"WTT", scope:"world", scopeLabel:"Monde" },
+    { url:"https://www.fftt.com/site/competition", sourceName:"FFTT Compétitions", scope:"local", scopeLabel:"France / clubs" },
+    { url:"https://www.tabletennisengland.co.uk/leagues-and-counties/tt-leagues/", sourceName:"TT Leagues", scope:"regional", scopeLabel:"Angleterre / clubs" },
+  ],
+  babyfoot: [
+    { url:"https://www.tablesoccer.org/page/results", sourceName:"ITSF Results", scope:"world", scopeLabel:"Monde" },
+    { url:"https://www.foos-app.com/tournaments", sourceName:"Foos App", scope:"world", scopeLabel:"Clubs / amateur" },
+  ],
+  molkky: [
+    { url:"https://ac.molkkify.app/results", sourceName:"Molkkify Results", scope:"world", scopeLabel:"Mondiaux / matchs complets" },
+    { url:"https://www.international-molkky.org/world-championships", sourceName:"International Mölkky", scope:"world", scopeLabel:"Mondiaux / historique" },
+    { url:"https://www.molkky.world/fr/tournois/", sourceName:"Mölkky World", scope:"world", scopeLabel:"Tournois / historique" },
+  ],
+  foot: [
+    { url:"https://www.rsssf.org/", sourceName:"RSSSF", scope:"world", scopeLabel:"Monde / historique profond" },
+    { url:"https://www.worldfootball.net/alltime_table/", sourceName:"WorldFootball.net", scope:"world", scopeLabel:"Monde / archives" },
+    { url:"https://fulltime.thefa.com/", sourceName:"FA Full-Time", scope:"regional", scopeLabel:"Angleterre / grassroots / saisons" },
+    { url:"https://www.fussball.de/homepage", sourceName:"FUSSBALL.DE", scope:"regional", scopeLabel:"Allemagne / amateur / saisons" },
+    { url:"https://www.tuttocampo.it/Italia/Dilettanti", sourceName:"Tuttocampo", scope:"regional", scopeLabel:"Italie / amateur / historique" },
+    { url:"https://www.liguesdefoot.fr/championnats/", sourceName:"LiguesDeFoot", scope:"local", scopeLabel:"France / régional / district" },
+    { url:"https://marcadores.rfef.es/", sourceName:"Marcadores RFEF", scope:"regional", scopeLabel:"Espagne / fédéral" },
+  ],
+  padel: [
+    { url:"https://www.padelfip.com/titles-and-finals/", sourceName:"FIP Titles & Finals", scope:"world", scopeLabel:"Monde / historique depuis 2006" },
+    { url:"https://www.padelfip.com/events/", sourceName:"FIP Events", scope:"world", scopeLabel:"Monde / tableaux" },
+    { url:"https://www.padelscore.org/", sourceName:"PadelScore", scope:"world", scopeLabel:"Clubs / tournois" },
+  ],
+  badminton: [
+    { url:"https://bwfbadminton.com/results/", sourceName:"BWF Results", scope:"world", scopeLabel:"Monde / historique" },
+    { url:"https://bwf.tournamentsoftware.com/", sourceName:"BWF TournamentSoftware", scope:"world", scopeLabel:"Monde / tableaux" },
+    { url:"https://ffbad.tournamentsoftware.com/", sourceName:"FFBaD TournamentSoftware", scope:"local", scopeLabel:"France / clubs" },
+  ],
+  cornhole: [
+    { url:"https://www.iplayacl.com/", sourceName:"ACL", scope:"world", scopeLabel:"Pro + amateur" },
+    { url:"https://scoreholio.com/", sourceName:"Scoreholio", scope:"world", scopeLabel:"Ligues / tournois amateurs" },
+  ],
+  bowling: [
+    { url:"https://bowl.com/tournaments/open-championships/past-results-and-history", sourceName:"USBC Open History", scope:"regional", scopeLabel:"USA / historique" },
+    { url:"https://bowl.com/tournaments/usbc-masters/past-results", sourceName:"USBC Masters History", scope:"regional", scopeLabel:"USA / historique" },
+    { url:"https://bowl.com/tournaments/u-s-open/past-results", sourceName:"US Open History", scope:"regional", scopeLabel:"USA / historique" },
+    { url:"https://www.leaguesecretary.com/", sourceName:"LeagueSecretary", scope:"world", scopeLabel:"Ligues locales / historique" },
+  ],
+  archery: [
+    { url:"https://www.worldarchery.sport/competition", sourceName:"World Archery", scope:"world", scopeLabel:"Monde / historique" },
+    { url:"https://www.ianseo.net/", sourceName:"Ianseo", scope:"world", scopeLabel:"Tournois / clubs / historique" },
+  ],
+  pickleball: [
+    { url:"https://pickleballbrackets.com/", sourceName:"PickleballBrackets", scope:"world", scopeLabel:"Tournois / amateur / historique" },
+    { url:"https://www.ppatour.com/tournaments/", sourceName:"PPA Tour", scope:"world", scopeLabel:"Pro" },
+  ],
+  frisbee: [
+    { url:"https://results.wfdf.sport/", sourceName:"WFDF Results", scope:"world", scopeLabel:"Monde / historique" },
+    { url:"https://play.usaultimate.org/events/tournament/?ViewAll=true", sourceName:"USA Ultimate", scope:"regional", scopeLabel:"USA / clubs / historique" },
+  ],
+  billiards: [
+    { url:"https://www.azbilliards.com/tours_and_events/", sourceName:"AZBilliards", scope:"world", scopeLabel:"Pool / archives" },
+    { url:"https://www.kozoom.com/en/billiard-carom/results", sourceName:"Kozoom", scope:"world", scopeLabel:"Carambole / historique" },
+  ],
+  basket: [
+    { url:"https://www.fiba.basketball/en/events", sourceName:"FIBA", scope:"world", scopeLabel:"Monde / compétitions" },
+    { url:"https://competitions.ffbb.com/", sourceName:"FFBB Compétitions", scope:"local", scopeLabel:"France / national à départemental" },
+    { url:"https://www.eurobasket.com/", sourceName:"Eurobasket", scope:"world", scopeLabel:"Monde / divisions" },
+  ],
+  rugby: [
+    { url:"https://www.world.rugby/tournaments", sourceName:"World Rugby", scope:"world", scopeLabel:"Monde" },
+    { url:"https://competitions.ffr.fr/", sourceName:"FFR Compétitions", scope:"local", scopeLabel:"France / fédéral / amateur" },
+    { url:"https://www.rugbyeurope.eu/competitions/", sourceName:"Rugby Europe", scope:"regional", scopeLabel:"Europe / historique" },
+  ],
+  volleyball: [
+    { url:"https://en.volleyballworld.com/volleyball/competitions/", sourceName:"Volleyball World", scope:"world", scopeLabel:"Monde" },
+    { url:"https://www.cev.eu/club/", sourceName:"CEV", scope:"regional", scopeLabel:"Europe / clubs" },
+    { url:"https://volleybox.net/matches", sourceName:"Volleybox", scope:"world", scopeLabel:"Monde / clubs / historique" },
+  ],
+  tennis: [
+    { url:"https://www.atptour.com/en/scores/results-archive", sourceName:"ATP Archive", scope:"world", scopeLabel:"ATP / historique" },
+    { url:"https://www.wtatennis.com/tournaments", sourceName:"WTA Tournaments", scope:"world", scopeLabel:"WTA / historique" },
+    { url:"https://www.itftennis.com/en/tournament-calendar/", sourceName:"ITF", scope:"world", scopeLabel:"ITF / historique / semi-pro" },
+  ],
+  chess: [
+    { url:"https://chess-results.com/", sourceName:"Chess-Results", scope:"world", scopeLabel:"Tournois / historique" },
+    { url:"https://lichess.org/broadcast", sourceName:"Lichess Broadcasts", scope:"world", scopeLabel:"Tournois / archives" },
+  ],
+  esports: [
+    { url:"https://liquipedia.net/", sourceName:"Liquipedia", scope:"world", scopeLabel:"Multi-jeux / archives" },
+    { url:"https://www.hltv.org/results", sourceName:"HLTV Results", scope:"world", scopeLabel:"CS2 / historique" },
+    { url:"https://www.vlr.gg/matches/results", sourceName:"VLR Results", scope:"world", scopeLabel:"VALORANT / historique" },
+  ],
+};
+
+const DIRECT_CALENDAR_PAGES: Record<string, Array<{ url:string; sourceName:string; scope:IntelligenceScope; scopeLabel:string }>> = {
+  darts: [
+    { url:"https://www.adodarts.com/calendar/", sourceName:"ADO Calendar", scope:"regional", scopeLabel:"USA / tournois / qualifiers" },
+    { url:"https://dartswdf.com/calendar", sourceName:"WDF Calendar", scope:"world", scopeLabel:"Monde" },
+    { url:"https://www.pdc.tv/tournaments/calendar", sourceName:"PDC Calendar", scope:"world", scopeLabel:"PDC" },
+    { url:"https://www.dartsatlas.com/tournaments/search", sourceName:"Darts Atlas", scope:"world", scopeLabel:"Clubs / amateur" },
+  ],
+  petanque: [
+    { url:"https://fipjp.org/", sourceName:"FIPJP", scope:"world", scopeLabel:"Monde" },
+    { url:"https://compet.ffpjp.org/", sourceName:"FFPJP Compétitions", scope:"local", scopeLabel:"France" },
+  ],
+  pingpong: [
+    { url:"https://www.ittf.com/tournament-calendar/", sourceName:"ITTF Calendar", scope:"world", scopeLabel:"Monde" },
+    { url:"https://worldtabletennis.com/eventslist", sourceName:"WTT Events", scope:"world", scopeLabel:"Monde" },
+  ],
+  babyfoot: [
+    { url:"https://www.tablesoccer.org/page/calendar", sourceName:"ITSF Calendar", scope:"world", scopeLabel:"Monde" },
+    { url:"https://www.foos-app.com/tournaments", sourceName:"Foos App", scope:"world", scopeLabel:"Clubs / amateur" },
+  ],
+  molkky: [
+    { url:"https://www.molkky.world/fr/tournois/", sourceName:"Mölkky World", scope:"world", scopeLabel:"Tournois" },
+    { url:"https://www.international-molkky.org/", sourceName:"International Mölkky", scope:"world", scopeLabel:"Monde" },
+  ],
+  foot: [
+    { url:"https://www.fifa.com/en/tournaments", sourceName:"FIFA", scope:"world", scopeLabel:"Monde" },
+    { url:"https://www.uefa.com/fixtures-results/", sourceName:"UEFA", scope:"regional", scopeLabel:"Europe" },
+    { url:"https://www.fff.fr/competition", sourceName:"FFF", scope:"local", scopeLabel:"France / fédéral" },
+    { url:"https://fulltime.thefa.com/", sourceName:"FA Full-Time", scope:"regional", scopeLabel:"Angleterre / grassroots" },
+  ],
+  padel: [
+    { url:"https://www.padelfip.com/events/", sourceName:"FIP Events", scope:"world", scopeLabel:"Monde" },
+    { url:"https://premierpadel.com/en/tournaments", sourceName:"Premier Padel", scope:"world", scopeLabel:"Monde" },
+  ],
+  badminton: [
+    { url:"https://bwfbadminton.com/calendar/", sourceName:"BWF Calendar", scope:"world", scopeLabel:"Monde" },
+    { url:"https://bwf.tournamentsoftware.com/", sourceName:"BWF TournamentSoftware", scope:"world", scopeLabel:"Monde" },
+  ],
+  cornhole: [
+    { url:"https://www.iplayacl.com/", sourceName:"ACL", scope:"world", scopeLabel:"Pro + amateur" },
+    { url:"https://scoreholio.com/", sourceName:"Scoreholio", scope:"world", scopeLabel:"Ligues / tournois" },
+  ],
+  bowling: [
+    { url:"https://bowl.com/tournaments", sourceName:"USBC Tournaments", scope:"regional", scopeLabel:"USA" },
+    { url:"https://www.pba.com/tournaments", sourceName:"PBA", scope:"world", scopeLabel:"Pro" },
+  ],
+  archery: [
+    { url:"https://www.worldarchery.sport/competition", sourceName:"World Archery", scope:"world", scopeLabel:"Monde" },
+    { url:"https://www.ianseo.net/", sourceName:"Ianseo", scope:"world", scopeLabel:"Clubs / tournois" },
+  ],
+  pickleball: [
+    { url:"https://www.ppatour.com/tournaments/", sourceName:"PPA Tour", scope:"world", scopeLabel:"Pro" },
+    { url:"https://pickleballbrackets.com/", sourceName:"PickleballBrackets", scope:"world", scopeLabel:"Amateur" },
+  ],
+  frisbee: [
+    { url:"https://wfdf.sport/events/", sourceName:"WFDF", scope:"world", scopeLabel:"Monde" },
+    { url:"https://play.usaultimate.org/events/tournament/?ViewAll=true", sourceName:"USA Ultimate", scope:"regional", scopeLabel:"USA" },
+  ],
+  billiards: [
+    { url:"https://wpapool.com/events/", sourceName:"WPA", scope:"world", scopeLabel:"Monde" },
+    { url:"https://www.umb-carom.org/", sourceName:"UMB", scope:"world", scopeLabel:"Carambole" },
+  ],
+  basket: [
+    { url:"https://www.fiba.basketball/en/events", sourceName:"FIBA Events", scope:"world", scopeLabel:"Monde" },
+    { url:"https://competitions.ffbb.com/", sourceName:"FFBB", scope:"local", scopeLabel:"France" },
+  ],
+  rugby: [
+    { url:"https://www.world.rugby/tournaments", sourceName:"World Rugby", scope:"world", scopeLabel:"Monde" },
+    { url:"https://competitions.ffr.fr/", sourceName:"FFR", scope:"local", scopeLabel:"France / amateur" },
+  ],
+  volleyball: [
+    { url:"https://en.volleyballworld.com/volleyball/competitions/", sourceName:"Volleyball World", scope:"world", scopeLabel:"Monde" },
+    { url:"https://www.cev.eu/", sourceName:"CEV", scope:"regional", scopeLabel:"Europe" },
+  ],
+  tennis: [
+    { url:"https://www.atptour.com/en/tournaments", sourceName:"ATP Calendar", scope:"world", scopeLabel:"ATP" },
+    { url:"https://www.wtatennis.com/tournaments", sourceName:"WTA Calendar", scope:"world", scopeLabel:"WTA" },
+    { url:"https://www.itftennis.com/en/tournament-calendar/", sourceName:"ITF Calendar", scope:"world", scopeLabel:"ITF / semi-pro" },
+  ],
+  chess: [
+    { url:"https://www.fide.com/calendar/", sourceName:"FIDE Calendar", scope:"world", scopeLabel:"Monde" },
+    { url:"https://chess-results.com/", sourceName:"Chess-Results", scope:"world", scopeLabel:"Tournois" },
+  ],
+  esports: [
+    { url:"https://liquipedia.net/", sourceName:"Liquipedia", scope:"world", scopeLabel:"Multi-jeux" },
+    { url:"https://www.hltv.org/matches", sourceName:"HLTV Matches", scope:"world", scopeLabel:"CS2" },
+    { url:"https://www.vlr.gg/matches", sourceName:"VLR Matches", scope:"world", scopeLabel:"VALORANT" },
+  ],
+};
 
 const DARTS_LOCALE_QUERY_PACKS: Record<string, string[]> = {
   fr: [
@@ -2006,8 +2311,12 @@ function directScoreTitleFromBlock(blockHtml: string): string | null {
   return normalized;
 }
 
-async function directEditorialIntelligence(sport: string, maxPages = 6): Promise<IntelligenceNews[]> {
-  const pages = (DIRECT_EDITORIAL_PAGES[sport] || []).slice(0, Math.max(1, maxPages));
+async function directEditorialIntelligence(
+  sport: string,
+  maxPages = 6,
+  pagesOverride?: Array<{ url: string; sourceName: string; scope: IntelligenceScope; scopeLabel: string }>,
+): Promise<IntelligenceNews[]> {
+  const pages = (pagesOverride || DIRECT_EDITORIAL_PAGES[sport] || []).slice(0, Math.max(1, maxPages));
   if (!pages.length) return [];
   const settled = await Promise.allSettled(pages.map(async (page, pageIndex) => {
     const response = await timedFetch(page.url, {
@@ -2389,7 +2698,7 @@ async function openAiWebIntelligence(env: Env, sport: string, lang: string): Pro
   if (!key || !spec) return [];
   const model = str(env?.LIVE_INTELLIGENCE_MODEL).trim() || "gpt-6-luna";
   const today = new Date().toISOString().slice(0, 10);
-  const prompt = `Today is ${today}. Search the web broadly for the latest verified ${spec.label} competition news, explicit match results and scores, current live events, rankings/performances and upcoming events from the last 60 days and the next 45 days. Include professional, semi-professional, national federation, regional, county/state/provincial, club, grassroots and amateur tournaments whenever public results exist. Cover the user-language area AND Europe/continental circuits AND the rest of the world; never let one country or one federation dominate. For darts explicitly include PDC, WDF, MODUS, DartConnect/DCTV, CDC North America/Latin America, PDC Nordic & Baltic, France, Benelux/DACH, Australia and New Zealand when relevant. Prioritize official federation/tour/league/club result pages, tournament platforms, brackets and reputable specialist sports media. Search beyond top-tier professional circuits: lower divisions, qualifiers, youth, women, veterans, county/state/provincial, regional and amateur events are all valuable when verifiable. Return ONLY valid JSON with this exact shape: {"items":[{"title":"...","summary":"...","publishedAt":"ISO date or null","sourceName":"...","sourceUrl":"https://...","imageUrl":"https://... or null","kind":"news|result|live|upcoming","resultLabel":"explicit published score/result or null","scope":"local|regional|world","scopeLabel":"country/region/world label"}]}. Maximum 100 items. Prefer concrete result items with explicit scores and competition/round names over generic previews. ALWAYS cover three mandatory scopes: (1) local sources relevant to the requested language/country, (2) regional/continental sources, and (3) worldwide sources and major international circuits. The selected language is a priority, never a geographic filter. For example fr must include France/francophone + Europe + World; zh must include China + Asia + World; ja must include Japan + Asia + World; en must include UK/Ireland + North America + Oceania + World. IMPORTANT: never invent a score, winner, date or live status. resultLabel may contain a numeric score ONLY when a searched source explicitly states that score. Language for title/summary: ${lang || "fr"}.`;
+  const prompt = `Today is ${today}. Search the web broadly for the latest verified ${spec.label} competition news, explicit match results and scores, current live events, rankings/performances and upcoming events from the last 60 days and the next 45 days. Include professional, semi-professional, national federation, regional, county/state/provincial, club, grassroots and amateur tournaments whenever public results exist. Cover the user-language area AND Europe/continental circuits AND the rest of the world; never let one country or one federation dominate. For darts explicitly include PDC (majors, ProTour, Players Championship, Challenge Tour, Development Tour, Women’s Series, Asian Tour, Nordic & Baltic, European Tour, World Series and qualifiers), WDF ranking events and member federations, MODUS, DartConnect/DCTV leagues and tournaments, CDC North America/Latin America, ADO USA national/area/qualifier events, Canada, France, Benelux/DACH, Spain, Italy, Poland, Czechia and the Balkans, Japan (JDA/JDO/JSFD), Philippines NDFP, India, Brazil OBD, South Africa, Australia, New Zealand, Middle East and other Asian/African federations whenever public results exist. Do not let UK/PDC events crowd out national, regional or amateur events from other countries. Prioritize official federation/tour/league/club result pages, tournament platforms, brackets and reputable specialist sports media. Search beyond top-tier professional circuits: lower divisions, qualifiers, youth, women, veterans, county/state/provincial, regional and amateur events are all valuable when verifiable. Return ONLY valid JSON with this exact shape: {"items":[{"title":"...","summary":"...","publishedAt":"ISO date or null","sourceName":"...","sourceUrl":"https://...","imageUrl":"https://... or null","kind":"news|result|live|upcoming","resultLabel":"explicit published score/result or null","scope":"local|regional|world","scopeLabel":"country/region/world label"}]}. Maximum 100 items. Prefer concrete result items with explicit scores and competition/round names over generic previews. ALWAYS cover three mandatory scopes: (1) local sources relevant to the requested language/country, (2) regional/continental sources, and (3) worldwide sources and major international circuits. The selected language is a priority, never a geographic filter. For example fr must include France/francophone + Europe + World; zh must include China + Asia + World; ja must include Japan + Asia + World; en must include UK/Ireland + North America + Oceania + World. IMPORTANT: never invent a score, winner, date or live status. resultLabel may contain a numeric score ONLY when a searched source explicitly states that score. Language for title/summary: ${lang || "fr"}.`;
   const response = await timedFetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -2429,7 +2738,84 @@ async function openAiWebIntelligence(env: Env, sport: string, lang: string): Pro
       scopeLabel: str(item?.scopeLabel).trim().slice(0, 80) || "Monde",
     };
   }).filter(Boolean) as IntelligenceNews[];
-  return uniqNews(rows).slice(0, sport === "foot" ? 60 : 48);
+  return uniqNews(rows).slice(0, sport === "foot" ? 80 : sport === "darts" ? 100 : 64);
+}
+
+
+async function openAiFocusedHistory(env: Env, sport: string, lang: string, mode: "archive" | "calendar"): Promise<IntelligenceNews[]> {
+  const key = str(env?.OPENAI_API_KEY).trim();
+  const spec = INTELLIGENCE_SPECS[sport];
+  if (!key || !spec) return [];
+  const model = str(env?.LIVE_INTELLIGENCE_MODEL).trim() || "gpt-6-luna";
+  const today = new Date();
+  const currentYear = today.getUTCFullYear();
+  const todayIso = today.toISOString().slice(0,10);
+  const focus = mode === "archive"
+    ? `Search verified historical results for ${spec.label}. Cover the current season and at least the previous 5 seasons when public archives exist. Include official international competitions, every national federation/league you can verify, lower divisions, regional/county/state/provincial leagues, club competitions, qualifiers, youth, women, veterans and amateur tournaments. Prefer explicit match scores, final standings, winners/finalists and official archive pages. Do not focus only on elite competitions or English-language countries.`
+    : `Search verified upcoming ${spec.label} events from ${todayIso} through the next 12 months. Cover official world/continental tours, national federations, regional/county/state/provincial calendars, club leagues, qualifiers, youth, women, veterans and amateur tournaments. Prefer official calendar/event pages and provide event dates whenever stated.`;
+  const prompt = `${focus} The app language is ${lang || "fr"}, but geography must remain worldwide. Return ONLY valid JSON with shape {"items":[{"title":"...","summary":"...","publishedAt":"ISO date or null","sourceName":"...","sourceUrl":"https://...","imageUrl":"https://... or null","kind":"news|result|live|upcoming","resultLabel":"explicit published score/result/date or null","scope":"local|regional|world","scopeLabel":"country/region/competition label"}]}. Maximum 120 items. Never invent a score, winner, date, competition or URL. For archive mode, result items are strongly preferred. For calendar mode, upcoming items are strongly preferred. Current year: ${currentYear}.`;
+  const response = await timedFetch("https://api.openai.com/v1/responses", {
+    method:"POST",
+    headers:{"content-type":"application/json", Authorization:`Bearer ${key}`},
+    body: JSON.stringify({ model, reasoning:{effort:"low"}, tools:[{type:"web_search",search_context_size:"medium"}], tool_choice:"auto", input:prompt }),
+  }, 12000);
+  if (!response.ok) throw new Error(`OpenAI ${mode} HTTP ${response.status}`);
+  const body = await response.json().catch(() => null) as any;
+  const parsed = parseAiJson(extractOpenAIText(body));
+  const rows = arr(parsed?.items).map((item,index): IntelligenceNews | null => {
+    const title=str(item?.title).trim();
+    const sourceUrl=str(item?.sourceUrl).trim();
+    if (!title || !/^https:\/\//i.test(sourceUrl)) return null;
+    const requested=str(item?.kind).toLowerCase();
+    const kind: IntelligenceKind=(['news','result','live','upcoming'] as string[]).includes(requested) ? requested as IntelligenceKind : classifyHeadline(title,str(item?.summary));
+    const date=new Date(str(item?.publishedAt));
+    return {
+      id:`ai-${mode}-${sport}-${index}-${normalizeHeadlineKey(title).replace(/\s+/g,'-').slice(0,42)}`,
+      title,
+      summary:str(item?.summary).trim().slice(0,320)||null,
+      publishedAt:Number.isFinite(date.getTime())?date.toISOString():null,
+      sourceName:str(item?.sourceName).trim()||"Web",
+      sourceUrl,
+      imageUrl:absoluteHttpUrl(str(item?.imageUrl))||null,
+      kind,
+      resultLabel:str(item?.resultLabel).trim().slice(0,140)||null,
+      scope:(["local","regional","world"] as string[]).includes(str(item?.scope).toLowerCase()) ? str(item?.scope).toLowerCase() as IntelligenceScope : "world",
+      scopeLabel:str(item?.scopeLabel).trim().slice(0,100)||"Monde",
+    };
+  }).filter(Boolean) as IntelligenceNews[];
+  return uniqNews(rows).slice(0,120);
+}
+
+async function archiveOverview(env: Env, sport: string, lang: string) {
+  const pages = DIRECT_ARCHIVE_PAGES[sport] || [];
+  const [directSettled, aiSettled] = await Promise.allSettled([
+    directEditorialIntelligence(sport, Math.min(48, pages.length || 1), pages),
+    str(env?.OPENAI_API_KEY).trim() ? openAiFocusedHistory(env, sport, lang, "archive") : Promise.resolve([] as IntelligenceNews[]),
+  ]);
+  const direct = directSettled.status === "fulfilled" ? directSettled.value : [];
+  const ai = aiSettled.status === "fulfilled" ? aiSettled.value : [];
+  const rows = uniqNews([...direct, ...ai]);
+  const results = applyCompetitionMeta(sport, uniqNormalResults(rows.map((row) => intelligenceNewsToStructuredResult(row, sport)).filter(Boolean) as NormalResult[])).slice(0, sport === "foot" ? 1500 : 900);
+  const events = uniqEvents(rows.filter((row) => row.kind === "result").map((row) => newsToEvent(row, sport)).filter(Boolean) as NormalEvent[]).slice(0,500);
+  const payload = await enrichCompetitionLogosInPayload(env, sport, {
+    sport, configured: results.length > 0 || events.length > 0, automaticData: true, provider:"official_links", plan:"archive",
+    dataAsOf:new Date().toISOString(), liveAvailable:false, liveReason:"Archives historiques chargées à la demande.", live:[], fixtures:[], results, events, news:[],
+    intelligence:{ enabled:rows.length>0, provider:ai.length?"openai_web":"news_rss", aiEnabled:ai.length>0, count:rows.length, localCount:rows.filter(r=>r.scope==='local').length, regionalCount:rows.filter(r=>r.scope==='regional').length, worldCount:rows.filter(r=>r.scope==='world'||!r.scope).length, queryCount:pages.length+(ai.length?1:0), directResultCount:results.length, updatedAt:new Date().toISOString() }, warnings:[],
+  }, true);
+  return { status:200, ttl:21600, payload };
+}
+
+async function calendarOverview(env: Env, sport: string, lang: string) {
+  const pages = DIRECT_CALENDAR_PAGES[sport] || [];
+  const [directSettled, aiSettled] = await Promise.allSettled([
+    directEditorialIntelligence(sport, Math.min(36, pages.length || 1), pages),
+    str(env?.OPENAI_API_KEY).trim() ? openAiFocusedHistory(env, sport, lang, "calendar") : Promise.resolve([] as IntelligenceNews[]),
+  ]);
+  const direct = directSettled.status === "fulfilled" ? directSettled.value : [];
+  const ai = aiSettled.status === "fulfilled" ? aiSettled.value : [];
+  const rows = uniqNews([...direct, ...ai]).filter((row) => row.kind === "upcoming" || row.kind === "live" || /calendar|schedule|fixture|tournoi|tournament|event|championship|open/i.test(row.title));
+  const events = uniqEvents(rows.map((row) => newsToEvent({ ...row, kind: row.kind === "live" ? "live" : "upcoming" }, sport)).filter(Boolean) as NormalEvent[]).slice(0,700);
+  return { status:200, ttl:10800, payload:{ sport, configured:events.length>0, automaticData:true, provider:"official_links", plan:"calendar", dataAsOf:new Date().toISOString(), liveAvailable:false, liveReason:"Calendrier mondial chargé à la demande.", live:[], fixtures:[], results:[], events, news:[], intelligence:{ enabled:rows.length>0, provider:ai.length?"openai_web":"news_rss", aiEnabled:ai.length>0, count:rows.length, localCount:rows.filter(r=>r.scope==='local').length, regionalCount:rows.filter(r=>r.scope==='regional').length, worldCount:rows.filter(r=>r.scope==='world'||!r.scope).length, queryCount:pages.length+(ai.length?1:0), directResultCount:0, updatedAt:new Date().toISOString() }, warnings:[] } };
 }
 
 function parseLeadingScoreName(line: string) {
@@ -3047,7 +3433,7 @@ async function enrichWithLiveIntelligence(
 
   // CORE is intentionally bounded so the journal appears quickly after the
   // structured feed. DEEP runs later from the frontend and can fan out widely.
-  const directPageBudget = deep ? (sport === "darts" ? 48 : sport === "foot" ? 120 : sport === "esports" ? 72 : 64) : (sport === "darts" ? 14 : sport === "foot" ? 32 : 18);
+  const directPageBudget = deep ? (sport === "darts" ? 96 : sport === "foot" ? 120 : sport === "esports" ? 72 : 64) : (sport === "darts" ? 14 : sport === "foot" ? 32 : 18);
   const newsSettled = await Promise.allSettled([
     googleNewsIntelligence(sport, lang, deep ? "deep" : "core"),
     deep ? bingNewsIntelligence(sport, lang, "deep") : Promise.resolve([] as IntelligenceNews[]),
@@ -3076,7 +3462,7 @@ async function enrichWithLiveIntelligence(
 
   const chronologicalNews = uniqNews([...ai, ...directRss, ...google, ...bing, ...yahoo, ...directEditorial])
     .sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")));
-  const mergedNews = diversifyNews(chronologicalNews, deep ? (sport === "foot" ? 460 : sport === "darts" ? 400 : sport === "esports" ? 420 : 360) : (sport === "foot" ? 210 : sport === "darts" ? 210 : 170));
+  const mergedNews = diversifyNews(chronologicalNews, deep ? (sport === "foot" ? 460 : sport === "darts" ? 560 : sport === "esports" ? 420 : 360) : (sport === "foot" ? 210 : sport === "darts" ? 210 : 170));
   const news = deep ? await enrichNewsImages(mergedNews) : mergedNews;
   const intelligenceEvents = news.map((row) => newsToEvent(row, sport)).filter(Boolean) as NormalEvent[];
   const intelligenceResults = news.map((row) => intelligenceNewsToStructuredResult(row, sport)).filter(Boolean) as NormalResult[];
@@ -3099,7 +3485,7 @@ async function enrichWithLiveIntelligence(
     ...base.payload,
     configured: !!base.payload?.configured || news.length > 0 || direct.results.length > 0,
     automaticData: !!base.payload?.automaticData || news.length > 0 || direct.results.length > 0,
-    results: applyCompetitionMeta(sport, sport === "darts" ? diversifyDartsResults([...direct.results, ...intelligenceResults, ...(arr(base.payload?.results) as NormalResult[])], deep ? 640 : 180) : uniqNormalResults([...direct.results, ...intelligenceResults, ...(arr(base.payload?.results) as NormalResult[])]).slice(0, deep ? (sport === "foot" ? 980 : sport === "esports" ? 760 : 680) : (sport === "foot" ? 340 : 220))),
+    results: applyCompetitionMeta(sport, sport === "darts" ? diversifyDartsResults([...direct.results, ...intelligenceResults, ...(arr(base.payload?.results) as NormalResult[])], deep ? 1000 : 220) : uniqNormalResults([...direct.results, ...intelligenceResults, ...(arr(base.payload?.results) as NormalResult[])]).slice(0, deep ? (sport === "foot" ? 980 : sport === "esports" ? 760 : 680) : (sport === "foot" ? 340 : 220))),
     fixtures: applyCompetitionMeta(sport, [...direct.fixtures, ...(arr(base.payload?.fixtures) as NormalMatch[])].slice(0, deep ? (sport === "foot" ? 320 : sport === "esports" ? 240 : 220) : (sport === "foot" ? 160 : 110))),
     live: applyCompetitionMeta(sport, arr(base.payload?.live) as NormalMatch[]),
     events: mergedEvents,
@@ -3213,7 +3599,28 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const requestUrl = new URL(context.request.url);
   const lang = str(requestUrl.searchParams.get("lang") || "fr").toLowerCase();
   const phase = str(requestUrl.searchParams.get("phase") || "full").toLowerCase();
+  if (action === "logo") {
+    const external = safeExternalImageUrl(str(requestUrl.searchParams.get("url") || ""));
+    if (!external) return json({ error: "invalid_logo_url" }, 400, 60);
+    try {
+      const upstream = await timedFetch(external, { headers: { Accept: "image/avif,image/webp,image/png,image/svg+xml,image/jpeg,image/*;q=0.8", "User-Agent": "MULTISPORTS-SCORING-LIVE/1.0" } }, 5000);
+      if (!upstream.ok) return json({ error: "logo_fetch_failed", status: upstream.status }, 502, 300);
+      const type = upstream.headers.get("content-type") || "";
+      if (!type.toLowerCase().startsWith("image/")) return json({ error: "not_an_image" }, 415, 300);
+      const body = await upstream.arrayBuffer();
+      if (body.byteLength > 5_000_000) return json({ error: "logo_too_large" }, 413, 300);
+      return new Response(body, { status: 200, headers: { "content-type": type, "cache-control": "public, max-age=86400, s-maxage=604800, stale-while-revalidate=2592000", "access-control-allow-origin": "*" } });
+    } catch { return json({ error: "logo_fetch_failed" }, 502, 300); }
+  }
   if (action !== "overview") return json({ error: "not_found", message: "Unknown LIVE SPORTS endpoint." }, 404, 60);
+
+  if (phase === "archive") {
+    return cachedResponse(context, async () => archiveOverview(context.env, sport, lang));
+  }
+
+  if (phase === "calendar") {
+    return cachedResponse(context, async () => calendarOverview(context.env, sport, lang));
+  }
 
   if (phase === "fast") {
     return cachedResponse(context, async () => fastOverview(context.env, sport, lang));

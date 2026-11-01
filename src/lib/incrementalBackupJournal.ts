@@ -274,31 +274,72 @@ export async function shouldCreateIncrementalCheckpoint(now = Date.now()): Promi
 
 export async function markIncrementalCheckpoint(metadata: Record<string, any> = {}): Promise<void> {
   if (typeof indexedDB === "undefined") return;
-  // Count before compaction so diagnostics can prove that the journal was
-  // actually compacted after a durable full checkpoint.
+  // W6: a full snapshot represents the account only up to the instant at which
+  // its payload was completely assembled. Changes committed while that snapshot
+  // is uploading MUST stay in the journal. The old clear() could erase those
+  // post-snapshot mutations and create a silent restore gap.
+  const requestedCutoff = Number(metadata?.throughUpdatedAt || 0);
+  const throughUpdatedAt = Number.isFinite(requestedCutoff) && requestedCutoff > 0
+    ? requestedCutoff
+    : Date.now();
   const before = await listIncrementalChanges().catch(() => [] as IncrementalChange[]);
+  const compactable = before.filter((change) => Number(change?.updatedAt || 0) <= throughUpdatedAt);
+  const retained = before.length - compactable.length;
   const previous = await getIncrementalBackupStats().catch(() => null);
   const db = await openDb();
   try {
     const tx = db.transaction([STORE_CHANGES, STORE_META], "readwrite");
-    tx.objectStore(STORE_CHANGES).clear();
-    tx.objectStore(STORE_META).put({
+    const changesStore = tx.objectStore(STORE_CHANGES);
+    const metaStore = tx.objectStore(STORE_META);
+
+    // Delete only rows that are known to be represented by the durable snapshot.
+    // A newer revision of the same logical entity has a newer updatedAt and is kept.
+    const cursorReq = changesStore.openCursor();
+    cursorReq.onsuccess = () => {
+      const cursor = cursorReq.result;
+      if (!cursor) return;
+      const row = cursor.value as IncrementalChange;
+      if (Number(row?.updatedAt || 0) <= throughUpdatedAt) cursor.delete();
+      cursor.continue();
+    };
+
+    // Sync markers are merely delivery caches. Resetting them after a checkpoint
+    // guarantees that every retained post-checkpoint delta is eligible for resend
+    // to whichever provider becomes active next, and prevents unbounded meta growth.
+    const metaCursorReq = metaStore.openCursor();
+    metaCursorReq.onsuccess = () => {
+      const cursor = metaCursorReq.result;
+      if (!cursor) return;
+      const key = String(cursor.key || "");
+      if (key.startsWith(SYNC_META_PREFIX)) cursor.delete();
+      cursor.continue();
+    };
+
+    metaStore.put({
       key: LAST_CHECKPOINT_KEY,
       value: {
         at: Date.now(),
-        compactedChanges: before.length,
+        throughUpdatedAt,
+        compactedChanges: compactable.length,
+        retainedChanges: retained,
         checkpointCount: Math.max(0, Number(previous?.checkpointCount || 0)) + 1,
         ...metadata,
       },
     });
-    await new Promise<void>((resolve) => {
+    await new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
-      tx.onerror = () => resolve();
-      tx.onabort = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error("Incremental checkpoint transaction failed"));
+      tx.onabort = () => reject(tx.error || new Error("Incremental checkpoint transaction aborted"));
     });
     try {
       window.dispatchEvent(new CustomEvent("msc:incremental-checkpoint", {
-        detail: { compactedChanges: before.length, provider: metadata?.provider || null, reason: metadata?.reason || null },
+        detail: {
+          compactedChanges: compactable.length,
+          retainedChanges: retained,
+          throughUpdatedAt,
+          provider: metadata?.provider || null,
+          reason: metadata?.reason || null,
+        },
       }));
     } catch {}
   } finally { db.close(); }

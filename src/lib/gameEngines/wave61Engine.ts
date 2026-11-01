@@ -634,9 +634,18 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
       laSuiteBestVisitByPlayer: modeId === "la_suite" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       laSuiteLongestStreakByPlayer: modeId === "la_suite" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       laSuiteCurrentStreakByPlayer: modeId === "la_suite" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
-      colorCallSequence: modeId === "color_call" ? Array.from({ length: Math.max(80, config.rounds * Math.max(1, ids.length)) }, (_, i) => COLOR_CALL_COLORS[(hashText(seedText) + i * 3) % 4]) : [],
+      laSuiteBonusByPlayer: modeId === "la_suite" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      laSuitePenaltyByPlayer: modeId === "la_suite" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      colorCallSequence: modeId === "color_call" ? Array.from({ length: Math.max(80, config.rounds * Math.max(1, ids.length)) }, (_, i) => {
+        const order = String(config?.modeOptions?.callOrder || "cycle");
+        if (order === "cycle") return COLOR_CALL_COLORS[i % 4];
+        return COLOR_CALL_COLORS[(hashText(`${seedText}:color-call:${i}`) + i * 5) % 4];
+      }) : [],
       colorCallHitsByPlayer: modeId === "color_call" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       colorCallDartsByPlayer: modeId === "color_call" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      colorCallWrongColorByPlayer: modeId === "color_call" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      colorCallMissesByPlayer: modeId === "color_call" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      colorCallPenaltyByPlayer: modeId === "color_call" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       colorCallPerfectVisitsByPlayer: modeId === "color_call" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       colorCallBestVisitByPlayer: modeId === "color_call" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       colorCallHitsByColorByPlayer: modeId === "color_call" ? Object.fromEntries(ids.map((id) => [id, { BLACK:0, WHITE:0, GREEN:0, RED:0 }])) : {},
@@ -1672,32 +1681,67 @@ function processThreeColors(state: Wave61State, playerId:string, darts:GameDart[
   return {delta,hits};
 }
 function processLaSuite(state: Wave61State, playerId:string, darts:GameDart[], events:string[]): {delta:number;hits:number}{
-  const nums=darts.map(d=>Number(d?.number||0)); const validNums=darts.length===3 && darts.every(d=>d && !["MISS","OB","IB"].includes(String(d.bed))) && nums.every(n=>n>=1&&n<=20);
+  const nums=darts.map(d=>Number(d?.number||0));
+  const dtMode=String(state.config?.modeOptions?.doublesTriples||"allowed");
+  const containsForbiddenDt = dtMode === "forbidden" && darts.some((d)=>d?.bed === "D" || d?.bed === "T");
+  const validNums=darts.length===3 && !containsForbiddenDt && darts.every(d=>d && !["MISS","OB","IB"].includes(String(d.bed))) && nums.every(n=>n>=1&&n<=20);
   const strict=String(state.config?.modeOptions?.sequenceOrder||"any")==="ascending";
-  const sorted=[...nums].sort((a,b)=>a-b); const consecutive=validNums && sorted[1]===sorted[0]+1 && sorted[2]===sorted[1]+1 && new Set(nums).size===3;
+  const sorted=[...nums].sort((a,b)=>a-b);
+  const consecutive=validNums && sorted[1]===sorted[0]+1 && sorted[2]===sorted[1]+1 && new Set(nums).size===3;
   const valid=consecutive && (!strict || (nums[1]===nums[0]+1 && nums[2]===nums[1]+1));
-  const real=String(state.config?.modeOptions?.sequenceScoring||"real")==="real";
-  const delta=valid?(real?darts.reduce((s,d)=>s+wave61DartScore(d),0):nums.reduce((s,n)=>s+n,0)):0;
-  state.scores[playerId]=Number(state.scores[playerId]||0)+delta; state.progress[playerId]=state.scores[playerId];
-  state.special.laSuiteValidVisitsByPlayer=state.special.laSuiteValidVisitsByPlayer||{}; state.special.laSuiteInvalidVisitsByPlayer=state.special.laSuiteInvalidVisitsByPlayer||{}; state.special.laSuiteBestVisitByPlayer=state.special.laSuiteBestVisitByPlayer||{}; state.special.laSuiteLongestStreakByPlayer=state.special.laSuiteLongestStreakByPlayer||{}; state.special.laSuiteCurrentStreakByPlayer=state.special.laSuiteCurrentStreakByPlayer||{};
+  const scoreMode=String(state.config?.modeOptions?.sequenceScoring||"real");
+  const perfectBonus=modeOptionNumber(state.config,"perfectVisitBonus",0,0,100);
+  const invalidPenalty=modeOptionNumber(state.config,"invalidVisitPenalty",0,0,100);
+  let baseScore=0;
+  if(valid){
+    if(scoreMode === "sector" || dtMode === "sector_only") baseScore=nums.reduce((sum,n)=>sum+n,0);
+    else baseScore=darts.reduce((sum,d)=>sum+wave61DartScore(d),0);
+  }
+  const bonus=valid?perfectBonus:0;
+  const penalty=valid?0:invalidPenalty;
+  const delta=valid?baseScore+bonus:-penalty;
+  state.scores[playerId]=Math.max(0,Number(state.scores[playerId]||0)+delta); state.progress[playerId]=state.scores[playerId];
+  state.special.laSuiteValidVisitsByPlayer=state.special.laSuiteValidVisitsByPlayer||{}; state.special.laSuiteInvalidVisitsByPlayer=state.special.laSuiteInvalidVisitsByPlayer||{}; state.special.laSuiteBestVisitByPlayer=state.special.laSuiteBestVisitByPlayer||{}; state.special.laSuiteLongestStreakByPlayer=state.special.laSuiteLongestStreakByPlayer||{}; state.special.laSuiteCurrentStreakByPlayer=state.special.laSuiteCurrentStreakByPlayer||{}; state.special.laSuiteBonusByPlayer=state.special.laSuiteBonusByPlayer||{}; state.special.laSuitePenaltyByPlayer=state.special.laSuitePenaltyByPlayer||{};
   if(valid){ state.special.laSuiteValidVisitsByPlayer[playerId]=Number(state.special.laSuiteValidVisitsByPlayer[playerId]||0)+1; state.special.laSuiteCurrentStreakByPlayer[playerId]=Number(state.special.laSuiteCurrentStreakByPlayer[playerId]||0)+1; }
   else { state.special.laSuiteInvalidVisitsByPlayer[playerId]=Number(state.special.laSuiteInvalidVisitsByPlayer[playerId]||0)+1; state.special.laSuiteCurrentStreakByPlayer[playerId]=0; }
   state.special.laSuiteLongestStreakByPlayer[playerId]=Math.max(Number(state.special.laSuiteLongestStreakByPlayer[playerId]||0),Number(state.special.laSuiteCurrentStreakByPlayer[playerId]||0));
-  state.special.laSuiteBestVisitByPlayer[playerId]=Math.max(Number(state.special.laSuiteBestVisitByPlayer[playerId]||0),delta);
-  events.push(valid?`🔢 Suite ${nums.join("-")} · +${delta}`:`🔢 ${nums.join("-")} · pas de suite · 0`);
-  state.special.colorModeHistory=[...(state.special.colorModeHistory||[]),{playerId,mode:"la_suite",numbers:nums,valid,delta,score:state.scores[playerId]}].slice(-120);
+  state.special.laSuiteBestVisitByPlayer[playerId]=Math.max(Number(state.special.laSuiteBestVisitByPlayer[playerId]||0),valid?baseScore+bonus:0);
+  state.special.laSuiteBonusByPlayer[playerId]=Number(state.special.laSuiteBonusByPlayer[playerId]||0)+bonus;
+  state.special.laSuitePenaltyByPlayer[playerId]=Number(state.special.laSuitePenaltyByPlayer[playerId]||0)+penalty;
+  events.push(valid?`🔢 Suite ${nums.join("-")} · +${baseScore}${bonus?` + bonus ${bonus}`:""}`:`🔢 ${nums.join("-")} · ${containsForbiddenDt?"D/T interdit · ":"pas de suite · "}${penalty?`-${penalty}`:"0"}`);
+  state.special.colorModeHistory=[...(state.special.colorModeHistory||[]),{playerId,mode:"la_suite",numbers:nums,valid,baseScore,bonus,penalty,delta,score:state.scores[playerId]}].slice(-120);
   return {delta,hits:valid?3:0};
 }
 function processColorCall(state: Wave61State, playerId:string, darts:GameDart[], events:string[]): {delta:number;hits:number}{
-  const seq=state.special?.colorCallSequence||COLOR_CALL_COLORS; const target=String(seq[state.turnIndex%Math.max(1,seq.length)]||"BLACK");
-  let delta=0,hits=0; for(const d of darts){ if(wave61BoardColor(d)===target){delta+=wave61DartScore(d);hits++;} }
-  if(hits===3) delta+=modeOptionNumber(state.config,"perfectBonus",10,0,100);
-  state.scores[playerId]=Number(state.scores[playerId]||0)+delta; state.progress[playerId]=state.scores[playerId];
-  state.special.colorCallHitsByPlayer=state.special.colorCallHitsByPlayer||{}; state.special.colorCallDartsByPlayer=state.special.colorCallDartsByPlayer||{}; state.special.colorCallPerfectVisitsByPlayer=state.special.colorCallPerfectVisitsByPlayer||{}; state.special.colorCallBestVisitByPlayer=state.special.colorCallBestVisitByPlayer||{}; state.special.colorCallHitsByColorByPlayer=state.special.colorCallHitsByColorByPlayer||{};
-  state.special.colorCallHitsByPlayer[playerId]=Number(state.special.colorCallHitsByPlayer[playerId]||0)+hits; state.special.colorCallDartsByPlayer[playerId]=Number(state.special.colorCallDartsByPlayer[playerId]||0)+darts.length; if(hits===3) state.special.colorCallPerfectVisitsByPlayer[playerId]=Number(state.special.colorCallPerfectVisitsByPlayer[playerId]||0)+1; state.special.colorCallBestVisitByPlayer[playerId]=Math.max(Number(state.special.colorCallBestVisitByPlayer[playerId]||0),delta);
+  const seq=state.special?.colorCallSequence||COLOR_CALL_COLORS;
+  const target=String(seq[state.turnIndex%Math.max(1,seq.length)]||"BLACK") as BoardColor;
+  const scoreMode=String(state.config?.modeOptions?.scoreMode||"real");
+  const wrongPenalty=modeOptionNumber(state.config,"wrongColorPenalty",0,0,50);
+  const missPenalty=modeOptionNumber(state.config,"missPenalty",0,0,50);
+  const perfectBonus=modeOptionNumber(state.config,"perfectBonus",10,0,100);
+  let delta=0,hits=0,wrong=0,misses=0,penalties=0;
+  const dartResults:any[]=[];
+  for(const d of darts){
+    if(!d || d.bed === "MISS"){
+      misses += 1; delta -= missPenalty; penalties += missPenalty; dartResults.push({result:"miss",points:-missPenalty});
+      continue;
+    }
+    const color=wave61BoardColor(d);
+    if(color===target){
+      hits += 1;
+      let pts=scoreMode === "hit" ? 1 : scoreMode === "base" ? (d.bed === "OB" ? 25 : d.bed === "IB" ? 50 : Number(d.number||0)) : wave61DartScore(d);
+      delta += pts; dartResults.push({result:"hit",color,points:pts});
+    } else {
+      wrong += 1; delta -= wrongPenalty; penalties += wrongPenalty; dartResults.push({result:"wrong",color,points:-wrongPenalty});
+    }
+  }
+  const bonus=hits===3?perfectBonus:0; delta += bonus;
+  state.scores[playerId]=Math.max(0,Number(state.scores[playerId]||0)+delta); state.progress[playerId]=state.scores[playerId];
+  state.special.colorCallHitsByPlayer=state.special.colorCallHitsByPlayer||{}; state.special.colorCallDartsByPlayer=state.special.colorCallDartsByPlayer||{}; state.special.colorCallWrongColorByPlayer=state.special.colorCallWrongColorByPlayer||{}; state.special.colorCallMissesByPlayer=state.special.colorCallMissesByPlayer||{}; state.special.colorCallPenaltyByPlayer=state.special.colorCallPenaltyByPlayer||{}; state.special.colorCallPerfectVisitsByPlayer=state.special.colorCallPerfectVisitsByPlayer||{}; state.special.colorCallBestVisitByPlayer=state.special.colorCallBestVisitByPlayer||{}; state.special.colorCallHitsByColorByPlayer=state.special.colorCallHitsByColorByPlayer||{};
+  state.special.colorCallHitsByPlayer[playerId]=Number(state.special.colorCallHitsByPlayer[playerId]||0)+hits; state.special.colorCallDartsByPlayer[playerId]=Number(state.special.colorCallDartsByPlayer[playerId]||0)+darts.length; state.special.colorCallWrongColorByPlayer[playerId]=Number(state.special.colorCallWrongColorByPlayer[playerId]||0)+wrong; state.special.colorCallMissesByPlayer[playerId]=Number(state.special.colorCallMissesByPlayer[playerId]||0)+misses; state.special.colorCallPenaltyByPlayer[playerId]=Number(state.special.colorCallPenaltyByPlayer[playerId]||0)+penalties; if(hits===3) state.special.colorCallPerfectVisitsByPlayer[playerId]=Number(state.special.colorCallPerfectVisitsByPlayer[playerId]||0)+1; state.special.colorCallBestVisitByPlayer[playerId]=Math.max(Number(state.special.colorCallBestVisitByPlayer[playerId]||0),Math.max(0,delta));
   const byColor={BLACK:0,WHITE:0,GREEN:0,RED:0,...(state.special.colorCallHitsByColorByPlayer[playerId]||{})}; byColor[target]=Number(byColor[target]||0)+hits; state.special.colorCallHitsByColorByPlayer[playerId]=byColor;
-  events.push(`🎨 ${target} · ${hits}/3 touche(s) · +${delta}`);
-  state.special.colorModeHistory=[...(state.special.colorModeHistory||[]),{playerId,mode:"color_call",target,hits,delta,score:state.scores[playerId]}].slice(-120);
+  events.push(`🎨 ${target} · ${hits}/3 touche(s) · ${delta>=0?"+":""}${delta}${bonus?` · parfait +${bonus}`:""}${penalties?` · pénalités ${penalties}`:""}`);
+  state.special.colorModeHistory=[...(state.special.colorModeHistory||[]),{playerId,mode:"color_call",target,hits,wrong,misses,penalties,bonus,delta,score:state.scores[playerId],dartResults}].slice(-120);
   return {delta,hits};
 }
 
@@ -4526,11 +4570,35 @@ export function pickWave61BotDarts(state: Wave61State, level: Wave61Difficulty =
     return colors.map((c)=>Math.random()<chance?dartForColor(c):({bed:Math.random()<0.7?"MISS":"S",number:1 + Math.floor(Math.random()*20)} as GameDart));
   }
   if (state.modeId === "la_suite") {
-    const start=1+Math.floor(Math.random()*18); return [0,1,2].map((i)=>Math.random()<chance?({bed:level==="hard"?"D":"S",number:start+i} as GameDart):({bed:"MISS"} as GameDart));
+    const strict=String(state.config?.modeOptions?.sequenceOrder||"any")==="ascending";
+    const dtMode=String(state.config?.modeOptions?.doublesTriples||"allowed");
+    // Hard bots bias toward high-value valid suites, lower levels spread the starts.
+    const start = level === "hard" ? 18 : level === "normal" ? 12 + Math.floor(Math.random()*7) : 1 + Math.floor(Math.random()*18);
+    const ordered=[start,start+1,start+2];
+    if(!strict && Math.random()<0.45) [ordered[0],ordered[1]]=[ordered[1],ordered[0]];
+    return ordered.map((n)=>{
+      if(Math.random()>=chance) return Math.random()<0.65?({bed:"MISS"} as GameDart):({bed:"S",number:Math.max(1,Math.min(20,n+(Math.random()<.5?-2:2)))} as GameDart);
+      if(dtMode === "forbidden" || level === "easy") return {bed:"S",number:n} as GameDart;
+      const bed = level === "hard" ? (Math.random()<0.62?"T":"D") : (Math.random()<0.22?"D":"S");
+      return {bed,number:n} as GameDart;
+    });
   }
   if (state.modeId === "color_call") {
     const seq=state.special?.colorCallSequence||COLOR_CALL_COLORS; const c=String(seq[state.turnIndex%Math.max(1,seq.length)]||"BLACK");
-    return Array.from({length:3},()=>{ if(Math.random()>=chance)return {bed:"MISS"} as GameDart; if(c==="BLACK")return {bed:"S",number:20} as GameDart; if(c==="WHITE")return {bed:"S",number:1} as GameDart; if(c==="GREEN")return {bed:"D",number:1} as GameDart; return {bed:"D",number:20} as GameDart; });
+    const scoreMode=String(state.config?.modeOptions?.scoreMode||"real");
+    const pick=(arr:readonly number[])=>Number(arr[Math.floor(Math.random()*arr.length)]||arr[0]||20);
+    const bestForColor=():GameDart=>{
+      if(c==="BLACK") return {bed:"S",number:level==="hard"?20:pick(BLACK_SINGLES)} as GameDart;
+      if(c==="WHITE") return {bed:"S",number:level==="hard"?19:pick(WHITE_SINGLES)} as GameDart;
+      if(c==="GREEN") { if(level==="hard" && scoreMode!=="hit" && Math.random()<0.18) return {bed:"OB"} as GameDart; const n=level==="hard"?19:pick(GREEN_RING); return {bed:level==="easy"?"D":(Math.random()<0.58?"T":"D"),number:n} as GameDart; }
+      if(level==="hard" && scoreMode!=="hit" && Math.random()<0.14) return {bed:"IB"} as GameDart; const n=level==="hard"?20:pick(RED_RING); return {bed:level==="easy"?"D":(Math.random()<0.58?"T":"D"),number:n} as GameDart;
+    };
+    return Array.from({length:3},()=>{
+      if(Math.random()<chance) return bestForColor();
+      if(Math.random()<0.55) return {bed:"MISS"} as GameDart;
+      const wrong=COLOR_CALL_COLORS.filter((x)=>x!==c)[Math.floor(Math.random()*3)];
+      if(wrong==="BLACK") return {bed:"S",number:pick(BLACK_SINGLES)} as GameDart; if(wrong==="WHITE") return {bed:"S",number:pick(WHITE_SINGLES)} as GameDart; if(wrong==="GREEN") return {bed:"D",number:pick(GREEN_RING)} as GameDart; return {bed:"D",number:pick(RED_RING)} as GameDart;
+    });
   }
   if (state.modeId === "sniper" && target) {
     return Array.from({ length: 3 }, () => {

@@ -3,9 +3,9 @@ import type { SportLiveOverview, SportLiveSportId } from "./types";
 
 const CACHE_PREFIX = "msc_sport_live_cache_v11:";
 const LEGACY_CACHE_PREFIXES = ["msc_sport_live_cache_v10:", "msc_sport_live_cache_v8:"];
-const CACHE_RESULT_LIMIT = 900;
-const CACHE_FIXTURE_LIMIT = 420;
-const CACHE_EVENT_LIMIT = 420;
+const CACHE_RESULT_LIMIT = 1400;
+const CACHE_FIXTURE_LIMIT = 720;
+const CACHE_EVENT_LIMIT = 900;
 const CACHE_NEWS_LIMIT = 520;
 
 function isSupportedSport(value: SportId): boolean {
@@ -173,7 +173,7 @@ function uniqWarnings(next: string[] | undefined, previous: string[] | undefined
  * to provide a deeper daily-sports history even when a provider only returns its
  * latest page. LIVE rows remain authoritative and are never accumulated.
  */
-export function mergeSportLiveOverview(previous: SportLiveOverview | null | undefined, incoming: SportLiveOverview, phase: "fast" | "full" | "deep" = "full"): SportLiveOverview {
+export function mergeSportLiveOverview(previous: SportLiveOverview | null | undefined, incoming: SportLiveOverview, phase: "fast" | "full" | "deep" | "archive" | "calendar" = "full"): SportLiveOverview {
   if (!previous || previous.sport !== incoming.sport) return incoming;
   return {
     ...previous,
@@ -209,7 +209,7 @@ function cacheSafeOverview(data: SportLiveOverview): SportLiveOverview {
   };
 }
 
-function writeCache(sport: SportId, lang: string | undefined, incoming: SportLiveOverview, phase: "fast" | "full" | "deep") {
+function writeCache(sport: SportId, lang: string | undefined, incoming: SportLiveOverview, phase: "fast" | "full" | "deep" | "archive" | "calendar") {
   const previous = readCacheEnvelope(sport, lang)?.data || null;
   const data = mergeSportLiveOverview(previous, incoming, phase);
   try {
@@ -227,7 +227,7 @@ export function getCachedSportLiveOverviewSavedAt(sport: SportId, lang?: string)
   return Number.isFinite(value) && value > 0 ? value : null;
 }
 
-export type SportLiveFetchPhase = "fast" | "full" | "deep";
+export type SportLiveFetchPhase = "fast" | "full" | "deep" | "archive" | "calendar";
 
 export async function fetchSportLiveOverview(sport: SportId, signal?: AbortSignal, lang?: string, phase: SportLiveFetchPhase = "full"): Promise<SportLiveOverview> {
   if (!isSupportedSport(sport)) return emptyOverview(sport);

@@ -178,7 +178,8 @@
     "test:superbull": "node ./tools/test-superbull-final-integration.mjs",
     "test:backup-auth-contract": "node ./tools/test-backup-auth-contract-v169.mjs",
     "test:data-integrity-release-gate": "node ./tools/test-data-integrity-release-gate-v235.mjs",
-    "test:backup-pipeline-cleanup": "node ./tools/test-backup-pipeline-cleanup-v235.mjs"
+    "test:backup-pipeline-cleanup": "node ./tools/test-backup-pipeline-cleanup-v235.mjs",
+    "test:backup-checkpoint-compaction": "node ./tools/test-backup-checkpoint-compaction-v241.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",

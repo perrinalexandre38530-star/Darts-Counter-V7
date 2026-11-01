@@ -8846,6 +8846,25 @@ app.get("/account/incremental-changes", authRequired, async (req, res) => {
   } catch (e) { sendDatabaseAwareError(res, e, "Lecture incrémentale impossible"); }
 });
 
+// W6 — compaction transactionnelle du journal NAS après un snapshot complet.
+// Le cutoff évite de supprimer une modification arrivée pendant l'upload du
+// checkpoint : seules les lignes réellement couvertes par ce snapshot partent.
+app.delete("/account/incremental-changes", authRequired, async (req, res) => {
+  try {
+    const raw = Number(req.query.throughUpdatedAt || 0);
+    const throughUpdatedAt = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
+    if (!throughUpdatedAt) {
+      return res.status(400).json({ ok: false, error: "throughUpdatedAt requis pour compacter le journal incrémental" });
+    }
+    const removed = await pool.query(`
+      DELETE FROM account_incremental_changes
+      WHERE user_id = $1 AND updated_at_ms <= $2
+      RETURNING entity_key
+    `, [req.user.id, throughUpdatedAt]);
+    res.json({ ok: true, compacted: removed.rowCount || 0, throughUpdatedAt });
+  } catch (e) { sendDatabaseAwareError(res, e, "Compaction incrémentale impossible"); }
+});
+
 async function personalCloudUploadIncremental(provider, token, buffer) {
   const fileName = PERSONAL_CLOUD_INCREMENTAL_FILE;
   if (provider === "google_drive") {

@@ -5,6 +5,19 @@ export const WAVE61_MODE_ID = "three_colors" as const;
 
 const DEDICATED_OPTIONS: Wave61DedicatedOption[] = [
   {
+    key: "seriesFormat",
+    label: "Scoreboard / manches",
+    type: "select",
+    defaultValue: "single",
+    options: [
+      { value: "single", label: "1 MANCHE · sans scoreboard" },
+      { value: "bo3", label: "BO 3" }, { value: "bo5", label: "BO 5" }, { value: "bo7", label: "BO 7" },
+      { value: "ft3", label: "FT 3" }, { value: "ft5", label: "FT 5" }, { value: "ft7", label: "FT 7" },
+      { value: "ft9", label: "FT 9" }, { value: "ft11", label: "FT 11" },
+    ],
+    help: "Même logique que GREEN VS RED : chaque manche repart à 0, le scoreboard conserve les manches gagnées jusqu'au BO/FT choisi.",
+  },
+  {
     key: "scoreMode",
     label: "Score d'une volée réussie",
     type: "select",
