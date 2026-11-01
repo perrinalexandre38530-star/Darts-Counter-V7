@@ -337,7 +337,7 @@ const BW_WHITE_PATH = [1, 4, 6, 15, 17, 19, 16, 11, 9, 5] as const;
 const BW_BLACK = "#7b8493";
 const BW_WHITE = "#f2f5fb";
 function isColorDuelMode(id:any){ return id === "green_vs_red" || id === "black_vs_white"; }
-function isFinishedColorVariant(id:any){ return isColorDuelMode(id) || id === "three_colors" || id === "la_suite" || id === "color_call"; }
+function isFinishedColorVariant(id:any){ return isColorDuelMode(id) || id === "three_colors" || id === "la_suite" || id === "color_call" || id === "bim_bam_boum" || id === "saute_moutons" || id === "troupeau_en_danger"; }
 const THREE_COLORS_TONES:Record<string,string>={BLACK:"#7b8493",WHITE:"#f2f5fb",GREEN:GVR_GREEN,RED:GVR_RED};
 function blackWhiteToneFor(state:any,id:any){ return String(state?.special?.blackWhiteColorByPlayer?.[String(id)]||"BLACK") === "WHITE" ? BW_WHITE : BW_BLACK; }
 const GVR_DARTBOARD_ORDER = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5] as const;
@@ -723,13 +723,16 @@ function Wave61VisitRecap({ recap, accent, onClose, durationMs = 3000 }: any) {
   const three = recap.threeColorsResult || null;
   const suite = recap.laSuiteResult || null;
   const call = recap.colorCallResult || null;
+  const bbb = recap.bimBamBoumResult || null;
+  const sheepRace = recap.sauteMoutonsResult || null;
+  const flock = recap.troupeauResult || null;
   const scoreMode = String(gvr?.scoreModel || "");
-  const scoringLabel = three ? (three.valid ? `3 COULEURS VALIDÉES · ${Number(three.baseScore||0)} pts${Number(three.bonus||0)?` + bonus ${Number(three.bonus||0)}`:""}` : `VOLÉE INCOMPLÈTE${Number(three.penalty||0)?` · -${Number(three.penalty||0)}`:" · 0"}`) : suite ? (suite.valid ? `SUITE VALIDÉE · ${(suite.numbers||[]).join(" - ")} · +${Number(suite.delta||0)}` : `PAS DE SUITE · ${(suite.numbers||[]).join(" - ")} · 0`) : call ? `COULEUR ${call.target} · ${Number(call.hits||0)}/3 · +${Number(call.delta||0)}` : scoreMode === "hit_count" ? "1 touche valide = 1 pt" : scoreMode === "board_value" ? "Valeur réelle cible" : "";
-  const resultByIndex = Array.isArray(gvr?.dartResults) ? gvr.dartResults : three ? (three.colors||[]).map((color:any)=>({result:color?"valid":"penalty",points:0,color})) : suite ? (recap.darts||[]).map((_:any)=>({result:suite.valid?"valid":"penalty"})) : call ? (recap.darts||[]).map((d:any)=>({result:threeColorFromUiDart({v:d?.number??(d?.bed==="OB"||d?.bed==="IB"?25:0),mult:d?.bed==="T"?3:d?.bed==="D"||d?.bed==="IB"?2:1})===call.target?"valid":"penalty",color:threeColorFromUiDart({v:d?.number??(d?.bed==="OB"||d?.bed==="IB"?25:0),mult:d?.bed==="T"?3:d?.bed==="D"||d?.bed==="IB"?2:1})})) : [];
+  const scoringLabel = bbb ? (bbb.valid ? `${bbb.superBoom ? "SUPER BOUM" : "COMBO VALIDÉ"} · +${Number(bbb.delta||0)} pts${Number(bbb.bonus||0)?` · BONUS +${Number(bbb.bonus||0)}`:""}` : `COMBO CASSÉ${Number(bbb.delta||0)<0?` · ${Number(bbb.delta||0)} pts`:" · 0"}`) : sheepRace ? `BOND +${Number(sheepRace.distance||0)} · CASE ${Number(sheepRace.from||0)} → ${Number(sheepRace.to||0)} / ${Number(sheepRace.trackLength||0)}` : flock ? (flock.repelled ? `VAGUE REPOUSSÉE · DÉFENSE ${Number(flock.defense||0)} / ${Number(flock.pressure||0)}` : `MEUTE ENTRÉE · ${Number(flock.lost||0)} MOUTON${Number(flock.lost||0)>1?"S":""} PERDU${Number(flock.lost||0)>1?"S":""}`) : three ? (three.valid ? `3 COULEURS VALIDÉES · ${Number(three.baseScore||0)} pts${Number(three.bonus||0)?` + bonus ${Number(three.bonus||0)}`:""}` : `VOLÉE INCOMPLÈTE${Number(three.penalty||0)?` · -${Number(three.penalty||0)}`:" · 0"}`) : suite ? (suite.valid ? `SUITE VALIDÉE · ${(suite.numbers||[]).join(" - ")} · +${Number(suite.delta||0)}` : `PAS DE SUITE · ${(suite.numbers||[]).join(" - ")} · 0`) : call ? `COULEUR ${call.target} · ${Number(call.hits||0)}/3 · +${Number(call.delta||0)}` : scoreMode === "hit_count" ? "1 touche valide = 1 pt" : scoreMode === "board_value" ? "Valeur réelle cible" : "";
+  const resultByIndex = Array.isArray(gvr?.dartResults) ? gvr.dartResults : bbb ? (recap.darts||[]).map((_:any,i:number)=>({result:bbb.valid?"valid":"penalty",phase:["BIM","BAM","BOUM"][i],points:Number(bbb.scores?.[i]||0)})) : three ? (three.colors||[]).map((color:any)=>({result:color?"valid":"penalty",points:0,color})) : suite ? (recap.darts||[]).map((_:any)=>({result:suite.valid?"valid":"penalty"})) : call ? (recap.darts||[]).map((d:any)=>({result:threeColorFromUiDart({v:d?.number??(d?.bed==="OB"||d?.bed==="IB"?25:0),mult:d?.bed==="T"?3:d?.bed==="D"||d?.bed==="IB"?2:1})===call.target?"valid":"penalty",color:threeColorFromUiDart({v:d?.number??(d?.bed==="OB"||d?.bed==="IB"?25:0),mult:d?.bed==="T"?3:d?.bed==="D"||d?.bed==="IB"?2:1})})) : [];
   const resultTone = (item:any) => three && item?.color ? (THREE_COLORS_TONES[String(item.color) as keyof typeof THREE_COLORS_TONES] || tone) : item?.result === "valid" ? tone : item?.result === "transfer" ? "#58d8ff" : item?.result === "penalty" ? "#ff6574" : item?.result === "duplicate" ? "#f5b522" : "#8c95a6";
   const resultText = (item:any) => {
     if (!item) return "—";
-    if (item.result === "valid") return item.color ? String(item.color) : `VALIDE · +${Number(item.points || 0)}`;
+    if (item.result === "valid") return item.phase ? `${item.phase} · ${Number(item.points||0)} pts` : item.color ? String(item.color) : `VALIDE · +${Number(item.points || 0)}`;
     if (item.result === "penalty") return Number(item.penalty || 0) > 0 ? `PÉNALITÉ · -${Number(item.penalty || 0)}` : "HORS CONTRAT · 0";
     if (item.result === "transfer") return Number(item.transfer || 0) > 0 ? `OFFERT · +${Number(item.transfer || 0)} ADV.` : "HORS CONTRAT · 0";
     if (item.result === "duplicate") return "DÉJÀ COMPTÉ · 0";
@@ -751,9 +754,9 @@ function Wave61VisitRecap({ recap, accent, onClose, durationMs = 3000 }: any) {
       </div>
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:5}}>
-        <div style={{borderRadius:9,padding:"6px 4px",textAlign:"center",background:"rgba(255,255,255,.028)",border:"1px solid rgba(255,255,255,.06)"}}><div style={{color:"#8f98aa",fontSize:6.4,fontWeight:950}}>TOUCHES VALIDES</div><div style={{color:tone,fontSize:11,fontWeight:1150,marginTop:2}}>{Number(recap.hits || 0)}/3</div></div>
-        <div style={{borderRadius:9,padding:"6px 4px",textAlign:"center",background:"rgba(255,255,255,.028)",border:"1px solid rgba(255,255,255,.06)"}}><div style={{color:"#8f98aa",fontSize:6.4,fontWeight:950}}>{gvr?.penaltyModel==="transfer"?"OFFERT À L'ADV.":"PÉNALITÉ"}</div><div style={{color:gvr?.penaltyModel==="transfer"?(recap.transferGivenDelta?"#58d8ff":"#fff"):(recap.penaltyDelta?"#ff6574":"#fff"),fontSize:11,fontWeight:1150,marginTop:2}}>{gvr?.penaltyModel==="transfer"?`+${Number(recap.transferGivenDelta||0)}`:(recap.penaltyDelta?`-${recap.penaltyDelta}`:"0")}</div></div>
-        <div style={{borderRadius:9,padding:"6px 4px",textAlign:"center",background:"rgba(255,255,255,.028)",border:"1px solid rgba(255,255,255,.06)"}}><div style={{color:"#8f98aa",fontSize:6.4,fontWeight:950}}>{(three||suite||call) ? "SCORE" : "ÉTAPE"}</div><div style={{color:"#fff",fontSize:11,fontWeight:1150,marginTop:2}}>{(three||suite||call) ? `${recap.scoreBefore} → ${recap.scoreAfter}` : `${recap.progressBefore} → ${recap.progressAfter}`}</div></div>
+        <div style={{borderRadius:9,padding:"6px 4px",textAlign:"center",background:"rgba(255,255,255,.028)",border:"1px solid rgba(255,255,255,.06)"}}><div style={{color:"#8f98aa",fontSize:6.4,fontWeight:950}}>{bbb?"COMBO":sheepRace?"DISTANCE":flock?"DÉFENSE":"TOUCHES VALIDES"}</div><div style={{color:tone,fontSize:11,fontWeight:1150,marginTop:2}}>{bbb?(bbb.valid?"OK":"KO"):sheepRace?`+${Number(sheepRace.distance||0)}`:flock?Number(flock.defense||0):`${Number(recap.hits || 0)}/3`}</div></div>
+        <div style={{borderRadius:9,padding:"6px 4px",textAlign:"center",background:"rgba(255,255,255,.028)",border:"1px solid rgba(255,255,255,.06)"}}><div style={{color:"#8f98aa",fontSize:6.4,fontWeight:950}}>{bbb?"SÉRIE":sheepRace?"MEILLEUR BOND":flock?"MOUTONS RESTANTS":gvr?.penaltyModel==="transfer"?"OFFERT À L'ADV.":"PÉNALITÉ"}</div><div style={{color:flock&&Number(flock.sheepLeft||0)<=2?"#ff6574":"#fff",fontSize:11,fontWeight:1150,marginTop:2}}>{bbb?Number(bbb.streak||0):sheepRace?Number(sheepRace.bestJump||0):flock?`${Number(flock.sheepLeft||0)}/${Number(flock.maxFlock||0)}`:gvr?.penaltyModel==="transfer"?`+${Number(recap.transferGivenDelta||0)}`:(recap.penaltyDelta?`-${recap.penaltyDelta}`:"0")}</div></div>
+        <div style={{borderRadius:9,padding:"6px 4px",textAlign:"center",background:"rgba(255,255,255,.028)",border:"1px solid rgba(255,255,255,.06)"}}><div style={{color:"#8f98aa",fontSize:6.4,fontWeight:950}}>{bbb?"BONUS":sheepRace?"POSITION":flock?"PRESSION":(three||suite||call) ? "SCORE" : "ÉTAPE"}</div><div style={{color:"#fff",fontSize:11,fontWeight:1150,marginTop:2}}>{bbb?`+${Number(bbb.bonus||0)}`:sheepRace?`${Number(sheepRace.to||0)}/${Number(sheepRace.trackLength||0)}`:flock?Number(flock.pressure||0):(three||suite||call) ? `${recap.scoreBefore} → ${recap.scoreAfter}` : `${recap.progressBefore} → ${recap.progressAfter}`}</div></div>
       </div>
 
       <div style={{color:"#aeb5c8",fontSize:7.5,lineHeight:1.35,textAlign:"center"}}>{gvr?.contractRule==="official_unique"?"Règle officielle · 1 Double et 1 Triple maximum comptés dans la volée":gvr?.contractRule==="unlimited"?"Variante libre · jusqu’à 3 D/T valides dans la volée":""}</div>
@@ -833,6 +836,12 @@ function VariantPerformancePanel({ state, modeId, accent }:any){
     const ok=Number(state?.special?.laSuiteValidVisitsByPlayer?.[id]||0), ko=Number(state?.special?.laSuiteInvalidVisitsByPlayer?.[id]||0), total=ok+ko; rows=[["SUITES OK",ok],["RÉUSSITE",total?`${Math.round(ok/total*100)}%`:"0%"],["SÉRIE MAX",Number(state?.special?.laSuiteLongestStreakByPlayer?.[id]||0)],["PÉNALITÉS",Number(state?.special?.laSuitePenaltyByPlayer?.[id]||0)]];
   } else if(modeId==="color_call"){
     const hits=Number(state?.special?.colorCallHitsByPlayer?.[id]||0), cdarts=Number(state?.special?.colorCallDartsByPlayer?.[id]||0); tone=THREE_COLORS_TONES[colorCallTarget(state)]||accent; rows=[["TOUCHES",hits],["PRÉCISION",cdarts?`${Math.round(hits/cdarts*100)}%`:"0%"],["PARFAITES",Number(state?.special?.colorCallPerfectVisitsByPlayer?.[id]||0)],["PÉNALITÉS",Number(state?.special?.colorCallPenaltyByPlayer?.[id]||0)]];
+  } else if(modeId==="bim_bam_boum"){
+    const combos=Number(state?.special?.bimBamBoumCombosByPlayer?.[id]||0), failed=Number(state?.special?.bimBamBoumFailedByPlayer?.[id]||0), total=combos+failed; tone="#ff9f2f"; rows=[["COMBOS",combos],["RÉUSSITE",total?`${Math.round(combos/total*100)}%`:"0%"],["SÉRIE MAX",Number(state?.special?.bimBamBoumBestStreakByPlayer?.[id]||0)],["SUPER BOUM",Number(state?.special?.bimBamBoumSuperByPlayer?.[id]||0)]];
+  } else if(modeId==="saute_moutons"){
+    const track=Math.max(6,Number(state?.config?.modeOptions?.trackLength??state?.config?.goal??20)); tone="#8be86f"; rows=[["POSITION",`${Number(state?.progress?.[id]||0)}/${track}`],["CASES GAGNÉES",Number(state?.special?.sauteMoutonsDistanceByPlayer?.[id]||0)],["SAUTS",Number(state?.special?.sauteMoutonsLeapfrogsByPlayer?.[id]||0)],["BEST BOND",Number(state?.special?.sauteMoutonsBestJumpByPlayer?.[id]||0)]];
+  } else if(modeId==="troupeau_en_danger"){
+    const max=Math.max(1,Number(state?.config?.modeOptions?.flockSize??8)), left=Number(state?.special?.flockRemainingByPlayer?.[id]??max); tone="#ff7b63"; rows=[["MOUTONS",`${left}/${max}`],["VAGUES OK",Number(state?.special?.troupeauWavesRepelledByPlayer?.[id]||0)],["SAUVÉS",Number(state?.special?.troupeauSheepSavedByPlayer?.[id]||0)],["BEST DÉFENSE",Number(state?.special?.troupeauBestDefenseByPlayer?.[id]||0)]];
   }
   return <section data-variant-performance={modeId} style={{...panelStyle(tone+"45"),padding:"7px 8px",background:`linear-gradient(145deg,${tone}0d,rgba(5,8,14,.985))`}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}><b style={{color:tone,fontSize:8.3,fontWeight:1100,letterSpacing:.72}}>{headline}</b><span style={{color:SOFT,fontSize:7.2}}>{visits} volée(s) · {darts} fléchette(s)</span></div><div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:4,marginTop:5}}>{rows.map(([label,value]:any)=><div key={label} style={{borderRadius:9,border:"1px solid rgba(255,255,255,.07)",background:"rgba(255,255,255,.028)",padding:"6px 4px",textAlign:"center",minWidth:0}}><strong style={{display:"block",color:tone,fontSize:12,fontWeight:1200,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{value}</strong><span style={{display:"block",marginTop:2,color:SOFT,fontSize:6.3,fontWeight:950,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{label}</span></div>)}</div></section>;
 }
@@ -1214,6 +1223,9 @@ export default function Wave61SharedPlay(props: any) {
       const greenRedResult = spec.id === "green_vs_red"
         ? ([...(next.special?.greenRedHistory || [])].reverse().find((entry:any) => String(entry?.playerId || "") === recapPlayerId) || null)
         : null;
+      const bimBamBoumResult = spec.id === "bim_bam_boum" ? ([...(next.special?.bimBamBoumHistory || [])].reverse().find((entry:any)=>String(entry?.playerId||"")===recapPlayerId)||null) : null;
+      const sauteMoutonsResult = spec.id === "saute_moutons" ? ([...(next.special?.sauteMoutonsHistory || [])].reverse().find((entry:any)=>String(entry?.playerId||"")===recapPlayerId)||null) : null;
+      const troupeauResult = spec.id === "troupeau_en_danger" ? ([...(next.special?.troupeauHistory || [])].reverse().find((entry:any)=>String(entry?.playerId||"")===recapPlayerId)||null) : null;
       setVisitRecap({
         visitId: last.id,
         playerId: recapPlayerId,
@@ -1227,7 +1239,7 @@ export default function Wave61SharedPlay(props: any) {
         delta: Number(last.delta || 0),
         hits: Number(last.hits || 0),
         events: Array.isArray(last.events) ? last.events.filter(Boolean) : [],
-        targetLabel: last.targetLabel || (spec.id === "three_colors" ? "3 couleurs différentes" : spec.id === "la_suite" ? "3 nombres consécutifs" : spec.id === "color_call" ? `Couleur ${colorCallTarget(previous)}` : ""),
+        targetLabel: last.targetLabel || (spec.id === "three_colors" ? "3 couleurs différentes" : spec.id === "la_suite" ? "3 nombres consécutifs" : spec.id === "color_call" ? `Couleur ${colorCallTarget(previous)}` : spec.id === "bim_bam_boum" ? "BIM → BAM → BOUM" : spec.id === "saute_moutons" ? `Atteindre la case ${Number(config?.modeOptions?.trackLength || config?.goal || 20)}` : spec.id === "troupeau_en_danger" ? "Repousser la vague de loups" : ""),
         scoreBefore: Number(previous.scores?.[recapPlayerId] || 0),
         scoreAfter: Number(next.scores?.[recapPlayerId] || 0),
         progressBefore: Number(previous.progress?.[recapPlayerId] || 0),
@@ -1241,6 +1253,9 @@ export default function Wave61SharedPlay(props: any) {
         threeColorsResult,
         laSuiteResult,
         colorCallResult,
+        bimBamBoumResult,
+        sauteMoutonsResult,
+        troupeauResult,
         blackWhiteValidHits: Number(next.special?.blackWhiteValidHitsByPlayer?.[recapPlayerId]||0),
       });
     }
@@ -1279,7 +1294,7 @@ export default function Wave61SharedPlay(props: any) {
 
   React.useEffect(() => {
     if (!visitRecap || visitRecap.isBot) return;
-    const timer = window.setTimeout(() => setVisitRecap((current:any) => current?.visitId === visitRecap.visitId ? null : current), isColorDuelMode(spec.id) ? 5000 : 3000);
+    const timer = window.setTimeout(() => setVisitRecap((current:any) => current?.visitId === visitRecap.visitId ? null : current), isFinishedColorVariant(spec.id) ? 5000 : 3000);
     return () => window.clearTimeout(timer);
   }, [visitRecap?.visitId, visitRecap?.isBot, spec.id]);
 

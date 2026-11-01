@@ -11,7 +11,7 @@ import type { Store, Profile } from "./types";
 import { emitCloudChange } from "./cloudEvents";
 import { isSensitiveAuthStorageKey } from "./authSessionGuard";
 import { exportHistoryDump, importHistoryDump } from "./historyCloud";
-import { compareHistoryRowSets, assertLocalDataIntegrityReleaseGate } from "./historyIntegrityGate";
+import { compareHistoryRowSets, assertLocalDataIntegrityReleaseGate, buildCrossDeviceReleaseManifest, assertCrossDeviceReleaseManifest } from "./historyIntegrityGate";
 import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS, makeAvatarPlaceholderDataUrl } from "./avatarSafe";
 import { runtimeDiag } from "./runtimeDiag";
 import { beginFreezeOperation, endFreezeOperation, recordFreezeWatchEvent } from "./freezeWatch";
@@ -4408,6 +4408,10 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
     // Toutes les nouvelles sauvegardes portent explicitement leur propriétaire.
     // Le coordinateur peut ainsi refuser sans ambiguïté un fichier d'un autre compte.
     const ownerId = String(getStorageUser() || "").trim();
+    // W8 RELEASE GATE INTER-APPAREILS : signature portable incluse dans chaque
+    // nouveau snapshot. Elle permet de vérifier PC ↔ Android sans dépendre des
+    // révisions IndexedDB locales.
+    clone.releaseGate = buildCrossDeviceReleaseManifest((clone as any)?.history?.rows || {});
     report(96, "Construction du manifeste d’intégrité V2…");
     clone.backupManifest = await buildBackupManifestV2(clone, ownerId || null);
     if (clone.backupManifest?.status === "invalid") {
@@ -4580,7 +4584,11 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
     // réparation unique est autorisée ; l'échec persistant bloque la restauration.
     if (mode !== "merge") {
       report(62, "Release Gate History / Stats…");
-      await assertLocalDataIntegrityReleaseGate({ repairStats: true });
+      const localReleaseGate = await assertLocalDataIntegrityReleaseGate({ repairStats: true });
+      // W8 : si la sauvegarde a été créée par la nouvelle architecture, vérifier
+      // aussi que l’appareil restauré reproduit exactement la signature portable
+      // du snapshot source. Les backups legacy restent compatibles.
+      assertCrossDeviceReleaseManifest((dump as any)?.releaseGate, localReleaseGate);
     }
     await yieldIfNeeded(true);
 

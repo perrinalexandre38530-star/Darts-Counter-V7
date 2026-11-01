@@ -41,6 +41,52 @@ export type Wave61DedicatedOption = {
   help?: string;
 };
 
+
+function dedicatedGroupsForMode(modeId: string) {
+  const groups: Record<string, Array<{ title: string; keys: string[] }>> = {
+    green_vs_red: [
+      { title: "FORMAT & MANCHES", keys: ["seriesFormat"] },
+      { title: "RÈGLE DE VOLÉE", keys: ["contractRule", "scoreModel"] },
+      { title: "BULL", keys: ["bullAccess", "bullRule", "greenBullBonus", "redBullBonus"] },
+      { title: "PÉNALITÉS", keys: ["penaltyModel", "transferBaseErrorPoints", "transferOppMultiplier", "transferMissPoints"] },
+    ],
+    black_vs_white: [
+      { title: "FORMAT & PISTES", keys: ["matchFormat", "seriesFormat", "firstTrack"] },
+      { title: "DOUBLES / TRIPLES & BULL", keys: ["dtRule", "bullRule", "bullBonus"] },
+      { title: "PÉNALITÉS & BONUS", keys: ["wrongColorPenalty", "missPenalty", "dtPenalty", "perfectVisitBonus"] },
+    ],
+    three_colors: [
+      { title: "FORMAT & SCORE", keys: ["seriesFormat", "scoreMode"] },
+      { title: "COULEURS & BULL", keys: ["bullColors"] },
+      { title: "BONUS & PÉNALITÉS", keys: ["perfectVisitBonus", "invalidVisitPenalty"] },
+    ],
+    la_suite: [
+      { title: "FORMAT & CONTRAT", keys: ["seriesFormat", "sequenceOrder"] },
+      { title: "SCORING & MULTIPLICATEURS", keys: ["sequenceScoring", "doublesTriples"] },
+      { title: "BONUS & PÉNALITÉS", keys: ["perfectVisitBonus", "invalidVisitPenalty"] },
+    ],
+    color_call: [
+      { title: "FORMAT & APPEL", keys: ["seriesFormat", "callOrder"] },
+      { title: "SCORING", keys: ["scoreMode"] },
+      { title: "BONUS & PÉNALITÉS", keys: ["wrongColorPenalty", "missPenalty", "perfectBonus"] },
+    ],
+    bim_bam_boum: [
+      { title: "CONTRAT BIM → BAM → BOUM", keys: ["comboRule"] },
+      { title: "BOUM & SUPER BOUM", keys: ["comboBonus", "superBoom"] },
+      { title: "RISQUE", keys: ["missPenalty"] },
+    ],
+    saute_moutons: [
+      { title: "PARCOURS", keys: ["trackLength", "leapfrogBonus"] },
+      { title: "BULLS & GRANDS BONDS", keys: ["bull25Jump", "bull50Jump"] },
+    ],
+    troupeau_en_danger: [
+      { title: "TROUPEAU & MEUTE", keys: ["flockSize", "wolfDifficulty"] },
+      { title: "PATOU & BERGER", keys: ["patouPower", "shepherdSave"] },
+    ],
+  };
+  return groups[modeId] || null;
+}
+
 function isBotLike(p: any) { return Boolean(p?.isBot || p?.bot || p?.kind === "bot" || p?.botLevel); }
 function avatarOf(p: any) { return p?.avatarDataUrl ?? p?.avatarUrl ?? p?.avatar ?? p?.photoDataUrl ?? null; }
 function normalizeProfile(p: any, isBot = false) { return { ...p, id: String(p?.id || p?.profileId || ""), name: String(p?.name || p?.displayName || (isBot ? "BOT" : "Joueur")), avatarDataUrl: avatarOf(p), isBot: isBot || !!p?.isBot }; }
@@ -474,17 +520,12 @@ export default function Wave61SharedConfig(props: any) {
       {dedicatedOptions.length ? <section className="wave61-config-dedicated" style={{ ...card, borderColor: `${accent}4d` }}>
         <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>Réglages propres à {spec.label}</div>
         {dedicatedIntro ? <div style={{ color: "#aeb5c8", fontSize: 10.5, lineHeight: 1.5, marginBottom: 8 }}>{dedicatedIntro}</div> : null}
-        {spec.id === "green_vs_red" ? (() => {
+        {dedicatedGroupsForMode(spec.id) ? (() => {
           const optionMap = new Map(dedicatedOptions.map((option) => [option.key, option]));
-          const groups = [
-            { title: "FORMAT & MANCHES", keys: ["seriesFormat"] },
-            { title: "RÈGLE DE VOLÉE", keys: ["contractRule", "scoreModel"] },
-            { title: "BULL", keys: ["bullAccess", "bullRule", "greenBullBonus", "redBullBonus"] },
-            { title: "PÉNALITÉS", keys: ["penaltyModel", "transferBaseErrorPoints", "transferOppMultiplier", "transferMissPoints"] },
-          ];
-          return <div style={{ display:"grid", gap:9 }}>
-            {groups.map((group) => <div key={group.title} style={{ borderRadius:14, border:"1px solid rgba(255,255,255,.07)", background:"rgba(255,255,255,.025)", padding:8, minWidth:0 }}>
-              <div style={{ color:accent, fontSize:9, fontWeight:1100, letterSpacing:.8, marginBottom:5 }}>{group.title}</div>
+          const groups = dedicatedGroupsForMode(spec.id) || [];
+          return <div data-wave61-dedicated-groups={spec.id} style={{ display:"grid", gap:9 }}>
+            {groups.map((group) => <div key={group.title} style={{ borderRadius:14, border:"1px solid rgba(255,255,255,.07)", background:"linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,.018))", padding:8, minWidth:0, boxShadow:"inset 0 1px 0 rgba(255,255,255,.025)" }}>
+              <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",gap:8, color:accent, fontSize:9, fontWeight:1100, letterSpacing:.8, marginBottom:5 }}><span>{group.title}</span><span aria-hidden="true" style={{width:6,height:6,borderRadius:999,background:accent,boxShadow:`0 0 10px ${accent}`}} /></div>
               {group.keys.map((key) => optionMap.get(key)).filter(Boolean).map((option:any) => {
                 const value = modeOptions?.[option.key] ?? option.defaultValue;
                 const setValue = (next:any) => setModeOptions((prev) => ({ ...prev, [option.key]: next }));

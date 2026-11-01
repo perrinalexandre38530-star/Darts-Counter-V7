@@ -34,6 +34,10 @@ function summaryFromSnapshot(snapshot: any): Record<string, any> {
     tombstones,
     manifestStatus: String(snapshot?.backupManifest?.status || "legacy"),
     historySchemaVersion: Number(snapshot?.history?.historySchemaVersion || 0),
+    historyIdsHash: String(snapshot?.releaseGate?.history?.activeIdsHash || snapshot?.history?.integrity?.activeIdsHash || ""),
+    finishedIdsHash: String(snapshot?.releaseGate?.history?.finishedIdsHash || snapshot?.history?.integrity?.finishedIdsHash || ""),
+    statsExpectedIdsHash: String(snapshot?.releaseGate?.stats?.expectedIdsHash || ""),
+    statsExpectedCount: Number(snapshot?.releaseGate?.stats?.expectedCount || 0),
     exportedAt: String(snapshot?.exportedAt || new Date().toISOString()),
   };
 }

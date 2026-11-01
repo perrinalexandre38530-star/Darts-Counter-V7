@@ -1,4 +1,5 @@
 type Env = {
+  USER_DATA_BUCKET?: R2Bucket;
   DARTS_API_KEY?: string;
   TABLE_TENNIS_API_KEY?: string;
   OPENAI_API_KEY?: string;
@@ -830,6 +831,97 @@ function uniqEvents(rows: NormalEvent[]) {
     seen.add(key);
     return true;
   });
+}
+
+type CentralLiveArchive = {
+  version: 1;
+  sport: string;
+  lang: string;
+  updatedAt: string;
+  results: NormalResult[];
+  fixtures: NormalMatch[];
+  events: NormalEvent[];
+};
+
+const CENTRAL_ARCHIVE_LIMIT = 50_000;
+const CENTRAL_ARCHIVE_PREFIX = "sports-live-public/v1";
+
+function safeArchiveSegment(value: string) {
+  return String(value || "unknown").toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "unknown";
+}
+
+function centralArchiveKey(sport: string, lang: string) {
+  return `${CENTRAL_ARCHIVE_PREFIX}/${safeArchiveSegment(sport)}/${safeArchiveSegment(lang || "fr")}.json`;
+}
+
+function centralResultKey(row: NormalResult) {
+  const names = [row.winner?.name, row.loser?.name].map((v) => normalizeHeadlineKey(String(v || ""))).sort().join("|");
+  const scores = [row.winner?.score, row.loser?.score].map((v) => v == null ? "" : String(v)).sort().join("|");
+  return `${normalizeHeadlineKey(String(row.competition || ""))}|${normalizeHeadlineKey(String(row.round || ""))}|${String(row.playedOn || "").slice(0,10)}|${names}|${scores}`;
+}
+
+function centralFixtureKey(row: NormalMatch) {
+  const players = arr(row.players).map((p) => normalizeHeadlineKey(String(p?.name || ""))).sort().join("|");
+  return `${normalizeHeadlineKey(String(row.competition || ""))}|${normalizeHeadlineKey(String(row.round || ""))}|${String(row.startsAt || row.date || "").slice(0,16)}|${players}`;
+}
+
+function mergeCentralResults(fresh: NormalResult[], previous: NormalResult[]) {
+  const out: NormalResult[] = [];
+  const seen = new Set<string>();
+  for (const row of [...fresh, ...previous]) {
+    const key = centralResultKey(row);
+    if (!key || seen.has(key)) continue;
+    seen.add(key); out.push(row);
+    if (out.length >= CENTRAL_ARCHIVE_LIMIT) break;
+  }
+  return out;
+}
+
+function mergeCentralFixtures(fresh: NormalMatch[], previous: NormalMatch[]) {
+  const out: NormalMatch[] = [];
+  const seen = new Set<string>();
+  for (const row of [...fresh, ...previous]) {
+    const key = centralFixtureKey(row);
+    if (!key || seen.has(key)) continue;
+    seen.add(key); out.push(row);
+    if (out.length >= CENTRAL_ARCHIVE_LIMIT) break;
+  }
+  return out;
+}
+
+function mergeCentralEvents(fresh: NormalEvent[], previous: NormalEvent[]) {
+  return uniqEvents([...fresh, ...previous]).slice(0, CENTRAL_ARCHIVE_LIMIT);
+}
+
+async function readCentralLiveArchive(env: Env, sport: string, lang: string): Promise<CentralLiveArchive | null> {
+  const bucket = env?.USER_DATA_BUCKET;
+  if (!bucket) return null;
+  try {
+    const object = await bucket.get(centralArchiveKey(sport, lang));
+    if (!object) return null;
+    const parsed = JSON.parse(await object.text()) as CentralLiveArchive;
+    if (!parsed || parsed.version !== 1 || parsed.sport !== sport) return null;
+    return parsed;
+  } catch { return null; }
+}
+
+async function persistAndMergeCentralArchive(env: Env, sport: string, lang: string, payload: any) {
+  const bucket = env?.USER_DATA_BUCKET;
+  if (!bucket) return { ...payload, archiveStorage: { enabled:false, persistent:false, reason:"R2 binding unavailable" } };
+  const previous = await readCentralLiveArchive(env, sport, lang);
+  const results = mergeCentralResults(arr(payload?.results) as NormalResult[], previous?.results || []);
+  const fixtures = mergeCentralFixtures(arr(payload?.fixtures) as NormalMatch[], previous?.fixtures || []);
+  const events = mergeCentralEvents(arr(payload?.events) as NormalEvent[], previous?.events || []);
+  const doc: CentralLiveArchive = { version:1, sport, lang, updatedAt:new Date().toISOString(), results, fixtures, events };
+  try {
+    await bucket.put(centralArchiveKey(sport, lang), JSON.stringify(doc), {
+      httpMetadata:{ contentType:"application/json; charset=utf-8", cacheControl:"public, max-age=300" },
+      customMetadata:{ kind:"sports-live-public", sport, lang, version:"1" },
+    });
+    return { ...payload, results, fixtures, events, archiveStorage:{ enabled:true, persistent:true, updatedAt:doc.updatedAt, results:results.length, fixtures:fixtures.length, events:events.length } };
+  } catch (error:any) {
+    return { ...payload, results, fixtures, events, archiveStorage:{ enabled:true, persistent:false, reason:str(error?.message || error || "R2 write failed") } };
+  }
 }
 
 function looksLikeNoise(line: string) {
@@ -2743,7 +2835,7 @@ async function openAiWebIntelligence(env: Env, sport: string, lang: string): Pro
 }
 
 
-async function openAiFocusedHistory(env: Env, sport: string, lang: string, mode: "archive" | "calendar", rangeLabel?: string): Promise<IntelligenceNews[]> {
+async function openAiFocusedHistory(env: Env, sport: string, lang: string, mode: "archive" | "calendar", rangeLabel?: string, geographyLabel?: string): Promise<IntelligenceNews[]> {
   const key = str(env?.OPENAI_API_KEY).trim();
   const spec = INTELLIGENCE_SPECS[sport];
   if (!key || !spec) return [];
@@ -2751,10 +2843,11 @@ async function openAiFocusedHistory(env: Env, sport: string, lang: string, mode:
   const today = new Date();
   const currentYear = today.getUTCFullYear();
   const todayIso = today.toISOString().slice(0,10);
+  const geoFocus = geographyLabel ? ` Geographic focus for this pass: ${geographyLabel}. Still include cross-border/international competitions relevant to that geography.` : "";
   const focus = mode === "archive"
-    ? `Search verified historical results for ${spec.label}. ${rangeLabel ? `Concentrate specifically on seasons/years ${rangeLabel}.` : "Cover the current season and historical archives."} Include official international competitions, every national federation/league you can verify, lower divisions, regional/county/state/provincial leagues, club competitions, qualifiers, youth, women, veterans and amateur tournaments. Prefer explicit match scores, final standings, winners/finalists and official archive pages. Do not focus only on elite competitions or English-language countries.`
-    : `Search verified upcoming ${spec.label} events from ${todayIso} through the next 18 months. Cover official world/continental tours, national federations, regional/county/state/provincial calendars, club leagues, qualifiers, youth, women, veterans and amateur tournaments. Prefer official calendar/event pages and provide event dates whenever stated.`;
-  const prompt = `${focus} The app language is ${lang || "fr"}, but geography must remain worldwide. Return ONLY valid JSON with shape {"items":[{"title":"...","summary":"...","publishedAt":"ISO date or null","sourceName":"...","sourceUrl":"https://...","imageUrl":"https://... or null","kind":"news|result|live|upcoming","resultLabel":"explicit published score/result/date or null","scope":"local|regional|world","scopeLabel":"country/region/competition label"}]}. Maximum 120 items. Never invent a score, winner, date, competition or URL. For archive mode, result items are strongly preferred. For calendar mode, upcoming items are strongly preferred. Current year: ${currentYear}.`;
+    ? `Search verified historical results for ${spec.label}. ${rangeLabel ? `Concentrate specifically on seasons/years ${rangeLabel}.` : "Cover the current season and historical archives."}${geoFocus} Include official international competitions, every national federation/league you can verify, lower divisions, regional/county/state/provincial leagues, club competitions, qualifiers, youth, women, veterans and amateur tournaments. Prefer explicit match scores, final standings, winners/finalists and official archive pages. Do not focus only on elite competitions or English-language countries.`
+    : `Search verified upcoming ${spec.label} events from ${todayIso} through the next 18 months.${geoFocus} Cover official world/continental tours, national federations, regional/county/state/provincial calendars, club leagues, qualifiers, youth, women, veterans and amateur tournaments. Prefer official calendar/event pages and provide event dates whenever stated.`;
+  const prompt = `${focus} The app language is ${lang || "fr"}, but geography must remain worldwide. Return ONLY valid JSON with shape {"items":[{"title":"...","summary":"...","publishedAt":"ISO date or null","sourceName":"...","sourceUrl":"https://...","imageUrl":"https://... or null","kind":"news|result|live|upcoming","resultLabel":"explicit published score/result/date or null","scope":"local|regional|world","scopeLabel":"country/region/competition label"}]}. Maximum 300 items. Never invent a score, winner, date, competition or URL. For archive mode, result items are strongly preferred. For calendar mode, upcoming items are strongly preferred. Current year: ${currentYear}.`;
   const response = await timedFetch("https://api.openai.com/v1/responses", {
     method:"POST",
     headers:{"content-type":"application/json", Authorization:`Bearer ${key}`},
@@ -2771,7 +2864,7 @@ async function openAiFocusedHistory(env: Env, sport: string, lang: string, mode:
     const kind: IntelligenceKind=(['news','result','live','upcoming'] as string[]).includes(requested) ? requested as IntelligenceKind : classifyHeadline(title,str(item?.summary));
     const date=new Date(str(item?.publishedAt));
     return {
-      id:`ai-${mode}-${sport}-${index}-${normalizeHeadlineKey(title).replace(/\s+/g,'-').slice(0,42)}`,
+      id:`ai-${mode}-${sport}-${normalizeHeadlineKey(geographyLabel || rangeLabel || "global").replace(/\s+/g,'-').slice(0,18)}-${index}-${normalizeHeadlineKey(title).replace(/\s+/g,'-').slice(0,42)}`,
       title,
       summary:str(item?.summary).trim().slice(0,320)||null,
       publishedAt:Number.isFinite(date.getTime())?date.toISOString():null,
@@ -2784,19 +2877,36 @@ async function openAiFocusedHistory(env: Env, sport: string, lang: string, mode:
       scopeLabel:str(item?.scopeLabel).trim().slice(0,100)||"Monde",
     };
   }).filter(Boolean) as IntelligenceNews[];
-  return uniqNews(rows).slice(0,120);
+  return uniqNews(rows).slice(0,300);
 }
+
+const ARCHIVE_GEOGRAPHY_SWEEPS = [
+  "Europe: all national federations, domestic leagues, regional/county structures and amateur tournaments, not only UK",
+  "Americas: North America, Central America, Caribbean and South America, including national federations and local/amateur circuits",
+  "Asia and Middle East: East Asia, South Asia, Southeast Asia, Central Asia and Middle East national/regional competitions",
+  "Africa: national federations, continental competitions, regional leagues and amateur tournaments",
+  "Oceania: Australia, New Zealand and Pacific national/regional/amateur competitions",
+];
+
+const CALENDAR_GEOGRAPHY_SWEEPS = [
+  "Europe and all European national federations / regional circuits",
+  "Americas including North, Central, Caribbean and South America",
+  "Asia, Middle East and Africa",
+  "Oceania including Australia, New Zealand and Pacific nations",
+];
 
 async function archiveOverview(env: Env, sport: string, lang: string) {
   const pages = DIRECT_ARCHIVE_PAGES[sport] || [];
   const currentYear = new Date().getUTCFullYear();
-  const archiveRanges = [
-    `${currentYear}-${currentYear - 4}`,
-    `${currentYear - 5}-${currentYear - 9}`,
-    `${currentYear - 10}-${currentYear - 15}`,
-  ];
+  const archiveRanges: string[] = [];
+  for (let end = currentYear; end >= 1975; end -= 5) {
+    archiveRanges.push(`${end}-${Math.max(1975, end - 4)}`);
+  }
   const aiPromise = str(env?.OPENAI_API_KEY).trim()
-    ? Promise.allSettled(archiveRanges.map((range) => openAiFocusedHistory(env, sport, lang, "archive", range)))
+    ? Promise.allSettled([
+        ...archiveRanges.map((range) => openAiFocusedHistory(env, sport, lang, "archive", range)),
+        ...ARCHIVE_GEOGRAPHY_SWEEPS.map((geo) => openAiFocusedHistory(env, sport, lang, "archive", undefined, geo)),
+      ])
     : Promise.resolve([] as PromiseSettledResult<IntelligenceNews[]>[]);
   const [directSettled, aiRanges] = await Promise.all([
     Promise.allSettled([directEditorialIntelligence(sport, Math.min(72, pages.length || 1), pages)]),
@@ -2805,27 +2915,36 @@ async function archiveOverview(env: Env, sport: string, lang: string) {
   const direct = directSettled[0]?.status === "fulfilled" ? directSettled[0].value : [];
   const ai = aiRanges.flatMap((result) => result.status === "fulfilled" ? result.value : []);
   const rows = uniqNews([...direct, ...ai]);
-  const results = applyCompetitionMeta(sport, uniqNormalResults(rows.map((row) => intelligenceNewsToStructuredResult(row, sport)).filter(Boolean) as NormalResult[])).slice(0, sport === "foot" ? 1500 : 900);
-  const events = uniqEvents(rows.filter((row) => row.kind === "result").map((row) => newsToEvent(row, sport)).filter(Boolean) as NormalEvent[]).slice(0,500);
-  const payload = await enrichCompetitionLogosInPayload(env, sport, {
+  const results = applyCompetitionMeta(sport, uniqNormalResults(rows.map((row) => intelligenceNewsToStructuredResult(row, sport)).filter(Boolean) as NormalResult[])).slice(0, 50_000);
+  const events = uniqEvents(rows.filter((row) => row.kind === "result").map((row) => newsToEvent(row, sport)).filter(Boolean) as NormalEvent[]).slice(0,50_000);
+  const logoPayload = await enrichCompetitionLogosInPayload(env, sport, {
     sport, configured: results.length > 0 || events.length > 0, automaticData: true, provider:"official_links", plan:"archive",
     dataAsOf:new Date().toISOString(), liveAvailable:false, liveReason:"Archives historiques chargées à la demande.", live:[], fixtures:[], results, events, news:[],
-    intelligence:{ enabled:rows.length>0, provider:ai.length?"openai_web":"news_rss", aiEnabled:ai.length>0, count:rows.length, localCount:rows.filter(r=>r.scope==='local').length, regionalCount:rows.filter(r=>r.scope==='regional').length, worldCount:rows.filter(r=>r.scope==='world'||!r.scope).length, queryCount:pages.length+(ai.length?archiveRanges.length:0), directResultCount:results.length, updatedAt:new Date().toISOString() }, warnings:[],
+    intelligence:{ enabled:rows.length>0, provider:ai.length?"openai_web":"news_rss", aiEnabled:ai.length>0, count:rows.length, localCount:rows.filter(r=>r.scope==='local').length, regionalCount:rows.filter(r=>r.scope==='regional').length, worldCount:rows.filter(r=>r.scope==='world'||!r.scope).length, queryCount:pages.length+(ai.length?(archiveRanges.length+ARCHIVE_GEOGRAPHY_SWEEPS.length):0), directResultCount:results.length, updatedAt:new Date().toISOString() }, warnings:[],
   }, true);
+  const payload = await persistAndMergeCentralArchive(env, sport, lang, logoPayload);
   return { status:200, ttl:21600, payload };
 }
 
 async function calendarOverview(env: Env, sport: string, lang: string) {
   const pages = DIRECT_CALENDAR_PAGES[sport] || [];
   const [directSettled, aiSettled] = await Promise.allSettled([
-    directEditorialIntelligence(sport, Math.min(36, pages.length || 1), pages),
-    str(env?.OPENAI_API_KEY).trim() ? openAiFocusedHistory(env, sport, lang, "calendar") : Promise.resolve([] as IntelligenceNews[]),
+    directEditorialIntelligence(sport, Math.min(52, pages.length || 1), pages),
+    str(env?.OPENAI_API_KEY).trim()
+      ? Promise.allSettled([
+          openAiFocusedHistory(env, sport, lang, "calendar"),
+          ...CALENDAR_GEOGRAPHY_SWEEPS.map((geo) => openAiFocusedHistory(env, sport, lang, "calendar", undefined, geo)),
+        ])
+      : Promise.resolve([] as PromiseSettledResult<IntelligenceNews[]>[]),
   ]);
   const direct = directSettled.status === "fulfilled" ? directSettled.value : [];
-  const ai = aiSettled.status === "fulfilled" ? aiSettled.value : [];
+  const ai = aiSettled.status === "fulfilled"
+    ? aiSettled.value.flatMap((result) => result.status === "fulfilled" ? result.value : [])
+    : [];
   const rows = uniqNews([...direct, ...ai]).filter((row) => row.kind === "upcoming" || row.kind === "live" || /calendar|schedule|fixture|tournoi|tournament|event|championship|open/i.test(row.title));
-  const events = uniqEvents(rows.map((row) => newsToEvent({ ...row, kind: row.kind === "live" ? "live" : "upcoming" }, sport)).filter(Boolean) as NormalEvent[]).slice(0,700);
-  return { status:200, ttl:10800, payload:{ sport, configured:events.length>0, automaticData:true, provider:"official_links", plan:"calendar", dataAsOf:new Date().toISOString(), liveAvailable:false, liveReason:"Calendrier mondial chargé à la demande.", live:[], fixtures:[], results:[], events, news:[], intelligence:{ enabled:rows.length>0, provider:ai.length?"openai_web":"news_rss", aiEnabled:ai.length>0, count:rows.length, localCount:rows.filter(r=>r.scope==='local').length, regionalCount:rows.filter(r=>r.scope==='regional').length, worldCount:rows.filter(r=>r.scope==='world'||!r.scope).length, queryCount:pages.length+(ai.length?1:0), directResultCount:0, updatedAt:new Date().toISOString() }, warnings:[] } };
+  const events = uniqEvents(rows.map((row) => newsToEvent({ ...row, kind: row.kind === "live" ? "live" : "upcoming" }, sport)).filter(Boolean) as NormalEvent[]).slice(0,50_000);
+  const payload = await persistAndMergeCentralArchive(env, sport, lang, { sport, configured:events.length>0, automaticData:true, provider:"official_links", plan:"calendar", dataAsOf:new Date().toISOString(), liveAvailable:false, liveReason:"Calendrier mondial chargé à la demande.", live:[], fixtures:[], results:[], events, news:[], intelligence:{ enabled:rows.length>0, provider:ai.length?"openai_web":"news_rss", aiEnabled:ai.length>0, count:rows.length, localCount:rows.filter(r=>r.scope==='local').length, regionalCount:rows.filter(r=>r.scope==='regional').length, worldCount:rows.filter(r=>r.scope==='world'||!r.scope).length, queryCount:pages.length+(ai.length?(1+CALENDAR_GEOGRAPHY_SWEEPS.length):0), directResultCount:0, updatedAt:new Date().toISOString() }, warnings:[] });
+  return { status:200, ttl:10800, payload };
 }
 
 function parseLeadingScoreName(line: string) {
@@ -3182,7 +3301,7 @@ async function directDartsResults(lang: string, depth: "fast" | "deep" = "deep")
     }
   }
 
-  return { results: diversifyDartsResults(results, depth === "deep" ? 420 : 100), fixtures: fixtures.slice(0, 64), events };
+  return { results: diversifyDartsResults(results, depth === "deep" ? 50_000 : 100), fixtures: fixtures.slice(0, depth === "deep" ? 50_000 : 64), events: events.slice(0, depth === "deep" ? 50_000 : 500) };
 }
 
 const SPORTSDB_BASE = "https://www.thesportsdb.com/api/v1/json/123";
@@ -3366,7 +3485,9 @@ function uniqNormalResults(rows: NormalResult[]) {
   return rows.filter((row) => {
     const names = [row.winner?.name, row.loser?.name].map((v) => normalizeHeadlineKey(String(v || ""))).sort().join("|");
     const scores = [row.winner?.score, row.loser?.score].map((v) => v == null ? "" : String(v)).sort().join("|");
-    const key = `${normalizeHeadlineKey(String(row.competition || ""))}|${names}|${scores}`;
+    const date = String(row.playedOn || "").slice(0, 10);
+    const round = normalizeHeadlineKey(String(row.round || ""));
+    const key = `${normalizeHeadlineKey(String(row.competition || ""))}|${date}|${round}|${names}|${scores}`;
     if (!names || seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -3488,7 +3609,7 @@ async function enrichWithLiveIntelligence(
     ...direct.events,
     ...extraStructuredEvents,
     ...intelligenceEvents,
-  ]).slice(0, deep ? 240 : 140);
+  ]).slice(0, deep ? 50_000 : 140);
   const provider = ai.length ? "openai_web" : (google.length || bing.length || yahoo.length || directEditorial.length || directRss.length) ? "news_rss" : "none";
   const selectedPlans = deep ? intelligenceFeedPlansFor(sport, lang) : coreIntelligenceFeedPlansFor(sport, lang);
 
@@ -3496,8 +3617,8 @@ async function enrichWithLiveIntelligence(
     ...base.payload,
     configured: !!base.payload?.configured || news.length > 0 || direct.results.length > 0,
     automaticData: !!base.payload?.automaticData || news.length > 0 || direct.results.length > 0,
-    results: applyCompetitionMeta(sport, sport === "darts" ? diversifyDartsResults([...direct.results, ...intelligenceResults, ...(arr(base.payload?.results) as NormalResult[])], deep ? 1000 : 220) : uniqNormalResults([...direct.results, ...intelligenceResults, ...(arr(base.payload?.results) as NormalResult[])]).slice(0, deep ? (sport === "foot" ? 980 : sport === "esports" ? 760 : 680) : (sport === "foot" ? 340 : 220))),
-    fixtures: applyCompetitionMeta(sport, [...direct.fixtures, ...(arr(base.payload?.fixtures) as NormalMatch[])].slice(0, deep ? (sport === "foot" ? 320 : sport === "esports" ? 240 : 220) : (sport === "foot" ? 160 : 110))),
+    results: applyCompetitionMeta(sport, sport === "darts" ? diversifyDartsResults([...direct.results, ...intelligenceResults, ...(arr(base.payload?.results) as NormalResult[])], deep ? 50_000 : 220) : uniqNormalResults([...direct.results, ...intelligenceResults, ...(arr(base.payload?.results) as NormalResult[])]).slice(0, deep ? 50_000 : (sport === "foot" ? 340 : 220))),
+    fixtures: applyCompetitionMeta(sport, [...direct.fixtures, ...(arr(base.payload?.fixtures) as NormalMatch[])].slice(0, deep ? 50_000 : (sport === "foot" ? 160 : 110))),
     live: applyCompetitionMeta(sport, arr(base.payload?.live) as NormalMatch[]),
     events: mergedEvents,
     news,

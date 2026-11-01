@@ -11,6 +11,27 @@ export type HistoryPortableIntegrityManifest = {
   contentHash: string;
 };
 
+
+export type CrossDeviceReleaseManifest = {
+  version: "w8-v111";
+  history: HistoryPortableIntegrityManifest;
+  stats: {
+    includeNonFinished: boolean;
+    expectedCount: number;
+    expectedIdsHash: string;
+  };
+};
+
+export type CrossDeviceReleaseComparison = {
+  ok: boolean;
+  historyIdsEqual: boolean;
+  finishedIdsEqual: boolean;
+  contentEqual: boolean;
+  statsExpectedEqual: boolean;
+  expected: CrossDeviceReleaseManifest;
+  actual: CrossDeviceReleaseManifest;
+};
+
 export type HistoryRowSetComparison = {
   idsEqual: boolean;
   finishedIdsEqual: boolean;
@@ -127,6 +148,74 @@ export function buildHistoryPortableIntegrityManifest(rowsInput: any[] | Record<
 
 function setDifference(a: Set<string>, b: Set<string>): string[] {
   return Array.from(a).filter((id) => !b.has(id)).sort();
+}
+
+export function buildCrossDeviceReleaseManifest(
+  rowsInput: any[] | Record<string, any> | null | undefined,
+  options?: { includeNonFinished?: boolean },
+): CrossDeviceReleaseManifest {
+  const includeNonFinished = options?.includeNonFinished === true;
+  const rows = normalizeRows(rowsInput);
+  const expectedStatsIds = rows
+    .filter((row) => !isQuickPartyRecord(row))
+    .filter((row) => includeNonFinished || isFinishedHistoryIntegrityRow(row))
+    .map((row) => cleanId(row?.id))
+    .filter(Boolean)
+    .sort();
+  return {
+    version: "w8-v111",
+    history: buildHistoryPortableIntegrityManifest(rows),
+    stats: {
+      includeNonFinished,
+      expectedCount: expectedStatsIds.length,
+      expectedIdsHash: hashHistoryIdSet(expectedStatsIds),
+    },
+  };
+}
+
+export function compareCrossDeviceReleaseManifest(
+  expectedInput: CrossDeviceReleaseManifest,
+  localReport: LocalDataIntegrityReleaseGateReport,
+): CrossDeviceReleaseComparison {
+  const expected = expectedInput;
+  const actual: CrossDeviceReleaseManifest = {
+    version: "w8-v111",
+    history: localReport.history.manifest,
+    stats: {
+      includeNonFinished: localReport.stats.includeNonFinished,
+      expectedCount: localReport.stats.expectedCount,
+      expectedIdsHash: localReport.stats.expectedIdsHash,
+    },
+  };
+  const historyIdsEqual = String(expected?.history?.activeIdsHash || "") === String(actual.history.activeIdsHash || "");
+  const finishedIdsEqual = String(expected?.history?.finishedIdsHash || "") === String(actual.history.finishedIdsHash || "");
+  const contentEqual = String(expected?.history?.contentHash || "") === String(actual.history.contentHash || "");
+  const statsExpectedEqual =
+    Number(expected?.stats?.expectedCount || 0) === Number(actual.stats.expectedCount || 0) &&
+    String(expected?.stats?.expectedIdsHash || "") === String(actual.stats.expectedIdsHash || "");
+  return {
+    ok: localReport.ok && historyIdsEqual && finishedIdsEqual && contentEqual && statsExpectedEqual,
+    historyIdsEqual,
+    finishedIdsEqual,
+    contentEqual,
+    statsExpectedEqual,
+    expected,
+    actual,
+  };
+}
+
+export function assertCrossDeviceReleaseManifest(
+  expected: CrossDeviceReleaseManifest | null | undefined,
+  localReport: LocalDataIntegrityReleaseGateReport,
+): CrossDeviceReleaseComparison | null {
+  if (!expected || expected.version !== "w8-v111") return null;
+  const comparison = compareCrossDeviceReleaseManifest(expected, localReport);
+  if (comparison.ok) return comparison;
+  throw new Error(
+    `Release Gate inter-appareils KO : History ${comparison.expected.history.activeIdsHash} -> ${comparison.actual.history.activeIdsHash}; ` +
+    `terminées ${comparison.expected.history.finishedIdsHash} -> ${comparison.actual.history.finishedIdsHash}; ` +
+    `Stats ${comparison.expected.stats.expectedIdsHash} -> ${comparison.actual.stats.expectedIdsHash}.`,
+  );
 }
 
 export function compareHistoryRowSets(

@@ -215,6 +215,29 @@ function competitionKey(value?: string | null) {
   return String(value || "Compétition officielle").replace(/\s+/g, " ").trim();
 }
 
+function competitionGroupingKey(value?: string | null, sport?: string | null) {
+  let key = normalizedText(value || "competition officielle")
+    .replace(/20\d{2}(?:\s*[-/]\s*\d{2,4})?/g, " ")
+    .replace(/season\s+20\d{2}(?:\s*[-/]\s*\d{2,4})?/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (sport === "darts") {
+    key = key
+      .replace(/^(?:betmgm|betfred|boylesports|cazoo|machineseeker|mr vegas|neo bet|eltEN|ladbrokes|paddy power|interwetten)\s+/i, "")
+      .replace(/(?:sponsored by|presented by).*$/i, "")
+      .trim();
+  }
+  return key || normalizedText(value || "competition officielle");
+}
+
+function preferredCompetitionName(current: string, candidate: string) {
+  const noisy = /(?:betmgm|betfred|boylesports|cazoo|machineseeker|mr vegas|neo bet|ladbrokes|paddy power|interwetten)/i;
+  const currentNoisy = noisy.test(current);
+  const candidateNoisy = noisy.test(candidate);
+  if (currentNoisy !== candidateNoisy) return currentNoisy ? candidate : current;
+  return candidate.length < current.length ? candidate : current;
+}
+
 function resultSeasonLabel(value?: string | null) {
   const raw = String(value || "").trim();
   if (!raw) return "NON DATÉ";
@@ -1063,14 +1086,19 @@ function ResultMatchCard({ item, source, lang }: { item: DartsLiveResult; source
 function GroupedResults({ rows, source, lang, newsRows, allSources, sport }: { rows: DartsLiveResult[]; source?: SportLiveSource | null; lang: string; newsRows: SportLiveNewsItem[]; allSources: SportLiveSource[]; sport: string }) {
   const competitions = React.useMemo(() => {
     const map = new Map<string, DartsLiveResult[]>();
+    const displayNames = new Map<string, string>();
     rows.forEach((row) => {
-      const key = competitionKey(row.competition);
+      const rawName = competitionKey(row.competition);
+      const key = competitionGroupingKey(rawName, sport);
       const bucket = map.get(key) || [];
       bucket.push(row);
       map.set(key, bucket);
+      const current = displayNames.get(key);
+      displayNames.set(key, current ? preferredCompetitionName(current, rawName) : rawName);
     });
     return Array.from(map.entries())
-      .map(([name, matches]) => {
+      .map(([groupKey, matches]) => {
+        const name = displayNames.get(groupKey) || competitionKey(matches[0]?.competition);
         const reference = matches.find((match) => !!competitionMetaOf(match)) || matches[0];
         const country = competitionCountry(reference);
         return {
@@ -1088,7 +1116,7 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport }: { r
         };
       })
       .sort((a, b) => (b.latest - a.latest) || (b.matches.length - a.matches.length) || a.name.localeCompare(b.name));
-  }, [rows, newsRows, allSources]);
+  }, [rows, newsRows, allSources, sport]);
 
   const continents = React.useMemo(() => {
     const counts = new Map<string, number>();

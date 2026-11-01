@@ -1,12 +1,14 @@
 import type { SportId } from "../contexts/SportContext";
+import { compressToUTF16, decompressFromUTF16 } from "lz-string";
 import type { SportLiveOverview, SportLiveSportId } from "./types";
 
-const CACHE_PREFIX = "msc_sport_live_cache_v11:";
-const LEGACY_CACHE_PREFIXES = ["msc_sport_live_cache_v10:", "msc_sport_live_cache_v8:"];
-const CACHE_RESULT_LIMIT = 1400;
-const CACHE_FIXTURE_LIMIT = 720;
-const CACHE_EVENT_LIMIT = 900;
-const CACHE_NEWS_LIMIT = 520;
+const CACHE_PREFIX = "msc_sport_live_cache_v15:";
+const LEGACY_CACHE_PREFIXES = ["msc_sport_live_cache_v14:", "msc_sport_live_cache_v13:", "msc_sport_live_cache_v12:", "msc_sport_live_cache_v11:", "msc_sport_live_cache_v10:", "msc_sport_live_cache_v8:"];
+const CACHE_RESULT_LIMIT = 50_000;
+const CACHE_FIXTURE_LIMIT = 50_000;
+const CACHE_EVENT_LIMIT = 50_000;
+const CACHE_NEWS_LIMIT = 50_000;
+const MEMORY_CACHE = new Map<string, CachedEnvelope>();
 
 function isSupportedSport(value: SportId): boolean {
   return ["darts", "petanque", "pingpong", "babyfoot", "molkky", "foot", "padel", "badminton", "cornhole", "bowling", "esports"].includes(String(value));
@@ -58,7 +60,8 @@ type CachedEnvelope = {
 function readEnvelope(raw: string | null, sport: SportId): CachedEnvelope | null {
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw);
+    const json = raw.startsWith("lz:") ? (decompressFromUTF16(raw.slice(3)) || "") : raw;
+    const parsed = JSON.parse(json);
     if (!parsed?.data || parsed?.sport !== sport) return null;
     return parsed as CachedEnvelope;
   } catch {
@@ -67,12 +70,15 @@ function readEnvelope(raw: string | null, sport: SportId): CachedEnvelope | null
 }
 
 function readCacheEnvelope(sport: SportId, lang?: string): CachedEnvelope | null {
+  const key = cacheKey(sport, lang);
+  const memory = MEMORY_CACHE.get(key);
+  if (memory?.data && memory.sport === sport) return memory;
   try {
-    const current = readEnvelope(localStorage.getItem(cacheKey(sport, lang)), sport);
-    if (current) return current;
-    for (const key of legacyCacheKeys(sport, lang)) {
-      const legacy = readEnvelope(localStorage.getItem(key), sport);
-      if (legacy) return legacy;
+    const current = readEnvelope(localStorage.getItem(key), sport);
+    if (current) { MEMORY_CACHE.set(key, current); return current; }
+    for (const legacyKey of legacyCacheKeys(sport, lang)) {
+      const legacy = readEnvelope(localStorage.getItem(legacyKey), sport);
+      if (legacy) { MEMORY_CACHE.set(key, legacy); return legacy; }
     }
     return null;
   } catch {
@@ -212,9 +218,16 @@ function cacheSafeOverview(data: SportLiveOverview): SportLiveOverview {
 function writeCache(sport: SportId, lang: string | undefined, incoming: SportLiveOverview, phase: "fast" | "full" | "deep" | "archive" | "calendar") {
   const previous = readCacheEnvelope(sport, lang)?.data || null;
   const data = mergeSportLiveOverview(previous, incoming, phase);
+  const envelope: CachedEnvelope = { sport, lang: localeCode(lang), savedAt: Date.now(), data: cacheSafeOverview(data) };
+  const key = cacheKey(sport, lang);
+  MEMORY_CACHE.set(key, envelope);
   try {
-    localStorage.setItem(cacheKey(sport, lang), JSON.stringify({ sport, lang: localeCode(lang), savedAt: Date.now(), data: cacheSafeOverview(data) }));
-  } catch {}
+    const json = JSON.stringify(envelope);
+    localStorage.setItem(key, `lz:${compressToUTF16(json)}`);
+  } catch {
+    // Full 50k datasets may exceed the browser storage quota; the complete
+    // dataset remains available in memory for the current session.
+  }
   return data;
 }
 
@@ -234,7 +247,7 @@ export async function fetchSportLiveOverview(sport: SportId, signal?: AbortSigna
 
   try {
     const locale = localeCode(lang);
-    const response = await fetch(`/api/sports-live/${encodeURIComponent(sport)}/overview?lang=${encodeURIComponent(locale)}&phase=${encodeURIComponent(phase)}&v=11`, {
+    const response = await fetch(`/api/sports-live/${encodeURIComponent(sport)}/overview?lang=${encodeURIComponent(locale)}&phase=${encodeURIComponent(phase)}&v=15`, {
       method: "GET",
       headers: { Accept: "application/json" },
       cache: "default",

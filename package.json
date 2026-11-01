@@ -52,7 +52,7 @@
     "test:auto": "npm run test:ci",
     "test:release": "npm run test:auto && npm run test:live",
     "test:r2-account-data": "node ./tools/test-r2-account-data.mjs",
-    "test:history-integrity": "node --experimental-strip-types ./tools/test-history-integrity-regression.ts && node ./tools/test-history-snapshot-integrity-contract.mjs && npm run test:data-integrity-release-gate",
+    "test:history-integrity": "node --experimental-strip-types ./tools/test-history-integrity-regression.ts && node ./tools/test-history-snapshot-integrity-contract.mjs && npm run test:data-integrity-release-gate && npm run test:cross-device-release-gate",
     "android:run": "npm run android:sync && npx cap run android --no-sync",
     "android:build:debug": "npm run android:sync && node ./tools/run-android-gradle.mjs assembleDebug",
     "test:android-store-v1": "node ./tools/test-android-store-v1.mjs",
@@ -179,7 +179,8 @@
     "test:backup-auth-contract": "node ./tools/test-backup-auth-contract-v169.mjs",
     "test:data-integrity-release-gate": "node ./tools/test-data-integrity-release-gate-v235.mjs",
     "test:backup-pipeline-cleanup": "node ./tools/test-backup-pipeline-cleanup-v235.mjs",
-    "test:backup-checkpoint-compaction": "node ./tools/test-backup-checkpoint-compaction-v241.mjs"
+    "test:backup-checkpoint-compaction": "node ./tools/test-backup-checkpoint-compaction-v241.mjs",
+    "test:cross-device-release-gate": "node ./tools/test-cross-device-release-gate-v111.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",

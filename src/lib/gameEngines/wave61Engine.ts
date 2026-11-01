@@ -4155,6 +4155,9 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
     const streakMap = state.special.bimBamBoumStreakByPlayer || (state.special.bimBamBoumStreakByPlayer = {});
     const bestMap = state.special.bimBamBoumBestStreakByPlayer || (state.special.bimBamBoumBestStreakByPlayer = {});
     const comboMap = state.special.bimBamBoumCombosByPlayer || (state.special.bimBamBoumCombosByPlayer = {});
+    const failedMap = state.special.bimBamBoumFailedByPlayer || (state.special.bimBamBoumFailedByPlayer = {});
+    const superMap = state.special.bimBamBoumSuperByPlayer || (state.special.bimBamBoumSuperByPlayer = {});
+    const bonusMap = state.special.bimBamBoumBonusByPlayer || (state.special.bimBamBoumBonusByPlayer = {});
     const superEnabled = state.config?.modeOptions?.superBoom !== false;
     if (valid) {
       const previous = Number(streakMap[player.id] || 0);
@@ -4164,15 +4167,20 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
       streakMap[player.id] = superBoom ? 0 : previous + 1;
       bestMap[player.id] = Math.max(Number(bestMap[player.id] || 0), previous + 1);
       comboMap[player.id] = Number(comboMap[player.id] || 0) + 1;
+      bonusMap[player.id] = Number(bonusMap[player.id] || 0) + bonus * (superBoom ? 2 : 1);
+      if (superBoom) superMap[player.id] = Number(superMap[player.id] || 0) + 1;
       state.scores[player.id] = Number(state.scores[player.id] || 0) + delta;
       state.progress[player.id] = Number(comboMap[player.id] || 0);
       events.push(`${superBoom ? "💥 SUPER BOUM" : "💣 BIM → BAM → BOUM"} · +${delta}`);
     } else {
       streakMap[player.id] = 0;
+      failedMap[player.id] = Number(failedMap[player.id] || 0) + 1;
       delta = -missPenalty;
       if (missPenalty) state.scores[player.id] = Math.max(0, Number(state.scores[player.id] || 0) - missPenalty);
       events.push(`❌ Combo cassé${missPenalty ? ` · -${missPenalty}` : ""}`);
     }
+    const history = state.special.bimBamBoumHistory || (state.special.bimBamBoumHistory = []);
+    history.push({ playerId: player.id, rule, valid, superBoom: valid && superEnabled && Number(streakMap[player.id] || 0) === 0, scores:[scoreA,scoreB,scoreC], sameNumber:!!sameNumber, bedCombo:!!bedCombo, progressive:!!progressive, delta, bonus:valid?Math.max(0,delta-scoreA-scoreB-scoreC):0, streak:Number(streakMap[player.id]||0), at:Date.now() });
   } else if (state.modeId === "saute_moutons") {
     const trackLength = Math.max(6, Number(state.config?.modeOptions?.trackLength ?? state.config?.goal ?? 20));
     const leapBonus = Math.max(0, Number(state.config?.modeOptions?.leapfrogBonus ?? 1));
@@ -4180,17 +4188,27 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
     const bull50Jump = Math.max(1, Number(state.config?.modeOptions?.bull50Jump ?? 6));
     let pos = Number(state.progress[player.id] || 0);
     let totalJump = 0;
+    const distanceMap = state.special.sauteMoutonsDistanceByPlayer || (state.special.sauteMoutonsDistanceByPlayer = {});
+    const leapMap = state.special.sauteMoutonsLeapfrogsByPlayer || (state.special.sauteMoutonsLeapfrogsByPlayer = {});
+    const bestJumpMap = state.special.sauteMoutonsBestJumpByPlayer || (state.special.sauteMoutonsBestJumpByPlayer = {});
+    const bullJumpMap = state.special.sauteMoutonsBullJumpsByPlayer || (state.special.sauteMoutonsBullJumpsByPlayer = {});
     for (const d of darts) {
       let jump = d?.bed === "D" ? 2 : d?.bed === "T" ? 3 : d?.bed === "OB" ? bull25Jump : d?.bed === "IB" ? bull50Jump : d?.bed === "S" ? 1 : 0;
       if (jump <= 0) continue;
       const before = pos; const intended = Math.min(trackLength, pos + jump);
       const crossed = state.players.filter((p) => p.id !== player.id).some((p) => { const op=Number(state.progress[p.id]||0); return op > before && op <= intended; });
       pos = Math.min(trackLength, intended + (crossed ? leapBonus : 0));
-      totalJump += (pos - before); hits += 1;
-      if (crossed && leapBonus) events.push(`🐑 Saute-mouton ! +${leapBonus} case${leapBonus>1?"s":""}`);
+      const gained = pos - before;
+      totalJump += gained; hits += 1;
+      bestJumpMap[player.id] = Math.max(Number(bestJumpMap[player.id] || 0), gained);
+      if (d?.bed === "OB" || d?.bed === "IB") bullJumpMap[player.id] = Number(bullJumpMap[player.id] || 0) + 1;
+      if (crossed && leapBonus) { leapMap[player.id] = Number(leapMap[player.id] || 0) + 1; events.push(`🐑 Saute-mouton ! +${leapBonus} case${leapBonus>1?"s":""}`); }
       if (pos >= trackLength) break;
     }
     state.progress[player.id] = pos; state.scores[player.id] = pos; delta = totalJump;
+    distanceMap[player.id] = Number(distanceMap[player.id] || 0) + totalJump;
+    const history = state.special.sauteMoutonsHistory || (state.special.sauteMoutonsHistory = []);
+    history.push({ playerId:player.id, from:Math.max(0,pos-totalJump), to:pos, distance:totalJump, trackLength, leapfrogs:Number(leapMap[player.id]||0), bestJump:Number(bestJumpMap[player.id]||0), bullJumps:Number(bullJumpMap[player.id]||0), at:Date.now() });
     events.push(`🏁 Course · +${totalJump} · case ${pos}/${trackLength}`);
     if (pos >= trackLength) finishWith(state, player.id, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[player.id] || null : null);
   } else if (state.modeId === "troupeau_en_danger") {
@@ -4204,12 +4222,23 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
     const bullCountVisit = darts.filter((d)=>d?.bed === "OB" || d?.bed === "IB").length;
     let defense = darts.reduce((sum,d)=>sum + wave61DartScore(d),0) + bullCountVisit * patouPower;
     const shepherdSave = state.config?.modeOptions?.shepherdSave !== false && darts.some((d)=>d?.bed === "IB");
+    const wavesMap = state.special.troupeauWavesRepelledByPlayer || (state.special.troupeauWavesRepelledByPlayer = {});
+    const lostMap = state.special.troupeauSheepLostByPlayer || (state.special.troupeauSheepLostByPlayer = {});
+    const savedMap = state.special.troupeauSheepSavedByPlayer || (state.special.troupeauSheepSavedByPlayer = {});
+    const bestDefenseMap = state.special.troupeauBestDefenseByPlayer || (state.special.troupeauBestDefenseByPlayer = {});
+    const patouMap = state.special.troupeauPatouActionsByPlayer || (state.special.troupeauPatouActionsByPlayer = {});
+    bestDefenseMap[player.id] = Math.max(Number(bestDefenseMap[player.id] || 0), defense);
+    if (bullCountVisit) patouMap[player.id] = Number(patouMap[player.id] || 0) + bullCountVisit;
     let lost = defense >= pressure ? 0 : Math.max(1, Math.ceil((pressure-defense)/35));
+    if (defense >= pressure) wavesMap[player.id] = Number(wavesMap[player.id] || 0) + 1;
+    if (lost) lostMap[player.id] = Number(lostMap[player.id] || 0) + lost;
     sheepMap[player.id] = Math.max(0, Number(sheepMap[player.id]||maxFlock) - lost);
-    if (shepherdSave && sheepMap[player.id] < maxFlock) { sheepMap[player.id] += 1; events.push("🧑‍🌾 Berger · 1 mouton sauvé"); }
+    if (shepherdSave && sheepMap[player.id] < maxFlock) { sheepMap[player.id] += 1; savedMap[player.id] = Number(savedMap[player.id] || 0) + 1; events.push("🧑‍🌾 Berger · 1 mouton sauvé"); }
     delta = Math.max(0, defense); hits = darts.filter((d)=>d?.bed !== "MISS").length;
     state.scores[player.id] = Number(state.scores[player.id]||0) + delta;
     state.progress[player.id] = Number(sheepMap[player.id]||0);
+    const history = state.special.troupeauHistory || (state.special.troupeauHistory = []);
+    history.push({ playerId:player.id, defense, pressure, repelled:defense>=pressure, lost, shepherdSave:!!shepherdSave, bullCount:bullCountVisit, sheepLeft:Number(sheepMap[player.id]||0), maxFlock, at:Date.now() });
     events.push(defense >= pressure ? `🐕 Patou · vague repoussée (${defense}/${pressure})` : `🐺 Meute · ${lost} mouton${lost>1?"s":""} perdu${lost>1?"s":""} (${defense}/${pressure})`);
     if (sheepMap[player.id] <= 0) { state.eliminated[player.id] = true; events.push("💀 Troupeau perdu"); }
     const alive = state.players.filter((p)=>!state.eliminated[p.id]);

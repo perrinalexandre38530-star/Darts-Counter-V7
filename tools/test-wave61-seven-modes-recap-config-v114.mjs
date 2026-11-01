@@ -1,0 +1,10 @@
+import fs from 'node:fs';
+const read=(p)=>fs.readFileSync(p,'utf8');
+const play=read('src/pages/Wave61SharedPlay.tsx');
+const engine=read('src/lib/gameEngines/wave61Engine.ts');
+const config=read('src/pages/Wave61SharedConfig.tsx');
+for (const needle of ['bimBamBoumHistory','sauteMoutonsHistory','troupeauHistory']) if(!engine.includes(needle)) throw new Error(`Missing engine recap history ${needle}`);
+for (const needle of ['bimBamBoumResult','sauteMoutonsResult','troupeauResult','SUPER BOUM','VAGUE REPOUSSÉE','MEILLEUR BOND']) if(!play.includes(needle)) throw new Error(`Missing dedicated recap UI ${needle}`);
+for (const id of ['green_vs_red','black_vs_white','three_colors','la_suite','color_call','bim_bam_boum','saute_moutons','troupeau_en_danger']) if(!config.includes(`${id}: [`)) throw new Error(`Missing config group ${id}`);
+if(!config.includes('data-wave61-dedicated-groups')) throw new Error('Missing grouped config marker');
+console.log('✅ V114 — dedicated visit recaps for 3 new modes + grouped premium configuration for color variants and new modes.');

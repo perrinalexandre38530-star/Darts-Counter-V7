@@ -36,7 +36,7 @@ import { buildTrainingCoachDashboard } from "../../profile/trainingCoachDashboar
 import { buildTrainingPlayerJourney } from "../../profile/trainingPlayerJourney";
 import { buildTrainingQuickStart } from "../../profile/trainingQuickStart";
 import { buildTrainingDailyChallenge } from "../../profile/trainingDailyChallenge";
-import { clearTrainingExerciseDraft, getEffectiveDraftSeconds, hasMeaningfulTrainingExerciseDraft, loadTrainingExerciseDraft } from "../../profile/trainingExerciseDraft";
+import { clearTrainingExerciseDraft, getEffectiveDraftSeconds, hasMeaningfulTrainingExerciseDraft, loadTrainingExerciseDraft, pruneTrainingExerciseDrafts } from "../../profile/trainingExerciseDraft";
 
 const familyOrder: TrainingExerciseFamily[] = ["scoring", "doubles", "checkout", "precision", "bull", "regularity"];
 type HubTab = "program" | "exercises" | "diagnosis" | "progress";
@@ -189,14 +189,24 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
     window.addEventListener("dc-training-plan-updated", refresh);
     window.addEventListener("dc-training-next-recommendation-updated", refresh);
     window.addEventListener("dc-training-program-draft-updated", refresh);
+    window.addEventListener("dc-training-exercise-draft-updated", refresh);
+    window.addEventListener("focus", refresh);
+    const onVisibility = () => { if (document.visibilityState === "visible") refresh(); };
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       window.removeEventListener("dc-training-stats-updated", refresh);
       window.removeEventListener("dc-training-history-updated", refresh);
       window.removeEventListener("dc-training-plan-updated", refresh);
       window.removeEventListener("dc-training-next-recommendation-updated", refresh);
       window.removeEventListener("dc-training-program-draft-updated", refresh);
+      window.removeEventListener("dc-training-exercise-draft-updated", refresh);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
+  React.useEffect(() => {
+    pruneTrainingExerciseDrafts(accountParticipantId || null);
+  }, [accountParticipantId]);
   React.useEffect(() => {
     const refreshPreferences = () => setPreferences(loadTrainingLabPreferences());
     window.addEventListener("dc-training-lab-preferences-updated", refreshPreferences);
@@ -353,7 +363,14 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
 
   const detailSessionSummary = React.useMemo(() => {
     if (!detailExercise) return null;
-    const rows = sessions.filter((row) => String(row?.metrics?.exerciseId || row?.config?.exerciseId || "") === detailExercise.id);
+    const deduped = new Map<string, any>();
+    sessions
+      .filter((row) => String(row?.metrics?.exerciseId || row?.config?.exerciseId || "") === detailExercise.id)
+      .forEach((row: any, index) => {
+        const key = String(row?.id || row?.sessionId || `${Number(row?.endedAt || 0)}:${Number(row?.startedAt || 0)}:${index}`);
+        if (!deduped.has(key)) deduped.set(key, row);
+      });
+    const rows = Array.from(deduped.values()).sort((a: any, b: any) => Number(b?.endedAt || 0) - Number(a?.endedAt || 0));
     if (!rows.length) return { attempts: 0, bestPerformance: 0, lastPerformance: 0, lastAccuracy: 0, lastSuccess: false, lastMetricLabel: "", lastMetricValue: "", lastEndedAt: 0 };
     const last = rows[0];
     const performanceOf = (row: any) => {
