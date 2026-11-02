@@ -892,6 +892,7 @@ export default {
     const candidates = messages.filter((message): message is Candidate => !isScanTriggerMessage(message));
     if (candidates.length === 0) return;
 
+    const maxCandidatesPerRun = intFromEnv(env.RADAR_MAX_CANDIDATES_PER_RUN, 20, 1, 20);
     const runIds = [...new Set(candidates.map((candidate) => candidate.runId).filter((id): id is string => Boolean(id)))];
     const progressByRun = new Map<string, RunProgressRow>();
     const detailsByRun = new Map<string, Record<string, unknown>>();
