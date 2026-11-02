@@ -489,14 +489,55 @@ function variantSeriesGameIndexKey(modeId:any) {
   return "variantGameIndex";
 }
 
+function variantSeriesSnapshot(state:any, modeId:any) {
+  const series = greenRedSeriesSpec(state);
+  const winsKey = variantSeriesWinsKey(modeId);
+  const gameIndexKey = variantSeriesGameIndexKey(modeId);
+  const wins = { ...(state?.special?.[winsKey] || {}) };
+  return {
+    enabled: !!series.enabled,
+    format: series.raw,
+    label: series.label,
+    winsTo: series.winsTo,
+    gameIndex: Number(state?.special?.[gameIndexKey] || 1),
+    teamMode: state?.config?.participantMode === "teams",
+    wins,
+  };
+}
+
+function variantSeriesLegWinsForEnd(state:any, modeId:any) {
+  const series = variantSeriesSnapshot(state, modeId);
+  if (!series.enabled) return { [String(state?.winnerId || "")]: 1 };
+  if (series.teamMode) {
+    return Object.fromEntries((state?.players || []).map((player:any) => {
+      const teamId = String(state?.config?.teamByPlayer?.[player.id] || "");
+      return [String(player.id), Number(series.wins?.[`team:${teamId}`] || 0)];
+    }));
+  }
+  return Object.fromEntries((state?.players || []).map((player:any) => [String(player.id), Number(series.wins?.[String(player.id)] || 0)]));
+}
+
 function carryVariantSeriesSpecial(fresh:any, completed:any, modeId:any) {
   const out:any = { ...(fresh?.special || {}) };
   const source:any = completed?.special || {};
   const prefix = modeId === "three_colors" ? "threeColors" : modeId === "la_suite" ? "laSuite" : modeId === "color_call" ? "colorCall" : "";
+  if (modeId === "black_vs_white") {
+    ["blackWhiteColorByPlayer","blackWhiteValidHitsByPlayer","blackWhiteWrongColorByPlayer","blackWhiteMissesByPlayer","blackWhiteDtHitsByPlayer","blackWhiteBullPointsByPlayer","blackWhitePenaltyPointsByPlayer","blackWhitePerfectVisitsByPlayer"].forEach((key) => {
+      if (source[key] != null) out[key] = JSON.parse(JSON.stringify(source[key]));
+    });
+    if (Array.isArray(source.colorModeHistory)) out.colorModeHistory = JSON.parse(JSON.stringify(source.colorModeHistory));
+  }
   if (prefix) {
     Object.keys(source).forEach((key) => {
-      if (key.startsWith(prefix)) out[key] = JSON.parse(JSON.stringify(source[key]));
+      if (!key.startsWith(prefix)) return;
+      // These fields must be regenerated/reset for the new leg instead of being copied.
+      if (modeId === "color_call" && key === "colorCallSequence") return;
+      if (modeId === "la_suite" && key === "laSuiteCurrentStreakByPlayer") return;
+      out[key] = JSON.parse(JSON.stringify(source[key]));
     });
+    if (modeId === "la_suite") {
+      out.laSuiteCurrentStreakByPlayer = Object.fromEntries((fresh?.players || []).map((p:any)=>[String(p.id),0]));
+    }
     if (Array.isArray(source.colorModeHistory)) out.colorModeHistory = JSON.parse(JSON.stringify(source.colorModeHistory));
   }
   if (modeId === "bim_bam_boum") {
@@ -1222,6 +1263,18 @@ export default function Wave61SharedPlay(props: any) {
       damageTaken: row.damageTaken,
       safeReveals: row.safeReveals,
       accuracy: row.accuracy,
+      ...(spec.id === "black_vs_white" ? {
+        blackVsWhite: {
+          validHits: Number(s.special?.blackWhiteValidHitsByPlayer?.[row.id] || 0),
+          wrongColor: Number(s.special?.blackWhiteWrongColorByPlayer?.[row.id] || 0),
+          misses: Number(s.special?.blackWhiteMissesByPlayer?.[row.id] || 0),
+          dtHits: Number(s.special?.blackWhiteDtHitsByPlayer?.[row.id] || 0),
+          bullPoints: Number(s.special?.blackWhiteBullPointsByPlayer?.[row.id] || 0),
+          penaltyPoints: Number(s.special?.blackWhitePenaltyPointsByPlayer?.[row.id] || 0),
+          perfectVisits: Number(s.special?.blackWhitePerfectVisitsByPlayer?.[row.id] || 0),
+          track: String(s.special?.blackWhiteColorByPlayer?.[row.id] || "BLACK"),
+        },
+      } : {}),
       ...(spec.id === "three_colors" ? {
         threeColors: {
           validVisits: Number(s.special?.threeColorsValidVisitsByPlayer?.[row.id] || 0),
@@ -1238,7 +1291,20 @@ export default function Wave61SharedPlay(props: any) {
       ...(spec.id === "color_call" ? {
         colorCall: { hits:Number(s.special?.colorCallHitsByPlayer?.[row.id]||0), darts:Number(s.special?.colorCallDartsByPlayer?.[row.id]||0), wrongColor:Number(s.special?.colorCallWrongColorByPlayer?.[row.id]||0), misses:Number(s.special?.colorCallMissesByPlayer?.[row.id]||0), penaltyPoints:Number(s.special?.colorCallPenaltyByPlayer?.[row.id]||0), perfectVisits:Number(s.special?.colorCallPerfectVisitsByPlayer?.[row.id]||0), bestVisit:Number(s.special?.colorCallBestVisitByPlayer?.[row.id]||0), hitsByColor:{...(s.special?.colorCallHitsByColorByPlayer?.[row.id]||{})} },
       } : {}),
+      ...(spec.id === "bim_bam_boum" ? {
+        bimBamBoum: { combos:Number(s.special?.bimBamBoumCombosByPlayer?.[row.id]||0), failed:Number(s.special?.bimBamBoumFailedByPlayer?.[row.id]||0), bestStreak:Number(s.special?.bimBamBoumBestStreakByPlayer?.[row.id]||0), superBoom:Number(s.special?.bimBamBoumSuperByPlayer?.[row.id]||0), bonusPoints:Number(s.special?.bimBamBoumBonusByPlayer?.[row.id]||0) },
+      } : {}),
+      ...(spec.id === "saute_moutons" ? {
+        sauteMoutons: { distance:Number(s.special?.sauteMoutonsDistanceByPlayer?.[row.id]||0), leapfrogs:Number(s.special?.sauteMoutonsLeapfrogsByPlayer?.[row.id]||0), bestJump:Number(s.special?.sauteMoutonsBestJumpByPlayer?.[row.id]||0), bullJumps:Number(s.special?.sauteMoutonsBullJumpsByPlayer?.[row.id]||0), position:Number(s.progress?.[row.id]||0) },
+      } : {}),
+      ...(spec.id === "troupeau_en_danger" ? {
+        troupeau: { sheepLeft:Number(s.special?.flockRemainingByPlayer?.[row.id]??s.config?.modeOptions?.flockSize??8), wavesRepelled:Number(s.special?.troupeauWavesRepelledByPlayer?.[row.id]||0), sheepLost:Number(s.special?.troupeauSheepLostByPlayer?.[row.id]||0), sheepSaved:Number(s.special?.troupeauSheepSavedByPlayer?.[row.id]||0), bestDefense:Number(s.special?.troupeauBestDefenseByPlayer?.[row.id]||0), patouActions:Number(s.special?.troupeauPatouActionsByPlayer?.[row.id]||0) },
+      } : {}),
+      ...(spec.id === "une_ptite_raclette" ? {
+        raclette: { served:Number(s.special?.racletteServedByPlayer?.[row.id]||0), matchServed:Number(s.special?.racletteMatchServedByPlayer?.[row.id]||0)+Number(s.special?.racletteServedByPlayer?.[row.id]||0), stock:{cheese:Number(s.special?.racletteStockByPlayer?.[row.id]?.cheese||0),potato:Number(s.special?.racletteStockByPlayer?.[row.id]?.potato||0),charcuterie:Number(s.special?.racletteStockByPlayer?.[row.id]?.charcuterie||0)}, varietyBonus:Number(s.special?.racletteVarietyBonusByPlayer?.[row.id]||0), bullBonus:Number(s.special?.racletteBullBonusByPlayer?.[row.id]||0), missPenalty:Number(s.special?.racletteMissPenaltyByPlayer?.[row.id]||0), bestServe:Number(s.special?.racletteBestServeByPlayer?.[row.id]||0) },
+      } : {}),
     }]));
+    const series = isFinishedColorVariant(spec.id) ? variantSeriesSnapshot(s, spec.id) : null;
     return {
       id: matchIdRef.current,
       matchId: matchIdRef.current,
@@ -1263,9 +1329,9 @@ export default function Wave61SharedPlay(props: any) {
         };
       }),
       game: { mode: spec.id, modeId: spec.id, variantId: s.config?.variantId, engineFamily: s.family, engineVersion: WAVE61_ENGINE_VERSION, resumeRoute: "wave61_play" },
-      summary: { mode: spec.id, modeId: spec.id, variantId: s.config?.variantId, family: s.family, winnerId: s.winnerId, winnerIds, winnerTeamId: s.winnerTeamId, finalScores: s.scores, finalProgress: s.progress, health: s.health, lives: s.lives, rankings, playerStats, statsByPlayer: s.statsByPlayer, matchStats, config: s.config },
+      summary: { mode: spec.id, modeId: spec.id, variantId: s.config?.variantId, family: s.family, winnerId: s.winnerId, winnerIds, winnerTeamId: s.winnerTeamId, finalScores: s.scores, finalProgress: s.progress, health: s.health, lives: s.lives, rankings, playerStats, statsByPlayer: s.statsByPlayer, matchStats, config: s.config, series },
       resume: { mode: "wave61", modeId: spec.id, variantId: s.config?.variantId, config: s.config, state: cloneWave61State(s), route: "wave61_play", currentThrow: currentThrow.slice(0, 3), multiplier, updatedAt: Date.now() },
-      payload: { kind: spec.id, mode: spec.id, modeId: spec.id, variantId: s.config?.variantId, sport: "darts", winnerId: s.winnerId, winnerIds, winnerTeamId: s.winnerTeamId, config: s.config, stateSnapshot: cloneWave61State(s), currentThrow: currentThrow.slice(0, 3), multiplier, visits: s.visits, stats: { players: playerStats, match: matchStats } },
+      payload: { kind: spec.id, mode: spec.id, modeId: spec.id, variantId: s.config?.variantId, sport: "darts", winnerId: s.winnerId, winnerIds, winnerTeamId: s.winnerTeamId, config: s.config, stateSnapshot: cloneWave61State(s), currentThrow: currentThrow.slice(0, 3), multiplier, visits: s.visits, series, stats: { players: playerStats, match: matchStats } },
     };
   }, [profiles, profileById, spec.id, currentThrow, multiplier]);
 
@@ -1757,7 +1823,7 @@ export default function Wave61SharedPlay(props: any) {
       </div> : null}
 
       {state.phase === "finished" ? <div style={{ flex:1,minHeight:0,overflowY:"auto",padding:10,display:"grid",placeItems:"start center" }}>
-        <div style={{ width:"min(720px,100%)" }}><ModeEndPanel title={spec.label} winner={state.winnerId} profiles={profiles} legWins={{[state.winnerId||""]:1}} accent={accent} onReplay={replay} onStats={()=>go?.("darts_mode_summary",{rec:buildRecord(state,"finished"),mode:spec.id,from:"game_end"})} onHistory={()=>go?.("statsHub",{tab:"history",mode:spec.id,focusMatchId:matchIdRef.current})} onConfig={()=>go?.("wave61_config",{gameId:spec.id})} onGames={()=>go?.("games",{gamesView:"all"})} extra={<Wave61EndSummary state={state} profiles={profiles} accent={accent} familyLabel={preset.label}/>} /></div>
+        <div style={{ width:"min(720px,100%)" }}><ModeEndPanel title={spec.label} winner={state.winnerId} profiles={profiles} legWins={variantSeriesLegWinsForEnd(state, spec.id)} accent={accent} onReplay={replay} onStats={()=>go?.("darts_mode_summary",{rec:buildRecord(state,"finished"),mode:spec.id,from:"game_end"})} onHistory={()=>go?.("statsHub",{tab:"history",mode:spec.id,focusMatchId:matchIdRef.current})} onConfig={()=>go?.("wave61_config",{gameId:spec.id})} onGames={()=>go?.("games",{gamesView:"all"})} extra={<Wave61EndSummary state={state} profiles={profiles} accent={accent} familyLabel={preset.label}/>} /></div>
       </div> : <div style={isLandscapeTablet
         ? { flex:1,minHeight:0,display:"grid",gridTemplateColumns:"minmax(0,.92fr) minmax(440px,1.08fr)",gap:8,padding:"5px 7px 7px",overflow:"hidden" }
         : { flex:1,minHeight:0,display:"flex",flexDirection:"column",overflow:"hidden" }
@@ -1849,7 +1915,7 @@ export default function Wave61SharedPlay(props: any) {
         {awenaCommentaryEnabled ? <button type="button" aria-label="Répéter le conseil Awena" onClick={() => { lastVoiceAtRef.current = Date.now(); void awena?.say?.(adviceText).catch(() => undefined); }} style={{ width: 28, height: 28, borderRadius: 9, border: `1px solid ${accent}55`, background: `${accent}12`, color: accent, cursor: "pointer" }}>🔊</button> : null}
       </div> : null}
 
-      {state.phase === "finished" ? <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 10, display: "grid", placeItems: "start center" }}><div style={{ width: "min(980px,94vw)" }}><ModeEndPanel title={spec.label} winner={state.winnerId} profiles={profiles} legWins={{ [state.winnerId || ""]: 1 }} accent={accent} onReplay={replay} onStats={() => go?.("darts_mode_summary", { rec: buildRecord(state, "finished"), mode: spec.id, from: "game_end" })} onHistory={() => go?.("statsHub", { tab: "history", mode: spec.id, focusMatchId: matchIdRef.current })} onConfig={() => go?.("wave61_config", { gameId: spec.id })} onGames={() => go?.("games", { gamesView: "all" })} extra={<Wave61EndSummary state={state} profiles={profiles} accent={accent} familyLabel={preset.label} />} /></div></div> : <div data-wave61-play-grid="three-zone" style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "grid", gridTemplateColumns: viewportW >= 1180 ? "minmax(0,.78fr) minmax(0,1.05fr) minmax(0,1.17fr)" : "minmax(0,.82fr) minmax(0,1.03fr) minmax(0,1.15fr)", gap: compactHeight ? 6 : 8, padding: compactHeight ? "5px 7px 7px" : "7px 9px 9px" }}>
+      {state.phase === "finished" ? <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 10, display: "grid", placeItems: "start center" }}><div style={{ width: "min(980px,94vw)" }}><ModeEndPanel title={spec.label} winner={state.winnerId} profiles={profiles} legWins={variantSeriesLegWinsForEnd(state, spec.id)} accent={accent} onReplay={replay} onStats={() => go?.("darts_mode_summary", { rec: buildRecord(state, "finished"), mode: spec.id, from: "game_end" })} onHistory={() => go?.("statsHub", { tab: "history", mode: spec.id, focusMatchId: matchIdRef.current })} onConfig={() => go?.("wave61_config", { gameId: spec.id })} onGames={() => go?.("games", { gamesView: "all" })} extra={<Wave61EndSummary state={state} profiles={profiles} accent={accent} familyLabel={preset.label} />} /></div></div> : <div data-wave61-play-grid="three-zone" style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "grid", gridTemplateColumns: viewportW >= 1180 ? "minmax(0,.78fr) minmax(0,1.05fr) minmax(0,1.17fr)" : "minmax(0,.82fr) minmax(0,1.03fr) minmax(0,1.15fr)", gap: compactHeight ? 6 : 8, padding: compactHeight ? "5px 7px 7px" : "7px 9px 9px" }}>
         <section data-wave61-zone="players" style={{ minWidth: 0, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", gap: 6 }}>
           <div style={{ ...panelStyle(accent + "45"), padding: compactHeight ? 7 : 9, flex: "0 0 auto" }}>
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, alignItems: "center" }}><div><div style={{ color: accent, fontSize: compactHeight ? 8.4 : 9.5, fontWeight: 1100, letterSpacing: .8 }}>ROUND {roundLabel}/{config.rounds}</div><div style={{ marginTop: 2, color: "#fff", fontSize: compactHeight ? 12 : 14, fontWeight: 1000 }}>{activePlayer?.name || "—"}</div></div><button type="button" onClick={doUndo} disabled={!undo.length} style={{ ...actionStyle(accent, !undo.length), minHeight: compactHeight ? 32 : 36, padding: "0 8px", fontSize: 9 }}>↶ UNDO</button></div>
@@ -1991,7 +2057,7 @@ export default function Wave61SharedPlay(props: any) {
 
         {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} /> : <div style={{ ...panelStyle(accent + "35"), textAlign: "center", color: SOFT, fontSize: 11, padding: 14 }}><b style={{ color: accent }}>{activePlayer?.name}</b> calcule son prochain lancer…</div>}
         <VisitTimeline visits={state.visits} profiles={profiles} accent={accent} title="ACTIONS DU MOTEUR" limit={5} />
-      </> : <ModeEndPanel title={spec.label} winner={state.winnerId} profiles={profiles} legWins={{ [state.winnerId || ""]: 1 }} accent={accent} onReplay={replay} onStats={() => go?.("darts_mode_summary", { rec: buildRecord(state, "finished"), mode: spec.id, from: "game_end" })} onHistory={() => go?.("statsHub", { tab: "history", mode: spec.id, focusMatchId: matchIdRef.current })} onConfig={() => go?.("wave61_config", { gameId: spec.id })} onGames={() => go?.("games", { gamesView: "all" })} extra={<Wave61EndSummary state={state} profiles={profiles} accent={accent} familyLabel={preset.label} />} />}
+      </> : <ModeEndPanel title={spec.label} winner={state.winnerId} profiles={profiles} legWins={variantSeriesLegWinsForEnd(state, spec.id)} accent={accent} onReplay={replay} onStats={() => go?.("darts_mode_summary", { rec: buildRecord(state, "finished"), mode: spec.id, from: "game_end" })} onHistory={() => go?.("statsHub", { tab: "history", mode: spec.id, focusMatchId: matchIdRef.current })} onConfig={() => go?.("wave61_config", { gameId: spec.id })} onGames={() => go?.("games", { gamesView: "all" })} extra={<Wave61EndSummary state={state} profiles={profiles} accent={accent} familyLabel={preset.label} />} />}
     </div>
   </div>;
 }

@@ -39,6 +39,7 @@ import { buildTrainingDailyChallenge } from "../../profile/trainingDailyChalleng
 import { clearTrainingExerciseDraft, getEffectiveDraftSeconds, hasMeaningfulTrainingExerciseDraft, loadTrainingExerciseDraft, pruneTrainingExerciseDrafts } from "../../profile/trainingExerciseDraft";
 import { buildTrainingExerciseProgression } from "../../profile/trainingExerciseProgression";
 import { ensureTrainingDailyQueue, loadTrainingDailyQueue, saveTrainingDailyQueue, trainingLocalDateKey, trainingSessionDateKey } from "../../profile/trainingDailyQueue";
+import { buildTrainingDailyReview } from "../../profile/trainingDailyReview";
 
 const familyOrder: TrainingExerciseFamily[] = ["scoring", "doubles", "checkout", "precision", "bull", "regularity"];
 type HubTab = "program" | "exercises" | "diagnosis" | "progress";
@@ -391,13 +392,47 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
   }, [accountParticipantId, focusNowItems]);
   const dailyQueue = React.useMemo(() => loadTrainingDailyQueue(accountParticipantId || null), [accountParticipantId, dailyQueueRevision, revision]);
   const todayKey = trainingLocalDateKey();
-  const completedExerciseIdsToday = React.useMemo(() => new Set(sessions.filter((row: any) => trainingSessionDateKey(row?.endedAt || row?.completedAt || row?.createdAt) === todayKey).map((row: any) => String(row?.metrics?.exerciseId || row?.config?.exerciseId || "")).filter(Boolean)), [sessions, todayKey]);
+  const todayExerciseSummaries = React.useMemo(() => {
+    const map = new Map<string, { attempts: number; latestScore: number; bestScore: number; latestPassed: boolean; latestAt: number }>();
+    for (const row of sessions as any[]) {
+      if (trainingSessionDateKey(row?.endedAt || row?.completedAt || row?.createdAt) !== todayKey) continue;
+      const id = String(row?.metrics?.exerciseId || row?.config?.exerciseId || "").trim();
+      if (!id) continue;
+      const at = Number(row?.endedAt || row?.completedAt || row?.createdAt || 0) || 0;
+      const score = Math.max(0, Math.min(100, Number(row?.metrics?.performanceScore ?? row?.metrics?.score ?? row?.score ?? 0) || 0));
+      const passed = Boolean(row?.metrics?.objectivePassed ?? row?.success ?? false);
+      const current = map.get(id);
+      if (!current) {
+        map.set(id, { attempts: 1, latestScore: score, bestScore: score, latestPassed: passed, latestAt: at });
+        continue;
+      }
+      current.attempts += 1;
+      current.bestScore = Math.max(current.bestScore, score);
+      if (at >= current.latestAt) {
+        current.latestAt = at;
+        current.latestScore = score;
+        current.latestPassed = passed;
+      }
+    }
+    return map;
+  }, [sessions, todayKey]);
+  const completedExerciseIdsToday = React.useMemo(() => new Set(todayExerciseSummaries.keys()), [todayExerciseSummaries]);
   const dailyQueueItems = React.useMemo(() => dailyQueue.exerciseIds.map((id) => {
     const exercise = TRAINING_EXERCISE_CATALOG.find((row) => row.id === id);
     if (!exercise) return null;
     const personal = exerciseProgressionById.get(id) || buildTrainingExerciseProgression(exercise, []);
-    return { exercise, personal, done: completedExerciseIdsToday.has(id) };
-  }).filter(Boolean) as Array<{ exercise: (typeof TRAINING_EXERCISE_CATALOG)[number]; personal: ReturnType<typeof buildTrainingExerciseProgression>; done: boolean }>, [dailyQueue.exerciseIds, exerciseProgressionById, completedExerciseIdsToday]);
+    const today = todayExerciseSummaries.get(id) || null;
+    return { exercise, personal, done: Boolean(today), today };
+  }).filter(Boolean) as Array<{ exercise: (typeof TRAINING_EXERCISE_CATALOG)[number]; personal: ReturnType<typeof buildTrainingExerciseProgression>; done: boolean; today: { attempts: number; latestScore: number; bestScore: number; latestPassed: boolean; latestAt: number } | null }>, [dailyQueue.exerciseIds, exerciseProgressionById, todayExerciseSummaries]);
+  const dailyQueueSummary = React.useMemo(() => {
+    const doneRows = dailyQueueItems.filter((row) => row.done && row.today);
+    const total = dailyQueueItems.length;
+    const done = doneRows.length;
+    const averageScore = done ? Math.round(doneRows.reduce((sum, row) => sum + Number(row.today?.latestScore || 0), 0) / done) : 0;
+    const bestScore = done ? Math.max(...doneRows.map((row) => Number(row.today?.bestScore || 0))) : 0;
+    return { total, done, remaining: Math.max(0, total - done), progressPct: total ? Math.round((done / total) * 100) : 0, averageScore, bestScore };
+  }, [dailyQueueItems]);
+  const dailyReview = React.useMemo(() => buildTrainingDailyReview(sessions as any[]), [sessions]);
   const replaceDailyQueueItem = React.useCallback((exerciseId: string) => {
     const current = loadTrainingDailyQueue(accountParticipantId || null);
     const used = new Set(current.exerciseIds);
@@ -1211,15 +1246,48 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
               {dailyQueueItems.length ? <div style={{ marginTop: 10, padding: 11, borderRadius: 14, border: "1px solid rgba(39,220,255,.18)", background: "linear-gradient(145deg,rgba(39,220,255,.055),rgba(80,255,174,.02))" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                   <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: .9, color: "#27dcff" }}>MA SÉANCE DU JOUR</div><div style={{ marginTop: 3, fontSize: 9, opacity: .54 }}>3 exercices maximum • avance à ton rythme • reprise possible.</div></div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 7 }}><span style={{ padding: "5px 8px", borderRadius: 999, border: "1px solid rgba(80,255,174,.18)", background: "rgba(80,255,174,.055)", color: "#8cffcb", fontSize: 7.5, fontWeight: 950 }}>{dailyQueueItems.filter((row) => row.done).length}/{dailyQueueItems.length} FAITS</span><button type="button" onClick={rebuildDailyQueue} title="Reconstruire la séance" aria-label="Reconstruire la séance" style={{ width: 30, height: 30, borderRadius: 9, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.025)", color: "inherit", cursor: "pointer", fontSize: 14 }}>↻</button></div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7 }}><span style={{ padding: "5px 8px", borderRadius: 999, border: "1px solid rgba(80,255,174,.18)", background: "rgba(80,255,174,.055)", color: "#8cffcb", fontSize: 7.5, fontWeight: 950 }}>{dailyQueueSummary.done}/{dailyQueueSummary.total} FAITS</span><button type="button" onClick={rebuildDailyQueue} title="Reconstruire la séance" aria-label="Reconstruire la séance" style={{ width: 30, height: 30, borderRadius: 9, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.025)", color: "inherit", cursor: "pointer", fontSize: 14 }}>↻</button></div>
+                </div>
+                <div style={{ marginTop: 9, height: 5, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.055)" }}><div style={{ width: `${dailyQueueSummary.progressPct}%`, height: "100%", borderRadius: 999, background: "linear-gradient(90deg,rgba(39,220,255,.9),rgba(80,255,174,.9))", transition: "width .18s ease" }} /></div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                  <MetricChip icon="progress" label="PROGRESSION" value={`${dailyQueueSummary.progressPct}%`} tone="cyan" />
+                  <MetricChip icon="skills" label="MOYENNE DU JOUR" value={dailyQueueSummary.done ? `${dailyQueueSummary.averageScore}/100` : "—"} tone="purple" />
+                  <MetricChip icon="records" label="MEILLEUR DU JOUR" value={dailyQueueSummary.done ? `${dailyQueueSummary.bestScore}/100` : "—"} tone="gold" />
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,210px),1fr))", gap: 7, marginTop: 9 }}>
-                  {dailyQueueItems.map(({ exercise, personal, done }, index) => <div key={exercise.id} style={{ minWidth: 0, padding: 10, borderRadius: 11, border: done ? "1px solid rgba(80,255,174,.22)" : index === 0 ? "1px solid rgba(39,220,255,.25)" : "1px solid rgba(255,255,255,.07)", background: done ? "rgba(80,255,174,.045)" : "rgba(255,255,255,.018)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 24, height: 24, borderRadius: 8, display: "grid", placeItems: "center", background: done ? "rgba(80,255,174,.10)" : "rgba(39,220,255,.08)", color: done ? "#8cffcb" : "#27dcff", fontSize: 10, fontWeight: 950 }}>{done ? "✓" : index + 1}</span><button type="button" onClick={() => openExerciseDetail(exercise.id)} style={{ minWidth: 0, flex: 1, border: "none", background: "transparent", color: "inherit", padding: 0, textAlign: "left", cursor: "pointer" }}><b style={{ display: "block", fontSize: 9.4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{exercise.title}</b><span style={{ display: "block", marginTop: 3, fontSize: 7.6, opacity: .5 }}>{TRAINING_FAMILY_META[exercise.family].label} • NIV. {personal.level}/5</span></button><button type="button" disabled={done} onClick={() => replaceDailyQueueItem(exercise.id)} title="Remplacer cet exercice" aria-label={`Remplacer ${exercise.title}`} style={{ width: 27, height: 27, borderRadius: 8, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.02)", color: "inherit", opacity: done ? .25 : .55, cursor: done ? "default" : "pointer" }}>↻</button></div>
-                    <button type="button" onClick={() => openExerciseDetail(exercise.id)} style={{ width: "100%", marginTop: 8, padding: "7px 8px", borderRadius: 9, border: done ? "1px solid rgba(80,255,174,.18)" : "1px solid rgba(39,220,255,.16)", background: done ? "rgba(80,255,174,.05)" : "rgba(39,220,255,.045)", color: done ? "#8cffcb" : "inherit", fontSize: 7.7, fontWeight: 950, cursor: "pointer" }}>{done ? "VOIR LE RÉSULTAT / REJOUER" : "OUVRIR LA FICHE"}</button>
+                  {dailyQueueItems.map(({ exercise, personal, done, today }, index) => <div key={exercise.id} style={{ minWidth: 0, padding: 10, borderRadius: 11, border: done ? "1px solid rgba(80,255,174,.22)" : index === 0 ? "1px solid rgba(39,220,255,.25)" : "1px solid rgba(255,255,255,.07)", background: done ? "rgba(80,255,174,.045)" : "rgba(255,255,255,.018)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 24, height: 24, borderRadius: 8, display: "grid", placeItems: "center", background: done ? "rgba(80,255,174,.10)" : "rgba(39,220,255,.08)", color: done ? "#8cffcb" : "#27dcff", fontSize: 10, fontWeight: 950 }}>{done ? "✓" : index + 1}</span><button type="button" onClick={() => openExerciseDetail(exercise.id)} style={{ minWidth: 0, flex: 1, border: "none", background: "transparent", color: "inherit", padding: 0, textAlign: "left", cursor: "pointer" }}><b style={{ display: "block", fontSize: 9.4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{exercise.title}</b><span style={{ display: "block", marginTop: 3, fontSize: 7.6, opacity: .5 }}>{TRAINING_FAMILY_META[exercise.family].label} • NIV. {personal.level}/5</span>{today ? <span style={{ display: "block", marginTop: 4, fontSize: 7.3, fontWeight: 900, color: today.latestPassed ? "#8cffcb" : "#ffd86b" }}>Aujourd'hui : {Math.round(today.latestScore)}/100{today.attempts > 1 ? ` • ${today.attempts} essais` : ""}</span> : null}</button><button type="button" disabled={done} onClick={() => replaceDailyQueueItem(exercise.id)} title="Remplacer cet exercice" aria-label={`Remplacer ${exercise.title}`} style={{ width: 27, height: 27, borderRadius: 8, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.02)", color: "inherit", opacity: done ? .25 : .55, cursor: done ? "default" : "pointer" }}>↻</button></div>
+                    <button type="button" onClick={() => openExerciseDetail(exercise.id)} style={{ width: "100%", marginTop: 8, padding: "7px 8px", borderRadius: 9, border: done ? "1px solid rgba(80,255,174,.18)" : "1px solid rgba(39,220,255,.16)", background: done ? "rgba(80,255,174,.05)" : "rgba(39,220,255,.045)", color: done ? "#8cffcb" : "inherit", fontSize: 7.7, fontWeight: 950, cursor: "pointer" }}>{done ? `VOIR LE RÉSULTAT${today && today.bestScore > today.latestScore ? ` • RECORD ${Math.round(today.bestScore)}` : ""}` : "OUVRIR LA FICHE"}</button>
                   </div>)}
                 </div>
               </div> : null}
+              <div style={{ marginTop: 10, padding: 11, borderRadius: 14, border: "1px solid rgba(255,255,255,.075)", background: "rgba(255,255,255,.018)" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                  <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: .9, color: "#8fefff" }}>RYTHME 7 JOURS</div><div style={{ marginTop: 3, fontSize: 8.5, opacity: .5 }}>Ta régularité récente, sans alourdir le suivi.</div></div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    <MetricChip icon="week" label="JOURS ACTIFS" value={`${dailyReview.activeDays}/7`} tone="cyan" />
+                    <MetricChip icon="progress" label="MOY. SEMAINE" value={dailyReview.weekAverage ? `${dailyReview.weekAverage}/100` : "—"} tone="purple" />
+                    <MetricChip icon="records" label="ESSAIS" value={`${dailyReview.totalAttempts}`} tone="gold" />
+                  </div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 5, marginTop: 9 }}>
+                  {dailyReview.days.map((day) => {
+                    const active = day.attempts > 0;
+                    const isToday = day.dateKey === todayKey;
+                    return <div key={day.dateKey} title={active ? `${day.exercises} exercice(s) • ${day.attempts} essai(s) • moyenne ${day.averageScore}/100` : "Aucune séance"} style={{ minWidth: 0, padding: "7px 3px", borderRadius: 9, textAlign: "center", border: isToday ? "1px solid rgba(39,220,255,.28)" : active ? "1px solid rgba(80,255,174,.16)" : "1px solid rgba(255,255,255,.05)", background: isToday ? "rgba(39,220,255,.055)" : active ? "rgba(80,255,174,.035)" : "rgba(255,255,255,.012)" }}>
+                      <div style={{ fontSize: 6.8, fontWeight: 950, opacity: isToday ? .9 : .5 }}>{day.label}</div>
+                      <div style={{ marginTop: 4, fontSize: 9, fontWeight: 950, color: active ? "#8cffcb" : "rgba(255,255,255,.24)" }}>{active ? day.averageScore : "—"}</div>
+                      <div style={{ marginTop: 2, fontSize: 6.2, opacity: .35 }}>{active ? `${day.exercises} ex.` : "repos"}</div>
+                    </div>;
+                  })}
+                </div>
+                <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 8, fontSize: 7.4 }}>
+                  <span style={{ padding: "5px 7px", borderRadius: 8, background: "rgba(255,255,255,.025)", opacity: .72 }}>Aujourd'hui {dailyReview.today.attempts ? `${dailyReview.today.averageScore}/100` : "—"}</span>
+                  <span style={{ padding: "5px 7px", borderRadius: 8, background: "rgba(255,255,255,.025)", opacity: .72 }}>Hier {dailyReview.yesterday.attempts ? `${dailyReview.yesterday.averageScore}/100` : "—"}</span>
+                  <span style={{ padding: "5px 7px", borderRadius: 8, background: "rgba(255,255,255,.025)", color: dailyReview.deltaVsPreviousWeek === null ? "inherit" : dailyReview.deltaVsPreviousWeek >= 0 ? "#8cffcb" : "#ffd86b", opacity: .82 }}>Vs semaine préc. {dailyReview.deltaVsPreviousWeek === null ? "—" : `${dailyReview.deltaVsPreviousWeek >= 0 ? "+" : ""}${dailyReview.deltaVsPreviousWeek} pts`}</span>
+                  {dailyReview.deltaVsYesterday !== null ? <span style={{ padding: "5px 7px", borderRadius: 8, background: "rgba(255,255,255,.025)", color: dailyReview.deltaVsYesterday >= 0 ? "#8cffcb" : "#ffd86b", opacity: .82 }}>Vs hier {dailyReview.deltaVsYesterday >= 0 ? "+" : ""}{dailyReview.deltaVsYesterday} pts</span> : null}
+                </div>
+              </div>
               <div style={{ marginTop: 10, padding: 12, borderRadius: 14, border: "1px solid rgba(185,156,255,.16)", background: "linear-gradient(180deg,rgba(140,90,255,.055),rgba(39,220,255,.025))" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                   <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: .9, color: "#b99cff" }}>À TRAVAILLER MAINTENANT</div><div style={{ marginTop: 3, fontSize: 9, opacity: .54 }}>Priorité à tes exercices en cours, à ta compétence cible et aux prochains paliers.</div></div>

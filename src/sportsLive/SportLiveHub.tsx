@@ -878,6 +878,27 @@ function LiveStyles() {
         .msc-scorecenter-tools { position:sticky; top:44px; z-index:3; padding:6px 0; background:linear-gradient(180deg,#0a0e13 80%,rgba(10,14,19,0)); }
         .msc-score-search { min-height:38px; }
       }
+      .msc-competition-detail { margin:0 0 9px; border:1px solid #2a3540; border-radius:13px; overflow:hidden; background:linear-gradient(180deg,#10171e,#0a0f14); }
+      .msc-competition-detail-main { display:grid; grid-template-columns:48px minmax(0,1fr) auto; gap:10px; align-items:center; padding:9px 10px; }
+      .msc-competition-detail-logo { width:48px; height:48px; border-radius:12px; display:grid; place-items:center; overflow:hidden; background:#17202a; box-shadow:inset 0 0 0 1px rgba(255,255,255,.07); }
+      .msc-competition-detail-logo img { width:86%; height:86%; object-fit:contain; display:block; }
+      .msc-competition-detail-title { min-width:0; color:#fff; font-size:12px; font-weight:1000; line-height:1.1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .msc-competition-detail-meta { display:flex; flex-wrap:wrap; gap:5px 8px; margin-top:5px; color:#8996a3; font-size:7.5px; font-weight:900; }
+      .msc-competition-detail-meta strong { color:#d9e1e8; }
+      .msc-competition-back { min-height:31px; border:1px solid #34414d; border-radius:999px; padding:0 10px; background:#101820; color:#dce4eb; font-size:7px; font-weight:1000; cursor:pointer; }
+      .msc-season-tabs { display:flex; gap:5px; overflow-x:auto; padding:7px 9px 9px; border-top:1px solid #222c35; scrollbar-width:none; }
+      .msc-season-tabs::-webkit-scrollbar { display:none; }
+      .msc-season-tab { flex:0 0 auto; min-height:28px; padding:0 9px; border:1px solid #303b46; border-radius:999px; background:#0c1218; color:#8e9aa6; font-size:7.5px; font-weight:1000; cursor:pointer; }
+      .msc-season-tab.is-active { border-color:var(--live-accent); background:rgba(255,48,72,.14); color:#fff; }
+      .msc-season-block { margin:0 0 10px; border:1px solid #27323c; border-radius:11px; overflow:hidden; background:#090e13; }
+      .msc-season-head { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:34px; padding:6px 9px; background:#101820; border-bottom:1px solid #27323c; color:#eef3f7; font-size:9px; font-weight:1000; }
+      .msc-season-head span:last-child { color:#798693; font-size:7px; }
+      @media (max-width:620px) {
+        .msc-competition-detail-main { grid-template-columns:42px minmax(0,1fr); padding:8px; }
+        .msc-competition-detail-logo { width:42px; height:42px; }
+        .msc-competition-back { grid-column:1 / -1; width:100%; }
+        .msc-competition-detail-title { font-size:11px; }
+      }
 
       .msc-quick-dock {
         position: fixed; left: 50%; transform:translateX(-50%); bottom: 88px; z-index: 64; display:flex; gap:6px; padding:5px;
@@ -1253,6 +1274,20 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
   const selectedCompetitionMode = selected !== "__all__";
   const filteredCount = competitionFiltered.reduce((sum,item) => sum + item.matches.length, 0);
   const visibleCount = visible.reduce((sum,item) => sum + item.matches.length, 0);
+  const selectedCompetition = selectedCompetitionMode ? scoreCenterVisible[0] || null : null;
+  const selectedCompetitionSeasons = React.useMemo(() => {
+    if (!selectedCompetition) return [] as Array<[string, number]>;
+    const counts = new Map<string, number>();
+    selectedCompetition.matches.forEach((match) => {
+      const season = resultSeasonLabel(match.playedOn);
+      counts.set(season, (counts.get(season) || 0) + 1);
+    });
+    return Array.from(counts.entries()).sort(([a],[b]) => {
+      if (a === "NON DATÉ") return 1;
+      if (b === "NON DATÉ") return -1;
+      return Number(b) - Number(a);
+    });
+  }, [selectedCompetition]);
 
   return (
     <div className="msc-results-browser">
@@ -1350,6 +1385,27 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
           <input className="msc-score-search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Rechercher une compétition ou un joueur…" aria-label="Rechercher dans les résultats" />
           {searchQuery ? <button className="msc-score-clear" type="button" onClick={() => setSearchQuery("")}>EFFACER</button> : null}
         </div>
+        {selectedCompetition ? (
+          <div className="msc-competition-detail">
+            <div className="msc-competition-detail-main">
+              <CompetitionMark sport={sport} name={selectedCompetition.name} logoUrl={selectedCompetition.imageUrl} className="msc-competition-detail-logo" />
+              <div style={{minWidth:0}}>
+                <div className="msc-competition-detail-title" translate="no">{selectedCompetition.name}</div>
+                <div className="msc-competition-detail-meta">
+                  <span>{countryVisual(selectedCompetition.countryCode, selectedCompetition.countryLabel)} <strong>{selectedCompetition.countryLabel}</strong></span>
+                  <span><strong>{selectedCompetitionSeasons.length}</strong> saison{selectedCompetitionSeasons.length > 1 ? "s" : ""}</span>
+                  <span><strong>{selectedCompetition.archiveCount}</strong> résultats archivés</span>
+                  {(selectedCompetition.firstSeen || selectedCompetition.lastSeen) ? <span>{selectedCompetition.firstSeen || "?"} → {selectedCompetition.lastSeen || "?"}</span> : null}
+                </div>
+              </div>
+              <button className="msc-competition-back" type="button" onClick={() => { setSelected("__all__"); setSelectedSeason("__all__"); setHistoryLimit(120); }}>← TOUTES LES COMPÉTITIONS</button>
+            </div>
+            <div className="msc-season-tabs" aria-label="Saisons de la compétition">
+              <button className={`msc-season-tab${selectedSeason === "__all__" ? " is-active" : ""}`} type="button" onClick={() => setSelectedSeason("__all__")}>TOUTES · {selectedCompetition.matches.length}</button>
+              {selectedCompetitionSeasons.map(([season,count]) => <button key={season} className={`msc-season-tab${selectedSeason === season ? " is-active" : ""}`} type="button" onClick={() => setSelectedSeason(season)}>{season} · {count}</button>)}
+            </div>
+          </div>
+        ) : null}
         <div className="msc-results-context">
           <span>{selectedContinent === "__all__" ? "Tous continents" : selectedContinent}</span>
           <span>›</span>
@@ -1398,20 +1454,36 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
                   </div>
                   {selectedCompetitionMode ? (() => {
                     let rendered = 0;
-                    const groups = orderedRounds.map(([round, roundRows]) => {
-                      const remaining = Math.max(0, historyLimit - rendered);
-                      if (!remaining) return null;
-                      const shownRows = roundRows.slice(0, remaining);
-                      rendered += shownRows.length;
-                      if (!shownRows.length) return null;
-                      return (
-                        <div className="msc-round-group" key={`${name}-${round}`}>
-                          <div className="msc-round-head"><span>{round}</span><span>{roundRows.length} match{roundRows.length > 1 ? "s" : ""}</span></div>
-                          {shownRows.map((item) => <ResultMatchCard key={item.id} item={item} source={source} lang={lang} />)}
-                        </div>
-                      );
-                    });
-                    return <>{groups}{matches.length > historyLimit ? <button className="msc-history-more" type="button" onClick={() => setHistoryLimit((value) => value + 120)}>AFFICHER 120 RÉSULTATS SUPPLÉMENTAIRES · <strong>{Math.max(0, matches.length - historyLimit)} RESTANTS</strong></button> : null}</>;
+                    const seasonsToRender = selectedSeason === "__all__"
+                      ? Array.from(new Set(matches.map((match) => resultSeasonLabel(match.playedOn)))).sort((a,b) => {
+                          if (a === "NON DATÉ") return 1;
+                          if (b === "NON DATÉ") return -1;
+                          return Number(b) - Number(a);
+                        })
+                      : [selectedSeason];
+                    const seasonBlocks = seasonsToRender.map((season) => {
+                      const seasonRows = matches.filter((match) => resultSeasonLabel(match.playedOn) === season);
+                      if (!seasonRows.length) return null;
+                      const seasonRounds = new Map<string, DartsLiveResult[]>();
+                      seasonRows.forEach((match) => {
+                        const round = normalizedRound(match.round);
+                        const bucket = seasonRounds.get(round) || [];
+                        bucket.push(match);
+                        seasonRounds.set(round, bucket);
+                      });
+                      const orderedSeasonRounds = Array.from(seasonRounds.entries()).sort(([a],[b]) => roundOrder(a) - roundOrder(b));
+                      const roundBlocks = orderedSeasonRounds.map(([round, roundRows]) => {
+                        const remaining = Math.max(0, historyLimit - rendered);
+                        if (!remaining) return null;
+                        const shownRows = roundRows.slice(0, remaining);
+                        rendered += shownRows.length;
+                        if (!shownRows.length) return null;
+                        return <div className="msc-round-group" key={`${name}-${season}-${round}`}><div className="msc-round-head"><span>{round}</span><span>{roundRows.length} match{roundRows.length > 1 ? "s" : ""}</span></div>{shownRows.map((item) => <ResultMatchCard key={item.id} item={item} source={source} lang={lang} />)}</div>;
+                      }).filter(Boolean);
+                      if (!roundBlocks.length) return null;
+                      return <div className="msc-season-block" key={`${name}-${season}`}><div className="msc-season-head"><span>SAISON {season}</span><span>{seasonRows.length} résultat{seasonRows.length > 1 ? "s" : ""}</span></div>{roundBlocks}</div>;
+                    }).filter(Boolean);
+                    return <>{seasonBlocks}{matches.length > historyLimit ? <button className="msc-history-more" type="button" onClick={() => setHistoryLimit((value) => value + 120)}>AFFICHER 120 RÉSULTATS SUPPLÉMENTAIRES · <strong>{Math.max(0, matches.length - historyLimit)} RESTANTS</strong></button> : null}</>;
                   })() : (
                     <>
                       <div className="msc-round-group">

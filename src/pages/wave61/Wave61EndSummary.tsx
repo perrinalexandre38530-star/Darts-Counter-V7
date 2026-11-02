@@ -33,6 +33,26 @@ function metricText(row: any) {
   return `${label} ${value}`;
 }
 
+function seriesMetaFor(state:any) {
+  const modeId = String(state?.modeId || "");
+  const supported = ["black_vs_white","three_colors","la_suite","color_call","bim_bam_boum","saute_moutons","troupeau_en_danger","une_ptite_raclette"].includes(modeId);
+  if (!supported) return null;
+  const raw = String(state?.config?.modeOptions?.seriesFormat || "single").toLowerCase();
+  if (raw === "single") return null;
+  const amount = Math.max(1, Number(raw.replace(/\D/g, "")) || 1);
+  const winsTo = raw.startsWith("bo") ? Math.floor(amount / 2) + 1 : raw.startsWith("ft") ? amount : 1;
+  if (winsTo <= 1) return null;
+  const winsKey:Record<string,string> = {
+    black_vs_white:"blackWhiteMatchWins", three_colors:"threeColorsMatchWins", la_suite:"laSuiteMatchWins", color_call:"colorCallMatchWins",
+    bim_bam_boum:"bimBamBoumMatchWins", saute_moutons:"sauteMoutonsMatchWins", troupeau_en_danger:"troupeauMatchWins", une_ptite_raclette:"racletteMatchWins",
+  };
+  const gameIndexKey:Record<string,string> = {
+    black_vs_white:"blackWhiteGameIndex", three_colors:"threeColorsGameIndex", la_suite:"laSuiteGameIndex", color_call:"colorCallGameIndex",
+    bim_bam_boum:"bimBamBoumGameIndex", saute_moutons:"sauteMoutonsGameIndex", troupeau_en_danger:"troupeauGameIndex", une_ptite_raclette:"racletteGameIndex",
+  };
+  return { raw, label: raw.startsWith("bo") ? `BO ${amount}` : `FT ${amount}`, winsTo, wins:{...(state?.special?.[winsKey[modeId]]||{})}, gameIndex:Number(state?.special?.[gameIndexKey[modeId]]||1) };
+}
+
 function bestBy(rows: any[], selector: (row: any) => number, preferWinner = false) {
   return rows.reduce((best: any, row: any) => {
     if (!best) return row;
@@ -147,8 +167,16 @@ export default function Wave61EndSummary({ state, profiles, accent, familyLabel 
   const greenRedFormat = String(state?.config?.modeOptions?.matchFormat || "duel");
   const greenRedBullRule = String(state?.config?.modeOptions?.bullRule || "classic");
   const greenRedRuleLabel = greenRedBullRule === "color_lock" ? "BULL DE COULEUR" : greenRedBullRule === "color_bonus" ? "BULL BONUS" : "CLASSIQUE";
+  const seriesMeta = seriesMetaFor(state);
+  const seriesRows = seriesMeta ? (teamMode
+    ? Array.from(new Set((state?.players||[]).map((p:any)=>String(state?.config?.teamByPlayer?.[p.id]||"")).filter(Boolean))).map((teamId:any)=>({ id:`team:${teamId}`, label:`TEAM ${teamId}`, wins:n(seriesMeta.wins?.[`team:${teamId}`]), winner:String(state?.winnerTeamId||"")===String(teamId) }))
+    : rows.map((row:any)=>({ id:row.id, label:row.name, wins:n(seriesMeta.wins?.[row.id]), winner:row.winner }))) : [];
 
   return <div style={{ display:"grid",gap:9,textAlign:"left",width:"100%",maxWidth:"100%",minWidth:0,boxSizing:"border-box",overflow:"hidden" }}>
+    {seriesMeta ? <div data-eight-modes-series-final="1" style={{...card(accent),padding:8,width:"100%",boxSizing:"border-box",overflow:"hidden"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:7,flexWrap:"wrap"}}><b style={{color:accent,fontSize:9,fontWeight:1100,letterSpacing:.8}}>RÉSULTAT DE LA SÉRIE · {seriesMeta.label}</b><span style={{color:SOFT,fontSize:8}}>VICTOIRE À {seriesMeta.winsTo} · MANCHE {seriesMeta.gameIndex}</span></div>
+      <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.max(1,Math.min(4,seriesRows.length))},minmax(0,1fr))`,gap:5}}>{seriesRows.map((entry:any)=><div key={entry.id} style={{minWidth:0,borderRadius:10,padding:"7px 6px",border:`1px solid ${entry.winner?accent+"88":"rgba(255,255,255,.08)"}`,background:entry.winner?`${accent}12`:"rgba(255,255,255,.025)",textAlign:"center"}}><strong style={{display:"block",color:entry.winner?accent:"#fff",fontSize:17,lineHeight:1}}>{entry.wins}</strong><span style={{display:"block",marginTop:3,color:SOFT,fontSize:7,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{entry.label}</span></div>)}</div>
+    </div> : null}
     {isGreenRed ? <div data-green-red-final-table="1" style={{ ...card(accent),padding:8,width:"100%",maxWidth:"100%",minWidth:0,boxSizing:"border-box",overflow:"hidden" }}>
       <div style={{ display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",marginBottom:7,flexWrap:"wrap" }}>
         <div style={{ color:accent,fontSize:9,fontWeight:1050,letterSpacing:.8 }}>GREEN VS RED · TABLEAU FINAL</div>
