@@ -634,5 +634,9 @@ export const fr: Dict = {
   'landing.game.troupeau_en_danger.info': 'Défendez un troupeau contre des vagues de loups avec le Berger et le Patou. Une défense insuffisante fait perdre des moutons ; les Bulls activent les protections les plus fortes.',
   'landing.game.troupeau_en_danger.objective': 'Conserver au moins un mouton en vie jusqu’à la dernière vague.',
   'landing.game.troupeau_en_danger.configNarrative': 'Réglez la taille du troupeau, la difficulté des loups, la puissance du Patou et le sauvetage du Berger.',
+  'landing.game.une_ptite_raclette.label': 'UNE P’TITE RACLETTE ?',
+  'landing.game.une_ptite_raclette.info': 'Un mode fun et gourmand : rassemblez fromage, pommes de terre et charcuterie pour servir des raclettes. Les multiplicateurs donnent davantage de portions, les Bulls chauffent tout le poêlon et les MISS peuvent refroidir la soirée.',
+  'landing.game.une_ptite_raclette.objective': 'Servir le nombre de raclettes demandé avant les autres joueurs.',
+  'landing.game.une_ptite_raclette.configNarrative': 'Choisissez le nombre de raclettes à servir, la recette de chaque assiette, le bonus de service, le bonus plateau complet et la pénalité en cas de MISS.',
 
 };

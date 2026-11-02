@@ -709,6 +709,10 @@ export const en: Dict = {
   'landing.game.troupeau_en_danger.info': 'Defend the flock from waves of wolves with the Shepherd and the Patou. Weak defense costs sheep, while Bulls trigger the strongest protection actions.',
   'landing.game.troupeau_en_danger.objective': 'Keep at least one sheep alive until the final wolf wave.',
   'landing.game.troupeau_en_danger.configNarrative': 'Set flock size, wolf difficulty, Patou power and the Shepherd rescue rule.',
+  'landing.game.une_ptite_raclette.label': 'FANCY A RACLETTE?',
+  'landing.game.une_ptite_raclette.info': 'A playful food-party mode: collect cheese, potatoes and charcuterie to serve complete raclette plates. Multipliers add extra portions, Bulls heat the whole pan and MISS can cool the party down.',
+  'landing.game.une_ptite_raclette.objective': 'Serve the required number of raclette plates before everyone else.',
+  'landing.game.une_ptite_raclette.configNarrative': 'Choose the number of raclettes to serve, the plate recipe, service bonus, full-platter bonus and MISS penalty.',
 };
 
 export default en;

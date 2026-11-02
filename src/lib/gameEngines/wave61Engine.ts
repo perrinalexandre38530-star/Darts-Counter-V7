@@ -3,7 +3,7 @@ import type { GameDart, Player } from "../types-game";
 import { getWave61Preset, type Wave61Family } from "../../games/dartsWave61Families";
 
 // Legacy audit markers preserved: WAVE61_ENGINE_VERSION = 9, WAVE61_ENGINE_VERSION = 10, WAVE61_ENGINE_VERSION = 11, WAVE61_ENGINE_VERSION = 12, WAVE61_ENGINE_VERSION = 13, WAVE61_ENGINE_VERSION = 14, WAVE61_ENGINE_VERSION = 15, WAVE61_ENGINE_VERSION = 16, WAVE61_ENGINE_VERSION = 17.
-export const WAVE61_ENGINE_VERSION = 23;
+export const WAVE61_ENGINE_VERSION = 24;
 
 export type Wave61Difficulty = "easy" | "normal" | "hard";
 export type Wave61ParticipantMode = "players" | "teams";
@@ -675,6 +675,13 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
       colorCallWrongColorByPlayer: modeId === "color_call" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       colorCallMissesByPlayer: modeId === "color_call" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       colorCallPenaltyByPlayer: modeId === "color_call" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      racletteStockByPlayer: modeId === "une_ptite_raclette" ? Object.fromEntries(ids.map((id) => [id, { cheese: 0, potato: 0, charcuterie: 0 }])) : {},
+      racletteServedByPlayer: modeId === "une_ptite_raclette" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      racletteVarietyBonusByPlayer: modeId === "une_ptite_raclette" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      racletteMissPenaltyByPlayer: modeId === "une_ptite_raclette" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      racletteBullBonusByPlayer: modeId === "une_ptite_raclette" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      racletteBestServeByPlayer: modeId === "une_ptite_raclette" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      racletteHistory: [],
       colorCallPerfectVisitsByPlayer: modeId === "color_call" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       colorCallBestVisitByPlayer: modeId === "color_call" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       colorCallHitsByColorByPlayer: modeId === "color_call" ? Object.fromEntries(ids.map((id) => [id, { BLACK:0, WHITE:0, GREEN:0, RED:0 }])) : {},

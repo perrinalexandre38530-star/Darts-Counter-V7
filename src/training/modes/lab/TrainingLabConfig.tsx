@@ -38,6 +38,7 @@ import { buildTrainingQuickStart } from "../../profile/trainingQuickStart";
 import { buildTrainingDailyChallenge } from "../../profile/trainingDailyChallenge";
 import { clearTrainingExerciseDraft, getEffectiveDraftSeconds, hasMeaningfulTrainingExerciseDraft, loadTrainingExerciseDraft, pruneTrainingExerciseDrafts } from "../../profile/trainingExerciseDraft";
 import { buildTrainingExerciseProgression } from "../../profile/trainingExerciseProgression";
+import { ensureTrainingDailyQueue, loadTrainingDailyQueue, saveTrainingDailyQueue, trainingLocalDateKey, trainingSessionDateKey } from "../../profile/trainingDailyQueue";
 
 const familyOrder: TrainingExerciseFamily[] = ["scoring", "doubles", "checkout", "precision", "bull", "regularity"];
 type HubTab = "program" | "exercises" | "diagnosis" | "progress";
@@ -289,6 +290,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
   const [catalogProgressFilter, setCatalogProgressFilter] = React.useState<CatalogProgressFilter>("all");
   const [catalogSearch, setCatalogSearch] = React.useState("");
   const [catalogSort, setCatalogSort] = React.useState<CatalogSort>("smart");
+  const [dailyQueueRevision, setDailyQueueRevision] = React.useState(0);
   const [exerciseDetailId, setExerciseDetailId] = React.useState<string | null>(() => initialDetailExerciseId && TRAINING_EXERCISE_CATALOG.some((e) => e.id === initialDetailExerciseId) ? initialDetailExerciseId : null);
   const [family, setFamily] = React.useState<TrainingExerciseFamily>(recommendedFamily);
   const firstInFamily = React.useMemo(() => TRAINING_EXERCISE_CATALOG.find((e) => e.family === family) || TRAINING_EXERCISE_CATALOG[0], [family]);
@@ -380,6 +382,41 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
     });
     return rows.filter((row) => !row.personal.mastered).sort((a, b) => a.rank - b.rank || a.exercise.title.localeCompare(b.exercise.title, "fr")).slice(0, 3);
   }, [exerciseProgressionById, recommendedFamily]);
+  React.useEffect(() => {
+    if (!focusNowItems.length) return;
+    const before = loadTrainingDailyQueue(accountParticipantId || null);
+    if (before.exerciseIds.length) return;
+    ensureTrainingDailyQueue(accountParticipantId || null, focusNowItems.map((row) => row.exercise.id));
+    setDailyQueueRevision((value) => value + 1);
+  }, [accountParticipantId, focusNowItems]);
+  const dailyQueue = React.useMemo(() => loadTrainingDailyQueue(accountParticipantId || null), [accountParticipantId, dailyQueueRevision, revision]);
+  const todayKey = trainingLocalDateKey();
+  const completedExerciseIdsToday = React.useMemo(() => new Set(sessions.filter((row: any) => trainingSessionDateKey(row?.endedAt || row?.completedAt || row?.createdAt) === todayKey).map((row: any) => String(row?.metrics?.exerciseId || row?.config?.exerciseId || "")).filter(Boolean)), [sessions, todayKey]);
+  const dailyQueueItems = React.useMemo(() => dailyQueue.exerciseIds.map((id) => {
+    const exercise = TRAINING_EXERCISE_CATALOG.find((row) => row.id === id);
+    if (!exercise) return null;
+    const personal = exerciseProgressionById.get(id) || buildTrainingExerciseProgression(exercise, []);
+    return { exercise, personal, done: completedExerciseIdsToday.has(id) };
+  }).filter(Boolean) as Array<{ exercise: (typeof TRAINING_EXERCISE_CATALOG)[number]; personal: ReturnType<typeof buildTrainingExerciseProgression>; done: boolean }>, [dailyQueue.exerciseIds, exerciseProgressionById, completedExerciseIdsToday]);
+  const replaceDailyQueueItem = React.useCallback((exerciseId: string) => {
+    const current = loadTrainingDailyQueue(accountParticipantId || null);
+    const used = new Set(current.exerciseIds);
+    const candidates = TRAINING_EXERCISE_CATALOG.map((exercise) => ({ exercise, personal: exerciseProgressionById.get(exercise.id) || buildTrainingExerciseProgression(exercise, []) }))
+      .filter((row) => !row.personal.mastered && !used.has(row.exercise.id))
+      .sort((a, b) => {
+        const ar = (a.exercise.family === recommendedFamily ? -20 : 0) + (a.personal.level > 0 ? 0 : 40) + a.exercise.difficulty;
+        const br = (b.exercise.family === recommendedFamily ? -20 : 0) + (b.personal.level > 0 ? 0 : 40) + b.exercise.difficulty;
+        return ar - br || a.exercise.title.localeCompare(b.exercise.title, "fr");
+      });
+    const replacement = candidates[0]?.exercise.id;
+    if (!replacement) return;
+    saveTrainingDailyQueue(accountParticipantId || null, current.exerciseIds.map((id) => id === exerciseId ? replacement : id));
+    setDailyQueueRevision((value) => value + 1);
+  }, [accountParticipantId, exerciseProgressionById, recommendedFamily]);
+  const rebuildDailyQueue = React.useCallback(() => {
+    saveTrainingDailyQueue(accountParticipantId || null, focusNowItems.map((row) => row.exercise.id));
+    setDailyQueueRevision((value) => value + 1);
+  }, [accountParticipantId, focusNowItems]);
   const techniqueItems = React.useMemo(() => TRAINING_TECHNIQUE_ITEMS, []);
   const techniqueTracks = React.useMemo(() => buildTrainingTechniqueTracks(), []);
   const selectedTechniqueTrack = techniqueTracks.find((row) => row.track === techniqueTrack) || techniqueTracks[0];
@@ -1171,6 +1208,18 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
             </>}
 
             {exercisePanel === "catalog" && <>
+              {dailyQueueItems.length ? <div style={{ marginTop: 10, padding: 11, borderRadius: 14, border: "1px solid rgba(39,220,255,.18)", background: "linear-gradient(145deg,rgba(39,220,255,.055),rgba(80,255,174,.02))" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                  <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: .9, color: "#27dcff" }}>MA SÉANCE DU JOUR</div><div style={{ marginTop: 3, fontSize: 9, opacity: .54 }}>3 exercices maximum • avance à ton rythme • reprise possible.</div></div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7 }}><span style={{ padding: "5px 8px", borderRadius: 999, border: "1px solid rgba(80,255,174,.18)", background: "rgba(80,255,174,.055)", color: "#8cffcb", fontSize: 7.5, fontWeight: 950 }}>{dailyQueueItems.filter((row) => row.done).length}/{dailyQueueItems.length} FAITS</span><button type="button" onClick={rebuildDailyQueue} title="Reconstruire la séance" aria-label="Reconstruire la séance" style={{ width: 30, height: 30, borderRadius: 9, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.025)", color: "inherit", cursor: "pointer", fontSize: 14 }}>↻</button></div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,210px),1fr))", gap: 7, marginTop: 9 }}>
+                  {dailyQueueItems.map(({ exercise, personal, done }, index) => <div key={exercise.id} style={{ minWidth: 0, padding: 10, borderRadius: 11, border: done ? "1px solid rgba(80,255,174,.22)" : index === 0 ? "1px solid rgba(39,220,255,.25)" : "1px solid rgba(255,255,255,.07)", background: done ? "rgba(80,255,174,.045)" : "rgba(255,255,255,.018)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 24, height: 24, borderRadius: 8, display: "grid", placeItems: "center", background: done ? "rgba(80,255,174,.10)" : "rgba(39,220,255,.08)", color: done ? "#8cffcb" : "#27dcff", fontSize: 10, fontWeight: 950 }}>{done ? "✓" : index + 1}</span><button type="button" onClick={() => openExerciseDetail(exercise.id)} style={{ minWidth: 0, flex: 1, border: "none", background: "transparent", color: "inherit", padding: 0, textAlign: "left", cursor: "pointer" }}><b style={{ display: "block", fontSize: 9.4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{exercise.title}</b><span style={{ display: "block", marginTop: 3, fontSize: 7.6, opacity: .5 }}>{TRAINING_FAMILY_META[exercise.family].label} • NIV. {personal.level}/5</span></button><button type="button" disabled={done} onClick={() => replaceDailyQueueItem(exercise.id)} title="Remplacer cet exercice" aria-label={`Remplacer ${exercise.title}`} style={{ width: 27, height: 27, borderRadius: 8, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.02)", color: "inherit", opacity: done ? .25 : .55, cursor: done ? "default" : "pointer" }}>↻</button></div>
+                    <button type="button" onClick={() => openExerciseDetail(exercise.id)} style={{ width: "100%", marginTop: 8, padding: "7px 8px", borderRadius: 9, border: done ? "1px solid rgba(80,255,174,.18)" : "1px solid rgba(39,220,255,.16)", background: done ? "rgba(80,255,174,.05)" : "rgba(39,220,255,.045)", color: done ? "#8cffcb" : "inherit", fontSize: 7.7, fontWeight: 950, cursor: "pointer" }}>{done ? "VOIR LE RÉSULTAT / REJOUER" : "OUVRIR LA FICHE"}</button>
+                  </div>)}
+                </div>
+              </div> : null}
               <div style={{ marginTop: 10, padding: 12, borderRadius: 14, border: "1px solid rgba(185,156,255,.16)", background: "linear-gradient(180deg,rgba(140,90,255,.055),rgba(39,220,255,.025))" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                   <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: .9, color: "#b99cff" }}>À TRAVAILLER MAINTENANT</div><div style={{ marginTop: 3, fontSize: 9, opacity: .54 }}>Priorité à tes exercices en cours, à ta compétence cible et aux prochains paliers.</div></div>

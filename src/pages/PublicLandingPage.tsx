@@ -205,6 +205,7 @@ const PUBLIC_RULE_CONFIG_COPY: Record<string,string> = {
   bim_bam_boum: "Choisissez les participants, le nombre de rounds et le contrat BIM → BAM → BOUM. En Classique, la volée doit enchaîner Simple, Double puis Triple sur le même secteur. Réglez le bonus BOUM, l'activation du SUPER BOUM et l'éventuelle pénalité en cas de combo raté.",
   saute_moutons: "Choisissez la longueur de la piste, le bonus accordé lorsqu'un mouton en dépasse un autre et la puissance des Bulls. Simple avance d'une case, Double de deux, Triple de trois ; Bull 25 et DBull 50 déclenchent de grands bonds. Le premier joueur qui atteint l'arrivée gagne.",
   troupeau_en_danger: "Choisissez la taille du troupeau, le nombre de vagues, la difficulté des loups et la puissance du Patou. Chaque volée doit produire assez de défense pour repousser la pression de la meute. Une défense insuffisante fait perdre des moutons ; Bull et DBull activent les meilleures protections du Patou et du Berger.",
+  une_ptite_raclette: "Choisissez le nombre de raclettes à servir, la quantité de fromage, pommes de terre et charcuterie nécessaire pour une assiette, puis les bonus et pénalités. Simples, Doubles et Triples ajoutent 1, 2 ou 3 portions. Les Bulls ajoutent des portions à chaque ingrédient et une recette complète sert immédiatement une raclette.",
   black_vs_white: "Choisissez les participants puis attribuez les pistes NOIRE et BLANCHE. Réglez le comportement des Doubles/Triples (bonus, neutre ou pénalité), le bonus BULL ainsi que les pénalités de mauvaise couleur, MISS et D/T. Le nombre de rounds détermine la durée de la partie.",
   three_colors: "Choisissez les participants et le nombre de rounds. À chaque volée, vous devez obtenir trois couleurs différentes parmi NOIR, BLANC, VERT et ROUGE. Seules les volées complètes à trois couleurs marquent la somme réelle de leurs impacts.",
   la_suite: "Choisissez les participants, le nombre de rounds, l’ordre LIBRE ou STRICT et le modèle de scoring. Une volée doit former trois nombres consécutifs ; sinon elle vaut zéro. En scoring réel, les multiplicateurs sont conservés ; en scoring secteurs, seuls les numéros sont additionnés.",
@@ -417,7 +418,7 @@ function DartsRulePage({ game, onBack, onOpenApp, lang, setLang, t }: { game: Da
   const publicLabel = tr(`game.${game.id}.label`, game.label);
   const audit = DARTS_PUBLIC_RULE_AUDIT[game.id];
   const development = isPublicDartsDevelopment(game);
-  const objective = ptit1Copy ? ptit1Copy.principle : game.infoBody.split(".")[0] + ".";
+  const objective = ptit1Copy ? ptit1Copy.principle : t(`landing.game.${game.id}.objective`, game.infoBody.split(".")[0] + ".");
   const catalogueGames = DARTS_GAMES.filter((item) => item.id !== game.id);
   const sameCategoryGames = catalogueGames.filter((item) => item.category === game.category && isPublicDartsDevelopment(item) === development).slice(0, 4);
   const currentIndex = DARTS_GAMES.findIndex((item) => item.id === game.id);

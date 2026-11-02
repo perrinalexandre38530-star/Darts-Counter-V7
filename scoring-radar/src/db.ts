@@ -1,4 +1,4 @@
-import type { Analysis, Candidate, OpportunityRow, RadarEnv, RunProgressRow } from './domain';
+import type { AcquisitionTarget, Analysis, Candidate, OpportunityRow, RadarEnv, RunProgressRow } from './domain';
 import { opportunityDedupeKey, sourceQualityReason } from './source-quality';
 import { intentShieldDecision, opportunityPassesIntentShield } from './intent-shield';
 
@@ -36,6 +36,23 @@ export async function ensureRadarSchemaCompatibility(env: RadarEnv): Promise<voi
       )
     `).run();
     await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_outreach_actions_status ON outreach_actions(status, updated_at DESC)').run();
+
+    await env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS acquisition_targets (
+        target TEXT PRIMARY KEY, label TEXT NOT NULL, url TEXT NOT NULL DEFAULT '',
+        enabled INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL
+      )
+    `).run();
+    await env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS acquisition_conversions (
+        id TEXT PRIMARY KEY, sighting_id TEXT, target TEXT NOT NULL, campaign_id TEXT,
+        converted_at TEXT NOT NULL, note TEXT NOT NULL DEFAULT ''
+      )
+    `).run();
+    await addMissingColumns(env, 'clicks', [
+      ['target', "TEXT NOT NULL DEFAULT 'app'"],
+      ['campaign_id', 'TEXT']
+    ]);
 
     await addMissingColumns(env, 'sightings', [
       ['query_text', "TEXT NOT NULL DEFAULT ''"],
@@ -206,19 +223,58 @@ export async function getOpportunity(env: RadarEnv, id: string): Promise<Opportu
 
 export async function logClick(
   env: RadarEnv,
-  click: { id: string; sightingId: string; clickedAt: string; referer: string | null; country: string | null; userAgent: string | null }
+  click: { id: string; sightingId: string; clickedAt: string; referer: string | null; country: string | null; userAgent: string | null; target?: AcquisitionTarget; campaignId?: string | null }
 ): Promise<void> {
   await env.DB.prepare(`
-    INSERT INTO clicks (id, sighting_id, clicked_at, referer, country, user_agent)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO clicks (id, sighting_id, clicked_at, referer, country, user_agent, target, campaign_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
-    click.id,
-    click.sightingId,
-    click.clickedAt,
-    click.referer,
-    click.country,
-    click.userAgent
+    click.id, click.sightingId, click.clickedAt, click.referer, click.country, click.userAgent,
+    click.target || 'app', click.campaignId || null
   ).run();
+}
+
+export async function listAcquisitionTargets(env: RadarEnv): Promise<Array<{target: AcquisitionTarget; label: string; url: string; enabled: number; updated_at: string}>> {
+  const defaults: Array<[AcquisitionTarget,string,string]> = [
+    ['app','Télécharger / essayer l’app', env.APP_DESTINATION_URL],
+    ['web','Application Web', env.APP_DESTINATION_URL],
+    ['facebook','Page Facebook',''],
+    ['instagram','Compte Instagram','']
+  ];
+  const now = new Date().toISOString();
+  for (const [target,label,url] of defaults) {
+    await env.DB.prepare(`INSERT OR IGNORE INTO acquisition_targets (target,label,url,enabled,updated_at) VALUES (?,?,?,1,?)`).bind(target,label,url,now).run();
+  }
+  const rows = await env.DB.prepare(`SELECT target,label,url,enabled,updated_at FROM acquisition_targets ORDER BY CASE target WHEN 'app' THEN 1 WHEN 'web' THEN 2 WHEN 'facebook' THEN 3 WHEN 'instagram' THEN 4 ELSE 9 END`).all();
+  return (rows.results ?? []) as Array<{target: AcquisitionTarget; label: string; url: string; enabled: number; updated_at: string}>;
+}
+
+export async function upsertAcquisitionTarget(env: RadarEnv, target: AcquisitionTarget, url: string, enabled = true): Promise<void> {
+  const labels: Record<AcquisitionTarget,string> = {app:'Télécharger / essayer l’app',web:'Application Web',facebook:'Page Facebook',instagram:'Compte Instagram'};
+  await env.DB.prepare(`
+    INSERT INTO acquisition_targets (target,label,url,enabled,updated_at) VALUES (?,?,?,?,?)
+    ON CONFLICT(target) DO UPDATE SET url=excluded.url, enabled=excluded.enabled, updated_at=excluded.updated_at
+  `).bind(target, labels[target], url, enabled ? 1 : 0, new Date().toISOString()).run();
+}
+
+export async function getAcquisitionTarget(env: RadarEnv, target: AcquisitionTarget): Promise<{url:string;enabled:number}|null> {
+  await listAcquisitionTargets(env);
+  return env.DB.prepare(`SELECT url,enabled FROM acquisition_targets WHERE target=?`).bind(target).first<{url:string;enabled:number}>();
+}
+
+export async function recordAcquisitionConversion(env: RadarEnv, input: {sightingId?: string|null; target: AcquisitionTarget; campaignId?: string|null; note?: string}): Promise<string> {
+  const id=crypto.randomUUID();
+  await env.DB.prepare(`INSERT INTO acquisition_conversions (id,sighting_id,target,campaign_id,converted_at,note) VALUES (?,?,?,?,?,?)`).bind(id,input.sightingId||null,input.target,input.campaignId||null,new Date().toISOString(),(input.note||'').slice(0,500)).run();
+  return id;
+}
+
+export async function getAcquisitionStats(env: RadarEnv): Promise<Record<string, unknown>> {
+  const clicks=await env.DB.prepare(`SELECT target,COUNT(*) count FROM clicks GROUP BY target`).all<{target:string;count:number}>();
+  const conversions=await env.DB.prepare(`SELECT target,COUNT(*) count FROM acquisition_conversions GROUP BY target`).all<{target:string;count:number}>();
+  const byTarget: Record<string,{clicks:number;conversions:number}>={app:{clicks:0,conversions:0},web:{clicks:0,conversions:0},facebook:{clicks:0,conversions:0},instagram:{clicks:0,conversions:0}};
+  for(const r of clicks.results??[]) if(byTarget[r.target]) byTarget[r.target]!.clicks=Number(r.count||0);
+  for(const r of conversions.results??[]) if(byTarget[r.target]) byTarget[r.target]!.conversions=Number(r.count||0);
+  return {byTarget,totalClicks:Object.values(byTarget).reduce((a,b)=>a+b.clicks,0),totalConversions:Object.values(byTarget).reduce((a,b)=>a+b.conversions,0)};
 }
 
 export async function startRun(env: RadarEnv, id: string, startedAt: string, markets: string): Promise<void> {

@@ -865,6 +865,20 @@ function LiveStyles() {
         .msc-results-nav-section.is-competitions .msc-results-nav-list { max-height:calc(100vh - 360px); }
         .msc-results-context { top:48px; }
       }
+      .msc-scorecenter-tools { display:flex; align-items:center; gap:7px; margin:0 0 8px; }
+      .msc-score-search { flex:1 1 auto; min-width:0; min-height:36px; border:1px solid #2d3844; border-radius:9px; padding:0 11px; background:#0b1117; color:#fff; font-size:10px; font-weight:850; outline:none; }
+      .msc-score-search:focus { border-color:var(--live-accent); box-shadow:0 0 0 1px rgba(255,48,72,.12); }
+      .msc-score-search::placeholder { color:#66727f; }
+      .msc-score-clear { flex:0 0 auto; min-height:36px; border:1px solid #303b46; border-radius:9px; padding:0 10px; background:#10171e; color:#b7c1ca; font-size:8px; font-weight:1000; cursor:pointer; }
+      .msc-competition-preview-note { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 8px; border-top:1px solid #222c35; background:#0a0f14; color:#7f8b98; font-size:7.5px; font-weight:900; }
+      .msc-open-competition { border:1px solid rgba(255,48,72,.5); border-radius:999px; padding:5px 8px; background:rgba(255,48,72,.11); color:#fff; font-size:7px; font-weight:1000; cursor:pointer; }
+      .msc-history-more { width:100%; min-height:36px; margin-top:8px; border:1px solid #33404c; border-radius:9px; background:#10171e; color:#e8edf2; font-size:8px; font-weight:1000; cursor:pointer; }
+      .msc-history-more strong { color:#f4d445; }
+      @media (max-width:620px) {
+        .msc-scorecenter-tools { position:sticky; top:44px; z-index:3; padding:6px 0; background:linear-gradient(180deg,#0a0e13 80%,rgba(10,14,19,0)); }
+        .msc-score-search { min-height:38px; }
+      }
+
       .msc-quick-dock {
         position: fixed; left: 50%; transform:translateX(-50%); bottom: 88px; z-index: 64; display:flex; gap:6px; padding:5px;
         border:1px solid #303943; border-radius:999px; background:rgba(7,10,14,.94); box-shadow:0 10px 28px rgba(0,0,0,.42); backdrop-filter:blur(10px);
@@ -1166,6 +1180,8 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
   const [selectedCountry, setSelectedCountry] = React.useState("__all__");
   const [selected, setSelected] = React.useState("__all__");
   const [selectedSeason, setSelectedSeason] = React.useState("__all__");
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [historyLimit, setHistoryLimit] = React.useState(120);
 
   const continentFiltered = React.useMemo(() => competitions.filter((item) => selectedContinent === "__all__" || item.continent === selectedContinent), [competitions, selectedContinent]);
   const countries = React.useMemo(() => {
@@ -1188,17 +1204,27 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
   }, [countries, selectedCountry]);
 
   const hierarchyFiltered = React.useMemo(() => continentFiltered.filter((item) => selectedCountry === "__all__" || item.countryKey === selectedCountry), [continentFiltered, selectedCountry]);
-  const navigationCompetitions = React.useMemo(() => [...hierarchyFiltered].sort((a,b) => a.name.localeCompare(b.name, lang || "fr")), [hierarchyFiltered, lang]);
+  const searchedCompetitions = React.useMemo(() => {
+    const query = normalizedText(searchQuery);
+    if (!query) return hierarchyFiltered;
+    return hierarchyFiltered.filter((item) => {
+      const playerNames = item.matches.slice(0, 500).map((match) => `${match.winner?.name || ""} ${match.loser?.name || ""}`).join(" ");
+      const hay = normalizedText(`${item.name} ${item.countryLabel} ${item.continent} ${playerNames}`);
+      return hay.includes(query);
+    });
+  }, [hierarchyFiltered, searchQuery]);
+  const navigationCompetitions = React.useMemo(() => [...searchedCompetitions].sort((a,b) => a.name.localeCompare(b.name, lang || "fr")), [searchedCompetitions, lang]);
 
   React.useEffect(() => {
     if (selected !== "__all__" && !hierarchyFiltered.some((item) => item.name === selected)) setSelected("__all__");
   }, [hierarchyFiltered, selected]);
 
-  React.useEffect(() => { setSelectedCountry("__all__"); setSelected("__all__"); setSelectedSeason("__all__"); }, [selectedContinent]);
-  React.useEffect(() => { setSelected("__all__"); setSelectedSeason("__all__"); }, [selectedCountry]);
-  React.useEffect(() => { setSelectedSeason("__all__"); }, [selected]);
+  React.useEffect(() => { setSelectedCountry("__all__"); setSelected("__all__"); setSelectedSeason("__all__"); setHistoryLimit(120); }, [selectedContinent]);
+  React.useEffect(() => { setSelected("__all__"); setSelectedSeason("__all__"); setHistoryLimit(120); }, [selectedCountry]);
+  React.useEffect(() => { setSelectedSeason("__all__"); setHistoryLimit(120); }, [selected]);
+  React.useEffect(() => { setHistoryLimit(120); }, [selectedSeason, searchQuery]);
 
-  const competitionFiltered = selected === "__all__" ? hierarchyFiltered : hierarchyFiltered.filter((item) => item.name === selected);
+  const competitionFiltered = selected === "__all__" ? searchedCompetitions : searchedCompetitions.filter((item) => item.name === selected);
   const seasons = React.useMemo(() => {
     const counts = new Map<string, number>();
     competitionFiltered.forEach((item) => item.matches.forEach((match) => {
@@ -1224,6 +1250,7 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
     if (countryCmp) return countryCmp;
     return a.name.localeCompare(b.name, lang || "fr");
   }), [visible, lang]);
+  const selectedCompetitionMode = selected !== "__all__";
   const filteredCount = competitionFiltered.reduce((sum,item) => sum + item.matches.length, 0);
   const visibleCount = visible.reduce((sum,item) => sum + item.matches.length, 0);
 
@@ -1319,6 +1346,10 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
       </aside>
 
       <div className="msc-results-content">
+        <div className="msc-scorecenter-tools">
+          <input className="msc-score-search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Rechercher une compétition ou un joueur…" aria-label="Rechercher dans les résultats" />
+          {searchQuery ? <button className="msc-score-clear" type="button" onClick={() => setSearchQuery("")}>EFFACER</button> : null}
+        </div>
         <div className="msc-results-context">
           <span>{selectedContinent === "__all__" ? "Tous continents" : selectedContinent}</span>
           <span>›</span>
@@ -1365,12 +1396,31 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
                     </div>
                     <span className="msc-competition-head-count">{matches.length}</span>
                   </div>
-                  {orderedRounds.map(([round, roundRows]) => (
-                    <div className="msc-round-group" key={`${name}-${round}`}>
-                      <div className="msc-round-head"><span>{round}</span><span>{roundRows.length} match{roundRows.length > 1 ? "s" : ""}</span></div>
-                      {roundRows.map((item) => <ResultMatchCard key={item.id} item={item} source={source} lang={lang} />)}
-                    </div>
-                  ))}
+                  {selectedCompetitionMode ? (() => {
+                    let rendered = 0;
+                    const groups = orderedRounds.map(([round, roundRows]) => {
+                      const remaining = Math.max(0, historyLimit - rendered);
+                      if (!remaining) return null;
+                      const shownRows = roundRows.slice(0, remaining);
+                      rendered += shownRows.length;
+                      if (!shownRows.length) return null;
+                      return (
+                        <div className="msc-round-group" key={`${name}-${round}`}>
+                          <div className="msc-round-head"><span>{round}</span><span>{roundRows.length} match{roundRows.length > 1 ? "s" : ""}</span></div>
+                          {shownRows.map((item) => <ResultMatchCard key={item.id} item={item} source={source} lang={lang} />)}
+                        </div>
+                      );
+                    });
+                    return <>{groups}{matches.length > historyLimit ? <button className="msc-history-more" type="button" onClick={() => setHistoryLimit((value) => value + 120)}>AFFICHER 120 RÉSULTATS SUPPLÉMENTAIRES · <strong>{Math.max(0, matches.length - historyLimit)} RESTANTS</strong></button> : null}</>;
+                  })() : (
+                    <>
+                      <div className="msc-round-group">
+                        <div className="msc-round-head"><span>DERNIERS MATCHS</span><span>{Math.min(matches.length, 6)} / {matches.length}</span></div>
+                        {matches.slice(0, 6).map((item) => <ResultMatchCard key={item.id} item={item} source={source} lang={lang} />)}
+                      </div>
+                      {matches.length > 6 ? <div className="msc-competition-preview-note"><span>{matches.length - 6} résultat{matches.length - 6 > 1 ? "s" : ""} supplémentaire{matches.length - 6 > 1 ? "s" : ""}</span><button className="msc-open-competition" type="button" onClick={() => setSelected(name)}>OUVRIR LA COMPÉTITION</button></div> : null}
+                    </>
+                  )}
                 </section>
               </React.Fragment>
             );

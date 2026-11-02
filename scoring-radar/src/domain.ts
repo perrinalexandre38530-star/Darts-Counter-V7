@@ -23,6 +23,8 @@ export type RadarSecrets = {
   SOCIAL_AI_TIMEOUT_MS?: string;
 };
 
+export type AcquisitionTarget = 'app' | 'web' | 'facebook' | 'instagram';
+
 export type RadarEnv = Env & RadarSecrets;
 
 export type Market = {

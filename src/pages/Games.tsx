@@ -146,6 +146,7 @@ const GAME_LABELS_I18N: Record<string, { en: string; es?: string }> = {
   fun_gages: { en: "Dares / Fun Mode", es: "Retos / Modo Fun" },
   tour_horloge: { en: "Around the Clock", es: "Vuelta al reloj" },
   enculette: { en: "Enculette / Cow", es: "Enculette / Vaca" },
+  une_ptite_raclette: { en: "Fancy a Raclette?", es: "¿Una raclette?" },
 };
 
 function localizedGameLabel(game: DartsGameDef | null | undefined, langCode: any): string {

@@ -13,6 +13,10 @@ import {
   getOpportunity,
   getRunProgress,
   getRadarStats,
+  getAcquisitionStats,
+  getAcquisitionTarget,
+  listAcquisitionTargets,
+  recordAcquisitionConversion,
   getSocialAsset,
   getSocialCampaign,
   getSocialStats,
@@ -23,6 +27,7 @@ import {
   listSocialCampaigns,
   listOpportunities,
   logClick,
+  upsertAcquisitionTarget,
   requalifyHistoricalIntentShield,
   setSocialCampaignStatus,
   setOutreachStatus,
@@ -30,7 +35,7 @@ import {
   startRun,
   updateRunProgress
 } from './db';
-import type { Analysis, Candidate, RadarEnv, RunProgressRow, SocialCampaignRow } from './domain';
+import type { AcquisitionTarget, Analysis, Candidate, RadarEnv, RunProgressRow, SocialCampaignRow } from './domain';
 import { sha256Hex } from './hash';
 import { isAdminAuthorized, unauthorized } from './security';
 import { generateAndAuditSocialDraft, socialQaPasses } from './social';
@@ -86,14 +91,16 @@ function parseJsonField<T>(value: string, fallback: T): T {
   }
 }
 
-function socialCampaignPayload(row: SocialCampaignRow, appLink: string) {
+function socialCampaignPayload(row: SocialCampaignRow, publicBase: string, fallbackAppLink: string) {
+  const trackedAppLink = row.source_sighting_id ? `${publicBase}/go/app/${row.source_sighting_id}?campaign=${encodeURIComponent(row.id)}` : fallbackAppLink;
   const copies = parseJsonField<Record<string, string>>(row.platform_copy_json, {});
   const platformCopy = Object.fromEntries(
-    Object.entries(copies).map(([key, value]) => [key, value.replaceAll('{{APP_LINK}}', appLink)])
+    Object.entries(copies).map(([key, value]) => [key, value.replaceAll('{{APP_LINK}}', trackedAppLink)])
   );
   return {
     ...row,
-    call_to_action: row.call_to_action.replaceAll('{{APP_LINK}}', appLink),
+    call_to_action: row.call_to_action.replaceAll('{{APP_LINK}}', trackedAppLink),
+    tracked_app_link: trackedAppLink,
     hashtags: parseJsonField<string[]>(row.hashtags_json, []),
     media_brief: parseJsonField<Record<string, unknown>>(row.media_brief_json, {}),
     platform_copy: platformCopy
@@ -272,6 +279,29 @@ async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: Ex
     return json(result);
   }
 
+  if (request.method === 'GET' && url.pathname === '/api/acquisition/targets') {
+    return json({ ok: true, targets: await listAcquisitionTargets(env), stats: await getAcquisitionStats(env) });
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/acquisition/targets') {
+    const body = await request.json().catch(() => ({})) as { target?: string; url?: string; enabled?: boolean };
+    const allowed = new Set<AcquisitionTarget>(['app','web','facebook','instagram']);
+    if (!body.target || !allowed.has(body.target as AcquisitionTarget)) return json({ok:false,error:'invalid_target'},400);
+    const target = body.target as AcquisitionTarget;
+    const raw = typeof body.url === 'string' ? body.url.trim() : '';
+    if (raw) { try { const parsed=new URL(raw); if(parsed.protocol!=='https:') throw new Error('https'); } catch { return json({ok:false,error:'invalid_https_url'},400); } }
+    await upsertAcquisitionTarget(env,target,raw,body.enabled!==false);
+    return json({ok:true,target});
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/acquisition/conversions') {
+    const body = await request.json().catch(() => ({})) as { target?: string; sightingId?: string; campaignId?: string; note?: string };
+    const allowed = new Set<AcquisitionTarget>(['app','web','facebook','instagram']);
+    if (!body.target || !allowed.has(body.target as AcquisitionTarget)) return json({ok:false,error:'invalid_target'},400);
+    const id = await recordAcquisitionConversion(env,{target:body.target as AcquisitionTarget,sightingId:body.sightingId||null,campaignId:body.campaignId||null,note:body.note||''});
+    return json({ok:true,id});
+  }
+
   if (request.method === 'GET' && url.pathname === '/api/social/stats') {
     return json({ ok: true, stats: await getSocialStats(env), mode: env.SOCIAL_AUTOPILOT_MODE || 'review' });
   }
@@ -279,7 +309,8 @@ async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: Ex
   if (request.method === 'GET' && url.pathname === '/api/social/campaigns') {
     const limit = intFromEnv(url.searchParams.get('limit') ?? undefined, 100, 1, 300);
     const campaigns = await listSocialCampaigns(env, limit);
-    return json({ ok: true, campaigns: campaigns.map((row) => socialCampaignPayload(row, env.APP_DESTINATION_URL)) });
+    const publicBase = `${url.protocol}//${url.host}`;
+    return json({ ok: true, campaigns: campaigns.map((row) => socialCampaignPayload(row, publicBase, env.APP_DESTINATION_URL)) });
   }
 
   if (request.method === 'GET' && url.pathname === '/api/social/assets') {
@@ -408,9 +439,13 @@ async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: Ex
       ok: true,
       opportunities: rows.map((row) => ({
         ...row,
-        tracked_link: `${publicBase}/go/${row.id}`,
+        tracked_link: `${publicBase}/go/app/${row.id}`,
+        tracked_links: {
+          app: `${publicBase}/go/app/${row.id}`, web: `${publicBase}/go/web/${row.id}`,
+          facebook: `${publicBase}/go/facebook/${row.id}`, instagram: `${publicBase}/go/instagram/${row.id}`
+        },
         destination_link: safeDestination(env.APP_DESTINATION_URL, row),
-        reply_with_link: row.suggested_reply?.replace('{{APP_LINK}}', `${publicBase}/go/${row.id}`) ?? null
+        reply_with_link: row.suggested_reply?.replace('{{APP_LINK}}', `${publicBase}/go/app/${row.id}`) ?? null
       }))
     });
   }
@@ -424,9 +459,13 @@ async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: Ex
       ok: true,
       opportunity: {
         ...row,
-        tracked_link: `${publicBase}/go/${row.id}`,
+        tracked_link: `${publicBase}/go/app/${row.id}`,
+        tracked_links: {
+          app: `${publicBase}/go/app/${row.id}`, web: `${publicBase}/go/web/${row.id}`,
+          facebook: `${publicBase}/go/facebook/${row.id}`, instagram: `${publicBase}/go/instagram/${row.id}`
+        },
         destination_link: safeDestination(env.APP_DESTINATION_URL, row),
-        reply_with_link: row.suggested_reply?.replace('{{APP_LINK}}', `${publicBase}/go/${row.id}`) ?? null
+        reply_with_link: row.suggested_reply?.replace('{{APP_LINK}}', `${publicBase}/go/app/${row.id}`) ?? null
       }
     });
   }
@@ -532,23 +571,31 @@ async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: Ex
 }
 
 async function handleGo(request: Request, env: RadarEnv, url: URL): Promise<Response> {
-  const id = url.pathname.slice('/go/'.length);
+  const parts = url.pathname.split('/').filter(Boolean);
+  let target: AcquisitionTarget = 'app';
+  let id = '';
+  if (parts.length >= 3 && ['app','web','facebook','instagram'].includes(parts[1]!)) {
+    target = parts[1] as AcquisitionTarget; id = parts[2]!;
+  } else { id = parts[1] || ''; }
   if (!id) return json({ ok: false, error: 'missing_id' }, 400);
   const row = await getOpportunity(env, id);
   if (!row) return json({ ok: false, error: 'not_found' }, 404);
-
+  const configured = await getAcquisitionTarget(env, target);
+  let destination = configured?.url || '';
+  if (!configured?.enabled || !destination) {
+    if (target === 'app' || target === 'web') destination = safeDestination(env.APP_DESTINATION_URL, row);
+    else return json({ok:false,error:'target_not_configured',target},409);
+  } else if (target === 'app' || target === 'web') {
+    destination = safeDestination(destination, row);
+  }
   const clickId = crypto.randomUUID();
   const cf = request.cf;
   await logClick(env, {
-    id: clickId,
-    sightingId: id,
-    clickedAt: new Date().toISOString(),
-    referer: request.headers.get('Referer'),
-    country: typeof cf?.country === 'string' ? cf.country : null,
-    userAgent: request.headers.get('User-Agent')
+    id: clickId, sightingId: id, clickedAt: new Date().toISOString(),
+    referer: request.headers.get('Referer'), country: typeof cf?.country === 'string' ? cf.country : null,
+    userAgent: request.headers.get('User-Agent'), target, campaignId: url.searchParams.get('campaign')
   });
-
-  return Response.redirect(safeDestination(env.APP_DESTINATION_URL, row), 302);
+  return Response.redirect(destination, 302);
 }
 
 async function runScheduled(env: RadarEnv, scheduledTime: number, runId: string = crypto.randomUUID(), requestedProfile?: string, prestarted = false): Promise<void> {

@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS clicks (
   referer TEXT,
   country TEXT,
   user_agent TEXT,
+  target TEXT NOT NULL DEFAULT 'app',
+  campaign_id TEXT,
   FOREIGN KEY (sighting_id) REFERENCES sightings(id)
 );
 
@@ -143,3 +145,24 @@ CREATE TABLE IF NOT EXISTS outreach_actions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_outreach_actions_status ON outreach_actions(status, updated_at DESC);
+
+
+-- Acquisition destinations configured from the admin cockpit.
+CREATE TABLE IF NOT EXISTS acquisition_targets (
+  target TEXT PRIMARY KEY,
+  label TEXT NOT NULL,
+  url TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS acquisition_conversions (
+  id TEXT PRIMARY KEY,
+  sighting_id TEXT,
+  target TEXT NOT NULL,
+  campaign_id TEXT,
+  converted_at TEXT NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  FOREIGN KEY (sighting_id) REFERENCES sightings(id)
+);
+CREATE INDEX IF NOT EXISTS idx_acq_conversions_target ON acquisition_conversions(target, converted_at DESC);
