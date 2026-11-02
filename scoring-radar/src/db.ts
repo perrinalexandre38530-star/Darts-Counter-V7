@@ -572,7 +572,34 @@ export async function insertSocialCampaign(
   return (result.meta.changes ?? 0) > 0;
 }
 
-export async function listSocialCampaigns(env: RadarEnv, limit: number): Promise<import('./domain').SocialCampaignRow[]> {
+export async function archiveLegacyGenericSocialCampaigns(env: RadarEnv): Promise<number> {
+  const now = new Date().toISOString();
+  const genericPatterns = [
+    '%find a new hobby%',
+    '%discover your passion%',
+    '%level up your life%',
+    '%new hobby%',
+    '%nouveau hobby%',
+    '%nouvelle passion%'
+  ];
+  const clauses = genericPatterns.map(() => '(LOWER(hook) LIKE ? OR LOWER(topic) LIKE ? OR LOWER(angle) LIKE ?)').join(' OR ');
+  const bindings = genericPatterns.flatMap((pattern) => [pattern, pattern, pattern]);
+  const result = await env.DB.prepare(`
+    UPDATE social_campaigns
+    SET status = 'rejected',
+        qa_reason = CASE
+          WHEN qa_reason = '' THEN 'Archived automatically: legacy generic acquisition campaign.'
+          ELSE qa_reason || ' | Archived automatically: legacy generic acquisition campaign.'
+        END,
+        updated_at = ?
+    WHERE status IN ('draft','ready_for_review')
+      AND (${clauses})
+  `).bind(now, ...bindings).run();
+  return Number(result.meta.changes ?? 0);
+}
+
+export async function listSocialCampaigns(env: RadarEnv, limit: number, activeOnly = false): Promise<import('./domain').SocialCampaignRow[]> {
+  const where = activeOnly ? "WHERE status IN ('ready_for_review','approved','published')" : '';
   const result = await env.DB.prepare(`
     SELECT id, source_sighting_id, language, topic, angle, hook, call_to_action,
            hashtags_json, media_type, media_brief_json, platform_copy_json,
@@ -580,6 +607,7 @@ export async function listSocialCampaigns(env: RadarEnv, limit: number): Promise
            spam_risk, cringe_risk, qa_reason, status, selected_asset_id,
            created_at, updated_at, approved_at, published_at
     FROM social_campaigns
+    ${where}
     ORDER BY created_at DESC
     LIMIT ?
   `).bind(limit).all<import('./domain').SocialCampaignRow>();

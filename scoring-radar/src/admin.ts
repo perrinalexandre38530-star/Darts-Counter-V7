@@ -69,7 +69,7 @@ export function adminHtml(): string {
   </section>
 
   <section class="panel">
-    <div class="headrow"><div><h2>SOCIAL GROWTH IA</h2><div class="sub">Une seconde IA rejette les campagnes faibles. Aucun média non approuvé ne peut passer.</div></div><div class="badge" id="socialMode">MODE —</div></div>
+    <div class="headrow"><div><h2>SOCIAL GROWTH IA</h2><div class="sub">File active uniquement : campagnes à valider, approuvées ou publiées. Les anciennes campagnes rejetées restent conservées dans l’historique D1.</div></div><div class="badge" id="socialMode">MODE —</div></div>
     <div class="stats">
       <div class="stat"><b id="cTotal">—</b><span>Campagnes</span></div><div class="stat"><b id="cReady">—</b><span>À valider</span></div><div class="stat"><b id="cApproved">—</b><span>Approuvées</span></div><div class="stat"><b id="cRejected">—</b><span>Rejetées QA</span></div><div class="stat"><b id="cAssets">—</b><span>Médias approuvés</span></div>
     </div>
@@ -272,7 +272,7 @@ export function adminHtml(): string {
       await ensureAuth();
       const minScore=Math.max(0,Math.min(100,Number($('minScore').value||70)));
       const [statsData,oppData,socialData,campaignData,assetData,runData,acqData]=await Promise.all([
-        request('/api/stats'),request('/api/opportunities?minScore='+minScore+'&limit=200'),request('/api/social/stats'),request('/api/social/campaigns?limit=100'),request('/api/social/assets?approvedOnly=1'),request('/api/runs/latest'),request('/api/acquisition/targets')
+        request('/api/stats'),request('/api/opportunities?minScore='+minScore+'&limit=200'),request('/api/social/stats'),request('/api/social/campaigns?limit=100&activeOnly=1'),request('/api/social/assets?approvedOnly=1'),request('/api/runs/latest'),request('/api/acquisition/targets')
       ]);
       const stats=statsData.stats||{};$('sSightings').textContent=stats.sightings??0;$('sAnalyzed').textContent=stats.analyzed??0;$('sEligible').textContent=stats.eligible??0;$('sHot').textContent=stats.highIntent??0;$('sNew').textContent=stats.outreachNew??0;$('sContacted').textContent=stats.outreachContacted??0;$('sClicks').textContent=stats.clicks??0;$('sWon').textContent=stats.outreachWon??0;
       const targetMap=Object.fromEntries((acqData.targets||[]).map((t)=>[t.target,t]));[['app','targetApp'],['web','targetWeb'],['facebook','targetFacebook'],['instagram','targetInstagram']].forEach(([t,id])=>{$(id).value=(targetMap[t]&&targetMap[t].url)||'';});const bt=(acqData.stats&&acqData.stats.byTarget)||{};const metric=(id,t)=>{const v=bt[t]||{clicks:0,conversions:0};$(id).textContent=v.clicks+' clic(s) • '+v.conversions+' conversion(s)';};metric('metricApp','app');metric('metricWeb','web');metric('metricFacebook','facebook');metric('metricInstagram','instagram');$('fDetect').textContent=stats.sightings??0;$('fQualified').textContent=stats.eligible??0;$('fContacted').textContent=stats.outreachContacted??0;$('fApp').textContent=(bt.app&&bt.app.clicks)||0;$('fSocial').textContent=((bt.facebook&&bt.facebook.clicks)||0)+((bt.instagram&&bt.instagram.clicks)||0);$('fConversions').textContent=(acqData.stats&&acqData.stats.totalConversions)||0;

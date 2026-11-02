@@ -25,6 +25,7 @@ import {
   insertSocialCampaign,
   listSocialAssets,
   listSocialCampaigns,
+  archiveLegacyGenericSocialCampaigns,
   listOpportunities,
   logClick,
   upsertAcquisitionTarget,
@@ -308,9 +309,11 @@ async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: Ex
 
   if (request.method === 'GET' && url.pathname === '/api/social/campaigns') {
     const limit = intFromEnv(url.searchParams.get('limit') ?? undefined, 100, 1, 300);
-    const campaigns = await listSocialCampaigns(env, limit);
+    const activeOnly = url.searchParams.get('activeOnly') === '1';
+    const archivedLegacy = await archiveLegacyGenericSocialCampaigns(env);
+    const campaigns = await listSocialCampaigns(env, limit, activeOnly);
     const publicBase = `${url.protocol}//${url.host}`;
-    return json({ ok: true, campaigns: campaigns.map((row) => socialCampaignPayload(row, publicBase, env.APP_DESTINATION_URL)) });
+    return json({ ok: true, archivedLegacy, campaigns: campaigns.map((row) => socialCampaignPayload(row, publicBase, env.APP_DESTINATION_URL)) });
   }
 
   if (request.method === 'GET' && url.pathname === '/api/social/assets') {

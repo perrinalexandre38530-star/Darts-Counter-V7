@@ -77,7 +77,7 @@ const killerViper = contentPackAssetUrl("collectible-cards", "killer-viper.webp"
 const killerWest = contentPackAssetUrl("collectible-cards", "killer-west.webp");
 const killerBatuga = contentPackAssetUrl("collectible-cards", "killer-batuga.webp");
 const killerSkull = contentPackAssetUrl("collectible-cards", "killer-skull.webp");
-const IMAGE_BY_CARD: Record<CollectibleCardId, string> = {
+const IMAGE_BY_CARD: Partial<Record<CollectibleCardId, string>> = {
   awena_bronze: awenaBronze,
   awena_argent: awenaArgent,
   awena_platine: awenaPlatine,
@@ -142,7 +142,7 @@ const IMAGE_BY_CARD: Record<CollectibleCardId, string> = {
   killer_skull: killerSkull,
 };
 
-type FilterId = "all" | "awena" | "firefighter" | "loterie" | "killer" | "unlocked" | "locked";
+type FilterId = "all" | "awena" | "firefighter" | "loterie" | "killer" | "legends" | "unlocked" | "locked";
 
 const ZERO_METRICS: CollectibleMetrics = {
   matches: 0,
@@ -178,6 +178,46 @@ const ZERO_METRICS: CollectibleMetrics = {
   killerPodiums: 0,
   killerFirsts: 0,
   killerPrecision: 0,
+  x01Matches: 0,
+  x01Wins: 0,
+  cricketMatches: 0,
+  cricketWins: 0,
+  killerHistoryMatches: 0,
+  killerHistoryWins: 0,
+  shanghaiMatches: 0,
+  shanghaiWins: 0,
+  territoriesMatches: 0,
+  territoriesWins: 0,
+  fiftyOneByFiveMatches: 0,
+  fiftyOneByFiveWins: 0,
+  looperMatches: 0,
+  looperWins: 0,
+  callThreeMatches: 0,
+  callThreeWins: 0,
+  steeplechaseMatches: 0,
+  steeplechaseWins: 0,
+  dartsFirefighterHistoryMatches: 0,
+  dartsFirefighterHistoryWins: 0,
+  dartsPokerMatches: 0,
+  dartsPokerWins: 0,
+  oceanControlMatches: 0,
+  oceanControlWins: 0,
+  cargoMatches: 0,
+  cargoWins: 0,
+  golfMatches: 0,
+  golfWins: 0,
+  batardMatches: 0,
+  batardWins: 0,
+  battleRoyaleMatches: 0,
+  battleRoyaleWins: 0,
+  fiveLivesMatches: 0,
+  fiveLivesWins: 0,
+  scramMatches: 0,
+  scramWins: 0,
+  warfareMatches: 0,
+  warfareWins: 0,
+  clockMatches: 0,
+  clockWins: 0,
 };
 
 function localText(lang: string, value: { fr: string; en: string; es: string }): string {
@@ -278,7 +318,7 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
 
   const cards = React.useMemo(() => COLLECTIBLE_CARDS.filter((card) => {
     const isUnlocked = !!unlocks[card.id];
-    if (filter === "awena" || filter === "firefighter" || filter === "loterie" || filter === "killer") return card.collection === filter;
+    if (filter === "awena" || filter === "firefighter" || filter === "loterie" || filter === "killer" || filter === "legends") return card.collection === filter;
     if (filter === "unlocked") return isUnlocked;
     if (filter === "locked") return !isUnlocked;
     return true;
@@ -290,9 +330,9 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
 
   const labels = pickLegacyLocalizedValue(
     lang,
-    { all:"TOUTES", awena:"AWENA", firefighter:"FIREFIGHTER", loterie:"LOTERIE", killer:"KILLER", unlocked:"DÉBLOQUÉES", locked:"VERROUILLÉES", title:"COLLECTION DE CARTES", subtitle:"Relève les défis pour débloquer définitivement les cartes de ce profil.", noProfile:"Sélectionne un profil actif pour commencer une collection.", progress:"PROGRESSION COLLECTION", lockedCard:"CARTE VERROUILLÉE", unlockedCard:"DÉBLOQUÉE", close:"FERMER", continue:"CONTINUER", justUnlocked:"CARTE DÉBLOQUÉE", scan:"ACTUALISER" },
-    { all:"ALL", awena:"AWENA", firefighter:"FIREFIGHTER", loterie:"LOTTERY", killer:"KILLER", unlocked:"UNLOCKED", locked:"LOCKED", title:"CARD COLLECTION", subtitle:"Complete challenges to permanently unlock cards for this profile.", noProfile:"Select an active profile to start a collection.", progress:"COLLECTION PROGRESS", lockedCard:"LOCKED CARD", unlockedCard:"UNLOCKED", close:"CLOSE", continue:"CONTINUE", justUnlocked:"CARD UNLOCKED", scan:"REFRESH" },
-    { all:"TODAS", awena:"AWENA", firefighter:"FIREFIGHTER", loterie:"LOTERÍA", killer:"KILLER", unlocked:"DESBLOQUEADAS", locked:"BLOQUEADAS", title:"COLECCIÓN DE CARTAS", subtitle:"Completa desafíos para desbloquear cartas permanentemente para este perfil.", noProfile:"Selecciona un perfil activo para iniciar una colección.", progress:"PROGRESO DE COLECCIÓN", lockedCard:"CARTA BLOQUEADA", unlockedCard:"DESBLOQUEADA", close:"CERRAR", continue:"CONTINUAR", justUnlocked:"CARTA DESBLOQUEADA", scan:"ACTUALIZAR" },
+    { all:"TOUTES", awena:"AWENA", firefighter:"FIREFIGHTER", loterie:"LOTERIE", killer:"KILLER", legends:"LÉGENDES", unlocked:"DÉBLOQUÉES", locked:"VERROUILLÉES", title:"COLLECTION DE CARTES", subtitle:"Relève les défis pour débloquer définitivement les cartes de ce profil.", noProfile:"Sélectionne un profil actif pour commencer une collection.", progress:"PROGRESSION COLLECTION", lockedCard:"CARTE VERROUILLÉE", unlockedCard:"DÉBLOQUÉE", close:"FERMER", continue:"CONTINUER", justUnlocked:"CARTE DÉBLOQUÉE", scan:"ACTUALISER" },
+    { all:"ALL", awena:"AWENA", firefighter:"FIREFIGHTER", loterie:"LOTTERY", killer:"KILLER", legends:"LEGENDS", unlocked:"UNLOCKED", locked:"LOCKED", title:"CARD COLLECTION", subtitle:"Complete challenges to permanently unlock cards for this profile.", noProfile:"Select an active profile to start a collection.", progress:"COLLECTION PROGRESS", lockedCard:"LOCKED CARD", unlockedCard:"UNLOCKED", close:"CLOSE", continue:"CONTINUE", justUnlocked:"CARD UNLOCKED", scan:"REFRESH" },
+    { all:"TODAS", awena:"AWENA", firefighter:"FIREFIGHTER", loterie:"LOTERÍA", killer:"KILLER", legends:"LEYENDAS", unlocked:"DESBLOQUEADAS", locked:"BLOQUEADAS", title:"COLECCIÓN DE CARTAS", subtitle:"Completa desafíos para desbloquear cartas permanentemente para este perfil.", noProfile:"Selecciona un perfil activo para iniciar una colección.", progress:"PROGRESO DE COLECCIÓN", lockedCard:"CARTA BLOQUEADA", unlockedCard:"DESBLOQUEADA", close:"CERRAR", continue:"CONTINUAR", justUnlocked:"CARTA DESBLOQUEADA", scan:"ACTUALIZAR" },
   );
 
   if (!String(profileId || "").trim()) return <div style={{ padding:18, borderRadius:18, border:`1px dashed ${theme.borderSoft}`, textAlign:"center", color:theme.textSoft, fontSize:12 }}>{labels.noProfile}</div>;
@@ -317,6 +357,7 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
       <FilterButton active={filter === "firefighter"} label={labels.firefighter} onClick={() => setFilter("firefighter")} />
       <FilterButton active={filter === "loterie"} label={labels.loterie} onClick={() => setFilter("loterie")} />
       <FilterButton active={filter === "killer"} label={labels.killer} onClick={() => setFilter("killer")} />
+      <FilterButton active={filter === "legends"} label={labels.legends} onClick={() => setFilter("legends")} />
       <FilterButton active={filter === "unlocked"} label={labels.unlocked} onClick={() => setFilter("unlocked")} />
       <FilterButton active={filter === "locked"} label={labels.locked} onClick={() => setFilter("locked")} />
     </div>
@@ -327,7 +368,7 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
         const progress = cardRequirementProgress(card, metrics);
         return <button key={card.id} type="button" onClick={() => setSelectedCardId(card.id)} style={{ minWidth:0, padding:0, borderRadius:16, overflow:"hidden", border:`1px solid ${isUnlocked ? `${card.accent}aa` : theme.borderSoft}`, background:"rgba(0,0,0,.28)", boxShadow:isUnlocked ? `0 0 18px ${card.accent}24` : "none", cursor:"pointer", textAlign:"left" }}>
           <div style={{ position:"relative", aspectRatio:CARD_PREVIEW_ASPECT_RATIO, overflow:"hidden", background:"radial-gradient(circle at 50% 18%, rgba(255,255,255,.08), rgba(3,3,3,1) 58%)", display:"grid", placeItems:"center", padding:8 }}>
-            <img src={IMAGE_BY_CARD[card.id]} alt={card.name} loading="lazy" style={{ width:"100%", height:"100%", objectFit:"contain", objectPosition:"center center", display:"block", filter:isUnlocked ? "none" : "grayscale(.9) brightness(.34)", transform:"none" }} />
+            <img src={card.image || IMAGE_BY_CARD[card.id] || ""} alt={card.name} loading="lazy" style={{ width:"100%", height:"100%", objectFit:"contain", objectPosition:"center center", display:"block", filter:isUnlocked ? "none" : "grayscale(.9) brightness(.34)", transform:"none" }} />
             {!isUnlocked && <div style={{ position:"absolute", inset:0, display:"grid", placeItems:"center", background:"linear-gradient(180deg, rgba(0,0,0,.05), rgba(0,0,0,.45))" }}><div style={{ width:48, height:48, borderRadius:999, display:"grid", placeItems:"center", background:"rgba(0,0,0,.72)", border:"1px solid rgba(255,255,255,.25)", fontSize:20, boxShadow:"0 8px 22px rgba(0,0,0,.55)" }}>🔒</div></div>}
             <div style={{ position:"absolute", left:7, right:7, bottom:7, borderRadius:999, background:"rgba(0,0,0,.7)", overflow:"hidden", height:6, border:"1px solid rgba(255,255,255,.15)" }}><div style={{ width:`${Math.round(progress * 100)}%`, height:"100%", background:isUnlocked ? card.accent : theme.primary }} /></div>
           </div>
@@ -338,14 +379,14 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
 
     {selectedCard && <div role="dialog" aria-modal="true" onClick={() => setSelectedCardId(null)} style={{ position:"fixed", inset:0, zIndex:12000, background:"rgba(0,0,0,.88)", backdropFilter:"blur(9px)", display:"grid", placeItems:"center", padding:16 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width:"min(94vw,520px)", maxHeight:"92vh", overflowY:"auto", borderRadius:22, border:`1px solid ${selectedCard.accent}88`, background:"#090b10", boxShadow:`0 0 42px ${selectedCard.accent}30`, padding:10 }}>
-        <div style={{ position:"relative", borderRadius:16, overflow:"hidden", background:"#000" }}><img src={IMAGE_BY_CARD[selectedCard.id]} alt={selectedCard.name} style={{ width:"100%", maxHeight:"68vh", objectFit:"contain", display:"block", filter:unlocks[selectedCard.id] ? "none" : "grayscale(.9) brightness(.38)" }} />{!unlocks[selectedCard.id] && <div style={{ position:"absolute", inset:0, display:"grid", placeItems:"center", pointerEvents:"none", fontSize:38 }}>🔒</div>}</div>
+        <div style={{ position:"relative", borderRadius:16, overflow:"hidden", background:"#000" }}><img src={selectedCard.image || IMAGE_BY_CARD[selectedCard.id] || ""} alt={selectedCard.name} style={{ width:"100%", maxHeight:"68vh", objectFit:"contain", display:"block", filter:unlocks[selectedCard.id] ? "none" : "grayscale(.9) brightness(.38)" }} />{!unlocks[selectedCard.id] && <div style={{ position:"absolute", inset:0, display:"grid", placeItems:"center", pointerEvents:"none", fontSize:38 }}>🔒</div>}</div>
         <div style={{ padding:"11px 5px 4px" }}><div style={{ display:"flex", justifyContent:"space-between", gap:10, alignItems:"baseline" }}><div><div style={{ color:selectedCard.accent, fontSize:14, fontWeight:1000 }}>{selectedCard.name}</div><div style={{ color:theme.textSoft, fontSize:10, marginTop:2 }}>{localText(lang, selectedCard.subtitle)}</div></div><div style={{ fontSize:9.5, color:unlocks[selectedCard.id] ? "#67e7a4" : theme.textSoft, fontWeight:950 }}>{unlocks[selectedCard.id] ? `✓ ${labels.unlockedCard}` : `🔒 ${labels.lockedCard}`}</div></div>{!unlocks[selectedCard.id] && <div style={{ marginTop:10 }}><ProgressRequirements card={selectedCard} metrics={metrics} lang={lang} /></div>}<button type="button" onClick={() => setSelectedCardId(null)} style={{ width:"100%", marginTop:12, border:`1px solid ${selectedCard.accent}88`, background:`${selectedCard.accent}18`, color:selectedCard.accent, borderRadius:999, padding:"10px 12px", fontWeight:1000, fontSize:10.5, cursor:"pointer" }}>{labels.close}</button></div>
       </div>
     </div>}
 
     {unlockCard && <div role="dialog" aria-modal="true" style={{ position:"fixed", inset:0, zIndex:13000, display:"grid", placeItems:"center", padding:14, background:"radial-gradient(circle at 50% 40%, rgba(255,255,255,.12), rgba(0,0,0,.94) 58%)", backdropFilter:"blur(10px)" }}>
       <div style={{ position:"absolute", width:"min(82vw,430px)", aspectRatio:"1", borderRadius:999, border:`2px solid ${unlockCard.accent}66`, boxShadow:`0 0 90px ${unlockCard.accent}77`, animation:"mscCardUnlockGlow 1.7s ease-in-out infinite" }} />
-      <div style={{ width:"min(88vw,430px)", position:"relative", zIndex:2, textAlign:"center" }}><div style={{ color:unlockCard.accent, fontSize:16, fontWeight:1100, letterSpacing:1.3, textShadow:`0 0 22px ${unlockCard.accent}` }}>{labels.justUnlocked}</div><div style={{ color:"#fff", fontSize:11, fontWeight:900, marginTop:3, marginBottom:10 }}>{unlockCard.name}</div><img src={IMAGE_BY_CARD[unlockCard.id]} alt={unlockCard.name} style={{ width:"100%", maxHeight:"70vh", objectFit:"contain", display:"block", filter:`drop-shadow(0 0 28px ${unlockCard.accent}66)`, animation:"mscCardUnlockPop .72s cubic-bezier(.17,.84,.28,1.24) both" }} /><button type="button" onClick={() => setUnlockQueue((prev) => prev.slice(1))} style={{ width:"100%", marginTop:10, border:`1px solid ${unlockCard.accent}`, background:unlockCard.accent, color:"#050505", borderRadius:999, padding:"11px 14px", fontWeight:1100, fontSize:11, cursor:"pointer" }}>{labels.continue}{unlockQueue.length > 1 ? ` · ${unlockQueue.length - 1}` : ""}</button></div>
+      <div style={{ width:"min(88vw,430px)", position:"relative", zIndex:2, textAlign:"center" }}><div style={{ color:unlockCard.accent, fontSize:16, fontWeight:1100, letterSpacing:1.3, textShadow:`0 0 22px ${unlockCard.accent}` }}>{labels.justUnlocked}</div><div style={{ color:"#fff", fontSize:11, fontWeight:900, marginTop:3, marginBottom:10 }}>{unlockCard.name}</div><img src={unlockCard.image || IMAGE_BY_CARD[unlockCard.id] || ""} alt={unlockCard.name} style={{ width:"100%", maxHeight:"70vh", objectFit:"contain", display:"block", filter:`drop-shadow(0 0 28px ${unlockCard.accent}66)`, animation:"mscCardUnlockPop .72s cubic-bezier(.17,.84,.28,1.24) both" }} /><button type="button" onClick={() => setUnlockQueue((prev) => prev.slice(1))} style={{ width:"100%", marginTop:10, border:`1px solid ${unlockCard.accent}`, background:unlockCard.accent, color:"#050505", borderRadius:999, padding:"11px 14px", fontWeight:1100, fontSize:11, cursor:"pointer" }}>{labels.continue}{unlockQueue.length > 1 ? ` · ${unlockQueue.length - 1}` : ""}</button></div>
     </div>}
   </div>;
 }
