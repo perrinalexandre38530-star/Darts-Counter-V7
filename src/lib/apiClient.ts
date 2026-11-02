@@ -439,7 +439,8 @@ function clearNasAuthBecauseUnauthorized(sourcePath = "") {
   // Google Drive / NAS / sync utilisent un credential technique du backend.
   // Son expiration ne signifie PAS que le compte Supabase est déconnecté.
   if (isAccountBackendEndpoint(sourcePath)) {
-    console.warn("[apiClient] 401 backend sauvegarde — compte Supabase conservé", sourcePath);
+    // Les 401 de services de sauvegarde sont récupérables et déjà remontés à
+    // l'UI appelante. Ne pas polluer la console avec un warning redondant.
     return;
   }
 
@@ -815,12 +816,16 @@ function buildHeaders(init?: RequestInit, requestPath = ""): HeadersInit {
   // garde au contraire le JWT NAS en priorité pour compatibilité historique.
   const isSyncRoute = normalizedPath.startsWith("/sync/");
   const preferPublicAccountToken = isPersonalCloudRoute || (isSyncRoute && activeSessionIsPublicSupabase());
+  const publicSupabaseSession = activeSessionIsPublicSupabase();
   const token = acceptsAccountSession
     ? (preferPublicAccountToken
-        // Sur un appareil connecté avec le compte Supabase courant, le même
-        // jeton de compte doit identifier NAS + cloud personnel. Un vieux JWT
-        // NAS local ne peut plus ouvrir le namespace d'un ancien alias usr_*.
-        ? (readAccountAccessToken() || readNasAccessToken())
+        // PERSONAL CLOUD HARD LOCK V111: si la session active est Supabase,
+        // Google Drive / OneDrive / Dropbox ne doivent JAMAIS retomber sur un
+        // ancien JWT NAS. Ce fallback provoquait des 401 récurrents au boot
+        // dès que le JWT Supabase avait besoin d'être rafraîchi.
+        ? (isPersonalCloudRoute && publicSupabaseSession
+            ? readAccountAccessToken()
+            : (readAccountAccessToken() || readNasAccessToken()))
         : (readNasAccessToken() || readAccountAccessToken()))
     : readNasAccessToken();
 
@@ -886,23 +891,44 @@ async function doFetch(path: string, init?: RequestInit, options?: ApiRequestOpt
   // V122: Drive ne doit plus dépendre du bridge NAS. Rafraîchir d'abord la
   // session Supabase publique, puis seulement utiliser un JWT NAS en fallback.
   if (isPersonalCloudRoute) {
-    if (!readAccountAccessToken() && !readNasAccessToken()) {
+    const publicSupabaseSession = activeSessionIsPublicSupabase();
+
+    // PERSONAL CLOUD HARD LOCK V111 : en session Supabase, on garantit un JWT
+    // public FRAIS AVANT le moindre fetch. La présence d'un vieux JWT NAS ne
+    // doit plus empêcher ce refresh ni servir de fallback au cloud personnel.
+    if (publicSupabaseSession && !readAccountAccessToken()) {
       await readFreshPublicSupabaseSession(false).catch(() => null);
     }
 
-    // Offline-first / anti-spam : si le compte ne possède actuellement aucun
-    // credential exploitable, une lecture automatique du cloud personnel ne
-    // doit pas générer une rafale de 401. L'état local reste l'autorité et le
-    // cloud sera retenté quand une session valide réapparaîtra.
-    if (requestMethod === "GET" && options?.manual !== true && !readAccountAccessToken() && !readNasAccessToken()) {
-      return {
-        ok: false,
-        connected: false,
-        skipped: true,
-        authRequired: true,
-        provider: "google_drive",
-        code: "personal_cloud_auth_unavailable",
-      };
+    const accountToken = readAccountAccessToken();
+    const legacyBackendToken = publicSupabaseSession ? "" : readNasAccessToken();
+
+    // Si la session publique n'est pas encore restaurée, on diffère localement
+    // les probes automatiques. Résultat : aucune requête 401 rouge au démarrage.
+    if (!accountToken && !legacyBackendToken) {
+      if (requestMethod === "GET" && options?.manual !== true) {
+        return {
+          ok: false,
+          connected: false,
+          skipped: true,
+          authRequired: true,
+          provider: normalizedPath.split("/")[3] || "personal_cloud",
+          code: "personal_cloud_auth_pending",
+        };
+      }
+
+      // Même pour une action manuelle, ne jamais envoyer une requête vouée au
+      // 401 : on tente un dernier refresh Supabase et on échoue localement si
+      // aucune session fraîche n'est disponible.
+      const refreshed = publicSupabaseSession
+        ? await readFreshPublicSupabaseSession(true).catch(() => null)
+        : null;
+      if (!refreshed?.accessToken && !legacyBackendToken) {
+        const error: any = new Error("Session MULTISPORTS en cours de restauration. Réessaie dans un instant.");
+        error.status = 401;
+        error.code = "personal_cloud_auth_pending";
+        throw error;
+      }
     }
   } else if (isAccountBackendRoute && !readNasAccessToken()) {
     await recoverNasAuthToken("missing_token").catch(() => "");
