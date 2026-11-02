@@ -1,5 +1,5 @@
-import { readNasAccessToken } from "../apiClient";
-import { decodeJwtPayloadUnsafe } from "../authSessionGuard";
+import { listCanonicalHistoryV4 } from "../historyV4";
+import { buildHistoryPortableIntegrityManifest, assertLocalDataIntegrityReleaseGate } from "../historyIntegrityGate";
 import {
   downloadCloudObject,
   listCloudVaultBackups,
@@ -33,7 +33,6 @@ import { applyIncrementalChanges } from "../incrementalRestore";
 import { shouldSuppressAutomaticRestore } from "../restoreAuthority";
 import { shouldAttemptRemoteWork } from "../offlineFirstRuntime";
 import { getCanonicalAccountScopeId } from "../canonicalAccountScope";
-import { assertLocalDataIntegrityReleaseGate } from "../historyIntegrityGate";
 
 export type AccountBackupSource = "local" | "nas" | "r2" | "google_drive" | "onedrive" | "dropbox" | "external" | "legacy-auto";
 
@@ -154,6 +153,15 @@ function emitConflict(conflict: AccountSyncConflict): void {
     localSummary: conflict.localSummary, remoteSummary: conflict.remoteSummary, differences: conflict.differences, details: conflict.details || [],
   }});
 }
+
+export function replayPendingAccountSyncConflict(userId?: string): boolean {
+  const uid = String(userId || "").trim();
+  const conflict = uid ? pendingConflicts.get(uid) : [...pendingConflicts.values()][0];
+  if (!conflict) return false;
+  emitConflict(conflict);
+  return true;
+}
+
 
 export async function resolveAccountSyncConflict(userId: string, action: "remote" | "local"): Promise<boolean> {
   const uid = String(userId || "").trim();
@@ -521,46 +529,14 @@ async function scanNas(userId: string): Promise<AccountBackupCandidate[]> {
   const uid = String(userId || "").trim();
   if (!uid || !accountStillActive(uid)) return [];
 
-  const allowedIds = new Set<string>([uid]);
-  try {
-    const cached = JSON.parse(localStorage.getItem("dc_online_auth_supabase_v1") || "null");
-    if (String(cached?.supabaseUserId || "").trim() === uid) {
-      for (const id of [cached?.userId, cached?.user?.id]) {
-        const value = String(id || "").trim();
-        if (value) allowedIds.add(value);
-      }
-    }
-  } catch {}
-
-  const tokenBelongsToUser = () => {
-    const token = String(readNasAccessToken() || "").trim();
-    if (!token) return false;
-    const sub = String(decodeJwtPayloadUnsafe(token)?.sub || "").trim();
-    return !!sub && allowedIds.has(sub);
-  };
-
-  // Le bridge NAS reste best-effort et s'exécute désormais en tâche de fond.
-  // Un JWT NAS de l'utilisateur précédent est explicitement ignoré.
-  if (!tokenBelongsToUser()) {
-    try {
-      const mod = await import("../onlineApi");
-      if (!accountStillActive(uid)) return [];
-      const capability = await mod.onlineApi.getPrivateNasCapability?.();
-      const canonical = String(capability?.canonicalUserId || "").trim();
-      if (canonical) allowedIds.add(canonical);
-      if (capability?.authorized === true && accountStillActive(uid)) {
-        await mod.onlineApi.switchAccountInfrastructure?.("nas");
-      }
-    } catch {}
-  }
-  if (!accountStillActive(uid) || !tokenBelongsToUser()) return [];
-
+  // MULTI-DEVICE V2 : ne plus décider localement si le JWT NAS présent dans ce
+  // navigateur « appartient » au bon alias. /sync/* accepte désormais la session
+  // Supabase du compte courant et le backend résout lui-même l'identité NAS
+  // canonique. C'est indispensable pour qu'un téléphone neuf voie immédiatement
+  // les sauvegardes créées sur PC, même s'il n'a jamais stocké l'ancien JWT usr_*.
   const slots = await listNasMemorySlots();
   if (!accountStillActive(uid)) return [];
-  return slots
-    .filter((slot) => !slot.ownerId || allowedIds.has(String(slot.ownerId).trim()))
-    .map(nasCandidate)
-    .filter(Boolean) as AccountBackupCandidate[];
+  return slots.map(nasCandidate).filter(Boolean) as AccountBackupCandidate[];
 }
 
 async function scanR2(): Promise<AccountBackupCandidate[]> {
@@ -568,18 +544,20 @@ async function scanR2(): Promise<AccountBackupCandidate[]> {
   return rows.map(r2Candidate).filter(Boolean) as AccountBackupCandidate[];
 }
 
-async function scanPersonalCloud(userId: string): Promise<AccountBackupCandidate[]> {
-  const selected = loadStoragePrefs().selectedDestination;
-  if (!isPersonalCloudProvider(selected)) return [];
-  const provider = selected as PersonalCloudProvider;
-  const meta = await getPersonalCloudBackupMeta(provider);
+async function scanPersonalCloudProvider(provider: PersonalCloudProvider): Promise<AccountBackupCandidate[]> {
+  const status: any = await getPersonalCloudStatus(provider).catch(() => null);
+  if (!status?.configured || !status?.connected) return [];
+  const meta = await getPersonalCloudBackupMeta(provider, true);
   if (!meta) return [];
-  const summary = meta?.metadata?.summary || {};
-  const ms = candidateTime(meta.updatedAt, meta?.metadata?.exportedAt);
+  const summary = meta?.summary || meta?.metadata?.summary || {};
+  const id = String(meta?.id || meta?.backupId || `personal_${provider}_latest`);
+  const ms = candidateTime(meta.updatedAt, meta.createdAt, meta?.metadata?.exportedAt);
   return [{
-    source: provider, id: `personal_${provider}_latest`, label: `Sauvegarde ${personalCloudProviderLabel(provider)}`,
-    updatedAt: String(meta.updatedAt || isoFromMs(ms)), updatedAtMs: ms, revision: 0, summary, accountScoped: true,
-    load: () => downloadPersonalCloudSnapshot(provider),
+    source: provider, id, label: `Sauvegarde ${personalCloudProviderLabel(provider)}`,
+    updatedAt: String(meta.updatedAt || meta.createdAt || isoFromMs(ms)), updatedAtMs: ms, revision: 0, summary, accountScoped: true,
+    load: () => id && id !== `personal_${provider}_latest`
+      ? downloadPersonalCloudSnapshotById(provider, id)
+      : downloadPersonalCloudSnapshot(provider),
   }];
 }
 
@@ -651,7 +629,9 @@ export async function scanAccountBackups(userId: string): Promise<AccountBackupS
     { source: "local", run: () => scanLocal(uid) },
     { source: "nas", run: () => scanNas(uid) },
     { source: "r2", run: scanR2 },
-    { source: "google_drive", run: () => scanPersonalCloud(uid) },
+    { source: "google_drive", run: () => scanPersonalCloudProvider("google_drive") },
+    { source: "onedrive", run: () => scanPersonalCloudProvider("onedrive") },
+    { source: "dropbox", run: () => scanPersonalCloudProvider("dropbox") },
     { source: "external", run: () => scanExternal(uid) },
   ];
 
@@ -758,6 +738,25 @@ async function summarizeCurrentLocalFast(): Promise<Partial<VaultSummary>> {
   const candidates = slots.map(localCandidate).filter(Boolean) as AccountBackupCandidate[];
   const latest = pickLatestBackupCandidate(candidates);
   return latest?.summary && meaningfulSummary(latest.summary) ? latest.summary : {};
+}
+
+async function localHistoryHashMatchesRemote(summary?: Partial<VaultSummary> | Record<string, any> | null): Promise<boolean | null> {
+  const remoteActive = String((summary as any)?.historyIdsHash || "").trim();
+  const remoteFinished = String((summary as any)?.finishedIdsHash || "").trim();
+  if (!remoteActive && !remoteFinished) return null;
+  try {
+    const rows = await withSyncTimeout(
+      listCanonicalHistoryV4({ hydratePayload: false, includeDeleted: false }),
+      4_000,
+      "Contrôle des IDs History",
+    );
+    const manifest = buildHistoryPortableIntegrityManifest(rows);
+    if (remoteActive && manifest.activeIdsHash !== remoteActive) return false;
+    if (remoteFinished && manifest.finishedIdsHash !== remoteFinished) return false;
+    return true;
+  } catch {
+    return null;
+  }
 }
 
 async function summarizeCurrentLocal(): Promise<VaultSummary> {
@@ -980,10 +979,28 @@ export async function restoreLatestBackupForSignedInUser(
       }
       const conflict = buildConflict(uid, latest, localBefore || {});
       if (!conflict.differences.length && meaningfulSummary(localBefore) && localLooksAtLeastAsComplete(localBefore as VaultSummary, latest.summary)) {
-        writeAppliedSignature(uid, signature);
-        saveDiagnostic(uid, { ok: true, restored: false, reason: "same-summary-fast", candidate: { source: latest.source, id: latest.id } });
-        emitAccountSync(uid, "done", 100, "Compte déjà à jour", { restored:false });
-        return false;
+        // Même quantité ne veut pas dire mêmes parties. Si la sauvegarde récente
+        // expose les hashes W8/W9, on les compare avant de déclarer l'appareil à jour.
+        // En absence de hash portable, on demande confirmation une fois : le choix
+        // utilisateur mémorise ensuite la signature distante.
+        const sameHistory = await localHistoryHashMatchesRemote(latest.summary);
+        if (sameHistory === true) {
+          writeAppliedSignature(uid, signature);
+          saveDiagnostic(uid, { ok: true, restored: false, reason: "same-summary-and-history-hash", candidate: { source: latest.source, id: latest.id } });
+          emitAccountSync(uid, "done", 100, "Compte déjà à jour", { restored:false });
+          return false;
+        }
+        if (sameHistory === false && !conflict.differences.some((row) => row.key === "matches")) {
+          conflict.differences.push({
+            key: "matches",
+            label: "Parties / historique",
+            local: Math.max(Number((localBefore as any)?.matches || 0), Number((localBefore as any)?.historyRows || 0)),
+            remote: Math.max(Number((latest.summary as any)?.matches || 0), Number((latest.summary as any)?.historyRows || 0)),
+            delta: 0,
+            lossIfRemote: 0,
+            gainIfRemote: 0,
+          });
+        }
       }
       // P0 V10: au boot/login, la comparaison reste STRICTEMENT metadata-only.
       // Télécharger un snapshot complet + loadStore() uniquement pour détailler une

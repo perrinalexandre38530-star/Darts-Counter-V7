@@ -1,0 +1,20 @@
+import fs from 'node:fs';
+const read = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
+const api = read('src/lib/personalCloudApi.ts');
+const settings = read('src/pages/Settings.tsx');
+const vault = read('src/pages/StorageVaultPage.tsx');
+const client = read('src/lib/apiClient.ts');
+const coord = read('src/lib/backup/accountBackupCoordinator.ts');
+const app = read('src/App.tsx');
+function ok(v,m){ if(!v) throw new Error(`❌ ${m}`); console.log(`✅ ${m}`); }
+ok(api.includes('["google_drive", "onedrive", "dropbox"]'), 'Google Drive, OneDrive et Dropbox partagent le pipeline archive');
+ok(settings.includes('getPersonalCloudStatus("dropbox")') && settings.includes('connectPersonalCloud("dropbox")'), 'Dropbox est connectable depuis Réglages');
+ok(settings.includes('params.get("personalCloud")') && settings.includes('Connexion ${label} impossible'), 'Le retour OAuth web affiche clairement succès ou erreur dans Réglages');
+ok(vault.includes('label="Dropbox"') && vault.includes('selectPersonalCloudRestoreSource("dropbox")'), 'Dropbox est une source de restauration');
+ok(client.includes('isSyncRoute && activeSessionIsPublicSupabase()'), 'NAS /sync préfère le compte Supabase courant sur les appareils connectés');
+ok(coord.includes('const slots = await listNasMemorySlots()') && !coord.includes('tokenBelongsToUser'), 'Le scan NAS délègue l’identité canonique au backend au lieu d’exiger un vieux JWT local');
+ok(coord.includes('scanPersonalCloudProvider("onedrive")') && coord.includes('scanPersonalCloudProvider("dropbox")'), 'Le scan de démarrage vérifie tous les clouds personnels');
+ok(coord.includes('localHistoryHashMatchesRemote'), 'Le démarrage ne confond plus mêmes compteurs et mêmes parties');
+ok(coord.includes('replayPendingAccountSyncConflict'), 'Un conflit de démarrage peut être rejoué après montage UI');
+ok(app.includes('replayPendingAccountSyncConflict()'), 'La validation OUI/NON est rejouée si détectée avant la bannière');
+console.log('\n✅ CLOUD STARTUP SYNC + DROPBOX APP CONTRACT OK');

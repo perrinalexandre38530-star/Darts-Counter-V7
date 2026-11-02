@@ -1,6 +1,10 @@
-import React from "react"; import Wave61SharedConfig,{type Wave61DedicatedOption} from "../../Wave61SharedConfig";
+import React from "react";
+import Wave61SharedConfig,{type Wave61DedicatedOption} from "../../Wave61SharedConfig";
+
 export const WAVE61_MODE_ID="troupeau_en_danger" as const;
+
 const DEDICATED_OPTIONS:Wave61DedicatedOption[]=[
+ {key:"seriesFormat",label:"Scoreboard / manches",type:"select",defaultValue:"single",options:[{value:"single",label:"1 MANCHE · sans scoreboard"},{value:"bo3",label:"BO 3"},{value:"bo5",label:"BO 5"},{value:"bo7",label:"BO 7"},{value:"ft3",label:"FT 3"},{value:"ft5",label:"FT 5"},{value:"ft7",label:"FT 7"}],help:"Chaque manche repart avec un troupeau neuf ; le scoreboard conserve les manches gagnées."},
  {key:"flockSize",label:"Taille du troupeau",type:"select",defaultValue:8,options:[{value:5,label:"5 moutons"},{value:8,label:"8 moutons"},{value:12,label:"12 moutons"},{value:15,label:"15 moutons"}]},
  {key:"wolfDifficulty",label:"Meute de loups",type:"select",defaultValue:"normal",options:[{value:"easy",label:"FACILE"},{value:"normal",label:"STANDARD"},{value:"hard",label:"DIFFICILE"},{value:"alpha",label:"ALPHA"}]},
  {key:"patouPower",label:"Puissance du Patou",type:"select",defaultValue:10,options:[{value:0,label:"DÉSACTIVÉ"},{value:10,label:"STANDARD · +10 au Bull"},{value:20,label:"RENFORCÉ · +20 au Bull"}]},

@@ -4,6 +4,10 @@ import Wave61SharedConfig, { type Wave61DedicatedOption } from "../../Wave61Shar
 export const WAVE61_MODE_ID = "une_ptite_raclette" as const;
 
 const DEDICATED_OPTIONS: Wave61DedicatedOption[] = [
+  { key: "seriesFormat", label: "Scoreboard / manches", type: "select", defaultValue: "single", options: [
+    { value: "single", label: "1 MANCHE · sans scoreboard" }, { value: "bo3", label: "BO 3" }, { value: "bo5", label: "BO 5" }, { value: "bo7", label: "BO 7" }, { value: "ft3", label: "FT 3" }, { value: "ft5", label: "FT 5" }, { value: "ft7", label: "FT 7" },
+  ], help: "Chaque manche prépare une nouvelle raclette ; le scoreboard conserve les manches gagnées." },
+
   { key: "recipeCheese", label: "Fromage nécessaire", type: "select", defaultValue: 6, options: [
     { value: 4, label: "4 portions" }, { value: 6, label: "6 portions" }, { value: 8, label: "8 portions" },
   ]},

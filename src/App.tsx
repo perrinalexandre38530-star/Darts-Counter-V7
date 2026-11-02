@@ -261,7 +261,7 @@ import { AudioProvider } from "./contexts/AudioContext";
 import { AwenaProvider, useAwenaOptional } from "./awena/AwenaProvider";
 import AwenaOverlay from "./awena/components/AwenaOverlay";
 import { AuthOnlineProvider, useAuthOnline } from "./hooks/useAuthOnline";
-import { resolveAccountSyncConflict } from "./lib/backup/accountBackupCoordinator";
+import { replayPendingAccountSyncConflict, resolveAccountSyncConflict } from "./lib/backup/accountBackupCoordinator";
 import { DevModeProvider } from "./contexts/DevModeContext";
 
 // ✅ NEW: Sport context + Pétanque pages
@@ -7947,6 +7947,10 @@ function AccountSyncBanner() {
       }
     };
     window.addEventListener("msc:account-sync", onSync as EventListener);
+    // Le bootstrap Auth peut détecter un conflit quelques millisecondes avant
+    // que la bannière soit montée. On rejoue alors le conflit en attente afin
+    // que la validation OUI/NON soit toujours visible au lancement.
+    window.setTimeout(() => { try { replayPendingAccountSyncConflict(); } catch {} }, 80);
     return () => {
       window.removeEventListener("msc:account-sync", onSync as EventListener);
       if (hideTimer) window.clearTimeout(hideTimer);

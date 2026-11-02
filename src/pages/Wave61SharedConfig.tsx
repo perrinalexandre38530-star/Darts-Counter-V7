@@ -71,19 +71,23 @@ function dedicatedGroupsForMode(modeId: string) {
       { title: "BONUS & PÉNALITÉS", keys: ["wrongColorPenalty", "missPenalty", "perfectBonus"] },
     ],
     bim_bam_boum: [
+      { title: "FORMAT & MANCHES", keys: ["seriesFormat"] },
       { title: "CONTRAT BIM → BAM → BOUM", keys: ["comboRule"] },
       { title: "BOUM & SUPER BOUM", keys: ["comboBonus", "superBoom"] },
       { title: "RISQUE", keys: ["missPenalty"] },
     ],
     saute_moutons: [
+      { title: "FORMAT & MANCHES", keys: ["seriesFormat"] },
       { title: "PARCOURS", keys: ["trackLength", "leapfrogBonus"] },
       { title: "BULLS & GRANDS BONDS", keys: ["bull25Jump", "bull50Jump"] },
     ],
     troupeau_en_danger: [
+      { title: "FORMAT & MANCHES", keys: ["seriesFormat"] },
       { title: "TROUPEAU & MEUTE", keys: ["flockSize", "wolfDifficulty"] },
       { title: "PATOU & BERGER", keys: ["patouPower", "shepherdSave"] },
     ],
     une_ptite_raclette: [
+      { title: "FORMAT & MANCHES", keys: ["seriesFormat"] },
       { title: "SERVICE & RECETTE", keys: ["recipeCheese", "recipePotato", "recipeCharcuterie"] },
       { title: "BONUS", keys: ["racletteBonus", "visitVarietyBonus"] },
       { title: "AMBIANCE", keys: ["missPenalty"] },

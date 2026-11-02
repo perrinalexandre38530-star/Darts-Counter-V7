@@ -2293,6 +2293,8 @@ function AccountPages({
   const [googleDriveBusy, setGoogleDriveBusy] = React.useState(false);
   const [oneDriveStatus, setOneDriveStatus] = React.useState<PersonalCloudStatus | null>(null);
   const [oneDriveBusy, setOneDriveBusy] = React.useState(false);
+  const [dropboxStatus, setDropboxStatus] = React.useState<PersonalCloudStatus | null>(null);
+  const [dropboxBusy, setDropboxBusy] = React.useState(false);
   const [cloudStorageTestLoading, setCloudStorageTestLoading] = React.useState(false);
   const [cloudStorageTestResult, setCloudStorageTestResult] = React.useState<{
     status: "ok" | "error" | "info";
@@ -2470,7 +2472,32 @@ function AccountPages({
     if (page !== "account_storage" || !isSignedIn) return;
     void refreshGoogleDriveStatus();
     void refreshOneDriveStatus();
+    void refreshDropboxStatus();
   }, [page, isSignedIn]);
+
+  React.useEffect(() => {
+    if (page !== "account_storage" || typeof window === "undefined") return;
+    const hash = String(window.location.hash || "");
+    const qAt = hash.indexOf("?");
+    if (qAt < 0) return;
+    const params = new URLSearchParams(hash.slice(qAt + 1));
+    const provider = String(params.get("personalCloud") || "");
+    if (!provider) return;
+    const label = provider === "google_drive" ? "Google Drive" : provider === "onedrive" ? "OneDrive" : provider === "dropbox" ? "Dropbox" : "Cloud personnel";
+    const status = String(params.get("status") || "").toLowerCase();
+    const detail = String(params.get("message") || "").trim();
+    if (["connected", "ok", "success"].includes(status)) {
+      setMessage(`${label} connecté à MULTISPORTS SCORING.`);
+      if (provider === "google_drive") void refreshGoogleDriveStatus();
+      if (provider === "onedrive") void refreshOneDriveStatus();
+      if (provider === "dropbox") void refreshDropboxStatus();
+    } else if (status === "error") {
+      setMessage(`Connexion ${label} impossible${detail ? ` : ${detail}` : "."}`);
+    }
+    // Le résultat OAuth ne doit pas rester dans l'URL et être réaffiché à chaque ouverture.
+    const cleanHash = hash.slice(0, qAt) || "#/settings/storage";
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${window.location.search}${cleanHash}`);
+  }, [page]);
 
   async function refreshGoogleDriveStatus() {
     if (!isSignedIn) { setGoogleDriveStatus(null); return; }
@@ -2536,6 +2563,39 @@ function AccountPages({
     } catch (e: any) {
       setMessage(`Déconnexion OneDrive impossible : ${e?.message || e}`);
     } finally { setOneDriveBusy(false); }
+  }
+
+  async function refreshDropboxStatus() {
+    if (!isSignedIn) { setDropboxStatus(null); return; }
+    try { setDropboxStatus(await getPersonalCloudStatus("dropbox")); }
+    catch { setDropboxStatus(null); }
+  }
+
+  async function handleDropboxConnect() {
+    if (!isSignedIn) { setMessage("Connecte-toi d’abord à ton compte MULTISPORTS SCORING."); return; }
+    setDropboxBusy(true);
+    try {
+      setMessage("Ouverture de Dropbox…");
+      await connectPersonalCloud("dropbox");
+      await refreshDropboxStatus();
+      setMessage("Dropbox connecté à MULTISPORTS SCORING.");
+    } catch (e: any) {
+      setMessage(`Connexion Dropbox impossible : ${e?.message || e}`);
+    } finally {
+      setDropboxBusy(false);
+    }
+  }
+
+  async function handleDropboxDisconnect() {
+    if (!window.confirm("Déconnecter Dropbox de MULTISPORTS SCORING ? Les sauvegardes déjà présentes dans Dropbox ne seront pas supprimées.")) return;
+    setDropboxBusy(true);
+    try {
+      await disconnectPersonalCloud("dropbox");
+      await refreshDropboxStatus();
+      setMessage("Dropbox déconnecté. Tu peux le reconnecter à tout moment.");
+    } catch (e: any) {
+      setMessage(`Déconnexion Dropbox impossible : ${e?.message || e}`);
+    } finally { setDropboxBusy(false); }
   }
 
   async function syncStoragePrefsToBackend(saved: typeof storagePrefs) {
@@ -3326,6 +3386,28 @@ function AccountPages({
                   <button type="button" disabled={oneDriveBusy} onClick={() => void handleOneDriveDisconnect()} style={{ borderRadius: 999, border: "1px solid rgba(255,107,107,0.65)", background: "rgba(255,107,107,0.10)", color: "#ff8c8c", padding: "8px 11px", fontSize: 11, fontWeight: 950, cursor: oneDriveBusy ? "not-allowed" : "pointer" }}>{oneDriveBusy ? "Patiente…" : "Déconnecter"}</button>
                 ) : (
                   <button type="button" disabled={oneDriveBusy || !isSignedIn || oneDriveStatus?.configured === false} onClick={() => void handleOneDriveConnect()} style={{ borderRadius: 999, border: "1px solid rgba(98,210,111,0.55)", background: "rgba(98,210,111,0.10)", color: "#9cffaa", padding: "8px 11px", fontSize: 11, fontWeight: 950, cursor: oneDriveBusy || !isSignedIn ? "not-allowed" : "pointer" }}>{oneDriveBusy ? "Ouverture…" : "Connecter OneDrive"}</button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ ...softCard, marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 11, color: theme.textSoft, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.6 }}>Dropbox</div>
+                <div style={{ marginTop: 4, fontWeight: 950, color: dropboxStatus?.connected ? "#62d26f" : "#ffcc66" }}>
+                  {!isSignedIn ? "Compte MULTISPORTS SCORING requis" : dropboxStatus?.connected ? "CONNECTÉ" : dropboxStatus?.configured === false ? "NON CONFIGURÉ" : "DÉCONNECTÉ"}
+                </div>
+                <div style={{ marginTop: 5, fontSize: 10.8, color: theme.textSoft, lineHeight: 1.35 }}>
+                  Cloud personnel Dropbox. MULTISPORTS SCORING utilise uniquement le dossier applicatif attribué à l’application.
+                </div>
+              </div>
+              <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button type="button" disabled={dropboxBusy || !isSignedIn} onClick={() => void refreshDropboxStatus()} style={{ borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,0.055)", color: theme.text, padding: "8px 10px", fontSize: 11, fontWeight: 900, cursor: dropboxBusy || !isSignedIn ? "not-allowed" : "pointer" }}>Actualiser</button>
+                {dropboxStatus?.connected ? (
+                  <button type="button" disabled={dropboxBusy} onClick={() => void handleDropboxDisconnect()} style={{ borderRadius: 999, border: "1px solid rgba(255,107,107,0.65)", background: "rgba(255,107,107,0.10)", color: "#ff8c8c", padding: "8px 11px", fontSize: 11, fontWeight: 950, cursor: dropboxBusy ? "not-allowed" : "pointer" }}>{dropboxBusy ? "Patiente…" : "Déconnecter"}</button>
+                ) : (
+                  <button type="button" disabled={dropboxBusy || !isSignedIn || dropboxStatus?.configured === false} onClick={() => void handleDropboxConnect()} style={{ borderRadius: 999, border: "1px solid rgba(98,210,111,0.55)", background: "rgba(98,210,111,0.10)", color: "#9cffaa", padding: "8px 11px", fontSize: 11, fontWeight: 950, cursor: dropboxBusy || !isSignedIn ? "not-allowed" : "pointer" }}>{dropboxBusy ? "Ouverture…" : "Connecter Dropbox"}</button>
                 )}
               </div>
             </div>

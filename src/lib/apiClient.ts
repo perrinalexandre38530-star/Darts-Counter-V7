@@ -813,12 +813,13 @@ function buildHeaders(init?: RequestInit, requestPath = ""): HeadersInit {
   // provoquer des 401 en boucle alors que Supabase est encore connecté. Pour le
   // cloud personnel, la session Supabase fraîche est donc PRIORITAIRE. /sync/*
   // garde au contraire le JWT NAS en priorité pour compatibilité historique.
+  const isSyncRoute = normalizedPath.startsWith("/sync/");
+  const preferPublicAccountToken = isPersonalCloudRoute || (isSyncRoute && activeSessionIsPublicSupabase());
   const token = acceptsAccountSession
-    ? (isPersonalCloudRoute
-        // personal-cloud accepte deux credentials de COMPTE côté serveur :
-        // 1) JWT Supabase public (prioritaire), 2) JWT backend valide (fallback).
-        // Le fallback backend ne confère aucun droit NAS supplémentaire : les
-        // routes NAS privées restent protégées par leur middleware dédié.
+    ? (preferPublicAccountToken
+        // Sur un appareil connecté avec le compte Supabase courant, le même
+        // jeton de compte doit identifier NAS + cloud personnel. Un vieux JWT
+        // NAS local ne peut plus ouvrir le namespace d'un ancien alias usr_*.
         ? (readAccountAccessToken() || readNasAccessToken())
         : (readNasAccessToken() || readAccountAccessToken()))
     : readNasAccessToken();

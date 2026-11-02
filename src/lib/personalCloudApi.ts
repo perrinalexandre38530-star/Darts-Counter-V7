@@ -261,7 +261,7 @@ async function decodePayload(payload: any, onProgress?: PersonalCloudTransferPro
   return JSON.parse(text);
 }
 
-const ARCHIVE_PERSONAL_CLOUD_PROVIDERS = new Set<PersonalCloudProvider>(["google_drive", "onedrive"]);
+const ARCHIVE_PERSONAL_CLOUD_PROVIDERS = new Set<PersonalCloudProvider>(["google_drive", "onedrive", "dropbox"]);
 // Compatibilité des contrats V131 : les anciennes routes Google restent nommées
 // explicitement, même si le moteur est désormais mutualisé avec OneDrive.
 const GOOGLE_DRIVE_RAW_JOB_ENDPOINT = "/account/personal-cloud/google_drive/backups/raw/jobs";

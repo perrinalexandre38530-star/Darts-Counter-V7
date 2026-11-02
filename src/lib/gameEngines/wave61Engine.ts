@@ -3,7 +3,7 @@ import type { GameDart, Player } from "../types-game";
 import { getWave61Preset, type Wave61Family } from "../../games/dartsWave61Families";
 
 // Legacy audit markers preserved: WAVE61_ENGINE_VERSION = 9, WAVE61_ENGINE_VERSION = 10, WAVE61_ENGINE_VERSION = 11, WAVE61_ENGINE_VERSION = 12, WAVE61_ENGINE_VERSION = 13, WAVE61_ENGINE_VERSION = 14, WAVE61_ENGINE_VERSION = 15, WAVE61_ENGINE_VERSION = 16, WAVE61_ENGINE_VERSION = 17.
-export const WAVE61_ENGINE_VERSION = 24;
+export const WAVE61_ENGINE_VERSION = 25;
 
 export type Wave61Difficulty = "easy" | "normal" | "hard";
 export type Wave61ParticipantMode = "players" | "teams";
@@ -677,6 +677,7 @@ export function createWave61State(playersRaw: Player[], modeId: string, rawConfi
       colorCallPenaltyByPlayer: modeId === "color_call" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       racletteStockByPlayer: modeId === "une_ptite_raclette" ? Object.fromEntries(ids.map((id) => [id, { cheese: 0, potato: 0, charcuterie: 0 }])) : {},
       racletteServedByPlayer: modeId === "une_ptite_raclette" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
+      racletteMatchServedByPlayer: modeId === "une_ptite_raclette" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       racletteVarietyBonusByPlayer: modeId === "une_ptite_raclette" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       racletteMissPenaltyByPlayer: modeId === "une_ptite_raclette" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
       racletteBullBonusByPlayer: modeId === "une_ptite_raclette" ? Object.fromEntries(ids.map((id) => [id, 0])) : {},
@@ -4277,20 +4278,38 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
     const patouMap = state.special.troupeauPatouActionsByPlayer || (state.special.troupeauPatouActionsByPlayer = {});
     bestDefenseMap[player.id] = Math.max(Number(bestDefenseMap[player.id] || 0), defense);
     if (bullCountVisit) patouMap[player.id] = Number(patouMap[player.id] || 0) + bullCountVisit;
-    let lost = defense >= pressure ? 0 : Math.max(1, Math.ceil((pressure-defense)/35));
+    const rawLost = defense >= pressure ? 0 : Math.max(1, Math.ceil((pressure-defense)/35));
     if (defense >= pressure) wavesMap[player.id] = Number(wavesMap[player.id] || 0) + 1;
+    let lost = rawLost;
+    let savedThisVisit = 0;
+    if (shepherdSave && rawLost > 0) {
+      lost = Math.max(0, rawLost - 1);
+      savedThisVisit = 1;
+    } else if (shepherdSave && rawLost === 0 && Number(sheepMap[player.id] || 0) < maxFlock) {
+      savedThisVisit = 1;
+      sheepMap[player.id] = Math.min(maxFlock, Number(sheepMap[player.id] || 0) + 1);
+    }
+    if (savedThisVisit) {
+      savedMap[player.id] = Number(savedMap[player.id] || 0) + savedThisVisit;
+      events.push("🧑‍🌾 Berger · 1 mouton sauvé");
+    }
     if (lost) lostMap[player.id] = Number(lostMap[player.id] || 0) + lost;
     sheepMap[player.id] = Math.max(0, Number(sheepMap[player.id]||maxFlock) - lost);
-    if (shepherdSave && sheepMap[player.id] < maxFlock) { sheepMap[player.id] += 1; savedMap[player.id] = Number(savedMap[player.id] || 0) + 1; events.push("🧑‍🌾 Berger · 1 mouton sauvé"); }
     delta = Math.max(0, defense); hits = darts.filter((d)=>d?.bed !== "MISS").length;
     state.scores[player.id] = Number(state.scores[player.id]||0) + delta;
     state.progress[player.id] = Number(sheepMap[player.id]||0);
     const history = state.special.troupeauHistory || (state.special.troupeauHistory = []);
-    history.push({ playerId:player.id, defense, pressure, repelled:defense>=pressure, lost, shepherdSave:!!shepherdSave, bullCount:bullCountVisit, sheepLeft:Number(sheepMap[player.id]||0), maxFlock, at:Date.now() });
-    events.push(defense >= pressure ? `🐕 Patou · vague repoussée (${defense}/${pressure})` : `🐺 Meute · ${lost} mouton${lost>1?"s":""} perdu${lost>1?"s":""} (${defense}/${pressure})`);
+    history.push({ playerId:player.id, defense, pressure, repelled:defense>=pressure, rawLost, lost, saved:savedThisVisit, shepherdSave:!!shepherdSave, bullCount:bullCountVisit, sheepLeft:Number(sheepMap[player.id]||0), maxFlock, at:Date.now() });
+    events.push(defense >= pressure ? `🐕 Patou · vague repoussée (${defense}/${pressure})` : lost > 0 ? `🐺 Meute · ${lost} mouton${lost>1?"s":""} perdu${lost>1?"s":""} (${defense}/${pressure})` : `🧑‍🌾 Berger · aucun mouton perdu (${defense}/${pressure})`);
     if (sheepMap[player.id] <= 0) { state.eliminated[player.id] = true; events.push("💀 Troupeau perdu"); }
     const alive = state.players.filter((p)=>!state.eliminated[p.id]);
-    if (alive.length === 1 && state.players.length > 1) finishWith(state, alive[0].id, state.config.participantMode === "teams" ? state.config.teamByPlayer?.[alive[0].id] || null : null);
+    if (state.config.participantMode === "teams") {
+      const aliveTeams = Array.from(new Set(alive.map((p)=>String(state.config.teamByPlayer?.[p.id] || "")).filter(Boolean)));
+      if (aliveTeams.length === 1 && state.players.length > 1) {
+        const winner = alive.find((p)=>String(state.config.teamByPlayer?.[p.id] || "") === aliveTeams[0]) || alive[0];
+        if (winner) finishWith(state, winner.id, aliveTeams[0]);
+      }
+    } else if (alive.length === 1 && state.players.length > 1) finishWith(state, alive[0].id, null);
   } else if (state.modeId === "une_ptite_raclette") {
     const servedMap = state.special.racletteServedByPlayer || (state.special.racletteServedByPlayer = {});
     const varietyMap = state.special.racletteVarietyBonusByPlayer || (state.special.racletteVarietyBonusByPlayer = {});
@@ -4823,6 +4842,106 @@ export function pickWave61BotDarts(state: Wave61State, level: Wave61Difficulty =
       if(wrong==="BLACK") return {bed:"S",number:pick(BLACK_SINGLES)} as GameDart; if(wrong==="WHITE") return {bed:"S",number:pick(WHITE_SINGLES)} as GameDart; if(wrong==="GREEN") return {bed:"D",number:pick(GREEN_RING)} as GameDart; return {bed:"D",number:pick(RED_RING)} as GameDart;
     });
   }
+  if (state.modeId === "bim_bam_boum") {
+    const rule = String(state.config?.modeOptions?.comboRule || "same");
+    const successChance = rule === "beds"
+      ? (level === "hard" ? 0.76 : level === "normal" ? 0.56 : 0.34)
+      : (level === "hard" ? 0.68 : level === "normal" ? 0.48 : 0.26);
+    const sectorPool = level === "hard" ? [20,19,18,17,16] : level === "normal" ? [20,18,16,14,12,10] : Array.from({length:20},(_,i)=>i+1);
+    const pickSector = () => Number(sectorPool[Math.floor(Math.random()*sectorPool.length)] || 20);
+    let plan: GameDart[];
+    if (rule === "progressive") {
+      if (level === "hard") plan = [{bed:"S",number:18},{bed:"D",number:19},{bed:"T",number:20}] as GameDart[];
+      else if (level === "normal") plan = [{bed:"S",number:10},{bed:"D",number:14},{bed:"T",number:18}] as GameDart[];
+      else plan = [{bed:"S",number:5},{bed:"S",number:10},{bed:"S",number:15}] as GameDart[];
+    } else if (rule === "beds") {
+      plan = [{bed:"S",number:pickSector()},{bed:"D",number:pickSector()},{bed:"T",number:pickSector()}] as GameDart[];
+    } else {
+      const n = pickSector();
+      plan = [{bed:"S",number:n},{bed:"D",number:n},{bed:"T",number:n}] as GameDart[];
+    }
+    if (Math.random() < successChance) return plan;
+    const broken = plan.map((d)=>({ ...d })) as GameDart[];
+    const errorIndex = Math.floor(Math.random()*3);
+    if (Math.random() < 0.48) broken[errorIndex] = { bed:"MISS" } as GameDart;
+    else if (rule === "same") broken[errorIndex] = { ...broken[errorIndex], number: Math.max(1, Math.min(20, Number((broken[errorIndex] as any)?.number || 10) + (Math.random()<0.5?-1:1))) } as GameDart;
+    else if (rule === "beds") broken[errorIndex] = { bed:errorIndex===0?"D":errorIndex===1?"S":"D", number:pickSector() } as GameDart;
+    else broken[errorIndex] = { bed:"S", number:1 + Math.floor(Math.random()*20) } as GameDart;
+    return broken;
+  }
+  if (state.modeId === "saute_moutons") {
+    const id = String(activeId || "");
+    const pos = Number(state.progress?.[id] || 0);
+    const track = Math.max(6, Number(state.config?.modeOptions?.trackLength ?? state.config?.goal ?? 20));
+    const bull25 = Math.max(1, Number(state.config?.modeOptions?.bull25Jump ?? 4));
+    const bull50 = Math.max(1, Number(state.config?.modeOptions?.bull50Jump ?? 6));
+    const opponentsAhead = state.players
+      .filter((p)=>String(p.id)!==id)
+      .map((p)=>Number(state.progress?.[p.id]||0)-pos)
+      .filter((gap)=>gap>0)
+      .sort((a,b)=>a-b);
+    const nearFinish = Math.max(0, track-pos);
+    const dartForJump = (wanted:number):GameDart => {
+      if (wanted >= bull50 && level === "hard") return {bed:"IB"} as GameDart;
+      if (wanted >= bull25 && level !== "easy") return {bed:"OB"} as GameDart;
+      if (wanted >= 3) return {bed:"T",number:20} as GameDart;
+      if (wanted === 2) return {bed:"D",number:20} as GameDart;
+      return {bed:"S",number:20} as GameDart;
+    };
+    return Array.from({length:3},()=>{
+      const tacticalGap = opponentsAhead.find((gap)=>gap <= (level === "hard" ? bull50 : level === "normal" ? bull25 : 3));
+      if (level === "hard" && nearFinish > 0 && nearFinish <= bull50 && Math.random() < 0.34) return dartForJump(nearFinish);
+      if (tacticalGap && Math.random() < (level === "hard" ? 0.34 : level === "normal" ? 0.20 : 0.08)) return dartForJump(tacticalGap);
+      const roll = Math.random();
+      if (level === "easy") {
+        if (roll < 0.18) return {bed:"MISS"} as GameDart;
+        if (roll < 0.78) return {bed:"S",number:1+Math.floor(Math.random()*20)} as GameDart;
+        if (roll < 0.96) return {bed:"D",number:1+Math.floor(Math.random()*20)} as GameDart;
+        return {bed:"T",number:1+Math.floor(Math.random()*20)} as GameDart;
+      }
+      if (level === "normal") {
+        if (roll < 0.12) return {bed:"MISS"} as GameDart;
+        if (roll < 0.47) return {bed:"S",number:1+Math.floor(Math.random()*20)} as GameDart;
+        if (roll < 0.79) return {bed:"D",number:1+Math.floor(Math.random()*20)} as GameDart;
+        if (roll < 0.96) return {bed:"T",number:1+Math.floor(Math.random()*20)} as GameDart;
+        return {bed:"OB"} as GameDart;
+      }
+      if (roll < 0.07) return {bed:"MISS"} as GameDart;
+      if (roll < 0.25) return {bed:"S",number:18+Math.floor(Math.random()*3)} as GameDart;
+      if (roll < 0.55) return {bed:"D",number:18+Math.floor(Math.random()*3)} as GameDart;
+      if (roll < 0.88) return {bed:"T",number:18+Math.floor(Math.random()*3)} as GameDart;
+      return {bed:Math.random()<0.72?"OB":"IB"} as GameDart;
+    });
+  }
+  if (state.modeId === "troupeau_en_danger") {
+    const id = String(activeId || "");
+    const maxFlock = Math.max(1, Number(state.config?.modeOptions?.flockSize ?? 8));
+    const sheep = Number(state.special?.flockRemainingByPlayer?.[id] ?? maxFlock);
+    const shepherdEnabled = state.config?.modeOptions?.shepherdSave !== false;
+    const highNumbers = level === "hard" ? [20,19,18,17,16] : level === "normal" ? [20,18,16,15,14,12] : Array.from({length:20},(_,i)=>i+1);
+    const pick = () => Number(highNumbers[Math.floor(Math.random()*highNumbers.length)] || 20);
+    return Array.from({length:3},(_,index)=>{
+      const roll = Math.random();
+      if (shepherdEnabled && sheep <= Math.max(2, Math.floor(maxFlock/3)) && index === 0 && Math.random() < (level === "hard" ? 0.12 : level === "normal" ? 0.055 : 0.018)) return {bed:"IB"} as GameDart;
+      if (level === "easy") {
+        if (roll < 0.23) return {bed:"MISS"} as GameDart;
+        if (roll < 0.91) return {bed:"S",number:pick()} as GameDart;
+        return {bed:"D",number:pick()} as GameDart;
+      }
+      if (level === "normal") {
+        if (roll < 0.13) return {bed:"MISS"} as GameDart;
+        if (roll < 0.52) return {bed:"S",number:pick()} as GameDart;
+        if (roll < 0.82) return {bed:"D",number:pick()} as GameDart;
+        if (roll < 0.96) return {bed:"T",number:pick()} as GameDart;
+        return {bed:"OB"} as GameDart;
+      }
+      if (roll < 0.07) return {bed:"MISS"} as GameDart;
+      if (roll < 0.25) return {bed:"S",number:pick()} as GameDart;
+      if (roll < 0.55) return {bed:"D",number:pick()} as GameDart;
+      if (roll < 0.90) return {bed:"T",number:pick()} as GameDart;
+      return {bed:Math.random()<0.72?"OB":"IB"} as GameDart;
+    });
+  }
   if (state.modeId === "une_ptite_raclette") {
     const needs = racletteNeeds(state, String(activeId || ""));
     const families: Array<"cheese" | "potato" | "charcuterie"> = ["cheese", "potato", "charcuterie"];
@@ -4843,9 +4962,10 @@ export function pickWave61BotDarts(state: Wave61State, level: Wave61Difficulty =
       const bed = level === "hard" ? (Math.random() < 0.58 ? "T" : "D") : level === "normal" ? (Math.random() < 0.22 ? "T" : Math.random() < 0.62 ? "D" : "S") : (Math.random() < 0.28 ? "D" : "S");
       return { bed, number } as GameDart;
     };
+    const racletteChance = level === "hard" ? 0.74 : level === "normal" ? 0.58 : 0.42;
     return Array.from({ length: 3 }, (_, index) => {
       const family = ranked[index % ranked.length]?.[1] > 0 ? ranked[index % ranked.length][0] : families[Math.floor(Math.random() * families.length)];
-      if (Math.random() < chance) return goodDart(family);
+      if (Math.random() < racletteChance) return goodDart(family);
       if (Math.random() < 0.52) return { bed: "MISS" } as GameDart;
       const wrongFamily = families.filter((x) => x !== family)[Math.floor(Math.random() * 2)] || "cheese";
       return { bed: "S", number: pick(wrongFamily) } as GameDart;

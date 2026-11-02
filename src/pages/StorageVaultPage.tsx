@@ -4502,6 +4502,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
                 <VaultActionButton icon="cloud" label="Cloud R2" active={restoreSource === "cloud"} onClick={() => void selectRemoteRestoreSource("cloud")}/>
                 <VaultActionButton icon="cloud" label="Google Drive" active={restoreSource === "google_drive"} onClick={() => void selectPersonalCloudRestoreSource("google_drive")}/>
                 <VaultActionButton icon="cloud" label="OneDrive" active={restoreSource === "onedrive"} onClick={() => void selectPersonalCloudRestoreSource("onedrive")}/>
+                <VaultActionButton icon="cloud" label="Dropbox" active={restoreSource === "dropbox"} onClick={() => void selectPersonalCloudRestoreSource("dropbox")}/>
                 <VaultActionButton icon="local" label="Cet appareil" active={restoreSource === "local"} onClick={selectLocalRestoreSource}/>
                 <VaultActionButton icon="file" label="Fichier / SD / Cloud perso" active={restoreSource === "file"} onClick={selectFileRestoreSource}/>
                 <input ref={restoreFileRef} type="file" accept="application/json,.json,.dcbackup" style={{ display: "none" }} onChange={(event) => void loadRestoreFile(event.currentTarget.files?.[0] || null)}/>

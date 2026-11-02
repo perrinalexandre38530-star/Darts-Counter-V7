@@ -469,6 +469,10 @@ function variantSeriesWinsKey(modeId:any) {
   if (modeId === "three_colors") return "threeColorsMatchWins";
   if (modeId === "la_suite") return "laSuiteMatchWins";
   if (modeId === "color_call") return "colorCallMatchWins";
+  if (modeId === "bim_bam_boum") return "bimBamBoumMatchWins";
+  if (modeId === "saute_moutons") return "sauteMoutonsMatchWins";
+  if (modeId === "troupeau_en_danger") return "troupeauMatchWins";
+  if (modeId === "une_ptite_raclette") return "racletteMatchWins";
   return "variantMatchWins";
 }
 
@@ -478,6 +482,10 @@ function variantSeriesGameIndexKey(modeId:any) {
   if (modeId === "three_colors") return "threeColorsGameIndex";
   if (modeId === "la_suite") return "laSuiteGameIndex";
   if (modeId === "color_call") return "colorCallGameIndex";
+  if (modeId === "bim_bam_boum") return "bimBamBoumGameIndex";
+  if (modeId === "saute_moutons") return "sauteMoutonsGameIndex";
+  if (modeId === "troupeau_en_danger") return "troupeauGameIndex";
+  if (modeId === "une_ptite_raclette") return "racletteGameIndex";
   return "variantGameIndex";
 }
 
@@ -491,6 +499,32 @@ function carryVariantSeriesSpecial(fresh:any, completed:any, modeId:any) {
     });
     if (Array.isArray(source.colorModeHistory)) out.colorModeHistory = JSON.parse(JSON.stringify(source.colorModeHistory));
   }
+  if (modeId === "bim_bam_boum") {
+    ["bimBamBoumBestStreakByPlayer","bimBamBoumCombosByPlayer","bimBamBoumFailedByPlayer","bimBamBoumSuperByPlayer","bimBamBoumBonusByPlayer","bimBamBoumHistory"].forEach((key)=>{
+      if (source[key] != null) out[key] = JSON.parse(JSON.stringify(source[key]));
+    });
+    out.bimBamBoumStreakByPlayer = Object.fromEntries((fresh?.players || []).map((p:any)=>[String(p.id),0]));
+  }
+  if (modeId === "saute_moutons") {
+    ["sauteMoutonsDistanceByPlayer","sauteMoutonsLeapfrogsByPlayer","sauteMoutonsBestJumpByPlayer","sauteMoutonsBullJumpsByPlayer","sauteMoutonsHistory"].forEach((key)=>{
+      if (source[key] != null) out[key] = JSON.parse(JSON.stringify(source[key]));
+    });
+  }
+  if (modeId === "troupeau_en_danger") {
+    ["troupeauWavesRepelledByPlayer","troupeauSheepLostByPlayer","troupeauSheepSavedByPlayer","troupeauBestDefenseByPlayer","troupeauPatouActionsByPlayer","troupeauHistory"].forEach((key)=>{
+      if (source[key] != null) out[key] = JSON.parse(JSON.stringify(source[key]));
+    });
+  }
+  if (modeId === "une_ptite_raclette") {
+    ["racletteVarietyBonusByPlayer","racletteMissPenaltyByPlayer","racletteBullBonusByPlayer","racletteBestServeByPlayer","racletteHistory"].forEach((key)=>{
+      if (source[key] != null) out[key] = JSON.parse(JSON.stringify(source[key]));
+    });
+    const previousMatch = source.racletteMatchServedByPlayer || {};
+    const completedLeg = source.racletteServedByPlayer || {};
+    out.racletteMatchServedByPlayer = Object.fromEntries((fresh?.players || []).map((p:any)=>{
+      const id=String(p.id); return [id, Number(previousMatch[id]||0)+Number(completedLeg[id]||0)];
+    }));
+  }
   return out;
 }
 
@@ -500,12 +534,17 @@ function VariantSeriesScoreboard({ state, profiles, modeId, accent }: any) {
   const byId = new Map((profiles || []).map((p:any) => [String(p.id), p]));
   const wins = state?.special?.[variantSeriesWinsKey(modeId)] || {};
   const callTone = modeId === "color_call" ? (THREE_COLORS_TONES[colorCallTarget(state)] || accent) : accent;
-  return <div data-variant-series-scoreboard={modeId} style={{height:36,flex:"0 0 36px",margin:"10px 8px 4px",padding:"3px 5px",borderRadius:11,border:"1px solid rgba(255,255,255,.09)",background:"linear-gradient(180deg,rgba(13,17,25,.98),rgba(5,8,14,.99))",display:"grid",gridTemplateColumns:"auto minmax(0,1fr)",gap:6,alignItems:"center",boxShadow:"0 5px 16px rgba(0,0,0,.24)"}}>
+  const tone = modeId === "color_call" ? callTone : accent;
+  const teamMode = state?.config?.participantMode === "teams";
+  const teamIds = teamMode ? Array.from(new Set((state.players || []).map((p:any)=>String(state?.config?.teamByPlayer?.[p.id] || "")).filter(Boolean))) : [];
+  return <div data-variant-series-scoreboard={modeId} data-series-team-mode={teamMode?"1":"0"} style={{height:36,flex:"0 0 36px",margin:"10px 8px 4px",padding:"3px 5px",borderRadius:11,border:"1px solid rgba(255,255,255,.09)",background:"linear-gradient(180deg,rgba(13,17,25,.98),rgba(5,8,14,.99))",display:"grid",gridTemplateColumns:"auto minmax(0,1fr)",gap:6,alignItems:"center",boxShadow:"0 5px 16px rgba(0,0,0,.24)"}}>
     <div style={{padding:"0 7px",color:"#8e98aa",fontSize:7.2,fontWeight:1100,letterSpacing:.7,whiteSpace:"nowrap"}}>{series.label}</div>
     <div style={{display:"flex",alignItems:"center",gap:5,minWidth:0,overflowX:"auto",scrollbarWidth:"none"}}>
-      {(state.players || []).map((p:any) => {
+      {teamMode ? teamIds.map((teamId:any)=>{
+        const members=(state.players||[]).filter((p:any)=>String(state?.config?.teamByPlayer?.[p.id]||"")===String(teamId));
+        return <div key={String(teamId)} style={{flex:"0 0 auto",height:28,minWidth:92,maxWidth:150,padding:"2px 7px",borderRadius:999,border:`1px solid ${tone}45`,background:`${tone}0c`,display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:6,alignItems:"center"}}><span style={{minWidth:0}}><b style={{display:"block",color:"#eef1f8",fontSize:7.4,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>TEAM {String(teamId)}</b><small style={{display:"block",color:"#8993a5",fontSize:6.2}}>{members.length} joueur{members.length>1?"s":""}</small></span><strong style={{color:tone,fontSize:13,fontWeight:1200}}>{Number(wins?.[`team:${teamId}`]||0)}</strong></div>;
+      }) : (state.players || []).map((p:any) => {
         const id=String(p.id); const prof:any=byId.get(id)||p; const avatar=prof?.avatarDataUrl||prof?.avatarUrl||prof?.avatar||null;
-        const tone = modeId === "three_colors" ? accent : modeId === "la_suite" ? accent : callTone;
         return <div key={id} style={{flex:"0 0 auto",height:28,minWidth:78,maxWidth:126,padding:"2px 6px 2px 3px",borderRadius:999,border:`1px solid ${tone}45`,background:`${tone}0c`,display:"grid",gridTemplateColumns:"24px minmax(0,1fr) auto",gap:4,alignItems:"center"}}>
           <div style={{width:22,height:22,borderRadius:999,overflow:"hidden",border:`1px solid ${tone}66`,display:"grid",placeItems:"center",fontSize:8,fontWeight:1100,color:tone}}>{avatar?<img src={avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:String(p?.name||"?").slice(0,1).toUpperCase()}</div>
           <b style={{color:"#eef1f8",fontSize:7.4,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p?.name||"—"}</b>
@@ -1710,7 +1749,7 @@ export default function Wave61SharedPlay(props: any) {
         right={<InfoDot title={`${spec.label} — règles`} color={isColorDuelMode(spec.id)?duelTone:accent} glow={`${isColorDuelMode(spec.id)?duelTone:accent}77`} content={familyRules(spec,preset)} />}
       />
       {isColorDuelMode(spec.id) ? <div aria-hidden="true" style={{height:isLandscapeTablet?4:8,flex:`0 0 ${isLandscapeTablet?4:8}px`}} /> : null}
-      {spec.id === "green_vs_red" ? <GreenRedDuelScoreboard state={state} profiles={profiles} /> : spec.id === "black_vs_white" ? <BlackWhiteDuelScoreboard state={state} profiles={profiles} /> : ["three_colors","la_suite","color_call"].includes(spec.id) ? <VariantSeriesScoreboard state={state} profiles={profiles} modeId={spec.id} accent={accent} /> : null}
+      {spec.id === "green_vs_red" ? <GreenRedDuelScoreboard state={state} profiles={profiles} /> : spec.id === "black_vs_white" ? (state.players?.length===2 && String(state?.config?.modeOptions?.matchFormat||"duel")==="duel" ? <BlackWhiteDuelScoreboard state={state} profiles={profiles} /> : <VariantSeriesScoreboard state={state} profiles={profiles} modeId={spec.id} accent={accent} />) : ["three_colors","la_suite","color_call","bim_bam_boum","saute_moutons","troupeau_en_danger","une_ptite_raclette"].includes(spec.id) ? <VariantSeriesScoreboard state={state} profiles={profiles} modeId={spec.id} accent={accent} /> : null}
 
       {adviceText && !isColorDuelMode(spec.id) ? <div role="status" aria-live="polite" style={{ position:"fixed", zIndex:95, top:tickerHeight+10, right:8, width:"min(330px,calc(100vw - 16px))", borderRadius:14, padding:"7px 8px", display:"grid", gridTemplateColumns:"34px minmax(0,1fr)", gap:7, alignItems:"center", border:`1px solid ${accent}70`, background:"rgba(8,11,19,.97)", boxShadow:`0 12px 30px rgba(0,0,0,.5),0 0 20px ${accent}18` }}>
         <img src="/awena/awena-avatar.webp" alt="Awena" style={{ width:34,height:34,borderRadius:"50%",objectFit:"cover",border:`1px solid ${accent}88` }}/>
