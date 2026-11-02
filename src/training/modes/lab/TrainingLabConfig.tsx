@@ -40,6 +40,7 @@ import { clearTrainingExerciseDraft, getEffectiveDraftSeconds, hasMeaningfulTrai
 import { buildTrainingExerciseProgression } from "../../profile/trainingExerciseProgression";
 import { ensureTrainingDailyQueue, loadTrainingDailyQueue, saveTrainingDailyQueue, trainingLocalDateKey, trainingSessionDateKey } from "../../profile/trainingDailyQueue";
 import { buildTrainingDailyReview } from "../../profile/trainingDailyReview";
+import { buildTrainingSkillTrend } from "../../profile/trainingSkillTrend";
 
 const familyOrder: TrainingExerciseFamily[] = ["scoring", "doubles", "checkout", "precision", "bull", "regularity"];
 type HubTab = "program" | "exercises" | "diagnosis" | "progress";
@@ -433,6 +434,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
     return { total, done, remaining: Math.max(0, total - done), progressPct: total ? Math.round((done / total) * 100) : 0, averageScore, bestScore };
   }, [dailyQueueItems]);
   const dailyReview = React.useMemo(() => buildTrainingDailyReview(sessions as any[]), [sessions]);
+  const skillTrend = React.useMemo(() => buildTrainingSkillTrend(sessions as any[]), [sessions]);
   const replaceDailyQueueItem = React.useCallback((exerciseId: string) => {
     const current = loadTrainingDailyQueue(accountParticipantId || null);
     const used = new Set(current.exerciseIds);
@@ -1287,6 +1289,25 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                   <span style={{ padding: "5px 7px", borderRadius: 8, background: "rgba(255,255,255,.025)", color: dailyReview.deltaVsPreviousWeek === null ? "inherit" : dailyReview.deltaVsPreviousWeek >= 0 ? "#8cffcb" : "#ffd86b", opacity: .82 }}>Vs semaine préc. {dailyReview.deltaVsPreviousWeek === null ? "—" : `${dailyReview.deltaVsPreviousWeek >= 0 ? "+" : ""}${dailyReview.deltaVsPreviousWeek} pts`}</span>
                   {dailyReview.deltaVsYesterday !== null ? <span style={{ padding: "5px 7px", borderRadius: 8, background: "rgba(255,255,255,.025)", color: dailyReview.deltaVsYesterday >= 0 ? "#8cffcb" : "#ffd86b", opacity: .82 }}>Vs hier {dailyReview.deltaVsYesterday >= 0 ? "+" : ""}{dailyReview.deltaVsYesterday} pts</span> : null}
                 </div>
+              </div>
+              <div style={{ marginTop: 10, padding: 12, borderRadius: 14, border: "1px solid rgba(80,255,174,.14)", background: "rgba(80,255,174,.025)" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                  <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: .9, color: "#8cffcb" }}>TENDANCE COMPÉTENCES · 14 JOURS</div><div style={{ marginTop: 3, fontSize: 8.5, opacity: .5 }}>Repère les progrès, les plateaux et la compétence à renforcer maintenant.</div></div>
+                  <span style={{ padding: "5px 8px", borderRadius: 9, border: "1px solid rgba(255,216,107,.18)", background: "rgba(255,216,107,.045)", fontSize: 7.4, fontWeight: 950, color: "#ffd86b" }}>PRIORITÉ · {TRAINING_FAMILY_META[skillTrend.priorityFamily].label.toUpperCase()}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 6, marginTop: 9 }}>
+                  {skillTrend.rows.map((row) => {
+                    const meta = TRAINING_FAMILY_META[row.family];
+                    const statusLabel = row.status === "progress" ? "EN PROGRÈS" : row.status === "decline" ? "À RELANCER" : row.status === "new" ? "À DÉCOUVRIR" : "STABLE";
+                    const statusColor = row.status === "progress" ? "#8cffcb" : row.status === "decline" ? "#ffd86b" : row.status === "new" ? "#8fefff" : "rgba(255,255,255,.55)";
+                    return <button key={row.family} type="button" onClick={() => { setFamily(row.family); setCatalogProgressFilter("all"); setCatalogSearch(""); }} style={{ textAlign: "left", padding: 9, borderRadius: 10, border: row.family === skillTrend.priorityFamily ? "1px solid rgba(255,216,107,.24)" : "1px solid rgba(255,255,255,.06)", background: row.family === skillTrend.priorityFamily ? "rgba(255,216,107,.04)" : "rgba(255,255,255,.015)", color: "inherit", cursor: "pointer" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center" }}><b style={{ fontSize: 8.5 }}>{meta.label}</b><span style={{ fontSize: 6.8, fontWeight: 950, color: statusColor }}>{statusLabel}</span></div>
+                      <div style={{ marginTop: 5, display: "flex", alignItems: "baseline", gap: 5 }}><span style={{ fontSize: 13, fontWeight: 950 }}>{row.attempts ? row.currentAverage : "—"}</span><span style={{ fontSize: 6.8, opacity: .4 }}>/100</span>{row.delta !== null ? <span style={{ marginLeft: "auto", fontSize: 7.2, fontWeight: 950, color: row.delta >= 0 ? "#8cffcb" : "#ffd86b" }}>{row.delta >= 0 ? "+" : ""}{row.delta}</span> : null}</div>
+                      <div style={{ marginTop: 3, fontSize: 6.8, opacity: .38 }}>{row.attempts ? `${row.attempts} essai${row.attempts > 1 ? "s" : ""} sur 14 j` : "Pas encore de donnée récente"}</div>
+                    </button>;
+                  })}
+                </div>
+                <div style={{ marginTop: 7, fontSize: 7.2, opacity: .5 }}>Point fort actuel : <b style={{ color: "#8cffcb" }}>{TRAINING_FAMILY_META[skillTrend.strongestFamily].label}</b> · {skillTrend.activeFamilies}/6 compétences actives sur la période.</div>
               </div>
               <div style={{ marginTop: 10, padding: 12, borderRadius: 14, border: "1px solid rgba(185,156,255,.16)", background: "linear-gradient(180deg,rgba(140,90,255,.055),rgba(39,220,255,.025))" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
