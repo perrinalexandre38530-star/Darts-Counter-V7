@@ -8,7 +8,7 @@
 import React from "react";
 import { computeProfileStarRating } from "../lib/profileStarRating";
 import { resolveProfileStarScore } from "../lib/profileStarScore";
-import { loadX01ProfileStatsForStarring, x01ProfileIdentityKeys } from "../lib/x01ProfileStarring";
+import { x01ProfileIdentityKeys } from "../lib/x01ProfileStarring";
 
 function profileStarRingParseBotLevelValue(input: any, fallback = 1): number {
   if (typeof input === "number" && Number.isFinite(input)) {
@@ -120,19 +120,15 @@ export default function ProfileStarRing({
       setCanonicalHumanScore(0);
       return;
     }
-    let cancelled = false;
-    const syncScore = resolveProfileStarScore(profile);
-    setCanonicalHumanScore(syncScore > 0 ? syncScore : 0);
-    const profileId = x01ProfileIdentityKeys(profile)[0] || "";
-    if (!profileId) return () => { cancelled = true; };
-    void loadX01ProfileStatsForStarring(profileId, profile)
-      .then(() => {
-        if (cancelled) return;
-        const refreshed = resolveProfileStarScore(profile);
-        setCanonicalHumanScore(refreshed > 0 ? refreshed : 0);
-      })
-      .catch(() => undefined);
-    return () => { cancelled = true; };
+    const refreshFromCanonicalCache = () => {
+      const syncScore = resolveProfileStarScore(profile);
+      setCanonicalHumanScore(syncScore > 0 ? syncScore : 0);
+    };
+    refreshFromCanonicalCache();
+    // IMPORTANT PERFORMANCE: ProfileStarRing is a pure visual consumer.
+    // It must never scan History/IndexedDB or launch X01 aggregation itself.
+    window.addEventListener("dc-x01-level-updated", refreshFromCanonicalCache as EventListener);
+    return () => window.removeEventListener("dc-x01-level-updated", refreshFromCanonicalCache as EventListener);
   }, [profileIdentity, isBotProfile]);
 
   const explicitAvg = Number(avg3d);

@@ -2899,10 +2899,8 @@ export default function X01MultiStatsTabFull({
   React.useEffect(() => {
     const onHistoryUpdated = () => setHistoryVersion((v) => v + 1);
     window.addEventListener("dc-history-updated", onHistoryUpdated as EventListener);
-    window.addEventListener("dc-stats-index-updated", onHistoryUpdated as EventListener);
     return () => {
       window.removeEventListener("dc-history-updated", onHistoryUpdated as EventListener);
-      window.removeEventListener("dc-stats-index-updated", onHistoryUpdated as EventListener);
     };
   }, []);
 
@@ -2949,15 +2947,28 @@ export default function X01MultiStatsTabFull({
           );
           canonicalRows = x01SessionsFromSamples(samples, effectiveProfileId, playerName);
           if (!cancelled && canonicalRows.length) {
-            React.startTransition(() => setSessions(canonicalRows.slice().sort((a, b) => a.date - b.date)));
+            React.startTransition(() => setSessions((prev) => {
+              // Monotone while the same profile is mounted: transient parent records
+              // must never make X01 stats disappear. Merge by row identity instead.
+              const merged = new Map<string, X01MultiSession>();
+              for (const row of prev) merged.set(String(row.id || `${row.matchId}:${row.selectedPlayerId}`), row);
+              for (const row of canonicalRows) merged.set(String(row.id || `${row.matchId}:${row.selectedPlayerId}`), row);
+              return Array.from(merged.values()).sort((a, b) => a.date - b.date);
+            }));
           }
         } catch (e) {
           console.warn("[X01MultiStatsTabFull] StatsHub canonical fast path failed", e);
         }
       }
 
-      // FULL PATH : complète ensuite avec le lecteur X01 dédié (anciens formats, maps
-      // détaillées, segments). Cette passe ne bloque plus le premier affichage.
+      // MOBILE / APP : les records déjà fournis par StatsHub sont la source de rendu.
+      // Ne JAMAIS lancer ici un second scan History.get() en parallèle : sur téléphone
+      // cela saturait IndexedDB + le thread JS et provoquait freeze/clignotement.
+      if (isConstrainedX01MultiDevice() && canonicalRows.length) {
+        return;
+      }
+
+      // DESKTOP / fallback sans records : complète avec le lecteur historique dédié.
       let data = await loadX01MultiSessions(effectiveProfileId, playerName);
       if (canonicalRows.length) {
         const merged = new Map<string, X01MultiSession>();

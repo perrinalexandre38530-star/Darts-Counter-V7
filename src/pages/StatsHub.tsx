@@ -27,7 +27,7 @@ import MolkkyStatsHistoryPage from "./molkky/MolkkyStatsHistoryPage";
 import SparklinePro from "../components/SparklinePro";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
-import { loadX01ProfileStatsForStarring } from "../lib/x01ProfileStarring";
+import { computeCanonicalX01501DOLevel, persistCanonicalX01501DOLevel } from "../lib/x01ProfileStarring";
 import statsCenterTicker from "../assets/tickers/ticker_statistics_center_universal.webp";
 import tickerHistoriqueFr from "../assets/tickers/ticker_historique.png";
 import tickerHistoryEn from "../assets/tickers/ticker_history.png";
@@ -6896,33 +6896,18 @@ const selectedPlayerVisual = React.useMemo<PlayerLite | null>(() => {
 // On récupère ici la même AVG3D canonique que la page Profils, indépendamment
 // du pipeline utilisé par l'onglet détaillé actuellement affiché,
 // avec réconciliation par nom si un ancien historique porte un autre playerId.
-const [canonicalStarAvg3D, setCanonicalStarAvg3D] = React.useState(0);
+const canonicalStarLevel = React.useMemo(() => {
+  const pid = String(effectiveProfileId || "").trim();
+  const pname = String(selectedPlayerVisual?.name || selectedPlayer?.name || activeProfileName || "");
+  if (!pid || !Array.isArray(detailRecords) || !detailRecords.length) return { lifetimeAvg3D: 0, currentAvg3D: 0, lifetimeMatches: 0, currentMatches: 0, currentLimit: 10 };
+  try { return computeCanonicalX01501DOLevel(detailRecords, pid, pname); } catch { return { lifetimeAvg3D: 0, currentAvg3D: 0, lifetimeMatches: 0, currentMatches: 0, currentLimit: 10 }; }
+}, [effectiveProfileId, selectedPlayerVisual?.name, selectedPlayer?.name, activeProfileName, detailRecords]);
+const canonicalStarAvg3D = canonicalStarLevel.currentAvg3D;
 React.useEffect(() => {
   const pid = String(effectiveProfileId || "").trim();
-  const visual: any = selectedPlayerVisual || selectedPlayer || null;
-  let cancelled = false;
-  setCanonicalStarAvg3D(0);
-  if (!pid || !visual) return () => { cancelled = true; };
-
-  void loadX01ProfileStatsForStarring(pid, visual)
-    .then((stats: any) => {
-      if (cancelled) return;
-      // V129 : le médaillon humain représente uniquement le niveau ACTUEL.
-      // Ne jamais retomber ici sur avg3/avg3D lifetime.
-      const avg = Number(
-        stats?.currentAvg3D ??
-        stats?.x01CurrentAvg3D ??
-        stats?.last10Avg3D ??
-        0
-      );
-      setCanonicalStarAvg3D(Number.isFinite(avg) && avg > 0 ? avg : 0);
-    })
-    .catch(() => {
-      if (!cancelled) setCanonicalStarAvg3D(0);
-    });
-
-  return () => { cancelled = true; };
-}, [effectiveProfileId, selectedPlayerVisual?.name]);
+  if (!pid || !(canonicalStarLevel.currentAvg3D > 0)) return;
+  persistCanonicalX01501DOLevel({ id: pid, name: selectedPlayerVisual?.name || selectedPlayer?.name || activeProfileName || "Joueur" }, canonicalStarLevel);
+}, [effectiveProfileId, canonicalStarLevel.currentAvg3D, canonicalStarLevel.currentMatches, selectedPlayerVisual?.name, selectedPlayer?.name, activeProfileName]);
 
 // ============================================================
 // 🧪 RUNTIME DEBUG (visible sur téléphone)
@@ -6999,12 +6984,11 @@ const statsDiagnostic = React.useMemo(() => {
   let x01GlobalAvg3D = 0;
   let x01CurrentAvg3D = 0;
   try {
-    const agg = computeX01MultiAgg(
+    const level = computeCanonicalX01501DOLevel(
       Array.isArray(detailRecords) ? detailRecords : [],
       String(effectiveProfileId || ""),
       String(selectedPlayerVisual?.name || selectedPlayer?.name || activeProfileName || "")
     );
-    const level = computeX01LevelSnapshot(agg, 10);
     x01LifetimeMatches = level.lifetimeMatches;
     x01CurrentMatches = level.currentMatches;
     x01GlobalAvg3D = level.lifetimeAvg3D;
@@ -7147,15 +7131,15 @@ const [liveDashboard, setLiveDashboard] =
         const sessions = agg?.sessions ?? 0;
         if (sessions > 0) {
           const level = computeX01LevelSnapshot(agg, 10);
+          const canonicalLevel = computeCanonicalX01501DOLevel(rows as any[], pid, pname);
           dash.sessions = sessions;
-          // V127 — deux notions distinctes et stables :
-          // - avg3Overall/global = tout l'historique X01
-          // - avg3Current       = les 10 derniers matchs X01
+          // Le dashboard garde ses totaux X01 globaux, mais le NIVEAU ACTUEL
+          // est strictement le même 501 Double Out que Home/Profils/ProfileStarRing.
           dash.avg3Overall = level.lifetimeAvg3D;
           dash.avg3Global = level.lifetimeAvg3D;
-          dash.avg3Current = level.currentAvg3D;
-          dash.avg3CurrentMatches = level.currentMatches;
-          dash.avg3CurrentLimit = level.currentLimit;
+          dash.avg3Current = canonicalLevel.currentAvg3D;
+          dash.avg3CurrentMatches = canonicalLevel.currentMatches;
+          dash.avg3CurrentLimit = canonicalLevel.currentLimit;
           dash.bestVisit = agg?.bestVisit ?? dash.bestVisit;
           dash.bestCheckout = agg?.bestCheckout ?? dash.bestCheckout;
           dash.totalDarts = agg?.darts ?? dash.totalDarts;

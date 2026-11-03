@@ -87,6 +87,48 @@ try {
   }
 } catch {}
 
+
+export type CanonicalX01501DOLevel = {
+  lifetimeAvg3D: number;
+  currentAvg3D: number;
+  lifetimeMatches: number;
+  currentMatches: number;
+  currentLimit: number;
+};
+
+export function computeCanonicalX01501DOLevel(records: any[], profileId: string, profileName?: string | null): CanonicalX01501DOLevel {
+  const rows = (Array.isArray(records) ? records : []).filter((row: any) => {
+    try {
+      const ctx = getX01StatsContext(row);
+      return ctx.startScore === 501 && ctx.outMode === "double";
+    } catch { return false; }
+  });
+  const agg: any = computeX01MultiAgg(rows as any, String(profileId || ""), String(profileName || "Joueur"));
+  const level = computeX01LevelSnapshot(agg, 10);
+  return {
+    lifetimeAvg3D: Number(level?.lifetimeAvg3D || 0) || 0,
+    currentAvg3D: Number(level?.currentAvg3D || 0) || 0,
+    lifetimeMatches: Number(level?.lifetimeMatches || 0) || 0,
+    currentMatches: Number(level?.currentMatches || 0) || 0,
+    currentLimit: Number(level?.currentLimit || 10) || 10,
+  };
+}
+
+export function persistCanonicalX01501DOLevel(profile: any, level: CanonicalX01501DOLevel): void {
+  const value = Number(level?.currentAvg3D || 0);
+  if (!(value > 0 && value <= 180)) return;
+  writeCurrentLevelCache(profile, {
+    currentAvg3D: value,
+    x01CurrentAvg3D: value,
+    last10Avg3D: value,
+    currentMatches: Number(level?.currentMatches || 0) || 0,
+    lifetimeAvg3D: Number(level?.lifetimeAvg3D || 0) || 0,
+  });
+  try {
+    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("dc-x01-level-updated", { detail: { profileId: x01ProfileIdentityKeys(profile)[0] || null } }));
+  } catch {}
+}
+
 export function x01StarringNormText(value: any): string {
   return String(value || "")
     .trim()

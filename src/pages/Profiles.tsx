@@ -27,6 +27,7 @@ import { History } from "../lib/history";
 import { loadNormalizedHistory } from "../lib/statsNormalized";
 import { buildDashboardFromNormalized } from "../lib/statsUnifiedAgg";
 import { computeX01LevelSnapshot, computeX01MultiAgg } from "../lib/x01MultiAgg";
+import { computeCanonicalX01501DOLevel, persistCanonicalX01501DOLevel } from "../lib/x01ProfileStarring";
 import {
   babyFootRating,
   computeBabyFootProfileAggregate,
@@ -928,13 +929,15 @@ async function getStatsHubAlignedProfileMiniStats(
         const sessions = Number(agg?.sessions || 0);
         if (sessions > 0) {
           const level = computeX01LevelSnapshot(agg, 10);
+          const canonicalLevel = computeCanonicalX01501DOLevel(rows as any[], playerId, pname);
+          persistCanonicalX01501DOLevel({ id: playerId, name: pname }, canonicalLevel);
           out = {
             ...out,
             games: sessions,
-            // Lifetime and current level are intentionally separate.
+            // Lifetime dashboard can cover X01 globally; the visible player level is 501 DO only.
             avg3: level.lifetimeAvg3D || out.avg3,
-            currentAvg3: level.currentAvg3D || out.currentAvg3,
-            currentMatches: level.currentMatches,
+            currentAvg3: canonicalLevel.currentAvg3D || out.currentAvg3,
+            currentMatches: canonicalLevel.currentMatches,
             bestVisit: Number(agg?.bestVisit || out.bestVisit) || out.bestVisit,
             bestCheckout: Number(agg?.bestCheckout || out.bestCheckout) || out.bestCheckout,
             darts: Number(agg?.darts || out.darts) || out.darts,

@@ -37,6 +37,7 @@ import {
 } from "../lib/statsBridge";
 import { History } from "../lib/history";
 import { computeX01LevelSnapshot, computeX01MultiAgg, isX01Match } from "../lib/x01MultiAgg";
+import { computeCanonicalX01501DOLevel, persistCanonicalX01501DOLevel } from "../lib/x01ProfileStarring";
 import { buildHomeModeSlides } from "../lib/homeModeStats";
 import { listProfileFriendLinks, type ProfileFriendLink } from "../lib/friendsApi";
 import { loadLinkedProfileProjection } from "../lib/linkedProfileSync";
@@ -764,8 +765,11 @@ async function buildStatsForProfile(
     const x01Level = computeX01LevelSnapshot(x01AggLifetime, 10);
     const x01AggSessions = x01Level.lifetimeMatches;
     const x01AggAvg3D = x01Level.lifetimeAvg3D;
-    const x01CurrentAvg3D = x01Level.currentAvg3D;
-    const x01CurrentMatches = x01Level.currentMatches;
+    // Niveau/étoiles : source canonique STRICTE = 501 Double Out uniquement.
+    const x01CanonicalLevel = computeCanonicalX01501DOLevel(lifetimeX01Matches, profileId, profileName);
+    const x01CurrentAvg3D = x01CanonicalLevel.currentAvg3D;
+    const x01CurrentMatches = x01CanonicalLevel.currentMatches;
+    persistCanonicalX01501DOLevel({ id: profileId, name: profileName }, x01CanonicalLevel);
     const x01AggBestAvg3D = Number(x01AggLifetime?.bestAvg3D || 0) || 0;
 
     /* ---------------------- GLOBAL (base brut) ---------------------- */
