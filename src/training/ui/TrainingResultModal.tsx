@@ -12,6 +12,7 @@ export default function TrainingResultModal({
   title,
   stats,
   metrics = [],
+  summaryCards,
   onClose,
   actionLabel = "RETOUR AU TRAINING",
   note = null,
@@ -21,6 +22,7 @@ export default function TrainingResultModal({
   title?: string;
   stats: TrainingStats;
   metrics?: TrainingResultMetric[];
+  summaryCards?: TrainingResultMetric[];
   onClose: () => void;
   actionLabel?: string;
   note?: React.ReactNode;
@@ -81,12 +83,12 @@ export default function TrainingResultModal({
             marginTop: 14,
           }}
         >
-          {[
+          {(summaryCards?.length ? summaryCards.slice(0, 4).map((card) => [card.label, card.value] as const) : [
             ["SCORE", Math.round(score)],
             ["DARTS", safeDarts],
             ["HITS", safeHits],
             ["PRÉCISION", `${Math.round(hitRate * 100)}%`],
-          ].map(([label, value]) => (
+          ]).map(([label, value]) => (
             <div
               key={String(label)}
               style={{

@@ -54,7 +54,6 @@ const sectionLabel: React.CSSProperties = {
 export default function ChallengesConfig({ profiles, onStart, onExit }: { profiles?: Profile[]; onStart: (cfg: any) => void; onExit: () => void; }) {
   const [participants, setParticipants] = useTrainingParticipantSelection(profiles);
   const [selected, setSelected] = React.useState<(typeof TRAINING_CHALLENGES)[number]>(TRAINING_CHALLENGES[0]);
-  const [bonusDouble, setBonusDouble] = React.useState(20);
   const [doublesTargetMode, setDoublesTargetMode] = React.useState<'official' | 'custom'>('official');
   const [doublesTargets, setDoublesTargets] = React.useState<number[]>([20, 18, 16, 12, 10, 8, 4, 2]);
   const resolved = resolveTrainingParticipants(participants, profiles);
@@ -103,11 +102,8 @@ export default function ChallengesConfig({ profiles, onStart, onExit }: { profil
                 </>}
                 <div style={{ marginTop: 10, fontSize: 10, opacity: 0.82 }}>{targets.length ? targets.map((n) => `D${n}`).join(" · ") : "AUCUNE CIBLE"}</div>
                 <div style={{ color: "#27dcff", fontSize: 10, fontWeight: 950, letterSpacing: 1, margin: "12px 0 8px" }}>VOLÉE BONUS</div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                  <span style={{ fontSize: 11, opacity: 0.8 }}>Choisis le double de la dernière volée (+50 pts par touche).</span>
-                  <select value={bonusDouble} onChange={(e) => setBonusDouble(Math.max(1, Math.min(20, Number(e.target.value) || 20)))} style={{ minWidth: 86, minHeight: 38, borderRadius: 10, background: "#0d1824", color: "#fff", border: "1px solid #41546a", fontWeight: 900 }}>
-                    {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>D{n}</option>)}
-                  </select>
+                <div style={{ padding: "10px 11px", borderRadius: 11, border: "1px solid rgba(39,220,255,.28)", background: "rgba(39,220,255,.055)", fontSize: 11, lineHeight: 1.45 }}>
+                  Le double bonus est choisi <b>après la dernière volée normale</b>, uniquement parmi les doubles du parcours joué. Chaque touche rapporte +50 pts.
                 </div>
                 <div style={{ marginTop: 8, fontSize: 10, opacity: 0.66 }}>Barème : 1 touche = 10 pts · 2 = 30 pts · 3 = 100 pts. {targets.length * 3 + 1} volées · {targets.length * 9 + 3} fléchettes max · maximum théorique : {maxScore} pts.</div>
               </div>
@@ -117,7 +113,7 @@ export default function ChallengesConfig({ profiles, onStart, onExit }: { profil
           <TrainingStartButton
             label={resolved.length > 1 ? `LANCER LE DÉFI — ${resolved.length} JOUEURS` : "LANCER LE DÉFI"}
             disabled={!resolved.length || (selected.id === 'DOUBLES_8_BONUS' && doublesTargetMode === 'custom' && doublesTargets.length === 0)}
-            onClick={() => { const targets = doublesTargetMode === 'official' ? [20, 18, 16, 12, 10, 8, 4, 2] : doublesTargets; onStart({ ...selected, challengeId: selected.id, bonusDouble, doublesTargetMode, doublesTargets: targets, darts: selected.id === 'DOUBLES_8_BONUS' ? targets.length * 9 + 3 : selected.darts, ...buildTrainingParticipantConfig(participants, profiles) }); }}
+            onClick={() => { const targets = doublesTargetMode === 'official' ? [20, 18, 16, 12, 10, 8, 4, 2] : doublesTargets; onStart({ ...selected, challengeId: selected.id, doublesTargetMode, doublesTargets: targets, darts: selected.id === 'DOUBLES_8_BONUS' ? targets.length * 9 + 3 : selected.darts, ...buildTrainingParticipantConfig(participants, profiles) }); }}
           />
         </div>
       }

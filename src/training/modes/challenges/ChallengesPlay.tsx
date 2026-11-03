@@ -70,7 +70,6 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
   const doubles8MaxDarts = doublesTargets.length * 9 + 3;
   const doubles8MaxScore = doublesTargets.length * 300 + 150;
   const maxDarts = Math.max(1, Math.floor(Number(challengeId === "DOUBLES_8_BONUS" ? doubles8MaxDarts : config?.darts || (challengeId === "CHECKOUT_40_3" ? 3 : 9))));
-  const bonusDouble = Math.max(1, Math.min(20, Math.floor(Number(config?.bonusDouble || 20))));
   const sequence = Array.isArray(config?.seq) ? config.seq.map(String) : ["BULL", "T20", "D20"];
   const startedAtRef = React.useRef(Date.now());
   const endedRef = React.useRef(false);
@@ -91,6 +90,7 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
   });
   const [, rerender] = React.useReducer((value) => value + 1, 0);
   const [result, setResult] = React.useState<any>(null);
+  const [bonusDouble, setBonusDouble] = React.useState<number | null>(null);
 
   const title =
     challengeId === "BULL_T20_D20"
@@ -181,6 +181,8 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
     (visit: TrainingDart[]) => {
       if (endedRef.current || !visit.length) return;
       const data = dataRef.current;
+      const enteringBonus = challengeId === "DOUBLES_8_BONUS" && data.doubles8Visits >= doublesTargets.length * 3;
+      if (enteringBonus && !bonusDouble) return;
       const remaining = Math.max(0, maxDarts - data.darts);
       const darts = visit.slice(0, remaining);
       if (!darts.length) return;
@@ -201,7 +203,7 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
       if (challengeId === "DOUBLES_8_BONUS") {
         const visitIndex = Math.max(0, visitHistoryRef.current.length - 1);
         const bonusVisit = visitIndex >= doublesTargets.length * 3;
-        const target = bonusVisit ? bonusDouble : doublesTargets[Math.min(doublesTargets.length - 1, Math.floor(visitIndex / 3))];
+        const target = bonusVisit ? Number(bonusDouble) : doublesTargets[Math.min(doublesTargets.length - 1, Math.floor(visitIndex / 3))];
         const targetHits = darts.filter((dart) => dart.v === target && dart.mult === 2).length;
         data.darts += darts.length;
         data.hits += targetHits;
@@ -266,12 +268,14 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
 
   const data = dataRef.current;
   const doubles8VisitIndex = Math.max(0, Math.min(doubles8VisitsMax - 1, data.doubles8Visits));
-  const doubles8Target = doubles8VisitIndex >= doublesTargets.length * 3 ? bonusDouble : doublesTargets[Math.min(doublesTargets.length - 1, Math.floor(doubles8VisitIndex / 3))];
+  const doubles8BonusPhase = challengeId === "DOUBLES_8_BONUS" && doubles8VisitIndex >= doublesTargets.length * 3;
+  const bonusChoiceRequired = doubles8BonusPhase && !bonusDouble && !result;
+  const doubles8Target = doubles8BonusPhase ? (bonusDouble || doublesTargets[0]) : doublesTargets[Math.min(doublesTargets.length - 1, Math.floor(doubles8VisitIndex / 3))];
   const currentTarget =
     challengeId === "3_DOUBLES_9"
       ? "DOUBLE"
       : challengeId === "DOUBLES_8_BONUS"
-      ? `${doubles8VisitIndex >= doublesTargets.length * 3 ? "BONUS · " : ""}D${doubles8Target}`
+      ? (bonusChoiceRequired ? "BONUS · À CHOISIR" : `${doubles8BonusPhase ? "BONUS · " : ""}D${doubles8Target}`)
       : challengeId === "CHECKOUT_40_3"
       ? "40"
       : sequence[Math.min(data.sequenceIndex, sequence.length - 1)] || "—";
@@ -306,7 +310,7 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
                 : challengeId === "BULL_T20_D20"
                 ? "Valide BULL, puis T20, puis D20 dans cet ordre en douze fléchettes maximum."
                 : challengeId === "DOUBLES_8_BONUS"
-                ? `Joue ${doublesTargets.map((n) => `D${n}`).join(', ')} : trois volées par double. 1 touche = 10 pts, 2 = 30 pts, 3 = 100 pts. Termine par une volée bonus sur D${bonusDouble}, +50 pts par touche.`
+                ? `Joue ${doublesTargets.map((n) => `D${n}`).join(', ')} : trois volées par double. 1 touche = 10 pts, 2 = 30 pts, 3 = 100 pts. Après la phase principale, choisis ton double bonus parmi les cibles jouées : +50 pts par touche.`
                 : "Fais exactement 40 en trois fléchettes maximum et termine sur un double."}
             </p>
           </>
@@ -323,7 +327,18 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
         ]}
       >
         {challengeId === "DOUBLES_8_BONUS" ? (
-          <DoublesObjectivePad target={doubles8Target} disabled={!!result} onVisit={onVisit} />
+          bonusChoiceRequired ? (
+            <div style={{ display: "grid", gap: 10, padding: "7px 0 12px" }}>
+              <div style={{ padding: "12px 13px", borderRadius: 14, border: "1px solid rgba(39,220,255,.34)", background: "rgba(39,220,255,.06)", textAlign: "center" }}>
+                <div style={{ color: "#27dcff", fontSize: 10, fontWeight: 950, letterSpacing: 1 }}>VOLÉE BONUS</div>
+                <div style={{ marginTop: 5, fontSize: 15, fontWeight: 950 }}>CHOISIS TON DOUBLE</div>
+                <div style={{ marginTop: 4, fontSize: 10.5, opacity: .72 }}>Uniquement parmi les doubles de ce parcours · +50 pts par touche</div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8 }}>
+                {doublesTargets.map((target) => <button key={target} type="button" onClick={() => setBonusDouble(target)} style={{ minHeight: 56, borderRadius: 14, border: "1px solid rgba(255,69,83,.68)", background: "linear-gradient(180deg,rgba(255,62,81,.94),rgba(143,16,31,.98))", color: "#fff", fontSize: 19, fontWeight: 1000 }}>D{target}</button>)}
+              </div>
+            </div>
+          ) : <DoublesObjectivePad target={doubles8Target} disabled={!!result} onVisit={onVisit} />
         ) : (
           <TrainingDartPad
             disabled={!!result}
@@ -347,23 +362,51 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
           result?.stats ||
           makeTrainingStats({ darts: 0, hits: 0, points: 0, startedAt: Date.now() })
         }
-        metrics={
-          result
-            ? [
-                { label: "DÉFI", value: result.metrics.title },
-                { label: "DARTS UTILISÉES", value: `${result.metrics.dartsUsed}/${result.metrics.maxDarts}` },
-                ...(challengeId === "DOUBLES_8_BONUS" ? [
-                  { label: "SCORE CHALLENGE", value: `${Math.round(result.metrics.score)} / ${doubles8MaxScore}` },
-                  { label: "PHASE PRINCIPALE", value: `${result.metrics.regularScore} pts · ${result.metrics.regularHits}/${doublesTargets.length * 9} touches` },
-                  { label: `BONUS D${result.metrics.bonusDouble}`, value: `${result.metrics.bonusHits} touche${result.metrics.bonusHits > 1 ? "s" : ""} · ${result.metrics.bonusScore} pts` },
-                  ...(result.metrics.bestDouble ? [{ label: "DOUBLE FORT", value: `D${result.metrics.bestDouble.target} · ${Math.round(result.metrics.bestDouble.accuracyPct)}% · ${result.metrics.bestDouble.hits}/${result.metrics.bestDouble.attempts}` }] : []),
-                  ...(result.metrics.weakestDouble ? [{ label: "DOUBLE À TRAVAILLER", value: `D${result.metrics.weakestDouble.target} · ${Math.round(result.metrics.weakestDouble.accuracyPct)}% · ${result.metrics.weakestDouble.hits}/${result.metrics.weakestDouble.attempts}` }] : []),
-                ] : []),
-                { label: "PROGRESSION", value: `${Math.round(result.metrics.completionPct)}%` },
-                { label: "PRÉCISION", value: `${Math.round(result.metrics.accuracyPct)}%` },
-              ]
-            : []
-        }
+        summaryCards={result ? (challengeId === "DOUBLES_8_BONUS" ? [
+          { label: "SCORE", value: Math.round(result.metrics.score) },
+          { label: "PHASE", value: result.metrics.regularScore },
+          { label: "BONUS", value: result.metrics.bonusScore },
+          { label: "RÉUSSITE", value: `${Math.round((result.metrics.regularHits / Math.max(1, doublesTargets.length * 9)) * 100)}%` },
+        ] : challengeId === "3_DOUBLES_9" ? [
+          { label: "DOUBLES", value: `${result.metrics.doubles}/3` },
+          { label: "DARTS", value: result.metrics.dartsUsed },
+          { label: "RESTANTES", value: Math.max(0, result.metrics.maxDarts - result.metrics.dartsUsed) },
+          { label: "RÉUSSITE", value: `${Math.round(result.metrics.accuracyPct)}%` },
+        ] : challengeId === "BULL_T20_D20" ? [
+          { label: "ÉTAPES", value: `${result.metrics.sequenceCompleted}/${result.metrics.sequenceLength}` },
+          { label: "DARTS", value: result.metrics.dartsUsed },
+          { label: "HITS", value: result.stats.hits },
+          { label: "RÉUSSITE", value: `${Math.round(result.metrics.accuracyPct)}%` },
+        ] : [
+          { label: "SORTIE", value: result.success ? "RÉUSSIE" : "MANQUÉE" },
+          { label: "SCORE VOLÉE", value: Math.round(result.stats.score) },
+          { label: "DARTS", value: result.metrics.dartsUsed },
+          { label: "HITS", value: result.stats.hits },
+        ]) : undefined}
+        metrics={result ? (challengeId === "DOUBLES_8_BONUS" ? [
+          { label: "DÉFI", value: result.metrics.title },
+          { label: "PARCOURS", value: doublesTargets.map((target) => `D${target}`).join(" · ") },
+          { label: "SCORE CHALLENGE", value: `${Math.round(result.metrics.score)} / ${doubles8MaxScore}` },
+          { label: "PHASE PRINCIPALE", value: `${result.metrics.regularScore} pts · ${result.metrics.regularHits}/${doublesTargets.length * 9} touches` },
+          { label: `BONUS D${result.metrics.bonusDouble}`, value: `${result.metrics.bonusHits} touche${result.metrics.bonusHits > 1 ? "s" : ""} · ${result.metrics.bonusScore} pts` },
+          ...(result.metrics.bestDouble ? [{ label: "DOUBLE FORT", value: `D${result.metrics.bestDouble.target} · ${Math.round(result.metrics.bestDouble.accuracyPct)}% · ${result.metrics.bestDouble.hits}/${result.metrics.bestDouble.attempts}` }] : []),
+          ...(result.metrics.weakestDouble ? [{ label: "DOUBLE À TRAVAILLER", value: `D${result.metrics.weakestDouble.target} · ${Math.round(result.metrics.weakestDouble.accuracyPct)}% · ${result.metrics.weakestDouble.hits}/${result.metrics.weakestDouble.attempts}` }] : []),
+        ] : challengeId === "3_DOUBLES_9" ? [
+          { label: "DÉFI", value: result.metrics.title },
+          { label: "DOUBLES VALIDÉS", value: `${result.metrics.doubles}/3` },
+          { label: "DARTS UTILISÉES", value: `${result.metrics.dartsUsed}/${result.metrics.maxDarts}` },
+          { label: "PRÉCISION DOUBLES", value: `${Math.round(result.metrics.accuracyPct)}%` },
+        ] : challengeId === "BULL_T20_D20" ? [
+          { label: "DÉFI", value: result.metrics.title },
+          { label: "SÉQUENCE VALIDÉE", value: `${result.metrics.sequenceCompleted}/${result.metrics.sequenceLength}` },
+          { label: "DARTS UTILISÉES", value: `${result.metrics.dartsUsed}/${result.metrics.maxDarts}` },
+          { label: "PRÉCISION CIBLES", value: `${Math.round(result.metrics.accuracyPct)}%` },
+        ] : [
+          { label: "DÉFI", value: result.metrics.title },
+          { label: "SORTIE", value: result.success ? "RÉUSSIE" : "MANQUÉE" },
+          { label: "DARTS UTILISÉES", value: `${result.metrics.dartsUsed}/${result.metrics.maxDarts}` },
+          { label: "SCORE DE LA VOLÉE", value: Math.round(result.stats.score) },
+        ]) : []}
         onClose={onExit}
       />
     </>

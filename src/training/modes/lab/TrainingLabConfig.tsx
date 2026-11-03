@@ -435,6 +435,35 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
   }, [dailyQueueItems]);
   const dailyReview = React.useMemo(() => buildTrainingDailyReview(sessions as any[]), [sessions]);
   const skillTrend = React.useMemo(() => buildTrainingSkillTrend(sessions as any[]), [sessions]);
+  const priorityActionPlan = React.useMemo(() => {
+    const priorityRow = skillTrend.rows.find((row) => row.family === skillTrend.priorityFamily);
+    const candidates = TRAINING_EXERCISE_CATALOG
+      .filter((exercise) => exercise.family === skillTrend.priorityFamily)
+      .map((exercise) => ({ exercise, personal: exerciseProgressionById.get(exercise.id) || buildTrainingExerciseProgression(exercise, []) }))
+      .filter((row) => !row.personal.mastered)
+      .sort((a, b) => {
+        const aStarted = a.personal.level > 0 ? 0 : 1;
+        const bStarted = b.personal.level > 0 ? 0 : 1;
+        if (aStarted !== bStarted) return aStarted - bStarted;
+        if (a.personal.level !== b.personal.level) return b.personal.level - a.personal.level;
+        return a.exercise.difficulty - b.exercise.difficulty || a.exercise.title.localeCompare(b.exercise.title, "fr");
+      })
+      .slice(0, 3);
+    const status = priorityRow?.status || "new";
+    const headline = status === "decline"
+      ? "Relancer cette compétence sans surcharger la séance"
+      : status === "progress"
+        ? "Transformer la progression récente en nouveau palier"
+        : status === "stable"
+          ? "Sortir du plateau avec trois objectifs courts"
+          : "Construire une première référence solide";
+    return { family: skillTrend.priorityFamily, status, headline, items: candidates };
+  }, [exerciseProgressionById, skillTrend]);
+  const usePriorityPlanAsDailyQueue = React.useCallback(() => {
+    if (!priorityActionPlan.items.length) return;
+    saveTrainingDailyQueue(accountParticipantId || null, priorityActionPlan.items.map((row) => row.exercise.id));
+    setDailyQueueRevision((value) => value + 1);
+  }, [accountParticipantId, priorityActionPlan]);
   const replaceDailyQueueItem = React.useCallback((exerciseId: string) => {
     const current = loadTrainingDailyQueue(accountParticipantId || null);
     const used = new Set(current.exerciseIds);
@@ -1309,6 +1338,27 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
                 </div>
                 <div style={{ marginTop: 7, fontSize: 7.2, opacity: .5 }}>Point fort actuel : <b style={{ color: "#8cffcb" }}>{TRAINING_FAMILY_META[skillTrend.strongestFamily].label}</b> · {skillTrend.activeFamilies}/6 compétences actives sur la période.</div>
               </div>
+              {priorityActionPlan.items.length ? <div style={{ marginTop: 10, padding: 12, borderRadius: 14, border: "1px solid rgba(255,216,107,.18)", background: "linear-gradient(145deg,rgba(255,216,107,.05),rgba(255,184,76,.02))" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 0, flex: "1 1 220px" }}>
+                    <div style={{ fontSize: 8, fontWeight: 950, letterSpacing: .9, color: "#ffd86b" }}>PLAN CIBLÉ · {TRAINING_FAMILY_META[priorityActionPlan.family].label.toUpperCase()}</div>
+                    <div style={{ marginTop: 4, fontSize: 10.5, fontWeight: 950 }}>{priorityActionPlan.headline}</div>
+                    <div style={{ marginTop: 3, fontSize: 8.2, opacity: .5 }}>3 étapes maximum • ouvre chaque fiche avant de jouer • le plan reste entièrement modifiable.</div>
+                  </div>
+                  <button type="button" onClick={usePriorityPlanAsDailyQueue} style={{ padding: "7px 9px", borderRadius: 9, border: "1px solid rgba(255,216,107,.26)", background: "rgba(255,216,107,.06)", color: "inherit", fontSize: 7.4, fontWeight: 950, cursor: "pointer" }}>UTILISER COMME SÉANCE DU JOUR</button>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 7, marginTop: 9 }}>
+                  {priorityActionPlan.items.map(({ exercise, personal }, index) => {
+                    const stepLabel = index === 0 ? "1 · REPRENDRE" : index === 1 ? "2 · CONSOLIDER" : "3 · VALIDER";
+                    return <button key={exercise.id} type="button" onClick={() => openExerciseDetail(exercise.id)} style={{ minWidth: 0, textAlign: "left", padding: 10, borderRadius: 11, border: index === 0 ? "1px solid rgba(255,216,107,.24)" : "1px solid rgba(255,255,255,.07)", background: index === 0 ? "rgba(255,216,107,.045)" : "rgba(255,255,255,.016)", color: "inherit", cursor: "pointer" }}>
+                      <div style={{ fontSize: 6.9, fontWeight: 950, letterSpacing: .6, color: index === 2 ? "#8cffcb" : "#ffd86b" }}>{stepLabel}</div>
+                      <div style={{ marginTop: 4, display: "flex", justifyContent: "space-between", gap: 7, alignItems: "center" }}><b style={{ minWidth: 0, fontSize: 9, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{exercise.title}</b><span style={{ flex: "0 0 auto", fontSize: 7, fontWeight: 950, color: "#b99cff" }}>NIV. {personal.level}/5</span></div>
+                      <div style={{ marginTop: 4, fontSize: 7.2, opacity: .48 }}>Difficulté {exercise.difficulty}/5</div>
+                      <div style={{ marginTop: 4, fontSize: 7.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: personal.level > 0 ? "rgba(255,255,255,.62)" : "#8fefff" }}>{personal.level > 0 ? personal.nextObjective : "Créer une première référence"}</div>
+                    </button>;
+                  })}
+                </div>
+              </div> : null}
               <div style={{ marginTop: 10, padding: 12, borderRadius: 14, border: "1px solid rgba(185,156,255,.16)", background: "linear-gradient(180deg,rgba(140,90,255,.055),rgba(39,220,255,.025))" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                   <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: .9, color: "#b99cff" }}>À TRAVAILLER MAINTENANT</div><div style={{ marginTop: 3, fontSize: 9, opacity: .54 }}>Priorité à tes exercices en cours, à ta compétence cible et aux prochains paliers.</div></div>

@@ -20,7 +20,7 @@ export type ChallengeExerciseConfigLike={
  doublesTargets?:number[];
 };
 
-export type ChallengeEntryLike={hit:ChallengeHit;segment?:number|null};
+export type ChallengeEntryLike={hit:ChallengeHit;segment?:number|null;bonusTarget?:number|null};
 
 export const DEFAULT_HALF_IT_SEQUENCE:ChallengeObjectiveToken[]=['15','16','any-double','17','18','any-triple','19','20','bull'];
 export const DEFAULT_CUSTOM_SEQUENCE:ChallengeObjectiveToken[]=['20','any-double','18','any-triple','bull'];
@@ -120,8 +120,9 @@ export function challengeObjectiveKeyTarget(cfg:ChallengeExerciseConfigLike):str
  if(type==='sequence')return `sequence-${cfg.sequenceScoreMode==='challenge'?'hits':'real'}-${normalizedSequence(cfg).join('.')}`;
  if(type==='doubles8'){
   const targets=normalizedDoublesTargets(cfg);
-  const bonus=clampSector(cfg.doublesBonusTarget,20);
-  return isDefaultDoublesTargets(targets)?`doubles8-bonus-d${bonus}`:`doubles8-custom-${targets.join('.')}-bonus-d${bonus}`;
+  // Le double bonus est désormais choisi pendant la partie. Il ne doit donc
+  // plus fragmenter le classement / l'historique d'une même variante.
+  return isDefaultDoublesTargets(targets)?'doubles8':`doubles8-custom-${targets.join('.')}`;
  }
  const a=clampSector(cfg.groupingMin,15),b=clampSector(cfg.groupingMax,20),hits=Math.max(2,Math.min(3,Number(cfg.groupingHits||2)));
  return `grouping-${Math.min(a,b)}-${Math.max(a,b)}-x${hits}`;
@@ -133,7 +134,7 @@ export function challengeOnlineTargetLabel(value:string):string{
  if(value.startsWith('sequence-'))return 'SÉQUENCE';
  if(value.startsWith('grouping-'))return 'GROUPEMENT';
  if(value.startsWith('doubles8-custom-'))return 'DOUBLES PERSO';
- if(value.startsWith('doubles8-'))return '8 DOUBLES';
+ if(value==='doubles8'||value.startsWith('doubles8-'))return '8 DOUBLES';
  if(value==='any-double')return 'DOUBLES';
  if(value==='any-triple')return 'TRIPLES';
  if(value==='bull'||value==='bull25'||value==='bull50')return 'BULL';
@@ -265,8 +266,11 @@ export function evaluateChallengeEntries(entries:ChallengeEntryLike[],cfg:Challe
   }else if(type==='doubles8'){
    const targets=normalizedDoublesTargets(cfg);
    const bonusVisit=visitIndex>=targets.length*3;
-   const objective=String(objectiveForVisit(cfg,visitIndex));
-   const target=clampSector(objective.split(':')[1],20);
+   const configuredObjective=String(objectiveForVisit(cfg,visitIndex));
+   const selectedBonusTarget=visit.map(entry=>Math.round(Number(entry?.bonusTarget||0))).find(value=>targets.includes(value));
+   const target=bonusVisit
+    ? (selectedBonusTarget||clampSector(configuredObjective.split(':')[1],targets[0]||20))
+    : clampSector(configuredObjective.split(':')[1],targets[0]||20);
    let doubleHits=0;
    visit.forEach((entry,j)=>{
     if(entry.hit!=='D')return;
@@ -367,7 +371,12 @@ export function analyzeChallengeExercise(entries:ChallengeEntryLike[],cfg:Challe
   if(perfect){perfectVisits++;perfectVisitRun++;bestPerfectVisitStreak=Math.max(bestPerfectVisitStreak,perfectVisitRun)}else if(complete)perfectVisitRun=0;
   const visitPoints=evaluation.entryPoints.slice(start,start+visit.length).reduce((sum,value)=>sum+Math.max(0,Number(value)||0),0);
   bestVisitPoints=Math.max(bestVisitPoints,visitPoints);
-  const objective=String(objectiveForVisit(cfg,visitIndex));
+  const baseObjective=String(objectiveForVisit(cfg,visitIndex));
+  const targetsForVisit=type==='doubles8'?normalizedDoublesTargets(cfg):[];
+  const selectedBonusTarget=type==='doubles8'&&visitIndex>=targetsForVisit.length*3
+   ? visit.map(entry=>Math.round(Number(entry?.bonusTarget||0))).find(value=>targetsForVisit.includes(value))
+   : undefined;
+  const objective=selectedBonusTarget?`bonus-double:${selectedBonusTarget}`:baseObjective;
   const objectiveRow=objectiveStats[objective]||(objectiveStats[objective]={attempts:0,validated:0,perfect:0,points:0});
   objectiveRow.attempts++;
   if(validated)objectiveRow.validated++;

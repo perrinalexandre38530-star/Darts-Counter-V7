@@ -15,7 +15,7 @@ import {
 import { buildChallengeExerciseCareer } from '../src/lib/challengeExerciseCareer.ts';
 import { buildChallengeStatsProgression } from '../src/lib/challengeStatsProgression.ts';
 
-const d=(segment:number):ChallengeEntryLike=>({hit:'D',segment});
+const d=(segment:number,bonusTarget?:number):ChallengeEntryLike=>({hit:'D',segment,...(bonusTarget?{bonusTarget}:{} as any)});
 const miss=():ChallengeEntryLike=>({hit:'MISS'});
 
 const official:ChallengeExerciseConfigLike={
@@ -30,7 +30,7 @@ assert.equal(objectiveForVisit(official,2),'double:20');
 assert.equal(objectiveForVisit(official,3),'double:18');
 assert.equal(objectiveForVisit(official,23),'double:2');
 assert.equal(objectiveForVisit(official,24),'bonus-double:20');
-assert.equal(challengeObjectiveKeyTarget(official),'doubles8-bonus-d20');
+assert.equal(challengeObjectiveKeyTarget(official),'doubles8');
 assert.equal(challengeOnlineTargetLabel(challengeObjectiveKeyTarget(official)),'8 DOUBLES');
 assert.equal(maxChallengePointsPerDart(official),50,'bonus dart can score 50 points');
 
@@ -45,7 +45,7 @@ const perfect:ChallengeEntryLike[]=[];
 for(const target of DOUBLES_8_TARGETS){
   for(let volley=0;volley<3;volley++) perfect.push(d(target),d(target),d(target));
 }
-perfect.push(d(20),d(20),d(20));
+perfect.push(d(8,8),d(8,8),d(8,8));
 const perfectEval=evaluateChallengeEntries(perfect,official);
 assert.equal(perfect.length,75);
 assert.equal(perfectEval.score,2550);
@@ -55,6 +55,8 @@ assert.equal(perfectStats.doublesBonusScore,150);
 assert.equal(perfectStats.doublesRegularHits,72);
 assert.equal(perfectStats.doublesRegularDarts,72);
 assert.equal(perfectStats.doublesBonusHits,3);
+assert.ok(perfectStats.objectiveStats?.['bonus-double:8'],'runtime bonus choice must be stored as D8, not the config fallback');
+assert.ok(!perfectStats.objectiveStats?.['bonus-double:20'],'runtime bonus choice must override legacy D20 fallback');
 assert.equal(perfectStats.doublesBonusDarts,3);
 assert.equal(perfectStats.doublesTargetStats?.['20']?.hits,9,'bonus hits must not pollute D20 regular stats');
 assert.equal(perfectStats.doublesTargetStats?.['20']?.darts,9);
@@ -74,7 +76,7 @@ assert.equal(objectiveForVisit(custom,5),'double:16');
 assert.equal(objectiveForVisit(custom,6),'double:5');
 assert.equal(objectiveForVisit(custom,8),'double:5');
 assert.equal(objectiveForVisit(custom,9),'bonus-double:16');
-assert.equal(challengeObjectiveKeyTarget(custom),'doubles8-custom-20.16.5-bonus-d16');
+assert.equal(challengeObjectiveKeyTarget(custom),'doubles8-custom-20.16.5');
 assert.equal(challengeOnlineTargetLabel(challengeObjectiveKeyTarget(custom)),'DOUBLES PERSO');
 assert.notEqual(challengeObjectiveKeyTarget(custom),challengeObjectiveKeyTarget(official));
 assert.deepEqual(normalizedDoublesTargets({...custom,doublesTargets:[20,20,16,5,16]}),[20,16,5],'duplicates must be removed while preserving route order');
@@ -85,7 +87,7 @@ customLog.push(d(20),d(20),miss()); // 30 points, 2/3
 customLog.push(miss(),miss(),miss());
 customLog.push(d(20),miss(),miss()); // 10 points, 1/3
 for(let i=0;i<6;i++) customLog.push(miss(),miss(),miss()); // D16 + D5
-customLog.push(d(16),d(16),d(16)); // bonus = 150
+customLog.push(d(5,5),d(5,5),d(5,5)); // bonus choisi à l'exécution = D5, 150 pts
 const customEval=evaluateChallengeEntries(customLog,custom);
 assert.equal(customEval.score,190);
 const customStats=analyzeChallengeExercise(customLog,custom);
@@ -96,14 +98,15 @@ assert.equal(customStats.doublesBonusHits,3);
 assert.equal(customStats.doublesTargetStats?.['20']?.hits,3);
 assert.equal(customStats.doublesTargetStats?.['20']?.darts,9);
 assert.equal(customStats.doublesTargetStats?.['20']?.accuracy,33.3);
-assert.equal(customStats.doublesTargetStats?.['16']?.hits,0,'bonus D16 must not count in regular D16 target stats');
+assert.equal(customStats.doublesTargetStats?.['16']?.hits,0,'bonus must not count in regular D16 target stats');
+assert.ok(customStats.objectiveStats?.['bonus-double:5'],'chosen runtime bonus must be D5');
 assert.equal(customStats.doublesTargetStats?.['16']?.darts,9);
 
 
 // Historique / progression : la volée bonus ne doit jamais devenir le « double fort ».
 const bonusOnlyLog:ChallengeEntryLike[]=[];
 for(let i=0;i<9;i++) bonusOnlyLog.push(miss(),miss(),miss());
-bonusOnlyLog.push(d(16),d(16),d(16));
+bonusOnlyLog.push(d(5,5),d(5,5),d(5,5));
 const bonusOnlyStats=analyzeChallengeExercise(bonusOnlyLog,custom);
 const career=buildChallengeExerciseCareer([],custom,{name:'TEST'}, {playedAt:1,score:150,exerciseStats:bonusOnlyStats});
 assert.ok(career.strongestObjective);
@@ -121,12 +124,19 @@ const training=fs.readFileSync('src/training/modes/challenges/ChallengesPlay.tsx
 const config=fs.readFileSync('src/pages/ChallengeConfig.tsx','utf8');
 const i18n=fs.readFileSync('src/i18n/configUiLiteralRegistry.ts','utf8');
 const statsHub=fs.readFileSync('src/pages/StatsHub.tsx','utf8');
-for(const marker of ['className="D" disabled={done} onClick={addObjectiveDoubleHit}','<span>TOUCHÉ</span>','<b>MISS</b><span>RATÉ</span>','TOUCHÉS','SCORE PHASE','SCORE BONUS','PERFORMANCE PAR CIBLE','DOUBLE FORT','DOUBLE À TRAVAILLER']) {
+for(const marker of ['className="D" disabled={done} onClick={addObjectiveDoubleHit}','<span>TOUCHÉ</span>','<b>MISS</b><span>RATÉ</span>','TOUCHÉS','SCORE PHASE','SCORE BONUS','PERFORMANCE PAR CIBLE','DOUBLE FORT','DOUBLE À TRAVAILLER','CHOISIS TON DOUBLE BONUS','BARÈME RÉEL PAR VOLÉE','challengeVisibleHitTypes(cfg)']) {
   assert.ok(arcade.includes(marker),`ChallengePlay missing doubles final marker: ${marker}`);
 }
-for(const marker of ['DoublesObjectivePad','ANNULER LA DERNIÈRE FLÉCHETTE','perDoubleAttempts','regularPoints','bonusHits','doublesBreakdown']) {
+for(const marker of ['DoublesObjectivePad','ANNULER LA DERNIÈRE FLÉCHETTE','perDoubleAttempts','regularPoints','bonusHits','doublesBreakdown','CHOISIS TON DOUBLE','setBonusDouble(target)','summaryCards=']) {
   assert.ok(training.includes(marker),`Training ChallengesPlay missing doubles final marker: ${marker}`);
 }
+
+const trainingConfig=fs.readFileSync('src/training/modes/challenges/ChallengesConfig.tsx','utf8');
+const trainingResult=fs.readFileSync('src/training/ui/TrainingResultModal.tsx','utf8');
+assert.ok(trainingConfig.includes('Le double bonus est choisi <b>après la dernière volée normale</b>'),'Training config must defer bonus selection to runtime');
+assert.ok(!trainingConfig.includes('<select value={bonusDouble}'),'Training config must not preselect D20 bonus');
+assert.ok(trainingResult.includes('summaryCards'),'Training result modal must support challenge-specific summary cards');
+
 for(const marker of ['doublesTargets','doublesBonusTarget','DOUBLES À JOUER','PERSONNALISÉ']) {
   assert.ok(config.includes(marker),`ChallengeConfig missing doubles config marker: ${marker}`);
 }
