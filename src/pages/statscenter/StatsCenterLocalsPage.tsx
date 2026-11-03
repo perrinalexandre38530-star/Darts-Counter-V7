@@ -235,6 +235,7 @@ export default function StatsCenterLocalsPage({ go }: Props) {
                   }}
                 >
                   <ProfileStarRing
+                    profile={selected}
                     anchorSize={64}
                     starSize={10}
                     gapPx={-2}

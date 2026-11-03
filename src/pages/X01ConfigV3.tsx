@@ -2158,6 +2158,7 @@ export function SelectedParticipantsCompactBlock({
               <div style={{ position: "relative", width: 96, height: 102, display: "grid", placeItems: "center", overflow: "visible" }}>
                 {starData ? (
                   <ProfileStarRing
+                    profile={mergedProfile}
                     {...(starData.avg3d ? { avg3d: starData.avg3d } : { botLevel: starData.level })}
                     anchorSize={82}
                     starSize={11}
@@ -6855,6 +6856,7 @@ export function TeamsSection({
         overflowY: "visible", marginTop: 4 }}>
                               {starData ? (
                                 <ProfileStarRing
+                                  profile={p}
                                   {...(starData.avg3d ? { avg3d: starData.avg3d } : { botLevel: starData.level })}
                                   anchorSize={88}
                                   starSize={12}

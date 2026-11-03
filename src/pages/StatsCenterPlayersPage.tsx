@@ -334,6 +334,7 @@ export default function StatsCenterPlayersPage({ go }: Props) {
                   }}
                 >
                   <ProfileStarRing
+                    profile={selected}
                     anchorSize={64}
                     starSize={10}
                     gapPx={-1}

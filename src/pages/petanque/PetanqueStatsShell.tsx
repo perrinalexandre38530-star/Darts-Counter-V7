@@ -459,6 +459,7 @@ function StatsPlayerAvatar({
         }}
       >
         <ProfileStarRing
+          profile={profile}
           anchorSize={AVA}
           gapPx={-2}
           starSize={STAR}

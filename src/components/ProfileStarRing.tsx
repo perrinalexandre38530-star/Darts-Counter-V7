@@ -7,6 +7,8 @@
 
 import React from "react";
 import { computeProfileStarRating } from "../lib/profileStarRating";
+import { resolveProfileStarScore } from "../lib/profileStarScore";
+import { loadX01ProfileStatsForStarring, x01ProfileIdentityKeys } from "../lib/x01ProfileStarring";
 
 function profileStarRingParseBotLevelValue(input: any, fallback = 1): number {
   if (typeof input === "number" && Number.isFinite(input)) {
@@ -101,18 +103,49 @@ export default function ProfileStarRing({
   // Il ne doit JAMAIS devenir artificiellement un niveau d'étoiles darts.
   const profileBotLevel = isBotProfile ? (botLevel ?? profile?.botLevel ?? profile?.level) : null;
 
-  // L'AVG3D explicite est toujours prioritaire. C'est la valeur affichée par
-  // les écrans Home / Profils / Statistics Center et donc la seule qui doit
-  // décider du niveau visuel d'un joueur humain.
+  // Source UNIQUE pour tout profil humain : X01 501 Double Out, niveau ACTUEL
+  // (AVG3D des 10 derniers matchs 501 DO). Les pages ne peuvent plus injecter
+  // leur propre moyenne sportive / lifetime et produire des étoiles différentes.
+  const profileIdentity = React.useMemo(() => {
+    if (!profile || isBotProfile) return "";
+    const ids = x01ProfileIdentityKeys(profile);
+    return `${ids.join("|")}::${String(profile?.name || profile?.displayName || profile?.nickname || "")}`;
+  }, [profile, isBotProfile]);
+  const [canonicalHumanScore, setCanonicalHumanScore] = React.useState<number>(() =>
+    !isBotProfile && profile ? resolveProfileStarScore(profile) : 0
+  );
+
+  React.useEffect(() => {
+    if (isBotProfile || !profile) {
+      setCanonicalHumanScore(0);
+      return;
+    }
+    let cancelled = false;
+    const syncScore = resolveProfileStarScore(profile);
+    setCanonicalHumanScore(syncScore > 0 ? syncScore : 0);
+    const profileId = x01ProfileIdentityKeys(profile)[0] || "";
+    if (!profileId) return () => { cancelled = true; };
+    void loadX01ProfileStatsForStarring(profileId, profile)
+      .then(() => {
+        if (cancelled) return;
+        const refreshed = resolveProfileStarScore(profile);
+        setCanonicalHumanScore(refreshed > 0 ? refreshed : 0);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [profileIdentity, isBotProfile]);
+
   const explicitAvg = Number(avg3d);
   const explicitScore = Number(scoreProp);
-  const rawScore = Number.isFinite(explicitAvg) && explicitAvg > 0
-    ? explicitAvg
-    : Number.isFinite(explicitScore) && explicitScore > 0
-      ? explicitScore
-      : profileBotLevel != null
-        ? profileStarRingBotLevelToAvg3d(profileBotLevel, 1)
-        : 0;
+  const rawScore = !isBotProfile && profile
+    ? canonicalHumanScore
+    : Number.isFinite(explicitAvg) && explicitAvg > 0
+      ? explicitAvg
+      : Number.isFinite(explicitScore) && explicitScore > 0
+        ? explicitScore
+        : profileBotLevel != null
+          ? profileStarRingBotLevelToAvg3d(profileBotLevel, 1)
+          : 0;
 
   const rating = computeProfileStarRating(rawScore);
   const entries: StarEntry[] = [];

@@ -2797,6 +2797,8 @@ function x01SessionsFromSamples(samples: any[], profileId?: string | null, profi
     playerName: String(smp.playerName || profileName || "Joueur"),
     x01StartScore: smp.x01StartScore ?? null,
     x01Variant: smp.x01Variant ?? "unknown",
+    x01InMode: smp.x01InMode ?? "unknown",
+    x01OutMode: smp.x01OutMode ?? "unknown",
     matchVictoryMode: smp.matchVictoryMode ?? "best_of",
     profileId: pid || String(smp.playerId || ""),
     avatarDataUrl: null,
@@ -2858,6 +2860,7 @@ export default function X01MultiStatsTabFull({
   const [sessions, setSessions] = React.useState<X01MultiSession[]>(
     () => readX01MultiSessionsCacheSync(effectiveProfileId)?.sessions || []
   );
+  const loadedProfileKeyRef = React.useRef(String(effectiveProfileId || ""));
   const [historyVersion, setHistoryVersion] = React.useState(0);
   const [range, setRange] = React.useState<TimeRange>("all");
   const [scoreFilter, setScoreFilter] = React.useState<X01ScoreFilterKey>(501);
@@ -2904,13 +2907,34 @@ export default function X01MultiStatsTabFull({
   }, []);
 
   // Chargement des matchs (une fois + quand l’ID effectif change + après suppression historique)
+  const recordsLoadKey = React.useMemo(() => {
+    const rows = Array.isArray(records) ? records : [];
+    if (!rows.length) return "0";
+    const first: any = rows[0] || {};
+    const last: any = rows[rows.length - 1] || {};
+    const firstId = String(first?.matchId ?? first?.id ?? "");
+    const lastId = String(last?.matchId ?? last?.id ?? "");
+    const lastTs = Number(last?.createdAt ?? last?.date ?? last?.timestamp ?? 0) || 0;
+    return `${rows.length}:${firstId}:${lastId}:${lastTs}`;
+  }, [records]);
+
   React.useEffect(() => {
     let cancelled = false;
     let timer: number | null = null;
     let rafA = 0;
     let rafB = 0;
     const instant = readX01MultiSessionsCacheSync(effectiveProfileId);
-    setSessions(instant?.sessions || []);
+    const profileKey = String(effectiveProfileId || "");
+    const profileChanged = loadedProfileKeyRef.current !== profileKey;
+    loadedProfileKeyRef.current = profileKey;
+    // IMPORTANT : un re-render du même profil ne doit jamais effacer une vue
+    // déjà hydratée. En revanche un vrai changement de profil repart bien de
+    // son cache propre (ou vide) pour ne pas afficher les stats du précédent.
+    if (profileChanged) {
+      setSessions(instant?.sessions?.length ? instant.sessions : []);
+    } else if (instant?.sessions?.length) {
+      setSessions((prev) => prev.length >= instant.sessions.length ? prev : instant.sessions);
+    }
 
     const refresh = async () => {
       // FAST PATH : StatsHub a déjà chargé l'historique du profil. On l'affiche
@@ -2942,7 +2966,16 @@ export default function X01MultiStatsTabFull({
         data = Array.from(merged.values()).sort((a, b) => a.date - b.date);
       }
 
-      if (!cancelled) React.startTransition(() => setSessions(Array.isArray(data) ? data : canonicalRows));
+      if (!cancelled) {
+        React.startTransition(() => {
+          setSessions((prev) => {
+            const next = Array.isArray(data) && data.length ? data : canonicalRows;
+            // Un refresh incomplet/échoué n'a plus le droit d'écraser des stats
+            // déjà visibles par un tableau vide.
+            return next.length ? next : prev;
+          });
+        });
+      }
     };
 
     // Si un snapshot synchrone existe, le premier paint ne doit pas concurrencer
@@ -2962,7 +2995,7 @@ export default function X01MultiStatsTabFull({
       if (rafA) window.cancelAnimationFrame(rafA);
       if (rafB) window.cancelAnimationFrame(rafB);
     };
-  }, [effectiveProfileId, playerName, historyVersion, records]);
+  }, [effectiveProfileId, playerName, historyVersion, recordsLoadKey]);
 
   // Auto-défilement métriques
   React.useEffect(() => {

@@ -276,7 +276,7 @@ export default function MolkkyStatsLocalsPage({ go, embedded }: Props) {
           {selected ? (
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ position: "relative", width: 58, height: 58 }}>
-                <ProfileStarRing anchorSize={58} avg3d={resolveProfileStarScore(selected)} gapPx={-3} starSize={10} stepDeg={10} animateGlow />
+                <ProfileStarRing profile={selected} anchorSize={58} avg3d={resolveProfileStarScore(selected)} gapPx={-3} starSize={10} stepDeg={10} animateGlow />
                 <div style={{ position: "absolute", inset: 4, borderRadius: 999, overflow: "hidden" }}>
                   <ProfileAvatar profile={selected} size={50} />
                 </div>

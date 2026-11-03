@@ -88,7 +88,7 @@ export default function StatsKillerMatch({ store, go, rec }: Props) {
         <div style={{ position: "relative" }}>
           <ProfileAvatar profile={winnerProfile as any} size={58} />
           <div style={{ position: "absolute", inset: -8, pointerEvents: "none" }}>
-            <ProfileStarRing size={74} active />
+            <ProfileStarRing profile={winnerProfile as any} size={74} active />
           </div>
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -188,7 +188,7 @@ export default function StatsKillerMatch({ store, go, rec }: Props) {
                       <ProfileAvatar profile={prof as any} size={44} />
                       {isWinner ? (
                         <div style={{ position: "absolute", inset: -6, pointerEvents: "none" }}>
-                          <ProfileStarRing size={56} active />
+                          <ProfileStarRing profile={prof as any} size={56} active />
                         </div>
                       ) : null}
                     </div>

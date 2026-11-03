@@ -791,7 +791,7 @@ export default function ProfileAvatar(props: Props) {
         ) : null}
       </div>
 
-      {showStars && <ProfileStarRing avg3d={avg3D ?? 0} anchorSize={size} />}
+      {showStars && <ProfileStarRing profile={p} avg3d={avg3D ?? 0} anchorSize={size} />}
 
       {showDartOverlay && dartSet && (
         <div

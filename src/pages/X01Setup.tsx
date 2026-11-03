@@ -667,6 +667,7 @@ export default function X01Setup({ profiles, initialPlayers, initialPlayerIds, o
                     }}
                   >
                     <ProfileStarRing
+                      profile={p}
                       anchorSize={AVA}
                       gapPx={6} // ⭐ positif => autour du bord
                       starSize={STAR}

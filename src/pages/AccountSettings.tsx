@@ -297,7 +297,7 @@ export default function ScramPlay(props: any) {
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <div style={{ position: "relative", width: 44, height: 44 }}>
-                      <ProfileStarRing size={44} glow={isActiveTeam} />
+                      <ProfileStarRing profile={p0} size={44} glow={isActiveTeam} />
                       <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}>
                         <ProfileAvatar profile={p0} size={34} />
                       </div>
