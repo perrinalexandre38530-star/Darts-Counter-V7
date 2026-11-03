@@ -1174,6 +1174,9 @@ function summarizeX01SetsLegsScore(e: SavedEntry): string {
     if (!map || typeof map !== "object") return undefined;
     const ids = [r.id, r.playerId, r.profileId, r.selectedPlayerId, r.pid].filter(Boolean).map(String);
     for (const id of ids) if (Object.prototype.hasOwnProperty.call(map, id)) return map[id];
+  // Legacy maps occasionally hold an abbreviated UUID alongside a full UUID.
+  // Do not infer equality from a prefix: an abbreviated key is never proof
+  // of participant identity or of a valid score.
     return undefined;
   };
   const maps = {
@@ -1252,52 +1255,38 @@ function getHistoryDataBundle(e: SavedEntry): { data: any; result: any; anyE: an
 
 function historyAllPlayerRows(e: SavedEntry): any[] {
   const { data, result, anyE } = getHistoryDataBundle(e);
-  const pools = [
-    anyE.players, anyE.summary?.players, anyE.summary?.result?.players,
-    anyE.payload?.summary?.players, anyE.payload?.summary?.perPlayer,
-    anyE.payload?.summary?.rankings, anyE.payload?.summary?.ranking,
-    anyE.payload?.config?.players, anyE.payload?.players,
-    anyE.payload?.state?.players, anyE.decoded?.players,
-    anyE.decoded?.config?.players, data.players, data.perPlayer,
-    data.rankings, data.ranking, result.players, result.rankings, result.ranking,
-  ];
-  // The stored match participant list is the authority. Runtime aliases
-  // in perPlayer / detailedByPlayer are not additional participants.
-  const authority = Array.isArray(anyE.players) && anyE.players.length
+  // IMPORTANT: a match's saved roster is authoritative. Do not expand it
+  // using summary.perPlayer, ranking or a runtime usr_ key: those structures
+  // can refer to the same person using different identifiers.
+  const roster = Array.isArray(anyE.players)
     ? anyE.players.filter((p: any) => p && (historyRowKey(p) || historyRowName(p)))
     : [];
-  const out: any[] = authority.length ? [...authority] : [];
-  const seen = new Set(out.map((p: any) => historyRowKey(p)).filter(Boolean));
-  const nameCounts = new Map<string, number>();
-  for (const p of authority) {
-    const n = historyRowName(p).toLowerCase();
-    if (n) nameCounts.set(n, (nameCounts.get(n) || 0) + 1);
-  }
+  if (roster.length) return roster;
+
+  // Legacy records without an explicit roster: use ONE source at a time,
+  // rather than concatenating incompatible identity namespaces.
+  const pools = [
+    anyE.summary?.players, anyE.summary?.result?.players,
+    anyE.payload?.summary?.players, anyE.payload?.config?.players,
+    anyE.payload?.players, anyE.payload?.state?.players,
+    anyE.decoded?.players, anyE.decoded?.config?.players,
+    data.players, result.players, data.rankings, data.ranking,
+    result.rankings, result.ranking, data.perPlayer,
+    anyE.payload?.summary?.perPlayer,
+  ];
   for (const pool of pools) {
-    if (!Array.isArray(pool)) continue;
+    if (!Array.isArray(pool) || !pool.length) continue;
+    const out: any[] = [];
+    const seen = new Set<string>();
     for (const p of pool) {
       const key = historyRowKey(p);
-      const name = historyRowName(p).toLowerCase();
-      if (!key) continue;
-      if (authority.length) {
-        // No matches based solely on a non-unique nickname.
-        const belongs = authority.some((a: any) => {
-          const ids = [a?.id, a?.playerId, a?.profileId, a?.sideId].filter(Boolean);
-          const pids = [p?.id, p?.playerId, p?.profileId, p?.sideId].filter(Boolean);
-          return ids.some((id: any) => pids.some((pid: any) => looseHistoryIdMatch(id, pid)));
-        }) || (name && nameCounts.get(name) === 1);
-        if (!belongs) continue;
-      }
-      if (seen.has(key)) continue;
-      // A legacy usr_ alias must not create another row alongside a
-      // uniquely identified historical participant.
-      if (authority.length && name && nameCounts.get(name) === 1 &&
-          authority.some((a: any) => historyRowName(a).toLowerCase() === name)) continue;
+      if (!key || seen.has(key)) continue;
       seen.add(key);
       out.push(p);
     }
+    if (out.length) return out;
   }
-  return out;
+  return [];
 }
 
 function x01RemainingForRow(e: SavedEntry, r: any): any {
