@@ -30,6 +30,7 @@ import { extAdaptCheckoutSuggestion, type X01OutModeV3 } from "../lib/x01v3/x01C
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { History } from "../lib/history";
+import { upsertCanonicalX01Record } from "../lib/x01CanonicalProjection";
 import { clearX01CriticalCheckpoint, saveX01CriticalCheckpoint, warmX01CriticalCheckpointStorage, writeX01PagehideFallback } from "../lib/x01CriticalCheckpoint";
 import { StatsBridge } from "../lib/statsBridge";
 import { useVoiceScoreInput } from "../hooks/useVoiceScoreInput";
@@ -10209,6 +10210,10 @@ function saveX01V3MatchToHistory({
     matchVictoryMode: matchVictoryModeForHistory,
     victoryMode: matchVictoryModeForHistory,
     matchFormat: matchFormatForHistory,
+    inMode: (config as any)?.inMode ?? (config as any)?.entryMode ?? null,
+    outMode: (config as any)?.outMode ?? (config as any)?.finishMode ?? null,
+    x01InMode: (config as any)?.inMode ?? (config as any)?.entryMode ?? null,
+    x01OutMode: (config as any)?.outMode ?? (config as any)?.finishMode ?? null,
     online: isOnlineMatch,
     onlineMode: isOnlineMatch ? "x01" : undefined,
     lobbyCode: onlineLobbyCode,
@@ -10222,6 +10227,8 @@ function saveX01V3MatchToHistory({
       matchVictoryMode: matchVictoryModeForHistory,
       victoryMode: matchVictoryModeForHistory,
       matchFormat: matchFormatForHistory,
+      inMode: (config as any)?.inMode ?? (config as any)?.entryMode ?? null,
+      outMode: (config as any)?.outMode ?? (config as any)?.finishMode ?? null,
       legsPerSet: effectiveSavedLegsPerSet,
       setsToWin: effectiveSavedSetsToWin,
     },
@@ -10378,6 +10385,10 @@ function saveX01V3MatchToHistory({
     matchVictoryMode: matchVictoryModeForHistory,
     victoryMode: matchVictoryModeForHistory,
     matchFormat: matchFormatForHistory,
+    inMode: (config as any)?.inMode ?? (config as any)?.entryMode ?? null,
+    outMode: (config as any)?.outMode ?? (config as any)?.finishMode ?? null,
+    x01InMode: (config as any)?.inMode ?? (config as any)?.entryMode ?? null,
+    x01OutMode: (config as any)?.outMode ?? (config as any)?.finishMode ?? null,
     scoreInputMethod: scoreInputDefaultMethodForHistory,
     scoreInputMode: scoreInputDefaultMethodForHistory,
     isVisitScoreInput: isVisitScoreInputForHistory,
@@ -10447,6 +10458,10 @@ function saveX01V3MatchToHistory({
     matchVictoryMode: matchVictoryModeForHistory,
     victoryMode: matchVictoryModeForHistory,
     matchFormat: matchFormatForHistory,
+    inMode: (config as any)?.inMode ?? (config as any)?.entryMode ?? null,
+    outMode: (config as any)?.outMode ?? (config as any)?.finishMode ?? null,
+    x01InMode: (config as any)?.inMode ?? (config as any)?.entryMode ?? null,
+    x01OutMode: (config as any)?.outMode ?? (config as any)?.finishMode ?? null,
     scoreInputMethod: scoreInputDefaultMethodForHistory,
     scoreInputMode: scoreInputDefaultMethodForHistory,
     isVisitScoreInput: isVisitScoreInputForHistory,
@@ -10552,7 +10567,12 @@ function saveX01V3MatchToHistory({
       StatsBridge.commitLegAndAccumulate?.(null, quickLegacy);
     }
 
-    // 2) 🟢 Sauvegarde "lourde" dans l'historique (IndexedDB + fallback LS)
+    // 2) Projection canonique X01 légère : source unique des écrans Stats/Home/Profils.
+    if (!((config as any)?.quickParty === true || String((config as any)?.partyMode || "") === "quick")) {
+      upsertCanonicalX01Record(record);
+    }
+
+    // 3) 🟢 Sauvegarde "lourde" dans l'historique (IndexedDB + fallback LS)
     // V3 FIX : non bloquant pour l'UI, mais log explicite si l'écriture échoue.
     void History.upsert(record)
       .then(() => clearX01CriticalCheckpoint(String(record.id || record.matchId || "")))

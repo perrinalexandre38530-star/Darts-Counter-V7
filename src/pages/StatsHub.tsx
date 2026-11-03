@@ -28,6 +28,7 @@ import SparklinePro from "../components/SparklinePro";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
 import { computeCanonicalX01501DOLevel, persistCanonicalX01501DOLevel } from "../lib/x01ProfileStarring";
+import { computeCanonicalX01ProfileStats } from "../lib/x01CanonicalProjection";
 import statsCenterTicker from "../assets/tickers/ticker_statistics_center_universal.webp";
 import tickerHistoriqueFr from "../assets/tickers/ticker_historique.png";
 import tickerHistoryEn from "../assets/tickers/ticker_history.png";
@@ -6246,7 +6247,7 @@ React.useEffect(() => {
 const needsStatsHistory = heavyStatsReady && (
   (isDiceSport || isMolkkySport || isBabyFootSport || isPingPongSport)
     ? currentMode === "dashboard"
-    : !["dartsets", "history", "leaderboards"].includes(currentMode)
+    : !["dashboard", "x01_multi", "dartsets", "history", "leaderboards"].includes(currentMode)
 );
 
 // ==========================
@@ -6899,9 +6900,12 @@ const selectedPlayerVisual = React.useMemo<PlayerLite | null>(() => {
 const canonicalStarLevel = React.useMemo(() => {
   const pid = String(effectiveProfileId || "").trim();
   const pname = String(selectedPlayerVisual?.name || selectedPlayer?.name || activeProfileName || "");
-  if (!pid || !Array.isArray(detailRecords) || !detailRecords.length) return { lifetimeAvg3D: 0, currentAvg3D: 0, lifetimeMatches: 0, currentMatches: 0, currentLimit: 10 };
-  try { return computeCanonicalX01501DOLevel(detailRecords, pid, pname); } catch { return { lifetimeAvg3D: 0, currentAvg3D: 0, lifetimeMatches: 0, currentMatches: 0, currentLimit: 10 }; }
-}, [effectiveProfileId, selectedPlayerVisual?.name, selectedPlayer?.name, activeProfileName, detailRecords]);
+  if (!pid) return { lifetimeAvg3D: 0, currentAvg3D: 0, lifetimeMatches: 0, currentMatches: 0, currentLimit: 10 };
+  try {
+    const c = computeCanonicalX01ProfileStats(pid, pname);
+    return { lifetimeAvg3D: c.lifetime501DOAvg3D, currentAvg3D: c.current501DOAvg3D, lifetimeMatches: c.reference501DOMatches, currentMatches: c.current501DOMatches, currentLimit: 10 };
+  } catch { return { lifetimeAvg3D: 0, currentAvg3D: 0, lifetimeMatches: 0, currentMatches: 0, currentLimit: 10 }; }
+}, [effectiveProfileId, selectedPlayerVisual?.name, selectedPlayer?.name, activeProfileName]);
 const canonicalStarAvg3D = canonicalStarLevel.currentAvg3D;
 React.useEffect(() => {
   const pid = String(effectiveProfileId || "").trim();
@@ -6984,15 +6988,14 @@ const statsDiagnostic = React.useMemo(() => {
   let x01GlobalAvg3D = 0;
   let x01CurrentAvg3D = 0;
   try {
-    const level = computeCanonicalX01501DOLevel(
-      Array.isArray(detailRecords) ? detailRecords : [],
+    const level = computeCanonicalX01ProfileStats(
       String(effectiveProfileId || ""),
       String(selectedPlayerVisual?.name || selectedPlayer?.name || activeProfileName || "")
     );
-    x01LifetimeMatches = level.lifetimeMatches;
-    x01CurrentMatches = level.currentMatches;
-    x01GlobalAvg3D = level.lifetimeAvg3D;
-    x01CurrentAvg3D = level.currentAvg3D;
+    x01LifetimeMatches = level.reference501DOMatches;
+    x01CurrentMatches = level.current501DOMatches;
+    x01GlobalAvg3D = level.lifetime501DOAvg3D;
+    x01CurrentAvg3D = level.current501DOAvg3D;
   } catch {}
 
   const x01TabRuntime: any = (() => {
@@ -7046,125 +7049,31 @@ const [liveDashboard, setLiveDashboard] =
   React.useState<PlayerDashboardStats | null>(null);
 
 
-  // ---- X01 hydration + dashboard bridge (dashboard uses same payload-level source as X01 Multi)
-  const [x01HydratedRows, setX01HydratedRows] = React.useState<any[] | null>(null);
-
-  React.useEffect(() => {
-    const enabled = needsStatsHistory && (currentMode === "dashboard" || currentMode === "x01_compare");
-    if (!enabled) {
-      setX01HydratedRows(null);
-      return;
-    }
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const isX01Row = (r: any) => lc(r?.kind ?? r?.mode ?? r?.game).includes("x01");
-        const ids = (combinedHistory || []).filter(isX01Row).map((r: any) => r?.id).filter(Boolean);
-        const uniq: string[] = [];
-        const seen = new Set<string>();
-        for (const id of ids) {
-          const sid = String(id);
-          if (!seen.has(sid)) { seen.add(sid); uniq.push(sid); }
-        }
-
-        const constrained = isConstrainedStatsDevice();
-        const cap = 600;
-        const chunk = constrained ? 2 : 12;
-        const rows: any[] = [];
-        const selected = uniq.slice(0, cap);
-        for (let i = 0; i < selected.length; i += chunk) {
-          if (cancelled) return;
-          const batch = await Promise.all(
-            selected.slice(i, i + chunk).map((id) => History.get(id).catch(() => null))
-          );
-          rows.push(...batch.filter(Boolean));
-          if (i + chunk < selected.length) await yieldStatsFrame(constrained ? 16 : 0);
-        }
-        if (!cancelled) React.startTransition(() => setX01HydratedRows(rows));
-      } catch {
-        if (!cancelled) setX01HydratedRows(null);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [combinedHistory, currentMode, needsStatsHistory]);
-
+  // V130 — Dashboard X01 reads the same compact canonical projection as Home/Profiles/X01Multi.
+  // No History.get(), no IndexedDB hydration from the render path.
   const applyX01AggToDashboard = React.useCallback(
     (dash: any, pid: string, pname?: string) => {
       try {
-        const hydrated = x01HydratedRows || [];
-        const x01CombinedRows = (combinedHistory || []).filter((r: any) =>
-          lc(r?.kind ?? r?.mode ?? r?.game).includes("x01")
-        );
-        const hydratedIds = new Set(hydrated.map((r: any) => String(r?.id ?? "")));
-        const linkedOrMissingRows = x01CombinedRows.filter((r: any) => {
-          const id = String(r?.id ?? "");
-          return !id || !hydratedIds.has(id) || Boolean(r?.__linkedRemote || r?.linkedRemote);
-        });
-        const rows = hydrated.length ? [...hydrated, ...linkedOrMissingRows] : x01CombinedRows;
-
-        if (!rows.length) return dash;
-
-        let agg: any = computeX01MultiAgg(rows as any[], pid, pname);
-
-        // If playerId mismatch, try resolve by player name from payload
-        if ((agg?.sessions ?? 0) == 0 && pname) {
-          const target = lc(pname).trim();
-          let candidateId: string | null = null;
-          for (const r of rows as any[]) {
-            const session = r?.payload?.session || r?.payload || r;
-            const players = toArrLoc<any>(session?.players ?? session?.session?.players);
-            const found = players.find(
-              (pl: any) => lc(pl?.name ?? pl?.public_name).trim() === target
-            );
-            if (found?.id) {
-              candidateId = String(found.id);
-              break;
-            }
-          }
-          if (candidateId) {
-            const alt = computeX01MultiAgg(rows as any[], candidateId, pname);
-            if ((alt?.sessions ?? 0) > 0) agg = alt;
-          }
+        const c = computeCanonicalX01ProfileStats(pid, pname);
+        const next = { ...(dash || {}) };
+        if (c.reference501DOMatches > 0) {
+          next.sessions = c.reference501DOMatches;
+          next.avg3Overall = c.lifetime501DOAvg3D;
+          next.avg3Global = c.lifetime501DOAvg3D;
+          next.avg3Current = c.current501DOAvg3D;
+          next.avg3CurrentMatches = c.current501DOMatches;
+          next.avg3CurrentLimit = 10;
+          next.bestVisit = c.bestVisit501DO;
+          next.bestCheckout = c.bestCheckout501DO;
+          next.totalDarts = c.darts501DO;
+          next.wins = c.wins501DO;
+          next.winRate = c.reference501DOMatches > 0 ? (c.wins501DO / c.reference501DOMatches) * 100 : 0;
+          next.x01ByOut = c.byOut;
+          next.x01TotalSessions = c.totalX01Matches;
         }
-
-        const sessions = agg?.sessions ?? 0;
-        if (sessions > 0) {
-          const level = computeX01LevelSnapshot(agg, 10);
-          const canonicalLevel = computeCanonicalX01501DOLevel(rows as any[], pid, pname);
-          dash.sessions = sessions;
-          // Le dashboard garde ses totaux X01 globaux, mais le NIVEAU ACTUEL
-          // est strictement le même 501 Double Out que Home/Profils/ProfileStarRing.
-          dash.avg3Overall = level.lifetimeAvg3D;
-          dash.avg3Global = level.lifetimeAvg3D;
-          dash.avg3Current = canonicalLevel.currentAvg3D;
-          dash.avg3CurrentMatches = canonicalLevel.currentMatches;
-          dash.avg3CurrentLimit = canonicalLevel.currentLimit;
-          dash.bestVisit = agg?.bestVisit ?? dash.bestVisit;
-          dash.bestCheckout = agg?.bestCheckout ?? dash.bestCheckout;
-          dash.totalDarts = agg?.darts ?? dash.totalDarts;
-          if (agg?.visitBuckets && typeof agg.visitBuckets === "object") {
-            dash.distribution = {
-              "50+": Number(agg.visitBuckets["50+"] || 0),
-              "80+": Number(agg.visitBuckets["80+"] || 0),
-              "100+": Number(agg.visitBuckets["100+"] || 0),
-              "120+": Number(agg.visitBuckets["120+"] || 0),
-              "140+": Number(agg.visitBuckets["140+"] || 0),
-            };
-          }
-          if (Array.isArray(agg?.progression) && agg.progression.length) {
-            dash.evolution = agg.progression.slice(-30).map((p: any) => ({
-              date: new Date(Number(p?.ts || Date.now())).toISOString().slice(0, 10),
-              avg3: Number(p?.avg3D || 0),
-            }));
-          }
-        }
-      } catch {
-        // no-op
-      }
-      return dash;
-    },
-    [x01HydratedRows, combinedHistory]
+        return next;
+      } catch { return dash; }
+    }, []
   );
 
 const quick = useQuickStats(selectedPlayer?.id ?? null);
@@ -7290,9 +7199,16 @@ const computedDashboard = React.useMemo(() => {
   quick?.winRatePct,
 ]);
 
-const dashboardToShow = ((isDiceSport || isMolkkySport || isBabyFootSport || isPingPongSport)
+const dashboardToShowBase = ((isDiceSport || isMolkkySport || isBabyFootSport || isPingPongSport)
   ? (liveDashboard ?? computedDashboard ?? cachedDashboard)
   : (liveDashboard ?? cachedDashboard ?? computedDashboard)) as PlayerDashboardStats | null;
+const dashboardToShow = (!isDiceSport && !isMolkkySport && !isBabyFootSport && !isPingPongSport && effectiveProfileId)
+  ? applyX01AggToDashboard(
+      dashboardToShowBase ? { ...(dashboardToShowBase as any) } : {},
+      String(effectiveProfileId),
+      String(selectedPlayerVisual?.name || selectedPlayer?.name || activeProfileName || "Joueur")
+    ) as PlayerDashboardStats
+  : dashboardToShowBase;
 
 // Le snapshot n'est écrit qu'à partir du calcul canonique. Un index rapide ou
 // partiel ne peut donc plus contaminer les ouvertures suivantes.
@@ -7300,7 +7216,7 @@ React.useEffect(() => {
   const pid = String(effectiveProfileId || "");
   if (!pid) return;
   const specialSport = isDiceSport || isMolkkySport || isBabyFootSport || isPingPongSport;
-  const canonicalReady = specialSport || (normalizedHistoryLoaded && x01HydratedRows !== null);
+  const canonicalReady = specialSport || currentMode === "dashboard" || normalizedHistoryLoaded;
   const fresh = canonicalReady ? (liveDashboard || (nmEffective.length > 0 ? computedDashboard : null)) : null;
   const visual = selectedPlayer || selectedPlayerVisual;
   if (!fresh && !visual) return;
@@ -7312,7 +7228,6 @@ React.useEffect(() => {
   computedDashboard,
   nmEffective.length,
   normalizedHistoryLoaded,
-  x01HydratedRows,
   isDiceSport,
   isMolkkySport,
   isBabyFootSport,

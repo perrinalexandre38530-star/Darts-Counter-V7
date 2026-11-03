@@ -28,6 +28,7 @@ import { loadNormalizedHistory } from "../lib/statsNormalized";
 import { buildDashboardFromNormalized } from "../lib/statsUnifiedAgg";
 import { computeX01LevelSnapshot, computeX01MultiAgg } from "../lib/x01MultiAgg";
 import { computeCanonicalX01501DOLevel, persistCanonicalX01501DOLevel } from "../lib/x01ProfileStarring";
+import { computeCanonicalX01ProfileStats } from "../lib/x01CanonicalProjection";
 import {
   babyFootRating,
   computeBabyFootProfileAggregate,
@@ -871,93 +872,52 @@ async function getStatsHubAlignedProfileMiniStats(
   playerName?: string | null,
   sportKey?: string | null
 ): Promise<ProfileMiniStats> {
-  // Source de vérité volontairement alignée sur le Dashboard global du Centre de statistiques.
-  // Avant, la page Profils lisait surtout le mini-cache statsBridge ; ce cache pouvait rester
-  // différent du dashboard après import/suppression/rebuild, d'où Moy/3D, Best CO et Win% incohérents.
   if (isFitSportKey(sportKey)) return getFitProfileMiniStats(playerId);
-
   const override = readLinkedProfileStatsOverride(playerId);
   if (override && !isBabyFootSportKey(sportKey)) return override;
+  if (isBabyFootSportKey(sportKey)) return getBabyFootProfileMiniStats(playerId);
 
-  if (isBabyFootSportKey(sportKey)) {
-    return getBabyFootProfileMiniStats(playerId);
-  }
-
-  const fallback = normalizeProfileMiniStats(await getBasicProfileStatsAsync(playerId));
-
-  try {
-    const pname = String(playerName || "Joueur");
-    const normalized = await loadNormalizedHistory();
-    const dash: any = buildDashboardFromNormalized(playerId, pname, normalized || []);
-
-    let out: ProfileMiniStats = {
-      avg3: Number(dash?.avg3Overall ?? dash?.avg3 ?? fallback.avg3) || fallback.avg3,
-      currentAvg3: Number(dash?.avg3Current ?? fallback.currentAvg3 ?? 0) || fallback.currentAvg3,
-      currentMatches: Math.max(0, Number(dash?.avg3CurrentMatches ?? fallback.currentMatches ?? 0) || 0),
-      bestVisit: Number(dash?.bestVisit ?? fallback.bestVisit) || fallback.bestVisit,
-      bestCheckout: Number(dash?.bestCheckout ?? fallback.bestCheckout) || fallback.bestCheckout,
-      wins: Number(dash?.wins ?? fallback.wins) || fallback.wins,
-      games: Number(dash?.sessions ?? dash?.matches ?? fallback.games) || fallback.games,
-      winRate: Number.isFinite(Number(dash?.winRatePct ?? dash?.winRate))
-        ? Math.max(0, Math.min(100, Number(dash?.winRatePct ?? dash?.winRate)))
-        : fallback.winRate,
-      darts: Number(dash?.totalDarts ?? fallback.darts) || fallback.darts,
-    };
-
-    // Même surcouche X01 multi que StatsHub : elle récupère les vraies sessions, moyennes,
-    // best visit et best CO depuis les payloads complets quand l'index normalisé est trop léger.
-    try {
-      // Toutes les cartes profil partagent la même hydratation. Le loader borne la
-      // concurrence à 4 et rend régulièrement la main au navigateur.
-      const rows = await loadProfilesX01FullRows();
-      if (rows.length) {
-        let agg: any = computeX01MultiAgg(rows as any, playerId, pname);
-        if ((agg?.sessions ?? 0) === 0 && pname) {
-          const target = pname.toLowerCase().trim();
-          let candidateId: string | null = null;
-          for (const r of rows) {
-            const session = r?.payload?.session || r?.payload || r;
-            const players = session?.players || session?.session?.players || [];
-            const found = (players || []).find((pl: any) => String(pl?.name ?? pl?.public_name ?? "").toLowerCase().trim() === target);
-            if (found?.id) { candidateId = String(found.id); break; }
-          }
-          if (candidateId) {
-            const alt = computeX01MultiAgg(rows as any, candidateId, pname);
-            if ((alt?.sessions ?? 0) > 0) agg = alt;
-          }
-        }
-        const sessions = Number(agg?.sessions || 0);
-        if (sessions > 0) {
-          const level = computeX01LevelSnapshot(agg, 10);
-          const canonicalLevel = computeCanonicalX01501DOLevel(rows as any[], playerId, pname);
-          persistCanonicalX01501DOLevel({ id: playerId, name: pname }, canonicalLevel);
-          out = {
-            ...out,
-            games: sessions,
-            // Lifetime dashboard can cover X01 globally; the visible player level is 501 DO only.
-            avg3: level.lifetimeAvg3D || out.avg3,
-            currentAvg3: canonicalLevel.currentAvg3D || out.currentAvg3,
-            currentMatches: canonicalLevel.currentMatches,
-            bestVisit: Number(agg?.bestVisit || out.bestVisit) || out.bestVisit,
-            bestCheckout: Number(agg?.bestCheckout || out.bestCheckout) || out.bestCheckout,
-            darts: Number(agg?.darts || out.darts) || out.darts,
-          };
-        }
-      }
-    } catch {
-      // Le dashboard normalisé reste la source ; cette étape est seulement une consolidation X01.
-    }
-
-    return normalizeProfileMiniStats(out);
-  } catch {
-    return fallback;
-  }
+  // V130 — Darts/X01 profile cards consume only the canonical lightweight projection.
+  // No loadNormalizedHistory(), no History.get(), no per-card background scan.
+  const pname = String(playerName || "Joueur");
+  const c = computeCanonicalX01ProfileStats(playerId, pname);
+  const canonicalLevel = {
+    lifetimeAvg3D: c.lifetime501DOAvg3D,
+    currentAvg3D: c.current501DOAvg3D,
+    lifetimeMatches: c.reference501DOMatches,
+    currentMatches: c.current501DOMatches,
+    currentLimit: 10,
+  };
+  persistCanonicalX01501DOLevel({ id: playerId, name: pname }, canonicalLevel);
+  return normalizeProfileMiniStats({
+    avg3: c.lifetime501DOAvg3D,
+    currentAvg3: c.current501DOAvg3D,
+    currentMatches: c.current501DOMatches,
+    bestVisit: c.bestVisit501DO,
+    bestCheckout: c.bestCheckout501DO,
+    wins: c.wins501DO,
+    games: c.reference501DOMatches,
+    winRate: c.reference501DOMatches > 0 ? (c.wins501DO / c.reference501DOMatches) * 100 : 0,
+    darts: c.darts501DO,
+  });
 }
 
 function readProfileMiniStatsSync(playerId: string | undefined | null, sportKey?: string | null): ProfileMiniStats {
   if (!playerId) return EMPTY_PROFILE_MINI_STATS;
   const key = String(playerId);
   const cacheKey = profileMiniStatsCacheKey(key, sportKey);
+  if (!isBabyFootSportKey(sportKey) && !isFitSportKey(sportKey)) {
+    try {
+      const c = computeCanonicalX01ProfileStats(key, null);
+      if (c.reference501DOMatches > 0) {
+        return normalizeProfileMiniStats({
+          avg3: c.lifetime501DOAvg3D, currentAvg3: c.current501DOAvg3D, currentMatches: c.current501DOMatches,
+          bestVisit: c.bestVisit501DO, bestCheckout: c.bestCheckout501DO, wins: c.wins501DO, games: c.reference501DOMatches,
+          winRate: (c.wins501DO / c.reference501DOMatches) * 100, darts: c.darts501DO,
+        });
+      }
+    } catch {}
+  }
   const cached = profileMiniStatsCache.get(cacheKey);
   if (cached) return cached;
   const stable = stableProfileMiniStatsCache.get(cacheKey) || readSessionStableProfileMiniStats(cacheKey) || undefined;

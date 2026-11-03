@@ -5,6 +5,7 @@ import { loadNormalizedHistory } from "./statsNormalized";
 import { buildDashboardFromNormalized } from "./statsUnifiedAgg";
 import { computeX01LevelSnapshot, computeX01MultiAgg } from "./x01MultiAgg";
 import { getX01StatsContext } from "./x01StatsContext";
+import { computeCanonicalX01ProfileStats } from "./x01CanonicalProjection";
 import { getAccountLocalStorageItem, setAccountLocalStorageItem } from "./accountScope";
 
 export type X01ProfileStarData = { kind: "avg3d"; value: number } | { kind: "level"; value: number };
@@ -335,35 +336,35 @@ async function computeStatsLikeProfilesPage(profileId: string, profile?: any): P
 }
 
 export async function loadX01ProfileStatsForStarring(profileId: string, profile?: any): Promise<MiniStats | null> {
-  const id = String(profileId || "").trim();
-  const name = getProfileName(profile);
-  const cacheKey = `${id}::${x01StarringNormText(name)}`;
-  if (statsCache.has(cacheKey)) {
-    const cached = statsCache.get(cacheKey);
-    return cached && typeof (cached as any).then === "function" ? await (cached as Promise<MiniStats | null>) : (cached as MiniStats | null);
+  // V130 — pure projection read. This function is used by selectors/config screens
+  // and must never trigger History/IndexedDB work.
+  try {
+    const name = getProfileName(profile);
+    const c = computeCanonicalX01ProfileStats(profileId, name);
+    const stats: MiniStats = {
+      avg3: c.lifetime501DOAvg3D,
+      avg3d: c.lifetime501DOAvg3D,
+      avg3D: c.lifetime501DOAvg3D,
+      globalAvg3D: c.lifetime501DOAvg3D,
+      lifetimeAvg3D: c.lifetime501DOAvg3D,
+      currentAvg3D: c.current501DOAvg3D,
+      x01CurrentAvg3D: c.current501DOAvg3D,
+      last10Avg3D: c.current501DOAvg3D,
+      currentMatches: c.current501DOMatches,
+      currentLimit: 10,
+      games: c.reference501DOMatches,
+      sessions: c.reference501DOMatches,
+      darts: c.darts501DO,
+      bestVisit: c.bestVisit501DO,
+      bestCheckout: c.bestCheckout501DO,
+      x01ByOut: c.byOut,
+      x01TotalSessions: c.totalX01Matches,
+    };
+    writeCurrentLevelCache(profile || { id: profileId, name }, stats);
+    return stats;
+  } catch {
+    return null;
   }
-
-  const promise = (async () => {
-    let syncStats: any = null;
-    let asyncStats: any = null;
-    try { syncStats = StatsBridge.getBasicProfileStats(id); } catch {}
-    try { asyncStats = await StatsBridge.getBasicProfileStatsAsync(id); } catch {}
-    const quick = profile ? readQuickStatsFromLocalStorage(profile) : null;
-    const linked = profile ? readLinkedStatsOverride(profile) : null;
-    const statsHub = await computeStatsLikeProfilesPage(id, profile);
-    const fallback = pickBestStats(syncStats, asyncStats, quick, linked);
-    // statsHub reconstructs the complete X01 history and carries both lifetime and
-    // current(last-10) semantics. It must override the legacy quick caches.
-    const best = statsHub ? { ...(fallback || {}), ...statsHub } : fallback;
-    if (best) writeCurrentLevelCache(profile || { id, name }, best);
-    statsCache.set(cacheKey, best || null);
-    return best || null;
-  })().catch(() => null);
-
-  statsCache.set(cacheKey, promise);
-  const result = await promise;
-  statsCache.set(cacheKey, result || null);
-  return result || null;
 }
 
 function collectNumbersByKeys(root: any, names: Set<string>, maxDepth = 5): any[] {

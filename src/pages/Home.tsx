@@ -38,6 +38,7 @@ import {
 import { History } from "../lib/history";
 import { computeX01LevelSnapshot, computeX01MultiAgg, isX01Match } from "../lib/x01MultiAgg";
 import { computeCanonicalX01501DOLevel, persistCanonicalX01501DOLevel } from "../lib/x01ProfileStarring";
+import { computeCanonicalX01ProfileStats, listCanonicalX01Sessions } from "../lib/x01CanonicalProjection";
 import { buildHomeModeSlides } from "../lib/homeModeStats";
 import { listProfileFriendLinks, type ProfileFriendLink } from "../lib/friendsApi";
 import { loadLinkedProfileProjection } from "../lib/linkedProfileSync";
@@ -686,57 +687,9 @@ async function buildStatsForProfile(
     const [base, multiRaw, cricket] = await Promise.all([
       getBasicProfileStatsAsync(profileId),
       (async () => {
-        try {
-          const anyHistory: any = History as any;
-          const rows =
-            typeof anyHistory.listFinished === "function"
-              ? await anyHistory.listFinished()
-              : typeof anyHistory.list === "function"
-              ? await anyHistory.list()
-              : [];
-          // P0 V6 — NEVER hydrate the whole history with one Promise.all().
-          // On a phone with ~90 saved games this created dozens of concurrent
-          // History.get() calls that continued even after leaving Home. The freeze
-          // watchdog caught exactly that storm (History.get > 40 s). Home only
-          // needs full payloads for X01 aggregation, so filter first, then hydrate
-          // in tiny cancellable batches.
-          const lightRows = Array.isArray(rows) ? rows : [];
-          const x01Rows = lightRows.filter((row: any) => {
-            try { return isX01Match(row as any); } catch { return false; }
-          });
-          const hydrated: any[] = [];
-          const isAndroid = (() => {
-            try { return /Android/i.test(String(navigator?.userAgent || "")); } catch { return false; }
-          })();
-
-          // P0 V8 — HOME MUST STAY LIGHT ON ANDROID.
-          // computeX01MultiAgg already supports compact/light summaries. Hydrating
-          // every finished X01 match here made Home retain all full decoded payloads
-          // until the aggregation finished (hundreds of MB with ~90 matches).
-          // Detailed payload hydration remains available in Stats / match details,
-          // where it is explicitly requested by the user.
-          if (isAndroid) return x01Rows;
-
-          const batchSize = 4;
-          for (let i = 0; i < x01Rows.length; i += batchSize) {
-            if (shouldCancel?.()) break;
-            const batch = x01Rows.slice(i, i + batchSize);
-            const fullBatch = await Promise.all(batch.map(async (row: any) => {
-              try {
-                const id = String(row?.matchId ?? row?.id ?? "").trim();
-                return id && typeof anyHistory.get === "function" ? ((await anyHistory.get(id)) || row) : row;
-              } catch {
-                return row;
-              }
-            }));
-            hydrated.push(...fullBatch);
-            if (i + batchSize < x01Rows.length) await new Promise<void>((resolve) => setTimeout(resolve, 0));
-          }
-          return hydrated;
-        } catch (e) {
-          console.warn("[Home] History.listFinished all games failed", e);
-        }
-        return [] as any[];
+        // V130 — Home ne parcourt plus History pour X01.
+        // La projection canonique est mise à jour à la fin de chaque match.
+        return listCanonicalX01Sessions(profileId, profileName) as any[];
       })(),
       (async () => {
         try {
@@ -748,27 +701,32 @@ async function buildStatsForProfile(
       })(),
     ]);
 
-    const allHistoryMatches: any[] = Array.isArray(multiRaw) ? multiRaw : [];
-    // ✅ HOME doit suivre le même périmètre que le dashboard StatsHub :
-    // pour les métriques X01, on ne garde QUE les parties X01 terminées présentes dans l'historique.
-    // Avant, Home additionnait tous les modes dans "x01 multi" => 41 sessions / 42.24 / best visit faux.
-    const lifetimeX01Matches: any[] = allHistoryMatches.filter((m: any) => {
-      try { return isX01Match(m as any); } catch { return false; }
-    });
-    // V127 — source unique pour le niveau X01.
-    // GLOBAL = tout l'historique X01 ; ACTUEL = exactement les 10 derniers matchs X01.
-    // Le filtre "actuel" ne doit plus réduire le nombre de sessions ni remplacer la moyenne lifetime.
-    const multiMatches: any[] = lifetimeX01Matches;
-    const x01AggLifetime: any = (() => {
-      try { return computeX01MultiAgg(lifetimeX01Matches as any[], profileId, profileName); } catch { return null; }
-    })();
-    const x01Level = computeX01LevelSnapshot(x01AggLifetime, 10);
-    const x01AggSessions = x01Level.lifetimeMatches;
-    const x01AggAvg3D = x01Level.lifetimeAvg3D;
-    // Niveau/étoiles : source canonique STRICTE = 501 Double Out uniquement.
-    const x01CanonicalLevel = computeCanonicalX01501DOLevel(lifetimeX01Matches, profileId, profileName);
-    const x01CurrentAvg3D = x01CanonicalLevel.currentAvg3D;
-    const x01CurrentMatches = x01CanonicalLevel.currentMatches;
+    const canonicalX01 = computeCanonicalX01ProfileStats(profileId, profileName);
+    const canonicalSessions = listCanonicalX01Sessions(profileId, profileName);
+    const lifetimeX01Matches: any[] = canonicalSessions as any[];
+    const multiMatches: any[] = canonicalSessions as any[];
+    const x01AggLifetime: any = {
+      sessions: canonicalX01.reference501DOMatches,
+      darts: canonicalX01.darts501DO,
+      totalScore: canonicalX01.points501DO,
+      avg3D: canonicalX01.lifetime501DOAvg3D,
+      avg3: canonicalX01.lifetime501DOAvg3D,
+      bestVisit: canonicalX01.bestVisit501DO,
+      bestCheckout: canonicalX01.bestCheckout501DO,
+      wins: canonicalX01.wins501DO,
+      bestAvg3D: canonicalSessions.reduce((m: number, row: any) => row?.startScore === 501 && row?.outMode === "double" ? Math.max(m, Number(row?.avg3D || 0) || 0) : m, 0),
+    };
+    const x01AggSessions = canonicalX01.reference501DOMatches;
+    const x01AggAvg3D = canonicalX01.lifetime501DOAvg3D;
+    const x01CanonicalLevel = {
+      lifetimeAvg3D: canonicalX01.lifetime501DOAvg3D,
+      currentAvg3D: canonicalX01.current501DOAvg3D,
+      lifetimeMatches: canonicalX01.reference501DOMatches,
+      currentMatches: canonicalX01.current501DOMatches,
+      currentLimit: 10,
+    };
+    const x01CurrentAvg3D = canonicalX01.current501DOAvg3D;
+    const x01CurrentMatches = canonicalX01.current501DOMatches;
     persistCanonicalX01501DOLevel({ id: profileId, name: profileName }, x01CanonicalLevel);
     const x01AggBestAvg3D = Number(x01AggLifetime?.bestAvg3D || 0) || 0;
 
@@ -1119,19 +1077,17 @@ async function buildStatsForProfile(
 
     // Niveau GLOBAL = moyenne X01 depuis toujours. Ne jamais la remplacer par la fenêtre "actuelle".
     const globalAvg3 =
-      x01Level.lifetimeAvg3D > 0
-        ? x01Level.lifetimeAvg3D
+      canonicalX01.lifetime501DOAvg3D > 0
+        ? canonicalX01.lifetime501DOAvg3D
         : avg3Base > 0
         ? avg3Base
-        : multiTotalAvg3Count > 0
-        ? multiTotalAvg3 / multiTotalAvg3Count
         : 0;
 
     const globalWinRate =
-      winRate01Base > 0
+      canonicalX01.reference501DOMatches > 0
+        ? canonicalX01.wins501DO / canonicalX01.reference501DOMatches
+        : winRate01Base > 0
         ? winRate01Base
-        : hasMulti && multiSessions > 0
-        ? multiWins / multiSessions
         : 0;
 
     const x01MultiAvg3D = globalAvg3;

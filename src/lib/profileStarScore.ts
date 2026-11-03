@@ -1,6 +1,7 @@
 // @ts-nocheck
 
 import { getAccountLocalStorageItem } from "./accountScope";
+import { computeCanonicalX01ProfileStats } from "./x01CanonicalProjection";
 
 function numberFromAny(raw: any): number {
   if (typeof raw === "number" && Number.isFinite(raw)) return raw;
@@ -82,6 +83,14 @@ export function resolveProfileStarScore(profile: any, extraCandidates: any[] = [
     profile?.isBot || profile?.bot || profile?.cpu || profile?.type === "bot" || profile?.kind === "bot" ||
     String(profile?.id || "").startsWith("bot_") || profile?.botLevel != null
   );
+
+  // V130 : source canonique synchronisée à la fin de chaque match. Aucun scan History ici.
+  if (!isBotProfile) {
+    try {
+      const canonical = computeCanonicalX01ProfileStats(profile?.id ?? profile?.profileId ?? profile?.playerId, profile?.name ?? profile?.displayName ?? profile?.nickname);
+      if (canonical.current501DOAvg3D > 0) return canonical.current501DOAvg3D;
+    } catch {}
+  }
 
   // V129 : pour un HUMAIN, la couronne est STRICTEMENT le niveau ACTUEL X01,
   // c.-à-d. l'AVG3D calculée sur la fenêtre des 10 derniers matchs X01.

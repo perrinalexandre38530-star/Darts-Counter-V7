@@ -24,6 +24,7 @@ import { idbGet, idbSet } from "../lib/indexedDb";
 import { removeDerivedStatsCache, writeDerivedStatsCacheRaw } from "../lib/statsRenderCacheStorage";
 import { useLang } from "../contexts/LangContext";
 import { computeX01LevelSnapshot, computeX01MultiAgg } from "../lib/x01MultiAgg";
+import { listCanonicalX01Sessions, computeCanonicalX01ProfileStats } from "../lib/x01CanonicalProjection";
 
 // ------ Helpers locaux : classement multi pour un joueur ------
 
@@ -2360,18 +2361,29 @@ export async function loadX01MultiSessions(
   profileId?: string | null,
   profileName?: string | null
 ): Promise<X01MultiSession[]> {
-  const key = `${x01MultiCacheProfileKey(profileId)}::${normalizedX01PlayerName(profileName)}`;
-  const running = __x01MultiLoadJobs.get(key);
-  if (running) return running;
-  const job = loadX01MultiSessionsInternal(profileId, profileName).finally(() => {
-    if (__x01MultiLoadJobs.get(key) === job) __x01MultiLoadJobs.delete(key);
-  });
-  __x01MultiLoadJobs.set(key, job);
-  return job;
+  return listCanonicalX01Sessions(profileId, profileName).map((row: any) => ({
+    id: String(row.id || `${row.matchId}:${row.profileId}`),
+    matchId: String(row.matchId || row.id || ""),
+    date: Number(row.date || 0) || 0,
+    selectedPlayerId: String(row.playerId || row.profileId || ""),
+    playerName: String(row.playerName || profileName || "Joueur"),
+    profileId: String(row.profileId || row.playerId || ""),
+    darts: Number(row.darts || 0) || 0,
+    avg3D: Number(row.avg3D || 0) || 0,
+    avg1D: (Number(row.avg3D || 0) || 0) / 3,
+    bestVisit: Number(row.bestVisit || 0) || 0,
+    bestCheckout: Number(row.bestCheckout || 0) || null,
+    hitsS: Number(row.hitsS || 0) || 0, hitsD: Number(row.hitsD || 0) || 0, hitsT: Number(row.hitsT || 0) || 0,
+    miss: Number(row.miss || 0) || 0, bull: Number(row.bull25 || 0) || 0, dBull: Number(row.bull50 || 0) || 0, bust: Number(row.bust || 0) || 0,
+    isWin: !!row.isWin, legsWon: Number(row.legsWon || 0) || 0, setsWon: Number(row.setsWon || 0) || 0,
+    finishes: Number(row.coSuccess || (row.bestCheckout > 0 ? 1 : 0)) || 0,
+    x01StartScore: row.startScore ?? null, x01Variant: row.variant ?? "unknown", x01OutMode: row.outMode ?? "unknown",
+  } as X01MultiSession));
 }
 
 export async function prewarmX01MultiSessions(profileId?: string | null, profileName?: string | null): Promise<void> {
-  await loadX01MultiSessions(profileId, profileName).then(() => undefined).catch(() => undefined);
+  // V130: prewarm is deliberately memory/localStorage-only; never touch History/IndexedDB.
+  listCanonicalX01Sessions(profileId, profileName);
 }
 
 // Normalisation d’un dart pour le radar
@@ -2857,8 +2869,44 @@ export default function X01MultiStatsTabFull({
     return { global: "GLOBAL LEVEL", current: "CURRENT LEVEL", matches: "X01 matches", latest: "latest matches" } as const;
   }, [lang]);
 
+  const canonicalToMulti = React.useCallback((row: any): X01MultiSession => ({
+    id: String(row.id || `${row.matchId}:${row.profileId}`),
+    matchId: String(row.matchId || row.id || ""),
+    date: Number(row.date || 0) || 0,
+    selectedPlayerId: String(row.playerId || row.profileId || ""),
+    playerName: String(row.playerName || playerName || "Joueur"),
+    profileId: String(row.profileId || row.playerId || ""),
+    darts: Number(row.darts || 0) || 0,
+    avg3D: Number(row.avg3D || 0) || 0,
+    avg1D: (Number(row.avg3D || 0) || 0) / 3,
+    bestVisit: Number(row.bestVisit || 0) || 0,
+    bestCheckout: Number(row.bestCheckout || 0) || null,
+    hitsS: Number(row.hitsS || 0) || 0,
+    hitsD: Number(row.hitsD || 0) || 0,
+    hitsT: Number(row.hitsT || 0) || 0,
+    miss: Number(row.miss || 0) || 0,
+    bull: Number(row.bull25 || 0) || 0,
+    dBull: Number(row.bull50 || 0) || 0,
+    bust: Number(row.bust || 0) || 0,
+    isWin: !!row.isWin,
+    legsWon: Number(row.legsWon || 0) || 0,
+    setsWon: Number(row.setsWon || 0) || 0,
+    finishes: Number(row.coSuccess || (row.bestCheckout > 0 ? 1 : 0)) || 0,
+    x01StartScore: row.startScore ?? null,
+    x01Variant: row.variant ?? "unknown",
+    x01OutMode: row.outMode ?? "unknown",
+  }), [playerName]);
+
   const [sessions, setSessions] = React.useState<X01MultiSession[]>(
-    () => readX01MultiSessionsCacheSync(effectiveProfileId)?.sessions || []
+    () => listCanonicalX01Sessions(effectiveProfileId, playerName).map((row) => ({
+      id: String(row.id || `${row.matchId}:${row.profileId}`), matchId: String(row.matchId || row.id || ""), date: Number(row.date || 0) || 0,
+      selectedPlayerId: String(row.playerId || row.profileId || ""), playerName: String(row.playerName || playerName || "Joueur"), profileId: String(row.profileId || row.playerId || ""),
+      darts: Number(row.darts || 0) || 0, avg3D: Number(row.avg3D || 0) || 0, avg1D: (Number(row.avg3D || 0) || 0) / 3,
+      bestVisit: Number(row.bestVisit || 0) || 0, bestCheckout: Number(row.bestCheckout || 0) || null, hitsS: Number(row.hitsS || 0) || 0, hitsD: Number(row.hitsD || 0) || 0, hitsT: Number(row.hitsT || 0) || 0,
+      miss: Number(row.miss || 0) || 0, bull: Number(row.bull25 || 0) || 0, dBull: Number(row.bull50 || 0) || 0, bust: Number(row.bust || 0) || 0, isWin: !!row.isWin,
+      legsWon: Number(row.legsWon || 0) || 0, setsWon: Number(row.setsWon || 0) || 0, finishes: Number(row.coSuccess || (row.bestCheckout > 0 ? 1 : 0)) || 0,
+      x01StartScore: row.startScore ?? null, x01Variant: row.variant ?? "unknown", x01OutMode: row.outMode ?? "unknown",
+    } as X01MultiSession))
   );
   const loadedProfileKeyRef = React.useRef(String(effectiveProfileId || ""));
   const [historyVersion, setHistoryVersion] = React.useState(0);
@@ -2904,109 +2952,22 @@ export default function X01MultiStatsTabFull({
     };
   }, []);
 
-  // Chargement des matchs (une fois + quand l’ID effectif change + après suppression historique)
-  const recordsLoadKey = React.useMemo(() => {
-    const rows = Array.isArray(records) ? records : [];
-    if (!rows.length) return "0";
-    const first: any = rows[0] || {};
-    const last: any = rows[rows.length - 1] || {};
-    const firstId = String(first?.matchId ?? first?.id ?? "");
-    const lastId = String(last?.matchId ?? last?.id ?? "");
-    const lastTs = Number(last?.createdAt ?? last?.date ?? last?.timestamp ?? 0) || 0;
-    return `${rows.length}:${firstId}:${lastId}:${lastTs}`;
-  }, [records]);
-
+  // V130 — X01Multi ne lit PLUS History/IndexedDB.
+  // Une projection compacte est mise à jour à la fin de chaque partie X01.
+  // Le rendu est donc synchrone, stable et identique sur mobile/desktop.
   React.useEffect(() => {
-    let cancelled = false;
-    let timer: number | null = null;
-    let rafA = 0;
-    let rafB = 0;
-    const instant = readX01MultiSessionsCacheSync(effectiveProfileId);
-    const profileKey = String(effectiveProfileId || "");
-    const profileChanged = loadedProfileKeyRef.current !== profileKey;
-    loadedProfileKeyRef.current = profileKey;
-    // IMPORTANT : un re-render du même profil ne doit jamais effacer une vue
-    // déjà hydratée. En revanche un vrai changement de profil repart bien de
-    // son cache propre (ou vide) pour ne pas afficher les stats du précédent.
-    if (profileChanged) {
-      setSessions(instant?.sessions?.length ? instant.sessions : []);
-    } else if (instant?.sessions?.length) {
-      setSessions((prev) => prev.length >= instant.sessions.length ? prev : instant.sessions);
-    }
-
-    const refresh = async () => {
-      // FAST PATH : StatsHub a déjà chargé l'historique du profil. On l'affiche
-      // immédiatement au lieu d'attendre le scan autonome History.get() de tous les X01.
-      let canonicalRows: X01MultiSession[] = [];
-      if (effectiveProfileId && Array.isArray(records) && records.length) {
-        try {
-          const samples = buildX01SamplesForProfileFromRecords(
-            records,
-            { id: effectiveProfileId, profileId: effectiveProfileId, name: playerName || undefined },
-            { scope: "all" }
-          );
-          canonicalRows = x01SessionsFromSamples(samples, effectiveProfileId, playerName);
-          if (!cancelled && canonicalRows.length) {
-            React.startTransition(() => setSessions((prev) => {
-              // Monotone while the same profile is mounted: transient parent records
-              // must never make X01 stats disappear. Merge by row identity instead.
-              const merged = new Map<string, X01MultiSession>();
-              for (const row of prev) merged.set(String(row.id || `${row.matchId}:${row.selectedPlayerId}`), row);
-              for (const row of canonicalRows) merged.set(String(row.id || `${row.matchId}:${row.selectedPlayerId}`), row);
-              return Array.from(merged.values()).sort((a, b) => a.date - b.date);
-            }));
-          }
-        } catch (e) {
-          console.warn("[X01MultiStatsTabFull] StatsHub canonical fast path failed", e);
-        }
-      }
-
-      // MOBILE / APP : les records déjà fournis par StatsHub sont la source de rendu.
-      // Ne JAMAIS lancer ici un second scan History.get() en parallèle : sur téléphone
-      // cela saturait IndexedDB + le thread JS et provoquait freeze/clignotement.
-      if (isConstrainedX01MultiDevice() && canonicalRows.length) {
-        return;
-      }
-
-      // DESKTOP / fallback sans records : complète avec le lecteur historique dédié.
-      let data = await loadX01MultiSessions(effectiveProfileId, playerName);
-      if (canonicalRows.length) {
-        const merged = new Map<string, X01MultiSession>();
-        for (const row of canonicalRows) merged.set(String(row.matchId || row.id), row);
-        for (const row of Array.isArray(data) ? data : []) merged.set(String(row.matchId || row.id), row);
-        data = Array.from(merged.values()).sort((a, b) => a.date - b.date);
-      }
-
-      if (!cancelled) {
-        React.startTransition(() => {
-          setSessions((prev) => {
-            const next = Array.isArray(data) && data.length ? data : canonicalRows;
-            // Un refresh incomplet/échoué n'a plus le droit d'écraser des stats
-            // déjà visibles par un tableau vide.
-            return next.length ? next : prev;
-          });
-        });
-      }
+    const refreshCanonical = () => {
+      const next = listCanonicalX01Sessions(effectiveProfileId, playerName).map(canonicalToMulti);
+      setSessions(next);
     };
-
-    // Si un snapshot synchrone existe, le premier paint ne doit pas concurrencer
-    // le scan IndexedDB. Sans snapshot, on démarre après deux frames, sans page
-    // bloquée ni calcul dans le rendu React.
-    if (instant?.sessions?.length) {
-      timer = window.setTimeout(() => void refresh(), isConstrainedX01MultiDevice() ? 1200 : 300);
-    } else {
-      rafA = window.requestAnimationFrame(() => {
-        rafB = window.requestAnimationFrame(() => void refresh());
-      });
-    }
-
+    refreshCanonical();
+    window.addEventListener("dc-x01-canonical-updated", refreshCanonical as EventListener);
+    window.addEventListener("dc-storage-restored", refreshCanonical as EventListener);
     return () => {
-      cancelled = true;
-      if (timer != null) window.clearTimeout(timer);
-      if (rafA) window.cancelAnimationFrame(rafA);
-      if (rafB) window.cancelAnimationFrame(rafB);
+      window.removeEventListener("dc-x01-canonical-updated", refreshCanonical as EventListener);
+      window.removeEventListener("dc-storage-restored", refreshCanonical as EventListener);
     };
-  }, [effectiveProfileId, playerName, historyVersion, recordsLoadKey]);
+  }, [effectiveProfileId, playerName, canonicalToMulti]);
 
   // Auto-défilement métriques
   React.useEffect(() => {
@@ -3054,27 +3015,11 @@ export default function X01MultiStatsTabFull({
   const sessionLifetimeLevelMatches = levelProfileSessions.length;
   const sessionCurrentLevelMatches = currentLevelSessions.length;
 
-  // Prefer the same canonical full-history aggregator as Home / StatsHub / Profiles.
-  // Session rows remain a fallback for older/partial runtime sources.
-  let lifetimeLevelAvg3D = sessionLifetimeLevelAvg3D;
-  let currentLevelAvg3D = sessionCurrentLevelAvg3D;
-  let lifetimeLevelMatches = sessionLifetimeLevelMatches;
-  let currentLevelMatches = sessionCurrentLevelMatches;
-  try {
-    if (effectiveProfileId && Array.isArray(records) && records.length) {
-      const levelRecords = (records as any[]).filter((row: any) => { const ctx = getX01StatsContext(row); return ctx.startScore === 501 && ctx.outMode === "double"; });
-      const levelAgg = computeX01MultiAgg(levelRecords as any[], effectiveProfileId, playerName || undefined);
-      const level = computeX01LevelSnapshot(levelAgg, 10);
-      if (level.lifetimeMatches > 0) {
-        lifetimeLevelAvg3D = level.lifetimeAvg3D;
-        currentLevelAvg3D = level.currentAvg3D;
-        lifetimeLevelMatches = level.lifetimeMatches;
-        currentLevelMatches = level.currentMatches;
-      }
-    }
-  } catch {
-    // Keep the session-derived values above.
-  }
+  const canonicalProfileStats = computeCanonicalX01ProfileStats(effectiveProfileId, playerName);
+  const lifetimeLevelAvg3D = canonicalProfileStats.lifetime501DOAvg3D || sessionLifetimeLevelAvg3D;
+  const currentLevelAvg3D = canonicalProfileStats.current501DOAvg3D || sessionCurrentLevelAvg3D;
+  const lifetimeLevelMatches = canonicalProfileStats.reference501DOMatches || sessionLifetimeLevelMatches;
+  const currentLevelMatches = canonicalProfileStats.current501DOMatches || sessionCurrentLevelMatches;
 
   // V129 — DEUX PÉRIMÈTRES STRICTEMENT SÉPARÉS.
   // 1) lifetime = TOUS les X01 du joueur : alimente les totaux, victoires,
@@ -4525,8 +4470,41 @@ return (
         </div>
       </div>
 
+      <div style={{ ...card, padding: 8, marginTop: 2 }}>
+        <div style={{ fontSize: 10, fontWeight: 1000, color: T.gold, textAlign: "center", marginBottom: 7 }}>
+          VUES X01 PAR TYPE DE SORTIE
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 6 }}>
+          {[
+            { key: "501do", label: "501 DO", sub: "Niveau", active: scoreFilter === 501 && outFilter === "double", apply: () => { setScoreFilter(501); setOutFilter("double"); } },
+            { key: "so", label: "SO", sub: "Simple Out", active: outFilter === "simple", apply: () => { setScoreFilter("all"); setOutFilter("simple"); } },
+            { key: "do", label: "DO", sub: "Tous DO", active: scoreFilter === "all" && outFilter === "double", apply: () => { setScoreFilter("all"); setOutFilter("double"); } },
+            { key: "mo", label: "MO", sub: "Master Out", active: outFilter === "master", apply: () => { setScoreFilter("all"); setOutFilter("master"); } },
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={tab.apply}
+              style={{
+                border: tab.active ? "1px solid rgba(246,194,86,.88)" : "1px solid rgba(255,255,255,.12)",
+                background: tab.active ? "linear-gradient(180deg, rgba(246,194,86,.20), rgba(246,194,86,.07))" : "rgba(255,255,255,.025)",
+                color: tab.active ? "#ffe49b" : "rgba(255,255,255,.72)",
+                borderRadius: 12,
+                padding: "9px 6px 8px",
+                minWidth: 0,
+                cursor: "pointer",
+                boxShadow: tab.active ? "0 0 16px rgba(246,194,86,.14)" : "none",
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 1000, lineHeight: 1 }}>{tab.label}</div>
+              <div style={{ marginTop: 4, fontSize: 8, fontWeight: 800, opacity: .72, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{tab.sub}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div style={{ fontSize: 10, color: T.text70, textAlign: "center", marginTop: -4, padding: "0 8px" }}>
-        Les stats principales suivent la configuration choisie. Par défaut : 501 DO. La période pilote les courbes et l’historique ; les étoiles utilisent uniquement les parties 501 Double Out.
+        501 DO est la seule référence de niveau. SO, DO et MO disposent de leurs propres statistiques et ne modifient jamais le ProfileStarring.
       </div>
 
       {/* V129 — deux niveaux explicites : lifetime complet + indicateur actuel last-10. */}
@@ -4555,7 +4533,7 @@ return (
             {lifetimeLevelAvg3D > 0 ? lifetimeLevelAvg3D.toFixed(2) : "—"}
           </div>
           <div style={{ fontSize: 10, opacity: .72, marginTop: 2 }}>
-            AVG3D globale · {lifetimeLevelMatches} {levelLabels.matches} au total
+            AVG3D 501 DO · {lifetimeLevelMatches} matchs de référence
           </div>
         </div>
 
@@ -4575,8 +4553,30 @@ return (
             {currentLevelAvg3D > 0 ? currentLevelAvg3D.toFixed(2) : "—"}
           </div>
           <div style={{ fontSize: 10, opacity: .72, marginTop: 2 }}>
-            AVG3D actuel · calcul sur {currentLevelMatches} {levelLabels.latest}
+            AVG3D actuel 501 DO · {currentLevelMatches}/10 derniers matchs
           </div>
+        </div>
+      </div>
+
+      {/* V130 — les autres configurations ne contaminent jamais le niveau 501 DO. */}
+      <div style={{ ...card, padding: 10 }}>
+        <div style={{ ...goldNeon, fontSize: 11, marginBottom: 8 }}>AVG3D / FINISH PAR TYPE DE SORTIE</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+          {([
+            ["simple", "SO · Simple Out"],
+            ["double", "DO · Double Out"],
+            ["master", "MO · Master Out"],
+          ] as const).map(([mode, label]) => {
+            const row = canonicalProfileStats.byOut[mode];
+            return (
+              <div key={mode} style={{ border: "1px solid rgba(246,194,86,.22)", borderRadius: 12, padding: 9, background: "rgba(255,255,255,.025)" }}>
+                <div style={{ fontSize: 9, fontWeight: 900, color: T.gold }}>{label}</div>
+                <div style={{ marginTop: 5, fontSize: 15, fontWeight: 1000 }}>{row.avg3D > 0 ? row.avg3D.toFixed(2) : "—"} <span style={{ fontSize: 8, opacity: .65 }}>AVG3D</span></div>
+                <div style={{ marginTop: 3, fontSize: 11, fontWeight: 900, color: "#9ee7ff" }}>{row.avgFinish > 0 ? row.avgFinish.toFixed(1) : "—"} <span style={{ fontSize: 8, opacity: .65 }}>AVG FINISH</span></div>
+                <div style={{ marginTop: 3, fontSize: 8, opacity: .62 }}>{row.matches} matchs · {row.finishes} finishes</div>
+              </div>
+            );
+          })}
         </div>
       </div>
 

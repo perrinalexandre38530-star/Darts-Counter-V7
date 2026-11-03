@@ -26,6 +26,7 @@ import X01LegOverlayV3 from "../lib/x01v3/x01LegOverlayV3";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { History } from "../lib/history";
+import { upsertCanonicalX01Record } from "../lib/x01CanonicalProjection";
 import { useVoiceScoreInput } from "../hooks/useVoiceScoreInput";
 import { sanitizeScoreInputMethod } from "../lib/scoreInput/types";
 
@@ -4188,6 +4189,8 @@ function saveX01V3MatchToHistory({
       startScore: config.startScore,
       legsPerSet: config.legsPerSet ?? null,
       setsToWin: config.setsToWin ?? null,
+      inMode: (config as any).inMode ?? (config as any).entryMode ?? null,
+      outMode: (config as any).outMode ?? (config as any).finishMode ?? null,
     },
 
     rankings,
@@ -4305,6 +4308,7 @@ function saveX01V3MatchToHistory({
       avatarDataUrl: p.avatarDataUrl,
       dartSetId: p.dartSetId ?? null,
       dartPresetId: p.dartPresetId ?? null,
+      profileId: p.profileId ?? p.id ?? null,
     })),
     winnerId,
     summary,
@@ -4349,7 +4353,11 @@ function saveX01V3MatchToHistory({
     // 🔥 met à jour dc-quick-stats (games, darts, avg3, bestVisit, bestCheckout, wins)
     StatsBridge.commitLegAndAccumulate?.(null, quickLegacy);
 
-    // 2) 🟢 Sauvegarde "lourde" dans l'historique (IndexedDB + fallback LS)
+    // 2) Projection canonique X01 légère : écrite AVANT l'historique lourd.
+    // Toutes les pages Stats/Home/Profils consomment cette projection sans rescanner IndexedDB.
+    upsertCanonicalX01Record(record);
+
+    // 3) 🟢 Sauvegarde "lourde" dans l'historique (IndexedDB + fallback LS)
     History.upsert(record);
   } catch (err) {
     console.warn(
