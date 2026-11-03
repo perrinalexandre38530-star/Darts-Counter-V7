@@ -4351,6 +4351,9 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     try {
       const st = String((safe as any)?.status || "").toLowerCase();
       if (st !== "in_progress") {
+        void import('./x01CanonicalIndexStoreV2').then(({ scheduleCanonicalX01IndexRebuildV2 }) => {
+          scheduleCanonicalX01IndexRebuildV2('finished-history-upsert');
+        }).catch(() => {});
         void scheduleStatsIndexRefresh({
           includeNonFinished: true,
           persist: true,
@@ -4799,6 +4802,9 @@ export async function remove(id: string): Promise<void> {
 
     // Canonical History V4 is non-destructive: deletions are durable tombstones.
     await tombstoneCanonicalHistoryV4(idsToDelete, "user_delete").catch(() => {});
+    void import('./x01CanonicalIndexStoreV2').then(({ scheduleCanonicalX01IndexRebuildV2 }) => {
+      scheduleCanonicalX01IndexRebuildV2('history-remove');
+    }).catch(() => {});
 
     invalidateHistoryListReadCache();
 

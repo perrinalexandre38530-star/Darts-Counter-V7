@@ -635,6 +635,13 @@ export async function importHistoryV4Snapshot(
     await txDone(tx);
   }
 
+  // V121: restore may replace the entire History set. Invalidate derived X01 stats
+  // only after all History V4 writes have committed; never delay the restore.
+  if (imported || tombstoneRows.length || options?.replace) {
+    void import('./x01CanonicalIndexStoreV2').then(({ scheduleCanonicalX01IndexRebuildV2 }) => {
+      scheduleCanonicalX01IndexRebuildV2('history-v4-snapshot-import');
+    }).catch(() => {});
+  }
   return { imported, tombstoned: tombstoneRows.length };
 }
 

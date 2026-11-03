@@ -292,6 +292,11 @@ export async function importRecoveredHistoryRows(rows: AnyRecord[]): Promise<Rec
     }
   }
 
+  if (imported > 0) {
+    void import('./x01CanonicalIndexStoreV2').then(({ scheduleCanonicalX01IndexRebuildV2 }) => {
+      scheduleCanonicalX01IndexRebuildV2('recovered-history-import');
+    }).catch(() => {});
+  }
   return {
     ok: imported > 0,
     imported,

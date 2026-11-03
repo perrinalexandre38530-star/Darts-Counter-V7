@@ -689,8 +689,10 @@ function getAllEntryPlayers(e: SavedEntry): any[] {
     anyE.players,
     anyE.summary?.players,
     anyE.summary?.rankings,
+    anyE.summary?.ranking,
     anyE.summary?.result?.players,
     anyE.summary?.result?.rankings,
+    anyE.summary?.result?.ranking,
     anyE.payload?.players,
     anyE.payload?.config?.players,
     anyE.payload?.state?.players,
@@ -1165,7 +1167,7 @@ function summarizeX01SetsLegsScore(e: SavedEntry): string {
   const anyE: any = e;
   const data: any = anyE.summary || anyE.payload?.summary || anyE.resume?.summary || {};
   const result = data.result || {};
-  const rankings = data.rankings || result.rankings || anyE.payload?.summary?.rankings || anyE.resume?.summary?.rankings || [];
+  const rankings = data.rankings || data.ranking || result.rankings || result.ranking || anyE.payload?.summary?.rankings || anyE.payload?.summary?.ranking || anyE.resume?.summary?.rankings || anyE.resume?.summary?.ranking || [];
   if (!Array.isArray(rankings) || !rankings.length) return "";
 
   const looseMap = (map: any, r: any) => {
@@ -1251,32 +1253,46 @@ function getHistoryDataBundle(e: SavedEntry): { data: any; result: any; anyE: an
 function historyAllPlayerRows(e: SavedEntry): any[] {
   const { data, result, anyE } = getHistoryDataBundle(e);
   const pools = [
-    anyE.players,
-    anyE.summary?.players,
-    anyE.summary?.result?.players,
-    anyE.payload?.summary?.players,
-    anyE.payload?.summary?.perPlayer,
-    anyE.payload?.summary?.rankings,
-    anyE.payload?.summary?.ranking,
-    anyE.payload?.config?.players,
-    anyE.payload?.players,
-    anyE.payload?.state?.players,
-    anyE.decoded?.players,
-    anyE.decoded?.config?.players,
-    data.players,
-    data.perPlayer,
-    data.rankings,
-    data.ranking,
-    result.players,
-    result.rankings,
+    anyE.players, anyE.summary?.players, anyE.summary?.result?.players,
+    anyE.payload?.summary?.players, anyE.payload?.summary?.perPlayer,
+    anyE.payload?.summary?.rankings, anyE.payload?.summary?.ranking,
+    anyE.payload?.config?.players, anyE.payload?.players,
+    anyE.payload?.state?.players, anyE.decoded?.players,
+    anyE.decoded?.config?.players, data.players, data.perPlayer,
+    data.rankings, data.ranking, result.players, result.rankings, result.ranking,
   ];
-  const out: any[] = [];
-  const seen = new Set<string>();
+  // The stored match participant list is the authority. Runtime aliases
+  // in perPlayer / detailedByPlayer are not additional participants.
+  const authority = Array.isArray(anyE.players) && anyE.players.length
+    ? anyE.players.filter((p: any) => p && (historyRowKey(p) || historyRowName(p)))
+    : [];
+  const out: any[] = authority.length ? [...authority] : [];
+  const seen = new Set(out.map((p: any) => historyRowKey(p)).filter(Boolean));
+  const nameCounts = new Map<string, number>();
+  for (const p of authority) {
+    const n = historyRowName(p).toLowerCase();
+    if (n) nameCounts.set(n, (nameCounts.get(n) || 0) + 1);
+  }
   for (const pool of pools) {
     if (!Array.isArray(pool)) continue;
     for (const p of pool) {
-      const key = historyRowKey(p) || historyRowName(p);
-      if (!key || seen.has(key)) continue;
+      const key = historyRowKey(p);
+      const name = historyRowName(p).toLowerCase();
+      if (!key) continue;
+      if (authority.length) {
+        // No matches based solely on a non-unique nickname.
+        const belongs = authority.some((a: any) => {
+          const ids = [a?.id, a?.playerId, a?.profileId, a?.sideId].filter(Boolean);
+          const pids = [p?.id, p?.playerId, p?.profileId, p?.sideId].filter(Boolean);
+          return ids.some((id: any) => pids.some((pid: any) => looseHistoryIdMatch(id, pid)));
+        }) || (name && nameCounts.get(name) === 1);
+        if (!belongs) continue;
+      }
+      if (seen.has(key)) continue;
+      // A legacy usr_ alias must not create another row alongside a
+      // uniquely identified historical participant.
+      if (authority.length && name && nameCounts.get(name) === 1 &&
+          authority.some((a: any) => historyRowName(a).toLowerCase() === name)) continue;
       seen.add(key);
       out.push(p);
     }
@@ -1313,14 +1329,28 @@ function x01RemainingForRow(e: SavedEntry, r: any): any {
 function x01FinalSortedRows(e: SavedEntry): any[] {
   const { data, result, anyE } = getHistoryDataBundle(e);
   const explicit = historyRankingRows(e);
-  let rows = explicit.length ? explicit : [];
-  if (!rows.length) {
+  const roster = Array.isArray(anyE.players) && anyE.players.length ? anyE.players : [];
+  const validRows = roster.length ? explicit.filter((r: any) => roster.some((p: any) =>
+    looseHistoryIdMatch(p?.id, r?.id || r?.playerId || r?.profileId || r?.pid) ||
+    (historyRowName(p) && historyRowName(p).toLowerCase() === historyRowName(r).toLowerCase())
+  )) : explicit;
+  let rows = validRows.length ? validRows : [];
+  // Keep every originally registered participant, even when a legacy
+  // ranking only serialized the podium. Do not manufacture a rank or score.
+  if (roster.length && rows.length) {
+    const ranked = rows;
+    rows = [...ranked, ...roster.filter((p: any) => !ranked.some((r: any) =>
+      looseHistoryIdMatch(p?.id, r?.id || r?.playerId || r?.profileId || r?.pid) ||
+      (historyRowName(p) && historyRowName(p).toLowerCase() === historyRowName(r).toLowerCase())
+    ))];
+  }
+  if (!rows.length && !roster.length) {
     const detailed = data.detailedByPlayer || anyE.payload?.summary?.detailedByPlayer || result.detailedByPlayer;
     if (detailed && typeof detailed === "object") {
       rows = Object.entries(detailed).map(([id, v]: [string, any]) => ({ ...(typeof v === "object" ? v : {}), id, playerId: (v as any)?.playerId || id }));
     }
   }
-  if (!rows.length) rows = historyAllPlayerRows(e);
+  if (!rows.length) rows = roster.length ? roster : historyAllPlayerRows(e);
 
   const full = historyAllPlayerRows(e);
   const byId = new Map<string, any>();
@@ -1346,15 +1376,16 @@ function x01FinalSortedRows(e: SavedEntry): any[] {
     const i = orderArr.findIndex((x: any) => String(x) === id);
     return i >= 0 ? i : 9999;
   };
-  const hasExplicitRank = merged.some((r: any) => Number.isFinite(Number(r?.rank ?? r?.finalRank ?? r?.placement ?? r?.place ?? r?.position)));
+  const hasExplicitRank = merged.some((r: any) => (r?.rank ?? r?.finalRank ?? r?.placement ?? r?.place ?? r?.position) != null && Number.isFinite(Number(r?.rank ?? r?.finalRank ?? r?.placement ?? r?.place ?? r?.position)));
   return merged
     .map((r: any, idx: number) => {
       const remRaw = x01RemainingForRow(e, r);
       const remNum = Number(cleanScore(remRaw));
       const id = historyRowKey(r);
       const nm = historyRowName(r).toLowerCase();
-      const explicitRank = Number(r?.rank ?? r?.finalRank ?? r?.placement ?? r?.place ?? r?.position);
-      const isWinner = (winnerId && id === winnerId) || (winnerName && nm === winnerName) || r?.win === true || r?.winner === true || remNum === 0;
+      const rankRaw = r?.rank ?? r?.finalRank ?? r?.placement ?? r?.place ?? r?.position;
+      const explicitRank = rankRaw == null ? NaN : Number(rankRaw);
+      const isWinner = Boolean((winnerId && id === winnerId) || (winnerName && nm === winnerName) || r?.win === true || r?.winner === true || (cleanScore(remRaw) != null && remNum === 0));
       return { r, idx, remNum: Number.isFinite(remNum) ? remNum : 999999, explicitRank: Number.isFinite(explicitRank) ? explicitRank : null, isWinner };
     })
     .sort((a: any, b: any) => {
@@ -1362,14 +1393,14 @@ function x01FinalSortedRows(e: SavedEntry): any[] {
       if (a.isWinner !== b.isWinner) return a.isWinner ? -1 : 1;
       return a.remNum - b.remNum || orderIdx(a.r) - orderIdx(b.r) || a.idx - b.idx;
     })
-    .map((x: any, i: number) => ({ ...x.r, rank: i + 1, finalRank: x.r?.finalRank ?? i + 1, remaining: x.r?.remaining ?? x.r?.remainingScore ?? x.r?.finalScore ?? x.remNum }));
+    .map((x: any, i: number) => ({ ...x.r, rank: i + 1, finalRank: x.r?.finalRank ?? i + 1, remaining: x.r?.remaining ?? x.r?.remainingScore ?? x.r?.finalScore ?? (x.remNum === 999999 ? undefined : x.remNum) }));
 }
 
 function historyRankingRows(e: SavedEntry): any[] {
   const anyE: any = e;
   const data: any = anyE.summary || anyE.payload?.summary || anyE.resume?.summary || {};
   const result = data.result || {};
-  const rankings = data.rankings || result.rankings || result.players || data.players || result.standings || anyE.payload?.rankings || [];
+  const rankings = data.rankings || data.ranking || result.rankings || result.ranking || result.players || data.players || result.standings || anyE.payload?.rankings || [];
   return Array.isArray(rankings) ? rankings : [];
 }
 
@@ -1466,7 +1497,7 @@ function historyScoreName(e: SavedEntry, r: any): string {
   return cleanName(r?.name || r?.playerName || r?.displayName || r?.nickname || r?.label) || historyPlayerNameById(e, r?.id || r?.playerId || r?.profileId || r?.pid) || "Joueur";
 }
 
-function historyScoreNumber(raw: any, fallback = "0"): string {
+function historyScoreNumber(raw: any, fallback = "—"): string {
   const s = cleanScore(raw);
   return s == null ? fallback : s;
 }
@@ -1479,12 +1510,12 @@ function x01HistoryScorePlayers(e: SavedEntry): HistoryScorePlayer[] {
 
   return rows.map((r: any, idx: number) => {
     const remainingRaw = x01RemainingForRow(e, r);
-    const remaining = historyScoreNumber(remainingRaw, "0");
+    const remaining = historyScoreNumber(remainingRaw, "—");
     const isWinner = Number(cleanScore(remainingRaw)) === 0 || r?.win === true || r?.winner === true || Number(r?.rank ?? r?.finalRank ?? idx + 1) === 1;
     const setsRaw = r?.setsWon ?? r?.sw ?? r?.sets ?? r?.setsScore ?? historyLooseMapValue(setsMap, r);
     const legsRaw = r?.legsWon ?? r?.lw ?? r?.legs ?? r?.legsScore ?? historyLooseMapValue(legsMap, r);
-    const sets = historyScoreNumber(setsRaw, isWinner ? "1" : "0");
-    const legs = historyScoreNumber(legsRaw, "0");
+    const sets = historyScoreNumber(setsRaw, "—");
+    const legs = historyScoreNumber(legsRaw, "—");
     return {
       name: historyScoreName(e, r),
       main: sets,
@@ -1902,7 +1933,7 @@ function genericHistoryRankScorePlayers(e: SavedEntry): HistoryScorePlayer[] {
     const rawScore = r?.livesTaken ?? r?.kills ?? r?.score ?? r?.points ?? r?.total ?? r?.number ?? r?.finalScore;
     return {
       name: historyScoreName(e, r),
-      main: historyScoreNumber(rawScore, "0"),
+      main: historyScoreNumber(rawScore, "—"),
       rank: Number(r?.rank ?? r?.finalRank ?? r?.placement ?? r?.place ?? r?.position ?? idx + 1) || idx + 1,
     };
   }).filter((x: any) => x.name);
