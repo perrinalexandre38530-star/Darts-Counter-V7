@@ -8,6 +8,8 @@ import {
   type X01StartScoreKey,
   type X01VariantKey,
   type X01VictoryModeKey,
+  type X01InModeKey,
+  type X01OutModeKey,
   type X01StatsContextFilter,
 } from "./x01StatsContext";
 
@@ -54,6 +56,8 @@ export type X01PlayerSample = {
   x01StartScore?: X01StartScoreKey | null;
   x01Variant?: X01VariantKey;
   matchVictoryMode?: X01VictoryModeKey;
+  x01InMode?: X01InModeKey;
+  x01OutMode?: X01OutModeKey;
   matchFormat?: any;
 };
 
@@ -91,6 +95,8 @@ export type X01Agg = {
   x01StartScore?: X01StartScoreKey | null;
   x01Variant?: X01VariantKey;
   matchVictoryMode?: X01VictoryModeKey;
+  x01InMode?: X01InModeKey;
+  x01OutMode?: X01OutModeKey;
   matchFormat?: any;
 };
 
@@ -554,6 +560,8 @@ export function sampleFromRec(rec: any, profile: any): X01PlayerSample | null {
     x01StartScore: x01Ctx.startScore,
     x01Variant: x01Ctx.variant,
     matchVictoryMode: x01Ctx.victoryMode,
+    x01InMode: x01Ctx.inMode,
+    x01OutMode: x01Ctx.outMode,
     matchFormat: x01Ctx.matchFormat,
     isTeam: x01Ctx.variant === "team",
   };
@@ -625,7 +633,22 @@ async function yieldX01StatsWork(): Promise<void> {
   });
 }
 
+let __allHistoryRecordsCache: { at: number; rows: any[] } | null = null;
+let __allHistoryRecordsPromise: Promise<any[]> | null = null;
+
+export function invalidateX01HistoryRecordsCache(): void {
+  __allHistoryRecordsCache = null;
+  __allHistoryRecordsPromise = null;
+}
+
+try {
+  if (typeof window !== "undefined") window.addEventListener("dc-history-updated", invalidateX01HistoryRecordsCache as EventListener);
+} catch {}
+
 export async function loadAllHistoryRecords(): Promise<any[]> {
+  if (__allHistoryRecordsCache && Date.now() - __allHistoryRecordsCache.at < 15000) return __allHistoryRecordsCache.rows;
+  if (__allHistoryRecordsPromise) return __allHistoryRecordsPromise;
+  __allHistoryRecordsPromise = (async () => {
   // SOURCE UNIQUE DE VÉRITÉ STATS : uniquement History. La modification ci-dessous
   // change seulement l'ordonnancement des lectures IndexedDB, jamais les données.
   const byId = new Map<string, any>();
@@ -666,7 +689,12 @@ export async function loadAllHistoryRecords(): Promise<any[]> {
     }
   } catch {}
 
-  return Array.from(byId.values());
+  const result = Array.from(byId.values());
+  __allHistoryRecordsCache = { at: Date.now(), rows: result };
+  return result;
+  })();
+  try { return await __allHistoryRecordsPromise; }
+  finally { __allHistoryRecordsPromise = null; }
 }
 
 export function buildX01SamplesForProfileFromRecords(
@@ -686,6 +714,8 @@ export function buildX01SamplesForProfileFromRecords(
       startScore: smp.x01StartScore ?? null,
       variant: smp.x01Variant ?? "unknown",
       victoryMode: smp.matchVictoryMode ?? "best_of",
+      inMode: smp.x01InMode ?? "unknown",
+      outMode: smp.x01OutMode ?? "unknown",
     }, opts)) continue;
     out.push(smp);
   }

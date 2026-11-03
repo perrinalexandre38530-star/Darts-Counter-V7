@@ -7,11 +7,15 @@
 export type X01StartScoreKey = 301 | 501 | 701 | 901;
 export type X01VariantKey = "solo" | "duo" | "multi" | "team" | "training" | "unknown";
 export type X01VictoryModeKey = "best_of" | "first_to";
+export type X01InModeKey = "simple" | "double" | "master" | "unknown";
+export type X01OutModeKey = "simple" | "double" | "master" | "unknown";
 
 export type X01StatsContext = {
   startScore: X01StartScoreKey | null;
   variant: X01VariantKey;
   victoryMode: X01VictoryModeKey;
+  inMode: X01InModeKey;
+  outMode: X01OutModeKey;
   matchFormat?: {
     type: X01VictoryModeKey;
     target: number | null;
@@ -23,6 +27,8 @@ export type X01StatsContextFilter = {
   startScore?: X01StartScoreKey | "all" | null;
   variant?: X01VariantKey | "all" | null;
   victoryMode?: X01VictoryModeKey | "all" | null;
+  inMode?: X01InModeKey | "all" | null;
+  outMode?: X01OutModeKey | "all" | null;
 };
 
 const START_SCORES: X01StartScoreKey[] = [301, 501, 701, 901];
@@ -134,6 +140,28 @@ export function getX01Variant(root: any): X01VariantKey {
   return "unknown";
 }
 
+
+function normalizeX01RuleMode(raw: any): X01InModeKey | X01OutModeKey {
+  const v = norm(raw);
+  if (!v) return "unknown";
+  if (v.includes("master") || v === "mo" || v === "mi") return "master";
+  if (v.includes("double") || v === "do" || v === "di") return "double";
+  if (v.includes("simple") || v.includes("single") || v.includes("straight") || v === "so" || v === "si") return "simple";
+  return "unknown";
+}
+
+export function getX01InMode(root: any): X01InModeKey {
+  return normalizeX01RuleMode(firstValue(root, ["inMode", "in_mode", "x01InMode", "entryMode", "startMode"])) as X01InModeKey;
+}
+
+export function getX01OutMode(root: any): X01OutModeKey {
+  const explicit = normalizeX01RuleMode(firstValue(root, ["outMode", "out_mode", "x01OutMode", "finishMode", "checkoutMode"]));
+  if (explicit !== "unknown") return explicit as X01OutModeKey;
+  const doubleOut = firstValue(root, ["doubleOut", "double_out"]);
+  if (doubleOut === true || String(doubleOut).toLowerCase() === "true") return "double";
+  return "unknown";
+}
+
 export function getX01VictoryMode(root: any): X01VictoryModeKey {
   for (const obj of walkObjects(root, 6)) {
     const mf: any = obj?.matchFormat || obj?.victoryFormat || obj?.x01MatchFormat;
@@ -179,6 +207,8 @@ export function getX01StatsContext(root: any): X01StatsContext {
     startScore: getX01StartScore(root),
     variant: getX01Variant(root),
     victoryMode: getX01VictoryMode(root),
+    inMode: getX01InMode(root),
+    outMode: getX01OutMode(root),
     matchFormat: getX01MatchFormat(root),
   };
 }
@@ -193,6 +223,8 @@ export function x01ContextMatchesFilter(rootOrContext: any, filter?: X01StatsCon
   if (filter.startScore && filter.startScore !== "all" && ctx.startScore !== filter.startScore) return false;
   if (filter.variant && filter.variant !== "all" && ctx.variant !== filter.variant) return false;
   if (filter.victoryMode && filter.victoryMode !== "all" && ctx.victoryMode !== filter.victoryMode) return false;
+  if (filter.inMode && filter.inMode !== "all" && ctx.inMode !== filter.inMode) return false;
+  if (filter.outMode && filter.outMode !== "all" && ctx.outMode !== filter.outMode) return false;
   return true;
 }
 

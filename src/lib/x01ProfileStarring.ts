@@ -4,6 +4,7 @@ import { History } from "./history";
 import { loadNormalizedHistory } from "./statsNormalized";
 import { buildDashboardFromNormalized } from "./statsUnifiedAgg";
 import { computeX01LevelSnapshot, computeX01MultiAgg } from "./x01MultiAgg";
+import { getX01StatsContext } from "./x01StatsContext";
 import { getAccountLocalStorageItem, setAccountLocalStorageItem } from "./accountScope";
 
 export type X01ProfileStarData = { kind: "avg3d"; value: number } | { kind: "level"; value: number };
@@ -242,7 +243,8 @@ async function computeStatsLikeProfilesPage(profileId: string, profile?: any): P
   try {
     const rows = await getFullHistoryRowsOnce();
     if (rows.length) {
-      let agg: any = computeX01MultiAgg(rows as any, id, name || "Joueur");
+      const starringRows = (rows as any[]).filter((row: any) => { const ctx = getX01StatsContext(row); return ctx.startScore === 501 && ctx.outMode === "double"; });
+      let agg: any = computeX01MultiAgg(starringRows as any, id, name || "Joueur");
       if ((Number(agg?.sessions || 0) <= 0) && name) {
         const target = x01StarringNormText(name);
         let candidateId = "";
@@ -253,7 +255,7 @@ async function computeStatsLikeProfilesPage(profileId: string, profile?: any): P
           if (found?.id) { candidateId = String(found.id); break; }
         }
         if (candidateId) {
-          const alt = computeX01MultiAgg(rows as any, candidateId, name || "Joueur");
+          const alt = computeX01MultiAgg(starringRows as any, candidateId, name || "Joueur");
           if (Number(alt?.sessions || 0) > Number(agg?.sessions || 0)) agg = alt;
         }
       }

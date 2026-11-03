@@ -51,8 +51,8 @@ import type { CricketProfileStats } from "../lib/cricketStats";
 import { buildChallengeStatsProgression } from "../lib/challengeStatsProgression";
 
 // ---- Utils ----
-const STATSHUB_HISTORY_LIGHT_CAP = 300;
-const STATSHUB_HISTORY_HYDRATE_CAP = 120;
+const STATSHUB_HISTORY_LIGHT_CAP = 5000;
+const STATSHUB_HISTORY_HYDRATE_CAP = 900;
 const STATSHUB_STORE_HISTORY_CAP = 200;
 
 function isConstrainedStatsDevice(): boolean {

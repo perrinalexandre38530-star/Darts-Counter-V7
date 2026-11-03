@@ -124,7 +124,7 @@ const training=fs.readFileSync('src/training/modes/challenges/ChallengesPlay.tsx
 const config=fs.readFileSync('src/pages/ChallengeConfig.tsx','utf8');
 const i18n=fs.readFileSync('src/i18n/configUiLiteralRegistry.ts','utf8');
 const statsHub=fs.readFileSync('src/pages/StatsHub.tsx','utf8');
-for(const marker of ['className="D" disabled={done} onClick={addObjectiveDoubleHit}','<span>TOUCHÉ</span>','<b>MISS</b><span>RATÉ</span>','TOUCHÉS','SCORE PHASE','SCORE BONUS','PERFORMANCE PAR CIBLE','DOUBLE FORT','DOUBLE À TRAVAILLER','CHOISIS TON DOUBLE BONUS','BARÈME RÉEL PAR VOLÉE','challengeVisibleHitTypes(cfg)']) {
+for(const marker of ['className="D" disabled={done} onClick={addObjectiveDoubleHit}','<span>TOUCHÉ</span>','<b>MISS</b><span>RATÉ</span>','TOUCHÉS','SCORE PHASE','SCORE BONUS','PERFORMANCE PAR CIBLE','DOUBLE FORT','DOUBLE À TRAVAILLER','CHOISIS TON DOUBLE BONUS','BARÈME RÉEL PAR VOLÉE','doubles-visit-matrix','dvm-row-label','BONUS</b><small>{detailBonusLabel}','finish-row-metrics','exerciseResultMetrics','challengeVisibleHitTypes(cfg)']) {
   assert.ok(arcade.includes(marker),`ChallengePlay missing doubles final marker: ${marker}`);
 }
 for(const marker of ['DoublesObjectivePad','ANNULER LA DERNIÈRE FLÉCHETTE','perDoubleAttempts','regularPoints','bonusHits','doublesBreakdown','CHOISIS TON DOUBLE','setBonusDouble(target)','summaryCards=']) {

@@ -17,7 +17,7 @@ import TrainingRadar from "../components/TrainingRadar";
 import GoldPill from "../components/GoldPill";
 import { History } from "../lib/history";
 import { buildX01SamplesForProfileFromRecords, loadX01SamplesForProfile } from "../lib/x01StatsSource";
-import { getX01StatsContext, type X01StartScoreKey, type X01VariantKey } from "../lib/x01StatsContext";
+import { getX01StatsContext, type X01StartScoreKey, type X01VariantKey, type X01OutModeKey } from "../lib/x01StatsContext";
 import type { Dart as UIDart } from "../lib/types";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { idbGet, idbSet } from "../lib/indexedDb";
@@ -159,6 +159,7 @@ const card: React.CSSProperties = {
 type TimeRange = "all" | "day" | "week" | "month" | "year";
 type X01ScoreFilterKey = "all" | X01StartScoreKey;
 type X01VariantFilterKey = "all" | Extract<X01VariantKey, "duo" | "multi" | "team">;
+type X01OutFilterKey = "all" | Extract<X01OutModeKey, "simple" | "double" | "master">;
 
 /**
  * Ligne de stats = 1 joueur sur 1 match X01
@@ -216,18 +217,19 @@ export type X01MultiSession = {
   x01StartScore?: X01StartScoreKey | null;
   x01Variant?: X01VariantKey;
   matchVictoryMode?: "best_of" | "first_to";
+  x01OutMode?: X01OutModeKey;
 };
 
 
-const X01_MULTI_CACHE_VERSION = 5;
-const X01_MULTI_CACHE_PREFIX = "dc_x01_multi_sessions_v5:";
-const X01_MULTI_QUICK_CACHE_PREFIX = "dc_x01_multi_quick_v5:";
+const X01_MULTI_CACHE_VERSION = 6;
+const X01_MULTI_CACHE_PREFIX = "dc_x01_multi_sessions_v6:";
+const X01_MULTI_QUICK_CACHE_PREFIX = "dc_x01_multi_quick_v6:";
 const X01_MULTI_CACHE_MAX_SYNC_CHARS = 1_250_000;
 const X01_MULTI_QUICK_MAX_SYNC_CHARS = 360_000;
 const __x01MultiMemoryCache = new Map<string, X01MultiSessionsCache>();
 
 type X01MultiSessionsCache = {
-  version: 5;
+  version: 6;
   profileId: string;
   fingerprint: string;
   updatedAt: number;
@@ -292,6 +294,7 @@ function decodeX01QuickRow(row: any[]): X01MultiSession {
     finalScore: row?.[31] == null ? null : Number(row[31]),
     remaining: row?.[32] == null ? null : Number(row[32]),
     avatarDataUrl: null,
+    x01OutMode: row?.[33] ?? "unknown",
   } as X01MultiSession;
 }
 
@@ -308,6 +311,7 @@ function encodeX01QuickRow(row: any): any[] {
     Number(row?.setsWon || 0) || 0, Number(row?.finishes || 0) || 0, row?.isTeam ? 1 : 0,
     row?.rank == null ? null : Number(row.rank || 0) || null, row?.scoreLabel == null ? null : String(row.scoreLabel),
     row?.scoreUnit ?? null, row?.finalScore == null ? null : Number(row.finalScore), row?.remaining == null ? null : Number(row.remaining),
+    row?.x01OutMode ?? "unknown",
   ];
 }
 
@@ -394,6 +398,7 @@ function compactX01SessionForQuickCache(row: any): X01MultiSession {
     x01StartScore: row?.x01StartScore ?? null,
     x01Variant: row?.x01Variant ?? "unknown",
     matchVictoryMode: row?.matchVictoryMode ?? "best_of",
+    x01OutMode: row?.x01OutMode ?? "unknown",
     darts: Number(row?.darts || 0) || 0,
     avg3D: Number(row?.avg3D || 0) || 0,
     avg1D: Number(row?.avg1D || 0) || 0,
@@ -579,11 +584,13 @@ function filterByRange(
 function filterByX01Context(
   sessions: X01MultiSession[],
   scoreFilter: X01ScoreFilterKey,
-  variantFilter: X01VariantFilterKey
+  variantFilter: X01VariantFilterKey,
+  outFilter: X01OutFilterKey
 ): X01MultiSession[] {
   return sessions.filter((s) => {
     if (scoreFilter !== "all" && s.x01StartScore !== scoreFilter) return false;
     if (variantFilter !== "all" && s.x01Variant !== variantFilter) return false;
+    if (outFilter !== "all" && s.x01OutMode !== outFilter) return false;
     return true;
   });
 }
@@ -2215,6 +2222,7 @@ async function loadX01MultiSessionsInternal(
         x01StartScore: x01Ctx.startScore,
         x01Variant: x01Ctx.variant,
         matchVictoryMode: x01Ctx.victoryMode,
+        x01OutMode: x01Ctx.outMode,
         // 🔥 profileId pour lier aux profils / bots
         // Si une ancienne partie porte encore l'ancien playerId, le nom permet
         // de rattacher uniquement la ligne du joueur au profil actif.
@@ -2590,31 +2598,36 @@ let __memoFilteredInput: X01MultiSession[] | null = null;
 let __memoFilteredRange: TimeRange | null = null;
 let __memoFilteredScore: X01ScoreFilterKey | null = null;
 let __memoFilteredVariant: X01VariantFilterKey | null = null;
+let __memoFilteredOut: X01OutFilterKey | null = null;
 let __memoFilteredValue: X01MultiSession[] = [];
 
 function memoFilteredX01Sessions(
   sessions: X01MultiSession[],
   range: TimeRange,
   scoreFilter: X01ScoreFilterKey,
-  variantFilter: X01VariantFilterKey
+  variantFilter: X01VariantFilterKey,
+  outFilter: X01OutFilterKey
 ): X01MultiSession[] {
   if (
     __memoFilteredInput === sessions &&
     __memoFilteredRange === range &&
     __memoFilteredScore === scoreFilter &&
-    __memoFilteredVariant === variantFilter
+    __memoFilteredVariant === variantFilter &&
+    __memoFilteredOut === outFilter
   ) {
     return __memoFilteredValue;
   }
   const value = filterByX01Context(
     filterByRange(sessions, range),
     scoreFilter,
-    variantFilter
+    variantFilter,
+    outFilter
   ).sort((a, b) => a.date - b.date);
   __memoFilteredInput = sessions;
   __memoFilteredRange = range;
   __memoFilteredScore = scoreFilter;
   __memoFilteredVariant = variantFilter;
+  __memoFilteredOut = outFilter;
   __memoFilteredValue = value;
   return value;
 }
@@ -2847,8 +2860,9 @@ export default function X01MultiStatsTabFull({
   );
   const [historyVersion, setHistoryVersion] = React.useState(0);
   const [range, setRange] = React.useState<TimeRange>("all");
-  const [scoreFilter, setScoreFilter] = React.useState<X01ScoreFilterKey>("all");
+  const [scoreFilter, setScoreFilter] = React.useState<X01ScoreFilterKey>(501);
   const [variantFilter, setVariantFilter] = React.useState<X01VariantFilterKey>("all");
+  const [outFilter, setOutFilter] = React.useState<X01OutFilterKey>("double");
   const [selected, setSelected] = React.useState<X01MultiSession | null>(null);
 
   const metricKeys: Array<
@@ -2877,7 +2891,7 @@ export default function X01MultiStatsTabFull({
   React.useEffect(() => {
     setTicker(0);
     setPage(1);
-  }, [effectiveProfileId, historyVersion, range, scoreFilter, variantFilter]);
+  }, [effectiveProfileId, historyVersion, range, scoreFilter, variantFilter, outFilter]);
 
   React.useEffect(() => {
     const onHistoryUpdated = () => setHistoryVersion((v) => v + 1);
@@ -2899,12 +2913,9 @@ export default function X01MultiStatsTabFull({
     setSessions(instant?.sessions || []);
 
     const refresh = async () => {
-      let data = await loadX01MultiSessions(effectiveProfileId, playerName);
-
-      // StatsHub possède déjà les payloads History.get(id) du mode X01 courant.
-      // Si le lecteur autonome n'a rien trouvé (ancien header générique / ancien ID),
-      // on reconstruit les sessions depuis CETTE MÊME source canonique. Cela évite
-      // qu'un onglet affiche 0 alors que le Dashboard et le Comparateur voient les matchs.
+      // FAST PATH : StatsHub a déjà chargé l'historique du profil. On l'affiche
+      // immédiatement au lieu d'attendre le scan autonome History.get() de tous les X01.
+      let canonicalRows: X01MultiSession[] = [];
       if (effectiveProfileId && Array.isArray(records) && records.length) {
         try {
           const samples = buildX01SamplesForProfileFromRecords(
@@ -2912,21 +2923,26 @@ export default function X01MultiStatsTabFull({
             { id: effectiveProfileId, profileId: effectiveProfileId, name: playerName || undefined },
             { scope: "all" }
           );
-          const canonicalRows = x01SessionsFromSamples(samples, effectiveProfileId, playerName);
-          if (canonicalRows.length) {
-            const merged = new Map<string, X01MultiSession>();
-            for (const row of canonicalRows) merged.set(String(row.matchId || row.id), row);
-            // Les lignes du lecteur X01 dédié sont plus riches : elles remplacent
-            // le fallback quand les deux parlent du même match.
-            for (const row of Array.isArray(data) ? data : []) merged.set(String(row.matchId || row.id), row);
-            data = Array.from(merged.values()).sort((a, b) => a.date - b.date);
+          canonicalRows = x01SessionsFromSamples(samples, effectiveProfileId, playerName);
+          if (!cancelled && canonicalRows.length) {
+            React.startTransition(() => setSessions(canonicalRows.slice().sort((a, b) => a.date - b.date)));
           }
         } catch (e) {
-          console.warn("[X01MultiStatsTabFull] StatsHub canonical fallback failed", e);
+          console.warn("[X01MultiStatsTabFull] StatsHub canonical fast path failed", e);
         }
       }
 
-      if (!cancelled) React.startTransition(() => setSessions(Array.isArray(data) ? data : []));
+      // FULL PATH : complète ensuite avec le lecteur X01 dédié (anciens formats, maps
+      // détaillées, segments). Cette passe ne bloque plus le premier affichage.
+      let data = await loadX01MultiSessions(effectiveProfileId, playerName);
+      if (canonicalRows.length) {
+        const merged = new Map<string, X01MultiSession>();
+        for (const row of canonicalRows) merged.set(String(row.matchId || row.id), row);
+        for (const row of Array.isArray(data) ? data : []) merged.set(String(row.matchId || row.id), row);
+        data = Array.from(merged.values()).sort((a, b) => a.date - b.date);
+      }
+
+      if (!cancelled) React.startTransition(() => setSessions(Array.isArray(data) ? data : canonicalRows));
     };
 
     // Si un snapshot synchrone existe, le premier paint ne doit pas concurrencer
@@ -2979,7 +2995,8 @@ export default function X01MultiStatsTabFull({
     : sessions.filter((session: any) =>
         x01SessionBelongsToProfile(session, effectiveProfileId, playerName)
       )
-  ).slice().sort((a, b) => Number(a?.date || 0) - Number(b?.date || 0));
+  ).filter((session: any) => session?.x01StartScore === 501 && session?.x01OutMode === "double")
+   .slice().sort((a, b) => Number(a?.date || 0) - Number(b?.date || 0));
 
   const currentLevelSessions = levelProfileSessions.slice(-10);
   const avg3Of = (rows: X01MultiSession[]) => {
@@ -3001,7 +3018,8 @@ export default function X01MultiStatsTabFull({
   let currentLevelMatches = sessionCurrentLevelMatches;
   try {
     if (effectiveProfileId && Array.isArray(records) && records.length) {
-      const levelAgg = computeX01MultiAgg(records as any[], effectiveProfileId, playerName || undefined);
+      const levelRecords = (records as any[]).filter((row: any) => { const ctx = getX01StatsContext(row); return ctx.startScore === 501 && ctx.outMode === "double"; });
+      const levelAgg = computeX01MultiAgg(levelRecords as any[], effectiveProfileId, playerName || undefined);
       const level = computeX01LevelSnapshot(levelAgg, 10);
       if (level.lifetimeMatches > 0) {
         lifetimeLevelAvg3D = level.lifetimeAvg3D;
@@ -3025,12 +3043,14 @@ export default function X01MultiStatsTabFull({
     x01SessionBelongsToProfile(session, effectiveProfileId, playerName)
   );
 
-  const filtered = memoFilteredX01Sessions(sessions, range, scoreFilter, variantFilter);
+  const filtered = memoFilteredX01Sessions(sessions, range, scoreFilter, variantFilter, outFilter);
   const selectedSessions = memoSelectedX01Sessions(filtered, effectiveProfileId, range, playerName);
   const analysisSessions = selectedSessions;
 
-  // Toutes les statistiques principales restent lifetime, quels que soient les filtres.
-  const statsSessions = lifetimeProfileSessions;
+  // Les KPI principaux suivent désormais la CONFIGURATION sélectionnée, sur toute la durée.
+  // Référence par défaut : le grand classique 501 Double Out. La période ne limite que
+  // les courbes/historique afin de garder des KPI de configuration stables.
+  const statsSessions = filterByX01Context(lifetimeProfileSessions, scoreFilter, variantFilter, outFilter);
   const x01DartsAll: UIDart[] = buildX01DartsForStats(statsSessions);
   const x01DartsAnalysis: UIDart[] = buildX01DartsForStats(analysisSessions);
 
@@ -4410,6 +4430,27 @@ return (
           ))}
         </div>
 
+        <div style={{ fontSize: 10, fontWeight: 900, color: T.gold, textAlign: "center", marginTop: 5 }}>
+          501 DO = RÉFÉRENCE NIVEAU · AUTRES PARTIES PAR SORTIE
+        </div>
+        <div
+          style={{
+            display: "flex", flexDirection: "row", justifyContent: "center", gap: 6, flexWrap: "wrap",
+            transform: "scale(0.92)", transformOrigin: "center", marginTop: 4,
+          }}
+        >
+          {([
+            ["simple", "SO · Simple Out"],
+            ["double", "DO · Double Out"],
+            ["master", "MO · Master Out"],
+            ["all", "Toutes sorties"],
+          ] as [X01OutFilterKey, string][]).map(([key, label]) => (
+            <GoldPill key={`out-${key}`} active={outFilter === key} onClick={() => setOutFilter(key)} style={{ padding: "4px 10px", fontSize: 10, minWidth: "unset", whiteSpace: "nowrap" }}>
+              {label}
+            </GoldPill>
+          ))}
+        </div>
+
         <div
           style={{
             display: "flex",
@@ -4441,7 +4482,7 @@ return (
       </div>
 
       <div style={{ fontSize: 10, color: T.text70, textAlign: "center", marginTop: -4, padding: "0 8px" }}>
-        Les filtres ci-dessus pilotent les courbes et l’historique. Les totaux, victoires, records et l’AVG3D globale restent calculés sur tout l’historique X01.
+        Les stats principales suivent la configuration choisie. Par défaut : 501 DO. La période pilote les courbes et l’historique ; les étoiles utilisent uniquement les parties 501 Double Out.
       </div>
 
       {/* V129 — deux niveaux explicites : lifetime complet + indicateur actuel last-10. */}
