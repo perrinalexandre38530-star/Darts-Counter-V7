@@ -30,6 +30,7 @@ import {
 import tickerHalveIt from "../assets/tickers/ticker_halve_it.png";
 import tickerSplitScoreFr from "../assets/tickers/ticker_split_score_fr.webp";
 import tickerSplitScoreEn from "../assets/tickers/ticker_split_score_en.webp";
+import { readDartsMatchDraft, writeDartsMatchDraft, clearDartsMatchDraft } from "../lib/dartsMatchDrafts";
 import { useLang } from "../contexts/LangContext";
 import targetBg from "../assets/target_bg.png";
 
@@ -60,6 +61,7 @@ function normalizeConfig(props: any): HalveItConfigPayload {
   const startMode = raw?.startMode === "fixed" || raw?.startMode === "opening_visit" ? raw.startMode : "zero";
   return {
     variantId: raw?.variantId === "split_score" ? "split_score" : undefined,
+    sessionId: typeof raw?.sessionId === "string" ? raw.sessionId : undefined,
     mode: "halve_it",
     participantMode: raw?.participantMode === "teams" ? "teams" : "players",
     players: Math.max(1, Number(raw?.players || raw?.selectedIds?.length || 1)),
@@ -175,17 +177,34 @@ export default function HalveItPlay(props: any) {
     rounding: config.rounding,
   }), [config]);
 
-  const initialState = React.useMemo(() => createHalveItState(profiles as any, rules, teamConfigs, config.selectedIds), []);
+  const draftMode = isSplitScore ? "split_score" : "halve_it";
+  const restored = React.useMemo(() => {
+    if (props?.params?.resumeDraft !== true) return null;
+    const draft = readDartsMatchDraft(draftMode);
+    const snap: any = draft?.snapshot;
+    const s: any = snap?.state;
+    if (!s || draft?.config?.sessionId !== config.sessionId || !Array.isArray(s.players)
+      || !Array.isArray(s.targets) || !Array.isArray(s.turnOrder) || !s.turnOrder.length
+      || s.players.length !== profiles.length || s.players.some((p: any) => !profiles.some((q: any) => q.id === p.id))
+      || s.targets.length < 1 || s.targets.length > 20 || !Number.isInteger(s.roundIndex)
+      || s.roundIndex < 0 || s.roundIndex >= s.targets.length || !Number.isInteger(s.activePlayerIndex)
+      || s.activePlayerIndex < 0 || s.activePlayerIndex >= s.turnOrder.length
+      || !s.scoresByPlayer || !s.statsByPlayer || !Array.isArray(s.history) || s.finished
+      || !Array.isArray(snap.throwDarts) || snap.throwDarts.length > 3) return null;
+    return snap;
+  }, []);
+  const initialState = React.useMemo(() => restored?.state || createHalveItState(profiles as any, rules, teamConfigs, config.selectedIds), []);
   const [state, setState] = React.useState<HalveItState>(initialState);
-  const [undoStack, setUndoStack] = React.useState<HalveItState[]>([]);
-  const [throwDarts, setThrowDarts] = React.useState<UiDart[]>([]);
-  const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
+  const [undoStack, setUndoStack] = React.useState<HalveItState[]>(() =>
+    restored?.lastUndo && Array.isArray(restored.lastUndo.history) ? [restored.lastUndo] : []);
+  const [throwDarts, setThrowDarts] = React.useState<UiDart[]>(restored?.throwDarts || []);
+  const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(restored?.multiplier === 2 || restored?.multiplier === 3 ? restored.multiplier : 1);
   const [showEnd, setShowEnd] = React.useState(false);
   const [showTable, setShowTable] = React.useState(false);
   const [showStats, setShowStats] = React.useState(false);
   const [botThinking, setBotThinking] = React.useState(false);
   const [notice, setNotice] = React.useState("");
-  const matchIdRef = React.useRef(`halveit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  const matchIdRef = React.useRef(String(restored?.matchId || config.sessionId || `halveit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
   const autoSavedRef = React.useRef("");
   const lastBackRef = React.useRef(0);
 
@@ -316,6 +335,14 @@ export default function HalveItPlay(props: any) {
     autoSavedRef.current = matchIdRef.current;
     try { onFinish?.(buildHistoryRecord(), { navigate: false }); } catch {}
   }, [state.finished]);
+
+  React.useEffect(() => {
+    if (state.finished) { clearDartsMatchDraft(draftMode); return; }
+    if (!state.history.length && !throwDarts.length) return;
+    writeDartsMatchDraft(draftMode, config as any, {
+      state, throwDarts, multiplier, lastUndo: undoStack.at(-1) || null, matchId: matchIdRef.current,
+    });
+  }, [draftMode, config, state, throwDarts, multiplier, undoStack]);
 
   const previewScores = throwDarts.map((d) => halveItTargetScore(target, toGameDart(d)));
   const currentHitCount = previewScores.filter((n) => n > 0).length;

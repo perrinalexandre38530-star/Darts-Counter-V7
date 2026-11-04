@@ -21,6 +21,7 @@ import deadListIcon from "../assets/icons/dead-list.png";
 import tickerFiveLives from "../assets/tickers/ticker_five_lives.png";
 import tickerChaseFr from "../assets/tickers/ticker_chase_fr.webp";
 import tickerChaseEn from "../assets/tickers/ticker_chase_en.webp";
+import { readDartsMatchDraft, writeDartsMatchDraft, clearDartsMatchDraft } from "../lib/dartsMatchDrafts";
 import type { FiveLivesConfig, FiveLivesPlayerLite } from "./FiveLivesConfig";
 
 const tickerFiveLives2: any = (() => {
@@ -46,7 +47,8 @@ type Props = {
   store: any;
   go: (tab: any, params?: any) => void;
   config: FiveLivesConfig;
-  onFinish?: (m: any) => void;
+  resumeDraft?: boolean;
+  onFinish?: (m: any, options?: { navigate?: boolean }) => void;
 };
 type FiveLivesStats = {
   visits: number;
@@ -848,7 +850,7 @@ function InfoOverlay({
   );
 }
 
-export default function FiveLivesPlay({ go, config, onFinish }: Props) {
+export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinish }: Props) {
   useFullscreenPlay();
   const { theme } = useTheme();
   const { t, lang } = useLang();
@@ -859,9 +861,22 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
   const modeLabel = isChase ? "CHASE" : "Les 5 vies";
   const headerTicker = isChase ? (String(lang).toLowerCase() === "fr" ? tickerChaseFr : tickerChaseEn) : tickerFiveLives;
   const allowEqualScore = isChase || config?.allowEqualScore === true;
-  const startedAtRef = React.useRef(Number(config?.createdAt) || Date.now());
+  const modeDraftId = isChase ? "chase" : "five_lives";
+  const restored = React.useMemo(() => {
+    if (!resumeDraft) return null;
+    const record = readDartsMatchDraft(modeDraftId);
+    const s: any = record?.snapshot;
+    if (!s || record?.config?.id !== config?.id || !Array.isArray(s.players) || !Array.isArray(s.events)
+      || s.players.length !== (config?.players || []).length || s.players.some((p: any) =>
+        !config.players.some((cp) => cp.id === p.id) || !Number.isFinite(p.lives) || !p.stats)
+      || !Number.isInteger(s.turnIndex) || s.turnIndex < 0 || !Array.isArray(s.chaseRoundQueue)
+      || (s.lastScoreToBeat !== null && !Number.isFinite(s.lastScoreToBeat))
+      || !Array.isArray(s.currentThrow) || s.currentThrow.length > 3) return null;
+    return s;
+  }, []);
+  const startedAtRef = React.useRef(Number(restored?.startedAt || config?.createdAt) || Date.now());
   const savedRef = React.useRef(false);
-  const [players, setPlayers] = React.useState<PlayerState[]>(() =>
+  const [players, setPlayers] = React.useState<PlayerState[]>(() => restored?.players ||
     (config?.players || []).map((p) => ({
       ...p,
       lives: startingLives,
@@ -869,16 +884,16 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
       stats: emptyStats(),
     })),
   );
-  const [turnIndex, setTurnIndex] = React.useState(0),
-    [mult, setMult] = React.useState<1 | 2 | 3>(1);
+  const [turnIndex, setTurnIndex] = React.useState(restored?.turnIndex || 0),
+    [mult, setMult] = React.useState<1 | 2 | 3>(restored?.mult === 2 || restored?.mult === 3 ? restored.mult : 1);
   // CHASE : un ordre réattribué à chaque cycle complet ; aucun joueur ne rejoue
   // avant que tous les survivants aient eu leur volée de trois fléchettes.
   const [chaseRoundQueue, setChaseRoundQueue] = React.useState<string[]>(() =>
-    (config?.players || []).map((player) => player.id),
+    restored?.chaseRoundQueue || (config?.players || []).map((player) => player.id),
   );
-  const [currentThrow, setCurrentThrow] = React.useState<Dart[]>([]),
-    [lastScoreToBeat, setLastScoreToBeat] = React.useState<number | null>(null);
-  const [events, setEvents] = React.useState<VisitEvent[]>([]),
+  const [currentThrow, setCurrentThrow] = React.useState<Dart[]>(restored?.currentThrow || []),
+    [lastScoreToBeat, setLastScoreToBeat] = React.useState<number | null>(restored?.lastScoreToBeat ?? null);
+  const [events, setEvents] = React.useState<VisitEvent[]>(restored?.events || []),
     [winnerId, setWinnerId] = React.useState<string | null>(null);
   const [endOpen, setEndOpen] = React.useState(false),
     [finalMatch, setFinalMatch] = React.useState<any>(null);
@@ -1281,12 +1296,39 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isBotTurn, activePlayer?.id, activePlayer?.botLevel, winnerId, endOpen, events.length, lastScoreToBeat]);
 
-  function finishAndSave() {
+  // Écriture automatique de la partie finie : l'utilisateur ne doit pas perdre
+  // son historique s'il ferme l'application avant de cliquer sur HISTORIQUE.
+  React.useEffect(() => {
     if (!finalMatch || savedRef.current) return;
     savedRef.current = true;
+    try { onFinish?.(finalMatch, { navigate: false }); } catch {}
+  }, [finalMatch]);
+  // Une fermeture pendant l'animation d'un BOT CHASE/5 VIES peut laisser
+  // sa volée révélée mais non validée. Reprendre la validation au remontage.
+  React.useEffect(() => {
+    if (!resumeDraft || !restored || !isBotTurn || winnerId || restored.currentThrow?.length !== 3) return;
+    const timer = window.setTimeout(() => applyTurn(restored.currentThrow, undefined, "keypad"), 650);
+    return () => window.clearTimeout(timer);
+  }, []);
+  function finishAndSave() {
+    if (!finalMatch) return;
     setEndOpen(false);
-    onFinish?.(finalMatch);
+    if (!savedRef.current) {
+      savedRef.current = true;
+      onFinish?.(finalMatch);
+    } else {
+      go("statsHub", { tab: "history" });
+    }
   }
+  React.useEffect(() => {
+    if (winnerId || finalMatch) { clearDartsMatchDraft(modeDraftId); return; }
+    if (!events.length && !currentThrow.length) return;
+    writeDartsMatchDraft(modeDraftId, config as any, {
+      players, turnIndex, chaseRoundQueue, lastScoreToBeat, currentThrow, mult, events,
+      startedAt: startedAtRef.current,
+    });
+  }, [modeDraftId, config, players, turnIndex, chaseRoundQueue, lastScoreToBeat, currentThrow, mult, events, winnerId, finalMatch]);
+
   const liveAvg = activePlayer?.stats?.visits
     ? activePlayer.stats.totalScore / activePlayer.stats.visits
     : 0;
@@ -2192,7 +2234,7 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
                     boxShadow: `0 12px 28px ${accent}33`,
                   }}
                 >
-                  SAUVEGARDER & HISTORIQUE
+                  VOIR HISTORIQUE
                 </button>
               </div>
             </div>

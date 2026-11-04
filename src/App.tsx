@@ -6661,7 +6661,7 @@ case "babyfoot_team_edit":
           );
           break;
         }
-        page = <FiveLivesPlay store={store} go={go} config={cfg} onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "five_lives", routeParams))} />;
+        page = <FiveLivesPlay key={String(cfg?.id || "five-lives")} store={store} go={go} config={cfg} resumeDraft={routeParams?.resumeDraft === true} onFinish={(m: any, options?: { navigate?: boolean }) => pushHistory(enrichOnlineMatchForHistory(m, "five_lives", routeParams), options)} />;
         break;
       }
 
@@ -7035,6 +7035,7 @@ case "babyfoot_team_edit":
       case "halve_it_play":
         page = (
           <HalveItPlay
+            key={String(routeParams?.sessionId || (routeParams?.variantId === "split_score" ? "split-score" : "halve-it"))}
             store={store}
             go={go}
             setTab={go}

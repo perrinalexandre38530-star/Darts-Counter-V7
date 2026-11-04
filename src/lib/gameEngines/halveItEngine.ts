@@ -41,6 +41,7 @@ export type HalveItTeamConfig = {
 export type HalveItConfigPayload = {
   mode: "halve_it";
   variantId?: "split_score";
+  sessionId?: string;
   participantMode: HalveItParticipantMode;
   players: number;
   selectedIds: string[];

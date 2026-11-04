@@ -17,6 +17,7 @@ import tickerTarget from "../../assets/tickers/ticker_tossit_target.webp";
 import tickerBattle from "../../assets/tickers/ticker_tossit_battle.webp";
 import tickerSniper from "../../assets/tickers/ticker_tossit_sniper.webp";
 import tickerConquest from "../../assets/tickers/ticker_tossit_conquest.webp";
+import menuDecor from "../../assets/tossit/tossit_menu_decor.webp";
 
 const ART: Record<TossitMode | "games", string> = { games: tickerMenu, classic: tickerClassic, speed: tickerSpeed, target: tickerTarget, duel: tickerMenu, border: tickerTarget, tictac: tickerTarget, battle: tickerBattle, sniper: tickerSniper, conquest: tickerConquest };
 const ACCENT = "#48E7CF";
@@ -76,6 +77,11 @@ const panel: React.CSSProperties = { padding: 15, background: "rgba(18,30,39,.88
 const button: React.CSSProperties = { color: "#07151B", background: ACCENT, border: "none", borderRadius: 10, fontWeight: 900, padding: "12px 16px", cursor: "pointer", minHeight: 44 };
 const secondary: React.CSSProperties = { ...button, color: "#E1FDF5", background: "rgba(83,111,118,.3)", border: "1px solid rgba(145,231,213,.26)" };
 const input: React.CSSProperties = { minHeight: 43, borderRadius: 10, border: "1px solid #547C7B", background: "#0F2026", color: "#FFF", padding: "10px 12px", width: "100%", boxSizing: "border-box" };
+function MenuDecorCard() {
+  return <section aria-hidden="true" style={{ ...panel, padding: 0, overflow: "hidden", background: "linear-gradient(180deg, rgba(255,224,55,.08), rgba(14,24,29,.92))" }}>
+    <img src={menuDecor} alt="" style={{ display: "block", width: "100%", height: "auto", objectFit: "cover" }} />
+  </section>;
+}
 function ScoreCards({ state }: { state: TossitState }) {
   return <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(126px,1fr))", gap: 8, margin: "12px 0" }}>
     {state.players.map((p, index) => <div key={p.id} style={{ ...panel, border: state.winnerId === p.id ? `2px solid ${ACCENT}` : ["target", "duel", "tictac"].includes(state.mode) && index === state.nextPlayerIndex && !state.finished ? `2px solid ${ACCENT}` : "1px solid #45606B", textAlign: "center", margin: 0 }}>
@@ -95,6 +101,7 @@ export function TossitMenu({ go }: { go: (route: any, params?: any) => void }) {
     </section>}
     <h2 style={{ margin: "16px 0 5px" }}>{tr("TOSSIT • MODES DE JEU", "TOSSIT • GAME MODES")}</h2>
     <p style={{ opacity: .76 }}>{tr("Les premières variantes sont jouables avec saisie manuelle du résultat des lancers.", "The first modes are playable with manual throw scoring.")}</p>
+    <MenuDecorCard />
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12 }}>
     {TOSSIT_MODES.map((mode) => <button key={mode.id} type="button" style={{ ...panel, textAlign: "left", color: "white", cursor: "pointer", padding: 0, overflow: "hidden" }} onClick={() => go("tossit_config", { mode: mode.id })}>
       <img src={ART[mode.id]} alt="" style={{ display: "block", width: "100%", height: 90, objectFit: "cover" }} />
@@ -132,6 +139,7 @@ export function TossitConfig({ go, store, params }: { go: (route: any, params?: 
   });
   return <Layout><Header title={meta.title} mode={mode} onBack={() => go("games")} />
     <div style={panel}><h2 style={{ margin: "0 0 8px" }}>{meta.title}</h2><p>{meta.description}</p><p style={{ fontSize: 13, opacity: .8 }}>{tinfo[mode]}</p></div>
+    <MenuDecorCard />
     <section style={panel}><h3>{tr("Participants", "Players")} ({players.length})</h3>
       {players.map((p, index) => <div key={p.id} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
         <span style={{ minWidth: 22, color: ACCENT }}>{index + 1}</span>
@@ -387,6 +395,7 @@ export function TossitStats({ go }: { go: (route: any, params?: any) => void }) 
   });
   return <Layout><Header title={tr("HISTORIQUE & STATS", "HISTORY & STATS")} mode="games" onBack={() => go("games")} />
     <h2>{tr("Statistiques TOSSIT", "TOSSIT statistics")}</h2><section style={panel}><strong>{tr("Parties enregistrées", "Recorded games")}</strong><div style={{ fontSize: 34, fontWeight: 900, color: ACCENT }}>{matches.length}</div></section>
+    <MenuDecorCard />
     {loading && <p>{tr("Chargement de l'historique…", "Loading history…")}</p>}
     <h3>{tr("Modes joués", "Modes played")}</h3>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 9, marginBottom: 15 }}>

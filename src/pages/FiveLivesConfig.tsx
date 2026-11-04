@@ -25,6 +25,8 @@ import { recordProfileUsageForMode } from "../lib/profileUsage";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
 import DartsModeFamilyBridge from "../components/DartsModeFamilyBridge";
+import DartsResumeDraftCard from "../components/DartsResumeDraftCard";
+import { clearDartsMatchDraft } from "../lib/dartsMatchDrafts";
 import {
   SCORE_INPUT_LS_KEY,
   sanitizeScoreInputMethod,
@@ -486,6 +488,7 @@ export default function FiveLivesConfig({ store, go, presetVariantId, onBack, on
       players: finalPlayers,
     };
 
+    clearDartsMatchDraft(chaseActive ? "chase" : "five_lives");
     try { localStorage.setItem(SCORE_INPUT_LS_KEY, scoreInputMethod); } catch {}
 
     try { recordProfileUsageForMode("five_lives", finalPlayers.map((p: any) => p.id)); } catch {}
@@ -565,6 +568,8 @@ export default function FiveLivesConfig({ store, go, presetVariantId, onBack, on
 
       {/* CONTENT */}
       <div className="msc-mode-config-body" style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
+        <DartsResumeDraftCard mode={chaseActive ? "chase" : "five_lives"} accent={primary}
+          onResume={(savedConfig) => go?.("five_lives_play", { config: savedConfig, resumeDraft: true })} />
         {/* JOUEURS */}
         <section
           style={{

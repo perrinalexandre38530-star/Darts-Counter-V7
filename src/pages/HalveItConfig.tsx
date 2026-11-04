@@ -13,6 +13,8 @@ import OptionSelect from "../components/OptionSelect";
 import OptionToggle from "../components/OptionToggle";
 import PageHeader from "../components/PageHeader";
 import DartsModeFamilyBridge from "../components/DartsModeFamilyBridge";
+import DartsResumeDraftCard from "../components/DartsResumeDraftCard";
+import { clearDartsMatchDraft } from "../lib/dartsMatchDrafts";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import Section from "../components/Section";
 import { useTheme } from "../contexts/ThemeContext";
@@ -229,7 +231,7 @@ export default function HalveItConfig(props: any) {
     const orderedProfiles = orderedIds.map((id) => byId.get(String(id))).filter(Boolean);
     const botIds = orderedProfiles.filter(isBotLike).map((profile: any) => String(profile.id));
     const payload: HalveItConfigPayload = {
-      mode: "halve_it", participantMode, players: orderedIds.length, selectedIds: orderedIds,
+      mode: "halve_it", sessionId: `halveit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, participantMode, players: orderedIds.length, selectedIds: orderedIds,
       playersList: orderedProfiles.map((profile: any) => ({ ...profile, id: String(profile.id), name: profile?.name || profile?.displayName || "Joueur", dartSetId: playerDartSets[String(profile.id)] ?? null })),
       teamConfigs: participantMode === "teams" ? activeTeamConfigs.map((team) => ({ ...team, playerIds: [...team.playerIds] })) : undefined,
       playerDartSets, botIds, botsEnabled: botIds.length > 0, botLevel,
@@ -240,6 +242,7 @@ export default function HalveItConfig(props: any) {
       rounding: isSplitScore ? "floor" : rounding,
       randomOrder, scoreInputMethod,
     };
+    clearDartsMatchDraft(isSplitScore ? "split_score" : "halve_it");
     try { recordProfileUsageForMode(isSplitScore ? "split_score" : "halve_it", orderedIds); } catch {}
     if (typeof go === "function") go("halve_it_play", { ...payload, variantId: isSplitScore ? "split_score" : undefined });
   }
@@ -318,6 +321,8 @@ export default function HalveItConfig(props: any) {
 
   return <div style={{ minHeight: "100dvh", width: "100%", maxWidth: "100%", overflowX: "hidden", paddingBottom: 92 }}>
     <PageHeader tickerSrc={headerTicker} tickerAlt={modeLabel} left={<BackDot onClick={backToGames} color={primary} glow={`${primary}88`} title="Retour" />} right={<InfoDot title={`Règles ${modeLabel}`} color={theme?.accent1 || primary} glow={`${theme?.accent1 || primary}77`} content={<RulesContent primary={primary} isSplitScore={isSplitScore} />} />} />
+    <DartsResumeDraftCard mode={isSplitScore ? "split_score" : "halve_it"} accent={primary}
+      onResume={(savedConfig) => go?.("halve_it_play", { ...savedConfig, resumeDraft: true })} />
     <div style={{ padding: "0 8px", width: "100%", boxSizing: "border-box" }}>
       <DartsModeFamilyBridge family="halve_it" current={isSplitScore ? "variant" : "main"} accent={primary}
         onOpenRelated={() => go?.("halve_it_config", isSplitScore ? { launchMode: "arcade" } : { variantId: "split_score", launchMode: "arcade" })}
