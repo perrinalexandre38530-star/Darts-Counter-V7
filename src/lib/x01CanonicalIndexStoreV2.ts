@@ -48,16 +48,21 @@ async function readCanonicalHeadersInPages(): Promise<{ rows: any[]; signature: 
     const request = store.getAll(range, PAGE_SIZE);
     const page = (await getRequest(request)) as any[];
     if (!page.length) break;
-    // Never turn soft-deleted records into statistical observations.
-    const indexStore = tx.objectStore(HISTORY_V4_INDEX);
-    const tombStore = tx.objectStore(HISTORY_V4_TOMBSTONES);
-    const statuses = await Promise.all(page.map(async (row) => {
+    // IMPORTANT IndexedDB: after awaiting getAll(), the original readonly
+    // transaction may already be committed. Queue all status reads in a NEW
+    // transaction, synchronously before the next await. Otherwise builds can
+    // randomly fail with TransactionInactiveError and the UI sees 0 matches.
+    const statusTx = db.transaction([HISTORY_V4_INDEX, HISTORY_V4_TOMBSTONES], 'readonly');
+    const indexStore = statusTx.objectStore(HISTORY_V4_INDEX);
+    const tombStore = statusTx.objectStore(HISTORY_V4_TOMBSTONES);
+    const statuses = await Promise.all(page.map((row) => {
       const id = String(row?.id || '');
-      if (!id) return { row, deleted: true };
-      const [index, tombstone] = await Promise.all([
-        getRequest(indexStore.get(id)), getRequest(tombStore.get(id)),
-      ]);
-      return { row, deleted: !!(index as any)?.deleted || !!tombstone };
+      if (!id) return Promise.resolve({ row, deleted: true });
+      const indexRequest = getRequest(indexStore.get(id));
+      const tombRequest = getRequest(tombStore.get(id));
+      return Promise.all([indexRequest, tombRequest]).then(([index, tombstone]) => ({
+        row, deleted: !!(index as any)?.deleted || !!tombstone,
+      }));
     }));
     for (const { row, deleted } of statuses) {
       const id = String(row?.id || '');

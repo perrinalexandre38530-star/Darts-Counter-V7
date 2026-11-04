@@ -6,6 +6,7 @@ export type AppSportId =
   | "babyfoot"
   | "pingpong"
   | "petanque"
+  | "tossit"
   | "molkky"
   | "dicegame"
   | "esports"
@@ -41,6 +42,7 @@ export const APP_SPORT_CATALOG: readonly AppSportCatalogEntry[] = [
   { id: "babyfoot", label: "BABY-FOOT", accent: "#248BFF", enabled: true },
   { id: "pingpong", label: "PING-PONG", accent: "#FF3FA4", enabled: true },
   { id: "petanque", label: "PÉTANQUE", accent: "#D79A2B", enabled: true },
+  { id: "tossit", label: "TOSSIT SCORING", accent: "#48E7CF", enabled: true },
   { id: "molkky", label: "MÖLKKY", accent: "#F2C98F", enabled: true },
   { id: "dicegame", label: "DICE GAME", accent: "#9C6BFF", enabled: true },
   { id: "esports", label: "E-SPORTS", accent: "#31D6FF", enabled: true },

@@ -22,6 +22,7 @@ import logoDarts from "../assets/games/logo-darts.webp";
 import logoPetanque from "../assets/games/logo-petanque.webp";
 import logoPingPong from "../assets/games/logo-pingpong.webp";
 import logoBabyFoot from "../assets/games/logo-babyfoot.webp";
+import logoTossit from "../assets/games/logo-tossit.webp";
 import logoRunning from "../assets/games/logo-running-performance.webp";
 import logoFitPerf from "../assets/games/logo-fit-performance.webp";
 import logoEsports from "../assets/games/logo-esports.webp";
@@ -76,6 +77,7 @@ type GameId =
   | "petanque"
   | "pingpong"
   | "babyfoot"
+  | "tossit"
   | "running"
   | "fit"
   | "esports"
@@ -122,11 +124,12 @@ const SPORT_SHOWCASE: ReadonlyArray<{ id: ShowcaseSportId; label: string }> = [
   { id: "rugby", label: "Rugby" },
   { id: "running", label: "Running Performance" },
   { id: "tennis", label: "Tennis" },
+  { id: "tossit", label: "TOSSIT SCORING" },
   { id: "volley", label: "Volley" },
 ].sort((a, b) => a.label.localeCompare(b.label, "fr"));
 
-const SPORT_SHOWCASE_TOP = SPORT_SHOWCASE.slice(0, 11);
-const SPORT_SHOWCASE_BOTTOM = SPORT_SHOWCASE.slice(11, 22);
+const SPORT_SHOWCASE_TOP = SPORT_SHOWCASE.slice(0, Math.ceil(SPORT_SHOWCASE.length / 2));
+const SPORT_SHOWCASE_BOTTOM = SPORT_SHOWCASE.slice(Math.ceil(SPORT_SHOWCASE.length / 2));
 
 function SportShowcaseBand({
   sports,
@@ -138,7 +141,7 @@ function SportShowcaseBand({
   theme: any;
 }) {
   return (
-    <div className="msc-game-select-showcase" style={sportShowcaseBandStyle} aria-hidden="true">
+    <div className="msc-game-select-showcase" style={{ ...sportShowcaseBandStyle, gridTemplateColumns: `repeat(${sports.length},minmax(0,1fr))` }} aria-hidden="true">
       {sports.map((sport) => {
         const active = sport.id === activeId;
         const accent = appSportMeta(sport.id as any)?.accent || theme?.accent || theme?.primary || "#ffffff";
@@ -209,6 +212,8 @@ function SportShowcaseIcon({ id }: { id: ShowcaseSportId }) {
       return <ShowcaseMaskedIcon src={showcaseRunningIcon} />;
     case "tennis":
       return <ShowcaseMaskedIcon src={showcaseTennisIcon} />;
+    case "tossit":
+      return svg(<><circle {...p} cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3" fill="currentColor"/><path {...p} d="M3 3l6 6M21 3l-6 6"/></>);
     case "archery":
       return <ShowcaseMaskedIcon src={showcaseArcheryIcon} />;
     case "volley":
@@ -318,6 +323,7 @@ function localizedSportLabel(id: GameId, lang: Lang): string {
     rugby: { fr: "Rugby", en: "Rugby", es: "Rugby" },
     running: { fr: "RUNNING PERF", en: "RUNNING PERF", es: "RUNNING PERF" },
     tennis: { fr: "Tennis", en: "Tennis", es: "Tenis" },
+    tossit: { fr: "TOSSIT Scoring", en: "TOSSIT Scoring", es: "TOSSIT Scoring" },
     volley: { fr: "Volley", en: "Volleyball", es: "Voleibol" },
   };
   const entry = byLang[id];
@@ -445,6 +451,16 @@ export default function GameSelect({ go }: Props) {
       enabled: isAppSportEnabled("babyfoot" as any),
       onClick: () => {
         setSport("babyfoot");
+        go(GAMES_ROUTE);
+      },
+    },
+    {
+      id: "tossit",
+      label: "TOSSIT Scoring",
+      logo: logoTossit,
+      enabled: isAppSportEnabled("tossit"),
+      onClick: () => {
+        setSport("tossit");
         go(GAMES_ROUTE);
       },
     },

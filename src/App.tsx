@@ -290,6 +290,10 @@ const PetanqueMenuGames = React.lazy(() => import("./pages/petanque/PetanqueMenu
 const PetanqueConfig = React.lazy(() => import("./pages/petanque/PetanqueConfig"));
 
 // ✅ NEW: Baby-Foot (LOCAL)
+const TossitMenu = React.lazy(() => import("./pages/tossit/TossitScreens").then((m) => ({ default: m.TossitMenu })));
+const TossitConfig = React.lazy(() => import("./pages/tossit/TossitScreens").then((m) => ({ default: m.TossitConfig })));
+const TossitPlay = React.lazy(() => import("./pages/tossit/TossitScreens").then((m) => ({ default: m.TossitPlay })));
+const TossitStats = React.lazy(() => import("./pages/tossit/TossitScreens").then((m) => ({ default: m.TossitStats })));
 const BabyFootHome = React.lazy(() => import("./pages/babyfoot/BabyFootHome"));
 const BabyFootMenuGames = React.lazy(() => import("./pages/babyfoot/BabyFootMenuGames"));
 const BabyFootConfig = React.lazy(() => import("./pages/babyfoot/BabyFootConfig"));
@@ -376,6 +380,8 @@ const ShooterConfig = React.lazy(() => import("./pages/ShooterConfig"));
 const ShooterPlay = React.lazy(() => import("./pages/ShooterPlay"));
 const DartsRacerConfig = React.lazy(() => import("./pages/DartsRacerConfig"));
 const DartsRacerPlay = React.lazy(() => import("./pages/DartsRacerPlay"));
+const Top10Config = React.lazy(() => import("./pages/Top10Config"));
+const Top10Play = React.lazy(() => import("./pages/Top10Play"));
 const TicTacToeConfig = React.lazy(() => import("./pages/TicTacToeConfig"));
 const TicTacToePlay = React.lazy(() => import("./pages/TicTacToePlay"));
 const KnockoutConfig = React.lazy(() => import("./pages/KnockoutConfig"));
@@ -759,7 +765,7 @@ function safeRouteParamsForCrash(input: any) {
 }
 
 const START_GAME_KEY = "dc-start-game";
-type StartGameId = "darts" | "petanque" | "pingpong" | "babyfoot" | "molkky" | "dicegame" | "foot" | "running" | "fit";
+type StartGameId = "darts" | "petanque" | "pingpong" | "babyfoot" | "molkky" | "dicegame" | "foot" | "running" | "fit" | "tossit";
 
 // =============================================================
 // ✅ SAFE MERGE — profils (évite crash au boot)
@@ -1217,6 +1223,9 @@ type Tab =
   | "petanque_menu"
   | "petanque_config"
   | "petanque_play"
+  | "tossit_config"
+  | "tossit_play"
+  | "tossit_stats"
   // ✅ NEW: Tabs Baby-Foot (LOCAL)
   | "babyfoot_menu"
   | "babyfoot_config"
@@ -1336,6 +1345,8 @@ type Tab =
   | "shooter_play"
   | "darts_racer_config"
   | "darts_racer_play"
+  | "top_10_config"
+  | "top_10_play"
   | "tic_tac_toe_config"
   | "tic_tac_toe_play"
   | "knockout_config"
@@ -5501,7 +5512,9 @@ const unifiedStats = (() => {
       // IMPORTANT: on utilise activeSport (et non uniquement sportContext) pour éviter le bug "Settings -> Fléchettes -> Home Pétanque".
       case "home":
         page =
-          activeSport === "petanque" ? (
+          activeSport === "tossit" ? (
+            <TossitMenu go={go} />
+          ) : activeSport === "petanque" ? (
             <PetanqueHome store={store} update={update} go={go} />
           ) : activeSport === "molkky" ? (
             <MolkkyHome store={store} update={update} go={go} />
@@ -5533,7 +5546,9 @@ const unifiedStats = (() => {
       // ✅ GAMES = sport-aware (runtime-safe)
       case "games":
         page =
-          activeSport === "petanque" ? (
+          activeSport === "tossit" ? (
+            <TossitMenu go={go} />
+          ) : activeSport === "petanque" ? (
             <PetanqueMenuGames go={go} />
           ) : activeSport === "molkky" ? (
             <MolkkyMenuGames go={go} />
@@ -5638,6 +5653,17 @@ const unifiedStats = (() => {
 
       case "viewer_display":
         page = <ViewerDisplay go={go} sessionId={(routeParams as any)?.sessionId} />;
+        break;
+
+      // TOSSIT — sport indépendant et historique canonique (non mélangé avec DARTS).
+      case "tossit_config":
+        page = <TossitConfig go={go} params={routeParams} store={store} />;
+        break;
+      case "tossit_play":
+        page = <TossitPlay go={go} params={routeParams} onFinish={(m: any) => pushHistory(m as any, { navigate: false })} />;
+        break;
+      case "tossit_stats":
+        page = <TossitStats go={go} />;
         break;
 
       // ✅ NEW (OBLIGATOIRE): Pétanque menu/config/play (snake_case)
@@ -5939,7 +5965,9 @@ case "babyfoot_team_edit":
       // Pétanque => PetanqueStatsShell (UI identique StatsShell + ONLINE/TRAINING masqués)
       case "stats":
         page =
-          activeSport === "petanque" ? (
+          activeSport === "tossit" ? (
+            <TossitStats go={go} />
+          ) : activeSport === "petanque" ? (
             <PetanqueStatsShell store={store} go={go} />
           ) : activeSport === "molkky" ? (
             // ✅ IMPORTANT: même structure que DartsCounter (StatsShell -> StatsHub)
@@ -7090,8 +7118,14 @@ case "babyfoot_team_edit":
         );
         break;
 
+      case "top_10_config":
+        page = <Top10Config store={store} setTab={go} params={routeParams} />;
+        break;
+      case "top_10_play":
+        page = <Top10Play setTab={go} params={routeParams} />;
+        break;
       case "tic_tac_toe_config":
-        page = <TicTacToeConfig setTab={go} params={routeParams} />;
+        page = <TicTacToeConfig store={store} setTab={go} params={routeParams} />;
         break;
       case "tic_tac_toe_play":
         page = <TicTacToePlay setTab={go} params={routeParams} />;
@@ -7664,6 +7698,7 @@ case "babyfoot_team_edit":
     "shooter_play",
     "darts_racer_play",
     "loterie_play",
+    "top_10_play",
     "tic_tac_toe_play",
     "knockout_play",
     "bobs_27_play",

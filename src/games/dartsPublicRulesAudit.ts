@@ -1181,6 +1181,16 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
       "MISS"
     ]
   },
+  "top_10": {
+    "status": 'available',
+    "sources": ["src/pages/Top10Config.tsx", "src/pages/Top10Play.tsx"],
+    "options": ["Participants", "10 VOLÉES", "Score cumulé", "Meilleure volée", "Moyenne", "Bots IA", "Ordre de jeu"]
+  },
+  "top_10_training": {
+    "status": 'available',
+    "sources": ["src/pages/Top10Config.tsx", "src/pages/Top10Play.tsx"],
+    "options": ["10 VOLÉES", "Entraînement", "Score cumulé"]
+  },
   "tic_tac_toe": {
     "status": 'available',
     "sources": [

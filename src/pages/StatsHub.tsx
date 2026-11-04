@@ -302,6 +302,7 @@ const StatsShanghaiDashboard = lazyWithRetry(() => import("../components/stats/S
 const StatsX01Compare = lazyWithRetry(() => import("./StatsX01Compare"));
 const StatsDartSetsSection = lazyWithRetry(() => import("../components/StatsDartSetsSection"));
 const X01MultiStatsTabFull = lazyWithRetry(() => import("../stats/X01MultiStatsTabFull"));
+const Top10MorpionStatsTab = React.lazy(() => import("../stats/Top10MorpionStatsTab"));
 const FiveLivesStatsTabFull = React.lazy(
   () => import("../stats/FiveLivesStatsTabFull")
 );
@@ -1431,7 +1432,7 @@ function useHistoryAPI(enabled = true, focusMode?: string | null): SavedMatch[] 
       const arr = toArr<SavedMatch>(list);
 
       // Keep fast: only hydrate records likely used by the dashboard.
-      const NEED = new Set(["x01", "cricket", "killer", "challenge", "super_bull", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "castle", "gotcha", "hare_hounds", "pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase", "cargo", "ocean_control", "football", "prisoner", "loterie", "warfare", "tour", "clock", "battle_royale", "territories", "darts_firefighter", "five_lives", "gros_6", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
+      const NEED = new Set(["x01", "cricket", "killer", "challenge", "super_bull", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "castle", "gotcha", "hare_hounds", "pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase", "cargo", "ocean_control", "football", "prisoner", "loterie", "warfare", "tour", "clock", "battle_royale", "territories", "darts_firefighter", "five_lives", "top_10", "tic_tac_toe", "gros_6", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
       const focusedMode = (() => {
         const key = String(focusMode || "").trim();
         if (key === "x01_multi" || key === "x01_compare") return "x01";
@@ -1773,6 +1774,8 @@ function classifyRecordMode(rec: SavedMatch): string {
   if (tag.includes("loterie")) return "loterie";
   if (tag.includes("warfare")) return "warfare";
   if (tag.includes("gros_6") || tag.includes("gros 6") || tag.includes("gros6") || tag.includes("big_6") || tag.includes("big 6") || tag.includes("big6")) return "gros_6";
+  if (tag.includes("top_10") || tag.includes("top 10") || tag.includes("top10")) return "top_10";
+  if (tag.includes("tic_tac_toe") || tag.includes("morpion") || tag.includes("tic tac toe")) return "tic_tac_toe";
   if (tag.includes("five_lives") || tag.includes("five lives") || tag.includes("5 vies") || tag.includes("cinq vies")) return "five_lives";
   if (tag.includes("clock") || tag.includes("horloge") || tag.includes("tour de")) return "clock";
   if (tag.includes("battle") || tag.includes("royale")) return "battle_royale";
@@ -6157,6 +6160,8 @@ const modeDefs = React.useMemo(
               { key: "battle_royale", label: "Battle Royale" },
               { key: "warfare", label: "Warfare" },
               { key: "five_lives", label: "Les 5 vies" },
+              { key: "top_10", label: "TOP 10" },
+              { key: "tic_tac_toe", label: "MORPION" },
               { key: "gros_6", label: "GROS 6" },
               { key: "scram", label: "SCRAM" },
               { key: "baseball", label: "Baseball" },
@@ -7801,6 +7806,8 @@ const modeThemeColor: Record<string, string> = {
   battle_royale: "#ff455c",
   warfare: "#ff7a2f",
   five_lives: "#ff4fb8",
+  top_10: "#56d8ff",
+  tic_tac_toe: "#ffd166",
   gros_6: "#ff9d25",
   scram: "#42d6ff",
   baseball: "#67d4ff",
@@ -7861,6 +7868,8 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     battle_royale: "Battle Royale",
     warfare: "Warfare",
     five_lives: "Les 5 vies",
+    top_10: "TOP 10",
+    tic_tac_toe: "MORPION",
     gros_6: "GROS 6",
     scram: "SCRAM",
     baseball: "Baseball",
@@ -7893,7 +7902,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     darts_firefighter: "DARTS FIREFIGHTER",
     clock: "Tour de l’horloge",
   };
-  const order = ["x01", "killer", "challenge", "super_bull", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "gros_6", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "castle", "gotcha", "hare_hounds", "pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase", "cargo", "ocean_control", "football", "prisoner", "loterie", "capital", "batard", "territories", "darts_firefighter", "clock"];
+  const order = ["x01", "killer", "challenge", "super_bull", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "top_10", "tic_tac_toe", "gros_6", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "castle", "gotcha", "hare_hounds", "pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase", "cargo", "ocean_control", "football", "prisoner", "loterie", "capital", "batard", "territories", "darts_firefighter", "clock"];
   const n = (v: any, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
   const sumNumericValues = (v: any): number => {
     if (!v || typeof v !== "object") return 0;
@@ -10955,6 +10964,14 @@ return (
               </div>
             )}
 
+
+            {(currentMode === "top_10" || currentMode === "tic_tac_toe") && (
+              <div style={card}>
+                {selectedPlayer ? <React.Suspense fallback={<LazyFallback label="Chargement des statistiques…" />}>
+                  <Top10MorpionStatsTab records={detailRecords as any[]} playerId={selectedPlayer.id} mode={currentMode} />
+                </React.Suspense> : <div style={{ color: T.text70, fontSize: 13 }}>Sélectionne un joueur pour afficher ses statistiques.</div>}
+              </div>
+            )}
 
             {currentMode === "five_lives" && (
               <div style={card}>

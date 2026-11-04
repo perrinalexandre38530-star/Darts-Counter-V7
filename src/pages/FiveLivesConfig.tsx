@@ -72,6 +72,8 @@ export type FiveLivesConfig = {
   createdAt: number;
   startingLives: number;
   randomStartOrder: boolean;
+  startOrderSource?: "random" | "selection" | "bull";
+  allowEqualScore?: boolean; // Variante RELAIS: égalité autorisée
   scoreInputMethod: ScoreInputMethod;
   players: FiveLivesConfigPlayer[];
 };
@@ -362,6 +364,8 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
 
   const [startingLives, setStartingLives] = React.useState<number>(5);
   const [randomStartOrder, setRandomStartOrder] = React.useState<boolean>(true);
+  const [bullOrder, setBullOrder] = React.useState<boolean>(false);
+  const [allowEqualScore, setAllowEqualScore] = React.useState<boolean>(false);
   const [scoreInputMethod, setScoreInputMethod] = React.useState<ScoreInputMethod>(() => {
     try {
       return sanitizeFiveLivesScoreInput(localStorage.getItem(SCORE_INPUT_LS_KEY) || "keypad");
@@ -398,6 +402,16 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
     setSelectedIds((prev) => {
       const exists = prev.includes(id);
       return exists ? prev.filter((x) => x !== id) : [...prev, id];
+    });
+  }
+
+  function moveSelectedPlayer(index: number, direction: -1 | 1) {
+    setSelectedIds((prev) => {
+      const swap = index + direction;
+      if (index < 0 || swap < 0 || index >= prev.length || swap >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[swap]] = [next[swap], next[index]];
+      return next;
     });
   }
 
@@ -455,6 +469,8 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
       createdAt: Date.now(),
       startingLives: clampInt(startingLives, 1, 20, 5),
       randomStartOrder: !!randomStartOrder,
+      startOrderSource: bullOrder ? "bull" : randomStartOrder ? "random" : "selection",
+      allowEqualScore,
       scoreInputMethod,
       players: finalPlayers,
     };
@@ -660,6 +676,16 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
             Options
           </div>
 
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Variante des 5 vies</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              <PillButton label="CLASSIQUE · >" active={!allowEqualScore} onClick={() => setAllowEqualScore(false)} primary={primary} primarySoft={primarySoft} />
+              <PillButton label="RELAIS · ≥" active={allowEqualScore} onClick={() => setAllowEqualScore(true)} primary={primary} primarySoft={primarySoft} />
+            </div>
+            <div style={{ fontSize: 11, color: "#c8cbe4", marginTop: 6 }}>
+              {allowEqualScore ? "RELAIS : égaler OU dépasser la volée précédente permet de conserver sa vie." : "CLASSIQUE : il faut strictement dépasser la volée précédente."}
+            </div>
+          </div>
           <div style={{ marginBottom: 12 }}>
             <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Vies de départ</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -683,22 +709,37 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <PillButton
                 label="Aléatoire"
-                active={!!randomStartOrder}
-                onClick={() => setRandomStartOrder(true)}
+                active={!!randomStartOrder && !bullOrder}
+                onClick={() => { setRandomStartOrder(true); setBullOrder(false); }}
                 primary={primary}
                 primarySoft={primarySoft}
               />
               <PillButton
                 label="Conserver l'ordre"
-                active={!randomStartOrder}
-                onClick={() => setRandomStartOrder(false)}
+                active={!randomStartOrder && !bullOrder}
+                onClick={() => { setRandomStartOrder(false); setBullOrder(false); }}
+                primary={primary}
+                primarySoft={primarySoft}
+              />
+              <PillButton
+                label="Plus près de la BULL"
+                active={bullOrder}
+                onClick={() => { setRandomStartOrder(false); setBullOrder(true); }}
                 primary={primary}
                 primarySoft={primarySoft}
               />
             </div>
             <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 6 }}>
-              En aléatoire : le 1er joueur est tiré au sort (et l'ordre suit la sélection).
+              {bullOrder ? "Chaque joueur tire une fléchette vers la Bull. Classe les joueurs ci-dessous, du plus proche au plus éloigné : cet ordre sera utilisé en partie." : randomStartOrder ? "Tirage au sort de l'ordre des participants." : "L'ordre de sélection des joueurs sera utilisé."}
             </div>
+            {bullOrder && <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+              {selectedIds.map((playerId, index) => <div key={playerId} style={{ display: "flex", alignItems: "center", gap: 9, border: "1px solid rgba(255,255,255,.14)", borderRadius: 12, padding: "7px 10px" }}>
+                <b style={{ color: primary }}>#{index + 1}</b>
+                <span style={{ flex: 1, fontSize: 12, color: "#fff" }}>{resolvePlayer(playerId)?.name || `Joueur ${index + 1}`}</span>
+                <button type="button" aria-label="Monter" disabled={index === 0} onClick={() => moveSelectedPlayer(index, -1)}>↑</button>
+                <button type="button" aria-label="Descendre" disabled={index === selectedIds.length - 1} onClick={() => moveSelectedPlayer(index, 1)}>↓</button>
+              </div>)}
+            </div>}
           </div>
 
           <div style={{ marginTop: 14 }}>
@@ -798,12 +839,12 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
 
               <div style={{ marginBottom: 10 }}>
                 <b style={{ color: theme.text }}>Principe :</b> chaque joueur commence avec <b>{startingLives}</b> vies.
-                Une manche = <b>3 fléchettes</b>. Tu dois faire un score <b>STRICTEMENT supérieur</b> au score du joueur
+                Une manche = <b>3 fléchettes</b>. Tu dois faire un score <b>{allowEqualScore ? "ÉGAL OU SUPÉRIEUR" : "STRICTEMENT supérieur"}</b> au score du joueur
                 précédent.
               </div>
 
               <div style={{ marginBottom: 10 }}>
-                <b style={{ color: theme.text }}>Échec :</b> si ton score est <b>≤</b> au score à battre, tu perds <b>1 vie</b>.
+                <b style={{ color: theme.text }}>Échec :</b> si ton score est <b>{allowEqualScore ? "<" : "≤"}</b> au score à battre, tu perds <b>1 vie</b>.
               </div>
 
               <div style={{ marginBottom: 10 }}>
@@ -815,7 +856,7 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
               </div>
 
               <div style={{ marginTop: 10, fontSize: 12, opacity: 0.9 }}>
-                ⚠️ Score égal = échec (il faut STRICTEMENT supérieur).
+                {allowEqualScore ? "✅ Score égal accepté : variante RELAIS." : "⚠️ Score égal = échec (classique)."}
               </div>
             </div>
 

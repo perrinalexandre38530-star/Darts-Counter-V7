@@ -46,6 +46,7 @@ type Tab =
   | "training_x01"
   | "training_clock"
   | "training_stats"
+  | "top_10_config"
   | "training_mode"
   | "darts_mode";
 
@@ -75,7 +76,7 @@ type ModeDef = {
   tickerSrc?: string | null;
 };
 
-const TICKERS = import.meta.glob("../assets/tickers/*.png", {
+const TICKERS = import.meta.glob(["../assets/tickers/*.png", "../assets/tickers/*.webp"], {
   eager: true,
   import: "default",
 }) as Record<string, string>;
@@ -105,9 +106,11 @@ function findTickerSmart(gameId: string): string | null {
 
   // on cherche ticker_<candidate>.png dans /src/assets/tickers/
   for (const c of candidates) {
-    const suffix = `/ticker_${c}.png`;
-    for (const k of Object.keys(TICKERS)) {
-      if (k.toLowerCase().endsWith(suffix)) return TICKERS[k];
+    for (const ext of [".webp", ".png"]) {
+      const suffix = `/ticker_${c}${ext}`;
+      for (const k of Object.keys(TICKERS)) {
+        if (k.toLowerCase().endsWith(suffix)) return TICKERS[k];
+      }
     }
   }
   return null;
@@ -391,14 +394,16 @@ export default function TrainingMenu({ go }: Props) {
         infoKey: `training.registry.${g.id}.info`,
         infoDefault:
           "Ce mode est enregistré dans l’application. S’il n’est pas encore implémenté, il sera affiché comme “En développement”.",
-        tab: "training_mode",
-        params: { modeId: g.id },
+        tab: g.id === "top_10_training" ? "top_10_config" : "training_mode",
+        params: g.id === "top_10_training" ? { training: true } : { modeId: g.id },
         enabled: ready,
         badge: ready ? null : comingSoon,
-        tickerSrc: findTickerSmart(g.id),
+        tickerSrc: g.id === "top_10_training"
+          ? (lang === "fr" ? findTickerSmart("top_10") : (findTickerSmart("top_10_en") ?? findTickerSmart("top_10")))
+          : findTickerSmart(g.id),
       };
     });
-  }, [t, pinnedRegistryIds]);
+  }, [t, lang, pinnedRegistryIds]);
 
   const renderCard = (m: ModeDef, accent: { hex: string; border: string; glow: string }) => {
     const title = t(m.titleKey, m.titleDefault);

@@ -9,7 +9,7 @@ import React from "react";
 import { isAndroidStoreV1Runtime, isAndroidStoreV1SportAllowed } from "../config/androidStoreV1";
 
 // ✅ Ajout MÖLKKY + DICE GAME (sports locaux)
-export type SportId = "darts" | "petanque" | "pingpong" | "babyfoot" | "molkky" | "dicegame" | "foot" | "running" | "fit" | "esports";
+export type SportId = "darts" | "petanque" | "pingpong" | "babyfoot" | "molkky" | "dicegame" | "foot" | "running" | "fit" | "esports" | "tossit";
 
 const LS_KEY = "dc-start-game"; // on réutilise ta clé existante
 
@@ -17,6 +17,7 @@ function normalizeSport(x: any): SportId {
   const s = String(x || "").toLowerCase().trim();
   let next: SportId = "darts";
   if (s === "petanque") next = "petanque";
+  else if (s === "tossit") next = "tossit";
   else if (s === "pingpong") next = "pingpong";
   else if (s === "babyfoot") next = "babyfoot";
   else if (s === "molkky") next = "molkky";

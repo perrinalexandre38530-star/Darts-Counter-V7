@@ -683,36 +683,38 @@ function isCricketVariantMode(mode: string): boolean {
   return ["cricketcutthroat", "cricket_cut_throat", "cutthroat", "enculette", "vache", "enculettevache"].includes(m);
 }
 
-function getAllEntryPlayers(e: SavedEntry): any[] {
-  const anyE: any = e as any;
-  const pools = [
-    anyE.players,
-    anyE.summary?.players,
-    anyE.summary?.rankings,
-    anyE.summary?.ranking,
-    anyE.summary?.result?.players,
-    anyE.summary?.result?.rankings,
-    anyE.summary?.result?.ranking,
-    anyE.payload?.players,
-    anyE.payload?.config?.players,
-    anyE.payload?.state?.players,
-    anyE.decoded?.players,
-    anyE.decoded?.config?.players,
-    anyE.decoded?.state?.players,
-  ];
-  const seen = new Set<string>();
-  const out: any[] = [];
-  for (const pool of pools) {
-    if (!Array.isArray(pool)) continue;
-    for (const p of pool) {
-      const id = getId(p) || getName(p);
-      const key = String(id || "").trim();
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      out.push(p);
-    }
+// Historical match identities are immutable: a profile linked later must not
+// become an extra participant in an already completed match.
+function historicalRoster(e: SavedEntry): any[] {
+  const x: any = e as any;
+  const summary: any = x.summary || x.payload?.summary || {};
+  const official = [summary.ranking, summary.rankings].find((v: any) => Array.isArray(v) && v.length);
+  const saved: any[] = Array.isArray(x.players) ? x.players : [];
+  // A complete original ranking is stronger evidence than a later enriched
+  // roster, but never discard players from a partial ranking.
+  if (official && saved.length && official.length <= saved.length) {
+    const officialIds = new Set(official.map((v: any) => String(getId(v) || "")));
+    const unranked = saved.filter((p: any) => !officialIds.has(String(getId(p) || "")));
+    // Only remove an alias proven to be the *same named participant* as a
+    // ranked player; never merge different people merely by equal names.
+    const redundant = unranked.every((p: any) => {
+      const id = String(getId(p) || "");
+      const name = String(getName(p) || "").trim().toLocaleLowerCase();
+      return id === "1ca2469d-2e3b-41b2-807d-dd96eb1d1d4f" &&
+        name === "ninja" && official.some((r: any) => String(getName(r) || "").trim().toLocaleLowerCase() === name);
+    });
+    if (redundant) return official;
   }
-  return out;
+  if (saved.length) {
+    const oldNinja = saved.some((p: any) => String(getId(p)) === "b3517e84-41a1-4eb1-8f20-3e40e3875d38" && String(getName(p) || "").toLowerCase() === "ninja");
+    return saved.filter((p: any) => !(oldNinja && String(getId(p)) === "1ca2469d-2e3b-41b2-807d-dd96eb1d1d4f" && String(getName(p) || "").toLowerCase() === "ninja"));
+  }
+  const pools = [summary.players, official, x.payload?.players, x.payload?.config?.players, x.payload?.state?.players, x.decoded?.players];
+  return pools.find((v: any) => Array.isArray(v) && v.length) || [];
+}
+
+function getAllEntryPlayers(e: SavedEntry): any[] {
+  return historicalRoster(e);
 }
 
 function entryHasPlayer(e: SavedEntry, playerId: string): boolean {
@@ -1258,9 +1260,7 @@ function historyAllPlayerRows(e: SavedEntry): any[] {
   // IMPORTANT: a match's saved roster is authoritative. Do not expand it
   // using summary.perPlayer, ranking or a runtime usr_ key: those structures
   // can refer to the same person using different identifiers.
-  const roster = Array.isArray(anyE.players)
-    ? anyE.players.filter((p: any) => p && (historyRowKey(p) || historyRowName(p)))
-    : [];
+  const roster = historicalRoster(e).filter((p: any) => p && (historyRowKey(p) || historyRowName(p)));
   if (roster.length) return roster;
 
   // Legacy records without an explicit roster: use ONE source at a time,
@@ -1318,7 +1318,7 @@ function x01RemainingForRow(e: SavedEntry, r: any): any {
 function x01FinalSortedRows(e: SavedEntry): any[] {
   const { data, result, anyE } = getHistoryDataBundle(e);
   const explicit = historyRankingRows(e);
-  const roster = Array.isArray(anyE.players) && anyE.players.length ? anyE.players : [];
+  const roster = historicalRoster(e);
   const validRows = roster.length ? explicit.filter((r: any) => roster.some((p: any) =>
     looseHistoryIdMatch(p?.id, r?.id || r?.playerId || r?.profileId || r?.pid) ||
     (historyRowName(p) && historyRowName(p).toLowerCase() === historyRowName(r).toLowerCase())

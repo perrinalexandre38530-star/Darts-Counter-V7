@@ -46,6 +46,7 @@ export type DartsGameTab =
   | "cargo_config"
   | "ocean_control_config"
   | "prisoner_config"
+  | "top_10_config"
   | "tic_tac_toe_config"
   | "batard_config"
   | "castle_config"
@@ -266,7 +267,7 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:five_lives",
     infoTitle: "Les 5 vies",
     infoBody:
-      "Chaque joueur commence avec 5 vies. Vollee de 3 fleches: tu dois faire STRICTEMENT plus que le score total de la vollee precedente (du joueur avant toi). Si tu echoues, tu perds 1 vie. A 0 vie: elimine. Dernier joueur avec des vies = victoire.",
+      "5 vies par joueur et 3 fléchettes par volée. CLASSIQUE : dépasser strictement le score précédent. RELAIS (variante Killer) : score égal ou supérieur accepté. En cas d’échec, perte d’une vie ; la volée jouée devient toujours la nouvelle référence. Dernier survivant gagnant.",
   },
   {
     id: "gros_6",
@@ -932,19 +933,49 @@ const rawDartsGameRegistry: DartsGameDef[] = [
   },
   {
     id: "tic_tac_toe",
-    label: "Tic-Tac-Toe",
+    label: "MORPION",
     category: "fun",
     entry: "games",
     tab: "tic_tac_toe_config",
     popularityRank: 51,
     ready: true,
-    maxPlayers: 2,
+    maxPlayers: 4,
+    supportsTeams: false,
+    supportsBots: true,
+    statsKey: "game:tic_tac_toe",
+    infoTitle: "MORPION – 4 touches",
+    infoBody:
+      "Grille 3×3 : huit numéros distincts sont tirés au sort, Bull toujours au centre. Quatre touches (S/D/T = 1 touche) sont nécessaires pour conquérir une case. Aligner trois cases remporte la manche.",
+  },
+  {
+    id: "top_10",
+    label: "TOP 10",
+    category: "challenge",
+    entry: "games",
+    tab: "top_10_config",
+    popularityRank: 52,
+    ready: true,
+    maxPlayers: 4,
+    supportsTeams: false,
+    supportsBots: true,
+    statsKey: "game:top_10",
+    infoTitle: "TOP 10 – Score maximum",
+    infoBody: "Dix volées de trois fléchettes. Chaque score compte : le plus gros cumul gagne. En solo, battre son record ; en groupe, comparer les scores et la régularité. Disponible aussi dans Entraînement.",
+  },
+  {
+    id: "top_10_training",
+    label: "TOP 10 – Entraînement",
+    category: "training",
+    entry: "training",
+    tab: "top_10_config",
+    popularityRank: 53,
+    ready: true,
+    maxPlayers: 1,
     supportsTeams: false,
     supportsBots: false,
-    statsKey: "game:tic_tac_toe",
-    infoTitle: "Tic-Tac-Toe",
-    infoBody:
-      "Grille 3x3. Chaque case = cible. Une case est prise si la cible est touchee. 3 alignees = victoire. A implementer.",
+    statsKey: "game:top_10",
+    infoTitle: "TOP 10 – Exercice de régularité",
+    infoBody: "Réaliser le plus haut total possible sur dix volées de trois fléchettes. Mesure du total, du meilleur passage, de la moyenne et de la régularité.",
   },
   {
     id: "bastard",
@@ -1561,6 +1592,9 @@ const READY_IDS = new Set<string>([
   "battle_royale",
   "warfare",
   "five_lives",
+  "top_10",
+  "top_10_training",
+  "tic_tac_toe",
   "gros_6", // GROS 6 / BIG 6 — mode disponible
   "ptit_hun", // P’TIT 1 — mode disponible depuis Games > Variantes
   "closest_center", // PETANQUE — mode caméra disponible pour test depuis Games > Défis
@@ -1603,6 +1637,7 @@ const READY_IDS = new Set<string>([
 const CHALLENGE_SUBCATEGORY_BY_ID: Record<string, string> = {
   // SCORING — maximiser / construire un total
   challenge: "scoring",
+  top_10: "scoring",
   count_up: "scoring",
   halve_it: "scoring",
   baseball: "scoring",

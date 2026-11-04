@@ -348,7 +348,7 @@ export default function BottomNav({
   // Online masqué uniquement pour les sports sans salon en ligne dédié.
   // Baby-Foot utilise le hub Online existant via l'onglet `friends`.
   const sportLc = String(sport).toLowerCase();
-  const hideOnline = shouldHideOnlineMessagingForCurrentRuntime() || sportLc === "petanque" || sportLc === "pingpong" || sportLc === "running" || sportLc === "fit";
+  const hideOnline = shouldHideOnlineMessagingForCurrentRuntime() || sportLc === "petanque" || sportLc === "pingpong" || sportLc === "running" || sportLc === "fit" || sportLc === "tossit";
   const showLiveSports = isLiveSportsSupportedSport(sport);
   const liveSportsTabs: NavItem[] = showLiveSports
     ? [{ k: "live", label: "LIVE", icon: <Icon name="live" /> }]

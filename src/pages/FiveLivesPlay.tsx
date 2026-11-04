@@ -158,7 +158,7 @@ function fiveLivesBotDart(skill: number): Dart {
   const mult: 1 | 2 | 3 = r < tripleRate ? 3 : r < tripleRate + doubleRate ? 2 : 1;
   return { v, mult } as Dart;
 }
-function makeFiveLivesBotVolley(player: PlayerState, target: number | null): Dart[] {
+function makeFiveLivesBotVolley(player: PlayerState, target: number | null, allowEqualScore = false): Dart[] {
   const skill = fiveLivesBotSkill(player?.botLevel);
   const candidates = Array.from({ length: 240 }, () => [
     fiveLivesBotDart(skill),
@@ -177,8 +177,8 @@ function makeFiveLivesBotVolley(player: PlayerState, target: number | null): Dar
   const difficulty = Math.max(0, Math.min(1, Number(target) / 180));
   const successChance = Math.max(0.07, Math.min(0.94, 0.20 + skill * 0.145 - difficulty * 0.47));
   const wantsSuccess = Math.random() < successChance;
-  const successful = scored.filter((x) => x.score > Number(target));
-  const failed = scored.filter((x) => x.score <= Number(target));
+  const successful = scored.filter((x) => allowEqualScore ? x.score >= Number(target) : x.score > Number(target));
+  const failed = scored.filter((x) => allowEqualScore ? x.score < Number(target) : x.score <= Number(target));
 
   if (wantsSuccess && successful.length) {
     successful.sort((a, b) => (a.score - Number(target)) - (b.score - Number(target)));
@@ -748,9 +748,11 @@ function Kpi({
 function InfoOverlay({
   onClose,
   startingLives,
+  allowEqualScore,
 }: {
   onClose: () => void;
   startingLives: number;
+  allowEqualScore: boolean;
 }) {
   return (
     <div
@@ -807,12 +809,12 @@ function InfoOverlay({
             <b>{startingLives}</b> vies. La première volée crée la référence.
           </div>
           <div>
-            <b style={{ color: "#fff" }}>À chaque tour :</b> faire strictement
-            plus que la volée précédente. L’écran indique la référence, le
+            <b style={{ color: "#fff" }}>À chaque tour :</b> {allowEqualScore ? "égaler ou dépasser" : "faire strictement plus que"}
+            {allowEqualScore ? " la volée précédente" : " la volée précédente"}. L’écran indique la référence, le
             minimum et ce qu’il reste à marquer.
           </div>
           <div>
-            <b style={{ color: "#fff" }}>Échec :</b> un score égal ou inférieur
+            <b style={{ color: "#fff" }}>Échec :</b> {allowEqualScore ? "un score inférieur" : "un score égal ou inférieur"}
             coûte une vie. À 0, le joueur est éliminé.
           </div>
           <div>
@@ -848,6 +850,7 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
   const accent = "#ff4fb8",
     danger = theme?.danger || "#ff566d";
   const startingLives = clampInt(config?.startingLives, 1, 20, 5);
+  const allowEqualScore = config?.allowEqualScore === true;
   const startedAtRef = React.useRef(Number(config?.createdAt) || Date.now());
   const savedRef = React.useRef(false);
   const [players, setPlayers] = React.useState<PlayerState[]>(() =>
@@ -921,7 +924,7 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
   const visitTone =
     lastScoreToBeat == null
       ? accent
-      : visitScore > lastScoreToBeat
+      : (allowEqualScore ? visitScore >= lastScoreToBeat : visitScore > lastScoreToBeat)
         ? "#72f0a8"
         : visitScore === lastScoreToBeat
           ? "#ffb13b"
@@ -1117,7 +1120,7 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
         : computeVisitScore(darts),
       target = lastScoreToBeat,
       openingVisit = target == null,
-      success = openingVisit || score > Number(target),
+      success = openingVisit || (allowEqualScore ? score >= Number(target) : score > Number(target)),
       turn = events.length + 1;
     const updated = players.map((p) => ({
         ...p,
@@ -1165,7 +1168,7 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
         playerName: p.name,
         score,
         target,
-        required: target == null ? null : Number(target) + 1,
+        required: target == null ? null : Number(target) + (allowEqualScore ? 0 : 1),
         margin: target == null ? null : score - Number(target),
         success,
         openingVisit,
@@ -1208,7 +1211,7 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
     if (botTurnKeyRef.current === key) return;
     botTurnKeyRef.current = key;
 
-    const botDarts = makeFiveLivesBotVolley(activePlayer, lastScoreToBeat);
+    const botDarts = makeFiveLivesBotVolley(activePlayer, lastScoreToBeat, allowEqualScore);
     let validateTimer = 0;
     let revealStarted = false;
     const revealTimer = window.setTimeout(() => {
@@ -1457,7 +1460,7 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
                   label="Réuss."
                   value={`${pct(activePlayer.stats.successfulVisits, activePlayer.stats.targetsFaced)}%`}
                   tone="#72f0a8"
-                  title="Pourcentage de volées ayant strictement dépassé le score à battre"
+                  title="Pourcentage de volées réussies selon la variante choisie"
                 />
               </div>
             </div>
@@ -1802,7 +1805,7 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
                           label="Réuss."
                           value={`${pct(p.stats.successfulVisits, p.stats.targetsFaced)}%`}
                           tone="#72f0a8"
-                          title="Pourcentage de volées ayant strictement dépassé le score à battre"
+                          title="Pourcentage de volées réussies selon la variante choisie"
                         />
                       </div>
                     </div>
@@ -1827,6 +1830,7 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
         <InfoOverlay
           onClose={() => setInfoOpen(false)}
           startingLives={startingLives}
+          allowEqualScore={allowEqualScore}
         />
       ) : null}
       {endOpen && finalMatch ? (

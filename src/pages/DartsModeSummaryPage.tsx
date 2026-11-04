@@ -420,28 +420,24 @@ function playerName(p: any, playersById: Record<string, any>): string {
   return String((p?.name ?? p?.displayName ?? p?.playerName ?? playersById[id]?.name ?? playersById[id]?.displayName ?? id) || "Joueur");
 }
 
-function collectPlayers(rec: any): any[] {
-  const pools = [
-    rec?.players,
-    rec?.summary?.players,
-    rec?.summary?.rankings,
-    rec?.summary?.perPlayer,
-    rec?.payload?.players,
-    rec?.payload?.summary?.players,
-    rec?.payload?.summary?.rankings,
-    rec?.payload?.summary?.perPlayer,
-    rec?.payload?.config?.players,
-    rec?.payload?.finalPlayers,
-  ];
-  const byId = new Map<string, any>();
-  for (const pool of pools) {
-    for (const p of asArray(pool)) {
-      const id = playerId(p);
-      if (!id) continue;
-      byId.set(id, { ...(byId.get(id) || {}), ...(p || {}), id });
-    }
+function historicalSummaryRoster(rec: any): any[] {
+  const summary = rec?.summary || rec?.payload?.summary || {};
+  const ranking = asArray(pick(summary?.ranking, summary?.rankings));
+  const roster = asArray(pick(rec?.players, summary?.players, rec?.payload?.players));
+  if (roster.length) {
+    const oldNinja = roster.some((p: any) => playerId(p) === "b3517e84-41a1-4eb1-8f20-3e40e3875d38" && String(p?.name || "").toLowerCase() === "ninja");
+    const filtered = roster.filter((p: any) => !(oldNinja && playerId(p) === "1ca2469d-2e3b-41b2-807d-dd96eb1d1d4f" && String(p?.name || "").toLowerCase() === "ninja"));
+    if (ranking.length && ranking.length === filtered.length && ranking.every((r: any) => filtered.some((p: any) => playerId(p) === playerId(r)))) return ranking;
+    return filtered;
   }
-  return [...byId.values()];
+  return ranking;
+}
+
+function collectPlayers(rec: any): any[] {
+  const canonical = historicalSummaryRoster(rec);
+  if (canonical.length) return canonical;
+  const pools = [rec?.summary?.perPlayer, rec?.payload?.summary?.perPlayer, rec?.payload?.config?.players, rec?.payload?.finalPlayers];
+  return asArray(pools.find((pool) => asArray(pool).length));
 }
 
 function collectPlayerStats(rec: any): Record<string, any> {
@@ -673,8 +669,10 @@ function buildRows(rec: any, mode: ModeKind) {
   const players = collectPlayers(rec);
   const playersById = Object.fromEntries(players.map((p) => [playerId(p), p]));
   const stats = collectPlayerStats(rec);
-  const ranking = asArray(pick(rec?.summary?.rankings, rec?.payload?.summary?.rankings, rec?.rankings));
-  const seed = ranking.length ? ranking : players;
+  const ranking = asArray(pick(rec?.summary?.ranking, rec?.summary?.rankings, rec?.payload?.summary?.ranking, rec?.payload?.summary?.rankings, rec?.rankings));
+  // A ranking is only complete if it contains the same match participants.
+  const ranked = ranking.length === players.length && ranking.every((r: any) => players.some((p: any) => playerId(p) === playerId(r)));
+  const seed = ranked ? ranking : players;
   const scoreMap = pick(rec?.summary?.finalScores, rec?.payload?.stateSnapshot?.scores, rec?.resume?.state?.scores, {}) || {};
   const progressMap = pick(rec?.summary?.finalProgress, rec?.payload?.stateSnapshot?.progress, rec?.resume?.state?.progress, {}) || {};
   const healthMap = pick(rec?.summary?.health, rec?.payload?.stateSnapshot?.health, rec?.resume?.state?.health, {}) || {};
@@ -683,7 +681,8 @@ function buildRows(rec: any, mode: ModeKind) {
   const wave61Special = pick(rec?.payload?.stateSnapshot?.special, rec?.resume?.state?.special, rec?.summary?.stateSnapshot?.special, {}) || {};
   const rows = seed.map((p, index) => {
     const id = playerId(p);
-    const merged = { ...(playersById[id] || {}), ...(stats[id] || {}), ...(p || {}), id };
+    const aliasStats = Object.values(stats).find((v: any) => String(v?.playerId || v?.profileId || "") === id) || {};
+    const merged = { ...(playersById[id] || {}), ...(aliasStats as any), ...(stats[id] || {}), ...(p || {}), id };
     if (mode === "wave61") {
       merged.score = pick(merged.score, scoreMap?.[id], 0);
       merged.progress = pick(merged.progress, progressMap?.[id], 0);

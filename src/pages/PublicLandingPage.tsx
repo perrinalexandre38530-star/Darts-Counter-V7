@@ -5,6 +5,8 @@ import logo from "../assets/LOGO.webp";
 import awena from "../assets/running/home_actions/running_discipline_awena.webp";
 import darts from "../assets/games/logo-darts.webp";
 import petanque from "../assets/games/logo-petanque.webp";
+import tossit from "../assets/games/logo-tossit.webp";
+import { TOSSIT_MODES, TOSSIT_PLANNED } from "./tossit/tossitEngine";
 import babyfoot from "../assets/games/logo-babyfoot.webp";
 import pingpong from "../assets/games/logo-pingpong.webp";
 import molkky from "../assets/games/logo-molkky.webp";
@@ -80,7 +82,7 @@ const LANDING_EXPLANATION_VISUALS = {
 } as const;
 
 const MSS_EXCLUSIVE_DARTS = new Set(["darts_firefighter", "crados", "bss_king", "attrape_moi", "loterie", "menteur", "president", "pendu", "cargo", "ptit_hun"]);
-const NEW_PUBLIC_DARTS = new Set(["bss_king", "ptit_hun", "mistigri", "corbeau_renard", "radin", "darts_impossible", "black_vs_white", "three_colors", "la_suite", "color_call", "bim_bam_boum", "saute_moutons", "troupeau_en_danger", "une_ptite_raclette"]);
+const NEW_PUBLIC_DARTS = new Set(["bss_king", "ptit_hun", "mistigri", "corbeau_renard", "radin", "darts_impossible", "black_vs_white", "three_colors", "la_suite", "color_call", "bim_bam_boum", "saute_moutons", "troupeau_en_danger", "une_ptite_raclette", "top_10", "tic_tac_toe"]);
 const DARTS_CATEGORY_LABEL: Record<string,string> = {
   classic: "GRANDS CLASSIQUES",
   variant: "VARIANTES",
@@ -503,7 +505,7 @@ function DartsRulePage({ game, onBack, onOpenApp, lang, setLang, t }: { game: Da
 }
 
 const sports = [
-  [darts,"Fléchettes"],[petanque,"Pétanque"],[babyfoot,"Baby-foot"],[pingpong,"Ping-pong"],
+  [darts,"Fléchettes"],[petanque,"Pétanque"],[tossit,"TOSSIT SCORING"],[babyfoot,"Baby-foot"],[pingpong,"Ping-pong"],
   [molkky,"Mölkky"],[running,"Running Perf"],[fit,"Fit Perf"],[football,"Football"],
   [basket,"Basket"],[rugby,"Rugby"],[tennis,"Tennis"],[padel,"Padel"],
   [badminton,"Badminton"],[volley,"Volley"],[pickleball,"Pickleball"],[cornhole,"Cornhole"],
@@ -512,7 +514,7 @@ const sports = [
 ] as const;
 
 const features = [
-  ["22","disciplines réunies dans le même univers"],
+  ["23","disciplines réunies dans le même univers"],
   ["∞","équipes, profils et adversaires personnalisables"],
   ["LOCAL + ONLINE","solo, duo, équipes et multijoueur"],
   ["STATS","historique, performances, records et classements"]
@@ -548,7 +550,7 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
     };
   }, [routeHash]);
 
-  const allDartsGames = DARTS_GAMES.filter((g) => g.entry === "games" || g.entry === "training");
+  const allDartsGames = DARTS_GAMES.filter((g) => (g.entry === "games" || g.entry === "training") && g.id !== "top_10_training");
   const readyDartsGames = allDartsGames.filter((g) => !isPublicDartsDevelopment(g));
   const developmentDartsGames = allDartsGames.filter((g) => isPublicDartsDevelopment(g));
   const ruleMatch = routeHash.match(/^#\/welcome\/darts\/([^?]+)/);
@@ -603,7 +605,7 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
   return <main key={lang} className="mssLanding" id="top">
     <header className="mssNav">
       <button className="mssBrand" onClick={() => window.scrollTo({top:0,behavior:"smooth"})} aria-label="MULTISPORTS SCORING accueil"><img src={logo} alt=""/><span translate="no" data-i18n-skip="true">MULTISPORTS <b>SCORING</b></span></button>
-      <nav><a href="#darts-modes">{tr("nav.darts", "Fléchettes")}</a><a href="#disciplines">{tr("nav.disciplines", "Disciplines")}</a><a href="#features">{tr("nav.features", "Fonctionnalités")}</a><a href="#languages">{tr("nav.languages", "Langues")}</a><a href="#awena">Awena</a><a href="#download">{tr("nav.download", "Télécharger")}</a></nav>
+      <nav><a href="#darts-modes">{tr("nav.darts", "Fléchettes")}</a><a href="#tossit-modes">TOSSIT</a><a href="#disciplines">{tr("nav.disciplines", "Disciplines")}</a><a href="#features">{tr("nav.features", "Fonctionnalités")}</a><a href="#languages">{tr("nav.languages", "Langues")}</a><a href="#awena">Awena</a><a href="#download">{tr("nav.download", "Télécharger")}</a></nav>
       <label className="mssLanguageSelect" title="Choisir la langue">
         <span aria-hidden="true">{currentPublicLanguage.flag}</span>
         <select value={lang} onChange={(event) => setLang(event.target.value as Lang)} aria-label="Choisir la langue de la page">
@@ -622,11 +624,11 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
         <div className="mssStoreLine"><span>{tr("meta.free", "✓ Gratuit")}</span><span>✓ Google Play</span><span>{tr("meta.web", "✓ Version Web")}</span><span>{tr("meta.languages", "✓ 22 langues")}</span></div>
       </div>
       <div className="mssHeroVisual" aria-label="Les disciplines MULTISPORTS SCORING">
-        <div className="mssVisualKicker">{tr("hero.ecosystem", "UN ÉCOSYSTÈME • 22 DISCIPLINES")}</div>
+        <div className="mssVisualKicker">{tr("hero.ecosystem", "UN ÉCOSYSTÈME • 23 DISCIPLINES")}</div>
         <div className="mssGlow"/>
         <div className="mssOrbit mssOrbitOuter">{sports.slice(0,12).map(([src,n],i)=><div className="mssOrbitSport" style={{"--i":i} as React.CSSProperties} key={n}><img src={src} alt={n} loading="lazy" decoding="async"/></div>)}</div>
-        <div className="mssOrbit mssOrbitInner">{sports.slice(12,22).map(([src,n],i)=><div className="mssOrbitSport" style={{"--i":i} as React.CSSProperties} key={n}><img src={src} alt={n} loading="lazy" decoding="async"/></div>)}</div>
-        <div className="mssHeroCore"><img src={logo} alt="MULTISPORTS SCORING"/><strong>22</strong><span>{tr("common.disciplines", "DISCIPLINES")}</span></div>
+        <div className="mssOrbit mssOrbitInner">{sports.slice(12,23).map(([src,n],i)=><div className="mssOrbitSport" style={{"--i":i} as React.CSSProperties} key={n}><img src={src} alt={n} loading="lazy" decoding="async"/></div>)}</div>
+        <div className="mssHeroCore"><img src={logo} alt="MULTISPORTS SCORING"/><strong>23</strong><span>{tr("common.disciplines", "DISCIPLINES")}</span></div>
         <div className="mssHeroFeatureRail" aria-label="Fonctionnalités principales"><span><b>ONLINE</b><small>{tr("hero.community", "Communauté")}</small></span><span><b>BOTS IA</b><small>{tr("hero.opponents", "Adversaires")}</small></span><span><b>STATS</b><small>{tr("hero.progress", "Progression")}</small></span></div>
       </div>
     </section>
@@ -706,7 +708,25 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
       </div>
     </section>
 
-    <section className="mssSection" id="disciplines"><div className="mssEyebrow">TOUT VOTRE SPORT. UNE SEULE APPLICATION.</div><h2>22 disciplines, une identité commune</h2><p>Chaque discipline conserve son univers tout en profitant du même compte, des mêmes profils, de l’historique et de l’écosystème MULTISPORTS SCORING.</p><div className="mssSports">{sports.map(([src,n],i)=><article key={n}><span className="mssSportNo">{String(i+1).padStart(2,"0")}</span><img src={src} alt={n} loading="lazy" decoding="async"/><strong>{n}</strong></article>)}</div></section>
+    <section className="mssSection" id="tossit-modes" aria-label="Catalogue des modes TOSSIT">
+      <div className="mssEyebrow">NOUVEAU SPORT • TOSSIT SCORING</div>
+      <img src={tossit} alt="Logo TOSSIT SCORING" width={114} height={114} loading="lazy" decoding="async" style={{ display: "block", width: "clamp(88px, 14vw, 114px)", height: "auto", margin: "12px auto 6px", objectFit: "contain" }} />
+      <h2>TOSSIT SCORING : {TOSSIT_MODES.length + TOSSIT_PLANNED.length} modes référencés</h2>
+      <p>Le TOSSIT possède son propre système de points et ses modes de jeu dans MULTISPORTS SCORING. Découvrez les variantes jouables et celles en développement, avec historique et statistiques dédiés.</p>
+      <div className="mssDartsModeGrid">
+        {TOSSIT_MODES.map((mode) => <article className="mssDartsModeCard" key={mode.id}>
+          <div className="mssDartsModeVisual"><img src={mode.id === "classic" ? landingTickerFor("tossit_classic", lang) || tossit : mode.id === "speed" ? landingTickerFor("tossit_speed", lang) || tossit : ["border", "target"].includes(mode.id) ? landingTickerFor("tossit_target", lang) || tossit : landingTickerFor("tossit_games", lang) || tossit} alt="" loading="lazy"/><span>DISPONIBLE • {mode.category.toUpperCase()}</span></div>
+          <div className="mssDartsModeText"><strong>{mode.title}</strong><p>{mode.description}</p><small>{mode.target ? `Objectif : ${mode.target} points` : "Objectif : alignement de 3 ou 4"} • Saisie manuelle • Historique TOSSIT</small></div>
+        </article>)}
+        {TOSSIT_PLANNED.map((mode) => <article className="mssDartsModeCard isDevelopment" key={mode.title}>
+          <div className="mssDartsModeVisual"><div className="mssDartsMiniFallback"><img src={tossit} alt="" /></div><span>EN DÉVELOPPEMENT • {mode.category.toUpperCase()}</span></div>
+          <div className="mssDartsModeText"><strong>{mode.title}</strong><p>{mode.description}</p><small>Mode référencé • À venir</small></div>
+        </article>)}
+      </div>
+      <p><a href="https://tossit.game/pages/how-to-play" target="_blank" rel="noreferrer">Consulter les règles TOSSIT officielles</a></p>
+    </section>
+
+    <section className="mssSection" id="disciplines"><div className="mssEyebrow">TOUT VOTRE SPORT. UNE SEULE APPLICATION.</div><h2>23 disciplines, une identité commune</h2><p>Chaque discipline conserve son univers tout en profitant du même compte, des mêmes profils, de l’historique et de l’écosystème MULTISPORTS SCORING.</p><div className="mssSports">{sports.map(([src,n],i)=><article key={n}><span className="mssSportNo">{String(i+1).padStart(2,"0")}</span><img src={src} alt={n} loading="lazy" decoding="async"/><strong>{n}</strong></article>)}</div></section>
 
     <section className="mssSection mssDarkCards"><div className="mssEyebrow">BIEN PLUS QU’UN COMPTEUR DE SCORE</div><h2>Jouez. Analysez. Progressez.</h2><div className="mssCards"><article><b>◎</b><h3>Jeu libre & multijoueur</h3><p>Solo, duo, équipes, local ou online : choisissez votre façon de jouer et retrouvez vos parties dans votre historique.</p></article><article><b>◈</b><h3>Bots & adversaires IA</h3><p>Affrontez des adversaires de niveaux différents et personnalisez vos propres bots dans les modes compatibles.</p></article><article><b>↗</b><h3>Statistiques détaillées</h3><p>Performances, records, tendances, classements et progression : vos résultats deviennent enfin exploitables.</p></article><article><b>⌂</b><h3>Clubs & organisations</h3><p>Membres, équipes, calendrier, compétitions, classements et vie collective dans un espace dédié.</p></article></div></section>
 

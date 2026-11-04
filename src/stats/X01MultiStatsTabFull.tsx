@@ -24,7 +24,9 @@ import { idbGet, idbSet } from "../lib/indexedDb";
 import { removeDerivedStatsCache, writeDerivedStatsCacheRaw } from "../lib/statsRenderCacheStorage";
 import { useLang } from "../contexts/LangContext";
 import { computeX01LevelSnapshot, computeX01MultiAgg } from "../lib/x01MultiAgg";
-import { listCanonicalX01Sessions, computeCanonicalX01ProfileStats } from "../lib/x01CanonicalProjection";
+import { listCanonicalX01Sessions } from "../lib/x01CanonicalProjection";
+import { readCanonicalX01IndexV2, scheduleCanonicalX01IndexRebuildV2 } from "../lib/x01CanonicalIndexStoreV2";
+import { selectCanonicalX01ProfileV3 } from "../lib/x01CanonicalSelectorsV3";
 
 // ------ Helpers locaux : classement multi pour un joueur ------
 
@@ -2897,6 +2899,9 @@ export default function X01MultiStatsTabFull({
     x01OutMode: row.outMode ?? "unknown",
   }), [playerName]);
 
+  const [canonicalIndexRevision, setCanonicalIndexRevision] = React.useState(0);
+  const [indexReady, setIndexReady] = React.useState(() => !!readCanonicalX01IndexV2());
+  const [showAdvancedFilters, setShowAdvancedFilters] = React.useState(false);
   const [sessions, setSessions] = React.useState<X01MultiSession[]>(
     () => listCanonicalX01Sessions(effectiveProfileId, playerName).map((row) => ({
       id: String(row.id || `${row.matchId}:${row.profileId}`), matchId: String(row.matchId || row.id || ""), date: Number(row.date || 0) || 0,
@@ -2952,22 +2957,67 @@ export default function X01MultiStatsTabFull({
     };
   }, []);
 
-  // V130 — X01Multi ne lit PLUS History/IndexedDB.
-  // Une projection compacte est mise à jour à la fin de chaque partie X01.
-  // Le rendu est donc synchrone, stable et identique sur mobile/desktop.
+  // V126 : utiliser d'abord la projection History V4 indexée (V2).
+  // Ne jamais vider l'écran sur une notification de cache V1 incomplète.
+  // Le rebuild se fait hors rendu, et publie atomiquement son snapshot.
   React.useEffect(() => {
-    const refreshCanonical = () => {
-      const next = listCanonicalX01Sessions(effectiveProfileId, playerName).map(canonicalToMulti);
-      setSessions(next);
+    let active = true;
+    const refresh = () => {
+      if (!active) return;
+      const snapshot = readCanonicalX01IndexV2();
+      setIndexReady(!!snapshot);
+      if (!snapshot) {
+        scheduleCanonicalX01IndexRebuildV2('x01-stats-opened');
+        // La V1 n'est qu'une compatibilité transitoire lorsque V2 n'est pas prête.
+        const legacy = listCanonicalX01Sessions(effectiveProfileId, null).map(canonicalToMulti);
+        if (legacy.length) setSessions(legacy);
+        return;
+      }
+      const requestedId = String(effectiveProfileId || '').trim();
+      const rows: X01MultiSession[] = [];
+      for (const match of snapshot.index.matches || []) {
+        if (!['finished', 'completed', 'done', 'ended'].includes(match.status)) continue;
+        const matching = match.participants.filter((part) =>
+          requestedId
+            ? part.canonicalProfileId === requestedId || part.historicalPlayerId === requestedId
+            : true
+        );
+        // Les profils ambigus sont mis en quarantaine, jamais additionnés deux fois.
+        if (requestedId && matching.length !== 1) continue;
+        for (const part of matching) {
+          const darts = part.darts ?? 0;
+          const points = part.points;
+          const exactAvg = darts > 0 && points !== null ? points * 3 / darts : null;
+          const pid = part.historicalPlayerId || part.canonicalProfileId || '';
+          rows.push({
+            id: `${match.matchId}:${pid}`, matchId: match.matchId, date: match.date,
+            selectedPlayerId: pid, profileId: part.canonicalProfileId || pid,
+            playerName: part.name,
+            darts, avg3D: exactAvg ?? 0, avg1D: exactAvg !== null ? exactAvg / 3 : 0,
+            bestVisit: part.bestVisit ?? 0, bestCheckout: part.bestCheckout,
+            hitsS: part.hitsS ?? 0, hitsD: part.hitsD ?? 0, hitsT: part.hitsT ?? 0,
+            miss: part.misses ?? 0, bull: part.bull25 ?? 0, dBull: part.bull50 ?? 0,
+            bust: 0, isWin: part.win === true,
+            legsWon: 0, setsWon: 0, finishes: (part.bestCheckout ?? 0) > 0 ? 1 : 0,
+            x01StartScore: match.startScore, x01Variant: match.variant,
+            x01OutMode: match.outMode,
+          } as X01MultiSession);
+        }
+      }
+      // Une projection V2 présente fait autorité, y compris si aucune partie
+      // n'est rattachée au profil. Ne pas la remplacer par un cache V1 aléatoire.
+      setSessions(rows.sort((a, b) => a.date - b.date));
+      setCanonicalIndexRevision((x) => x + 1);
     };
-    refreshCanonical();
-    window.addEventListener("dc-x01-canonical-updated", refreshCanonical as EventListener);
-    window.addEventListener("dc-storage-restored", refreshCanonical as EventListener);
+    refresh();
+    window.addEventListener('dc-x01-canonical-index-ready', refresh);
+    window.addEventListener('dc-storage-restored', refresh);
     return () => {
-      window.removeEventListener("dc-x01-canonical-updated", refreshCanonical as EventListener);
-      window.removeEventListener("dc-storage-restored", refreshCanonical as EventListener);
+      active = false;
+      window.removeEventListener('dc-x01-canonical-index-ready', refresh);
+      window.removeEventListener('dc-storage-restored', refresh);
     };
-  }, [effectiveProfileId, playerName, canonicalToMulti]);
+  }, [effectiveProfileId, canonicalToMulti]);
 
   // Auto-défilement métriques
   React.useEffect(() => {
@@ -3004,22 +3054,18 @@ export default function X01MultiStatsTabFull({
    .slice().sort((a, b) => Number(a?.date || 0) - Number(b?.date || 0));
 
   const currentLevelSessions = levelProfileSessions.slice(-10);
-  const avg3Of = (rows: X01MultiSession[]) => {
-    const values = rows
-      .map((row: any) => Number(row?.avg3D || 0))
-      .filter((value) => Number.isFinite(value) && value > 0);
-    return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
-  };
-  const sessionLifetimeLevelAvg3D = avg3Of(levelProfileSessions);
-  const sessionCurrentLevelAvg3D = avg3Of(currentLevelSessions);
-  const sessionLifetimeLevelMatches = levelProfileSessions.length;
-  const sessionCurrentLevelMatches = currentLevelSessions.length;
-
-  const canonicalProfileStats = computeCanonicalX01ProfileStats(effectiveProfileId, playerName);
-  const lifetimeLevelAvg3D = canonicalProfileStats.lifetime501DOAvg3D || sessionLifetimeLevelAvg3D;
-  const currentLevelAvg3D = canonicalProfileStats.current501DOAvg3D || sessionCurrentLevelAvg3D;
-  const lifetimeLevelMatches = canonicalProfileStats.reference501DOMatches || sessionLifetimeLevelMatches;
-  const currentLevelMatches = canonicalProfileStats.current501DOMatches || sessionCurrentLevelMatches;
+  // Le niveau officiel et les groupes SO / DO / MO proviennent EXCLUSIVEMENT
+  // du sélecteur V3 (sommes points/fléchettes, jamais moyenne de moyennes).
+  const indexSnapshot = readCanonicalX01IndexV2();
+  const officialProfile = indexSnapshot && effectiveProfileId
+    ? selectCanonicalX01ProfileV3(indexSnapshot.index, String(effectiveProfileId))
+    : null;
+  const lifetimeLevelAvg3D = officialProfile?.referenceLifetime.value ?? 0;
+  const currentLevelAvg3D = officialProfile?.referenceCurrent.value ?? 0;
+  const lifetimeLevelMatches = officialProfile?.reference501DO ?? 0;
+  const currentLevelMatches = officialProfile?.referenceCurrentMatches ?? 0;
+  // `canonicalIndexRevision` est la notification de publication atomique de V2.
+  void canonicalIndexRevision;
 
   // V129 — DEUX PÉRIMÈTRES STRICTEMENT SÉPARÉS.
   // 1) lifetime = TOUS les X01 du joueur : alimente les totaux, victoires,
@@ -4365,6 +4411,16 @@ return (
           X01 MULTI
         </div>
 
+        {!indexReady && (
+          <div role="status" style={{ padding: 9, marginBottom: 8, fontSize: 11, border: "1px solid rgba(246,194,86,.35)", borderRadius: 10, color: T.gold }}>
+            Index X01 en reconstruction · les chiffres définitifs arrivent après vérification de History.
+          </div>
+        )}
+        <button type="button" onClick={() => setShowAdvancedFilters((v) => !v)}
+          style={{ background: "rgba(246,194,86,.09)", color: T.gold, padding: "8px 12px", border: "1px solid rgba(246,194,86,.35)", borderRadius: 10, width: "100%", fontWeight: 900, cursor: "pointer" }}>
+          {showAdvancedFilters ? "Masquer les filtres avancés ▲" : "Filtres avancés (période · score · équipes) ▼"}
+        </button>
+        {showAdvancedFilters && <div>
         <div
           style={{
             display: "flex",
@@ -4419,27 +4475,6 @@ return (
           ))}
         </div>
 
-        <div style={{ fontSize: 10, fontWeight: 900, color: T.gold, textAlign: "center", marginTop: 5 }}>
-          501 DO = RÉFÉRENCE NIVEAU · AUTRES PARTIES PAR SORTIE
-        </div>
-        <div
-          style={{
-            display: "flex", flexDirection: "row", justifyContent: "center", gap: 6, flexWrap: "wrap",
-            transform: "scale(0.92)", transformOrigin: "center", marginTop: 4,
-          }}
-        >
-          {([
-            ["simple", "SO · Simple Out"],
-            ["double", "DO · Double Out"],
-            ["master", "MO · Master Out"],
-            ["all", "Toutes sorties"],
-          ] as [X01OutFilterKey, string][]).map(([key, label]) => (
-            <GoldPill key={`out-${key}`} active={outFilter === key} onClick={() => setOutFilter(key)} style={{ padding: "4px 10px", fontSize: 10, minWidth: "unset", whiteSpace: "nowrap" }}>
-              {label}
-            </GoldPill>
-          ))}
-        </div>
-
         <div
           style={{
             display: "flex",
@@ -4468,6 +4503,7 @@ return (
             </GoldPill>
           ))}
         </div>
+        </div>}
       </div>
 
       <div style={{ ...card, padding: 8, marginTop: 2 }}>
@@ -4567,7 +4603,8 @@ return (
             ["double", "DO · Double Out"],
             ["master", "MO · Master Out"],
           ] as const).map(([mode, label]) => {
-            const row = canonicalProfileStats.byOut[mode];
+            const official = officialProfile?.exitModes[mode];
+            const row = { avg3D: official?.avg3d.value ?? 0, avgFinish: official?.avgFinish ?? 0, matches: official?.matches ?? 0, finishes: official?.finishSamples ?? 0 };
             return (
               <div key={mode} style={{ border: "1px solid rgba(246,194,86,.22)", borderRadius: 12, padding: 9, background: "rgba(255,255,255,.025)" }}>
                 <div style={{ fontSize: 9, fontWeight: 900, color: T.gold }}>{label}</div>
@@ -4795,7 +4832,9 @@ return (
 
       {totalSessions === 0 && (
         <div style={{ ...card, fontSize: 13, color: T.text70 }}>
-          Aucun match X01 enregistré pour cette période.
+          {indexReady
+            ? "Aucune partie dans cette sélection. Vérifier le rattachement du profil ou choisir une autre configuration."
+            : "Historique X01 en reconstruction — aucune absence de partie n’est encore confirmée."}
         </div>
       )}
 
