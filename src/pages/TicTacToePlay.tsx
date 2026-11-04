@@ -7,6 +7,7 @@ import ScoreInputHub from "../components/ScoreInputHub";
 import tickerMorpion from "../assets/tickers/ticker_tic_tac_toe.png";
 import { useLang } from "../contexts/LangContext";
 import { History } from "../lib/history";
+import { recoverMorpion } from "../lib/recoverTop10Morpion";
 import { buildDartsTelemetry, canonicalVisitFromUiDarts } from "../lib/dartsTelemetry";
 import { applyMorpionVolley, newMorpionGrid, MORPION_LINES } from "../lib/morpionEngine";
 import type { Dart as UIDart } from "../lib/types";
@@ -43,8 +44,13 @@ function dartLabel(d: UIDart) {
 }
 export default function TicTacToePlay(props: any) {
   const { t } = useLang();
-  const cfg = props?.params?.config ?? props?.config ?? {};
-  const players = React.useMemo(() => normalizePlayers(cfg), [JSON.stringify(cfg?.players), cfg?.botsEnabled, cfg?.botLevel]);
+  const route = props?.params || {};
+  const resuming = !!(route.resumeId || (route.rec && route.from?.startsWith("history")));
+  const preview = !!route.preview;
+  const cfgRef = React.useRef(route.config ?? route.rec?.resume?.config ?? route.rec?.payload?.config ?? props?.config ?? {});
+  const cfg = cfgRef.current;
+  const [players, setPlayers] = React.useState(() => normalizePlayers(cfg));
+  const [hydration, setHydration] = React.useState(resuming ? "loading" : "ready");
   const maxRounds = Math.max(1, Math.min(25, Number(cfg?.bestOf ?? cfg?.rounds) || 3));
   const requiredWins = Math.floor(maxRounds / 2) + 1;
   const [grid, setGrid] = React.useState(() => newMorpionGrid(players.length));
@@ -64,6 +70,42 @@ export default function TicTacToePlay(props: any) {
   const historyQueue = React.useRef<Promise<void>>(Promise.resolve());
   const [botSummary, setBotSummary] = React.useState<{ name: string; darts: UIDart[] } | null>(null);
   const [inputWarning, setInputWarning] = React.useState("");
+  React.useEffect(() => {
+    if (!resuming) {
+      persist(makeRecord("in_progress", grid, wins, round, current, result, null));
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const requestedId = String(route.resumeId || route.rec?.id || route.rec?.matchId || "");
+        const saved = await History.get(requestedId);
+        if (cancelled) return;
+        const restored = recoverMorpion(saved);
+        if (!restored || restored.id !== requestedId) throw new Error("Checkpoint MORPION absent, terminé ou incohérent");
+        id.current = restored.id;
+        started.current = restored.createdAt;
+        cfgRef.current = restored.config;
+        visits.current = restored.visits;
+        botGuard.current = "";
+        commitGuard.current = false;
+        setPlayers(restored.players);
+        setGrid(restored.grid);
+        setWins(restored.wins);
+        setRound(restored.round);
+        setCurrent(restored.current);
+        setResult(restored.result);
+        setFinished(false);
+        setChampion(null);
+        setThrowing([]);
+        setBotSummary(null);
+        setHydration("ready");
+      } catch (error) {
+        if (!cancelled) { console.warn("[Morpion] reprise refusée", error); setHydration("error"); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const currentPlayer = players[current];
 
   const makeRecord = (status: "in_progress" | "finished", state: any, winsNext: number[], roundNext: number, currentNext: number, roundResult: any, winnerId: string | null) => {
@@ -72,9 +114,10 @@ export default function TicTacToePlay(props: any) {
       id: id.current, matchId: id.current, kind: "tic_tac_toe", mode: "tic_tac_toe", sport: "darts", status,
       createdAt: started.current, updatedAt: now, finishedAt: status === "finished" ? now : undefined, winnerId,
       players: players.map((p: any, i: number) => ({ ...p, score: winsNext[i] || 0 })),
-      game: { mode: "tic_tac_toe", maxRounds, requiredWins, marksToClaim: 4, bullCenter: true, randomTargets: true },
+      game: { mode: "tic_tac_toe", resumeRoute: "tic_tac_toe_play", maxRounds, requiredWins, marksToClaim: 4, bullCenter: true, randomTargets: true },
       summary: { mode: "tic_tac_toe", finished: status === "finished", winnerId, roundsPlayed: roundNext + (roundResult ? 1 : 0), finalScores: Object.fromEntries(players.map((p: any, i: number) => [p.id, winsNext[i] || 0])) },
-      payload: { sport: "darts", mode: "tic_tac_toe", config: cfg, grid: state, board: state.owners, matchWins: winsNext, roundIdx: roundNext, currentPlayerIndex: currentNext, roundResult, visits: visits.current.slice(), visitHistory: visits.current.slice(), events: visits.current.slice() },
+      resume: { route: "tic_tac_toe_play", modeId: "tic_tac_toe", config: { ...cfgRef.current, players } },
+      payload: { sport: "darts", mode: "tic_tac_toe", config: { ...cfgRef.current, players }, grid: state, board: state.owners, matchWins: winsNext, roundIdx: roundNext, currentPlayerIndex: currentNext, roundResult, visits: visits.current.slice(), visitHistory: visits.current.slice(), events: visits.current.slice() },
     };
     const telemetry = buildDartsTelemetry(rec, rec.payload);
     if (telemetry) { rec.payload.telemetry = telemetry; rec.payload.dartTelemetry = telemetry; rec.summary.hitSummary = { ...telemetry.totals, byPlayer: telemetry.perPlayer }; rec.summary.perPlayer = telemetry.perPlayer; rec.summary.telemetryExact = true; rec.summary.telemetryCoverage = "full"; }
@@ -88,10 +131,9 @@ export default function TicTacToePlay(props: any) {
       .catch((err: any) => console.warn("[Morpion] historique", err));
     if (record.status === "finished") props?.onFinish?.(record);
   };
-  React.useEffect(() => { persist(makeRecord("in_progress", grid, wins, round, current, result, null)); /* création de partie */ }, []);
 
   function commit(darts: UIDart[]) {
-    if (finished || result || botSummary || commitGuard.current) return;
+    if (hydration !== "ready" || preview || finished || result || botSummary || commitGuard.current) return;
     if (darts.length !== 3) { setInputWarning("Saisis 3 fléchettes, y compris MISS pour un lancer manqué."); return; }
     commitGuard.current = true;
     setInputWarning("");
@@ -120,13 +162,14 @@ export default function TicTacToePlay(props: any) {
     persist(makeRecord(nextFinished ? "finished" : "in_progress", played.grid, nextWins, round, next, nextResult, nextChampion));
   }
   function nextRound() {
-    if (!result || finished || botSummary) return;
+    if (hydration !== "ready" || preview || !result || finished || botSummary) return;
     commitGuard.current = false; setInputWarning("");
     const g = newMorpionGrid(players.length); const n = round + 1; const p = n % players.length;
     setGrid(g); setRound(n); setResult(null); setCurrent(p); setThrowing([]);
     persist(makeRecord("in_progress", g, wins, n, p, null, null));
   }
   function restart() {
+    if (hydration !== "ready" || preview) return;
     botGuard.current = ""; commitGuard.current = false; setBotSummary(null); setInputWarning("");
     id.current = `morpion-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; started.current = Date.now(); visits.current = [];
     const g = newMorpionGrid(players.length); const empty = players.map(() => 0);
@@ -136,15 +179,18 @@ export default function TicTacToePlay(props: any) {
   React.useEffect(() => { commitGuard.current = false; }, [grid, current, round]);
   React.useEffect(() => { if (throwing.length === 3) setInputWarning(""); }, [throwing.length]);
   React.useEffect(() => {
-    if (finished || result || botSummary || !currentPlayer?.isBot || throwing.length) return;
+    if (hydration !== "ready" || preview || finished || result || botSummary || !currentPlayer?.isBot || throwing.length) return;
     const key = `${round}:${current}:${visits.current.length}`;
     if (botGuard.current === key) return;
     botGuard.current = key;
     const timer = window.setTimeout(() => commit(botDarts(grid, current, currentPlayer.botLevel)), 650);
     return () => { window.clearTimeout(timer); if (botGuard.current === key) botGuard.current = ""; };
-  }, [grid, current, result, finished, currentPlayer?.isBot, throwing.length, botSummary]);
-  const isHumanTurn = !currentPlayer?.isBot && !finished && !result;
+  }, [hydration, preview, grid, current, result, finished, currentPlayer?.isBot, throwing.length, botSummary]);
+  const isHumanTurn = hydration === "ready" && !preview && !currentPlayer?.isBot && !finished && !result;
   const championName = players.find((p: any) => p.id === champion)?.name;
+  if (hydration !== "ready") return <div className="page"><PageHeader title="MORPION" tickerSrc={tickerMorpion} left={<BackDot onClick={() => props?.setTab?.("history")} />} />
+    <div role="status" style={{padding:25,textAlign:"center"}}>{hydration === "loading" ? "Chargement de la partie enregistrée…" : "Reprise impossible : état enregistré absent, terminé ou incohérent. Aucune nouvelle partie n’a été créée."}
+    <div style={{marginTop:16}}><button type="button" className="btn-secondary" onClick={()=>props?.setTab?.("history")}>Retour à l'historique</button></div></div></div>;
   return <div className="page">
     <PageHeader title="MORPION" tickerSrc={tickerMorpion} left={<BackDot onClick={() => props?.setTab?.("games")} />} right={<InfoDot title="Règles du Morpion" content={RULES} />} />
     <div style={{ padding: 12, paddingBottom: 110, maxWidth: 720, margin: "0 auto" }}>
@@ -160,7 +206,8 @@ export default function TicTacToePlay(props: any) {
         </div>)}
       </div>
       {isHumanTurn && <div style={{ marginTop: 12, padding: 9, borderRadius: 13, background: "#111528" }}><div style={{ fontSize: 12, fontWeight: 900, paddingBottom: 6 }}>VOLÉE · {throwing.length}/3 fléchettes</div>{inputWarning && <div role="alert" style={{color:"#ffd18a",fontSize:12,marginBottom:5}}>{inputWarning}</div>}<ScoreInputHub currentThrow={throwing} multiplier={mult} onSimple={() => setMult(1)} onDouble={() => setMult(2)} onTriple={() => setMult(3)} onCancel={() => { setThrowing([]); setMult(1); }} onBackspace={() => setThrowing((v) => v.slice(0, -1))} onNumber={(n: number) => setThrowing((v) => v.length >= 3 ? v : [...v, { v: n, mult }])} onBull={() => setThrowing((v) => v.length >= 3 ? v : [...v, { v: 25, mult: mult === 2 ? 2 : 1 }])} onValidate={() => commit(throwing)} onDirectDart={(d: UIDart) => setThrowing((v) => v.length >= 3 ? v : [...v, d])} /></div>}
-      <div style={{ display: "flex", gap: 8, marginTop: 12 }}><button className="btn-secondary" onClick={restart} style={{ flex: 1 }}>Nouvelle partie</button><button className="btn-primary" disabled={!result || finished || !!botSummary} onClick={nextRound} style={{ flex: 1 }}>Manche suivante</button></div>
+      {preview && <div style={{textAlign:"center",marginTop:12,color:"#ffd18a"}}>APERÇU — LECTURE SEULE <button type="button" className="btn-secondary" onClick={()=>props?.setTab?.("history")}>Retour</button></div>}
+      {!preview && <div style={{ display: "flex", gap: 8, marginTop: 12 }}><button className="btn-secondary" onClick={restart} style={{ flex: 1 }}>Nouvelle partie</button><button className="btn-primary" disabled={!result || finished || !!botSummary} onClick={nextRound} style={{ flex: 1 }}>Manche suivante</button></div>}
       {botSummary && <div role="dialog" aria-label="Volée du bot" style={{ position:"fixed", inset:0, zIndex:10010, display:"grid", placeItems:"center", padding:16, background:"#030713bc" }}>
         <div style={{width:"min(100%, 430px)",background:"#121b33",border:"1px solid #67dafa",boxShadow:"0 22px 80px #000b",borderRadius:18,padding:20,textAlign:"center"}}>
           <div style={{fontSize:13,opacity:.8,fontWeight:800}}>VOLÉE DU BOT</div>

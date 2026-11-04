@@ -19,6 +19,8 @@ import {
 } from "../lib/scoreInput/types";
 import deadListIcon from "../assets/icons/dead-list.png";
 import tickerFiveLives from "../assets/tickers/ticker_five_lives.png";
+import tickerChaseFr from "../assets/tickers/ticker_chase_fr.webp";
+import tickerChaseEn from "../assets/tickers/ticker_chase_en.webp";
 import type { FiveLivesConfig, FiveLivesPlayerLite } from "./FiveLivesConfig";
 
 const tickerFiveLives2: any = (() => {
@@ -788,7 +790,7 @@ function InfoOverlay({
             textTransform: "uppercase",
           }}
         >
-          Règles — Les 5 vies
+          Règles — {modeLabel}
         </div>
         <div
           style={{
@@ -808,6 +810,9 @@ function InfoOverlay({
             <b style={{ color: "#fff" }}>Départ :</b> chacun commence avec{" "}
             <b>{startingLives}</b> vies. La première volée crée la référence.
           </div>
+          {isChase && <div>
+            <b style={{ color: "#fff" }}>Ordre CHASE :</b> après chaque cycle où tous les survivants ont joué, leur ordre est redistribué aléatoirement.
+          </div>}
           <div>
             <b style={{ color: "#fff" }}>À chaque tour :</b> {allowEqualScore ? "égaler ou dépasser" : "faire strictement plus que"}
             {allowEqualScore ? " la volée précédente" : " la volée précédente"}. L’écran indique la référence, le
@@ -846,11 +851,14 @@ function InfoOverlay({
 export default function FiveLivesPlay({ go, config, onFinish }: Props) {
   useFullscreenPlay();
   const { theme } = useTheme();
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const accent = "#ff4fb8",
     danger = theme?.danger || "#ff566d";
   const startingLives = clampInt(config?.startingLives, 1, 20, 5);
-  const allowEqualScore = config?.allowEqualScore === true;
+  const isChase = config?.variantId === "chase";
+  const modeLabel = isChase ? "CHASE" : "Les 5 vies";
+  const headerTicker = isChase ? (String(lang).toLowerCase() === "fr" ? tickerChaseFr : tickerChaseEn) : tickerFiveLives;
+  const allowEqualScore = isChase || config?.allowEqualScore === true;
   const startedAtRef = React.useRef(Number(config?.createdAt) || Date.now());
   const savedRef = React.useRef(false);
   const [players, setPlayers] = React.useState<PlayerState[]>(() =>
@@ -863,6 +871,11 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
   );
   const [turnIndex, setTurnIndex] = React.useState(0),
     [mult, setMult] = React.useState<1 | 2 | 3>(1);
+  // CHASE : un ordre réattribué à chaque cycle complet ; aucun joueur ne rejoue
+  // avant que tous les survivants aient eu leur volée de trois fléchettes.
+  const [chaseRoundQueue, setChaseRoundQueue] = React.useState<string[]>(() =>
+    (config?.players || []).map((player) => player.id),
+  );
   const [currentThrow, setCurrentThrow] = React.useState<Dart[]>([]),
     [lastScoreToBeat, setLastScoreToBeat] = React.useState<number | null>(null);
   const [events, setEvents] = React.useState<VisitEvent[]>([]),
@@ -900,6 +913,12 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
   );
   const activeIndex = React.useMemo(() => {
     if (!players.length) return 0;
+    if (isChase) {
+      const currentId = chaseRoundQueue.find((id) =>
+        players.some((player) => player.id === id && !player.eliminated),
+      );
+      if (currentId) return players.findIndex((player) => player.id === currentId);
+    }
     const n = players.length,
       start = ((turnIndex % n) + n) % n;
     for (let k = 0; k < n; k++) {
@@ -907,7 +926,7 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
       if (!players[idx]?.eliminated) return idx;
     }
     return 0;
-  }, [turnIndex, players]);
+  }, [turnIndex, players, isChase, chaseRoundQueue]);
   const activePlayer = players[activeIndex] || null,
     visitScore = computeVisitScore(currentThrow);
   const isBotTurn = !!activePlayer && (
@@ -929,6 +948,19 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
         : visitScore === lastScoreToBeat
           ? "#ffb13b"
           : danger;
+  function shuffleChaseRound(ids: string[], lastPlayerId: string): string[] {
+    const next = [...ids];
+    for (let i = next.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [next[i], next[j]] = [next[j], next[i]];
+    }
+    // Prévenir un second tour consécutif de la même personne lors du brassage.
+    if (next.length > 1 && next[0] === lastPlayerId) {
+      [next[0], next[1]] = [next[1], next[0]];
+    }
+    return next;
+  }
+
   function nextAliveIndex(from: number, list: PlayerState[]) {
     const n = list.length;
     if (!n) return 0;
@@ -1033,6 +1065,7 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
       detailedByPlayer = Object.fromEntries(rankings.map((p) => [p.id, p]));
     const statsBlock = {
       mode: "five_lives",
+      ...(isChase ? { variantId: "chase" } : {}),
       players: rankings,
       global: {
         startingLives,
@@ -1051,6 +1084,7 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
     const summary = {
       kind: "five_lives",
       mode: "five_lives",
+      ...(isChase ? { variantId: "chase" } : {}),
       finished: true,
       winnerId: winId,
       winnerName,
@@ -1077,6 +1111,7 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
       resumeId: id,
       kind: "five_lives",
       mode: "five_lives",
+      ...(isChase ? { variantId: "chase" } : {}),
       status: "finished",
       createdAt: startedAtRef.current,
       finishedAt,
@@ -1195,7 +1230,17 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
       setEndOpen(true);
       return;
     }
-    setTurnIndex(nextAliveIndex(activeIndex, updated));
+    if (isChase) {
+      const survivors = new Set(alive.map((player) => player.id));
+      const remainingThisRound = chaseRoundQueue.slice(1).filter((id) => survivors.has(id));
+      setChaseRoundQueue(
+        remainingThisRound.length
+          ? remainingThisRound
+          : shuffleChaseRound(alive.map((player) => player.id), p.id),
+      );
+    } else {
+      setTurnIndex(nextAliveIndex(activeIndex, updated));
+    }
   }
   function addDart(d: Dart) {
     if (winnerId || isBotTurn) return;
@@ -1257,7 +1302,7 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
     const now = Date.now();
     if (now - lastBackTapRef.current < 350) return;
     lastBackTapRef.current = now;
-    go("five_lives_config", { launchMode: (config as any)?.quickParty ? "quick" : "arcade" });
+    go("five_lives_config", isChase ? { variantId: "chase", launchMode: "arcade" } : { launchMode: (config as any)?.quickParty ? "quick" : "arcade" });
   };
 
   return (
@@ -1292,8 +1337,8 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
         }}
       >
         <img
-          src={tickerFiveLives as any}
-          alt="Les 5 vies"
+          src={headerTicker as any}
+          alt={modeLabel}
           style={{
             width: "100%",
             height: "100%",
@@ -1553,7 +1598,7 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
           overflow: "hidden",
           cursor: "pointer",
           textAlign: "left",
-          backgroundImage: `url(${tickerFiveLives2})`,
+          backgroundImage: `url(${isChase ? headerTicker : tickerFiveLives2})`,
           backgroundSize: "cover",
           backgroundPosition: "center",
           color: "#fff",
@@ -1882,7 +1927,7 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
                   textShadow: `0 0 18px ${accent}77`,
                 }}
               >
-                Les 5 vies
+                {modeLabel}
               </div>
               <div
                 style={{
@@ -2122,7 +2167,7 @@ export default function FiveLivesPlay({ go, config, onFinish }: Props) {
               >
                 <button
                   type="button"
-                  onClick={() => go("five_lives_config", { launchMode: (config as any)?.quickParty ? "quick" : "arcade" })}
+                  onClick={() => go("five_lives_config", isChase ? { variantId: "chase", launchMode: "arcade" } : { launchMode: (config as any)?.quickParty ? "quick" : "arcade" })}
                   style={{
                     height: 44,
                     borderRadius: 999,

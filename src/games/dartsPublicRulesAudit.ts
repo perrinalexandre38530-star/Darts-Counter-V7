@@ -441,6 +441,22 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
       "warfare.army.bottom"
     ]
   },
+  "chase": {
+    "status": "available",
+    "sources": ["src/pages/FiveLivesConfig.tsx", "src/pages/FiveLivesPlay.tsx", "src/games/dartsGameRegistry.ts"],
+    "options": [
+      "VARIANTE DE LES 5 VIES : moteur FiveLives réutilisé, pas de duplication",
+      "VIES : 5 par défaut, personnalisables",
+      "VOLÉE : 3 fléchettes ; première volée = score initial à battre",
+      "SUCCÈS : égaler ou dépasser le score de la volée précédente (égalité acceptée)",
+      "ÉCHEC : perte d'une vie, score joué devient quand même le score à battre",
+      "ORDRE INITIAL : aléatoire, ordre de sélection ou plus proche de la Bull",
+      "ORDRE DES SURVIVANTS : rebattu aléatoirement après un cycle où tous ont joué",
+      "BOTS IA : mêmes profils et niveaux que Les 5 vies",
+      "FIN : dernier joueur avec au moins une vie",
+      "HISTORIQUE : mode five_lives, variantId chase pour identifier le preset"
+    ]
+  },
   "five_lives": {
     "status": 'available',
     "sources": [
@@ -632,6 +648,23 @@ export const DARTS_PUBLIC_RULE_AUDIT: Record<string, PublicRuleAudit> = {
     "options": [
       "./SimpleRoundsConfig",
       "../lib/simpleRounds/types"
+    ]
+  },
+  "split_score": {
+    "status": "available",
+    "sources": ["src/pages/HalveItConfig.tsx", "src/pages/HalveItPlay.tsx", "src/lib/gameEngines/halveItEngine.ts"],
+    "options": [
+      "MODE SPLIT SCORE : visible dans GAMES > VARIANTES, moteur Halve-It partagé",
+      "CAPITAL : 40 points par joueur au début",
+      "9 MANCHES : 15 / 16 / DOUBLE / 17 / 18 / TRIPLE / 19 / 20 / BULL",
+      "3 FLÉCHETTES par joueur et par manche",
+      "POINTS : seuls les impacts conformes s'ajoutent à leur valeur réelle",
+      "0 TOUCHE VALIDE : score total ÷2, arrondi à l'entier inférieur",
+      "BULL : 25 et 50 ; DOUBLE : D1-D20 ; TRIPLE : T1-T20",
+      "STATISTIQUES : précision, points gagnés, divisions, cible par cible",
+      "HISTORIQUE : kind/mode split_score, variantId split_score, sauvegarde indépendante",
+      "FIN : score le plus élevé après 9 manches, égalité possible",
+      "PARTICIPANTS : solo/multi, bots IA et équipes"
     ]
   },
   "halve_it": {

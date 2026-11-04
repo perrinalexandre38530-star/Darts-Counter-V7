@@ -1,6 +1,7 @@
 import React from "react";
 import { useLang } from "../contexts/LangContext";
 import BackDot from "./BackDot";
+import DartsModeFamilyBridge from "./DartsModeFamilyBridge";
 import tickerArcade from "../assets/tickers/ticker_arcade.png";
 import tickerPartieRapide from "../assets/tickers/ticker_partie_rapide.png";
 import tickerQuickGame from "../assets/tickers/ticker_quick_game.png";
@@ -14,9 +15,11 @@ type Props = {
   onQuick: () => void;
   onArcade: () => void;
   onBack: () => void;
+  family?: "five_lives" | "halve_it";
+  onVariant?: () => void;
 };
 
-export default function GameModeEntryChoice({ title, onQuick, onArcade, onBack }: Props) {
+export default function GameModeEntryChoice({ title, onQuick, onArcade, onBack, family, onVariant }: Props) {
   const { lang } = useLang();
   const isFr = String(lang || "fr").toLowerCase() === "fr";
   const normalizedTitle = String(title || "").trim().toLowerCase();
@@ -128,6 +131,7 @@ export default function GameModeEntryChoice({ title, onQuick, onArcade, onBack }
       >
         {tickerButton(isFr ? tickerPartieRapide : tickerQuickGame, labels.quickAlt, onQuick)}
         {tickerButton(tickerArcade, labels.arcadeAlt, onArcade)}
+        {family && onVariant ? <DartsModeFamilyBridge family={family} current="main" onOpenRelated={onVariant} /> : null}
       </div>
     </div>
   );

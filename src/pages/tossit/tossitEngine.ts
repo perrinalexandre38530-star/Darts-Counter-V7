@@ -1,7 +1,7 @@
 /** TOSSIT SCORING — human-validated throws, pure and undoable transitions.
  * Rules reference: https://tossit.game/pages/how-to-play (November 2026).
  * No visual / camera claims are made by this scoring engine. */
-export type TossitMode = "classic" | "speed" | "target" | "duel" | "border" | "tictac";
+export type TossitMode = "classic" | "speed" | "target" | "duel" | "border" | "tictac" | "battle" | "sniper" | "conquest";
 export type TossitPlayer = { id: string; name: string; avatarDataUrl?: string | null };
 export type TossitEvent = {
   index: number;
@@ -22,6 +22,8 @@ export type TossitState = {
   createdAt: number;
   previous: TossitState | null;
   gridSize: 4 | 5;
+  /** MSS match format for round-based modes; not a published official threshold. */
+  victoryTarget: number;
   board: (string | null)[];
 };
 export type ClassicRound = {
@@ -52,7 +54,26 @@ export type BorderRound = {
   wrongSide: Record<string, number>;
 };
 export type TicTacTurn = { kind: "tictac"; cell: number | null };
-export type TossitAction = ClassicRound | SpeedRound | TargetTurn | DuelTurn | BorderRound | TicTacTurn;
+export type BattleRound = {
+  kind: "battle";
+  stuck: Record<string, number>;
+  /** Winner of rock-paper-scissors if the number of stuck darts is equal. */
+  tieWinnerId?: string;
+  jackStuck: boolean;
+  /** Validates the observed closest-colour winner only after a stuck black dart. */
+  closestPlayerId?: string;
+};
+export type SniperAttempt = { kind: "sniper"; outcome: "miss" | "mega" | "ultimate"; playerId?: string };
+export type ConquestRound = {
+  kind: "conquest";
+  color: string;
+  required: number;
+  stuck: Record<string, number>;
+  /** Required when both teams achieved the target: which reached it first. */
+  firstId?: string;
+};
+export const TOSSIT_COLORS = ["Rouge", "Bleu", "Vert", "Jaune", "Rose", "Violet"] as const;
+export type TossitAction = ClassicRound | SpeedRound | TargetTurn | DuelTurn | BorderRound | TicTacTurn | BattleRound | SniperAttempt | ConquestRound;
 
 export const TOSSIT_MODES: ReadonlyArray<{ id: TossitMode; title: string; category: string; description: string; target: number }> = [
   { id: "classic", title: "TOSSIT CLASSIC", category: "Classique", description: "Cochonnet noir, comptage des ventouses collées et bonus spéciaux. Premier à 13 points.", target: 13 },
@@ -61,11 +82,11 @@ export const TOSSIT_MODES: ReadonlyArray<{ id: TossitMode; title: string; catego
   { id: "duel", title: "DUEL", category: "Duel", description: "Six fléchettes colorées et une noire en dernier. Le cochonnet doit tenir pour marquer. Premier à 21.", target: 21 },
   { id: "border", title: "CROSS THE BORDER", category: "Précision", description: "Traversez la frontière ; la ventouse la plus proche de la ligne décide la manche. Premier à 13.", target: 13 },
   { id: "tictac", title: "TIC-TAC-TOSSIT", category: "Stratégie", description: "Grille 4×4 (ligne de 3) ou 5×5 (ligne de 4), en alternant les lancers.", target: 0 },
+  { id: "battle", title: "BATTLE MODE", category: "Duel", description: "Lancers simultanés. Le plus de ventouses collées lance la noire ; le plus proche remporte la manche. Match en manches gagnées (format MSS).", target: 3 },
+  { id: "sniper", title: "EL SNIPER", category: "Précision", description: "Soyez le premier à empiler une ventouse sur la Mega dart : victoire instantanée !", target: 0 },
+  { id: "conquest", title: "COLOR CONQUEST", category: "Équipes", description: "Une couleur et un nombre de ventouses à atteindre : la première équipe à réussir marque une manche (format MSS).", target: 5 },
 ] as const;
 export const TOSSIT_PLANNED: ReadonlyArray<{ title: string; category: string; description: string }> = [
-  { title: "BATTLE MODE", category: "Duel", description: "Lancers simultanés ; la meilleure série de ventouses permet de lancer le cochonnet noir." },
-  { title: "EL SNIPER", category: "Précision", description: "Atteindre une méga ventouse avec une fléchette." },
-  { title: "COLOR CONQUEST", category: "Stratégie", description: "Conquérir des zones avec les ventouses de son équipe." },
   { title: "RIVER", category: "Défi", description: "Éviter la rivière centrale pour marquer." },
   { title: "CORNHOLE", category: "Précision", description: "Atterrir sur la planche ou dans l'ouverture pour marquer." },
   { title: "FOOTBALL", category: "Stratégie", description: "Marquer en visant les zones du but adverse." },
@@ -75,16 +96,18 @@ function integerBetween(value: number, min: number, max: number): boolean {
   return Number.isInteger(value) && value >= min && value <= max;
 }
 
-export function newTossitGame(mode: TossitMode, players: TossitPlayer[], dartsPerPlayer = 3, now = Date.now(), gridSize: 4 | 5 = 4): TossitState {
+export function newTossitGame(mode: TossitMode, players: TossitPlayer[], dartsPerPlayer = 3, now = Date.now(), gridSize: 4 | 5 = 4, victoryTarget?: number): TossitState {
   if (!TOSSIT_MODES.some((m) => m.id === mode)) throw new Error("Unknown mode");
   const unique = players.filter((p, index) => !!p.id && players.findIndex((q) => q.id === p.id) === index);
   if (unique.length !== players.length || unique.some((p) => !p.name?.trim())) throw new Error("Invalid players");
   if (unique.length < (mode === "target" ? 1 : 2)) throw new Error("Not enough players");
-  if (["speed", "duel", "border", "tictac"].includes(mode) && unique.length !== 2) throw new Error("This mode requires two players");
+  if (["speed", "duel", "border", "tictac", "battle", "conquest"].includes(mode) && unique.length !== 2) throw new Error("This mode requires two players");
   if (unique.length > (mode === "target" ? 4 : 6) || !integerBetween(dartsPerPlayer, 3, 6)) throw new Error("Invalid setup");
   if (mode === "duel" && dartsPerPlayer !== 6) throw new Error("Duel requires six coloured darts plus the jack");
   if (gridSize !== 4 && gridSize !== 5) throw new Error("Invalid grid");
-  return { mode, players: unique, dartsPerPlayer, scores: Object.fromEntries(unique.map((p) => [p.id, 0])), events: [], nextPlayerIndex: 0, winnerId: null, finished: false, createdAt: now, previous: null, gridSize, board: Array(gridSize * gridSize).fill(null) };
+  const matchTarget = victoryTarget ?? (mode === "conquest" ? 5 : mode === "battle" ? 3 : 1);
+  if (![1, 3, 5, 7].includes(matchTarget) || (["conquest", "battle"].includes(mode) && matchTarget === 1)) throw new Error("Invalid MSS match target");
+  return { mode, players: unique, dartsPerPlayer, scores: Object.fromEntries(unique.map((p) => [p.id, 0])), events: [], nextPlayerIndex: 0, winnerId: null, finished: false, createdAt: now, previous: null, gridSize, victoryTarget: matchTarget, board: Array(gridSize * gridSize).fill(null) };
 }
 
 /** Detect a run of 3 in 4x4 or 4 in 5x5. Both diagonal directions count. */
@@ -172,6 +195,47 @@ export function applyTossitAction(prev: TossitState, action: TossitAction, now =
     scores[b] += totalB;
     if ((scores[a] >= 13 || scores[b] >= 13) && scores[a] !== scores[b]) winnerId = scores[a] > scores[b] ? a : b;
     explanation = `${prev.players[0].name} +${totalA} · ${prev.players[1].name} +${totalB}${nearA === nearB ? " • distance égale" : ""}`;
+  } else if (prev.mode === "battle" && action.kind === "battle") {
+    const [a, b] = ids;
+    const countA = action.stuck?.[a], countB = action.stuck?.[b];
+    if (!integerBetween(countA, 0, prev.dartsPerPlayer) || !integerBetween(countB, 0, prev.dartsPerPlayer)) throw new Error("Invalid Battle dart counts");
+    if (typeof action.jackStuck !== "boolean") throw new Error("Specify whether the black jack stuck");
+    const tied = countA === countB;
+    if (tied && !ids.includes(action.tieWinnerId ?? "")) throw new Error("Choose the rock-paper-scissors winner");
+    if (!tied && action.tieWinnerId) throw new Error("Tie breaker only applies on equal counts");
+    const jackThrowerId = tied ? action.tieWinnerId : countA > countB ? a : b;
+    if (action.jackStuck && (countA + countB > 0) && !ids.includes(action.closestPlayerId ?? "")) throw new Error("Choose the dart closest to the black jack");
+    if (!action.jackStuck && action.closestPlayerId) throw new Error("No closest dart without a stuck black jack");
+    if (action.closestPlayerId && (action.stuck[action.closestPlayerId] ?? 0) === 0) throw new Error("Closest player must have a stuck coloured dart");
+    const roundWinner = action.jackStuck && countA + countB > 0 ? action.closestPlayerId : undefined;
+    if (roundWinner) {
+      scores[roundWinner] += 1; // MSS match format: first to N round victories.
+      if (scores[roundWinner] >= (prev.victoryTarget ?? 3)) winnerId = roundWinner;
+    }
+    explanation = `${prev.players.find(p => p.id === jackThrowerId)?.name} lance la noire (${countA}-${countB}) · ${roundWinner ? `${prev.players.find(p => p.id === roundWinner)?.name} gagne la manche` : "manche sans point"}`;
+  } else if (prev.mode === "sniper" && action.kind === "sniper") {
+    if (!["miss", "mega", "ultimate"].includes(action.outcome)) throw new Error("Invalid Sniper result");
+    if (action.outcome !== "miss" && !ids.includes(action.playerId ?? "")) throw new Error("Choose the Sniper winner");
+    if (action.outcome === "miss" && action.playerId) throw new Error("No winner for a failed attempt");
+    if (action.outcome !== "miss") {
+      winnerId = action.playerId!;
+      scores[winnerId] = 1; // Instant victory; no arbitrary 13/21 points.
+    }
+    explanation = winnerId ? `${prev.players.find(p => p.id === winnerId)?.name} · ${action.outcome === "ultimate" ? "ULTIMATE TRICK : double empilement !" : "ventouse posée sur la Mega dart !"}` : "Aucune ventouse empilée : le défi continue";
+  } else if (prev.mode === "conquest" && action.kind === "conquest") {
+    const [a, b] = ids;
+    const countA = action.stuck?.[a], countB = action.stuck?.[b];
+    if (!TOSSIT_COLORS.includes(action.color as typeof TOSSIT_COLORS[number]) || !integerBetween(action.required, 1, prev.dartsPerPlayer) ||
+      !integerBetween(countA, 0, prev.dartsPerPlayer) || !integerBetween(countB, 0, prev.dartsPerPlayer)) throw new Error("Invalid Color Conquest target");
+    const qualifies = ids.filter(id => action.stuck[id] >= action.required);
+    if (qualifies.length === 2 && !ids.includes(action.firstId ?? "")) throw new Error("Choose which team completed the target first");
+    if (qualifies.length < 2 && action.firstId) throw new Error("Tie-breaker is only for two successful teams");
+    const roundWinner = qualifies.length === 2 ? action.firstId : qualifies[0];
+    if (roundWinner) {
+      scores[roundWinner] += 1;
+      if (scores[roundWinner] >= (prev.victoryTarget ?? 5)) winnerId = roundWinner;
+    }
+    explanation = `${action.required} ${action.color.toLowerCase()} · ${countA}-${countB} · ${roundWinner ? `${prev.players.find(p => p.id === roundWinner)?.name} +1 manche` : "objectif non atteint"}`;
   } else if (prev.mode === "tictac" && action.kind === "tictac") {
     const current = prev.players[prev.nextPlayerIndex];
     if (action.cell !== null && !integerBetween(action.cell, 0, prev.board.length - 1)) throw new Error("Invalid cell");
@@ -193,5 +257,6 @@ export function undoTossitAction(state: TossitState): TossitState { return state
 export function summaryForTossit(state: TossitState) {
   return { finished: state.finished, sport: "tossit", mode: state.mode, scores: { ...state.scores }, rounds: state.events.length, winnerId: state.winnerId, draw: state.finished && !state.winnerId,
     gridSize: state.mode === "tictac" ? state.gridSize : undefined,
+    victoryTarget: ["battle", "conquest"].includes(state.mode) ? (state.victoryTarget ?? (state.mode === "battle" ? 3 : 5)) : undefined,
     perPlayer: state.players.map((p) => ({ id: p.id, playerId: p.id, name: p.name, points: state.scores[p.id] ?? 0 })) };
 }

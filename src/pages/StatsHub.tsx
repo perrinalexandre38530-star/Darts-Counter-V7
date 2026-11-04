@@ -929,6 +929,7 @@ type Props = {
     | "loterie"
     | "bowling"
     | "halve_it"
+    | "split_score"
     | "darts_racer"
     | "leaderboards"
     | "history";
@@ -1432,7 +1433,7 @@ function useHistoryAPI(enabled = true, focusMode?: string | null): SavedMatch[] 
       const arr = toArr<SavedMatch>(list);
 
       // Keep fast: only hydrate records likely used by the dashboard.
-      const NEED = new Set(["x01", "cricket", "killer", "challenge", "super_bull", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "castle", "gotcha", "hare_hounds", "pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase", "cargo", "ocean_control", "football", "prisoner", "loterie", "warfare", "tour", "clock", "battle_royale", "territories", "darts_firefighter", "five_lives", "top_10", "tic_tac_toe", "gros_6", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
+      const NEED = new Set(["x01", "cricket", "killer", "challenge", "super_bull", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "split_score", "shooter", "darts_racer", "darts_poker", "castle", "gotcha", "hare_hounds", "pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase", "cargo", "ocean_control", "football", "prisoner", "loterie", "warfare", "tour", "clock", "battle_royale", "territories", "darts_firefighter", "five_lives", "top_10", "tic_tac_toe", "gros_6", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
       const focusedMode = (() => {
         const key = String(focusMode || "").trim();
         if (key === "x01_multi" || key === "x01_compare") return "x01";
@@ -1753,6 +1754,7 @@ function classifyRecordMode(rec: SavedMatch): string {
   if (tag.includes("president") || tag.includes("président")) return "president";
   if (tag.includes("bobs_27") || tag.includes("bobs27") || tag.includes("bob's 27") || tag.includes("bob’s 27")) return "bobs_27";
   if (tag.includes("bowling")) return "bowling";
+  if (tag.includes("split_score") || tag.includes("split score")) return "split_score";
   if (tag.includes("halve_it") || tag.includes("halve-it") || tag.includes("halve it") || tag.includes("half-it")) return "halve_it";
   if (tag.includes("darts_poker") || tag.includes("darts poker") || tag.includes("dartspoker")) return "darts_poker";
   if (tag.includes("castle")) return "castle";
@@ -6170,6 +6172,7 @@ const modeDefs = React.useMemo(
               { key: "bobs_27", label: "Bob’s 27" },
               { key: "bowling", label: "Bowling" },
               { key: "halve_it", label: "HALVE-IT" },
+              { key: "split_score", label: "SPLIT SCORE" },
               { key: "shooter", label: "SHOOTER" },
               { key: "darts_racer", label: "DARTS RACER" },
               { key: "darts_poker", label: "DARTS POKER" },
@@ -7816,6 +7819,7 @@ const modeThemeColor: Record<string, string> = {
   bobs_27: "#e4c06b",
   bowling: "#f6c256",
   halve_it: "#ffd76a",
+  split_score: "#49d9d5",
   shooter: "#42d6ff",
   darts_racer: "#42d6ff",
   darts_poker: "#f6c256",
@@ -7878,6 +7882,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     bobs_27: "Bob’s 27",
     bowling: "Bowling",
     halve_it: "HALVE-IT",
+    split_score: "SPLIT SCORE",
     shooter: "SHOOTER",
     darts_racer: "DARTS RACER",
     darts_poker: "DARTS POKER",
@@ -7902,7 +7907,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     darts_firefighter: "DARTS FIREFIGHTER",
     clock: "Tour de l’horloge",
   };
-  const order = ["x01", "killer", "challenge", "super_bull", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "top_10", "tic_tac_toe", "gros_6", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "castle", "gotcha", "hare_hounds", "pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase", "cargo", "ocean_control", "football", "prisoner", "loterie", "capital", "batard", "territories", "darts_firefighter", "clock"];
+  const order = ["x01", "killer", "challenge", "super_bull", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "top_10", "tic_tac_toe", "gros_6", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "split_score", "shooter", "darts_racer", "darts_poker", "castle", "gotcha", "hare_hounds", "pendu", "menteur", "crados", "fifty_one_by_five", "looper", "call_three", "steeplechase", "cargo", "ocean_control", "football", "prisoner", "loterie", "capital", "batard", "territories", "darts_firefighter", "clock"];
   const n = (v: any, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
   const sumNumericValues = (v: any): number => {
     if (!v || typeof v !== "object") return 0;
@@ -11039,11 +11044,12 @@ return (
               </div>
             )}
 
-{currentMode === "halve_it" && (
+{(currentMode === "halve_it" || currentMode === "split_score") && (
               <div style={card}>
                 {selectedPlayer ? (
-                  <React.Suspense fallback={<LazyFallback label="Chargement HALVE-IT…" />}>
+                  <React.Suspense fallback={<LazyFallback label={`Chargement ${currentModeLabel}…`} />}>
                     <HalveItStatsTabFull
+                      mode={currentMode === "split_score" ? "split_score" : "halve_it"}
                       records={detailRecords as any[]}
                       playerId={selectedPlayer.id}
                       playerName={selectedPlayer.name}
@@ -11051,7 +11057,7 @@ return (
                   </React.Suspense>
                 ) : (
                   <div style={{ color: T.text70, fontSize: 13 }}>
-                    Sélectionne un joueur pour afficher ses statistiques HALVE-IT.
+                    Sélectionne un joueur pour afficher ses statistiques {currentModeLabel}.
                   </div>
                 )}
               </div>
@@ -11272,6 +11278,7 @@ return (
                       bobs_27: ["bobs_27", "bobs27", "bob's 27", "bob’s 27"],
                       bowling: ["bowling"],
                       halve_it: ["halve_it", "halve-it", "halve it", "half-it"],
+                      split_score: ["split_score", "split score"],
                       shooter: ["shooter"],
                       darts_racer: ["darts_racer", "darts racer", "dartsracer", "mario_kart"],
                       darts_poker: ["darts_poker", "darts poker", "dartspoker"],

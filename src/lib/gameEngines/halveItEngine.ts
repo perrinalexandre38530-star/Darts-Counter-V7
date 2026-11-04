@@ -40,6 +40,7 @@ export type HalveItTeamConfig = {
 
 export type HalveItConfigPayload = {
   mode: "halve_it";
+  variantId?: "split_score";
   participantMode: HalveItParticipantMode;
   players: number;
   selectedIds: string[];
@@ -225,7 +226,7 @@ export function halveItTargetScore(target: HalveItTarget, dart: GameDart) {
   switch (target.kind) {
     case "open": return points;
     case "number": return dart.bed !== "OB" && dart.bed !== "IB" && dart.bed !== "MISS" && Number(dart.number) === Number(target.value) ? points : 0;
-    case "double": return dart.bed === "D" ? points : 0;
+    case "double": return dart.bed === "D" || dart.bed === "IB" ? points : 0;
     case "triple": return dart.bed === "T" ? points : 0;
     case "bull": return dart.bed === "OB" || dart.bed === "IB" ? points : 0;
     default: return 0;

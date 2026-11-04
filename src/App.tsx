@@ -6639,10 +6639,14 @@ case "babyfoot_team_edit":
         break;
 
       case "five_lives_config": {
+        const isChase = String(routeParams?.variantId || routeParams?.gameId || "").toLowerCase() === "chase";
         const launchMode = String(routeParams?.launchMode || (routeParams?.quickParty ? "quick" : (routeParams?.config || routeParams?.resume || routeParams?.rec ? "arcade" : "")));
-        if (launchMode === "quick") page = <QuickPartyModeConfig modeId="five_lives" title="5 VIES" params={routeParams} onBack={() => go("five_lives_config")} onStart={(result) => go(result.route, result.params)} />;
-        else if (launchMode === "arcade") page = <FiveLivesConfig store={store} go={go} onBack={() => go("five_lives_config")} />;
-        else page = <GameModeEntryChoice title="5 VIES" subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("five_lives_config", { launchMode: "quick" })} onArcade={() => go("five_lives_config", { launchMode: "arcade" })} />;
+        // CHASE est un preset du moteur Five Lives, pas une deuxième implémentation.
+        // Ouvre sa configuration dédiée directement, avec égalité acceptée.
+        if (isChase) page = <FiveLivesConfig key="five-lives-chase" store={store} go={go} presetVariantId="chase" onBack={() => go("games", { gamesView: "all", gamesCategory: "variant" })} />;
+        else if (launchMode === "quick") page = <QuickPartyModeConfig modeId="five_lives" title="5 VIES" params={routeParams} onBack={() => go("five_lives_config")} onStart={(result) => go(result.route, result.params)} />;
+        else if (launchMode === "arcade") page = <FiveLivesConfig key="five-lives-main" store={store} go={go} onBack={() => go("five_lives_config")} />;
+        else page = <GameModeEntryChoice title="5 VIES" subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" family="five_lives" onVariant={() => go("five_lives_config", { variantId: "chase", launchMode: "arcade" })} onBack={() => go("games")} onQuick={() => go("five_lives_config", { launchMode: "quick" })} onArcade={() => go("five_lives_config", { launchMode: "arcade" })} />;
         break;
       }
 
@@ -7015,10 +7019,17 @@ case "babyfoot_team_edit":
       // - Les Config poussent vers "<mode>_play" avec { config }
       // ============================================================
       case "halve_it_config": {
+        const isSplitScore = String(routeParams?.variantId || routeParams?.gameId || "").toLowerCase() === "split_score";
+        // SPLIT SCORE réutilise le moteur HALVE-IT avec un preset canonique.
+        // Entrée directe : aucun passage dans une configuration Halve-It classique.
+        if (isSplitScore) {
+          page = <HalveItConfig key="halve-it-split-score" store={store} go={go} setTab={go} params={{ ...routeParams, variantId: "split_score", launchMode: "arcade" }} onBack={() => go("games", { gamesView: "all", gamesCategory: "variant" })} />;
+          break;
+        }
         const launchMode = String(routeParams?.launchMode || (routeParams?.quickParty ? "quick" : (routeParams?.config || routeParams?.resume || routeParams?.rec || routeParams?.mode === "halve_it" ? "arcade" : "")));
         if (launchMode === "quick") page = <QuickPartyModeConfig modeId="halve_it" title="HALVE-IT" params={routeParams} onBack={() => go("halve_it_config")} onStart={(result) => go(result.route, result.params)} />;
-        else if (launchMode === "arcade") page = <HalveItConfig store={store} go={go} setTab={go} params={routeParams} onBack={() => go("halve_it_config")} />;
-        else page = <GameModeEntryChoice title="HALVE-IT" subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" onBack={() => go("games")} onQuick={() => go("halve_it_config", { launchMode: "quick" })} onArcade={() => go("halve_it_config", { launchMode: "arcade" })} />;
+        else if (launchMode === "arcade") page = <HalveItConfig key="halve-it-main" store={store} go={go} setTab={go} params={routeParams} onBack={() => go("halve_it_config")} />;
+        else page = <GameModeEntryChoice title="HALVE-IT" subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" family="halve_it" onVariant={() => go("halve_it_config", { variantId: "split_score", launchMode: "arcade" })} onBack={() => go("games")} onQuick={() => go("halve_it_config", { launchMode: "quick" })} onArcade={() => go("halve_it_config", { launchMode: "arcade" })} />;
         break;
       }
       case "halve_it_play":
@@ -7029,7 +7040,7 @@ case "babyfoot_team_edit":
             setTab={go}
             params={routeParams}
             onFinish={(m: any, options?: { navigate?: boolean }) =>
-              pushHistory(enrichOnlineMatchForHistory(m, "halve_it", routeParams), options)
+              pushHistory(enrichOnlineMatchForHistory(m, routeParams?.variantId === "split_score" ? "split_score" : "halve_it", routeParams), options)
             }
           />
         );

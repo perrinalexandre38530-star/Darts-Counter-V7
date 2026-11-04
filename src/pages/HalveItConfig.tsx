@@ -12,6 +12,7 @@ import OptionRow from "../components/OptionRow";
 import OptionSelect from "../components/OptionSelect";
 import OptionToggle from "../components/OptionToggle";
 import PageHeader from "../components/PageHeader";
+import DartsModeFamilyBridge from "../components/DartsModeFamilyBridge";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import Section from "../components/Section";
 import { useTheme } from "../contexts/ThemeContext";
@@ -30,6 +31,9 @@ import {
   x01MostUsedDartSetIdForProfile,
 } from "./X01ConfigV3";
 import tickerHalveIt from "../assets/tickers/ticker_halve_it.png";
+import tickerSplitScoreFr from "../assets/tickers/ticker_split_score_fr.webp";
+import tickerSplitScoreEn from "../assets/tickers/ticker_split_score_en.webp";
+import { useLang } from "../contexts/LangContext";
 
 type BotLevel = "easy" | "normal" | "hard";
 type TeamsSourceMode = "manual" | "saved" | "auto";
@@ -39,6 +43,7 @@ type BotLite = { id: string; name: string; avatarDataUrl?: string | null; avatar
 export type { HalveItConfigPayload } from "../lib/gameEngines/halveItEngine";
 
 const LS_CFG_KEY = "dc_modecfg_halveit_v4";
+const SPLIT_SCORE_TARGETS = ["n15", "n16", "double_any", "n17", "n18", "triple_any", "n19", "n20", "bull"] as const;
 const GOLD = "#e4c06b";
 const TEAM_IDS: TeamId[] = ["gold", "pink", "blue", "green"];
 const TEAM_LABELS: Record<TeamId, string> = { gold: "Team Gold", pink: "Team Pink", blue: "Team Blue", green: "Team Green" };
@@ -67,7 +72,14 @@ function interleaveTeams(teams: HalveItTeamConfig[]) {
 }
 function shuffle<T>(items: T[]) { const out = [...items]; for (let i = out.length - 1; i > 0; i -= 1) { const j = Math.floor(Math.random() * (i + 1)); [out[i], out[j]] = [out[j], out[i]]; } return out; }
 
-function RulesContent({ primary }: { primary: string }) {
+function RulesContent({ primary, isSplitScore = false }: { primary: string; isSplitScore?: boolean }) {
+  if (isSplitScore) return <div style={{ display: "grid", gap: 11, fontSize: 13, lineHeight: 1.45 }}>
+    <div><strong style={{ color: primary }}>PARCOURS</strong><br />9 manches de 3 fléchettes : 15 → 16 → DOUBLE → 17 → 18 → TRIPLE → 19 → 20 → BULL.</div>
+    <div><strong style={{ color: primary }}>CAPITAL</strong><br />Chaque joueur commence avec exactement 40 points.</div>
+    <div><strong style={{ color: primary }}>CIBLES VALIDES</strong><br />Pour les numéros, simple/double/triple sont autorisés. Au round DOUBLE, tous les doubles et DBULL comptent ; au round TRIPLE, tous les triples comptent ; au round BULL, BULL25 et DBULL50 comptent.</div>
+    <div><strong style={{ color: "#ff9aae" }}>PÉNALITÉ</strong><br />Si aucune des 3 fléchettes ne touche la cible imposée, le score est divisé par deux, arrondi à l'entier inférieur.</div>
+    <div><strong style={{ color: primary }}>VICTOIRE</strong><br />Le joueur ou l'équipe ayant le plus de points après la neuvième manche gagne.</div>
+  </div>;
   return <div style={{ display: "grid", gap: 11, fontSize: 13, lineHeight: 1.45 }}>
     <div><strong style={{ color: primary }}>OBJECTIF</strong><br />À chaque manche, tous les joueurs visent la même cible. Seules les fléchettes qui respectent le contrat de la manche ajoutent leurs points.</div>
     <div><strong style={{ color: primary }}>3 FLÉCHETTES</strong><br />Un 20 accepte S20, D20 et T20. Le round DOUBLE accepte n’importe quel double, TRIPLE n’importe quel triple, BULL accepte 25 et 50.</div>
@@ -80,9 +92,14 @@ function RulesContent({ primary }: { primary: string }) {
 
 export default function HalveItConfig(props: any) {
   const { theme } = useTheme();
+  const { lang } = useLang();
+  const isSplitScore = String(props?.params?.variantId || props?.params?.gameId || "") === "split_score";
+  const modeLabel = isSplitScore ? "SPLIT SCORE" : "HALVE-IT";
+  const headerTicker = isSplitScore ? (lang === "fr" ? tickerSplitScoreFr : tickerSplitScoreEn) : tickerHalveIt;
   const store = props?.store ?? props?.params?.store ?? null;
   const go = props?.go ?? props?.setTab ?? props?.params?.go;
-  const saved = React.useMemo(readSavedConfig, []);
+  // Les paramètres sauvegardés de HALVE-IT ne doivent jamais modifier les règles SPLIT SCORE.
+  const saved = React.useMemo(() => isSplitScore ? {} : readSavedConfig(), [isSplitScore]);
   const primary = theme?.primary || GOLD;
   const accent2 = theme?.accent2 || theme?.accent1 || primary;
   const primarySoft = theme?.primarySoft || `${primary}20`;
@@ -128,8 +145,9 @@ export default function HalveItConfig(props: any) {
   }, []);
   React.useEffect(() => { if (!selectedIds.length && humanProfiles.length) setSelectedIds(humanProfiles.slice(0, Math.min(2, humanProfiles.length)).map((p) => String(p.id))); }, [humanProfiles, selectedIds.length]);
   React.useEffect(() => {
-    try { localStorage.setItem(LS_CFG_KEY, JSON.stringify({ participantMode, teamsSourceMode, selectedIds, teamAssignments, selectedStoredTeamIds, selectedBotTeamIds, savedTeamMemberSelections, botsPanelEnabled, botTeamsPanelEnabled, botLevel, sequencePreset, startMode, fixedStartingScore, rounding, randomOrder, scoreInputMethod, playerDartSets })); } catch {}
-  }, [participantMode, teamsSourceMode, selectedIds, teamAssignments, selectedStoredTeamIds, selectedBotTeamIds, savedTeamMemberSelections, botsPanelEnabled, botTeamsPanelEnabled, botLevel, sequencePreset, startMode, fixedStartingScore, rounding, randomOrder, scoreInputMethod, playerDartSets]);
+    // Ne jamais écraser les préférences HALVE-IT en préparant SPLIT SCORE.
+    if (!isSplitScore) try { localStorage.setItem(LS_CFG_KEY, JSON.stringify({ participantMode, teamsSourceMode, selectedIds, teamAssignments, selectedStoredTeamIds, savedTeamMemberSelections, botsPanelEnabled, botTeamsPanelEnabled, botLevel, sequencePreset, startMode, fixedStartingScore, rounding, randomOrder, scoreInputMethod, playerDartSets })); } catch {}
+  }, [isSplitScore, participantMode, teamsSourceMode, selectedIds, teamAssignments, selectedStoredTeamIds, selectedBotTeamIds, savedTeamMemberSelections, botsPanelEnabled, botTeamsPanelEnabled, botLevel, sequencePreset, startMode, fixedStartingScore, rounding, randomOrder, scoreInputMethod, playerDartSets]);
 
   const allProfiles = React.useMemo(() => [...humanProfiles, ...botProfiles.map((bot) => ({ ...bot, isBot: true }))], [humanProfiles, botProfiles]);
   const byId = React.useMemo(() => new Map(allProfiles.map((p: any) => [String(p.id), p])), [allProfiles]);
@@ -215,17 +233,22 @@ export default function HalveItConfig(props: any) {
       playersList: orderedProfiles.map((profile: any) => ({ ...profile, id: String(profile.id), name: profile?.name || profile?.displayName || "Joueur", dartSetId: playerDartSets[String(profile.id)] ?? null })),
       teamConfigs: participantMode === "teams" ? activeTeamConfigs.map((team) => ({ ...team, playerIds: [...team.playerIds] })) : undefined,
       playerDartSets, botIds, botsEnabled: botIds.length > 0, botLevel,
-      sequencePreset, startMode, fixedStartingScore, rounding, randomOrder, scoreInputMethod,
+      sequencePreset: isSplitScore ? "extended9" : sequencePreset,
+      ...(isSplitScore ? { variantId: "split_score" as const, customTargets: [...SPLIT_SCORE_TARGETS] } : {}),
+      startMode: isSplitScore ? "fixed" : startMode,
+      fixedStartingScore: isSplitScore ? 40 : fixedStartingScore,
+      rounding: isSplitScore ? "floor" : rounding,
+      randomOrder, scoreInputMethod,
     };
-    try { recordProfileUsageForMode("halve_it", orderedIds); } catch {}
-    if (typeof go === "function") go("halve_it_play", payload);
+    try { recordProfileUsageForMode(isSplitScore ? "split_score" : "halve_it", orderedIds); } catch {}
+    if (typeof go === "function") go("halve_it_play", { ...payload, variantId: isSplitScore ? "split_score" : undefined });
   }
 
   const panel: React.CSSProperties = { width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", borderRadius: 18, padding: 12, background: "linear-gradient(180deg, rgba(255,255,255,.065), rgba(0,0,0,.28))", border: "1px solid rgba(255,255,255,.10)", overflow: "hidden" };
   const selectorCard: React.CSSProperties = { width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", overflow: "hidden", background: "rgba(10,12,24,.96)", borderRadius: 18, padding: "16px 12px", marginBottom: 12, boxShadow: "0 16px 40px rgba(0,0,0,.55)", border: `1px solid ${primary}33` };
   const guidedCard: React.CSSProperties = { ...selectorCard, padding: 14 };
   const participantSummary = participantMode === "teams" ? `${activeTeamConfigs.length} équipe${activeTeamConfigs.length > 1 ? "s" : ""} · ${activeUniquePlayerIds.length} joueur${activeUniquePlayerIds.length > 1 ? "s" : ""}` : `${selectedIds.length} joueur${selectedIds.length > 1 ? "s" : ""}`;
-  const targetSummary = sequencePreset === "classic7" ? "20 · 19 · TRIPLE · 18 · DOUBLE · 17 · BULL" : sequencePreset === "extended9" ? "20 · 19 · TRIPLE · 18 · DOUBLE · 17 · 16 · 15 · BULL" : sequencePreset === "expert12" ? "20 · 19 · TRIPLE · 18 · DOUBLE · 17 · 16 · 15 · 14 · 13 · 12 · BULL" : "20 · 19 · 18 · 17 · 16 · 15 · BULL";
+  const targetSummary = isSplitScore ? "15 · 16 · DOUBLE · 17 · 18 · TRIPLE · 19 · 20 · BULL" : sequencePreset === "classic7" ? "20 · 19 · TRIPLE · 18 · DOUBLE · 17 · BULL" : sequencePreset === "extended9" ? "20 · 19 · TRIPLE · 18 · DOUBLE · 17 · 16 · 15 · BULL" : sequencePreset === "expert12" ? "20 · 19 · TRIPLE · 18 · DOUBLE · 17 · 16 · 15 · 14 · 13 · 12 · BULL" : "20 · 19 · 18 · 17 · 16 · 15 · BULL";
 
   const participantsBlock = <>
     <section style={selectorCard}>
@@ -245,7 +268,7 @@ export default function HalveItConfig(props: any) {
     </section> : teamsSourceMode !== "auto" ? <BotTeamsSection botTeams={botDartsTeams} selectedBotTeamIds={selectedBotTeamIds} toggleBotTeam={toggleBotTeam} addBotTeamSelection={addBotTeamSelection} removeBotTeamSelection={removeBotTeamSelection} botTeamsPanelEnabled={botTeamsPanelEnabled} setBotTeamsPanelEnabled={setBotTeamsPanelEnabled} profiles={teamProfiles} savedTeamMemberSelections={savedTeamMemberSelections} toggleSavedTeamMember={toggleSavedTeamMember} primary={primary} primarySoft={primarySoft} /> : null}
   </>;
 
-  const routeBlock = <section style={guidedCard}>
+  const routeBlock = isSplitScore ? <section style={guidedCard}><h3 style={{ margin: "0 0 8px", color: primary, fontSize: 13 }}>PARCOURS OFFICIEL — 9 MANCHES</h3><div style={{ color: "#f1f5f9", fontWeight: 900, fontSize: 12, lineHeight: 1.7 }}>15 → 16 → DOUBLE → 17 → 18 → TRIPLE → 19 → 20 → BULL</div><div style={{ color: themeTextSoft, fontSize: 11 }}>Trois fléchettes par manche. Les neuf objectifs sont fixes pour tous les participants.</div></section> : <section style={guidedCard}>
     <h3 style={{ margin: "0 0 8px", color: primary, fontSize: 13, textTransform: "uppercase", letterSpacing: 1 }}>Parcours HALVE-IT</h3>
     <div style={panel}>
       <OptionRow label="Parcours"><OptionSelect value={sequencePreset} options={[
@@ -258,7 +281,11 @@ export default function HalveItConfig(props: any) {
     </div>
   </section>;
 
-  const rulesBlock = <section style={guidedCard}>
+  const rulesBlock = isSplitScore ? <section style={guidedCard}>
+    <h3 style={{ margin: "0 0 8px", color: primary, fontSize: 13 }}>RÈGLES SPLIT SCORE</h3>
+    <div style={{ color: "#dce5f0", fontSize: 12, lineHeight: 1.6 }}>Départ <b>40 points</b>. Chaque touche valable ajoute la valeur réelle (S/D/T, BULL25/DBULL50). Aucune touche valable parmi les 3 fléchettes : le score est divisé par deux, arrondi à l'entier inférieur. Le meilleur total après la neuvième manche gagne.</div>
+    <div style={{ marginTop: 10 }}><OptionRow label="Ordre aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow></div>
+  </section> : <section style={guidedCard}>
     <h3 style={{ margin: "0 0 8px", color: primary, fontSize: 13, textTransform: "uppercase", letterSpacing: 1 }}>Règles</h3>
     <OptionRow label="Score de départ"><OptionSelect value={startMode} options={[
       { value: "zero", label: "0 point · classique simple" },
@@ -281,19 +308,24 @@ export default function HalveItConfig(props: any) {
     <h3 style={{ margin: "0 0 8px", color: primary, fontSize: 13, textTransform: "uppercase", letterSpacing: 1 }}>Résumé</h3>
     <div style={{ display: "grid", gap: 7, padding: 11, borderRadius: 14, background: `${primary}0c`, border: `1px solid ${primary}33`, fontSize: 11.5 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Participants</span><b>{participantSummary}</b></div>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Départ</span><b>{startMode === "opening_visit" ? "Volée libre" : startMode === "fixed" ? `${fixedStartingScore} pts` : "0 pt"}</b></div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Départ</span><b>{isSplitScore ? "40 pts" : startMode === "opening_visit" ? "Volée libre" : startMode === "fixed" ? `${fixedStartingScore} pts` : "0 pt"}</b></div>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Parcours</span><b style={{ textAlign: "right", maxWidth: "70%" }}>{targetSummary}</b></div>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Halve</span><b>/2 · arrondi {rounding === "floor" ? "inférieur" : "supérieur"}</b></div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Halve</span><b>/2 · arrondi {isSplitScore || rounding === "floor" ? "inférieur" : "supérieur"}</b></div>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Saisie</span><b>{scoreInputMethod === "dartboard" ? "Cible" : "Keypad"}</b></div>
     </div>
     {!validSelection ? <div style={{ marginTop: 10, fontSize: 11.5, color: "#ff9aa7", fontWeight: 850, textAlign: "center" }}>{selectionError}</div> : null}
   </section>;
 
   return <div style={{ minHeight: "100dvh", width: "100%", maxWidth: "100%", overflowX: "hidden", paddingBottom: 92 }}>
-    <PageHeader tickerSrc={tickerHalveIt} tickerAlt="HALVE-IT" left={<BackDot onClick={backToGames} color={primary} glow={`${primary}88`} title="Retour" />} right={<InfoDot title="Règles HALVE-IT" color={theme?.accent1 || primary} glow={`${theme?.accent1 || primary}77`} content={<RulesContent primary={primary} />} />} />
+    <PageHeader tickerSrc={headerTicker} tickerAlt={modeLabel} left={<BackDot onClick={backToGames} color={primary} glow={`${primary}88`} title="Retour" />} right={<InfoDot title={`Règles ${modeLabel}`} color={theme?.accent1 || primary} glow={`${theme?.accent1 || primary}77`} content={<RulesContent primary={primary} isSplitScore={isSplitScore} />} />} />
+    <div style={{ padding: "0 8px", width: "100%", boxSizing: "border-box" }}>
+      <DartsModeFamilyBridge family="halve_it" current={isSplitScore ? "variant" : "main"} accent={primary}
+        onOpenRelated={() => go?.("halve_it_config", isSplitScore ? { launchMode: "arcade" } : { variantId: "split_score", launchMode: "arcade" })}
+        onBrowseVariants={() => go?.("games", { gamesView: "all", gamesCategory: "variant" })} />
+    </div>
     <div style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", padding: "8px 8px 0", overflowX: "hidden" }}>
       <section style={{ ...selectorCard, border: `1px solid ${primary}66`, boxShadow: `0 0 24px ${primary}18, 0 14px 34px rgba(0,0,0,.48)` }}>
-        <div style={{ color: primary, fontSize: 12, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Configuration HALVE-IT</div>
+        <div style={{ color: primary, fontSize: 12, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Configuration {modeLabel}</div>
         <div style={{ display: "flex", gap: 8 }}><PillButton label="Guidée" active={configViewMode === "guided"} onClick={() => selectConfigViewMode("guided")} primary={primary} primarySoft={primarySoft} /><PillButton label="Complète" active={configViewMode === "complete"} onClick={() => selectConfigViewMode("complete")} primary={primary} primarySoft={primarySoft} /></div>
         <div style={{ marginTop: 8, color: themeTextSoft, fontSize: 11 }}>Guidée : étape par étape. Complète : tous les réglages sur une seule page.</div>
       </section>
@@ -308,7 +340,7 @@ export default function HalveItConfig(props: any) {
         <div style={{ display: "flex", gap: 9, margin: "0 0 12px" }}><button type="button" onClick={() => setGuidedStep((s) => Math.max(0, s - 1))} disabled={guidedStep === 0} style={{ flex: 1, height: 42, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: guidedStep === 0 ? "#565b76" : "#fff", fontWeight: 950 }}>← Précédent</button><button type="button" onClick={() => setGuidedStep((s) => Math.min(guidedMaxStep, s + 1))} disabled={guidedStep === guidedMaxStep} style={{ flex: 1, height: 42, borderRadius: 999, border: `1px solid ${primary}`, background: primarySoft, color: guidedStep === guidedMaxStep ? "#565b76" : primary, fontWeight: 950 }}>Suivant →</button></div>
       </> : <>{participantsBlock}{routeBlock}{rulesBlock}{inputBlock}{summaryBlock}</>}
 
-      {(configViewMode === "complete" || guidedStep === guidedMaxStep) ? <div style={{ padding: "4px 4px 14px" }}><button type="button" disabled={!validSelection} onClick={onStart} style={{ width: "100%", minHeight: 52, borderRadius: 999, border: validSelection ? `1px solid ${primary}cc` : "1px solid rgba(255,255,255,.10)", background: validSelection ? `linear-gradient(90deg, ${primary}, ${accent2})` : "rgba(255,255,255,.06)", color: validSelection ? "#071018" : "rgba(255,255,255,.48)", boxShadow: validSelection ? `0 0 20px ${primary}55, 0 10px 24px rgba(0,0,0,.40)` : "none", fontWeight: 1100, letterSpacing: 1.1, cursor: validSelection ? "pointer" : "not-allowed" }}>DÉMARRER HALVE-IT</button>{!validSelection ? <div style={{ marginTop: 9, fontSize: 12, color: "#ff9aa7", fontWeight: 850, textAlign: "center" }}>{selectionError}</div> : null}</div> : null}
+      {(configViewMode === "complete" || guidedStep === guidedMaxStep) ? <div style={{ padding: "4px 4px 14px" }}><button type="button" disabled={!validSelection} onClick={onStart} style={{ width: "100%", minHeight: 52, borderRadius: 999, border: validSelection ? `1px solid ${primary}cc` : "1px solid rgba(255,255,255,.10)", background: validSelection ? `linear-gradient(90deg, ${primary}, ${accent2})` : "rgba(255,255,255,.06)", color: validSelection ? "#071018" : "rgba(255,255,255,.48)", boxShadow: validSelection ? `0 0 20px ${primary}55, 0 10px 24px rgba(0,0,0,.40)` : "none", fontWeight: 1100, letterSpacing: 1.1, cursor: validSelection ? "pointer" : "not-allowed" }}>DÉMARRER {modeLabel}</button>{!validSelection ? <div style={{ marginTop: 9, fontSize: 12, color: "#ff9aa7", fontWeight: 850, textAlign: "center" }}>{selectionError}</div> : null}</div> : null}
     </div>
   </div>;
 }

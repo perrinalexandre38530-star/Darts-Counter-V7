@@ -611,6 +611,14 @@ export const fr: Dict = {
 
   // Page publique — nouveaux modes VARIANTES V223
   'landing.game.black_vs_white.label': 'BLACK VS WHITE',
+  'landing.game.split_score.label': 'SPLIT SCORE',
+  'landing.game.split_score.info': 'Départ 40 points. Neuf manches : 15, 16, DOUBLE, 17, 18, TRIPLE, 19, 20, BULL. Chaque touche conforme rapporte sa valeur réelle ; manquer toute la volée divise le total par deux.',
+  'landing.game.split_score.objective': 'Obtenir le meilleur score après les neuf manches sans subir de divisions.',
+  'landing.game.split_score.configNarrative': 'Choisissez les joueurs, équipes et bots IA. L’ordre de départ est personnalisable. Le parcours officiel de neuf cibles, le capital de 40 et l’arrondi inférieur sont fixés.',
+  'landing.game.chase.label': 'CHASE',
+  'landing.game.chase.info': 'Variante des 5 vies : 5 vies au départ et 3 fléchettes par volée. Il faut égaler ou dépasser le score précédent. En cas d’échec, on perd une vie et son score devient le nouvel objectif. L’ordre des joueurs change à chaque cycle. Le dernier survivant gagne.',
+  'landing.game.chase.objective': 'Rester le dernier joueur en vie en égalant ou dépassant la volée précédente.',
+  'landing.game.chase.configNarrative': 'Choisissez les profils, les bots éventuels, les vies de départ et l’ordre de départ (aléatoire, sélection ou Bull). CHASE active automatiquement la règle de score égal accepté.',
   'landing.game.black_vs_white.info': 'Variante débutant basée sur les simples noirs et blancs. Chaque joueur suit sa couleur ; les simples de sa piste marquent, tandis que D/T, couleur adverse et MISS peuvent devenir bonus ou pénalités selon la configuration.',
   'landing.game.black_vs_white.objective': 'Marquer dans les simples de sa piste NOIRE ou BLANCHE et terminer avec le meilleur total.',
   'landing.game.three_colors.label': 'LES 3 COULEURS',

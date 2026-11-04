@@ -24,6 +24,7 @@ import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import { recordProfileUsageForMode } from "../lib/profileUsage";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
+import DartsModeFamilyBridge from "../components/DartsModeFamilyBridge";
 import {
   SCORE_INPUT_LS_KEY,
   sanitizeScoreInputMethod,
@@ -31,6 +32,8 @@ import {
 } from "../lib/scoreInput/types";
 
 import tickerFiveLives from "../assets/tickers/ticker_five_lives.png";
+import tickerChaseFr from "../assets/tickers/ticker_chase_fr.webp";
+import tickerChaseEn from "../assets/tickers/ticker_chase_en.webp";
 // 🔽 AVATARS BOTS PRO (mêmes chemins que KillerConfig)
 import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
 import avatarSnakeKing from "../assets/avatars/bots-pro/snake-king.png";
@@ -73,13 +76,15 @@ export type FiveLivesConfig = {
   startingLives: number;
   randomStartOrder: boolean;
   startOrderSource?: "random" | "selection" | "bull";
-  allowEqualScore?: boolean; // Variante RELAIS: égalité autorisée
+  allowEqualScore?: boolean; // CHASE : égalité autorisée
+  variantId?: "chase";
   scoreInputMethod: ScoreInputMethod;
   players: FiveLivesConfigPlayer[];
 };
 
 type Props = {
   store: Store;
+  presetVariantId?: "chase";
   go?: (tab: any, params?: any) => void;
   onBack?: () => void;
   onStart?: (cfg: FiveLivesConfig) => void;
@@ -342,9 +347,10 @@ function BotMedallion({
 }
 
 
-export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGame, onPlay }: Props) {
+export default function FiveLivesConfig({ store, go, presetVariantId, onBack, onStart, onStartGame, onPlay }: Props) {
   const { theme } = useTheme();
-  const { t } = useLang();
+  const { t, lang } = useLang();
+  const chasePreset = presetVariantId === "chase";
 
   React.useLayoutEffect(() => {
     try {
@@ -365,7 +371,11 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
   const [startingLives, setStartingLives] = React.useState<number>(5);
   const [randomStartOrder, setRandomStartOrder] = React.useState<boolean>(true);
   const [bullOrder, setBullOrder] = React.useState<boolean>(false);
-  const [allowEqualScore, setAllowEqualScore] = React.useState<boolean>(false);
+  // CHASE depuis Games > Variantes est toujours le preset « égal ou supérieur ».
+  // Le mode historique RELAIS des Cinq Vies est conservé séparément de CHASE.
+  const [allowEqualScore, setAllowEqualScore] = React.useState<boolean>(chasePreset);
+  const chaseActive = chasePreset;
+  const tickerSrc = chaseActive ? (String(lang).toLowerCase() === "fr" ? tickerChaseFr : tickerChaseEn) : tickerFiveLives;
   const [scoreInputMethod, setScoreInputMethod] = React.useState<ScoreInputMethod>(() => {
     try {
       return sanitizeFiveLivesScoreInput(localStorage.getItem(SCORE_INPUT_LS_KEY) || "keypad");
@@ -465,12 +475,13 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
 
     const cfg: FiveLivesConfig = {
       id: `fiveLives-${Date.now()}`,
+      ...(chaseActive ? { variantId: "chase" as const } : {}),
       mode: "five_lives",
       createdAt: Date.now(),
       startingLives: clampInt(startingLives, 1, 20, 5),
       randomStartOrder: !!randomStartOrder,
       startOrderSource: bullOrder ? "bull" : randomStartOrder ? "random" : "selection",
-      allowEqualScore,
+      allowEqualScore: chasePreset || allowEqualScore,
       scoreInputMethod,
       players: finalPlayers,
     };
@@ -516,8 +527,8 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
 >
   <div style={{ position: "relative", marginLeft: -12, marginRight: -12 }}>
     <img
-      src={tickerFiveLives as any}
-      alt="Five Lives"
+      src={tickerSrc as any}
+      alt={chaseActive ? "CHASE" : "Five Lives"}
       draggable={false}
       style={{ width: "100%", height: 92, objectFit: "cover", display: "block" }}
     />
@@ -547,6 +558,10 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
     </div>
   </div>
 </div>
+
+      <DartsModeFamilyBridge family="five_lives" current={chaseActive ? "variant" : "main"} accent={primary}
+        onOpenRelated={() => go?.("five_lives_config", chaseActive ? { launchMode: "arcade" } : { variantId: "chase", launchMode: "arcade" })}
+        onBrowseVariants={() => go?.("games", { gamesView: "all", gamesCategory: "variant" })} />
 
       {/* CONTENT */}
       <div className="msc-mode-config-body" style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
@@ -679,11 +694,13 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Variante des 5 vies</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              <PillButton label="CLASSIQUE · >" active={!allowEqualScore} onClick={() => setAllowEqualScore(false)} primary={primary} primarySoft={primarySoft} />
-              <PillButton label="RELAIS · ≥" active={allowEqualScore} onClick={() => setAllowEqualScore(true)} primary={primary} primarySoft={primarySoft} />
+              {!chasePreset && <PillButton label="CLASSIQUE · >" active={!allowEqualScore} onClick={() => setAllowEqualScore(false)} primary={primary} primarySoft={primarySoft} />}
+              {chasePreset
+                ? <PillButton label="CHASE · ≥" active onClick={() => setAllowEqualScore(true)} primary={primary} primarySoft={primarySoft} />
+                : <PillButton label="RELAIS · ≥" active={allowEqualScore} onClick={() => setAllowEqualScore(true)} primary={primary} primarySoft={primarySoft} /> }
             </div>
             <div style={{ fontSize: 11, color: "#c8cbe4", marginTop: 6 }}>
-              {allowEqualScore ? "RELAIS : égaler OU dépasser la volée précédente permet de conserver sa vie." : "CLASSIQUE : il faut strictement dépasser la volée précédente."}
+              {chasePreset ? "CHASE : égaler ou dépasser le score précédent. La dernière volée devient la nouvelle référence ; les survivants changent d'ordre après chaque cycle." : allowEqualScore ? "RELAIS : score égal ou supérieur accepté, sans modifier l'ordre des joueurs." : "CLASSIQUE : il faut strictement dépasser la volée précédente."}
             </div>
           </div>
           <div style={{ marginBottom: 12 }}>
@@ -829,7 +846,7 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
                 textShadow: `0 0 10px ${theme.primary}55`,
               }}
             >
-              Règles — Les 5 vies
+              Règles — {chaseActive ? "CHASE" : "Les 5 vies"}
             </div>
 
             <div style={{ fontSize: 13, lineHeight: 1.45, color: theme.textSoft }}>
@@ -839,12 +856,12 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
 
               <div style={{ marginBottom: 10 }}>
                 <b style={{ color: theme.text }}>Principe :</b> chaque joueur commence avec <b>{startingLives}</b> vies.
-                Une manche = <b>3 fléchettes</b>. Tu dois faire un score <b>{allowEqualScore ? "ÉGAL OU SUPÉRIEUR" : "STRICTEMENT supérieur"}</b> au score du joueur
+                Une manche = <b>3 fléchettes</b>. Tu dois faire un score <b>{(chasePreset || allowEqualScore) ? "ÉGAL OU SUPÉRIEUR" : "STRICTEMENT supérieur"}</b> au score du joueur
                 précédent.
               </div>
 
               <div style={{ marginBottom: 10 }}>
-                <b style={{ color: theme.text }}>Échec :</b> si ton score est <b>{allowEqualScore ? "<" : "≤"}</b> au score à battre, tu perds <b>1 vie</b>.
+                <b style={{ color: theme.text }}>Échec :</b> si ton score est <b>{(chasePreset || allowEqualScore) ? "<" : "≤"}</b> au score à battre, tu perds <b>1 vie</b>.
               </div>
 
               <div style={{ marginBottom: 10 }}>
@@ -856,7 +873,7 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
               </div>
 
               <div style={{ marginTop: 10, fontSize: 12, opacity: 0.9 }}>
-                {allowEqualScore ? "✅ Score égal accepté : variante RELAIS." : "⚠️ Score égal = échec (classique)."}
+                {chasePreset ? "✅ CHASE : score égal accepté, ordre remélangé après chaque cycle complet." : allowEqualScore ? "✅ RELAIS : égalité acceptée, ordre conservé." : "⚠️ Score égal = échec (classique)."}
               </div>
             </div>
 

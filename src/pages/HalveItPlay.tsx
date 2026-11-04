@@ -28,6 +28,9 @@ import {
   type HalveItTeamConfig,
 } from "../lib/gameEngines/halveItEngine";
 import tickerHalveIt from "../assets/tickers/ticker_halve_it.png";
+import tickerSplitScoreFr from "../assets/tickers/ticker_split_score_fr.webp";
+import tickerSplitScoreEn from "../assets/tickers/ticker_split_score_en.webp";
+import { useLang } from "../contexts/LangContext";
 import targetBg from "../assets/target_bg.png";
 
 type UiDart = { v: number; mult: 1 | 2 | 3 };
@@ -56,6 +59,7 @@ function normalizeConfig(props: any): HalveItConfigPayload {
   const preset = ["classic7", "extended9", "expert12", "numbers7"].includes(String(raw?.sequencePreset)) ? raw.sequencePreset : "classic7";
   const startMode = raw?.startMode === "fixed" || raw?.startMode === "opening_visit" ? raw.startMode : "zero";
   return {
+    variantId: raw?.variantId === "split_score" ? "split_score" : undefined,
     mode: "halve_it",
     participantMode: raw?.participantMode === "teams" ? "teams" : "players",
     players: Math.max(1, Number(raw?.players || raw?.selectedIds?.length || 1)),
@@ -130,8 +134,13 @@ function TeamLogo({ team, size = 48 }: { team: any; size?: number }) {
 }
 
 export default function HalveItPlay(props: any) {
+  const { lang } = useLang();
   const { theme } = useTheme();
   const config = React.useMemo(() => normalizeConfig(props), []);
+  const isSplitScore = config.variantId === "split_score";
+  const modeId = isSplitScore ? "split_score" : "halve_it";
+  const modeLabel = isSplitScore ? "SPLIT SCORE" : "HALVE-IT";
+  const headerTicker = isSplitScore ? (lang === "fr" ? tickerSplitScoreFr : tickerSplitScoreEn) : tickerHalveIt;
   const store = props?.store;
   const go = props?.go ?? props?.setTab;
   const onFinish = props?.onFinish as ((record: any, options?: { navigate?: boolean }) => void) | undefined;
@@ -207,7 +216,7 @@ export default function HalveItPlay(props: any) {
   }
   function validateVisit() {
     if (state.finished || botThinking) return;
-    if (throwDarts.length !== 3) { setNotice("HALVE-IT se joue avec 3 fléchettes par cible."); return; }
+    if (throwDarts.length !== 3) { setNotice(`${modeLabel} se joue avec 3 fléchettes par cible.`); return; }
     commitVisit(throwDarts);
   }
   function cancelOrUndo() {
@@ -234,8 +243,8 @@ export default function HalveItPlay(props: any) {
   }
   function backToConfig() {
     const now = Date.now(); if (now - lastBackRef.current < 350) return; lastBackRef.current = now;
-    if (state.history.length && !state.finished && !window.confirm("Quitter cette partie de HALVE-IT en cours ?")) return;
-    if (typeof go === "function") go("halve_it_config", { ...config, launchMode: props?.params?.quickParty === true ? "quick" : "arcade", quickParty: props?.params?.quickParty === true });
+    if (state.history.length && !state.finished && !window.confirm(`Quitter cette partie de ${modeLabel} en cours ?`)) return;
+    if (typeof go === "function") go("halve_it_config", { ...config, variantId: isSplitScore ? "split_score" : undefined, launchMode: props?.params?.quickParty === true ? "quick" : "arcade", quickParty: props?.params?.quickParty === true });
   }
 
   function buildHistoryRecord() {
@@ -281,21 +290,21 @@ export default function HalveItPlay(props: any) {
     };
     const targetSequence = state.targets.map((t) => ({ id: t.id, label: t.label, kind: t.kind, value: t.value ?? null }));
     const summary = {
-      kind: "halve_it", mode: "halve_it", sport: "darts", finished: true, participantMode: config.participantMode,
+      kind: modeId, mode: modeId, variantId: isSplitScore ? "split_score" : undefined, sport: "darts", finished: true, participantMode: config.participantMode,
       winnerId, winnerIds: state.winnerIds, winnerName: state.tied ? "Égalité" : winnerStanding?.name || "—", tied: state.tied,
       startMode: state.rules.startMode, fixedStartingScore: state.rules.fixedStartingScore, rounding: state.rules.rounding,
       sequencePreset: state.rules.sequencePreset, targetSequence, targetsPlayed: state.targets.length,
       finishReason: state.finishReason, duration: matchStats.durationMs, durationMs: matchStats.durationMs, standings: state.standings, rankings: state.standings,
-      players: playerRows, perPlayer: playerRows, teams, matchStats, scoreLine: state.standings.map((row) => `${row.name} ${row.score}`).join(" • "), game: { mode: "halve_it", teams },
+      players: playerRows, perPlayer: playerRows, teams, matchStats, scoreLine: state.standings.map((row) => `${row.name} ${row.score}`).join(" • "), game: { mode: modeId, teams },
     };
     return {
-      id: matchIdRef.current, matchId: matchIdRef.current, kind: "halve_it", mode: "halve_it", sport: "darts", status: "finished", createdAt: state.startedAt, updatedAt: now,
-      winnerId, winnerIds: state.winnerIds, players: playerRows, teams, game: { mode: "halve_it", teams }, summary,
+      id: matchIdRef.current, matchId: matchIdRef.current, kind: modeId, mode: modeId, variantId: isSplitScore ? "split_score" : undefined, sport: "darts", status: "finished", createdAt: state.startedAt, updatedAt: now,
+      winnerId, winnerIds: state.winnerIds, players: playerRows, teams, game: { mode: modeId, teams }, summary,
       payload: {
-        kind: "halve_it", mode: "halve_it", sport: "darts", winnerId, winnerIds: state.winnerIds, tied: state.tied, config, rules: state.rules,
+        kind: modeId, mode: modeId, sport: "darts", winnerId, winnerIds: state.winnerIds, tied: state.tied, config, rules: state.rules,
         players: playerRows, teams, summary, visits: state.history, visitHistory: state.history,
         state: { roundIndex: state.roundIndex, targets: targetSequence, scoresByPlayer: state.scoresByPlayer, standings: state.standings, finishReason: state.finishReason },
-        stats: { sport: "darts", mode: "halve_it", players: playerRows, teams, match: matchStats, global: matchStats },
+        stats: { sport: "darts", mode: modeId, players: playerRows, teams, match: matchStats, global: matchStats },
       },
     };
   }
@@ -317,7 +326,7 @@ export default function HalveItPlay(props: any) {
   const currentDelta = previewAfter - activeScore;
 
   return <div style={{ minHeight: "100dvh", color: themeText, background: `radial-gradient(circle at 50% -5%, ${primary}22 0, ${theme?.bg || "#080c17"} 46%, #020309 100%)`, paddingBottom: 8, overflowX: "hidden" }}>
-    <PageHeader tickerSrc={tickerHalveIt} tickerAlt="HALVE-IT" left={<div style={{ marginLeft: 6 }}><BackDot onClick={backToConfig} color={primary} glow={`${primary}88`} title="Retour à la configuration" /></div>} right={<div style={{ marginRight: 6 }}><InfoDot title="Règles HALVE-IT" color={secondary} glow={`${secondary}77`} content={<RulesContent config={config} primary={primary} />} /></div>} />
+    <PageHeader tickerSrc={headerTicker} tickerAlt={modeLabel} left={<div style={{ marginLeft: 6 }}><BackDot onClick={backToConfig} color={primary} glow={`${primary}88`} title="Retour à la configuration" /></div>} right={<div style={{ marginRight: 6 }}><InfoDot title={`Règles ${modeLabel}`} color={secondary} glow={`${secondary}77`} content={<RulesContent config={config} primary={primary} />} /></div>} />
 
     <div style={{ padding: "6px 8px 8px", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
       <section style={{ ...panelStyle(), padding: 0, overflow: "hidden", borderColor: `${primary}88`, boxShadow: `0 0 24px ${primary}20`, marginBottom: 7 }}>
@@ -387,9 +396,9 @@ export default function HalveItPlay(props: any) {
       </section> : null}
     </div>
 
-    {showTable ? <StandingsModal state={state} profilesById={byId} teamById={teamById} participantMode={config.participantMode} primary={primary} onClose={() => setShowTable(false)} /> : null}
-    {showStats ? <LiveStatsModal state={state} profilesById={byId} primary={primary} onClose={() => setShowStats(false)} /> : null}
-    {showEnd && state.finished ? <EndModal state={state} profilesById={byId} teamById={teamById} participantMode={config.participantMode} primary={primary} onClose={() => setShowEnd(false)} onReplay={resetMatch} onHistory={() => { try { onFinish?.(buildHistoryRecord(), { navigate: true }); } catch { if (typeof go === "function") go("statsHub", { tab: "history" }); } }} /> : null}
+    {showTable ? <StandingsModal modeLabel={modeLabel} state={state} profilesById={byId} teamById={teamById} participantMode={config.participantMode} primary={primary} onClose={() => setShowTable(false)} /> : null}
+    {showStats ? <LiveStatsModal modeLabel={modeLabel} state={state} profilesById={byId} primary={primary} onClose={() => setShowStats(false)} /> : null}
+    {showEnd && state.finished ? <EndModal modeLabel={modeLabel} state={state} profilesById={byId} teamById={teamById} participantMode={config.participantMode} primary={primary} onClose={() => setShowEnd(false)} onReplay={resetMatch} onHistory={() => { try { onFinish?.(buildHistoryRecord(), { navigate: true }); } catch { if (typeof go === "function") go("statsHub", { tab: "history" }); } }} /> : null}
   </div>;
 }
 
@@ -398,27 +407,27 @@ function actionButton(color: string): React.CSSProperties { return { minHeight: 
 function miniAction(color: string): React.CSSProperties { return { minHeight: 34, borderRadius: 12, border: `1px solid ${color}66`, background: `${color}10`, color, fontSize: 9.5, fontWeight: 1000, letterSpacing: .5, cursor: "pointer" }; }
 function td(color = "#fff"): React.CSSProperties { return { padding: 7, textAlign: "center", fontWeight: 950, color }; }
 
-function StandingsModal({ state, profilesById, teamById, participantMode, primary, onClose }: any) {
+function StandingsModal({ modeLabel, state, profilesById, teamById, participantMode, primary, onClose }: any) {
   return <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,.72)", backdropFilter: "blur(7px)", display: "grid", placeItems: "center", padding: 12 }}><div onClick={(e) => e.stopPropagation()} style={{ ...panelStyle(), width: "min(760px,100%)", maxHeight: "86vh", overflow: "auto", padding: 13 }}>
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}><div style={{ width: 34 }} /><div style={{ color: primary, fontWeight: 1000, letterSpacing: 1 }}>CLASSEMENT HALVE-IT</div><button onClick={onClose} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: "#fff", fontSize: 18 }}>×</button></div>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}><div style={{ width: 34 }} /><div style={{ color: primary, fontWeight: 1000, letterSpacing: 1 }}>CLASSEMENT {modeLabel}</div><button onClick={onClose} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: "#fff", fontSize: 18 }}>×</button></div>
     <div style={{ display: "grid", gap: 8 }}>{state.standings.map((standing: any) => <div key={standing.id} style={{ display: "grid", gridTemplateColumns: "34px 42px minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: 9, borderRadius: 14, background: "rgba(255,255,255,.04)", border: `1px solid ${standing.rank === 1 ? primary + "66" : "rgba(255,255,255,.08)"}` }}><div style={{ color: standing.rank === 1 ? C.gold : "#fff", fontWeight: 1000, textAlign: "center" }}>{standing.rank}.</div>{participantMode === "teams" ? <TeamLogo team={teamById.get(standing.id)} size={38} /> : <ProfileAvatar profile={profilesById.get(standing.id)} size={38} />}<div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{standing.name}{standing.rank === 1 ? " 🏆" : ""}</div><div style={{ color: "rgba(255,255,255,.58)", fontSize: 10 }}>Hits {standing.hits} · Halves {standing.halves} · {standing.visits} volées</div></div><div style={{ color: primary, fontSize: 24, fontWeight: 1100 }}>{standing.score}</div></div>)}</div>
   </div></div>;
 }
 
-function LiveStatsModal({ state, profilesById, primary, onClose }: any) {
+function LiveStatsModal({ modeLabel, state, profilesById, primary, onClose }: any) {
   const rows = state.players.map((p: any) => ({ p, profile: profilesById.get(p.id) || p, stats: state.statsByPlayer[p.id] || emptyHalveItStats(), score: state.scoresByPlayer[p.id] || 0 })).sort((a: any, b: any) => b.score - a.score);
   return <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,.74)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 10 }}><div onClick={(e) => e.stopPropagation()} style={{ ...panelStyle(), width: "min(900px,100%)", maxHeight: "90vh", overflow: "auto", padding: 13 }}>
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}><div style={{ width: 34 }} /><div style={{ color: primary, fontWeight: 1000, letterSpacing: 1 }}>STATS LIVE HALVE-IT</div><button onClick={onClose} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: "#fff", fontSize: 18 }}>×</button></div>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}><div style={{ width: 34 }} /><div style={{ color: primary, fontWeight: 1000, letterSpacing: 1 }}>STATS LIVE {modeLabel}</div><button onClick={onClose} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: "#fff", fontSize: 18 }}>×</button></div>
     <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8 }}>{rows.map((r: any) => <div key={r.p.id} style={{ padding: 10, borderRadius: 14, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><ProfileAvatar profile={r.profile} size={34} /><div style={{ minWidth: 0 }}><div style={{ color: primary, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(r.profile)}</div><div style={{ fontSize: 22, fontWeight: 1100 }}>{r.score}</div></div></div><div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, fontSize: 9.5 }}><StatKpi label="Hits" value={r.stats.validHits} /><StatKpi label="Précision" value={`${pct(r.stats.validHits,r.stats.darts)}%`} /><StatKpi label="Halves" value={r.stats.halvingEvents} /><StatKpi label="Best" value={r.stats.bestVisit} /><StatKpi label="+ Points" value={r.stats.pointsWon} /><StatKpi label="− Points" value={r.stats.pointsLostByHalving} /></div></div>)}</div>
   </div></div>;
 }
 function StatKpi({ label, value }: any) { return <div style={{ padding: 7, borderRadius: 10, background: "rgba(0,0,0,.22)", textAlign: "center" }}><div style={{ opacity: .55, fontSize: 8 }}>{label}</div><div style={{ fontWeight: 1000 }}>{value}</div></div>; }
 
-function EndModal({ state, profilesById, teamById, participantMode, primary, onClose, onReplay, onHistory }: any) {
+function EndModal({ modeLabel, state, profilesById, teamById, participantMode, primary, onClose, onReplay, onHistory }: any) {
   const rows = state.players.map((player: any) => ({ player, profile: profilesById.get(player.id) || player, stats: state.statsByPlayer[player.id] || emptyHalveItStats(), score: Number(state.scoresByPlayer[player.id] || 0) })).sort((a: any, b: any) => b.score - a.score || b.stats.validHits - a.stats.validHits);
   const best = rows[0];
   return <div style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(0,0,0,.78)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 10 }}><div style={{ ...panelStyle(), width: "min(920px,100%)", maxHeight: "94vh", overflow: "auto", borderColor: `${primary}77`, padding: 13 }}>
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><div style={{ width: 34 }} /><div style={{ textAlign: "center" }}><div style={{ color: primary, fontSize: 11, fontWeight: 1000, letterSpacing: 1.2 }}>FIN DE PARTIE</div><div style={{ fontSize: 20, fontWeight: 1100 }}>HALVE-IT</div></div><button onClick={onClose} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: "#fff", fontSize: 18 }}>×</button></div>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><div style={{ width: 34 }} /><div style={{ textAlign: "center" }}><div style={{ color: primary, fontSize: 11, fontWeight: 1000, letterSpacing: 1.2 }}>FIN DE PARTIE</div><div style={{ fontSize: 20, fontWeight: 1100 }}>{modeLabel}</div></div><button onClick={onClose} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: "#fff", fontSize: 18 }}>×</button></div>
     <div style={{ marginTop: 11, padding: 12, borderRadius: 16, background: `${primary}10`, border: `1px solid ${primary}44`, textAlign: "center" }}><div style={{ color: C.gold, fontSize: 10, fontWeight: 1000 }}>VAINQUEUR</div><div style={{ marginTop: 4, fontSize: 22, fontWeight: 1100 }}>{state.tied ? "ÉGALITÉ" : state.standings[0]?.name || best?.profile?.name || "—"}</div><div style={{ color: primary, fontSize: 32, fontWeight: 1100 }}>{state.standings[0]?.score ?? best?.score ?? 0}</div></div>
     <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>{[
       ["Durée", fmtDuration((state.finishedAt || Date.now()) - state.startedAt)], ["Darts", rows.reduce((a: number, r: any) => a + r.stats.darts, 0)], ["Halves", rows.reduce((a: number, r: any) => a + r.stats.halvingEvents, 0)], ["Parfaits 3/3", rows.reduce((a: number, r: any) => a + r.stats.perfectVisits, 0)]

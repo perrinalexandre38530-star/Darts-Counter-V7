@@ -5117,6 +5117,20 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
       }
     }
 
+    // TOP 10 / MORPION : les archives V132-V136 n'avaient pas encore resume.route.
+    // Elles ont néanmoins un checkpoint sous resume.livePayload. Reprendre le
+    // moteur concerné avec l'identité originale, jamais par le fallback X01.
+    const historyMode = normalizeToken(baseMode(e));
+    if (historyMode === "top10" || historyMode === "tictactoe") {
+      const route = historyMode === "top10" ? "top_10_play" : "tic_tac_toe_play";
+      go(route as any, {
+        rec: e, resumeId, config: (e as any)?.resume?.config || (e as any)?.payload?.config || null,
+        mode: historyMode === "top10" ? "top_10" : "tic_tac_toe",
+        from: preview ? "history_preview" : "history", preview: !!preview,
+      });
+      return;
+    }
+
     // GOLF
     if (baseMode(e) === "golf") {
       const ok = safeGo(["golf_play", "golf"], {

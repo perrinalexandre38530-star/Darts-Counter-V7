@@ -13,9 +13,11 @@ const playedAt = (r: any) => n(r?.updatedAt || r?.summary?.finishedAt || r?.payl
 const rowId = (r: any) => txt(r?.id || r?.playerId || r?.profileId || r?.pid);
 const rowName = (r: any) => txt(r?.name || r?.playerName || r?.displayName || "Joueur");
 
-function isHalveIt(record: any) {
+function isHalveIt(record: any, mode: "halve_it" | "split_score" = "halve_it") {
   const blob = [record?.kind, record?.mode, record?.game, record?.variantId, record?.summary?.kind, record?.summary?.mode, record?.payload?.kind, record?.payload?.mode, record?.payload?.summary?.mode]
     .filter(Boolean).map((v) => txt(v).toLowerCase()).join(" ");
+  if (mode === "split_score") return blob.includes("split_score") || blob.includes("split score");
+  if (blob.includes("split_score") || blob.includes("split score")) return false;
   return blob.includes("halve_it") || blob.includes("halve-it") || blob.includes("halve it") || blob.includes("half-it");
 }
 function pools(record: any) {
@@ -67,12 +69,13 @@ function targetLabel(key: string, stat: any) {
   return txt(stat?.label) || ({ open: "LIBRE", double_any: "DOUBLE", triple_any: "TRIPLE", bull: "BULL" } as any)[key] || key.replace(/^n/, "");
 }
 
-export default function HalveItStatsTabFull({ records = [], playerId, playerName }: any) {
+export default function HalveItStatsTabFull({ records = [], playerId, playerName, mode = "halve_it" }: any) {
+  const label = mode === "split_score" ? "SPLIT SCORE" : "HALVE-IT";
   const matches = React.useMemo(() => (Array.isArray(records) ? records : [])
-    .filter(isHalveIt)
+    .filter((record) => isHalveIt(record, mode))
     .map((record) => ({ record, row: findRow(record, String(playerId || ""), playerName) }))
     .filter((item) => item.row)
-    .sort((a, b) => playedAt(b.record) - playedAt(a.record)), [records, playerId, playerName]);
+    .sort((a, b) => playedAt(b.record) - playedAt(a.record)), [records, playerId, playerName, mode]);
 
   const rows = matches.map((x) => x.row);
   const games = matches.length;
@@ -110,11 +113,11 @@ export default function HalveItStatsTabFull({ records = [], playerId, playerName
     return Object.entries(out).map(([key, stat]: any) => ({ key, ...stat, accuracy: stat.darts ? stat.hits / stat.darts * 100 : 0 }));
   }, [rows]);
 
-  if (!playerId) return <div style={{ padding: 16, color: "rgba(255,255,255,.65)" }}>Sélectionne un joueur pour afficher ses statistiques HALVE-IT.</div>;
+  if (!playerId) return <div style={{ padding: 16, color: "rgba(255,255,255,.65)" }}>Sélectionne un joueur pour afficher ses statistiques {label}.</div>;
   return <div style={{ padding: 14 }}>
-    <div style={{ color: ACCENT, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase" }}>HALVE-IT — Statistiques détaillées</div>
+    <div style={{ color: ACCENT, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase" }}>{label} — Statistiques détaillées</div>
     <div style={{ marginTop: 4, color: "#aeb3c5", fontSize: 11 }}>Scoring, précision sur les contrats, divisions par deux, pertes de points, séries et détail cible par cible.</div>
-    {!games ? <div style={{ marginTop: 13, padding: 15, borderRadius: 15, border: "1px solid rgba(255,255,255,.09)", color: "#aeb3c5" }}>Aucune partie HALVE-IT terminée pour ce profil.</div> : <>
+    {!games ? <div style={{ marginTop: 13, padding: 15, borderRadius: 15, border: "1px solid rgba(255,255,255,.09)", color: "#aeb3c5" }}>Aucune partie {label} terminée pour ce profil.</div> : <>
       <div style={{ marginTop: 13, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
         <Kpi label="Parties" value={games} detail={`${wins} victoire${wins > 1 ? "s" : ""}`} />
         <Kpi label="Win rate" value={pct(wins, games)} detail={`${wins}/${games}`} />

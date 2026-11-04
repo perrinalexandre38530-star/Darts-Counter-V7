@@ -113,7 +113,7 @@ type GamesView = "hub" | "favorites" | "all";
 
 type Props = {
   setTab: (tab: any, params?: any) => void;
-  params?: { gamesView?: string } | null;
+  params?: { gamesView?: string; gamesCategory?: string } | null;
 };
 
 type InfoGame = {
@@ -136,6 +136,8 @@ function safeUpper(s: string) {
 const GAME_LABELS_I18N: Record<string, { en: string; es?: string }> = {
   ptit_hun: { en: "LIL’ ONE", es: "PEQUEÑO 1" },
   five_lives: { en: "Five Lives", es: "Cinco vidas" },
+  split_score: { en: "Split Score", es: "Split Score" },
+  chase: { en: "CHASE", es: "CHASE" },
   gros_6: { en: "Big 6", es: "Gran 6" },
   killer_progressive: { en: "Progressive Killer", es: "Killer progresivo" },
   attrape_moi: { en: "Catch Me If You Can!", es: "¡Atrápame si puedes!" },
@@ -517,6 +519,10 @@ export default function Games({ setTab, params }: Props) {
             ? "ptit_1"
             : id;
 
+    // CHASE et SPLIT SCORE possèdent des visuels FR/EN, pas de ticker générique.
+    if (lang === "fr" && (id === "chase" || id === "split_score")) {
+      return findTickerById(`${baseId}_fr`) || findTickerById(baseId);
+    }
     if (lang !== "fr") {
       const preferred = lang === "es" ? "es" : "en";
       const localized =
@@ -528,7 +534,15 @@ export default function Games({ setTab, params }: Props) {
     return findTickerById(baseId);
   }, [lang]);
 
-  const [activeCat, setActiveCat] = React.useState<GameCategory>("classic");
+  const [activeCat, setActiveCat] = React.useState<GameCategory>(() =>
+    GAME_CATEGORIES.some((cat) => cat.id === params?.gamesCategory) ? params!.gamesCategory as GameCategory : "classic"
+  );
+  React.useEffect(() => {
+    if (GAME_CATEGORIES.some((cat) => cat.id === params?.gamesCategory)) {
+      setActiveCat(params!.gamesCategory as GameCategory);
+      setActiveSubCat("all");
+    }
+  }, [params?.gamesCategory]);
   // Sous-onglet métier de la catégorie active. "all" affiche tous les groupes.
   const [activeSubCat, setActiveSubCat] = React.useState<string>("all");
   const [infoGame, setInfoGame] = React.useState<InfoGame | null>(null);
@@ -674,6 +688,12 @@ export default function Games({ setTab, params }: Props) {
     const variantId = String(g?.variantId || "");
     if ((baseGame || g?.tab) === "cricket" && variantId) {
       return `tab:cricket?variantId=${encodeURIComponent(variantId)}`;
+    }
+    if (g?.tab === "halve_it_config" && variantId === "split_score") {
+      return "tab:halve_it_config?variantId=split_score&launchMode=arcade";
+    }
+    if (g?.tab === "five_lives_config" && variantId === "chase") {
+      return "tab:five_lives_config?variantId=chase";
     }
     if (g?.tab === "killer_config" && variantId) {
       return `tab:killer_config?gameId=${encodeURIComponent(String(g?.id || "killer_progressive"))}&variantId=${encodeURIComponent(variantId)}`;
@@ -1131,6 +1151,8 @@ export default function Games({ setTab, params }: Props) {
   // toujours le dernier mode intégré. Le composant les fait ensuite défiler en boucle.
   const RECENT_GAME_IDS = React.useMemo(
     () => [
+      "split_score",
+      "chase",
       "fifty_one_by_five",
       "looper",
       "call_three",

@@ -7,15 +7,18 @@ import { History } from "../../lib/history";
 import { scopedStorageKey } from "../../lib/storage";
 import { PageAdBanner } from "../../monetization/AdSlot";
 import {
-  TOSSIT_MODES, TOSSIT_PLANNED, applyTossitAction, newTossitGame, summaryForTossit, undoTossitAction,
+  TOSSIT_MODES, TOSSIT_PLANNED, TOSSIT_COLORS, applyTossitAction, newTossitGame, summaryForTossit, undoTossitAction,
   type TossitMode, type TossitPlayer, type TossitState,
 } from "./tossitEngine";
 import tickerMenu from "../../assets/tickers/ticker_tossit_games.webp";
 import tickerClassic from "../../assets/tickers/ticker_tossit_classic.webp";
 import tickerSpeed from "../../assets/tickers/ticker_tossit_speed.webp";
 import tickerTarget from "../../assets/tickers/ticker_tossit_target.webp";
+import tickerBattle from "../../assets/tickers/ticker_tossit_battle.webp";
+import tickerSniper from "../../assets/tickers/ticker_tossit_sniper.webp";
+import tickerConquest from "../../assets/tickers/ticker_tossit_conquest.webp";
 
-const ART: Record<TossitMode | "games", string> = { games: tickerMenu, classic: tickerClassic, speed: tickerSpeed, target: tickerTarget, duel: tickerMenu, border: tickerTarget, tictac: tickerTarget };
+const ART: Record<TossitMode | "games", string> = { games: tickerMenu, classic: tickerClassic, speed: tickerSpeed, target: tickerTarget, duel: tickerMenu, border: tickerTarget, tictac: tickerTarget, battle: tickerBattle, sniper: tickerSniper, conquest: tickerConquest };
 const ACCENT = "#48E7CF";
 const rulesUrl = "https://tossit.game/pages/how-to-play";
 // Local interrupted-game draft only. Finished matches remain in History V4.
@@ -30,7 +33,7 @@ function readDraft(): TossitState | null {
       !Array.isArray(draft.board) || draft.board.length !== (draft.gridSize || 4) ** 2 ||
       draft.players.some((player: TossitPlayer) => !player?.id || !player?.name)) return null;
     // A persisted in-progress game never carries a recursive Undo graph.
-    return { ...draft, previous: null } as TossitState;
+    return { ...draft, victoryTarget: Number.isInteger(draft.victoryTarget) ? draft.victoryTarget : (draft.mode === "conquest" ? 5 : 3), previous: null } as TossitState;
   } catch { return null; }
 }
 function writeDraft(state: TossitState) {
@@ -48,6 +51,9 @@ const tinfo: Record<TossitMode, string> = {
   duel: "Deux joueurs jouent alternativement. Six fléchettes colorées, puis la noire : si le cochonnet ne colle pas, 0 point. Sinon 1 point par fléchette collée, Kiss +1 et Jumpover +3. Premier à 21.",
   border: "Deux joueurs lancent de part et d’autre d’une ligne. Mesurer la distance en centimètres des ventouses valides à la ligne. Celui qui s’en approche le plus marque pour chaque ventouse mieux placée que la meilleure adverse. Ventouse collée du mauvais côté : +1 à l’adversaire. Premier à 13.",
   tictac: "Deux joueurs alternent les lancers sur une grille : 4×4 pour aligner 3 couleurs, ou 5×5 pour en aligner 4. Une case déjà occupée ne change pas de propriétaire. Touchez la case réellement atteinte ou indiquez un tir raté.",
+  battle: "Deux joueurs lancent leurs ventouses colorées simultanément. Celui qui en colle le plus lance le cochonnet noir (égalité : pierre-feuille-ciseaux). Si la noire reste collée, la couleur la plus proche remporte la manche. Format MSS : premier à 3/5/7 manches gagnées.",
+  sniper: "Installez la Mega dart sur une surface lisse. Tout le monde lance en même temps : le premier à coller une ventouse au-dessus de la Mega dart gagne. Ultimate Trick : une ventouse sur une ventouse déjà empilée sur la Mega dart. Victoire immédiate.",
+  conquest: "Deux équipes reçoivent une consigne de couleur et une quantité, par exemple 3 ventouses rouges. La première équipe qui colle le bon nombre de la bonne couleur dans sa zone gagne la manche. Format MSS : premier à 3/5/7 manches gagnées.",
 };
 function useCopy() {
   const { lang } = useLang();
@@ -92,7 +98,7 @@ export function TossitMenu({ go }: { go: (route: any, params?: any) => void }) {
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12 }}>
     {TOSSIT_MODES.map((mode) => <button key={mode.id} type="button" style={{ ...panel, textAlign: "left", color: "white", cursor: "pointer", padding: 0, overflow: "hidden" }} onClick={() => go("tossit_config", { mode: mode.id })}>
       <img src={ART[mode.id]} alt="" style={{ display: "block", width: "100%", height: 90, objectFit: "cover" }} />
-      <div style={{ padding: 14 }}><strong>{mode.title}</strong><p style={{ opacity: .78, fontSize: 13 }}>{mode.description}</p><span style={{ color: ACCENT, fontWeight: 800 }}>{tr("JOUER", "PLAY")} · {mode.target ? `${mode.target} pts` : tr("alignement", "line game")}</span></div>
+      <div style={{ padding: 14 }}><strong>{mode.title}</strong><p style={{ opacity: .78, fontSize: 13 }}>{mode.description}</p><span style={{ color: ACCENT, fontWeight: 800 }}>{tr("JOUER", "PLAY")} · {mode.id === "sniper" ? tr("victoire immédiate", "instant win") : ["battle", "conquest"].includes(mode.id) ? tr("manches gagnées", "round wins") : mode.target ? `${mode.target} pts` : tr("alignement", "line game")}</span></div>
     </button>)}
     </div>
     <h3 style={{ marginTop: 20 }}>{tr("AU CATALOGUE • EN PRÉPARATION", "CATALOGUE • IN DEVELOPMENT")}</h3>
@@ -116,7 +122,8 @@ export function TossitConfig({ go, store, params }: { go: (route: any, params?: 
   const [players, setPlayers] = React.useState<TossitPlayer[]>(defaultPlayers);
   const [darts, setDarts] = React.useState(mode === "duel" ? 6 : 3);
   const [gridSize, setGridSize] = React.useState<4 | 5>(4);
-  const maxPlayers = (["speed", "duel", "border", "tictac"].includes(mode)) ? 2 : mode === "target" ? 4 : 6;
+  const [victoryTarget, setVictoryTarget] = React.useState(mode === "conquest" ? 5 : 3);
+  const maxPlayers = (["speed", "duel", "border", "tictac", "battle", "conquest"].includes(mode)) ? 2 : mode === "target" ? 4 : 6;
   const addPlayer = () => setPlayers((current) => {
     if (current.length >= maxPlayers) return current;
     let guestNumber = 1;
@@ -136,7 +143,8 @@ export function TossitConfig({ go, store, params }: { go: (route: any, params?: 
     </section>
     {mode !== "tictac" && <section style={panel}><h3>{tr("Ventouses par joueur", "Darts per player")}</h3><div style={{ display: "flex", gap: 8 }}>{(mode === "duel" ? [6] : [3, 4, 5, 6]).map((n) => <button key={n} type="button" style={n === darts ? button : secondary} onClick={() => setDarts(n)}>{n}</button>)}</div>{mode === "duel" && <p style={{ fontSize: 12, opacity: .75 }}>{tr("6 colorées + le cochonnet noir en dernier", "6 coloured darts + black jack last")}</p>}</section>}
     {mode === "tictac" && <section style={panel}><h3>{tr("Taille de la grille", "Grid size")}</h3><div style={{ display: "flex", gap: 8 }}>{([4, 5] as const).map((n) => <button key={n} type="button" style={gridSize === n ? button : secondary} onClick={() => setGridSize(n)}>{n} × {n} · {tr("aligner", "connect")} {n - 1}</button>)}</div></section>}
-    <button style={{ ...button, width: "100%" }} disabled={players.some((p) => !p.name.trim())} onClick={() => go("tossit_play", { mode, players: players.map((p) => ({ ...p, name: p.name.trim() })), darts, gridSize })}>{tr("LANCER LA PARTIE", "START GAME")}</button>
+    {(["battle", "conquest"].includes(mode)) && <section style={panel}><h3>{tr("Format de match MSS", "MSS match format")}</h3><p style={{ opacity: .75, fontSize: 13 }}>{tr("Le nombre de manches nécessaires est une option MULTISPORTS SCORING, pas une règle officielle TOSSIT.", "The round-win goal is an MSS option, not an official TOSSIT rule.")}</p><div style={{ display: "flex", gap: 8 }}>{[3, 5, 7].map((n) => <button key={n} type="button" style={victoryTarget === n ? button : secondary} onClick={() => setVictoryTarget(n)}>{n} {tr("manches", "rounds")}</button>)}</div></section>}
+    <button style={{ ...button, width: "100%" }} disabled={players.some((p) => !p.name.trim())} onClick={() => go("tossit_play", { mode, players: players.map((p) => ({ ...p, name: p.name.trim() })), darts, gridSize, victoryTarget })}>{tr("LANCER LA PARTIE", "START GAME")}</button>
   </Layout>;
 }
 
@@ -145,7 +153,7 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
   const resumeState = React.useMemo(() => params?.resume ? readDraft() : null, [params?.resume]);
   const mode: TossitMode = resumeState?.mode ?? (TOSSIT_MODES.some((x) => x.id === params?.mode) ? params.mode : "classic");
   const players: TossitPlayer[] = resumeState?.players ?? (Array.isArray(params?.players) && params.players.length ? params.players : [{ id: "tossit-guest-1", name: "Joueur 1" }, { id: "tossit-guest-2", name: "Joueur 2" }]);
-  const [state, setState] = React.useState<TossitState>(() => resumeState ?? newTossitGame(mode, players, Number(params?.darts) || 3, Date.now(), params?.gridSize === 5 ? 5 : 4));
+  const [state, setState] = React.useState<TossitState>(() => resumeState ?? newTossitGame(mode, players, Number(params?.darts) || 3, Date.now(), params?.gridSize === 5 ? 5 : 4, Number(params?.victoryTarget) || undefined));
   const [error, setError] = React.useState("");
   const [roundWinner, setRoundWinner] = React.useState(players[0]?.id || "");
   const [closestDarts, setClosestDarts] = React.useState(1);
@@ -163,6 +171,16 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
   const [duelJack, setDuelJack] = React.useState(false);
   const [duelKiss, setDuelKiss] = React.useState(0);
   const [duelJump, setDuelJump] = React.useState(0);
+  const [battleStuck, setBattleStuck] = React.useState<Record<string, number>>({});
+  const [battleTieWinner, setBattleTieWinner] = React.useState("");
+  const [battleJack, setBattleJack] = React.useState(false);
+  const [battleClosest, setBattleClosest] = React.useState("");
+  const [sniperOutcome, setSniperOutcome] = React.useState<"miss" | "mega" | "ultimate">("miss");
+  const [sniperWinner, setSniperWinner] = React.useState("");
+  const [conquestColor, setConquestColor] = React.useState<string>("Rouge");
+  const [conquestRequired, setConquestRequired] = React.useState(3);
+  const [conquestStuck, setConquestStuck] = React.useState<Record<string, number>>({});
+  const [conquestFirst, setConquestFirst] = React.useState("");
   type BorderDart = { kind: "miss" | "wrong" | "valid"; cm: string };
   const [borderDarts, setBorderDarts] = React.useState<Record<string, BorderDart[]>>(() => Object.fromEntries(players.map((p) => [p.id, Array.from({ length: state.dartsPerPlayer }, () => ({ kind: "miss", cm: "" }))])));
   const saved = React.useRef(false);
@@ -224,8 +242,9 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
     }
   };
   return <Layout><Header title={meta.title} mode={mode} onBack={() => go("tossit_config", { mode })} />
-    <div style={{ textAlign: "center", fontSize: 12, color: ACCENT, letterSpacing: 1, fontWeight: 700 }}>{state.finished ? tr("PARTIE TERMINÉE", "GAME FINISHED") : `${tr(state.mode === "tictac" ? "TOUR" : "MANCHE", state.mode === "tictac" ? "TURN" : "ROUND")} ${state.events.length + 1}${meta.target ? ` • ${tr("CIBLE", "TARGET")} ${meta.target}` : ` • ${state.gridSize}×${state.gridSize}`}`}</div>
+    <div style={{ textAlign: "center", fontSize: 12, color: ACCENT, letterSpacing: 1, fontWeight: 700 }}>{state.finished ? tr("PARTIE TERMINÉE", "GAME FINISHED") : `${tr(state.mode === "tictac" ? "TOUR" : "MANCHE", state.mode === "tictac" ? "TURN" : "ROUND")} ${state.events.length + 1}${["battle", "conquest"].includes(mode) ? ` • ${tr("PREMIER À", "FIRST TO")} ${state.victoryTarget} ${tr("MANCHES", "ROUNDS")}` : mode === "sniper" ? ` • ${tr("VICTOIRE IMMÉDIATE", "INSTANT WIN")}` : meta.target ? ` • ${tr("CIBLE", "TARGET")} ${meta.target}` : ` • ${state.gridSize}×${state.gridSize}`}`}</div>
     <ScoreCards state={state} />
+    {(["battle", "conquest"].includes(mode)) && <p style={{ textAlign: "center", fontSize: 12, opacity: .75, marginTop: -6 }}>{tr("Scores = manches gagnées, pas des points de fléchettes.", "Scores = rounds won, not dart points.")}</p>}
     {state.finished ? <section style={{ ...panel, textAlign: "center", border: `2px solid ${ACCENT}` }}><h2>{state.winnerId ? `🏆 ${state.players.find((p) => p.id === state.winnerId)?.name}` : tr("MATCH NUL", "DRAW")}</h2><p>{tr("Résultat transmis à l'historique.", "Result sent to history.")}</p><div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}><button style={button} onClick={() => go("tossit_stats")}>{tr("Historique & stats", "History & stats")}</button><button style={secondary} onClick={() => go("games")}>{tr("Autre partie", "New game")}</button></div></section> : <>
       {mode === "classic" && <section style={panel}>
         <h3 style={{ marginTop: 0 }}>{tr("Résultat de la manche", "Round result")}</h3>
@@ -251,7 +270,7 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
       {mode === "speed" && <section style={panel}><h3>{tr("Lancers simultanés", "Simultaneous throws")}</h3>
         {players.map((p) => <div key={p.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}><strong style={{ gridColumn: "1 / -1" }}>{p.name}</strong><label>{tr("Ventouses collées", "Stuck darts")}<select style={input} value={stuck[p.id] ?? 0} onChange={(e) => setStuck((v) => ({ ...v, [p.id]: Number(e.target.value) }))}>{Array.from({ length: state.dartsPerPlayer + 1 }, (_, n) => <option key={n} value={n}>{n}</option>)}</select></label><label>Kiss (+1)<select style={input} value={speedKiss[p.id] ?? 0} onChange={(e) => setSpeedKiss((v) => ({ ...v, [p.id]: Number(e.target.value) }))}>{Array.from({ length: state.dartsPerPlayer + 1 }, (_, n) => <option key={n} value={n}>{n}</option>)}</select></label></div>)}
         <label>Jumpover<select style={input} value={speedJumpoverWinner} onChange={(e) => setSpeedJumpoverWinner(e.target.value)}><option value="">{tr("Aucun", "None")}</option>{players.map((p) => <option key={p.id} value={p.id}>{p.name} ({tr("victoire immédiate", "instant win")})</option>)}</select></label>
-        <button style={{ ...button, width: "100%", marginTop: 13 }} onClick={() => { commit({ kind: "speed", stuck, kiss: speedKiss, jumpoverWinnerId: speedJumpoverWinner || undefined }); setStuck({}); setSpeedKiss({}); setSpeedJumpoverWinner(""); }}>{tr("VALIDER LA MANCHE", "CONFIRM ROUND")}</button>
+        <button style={{ ...button, width: "100%", marginTop: 13 }} onClick={() => { if (commit({ kind: "speed", stuck, kiss: speedKiss, jumpoverWinnerId: speedJumpoverWinner || undefined })) { setStuck({}); setSpeedKiss({}); setSpeedJumpoverWinner(""); } }}>{tr("VALIDER LA MANCHE", "CONFIRM ROUND")}</button>
       </section>}
       {mode === "target" && <section style={panel}><h3>{tr("Au tour de", "Now playing")}: {targetActive?.name}</h3><p style={{ opacity: .75 }}>{tr("Touchez la valeur de chaque fléchette. 0 = manquée.", "Select each dart value. 0 = miss.")}</p>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8 }}>{[0, 1, 2, 3].map((v) => <button key={v} style={button} disabled={hits.length >= state.dartsPerPlayer} onClick={() => setHits((old) => old.length < state.dartsPerPlayer ? [...old, v] : old)}>{v}</button>)}</div>
@@ -294,6 +313,52 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}><span style={{ color: "#43E5EE" }}>● {state.players[0]?.name}</span><span style={{ color: "#FF67C9" }}>✦ {state.players[1]?.name}</span><span style={{ opacity: .65 }}>{tr("Aligner", "Connect")} {state.gridSize - 1}</span></div>
         <button style={{ ...secondary, width: "100%" }} onClick={() => commit({ kind: "tictac", cell: null })}>{tr("VENTOUSE MANQUÉE / TOUR PASSÉ", "MISSED DART / PASS TURN")}</button>
       </section>}
+      {mode === "battle" && <section style={panel}>
+        <h3 style={{ marginTop: 0 }}>⚔️ BATTLE MODE</h3>
+        <p style={{ opacity: .8, fontSize: 13 }}>{tr("Comptez les ventouses colorées réellement collées. Le meilleur total désigne qui lance la noire. En cas d'égalité, départagez avec pierre-feuille-ciseaux.", "Count stuck coloured darts. Most stuck throws the black jack. On a tie, use rock-paper-scissors.")}</p>
+        {state.players.map((p) => <label key={p.id} style={{ display: "block", marginBottom: 8 }}>{p.name} · {tr("ventouses collées", "stuck darts")}
+          <select style={input} value={battleStuck[p.id] ?? 0} onChange={(e) => setBattleStuck(v => ({ ...v, [p.id]: Number(e.target.value) }))}>{Array.from({ length: state.dartsPerPlayer + 1 }, (_, n) => <option value={n} key={n}>{n}</option>)}</select>
+        </label>)}
+        {(battleStuck[players[0].id] ?? 0) === (battleStuck[players[1].id] ?? 0) && <label style={{ display: "block", marginBottom: 10 }}>{tr("Gagnant pierre-feuille-ciseaux", "Rock-paper-scissors winner")}
+          <select style={input} value={battleTieWinner} onChange={e => setBattleTieWinner(e.target.value)}><option value="">{tr("Sélectionner…", "Select…")}</option>{players.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+        </label>}
+        <p style={{ color: ACCENT, fontWeight: 800 }}>{tr("Lance la noire", "Throws black jack")}: {(() => { const [a, b] = players; const sa = battleStuck[a.id] ?? 0, sb = battleStuck[b.id] ?? 0; return sa === sb ? (players.find(p => p.id === battleTieWinner)?.name || "—") : (sa > sb ? a : b).name; })()}</p>
+        <label style={{ display: "block", marginBottom: 12 }}><input type="checkbox" checked={battleJack} onChange={e => { setBattleJack(e.target.checked); setBattleClosest(""); }} /> {tr("Cochonnet noir bien collé", "Black jack stuck")}</label>
+        {battleJack && (battleStuck[players[0].id] ?? 0) + (battleStuck[players[1].id] ?? 0) > 0 && <label style={{ display: "block", marginBottom: 12 }}>{tr("Couleur la plus proche de la noire", "Coloured dart closest to black jack")}
+          <select style={input} value={battleClosest} onChange={e => setBattleClosest(e.target.value)}><option value="">{tr("Sélectionner…", "Select…")}</option>{players.filter(p => (battleStuck[p.id] ?? 0) > 0).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+        </label>}
+        <button style={{ ...button, width: "100%" }} onClick={() => { if (commit({ kind: "battle", stuck: battleStuck, tieWinnerId: (battleStuck[players[0].id] ?? 0) === (battleStuck[players[1].id] ?? 0) ? battleTieWinner || undefined : undefined, jackStuck: battleJack, closestPlayerId: battleJack ? battleClosest || undefined : undefined })) { setBattleStuck({}); setBattleTieWinner(""); setBattleJack(false); setBattleClosest(""); } }}>{tr("VALIDER LA MANCHE", "CONFIRM ROUND")}</button>
+      </section>}
+      {mode === "sniper" && <section style={panel}>
+        <h3 style={{ marginTop: 0 }}>🎯 EL SNIPER</h3>
+        <p style={{ opacity: .8, fontSize: 13 }}>{tr("Tous les joueurs lancent librement vers la Mega dart. Enregistrez seulement un essai infructueux ou la première réussite constatée.", "All players throw freely at the Mega dart. Record an unsuccessful attempt or the first verified successful stack.")}</p>
+        <label style={{ display: "block", marginBottom: 10 }}>{tr("Résultat observé", "Observed result")}
+          <select style={input} value={sniperOutcome} onChange={e => setSniperOutcome(e.target.value as "miss" | "mega" | "ultimate")}>
+            <option value="miss">{tr("Aucun empilement – continuer", "No stack – continue")}</option>
+            <option value="mega">{tr("Ventouse posée sur la Mega dart – victoire", "Dart stacked on Mega dart – win")}</option>
+            <option value="ultimate">{tr("ULTIMATE TRICK – double empilement – victoire", "ULTIMATE TRICK – double stack – win")}</option>
+          </select>
+        </label>
+        {sniperOutcome !== "miss" && <label style={{ display: "block", marginBottom: 10 }}>{tr("Joueur ayant réussi en premier", "First successful player")}
+          <select style={input} value={sniperWinner} onChange={e => setSniperWinner(e.target.value)}><option value="">{tr("Sélectionner…", "Select…")}</option>{state.players.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+        </label>}
+        <button style={{ ...button, width: "100%" }} onClick={() => { if (commit({ kind: "sniper", outcome: sniperOutcome, playerId: sniperOutcome !== "miss" ? sniperWinner || undefined : undefined })) { setSniperOutcome("miss"); setSniperWinner(""); } }}>{tr("VALIDER LE RÉSULTAT", "CONFIRM RESULT")}</button>
+      </section>}
+      {mode === "conquest" && <section style={panel}>
+        <h3 style={{ marginTop: 0 }}>🌈 COLOR CONQUEST</h3>
+        <p style={{ opacity: .8, fontSize: 13 }}>{tr("Choisissez la couleur annoncée et le nombre à coller dans la zone de chaque équipe. Seules les ventouses de la couleur demandée comptent.", "Choose the called colour and the number to stick in each team's area. Only darts of the called colour count.")}</p>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 9 }}>
+          <label>{tr("Couleur demandée", "Called colour")}<select style={input} value={conquestColor} onChange={e => setConquestColor(e.target.value)}>{TOSSIT_COLORS.map(color => <option key={color} value={color}>{color}</option>)}</select></label>
+          <label>{tr("Nombre à atteindre", "Required darts")}<select style={input} value={Math.min(conquestRequired, state.dartsPerPlayer)} onChange={e => setConquestRequired(Number(e.target.value))}>{Array.from({ length: state.dartsPerPlayer }, (_, n) => <option value={n + 1} key={n + 1}>{n + 1}</option>)}</select></label>
+        </div>
+        {state.players.map(p => <label key={p.id} style={{ display: "block", marginTop: 12 }}>{p.name} · {tr("ventouses de cette couleur collées", "matching darts stuck")}
+          <select style={input} value={conquestStuck[p.id] ?? 0} onChange={e => setConquestStuck(v => ({ ...v, [p.id]: Number(e.target.value) }))}>{Array.from({ length: state.dartsPerPlayer + 1 }, (_, n) => <option value={n} key={n}>{n}</option>)}</select>
+        </label>)}
+        {state.players.every(p => (conquestStuck[p.id] ?? 0) >= Math.min(conquestRequired, state.dartsPerPlayer)) && <label style={{ display: "block", marginTop: 12 }}>{tr("Quelle équipe a réussi en premier ?", "Which team completed first?")}
+          <select style={input} value={conquestFirst} onChange={e => setConquestFirst(e.target.value)}><option value="">{tr("Sélectionner…", "Select…")}</option>{state.players.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+        </label>}
+        <button style={{ ...button, width: "100%", marginTop: 14 }} onClick={() => { if (commit({ kind: "conquest", color: conquestColor, required: Math.min(conquestRequired, state.dartsPerPlayer), stuck: conquestStuck, firstId: state.players.every(p => (conquestStuck[p.id] ?? 0) >= Math.min(conquestRequired, state.dartsPerPlayer)) ? conquestFirst || undefined : undefined })) { setConquestStuck({}); setConquestFirst(""); } }}>{tr("VALIDER LA MANCHE", "CONFIRM ROUND")}</button>
+      </section>}
       <button style={{ ...secondary, width: "100%" }} disabled={state.events.length === 0} onClick={() => { setState((old) => undoTossitAction(old)); setError(""); }}>{tr("ANNULER LA DERNIÈRE MANCHE", "UNDO LAST ROUND")}</button>
     </>}
     {error && <p role="alert" style={{ color: "#FFD3A0" }}>{error}</p>}
@@ -311,14 +376,23 @@ export function TossitStats({ go }: { go: (route: any, params?: any) => void }) 
       .catch(() => { if (active) setMatches([]); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, []);
-  const wins: Record<string, { name: string; games: number; wins: number; points: number }> = {};
+  const wins: Record<string, { name: string; games: number; wins: number }> = {};
+  const modeCounts: Record<string, number> = {};
+  for (const match of matches) {
+    const id = String(match.summary?.mode || match.payload?.mode || match.mode || "classic");
+    modeCounts[id] = (modeCounts[id] ?? 0) + 1;
+  }
   matches.forEach((r) => { const people = Array.isArray(r.players) ? r.players : [];
-    people.forEach((p: any) => { const id = String(p.id); if (!id) return; const entry = wins[id] || { name: String(p.name || id), games: 0, wins: 0, points: 0 }; entry.games += 1; entry.wins += String(r.winnerId || r.summary?.winnerId) === id ? 1 : 0; entry.points += Number(r.summary?.scores?.[id] || 0); wins[id] = entry; });
+    people.forEach((p: any) => { const id = String(p.id); if (!id) return; const entry = wins[id] || { name: String(p.name || id), games: 0, wins: 0 }; entry.games += 1; entry.wins += String(r.winnerId || r.summary?.winnerId) === id ? 1 : 0; wins[id] = entry; });
   });
   return <Layout><Header title={tr("HISTORIQUE & STATS", "HISTORY & STATS")} mode="games" onBack={() => go("games")} />
     <h2>{tr("Statistiques TOSSIT", "TOSSIT statistics")}</h2><section style={panel}><strong>{tr("Parties enregistrées", "Recorded games")}</strong><div style={{ fontSize: 34, fontWeight: 900, color: ACCENT }}>{matches.length}</div></section>
     {loading && <p>{tr("Chargement de l'historique…", "Loading history…")}</p>}
-    <h3>{tr("Classement joueurs", "Player ranking")}</h3>{Object.values(wins).sort((a, b) => b.wins - a.wins).map((p) => <div key={p.name} style={{ ...panel, display: "flex", justifyContent: "space-between" }}><strong>{p.name}</strong><span>{p.wins}/{p.games} {tr("victoires", "wins")} · {p.points} pts</span></div>)}
+    <h3>{tr("Modes joués", "Modes played")}</h3>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 9, marginBottom: 15 }}>
+      {TOSSIT_MODES.filter(m => modeCounts[m.id]).map(m => <div key={m.id} style={{ ...panel, margin: 0, textAlign: "center" }}><strong style={{ fontSize: 12 }}>{m.title}</strong><div style={{ fontSize: 29, color: ACCENT, fontWeight: 900 }}>{modeCounts[m.id]}</div></div>)}
+    </div>
+    <h3>{tr("Classement joueurs", "Player ranking")}</h3><p style={{ opacity: .72, fontSize: 12 }}>{tr("Seules les victoires sont cumulées : les modes TOSSIT utilisent des unités de score différentes.", "Only wins are aggregated: TOSSIT modes use different scoring units.")}</p>{Object.values(wins).sort((a, b) => b.wins - a.wins).map((p) => <div key={p.name} style={{ ...panel, display: "flex", justifyContent: "space-between" }}><strong>{p.name}</strong><span>{p.wins}/{p.games} {tr("victoires", "wins")} · {Math.round(100 * p.wins / Math.max(1, p.games))}%</span></div>)}
     <h3>{tr("Dernières parties", "Recent matches")}</h3>{matches.slice(0, 40).map((r) => <div key={r.id} style={panel}><strong>{String(r.summary?.mode || r.payload?.mode || "tossit").toUpperCase()}</strong><span style={{ float: "right", fontSize: 12 }}>{r.createdAt ? new Date(r.createdAt).toLocaleDateString() : ""}</span><p style={{ marginBottom: 0 }}>{tr("Vainqueur", "Winner")}: {(r.players || []).find((p: any) => String(p.id) === String(r.winnerId || r.summary?.winnerId))?.name || "—"}</p></div>)}
     {!loading && !matches.length && <p>{tr("Aucune partie TOSSIT terminée pour le moment.", "No finished TOSSIT games yet.")}</p>}
     <button style={button} onClick={() => go("games")}>{tr("JOUER", "PLAY")}</button>
