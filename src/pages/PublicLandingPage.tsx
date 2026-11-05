@@ -274,7 +274,7 @@ function landingTickerFor(gameId: string, lang: Lang): string | null {
 function publicTossitTickerFor(modeId: string, lang: Lang): string {
   const imageId = modeId === "classic" ? "tossit_classic" : modeId === "speed" ? "tossit_speed" :
     ["target", "border"].includes(modeId) ? "tossit_target" :
-    ["battle", "sniper", "conquest", "river", "cornhole", "goalkeeper", "football_pitch", "thief_cop", "reach", "rainbow"].includes(modeId) ? `tossit_${modeId}` : "tossit_games";
+    ["battle", "sniper", "conquest", "river", "cornhole", "goalkeeper", "football_pitch", "thief_cop", "reach", "rainbow", "chores", "bottle"].includes(modeId) ? `tossit_${modeId}` : "tossit_games";
   return landingTickerFor(imageId, lang) || tossit;
 }
 function publicTossitDescription(modeId: string, description: string, lang: Lang): string {
@@ -283,6 +283,8 @@ function publicTossitDescription(modeId: string, description: string, lang: Lang
     thief_cop: "Alternate roles across four rounds. The Cop scores for arrests; a takedown secures a round.",
     reach: "Throw as high as possible on a smooth vertical surface. Height and stuck darts determine the MSS challenge ranking.",
     rainbow: "Build colourful rings, shapes or towers. Use the optional MSS creative challenge score to compare your attempts.",
+    chores: "Assign household tasks using a chore target poster. Free Day and special hits cancel tasks; a noncompetitive MSS family session.",
+    bottle: "An alcohol-free MSS bottle target challenge: closest dart and darts stuck on the bottle score points.",
   };
   return english[modeId] ?? description;
 }
@@ -295,6 +297,8 @@ function tossitObjectiveForPublic(modeId: string, target: number, lang: Lang) {
   if (modeId === "thief_cop") return fr ? "4 manches • seul le policier marque" : "4 rounds • only the cop scores";
   if (modeId === "reach") return fr ? "Défi MSS • record de hauteur en cm" : "MSS challenge • best height in cm";
   if (modeId === "rainbow") return fr ? "Défi créatif • barème de points MSS" : "Creative challenge • MSS points format";
+  if (modeId === "chores") return fr ? "Affectation des tâches • sans vainqueur" : "Task assignment • noncompetitive";
+  if (modeId === "bottle") return fr ? "3/5 manches • barème MSS sans alcool" : "3/5 rounds • alcohol-free MSS scoring";
   if (modeId === "tictac") return fr ? "Aligner 3 ou 4 ventouses" : "Connect 3 or 4 darts";
   return fr ? `Objectif : ${target} points` : `Target: ${target} points`;
 }

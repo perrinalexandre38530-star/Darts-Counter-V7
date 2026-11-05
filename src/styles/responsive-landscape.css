@@ -3421,70 +3421,54 @@
     gap: 7px !important;
   }
   
-  /* Five Lives PLAY — header + fixed information rail + large input workspace. */
+  /* V158 — 5 VIES / CHASE : DOM V141+ = header + body + keypad.
+     Le vieux layout à quatre rangées ne correspondait plus au DOM et
+     forçait encore le clavier à droite. Le clavier est à gauche,
+     la colonne de suivi (scrolable) à droite, y compris sur Android. */
   html[data-msc-orientation="landscape"] .five-lives-play-screen {
     display: grid !important;
-    grid-template-columns: minmax(0, .96fr) minmax(0, 1.04fr) !important;
-    grid-template-rows: clamp(70px, 14vh, 106px) auto minmax(0, 1fr) auto !important;
+    grid-template-columns: minmax(260px, 46%) minmax(0, 1fr) !important;
+    grid-template-rows: clamp(64px, 14dvh, 96px) minmax(0, 1fr) !important;
     gap: 8px !important;
     padding: 8px !important;
     align-items: stretch !important;
   }
-  
+
   html[data-msc-orientation="landscape"] .five-lives-play-screen > .msc-mode-play-header {
     grid-column: 1 / -1 !important;
     grid-row: 1 !important;
     height: 100% !important;
     min-height: 0 !important;
   }
-  
   html[data-msc-orientation="landscape"] .five-lives-play-screen > .msc-mode-play-header img {
     object-fit: contain !important;
   }
-  
-  html[data-msc-orientation="landscape"] .five-lives-play-screen > .msc-five-lives-overview {
+  html[data-msc-orientation="landscape"] .five-lives-play-screen > .msc-five-lives-input {
     grid-column: 1 !important;
     grid-row: 2 !important;
-    margin: 0 !important;
-  }
-  
-  html[data-msc-orientation="landscape"] .five-lives-play-screen > .msc-five-lives-active {
-    grid-column: 1 !important;
-    grid-row: 3 !important;
-    min-height: 0 !important;
-    overflow: auto !important;
-    margin: 0 !important;
-  }
-  
-  html[data-msc-orientation="landscape"] .five-lives-play-screen > .msc-five-lives-players {
-    grid-column: 1 !important;
-    grid-row: 4 !important;
-    height: 74px !important;
-    margin: 0 !important;
-  }
-  
-  html[data-msc-orientation="landscape"] .five-lives-play-screen > .msc-five-lives-spacer {
-    display: none !important;
-  }
-  
-  html[data-msc-orientation="landscape"] .five-lives-play-screen > .msc-five-lives-input {
-    grid-column: 2 !important;
-    grid-row: 2 / 5 !important;
-    min-height: 0 !important;
-    margin: 0 !important;
-    padding: 8px !important;
-    border-radius: 20px !important;
-    border: 1px solid rgba(255,255,255,.09) !important;
-    background: linear-gradient(180deg, rgba(18,20,28,.92), rgba(5,7,12,.98)) !important;
-    overflow: hidden !important;
-  }
-  
-  html[data-msc-orientation="landscape"] .five-lives-play-screen > .msc-five-lives-input > div {
     width: 100% !important;
-    max-width: none !important;
     height: 100% !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    padding: 8px !important;
+    margin: 0 !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain !important;
+    border-radius: 18px !important;
+    border: 1px solid rgba(255,255,255,.09) !important;
+    background: linear-gradient(180deg,rgba(18,20,28,.92),rgba(5,7,12,.98)) !important;
   }
-  
+  html[data-msc-orientation="landscape"] .five-lives-play-screen > .msc-five-lives-body {
+    grid-column: 2 !important;
+    grid-row: 2 !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    min-height: 0 !important;
+    min-width: 0 !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain !important;
+  }
+
   /* ---------- SPORT GAME MENUS: header + left fixed panel + right scroll list ---------- */
   html[data-msc-orientation="landscape"] .dc-themed-route[data-msc-game-screen="menu"] {
     overflow: hidden !important;

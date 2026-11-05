@@ -7,8 +7,9 @@
 .msc-halveit-last-visit { min-width: 0; }
 @media (orientation: landscape) and (max-height: 900px) {
   .msc-halveit-stage { grid-template-columns: minmax(250px,42%) minmax(0,1fr); grid-template-rows: minmax(0,1fr); gap: 8px; }
-  .msc-halveit-overview { height: 100%; }
-  .msc-halveit-keypad { height: 100%; max-height: none; }
+  /* Le clavier reste à gauche, les scores à droite, sans déplacer le header. */
+  .msc-halveit-overview { grid-column: 2; grid-row: 1; height: 100%; }
+  .msc-halveit-keypad { grid-column: 1; grid-row: 1; height: 100%; max-height: none; }
 }
 @media (orientation: portrait) and (max-height: 650px) {
   .msc-halveit-keypad { max-height: 59dvh; }
@@ -21,3 +22,14 @@
   -webkit-overflow-scrolling: touch; scrollbar-width: thin; padding-bottom: 3px;
 }
 .msc-halveit-standing { min-width: 91px; flex: 1 0 91px; max-width: 160px; box-sizing: border-box; }
+
+/* V158 — Mobile étroit : score et cible lisibles, sans dépasser le panneau. */
+@media (orientation: portrait) and (max-width: 370px) {
+  .msc-halveit-hero { grid-template-columns: minmax(0,1fr) minmax(120px,42%) !important; }
+  .msc-halveit-active-score { font-size: clamp(40px,13vw,54px) !important; }
+  .msc-halveit-target-label { font-size: clamp(23px,8vw,38px) !important; overflow-wrap: anywhere; }
+  .msc-halveit-keypad { max-height: 55dvh; }
+}
+/* Les cartes du classement restent consultables et lisibles au tactile. */
+.msc-halveit-standings-strip { scroll-padding-inline: 6px; }
+.msc-halveit-standing { scroll-snap-align: center; }

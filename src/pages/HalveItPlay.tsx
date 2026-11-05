@@ -201,6 +201,7 @@ export default function HalveItPlay(props: any) {
   const [throwDarts, setThrowDarts] = React.useState<UiDart[]>(restored?.throwDarts || []);
   const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(restored?.multiplier === 2 || restored?.multiplier === 3 ? restored.multiplier : 1);
   const [showEnd, setShowEnd] = React.useState(false);
+  const standingsStripRef = React.useRef<HTMLDivElement | null>(null);
   const [showTable, setShowTable] = React.useState(false);
   const [showStats, setShowStats] = React.useState(false);
   const [botThinking, setBotThinking] = React.useState(false);
@@ -220,6 +221,18 @@ export default function HalveItPlay(props: any) {
   const target = getHalveItCurrentTarget(state);
   const targetLabel = target?.label || "—";
   const botIds = React.useMemo(() => new Set((config.botIds || []).map(String)), [config.botIds]);
+
+  // Jusqu'à douze participants : suivre horizontalement le joueur / l'équipe
+  // en cours sans faire défiler verticalement le reste de la page ni le clavier.
+  React.useEffect(() => {
+    const strip = standingsStripRef.current;
+    const active = strip?.querySelector<HTMLElement>('[aria-current="true"]');
+    if (!strip || !active) return;
+    const box = strip.getBoundingClientRect();
+    const item = active.getBoundingClientRect();
+    const displacement = item.left + item.width / 2 - (box.left + box.width / 2);
+    if (Math.abs(displacement) > 1) strip.scrollLeft += displacement;
+  }, [activePlayerId, activeTeamId, state.standings.length, config.participantMode]);
 
   function commitVisit(darts: UiDart[]) {
     if (state.finished || darts.length < 1) return;
@@ -363,20 +376,20 @@ export default function HalveItPlay(props: any) {
     <div className="msc-halveit-stage">
     <div className="msc-halveit-overview" style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
       <section style={{ ...panelStyle(), padding: 0, overflow: "hidden", borderColor: `${primary}88`, boxShadow: `0 0 24px ${primary}20`, marginBottom: 7 }}>
-        <div style={{ position: "relative", minHeight: 132, display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(150px,185px)", alignItems: "stretch", padding: "8px 10px" }}>
+        <div className="msc-halveit-hero" style={{ position: "relative", minHeight: 132, display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(150px,185px)", alignItems: "stretch", padding: "8px 10px" }}>
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg,rgba(0,0,0,.35),rgba(0,0,0,.08),rgba(0,0,0,.3))" }} />
           <div style={{ position: "absolute", left: -24, top: -4, bottom: -4, width: "32%", minWidth: 100, overflow: "hidden", opacity: .16 }}><div style={{ position: "absolute", left: -20, top: 16, transform: "scale(1.5)", transformOrigin: "left top" }}><ProfileAvatar profile={activeProfile as any} size={82} /></div></div>
           <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", minWidth: 0, textAlign: "center" }}>
             {botThinking ? <div style={{ color: activeTeam?.color || primary, fontSize: 10, fontWeight: 1000, letterSpacing: 1 }}>BOT EN RÉFLEXION</div> : null}
             <div style={{ color: activeTeam?.color || primary, fontSize: 14, fontWeight: 1000, letterSpacing: .8, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textTransform: "uppercase" }}>{playerName(activeProfile)}</div>
-            <div style={{ marginTop: 5, fontSize: 64, lineHeight: 1, fontWeight: 1000, color: C.gold, textShadow: "0 4px 18px rgba(255,195,26,.25)" }}>{activeScore}</div>
+            <div className="msc-halveit-active-score" style={{ marginTop: 5, fontSize: 64, lineHeight: 1, fontWeight: 1000, color: C.gold, textShadow: "0 4px 18px rgba(255,195,26,.25)" }}>{activeScore}</div>
             <div style={{ marginTop: 5, color: themeSoft, fontSize: 9.5, fontWeight: 900 }}>Hits {activeStats.validHits}/{activeStats.darts} · {pct(activeStats.validHits, activeStats.darts)}% · Halves {activeStats.halvingEvents}</div>
           </div>
           <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "stretch", minWidth: 0 }}>
             <div style={{ position: "absolute", inset: "0 0 0 4px", borderRadius: 18, backgroundImage: `linear-gradient(180deg,rgba(4,8,16,.30),rgba(4,8,16,.65)),url(${targetBg})`, backgroundPosition: "center", backgroundSize: "cover", opacity: .72 }} />
             <div style={{ position: "relative", width: "100%", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: 8, textAlign: "center" }}>
               <div style={{ color: themeSoft, fontSize: 9.5, fontWeight: 950, letterSpacing: 1 }}>CIBLE</div>
-              <div style={{ color: secondary, fontSize: target.kind === "number" ? 50 : target.kind === "bull" ? 30 : 25, lineHeight: 1, fontWeight: 1100, textShadow: `0 0 18px ${secondary}88`, marginTop: 3 }}>{targetLabel}</div>
+              <div className="msc-halveit-target-label" style={{ color: secondary, fontSize: target.kind === "number" ? 50 : target.kind === "bull" ? 30 : 25, lineHeight: 1, fontWeight: 1100, textShadow: `0 0 18px ${secondary}88`, marginTop: 3 }}>{targetLabel}</div>
               <div style={{ color: themeSoft, fontSize: 8.7, fontWeight: 900, marginTop: 7 }}>{targetHint(target)}</div>
               <div style={{ color: target.kind === "open" ? C.green : C.red, fontSize: 8.7, fontWeight: 1000, marginTop: 4 }}>{target.kind === "open" ? "VOLÉE DE CAPITAL" : "0/3 = SCORE ÷ 2"}</div>
               <div style={{ color: primary, fontSize: 9, fontWeight: 1000, marginTop: 4 }}>ROUND {Math.min(state.roundIndex + 1, state.targets.length)}/{state.targets.length}</div>
@@ -395,7 +408,7 @@ export default function HalveItPlay(props: any) {
       </section>
 
       <section style={{ ...panelStyle(), marginBottom: 7, padding: 8 }}>
-        <div className="msc-halveit-standings-strip" role="list" aria-label={`${modeLabel} — classement des ${state.standings.length} participants`}>
+        <div ref={standingsStripRef} className="msc-halveit-standings-strip" role="list" aria-label={`${modeLabel} — classement des ${state.standings.length} participants`}>
           {state.standings.map((standing) => {
             const team = config.participantMode === "teams" ? teamById.get(standing.id) : null;
             const profile = config.participantMode === "players" ? byId.get(standing.id) : null;

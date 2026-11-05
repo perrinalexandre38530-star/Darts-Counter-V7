@@ -1462,6 +1462,7 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
           }}
         >
           <div
+            className="msc-five-lives-hero-grid"
             style={{
               display: "grid",
               gridTemplateColumns: "78px minmax(0,1fr) 108px",

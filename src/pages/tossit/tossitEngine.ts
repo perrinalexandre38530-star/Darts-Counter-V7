@@ -1,7 +1,7 @@
 /** TOSSIT SCORING — human-validated throws, pure and undoable transitions.
  * Rules reference: https://tossit.game/pages/how-to-play (November 2026).
  * No visual / camera claims are made by this scoring engine. */
-export type TossitMode = "classic" | "speed" | "target" | "duel" | "border" | "tictac" | "battle" | "sniper" | "conquest" | "river" | "cornhole" | "goalkeeper" | "football_pitch" | "thief_cop" | "reach" | "rainbow";
+export type TossitMode = "classic" | "speed" | "target" | "duel" | "border" | "tictac" | "battle" | "sniper" | "conquest" | "river" | "cornhole" | "goalkeeper" | "football_pitch" | "thief_cop" | "reach" | "rainbow" | "chores" | "bottle";
 export type TossitPlayer = { id: string; name: string; avatarDataUrl?: string | null };
 export type TossitEvent = {
   index: number;
@@ -33,6 +33,8 @@ export type TossitState = {
   reach: Record<string, { bestCm: number; stuck: number }>;
   /** Thief & Cop: takedown is a round win, used as a tie-break only. */
   thiefCopWins: Record<string, number>;
+  /** Chores remaining to perform for each recipient (noncompetitive family mode). */
+  chores: Record<string, string[]>;
 };
 export type ClassicRound = {
   kind: "classic";
@@ -90,8 +92,19 @@ export type ThiefCopCapture = "miss" | "close" | "direct" | "handcuff" | "double
 export type ThiefCopRound = { kind: "thief_cop"; captures: ThiefCopCapture[] };
 export type ReachTurn = { kind: "reach"; bestCm: number; stuck: number };
 export type RainbowTurn = { kind: "rainbow"; pattern: "ring" | "shape" | "stack"; colors: number; stackHeight: number; completed: boolean };
+/** Poster chores have no universal predefined labels; these are editable MSS presets. */
+export const TOSSIT_CHORES = [
+  { id: "dishes", fr: "Vaisselle", en: "Dishes" },
+  { id: "laundry", fr: "Lessive", en: "Laundry" },
+  { id: "tidy", fr: "Rangement", en: "Tidy up" },
+  { id: "sweep", fr: "Balayage", en: "Sweep" },
+  { id: "trash", fr: "Poubelles", en: "Take out trash" },
+] as const;
+export type ChoreThrow = { effect: "miss" | "chore" | "free_day" | "kiss" | "jumpover" | "double_trouble"; recipientId?: string; chore?: string };
+export type ChoresTurn = { kind: "chores"; throws: ChoreThrow[] };
+export type BottleRound = { kind: "bottle"; stuck: Record<string, number>; onBottle: Record<string, number>; closestPlayerId?: string };
 export const TOSSIT_COLORS = ["Rouge", "Bleu", "Vert", "Jaune", "Rose", "Violet"] as const;
-export type TossitAction = ClassicRound | SpeedRound | TargetTurn | DuelTurn | BorderRound | TicTacTurn | BattleRound | SniperAttempt | ConquestRound | RiverTurn | CornholeRound | GoalkeeperTurn | FootballPitchTurn | ThiefCopRound | ReachTurn | RainbowTurn;
+export type TossitAction = ClassicRound | SpeedRound | TargetTurn | DuelTurn | BorderRound | TicTacTurn | BattleRound | SniperAttempt | ConquestRound | RiverTurn | CornholeRound | GoalkeeperTurn | FootballPitchTurn | ThiefCopRound | ReachTurn | RainbowTurn | ChoresTurn | BottleRound;
 
 export const TOSSIT_MODES: ReadonlyArray<{ id: TossitMode; title: string; category: string; description: string; target: number }> = [
   { id: "classic", title: "TOSSIT CLASSIC", category: "Classique", description: "Cochonnet noir, comptage des ventouses collées et bonus spéciaux. Premier à 13 points.", target: 13 },
@@ -110,10 +123,10 @@ export const TOSSIT_MODES: ReadonlyArray<{ id: TossitMode; title: string; catego
   { id: "thief_cop", title: "THIEF & COP", category: "Duel", description: "4 manches (ou 2 rapides), rôles alternés, arrestations et takedown. Seul le policier marque.", target: 0 },
   { id: "reach", title: "STICK & REACH", category: "Entraînement", description: "Défi d'adresse : meilleure hauteur et nombre de ventouses collées. Classement MSS sur 3 ou 5 passages.", target: 0 },
   { id: "rainbow", title: "RAINBOW RING & STACK", category: "Créativité", description: "Anneaux, motifs et tours : défi créatif avec barème MSS sur 3 ou 5 passages.", target: 0 },
+  { id: "chores", title: "CHORES", category: "Famille", description: "Poster des corvées : attribuez les tâches, annulez-les avec Kiss, gagnez une journée libre. 3 ou 5 tours MSS sans classement compétitif.", target: 0 },
+  { id: "bottle", title: "CAPTURE THE BOTTLE", category: "Précision", description: "Trouvez la ventouse la plus proche de la bouteille et les tirs collés dessus. Version familiale MSS à points, sans alcool.", target: 0 },
 ] as const;
 export const TOSSIT_PLANNED: ReadonlyArray<{ title: string; category: string; description: string }> = [
-  { title: "CHORES", category: "Plateau", description: "Atteindre les zones de tâches et attribuer des défis aux adversaires." },
-  { title: "CAPTURE THE BOTTLE", category: "Défi", description: "Approcher une bouteille-cible ou poser une ventouse dessus." },
 ];
 
 function integerBetween(value: number, min: number, max: number): boolean {
@@ -124,21 +137,23 @@ export function newTossitGame(mode: TossitMode, players: TossitPlayer[], dartsPe
   if (!TOSSIT_MODES.some((m) => m.id === mode)) throw new Error("Unknown mode");
   const unique = players.filter((p, index) => !!p.id && players.findIndex((q) => q.id === p.id) === index);
   if (unique.length !== players.length || unique.some((p) => !p.name?.trim())) throw new Error("Invalid players");
-  if (unique.length < (["target", "reach", "rainbow"].includes(mode) ? 1 : 2)) throw new Error("Not enough players");
+  if (unique.length < (["target", "reach", "rainbow", "chores"].includes(mode) ? 1 : 2)) throw new Error("Not enough players");
   if (["speed", "duel", "border", "tictac", "battle", "conquest", "river", "cornhole", "goalkeeper", "football_pitch", "thief_cop"].includes(mode) && unique.length !== 2) throw new Error("This mode requires two players");
   const allowedDarts = ["river", "thief_cop"].includes(mode) ? integerBetween(dartsPerPlayer, 6, 9)
     : mode === "cornhole" || mode === "goalkeeper" ? dartsPerPlayer === 3
     : mode === "football_pitch" ? dartsPerPlayer === 6 : integerBetween(dartsPerPlayer, 3, 6);
-  if (unique.length > (mode === "target" ? 4 : 6) || !allowedDarts) throw new Error("Invalid setup");
+  if (unique.length > (["target", "chores"].includes(mode) ? 4 : 6) || !allowedDarts) throw new Error("Invalid setup");
+  if (mode === "chores" && dartsPerPlayer !== 3) throw new Error("Chores requires three darts per player");
   if (mode === "duel" && dartsPerPlayer !== 6) throw new Error("Duel requires six coloured darts plus the jack");
   if (gridSize !== 4 && gridSize !== 5) throw new Error("Invalid grid");
-  const matchTarget = victoryTarget ?? (mode === "thief_cop" ? 4 : mode === "reach" || mode === "rainbow" ? 3 : mode === "conquest" ? 5 : mode === "battle" ? 3 : 1);
-  if (mode === "thief_cop" ? ![2, 4].includes(matchTarget) : ["reach", "rainbow"].includes(mode) ? ![3, 5].includes(matchTarget) : ![1, 3, 5, 7].includes(matchTarget) || (["conquest", "battle"].includes(mode) && matchTarget === 1)) throw new Error("Invalid MSS match target");
+  const matchTarget = victoryTarget ?? (mode === "thief_cop" ? 4 : ["reach", "rainbow", "chores"].includes(mode) ? 3 : ["conquest", "bottle"].includes(mode) ? 5 : mode === "battle" ? 3 : 1);
+  if (mode === "thief_cop" ? ![2, 4].includes(matchTarget) : ["reach", "rainbow", "chores", "bottle"].includes(mode) ? ![3, 5].includes(matchTarget) : ![1, 3, 5, 7].includes(matchTarget) || (["conquest", "battle"].includes(mode) && matchTarget === 1)) throw new Error("Invalid MSS match target");
   return { mode, players: unique, dartsPerPlayer, scores: Object.fromEntries(unique.map((p) => [p.id, 0])), events: [], nextPlayerIndex: 0, winnerId: null, finished: false, createdAt: now, previous: null, gridSize, victoryTarget: matchTarget, board: Array(gridSize * gridSize).fill(null),
     cornholeBusted: Object.fromEntries(unique.map((p) => [p.id, false])),
     pitch: { attackerId: unique[0].id, attackerThrows: 0, defenderThrows: 0, chainLength: 0, blocks: 0, longPassUsed: false, drive: 1 },
     reach: Object.fromEntries(unique.map(p => [p.id, { bestCm: 0, stuck: 0 }])),
     thiefCopWins: Object.fromEntries(unique.map(p => [p.id, 0])),
+    chores: Object.fromEntries(unique.map(p => [p.id, []])),
   };
 }
 
@@ -170,6 +185,7 @@ export function applyTossitAction(prev: TossitState, action: TossitAction, now =
   let pitch = prev.pitch;
   let reach = prev.reach ?? Object.fromEntries(prev.players.map(p => [p.id, { bestCm: 0, stuck: 0 }]));
   let thiefCopWins = prev.thiefCopWins ?? Object.fromEntries(prev.players.map(p => [p.id, 0]));
+  let chores = prev.chores ?? Object.fromEntries(prev.players.map(p => [p.id, []]));
   if (prev.mode === "river" && action.kind === "river") {
     const active = prev.players[prev.nextPlayerIndex];
     const opponent = prev.players[(prev.nextPlayerIndex + 1) % 2];
@@ -385,6 +401,50 @@ export function applyTossitAction(prev: TossitState, action: TossitAction, now =
     } else explanation = `${current.name} : ${action.cell === null ? "ventouse manquée" : "case déjà occupée"}`;
     nextPlayerIndex = (prev.nextPlayerIndex + 1) % 2;
     if (!winnerId && board.every((x) => x !== null)) finishAsDraw = true;
+  } else if (prev.mode === "chores" && action.kind === "chores") {
+    // Family task randomizer. No official point winner: numbers denote pending chores.
+    const thrower = prev.players[prev.nextPlayerIndex];
+    if (!Array.isArray(action.throws) || action.throws.length !== prev.dartsPerPlayer) throw new Error("Chores requires all three darts");
+    const validEffects = ["miss", "chore", "free_day", "kiss", "jumpover", "double_trouble"];
+    const validChores: string[] = TOSSIT_CHORES.map(c => c.id);
+    for (const dart of action.throws) {
+      if (!dart || !validEffects.includes(dart.effect)) throw new Error("Invalid chore dart");
+      if (dart.effect !== "miss" && !ids.includes(dart.recipientId || "")) throw new Error("Choose a valid chore recipient");
+      if (["chore", "jumpover"].includes(dart.effect) && !validChores.includes(dart.chore || "")) throw new Error("Unknown chore target");
+    }
+    chores = Object.fromEntries(ids.map(id => [id, [...(chores[id] || [])]]));
+    const summary: string[] = [];
+    for (const dart of action.throws) {
+      const id = dart.recipientId || "";
+      switch (dart.effect) {
+        case "chore": chores[id].push(dart.chore!); summary.push(`+1 ${dart.chore}`); break;
+        case "free_day": chores[id] = []; summary.push("Free Day"); break;
+        case "kiss":
+        case "double_trouble": if (chores[id].length) chores[id].pop(); summary.push("annulation"); break;
+        case "jumpover": chores[id].push(dart.chore!, dart.chore!); summary.push(`+2 ${dart.chore}`); break;
+        default: summary.push("raté");
+      }
+    }
+    for (const id of ids) scores[id] = chores[id].length;
+    nextPlayerIndex = (prev.nextPlayerIndex + 1) % ids.length;
+    if (prev.events.length + 1 === prev.victoryTarget * ids.length) finishAsDraw = true; // session complete, no winner
+    explanation = `${thrower.name} : ${summary.join(" / ")} • tâches restantes ${ids.map(id => `${prev.players.find(p => p.id === id)?.name}: ${chores[id].length}`).join(", ")}`;
+  } else if (prev.mode === "bottle" && action.kind === "bottle") {
+    if (typeof action.stuck !== "object" || action.stuck === null || typeof action.onBottle !== "object" || action.onBottle === null) throw new Error("Invalid Bottle round");
+    for (const id of ids) {
+      if (!integerBetween(action.stuck[id], 0, prev.dartsPerPlayer) || !integerBetween(action.onBottle[id], 0, action.stuck[id])) throw new Error("Invalid Bottle darts");
+    }
+    const hasHit = ids.some(id => action.stuck[id] > 0);
+    if ((hasHit && !ids.includes(action.closestPlayerId || "")) || (!hasHit && !!action.closestPlayerId)) throw new Error("Closest player required only when a dart sticks");
+    if (hasHit && (action.stuck[action.closestPlayerId!] || 0) === 0) throw new Error("Closest player has no stuck dart");
+    for (const id of ids) scores[id] += action.onBottle[id] * 3 + (id === action.closestPlayerId ? 1 : 0);
+    if (prev.events.length + 1 >= prev.victoryTarget) {
+      const top = Math.max(...ids.map(id => scores[id]));
+      const leaders = ids.filter(id => scores[id] === top);
+      winnerId = leaders.length === 1 ? leaders[0] : null;
+      finishAsDraw = !winnerId;
+    }
+    explanation = `Bouteille : ${ids.map(id => `${prev.players.find(p => p.id === id)?.name} +${action.onBottle[id] * 3 + (id === action.closestPlayerId ? 1 : 0)}`).join(" · ")} (barème MSS, sans alcool)`;
   } else if (prev.mode === "thief_cop" && action.kind === "thief_cop") {
     const cop = prev.players[(prev.events.length + 1) % 2]; // Round 1: player #2 is Cop.
     if (!Array.isArray(action.captures) || action.captures.length < 1 || action.captures.length > prev.dartsPerPlayer ||
@@ -439,17 +499,19 @@ export function applyTossitAction(prev: TossitState, action: TossitAction, now =
     explanation = `${player.name} : ${action.pattern} · ${base} ${action.pattern === "stack" ? "niveaux" : "couleurs"} ${action.completed ? "+3 motif validé" : ""} = +${earned} points MSS`;
   } else throw new Error("Action incompatible with game mode");
   const event: TossitEvent = { index: prev.events.length + 1, scores: { ...scores }, explanation, winnerId, at: now };
-  return { ...prev, scores, board, cornholeBusted, pitch, reach, thiefCopWins, events: [...prev.events, event], nextPlayerIndex, winnerId, finished: !!winnerId || finishAsDraw, previous: prev };
+  return { ...prev, scores, board, cornholeBusted, pitch, reach, thiefCopWins, chores, events: [...prev.events, event], nextPlayerIndex, winnerId, finished: !!winnerId || finishAsDraw, previous: prev };
 }
 
 export function undoTossitAction(state: TossitState): TossitState { return state.previous ?? state; }
 export function summaryForTossit(state: TossitState) {
   return { finished: state.finished, sport: "tossit", mode: state.mode, scores: { ...state.scores }, rounds: state.events.length, winnerId: state.winnerId, draw: state.finished && !state.winnerId,
     gridSize: state.mode === "tictac" ? state.gridSize : undefined,
-    victoryTarget: ["battle", "conquest", "thief_cop", "reach", "rainbow"].includes(state.mode) ? (state.victoryTarget ?? (state.mode === "battle" ? 3 : 5)) : undefined,
+    victoryTarget: ["battle", "conquest", "thief_cop", "reach", "rainbow", "chores", "bottle"].includes(state.mode) ? (state.victoryTarget ?? (state.mode === "battle" ? 3 : 5)) : undefined,
     cornholeBusted: state.mode === "cornhole" ? state.cornholeBusted : undefined,
     footballDrive: state.mode === "football_pitch" ? state.pitch.drive : undefined,
     reach: state.mode === "reach" ? state.reach : undefined,
     thiefCopTakedowns: state.mode === "thief_cop" ? state.thiefCopWins : undefined,
+    choreAssignments: state.mode === "chores" ? state.chores : undefined,
+    nonCompetitive: state.mode === "chores",
     perPlayer: state.players.map((p) => ({ id: p.id, playerId: p.id, name: p.name, points: state.scores[p.id] ?? 0 })) };
 }

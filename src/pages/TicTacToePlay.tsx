@@ -8,6 +8,7 @@ import tickerMorpion from "../assets/tickers/ticker_tic_tac_toe.png";
 import { useLang } from "../contexts/LangContext";
 import { History } from "../lib/history";
 import { createMatchCheckpointWriter } from "../lib/matchCheckpointWriter";
+import { clearPartialVisit, loadPartialVisit, previousVisitFingerprint, savePartialVisit } from "../lib/partialVisitDraft";
 import { recoverMorpion } from "../lib/recoverTop10Morpion";
 import { buildDartsTelemetry, canonicalVisitFromUiDarts } from "../lib/dartsTelemetry";
 import { applyMorpionVolley, newMorpionGrid, MORPION_LINES } from "../lib/morpionEngine";
@@ -72,6 +73,7 @@ export default function TicTacToePlay(props: any) {
   const [inputWarning, setInputWarning] = React.useState("");
   const [saveStatus, setSaveStatus] = React.useState<"idle" | "saving" | "saved" | "error">("idle");
   const [leavePending, setLeavePending] = React.useState(false);
+  const [restoredDraft, setRestoredDraft] = React.useState(false);
   const leavingRef = React.useRef(false);
   const writerRef = React.useRef<any>(null);
   if (!writerRef.current) {
@@ -81,6 +83,11 @@ export default function TicTacToePlay(props: any) {
       onError: (error: any) => console.warn("[GAME] checkpoint non enregistré", error),
     });
   }
+  // Fingerprint only already-validated visits; never promote draft darts to History.
+  const draftIdentity = (matchId: string, playerId: string, roundIndex: number, playerIndex: number, visitsList: any[]) => ({
+    mode: "tic_tac_toe" as const, matchId, playerId, round: roundIndex, current: playerIndex,
+    committedVisits: visitsList.length, previousVisit: previousVisitFingerprint(visitsList),
+  });
   const persist = (rec: any) => writerRef.current.enqueue(rec);
   const retrySave = () => { writerRef.current.retry(); };
   const forceExit = () => {
@@ -88,7 +95,15 @@ export default function TicTacToePlay(props: any) {
   };
   async function requestBack(destination: string) {
     if (leavingRef.current) return;
-    if (!preview && throwing.length > 0 && !window.confirm(`${throwing.length} fléchette(s) de la volée actuelle ne sont pas encore validées et seront perdues. Quitter la partie ?`)) return;
+    if (!preview && throwing.length > 0) {
+      const active = players[current];
+      const stored = !!active && savePartialVisit(
+        draftIdentity(id.current, active.id, round, current, visits.current), throwing, mult);
+      const message = stored
+        ? `${throwing.length} fléchette(s) non validée(s) conservée(s) sur cet appareil. Quitter la partie ?`
+        : `${throwing.length} fléchette(s) non validée(s). Stockage local indisponible : ces fléchettes risquent d’être perdues. Quitter ?`;
+      if (!window.confirm(message)) return;
+    }
     leavingRef.current = true;
     if (!writerRef.current.isBusy && !writerRef.current.hasError) {
       props?.setTab?.(destination);
@@ -126,7 +141,12 @@ export default function TicTacToePlay(props: any) {
         setResult(restored.result);
         setFinished(restored.finished);
         setChampion(restored.winnerId);
-        setThrowing([]);
+        const pending = (!preview && !restored.finished && !restored.result && !restored.players[restored.current]?.isBot)
+          ? loadPartialVisit(draftIdentity(restored.id, restored.players[restored.current].id,
+              restored.round, restored.current, restored.visits)) : null;
+        setThrowing(pending?.darts ?? []);
+        setMult(pending?.multiplier ?? 1);
+        setRestoredDraft(!!pending);
         setBotSummary(null);
         setHydration("ready");
       } catch (error) {
@@ -158,6 +178,8 @@ export default function TicTacToePlay(props: any) {
     if (darts.length !== 3) { setInputWarning("Saisis 3 fléchettes, y compris MISS pour un lancer manqué."); return; }
     commitGuard.current = true;
     setInputWarning("");
+    clearPartialVisit({mode: "tic_tac_toe", matchId: id.current});
+    setRestoredDraft(false);
     const chosen = darts.slice(0, 3);
     const player = players[current];
     if (!player) { commitGuard.current = false; return; }
@@ -186,6 +208,7 @@ export default function TicTacToePlay(props: any) {
     if (hydration !== "ready" || preview || !result || finished || botSummary || leavingRef.current || saveStatus === "error") return;
     commitGuard.current = false; setInputWarning("");
     const g = newMorpionGrid(players.length); const n = round + 1; const p = n % players.length;
+    clearPartialVisit({mode:"tic_tac_toe",matchId:id.current});setRestoredDraft(false);
     setGrid(g); setRound(n); setResult(null); setCurrent(p); setThrowing([]);
     persist(makeRecord("in_progress", g, wins, n, p, null, null));
   }
@@ -194,12 +217,20 @@ export default function TicTacToePlay(props: any) {
     if (!(await writerRef.current.drain())) return;
     if (!finished && !window.confirm("Démarrer une nouvelle partie ? La partie actuelle restera disponible dans l’Historique.")) return;
     botGuard.current = ""; commitGuard.current = false; setBotSummary(null); setInputWarning("");
-    id.current = `morpion-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; started.current = Date.now(); visits.current = [];
+    clearPartialVisit({mode:"tic_tac_toe",matchId:id.current});setRestoredDraft(false);id.current = `morpion-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; started.current = Date.now(); visits.current = [];
     const g = newMorpionGrid(players.length); const empty = players.map(() => 0);
     setGrid(g); setWins(empty); setRound(0); setCurrent(0); setResult(null); setFinished(false); setChampion(null); setThrowing([]);
     persist(makeRecord("in_progress", g, empty, 0, 0, null, null));
   }
   React.useEffect(() => { commitGuard.current = false; }, [grid, current, round]);
+  React.useEffect(() => {
+    if (hydration !== "ready" || preview) return;
+    if (finished || result || !currentPlayer || currentPlayer.isBot || leavingRef.current && !throwing.length) {
+      clearPartialVisit({ mode: "tic_tac_toe", matchId: id.current });
+      return;
+    }
+    savePartialVisit(draftIdentity(id.current, currentPlayer.id, round, current, visits.current), throwing, mult);
+  }, [hydration, preview, finished, result, round, current, currentPlayer?.id, currentPlayer?.isBot, throwing, mult]);
   React.useEffect(() => { if (throwing.length === 3) setInputWarning(""); }, [throwing.length]);
   React.useEffect(() => {
     if (hydration !== "ready" || preview || finished || result || leavingRef.current || saveStatus === "error" || botSummary || !currentPlayer?.isBot || throwing.length) return;
@@ -217,6 +248,7 @@ export default function TicTacToePlay(props: any) {
   return <div className="page">
     <PageHeader title="MORPION" tickerSrc={tickerMorpion} left={<BackDot onClick={() => requestBack(resuming?"history":"games")} />} right={<InfoDot title="Règles du Morpion" content={RULES} />} />
     <div style={{ padding: 12, paddingBottom: 110, maxWidth: 720, margin: "0 auto" }}>
+      {restoredDraft && !preview && <div role="status" style={{fontSize:12,marginBottom:8,color:"#9fe7c7"}}>Volée non validée restaurée sur cet appareil : vérifie les fléchettes avant validation.</div>}
       {saveStatus !== "idle" && <div role={saveStatus === "error" ? "alert" : "status"} style={{fontSize:12,marginBottom:8,color:saveStatus === "error" ? "#ff9a9a" : "#a9d8ef"}}>{saveStatus === "saving" ? "Enregistrement de la partie…" : saveStatus === "error" ? "Enregistrement impossible : vérifie l'espace disponible avant de quitter." : "Partie enregistrée sur cet appareil."}</div>}
       {saveStatus === "error" && <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}><button type="button" className="btn-primary" onClick={retrySave}>RÉESSAYER L’ENREGISTREMENT</button><button type="button" className="btn-secondary" onClick={forceExit}>QUITTER SANS ENREGISTRER</button><span style={{fontSize:12,opacity:.85}}>La partie ne progresse plus tant que le dernier état n’est pas enregistré.</span></div>}
       {leavePending && <div role="status" style={{marginBottom:8,fontSize:12,color:"#ffd18a"}}>Sortie en attente de confirmation du dernier enregistrement…</div>}
@@ -231,7 +263,7 @@ export default function TicTacToePlay(props: any) {
           {grid.owners[idx] === null ? <div style={{ display: "grid", gap: 3, marginTop: 5 }}>{players.map((p: any, i: number) => <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ fontSize: 11, fontWeight: 900, color: PALETTE[i] }}>{MARKS[i]}</span><div style={{ flex: 1, display: "flex", gap: 2 }}>{Array.from({ length: 4 }, (_, j) => <i key={j} style={{ display: "block", height: 7, flex: 1, borderRadius: 3, background: j < grid.marks[idx][i] ? PALETTE[i] : "#ffffff1f" }} />)}</div></div>)}</div> : <div style={{ fontSize: 39, fontWeight: 1000, color: PALETTE[grid.owners[idx]] }}>{MARKS[grid.owners[idx]]}</div>}
         </div>)}
       </div>
-      {isHumanTurn && <div style={{ marginTop: 12, padding: 9, borderRadius: 13, background: "#111528" }}><div style={{ fontSize: 12, fontWeight: 900, paddingBottom: 6 }}>VOLÉE · {throwing.length}/3 fléchettes</div>{inputWarning && <div role="alert" style={{color:"#ffd18a",fontSize:12,marginBottom:5}}>{inputWarning}</div>}<ScoreInputHub currentThrow={throwing} multiplier={mult} onSimple={() => setMult(1)} onDouble={() => setMult(2)} onTriple={() => setMult(3)} onCancel={() => { setThrowing([]); setMult(1); }} onBackspace={() => setThrowing((v) => v.slice(0, -1))} onNumber={(n: number) => setThrowing((v) => v.length >= 3 ? v : [...v, { v: n, mult }])} onBull={() => setThrowing((v) => v.length >= 3 ? v : [...v, { v: 25, mult: mult === 2 ? 2 : 1 }])} onValidate={() => commit(throwing)} onDirectDart={(d: UIDart) => setThrowing((v) => v.length >= 3 ? v : [...v, d])} /></div>}
+      {isHumanTurn && <div style={{ marginTop: 12, padding: 9, borderRadius: 13, background: "#111528" }}><div style={{ fontSize: 12, fontWeight: 900, paddingBottom: 6 }}>VOLÉE · {throwing.length}/3 fléchettes</div>{inputWarning && <div role="alert" style={{color:"#ffd18a",fontSize:12,marginBottom:5}}>{inputWarning}</div>}<ScoreInputHub currentThrow={throwing} multiplier={mult} onSimple={() => setMult(1)} onDouble={() => setMult(2)} onTriple={() => setMult(3)} onCancel={() => { setRestoredDraft(false); setThrowing([]); setMult(1); }} onBackspace={() => setThrowing((v) => v.slice(0, -1))} onNumber={(n: number) => setThrowing((v) => v.length >= 3 ? v : [...v, { v: n, mult }])} onBull={() => setThrowing((v) => v.length >= 3 ? v : [...v, { v: 25, mult: mult === 2 ? 2 : 1 }])} onValidate={() => commit(throwing)} onDirectDart={(d: UIDart) => setThrowing((v) => v.length >= 3 ? v : [...v, d])} /></div>}
       {preview && <div style={{textAlign:"center",marginTop:12,color:"#ffd18a"}}>APERÇU — LECTURE SEULE <button type="button" className="btn-secondary" onClick={()=>props?.setTab?.("history")}>Retour</button></div>}
       {!preview && <div style={{ display: "flex", gap: 8, marginTop: 12 }}><button className="btn-secondary" disabled={saveStatus === "error" || leavePending} onClick={restart} style={{ flex: 1 }}>Nouvelle partie</button><button className="btn-primary" disabled={!result || finished || !!botSummary || saveStatus === "error" || leavePending} onClick={nextRound} style={{ flex: 1 }}>Manche suivante</button></div>}
       {botSummary && <div role="dialog" aria-label="Volée du bot" style={{ position:"fixed", inset:0, zIndex:10010, display:"grid", placeItems:"center", padding:16, background:"#030713bc" }}>

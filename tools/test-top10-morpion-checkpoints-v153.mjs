@@ -62,7 +62,7 @@ for (const page of ['Top10Play', 'TicTacToePlay']) {
   assert.match(source, /writerRef\.current\.drain\(\)/, `${page}: exit/restart waits for IDB`);
   assert.match(source, /writerRef\.current\.retry\(\)/, `${page}: can retry latest snapshot`);
   assert.match(source, /saveStatus === "error"/, `${page}: game blocks unsafe continuation`);
-  assert.match(source, /throwing\.length > 0 && !window\.confirm/, `${page}: warn about unvalidated darts`);
+  assert.match(source, /if \(!preview && throwing\.length > 0\)/, `${page}: warn about unvalidated darts`);
   assert.match(source, /createMatchCheckpointWriter/, `${page}: ordered History V4 only`);
 }
 console.log('OK V153: ordered writes, pending exit, failure/retry, final callback, latest-checkpoint semantics');

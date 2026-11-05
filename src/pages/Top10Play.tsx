@@ -9,6 +9,7 @@ import tickerTop10Fr from "../assets/tickers/ticker_top_10.webp";
 import tickerTop10En from "../assets/tickers/ticker_top_10_en.webp";
 import { History } from "../lib/history";
 import { createMatchCheckpointWriter } from "../lib/matchCheckpointWriter";
+import { clearPartialVisit, loadPartialVisit, previousVisitFingerprint, savePartialVisit } from "../lib/partialVisitDraft";
 import { recoverTop10 } from "../lib/recoverTop10Morpion";
 import { buildDartsTelemetry, canonicalVisitFromUiDarts } from "../lib/dartsTelemetry";
 import type { Dart } from "../lib/types";
@@ -55,6 +56,7 @@ export default function Top10Play(props: any) {
   const [inputWarning, setInputWarning] = React.useState("");
   const [saveStatus, setSaveStatus] = React.useState<"idle" | "saving" | "saved" | "error">("idle");
   const [leavePending, setLeavePending] = React.useState(false);
+  const [restoredDraft, setRestoredDraft] = React.useState(false);
   const leavingRef = React.useRef(false);
   const writerRef = React.useRef<any>(null);
   if (!writerRef.current) {
@@ -64,6 +66,11 @@ export default function Top10Play(props: any) {
       onError: (error: any) => console.warn("[GAME] checkpoint non enregistré", error),
     });
   }
+  // Fingerprint only already-validated visits; never promote draft darts to History.
+  const draftIdentity = (matchId: string, playerId: string, roundIndex: number, playerIndex: number, visitsList: any[]) => ({
+    mode: "top_10" as const, matchId, playerId, round: roundIndex, current: playerIndex,
+    committedVisits: visitsList.length, previousVisit: previousVisitFingerprint(visitsList),
+  });
   const persist = (rec: any) => writerRef.current.enqueue(rec);
   const retrySave = () => { writerRef.current.retry(); };
   const forceExit = () => {
@@ -71,7 +78,15 @@ export default function Top10Play(props: any) {
   };
   async function requestBack(destination: string) {
     if (leavingRef.current) return;
-    if (!preview && throwing.length > 0 && !window.confirm(`${throwing.length} fléchette(s) de la volée actuelle ne sont pas encore validées et seront perdues. Quitter la partie ?`)) return;
+    if (!preview && throwing.length > 0) {
+      const active = players[current];
+      const stored = !!active && savePartialVisit(
+        draftIdentity(id.current, active.id, round, current, visits.current), throwing, mult);
+      const message = stored
+        ? `${throwing.length} fléchette(s) non validée(s) conservée(s) sur cet appareil. Quitter la partie ?`
+        : `${throwing.length} fléchette(s) non validée(s). Stockage local indisponible : ces fléchettes risquent d’être perdues. Quitter ?`;
+      if (!window.confirm(message)) return;
+    }
     leavingRef.current = true;
     if (!writerRef.current.isBusy && !writerRef.current.hasError) {
       props?.setTab?.(destination);
@@ -105,7 +120,12 @@ export default function Top10Play(props: any) {
         setScores(restored.scores);
         setRound(restored.round);
         setCurrent(restored.current);
-        setThrowing([]);
+        const pending = (!preview && !restored.finished && !restored.players[restored.current]?.isBot)
+          ? loadPartialVisit(draftIdentity(restored.id, restored.players[restored.current].id,
+              restored.round, restored.current, restored.visits)) : null;
+        setThrowing(pending?.darts ?? []);
+        setMult(pending?.multiplier ?? 1);
+        setRestoredDraft(!!pending);
         setFinished(restored.finished);
         setBotSummary(null);
         setHydration("ready");
@@ -134,6 +154,9 @@ export default function Top10Play(props: any) {
     if (darts.length !== 3) { setInputWarning("Saisis 3 fléchettes, y compris MISS pour un lancer manqué."); return; }
     commitGuard.current = true;
     setInputWarning("");
+    // Consume before advancing: a crash after validation must not replay a stale draft.
+    clearPartialVisit({mode: "top_10", matchId: id.current});
+    setRestoredDraft(false);
     const chosen=darts.slice(0,3), points=chosen.reduce((acc,d)=>acc+value(d),0);
     visits.current.push(canonicalVisitFromUiDarts({playerId:who.id,darts:chosen,visitIndex:scores[current].length,roundIndex:round,source:"top_10"}));
     const nextScores=scores.map((s:number[])=>[...s]);nextScores[current].push(points);
@@ -143,6 +166,15 @@ export default function Top10Play(props: any) {
     persist(record(done?"finished":"in_progress",nextScores,nextRound,nextCurrent));
   }
   React.useEffect(() => { commitGuard.current = false; }, [scores, round, current]);
+  React.useEffect(() => {
+    if (hydration !== "ready" || preview) return;
+    if (finished || !who || who.isBot || leavingRef.current && !throwing.length) {
+      clearPartialVisit({ mode: "top_10", matchId: id.current });
+      return;
+    }
+    // Local UI draft only. Not an authoritative match record.
+    savePartialVisit(draftIdentity(id.current, who.id, round, current, visits.current), throwing, mult);
+  }, [hydration, preview, finished, round, current, who?.id, who?.isBot, throwing, mult]);
   React.useEffect(() => { if (throwing.length === 3) setInputWarning(""); }, [throwing.length]);
   React.useEffect(()=>{
     if(hydration !== "ready" || preview || finished||leavingRef.current||saveStatus === "error"||botSummary||!who?.isBot||throwing.length) return;
@@ -152,12 +184,13 @@ export default function Top10Play(props: any) {
     const timer=window.setTimeout(()=>commit(botVisit(who.botLevel)),800);
     return()=>{window.clearTimeout(timer);if(botGuard.current===key)botGuard.current="";};
   },[hydration,preview,finished,round,current,who?.isBot,throwing.length,botSummary,saveStatus]);
-  async function restart(){if (hydration !== "ready" || preview || leavingRef.current) return; if (!(await writerRef.current.drain())) return;botGuard.current="";commitGuard.current=false;setBotSummary(null);setInputWarning("");id.current=`top10-${Date.now()}-${Math.random().toString(36).slice(2,7)}`; createdAt.current=Date.now(); visits.current=[];const empty=players.map(()=>[]);setScores(empty);setRound(0);setCurrent(0);setThrowing([]);setFinished(false);persist(record("in_progress",empty,0,0));}
+  async function restart(){if (hydration !== "ready" || preview || leavingRef.current) return; if (!(await writerRef.current.drain())) return;botGuard.current="";commitGuard.current=false;setBotSummary(null);setInputWarning("");clearPartialVisit({mode:"top_10",matchId:id.current});setRestoredDraft(false);id.current=`top10-${Date.now()}-${Math.random().toString(36).slice(2,7)}`; createdAt.current=Date.now(); visits.current=[];const empty=players.map(()=>[]);setScores(empty);setRound(0);setCurrent(0);setThrowing([]);setFinished(false);persist(record("in_progress",empty,0,0));}
   if (hydration !== "ready") return <div className="page"><PageHeader title="TOP 10" tickerSrc={lang === "fr" ? tickerTop10Fr : tickerTop10En} left={<BackDot onClick={()=>props?.setTab?.("history")} />} />
     <div role="status" style={{padding:25,textAlign:"center"}}>{hydration === "loading" ? "Chargement de la partie enregistrée…" : "Reprise impossible : état enregistré absent, terminé ou incohérent. Aucune nouvelle partie n’a été créée."}
     <div style={{marginTop:16}}><button type="button" className="btn-secondary" onClick={()=>props?.setTab?.("history")}>Retour à l'historique</button></div></div></div>;
   return <div className="page"><PageHeader title="TOP 10" tickerSrc={lang === "fr" ? tickerTop10Fr : tickerTop10En} left={<BackDot onClick={()=>requestBack(resuming?"history":cfgRef.current.training?"training":"games")} />} right={<InfoDot title="Règles TOP 10" content={RULES}/>} />
     <div style={{maxWidth:720,margin:"auto",padding:"12px 12px 120px"}}>
+      {restoredDraft && !preview && <div role="status" style={{fontSize:12,marginBottom:8,color:"#9fe7c7"}}>Volée non validée restaurée sur cet appareil : vérifie les fléchettes avant validation.</div>}
       {saveStatus !== "idle" && <div role={saveStatus === "error" ? "alert" : "status"} style={{fontSize:12,marginBottom:8,color:saveStatus === "error" ? "#ff9a9a" : "#a9d8ef"}}>{saveStatus === "saving" ? "Enregistrement de la partie…" : saveStatus === "error" ? "Enregistrement impossible : vérifie l'espace disponible avant de quitter." : "Partie enregistrée sur cet appareil."}</div>}
       {saveStatus === "error" && <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}><button type="button" className="btn-primary" onClick={retrySave}>RÉESSAYER L’ENREGISTREMENT</button><button type="button" className="btn-secondary" onClick={forceExit}>QUITTER SANS ENREGISTRER</button><span style={{fontSize:12,opacity:.85}}>La partie ne progresse plus tant que le dernier état n’est pas enregistré.</span></div>}
       {leavePending && <div role="status" style={{marginBottom:8,fontSize:12,color:"#ffd18a"}}>Sortie en attente de confirmation du dernier enregistrement…</div>}
@@ -165,7 +198,7 @@ export default function Top10Play(props: any) {
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(145px,1fr))",gap:8,marginTop:10}}>{ranking.map((p:any)=> <div key={p.id} style={{border:`1px solid ${who?.id===p.id&&!finished?"#4dd8fa":"#ffffff20"}`,borderRadius:13,padding:11,background:"#131c34"}}><div style={{fontWeight:900,fontSize:12}}>{p.name}</div><strong style={{fontSize:32}}>{p.total}</strong> <small>pts</small><div style={{fontSize:11,opacity:.76}}>Meilleure {p.best} · Moy. {p.average.toFixed(1)}</div><div style={{fontSize:11,opacity:.76}}>100+ : {p.hundred} · 140+ : {p.oneForty}</div></div>)}</div>
       <section style={{marginTop:10,padding:12,borderRadius:16,background:"#101729",border:"1px solid #ffffff25"}}><b>TABLEAU DES VOLÉES</b><div style={{overflowX:"auto",marginTop:8}}><table style={{width:"100%",textAlign:"center",borderCollapse:"collapse"}}><thead><tr><th style={{textAlign:"left",padding:6}}>Volée</th>{players.map((p:any)=><th key={p.id} style={{padding:6}}>{p.name}</th>)}</tr></thead><tbody>{Array.from({length:rounds},(_,i)=><tr key={i} style={{background:i===round&&!finished?"#47bde01b":"transparent",borderTop:"1px solid #ffffff12"}}><td style={{textAlign:"left",padding:6}}>#{i+1}</td>{players.map((p:any,j:number)=><td key={p.id} style={{padding:6,fontWeight:800}}>{scores[j][i] ?? "—"}</td>)}</tr>)}</tbody></table></div></section>
       {preview && <div style={{textAlign:"center",marginTop:12,color:"#ffd18a"}}>APERÇU — LECTURE SEULE <button type="button" className="btn-secondary" onClick={()=>props?.setTab?.("history")}>Retour</button></div>}
-      {!preview&&!finished&&!who?.isBot&&saveStatus !== "error"&&!leavePending&&<section style={{marginTop:12,padding:9,borderRadius:14,background:"#12182a"}}><b>VOLÉE · {throwing.length}/3</b>{inputWarning && <div role="alert" style={{color:"#ffd18a",fontSize:12,marginTop:4}}>{inputWarning}</div>}<ScoreInputHub currentThrow={throwing} multiplier={mult} onSimple={()=>setMult(1)} onDouble={()=>setMult(2)} onTriple={()=>setMult(3)} onCancel={()=>{setThrowing([]);setMult(1);}} onBackspace={()=>setThrowing((v)=>v.slice(0,-1))} onNumber={(n:number)=>setThrowing((v)=>v.length>=3?v:[...v,{v:n,mult}])} onBull={()=>setThrowing((v)=>v.length>=3?v:[...v,{v:25,mult:mult===2?2:1}])} onDirectDart={(d:Dart)=>setThrowing((v)=>v.length>=3?v:[...v,d])} onValidate={()=>commit(throwing)}/></section>}
+      {!preview&&!finished&&!who?.isBot&&saveStatus !== "error"&&!leavePending&&<section style={{marginTop:12,padding:9,borderRadius:14,background:"#12182a"}}><b>VOLÉE · {throwing.length}/3</b>{inputWarning && <div role="alert" style={{color:"#ffd18a",fontSize:12,marginTop:4}}>{inputWarning}</div>}<ScoreInputHub currentThrow={throwing} multiplier={mult} onSimple={()=>setMult(1)} onDouble={()=>setMult(2)} onTriple={()=>setMult(3)} onCancel={()=>{setRestoredDraft(false);setThrowing([]);setMult(1);}} onBackspace={()=>setThrowing((v)=>v.slice(0,-1))} onNumber={(n:number)=>setThrowing((v)=>v.length>=3?v:[...v,{v:n,mult}])} onBull={()=>setThrowing((v)=>v.length>=3?v:[...v,{v:25,mult:mult===2?2:1}])} onDirectDart={(d:Dart)=>setThrowing((v)=>v.length>=3?v:[...v,d])} onValidate={()=>commit(throwing)}/></section>}
       {botSummary && <div role="dialog" aria-label="Volée du bot" style={{ position:"fixed", inset:0, zIndex:10010, display:"grid", placeItems:"center", padding:16, background:"#030713bc" }}>
         <div style={{width:"min(100%, 430px)", background:"#121b33", border:"1px solid #67dafa", boxShadow:"0 22px 80px #000b", borderRadius:18, padding:20, textAlign:"center"}}>
           <div style={{fontSize:13,opacity:.8,fontWeight:800}}>VOLÉE DU BOT</div>
