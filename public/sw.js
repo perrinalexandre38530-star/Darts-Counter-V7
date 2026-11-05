@@ -1,5 +1,5 @@
 // /public/sw.js — minimal PWA SW, cache-safe + Push appels entrants
-const SW_VERSION = "dc-sw-2026-10-29-offline-shell-v10";
+const SW_VERSION = "dc-sw-2026-11-05-mobile-fast-v11";
 const CONTENT_PACK_CACHE_PREFIX = "mss-content-packs-";
 const CONTENT_PACK_CACHE = "mss-content-packs-v3";
 const MAP_TILE_CACHE = "mss-map-tiles-v1";
@@ -379,6 +379,32 @@ async function serveAppRequestNetworkFirst(request) {
   }
 }
 
+
+
+// V150 mobile speed: hashed Vite assets are content-addressed.
+// Cache-first eliminates the network round trip for each page transition.
+// The next deployment generates different filenames, so no stale JS is served.
+function isHashedBuildAsset(url) {
+  return !!url && url.origin === self.location.origin &&
+    /^\/assets\/[^/]+-[a-zA-Z0-9_-]{8,}\.(?:js|mjs|css)$/.test(url.pathname);
+}
+
+async function serveHashedBuildAsset(request) {
+  const cache = await caches.open(APP_SHELL_CACHE);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  try {
+    const response = await fetch(request);
+    if (response && response.ok) {
+      // Cache writing is optional; do not delay the response to render.
+      void cache.put(request, response.clone()).catch(() => {});
+    }
+    return response;
+  } catch {
+    return new Response("", { status: 503, statusText: "Offline asset unavailable" });
+  }
+}
+
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   let url = null;
@@ -390,6 +416,10 @@ self.addEventListener("fetch", (event) => {
   }
   if (isMapTileRequest(url)) {
     event.respondWith(serveMapTileRequest(event.request));
+    return;
+  }
+  if (isHashedBuildAsset(url)) {
+    event.respondWith(serveHashedBuildAsset(event.request));
     return;
   }
   // OFFLINE-FIRST W3: network-first pour le shell et les assets locaux. En ligne,

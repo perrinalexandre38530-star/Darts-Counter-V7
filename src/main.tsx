@@ -863,7 +863,10 @@ async function registerServiceWorkerProd() {
       // manifest complet. C'est non bloquant et garantit que les chunks lazy
       // du build courant sont présents avant une coupure réseau ultérieure.
       const requestFullOfflineCache = () => {
-        if (!shouldAttemptRemoteWork()) return;
+        // Sur mobile, l'énorme pré-cache de toutes les routes lazy entre en
+        // concurrence avec la navigation et les accès à IndexedDB.
+        // Le pré-cache de base du Service Worker reste inchangé.
+        if (isConstrainedRuntimeDevice() || !shouldAttemptRemoteWork()) return;
         void navigator.serviceWorker.ready.then((readyReg) => {
           try {
             (readyReg.active || reg.active || reg.waiting)?.postMessage({ type: "PRECACHE_APP_SHELL" });

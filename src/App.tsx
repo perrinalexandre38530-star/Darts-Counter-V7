@@ -4575,6 +4575,10 @@ useEffect(() => {
         return /Android|iPhone|iPad|iPod|Mobile/i.test(nav?.userAgent || "") || Number(nav?.deviceMemory || 8) <= 4;
       } catch { return false; }
     })();
+    // Mobile : ne pas télécharger ni parser les pages non visitées.
+    // Ce test réutilise la variable locale existante, sans appel à une
+    // fonction absente du module App.tsx.
+    if (constrained) return;
     const preloadLight = () => {
       if (isGameplayRouteName(currentTabRef.current)) return;
       // Pages de navigation principales : chargées seulement quand le navigateur
