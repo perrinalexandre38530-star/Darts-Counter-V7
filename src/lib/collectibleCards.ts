@@ -117,7 +117,38 @@ export type CollectibleCardId =
   | "legend_aubergenius"
   | "legend_rocky"
   | "legend_queen_of_the_palace"
-  | "legend_prince_of_wales_b";
+  | "legend_prince_of_wales_b"
+  | "legend_the_wall"
+  | "legend_belli"
+  | "legend_the_rockstar"
+  | "legend_the_ton_machine"
+  | "legend_flawlas"
+  | "legend_old_stoneface"
+  | "legend_the_heat"
+  | "legend_mr_glitter"
+  | "legend_the_african_warrior"
+  | "legend_the_hurricane"
+  | "legend_the_gambler"
+  | "legend_hollywood"
+  | "legend_the_gentle"
+  | "legend_razmatazz"
+  | "legend_the_french_touch"
+  | "legend_the_limestone_cowboy"
+  | "legend_frosty_the_throwman"
+  | "legend_the_polish_eagle"
+  | "legend_the_special_one"
+  | "legend_the_dutch_destroyer"
+  | "legend_big_cliff"
+  | "legend_the_magpie"
+  | "legend_braziliant"
+  | "legend_the_ninja"
+  | "legend_goldfinger"
+  | "legend_big_rig"
+  | "legend_the_blade"
+  | "legend_demolition_man"
+  | "legend_the_gunner"
+  | "legend_superchin"
+  | "legend_heavy_metal";
 
 export type CollectibleMetricKey =
   | "matches"
@@ -516,7 +547,7 @@ export const COLLECTIBLE_CARDS: CollectibleCardDefinition[] = [
   { id: "legend_the_cobra", collection: "legends", name: "THE COBRA", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/033-the-cobra.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
     { metric: "fiveLivesMatches", target: 1, label: { fr: "Terminer une partie Five Lives", en: "Complete a Five Lives match", es: "Completar una partida Five Lives" } },
   ] },
-  { id: "legend_the_nodor", collection: "legends", name: "THE NODOR", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/034-the-nodor.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+  { id: "legend_the_nodor", collection: "legends", name: "JOCKY", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/034-the-nodor.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
     { metric: "fiveLivesWins", target: 1, label: { fr: "Gagner une partie Five Lives", en: "Win a Five Lives match", es: "Ganar una partida Five Lives" } },
   ] },
   { id: "legend_the_wizard", collection: "legends", name: "THE WIZARD", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/035-the-wizard.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
@@ -571,6 +602,100 @@ export const COLLECTIBLE_CARDS: CollectibleCardDefinition[] = [
   { id: "legend_prince_of_wales_b", collection: "legends", name: "THE PRINCE OF WALES", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/051-prince-of-wales-b.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
     { metric: "matches", target: 75, label: { fr: "Terminer 75 parties", en: "Complete 75 matches", es: "Completar 75 partidas" } },
     { metric: "modes", target: 10, label: { fr: "Jouer dans 10 modes différents", en: "Play 10 different modes", es: "Jugar 10 modos diferentes" } },
+  ] },
+  // V146 : nouveaux badges validés ; JOCKY remplace la carte existante THE NODOR.
+  { id: "legend_the_wall", collection: "legends", name: "THE WALL", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/052-the-wall.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "x01Wins", target: 2, label: { fr: "Gagner 2 parties X01", en: "Win 2 X01 matches", es: "Ganar 2 partidas de X01" } },
+  ] },
+  { id: "legend_belli", collection: "legends", name: "BELLI", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/053-belli.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "x01Matches", target: 10, label: { fr: "Terminer 10 parties X01", en: "Complete 10 X01 matches", es: "Completar 10 partidas de X01" } },
+  ] },
+  { id: "legend_the_rockstar", collection: "legends", name: "THE ROCKSTAR", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/054-the-rockstar.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "cricketWins", target: 3, label: { fr: "Gagner 3 parties Cricket", en: "Win 3 Cricket matches", es: "Ganar 3 partidas de Cricket" } },
+  ] },
+  { id: "legend_the_ton_machine", collection: "legends", name: "THE TON MACHINE", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/055-the-ton-machine.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "cricketMatches", target: 6, label: { fr: "Terminer 6 parties Cricket", en: "Complete 6 Cricket matches", es: "Completar 6 partidas de Cricket" } },
+  ] },
+  { id: "legend_flawlas", collection: "legends", name: "FLAWLAS", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/056-flawlas.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "killerHistoryWins", target: 2, label: { fr: "Gagner 2 parties Killer", en: "Win 2 Killer matches", es: "Ganar 2 partidas de Killer" } },
+  ] },
+  { id: "legend_old_stoneface", collection: "legends", name: "OLD STONEFACE", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/057-old-stoneface.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "killerHistoryMatches", target: 8, label: { fr: "Terminer 8 parties Killer", en: "Complete 8 Killer matches", es: "Completar 8 partidas de Killer" } },
+  ] },
+  { id: "legend_the_heat", collection: "legends", name: "THE HEAT", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/058-the-heat.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "shanghaiWins", target: 2, label: { fr: "Gagner 2 parties Shanghai", en: "Win 2 Shanghai matches", es: "Ganar 2 partidas de Shanghai" } },
+  ] },
+  { id: "legend_mr_glitter", collection: "legends", name: "MR GLITTER", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/059-mr-glitter.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "shanghaiMatches", target: 6, label: { fr: "Terminer 6 parties Shanghai", en: "Complete 6 Shanghai matches", es: "Completar 6 partidas de Shanghai" } },
+  ] },
+  { id: "legend_the_african_warrior", collection: "legends", name: "THE AFRICAN WARRIOR", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/060-the-african-warrior.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "territoriesWins", target: 2, label: { fr: "Gagner 2 parties Territories", en: "Win 2 Territories matches", es: "Ganar 2 partidas de Territories" } },
+  ] },
+  { id: "legend_the_hurricane", collection: "legends", name: "THE HURRICANE", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/061-the-hurricane.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "territoriesMatches", target: 7, label: { fr: "Terminer 7 parties Territories", en: "Complete 7 Territories matches", es: "Completar 7 partidas de Territories" } },
+  ] },
+  { id: "legend_the_gambler", collection: "legends", name: "THE GAMBLER", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/062-the-gambler.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "fiftyOneByFiveWins", target: 2, label: { fr: "Gagner 2 parties 51 BY 5", en: "Win 2 51 BY 5 matches", es: "Ganar 2 partidas de 51 BY 5" } },
+  ] },
+  { id: "legend_hollywood", collection: "legends", name: "HOLLYWOOD", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/063-hollywood.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "fiftyOneByFiveMatches", target: 8, label: { fr: "Terminer 8 parties 51 BY 5", en: "Complete 8 51 BY 5 matches", es: "Completar 8 partidas de 51 BY 5" } },
+  ] },
+  { id: "legend_the_gentle", collection: "legends", name: "THE GENTLE", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/064-the-gentle.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "looperWins", target: 2, label: { fr: "Gagner 2 parties Looper", en: "Win 2 Looper matches", es: "Ganar 2 partidas de Looper" } },
+  ] },
+  { id: "legend_razmatazz", collection: "legends", name: "RAZMATAZZ", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/065-razmatazz.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "looperMatches", target: 5, label: { fr: "Terminer 5 parties Looper", en: "Complete 5 Looper matches", es: "Completar 5 partidas de Looper" } },
+  ] },
+  { id: "legend_the_french_touch", collection: "legends", name: "THE FRENCH TOUCH", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/066-the-french-touch.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "callThreeWins", target: 2, label: { fr: "Gagner 2 parties Call Three", en: "Win 2 Call Three matches", es: "Ganar 2 partidas de Call Three" } },
+  ] },
+  { id: "legend_the_limestone_cowboy", collection: "legends", name: "THE LIMESTONE COWBOY", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/067-the-limestone-cowboy.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "callThreeMatches", target: 7, label: { fr: "Terminer 7 parties Call Three", en: "Complete 7 Call Three matches", es: "Completar 7 partidas de Call Three" } },
+  ] },
+  { id: "legend_frosty_the_throwman", collection: "legends", name: "FROSTY THE THROWMAN", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/068-frosty-the-throwman.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "steeplechaseWins", target: 2, label: { fr: "Gagner 2 parties Steeplechase", en: "Win 2 Steeplechase matches", es: "Ganar 2 partidas de Steeplechase" } },
+  ] },
+  { id: "legend_the_polish_eagle", collection: "legends", name: "THE POLISH EAGLE", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/069-the-polish-eagle.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "steeplechaseMatches", target: 6, label: { fr: "Terminer 6 parties Steeplechase", en: "Complete 6 Steeplechase matches", es: "Completar 6 partidas de Steeplechase" } },
+  ] },
+  { id: "legend_the_special_one", collection: "legends", name: "THE SPECIAL ONE", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/070-the-special-one.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "dartsPokerWins", target: 2, label: { fr: "Gagner 2 parties Darts Poker", en: "Win 2 Darts Poker matches", es: "Ganar 2 partidas de Darts Poker" } },
+  ] },
+  { id: "legend_the_dutch_destroyer", collection: "legends", name: "THE DUTCH DESTROYER", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/071-the-dutch-destroyer.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "dartsPokerMatches", target: 6, label: { fr: "Terminer 6 parties Darts Poker", en: "Complete 6 Darts Poker matches", es: "Completar 6 partidas de Darts Poker" } },
+  ] },
+  { id: "legend_big_cliff", collection: "legends", name: "BIG CLIFF", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/072-big-cliff.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "oceanControlWins", target: 2, label: { fr: "Gagner 2 parties Ocean Control", en: "Win 2 Ocean Control matches", es: "Ganar 2 partidas de Ocean Control" } },
+  ] },
+  { id: "legend_the_magpie", collection: "legends", name: "THE MAGPIE", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/073-the-magpie.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "oceanControlMatches", target: 6, label: { fr: "Terminer 6 parties Ocean Control", en: "Complete 6 Ocean Control matches", es: "Completar 6 partidas de Ocean Control" } },
+  ] },
+  { id: "legend_braziliant", collection: "legends", name: "BRAZILIANT", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/074-braziliant.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "cargoWins", target: 2, label: { fr: "Gagner 2 parties Cargo", en: "Win 2 Cargo matches", es: "Ganar 2 partidas de Cargo" } },
+  ] },
+  { id: "legend_the_ninja", collection: "legends", name: "THE NINJA", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/075-the-ninja.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "cargoMatches", target: 6, label: { fr: "Terminer 6 parties Cargo", en: "Complete 6 Cargo matches", es: "Completar 6 partidas de Cargo" } },
+  ] },
+  { id: "legend_goldfinger", collection: "legends", name: "GOLDFINGER", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/076-goldfinger.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "golfWins", target: 2, label: { fr: "Gagner 2 parties Golf", en: "Win 2 Golf matches", es: "Ganar 2 partidas de Golf" } },
+  ] },
+  { id: "legend_big_rig", collection: "legends", name: "BIG RIG", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/077-big-rig.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "golfMatches", target: 6, label: { fr: "Terminer 6 parties Golf", en: "Complete 6 Golf matches", es: "Completar 6 partidas de Golf" } },
+  ] },
+  { id: "legend_the_blade", collection: "legends", name: "THE BLADE", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/078-the-blade.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "batardWins", target: 2, label: { fr: "Gagner 2 parties Bâtard", en: "Win 2 Bâtard matches", es: "Ganar 2 partidas de Bâtard" } },
+  ] },
+  { id: "legend_demolition_man", collection: "legends", name: "DEMOLITION MAN", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/079-demolition-man.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "battleRoyaleWins", target: 2, label: { fr: "Gagner 2 parties Battle Royale", en: "Win 2 Battle Royale matches", es: "Ganar 2 partidas de Battle Royale" } },
+  ] },
+  { id: "legend_the_gunner", collection: "legends", name: "THE GUNNER", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/080-the-gunner.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "fiveLivesWins", target: 2, label: { fr: "Gagner 2 parties 5 Lives", en: "Win 2 5 Lives matches", es: "Ganar 2 partidas de 5 Lives" } },
+  ] },
+  { id: "legend_superchin", collection: "legends", name: "SUPERCHIN", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/081-superchin.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "scramWins", target: 2, label: { fr: "Gagner 2 parties Scram", en: "Win 2 Scram matches", es: "Ganar 2 partidas de Scram" } },
+  ] },
+  { id: "legend_heavy_metal", collection: "legends", name: "HEAVY METAL", stars: 5, accent: "#f2c14e", image: "/images/collectible-legends/082-heavy-metal.webp", subtitle: { fr: "Légende des fléchettes", en: "Darts legend", es: "Leyenda de los dardos" }, requirements: [
+    { metric: "warfareWins", target: 2, label: { fr: "Gagner 2 parties Warfare", en: "Win 2 Warfare matches", es: "Ganar 2 partidas de Warfare" } },
   ] },
 
 ];
