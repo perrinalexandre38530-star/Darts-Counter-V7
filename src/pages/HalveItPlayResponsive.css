@@ -13,3 +13,11 @@
 @media (orientation: portrait) and (max-height: 650px) {
   .msc-halveit-keypad { max-height: 59dvh; }
 }
+
+/* V153 : ne pas masquer les participants au-delà de la 4e place.
+   Le bandeau de classement reste compact et scrollable horizontalement. */
+.msc-halveit-standings-strip { display: flex; min-width: 0; max-width: 100%;
+  gap: 6px; overflow-x: auto; overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch; scrollbar-width: thin; padding-bottom: 3px;
+}
+.msc-halveit-standing { min-width: 91px; flex: 1 0 91px; max-width: 160px; box-sizing: border-box; }

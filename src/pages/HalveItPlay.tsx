@@ -259,6 +259,8 @@ export default function HalveItPlay(props: any) {
   function resetMatch() {
     const next = createHalveItState(profiles as any, rules, teamConfigs, config.selectedIds);
     setState(next); setUndoStack([]); setThrowDarts([]); setMultiplier(1); setShowEnd(false); setShowTable(false); setShowStats(false); setNotice("");
+    // Un nouveau match ne doit jamais proposer de reprendre le précédent.
+    clearDartsMatchDraft(draftMode);
     matchIdRef.current = `halveit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; autoSavedRef.current = "";
   }
   function backToConfig() {
@@ -393,11 +395,17 @@ export default function HalveItPlay(props: any) {
       </section>
 
       <section style={{ ...panelStyle(), marginBottom: 7, padding: 8 }}>
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(4, Math.max(1, state.standings.length))},minmax(0,1fr))`, gap: 6 }}>
-          {state.standings.slice(0, 4).map((standing) => {
+        <div className="msc-halveit-standings-strip" role="list" aria-label={`${modeLabel} — classement des ${state.standings.length} participants`}>
+          {state.standings.map((standing) => {
             const team = config.participantMode === "teams" ? teamById.get(standing.id) : null;
             const profile = config.participantMode === "players" ? byId.get(standing.id) : null;
-            return <div key={standing.id} style={{ minWidth: 0, padding: "7px 5px", borderRadius: 13, background: "rgba(255,255,255,.035)", border: `1px solid ${standing.rank === 1 ? primary + "66" : themeStroke}`, textAlign: "center" }}><div style={{ display: "flex", justifyContent: "center", marginBottom: 4 }}>{team ? <TeamLogo team={team} size={30} /> : <ProfileAvatar profile={profile as any} size={30} />}</div><div style={{ fontSize: 8.5, fontWeight: 950, color: team?.color || themeSoft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{standing.name}</div><div style={{ color: primary, fontSize: 20, fontWeight: 1100, lineHeight: 1.1 }}>{standing.score}</div></div>;
+            const isActive = config.participantMode === "teams" ? standing.id === activeTeamId : standing.id === activePlayerId;
+            return <div key={standing.id} role="listitem" className="msc-halveit-standing" aria-current={isActive ? "true" : undefined} style={{ padding: "7px 5px", borderRadius: 13, background: isActive ? `${primary}19` : "rgba(255,255,255,.035)", border: `1px solid ${isActive ? primary : standing.rank === 1 ? primary + "66" : themeStroke}`, textAlign: "center" }}>
+              <div style={{ display: "flex", justifyContent: "center", marginBottom: 4 }}>{team ? <TeamLogo team={team} size={30} /> : <ProfileAvatar profile={profile as any} size={30} />}</div>
+              <div title={standing.name} style={{ fontSize: 9, fontWeight: 950, color: isActive ? primary : team?.color || themeSoft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{standing.rank}. {standing.name}</div>
+              <div style={{ color: primary, fontSize: 20, fontWeight: 1100, lineHeight: 1.1 }}>{standing.score}</div>
+              {isActive ? <div style={{ fontSize: 8, color: C.green, fontWeight: 1000, marginTop: 2 }}>EN JEU</div> : null}
+            </div>;
           })}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 7 }}>

@@ -23,6 +23,7 @@ import tickerChaseFr from "../assets/tickers/ticker_chase_fr.webp";
 import tickerChaseEn from "../assets/tickers/ticker_chase_en.webp";
 import { readDartsMatchDraft, writeDartsMatchDraft, clearDartsMatchDraft } from "../lib/dartsMatchDrafts";
 import type { FiveLivesConfig, FiveLivesPlayerLite } from "./FiveLivesConfig";
+import "./FiveLivesPlayResponsive.css";
 
 const tickerFiveLives2: any = (() => {
   try {
@@ -1424,6 +1425,7 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
         </div>
       </header>
 
+      <div className="msc-five-lives-body">
       <div
         className="msc-five-lives-overview"
         style={{
@@ -1727,6 +1729,7 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
       </button>
 
       <div className="msc-five-lives-spacer" style={{ flex: "1 1 auto", minHeight: 0 }} />
+      </div>
 
       {!winnerId && !endOpen ? (
         <div

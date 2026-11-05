@@ -84,6 +84,7 @@ import BottomNav from "./components/BottomNav";
 import NavigationBackgroundMusic from "./components/NavigationBackgroundMusic";
 import GlobalMessengerCallBridge from "./components/GlobalMessengerCallBridge";
 import RunningActiveSessionDock from "./components/RunningActiveSessionDock";
+const GlobalCollectibleUnlockNotifier = React.lazy(() => import("./components/GlobalCollectibleUnlockNotifier"));
 import SportQuickSwitch from "./components/SportQuickSwitch";
 import DartsConfigGuideBoundary from "./components/DartsConfigGuideBoundary";
 import PlayLandscapeAutoLayout from "./components/gameplay/PlayLandscapeAutoLayout";
@@ -290,6 +291,7 @@ const PetanqueMenuGames = React.lazy(() => import("./pages/petanque/PetanqueMenu
 const PetanqueConfig = React.lazy(() => import("./pages/petanque/PetanqueConfig"));
 
 // ✅ NEW: Baby-Foot (LOCAL)
+const TossitHome = React.lazy(() => import("./pages/tossit/TossitHome"));
 const TossitMenu = React.lazy(() => import("./pages/tossit/TossitScreens").then((m) => ({ default: m.TossitMenu })));
 const TossitConfig = React.lazy(() => import("./pages/tossit/TossitScreens").then((m) => ({ default: m.TossitConfig })));
 const TossitPlay = React.lazy(() => import("./pages/tossit/TossitScreens").then((m) => ({ default: m.TossitPlay })));
@@ -3664,6 +3666,31 @@ useEffect(() => {
     });
   }
 
+  // Les cartes se débloquent pour le profil actif, peu importe l'écran.
+  // Réconciliation monotone des déblocages (jamais d'écrasement d'un état restauré).
+  const persistGlobalCollectibleUnlocks = React.useCallback((profileId: string, unlocks: any) => {
+    if (!profileId || !unlocks || !Object.keys(unlocks).length) return;
+    update((previous: any) => {
+      const profiles = Array.isArray(previous?.profiles) ? previous.profiles : [];
+      let changed = false;
+      const nextProfiles = profiles.map((profile: any) => {
+        if (String(profile?.id || "") !== profileId) return profile;
+        const stored = profile?.collectibleCards?.unlocks || {};
+        const nextUnlocks = { ...unlocks, ...stored }; // les données déjà persistées sont prioritaires
+        if (!Object.keys(nextUnlocks).some((key) => !stored[key])) return profile;
+        changed = true;
+        return {
+          ...profile,
+          collectibleCards: {
+            ...(profile?.collectibleCards || {}), version: 1,
+            unlocks: nextUnlocks, updatedAt: Date.now(),
+          },
+        };
+      });
+      return changed ? { ...previous, profiles: nextProfiles } : previous;
+    });
+  }, [scheduleStorePersist, setStore]);
+
   // ✅ IMPORTANT: expose go globalement + store “vivant”
 
 
@@ -5517,7 +5544,7 @@ const unifiedStats = (() => {
       case "home":
         page =
           activeSport === "tossit" ? (
-            <TossitMenu go={go} />
+            <TossitHome store={store} update={update} go={go} />
           ) : activeSport === "petanque" ? (
             <PetanqueHome store={store} update={update} go={go} />
           ) : activeSport === "molkky" ? (
@@ -7889,6 +7916,16 @@ case "babyfoot_team_edit":
       <>
         <MobileErrorOverlay />
         <GlobalMessengerCallBridge />
+        {!isThemePreviewFrame && !loading && !!(store as any)?.activeProfileId && ((store as any)?.profiles || []).some((p: any) => String(p?.id) === String((store as any).activeProfileId)) && (
+          <React.Suspense fallback={null}>
+            <GlobalCollectibleUnlockNotifier
+              key={String((store as any).activeProfileId)}
+              profileId={String((store as any).activeProfileId)}
+              persistedUnlocks={((store as any)?.profiles || []).find((p: any) => String(p?.id) === String((store as any).activeProfileId))?.collectibleCards?.unlocks || {}}
+              onPersistUnlocks={persistGlobalCollectibleUnlocks}
+            />
+          </React.Suspense>
+        )}
         {showSportQuickSwitch && (
           <SportQuickSwitch
             collisionKey={String(tab)}
@@ -8673,7 +8710,7 @@ function X01PlayV3Route({
 
 function buildStorePersistSignatureForPerf(store: any): string {
   try {
-    const pickProfile = (p: any) => [p?.id || '', p?.name || p?.displayName || p?.nickname || '', p?.country || p?.countryCode || '', p?.avatarUrl || p?.avatarAssetId || p?.avatarHash || '', p?.updatedAt || p?.updated_at || p?.modifiedAt || ''].join('~');
+    const pickProfile = (p: any) => [p?.id || '', p?.name || p?.displayName || p?.nickname || '', p?.country || p?.countryCode || '', p?.avatarUrl || p?.avatarAssetId || p?.avatarHash || '', p?.updatedAt || p?.updated_at || p?.modifiedAt || '', p?.collectibleCards?.updatedAt || ''].join('~');
     const pickBot = (b: any) => [b?.id || '', b?.name || b?.displayName || b?.nickname || '', b?.level || b?.difficulty || '', b?.avatarUrl || b?.avatarAssetId || b?.avatarHash || '', b?.updatedAt || b?.updated_at || b?.modifiedAt || ''].join('~');
     const pickDartSet = (d: any) => [d?.id || '', d?.name || d?.label || '', d?.updatedAt || d?.updated_at || d?.modifiedAt || ''].join('~');
     return JSON.stringify({

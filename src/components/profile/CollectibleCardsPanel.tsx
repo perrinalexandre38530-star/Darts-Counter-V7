@@ -6,141 +6,14 @@ import {
   COLLECTIBLE_CARDS,
   cardRequirementProgress,
   computeCollectibleMetrics,
-  reconcileCollectibleUnlocks,
   type CollectibleCardDefinition,
   type CollectibleCardId,
   type CollectibleMetrics,
   type CollectibleUnlockMap,
 } from "../../lib/collectibleCards";
-import { contentPackAssetUrl } from "../../lib/contentPacks";
+import { IMAGE_BY_CARD } from "../../lib/collectibleCardImages";
 
 
-const awenaBronze = contentPackAssetUrl("collectible-cards", "awena-bronze.webp");
-const awenaArgent = contentPackAssetUrl("collectible-cards", "awena-argent.webp");
-const awenaPlatine = contentPackAssetUrl("collectible-cards", "awena-platine.webp");
-const awenaOr = contentPackAssetUrl("collectible-cards", "awena-or.webp");
-const awenaDiamant = contentPackAssetUrl("collectible-cards", "awena-diamant.webp");
-const firefighterKaelPresentation = contentPackAssetUrl("collectible-cards", "firefighter-kael-presentation.webp");
-const firefighterKaelBronze = contentPackAssetUrl("collectible-cards", "firefighter-kael-bronze.webp");
-const firefighterKaelArgent = contentPackAssetUrl("collectible-cards", "firefighter-kael-argent.webp");
-const firefighterKaelPlatine = contentPackAssetUrl("collectible-cards", "firefighter-kael-platine.webp");
-const firefighterKaelOr = contentPackAssetUrl("collectible-cards", "firefighter-kael-or.webp");
-const firefighterKaelDiamant = contentPackAssetUrl("collectible-cards", "firefighter-kael-diamant.webp");
-const firefighterMalysiaPresentation = contentPackAssetUrl("collectible-cards", "firefighter-malysia-presentation.webp");
-const firefighterMalysiaBronze = contentPackAssetUrl("collectible-cards", "firefighter-malysia-bronze.webp");
-const firefighterMalysiaArgent = contentPackAssetUrl("collectible-cards", "firefighter-malysia-argent.webp");
-const firefighterMalysiaPlatine = contentPackAssetUrl("collectible-cards", "firefighter-malysia-platine.webp");
-const firefighterMalysiaOr = contentPackAssetUrl("collectible-cards", "firefighter-malysia-or.webp");
-const firefighterMalysiaDiamant = contentPackAssetUrl("collectible-cards", "firefighter-malysia-diamant.webp");
-const firefighterLynaPresentation = contentPackAssetUrl("collectible-cards", "firefighter-lyna-presentation.webp");
-const firefighterLynaBronze = contentPackAssetUrl("collectible-cards", "firefighter-lyna-bronze.webp");
-const firefighterLynaArgent = contentPackAssetUrl("collectible-cards", "firefighter-lyna-argent.webp");
-const firefighterLynaPlatine = contentPackAssetUrl("collectible-cards", "firefighter-lyna-platine.webp");
-const firefighterLynaOr = contentPackAssetUrl("collectible-cards", "firefighter-lyna-or.webp");
-const firefighterLynaDiamant = contentPackAssetUrl("collectible-cards", "firefighter-lyna-diamant.webp");
-const firefighterZephyrPresentation = contentPackAssetUrl("collectible-cards", "firefighter-zephyr-presentation.webp");
-const firefighterZephyrBronze = contentPackAssetUrl("collectible-cards", "firefighter-zephyr-bronze.webp");
-const firefighterZephyrArgent = contentPackAssetUrl("collectible-cards", "firefighter-zephyr-argent.webp");
-const firefighterZephyrPlatine = contentPackAssetUrl("collectible-cards", "firefighter-zephyr-platine.webp");
-const firefighterZephyrOr = contentPackAssetUrl("collectible-cards", "firefighter-zephyr-or.webp");
-const firefighterZephyrDiamant = contentPackAssetUrl("collectible-cards", "firefighter-zephyr-diamant.webp");
-const firefighterBrazePresentation = contentPackAssetUrl("collectible-cards", "firefighter-braze-presentation.webp");
-const firefighterBrazeBronze = contentPackAssetUrl("collectible-cards", "firefighter-braze-bronze.webp");
-const firefighterBrazeArgent = contentPackAssetUrl("collectible-cards", "firefighter-braze-argent.webp");
-const firefighterBrazePlatine = contentPackAssetUrl("collectible-cards", "firefighter-braze-platine.webp");
-const firefighterBrazeOr = contentPackAssetUrl("collectible-cards", "firefighter-braze-or.webp");
-const firefighterBrazeDiamant = contentPackAssetUrl("collectible-cards", "firefighter-braze-diamant.webp");
-const firefighterAeroPresentation = contentPackAssetUrl("collectible-cards", "firefighter-aero-presentation.webp");
-const firefighterAeroBronze = contentPackAssetUrl("collectible-cards", "firefighter-aero-bronze.webp");
-const firefighterAeroArgent = contentPackAssetUrl("collectible-cards", "firefighter-aero-argent.webp");
-const firefighterAeroPlatine = contentPackAssetUrl("collectible-cards", "firefighter-aero-platine.webp");
-const firefighterAeroOr = contentPackAssetUrl("collectible-cards", "firefighter-aero-or.webp");
-const firefighterAeroDiamant = contentPackAssetUrl("collectible-cards", "firefighter-aero-diamant.webp");
-const loterieLucky = contentPackAssetUrl("collectible-cards", "loterie-lucky.webp");
-const loterieVega = contentPackAssetUrl("collectible-cards", "loterie-vega.webp");
-const loterieAce = contentPackAssetUrl("collectible-cards", "loterie-ace.webp");
-const loterieFortuna = contentPackAssetUrl("collectible-cards", "loterie-fortuna.webp");
-const loterieJinx = contentPackAssetUrl("collectible-cards", "loterie-jinx.webp");
-const loterieJack = contentPackAssetUrl("collectible-cards", "loterie-jack.webp");
-const loterieMidas = contentPackAssetUrl("collectible-cards", "loterie-midas.webp");
-const killerMorrow = contentPackAssetUrl("collectible-cards", "killer-morrow.webp");
-const killerVelvet = contentPackAssetUrl("collectible-cards", "killer-velvet.webp");
-const killerBrutus = contentPackAssetUrl("collectible-cards", "killer-brutus.webp");
-const killerDjuno = contentPackAssetUrl("collectible-cards", "killer-djuno.webp");
-const killerThorn = contentPackAssetUrl("collectible-cards", "killer-thorn.webp");
-const killerMiasma = contentPackAssetUrl("collectible-cards", "killer-miasma.webp");
-const killerRaze = contentPackAssetUrl("collectible-cards", "killer-raze.webp");
-const killerNoz = contentPackAssetUrl("collectible-cards", "killer-noz.webp");
-const killerZeno = contentPackAssetUrl("collectible-cards", "killer-zeno.webp");
-const killerBrat = contentPackAssetUrl("collectible-cards", "killer-brat.webp");
-const killerViper = contentPackAssetUrl("collectible-cards", "killer-viper.webp");
-const killerWest = contentPackAssetUrl("collectible-cards", "killer-west.webp");
-const killerBatuga = contentPackAssetUrl("collectible-cards", "killer-batuga.webp");
-const killerSkull = contentPackAssetUrl("collectible-cards", "killer-skull.webp");
-const IMAGE_BY_CARD: Partial<Record<CollectibleCardId, string>> = {
-  awena_bronze: awenaBronze,
-  awena_argent: awenaArgent,
-  awena_platine: awenaPlatine,
-  awena_or: awenaOr,
-  awena_diamant: awenaDiamant,
-  firefighter_kael_presentation: firefighterKaelPresentation,
-  firefighter_kael_bronze: firefighterKaelBronze,
-  firefighter_kael_argent: firefighterKaelArgent,
-  firefighter_kael_platine: firefighterKaelPlatine,
-  firefighter_kael_or: firefighterKaelOr,
-  firefighter_kael_diamant: firefighterKaelDiamant,
-  firefighter_malysia_presentation: firefighterMalysiaPresentation,
-  firefighter_malysia_bronze: firefighterMalysiaBronze,
-  firefighter_malysia_argent: firefighterMalysiaArgent,
-  firefighter_malysia_platine: firefighterMalysiaPlatine,
-  firefighter_malysia_or: firefighterMalysiaOr,
-  firefighter_malysia_diamant: firefighterMalysiaDiamant,
-  firefighter_lyna_presentation: firefighterLynaPresentation,
-  firefighter_lyna_bronze: firefighterLynaBronze,
-  firefighter_lyna_argent: firefighterLynaArgent,
-  firefighter_lyna_platine: firefighterLynaPlatine,
-  firefighter_lyna_or: firefighterLynaOr,
-  firefighter_lyna_diamant: firefighterLynaDiamant,
-  firefighter_braze_presentation: firefighterBrazePresentation,
-  firefighter_braze_bronze: firefighterBrazeBronze,
-  firefighter_braze_argent: firefighterBrazeArgent,
-  firefighter_braze_platine: firefighterBrazePlatine,
-  firefighter_braze_or: firefighterBrazeOr,
-  firefighter_braze_diamant: firefighterBrazeDiamant,
-  firefighter_aero_presentation: firefighterAeroPresentation,
-  firefighter_aero_bronze: firefighterAeroBronze,
-  firefighter_aero_argent: firefighterAeroArgent,
-  firefighter_aero_platine: firefighterAeroPlatine,
-  firefighter_aero_or: firefighterAeroOr,
-  firefighter_aero_diamant: firefighterAeroDiamant,
-  firefighter_zephyr_presentation: firefighterZephyrPresentation,
-  firefighter_zephyr_bronze: firefighterZephyrBronze,
-  firefighter_zephyr_argent: firefighterZephyrArgent,
-  firefighter_zephyr_platine: firefighterZephyrPlatine,
-  firefighter_zephyr_or: firefighterZephyrOr,
-  firefighter_zephyr_diamant: firefighterZephyrDiamant,
-  loterie_lucky: loterieLucky,
-  loterie_vega: loterieVega,
-  loterie_ace: loterieAce,
-  loterie_fortuna: loterieFortuna,
-  loterie_jinx: loterieJinx,
-  loterie_jack: loterieJack,
-  loterie_midas: loterieMidas,
-  killer_morrow: killerMorrow,
-  killer_velvet: killerVelvet,
-  killer_brutus: killerBrutus,
-  killer_djuno: killerDjuno,
-  killer_thorn: killerThorn,
-  killer_miasma: killerMiasma,
-  killer_raze: killerRaze,
-  killer_noz: killerNoz,
-  killer_zeno: killerZeno,
-  killer_brat: killerBrat,
-  killer_viper: killerViper,
-  killer_west: killerWest,
-  killer_batuga: killerBatuga,
-  killer_skull: killerSkull,
-};
 
 type FilterId = "all" | "awena" | "firefighter" | "loterie" | "killer" | "legends" | "unlocked" | "locked";
 
@@ -248,7 +121,7 @@ function ProgressRequirements({ card, metrics, lang }: { card: CollectibleCardDe
   })}</div>;
 }
 
-export default function CollectibleCardsPanel({ profileId, profileName, persistedUnlocks, onPersistUnlocks }: {
+export default function CollectibleCardsPanel({ profileId, profileName, persistedUnlocks }: {
   profileId: string;
   profileName?: string;
   persistedUnlocks?: CollectibleUnlockMap | null;
@@ -262,7 +135,6 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
   const unlocksRef = React.useRef<CollectibleUnlockMap>({ ...(persistedUnlocks || {}) });
   const [loading, setLoading] = React.useState(false);
   const [selectedCardId, setSelectedCardId] = React.useState<CollectibleCardId | null>(null);
-  const [unlockQueue, setUnlockQueue] = React.useState<CollectibleCardId[]>([]);
   const [scanNonce, setScanNonce] = React.useState(0);
 
   const lastProfileIdRef = React.useRef(String(profileId || "").trim());
@@ -277,7 +149,6 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
     setUnlocks(next);
     if (profileChanged) {
       setMetrics(ZERO_METRICS);
-      setUnlockQueue([]);
       setSelectedCardId(null);
     }
   }, [profileId, persistedUnlocks]);
@@ -289,13 +160,9 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
     try {
       const nextMetrics = await computeCollectibleMetrics(id);
       setMetrics(nextMetrics);
-      const reconciled = reconcileCollectibleUnlocks(unlocksRef.current, nextMetrics);
-      unlocksRef.current = reconciled.unlocks;
-      setUnlocks(reconciled.unlocks);
-      if (reconciled.newlyUnlocked.length) {
-        setUnlockQueue((prev) => Array.from(new Set([...prev, ...reconciled.newlyUnlocked])));
-        await onPersistUnlocks?.(id, reconciled.unlocks);
-      }
+      // Le composant global centralise les déblocages et la fenêtre de récompense.
+      // Cette page calcule uniquement la progression, pour éviter deux notifications
+      // ou des réconciliations concurrentes lorsque la galerie est ouverte.
     } finally { setLoading(false); }
   }, [profileId, onPersistUnlocks, scanNonce]);
 
@@ -326,7 +193,6 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
 
   const unlockedCount = COLLECTIBLE_CARDS.filter((card) => !!unlocks[card.id]).length;
   const selectedCard = selectedCardId ? COLLECTIBLE_CARDS.find((card) => card.id === selectedCardId) || null : null;
-  const unlockCard = unlockQueue.length ? COLLECTIBLE_CARDS.find((card) => card.id === unlockQueue[0]) || null : null;
 
   const labels = pickLegacyLocalizedValue(
     lang,
@@ -343,7 +209,7 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
     <section style={{ padding:13, borderRadius:18, border:`1px solid ${theme.primary}55`, background:`linear-gradient(135deg, ${theme.primary}18, rgba(0,0,0,.24))`, overflow:"hidden" }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
         <div style={{ minWidth:0 }}><div style={{ color:theme.primary, fontWeight:1000, fontSize:13, letterSpacing:.8 }}>{labels.title}</div><div style={{ color:theme.textSoft, fontSize:10.5, marginTop:3, lineHeight:1.4 }}>{labels.subtitle}</div></div>
-        <button type="button" onClick={() => setScanNonce((n) => n + 1)} disabled={loading} style={{ border:`1px solid ${theme.primary}66`, background:`${theme.primary}18`, color:theme.primary, borderRadius:999, padding:"7px 9px", fontWeight:950, fontSize:9.5, cursor:"pointer", opacity:loading ? .55 : 1 }}>{loading ? "…" : `↻ ${labels.scan}`}</button>
+        <button type="button" onClick={() => { setScanNonce((n) => n + 1); try { window.dispatchEvent(new Event("dc:collectible-check")); } catch {} }} disabled={loading} style={{ border:`1px solid ${theme.primary}66`, background:`${theme.primary}18`, color:theme.primary, borderRadius:999, padding:"7px 9px", fontWeight:950, fontSize:9.5, cursor:"pointer", opacity:loading ? .55 : 1 }}>{loading ? "…" : `↻ ${labels.scan}`}</button>
       </div>
       <div style={{ marginTop:12, display:"grid", gridTemplateColumns:"1fr auto", gap:10, alignItems:"end" }}>
         <div><div style={{ display:"flex", justifyContent:"space-between", gap:8, color:theme.textSoft, fontSize:9.5, fontWeight:900 }}><span>{labels.progress}</span><strong style={{ color:theme.text }}>{unlockedCount}/{COLLECTIBLE_CARDS.length}</strong></div><div style={{ height:7, borderRadius:999, background:"rgba(255,255,255,.08)", overflow:"hidden", marginTop:6 }}><div style={{ width:`${(unlockedCount / COLLECTIBLE_CARDS.length) * 100}%`, height:"100%", borderRadius:999, background:`linear-gradient(90deg, ${theme.primary}, #ffffff)` }} /></div></div>
@@ -384,9 +250,6 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
       </div>
     </div>}
 
-    {unlockCard && <div role="dialog" aria-modal="true" style={{ position:"fixed", inset:0, zIndex:13000, display:"grid", placeItems:"center", padding:14, background:"radial-gradient(circle at 50% 40%, rgba(255,255,255,.12), rgba(0,0,0,.94) 58%)", backdropFilter:"blur(10px)" }}>
-      <div style={{ position:"absolute", width:"min(82vw,430px)", aspectRatio:"1", borderRadius:999, border:`2px solid ${unlockCard.accent}66`, boxShadow:`0 0 90px ${unlockCard.accent}77`, animation:"mscCardUnlockGlow 1.7s ease-in-out infinite" }} />
-      <div style={{ width:"min(88vw,430px)", position:"relative", zIndex:2, textAlign:"center" }}><div style={{ color:unlockCard.accent, fontSize:16, fontWeight:1100, letterSpacing:1.3, textShadow:`0 0 22px ${unlockCard.accent}` }}>{labels.justUnlocked}</div><div style={{ color:"#fff", fontSize:11, fontWeight:900, marginTop:3, marginBottom:10 }}>{unlockCard.name}</div><img src={unlockCard.image || IMAGE_BY_CARD[unlockCard.id] || ""} alt={unlockCard.name} style={{ width:"100%", maxHeight:"70vh", objectFit:"contain", display:"block", filter:`drop-shadow(0 0 28px ${unlockCard.accent}66)`, animation:"mscCardUnlockPop .72s cubic-bezier(.17,.84,.28,1.24) both" }} /><button type="button" onClick={() => setUnlockQueue((prev) => prev.slice(1))} style={{ width:"100%", marginTop:10, border:`1px solid ${unlockCard.accent}`, background:unlockCard.accent, color:"#050505", borderRadius:999, padding:"11px 14px", fontWeight:1100, fontSize:11, cursor:"pointer" }}>{labels.continue}{unlockQueue.length > 1 ? ` · ${unlockQueue.length - 1}` : ""}</button></div>
-    </div>}
+
   </div>;
 }
