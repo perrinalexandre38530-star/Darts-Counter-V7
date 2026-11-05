@@ -274,8 +274,17 @@ function landingTickerFor(gameId: string, lang: Lang): string | null {
 function publicTossitTickerFor(modeId: string, lang: Lang): string {
   const imageId = modeId === "classic" ? "tossit_classic" : modeId === "speed" ? "tossit_speed" :
     ["target", "border"].includes(modeId) ? "tossit_target" :
-    ["battle", "sniper", "conquest", "river", "cornhole", "goalkeeper", "football_pitch"].includes(modeId) ? `tossit_${modeId}` : "tossit_games";
+    ["battle", "sniper", "conquest", "river", "cornhole", "goalkeeper", "football_pitch", "thief_cop", "reach", "rainbow"].includes(modeId) ? `tossit_${modeId}` : "tossit_games";
   return landingTickerFor(imageId, lang) || tossit;
+}
+function publicTossitDescription(modeId: string, description: string, lang: Lang): string {
+  if (String(lang).startsWith("fr")) return description;
+  const english: Record<string,string> = {
+    thief_cop: "Alternate roles across four rounds. The Cop scores for arrests; a takedown secures a round.",
+    reach: "Throw as high as possible on a smooth vertical surface. Height and stuck darts determine the MSS challenge ranking.",
+    rainbow: "Build colourful rings, shapes or towers. Use the optional MSS creative challenge score to compare your attempts.",
+  };
+  return english[modeId] ?? description;
 }
 function tossitObjectiveForPublic(modeId: string, target: number, lang: Lang) {
   const fr = String(lang).startsWith("fr");
@@ -283,6 +292,9 @@ function tossitObjectiveForPublic(modeId: string, target: number, lang: Lang) {
   if (modeId === "sniper") return fr ? "Objectif : empilement sur Mega dart" : "Goal: stack on Mega dart";
   if (modeId === "football_pitch") return fr ? "Premier à 5 buts • chemin validé manuellement" : "First to 5 goals • manually verified dart path";
   if (modeId === "cornhole") return fr ? "Exactement 21 points • annulation & bust" : "Exactly 21 points • cancellation & bust";
+  if (modeId === "thief_cop") return fr ? "4 manches • seul le policier marque" : "4 rounds • only the cop scores";
+  if (modeId === "reach") return fr ? "Défi MSS • record de hauteur en cm" : "MSS challenge • best height in cm";
+  if (modeId === "rainbow") return fr ? "Défi créatif • barème de points MSS" : "Creative challenge • MSS points format";
   if (modeId === "tictac") return fr ? "Aligner 3 ou 4 ventouses" : "Connect 3 or 4 darts";
   return fr ? `Objectif : ${target} points` : `Target: ${target} points`;
 }
@@ -734,7 +746,7 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
       <div className="mssDartsModeGrid">
         {TOSSIT_MODES.map((mode) => <article className="mssDartsModeCard" key={mode.id}>
           <div className="mssDartsModeVisual"><img src={publicTossitTickerFor(mode.id, lang)} alt="" loading="lazy"/><span>DISPONIBLE • {mode.category.toUpperCase()}</span></div>
-          <div className="mssDartsModeText"><strong>{mode.title}</strong><p>{mode.description}</p><small>{tossitObjectiveForPublic(mode.id, mode.target, lang)} • {String(lang).startsWith("fr") ? "Saisie manuelle • Historique TOSSIT" : "Manual scoring • TOSSIT history"}</small></div>
+          <div className="mssDartsModeText"><strong>{mode.title}</strong><p>{publicTossitDescription(mode.id, mode.description, lang)}</p><small>{tossitObjectiveForPublic(mode.id, mode.target, lang)} • {String(lang).startsWith("fr") ? "Saisie manuelle • Historique TOSSIT" : "Manual scoring • TOSSIT history"}</small></div>
         </article>)}
         {TOSSIT_PLANNED.map((mode) => <article className="mssDartsModeCard isDevelopment" key={mode.title}>
           <div className="mssDartsModeVisual"><div className="mssDartsMiniFallback"><img src={tossit} alt="" /></div><span>EN DÉVELOPPEMENT • {mode.category.toUpperCase()}</span></div>

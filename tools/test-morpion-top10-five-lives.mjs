@@ -38,7 +38,7 @@ assert.match(app,/case "top_10_play"/);
 assert.match(app,/case "tic_tac_toe_play"/);
 const top10=read('src/pages/Top10Play.tsx');
 assert.match(top10,/const rounds = 10;/);
-assert.match(top10,/History\.upsert\(r\)/);
+assert.match(top10,/createMatchCheckpointWriter\(\(rec: any\) => History\.upsert\(rec\)/);
 assert.match(read('src/pages/PublicLandingPage.tsx'),/g\.id !== "top_10_training"/);
 assert.match(read('src/pages/TrainingMenu.tsx'),/g\.id === "top_10_training" \? "top_10_config"/);
 console.log('OK : 20 vérifications MORPION / TOP 10 / 5 VIES + navigation et historique');

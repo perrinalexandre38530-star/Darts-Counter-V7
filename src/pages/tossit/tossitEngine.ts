@@ -1,7 +1,7 @@
 /** TOSSIT SCORING — human-validated throws, pure and undoable transitions.
  * Rules reference: https://tossit.game/pages/how-to-play (November 2026).
  * No visual / camera claims are made by this scoring engine. */
-export type TossitMode = "classic" | "speed" | "target" | "duel" | "border" | "tictac" | "battle" | "sniper" | "conquest" | "river" | "cornhole" | "goalkeeper" | "football_pitch";
+export type TossitMode = "classic" | "speed" | "target" | "duel" | "border" | "tictac" | "battle" | "sniper" | "conquest" | "river" | "cornhole" | "goalkeeper" | "football_pitch" | "thief_cop" | "reach" | "rainbow";
 export type TossitPlayer = { id: string; name: string; avatarDataUrl?: string | null };
 export type TossitEvent = {
   index: number;
@@ -29,6 +29,10 @@ export type TossitState = {
   cornholeBusted: Record<string, boolean>;
   /** Manually confirmed football path; no automatic camera claim. */
   pitch: { attackerId: string; attackerThrows: number; defenderThrows: number; chainLength: number; blocks: number; longPassUsed: boolean; drive: number };
+  /** Skill/creative adaptations: height record and completed throws are not official scoring units. */
+  reach: Record<string, { bestCm: number; stuck: number }>;
+  /** Thief & Cop: takedown is a round win, used as a tie-break only. */
+  thiefCopWins: Record<string, number>;
 };
 export type ClassicRound = {
   kind: "classic";
@@ -82,8 +86,12 @@ export type CornholeLanding = "hole" | "board" | "miss";
 export type CornholeRound = { kind: "cornhole"; throws: Record<string, CornholeLanding[]>; kiss: Record<string, number>; jumpover: Record<string, number> };
 export type GoalkeeperTurn = { kind: "goalkeeper"; zones: number[] };
 export type FootballPitchTurn = { kind: "football_pitch"; outcome: "centre" | "linked" | "longpass" | "goal" | "block" | "miss" };
+export type ThiefCopCapture = "miss" | "close" | "direct" | "handcuff" | "double_lock" | "takedown";
+export type ThiefCopRound = { kind: "thief_cop"; captures: ThiefCopCapture[] };
+export type ReachTurn = { kind: "reach"; bestCm: number; stuck: number };
+export type RainbowTurn = { kind: "rainbow"; pattern: "ring" | "shape" | "stack"; colors: number; stackHeight: number; completed: boolean };
 export const TOSSIT_COLORS = ["Rouge", "Bleu", "Vert", "Jaune", "Rose", "Violet"] as const;
-export type TossitAction = ClassicRound | SpeedRound | TargetTurn | DuelTurn | BorderRound | TicTacTurn | BattleRound | SniperAttempt | ConquestRound | RiverTurn | CornholeRound | GoalkeeperTurn | FootballPitchTurn;
+export type TossitAction = ClassicRound | SpeedRound | TargetTurn | DuelTurn | BorderRound | TicTacTurn | BattleRound | SniperAttempt | ConquestRound | RiverTurn | CornholeRound | GoalkeeperTurn | FootballPitchTurn | ThiefCopRound | ReachTurn | RainbowTurn;
 
 export const TOSSIT_MODES: ReadonlyArray<{ id: TossitMode; title: string; category: string; description: string; target: number }> = [
   { id: "classic", title: "TOSSIT CLASSIC", category: "Classique", description: "Cochonnet noir, comptage des ventouses collées et bonus spéciaux. Premier à 13 points.", target: 13 },
@@ -99,11 +107,11 @@ export const TOSSIT_MODES: ReadonlyArray<{ id: TossitMode; title: string; catego
   { id: "cornhole", title: "CORNHOLE", category: "Plateau", description: "3 points dans le trou, 1 sur la planche, annulation des points et double bust. Exactement 21.", target: 21 },
   { id: "goalkeeper", title: "FOOTBALL • GOALKEEPER", category: "Football", description: "Visez les zones du but : de −1 à 3 points par ventouse, premier à 11 points.", target: 11 },
   { id: "football_pitch", title: "FOOTBALL • PITCH", category: "Football", description: "Attaquant contre défenseur : créez un chemin de ventouses jusqu'au but, premier à 5 buts.", target: 5 },
+  { id: "thief_cop", title: "THIEF & COP", category: "Duel", description: "4 manches (ou 2 rapides), rôles alternés, arrestations et takedown. Seul le policier marque.", target: 0 },
+  { id: "reach", title: "STICK & REACH", category: "Entraînement", description: "Défi d'adresse : meilleure hauteur et nombre de ventouses collées. Classement MSS sur 3 ou 5 passages.", target: 0 },
+  { id: "rainbow", title: "RAINBOW RING & STACK", category: "Créativité", description: "Anneaux, motifs et tours : défi créatif avec barème MSS sur 3 ou 5 passages.", target: 0 },
 ] as const;
 export const TOSSIT_PLANNED: ReadonlyArray<{ title: string; category: string; description: string }> = [
-  { title: "THIEF & COP", category: "Duel", description: "Le voleur change de position, le policier marque selon la proximité et les captures." },
-  { title: "STICK & REACH", category: "Entraînement", description: "Défi de portée et de précision sur une surface verticale." },
-  { title: "RAINBOW RING & STACK", category: "Créativité", description: "Former des anneaux colorés, motifs et empilements de ventouses." },
   { title: "CHORES", category: "Plateau", description: "Atteindre les zones de tâches et attribuer des défis aux adversaires." },
   { title: "CAPTURE THE BOTTLE", category: "Défi", description: "Approcher une bouteille-cible ou poser une ventouse dessus." },
 ];
@@ -116,19 +124,21 @@ export function newTossitGame(mode: TossitMode, players: TossitPlayer[], dartsPe
   if (!TOSSIT_MODES.some((m) => m.id === mode)) throw new Error("Unknown mode");
   const unique = players.filter((p, index) => !!p.id && players.findIndex((q) => q.id === p.id) === index);
   if (unique.length !== players.length || unique.some((p) => !p.name?.trim())) throw new Error("Invalid players");
-  if (unique.length < (mode === "target" ? 1 : 2)) throw new Error("Not enough players");
-  if (["speed", "duel", "border", "tictac", "battle", "conquest", "river", "cornhole", "goalkeeper", "football_pitch"].includes(mode) && unique.length !== 2) throw new Error("This mode requires two players");
-  const allowedDarts = mode === "river" ? integerBetween(dartsPerPlayer, 6, 9)
+  if (unique.length < (["target", "reach", "rainbow"].includes(mode) ? 1 : 2)) throw new Error("Not enough players");
+  if (["speed", "duel", "border", "tictac", "battle", "conquest", "river", "cornhole", "goalkeeper", "football_pitch", "thief_cop"].includes(mode) && unique.length !== 2) throw new Error("This mode requires two players");
+  const allowedDarts = ["river", "thief_cop"].includes(mode) ? integerBetween(dartsPerPlayer, 6, 9)
     : mode === "cornhole" || mode === "goalkeeper" ? dartsPerPlayer === 3
     : mode === "football_pitch" ? dartsPerPlayer === 6 : integerBetween(dartsPerPlayer, 3, 6);
   if (unique.length > (mode === "target" ? 4 : 6) || !allowedDarts) throw new Error("Invalid setup");
   if (mode === "duel" && dartsPerPlayer !== 6) throw new Error("Duel requires six coloured darts plus the jack");
   if (gridSize !== 4 && gridSize !== 5) throw new Error("Invalid grid");
-  const matchTarget = victoryTarget ?? (mode === "conquest" ? 5 : mode === "battle" ? 3 : 1);
-  if (![1, 3, 5, 7].includes(matchTarget) || (["conquest", "battle"].includes(mode) && matchTarget === 1)) throw new Error("Invalid MSS match target");
+  const matchTarget = victoryTarget ?? (mode === "thief_cop" ? 4 : mode === "reach" || mode === "rainbow" ? 3 : mode === "conquest" ? 5 : mode === "battle" ? 3 : 1);
+  if (mode === "thief_cop" ? ![2, 4].includes(matchTarget) : ["reach", "rainbow"].includes(mode) ? ![3, 5].includes(matchTarget) : ![1, 3, 5, 7].includes(matchTarget) || (["conquest", "battle"].includes(mode) && matchTarget === 1)) throw new Error("Invalid MSS match target");
   return { mode, players: unique, dartsPerPlayer, scores: Object.fromEntries(unique.map((p) => [p.id, 0])), events: [], nextPlayerIndex: 0, winnerId: null, finished: false, createdAt: now, previous: null, gridSize, victoryTarget: matchTarget, board: Array(gridSize * gridSize).fill(null),
     cornholeBusted: Object.fromEntries(unique.map((p) => [p.id, false])),
     pitch: { attackerId: unique[0].id, attackerThrows: 0, defenderThrows: 0, chainLength: 0, blocks: 0, longPassUsed: false, drive: 1 },
+    reach: Object.fromEntries(unique.map(p => [p.id, { bestCm: 0, stuck: 0 }])),
+    thiefCopWins: Object.fromEntries(unique.map(p => [p.id, 0])),
   };
 }
 
@@ -158,6 +168,8 @@ export function applyTossitAction(prev: TossitState, action: TossitAction, now =
   let explanation = "";
   let cornholeBusted = prev.cornholeBusted;
   let pitch = prev.pitch;
+  let reach = prev.reach ?? Object.fromEntries(prev.players.map(p => [p.id, { bestCm: 0, stuck: 0 }]));
+  let thiefCopWins = prev.thiefCopWins ?? Object.fromEntries(prev.players.map(p => [p.id, 0]));
   if (prev.mode === "river" && action.kind === "river") {
     const active = prev.players[prev.nextPlayerIndex];
     const opponent = prev.players[(prev.nextPlayerIndex + 1) % 2];
@@ -373,17 +385,71 @@ export function applyTossitAction(prev: TossitState, action: TossitAction, now =
     } else explanation = `${current.name} : ${action.cell === null ? "ventouse manquée" : "case déjà occupée"}`;
     nextPlayerIndex = (prev.nextPlayerIndex + 1) % 2;
     if (!winnerId && board.every((x) => x !== null)) finishAsDraw = true;
+  } else if (prev.mode === "thief_cop" && action.kind === "thief_cop") {
+    const cop = prev.players[(prev.events.length + 1) % 2]; // Round 1: player #2 is Cop.
+    if (!Array.isArray(action.captures) || action.captures.length < 1 || action.captures.length > prev.dartsPerPlayer ||
+        !action.captures.every(v => ["miss", "close", "direct", "handcuff", "double_lock", "takedown"].includes(v))) throw new Error("Invalid arrest list");
+    const takedown = action.captures.indexOf("takedown");
+    if (takedown !== -1 && takedown !== action.captures.length - 1) throw new Error("Takedown ends the round immediately");
+    const values: Record<ThiefCopCapture,number> = { miss: 0, close: 1, direct: 2, handcuff: 4, double_lock: 6, takedown: 0 };
+    const earned = action.captures.reduce((sum, hit) => sum + values[hit], 0);
+    scores[cop.id] += earned;
+    if (takedown >= 0) thiefCopWins = { ...thiefCopWins, [cop.id]: (thiefCopWins[cop.id] || 0) + 1 };
+    const completed = prev.events.length + 1;
+    if (completed >= prev.victoryTarget) {
+      const [a,b] = ids;
+      winnerId = scores[a] !== scores[b] ? (scores[a] > scores[b] ? a : b)
+        : thiefCopWins[a] !== thiefCopWins[b] ? (thiefCopWins[a] > thiefCopWins[b] ? a : b) : null;
+      finishAsDraw = !winnerId;
+    }
+    explanation = `${cop.name} (policier) : +${earned} points${takedown >= 0 ? " • TAKEDOWN : manche capturée" : ""} • manche ${completed}/${prev.victoryTarget}`;
+  } else if (prev.mode === "reach" && action.kind === "reach") {
+    const player = prev.players[prev.nextPlayerIndex];
+    if (!integerBetween(action.stuck, 0, prev.dartsPerPlayer) || !Number.isFinite(action.bestCm) ||
+      action.bestCm < 0 || action.bestCm > 350 || Math.round(action.bestCm * 10) !== action.bestCm * 10 ||
+      ((action.stuck === 0) !== (action.bestCm === 0))) throw new Error("Invalid reach distance or dart count");
+    const previous = reach[player.id] ?? {bestCm:0,stuck:0};
+    reach = {...reach, [player.id]:{ bestCm:Math.max(previous.bestCm, action.bestCm), stuck:previous.stuck + action.stuck }};
+    scores[player.id] = reach[player.id].bestCm; // Height in cm, not points.
+    nextPlayerIndex = (prev.nextPlayerIndex + 1) % prev.players.length;
+    if (prev.events.length + 1 >= prev.victoryTarget * prev.players.length) {
+      const ordered = [...prev.players].sort((a,b)=>reach[b.id].bestCm-reach[a.id].bestCm || reach[b.id].stuck-reach[a.id].stuck);
+      const second = ordered[1];
+      const a = reach[ordered[0].id], b = second ? reach[second.id] : undefined;
+      winnerId = !b || a.bestCm !== b.bestCm || a.stuck !== b.stuck ? ordered[0].id : null;
+      finishAsDraw = !winnerId;
+    }
+    explanation = `${player.name} : ${action.bestCm} cm, ${action.stuck} ventouses collées • record ${reach[player.id].bestCm} cm`;
+  } else if (prev.mode === "rainbow" && action.kind === "rainbow") {
+    const player = prev.players[prev.nextPlayerIndex];
+    if (!["ring", "shape", "stack"].includes(action.pattern) || typeof action.completed !== "boolean" ||
+      !integerBetween(action.colors,0,6) || !integerBetween(action.stackHeight,0,prev.dartsPerPlayer) ||
+      (action.pattern === "stack" && action.colors !== 0) || (action.pattern !== "stack" && action.stackHeight !== 0) ||
+      (action.completed && (action.pattern === "stack" ? action.stackHeight < 2 : action.colors < 3))) throw new Error("Invalid creative challenge");
+    const base = action.pattern === "stack" ? action.stackHeight : action.colors;
+    const earned = base + (action.completed ? 3 : 0); // Explicit MSS challenge format, NOT official scoring.
+    scores[player.id] += earned;
+    nextPlayerIndex = (prev.nextPlayerIndex + 1) % prev.players.length;
+    if (prev.events.length + 1 >= prev.victoryTarget * prev.players.length) {
+      const best = Math.max(...ids.map(id => scores[id]));
+      const leaders = ids.filter(id => scores[id] === best);
+      winnerId = leaders.length === 1 ? leaders[0] : null;
+      finishAsDraw = !winnerId;
+    }
+    explanation = `${player.name} : ${action.pattern} · ${base} ${action.pattern === "stack" ? "niveaux" : "couleurs"} ${action.completed ? "+3 motif validé" : ""} = +${earned} points MSS`;
   } else throw new Error("Action incompatible with game mode");
   const event: TossitEvent = { index: prev.events.length + 1, scores: { ...scores }, explanation, winnerId, at: now };
-  return { ...prev, scores, board, cornholeBusted, pitch, events: [...prev.events, event], nextPlayerIndex, winnerId, finished: !!winnerId || finishAsDraw, previous: prev };
+  return { ...prev, scores, board, cornholeBusted, pitch, reach, thiefCopWins, events: [...prev.events, event], nextPlayerIndex, winnerId, finished: !!winnerId || finishAsDraw, previous: prev };
 }
 
 export function undoTossitAction(state: TossitState): TossitState { return state.previous ?? state; }
 export function summaryForTossit(state: TossitState) {
   return { finished: state.finished, sport: "tossit", mode: state.mode, scores: { ...state.scores }, rounds: state.events.length, winnerId: state.winnerId, draw: state.finished && !state.winnerId,
     gridSize: state.mode === "tictac" ? state.gridSize : undefined,
-    victoryTarget: ["battle", "conquest"].includes(state.mode) ? (state.victoryTarget ?? (state.mode === "battle" ? 3 : 5)) : undefined,
+    victoryTarget: ["battle", "conquest", "thief_cop", "reach", "rainbow"].includes(state.mode) ? (state.victoryTarget ?? (state.mode === "battle" ? 3 : 5)) : undefined,
     cornholeBusted: state.mode === "cornhole" ? state.cornholeBusted : undefined,
     footballDrive: state.mode === "football_pitch" ? state.pitch.drive : undefined,
+    reach: state.mode === "reach" ? state.reach : undefined,
+    thiefCopTakedowns: state.mode === "thief_cop" ? state.thiefCopWins : undefined,
     perPlayer: state.players.map((p) => ({ id: p.id, playerId: p.id, name: p.name, points: state.scores[p.id] ?? 0 })) };
 }

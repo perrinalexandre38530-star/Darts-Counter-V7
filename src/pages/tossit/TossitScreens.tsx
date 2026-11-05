@@ -8,7 +8,7 @@ import { scopedStorageKey } from "../../lib/storage";
 import { PageAdBanner } from "../../monetization/AdSlot";
 import {
   TOSSIT_MODES, TOSSIT_PLANNED, TOSSIT_COLORS, applyTossitAction, newTossitGame, summaryForTossit, undoTossitAction,
-  type TossitMode, type TossitPlayer, type TossitState, type RiverLanding, type CornholeLanding,
+  type TossitMode, type TossitPlayer, type TossitState, type RiverLanding, type CornholeLanding, type ThiefCopCapture,
 } from "./tossitEngine";
 import tickerMenu from "../../assets/tickers/ticker_tossit_games.webp";
 import tickerClassic from "../../assets/tickers/ticker_tossit_classic.webp";
@@ -29,14 +29,26 @@ import tickerGoalkeeperEn from "../../assets/tickers/ticker_tossit_goalkeeper_en
 import tickerFootballPitch from "../../assets/tickers/ticker_tossit_football_pitch.webp";
 import tickerFootballPitchFr from "../../assets/tickers/ticker_tossit_football_pitch_fr.webp";
 import tickerFootballPitchEn from "../../assets/tickers/ticker_tossit_football_pitch_en.webp";
+import tickerThiefCop from "../../assets/tickers/ticker_tossit_thief_cop.webp";
+import tickerThiefCopFr from "../../assets/tickers/ticker_tossit_thief_cop_fr.webp";
+import tickerThiefCopEn from "../../assets/tickers/ticker_tossit_thief_cop_en.webp";
+import tickerReach from "../../assets/tickers/ticker_tossit_reach.webp";
+import tickerReachFr from "../../assets/tickers/ticker_tossit_reach_fr.webp";
+import tickerReachEn from "../../assets/tickers/ticker_tossit_reach_en.webp";
+import tickerRainbow from "../../assets/tickers/ticker_tossit_rainbow.webp";
+import tickerRainbowFr from "../../assets/tickers/ticker_tossit_rainbow_fr.webp";
+import tickerRainbowEn from "../../assets/tickers/ticker_tossit_rainbow_en.webp";
 import menuDecor from "../../assets/tossit/tossit_menu_decor.webp";
 
-const ART: Record<TossitMode | "games", string> = { games: tickerMenu, classic: tickerClassic, speed: tickerSpeed, target: tickerTarget, duel: tickerMenu, border: tickerTarget, tictac: tickerTarget, battle: tickerBattle, sniper: tickerSniper, conquest: tickerConquest, river: tickerRiver, cornhole: tickerCornhole, goalkeeper: tickerGoalkeeper, football_pitch: tickerFootballPitch };
+const ART: Record<TossitMode | "games", string> = { games: tickerMenu, classic: tickerClassic, speed: tickerSpeed, target: tickerTarget, duel: tickerMenu, border: tickerTarget, tictac: tickerTarget, battle: tickerBattle, sniper: tickerSniper, conquest: tickerConquest, river: tickerRiver, cornhole: tickerCornhole, goalkeeper: tickerGoalkeeper, football_pitch: tickerFootballPitch, thief_cop: tickerThiefCop, reach: tickerReach, rainbow: tickerRainbow };
 const TOSSIT_I18N_ART: Partial<Record<TossitMode, { fr: string; en: string }>> = {
   river: { fr: tickerRiverFr, en: tickerRiverEn },
   cornhole: { fr: tickerCornholeFr, en: tickerCornholeEn },
   goalkeeper: { fr: tickerGoalkeeperFr, en: tickerGoalkeeperEn },
   football_pitch: { fr: tickerFootballPitchFr, en: tickerFootballPitchEn },
+  thief_cop: { fr: tickerThiefCopFr, en: tickerThiefCopEn },
+  reach: { fr: tickerReachFr, en: tickerReachEn },
+  rainbow: { fr: tickerRainbowFr, en: tickerRainbowEn },
 };
 function tickerForTossit(mode: TossitMode | "games", lang: string) {
   return mode === "games" ? ART.games : (TOSSIT_I18N_ART[mode]?.[String(lang || "fr").startsWith("fr") ? "fr" : "en"] ?? ART[mode]);
@@ -59,6 +71,8 @@ function readDraft(): TossitState | null {
     return { ...draft, victoryTarget: Number.isInteger(draft.victoryTarget) ? draft.victoryTarget : (draft.mode === "conquest" ? 5 : 3),
       cornholeBusted: draft.cornholeBusted || Object.fromEntries(players.map(p => [p.id, false])),
       pitch: draft.pitch || { attackerId: players[0].id, attackerThrows: 0, defenderThrows: 0, chainLength: 0, blocks: 0, longPassUsed: false, drive: 1 },
+      reach: draft.reach || Object.fromEntries(players.map(p => [p.id, { bestCm: 0, stuck: 0 }])),
+      thiefCopWins: draft.thiefCopWins || Object.fromEntries(players.map(p => [p.id, 0])),
       previous: null } as TossitState;
   } catch { return null; }
 }
@@ -84,6 +98,15 @@ const tinfo: Record<TossitMode, string> = {
   cornhole: "Poster Cornhole : trois fléchettes par équipe, trou +3, planche +1, ratée 0. Série parfaite des trois trous : +9 et relance immédiate. Kiss +1, Jumpover multiplie la manche. Les points des deux camps s'annulent ; exactement 21 pour gagner. Dépassement : 13, deux dépassements consécutifs : 0.",
   goalkeeper: "Poster World Football : trois tirs par tour. Coin haut et entre les jambes du gardien +3, au-dessus du but +2, côté du but +1, gardien −1, tir raté 0. Premier à 11 points.",
   football_pitch: "Poster Football Pitch : attaquant et défenseur alternent chacun une ventouse. Validez manuellement un chemin continu depuis le centre jusqu'au but (ventouses en contact). Une passe longue par attaque. Le défenseur peut bloquer ; les tirs ratés restent hors jeu. Premier à cinq buts. Les rôles tournent entre les attaques (adaptation MSS).",
+  thief_cop: "Deux joueurs : voleur et policier alternent chaque manche (4 manches, ou 2 en rapide), 6 à 9 ventouses. Seul le policier gagne des points : proche +1, direct +2, menottes +4, double verrou +6. Un Takedown capture immédiatement la manche. Le plus de points gagne.",
+  reach: "Lancez les ventouses sur une surface verticale lisse. Le meilleur lancer atteint la hauteur la plus élevée. Le nombre total de ventouses collées départage les égalités. Classement et passages : adaptation MSS, sans barème officiel TOSSIT.",
+  rainbow: "Créez un anneau, un motif coloré ou une tour de ventouses. En défi MSS, chaque couleur distincte ou niveau empilé rapporte 1 point, plus 3 pour un motif réussi. 3 ou 5 passages par joueur : ce barème n'est pas officiel TOSSIT.",
+};
+// FR/EN text for new TOSSIT modes; official names remain unchanged.
+const newModeEnglish: Partial<Record<TossitMode, { description: string; help: string }>> = {
+  thief_cop: { description: "Alternate Thief/Cop roles for four rounds (two quick). Only the Cop earns points for arrests; takedown secures a round.", help: "2 players, 6 to 9 darts. Close arrest +1, direct arrest +2, Handcuff +4, Double Lock +6. Takedown secures that round immediately. Only the Cop scores, then players switch roles. Highest total after 4 rounds wins (2 quick)." },
+  reach: { description: "Reach the highest point on a smooth vertical surface. MSS challenge ranking uses height and stuck darts.", help: "Throw at a smooth vertical surface. Record the highest stuck dart in cm; total stuck darts break height ties. Three or five turns per player. Competition format is an MSS adaptation, not an official TOSSIT score." },
+  rainbow: { description: "Build colourful rings, creative shapes and dart towers, with an optional MSS challenge format.", help: "Create a colourful ring, shape or stacked tower. MSS scores 1 per distinct colour or stack level, plus 3 for a completed creation. Three or five turns per player. This is an MSS creative scoring format, not official TOSSIT points." },
 };
 function useCopy() {
   const { lang } = useLang();
@@ -92,11 +115,12 @@ function useCopy() {
 }
 function Header({ title, mode, onBack }: { title: string; mode: TossitMode | "games"; onBack: () => void }) {
   const { theme } = useTheme();
+  const tr = useCopy();
   const { lang } = useLang();
   return <div style={{ position: "relative", marginBottom: 14 }}>
     <img src={tickerForTossit(mode, lang)} alt={`TOSSIT • ${title}`} style={{ width: "100%", height: "clamp(90px,23vw,140px)", objectFit: "cover", borderRadius: 15, display: "block", border: `1px solid ${theme.borderSoft || "#ffffff33"}` }} />
     <div style={{ position: "absolute", top: 7, left: 7 }}><BackDot onClick={onBack} color={ACCENT} /></div>
-    <div style={{ position: "absolute", top: 7, right: 7 }}><InfoDot color={ACCENT} title="Règles TOSSIT" content={<div style={{ lineHeight: 1.6 }}><strong>{title}</strong><p>{mode === "games" ? "TOSSIT : des fléchettes à ventouse lancées sur une surface lisse, autour du cochonnet ou d'un objectif." : tinfo[mode]}</p><a href={rulesUrl} target="_blank" rel="noreferrer">Règlement officiel TOSSIT</a></div>} /></div>
+    <div style={{ position: "absolute", top: 7, right: 7 }}><InfoDot color={ACCENT} title="Règles TOSSIT" content={<div style={{ lineHeight: 1.6 }}><strong>{title}</strong><p>{mode === "games" ? "TOSSIT : des fléchettes à ventouse lancées sur une surface lisse, autour du cochonnet ou d'un objectif." : tr(tinfo[mode], newModeEnglish[mode]?.help || tinfo[mode])}</p><a href={rulesUrl} target="_blank" rel="noreferrer">Règlement officiel TOSSIT</a></div>} /></div>
   </div>;
 }
 function Layout({ children }: { children: React.ReactNode }) {
@@ -114,8 +138,8 @@ function MenuDecorCard() {
 }
 function ScoreCards({ state }: { state: TossitState }) {
   return <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(126px,1fr))", gap: 8, margin: "12px 0" }}>
-    {state.players.map((p, index) => <div key={p.id} style={{ ...panel, border: state.winnerId === p.id ? `2px solid ${ACCENT}` : ["target", "duel", "tictac"].includes(state.mode) && index === state.nextPlayerIndex && !state.finished ? `2px solid ${ACCENT}` : "1px solid #45606B", textAlign: "center", margin: 0 }}>
-      <div style={{ fontSize: 12, opacity: .8 }}>{p.name}</div><div style={{ fontSize: 38, fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>{state.scores[p.id] ?? 0}</div>{state.winnerId === p.id ? <strong style={{ color: ACCENT }}>GAGNANT</strong> : null}
+    {state.players.map((p, index) => <div key={p.id} style={{ ...panel, border: state.winnerId === p.id ? `2px solid ${ACCENT}` : ["target", "duel", "tictac", "reach", "rainbow"].includes(state.mode) && index === state.nextPlayerIndex && !state.finished ? `2px solid ${ACCENT}` : "1px solid #45606B", textAlign: "center", margin: 0 }}>
+      <div style={{ fontSize: 12, opacity: .8 }}>{p.name}</div><div style={{ fontSize: 38, fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>{state.scores[p.id] ?? 0}{state.mode === "reach" ? <span style={{ fontSize: 15, marginLeft: 4 }}>cm</span> : null}</div>{state.winnerId === p.id ? <strong style={{ color: ACCENT }}>GAGNANT</strong> : null}
     </div>)}
   </div>;
 }
@@ -137,7 +161,7 @@ export function TossitMenu({ go }: { go: (route: any, params?: any) => void }) {
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12 }}>
     {TOSSIT_MODES.map((mode) => <button key={mode.id} type="button" style={{ ...panel, textAlign: "left", color: "white", cursor: "pointer", padding: 0, overflow: "hidden" }} onClick={() => go("tossit_config", { mode: mode.id })}>
       <img src={tickerForTossit(mode.id, lang)} alt="" style={{ display: "block", width: "100%", height: 90, objectFit: "cover" }} />
-      <div style={{ padding: 14 }}><strong>{mode.title}</strong><p style={{ opacity: .78, fontSize: 13 }}>{mode.description}</p><span style={{ color: ACCENT, fontWeight: 800 }}>{tr("JOUER", "PLAY")} · {mode.id === "sniper" ? tr("victoire immédiate", "instant win") : ["battle", "conquest"].includes(mode.id) ? tr("manches gagnées", "round wins") : mode.target ? `${mode.target} pts` : tr("alignement", "line game")}</span></div>
+      <div style={{ padding: 14 }}><strong>{mode.title}</strong><p style={{ opacity: .78, fontSize: 13 }}>{tr(mode.description, newModeEnglish[mode.id]?.description || mode.description)}</p><span style={{ color: ACCENT, fontWeight: 800 }}>{tr("JOUER", "PLAY")} · {mode.id === "sniper" ? tr("victoire immédiate", "instant win") : ["battle", "conquest"].includes(mode.id) ? tr("manches gagnées", "round wins") : mode.id === "thief_cop" ? tr("arrestations", "arrests") : mode.id === "reach" ? tr("record en cm", "height record") : mode.id === "rainbow" ? tr("défi créatif MSS", "MSS creative challenge") : mode.target ? `${mode.target} pts` : tr("alignement", "line game")}</span></div>
     </button>)}
     </div>
     <h3 style={{ marginTop: 20 }}>{tr("AU CATALOGUE • EN PRÉPARATION", "CATALOGUE • IN DEVELOPMENT")}</h3>
@@ -154,15 +178,15 @@ export function TossitConfig({ go, store, params }: { go: (route: any, params?: 
   const mode: TossitMode = TOSSIT_MODES.some((x) => x.id === params?.mode) ? params.mode : "classic";
   const meta = TOSSIT_MODES.find((x) => x.id === mode)!;
   const profiles: any[] = (Array.isArray(store?.profiles) ? store.profiles : []).filter((x: any) => x && !x.isBot);
-  const defaultPlayers = () => Array.from({ length: mode === "target" ? 1 : 2 }, (_, index) => {
+  const defaultPlayers = () => Array.from({ length: ["target", "reach", "rainbow"].includes(mode) ? 1 : 2 }, (_, index) => {
     const p = profiles[index];
     return { id: p?.id ? String(p.id) : `tossit-guest-${index + 1}`, name: String(p?.nickname || p?.displayName || p?.name || `${tr("Joueur", "Player")} ${index + 1}`) };
   });
   const [players, setPlayers] = React.useState<TossitPlayer[]>(defaultPlayers);
-  const [darts, setDarts] = React.useState(["duel", "river", "football_pitch"].includes(mode) ? 6 : 3);
+  const [darts, setDarts] = React.useState(["duel", "river", "football_pitch", "thief_cop"].includes(mode) ? 6 : 3);
   const [gridSize, setGridSize] = React.useState<4 | 5>(4);
-  const [victoryTarget, setVictoryTarget] = React.useState(mode === "conquest" ? 5 : 3);
-  const maxPlayers = (["speed", "duel", "border", "tictac", "battle", "conquest", "river", "cornhole", "goalkeeper", "football_pitch"].includes(mode)) ? 2 : mode === "target" ? 4 : 6;
+  const [victoryTarget, setVictoryTarget] = React.useState(mode === "conquest" ? 5 : mode === "thief_cop" ? 4 : 3);
+  const maxPlayers = (["speed", "duel", "border", "tictac", "battle", "conquest", "river", "cornhole", "goalkeeper", "football_pitch", "thief_cop"].includes(mode)) ? 2 : mode === "target" ? 4 : 6;
   const addPlayer = () => setPlayers((current) => {
     if (current.length >= maxPlayers) return current;
     let guestNumber = 1;
@@ -170,21 +194,23 @@ export function TossitConfig({ go, store, params }: { go: (route: any, params?: 
     return [...current, { id: `tossit-guest-${guestNumber}`, name: `${tr("Joueur", "Player")} ${current.length + 1}` }];
   });
   return <Layout><Header title={meta.title} mode={mode} onBack={() => go("games")} />
-    <div style={panel}><h2 style={{ margin: "0 0 8px" }}>{meta.title}</h2><p>{meta.description}</p><p style={{ fontSize: 13, opacity: .8 }}>{tinfo[mode]}</p></div>
+    <div style={panel}><h2 style={{ margin: "0 0 8px" }}>{meta.title}</h2><p>{tr(meta.description, newModeEnglish[mode]?.description || meta.description)}</p><p style={{ fontSize: 13, opacity: .8 }}>{tr(tinfo[mode], newModeEnglish[mode]?.help || tinfo[mode])}</p></div>
     <MenuDecorCard />
     {["river", "cornhole"].includes(mode) && <p style={{ opacity: .75, fontSize: 13 }}>{tr("Saisissez les noms des deux camps (joueurs ou équipes de deux). Les scores des équipes sont cumulés.", "Name the two sides (players or two-person teams). Team scores are pooled.")}</p>}
     <section style={panel}><h3>{tr("Participants", "Players")} ({players.length})</h3>
       {players.map((p, index) => <div key={p.id} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
         <span style={{ minWidth: 22, color: ACCENT }}>{index + 1}</span>
         <input aria-label={`${tr("Joueur", "Player")} ${index + 1}`} value={p.name} style={input} onChange={(e) => setPlayers((v) => v.map((x, n) => n === index ? { ...x, name: e.target.value } : x))} />
-        {players.length > (mode === "target" ? 1 : 2) && <button type="button" aria-label="Retirer le joueur" style={secondary} onClick={() => setPlayers((v) => v.filter((_, n) => n !== index))}>×</button>}
+        {players.length > (["target", "reach", "rainbow"].includes(mode) ? 1 : 2) && <button type="button" aria-label="Retirer le joueur" style={secondary} onClick={() => setPlayers((v) => v.filter((_, n) => n !== index))}>×</button>}
       </div>)}
       {players.length < maxPlayers && <button style={secondary} onClick={addPlayer}>+ {tr("Ajouter un joueur", "Add a player")}</button>}
       {profiles.length > 0 && <p style={{ fontSize: 12, opacity: .7 }}>{tr("Les profils existants sont proposés par défaut. Modifier leur nom conserve leur identifiant de profil.", "Existing profiles are preselected. Editing a name retains its profile ID.")}</p>}
     </section>
-    {mode !== "tictac" && <section style={panel}><h3>{tr("Ventouses par joueur", "Darts per player")}</h3><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{(mode === "duel" || mode === "football_pitch" ? [6] : mode === "river" ? [6, 7, 8, 9] : ["cornhole", "goalkeeper"].includes(mode) ? [3] : [3, 4, 5, 6]).map((n) => <button key={n} type="button" style={n === darts ? button : secondary} onClick={() => setDarts(n)}>{n}</button>)}</div>{mode === "duel" && <p style={{ fontSize: 12, opacity: .75 }}>{tr("6 colorées + le cochonnet noir en dernier", "6 coloured darts + black jack last")}</p>}</section>}
+    {mode !== "tictac" && <section style={panel}><h3>{tr("Ventouses par joueur", "Darts per player")}</h3><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{(mode === "duel" || mode === "football_pitch" ? [6] : ["river", "thief_cop"].includes(mode) ? [6, 7, 8, 9] : ["cornhole", "goalkeeper"].includes(mode) ? [3] : [3, 4, 5, 6]).map((n) => <button key={n} type="button" style={n === darts ? button : secondary} onClick={() => setDarts(n)}>{n}</button>)}</div>{mode === "duel" && <p style={{ fontSize: 12, opacity: .75 }}>{tr("6 colorées + le cochonnet noir en dernier", "6 coloured darts + black jack last")}</p>}</section>}
     {mode === "tictac" && <section style={panel}><h3>{tr("Taille de la grille", "Grid size")}</h3><div style={{ display: "flex", gap: 8 }}>{([4, 5] as const).map((n) => <button key={n} type="button" style={gridSize === n ? button : secondary} onClick={() => setGridSize(n)}>{n} × {n} · {tr("aligner", "connect")} {n - 1}</button>)}</div></section>}
     {(["battle", "conquest"].includes(mode)) && <section style={panel}><h3>{tr("Format de match MSS", "MSS match format")}</h3><p style={{ opacity: .75, fontSize: 13 }}>{tr("Le nombre de manches nécessaires est une option MULTISPORTS SCORING, pas une règle officielle TOSSIT.", "The round-win goal is an MSS option, not an official TOSSIT rule.")}</p><div style={{ display: "flex", gap: 8 }}>{[3, 5, 7].map((n) => <button key={n} type="button" style={victoryTarget === n ? button : secondary} onClick={() => setVictoryTarget(n)}>{n} {tr("manches", "rounds")}</button>)}</div></section>}
+    {mode === "thief_cop" && <section style={panel}><h3>{tr("Nombre de manches", "Match rounds")}</h3><div style={{ display: "flex", gap: 8 }}>{[2, 4].map(n => <button key={n} style={victoryTarget === n ? button : secondary} type="button" onClick={() => setVictoryTarget(n)}>{n} {tr("manches", "rounds")}</button>)}</div><p style={{ fontSize: 12, opacity: .75 }}>{tr("Les rôles voleur/policier alternent automatiquement à chaque manche.", "Thief/Cop roles automatically alternate each round.")}</p></section>}
+    {(["reach", "rainbow"].includes(mode)) && <section style={panel}><h3>{tr("Passages par joueur (format MSS)", "Turns per player (MSS format)")}</h3><div style={{ display: "flex", gap: 8 }}>{[3, 5].map(n => <button key={n} type="button" style={victoryTarget === n ? button : secondary} onClick={() => setVictoryTarget(n)}>{n} {tr("passages", "turns")}</button>)}</div></section>}
     <button style={{ ...button, width: "100%" }} disabled={players.some((p) => !p.name.trim())} onClick={() => go("tossit_play", { mode, players: players.map((p) => ({ ...p, name: p.name.trim() })), darts, gridSize, victoryTarget })}>{tr("LANCER LA PARTIE", "START GAME")}</button>
   </Layout>;
 }
@@ -230,6 +256,13 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
   const [cornJump, setCornJump] = React.useState<Record<string, number>>({});
   const [goalZones, setGoalZones] = React.useState<number[]>([0, 0, 0]);
   const [pitchOutcome, setPitchOutcome] = React.useState<"centre" | "linked" | "longpass" | "goal" | "block" | "miss">("miss");
+  const [captures, setCaptures] = React.useState<ThiefCopCapture[]>(() => Array(state.dartsPerPlayer).fill("miss"));
+  const [reachCm, setReachCm] = React.useState("0");
+  const [reachStuck, setReachStuck] = React.useState(0);
+  const [rainbowPattern, setRainbowPattern] = React.useState<"ring" | "shape" | "stack">("ring");
+  const [rainbowColors, setRainbowColors] = React.useState(0);
+  const [rainbowStack, setRainbowStack] = React.useState(0);
+  const [rainbowCompleted, setRainbowCompleted] = React.useState(false);
   type BorderDart = { kind: "miss" | "wrong" | "valid"; cm: string };
   const [borderDarts, setBorderDarts] = React.useState<Record<string, BorderDart[]>>(() => Object.fromEntries(players.map((p) => [p.id, Array.from({ length: state.dartsPerPlayer }, () => ({ kind: "miss", cm: "" }))])));
   const saved = React.useRef(false);
@@ -291,7 +324,7 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
     }
   };
   return <Layout><Header title={meta.title} mode={mode} onBack={() => go("tossit_config", { mode })} />
-    <div style={{ textAlign: "center", fontSize: 12, color: ACCENT, letterSpacing: 1, fontWeight: 700 }}>{state.finished ? tr("PARTIE TERMINÉE", "GAME FINISHED") : `${tr(state.mode === "tictac" ? "TOUR" : "MANCHE", state.mode === "tictac" ? "TURN" : "ROUND")} ${state.events.length + 1}${["battle", "conquest"].includes(mode) ? ` • ${tr("PREMIER À", "FIRST TO")} ${state.victoryTarget} ${tr("MANCHES", "ROUNDS")}` : mode === "sniper" ? ` • ${tr("VICTOIRE IMMÉDIATE", "INSTANT WIN")}` : meta.target ? ` • ${tr("CIBLE", "TARGET")} ${meta.target}` : ` • ${state.gridSize}×${state.gridSize}`}`}</div>
+    <div style={{ textAlign: "center", fontSize: 12, color: ACCENT, letterSpacing: 1, fontWeight: 700 }}>{state.finished ? tr("PARTIE TERMINÉE", "GAME FINISHED") : `${tr(state.mode === "tictac" || ["reach", "rainbow"].includes(state.mode) ? "TOUR" : "MANCHE", state.mode === "tictac" || ["reach", "rainbow"].includes(state.mode) ? "TURN" : "ROUND")} ${state.events.length + 1}${["reach", "rainbow", "thief_cop"].includes(mode) ? ` • ${tr("PASSAGES", "TURNS")} ${state.victoryTarget}` : ""}${["battle", "conquest"].includes(mode) ? ` • ${tr("PREMIER À", "FIRST TO")} ${state.victoryTarget} ${tr("MANCHES", "ROUNDS")}` : mode === "sniper" ? ` • ${tr("VICTOIRE IMMÉDIATE", "INSTANT WIN")}` : meta.target ? ` • ${tr("CIBLE", "TARGET")} ${meta.target}` : ` • ${state.gridSize}×${state.gridSize}`}`}</div>
     <ScoreCards state={state} />
     {(["battle", "conquest"].includes(mode)) && <p style={{ textAlign: "center", fontSize: 12, opacity: .75, marginTop: -6 }}>{tr("Scores = manches gagnées, pas des points de fléchettes.", "Scores = rounds won, not dart points.")}</p>}
     {state.finished ? <section style={{ ...panel, textAlign: "center", border: `2px solid ${ACCENT}` }}><h2>{state.winnerId ? `🏆 ${state.players.find((p) => p.id === state.winnerId)?.name}` : tr("MATCH NUL", "DRAW")}</h2><p>{tr("Résultat transmis à l'historique.", "Result sent to history.")}</p><div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}><button style={button} onClick={() => go("tossit_stats")}>{tr("Historique & stats", "History & stats")}</button><button style={secondary} onClick={() => go("games")}>{tr("Autre partie", "New game")}</button></div></section> : <>
@@ -457,6 +490,38 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
           </> : <option value="block">{tr("Défense : ventouse de blocage", "Defence: blocking dart")}</option>}
         </select>
         <button style={{ ...button, width: "100%", marginTop: 12 }} onClick={() => { if (commit({ kind: "football_pitch", outcome: pitchOutcome })) setPitchOutcome("miss"); }}>{tr("VALIDER LE LANCER", "CONFIRM THROW")}</button>
+      </section>}
+      {mode === "thief_cop" && <section style={panel}>
+        <h3>🚔 THIEF & COP — {tr("Manche", "Round")} {state.events.length + 1}/{state.victoryTarget}</h3>
+        <p style={{ color: ACCENT, fontWeight: 800 }}>{tr("Voleur", "Thief")}: {players[state.events.length % 2]?.name} · {tr("Policier", "Cop")}: {players[(state.events.length + 1) % 2]?.name}</p>
+        <p style={{ opacity: .75, fontSize: 12 }}>{tr("Enregistrez chaque tentative de capture. Takedown arrête la manche. 4 manches avec alternance des rôles (2 en rapide).", "Record each arrest attempt. A takedown ends the round. Alternate roles for 4 rounds (2 in quick mode).")}</p>
+        {captures.map((hit, i) => <label key={i} style={{ display: "block", marginBottom: 8 }}>{tr("Tentative", "Attempt")} {i + 1}
+          <select style={input} disabled={captures.slice(0,i).includes("takedown")} value={hit} onChange={e => setCaptures(v => v.map((x,n) => n === i ? e.target.value as ThiefCopCapture : x))}>
+            <option value="miss">0 — {tr("Échappé", "Escaped")}</option><option value="close">+1 — {tr("Arrestation proche", "Close arrest")}</option><option value="direct">+2 — {tr("Arrestation directe", "Direct arrest")}</option><option value="handcuff">+4 — Handcuff</option><option value="double_lock">+6 — Double lock</option><option value="takedown">Takedown — {tr("manche capturée", "round captured")}</option>
+          </select>
+        </label>)}
+        <button style={{ ...button, width: "100%" }} onClick={() => { const end = captures.indexOf("takedown"); const selection = end < 0 ? captures : captures.slice(0,end+1); if (commit({ kind: "thief_cop", captures: selection })) setCaptures(Array(state.dartsPerPlayer).fill("miss")); }}>{tr("VALIDER LES CAPTURES", "CONFIRM ARRESTS")}</button>
+      </section>}
+      {mode === "reach" && <section style={panel}>
+        <h3>🟡 STICK & REACH — {targetActive.name}</h3>
+        <p style={{ opacity: .75, fontSize: 13 }}>{tr("Meilleure hauteur de la ventouse collée, en cm. Le total des ventouses collées départage les records égaux.", "Highest stuck dart, in cm. Total stuck darts break equal-height ties.")}</p>
+        <label>{tr("Ventouses collées", "Stuck darts")}<select style={input} value={reachStuck} onChange={e => { setReachStuck(Number(e.target.value)); if (Number(e.target.value) === 0) setReachCm("0"); }}>
+          {Array.from({length:state.dartsPerPlayer+1},(_,i)=><option key={i} value={i}>{i}</option>)}
+        </select></label>
+        <label>{tr("Hauteur maximale (cm)", "Maximum height (cm)")}<input type="number" inputMode="decimal" min="0" max="350" step="0.1" style={input} disabled={reachStuck===0} value={reachCm} onChange={e=>setReachCm(e.target.value)} /></label>
+        <p style={{ fontSize: 12, opacity: .72 }}>{tr("Classement MSS : meilleure hauteur puis nombre total de ventouses collées. Aucun barème officiel de points.", "MSS ranking: highest dart then total stuck darts. No official points format.")}</p>
+        <button style={{ ...button, width: "100%" }} onClick={()=>{ if(commit({kind:"reach", stuck:reachStuck, bestCm: Number(reachCm)})) {setReachCm("0");setReachStuck(0);} }}>{tr("VALIDER LE PASSAGE", "CONFIRM TURN")}</button>
+      </section>}
+      {mode === "rainbow" && <section style={panel}>
+        <h3>🌈 RAINBOW RING & STACK — {targetActive.name}</h3>
+        <p style={{ opacity: .75, fontSize: 12 }}>{tr("Défi créatif MSS : 1 point par couleur distincte ou niveau empilé, +3 si l'anneau, le motif ou la tour est terminé. Barème non officiel.", "MSS creative challenge: 1 point per distinct colour or stack level, +3 for a finished ring, shape or tower. Not official scoring.")}</p>
+        <label>{tr("Type de création", "Creative challenge")}<select style={input} value={rainbowPattern} onChange={e=>{setRainbowPattern(e.target.value as typeof rainbowPattern);setRainbowColors(0);setRainbowStack(0);setRainbowCompleted(false);}}>
+          <option value="ring">{tr("Anneau coloré", "Rainbow ring")}</option><option value="shape">{tr("Motif / forme", "Pattern / shape")}</option><option value="stack">{tr("Tour empilée", "Stacked tower")}</option>
+        </select></label>
+        {rainbowPattern === "stack" ? <label>{tr("Niveaux empilés", "Stacked levels")}<select style={input} value={rainbowStack} onChange={e=>setRainbowStack(Number(e.target.value))}>{Array.from({length:state.dartsPerPlayer+1},(_,i)=><option key={i}>{i}</option>)}</select></label> :
+          <label>{tr("Couleurs distinctes utilisées", "Distinct colours used")}<select style={input} value={rainbowColors} onChange={e=>setRainbowColors(Number(e.target.value))}>{Array.from({length:7},(_,i)=><option key={i}>{i}</option>)}</select></label>}
+        <label style={{ display: "block", margin: "12px 0" }}><input type="checkbox" checked={rainbowCompleted} onChange={e=>setRainbowCompleted(e.target.checked)} /> {tr("Création terminée (+3 MSS)", "Completed creation (+3 MSS)")}</label>
+        <button style={{ ...button, width: "100%" }} onClick={()=>{if(commit({kind:"rainbow", pattern:rainbowPattern, colors:rainbowPattern === "stack" ? 0 : rainbowColors, stackHeight:rainbowPattern === "stack" ? rainbowStack : 0, completed:rainbowCompleted})) {setRainbowColors(0);setRainbowStack(0);setRainbowCompleted(false);} }}>{tr("VALIDER LE DÉFI", "CONFIRM CHALLENGE")}</button>
       </section>}
       <button style={{ ...secondary, width: "100%" }} disabled={state.events.length === 0} onClick={() => { setState((old) => undoTossitAction(old)); setError(""); }}>{tr("ANNULER LA DERNIÈRE MANCHE", "UNDO LAST ROUND")}</button>
     </>}

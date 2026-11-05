@@ -73,9 +73,9 @@ for (const page of ["Top10Play", "TicTacToePlay"]) {
   assert.match(source, /if \(!resuming\)\s*\{\s*persist\(/, `${page}: no initial write while resuming`);
   assert.match(source, /recover(?:Top10|Morpion)\(saved, \{ preview \}\)/, `${page}: preview flag reaches recovery`);
   assert.match(source, /setFinished\(restored\.finished\)/, `${page}: hydrate finished state`);
-  assert.match(source, /if \(record\.status === "finished"\) props\?\.onFinish\?\.\(record\)|if \(r\.status === "finished"\) props\?\.onFinish\?\.\(r\)/, `${page}: finish callback after write`);
-  assert.ok(source.indexOf(".then(() => History.upsert(") < source.indexOf('props?.onFinish?.('), `${page}: persist before finish callback`);
-  assert.match(source, /setSaveStatus\("error"\)/, `${page}: surface storage errors`);
+  assert.match(source, /onSaved: \(rec: any\) => \{ if \(rec.status === "finished"\) props\?\.onFinish\?\.\(rec\)/, `${page}: finish callback only on successful save`);
+  assert.match(source, /createMatchCheckpointWriter\(\(rec: any\) => History\.upsert\(rec\)/, `${page}: serial writer wraps History V4`);
+  assert.match(source, /RÉESSAYER L’ENREGISTREMENT/, `${page}: surface storage errors and retry`);
   assert.match(source, /hydration !== "ready" \|\| preview/, `${page}: preview cannot write`);
 }
 const historySource = readFileSync("src/pages/HistoryPage.tsx", "utf8");

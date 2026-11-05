@@ -22,7 +22,7 @@ for (const mode of ['Top10Play', 'TicTacToePlay']) {
  const src=read(`src/pages/${mode}.tsx`);
  assert.match(src,/darts\.length !== 3/,`${mode} : exactement 3 fléchettes`);
  assert.match(src,/commitGuard\.current/,`${mode} : anti double-validation`);
- assert.match(src,/historyQueue\.current = historyQueue\.current/,`${mode} : autosaves séquentiels`);
+ assert.match(src,/createMatchCheckpointWriter/,`${mode} : file de sauvegarde ordonnée et récupérable`);
  assert.match(src,/setBotSummary/,`${mode} : récapitulatif bot`);
  assert.match(src,/CONTINUER/,`${mode} : validation du récapitulatif`);
 }
