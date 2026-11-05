@@ -3145,37 +3145,49 @@ useEffect(() => {
   }, []);
 
   React.useEffect(() => {
-    if (loading) return;
-    if (showSplash) return;
+    if (loading || showSplash) return;
+
+    // MOBILE PERF V157: warmAggOnce() calls History.list() on first run.
+    // Keep that legacy one-shot backfill, but avoid reading the entire history
+    // during mobile boot/navigation. The first statistics/history visit triggers
+    // it instead. Desktop behavior remains unchanged.
+    const constrained = (() => {
+      try {
+        const nav: any = navigator;
+        return /Android|iPhone|iPad|iPod|Mobile/i.test(nav?.userAgent || "") ||
+          (Number(nav?.deviceMemory || 8) > 0 && Number(nav?.deviceMemory || 8) <= 4) ||
+          (Number(nav?.hardwareConcurrency || 8) > 0 && Number(nav?.hardwareConcurrency || 8) <= 4);
+      } catch { return false; }
+    })();
+    const statsRoute = /stats|history|historique/i.test(String(tab || ""));
+    if (constrained && !statsRoute) return;
 
     let cancelled = false;
-
     const run = () => {
-      if (cancelled) return;
-      try {
-        warmAggOnce();
-      } catch {}
+      if (cancelled || isGameplayRouteName(currentTabRef.current)) return;
+      if (constrained && !/stats|history|historique/i.test(String(currentTabRef.current || ""))) return;
+      try { if (document.visibilityState === "hidden") return; } catch {}
+      void warmAggOnce();
     };
 
     try {
       const ric = (window as any).requestIdleCallback;
       if (typeof ric === "function") {
-        const id = ric(() => run(), { timeout: 1800 });
+        // Never force the scan via an idle timeout on a busy phone.
+        const id = constrained ? ric(run) : ric(run, { timeout: 1800 });
         return () => {
           cancelled = true;
-          try {
-            (window as any).cancelIdleCallback?.(id);
-          } catch {}
+          try { (window as any).cancelIdleCallback?.(id); } catch {}
         };
       }
     } catch {}
 
-    const t = window.setTimeout(run, 350);
+    const t = window.setTimeout(run, constrained ? 1800 : 350);
     return () => {
       cancelled = true;
       window.clearTimeout(t);
     };
-  }, [loading, showSplash]);
+  }, [loading, showSplash, tab]);
 
   /* Restore online session automatique désactivé en mode NAS. */
 

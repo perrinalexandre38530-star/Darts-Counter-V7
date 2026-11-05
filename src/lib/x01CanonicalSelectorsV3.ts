@@ -50,8 +50,18 @@ export function selectCanonicalX01ProfileV3(index: CanonicalX01IndexV2, profileI
     if (match.status !== 'finished' && match.status !== 'completed' && match.status !== 'done' && match.status !== 'ended') continue;
     // An individual match should never contribute the same profile twice.
     const perMatch = match.participants.filter((p) => p.canonicalProfileId === profileId);
-    if (perMatch.length !== 1) continue; // ambiguous duplicate identity: quarantine this match for this profile
-    observations.push({ match, player: perMatch[0] });
+    if (!perMatch.length) continue;
+    // Multiple legacy player slots can resolve to one profile. Count the match
+    // once. Do not add their darts/points (that would double score the match).
+    // When exactly one slot has usable telemetry it is safe to use that slot;
+    // when several have conflicting telemetry, retain an unknown metric.
+    const usable = perMatch.filter((p) => p.darts !== null && p.darts > 0 && p.points !== null && p.points >= 0);
+    const compatible = usable.length > 1 && usable.every((p) => p.points === usable[0].points && p.darts === usable[0].darts);
+    const player = usable.length === 1 || compatible ? usable[0] : perMatch.length === 1 ? perMatch[0] : {
+      ...perMatch[0], darts: null, points: null, avg3d: null,
+      bestCheckout: null, bestVisit: null,
+    };
+    observations.push({ match, player });
   }
   const reference = observations.filter(({ match }) => match.startScore === 501 && match.outMode === 'double');
   const current = reference.slice().sort((a,b) => (b.match.date - a.match.date) || b.match.matchId.localeCompare(a.match.matchId)).slice(0, 10);

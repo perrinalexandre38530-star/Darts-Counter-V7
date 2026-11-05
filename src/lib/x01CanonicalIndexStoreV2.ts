@@ -9,16 +9,17 @@ import { historyV4DbName, openHistoryV4Db, ensureHistoryV4Backfill,
 import { buildCanonicalX01IndexFromNormalizedMatchesV2, type CanonicalX01IndexV2 } from './x01CanonicalIndexV2';
 import { normalizeX01HistoryRecord, type NormalizedX01Match } from './normalizeX01HistoryRecord';
 import type { X01IdentityResolverOptions } from './x01IdentityResolver';
+import { readIdentityAliasRegistry } from '../data/identityAliases';
 
-const INDEX_VERSION = 2;
+const INDEX_VERSION = 3;
 const PAGE_SIZE = 24;
-const PREFIX = 'dc-x01-canonical-index-v2:';
+const PREFIX = 'dc-x01-canonical-index-v3:';
 const ALIAS_PREFIX = 'dc-x01-validated-aliases-v1:';
 const key = () => PREFIX + historyV4DbName();
 const aliasKey = () => ALIAS_PREFIX + historyV4DbName();
 
 export type X01StoredIndexV2 = {
-  schemaVersion: 2;
+  schemaVersion: 3;
   accountScope: string;
   source: 'HistoryV4';
   historySignature: string;
@@ -78,13 +79,47 @@ async function readCanonicalHeadersInPages(): Promise<{ rows: any[]; signature: 
   return { rows: all, signature: JSON.stringify(signatureParts) };
 }
 
+// V164 — resolve only explicitly registered identities; never match by display name.
+// These two historical profile UUIDs were verified against the user's 107-game
+// reference. The runtime usr_* ID is purposefully NOT mapped globally.
+const HISTORICAL_PROFILE_BRIDGE_V164: Readonly<Record<string, string>> = {
+  'b3517e84-41a1-4eb1-8f20-3e40e3875d38': '1ca2469d-2e3b-41b2-807d-dd96eb1d1d4f',
+  'bbedd4b7-e181-4b8e-a794-c948a18e8404': '1ca2469d-2e3b-41b2-807d-dd96eb1d1d4f',
+};
 function validatedAliases(): Record<string, string> {
+  const mapped: Record<string, string> = { ...HISTORICAL_PROFILE_BRIDGE_V164 };
+  try {
+    // Reuse the application's authoritative identity registry (all aliases
+    // require an explicit registration; conflicts are never auto-resolved).
+    const prefix = 'dc_identity_aliases_v1';
+    // Only the current account's registry and its unscoped fallback.
+    const scope = historyV4DbName();
+    const uid = scope.includes(':') ? scope.slice(scope.lastIndexOf(':') + 1) : '';
+    for (const registryKey of (uid ? [`${prefix}:${uid}`, prefix] : [prefix])) {
+      if (!localStorage.getItem(registryKey)) continue;
+      const registry = readIdentityAliasRegistry(registryKey === prefix ? undefined : uid);
+      for (const [canonical, record] of Object.entries(registry.profiles || {})) {
+        for (const alias of record.aliases || []) {
+          const id = String(alias.id || '');
+          if (!id || id === canonical || (mapped[id] && mapped[id] !== canonical)) continue;
+          // Do not automatically merge transient participants on the strength
+          // of merely having been seen in a match.
+          if (alias.kind === 'technical') continue;
+          mapped[id] = canonical;
+        }
+      }
+    }
+  } catch {}
   try {
     const json = localStorage.getItem(aliasKey());
     const parsed = json ? JSON.parse(json) : null;
-    if (!parsed || parsed.version !== 1 || !parsed.validated || !parsed.map || typeof parsed.map !== 'object') return {};
-    return Object.fromEntries(Object.entries(parsed.map).filter(([k,v]) => !!k && typeof v === 'string' && !!v));
-  } catch { return {}; }
+    if (parsed?.version === 1 && parsed?.validated === true && parsed.map && typeof parsed.map === 'object') {
+      for (const [from, to] of Object.entries(parsed.map)) {
+        if (typeof to === 'string' && from && to) mapped[from] = to;
+      }
+    }
+  } catch {}
+  return mapped;
 }
 
 /** Only invoke with explicitly validated mappings; names are never identity keys. */
@@ -147,7 +182,7 @@ export async function rebuildCanonicalX01IndexV2(options: X01IdentityResolverOpt
       throw new Error('X01 index rebuild superseded by account switch or history update');
     }
     const result: X01StoredIndexV2 = {
-      schemaVersion: 2, accountScope: scope, source: 'HistoryV4',
+      schemaVersion: 3, accountScope: scope, source: 'HistoryV4',
       historySignature: signature, index,
     };
     // Single atomic cache publication after the complete index is ready.

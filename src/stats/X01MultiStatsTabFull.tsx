@@ -2982,9 +2982,13 @@ export default function X01MultiStatsTabFull({
             ? part.canonicalProfileId === requestedId || part.historicalPlayerId === requestedId
             : true
         );
-        // Les profils ambigus sont mis en quarantaine, jamais additionnés deux fois.
-        if (requestedId && matching.length !== 1) continue;
-        for (const part of matching) {
+        if (requestedId && !matching.length) continue;
+        // V164: one stats session per canonical profile and match, even when
+        // an old record contains two historical slots for the same player.
+        const usable = matching.filter((p) => p.darts !== null && p.darts > 0 && p.points !== null);
+        const sameTelemetry = usable.length > 1 && usable.every((p) => p.darts === usable[0].darts && p.points === usable[0].points);
+        const chosen = usable.length === 1 || sameTelemetry ? usable[0] : matching[0];
+        for (const part of requestedId ? (chosen ? [chosen] : []) : matching) {
           const darts = part.darts ?? 0;
           const points = part.points;
           const exactAvg = darts > 0 && points !== null ? points * 3 / darts : null;

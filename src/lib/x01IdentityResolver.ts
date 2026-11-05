@@ -87,6 +87,11 @@ export function resolveX01CanonicalIdentity(
   const quickLinks = getQuickProfileLinks(record);
 
   if (explicitProfileId) {
+    const explicitAlias = aliasMap[explicitProfileId];
+    if (explicitAlias && explicitAlias !== explicitProfileId) {
+      return { historicalPlayerId, canonicalProfileId: explicitAlias,
+        resolutionSource: 'known_alias', confidence: 'high', matchedValue: explicitProfileId };
+    }
     if (knownProfiles.size === 0 || knownProfiles.has(explicitProfileId)) {
       return {
         historicalPlayerId,

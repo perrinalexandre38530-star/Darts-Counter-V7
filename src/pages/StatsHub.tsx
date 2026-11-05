@@ -29,6 +29,8 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
 import { computeCanonicalX01501DOLevel, persistCanonicalX01501DOLevel } from "../lib/x01ProfileStarring";
 import { computeCanonicalX01ProfileStats } from "../lib/x01CanonicalProjection";
+import { readCanonicalX01IndexV2, scheduleCanonicalX01IndexRebuildV2 } from "../lib/x01CanonicalIndexStoreV2";
+import { selectCanonicalX01ProfileV3 } from "../lib/x01CanonicalSelectorsV3";
 import statsCenterTicker from "../assets/tickers/ticker_statistics_center_universal.webp";
 import tickerHistoriqueFr from "../assets/tickers/ticker_historique.png";
 import tickerHistoryEn from "../assets/tickers/ticker_history.png";
@@ -6852,6 +6854,16 @@ const effectiveProfileId = String(
 // le nom `activeProfileId`. On aligne explicitement cet alias sur la source
 // canonique pour éviter tout ReferenceError pendant le render.
 const activeProfileId = effectiveProfileId || null;
+// V164: keep Dashboard reactive to an asynchronously published History V4 index.
+const [x01IndexRevisionV164, setX01IndexRevisionV164] = React.useState(0);
+React.useEffect(() => {
+  const refresh = () => setX01IndexRevisionV164((v) => v + 1);
+  window.addEventListener('dc-x01-canonical-index-ready', refresh);
+  if (!readCanonicalX01IndexV2()) scheduleCanonicalX01IndexRebuildV2('statshub-dashboard-opened');
+  return () => window.removeEventListener('dc-x01-canonical-index-ready', refresh);
+}, []);
+void x01IndexRevisionV164;
+
 
 // Vue canonique réservée aux onglets détaillés. Le Dashboard conserve son pipeline
 // rapide actuel ; les détails reçoivent les mêmes matchs mais avec les anciens
@@ -6910,10 +6922,16 @@ const canonicalStarLevel = React.useMemo(() => {
   const pname = String(selectedPlayerVisual?.name || selectedPlayer?.name || activeProfileName || "");
   if (!pid) return { lifetimeAvg3D: 0, currentAvg3D: 0, lifetimeMatches: 0, currentMatches: 0, currentLimit: 10 };
   try {
+    const officialSnapshot = readCanonicalX01IndexV2();
+    if (officialSnapshot) {
+      const v = selectCanonicalX01ProfileV3(officialSnapshot.index, pid);
+      return { lifetimeAvg3D: v.referenceLifetime.value ?? 0, currentAvg3D: v.referenceCurrent.value ?? 0,
+        lifetimeMatches: v.reference501DO, currentMatches: v.referenceCurrentMatches, currentLimit: 10 };
+    }
     const c = computeCanonicalX01ProfileStats(pid, pname);
     return { lifetimeAvg3D: c.lifetime501DOAvg3D, currentAvg3D: c.current501DOAvg3D, lifetimeMatches: c.reference501DOMatches, currentMatches: c.current501DOMatches, currentLimit: 10 };
   } catch { return { lifetimeAvg3D: 0, currentAvg3D: 0, lifetimeMatches: 0, currentMatches: 0, currentLimit: 10 }; }
-}, [effectiveProfileId, selectedPlayerVisual?.name, selectedPlayer?.name, activeProfileName]);
+}, [effectiveProfileId, selectedPlayerVisual?.name, selectedPlayer?.name, activeProfileName, x01IndexRevisionV164]);
 const canonicalStarAvg3D = canonicalStarLevel.currentAvg3D;
 React.useEffect(() => {
   const pid = String(effectiveProfileId || "").trim();
@@ -7062,8 +7080,23 @@ const [liveDashboard, setLiveDashboard] =
   const applyX01AggToDashboard = React.useCallback(
     (dash: any, pid: string, pname?: string) => {
       try {
-        const c = computeCanonicalX01ProfileStats(pid, pname);
+        const canonical = readCanonicalX01IndexV2();
+        const official = canonical ? selectCanonicalX01ProfileV3(canonical.index, pid) : null;
+        const c = official ? null : computeCanonicalX01ProfileStats(pid, pname);
         const next = { ...(dash || {}) };
+        if (official && official.reference501DO > 0) {
+          next.sessions = official.totalMatches;
+          next.avg3Overall = official.referenceLifetime.value ?? next.avg3Overall;
+          next.avg3Global = official.referenceLifetime.value ?? next.avg3Global;
+          next.avg3Current = official.referenceCurrent.value ?? next.avg3Current;
+          next.avg3CurrentMatches = official.referenceCurrentMatches;
+          next.avg3CurrentLimit = 10;
+          next.x01TotalSessions = official.totalMatches;
+          next.x01ByOut = official.exitModes;
+          // Never overwrite best visit, checkout or other sports metrics with 0.
+          return next;
+        }
+        if (!c) return next;
         if (c.reference501DOMatches > 0) {
           next.sessions = c.reference501DOMatches;
           next.avg3Overall = c.lifetime501DOAvg3D;
@@ -7081,7 +7114,7 @@ const [liveDashboard, setLiveDashboard] =
         }
         return next;
       } catch { return dash; }
-    }, []
+    }, [x01IndexRevisionV164]
   );
 
 const quick = useQuickStats(selectedPlayer?.id ?? null);
@@ -7209,7 +7242,7 @@ const computedDashboard = React.useMemo(() => {
 
 const dashboardToShowBase = ((isDiceSport || isMolkkySport || isBabyFootSport || isPingPongSport)
   ? (liveDashboard ?? computedDashboard ?? cachedDashboard)
-  : (liveDashboard ?? cachedDashboard ?? computedDashboard)) as PlayerDashboardStats | null;
+  : (liveDashboard ?? computedDashboard ?? cachedDashboard)) as PlayerDashboardStats | null;
 const dashboardToShow = (!isDiceSport && !isMolkkySport && !isBabyFootSport && !isPingPongSport && effectiveProfileId)
   ? applyX01AggToDashboard(
       dashboardToShowBase ? { ...(dashboardToShowBase as any) } : {},
