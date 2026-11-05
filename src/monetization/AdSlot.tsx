@@ -64,7 +64,11 @@ function InlineCard({ placement, prefs, packIndex, compact = false }: InlineCard
   const pack = STORE_PACKS[packIndex % Math.max(1, STORE_PACKS.length)];
   const isPreview = prefs.testMode;
   const M = React.useCallback((fr: string) => monetizationUiText(lang, fr), [lang]);
-  const placementLabel = M(PLACEMENT_FR[placement] || placement);
+  // Les traductions et les appels JS externes ne doivent jamais faire planter le rendu.
+  const placementFallback = PLACEMENT_FR[placement] || placement || "Jeux";
+  const translatedPlacement = M(placementFallback);
+  const placementLabel = typeof translatedPlacement === "string" && translatedPlacement.trim()
+    ? translatedPlacement : placementFallback;
   const packTitle = pack?.title ? M(pack.title) : "MULTISPORTS SCORING";
   const packSubtitle = pack?.subtitle ? M(pack.subtitle) : M("Nouveautés, contenus et partenaires.");
 
@@ -461,6 +465,9 @@ type PageAdBannerProps = {
  * remonter au-dessus du titre.
  */
 export function PageAdBanner({ placement, slotKey, style }: PageAdBannerProps) {
+  // Défense à l'exécution : aucun emplacement incomplet ne doit provoquer un
+  // crash React, même si un futur appel échappe au contrôle TypeScript.
+  if (!placement || !slotKey) return null;
   return (
     <InlineAdBanner
       placement={placement}
