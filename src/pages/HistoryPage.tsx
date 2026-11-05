@@ -6187,6 +6187,9 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
               <>
 	            {visibleFiltered.map((e) => {
             const inProg = statusOf(e) === "in_progress";
+            // TOP 10 / MORPION: completed games may be inspected on their original
+            // scoreboard, but their state is always read-only.
+            const canPreview = inProg || ["top10", "tictactoe"].includes(normalizeToken(baseMode(e)));
             const quickParty = isQuickPartyRecord(e);
             const quickParticipants = quickParty ? quickPartyParticipants(e) : [];
             const key = matchLink(e) || e.id;
@@ -6319,8 +6322,8 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                     </button>
                   ) : null}
 
-                  <div style={{ display: "grid", gridTemplateColumns: `repeat(${inProg ? 5 : 4}, minmax(0,1fr))`, gap: 7, width: "100%", minWidth: 0 }}>
-                    {inProg ? (
+                  <div style={{ display: "grid", gridTemplateColumns: `repeat(${canPreview ? 5 : 4}, minmax(0,1fr))`, gap: 7, width: "100%", minWidth: 0 }}>
+                    {canPreview ? (
                       <button type="button" style={{ ...S.iconBtn, width: "100%" }} onClick={(event) => { event.stopPropagation(); void goResume(e, true); }} title="Aperçu sans reprendre">
                         <Icon.Eye />
                       </button>

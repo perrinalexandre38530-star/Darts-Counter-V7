@@ -23,11 +23,14 @@ import PingPongMenuGames from "./pingpong/PingPongMenuGames";
 
 import MolkkyHome from "./molkky/MolkkyHome";
 import MolkkyMenuGames from "./molkky/MolkkyMenuGames";
+import TossitHome from "./tossit/TossitHome";
+import { TossitMenu } from "./tossit/TossitScreens";
 import FootHome from "./foot/FootHome";
 import FootMenuGames from "./foot/FootMenuGames";
 
 export function SportHome(props: any) {
   const { sport } = useSport();
+  if (sport === "tossit") return <TossitHome {...props} />;
   if (sport === "petanque") return <PetanqueHome {...props} />;
   if (sport === "babyfoot") return <BabyFootHome {...props} />;
   if (sport === "pingpong") return <PingPongHome {...props} />;
@@ -39,6 +42,7 @@ export function SportHome(props: any) {
 export function SportGames(props: any) {
   const { sport } = useSport();
   // ✅ Menu "Local" identique DartsCounter, adapté au sport
+  if (sport === "tossit") return <TossitMenu {...props} />;
   if (sport === "petanque") return <PetanqueMenuGames {...props} />;
   if (sport === "babyfoot") return <BabyFootMenuGames {...props} />;
   if (sport === "pingpong") return <PingPongMenuGames {...props} />;

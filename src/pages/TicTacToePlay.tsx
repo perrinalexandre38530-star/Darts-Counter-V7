@@ -70,6 +70,8 @@ export default function TicTacToePlay(props: any) {
   const historyQueue = React.useRef<Promise<void>>(Promise.resolve());
   const [botSummary, setBotSummary] = React.useState<{ name: string; darts: UIDart[] } | null>(null);
   const [inputWarning, setInputWarning] = React.useState("");
+  const [saveStatus, setSaveStatus] = React.useState<"idle" | "saving" | "saved" | "error">("idle");
+  const pendingSaves = React.useRef(0);
   React.useEffect(() => {
     if (!resuming) {
       persist(makeRecord("in_progress", grid, wins, round, current, result, null));
@@ -81,7 +83,7 @@ export default function TicTacToePlay(props: any) {
         const requestedId = String(route.resumeId || route.rec?.id || route.rec?.matchId || "");
         const saved = await History.get(requestedId);
         if (cancelled) return;
-        const restored = recoverMorpion(saved);
+        const restored = recoverMorpion(saved, { preview });
         if (!restored || restored.id !== requestedId) throw new Error("Checkpoint MORPION absent, terminé ou incohérent");
         id.current = restored.id;
         started.current = restored.createdAt;
@@ -95,8 +97,8 @@ export default function TicTacToePlay(props: any) {
         setRound(restored.round);
         setCurrent(restored.current);
         setResult(restored.result);
-        setFinished(false);
-        setChampion(null);
+        setFinished(restored.finished);
+        setChampion(restored.winnerId);
         setThrowing([]);
         setBotSummary(null);
         setHydration("ready");
@@ -124,12 +126,22 @@ export default function TicTacToePlay(props: any) {
     return rec;
   };
   const persist = (record: any) => {
-    // Conserver l'ordre des checkpoints jusqu'au résultat de fin de partie.
+    // The completion callback must not race ahead of the final History write.
+    pendingSaves.current += 1;
+    setSaveStatus("saving");
     historyQueue.current = historyQueue.current
       .catch(() => undefined)
       .then(() => History.upsert(record))
-      .catch((err: any) => console.warn("[Morpion] historique", err));
-    if (record.status === "finished") props?.onFinish?.(record);
+      .then(() => {
+        pendingSaves.current -= 1;
+        if (pendingSaves.current === 0) setSaveStatus("saved");
+        if (record.status === "finished") props?.onFinish?.(record);
+      })
+      .catch((err: any) => {
+        pendingSaves.current -= 1;
+        setSaveStatus("error");
+        console.warn("[Morpion] historique non enregistré", err);
+      });
   };
 
   function commit(darts: UIDart[]) {
@@ -194,6 +206,7 @@ export default function TicTacToePlay(props: any) {
   return <div className="page">
     <PageHeader title="MORPION" tickerSrc={tickerMorpion} left={<BackDot onClick={() => props?.setTab?.("games")} />} right={<InfoDot title="Règles du Morpion" content={RULES} />} />
     <div style={{ padding: 12, paddingBottom: 110, maxWidth: 720, margin: "0 auto" }}>
+      {saveStatus !== "idle" && <div role={saveStatus === "error" ? "alert" : "status"} style={{fontSize:12,marginBottom:8,color:saveStatus === "error" ? "#ff9a9a" : "#a9d8ef"}}>{saveStatus === "saving" ? "Enregistrement de la partie…" : saveStatus === "error" ? "Enregistrement impossible : vérifie l'espace disponible avant de quitter." : "Partie enregistrée sur cet appareil."}</div>}
       <div style={{ border: "1px solid #ffffff24", borderRadius: 16, padding: 12, background: "#111528d9", marginBottom: 10 }}>
         <b>MANCHE {round + 1}/{maxRounds}</b> · {finished ? championName ? `Victoire : ${championName}` : "Match nul" : result ? result.winner !== null ? `${players[result.winner].name} remporte la manche` : "Manche nulle" : `Au tour de ${currentPlayer?.name}`}
         <div style={{ display: "flex", gap: 12, marginTop: 8, flexWrap: "wrap" }}>{players.map((p: any, i: number) => <span key={p.id} style={{ color: PALETTE[i], fontWeight: 900 }}>{MARKS[i]} {p.name} · {wins[i]} manche(s)</span>)}</div>

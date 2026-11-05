@@ -753,10 +753,14 @@ function InfoOverlay({
   onClose,
   startingLives,
   allowEqualScore,
+  isChase,
+  modeLabel,
 }: {
   onClose: () => void;
   startingLives: number;
   allowEqualScore: boolean;
+  isChase: boolean;
+  modeLabel: string;
 }) {
   return (
     <div
@@ -1433,6 +1437,15 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
           players={players}
           activeId={!winnerId ? activePlayer?.id || null : null}
         />
+        {isChase && !winnerId ? <div aria-label="Ordre de passage CHASE" style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 7px 2px", overflowX: "auto", whiteSpace: "nowrap", scrollbarWidth: "thin" }}>
+          <span style={{ flexShrink: 0, fontSize: 9, fontWeight: 1000, color: accent }}>ORDRE CHASE</span>
+          {chaseRoundQueue.filter((id) => players.some((p) => p.id === id && !p.eliminated)).map((id, index) => {
+            const player = players.find((p) => p.id === id);
+            return <span key={id} style={{ flexShrink: 0, fontSize: 10, fontWeight: 900, color: index === 0 ? accent : "rgba(255,255,255,.72)" }}>
+              {index > 0 ? "→ " : ""}{player?.name || "—"}
+            </span>;
+          })}
+        </div> : null}
       </div>
 
       {activePlayer ? (
@@ -1908,6 +1921,20 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
                   </div>
                 );
               })}
+              <div style={{ marginTop: 8, borderTop: "1px solid rgba(255,255,255,.10)", paddingTop: 12 }}>
+                <div style={{ color: accent, fontWeight: 1000, fontSize: 11, letterSpacing: .8, marginBottom: 8 }}>DERNIÈRES VOLÉES · {modeLabel.toUpperCase()}</div>
+                {events.length === 0 ? <div style={{ fontSize: 11, color: "rgba(255,255,255,.56)" }}>La première volée établira la cible à battre.</div> :
+                  <div style={{ display: "grid", gap: 5 }}>
+                    {events.slice(-8).reverse().map((event) => <div key={event.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 8, alignItems: "center", background: "rgba(255,255,255,.035)", borderRadius: 11, padding: "7px 9px", border: `1px solid ${event.lifeLost ? "rgba(255,99,120,.22)" : "rgba(114,240,168,.16)"}` }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: "#fff", fontWeight: 900, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{event.playerName}</div>
+                        <div style={{ color: "rgba(255,255,255,.57)", fontSize: 9 }}>{event.openingVisit ? "Cible initiale" : `À battre : ${event.target} · Minimum : ${event.required}`}</div>
+                      </div>
+                      <div style={{ color: "#fff", fontWeight: 1000, fontSize: 15 }}>{event.score}</div>
+                      <div style={{ color: event.lifeLost ? "#ff6378" : "#72f0a8", fontSize: 10, fontWeight: 1000, whiteSpace: "nowrap" }}>{event.lifeLost ? `−1 vie · ${event.livesAfter}♥` : event.openingVisit ? "DÉPART" : "VALIDÉ"}</div>
+                    </div>)}
+                  </div>}
+              </div>
             </div>
           </div>
         </div>
@@ -1918,6 +1945,8 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
           onClose={() => setInfoOpen(false)}
           startingLives={startingLives}
           allowEqualScore={allowEqualScore}
+          isChase={isChase}
+          modeLabel={modeLabel}
         />
       ) : null}
       {endOpen && finalMatch ? (

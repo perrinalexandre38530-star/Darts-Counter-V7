@@ -53,6 +53,8 @@ export default function Top10Play(props: any) {
   const historyQueue = React.useRef<Promise<void>>(Promise.resolve());
   const [botSummary, setBotSummary] = React.useState<{ name: string; darts: Dart[]; points: number } | null>(null);
   const [inputWarning, setInputWarning] = React.useState("");
+  const [saveStatus, setSaveStatus] = React.useState<"idle" | "saving" | "saved" | "error">("idle");
+  const pendingSaves = React.useRef(0);
   React.useEffect(() => {
     if (!resuming) {
       persist(record("in_progress", scores, round, current));
@@ -64,7 +66,7 @@ export default function Top10Play(props: any) {
         const requestedId = String(route.resumeId || route.rec?.id || route.rec?.matchId || "");
         const saved = await History.get(requestedId);
         if (cancelled) return;
-        const restored = recoverTop10(saved);
+        const restored = recoverTop10(saved, { preview });
         if (!restored || restored.id !== requestedId) throw new Error("Checkpoint TOP 10 absent, terminé ou incohérent");
         id.current = restored.id;
         createdAt.current = restored.createdAt;
@@ -77,7 +79,7 @@ export default function Top10Play(props: any) {
         setRound(restored.round);
         setCurrent(restored.current);
         setThrowing([]);
-        setFinished(false);
+        setFinished(restored.finished);
         setBotSummary(null);
         setHydration("ready");
       } catch (error) {
@@ -100,13 +102,23 @@ export default function Top10Play(props: any) {
     return rec;
   }
   const persist = (r:any) => {
-    // Les checkpoints sont séquencés : une volée antérieure ne doit jamais
-    // écraser un état plus récent ni le résultat final.
+    // One ordered queue across initial save, every visit and the final result.
+    // Report success only after IndexedDB acknowledges the write.
+    pendingSaves.current += 1;
+    setSaveStatus("saving");
     historyQueue.current = historyQueue.current
       .catch(() => undefined)
       .then(() => History.upsert(r))
-      .catch((e:any) => console.warn("[TOP10] history", e));
-    if (r.status === "finished") props?.onFinish?.(r);
+      .then(() => {
+        pendingSaves.current -= 1;
+        if (pendingSaves.current === 0) setSaveStatus("saved");
+        if (r.status === "finished") props?.onFinish?.(r);
+      })
+      .catch((e:any) => {
+        pendingSaves.current -= 1;
+        setSaveStatus("error");
+        console.warn("[TOP10] historique non enregistré", e);
+      });
   };
   function commit(darts:Dart[]) {
     if (hydration !== "ready" || preview || finished || !who || botSummary || commitGuard.current) return;
@@ -137,6 +149,7 @@ export default function Top10Play(props: any) {
     <div style={{marginTop:16}}><button type="button" className="btn-secondary" onClick={()=>props?.setTab?.("history")}>Retour à l'historique</button></div></div></div>;
   return <div className="page"><PageHeader title="TOP 10" tickerSrc={lang === "fr" ? tickerTop10Fr : tickerTop10En} left={<BackDot onClick={()=>props?.setTab?.(cfg.training?"training":"games")} />} right={<InfoDot title="Règles TOP 10" content={RULES}/>} />
     <div style={{maxWidth:720,margin:"auto",padding:"12px 12px 120px"}}>
+      {saveStatus !== "idle" && <div role={saveStatus === "error" ? "alert" : "status"} style={{fontSize:12,marginBottom:8,color:saveStatus === "error" ? "#ff9a9a" : "#a9d8ef"}}>{saveStatus === "saving" ? "Enregistrement de la partie…" : saveStatus === "error" ? "Enregistrement impossible : vérifie l'espace disponible avant de quitter." : "Partie enregistrée sur cet appareil."}</div>}
       <section style={{padding:13,border:"1px solid #ffffff28",borderRadius:17,background:"#11192d"}}><b>{finished ? "TOP 10 TERMINÉ" : `VOLÉE ${Math.min(round+1,10)} / 10`}</b><div style={{fontSize:18,fontWeight:900,marginTop:5}}>{finished?(winnerId ? `🏆 ${players.find((p:any)=>p.id===winnerId)?.name}`:"Égalité"):`Au tour de ${who?.name}`}</div><div style={{marginTop:8,fontSize:12,opacity:.75}}>Objectif : plus gros total en 30 fléchettes · 10 volées de 3</div></section>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(145px,1fr))",gap:8,marginTop:10}}>{ranking.map((p:any)=> <div key={p.id} style={{border:`1px solid ${who?.id===p.id&&!finished?"#4dd8fa":"#ffffff20"}`,borderRadius:13,padding:11,background:"#131c34"}}><div style={{fontWeight:900,fontSize:12}}>{p.name}</div><strong style={{fontSize:32}}>{p.total}</strong> <small>pts</small><div style={{fontSize:11,opacity:.76}}>Meilleure {p.best} · Moy. {p.average.toFixed(1)}</div><div style={{fontSize:11,opacity:.76}}>100+ : {p.hundred} · 140+ : {p.oneForty}</div></div>)}</div>
       <section style={{marginTop:10,padding:12,borderRadius:16,background:"#101729",border:"1px solid #ffffff25"}}><b>TABLEAU DES VOLÉES</b><div style={{overflowX:"auto",marginTop:8}}><table style={{width:"100%",textAlign:"center",borderCollapse:"collapse"}}><thead><tr><th style={{textAlign:"left",padding:6}}>Volée</th>{players.map((p:any)=><th key={p.id} style={{padding:6}}>{p.name}</th>)}</tr></thead><tbody>{Array.from({length:rounds},(_,i)=><tr key={i} style={{background:i===round&&!finished?"#47bde01b":"transparent",borderTop:"1px solid #ffffff12"}}><td style={{textAlign:"left",padding:6}}>#{i+1}</td>{players.map((p:any,j:number)=><td key={p.id} style={{padding:6,fontWeight:800}}>{scores[j][i] ?? "—"}</td>)}</tr>)}</tbody></table></div></section>

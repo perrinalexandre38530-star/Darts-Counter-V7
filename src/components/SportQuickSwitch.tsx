@@ -12,8 +12,9 @@ import logoDiceGame from "../assets/games/logo-dicegame.webp";
 import logoFoot from "../assets/games/logo-foot.webp";
 import logoRunning from "../assets/games/logo-running-performance.webp";
 import logoFitPerf from "../assets/games/logo-fit-performance.webp";
+import logoTossit from "../assets/games/logo-tossit.webp";
 
-type QuickSportId = Extract<SportId, "darts" | "petanque" | "babyfoot" | "pingpong" | "molkky" | "dicegame" | "foot" | "running" | "fit">;
+type QuickSportId = Extract<SportId, "darts" | "petanque" | "babyfoot" | "pingpong" | "molkky" | "dicegame" | "foot" | "running" | "fit" | "tossit">;
 
 const SPORTS: Array<{
   id: QuickSportId;
@@ -30,6 +31,7 @@ const SPORTS: Array<{
   { id: "pingpong", label: "Ping-Pong", logo: logoPingPong, accent: "#ff8fd7" },
   { id: "running", label: "Running Performance", logo: logoRunning, accent: "#74f7a5" },
   { id: "fit", label: "FIT PERF", logo: logoFitPerf, accent: "#f6c256" },
+  { id: "tossit", label: "TOSSIT SCORING", logo: logoTossit, accent: "#48e7cf" },
 ];
 
 const LS_KEY = "dc-start-game";
@@ -39,6 +41,7 @@ function normalizeSport(value: unknown): QuickSportId {
   if (s === "babyfoot") return "babyfoot";
   if (s === "dicegame" || s === "dice" || s === "dice_game") return "dicegame";
   if (s === "molkky") return "molkky";
+  if (s === "tossit") return "tossit";
   if (s === "foot" || s === "soccer") return "foot";
   if (s === "petanque") return "petanque";
   if (s === "pingpong") return "pingpong";

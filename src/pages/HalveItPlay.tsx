@@ -28,6 +28,7 @@ import {
   type HalveItTeamConfig,
 } from "../lib/gameEngines/halveItEngine";
 import tickerHalveIt from "../assets/tickers/ticker_halve_it.png";
+import "./HalveItPlayResponsive.css";
 import tickerSplitScoreFr from "../assets/tickers/ticker_split_score_fr.webp";
 import tickerSplitScoreEn from "../assets/tickers/ticker_split_score_en.webp";
 import { readDartsMatchDraft, writeDartsMatchDraft, clearDartsMatchDraft } from "../lib/dartsMatchDrafts";
@@ -351,11 +352,14 @@ export default function HalveItPlay(props: any) {
   const previewHalved = completedPreview && target.kind !== "open" && currentHitCount === 0;
   const previewAfter = previewHalved ? (config.rounding === "ceil" ? Math.ceil(activeScore / 2) : Math.floor(activeScore / 2)) : activeScore + currentGain;
   const currentDelta = previewAfter - activeScore;
+  const lastVisit = state.history[state.history.length - 1] || null;
+  const lastVisitName = lastVisit ? playerName(byId.get(String(lastVisit.playerId)) || state.players.find((p: any) => p.id === lastVisit.playerId)) : "";
 
-  return <div style={{ minHeight: "100dvh", color: themeText, background: `radial-gradient(circle at 50% -5%, ${primary}22 0, ${theme?.bg || "#080c17"} 46%, #020309 100%)`, paddingBottom: 8, overflowX: "hidden" }}>
+  return <div className="msc-halveit-play" style={{ height: "100dvh", minHeight: 0, display: "flex", flexDirection: "column", color: themeText, background: `radial-gradient(circle at 50% -5%, ${primary}22 0, ${theme?.bg || "#080c17"} 46%, #020309 100%)`, overflow: "hidden" }}>
     <PageHeader tickerSrc={headerTicker} tickerAlt={modeLabel} left={<div style={{ marginLeft: 6 }}><BackDot onClick={backToConfig} color={primary} glow={`${primary}88`} title="Retour à la configuration" /></div>} right={<div style={{ marginRight: 6 }}><InfoDot title={`Règles ${modeLabel}`} color={secondary} glow={`${secondary}77`} content={<RulesContent config={config} primary={primary} />} /></div>} />
 
-    <div style={{ padding: "6px 8px 8px", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
+    <div className="msc-halveit-stage">
+    <div className="msc-halveit-overview" style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
       <section style={{ ...panelStyle(), padding: 0, overflow: "hidden", borderColor: `${primary}88`, boxShadow: `0 0 24px ${primary}20`, marginBottom: 7 }}>
         <div style={{ position: "relative", minHeight: 132, display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(150px,185px)", alignItems: "stretch", padding: "8px 10px" }}>
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg,rgba(0,0,0,.35),rgba(0,0,0,.08),rgba(0,0,0,.3))" }} />
@@ -402,7 +406,13 @@ export default function HalveItPlay(props: any) {
         </div>
       </section>
 
-      {!state.finished ? <section style={{ ...panelStyle(), padding: 8 }}>
+      {lastVisit ? <div className="msc-halveit-last-visit" aria-live="polite" style={{ ...panelStyle(), padding: "8px 11px", marginBottom: 7, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, fontSize: 11 }}>
+        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: themeSoft }}><strong style={{ color: primary }}>DERNIÈRE VOLÉE</strong> · {lastVisitName} · {lastVisit.targetLabel}</span>
+        <strong style={{ color: lastVisit.halved ? C.red : C.green, whiteSpace: "nowrap" }}>{lastVisit.halved ? `÷2 (−${lastVisit.loss})` : `+${lastVisit.gain}`} · {lastVisit.scoreAfter} pts</strong>
+      </div> : null}
+    </div>
+
+      {!state.finished ? <section className="msc-halveit-keypad" style={{ ...panelStyle(), padding: 8 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginBottom: 7 }}>
           {[0,1,2].map((i) => {
             const dart = throwDarts[i];
@@ -442,11 +452,52 @@ function StandingsModal({ modeLabel, state, profilesById, teamById, participantM
 }
 
 function LiveStatsModal({ modeLabel, state, profilesById, primary, onClose }: any) {
-  const rows = state.players.map((p: any) => ({ p, profile: profilesById.get(p.id) || p, stats: state.statsByPlayer[p.id] || emptyHalveItStats(), score: state.scoresByPlayer[p.id] || 0 })).sort((a: any, b: any) => b.score - a.score);
-  return <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,.74)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 10 }}><div onClick={(e) => e.stopPropagation()} style={{ ...panelStyle(), width: "min(900px,100%)", maxHeight: "90vh", overflow: "auto", padding: 13 }}>
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}><div style={{ width: 34 }} /><div style={{ color: primary, fontWeight: 1000, letterSpacing: 1 }}>STATS LIVE {modeLabel}</div><button onClick={onClose} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: "#fff", fontSize: 18 }}>×</button></div>
-    <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8 }}>{rows.map((r: any) => <div key={r.p.id} style={{ padding: 10, borderRadius: 14, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><ProfileAvatar profile={r.profile} size={34} /><div style={{ minWidth: 0 }}><div style={{ color: primary, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(r.profile)}</div><div style={{ fontSize: 22, fontWeight: 1100 }}>{r.score}</div></div></div><div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, fontSize: 9.5 }}><StatKpi label="Hits" value={r.stats.validHits} /><StatKpi label="Précision" value={`${pct(r.stats.validHits,r.stats.darts)}%`} /><StatKpi label="Halves" value={r.stats.halvingEvents} /><StatKpi label="Best" value={r.stats.bestVisit} /><StatKpi label="+ Points" value={r.stats.pointsWon} /><StatKpi label="− Points" value={r.stats.pointsLostByHalving} /></div></div>)}</div>
-  </div></div>;
+  const rows = state.players.map((p: any) => ({
+    p,
+    profile: profilesById.get(p.id) || p,
+    stats: state.statsByPlayer[p.id] || emptyHalveItStats(),
+    score: state.scoresByPlayer[p.id] || 0,
+  })).sort((a: any, b: any) => b.score - a.score);
+  const totalVisits = rows.reduce((sum: number, row: any) => sum + row.stats.visits, 0);
+  const totalHalves = rows.reduce((sum: number, row: any) => sum + row.stats.halvingEvents, 0);
+  return <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,.74)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 10 }}>
+    <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={`Statistiques ${modeLabel}`} style={{ ...panelStyle(), width: "min(900px,100%)", maxHeight: "90dvh", overflow: "auto", padding: 13 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ color: primary, fontWeight: 1000, letterSpacing: .6 }}>SUIVI DE PERFORMANCE · {modeLabel}</div>
+        <button type="button" aria-label="Fermer les statistiques" onClick={onClose} style={{ width: 36, height: 36, flexShrink: 0, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: "#fff", fontSize: 18 }}>×</button>
+      </div>
+      <div style={{ marginTop: 6, color: C.soft, fontSize: 11 }}>{totalVisits} volées validées · {totalHalves} pénalité{totalHalves > 1 ? "s" : ""} ÷2 · Manche {Math.min(state.roundIndex + 1, state.targets.length)}/{state.targets.length}</div>
+      <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,240px),1fr))", gap: 9 }}>
+        {rows.map((r: any) => <div key={r.p.id} style={{ minWidth: 0, padding: 10, borderRadius: 14, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}><ProfileAvatar profile={r.profile} size={34} /><div style={{ minWidth: 0 }}><div style={{ color: primary, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(r.profile)}</div><div style={{ fontSize: 23, fontWeight: 1100 }}>{r.score} <span style={{ color: C.soft, fontSize: 10 }}>pts</span></div></div></div>
+          <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5, fontSize: 9.5 }}>
+            <StatKpi label="Touches" value={r.stats.validHits} />
+            <StatKpi label="Précision" value={`${pct(r.stats.validHits,r.stats.darts)}%`} />
+            <StatKpi label="Volées OK" value={`${pct(r.stats.successfulVisits,r.stats.visits)}%`} />
+            <StatKpi label="÷ 2" value={r.stats.halvingEvents} />
+            <StatKpi label="Best" value={r.stats.bestVisit} />
+            <StatKpi label="Série max" value={r.stats.bestSuccessStreak} />
+            <StatKpi label="Points +" value={`+${r.stats.pointsWon}`} />
+            <StatKpi label="Points −" value={`−${r.stats.pointsLostByHalving}`} />
+            <StatKpi label="0 / 3" value={r.stats.failedVisits} />
+          </div>
+          <div style={{ color: primary, fontWeight: 1000, fontSize: 10, margin: "12px 0 7px" }}>DÉTAIL PAR CIBLE</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(62px,1fr))", gap: 5 }}>
+            {state.targets.map((target: HalveItTarget, index: number) => {
+              const stat = r.stats.targets?.[String(target.id)];
+              const attempts = stat?.attempts || 0;
+              const hits = stat?.validHits || 0;
+              return <div key={`${target.id}-${index}`} title={targetHint(target)} style={{ padding: "7px 4px", textAlign: "center", borderRadius: 10, background: "rgba(0,0,0,.25)", border: `1px solid ${attempts ? (hits ? `${C.green}66` : `${C.red}66`) : "rgba(255,255,255,.07)"}` }}>
+                <div style={{ fontSize: 9, fontWeight: 1000, color: C.soft }}>{target.label}</div>
+                <div style={{ fontSize: 13, fontWeight: 1000, color: !attempts ? C.soft : hits ? C.green : C.red }}>{attempts ? `${hits}/${stat?.darts || attempts * 3}` : "—"}</div>
+                {attempts ? <div style={{ fontSize: 9, color: C.soft }}>{stat?.pointsLost ? `−${stat.pointsLost}` : `+${stat?.pointsWon || 0}`} pts</div> : null}
+              </div>;
+            })}
+          </div>
+        </div>)}
+      </div>
+    </div>
+  </div>;
 }
 function StatKpi({ label, value }: any) { return <div style={{ padding: 7, borderRadius: 10, background: "rgba(0,0,0,.22)", textAlign: "center" }}><div style={{ opacity: .55, fontSize: 8 }}>{label}</div><div style={{ fontWeight: 1000 }}>{value}</div></div>; }
 

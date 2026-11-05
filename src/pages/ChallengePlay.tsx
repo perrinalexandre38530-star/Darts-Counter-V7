@@ -1042,6 +1042,10 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
    const regularMax=Math.max(1,...layout.groups.flatMap(group=>group.rows.map(row=>Number(row.value||0))));
    const layerPalette=['#ff5b64','#38c8ef','#ffd352','#a995ff','#59dc9e','#ffa15e'];
    const targetCount=layout.groups.length+(bonusRow?1:0);
+   // Doubles uses a responsive, non-scrolling frieze. Extra custom targets
+   // flow onto additional rows instead of shrinking their hit labels away.
+   const isDoublesFrieze=exerciseType==='doubles8';
+   const fitColumns=Math.min(targetCount,9);
    const targetWidth=40;
    const bestTargetTotal=Math.max(0,...layout.groups.map(group=>group.rows.reduce((sum,row)=>sum+Number(row.value||0),0)));
    // Each target is ONE bar: its successive visits form vertically stacked
@@ -1065,7 +1069,7 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
     const color=isBonus?'#ffad43':layerPalette[visitIndex%layerPalette.length];
     return <div className={`layered-bar-segment ${points===0?'zero':''} ${isBonus?'bonus':''}`} key={`segment-${row.index}-${visitIndex}`} style={{height:`${height}px`,background:color}} title={`${isBonus?'BONUS':`V${visitIndex+1}`} · ${hits===null?`${points} pts`:`${hits} hit${hits>1?'s':''} · ${points} pts`}`}><b>{hits===null?points:hits}</b></div>;
    };
-   return <div className="layered-visit-chart-scroll"><div className="layered-visit-chart" style={{'--target-count':targetCount,'--target-width':`${targetWidth}px`,'--frieze-width':`${targetCount*(targetWidth+2)+18}px`} as React.CSSProperties}>
+   return <div className={`layered-visit-chart-scroll ${isDoublesFrieze?'doubles-fit':''}`}><div className={`layered-visit-chart ${isDoublesFrieze?'doubles-fit':''}`} style={{'--target-count':targetCount,'--target-width':`${targetWidth}px`,'--frieze-width':`${targetCount*(targetWidth+2)+18}px`,'--fit-columns':fitColumns,'--fit-width':`${fitColumns*46}px`} as React.CSSProperties}>
     <div className="layered-visit-legend">
      {Array.from({length:layout.maxVisitsPerTarget},(_,visitIndex)=><span key={`legend-v${visitIndex+1}`}><i style={{background:layerPalette[visitIndex%layerPalette.length]}}/>V{visitIndex+1}</span>)}
      {bonusRow&&<span className="bonus"><i/>BONUS</span>}
@@ -1724,6 +1728,19 @@ const css=`
 .layered-visit-column.best .layered-bars-stage:after{content:'';pointer-events:none;position:absolute;left:7px;right:7px;bottom:0;height:2px;background:rgba(255,220,95,.56);box-shadow:0 0 8px rgba(255,202,63,.28)}
 .layered-visit-column:hover .layered-bars-stage{background:rgba(255,255,255,.025)}
 @media(max-width:620px){.layered-visit-chart{padding:7px 6px 8px}.layered-visit-legend{gap:7px 10px}.layered-visit-legend em{flex:1 0 100%;font-size:7px}.layered-visit-columns{height:208px;padding-top:7px}.layered-visit-columns:before{top:7px}.layered-target-caption strong{font-size:8px}.layered-target-caption small{font-size:8px}}
+
+/* 8 Doubles (including custom paths): fit 8 targets + bonus inside the phone.
+   Other Challenge graphs keep their original horizontal-scrolling layout. */
+.layered-visit-chart-scroll.doubles-fit{overflow-x:hidden;padding-bottom:2px}
+.layered-visit-chart.doubles-fit{min-width:0;width:100%;max-width:100%;overflow:hidden}
+.layered-visit-chart.doubles-fit .layered-visit-columns{width:100%;max-width:var(--fit-width);min-width:0;height:auto;grid-template-columns:repeat(var(--fit-columns),minmax(0,1fr));grid-auto-rows:215px;column-gap:2px;row-gap:8px;justify-content:center}
+.layered-visit-chart.doubles-fit .layered-visit-columns:before{display:none}
+.layered-visit-chart.doubles-fit .layered-bars-stage{background:repeating-linear-gradient(to top,transparent 0,transparent 38px,rgba(76,102,131,.13) 39px);box-shadow:inset 0 -1px 0 #415369}
+.layered-visit-chart.doubles-fit .layered-visit-stack,.layered-visit-chart.doubles-fit .layered-visit-stack.bonus{width:22px;max-width:91%}
+.layered-visit-chart.doubles-fit .layered-target-caption strong{font-size:clamp(7px,1.9vw,9px);text-overflow:clip}
+.layered-visit-chart.doubles-fit .layered-target-caption small{font-size:clamp(6px,1.8vw,9px);text-overflow:clip}
+@media(max-width:620px){.layered-visit-chart.doubles-fit .layered-visit-columns{grid-auto-rows:208px}.layered-visit-chart.doubles-fit .layered-visit-stack,.layered-visit-chart.doubles-fit .layered-visit-stack.bonus{width:20px;max-width:92%}.layered-visit-chart.doubles-fit .layered-bar-segment b{font-size:9px}}
+@media(max-width:350px){.layered-visit-chart.doubles-fit{padding-left:4px;padding-right:4px}.layered-visit-chart.doubles-fit .layered-visit-columns{column-gap:1px}.layered-visit-chart.doubles-fit .layered-visit-stack,.layered-visit-chart.doubles-fit .layered-visit-stack.bonus{width:18px}.layered-visit-chart.doubles-fit .layered-target-caption small{font-size:6px}}
 
 /* Challenge adaptive visit matrix — targets/volley axes follow the real configuration */
 .adaptive-visit-matrix-scroll,.visit-target-strip-scroll{width:100%;max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;padding:2px 0 5px;scrollbar-width:thin}.adaptive-visit-matrix{display:grid;gap:4px;align-items:stretch;min-width:100%}.adaptive-visit-matrix.multi-target{grid-template-columns:minmax(48px,.7fr) repeat(var(--data-columns),minmax(58px,1fr));min-width:max(100%,calc(58px * var(--data-columns) + 52px))}.adaptive-visit-matrix.single-target{grid-template-columns:minmax(66px,.9fr) repeat(var(--visit-columns),minmax(58px,1fr));min-width:max(100%,calc(58px * var(--visit-columns) + 70px))}.adaptive-visit-matrix .target-vertical{min-height:64px;writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:.55px}.adaptive-visit-matrix .dvm-cell.empty{opacity:.18;border-style:dashed}.adaptive-visit-matrix .dvm-cell.empty:before{display:none}.visit-target-strip{display:flex;align-items:stretch;gap:5px;min-width:max-content}.visit-target-strip.single{min-width:0}.visit-target-card{flex:0 0 68px;min-height:66px;padding:7px 5px;border:1px solid #2b3a4b;border-radius:9px;background:#09111a;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;position:relative;overflow:hidden}.visit-target-card:after{content:'';position:absolute;left:0;right:0;bottom:0;height:3px;background:#3b4c61}.visit-target-card span{max-width:100%;font-size:7px;line-height:1.15;color:#9ba9b9;font-weight:1000;overflow:hidden;text-overflow:ellipsis}.visit-target-card b{margin-top:4px;font-size:18px;line-height:1;color:#fff}.visit-target-card small{margin-top:3px;font-size:6px;color:#738296;font-weight:1000}.visit-target-card.best{border-color:#8b7025;background:linear-gradient(180deg,#211b09,#0b1117)}.visit-target-card.best b{color:#ffd44f}.visit-target-card.best:after{background:#ffd44f}.visit-target-card.bonus{border-color:#7b6021;background:linear-gradient(180deg,#241c08,#0b1117)}.visit-target-card.bonus b{color:#ffd44f}.visit-target-card.bonus:after{background:#d8a928}.adaptive-visit-note{margin-top:8px!important}

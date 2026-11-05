@@ -10,15 +10,25 @@ const whole = (v: unknown, min: number, max: number): v is number =>
 const isRecord = (v: unknown): v is Record<string, any> => !!v && typeof v === "object" && !Array.isArray(v);
 const time = (v: unknown) => Number(v) || Date.parse(String(v || "")) || Date.now();
 
-function common(rec: any, mode: "top_10" | "tic_tac_toe", minPlayers: number) {
-  if (!isRecord(rec) || String(rec.status || "").toLowerCase() !== "in_progress" ||
-      rec.finishedAt || rec.summary?.finished === true || rec.resume?.state?.finished === true) return null;
+function common(rec: any, mode: "top_10" | "tic_tac_toe", minPlayers: number, allowFinished: boolean) {
+  if (!isRecord(rec)) return null;
+  const status = String(rec.status || "").toLowerCase();
+  const finished = status === "finished";
+  // A completed match may be inspected, never resumed. Only the caller's
+  // explicit read-only preview flag can unlock it.
+  if (status !== "in_progress" && !(allowFinished && finished)) return null;
+  if (!finished && (rec.finishedAt || rec.summary?.finished === true || rec.resume?.state?.finished === true)) return null;
   const id = String(rec.matchId || rec.id || "").trim();
   if (!id || (rec.id && rec.matchId && String(rec.id) !== String(rec.matchId))) return null;
   const actualMode = String(rec.kind || rec.game?.mode || rec.mode || "").toLowerCase();
   if (actualMode !== mode) return null;
-  const payload = [rec.resume?.livePayload, rec.payload, rec.decoded, rec.resume?.state]
-    .find(isRecord);
+  // Finished saves contain an authoritative full payload. The previous live
+  // checkpoint may still exist in resume.livePayload; never preview that stale
+  // checkpoint in place of the completed result.
+  const payload = (finished
+    ? [rec.payload, rec.decoded, rec.resume?.livePayload, rec.resume?.state]
+    : [rec.resume?.livePayload, rec.payload, rec.decoded, rec.resume?.state]
+  ).find(isRecord);
   if (!payload) return null;
   const config = isRecord(payload.config) ? payload.config : isRecord(rec.resume?.config) ? rec.resume.config : {};
   const rawPlayers = Array.isArray(rec.players) && rec.players.length ? rec.players : config.players;
@@ -29,11 +39,13 @@ function common(rec: any, mode: "top_10" | "tic_tac_toe", minPlayers: number) {
     isBot: !!p?.isBot, botLevel: String(p?.botLevel || config.botLevel || "normal"),
   }));
   if (players.some((p) => !p.id) || new Set(players.map((p) => p.id)).size !== players.length) return null;
-  return { id, createdAt: time(rec.createdAt), payload, players, config: { ...config, players } };
+  const winnerId = finished ? String(rec.winnerId || "").trim() || null : null;
+  if (winnerId && !players.some((p) => p.id === winnerId)) return null;
+  return { id, createdAt: time(rec.createdAt), payload, players, config: { ...config, players }, finished, winnerId };
 }
 
-export function recoverTop10(rec: any) {
-  const base = common(rec, "top_10", 1);
+export function recoverTop10(rec: any, options: { preview?: boolean } = {}) {
+  const base = common(rec, "top_10", 1, options.preview === true);
   if (!base) return null;
   const { payload, players } = base;
   const scores = payload.visitScores;
@@ -41,7 +53,7 @@ export function recoverTop10(rec: any) {
       scores.some((row: any) => !Array.isArray(row) || row.length > 10 ||
         row.some((score: any) => !whole(score, 0, 180)))) return null;
   const completed = scores.reduce((sum: number, row: number[]) => sum + row.length, 0);
-  if (completed >= players.length * 10) return null; // la partie devrait déjà être terminée
+  if (base.finished ? completed !== players.length * 10 : completed >= players.length * 10) return null;
   const round = Math.floor(completed / players.length);
   const current = completed % players.length;
   if (!scores.every((row: number[], i: number) => row.length === round + (i < current ? 1 : 0))) return null;
@@ -52,8 +64,8 @@ export function recoverTop10(rec: any) {
   return { ...base, scores: scores.map((row: number[]) => [...row]), round, current, visits: [...visits] };
 }
 
-export function recoverMorpion(rec: any) {
-  const base = common(rec, "tic_tac_toe", 2);
+export function recoverMorpion(rec: any, options: { preview?: boolean } = {}) {
+  const base = common(rec, "tic_tac_toe", 2, options.preview === true);
   if (!base) return null;
   const { payload, players, config } = base;
   const maxRounds = Math.max(1, Math.min(25, Number(config.bestOf ?? config.rounds) || 3));
@@ -76,6 +88,8 @@ export function recoverMorpion(rec: any) {
   const winner = morpionWinner(grid.owners);
   const draw = morpionIsDraw(grid.owners);
   const result = payload.roundResult;
+  const requiredWins = Math.floor(maxRounds / 2) + 1;
+  if (base.finished && (!result || !(wins.some((n: number) => n >= requiredWins) || round + 1 >= maxRounds))) return null;
   if (result !== null && result !== undefined) {
     if (!isRecord(result) || result.winner !== winner || !!result.draw !== draw || (!draw && winner === null)) return null;
   } else if (winner !== null || draw) return null;
