@@ -51,16 +51,13 @@ export function selectCanonicalX01ProfileV3(index: CanonicalX01IndexV2, profileI
     // An individual match should never contribute the same profile twice.
     const perMatch = match.participants.filter((p) => p.canonicalProfileId === profileId);
     if (!perMatch.length) continue;
-    // Multiple legacy player slots can resolve to one profile. Count the match
-    // once. Do not add their darts/points (that would double score the match).
-    // When exactly one slot has usable telemetry it is safe to use that slot;
-    // when several have conflicting telemetry, retain an unknown metric.
-    const usable = perMatch.filter((p) => p.darts !== null && p.darts > 0 && p.points !== null && p.points >= 0);
-    const compatible = usable.length > 1 && usable.every((p) => p.points === usable[0].points && p.darts === usable[0].darts);
-    const player = usable.length === 1 || compatible ? usable[0] : perMatch.length === 1 ? perMatch[0] : {
-      ...perMatch[0], darts: null, points: null, avg3d: null,
-      bestCheckout: null, bestVisit: null,
-    };
+    // Keep the historical match once. Multiple technical slots can resolve to
+    // one logical profile; choose the best documented observation, do NOT sum them.
+    const quality = (p: NormalizedX01Participant) =>
+      Number(p.darts !== null && p.darts > 0 && p.points !== null) * 10 +
+      Number(p.hitsS !== null) + Number(p.hitsD !== null) + Number(p.hitsT !== null) +
+      Number(p.bestVisit !== null);
+    const player = perMatch.slice().sort((a,b) => quality(b) - quality(a))[0];
     observations.push({ match, player });
   }
   const reference = observations.filter(({ match }) => match.startScore === 501 && match.outMode === 'double');

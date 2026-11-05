@@ -87,10 +87,17 @@ export function resolveX01CanonicalIdentity(
   const quickLinks = getQuickProfileLinks(record);
 
   if (explicitProfileId) {
-    const explicitAlias = aliasMap[explicitProfileId];
-    if (explicitAlias && explicitAlias !== explicitProfileId) {
-      return { historicalPlayerId, canonicalProfileId: explicitAlias,
-        resolutionSource: 'known_alias', confidence: 'high', matchedValue: explicitProfileId };
+    // Legacy backups may store an obsolete identity as `profileId` itself.
+    // Validated aliases must take precedence over that historical field.
+    const canonicalAlias = aliasMap[explicitProfileId];
+    if (canonicalAlias) {
+      return {
+        historicalPlayerId,
+        canonicalProfileId: canonicalAlias,
+        resolutionSource: "known_alias",
+        confidence: "high",
+        matchedValue: explicitProfileId,
+      };
     }
     if (knownProfiles.size === 0 || knownProfiles.has(explicitProfileId)) {
       return {

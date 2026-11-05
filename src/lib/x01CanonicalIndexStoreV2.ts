@@ -9,11 +9,17 @@ import { historyV4DbName, openHistoryV4Db, ensureHistoryV4Backfill,
 import { buildCanonicalX01IndexFromNormalizedMatchesV2, type CanonicalX01IndexV2 } from './x01CanonicalIndexV2';
 import { normalizeX01HistoryRecord, type NormalizedX01Match } from './normalizeX01HistoryRecord';
 import type { X01IdentityResolverOptions } from './x01IdentityResolver';
-import { readIdentityAliasRegistry } from '../data/identityAliases';
 
 const INDEX_VERSION = 3;
+// Approved profile aliases from the historical Ninja identity audit.
+// Never rewrite match participants, compact payloads, or score keys.
+// Runtime `usr_...` IDs are deliberately excluded: they require match-local links.
+const CONFIRMED_LEGACY_PROFILE_ALIASES: Record<string, string> = {
+  'b3517e84-41a1-4eb1-8f20-3e40e3875d38': '1ca2469d-2e3b-41b2-807d-dd96eb1d1d4f',
+  'bbedd4b7-e181-4b8e-a794-c948a18e8404': '1ca2469d-2e3b-41b2-807d-dd96eb1d1d4f',
+};
 const PAGE_SIZE = 24;
-const PREFIX = 'dc-x01-canonical-index-v3:';
+const PREFIX = 'dc-x01-canonical-index-v2:';
 const ALIAS_PREFIX = 'dc-x01-validated-aliases-v1:';
 const key = () => PREFIX + historyV4DbName();
 const aliasKey = () => ALIAS_PREFIX + historyV4DbName();
@@ -79,47 +85,13 @@ async function readCanonicalHeadersInPages(): Promise<{ rows: any[]; signature: 
   return { rows: all, signature: JSON.stringify(signatureParts) };
 }
 
-// V164 — resolve only explicitly registered identities; never match by display name.
-// These two historical profile UUIDs were verified against the user's 107-game
-// reference. The runtime usr_* ID is purposefully NOT mapped globally.
-const HISTORICAL_PROFILE_BRIDGE_V164: Readonly<Record<string, string>> = {
-  'b3517e84-41a1-4eb1-8f20-3e40e3875d38': '1ca2469d-2e3b-41b2-807d-dd96eb1d1d4f',
-  'bbedd4b7-e181-4b8e-a794-c948a18e8404': '1ca2469d-2e3b-41b2-807d-dd96eb1d1d4f',
-};
 function validatedAliases(): Record<string, string> {
-  const mapped: Record<string, string> = { ...HISTORICAL_PROFILE_BRIDGE_V164 };
-  try {
-    // Reuse the application's authoritative identity registry (all aliases
-    // require an explicit registration; conflicts are never auto-resolved).
-    const prefix = 'dc_identity_aliases_v1';
-    // Only the current account's registry and its unscoped fallback.
-    const scope = historyV4DbName();
-    const uid = scope.includes(':') ? scope.slice(scope.lastIndexOf(':') + 1) : '';
-    for (const registryKey of (uid ? [`${prefix}:${uid}`, prefix] : [prefix])) {
-      if (!localStorage.getItem(registryKey)) continue;
-      const registry = readIdentityAliasRegistry(registryKey === prefix ? undefined : uid);
-      for (const [canonical, record] of Object.entries(registry.profiles || {})) {
-        for (const alias of record.aliases || []) {
-          const id = String(alias.id || '');
-          if (!id || id === canonical || (mapped[id] && mapped[id] !== canonical)) continue;
-          // Do not automatically merge transient participants on the strength
-          // of merely having been seen in a match.
-          if (alias.kind === 'technical') continue;
-          mapped[id] = canonical;
-        }
-      }
-    }
-  } catch {}
   try {
     const json = localStorage.getItem(aliasKey());
     const parsed = json ? JSON.parse(json) : null;
-    if (parsed?.version === 1 && parsed?.validated === true && parsed.map && typeof parsed.map === 'object') {
-      for (const [from, to] of Object.entries(parsed.map)) {
-        if (typeof to === 'string' && from && to) mapped[from] = to;
-      }
-    }
-  } catch {}
-  return mapped;
+    if (!parsed || parsed.version !== 1 || !parsed.validated || !parsed.map || typeof parsed.map !== 'object') return {};
+    return Object.fromEntries(Object.entries(parsed.map).filter(([k,v]) => !!k && typeof v === 'string' && !!v));
+  } catch { return {}; }
 }
 
 /** Only invoke with explicitly validated mappings; names are never identity keys. */
@@ -165,7 +137,7 @@ export async function rebuildCanonicalX01IndexV2(options: X01IdentityResolverOpt
   const startedGeneration = generation;
   inFlight = (async () => {
     const { rows, signature } = await readCanonicalHeadersInPages();
-    const resolverOptions = { ...options, aliasMap: { ...validatedAliases(), ...(options.aliasMap || {}) } };
+    const resolverOptions = { ...options, aliasMap: { ...CONFIRMED_LEGACY_PROFILE_ALIASES, ...validatedAliases(), ...(options.aliasMap || {}) } };
     const matches: NormalizedX01Match[] = [];
     // A whole-history normalization was measured at ~2s on the reference 107
     // match backup. Never make the browser execute all of it in one task.
@@ -190,6 +162,7 @@ export async function rebuildCanonicalX01IndexV2(options: X01IdentityResolverOpt
     try { localStorage.setItem(key(), JSON.stringify(result)); } catch {}
     inMemory = result;
     try { window.dispatchEvent(new CustomEvent('dc-x01-canonical-index-ready', { detail: { x01MatchCount: index.x01MatchCount } })); } catch {}
+    try { window.dispatchEvent(new CustomEvent('dc-x01-canonical-updated', { detail: { updatedAt: index.builtAt } })); } catch {}
     return result;
   })().finally(() => { inFlight = null; });
   return inFlight;

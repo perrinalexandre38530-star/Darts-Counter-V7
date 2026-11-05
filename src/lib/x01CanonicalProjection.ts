@@ -4,6 +4,8 @@
 // No IndexedDB scan is allowed from rendering components.
 
 import { getAccountLocalStorageItem, setAccountLocalStorageItem } from "./accountScope";
+import { readCanonicalX01IndexV2 } from "./x01CanonicalIndexStoreV2";
+import { selectCanonicalX01ProfileV3 } from "./x01CanonicalSelectorsV3";
 import { getX01StatsContext, type X01InModeKey, type X01OutModeKey, type X01StartScoreKey, type X01VariantKey } from "./x01StatsContext";
 
 export type CanonicalX01Session = {
@@ -111,6 +113,43 @@ function weightedAvg(rows: CanonicalX01Session[]): number {
 }
 
 export function computeCanonicalX01ProfileStats(profileId?: string | null, profileName?: string | null): CanonicalX01ProfileStats {
+  const profileKey = text(profileId);
+  // V166: Home, Profiles and StatsHub use the SAME versioned History V4
+  // projection as X01Multi. No name fallback, no IndexedDB in render path.
+  const stored = profileKey ? readCanonicalX01IndexV2() : null;
+  if (stored && profileKey) {
+    const view = selectCanonicalX01ProfileV3(stored.index, profileKey);
+    const group = (mode: 'simple' | 'double' | 'master') => {
+      const x = view.exitModes[mode];
+      return {
+        matches: x.matches, darts: x.avg3d.darts, points: x.avg3d.points,
+        avg3D: x.avg3d.value ?? 0, finishes: x.finishSamples,
+        finishTotal: (x.avgFinish ?? 0) * x.finishSamples,
+        avgFinish: x.avgFinish ?? 0,
+      };
+    };
+    const ref = stored.index.matches.flatMap((match) => {
+      if (match.startScore !== 501 || match.outMode !== 'double') return [];
+      const p = match.participants.filter((part) => part.canonicalProfileId === profileKey);
+      if (!p.length) return [];
+      const quality = (part: typeof p[number]) => Number(part.darts !== null && part.darts > 0 && part.points !== null) * 10 + Number(part.bestVisit !== null);
+      return [p.slice().sort((a,b) => quality(b) - quality(a))[0]];
+    });
+    return {
+      profileId: profileKey,
+      totalX01Matches: view.totalMatches,
+      reference501DOMatches: view.reference501DO,
+      lifetime501DOAvg3D: view.referenceLifetime.value ?? 0,
+      current501DOAvg3D: view.referenceCurrent.value ?? 0,
+      current501DOMatches: view.referenceCurrentMatches,
+      bestVisit501DO: ref.reduce((m,p) => Math.max(m,p.bestVisit ?? 0), 0),
+      bestCheckout501DO: ref.reduce((m,p) => Math.max(m,p.bestCheckout ?? 0), 0),
+      wins501DO: ref.filter((p) => p.win === true).length,
+      darts501DO: view.referenceLifetime.darts,
+      points501DO: view.referenceLifetime.points,
+      byOut: { simple: group('simple'), double: group('double'), master: group('master') },
+    };
+  }
   const all = listCanonicalX01Sessions(profileId, profileName);
   const ref = all.filter((r) => r.startScore === 501 && r.outMode === "double");
   const current = ref.slice().sort((a,b) => a.date - b.date).slice(-10);

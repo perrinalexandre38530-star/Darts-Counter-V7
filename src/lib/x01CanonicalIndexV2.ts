@@ -32,27 +32,27 @@ export type CanonicalX01IndexV2 = {
 const weightedAvg = (rows: Array<{ darts: number | null; points: number | null; avg3d: number | null }>): number => {
   let darts = 0;
   let points = 0;
-  let fallbackSum = 0;
-  let fallbackCount = 0;
   for (const row of rows) {
     if (row.darts !== null && row.darts > 0 && row.points !== null && row.points >= 0) {
       darts += row.darts;
       points += row.points;
-    } else if (row.avg3d !== null && row.avg3d >= 0) {
-      fallbackSum += row.avg3d;
-      fallbackCount += 1;
     }
   }
-  if (darts > 0) return (points / darts) * 3;
-  return fallbackCount ? fallbackSum / fallbackCount : 0;
+  return darts > 0 ? (points / darts) * 3 : 0;
 };
 
+/** At most one observation per match/profile, even if legacy players contain duplicate IDs. */
 function participantRows(matches: NormalizedX01Match[], profileId: string): Array<{ match: NormalizedX01Match; player: NormalizedX01Participant }> {
   const out: Array<{ match: NormalizedX01Match; player: NormalizedX01Participant }> = [];
+  const scoreEvidence = (p: NormalizedX01Participant) =>
+    Number(p.darts !== null && p.darts > 0 && p.points !== null) * 10 +
+    Number(p.hitsS !== null) + Number(p.hitsD !== null) + Number(p.hitsT !== null) +
+    Number(p.bestVisit !== null);
   for (const match of matches) {
-    for (const player of match.participants) {
-      if (player.canonicalProfileId === profileId) out.push({ match, player });
-    }
+    const candidates = match.participants.filter((p) => p.canonicalProfileId === profileId);
+    if (!candidates.length) continue;
+    const player = candidates.slice().sort((a, b) => scoreEvidence(b) - scoreEvidence(a))[0];
+    out.push({ match, player });
   }
   return out;
 }

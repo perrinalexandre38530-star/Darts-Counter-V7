@@ -2982,13 +2982,16 @@ export default function X01MultiStatsTabFull({
             ? part.canonicalProfileId === requestedId || part.historicalPlayerId === requestedId
             : true
         );
-        if (requestedId && !matching.length) continue;
-        // V164: one stats session per canonical profile and match, even when
-        // an old record contains two historical slots for the same player.
-        const usable = matching.filter((p) => p.darts !== null && p.darts > 0 && p.points !== null);
-        const sameTelemetry = usable.length > 1 && usable.every((p) => p.darts === usable[0].darts && p.points === usable[0].points);
-        const chosen = usable.length === 1 || sameTelemetry ? usable[0] : matching[0];
-        for (const part of requestedId ? (chosen ? [chosen] : []) : matching) {
+        // Matchs legacy : plusieurs IDs techniques peuvent représenter le même profil.
+        // Une seule observation par match, la mieux documentée, sans addition artificielle.
+        const scoreEvidence = (p: any) =>
+          Number(p.darts != null && p.darts > 0 && p.points != null) * 10 +
+          Number(p.hitsS != null) + Number(p.hitsD != null) + Number(p.hitsT != null) +
+          Number(p.bestVisit != null);
+        const uniqueMatching = requestedId && matching.length > 1
+          ? matching.slice().sort((a, b) => scoreEvidence(b) - scoreEvidence(a)).slice(0, 1)
+          : matching;
+        for (const part of uniqueMatching) {
           const darts = part.darts ?? 0;
           const points = part.points;
           const exactAvg = darts > 0 && points !== null ? points * 3 / darts : null;
