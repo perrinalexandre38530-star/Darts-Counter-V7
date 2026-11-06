@@ -15,6 +15,7 @@ import {
   listOrganizationPartners,
   loadOrganizationLocalState,
 } from "./organizationService";
+import { listOrganizationShopItems } from "./organizationShop";
 import { loadOrganizationWorkspace } from "./organizationWorkspace";
 
 export type OrganizationBackupSnapshot = {
@@ -38,6 +39,7 @@ export type OrganizationBackupSnapshot = {
     feeCampaigns: any[];
     feeMembers: Record<string, any[]>;
     partners: any[];
+    shopItems?: any[];
     federationLinks: any[];
     installations: any[];
     cloudAvailable: Record<string, boolean>;
@@ -81,7 +83,7 @@ export async function exportOrganizationsBackupSnapshot(
         groups: localState.groups.filter((row) => row.organizationId === organization.id),
         events: localState.events.filter((row) => row.organizationId === organization.id),
         members: [], invitations: [], competitions: [], competitionDetails: [], rankings: [], announcements: [],
-        feeCampaigns: [], feeMembers: {}, partners: [], federationLinks: [], installations: [],
+        feeCampaigns: [], feeMembers: {}, partners: [], shopItems: [], federationLinks: [], installations: [],
         cloudAvailable: {},
         errors: ["remote refresh skipped during local snapshot"],
       })),
@@ -124,6 +126,8 @@ export async function exportOrganizationsBackupSnapshot(
     cloudAvailable.federations = federationsResult.cloudAvailable;
     cloudAvailable.installations = installationsResult.cloudAvailable;
 
+    const shopItems = await safe("shop", [] as any[], () => listOrganizationShopItems(uid, organization.id));
+    cloudAvailable.shop = !errors.some((entry) => entry.startsWith("shop:"));
     const competitionDetails = await Promise.all(competitionsResult.competitions.map((competition: any) =>
       safe(`competition:${competition.id}`, null as any, () => getOrganizationCompetitionDetail(uid, competition.id))
     ));
@@ -146,6 +150,7 @@ export async function exportOrganizationsBackupSnapshot(
       feeCampaigns: feeResult.campaigns,
       feeMembers: Object.fromEntries(feeMembersEntries),
       partners: partnersResult.partners,
+      shopItems,
       federationLinks: federationsResult.links,
       installations: installationsResult.installations,
       cloudAvailable,
