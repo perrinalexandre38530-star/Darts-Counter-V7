@@ -184,22 +184,29 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
     };
   }, []);
 
-  const cards = React.useMemo(() => COLLECTIBLE_CARDS.filter((card) => {
-    const isUnlocked = !!unlocks[card.id];
-    if (filter === "awena" || filter === "firefighter" || filter === "loterie" || filter === "killer" || filter === "legends") return card.collection === filter;
-    if (filter === "unlocked") return isUnlocked;
-    if (filter === "locked") return !isUnlocked;
-    return true;
-  }), [filter, unlocks]);
+  const cards = React.useMemo(() => {
+    // Filtrer d'abord, puis présenter les cartes gagnées avant celles encore verrouillées.
+    // .filter() renvoie une nouvelle liste : l'ordre source de COLLECTIBLE_CARDS reste intact.
+    const filtered = COLLECTIBLE_CARDS.filter((card) => {
+      const isUnlocked = !!unlocks[card.id];
+      if (filter === "awena" || filter === "firefighter" || filter === "loterie" || filter === "killer" || filter === "legends") return card.collection === filter;
+      if (filter === "unlocked") return isUnlocked;
+      if (filter === "locked") return !isUnlocked;
+      return true;
+    });
+    // Le tri natif est stable : à statut égal, chaque famille conserve son ordre habituel.
+    return filtered.sort((a, b) => Number(!!unlocks[b.id]) - Number(!!unlocks[a.id]));
+  }, [filter, unlocks]);
 
+  const unlockedInView = cards.filter((card) => !!unlocks[card.id]).length;
   const unlockedCount = COLLECTIBLE_CARDS.filter((card) => !!unlocks[card.id]).length;
   const selectedCard = selectedCardId ? COLLECTIBLE_CARDS.find((card) => card.id === selectedCardId) || null : null;
 
   const labels = pickLegacyLocalizedValue(
     lang,
-    { all:"TOUTES", awena:"AWENA", firefighter:"FIREFIGHTER", loterie:"LOTERIE", killer:"KILLER", legends:"LÉGENDES", unlocked:"DÉBLOQUÉES", locked:"VERROUILLÉES", title:"COLLECTION DE CARTES", subtitle:"Relève les défis pour débloquer définitivement les cartes de ce profil.", noProfile:"Sélectionne un profil actif pour commencer une collection.", progress:"PROGRESSION COLLECTION", lockedCard:"CARTE VERROUILLÉE", unlockedCard:"DÉBLOQUÉE", close:"FERMER", continue:"CONTINUER", justUnlocked:"CARTE DÉBLOQUÉE", scan:"ACTUALISER" },
-    { all:"ALL", awena:"AWENA", firefighter:"FIREFIGHTER", loterie:"LOTTERY", killer:"KILLER", legends:"LEGENDS", unlocked:"UNLOCKED", locked:"LOCKED", title:"CARD COLLECTION", subtitle:"Complete challenges to permanently unlock cards for this profile.", noProfile:"Select an active profile to start a collection.", progress:"COLLECTION PROGRESS", lockedCard:"LOCKED CARD", unlockedCard:"UNLOCKED", close:"CLOSE", continue:"CONTINUE", justUnlocked:"CARD UNLOCKED", scan:"REFRESH" },
-    { all:"TODAS", awena:"AWENA", firefighter:"FIREFIGHTER", loterie:"LOTERÍA", killer:"KILLER", legends:"LEYENDAS", unlocked:"DESBLOQUEADAS", locked:"BLOQUEADAS", title:"COLECCIÓN DE CARTAS", subtitle:"Completa desafíos para desbloquear cartas permanentemente para este perfil.", noProfile:"Selecciona un perfil activo para iniciar una colección.", progress:"PROGRESO DE COLECCIÓN", lockedCard:"CARTA BLOQUEADA", unlockedCard:"DESBLOQUEADA", close:"CERRAR", continue:"CONTINUAR", justUnlocked:"CARTA DESBLOQUEADA", scan:"ACTUALIZAR" },
+    { all:"TOUTES", awena:"AWENA", firefighter:"FIREFIGHTER", loterie:"LOTERIE", killer:"KILLER", legends:"LÉGENDES", unlocked:"DÉBLOQUÉES", locked:"VERROUILLÉES", remaining:"À DÉBLOQUER", title:"COLLECTION DE CARTES", subtitle:"Relève les défis pour débloquer définitivement les cartes de ce profil.", noProfile:"Sélectionne un profil actif pour commencer une collection.", progress:"PROGRESSION COLLECTION", lockedCard:"CARTE VERROUILLÉE", unlockedCard:"DÉBLOQUÉE", close:"FERMER", continue:"CONTINUER", justUnlocked:"CARTE DÉBLOQUÉE", scan:"ACTUALISER" },
+    { all:"ALL", awena:"AWENA", firefighter:"FIREFIGHTER", loterie:"LOTTERY", killer:"KILLER", legends:"LEGENDS", unlocked:"UNLOCKED", locked:"LOCKED", remaining:"TO UNLOCK", title:"CARD COLLECTION", subtitle:"Complete challenges to permanently unlock cards for this profile.", noProfile:"Select an active profile to start a collection.", progress:"COLLECTION PROGRESS", lockedCard:"LOCKED CARD", unlockedCard:"UNLOCKED", close:"CLOSE", continue:"CONTINUE", justUnlocked:"CARD UNLOCKED", scan:"REFRESH" },
+    { all:"TODAS", awena:"AWENA", firefighter:"FIREFIGHTER", loterie:"LOTERÍA", killer:"KILLER", legends:"LEYENDAS", unlocked:"DESBLOQUEADAS", locked:"BLOQUEADAS", remaining:"POR DESBLOQUEAR", title:"COLECCIÓN DE CARTAS", subtitle:"Completa desafíos para desbloquear cartas permanentemente para este perfil.", noProfile:"Selecciona un perfil activo para iniciar una colección.", progress:"PROGRESO DE COLECCIÓN", lockedCard:"CARTA BLOQUEADA", unlockedCard:"DESBLOQUEADA", close:"CERRAR", continue:"CONTINUAR", justUnlocked:"CARTA DESBLOQUEADA", scan:"ACTUALIZAR" },
   );
 
   if (!String(profileId || "").trim()) return <div style={{ padding:18, borderRadius:18, border:`1px dashed ${theme.borderSoft}`, textAlign:"center", color:theme.textSoft, fontSize:12 }}>{labels.noProfile}</div>;
@@ -230,10 +237,16 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
     </div>
 
     <div style={{ display:"grid", gridTemplateColumns:"repeat(2, minmax(0,1fr))", gap:10 }}>
-      {cards.map((card) => {
+      {cards.map((card, index) => {
         const isUnlocked = !!unlocks[card.id];
+        const startsGroup = index === 0 || (!!unlocks[cards[index - 1].id]) !== isUnlocked;
         const progress = cardRequirementProgress(card, metrics);
-        return <button key={card.id} type="button" onClick={() => setSelectedCardId(card.id)} style={{ minWidth:0, padding:0, borderRadius:16, overflow:"hidden", border:`1px solid ${isUnlocked ? `${card.accent}aa` : theme.borderSoft}`, background:"rgba(0,0,0,.28)", boxShadow:isUnlocked ? `0 0 18px ${card.accent}24` : "none", cursor:"pointer", textAlign:"left" }}>
+        return <React.Fragment key={card.id}>
+          {startsGroup && <div style={{ gridColumn:"1 / -1", display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, padding:"7px 2px 1px", borderTop:index > 0 ? `1px solid ${theme.borderSoft}` : "none", color:isUnlocked ? "#67e7a4" : theme.textSoft, fontSize:10.5, fontWeight:1000, letterSpacing:.65 }}>
+            <span>{isUnlocked ? `✓ ${labels.unlocked}` : `🔒 ${labels.remaining}`}</span>
+            <span style={{ color:theme.textSoft, fontVariantNumeric:"tabular-nums" }}>{isUnlocked ? unlockedInView : cards.length - unlockedInView}</span>
+          </div>}
+          <button type="button" onClick={() => setSelectedCardId(card.id)} style={{ minWidth:0, padding:0, borderRadius:16, overflow:"hidden", border:`1px solid ${isUnlocked ? `${card.accent}aa` : theme.borderSoft}`, background:"rgba(0,0,0,.28)", boxShadow:isUnlocked ? `0 0 18px ${card.accent}24` : "none", cursor:"pointer", textAlign:"left" }}>
           <div style={{ position:"relative", aspectRatio:CARD_PREVIEW_ASPECT_RATIO, overflow:"hidden", background:"radial-gradient(circle at 50% 18%, rgba(255,255,255,.08), rgba(3,3,3,1) 58%)", display:"grid", placeItems:"center", padding:8 }}>
             <img src={card.image || IMAGE_BY_CARD[card.id] || ""} alt={card.name} loading="lazy" style={{ width:"100%", height:"100%", objectFit:"contain", objectPosition:"center center", display:"block", filter:isUnlocked ? "none" : "grayscale(.9) brightness(.34)", transform:"none" }} />
             {card.rarity === "ultra" && <div style={{position:"absolute",top:7,left:7,right:7,display:"flex",justifyContent:"center",pointerEvents:"none"}}><span style={{fontSize:9,fontWeight:1000,letterSpacing:.7,color:"#fff4cf",padding:"3px 9px",borderRadius:999,border:"1px solid #ffdf88bb",background:"linear-gradient(90deg,#3c2452e8,#98660fdf,#3c2452e8)",boxShadow:"0 0 9px #e9bd7766"}}>✦ ULTRA RARE ✦</span></div>}
@@ -242,7 +255,8 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
             <div style={{ position:"absolute", left:7, right:7, bottom:7, borderRadius:999, background:"rgba(0,0,0,.7)", overflow:"hidden", height:6, border:"1px solid rgba(255,255,255,.15)" }}><div style={{ width:`${Math.round(progress * 100)}%`, height:"100%", background:isUnlocked ? card.accent : theme.primary }} /></div>
           </div>
           <div style={{ padding:"9px 9px 10px" }}><div style={{ fontSize:10.5, fontWeight:1000, color:isUnlocked ? card.accent : theme.text, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{card.name}</div><div style={{ fontSize:8.8, color:theme.textSoft, marginTop:2, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{localText(lang, card.subtitle)}</div>{!isUnlocked ? <div style={{ marginTop:7 }}><ProgressRequirements card={card} metrics={metrics} lang={lang} /></div> : <div style={{ marginTop:6, fontSize:9, color:"#67e7a4", fontWeight:950 }}>✓ {labels.unlockedCard}</div>}</div>
-        </button>;
+          </button>
+        </React.Fragment>;
       })}
     </div>
 

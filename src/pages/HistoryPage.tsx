@@ -170,6 +170,12 @@ function isUsableSavedEntry(v: any): boolean {
   try {
     const id = String(v?.id ?? v?.matchId ?? v?.resumeId ?? "").trim();
     if (!id) return false;
+    // Training Lab sessions belong to the Centre d’entraînement, not match History.
+    // Preserve legacy records in storage: this is a presentation filter, not deletion.
+    const trainingModes = [v?.kind, v?.mode, v?.game?.mode, v?.summary?.mode, v?.payload?.mode, v?.payload?.kind];
+    if (trainingModes.some((mode: any) => String(mode || "").toLowerCase() === "training_lab") ||
+        ((v?.game?.isTraining || v?.summary?.isTraining || v?.payload?.isTraining) &&
+         trainingModes.some((mode: any) => String(mode || "").toLowerCase() === "training_lab"))) return false;
     // Une configuration CHALLENGE ouverte puis quittée sans aucune fléchette
     // n'est pas une partie et ne doit apparaître dans aucun onglet historique.
     const modeBlob = [v?.kind, v?.mode, v?.game?.mode, v?.summary?.mode, v?.payload?.mode, v?.payload?.kind]

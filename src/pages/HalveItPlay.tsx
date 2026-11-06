@@ -6,7 +6,7 @@
 
 import React from "react";
 import BackDot from "../components/BackDot";
-import DartboardClickable from "../components/DartboardClickable";
+import DartboardClickable, { type DartboardGuideTarget } from "../components/DartboardClickable";
 import InfoDot from "../components/InfoDot";
 import Keypad from "../components/Keypad";
 import PageHeader from "../components/PageHeader";
@@ -89,6 +89,21 @@ function targetHint(target: HalveItTarget) {
   if (target.kind === "triple") return "N’importe quel triple";
   if (target.kind === "bull") return "BULL 25 ou DBULL 50";
   return `S${target.value} / D${target.value} / T${target.value}`;
+}
+
+// En mode cible tactile, montrer le contrat sur la véritable cible :
+// numéro complet, tous les doubles/triples ou les deux zones du bull.
+function boardGuidesForTarget(target: HalveItTarget): DartboardGuideTarget[] {
+  if (target.kind === "number") return [{ ring: "number", segment: target.value, color: C.gold }];
+  if (target.kind === "bull") return [{ ring: "bull_any", color: C.green }];
+  if (target.kind === "double" || target.kind === "triple") {
+    return Array.from({ length: 20 }, (_, i) => ({
+      ring: target.kind === "double" ? "double" as const : "triple" as const,
+      segment: i + 1,
+      color: target.kind === "double" ? C.cyan : C.pink,
+    }));
+  }
+  return [];
 }
 
 function botHitChance(level: string) {
@@ -220,6 +235,7 @@ export default function HalveItPlay(props: any) {
   const activeScore = Number(state.scoresByPlayer[activePlayerId] || 0);
   const target = getHalveItCurrentTarget(state);
   const targetLabel = target?.label || "—";
+  const boardGuides = React.useMemo(() => boardGuidesForTarget(target), [target?.id]);
   const botIds = React.useMemo(() => new Set((config.botIds || []).map(String)), [config.botIds]);
 
   // Jusqu'à douze participants : suivre horizontalement le joueur / l'équipe
@@ -346,13 +362,28 @@ export default function HalveItPlay(props: any) {
     };
   }
 
+  // Enregistrement automatique unique ; le bouton HISTORIQUE ne doit pas
+  // renvoyer une seconde fois la même partie finie au pipeline History V4.
   React.useEffect(() => {
     if (!state.finished) return;
     setShowEnd(true);
-    if (autoSavedRef.current === matchIdRef.current) return;
-    autoSavedRef.current = matchIdRef.current;
-    try { onFinish?.(buildHistoryRecord(), { navigate: false }); } catch {}
+    if (autoSavedRef.current === matchIdRef.current || typeof onFinish !== "function") return;
+    try {
+      onFinish(buildHistoryRecord(), { navigate: false });
+      autoSavedRef.current = matchIdRef.current;
+    } catch { /* Ne pas marquer comme sauvegardé si l'écriture a échoué. */ }
   }, [state.finished]);
+
+  function openFinishedHistory() {
+    if (autoSavedRef.current !== matchIdRef.current && typeof onFinish === "function") {
+      try {
+        onFinish(buildHistoryRecord(), { navigate: true });
+        autoSavedRef.current = matchIdRef.current;
+        return;
+      } catch { /* L'historique reste consultable même si l'écriture échoue. */ }
+    }
+    if (typeof go === "function") go("statsHub", { tab: "history" });
+  }
 
   React.useEffect(() => {
     if (state.finished) { clearDartsMatchDraft(draftMode); return; }
@@ -429,6 +460,11 @@ export default function HalveItPlay(props: any) {
         </div>
       </section>
 
+      {state.finished ? <div className="msc-halveit-finished-bar" style={{ ...panelStyle(), marginBottom: 7, padding: "9px 11px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 9 }}>
+        <div style={{ minWidth: 0 }}><strong style={{ color: primary, fontSize: 11 }}>PARTIE TERMINÉE</strong><div style={{ color: themeSoft, fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{state.tied ? "Égalité" : `Vainqueur : ${state.standings[0]?.name || "—"}`}</div></div>
+        <button type="button" onClick={() => setShowEnd(true)} style={{ ...miniAction(primary), minHeight: 42, flexShrink: 0 }}>VOIR LES RÉSULTATS</button>
+      </div> : null}
+
       {lastVisit ? <div className="msc-halveit-last-visit" aria-live="polite" style={{ ...panelStyle(), padding: "8px 11px", marginBottom: 7, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, fontSize: 11 }}>
         <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: themeSoft }}><strong style={{ color: primary }}>DERNIÈRE VOLÉE</strong> · {lastVisitName} · {lastVisit.targetLabel}</span>
         <strong style={{ color: lastVisit.halved ? C.red : C.green, whiteSpace: "nowrap" }}>{lastVisit.halved ? `÷2 (−${lastVisit.loss})` : `+${lastVisit.gain}`} · {lastVisit.scoreAfter} pts</strong>
@@ -449,16 +485,16 @@ export default function HalveItPlay(props: any) {
         </div>
         {notice ? <div style={{ textAlign: "center", color: primary, fontSize: 10.5, fontWeight: 900, marginBottom: 7 }}>{notice}</div> : null}
         {config.scoreInputMethod === "dartboard" ? <>
-          <DartboardClickable multiplier={multiplier} disabled={botThinking || state.finished || throwDarts.length >= 3} onHit={(segment, mult) => addDart(segment, mult)} />
+          <DartboardClickable multiplier={multiplier} disabled={botThinking || state.finished || throwDarts.length >= 3} guideTargets={boardGuides} guideLabel={`VISE ${targetLabel}`} guideColor={primary} onHit={(segment, mult) => addDart(segment, mult)} />
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginTop: 7 }}><button onClick={() => setMultiplier(1)} style={modeButton(multiplier === 1, C.green)}>SIMPLE</button><button onClick={() => setMultiplier(2)} style={modeButton(multiplier === 2, C.cyan)}>DOUBLE</button><button onClick={() => setMultiplier(3)} style={modeButton(multiplier === 3, C.pink)}>TRIPLE</button></div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginTop: 7 }}><button onClick={cancelOrUndo} style={actionButton(C.gold)}>ANNULER</button><button onClick={() => addDart(0, 1)} style={actionButton(C.red)}>MISS</button><button onClick={validateVisit} style={actionButton(C.green)}>VALIDER</button></div>
-        </> : <div style={{ opacity: botThinking ? .45 : 1, pointerEvents: botThinking ? "none" : "auto" }}><Keypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={() => setMultiplier(1)} onDouble={() => setMultiplier(2)} onTriple={() => setMultiplier(3)} onCancel={cancelOrUndo} onBackspace={() => setThrowDarts((prev) => prev.slice(0, -1))} onNumber={(n) => addDart(n)} onBull={(bull) => addDart(25, bull === 50 ? 2 : 1)} onValidate={validateVisit} hidePreview hideTotal centerSlot={<div style={{ textAlign: "center", color: primary, fontWeight: 1000, fontSize: 11 }}>{targetLabel}<div style={{ fontSize: 8, color: themeSoft }}>{throwDarts.length}/3</div></div>} noticeSlot={notice ? <span>{notice}</span> : null} validateAttention={throwDarts.length === 3} safeBottomPad /></div>}
+        </> : <div style={{ opacity: botThinking ? .45 : 1, pointerEvents: botThinking ? "none" : "auto" }}><Keypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={() => setMultiplier(1)} onDouble={() => setMultiplier(2)} onTriple={() => setMultiplier(3)} onCancel={cancelOrUndo} onBackspace={() => setThrowDarts((prev) => prev.slice(0, -1))} onNumber={(n) => addDart(n)} onBull={() => addDart(25, multiplier === 2 ? 2 : 1)} onValidate={validateVisit} hidePreview hideTotal centerSlot={<div style={{ textAlign: "center", color: primary, fontWeight: 1000, fontSize: 11 }}>{targetLabel}<div style={{ fontSize: 8, color: themeSoft }}>{throwDarts.length}/3 · DOUBLE + BULL = 50</div></div>} noticeSlot={notice ? <span>{notice}</span> : null} validateAttention={throwDarts.length === 3} safeBottomPad /></div>}
       </section> : null}
     </div>
 
     {showTable ? <StandingsModal modeLabel={modeLabel} state={state} profilesById={byId} teamById={teamById} participantMode={config.participantMode} primary={primary} onClose={() => setShowTable(false)} /> : null}
     {showStats ? <LiveStatsModal modeLabel={modeLabel} state={state} profilesById={byId} primary={primary} onClose={() => setShowStats(false)} /> : null}
-    {showEnd && state.finished ? <EndModal modeLabel={modeLabel} state={state} profilesById={byId} teamById={teamById} participantMode={config.participantMode} primary={primary} onClose={() => setShowEnd(false)} onReplay={resetMatch} onHistory={() => { try { onFinish?.(buildHistoryRecord(), { navigate: true }); } catch { if (typeof go === "function") go("statsHub", { tab: "history" }); } }} /> : null}
+    {showEnd && state.finished ? <EndModal modeLabel={modeLabel} state={state} profilesById={byId} teamById={teamById} participantMode={config.participantMode} primary={primary} onClose={() => setShowEnd(false)} onReplay={resetMatch} onHistory={openFinishedHistory} /> : null}
   </div>;
 }
 

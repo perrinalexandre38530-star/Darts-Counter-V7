@@ -33,3 +33,15 @@
 /* Les cartes du classement restent consultables et lisibles au tactile. */
 .msc-halveit-standings-strip { scroll-padding-inline: 6px; }
 .msc-halveit-standing { scroll-snap-align: center; }
+
+/* V176 — Le dartboard tactile se rétracte dans la colonne gauche sur
+   téléphones paysage ; une largeur fixe de 320px coupait les anneaux. */
+.msc-halveit-keypad [data-mss-play-input="1"] {
+  width: min(320px, 100%) !important;
+  height: auto !important;
+  aspect-ratio: 1 / 1;
+  box-sizing: border-box;
+}
+@media (orientation: portrait) and (max-height: 700px) {
+  .msc-halveit-finished-bar { flex-wrap: wrap; }
+}

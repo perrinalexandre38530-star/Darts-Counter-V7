@@ -182,6 +182,12 @@ export function recordSoloTrainingResult(input: {
 
   const saved = recordTrainingDetailedSession(record);
 
+  // Centre d’entraînement: keep individual exercise metrics and exact dart visits
+  // exclusively in the Training store. A completed multi-exercise program has
+  // its own consolidated card in trainingPlanTracker. Do not clutter match History.
+  if (modeId === "training_lab") return saved;
+
+  // Other legacy Training modes keep their existing History contract.
   // Mirror Training into the canonical History store so future statistics can be
   // rebuilt from the same exact dart path as every other Darts mode.
   const player = playerLite(input, participantId);

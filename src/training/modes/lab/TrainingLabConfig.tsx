@@ -43,7 +43,7 @@ import { buildTrainingDailyReview } from "../../profile/trainingDailyReview";
 import { buildTrainingSkillTrend } from "../../profile/trainingSkillTrend";
 
 const familyOrder: TrainingExerciseFamily[] = ["scoring", "doubles", "checkout", "precision", "bull", "regularity"];
-type HubTab = "program" | "exercises" | "diagnosis" | "progress";
+type HubTab = "program" | "exercises" | "sessions" | "diagnosis" | "progress";
 type ProgramPanel = "today" | "week" | "cycle" | "library";
 type ProgressPanel = "overview" | "skills" | "coach" | "cycles" | "history";
 type ExercisePanel = "path" | "catalog" | "technique" | "favorites";
@@ -293,6 +293,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
   const [catalogSearch, setCatalogSearch] = React.useState("");
   const [catalogSort, setCatalogSort] = React.useState<CatalogSort>("smart");
   const [dailyQueueRevision, setDailyQueueRevision] = React.useState(0);
+  const [expandedTrainingSessionId, setExpandedTrainingSessionId] = React.useState<string | null>(null);
   const [exerciseDetailId, setExerciseDetailId] = React.useState<string | null>(() => initialDetailExerciseId && TRAINING_EXERCISE_CATALOG.some((e) => e.id === initialDetailExerciseId) ? initialDetailExerciseId : null);
   const [family, setFamily] = React.useState<TrainingExerciseFamily>(recommendedFamily);
   const firstInFamily = React.useMemo(() => TRAINING_EXERCISE_CATALOG.find((e) => e.family === family) || TRAINING_EXERCISE_CATALOG[0], [family]);
@@ -548,6 +549,43 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
   const openExerciseDetail = (id: string) => { const exercise = TRAINING_EXERCISE_CATALOG.find((e) => e.id === id); if (!exercise) return; setFamily(exercise.family); setExerciseId(exercise.id); setExerciseDetailId(exercise.id); };
   const selectedProgram = programs.find((p) => p.id === programId) || (programId.startsWith("custom_") ? customProgram : coachProgram);
   const labSessions = sessions.filter((row) => row.modeId === "training_lab").slice(0, 12);
+  // One complete card per program, or one consolidated day card for free practice.
+  // Program steps remain available for analytics but must not appear as separate cards.
+  const trainingSessionCards = React.useMemo(() => {
+    const completedPrograms = programSessions.map((row) => ({
+      id: row.id, at: row.endedAt, title: row.programTitle, kind: "program" as const,
+      count: row.steps, darts: row.darts, performance: row.performanceScore,
+      accuracy: row.accuracyPct, successes: row.successes,
+      exerciseIds: row.exerciseIds,
+    }));
+    const groups = new Map<string, typeof sessions>();
+    for (const row of sessions) {
+      if (row.modeId !== "training_lab") continue;
+      // A finished program is already represented by one complete program card.
+      if (row.config?.sessionKind === "program" || row.config?.programId || row.config?.programExerciseIds) continue;
+      const day = trainingSessionDateKey(row.endedAt);
+      const key = `${row.participantId || "account"}:${day}`;
+      const list = groups.get(key) || [];
+      list.push(row);
+      groups.set(key, list);
+    }
+    const freePractice = Array.from(groups.entries()).map(([key, rows]) => {
+      const darts = rows.reduce((sum, row) => sum + row.darts, 0);
+      return {
+        id: `practice:${key}`, at: Math.max(...rows.map((row) => row.endedAt)),
+        title: "Entraînement libre", kind: "practice" as const,
+        count: rows.length, darts,
+        performance: rows.reduce((sum, row) => sum + Number(row.metrics?.performanceScore ?? row.metrics?.score ?? 0), 0) / rows.length,
+        accuracy: darts ? rows.reduce((sum, row) => sum + row.hits, 0) / darts * 100 : 0,
+        successes: rows.filter((row) => row.success).length,
+        exerciseIds: rows.map((row) => String(row.metrics?.exerciseId || row.config?.exerciseId || "")).filter(Boolean),
+      };
+    });
+    return [...completedPrograms, ...freePractice].sort((a, b) => b.at - a.at).slice(0, 80);
+  }, [programSessions, sessions]);
+  const pausedExerciseDrafts = React.useMemo(() => TRAINING_EXERCISE_CATALOG
+    .map((exercise) => ({ exercise, draft: loadTrainingExerciseDraft(exercise.id, accountParticipantId || null) }))
+    .filter((item) => hasMeaningfulTrainingExerciseDraft(item.draft)), [accountParticipantId, revision]);
 
   const startExercise = () => onStart({
     exerciseId: selected.id,
@@ -660,6 +698,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
   const tabs: Array<{ id: HubTab; label: string; icon: string }> = [
     { id: "program", label: "AUJOURD’HUI", icon: "today" },
     { id: "exercises", label: "EXERCICES", icon: "exercises" },
+    { id: "sessions", label: "MES SÉANCES", icon: "history" },
     { id: "diagnosis", label: "NIVEAU", icon: "diagnosis" },
     { id: "progress", label: "PROGRÈS", icon: "progress" },
   ];
@@ -780,6 +819,43 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
 
 
           <PrimaryNav items={tabs} activeId={tab} onChange={(id) => setTab(id as HubTab)} />
+
+          {tab === "sessions" && <section style={{ paddingTop: 15, paddingBottom: 22 }}>
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 16, fontWeight: 950 }}>MES SÉANCES</div>
+              <div style={{ marginTop: 5, fontSize: 10, opacity: .65, lineHeight: 1.5 }}>Retrouve tes séances complètes et reprends celles interrompues. Elles restent séparées de l’Historique des parties.</div>
+            </div>
+            {programDraft && <div style={{ padding: 14, marginBottom: 10, borderRadius: 14, border: "1px solid rgba(255,216,107,.32)", background: "rgba(255,216,107,.06)" }}>
+              <div style={{ fontSize: 9, color: "#ffd86b", fontWeight: 950 }}>EN COURS · PROGRAMME</div>
+              <div style={{ fontSize: 13, fontWeight: 900, marginTop: 5 }}>{programDraft.programTitle}</div>
+              <div style={{ fontSize: 10, opacity: .75, marginTop: 5 }}>{programDraft.completedSteps.length}/{programDraft.exerciseIds.length} exercices terminés</div>
+              <div style={{ height: 5, borderRadius: 8, background: "rgba(255,255,255,.1)", marginTop: 10, overflow: "hidden" }}><div style={{ height: "100%", width: `${Math.min(100, programDraft.completedSteps.length / Math.max(1, programDraft.exerciseIds.length) * 100)}%`, background: "#ffd86b" }} /></div>
+              <button type="button" onClick={resumeProgramDraft} disabled={!resolved.length} style={{ marginTop: 12, padding: "10px 15px", borderRadius: 10, background: "rgba(255,216,107,.18)", color: "inherit", border: "1px solid rgba(255,216,107,.3)", fontWeight: 900, cursor: "pointer" }}>REPRENDRE LA SÉANCE</button>
+            </div>}
+            {pausedExerciseDrafts.map(({ exercise, draft }) => <div key={`draft:${exercise.id}`} style={{ padding: 13, marginBottom: 8, borderRadius: 13, border: "1px solid rgba(255,216,107,.23)", background: "rgba(255,216,107,.035)" }}>
+              <div style={{ fontSize: 9, color: "#ffd86b", fontWeight: 900 }}>EN COURS · EXERCICE</div>
+              <div style={{ fontWeight: 900, fontSize: 12, marginTop: 4 }}>{exercise.title}</div>
+              <div style={{ fontSize: 9, opacity: .6, marginTop: 5 }}>{Number(draft?.state?.darts || 0)} fléchettes · progression conservée</div>
+              <button type="button" onClick={() => { setTab("exercises"); setExercisePanel("catalog"); openExerciseDetail(exercise.id); }} style={{ marginTop: 10, padding: "9px 12px", borderRadius: 9, border: "1px solid rgba(255,216,107,.26)", background: "rgba(255,216,107,.1)", color: "inherit", fontWeight: 900, cursor: "pointer" }}>OUVRIR ET REPRENDRE</button>
+            </div>)}
+            <div style={{ fontSize: 11, fontWeight: 950, margin: "18px 0 10px" }}>SÉANCES TERMINÉES</div>
+            {!trainingSessionCards.length && <div style={{ opacity: .66, fontSize: 11, padding: 16 }}>Aucune séance terminée pour le moment.</div>}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,260px),1fr))", gap: 10 }}>
+              {trainingSessionCards.map((card) => <div key={card.id} style={{ borderRadius: 15, background: "rgba(255,255,255,.03)", border: "1px solid rgba(39,220,255,.13)", padding: 13 }}>
+                <div style={{ fontSize: 8.5, fontWeight: 950, color: "#8cffcb" }}>TERMINÉE · {card.kind === "program" ? "PROGRAMME" : "ENTRAÎNEMENT LIBRE"}</div>
+                <div style={{ fontWeight: 950, fontSize: 13, marginTop: 5 }}>{card.title}</div>
+                <div style={{ fontSize: 9, opacity: .55, marginTop: 4 }}>{new Date(card.at).toLocaleDateString("fr-FR")} · {card.count} exercices</div>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 10, fontSize: 10 }}>
+                  <span><b>{Math.round(card.performance)}/100</b> perf.</span><span><b>{Math.round(card.accuracy)}%</b> précision</span><span><b>{card.darts}</b> fléchettes</span>
+                </div>
+                <button type="button" aria-expanded={expandedTrainingSessionId === card.id} onClick={() => setExpandedTrainingSessionId((id) => id === card.id ? null : card.id)} style={{ marginTop: 12, padding: "8px 11px", borderRadius: 9, border: "1px solid rgba(39,220,255,.22)", background: "rgba(39,220,255,.07)", color: "inherit", cursor: "pointer", fontWeight: 800 }}> {expandedTrainingSessionId === card.id ? "MASQUER" : "VOIR LA SÉANCE"} </button>
+                {expandedTrainingSessionId === card.id && <div style={{ marginTop: 11, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,.08)" }}>
+                  <div style={{ fontSize: 9, marginBottom: 7 }}>Objectifs réussis : {card.successes}/{card.count}</div>
+                  {card.exerciseIds.map((exerciseId, idx) => <div key={`${card.id}:${idx}`} style={{ padding: "4px 0", fontSize: 10, opacity: .83 }}>{idx + 1}. {TRAINING_EXERCISE_CATALOG.find((ex) => ex.id === exerciseId)?.title || exerciseId}</div>)}
+                </div>}
+              </div>)}
+            </div>
+          </section>}
 
           {tab === "program" && <>
           {viewMode === "complete" && <>

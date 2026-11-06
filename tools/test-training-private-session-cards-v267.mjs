@@ -1,0 +1,16 @@
+import { readFileSync } from 'node:fs';
+import assert from 'node:assert/strict';
+const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+const recorder = read('src/training/stats/trainingSessionRecorder.ts');
+const history = read('src/pages/HistoryPage.tsx');
+const hub = read('src/training/modes/lab/TrainingLabConfig.tsx');
+const program = read('src/training/profile/trainingPlanTracker.ts');
+assert.ok(recorder.indexOf('if (modeId === "training_lab") return saved;') < recorder.indexOf('void History.upsert('), 'Centre must exit before global history mirror');
+assert.match(history, /trainingModes\.some\(\(mode: any\).*training_lab/, 'Legacy records filtered from History UI');
+assert.match(hub, /label: "MES SÉANCES"/, 'Dedicated training tab');
+assert.match(hub, /trainingSessionCards/, 'Consolidated session cards');
+assert.match(hub, /if \(row\.config\?\.sessionKind === "program" \|\| row\.config\?\.programId/, 'Do not duplicate program step cards');
+assert.match(hub, /onClick=\{resumeProgramDraft\}/, 'Program resumes from card');
+assert.match(hub, /loadTrainingExerciseDraft\(exercise\.id/, 'Individual drafts surfaced');
+assert.match(program, /recordTrainingProgramSession/, 'Complete program stored independently');
+console.log('Training private sessions V267: OK');
