@@ -6,6 +6,7 @@ import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
 import { History } from "../../lib/history";
 import { scopedStorageKey } from "../../lib/storage";
+import { encodeTossitDraft, decodeTossitDraft } from "./tossitDraft";
 import { PageAdBanner } from "../../monetization/AdSlot";
 import {
   TOSSIT_MODES, TOSSIT_PLANNED, TOSSIT_COLORS, applyTossitAction, newTossitGame, summaryForTossit, undoTossitAction,
@@ -69,28 +70,19 @@ const TOSSIT_DRAFT_KEY = "mss:tossit:draft:v132";
 function readDraft(): TossitState | null {
   try {
     if (typeof localStorage === "undefined") return null;
-    const draft = JSON.parse(localStorage.getItem(scopedStorageKey(TOSSIT_DRAFT_KEY)) || "null");
-    if (!draft || draft.finished || !TOSSIT_MODES.some((mode) => mode.id === draft.mode) ||
-      !Array.isArray(draft.players) || !Array.isArray(draft.events) || !draft.scores ||
-      !Number.isInteger(draft.dartsPerPlayer) || draft.dartsPerPlayer < 3 || draft.dartsPerPlayer > 9 ||
-      !Array.isArray(draft.board) || draft.board.length !== (draft.gridSize || 4) ** 2 ||
-      draft.players.some((player: TossitPlayer) => !player?.id || !player?.name)) return null;
-    // A persisted in-progress game never carries a recursive Undo graph.
-    const players = draft.players as TossitPlayer[];
-    return { ...draft, victoryTarget: Number.isInteger(draft.victoryTarget) ? draft.victoryTarget : (draft.mode === "conquest" ? 5 : 3),
-      cornholeBusted: draft.cornholeBusted || Object.fromEntries(players.map(p => [p.id, false])),
-      pitch: draft.pitch || { attackerId: players[0].id, attackerThrows: 0, defenderThrows: 0, chainLength: 0, blocks: 0, longPassUsed: false, drive: 1 },
-      reach: draft.reach || Object.fromEntries(players.map(p => [p.id, { bestCm: 0, stuck: 0 }])),
-      thiefCopWins: draft.thiefCopWins || Object.fromEntries(players.map(p => [p.id, 0])),
-      chores: draft.chores || Object.fromEntries(players.map(p => [p.id, []])),
-      previous: null } as TossitState;
+    return decodeTossitDraft(
+      localStorage.getItem(scopedStorageKey(TOSSIT_DRAFT_KEY)),
+      (mode) => TOSSIT_MODES.some(entry => entry.id === mode),
+    );
   } catch { return null; }
 }
 function writeDraft(state: TossitState) {
   try {
     if (typeof localStorage === "undefined") return;
-    if (state.finished) localStorage.removeItem(scopedStorageKey(TOSSIT_DRAFT_KEY));
-    else localStorage.setItem(scopedStorageKey(TOSSIT_DRAFT_KEY), JSON.stringify({ ...state, previous: null }));
+    const key = scopedStorageKey(TOSSIT_DRAFT_KEY);
+    const serialized = encodeTossitDraft(state);
+    if (serialized === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, serialized);
   } catch { /* browsing without storage access must not block gameplay */ }
 }
 
@@ -151,6 +143,22 @@ function MenuDecorCard() {
     <img src={menuDecor} alt="" style={{ display: "block", width: "100%", height: "auto", objectFit: "cover" }} />
   </section>;
 }
+function tossitProgress(state: TossitState, tr: (fr: string, en: string) => string): string {
+  if (state.finished) return tr("PARTIE TERMINÉE", "GAME FINISHED");
+  const n = state.events.length + 1;
+  const first = tr("MANCHE", "ROUND");
+  if (state.mode === "tictac") return `${tr("TOUR", "TURN")} ${n} • ${state.gridSize}×${state.gridSize} • ${tr("ALIGNER", "CONNECT")} ${state.gridSize - 1}`;
+  if (["reach", "rainbow", "chores"].includes(state.mode)) {
+    const pass = Math.floor(state.events.length / Math.max(state.players.length, 1)) + 1;
+    return `${tr("PASSAGE", "TURN")} ${pass}/${state.victoryTarget}`;
+  }
+  if (["thief_cop", "bottle"].includes(state.mode)) return `${first} ${n}/${state.victoryTarget}`;
+  if (["battle", "conquest"].includes(state.mode)) return `${first} ${n} • ${tr("PREMIER À", "FIRST TO")} ${state.victoryTarget} ${tr("MANCHES", "ROUNDS")}`;
+  if (state.mode === "sniper") return `${tr("ESSAI", "ATTEMPT")} ${n} • ${tr("VICTOIRE IMMÉDIATE", "INSTANT WIN")}`;
+  const target = TOSSIT_MODES.find(mode => mode.id === state.mode)?.target || 0;
+  return `${["target", "duel", "goalkeeper", "football_pitch"].includes(state.mode) ? tr("TOUR", "TURN") : first} ${n}${target ? ` • ${tr("CIBLE", "TARGET")} ${target}` : ""}`;
+}
+
 function ScoreCards({ state }: { state: TossitState }) {
   return <div className="tossit-score-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(126px,1fr))", gap: 8, margin: "12px 0" }}>
     {state.players.map((p, index) => <div key={p.id} className="tossit-score-card" style={{ ...panel, border: state.winnerId === p.id ? `2px solid ${ACCENT}` : ["target", "duel", "tictac", "reach", "rainbow", "chores"].includes(state.mode) && index === state.nextPlayerIndex && !state.finished ? `2px solid ${ACCENT}` : "1px solid #45606B", textAlign: "center", margin: 0 }}>
@@ -261,6 +269,7 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
   const [speedKiss, setSpeedKiss] = React.useState<Record<string, number>>({});
   const [speedJumpoverWinner, setSpeedJumpoverWinner] = React.useState("");
   const [hits, setHits] = React.useState<number[]>([]);
+  const [tictacSelection, setTictacSelection] = React.useState<number | "miss" | null>(null);
   const [duelStuck, setDuelStuck] = React.useState(0);
   const [duelJack, setDuelJack] = React.useState(false);
   const [duelKiss, setDuelKiss] = React.useState(0);
@@ -297,6 +306,8 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
   type BorderDart = { kind: "miss" | "wrong" | "valid"; cm: string };
   const [borderDarts, setBorderDarts] = React.useState<Record<string, BorderDart[]>>(() => Object.fromEntries(players.map((p) => [p.id, Array.from({ length: state.dartsPerPlayer }, () => ({ kind: "miss", cm: "" }))])));
   const saved = React.useRef(false);
+  // Ignore double taps after a successful validation (no timer, no hidden navigation).
+  const lastCommitAt = React.useRef(0);
   const meta = TOSSIT_MODES.find((x) => x.id === mode)!;
 
   React.useEffect(() => { writeDraft(state); }, [state]);
@@ -315,10 +326,13 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
     onFinish?.(match);
   }, [state, mode, onFinish]);
   const commit = (action: Parameters<typeof applyTossitAction>[1]): boolean => {
+    // Prevent a double tap from recording the same physical throw twice.
+    if (Date.now() - lastCommitAt.current < 550) return false;
     try {
       // Validate before scheduling React state updates: exceptions inside an
       // updater run during rendering and would bypass this error boundary.
       const next = applyTossitAction(state, action);
+      lastCommitAt.current = Date.now();
       setState(next);
       setError("");
       setHits([]);
@@ -357,7 +371,7 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
   return <Layout className="tossit-play-page"><Header title={meta.title} mode={mode} onBack={() => go("tossit_config", { mode })} />
     <div className="tossit-play-grid">
     <aside className="tossit-play-sidebar" aria-label={tr("Score de la partie", "Match scoreboard")}>
-    <div className="tossit-round-label" style={{ textAlign: "center", fontSize: 12, color: ACCENT, letterSpacing: 1, fontWeight: 700 }}>{state.finished ? tr("PARTIE TERMINÉE", "GAME FINISHED") : `${tr(state.mode === "tictac" || ["reach", "rainbow"].includes(state.mode) ? "TOUR" : "MANCHE", state.mode === "tictac" || ["reach", "rainbow"].includes(state.mode) ? "TURN" : "ROUND")} ${state.events.length + 1}${["reach", "rainbow", "thief_cop"].includes(mode) ? ` • ${tr("PASSAGES", "TURNS")} ${state.victoryTarget}` : ""}${["battle", "conquest"].includes(mode) ? ` • ${tr("PREMIER À", "FIRST TO")} ${state.victoryTarget} ${tr("MANCHES", "ROUNDS")}` : mode === "sniper" ? ` • ${tr("VICTOIRE IMMÉDIATE", "INSTANT WIN")}` : meta.target ? ` • ${tr("CIBLE", "TARGET")} ${meta.target}` : ` • ${state.gridSize}×${state.gridSize}`}`}</div>
+    <div className="tossit-round-label" role="status" style={{ textAlign: "center", fontSize: 12, color: ACCENT, letterSpacing: 1, fontWeight: 700 }}>{tossitProgress(state, tr)}</div>
     <ScoreCards state={state} />
     </aside>
     <div className="tossit-play-main">
@@ -382,17 +396,17 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
           <label><input type="checkbox" checked={jackover} onChange={(e) => setJackover(e.target.checked)} /> Jackover (victoire immédiate)</label>
         </div>
         <strong style={{ color: ACCENT, display: "block", marginBottom: 10 }}>+{closestDarts + kiss * 2 + frenchKiss * 3 + (jackiss ? 3 + jackissExtra : 0) + (jumpover ? 9 : 0)} points</strong>
-        <button style={{ ...button, width: "100%" }} onClick={() => { if (commit({ kind: "classic", playerId: roundWinner, closestDarts, kiss, frenchKiss, jackiss, jackissExtra, jumpover, jackover })) resetClassic(); }}>{tr("VALIDER LA MANCHE", "CONFIRM ROUND")}</button>
+        <button className="tossit-confirm-button" style={{ ...button, width: "100%" }} onClick={() => { if (commit({ kind: "classic", playerId: roundWinner, closestDarts, kiss, frenchKiss, jackiss, jackissExtra, jumpover, jackover })) resetClassic(); }}>{tr("VALIDER LA MANCHE", "CONFIRM ROUND")}</button>
       </section>}
       {mode === "speed" && <section className="tossit-mode-panel" style={panel}><h3>{tr("Lancers simultanés", "Simultaneous throws")}</h3>
         {players.map((p) => <div key={p.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}><strong style={{ gridColumn: "1 / -1" }}>{p.name}</strong><label>{tr("Ventouses collées", "Stuck darts")}<select style={input} value={stuck[p.id] ?? 0} onChange={(e) => setStuck((v) => ({ ...v, [p.id]: Number(e.target.value) }))}>{Array.from({ length: state.dartsPerPlayer + 1 }, (_, n) => <option key={n} value={n}>{n}</option>)}</select></label><label>Kiss (+1)<select style={input} value={speedKiss[p.id] ?? 0} onChange={(e) => setSpeedKiss((v) => ({ ...v, [p.id]: Number(e.target.value) }))}>{Array.from({ length: state.dartsPerPlayer + 1 }, (_, n) => <option key={n} value={n}>{n}</option>)}</select></label></div>)}
         <label>Jumpover<select style={input} value={speedJumpoverWinner} onChange={(e) => setSpeedJumpoverWinner(e.target.value)}><option value="">{tr("Aucun", "None")}</option>{players.map((p) => <option key={p.id} value={p.id}>{p.name} ({tr("victoire immédiate", "instant win")})</option>)}</select></label>
-        <button style={{ ...button, width: "100%", marginTop: 13 }} onClick={() => { if (commit({ kind: "speed", stuck, kiss: speedKiss, jumpoverWinnerId: speedJumpoverWinner || undefined })) { setStuck({}); setSpeedKiss({}); setSpeedJumpoverWinner(""); } }}>{tr("VALIDER LA MANCHE", "CONFIRM ROUND")}</button>
+        <button className="tossit-confirm-button" style={{ ...button, width: "100%", marginTop: 13 }} onClick={() => { if (commit({ kind: "speed", stuck, kiss: speedKiss, jumpoverWinnerId: speedJumpoverWinner || undefined })) { setStuck({}); setSpeedKiss({}); setSpeedJumpoverWinner(""); } }}>{tr("VALIDER LA MANCHE", "CONFIRM ROUND")}</button>
       </section>}
       {mode === "target" && <section className="tossit-mode-panel" style={panel}><h3>{tr("Au tour de", "Now playing")}: {targetActive?.name}</h3><p style={{ opacity: .75 }}>{tr("Touchez la valeur de chaque fléchette. 0 = manquée.", "Select each dart value. 0 = miss.")}</p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8 }}>{[0, 1, 2, 3].map((v) => <button key={v} style={button} disabled={hits.length >= state.dartsPerPlayer} onClick={() => setHits((old) => old.length < state.dartsPerPlayer ? [...old, v] : old)}>{v}</button>)}</div>
-        <p style={{ minHeight: 22 }}>{hits.map((v) => String(v)).join(" + ")} {hits.length ? `= ${hits.reduce((s, n) => s + n, 0) + (hits.length === state.dartsPerPlayer && hits.every((v) => v > 0) ? 1 : 0)}` : ""}</p>
-        <div style={{ display: "flex", gap: 8 }}><button style={secondary} onClick={() => setHits((old) => old.slice(0, -1))}>{tr("Effacer", "Backspace")}</button><button style={{ ...button, flex: 1 }} disabled={hits.length !== state.dartsPerPlayer} onClick={() => commit({ kind: "target", hits })}>{tr("VALIDER LA VOLÉE", "CONFIRM THROWS")}</button></div>
+        <div className="tossit-touch-keypad" role="group" aria-label={tr("Valeurs des ventouses", "Dart values")}>{[0, 1, 2, 3].map((v) => <button type="button" key={v} className="tossit-touch-key" style={v === 0 ? secondary : button} aria-label={v === 0 ? tr("Ventouse manquée", "Missed dart") : `${v} ${tr("points", "points")}`} disabled={hits.length >= state.dartsPerPlayer} onClick={() => setHits((old) => old.length < state.dartsPerPlayer ? [...old, v] : old)}>{v}</button>)}</div>
+        <p role="status" aria-live="polite" className="tossit-dart-progress">{tr("Ventouses", "Darts")} {hits.length}/{state.dartsPerPlayer} : {hits.length ? `${hits.map(String).join(" + ")} = ${hits.reduce((s, n) => s + n, 0) + (hits.length === state.dartsPerPlayer && hits.every((v) => v > 0) ? 1 : 0)} ${tr("pts", "pts")}` : "—"}</p>
+        <div style={{ display: "flex", gap: 8 }}><button style={secondary} onClick={() => setHits((old) => old.slice(0, -1))}>{tr("Effacer", "Backspace")}</button><button className="tossit-confirm-button" style={{ ...button, flex: 1 }} disabled={hits.length !== state.dartsPerPlayer} onClick={() => commit({ kind: "target", hits })}>{tr("VALIDER LA VOLÉE", "CONFIRM THROWS")}</button></div>
       </section>}
       {mode === "duel" && <section className="tossit-mode-panel" style={panel}>
         <h3 style={{ marginTop: 0 }}>{tr("Au tour de", "Now playing")}: {targetActive?.name}</h3>
@@ -404,7 +418,7 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
           <label>Jumpover (+3)<select style={input} value={duelJump} onChange={(e) => setDuelJump(Number(e.target.value))}>{Array.from({ length: 7 }, (_, n) => <option key={n} value={n}>{n}</option>)}</select></label>
         </div>
         <strong style={{ color: ACCENT, display: "block", margin: "12px 0" }}>+{duelJack ? duelStuck + duelKiss + duelJump * 3 : 0} pts</strong>
-        <button style={{ ...button, width: "100%" }} onClick={() => { if (commit({ kind: "duel", stuck: duelStuck, jackStuck: duelJack, kiss: duelKiss, jumpover: duelJump })) { setDuelStuck(0); setDuelJack(false); setDuelKiss(0); setDuelJump(0); } }}>{tr("VALIDER LE TOUR", "CONFIRM TURN")}</button>
+        <button className="tossit-confirm-button" style={{ ...button, width: "100%" }} onClick={() => { if (commit({ kind: "duel", stuck: duelStuck, jackStuck: duelJack, kiss: duelKiss, jumpover: duelJump })) { setDuelStuck(0); setDuelJack(false); setDuelKiss(0); setDuelJump(0); } }}>{tr("VALIDER LE TOUR", "CONFIRM TURN")}</button>
       </section>}
       {mode === "border" && <section className="tossit-mode-panel" style={panel}>
         <h3 style={{ marginTop: 0 }}>CROSS THE BORDER</h3>
@@ -419,16 +433,20 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
             {dart.kind === "valid" ? <input type="text" inputMode="decimal" aria-label={`${tr("Distance", "Distance")} ${player.name} ${index + 1}`} placeholder="cm" style={input} value={dart.cm} onChange={(e) => setBorderDarts((old) => ({ ...old, [player.id]: old[player.id].map((d, n) => n === index ? { ...d, cm: e.target.value } : d) }))} /> : <span style={{ opacity: .5, textAlign: "center" }}>—</span>}
           </div>)}
         </div>)}
-        <button style={{ ...button, width: "100%" }} onClick={submitBorder}>{tr("CALCULER & VALIDER LA MANCHE", "SCORE ROUND")}</button>
+        <button className="tossit-confirm-button" style={{ ...button, width: "100%" }} onClick={submitBorder}>{tr("CALCULER & VALIDER LA MANCHE", "SCORE ROUND")}</button>
       </section>}
       {mode === "tictac" && <section className="tossit-mode-panel" style={panel}>
         <h3 style={{ marginTop: 0 }}>{tr("Au tour de", "Now playing")}: {targetActive?.name}</h3>
-        <p style={{ opacity: .75 }}>{tr("Touchez la case atteinte par la ventouse, même occupée. Sinon, indiquez un raté.", "Tap the cell actually hit, even if occupied. Otherwise record a miss.")}</p>
+        <p style={{ opacity: .75 }}>{tr("Sélectionnez la case atteinte (même occupée) ou un raté, puis confirmez : un premier toucher ne valide plus le tour.", "Select the hit cell (even if occupied) or a miss, then confirm. The first tap does not submit the turn.")}</p>
         <div role="group" aria-label="Tic Tac TOSSIT" style={{ display: "grid", gridTemplateColumns: `repeat(${state.gridSize}, minmax(0, 1fr))`, gap: 6, margin: "14px auto", maxWidth: 430 }}>
-          {state.board.map((cell, index) => <button type="button" key={index} aria-label={`${tr("Case", "Cell")} ${index + 1}${cell ? ` ${state.players.find((p) => p.id === cell)?.name}` : ""}`} style={{ ...secondary, minWidth: 0, aspectRatio: "1", padding: 0, fontSize: "clamp(16px,5vw,30px)", fontWeight: 900, borderColor: cell ? (cell === state.players[0].id ? "#43E5EE" : "#FF67C9") : "#45606B", background: cell ? (cell === state.players[0].id ? "#0F505B" : "#5A204C") : "#0B252D" }} onClick={() => commit({ kind: "tictac", cell: index })}>{cell ? (cell === state.players[0].id ? "●" : "✦") : "·"}</button>)}
+          {state.board.map((cell, index) => <button type="button" key={index} className="tossit-tictac-cell" aria-pressed={tictacSelection === index} aria-label={`${tr("Case", "Cell")} ${index + 1}${cell ? ` ${state.players.find((p) => p.id === cell)?.name}` : ""}`} style={{ ...secondary, minWidth: 0, aspectRatio: "1", padding: 0, fontSize: "clamp(16px,5vw,30px)", fontWeight: 900, borderColor: cell ? (cell === state.players[0].id ? "#43E5EE" : "#FF67C9") : "#45606B", background: cell ? (cell === state.players[0].id ? "#0F505B" : "#5A204C") : "#0B252D" }} onClick={() => setTictacSelection(tictacSelection === index ? null : index)}>{cell ? (cell === state.players[0].id ? "●" : "✦") : "·"}</button>)}
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}><span style={{ color: "#43E5EE" }}>● {state.players[0]?.name}</span><span style={{ color: "#FF67C9" }}>✦ {state.players[1]?.name}</span><span style={{ opacity: .65 }}>{tr("Aligner", "Connect")} {state.gridSize - 1}</span></div>
-        <button style={{ ...secondary, width: "100%" }} onClick={() => commit({ kind: "tictac", cell: null })}>{tr("VENTOUSE MANQUÉE / TOUR PASSÉ", "MISSED DART / PASS TURN")}</button>
+        <div className="tossit-tictac-actions">
+          <button type="button" aria-pressed={tictacSelection === "miss"} className="tossit-tictac-miss" style={secondary} onClick={() => setTictacSelection(tictacSelection === "miss" ? null : "miss")}>{tr("VENTOUSE MANQUÉE", "MISSED DART")}</button>
+          <button type="button" className="tossit-confirm-button" style={button} disabled={tictacSelection === null} onClick={() => { if (tictacSelection !== null && commit({ kind: "tictac", cell: tictacSelection === "miss" ? null : tictacSelection })) setTictacSelection(null); }}>{tr("CONFIRMER LE TOUR", "CONFIRM TURN")}</button>
+        </div>
+        <p className="tossit-selection-feedback" role="status" aria-live="polite">{tictacSelection === null ? tr("Choisissez d’abord une case ou un raté.", "First choose a cell or a miss.") : tictacSelection === "miss" ? tr("Raté sélectionné — à confirmer", "Miss selected — confirm to record") : `${tr("Case", "Cell")} ${tictacSelection + 1} ${tr("sélectionnée — à confirmer", "selected — confirm to record")}`}</p>
       </section>}
       {mode === "battle" && <section className="tossit-mode-panel" style={panel}>
         <h3 style={{ marginTop: 0 }}>⚔️ BATTLE MODE</h3>
@@ -444,7 +462,7 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
         {battleJack && (battleStuck[players[0].id] ?? 0) + (battleStuck[players[1].id] ?? 0) > 0 && <label style={{ display: "block", marginBottom: 12 }}>{tr("Couleur la plus proche de la noire", "Coloured dart closest to black jack")}
           <select style={input} value={battleClosest} onChange={e => setBattleClosest(e.target.value)}><option value="">{tr("Sélectionner…", "Select…")}</option>{players.filter(p => (battleStuck[p.id] ?? 0) > 0).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
         </label>}
-        <button style={{ ...button, width: "100%" }} onClick={() => { if (commit({ kind: "battle", stuck: battleStuck, tieWinnerId: (battleStuck[players[0].id] ?? 0) === (battleStuck[players[1].id] ?? 0) ? battleTieWinner || undefined : undefined, jackStuck: battleJack, closestPlayerId: battleJack ? battleClosest || undefined : undefined })) { setBattleStuck({}); setBattleTieWinner(""); setBattleJack(false); setBattleClosest(""); } }}>{tr("VALIDER LA MANCHE", "CONFIRM ROUND")}</button>
+        <button className="tossit-confirm-button" style={{ ...button, width: "100%" }} onClick={() => { if (commit({ kind: "battle", stuck: battleStuck, tieWinnerId: (battleStuck[players[0].id] ?? 0) === (battleStuck[players[1].id] ?? 0) ? battleTieWinner || undefined : undefined, jackStuck: battleJack, closestPlayerId: battleJack ? battleClosest || undefined : undefined })) { setBattleStuck({}); setBattleTieWinner(""); setBattleJack(false); setBattleClosest(""); } }}>{tr("VALIDER LA MANCHE", "CONFIRM ROUND")}</button>
       </section>}
       {mode === "sniper" && <section className="tossit-mode-panel" style={panel}>
         <h3 style={{ marginTop: 0 }}>🎯 EL SNIPER</h3>
@@ -459,7 +477,7 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
         {sniperOutcome !== "miss" && <label style={{ display: "block", marginBottom: 10 }}>{tr("Joueur ayant réussi en premier", "First successful player")}
           <select style={input} value={sniperWinner} onChange={e => setSniperWinner(e.target.value)}><option value="">{tr("Sélectionner…", "Select…")}</option>{state.players.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
         </label>}
-        <button style={{ ...button, width: "100%" }} onClick={() => { if (commit({ kind: "sniper", outcome: sniperOutcome, playerId: sniperOutcome !== "miss" ? sniperWinner || undefined : undefined })) { setSniperOutcome("miss"); setSniperWinner(""); } }}>{tr("VALIDER LE RÉSULTAT", "CONFIRM RESULT")}</button>
+        <button className="tossit-confirm-button" style={{ ...button, width: "100%" }} onClick={() => { if (commit({ kind: "sniper", outcome: sniperOutcome, playerId: sniperOutcome !== "miss" ? sniperWinner || undefined : undefined })) { setSniperOutcome("miss"); setSniperWinner(""); } }}>{tr("VALIDER LE RÉSULTAT", "CONFIRM RESULT")}</button>
       </section>}
       {mode === "conquest" && <section className="tossit-mode-panel" style={panel}>
         <h3 style={{ marginTop: 0 }}>🌈 COLOR CONQUEST</h3>
@@ -474,7 +492,7 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
         {state.players.every(p => (conquestStuck[p.id] ?? 0) >= Math.min(conquestRequired, state.dartsPerPlayer)) && <label style={{ display: "block", marginTop: 12 }}>{tr("Quelle équipe a réussi en premier ?", "Which team completed first?")}
           <select style={input} value={conquestFirst} onChange={e => setConquestFirst(e.target.value)}><option value="">{tr("Sélectionner…", "Select…")}</option>{state.players.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
         </label>}
-        <button style={{ ...button, width: "100%", marginTop: 14 }} onClick={() => { if (commit({ kind: "conquest", color: conquestColor, required: Math.min(conquestRequired, state.dartsPerPlayer), stuck: conquestStuck, firstId: state.players.every(p => (conquestStuck[p.id] ?? 0) >= Math.min(conquestRequired, state.dartsPerPlayer)) ? conquestFirst || undefined : undefined })) { setConquestStuck({}); setConquestFirst(""); } }}>{tr("VALIDER LA MANCHE", "CONFIRM ROUND")}</button>
+        <button className="tossit-confirm-button" style={{ ...button, width: "100%", marginTop: 14 }} onClick={() => { if (commit({ kind: "conquest", color: conquestColor, required: Math.min(conquestRequired, state.dartsPerPlayer), stuck: conquestStuck, firstId: state.players.every(p => (conquestStuck[p.id] ?? 0) >= Math.min(conquestRequired, state.dartsPerPlayer)) ? conquestFirst || undefined : undefined })) { setConquestStuck({}); setConquestFirst(""); } }}>{tr("VALIDER LA MANCHE", "CONFIRM ROUND")}</button>
       </section>}
       {mode === "river" && <section className="tossit-mode-panel" style={panel}>
         <h3 style={{ marginTop: 0 }}>🌊 RIVER — {targetActive.name}</h3>
@@ -485,7 +503,7 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
           </select><input aria-label={`${tr("Valeur", "Value")} ${i + 1}`} type="number" min={0} max={100} step={1} disabled={hit.kind === "miss" || hit.kind === "river"} style={input} value={hit.points} onChange={e => setRiverLandings(v => v.map((x, idx) => idx === i ? { ...x, points: Number(e.target.value) } : x))}/>
         </div>; })}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 12 }}><label>Kiss (+2) <select style={{ ...input, width: 75 }} value={riverKiss} onChange={e => setRiverKiss(Number(e.target.value))}>{Array.from({ length: state.dartsPerPlayer + 1 }, (_, i) => <option key={i}>{i}</option>)}</select></label><label><input type="checkbox" checked={riverJump} onChange={e => setRiverJump(e.target.checked)} /> Jumpover (+9)</label></div>
-        <button style={{ ...button, width: "100%", marginTop: 14 }} onClick={() => { const cutAt = riverLandings.findIndex(x => x.kind === "river"); const landings = cutAt >= 0 ? riverLandings.slice(0, cutAt + 1) : riverLandings; if (commit({ kind: "river", landings, kiss: riverKiss, jumpover: riverJump })) { setRiverLandings(Array.from({ length: state.dartsPerPlayer }, (): RiverLanding => ({ kind: "miss", points: 0 }))); setRiverKiss(0); setRiverJump(false); } }}>{tr("VALIDER LE TOUR", "CONFIRM TURN")}</button>
+        <button className="tossit-confirm-button" style={{ ...button, width: "100%", marginTop: 14 }} onClick={() => { const cutAt = riverLandings.findIndex(x => x.kind === "river"); const landings = cutAt >= 0 ? riverLandings.slice(0, cutAt + 1) : riverLandings; if (commit({ kind: "river", landings, kiss: riverKiss, jumpover: riverJump })) { setRiverLandings(Array.from({ length: state.dartsPerPlayer }, (): RiverLanding => ({ kind: "miss", points: 0 }))); setRiverKiss(0); setRiverJump(false); } }}>{tr("VALIDER LE TOUR", "CONFIRM TURN")}</button>
       </section>}
       {mode === "cornhole" && <section className="tossit-mode-panel" style={panel}>
         <h3 style={{ marginTop: 0 }}>🎯 CORNHOLE</h3>
@@ -498,7 +516,7 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 8 }}><label>Kiss (+1)<select style={input} value={cornKiss[p.id] ?? 0} onChange={e => setCornKiss(v => ({ ...v, [p.id]: Number(e.target.value) }))}>{Array.from({ length: darts.length + 1 }, (_, i) => <option key={i}>{i}</option>)}</select></label><label>Jumpover (×2, ×3…)<select style={input} value={cornJump[p.id] ?? 0} onChange={e => setCornJump(v => ({ ...v, [p.id]: Number(e.target.value) }))}>{Array.from({ length: darts.length + 1 }, (_, i) => <option key={i}>{i}</option>)}</select></label></div>
         </div>; })}
         <p style={{ opacity: .73, fontSize: 12 }}>{tr("Annulation : seul l'écart des deux manches est marqué. Plus de 21 → 13 ; second bust consécutif → 0.", "Cancellation scoring: only the round difference counts. Over 21 → 13; consecutive bust → 0.")}</p>
-        <button style={{ ...button, width: "100%" }} onClick={() => { if (commit({ kind: "cornhole", throws: cornThrows, kiss: Object.fromEntries(players.map(p => [p.id, cornKiss[p.id] ?? 0])), jumpover: Object.fromEntries(players.map(p => [p.id, cornJump[p.id] ?? 0])) })) { setCornThrows(Object.fromEntries(players.map(p => [p.id, ["miss", "miss", "miss"] as CornholeLanding[]]))); setCornKiss({}); setCornJump({}); } }}>{tr("VALIDER LA MANCHE", "CONFIRM ROUND")}</button>
+        <button className="tossit-confirm-button" style={{ ...button, width: "100%" }} onClick={() => { if (commit({ kind: "cornhole", throws: cornThrows, kiss: Object.fromEntries(players.map(p => [p.id, cornKiss[p.id] ?? 0])), jumpover: Object.fromEntries(players.map(p => [p.id, cornJump[p.id] ?? 0])) })) { setCornThrows(Object.fromEntries(players.map(p => [p.id, ["miss", "miss", "miss"] as CornholeLanding[]]))); setCornKiss({}); setCornJump({}); } }}>{tr("VALIDER LA MANCHE", "CONFIRM ROUND")}</button>
       </section>}
       {mode === "goalkeeper" && <section className="tossit-mode-panel" style={panel}>
         <h3 style={{ marginTop: 0 }}>⚽ GOALKEEPER — {targetActive.name}</h3>
@@ -507,7 +525,7 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
           <option value={0}>0 — {tr("Ratée", "Miss")}</option><option value={1}>+1 — {tr("Côté du but", "Goal side")}</option><option value={2}>+2 — {tr("Au-dessus du but", "Above goal")}</option><option value={3}>+3 — {tr("Coin haut / entre les jambes", "Top corner / between legs")}</option><option value={-1}>−1 — {tr("Gardien", "Goalkeeper")}</option>
         </select></label>)}
         <strong style={{ color: ACCENT, display: "block", marginBottom: 10 }}>{tr("Total", "Total")} {goalZones.reduce((n,v)=>n+v,0)} pts</strong>
-        <button style={{ ...button, width: "100%" }} onClick={() => { if (commit({ kind: "goalkeeper", zones: goalZones })) setGoalZones([0,0,0]); }}>{tr("VALIDER LES 3 TIRS", "CONFIRM 3 THROWS")}</button>
+        <button className="tossit-confirm-button" style={{ ...button, width: "100%" }} onClick={() => { if (commit({ kind: "goalkeeper", zones: goalZones })) setGoalZones([0,0,0]); }}>{tr("VALIDER LES 3 TIRS", "CONFIRM 3 THROWS")}</button>
       </section>}
       {mode === "football_pitch" && <section className="tossit-mode-panel" style={panel}>
         <h3 style={{ marginTop: 0 }}>⚽ FOOTBALL PITCH</h3>
@@ -524,7 +542,7 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
             {state.pitch.chainLength > 0 && <option value="goal">{tr("Chaîne jusqu'au but — BUT !", "Path reaches goal — GOAL!")}</option>}
           </> : <option value="block">{tr("Défense : ventouse de blocage", "Defence: blocking dart")}</option>}
         </select>
-        <button style={{ ...button, width: "100%", marginTop: 12 }} onClick={() => { if (commit({ kind: "football_pitch", outcome: pitchOutcome })) setPitchOutcome("miss"); }}>{tr("VALIDER LE LANCER", "CONFIRM THROW")}</button>
+        <button className="tossit-confirm-button" style={{ ...button, width: "100%", marginTop: 12 }} onClick={() => { if (commit({ kind: "football_pitch", outcome: pitchOutcome })) setPitchOutcome("miss"); }}>{tr("VALIDER LE LANCER", "CONFIRM THROW")}</button>
       </section>}
       {mode === "thief_cop" && <section className="tossit-mode-panel" style={panel}>
         <h3>🚔 THIEF & COP — {tr("Manche", "Round")} {state.events.length + 1}/{state.victoryTarget}</h3>
@@ -535,7 +553,7 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
             <option value="miss">0 — {tr("Échappé", "Escaped")}</option><option value="close">+1 — {tr("Arrestation proche", "Close arrest")}</option><option value="direct">+2 — {tr("Arrestation directe", "Direct arrest")}</option><option value="handcuff">+4 — Handcuff</option><option value="double_lock">+6 — Double lock</option><option value="takedown">Takedown — {tr("manche capturée", "round captured")}</option>
           </select>
         </label>)}
-        <button style={{ ...button, width: "100%" }} onClick={() => { const end = captures.indexOf("takedown"); const selection = end < 0 ? captures : captures.slice(0,end+1); if (commit({ kind: "thief_cop", captures: selection })) setCaptures(Array(state.dartsPerPlayer).fill("miss")); }}>{tr("VALIDER LES CAPTURES", "CONFIRM ARRESTS")}</button>
+        <button className="tossit-confirm-button" style={{ ...button, width: "100%" }} onClick={() => { const end = captures.indexOf("takedown"); const selection = end < 0 ? captures : captures.slice(0,end+1); if (commit({ kind: "thief_cop", captures: selection })) setCaptures(Array(state.dartsPerPlayer).fill("miss")); }}>{tr("VALIDER LES CAPTURES", "CONFIRM ARRESTS")}</button>
       </section>}
       {mode === "reach" && <section className="tossit-mode-panel" style={panel}>
         <h3>🟡 STICK & REACH — {targetActive.name}</h3>
@@ -545,7 +563,7 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
         </select></label>
         <label>{tr("Hauteur maximale (cm)", "Maximum height (cm)")}<input type="number" inputMode="decimal" min="0" max="350" step="0.1" style={input} disabled={reachStuck===0} value={reachCm} onChange={e=>setReachCm(e.target.value)} /></label>
         <p style={{ fontSize: 12, opacity: .72 }}>{tr("Classement MSS : meilleure hauteur puis nombre total de ventouses collées. Aucun barème officiel de points.", "MSS ranking: highest dart then total stuck darts. No official points format.")}</p>
-        <button style={{ ...button, width: "100%" }} onClick={()=>{ if(commit({kind:"reach", stuck:reachStuck, bestCm: Number(reachCm)})) {setReachCm("0");setReachStuck(0);} }}>{tr("VALIDER LE PASSAGE", "CONFIRM TURN")}</button>
+        <button className="tossit-confirm-button" style={{ ...button, width: "100%" }} onClick={()=>{ if(commit({kind:"reach", stuck:reachStuck, bestCm: Number(reachCm)})) {setReachCm("0");setReachStuck(0);} }}>{tr("VALIDER LE PASSAGE", "CONFIRM TURN")}</button>
       </section>}
       {mode === "rainbow" && <section className="tossit-mode-panel" style={panel}>
         <h3>🌈 RAINBOW RING & STACK — {targetActive.name}</h3>
@@ -556,7 +574,7 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
         {rainbowPattern === "stack" ? <label>{tr("Niveaux empilés", "Stacked levels")}<select style={input} value={rainbowStack} onChange={e=>setRainbowStack(Number(e.target.value))}>{Array.from({length:state.dartsPerPlayer+1},(_,i)=><option key={i}>{i}</option>)}</select></label> :
           <label>{tr("Couleurs distinctes utilisées", "Distinct colours used")}<select style={input} value={rainbowColors} onChange={e=>setRainbowColors(Number(e.target.value))}>{Array.from({length:7},(_,i)=><option key={i}>{i}</option>)}</select></label>}
         <label style={{ display: "block", margin: "12px 0" }}><input type="checkbox" checked={rainbowCompleted} onChange={e=>setRainbowCompleted(e.target.checked)} /> {tr("Création terminée (+3 MSS)", "Completed creation (+3 MSS)")}</label>
-        <button style={{ ...button, width: "100%" }} onClick={()=>{if(commit({kind:"rainbow", pattern:rainbowPattern, colors:rainbowPattern === "stack" ? 0 : rainbowColors, stackHeight:rainbowPattern === "stack" ? rainbowStack : 0, completed:rainbowCompleted})) {setRainbowColors(0);setRainbowStack(0);setRainbowCompleted(false);} }}>{tr("VALIDER LE DÉFI", "CONFIRM CHALLENGE")}</button>
+        <button className="tossit-confirm-button" style={{ ...button, width: "100%" }} onClick={()=>{if(commit({kind:"rainbow", pattern:rainbowPattern, colors:rainbowPattern === "stack" ? 0 : rainbowColors, stackHeight:rainbowPattern === "stack" ? rainbowStack : 0, completed:rainbowCompleted})) {setRainbowColors(0);setRainbowStack(0);setRainbowCompleted(false);} }}>{tr("VALIDER LE DÉFI", "CONFIRM CHALLENGE")}</button>
       </section>}
       {mode === "chores" && <section className="tossit-mode-panel" style={panel}>
         <h3>🧹 CHORES — {targetActive?.name}</h3>
@@ -570,7 +588,7 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
           {["chore", "jumpover"].includes(dart.effect) && <label>{tr("Corvée", "Chore")}<select style={input} value={dart.chore} onChange={e => setChoreThrows(old => old.map((t,j) => i === j ? {...t,chore:e.target.value} : t))}>{TOSSIT_CHORES.map(chore => <option key={chore.id} value={chore.id}>{tr(chore.fr, chore.en)}</option>)}</select></label>}
         </div>)}
         <div style={{ margin: "8px 0" }}>{players.map(p => <p key={p.id}><strong>{p.name}</strong> : {(state.chores?.[p.id] || []).map(id => tr(TOSSIT_CHORES.find(x=>x.id===id)?.fr || id,TOSSIT_CHORES.find(x=>x.id===id)?.en || id)).join(" · ") || "—"}</p>)}</div>
-        <button style={{ ...button, width: "100%" }} onClick={()=>{if(commit({kind:"chores",throws:choreThrows})) setChoreThrows(Array.from({ length:state.dartsPerPlayer },()=>({effect:"miss",recipientId:players[1]?.id ?? players[0]?.id,chore:TOSSIT_CHORES[0].id})));}}>{tr("VALIDER LES TROIS TIRS", "CONFIRM THREE THROWS")}</button>
+        <button className="tossit-confirm-button" style={{ ...button, width: "100%" }} onClick={()=>{if(commit({kind:"chores",throws:choreThrows})) setChoreThrows(Array.from({ length:state.dartsPerPlayer },()=>({effect:"miss",recipientId:players[1]?.id ?? players[0]?.id,chore:TOSSIT_CHORES[0].id})));}}>{tr("VALIDER LES TROIS TIRS", "CONFIRM THREE THROWS")}</button>
       </section>}
       {mode === "bottle" && <section className="tossit-mode-panel" style={panel}>
         <h3>🍾 CAPTURE THE BOTTLE — {tr("Manche", "Round")} {state.events.length + 1}/{state.victoryTarget}</h3>
@@ -581,9 +599,9 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
           <label>{tr("Sur la bouteille", "On bottle")}<select style={input} value={bottleOn[p.id]??0} onChange={e=>setBottleOn(old=>({...old,[p.id]:Number(e.target.value)}))}>{Array.from({length:(bottleStuck[p.id]??0)+1},(_,n)=><option key={n} value={n}>{n}</option>)}</select></label>
         </div>)}
         <label>{tr("Ventouse la plus proche", "Closest dart")}<select style={input} value={bottleClosest} onChange={e=>setBottleClosest(e.target.value)}><option value="">{tr("Aucune (toutes manquées)", "None (all missed)")}</option>{players.filter(p=>(bottleStuck[p.id]??0)>0).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-        <button style={{...button,width:"100%",marginTop:14}} onClick={()=>{if(commit({kind:"bottle",stuck:Object.fromEntries(players.map(p=>[p.id,bottleStuck[p.id]??0])),onBottle:Object.fromEntries(players.map(p=>[p.id,bottleOn[p.id]??0])),closestPlayerId:bottleClosest||undefined})){setBottleStuck({});setBottleOn({});setBottleClosest("");}}}>{tr("VALIDER LA MANCHE", "CONFIRM ROUND")}</button>
+        <button className="tossit-confirm-button" style={{...button,width:"100%",marginTop:14}} onClick={()=>{if(commit({kind:"bottle",stuck:Object.fromEntries(players.map(p=>[p.id,bottleStuck[p.id]??0])),onBottle:Object.fromEntries(players.map(p=>[p.id,bottleOn[p.id]??0])),closestPlayerId:bottleClosest||undefined})){setBottleStuck({});setBottleOn({});setBottleClosest("");}}}>{tr("VALIDER LA MANCHE", "CONFIRM ROUND")}</button>
       </section>}
-      <button style={{ ...secondary, width: "100%" }} disabled={state.events.length === 0} onClick={() => { setState((old) => undoTossitAction(old)); setError(""); }}>{tr("ANNULER LA DERNIÈRE MANCHE", "UNDO LAST ROUND")}</button>
+      <button type="button" className="tossit-undo-button" style={{ ...secondary, width: "100%" }} disabled={!state.previous} onClick={() => { lastCommitAt.current = 0; setState((old) => undoTossitAction(old)); setTictacSelection(null); setError(""); }}>{tr("ANNULER LA DERNIÈRE SAISIE", "UNDO LAST ENTRY")}</button>
     </>}
     {error && <p role="alert" style={{ color: "#FFD3A0" }}>{error}</p>}
     {state.events.length > 0 && <section style={{ ...panel, marginTop: 14 }}><h3>{tr("Déroulement", "Round history")}</h3>{state.events.slice().reverse().map((event) => <p key={event.index} style={{ borderBottom: "1px solid #29494B", paddingBottom: 6, fontSize: 13 }}>#{event.index} — {event.explanation}</p>)}</section>}

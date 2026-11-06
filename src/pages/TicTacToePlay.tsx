@@ -64,6 +64,13 @@ export default function TicTacToePlay(props: any) {
   const [champion, setChampion] = React.useState<string | null>(null);
   const [throwing, setThrowing] = React.useState<UIDart[]>([]);
   const [mult, setMult] = React.useState<1 | 2 | 3>(1);
+  // Références de saisie : les presets du clavier peuvent déclencher plusieurs
+  // callbacks rapprochés avant le rendu React suivant (Android/WebView).
+  // La dernière volée est donc conservée immédiatement, sans effet différé.
+  const inputDartsRef = React.useRef<UIDart[]>(throwing);
+  const inputMultRef = React.useRef<1 | 2 | 3>(mult);
+  inputDartsRef.current = throwing;
+  inputMultRef.current = mult;
   const visits = React.useRef<any[]>([]);
   const id = React.useRef(`morpion-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   const started = React.useRef(Date.now());
@@ -95,13 +102,13 @@ export default function TicTacToePlay(props: any) {
   };
   async function requestBack(destination: string) {
     if (leavingRef.current) return;
-    if (!preview && throwing.length > 0) {
+    if (!preview && inputDartsRef.current.length > 0) {
       const active = players[current];
       const stored = !!active && savePartialVisit(
-        draftIdentity(id.current, active.id, round, current, visits.current), throwing, mult);
+        draftIdentity(id.current, active.id, round, current, visits.current), inputDartsRef.current, inputMultRef.current);
       const message = stored
-        ? `${throwing.length} fléchette(s) non validée(s) conservée(s) sur cet appareil. Quitter la partie ?`
-        : `${throwing.length} fléchette(s) non validée(s). Stockage local indisponible : ces fléchettes risquent d’être perdues. Quitter ?`;
+        ? `${inputDartsRef.current.length} fléchette(s) non validée(s) conservée(s) sur cet appareil. Quitter la partie ?`
+        : `${inputDartsRef.current.length} fléchette(s) non validée(s). Stockage local indisponible : ces fléchettes risquent d’être perdues. Quitter ?`;
       if (!window.confirm(message)) return;
     }
     leavingRef.current = true;
@@ -156,6 +163,29 @@ export default function TicTacToePlay(props: any) {
     return () => { cancelled = true; };
   }, []);
   const currentPlayer = players[current];
+  const [draftStorageUnavailable, setDraftStorageUnavailable] = React.useState(false);
+  function rememberInput(nextDarts: UIDart[], nextMult: 1 | 2 | 3 = inputMultRef.current) {
+    if (hydration !== "ready" || preview || finished || result || !currentPlayer || currentPlayer.isBot ||
+        leavingRef.current || writerRef.current.isBusy || writerRef.current.hasError) return;
+    // Persister avant la mise à jour React : la fermeture brutale après un clic
+    // ne doit pas perdre la dernière fléchette saisie.
+    const ok = savePartialVisit(
+      draftIdentity(id.current, currentPlayer.id, round, current, visits.current), nextDarts, nextMult);
+    inputDartsRef.current = nextDarts;
+    inputMultRef.current = nextMult;
+    setThrowing(nextDarts);
+    setMult(nextMult);
+    setRestoredDraft(false);
+    setDraftStorageUnavailable(!ok && nextDarts.length > 0);
+  }
+  function appendInput(dart: UIDart) {
+    const n = Number(dart?.v), m = Number(dart?.mult);
+    if (!Number.isInteger(n) || !(n === 0 || n === 25 || n >= 1 && n <= 20) ||
+        ![1, 2, 3].includes(m) || (n === 0 && m !== 1) || (n === 25 && m === 3) ||
+        inputDartsRef.current.length >= 3) return;
+    rememberInput([...inputDartsRef.current, dart]);
+  }
+
 
   const makeRecord = (status: "in_progress" | "finished", state: any, winsNext: number[], roundNext: number, currentNext: number, roundResult: any, winnerId: string | null) => {
     const now = Date.now();
@@ -253,6 +283,7 @@ export default function TicTacToePlay(props: any) {
     <PageHeader title="MORPION" tickerSrc={tickerMorpion} left={<BackDot onClick={() => requestBack(resuming?"history":"games")} />} right={<InfoDot title="Règles du Morpion" content={RULES} />} />
     <div style={{ padding: 12, paddingBottom: 110, maxWidth: 720, margin: "0 auto" }}>
       {restoredDraft && !preview && <div role="status" style={{fontSize:12,marginBottom:8,color:"#9fe7c7"}}>Volée non validée restaurée sur cet appareil : vérifie les fléchettes avant validation.</div>}
+      {draftStorageUnavailable && !preview && <div role="alert" style={{fontSize:12,marginBottom:8,color:"#ffd18a"}}>Stockage local indisponible : la volée en cours ne pourra pas être restaurée après fermeture.</div>}
       {saveStatus !== "idle" && <div role={saveStatus === "error" ? "alert" : "status"} style={{fontSize:12,marginBottom:8,color:saveStatus === "error" ? "#ff9a9a" : "#a9d8ef"}}>{saveStatus === "saving" ? "Enregistrement de la partie…" : saveStatus === "error" ? "Enregistrement impossible : vérifie l'espace disponible avant de quitter." : "Partie enregistrée sur cet appareil."}</div>}
       {saveStatus === "error" && <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}><button type="button" className="btn-primary" onClick={retrySave}>RÉESSAYER L’ENREGISTREMENT</button><button type="button" className="btn-secondary" onClick={forceExit}>QUITTER SANS ENREGISTRER</button><span style={{fontSize:12,opacity:.85}}>La partie ne progresse plus tant que le dernier état n’est pas enregistré.</span></div>}
       {leavePending && <div role="status" style={{marginBottom:8,fontSize:12,color:"#ffd18a"}}>Sortie en attente de confirmation du dernier enregistrement…</div>}
@@ -267,7 +298,16 @@ export default function TicTacToePlay(props: any) {
           {grid.owners[idx] === null ? <div style={{ display: "grid", gap: 3, marginTop: 5 }}>{players.map((p: any, i: number) => <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ fontSize: 11, fontWeight: 900, color: PALETTE[i] }}>{MARKS[i]}</span><div style={{ flex: 1, display: "flex", gap: 2 }}>{Array.from({ length: 4 }, (_, j) => <i key={j} style={{ display: "block", height: 7, flex: 1, borderRadius: 3, background: j < grid.marks[idx][i] ? PALETTE[i] : "#ffffff1f" }} />)}</div></div>)}</div> : <div style={{ fontSize: 39, fontWeight: 1000, color: PALETTE[grid.owners[idx]] }}>{MARKS[grid.owners[idx]]}</div>}
         </div>)}
       </div>
-      {isHumanTurn && <div style={{ marginTop: 12, padding: 9, borderRadius: 13, background: "#111528" }}><div style={{ fontSize: 12, fontWeight: 900, paddingBottom: 6 }}>VOLÉE · {throwing.length}/3 fléchettes</div>{inputWarning && <div role="alert" style={{color:"#ffd18a",fontSize:12,marginBottom:5}}>{inputWarning}</div>}<ScoreInputHub currentThrow={throwing} multiplier={mult} onSimple={() => setMult(1)} onDouble={() => setMult(2)} onTriple={() => setMult(3)} onCancel={() => { setRestoredDraft(false); setThrowing([]); setMult(1); }} onBackspace={() => setThrowing((v) => v.slice(0, -1))} onNumber={(n: number) => setThrowing((v) => v.length >= 3 ? v : [...v, { v: n, mult }])} onBull={() => setThrowing((v) => v.length >= 3 ? v : [...v, { v: 25, mult: mult === 2 ? 2 : 1 }])} onValidate={() => commit(throwing)} onDirectDart={(d: UIDart) => setThrowing((v) => v.length >= 3 ? v : [...v, d])} /></div>}
+      {isHumanTurn && <div style={{ marginTop: 12, padding: 9, borderRadius: 13, background: "#111528" }}><div style={{ fontSize: 12, fontWeight: 900, paddingBottom: 6 }}>VOLÉE · {throwing.length}/3 fléchettes</div>{inputWarning && <div role="alert" style={{color:"#ffd18a",fontSize:12,marginBottom:5}}>{inputWarning}</div>}<ScoreInputHub currentThrow={throwing} multiplier={mult}
+          onSimple={() => rememberInput(inputDartsRef.current, 1)}
+          onDouble={() => rememberInput(inputDartsRef.current, 2)}
+          onTriple={() => rememberInput(inputDartsRef.current, 3)}
+          onCancel={() => rememberInput([], 1)}
+          onBackspace={() => rememberInput(inputDartsRef.current.slice(0, -1))}
+          onNumber={(n: number) => appendInput({ v: n, mult: inputMultRef.current })}
+          onBull={() => appendInput({ v: 25, mult: inputMultRef.current === 2 ? 2 : 1 })}
+          onDirectDart={appendInput}
+          onValidate={() => commit(inputDartsRef.current)} /></div>}
       {preview && <div style={{textAlign:"center",marginTop:12,color:"#ffd18a"}}>APERÇU — LECTURE SEULE <button type="button" className="btn-secondary" onClick={()=>props?.setTab?.("history")}>Retour</button></div>}
       {!preview && <div style={{ display: "flex", gap: 8, marginTop: 12 }}><button className="btn-secondary" disabled={saveStatus === "error" || leavePending} onClick={restart} style={{ flex: 1 }}>Nouvelle partie</button><button className="btn-primary" disabled={!result || finished || !!botSummary || saveStatus === "saving" || saveStatus === "error" || leavePending} onClick={nextRound} style={{ flex: 1 }}>Manche suivante</button></div>}
       {botSummary && saveStatus !== "error" && <div role="dialog" aria-label="Volée du bot" style={{ position:"fixed", inset:0, zIndex:10010, display:"grid", placeItems:"center", padding:16, background:"#030713bc" }}>
