@@ -4,6 +4,7 @@ import { useLang } from "../../contexts/LangContext";
 import { pickLegacyLocalizedText, pickLegacyLocalizedValue } from "../../i18n/legacyLocalizedText";
 import {
   COLLECTIBLE_CARDS,
+  normalizeCollectibleUnlocks,
   cardRequirementProgress,
   computeCollectibleMetrics,
   type CollectibleCardDefinition,
@@ -131,8 +132,8 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
   const { lang } = useLang();
   const [filter, setFilter] = React.useState<FilterId>("all");
   const [metrics, setMetrics] = React.useState<CollectibleMetrics>(ZERO_METRICS);
-  const [unlocks, setUnlocks] = React.useState<CollectibleUnlockMap>(() => ({ ...(persistedUnlocks || {}) }));
-  const unlocksRef = React.useRef<CollectibleUnlockMap>({ ...(persistedUnlocks || {}) });
+  const [unlocks, setUnlocks] = React.useState<CollectibleUnlockMap>(() => normalizeCollectibleUnlocks(persistedUnlocks));
+  const unlocksRef = React.useRef<CollectibleUnlockMap>(normalizeCollectibleUnlocks(persistedUnlocks));
   const [loading, setLoading] = React.useState(false);
   const [selectedCardId, setSelectedCardId] = React.useState<CollectibleCardId | null>(null);
   const [scanNonce, setScanNonce] = React.useState(0);
@@ -142,9 +143,9 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
     const nextProfileId = String(profileId || "").trim();
     const profileChanged = lastProfileIdRef.current !== nextProfileId;
     lastProfileIdRef.current = nextProfileId;
-    const next = profileChanged
+    const next = normalizeCollectibleUnlocks(profileChanged
       ? { ...(persistedUnlocks || {}) }
-      : { ...unlocksRef.current, ...(persistedUnlocks || {}) };
+      : { ...unlocksRef.current, ...(persistedUnlocks || {}) });
     unlocksRef.current = next;
     setUnlocks(next);
     if (profileChanged) {
@@ -204,7 +205,7 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
   if (!String(profileId || "").trim()) return <div style={{ padding:18, borderRadius:18, border:`1px dashed ${theme.borderSoft}`, textAlign:"center", color:theme.textSoft, fontSize:12 }}>{labels.noProfile}</div>;
 
   return <div style={{ display:"grid", gap:12 }}>
-    <style>{`@keyframes mscCardUnlockPop{0%{opacity:0;transform:scale(.72) rotate(-2deg);filter:brightness(2)}62%{opacity:1;transform:scale(1.035) rotate(.5deg);filter:brightness(1.18)}100%{opacity:1;transform:scale(1) rotate(0);filter:brightness(1)}} @keyframes mscCardUnlockGlow{0%,100%{opacity:.35;transform:scale(.92)}50%{opacity:.95;transform:scale(1.05)}}`}</style>
+    <style>{`@keyframes msc-legend-foil{0%{transform:translateX(-145%) skewX(-22deg);opacity:0}20%{opacity:.75}55%{opacity:.35}100%{transform:translateX(155%) skewX(-22deg);opacity:0}} @media(prefers-reduced-motion:reduce){.msc-legend-foil{animation:none!important}} @keyframes mscCardUnlockPop{0%{opacity:0;transform:scale(.72) rotate(-2deg);filter:brightness(2)}62%{opacity:1;transform:scale(1.035) rotate(.5deg);filter:brightness(1.18)}100%{opacity:1;transform:scale(1) rotate(0);filter:brightness(1)}} @keyframes mscCardUnlockGlow{0%,100%{opacity:.35;transform:scale(.92)}50%{opacity:.95;transform:scale(1.05)}}`}</style>
 
     <section style={{ padding:13, borderRadius:18, border:`1px solid ${theme.primary}55`, background:`linear-gradient(135deg, ${theme.primary}18, rgba(0,0,0,.24))`, overflow:"hidden" }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
@@ -235,6 +236,8 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
         return <button key={card.id} type="button" onClick={() => setSelectedCardId(card.id)} style={{ minWidth:0, padding:0, borderRadius:16, overflow:"hidden", border:`1px solid ${isUnlocked ? `${card.accent}aa` : theme.borderSoft}`, background:"rgba(0,0,0,.28)", boxShadow:isUnlocked ? `0 0 18px ${card.accent}24` : "none", cursor:"pointer", textAlign:"left" }}>
           <div style={{ position:"relative", aspectRatio:CARD_PREVIEW_ASPECT_RATIO, overflow:"hidden", background:"radial-gradient(circle at 50% 18%, rgba(255,255,255,.08), rgba(3,3,3,1) 58%)", display:"grid", placeItems:"center", padding:8 }}>
             <img src={card.image || IMAGE_BY_CARD[card.id] || ""} alt={card.name} loading="lazy" style={{ width:"100%", height:"100%", objectFit:"contain", objectPosition:"center center", display:"block", filter:isUnlocked ? "none" : "grayscale(.9) brightness(.34)", transform:"none" }} />
+            {card.rarity === "ultra" && <div style={{position:"absolute",top:7,left:7,right:7,display:"flex",justifyContent:"center",pointerEvents:"none"}}><span style={{fontSize:9,fontWeight:1000,letterSpacing:.7,color:"#fff4cf",padding:"3px 9px",borderRadius:999,border:"1px solid #ffdf88bb",background:"linear-gradient(90deg,#3c2452e8,#98660fdf,#3c2452e8)",boxShadow:"0 0 9px #e9bd7766"}}>✦ ULTRA RARE ✦</span></div>}
+            {isUnlocked && card.rarity === "ultra" && <div className="msc-legend-foil" aria-hidden="true" style={{position:"absolute",inset:"-25%",transform:"translateX(-145%) skewX(-22deg)",background:"linear-gradient(95deg,transparent 36%,#ffffff10 43%,#ffffffa8 50%,#ffffff10 57%,transparent 64%)",pointerEvents:"none",animation:"msc-legend-foil 4.6s ease-in-out infinite"}}/>}
             {!isUnlocked && <div style={{ position:"absolute", inset:0, display:"grid", placeItems:"center", background:"linear-gradient(180deg, rgba(0,0,0,.05), rgba(0,0,0,.45))" }}><div style={{ width:48, height:48, borderRadius:999, display:"grid", placeItems:"center", background:"rgba(0,0,0,.72)", border:"1px solid rgba(255,255,255,.25)", fontSize:20, boxShadow:"0 8px 22px rgba(0,0,0,.55)" }}>🔒</div></div>}
             <div style={{ position:"absolute", left:7, right:7, bottom:7, borderRadius:999, background:"rgba(0,0,0,.7)", overflow:"hidden", height:6, border:"1px solid rgba(255,255,255,.15)" }}><div style={{ width:`${Math.round(progress * 100)}%`, height:"100%", background:isUnlocked ? card.accent : theme.primary }} /></div>
           </div>
@@ -246,7 +249,7 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
     {selectedCard && <div role="dialog" aria-modal="true" onClick={() => setSelectedCardId(null)} style={{ position:"fixed", inset:0, zIndex:12000, background:"rgba(0,0,0,.88)", backdropFilter:"blur(9px)", display:"grid", placeItems:"center", padding:16 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width:"min(94vw,520px)", maxHeight:"92vh", overflowY:"auto", borderRadius:22, border:`1px solid ${selectedCard.accent}88`, background:"#090b10", boxShadow:`0 0 42px ${selectedCard.accent}30`, padding:10 }}>
         <div style={{ position:"relative", borderRadius:16, overflow:"hidden", background:"#000" }}><img src={selectedCard.image || IMAGE_BY_CARD[selectedCard.id] || ""} alt={selectedCard.name} style={{ width:"100%", maxHeight:"68vh", objectFit:"contain", display:"block", filter:unlocks[selectedCard.id] ? "none" : "grayscale(.9) brightness(.38)" }} />{!unlocks[selectedCard.id] && <div style={{ position:"absolute", inset:0, display:"grid", placeItems:"center", pointerEvents:"none", fontSize:38 }}>🔒</div>}</div>
-        <div style={{ padding:"11px 5px 4px" }}><div style={{ display:"flex", justifyContent:"space-between", gap:10, alignItems:"baseline" }}><div><div style={{ color:selectedCard.accent, fontSize:14, fontWeight:1000 }}>{selectedCard.name}</div><div style={{ color:theme.textSoft, fontSize:10, marginTop:2 }}>{localText(lang, selectedCard.subtitle)}</div></div><div style={{ fontSize:9.5, color:unlocks[selectedCard.id] ? "#67e7a4" : theme.textSoft, fontWeight:950 }}>{unlocks[selectedCard.id] ? `✓ ${labels.unlockedCard}` : `🔒 ${labels.lockedCard}`}</div></div>{!unlocks[selectedCard.id] && <div style={{ marginTop:10 }}><ProgressRequirements card={selectedCard} metrics={metrics} lang={lang} /></div>}<button type="button" onClick={() => setSelectedCardId(null)} style={{ width:"100%", marginTop:12, border:`1px solid ${selectedCard.accent}88`, background:`${selectedCard.accent}18`, color:selectedCard.accent, borderRadius:999, padding:"10px 12px", fontWeight:1000, fontSize:10.5, cursor:"pointer" }}>{labels.close}</button></div>
+        <div style={{ padding:"11px 5px 4px" }}><div style={{ display:"flex", justifyContent:"space-between", gap:10, alignItems:"baseline" }}><div><div style={{ color:selectedCard.accent, fontSize:14, fontWeight:1000 }}>{selectedCard.name}</div>{selectedCard.rarity === "ultra" && <div style={{fontSize:10,color:"#f3d48a",fontWeight:1000,letterSpacing:1}}>✦ ULTRA RARE ✦</div>}<div style={{ color:theme.textSoft, fontSize:10, marginTop:2 }}>{localText(lang, selectedCard.subtitle)}</div></div><div style={{ fontSize:9.5, color:unlocks[selectedCard.id] ? "#67e7a4" : theme.textSoft, fontWeight:950 }}>{unlocks[selectedCard.id] ? `✓ ${labels.unlockedCard}` : `🔒 ${labels.lockedCard}`}</div></div>{!unlocks[selectedCard.id] && <div style={{ marginTop:10 }}><ProgressRequirements card={selectedCard} metrics={metrics} lang={lang} /></div>}<button type="button" onClick={() => setSelectedCardId(null)} style={{ width:"100%", marginTop:12, border:`1px solid ${selectedCard.accent}88`, background:`${selectedCard.accent}18`, color:selectedCard.accent, borderRadius:999, padding:"10px 12px", fontWeight:1000, fontSize:10.5, cursor:"pointer" }}>{labels.close}</button></div>
       </div>
     </div>}
 

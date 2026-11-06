@@ -3,7 +3,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 
 const root = process.cwd();
-const EXPECTED = 82;
+const EXPECTED = 100;
 const source = fs.readFileSync(path.join(root, 'src/lib/collectibleCards.ts'), 'utf8');
 const panel = fs.readFileSync(path.join(root, 'src/components/profile/CollectibleCardsPanel.tsx'), 'utf8');
 const ids = [...source.matchAll(/id: "(legend_[^"]+)"/g)].map((m) => m[1]);
@@ -26,7 +26,16 @@ const challengeSignatures = [...legendBlock.matchAll(/requirements: \[([\s\S]*?)
 );
 assert.equal(challengeSignatures.length, EXPECTED, `expected ${EXPECTED} challenge definitions`);
 assert.equal(new Set(challengeSignatures).size, EXPECTED, 'each legend card must have a distinct unlock challenge');
-console.log('OK collectible legends v106: 82 cards, 82 images, 82 distinct unlock challenges');
+console.log('OK collectible legends v169: 100 cards, 100 images, 100 distinct unlock challenges');
 
 assert.ok(source.includes('name: "JOCKY"'), "Jocky must replace incorrect THE NODOR identity");
 assert.ok(!source.includes('name: "THE NODOR"'), "duplicate Jocky identity under THE NODOR");
+
+assert.ok(!source.includes('id: "legend_the_artist_b", collection: "legends"'), 'duplicate THE ARTIST must be excluded');
+assert.ok(source.includes('normalizeCollectibleUnlocks'), 'legacy artist unlock migration must be available');
+
+// Les 3 nouvelles cartes sont des éditions indépendantes des originales :
+for (const id of ["legend_ultra_the_power", "legend_ultra_green_machine", "legend_ultra_the_flying_scotsman"]) {
+  assert.ok(source.includes(`id: "${id}", collection: "legends"`), `missing ultra rarity card ${id}`);
+}
+assert.equal((source.match(/rarity: "ultra"/g) || []).length, 3, 'must have exactly 3 ultra rare entries');
