@@ -1,4 +1,5 @@
 import React from "react";
+import OrganizationDrinkCardsPanel from "./OrganizationDrinkCardsPanel";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
@@ -15,7 +16,7 @@ type Filter = "all" | OrganizationShopCategory;
 type Draft = { category: OrganizationShopCategory; title: string; description: string; price: string; currency: string; variants: string; imageUrl: string; status: "draft" | "published"; sortOrder: string };
 const emptyDraft = (): Draft => ({ category: "official_kit", title: "", description: "", price: "", currency: "EUR", variants: "", imageUrl: "", status: "draft", sortOrder: "0" });
 
-export default function OrganizationShopPanel({ organization, userId }: { organization: OrganizationRecord; userId: string | null }) {
+export default function OrganizationShopPanel({ organization, userId, logoUrl }: { organization: OrganizationRecord; userId: string | null; logoUrl?: string }) {
   const { theme } = useTheme();
   const { lang } = useLang();
   const L = React.useCallback((fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es), [lang]);
@@ -23,6 +24,7 @@ export default function OrganizationShopPanel({ organization, userId }: { organi
   const canDelete = ["owner", "admin"].includes(organization.role);
   const [items, setItems] = React.useState<OrganizationShopItem[]>([]);
   const [filter, setFilter] = React.useState<Filter>("all");
+  const [showDrinkCards, setShowDrinkCards] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -123,6 +125,11 @@ export default function OrganizationShopPanel({ organization, userId }: { organi
       </div> : null}
     </div>
 
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <button type="button" style={!showDrinkCards ? primary : button} onClick={() => setShowDrinkCards(false)}>{L("🛍️ Catalogue & carte des boissons", "🛍️ Catalog & drinks menu", "🛍️ Catálogo y carta de bebidas")}</button>
+      <button type="button" style={showDrinkCards ? primary : button} onClick={() => setShowDrinkCards(true)}>{L("🥤 Cartes de consommation", "🥤 Prepaid drink cards", "🥤 Tarjetas de consumición")}</button>
+    </div>
+    {showDrinkCards ? <OrganizationDrinkCardsPanel key={organization.id} organization={organization} userId={userId} logoUrl={logoUrl} /> : <>
     {error ? <div role="alert" style={{ ...card, borderColor: "#d96f6f", color: "#ffadad", fontSize: 12 }}>{error}</div> : null}
     {notice ? <div role="status" style={{ ...card, color: theme.primary, fontSize: 12 }}>{notice}</div> : null}
 
@@ -211,5 +218,6 @@ export default function OrganizationShopPanel({ organization, userId }: { organi
         {contactPhone ? <a style={{ ...button, textDecoration: "none" }} href={`tel:${contactPhone.replace(/[^0-9+]/g, "")}`}>☎ {contactPhone}</a> : null}
       </div>
     </div>
+    </>}
   </div>;
 }

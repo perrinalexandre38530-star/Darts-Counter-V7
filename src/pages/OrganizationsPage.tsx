@@ -1032,7 +1032,7 @@ export default function OrganizationsPage({ go, params }: Props) {
     if (view === "federations") return <OrganizationFederationsPanel organization={active} userId={userId} />;
     if (view === "billing") return <OrganizationBillingPanel organization={active} userId={userId} />;
     if (view === "sponsors") return <OrganizationSponsorsPanel organization={active} userId={userId} />;
-    if (view === "shop") return <OrganizationShopPanel organization={active} userId={userId} />;
+    if (view === "shop") return <OrganizationShopPanel organization={active} userId={userId} logoUrl={activeLogo} />;
     if (view === "venue") return <OrganizationVenuePanel organization={active} userId={userId} go={go} />;
     if (view === "calendar") return <MultisportAgendaPage
       go={(route: any, routeParams?: any) => {
