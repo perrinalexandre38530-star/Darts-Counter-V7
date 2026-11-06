@@ -1,19 +1,21 @@
 import React from "react";
+import ClubBuvetteCardVisual, { BuvetteGlyph, BUVETTE_BACKGROUNDS, clubBuvetteBackground } from "./ClubBuvetteCardVisual";
+import { uploadOrganizationShopImage } from "../lib/organizationSupabaseMedia";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import type { OrganizationRecord, OrganizationMember } from "../organizations/organizationService";
 import { listOrganizationMembers } from "../organizations/organizationService";
 import {
-  type DrinkCardIcon, type DrinkCardTemplate, type DrinkCardTemplateInput,
+  type DrinkCardIcon, type DrinkCardBackground, type DrinkCardTemplate, type DrinkCardTemplateInput,
   type AssignedDrinkCard, type DrinkCardEvent,
   listDrinkCardTemplates, listAssignedDrinkCards, listDrinkCardEvents,
-  saveDrinkCardTemplate, issueDrinkCard, consumeDrinkCard, undoDrinkCardConsumption, cancelDrinkCard,
+  saveDrinkCardTemplate, issueDrinkCard, stampDrinkCard, undoDrinkCardConsumption, cancelDrinkCard,
 } from "../organizations/organizationDrinkCards";
 
-const icons: Record<DrinkCardIcon, string> = { cup: "🥤", coffee: "☕", beer: "🍺", soda: "🧃", water: "💧", wine: "🍷", cocktail: "🍹" };
+const icons: Record<DrinkCardIcon, string> = { cup: "Verre", coffee: "Café", beer: "Bière", soda: "Soda", water: "Eau", wine: "Vin", cocktail: "Cocktail" };
 const defaultForm = (): DrinkCardTemplateInput => ({ name: "Carte 10 + 1 offerte", description: "", paidDrinks: 10,
-  bonusDrinks: 1, price: 20, currency: "EUR", icon: "cup", color: "#D7A34D", validDays: null, status: "active" });
+  bonusDrinks: 1, price: 20, currency: "EUR", icon: "cup", color: "#D7A34D", backgroundKey: "bar-night", backgroundUrl: "", validDays: null, status: "active" });
 const formatMoney = (amount: number, currency: string, lang: string) => {
   try { return new Intl.NumberFormat(lang === "fr" ? "fr-FR" : "en-GB", { style: "currency", currency }).format(amount); }
   catch { return `${amount.toFixed(2)} ${currency}`; }
@@ -22,6 +24,28 @@ const formatDate = (date: string, lang: string) => {
   try { return new Intl.DateTimeFormat(lang === "fr" ? "fr-FR" : "en-GB", { dateStyle: "short", timeStyle: "short" }).format(new Date(date)); }
   catch { return date; }
 };
+
+/** Photo de fond assez détaillée pour imprimer, sans écriture en localStorage. */
+async function preparePrintableBackground(file: File): Promise<string> {
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image(); el.onload = () => resolve(el); el.onerror = () => reject(new Error("Image illisible")); el.src = objectUrl;
+    });
+    const canvas = document.createElement("canvas"), ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas indisponible.");
+    const srcW = Math.max(1, img.naturalWidth), srcH = Math.max(1, img.naturalHeight);
+    for (const [size, quality] of [[1600,.81], [1200,.75], [900,.69]] as const) {
+      const scale = Math.min(1, size / Math.max(srcW, srcH));
+      canvas.width = Math.round(srcW * scale); canvas.height = Math.round(srcH * scale);
+      ctx.clearRect(0,0,canvas.width,canvas.height); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(img,0,0,canvas.width,canvas.height);
+      const dataUrl = canvas.toDataURL("image/webp",quality);
+      if (dataUrl.length <= 1_200_000 || size === 900) return dataUrl;
+    }
+    throw new Error("Image trop volumineuse.");
+  } finally { URL.revokeObjectURL(objectUrl); }
+}
 
 export default function OrganizationDrinkCardsPanel({ organization, userId, logoUrl }: {
   organization: OrganizationRecord; userId: string | null; logoUrl?: string;
@@ -48,6 +72,9 @@ export default function OrganizationDrinkCardsPanel({ organization, userId, logo
   const [history, setHistory] = React.useState<DrinkCardEvent[]>([]);
   const [historyLoading, setHistoryLoading] = React.useState(false);
   const [showAll, setShowAll] = React.useState(false);
+  const [selectedHolder, setSelectedHolder] = React.useState("");
+  const [pictureDataUrl, setPictureDataUrl] = React.useState("");
+  const [printingCard, setPrintingCard] = React.useState("");
   const cardStyle: React.CSSProperties = { border: `1px solid ${theme.borderSoft}`, background: theme.cardBackground || theme.card,
     borderRadius: 17, padding: 13, minWidth: 0 };
   const control: React.CSSProperties = { width: "100%", boxSizing: "border-box", borderRadius: 10, padding: "10px",
@@ -70,7 +97,6 @@ export default function OrganizationDrinkCardsPanel({ organization, userId, logo
   React.useEffect(() => { void reload(true); }, [reload]);
   React.useEffect(() => {
     let mounted = true;
-    if (!canManage) { setMembers([]); return; }
     void listOrganizationMembers(userId, organization.id).then((result) => {
       if (!mounted) return;
       setMembers(result.members.filter((m) => m.entityType === "user" && m.status === "active" && !!m.userId));
@@ -85,14 +111,24 @@ export default function OrganizationDrinkCardsPanel({ organization, userId, logo
     return () => { window.removeEventListener("focus", refresh); window.clearInterval(timer); };
   }, [reload, pending]);
 
-  const activeTemplates = templates.filter((t) => t.status === "active");
-  const displayedCards = cards.filter((c) => showAll || c.status === "active");
+  const displayedCards = cards.filter((c) => showAll || (c.status === "active" && c.remaining > 0 && !(c.expiresAt && new Date(c.expiresAt).getTime() <= Date.now())));
   const names = new Map(members.map((m) => [m.userId, m.displayName]));
-  const templateStart = () => { setForm(defaultForm()); setEditing(null); setFormOpen(true); setError(""); setMessage(""); };
+  const avatars = new Map(members.map((m) => [m.userId, m.avatarUrl]));
+  const roster = React.useMemo(() => {
+    const mapped = new Map<string, { userId: string; remaining: number; count: number }>();
+    for (const c of displayedCards) {
+      const r = mapped.get(c.holderUserId) || { userId: c.holderUserId, remaining: 0, count: 0 };
+      r.remaining += c.remaining; r.count += 1; mapped.set(c.holderUserId, r);
+    }
+    return [...mapped.values()].sort((a, b) => (names.get(a.userId) || "").localeCompare(names.get(b.userId) || "", "fr"));
+  }, [displayedCards, members]);
+  const effectiveHolder = selectedHolder && roster.some((m) => m.userId === selectedHolder) ? selectedHolder : roster[0]?.userId;
+  const selectedCards = canManage ? displayedCards.filter((c) => c.holderUserId === effectiveHolder) : displayedCards;
+  const templateStart = () => { setForm({ ...defaultForm(), color: /^#[0-9a-f]{6}$/i.test(theme.primary) ? theme.primary : "#D7A34D" }); setPictureDataUrl(""); setEditing(null); setFormOpen(true); setError(""); setMessage(""); };
   const templateEdit = (t: DrinkCardTemplate) => {
     setForm({ name: t.name, description: t.description, paidDrinks: t.paidDrinks, bonusDrinks: t.bonusDrinks,
-      price: t.price, currency: t.currency, icon: t.icon, color: t.color, validDays: t.validDays, status: t.status });
-    setEditing(t.id); setFormOpen(true); setError(""); setMessage("");
+      price: t.price, currency: t.currency, icon: t.icon, color: t.color, backgroundKey: t.backgroundKey, backgroundUrl: t.backgroundUrl, validDays: t.validDays, status: t.status });
+    setPictureDataUrl(""); setEditing(t.id); setFormOpen(true); setError(""); setMessage("");
   };
   const apply = async (operation: () => Promise<unknown>, ok: string, reloadHistory = false) => {
     if (pending) return;
@@ -108,12 +144,25 @@ export default function OrganizationDrinkCardsPanel({ organization, userId, logo
     } catch (e: any) { setError(String(e?.message || "Opération impossible.")); return false; }
     finally { setPending(false); }
   };
+  const pickBackground = async (file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/") || file.size > 15 * 1024 * 1024) {
+      setError(L("Image invalide (15 Mo maximum).", "Invalid picture (15 MB maximum).", "Imagen no válida (máx. 15 MB).")); return;
+    }
+    try {
+      const dataUrl = await preparePrintableBackground(file);
+      setPictureDataUrl(dataUrl); setForm((f) => ({ ...f, backgroundKey: "custom" })); setError("");
+    } catch { setError(L("Impossible de préparer l'image.", "Could not prepare the image.", "No se pudo preparar la imagen.")); }
+  };
   const save = async () => {
     if (pending) return;
     setPending(true); setError(""); setMessage("");
     try {
-      await saveDrinkCardTemplate(userId, organization.id, form, editing || undefined);
-      setFormOpen(false); setEditing(null); await reload(false);
+      const backgroundUrl = form.backgroundKey === "custom" && pictureDataUrl
+        ? await uploadOrganizationShopImage({ organizationId: organization.id, userId, dataUrl: pictureDataUrl })
+        : form.backgroundUrl;
+      await saveDrinkCardTemplate(userId, organization.id, { ...form, backgroundUrl }, editing || undefined);
+      setFormOpen(false); setPictureDataUrl(""); setEditing(null); await reload(false);
       setMessage(L("Modèle de carte enregistré.", "Card design saved.", "Modelo de tarjeta guardado."));
     } catch (e: any) { setError(String(e?.message || "Enregistrement impossible.")); }
     finally { setPending(false); }
@@ -125,17 +174,25 @@ export default function OrganizationDrinkCardsPanel({ organization, userId, logo
     catch (e: any) { setError(String(e?.message || "Historique indisponible.")); }
     finally { setHistoryLoading(false); }
   };
-  const isSpent = (c: AssignedDrinkCard) => c.paidDrinks + c.bonusDrinks - c.remaining;
   const isExpired = (c: AssignedDrinkCard) => !!c.expiresAt && new Date(c.expiresAt).getTime() <= Date.now();
   const canUse = (c: AssignedDrinkCard) => c.status === "active" && !isExpired(c) && c.remaining > 0;
+  React.useEffect(() => {
+    const endPrint = () => { document.body.classList.remove("mss-print-buvette"); setPrintingCard(""); };
+    window.addEventListener("afterprint", endPrint);
+    return () => { window.removeEventListener("afterprint", endPrint); document.body.classList.remove("mss-print-buvette"); };
+  }, []);
+  const print = (id: string) => {
+    setPrintingCard(id); document.body.classList.add("mss-print-buvette");
+    window.setTimeout(() => window.print(), 120);
+  };
   const logo = logoUrl || organization.profile.logoUrl || "";
 
   return <section style={{ display: "grid", gap: 12 }}>
     <div style={{ ...cardStyle, background: `linear-gradient(125deg, ${theme.primary}22, transparent), ${theme.cardBackground || theme.card}` }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        {logo ? <img alt="" src={logo} style={{ width: 49, height: 49, borderRadius: 12, objectFit: "contain", background: "#fff", padding: 3 }}/> : <span style={{ fontSize: 30 }}>🥤</span>}
+        {logo ? <img alt="" src={logo} style={{ width: 49, height: 49, borderRadius: 12, objectFit: "contain", background: "#fff", padding: 3 }}/> : <BuvetteGlyph icon="cup" size={34} color={theme.primary}/>}
         <div style={{ minWidth: 0 }}>
-          <strong style={{ display: "block", color: theme.primary, fontSize: 15 }}>{L("CARTES DE CONSOMMATION", "PREPAID DRINK CARDS", "TARJETAS DE CONSUMICIÓN")}</strong>
+          <strong style={{ display: "block", color: theme.primary, fontSize: 15 }}>{L("BUVETTE DU CLUB", "CLUB DRINKS BAR", "BAR DEL CLUB")}</strong>
           <div style={{ color: theme.textSoft, fontSize: 11 }}>{organization.name}</div>
         </div>
       </div>
@@ -151,6 +208,27 @@ export default function OrganizationDrinkCardsPanel({ organization, userId, logo
     </div>
     {error ? <div role="alert" style={{ ...cardStyle, color: "#ffb1b1", borderColor: "#d76c6c", fontSize: 12 }}>{error}</div> : null}
     {message ? <div role="status" style={{ ...cardStyle, color: theme.primary, fontSize: 12 }}>{message}</div> : null}
+
+    {canManage ? <div style={{ ...cardStyle, display: "grid", gap: 10 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+        <strong style={{ color: theme.primary, fontSize: 13 }}>{L("ADHÉRENTS AVEC CARTE BUVETTE", "MEMBERS WITH DRINK CARDS", "SOCIOS CON TARJETA BAR")}</strong>
+        <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: theme.textSoft }}>
+          <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)}/>{L("Inclure épuisées / annulées", "Include spent / cancelled", "Incluir agotadas / anuladas")}
+        </label>
+      </div>
+      <div style={{ color: theme.textSoft, fontSize: 11 }}>{L("Sélectionne un adhérent pour voir ses cartes et cocher une consommation.", "Select a member to manage their cards and stamp a drink.", "Selecciona un socio para gestionar sus tarjetas.")}</div>
+      {!roster.length && !loading ? <small style={{ color: theme.textSoft }}>{L("Aucune carte active attribuée. Les membres sans carte ne sont pas affichés.", "No active assigned cards. Members without cards are hidden.", "No hay tarjetas activas asignadas.")}</small> : null}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,220px),1fr))", gap: 7 }}>
+        {roster.map((entry) => <button key={entry.userId} type="button" onClick={() => { setSelectedHolder(entry.userId); setHistoryCard(""); }}
+          style={{ ...button, display: "flex", alignItems: "center", textAlign: "left", gap: 10, minHeight: 66,
+            background: effectiveHolder === entry.userId ? `${theme.primary}23` : "rgba(255,255,255,.04)", borderColor: effectiveHolder === entry.userId ? theme.primary : theme.borderSoft }}>
+          {avatars.get(entry.userId) ? <img src={avatars.get(entry.userId)} alt="" style={{ width: 43, height: 43, borderRadius: "50%", border: `1px solid ${theme.primary}88`, objectFit: "cover" }}/> : <span style={{ width: 43, height: 43, borderRadius: "50%", background: `${theme.primary}33`, display: "grid", placeItems: "center", fontSize: 17 }}>{(names.get(entry.userId) || "?").slice(0,1).toUpperCase()}</span>}
+          <span style={{ flex: 1, minWidth: 0 }}><strong style={{ display: "block", fontSize: 12, overflowWrap: "anywhere" }}>{names.get(entry.userId) || entry.userId.slice(0,8)}</strong>
+            <small style={{ color: theme.textSoft }}>{entry.count} {L("carte(s)", "card(s)", "tarjeta(s)")}</small></span>
+          <strong style={{ fontSize: 15, color: theme.primary, fontVariantNumeric: "tabular-nums" }}>{entry.remaining} <span style={{ fontSize: 9 }}>{L("restantes", "left", "restantes")}</span></strong>
+        </button>)}
+      </div>
+    </div> : null}
 
     {canManage && formOpen ? <div style={{ ...cardStyle, display: "grid", gap: 10 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -177,11 +255,19 @@ export default function OrganizationDrinkCardsPanel({ organization, userId, logo
         </label>
         <label style={label}>{L("Icône", "Icon", "Icono")}
           <select style={control} value={form.icon} onChange={(e) => setForm({ ...form, icon: e.target.value as DrinkCardIcon })}>
-            {(Object.entries(icons) as Array<[DrinkCardIcon,string]>).map(([key, symbol]) => <option key={key} value={key}>{symbol} {key}</option>)}
+            {(Object.entries(icons) as Array<[DrinkCardIcon,string]>).map(([key, symbol]) => <option key={key} value={key}>{symbol}</option>)}
           </select>
         </label>
         <label style={label}>{L("Couleur", "Color", "Color")}
           <input style={{ ...control, padding: 3, minHeight: 40 }} type="color" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })}/>
+        </label>
+        <label style={label}>{L("Fond de la carte", "Card background", "Fondo de la tarjeta")}
+          <select style={control} value={form.backgroundKey} onChange={(e) => setForm({ ...form, backgroundKey: e.target.value as DrinkCardBackground })}>
+            {BUVETTE_BACKGROUNDS.map((b) => <option key={b.key} value={b.key}>{lang === "en" ? b.en : lang === "es" ? b.es : b.fr}</option>)}
+          </select>
+        </label>
+        <label style={label}>{L("Importer un fond personnel", "Upload a background", "Subir un fondo")}
+          <input type="file" accept="image/*" style={{ ...control, padding: 6 }} onChange={(e) => void pickBackground(e.target.files?.[0])}/>
         </label>
         <label style={label}>{L("Validité en jours (vide = illimitée)", "Validity in days (blank = unlimited)", "Validez en días (vacío = ilimitada)")}
           <input style={control} type="number" min={1} max={3650} value={form.validDays ?? ""} onChange={(e) => setForm({ ...form, validDays: e.target.value ? Number(e.target.value) : null })}/>
@@ -192,21 +278,27 @@ export default function OrganizationDrinkCardsPanel({ organization, userId, logo
           </select>
         </label>
       </div>
+      <div style={{ display: "grid", gap: 6 }}>
+        <strong style={{ color: theme.textSoft, fontSize: 11 }}>{L("CHOISIR VISUELLEMENT LE FOND", "CHOOSE A BACKGROUND", "ELIGE UN FONDO")}</strong>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(86px,1fr))", gap: 7 }}>
+          {BUVETTE_BACKGROUNDS.map((b) => {
+            const url = b.key === "custom" && pictureDataUrl ? pictureDataUrl : form.backgroundUrl;
+            return <button key={b.key} type="button" aria-pressed={form.backgroundKey === b.key} onClick={() => setForm((f) => ({ ...f, backgroundKey: b.key }))}
+              style={{ ...button, padding: 4, display: "grid", gap: 4, borderColor: form.backgroundKey === b.key ? theme.primary : theme.borderSoft }}>
+              <span style={{ display: "block", height: 53, borderRadius: 7, border: `1px solid ${theme.borderSoft}`,
+                backgroundImage: clubBuvetteBackground(b.key, url), backgroundPosition: "center", backgroundSize: "cover" }}/>
+              <span style={{ color: form.backgroundKey === b.key ? theme.primary : theme.text, fontSize: 10 }}>{lang === "en" ? b.en : lang === "es" ? b.es : b.fr}</span>
+            </button>;
+          })}
+        </div>
+      </div>
       <label style={label}>{L("Description / conditions", "Description / terms", "Descripción / condiciones")}
         <textarea style={{ ...control, minHeight: 65 }} maxLength={300} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}/>
       </label>
-      <div style={{ borderRadius: 14, padding: 13, border: `2px solid ${form.color}`, background: `linear-gradient(135deg,${form.color}23,rgba(0,0,0,.17))`, display: "grid", gap: 6 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {logo ? <img src={logo} alt="" style={{ width: 38, height: 38, objectFit: "contain", background: "#fff", borderRadius: 9 }}/> : null}
-          <div style={{ fontSize: 12, fontWeight: 850 }}>{organization.name}</div><span style={{ marginLeft: "auto", fontSize: 23 }}>{icons[form.icon]}</span>
-        </div>
-        <strong>{form.name || "Carte boissons"}</strong>
-        <div style={{ fontSize: 11 }}>{form.paidDrinks} + {form.bonusDrinks} {L("offerte(s)", "free", "gratis")} · {formatMoney(form.price || 0, form.currency, lang)}</div>
-        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-          {Array.from({ length: Math.max(0, Math.min(form.paidDrinks + form.bonusDrinks, 250)) }, (_, i) =>
-            <span key={i} style={{ display: "grid", placeItems: "center", width: 21, height: 21, border: `1px solid ${form.color}99`, borderRadius: 5, fontSize: 11 }}>{i >= form.paidDrinks ? "★" : "○"}</span>)}
-        </div>
-      </div>
+      <strong style={{ fontSize: 12, color: theme.textSoft }}>{L("APERÇU DE LA CARTE", "CARD PREVIEW", "VISTA PREVIA")}</strong>
+      <ClubBuvetteCardVisual compact data={{ ...form, templateName: form.name || "Carte buvette", remaining: form.paidDrinks + form.bonusDrinks,
+        backgroundUrl: form.backgroundKey === "custom" && pictureDataUrl ? pictureDataUrl : form.backgroundUrl }}
+        memberName={L("Adhérent du club", "Club member", "Socio del club")} clubName={organization.name} logoUrl={logo} lang={lang}/>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button type="button" style={primary} disabled={pending} onClick={() => void save()}>{pending ? "…" : L("Enregistrer le modèle", "Save design", "Guardar modelo")}</button>
         <button type="button" style={button} disabled={pending} onClick={() => setFormOpen(false)}>{L("Annuler", "Cancel", "Cancelar")}</button>
@@ -222,7 +314,7 @@ export default function OrganizationDrinkCardsPanel({ organization, userId, logo
         "Create a 10+1 card, a 50-drink card or any custom option.", "Crea una tarjeta 10+1, de 50 bebidas u otra opción.")}</p> : null}
       {templates.map((t) => <div key={t.id} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8,
         padding: 9, borderRadius: 11, border: `1px solid ${theme.borderSoft}`, opacity: t.status === "archived" ? .65 : 1 }}>
-        <span style={{ fontSize: 24 }}>{icons[t.icon]}</span>
+        <span style={{ color: t.color }}><BuvetteGlyph icon={t.icon} size={27} color={t.color}/></span>
         <div style={{ flex: 1, minWidth: 145 }}><strong style={{ fontSize: 12 }}>{t.name}</strong>
           <div style={{ fontSize: 11, color: theme.textSoft }}>{t.paidDrinks} + {t.bonusDrinks} ★ · {formatMoney(t.price, t.currency, lang)} · {t.status === "archived" ? L("Archivée", "Archived", "Archivada") : L("Active", "Active", "Activa")}</div>
         </div>
@@ -258,82 +350,66 @@ export default function OrganizationDrinkCardsPanel({ organization, userId, logo
     </div> : null}
 
     <div style={{ ...cardStyle, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 9 }}>
-      <strong style={{ color: theme.primary, fontSize: 13 }}>{canManage ? L("CARTES ATTRIBUÉES", "ISSUED CARDS", "TARJETAS ASIGNADAS") : L("MES CARTES DE BOISSONS", "MY DRINK CARDS", "MIS TARJETAS")}</strong>
-      <label style={{ display: "flex", alignItems: "center", gap: 5, color: theme.textSoft, fontSize: 11 }}>
-        <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)}/>{L("Afficher terminées / annulées", "Show used / cancelled", "Mostrar agotadas / anuladas")}
-      </label>
+      <strong style={{ color: theme.primary, fontSize: 13 }}>{canManage ? L("CARTES DU MEMBRE SÉLECTIONNÉ", "SELECTED MEMBER'S CARDS", "TARJETAS DEL SOCIO") : L("MES CARTES BUVETTE", "MY DRINK CARDS", "MIS TARJETAS")}</strong>
+      {!canManage ? <label style={{ display: "flex", alignItems: "center", gap: 5, color: theme.textSoft, fontSize: 11 }}>
+        <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)}/>{L("Voir anciennes cartes", "Show old cards", "Ver tarjetas anteriores")}
+      </label> : null}
     </div>
-    {loading && <div style={cardStyle}>{L("Chargement des cartes…", "Loading cards…", "Cargando tarjetas…")}</div>}
-    {!loading && displayedCards.length === 0 ? <div style={{ ...cardStyle, fontSize: 12, color: theme.textSoft }}>
-      {L("Aucune carte active pour le moment.", "No active drink cards yet.", "Sin tarjetas activas.")}
+    {loading ? <div style={cardStyle}>{L("Chargement des cartes…", "Loading cards…", "Cargando tarjetas…")}</div> : null}
+    {!loading && selectedCards.length === 0 ? <div style={{ ...cardStyle, color: theme.textSoft, fontSize: 12 }}>
+      {L("Aucune carte buvette à afficher.", "No drink card to display.", "No hay tarjetas que mostrar.")}
     </div> : null}
-    <div style={{ display: "grid", gap: 11, gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,310px),1fr))" }}>
-      {displayedCards.map((c) => {
-        const spent = isSpent(c), expired = isExpired(c), allowed = canUse(c), total = c.paidDrinks+c.bonusDrinks;
-        const undone = new Set(historyCard === c.id ? history.filter((e) => e.action === "undo" && e.reversesEventId).map((e) => e.reversesEventId) : []);
-        return <article key={c.id} style={{ ...cardStyle, background: `linear-gradient(135deg,${c.color}23,rgba(0,0,0,.06)),${theme.cardBackground || theme.card}`, border: `2px solid ${c.color}aa`, display: "grid", gap: 9 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-            {logo ? <img src={logo} alt="" style={{ width: 42, height: 42, borderRadius: 9, objectFit: "contain", background: "#fff", padding: 3 }}/> : <span style={{ fontSize: 26 }}>🏅</span>}
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <strong style={{ color: theme.text, display: "block", fontSize: 13, overflowWrap: "anywhere" }}>{c.templateName}</strong>
-              <span style={{ color: theme.textSoft, fontSize: 10.5 }}>{canManage ? names.get(c.holderUserId) || c.holderUserId.slice(0, 8) : L("Ma carte", "My card", "Mi tarjeta")}</span>
-            </div><span style={{ fontSize: 27 }}>{icons[c.icon]}</span>
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
-            <strong style={{ fontSize: 18, color: c.color }}>{c.remaining} / {total} {L("restantes", "remaining", "restantes")}</strong>
-            <span style={{ fontSize: 11, color: theme.textSoft }}>{c.paidDrinks} + {c.bonusDrinks} ★</span>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(10,minmax(0,1fr))", gap: 4 }}>
-            {Array.from({ length: total }, (_, i) => {
-              const used = i < spent, gift = i >= c.paidDrinks;
-              return <button key={i} type="button" disabled={pending || used || !allowed} title={used ? L("Boisson consommée", "Drink used", "Bebida consumida") : gift ? L("Boisson offerte", "Free drink", "Bebida gratis") : L("Valider une consommation", "Use one drink", "Consumir una bebida")}
-                aria-label={`${i+1}/${total} · ${used ? L("consommée", "used", "consumida") : L("disponible", "available", "disponible")}`}
-                onClick={() => {
-                  if (!window.confirm(L("Décompter une boisson de cette carte ?", "Use one drink from this card?", "¿Consumir una bebida de esta tarjeta?"))) return;
-                  void apply(() => consumeDrinkCard(userId, organization.id, c.id), L("Une boisson décomptée.", "One drink used.", "Una bebida consumida."), true);
-                }}
-                style={{ minWidth: 0, aspectRatio: "1", borderRadius: 6, border: `1px solid ${used ? theme.borderSoft : c.color}`,
-                  background: used ? "rgba(0,0,0,.35)" : `${c.color}1c`, opacity: used ? .52 : 1,
-                  fontSize: 11, color: used ? theme.textSoft : c.color, cursor: used || !allowed ? "default" : "pointer", padding: 0 }}>
-                {used ? "✓" : gift ? "★" : "○"}</button>;
-            })}
-          </div>
-          <div style={{ fontSize: 10.5, color: theme.textSoft, display: "grid", gap: 3 }}>
-            <div>{L("Attribuée le", "Issued", "Asignada")}: {formatDate(c.issuedAt, lang)} · {formatMoney(c.price, c.currency, lang)}</div>
-            {c.expiresAt ? <div>{L("Expire le", "Expires", "Vence")}: {formatDate(c.expiresAt, lang)}</div> : null}
-            {c.status === "cancelled" ? <strong style={{ color: "#ffb1b1" }}>{L("CARTE ANNULÉE", "CARD CANCELLED", "TARJETA ANULADA")}</strong> : expired ? <strong style={{ color: "#ffb1b1" }}>{L("CARTE EXPIRÉE", "CARD EXPIRED", "TARJETA CADUCADA")}</strong> : c.remaining === 0 ? <strong>{L("CARTE TERMINÉE", "CARD COMPLETE", "TARJETA TERMINADA")}</strong> : null}
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-            {allowed ? <button style={primary} disabled={pending} type="button" onClick={() => {
-              if (window.confirm(L("Décompter une boisson ?", "Use one drink?", "¿Descontar una bebida?"))) void apply(() => consumeDrinkCard(userId, organization.id, c.id), L("Consommation validée.", "Drink recorded.", "Consumo registrado."), true);
-            }}>{icons[c.icon]} {L("Cocher 1 boisson", "Use 1 drink", "Marcar 1 bebida")}</button> : null}
-            <button style={button} type="button" disabled={pending} onClick={() => void openHistory(c.id)}>
-              {historyCard === c.id ? L("Masquer l’historique", "Hide history", "Ocultar historial") : L("Historique", "History", "Historial")}</button>
-            {canCorrect && c.status === "active" ? <button style={button} type="button" disabled={pending} onClick={() => {
-              if (window.confirm(L("Annuler cette carte ? Cette action ne supprime pas son historique et bloque toute nouvelle consommation.",
-                "Cancel this card? Its history is preserved, and no more drinks may be used.",
-                "¿Anular esta tarjeta? Su historial se conserva.")))
-                void apply(() => cancelDrinkCard(userId, organization.id, c.id), L("Carte annulée.", "Card cancelled.", "Tarjeta anulada."), true);
-            }}>{L("Désactiver", "Cancel card", "Desactivar")}</button> : null}
-          </div>
-          {historyCard === c.id ? <div style={{ borderTop: `1px solid ${theme.borderSoft}`, paddingTop: 8, display: "grid", gap: 7 }}>
-            <strong style={{ color: theme.textSoft, fontSize: 11 }}>{L("Journal des consommations et corrections", "Drinks and corrections log", "Historial de consumos y correcciones")}</strong>
-            {historyLoading ? <small>{L("Chargement…", "Loading…", "Cargando…")}</small> : null}
-            {!historyLoading && history.length === 0 ? <small style={{ color: theme.textSoft }}>{L("Aucune opération.", "No activity.", "Sin actividad.")}</small> : null}
-            {history.map((e) => <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "space-between", fontSize: 11, color: theme.textSoft }}>
-              <span style={{ minWidth: 0 }}>{e.action === "undo" ? "↶" : "✓"} {e.action === "undo" ? L("Correction", "Correction", "Corrección") : L("1 boisson", "1 drink", "1 bebida")} · {formatDate(e.createdAt, lang)}
-                {canManage ? ` · ${names.get(e.actorUserId) || e.actorUserId.slice(0, 8)}` : ""}</span>
-              {canCorrect && e.action === "consume" && !undone.has(e.id) ? <button type="button" disabled={pending} style={{ ...button, padding: "5px 7px", minHeight: 28, flexShrink: 0 }}
-                onClick={() => {
-                  if (window.confirm(L("Rétablir cette boisson ? La correction restera visible dans l'historique.",
-                    "Restore this drink? The correction remains in the activity log.",
-                    "¿Restaurar esta bebida? La corrección quedará registrada.")))
-                    void apply(() => undoDrinkCardConsumption(userId, organization.id, e.id), L("Boisson restituée.", "Drink restored.", "Bebida restaurada."), true);
-                }}>{L("Corriger +1", "Undo +1", "Corregir +1")}</button> : null}
-            </div>)}
-          </div> : null}
-        </article>;
-      })}
+    <style>{`@media print {
+      @page { size: A5 landscape; margin: 8mm; }
+      body.mss-print-buvette * { visibility: hidden !important; }
+      body.mss-print-buvette .mss-buvette-print-selected, body.mss-print-buvette .mss-buvette-print-selected * { visibility: visible !important; }
+      body.mss-print-buvette .mss-buvette-print-selected { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; max-width: 100% !important; transform: none !important; box-shadow: none !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      body.mss-print-buvette .mss-buvette-print-selected .mss-buvette-stamp { pointer-events: none; }
+    }`}</style>
+    <div style={{ display: "grid", gap: 15, gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,330px),1fr))" }}>
+    {selectedCards.map((c) => {
+      const expired = isExpired(c), allowed = canUse(c);
+      const undone = new Set(historyCard === c.id ? history.filter((e) => e.action === "undo" && e.reversesEventId).map((e) => e.reversesEventId) : []);
+      const onStamp = (slotIndex: number) => {
+        if (!allowed || pending) return;
+        if (!window.confirm(L(`Valider la boisson n°${slotIndex} ?`, `Stamp drink #${slotIndex}?`, `¿Marcar la bebida ${slotIndex}?`))) return;
+        void apply(() => stampDrinkCard(userId, organization.id, c.id, slotIndex), L("Boisson décomptée.", "Drink recorded.", "Bebida descontada."), true);
+      };
+      return <article key={c.id} style={{ ...cardStyle, display: "grid", gap: 9, alignContent: "start", padding: 10 }}>
+        <div className={printingCard === c.id ? "mss-buvette-print-selected" : ""}>
+          <ClubBuvetteCardVisual printId={`mss-buvette-print-${c.id}`} data={c} memberName={names.get(c.holderUserId) || (c.holderUserId === userId ? L("Ma carte", "My card", "Mi tarjeta") : c.holderUserId.slice(0,8))}
+            avatarUrl={avatars.get(c.holderUserId)} clubName={organization.name} logoUrl={logo} lang={lang} disabled={!allowed} pending={pending} onConsume={onStamp}/>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", color: theme.textSoft, fontSize: 11 }}>
+          <span>{L("Attribuée", "Issued", "Asignada")}: {formatDate(c.issuedAt, lang)} {c.expiresAt ? ` · ${L("Expire", "Expires", "Vence")}: ${formatDate(c.expiresAt, lang)}` : ""}</span>
+          <button style={button} type="button" disabled={pending} onClick={() => print(c.id)}>▤ {L("Imprimer", "Print", "Imprimir")}</button>
+        </div>
+        {c.status === "cancelled" ? <strong style={{ color: "#f58d90", fontSize: 11 }}>{L("CARTE ANNULÉE", "CARD CANCELLED", "TARJETA ANULADA")}</strong> : expired ? <strong style={{ color: "#f58d90", fontSize: 11 }}>{L("CARTE EXPIRÉE", "CARD EXPIRED", "TARJETA CADUCADA")}</strong> : c.remaining === 0 ? <strong style={{ fontSize: 11 }}>{L("CARTE TERMINÉE", "CARD COMPLETE", "TARJETA COMPLETADA")}</strong> : null}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+          {allowed ? <button style={primary} type="button" disabled={pending} onClick={() => {
+            const next = Array.from({ length: c.paidDrinks + c.bonusDrinks }, (_, i) => i + 1).find((i) => !c.usedSlots.includes(i));
+            if (next != null) onStamp(next);
+          }}><BuvetteGlyph icon={c.icon} size={17} color={theme.primary}/> {L("Cocher 1 boisson", "Stamp one drink", "Marcar una bebida")}</button> : null}
+          <button style={button} type="button" disabled={pending} onClick={() => void openHistory(c.id)}>{historyCard === c.id ? L("Masquer l'historique", "Hide history", "Ocultar historial") : L("Historique / corrections", "History / corrections", "Historial / correcciones")}</button>
+          {canCorrect && c.status === "active" ? <button style={button} type="button" disabled={pending} onClick={() => {
+            if (window.confirm(L("Désactiver cette carte ? Son historique sera conservé.", "Cancel this card? Its history remains available.", "¿Desactivar tarjeta? Se conserva el historial.")))
+              void apply(() => cancelDrinkCard(userId, organization.id, c.id), L("Carte annulée.", "Card cancelled.", "Tarjeta anulada."), true);
+          }}>{L("Désactiver", "Cancel card", "Desactivar")}</button> : null}
+        </div>
+        {historyCard === c.id ? <div style={{ borderTop: `1px solid ${theme.borderSoft}`, paddingTop: 8, display: "grid", gap: 7 }}>
+          <strong style={{ color: theme.textSoft, fontSize: 11 }}>{L("Journal des consommations et corrections", "Drinks and corrections", "Consumos y correcciones")}</strong>
+          {historyLoading ? <small>{L("Chargement…", "Loading…", "Cargando…")}</small> : null}
+          {!historyLoading && history.length === 0 ? <small style={{ color: theme.textSoft }}>{L("Aucune opération.", "No activity.", "Sin actividad.")}</small> : null}
+          {history.map((e) => <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "space-between", fontSize: 11, color: theme.textSoft }}>
+            <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{e.action === "undo" ? "↶" : "✓"} {e.action === "undo" ? L("Correction", "Correction", "Corrección") : L("Boisson", "Drink", "Bebida")} {e.slotIndex ? `#${e.slotIndex}` : ""} · {formatDate(e.createdAt, lang)}{canManage ? ` · ${names.get(e.actorUserId) || e.actorUserId.slice(0,8)}` : ""}</span>
+            {canCorrect && e.action === "consume" && !undone.has(e.id) ? <button type="button" disabled={pending} style={{ ...button, padding: "5px 7px", minHeight: 28, flexShrink: 0 }} onClick={() => {
+              if (window.confirm(L("Restituer cette boisson ? La correction restera enregistrée.", "Restore this stamp? The audit trail is kept.", "¿Devolver esta bebida? La corrección queda registrada.")))
+                void apply(() => undoDrinkCardConsumption(userId, organization.id, e.id), L("Boisson restituée.", "Drink restored.", "Bebida restaurada."), true);
+            }}>{L("Corriger +1", "Undo +1", "Corregir +1")}</button> : null}
+          </div>)}
+        </div> : null}
+      </article>;
+    })}
     </div>
     <small style={{ color: theme.textSoft, lineHeight: 1.5 }}>
       {L("Les cartes sont nominatives. L'attribution correspond à une remise validée par un responsable, sans paiement intégré. Chaque case cochée représente une boisson. Seuls les responsables peuvent restituer une consommation saisie par erreur.",

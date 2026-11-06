@@ -9,6 +9,7 @@ import OrganizationFederationsPanel from "../components/OrganizationFederationsP
 import OrganizationBillingPanel from "../components/OrganizationBillingPanel";
 import OrganizationSponsorsPanel from "../components/OrganizationSponsorsPanel";
 import OrganizationShopPanel from "../components/OrganizationShopPanel";
+import OrganizationDrinkCardsPanel from "../components/OrganizationDrinkCardsPanel";
 import OrganizationAdminPanel from "../components/OrganizationAdminPanel";
 import OrganizationPlansPanel from "../components/OrganizationPlansPanel";
 import OrganizationMembersPanel from "../components/OrganizationMembersPanel";
@@ -57,7 +58,7 @@ import { getStorageDestination, loadStoragePrefs } from "../lib/storagePlans";
 import { uploadOrganizationPublicMedia } from "../lib/organizationSupabaseMedia";
 
 type Props = { go?: (tab: any, params?: any) => void; params?: any };
-type View = "home" | "more" | "profile" | "members" | "groups" | "calendar" | "competitions" | "stats" | "communication" | "federations" | "billing" | "sponsors" | "shop" | "venue" | "admin" | "offers";
+type View = "home" | "more" | "profile" | "members" | "groups" | "calendar" | "competitions" | "stats" | "communication" | "federations" | "billing" | "sponsors" | "shop" | "buvette" | "venue" | "admin" | "offers";
 type EntryMode = "none" | "create" | "join";
 
 type WizardDraft = {
@@ -194,6 +195,7 @@ function ModuleIcon({ name, color }: { name: string; color: string }) {
     federations: <><path {...common} d="M12 3 5 6v5c0 4.5 2.7 8 7 10 4.3-2 7-5.5 7-10V6l-7-3Z"/><path {...common} d="M8 11h8M10 8h4M10 14h4"/></>,
     billing: <><rect {...common} x="3" y="5" width="18" height="14" rx="2"/><path {...common} d="M3 9h18M7 15h3"/></>,
     shop: <><rect {...common} x="4" y="9" width="16" height="12" rx="2"/><path {...common} d="M3 9h18l-2-6H5L3 9ZM9 13h6M9 17h6"/></>,
+    buvette: <><path {...common} d="M5 3h14l-2 12a5 5 0 0 1-10 0L5 3Z"/><path {...common} d="M7 9h10M12 20v2M8 22h8"/></>,
     sponsors: <><path {...common} d="M12 21s-7-4.5-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 11c0 5.5-7 10-7 10Z"/></>,
     venue: <><path {...common} d="M4 20h16M6 20V9h12v11M8 9V6h8v3M9 13h2M13 13h2M9 17h2M13 17h2"/><path {...common} d="M18 6h2v5"/></>,
     admin: <><path {...common} d="M12 3 5 6v5c0 4.5 2.7 8 7 10 4.3-2 7-5.5 7-10V6l-7-3Z"/><path {...common} d="M9 12h6M12 9v6"/></>,
@@ -212,7 +214,7 @@ export default function OrganizationsPage({ go, params }: Props) {
   const workspaceMode = params?.workspaceMode === true;
   const requestedOrganizationId = String(params?.organizationId || "").trim();
   const requestedView = String(params?.view || "home") as View;
-  const validViews: View[] = ["home", "more", "profile", "members", "groups", "calendar", "competitions", "stats", "communication", "federations", "billing", "sponsors", "shop", "venue", "admin", "offers"];
+  const validViews: View[] = ["home", "more", "profile", "members", "groups", "calendar", "competitions", "stats", "communication", "federations", "billing", "sponsors", "shop", "buvette", "venue", "admin", "offers"];
 
   const [organizations, setOrganizations] = React.useState<OrganizationRecord[]>([]);
   const [activeId, setActiveId] = React.useState<string | null>(() => loadOrganizationLocalState(userId).activeOrganizationId);
@@ -605,6 +607,7 @@ export default function OrganizationsPage({ go, params }: Props) {
     { id: "billing", name: L("Cotisations & paiements", "Fees & payments", "Cuotas y pagos"), subtitle: L("Suivi financier de l’organisation", "Organization payment tracking", "Seguimiento financiero de la organización") },
     { id: "sponsors", name: L("Sponsors & partenaires", "Sponsors & partners", "Patrocinadores y socios"), subtitle: L("Visibilité et offres partenaires", "Partner visibility and offers", "Visibilidad y ofertas de socios") },
     { id: "shop", name: L("Boutique du club", "Club shop", "Tienda del club"), subtitle: L("Maillots, tenues, goodies et carte des boissons", "Jerseys, clothing, merchandise and drinks menu", "Camisetas, ropa, recuerdos y bebidas") },
+    { id: "buvette", name: L("Buvette · Cartes", "Drinks bar · Cards", "Bar · Tarjetas"), subtitle: L("Cartes personnelles, consommations et gestion du club", "Personal drink cards, stamps and club management", "Tarjetas, consumiciones y administración") },
     { id: "venue", name: L("Installations & QR", "Installations & QR", "Instalaciones y QR"), subtitle: L("Cibles, tables, terrains, salles et QR de jeu", "Boards, tables, pitches, rooms and play QR codes", "Dianas, mesas, campos, salas y QR de juego") },
     { id: "admin", name: L("Administration", "Administration", "Administración"), subtitle: L("Droits, identité et paramètres", "Permissions, identity and settings", "Permisos, identidad y ajustes") },
     { id: "offers", name: L("Offres MSS", "MSS plans", "Planes MSS"), subtitle: L("GROUP, CLUB, PRO et BUSINESS", "GROUP, CLUB, PRO and BUSINESS", "GROUP, CLUB, PRO y BUSINESS") },
@@ -836,7 +839,7 @@ export default function OrganizationsPage({ go, params }: Props) {
         return Number.isFinite(ts) && ts >= now - 60 * 60 * 1000;
       })
       .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())[0] || null;
-    const quickIds: View[] = ["members", "competitions", "stats", optionalModules.includes("communication") ? "communication" : "profile", "shop"];
+    const quickIds: View[] = ["members", "competitions", "stats", optionalModules.includes("communication") ? "communication" : "profile", "buvette"];
     const quickModules = quickIds.map((id) => modules.find((module) => module.id === id)).filter(Boolean) as typeof modules;
     const enabledSports = (active.profile?.sports || []).filter(Boolean);
     const selectedSportLabel = enabledSports.find((sport) => normalizeSportLabel(sport) !== "multisport" && toSportContextId(sport) === sportCtx?.sport) || enabledSports.find((sport) => normalizeSportLabel(sport) !== "multisport") || enabledSports[0] || "Fléchettes";
@@ -981,7 +984,7 @@ export default function OrganizationsPage({ go, params }: Props) {
     const moduleMap = new Map(modules.map((module) => [module.id, module]));
     const groups: Array<{ title: string; ids: View[] }> = [
       { title: L("Sport & vie du collectif", "Sport & club life", "Deporte y vida colectiva"), ids: ["members", "competitions", "stats", "communication"] },
-      { title: L("Gestion & services", "Management & services", "Gestión y servicios"), ids: ["federations", "billing", "shop", "sponsors", "venue"] },
+      { title: L("Gestion & services", "Management & services", "Gestión y servicios"), ids: ["federations", "billing", "buvette", "shop", "sponsors", "venue"] },
       { title: L("Ma page & réglages", "My page & settings", "Mi página y ajustes"), ids: ["profile", "admin", "offers"] },
     ];
     return <div style={{ display: "grid", gap: 13 }}>
@@ -1032,6 +1035,7 @@ export default function OrganizationsPage({ go, params }: Props) {
     if (view === "federations") return <OrganizationFederationsPanel organization={active} userId={userId} />;
     if (view === "billing") return <OrganizationBillingPanel organization={active} userId={userId} />;
     if (view === "sponsors") return <OrganizationSponsorsPanel organization={active} userId={userId} />;
+    if (view === "buvette") return <OrganizationDrinkCardsPanel key={active.id} organization={active} userId={userId} logoUrl={activeLogo} />;
     if (view === "shop") return <OrganizationShopPanel organization={active} userId={userId} logoUrl={activeLogo} />;
     if (view === "venue") return <OrganizationVenuePanel organization={active} userId={userId} go={go} />;
     if (view === "calendar") return <MultisportAgendaPage

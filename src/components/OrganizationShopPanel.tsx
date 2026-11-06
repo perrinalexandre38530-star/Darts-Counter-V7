@@ -1,5 +1,4 @@
 import React from "react";
-import OrganizationDrinkCardsPanel from "./OrganizationDrinkCardsPanel";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
@@ -24,7 +23,6 @@ export default function OrganizationShopPanel({ organization, userId, logoUrl }:
   const canDelete = ["owner", "admin"].includes(organization.role);
   const [items, setItems] = React.useState<OrganizationShopItem[]>([]);
   const [filter, setFilter] = React.useState<Filter>("all");
-  const [showDrinkCards, setShowDrinkCards] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -125,11 +123,7 @@ export default function OrganizationShopPanel({ organization, userId, logoUrl }:
       </div> : null}
     </div>
 
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-      <button type="button" style={!showDrinkCards ? primary : button} onClick={() => setShowDrinkCards(false)}>{L("🛍️ Catalogue & carte des boissons", "🛍️ Catalog & drinks menu", "🛍️ Catálogo y carta de bebidas")}</button>
-      <button type="button" style={showDrinkCards ? primary : button} onClick={() => setShowDrinkCards(true)}>{L("🥤 Cartes de consommation", "🥤 Prepaid drink cards", "🥤 Tarjetas de consumición")}</button>
-    </div>
-    {showDrinkCards ? <OrganizationDrinkCardsPanel key={organization.id} organization={organization} userId={userId} logoUrl={logoUrl} /> : <>
+
     {error ? <div role="alert" style={{ ...card, borderColor: "#d96f6f", color: "#ffadad", fontSize: 12 }}>{error}</div> : null}
     {notice ? <div role="status" style={{ ...card, color: theme.primary, fontSize: 12 }}>{notice}</div> : null}
 
@@ -218,6 +212,5 @@ export default function OrganizationShopPanel({ organization, userId, logoUrl }:
         {contactPhone ? <a style={{ ...button, textDecoration: "none" }} href={`tel:${contactPhone.replace(/[^0-9+]/g, "")}`}>☎ {contactPhone}</a> : null}
       </div>
     </div>
-    </>}
   </div>;
 }

@@ -20,6 +20,6 @@ for(const action of ['issueDrinkCard','consumeDrinkCard','undoDrinkCardConsumpti
  'saveDrinkCardTemplate','listDrinkCardEvents']) assert(service.includes(`function ${action}`), action);
 for(const token of ['logoUrl','paidDrinks','bonusDrinks','validDays','form.color','form.icon',
  'issueHolder','Corriger +1','historyCard','canCorrect','window.confirm']) assert(panel.includes(token),`UI ${token}`);
-assert(shop.includes('<OrganizationDrinkCardsPanel'));
+assert(page.includes('view === "buvette"') || shop.includes('<OrganizationDrinkCardsPanel')); // V20: dedicated club Buvette
 assert(page.includes('logoUrl={activeLogo}'));
 console.log('OK V19 — cartes, logo, cases, attribution, permissions, audit et RLS atomique.');
