@@ -1,0 +1,111 @@
+/* TOSSIT SCORING — responsive-only layout; no changes to score engines or history.
+ * Portrait: large tap targets and one-column data entry.
+ * Wide landscape: stable score column with independently scrollable scoring form.
+ */
+.tossit-page,
+.tossit-page * { box-sizing: border-box; }
+.tossit-page { min-width: 0; overflow-wrap: break-word; }
+.tossit-page section,
+.tossit-page label,
+.tossit-page button,
+.tossit-page input,
+.tossit-page select { min-width: 0; }
+.tossit-page button,
+.tossit-page input,
+.tossit-page select { font-family: inherit; }
+.tossit-page button {
+  min-height: 44px;
+  touch-action: manipulation;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.tossit-page button:focus-visible,
+.tossit-page input:focus-visible,
+.tossit-page select:focus-visible {
+  outline: 3px solid #f7c45f;
+  outline-offset: 2px;
+}
+.tossit-page input:not([type="checkbox"]),
+.tossit-page select {
+  max-width: 100%;
+  min-height: 44px;
+  font-size: 16px;
+}
+.tossit-page input[type="checkbox"] { width: 18px; height: 18px; accent-color: #48e7cf; vertical-align: middle; }
+.tossit-page .tossit-mode-panel > label,
+.tossit-page .tossit-mode-panel > div > label { min-width: 0; }
+.tossit-page .tossit-mode-panel label { line-height: 1.35; }
+.tossit-page .tossit-mode-panel select { display: block; }
+.tossit-page .tossit-decor-card img { width: 100%; object-position: center; }
+.tossit-menu-page .tossit-decor-card img { max-height: 200px; object-fit: cover; }
+.tossit-config-page .tossit-decor-card img { max-height: 112px; object-fit: cover; }
+.tossit-stats-page .tossit-decor-card img { max-height: 112px; object-fit: cover; }
+
+.tossit-menu-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 16px; margin: 12px 0 16px; }
+.tossit-menu-toolbar label { flex: 1 1 190px; font-weight: 700; font-size: 14px; }
+.tossit-menu-toolbar input[type="search"] {
+  display: block;
+  margin-top: 6px;
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid #547c7b;
+  border-radius: 12px;
+  background: #11252d;
+  color: white;
+  padding: 10px 12px;
+}
+.tossit-menu-toolbar > span { font-size: 13px; color: #48e7cf; font-weight: 800; }
+.tossit-mode-tile { transition: border-color .15s ease; }
+.tossit-mode-tile:active { border-color: #48e7cf !important; }
+.tossit-score-grid { min-width: 0; }
+.tossit-score-card { min-width: 0; }
+.tossit-score-card > div:first-child { overflow-wrap: anywhere; }
+.tossit-play-grid, .tossit-play-sidebar, .tossit-play-main { min-width: 0; }
+.tossit-play-main { overflow-wrap: anywhere; }
+
+@media (max-width: 520px) {
+  .tossit-page .tossit-header-img { height: auto !important; aspect-ratio: 800 / 230; }
+  .tossit-page .tossit-mode-panel { padding: 12px !important; }
+  .tossit-score-grid { grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)) !important; }
+  .tossit-score-card { padding: 10px !important; }
+  .tossit-score-card > div:nth-child(2) { font-size: clamp(25px, 8vw, 34px) !important; }
+  .tossit-mode-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)) !important; }
+  .tossit-page .tossit-mode-panel select,
+  .tossit-page .tossit-mode-panel input:not([type="checkbox"]) { width: 100%; }
+}
+
+/* MSS standard portrait-to-landscape split: score stays at left, forms scroll at right. */
+@media (orientation: landscape) and (min-width: 600px) {
+  .tossit-play-page .tossit-header-img { height: clamp(70px, 17vh, 112px) !important; }
+  .tossit-play-grid {
+    display: grid;
+    grid-template-columns: minmax(205px, 31%) minmax(0, 1fr);
+    align-items: start;
+    gap: 12px;
+  }
+  .tossit-play-sidebar { position: sticky; top: 8px; align-self: start; }
+  .tossit-play-main {
+    max-height: calc(100vh - 205px);
+    max-height: calc(100dvh - 205px);
+    min-height: 120px;
+    padding-right: 6px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior-y: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #4b8e8b transparent;
+  }
+  .tossit-play-sidebar .tossit-score-grid { grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)) !important; }
+  .tossit-play-sidebar .tossit-score-card { padding: 10px !important; }
+  .tossit-play-sidebar .tossit-score-card > div:nth-child(2) { font-size: clamp(23px, 3vw, 33px) !important; }
+  .tossit-play-page .tossit-mode-panel { padding: 12px !important; }
+}
+@media (orientation: landscape) and (min-width: 600px) and (max-height: 520px) {
+  .tossit-play-page .tossit-header-img { height: 68px !important; }
+  .tossit-play-main { max-height: calc(100dvh - 170px); }
+  .tossit-play-sidebar .tossit-score-grid { margin-top: 8px !important; }
+  .tossit-play-page .tossit-score-card > div:nth-child(2) { font-size: 24px !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tossit-page .tossit-mode-tile { transition: none; }
+}

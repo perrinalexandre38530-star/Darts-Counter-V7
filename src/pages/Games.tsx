@@ -746,9 +746,14 @@ export default function Games({ setTab, params }: Props) {
   React.useEffect(() => {
     let alive = true;
     let requestSeq = 0;
-    let delayedReload: number | null = null;
+    let refreshTimer: number | null = null;
+    let refreshInFlight = false;
+    let refreshPending = false;
 
     const loadUsage = async () => {
+      if (!alive) return;
+      if (refreshInFlight) { refreshPending = true; return; }
+      refreshInFlight = true;
       const seq = ++requestSeq;
       try {
         // Un favori représente un mode réellement LANCÉ, pas uniquement un match
@@ -793,19 +798,33 @@ export default function Games({ setTab, params }: Props) {
           setCounts({});
           setLastPlayed({});
         }
+      } finally {
+        refreshInFlight = false;
+        if (refreshPending && alive) {
+          refreshPending = false;
+          scheduleRefresh(250);
+        }
       }
     };
 
-    const refresh = () => {
-      void loadUsage();
+    // Coalesce history/focus/visibility events into one scan. Never run two
+    // History reads concurrently when a match is being saved.
+    const scheduleRefresh = (delay = 240) => {
+      if (!alive) return;
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        void loadUsage();
+      }, delay);
     };
+    const refresh = () => scheduleRefresh();
     const onVisibility = () => {
       if (document.visibilityState === "visible") refresh();
     };
 
-    refresh();
-    // Filet de sécurité pour un upsert déjà lancé juste avant le montage de Games.
-    delayedReload = window.setTimeout(refresh, 350);
+    void loadUsage();
+    // A pending History.upsert emits dc-history-updated; the listener below
+    // refreshes after the write rather than scheduling a redundant full scan.
 
     window.addEventListener("dc-history-updated", refresh as EventListener);
     window.addEventListener("focus", refresh);
@@ -814,7 +833,7 @@ export default function Games({ setTab, params }: Props) {
     return () => {
       alive = false;
       requestSeq += 1;
-      if (delayedReload !== null) window.clearTimeout(delayedReload);
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
       window.removeEventListener("dc-history-updated", refresh as EventListener);
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", onVisibility);

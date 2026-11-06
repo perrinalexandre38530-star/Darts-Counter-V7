@@ -53,7 +53,7 @@ for (const page of ['Top10Play','TicTacToePlay']) {
   const s = readFileSync(`src/pages/${page}.tsx`,'utf8');
   assert.match(s,/loadPartialVisit\(draftIdentity\(restored\.id/,'hydrate from authoritative History progression');
   assert.match(s,/savePartialVisit\(draftIdentity\(id\.current/,'draft saved on local input');
-  assert.match(s,/clearPartialVisit\(\{mode: .*matchId: id\.current\}\)/,'draft discarded on validate');
+  assert.match(s,/!throwing\.length && \(writerRef\.current\.isBusy \|\| writerRef\.current\.hasError\)/,'draft retained until checkpoint acknowledgment (V164)');
   assert.match(s,/if \(hydration !== "ready" \|\| preview\) return;/,'read-only preview does not save drafts');
   assert.match(s,/!restored\.finished/,'no draft for a finished game');
   assert.match(s,/Volée non validée restaurée sur cet appareil/,'user told to verify resumed darts');

@@ -235,7 +235,9 @@ export default function HalveItPlay(props: any) {
   }, [activePlayerId, activeTeamId, state.standings.length, config.participantMode]);
 
   function commitVisit(darts: UiDart[]) {
-    if (state.finished || darts.length < 1) return;
+    // Garde moteur : la saisie manuelle et les bots doivent fournir 3 fléchettes.
+    // Évite une transition de round si une action/touche déclenche une demi-volée.
+    if (state.finished || !Array.isArray(darts) || darts.length !== 3) return;
     setUndoStack((stack) => [...stack.slice(-49), cloneHalveItState(state)]);
     setState((prev) => playHalveItVisit(prev, darts.map(toGameDart)));
     setThrowDarts([]); setMultiplier(1); setNotice("");

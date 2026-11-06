@@ -1,0 +1,27 @@
+/** V164 — anti-validation prématurée et reprise des 4 modes sans effet de bord. */
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { createHalveItState, playHalveItVisit } from '../src/lib/gameEngines/halveItEngine.ts';
+const read = path => readFileSync(resolve(import.meta.dirname, '..', path), 'utf8');
+const five = read('src/pages/FiveLivesPlay.tsx');
+const halve = read('src/pages/HalveItPlay.tsx');
+const key = read('src/components/ScoreInputHub.tsx');
+assert.match(five, /validateDisabled=\{currentThrow\.length !== 3\}/, 'Bouton de validation désactivé avant 3 fléchettes');
+assert.match(five, /rawDarts\.length !== 3\)\) return;/, 'Garde applicative même si le bouton est déclenché autrement');
+assert.match(five, /sourceMethod !== "visit_score"/, 'Ancienne saisie de total préservée');
+assert.match(key, /validateDisabled=\{disabled \|\| validateDisabled/, 'Le keypad relaie bien la désactivation');
+assert.doesNotMatch(five, /ResizeObserver|setInputHeight|inputRef/, 'Pas de ResizeObserver sans consommateur sur mobile');
+assert.match(five, /s\.turnIndex >= s\.players\.length/, 'Reprise: index joueur borné');
+assert.match(five, /s\.currentThrow\.some\(/, 'Reprise: fléchettes validées');
+assert.match(halve, /state\.finished \|\| !Array\.isArray\(darts\) \|\| darts\.length !== 3/, 'HALVE-IT bloque aussi les validations incomplètes');
+const players = [{id:'a',name:'A'},{id:'b',name:'B'}];
+const rules = { participantMode:'players', sequencePreset:'extended9', customTargets:['n15','n16','double_any','n17','n18','triple_any','n19','n20','bull'], startMode:'fixed', fixedStartingScore:40, rounding:'floor' };
+let state = createHalveItState(players, rules);
+state = playHalveItVisit(state, [{bed:'S',number:15},{bed:'MISS'},{bed:'MISS'}]);
+state = playHalveItVisit(state, [{bed:'MISS'},{bed:'MISS'},{bed:'MISS'}]);
+assert.equal(state.scoresByPlayer.a,55, 'Le point réussi augmente le score');
+assert.equal(state.scoresByPlayer.b,20, 'Les trois MISS divisent le score par deux');
+assert.equal(state.roundIndex,1, 'Les deux joueurs ont terminé leur volée');
+assert.equal(state.history.length,2);
+console.log('PASS V164 — validation 3 darts, sécurité reprise, pas de resize-loop; SPLIT SCORE inchangé.');

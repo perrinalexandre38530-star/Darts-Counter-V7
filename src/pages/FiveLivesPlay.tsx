@@ -874,9 +874,14 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
     if (!s || record?.config?.id !== config?.id || !Array.isArray(s.players) || !Array.isArray(s.events)
       || s.players.length !== (config?.players || []).length || s.players.some((p: any) =>
         !config.players.some((cp) => cp.id === p.id) || !Number.isFinite(p.lives) || !p.stats)
-      || !Number.isInteger(s.turnIndex) || s.turnIndex < 0 || !Array.isArray(s.chaseRoundQueue)
+      || !Number.isInteger(s.turnIndex) || s.turnIndex < 0 || s.turnIndex >= s.players.length
+      || !Array.isArray(s.chaseRoundQueue) || (isChase && !s.chaseRoundQueue.length)
+      || s.chaseRoundQueue.some((id: unknown) => !s.players.some((p: any) => p.id === id))
       || (s.lastScoreToBeat !== null && !Number.isFinite(s.lastScoreToBeat))
-      || !Array.isArray(s.currentThrow) || s.currentThrow.length > 3) return null;
+      || !Array.isArray(s.currentThrow) || s.currentThrow.length > 3
+      || s.currentThrow.some((d: any) => !Number.isInteger(d?.v) ||
+        !(d.v === 0 || d.v === 25 || (d.v >= 1 && d.v <= 20)) ||
+        ![1, 2, 3].includes(d.mult))) return null;
     return s;
   }, []);
   const startedAtRef = React.useRef(Number(restored?.startedAt || config?.createdAt) || Date.now());
@@ -904,29 +909,11 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
     [finalMatch, setFinalMatch] = React.useState<any>(null);
   const [infoOpen, setInfoOpen] = React.useState(false);
   const [playersOpen, setPlayersOpen] = React.useState(false);
-  const [inputHeight, setInputHeight] = React.useState(330);
-  const inputRef = React.useRef<HTMLDivElement | null>(null);
+  // La hauteur du clavier est gérée en CSS (portrait/paysage).
+  // Ne pas observer/redéclencher le rendu à chaque redimensionnement mobile.
   const inputMethod = sanitizeFiveLivesScoreInput(
     config?.scoreInputMethod || "keypad",
   );
-
-  React.useLayoutEffect(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    const measure = () =>
-      setInputHeight(Math.ceil(el.getBoundingClientRect().height));
-    measure();
-    let ro: ResizeObserver | null = null;
-    try {
-      ro = new ResizeObserver(measure);
-      ro.observe(el);
-    } catch {}
-    window.addEventListener("resize", measure);
-    return () => {
-      ro?.disconnect?.();
-      window.removeEventListener("resize", measure);
-    };
-  }, [inputMethod]);
   const aliveIds = React.useMemo(
     () => players.filter((p) => !p.eliminated).map((p) => p.id),
     [players],
@@ -1167,6 +1154,10 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
     sourceMethod: ScoreInputMethod = inputMethod,
   ) {
     if (!activePlayer || winnerId) return;
+    // Ne jamais valider 1 ou 2 fléchettes comme une volée de 3 MISS inclus.
+    // Les anciennes saisies directes d'un total de volée restent compatibles.
+    if (sourceMethod !== "visit_score" && !Number.isFinite(Number(forcedScore)) &&
+        (!Array.isArray(rawDarts) || rawDarts.length !== 3)) return;
     const scoreOnly =
         sourceMethod === "visit_score" || Number.isFinite(Number(forcedScore)),
       darts = scoreOnly ? [] : normalizeVisitDarts(rawDarts),
@@ -1613,6 +1604,9 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
                   </span>
                 ))}
               </div>
+              {!isBotTurn && <div aria-live="polite" style={{ color: currentThrow.length === 3 ? "#72f0a8" : "rgba(255,255,255,.65)", fontSize: 9, fontWeight: 850, textAlign: "center" }}>
+                {currentThrow.length}/3 {String(lang).toLowerCase() === "fr" ? "fléchettes" : "darts"}
+              </div>}
             </div>
           </div>
           {isBotTurn && !winnerId ? (
@@ -1734,7 +1728,6 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
 
       {!winnerId && !endOpen ? (
         <div
-          ref={inputRef}
           className="msc-mode-play-secondary msc-five-lives-input"
           style={{
             flex: "0 0 auto",
@@ -1761,6 +1754,7 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
                 addDart({ v: 25, mult: mult === 2 ? 2 : 1 } as Dart)
               }
               onValidate={() => applyTurn(currentThrow, undefined, inputMethod)}
+              validateDisabled={currentThrow.length !== 3}
               onDirectDart={(d) => addDart(d as Dart)}
               onSetVisitDarts={(d) => {
                 setCurrentThrow((d || []).slice(0, 3) as Dart[]);

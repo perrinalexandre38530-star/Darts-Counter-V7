@@ -165,7 +165,7 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
       // Cette page calcule uniquement la progression, pour éviter deux notifications
       // ou des réconciliations concurrentes lorsque la galerie est ouverte.
     } finally { setLoading(false); }
-  }, [profileId, onPersistUnlocks, scanNonce]);
+  }, [profileId, scanNonce]);
 
   React.useEffect(() => { void refresh(); }, [refresh]);
   React.useEffect(() => {

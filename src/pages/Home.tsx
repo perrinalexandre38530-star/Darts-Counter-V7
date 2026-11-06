@@ -2608,6 +2608,7 @@ export default function Home({ store, go, activeSport }: Props) {
     let cancelled = false;
     let refreshRunning = false;
     let refreshQueued = false;
+    let refreshTimer: number | null = null;
 
     const refresh = async () => {
       if (cancelled) return;
@@ -2644,12 +2645,19 @@ export default function Home({ store, go, activeSport }: Props) {
     void refresh();
 
     const onStatsUpdated = () => {
-      void refresh();
+      // Several indices may publish during one history write. Aggregate their
+      // notifications to avoid rebuilding the same home projections repeatedly.
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        void refresh();
+      }, 280);
     };
 
     window.addEventListener("dc-stats-index-updated", onStatsUpdated as EventListener);
     return () => {
       cancelled = true;
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
       window.removeEventListener("dc-stats-index-updated", onStatsUpdated as EventListener);
     };
   }, [isFootSport, sport, activeProfile?.id, (auth as any)?.userId, (auth as any)?.user?.id]);
