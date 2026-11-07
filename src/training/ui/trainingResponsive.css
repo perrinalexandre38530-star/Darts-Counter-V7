@@ -1,0 +1,157 @@
+/* Centre d'entraînement : portrait/paysage sans débordement de la saisie. */
+.mssTrainingPlay { position:fixed; inset:0; z-index:120; display:flex; flex-direction:column; overflow:hidden; width:100%; height:100dvh; box-sizing:border-box; overscroll-behavior:contain; }
+.mssTrainingPlay > div:first-child { flex:0 0 92px; height:92px; }
+.mssTrainingPlayMain { width:100%; max-width:1280px; flex:1 1 0; min-height:0; margin:0 auto; padding:7px 9px max(5px,env(safe-area-inset-bottom)); box-sizing:border-box; display:flex; flex-direction:column; gap:6px; overflow:hidden; }
+.mssTrainingPlayOverview { flex:0 0 auto; display:flex; flex-direction:column; gap:5px; min-height:0; }
+.mssTrainingPlayer { position:relative; isolation:isolate; display:grid; grid-template-columns:minmax(0,1fr) minmax(110px,34%); min-height:103px; overflow:hidden; border:1px solid rgba(39,220,255,.38); border-radius:16px; background:linear-gradient(125deg,rgba(6,29,39,.97),rgba(4,13,23,.97)); }
+.mssTrainingPlayerGhost { position:absolute; z-index:-1; left:-15px; top:-25%; width:45%; height:155%; object-fit:contain; object-position:left center; opacity:.16; filter:saturate(1.2); mask-image:linear-gradient(90deg,#000 15%,transparent 98%); pointer-events:none; }
+.mssTrainingPlayerIdentity { min-width:0; display:flex; flex-direction:column; justify-content:center; padding:7px 10px 7px clamp(64px,19%,105px); }
+.mssTrainingEyebrow { color:#68eaff; font-size:9px; font-weight:950; letter-spacing:.65px; }
+.mssTrainingPlayerName { display:block; font-size:clamp(12px,3vw,16px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mssTrainingPlayerScore { color:#ffd86b; font-size:clamp(30px,7vw,43px); line-height:1; font-weight:1000; font-variant-numeric:tabular-nums; }
+.mssTrainingScoreLabel { color:#b5d9df; font-size:8px; font-weight:900; }
+.mssTrainingTargetPanel { min-width:0; margin:8px; border-radius:12px; background:rgba(0,0,0,.32); border:1px solid rgba(39,220,255,.18); padding:6px 8px; display:flex; align-items:center; justify-content:center; flex-direction:column; text-align:center; }
+.mssTrainingTarget { max-width:100%; font-size:clamp(20px,6vw,32px); font-weight:950; line-height:1.05; word-break:break-word; }
+.mssTrainingTargetHint { display:block; max-width:100%; color:#a2b4c2; font-size:9px; line-height:1.15; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mssTrainingObjective { padding:7px 10px; border:1px solid rgba(255,216,107,.25); border-radius:11px; display:flex; align-items:center; gap:8px; min-height:30px; background:rgba(255,216,107,.06); box-sizing:border-box; font-size:11px; line-height:1.25; }
+.mssTrainingObjective > div { min-width:0; flex:1; }
+.mssTrainingSectionTitle { flex:0 0 auto; color:#ffd86b; font-size:9px; font-weight:950; }
+.mssTrainingLiveInfo { min-width:0; display:grid; grid-template-columns:minmax(0,1.7fr) minmax(52px,.65fr) minmax(96px,1fr); gap:5px; }
+.mssTrainingLiveInfo > div { min-width:0; min-height:43px; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:3px; padding:3px 6px; text-align:center; border:1px solid rgba(255,255,255,.10); border-radius:11px; background:rgba(6,18,27,.8); }
+.mssTrainingLiveInfo span { font-size:8px; font-weight:950; color:#5ae8ff; letter-spacing:.6px; }
+.mssTrainingInfoExercise strong { font-size:11px; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mssTrainingInfoRound strong { font-size:15px; }
+.mssTrainingDarts { display:flex; gap:4px; height:19px; align-items:center; justify-content:center; }
+.mssTrainingDarts img { display:block; width:23px; height:17px; object-fit:contain; filter:grayscale(1) brightness(.55); opacity:.4; transition:filter .2s,opacity .2s; }
+.mssTrainingDarts img.isThrown { filter:brightness(0) saturate(100%) invert(77%) sepia(46%) saturate(1009%) hue-rotate(143deg) brightness(110%); opacity:1; }
+.mssTrainingProgress { padding:2px 4px; }
+.mssTrainingProgressCopy { display:flex; align-items:center; justify-content:space-between; font-size:9px; font-weight:950; color:#a4dce9; }
+.mssTrainingProgressTrack { margin-top:3px; height:6px; border-radius:99px; background:rgba(255,255,255,.12); overflow:hidden; }
+.mssTrainingProgressTrack > div { height:100%; border-radius:99px; background:linear-gradient(90deg,#13bde0,#60f1ff); transition:width .15s; }
+.mssTrainingKpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:5px; }
+.mssTrainingKpi { min-width:0; padding:5px 2px; text-align:center; border:1px solid rgba(255,255,255,.10); border-radius:10px; background:rgba(4,14,25,.80); }
+.mssTrainingKpi span { display:block; color:#8cb0be; font-size:8px; font-weight:900; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.mssTrainingKpi strong { display:block; color:#77edff; font-weight:950; font-size:clamp(12px,3vw,17px); }
+.mssTrainingStatsButton { border:1px solid rgba(39,220,255,.23); border-radius:10px; background:rgba(39,220,255,.06); color:#a6f3ff; font-size:9px; font-weight:950; min-height:29px; padding:5px 9px; display:flex; justify-content:space-between; align-items:center; gap:5px; cursor:pointer; }
+.mssTrainingStatsButton span:last-child { font-size:8px; opacity:.7; }
+.mssTrainingInput { display:flex; flex:1 1 0; min-height:0; overflow:hidden; flex-direction:column; width:100%; border:1px solid rgba(255,255,255,.08); border-radius:14px; background:rgba(4,12,20,.56); padding:4px 6px; box-sizing:border-box; }
+.mssTrainingInput > * { flex:1 1 0; min-height:0; }
+.mssTrainingStatsBackdrop { position:fixed; inset:0; z-index:400; display:grid; place-items:center; padding:12px; background:rgba(0,0,0,.83); backdrop-filter:blur(10px); }
+.mssTrainingStatsSheet { box-sizing:border-box; width:min(560px,100%); max-height:calc(100dvh - 32px); overflow:auto; padding:17px; border-radius:19px; color:#fff; background:linear-gradient(150deg,#0d2633,#070c18); border:1px solid rgba(39,220,255,.36); }
+.mssTrainingStatsTop { display:flex; align-items:center; justify-content:space-between; }
+.mssTrainingStatsTop small { font-size:9px; color:#5ae8ff; font-weight:900; }
+.mssTrainingStatsTop h2 { font-size:17px; margin:3px 0 11px; }
+.mssTrainingStatsTop button { width:34px; height:34px; border-radius:10px; border:1px solid #46616b; background:#102630; color:white; font-size:23px; cursor:pointer; }
+.mssTrainingStatsGrid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.mssTrainingStatsGrid > div { display:flex; flex-direction:column; padding:11px; border:1px solid rgba(255,255,255,.1); border-radius:12px; }
+.mssTrainingStatsGrid small { font-size:10px; color:#9db6c7; }
+.mssTrainingStatsGrid strong { font-size:22px; color:#76eaff; }
+.mssTrainingStatsGrid span { font-size:10px; opacity:.7; }
+.mssTrainingStatsSummary { margin-top:13px; font-size:12px; font-weight:900; }
+.mssTrainingStatsSheet p { font-size:11px; line-height:1.5; opacity:.65; }
+@media (orientation:landscape) and (min-width:610px) {
+  .mssTrainingPlayMain { display:grid; grid-template-columns:minmax(0,44fr) minmax(0,56fr); gap:8px; max-width:none; }
+  .mssTrainingPlayOverview { overflow-y:auto; scrollbar-width:thin; }
+  .mssTrainingInput { height:100%; padding:6px; }
+  .mssTrainingPlayer { min-height:100px; }
+  .mssTrainingPlayerIdentity { padding-left:clamp(48px,10vw,95px); }
+}
+@media (max-width:600px) {
+  .mssTrainingPlayMain { padding:4px 6px max(3px,env(safe-area-inset-bottom)); gap:4px; }
+  .mssTrainingPlayOverview { gap:3px; }
+  .mssTrainingPlayer { min-height:86px; }
+  .mssTrainingPlayerIdentity { padding:4px 5px 4px clamp(52px,18vw,80px); }
+  .mssTrainingTargetPanel { margin:5px; padding:4px; }
+  .mssTrainingObjective { padding:5px 7px; min-height:27px; font-size:10px; }
+  .mssTrainingLiveInfo > div { min-height:36px; }
+  .mssTrainingDarts { height:16px; }
+  .mssTrainingDarts img { width:19px; height:15px; }
+  .mssTrainingProgressTrack { height:5px; }
+  .mssTrainingKpi { padding:3px 1px; }
+  .mssTrainingStatsButton { min-height:25px; padding:3px 7px; }
+  .mssTrainingInput { padding:2px 4px; }
+}
+@media (max-height:700px) and (orientation:portrait) {
+  .mssTrainingPlay > div:first-child { flex-basis:72px; height:72px; }
+  .mssTrainingPlay > div:first-child > div:first-child { height:72px!important; }
+  .mssTrainingPlayer { min-height:70px; }
+  .mssTrainingObjective { font-size:9px; min-height:23px; }
+  .mssTrainingLiveInfo > div { min-height:31px; }
+  .mssTrainingKpi { padding:2px; }
+  .mssTrainingStatsButton { min-height:22px; }
+}
+@media (max-height:510px) and (orientation:landscape) {
+  .mssTrainingPlay > div:first-child { flex-basis:58px; height:58px; }
+  .mssTrainingPlay > div:first-child > div:first-child { height:58px!important; }
+  .mssTrainingPlayMain { padding:3px 6px; }
+  .mssTrainingPlayer { min-height:68px; }
+  .mssTrainingObjective { padding:4px; }
+  .mssTrainingLiveInfo > div { min-height:30px; }
+}
+/* Sélecteur : l'icône remplace les trois anciennes grosses cartes. */
+.mssTrainingPad { display:flex; flex-direction:column; flex:1 1 0; min-height:0; width:100%; overflow:hidden; }
+.mssTrainingInputToolbar { flex:0 0 auto; display:flex; align-items:center; gap:8px; min-height:34px; padding:1px 3px 5px; }
+.mssTrainingMethodButton { flex:0 0 auto; display:grid; place-items:center; width:32px; height:32px; border-radius:10px; border:1px solid rgba(39,220,255,.36); background:rgba(39,220,255,.10); color:#72eaff; cursor:pointer; }
+.mssTrainingMethodLabel { display:flex; flex-direction:column; min-width:0; }
+.mssTrainingMethodLabel small { color:#8eafc2; font-size:8px; font-weight:900; letter-spacing:.7px; }
+.mssTrainingMethodLabel strong { color:#c7f8ff; font-size:10px; font-weight:950; text-overflow:ellipsis; white-space:nowrap; overflow:hidden; }
+.mssTrainingPending,.mssTrainingConnected { margin-left:auto; font-size:10px; color:#ffd86b; font-weight:900; }
+.mssTrainingConnected { color:#7cf1c2; }
+.mssTrainingOpenCamera { margin-left:auto; border:1px solid #457681; background:#132630; color:#d6faff; border-radius:8px; height:30px; font-size:9px; font-weight:900; }
+.mssTrainingHubFit { flex:1 1 0; min-height:0; overflow:hidden; }
+.mssTrainingMethodsBackdrop { position:fixed; inset:0; z-index:350; padding:12px; display:grid; place-items:center; background:rgba(0,0,0,.84); backdrop-filter:blur(11px); }
+.mssTrainingMethodsSheet { box-sizing:border-box; width:min(640px,100%); max-height:calc(100dvh - 24px); overflow-y:auto; border-radius:18px; padding:15px; background:linear-gradient(150deg,#0d2433,#080c18); border:1px solid rgba(39,220,255,.32); color:#f4faff; }
+.mssTrainingMethodsHead { display:flex; justify-content:space-between; align-items:center; }
+.mssTrainingMethodsHead small { color:#5be9ff; font-size:9px; font-weight:950; }
+.mssTrainingMethodsHead h2 { font-size:18px; margin:4px 0 10px; }
+.mssTrainingMethodsHead button { background:rgba(255,255,255,.08); color:white; border:1px solid rgba(255,255,255,.2); border-radius:10px; width:34px; height:34px; font-size:22px; cursor:pointer; }
+.mssTrainingMethodsGrid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }
+.mssTrainingMethodsGrid button { text-align:left; min-width:0; min-height:68px; display:flex; align-items:center; gap:8px; color:#e9fbff; background:rgba(255,255,255,.035); border:1px solid rgba(255,255,255,.10); border-radius:11px; padding:9px; cursor:pointer; }
+.mssTrainingMethodsGrid button.isSelected { border-color:rgba(39,220,255,.65); background:rgba(39,220,255,.12); }
+.mssTrainingMethodsGrid button:disabled { opacity:.38; cursor:not-allowed; }
+.mssTrainingMethodGlyph { flex:0 0 27px; height:27px; display:grid; place-items:center; font-size:21px; color:#70eaff; }
+.mssTrainingMethodsGrid button > span:nth-child(2) { display:block; min-width:0; flex:1; }
+.mssTrainingMethodsGrid strong { display:block; font-size:10px; font-weight:950; }
+.mssTrainingMethodsGrid small { display:block; margin-top:4px; font-size:9px; color:#b6cbd5; line-height:1.3; }
+.mssTrainingMethodStatus { color:#61e4ff; font-weight:950; }
+.mssTrainingMethodsSheet p { font-size:10px; color:#ffd86b; }
+@media (max-width:480px) { .mssTrainingMethodsGrid { grid-template-columns:1fr; } .mssTrainingMethodsGrid button { min-height:52px; } .mssTrainingMethodsGrid small { font-size:8.5px; } }
+/* Accueil Training : condensé en portrait, sans masquer les autres onglets. */
+@media (max-width:600px) {
+ .mssTrainingHub { padding:0 6px 12px!important; }
+ .mssTrainingHubPrimaryNav { gap:3px!important; padding:3px 0 5px!important; }
+ .mssTrainingHubPrimaryNav button { min-height:44px!important; padding:4px 2px!important; gap:3px!important; }
+ .mssTrainingHubPrimaryNav button span:last-child { font-size:8px!important; }
+ .mssTrainingHubWelcome { margin:6px 0 4px!important; padding:10px 12px!important; border-radius:15px!important; }
+ .mssTrainingHubWelcome > div:nth-child(2) { gap:7px!important; }
+ .mssTrainingHubWelcome > div:nth-child(2) > div:first-child { width:36px!important; height:36px!important; border-radius:11px!important; }
+ .mssTrainingHubWelcome > div:nth-child(2) > div:first-child svg { width:22px!important; height:22px!important; }
+ .mssTrainingWelcomeSubtitle { display:none!important; }
+ .mssTrainingWelcomeMetrics { gap:5px!important; margin-top:8px; }
+ .mssTrainingWelcomeMetrics > div { padding:5px 3px!important; border-radius:9px!important; }
+ .mssTrainingWelcomeMetrics > div > div:first-child { font-size:7.5px!important; }
+ .mssTrainingWelcomeMetrics > div > div:last-child { font-size:16px!important; margin-top:1px!important; }
+ .mssTrainingWelcomeActions { display:grid!important; grid-template-columns:1fr 1fr; gap:6px!important; margin-top:8px!important; }
+ .mssTrainingWelcomeActions button { flex:unset!important; min-width:0!important; min-height:38px!important; padding:7px 5px!important; font-size:10px!important; }
+ .mssTrainingWelcomeActions button:nth-child(3) { display:none!important; }
+ .container:has(.mssTrainingHub) { padding-bottom:74px!important; }
+}
+@media (max-width:600px) and (max-height:720px) {
+ .mssTrainingHubWelcome { padding:7px 10px!important; }
+ .mssTrainingHubWelcome > div:nth-child(2) > div:first-child { width:30px!important; height:30px!important; }
+ .mssTrainingWelcomeMetrics { margin-top:5px; }
+ .mssTrainingWelcomeActions { margin-top:5px!important; }
+}
+
+/* La consigne Awena ne doit pas diviser l'espace utilisable par le clavier. */
+.mssTrainingInput > .mssTrainingProgramCue { flex:0 0 auto; min-height:0; max-height:76px; overflow:hidden; padding:5px 8px!important; margin-bottom:3px!important; }
+@media (max-width:600px) {
+  .mssTrainingInput > .mssTrainingProgramCue { max-height:43px; }
+  .mssTrainingProgramCue > div:nth-child(2),.mssTrainingProgramCue > div:nth-child(3) { display:none!important; }
+}
+
+/* L'historique conserve le vrai nombre de fléchettes en saisie par score total. */
+.mssTrainingQuickDarts { margin-left:auto; display:flex; gap:3px; align-items:center; }
+.mssTrainingQuickDarts button { min-width:27px; height:26px; border-radius:7px; border:1px solid rgba(255,255,255,.14); color:#b8dce5; background:rgba(255,255,255,.04); font-size:10px; font-weight:950; cursor:pointer; }
+.mssTrainingQuickDarts button.isActive { border-color:#3bdef7; color:#6de7ff; background:rgba(39,220,255,.15); }
+.mssTrainingQuickDarts button:disabled { opacity:.26; cursor:not-allowed; }

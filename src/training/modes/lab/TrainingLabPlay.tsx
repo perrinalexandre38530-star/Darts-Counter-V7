@@ -387,6 +387,16 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
       rules={<><p><b>{exercise.title}</b></p><p>{exercise.subtitle}</p>{isProgram && <p>Étape {stepIndex + 1} sur {totalSteps} du programme {config?.programTitle || "Training"}.</p>}</>}
       eyebrow={isProgram ? `ÉTAPE ${stepIndex + 1}/${totalSteps} • ${exercise.title}` : exercise.title}
       target={target}
+      roundLabel={Math.floor(s.darts / 3) + 1}
+      dartsPlayed={s.darts}
+      stats={[
+        { label: "EXERCICE", value: exercise.title },
+        { label: "FLÉCHETTES", value: `${s.darts}/${exercise.maxDarts}` },
+        { label: "POINTS MARQUÉS", value: s.points },
+        { label: "TOUCHES VALIDES", value: s.hits },
+        { label: "PRÉCISION", value: s.darts > (s.quickDarts || 0) ? `${Math.round(s.hits / (s.darts - (s.quickDarts || 0)) * 100)} %` : "Non mesurée", sub: (s.quickDarts || 0) ? `${s.quickDarts} fléchettes en score total exclues` : undefined },
+        { label: "PROGRESSION", value: `${Math.round(progressValue / Math.max(1,goal) * 100)} %` },
+      ]}
       targetHint={`${s.darts} / ${exercise.maxDarts} fléchettes utilisées${isProgram ? ` • programme ${stepIndex + 1}/${totalSteps}` : ""}`}
       progress={{ value: progressValue, max: goal, label: exercise.family.toUpperCase() }}
       kpis={[
@@ -396,7 +406,7 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
         { label: isProgram ? "ÉTAPE" : "RESTE", value: isProgram ? `${stepIndex + 1}/${totalSteps}` : Math.max(0, exercise.maxDarts - s.darts) },
       ]}
     >
-      {isProgram && <div style={{ marginBottom: 10, padding: 11, borderRadius: 14, border: "1px solid rgba(39,220,255,.18)", background: "linear-gradient(135deg,rgba(39,220,255,.075),rgba(140,90,255,.05))" }}>
+      {isProgram && <div className="mssTrainingProgramCue" style={{ marginBottom: 10, padding: 11, borderRadius: 14, border: "1px solid rgba(39,220,255,.18)", background: "linear-gradient(135deg,rgba(39,220,255,.075),rgba(140,90,255,.05))" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
           <div style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: 1, color: "#27dcff" }}>AWENA • {liveStepCoach.phaseLabel}</div>
           <div style={{ fontSize: 8, fontWeight: 900, opacity: .55 }}>CIBLE PERF. {liveStepCoach.targetScore}/100</div>

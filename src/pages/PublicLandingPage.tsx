@@ -40,6 +40,8 @@ import languages22Fr from "../assets/public-landing/languages-22-fr.webp";
 import languages22En from "../assets/public-landing/languages-22-en.webp";
 import petanqueExplainPortrait from "../assets/petanque_explain/petanque_explain_vertical.webp";
 import petanqueExplainLandscape from "../assets/petanque_explain/petanque_explain_horizontal.webp";
+import trainingTickerFr from "../assets/tickers/ticker_training_center_fr.webp";
+import trainingTickerEn from "../assets/tickers/ticker_training_center_en.webp";
 import { DARTS_GAMES, type DartsGameDef } from "../games/dartsGameRegistry";
 import { DARTS_PUBLIC_RULE_AUDIT } from "../games/dartsPublicRulesAudit";
 import { useLang, type Lang } from "../contexts/LangContext";
@@ -692,6 +694,17 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
         <article className="mssDevice mssDeviceLeft"><div className="mssPhone mssPhoneReal"><img src={screenSports} alt="Écran réel Choix du sport de MULTISPORTS SCORING"/></div><strong>{tr("preview.sport", "CHOIX DU SPORT")}</strong><span>Votre véritable écran de sélection MULTISPORTS SCORING.</span></article>
         <article className="mssDevice mssDeviceMain"><div className="mssPhone mssPhoneReal"><img src={screenX01} alt="Écran réel de scoring X01 501 de MULTISPORTS SCORING"/></div><strong>{tr("preview.x01", "SCORING X01 EN DIRECT")}</strong><span>Le véritable moteur de saisie et de suivi d’une partie 501.</span></article>
         <article className="mssDevice mssDeviceRight"><div className="mssPhone mssPhoneReal"><img src={screenStats} alt="Écran réel Statistiques X01 de MULTISPORTS SCORING"/></div><strong>{tr("preview.stats", "STATS & PROGRESSION")}</strong><span>Les véritables graphiques de performance de l’application.</span></article>
+      </div>
+    </section>
+
+    <section className="mssTrainingLandingFeature" aria-label="Centre d'entraînement des fléchettes" id="centre-entrainement">
+      <div className="mssTrainingLandingVisual"><img src={lang === "fr" ? trainingTickerFr : trainingTickerEn} alt={tr("trainingCenter.imageAlt", lang === "fr" ? "Centre d'entraînement de MULTISPORTS SCORING" : "MULTISPORTS SCORING Training Center")} loading="lazy" decoding="async"/></div>
+      <div className="mssTrainingLandingCopy">
+        <span className="mssEyebrow">{tr("trainingCenter.kicker", lang === "fr" ? "CENTRE D'ENTRAÎNEMENT • COACH AWENA" : "TRAINING CENTER • AWENA COACH")}</span>
+        <h2>{tr("trainingCenter.title", lang === "fr" ? "Progressez à chaque fléchette." : "Get better with every dart.")}</h2>
+        <p>{tr("trainingCenter.body", lang === "fr" ? "Bien plus qu'un compteur : des séances personnalisées, des exercices ciblés, des objectifs clairs et un suivi de vos performances. Préparez votre plan du jour, travaillez votre précision, vos doubles et vos finishes puis mesurez vos progrès." : "More than a scorekeeper: personal training sessions, focused exercises, clear goals and performance tracking. Follow your daily plan, practice accuracy, doubles and checkouts, and see how you improve.")}</p>
+        <div className="mssTrainingLandingPoints"><span>◎ {tr("trainingCenter.plan", lang === "fr" ? "PLANS GUIDÉS" : "GUIDED PLANS")}</span><span>◉ {tr("trainingCenter.exercise", lang === "fr" ? "EXERCICES CIBLÉS" : "TARGETED EXERCISES")}</span><span>▥ {tr("trainingCenter.statistics", lang === "fr" ? "STATISTIQUES DÉTAILLÉES" : "DETAILED STATISTICS")}</span><span>✧ {tr("trainingCenter.coach", lang === "fr" ? "COACH PERSONNALISÉ" : "PERSONAL COACH")}</span></div>
+        <div className="mssTrainingLandingActions"><button type="button" onClick={onOpenApp}>{tr("trainingCenter.cta", lang === "fr" ? "OUVRIR L’APPLICATION" : "OPEN THE APP")}</button><button type="button" className="isSecondary" onClick={() => { setDartsFilter("training"); setDartsSearch(""); document.getElementById("darts-modes")?.scrollIntoView({ behavior: "smooth" }); }}>{tr("trainingCenter.catalog", lang === "fr" ? "VOIR LES MODES TRAINING" : "EXPLORE TRAINING MODES")}</button></div>
       </div>
     </section>
 

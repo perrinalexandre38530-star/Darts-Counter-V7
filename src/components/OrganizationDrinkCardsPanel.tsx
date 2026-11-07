@@ -1,3 +1,4 @@
+import { getAppSeason, SEASON_THEMES } from "../lib/seasonalThemes";
 import React from "react";
 import ClubBuvetteCardVisual, { BuvetteGlyph, BUVETTE_BACKGROUNDS, clubBuvetteBackground } from "./ClubBuvetteCardVisual";
 import { uploadOrganizationShopImage } from "../lib/organizationSupabaseMedia";
@@ -78,6 +79,25 @@ export default function OrganizationDrinkCardsPanel({ organization, userId, logo
   const [pictureDataUrl, setPictureDataUrl] = React.useState("");
   const [printingCard, setPrintingCard] = React.useState("");
   const [coverKey, setCoverKey] = React.useState<BuvetteSceneKey>(DEFAULT_BUVETTE_COVER);
+  // Option purement visuelle locale : ne change ni la couverture serveur ni les cartes émises.
+  const seasonalStorageKey = `mss:buvette:seasonal:${organization.id}`;
+  const [seasonalCover, setSeasonalCover] = React.useState(() => {
+    try { return localStorage.getItem(`mss:buvette:seasonal:${organization.id}`) !== "off"; }
+    catch { return true; }
+  });
+  React.useEffect(() => {
+    try { setSeasonalCover(localStorage.getItem(seasonalStorageKey) !== "off"); }
+    catch { setSeasonalCover(true); }
+  }, [seasonalStorageKey]);
+  const toggleSeasonalCover = (enabled: boolean) => {
+    setSeasonalCover(enabled);
+    try { localStorage.setItem(seasonalStorageKey, enabled ? "on" : "off"); } catch { /* stockage facultatif */ }
+  };
+  const season = getAppSeason();
+  const seasonalScene: Record<ReturnType<typeof getAppSeason>, BuvetteSceneKey> = {
+    winter: "scene-10", spring: "scene-08", summer: "scene-05", autumn: "scene-19",
+  };
+  const displayedCover = seasonalCover ? seasonalScene[season] : coverKey;
   const [coverEditorOpen, setCoverEditorOpen] = React.useState(false);
   const [coverSaving, setCoverSaving] = React.useState(false);
   const cardStyle: React.CSSProperties = { border: `1px solid ${theme.borderSoft}`, background: theme.cardBackground || theme.card,
@@ -203,6 +223,7 @@ export default function OrganizationDrinkCardsPanel({ organization, userId, logo
     try {
       await saveOrganizationBuvetteCover(userId, organization.id, key);
       setCoverKey(key);
+      toggleSeasonalCover(false);
       setMessage(L("Couverture de la Buvette enregistrée pour le club.", "Club cover saved.", "Portada guardada para el club."));
     } catch (e: any) { setError(String(e?.message || "Couverture non enregistrée.")); }
     finally { setCoverSaving(false); }
@@ -211,7 +232,7 @@ export default function OrganizationDrinkCardsPanel({ organization, userId, logo
   return <section style={{ display: "grid", gap: 12 }}>
     <div style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
       <div style={{ minHeight: 202, position: "relative", display: "flex", alignItems: "flex-end",
-        background: `linear-gradient(180deg,rgba(2,7,16,.02) 3%,rgba(2,7,16,.80) 100%),url("${buvetteScenePath(coverKey)}") center/cover no-repeat` }}>
+        background: `linear-gradient(180deg,rgba(2,7,16,.02) 3%,rgba(2,7,16,.80) 100%),url("${buvetteScenePath(displayedCover)}") center/cover no-repeat` }}>
         <div style={{ width: "100%", display: "flex", gap: 11, alignItems: "center", padding: "18px 15px", position: "relative" }}>
           {logo ? <img alt="" src={logo} style={{ width: 56, height: 56, flexShrink: 0, borderRadius: 13, objectFit: "contain", background: "#fff", padding: 4 }}/>
             : <span style={{ width: 54, height: 54, borderRadius: 12, background: "#060b13bb", display: "grid", placeItems: "center" }}><BuvetteGlyph icon="cup" size={33} color={theme.primary}/></span>}
@@ -219,7 +240,8 @@ export default function OrganizationDrinkCardsPanel({ organization, userId, logo
             <strong style={{ display: "block", color: "#fff", fontSize: "clamp(17px,3vw,23px)", lineHeight: 1.16, textShadow: "0 2px 8px #000" }}>{L("BUVETTE DU CLUB", "CLUB DRINKS BAR", "BAR DEL CLUB")}</strong>
             <div style={{ color: "#f0f2f6", fontSize: 12, fontWeight: 750, textShadow: "0 2px 7px #000" }}>{organization.name}</div>
           </div>
-          <span style={{ marginLeft: "auto", flexShrink: 0, padding: 7, borderRadius: 12, border: `1px solid ${theme.primary}80`, background: "#091018b8" }}><BuvetteGlyph icon="cup" size={29} color={theme.primary}/></span>
+          {seasonalCover ? <span title={SEASON_THEMES[season].label} style={{ marginLeft: "auto", flexShrink: 0, padding: "5px 9px", borderRadius: 12, border: `1px solid ${SEASON_THEMES[season].color}99`, color: SEASON_THEMES[season].color, background: "#091018dd", fontWeight: 900, fontSize: 12 }}>{SEASON_THEMES[season].emoji} {SEASON_THEMES[season].label}</span> : null}
+          <span style={{ marginLeft: seasonalCover ? 0 : "auto", flexShrink: 0, padding: 7, borderRadius: 12, border: `1px solid ${theme.primary}80`, background: "#091018b8" }}><BuvetteGlyph icon="cup" size={29} color={theme.primary}/></span>
         </div>
       </div>
       <div style={{ padding: "11px 14px 13px" }}>
@@ -238,6 +260,10 @@ export default function OrganizationDrinkCardsPanel({ organization, userId, logo
     {canManage && coverEditorOpen ? <div style={{ ...cardStyle, display: "grid", gap: 10 }}>
       <div>
         <strong style={{ display: "block", color: theme.primary, fontSize: 13 }}>{L("COUVERTURE DE L’ESPACE BUVETTE", "BUVETTE PAGE COVER", "PORTADA DE LA CANTINA")}</strong>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, margin: "10px 0", fontSize: 12, color: theme.text, cursor: "pointer" }}>
+          <input type="checkbox" checked={seasonalCover} onChange={(e) => toggleSeasonalCover(e.target.checked)} />
+          {L("Adapter automatiquement la couverture aux 4 saisons", "Automatically use a seasonal cover", "Cambiar la portada con las estaciones")}
+        </label>
         <small style={{ color: theme.textSoft }}>{L("Choisis un des 20 fonds. La couverture est partagée par tous les membres et ne change pas les cartes déjà attribuées.",
           "Choose one of 20 backgrounds. This cover is shared with all members and does not change issued cards.",
           "Elige uno de los 20 fondos. Esta portada es común para todos los socios.")}</small>

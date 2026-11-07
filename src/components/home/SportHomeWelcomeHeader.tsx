@@ -1,5 +1,6 @@
 import React from "react";
 import SportWelcomeWatermark from "./SportWelcomeWatermark";
+import { getSeasonHeaderBackground, SEASON_THEMES, getAppSeason } from "../../lib/seasonalThemes";
 
 /**
  * En-tête HOME commun à tous les sports.
@@ -58,7 +59,7 @@ export default function SportHomeWelcomeHeader({
         borderRadius: 28,
         padding: 18,
         marginBottom: 16,
-        background: "linear-gradient(135deg, rgba(8,10,20,0.98), rgba(14,18,34,0.98))",
+        background: getSeasonHeaderBackground(),
         border: `1px solid ${borderSoft}`,
         boxShadow: "0 20px 40px rgba(0,0,0,0.7)",
         display: "flex",
@@ -70,6 +71,7 @@ export default function SportHomeWelcomeHeader({
       }}
     >
       <SportWelcomeWatermark sport={sport} opacity={0.12} size={205} />
+      <span aria-hidden="true" style={{ position: "absolute", right: 14, top: 8, color: SEASON_THEMES[getAppSeason()].color, fontSize: 24, opacity: .82, pointerEvents: "none" }}>{SEASON_THEMES[getAppSeason()].emoji}</span>
 
       <div
         className="msc-sport-home-welcome-pill"

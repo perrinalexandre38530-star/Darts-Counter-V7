@@ -256,3 +256,17 @@
 .mssSingleZoneVisuals figcaption{padding:12px 14px;color:#ffd84d;font-size:11px;font-weight:1000;letter-spacing:.08em;text-align:center;background:linear-gradient(90deg,rgba(255,216,77,.08),rgba(0,229,255,.04))}
 .mssSingleZoneVisuals.is-ptit1{padding-top:0}.mssSingleZoneVisuals.is-gros6{margin-top:18px;margin-bottom:10px}
 @media(max-width:760px){.mssSingleZoneVisuals{grid-template-columns:1fr;padding:0 14px;gap:12px}.mssSingleZoneVisuals figure{border-radius:16px}.mssSingleZoneVisuals figcaption{font-size:10px}}
+/* Centre d'entraînement — encart promotionnel de la page publique */
+.mssTrainingLandingFeature { width:min(1230px,calc(100% - 32px)); margin:clamp(32px,5vw,68px) auto; display:grid; grid-template-columns:minmax(0,46fr) minmax(0,54fr); align-items:stretch; border:1px solid rgba(72,213,246,.34); border-radius:23px; overflow:hidden; background:linear-gradient(125deg,#071627,#0b2332 58%,#101329); box-shadow:0 18px 55px rgba(0,0,0,.26); color:#f4faff; }
+.mssTrainingLandingVisual { position:relative; display:grid; place-items:center; overflow:hidden; background:radial-gradient(circle,rgba(41,197,240,.19),transparent 70%); min-height:290px; }
+.mssTrainingLandingVisual:after { content:""; position:absolute; inset:0; pointer-events:none; background:linear-gradient(90deg,transparent 75%,#0b2332); }
+.mssTrainingLandingVisual img { max-width:calc(100% - 34px); width:100%; border-radius:15px; box-shadow:0 15px 45px #0009; }
+.mssTrainingLandingCopy { padding:clamp(22px,4vw,48px); display:flex; flex-direction:column; align-items:flex-start; justify-content:center; }
+.mssTrainingLandingCopy h2 { font-size:clamp(25px,3.4vw,43px); line-height:1.1; margin:10px 0 12px; color:white; }
+.mssTrainingLandingCopy p { font-size:clamp(12px,1.2vw,16px); line-height:1.65; color:#bcd3e2; margin:0 0 20px; }
+.mssTrainingLandingPoints { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:22px; }
+.mssTrainingLandingPoints span { font-size:10px; font-weight:900; padding:8px 10px; border-radius:99px; border:1px solid rgba(75,221,248,.29); color:#8deefa; background:rgba(72,213,246,.07); }
+.mssTrainingLandingActions { display:flex; flex-wrap:wrap; gap:9px; }
+.mssTrainingLandingActions button { padding:12px 15px; border:none; border-radius:12px; color:#052330; font-weight:950; font-size:11px; background:linear-gradient(100deg,#76eaff,#20c1e8); cursor:pointer; }
+.mssTrainingLandingActions button.isSecondary { color:#b5f5ff; border:1px solid rgba(97,219,249,.37); background:rgba(97,219,249,.06); }
+@media (max-width:760px) { .mssTrainingLandingFeature { grid-template-columns:1fr; margin:24px auto; } .mssTrainingLandingVisual { min-height:unset; padding:18px 12px; } .mssTrainingLandingVisual img { max-height:205px; object-fit:contain; } .mssTrainingLandingVisual:after { background:linear-gradient(0deg,#0b2332,transparent 45%); } .mssTrainingLandingCopy { padding:20px 18px 25px; } .mssTrainingLandingPoints { margin-bottom:15px; } }

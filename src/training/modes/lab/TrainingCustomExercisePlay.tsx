@@ -242,6 +242,8 @@ export default function TrainingCustomExercisePlay({config,onExit,exercise}:{con
       rules={<><p><b>{exercise.title}</b></p><p>{exercise.subtitle}</p><p>Objectif suivant : {rule.level1Label||"progresser"}.</p></>}
       playerScore={rule.kind === "x01_restricted" ? s.remaining : s.points} playerScoreLabel={rule.kind === "x01_restricted" ? "RESTE" : "SCORE"}
       sessionObjective={rule.level1Label || (rule.durationSec ? `Objectif en ${Math.ceil(rule.durationSec / 60)} minutes` : "Atteindre la cible affichée")}
+      roundLabel={rule.rounds ? `${Math.min(s.round+1,rule.rounds)}/${rule.rounds}` : s.round+1} dartsPlayed={s.darts}
+      stats={[{label:"EXERCICE",value:exercise.title},{label:"TOURS",value:rule.rounds?`${Math.min(s.round+1,rule.rounds)}/${rule.rounds}`:s.round+1},{label:"FLÉCHETTES",value:s.darts},{label:"POINTS",value:s.points},{label:"TEMPS",value:timeText||"—"}]}
       eyebrow={exercise.title} target={targetText(rule,s)} targetHint={`${timeText?`${timeText} • `:""}${s.darts} fléchettes • ${s.points} pts`}
       progress={{value:rule.rounds?Math.min(rule.rounds,s.round):Math.min(100,s.points),max:rule.rounds||100,label:rule.family.toUpperCase()}}
       kpis={[{label:"DARTS",value:s.darts},{label:"POINTS",value:s.points},{label:"TOURS",value:rule.rounds?`${Math.min(s.round+1,rule.rounds)}/${rule.rounds}`:s.round+1},{label:"TEMPS",value:timeText||"—"}]}

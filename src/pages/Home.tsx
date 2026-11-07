@@ -19,6 +19,7 @@ import ArcadeTicker, {
 } from "../components/home/ArcadeTicker";
 import { InlineAdBanner } from "../monetization/AdSlot";
 import SportWelcomeWatermark from "../components/home/SportWelcomeWatermark";
+import { getSeasonHeaderBackground, SEASON_THEMES, getAppSeason } from "../lib/seasonalThemes";
 import LiveSportsHomeCard from "../components/home/LiveSportsHomeCard";
 import { canRequestBannerAds, getVerifiedAdFreeState, loadMonetizationPrefs, subscribeMonetizationPrefs, subscribeVerifiedEntitlements } from "../monetization/prefs";
 import footHomeCover01 from "../assets/tickers/foot-01.webp";
@@ -2901,8 +2902,7 @@ React.useEffect(() => {
             borderRadius: 28,
             padding: 18,
             marginBottom: 16,
-            background:
-              "linear-gradient(135deg, rgba(8,10,20,0.98), rgba(14,18,34,0.98))",
+            background: getSeasonHeaderBackground(),
             border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.10)"}`,
             boxShadow: "0 20px 40px rgba(0,0,0,0.7)",
             display: "flex",
@@ -2914,6 +2914,7 @@ React.useEffect(() => {
           }}
         >
           <SportWelcomeWatermark sport={String(sport)} opacity={0.12} size={205} />
+          <span aria-hidden="true" style={{ position: "absolute", right: 14, top: 8, fontSize: 24, color: SEASON_THEMES[getAppSeason()].color, opacity: .82, pointerEvents: "none" }}>{SEASON_THEMES[getAppSeason()].emoji}</span>
           <div
             className="msc-home-welcome-pill"
             style={{
