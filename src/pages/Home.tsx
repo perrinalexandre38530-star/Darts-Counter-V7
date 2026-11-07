@@ -1155,6 +1155,20 @@ async function buildStatsForProfile(
     const clockTotalTimeSec = cAgg.totalTimeSec;
     const clockBestStreak = cAgg.bestStreak;
 
+    // The previous implementation referenced an undeclared allHistoryMatches.
+    // That ReferenceError was caught by buildStatsForProfile and replaced ALL
+    // Home metrics with zero, including otherwise valid X01 statistics.
+    // Read History independently: an unavailable history must not erase X01.
+    let allHistoryMatches: any[] = [];
+    if (activeSport === "darts") {
+      try {
+        const historyRows = await History.list();
+        if (shouldCancel?.()) return emptyActiveProfileStats();
+        allHistoryMatches = Array.isArray(historyRows) ? historyRows : [];
+      } catch (historyError) {
+        console.warn("[Home] optional killer/mode history unavailable", historyError);
+      }
+    }
     const killerAgg = computeKillerAggFromMatches(allHistoryMatches, profileId);
     const homeModeSlides = buildHomeModeSlides(
       allHistoryMatches,

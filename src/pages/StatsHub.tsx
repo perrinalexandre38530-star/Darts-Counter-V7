@@ -6257,12 +6257,13 @@ React.useEffect(() => {
   };
 }, [currentMode]);
 
-// Dashboard, Mes fléchettes, Historique et Classements disposent de leurs propres
-// snapshots/lecteurs. Ils ne doivent surtout pas déclencher le scan global de StatsHub.
+// The Dart dashboard also needs the normalized history for its player list and
+// statistics. Excluding "dashboard" here left nmEffective empty, which made
+// the active profile disappear despite History V4 being populated.
 const needsStatsHistory = heavyStatsReady && (
   (isDiceSport || isMolkkySport || isBabyFootSport || isPingPongSport)
     ? currentMode === "dashboard"
-    : !["dashboard", "x01_multi", "dartsets", "history", "leaderboards"].includes(currentMode)
+    : !["x01_multi", "dartsets", "history", "leaderboards"].includes(currentMode)
 );
 
 // ==========================
@@ -6730,17 +6731,24 @@ const allPlayers = React.useMemo(() => {
     });
   }
 
-  // 3) Fallback ultime : profil actif (si dispo)
-  if (map.size === 0 && profile?.id) {
-    map.set(String(profile.id), {
-      id: String(profile.id),
-      name: (profile as any)?.name ?? (profile as any)?.displayName ?? "Joueur",
-      avatarDataUrl: pickPlayerAvatar(profile),
+  // An active account can exist before the lightweight profile cache has
+  // hydrated (especially on Android after restoring History V4). Never render
+  // "Aucun joueur trouvé" just because that cache has not arrived yet.
+  const fallbackId = String((profile as any)?.id ?? playerId ?? initialPlayerId ?? store?.activeProfileId ?? "");
+  if (fallbackId && !map.has(fallbackId)) {
+    const local = (Array.isArray(store?.profiles) ? store.profiles : []).find((p: any) => String(p?.id ?? "") === fallbackId);
+    const selected: any = profile ?? local;
+    map.set(fallbackId, {
+      id: fallbackId,
+      name: pickPlayerName(selected) || "Joueur",
+      avatarDataUrl: pickPlayerAvatar(selected),
+      avatarUrl: selected?.avatarUrl ?? null,
+      isBot: false,
     });
   }
 
   return Array.from(map.values());
-}, [nmEffective, effectiveStoreProfiles, profile?.id]);
+}, [nmEffective, effectiveStoreProfiles, profile?.id, playerId, initialPlayerId, store?.activeProfileId, store?.profiles]);
 
 // ---------- 4) Sélection joueur + option BOTS / mode actif vs locaux ----------
 
@@ -6785,7 +6793,8 @@ const playersForMode = React.useMemo(() => {
       if (found) return [found];
     }
     const byRaw = activePlayerIdRaw ? allPlayers.find((p) => p.id === String(activePlayerIdRaw)) : null;
-    return byRaw ? [byRaw] : [];
+    // Keep the active profile selected during slow history/profile hydration.
+    return byRaw ? [byRaw] : (allPlayers.length ? [allPlayers[0]] : []);
   }
 
   if (mode === "locals") {
