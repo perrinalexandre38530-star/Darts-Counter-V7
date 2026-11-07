@@ -135,6 +135,16 @@ function parseStructuredText(raw: string): unknown {
     if (noTrailingCommas !== candidate) {
       try { return JSON.parse(noTrailingCommas) as unknown; } catch { /* retry at model level */ }
     }
+    // The fast model occasionally omits a comma at a line boundary between
+    // two properties. Repair only this unambiguous, line-delimited pattern;
+    // do not rewrite arbitrary prose or infer missing values.
+    const missingComma = noTrailingCommas.replace(
+      /([\"\]0-9}])([ \t]*\r?\n[ \t]*)(\"[A-Za-z_][A-Za-z_0-9]*\"[ \t]*:)/g,
+      '$1,$2$3'
+    );
+    if (missingComma !== noTrailingCommas) {
+      try { return JSON.parse(missingComma) as unknown; } catch { /* controlled retry below */ }
+    }
   }
   throw new Error('Social AI returned malformed JSON');
 }
@@ -160,17 +170,36 @@ async function readSocialStructured(
   }), timeoutMs, label);
   // `request` is the source of truth for the first prompt and for the controlled retry.
   const messages = request.messages;
+  let invalidOutput: unknown = null;
   try {
-    return extractStructured(await run(messages, maxTokens));
+    invalidOutput = await run(messages, maxTokens);
+    return extractStructured(invalidOutput);
   } catch (error) {
     if (!isMalformedStructuredResponse(error)) throw error;
     console.warn(JSON.stringify({ event: 'social_json_retry', stage: label, reason: error instanceof Error ? error.message : String(error) }));
-    const original = Array.isArray(messages) ? messages : [];
+    // One bounded retry. Supply the malformed result so the model can repair
+    // its own JSON instead of independently inventing a second campaign.
+    // Keeping the original task prevents loss of factual constraints.
+    let rawSnippet = '';
+    if (invalidOutput !== null) {
+      try { rawSnippet = extractText(invalidOutput).slice(0, 3800); }
+      catch { rawSnippet = ''; }
+    }
     const retryMessages = [
-      ...original,
-      { role: 'system' as const, content: 'The previous output could not be parsed. Return ONE complete valid JSON object matching the requested schema. No Markdown, surrounding explanation, trailing commas, or truncated strings. Keep every required key; shorten text if necessary.' }
+      ...messages,
+      {
+        role: 'user' as const,
+        content: rawSnippet
+          ? 'Repair the following malformed JSON for the SAME task. Preserve the information and every required key. Return ONLY one complete valid JSON object, with correct commas and quotes. Shorten long copy fields to avoid truncation. Malformed JSON:\n' + rawSnippet
+          : 'The previous JSON response was invalid. Retry the SAME task with one COMPLETE valid JSON object, every required key and no Markdown. Keep all text brief to avoid truncation.'
+      }
     ];
-    return extractStructured(await run(retryMessages, maxTokens));
+    try {
+      return extractStructured(await run(retryMessages, maxTokens));
+    } catch (retryError) {
+      if (!isMalformedStructuredResponse(retryError)) throw retryError;
+      throw new Error('JSON social invalide après une nouvelle tentative IA : aucun post ne sera approuvé.');
+    }
   }
 }
 

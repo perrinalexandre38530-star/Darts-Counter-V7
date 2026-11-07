@@ -133,10 +133,10 @@ const checks = [
   [schema.includes('CREATE TABLE IF NOT EXISTS acquisition_targets') && schema.includes('CREATE TABLE IF NOT EXISTS acquisition_conversions'), 'acquisition destinations and conversions are persisted'],
   [index.includes('/api/acquisition/targets') && index.includes('/api/acquisition/conversions'), 'acquisition target and conversion admin endpoints'],
   [index.includes('/go/app/') && index.includes('/go/facebook/') && index.includes('/go/instagram/'), 'tracked acquisition links are separated by objective'],
-  [admin.includes('TUNNEL D’ACQUISITION') && admin.includes('targetFacebook') && admin.includes('targetInstagram'), 'dashboard configures app and social destinations'],
+  [admin.includes('Mesurer les visites vers ton application') && admin.includes('targetFacebook') && admin.includes('targetInstagram'), 'dashboard configures app and social destinations'],
   [schema.includes('CREATE TABLE IF NOT EXISTS outreach_actions'), 'persistent acquisition workflow schema'],
   [db.includes('setOutreachStatus') && db.includes('click_count'), 'opportunity action and click tracking'],
-  [index.includes('/outreach') && admin.includes('Contacté') && admin.includes('Conversion'), 'dashboard acquisition workflow actions'],
+  [index.includes('/outreach') && admin.includes('J’ai répondu') && admin.includes('Installation vérifiée'), 'dashboard acquisition workflow actions'],
   [index.includes("url.pathname === '/growth-widget.js'") && index.includes('RADAR_WIDGET_ALLOWED_HOSTS'), 'authorized partner growth banner endpoint'],
   [admin.includes('Bandeau acquisition partenaires') && admin.includes('copyWidget'), 'dashboard exposes partner banner embed code'],
   [index.includes('hourlyTick'), 'hourly market rotation'],
@@ -147,4 +147,7 @@ for (const [ok, label] of checks) {
   if (!ok) throw new Error(`SCORING RADAR check failed: ${label}`);
 }
 
+checks.push([admin.includes('Comment ça marche ?') && admin.includes('Outils avancés') && admin.includes('Personnes intéressées'), 'guided acquisition interface with advanced controls hidden']);
+checks.push([social.includes('Repair the following malformed JSON') && social.includes('aucun post ne sera approuvé'), 'social malformed JSON receives bounded repair with fail-closed result']);
+for (const [ok, label] of checks.slice(-2)) if (!ok) throw new Error(`SCORING RADAR check failed: ${label}`);
 console.log(`SCORING RADAR + SOCIAL GROWTH integration OK (${checks.length} checks)`);
