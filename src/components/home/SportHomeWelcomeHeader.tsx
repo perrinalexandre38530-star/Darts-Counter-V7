@@ -51,6 +51,7 @@ export default function SportHomeWelcomeHeader({
       <style>{`
         @keyframes dcTitlePulse { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.18); } }
         @keyframes dcTitleShimmer { 0% { background-position: 0% 0%; } 100% { background-position: 200% 0%; } }
+        @keyframes mssTitleFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-1px); } }
       `}</style>
       <div
       className="msc-sport-home-welcome-card"
@@ -103,17 +104,18 @@ export default function SportHomeWelcomeHeader({
       <div className="msc-sport-home-title-wrap" ref={wrapRef} style={{ position: "relative", zIndex: 2, width: "100%", overflow: "hidden" }}>
         <div
           className={`msc-sport-home-title mss-doodle-title mss-doodle-title--${getAppSeason()}`}
+          data-text={String(title)}
           ref={textRef}
           style={{
             width: "fit-content",
             marginInline: "auto",
             fontSize: 32,
-            fontWeight: 900,
+            fontWeight: 1000,
             letterSpacing: 3,
             textAlign: "center",
             textTransform: "uppercase",
             whiteSpace: "nowrap",
-            backgroundImage: `linear-gradient(120deg, ${accent}, #ffffff, ${accent})`,
+            backgroundImage: `linear-gradient(180deg, #fff9ec 0%, ${accent} 48%, #ffffff 78%, ${accent} 100%)`,
             backgroundSize: "200% 100%",
             WebkitBackgroundClip: "text",
             color: "transparent",

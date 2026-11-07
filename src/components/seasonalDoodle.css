@@ -7,19 +7,22 @@
 .mss-seasonal-doodle--winter{--doodle-light:#dbfaff;--doodle-shadow:#125e97}
 .mss-seasonal-doodle--spring{--doodle-light:#ffe3ef;--doodle-shadow:#654a75}
 .mss-seasonal-doodle--summer{--doodle-light:#ffedb6;--doodle-shadow:#9d5720}
-.mss-doodle-title{position:relative;z-index:2!important;color:transparent!important;-webkit-background-clip:text!important;background-clip:text!important;filter:drop-shadow(0 4px 4px #000a);animation:none!important}
-.mss-doodle-title--autumn{background-image:linear-gradient(180deg,#fff4d5 0%,#ffe0a3 29%,#fcb65d 48%,#e77b2b 69%,#953814 100%)!important;-webkit-text-stroke:.8px #f6bb71;text-shadow:0 2px 0 #843713,0 4px 0 #4d270e,0 8px 13px #ff8b2970}
-.mss-doodle-title--winter{background-image:linear-gradient(180deg,#fff 0%,#e7fbff 36%,#94ddff 58%,#55a9dc 77%,#256294 100%)!important;-webkit-text-stroke:.8px #e2faff;text-shadow:0 2px 0 #3c9bd1,0 4px 0 #14517a,0 9px 18px #70d9ffa0}
-.mss-doodle-title--spring{background-image:linear-gradient(180deg,#fff9fd 0%,#ffe5f1 35%,#efadd0 65%,#9cce9a 100%)!important;-webkit-text-stroke:.6px #fff0f5;text-shadow:0 2px 0 #b077a1,0 4px 0 #577e5e,0 9px 16px #ee98c27a}
-.mss-doodle-title--summer{background-image:linear-gradient(180deg,#fff9db 0%,#ffe89f 42%,#fbb74f 72%,#d98526 100%)!important;-webkit-text-stroke:.6px #fff5cc;text-shadow:0 2px 0 #b17b26,0 4px 0 #78401c,0 8px 14px #ffb45a80}
+.mss-doodle-title{position:relative;display:inline-block;z-index:2!important;isolation:isolate;padding:.04em .12em .20em;color:transparent!important;-webkit-text-fill-color:transparent!important;-webkit-background-clip:text!important;background-clip:text!important;filter:drop-shadow(0 4px 4px #000a);font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-weight:1000!important;line-height:1.02;letter-spacing:2.2px!important;text-rendering:geometricPrecision;transform-style:preserve-3d}
+.mss-doodle-title::before,.mss-doodle-title::after{content:attr(data-text);position:absolute;inset:0;pointer-events:none;font:inherit;letter-spacing:inherit;line-height:inherit;text-transform:inherit;white-space:inherit}
+.mss-doodle-title::before{z-index:-2;color:var(--mss-title-depth);transform:translateY(.16em) scaleY(1.03);opacity:.96;text-shadow:0 .06em 0 var(--mss-title-depth-2),0 .12em .26em rgba(0,0,0,.72),0 .22em .42em rgba(0,0,0,.35)}
+.mss-doodle-title::after{z-index:-1;color:transparent;-webkit-text-stroke:2px var(--mss-title-outline);filter:drop-shadow(0 0 8px var(--mss-title-glow)) drop-shadow(0 0 18px color-mix(in srgb,var(--mss-title-glow) 60%, transparent));opacity:.95}
+.mss-doodle-title--autumn{--mss-title-outline:#ffd2a1;--mss-title-depth:#783315;--mss-title-depth-2:#431c0b;--mss-title-glow:rgba(255,145,44,.52);background-image:linear-gradient(180deg,#fff8e6 0%,#ffe5bc 23%,#ffc66e 48%,#f08d33 72%,#a5481b 100%)!important;text-shadow:0 1px 0 #fff3ce55}
+.mss-doodle-title--winter{--mss-title-outline:#eefcff;--mss-title-depth:#3778a1;--mss-title-depth-2:#143f60;--mss-title-glow:rgba(128,223,255,.54);background-image:linear-gradient(180deg,#ffffff 0%,#eefcff 30%,#b8efff 54%,#61b7ea 77%,#2a689c 100%)!important;text-shadow:0 1px 0 #ffffff55}
+.mss-doodle-title--spring{--mss-title-outline:#fff2f8;--mss-title-depth:#a76c8d;--mss-title-depth-2:#55795c;--mss-title-glow:rgba(255,183,226,.48);background-image:linear-gradient(180deg,#fffdfd 0%,#ffe9f3 28%,#f7bfd8 56%,#b9dda8 84%,#6f9a6c 100%)!important;text-shadow:0 1px 0 #fff2f855}
+.mss-doodle-title--summer{--mss-title-outline:#fff0bd;--mss-title-depth:#aa641f;--mss-title-depth-2:#6b4118;--mss-title-glow:rgba(255,197,91,.5);background-image:linear-gradient(180deg,#fffce7 0%,#fff0b8 28%,#ffd067 55%,#f0a13a 78%,#c36c1f 100%)!important;text-shadow:0 1px 0 #fff5cc55}
 .mss-doodle-welcome{border-color:var(--doodle-light)!important;box-shadow:0 0 15px color-mix(in srgb,var(--doodle-light) 25%,transparent),inset 0 1px 8px #fff2!important;background:linear-gradient(155deg,#20180ff2,#111721ee)!important}
 .mss-doodle-welcome span{color:var(--doodle-light)!important;text-shadow:0 1px 8px var(--doodle-shadow)}
 .msc-home-header:has(>.mss-seasonal-doodle),.msc-sport-home-header:has(>.mss-seasonal-doodle){min-height:150px;padding-block:27px!important;justify-content:center}
-.msc-home-header:has(>.mss-seasonal-doodle) .mss-doodle-title,.msc-sport-home-header:has(>.mss-seasonal-doodle) .mss-doodle-title{line-height:1.14;padding:3px 0;letter-spacing:2px!important}
+.msc-home-header:has(>.mss-seasonal-doodle) .mss-doodle-title,.msc-sport-home-header:has(>.mss-seasonal-doodle) .mss-doodle-title{line-height:1.08;padding:4px 10px 8px;letter-spacing:2.6px!important}
 .mss-buvette-seasonal-hero{min-height:242px!important;isolation:isolate}
 .mss-buvette-seasonal-hero:before{content:"";position:absolute;inset:0;pointer-events:none;z-index:0;background:linear-gradient(180deg,rgba(1,5,10,.03) 0%,rgba(1,6,10,.12) 46%,rgba(1,6,10,.92) 100%)}
 .mss-buvette-seasonal-content{border-top:1px solid #ffffff12;background:linear-gradient(180deg,transparent,#06121ac9);margin-bottom:0}
-.mss-buvette-seasonal-title{font-family:Georgia,'Times New Roman',serif;font-weight:900!important;letter-spacing:.4px;line-height:1.08!important}
+.mss-buvette-seasonal-title{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-weight:1000!important;letter-spacing:1.2px!important;line-height:1.02!important}
 .mss-buvette-seasonal-badge{backdrop-filter:blur(8px);box-shadow:0 2px 16px #0009,inset 0 1px 0 #ffffff30}
 @keyframes mss-drift{0%,100%{translate:0 0;rotate:-2deg}50%{translate:4px 8px;rotate:4deg}}
 @keyframes mss-soft-drift{0%,100%{translate:0 0}50%{translate:0 6px}}

@@ -2944,15 +2944,19 @@ React.useEffect(() => {
   
           <div
             className={`msc-home-sport-title mss-doodle-title mss-doodle-title--${getAppSeason()}`}
+            data-text={String(sportTitle)}
             style={{
               position: "relative",
               zIndex: 2,
+              width: "fit-content",
+              marginInline: "auto",
               fontSize: 32,
-              fontWeight: 900,
+              fontWeight: 1000,
               letterSpacing: 3,
               textAlign: "center",
               textTransform: "uppercase",
-              backgroundImage: `linear-gradient(120deg, ${primary}, #ffffff, ${primary})`,
+              whiteSpace: "nowrap",
+              backgroundImage: `linear-gradient(180deg, #fff9ec 0%, ${primary} 48%, #ffffff 78%, ${primary} 100%)`,
               backgroundSize: "200% 100%",
               WebkitBackgroundClip: "text",
               color: "transparent",
