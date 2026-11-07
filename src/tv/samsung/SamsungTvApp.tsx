@@ -1621,6 +1621,19 @@ export default function SamsungTvApp() {
   const phoneNavigationRef = React.useRef<PhoneNavigation | null>(null);
   const snapshotRef = React.useRef<ViewerLiveSnapshot | null>(null);
   const sharedAppBootRef = React.useRef<SamsungTvNativeAppBoot | null>(null);
+  // Une mise à jour du score ne doit jamais réinitialiser AppRoot et sa partie.
+  const lastMirroredRouteRef = React.useRef("");
+  const applyMirroredBoot = React.useCallback((boot: SamsungTvNativeAppBoot) => {
+    const route = JSON.stringify({
+      sessionId: boot.sessionId, tab: boot.tab, sportId: boot.sportId,
+      params: boot.params && Object.fromEntries(Object.entries(boot.params).filter(([key]) => key !== "source" && key !== "tvNative")),
+      gameConfig: boot.gameConfig,
+    });
+    if (sharedAppBootRef.current?.storeMode === "mirror" && lastMirroredRouteRef.current === route) return;
+    lastMirroredRouteRef.current = route;
+    sharedAppBootRef.current = boot;
+    setSharedAppBoot(boot);
+  }, []);
 
   React.useEffect(() => {
     autoFollowGameRef.current = autoFollowGame;
@@ -1717,7 +1730,7 @@ export default function SamsungTvApp() {
         const route = currentNav?.gameplay ? currentNav.tab : sharedRouteForSnapshot(next);
         if (route) {
           const gameConfig = sharedGameConfigForSnapshot(next, currentNav, currentState);
-          setSharedAppBoot({
+          applyMirroredBoot({
             version: 1,
             tab: route,
             params: {
@@ -1803,8 +1816,7 @@ export default function SamsungTvApp() {
               storeMode: "mirror",
               launchedAt: Date.now(),
             };
-            sharedAppBootRef.current = boot;
-            setSharedAppBoot(boot);
+            applyMirroredBoot(boot);
           }
           return;
         }
@@ -1848,8 +1860,7 @@ export default function SamsungTvApp() {
             storeMode: "mirror",
             launchedAt: Date.now(),
           };
-          sharedAppBootRef.current = boot;
-          setSharedAppBoot(boot);
+          applyMirroredBoot(boot);
           if (nav.gameplay) {
             autoFollowGameRef.current = true;
             setAutoFollowGame(true);
@@ -1863,7 +1874,7 @@ export default function SamsungTvApp() {
           setAutoFollowGame(true);
           const currentTvState = tvStateRef.current;
           const mirroredConfig = sharedGameConfigForSnapshot(snapshotRef.current, nav, currentTvState);
-          setSharedAppBoot({
+          applyMirroredBoot({
             version: 1,
             tab: nav.tab,
             params: { ...(nav.params || {}), ...(mirroredConfig ? { config: mirroredConfig, x01ConfigV3: mirroredConfig } : {}), source: "samsung-tv-phone-follow", tvNative: true },
@@ -1975,7 +1986,7 @@ export default function SamsungTvApp() {
     setSelectedAction(action);
     setGuidedSetup(null);
     setSetupPickerRowId(null);
-    setSharedAppBoot({
+    applyMirroredBoot({
       version: 1,
       tab: action.tab,
       params: { ...(action.params || {}), source: "samsung-tv-native", tvNative: true },
@@ -1991,7 +2002,7 @@ export default function SamsungTvApp() {
     });
     // Le téléphone suit l'ouverture de la même configuration quand la route est autorisée.
     sendNavigate(action.tab, { ...(action.params || {}), source: "samsung-tv" });
-  }, [selectedSport, sendNavigate, sessionId]);
+  }, [applyMirroredBoot, selectedSport, sendNavigate, sessionId]);
 
   const selectProfile = React.useCallback((profileId: string) => {
     realtimeRef.current?.sendCommand({
@@ -2459,7 +2470,7 @@ export default function SamsungTvApp() {
     return (
       <React.Suspense fallback={<div className="mss-tv-shared-app-loading">Chargement de l’interface MULTISPORTS SCORING…</div>}>
         <SamsungTvSharedAppHost
-          key={`${sharedAppBoot.storeMode || "mirror"}:${sharedAppBoot.tab}:${sharedAppBoot.launchedAt}`}
+          key={`${sharedAppBoot.storeMode || "mirror"}:${sharedAppBoot.sessionId || "local"}:${sharedAppBoot.tab}:${lastMirroredRouteRef.current || sharedAppBoot.launchedAt}`}
           boot={sharedAppBoot}
           snapshot={snapshot}
           onNavigate={(tab, params) => {

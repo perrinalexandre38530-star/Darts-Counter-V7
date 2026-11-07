@@ -79,19 +79,23 @@
 /* Four matching seasonal tree corners; the shared header title stays unobstructed. */
 .mss-seasonal-corner {
   position:absolute; z-index:0; pointer-events:none; user-select:none;
-  top:-5%; width:37%; height:auto; max-width:235px;
+  top:-15%; width:37%; height:auto; max-width:235px;
   opacity:.91; object-fit:contain; object-position:top left;
   filter:drop-shadow(0 4px 5px rgba(0,0,0,.24));
 }
-.mss-seasonal-corner--left {left:-1%;}
-.mss-seasonal-corner--right {right:-1%; transform:scaleX(-1);}
+.mss-seasonal-corner--left {left:-12%;}
+.mss-seasonal-corner--right {right:-12%; transform:scaleX(-1);}
 .mss-seasonal-doodle--cover .mss-seasonal-corner {width:34%;max-width:275px;opacity:.86;}
 .mss-seasonal-doodle--title svg {position:relative;z-index:1;}
-@media(max-width:480px){.mss-seasonal-corner{width:35%;top:-3%;opacity:.88;}.mss-seasonal-doodle--title .mss-seasonal-corner{width:min(33%,calc((100% - var(--mss-safe-title-width,300px)) / 2 + 54px));}.mss-seasonal-doodle--cover .mss-seasonal-corner{width:32%;}}
+@media(max-width:480px){.mss-seasonal-corner{width:35%;top:-12%;opacity:.88;}.mss-seasonal-doodle--title .mss-seasonal-corner{width:min(33%,calc((100% - var(--mss-safe-title-width,300px)) / 2 + 54px));}.mss-seasonal-doodle--cover .mss-seasonal-corner{width:32%;}}
 
 /* V230 — decor visibility control shared across every sport and organisation. */
+.mss-seasonal-toggle{position:absolute;bottom:6px;right:7px;z-index:5;display:grid;place-items:center;width:26px;height:26px;border-radius:50%;border:1px solid rgba(216,232,248,.45);background:rgba(7,16,28,.77);color:#bac7d7;font-size:17px;line-height:1;cursor:pointer;pointer-events:auto;user-select:none;opacity:.75;transition:opacity .2s ease,box-shadow .2s ease,border-color .2s ease}
+.mss-seasonal-toggle:hover,.mss-seasonal-toggle:focus-visible{opacity:1;box-shadow:0 0 9px rgba(255,255,255,.22);outline-offset:2px}
+.mss-seasonal-toggle--enabled{color:var(--doodle-light,#f7d48a);border-color:var(--doodle-light,#f7d48a)}
 .mss-seasonal-doodle--cover .mss-seasonal-toggle{top:9px;bottom:auto;right:9px}
-/* Branches fixed in corners: larger, with progressive fading toward the text zone. */
-.mss-seasonal-doodle--title .mss-seasonal-corner{width:43%;max-width:260px;opacity:.95;-webkit-mask-image:linear-gradient(to right,#000 0%,#000 65%,transparent 100%);mask-image:linear-gradient(to right,#000 0%,#000 65%,transparent 100%)}
-.mss-seasonal-doodle--title .mss-seasonal-corner--right{transform:scaleX(-1)}
-@media(max-width:480px){.mss-seasonal-doodle--title .mss-seasonal-corner{width:42%;max-width:230px;opacity:.94}}
+/* Branches fixed in corners: large but intentionally cropped at the top and outer sides. */
+.mss-seasonal-doodle--title .mss-seasonal-corner{top:-17%;width:43%;max-width:260px;opacity:.95;-webkit-mask-image:linear-gradient(to right,#000 0%,#000 65%,transparent 100%);mask-image:linear-gradient(to right,#000 0%,#000 65%,transparent 100%)}
+.mss-seasonal-doodle--title .mss-seasonal-corner--left{left:-14%}
+.mss-seasonal-doodle--title .mss-seasonal-corner--right{right:-14%;transform:scaleX(-1)}
+@media(max-width:480px){.mss-seasonal-doodle--title .mss-seasonal-corner{top:-15%;width:42%;max-width:230px;opacity:.94}.mss-seasonal-doodle--title .mss-seasonal-corner--left{left:-13%}.mss-seasonal-doodle--title .mss-seasonal-corner--right{right:-13%;transform:scaleX(-1)}}

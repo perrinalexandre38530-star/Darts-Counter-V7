@@ -77,6 +77,8 @@ const LABELS: Record<string, string> = {
 export function isViewerRemoteTabAllowed(tab: string) {
   const value = String(tab || "");
   if (REMOTE_ALLOWED_TABS.has(value)) return true;
+  // Une TV connectée peut ouvrir les véritables écrans PLAY de l'application.
+  if (isViewerGameplayRoute(value)) return true;
 
   // Les écrans TV peuvent ouvrir les configurations de jeu déjà existantes
   // sans transformer la télécommande en routeur arbitraire. On limite aux
@@ -155,6 +157,17 @@ export function sanitizeViewerRouteParams(params: any) {
     const value = params[key];
     if (value == null) continue;
     if (["string", "number", "boolean"].includes(typeof value)) out[key] = value as any;
+  }
+  // Les jeux récents transportent également leurs paramètres de configuration
+  // sous forme d'objet. Ne pas les perdre pendant la navigation téléphone → TV.
+  for (const key of ["config", "gameConfig", "x01ConfigV3"]) {
+    const value = params[key];
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    try {
+      const json = JSON.stringify(value, (_k, v) =>
+        typeof v === "function" || (typeof v === "string" && v.startsWith("data:image/")) ? undefined : v);
+      if (json && json.length <= 24_000) (out as Record<string, any>)[key] = JSON.parse(json);
+    } catch {}
   }
   return Object.keys(out).length ? out : null;
 }

@@ -6,7 +6,6 @@ import {
   closeViewerRealtimeHost,
   configureViewerRealtimeHost,
   sendViewerHostCommand,
-  sendViewerHostLifecycle,
 } from "./viewerRealtime";
 import {
   isViewerGameplayRoute,
@@ -354,18 +353,10 @@ export function useViewerInteractiveBridge({
         const target = String(data.tab || "");
         if (!isViewerRemoteTabAllowed(target)) return;
 
-        // En partie, la télécommande TV pilote l'affichage TV sans arracher le
-        // téléphone à la saisie de score. La navigation bidirectionnelle reprend
-        // dès que le téléphone n'est plus sur un écran de jeu.
-        if (isViewerGameplayRoute(current.tab)) {
-          sendViewerHostLifecycle({
-            type: "navigation_blocked_gameplay",
-            tab: current.tab,
-            requestedTab: target,
-            at: Date.now(),
-          });
-          return;
-        }
+        // La TV est aussi une télécommande de navigation : la route demandée
+        // doit être affichée sur les deux appareils, même en cours de jeu.
+        // Un même écran ne doit toutefois pas relancer/recréer sa partie.
+        if (target === current.tab && !data.params) return;
         try { current.go(target as any, data.params || undefined); } catch {}
       },
       onLifecycle: (data) => {
