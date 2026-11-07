@@ -137,7 +137,9 @@ export function listCanonicalX01Sessions(profileId?: string | null, profileName?
   const pname = normName(profileName);
   if (!pid && !pname) return rows.slice().sort((a,b) => a.date - b.date);
   return rows.filter((row) => {
-    if (pid && (row.profileId === pid || row.playerId === pid)) return true;
+    if (pid) return resolveCanonicalX01ProfileId(row.profileId) === pid || resolveCanonicalX01ProfileId(row.playerId) === pid;
+    // Name-only match is a compatibility aid for a caller with no profile ID.
+    // Never merge a different person's same-name history into a known profile.
     return !!pname && normName(row.playerName) === pname;
   }).sort((a,b) => a.date - b.date);
 }

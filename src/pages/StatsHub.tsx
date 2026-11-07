@@ -30,7 +30,7 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
 import { computeCanonicalX01501DOLevel, persistCanonicalX01501DOLevel } from "../lib/x01ProfileStarring";
 import { computeCanonicalX01ProfileStats } from "../lib/x01CanonicalProjection";
-import { readCanonicalX01IndexV2, scheduleCanonicalX01IndexRebuildV2 } from "../lib/x01CanonicalIndexStoreV2";
+import { ensureCanonicalX01IndexV2 } from "../lib/x01CanonicalIndexStoreV2";
 import statsCenterTicker from "../assets/tickers/ticker_statistics_center_universal.webp";
 import tickerHistoriqueFr from "../assets/tickers/ticker_historique.png";
 import tickerHistoryEn from "../assets/tickers/ticker_history.png";
@@ -6934,7 +6934,7 @@ const selectedPlayerVisual = React.useMemo<PlayerLite | null>(() => {
 // avec réconciliation par nom si un ancien historique porte un autre playerId.
 const [x01IndexRefresh, setX01IndexRefresh] = React.useState(0);
 React.useEffect(() => {
-  if (!readCanonicalX01IndexV2()) scheduleCanonicalX01IndexRebuildV2('stats-dashboard-opened');
+  ensureCanonicalX01IndexV2('stats-dashboard-opened');
   const refresh = () => setX01IndexRefresh((v) => v + 1);
   window.addEventListener('dc-x01-canonical-index-ready', refresh);
   window.addEventListener('dc-storage-restored', refresh);

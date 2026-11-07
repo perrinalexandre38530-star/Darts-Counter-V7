@@ -118,6 +118,9 @@ let inMemory: X01StoredIndexV2 | null = null;
 let inFlight: Promise<X01StoredIndexV2> | null = null;
 let scheduled: ReturnType<typeof setTimeout> | null = null;
 let generation = 0;
+// Recheck every cold start once: a valid-looking localStorage index can describe
+// only 1 match while the authoritative History V4 already contains many more.
+let coldStartRevalidationRequested = false;
 
 export function readCanonicalX01IndexV2(): X01StoredIndexV2 | null {
   if (typeof localStorage === 'undefined') return null;
@@ -144,8 +147,12 @@ export function invalidateCanonicalX01IndexV2(): void {
 
 /** Schedule initial recovery only when no complete snapshot exists. */
 export function ensureCanonicalX01IndexV2(reason = 'stats-opened'): void {
-  if (readCanonicalX01IndexV2() || inFlight || scheduled !== null) return;
-  scheduleCanonicalX01IndexRebuildV2(reason);
+  if (typeof window === 'undefined') return;
+  if (coldStartRevalidationRequested || inFlight || scheduled !== null) return;
+  coldStartRevalidationRequested = true;
+  // Keep the previously completed index visible until History V4 has been read.
+  // A cache existing in localStorage is not proof that it covers the latest history.
+  scheduleCanonicalX01IndexRebuildV2(reason + '-cold-start-verify');
 }
 
 /** Explicit rebuild. Never call from a React render or ProfileStarRing. */

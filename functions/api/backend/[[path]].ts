@@ -80,6 +80,11 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, params }) =>
     }
     responseHeaders.set("cache-control", "no-store");
     responseHeaders.set("x-multisports-pages-proxy", "1");
+    if (upstream.status >= 500) {
+      // This is a real upstream outage, not a browser cache failure.
+      responseHeaders.set("x-mss-upstream-status", String(upstream.status));
+      if (!responseHeaders.has("retry-after")) responseHeaders.set("retry-after", "30");
+    }
 
     return new Response(upstream.body, {
       status: upstream.status,

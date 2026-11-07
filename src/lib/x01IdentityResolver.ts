@@ -86,6 +86,27 @@ export function resolveX01CanonicalIdentity(
   const knownProfiles = knownSet(options.knownProfileIds);
   const quickLinks = getQuickProfileLinks(record);
 
+  const quickKeys = [
+    text(participant?.temporaryPlayerId),
+    historicalPlayerId,
+    text(participant?.id),
+    text(participant?.playerId),
+    text(participant?.pid),
+    text(participant?.sideId),
+  ].filter(Boolean);
+  for (const key of quickKeys) {
+    const linked = quickLinks[key];
+    if (!linked) continue;
+    const canonical = aliasMap[linked] || linked;
+    return {
+      historicalPlayerId,
+      canonicalProfileId: canonical,
+      resolutionSource: "quick_profile_link",
+      confidence: "exact",
+      matchedValue: key,
+    };
+  }
+
   if (explicitProfileId) {
     // Legacy backups may store an obsolete identity as `profileId` itself.
     // Validated aliases must take precedence over that historical field.
@@ -118,27 +139,6 @@ export function resolveX01CanonicalIdentity(
         matchedValue: explicitProfileId,
       };
     }
-  }
-
-  const quickKeys = [
-    text(participant?.temporaryPlayerId),
-    historicalPlayerId,
-    text(participant?.id),
-    text(participant?.playerId),
-    text(participant?.pid),
-    text(participant?.sideId),
-  ].filter(Boolean);
-  for (const key of quickKeys) {
-    const linked = quickLinks[key];
-    if (!linked) continue;
-    const canonical = aliasMap[linked] || linked;
-    return {
-      historicalPlayerId,
-      canonicalProfileId: canonical,
-      resolutionSource: "quick_profile_link",
-      confidence: "exact",
-      matchedValue: key,
-    };
   }
 
   const aliasCandidates = [
