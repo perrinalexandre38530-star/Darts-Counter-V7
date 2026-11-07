@@ -11,7 +11,9 @@ export default function Top10MorpionStatsTab({ records, playerId, mode }: Props)
   const cards: Array<[string, string]> = [
     [fr ? "Parties terminées" : "Completed matches", fmt(stats.games)],
     [fr ? "Victoires en multijoueur" : "Multiplayer wins", fmt(stats.victories)],
-    [fr ? "Taux de victoire en multijoueur" : "Multiplayer win rate", stats.competitiveGames ? `${Math.round(stats.victories / stats.competitiveGames * 100)}%` : "—"],
+    [fr ? "Taux de victoire (résultats connus)" : "Win rate (known results)", stats.knownCompetitiveGames ? `${Math.round(stats.victories / stats.knownCompetitiveGames * 100)}%` : "—"],
+    [fr ? "Défaites / Nuls" : "Losses / Draws", `${fmt(stats.defeats)} / ${fmt(stats.draws)}`],
+    ...(stats.unknownResults ? [[fr ? "Résultats anciens indéterminés" : "Unresolved legacy results", fmt(stats.unknownResults)]] : []),
     ...(mode === "top_10" ? [[fr ? "Séries solo" : "Solo sessions", fmt(stats.soloGames)]] : []),
     [fr ? "Volées validées" : "Completed visits", fmt(stats.visits)],
     ...(mode === "top_10" ? [
@@ -37,7 +39,7 @@ export default function Top10MorpionStatsTab({ records, playerId, mode }: Props)
     {!!recent.length && <section style={{ padding: 12, border: "1px solid rgba(255,255,255,.14)", borderRadius: 12 }} aria-label={fr ? "Progression par partie" : "Match history"}>
       <b style={{ fontSize: 13 }}>{mode === "top_10" ? fr ? "PROGRESSION DES SCORES" : "SCORE PROGRESSION" : fr ? "MANCHES GAGNÉES PAR PARTIE" : "ROUNDS WON PER MATCH"}</b>
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${recent.length}, minmax(0, 1fr))`, gap: 5, alignItems: "end", height: 98, paddingTop: 12 }}>
-        {recent.map((game, i) => <div key={`${game.id}-${i}`} title={`${new Date(game.date || Date.now()).toLocaleDateString(fr ? "fr-FR" : "en-GB")} · ${game.score}`} aria-label={`${fr ? "Partie" : "Match"} ${i + 1}: ${game.score}`} style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "end", alignItems: "center", gap: 3, minWidth: 0 }}>
+        {recent.map((game, i) => <div key={`${game.id}-${i}`} title={`${game.date ? new Date(game.date).toLocaleDateString(fr ? "fr-FR" : "en-GB") : "—"} · ${game.score}`} aria-label={`${fr ? "Partie" : "Match"} ${i + 1}: ${game.score}`} style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "end", alignItems: "center", gap: 3, minWidth: 0 }}>
           <span style={{ fontSize: 10, opacity: .9 }}>{game.score}</span>
           <div style={{ background: "linear-gradient(180deg,#67dcfb,#3576cf)", borderRadius: "4px 4px 0 0", width: "100%", maxWidth: 28, minHeight: 3, height: `${Math.max(3, game.score / ceiling * 70)}%` }} />
         </div>)}

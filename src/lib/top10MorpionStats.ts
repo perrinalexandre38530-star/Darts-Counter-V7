@@ -3,7 +3,7 @@
 export type Top10MorpionMode = "top_10" | "tic_tac_toe";
 export type GameStat = { id: string; date: number; score: number; visits: number; bestVisit: number; visitScores: number[]; wins: number; cases: number; marks: number };
 export type Top10MorpionStats = {
-  games: number; competitiveGames: number; soloGames: number; victories: number; draws: number; totalPoints: number; averagePointsPerVisit: number | null;
+  games: number; competitiveGames: number; knownCompetitiveGames: number; soloGames: number; victories: number; defeats: number; draws: number; unknownResults: number; totalPoints: number; averagePointsPerVisit: number | null;
   bestGame: number | null; bestVisit: number | null; visits: number; darts: number;
   visits100: number; visits140: number; roundsWon: number;
   lastGridCases: number | null; lastGridMarks: number | null; recent: GameStat[];
@@ -35,6 +35,40 @@ function playerScores(r: any, playerIndex: number): number[] {
   const row = r?.payload?.visitScores?.[playerIndex];
   return Array.isArray(row) && row.every((v: unknown) => finite(v) !== null && Number(v) <= 180)
     ? row.map(Number) : [];
+}
+/** Résultat compétitif historique : ne jamais assimiler l'absence de winnerId à un nul.
+ * Les variantes anciennes peuvent avoir les scores définitifs sans winnerId. */
+type CompetitiveOutcome = { kind: "winner"; winnerId: string } | { kind: "draw" } | { kind: "unknown" };
+function outcomeOf(r: any, mode: Top10MorpionMode): CompetitiveOutcome {
+  const players = arr(r?.players);
+  if (players.length < 2) return { kind: "unknown" };
+  const ids = players.map(pId);
+  if (ids.some(id => !id) || new Set(ids).size !== ids.length) return { kind: "unknown" };
+  const explicit = String(r?.winnerId ?? r?.summary?.winnerId ?? "").trim();
+  if (explicit && ids.includes(explicit)) return { kind: "winner", winnerId: explicit };
+  if (r?.summary?.draw === true || r?.summary?.isDraw === true || r?.result === "draw") return { kind: "draw" };
+
+  const topVisits = arr(r?.payload?.visitScores);
+  const morpionWins = arr(r?.payload?.matchWins);
+  // Priorité aux véritables données définitives. Aucun score manquant n'est inventé.
+  let scores: number[] | null = null;
+  if (mode === "top_10" && topVisits.length === ids.length &&
+      topVisits.every((line: any) => Array.isArray(line) && line.length === 10 &&
+        line.every((v: any) => finite(v) !== null && Number(v) <= 180))) {
+    scores = topVisits.map((line: any[]) => line.reduce((sum: number, n: any) => sum + Number(n), 0));
+  } else if (mode === "tic_tac_toe" && morpionWins.length === ids.length &&
+      morpionWins.every((n: any) => finite(n) !== null && Number.isInteger(Number(n)))) {
+    scores = morpionWins.map(Number);
+  } else if (obj(r?.summary?.finalScores) &&
+      ids.every(id => finite(r.summary.finalScores[id]) !== null)) {
+    scores = ids.map(id => Number(r.summary.finalScores[id]));
+  } else if (players.every(p => finite(p?.score) !== null)) {
+    scores = players.map(p => Number(p.score));
+  }
+  if (!scores) return { kind: "unknown" };
+  const best = Math.max(...scores);
+  const leaders = ids.filter((_, i) => scores![i] === best);
+  return leaders.length === 1 ? { kind: "winner", winnerId: leaders[0] } : { kind: "draw" };
 }
 function snapshotOf(r: any, playerId: string, mode: Top10MorpionMode): GameStat | null {
   const people = arr(r?.players);
@@ -78,18 +112,24 @@ export function computeTop10MorpionStats(records: any[], playerId: string, mode:
   }
   selected.sort((a, b) => a.stat.date - b.stat.date);
   const totals: Top10MorpionStats = {
-    games: selected.length, competitiveGames: 0, soloGames: 0, victories: 0, draws: 0, totalPoints: 0, averagePointsPerVisit: null,
+    games: selected.length, competitiveGames: 0, knownCompetitiveGames: 0, soloGames: 0, victories: 0, defeats: 0, draws: 0, unknownResults: 0, totalPoints: 0, averagePointsPerVisit: null,
     bestGame: null, bestVisit: null, visits: 0, darts: 0, visits100: 0, visits140: 0,
     roundsWon: 0, lastGridCases: null, lastGridMarks: null, recent: selected.map(x => x.stat).slice(-12),
   };
   for (const { record: r, stat } of selected) {
-    const winner = String(r.winnerId ?? r.summary?.winnerId ?? "");
-    // En entraînement solo, une partie terminée n’est pas une victoire compétitive.
+    // Un winnerId absent n'est pas une preuve de nul. Les parties legacy
+    // sont départagées seulement si leurs scores finaux sont exploitables.
     const competitive = arr(r?.players).length > 1;
     if (competitive) {
       totals.competitiveGames++;
-      if (winner === String(playerId)) totals.victories++;
-      if (!winner) totals.draws++;
+      const outcome = outcomeOf(r, mode);
+      if (outcome.kind === "unknown") totals.unknownResults++;
+      else {
+        totals.knownCompetitiveGames++;
+        if (outcome.kind === "draw") totals.draws++;
+        else if (outcome.winnerId === String(playerId)) totals.victories++;
+        else totals.defeats++;
+      }
     } else totals.soloGames++;
     totals.visits += stat.visits;
     const own = readVisits(r).filter((v: any) => String(v?.playerId ?? v?.profileId ?? "") === String(playerId));

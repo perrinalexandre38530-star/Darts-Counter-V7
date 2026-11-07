@@ -9,6 +9,7 @@ import { scopedStorageKey } from "../../lib/storage";
 import { encodeTossitDraft, decodeTossitDraft } from "./tossitDraft";
 import { PageAdBanner } from "../../monetization/AdSlot";
 import { previewBorderRound, previewThiefRound, previewChoreRound } from "./tossitScoringPreview";
+import { previewReachTurn, previewRainbowTurn, previewBottleRound } from "./tossitCreativePreview";
 import {
   TOSSIT_MODES, TOSSIT_PLANNED, TOSSIT_COLORS, applyTossitAction, newTossitGame, summaryForTossit, undoTossitAction,
   type TossitMode, type TossitPlayer, type TossitState, type RiverLanding, type CornholeLanding, type ThiefCopCapture, TOSSIT_CHORES, type ChoreThrow,
@@ -383,6 +384,10 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
   const borderPreview = previewBorderRound(state.players, borderDarts, state.dartsPerPlayer);
   const thiefPreview = previewThiefRound(captures);
   const chorePreview = previewChoreRound(state.players, state.chores, choreThrows, TOSSIT_CHORES.map(chore => chore.id));
+  const reachPreview = previewReachTurn(reachStuck, reachCm, state.dartsPerPlayer, state.reach[targetActive.id] ?? { bestCm: 0, stuck: 0 });
+  const rainbowPreview = previewRainbowTurn(rainbowPattern, rainbowColors, rainbowStack, rainbowCompleted, state.dartsPerPlayer);
+  const bottlePreview = previewBottleRound(state.players, bottleStuck, bottleOn, bottleClosest, state.dartsPerPlayer);
+
   const submitBorder = () => {
     if (!borderPreview.ready) {
       setError(tr("Saisissez une distance valide en cm pour chaque ventouse valide.", "Enter a valid distance in cm for every valid dart."));
@@ -644,24 +649,52 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
       </section>}
       {mode === "reach" && <section className="tossit-mode-panel" style={panel}>
         <h3>🟡 STICK & REACH — {targetActive.name}</h3>
-        <p style={{ opacity: .75, fontSize: 13 }}>{tr("Meilleure hauteur de la ventouse collée, en cm. Le total des ventouses collées départage les records égaux.", "Highest stuck dart, in cm. Total stuck darts break equal-height ties.")}</p>
-        <label>{tr("Ventouses collées", "Stuck darts")}<select style={input} value={reachStuck} onChange={e => { setReachStuck(Number(e.target.value)); if (Number(e.target.value) === 0) setReachCm("0"); }}>
-          {Array.from({length:state.dartsPerPlayer+1},(_,i)=><option key={i} value={i}>{i}</option>)}
-        </select></label>
-        <label>{tr("Hauteur maximale (cm)", "Maximum height (cm)")}<input type="number" inputMode="decimal" min="0" max="350" step="0.1" style={input} disabled={reachStuck===0} value={reachCm} onChange={e=>setReachCm(e.target.value)} /></label>
-        <p style={{ fontSize: 12, opacity: .72 }}>{tr("Classement MSS : meilleure hauteur puis nombre total de ventouses collées. Aucun barème officiel de points.", "MSS ranking: highest dart then total stuck darts. No official points format.")}</p>
-        <button className="tossit-confirm-button" style={{ ...button, width: "100%" }} onClick={()=>{ if(commit({kind:"reach", stuck:reachStuck, bestCm: Number(reachCm)})) {setReachCm("0");setReachStuck(0);} }}>{tr("VALIDER LE PASSAGE", "CONFIRM TURN")}</button>
+        <p className="tossit-assist-text">{tr("Indiquez le nombre de ventouses collées et la plus haute mesure en centimètres. Saisie provisoire, sans enregistrement avant validation.", "Enter the number of stuck darts and the highest measurement in centimetres. Values are provisional until confirmed.")}</p>
+        <div className="tossit-entry-field"><strong>{tr("Ventouses collées", "Stuck darts")}</strong>
+          <TossitCountChoices label={tr("Ventouses collées", "Stuck darts")} value={reachStuck} max={state.dartsPerPlayer}
+            onChange={n => { setReachStuck(n); if (n === 0) setReachCm("0"); else if (reachCm === "0") setReachCm(""); }}/>
+        </div>
+        <label className="tossit-measure-field">{tr("Hauteur maximale (cm)", "Maximum height (cm)")}
+          <input type="text" inputMode="decimal" autoComplete="off" placeholder={tr("Ex. 145,5", "e.g. 145.5")}
+            style={input} disabled={reachStuck === 0} value={reachCm}
+            onChange={e => setReachCm(e.target.value)} aria-invalid={!reachPreview.ready && reachStuck > 0}/>
+        </label>
+        <TossitEntrySummary>
+          <strong>{tr("Aperçu du passage", "Turn preview")}</strong>
+          <span className="tossit-preview-line">{tr("Mesure", "Height")} : <b>{reachPreview.ready ? `${reachPreview.cm} cm` : "—"}</b>
+            · {tr("Record conservé", "Best record")} : <b>{reachPreview.recordCm} cm</b>
+            · {tr("Cumul collées", "Total stuck")} : <b>{reachPreview.totalStuck}</b></span>
+          {!reachPreview.ready && <small>{tr("Entrez une hauteur de 0,1 à 350 cm (une décimale maximum) dès qu'au moins une ventouse colle.", "Enter a height from 0.1 to 350 cm (max one decimal) when at least one dart sticks.")}</small>}
+        </TossitEntrySummary>
+        <button type="button" className="tossit-confirm-button" style={{ ...button, width: "100%" }} disabled={!reachPreview.ready}
+          onClick={() => { if (commit({ kind: "reach", stuck: reachStuck, bestCm: reachPreview.cm })) { setReachCm("0"); setReachStuck(0); } }}>{tr("VALIDER LE PASSAGE", "CONFIRM TURN")}</button>
       </section>}
       {mode === "rainbow" && <section className="tossit-mode-panel" style={panel}>
         <h3>🌈 RAINBOW RING & STACK — {targetActive.name}</h3>
-        <p style={{ opacity: .75, fontSize: 12 }}>{tr("Défi créatif MSS : 1 point par couleur distincte ou niveau empilé, +3 si l'anneau, le motif ou la tour est terminé. Barème non officiel.", "MSS creative challenge: 1 point per distinct colour or stack level, +3 for a finished ring, shape or tower. Not official scoring.")}</p>
-        <label>{tr("Type de création", "Creative challenge")}<select style={input} value={rainbowPattern} onChange={e=>{setRainbowPattern(e.target.value as typeof rainbowPattern);setRainbowColors(0);setRainbowStack(0);setRainbowCompleted(false);}}>
-          <option value="ring">{tr("Anneau coloré", "Rainbow ring")}</option><option value="shape">{tr("Motif / forme", "Pattern / shape")}</option><option value="stack">{tr("Tour empilée", "Stacked tower")}</option>
-        </select></label>
-        {rainbowPattern === "stack" ? <label>{tr("Niveaux empilés", "Stacked levels")}<select style={input} value={rainbowStack} onChange={e=>setRainbowStack(Number(e.target.value))}>{Array.from({length:state.dartsPerPlayer+1},(_,i)=><option key={i}>{i}</option>)}</select></label> :
-          <label>{tr("Couleurs distinctes utilisées", "Distinct colours used")}<select style={input} value={rainbowColors} onChange={e=>setRainbowColors(Number(e.target.value))}>{Array.from({length:7},(_,i)=><option key={i}>{i}</option>)}</select></label>}
-        <label style={{ display: "block", margin: "12px 0" }}><input type="checkbox" checked={rainbowCompleted} onChange={e=>setRainbowCompleted(e.target.checked)} /> {tr("Création terminée (+3 MSS)", "Completed creation (+3 MSS)")}</label>
-        <button className="tossit-confirm-button" style={{ ...button, width: "100%" }} onClick={()=>{if(commit({kind:"rainbow", pattern:rainbowPattern, colors:rainbowPattern === "stack" ? 0 : rainbowColors, stackHeight:rainbowPattern === "stack" ? rainbowStack : 0, completed:rainbowCompleted})) {setRainbowColors(0);setRainbowStack(0);setRainbowCompleted(false);} }}>{tr("VALIDER LE DÉFI", "CONFIRM CHALLENGE")}</button>
+        <p className="tossit-assist-text">{tr("Défi créatif MSS : 1 point par couleur distincte ou niveau empilé, +3 si la création est terminée. Barème non officiel.", "MSS creative challenge: 1 point per distinct colour or stacked level, +3 for a completed creation. Not official scoring.")}</p>
+        <div className="tossit-entry-field"><strong>{tr("Type de création", "Creative challenge")}</strong>
+          <TossitQuickChoices value={rainbowPattern} columns={3} label={tr("Type de création", "Creative challenge")}
+            options={[{ value: "ring", label: tr("Anneau", "Ring") }, { value: "shape", label: tr("Motif", "Shape") }, { value: "stack", label: tr("Tour", "Stack") }]}
+            onChange={pattern => { setRainbowPattern(pattern); setRainbowColors(0); setRainbowStack(0); setRainbowCompleted(false); }}/>
+        </div>
+        <div className="tossit-entry-field"><strong>{rainbowPattern === "stack" ? tr("Niveaux empilés", "Stacked levels") : tr("Couleurs distinctes", "Distinct colours")}</strong>
+          {rainbowPattern === "stack" ?
+            <TossitCountChoices value={rainbowStack} max={state.dartsPerPlayer} label={tr("Niveaux empilés", "Stacked levels")}
+              onChange={n => { setRainbowStack(n); if (n < 2) setRainbowCompleted(false); }}/> :
+            <TossitCountChoices value={rainbowColors} max={6} label={tr("Couleurs distinctes", "Distinct colours")}
+              onChange={n => { setRainbowColors(n); if (n < 3) setRainbowCompleted(false); }}/>}</div>
+        <div className="tossit-entry-field"><strong>{tr("Création terminée", "Creation completed")}</strong>
+          <TossitQuickChoices value={rainbowCompleted ? "yes" : "no"} columns={2} label={tr("Création terminée", "Creation completed")}
+            options={[{ value: "no", label: tr("Non · +0", "No · +0") }, { value: "yes", label: tr("Oui · +3", "Yes · +3") }]}
+            onChange={answer => setRainbowCompleted(answer === "yes" && rainbowPreview.eligibleToComplete)}/>
+          {!rainbowPreview.eligibleToComplete && <small>{tr("Bonus +3 disponible dès 3 couleurs distinctes ou 2 niveaux empilés.", "The +3 bonus requires 3 distinct colours or 2 stacked levels.")}</small>}
+        </div>
+        <TossitEntrySummary><strong>{tr("Points provisoires MSS", "Provisional MSS points")}</strong>
+          <span className="tossit-preview-line"><b>+{rainbowPreview.points}</b> = {rainbowPreview.base} {rainbowPattern === "stack" ? tr("niveaux", "levels") : tr("couleurs", "colours")} + {rainbowPreview.bonus} {tr("bonus", "bonus")}</span>
+          <small>{targetActive.name} : {state.scores[targetActive.id] ?? 0} + {rainbowPreview.points} = {(state.scores[targetActive.id] ?? 0) + rainbowPreview.points}</small>
+        </TossitEntrySummary>
+        <button type="button" className="tossit-confirm-button" style={{ ...button, width: "100%" }} disabled={!rainbowPreview.ready}
+          onClick={() => { if (commit({ kind: "rainbow", pattern: rainbowPattern, colors: rainbowPattern === "stack" ? 0 : rainbowColors, stackHeight: rainbowPattern === "stack" ? rainbowStack : 0, completed: rainbowCompleted })) { setRainbowColors(0); setRainbowStack(0); setRainbowCompleted(false); } }}>{tr("VALIDER LE DÉFI", "CONFIRM CHALLENGE")}</button>
       </section>}
       {mode === "chores" && <section className="tossit-mode-panel" style={panel}>
         <h3>🧹 CHORES — {targetActive?.name}</h3>
@@ -695,14 +728,30 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
       </section>}
       {mode === "bottle" && <section className="tossit-mode-panel" style={panel}>
         <h3>🍾 CAPTURE THE BOTTLE — {tr("Manche", "Round")} {state.events.length + 1}/{state.victoryTarget}</h3>
-        <p style={{ fontSize: 12, opacity: .8 }}>{tr("Version familiale sans alcool, barème MSS : +1 pour la ventouse la plus proche, +3 par ventouse collée directement sur la bouteille. Tous les résultats sont saisis manuellement.", "Alcohol-free MSS adaptation: +1 for the closest stuck dart, +3 for each dart stuck directly on the bottle. All results entered manually.")}</p>
-        {players.map(p => <div key={p.id} style={{ display:"grid", gridTemplateColumns:"repeat(2, minmax(0,1fr))", gap:8, marginBottom:10 }}>
-          <strong style={{ gridColumn:"1 / -1" }}>{p.name}</strong>
-          <label>{tr("Ventouses collées", "Stuck darts")}<select style={input} value={bottleStuck[p.id] ?? 0} onChange={e=>{const n=Number(e.target.value);setBottleStuck(old=>({...old,[p.id]:n}));setBottleOn(old=>({...old,[p.id]:Math.min(old[p.id]??0,n)}));if(!n && bottleClosest===p.id)setBottleClosest("");}}>{Array.from({length:state.dartsPerPlayer+1},(_,n)=><option key={n} value={n}>{n}</option>)}</select></label>
-          <label>{tr("Sur la bouteille", "On bottle")}<select style={input} value={bottleOn[p.id]??0} onChange={e=>setBottleOn(old=>({...old,[p.id]:Number(e.target.value)}))}>{Array.from({length:(bottleStuck[p.id]??0)+1},(_,n)=><option key={n} value={n}>{n}</option>)}</select></label>
+        <p className="tossit-assist-text">{tr("Version familiale sans alcool (barème MSS) : +1 pour la ventouse la plus proche et +3 par ventouse sur la bouteille. Choisissez les résultats avant de confirmer la manche.", "Alcohol-free family version (MSS scoring): +1 for the closest dart and +3 per dart on the bottle. Enter results before confirming the round.")}</p>
+        {players.map(p => <div key={p.id} className="tossit-score-entry-card">
+          <strong>{p.name}</strong>
+          <div className="tossit-entry-field"><strong>{tr("Ventouses collées", "Stuck darts")}</strong>
+            <TossitCountChoices value={bottleStuck[p.id] ?? 0} max={state.dartsPerPlayer} label={`${p.name} · ${tr("Ventouses collées", "Stuck darts")}`}
+              onChange={n => { setBottleStuck(old => ({ ...old, [p.id]: n })); setBottleOn(old => ({ ...old, [p.id]: Math.min(old[p.id] ?? 0, n) })); if (n === 0 && bottleClosest === p.id) setBottleClosest(""); }}/>
+          </div>
+          <div className="tossit-entry-field"><strong>{tr("Sur la bouteille", "On bottle")}</strong>
+            <TossitCountChoices value={bottleOn[p.id] ?? 0} max={bottleStuck[p.id] ?? 0} label={`${p.name} · ${tr("Sur la bouteille", "On bottle")}`}
+              onChange={n => setBottleOn(old => ({ ...old, [p.id]: n }))}/>
+          </div>
+          <span className="tossit-preview-line">{tr("Points provisoires", "Provisional points")} : <b>+{bottlePreview.points[p.id] ?? 0}</b></span>
         </div>)}
-        <label>{tr("Ventouse la plus proche", "Closest dart")}<select style={input} value={bottleClosest} onChange={e=>setBottleClosest(e.target.value)}><option value="">{tr("Aucune (toutes manquées)", "None (all missed)")}</option>{players.filter(p=>(bottleStuck[p.id]??0)>0).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-        <button className="tossit-confirm-button" style={{...button,width:"100%",marginTop:14}} onClick={()=>{if(commit({kind:"bottle",stuck:Object.fromEntries(players.map(p=>[p.id,bottleStuck[p.id]??0])),onBottle:Object.fromEntries(players.map(p=>[p.id,bottleOn[p.id]??0])),closestPlayerId:bottleClosest||undefined})){setBottleStuck({});setBottleOn({});setBottleClosest("");}}}>{tr("VALIDER LA MANCHE", "CONFIRM ROUND")}</button>
+        <div className="tossit-entry-field"><strong>{tr("Ventouse la plus proche", "Closest dart")}</strong>
+          <TossitQuickChoices value={bottleClosest} columns={Math.min(players.length + 1, 3)} label={tr("Ventouse la plus proche", "Closest dart")}
+            options={[{ value: "", label: tr("Aucune", "None") }, ...players.filter(p => (bottleStuck[p.id] ?? 0) > 0).map(p => ({ value: p.id, label: p.name }))]}
+            onChange={setBottleClosest}/>
+        </div>
+        <TossitEntrySummary><strong>{tr("Bilan de manche (barème MSS)", "Round summary (MSS scoring)")}</strong>
+          {players.map(p => <span key={p.id} className="tossit-preview-line">{p.name} : <b>+{bottlePreview.points[p.id] ?? 0}</b> · {tr("Total prévu", "Projected total")} <b>{(state.scores[p.id] ?? 0) + (bottlePreview.points[p.id] ?? 0)}</b></span>)}
+          {bottlePreview.needsClosest && <small>{tr("Choisissez le joueur dont la ventouse est la plus proche avant de valider.", "Choose the player with the closest dart before confirming.")}</small>}
+        </TossitEntrySummary>
+        <button type="button" className="tossit-confirm-button" style={{ ...button, width: "100%" }} disabled={!bottlePreview.ready}
+          onClick={() => { if (commit({ kind: "bottle", stuck: Object.fromEntries(players.map(p => [p.id, bottleStuck[p.id] ?? 0])), onBottle: Object.fromEntries(players.map(p => [p.id, bottleOn[p.id] ?? 0])), closestPlayerId: bottlePreview.closestPlayerId })) { setBottleStuck({}); setBottleOn({}); setBottleClosest(""); } }}>{tr("VALIDER LA MANCHE", "CONFIRM ROUND")}</button>
       </section>}
       <button type="button" className="tossit-undo-button" style={{ ...secondary, width: "100%" }} disabled={!state.previous} onClick={() => { lastCommitAt.current = 0; setState((old) => undoTossitAction(old)); setTictacSelection(null); setError(""); }}>{tr("ANNULER LA DERNIÈRE SAISIE", "UNDO LAST ENTRY")}</button>
     </>}

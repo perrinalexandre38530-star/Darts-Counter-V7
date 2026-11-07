@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React from "react";
+import { dartsFamilyStatsMode, dartsStatsRowMatchesProfile, isDartsFamilyDraw } from "../../lib/stats/dartsFamilyStatsSource";
 
 const ACCENT = "#ffd76a";
 const GOOD = "#65efb4";
@@ -10,26 +11,25 @@ const n = (v: any, d = 0) => Number.isFinite(Number(v)) ? Number(v) : d;
 const txt = (v: any) => String(v ?? "").trim();
 const pct = (a: number, b: number) => b > 0 ? `${Math.round((a / b) * 1000) / 10}%` : "0%";
 const playedAt = (r: any) => n(r?.updatedAt || r?.summary?.finishedAt || r?.payload?.summary?.finishedAt || r?.createdAt);
-const rowId = (r: any) => txt(r?.id || r?.playerId || r?.profileId || r?.pid);
-const rowName = (r: any) => txt(r?.name || r?.playerName || r?.displayName || "Joueur");
-
 function isHalveIt(record: any, mode: "halve_it" | "split_score" = "halve_it") {
-  const blob = [record?.kind, record?.mode, record?.game, record?.variantId, record?.summary?.kind, record?.summary?.mode, record?.payload?.kind, record?.payload?.mode, record?.payload?.summary?.mode]
-    .filter(Boolean).map((v) => txt(v).toLowerCase()).join(" ");
-  if (mode === "split_score") return blob.includes("split_score") || blob.includes("split score");
-  if (blob.includes("split_score") || blob.includes("split score")) return false;
-  return blob.includes("halve_it") || blob.includes("halve-it") || blob.includes("halve it") || blob.includes("half-it");
+  return dartsFamilyStatsMode(record) === mode;
 }
-function pools(record: any) {
-  return [record?.payload?.stats?.players, record?.payload?.summary?.players, record?.payload?.summary?.perPlayer, record?.summary?.players, record?.summary?.perPlayer, record?.payload?.players, record?.players].filter(Array.isArray);
+function pools(record: any): any[][] {
+  return [record?.payload?.stats?.players, record?.payload?.summary?.players,
+    record?.payload?.summary?.perPlayer, record?.summary?.players,
+    record?.summary?.perPlayer, record?.payload?.players, record?.stats?.players,
+    record?.players].filter(Array.isArray);
 }
 function findRow(record: any, id: string, name?: string | null) {
-  const wantedName = txt(name).toLowerCase();
   for (const pool of pools(record)) {
-    const byId = pool.find((row: any) => rowId(row) === String(id));
+    // Priorité au playerId canonique, même lorsque le champ `id` est obsolète.
+    const byId = pool.find((row: any) => dartsStatsRowMatchesProfile(row, id));
     if (byId) return byId;
-    if (wantedName) {
-      const byName = pool.find((row: any) => rowName(row).toLowerCase() === wantedName);
+  }
+  // Secours pour les archives ne possédant AUCUN identifiant sur leurs lignes.
+  if (name) {
+    for (const pool of pools(record)) {
+      const byName = pool.find((row: any) => dartsStatsRowMatchesProfile(row, id, name));
       if (byName) return byName;
     }
   }
@@ -81,7 +81,7 @@ export default function HalveItStatsTabFull({ records = [], playerId, playerName
   const games = matches.length;
   const wins = matches.filter(({ record, row }) => {
     const ids = winnerIds(record);
-    return row?.win === true || row?.winner === true || ids.includes(String(playerId)) || (row?.teamId && ids.includes(String(row.teamId)));
+    return !isDartsFamilyDraw(record) && (row?.win === true || row?.winner === true || ids.includes(String(playerId)) || (row?.teamId && ids.includes(String(row.teamId))));
   }).length;
   const darts = sum(rows, "dartsThrown", "darts");
   const visits = sum(rows, "visits", "targetAttempts");
@@ -154,10 +154,11 @@ export default function HalveItStatsTabFull({ records = [], playerId, playerName
 
       <Section title="Parties récentes">
         <div style={{ display: "grid", gap: 7 }}>{matches.slice(0, 10).map(({ record, row }, index) => {
-          const ids = winnerIds(record); const won = row?.win === true || row?.winner === true || ids.includes(String(playerId)) || (row?.teamId && ids.includes(String(row.teamId)));
+          const ids = winnerIds(record); const drawn = isDartsFamilyDraw(record);
+          const won = !drawn && (row?.win === true || row?.winner === true || ids.includes(String(playerId)) || (row?.teamId && ids.includes(String(row.teamId))));
           const date = playedAt(record) ? new Date(playedAt(record)).toLocaleDateString("fr-FR") : "—";
           return <div key={record?.id || index} style={{ display: "grid", gridTemplateColumns: "44px minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: 9, borderRadius: 14, background: won ? `${ACCENT}0e` : "rgba(255,255,255,.03)", border: `1px solid ${won ? `${ACCENT}55` : "rgba(255,255,255,.08)"}` }}>
-            <div style={{ width: 38, height: 38, borderRadius: 12, display: "grid", placeItems: "center", background: won ? ACCENT : "rgba(255,255,255,.07)", color: won ? "#151008" : "#d0d3dc", fontWeight: 1000 }}>{won ? "WIN" : `#${row?.rank || "—"}`}</div>
+            <div style={{ width: 38, height: 38, borderRadius: 12, display: "grid", placeItems: "center", background: won ? ACCENT : "rgba(255,255,255,.07)", color: won ? "#151008" : "#d0d3dc", fontWeight: 1000 }}>{drawn ? "ÉGAL" : won ? "WIN" : `#${row?.rank || "—"}`}</div>
             <div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000 }}>{date} • {record?.summary?.participantMode === "teams" ? "Équipes" : "Joueurs"}</div><div style={{ color: "#aeb3c3", fontSize: 10, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{n(row?.validHits)} hits • {n(row?.halvingEvents)} halve • +{n(row?.pointsWon)} / −{n(row?.pointsLostByHalving ?? row?.pointsLost)} pts • best {n(row?.bestVisit)}</div></div>
             <div style={{ textAlign: "right" }}><div style={{ color: ACCENT, fontSize: 20, fontWeight: 1000 }}>{n(row?.finalScore ?? row?.score ?? row?.points)}</div><div style={{ color: "#9297aa", fontSize: 9 }}>score</div></div>
           </div>;

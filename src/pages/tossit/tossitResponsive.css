@@ -247,3 +247,13 @@
   .tossit-play-main .tossit-score-entry-card .tossit-quick-choice { min-height: 46px; }
   .tossit-play-main .tossit-border-distance { max-width: 260px; }
 }
+
+/* V204 Wave 12: final touch-first Reach, Rainbow and Bottle inputs. */
+.tossit-measure-field { display: block; font-size: 14px; font-weight: 750; margin: 14px 0 12px; }
+.tossit-measure-field input { display: block; margin-top: 6px; }
+.tossit-page .tossit-confirm-button:disabled { opacity: .52; cursor: not-allowed; }
+.tossit-play-main .tossit-entry-summary small { display: block; margin-top: 7px; line-height: 1.4; }
+.tossit-play-main .tossit-score-entry-card > .tossit-preview-line { padding: 3px 0 5px; }
+@media (max-width: 390px) {
+  .tossit-play-main .tossit-entry-field .tossit-quick-choices { --tossit-quick-columns: 3 !important; }
+}

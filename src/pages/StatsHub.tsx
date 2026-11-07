@@ -2,6 +2,7 @@
 // src/pages/StatsHub.tsx — Stats + Historique + Training (v2 complet)
 // ============================================
 import { isQuickPartyRecord } from "../lib/quickParty";
+import { dartsFamilyStatsMode, shouldHydrateFamilyHistoryForStats } from "../lib/stats/dartsFamilyStatsSource";
 import React from "react";
 const STATS_HUB_DEBUG = false;
 import { useSport } from "../contexts/SportContext";
@@ -1445,7 +1446,8 @@ function useHistoryAPI(enabled = true, focusMode?: string | null): SavedMatch[] 
       for (const r of arr) {
         const mode = classifyRecordMode(r);
         if (!NEED.has(mode)) continue;
-        const forceFullForFocusedMode = !!focusedMode && focusedMode !== "dashboard" && mode === focusedMode;
+        const forceFullForFocusedMode = (!!focusedMode && focusedMode !== "dashboard" && mode === focusedMode)
+          || shouldHydrateFamilyHistoryForStats(r, focusedMode);
 
         const payload: any = (r as any)?.payload;
         const asRows = (src: any): any[] => Array.isArray(src)
@@ -1677,6 +1679,10 @@ function getGameMode(rec: any): string {
 }
 
 function classifyRecordMode(rec: SavedMatch): string {
+  // Un moteur partagé n'implique pas une même famille statistique.
+  // Priorité au variantId explicite de History V4 avant les libellés libres.
+  const dartsFamilyMode = dartsFamilyStatsMode(rec);
+  if (dartsFamilyMode) return dartsFamilyMode;
   // ⚠️ IMPORTANT: selon les générations de matches, kind/mode/variant peuvent être
   // au top-level, dans payload, payload.payload, summary ou config.
   const payload: any = (rec as any)?.payload ?? null;

@@ -6,6 +6,7 @@
 // ============================================================
 
 import * as React from "react";
+import { dartsFamilyStatsMode, dartsStatsRowMatchesProfile } from "../lib/stats/dartsFamilyStatsSource";
 import SparklinePro from "../components/SparklinePro";
 import ProfileAvatar from "../components/ProfileAvatar";
 
@@ -133,27 +134,7 @@ function normPlayerName(value: any) {
 }
 
 function isFiveLivesRecord(rec: any): boolean {
-  const blob = [
-    rec?.kind,
-    rec?.mode,
-    rec?.game,
-    rec?.variantId,
-    rec?.summary?.kind,
-    rec?.summary?.mode,
-    rec?.payload?.kind,
-    rec?.payload?.mode,
-    rec?.payload?.summary?.kind,
-    rec?.payload?.summary?.mode,
-  ]
-    .filter(Boolean)
-    .map(lc)
-    .join(" ");
-  return (
-    blob.includes("five_lives") ||
-    blob.includes("five lives") ||
-    blob.includes("5 vies") ||
-    blob.includes("cinq vies")
-  );
+  return dartsFamilyStatsMode(rec) === "five_lives";
 }
 
 function arrays(...values: any[]): any[][] {
@@ -165,10 +146,10 @@ function playerIdOf(row: any) {
 }
 
 function rowMatchesPlayer(row: any, playerId: string, playerName?: string | null): boolean {
+  // Conserver les anciens IDs tronqués de 5 VIES sans réintroduire la fusion
+  // dangereuse de deux joueurs différents qui portent le même pseudo.
   if (sameId(playerIdOf(row), playerId)) return true;
-  const wanted = normPlayerName(playerName);
-  const rowName = normPlayerName(row?.name ?? row?.playerName ?? row?.displayName ?? row?.nickname ?? row?.profileName);
-  return !!wanted && !!rowName && wanted === rowName;
+  return dartsStatsRowMatchesProfile(row, playerId, playerName);
 }
 
 function isCompetitiveFiveLivesRow(row: any): boolean {
