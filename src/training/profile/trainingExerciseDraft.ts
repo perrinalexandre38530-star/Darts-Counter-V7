@@ -146,11 +146,12 @@ export function clearTrainingExerciseDraft(exerciseId: string, participantId?: s
 export function hasMeaningfulTrainingExerciseDraft(draft: TrainingExerciseDraft | null) {
   if (!draft || isExpired(draft)) return false;
   const s = draft.state || {};
-  return Number(s.darts || 0) > 0 || Number(s.round || 0) > 0 || Number(s.index || 0) > 0 || Number(s.progress || 0) > 0 || Number(s.points || 0) !== 0;
+  return Number(s.darts || 0) > 0 || Number(s.round || 0) > 0 || Number(s.index || 0) > 0 || Number(s.progress || 0) > 0 || Number(s.points || 0) !== 0 || Number(s.aux?.techniqueStage || 0) > 0;
 }
 
 export function getEffectiveDraftSeconds(draft: TrainingExerciseDraft | null) {
   if (!draft || draft.secondsLeft == null || isExpired(draft)) return null;
-  const elapsed = Math.max(0, Math.floor((Date.now() - Number(draft.savedAt || Date.now())) / 1000));
-  return Math.max(0, Number(draft.secondsLeft) - elapsed);
+  // A paused Training exercise must remain paused while the app is closed.
+  // Subtracting wall-clock time here could silently finish a resumed session.
+  return Math.max(0, Math.floor(Number(draft.secondsLeft) || 0));
 }

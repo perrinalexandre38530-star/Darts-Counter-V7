@@ -1,4 +1,5 @@
 import React from "react";
+import OrganizationPublicShopSettings from "./OrganizationPublicShopSettings";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
@@ -123,6 +124,7 @@ export default function OrganizationShopPanel({ organization, userId, logoUrl }:
       </div> : null}
     </div>
 
+    <OrganizationPublicShopSettings organization={organization} userId={userId} logoUrl={logoUrl} />
 
     {error ? <div role="alert" style={{ ...card, borderColor: "#d96f6f", color: "#ffadad", fontSize: 12 }}>{error}</div> : null}
     {notice ? <div role="status" style={{ ...card, color: theme.primary, fontSize: 12 }}>{notice}</div> : null}

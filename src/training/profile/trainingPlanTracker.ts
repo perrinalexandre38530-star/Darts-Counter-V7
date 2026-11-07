@@ -13,6 +13,8 @@ export type TrainingProgramStepStats = {
   goal?: number;
   completionPct: number;
   accuracyPct: number;
+  aggregatedDarts?: number;
+  precisionUnavailable?: boolean;
   performanceScore: number;
 };
 
@@ -29,6 +31,8 @@ function sanitizeProgramStep(input: any): TrainingProgramStepStats | null {
     goal: Number.isFinite(Number(input.goal)) && input.goal != null ? Math.max(0, Number(input.goal)) : undefined,
     completionPct: Math.max(0, Math.min(100, Number(input.completionPct) || 0)),
     accuracyPct: Math.max(0, Math.min(100, Number(input.accuracyPct) || 0)),
+    aggregatedDarts: Math.max(0, Math.min(darts, Math.round(Number(input.aggregatedDarts) || 0))),
+    precisionUnavailable: input.precisionUnavailable === true,
     performanceScore: Math.max(0, Math.min(100, Number(input.performanceScore) || 0)),
   };
 }
@@ -184,6 +188,8 @@ export type TrainingProgramDraftStep = {
   goal?: number;
   completionPct: number;
   accuracyPct: number;
+  aggregatedDarts?: number;
+  precisionUnavailable?: boolean;
   performanceScore: number;
 };
 

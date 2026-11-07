@@ -793,6 +793,22 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
 
 
           <PrimaryNav items={tabs} activeId={tab} onChange={(id) => setTab(id as HubTab)} />
+          {tab === "program" && <section aria-label="Bienvenue au Centre d'entraînement" style={{ position: "relative", overflow: "hidden", margin: "12px 2px 8px", padding: "clamp(15px,3vw,25px)", borderRadius: 20, border: "1px solid rgba(39,220,255,.3)", background: "radial-gradient(circle at 92% 18%,rgba(40,210,241,.21),transparent 32%),radial-gradient(circle at 0 100%,rgba(161,80,255,.15),transparent 45%),linear-gradient(140deg,#071a2a,#0a101d 60%,#120e21)", boxShadow: "0 14px 36px rgba(0,0,0,.22),inset 0 0 25px rgba(39,220,255,.035)" }}>
+            <div aria-hidden style={{ position: "absolute", width: 158, height: 158, border: "2px solid rgba(39,220,255,.20)", borderRadius: "50%", top: -45, right: -58, boxShadow: "0 0 0 25px rgba(39,220,255,.045),0 0 0 54px rgba(39,220,255,.025)", pointerEvents: "none" }}/>
+            <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 11 }}>
+              <div style={{ width: 51, height: 51, borderRadius: 15, border: "1px solid rgba(39,220,255,.45)", background: "rgba(39,220,255,.09)", display: "grid", placeItems: "center", flex: "0 0 auto", boxShadow: "0 0 20px rgba(39,220,255,.08)" }}><HubGlyph name="precision" size={29}/></div>
+              <div style={{ minWidth: 0 }}><div style={{ color: "#6ce9ff", letterSpacing: 1.1, fontSize: 10, fontWeight: 950 }}>TON ESPACE D'ENTRAÎNEMENT</div><div style={{ marginTop: 3, fontSize: "clamp(17px,4vw,24px)", lineHeight: 1.12, fontWeight: 1000 }}>Prêt à progresser{accountParticipant?.name ? `, ${accountParticipant.name}` : ""} ?</div></div>
+            </div>
+            <p style={{ position: "relative", margin: "12px 0 13px", fontSize: 12.5, lineHeight: 1.5, color: "rgba(238,249,255,.78)" }}>Un objectif clair, une séance à ton rythme et des progrès mesurables. À toi de jouer !</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, position: "relative" }}>
+              {[{ label: "SÉANCES", value: String(programSessions.length), color: "#76ecff" }, { label: "MOYENNE", value: `${Math.round(career.averagePerformance || 0)}/100`, color: "#9fffc2" }, { label: "PLAN", value: `${dailyPlan.durationMin} min`, color: "#ffd86b" }].map(item => <div key={item.label} style={{ minWidth: 0, padding: "9px 6px", textAlign: "center", borderRadius: 12, border: "1px solid rgba(255,255,255,.12)", background: "rgba(2,7,13,.43)" }}><div style={{ fontSize: 9, fontWeight: 950, letterSpacing: .6, opacity: .7 }}>{item.label}</div><div style={{ marginTop: 4, fontSize: "clamp(13px,3.6vw,21px)", fontWeight: 1000, color: item.color }}>{item.value}</div></div>)}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 13, position: "relative" }}>
+              <button type="button" disabled={!resolved.length} onClick={() => startProgram(dailyPlan.program, { adaptiveDailyPlan: true, dailyPlanDateKey: dailyPlan.dateKey })} style={{ flex: "1 1 160px", minHeight: 44, padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(39,220,255,.65)", color: "#05202c", background: "linear-gradient(120deg,#7deaff,#19bfdc)", boxShadow: "0 6px 20px rgba(25,190,220,.2)", fontWeight: 1000, cursor: resolved.length ? "pointer" : "not-allowed", opacity: resolved.length ? 1 : .5 }}>▶ LANCER MON PLAN</button>
+              <button type="button" onClick={() => { setTab("exercises"); setExercisePanel("catalog"); }} style={{ flex: "1 1 120px", minHeight: 44, padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(255,255,255,.18)", color: "inherit", background: "rgba(255,255,255,.08)", fontWeight: 900, cursor: "pointer" }}>CHOISIR UN EXERCICE</button>
+              <button type="button" onClick={() => setTab("sessions")} style={{ minHeight: 44, padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(255,216,107,.27)", color: "#ffe6a3", background: "rgba(255,216,107,.055)", fontWeight: 900, cursor: "pointer" }}>MES SÉANCES</button>
+            </div>
+          </section>}
 
           {tab === "sessions" && <section style={{ paddingTop: 15, paddingBottom: 22 }}>
             <div style={{ marginBottom: 12 }}>

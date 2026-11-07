@@ -650,6 +650,8 @@ function LiveStyles() {
       .msc-result-comp { min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:9px; font-weight:1000; color:#cbd2da; }
       .msc-result-round { flex:0 0 auto; font-size:8px; color:#7f8995; font-weight:850; }
       .msc-result-date { flex:0 0 auto; font-size:8px; color:#aab2bc; font-weight:900; }
+      .msc-result-status { flex:0 0 auto; border:1px solid #5b492b; background:#302618; color:#f4ce8a; border-radius:5px; padding:3px 5px; font-size:7px; font-weight:950; letter-spacing:.2px; }
+      .msc-result-status.is-unscored { border-color:#405064; background:#17212d; color:#b2c3d5; }
       .msc-result-source {
         flex:0 0 auto; display:inline-flex; align-items:center; gap:6px; max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:3px 6px; border-radius:999px; border:1px solid #39434d; color:#cfd6de; text-decoration:none; font-size:7.5px; font-weight:1000; }
       .msc-result-source span { overflow:hidden; text-overflow:ellipsis; }
@@ -1102,15 +1104,24 @@ function FixtureMatchCard({ item, source, lang }: { item: DartsLiveFixture; sour
 function ResultMatchCard({ item, source, lang }: { item: DartsLiveResult; source?: SportLiveSource | null; lang: string }) {
   const origin = itemSource(item, source);
   const sourceLogo = sourceImageFromItem({ sourceUrl: origin.url }, source);
-  const isDraw = item.winner?.score != null && item.loser?.score != null && Number(item.winner.score) === Number(item.loser.score);
+  // Do not label the first player as the winner unless both scores are known.
+  // Incoming archives can include partial fixtures or scores without a result.
+  const leftScore = item.winner?.score;
+  const rightScore = item.loser?.score;
+  const validLeft = leftScore !== null && leftScore !== undefined && Number.isFinite(Number(leftScore));
+  const validRight = rightScore !== null && rightScore !== undefined && Number.isFinite(Number(rightScore));
+  const hasCompleteScore = validLeft && validRight;
+  const isDraw = hasCompleteScore && Number(leftScore) === Number(rightScore);
+  const hasNoScore = !validLeft && !validRight;
   const rows = [
-    { player: item.winner, winner: !isDraw },
+    { player: item.winner, winner: hasCompleteScore && !isDraw },
     { player: item.loser, winner: false },
   ];
   return (
     <article className="msc-result-card">
       <div className="msc-result-head">
         <div className="msc-result-date">{formatDate(item.playedOn, lang)}</div>
+        {!hasCompleteScore ? <span className={`msc-result-status${hasNoScore ? " is-unscored" : ""}`}>{hasNoScore ? "SCORE NON DISPONIBLE" : "SCORE PARTIEL"}</span> : null}
         <div className="msc-result-head-spacer" />
         {origin.url ? <a className="msc-result-source" href={origin.url} target="_blank" rel="noreferrer noopener">{sourceLogo ? <img src={sourceLogo} alt="" loading="lazy" referrerPolicy="no-referrer" /> : null}<span>{origin.name}</span></a> : <span className="msc-result-source">{sourceLogo ? <img src={sourceLogo} alt="" loading="lazy" referrerPolicy="no-referrer" /> : null}<span>{origin.name}</span></span>}
       </div>
@@ -1127,7 +1138,7 @@ function ResultMatchCard({ item, source, lang }: { item: DartsLiveResult; source
           })}
         </div>
         <div className="msc-result-scores">
-          <div className={`msc-result-score${isDraw ? " is-draw" : " is-winner"}`}>{scoreValue(item.winner?.score)}</div>
+          <div className={`msc-result-score${isDraw ? " is-draw" : hasCompleteScore ? " is-winner" : ""}`}>{scoreValue(item.winner?.score)}</div>
           <div className={`msc-result-score${isDraw ? " is-draw" : ""}`}>{scoreValue(item.loser?.score)}</div>
         </div>
       </div>
@@ -1523,9 +1534,9 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
                     <>
                       <div className="msc-round-group">
                         <div className="msc-round-head"><span>DERNIERS MATCHS</span><span>{Math.min(matches.length, 6)} / {matches.length}</span></div>
-                        {matches.slice(0, 6).map((item) => <ResultMatchCard key={item.id} item={item} source={source} lang={lang} />)}
+                        {[...matches].sort((a, b) => dateTs(b.playedOn) - dateTs(a.playedOn)).slice(0, 6).map((item) => <ResultMatchCard key={item.id} item={item} source={source} lang={lang} />)}
                       </div>
-                      {matches.length > 6 ? <div className="msc-competition-preview-note"><span>{matches.length - 6} résultat{matches.length - 6 > 1 ? "s" : ""} supplémentaire{matches.length - 6 > 1 ? "s" : ""}</span><button className="msc-open-competition" type="button" onClick={() => setSelected(name)}>OUVRIR LA COMPÉTITION</button></div> : null}
+                      <div className="msc-competition-preview-note"><span>{matches.length > 6 ? `${matches.length - 6} résultats de plus` : `${matches.length} résultat${matches.length > 1 ? "s" : ""} disponible${matches.length > 1 ? "s" : ""}`}</span><button className="msc-open-competition" type="button" onClick={() => setSelected(name)}>VOIR LA COMPÉTITION</button></div>
                     </>
                   )}
                 </section>

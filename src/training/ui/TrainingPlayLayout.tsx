@@ -25,6 +25,9 @@ export default function TrainingPlayLayout({
   participant,
   participantIndex,
   participantTotal,
+  playerScore,
+  playerScoreLabel = "POINTS",
+  sessionObjective,
   children,
 }: {
   title: string;
@@ -39,6 +42,9 @@ export default function TrainingPlayLayout({
   participant?: any;
   participantIndex?: number;
   participantTotal?: number;
+  playerScore?: React.ReactNode;
+  playerScoreLabel?: string;
+  sessionObjective?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const { theme } = useTheme();
@@ -59,6 +65,9 @@ export default function TrainingPlayLayout({
       style = document.createElement("style");
       style.id = FULLSCREEN_STYLE_ID;
       style.textContent = `
+        /* The global Awena launcher overlaps the active training keypad on mobile.
+           Hide it ONLY while a training play screen is mounted; header help remains. */
+        body.${FULLSCREEN_CLASS} [data-mss-floating-control="awena-launcher"],
         body.${FULLSCREEN_CLASS} .bottom-nav,
         body.${FULLSCREEN_CLASS} .dc-tabbar,
         body.${FULLSCREEN_CLASS} .tabbar,
@@ -107,7 +116,9 @@ export default function TrainingPlayLayout({
       >
         <section
           style={{
-            position: "relative",
+            position: "sticky",
+            top: "calc(92px + env(safe-area-inset-top))",
+            zIndex: 8,
             overflow: "hidden",
             borderRadius: 20,
             border: "1px solid rgba(39,220,255,.40)",
@@ -155,6 +166,10 @@ export default function TrainingPlayLayout({
                   {participant?.name || "Joueur"}{participant?.teamName ? ` • ${participant.teamName}` : ""}
                 </div>
               </div>
+              {playerScore !== undefined ? <div style={{ flex: "0 0 auto", padding: "5px 11px", textAlign: "right", borderRadius: 13, background: "rgba(39,220,255,.10)", border: "1px solid rgba(39,220,255,.30)" }}>
+                <div style={{ fontSize: 9, letterSpacing: .6, fontWeight: 950, opacity: .7 }}>{playerScoreLabel}</div>
+                <div style={{ fontSize: 23, lineHeight: 1.13, color: "#79ebff", fontWeight: 1000, fontVariantNumeric: "tabular-nums" }}>{playerScore}</div>
+              </div> : null}
             </div>
           ) : null}
 
@@ -192,7 +207,12 @@ export default function TrainingPlayLayout({
             </div>
           ) : null}
 
-          {progress ? (
+          {sessionObjective ? <div style={{ marginTop: 10, padding: "9px 11px", borderRadius: 12, border: "1px solid rgba(255,216,107,.26)", background: "rgba(255,216,107,.06)", display: "flex", alignItems: "flex-start", gap: 9 }}>
+            <span aria-hidden style={{ fontSize: 18, lineHeight: 1.2 }}>◎</span>
+            <div style={{ minWidth: 0, flex: 1 }}><div style={{ fontSize: 9, letterSpacing: .8, fontWeight: 950, color: "#ffd86b" }}>OBJECTIF DE LA SÉANCE</div><div style={{ fontSize: 12.5, marginTop: 3, fontWeight: 850, lineHeight: 1.35 }}>{sessionObjective}</div></div>
+          </div> : null}
+
+          {progress ?
             <div style={{ marginTop: 11 }}>
               <div
                 style={{

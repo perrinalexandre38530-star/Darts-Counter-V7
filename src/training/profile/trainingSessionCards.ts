@@ -16,6 +16,7 @@ export type TrainingSessionExerciseRow = {
   accuracy: number | null;
   darts: number | null;
   hits: number | null;
+  aggregatedDarts?: number;
   points: number | null;
   goal: number | null;
   completion: number | null;
@@ -30,7 +31,7 @@ export type TrainingSessionCard = {
   count: number;
   darts: number;
   performance: number;
-  accuracy: number;
+  accuracy: number | null;
   successes: number;
   exercises: TrainingSessionExerciseRow[];
 };
@@ -52,9 +53,10 @@ function fromStoredStep(step: TrainingProgramStepStats): TrainingSessionExercise
     exerciseId: step.exerciseId,
     title: exerciseName(step.exerciseId, step.exerciseTitle),
     performance: pct(step.performanceScore),
-    accuracy: pct(step.accuracyPct),
+    accuracy: step.precisionUnavailable ? null : pct(step.accuracyPct),
     darts: step.darts,
-    hits: step.hits,
+    hits: step.aggregatedDarts ? null : step.hits,
+    aggregatedDarts: step.aggregatedDarts || 0,
     points: step.points,
     goal: asNumber(step.goal),
     completion: pct(step.completionPct),
@@ -68,9 +70,10 @@ function fromDetailedSession(row: TrainingDetailedSession): TrainingSessionExerc
     exerciseId,
     title: exerciseName(exerciseId, String(row.metrics?.exerciseTitle || "") || undefined),
     performance: pct(row.metrics?.performanceScore ?? row.metrics?.score),
-    accuracy: pct(row.accuracyPct),
+    accuracy: row.metrics?.precisionUnavailable ? null : pct(row.metrics?.accuracyPct ?? row.accuracyPct),
     darts: asNumber(row.darts),
-    hits: asNumber(row.hits),
+    hits: row.metrics?.aggregatedDarts ? null : asNumber(row.hits),
+    aggregatedDarts: Math.max(0, Number(row.metrics?.aggregatedDarts || 0)),
     points: asNumber(row.points),
     goal: asNumber(row.metrics?.goal),
     completion: pct(row.metrics?.completionPct),
@@ -119,7 +122,7 @@ export function buildTrainingSessionCards(
       return {
         id: program.id, at: program.endedAt, title: program.programTitle, kind: "program" as const,
         count: program.steps, darts: program.darts, performance: program.performanceScore,
-        accuracy: program.accuracyPct, successes: program.successes, exercises: steps,
+        accuracy: saved.length && saved.every((step) => step.precisionUnavailable) ? null : program.accuracyPct, successes: program.successes, exercises: steps,
       };
     });
 
@@ -144,7 +147,10 @@ export function buildTrainingSessionCards(
       count: rows.length,
       darts,
       performance: performances.length ? performances.reduce((sum, value) => sum + value, 0) / performances.length : 0,
-      accuracy: darts ? rows.reduce((sum, row) => sum + row.hits, 0) / darts * 100 : 0,
+      accuracy: (() => {
+        const preciseDarts = rows.reduce((sum, row) => sum + Math.max(0, row.darts - Math.max(0, Number(row.metrics?.aggregatedDarts || 0))), 0);
+        return preciseDarts ? rows.reduce((sum, row) => sum + row.hits, 0) / preciseDarts * 100 : null;
+      })(),
       successes: rows.filter((row) => row.success).length,
       exercises: orderedRows.map(fromDetailedSession),
     };

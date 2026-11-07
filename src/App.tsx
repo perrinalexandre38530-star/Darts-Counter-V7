@@ -216,6 +216,7 @@ const FriendsPage = React.lazy(() => import("./pages/FriendsPage"));
 const MessagesPage = React.lazy(() => import("./pages/MessagesPage"));
 const Settings = React.lazy(() => import("./pages/Settings"));
 const OrganizationsPage = React.lazy(() => import("./pages/OrganizationsPage"));
+const OrganizationPublicShopPage = React.lazy(() => import("./pages/OrganizationPublicShopPage"));
 const OrganizationVenueLandingPage = React.lazy(() => import("./pages/OrganizationVenueLandingPage"));
 const OrganizationVenueBoardPage = React.lazy(() => import("./pages/OrganizationVenueBoardPage"));
 const OrganizationWorkspaceSwitcher = React.lazy(() => import("./components/OrganizationWorkspaceSwitcher"));
@@ -484,7 +485,7 @@ function isClosestCenterDevicePublicHash(hash: string): boolean {
 }
 
 function isStandalonePublicHash(hash: string): boolean {
-  return isX01DevicePublicHash(hash) || isClosestCenterDevicePublicHash(hash);
+  return isX01DevicePublicHash(hash) || isClosestCenterDevicePublicHash(hash) || String(hash || "").startsWith("#/club-shop/");
 }
 
 
@@ -1192,9 +1193,10 @@ function mergeStoreIntoCloudSnapshot(snapshot: any, seedOverride?: any) {
   return cleanStore;
 }
 
-const AUTH_FIRST_GUIDE_EXCLUDED_TABS = new Set(["public_landing", "auth_callback", "auth_reset", "auth_forgot", "auth_start", "account_start", "auth_v7_login", "auth_v7_signup", "user_guide"]);
+const AUTH_FIRST_GUIDE_EXCLUDED_TABS = new Set(["organization_public_shop", "public_landing", "auth_callback", "auth_reset", "auth_forgot", "auth_start", "account_start", "auth_v7_login", "auth_v7_signup", "user_guide"]);
 
 type Tab =
+  | "organization_public_shop"
   | "public_landing"
   | "account_start"
   | "auth_start"
@@ -3269,6 +3271,13 @@ useEffect(() => {
         const id = new URLSearchParams(queryRaw).get("id") || "";
         setRouteParams({ organizationId: id || undefined, workspaceMode: true, view: viewMap[section] || "home" });
         setTab(routeMap[section] || "organization_home");
+        return;
+      }
+      if (h.startsWith("#/club-shop/")) {
+        const organizationId = decodeURIComponent(h.slice("#/club-shop/".length).split(/[?#]/)[0] || "").trim();
+        setShowSplash(false);
+        setRouteParams({ organizationId });
+        setTab("organization_public_shop");
         return;
       }
       if (h.startsWith("#/organizations")) {
@@ -5511,6 +5520,9 @@ const unifiedStats = (() => {
     );
   } else {
     switch (tab) {
+      case "organization_public_shop":
+        page = <OrganizationPublicShopPage organizationId={String(routeParams?.organizationId || "")} />;
+        break;
       case "public_landing":
         page = <PublicLandingPage onOpenApp={() => { try { window.location.hash = "#/gameSelect"; } catch {} setTab("gameSelect"); }} />;
         break;
@@ -7917,7 +7929,7 @@ case "babyfoot_team_edit":
         : undefined;
 
   const isAuthShell = AUTH_SHELL_TABS.has(tab);
-  const isStandaloneCompanion = isStandalonePublicHash(String(window.location.hash || "")) || tab === "x01_device_camera" || tab === "closest_center_device_camera" || tab === "public_landing";
+  const isStandaloneCompanion = isStandalonePublicHash(String(window.location.hash || "")) || tab === "x01_device_camera" || tab === "closest_center_device_camera" || tab === "public_landing" || tab === "organization_public_shop";
   // OFFLINE-FIRST WAVE 2 : le chrome principal appartient au mode LOCAL,
   // pas au compte cloud. BottomNav / Awena / sélecteur de sport restent donc
   // disponibles même sans réseau ou sans session. Les routes réellement ONLINE
@@ -8200,7 +8212,7 @@ function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: an
     setOffline(state.connectivity === "offline");
   }), []);
 
-  const isPublicLanding = tab === "public_landing";
+  const isPublicLanding = tab === "public_landing" || tab === "organization_public_shop";
 
   const isAuthFlow =
     tab === "auth_reset" ||

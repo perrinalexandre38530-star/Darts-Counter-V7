@@ -48,6 +48,7 @@ function ExerciseResultRow({ row, number }: { row: TrainingSessionExerciseRow; n
       {row.goal !== null && <span>Objectif : <b>{row.goal}</b></span>}
       {row.completion !== null && <span>Progression : <b>{Math.round(row.completion)} %</b></span>}
     </div>}
+    {!!row.aggregatedDarts && <div style={{ marginTop: 6, fontSize: 10, color: "#ffd86b" }}>Saisie du score global : {row.aggregatedDarts} fléchette(s) sans détail S/D/T.</div>}
     {row.darts === null && <div style={{ marginTop: 6, fontSize: 10, color: "#c6d0db" }}>Détail indisponible pour cet ancien enregistrement.</div>}
   </div>;
 }
@@ -60,7 +61,7 @@ export default function TrainingSessionResultsCard({ card, expanded, onToggle }:
     <div style={{ fontSize: 11, opacity: .67, marginTop: 5 }}>{new Date(card.at).toLocaleDateString("fr-FR")} · {card.count} exercice{card.count > 1 ? "s" : ""}</div>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 13 }}>
       <StatBox icon="▥" label="Performance" value={`${Math.round(card.performance)}/100`} />
-      <StatBox icon="◎" label="Précision" value={`${Math.round(card.accuracy)} %`} />
+      <StatBox icon="◎" label="Précision" value={card.accuracy == null ? "—" : `${Math.round(card.accuracy)} %`} />
       <StatBox icon="➤" label="Fléchettes" value={String(card.darts)} />
       <StatBox icon="★" label="Objectifs réussis" value={`${card.successes}/${card.count}`} warning={card.successes < card.count} />
     </div>

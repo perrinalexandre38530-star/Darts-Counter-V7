@@ -21,7 +21,7 @@ import { getTrainingDetailedSessions } from "../../stats/trainingStatsHub";
 import { clearTrainingExerciseDraft, saveTrainingExerciseDraft } from "../../profile/trainingExerciseDraft";
 import { buildTrainingExercisePostSessionFeedback, getTrainingExerciseProgressionSnapshot, type TrainingExercisePostSessionFeedback } from "../../profile/trainingExerciseFeedback";
 
-type RunState = { darts: number; hits: number; points: number; progress: number; checkoutTotal: number };
+type RunState = { darts: number; hits: number; points: number; progress: number; checkoutTotal: number; quickDarts: number };
 type ProgramStepResult = {
   exerciseId: string;
   exerciseTitle: string;
@@ -33,9 +33,11 @@ type ProgramStepResult = {
   goal?: number;
   completionPct: number;
   accuracyPct: number;
+  aggregatedDarts?: number;
+  precisionUnavailable?: boolean;
   performanceScore: number;
 };
-const emptyRun = (): RunState => ({ darts: 0, hits: 0, points: 0, progress: 0, checkoutTotal: 0 });
+const emptyRun = (): RunState => ({ darts: 0, hits: 0, points: 0, progress: 0, checkoutTotal: 0, quickDarts: 0 });
 
 function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () => void }) {
   const accountParticipantId = String(config?.activeParticipant?.id || config?.selectedPlayerIds?.[0] || "").trim() || null;
@@ -100,8 +102,10 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
     const endedAt = Date.now();
     const s = stateRef.current;
     const completionPct = exercise.engine === "score_darts" ? Math.min(100, (s.points / goal) * 100) : exercise.engine === "checkout" ? (success ? 100 : Math.min(99, (s.checkoutTotal / goal) * 100)) : Math.min(100, (s.progress / goal) * 100);
-    const accuracyPct = s.darts ? (s.hits / s.darts) * 100 : 0;
-    const performanceScore = Math.round(completionPct * .65 + accuracyPct * .35);
+    const preciseDarts = Math.max(0, s.darts - (s.quickDarts || 0));
+    // Score-only entry doesn't reveal impacts: never compute an invented precision.
+    const accuracyPct = preciseDarts ? (s.hits / preciseDarts) * 100 : null;
+    const performanceScore = Math.round(accuracyPct === null ? completionPct : completionPct * .65 + accuracyPct * .35);
     const certificationMode = config?.sessionKind === "certification";
     const certificationRequiredScore = Math.max(0, Math.min(100, Math.round(Number(config?.certificationRequiredScore) || 0)));
     const certificationPassed = certificationMode ? success && performanceScore >= certificationRequiredScore : success;
@@ -115,6 +119,9 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
       difficulty: exercise.difficulty,
       completionPct,
       accuracyPct,
+      precisionUnavailable: accuracyPct === null,
+      aggregatedDarts: s.quickDarts || 0,
+      aggregateVisits: visitHistoryRef.current.filter((row: any) => row?.source === "aggregate_visit").map((row: any) => ({ score: row.visitScore, darts: row.dartCount })),
       performanceScore,
       score: performanceScore,
       goal,
@@ -142,7 +149,9 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
       points: s.points,
       goal,
       completionPct,
-      accuracyPct,
+      accuracyPct: accuracyPct ?? 0,
+      aggregatedDarts: s.quickDarts || 0,
+      precisionUnavailable: accuracyPct === null,
       performanceScore,
     };
     let adaptation: TrainingLiveAdaptation | null = null;
@@ -240,6 +249,23 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
     force();
   }, [exercise, finish, goal, persistIndividualDraft, sequence, stepIndex]);
 
+  const onQuickVisit = React.useCallback((total: number, dartCount: number) => {
+    // Score-only is valid exclusively for the score_darts engine.
+    if (endedRef.current || exercise.engine !== "score_darts") return;
+    const remaining = Math.max(0, exercise.maxDarts - stateRef.current.darts);
+    if (dartCount < 1 || dartCount > Math.min(3, remaining) || !Number.isInteger(total) || total < 0 || total > 60 * dartCount) return;
+    const s = stateRef.current;
+    s.darts += dartCount;
+    s.quickDarts = (s.quickDarts || 0) + dartCount;
+    s.points += total;
+    // No fake S/D/T or MISS darts in visitHistory.
+    visitHistoryRef.current.push({ source: "aggregate_visit", visitScore: total, dartCount, darts: [], exerciseId: exercise.id, programStep: stepIndex + 1 });
+    if (s.points >= goal) { s.progress = goal; force(); finish(true); return; }
+    if (s.darts >= exercise.maxDarts) { force(); finish(false); return; }
+    persistIndividualDraft();
+    force();
+  }, [exercise, finish, goal, persistIndividualDraft, stepIndex]);
+
   const handleExit = React.useCallback(() => {
     if (isProgram && !programSummaryOpen) {
       saveTrainingProgramDraft({
@@ -278,9 +304,11 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
     const darts = rows.reduce((sum, row) => sum + row.darts, 0);
     const hits = rows.reduce((sum, row) => sum + row.hits, 0);
     const performance = steps ? rows.reduce((sum, row) => sum + row.performanceScore, 0) / steps : 0;
-    const accuracy = darts ? (hits / darts) * 100 : 0;
+    const knownDarts = rows.reduce((sum, row) => sum + Math.max(0, row.darts - (row.aggregatedDarts || 0)), 0);
+    const accuracy = knownDarts ? (hits / knownDarts) * 100 : 0;
+    const precisionUnavailable = knownDarts === 0 && darts > 0;
     const best = rows.reduce<ProgramStepResult | null>((winner, row) => !winner || row.performanceScore > winner.performanceScore ? row : winner, null);
-    return { rows, steps, successes, darts, accuracy, performance, best };
+    return { rows, steps, successes, darts, accuracy, precisionUnavailable, performance, best };
   }, [programResults]);
 
   const sessionReview = React.useMemo(() => buildTrainingSessionReview({
@@ -353,6 +381,9 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
       participant={config?.activeParticipant}
       participantIndex={Number(config?.activeParticipantIndex || 0) + 1}
       participantTotal={Number(config?.activeParticipantTotal || 1)}
+      playerScore={s.points}
+      playerScoreLabel={exercise.engine === "checkout" ? "POINTS LANCÉS" : "SCORE"}
+      sessionObjective={exercise.engine === "target_hits" ? `Atteindre ${goal} impacts sur ${exercise.target}` : exercise.engine === "sequence" ? `Valider les ${goal} cibles du parcours` : exercise.engine === "score_darts" ? `Marquer ${goal} points en ${exercise.maxDarts} fléchettes maximum` : `Terminer ${goal} sur un double` }
       rules={<><p><b>{exercise.title}</b></p><p>{exercise.subtitle}</p>{isProgram && <p>Étape {stepIndex + 1} sur {totalSteps} du programme {config?.programTitle || "Training"}.</p>}</>}
       eyebrow={isProgram ? `ÉTAPE ${stepIndex + 1}/${totalSteps} • ${exercise.title}` : exercise.title}
       target={target}
@@ -373,17 +404,21 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
         <div style={{ marginTop: 5, fontSize: 10.5, fontWeight: 900 }}>{liveStepCoach.objective}</div>
         <div style={{ marginTop: 4, fontSize: 9.5, lineHeight: 1.4, opacity: .68 }}>{liveStepCoach.cue}</div>
       </div>}
-      <TrainingDartPad disabled={!!result} onVisit={onVisit} notice={<div style={{ fontSize: 10.5, textAlign: "center", opacity: .68 }}>{isProgram ? "Chaque étape est enregistrée séparément pour affiner le diagnostic Awena." : "Chaque volée est enregistrée avec sa télémétrie exacte pour alimenter Diagnostic et Progression."}</div>} />
+      <TrainingDartPad enableMethods disabled={!!result} onVisit={onVisit} onQuickVisit={onQuickVisit} allowQuickScore={exercise.engine === "score_darts"} maxQuickDarts={exercise.maxDarts - s.darts} storageKey={accountParticipantId || "training"} notice={<div style={{ fontSize: 10.5, textAlign: "center", opacity: .68 }}>{isProgram ? "Chaque étape est enregistrée séparément pour affiner le diagnostic Awena." : "Clavier et cible enregistrent les zones exactes. Score volée conserve le total sans inventer de précision."}</div>} />
     </TrainingPlayLayout>
     <TrainingResultModal
       open={!!result}
       success={!!result?.success}
       title={isProgram ? `${result?.success ? "Étape réussie" : "Étape terminée"} — ${stepIndex + 1}/${totalSteps}` : result?.success ? "Exercice réussi" : "Objectif non atteint"}
       stats={result?.stats || makeTrainingStats({ darts: 0, hits: 0, points: 0, startedAt: Date.now() })}
+      summaryCards={result?.metrics?.precisionUnavailable ? [
+        { label: "SCORE", value: Math.round(result.stats.score) }, { label: "FLÉCHETTES", value: result.stats.darts },
+        { label: "TOUCHES", value: "—" }, { label: "PRÉCISION", value: "Non mesurée" },
+      ] : undefined}
       metrics={result ? [
         { label: "EXERCICE", value: exercise.title },
         { label: "PROGRESSION", value: `${Math.round(result.metrics.completionPct)}%` },
-        { label: "PRÉCISION", value: `${Math.round(result.metrics.accuracyPct)}%` },
+        { label: "PRÉCISION", value: result.metrics.accuracyPct == null ? "Non mesurée" : `${Math.round(result.metrics.accuracyPct)}%` },
         { label: "PERFORMANCE", value: `${result.metrics.performanceScore}/100` },
         ...(isProgram && liveAdaptation ? [{ label: "AWENA", value: liveAdaptation.headline }] : []),
       ] : []}
@@ -402,7 +437,7 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
           {[
             ["RÉUSSIES", `${programSummary.successes}/${programSummary.steps}`],
             ["PERF.", `${Math.round(programSummary.performance)}/100`],
-            ["PRÉCISION", `${Math.round(programSummary.accuracy)}%`],
+            ["PRÉCISION", programSummary.precisionUnavailable ? "—" : `${Math.round(programSummary.accuracy)}%`],
             ["DARTS", programSummary.darts],
           ].map(([label, value]) => <div key={String(label)} style={{ padding: "10px 5px", borderRadius: 12, background: "rgba(255,255,255,.045)", border: "1px solid rgba(255,255,255,.07)", textAlign: "center" }}><b style={{ fontSize: 13 }}>{value}</b><div style={{ marginTop: 3, fontSize: 7.5, opacity: .45 }}>{label}</div></div>)}
         </div>
@@ -455,7 +490,7 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
           {programSummary.rows.map((row, index) => <div key={`${row.exerciseId}-${index}`} style={{ display: "grid", gridTemplateColumns: "26px 1fr auto auto", gap: 8, alignItems: "center", padding: 9, borderRadius: 11, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.06)" }}>
             <div style={{ width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", background: row.success ? "rgba(80,255,174,.13)" : "rgba(255,255,255,.06)", fontSize: 9, fontWeight: 950 }}>{index + 1}</div>
             <div><b style={{ fontSize: 9.5 }}>{row.exerciseTitle}</b><div style={{ marginTop: 2, fontSize: 7.5, opacity: .46 }}>{row.family.toUpperCase()} • {row.darts} darts</div></div>
-            <div style={{ textAlign: "right" }}><b style={{ fontSize: 10 }}>{Math.round(row.accuracyPct)}%</b><div style={{ fontSize: 7, opacity: .42 }}>PRÉC.</div></div>
+            <div style={{ textAlign: "right" }}><b style={{ fontSize: 10 }}>{row.precisionUnavailable ? "—" : `${Math.round(row.accuracyPct)}%`}</b><div style={{ fontSize: 7, opacity: .42 }}>PRÉC.</div></div>
             <div style={{ minWidth: 38, textAlign: "right" }}><b style={{ fontSize: 11, color: row.success ? "#8cffcb" : "inherit" }}>{row.performanceScore}</b><div style={{ fontSize: 7, opacity: .42 }}>PERF.</div></div>
           </div>)}
         </div>

@@ -6,6 +6,7 @@ import { recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
 import { makeTrainingStats, trainingDartMatches, type TrainingDart } from "../../lib/trainingDarts";
 import { EXTENDED_RULE_BY_ID, type ExtendedTrainingRule } from "../../catalog/trainingLabExtendedRules";
 import { evaluateExtendedOutcome } from "../../profile/trainingExtendedOutcome";
+import { getTrainingTechniqueGuide } from "../../catalog/trainingTechniqueGuides";
 import { clearTrainingExerciseDraft, getEffectiveDraftSeconds, saveTrainingExerciseDraft } from "../../profile/trainingExerciseDraft";
 import { buildTrainingExercisePostSessionFeedback, getTrainingExerciseProgressionSnapshot, type TrainingExercisePostSessionFeedback } from "../../profile/trainingExerciseFeedback";
 
@@ -45,9 +46,9 @@ const cardMissions=[
   {t:"Finir 105 en 3 fléchettes",k:"finish",v:105,d:3},{t:"Finir 140 en 3 fléchettes",k:"finish",v:140,d:3},{t:"2 triples en 3 fléchettes",k:"triple",c:2,d:3},{t:"Finir 121 en 3 fléchettes",k:"finish",v:121,d:3},
 ] as const;
 
-type State={darts:number;hits:number;points:number;round:number;index:number;remaining:number;best:number;worst:number|null;lives:number;streak:number;bestStreak:number;aux:any};
+type State={darts:number;hits:number;points:number;round:number;index:number;remaining:number;best:number;worst:number|null;lives:number;streak:number;bestStreak:number;aggregatedDarts:number;aux:any};
 function initial(rule:ExtendedTrainingRule):State{
-  return {darts:0,hits:0,points:rule.kind==="bob27"?27:rule.kind==="half_it"?40:0,round:0,index:0,remaining:rule.kind==="x01_restricted"?501:rule.kind==="fish170"?170:0,best:0,worst:null,lives:3,streak:0,bestStreak:0,aux: rule.kind==="atomic"?{temps:Array(21).fill(0),fused:new Set<number>()}:{}};
+  return {darts:0,hits:0,points:rule.kind==="bob27"?27:rule.kind==="half_it"?40:0,round:0,index:0,remaining:rule.kind==="x01_restricted"?501:rule.kind==="fish170"?170:0,best:0,worst:null,lives:3,streak:0,bestStreak:0,aggregatedDarts:0,aux: rule.kind==="atomic"?{temps:Array(21).fill(0),fused:new Set<number>()}:{}};
 }
 
 function targetText(rule:ExtendedTrainingRule,s:State){
@@ -120,9 +121,10 @@ export default function TrainingCustomExercisePlay({config,onExit,exercise}:{con
     clearTrainingExerciseDraft(exercise.id,participantId);
     const scorePoints = rule.kind==="bull_stack" ? Math.max(s.best,s.points) : rule.kind==="fish170" ? (s.best||99) : s.points;
     const outcome = evaluateExtendedOutcome(rule, s, success);
-    const accuracyPct = s.darts ? (s.hits / s.darts) * 100 : 0;
+    const preciseDarts = Math.max(0, s.darts - (s.aggregatedDarts || 0));
+    const accuracyPct = preciseDarts ? (s.hits / preciseDarts) * 100 : null;
     const completionPct = rule.rounds ? Math.min(100, (s.round / Math.max(1, rule.rounds)) * 100) : success ? 100 : Math.min(99, outcome.performanceScore);
-    const metrics={exerciseId:exercise.id,exerciseTitle:exercise.title,family:exercise.family,difficulty:exercise.difficulty,completionPct,accuracyPct,performanceScore:outcome.performanceScore,score:scorePoints,customRule:rule.kind,objectivePassed:outcome.passed,objectiveMetric:outcome.metricLabel,objectiveValue:outcome.metricValue,objectiveTarget:outcome.targetValue,objectiveDirection:outcome.direction};
+    const metrics={exerciseId:exercise.id,exerciseTitle:exercise.title,family:exercise.family,difficulty:exercise.difficulty,completionPct,accuracyPct,precisionUnavailable:accuracyPct===null,aggregatedDarts:s.aggregatedDarts||0,aggregateVisits:Array.isArray(s.aux?.aggregateVisits)?s.aux.aggregateVisits:[],performanceScore:outcome.performanceScore,score:scorePoints,customRule:rule.kind,objectivePassed:outcome.passed,objectiveMetric:outcome.metricLabel,objectiveValue:outcome.metricValue,objectiveTarget:outcome.targetValue,objectiveDirection:outcome.direction};
     const participantId=String(config?.activeParticipant?.id||participantIds?.[0]||"").trim()||null;
     const progressionBefore=getTrainingExerciseProgressionSnapshot(exercise,participantId);
     recordSoloTrainingResult({modeId:"training_lab",config:{...config,exerciseId:exercise.id,family:exercise.family,customRule:rule.kind},participantIds,startedAt:startedAt.current,endedAt,darts:s.darts,hits:s.hits,points:scorePoints,success:outcome.passed,metrics,visitHistory:[]});
@@ -196,12 +198,41 @@ export default function TrainingCustomExercisePlay({config,onExit,exercise}:{con
     });
   },[finish,persistDraft,result,rule,secondsLeft]);
 
+  const quickScoreCompatible = rule.kind === "survival_score" || rule.kind === "redemption" || (rule.kind === "round_score" && !rule.params?.target && !rule.params?.chooseSegment && rule.params?.mode !== "checkout50");
+  const onQuickVisit = (total: number, dartCount: number) => {
+    if (!quickScoreCompatible || finishedRef.current || result || dartCount < 1 || dartCount > 3 || !Number.isInteger(total) || total < 0 || total > dartCount * 60) return;
+    setState(prev => {
+      const s: State = { ...prev, aux: { ...prev.aux, aggregateVisits: [...(prev.aux?.aggregateVisits || []), { score: total, darts: dartCount }] }, darts: prev.darts + dartCount, aggregatedDarts: (prev.aggregatedDarts || 0) + dartCount };
+      if (rule.kind === "round_score") { s.points += total; s.round++; }
+      else if (rule.kind === "survival_score") { if (total >= (rule.params?.threshold || 65)) s.points++; s.round++; }
+      else if (rule.kind === "redemption") {
+        if (total > s.best) { s.best = total; s.aux.bestCount = 1; }
+        else if (total === s.best) s.aux.bestCount = (s.aux.bestCount || 0) + 1;
+        s.worst = s.worst === null ? total : Math.min(s.worst, total);
+        if ((s.aux.bestCount || 0) >= 2 && s.worst !== null) { s.worst = null; s.aux.bestCount = 0; }
+        s.points = s.worst ?? total;
+        s.round++;
+      }
+      persistDraft(s, secondsLeft);
+      if (rule.rounds && s.round >= rule.rounds) setTimeout(() => finish(true,s),0);
+      return s;
+    });
+  };
   const manualHit=(value:number)=>setState(prev=>{const s={...prev,darts:prev.darts+1,hits:prev.hits+(value>0?1:0),points:prev.points+value};persistDraft(s,secondsLeft);return s});
   const handleExit=React.useCallback(()=>{ if(!result) persistDraft(stateRef.current,secondsLeft); onExit(); },[onExit,persistDraft,result,secondsLeft]);
   const s=state;
   const timeText=rule.durationSec?`${Math.floor(secondsLeft/60)}:${String(secondsLeft%60).padStart(2,"0")}`:null;
   const manual=rule.kind==="manual_hits";
   const technique=rule.kind==="technique";
+  const techniqueSteps = technique ? getTrainingTechniqueGuide(rule.id, String(rule.params?.focus || "Reproduis un geste fluide.")) : [];
+  const techniqueStage = Math.max(0, Math.min(techniqueSteps.length, Number(s.aux?.techniqueStage || 0)));
+  const advanceTechnique = (direction: number) => {
+    setState(prev => {
+      const next: State = { ...prev, aux: { ...prev.aux, techniqueStage: Math.max(0, Math.min(techniqueSteps.length, Number(prev.aux?.techniqueStage || 0) + direction)) } };
+      persistDraft(next, secondsLeft);
+      return next;
+    });
+  };
   if (ruleMissing) return <TrainingPlayLayout title="Centre d'entraînement" tickerId="training_center" onExit={handleExit} participant={config?.activeParticipant}
     eyebrow="EXERCICE INDISPONIBLE" target="—" targetHint="La définition de cet exercice est absente."
     progress={{value:0,max:1,label:"ERREUR"}} kpis={[]}
@@ -209,14 +240,31 @@ export default function TrainingCustomExercisePlay({config,onExit,exercise}:{con
   return <>
     <TrainingPlayLayout title="Centre d'entraînement" tickerId="training_center" onExit={handleExit} participant={config?.activeParticipant}
       rules={<><p><b>{exercise.title}</b></p><p>{exercise.subtitle}</p><p>Objectif suivant : {rule.level1Label||"progresser"}.</p></>}
+      playerScore={rule.kind === "x01_restricted" ? s.remaining : s.points} playerScoreLabel={rule.kind === "x01_restricted" ? "RESTE" : "SCORE"}
+      sessionObjective={rule.level1Label || (rule.durationSec ? `Objectif en ${Math.ceil(rule.durationSec / 60)} minutes` : "Atteindre la cible affichée")}
       eyebrow={exercise.title} target={targetText(rule,s)} targetHint={`${timeText?`${timeText} • `:""}${s.darts} fléchettes • ${s.points} pts`}
       progress={{value:rule.rounds?Math.min(rule.rounds,s.round):Math.min(100,s.points),max:rule.rounds||100,label:rule.family.toUpperCase()}}
       kpis={[{label:"DARTS",value:s.darts},{label:"POINTS",value:s.points},{label:"TOURS",value:rule.rounds?`${Math.min(s.round+1,rule.rounds)}/${rule.rounds}`:s.round+1},{label:"TEMPS",value:timeText||"—"}]}
     >
-      {technique ? <div style={{padding:18,display:"grid",gap:14}}><div style={{padding:16,borderRadius:16,background:"rgba(39,220,255,.055)",border:"1px solid rgba(39,220,255,.16)",fontSize:14,lineHeight:1.55}}><b style={{display:"block",marginBottom:6,color:"#27dcff"}}>FOCUS DE LA SÉANCE</b>{rule.params?.focus}</div><div style={{fontSize:12,opacity:.68,lineHeight:1.5}}>Lance normalement pendant le chrono. Ne cherche pas le score : cherche une sensation stable et reproductible.</div><button type="button" onClick={()=>finish(true)} style={{height:48,borderRadius:14,border:"1px solid rgba(80,255,174,.28)",background:"rgba(80,255,174,.10)",color:"inherit",fontWeight:950,cursor:"pointer"}}>TERMINER LA SÉANCE</button></div> : manual ? <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:10,padding:12}}>
+      {technique ? <div style={{padding:"16px 12px",display:"grid",gap:12}}>
+        <div style={{fontSize:10,fontWeight:950,letterSpacing:1,color:"#27dcff"}}>PARCOURS TECHNIQUE MSS • {techniqueStage < techniqueSteps.length ? `ÉTAPE ${techniqueStage+1}/${techniqueSteps.length}` : "PRATIQUE LIBRE"}</div>
+        <div style={{display:"flex",gap:6}}>{techniqueSteps.map((step,index)=><div key={step.title} aria-label={`Étape ${index+1}`} style={{flex:1,height:6,borderRadius:99,background: index <= techniqueStage ? "#27dcff" : "rgba(255,255,255,.12)"}}/>)}</div>
+        <div style={{padding:16,borderRadius:16,background:"linear-gradient(135deg,rgba(39,220,255,.095),rgba(140,90,255,.06))",border:"1px solid rgba(39,220,255,.23)",fontSize:13,lineHeight:1.55}}>
+          <b style={{display:"block",fontSize:16,marginBottom:8,color:"#c4f7ff"}}>{techniqueSteps[techniqueStage]?.title || "À toi de jouer !"}</b>
+          {techniqueSteps[techniqueStage]?.cue || `Pendant le temps restant (${timeText || "5:00"}), applique les repères que tu viens de travailler. Privilégie la régularité du geste plutôt que les points.`}
+        </div>
+        <div style={{fontSize:11.5,opacity:.72,lineHeight:1.5}}>Travaille à ton rythme : le chrono sert de repère et les étapes restent enregistrées si tu quittes la séance.</div>
+        <div style={{display:"flex",gap:8}}>
+          {techniqueStage>0 && <button type="button" onClick={()=>advanceTechnique(-1)} style={{flex:1,minHeight:46,borderRadius:12,border:"1px solid rgba(255,255,255,.14)",background:"rgba(255,255,255,.04)",color:"inherit",fontWeight:900,cursor:"pointer"}}>PRÉCÉDENT</button>}
+          {techniqueStage<techniqueSteps.length ? <button type="button" onClick={()=>advanceTechnique(1)} style={{flex:2,minHeight:46,borderRadius:12,border:"1px solid rgba(39,220,255,.35)",background:"rgba(39,220,255,.14)",color:"inherit",fontWeight:950,cursor:"pointer"}}>ÉTAPE SUIVANTE →</button> : <button type="button" onClick={()=>finish(true)} style={{flex:2,minHeight:46,borderRadius:12,border:"1px solid rgba(80,255,174,.38)",background:"rgba(80,255,174,.12)",color:"#9fffc2",fontWeight:950,cursor:"pointer"}}>TERMINER LA SÉANCE</button>}
+        </div>
+      </div> : manual ? <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:10,padding:12}}>
         {(rule.params?.manualScores||[0,1]).map((v:number,i:number)=><button key={v} onClick={()=>manualHit(v)} style={{minHeight:80,borderRadius:14,border:"1px solid rgba(255,255,255,.12)",background:v?"rgba(80,255,174,.08)":"rgba(255,80,80,.06)",color:"inherit",fontWeight:950,cursor:"pointer"}}>{rule.params?.manualLabels?.[i]|| (v?"TOUCHÉ":"RATÉ")}<div style={{marginTop:5,fontSize:12,opacity:.6}}>+{v}</div></button>)}
-      </div> : <TrainingDartPad disabled={!!result} onVisit={applyVisit} requireFullVisit={false} notice={<div style={{fontSize:11,textAlign:"center",opacity:.72}}>Saisis tes fléchettes normalement. Le moteur applique automatiquement les règles de l'exercice.</div>} />}
+      </div> : <TrainingDartPad enableMethods disabled={!!result} onVisit={applyVisit} onQuickVisit={onQuickVisit} allowQuickScore={quickScoreCompatible} storageKey={participantId || "training"} requireFullVisit={false} notice={<div style={{fontSize:11,textAlign:"center",opacity:.72}}>Saisis tes fléchettes normalement. Le moteur applique automatiquement les règles de l'exercice.</div>} />}
     </TrainingPlayLayout>
-    <TrainingResultModal open={!!result} success={!!result?.success} title={result?.success?"Objectif atteint":"Objectif à retenter"} stats={result?.stats||makeTrainingStats({darts:0,hits:0,points:0,startedAt:Date.now()})} metrics={result?[{label:"EXERCICE",value:exercise.title},{label:result.outcome?.metricLabel||"SCORE",value:result.outcome?.metricValue??s.points},{label:"PERFORMANCE",value:`${Math.round(result.metrics?.performanceScore||0)}/100`},{label:"NIVEAU",value:`${exerciseFeedback?.afterLevel??0}/5`}]:[]} note={exerciseFeedback?<div style={{padding:10,borderRadius:12,background:exerciseFeedback.levelUp?"rgba(80,255,174,.07)":"rgba(39,220,255,.06)",border:exerciseFeedback.levelUp?"1px solid rgba(80,255,174,.22)":"1px solid rgba(39,220,255,.18)"}}><div style={{fontSize:8,fontWeight:950,letterSpacing:1,opacity:.58}}>PROGRESSION PERSONNELLE</div><div style={{marginTop:4,fontSize:12,fontWeight:1000}}>{exerciseFeedback.masteredNow?"MAÎTRISE DÉBLOQUÉE":exerciseFeedback.levelUp?`NIVEAU ${exerciseFeedback.afterLevel}/5 DÉBLOQUÉ`:`NIVEAU ${exerciseFeedback.afterLevel}/5`}</div><div style={{marginTop:5,fontSize:9.2,lineHeight:1.42,opacity:.72}}>{exerciseFeedback.newRecord?`Nouveau record • ${exerciseFeedback.currentPerformance}/100. `:""}{exerciseFeedback.afterLevel>=5?"Exercice maîtrisé.":`Prochain objectif : ${exerciseFeedback.nextObjective}`}</div></div>:null} onClose={handleExit}/>
+    <TrainingResultModal summaryCards={result?.metrics?.precisionUnavailable ? [
+      { label: "SCORE", value: result?.stats?.score ?? 0 }, { label: "FLÉCHETTES", value: result?.stats?.darts ?? 0 },
+      { label: "TOUCHES", value: "—" }, { label: "PRÉCISION", value: "Non mesurée" },
+    ] : undefined} open={!!result} success={!!result?.success} title={result?.success?"Objectif atteint":"Objectif à retenter"} stats={result?.stats||makeTrainingStats({darts:0,hits:0,points:0,startedAt:Date.now()})} metrics={result?[{label:"EXERCICE",value:exercise.title},{label:result.outcome?.metricLabel||"SCORE",value:result.outcome?.metricValue??s.points},{label:"PERFORMANCE",value:`${Math.round(result.metrics?.performanceScore||0)}/100`},{label:"NIVEAU",value:`${exerciseFeedback?.afterLevel??0}/5`}]:[]} note={exerciseFeedback?<div style={{padding:10,borderRadius:12,background:exerciseFeedback.levelUp?"rgba(80,255,174,.07)":"rgba(39,220,255,.06)",border:exerciseFeedback.levelUp?"1px solid rgba(80,255,174,.22)":"1px solid rgba(39,220,255,.18)"}}><div style={{fontSize:8,fontWeight:950,letterSpacing:1,opacity:.58}}>PROGRESSION PERSONNELLE</div><div style={{marginTop:4,fontSize:12,fontWeight:1000}}>{exerciseFeedback.masteredNow?"MAÎTRISE DÉBLOQUÉE":exerciseFeedback.levelUp?`NIVEAU ${exerciseFeedback.afterLevel}/5 DÉBLOQUÉ`:`NIVEAU ${exerciseFeedback.afterLevel}/5`}</div><div style={{marginTop:5,fontSize:9.2,lineHeight:1.42,opacity:.72}}>{exerciseFeedback.newRecord?`Nouveau record • ${exerciseFeedback.currentPerformance}/100. `:""}{exerciseFeedback.afterLevel>=5?"Exercice maîtrisé.":`Prochain objectif : ${exerciseFeedback.nextObjective}`}</div></div>:null} onClose={handleExit}/>
   </>;
 }
