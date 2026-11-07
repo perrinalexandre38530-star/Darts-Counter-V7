@@ -4,7 +4,7 @@
 // No IndexedDB scan is allowed from rendering components.
 
 import { getAccountLocalStorageItem, setAccountLocalStorageItem } from "./accountScope";
-import { readCanonicalX01IndexV2 } from "./x01CanonicalIndexStoreV2";
+import { readCanonicalX01IndexV2, resolveCanonicalX01ProfileId } from "./x01CanonicalIndexStoreV2";
 import { selectCanonicalX01ProfileV3 } from "./x01CanonicalSelectorsV3";
 import { getX01StatsContext, type X01InModeKey, type X01OutModeKey, type X01StartScoreKey, type X01VariantKey } from "./x01StatsContext";
 
@@ -92,9 +92,48 @@ function writeBag(bag: ProjectionBag) {
 export function clearX01CanonicalProjectionMemory() { mem = null; }
 
 export function listCanonicalX01Sessions(profileId?: string | null, profileName?: string | null): CanonicalX01Session[] {
+  // V242: one authority for ALL surfaces. The read-only History V4 index
+  // must win over the old independent V1 local cache when available.
+  const stored = readCanonicalX01IndexV2();
+  const pid = resolveCanonicalX01ProfileId(profileId);
+  if (stored) {
+    const out: CanonicalX01Session[] = [];
+    for (const match of stored.index.matches || []) {
+      if (!["finished", "completed", "done", "ended"].includes(match.status)) continue;
+      const matches = match.participants.filter((part) =>
+        !pid || part.canonicalProfileId === pid || resolveCanonicalX01ProfileId(part.historicalPlayerId) === pid
+      );
+      // At most one observation per match for the requested logical profile.
+      const quality = (part: typeof matches[number]) =>
+        Number(part.darts !== null && part.darts > 0 && part.points !== null) * 10 +
+        Number(part.bestVisit !== null) + Number(part.hitsS !== null);
+      const selected = pid && matches.length > 1
+        ? matches.slice().sort((a, b) => quality(b) - quality(a)).slice(0, 1)
+        : matches;
+      for (const part of selected) {
+        const canonicalId = part.canonicalProfileId || resolveCanonicalX01ProfileId(part.historicalPlayerId);
+        const darts = part.darts ?? 0;
+        const points = part.points ?? 0;
+        out.push({
+          id: `${match.matchId}:${part.historicalPlayerId}`,
+          matchId: match.matchId, date: match.date,
+          profileId: canonicalId, playerId: part.historicalPlayerId, playerName: part.name,
+          startScore: match.startScore, inMode: match.inMode, outMode: match.outMode,
+          variant: match.variant, darts, points,
+          avg3D: part.avg3d ?? (darts > 0 ? points * 3 / darts : 0),
+          bestVisit: part.bestVisit ?? 0, bestCheckout: part.bestCheckout ?? 0,
+          hitsS: part.hitsS ?? 0, hitsD: part.hitsD ?? 0, hitsT: part.hitsT ?? 0,
+          miss: part.misses ?? 0, bull25: part.bull25 ?? 0, bull50: part.bull50 ?? 0,
+          bust: 0, coAttempts: 0, coSuccess: (part.bestCheckout ?? 0) > 0 ? 1 : 0,
+          isWin: part.win === true, legsWon: part.legsWon ?? 0, setsWon: part.setsWon ?? 0,
+        });
+      }
+    }
+    return out.sort((a, b) => a.date - b.date);
+  }
+  // Compatibility-only cache while the new V4 projection is being rebuilt.
   bootstrapX01ProjectionFromLegacyCaches();
   const rows = readBag().sessions || [];
-  const pid = text(profileId);
   const pname = normName(profileName);
   if (!pid && !pname) return rows.slice().sort((a,b) => a.date - b.date);
   return rows.filter((row) => {
@@ -113,7 +152,7 @@ function weightedAvg(rows: CanonicalX01Session[]): number {
 }
 
 export function computeCanonicalX01ProfileStats(profileId?: string | null, profileName?: string | null): CanonicalX01ProfileStats {
-  const profileKey = text(profileId);
+  const profileKey = resolveCanonicalX01ProfileId(profileId);
   // V166: Home, Profiles and StatsHub use the SAME versioned History V4
   // projection as X01Multi. No name fallback, no IndexedDB in render path.
   const stored = profileKey ? readCanonicalX01IndexV2() : null;

@@ -270,3 +270,10 @@
 .mssTrainingLandingActions button { padding:12px 15px; border:none; border-radius:12px; color:#052330; font-weight:950; font-size:11px; background:linear-gradient(100deg,#76eaff,#20c1e8); cursor:pointer; }
 .mssTrainingLandingActions button.isSecondary { color:#b5f5ff; border:1px solid rgba(97,219,249,.37); background:rgba(97,219,249,.06); }
 @media (max-width:760px) { .mssTrainingLandingFeature { grid-template-columns:1fr; margin:24px auto; } .mssTrainingLandingVisual { min-height:unset; padding:18px 12px; } .mssTrainingLandingVisual img { max-height:205px; object-fit:contain; } .mssTrainingLandingVisual:after { background:linear-gradient(0deg,#0b2332,transparent 45%); } .mssTrainingLandingCopy { padding:20px 18px 25px; } .mssTrainingLandingPoints { margin-bottom:15px; } }
+
+/* Training Center V216+ — chemin de progression en trois étapes, responsive FR/EN. */
+.mssTrainingLandingJourney{width:100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:0 0 20px}
+.mssTrainingLandingJourney>div{display:flex;flex-direction:column;gap:6px;min-width:0;padding:10px 9px;border-radius:12px;border:1px solid rgba(85,218,246,.17);background:rgba(0,0,0,.16)}
+.mssTrainingLandingJourney b{color:#6fe8ff;font-size:15px;letter-spacing:.06em}
+.mssTrainingLandingJourney span{color:#e0f4fb;font-size:9px;font-weight:900;line-height:1.35}
+@media(max-width:480px){.mssTrainingLandingJourney{gap:5px;margin-bottom:15px}.mssTrainingLandingJourney>div{padding:8px 6px}.mssTrainingLandingJourney span{font-size:8px}}

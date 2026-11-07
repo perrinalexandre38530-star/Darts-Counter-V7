@@ -704,6 +704,11 @@ export default function PublicLandingPage({ onOpenApp }: { onOpenApp: () => void
         <h2>{tr("trainingCenter.title", lang === "fr" ? "Progressez à chaque fléchette." : "Get better with every dart.")}</h2>
         <p>{tr("trainingCenter.body", lang === "fr" ? "Bien plus qu'un compteur : des séances personnalisées, des exercices ciblés, des objectifs clairs et un suivi de vos performances. Préparez votre plan du jour, travaillez votre précision, vos doubles et vos finishes puis mesurez vos progrès." : "More than a scorekeeper: personal training sessions, focused exercises, clear goals and performance tracking. Follow your daily plan, practice accuracy, doubles and checkouts, and see how you improve.")}</p>
         <div className="mssTrainingLandingPoints"><span>◎ {tr("trainingCenter.plan", lang === "fr" ? "PLANS GUIDÉS" : "GUIDED PLANS")}</span><span>◉ {tr("trainingCenter.exercise", lang === "fr" ? "EXERCICES CIBLÉS" : "TARGETED EXERCISES")}</span><span>▥ {tr("trainingCenter.statistics", lang === "fr" ? "STATISTIQUES DÉTAILLÉES" : "DETAILED STATISTICS")}</span><span>✧ {tr("trainingCenter.coach", lang === "fr" ? "COACH PERSONNALISÉ" : "PERSONAL COACH")}</span></div>
+        <div className="mssTrainingLandingJourney" aria-label={tr("trainingCenter.journeyAria", lang === "fr" ? "Les trois étapes de l’entraînement" : "Three steps of your training") }>
+          <div><b>01</b><span>{tr("trainingCenter.step1", lang === "fr" ? "ÉVALUER SON NIVEAU" : "ASSESS YOUR LEVEL")}</span></div>
+          <div><b>02</b><span>{tr("trainingCenter.step2", lang === "fr" ? "SUIVRE SON PLAN" : "FOLLOW YOUR PLAN")}</span></div>
+          <div><b>03</b><span>{tr("trainingCenter.step3", lang === "fr" ? "MESURER SES PROGRÈS" : "TRACK YOUR PROGRESS")}</span></div>
+        </div>
         <div className="mssTrainingLandingActions"><button type="button" onClick={onOpenApp}>{tr("trainingCenter.cta", lang === "fr" ? "OUVRIR L’APPLICATION" : "OPEN THE APP")}</button><button type="button" className="isSecondary" onClick={() => { setDartsFilter("training"); setDartsSearch(""); document.getElementById("darts-modes")?.scrollIntoView({ behavior: "smooth" }); }}>{tr("trainingCenter.catalog", lang === "fr" ? "VOIR LES MODES TRAINING" : "EXPLORE TRAINING MODES")}</button></div>
       </div>
     </section>

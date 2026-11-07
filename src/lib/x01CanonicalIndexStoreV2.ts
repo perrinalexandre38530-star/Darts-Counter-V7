@@ -10,7 +10,7 @@ import { buildCanonicalX01IndexFromNormalizedMatchesV2, type CanonicalX01IndexV2
 import { normalizeX01HistoryRecord, type NormalizedX01Match } from './normalizeX01HistoryRecord';
 import type { X01IdentityResolverOptions } from './x01IdentityResolver';
 
-const INDEX_VERSION = 3;
+const INDEX_VERSION = 4;
 // Approved profile aliases from the historical Ninja identity audit.
 // Never rewrite match participants, compact payloads, or score keys.
 // Runtime `usr_...` IDs are deliberately excluded: they require match-local links.
@@ -18,6 +18,15 @@ const CONFIRMED_LEGACY_PROFILE_ALIASES: Record<string, string> = {
   'b3517e84-41a1-4eb1-8f20-3e40e3875d38': '1ca2469d-2e3b-41b2-807d-dd96eb1d1d4f',
   'bbedd4b7-e181-4b8e-a794-c948a18e8404': '1ca2469d-2e3b-41b2-807d-dd96eb1d1d4f',
 };
+/** Map a validated historical profile ID to its canonical logical profile.
+ * Match-local slot IDs and runtime player IDs are never rewritten.
+ */
+export function resolveCanonicalX01ProfileId(profileId?: string | null): string {
+  const id = String(profileId || '').trim();
+  if (!id) return '';
+  return validatedAliases()[id] || CONFIRMED_LEGACY_PROFILE_ALIASES[id] || id;
+}
+
 const PAGE_SIZE = 24;
 const PREFIX = 'dc-x01-canonical-index-v2:';
 const ALIAS_PREFIX = 'dc-x01-validated-aliases-v1:';
@@ -25,7 +34,7 @@ const key = () => PREFIX + historyV4DbName();
 const aliasKey = () => ALIAS_PREFIX + historyV4DbName();
 
 export type X01StoredIndexV2 = {
-  schemaVersion: 3;
+  schemaVersion: 4;
   accountScope: string;
   source: 'HistoryV4';
   historySignature: string;
@@ -163,7 +172,7 @@ export async function rebuildCanonicalX01IndexV2(options: X01IdentityResolverOpt
       throw new Error('X01 index rebuild superseded by account switch or history update');
     }
     const result: X01StoredIndexV2 = {
-      schemaVersion: 3, accountScope: scope, source: 'HistoryV4',
+      schemaVersion: 4, accountScope: scope, source: 'HistoryV4',
       historySignature: signature, index,
     };
     // Single atomic cache publication after the complete index is ready.

@@ -155,3 +155,121 @@
 .mssTrainingQuickDarts button { min-width:27px; height:26px; border-radius:7px; border:1px solid rgba(255,255,255,.14); color:#b8dce5; background:rgba(255,255,255,.04); font-size:10px; font-weight:950; cursor:pointer; }
 .mssTrainingQuickDarts button.isActive { border-color:#3bdef7; color:#6de7ff; background:rgba(39,220,255,.15); }
 .mssTrainingQuickDarts button:disabled { opacity:.26; cursor:not-allowed; }
+
+/* V216+ : une vraie première vue portrait, sans forcer tous les onglets à être condensés.
+   L'utilisateur peut ouvrir le reste du plan à la demande. */
+.mssTrainingHubMobileNext { display:none; }
+.mssTrainingStatsPreview { display:none; min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.mssTrainingHub .mssTrainingHubWelcome,
+.mssTrainingHub .mssTrainingHubMobileNext { box-sizing:border-box; }
+.mssTrainingHubPrimaryNav button:focus-visible,
+.mssTrainingHubWelcome button:focus-visible,
+.mssTrainingHubMobileNext button:focus-visible,
+.mssTrainingPad button:focus-visible,
+.mssTrainingPlay button:focus-visible { outline:2px solid #67ecff; outline-offset:2px; }
+
+@media (max-width:600px) and (orientation:portrait) {
+  .mssTrainingShell:has(.mssTrainingHub[data-active-tab="program"][data-mobile-details="closed"]) {
+    --mss-training-header-height:clamp(60px,9.5dvh,76px);
+    height:calc(100dvh - 72px); min-height:0!important;
+    overflow:hidden; padding-bottom:0!important;
+  }
+  .mssTrainingShell:has(.mssTrainingHub[data-active-tab="program"][data-mobile-details="closed"]) > div:nth-child(2) { min-height:0; }
+  .mssTrainingHub[data-active-tab="program"][data-mobile-details="closed"] .mssTrainingHubSecondary { display:none!important; }
+  .mssTrainingHub { padding:0 9px 10px!important; }
+  .mssTrainingHubPrimaryNav { padding:3px 0 4px!important; gap:3px!important; }
+  .mssTrainingHubPrimaryNav button { min-height:48px!important; padding:5px 1px!important; }
+  .mssTrainingHubPrimaryNav button span:last-child { font-size:clamp(7px,1.9vw,9px)!important; }
+  .mssTrainingHubWelcome { margin:6px 0 5px!important; padding:clamp(10px,1.9dvh,15px) 12px!important; border-radius:17px!important; }
+  .mssTrainingHubWelcome > div:nth-child(2) { gap:9px!important; }
+  .mssTrainingHubWelcome > div:nth-child(2) > div:first-child { width:36px!important; height:36px!important; }
+  .mssTrainingHubWelcome > div:nth-child(2) > div:nth-child(2) > div:first-child { font-size:clamp(8px,1.9vw,10px)!important; letter-spacing:.5px!important; }
+  .mssTrainingWelcomeMetrics { gap:6px!important; margin-top:clamp(5px,1.2dvh,9px)!important; }
+  .mssTrainingWelcomeMetrics > div { min-width:0; padding:5px 2px!important; }
+  .mssTrainingWelcomeActions { margin-top:clamp(6px,1.2dvh,10px)!important; }
+  .mssTrainingWelcomeActions button { min-height:42px!important; font-size:clamp(9px,2.5vw,11px)!important; line-height:1.15!important; }
+  .mssTrainingHubMobileNext { display:block; margin:5px 0 0; padding:9px 11px 5px; border-radius:14px; background:linear-gradient(120deg,rgba(39,220,255,.075),rgba(255,216,107,.035)); border:1px solid rgba(39,220,255,.17); }
+  .mssTrainingHubNextHead { display:flex; align-items:center; gap:6px; color:#9eafff; font-size:9px; font-weight:950; letter-spacing:.3px; }
+  .mssTrainingHubNextHead svg { width:16px; height:16px; flex:0 0 auto; }
+  .mssTrainingHubNextBody { display:flex; align-items:center; gap:10px; margin:5px 0 7px; }
+  .mssTrainingHubNextCopy { min-width:0; flex:1; display:flex; flex-direction:column; }
+  .mssTrainingHubNextCopy strong { display:block; font-size:clamp(11px,2.8vw,13px); line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mssTrainingHubNextCopy small { font-size:9px; margin-top:3px; color:rgba(231,242,250,.65); }
+  .mssTrainingHubNextBody button { min-width:75px; flex:0 0 auto; min-height:35px; padding:6px 9px; border:1px solid rgba(39,220,255,.26); border-radius:9px; background:rgba(39,220,255,.14); color:#baf8ff; font-size:9px; font-weight:950; cursor:pointer; }
+  .mssTrainingHubNextBody button:disabled { opacity:.4; cursor:not-allowed; }
+  .mssTrainingHubReveal { width:100%; display:flex; justify-content:space-between; align-items:center; gap:8px; border:0; border-top:1px solid rgba(255,255,255,.09); background:transparent; color:#8ae8ff; padding:6px 1px 2px; cursor:pointer; font-size:9px; font-weight:950; letter-spacing:.15px; }
+  .mssTrainingHubReveal > span:first-child { display:flex; align-items:center; gap:6px; }
+  .mssTrainingHubReveal > span:last-child { font-size:16px; line-height:1; }
+  .mssTrainingQuickGuideSteps { grid-template-columns:1fr!important; gap:6px!important; }
+  .mssTrainingQuickGuideSteps > div { padding:8px 10px!important; }
+}
+@media (max-width:600px) and (orientation:portrait) and (max-height:640px) {
+  .mssTrainingShell:has(.mssTrainingHub[data-active-tab="program"][data-mobile-details="closed"]) { --mss-training-header-height:54px; }
+  .mssTrainingHubWelcome { padding:7px 10px!important; }
+  .mssTrainingHubWelcome > div:nth-child(2) > div:first-child { width:30px!important; height:30px!important; }
+  .mssTrainingHubWelcome > div:nth-child(2) > div:first-child svg { width:20px!important; height:20px!important; }
+  .mssTrainingHubWelcome > div:nth-child(2) > div:nth-child(2) > div:last-child { font-size:16px!important; }
+  .mssTrainingWelcomeMetrics > div { padding:2px!important; }
+  .mssTrainingWelcomeMetrics > div > div:last-child { font-size:14px!important; }
+  .mssTrainingWelcomeActions button { min-height:36px!important; }
+  .mssTrainingHubMobileNext { padding:7px 9px 4px; }
+}
+
+/* Le moteur de jeu conserve un clavier autonome à droite en paysage, et en bas en portrait.
+   Les KPI demeurent consultables via la fenêtre de performances quand la hauteur manque. */
+.mssTrainingPlay { --mss-training-header-height:clamp(68px,10dvh,92px); }
+.mssTrainingPlay > div.mssTrainingHeader:first-child { flex:0 0 var(--mss-training-header-height); height:var(--mss-training-header-height); }
+.mssTrainingPlay .mssTrainingStatsDetail { flex:0 0 auto; }
+@media (orientation:portrait) and (max-width:600px) {
+  .mssTrainingPlayMain { max-height:100%; }
+  .mssTrainingPlayOverview { flex:0 0 auto; gap:3px; }
+  .mssTrainingInput { min-height:0; }
+  .mssTrainingPad { min-height:0; }
+  .mssTrainingHubFit { min-height:0; }
+  .mssTrainingStatsButton { min-height:28px; }
+}
+@media (orientation:portrait) and (max-height:800px) {
+  .mssTrainingPlay { --mss-training-header-height:clamp(54px,9dvh,73px); }
+  .mssTrainingPlayOverview { gap:3px; }
+  .mssTrainingPlayer { min-height:clamp(66px,11dvh,85px); }
+  .mssTrainingObjective { font-size:10px; padding:4px 7px; min-height:25px; }
+  .mssTrainingLiveInfo > div { min-height:31px; }
+  .mssTrainingKpis { display:none; }
+  .mssTrainingStatsPreview { display:block; font-size:9px; opacity:.8; }
+  .mssTrainingStatsButton { gap:6px; }
+  .mssTrainingStatsButton > span:first-child { display:none; }
+  .mssTrainingStatsDetail { font-size:9px!important; }
+  .mssTrainingInputToolbar { min-height:31px; padding-bottom:2px; }
+}
+@media (orientation:portrait) and (max-height:590px) {
+  .mssTrainingPlay { --mss-training-header-height:47px; }
+  .mssTrainingPlayer { min-height:64px; }
+  .mssTrainingPlayerScore { font-size:29px; }
+  .mssTrainingTarget { font-size:20px; }
+  .mssTrainingTargetHint { display:none; }
+  .mssTrainingObjective { font-size:9px; min-height:21px; }
+  .mssTrainingLiveInfo > div { min-height:29px; }
+  .mssTrainingProgressCopy { font-size:8px; }
+  .mssTrainingInputToolbar { min-height:27px; }
+  .mssTrainingMethodButton { height:29px; width:29px; }
+}
+@media (orientation:landscape) and (max-height:540px) {
+  .mssTrainingPlay { --mss-training-header-height:clamp(43px,12dvh,57px); }
+  .mssTrainingPlayMain { grid-template-columns:minmax(0,40fr) minmax(0,60fr); }
+  .mssTrainingPlayer { min-height:70px; }
+  .mssTrainingKpis { display:none; }
+  .mssTrainingStatsPreview { display:block; font-size:9px; opacity:.8; }
+  .mssTrainingStatsButton > span:first-child { display:none; }
+  .mssTrainingInputToolbar { min-height:28px; padding-bottom:2px; }
+  .mssTrainingMethodLabel small { display:none; }
+  .mssTrainingObjective { padding:4px 7px; }
+}
+@media (orientation:landscape) and (max-height:385px) {
+  .mssTrainingPlay { --mss-training-header-height:39px; }
+  .mssTrainingPlayer { min-height:65px; }
+  .mssTrainingPlayMain { gap:4px; padding:2px 4px; }
+  .mssTrainingInput { padding:2px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .mssTrainingProgressTrack > div,.mssTrainingDarts img,.mssTrainingHubPrimaryNav button { transition:none!important; }
+}

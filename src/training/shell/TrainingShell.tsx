@@ -23,7 +23,7 @@ export default function TrainingShell({
 
   return (
     <div
-      className="container"
+      className="container mssTrainingShell"
       style={{
         minHeight: "100vh",
         background: theme.bg,

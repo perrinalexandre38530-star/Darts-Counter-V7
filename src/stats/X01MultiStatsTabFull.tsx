@@ -25,7 +25,7 @@ import { removeDerivedStatsCache, writeDerivedStatsCacheRaw } from "../lib/stats
 import { useLang } from "../contexts/LangContext";
 import { computeX01LevelSnapshot, computeX01MultiAgg } from "../lib/x01MultiAgg";
 import { listCanonicalX01Sessions } from "../lib/x01CanonicalProjection";
-import { readCanonicalX01IndexV2, ensureCanonicalX01IndexV2 } from "../lib/x01CanonicalIndexStoreV2";
+import { resolveCanonicalX01ProfileId, readCanonicalX01IndexV2, ensureCanonicalX01IndexV2 } from "../lib/x01CanonicalIndexStoreV2";
 import { selectCanonicalX01ProfileV3 } from "../lib/x01CanonicalSelectorsV3";
 
 // ------ Helpers locaux : classement multi pour un joueur ------
@@ -2858,7 +2858,7 @@ export default function X01MultiStatsTabFull({
   // 👉 ID effectivement utilisé pour filtrer les sessions :
   //    - priorité au playerId (venant de StatsHub / carrousel)
   //    - fallback sur profileId (anciens appels)
-  const effectiveProfileId = playerId ?? profileId ?? null;
+  const effectiveProfileId = resolveCanonicalX01ProfileId(playerId ?? profileId ?? null) || null;
   const { lang } = useLang();
 
   const periodLabels = React.useMemo(() => {
@@ -2908,9 +2908,9 @@ export default function X01MultiStatsTabFull({
   const loadedProfileKeyRef = React.useRef(String(effectiveProfileId || ""));
   const [historyVersion, setHistoryVersion] = React.useState(0);
   const [range, setRange] = React.useState<TimeRange>("all");
-  const [scoreFilter, setScoreFilter] = React.useState<X01ScoreFilterKey>(501);
+  const [scoreFilter, setScoreFilter] = React.useState<X01ScoreFilterKey>("all");
   const [variantFilter, setVariantFilter] = React.useState<X01VariantFilterKey>("all");
-  const [outFilter, setOutFilter] = React.useState<X01OutFilterKey>("double");
+  const [outFilter, setOutFilter] = React.useState<X01OutFilterKey>("all");
   const [selected, setSelected] = React.useState<X01MultiSession | null>(null);
 
   const metricKeys: Array<
@@ -3001,9 +3001,13 @@ export default function X01MultiStatsTabFull({
             darts, avg3D: exactAvg ?? 0, avg1D: exactAvg !== null ? exactAvg / 3 : 0,
             bestVisit: part.bestVisit ?? 0, bestCheckout: part.bestCheckout,
             hitsS: part.hitsS ?? 0, hitsD: part.hitsD ?? 0, hitsT: part.hitsT ?? 0,
+            bySegmentS: part.bySegmentS ?? undefined,
+            bySegmentD: part.bySegmentD ?? undefined,
+            bySegmentT: part.bySegmentT ?? undefined,
             miss: part.misses ?? 0, bull: part.bull25 ?? 0, dBull: part.bull50 ?? 0,
             bust: 0, isWin: part.win === true,
-            legsWon: 0, setsWon: 0, finishes: (part.bestCheckout ?? 0) > 0 ? 1 : 0,
+            legsWon: part.legsWon ?? 0, setsWon: part.setsWon ?? 0,
+            rank: part.rank ?? null, finishes: (part.bestCheckout ?? 0) > 0 ? 1 : 0,
             x01StartScore: match.startScore, x01Variant: match.variant,
             x01OutMode: match.outMode,
           } as X01MultiSession);
@@ -4515,8 +4519,9 @@ return (
         <div style={{ fontSize: 10, fontWeight: 1000, color: T.gold, textAlign: "center", marginBottom: 7 }}>
           VUES X01 PAR TYPE DE SORTIE
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 6 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 4 }}>
           {[
+            { key: "all", label: "TOUS", sub: "Historique", active: scoreFilter === "all" && outFilter === "all", apply: () => { setScoreFilter("all"); setOutFilter("all"); } },
             { key: "501do", label: "501 DO", sub: "Niveau", active: scoreFilter === 501 && outFilter === "double", apply: () => { setScoreFilter(501); setOutFilter("double"); } },
             { key: "so", label: "SO", sub: "Simple Out", active: outFilter === "simple", apply: () => { setScoreFilter("all"); setOutFilter("simple"); } },
             { key: "do", label: "DO", sub: "Tous DO", active: scoreFilter === "all" && outFilter === "double", apply: () => { setScoreFilter("all"); setOutFilter("double"); } },
@@ -4545,7 +4550,10 @@ return (
       </div>
 
       <div style={{ fontSize: 10, color: T.text70, textAlign: "center", marginTop: -4, padding: "0 8px" }}>
-        501 DO est la seule référence de niveau. SO, DO et MO disposent de leurs propres statistiques et ne modifient jamais le ProfileStarring.
+        TOUS affiche également les parties anciennes à sortie non renseignée. Elles ne sont jamais reclassées artificiellement en SO/DO/MO. Le niveau reste basé uniquement sur 501 DO confirmé.
+        <div style={{ marginTop: 5, color: T.gold, fontWeight: 800 }}>
+          {lifetimeProfileSessions.length} parties X01 retrouvées · {lifetimeProfileSessions.filter((s) => s.x01OutMode === "unknown").length} anciennes parties sans type de sortie renseigné
+        </div>
       </div>
 
       {/* V129 — deux niveaux explicites : lifetime complet + indicateur actuel last-10. */}

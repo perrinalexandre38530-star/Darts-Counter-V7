@@ -67,11 +67,14 @@ export default function TrainingHeader({ title, rules, onBack, tickerId }: Props
   return (
     <>
       <div
+        className="mssTrainingHeader"
         style={{
           position: "sticky",
           top: 0,
           zIndex: 90,
-          height: 92,
+          height: "var(--mss-training-header-height, 92px)",
+          boxSizing: "border-box",
+          flexShrink: 0,
           paddingTop: "env(safe-area-inset-top)",
           overflow: "hidden",
           background: "#020b14",

@@ -4,7 +4,7 @@ export type Top10MorpionMode = "top_10" | "tic_tac_toe";
 export type GameStat = { id: string; date: number; score: number; visits: number; bestVisit: number; visitScores: number[]; wins: number; cases: number; marks: number };
 export type Top10MorpionStats = {
   games: number; competitiveGames: number; knownCompetitiveGames: number; soloGames: number; victories: number; defeats: number; draws: number; unknownResults: number; totalPoints: number; averagePointsPerVisit: number | null;
-  bestGame: number | null; bestVisit: number | null; visits: number; darts: number;
+  bestGame: number | null; bestVisit: number | null; visits: number; documentedVisits: number; darts: number;
   visits100: number; visits140: number; roundsWon: number;
   lastGridCases: number | null; lastGridMarks: number | null; recent: GameStat[];
 };
@@ -33,8 +33,19 @@ function readVisits(r: any): any[] {
 }
 function playerScores(r: any, playerIndex: number): number[] {
   const row = r?.payload?.visitScores?.[playerIndex];
-  return Array.isArray(row) && row.every((v: unknown) => finite(v) !== null && Number(v) <= 180)
+  // Les scores de volée doivent être des points entiers entre 0 et 180.
+  return Array.isArray(row) && row.length <= 10 &&
+    row.every((v: unknown) => finite(v) !== null && Number.isInteger(Number(v)) && Number(v) <= 180)
     ? row.map(Number) : [];
+}
+/** Ne jamais transformer une volée legacy sans score détaillé en volée à zéro. */
+function recordedVisitScore(visit: any): number | null {
+  const direct = finite(visit?.score ?? visit?.points);
+  if (direct !== null && Number.isInteger(direct) && direct <= 180) return direct;
+  const darts = arr(visit?.darts);
+  if (!darts.length || darts.some((d: any) => finite(d?.score) === null)) return null;
+  const sum = darts.reduce((total: number, dart: any) => total + Number(dart.score), 0);
+  return Number.isInteger(sum) && sum <= 180 ? sum : null;
 }
 /** Résultat compétitif historique : ne jamais assimiler l'absence de winnerId à un nul.
  * Les variantes anciennes peuvent avoir les scores définitifs sans winnerId. */
@@ -76,7 +87,9 @@ function snapshotOf(r: any, playerId: string, mode: Top10MorpionMode): GameStat 
   if (index < 0) return null;
   const p = people[index];
   const own = readVisits(r).filter((v: any) => String(v?.playerId ?? v?.profileId ?? "") === playerId);
-  const scoreFromPlayer = finite(p?.score) ?? finite(r?.summary?.finalScores?.[playerId]) ?? 0;
+  // Le score final officiel prime sur un champ players[].score ancien ou non mis à jour.
+  const finalScore = finite(r?.summary?.finalScores?.[playerId]);
+  const playerScore = finite(p?.score);
   const board = r?.payload?.grid;
   const owners = arr(board?.owners);
   const marks = arr(board?.marks);
@@ -84,14 +97,17 @@ function snapshotOf(r: any, playerId: string, mode: Top10MorpionMode): GameStat 
   const markCount = marks.reduce((sum: number, line: any) => sum + (finite(arr(line)[index]) ?? 0), 0);
   const scores = mode === "top_10" ? playerScores(r, index) : [];
   const telemetryScore = finite(r?.summary?.perPlayer?.[playerId]?.total);
-  const visitScores = scores.length ? scores : mode === "top_10" ? own.map((v: any) => finite(v?.score) ??
-    arr(v?.darts).reduce((sum: number, d: any) => sum + (finite(d?.score) ?? 0), 0)) : [];
+  const visitScores = scores.length ? scores : mode === "top_10"
+    ? own.map(recordedVisitScore).filter((n): n is number => n !== null) : [];
+  // Un record "sur 10 volées" ne peut pas être calculé depuis un tableau partiel.
+  // Pour les anciennes parties, préférer summary.finalScores à players[].score.
   const score = mode === "top_10"
-    ? scores.length ? scores.reduce((a, b) => a + b, 0) : telemetryScore ?? scoreFromPlayer
-    : finite(r?.payload?.matchWins?.[index]) ?? scoreFromPlayer;
+    ? scores.length === 10 ? scores.reduce((a, b) => a + b, 0)
+      : finalScore ?? telemetryScore ?? playerScore ?? (scores.length ? scores.reduce((a, b) => a + b, 0) : 0)
+    : finite(r?.payload?.matchWins?.[index]) ?? finalScore ?? playerScore ?? 0;
   return {
     id: String(r?.matchId ?? r?.id ?? ""), date: timestamp(r?.finishedAt ?? r?.updatedAt ?? r?.createdAt),
-    score, visits: mode === "top_10" ? visitScores.length : own.length,
+    score, visits: mode === "top_10" ? (scores.length || own.length) : own.length,
     bestVisit: Math.max(0, ...visitScores), visitScores,
     wins: mode === "tic_tac_toe" ? score : 0, cases, marks: markCount,
   };
@@ -113,9 +129,13 @@ export function computeTop10MorpionStats(records: any[], playerId: string, mode:
   selected.sort((a, b) => a.stat.date - b.stat.date);
   const totals: Top10MorpionStats = {
     games: selected.length, competitiveGames: 0, knownCompetitiveGames: 0, soloGames: 0, victories: 0, defeats: 0, draws: 0, unknownResults: 0, totalPoints: 0, averagePointsPerVisit: null,
-    bestGame: null, bestVisit: null, visits: 0, darts: 0, visits100: 0, visits140: 0,
+    bestGame: null, bestVisit: null, visits: 0, documentedVisits: 0, darts: 0, visits100: 0, visits140: 0,
     roundsWon: 0, lastGridCases: null, lastGridMarks: null, recent: selected.map(x => x.stat).slice(-12),
   };
+  // Une moyenne ne doit porter que sur les volées dont le score est connu.
+  // Les records legacy peuvent fournir un total final sans le détail des volées.
+  let observedVisitPoints = 0;
+  let observedVisitCount = 0;
   for (const { record: r, stat } of selected) {
     // Un winnerId absent n'est pas une preuve de nul. Les parties legacy
     // sont départagées seulement si leurs scores finaux sont exploitables.
@@ -132,9 +152,12 @@ export function computeTop10MorpionStats(records: any[], playerId: string, mode:
       }
     } else totals.soloGames++;
     totals.visits += stat.visits;
+    if (mode === "top_10") totals.documentedVisits += stat.visitScores.length;
     const own = readVisits(r).filter((v: any) => String(v?.playerId ?? v?.profileId ?? "") === String(playerId));
     totals.darts += own.reduce((n: number, v: any) => n + arr(v?.darts).length, 0);
     if (mode === "top_10") {
+      observedVisitPoints += stat.visitScores.reduce((total, points) => total + points, 0);
+      observedVisitCount += stat.visitScores.length;
       totals.totalPoints += stat.score;
       totals.bestGame = Math.max(totals.bestGame ?? 0, stat.score);
       if (stat.visitScores.length) totals.bestVisit = Math.max(totals.bestVisit ?? 0, stat.bestVisit);
@@ -144,7 +167,9 @@ export function computeTop10MorpionStats(records: any[], playerId: string, mode:
       totals.roundsWon += stat.wins;
     }
   }
-  if (mode === "top_10" && totals.visits > 0) totals.averagePointsPerVisit = totals.totalPoints / totals.visits;
+  if (mode === "top_10" && observedVisitCount > 0) {
+    totals.averagePointsPerVisit = observedVisitPoints / observedVisitCount;
+  }
   if (mode === "tic_tac_toe" && selected.length) {
     const last = selected[selected.length - 1].stat;
     totals.lastGridCases = last.cases;

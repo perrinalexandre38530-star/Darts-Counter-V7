@@ -1,7 +1,7 @@
 import React from 'react';
 import { getAppSeason, type AppSeason } from '../lib/seasonalThemes';
 import './seasonalDoodle.css';
-import { getSeasonalDecorationsEnabled, subscribeSeasonalDecorations } from '../lib/seasonalDecorationPreference';
+import { getSeasonalDecorationsEnabled, setSeasonalDecorationsEnabled, subscribeSeasonalDecorations } from '../lib/seasonalDecorationPreference';
 import autumnBranch from '../assets/seasonal/autumn-oak-corner.webp';
 import winterBranch from '../assets/seasonal/winter-oak-corner.webp';
 import springBranch from '../assets/seasonal/spring-oak-corner.webp';
@@ -306,6 +306,18 @@ export default function SeasonalDoodle({ season = getAppSeason(), variant = 'tit
         </defs>
         <Details season={season} cover={cover} compact={compact} />
       </svg>}
+      {variant === 'title' && (
+        <button
+          type="button"
+          className={`mss-seasonal-toggle ${enabled ? 'mss-seasonal-toggle--enabled' : ''}`}
+          onClick={() => setSeasonalDecorationsEnabled(!enabled)}
+          aria-label={enabled ? 'Masquer les décorations saisonnières' : 'Afficher les décorations saisonnières'}
+          aria-pressed={enabled}
+          title={enabled ? 'Masquer les décorations saisonnières' : 'Afficher les décorations saisonnières'}
+        >
+          <span aria-hidden="true">✦</span>
+        </button>
+      )}
     </div>
   );
 }

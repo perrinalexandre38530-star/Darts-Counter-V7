@@ -17,6 +17,13 @@ export type NormalizedX01Participant = X01ResolvedIdentity & {
   misses: number | null;
   bestVisit: number | null;
   bestCheckout: number | null;
+  // Données historiques détaillées récupérables sans toucher au match.
+  bySegmentS: Record<string, number> | null;
+  bySegmentD: Record<string, number> | null;
+  bySegmentT: Record<string, number> | null;
+  legsWon: number | null;
+  setsWon: number | null;
+  rank: number | null;
   win: boolean | null;
 };
 
@@ -96,7 +103,11 @@ function participantsSource(record: any): any[] {
   if (explicit.length) return explicit;
 
   const summary = record?.summary || {};
-  const perPlayer = Array.isArray(summary?.perPlayer) ? summary.perPlayer : [];
+  const perPlayer = Array.isArray(summary?.perPlayer)
+    ? summary.perPlayer
+    : summary?.perPlayer && typeof summary.perPlayer === "object"
+      ? Object.entries(summary.perPlayer).map(([id, value]) => ({ ...(value as any), id: (value as any)?.id ?? id }))
+      : [];
   if (perPlayer.length) return perPlayer;
 
   const rankings = Array.isArray(summary?.rankings) ? summary.rankings : [];
@@ -121,30 +132,48 @@ function findStatObject(record: any, participant: any): any {
   const summary = record?.summary || {};
   const ids = [
     historicalParticipantId(participant),
-    text(participant?.id),
-    text(participant?.playerId),
-    text(participant?.profileId),
-    text(participant?.pid),
-    text(participant?.sideId),
+    text(participant?.id), text(participant?.playerId),
+    text(participant?.profileId), text(participant?.pid), text(participant?.sideId),
   ].filter(Boolean);
 
-  const detailed = summary?.detailedByPlayer;
-  if (detailed && typeof detailed === "object" && !Array.isArray(detailed)) {
-    for (const id of ids) if (detailed[id]) return detailed[id];
+  // Certain exports anciens contiennent un perPlayer indexé par playerId,
+  // d'autres un tableau. Le bloc détaillé peut être incomplet : on fusionne
+  // les SOURCES DU MÊME JOUEUR, sans croiser les identités.
+  const candidates: any[] = [participant];
+  const take = (collection: any) => {
+    if (!collection || typeof collection !== "object") return;
+    if (Array.isArray(collection)) {
+      const row = collection.find((item: any) => item && ids.includes(historicalParticipantId(item)));
+      if (row) candidates.push(row);
+    } else {
+      for (const id of ids) if (collection[id] && typeof collection[id] === "object") {
+        candidates.push(collection[id]);
+        break;
+      }
+    }
+  };
+  take(summary?.players);
+  take(summary?.perPlayer);
+  take(summary?.detailedByPlayer);
+  // Plus documenté en dernier ; les valeurs nulles n'écrasent jamais les
+  // statistiques valides de l'ancienne structure.
+  const merged: Record<string, any> = {};
+  for (const item of candidates) {
+    for (const [key, value] of Object.entries(item || {})) {
+      if (value !== null && value !== undefined && value !== "") merged[key] = value;
+    }
   }
+  return merged;
+}
 
-  const perPlayer = Array.isArray(summary?.perPlayer) ? summary.perPlayer : [];
-  for (const row of perPlayer) {
-    const rid = historicalParticipantId(row);
-    if (rid && ids.includes(rid)) return row;
+function segmentMap(value: any): Record<string, number> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const out: Record<string, number> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    const n = finite(raw);
+    if (n !== null && n >= 0 && Number.isInteger(n)) out[key] = n;
   }
-
-  const players = summary?.players;
-  if (players && typeof players === "object" && !Array.isArray(players)) {
-    for (const id of ids) if (players[id]) return players[id];
-  }
-
-  return participant;
+  return Object.keys(out).length ? out : null;
 }
 
 function bestCheckoutFor(record: any, ids: string[], stats: any): number | null {
@@ -166,10 +195,23 @@ function normalizeParticipant(record: any, participant: any, options: X01Identit
   const darts = finite(stats?.darts ?? stats?.dartsThrown);
   let points = finite(stats?.points ?? stats?.pointsScored);
   let avg3d = finite(stats?.avg3D ?? stats?.avg3 ?? stats?.avgVisit ?? record?.summary?.avg3ByPlayer?.[identity.historicalPlayerId]);
-  if (points === null && darts !== null && darts > 0 && avg3d !== null && avg3d >= 0) points = (avg3d * darts) / 3;
+  if (darts !== null && darts > 0 && avg3d !== null && avg3d >= 0) {
+    const impliedPoints = (avg3d * darts) / 3;
+    // In legacy X01, `points` may be the team/match total or the cumulative
+    // score across legs whereas `avg3` and `darts` describe this participant.
+    // A huge discrepancy MUST NOT turn a 35 AVG3D into an impossible 80 AVG3D.
+    // We reconstruct the mathematically implied points from the saved AVG3D,
+    // only when the two explicitly saved measurements contradict each other.
+    if (points === null || Math.abs(points - impliedPoints) > Math.max(6, impliedPoints * 0.1)) {
+      points = impliedPoints;
+    }
+  }
   if (avg3d === null && points !== null && darts !== null && darts > 0) avg3d = (points / darts) * 3;
 
-  const hits = stats?.hits || stats?.hitSummary || {};
+  const hits = (stats?.hits && typeof stats.hits === "object") ? stats.hits : (stats?.hitSummary || {});
+  const segmentStats = stats?.bySegment || stats?.segments || {};
+  const detail = record?.summary?.detailedByPlayer?.[identity.historicalPlayerId] || {};
+  const buckets = detail?.bySegment || detail?.segments || {};
   const winnerId = text(record?.winnerId ?? record?.summary?.winnerId);
   const winner = winnerId ? ids.includes(winnerId) : null;
 
@@ -179,15 +221,21 @@ function normalizeParticipant(record: any, participant: any, options: X01Identit
     darts,
     points,
     avg3d,
-    hitsS: finite(hits?.S ?? stats?.hitsS),
-    hitsD: finite(hits?.D ?? stats?.hitsD),
-    hitsT: finite(hits?.T ?? stats?.hitsT),
+    hitsS: finite(hits?.S ?? stats?.hitsS ?? stats?.singles ?? stats?.singleHits),
+    hitsD: finite(hits?.D ?? stats?.hitsD ?? stats?.doubles ?? stats?.doubleHits),
+    hitsT: finite(hits?.T ?? stats?.hitsT ?? stats?.triples ?? stats?.tripleHits),
     bull25: finite(hits?.SBull ?? hits?.B25 ?? stats?.bull ?? stats?.bull25),
     bull50: finite(hits?.DBull ?? hits?.B50 ?? stats?.dBull ?? stats?.dbull ?? stats?.bull50),
     misses: finite(hits?.MISS ?? hits?.M ?? stats?.miss ?? stats?.misses),
     bestVisit: finite(stats?.bestVisit ?? stats?.bestVisitScore),
     bestCheckout: bestCheckoutFor(record, ids, stats),
-    win: winner,
+    bySegmentS: segmentMap(stats?.bySegmentS ?? segmentStats?.S ?? buckets?.S),
+    bySegmentD: segmentMap(stats?.bySegmentD ?? segmentStats?.D ?? buckets?.D),
+    bySegmentT: segmentMap(stats?.bySegmentT ?? segmentStats?.T ?? buckets?.T),
+    legsWon: finite(stats?.legsWon),
+    setsWon: finite(stats?.setsWon),
+    rank: finite(stats?.rank ?? stats?.position),
+    win: typeof stats?.win === "boolean" ? stats.win : typeof stats?.winner === "boolean" ? stats.winner : winner,
   };
 }
 

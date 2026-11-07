@@ -2,6 +2,7 @@ import React from "react";
 import type { Profile } from "../../../lib/types";
 import TrainingShell from "../../shell/TrainingShell";
 import TrainingHeader from "../../ui/TrainingHeader";
+import "../../ui/trainingResponsive.css";
 import TrainingStartButton from "../../ui/TrainingStartButton";
 import TrainingExerciseDetail from "../../ui/TrainingExerciseDetail";
 import TrainingSessionResultsCard from "../../ui/TrainingSessionResultsCard";
@@ -282,6 +283,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
   const [viewMode, setViewMode] = React.useState<TrainingViewMode>(() => {
     try { return window.localStorage.getItem("dc_training_center_view_mode") === "complete" ? "complete" : "essential"; } catch { return "essential"; }
   });
+  const [showMobileDetails, setShowMobileDetails] = React.useState(false);
   const [showQuickGuide, setShowQuickGuide] = React.useState(() => {
     try { return window.localStorage.getItem("dc_training_quick_guide_seen") !== "1"; } catch { return true; }
   });
@@ -721,14 +723,14 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
       bodyPadding={0}
       header={<TrainingHeader title="Centre d'entraînement" tickerId="training_center" onBack={onExit} rules={<><p>Le centre regroupe programmes guidés, exercices unitaires, diagnostic et progression.</p><p>Awena utilise tes résultats Training enregistrés pour déterminer le prochain axe à travailler.</p></>} />}
       body={
-        <div className="mssTrainingHub" style={{ width: "100%", boxSizing: "border-box", margin: 0, padding: "0 clamp(8px,1.3vw,18px) 28px" }}>
+        <div className="mssTrainingHub" data-mobile-details={showMobileDetails ? "open" : "closed"} data-active-tab={tab} style={{ width: "100%", boxSizing: "border-box", margin: 0, padding: "0 clamp(8px,1.3vw,18px) 28px" }}>
           {showQuickGuide && <div role="dialog" aria-modal="true" aria-label="Guide express du centre d'entraînement" style={{ position: "fixed", inset: 0, zIndex: 1000, display: "grid", placeItems: "center", padding: 16, background: "rgba(3,5,10,.82)", backdropFilter: "blur(12px)" }}>
             <div style={{ width: "min(620px,100%)", maxHeight: "86vh", overflow: "auto", padding: 18, borderRadius: 20, border: "1px solid rgba(39,220,255,.24)", background: "linear-gradient(160deg,rgba(14,18,28,.98),rgba(8,10,16,.98))", boxShadow: "0 24px 80px rgba(0,0,0,.45)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
                 <div><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1.1, color: "#27dcff" }}>GUIDE EXPRESS</div><div style={{ marginTop: 4, fontSize: 19, fontWeight: 950 }}>Tu n'as besoin de retenir que 3 choses</div><div style={{ marginTop: 5, fontSize: 9.5, opacity: .58, lineHeight: 1.45 }}>Tout le reste est calculé automatiquement par Awena et reste disponible en mode COMPLET si tu veux creuser.</div></div>
                 <button type="button" onClick={dismissQuickGuide} style={{ width: 32, height: 32, borderRadius: 10, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.03)", color: "inherit", fontSize: 16, cursor: "pointer" }}>×</button>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 15 }}>
+              <div className="mssTrainingQuickGuideSteps" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 15 }}>
                 {[
                   ["1", "AUJOURD'HUI", "Awena te dit quoi faire maintenant. Tu peux simplement lancer le plan proposé."],
                   ["2", "S'ENTRAÎNER", "Tu veux choisir toi-même ? Parcours les compétences et lance un exercice ciblé."],
@@ -810,6 +812,22 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
             </div>
           </section>}
 
+          {tab === "program" && <section className="mssTrainingHubMobileNext" aria-label="Prochaine étape d'entraînement">
+            <div className="mssTrainingHubNextHead"><HubGlyph name={programDraft ? "history" : "coach"} size={18}/><span>{programDraft ? "SÉANCE À REPRENDRE" : pausedExerciseDrafts.length ? "EXERCICE EN PAUSE" : actionCoach.eyebrow}</span></div>
+            <div className="mssTrainingHubNextBody">
+              <div className="mssTrainingHubNextCopy"><strong>{programDraft?.programTitle || pausedExerciseDrafts[0]?.exercise.title || actionCoach.title}</strong>
+                <small>{programDraft ? `Étape ${programDraft.nextStepIndex + 1}/${programDraft.exerciseIds.length}` : pausedExerciseDrafts.length ? "Reprendre sans perdre sa progression" : `${actionCoach.durationMin} MIN · ${actionCoach.familyLabel}`}</small></div>
+              <button type="button" disabled={!resolved.length} onClick={() => {
+                if (programDraft) { resumeProgramDraft(); return; }
+                if (pausedExerciseDrafts.length) { setTab("exercises"); setExercisePanel("catalog"); openExerciseDetail(pausedExerciseDrafts[0].exercise.id); return; }
+                setDetailSheet("coach");
+              }}>{programDraft ? "REPRENDRE" : pausedExerciseDrafts.length ? "CONTINUER" : "CONSEIL"}</button>
+            </div>
+            <button className="mssTrainingHubReveal" type="button" aria-expanded={showMobileDetails} aria-controls="mss-training-details" onClick={() => setShowMobileDetails(open => !open)}>
+              <span><HubGlyph name="today" size={15}/> {showMobileDetails ? "RÉDUIRE L’ACCUEIL" : "AFFICHER LE PLAN COMPLET"}</span><span aria-hidden="true">{showMobileDetails ? "⌃" : "⌄"}</span>
+            </button>
+          </section>}
+
           {tab === "sessions" && <section style={{ paddingTop: 15, paddingBottom: 22 }}>
             <div style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 16, fontWeight: 950 }}>MES SÉANCES</div>
@@ -840,7 +858,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
             </div>
           </section>}
 
-          {tab === "program" && <>
+          {tab === "program" && <div className="mssTrainingHubSecondary" id="mss-training-details">
           {viewMode === "complete" && <>
           <div style={{ marginTop: 10, padding: 12, borderRadius: 18, border: "1px solid rgba(39,220,255,.18)", background: "linear-gradient(145deg,rgba(39,220,255,.055),rgba(255,255,255,.02))" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -889,9 +907,9 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
 
           {tab === "program" && viewMode === "complete" && nextRecommendation && <button type="button" onClick={() => setDetailSheet("followup")} style={{ width: "100%", marginTop: 8, padding: "8px 10px", borderRadius: 12, border: "1px solid rgba(185,156,255,.14)", background: "rgba(140,90,255,.035)", color: "inherit", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, textAlign: "left" }}><span style={{ width: 26, height: 26, borderRadius: 9, display: "grid", placeItems: "center", background: "rgba(185,156,255,.07)", color: "#b99cff" }}><HubGlyph name="cycle" size={13}/></span><span style={{ minWidth: 0, flex: 1 }}><span style={{ display: "block", fontSize: 6.4, fontWeight: 950, color: "#b99cff" }}>SUITE CONSEILLÉE</span><span style={{ display: "block", marginTop: 2, fontSize: 7.8, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nextRecommendation.headline}</span></span><span style={{ fontSize: 6.7, opacity: .5 }}>{nextRecommendation.durationMin}′</span></button>}
 
-          </>}
+          </div>}
 
-          {tab === "program" && <div>
+          {tab === "program" && <div className="mssTrainingHubSecondary">
             {viewMode === "complete" && <CompactIconNav items={programPanels.map((item) => ({ ...item, status: item.id === "today" ? `${dailyPlan.durationMin} MIN` : item.id === "week" ? `${weeklyPlan.completed}/${weeklyPlan.target}` : item.id === "cycle" ? `${cycleCoach.completedSessions}/${cycleCoach.cycleSize}` : `${programs.length} PLANS` }))} activeId={programPanel} onChange={(id) => setProgramPanel(id as ProgramPanel)} stickyTop={48} />}
 
             {programPanel === "today" && <>

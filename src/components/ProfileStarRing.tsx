@@ -128,7 +128,11 @@ export default function ProfileStarRing({
     // IMPORTANT PERFORMANCE: ProfileStarRing is a pure visual consumer.
     // It must never scan History/IndexedDB or launch X01 aggregation itself.
     window.addEventListener("dc-x01-level-updated", refreshFromCanonicalCache as EventListener);
-    return () => window.removeEventListener("dc-x01-level-updated", refreshFromCanonicalCache as EventListener);
+    window.addEventListener("dc-x01-canonical-index-ready", refreshFromCanonicalCache as EventListener);
+    return () => {
+      window.removeEventListener("dc-x01-level-updated", refreshFromCanonicalCache as EventListener);
+      window.removeEventListener("dc-x01-canonical-index-ready", refreshFromCanonicalCache as EventListener);
+    };
   }, [profileIdentity, isBotProfile]);
 
   const explicitAvg = Number(avg3d);
@@ -157,6 +161,9 @@ export default function ProfileStarRing({
     entries.push({ color: STAR_COLORS[9] });
   }
 
+  // Hook count must be identical when asynchronous stats transition 0 -> stars.
+  // Previously useId() was below this early return: React error #310.
+  const uid = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const count = entries.length;
   if (count === 0) return null;
 
@@ -186,7 +193,6 @@ export default function ProfileStarRing({
   const pad = Math.max(starSize * 1.8, 12);
   const boxSize = Math.ceil(Math.max(resolvedAnchorSize + pad * 2, radius * 2 + starSize * 1.7));
   const center = boxSize / 2;
-  const uid = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const animate = animateGlow || !!glow;
 
   return (

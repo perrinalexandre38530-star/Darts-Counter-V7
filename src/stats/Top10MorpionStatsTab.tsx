@@ -20,7 +20,8 @@ export default function Top10MorpionStatsTab({ records, playerId, mode }: Props)
       [fr ? "Points cumulés" : "Total points", fmt(stats.totalPoints)],
       [fr ? "Record sur 10 volées" : "Best 10-visit score", stats.bestGame === null ? "—" : fmt(stats.bestGame)],
       [fr ? "Meilleure volée" : "Best visit", stats.bestVisit === null ? "—" : fmt(stats.bestVisit)],
-      [fr ? "Moyenne par volée" : "Average per visit", stats.averagePointsPerVisit === null ? "—" : stats.averagePointsPerVisit.toFixed(1)],
+      [fr ? "Moyenne par volée documentée" : "Average per recorded visit", stats.averagePointsPerVisit === null ? "—" : stats.averagePointsPerVisit.toFixed(1)],
+      [fr ? "Volées avec score connu" : "Visits with recorded scores", stats.visits > stats.documentedVisits ? `${fmt(stats.documentedVisits)} / ${fmt(stats.visits)}` : fmt(stats.documentedVisits)],
       ["100+ / 140+", `${stats.visits100} / ${stats.visits140}`],
     ] : [
       [fr ? "Manches remportées" : "Rounds won", fmt(stats.roundsWon)],

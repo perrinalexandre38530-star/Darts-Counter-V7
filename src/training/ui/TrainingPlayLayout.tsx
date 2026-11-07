@@ -41,6 +41,12 @@ export default function TrainingPlayLayout({
 }) {
   const { theme } = useTheme();
   const [statsOpen, setStatsOpen] = React.useState(false);
+  React.useEffect(() => {
+    if (!statsOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setStatsOpen(false); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [statsOpen]);
 
   React.useEffect(() => {
     if (typeof document === "undefined") return;
@@ -122,8 +128,10 @@ export default function TrainingPlayLayout({
           {shownKpis.map((kpi, index) => <div key={`${kpi.label}-${index}`} className="mssTrainingKpi"><span>{kpi.label}</span><strong>{kpi.value}</strong></div>)}
         </section>}
 
-        <button className="mssTrainingStatsButton" type="button" onClick={() => setStatsOpen(true)} aria-haspopup="dialog">
-          <span>▥ &nbsp; STATISTIQUES / PERFORMANCES</span><span>VOIR LE DÉTAIL ›</span>
+        <button className="mssTrainingStatsButton" type="button" onClick={() => setStatsOpen(true)} aria-haspopup="dialog" aria-label="Ouvrir les statistiques et performances détaillées">
+          <span>▥ &nbsp; STATISTIQUES / PERFORMANCES</span>
+          <span className="mssTrainingStatsPreview">{shownKpis.slice(0, 2).map((item) => `${item.label}: ${String(item.value ?? "—")}`).join(" · ")}</span>
+          <span className="mssTrainingStatsDetail">DÉTAIL ›</span>
         </button>
       </div>
       <section className="mssTrainingInput" aria-label="Saisie des fléchettes">
