@@ -907,20 +907,16 @@ export default function OrganizationsPage({ go, params }: Props) {
           </span>
         </div>
         <div
-          className={`msc-home-sport-title mss-doodle-title mss-doodle-title--${getAppSeason()}`}
-          data-text={String(currentSportTitle)}
+          className="msc-home-sport-title"
           style={{
             position: "relative",
             zIndex: 2,
-            width: "fit-content",
-            marginInline: "auto",
             fontSize: 32,
-            fontWeight: 1000,
+            fontWeight: 900,
             letterSpacing: 3,
             textAlign: "center",
             textTransform: "uppercase",
-            whiteSpace: "nowrap",
-            backgroundImage: `linear-gradient(180deg, #fff9ec 0%, ${theme.primary} 48%, #ffffff 78%, ${theme.primary} 100%)`,
+            backgroundImage: `linear-gradient(120deg, ${theme.primary}, #ffffff, ${theme.primary})`,
             backgroundSize: "200% 100%",
             WebkitBackgroundClip: "text",
             color: "transparent",

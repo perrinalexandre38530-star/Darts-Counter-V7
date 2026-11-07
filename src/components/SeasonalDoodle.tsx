@@ -15,30 +15,31 @@ const MapleLeafShape = () => (
   </>
 );
 
-const MapleLeaf = ({ x, y, s = 1, r = 0, delay = 0, className = '' }: Motif & { className?: string }) => (
-  <g className={className} style={{ animationDelay: `-${delay}s` }} transform={`translate(${x} ${y}) rotate(${r}) scale(${s})`}>
+const MapleLeaf = ({ x, y, s = 1, r = 0, delay = 0, className = '', shade = 0 }: Motif & { className?: string; shade?: number }) => (
+  <g className={className} style={{ animationDelay: `-${delay}s`, filter: `hue-rotate(${shade}deg)` }} transform={`translate(${x} ${y}) rotate(${r}) scale(${s})`}>
     <MapleLeafShape />
   </g>
 );
 
+/** Trajectoire SVG en coordonnées du viewBox : départ branche -> sol -> disparition -> reprise. */
 const FallingLeaf = ({ x, y, s = 1, r = 0, delay = 0, drift = 50, drop = 190, duration = 9 }: Motif & { drift?: number; drop?: number; duration?: number }) => {
-  const style: VarStyle = {
-    '--mss-x': `${x}px`,
-    '--mss-y': `${y}px`,
-    '--mss-drift-1': `${drift * 0.35}px`,
-    '--mss-drift-2': `${drift}px`,
-    '--mss-drop': `${drop}px`,
-    '--mss-rot-end': `${r + (drift >= 0 ? 95 : -95)}deg`,
-    '--mss-duration': `${duration}s`,
-    animationDelay: `-${delay}s`,
-  };
-  return (
-    <g className="mss-fall-leaf" style={style}>
-      <g transform={`rotate(${r}) scale(${s})`} className="mss-fall-leaf-spin">
-        <MapleLeafShape />
+  const start = `-${delay}s`;
+  const endY = y + drop;
+  const nearGround = drop * .92;
+  return <g className="mss-falling-leaf" aria-hidden="true">
+    <g>
+      <animateTransform attributeName="transform" type="translate"
+        values={`${x} ${y};${x + drift*.16} ${y + drop*.24};${x+drift*.7} ${y+drop*.58};${x+drift} ${y+nearGround};${x+drift*.92} ${endY}`}
+        keyTimes="0;.24;.58;.91;1" dur={`${duration}s`} begin={start} repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;1;1;1;0" keyTimes="0;.08;.8;.94;1" dur={`${duration}s`} begin={start} repeatCount="indefinite"/>
+      <g transform={`scale(${s})`}>
+        <g>
+          <animateTransform attributeName="transform" type="rotate" values={`${r};${r+26};${r-21};${r+80};${r+108}`} keyTimes="0;.24;.58;.91;1" dur={`${duration}s`} begin={start} repeatCount="indefinite"/>
+          <MapleLeafShape />
+        </g>
       </g>
     </g>
-  );
+  </g>;
 };
 
 const Pumpkin = ({ x, y, s = 1 }: Motif) => (
@@ -158,30 +159,56 @@ const Garland = ({ cover }: { cover: boolean }) => {
 };
 
 const AutumnDetails = ({ cover }: { cover: boolean }) => {
-  const floorY = cover ? 352 : 255;
-  const leafDrop = cover ? 250 : 182;
-  return (
-    <>
-      <path d="M-20 40C110 2 205 31 275 95" fill="none" stroke="#452718" strokeWidth={cover ? 18 : 15} strokeLinecap="round"/>
-      <path d="M1020 40C890 2 795 31 725 95" fill="none" stroke="#452718" strokeWidth={cover ? 18 : 15} strokeLinecap="round"/>
-      <path d="M-20 40C110 2 205 31 275 95" fill="none" stroke="#b3773e" strokeWidth="3" opacity=".85"/>
-      <path d="M1020 40C890 2 795 31 725 95" fill="none" stroke="#b3773e" strokeWidth="3" opacity=".85"/>
-
-      {[ [60,24,1.12,-22],[132,58,.94,14],[214,92,.84,-28],[940,24,1.12,22],[868,58,.94,-14],[786,92,.84,28] ].map(([x,y,s,r],i)=><MapleLeaf key={`astatic-${i}`} x={x as number} y={y as number} s={s as number} r={r as number} className="mss-branch-sway" />)}
-
-      {[ [92,48,.52,-14,0,38,leafDrop,8.2],[165,65,.46,12,1.4,26,leafDrop,8.9],[228,88,.42,-22,2.6,42,leafDrop,9.4],[818,70,.48,18,1.8,-34,leafDrop,8.6],[875,52,.56,-10,0.9,-46,leafDrop,9.2],[930,90,.42,15,2.9,-30,leafDrop,9.8] ].map(([x,y,s,r,d,drift,drop,dur],i)=><FallingLeaf key={`afall-${i}`} x={x as number} y={y as number} s={s as number} r={r as number} delay={d as number} drift={drift as number} drop={drop as number} duration={dur as number} />)}
-
-      <path d={`M0 ${floorY+28}Q70 ${floorY+8} 150 ${floorY+28}T300 ${floorY+26}T500 ${floorY+30}T700 ${floorY+28}T850 ${floorY+24}T1000 ${floorY+26}V500H0Z`} fill="rgba(64,30,10,.16)"/>
-      {[ [58,floorY+8,.54,-15],[108,floorY+20,.58,9],[158,floorY+12,.6,-26],[868,floorY+14,.55,22],[912,floorY+18,.52,-12],[952,floorY+10,.58,16],[228,floorY+24,.42,-6],[770,floorY+24,.42,6] ].map(([x,y,s,r],i)=><MapleLeaf key={`carpet-${i}`} x={x as number} y={y as number} s={s as number} r={r as number} />)}
-      {[ [90, cover ? 406 : 294, cover ? 1.15 : .74], [156, cover ? 420 : 306, cover ? .7 : .48], [910, cover ? 406 : 294, cover ? 1.15 : .74], [844, cover ? 420 : 306, cover ? .7 : .48] ].map(([x,y,s], i) => <Pumpkin key={`p-${i}`} x={x as number} y={y as number} s={s as number} />)}
-      <g opacity=".45">
-        <circle cx="180" cy={cover ? 214 : 176} r="2.8" fill="#ffcb6a"/>
-        <circle cx="820" cy={cover ? 224 : 182} r="2.4" fill="#ffb56b"/>
-        <circle cx="130" cy={cover ? 245 : 212} r="1.9" fill="#ffd598"/>
-        <circle cx="870" cy={cover ? 250 : 215} r="2.1" fill="#ffd598"/>
-      </g>
-    </>
-  );
+  const ground = cover ? 402 : 296;
+  // Branches denses, déployées en haut et sur les côtés. Centre dégagé pour le texte HTML.
+  const attached: Array<[number,number,number,number]> = [
+    [8,30,1.22,-31],[49,4,.94,32],[94,47,1.03,-18],[137,17,.83,47],
+    [183,54,.92,-26],[227,27,.73,31],[265,85,.64,-20],[44,103,.77,17],
+    [96,124,.62,-30],[184,111,.68,40],[292,40,.57,12],
+    [992,26,1.15,28],[950,6,.9,-32],[908,48,1.02,23],[864,18,.86,-40],
+    [815,58,.9,22],[767,28,.75,-34],[727,85,.64,25],[953,106,.76,-20],
+    [903,126,.62,32],[812,108,.67,-35],[704,40,.57,-12]
+  ];
+  const pile: Array<[number,number,number,number]> = [
+    [10,ground-12,.68,-39],[48,ground-3,.82,38],[83,ground-23,.65,-14],
+    [125,ground-7,.82,41],[162,ground-29,.62,13],[199,ground-4,.73,-37],
+    [236,ground-14,.57,39],[271,ground+4,.55,-21],[305,ground+11,.44,11],
+    [690,ground+12,.46,-28],[727,ground+6,.52,30],[763,ground-13,.65,-24],
+    [801,ground-5,.74,43],[840,ground-28,.65,-12],[875,ground-9,.82,-42],
+    [913,ground-22,.7,22],[956,ground-5,.8,-19],[994,ground-14,.66,34],
+    [38,ground-42,.43,-8],[115,ground-46,.46,28],[214,ground-35,.48,-12],
+    [783,ground-38,.46,22],[891,ground-47,.47,-17],[968,ground-38,.46,13]
+  ];
+  // Des trajectoires distinctes, attachées à un point précis de la ramure.
+  const falling: Array<[number,number,number,number,number,number,number,number]> = [
+    [84,66,.46,-17,0,38,ground-66,8.6],
+    [166,72,.38,29,2.6,25,ground-72,9.4],
+    [236,57,.43,-24,5.1,51,ground-57,11.2],
+    [39,109,.34,13,6.8,30,ground-109,10.3],
+    [923,68,.47,17,1.3,-41,ground-68,9.1],
+    [840,65,.39,-25,4.2,-35,ground-65,10.8],
+    [765,69,.42,23,6.1,-48,ground-69,11.7],
+    [961,109,.35,-19,7.4,-29,ground-109,10.1],
+  ];
+  return <>
+    <path d="M-30 27C71-32 156-1 229 50C273 80 300 74 330 52M1030 27C929-32 844-1 771 50C727 80 700 74 670 52"
+      fill="none" stroke="#271409" strokeWidth="24" strokeLinecap="round" opacity=".77"/>
+    <path d="M-30 27C71-32 156-1 229 50C273 80 300 74 330 52M1030 27C929-32 844-1 771 50C727 80 700 74 670 52"
+      fill="none" stroke="url(#mss-bark)" strokeWidth="17" strokeLinecap="round"/>
+    <path d="M-9 32Q102-10 220 54M1009 32Q898-10 780 54" fill="none" stroke="#d99a62" strokeWidth="2.4" opacity=".6"/>
+    <path d="M54 34Q27 89 9 126M151 13Q188 88 213 118M255 58Q291 99 302 132M946 34Q974 89 991 126M849 13Q812 88 787 118M745 58Q709 99 698 132"
+      fill="none" stroke="#58311c" strokeWidth="6.5" strokeLinecap="round"/>
+    <path d="M54 34Q27 89 9 126M151 13Q188 88 213 118M255 58Q291 99 302 132M946 34Q974 89 991 126M849 13Q812 88 787 118M745 58Q709 99 698 132"
+      fill="none" stroke="#bb7745" strokeWidth="1.5" opacity=".7"/>
+    {attached.map(([x,y,z,r],i)=><MapleLeaf key={`branch-${i}`} x={x} y={y} s={z} r={r} shade={[-11,0,7,15,-5][i%5]} />)}
+    {falling.map(([x,y,z,r,delay,drift,drop,duration],i)=><FallingLeaf key={`fall-${i}`} x={x} y={y} s={z} r={r} delay={delay} drift={drift} drop={drop} duration={duration}/>)}
+    <path d={`M-30 ${ground+9}Q35 ${ground-20} 112 ${ground-3}Q207 ${ground-23} 315 ${ground+14}L315 470H-30Z`}
+      fill="url(#mss-leaf-bed)" opacity=".73"/>
+    <path d={`M1030 ${ground+9}Q965 ${ground-20} 888 ${ground-3}Q793 ${ground-23} 685 ${ground+14}L685 470H1030Z`}
+      fill="url(#mss-leaf-bed)" opacity=".73"/>
+    {pile.map(([x,y,z,r],i)=><MapleLeaf key={`pile-${i}`} x={x} y={y} s={z} r={r} shade={[-14,0,10,18,-7][i%5]}/>)}
+    {/* Le sol reste fixe, les feuilles mobiles s'effacent juste avant de le toucher. */}
+  </>;
 };
 
 const WinterDetails = ({ cover }: { cover: boolean }) => {
@@ -262,6 +289,8 @@ export default function SeasonalDoodle({ season = getAppSeason(), variant = 'tit
     <div className={`mss-seasonal-doodle mss-seasonal-doodle--${variant} mss-seasonal-doodle--${season} ${className}`.trim()} aria-hidden="true">
       <svg viewBox={cover ? '0 0 1000 450' : '0 0 1000 330'} preserveAspectRatio="none" focusable="false">
         <defs>
+          <linearGradient id="mss-bark" x1="0" y1="0" x2="0" y2="1"><stop stopColor="#4a2818"/><stop offset=".48" stopColor="#9c5932"/><stop offset="1" stopColor="#321b12"/></linearGradient>
+          <linearGradient id="mss-leaf-bed" x1="0" y1="0" x2="0" y2="1"><stop stopColor="#ffae39" stopOpacity=".6"/><stop offset="1" stopColor="#6c270d" stopOpacity=".15"/></linearGradient>
           <linearGradient id="mss-maple-fill" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#ffe19c"/><stop offset=".33" stopColor="#fc9d30"/><stop offset=".7" stopColor="#d65319"/><stop offset="1" stopColor="#8e2a17"/></linearGradient>
           <radialGradient id="mss-pumpkin-fill"><stop stopColor="#ffb859"/><stop offset=".56" stopColor="#f57b22"/><stop offset="1" stopColor="#ab3c12"/></radialGradient>
           <linearGradient id="mss-snow-fill" x2="0" y2="1"><stop stopColor="#fff"/><stop offset=".55" stopColor="#e3faff"/><stop offset="1" stopColor="#89cdf1"/></linearGradient>

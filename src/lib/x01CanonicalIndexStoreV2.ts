@@ -126,8 +126,17 @@ export function readCanonicalX01IndexV2(): X01StoredIndexV2 | null {
 
 export function invalidateCanonicalX01IndexV2(): void {
   generation += 1;
-  inMemory = null;
-  try { localStorage.removeItem(key()); } catch {}
+  // Stale-while-revalidate: the previous *complete* snapshot remains readable
+  // until its replacement has been computed and published atomically. Removing
+  // it here made Home/StatsHub/X01Multi fall back to incompatible V1 caches or 0.
+  // readCanonicalX01IndexV2 still enforces accountScope, so a profile/account
+  // switch can never expose another account's snapshot.
+}
+
+/** Schedule initial recovery only when no complete snapshot exists. */
+export function ensureCanonicalX01IndexV2(reason = 'stats-opened'): void {
+  if (readCanonicalX01IndexV2() || inFlight || scheduled !== null) return;
+  scheduleCanonicalX01IndexRebuildV2(reason);
 }
 
 /** Explicit rebuild. Never call from a React render or ProfileStarRing. */

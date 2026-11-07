@@ -103,19 +103,18 @@ export default function SportHomeWelcomeHeader({
 
       <div className="msc-sport-home-title-wrap" ref={wrapRef} style={{ position: "relative", zIndex: 2, width: "100%", overflow: "hidden" }}>
         <div
-          className={`msc-sport-home-title mss-doodle-title mss-doodle-title--${getAppSeason()}`}
-          data-text={String(title)}
+          className="msc-sport-home-title"
           ref={textRef}
           style={{
             width: "fit-content",
             marginInline: "auto",
             fontSize: 32,
-            fontWeight: 1000,
+            fontWeight: 900,
             letterSpacing: 3,
             textAlign: "center",
             textTransform: "uppercase",
             whiteSpace: "nowrap",
-            backgroundImage: `linear-gradient(180deg, #fff9ec 0%, ${accent} 48%, #ffffff 78%, ${accent} 100%)`,
+            backgroundImage: `linear-gradient(120deg, ${accent}, #ffffff, ${accent})`,
             backgroundSize: "200% 100%",
             WebkitBackgroundClip: "text",
             color: "transparent",

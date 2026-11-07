@@ -25,7 +25,7 @@ import { removeDerivedStatsCache, writeDerivedStatsCacheRaw } from "../lib/stats
 import { useLang } from "../contexts/LangContext";
 import { computeX01LevelSnapshot, computeX01MultiAgg } from "../lib/x01MultiAgg";
 import { listCanonicalX01Sessions } from "../lib/x01CanonicalProjection";
-import { readCanonicalX01IndexV2, scheduleCanonicalX01IndexRebuildV2 } from "../lib/x01CanonicalIndexStoreV2";
+import { readCanonicalX01IndexV2, ensureCanonicalX01IndexV2 } from "../lib/x01CanonicalIndexStoreV2";
 import { selectCanonicalX01ProfileV3 } from "../lib/x01CanonicalSelectorsV3";
 
 // ------ Helpers locaux : classement multi pour un joueur ------
@@ -2902,17 +2902,9 @@ export default function X01MultiStatsTabFull({
   const [canonicalIndexRevision, setCanonicalIndexRevision] = React.useState(0);
   const [indexReady, setIndexReady] = React.useState(() => !!readCanonicalX01IndexV2());
   const [showAdvancedFilters, setShowAdvancedFilters] = React.useState(false);
-  const [sessions, setSessions] = React.useState<X01MultiSession[]>(
-    () => listCanonicalX01Sessions(effectiveProfileId, playerName).map((row) => ({
-      id: String(row.id || `${row.matchId}:${row.profileId}`), matchId: String(row.matchId || row.id || ""), date: Number(row.date || 0) || 0,
-      selectedPlayerId: String(row.playerId || row.profileId || ""), playerName: String(row.playerName || playerName || "Joueur"), profileId: String(row.profileId || row.playerId || ""),
-      darts: Number(row.darts || 0) || 0, avg3D: Number(row.avg3D || 0) || 0, avg1D: (Number(row.avg3D || 0) || 0) / 3,
-      bestVisit: Number(row.bestVisit || 0) || 0, bestCheckout: Number(row.bestCheckout || 0) || null, hitsS: Number(row.hitsS || 0) || 0, hitsD: Number(row.hitsD || 0) || 0, hitsT: Number(row.hitsT || 0) || 0,
-      miss: Number(row.miss || 0) || 0, bull: Number(row.bull25 || 0) || 0, dBull: Number(row.bull50 || 0) || 0, bust: Number(row.bust || 0) || 0, isWin: !!row.isWin,
-      legsWon: Number(row.legsWon || 0) || 0, setsWon: Number(row.setsWon || 0) || 0, finishes: Number(row.coSuccess || (row.bestCheckout > 0 ? 1 : 0)) || 0,
-      x01StartScore: row.startScore ?? null, x01Variant: row.variant ?? "unknown", x01OutMode: row.outMode ?? "unknown",
-    } as X01MultiSession))
-  );
+  // Only the History V4 projection may populate this view. The legacy V1
+  // list used to flash an arbitrary subset of sessions before V2 was ready.
+  const [sessions, setSessions] = React.useState<X01MultiSession[]>([]);
   const loadedProfileKeyRef = React.useRef(String(effectiveProfileId || ""));
   const [historyVersion, setHistoryVersion] = React.useState(0);
   const [range, setRange] = React.useState<TimeRange>("all");
@@ -2967,12 +2959,18 @@ export default function X01MultiStatsTabFull({
       const snapshot = readCanonicalX01IndexV2();
       setIndexReady(!!snapshot);
       if (!snapshot) {
-        scheduleCanonicalX01IndexRebuildV2('x01-stats-opened');
-        // La V1 n'est qu'une compatibilité transitoire lorsque V2 n'est pas prête.
-        const legacy = listCanonicalX01Sessions(effectiveProfileId, null).map(canonicalToMulti);
-        if (legacy.length) setSessions(legacy);
+        ensureCanonicalX01IndexV2('x01-stats-opened');
+        // No V1 fallback: an old local cache is neither an empty History nor
+        // the authoritative match count. Keep the already displayed V2 sessions
+        // while reconstruction is pending, except after a profile change.
+        const profileKey = String(effectiveProfileId || '');
+        if (loadedProfileKeyRef.current !== profileKey) {
+          loadedProfileKeyRef.current = profileKey;
+          setSessions([]);
+        }
         return;
       }
+      loadedProfileKeyRef.current = String(effectiveProfileId || '');
       const requestedId = String(effectiveProfileId || '').trim();
       const rows: X01MultiSession[] = [];
       for (const match of snapshot.index.matches || []) {

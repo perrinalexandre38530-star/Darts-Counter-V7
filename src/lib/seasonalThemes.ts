@@ -1,6 +1,11 @@
 /** Saison météorologique de l’hémisphère nord, déterminée par la date locale. */
 export type AppSeason = "winter" | "spring" | "summer" | "autumn";
 export function getAppSeason(date: Date = new Date()): AppSeason {
+  // Aperçu explicite pour vérifier les quatre saisons sans changer la date système.
+  if (typeof window !== "undefined") {
+    const preview = new URLSearchParams(window.location.search).get("seasonPreview");
+    if (preview === "winter" || preview === "spring" || preview === "summer" || preview === "autumn") return preview;
+  }
   const month = date.getMonth();
   if (month === 11 || month <= 1) return "winter";
   if (month <= 4) return "spring";
