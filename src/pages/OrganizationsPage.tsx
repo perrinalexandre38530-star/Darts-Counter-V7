@@ -1,6 +1,7 @@
 import React from "react";
 import BackDot from "../components/BackDot";
 import SportWelcomeWatermark from "../components/home/SportWelcomeWatermark";
+import SeasonalDoodle from "../components/SeasonalDoodle";
 import OrganizationTypeIcon from "../components/OrganizationTypeIcon";
 import OrganizationCompetitionsPanel from "../components/OrganizationCompetitionsPanel";
 import OrganizationStatsPanel from "../components/OrganizationStatsPanel";
@@ -56,6 +57,7 @@ import {
 } from "../lib/userMediaFallback";
 import { getStorageDestination, loadStoragePrefs } from "../lib/storagePlans";
 import { uploadOrganizationPublicMedia } from "../lib/organizationSupabaseMedia";
+import { getAppSeason } from "../lib/seasonalThemes";
 
 type Props = { go?: (tab: any, params?: any) => void; params?: any };
 type View = "home" | "more" | "profile" | "members" | "groups" | "calendar" | "competitions" | "stats" | "communication" | "federations" | "billing" | "sponsors" | "shop" | "buvette" | "venue" | "admin" | "offers";
@@ -878,8 +880,9 @@ export default function OrganizationsPage({ go, params }: Props) {
         }}
       >
         <SportWelcomeWatermark sport={String(sportCtx?.sport || "darts")} opacity={0.12} size={205} />
+        <SeasonalDoodle season={getAppSeason()} />
         <div
-          className="msc-home-welcome-pill"
+          className="msc-home-welcome-pill mss-doodle-welcome"
           style={{
             position: "relative",
             zIndex: 2,
@@ -904,16 +907,20 @@ export default function OrganizationsPage({ go, params }: Props) {
           </span>
         </div>
         <div
-          className="msc-home-sport-title"
+          className={`msc-home-sport-title mss-doodle-title mss-doodle-title--${getAppSeason()}`}
+          data-text={String(currentSportTitle)}
           style={{
             position: "relative",
             zIndex: 2,
+            width: "fit-content",
+            marginInline: "auto",
             fontSize: 32,
-            fontWeight: 900,
+            fontWeight: 1000,
             letterSpacing: 3,
             textAlign: "center",
             textTransform: "uppercase",
-            backgroundImage: `linear-gradient(120deg, ${theme.primary}, #ffffff, ${theme.primary})`,
+            whiteSpace: "nowrap",
+            backgroundImage: `linear-gradient(180deg, #fff9ec 0%, ${theme.primary} 48%, #ffffff 78%, ${theme.primary} 100%)`,
             backgroundSize: "200% 100%",
             WebkitBackgroundClip: "text",
             color: "transparent",

@@ -27,12 +27,34 @@
 @keyframes mss-drift{0%,100%{translate:0 0;rotate:-2deg}50%{translate:4px 8px;rotate:4deg}}
 @keyframes mss-soft-drift{0%,100%{translate:0 0}50%{translate:0 6px}}
 @keyframes mss-snow-shine{0%,100%{opacity:.63}50%{opacity:1}}
-@keyframes mss-blossom-breathe{0%,100%{opacity:.88}50%{opacity:1}}
+@keyframes mss-blossom-breathe{0%,100%{opacity:.82;transform:scale(.92)}45%{opacity:1;transform:scale(1)}100%{opacity:.92;transform:scale(.96)}}
 @keyframes mss-garland-blink{0%,100%{opacity:.48;filter:drop-shadow(0 0 0 transparent)}45%{opacity:.9;filter:drop-shadow(0 0 5px currentColor)}70%{opacity:.6}}
+@keyframes mss-autumn-fall{0%{transform:translate(var(--mss-x),var(--mss-y)) rotate(0deg);opacity:0}8%{opacity:1}28%{transform:translate(calc(var(--mss-x) + var(--mss-drift-1)),calc(var(--mss-y) + var(--mss-drop) * .28)) rotate(18deg)}58%{transform:translate(calc(var(--mss-x) + var(--mss-drift-2)),calc(var(--mss-y) + var(--mss-drop) * .62)) rotate(-12deg)}84%{opacity:1}100%{transform:translate(calc(var(--mss-x) + var(--mss-drift-1)),calc(var(--mss-y) + var(--mss-drop))) rotate(var(--mss-rot-end));opacity:0}}
+@keyframes mss-leaf-spin{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(8deg)}}
+@keyframes mss-snow-fall{0%{transform:translate(var(--mss-x),var(--mss-y));opacity:0}10%{opacity:.96}33%{transform:translate(calc(var(--mss-x) + var(--mss-drift-1)),calc(var(--mss-y) + var(--mss-drop) * .33))}66%{transform:translate(calc(var(--mss-x) + var(--mss-drift-2)),calc(var(--mss-y) + var(--mss-drop) * .66))}100%{transform:translate(calc(var(--mss-x) + var(--mss-drift-1)),calc(var(--mss-y) + var(--mss-drop)));opacity:0}}
+@keyframes mss-snow-spin{0%{transform:rotate(0deg)}100%{transform:rotate(180deg)}}
+@keyframes mss-branch-sway{0%,100%{transform:translateY(0) rotate(0deg)}50%{transform:translateY(2px) rotate(2deg)}}
+@keyframes mss-bee-flight{0%{transform:translate(var(--mss-x),var(--mss-y))}18%{transform:translate(calc(var(--mss-x) + var(--mss-range) * .45),calc(var(--mss-y) - 10px))}38%{transform:translate(calc(var(--mss-x) + var(--mss-range)),calc(var(--mss-y) + 4px))}55%{transform:translate(calc(var(--mss-x) + var(--mss-range) * .5),calc(var(--mss-y) + 12px))}78%{transform:translate(calc(var(--mss-x) - var(--mss-range) * .22),calc(var(--mss-y) + 2px))}100%{transform:translate(var(--mss-x),var(--mss-y))}}
+@keyframes mss-bee-wings{0%,100%{transform:translateY(0) scaleY(1)}50%{transform:translateY(-1px) scaleY(.55)}}
+@keyframes mss-sun-pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.045);opacity:.96}}
+@keyframes mss-heat-wave{0%,100%{transform:translateX(0) translateY(0);opacity:.42}50%{transform:translateX(var(--mss-wave-shift)) translateY(-3px);opacity:.82}}
+@keyframes mss-water-wave{0%{transform:translateX(0)}50%{transform:translateX(12px)}100%{transform:translateX(0)}}
 .mss-doodle-drifter{animation:mss-drift 7s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
 .mss-doodle-soft-drift{animation:mss-soft-drift 6s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
 .mss-doodle-snowflake{animation:mss-snow-shine 5s ease-in-out infinite}
-.mss-doodle-blossom{animation:mss-blossom-breathe 6s ease-in-out infinite}
+.mss-doodle-blossom{animation:mss-blossom-breathe 5.8s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
 .mss-doodle-garland-light{animation:mss-garland-blink 2.8s ease-in-out infinite}
-@media(max-width:480px){.msc-home-header:has(>.mss-seasonal-doodle),.msc-sport-home-header:has(>.mss-seasonal-doodle){min-height:143px;padding-block:24px!important}.mss-buvette-seasonal-hero{min-height:230px!important}}
+.mss-branch-sway{animation:mss-branch-sway 6.8s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+.mss-fall-leaf,.mss-fall-snow,.mss-bee-flight,.mss-sun-pulse,.mss-heat-wave,.mss-summer-wave{transform-box:fill-box;transform-origin:center}
+.mss-fall-leaf{animation:mss-autumn-fall var(--mss-duration,9s) linear infinite;opacity:0}
+.mss-fall-leaf-spin{animation:mss-leaf-spin 2.5s ease-in-out infinite}
+.mss-fall-snow{animation:mss-snow-fall var(--mss-duration,10s) linear infinite;opacity:0}
+.mss-fall-snow-spin{animation:mss-snow-spin 4.6s linear infinite}
+.mss-bee-flight{animation:mss-bee-flight 7s ease-in-out infinite}
+.mss-bee-wingbeat{animation:mss-soft-drift .9s ease-in-out infinite}
+.mss-bee-wing-left,.mss-bee-wing-right{animation:mss-bee-wings .18s linear infinite;transform-box:fill-box;transform-origin:center}
+.mss-sun-pulse{animation:mss-sun-pulse 4.8s ease-in-out infinite}
+.mss-heat-wave{animation:mss-heat-wave 3.4s ease-in-out infinite}
+.mss-summer-wave{animation:mss-water-wave 5.5s ease-in-out infinite}
+@media(max-width:480px){.msc-home-header:has(>.mss-seasonal-doodle),.msc-sport-home-header:has(>.mss-seasonal-doodle){min-height:143px;padding-block:24px!important}.mss-buvette-seasonal-hero{min-height:230px!important}.mss-doodle-title{padding:.05em .08em .18em;letter-spacing:2px!important}.msc-home-header:has(>.mss-seasonal-doodle) .mss-doodle-title,.msc-sport-home-header:has(>.mss-seasonal-doodle) .mss-doodle-title{letter-spacing:2.05px!important}}
 @media(prefers-reduced-motion:reduce){.mss-seasonal-doodle *, .mss-doodle-title{animation:none!important}}
