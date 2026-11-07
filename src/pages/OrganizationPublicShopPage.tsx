@@ -1,4 +1,5 @@
 import React from "react";
+import OrganizationPublicShopRequestForm from "../components/OrganizationPublicShopRequestForm";
 import { useLang } from "../contexts/LangContext";
 import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import { fetchPublicShop, type PublicShopData, type PublicShopProduct } from "../organizations/organizationPublicShop";
@@ -58,6 +59,15 @@ export default function OrganizationPublicShopPage({ organizationId }: { organiz
     background: active ? "rgba(97,220,202,.15)" : "rgba(255,255,255,.055)", color: active ? "#9effec" : "#d9e5f1",
     borderRadius: 999, padding: "9px 13px", fontWeight: 800, fontSize: 12, cursor: "pointer" });
   const money = (item: PublicShopProduct) => formatMoney(item.price, item.currency, lang === "en" ? "en-GB" : "fr-FR", L("Prix sur demande", "Price on request", "Precio a consultar"));
+  const availabilityLabel = (item: PublicShopProduct) => {
+    if (item.category === "drinks" || item.category === "equipment_ad") return "";
+    if (item.availability === "unavailable" || (item.availability === "available" && item.stockQuantity === 0)) return L("Épuisé / indisponible", "Sold out / unavailable", "Agotado / no disponible");
+    if (item.availability === "preorder") return L("Précommande", "Preorder", "Prepedido");
+    if (item.availability === "on_request") return L("Sur commande", "Made to order", "Bajo pedido");
+    return item.stockQuantity == null ? L("Disponible", "Available", "Disponible") : `${item.stockQuantity} ${L("en stock", "in stock", "en stock")}`;
+  };
+  const canRequest = (item: PublicShopProduct) => ["official_kit", "clothing", "goodies"].includes(item.category)
+    && item.availability !== "unavailable" && !(item.availability === "available" && item.stockQuantity === 0);
   const emailLink = (item?: PublicShopProduct) => `mailto:${data?.contactEmail || ""}?subject=${encodeURIComponent(`${L("Demande boutique", "Shop inquiry", "Consulta tienda")} · ${data?.name || ""}${item ? ` · ${item.title}` : ""}`)}`;
 
   return <main style={{ minHeight: "100dvh", background: "radial-gradient(circle at top,#182a3a,#07101a 70%)", color: "#f5f8fc", fontFamily: "system-ui,-apple-system,sans-serif", overflowX: "hidden" }}>
@@ -102,6 +112,7 @@ export default function OrganizationPublicShopPage({ organizationId }: { organiz
               <span style={{ color: "#8cedd7", textTransform: "uppercase", letterSpacing: .4, fontSize: 10, fontWeight: 950 }}>{categoryName(item.category)}</span>
               <strong style={{ fontSize: 15, overflowWrap: "anywhere" }}>{item.title}</strong>
               {item.variants ? <div style={{ fontSize: 11, color: "#becbd6", overflowWrap: "anywhere" }}>{item.variants}</div> : null}
+              {availabilityLabel(item) ? <span style={{ fontSize: 11, fontWeight: 850, color: canRequest(item) ? "#9af5d8" : "#ffb5b5" }}>{availabilityLabel(item)}</span> : null}
               <strong style={{ color: "#95f5dc", marginTop: "auto", fontSize: 16 }}>{money(item)}</strong>
               <span style={{ fontSize: 10.5, color: "#b9ccdb" }}>{L("Voir la fiche", "View details", "Ver detalles")} ›</span>
             </div>
@@ -109,7 +120,7 @@ export default function OrganizationPublicShopPage({ organizationId }: { organiz
         </div>
         <footer style={{ ...card, padding: 18, marginTop: 24, display: "grid", gap: 10 }}>
           <strong style={{ fontSize: 15 }}>{L("Informations et contact", "Information and contact", "Información y contacto")}</strong>
-          <p style={{ color: "#b7cad8", fontSize: 12, margin: 0, lineHeight: 1.6 }}>{L("Vitrine officielle du club. Pour commander un article ou vérifier sa disponibilité, contacte directement le club. Aucun paiement en ligne n'est effectué ici.", "Official club storefront. Contact the club directly to order or confirm availability. No online payments are processed here.", "Escaparate oficial. Contacta al club para realizar pedidos o confirmar disponibilidad. No se realizan pagos aquí.")}</p>
+          <p style={{ color: "#b7cad8", fontSize: 12, margin: 0, lineHeight: 1.6 }}>{L("Vitrine du club. Tu peux transmettre une demande de réservation ou de maillot personnalisé, sous réserve d'acceptation par le club. Aucun paiement en ligne.", "Club storefront. You may submit a reservation or customized jersey request, subject to club approval. No online payments.", "Escaparate del club. Puedes enviar solicitudes de reserva o personalización, sujetas a la aprobación del club. Sin pagos en línea.")}</p>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {canEmail ? <a href={emailLink()} style={{ ...chip(true), textDecoration: "none" }}>✉ {L("Contacter le club", "Email the club", "Contactar")}</a> : null}
             {safePhone ? <a href={`tel:${safePhone}`} style={{ ...chip(false), textDecoration: "none" }}>☎ {data.contactPhone}</a> : null}
@@ -130,6 +141,8 @@ export default function OrganizationPublicShopPage({ organizationId }: { organiz
           {selected.description ? <p style={{ margin: 0, color: "#bcd0de", fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{selected.description}</p> : null}
           {selected.variants ? <div style={{ fontSize: 12, color: "#bcd0de" }}>{selected.variants}</div> : null}
           <strong style={{ fontSize: 23, color: "#8cedd7" }}>{money(selected)}</strong>
+          {availabilityLabel(selected) ? <div style={{ color: canRequest(selected) ? "#9af5d8" : "#ffb5b5", fontSize: 12, fontWeight: 900 }}>{availabilityLabel(selected)}</div> : null}
+          {canRequest(selected) ? <OrganizationPublicShopRequestForm key={selected.id} organizationId={data.organizationId} product={selected} /> : null}
           {canEmail ? <a href={emailLink(selected)} style={{ ...chip(true), textAlign: "center", textDecoration: "none" }}>{L("Demander cet article au club", "Ask the club about this item", "Consultar al club")}</a> : null}
           {safePhone ? <a href={`tel:${safePhone}`} style={{ ...chip(false), textAlign: "center", textDecoration: "none" }}>{L("Appeler le club", "Call the club", "Llamar al club")}</a> : null}
         </div>

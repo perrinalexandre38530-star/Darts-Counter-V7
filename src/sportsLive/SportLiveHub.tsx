@@ -246,21 +246,21 @@ function competitionKey(value?: string | null) {
 
 function competitionGroupingKey(value?: string | null, sport?: string | null) {
   let key = normalizedText(value || "competition officielle")
-    .replace(/20\d{2}(?:\s*[-/]\s*\d{2,4})?/g, " ")
-    .replace(/season\s+20\d{2}(?:\s*[-/]\s*\d{2,4})?/g, " ")
+    .replace(/\bseason\s+(?:19|20)\d{2}(?:\s*[-/]\s*(?:19|20)?\d{2})?\b/g, " ")
+    .replace(/\b(?:19|20)\d{2}(?:\s*[-/]\s*(?:19|20)?\d{2})?\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
   if (sport === "darts") {
     key = key
       .replace(/^(?:betmgm|betfred|boylesports|cazoo|machineseeker|mr vegas|neo bet|eltEN|ladbrokes|paddy power|interwetten)\s+/i, "")
-      .replace(/(?:sponsored by|presented by).*$/i, "")
+      .replace(/\b(?:sponsored by|presented by)\b.*$/i, "")
       .trim();
   }
   return key || normalizedText(value || "competition officielle");
 }
 
 function preferredCompetitionName(current: string, candidate: string) {
-  const noisy = /(?:betmgm|betfred|boylesports|cazoo|machineseeker|mr vegas|neo bet|ladbrokes|paddy power|interwetten)/i;
+  const noisy = /\b(?:betmgm|betfred|boylesports|cazoo|machineseeker|mr vegas|neo bet|ladbrokes|paddy power|interwetten)\b/i;
   const currentNoisy = noisy.test(current);
   const candidateNoisy = noisy.test(candidate);
   if (currentNoisy !== candidateNoisy) return currentNoisy ? candidate : current;
@@ -1161,7 +1161,9 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
     const displayNames = new Map<string, string>();
     rows.forEach((row) => {
       const rawName = competitionKey(row.competition);
-      const key = competitionGroupingKey(rawName, sport);
+      const meta = competitionMetaOf(row);
+      const countryId = String(meta?.countryCode || meta?.countryName || "").trim().toLowerCase();
+      const key = `${competitionGroupingKey(rawName, sport)}::${countryId || "unknown"}`;
       const bucket = map.get(key) || [];
       bucket.push(row);
       map.set(key, bucket);
@@ -1178,6 +1180,7 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
           : competitionCountry(reference);
         const indexedChips = [indexed?.tier, indexed?.level, indexed?.family].filter(Boolean).map((value) => String(value).replace(/_/g, " ").toUpperCase());
         return {
+          groupKey,
           name,
           matches: [...matches].sort((a, b) => dateTs(b.playedOn) - dateTs(a.playedOn)),
           latest: Math.max(...matches.map((match) => dateTs(match.playedOn)), 0),
@@ -1257,7 +1260,7 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
   const navigationCompetitions = React.useMemo(() => [...searchedCompetitions].sort((a,b) => a.name.localeCompare(b.name, lang || "fr")), [searchedCompetitions, lang]);
 
   React.useEffect(() => {
-    if (selected !== "__all__" && !hierarchyFiltered.some((item) => item.name === selected)) setSelected("__all__");
+    if (selected !== "__all__" && !hierarchyFiltered.some((item) => item.groupKey === selected)) setSelected("__all__");
   }, [hierarchyFiltered, selected]);
 
   React.useEffect(() => { setSelectedCountry("__all__"); setSelected("__all__"); setSelectedSeason("__all__"); setHistoryLimit(120); }, [selectedContinent]);
@@ -1266,7 +1269,7 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
   React.useEffect(() => { setHistoryLimit(120); }, [selectedSeason, searchQuery]);
   React.useEffect(() => { setCompetitionLimit(30); }, [selectedContinent, selectedCountry, selected, selectedSeason, searchQuery]);
 
-  const competitionFiltered = selected === "__all__" ? searchedCompetitions : searchedCompetitions.filter((item) => item.name === selected);
+  const competitionFiltered = selected === "__all__" ? searchedCompetitions : searchedCompetitions.filter((item) => item.groupKey === selected);
   const seasons = React.useMemo(() => {
     const counts = new Map<string, number>();
     competitionFiltered.forEach((item) => item.matches.forEach((match) => {
@@ -1298,7 +1301,7 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
   // Keep the competition detail independent from the selected season, otherwise
   // selecting 2023 removes 2024/2022 from the season navigation.
   const selectedCompetition = selectedCompetitionMode
-    ? competitionFiltered.find((item) => item.name === selected) || null
+    ? competitionFiltered.find((item) => item.groupKey === selected) || null
     : null;
   const displayedCompetitions = selectedCompetitionMode ? scoreCenterVisible : scoreCenterVisible.slice(0, competitionLimit);
   const countryResultTotals = React.useMemo(() => {
@@ -1388,8 +1391,8 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
             <button className={`msc-results-nav-btn${selected === "__all__" ? " is-active" : ""}`} type="button" onClick={() => setSelected("__all__")} title="Toutes les compétitions">
               <span className="msc-results-nav-visual">🏆</span><span className="msc-results-nav-label">TOUTES</span><span className="msc-results-nav-count">{filteredCount}</span>
             </button>
-            {navigationCompetitions.map(({ name, matches, imageUrl }) => (
-              <button key={name} className={`msc-results-nav-btn${selected === name ? " is-active" : ""}`} type="button" onClick={() => setSelected(name)} title={name}>
+            {navigationCompetitions.map(({ groupKey, name, matches, imageUrl }) => (
+              <button key={groupKey} className={`msc-results-nav-btn${selected === groupKey ? " is-active" : ""}`} type="button" onClick={() => setSelected(groupKey)} title={name}>
                 <CompetitionMark sport={sport} name={name} logoUrl={imageUrl} /><span className="msc-results-nav-label" translate="no">{name}</span><span className="msc-results-nav-count">{matches.length}</span>
               </button>
             ))}
@@ -1442,7 +1445,7 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
           <span>›</span>
           <span>{selectedCountry === "__all__" ? "Tous pays" : (countries.find((item) => item.key === selectedCountry)?.label || selectedCountry)}</span>
           <span>›</span>
-          <strong>{selected === "__all__" ? "Toutes compétitions" : selected}</strong>
+          <strong>{selected === "__all__" ? "Toutes compétitions" : (selectedCompetition?.name || "Compétition")}</strong>
           <span>›</span>
           <strong>{selectedSeason === "__all__" ? "Toutes saisons" : selectedSeason}</strong>
           <em>{visibleCount} résultat{visibleCount > 1 ? "s" : ""}</em>
@@ -1455,7 +1458,7 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
               <button className="msc-score-clear" type="button" onClick={() => { setSearchQuery(""); setSelectedContinent("__all__"); setSelectedCountry("__all__"); setSelected("__all__"); setSelectedSeason("__all__"); }}>EFFACER LES FILTRES</button>
             </div>
           ) : null}
-          {displayedCompetitions.map(({ name, matches, imageUrl, tone, chips, countryCode, countryLabel, archiveSeasons, archiveCount, firstSeen, lastSeen }, index) => {
+          {displayedCompetitions.map(({ groupKey, name, matches, imageUrl, tone, chips, countryCode, countryLabel, archiveSeasons, archiveCount, firstSeen, lastSeen }, index) => {
             const rounds = new Map<string, DartsLiveResult[]>();
             matches.forEach((match) => {
               const round = normalizedRound(match.round);
@@ -1467,7 +1470,7 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
             const previousCountry = index > 0 ? displayedCompetitions[index - 1]?.countryLabel : null;
             const showCountryHead = selectedCountry === "__all__" && previousCountry !== countryLabel;
             return (
-              <React.Fragment key={`${countryLabel}-${name}`}>
+              <React.Fragment key={groupKey}>
                 {showCountryHead ? (
                   <div className="msc-country-score-head">
                     <span className="msc-country-score-flag">{countryVisual(countryCode, countryLabel)}</span>
@@ -1536,7 +1539,7 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
                         <div className="msc-round-head"><span>DERNIERS MATCHS</span><span>{Math.min(matches.length, 6)} / {matches.length}</span></div>
                         {[...matches].sort((a, b) => dateTs(b.playedOn) - dateTs(a.playedOn)).slice(0, 6).map((item) => <ResultMatchCard key={item.id} item={item} source={source} lang={lang} />)}
                       </div>
-                      <div className="msc-competition-preview-note"><span>{matches.length > 6 ? `${matches.length - 6} résultats de plus` : `${matches.length} résultat${matches.length > 1 ? "s" : ""} disponible${matches.length > 1 ? "s" : ""}`}</span><button className="msc-open-competition" type="button" onClick={() => setSelected(name)}>VOIR LA COMPÉTITION</button></div>
+                      <div className="msc-competition-preview-note"><span>{matches.length > 6 ? `${matches.length - 6} résultats de plus` : `${matches.length} résultat${matches.length > 1 ? "s" : ""} disponible${matches.length > 1 ? "s" : ""}`}</span><button className="msc-open-competition" type="button" onClick={() => setSelected(groupKey)}>VOIR LA COMPÉTITION</button></div>
                     </>
                   )}
                 </section>

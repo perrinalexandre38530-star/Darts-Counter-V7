@@ -806,7 +806,7 @@ export default function GameSelect({ go }: Props) {
             aria-disabled={!clickable}
             title={clickable ? "Ouvrir" : "Bientôt"}
           >
-            <img className="msc-game-select-logo" src={it.logo} alt={it.label} style={sportImg(theme, !visuallyDisabled)} draggable={false} />
+            <img className="msc-game-select-logo" src={it.logo} alt={it.label} loading="eager" fetchPriority="high" decoding="async" style={sportImg(theme, !visuallyDisabled)} draggable={false} />
             <div className="msc-game-select-label" style={sportLabel(theme, !visuallyDisabled)}>{it.label}</div>
             {visuallyDisabled && <div style={soonPill(theme)}>SOON</div>}
           </button>

@@ -8,6 +8,7 @@ import { History } from "../../lib/history";
 import { scopedStorageKey } from "../../lib/storage";
 import { encodeTossitDraft, decodeTossitDraft } from "./tossitDraft";
 import { PageAdBanner } from "../../monetization/AdSlot";
+import { previewBorderRound, previewThiefRound, previewChoreRound } from "./tossitScoringPreview";
 import {
   TOSSIT_MODES, TOSSIT_PLANNED, TOSSIT_COLORS, applyTossitAction, newTossitGame, summaryForTossit, undoTossitAction,
   type TossitMode, type TossitPlayer, type TossitState, type RiverLanding, type CornholeLanding, type ThiefCopCapture, TOSSIT_CHORES, type ChoreThrow,
@@ -379,27 +380,15 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
     }
   } else pitchOptions.push({ value: "block", label: tr("Blocage", "Block") });
   const resetClassic = () => { setClosestDarts(1); setKiss(0); setFrenchKiss(0); setJackiss(false); setJackissExtra(0); setJumpover(false); setJackover(false); };
+  const borderPreview = previewBorderRound(state.players, borderDarts, state.dartsPerPlayer);
+  const thiefPreview = previewThiefRound(captures);
+  const chorePreview = previewChoreRound(state.players, state.chores, choreThrows, TOSSIT_CHORES.map(chore => chore.id));
   const submitBorder = () => {
-    const valid: Record<string, number[]> = {};
-    const wrongSide: Record<string, number> = {};
-    for (const player of state.players) {
-      const throws = borderDarts[player.id] || [];
-      valid[player.id] = [];
-      wrongSide[player.id] = 0;
-      for (const dart of throws) {
-        if (dart.kind === "wrong") wrongSide[player.id]++;
-        if (dart.kind === "valid") {
-          const raw = dart.cm.trim();
-          const value = Number(raw.replace(",", "."));
-          if (!raw || !Number.isFinite(value) || value < 0 || value > 10000) {
-            setError(tr("Saisissez une distance valide en cm pour chaque ventouse valide.", "Enter a valid distance in cm for each stuck dart."));
-            return;
-          }
-          valid[player.id].push(value);
-        }
-      }
+    if (!borderPreview.ready) {
+      setError(tr("Saisissez une distance valide en cm pour chaque ventouse valide.", "Enter a valid distance in cm for every valid dart."));
+      return;
     }
-    if (commit({ kind: "border", valid, wrongSide })) {
+    if (commit({ kind: "border", valid: borderPreview.valid, wrongSide: borderPreview.wrongSide })) {
       setBorderDarts(Object.fromEntries(state.players.map((p) => [p.id, Array.from({ length: state.dartsPerPlayer }, () => ({ kind: "miss", cm: "" }))])));
     }
   };
@@ -479,18 +468,30 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
       </section>}
       {mode === "border" && <section className="tossit-mode-panel" style={panel}>
         <h3 style={{ marginTop: 0 }}>CROSS THE BORDER</h3>
-        <p style={{ opacity: .75 }}>{tr("Pour chaque ventouse, indiquez si elle a collé du bon côté et sa distance à la ligne (cm), du mauvais côté, ou si elle a raté.", "For each dart, choose valid with distance from the line (cm), wrong side, or missed.")}</p>
-        {state.players.map((player) => <div key={player.id} style={{ padding: "8px 0 14px", borderTop: "1px solid #305858" }}>
+        <p className="tossit-assist-text">{tr("Pour chaque ventouse : ratée, mauvais côté ou valide. Mesurez en cm seulement les ventouses valides. Les points sont calculés avant validation.", "For each dart: miss, wrong side or valid. Only valid darts need a distance in cm. Points are previewed before confirmation.")}</p>
+        {state.players.map(player => <div key={player.id} className="tossit-score-entry-card">
           <strong>{player.name}</strong>
-          {(borderDarts[player.id] || []).map((dart, index) => <div key={index} style={{ display: "grid", gridTemplateColumns: "24px minmax(0,1fr) minmax(0,1fr)", alignItems: "center", gap: 8, marginTop: 8 }}>
-            <span>{index + 1}</span>
-            <select aria-label={`${player.name} ${index + 1}`} style={input} value={dart.kind} onChange={(e) => setBorderDarts((old) => ({ ...old, [player.id]: old[player.id].map((d, n) => n === index ? { ...d, kind: e.target.value as BorderDart["kind"] } : d) }))}>
-              <option value="miss">{tr("Ratée", "Miss")}</option><option value="wrong">{tr("Mauvais côté", "Wrong side")}</option><option value="valid">{tr("Valide", "Valid")}</option>
-            </select>
-            {dart.kind === "valid" ? <input type="text" inputMode="decimal" aria-label={`${tr("Distance", "Distance")} ${player.name} ${index + 1}`} placeholder="cm" style={input} value={dart.cm} onChange={(e) => setBorderDarts((old) => ({ ...old, [player.id]: old[player.id].map((d, n) => n === index ? { ...d, cm: e.target.value } : d) }))} /> : <span style={{ opacity: .5, textAlign: "center" }}>—</span>}
+          {(borderDarts[player.id] || []).map((dart, index) => <div key={index} className="tossit-throw-row">
+            <strong>{tr("Ventouse", "Dart")} {index + 1}</strong>
+            <TossitQuickChoices<BorderDart["kind"]> value={dart.kind} columns={3} label={`${player.name} — ${tr("Ventouse", "Dart")} ${index + 1}`}
+              options={[{ value: "miss", label: tr("Ratée", "Miss") }, { value: "wrong", label: tr("Mauvais côté", "Wrong side") }, { value: "valid", label: tr("Valide", "Valid") }]}
+              onChange={kind => setBorderDarts(old => ({ ...old, [player.id]: old[player.id].map((d,n) => n === index ? { ...d, kind } : d) }))}/>
+            {dart.kind === "valid" && <label className="tossit-border-distance">{tr("Distance à la ligne (cm)", "Distance to line (cm)")}
+              <input type="text" inputMode="decimal" autoComplete="off" aria-label={`${tr("Distance", "Distance")} ${player.name} ${index + 1}`}
+                placeholder="ex. 2,5" style={input} value={dart.cm}
+                onChange={e => setBorderDarts(old => ({ ...old, [player.id]: old[player.id].map((d,n) => n === index ? { ...d, cm: e.target.value } : d) }))}/>
+            </label>}
           </div>)}
         </div>)}
-        <button className="tossit-confirm-button" style={{ ...button, width: "100%" }} onClick={submitBorder}>{tr("CALCULER & VALIDER LA MANCHE", "SCORE ROUND")}</button>
+        <TossitEntrySummary>
+          <strong>{tr("Aperçu avant validation", "Preview before confirmation")}</strong>
+          {state.players.map(player => <span key={player.id} className="tossit-preview-line">
+            {player.name} : <b>+{borderPreview.ready ? borderPreview.gain[player.id] : "—"}</b> {tr("point(s)", "point(s)")}
+            <small>· {borderPreview.wrongSide[player.id] || 0} {tr("mauvais côté", "wrong side")}</small>
+          </span>)}
+          {!borderPreview.ready && <span role="status">{tr("Renseignez les distances des ventouses valides.", "Enter distances for all valid darts.")}</span>}
+        </TossitEntrySummary>
+        <button type="button" className="tossit-confirm-button" style={{ ...button, width: "100%" }} disabled={!borderPreview.ready} onClick={submitBorder}>{tr("CALCULER & VALIDER LA MANCHE", "SCORE ROUND")}</button>
       </section>}
       {mode === "tictac" && <section className="tossit-mode-panel" style={panel}>
         <h3 style={{ marginTop: 0 }}>{tr("Au tour de", "Now playing")}: {targetActive?.name}</h3>
@@ -626,13 +627,20 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
       {mode === "thief_cop" && <section className="tossit-mode-panel" style={panel}>
         <h3>🚔 THIEF & COP — {tr("Manche", "Round")} {state.events.length + 1}/{state.victoryTarget}</h3>
         <p style={{ color: ACCENT, fontWeight: 800 }}>{tr("Voleur", "Thief")}: {players[state.events.length % 2]?.name} · {tr("Policier", "Cop")}: {players[(state.events.length + 1) % 2]?.name}</p>
-        <p style={{ opacity: .75, fontSize: 12 }}>{tr("Enregistrez chaque tentative de capture. Takedown arrête la manche. 4 manches avec alternance des rôles (2 en rapide).", "Record each arrest attempt. A takedown ends the round. Alternate roles for 4 rounds (2 in quick mode).")}</p>
-        {captures.map((hit, i) => <label key={i} style={{ display: "block", marginBottom: 8 }}>{tr("Tentative", "Attempt")} {i + 1}
-          <select style={input} disabled={captures.slice(0,i).includes("takedown")} value={hit} onChange={e => setCaptures(v => v.map((x,n) => n === i ? e.target.value as ThiefCopCapture : x))}>
-            <option value="miss">0 — {tr("Échappé", "Escaped")}</option><option value="close">+1 — {tr("Arrestation proche", "Close arrest")}</option><option value="direct">+2 — {tr("Arrestation directe", "Direct arrest")}</option><option value="handcuff">+4 — Handcuff</option><option value="double_lock">+6 — Double lock</option><option value="takedown">Takedown — {tr("manche capturée", "round captured")}</option>
-          </select>
-        </label>)}
-        <button className="tossit-confirm-button" style={{ ...button, width: "100%" }} onClick={() => { const end = captures.indexOf("takedown"); const selection = end < 0 ? captures : captures.slice(0,end+1); if (commit({ kind: "thief_cop", captures: selection })) setCaptures(Array(state.dartsPerPlayer).fill("miss")); }}>{tr("VALIDER LES CAPTURES", "CONFIRM ARRESTS")}</button>
+        <p className="tossit-assist-text">{tr("Chaque capture est sélectionnée par une touche. Takedown termine immédiatement la manche ; les tentatives suivantes sont ignorées.", "Select each capture with a touch. Takedown ends the round immediately; later attempts do not count.")}</p>
+        {captures.map((hit, i) => <div key={i} className="tossit-throw-row">
+          <strong>{tr("Tentative", "Attempt")} {i + 1}</strong>
+          {thiefPreview.stoppedAfter >= 0 && i > thiefPreview.stoppedAfter ? <span className="tossit-assist-text">{tr("Terminée après Takedown", "Stopped after Takedown")}</span> :
+            <TossitQuickChoices<ThiefCopCapture> value={hit} columns={3} label={`${tr("Tentative", "Attempt")} ${i + 1}`}
+              options={[{ value: "miss", label: tr("0 · Échappé", "0 · Escaped") }, { value: "close", label: tr("+1 · Proche", "+1 · Close") }, { value: "direct", label: tr("+2 · Directe", "+2 · Direct") }, { value: "handcuff", label: "+4 · Handcuff" }, { value: "double_lock", label: "+6 · Double Lock" }, { value: "takedown", label: "Takedown" }]}
+              onChange={result => setCaptures(old => old.map((value, n) => n === i ? result : (result === "takedown" && n > i ? "miss" : value)))}/>
+          }
+        </div>)}
+        <TossitEntrySummary>
+          {tr("Policier", "Cop")} {players[(state.events.length + 1) % 2]?.name} : <b>+{thiefPreview.points}</b> {tr("points prévus", "provisional points")}
+          {thiefPreview.takedown ? ` · ${tr("Takedown : manche capturée", "Takedown: round captured")}` : ""}
+        </TossitEntrySummary>
+        <button type="button" className="tossit-confirm-button" style={{ ...button, width: "100%" }} onClick={() => { if (commit({ kind: "thief_cop", captures: thiefPreview.selected })) setCaptures(Array(state.dartsPerPlayer).fill("miss")); }}>{tr("VALIDER LES CAPTURES", "CONFIRM ARRESTS")}</button>
       </section>}
       {mode === "reach" && <section className="tossit-mode-panel" style={panel}>
         <h3>🟡 STICK & REACH — {targetActive.name}</h3>
@@ -657,17 +665,33 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
       </section>}
       {mode === "chores" && <section className="tossit-mode-panel" style={panel}>
         <h3>🧹 CHORES — {targetActive?.name}</h3>
-        <p style={{ opacity: .8, fontSize: 12 }}>{tr("Tâches domestiques : sélectionnez une action et son destinataire pour chacun des trois tirs. Le poster officiel exige une ventouse majoritairement dans la zone choisie. Aucun classement compétitif : le compteur représente les tâches restantes.", "Household chore board: select an action and a recipient for each of three throws. The official poster requires the dart mostly within the chosen target. No competitive ranking: each score shows pending chores.")}</p>
-        {choreThrows.map((dart, i) => <div key={i} style={{ borderTop: "1px solid #29494B", padding: "12px 0", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
+        <p className="tossit-assist-text">{tr("Choisissez l'action, le destinataire et la corvée de chaque ventouse. Le récapitulatif est provisoire : aucune tâche ne change avant validation.", "Choose an effect, recipient and chore for each dart. The summary is provisional: no task changes before confirmation.")}</p>
+        {choreThrows.map((dart, i) => <div key={i} className="tossit-score-entry-card">
           <strong>{tr("Ventouse", "Dart")} {i + 1}</strong>
-          <label>{tr("Action", "Effect")}<select style={input} value={dart.effect} onChange={e => setChoreThrows(old => old.map((t,j) => i === j ? {...t, effect:e.target.value as ChoreThrow["effect"]} : t))}>
-            <option value="miss">{tr("Manquée", "Miss")}</option><option value="chore">{tr("Attribuer une corvée", "Assign chore")}</option><option value="free_day">Free Day</option><option value="kiss">Kiss (−1)</option><option value="jumpover">Jumpover (+2)</option><option value="double_trouble">Double Trouble (−1)</option>
-          </select></label>
-          {dart.effect !== "miss" && <label>{tr("Bénéficiaire", "Recipient")}<select style={input} value={dart.recipientId} onChange={e => setChoreThrows(old => old.map((t,j) => i === j ? {...t,recipientId:e.target.value} : t))}>{players.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
-          {["chore", "jumpover"].includes(dart.effect) && <label>{tr("Corvée", "Chore")}<select style={input} value={dart.chore} onChange={e => setChoreThrows(old => old.map((t,j) => i === j ? {...t,chore:e.target.value} : t))}>{TOSSIT_CHORES.map(chore => <option key={chore.id} value={chore.id}>{tr(chore.fr, chore.en)}</option>)}</select></label>}
+          <div className="tossit-entry-field"><strong>{tr("Action", "Effect")}</strong>
+            <TossitQuickChoices<ChoreThrow["effect"]> value={dart.effect} columns={3} label={`${tr("Action", "Effect")} ${i + 1}`}
+              options={[{ value: "miss", label: tr("Ratée", "Miss") }, { value: "chore", label: tr("+1 · Corvée", "+1 · Chore") }, { value: "free_day", label: "Free Day" }, { value: "kiss", label: "Kiss (−1)" }, { value: "jumpover", label: "Jumpover (+2)" }, { value: "double_trouble", label: "Double Trouble (−1)" }]}
+              onChange={effect => setChoreThrows(old => old.map((value,n) => n === i ? { ...value, effect } : value))}/>
+          </div>
+          {dart.effect !== "miss" && <div className="tossit-entry-field"><strong>{tr("Destinataire", "Recipient")}</strong>
+            <TossitQuickChoices value={dart.recipientId || ""} columns={Math.min(players.length, 3)} label={`${tr("Destinataire", "Recipient")} ${i + 1}`}
+              options={players.map(player => ({ value: player.id, label: player.name }))}
+              onChange={recipientId => setChoreThrows(old => old.map((value,n) => n === i ? { ...value, recipientId } : value))}/>
+          </div>}
+          {(["chore", "jumpover"].includes(dart.effect)) && <div className="tossit-entry-field"><strong>{tr("Corvée", "Chore")}</strong>
+            <TossitQuickChoices value={dart.chore || ""} columns={3} label={`${tr("Corvée", "Chore")} ${i + 1}`}
+              options={TOSSIT_CHORES.map(chore => ({ value: chore.id, label: tr(chore.fr, chore.en) }))}
+              onChange={chore => setChoreThrows(old => old.map((value,n) => n === i ? { ...value, chore } : value))}/>
+          </div>}
         </div>)}
-        <div style={{ margin: "8px 0" }}>{players.map(p => <p key={p.id}><strong>{p.name}</strong> : {(state.chores?.[p.id] || []).map(id => tr(TOSSIT_CHORES.find(x=>x.id===id)?.fr || id,TOSSIT_CHORES.find(x=>x.id===id)?.en || id)).join(" · ") || "—"}</p>)}</div>
-        <button className="tossit-confirm-button" style={{ ...button, width: "100%" }} onClick={()=>{if(commit({kind:"chores",throws:choreThrows})) setChoreThrows(Array.from({ length:state.dartsPerPlayer },()=>({effect:"miss",recipientId:players[1]?.id ?? players[0]?.id,chore:TOSSIT_CHORES[0].id})));}}>{tr("VALIDER LES TROIS TIRS", "CONFIRM THREE THROWS")}</button>
+        <TossitEntrySummary>
+          <strong>{tr("Tâches après validation", "Tasks after confirmation")}</strong>
+          {players.map(p => <span key={p.id} className="tossit-preview-line">
+            {p.name} : <b>{chorePreview.counts[p.id] ?? 0}</b> {tr("tâche(s)", "task(s)")}
+            <small>· {(chorePreview.pending[p.id] || []).map(id => tr(TOSSIT_CHORES.find(x => x.id === id)?.fr || id, TOSSIT_CHORES.find(x => x.id === id)?.en || id)).join(" · ") || "—"}</small>
+          </span>)}
+        </TossitEntrySummary>
+        <button type="button" className="tossit-confirm-button" style={{ ...button, width: "100%" }} disabled={!chorePreview.ready} onClick={() => { if (commit({ kind: "chores", throws: choreThrows })) setChoreThrows(Array.from({ length: state.dartsPerPlayer }, () => ({ effect: "miss", recipientId: players[1]?.id ?? players[0]?.id, chore: TOSSIT_CHORES[0].id }))); }}>{tr("VALIDER LES TROIS TIRS", "CONFIRM THREE THROWS")}</button>
       </section>}
       {mode === "bottle" && <section className="tossit-mode-panel" style={panel}>
         <h3>🍾 CAPTURE THE BOTTLE — {tr("Manche", "Round")} {state.events.length + 1}/{state.victoryTarget}</h3>

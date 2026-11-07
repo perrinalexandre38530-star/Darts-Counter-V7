@@ -1,4 +1,5 @@
 import * as React from "react";
+import { dartsFamilyHistoryKey } from "../lib/historyDartsVariants";
 import AttrapeMoiMatchStatsView from "../components/AttrapeMoiMatchStatsView";
 import DartsPokerBadge from "../components/darts-poker/DartsPokerBadge";
 import DartsPokerCard from "../components/darts-poker/DartsPokerCard";
@@ -364,6 +365,9 @@ function readWave61ModeId(rec: any): string {
 }
 
 function readMode(rec: any): ModeKind {
+  const family = dartsFamilyHistoryKey(rec);
+  if (family === "chase") return "five_lives";
+  if (family === "split_score") return "halve_it";
   if (readWave61ModeId(rec)) return "wave61";
   const vals = [
     rec?.modeId,
@@ -750,6 +754,7 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
   const wave61ModeId = readWave61ModeId(rec);
   const wave61Spec = wave61ModeId ? DARTS_WAVE_61.find((entry) => entry.id === wave61ModeId) : null;
   const wave61Preset = wave61ModeId ? getWave61Preset(wave61ModeId) : null;
+  const familyKey = dartsFamilyHistoryKey(rec);
   const baseMeta = MODE_META[mode] || MODE_META.unknown;
   let meta = mode === "wave61" && wave61Spec && wave61Preset ? {
     ...baseMeta,
@@ -757,6 +762,15 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
     accent: wave61Preset.accent || baseMeta.accent,
     subtitle: `${wave61Preset.label} · ${wave61Spec.infoBody}`,
   } : baseMeta;
+  // Une variante conserve les mêmes tables que son jeu parent, mais pas son titre.
+  if (familyKey === "chase" && mode === "five_lives") meta = {
+    ...meta, title: "CHASE", accent: "#ff964f",
+    subtitle: "Variante des 5 vies : cible à égaler ou dépasser, ordre de passage renouvelé.",
+  };
+  if (familyKey === "split_score" && mode === "halve_it") meta = {
+    ...meta, title: "SPLIT SCORE", accent: "#5ce2ff",
+    subtitle: "9 manches : 15, 16, DOUBLE, 17, 18, TRIPLE, 19, 20, BULL. Échec = score divisé par deux.",
+  };
   const ptit1Fr = mode === "ptit_hun" ? ptit1SummaryIsFrench() : true;
   if (mode === "ptit_hun" && !ptit1Fr) meta = { ...meta, subtitle: "Precision anti-score: small singles, Triple Zero, D/T Jackpot, Hun Shield and DBULL hunting.", primary: "Final score", secondary: "Jackpots", tertiary: "DBULL" };
   const rows = React.useMemo(() => buildRows(rec, mode), [rec, mode]);

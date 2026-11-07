@@ -3,6 +3,7 @@ import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
 import tickerTicTacToe from "../assets/tickers/ticker_tic_tac_toe.png";
+import { top10MorpionLabel } from "../lib/top10MorpionLabels";
 import Section from "../components/Section";
 import OptionRow from "../components/OptionRow";
 import OptionToggle from "../components/OptionToggle";
@@ -24,7 +25,8 @@ export type TicTacToeConfigPayload = {
 const INFO_TEXT = `MORPION : 8 numéros différents tirés au sort, Bull toujours au centre. Chaque joueur doit réaliser 4 touches sur une case pour se l’approprier. Simple, double et triple comptent chacun une touche. Aligner 3 cases pour gagner la manche.`;
 
 export default function TicTacToeConfig(props: any) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
+  const tr = (value: string) => top10MorpionLabel(lang, value);
   useTheme();
 
   const [players, setPlayers] = useState(2);
@@ -37,8 +39,8 @@ export default function TicTacToeConfig(props: any) {
 
   const chosen = selectedIds.map((id) => profiles.find((p: any) => String(p.id) === id)).filter(Boolean);
   const others = profiles.filter((p: any) => !chosen.some((x: any) => x.id === p.id));
-  const humans = [...chosen, ...(!botsEnabled ? others : [])].slice(0, players).map((p: any) => ({ id: p.id, name: p.name || p.nickname || "Joueur", avatarDataUrl: p.avatarDataUrl || null, isBot: false }));
-  const remaining = Array.from({ length: Math.max(0, players - humans.length) }, (_, i) => ({ id: botsEnabled ? `morpion-bot-${i}` : `morpion-local-${i}`, name: botsEnabled ? `Bot ${i+1}` : `Joueur ${humans.length+i+1}`, isBot: !!botsEnabled, botLevel }));
+  const humans = [...chosen, ...(!botsEnabled ? others : [])].slice(0, players).map((p: any) => ({ id: p.id, name: p.name || p.nickname || tr("Joueur"), avatarDataUrl: p.avatarDataUrl || null, isBot: false }));
+  const remaining = Array.from({ length: Math.max(0, players - humans.length) }, (_, i) => ({ id: botsEnabled ? `morpion-bot-${i}` : `morpion-local-${i}`, name: botsEnabled ? `Bot ${i+1}` : `${tr("Joueur")} ${humans.length+i+1}`, isBot: !!botsEnabled, botLevel }));
   const payload: TicTacToeConfigPayload = { players: [...humans, ...remaining], botsEnabled, botLevel, rounds };
 
   function goBack() {
@@ -55,10 +57,10 @@ export default function TicTacToeConfig(props: any) {
   return (
     <div className="page">
       <PageHeader
-        title="MORPION"
+        title={lang === "fr" ? "MORPION" : "TIC-TAC-TOE"}
         tickerSrc={tickerTicTacToe}
         left={<BackDot onClick={goBack} />}
-        right={<InfoDot title="Règles MORPION" content={INFO_TEXT} />}
+        right={<InfoDot title={tr("Règles MORPION")} content={tr(INFO_TEXT)} />}
       />
 
       <Section title={t("config.players", "Joueurs")}>
@@ -66,7 +68,7 @@ export default function TicTacToeConfig(props: any) {
           <OptionSelect value={players} options={[2, 3, 4]} onChange={setPlayers} />
         </OptionRow>
 
-        {profiles.length > 0 && <div style={{ margin: "10px 0", padding: 10, borderRadius: 12, background: "#161a2a" }}><b>Profils locaux</b><div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>{profiles.map((p: any) => <button key={p.id} type="button" aria-pressed={selectedIds.includes(String(p.id))} onClick={() => toggle(String(p.id))} style={{ border: selectedIds.includes(String(p.id)) ? "1px solid #70e4f8" : "1px solid #ffffff33", background: selectedIds.includes(String(p.id)) ? "#195b8d" : "#222739", color: "#fff", padding: "8px 10px", borderRadius: 18 }}>{selectedIds.includes(String(p.id)) ? "✓ " : ""}{p.name || p.nickname || "Profil"}</button>)}</div></div>}
+        {profiles.length > 0 && <div style={{ margin: "10px 0", padding: 10, borderRadius: 12, background: "#161a2a" }}><b>{tr("Profils locaux")}</b><div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>{profiles.map((p: any) => <button key={p.id} type="button" aria-pressed={selectedIds.includes(String(p.id))} onClick={() => toggle(String(p.id))} style={{ border: selectedIds.includes(String(p.id)) ? "1px solid #70e4f8" : "1px solid #ffffff33", background: selectedIds.includes(String(p.id)) ? "#195b8d" : "#222739", color: "#fff", padding: "8px 10px", borderRadius: 18 }}>{selectedIds.includes(String(p.id)) ? "✓ " : ""}{p.name || p.nickname || tr("Profil")}</button>)}</div></div>}
         <OptionRow label={t("config.bots", "Bots IA")}>
           <OptionToggle value={botsEnabled} onChange={setBotsEnabled} />
         </OptionRow>
@@ -76,9 +78,9 @@ export default function TicTacToeConfig(props: any) {
             <OptionSelect
               value={botLevel}
               options={[
-                { value: "easy", label: "Facile" },
-                { value: "normal", label: "Normal" },
-                { value: "hard", label: "Difficile" },
+                { value: "easy", label: tr("Facile") },
+                { value: "normal", label: tr("Normal") },
+                { value: "hard", label: tr("Difficile") },
               ]}
               onChange={setBotLevel}
             />
@@ -91,7 +93,7 @@ export default function TicTacToeConfig(props: any) {
           <OptionSelect value={rounds} options={[1, 3, 5, 7]} onChange={setRounds} />
         </OptionRow>
 
-        <div style={{ fontSize: 13, opacity: .8 }}>4 touches par case · Bull centrale · numéros aléatoires à chaque manche.</div>
+        <div style={{ fontSize: 13, opacity: .8 }}>{tr("4 touches par case · Bull centrale · numéros aléatoires à chaque manche.")}</div>
       </Section>
 
       <Section>

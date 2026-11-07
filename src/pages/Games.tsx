@@ -1239,18 +1239,31 @@ export default function Games({ setTab, params }: Props) {
   const [allTickerIdx, setAllTickerIdx] = React.useState(0);
 
   React.useEffect(() => {
-    if (!allTickerPool.length) return;
-    const ms = 2600;
-    const it = window.setInterval(() => {
-      setAllTickerIdx((prev) => {
-        const n = allTickerPool.length;
-        if (n <= 1) return 0;
-        let next = Math.floor(Math.random() * n);
-        if (next === prev) next = (next + 1) % n;
-        return next;
-      });
-    }, ms);
-    return () => window.clearInterval(it);
+    if (allTickerPool.length <= 1) return;
+    let timer: number | undefined;
+    const stop = () => {
+      if (timer !== undefined) window.clearInterval(timer);
+      timer = undefined;
+    };
+    const syncVisibility = () => {
+      stop();
+      // Aucun changement d'image ni re-render quand l'onglet est masqué.
+      if (document.visibilityState !== "visible") return;
+      timer = window.setInterval(() => {
+        setAllTickerIdx((prev) => {
+          const n = allTickerPool.length;
+          let next = Math.floor(Math.random() * n);
+          if (next === prev) next = (next + 1) % n;
+          return next;
+        });
+      }, 2600);
+    };
+    syncVisibility();
+    document.addEventListener("visibilitychange", syncVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", syncVisibility);
+      stop();
+    };
   }, [allTickerPool.length]);
 
   function renderQuickLaunchTicker(className = "") {
@@ -1295,6 +1308,7 @@ export default function Games({ setTab, params }: Props) {
           <img
             src={current.tickerSrc as any}
             alt={current.label}
+            decoding="async"
             style={{
               position: "absolute",
               inset: 0,
@@ -1443,6 +1457,8 @@ export default function Games({ setTab, params }: Props) {
           <img
             src={tickerSrc}
             alt=""
+            loading="lazy"
+            decoding="async"
             aria-hidden
             draggable={false}
             style={{
@@ -1729,6 +1745,7 @@ export default function Games({ setTab, params }: Props) {
             <img
               src={menuTicker("games") as string}
               alt={pageTitle}
+              decoding="async"
               draggable={false}
               style={{
                 width: "100%",
@@ -1758,6 +1775,7 @@ export default function Games({ setTab, params }: Props) {
           <img
             src={menuTicker("all_games") as string}
             alt={pageTitle}
+              decoding="async"
             draggable={false}
             style={{
               width: "min(100%, 760px)",

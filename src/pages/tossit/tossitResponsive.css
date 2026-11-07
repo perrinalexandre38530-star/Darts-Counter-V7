@@ -230,3 +230,20 @@
   .tossit-score-entry-card { padding: 8px; }
   .tossit-entry-summary { padding: 9px; }
 }
+
+/* V195 wave 11: three remaining modes use the same touch-first controls. */
+.tossit-preview-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px; margin-top: 7px; }
+.tossit-preview-line b { color: #f7d886; font-size: 15px; }
+.tossit-preview-line small { opacity: .82; }
+.tossit-border-distance { display: block; margin-top: 9px; font-size: 13px; font-weight: 750; }
+.tossit-border-distance input { margin-top: 5px; width: 100%; }
+.tossit-play-main .tossit-score-entry-card .tossit-entry-field { margin: 12px 0; }
+@media (max-width: 390px) {
+  .tossit-play-main .tossit-score-entry-card .tossit-quick-choices { gap: 4px; }
+  .tossit-preview-line { display: block; }
+  .tossit-preview-line small { display: block; }
+}
+@media (orientation: landscape) and (min-width: 600px) {
+  .tossit-play-main .tossit-score-entry-card .tossit-quick-choice { min-height: 46px; }
+  .tossit-play-main .tossit-border-distance { max-width: 260px; }
+}

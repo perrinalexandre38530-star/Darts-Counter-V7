@@ -1,0 +1,45 @@
+/** Traductions déterministes de TOP 10 / MORPION : FR natif, EN explicite.
+ * Les autres langues utilisent l'anglais en repli, sans texte français accidentel.
+ * Les règles de score restent indépendantes de la langue. */
+const EN: Record<string, string> = {
+  "Règles TOP 10": "TOP 10 rules", "Règles du Morpion": "Tic-tac-toe rules", "Règles MORPION": "Tic-tac-toe rules",
+  "10 VOLÉES · 30 FLÉCHETTES": "10 VISITS · 30 DARTS",
+  "Objectif : faire le plus gros score cumulé possible. Mesure la régularité, la meilleure volée et la moyenne à trois fléchettes.": "Aim for the highest cumulative score. Track your consistency, best visit and three-dart average.",
+  "Participants": "Players", "Profils locaux": "Local profiles", "Bots IA": "AI bots", "Non": "No", "Oui": "Yes",
+  "Facile": "Easy", "Normal": "Medium", "Difficile": "Hard", "Ordre de jeu": "Turn order", "Défini": "Selected", "Aléatoire": "Random",
+  "DÉMARRER TOP 10": "START TOP 10", "Joueur": "Player", "joueur": "player", "joueurs": "players", "Profil": "Profile",
+  "Règles": "Rules", "Manches": "Rounds", "Nombre de joueurs": "Number of players", "Démarrer la partie": "Start game",
+  "4 touches par case · Bull centrale · numéros aléatoires à chaque manche.": "4 hits to claim each cell · Bull in the centre · new random numbers each round.",
+  "4 touches par case · Bull centrale · S / D / T = 1 touche": "4 hits per cell · Bull in the centre · S / D / T = 1 hit",
+  "Retour à l'historique": "Back to history", "Retour": "Back",
+  "Chargement de la partie enregistrée…": "Loading saved match…",
+  "Reprise impossible : état enregistré absent, terminé ou incohérent. Aucune nouvelle partie n’a été créée.": "Cannot resume: saved state is missing, finished or inconsistent. No new match was created.",
+  "Volée non validée restaurée sur cet appareil : vérifie les fléchettes avant validation.": "Unconfirmed visit restored on this device: review the darts before confirming.",
+  "Stockage local indisponible : la volée en cours ne pourra pas être restaurée après fermeture.": "Local storage unavailable: the current visit cannot be recovered after closing.",
+  "Enregistrement de la partie…": "Saving match…", "Enregistrement impossible : vérifie l'espace disponible avant de quitter.": "Save failed: check available storage before leaving.",
+  "Partie enregistrée sur cet appareil.": "Match saved on this device.", "RÉESSAYER L’ENREGISTREMENT": "RETRY SAVE",
+  "QUITTER SANS ENREGISTRER": "LEAVE WITHOUT SAVING", "La partie ne progresse plus tant que le dernier état n’est pas enregistré.": "The match is paused until the latest state is saved.",
+  "Sortie en attente de confirmation du dernier enregistrement…": "Waiting for the final save before leaving…",
+  "TOP 10 TERMINÉ": "TOP 10 COMPLETE", "Égalité": "Tie", "Match nul": "Draw",
+  "Objectif : plus gros total en 30 fléchettes · 10 volées de 3": "Goal: highest total across 30 darts · 10 visits of 3",
+  "Meilleure": "Best", "Moy.": "Avg.", "pts": "pts", "TABLEAU DES VOLÉES": "VISIT SCOREBOARD", "Volée": "Visit",
+  "APERÇU — LECTURE SEULE": "PREVIEW — READ ONLY", "VOLÉE DU BOT": "BOT VISIT", "ENREGISTREMENT…": "SAVING…",
+  "CONTINUER": "CONTINUE", "RECOMMENCER": "PLAY AGAIN", "VOLÉE": "VISIT",
+  "Saisis 3 fléchettes, y compris MISS pour un lancer manqué.": "Enter all 3 darts, including MISS for a missed dart.",
+  "Le dernier état de la partie n’a pas été enregistré. Quitter malgré le risque de perdre des volées ?": "The latest state has not been saved. Leave and risk losing visits?",
+  "Démarrer une nouvelle partie ? La partie actuelle restera disponible dans l’Historique.": "Start a new match? The current match will remain in History.",
+  "MANCHE": "ROUND", "Manche nulle": "Round drawn", "manche(s)": "round(s)", "Nouvelle partie": "New match", "Manche suivante": "Next round",
+  "La progression des cases est affichée sur la grille.": "Cell progress is shown on the grid.",
+  "MORPION · 4 TOUCHES": "TIC-TAC-TOE · 4 HITS",
+  "8 numéros distincts sont tirés au sort pour les cases extérieures. La case centrale est toujours la Bull (25 ou 50).": "Eight different numbers are drawn for the outer cells. The centre is always Bull (25 or 50).",
+  "À tour de rôle, chaque joueur lance 3 fléchettes. Il faut 4 touches sur un numéro pour conquérir sa case (simple, double ou triple = 1 touche). Les touches sont conservées d'une volée à l'autre.": "Players take turns throwing 3 darts. Claim a cell with 4 hits on its number (single, double or triple counts as one hit). Hits carry over between visits.",
+  "Une fois conquise, une case appartient définitivement à son joueur. Le premier à aligner 3 cases (ligne, colonne ou diagonale) gagne la manche.": "Claimed cells stay with their owner. The first player to align 3 cells in a row, column or diagonal wins the round.",
+  "TOP 10": "TOP 10",
+  "Dix volées de trois fléchettes. Les points de toutes les fléchettes sont cumulés. Simple, double, triple, Bull25 et Bull50 comptent normalement. Le meilleur total remporte la partie. En solo, l'objectif est de battre son propre record.": "Ten visits of three darts. Add all dart points. Singles, doubles, triples, Bull25 and Bull50 score normally. The highest total wins. In solo mode, try to beat your personal record.",
+  "Indicateurs : meilleur score de volée, moyenne par volée, 100+ et 140+.": "Metrics: best visit, average per visit, 100+ and 140+.",
+  "TOP 10 : dix volées de trois fléchettes par joueur. Toutes les zones de la cible comptent (simple, double, triple, Bull 25 et Bull 50). Additionnez les dix scores. Le plus gros total remporte la partie. En solo, essayez de battre votre record. Ce format est également utilisable comme exercice d'entraînement ou défi.": "TOP 10: ten visits of three darts per player. All areas count (single, double, triple, Bull 25 and Bull 50). Add up the ten scores: the highest total wins. In solo, beat your record. Also playable as a training drill or challenge.",
+  "MORPION : 8 numéros différents tirés au sort, Bull toujours au centre. Chaque joueur doit réaliser 4 touches sur une case pour se l’approprier. Simple, double et triple comptent chacun une touche. Aligner 3 cases pour gagner la manche.": "TIC-TAC-TOE: 8 random numbers with Bull always in the centre. Claim a cell with 4 hits; singles, doubles and triples each count as one hit. Align 3 cells to win the round.",
+};
+export function top10MorpionLabel(lang: string, french: string): string {
+  return lang === "fr" ? french : (EN[french] ?? french);
+}

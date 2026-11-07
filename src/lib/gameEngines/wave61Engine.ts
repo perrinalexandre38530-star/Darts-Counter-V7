@@ -4231,6 +4231,9 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
     const history = state.special.bimBamBoumHistory || (state.special.bimBamBoumHistory = []);
     history.push({ playerId: player.id, rule, valid, superBoom: valid && superEnabled && Number(streakMap[player.id] || 0) === 0, scores:[scoreA,scoreB,scoreC], sameNumber:!!sameNumber, bedCombo:!!bedCombo, progressive:!!progressive, delta, bonus:valid?Math.max(0,delta-scoreA-scoreB-scoreC):0, streak:Number(streakMap[player.id]||0), at:Date.now() });
   } else if (state.modeId === "saute_moutons") {
+    // Le compteur initial vient du ciblage générique ; ici seules les fléchettes
+    // qui font réellement avancer sur la piste doivent compter comme touches.
+    hits = 0;
     const trackLength = Math.max(6, Number(state.config?.modeOptions?.trackLength ?? state.config?.goal ?? 20));
     const leapBonus = Math.max(0, Number(state.config?.modeOptions?.leapfrogBonus ?? 1));
     const bull25Jump = Math.max(1, Number(state.config?.modeOptions?.bull25Jump ?? 4));
@@ -4311,6 +4314,9 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
       }
     } else if (alive.length === 1 && state.players.length > 1) finishWith(state, alive[0].id, null);
   } else if (state.modeId === "une_ptite_raclette") {
+    // Les portions sont déjà comptées ci-dessous, une fois par fléchette valide.
+    // Réinitialiser les touches évite un double comptage avec getWave61Target().
+    hits = 0;
     const servedMap = state.special.racletteServedByPlayer || (state.special.racletteServedByPlayer = {});
     const varietyMap = state.special.racletteVarietyBonusByPlayer || (state.special.racletteVarietyBonusByPlayer = {});
     const missMap = state.special.racletteMissPenaltyByPlayer || (state.special.racletteMissPenaltyByPlayer = {});

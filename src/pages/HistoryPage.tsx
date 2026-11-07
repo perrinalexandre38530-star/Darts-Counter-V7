@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { dartsFamilyHistoryKey } from "../lib/historyDartsVariants";
 // ============================================
 // src/pages/HistoryPage.tsx — Historique V2 Neon Deluxe
 // - KPIs (sauvegardées / terminées / en cours)
@@ -402,6 +403,7 @@ const SPORT_GAME_FILTERS: Record<string, { key: string; label: string; aliases: 
     { key: "football", label: "DARTS FOOTBALL", aliases: ["football", "darts football", "football_darts"] },
     { key: "battle_royale", label: "Battle Royale", aliases: ["battle_royale", "battle", "royale"] },
     { key: "warfare", label: "Warfare", aliases: ["warfare"] },
+    { key: "chase", label: "CHASE", aliases: ["chase"] },
     { key: "five_lives", label: "Les 5 vies", aliases: ["five_lives", "five lives", "5 vies", "cinq vies"] },
     { key: "gros_6", label: "GROS 6", aliases: ["gros_6", "gros 6", "gros6", "big_6", "big 6", "big6"] },
     { key: "scram", label: "SCRAM", aliases: ["scram"] },
@@ -409,6 +411,7 @@ const SPORT_GAME_FILTERS: Record<string, { key: string; label: string; aliases: 
     { key: "attrape_moi", label: "Attrape-moi", aliases: ["attrape_moi", "attrape moi", "attrape-moi", "catch me", "catchme"] },
     { key: "president", label: "Président", aliases: ["president", "président"] },
     { key: "bobs_27", label: "Bob’s 27", aliases: ["bobs_27", "bobs27", "bob's 27", "bob’s 27"] },
+    { key: "split_score", label: "SPLIT SCORE", aliases: ["split_score", "split score", "splitscore"] },
     { key: "halve_it", label: "HALVE-IT", aliases: ["halve_it", "halve-it", "halve it", "half-it"] },
     { key: "shooter", label: "SHOOTER", aliases: ["shooter"] },
     { key: "darts_racer", label: "DARTS RACER", aliases: ["darts_racer", "darts racer", "dartsracer", "mario_kart", "mario kart"] },
@@ -585,6 +588,8 @@ function challengeHistoryHasStarted(e: SavedEntry): boolean {
 
 function inferGameFilterKey(e: SavedEntry, sport: SportId): string {
   if (sport === "darts") {
+    const familyKey = dartsFamilyHistoryKey(e);
+    if (familyKey) return familyKey;
     if (isChallengeHistoryEntry(e)) return challengeHistoryMatchMode(e) === "solo" ? "challenge_solo" : "challenge_multi";
     if (isKillerEntry(e)) return "killer";
     if (isShanghaiEntry(e)) return "shanghai";
@@ -619,6 +624,7 @@ function isGenericDartsSummaryMode(mode: string): boolean {
     "battleroyale",
     "battle_royale",
     "warfare",
+    "chase",
     "fivelives",
     "five_lives",
     "gros6",
@@ -632,6 +638,7 @@ function isGenericDartsSummaryMode(mode: string): boolean {
     "president",
     "bobs_27",
     "bobs27",
+    "splitscore",
     "halve_it",
     "halveit",
     "shooter",
@@ -823,6 +830,11 @@ function statusOf(e: SavedEntry): "finished" | "in_progress" {
 }
 
 function modeLabel(e: SavedEntry) {
+  const familyKey = dartsFamilyHistoryKey(e);
+  if (familyKey === "chase") return "CHASE";
+  if (familyKey === "split_score") return "SPLIT SCORE";
+  if (familyKey === "five_lives") return "LES 5 VIES";
+  if (familyKey === "halve_it") return "HALVE-IT";
   const m = baseMode(e);
   if (m === "killer_progressive" || m === "killer-progressive" || m === "killerprogressive") {
     return "KILLER PROGRESSIF";
@@ -1050,6 +1062,7 @@ const modeColor: Record<string, string> = {
   dartspoker: "#f6c256",
   battle_royale: "#ff455c",
   warfare: "#ff7a2f",
+  chase: "#ff964f",
   five_lives: "#ff4fb8",
   gros_6: "#ff9d25",
   gros6: "#ff9d25",
@@ -1062,6 +1075,7 @@ const modeColor: Record<string, string> = {
   president: "#e9c56c",
   bobs_27: "#e4c06b",
   bobs27: "#e4c06b",
+  split_score: "#5ce2ff",
   halve_it: "#ffd76a",
   halveit: "#ffd76a",
   shooter: "#42d6ff",
@@ -1077,6 +1091,8 @@ const modeColor: Record<string, string> = {
 };
 
 function getModeColor(e: SavedEntry) {
+  const familyKey = dartsFamilyHistoryKey(e);
+  if (familyKey) return modeColor[familyKey] || modeColor.default;
   const m = baseMode(e);
   // Toutes les déclinaisons Killer doivent garder exactement l'identité visuelle orange du Killer classique.
   if (isKillerEntry(e) || isProgressiveKillerEntry(e) || m.includes("killer")) return modeColor.killer;
@@ -1406,6 +1422,7 @@ function isProgressiveKillerEntry(e: SavedEntry): boolean {
 }
 
 function isFiveLivesEntry(e: SavedEntry): boolean {
+  if (["five_lives", "chase"].includes(dartsFamilyHistoryKey(e) || "")) return true;
   return historyModeTokens(e).some((token) => {
     const n = token.replace(/[\s-]+/g, "_");
     return n.includes("five_lives") || n.includes("5_vies") || n.includes("cinq_vies") || n.includes("les_5_vies");
@@ -2383,7 +2400,7 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
     );
   }
 
-  if (["halve_it", "halveit"].includes(normalizeToken(baseMode(e))) || inferGameFilterKey(e, "darts") === "halve_it") {
+  if (["halve_it", "split_score"].includes(inferGameFilterKey(e, "darts")) || ["halveit", "splitscore"].includes(normalizeToken(baseMode(e)))) {
     const anyE: any = e as any;
     const summary: any = anyE?.summary || anyE?.payload?.summary || {};
     const standings = Array.isArray(summary?.standings) ? summary.standings : Array.isArray(summary?.rankings) ? summary.rankings : Array.isArray(anyE?.payload?.state?.standings) ? anyE.payload.state.standings : [];
@@ -2406,7 +2423,7 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
           {players.slice(0, 3).map((pl: any) => { const name = historyScoreName(e, pl) || getName(pl) || "Joueur"; const hits = Number(pl?.validHits ?? pl?.targetHits ?? 0) || 0; const darts = Number(pl?.dartsThrown ?? pl?.darts ?? 0) || 0; const halves = Number(pl?.halvingEvents ?? pl?.penaltyEvents ?? 0) || 0; const loss = Number(pl?.pointsLostByHalving ?? pl?.pointsLost ?? 0) || 0; return `${name}: ${hits}/${darts} hits • ${halves} halve • −${loss} pts`; }).join("  |  ")}
         </div> : null}
         <div style={{ color: "rgba(255,255,255,.55)", fontSize: 9.5, fontWeight: 850 }}>
-          {Number(summary?.targetsPlayed || matchStats?.targets || 0) ? `${Number(summary?.targetsPlayed || matchStats?.targets)} cibles` : "HALVE-IT"}
+          {Number(summary?.targetsPlayed || matchStats?.targets || 0) ? `${Number(summary?.targetsPlayed || matchStats?.targets)} cibles` : modeLabel(e)}
           {Number(matchStats?.totalDarts || 0) ? ` • ${Number(matchStats.totalDarts)} flèches` : ""}
           {Number(matchStats?.totalHalves || 0) ? ` • ${Number(matchStats.totalHalves)} divisions` : ""}
         </div>
@@ -5353,6 +5370,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
         warfare: "warfare_play",
         fivelives: "five_lives_play",
         five_lives: "five_lives_play",
+        chase: "five_lives_play",
         les5vies: "five_lives_play",
         scram: "scram_play",
         baseball: "baseball_play",
@@ -5363,6 +5381,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
         bobs_27: "bobs_27_play",
         halveit: "halve_it_play",
         halve_it: "halve_it_play",
+        splitscore: "halve_it_play",
         shooter: "shooter_play",
         dartsracer: "darts_racer_play",
         darts_racer: "darts_racer_play",

@@ -5,6 +5,7 @@ import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
 import ScoreInputHub from "../components/ScoreInputHub";
 import tickerMorpion from "../assets/tickers/ticker_tic_tac_toe.png";
+import { top10MorpionLabel } from "../lib/top10MorpionLabels";
 import { useLang } from "../contexts/LangContext";
 import { History } from "../lib/history";
 import { createMatchCheckpointWriter } from "../lib/matchCheckpointWriter";
@@ -46,7 +47,8 @@ function dartLabel(d: UIDart) {
   return `${Number(d.mult) === 3 ? "T" : Number(d.mult) === 2 ? "D" : "S"}${Number(d.v)}`;
 }
 export default function TicTacToePlay(props: any) {
-  const { t } = useLang();
+  const { lang } = useLang();
+  const tr = (value: string) => top10MorpionLabel(lang, value);
   const route = props?.params || {};
   const resuming = !!(route.resumeId || (route.rec && route.from?.startsWith("history")));
   const preview = !!route.preview;
@@ -100,7 +102,7 @@ export default function TicTacToePlay(props: any) {
   const persist = (rec: any) => writerRef.current.enqueue(rec);
   const retrySave = () => { writerRef.current.retry(); };
   const forceExit = () => {
-    if (window.confirm("Le dernier état de la partie n’a pas été enregistré. Quitter malgré le risque de perdre des volées ?")) props?.setTab?.(resuming?"history":"games");
+    if (window.confirm(tr("Le dernier état de la partie n’a pas été enregistré. Quitter malgré le risque de perdre des volées ?"))) props?.setTab?.(resuming?"history":"games");
   };
   async function requestBack(destination: string) {
     if (leavingRef.current) return;
@@ -109,8 +111,8 @@ export default function TicTacToePlay(props: any) {
       const stored = !!active && savePartialVisit(
         draftIdentity(id.current, active.id, round, current, visits.current), inputDartsRef.current, inputMultRef.current);
       const message = stored
-        ? `${inputDartsRef.current.length} fléchette(s) non validée(s) conservée(s) sur cet appareil. Quitter la partie ?`
-        : `${inputDartsRef.current.length} fléchette(s) non validée(s). Stockage local indisponible : ces fléchettes risquent d’être perdues. Quitter ?`;
+        ? lang === "fr" ? `${inputDartsRef.current.length} fléchette(s) non validée(s) conservée(s) sur cet appareil. Quitter la partie ?` : `${inputDartsRef.current.length} unconfirmed dart(s) saved on this device. Leave this match?`
+        : lang === "fr" ? `${inputDartsRef.current.length} fléchette(s) non validée(s). Stockage local indisponible : ces fléchettes risquent d’être perdues. Quitter ?` : `${inputDartsRef.current.length} unconfirmed dart(s). Local storage is unavailable, so they may be lost. Leave?`;
       if (!window.confirm(message)) return;
     }
     leavingRef.current = true;
@@ -208,7 +210,7 @@ export default function TicTacToePlay(props: any) {
 
   function commit(darts: UIDart[]) {
     if (hydration !== "ready" || preview || finished || result || botSummary || commitGuard.current || leavingRef.current || (writerRef.current.isBusy || writerRef.current.hasError)) return;
-    if (darts.length !== 3) { setInputWarning("Saisis 3 fléchettes, y compris MISS pour un lancer manqué."); return; }
+    if (darts.length !== 3) { setInputWarning(tr("Saisis 3 fléchettes, y compris MISS pour un lancer manqué.")); return; }
     commitGuard.current = true;
     setInputWarning("");
     const player = players[current];
@@ -249,7 +251,7 @@ export default function TicTacToePlay(props: any) {
   async function restart() {
     if (hydration !== "ready" || preview || leavingRef.current) return;
     if (!(await writerRef.current.drain())) return;
-    if (!finished && !window.confirm("Démarrer une nouvelle partie ? La partie actuelle restera disponible dans l’Historique.")) return;
+    if (!finished && !window.confirm(tr("Démarrer une nouvelle partie ? La partie actuelle restera disponible dans l’Historique."))) return;
     botGuard.current = ""; commitGuard.current = false; setBotSummary(null); setInputWarning("");
     clearPartialVisit({mode:"tic_tac_toe",matchId:id.current});setRestoredDraft(false);id.current = `morpion-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; started.current = Date.now(); visits.current = [];
     const g = newMorpionGrid(players.length); const empty = players.map(() => 0);
@@ -279,21 +281,21 @@ export default function TicTacToePlay(props: any) {
   }, [hydration, preview, grid, current, result, finished, currentPlayer?.isBot, throwing.length, botSummary, saveStatus]);
   const isHumanTurn = hydration === "ready" && !preview && !currentPlayer?.isBot && !finished && !result && saveStatus !== "saving" && saveStatus !== "error" && !leavePending;
   const championName = players.find((p: any) => p.id === champion)?.name;
-  if (hydration !== "ready") return <div className="page"><PageHeader title="MORPION" tickerSrc={tickerMorpion} left={<BackDot onClick={() => props?.setTab?.("history")} />} />
-    <div role="status" style={{padding:25,textAlign:"center"}}>{hydration === "loading" ? "Chargement de la partie enregistrée…" : "Reprise impossible : état enregistré absent, terminé ou incohérent. Aucune nouvelle partie n’a été créée."}
-    <div style={{marginTop:16}}><button type="button" className="btn-secondary" onClick={()=>props?.setTab?.("history")}>Retour à l'historique</button></div></div></div>;
+  if (hydration !== "ready") return <div className="page"><PageHeader title={lang === "fr" ? "MORPION" : "TIC-TAC-TOE"} tickerSrc={tickerMorpion} left={<BackDot onClick={() => props?.setTab?.("history")} />} />
+    <div role="status" style={{padding:25,textAlign:"center"}}>{hydration === "loading" ? tr("Chargement de la partie enregistrée…") : tr("Reprise impossible : état enregistré absent, terminé ou incohérent. Aucune nouvelle partie n’a été créée.")}
+    <div style={{marginTop:16}}><button type="button" className="btn-secondary" onClick={()=>props?.setTab?.("history")}>{tr("Retour à l'historique")}</button></div></div></div>;
   return <div className="page">
-    <PageHeader title="MORPION" tickerSrc={tickerMorpion} left={<BackDot onClick={() => requestBack(resuming?"history":"games")} />} right={<InfoDot title="Règles du Morpion" content={RULES} />} />
+    <PageHeader title={lang === "fr" ? "MORPION" : "TIC-TAC-TOE"} tickerSrc={tickerMorpion} left={<BackDot onClick={() => requestBack(resuming?"history":"games")} />} right={<InfoDot title={tr("Règles du Morpion")} content={lang === "fr" ? RULES : `TIC-TAC-TOE · 4 HITS\n\n${tr("8 numéros distincts sont tirés au sort pour les cases extérieures. La case centrale est toujours la Bull (25 ou 50).")}\n\n${tr("À tour de rôle, chaque joueur lance 3 fléchettes. Il faut 4 touches sur un numéro pour conquérir sa case (simple, double ou triple = 1 touche). Les touches sont conservées d'une volée à l'autre.")}\n\n${tr("Une fois conquise, une case appartient définitivement à son joueur. Le premier à aligner 3 cases (ligne, colonne ou diagonale) gagne la manche.")}`} />} />
     <div style={{ padding: 12, paddingBottom: 110, maxWidth: 720, margin: "0 auto" }}>
-      {restoredDraft && !preview && <div role="status" style={{fontSize:12,marginBottom:8,color:"#9fe7c7"}}>Volée non validée restaurée sur cet appareil : vérifie les fléchettes avant validation.</div>}
-      {draftStorageUnavailable && !preview && <div role="alert" style={{fontSize:12,marginBottom:8,color:"#ffd18a"}}>Stockage local indisponible : la volée en cours ne pourra pas être restaurée après fermeture.</div>}
-      {saveStatus !== "idle" && <div role={saveStatus === "error" ? "alert" : "status"} style={{fontSize:12,marginBottom:8,color:saveStatus === "error" ? "#ff9a9a" : "#a9d8ef"}}>{saveStatus === "saving" ? "Enregistrement de la partie…" : saveStatus === "error" ? "Enregistrement impossible : vérifie l'espace disponible avant de quitter." : "Partie enregistrée sur cet appareil."}</div>}
-      {saveStatus === "error" && <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}><button type="button" className="btn-primary" onClick={retrySave}>RÉESSAYER L’ENREGISTREMENT</button><button type="button" className="btn-secondary" onClick={forceExit}>QUITTER SANS ENREGISTRER</button><span style={{fontSize:12,opacity:.85}}>La partie ne progresse plus tant que le dernier état n’est pas enregistré.</span></div>}
-      {leavePending && <div role="status" style={{marginBottom:8,fontSize:12,color:"#ffd18a"}}>Sortie en attente de confirmation du dernier enregistrement…</div>}
+      {restoredDraft && !preview && <div role="status" style={{fontSize:12,marginBottom:8,color:"#9fe7c7"}}>{tr("Volée non validée restaurée sur cet appareil : vérifie les fléchettes avant validation.")}</div>}
+      {draftStorageUnavailable && !preview && <div role="alert" style={{fontSize:12,marginBottom:8,color:"#ffd18a"}}>{tr("Stockage local indisponible : la volée en cours ne pourra pas être restaurée après fermeture.")}</div>}
+      {saveStatus !== "idle" && <div role={saveStatus === "error" ? "alert" : "status"} style={{fontSize:12,marginBottom:8,color:saveStatus === "error" ? "#ff9a9a" : "#a9d8ef"}}>{saveStatus === "saving" ? tr("Enregistrement de la partie…") : saveStatus === "error" ? tr("Enregistrement impossible : vérifie l'espace disponible avant de quitter.") : tr("Partie enregistrée sur cet appareil.")}</div>}
+      {saveStatus === "error" && <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}><button type="button" className="btn-primary" onClick={retrySave}>{tr("RÉESSAYER L’ENREGISTREMENT")}</button><button type="button" className="btn-secondary" onClick={forceExit}>{tr("QUITTER SANS ENREGISTRER")}</button><span style={{fontSize:12,opacity:.85}}>{tr("La partie ne progresse plus tant que le dernier état n’est pas enregistré.")}</span></div>}
+      {leavePending && <div role="status" style={{marginBottom:8,fontSize:12,color:"#ffd18a"}}>{tr("Sortie en attente de confirmation du dernier enregistrement…")}</div>}
       <div style={{ border: "1px solid #ffffff24", borderRadius: 16, padding: 12, background: "#111528d9", marginBottom: 10 }}>
-        <b>MANCHE {round + 1}/{maxRounds}</b> · {finished ? championName ? `Victoire : ${championName}` : "Match nul" : result ? result.winner !== null ? `${players[result.winner].name} remporte la manche` : "Manche nulle" : `Au tour de ${currentPlayer?.name}`}
-        <div style={{ display: "flex", gap: 12, marginTop: 8, flexWrap: "wrap" }}>{players.map((p: any, i: number) => <span key={p.id} style={{ color: PALETTE[i], fontWeight: 900 }}>{MARKS[i]} {p.name} · {wins[i]} manche(s)</span>)}</div>
-        <div style={{ opacity: .75, fontSize: 12, marginTop: 7 }}>4 touches par case · Bull centrale · S / D / T = 1 touche</div>
+        <b>{tr("MANCHE")} {round + 1}/{maxRounds}</b> · {finished ? championName ? `${lang === "fr" ? "Victoire :" : "Winner:"} ${championName}` : tr("Match nul") : result ? result.winner !== null ? `${players[result.winner].name} ${lang === "fr" ? "remporte la manche" : "wins the round"}` : tr("Manche nulle") : `${lang === "fr" ? "Au tour de" : "Turn:"} ${currentPlayer?.name}`}
+        <div style={{ display: "flex", gap: 12, marginTop: 8, flexWrap: "wrap" }}>{players.map((p: any, i: number) => <span key={p.id} style={{ color: PALETTE[i], fontWeight: 900 }}>{MARKS[i]} {p.name} · {wins[i]} {tr("manche(s)")}</span>)}</div>
+        <div style={{ opacity: .75, fontSize: 12, marginTop: 7 }}>{tr("4 touches par case · Bull centrale · S / D / T = 1 touche")}</div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
         {grid.targets.map((target, idx) => <div key={idx} style={{ minHeight: 112, background: grid.owners[idx] !== null ? `${PALETTE[grid.owners[idx]]}26` : "#141a2c", border: `2px solid ${grid.owners[idx] !== null ? PALETTE[grid.owners[idx]] : idx === 4 ? "#ffc857" : "#ffffff28"}`, borderRadius: 13, padding: 7, textAlign: "center" }}>
@@ -301,7 +303,7 @@ export default function TicTacToePlay(props: any) {
           {grid.owners[idx] === null ? <div style={{ display: "grid", gap: 3, marginTop: 5 }}>{players.map((p: any, i: number) => <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ fontSize: 11, fontWeight: 900, color: PALETTE[i] }}>{MARKS[i]}</span><div style={{ flex: 1, display: "flex", gap: 2 }}>{Array.from({ length: 4 }, (_, j) => <i key={j} style={{ display: "block", height: 7, flex: 1, borderRadius: 3, background: j < grid.marks[idx][i] ? PALETTE[i] : "#ffffff1f" }} />)}</div></div>)}</div> : <div style={{ fontSize: 39, fontWeight: 1000, color: PALETTE[grid.owners[idx]] }}>{MARKS[grid.owners[idx]]}</div>}
         </div>)}
       </div>
-      {isHumanTurn && <div style={{ marginTop: 12, padding: 9, borderRadius: 13, background: "#111528" }}><div style={{ fontSize: 12, fontWeight: 900, paddingBottom: 6 }}>VOLÉE · {throwing.length}/3 fléchettes</div>{inputWarning && <div role="alert" style={{color:"#ffd18a",fontSize:12,marginBottom:5}}>{inputWarning}</div>}<ScoreInputHub currentThrow={throwing} multiplier={mult}
+      {isHumanTurn && <div style={{ marginTop: 12, padding: 9, borderRadius: 13, background: "#111528" }}><div style={{ fontSize: 12, fontWeight: 900, paddingBottom: 6 }}>{tr("VOLÉE")} · {throwing.length}/3 {lang === "fr" ? "fléchettes" : "darts"}</div>{inputWarning && <div role="alert" style={{color:"#ffd18a",fontSize:12,marginBottom:5}}>{inputWarning}</div>}<ScoreInputHub currentThrow={throwing} multiplier={mult}
           onSimple={() => rememberInput(inputDartsRef.current, 1)}
           onDouble={() => rememberInput(inputDartsRef.current, 2)}
           onTriple={() => rememberInput(inputDartsRef.current, 3)}
@@ -311,15 +313,15 @@ export default function TicTacToePlay(props: any) {
           onBull={() => appendInput({ v: 25, mult: inputMultRef.current === 2 ? 2 : 1 })}
           onDirectDart={appendInput}
           onValidate={() => commit(inputDartsRef.current)} /></div>}
-      {preview && <div style={{textAlign:"center",marginTop:12,color:"#ffd18a"}}>APERÇU — LECTURE SEULE <button type="button" className="btn-secondary" onClick={()=>props?.setTab?.("history")}>Retour</button></div>}
-      {!preview && <div style={{ display: "flex", gap: 8, marginTop: 12 }}><button className="btn-secondary" disabled={saveStatus === "error" || leavePending} onClick={restart} style={{ flex: 1 }}>Nouvelle partie</button><button className="btn-primary" disabled={!result || finished || !!botSummary || saveStatus === "saving" || saveStatus === "error" || leavePending} onClick={nextRound} style={{ flex: 1 }}>Manche suivante</button></div>}
-      {botSummary && saveStatus !== "error" && <div role="dialog" aria-label="Volée du bot" style={{ position:"fixed", inset:0, zIndex:10010, display:"grid", placeItems:"center", padding:16, background:"#030713bc" }}>
+      {preview && <div style={{textAlign:"center",marginTop:12,color:"#ffd18a"}}>{tr("APERÇU — LECTURE SEULE")} <button type="button" className="btn-secondary" onClick={()=>props?.setTab?.("history")}>{tr("Retour")}</button></div>}
+      {!preview && <div style={{ display: "flex", gap: 8, marginTop: 12 }}><button className="btn-secondary" disabled={saveStatus === "error" || leavePending} onClick={restart} style={{ flex: 1 }}>{tr("Nouvelle partie")}</button><button className="btn-primary" disabled={!result || finished || !!botSummary || saveStatus === "saving" || saveStatus === "error" || leavePending} onClick={nextRound} style={{ flex: 1 }}>{tr("Manche suivante")}</button></div>}
+      {botSummary && saveStatus !== "error" && <div role="dialog" aria-label={tr("VOLÉE DU BOT")} style={{ position:"fixed", inset:0, zIndex:10010, display:"grid", placeItems:"center", padding:16, background:"#030713bc" }}>
         <div style={{width:"min(100%, 430px)",background:"#121b33",border:"1px solid #67dafa",boxShadow:"0 22px 80px #000b",borderRadius:18,padding:20,textAlign:"center"}}>
-          <div style={{fontSize:13,opacity:.8,fontWeight:800}}>VOLÉE DU BOT</div>
+          <div style={{fontSize:13,opacity:.8,fontWeight:800}}>{tr("VOLÉE DU BOT")}</div>
           <h3 style={{margin:"5px 0 12px"}}>{botSummary.name}</h3>
           <div style={{fontSize:19,fontWeight:900}}>{botSummary.darts.map(dartLabel).join(" · ")}</div>
-          <div style={{margin:"12px 0",fontSize:13,opacity:.85}}>La progression des cases est affichée sur la grille.</div>
-          <button type="button" className="btn-primary" disabled={saveStatus === "saving"} style={{width:"100%",padding:13}} onClick={() => setBotSummary(null)}>{saveStatus === "saving" ? "ENREGISTREMENT…" : "CONTINUER"}</button>
+          <div style={{margin:"12px 0",fontSize:13,opacity:.85}}>{tr("La progression des cases est affichée sur la grille.")}</div>
+          <button type="button" className="btn-primary" disabled={saveStatus === "saving"} style={{width:"100%",padding:13}} onClick={() => setBotSummary(null)}>{saveStatus === "saving" ? tr("ENREGISTREMENT…") : tr("CONTINUER")}</button>
         </div>
       </div>}
     </div>
