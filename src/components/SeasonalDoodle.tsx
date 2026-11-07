@@ -163,7 +163,7 @@ const Garland = ({ cover }: { cover: boolean }) => {
   );
 };
 
-const AutumnDetails = ({ cover }: { cover: boolean }) => {
+const AutumnDetails = ({ cover, compact }: { cover: boolean; compact: boolean }) => {
   const ground = cover ? 402 : 338;
   const pile: Array<[number,number,number,number]> = [
     [10,ground-12,.68,-39],[48,ground-3,.82,38],[83,ground-23,.65,-14],
@@ -187,40 +187,40 @@ const AutumnDetails = ({ cover }: { cover: boolean }) => {
     [961,109,.35,-19,7.4,-29,ground-109,10.1],
   ];
   return <>
-    {falling.map(([x,y,z,r,delay,drift,drop,duration],i)=><FallingLeaf key={`fall-${i}`} x={x} y={y} s={z} r={r} delay={delay} drift={drift} drop={drop} duration={duration}/>)}
+    {falling.filter((_,i) => !compact || i % 2 === 0).map(([x,y,z,r,delay,drift,drop,duration],i)=><FallingLeaf key={`fall-${i}`} x={x} y={y} s={z} r={r} delay={delay} drift={drift} drop={drop} duration={duration}/>)}
     <path d={`M-30 ${ground+9}Q35 ${ground-20} 112 ${ground-3}Q207 ${ground-23} 315 ${ground+14}L315 470H-30Z`}
       fill="url(#mss-leaf-bed)" opacity=".73"/>
     <path d={`M1030 ${ground+9}Q965 ${ground-20} 888 ${ground-3}Q793 ${ground-23} 685 ${ground+14}L685 470H1030Z`}
       fill="url(#mss-leaf-bed)" opacity=".73"/>
-    {pile.map(([x,y,z,r],i)=><MapleLeaf key={`pile-${i}`} x={x} y={y} s={z} r={r} shade={[-14,0,10,18,-7][i%5]}/>)}
+    {pile.filter((_,i) => !compact || i % 2 === 0).map(([x,y,z,r],i)=><MapleLeaf key={`pile-${i}`} x={x} y={y} s={z} r={r} shade={[-14,0,10,18,-7][i%5]}/>)}
     {/* Le sol reste fixe, les feuilles mobiles s'effacent juste avant de le toucher. */}
   </>;
 };
 
-const WinterDetails = ({ cover }: { cover: boolean }) => {
+const WinterDetails = ({ cover, compact }: { cover: boolean; compact: boolean }) => {
   const snowY = cover ? 415 : 306;
   const drop = cover ? 360 : 250;
   return (
     <>
       <Garland cover={cover} />
 
-      {[ [85,24,.38,0,20,drop,10],[168,54,.28,1.2,-16,drop,11],[248,12,.34,2.4,18,drop,9.5],[330,44,.26,3.5,-22,drop,11.5],[432,26,.31,4.2,16,drop,10.2],[520,10,.36,1.6,-14,drop,12],[612,46,.24,2.8,20,drop,10.6],[708,18,.32,3.2,-18,drop,11.2],[810,36,.3,0.7,12,drop,9.8],[902,16,.34,2.2,-15,drop,10.8] ].map(([x,y,s,d,drift,dropV,dur],i)=><FallingFlake key={`ws-${i}`} x={x as number} y={y as number} s={s as number} delay={d as number} drift={drift as number} drop={dropV as number} duration={dur as number} />)}
+      {[ [85,24,.38,0,20,drop,10],[168,54,.28,1.2,-16,drop,11],[248,12,.34,2.4,18,drop,9.5],[330,44,.26,3.5,-22,drop,11.5],[432,26,.31,4.2,16,drop,10.2],[520,10,.36,1.6,-14,drop,12],[612,46,.24,2.8,20,drop,10.6],[708,18,.32,3.2,-18,drop,11.2],[810,36,.3,0.7,12,drop,9.8],[902,16,.34,2.2,-15,drop,10.8] ].filter((_,i) => !compact || i % 2 === 0).map(([x,y,s,d,drift,dropV,dur],i)=><FallingFlake key={`ws-${i}`} x={x as number} y={y as number} s={s as number} delay={d as number} drift={drift as number} drop={dropV as number} duration={dur as number} />)}
 
       <path d={`M0 ${snowY}Q95 ${snowY-27} 205 ${snowY-7}T405 ${snowY-6}T600 ${snowY-10}T795 ${snowY-7}T1000 ${snowY-9}V500H0Z`} fill="url(#mss-snow-fill)" stroke="#91dfff" strokeWidth="3"/>
       <Fir x={cover ? 78 : 64} y={cover ? 410 : 302} s={cover ? 1.06 : .7} />
       <Fir x={cover ? 150 : 128} y={cover ? 420 : 308} s={cover ? .63 : .45} />
       <Fir x={cover ? 922 : 938} y={cover ? 410 : 302} s={cover ? 1.06 : .7} />
       <Fir x={cover ? 850 : 872} y={cover ? 420 : 308} s={cover ? .63 : .45} />
-      {[[96,90,1.0,1],[190,150,.72,2],[310,88,.56,3],[435,170,.5,4],[582,90,.62,1],[700,160,.7,5],[815,104,.85,2],[910,170,.62,6],[140, cover ? 290 : 240, .42,3],[865, cover ? 290 : 240, .42,4]].map(([x,y,s,d],i)=><Flake key={i} x={x as number} y={y as number} s={s as number} delay={d as number} className="mss-doodle-soft-drift" />)}
+      {[[96,90,1.0,1],[190,150,.72,2],[310,88,.56,3],[435,170,.5,4],[582,90,.62,1],[700,160,.7,5],[815,104,.85,2],[910,170,.62,6],[140, cover ? 290 : 240, .42,3],[865, cover ? 290 : 240, .42,4]].filter((_,i) => !compact || i % 2 === 0).map(([x,y,s,d],i)=><Flake key={i} x={x as number} y={y as number} s={s as number} delay={d as number} className="mss-doodle-soft-drift" />)}
     </>
   );
 };
 
-const SpringDetails = ({ cover }: { cover: boolean }) => {
+const SpringDetails = ({ cover, compact }: { cover: boolean; compact: boolean }) => {
   const groundY = cover ? 420 : 314;
   return (
     <>
-      {[ [205,95,.82,0,0,44],[788,90,.82,1.3,0,40],[140,132,.7,2.4,0,28],[856,136,.7,3.1,0,28] ].map(([x,y,s,d,_,range],i)=><Bee key={i} x={x as number} y={y as number} s={s as number} delay={d as number} range={range as number} />)}
+      {[ [205,95,.82,0,0,44],[788,90,.82,1.3,0,40],[140,132,.7,2.4,0,28],[856,136,.7,3.1,0,28] ].filter((_,i) => !compact || i % 2 === 0).map(([x,y,s,d,_,range],i)=><Bee key={i} x={x as number} y={y as number} s={s as number} delay={d as number} range={range as number} />)}
       <path d={`M0 ${groundY+6}Q110 ${groundY-24} 220 ${groundY}T440 ${groundY-2}T680 ${groundY+2}T1000 ${groundY-3}`} stroke="#a5df9c" strokeWidth="5" fill="none" opacity=".9"/>
       <g opacity=".72">
         {[[86, groundY-12],[144, groundY-20],[864, groundY-12],[918, groundY-20],[210,groundY-2],[792,groundY-2]].map(([x,y],i)=><circle key={i} cx={x as number} cy={y as number} r="4.5" fill="#ffd9ec"/>)}
@@ -230,7 +230,7 @@ const SpringDetails = ({ cover }: { cover: boolean }) => {
   );
 };
 
-const SummerDetails = ({ cover }: { cover: boolean }) => {
+const SummerDetails = ({ cover, compact }: { cover: boolean; compact: boolean }) => {
   const sunX = cover ? 858 : 872;
   const sunY = cover ? 76 : 66;
   const shoreY = cover ? 420 : 316;
@@ -242,7 +242,7 @@ const SummerDetails = ({ cover }: { cover: boolean }) => {
         {Array.from({ length: 12 }, (_, i) => <path key={i} transform={`rotate(${i * 30} ${sunX} ${sunY})`} d={`M${sunX} ${cover ? 42 : 35}v-15`} stroke="#ffdb83" strokeWidth="4" strokeLinecap="round"/>) }
       </g>
       <HeatWave x={260} y={cover ? 136 : 122} width={128} delay={0} />
-      <HeatWave x={438} y={cover ? 122 : 109} width={142} delay={1.6} />
+      {!compact && <HeatWave x={438} y={cover ? 122 : 109} width={142} delay={1.6} />}
       <HeatWave x={605} y={cover ? 144 : 130} width={128} delay={.8} />
       <path className="mss-summer-wave" d={`M0 ${shoreY}Q85 ${shoreY-14} 170 ${shoreY}T340 ${shoreY}T510 ${shoreY}T680 ${shoreY}T850 ${shoreY}T1000 ${shoreY}`} stroke="#81d8d0" strokeWidth="6" fill="none" opacity=".85"/>
       <path className="mss-summer-wave" style={{ animationDelay: '-1.2s' }} d={`M0 ${shoreY+14}Q105 ${shoreY+2} 210 ${shoreY+14}T420 ${shoreY+14}T630 ${shoreY+14}T840 ${shoreY+14}T1000 ${shoreY+14}`} stroke="#f4f2ba" strokeWidth="5" fill="none" opacity=".75"/>
@@ -253,19 +253,36 @@ const SummerDetails = ({ cover }: { cover: boolean }) => {
   );
 };
 
-const Details = ({ season, cover }: { season: AppSeason; cover: boolean }) => {
-  if (season === 'autumn') return <AutumnDetails cover={cover} />;
-  if (season === 'winter') return <WinterDetails cover={cover} />;
-  if (season === 'spring') return <SpringDetails cover={cover} />;
-  return <SummerDetails cover={cover} />;
+const Details = ({ season, cover, compact }: { season: AppSeason; cover: boolean; compact: boolean }) => {
+  if (season === 'autumn') return <AutumnDetails cover={cover} compact={compact} />;
+  if (season === 'winter') return <WinterDetails cover={cover} compact={compact} />;
+  if (season === 'spring') return <SpringDetails cover={cover} compact={compact} />;
+  return <SummerDetails cover={cover} compact={compact} />;
 };
 
 export default function SeasonalDoodle({ season = getAppSeason(), variant = 'title', className = '' }: Props) {
   const cover = variant === 'cover';
   const [enabled, setEnabled] = React.useState(getSeasonalDecorationsEnabled);
+  const [compact, setCompact] = React.useState(false);
+  const [visible, setVisible] = React.useState(true);
+  const rootRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => subscribeSeasonalDecorations(setEnabled), []);
+  React.useEffect(() => {
+    const media = window.matchMedia('(pointer: coarse)');
+    const update = () => setCompact(media.matches);
+    update();
+    media.addEventListener?.('change', update);
+    return () => media.removeEventListener?.('change', update);
+  }, []);
+  React.useEffect(() => {
+    const root = rootRef.current;
+    if (!root || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting), { rootMargin: '80px' });
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, []);
   return (
-    <div className={`mss-seasonal-doodle mss-seasonal-doodle--${variant} mss-seasonal-doodle--${season} ${className}`.trim()}>
+    <div ref={rootRef} className={`mss-seasonal-doodle mss-seasonal-doodle--${variant} mss-seasonal-doodle--${season} ${compact ? 'mss-seasonal-doodle--compact' : ''} ${className}`.trim()}>
       {enabled ? (() => {
         const branch = season === 'winter' ? winterBranch : season === 'spring' ? springBranch : season === 'summer' ? summerBranch : autumnBranch;
         return <>
@@ -273,7 +290,7 @@ export default function SeasonalDoodle({ season = getAppSeason(), variant = 'tit
           <img src={branch} alt="" draggable={false} className="mss-seasonal-corner mss-seasonal-corner--right" />
         </>;
       })() : null}
-      {enabled && <svg viewBox={cover ? '0 0 1000 450' : '0 0 1000 330'} preserveAspectRatio="none" focusable="false" aria-hidden="true">
+      {enabled && visible && <svg viewBox={cover ? '0 0 1000 450' : '0 0 1000 330'} preserveAspectRatio="xMidYMid meet" focusable="false" aria-hidden="true">
         <defs>
           <linearGradient id="mss-bark" x1="0" y1="0" x2="0" y2="1"><stop stopColor="#4a2818"/><stop offset=".48" stopColor="#9c5932"/><stop offset="1" stopColor="#321b12"/></linearGradient>
           <linearGradient id="mss-leaf-bed" x1="0" y1="0" x2="0" y2="1"><stop stopColor="#ffae39" stopOpacity=".6"/><stop offset="1" stopColor="#6c270d" stopOpacity=".15"/></linearGradient>
@@ -287,7 +304,7 @@ export default function SeasonalDoodle({ season = getAppSeason(), variant = 'tit
           <radialGradient id="mss-sun-halo"><stop stopColor="#ffdc7a" stopOpacity=".42"/><stop offset="1" stopColor="#ffc85a" stopOpacity="0"/></radialGradient>
           <radialGradient id="mss-sun-fill"><stop stopColor="#fff7c0"/><stop offset="1" stopColor="#ffb64a"/></radialGradient>
         </defs>
-        <Details season={season} cover={cover} />
+        <Details season={season} cover={cover} compact={compact} />
       </svg>}
     </div>
   );

@@ -99,3 +99,49 @@
 .mss-seasonal-doodle--title .mss-seasonal-corner--left{left:-14%}
 .mss-seasonal-doodle--title .mss-seasonal-corner--right{right:-14%;transform:scaleX(-1)}
 @media(max-width:480px){.mss-seasonal-doodle--title .mss-seasonal-corner{top:-15%;width:42%;max-width:230px;opacity:.94}.mss-seasonal-doodle--title .mss-seasonal-corner--left{left:-13%}.mss-seasonal-doodle--title .mss-seasonal-corner--right{right:-13%;transform:scaleX(-1)}}
+
+/* V239 — Preserve SVG geometry: no non-uniform scaling, especially in landscape. */
+.mss-seasonal-doodle--title svg {
+  position:absolute;
+  inset:0;
+  width:100%;height:100%;
+  overflow:hidden;
+  filter:none;
+}
+/* Landscape banners are very wide and shallow. Keep the art at its natural
+   aspect ratio, anchor its bottom to the leaf/snow carpet, and crop vertically.
+   The corner illustrations are independent, responsive and never stretched. */
+@media (orientation:landscape) and (min-width:650px) {
+  .mss-seasonal-doodle--title svg {
+    inset:auto 0 0;
+    width:100%;
+    height:auto;
+    aspect-ratio:1000 / 330;
+    max-height:none;
+  }
+  .mss-seasonal-doodle--title .mss-seasonal-corner {
+    top:-34px;
+    width:clamp(150px,18%,240px);
+    max-width:none;
+    height:auto;
+    opacity:.93;
+  }
+  .mss-seasonal-doodle--title .mss-seasonal-corner--left{left:-38px}
+  .mss-seasonal-doodle--title .mss-seasonal-corner--right{right:-38px;transform:scaleX(-1)}
+}
+/* Mobile: avoid per-particle GPU/CPU filters and layered SVG shadows. */
+@media (pointer:coarse) {
+  .mss-seasonal-doodle svg,
+  .mss-seasonal-doodle--cover svg{filter:none!important}
+  .mss-seasonal-doodle .mss-seasonal-corner{filter:none!important}
+  .mss-seasonal-doodle svg .mss-doodle-soft-drift,
+  .mss-seasonal-doodle svg .mss-fall-snow-spin,
+  .mss-seasonal-doodle svg .mss-bee-wingbeat{animation:none!important}
+  .mss-seasonal-doodle .mss-doodle-blossom{animation:none!important}
+  .mss-seasonal-doodle svg .mss-doodle-garland-light{filter:none!important}
+  .mss-seasonal-doodle svg .mss-fall-leaf g{filter:none!important}
+}
+@media(prefers-reduced-motion:reduce){.mss-seasonal-doodle svg *{animation:none!important}}
+@media (pointer:coarse) {
+  .mss-seasonal-doodle svg g { filter:none!important }
+}
