@@ -2912,6 +2912,7 @@ React.useEffect(() => {
             position: "relative",
             overflow: "hidden",
             isolation: "isolate",
+            ["--mss-safe-title-width" as any]: "360px",
           }}
         >
           <SportWelcomeWatermark sport={String(sport)} opacity={0.12} size={205} />
@@ -2943,7 +2944,7 @@ React.useEffect(() => {
           </div>
   
           <div
-            className="msc-home-sport-title"
+            className={`msc-home-sport-title mss-seasonal-title mss-seasonal-title--${getAppSeason()}`}
             style={{
               position: "relative",
               zIndex: 2,
@@ -2952,10 +2953,6 @@ React.useEffect(() => {
               letterSpacing: 3,
               textAlign: "center",
               textTransform: "uppercase",
-              backgroundImage: `linear-gradient(120deg, ${primary}, #ffffff, ${primary})`,
-              backgroundSize: "200% 100%",
-              WebkitBackgroundClip: "text",
-              color: "transparent",
               animation:
                 "dcTitlePulse 3.6s ease-in-out infinite, dcTitleShimmer 7s linear infinite",
             }}

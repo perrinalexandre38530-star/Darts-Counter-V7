@@ -163,7 +163,7 @@ const Garland = ({ cover }: { cover: boolean }) => {
 };
 
 const AutumnDetails = ({ cover }: { cover: boolean }) => {
-  const ground = cover ? 402 : 296;
+  const ground = cover ? 402 : 338;
   const pile: Array<[number,number,number,number]> = [
     [10,ground-12,.68,-39],[48,ground-3,.82,38],[83,ground-23,.65,-14],
     [125,ground-7,.82,41],[162,ground-29,.62,13],[199,ground-4,.73,-37],

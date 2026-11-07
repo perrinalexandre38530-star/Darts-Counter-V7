@@ -882,7 +882,7 @@ export default function OrganizationsPage({ go, params }: Props) {
         <SportWelcomeWatermark sport={String(sportCtx?.sport || "darts")} opacity={0.12} size={205} />
         <SeasonalDoodle season={getAppSeason()} />
         <div
-          className="msc-home-welcome-pill mss-doodle-welcome"
+          className={`msc-home-welcome-pill mss-doodle-welcome mss-seasonal-doodle--${getAppSeason()}`}
           style={{
             position: "relative",
             zIndex: 2,
@@ -907,7 +907,7 @@ export default function OrganizationsPage({ go, params }: Props) {
           </span>
         </div>
         <div
-          className="msc-home-sport-title"
+          className={`msc-home-sport-title mss-seasonal-title mss-seasonal-title--${getAppSeason()}`}
           style={{
             position: "relative",
             zIndex: 2,
@@ -916,10 +916,6 @@ export default function OrganizationsPage({ go, params }: Props) {
             letterSpacing: 3,
             textAlign: "center",
             textTransform: "uppercase",
-            backgroundImage: `linear-gradient(120deg, ${theme.primary}, #ffffff, ${theme.primary})`,
-            backgroundSize: "200% 100%",
-            WebkitBackgroundClip: "text",
-            color: "transparent",
             animation: "dcTitlePulse 3.6s ease-in-out infinite, dcTitleShimmer 7s linear infinite",
           }}
         >

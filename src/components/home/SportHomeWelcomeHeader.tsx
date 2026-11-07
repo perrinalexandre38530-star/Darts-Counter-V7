@@ -25,6 +25,7 @@ export default function SportHomeWelcomeHeader({
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
   const textRef = React.useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = React.useState(1);
+  const [safeTitleWidth, setSafeTitleWidth] = React.useState(360);
 
   React.useLayoutEffect(() => {
     const measure = () => {
@@ -39,6 +40,7 @@ export default function SportHomeWelcomeHeader({
         ? Math.max(0.72, Math.min(1, wrapWidth / textWidth))
         : 1;
       setScale(next);
+      setSafeTitleWidth(Math.round(textWidth * next + 34));
     };
 
     measure();
@@ -70,6 +72,7 @@ export default function SportHomeWelcomeHeader({
         position: "relative",
         overflow: "hidden",
         isolation: "isolate",
+        ["--mss-safe-title-width" as any]: `${safeTitleWidth}px`,
       }}
     >
       <SportWelcomeWatermark sport={sport} opacity={0.12} size={205} />
@@ -103,7 +106,7 @@ export default function SportHomeWelcomeHeader({
 
       <div className="msc-sport-home-title-wrap" ref={wrapRef} style={{ position: "relative", zIndex: 2, width: "100%", overflow: "hidden" }}>
         <div
-          className="msc-sport-home-title"
+          className={`msc-sport-home-title mss-seasonal-title mss-seasonal-title--${getAppSeason()}`}
           ref={textRef}
           style={{
             width: "fit-content",
@@ -114,10 +117,6 @@ export default function SportHomeWelcomeHeader({
             textAlign: "center",
             textTransform: "uppercase",
             whiteSpace: "nowrap",
-            backgroundImage: `linear-gradient(120deg, ${accent}, #ffffff, ${accent})`,
-            backgroundSize: "200% 100%",
-            WebkitBackgroundClip: "text",
-            color: "transparent",
             animation: "dcTitlePulse 3.6s ease-in-out infinite, dcTitleShimmer 7s linear infinite",
             transform: `scale(${scale})`,
             transformOrigin: "center",

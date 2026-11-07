@@ -56,6 +56,23 @@
 .mss-sun-pulse{animation:mss-sun-pulse 4.8s ease-in-out infinite}
 .mss-heat-wave{animation:mss-heat-wave 3.4s ease-in-out infinite}
 .mss-summer-wave{animation:mss-water-wave 5.5s ease-in-out infinite}
+
+.mss-seasonal-title{background-size:200% 100%!important;-webkit-background-clip:text!important;background-clip:text!important;color:transparent!important}
+.mss-seasonal-title--autumn{background-image:linear-gradient(120deg,#be4d16 0%,#ff9b3f 26%,#fff0bf 48%,#ff9346 68%,#b94014 100%)!important}
+.mss-seasonal-title--winter{background-image:linear-gradient(120deg,#6ab8df 0%,#d8f5ff 26%,#ffffff 48%,#aee5ff 70%,#4f8dc8 100%)!important}
+.mss-seasonal-title--spring{background-image:linear-gradient(120deg,#b86d9c 0%,#ffd2e8 26%,#fffaf8 48%,#d7efbb 70%,#79af71 100%)!important}
+.mss-seasonal-title--summer{background-image:linear-gradient(120deg,#d88c1b 0%,#ffd867 26%,#fff2b8 48%,#ffc84b 70%,#d67012 100%)!important}
+
+
+.msc-home-header,.msc-sport-home-welcome-card{--mss-safe-title-width:360px}
+.msc-home-welcome-pill,.msc-sport-home-welcome-pill{min-width:168px;justify-content:center;box-sizing:border-box}
+.msc-home-welcome-pill>span,.msc-sport-home-welcome-pill>span,.msc-sport-home-welcome-pill span{text-align:center;display:block;width:100%}
+.mss-seasonal-doodle--title .mss-seasonal-corner{width:min(37%,calc((100% - var(--mss-safe-title-width,360px)) / 2 + 78px));max-width:235px}
+.mss-seasonal-doodle--title .mss-seasonal-corner--left{left:-1%}
+.mss-seasonal-doodle--title .mss-seasonal-corner--right{right:-1%;transform:scaleX(-1)}
+.msc-home-header .mss-doodle-welcome,.msc-sport-home-welcome-card .mss-doodle-welcome{position:relative;z-index:2}
+.msc-home-header .msc-home-sport-title,.msc-sport-home-welcome-card .msc-sport-home-title,.msc-home-header .mss-seasonal-title{position:relative;z-index:2}
+
 @media(max-width:480px){.msc-home-header:has(>.mss-seasonal-doodle),.msc-sport-home-header:has(>.mss-seasonal-doodle){min-height:143px;padding-block:24px!important}.mss-buvette-seasonal-hero{min-height:230px!important}.mss-doodle-title{padding:.05em .08em .18em;letter-spacing:2px!important}.msc-home-header:has(>.mss-seasonal-doodle) .mss-doodle-title,.msc-sport-home-header:has(>.mss-seasonal-doodle) .mss-doodle-title{letter-spacing:2.05px!important}}
 @media(prefers-reduced-motion:reduce){.mss-seasonal-doodle *, .mss-doodle-title{animation:none!important}}
 
@@ -70,4 +87,4 @@
 .mss-seasonal-corner--right {right:-1%; transform:scaleX(-1);}
 .mss-seasonal-doodle--cover .mss-seasonal-corner {width:34%;max-width:275px;opacity:.86;}
 .mss-seasonal-doodle--title svg {position:relative;z-index:1;}
-@media(max-width:480px){.mss-seasonal-corner{width:35%;top:-3%;opacity:.88;}.mss-seasonal-doodle--cover .mss-seasonal-corner{width:32%;}}
+@media(max-width:480px){.mss-seasonal-corner{width:35%;top:-3%;opacity:.88;}.mss-seasonal-doodle--title .mss-seasonal-corner{width:min(33%,calc((100% - var(--mss-safe-title-width,300px)) / 2 + 54px));}.mss-seasonal-doodle--cover .mss-seasonal-corner{width:32%;}}

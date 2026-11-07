@@ -579,6 +579,8 @@
   html[data-msc-orientation="landscape"] .msc-home-welcome-pill {
     margin-bottom: clamp(4px, .8vh, 8px) !important;
     padding: 4px 16px !important;
+    min-width: clamp(150px, 18vw, 176px) !important;
+    justify-content: center !important;
   }
   
   html[data-msc-orientation="landscape"] .msc-home-welcome-pill > span {
@@ -2333,6 +2335,8 @@
   html[data-msc-orientation="landscape"] .msc-sport-home-welcome-pill {
     margin-bottom: clamp(4px, .7vh, 7px) !important;
     padding: 4px 15px !important;
+    min-width: clamp(150px, 18vw, 176px) !important;
+    justify-content: center !important;
   }
   
   html[data-msc-orientation="landscape"] .msc-sport-home-welcome-pill span {
