@@ -17,6 +17,8 @@ export type PublicShopProduct = {
   price: number | null;
   currency: string;
   variants: string;
+  availability: "available" | "preorder" | "on_request" | "unavailable";
+  stockQuantity: number | null;
   imageUrl: string;
 };
 export type PublicShopData = {
@@ -96,7 +98,10 @@ export async function fetchPublicShop(organizationId: string): Promise<PublicSho
       id: String(item.id || ""), category: item.category as OrganizationShopCategory,
       title: String(item.title || ""), description: String(item.description || ""),
       price: item.price == null ? null : Number(item.price), currency: String(item.currency || "EUR"),
-      variants: String(item.variants || ""), imageUrl: cleanUrl(item.imageUrl),
+      variants: String(item.variants || ""),
+      availability: ["available", "preorder", "on_request", "unavailable"].includes(item.availability) ? item.availability : "available",
+      stockQuantity: item.stockQuantity == null ? null : Number(item.stockQuantity),
+      imageUrl: cleanUrl(item.imageUrl),
     })),
   };
 }

@@ -20,7 +20,11 @@ export type SportLiveSportId =
   | "volleyball"
   | "tennis"
   | "chess"
-  | "esports";
+  | "esports"
+  | "tossit"
+  | "dicegame"
+  | "running"
+  | "fit";
 import type { DartsLiveFixture, DartsLiveMatch, DartsLiveResult } from "../dartsLive/types";
 
 export type SportLiveRegion =

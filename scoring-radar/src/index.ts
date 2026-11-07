@@ -1,4 +1,5 @@
 import { adminHtml } from './admin';
+import { generateSalesDraft, insertSalesCampaign, listSalesCampaigns, listSalesDrafts, saveSalesDraft, updateSalesCampaignStatus, validateSalesCampaign } from './sales-agent';
 import { classifyCandidates, localizeQuery } from './ai';
 import { searchBrave } from './brave';
 import { intFromEnv, marketKey, parseMarkets } from './config';
@@ -301,6 +302,69 @@ async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: Ex
     if (!body.target || !allowed.has(body.target as AcquisitionTarget)) return json({ok:false,error:'invalid_target'},400);
     const id = await recordAcquisitionConversion(env,{target:body.target as AcquisitionTarget,sightingId:body.sightingId||null,campaignId:body.campaignId||null,note:body.note||''});
     return json({ok:true,id});
+  }
+
+  // An active campaign controls AI suggestions, not external posting.
+  if (request.method === 'GET' && url.pathname === '/api/sales/campaigns') {
+    return json({ok:true,campaigns:await listSalesCampaigns(env)});
+  }
+  if (request.method === 'POST' && url.pathname === '/api/sales/campaigns') {
+    const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+    try {
+      return json({ok:true,campaign:await insertSalesCampaign(env,validateSalesCampaign(body))},201);
+    } catch (error) {
+      return json({ok:false,error:error instanceof Error?error.message:'invalid_campaign'},400);
+    }
+  }
+  const salesStatus = url.pathname.match(/^\/api\/sales\/campaigns\/([^/]+)\/status$/);
+  if (request.method === 'POST' && salesStatus) {
+    const body = await request.json().catch(() => ({})) as {status?:string};
+    if (!['active','paused','draft'].includes(body.status||'')) return json({ok:false,error:'invalid_status'},400);
+    const updated = await updateSalesCampaignStatus(env,salesStatus[1]!,body.status as 'active'|'paused'|'draft');
+    return json({ok:updated,status:body.status},updated?200:404);
+  }
+  if (request.method === 'GET' && url.pathname === '/api/sales/drafts') {
+    return json({ok:true,drafts:await listSalesDrafts(env)});
+  }
+  if (request.method === 'POST' && url.pathname === '/api/sales/prepare-next') {
+    const body = await request.json().catch(() => ({})) as {campaignId?: string};
+    const campaign = (await listSalesCampaigns(env)).find(c=>c.id===body.campaignId);
+    if (!campaign) return json({ok:false,error:'campaign_not_found'},404);
+    if (campaign.status !== 'active') return json({ok:false,error:'campaign_not_active'},409);
+    const target = await getAcquisitionTarget(env,campaign.goal);
+    if (!target?.enabled || !target.url) return json({ok:false,error:'Configure la destination de cette campagne dans le tunnel.'},409);
+    const candidates = await listOpportunities(env,85,80);
+    const existing = new Set((await listSalesDrafts(env,500)).filter(d=>d.campaign_id===campaign.id).map(d=>d.opportunity_id));
+    const next = candidates.find(c=>!existing.has(c.id) && c.eligible && c.outreach_status!=='dismissed' && c.outreach_status!=='contacted' && c.outreach_status!=='won');
+    if (!next) return json({ok:false,error:'Aucune nouvelle discussion qualifiée à préparer.'},404);
+    const tracked = `${url.protocol}//${url.host}/go/${campaign.goal}/${next.id}`;
+    try {
+      const draft = await generateSalesDraft(env,campaign,next,tracked);
+      await saveSalesDraft(env,draft);
+      return json({ok:true,draft,opportunity:{id:next.id,title:next.title,source_url:next.source_url,score:next.score}});
+    } catch(error) {
+      return json({ok:false,error:error instanceof Error?error.message:'sales_ai_failed'},503);
+    }
+  }
+  if (request.method === 'POST' && url.pathname === '/api/sales/draft') {
+    const body = await request.json().catch(() => ({})) as {campaignId?:string;opportunityId?:string};
+    if (!body.campaignId || !body.opportunityId) return json({ok:false,error:'missing_selection'},400);
+    const campaign = (await listSalesCampaigns(env)).find(c=>c.id===body.campaignId);
+    if (!campaign) return json({ok:false,error:'campaign_not_found'},404);
+    const opportunity = await getOpportunity(env,body.opportunityId);
+    if (!opportunity) return json({ok:false,error:'opportunity_not_found'},404);
+    const target = await getAcquisitionTarget(env,campaign.goal);
+    if (!target || !target.enabled || !target.url) return json({ok:false,error:'Configure d’abord la destination '+campaign.goal+' dans le tunnel.'},409);
+    if (Number(opportunity.score||0)<70 || !opportunity.eligible) return json({ok:false,error:'Discussion insuffisamment qualifiée.'},409);
+    // The tracked link is scoped to the detected opportunity and the selected goal.
+    const tracked = `${url.protocol}//${url.host}/go/${campaign.goal}/${opportunity.id}`;
+    try {
+      const draft = await generateSalesDraft(env,campaign,opportunity,tracked);
+      await saveSalesDraft(env,draft);
+      return json({ok:true,draft});
+    } catch(error) {
+      return json({ok:false,error:error instanceof Error?error.message:'sales_ai_failed'},503);
+    }
   }
 
   if (request.method === 'GET' && url.pathname === '/api/social/stats') {

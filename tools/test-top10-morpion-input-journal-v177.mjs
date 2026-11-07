@@ -29,7 +29,7 @@ function extractInputHandlers(page) {
   assert.match(source, /onDirectDart=\{appendInput\}/, `${page}: delayed preset darts use the ref-safe handler`);
   assert.match(source, /onValidate=\{\(\) => commit\(inputDartsRef\.current\)\}/, `${page}: validate uses latest ref`);
   assert.match(source, /Stockage local indisponible : la volée en cours/, `${page}: storage failure is visible`);
-  if (page === "Top10Play") assert.match(source, /!finished && !window\.confirm\("Démarrer une nouvelle partie/, "TOP 10: reset requires confirmation");
+  if (page === "Top10Play") assert.match(source, /!finished && !window\.confirm\((?:tr\()?"Démarrer une nouvelle partie/, "TOP 10: reset requires confirmation");
   assert.match(source, /if \(!preview && inputDartsRef\.current\.length > 0\)/, `${page}: back button sees latest darts`);
   const generated = ts.transpileModule([...fns.values()].join('\n'), {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },

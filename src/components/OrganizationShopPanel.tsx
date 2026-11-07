@@ -1,4 +1,5 @@
 import React from "react";
+import OrganizationShopRequestsPanel from "./OrganizationShopRequestsPanel";
 import OrganizationPublicShopSettings from "./OrganizationPublicShopSettings";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
@@ -13,8 +14,8 @@ import {
 import type { OrganizationRecord } from "../organizations/organizationService";
 
 type Filter = "all" | OrganizationShopCategory;
-type Draft = { category: OrganizationShopCategory; title: string; description: string; price: string; currency: string; variants: string; imageUrl: string; status: "draft" | "published"; sortOrder: string };
-const emptyDraft = (): Draft => ({ category: "official_kit", title: "", description: "", price: "", currency: "EUR", variants: "", imageUrl: "", status: "draft", sortOrder: "0" });
+type Draft = { availability: "available" | "preorder" | "on_request" | "unavailable"; stockQuantity: string; category: OrganizationShopCategory; title: string; description: string; price: string; currency: string; variants: string; imageUrl: string; status: "draft" | "published"; sortOrder: string };
+const emptyDraft = (): Draft => ({ availability: "available", stockQuantity: "", category: "official_kit", title: "", description: "", price: "", currency: "EUR", variants: "", imageUrl: "", status: "draft", sortOrder: "0" });
 
 export default function OrganizationShopPanel({ organization, userId, logoUrl }: { organization: OrganizationRecord; userId: string | null; logoUrl?: string }) {
   const { theme } = useTheme();
@@ -63,7 +64,7 @@ export default function OrganizationShopPanel({ organization, userId, logoUrl }:
 
   const reset = () => { setFormOpen(false); setEditingId(""); setDraft(emptyDraft()); setPictureDataUrl(""); };
   const edit = (item: OrganizationShopItem) => {
-    setDraft({ category: item.category, title: item.title, description: item.description, price: item.price == null ? "" : String(item.price), currency: item.currency, variants: item.variants, imageUrl: item.imageUrl, status: item.status === "published" ? "published" : "draft", sortOrder: String(item.sortOrder) });
+    setDraft({ category: item.category, title: item.title, description: item.description, price: item.price == null ? "" : String(item.price), currency: item.currency, variants: item.variants, imageUrl: item.imageUrl, status: item.status === "published" ? "published" : "draft", sortOrder: String(item.sortOrder), availability: item.availability, stockQuantity: item.stockQuantity == null ? "" : String(item.stockQuantity) });
     setEditingId(item.id); setPictureDataUrl(""); setError(""); setNotice(""); setFormOpen(true);
   };
   const startNew = (category: OrganizationShopCategory = "official_kit") => {
@@ -91,7 +92,9 @@ export default function OrganizationShopPanel({ organization, userId, logoUrl }:
     setBusy(true); setError(""); setNotice("");
     try {
       const imageUrl = pictureDataUrl ? await uploadOrganizationShopImage({ organizationId: organization.id, userId, dataUrl: pictureDataUrl }) : draft.imageUrl.trim();
-      const payload: OrganizationShopInput = { category: draft.category, title, description: draft.description.trim(), price,
+      const stockQuantity = draft.stockQuantity.trim() === "" ? null : Number(draft.stockQuantity);
+      if (stockQuantity !== null && (!Number.isSafeInteger(stockQuantity) || stockQuantity < 0 || stockQuantity > 100000)) throw new Error(L("Stock invalide.", "Invalid stock.", "Stock inválido."));
+      const payload: OrganizationShopInput = { availability: draft.availability, stockQuantity, category: draft.category, title, description: draft.description.trim(), price,
         currency: draft.currency, variants: draft.variants.trim(), imageUrl, status: draft.status, sortOrder: Number(draft.sortOrder || 0) };
       if (editingId) await updateOrganizationShopItem(userId, organization.id, editingId, payload);
       else await createOrganizationShopItem(userId, organization.id, payload);
@@ -156,6 +159,19 @@ export default function OrganizationShopPanel({ organization, userId, logoUrl }:
       <label style={label}>{draft.category === "drinks" ? L("Format / contenance (optionnel)", "Size / serving (optional)", "Formato / volumen (opcional)") : draft.category === "equipment_ad" ? L("État / détails (optionnel)", "Condition / details (optional)", "Estado / detalles (opcional)") : L("Tailles, couleurs ou personnalisation (optionnel)", "Sizes, colors or personalization (optional)", "Tallas, colores o personalización (opcional)")}
         <input style={input} maxLength={250} value={draft.variants} onChange={(e) => setDraft({ ...draft, variants: e.target.value })} placeholder={draft.category === "official_kit" || draft.category === "clothing" ? "XS, S, M, L, XL · Nom / numéro" : ""}/>
       </label>
+      {draft.category !== "drinks" && draft.category !== "equipment_ad" ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 9 }}>
+        <label style={label}>{L("Disponibilité", "Availability", "Disponibilidad")}
+          <select style={input} value={draft.availability} onChange={(e) => setDraft({ ...draft, availability: e.target.value as Draft["availability"] })}>
+            <option value="available">{L("Disponible", "Available", "Disponible")}</option>
+            <option value="preorder">{L("Précommande", "Preorder", "Prepedido")}</option>
+            <option value="on_request">{L("Sur commande", "Made to order", "Bajo pedido")}</option>
+            <option value="unavailable">{L("Indisponible", "Unavailable", "No disponible")}</option>
+          </select>
+        </label>
+        <label style={label}>{L("Quantité en stock (vide = non suivie)", "Stock quantity (blank = not tracked)", "Cantidad en stock (vacío = sin control)")}
+          <input style={input} type="number" min="0" max="100000" step="1" value={draft.stockQuantity} onChange={(e) => setDraft({ ...draft, stockQuantity: e.target.value })}/>
+        </label>
+      </div> : null}
       <label style={label}>{L("Photo du produit", "Product photo", "Foto del producto")}
         <input style={input} type="file" accept="image/*" onChange={(e) => { void pickPicture(e.target.files?.[0]); e.currentTarget.value = ""; }}/>
       </label>
@@ -197,6 +213,9 @@ export default function OrganizationShopPanel({ organization, userId, logoUrl }:
           <strong style={{ fontSize: 15, color: theme.text, overflowWrap: "anywhere" }}>{item.title}</strong>
           {item.description ? <p style={{ margin: 0, color: theme.textSoft, fontSize: 11.5, lineHeight: 1.5, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{item.description}</p> : null}
           {item.variants ? <p style={{ margin: 0, color: theme.textSoft, fontSize: 11 }}>{item.variants}</p> : null}
+          {item.category !== "drinks" && item.category !== "equipment_ad" ? <span style={{ color: item.availability === "unavailable" || (item.availability === "available" && item.stockQuantity === 0) ? "#ff9999" : theme.textSoft, fontSize: 11, fontWeight: 800 }}>
+            {item.availability === "unavailable" ? L("Indisponible", "Unavailable", "No disponible") : item.availability === "preorder" ? L("Précommande", "Preorder", "Prepedido") : item.availability === "on_request" ? L("Sur commande", "Made to order", "Bajo pedido") : item.stockQuantity === null ? L("Disponible", "Available", "Disponible") : `${item.stockQuantity} ${L("en stock", "in stock", "en stock")}`}
+          </span> : null}
           <strong style={{ color: theme.primary, fontSize: 17 }}>{money(item)}</strong>
           {canManage ? <div style={{ display: "flex", gap: 6, marginTop: 5, flexWrap: "wrap" }}>
             <button style={button} type="button" disabled={busy} onClick={() => edit(item)}>{L("Modifier", "Edit", "Editar")}</button>
@@ -205,6 +224,8 @@ export default function OrganizationShopPanel({ organization, userId, logoUrl }:
         </div>
       </article>)}
     </div> : null}
+
+    {canManage ? <OrganizationShopRequestsPanel organization={organization} userId={userId} /> : null}
 
     <div style={{ ...card, color: theme.textSoft, fontSize: 11, lineHeight: 1.6 }}>
       <strong style={{ display: "block", color: theme.text, fontSize: 12 }}>{L("Informations et disponibilités", "Information and availability", "Información y disponibilidad")}</strong>

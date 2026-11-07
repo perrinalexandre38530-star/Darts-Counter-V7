@@ -30,6 +30,10 @@ export const SPORT_LIVE_META: Record<SportLiveSportId, SportLiveMeta> = {
   tennis: { id: "tennis", icon: "🎾", label: "Tennis", shortLabel: "Tennis", accent: "#caff55" },
   chess: { id: "chess", icon: "♟️", label: "Échecs", shortLabel: "Échecs", accent: "#d9d9d9" },
   esports: { id: "esports", icon: "🎮", label: "E-sport", shortLabel: "E-sport", accent: "#b28cff" },
+  tossit: { id: "tossit", icon: "🔵", label: "TOSSIT", shortLabel: "TOSSIT", accent: "#68cafa" },
+  dicegame: { id: "dicegame", icon: "🎲", label: "Jeux de dés", shortLabel: "Dés", accent: "#efb8f9" },
+  running: { id: "running", icon: "🏃", label: "Course à pied", shortLabel: "Running", accent: "#a5e879" },
+  fit: { id: "fit", icon: "💪", label: "Fitness", shortLabel: "Fit", accent: "#f2a47c" },
 };
 
 export const SPORT_LIVE_REGION_LABELS: Record<SportLiveRegion, string> = {
@@ -525,6 +529,14 @@ const OTHER_SPORT_SOURCES: SportLiveSource[] = [
   { id:"frisbee-ukultimate", sport:"frisbee", name:"UK Ultimate", shortName:"UKU", description:"Ligues et tournois britanniques avec résultats clubs et divisions.", kind:"results", regions:["uk_ireland","europe"], locales:["en"], official:true, homeUrl:"https://www.ukultimate.com/", resultsUrl:"https://www.ukultimate.com/events", badges:["UK","CLUBS"] },
   { id:"frisbee-ultiworld", sport:"frisbee", name:"Ultiworld", shortName:"Ultiworld", description:"Actualités, résultats et suivi de compétitions Ultimate majeures et universitaires.", kind:"results", regions:["global","north_america","europe"], official:false, homeUrl:"https://ultiworld.com/", resultsUrl:"https://ultiworld.com/scoreboard/", badges:["SCOREBOARD","NEWS"] },
 
+  // Sports réellement jouables dans MSS : présence LIVE avec sources adaptées.
+  // Un annuaire de sources ne vaut pas promesse d'un flux de scores automatique.
+  { id:"running-world-athletics", sport:"running", name:"World Athletics — Calendar & Results", shortName:"World Athletics", description:"Calendrier et résultats internationaux, nationaux et courses sur route.", kind:"results", regions:["global","europe","africa","asia","north_america","oceania"], official:true, homeUrl:"https://worldathletics.org/", resultsUrl:"https://worldathletics.org/competition/calendar-results", calendarUrl:"https://worldathletics.org/competition/calendar-results", badges:["OFFICIEL","ROUTE","PISTE"] },
+  { id:"running-ffa", sport:"running", name:"Fédération française d'athlétisme", shortName:"FFA", description:"Résultats et calendrier fédéral français, course hors stade et piste.", kind:"results", regions:["france","europe"], locales:["fr"], official:true, homeUrl:"https://www.athle.fr/", resultsUrl:"https://www.athle.fr/", badges:["FRANCE","FÉDÉRAL"] },
+  { id:"fit-if3", sport:"fit", name:"International Functional Fitness Federation", shortName:"iF3", description:"Compétitions, calendriers et résultats internationaux de fitness fonctionnel.", kind:"results", regions:["global","europe","north_america","asia","africa","oceania"], official:true, homeUrl:"https://www.if3.fit/", resultsUrl:"https://www.if3.fit/championships", calendarUrl:"https://www.if3.fit/championships", badges:["OFFICIEL","CHAMPIONNATS"] },
+  { id:"fit-ff3", sport:"fit", name:"Fédération Fitness Fonctionnel France", shortName:"F3", description:"Compétitions et classements du fitness fonctionnel français.", kind:"results", regions:["france","europe"], locales:["fr"], official:true, homeUrl:"https://federationfitnessfonctionnel.fr/", resultsUrl:"https://federationfitnessfonctionnel.fr/", badges:["FRANCE","FITNESS"] },
+  { id:"tossit-official", sport:"tossit", name:"TOSSIT — site officiel", shortName:"TOSSIT", description:"Informations officielles sur le sport TOSSIT. Aucun flux de résultats automatiques n'est garanti.", kind:"governing_body", regions:["global","europe"], official:true, homeUrl:"https://tossit.game/", badges:["SPORT","OFFICIEL"] },
+  { id:"dicegame-guide", sport:"dicegame", name:"Jeux de dés — compétitions locales MSS", shortName:"Jeux de dés", description:"Résultats des parties locales : aucune fédération universelle ni flux de scores automatisé pour ce mode.", kind:"calendar", regions:["global","france"], official:false, homeUrl:"https://multisports-scoring.pages.dev/", badges:["LOCAL","NON CONNECTÉ"] },
 ];
 
 const DARTS_AS_GENERIC: SportLiveSource[] = DARTS_LIVE_SOURCES.map((source) => ({

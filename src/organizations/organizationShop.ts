@@ -3,6 +3,8 @@ import { supabase } from "../lib/supabaseClient";
 /** Catalogue consultable par les membres. Pas de vente/paiement dans l'app. */
 export type OrganizationShopCategory = "official_kit" | "clothing" | "goodies" | "drinks" | "equipment_ad";
 export type OrganizationShopStatus = "draft" | "published" | "archived";
+export type OrganizationShopAvailability = "available" | "preorder" | "on_request" | "unavailable";
+const AVAILABILITIES: OrganizationShopAvailability[] = ["available", "preorder", "on_request", "unavailable"];
 
 export type OrganizationShopItem = {
   id: string;
@@ -13,6 +15,8 @@ export type OrganizationShopItem = {
   price: number | null;
   currency: string;
   variants: string;
+  availability: OrganizationShopAvailability;
+  stockQuantity: number | null;
   imageUrl: string;
   status: OrganizationShopStatus;
   sortOrder: number;
@@ -21,7 +25,7 @@ export type OrganizationShopItem = {
 };
 
 export type OrganizationShopInput = Pick<OrganizationShopItem,
-  "category" | "title" | "description" | "price" | "currency" | "variants" | "imageUrl" | "status" | "sortOrder">;
+  "category" | "title" | "description" | "price" | "currency" | "variants" | "availability" | "stockQuantity" | "imageUrl" | "status" | "sortOrder">;
 
 const TABLE = "ms_organization_shop_items";
 const CATEGORIES: OrganizationShopCategory[] = ["official_kit", "clothing", "goodies", "drinks", "equipment_ad"];
@@ -39,6 +43,8 @@ function fromRow(row: any): OrganizationShopItem {
     price: row.price == null ? null : Number(row.price),
     currency: String(row.currency || "EUR"),
     variants: String(row.variants || ""),
+    availability: AVAILABILITIES.includes(row.availability) ? row.availability : "available",
+    stockQuantity: row.stock_quantity == null ? null : Number(row.stock_quantity),
     imageUrl: String(row.image_url || ""),
     status: row.status === "published" || row.status === "archived" ? row.status : "draft",
     sortOrder: Number(row.sort_order || 0),
@@ -53,6 +59,10 @@ function toRow(input: OrganizationShopInput) {
   const variants = String(input.variants || "").trim();
   const imageUrl = String(input.imageUrl || "").trim();
   const currency = String(input.currency || "EUR").toUpperCase();
+  const availability = input.availability;
+  if (!AVAILABILITIES.includes(availability)) throw new Error("Disponibilité invalide.");
+  const stockQuantity = input.stockQuantity == null ? null : Number(input.stockQuantity);
+  if (stockQuantity !== null && (!Number.isSafeInteger(stockQuantity) || stockQuantity < 0 || stockQuantity > 100000)) throw new Error("Stock invalide.");
   if (!isCategory(input.category)) throw new Error("Catégorie non autorisée.");
   if (title.length < 2 || title.length > 120) throw new Error("Le titre doit comporter de 2 à 120 caractères.");
   if (description.length > 1200 || variants.length > 250) throw new Error("Texte trop long.");
@@ -63,13 +73,13 @@ function toRow(input: OrganizationShopInput) {
   return {
     category: input.category, title, description, variants, image_url: imageUrl,
     price: price === null ? null : Math.round(price * 100) / 100,
-    currency, status: input.status, sort_order: Math.max(0, Math.min(1000000, Math.round(input.sortOrder || 0))),
+    currency, availability, stock_quantity: stockQuantity, status: input.status, sort_order: Math.max(0, Math.min(1000000, Math.round(input.sortOrder || 0))),
   };
 }
 
 function raise(error: any): never {
   const code = String(error?.code || "");
-  if (code === "42P01" || code === "PGRST205") throw new Error("Boutique indisponible : exécute la migration SQL V18 dans Supabase.");
+  if (code === "42P01" || code === "PGRST205") throw new Error("Boutique indisponible : exécute les migrations SQL V18 et V23 dans Supabase.");
   if (code === "42501") throw new Error("Accès refusé : vérifie ton rôle dans le club.");
   throw new Error(String(error?.message || "Opération impossible sur la boutique."));
 }
@@ -81,7 +91,7 @@ function changed() {
 export async function listOrganizationShopItems(userId: string | null | undefined, organizationId: string): Promise<OrganizationShopItem[]> {
   if (!userId || !organizationId) throw new Error("Compte connecté et organisation requis.");
   const { data, error } = await supabase.from(TABLE as any)
-    .select("id,organization_id,category,title,description,price,currency,variants,image_url,status,sort_order,created_at,updated_at")
+    .select("id,organization_id,category,title,description,price,currency,variants,image_url,availability,stock_quantity,status,sort_order,created_at,updated_at")
     .eq("organization_id", organizationId).order("sort_order", { ascending: true }).order("created_at", { ascending: false });
   if (error) raise(error);
   return (data || []).map(fromRow);

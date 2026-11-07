@@ -88,7 +88,7 @@ type NavItem = {
   icon: React.ReactNode;
 };
 
-function Icon({ name, size = 22 }: { name: TabKey; size?: number }) {
+export function BottomNavIcon({ name, size = 22 }: { name: TabKey; size?: number }) {
   const p = {
     fill: "none",
     stroke: "currentColor",
@@ -351,7 +351,7 @@ export default function BottomNav({
   const hideOnline = shouldHideOnlineMessagingForCurrentRuntime() || sportLc === "petanque" || sportLc === "pingpong" || sportLc === "running" || sportLc === "fit" || sportLc === "tossit";
   const showLiveSports = isLiveSportsSupportedSport(sport);
   const liveSportsTabs: NavItem[] = showLiveSports
-    ? [{ k: "live", label: "LIVE", icon: <Icon name="live" /> }]
+    ? [{ k: "live", label: "LIVE", icon: <BottomNavIcon name="live" /> }]
     : [];
 
   // Couleurs pilotées par le thème
@@ -415,27 +415,27 @@ export default function BottomNav({
 
   const tabs = (organizationMode
     ? [
-        { k: "organization_home", label: tr("Accueil", "Home", "Inicio"), icon: <Icon name="organization_home" /> },
-        { k: "organization_calendar", label: tr("Agenda", "Agenda", "Agenda"), icon: <Icon name="organization_calendar" /> },
-        { k: "games", label: tr("Jouer", "Play", "Jugar"), icon: <Icon name="games" /> },
-        { k: "organization_teams", label: tr("Équipes", "Teams", "Equipos"), icon: <Icon name="organization_teams" /> },
-        { k: "organization_more", label: tr("Plus", "More", "Más"), icon: <Icon name="organization_more" /> },
+        { k: "organization_home", label: tr("Accueil", "Home", "Inicio"), icon: <BottomNavIcon name="organization_home" /> },
+        { k: "organization_calendar", label: tr("Agenda", "Agenda", "Agenda"), icon: <BottomNavIcon name="organization_calendar" /> },
+        { k: "games", label: tr("Jouer", "Play", "Jugar"), icon: <BottomNavIcon name="games" /> },
+        { k: "organization_teams", label: tr("Équipes", "Teams", "Equipos"), icon: <BottomNavIcon name="organization_teams" /> },
+        { k: "organization_more", label: tr("Plus", "More", "Más"), icon: <BottomNavIcon name="organization_more" /> },
       ]
     : sportLc === "esports"
     ? [
-        { k: "home", label: tr("Accueil", "Home", "Inicio"), icon: <Icon name="home" /> },
-        { k: "games", label: tr("Jeux", "Games", "Juegos"), icon: <Icon name="games" /> },
-        { k: "esports_rooms", label: tr("Salons", "Rooms", "Salas"), icon: <Icon name="esports_rooms" /> },
-        { k: "esports_matches", label: tr("Matchs", "Matches", "Partidos"), icon: <Icon name="esports_matches" /> },
-        { k: "esports_tournaments", label: tr("Tournois", "Tournaments", "Torneos"), icon: <Icon name="esports_tournaments" /> },
-        { k: "esports_profile", label: tr("Communauté", "Community", "Comunidad"), icon: <Icon name="esports_profile" /> },
-        { k: "settings", label: tr("Réglages", "Settings", "Ajustes"), icon: <Icon name="settings" /> },
+        { k: "home", label: tr("Accueil", "Home", "Inicio"), icon: <BottomNavIcon name="home" /> },
+        { k: "games", label: tr("Jeux", "Games", "Juegos"), icon: <BottomNavIcon name="games" /> },
+        { k: "esports_rooms", label: tr("Salons", "Rooms", "Salas"), icon: <BottomNavIcon name="esports_rooms" /> },
+        { k: "esports_matches", label: tr("Matchs", "Matches", "Partidos"), icon: <BottomNavIcon name="esports_matches" /> },
+        { k: "esports_tournaments", label: tr("Tournois", "Tournaments", "Torneos"), icon: <BottomNavIcon name="esports_tournaments" /> },
+        { k: "esports_profile", label: tr("Communauté", "Community", "Comunidad"), icon: <BottomNavIcon name="esports_profile" /> },
+        { k: "settings", label: tr("Réglages", "Settings", "Ajustes"), icon: <BottomNavIcon name="settings" /> },
       ]
     : sportLc === "running"
     ? [
-        { k: "home", label: t("nav.home", tr("Accueil", "Home", "Inicio")), icon: <Icon name="home" /> },
-        { k: "agenda", label: tr("Agenda", "Agenda", "Agenda"), icon: <Icon name="agenda" /> },
-        { k: "profiles", label: t("nav.profiles", tr("Profils", "Profiles", "Perfiles")), icon: <Icon name="profiles" /> },
+        { k: "home", label: t("nav.home", tr("Accueil", "Home", "Inicio")), icon: <BottomNavIcon name="home" /> },
+        { k: "agenda", label: tr("Agenda", "Agenda", "Agenda"), icon: <BottomNavIcon name="agenda" /> },
+        { k: "profiles", label: t("nav.profiles", tr("Profils", "Profiles", "Perfiles")), icon: <BottomNavIcon name="profiles" /> },
         {
           k: "games",
           label: t("nav.activity", tr("Activité", "Activity", "Actividad")),
@@ -447,14 +447,14 @@ export default function BottomNav({
             </svg>
           ),
         },
-        { k: "running_plan", label: t("nav.plan", tr("Plan", "Plan", "Plan")), icon: <Icon name="running_plan" /> },
-        { k: "stats", label: t("nav.stats", "Stats"), icon: <Icon name="stats" /> },
-        { k: "settings", label: t("nav.settings", tr("Réglages", "Settings", "Ajustes")), icon: <Icon name="settings" /> },
+        { k: "running_plan", label: t("nav.plan", tr("Plan", "Plan", "Plan")), icon: <BottomNavIcon name="running_plan" /> },
+        { k: "stats", label: t("nav.stats", "Stats"), icon: <BottomNavIcon name="stats" /> },
+        { k: "settings", label: t("nav.settings", tr("Réglages", "Settings", "Ajustes")), icon: <BottomNavIcon name="settings" /> },
       ]
     : sportLc === "fit"
       ? [
-          { k: "home", label: t("nav.home", tr("Accueil", "Home", "Inicio")), icon: <Icon name="home" /> },
-          { k: "profiles", label: t("nav.profiles", tr("Profil", "Profile", "Perfil")), icon: <Icon name="profiles" /> },
+          { k: "home", label: t("nav.home", tr("Accueil", "Home", "Inicio")), icon: <BottomNavIcon name="home" /> },
+          { k: "profiles", label: t("nav.profiles", tr("Profil", "Profile", "Perfil")), icon: <BottomNavIcon name="profiles" /> },
           {
             k: "games",
             label: t("nav.train", tr("Séance", "Train", "Sesión")),
@@ -464,30 +464,30 @@ export default function BottomNav({
               </svg>
             ),
           },
-          { k: "fit_plan", label: tr("Explorer", "Explore", "Explorar"), icon: <Icon name="fit_plan" /> },
-          { k: "agenda", label: tr("Agenda", "Agenda", "Agenda"), icon: <Icon name="agenda" /> },
-          { k: "stats", label: t("nav.stats", "Stats"), icon: <Icon name="stats" /> },
-          { k: "settings", label: t("nav.settings", tr("Réglages", "Settings", "Ajustes")), icon: <Icon name="settings" /> },
+          { k: "fit_plan", label: tr("Explorer", "Explore", "Explorar"), icon: <BottomNavIcon name="fit_plan" /> },
+          { k: "agenda", label: tr("Agenda", "Agenda", "Agenda"), icon: <BottomNavIcon name="agenda" /> },
+          { k: "stats", label: t("nav.stats", "Stats"), icon: <BottomNavIcon name="stats" /> },
+          { k: "settings", label: t("nav.settings", tr("Réglages", "Settings", "Ajustes")), icon: <BottomNavIcon name="settings" /> },
         ]
       : [
-        { k: "home", label: t("nav.home", tr("Accueil", "Home", "Inicio")), icon: <Icon name="home" /> },
-        { k: "agenda", label: tr("Agenda", "Agenda", "Agenda"), icon: <Icon name="agenda" /> },
+        { k: "home", label: t("nav.home", tr("Accueil", "Home", "Inicio")), icon: <BottomNavIcon name="home" /> },
+        { k: "agenda", label: tr("Agenda", "Agenda", "Agenda"), icon: <BottomNavIcon name="agenda" /> },
 
         ...(hideOnline ? [] : [
-          { k: "messages", label: t("nav.messages", tr("Messages", "Messages", "Mensajes")), icon: <Icon name="messages" /> },
+          { k: "messages", label: t("nav.messages", tr("Messages", "Messages", "Mensajes")), icon: <BottomNavIcon name="messages" /> },
         ]),
 
-        { k: "profiles", label: t("nav.profiles", tr("Profils", "Profiles", "Perfiles")), icon: <Icon name="profiles" /> },
-        { k: "games", label: t("nav.games", tr("Jeux", "Games", "Juegos")), icon: <Icon name="games" /> },
-        { k: "tournaments", label: t("nav.competitions", tr("Compétitions", "Competitions", "Competiciones")), icon: <Icon name="tournaments" /> },
+        { k: "profiles", label: t("nav.profiles", tr("Profils", "Profiles", "Perfiles")), icon: <BottomNavIcon name="profiles" /> },
+        { k: "games", label: t("nav.games", tr("Jeux", "Games", "Juegos")), icon: <BottomNavIcon name="games" /> },
+        { k: "tournaments", label: t("nav.competitions", tr("Compétitions", "Competitions", "Competiciones")), icon: <BottomNavIcon name="tournaments" /> },
 
         ...(hideOnline ? [] : [
-          { k: "online", label: t("nav.online", tr("En ligne", "Online", "En línea")), icon: <Icon name="friends" /> },
+          { k: "online", label: t("nav.online", tr("En ligne", "Online", "En línea")), icon: <BottomNavIcon name="friends" /> },
         ]),
 
-        { k: "stats", label: t("nav.stats", "Stats"), icon: <Icon name="stats" /> },
-        { k: "settings", label: t("nav.settings", tr("Réglages", "Settings", "Ajustes")), icon: <Icon name="settings" /> },
-        { k: "cast_host", label: t("nav.screens", tr("Écrans", "Screens", "Pantallas")), icon: <Icon name="cast_host" /> },
+        { k: "stats", label: t("nav.stats", "Stats"), icon: <BottomNavIcon name="stats" /> },
+        { k: "settings", label: t("nav.settings", tr("Réglages", "Settings", "Ajustes")), icon: <BottomNavIcon name="settings" /> },
+        { k: "cast_host", label: t("nav.screens", tr("Écrans", "Screens", "Pantallas")), icon: <BottomNavIcon name="cast_host" /> },
         ...liveSportsTabs,
       ]) as NavItem[];
 

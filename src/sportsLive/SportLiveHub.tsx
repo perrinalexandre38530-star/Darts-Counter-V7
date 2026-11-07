@@ -1,4 +1,7 @@
 import React from "react";
+import BackDot from "../components/BackDot";
+import { BottomNavIcon } from "../components/BottomNav";
+import { LIVE_SPORTS_APP_ORDER } from "./support";
 import { useLang } from "../contexts/LangContext";
 import { useSport } from "../contexts/SportContext";
 import type { SportId } from "../contexts/SportContext";
@@ -952,6 +955,29 @@ function LiveStyles() {
         .msc-score-box { font-size:23px; }
         .msc-match-code { min-width:48px; }
       }
+      /* LIVE V265 : une seule navigation autonome, fixe, jamais recouverte par BottomNav. */
+      .msc-live-root { padding-bottom: calc(92px + env(safe-area-inset-bottom, 0px)); overflow: visible; }
+      .msc-live-header { align-items:center; gap:10px; padding:5px 4px 12px 2px; }
+      .msc-live-title { font-size:clamp(21px,5vw,30px); }
+      .msc-live-sport-picker { display:flex; gap:7px; padding:12px 2px 10px; overflow-x:auto; scrollbar-width:thin; scroll-snap-type:x proximity; overscroll-behavior-x:contain; }
+      .msc-live-sport-choice { flex:0 0 auto; min-height:46px; display:flex; align-items:center; gap:6px; padding:7px 12px; border:1px solid #36434f; border-radius:12px; color:#e1e8ee; background:#111820; font-size:11px; font-weight:850; cursor:pointer; scroll-snap-align:start; }
+      .msc-live-sport-choice > span:first-child { font-size:19px; }
+      .msc-live-sport-choice.is-active { background:#26171d; border-color:var(--live-accent); color:#fff; box-shadow:inset 0 0 0 1px rgba(255,48,72,.13); }
+      .msc-live-source-search { display:block; box-sizing:border-box; width:100%; min-height:43px; margin:8px 0 12px; padding:10px 13px; background:#111a23; color:#fff; border:1px solid #455564; border-radius:12px; font-size:13px; }
+      .msc-live-fixed-nav { position:fixed; left:0; right:0; bottom:0; z-index:180; display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); align-items:stretch; min-height:66px; padding:5px max(6px,env(safe-area-inset-left,0px)) calc(5px + env(safe-area-inset-bottom,0px)) max(6px,env(safe-area-inset-right,0px)); border-top:1px solid #48515d; background:rgba(9,14,21,.97); box-shadow:0 -6px 24px rgba(0,0,0,.48); backdrop-filter:blur(16px); }
+      .msc-live-fixed-action { min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:5px 1px; border:0; border-radius:10px; color:#a4b1bf; background:transparent; cursor:pointer; }
+      .msc-live-fixed-action span { font-size:9px; font-weight:850; white-space:nowrap; }
+      .msc-live-fixed-action.is-active { color:#fff; background:rgba(255,48,72,.19); }
+      .msc-live-fixed-action.is-active svg { color:#ff5b6e; }
+      .msc-float-overlay { padding-bottom:calc(80px + env(safe-area-inset-bottom,0px)); }
+      .msc-float-panel { max-height:calc(100dvh - 158px - env(safe-area-inset-bottom,0px)); }
+      @media (orientation:landscape) and (max-height:620px) {
+        .msc-live-fixed-nav { left:0; right:0; bottom:0; min-height:55px; }
+        .msc-live-root { padding-bottom:calc(76px + env(safe-area-inset-bottom,0px)); }
+        .msc-float-overlay { padding:12px 12px calc(72px + env(safe-area-inset-bottom,0px)); }
+        .msc-float-panel { width:min(980px,95vw); max-height:calc(100dvh - 85px); }
+      }
+      @media (max-width:380px) { .msc-live-fixed-action span { font-size:8px; } .msc-live-sport-choice { padding:7px 9px; } }
     `}</style>
   );
 }
@@ -1852,11 +1878,14 @@ function FloatingDrawer({ title, onClose, children }: { title: string; onClose: 
   );
 }
 
-export default function SportLiveHub({ go }: { go?: (route: any, params?: any) => void } = {}) {
+export default function SportLiveHub({ go, onBack }: { go?: (route: any, params?: any) => void; onBack?: () => void } = {}) {
   const { lang } = useLang();
   const { sport } = useSport();
-  const supportedSport = isLiveSportsSupportedSport(sport);
-  const liveSport = supportedSport ? sport : "darts";
+  const [selectedSport, setSelectedSport] = React.useState<SportId | null>(null);
+  React.useEffect(() => { setSelectedSport(null); }, [sport]);
+  const activeSport = selectedSport || sport;
+  const supportedSport = isLiveSportsSupportedSport(activeSport);
+  const liveSport = supportedSport ? activeSport : "darts";
   const meta = SPORT_LIVE_META[liveSport];
   const preferredRegions = React.useMemo(() => getAvailableRegions(liveSport, lang), [liveSport, lang]);
   const recommended = React.useMemo(() => getRecommendedSportSources(liveSport, lang), [liveSport, lang]);
@@ -1864,6 +1893,7 @@ export default function SportLiveHub({ go }: { go?: (route: any, params?: any) =
 
   const [view, setView] = React.useState<View>("overview");
   const [region, setRegion] = React.useState<RegionFilter>("recommended");
+  const [sourceSearch, setSourceSearch] = React.useState("");
   const [feed, setFeed] = React.useState<SportLiveOverview | null>(() => getCachedSportLiveOverview(liveSport, lang));
   const [loading, setLoading] = React.useState(() => !getCachedSportLiveOverview(liveSport, lang));
   const [feedError, setFeedError] = React.useState<string | null>(null);
@@ -1877,14 +1907,19 @@ export default function SportLiveHub({ go }: { go?: (route: any, params?: any) =
     try { window.location.hash = "#/agenda"; } catch {}
   }, [go, liveSport]);
 
+  const liveSportRef = React.useRef<string>(liveSport);
+  liveSportRef.current = liveSport;
   const applyFeed = React.useCallback((next: SportLiveOverview) => {
+    // Switching discipline must never let a late response from the previous
+    // sport replace the current feed (archives can take several seconds).
+    if (String(next.sport) !== liveSportRef.current) return;
     setFeed((previous) => mergeSportLiveOverview(previous, next));
   }, []);
 
   React.useEffect(() => {
     const cached = getCachedSportLiveOverview(liveSport, lang);
     setRegion("recommended");
-    setView("overview");
+    setSourceSearch("");
     setFeed(cached);
     setLoading(!cached);
     setFeedError(null);
@@ -1955,11 +1990,13 @@ export default function SportLiveHub({ go }: { go?: (route: any, params?: any) =
     const key = `${liveSport}:${lang}`;
     if (archiveLoadedRef.current === key) return;
     archiveLoadedRef.current = key;
+    let active = true;
     setArchiveLoading(true);
     void fetchSportLiveOverview(liveSport, undefined, lang, "archive")
-      .then((archive) => applyFeed(archive))
-      .catch(() => { archiveLoadedRef.current = ""; })
-      .finally(() => setArchiveLoading(false));
+      .then((archive) => { if (active) applyFeed(archive); })
+      .catch(() => { if (active) archiveLoadedRef.current = ""; })
+      .finally(() => { if (active) setArchiveLoading(false); });
+    return () => { active = false; };
   }, [view, floatingPanel, liveSport, lang, applyFeed]);
 
   React.useEffect(() => {
@@ -1968,9 +2005,11 @@ export default function SportLiveHub({ go }: { go?: (route: any, params?: any) =
     const key = `${liveSport}:${lang}`;
     if (calendarLoadedRef.current === key) return;
     calendarLoadedRef.current = key;
+    let active = true;
     void fetchSportLiveOverview(liveSport, undefined, lang, "calendar")
-      .then((calendar) => applyFeed(calendar))
-      .catch(() => { calendarLoadedRef.current = ""; });
+      .then((calendar) => { if (active) applyFeed(calendar); })
+      .catch(() => { if (active) calendarLoadedRef.current = ""; });
+    return () => { active = false; };
   }, [view, floatingPanel, liveSport, lang, applyFeed]);
 
   // Automatic refresh stays light: structured data first, then the normal news
@@ -2033,6 +2072,11 @@ export default function SportLiveHub({ go }: { go?: (route: any, params?: any) =
     return allSportSources.filter((source) => source.regions.includes(region));
   }, [allSportSources, recommended, region]);
 
+  const visibleSources = React.useMemo(() => {
+    const query = sourceSearch.trim().toLocaleLowerCase();
+    if (!query) return sources;
+    return sources.filter((item) => [item.name, item.description, item.countryName, ...(item.badges || [])].join(" ").toLocaleLowerCase().includes(query));
+  }, [sources, sourceSearch]);
   const liveRows = feed?.live || [];
   const fixtureRows = feed?.fixtures || [];
   const resultRows = React.useMemo(() => [...(feed?.results || [])].sort((a, b) => dateTs(b.playedOn) - dateTs(a.playedOn)), [feed?.results]);
@@ -2051,6 +2095,12 @@ export default function SportLiveHub({ go }: { go?: (route: any, params?: any) =
   const sourceForCards = recommended.find((source) => !!source.watchUrl) || recommended.find((source) => !!source.scoresUrl) || recommended[0] || null;
   const ticker = React.useMemo(() => buildTicker(feed, lang, meta.label, recommended), [feed, lang, meta.label, recommended]);
 
+  const selectSection = React.useCallback((next: View) => {
+    setFloatingPanel(null);
+    setView(next);
+    try { window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior }); } catch {}
+  }, []);
+
   const cssVars = {
     "--live-accent": "#ff3048",
     "--live-accent-dark": "#a81728",
@@ -2064,6 +2114,7 @@ export default function SportLiveHub({ go }: { go?: (route: any, params?: any) =
       <LiveStyles />
 
       <header className="msc-live-header">
+        <BackDot onClick={() => onBack ? onBack() : go?.("home")} size={38} title="Retour à la page précédente" />
         <div style={{ minWidth: 0, flex: 1 }}>
           <div className="msc-live-kicker">LIVE SPORTS</div>
           <div className="msc-live-title"><strong>{meta.label.toUpperCase()}</strong> <span>LIVE</span></div>
@@ -2074,21 +2125,19 @@ export default function SportLiveHub({ go }: { go?: (route: any, params?: any) =
         </button>
       </header>
 
+      <div className="msc-live-sport-picker" aria-label="Choisir la discipline">
+        {LIVE_SPORTS_APP_ORDER.map((item) => (
+          <button key={item} type="button" className={`msc-live-sport-choice${liveSport === item ? " is-active" : ""}`} onClick={() => { setSelectedSport(item); setFloatingPanel(null); }} aria-pressed={liveSport === item}>
+            <span aria-hidden="true">{SPORT_LIVE_META[item].icon}</span><span>{SPORT_LIVE_META[item].shortLabel}</span>
+          </button>
+        ))}
+      </div>
       <ScoreTicker items={ticker} sportLabel={meta.label} />
 
       {feedError ? <div className="msc-live-warning">LIVE PARTIEL · certaines sources n’ont pas répondu</div> : null}
 
 
-      <nav className="msc-live-tabs" aria-label="Rubriques LIVE SPORTS">
-        {([
-          ["overview", "À LA UNE"],
-          ["live", `EN DIRECT${(liveRows.length + liveEvents.length) ? ` · ${liveRows.length + liveEvents.length}` : ""}`],
-          ["fixtures", `À VENIR${(fixtureRows.length + upcomingEvents.length) ? ` · ${fixtureRows.length + upcomingEvents.length}` : ""}`],
-          ["results", `RÉSULTATS${(resultRows.length + resultEvents.length) ? ` · ${resultRows.length + resultEvents.length}` : ""}`],
-        ] as Array<[View, string]>).map(([key, label]) => (
-          <button key={key} className={`msc-live-tab${view === key ? " is-active" : ""}`} type="button" onClick={() => setView(key)}>{label}</button>
-        ))}
-      </nav>
+
 
       {!supportedSport ? (
         <section className="msc-live-section">
@@ -2104,7 +2153,7 @@ export default function SportLiveHub({ go }: { go?: (route: any, params?: any) =
             {newsRows.length ? (
               <>
                 <LeadNewsCard item={newsRows.find((item) => !!item.imageUrl) || newsRows[0]} lang={lang} />
-                <div style={{ marginTop: 7 }}><button className="msc-more-btn" type="button" onClick={() => setFloatingPanel("news")}>TOUTES LES ACTUS · {newsRows.length}</button></div>
+                <div style={{ marginTop: 7 }}><button className="msc-more-btn" type="button" onClick={() => selectSection("news")}>TOUTES LES ACTUS · {newsRows.length}</button></div>
               </>
             ) : <EmptySection title="Actualités en cours de chargement" copy="LIVE Intelligence recherche les dernières informations publiées." sources={recommended.slice(0, 1)} />}
           </section>
@@ -2133,7 +2182,7 @@ export default function SportLiveHub({ go }: { go?: (route: any, params?: any) =
                 <div className="msc-compact-row" key={event.id}><div className="msc-compact-tag">RÉSULTAT</div><div className="msc-compact-main" translate="no">{event.title}</div><div className="msc-compact-score">{event.resultLabel || "PUBLIÉ"}</div></div>
               )) : null}
             </div>
-            <div style={{ marginTop: 7 }}><button className="msc-more-btn" type="button" onClick={() => setFloatingPanel("results")}>VOIR TOUS LES RÉSULTATS</button></div>
+            <div style={{ marginTop: 7 }}><button className="msc-more-btn" type="button" onClick={() => selectSection("results")}>VOIR TOUS LES RÉSULTATS</button></div>
           </section>
 
           <section className="msc-live-section">
@@ -2186,7 +2235,7 @@ export default function SportLiveHub({ go }: { go?: (route: any, params?: any) =
       {supportedSport && view === "news" ? (
         <section className="msc-live-section">
           <SectionHeader title="ACTUS" count={newsRows.length ? `${newsRows.length}` : ""} />
-          {newsRows.length ? <div className="msc-news-grid">{newsRows.map((item) => <NewsCard key={item.id} item={item} lang={lang} />)}</div> : <EmptySection title="Aucune actualité détectée" copy="Le moteur LIVE Intelligence tente automatiquement les sources web récentes. Réessaie avec le bouton d’actualisation." sources={recommended.slice(0, 4)} />}
+          {newsRows.length ? <div className="msc-news-grid">{newsRows.slice(0, 80).map((item) => <NewsCard key={item.id} item={item} lang={lang} />)}</div> : <EmptySection title="Aucune actualité détectée" copy="Le moteur LIVE Intelligence tente automatiquement les sources web récentes. Réessaie avec le bouton d’actualisation." sources={recommended.slice(0, 4)} />}
         </section>
       ) : null}
 
@@ -2198,23 +2247,30 @@ export default function SportLiveHub({ go }: { go?: (route: any, params?: any) =
             {preferredRegions.map((item) => <button key={item} className={`msc-region-btn${region === item ? " is-active" : ""}`} type="button" onClick={() => setRegion(item)}>{SPORT_LIVE_REGION_LABELS[item]}</button>)}
             <button className={`msc-region-btn${region === "all" ? " is-active" : ""}`} type="button" onClick={() => setRegion("all")}>TOUTES</button>
           </div>
-          <SourceDirectory sources={sources} />
+          <input className="msc-live-source-search" value={sourceSearch} onChange={(e) => setSourceSearch(e.target.value)} placeholder="Rechercher une fédération, un pays, une compétition…" aria-label="Rechercher les sources" />
+          <SourceDirectory sources={visibleSources} />
         </section>
       ) : null}
 
-      {supportedSport ? (
-        <div className="msc-quick-dock" aria-label="Accès rapides LIVE SPORTS">
-          <button className="msc-quick-btn" type="button" onClick={() => setFloatingPanel("news")} aria-label="Actualités">📰</button>
-          <button className="msc-quick-btn" type="button" onClick={() => setFloatingPanel("results")} aria-label="Résultats">🏆</button>
-          <button className="msc-quick-btn" type="button" onClick={openAgenda} aria-label="Agenda LIVE">🗓</button>
-          <button className="msc-quick-btn" type="button" onClick={() => setFloatingPanel("sources")} aria-label="Sources">🌍</button>
-        </div>
-      ) : null}
+      <nav className="msc-live-fixed-nav" aria-label="Navigation LIVE SPORTS">
+        {([
+          ["overview", "home", "Accueil"],
+          ["live", "live", "Direct"],
+          ["results", "stats", "Résultats"],
+          ["news", "messages", "Actus"],
+          ["sources", "settings", "Sources"],
+          ["agenda", "agenda", "Agenda"],
+        ] as Array<[View | "agenda", "home" | "live" | "stats" | "messages" | "settings" | "agenda", string]>).map(([destination, iconName, label]) => (
+          <button key={destination} className={`msc-live-fixed-action${(destination === view || (destination === "news" && floatingPanel === "news")) ? " is-active" : ""}`} type="button" aria-label={label} aria-current={destination === view ? "page" : undefined} onClick={() => destination === "agenda" ? openAgenda() : selectSection(destination)}>
+            <BottomNavIcon name={iconName} size={23} /><span>{label}</span>
+          </button>
+        ))}
+      </nav>
 
-      {floatingPanel === "news" ? <FloatingDrawer title={`ACTUALITÉS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{newsRows.length ? <div className="msc-news-grid">{newsRows.map((item) => <NewsCard key={item.id} item={item} lang={lang} />)}</div> : <EmptySection title="Aucune actualité détectée" copy="Réessaie l’actualisation dans quelques instants." sources={recommended.slice(0, 2)} />}</FloatingDrawer> : null}
+      {floatingPanel === "news" ? <FloatingDrawer title={`ACTUALITÉS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{newsRows.length ? <div className="msc-news-grid">{newsRows.slice(0, 80).map((item) => <NewsCard key={item.id} item={item} lang={lang} />)}</div> : <EmptySection title="Aucune actualité détectée" copy="Réessaie l’actualisation dans quelques instants." sources={recommended.slice(0, 2)} />}</FloatingDrawer> : null}
       {floatingPanel === "results" ? <FloatingDrawer title={`RÉSULTATS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}><div className="msc-archive-summary" style={{ marginBottom: 8 }}><div><strong>{archiveLoading ? "ARCHIVES · CHARGEMENT…" : `ARCHIVES · ${archiveSeasonCount || 0} SAISON${archiveSeasonCount === 1 ? "" : "S"}`}</strong></div><div><b>{Math.max(competitionIndex.length, archiveStorage?.competitions || 0)}</b><small>compétitions</small></div><div><b>{Math.max(resultRows.length, archiveStorage?.results || 0)}</b><small>résultats</small></div></div>{resultRows.length ? <><GroupedResults rows={resultRows} source={sourceForCards} lang={lang} newsRows={newsRows} allSources={allSportSources} sport={liveSport} competitionIndex={competitionIndex} />{resultEvents.length ? <div style={{ marginTop: 12 }}><div className="msc-round-head"><span>AUTRES RÉSULTATS / PODIUMS</span><span>{resultEvents.length}</span></div>{resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />)}</div> : null}</> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Aucun résultat détecté" copy="Les sources officielles restent disponibles." sources={recommended.filter((source) => source.resultsUrl).slice(0, 2)} />}</FloatingDrawer> : null}
       {floatingPanel === "fixtures" ? <FloatingDrawer title={`AGENDA · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}><div className="msc-empty-card"><div className="msc-empty-title">AGENDA MULTISPORTS</div><div className="msc-empty-copy">Le calendrier LIVE n’est plus dupliqué dans cette page. Les événements réels sont affichés dans l’Agenda principal avec le filtre LIVE.</div><button className="msc-more-btn" type="button" onClick={openAgenda}>OUVRIR L’AGENDA</button></div></FloatingDrawer> : null}
-      {floatingPanel === "sources" ? <FloatingDrawer title={`SOURCES · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}><SourceDirectory sources={sources} /></FloatingDrawer> : null}
+      {floatingPanel === "sources" ? <FloatingDrawer title={`SOURCES · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}><input className="msc-live-source-search" value={sourceSearch} onChange={(e) => setSourceSearch(e.target.value)} placeholder="Rechercher une source, un pays…" aria-label="Rechercher les sources" /><SourceDirectory sources={visibleSources} /></FloatingDrawer> : null}
 
     </div>
   );

@@ -3401,6 +3401,7 @@ useEffect(() => {
   const [x01ConfigV3, setX01ConfigV3] = React.useState<X01ConfigV3Type | null>(() => (samsungTvNativeBoot?.gameConfig as X01ConfigV3Type | null) || null);
 
   /* Navigation */
+  const liveReturnRouteRef = React.useRef<{ tab: Tab; params: any } | null>(null);
   function go(next: Tab, params?: any) {
     const intercepted = interceptMonetizedNavigation({
       fromTab: String(tab || ""),
@@ -3431,6 +3432,7 @@ useEffect(() => {
   }, [loading, showSplash, online?.ready, online?.status, tab]);
 
   function commitGo(next: Tab, params?: any) {
+    if (next === "live" && tab !== "live") liveReturnRouteRef.current = { tab, params: routeParams };
     const nextParams = mergeOnlineRouteContext(routeParams, next, params);
 
     // Écrans peut être ouvert depuis Réglages, Jeux, Stats, etc. On mémorise la
@@ -5968,7 +5970,7 @@ case "babyfoot_team_edit":
         break;
 
       case "live":
-        page = <SportLiveHub go={go} />;
+        page = <SportLiveHub go={go} onBack={() => { const previous = liveReturnRouteRef.current; go(previous?.tab && previous.tab !== "live" ? previous.tab : "home", previous?.params); }} />;
         break;
 
       case "spectator":
@@ -7943,7 +7945,7 @@ case "babyfoot_team_edit":
   // P’TIT 1 fait exception : son écran de jeu exploite toute la largeur disponible en paysage,
   // comme en portrait, afin de préserver le couple panneau joueur + keypad sans débordement.
   const forceFullscreenPlay = tab === "ptit_hun_play" || (tab === "bss_king_play" && isLandscapeViewport);
-  const showBottomNav = appChromeAllowed && !forceFullscreenPlay && (!HIDE_BOTTOM_NAV_TABS.has(tab) || (isGamePlayRoute && isLandscapeViewport));
+  const showBottomNav = tab !== "live" && appChromeAllowed && !forceFullscreenPlay && (!HIDE_BOTTOM_NAV_TABS.has(tab) || (isGamePlayRoute && isLandscapeViewport));
 
 
   return (

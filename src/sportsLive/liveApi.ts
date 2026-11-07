@@ -11,7 +11,7 @@ const CACHE_NEWS_LIMIT = 50_000;
 const MEMORY_CACHE = new Map<string, CachedEnvelope>();
 
 function isSupportedSport(value: SportId): boolean {
-  return ["darts", "petanque", "pingpong", "babyfoot", "molkky", "foot", "padel", "badminton", "cornhole", "bowling", "esports"].includes(String(value));
+  return ["darts", "petanque", "pingpong", "babyfoot", "molkky", "foot", "esports", "tossit", "dicegame", "running", "fit"].includes(String(value));
 }
 
 function emptyOverview(sport: SportId): SportLiveOverview {

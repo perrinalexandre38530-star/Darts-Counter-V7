@@ -1410,6 +1410,10 @@ const SPORT_SOURCE_DOMAINS: Record<string, string[]> = {
   badminton: ["bwfbadminton.com", "bwf.tournamentsoftware.com", "tournamentsoftware.com", "badmintoneurope.com", "ffbad.org", "ffbad.tournamentsoftware.com", "badmintonengland.co.uk"],
   cornhole: ["iplayacl.com", "americancornhole.com", "scoreholio.com", "cornholeplayers.com", "ofch.fr"],
   bowling: ["pba.com", "bowling.sport", "etbf.eu", "bowl.com", "lanetalk.com", "bowlingresults.info", "leaguesecretary.com", "ffbsq.org", "ffbsq.fr"],
+  running: ["worldathletics.org", "athle.fr"],
+  fit: ["if3.fit", "federationfitnessfonctionnel.fr"],
+  tossit: ["tossit.game"],
+  dicegame: ["multisports-scoring.pages.dev"],
 
 };
 
@@ -1781,6 +1785,19 @@ const DIRECT_EDITORIAL_PAGES: Record<string, Array<{ url: string; sourceName: st
 // V232 — additional result-bearing sources for active and future LIVE sports.
 // These are deliberately page-level collectors: when a page exposes an explicit
 // score/table row, directEditorialIntelligence can promote it to structured results.
+DIRECT_EDITORIAL_PAGES.running = [
+  { url: "https://worldathletics.org/competition/calendar-results", sourceName: "World Athletics", scope: "world", scopeLabel: "Monde" },
+  { url: "https://www.athle.fr/", sourceName: "FFA", scope: "local", scopeLabel: "France" },
+];
+DIRECT_EDITORIAL_PAGES.fit = [
+  { url: "https://www.if3.fit/championships", sourceName: "iF3", scope: "world", scopeLabel: "Monde" },
+  { url: "https://federationfitnessfonctionnel.fr/", sourceName: "F3", scope: "local", scopeLabel: "France" },
+];
+DIRECT_EDITORIAL_PAGES.tossit = [
+  { url: "https://tossit.game/", sourceName: "TOSSIT", scope: "world", scopeLabel: "Monde" },
+];
+DIRECT_EDITORIAL_PAGES.dicegame = [];
+
 DIRECT_EDITORIAL_PAGES.esports.push(
   { url:"https://www.hltv.org/results", sourceName:"HLTV", scope:"world", scopeLabel:"CS2 / Monde" },
   { url:"https://www.hltv.org/matches", sourceName:"HLTV Matches", scope:"world", scopeLabel:"CS2 / Monde" },
@@ -1957,6 +1974,17 @@ const DIRECT_ARCHIVE_PAGES: Record<string, Array<{ url:string; sourceName:string
   ],
 };
 
+// New competition circuits are available to the archive discovery pipeline, not
+// just to the UI source directory. These are public landing pages, not APIs.
+DIRECT_ARCHIVE_PAGES.running = [
+  { url:"https://worldathletics.org/competition/calendar-results", sourceName:"World Athletics", scope:"world", scopeLabel:"Calendrier et résultats" },
+  { url:"https://www.athle.fr/", sourceName:"FFA", scope:"local", scopeLabel:"France" },
+];
+DIRECT_ARCHIVE_PAGES.fit = [
+  { url:"https://www.if3.fit/championships", sourceName:"iF3 Championships", scope:"world", scopeLabel:"Championnats et archives" },
+  { url:"https://federationfitnessfonctionnel.fr/", sourceName:"F3", scope:"local", scopeLabel:"France" },
+];
+
 const DIRECT_CALENDAR_PAGES: Record<string, Array<{ url:string; sourceName:string; scope:IntelligenceScope; scopeLabel:string }>> = {
   darts: [
     { url:"https://www.adodarts.com/calendar/", sourceName:"ADO Calendar", scope:"regional", scopeLabel:"USA / tournois / qualifiers" },
@@ -2045,6 +2073,15 @@ const DIRECT_CALENDAR_PAGES: Record<string, Array<{ url:string; sourceName:strin
     { url:"https://www.vlr.gg/matches", sourceName:"VLR Matches", scope:"world", scopeLabel:"VALORANT" },
   ],
 };
+DIRECT_CALENDAR_PAGES.running = [
+  { url:"https://worldathletics.org/competition/calendar-results", sourceName:"World Athletics", scope:"world", scopeLabel:"Calendrier courses" },
+  { url:"https://www.athle.fr/", sourceName:"FFA", scope:"local", scopeLabel:"France" },
+];
+DIRECT_CALENDAR_PAGES.fit = [
+  { url:"https://www.if3.fit/championships", sourceName:"iF3", scope:"world", scopeLabel:"Calendrier compétitions" },
+  { url:"https://federationfitnessfonctionnel.fr/", sourceName:"F3", scope:"local", scopeLabel:"France" },
+];
+
 
 const DARTS_LOCALE_QUERY_PACKS: Record<string, string[]> = {
   fr: [
@@ -3945,6 +3982,15 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     } catch { return json({ error: "logo_fetch_failed" }, 502, 300); }
   }
   if (action !== "overview") return json({ error: "not_found", message: "Unknown LIVE SPORTS endpoint." }, 404, 60);
+  // TOSSIT and Dice Game are available in the sport selector, but there is
+  // currently no public competition-score provider for these local game modes.
+  // Never synthesize results by passing them through AI score extraction.
+  if (sport === "tossit" || sport === "dicegame") {
+    return json({ sport, configured: false, automaticData: false, provider: "official_links", plan: phase,
+      dataAsOf: new Date().toISOString(), liveAvailable: false,
+      liveReason: "Pas de flux public de scores vérifié pour ce sport. Les sources et les parties locales restent accessibles.",
+      live: [], fixtures: [], results: [], events: [], news: [], warnings: [] }, 200, 600);
+  }
 
   if (phase === "archive") {
     return cachedResponse(context, async () => archiveOverview(context.env, sport, lang));

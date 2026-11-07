@@ -37,6 +37,18 @@ export async function ensureRadarSchemaCompatibility(env: RadarEnv): Promise<voi
     `).run();
     await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_outreach_actions_status ON outreach_actions(status, updated_at DESC)').run();
 
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS sales_campaign_briefs (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, pitch TEXT NOT NULL,
+      verified_facts TEXT NOT NULL, goal TEXT NOT NULL, audience TEXT NOT NULL DEFAULT '',
+      language TEXT NOT NULL DEFAULT 'fr', status TEXT NOT NULL DEFAULT 'draft',
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    )`).run();
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS sales_drafts (
+      campaign_id TEXT NOT NULL, opportunity_id TEXT NOT NULL,
+      draft_json TEXT NOT NULL, updated_at TEXT NOT NULL,
+      PRIMARY KEY(campaign_id, opportunity_id)
+    )`).run();
+
     await env.DB.prepare(`
       CREATE TABLE IF NOT EXISTS acquisition_targets (
         target TEXT PRIMARY KEY, label TEXT NOT NULL, url TEXT NOT NULL DEFAULT '',
