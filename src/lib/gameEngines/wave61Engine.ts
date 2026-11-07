@@ -4224,9 +4224,13 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
     } else {
       streakMap[player.id] = 0;
       failedMap[player.id] = Number(failedMap[player.id] || 0) + 1;
-      delta = -missPenalty;
-      if (missPenalty) state.scores[player.id] = Math.max(0, Number(state.scores[player.id] || 0) - missPenalty);
-      events.push(`❌ Combo cassé${missPenalty ? ` · -${missPenalty}` : ""}`);
+      // Le score ne descend jamais sous zéro : la variation enregistrée doit
+      // correspondre aux points réellement retirés, pas à la pénalité théorique.
+      const beforePenalty = Number(state.scores[player.id] || 0);
+      const appliedPenalty = Math.min(beforePenalty, missPenalty);
+      state.scores[player.id] = beforePenalty - appliedPenalty;
+      delta = appliedPenalty ? -appliedPenalty : 0;
+      events.push(`❌ Combo cassé${appliedPenalty ? ` · -${appliedPenalty}` : ""}`);
     }
     const history = state.special.bimBamBoumHistory || (state.special.bimBamBoumHistory = []);
     history.push({ playerId: player.id, rule, valid, superBoom: valid && superEnabled && Number(streakMap[player.id] || 0) === 0, scores:[scoreA,scoreB,scoreC], sameNumber:!!sameNumber, bedCombo:!!bedCombo, progressive:!!progressive, delta, bonus:valid?Math.max(0,delta-scoreA-scoreB-scoreC):0, streak:Number(streakMap[player.id]||0), at:Date.now() });
@@ -4306,7 +4310,16 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
     events.push(defense >= pressure ? `🐕 Patou · vague repoussée (${defense}/${pressure})` : lost > 0 ? `🐺 Meute · ${lost} mouton${lost>1?"s":""} perdu${lost>1?"s":""} (${defense}/${pressure})` : `🧑‍🌾 Berger · aucun mouton perdu (${defense}/${pressure})`);
     if (sheepMap[player.id] <= 0) { state.eliminated[player.id] = true; events.push("💀 Troupeau perdu"); }
     const alive = state.players.filter((p)=>!state.eliminated[p.id]);
-    if (state.config.participantMode === "teams") {
+    // En solo, un troupeau entièrement perdu est une DÉFAITE, pas une
+    // victoire attribuée automatiquement au dernier joueur éliminé.
+    if (alive.length === 0) {
+      state.special.troupeauSoloDefeat = true;
+      state.phase = "finished";
+      state.winnerId = null;
+      state.winnerTeamId = null;
+      state.finishedAt = Date.now();
+      events.push("🐺 Défaite · le troupeau a été entièrement perdu");
+    } else if (state.config.participantMode === "teams") {
       const aliveTeams = Array.from(new Set(alive.map((p)=>String(state.config.teamByPlayer?.[p.id] || "")).filter(Boolean)));
       if (aliveTeams.length === 1 && state.players.length > 1) {
         const winner = alive.find((p)=>String(state.config.teamByPlayer?.[p.id] || "") === aliveTeams[0]) || alive[0];
@@ -4338,9 +4351,11 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
     for (const d of darts) {
       if (!d || d.bed === "MISS") {
         if (missPenalty > 0) {
-          missPenaltyTotal += missPenalty;
-          state.scores[player.id] = Math.max(0, Number(state.scores[player.id] || 0) - missPenalty);
-          delta -= missPenalty;
+          const beforePenalty = Number(state.scores[player.id] || 0);
+          const appliedPenalty = Math.min(beforePenalty, missPenalty);
+          state.scores[player.id] = beforePenalty - appliedPenalty;
+          missPenaltyTotal += appliedPenalty;
+          delta -= appliedPenalty;
         }
         continue;
       }

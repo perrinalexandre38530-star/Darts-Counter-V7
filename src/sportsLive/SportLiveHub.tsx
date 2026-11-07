@@ -839,6 +839,7 @@ function LiveStyles() {
       .msc-results-nav-label { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:8.6px; font-weight:1000; line-height:1.1; }
       .msc-results-nav-count { min-width:21px; height:21px; display:grid; place-items:center; padding:0 4px; border-radius:999px; background:#1c2630; color:#9eabb8; font-size:7px; font-weight:1000; }
       .msc-results-nav-btn.is-active .msc-results-nav-count { background:var(--live-accent); color:#fff; }
+      .msc-results-nav-more { flex-shrink:0; min-height:34px; border:1px solid #3b4855; border-radius:9px; color:#e0e8ef; background:#15202a; cursor:pointer; font-size:9px; font-weight:850; padding:7px; }
       .msc-results-content { min-width:0; }
       .msc-results-context { position:sticky; top:52px; z-index:1; display:flex; align-items:center; gap:6px; flex-wrap:wrap; min-height:34px; margin-bottom:8px; padding:6px 9px; border:1px solid #28323d; border-radius:10px; background:rgba(9,13,18,.96); backdrop-filter:blur(8px); color:#91a0ad; font-size:8.5px; font-weight:900; }
       .msc-results-context strong { color:#fff; }
@@ -1246,6 +1247,7 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
   const [searchQuery, setSearchQuery] = React.useState("");
   const [historyLimit, setHistoryLimit] = React.useState(120);
   const [competitionLimit, setCompetitionLimit] = React.useState(30);
+  const [navigationLimit, setNavigationLimit] = React.useState(80);
 
   const continentFiltered = React.useMemo(() => competitions.filter((item) => selectedContinent === "__all__" || item.continent === selectedContinent), [competitions, selectedContinent]);
   const countries = React.useMemo(() => {
@@ -1284,6 +1286,19 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
     });
   }, [hierarchyFiltered, searchQuery]);
   const navigationCompetitions = React.useMemo(() => [...searchedCompetitions].sort((a,b) => a.name.localeCompare(b.name, lang || "fr")), [searchedCompetitions, lang]);
+  // Rendering every competition as a sidebar button can lock up mobile browsers
+  // when a large archive is loaded. Keep the selected item accessible.
+  const repeatedCompetitionNames = React.useMemo(() => {
+    const seen = new Set<string>();
+    const repeated = new Set<string>();
+    navigationCompetitions.forEach(({ name }) => { if (seen.has(name)) repeated.add(name); else seen.add(name); });
+    return repeated;
+  }, [navigationCompetitions]);
+  const sidebarCompetitions = React.useMemo(() => {
+    const initial = navigationCompetitions.slice(0, navigationLimit);
+    const active = navigationCompetitions.find((item) => item.groupKey === selected);
+    return active && !initial.some((item) => item.groupKey === active.groupKey) ? [...initial, active] : initial;
+  }, [navigationCompetitions, navigationLimit, selected]);
 
   React.useEffect(() => {
     if (selected !== "__all__" && !hierarchyFiltered.some((item) => item.groupKey === selected)) setSelected("__all__");
@@ -1294,8 +1309,11 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
   React.useEffect(() => { setSelectedSeason("__all__"); setHistoryLimit(120); }, [selected]);
   React.useEffect(() => { setHistoryLimit(120); }, [selectedSeason, searchQuery]);
   React.useEffect(() => { setCompetitionLimit(30); }, [selectedContinent, selectedCountry, selected, selectedSeason, searchQuery]);
+  React.useEffect(() => { setNavigationLimit(80); }, [selectedContinent, selectedCountry, searchQuery]);
 
-  const competitionFiltered = selected === "__all__" ? searchedCompetitions : searchedCompetitions.filter((item) => item.groupKey === selected);
+  const competitionFiltered = React.useMemo(() => selected === "__all__"
+    ? searchedCompetitions
+    : searchedCompetitions.filter((item) => item.groupKey === selected), [searchedCompetitions, selected]);
   const seasons = React.useMemo(() => {
     const counts = new Map<string, number>();
     competitionFiltered.forEach((item) => item.matches.forEach((match) => {
@@ -1313,9 +1331,9 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
     if (selectedSeason !== "__all__" && !seasons.some(([season]) => season === selectedSeason)) setSelectedSeason("__all__");
   }, [seasons, selectedSeason]);
 
-  const visible = competitionFiltered
-    .map((item) => ({ ...item, matches: selectedSeason === "__all__" ? item.matches : item.matches.filter((match) => resultSeasonLabel(match.playedOn) === selectedSeason) }))
-    .filter((item) => item.matches.length > 0);
+  const visible = React.useMemo(() => competitionFiltered
+    .map((item) => selectedSeason === "__all__" ? item : { ...item, matches: item.matches.filter((match) => resultSeasonLabel(match.playedOn) === selectedSeason) })
+    .filter((item) => item.matches.length > 0), [competitionFiltered, selectedSeason]);
   const scoreCenterVisible = React.useMemo(() => [...visible].sort((a,b) => {
     const countryCmp = a.countryLabel.localeCompare(b.countryLabel, lang || "fr");
     if (countryCmp) return countryCmp;
@@ -1370,7 +1388,7 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
           <label>COMPÉTITION</label>
           <select value={selected} onChange={(e) => setSelected(e.target.value)}>
             <option value="__all__">Toutes les compétitions</option>
-            {navigationCompetitions.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
+            {navigationCompetitions.map((item) => <option key={item.groupKey} value={item.groupKey}>{item.name}{repeatedCompetitionNames.has(item.name) ? ` · ${item.countryLabel}` : ""}</option>)}
           </select>
         </div>
         <div className="msc-score-filter">
@@ -1417,11 +1435,12 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
             <button className={`msc-results-nav-btn${selected === "__all__" ? " is-active" : ""}`} type="button" onClick={() => setSelected("__all__")} title="Toutes les compétitions">
               <span className="msc-results-nav-visual">🏆</span><span className="msc-results-nav-label">TOUTES</span><span className="msc-results-nav-count">{filteredCount}</span>
             </button>
-            {navigationCompetitions.map(({ groupKey, name, matches, imageUrl }) => (
+            {sidebarCompetitions.map(({ groupKey, name, matches, imageUrl }) => (
               <button key={groupKey} className={`msc-results-nav-btn${selected === groupKey ? " is-active" : ""}`} type="button" onClick={() => setSelected(groupKey)} title={name}>
                 <CompetitionMark sport={sport} name={name} logoUrl={imageUrl} /><span className="msc-results-nav-label" translate="no">{name}</span><span className="msc-results-nav-count">{matches.length}</span>
               </button>
             ))}
+            {navigationCompetitions.length > navigationLimit ? <button className="msc-results-nav-more" type="button" onClick={() => setNavigationLimit((limit) => limit + 80)}>VOIR 80 COMPÉTITIONS DE PLUS · {navigationCompetitions.length - navigationLimit} RESTANTES</button> : null}
           </div>
         </div>
 

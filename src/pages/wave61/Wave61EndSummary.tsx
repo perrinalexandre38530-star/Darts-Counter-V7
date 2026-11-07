@@ -149,7 +149,7 @@ export function buildWave61Awards(rows: any[]) {
 export default function Wave61EndSummary({ state, profiles, accent, familyLabel }: any) {
   const rows = React.useMemo(() => buildWave61EndRows(state, profiles), [state, profiles]);
   const stats = React.useMemo(() => buildWave61MatchStats(state), [state]);
-  const awards = React.useMemo(() => buildWave61Awards(rows), [rows]);
+  const awards = React.useMemo(() => buildWave61Awards(rows).filter((award:any) => !(state?.special?.troupeauSoloDefeat && award.key === "winner")), [rows, state?.special?.troupeauSoloDefeat]);
   const top = rows.slice(0, 3);
   const teamMode = state?.config?.participantMode === "teams";
   const teamRows = teamMode
@@ -167,7 +167,8 @@ export default function Wave61EndSummary({ state, profiles, accent, familyLabel 
   const greenRedFormat = String(state?.config?.modeOptions?.matchFormat || "duel");
   const greenRedBullRule = String(state?.config?.modeOptions?.bullRule || "classic");
   const greenRedRuleLabel = greenRedBullRule === "color_lock" ? "BULL DE COULEUR" : greenRedBullRule === "color_bonus" ? "BULL BONUS" : "CLASSIQUE";
-  const seriesMeta = seriesMetaFor(state);
+  // A lost solo flock is a defeat, not a BO/FT win or a podium victory.
+  const seriesMeta = state?.special?.troupeauSoloDefeat ? null : seriesMetaFor(state);
   const seriesRows = seriesMeta ? (teamMode
     ? Array.from(new Set((state?.players||[]).map((p:any)=>String(state?.config?.teamByPlayer?.[p.id]||"")).filter(Boolean))).map((teamId:any)=>({ id:`team:${teamId}`, label:`TEAM ${teamId}`, wins:n(seriesMeta.wins?.[`team:${teamId}`]), winner:String(state?.winnerTeamId||"")===String(teamId) }))
     : rows.map((row:any)=>({ id:row.id, label:row.name, wins:n(seriesMeta.wins?.[row.id]), winner:row.winner }))) : [];
@@ -319,7 +320,7 @@ export default function Wave61EndSummary({ state, profiles, accent, familyLabel 
     <div style={{ ...card(accent),padding:8,minWidth:0,overflow:"hidden" }}>
       <div style={{ color:accent,fontSize:9,fontWeight:1050,letterSpacing:.8,marginBottom:7 }}>PODIUM · {String(familyLabel || "WAVE61").toUpperCase()}</div>
       <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(145px,100%),1fr))",gap:6,minWidth:0 }}>
-        {top.map((row:any)=><div key={row.id} style={{ minWidth:0,display:"grid",gridTemplateColumns:"34px minmax(0,1fr)",gap:7,alignItems:"center",borderRadius:11,padding:7,border:`1px solid ${row.winner ? accent+"88" : "rgba(255,255,255,.08)"}`,background:row.winner?`${accent}12`:"rgba(255,255,255,.025)" }}><ProfileAvatar profile={row.profile} size={34} showStars={false} ringColor={row.winner?accent:"rgba(255,255,255,.18)"}/><div style={{ minWidth:0 }}><div style={{ color:row.winner?"#fff":"#dce1eb",fontWeight:1000,fontSize:10.5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{row.rank===1?"🥇 ":row.rank===2?"🥈 ":"🥉 "}{row.name}</div><div style={{ color:SOFT,fontSize:8.8,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{metricText(row)} · {row.accuracy}%</div><div style={{ color:SOFT,fontSize:7.8,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{row.metric?.sub || `${row.hits} touches`}</div></div></div>)}
+        {top.map((row:any)=><div key={row.id} style={{ minWidth:0,display:"grid",gridTemplateColumns:"34px minmax(0,1fr)",gap:7,alignItems:"center",borderRadius:11,padding:7,border:`1px solid ${row.winner ? accent+"88" : "rgba(255,255,255,.08)"}`,background:row.winner?`${accent}12`:"rgba(255,255,255,.025)" }}><ProfileAvatar profile={row.profile} size={34} showStars={false} ringColor={row.winner?accent:"rgba(255,255,255,.18)"}/><div style={{ minWidth:0 }}><div style={{ color:row.winner?"#fff":"#dce1eb",fontWeight:1000,fontSize:10.5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{state?.special?.troupeauSoloDefeat ? "🐺 " : row.rank===1?"🥇 ":row.rank===2?"🥈 ":"🥉 "}{row.name}</div><div style={{ color:SOFT,fontSize:8.8,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{metricText(row)} · {row.accuracy}%</div><div style={{ color:SOFT,fontSize:7.8,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{row.metric?.sub || `${row.hits} touches`}</div></div></div>)}
       </div>
     </div>
 
