@@ -109,6 +109,11 @@ function RemoteFocusBridge({ onExit }: { onExit: () => void }) {
       }
 
       if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Enter"].includes(key)) return;
+      // Ne jamais détourner les flèches des champs de saisie du score et
+      // des sélecteurs : c'est le jeu qui gère le curseur/la valeur.
+      const focused = document.activeElement as HTMLElement | null;
+      if (focused instanceof HTMLInputElement || focused instanceof HTMLTextAreaElement ||
+          focused instanceof HTMLSelectElement || focused?.isContentEditable) return;
       const items = focusables();
       if (!items.length) return;
       let active = document.activeElement as HTMLElement | null;
@@ -226,9 +231,14 @@ export default function SamsungTvSharedAppHost({ boot, snapshot, onExit, onNavig
   React.useLayoutEffect(() => {
     setSamsungTvNativeAppBoot(boot);
     applySharedTvDomFlags();
-    try { installResponsiveLayout(); } catch {}
+    let uninstallResponsiveLayout: (() => void) | undefined;
+    try { uninstallResponsiveLayout = installResponsiveLayout(); } catch {}
+    // L’application embarquée doit utiliser les règles TV 16:9 même lorsqu’un
+    // simulateur ou un navigateur de développement ne s’identifie pas Tizen.
+    applySharedTvDomFlags();
 
     return () => {
+      try { uninstallResponsiveLayout?.(); } catch {}
       setSamsungTvNativeAppBoot(null);
       delete document.documentElement.dataset.mssSamsungTvSharedApp;
       delete document.body.dataset.mssSamsungTvSharedApp;

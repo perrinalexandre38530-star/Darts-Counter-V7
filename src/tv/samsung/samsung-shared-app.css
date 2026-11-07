@@ -175,3 +175,56 @@ html[data-mss-samsung-tv-shared-app="1"] .mss-tv-shared-app-hint {
   left: calc(var(--msc-landscape-rail-width, 122px) + 18px) !important;
   bottom: 10px !important;
 }
+
+/* Samsung TV V233 — les jeux sont ceux de l'application, jamais recadrés à
+   l'aveugle. Les pages de jeu dépassant 1080p restent navigables verticalement. */
+html[data-mss-samsung-tv-shared-app="1"] .mss-tv-shared-app-host {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  scrollbar-width: thin;
+}
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"] {
+  height: auto !important;
+  min-height: 100vh !important;
+  max-height: none !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+}
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"] > * {
+  max-height: none !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .x01play-container {
+  width: 100% !important;
+  height: auto !important;
+  min-height: 100vh !important;
+  max-height: none !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"] .msc-gameplay-layout,
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"] .msc-gameplay-shell {
+  max-height: none !important;
+}
+/* La route possède son rail latéral; ne pas déplacer une seconde fois le jeu. */
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"][data-mss-bottom-nav-visible="1"] {
+  height: auto !important;
+  min-height: 100vh !important;
+  max-height: none !important;
+  overflow-y: auto !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"][data-mss-bottom-nav-visible="1"] > .x01play-container {
+  height: auto !important;
+  min-height: 100vh !important;
+  max-height: none !important;
+  overflow-y: auto !important;
+}
+/* Sélecteurs et dialogues doivent rester dans le champ visible en 16:9. */
+html[data-mss-samsung-tv-shared-app="1"] :is([role="dialog"], [aria-modal="true"], dialog) {
+  max-width: min(1100px, 94vw) !important;
+  max-height: 92vh !important;
+  overflow-y: auto !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] :is(button, a, [role="button"], input, select, textarea) {
+  scroll-margin: 96px 28px;
+}

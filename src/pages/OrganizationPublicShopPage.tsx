@@ -1,5 +1,6 @@
 import React from "react";
 import OrganizationPublicShopRequestForm from "../components/OrganizationPublicShopRequestForm";
+import OrganizationShopRequestTracking from "../components/OrganizationShopRequestTracking";
 import { useLang } from "../contexts/LangContext";
 import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import { fetchPublicShop, type PublicShopData, type PublicShopProduct } from "../organizations/organizationPublicShop";
@@ -23,9 +24,10 @@ export default function OrganizationPublicShopPage({ organizationId }: { organiz
   const [error, setError] = React.useState("");
   const [category, setCategory] = React.useState<Category>("all");
   const [selected, setSelected] = React.useState<PublicShopProduct | null>(null);
+  const [trackingReference, setTrackingReference] = React.useState("");
   React.useEffect(() => {
     let cancelled = false;
-    setLoading(true); setError(""); setData(null); setCategory("all"); setSelected(null);
+    setLoading(true); setError(""); setData(null); setCategory("all"); setSelected(null); setTrackingReference("");
     void fetchPublicShop(String(organizationId || "")).then((result) => {
       if (!cancelled) setData(result);
     }).catch((e: any) => { if (!cancelled) setError(String(e?.message || "Boutique indisponible.")); })
@@ -118,6 +120,7 @@ export default function OrganizationPublicShopPage({ organizationId }: { organiz
             </div>
           </button>)}
         </div>
+        <div id="club-shop-tracking" style={{ marginTop: 20 }}><OrganizationShopRequestTracking key={data.organizationId} organizationId={data.organizationId} initialReference={trackingReference} /></div>
         <footer style={{ ...card, padding: 18, marginTop: 24, display: "grid", gap: 10 }}>
           <strong style={{ fontSize: 15 }}>{L("Informations et contact", "Information and contact", "Información y contacto")}</strong>
           <p style={{ color: "#b7cad8", fontSize: 12, margin: 0, lineHeight: 1.6 }}>{L("Vitrine du club. Tu peux transmettre une demande de réservation ou de maillot personnalisé, sous réserve d'acceptation par le club. Aucun paiement en ligne.", "Club storefront. You may submit a reservation or customized jersey request, subject to club approval. No online payments.", "Escaparate del club. Puedes enviar solicitudes de reserva o personalización, sujetas a la aprobación del club. Sin pagos en línea.")}</p>
@@ -142,7 +145,10 @@ export default function OrganizationPublicShopPage({ organizationId }: { organiz
           {selected.variants ? <div style={{ fontSize: 12, color: "#bcd0de" }}>{selected.variants}</div> : null}
           <strong style={{ fontSize: 23, color: "#8cedd7" }}>{money(selected)}</strong>
           {availabilityLabel(selected) ? <div style={{ color: canRequest(selected) ? "#9af5d8" : "#ffb5b5", fontSize: 12, fontWeight: 900 }}>{availabilityLabel(selected)}</div> : null}
-          {canRequest(selected) ? <OrganizationPublicShopRequestForm key={selected.id} organizationId={data.organizationId} product={selected} /> : null}
+          {canRequest(selected) ? <OrganizationPublicShopRequestForm key={selected.id} organizationId={data.organizationId} product={selected} onTrackRequest={(ref) => {
+            setSelected(null); setTrackingReference(ref);
+            window.requestAnimationFrame(() => document.getElementById("club-shop-tracking")?.scrollIntoView({ behavior: "smooth", block: "center" }));
+          }} /> : null}
           {canEmail ? <a href={emailLink(selected)} style={{ ...chip(true), textAlign: "center", textDecoration: "none" }}>{L("Demander cet article au club", "Ask the club about this item", "Consultar al club")}</a> : null}
           {safePhone ? <a href={`tel:${safePhone}`} style={{ ...chip(false), textAlign: "center", textDecoration: "none" }}>{L("Appeler le club", "Call the club", "Llamar al club")}</a> : null}
         </div>

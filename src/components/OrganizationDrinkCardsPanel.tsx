@@ -80,7 +80,7 @@ export default function OrganizationDrinkCardsPanel({ organization, userId, logo
   const [pictureDataUrl, setPictureDataUrl] = React.useState("");
   const [printingCard, setPrintingCard] = React.useState("");
   const [coverKey, setCoverKey] = React.useState<BuvetteSceneKey>(DEFAULT_BUVETTE_COVER);
-  // Option purement visuelle locale : ne change ni la couverture serveur ni les cartes émises.
+  // La préférence automatique concerne uniquement le choix du fond, jamais les ornements saisonniers.
   const seasonalStorageKey = `mss:buvette:seasonal:${organization.id}`;
   const [seasonalCover, setSeasonalCover] = React.useState(() => {
     try { return localStorage.getItem(`mss:buvette:seasonal:${organization.id}`) !== "off"; }
@@ -224,26 +224,27 @@ export default function OrganizationDrinkCardsPanel({ organization, userId, logo
     try {
       await saveOrganizationBuvetteCover(userId, organization.id, key);
       setCoverKey(key);
+      // L'image personnalisée remplace le fond automatique, pas le décor saisonnier.
       toggleSeasonalCover(false);
-      setMessage(L("Couverture de la Buvette enregistrée pour le club.", "Club cover saved.", "Portada guardada para el club."));
+      setMessage(L("Couverture de la Buvette enregistrée pour le club. Le décor saisonnier reste actif.", "Club cover saved. Seasonal decorations remain active.", "Portada guardada. La decoración de temporada sigue activa."));
     } catch (e: any) { setError(String(e?.message || "Couverture non enregistrée.")); }
     finally { setCoverSaving(false); }
   };
 
   return <section style={{ display: "grid", gap: 12 }}>
     <div style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
-      <div className={seasonalCover ? "mss-buvette-seasonal-hero" : undefined} style={{ minHeight: 202, position: "relative", display: "flex", alignItems: "flex-end",
+      <div className="mss-buvette-seasonal-hero" style={{ minHeight: 202, position: "relative", display: "flex", alignItems: "flex-end",
         background: `linear-gradient(180deg,rgba(2,7,16,.02) 3%,rgba(2,7,16,.80) 100%),url("${buvetteScenePath(displayedCover)}") center/cover no-repeat` }}>
-        {seasonalCover && <SeasonalDoodle season={season} variant="cover" />}
-        <div className={seasonalCover ? "mss-buvette-seasonal-content" : undefined} style={{ width: "100%", display: "flex", gap: 9, alignItems: "center", padding: "18px 12px", position: "relative", zIndex: 2 }}>
+        <SeasonalDoodle season={season} variant="cover" />
+        <div className="mss-buvette-seasonal-content" style={{ width: "100%", display: "flex", gap: 9, alignItems: "center", padding: "18px 12px", position: "relative", zIndex: 2 }}>
           {logo ? <img alt="" src={logo} style={{ width: 56, height: 56, flexShrink: 0, borderRadius: 13, objectFit: "contain", background: "#fff", padding: 4 }}/>
             : <span style={{ width: 54, height: 54, borderRadius: 12, background: "#060b13bb", display: "grid", placeItems: "center" }}><BuvetteGlyph icon="cup" size={33} color={theme.primary}/></span>}
           <div style={{ minWidth: 0 }}>
             <strong style={{ display: "block", color: "#fff", fontSize: "clamp(17px,3vw,23px)", lineHeight: 1.16, textShadow: "0 2px 8px #000" }}>{L("BUVETTE DU CLUB", "CLUB DRINKS BAR", "BAR DEL CLUB")}</strong>
             <div style={{ color: "#f0f2f6", fontSize: 12, fontWeight: 750, textShadow: "0 2px 7px #000" }}>{organization.name}</div>
           </div>
-          {seasonalCover ? <span title={SEASON_THEMES[season].label} style={{ marginLeft: "auto", flexShrink: 0, padding: "5px 9px", borderRadius: 12, border: `1px solid ${SEASON_THEMES[season].color}99`, color: SEASON_THEMES[season].color, background: "#091018dd", fontWeight: 900, fontSize: 11 }} className="mss-buvette-seasonal-badge">{SEASON_THEMES[season].emoji} {SEASON_THEMES[season].label}</span> : null}
-          <span style={{ marginLeft: seasonalCover ? 0 : "auto", flexShrink: 0, padding: 7, borderRadius: 12, border: `1px solid ${theme.primary}80`, background: "#091018b8" }}><BuvetteGlyph icon="cup" size={29} color={theme.primary}/></span>
+          <span title={SEASON_THEMES[season].label} style={{ marginLeft: "auto", flexShrink: 0, padding: "5px 9px", borderRadius: 12, border: `1px solid ${SEASON_THEMES[season].color}99`, color: SEASON_THEMES[season].color, background: "#091018dd", fontWeight: 900, fontSize: 11 }} className="mss-buvette-seasonal-badge">{SEASON_THEMES[season].emoji} {SEASON_THEMES[season].label}</span>
+          <span style={{ marginLeft: 0, flexShrink: 0, padding: 7, borderRadius: 12, border: `1px solid ${theme.primary}80`, background: "#091018b8" }}><BuvetteGlyph icon="cup" size={29} color={theme.primary}/></span>
         </div>
       </div>
       <div style={{ padding: "11px 14px 13px" }}>
@@ -264,7 +265,7 @@ export default function OrganizationDrinkCardsPanel({ organization, userId, logo
         <strong style={{ display: "block", color: theme.primary, fontSize: 13 }}>{L("COUVERTURE DE L’ESPACE BUVETTE", "BUVETTE PAGE COVER", "PORTADA DE LA CANTINA")}</strong>
         <label style={{ display: "flex", alignItems: "center", gap: 8, margin: "10px 0", fontSize: 12, color: theme.text, cursor: "pointer" }}>
           <input type="checkbox" checked={seasonalCover} onChange={(e) => toggleSeasonalCover(e.target.checked)} />
-          {L("Adapter automatiquement la couverture aux 4 saisons", "Automatically use a seasonal cover", "Cambiar la portada con las estaciones")}
+          {L("Changer automatiquement le fond selon la saison (le décor reste toujours visible)", "Automatically change the background by season (decorations always stay visible)", "Cambiar el fondo según la temporada (la decoración siempre permanece visible)")}
         </label>
         <small style={{ color: theme.textSoft }}>{L("Choisis un des 20 fonds. La couverture est partagée par tous les membres et ne change pas les cartes déjà attribuées.",
           "Choose one of 20 backgrounds. This cover is shared with all members and does not change issued cards.",

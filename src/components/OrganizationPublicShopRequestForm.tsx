@@ -4,7 +4,7 @@ import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import type { PublicShopProduct } from "../organizations/organizationPublicShop";
 import { submitPublicShopRequest } from "../organizations/organizationShopRequests";
 
-export default function OrganizationPublicShopRequestForm({ organizationId, product }: { organizationId: string; product: PublicShopProduct }) {
+export default function OrganizationPublicShopRequestForm({ organizationId, product, onTrackRequest }: { organizationId: string; product: PublicShopProduct; onTrackRequest?: (reference: string) => void }) {
   const { lang } = useLang();
   const L = (fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es);
   const [name, setName] = React.useState("");
@@ -19,6 +19,7 @@ export default function OrganizationPublicShopRequestForm({ organizationId, prod
   const [error, setError] = React.useState("");
   const [reference, setReference] = React.useState("");
   const [consent, setConsent] = React.useState(false);
+  const [honeypot, setHoneypot] = React.useState("");
   const canCustomize = product.category === "official_kit" || product.category === "clothing";
   const maxQty = product.availability === "available" && product.stockQuantity != null ? Math.min(10, product.stockQuantity) : 10;
   const input: React.CSSProperties = { boxSizing: "border-box", minWidth: 0, width: "100%", minHeight: 40, background: "#0b1927", color: "#effbfb", border: "1px solid #546576", borderRadius: 9, padding: "10px 11px", fontSize: 13 };
@@ -30,7 +31,7 @@ export default function OrganizationPublicShopRequestForm({ organizationId, prod
     try {
       const ref = await submitPublicShopRequest({ organizationId, itemId: product.id, name, email, phone,
         quantity, size: canCustomize ? size : "", personalizedName: canCustomize ? personalizedName : "",
-        personalizedNumber: canCustomize ? personalizedNumber : "", notes });
+        personalizedNumber: canCustomize ? personalizedNumber : "", notes, honeypot });
       setReference(ref);
     } catch (e: any) { setError(String(e?.message || L("Échec de l'envoi.", "Request failed.", "Solicitud fallida."))); }
     finally { setBusy(false); }
@@ -39,10 +40,18 @@ export default function OrganizationPublicShopRequestForm({ organizationId, prod
     <strong style={{ color: "#9effdd" }}>{L("Demande transmise au club", "Request sent to the club", "Solicitud enviada al club")}</strong>
     <p style={{ margin: 0, fontSize: 12, lineHeight: 1.5 }}>{L("Le responsable doit encore l'accepter. Aucun paiement n'a été effectué et l'article n'est pas encore réservé.", "The club must still approve it. No payment has been taken and the item is not reserved yet.", "El club debe aprobarla. No se ha realizado ningún pago ni reserva confirmada.")}</p>
     <small style={{ color: "#d0e5e1", overflowWrap: "anywhere" }}>{L("Référence", "Reference", "Referencia")} : {reference}</small>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+      <button type="button" onClick={() => onTrackRequest?.(reference)} style={{ color: "#9affdf", border: "1px solid #5da998", borderRadius: 7, padding: "3px 7px", background: "#113c35", cursor: "pointer", fontSize: 12, fontWeight: 800 }}>{L("Suivre cette demande", "Track this request", "Seguir esta solicitud")}</button>
+      <button type="button" style={{ color: "#9affdf", fontSize: 12, fontWeight: 800, border: "1px solid #5da998", borderRadius: 7, padding: "3px 7px", background: "#113c35", cursor: "pointer" }} onClick={() => { void navigator.clipboard?.writeText(reference).catch(() => {}); }}>{L("Copier la référence", "Copy reference", "Copiar referencia")}</button>
+    </div>
   </section>;
   return <form onSubmit={(e) => void submit(e)} style={{ borderTop: "1px solid #455767", paddingTop: 16, display: "grid", gap: 11 }}>
     <strong style={{ color: "#9affdf", fontSize: 14 }}>{canCustomize ? L("DEMANDER UN ARTICLE / MAILLOT PERSONNALISÉ", "REQUEST AN ITEM / CUSTOM JERSEY", "SOLICITAR UNA PRENDA PERSONALIZADA") : L("DEMANDER UNE RÉSERVATION", "REQUEST A RESERVATION", "SOLICITAR UNA RESERVA")}</strong>
     <p style={{ margin: 0, color: "#b4c8d5", fontSize: 11, lineHeight: 1.5 }}>{L("Demande sans engagement, à valider par le club. Paiement et retrait à convenir directement avec le responsable.", "Non-binding request, subject to club approval. Arrange payment and collection with the club.", "Solicitud sujeta a confirmación. Pago y entrega a acordar con el club.")}</p>
+    {/* Champ piège volontairement hors écran : seuls les bots doivent le renseigner. */}
+    <div aria-hidden="true" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", left: "-10000px" }}>
+      <label>Website <input type="text" tabIndex={-1} name="company_website_2" autoComplete="off" value={honeypot} onChange={(e) => setHoneypot(e.target.value)} /></label>
+    </div>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 10 }}>
       <label style={label}>{L("Nom et prénom", "Full name", "Nombre completo")}
         <input required style={input} maxLength={100} minLength={2} autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} /></label>

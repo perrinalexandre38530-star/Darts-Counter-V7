@@ -1,6 +1,7 @@
 import { DARTS_GAMES } from "../../games/dartsGameRegistry";
 
 import logoDarts from "../../assets/games/logo-darts.webp";
+import logoTossit from "../../assets/games/logo-tossit.webp";
 import logoPetanque from "../../assets/games/logo-petanque.webp";
 import logoPingPong from "../../assets/games/logo-pingpong.webp";
 import logoBabyFoot from "../../assets/games/logo-babyfoot.webp";
@@ -32,7 +33,8 @@ export type TvSportId =
   | "foot"
   | "running"
   | "fit"
-  | "esports";
+  | "esports"
+  | "tossit";
 
 export type TvSportDef = {
   id: TvSportId;
@@ -59,6 +61,7 @@ export type TvLaunchAction = {
 };
 
 export const TV_SPORTS: readonly TvSportDef[] = [
+  { id: "tossit", label: "TOSSIT", subtitle: "Jeux de palets adhésifs", logo: logoTossit, art: logoTossit, accent: "#32D8E9" },
   { id: "darts", label: "DARTS", subtitle: "Fléchettes", logo: logoDarts, art: artDarts, accent: "#EEFF31" },
   { id: "petanque", label: "PÉTANQUE", subtitle: "Mènes & équipes", logo: logoPetanque, art: artPetanque, accent: "#D79A2B" },
   { id: "pingpong", label: "PING-PONG", subtitle: "Simple, double, training", logo: logoPingPong, art: artPingPong, accent: "#FF3FA4" },
@@ -138,6 +141,13 @@ const FIT_ACTIONS: TvLaunchAction[] = [
   { id: "plan", label: "PROGRAMMES", subtitle: "Planification FIT", tab: "fit_plan" },
 ];
 
+// Ces routes sont celles du vrai jeu Tossit de V233, et non des écrans TV fictifs.
+const TOSSIT_ACTIONS: TvLaunchAction[] = [
+  { id: "menu", label: "JEUX TOSSIT", subtitle: "Tous les modes", tab: "games", direct: true },
+  { id: "config", label: "NOUVELLE PARTIE", subtitle: "Configurer une partie", tab: "tossit_config", direct: true },
+  { id: "stats", label: "STATISTIQUES", subtitle: "Performances Tossit", tab: "tossit_stats", direct: true },
+];
+
 const ESPORTS_ACTIONS: TvLaunchAction[] = [
   { id: "hub", label: "E-SPORTS HUB", subtitle: "Accueil", tab: "games" },
   { id: "rooms", label: "SALONS", subtitle: "Rooms", tab: "esports_rooms" },
@@ -197,6 +207,7 @@ export function tvLaunchActionsForSport(sportId: TvSportId): TvLaunchAction[] {
     const insertAt = Math.min(3, games.length);
     return [...games.slice(0, insertAt), training, ...games.slice(insertAt)];
   }
+  if (sportId === "tossit") return TOSSIT_ACTIONS;
   if (sportId === "petanque") return PETANQUE_ACTIONS;
   if (sportId === "pingpong") return PINGPONG_ACTIONS;
   if (sportId === "babyfoot") return BABYFOOT_ACTIONS;
