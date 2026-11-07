@@ -212,7 +212,7 @@ export default function TrainingPlayLayout({
             <div style={{ minWidth: 0, flex: 1 }}><div style={{ fontSize: 9, letterSpacing: .8, fontWeight: 950, color: "#ffd86b" }}>OBJECTIF DE LA SÉANCE</div><div style={{ fontSize: 12.5, marginTop: 3, fontWeight: 850, lineHeight: 1.35 }}>{sessionObjective}</div></div>
           </div> : null}
 
-          {progress ?
+          {progress ? (
             <div style={{ marginTop: 11 }}>
               <div
                 style={{
