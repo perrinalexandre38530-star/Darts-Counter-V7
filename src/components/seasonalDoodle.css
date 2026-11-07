@@ -1,0 +1,35 @@
+/* Decorative seasonal SVG overlays shared by all sports. No title or sport-specific imagery. */
+.mss-seasonal-doodle{position:absolute;inset:0;z-index:1;pointer-events:none;user-select:none;overflow:hidden;isolation:isolate}
+.mss-seasonal-doodle svg{display:block;width:100%;height:100%;overflow:visible;filter:drop-shadow(0 4px 6px #0008)}
+.mss-seasonal-doodle--cover{opacity:1;z-index:1}
+.mss-seasonal-doodle--cover svg{filter:drop-shadow(0 4px 5px #0008)}
+.mss-seasonal-doodle--autumn{--doodle-light:#ffc47b;--doodle-shadow:#632608}
+.mss-seasonal-doodle--winter{--doodle-light:#dbfaff;--doodle-shadow:#125e97}
+.mss-seasonal-doodle--spring{--doodle-light:#ffe3ef;--doodle-shadow:#654a75}
+.mss-seasonal-doodle--summer{--doodle-light:#ffedb6;--doodle-shadow:#9d5720}
+.mss-doodle-title{position:relative;z-index:2!important;color:transparent!important;-webkit-background-clip:text!important;background-clip:text!important;filter:drop-shadow(0 4px 4px #000a);animation:none!important}
+.mss-doodle-title--autumn{background-image:linear-gradient(180deg,#fff4d5 0%,#ffe0a3 29%,#fcb65d 48%,#e77b2b 69%,#953814 100%)!important;-webkit-text-stroke:.8px #f6bb71;text-shadow:0 2px 0 #843713,0 4px 0 #4d270e,0 8px 13px #ff8b2970}
+.mss-doodle-title--winter{background-image:linear-gradient(180deg,#fff 0%,#e7fbff 36%,#94ddff 58%,#55a9dc 77%,#256294 100%)!important;-webkit-text-stroke:.8px #e2faff;text-shadow:0 2px 0 #3c9bd1,0 4px 0 #14517a,0 9px 18px #70d9ffa0}
+.mss-doodle-title--spring{background-image:linear-gradient(180deg,#fff9fd 0%,#ffe5f1 35%,#efadd0 65%,#9cce9a 100%)!important;-webkit-text-stroke:.6px #fff0f5;text-shadow:0 2px 0 #b077a1,0 4px 0 #577e5e,0 9px 16px #ee98c27a}
+.mss-doodle-title--summer{background-image:linear-gradient(180deg,#fff9db 0%,#ffe89f 42%,#fbb74f 72%,#d98526 100%)!important;-webkit-text-stroke:.6px #fff5cc;text-shadow:0 2px 0 #b17b26,0 4px 0 #78401c,0 8px 14px #ffb45a80}
+.mss-doodle-welcome{border-color:var(--doodle-light)!important;box-shadow:0 0 15px color-mix(in srgb,var(--doodle-light) 25%,transparent),inset 0 1px 8px #fff2!important;background:linear-gradient(155deg,#20180ff2,#111721ee)!important}
+.mss-doodle-welcome span{color:var(--doodle-light)!important;text-shadow:0 1px 8px var(--doodle-shadow)}
+.msc-home-header:has(>.mss-seasonal-doodle),.msc-sport-home-header:has(>.mss-seasonal-doodle){min-height:150px;padding-block:27px!important;justify-content:center}
+.msc-home-header:has(>.mss-seasonal-doodle) .mss-doodle-title,.msc-sport-home-header:has(>.mss-seasonal-doodle) .mss-doodle-title{line-height:1.14;padding:3px 0;letter-spacing:2px!important}
+.mss-buvette-seasonal-hero{min-height:242px!important;isolation:isolate}
+.mss-buvette-seasonal-hero:before{content:"";position:absolute;inset:0;pointer-events:none;z-index:0;background:linear-gradient(180deg,rgba(1,5,10,.03) 0%,rgba(1,6,10,.12) 46%,rgba(1,6,10,.92) 100%)}
+.mss-buvette-seasonal-content{border-top:1px solid #ffffff12;background:linear-gradient(180deg,transparent,#06121ac9);margin-bottom:0}
+.mss-buvette-seasonal-title{font-family:Georgia,'Times New Roman',serif;font-weight:900!important;letter-spacing:.4px;line-height:1.08!important}
+.mss-buvette-seasonal-badge{backdrop-filter:blur(8px);box-shadow:0 2px 16px #0009,inset 0 1px 0 #ffffff30}
+@keyframes mss-drift{0%,100%{translate:0 0;rotate:-2deg}50%{translate:4px 8px;rotate:4deg}}
+@keyframes mss-soft-drift{0%,100%{translate:0 0}50%{translate:0 6px}}
+@keyframes mss-snow-shine{0%,100%{opacity:.63}50%{opacity:1}}
+@keyframes mss-blossom-breathe{0%,100%{opacity:.88}50%{opacity:1}}
+@keyframes mss-garland-blink{0%,100%{opacity:.48;filter:drop-shadow(0 0 0 transparent)}45%{opacity:.9;filter:drop-shadow(0 0 5px currentColor)}70%{opacity:.6}}
+.mss-doodle-drifter{animation:mss-drift 7s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+.mss-doodle-soft-drift{animation:mss-soft-drift 6s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+.mss-doodle-snowflake{animation:mss-snow-shine 5s ease-in-out infinite}
+.mss-doodle-blossom{animation:mss-blossom-breathe 6s ease-in-out infinite}
+.mss-doodle-garland-light{animation:mss-garland-blink 2.8s ease-in-out infinite}
+@media(max-width:480px){.msc-home-header:has(>.mss-seasonal-doodle),.msc-sport-home-header:has(>.mss-seasonal-doodle){min-height:143px;padding-block:24px!important}.mss-buvette-seasonal-hero{min-height:230px!important}}
+@media(prefers-reduced-motion:reduce){.mss-seasonal-doodle *, .mss-doodle-title{animation:none!important}}

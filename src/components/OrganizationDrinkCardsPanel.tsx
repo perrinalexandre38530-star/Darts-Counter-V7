@@ -1,4 +1,5 @@
 import { getAppSeason, SEASON_THEMES } from "../lib/seasonalThemes";
+import SeasonalDoodle from "./SeasonalDoodle";
 import React from "react";
 import ClubBuvetteCardVisual, { BuvetteGlyph, BUVETTE_BACKGROUNDS, clubBuvetteBackground } from "./ClubBuvetteCardVisual";
 import { uploadOrganizationShopImage } from "../lib/organizationSupabaseMedia";
@@ -231,16 +232,17 @@ export default function OrganizationDrinkCardsPanel({ organization, userId, logo
 
   return <section style={{ display: "grid", gap: 12 }}>
     <div style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
-      <div style={{ minHeight: 202, position: "relative", display: "flex", alignItems: "flex-end",
+      <div className={seasonalCover ? "mss-buvette-seasonal-hero" : undefined} style={{ minHeight: 202, position: "relative", display: "flex", alignItems: "flex-end",
         background: `linear-gradient(180deg,rgba(2,7,16,.02) 3%,rgba(2,7,16,.80) 100%),url("${buvetteScenePath(displayedCover)}") center/cover no-repeat` }}>
-        <div style={{ width: "100%", display: "flex", gap: 11, alignItems: "center", padding: "18px 15px", position: "relative" }}>
+        {seasonalCover && <SeasonalDoodle season={season} variant="cover" />}
+        <div className={seasonalCover ? "mss-buvette-seasonal-content" : undefined} style={{ width: "100%", display: "flex", gap: 9, alignItems: "center", padding: "18px 12px", position: "relative", zIndex: 2 }}>
           {logo ? <img alt="" src={logo} style={{ width: 56, height: 56, flexShrink: 0, borderRadius: 13, objectFit: "contain", background: "#fff", padding: 4 }}/>
             : <span style={{ width: 54, height: 54, borderRadius: 12, background: "#060b13bb", display: "grid", placeItems: "center" }}><BuvetteGlyph icon="cup" size={33} color={theme.primary}/></span>}
           <div style={{ minWidth: 0 }}>
-            <strong style={{ display: "block", color: "#fff", fontSize: "clamp(17px,3vw,23px)", lineHeight: 1.16, textShadow: "0 2px 8px #000" }}>{L("BUVETTE DU CLUB", "CLUB DRINKS BAR", "BAR DEL CLUB")}</strong>
+            <strong className={seasonalCover ? `mss-doodle-title mss-doodle-title--${season} mss-buvette-seasonal-title` : undefined} style={{ display: "block", color: "#fff", fontSize: "clamp(18px,3.1vw,25px)", lineHeight: 1.16, textShadow: "0 2px 8px #000", backgroundImage: seasonalCover ? "linear-gradient(180deg,#fff,#d6e7f0)" : undefined }}>{L("BUVETTE DU CLUB", "CLUB DRINKS BAR", "BAR DEL CLUB")}</strong>
             <div style={{ color: "#f0f2f6", fontSize: 12, fontWeight: 750, textShadow: "0 2px 7px #000" }}>{organization.name}</div>
           </div>
-          {seasonalCover ? <span title={SEASON_THEMES[season].label} style={{ marginLeft: "auto", flexShrink: 0, padding: "5px 9px", borderRadius: 12, border: `1px solid ${SEASON_THEMES[season].color}99`, color: SEASON_THEMES[season].color, background: "#091018dd", fontWeight: 900, fontSize: 12 }}>{SEASON_THEMES[season].emoji} {SEASON_THEMES[season].label}</span> : null}
+          {seasonalCover ? <span title={SEASON_THEMES[season].label} style={{ marginLeft: "auto", flexShrink: 0, padding: "5px 9px", borderRadius: 12, border: `1px solid ${SEASON_THEMES[season].color}99`, color: SEASON_THEMES[season].color, background: "#091018dd", fontWeight: 900, fontSize: 11 }} className="mss-buvette-seasonal-badge">{SEASON_THEMES[season].emoji} {SEASON_THEMES[season].label}</span> : null}
           <span style={{ marginLeft: seasonalCover ? 0 : "auto", flexShrink: 0, padding: 7, borderRadius: 12, border: `1px solid ${theme.primary}80`, background: "#091018b8" }}><BuvetteGlyph icon="cup" size={29} color={theme.primary}/></span>
         </div>
       </div>

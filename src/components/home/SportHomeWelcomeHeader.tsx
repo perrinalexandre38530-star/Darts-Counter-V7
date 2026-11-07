@@ -1,6 +1,7 @@
 import React from "react";
 import SportWelcomeWatermark from "./SportWelcomeWatermark";
-import { getSeasonHeaderBackground, SEASON_THEMES, getAppSeason } from "../../lib/seasonalThemes";
+import { getSeasonHeaderBackground, getAppSeason } from "../../lib/seasonalThemes";
+import SeasonalDoodle from "../SeasonalDoodle";
 
 /**
  * En-tête HOME commun à tous les sports.
@@ -71,10 +72,10 @@ export default function SportHomeWelcomeHeader({
       }}
     >
       <SportWelcomeWatermark sport={sport} opacity={0.12} size={205} />
-      <span aria-hidden="true" style={{ position: "absolute", right: 14, top: 8, color: SEASON_THEMES[getAppSeason()].color, fontSize: 24, opacity: .82, pointerEvents: "none" }}>{SEASON_THEMES[getAppSeason()].emoji}</span>
+      <SeasonalDoodle season={getAppSeason()} />
 
       <div
-        className="msc-sport-home-welcome-pill"
+        className={`msc-sport-home-welcome-pill mss-doodle-welcome mss-seasonal-doodle--${getAppSeason()}`}
         style={{
           position: "relative",
           zIndex: 2,
@@ -101,7 +102,7 @@ export default function SportHomeWelcomeHeader({
 
       <div className="msc-sport-home-title-wrap" ref={wrapRef} style={{ position: "relative", zIndex: 2, width: "100%", overflow: "hidden" }}>
         <div
-          className="msc-sport-home-title"
+          className={`msc-sport-home-title mss-doodle-title mss-doodle-title--${getAppSeason()}`}
           ref={textRef}
           style={{
             width: "fit-content",

@@ -19,7 +19,8 @@ import ArcadeTicker, {
 } from "../components/home/ArcadeTicker";
 import { InlineAdBanner } from "../monetization/AdSlot";
 import SportWelcomeWatermark from "../components/home/SportWelcomeWatermark";
-import { getSeasonHeaderBackground, SEASON_THEMES, getAppSeason } from "../lib/seasonalThemes";
+import { getSeasonHeaderBackground, getAppSeason } from "../lib/seasonalThemes";
+import SeasonalDoodle from "../components/SeasonalDoodle";
 import LiveSportsHomeCard from "../components/home/LiveSportsHomeCard";
 import { canRequestBannerAds, getVerifiedAdFreeState, loadMonetizationPrefs, subscribeMonetizationPrefs, subscribeVerifiedEntitlements } from "../monetization/prefs";
 import footHomeCover01 from "../assets/tickers/foot-01.webp";
@@ -2914,9 +2915,9 @@ React.useEffect(() => {
           }}
         >
           <SportWelcomeWatermark sport={String(sport)} opacity={0.12} size={205} />
-          <span aria-hidden="true" style={{ position: "absolute", right: 14, top: 8, fontSize: 24, color: SEASON_THEMES[getAppSeason()].color, opacity: .82, pointerEvents: "none" }}>{SEASON_THEMES[getAppSeason()].emoji}</span>
+          <SeasonalDoodle season={getAppSeason()} />
           <div
-            className="msc-home-welcome-pill"
+            className={`msc-home-welcome-pill mss-doodle-welcome mss-seasonal-doodle--${getAppSeason()}`}
             style={{
               position: "relative", zIndex: 2,
               display: "inline-flex",
@@ -2942,7 +2943,7 @@ React.useEffect(() => {
           </div>
   
           <div
-            className="msc-home-sport-title"
+            className={`msc-home-sport-title mss-doodle-title mss-doodle-title--${getAppSeason()}`}
             style={{
               position: "relative",
               zIndex: 2,
