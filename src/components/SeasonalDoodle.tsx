@@ -1,6 +1,7 @@
 import React from 'react';
 import { getAppSeason, type AppSeason } from '../lib/seasonalThemes';
 import './seasonalDoodle.css';
+import { getSeasonalDecorationsEnabled, subscribeSeasonalDecorations } from '../lib/seasonalDecorationPreference';
 import autumnBranch from '../assets/seasonal/autumn-oak-corner.webp';
 import winterBranch from '../assets/seasonal/winter-oak-corner.webp';
 import springBranch from '../assets/seasonal/spring-oak-corner.webp';
@@ -259,33 +260,10 @@ const Details = ({ season, cover }: { season: AppSeason; cover: boolean }) => {
   return <SummerDetails cover={cover} />;
 };
 
-const DECOR_PREFERENCE_KEY = 'mss:seasonal:decorations:enabled:v1';
-const DECOR_EVENT = 'mss-seasonal-decorations-change';
-
-function readDecorationPreference(): boolean {
-  try { return window.localStorage.getItem(DECOR_PREFERENCE_KEY) !== 'off'; }
-  catch { return true; }
-}
-
 export default function SeasonalDoodle({ season = getAppSeason(), variant = 'title', className = '' }: Props) {
   const cover = variant === 'cover';
-  const [enabled, setEnabled] = React.useState(readDecorationPreference);
-  React.useEffect(() => {
-    const refresh = () => setEnabled(readDecorationPreference());
-    window.addEventListener('storage', refresh);
-    window.addEventListener(DECOR_EVENT, refresh);
-    return () => {
-      window.removeEventListener('storage', refresh);
-      window.removeEventListener(DECOR_EVENT, refresh);
-    };
-  }, []);
-  const toggleDecorations = () => {
-    const next = !enabled;
-    setEnabled(next);
-    try { window.localStorage.setItem(DECOR_PREFERENCE_KEY, next ? 'on' : 'off'); }
-    catch { /* preference stays active for this view */ }
-    window.dispatchEvent(new Event(DECOR_EVENT));
-  };
+  const [enabled, setEnabled] = React.useState(getSeasonalDecorationsEnabled);
+  React.useEffect(() => subscribeSeasonalDecorations(setEnabled), []);
   return (
     <div className={`mss-seasonal-doodle mss-seasonal-doodle--${variant} mss-seasonal-doodle--${season} ${className}`.trim()}>
       {enabled ? (() => {
@@ -311,16 +289,6 @@ export default function SeasonalDoodle({ season = getAppSeason(), variant = 'tit
         </defs>
         <Details season={season} cover={cover} />
       </svg>}
-      <button
-        type="button"
-        className={`mss-seasonal-toggle ${enabled ? 'mss-seasonal-toggle--enabled' : ''}`}
-        onClick={toggleDecorations}
-        aria-label={enabled ? 'Désactiver les décorations saisonnières' : 'Activer les décorations saisonnières'}
-        aria-pressed={enabled}
-        title={enabled ? 'Masquer les décorations saisonnières' : 'Afficher les décorations saisonnières'}
-      >
-        <span aria-hidden="true">{enabled ? '✦' : '✧'}</span>
-      </button>
     </div>
   );
 }

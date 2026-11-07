@@ -78,6 +78,7 @@ import BackupDiagnosticsPanel from "../components/settings/BackupDiagnosticsPane
 import { useAwenaOptional } from "../awena/AwenaProvider";
 import { getAudioPreferences } from "../lib/audioPreferences";
 import { getKeepScreenAwakePreference, setKeepScreenAwakePreference, subscribeKeepScreenAwakePreference } from "../lib/keepAwake";
+import { getSeasonalDecorationsEnabled, setSeasonalDecorationsEnabled, subscribeSeasonalDecorations } from "../lib/seasonalDecorationPreference";
 
 import {
   DEFAULT_GOOGLE_CAST_APP_ID,
@@ -2012,9 +2013,11 @@ function DisplaySleepSettingsSection() {
   const { lang } = useLang();
   const L = (fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es);
   const [keepAwake, setKeepAwake] = React.useState<boolean>(() => getKeepScreenAwakePreference());
+  const [seasonalDecorEnabled, setSeasonalDecorEnabled] = React.useState(getSeasonalDecorationsEnabled);
   const [busy, setBusy] = React.useState(false);
 
   React.useEffect(() => subscribeKeepScreenAwakePreference(setKeepAwake), []);
+  React.useEffect(() => subscribeSeasonalDecorations(setSeasonalDecorEnabled), []);
 
   async function updateKeepAwake(next: boolean) {
     setBusy(true);
@@ -2087,6 +2090,35 @@ function DisplaySleepSettingsSection() {
           <span style={{ color: keepAwake ? theme.primary : theme.textSoft, fontSize: 11, fontWeight: 1000 }}>
             {keepAwake ? L("ACTIVÉ", "ENABLED", "ACTIVADO") : L("DÉSACTIVÉ", "DISABLED", "DESACTIVADO")}
           </span>
+        </div>
+
+        <div style={{ marginTop: 15, paddingTop: 14, borderTop: `1px solid ${theme.borderSoft}` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+            <span aria-hidden="true" style={{ fontSize: 20 }}>✦</span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: theme.primary, fontWeight: 1000, fontSize: 13.5 }}>
+                {L("DÉCORATIONS SAISONNIÈRES", "SEASONAL DECORATIONS", "DECORACIONES DE TEMPORADA")}
+              </div>
+              <div style={{ color: theme.textSoft, fontSize: 10.8, lineHeight: 1.45, marginTop: 4 }}>
+                {L(
+                  "Affiche ou masque les branches, feuilles, neige et animations sur les accueils des sports, des organisations et la Buvette. Le fond personnalisé de la Buvette reste inchangé.",
+                  "Show or hide seasonal branches, leaves, snow and animations on sport and organization home pages and the club bar. Custom bar covers remain unchanged.",
+                  "Muestra u oculta ramas, hojas, nieve y animaciones en los inicios deportivos, organizaciones y bar del club. La portada personalizada no cambia."
+                )}
+              </div>
+            </div>
+          </div>
+          <div role="group" aria-label={L("Décorations saisonnières", "Seasonal decorations", "Decoraciones de temporada")} style={{ marginTop: 11, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}>
+            <button type="button" aria-pressed={seasonalDecorEnabled} onClick={() => setSeasonalDecorationsEnabled(true)} style={optionButton(seasonalDecorEnabled)}>
+              {L("ACTIVER", "ENABLE", "ACTIVAR")}
+            </button>
+            <button type="button" aria-pressed={!seasonalDecorEnabled} onClick={() => setSeasonalDecorationsEnabled(false)} style={optionButton(!seasonalDecorEnabled)}>
+              {L("DÉSACTIVER", "DISABLE", "DESACTIVAR")}
+            </button>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 10.5, color: theme.textSoft, textAlign: "center" }}>
+            {L("Préférence conservée sur cet appareil", "Preference saved on this device", "Preferencia guardada en este dispositivo")}
+          </div>
         </div>
       </div>
 

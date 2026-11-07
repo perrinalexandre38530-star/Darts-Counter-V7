@@ -100,7 +100,7 @@ else {
   if (bundleText.includes("MSS_TIZEN_RANDOM_UUID_COMPAT_V1")) pass("Compatibilité crypto.randomUUID Tizen intégrée");
   else fail("Fallback crypto.randomUUID Tizen absent du bundle");
 
-  if (bundleText.includes("MSS_TV_FULL_APP_MENUS_BUILD_20261018_08") && bundleText.includes("samsung-tv-standalone"))
+  if (expectedTvBuild.marker && bundleText.includes(expectedTvBuild.marker) && bundleText.includes("samsung-tv-standalone") && bundleText.includes("mss-tv-shared-app-host"))
     pass("Mode Samsung TV autonome basé sur les vrais menus de l'application intégré");
   else fail("Mode Samsung TV autonome / menus application V8 absent du bundle");
 

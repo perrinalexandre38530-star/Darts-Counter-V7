@@ -228,3 +228,300 @@ html[data-mss-samsung-tv-shared-app="1"] :is([role="dialog"], [aria-modal="true"
 html[data-mss-samsung-tv-shared-app="1"] :is(button, a, [role="button"], input, select, textarea) {
   scroll-margin: 96px 28px;
 }
+
+/* ===============================================================
+   SAMSUNG TV V234 — GAMEPLAY LANDSCAPE CONTRACT
+   1. App's own ticker header occupies full content width
+   2. Left: scores, players, situation, game information
+   3. Right: scoring input, independently scrollable
+   This is scoped to the TV boot; other platforms are unchanged.
+   =============================================================== */
+html[data-mss-samsung-tv-shared-app="1"] {
+  --mss-tv-play-header-height: clamp(70px, 12vh, 138px);
+}
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"] {
+  height: 100vh !important;
+  min-height: 0 !important;
+  max-height: 100vh !important;
+  overflow: hidden !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"] > .x01play-container {
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+}
+/* The X01 quick-play shell already defines its own real 50/50 layout. */
+html[data-mss-samsung-tv-shared-app="1"] .x01ql-play[data-mss-native-play-layout="1"] {
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .x01ql-play[data-mss-native-play-layout="1"] > .x01ql-head {
+  flex-basis: var(--mss-tv-play-header-height) !important;
+  max-height: var(--mss-tv-play-header-height) !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .x01ql-play[data-mss-native-play-layout="1"] > .x01ql-stage {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .x01ql-play[data-mss-native-play-layout="1"] > .x01ql-stage > :is(.x01ql-left, .x01ql-input) {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  scrollbar-width: thin;
+}
+/* Mirror the game's existing tablet semantic layout for the TV, using the
+   same DOM markers emitted by PlayLandscapeAutoLayout. */
+  html[data-mss-samsung-tv-shared-app="1"][data-msc-orientation="landscape"][data-msc-device="tv"]
+  .dc-themed-route[data-msc-game-screen="play"][data-mss-auto-play-ready="1"] {
+    height: var(--msc-app-height, 100dvh) !important;
+    max-height: var(--msc-app-height, 100dvh) !important;
+    overflow: hidden !important;
+  }
+  
+  html[data-mss-samsung-tv-shared-app="1"][data-msc-orientation="landscape"][data-msc-device="tv"]
+  .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-root="1"] {
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: clamp(5px, .65vw, 8px) !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: clamp(5px, .65vw, 8px) !important;
+    overflow: hidden !important;
+  }
+  
+  html[data-mss-samsung-tv-shared-app="1"][data-msc-orientation="landscape"][data-msc-device="tv"]
+  .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-header="1"] {
+    flex: 0 0 clamp(56px, 10.5vh, 82px) !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    max-height: clamp(56px, 10.5vh, 82px) !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+    position: relative !important;
+    top: auto !important;
+    z-index: 12 !important;
+  }
+  
+  /* PageHeader ticker: full image visible, sized by available header height. */
+  html[data-mss-samsung-tv-shared-app="1"][data-msc-orientation="landscape"][data-msc-device="tv"]
+  .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-header="1"][data-mss-page-header="1"] {
+    padding-bottom: 0 !important;
+    border-bottom: 0 !important;
+  }
+  
+  html[data-mss-samsung-tv-shared-app="1"][data-msc-orientation="landscape"][data-msc-device="tv"]
+  .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-header="1"] > div:first-child {
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+  }
+  
+  html[data-mss-samsung-tv-shared-app="1"][data-msc-orientation="landscape"][data-msc-device="tv"]
+  .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-header="1"] img {
+    height: 100% !important;
+    width: auto !important;
+    max-width: 100% !important;
+    object-fit: contain !important;
+    object-position: center !important;
+  }
+  
+  /* Legacy custom headers that paint their ticker as a CSS background. */
+  html[data-mss-samsung-tv-shared-app="1"][data-msc-orientation="landscape"][data-msc-device="tv"]
+  .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-header="1"] [style*="background-image"],
+  html[data-mss-samsung-tv-shared-app="1"][data-msc-orientation="landscape"][data-msc-device="tv"]
+  .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-header="1"] [style*="backgroundImage"] {
+    background-size: contain !important;
+    background-repeat: no-repeat !important;
+    background-position: center !important;
+  }
+  
+  html[data-mss-samsung-tv-shared-app="1"][data-msc-orientation="landscape"][data-msc-device="tv"]
+  .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-body="1"],
+  html[data-mss-samsung-tv-shared-app="1"][data-msc-orientation="landscape"][data-msc-device="tv"]
+  .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-path="1"] {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-width: none !important;
+    max-height: 100% !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+  }
+  
+  html[data-mss-samsung-tv-shared-app="1"][data-msc-orientation="landscape"][data-msc-device="tv"]
+  .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-body="1"] {
+    overflow: hidden !important;
+  }
+  
+  /* The actual two-column gameplay workspace. */
+  html[data-mss-samsung-tv-shared-app="1"][data-msc-orientation="landscape"][data-msc-device="tv"]
+  .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-zone-host="1"] {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: clamp(4px, .55vw, 7px) !important;
+    box-sizing: border-box !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, .94fr) minmax(0, 1.06fr) !important;
+    grid-auto-flow: row !important;
+    grid-auto-rows: min-content !important;
+    gap: clamp(5px, .7vw, 9px) !important;
+    align-content: start !important;
+    overflow: auto !important;
+    overscroll-behavior: contain !important;
+    scrollbar-width: thin !important;
+  }
+  
+  html[data-mss-samsung-tv-shared-app="1"][data-msc-orientation="landscape"][data-msc-device="tv"]
+  .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-zone="left"] {
+    grid-column: 1 !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    box-sizing: border-box !important;
+  }
+  
+  html[data-mss-samsung-tv-shared-app="1"][data-msc-orientation="landscape"][data-msc-device="tv"]
+  .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-zone="input"] {
+    grid-column: 2 !important;
+    grid-row: 1 / span 120 !important;
+    align-self: start !important;
+    position: sticky !important;
+    top: 0 !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: calc(var(--msc-app-height, 100dvh) - clamp(76px, 14vh, 112px)) !important;
+    margin: 0 !important;
+    overflow: auto !important;
+    overscroll-behavior: contain !important;
+    scrollbar-width: thin !important;
+    box-sizing: border-box !important;
+    z-index: 3 !important;
+  }
+  
+  /* Root itself can be the split host (Gros 6 and a few custom PLAY screens).
+     Keep the header spanning the two columns while the remaining blocks form the
+     left workspace and the input branch stays fixed on the right. */
+  html[data-mss-samsung-tv-shared-app="1"][data-msc-orientation="landscape"][data-msc-device="tv"]
+  .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-root="1"][data-mss-auto-play-zone-host="1"] {
+    display: grid !important;
+    grid-template-columns: minmax(0, .94fr) minmax(0, 1.06fr) !important;
+    grid-template-rows: clamp(56px, 10.5vh, 82px) repeat(120, min-content) !important;
+    align-content: start !important;
+    overflow: auto !important;
+  }
+  
+  html[data-mss-samsung-tv-shared-app="1"][data-msc-orientation="landscape"][data-msc-device="tv"]
+  .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-root="1"][data-mss-auto-play-zone-host="1"] > [data-mss-auto-play-header="1"] {
+    grid-column: 1 / -1 !important;
+    grid-row: 1 !important;
+    position: sticky !important;
+    top: 0 !important;
+  }
+  
+  html[data-mss-samsung-tv-shared-app="1"][data-msc-orientation="landscape"][data-msc-device="tv"]
+  .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-root="1"][data-mss-auto-play-zone-host="1"] > [data-mss-auto-play-zone="left"] {
+    grid-column: 1 !important;
+  }
+  
+  html[data-mss-samsung-tv-shared-app="1"][data-msc-orientation="landscape"][data-msc-device="tv"]
+  .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-root="1"][data-mss-auto-play-zone-host="1"] > [data-mss-auto-play-zone="input"] {
+    grid-column: 2 !important;
+    grid-row: 2 / span 120 !important;
+    position: sticky !important;
+    top: calc(clamp(56px, 10.5vh, 82px) + 6px) !important;
+  }
+  
+  /* Make shared scoring surfaces fill the right pane instead of leaving a large
+     empty black area under a portrait-sized keypad. */
+  html[data-mss-samsung-tv-shared-app="1"][data-msc-orientation="landscape"][data-msc-device="tv"]
+  .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-zone="input"] :is(
+    [data-mss-score-input-hub="1"],
+    [data-mss-keypad="1"],
+    [data-mss-play-input="1"]
+  ) {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    box-sizing: border-box !important;
+  }
+  
+  /* Compact only inside tablet landscape PLAY; portrait stays pixel-for-pixel as
+     before. This gives richer modes enough vertical room without page scrolling. */
+  html[data-mss-samsung-tv-shared-app="1"][data-msc-orientation="landscape"][data-msc-device="tv"]
+  .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-zone-host="1"] :where(.card, section) {
+    border-radius: min(16px, 1.2vw) !important;
+  }
+  
+  html[data-mss-samsung-tv-shared-app="1"][data-msc-orientation="landscape"][data-msc-device="tv"]
+  .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-zone-host="1"] :where(h1, h2, h3) {
+    margin-top: 0 !important;
+    margin-bottom: 4px !important;
+  }
+  
+
+/* TV-specific header dimensions, full-width ticker without zoom/cropping. */
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-header="1"] {
+  flex-basis: var(--mss-tv-play-header-height) !important;
+  height: var(--mss-tv-play-header-height) !important;
+  max-height: var(--mss-tv-play-header-height) !important;
+  z-index: 12 !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-zone-host="1"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+  overflow: hidden !important;
+  align-content: stretch !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-zone="left"] {
+  max-height: 100% !important;
+  overflow-y: auto !important;
+  scrollbar-width: thin !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-zone="input"] {
+  grid-column: 2 !important;
+  grid-row: 1 / span 120 !important;
+  max-height: 100% !important;
+  overflow-y: auto !important;
+  position: sticky !important;
+  top: 0 !important;
+}
+/* If root owns the grid, the header is the first independent grid row. */
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-root="1"][data-mss-auto-play-zone-host="1"] {
+  grid-template-rows: var(--mss-tv-play-header-height) repeat(120, min-content) !important;
+  align-content: start !important;
+  overflow-y: auto !important;
+}
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"] [data-mss-auto-play-root="1"][data-mss-auto-play-zone-host="1"] > [data-mss-auto-play-zone="input"] {
+  grid-row: 2 / span 120 !important;
+  top: calc(var(--mss-tv-play-header-height) + 6px) !important;
+  max-height: calc(100vh - var(--mss-tv-play-header-height) - 18px) !important;
+}
+/* Do not suppress functionality on legacy modes without semantic split yet. */
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"][data-mss-auto-play-ready="unresolved"],
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"][data-mss-auto-play-ready="no-input"] {
+  overflow-y: auto !important;
+}
+/* Explicit game shells retain their built-in landscape grids and scrolling. */
+html[data-mss-samsung-tv-shared-app="1"] .dc-themed-route[data-msc-game-screen="play"][data-mss-auto-play-ready="native"] {
+  overflow-y: auto !important;
+}
