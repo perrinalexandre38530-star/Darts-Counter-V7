@@ -45,3 +45,15 @@
 @media (orientation: portrait) and (max-height: 700px) {
   .msc-halveit-finished-bar { flex-wrap: wrap; }
 }
+
+/* V182 — résultats entièrement consultables sur mobile, sans tableau de 790px. */
+.msc-halveit-end-backdrop { box-sizing: border-box; }
+@media (max-width: 430px) {
+  .msc-halveit-end-kpis { grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
+  .msc-halveit-player-kpis { grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
+  .msc-halveit-end-actions { grid-template-columns: minmax(0,1fr) !important; }
+}
+@media (orientation: landscape) and (max-height: 440px) {
+  .msc-halveit-end-backdrop { padding: 3px !important; }
+  .msc-halveit-end-backdrop > [role="dialog"] { max-height: 98dvh !important; }
+}

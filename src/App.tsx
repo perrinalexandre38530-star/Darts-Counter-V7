@@ -5478,10 +5478,21 @@ const unifiedStats = (() => {
     setShowSplash(false);
   }, []);
 
-  const historyForUI = React.useMemo(
-    () => filterValidHistory(safeArray(store?.history)).map((r: any) => withAvatars(r, safeArray(store?.profiles))),
-    [store?.history, store?.profiles]
-  );
+  // PERF W5: l'enrichissement de chaque match par avatar est réservé aux
+  // écrans qui passent réellement memHistory à StatsHub. Il était effectué
+  // auparavant sur TOUTES les routes, y compris pendant le scoring.
+  const needsHistoryForStatsHub =
+    (tab === "statsHub" && activeSport !== "fit") ||
+    tab === "molkky_stats_history" ||
+    tab === "molkky_stats_leaderboards" ||
+    tab === "molkky_stats_players" ||
+    tab === "molkky_stats_locals";
+  const historyForUI = React.useMemo(() => {
+    if (!needsHistoryForStatsHub) return [];
+    return filterValidHistory(safeArray(store?.history)).map((r: any) =>
+      withAvatars(r, safeArray(store?.profiles))
+    );
+  }, [needsHistoryForStatsHub, store?.history, store?.profiles]);
 
   if (showSplash) {
     return <SplashScreen durationMs={6500} fadeOutMs={700} allowAudioOverflow={true} onFinish={handleSplashFinish} />;

@@ -1033,11 +1033,17 @@ function useBasicStats(
 
     refresh();
 
+    // Plusieurs événements peuvent être émis pour une même sauvegarde ou
+    // restauration. Un seul recalcul par rafale et par carte suffit.
+    let refreshTimer: number | null = null;
     const onStatsUpdated = () => {
-      // On invalide uniquement le cache recalculable. La dernière valeur confirmée
-      // reste affichée jusqu'à ce que la nouvelle agrégation soit prête.
       deleteProfileMiniStatsCache(key);
-      refresh();
+      cancelDeepStats?.();
+      if (refreshTimer != null) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        if (!cancelled) refresh();
+      }, 220);
     };
     window.addEventListener("dc-stats-index-updated", onStatsUpdated as EventListener);
     window.addEventListener("dc-history-updated", onStatsUpdated as EventListener);
@@ -1046,6 +1052,7 @@ function useBasicStats(
 
     return () => {
       cancelled = true;
+      if (refreshTimer != null) window.clearTimeout(refreshTimer);
       cancelDeepStats?.();
       window.removeEventListener("dc-stats-index-updated", onStatsUpdated as EventListener);
       window.removeEventListener("dc-history-updated", onStatsUpdated as EventListener);

@@ -3,6 +3,7 @@
  * Un état manquant/incohérent n'est JAMAIS remplacé silencieusement par une nouvelle partie.
  */
 import { morpionIsDraw, morpionWinner, type MorpionGrid } from "./morpionEngine";
+import { resolveMorpionFormat } from "./morpionMatchFormat";
 
 type Player = { id: string; name: string; isBot: boolean; botLevel: string; [key: string]: any };
 const whole = (v: unknown, min: number, max: number): v is number =>
@@ -68,7 +69,15 @@ export function recoverMorpion(rec: any, options: { preview?: boolean } = {}) {
   const base = common(rec, "tic_tac_toe", 2, options.preview === true);
   if (!base) return null;
   const { payload, players, config } = base;
-  const maxRounds = Math.max(1, Math.min(25, Number(config.bestOf ?? config.rounds) || 3));
+  // game.maxRounds est le format de manche réellement joué et sauvegardé.
+  // Le contenu de config peut être ancien (ex. 3 manches après passage en 5)
+  // et ne doit jamais écraser cette autorité. En son absence, conserver le
+  // comportement legacy basé sur config ou, à défaut, sur 3 manches.
+  const persistedRounds = rec.game?.maxRounds;
+  const restoredConfig = whole(persistedRounds, 1, 25)
+    ? { ...config, rounds: persistedRounds, bestOf: persistedRounds }
+    : { ...config };
+  const { maxRounds, requiredWins } = resolveMorpionFormat(restoredConfig);
   const { grid } = payload;
   if (!isRecord(grid) || !Array.isArray(grid.targets) || grid.targets.length !== 9 ||
       grid.targets[4] !== 25 || grid.targets.some((n: any, i: number) => i !== 4 && !whole(n, 1, 20)) ||
@@ -88,7 +97,6 @@ export function recoverMorpion(rec: any, options: { preview?: boolean } = {}) {
   const winner = morpionWinner(grid.owners);
   const draw = morpionIsDraw(grid.owners);
   const result = payload.roundResult;
-  const requiredWins = Math.floor(maxRounds / 2) + 1;
   if (base.finished && (!result || !(wins.some((n: number) => n >= requiredWins) || round + 1 >= maxRounds))) return null;
   if (result !== null && result !== undefined) {
     if (!isRecord(result) || result.winner !== winner || !!result.draw !== draw || (!draw && winner === null)) return null;
@@ -96,7 +104,7 @@ export function recoverMorpion(rec: any, options: { preview?: boolean } = {}) {
   const visits = payload.visitHistory ?? payload.visits ?? payload.events;
   if (!Array.isArray(visits)) return null;
   return {
-    ...base, grid: { targets: [...grid.targets], owners: [...grid.owners], marks: grid.marks.map((row: number[]) => [...row]) } as MorpionGrid,
+    ...base, config: restoredConfig, grid: { targets: [...grid.targets], owners: [...grid.owners], marks: grid.marks.map((row: number[]) => [...row]) } as MorpionGrid,
     wins: [...wins], round, current, result: result ?? null, visits: [...visits],
   };
 }

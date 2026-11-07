@@ -502,6 +502,9 @@ function variantSeriesSnapshot(state:any, modeId:any) {
     gameIndex: Number(state?.special?.[gameIndexKey] || 1),
     teamMode: state?.config?.participantMode === "teams",
     wins,
+    intermission: state?.special?.seriesIntermission
+      ? JSON.parse(JSON.stringify(state.special.seriesIntermission))
+      : null,
   };
 }
 
@@ -847,6 +850,29 @@ function Wave61VisitRecap({ recap, accent, onClose, durationMs = 3000 }: any) {
     </div>
   </div>;
   return typeof document !== "undefined" ? createPortal(overlay, document.body) : overlay;
+}
+
+function Wave61SeriesIntermission({ data, state, profiles, accent, onContinue, onUndo }: any) {
+  if (!data) return null;
+  const byId = new Map((profiles || []).map((p:any)=>[String(p.id),p]));
+  const winnerId = String(data.winnerId || "");
+  const winnerProfile:any = byId.get(winnerId) || state?.players?.find((p:any)=>String(p.id)===winnerId) || null;
+  const winnerName = data.winnerTeamId ? `TEAM ${String(data.winnerTeamId)}` : (winnerProfile?.name || data.winnerName || "Manche gagnée");
+  const wins = data.wins && typeof data.wins === "object" ? data.wins : {};
+  const teamMode = !!data.teamMode;
+  const entries = teamMode
+    ? Array.from(new Set((state?.players || []).map((p:any)=>String(state?.config?.teamByPlayer?.[p.id] || "")).filter(Boolean))).map((teamId:any)=>({ key:`team:${teamId}`, label:`TEAM ${teamId}`, value:Number(wins?.[`team:${teamId}`]||0) }))
+    : (state?.players || []).map((p:any)=>({ key:String(p.id), label:String(p.name||"Joueur"), value:Number(wins?.[String(p.id)]||0) }));
+  const overlay=<div data-wave61-series-intermission="1" role="dialog" aria-modal="true" aria-label="Fin de manche" style={{position:"fixed",inset:0,zIndex:2147483100,display:"grid",placeItems:"center",padding:16,background:"rgba(0,0,0,.58)",backdropFilter:"blur(7px)",pointerEvents:"auto"}}>
+    <div style={{width:"min(500px,calc(100vw - 24px))",borderRadius:20,border:`1px solid ${accent}88`,background:`radial-gradient(circle at 50% 0%,${accent}20,transparent 42%),linear-gradient(180deg,rgba(18,22,33,.998),rgba(7,10,16,.998))`,boxShadow:`0 28px 70px rgba(0,0,0,.76),0 0 34px ${accent}28`,padding:14,display:"grid",gap:11}}>
+      <div style={{textAlign:"center"}}><div style={{color:accent,fontSize:8.5,fontWeight:1150,letterSpacing:1.1}}>{String(data.seriesLabel||"SÉRIE")} · MANCHE {Number(data.completedGameIndex||1)}</div><div style={{marginTop:4,color:"#fff",fontSize:24,fontWeight:1250,lineHeight:1.05}}>🏁 MANCHE GAGNÉE</div><div style={{marginTop:5,color:accent,fontSize:14,fontWeight:1150}}>{winnerName}</div></div>
+      <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.max(1,Math.min(4,entries.length))},minmax(0,1fr))`,gap:6}}>{entries.map((entry:any)=><div key={entry.key} style={{borderRadius:11,padding:"8px 6px",textAlign:"center",border:`1px solid ${entry.key===(data.winnerKey||"")?accent+"88":"rgba(255,255,255,.08)"}`,background:entry.key===(data.winnerKey||"")?`${accent}13`:"rgba(255,255,255,.025)"}}><b style={{display:"block",color:entry.key===(data.winnerKey||"")?accent:"#fff",fontSize:16}}>{entry.value}</b><span style={{display:"block",marginTop:2,color:"#9ba5b8",fontSize:7.1,fontWeight:950,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{entry.label}</span></div>)}</div>
+      <div style={{borderRadius:11,padding:"8px 10px",border:"1px solid rgba(255,255,255,.07)",background:"rgba(255,255,255,.025)",textAlign:"center",color:"#b8c0cf",fontSize:8.6,lineHeight:1.45}}>La manche suivante est prête mais reste en pause. Les scores de série et les statistiques cumulées sont déjà sauvegardés.</div>
+      <button type="button" data-wave61-series-continue="1" onClick={onContinue} style={{minHeight:44,borderRadius:12,border:`1px solid ${accent}88`,background:`linear-gradient(180deg,${accent}32,${accent}16)`,color:"#fff",fontSize:10,fontWeight:1200,letterSpacing:.8,cursor:"pointer"}}>CONTINUER · MANCHE {Number(data.nextGameIndex||2)}</button>
+      {onUndo ? <button type="button" data-wave61-series-undo="1" onClick={onUndo} style={{minHeight:34,borderRadius:10,border:"1px solid rgba(255,255,255,.11)",background:"rgba(255,255,255,.035)",color:"#c8cfdd",fontSize:8.6,fontWeight:1000,cursor:"pointer"}}>↶ ANNULER LA VOLÉE GAGNANTE</button> : null}
+    </div>
+  </div>;
+  return typeof document !== "undefined" ? createPortal(overlay,document.body) : overlay;
 }
 
 function BlackWhitePanel({ state, currentThrow }: any) {
@@ -1335,12 +1361,19 @@ export default function Wave61SharedPlay(props: any) {
     };
   }, [profiles, profileById, spec.id, currentThrow, multiplier]);
 
-  const persist = React.useCallback((s: Wave61State) => {
-    if (s.phase === "finished") {
-      if (finishedRef.current) return;
-      finishedRef.current = true;
-      void History.upsert(buildRecord(s, "finished")).catch(() => {});
-    } else void History.upsert(buildRecord(s, "in_progress")).catch(() => {});
+  const persist = React.useCallback((s: Wave61State, clearDraft = false) => {
+    if (s.phase === "finished" && finishedRef.current) return;
+    const record = buildRecord(s, s.phase === "finished" ? "finished" : "in_progress");
+    // Committing a visit consumes the draft. The React state setters below are
+    // asynchronous, so never store the previous throw in the new leg's resume.
+    if (clearDraft) {
+      record.resume.currentThrow = [];
+      record.resume.multiplier = 1;
+      record.payload.currentThrow = [];
+      record.payload.multiplier = 1;
+    }
+    if (s.phase === "finished") finishedRef.current = true;
+    void History.upsert(record).catch(() => {});
   }, [buildRecord]);
 
   const commit = React.useCallback((next: Wave61State, previous = state) => {
@@ -1363,10 +1396,29 @@ export default function Wave61SharedPlay(props: any) {
           fresh.startedAt = previous.startedAt;
           fresh.visits = [...(next.visits || [])];
           fresh.statsByPlayer = JSON.parse(JSON.stringify(next.statsByPlayer || {}));
+          const completedGameIndex = Number((previous.special as any)?.[gameIndexKey] || 1);
+          const nextGameIndex = completedGameIndex + 1;
           fresh.special = {
             ...carryVariantSeriesSpecial(fresh, next, spec.id),
             [winsKey]: previousWins,
-            [gameIndexKey]: Number((previous.special as any)?.[gameIndexKey] || 1) + 1,
+            [gameIndexKey]: nextGameIndex,
+            // Persist the last pre-win state so UNDO also works after History reload.
+            // This snapshot cannot contain itself: a game in progress has no intermission.
+            seriesIntermissionUndo: cloneWave61State(previous),
+            seriesIntermission: {
+              modeId: spec.id,
+              seriesLabel: series.label,
+              winsTo: series.winsTo,
+              winnerKey,
+              winnerId: next.winnerId || null,
+              winnerTeamId: next.winnerTeamId || null,
+              winnerName: next.players.find((p:any)=>String(p.id)===String(next.winnerId||""))?.name || "",
+              wins: { ...previousWins },
+              teamMode: config.participantMode === "teams",
+              completedGameIndex,
+              nextGameIndex,
+              createdAt: Date.now(),
+            },
           };
           committed = fresh;
           finishedRef.current = false;
@@ -1453,26 +1505,48 @@ export default function Wave61SharedPlay(props: any) {
         void awena.say(comment).catch(() => undefined);
       }
     }
-    persist(committed);
+    persist(committed, true);
   }, [state, spec.id, spec.label, config, players, persist, wave61SfxEnabled, awenaCommentaryEnabled, awena, profileById, botIds, accent]);
 
   const validate = () => {
-    if (!currentThrow.length || state.phase === "finished" || activeIsBot || visitRecap) return;
+    if (!currentThrow.length || state.phase === "finished" || activeIsBot || visitRecap || state.special?.seriesIntermission) return;
     commit(playWave61Visit(state, currentThrow.map(uiToGameDart)));
   };
 
-  const doUndo = () => setUndo((u) => {
-    if (!u.length) return u;
-    const prev = u[u.length - 1];
+  const persistedSeriesUndo = state.special?.seriesIntermission?.modeId === spec.id
+    && state.special?.seriesIntermissionUndo?.modeId === spec.id
+    && state.special?.seriesIntermissionUndo?.phase === "playing"
+    ? state.special.seriesIntermissionUndo : null;
+  const canUndo = undo.length > 0 || !!persistedSeriesUndo;
+  const doUndo = () => {
+    const previousState = undo.length ? undo[undo.length - 1] : persistedSeriesUndo;
+    if (!previousState) return;
+    const restored = cloneWave61State(previousState);
     finishedRef.current = false;
-    setState(cloneWave61State(prev));
+    setState(restored);
+    setUndo((items) => items.slice(0, -1));
     setCurrentThrow([]);
     setMultiplier(1);
     setVisitRecap(null);
     setNotice("Dernière volée annulée");
-    persist(prev);
-    return u.slice(0, -1);
-  });
+    persist(restored, true);
+  };
+
+  const continueSeries = () => {
+    if (!state.special?.seriesIntermission || state.phase !== "playing") return;
+    const next = cloneWave61State(state);
+    const nextIndex = Number(next.special?.seriesIntermission?.nextGameIndex || next.special?.[variantSeriesGameIndexKey(spec.id)] || 1);
+    if (next.special) {
+      delete next.special.seriesIntermission;
+      delete next.special.seriesIntermissionUndo;
+    }
+    setVisitRecap(null);
+    setCurrentThrow([]);
+    setMultiplier(1);
+    setNotice(`🎯 Manche ${nextIndex} · ${greenRedSeriesSpec(next).label}`);
+    setState(next);
+    persist(next, true);
+  };
 
   React.useEffect(() => {
     if (!visitRecap || visitRecap.isBot) return;
@@ -1481,7 +1555,7 @@ export default function Wave61SharedPlay(props: any) {
   }, [visitRecap?.visitId, visitRecap?.isBot, spec.id]);
 
   React.useEffect(() => {
-    if (!activeIsBot || state.phase === "finished" || visitRecap) return;
+    if (!activeIsBot || state.phase === "finished" || visitRecap || state.special?.seriesIntermission) return;
     let cancelled = false;
     const scheduledPlayerId = String(activePlayer?.id || "");
     const timer = window.setTimeout(() => {
@@ -1513,7 +1587,7 @@ export default function Wave61SharedPlay(props: any) {
       // nettoyé en développement. Le verrou ne doit jamais survivre à ce cleanup.
       botBusy.current = false;
     };
-  }, [state, activeIsBot, activePlayer?.id, activeProfile, config.botLevel, spec.id, commit, visitRecap]);
+  }, [state, activeIsBot, activePlayer?.id, activeProfile, config.botLevel, spec.id, commit, visitRecap, state.special?.seriesIntermission]);
 
   React.useEffect(() => { if (state.phase === "playing") persist(state); }, []);
 
@@ -1854,7 +1928,7 @@ export default function Wave61SharedPlay(props: any) {
           </section> : spec.id === "three_colors" ? <section data-three-colors-active-player="1" style={{position:"relative",overflow:"hidden",minHeight:viewportH>0&&viewportH<760?98:104,flex:"0 0 auto",marginTop:0,borderRadius:18,border:`1px solid ${accent}70`,background:`radial-gradient(circle at 18% 50%,${accent}20,transparent 34%),linear-gradient(145deg,${accent}10,rgba(5,8,14,.985))`,boxShadow:`inset 0 0 38px ${accent}0c,0 12px 28px rgba(0,0,0,.28)`,display:"grid",gridTemplateColumns:"72px minmax(0,1fr) 102px",gap:7,alignItems:"stretch",padding:7}}><div style={{position:"absolute",left:0,right:0,top:0,height:3,display:"grid",gridTemplateColumns:"repeat(4,1fr)"}}>{["BLACK","WHITE","GREEN","RED"].map(c=><span key={c} style={{background:THREE_COLORS_TONES[c]}}/>)}</div><div style={{display:"grid",placeItems:"center"}}><div style={{width:76,height:76,borderRadius:999,overflow:"hidden",border:`1.5px solid ${accent}66`,background:`${accent}12`}}>{gvrAvatar?<img src={gvrAvatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover",opacity:.72}}/>:<div style={{width:"100%",height:"100%",display:"grid",placeItems:"center",fontSize:34,fontWeight:1200,color:accent}}>{String(activePlayer?.name||"?").slice(0,1).toUpperCase()}</div>}</div></div><div style={{display:"grid",alignContent:"center",justifyItems:"center",textAlign:"center"}}><div style={{color:accent,fontSize:15,fontWeight:1200,textTransform:"uppercase"}}>{activePlayer?.name||"—"}</div><div style={{color:"#f5f7ff",fontSize:7.4,fontWeight:1050,letterSpacing:.8,marginTop:2}}>ROUND {roundLabel}/{config.rounds}</div><div style={{color:accent,fontSize:38,lineHeight:1,fontWeight:1250,marginTop:2}}>{Math.round(Number(state.scores?.[threeId]||0))}</div><div data-variant-active-counters="three_colors" style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:6,marginTop:6,width:"100%",maxWidth:178}}><div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,borderRadius:10,padding:"5px 6px",border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.04)"}}><span style={{display:"inline-flex",color:accent}}><GreenRedDartIcon color={accent} size={12}/></span><span style={{width:1,height:12,background:"rgba(255,255,255,.12)"}}/><strong style={{color:"#fff",fontSize:10.5}}>{dartsPlayed}</strong></div><div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,borderRadius:10,padding:"5px 6px",border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.04)"}}><span style={{display:"inline-flex",color:accent}}><GreenRedVisitIcon color={accent} size={12}/></span><span style={{width:1,height:12,background:"rgba(255,255,255,.12)"}}/><strong style={{color:"#fff",fontSize:10.5}}>{visitCount}</strong></div></div></div><button type="button" onClick={()=>setQuickPanel("objective")} style={{borderRadius:15,border:`1px solid ${accent}70`,background:`linear-gradient(180deg,${accent}22,rgba(7,10,16,.95))`,color:"#fff",display:"grid",alignContent:"center",justifyItems:"center",gap:4,padding:"8px 7px",cursor:"pointer"}}><span style={{color:"#fff",fontSize:7.1,fontWeight:1100}}>OBJECTIF</span><strong style={{fontSize:16,lineHeight:1.02,color:"#fff",textAlign:"center"}}>3 COULEURS</strong><span style={{fontSize:6.3,color:"#b8c0cf"}}>différentes</span><span style={{display:"flex",gap:3}}>{["BLACK","WHITE","GREEN","RED"].map(c=><i key={c} style={{width:7,height:7,borderRadius:999,background:THREE_COLORS_TONES[c]}}/>)}</span></button></section> : (spec.id === "la_suite" || spec.id === "color_call") ? (()=>{const id=String(activePlayer?.id||"");const isCall=spec.id==="color_call";const call=isCall?colorCallTarget(state):"";const tone=isCall?(THREE_COLORS_TONES[call]||accent):accent;const sub=isCall?`COULEUR ${call}`:(String(config?.modeOptions?.sequenceOrder||"any")==="ascending"?"SUITE STRICTE":"SUITE LIBRE");return <section data-four-variants-active-player={spec.id} style={{position:"relative",overflow:"hidden",minHeight:viewportH>0&&viewportH<760?98:104,flex:"0 0 auto",marginTop:0,borderRadius:18,border:`1px solid ${tone}70`,background:`radial-gradient(circle at 18% 50%,${tone}20,transparent 34%),linear-gradient(145deg,${tone}10,rgba(5,8,14,.985))`,boxShadow:`inset 0 0 38px ${tone}0c,0 12px 28px rgba(0,0,0,.28)`,display:"grid",gridTemplateColumns:"72px minmax(0,1fr) 102px",gap:7,alignItems:"stretch",padding:7}}><div style={{display:"grid",placeItems:"center"}}><div style={{width:76,height:76,borderRadius:999,overflow:"hidden",border:`1.5px solid ${tone}66`,background:`${tone}12`}}>{gvrAvatar?<img src={gvrAvatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover",opacity:.72}}/>:<div style={{width:"100%",height:"100%",display:"grid",placeItems:"center",fontSize:34,fontWeight:1200,color:tone}}>{String(activePlayer?.name||"?").slice(0,1).toUpperCase()}</div>}</div></div><div style={{display:"grid",alignContent:"center",justifyItems:"center",textAlign:"center"}}><div style={{color:tone,fontSize:15,fontWeight:1200,textTransform:"uppercase"}}>{activePlayer?.name||"—"}</div><div style={{color:"#f5f7ff",fontSize:7.4,fontWeight:1050,letterSpacing:.8,marginTop:2}}>ROUND {roundLabel}/{config.rounds} · {sub}</div><div style={{color:tone,fontSize:38,lineHeight:1,fontWeight:1250,marginTop:2}}>{Math.round(Number(state.scores?.[id]||0))}</div><div data-variant-active-counters={spec.id} style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:6,marginTop:6,width:"100%",maxWidth:178}}><div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,borderRadius:10,padding:"5px 6px",border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.04)"}}><span style={{display:"inline-flex",color:tone}}><GreenRedDartIcon color={tone} size={12}/></span><span style={{width:1,height:12,background:"rgba(255,255,255,.12)"}}/><strong style={{color:"#fff",fontSize:10.5}}>{dartsPlayed}</strong></div><div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,borderRadius:10,padding:"5px 6px",border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.04)"}}><span style={{display:"inline-flex",color:tone}}><GreenRedVisitIcon color={tone} size={12}/></span><span style={{width:1,height:12,background:"rgba(255,255,255,.12)"}}/><strong style={{color:"#fff",fontSize:10.5}}>{visitCount}</strong></div></div></div><button type="button" onClick={()=>setQuickPanel("objective")} style={{borderRadius:15,border:`1px solid ${tone}70`,background:`linear-gradient(180deg,${tone}22,rgba(7,10,16,.95))`,color:"#fff",display:"grid",alignContent:"center",justifyItems:"center",gap:4,padding:"8px 7px",cursor:"pointer"}}><span style={{color:tone,fontSize:7.1,fontWeight:1100}}>OBJECTIF</span><strong style={{fontSize:15,lineHeight:1.02,color:"#fff",textAlign:"center"}}>{isCall?call:"N · N+1 · N+2"}</strong><span style={{fontSize:6.3,color:"#b8c0cf"}}>{isCall?"couleur appelée":"3 nombres consécutifs"}</span>{isCall?<span style={{width:13,height:13,borderRadius:999,background:tone,border:"1px solid rgba(255,255,255,.25)"}}/>:null}</button></section>})() : <div style={{ ...panelStyle(accent+"62"), padding:9, background:`linear-gradient(145deg,${accent}12,rgba(5,8,14,.97))` }}>
             <div style={{ display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",marginBottom:6 }}>
               <div><div style={{ color:accent,fontSize:8.5,fontWeight:1100,letterSpacing:.9 }}>{spec.label.toUpperCase()} · ROUND {roundLabel}/{config.rounds}</div><div style={{ color:"#fff",fontSize:13.5,fontWeight:1100,marginTop:2 }}>{activePlayer?.name || "—"} joue</div></div>
-              <button type="button" onClick={doUndo} disabled={!undo.length} style={{ ...actionStyle(accent,!undo.length),minHeight:36,padding:"0 10px",fontSize:9 }}>↶ UNDO</button>
+              <button type="button" onClick={doUndo} disabled={!canUndo} style={{ ...actionStyle(accent,!canUndo),minHeight:36,padding:"0 10px",fontSize:9 }}>↶ UNDO</button>
             </div>
             {activePlayer ? <PlayerCard profile={activeProfile} active accent={accent} value={activeMetric.value} subValue={`${activeMetric.label} · ${activeMetric.sub}`} /> : null}
             <div style={{ display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:5,marginTop:6 }}>
@@ -1895,6 +1969,7 @@ export default function Wave61SharedPlay(props: any) {
       </div>}
       {renderClassicQuickModal()}
       {visitRecap ? <Wave61VisitRecap recap={visitRecap} accent={isColorDuelMode(spec.id) ? duelTone : accent} onClose={()=>setVisitRecap(null)} durationMs={isFinishedColorVariant(spec.id) ? 5000 : 3000} /> : null}
+      {!visitRecap && state.special?.seriesIntermission ? <Wave61SeriesIntermission data={state.special.seriesIntermission} state={state} profiles={profiles} accent={isColorDuelMode(spec.id) ? duelTone : accent} onContinue={continueSeries} onUndo={canUndo ? doUndo : null} /> : null}
       <style>{`@keyframes wave61VisitRecapCountdown{from{transform:scaleX(1)}to{transform:scaleX(0)}}`}</style>
     </div>;
   }
@@ -1918,7 +1993,7 @@ export default function Wave61SharedPlay(props: any) {
       {state.phase === "finished" ? <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 10, display: "grid", placeItems: "start center" }}><div style={{ width: "min(980px,94vw)" }}><ModeEndPanel title={spec.label} winner={state.winnerId} profiles={profiles} legWins={variantSeriesLegWinsForEnd(state, spec.id)} accent={accent} onReplay={replay} onStats={() => go?.("darts_mode_summary", { rec: buildRecord(state, "finished"), mode: spec.id, from: "game_end" })} onHistory={() => go?.("statsHub", { tab: "history", mode: spec.id, focusMatchId: matchIdRef.current })} onConfig={() => go?.("wave61_config", { gameId: spec.id })} onGames={() => go?.("games", { gamesView: "all" })} extra={<Wave61EndSummary state={state} profiles={profiles} accent={accent} familyLabel={preset.label} />} /></div></div> : <div data-wave61-play-grid="three-zone" style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "grid", gridTemplateColumns: viewportW >= 1180 ? "minmax(0,.78fr) minmax(0,1.05fr) minmax(0,1.17fr)" : "minmax(0,.82fr) minmax(0,1.03fr) minmax(0,1.15fr)", gap: compactHeight ? 6 : 8, padding: compactHeight ? "5px 7px 7px" : "7px 9px 9px" }}>
         <section data-wave61-zone="players" style={{ minWidth: 0, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", gap: 6 }}>
           <div style={{ ...panelStyle(accent + "45"), padding: compactHeight ? 7 : 9, flex: "0 0 auto" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, alignItems: "center" }}><div><div style={{ color: accent, fontSize: compactHeight ? 8.4 : 9.5, fontWeight: 1100, letterSpacing: .8 }}>ROUND {roundLabel}/{config.rounds}</div><div style={{ marginTop: 2, color: "#fff", fontSize: compactHeight ? 12 : 14, fontWeight: 1000 }}>{activePlayer?.name || "—"}</div></div><button type="button" onClick={doUndo} disabled={!undo.length} style={{ ...actionStyle(accent, !undo.length), minHeight: compactHeight ? 32 : 36, padding: "0 8px", fontSize: 9 }}>↶ UNDO</button></div>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, alignItems: "center" }}><div><div style={{ color: accent, fontSize: compactHeight ? 8.4 : 9.5, fontWeight: 1100, letterSpacing: .8 }}>ROUND {roundLabel}/{config.rounds}</div><div style={{ marginTop: 2, color: "#fff", fontSize: compactHeight ? 12 : 14, fontWeight: 1000 }}>{activePlayer?.name || "—"}</div></div><button type="button" onClick={doUndo} disabled={!canUndo} style={{ ...actionStyle(accent, !canUndo), minHeight: compactHeight ? 32 : 36, padding: "0 8px", fontSize: 9 }}>↶ UNDO</button></div>
             {activeProfile ? <div style={{ marginTop: 6 }}><PlayerCard profile={activeProfile} active accent={accent} value={activeMetric.value} subValue={`${activeMetric.label} · ${activeMetric.sub}${teamMode ? ` · Team ${config.teamByPlayer?.[activePlayer?.id] || "?"}` : ""}`} badge={state.eliminated?.[activePlayer?.id || ""] ? "OUT" : null} muted={!!state.eliminated?.[activePlayer?.id || ""]} /></div> : null}
           </div>
           {teamMode ? <div style={{ ...panelStyle("rgba(255,255,255,.08)"), padding: 6, display: "flex", gap: 5, flexWrap: "wrap", flex: "0 0 auto" }}>{Object.entries(state.teamScores || {}).map(([team, score]: any) => <span key={team} style={{ borderRadius: 999, padding: "4px 7px", border: `1px solid ${team === "A" ? accent + "55" : "#ff657d55"}`, color: team === "A" ? accent : "#ff8fa0", fontSize: 8.5, fontWeight: 1000 }}>TEAM {team} · {Math.round(Number(score || 0))}</span>)}</div> : null}
@@ -1943,11 +2018,13 @@ export default function Wave61SharedPlay(props: any) {
         </section>
       </div>}
       {visitRecap ? <Wave61VisitRecap recap={visitRecap} accent={accent} onClose={()=>setVisitRecap(null)} durationMs={isColorDuelMode(spec.id) ? 5000 : 3000} /> : null}
+      {!visitRecap && state.special?.seriesIntermission ? <Wave61SeriesIntermission data={state.special.seriesIntermission} state={state} profiles={profiles} accent={accent} onContinue={continueSeries} onUndo={canUndo ? doUndo : null} /> : null}
       <style>{`@keyframes wave61VisitRecapCountdown{from{transform:scaleX(1)}to{transform:scaleX(0)}}`}</style>
     </div>;
   }
 
   return <div style={{ minHeight: "calc(var(--vh,1vh) * 100)", paddingBottom: 18, background: `radial-gradient(circle at 50% 0%,${accent}13,transparent 35%)` }}>
+    {state.special?.seriesIntermission ? <Wave61SeriesIntermission data={state.special.seriesIntermission} state={state} profiles={profiles} accent={accent} onContinue={continueSeries} onUndo={canUndo ? doUndo : null} /> : null}
     <PageHeader title={spec.label} subtitle={`${preset.label} · moteur V${WAVE61_ENGINE_VERSION}`} left={<BackDot onClick={() => go?.("wave61_config", { gameId: spec.id })} color={accent} glow={`${accent}88`} />} right={<InfoDot title={`${spec.label} — règles`} color={accent} glow={`${accent}77`} content={familyRules(spec, preset)} />} />
     {modeTicker ? <div style={{ padding: "5px 8px 1px", maxWidth: 1040, margin: "0 auto" }}><img src={modeTicker} alt={spec.label} style={{ width: "100%", maxHeight: 210, aspectRatio: "800 / 230", objectFit: "cover", borderRadius: 14, display: "block", border: `1px solid ${accent}44`, boxShadow: `0 10px 30px rgba(0,0,0,.36)` }} /></div> : null}
     {adviceText ? <div role="status" aria-live="polite" style={{ position: "fixed", zIndex: 95, top: 86, right: 12, width: "min(360px,calc(100vw - 24px))", borderRadius: 16, padding: "9px 10px", display: "grid", gridTemplateColumns: "42px minmax(0,1fr) auto", gap: 9, alignItems: "center", border: `1px solid ${accent}70`, background: "linear-gradient(145deg,rgba(12,15,26,.97),rgba(5,7,13,.98))", boxShadow: `0 16px 42px rgba(0,0,0,.48),0 0 26px ${accent}20` }}>
@@ -1958,7 +2035,7 @@ export default function Wave61SharedPlay(props: any) {
     <div style={{ padding: "7px 8px 18px", maxWidth: 1040, margin: "0 auto", display: "grid", gap: 8 }}>
       <div style={{ ...panelStyle(accent + "45"), padding: 9, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 9, alignItems: "center" }}>
         <div><div style={{ color: accent, fontSize: 10, fontWeight: 1100, letterSpacing: 1 }}>ROUND {roundLabel}/{config.rounds} · {preset.label.toUpperCase()}</div><div style={{ marginTop: 3, color: "#fff", fontSize: 14, fontWeight: 1000 }}>{state.phase === "finished" ? "Partie terminée" : `${activePlayer?.name || "—"} joue`}</div>{dedicatedPlayHint ? <div style={{ marginTop: 3, color: SOFT, fontSize: 9.2, lineHeight: 1.3 }}>{dedicatedPlayHint}</div> : null}</div>
-        <button type="button" onClick={doUndo} disabled={!undo.length} style={actionStyle(accent, !undo.length)}>↶ UNDO</button>
+        <button type="button" onClick={doUndo} disabled={!canUndo} style={actionStyle(accent, !canUndo)}>↶ UNDO</button>
       </div>
 
       {notice ? <div style={{ borderRadius: 12, padding: "7px 10px", background: `${accent}0d`, border: `1px solid ${accent}2f`, color: "#e9ecf5", fontSize: 10.5, fontWeight: 850 }}>{notice}</div> : null}

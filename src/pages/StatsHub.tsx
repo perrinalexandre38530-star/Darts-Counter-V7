@@ -6383,13 +6383,24 @@ React.useEffect(() => {
     }
   };
 
+  // Le store peut notifier plusieurs fois pendant une restauration. Regrouper
+  // ces rafales évite de relire et remapper les profils à chaque notification.
+  let refreshTimer: number | null = null;
+  const scheduleRefresh = () => {
+    if (refreshTimer != null) window.clearTimeout(refreshTimer);
+    refreshTimer = window.setTimeout(() => {
+      refreshTimer = null;
+      if (mounted) refresh();
+    }, 160);
+  };
   refresh();
-  window.addEventListener("dc-store-updated", refresh as any);
-  window.addEventListener("dc-profiles-updated", refresh as any);
+  window.addEventListener("dc-store-updated", scheduleRefresh as any);
+  window.addEventListener("dc-profiles-updated", scheduleRefresh as any);
   return () => {
     mounted = false;
-    window.removeEventListener("dc-store-updated", refresh as any);
-    window.removeEventListener("dc-profiles-updated", refresh as any);
+    if (refreshTimer != null) window.clearTimeout(refreshTimer);
+    window.removeEventListener("dc-store-updated", scheduleRefresh as any);
+    window.removeEventListener("dc-profiles-updated", scheduleRefresh as any);
   };
 }, []);
 

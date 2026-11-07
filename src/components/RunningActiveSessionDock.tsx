@@ -104,8 +104,25 @@ export default function RunningActiveSessionDock({
   }, [sessions.map((row) => row.id).join("|")]);
   React.useEffect(() => {
     if (!sessions.length) return;
-    const timer = window.setInterval(() => forceTick((value) => value + 1), 1000);
-    return () => window.clearInterval(timer);
+    let timer: number | null = null;
+    const updateTimer = () => {
+      if (timer !== null) {
+        window.clearInterval(timer);
+        timer = null;
+      }
+      // Elapsed time is derived from timestamps; it does not require a React
+      // render every second while the tab is hidden in the background.
+      if (document.visibilityState === "visible") {
+        forceTick((value) => value + 1);
+        timer = window.setInterval(() => forceTick((value) => value + 1), 1000);
+      }
+    };
+    document.addEventListener("visibilitychange", updateTimer);
+    updateTimer();
+    return () => {
+      if (timer !== null) window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", updateTimer);
+    };
   }, [sessions.length]);
 
   React.useEffect(() => {

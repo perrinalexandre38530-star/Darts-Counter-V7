@@ -10,6 +10,7 @@ import { History } from "../lib/history";
 import { createMatchCheckpointWriter } from "../lib/matchCheckpointWriter";
 import { clearPartialVisit, loadPartialVisit, previousVisitFingerprint, savePartialVisit } from "../lib/partialVisitDraft";
 import { recoverMorpion } from "../lib/recoverTop10Morpion";
+import { resolveMorpionFormat } from "../lib/morpionMatchFormat";
 import { buildDartsTelemetry, canonicalVisitFromUiDarts } from "../lib/dartsTelemetry";
 import { applyMorpionVolley, newMorpionGrid, MORPION_LINES } from "../lib/morpionEngine";
 import type { Dart as UIDart } from "../lib/types";
@@ -53,8 +54,9 @@ export default function TicTacToePlay(props: any) {
   const cfg = cfgRef.current;
   const [players, setPlayers] = React.useState(() => normalizePlayers(cfg));
   const [hydration, setHydration] = React.useState(resuming ? "loading" : "ready");
-  const maxRounds = Math.max(1, Math.min(25, Number(cfg?.bestOf ?? cfg?.rounds) || 3));
-  const requiredWins = Math.floor(maxRounds / 2) + 1;
+  // Une reprise depuis l'Historique hydrate son format avec la partie sauvegardée.
+  const [matchFormat, setMatchFormat] = React.useState(() => resolveMorpionFormat(cfg));
+  const { maxRounds, requiredWins } = matchFormat;
   const [grid, setGrid] = React.useState(() => newMorpionGrid(players.length));
   const [wins, setWins] = React.useState(() => players.map(() => 0));
   const [round, setRound] = React.useState(0);
@@ -137,6 +139,7 @@ export default function TicTacToePlay(props: any) {
         id.current = restored.id;
         started.current = restored.createdAt;
         cfgRef.current = restored.config;
+        setMatchFormat(resolveMorpionFormat(restored.config));
         visits.current = restored.visits;
         botGuard.current = "";
         commitGuard.current = false;

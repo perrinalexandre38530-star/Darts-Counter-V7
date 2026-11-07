@@ -1,7 +1,8 @@
 import { supabase } from "../lib/supabaseClient";
+import { BUVETTE_SCENES, DEFAULT_BUVETTE_COVER, isBuvetteSceneKey, type BuvetteSceneKey } from "./buvetteBackgrounds";
 
 export type DrinkCardIcon = "cup" | "coffee" | "beer" | "soda" | "water" | "wine" | "cocktail";
-export type DrinkCardBackground = "bar-night" | "graphite" | "wood" | "gold" | "clean" | "custom";
+export type DrinkCardBackground = "bar-night" | "graphite" | "wood" | "gold" | "clean" | "custom" | BuvetteSceneKey;
 export type DrinkCardTemplate = {
   id: string; organizationId: string; name: string; description: string;
   paidDrinks: number; bonusDrinks: number; price: number; currency: string;
@@ -26,7 +27,7 @@ export type DrinkCardEvent = {
 const TEMPLATES = "ms_org_drink_card_templates";
 const CARDS = "ms_org_drink_cards";
 const EVENTS = "ms_org_drink_card_events";
-const backgrounds: DrinkCardBackground[] = ["bar-night", "graphite", "wood", "gold", "clean", "custom"];
+const backgrounds: DrinkCardBackground[] = ["bar-night", "graphite", "wood", "gold", "clean", "custom", ...BUVETTE_SCENES.map((scene) => scene.key)];
 const icons: DrinkCardIcon[] = ["cup", "coffee", "beer", "soda", "water", "wine", "cocktail"];
 const change = () => {
   void import("../lib/cloudEvents").then(({ emitCloudChange }) => emitCloudChange("organization:drink_cards")).catch(() => undefined);
@@ -52,6 +53,7 @@ function fail(error: any): never {
     DRINK_CARD_NOT_ACTIVE: "Cette carte est déjà annulée.",
     DRINK_CARD_SLOT_USED: "Cette case a déjà été cochée.",
     DRINK_CARD_SLOT_INVALID: "Cette case n’existe pas.",
+    BUVETTE_NOT_ADMIN: "Seuls les responsables du club peuvent modifier la couverture.",
   };
   for (const [key, value] of Object.entries(cases)) if (detail.includes(key)) throw new Error(value);
   throw new Error(code === "42501" ? "Accès refusé : permissions insuffisantes." : detail || "Opération impossible.");
@@ -154,4 +156,33 @@ export async function undoDrinkCardConsumption(userId: string | null, orgId: str
 }
 export async function cancelDrinkCard(userId: string | null, orgId: string, cardId: string) {
   authCheck(userId); return rpc("ms_org_drink_card_cancel", { p_org_id: orgId, p_card_id: cardId });
+}
+
+/** Fond de la couverture Buvette, visible à tous les membres du club. */
+export async function getOrganizationBuvetteCover(userId: string | null, organizationId: string): Promise<BuvetteSceneKey> {
+  authCheck(userId);
+  const { data, error } = await supabase.from("ms_org_buvette_settings" as any)
+    .select("cover_key").eq("organization_id", organizationId).maybeSingle();
+  if (error) {
+    if (["42P01", "PGRST205"].includes(String(error.code || "")))
+      throw new Error("Couverture indisponible : exécute la migration Supabase V21.");
+    fail(error);
+  }
+  const key = (data as any)?.cover_key;
+  return isBuvetteSceneKey(key) ? key : DEFAULT_BUVETTE_COVER;
+}
+
+/** Écriture atomique via RPC : seul un responsable peut changer la couverture. */
+export async function saveOrganizationBuvetteCover(userId: string | null, organizationId: string, key: BuvetteSceneKey): Promise<void> {
+  authCheck(userId);
+  if (!isBuvetteSceneKey(key)) throw new Error("Couverture invalide.");
+  const { error } = await supabase.rpc("ms_org_buvette_cover_set" as any, {
+    p_org_id: organizationId, p_cover_key: key,
+  });
+  if (error) {
+    if (["42883", "PGRST202"].includes(String(error.code || "")))
+      throw new Error("Couverture indisponible : exécute la migration Supabase V21.");
+    fail(error);
+  }
+  change();
 }

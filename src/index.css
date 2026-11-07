@@ -1461,3 +1461,36 @@ body.dc-fullscreen-play {
     min-height: 0;
   }
 }
+
+/* ============================================================
+   W7 — CHROME MOBILE / PAGES.DEV COMPOSITING BUDGET
+   La protection Android native ci-dessus ne couvre pas Chrome/PWA.
+   Les surfaces de navigation permanentes et les cartes de navigation
+   n'ont pas besoin d'un flou GPU sur chaque frame de défilement.
+   Garder la transparence, les images, les textures et le scoring.
+   ============================================================ */
+@media (max-width: 900px) and (pointer: coarse) {
+  :root:not([data-msc-runtime-platform="android"]) .bottom-nav,
+  :root:not([data-msc-runtime-platform="android"]) .badge,
+  :root:not([data-msc-runtime-platform="android"]) .dc-card,
+  :root:not([data-msc-runtime-platform="android"]) .stats-theme .stats-card {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+
+  /* Les ambiances du thème sont purement décoratives. Ne pas animer en
+     permanence une surface plein écran derrière les pages sur Chrome mobile. */
+  :root:not([data-msc-runtime-platform="android"]) body::after,
+  :root:not([data-msc-runtime-platform="android"]) .dc-postapoc-overgrowth {
+    animation: none !important;
+  }
+
+  /* Ne figer que les animations du décor lors d'un changement de page.
+     Les animations des fléchettes, du clavier et des résultats sont intactes. */
+  :root:not([data-msc-runtime-platform="android"])[data-msc-navigating="1"] .dc-theme-preview-drift,
+  :root:not([data-msc-runtime-platform="android"])[data-msc-navigating="1"] .dc-theme-preview-pulse,
+  :root:not([data-msc-runtime-platform="android"])[data-msc-navigating="1"] .dc-theme-preview-scan,
+  :root:not([data-msc-runtime-platform="android"])[data-msc-navigating="1"] .dc-theme-preview-sheen {
+    animation-play-state: paused !important;
+  }
+}

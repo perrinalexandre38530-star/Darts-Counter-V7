@@ -4,6 +4,8 @@ import TrainingShell from "../../shell/TrainingShell";
 import TrainingHeader from "../../ui/TrainingHeader";
 import TrainingStartButton from "../../ui/TrainingStartButton";
 import TrainingExerciseDetail from "../../ui/TrainingExerciseDetail";
+import TrainingSessionResultsCard from "../../ui/TrainingSessionResultsCard";
+import { buildTrainingSessionCards } from "../../profile/trainingSessionCards";
 import { getTrainingDetailedSessions } from "../../stats/trainingStatsHub";
 import { buildGoalAwareCoachPrescription, buildTrainingDiagnosis, buildTrainingGoalStatuses, buildTrainingProgression, chooseGoalPriorityFamily } from "../../coach/trainingDiagnosis";
 import {
@@ -549,40 +551,12 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
   const openExerciseDetail = (id: string) => { const exercise = TRAINING_EXERCISE_CATALOG.find((e) => e.id === id); if (!exercise) return; setFamily(exercise.family); setExerciseId(exercise.id); setExerciseDetailId(exercise.id); };
   const selectedProgram = programs.find((p) => p.id === programId) || (programId.startsWith("custom_") ? customProgram : coachProgram);
   const labSessions = sessions.filter((row) => row.modeId === "training_lab").slice(0, 12);
-  // One complete card per program, or one consolidated day card for free practice.
-  // Program steps remain available for analytics but must not appear as separate cards.
-  const trainingSessionCards = React.useMemo(() => {
-    const completedPrograms = programSessions.map((row) => ({
-      id: row.id, at: row.endedAt, title: row.programTitle, kind: "program" as const,
-      count: row.steps, darts: row.darts, performance: row.performanceScore,
-      accuracy: row.accuracyPct, successes: row.successes,
-      exerciseIds: row.exerciseIds,
-    }));
-    const groups = new Map<string, typeof sessions>();
-    for (const row of sessions) {
-      if (row.modeId !== "training_lab") continue;
-      // A finished program is already represented by one complete program card.
-      if (row.config?.sessionKind === "program" || row.config?.programId || row.config?.programExerciseIds) continue;
-      const day = trainingSessionDateKey(row.endedAt);
-      const key = `${row.participantId || "account"}:${day}`;
-      const list = groups.get(key) || [];
-      list.push(row);
-      groups.set(key, list);
-    }
-    const freePractice = Array.from(groups.entries()).map(([key, rows]) => {
-      const darts = rows.reduce((sum, row) => sum + row.darts, 0);
-      return {
-        id: `practice:${key}`, at: Math.max(...rows.map((row) => row.endedAt)),
-        title: "Entraînement libre", kind: "practice" as const,
-        count: rows.length, darts,
-        performance: rows.reduce((sum, row) => sum + Number(row.metrics?.performanceScore ?? row.metrics?.score ?? 0), 0) / rows.length,
-        accuracy: darts ? rows.reduce((sum, row) => sum + row.hits, 0) / darts * 100 : 0,
-        successes: rows.filter((row) => row.success).length,
-        exerciseIds: rows.map((row) => String(row.metrics?.exerciseId || row.config?.exerciseId || "")).filter(Boolean),
-      };
-    });
-    return [...completedPrograms, ...freePractice].sort((a, b) => b.at - a.at).slice(0, 80);
-  }, [programSessions, sessions]);
+  // Immutable program step snapshots, with legacy per-step Training stats fallback.
+  // Free practice stays grouped by day and NEVER enters competitive History.
+  const trainingSessionCards = React.useMemo(
+    () => buildTrainingSessionCards(programSessions, sessions),
+    [programSessions, sessions],
+  );
   const pausedExerciseDrafts = React.useMemo(() => TRAINING_EXERCISE_CATALOG
     .map((exercise) => ({ exercise, draft: loadTrainingExerciseDraft(exercise.id, accountParticipantId || null) }))
     .filter((item) => hasMeaningfulTrainingExerciseDraft(item.draft)), [accountParticipantId, revision]);
@@ -840,20 +814,13 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
             </div>)}
             <div style={{ fontSize: 11, fontWeight: 950, margin: "18px 0 10px" }}>SÉANCES TERMINÉES</div>
             {!trainingSessionCards.length && <div style={{ opacity: .66, fontSize: 11, padding: 16 }}>Aucune séance terminée pour le moment.</div>}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,260px),1fr))", gap: 10 }}>
-              {trainingSessionCards.map((card) => <div key={card.id} style={{ borderRadius: 15, background: "rgba(255,255,255,.03)", border: "1px solid rgba(39,220,255,.13)", padding: 13 }}>
-                <div style={{ fontSize: 8.5, fontWeight: 950, color: "#8cffcb" }}>TERMINÉE · {card.kind === "program" ? "PROGRAMME" : "ENTRAÎNEMENT LIBRE"}</div>
-                <div style={{ fontWeight: 950, fontSize: 13, marginTop: 5 }}>{card.title}</div>
-                <div style={{ fontSize: 9, opacity: .55, marginTop: 4 }}>{new Date(card.at).toLocaleDateString("fr-FR")} · {card.count} exercices</div>
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 10, fontSize: 10 }}>
-                  <span><b>{Math.round(card.performance)}/100</b> perf.</span><span><b>{Math.round(card.accuracy)}%</b> précision</span><span><b>{card.darts}</b> fléchettes</span>
-                </div>
-                <button type="button" aria-expanded={expandedTrainingSessionId === card.id} onClick={() => setExpandedTrainingSessionId((id) => id === card.id ? null : card.id)} style={{ marginTop: 12, padding: "8px 11px", borderRadius: 9, border: "1px solid rgba(39,220,255,.22)", background: "rgba(39,220,255,.07)", color: "inherit", cursor: "pointer", fontWeight: 800 }}> {expandedTrainingSessionId === card.id ? "MASQUER" : "VOIR LA SÉANCE"} </button>
-                {expandedTrainingSessionId === card.id && <div style={{ marginTop: 11, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,.08)" }}>
-                  <div style={{ fontSize: 9, marginBottom: 7 }}>Objectifs réussis : {card.successes}/{card.count}</div>
-                  {card.exerciseIds.map((exerciseId, idx) => <div key={`${card.id}:${idx}`} style={{ padding: "4px 0", fontSize: 10, opacity: .83 }}>{idx + 1}. {TRAINING_EXERCISE_CATALOG.find((ex) => ex.id === exerciseId)?.title || exerciseId}</div>)}
-                </div>}
-              </div>)}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,375px),1fr))", gap: 12 }}>
+              {trainingSessionCards.map((card) => <TrainingSessionResultsCard
+                key={card.id}
+                card={card}
+                expanded={expandedTrainingSessionId === card.id}
+                onToggle={() => setExpandedTrainingSessionId((id) => id === card.id ? null : card.id)}
+              />)}
             </div>
           </section>}
 

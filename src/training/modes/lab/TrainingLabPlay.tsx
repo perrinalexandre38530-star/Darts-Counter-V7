@@ -30,6 +30,7 @@ type ProgramStepResult = {
   darts: number;
   hits: number;
   points: number;
+  goal?: number;
   completionPct: number;
   accuracyPct: number;
   performanceScore: number;
@@ -139,6 +140,7 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
       darts: s.darts,
       hits: s.hits,
       points: s.points,
+      goal,
       completionPct,
       accuracyPct,
       performanceScore,
@@ -298,6 +300,7 @@ function TrainingLabStandardPlay({ config, onExit }: { config: any; onExit: () =
       programTitle: String(config?.programTitle || "Programme Training"),
       durationMin: Math.max(0, Number(config?.programDurationMin) || 0),
       exerciseIds: programSummary.rows.map((row) => row.exerciseId),
+      stepResults: programSummary.rows.map((row) => ({ ...row })),
       plannedExerciseIds: plannedProgramIdsRef.current,
       adaptationCount: sessionReview.adaptations.length,
       targetHitCount: sessionReview.targetMet,

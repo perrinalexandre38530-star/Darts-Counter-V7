@@ -893,6 +893,8 @@ function LiveStyles() {
       .msc-season-block { margin:0 0 10px; border:1px solid #27323c; border-radius:11px; overflow:hidden; background:#090e13; }
       .msc-season-head { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:34px; padding:6px 9px; background:#101820; border-bottom:1px solid #27323c; color:#eef3f7; font-size:9px; font-weight:1000; }
       .msc-season-head span:last-child { color:#798693; font-size:7px; }
+      .msc-result-day-head { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:7px 10px 5px; border-top:1px solid rgba(255,255,255,.07); background:rgba(80,145,195,.065); color:#bcd3e5; font-size:9px; font-weight:850; }
+      .msc-result-day-head span:last-child { color:#8296a7; font-size:8px; white-space:nowrap; }
       @media (max-width:620px) {
         .msc-competition-detail-main { grid-template-columns:42px minmax(0,1fr); padding:8px; }
         .msc-competition-detail-logo { width:42px; height:42px; }
@@ -1203,6 +1205,7 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
   const [selectedSeason, setSelectedSeason] = React.useState("__all__");
   const [searchQuery, setSearchQuery] = React.useState("");
   const [historyLimit, setHistoryLimit] = React.useState(120);
+  const [competitionLimit, setCompetitionLimit] = React.useState(30);
 
   const continentFiltered = React.useMemo(() => competitions.filter((item) => selectedContinent === "__all__" || item.continent === selectedContinent), [competitions, selectedContinent]);
   const countries = React.useMemo(() => {
@@ -1229,9 +1232,13 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
     const query = normalizedText(searchQuery);
     if (!query) return hierarchyFiltered;
     return hierarchyFiltered.filter((item) => {
-      const playerNames = item.matches.slice(0, 500).map((match) => `${match.winner?.name || ""} ${match.loser?.name || ""}`).join(" ");
-      const hay = normalizedText(`${item.name} ${item.countryLabel} ${item.continent} ${playerNames}`);
-      return hay.includes(query);
+      const competitionInfo = normalizedText(`${item.name} ${item.countryLabel} ${item.continent}`);
+      if (competitionInfo.includes(query)) return true;
+      // Search the complete archive, not just the first 500 results. Short-circuit
+      // on the first hit instead of building one very large concatenated string.
+      return item.matches.some((match) =>
+        normalizedText(`${match.winner?.name || ""} ${match.loser?.name || ""}`).includes(query)
+      );
     });
   }, [hierarchyFiltered, searchQuery]);
   const navigationCompetitions = React.useMemo(() => [...searchedCompetitions].sort((a,b) => a.name.localeCompare(b.name, lang || "fr")), [searchedCompetitions, lang]);
@@ -1244,6 +1251,7 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
   React.useEffect(() => { setSelected("__all__"); setSelectedSeason("__all__"); setHistoryLimit(120); }, [selectedCountry]);
   React.useEffect(() => { setSelectedSeason("__all__"); setHistoryLimit(120); }, [selected]);
   React.useEffect(() => { setHistoryLimit(120); }, [selectedSeason, searchQuery]);
+  React.useEffect(() => { setCompetitionLimit(30); }, [selectedContinent, selectedCountry, selected, selectedSeason, searchQuery]);
 
   const competitionFiltered = selected === "__all__" ? searchedCompetitions : searchedCompetitions.filter((item) => item.name === selected);
   const seasons = React.useMemo(() => {
@@ -1274,7 +1282,17 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
   const selectedCompetitionMode = selected !== "__all__";
   const filteredCount = competitionFiltered.reduce((sum,item) => sum + item.matches.length, 0);
   const visibleCount = visible.reduce((sum,item) => sum + item.matches.length, 0);
-  const selectedCompetition = selectedCompetitionMode ? scoreCenterVisible[0] || null : null;
+  // Keep the competition detail independent from the selected season, otherwise
+  // selecting 2023 removes 2024/2022 from the season navigation.
+  const selectedCompetition = selectedCompetitionMode
+    ? competitionFiltered.find((item) => item.name === selected) || null
+    : null;
+  const displayedCompetitions = selectedCompetitionMode ? scoreCenterVisible : scoreCenterVisible.slice(0, competitionLimit);
+  const countryResultTotals = React.useMemo(() => {
+    const totals = new Map<string, number>();
+    scoreCenterVisible.forEach((item) => totals.set(item.countryLabel, (totals.get(item.countryLabel) || 0) + item.matches.length));
+    return totals;
+  }, [scoreCenterVisible]);
   const selectedCompetitionSeasons = React.useMemo(() => {
     if (!selectedCompetition) return [] as Array<[string, number]>;
     const counts = new Map<string, number>();
@@ -1417,7 +1435,7 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
           <em>{visibleCount} résultat{visibleCount > 1 ? "s" : ""}</em>
         </div>
         <div className="msc-competition-groups">
-          {scoreCenterVisible.map(({ name, matches, imageUrl, tone, chips, countryCode, countryLabel, archiveSeasons, archiveCount, firstSeen, lastSeen }, index) => {
+          {displayedCompetitions.map(({ name, matches, imageUrl, tone, chips, countryCode, countryLabel, archiveSeasons, archiveCount, firstSeen, lastSeen }, index) => {
             const rounds = new Map<string, DartsLiveResult[]>();
             matches.forEach((match) => {
               const round = normalizedRound(match.round);
@@ -1426,7 +1444,7 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
               rounds.set(round, bucket);
             });
             const orderedRounds = Array.from(rounds.entries()).sort(([a], [b]) => roundOrder(a) - roundOrder(b));
-            const previousCountry = index > 0 ? scoreCenterVisible[index - 1]?.countryLabel : null;
+            const previousCountry = index > 0 ? displayedCompetitions[index - 1]?.countryLabel : null;
             const showCountryHead = selectedCountry === "__all__" && previousCountry !== countryLabel;
             return (
               <React.Fragment key={`${countryLabel}-${name}`}>
@@ -1434,7 +1452,7 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
                   <div className="msc-country-score-head">
                     <span className="msc-country-score-flag">{countryVisual(countryCode, countryLabel)}</span>
                     <strong>{countryLabel.toUpperCase()}</strong>
-                    <span>{scoreCenterVisible.filter((item) => item.countryLabel === countryLabel).reduce((sum, item) => sum + item.matches.length, 0)} résultats</span>
+                    <span>{countryResultTotals.get(countryLabel) || 0} résultats</span>
                   </div>
                 ) : null}
                 <section className="msc-competition-group">
@@ -1453,17 +1471,17 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
                     <span className="msc-competition-head-count">{matches.length}</span>
                   </div>
                   {selectedCompetitionMode ? (() => {
-                    let rendered = 0;
-                    const seasonsToRender = selectedSeason === "__all__"
-                      ? Array.from(new Set(matches.map((match) => resultSeasonLabel(match.playedOn)))).sort((a,b) => {
-                          if (a === "NON DATÉ") return 1;
-                          if (b === "NON DATÉ") return -1;
-                          return Number(b) - Number(a);
-                        })
-                      : [selectedSeason];
+                    // Paginate globally by date FIRST. The former implementation
+                    // applied the 120-row limit while iterating rounds, so older
+                    // finals could appear before newer matches from other rounds.
+                    const latestRows = [...matches]
+                      .sort((a, b) => dateTs(b.playedOn) - dateTs(a.playedOn))
+                      .slice(0, historyLimit);
+                    const seasonsToRender = Array.from(new Set(latestRows.map((match) => resultSeasonLabel(match.playedOn))))
+                      .sort((a,b) => a === "NON DATÉ" ? 1 : b === "NON DATÉ" ? -1 : Number(b) - Number(a));
                     const seasonBlocks = seasonsToRender.map((season) => {
-                      const seasonRows = matches.filter((match) => resultSeasonLabel(match.playedOn) === season);
-                      if (!seasonRows.length) return null;
+                      const seasonRows = latestRows.filter((match) => resultSeasonLabel(match.playedOn) === season);
+                      const seasonTotal = matches.filter((match) => resultSeasonLabel(match.playedOn) === season).length;
                       const seasonRounds = new Map<string, DartsLiveResult[]>();
                       seasonRows.forEach((match) => {
                         const round = normalizedRound(match.round);
@@ -1473,16 +1491,24 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
                       });
                       const orderedSeasonRounds = Array.from(seasonRounds.entries()).sort(([a],[b]) => roundOrder(a) - roundOrder(b));
                       const roundBlocks = orderedSeasonRounds.map(([round, roundRows]) => {
-                        const remaining = Math.max(0, historyLimit - rendered);
-                        if (!remaining) return null;
-                        const shownRows = roundRows.slice(0, remaining);
-                        rendered += shownRows.length;
-                        if (!shownRows.length) return null;
-                        return <div className="msc-round-group" key={`${name}-${season}-${round}`}><div className="msc-round-head"><span>{round}</span><span>{roundRows.length} match{roundRows.length > 1 ? "s" : ""}</span></div>{shownRows.map((item) => <ResultMatchCard key={item.id} item={item} source={source} lang={lang} />)}</div>;
-                      }).filter(Boolean);
-                      if (!roundBlocks.length) return null;
-                      return <div className="msc-season-block" key={`${name}-${season}`}><div className="msc-season-head"><span>SAISON {season}</span><span>{seasonRows.length} résultat{seasonRows.length > 1 ? "s" : ""}</span></div>{roundBlocks}</div>;
-                    }).filter(Boolean);
+                        const byDate = new Map<string, DartsLiveResult[]>();
+                        roundRows.forEach((match) => {
+                          const date = match.playedOn ? String(match.playedOn).slice(0, 10) : "NON DATÉ";
+                          const group = byDate.get(date) || [];
+                          group.push(match);
+                          byDate.set(date, group);
+                        });
+                        const orderedDates = Array.from(byDate.entries()).sort(([a], [b]) => b.localeCompare(a));
+                        return <div className="msc-round-group" key={`${name}-${season}-${round}`}>
+                          <div className="msc-round-head"><span>{round}</span><span>{roundRows.length} match{roundRows.length > 1 ? "s" : ""} affiché{roundRows.length > 1 ? "s" : ""}</span></div>
+                          {orderedDates.map(([date, dateRows]) => <React.Fragment key={`${name}-${season}-${round}-${date}`}>
+                            <div className="msc-result-day-head"><span>{date === "NON DATÉ" ? "DATE INCONNUE" : formatDate(date, lang)}</span><span>{dateRows.length} match{dateRows.length > 1 ? "s" : ""}</span></div>
+                            {dateRows.map((item) => <ResultMatchCard key={item.id} item={item} source={source} lang={lang} />)}
+                          </React.Fragment>)}
+                        </div>;
+                      });
+                      return <div className="msc-season-block" key={`${name}-${season}`}><div className="msc-season-head"><span>SAISON {season}</span><span>{seasonRows.length} / {seasonTotal} résultats</span></div>{roundBlocks}</div>;
+                    });
                     return <>{seasonBlocks}{matches.length > historyLimit ? <button className="msc-history-more" type="button" onClick={() => setHistoryLimit((value) => value + 120)}>AFFICHER 120 RÉSULTATS SUPPLÉMENTAIRES · <strong>{Math.max(0, matches.length - historyLimit)} RESTANTS</strong></button> : null}</>;
                   })() : (
                     <>
@@ -1497,6 +1523,11 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
               </React.Fragment>
             );
           })}
+          {!selectedCompetitionMode && scoreCenterVisible.length > displayedCompetitions.length ? (
+            <button className="msc-history-more" type="button" onClick={() => setCompetitionLimit((value) => value + 30)}>
+              AFFICHER 30 COMPÉTITIONS SUPPLÉMENTAIRES · <strong>{scoreCenterVisible.length - displayedCompetitions.length} RESTANTES</strong>
+            </button>
+          ) : null}
         </div>
       </div>
     </div>

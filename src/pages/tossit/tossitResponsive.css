@@ -142,3 +142,48 @@
     box-shadow: 0 -6px 16px rgba(7,21,27,.66);
   }
 }
+
+/* V176 wave 9 — explicit one-tap selection, deliberate round confirmation. */
+.tossit-entry-field { min-width: 0; margin: 12px 0; }
+.tossit-entry-field > strong, .tossit-throw-row > strong { display: block; margin-bottom: 7px; font-size: 13px; }
+.tossit-quick-choices {
+  display: grid;
+  grid-template-columns: repeat(var(--tossit-quick-columns, 3), minmax(0, 1fr));
+  gap: 6px;
+  min-width: 0;
+}
+.tossit-page .tossit-quick-choice {
+  padding: 8px 4px;
+  min-height: 49px;
+  border-radius: 11px;
+  border: 1px solid rgba(145,231,213,.35);
+  background: rgba(25,55,61,.94);
+  color: #e9fff9;
+  font-size: clamp(12px, 2.7vw, 15px);
+  font-weight: 750;
+  line-height: 1.15;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.tossit-page .tossit-quick-choice[aria-pressed="true"] {
+  background: #48e7cf;
+  color: #07151b;
+  border: 2px solid #f7c45f;
+  box-shadow: 0 0 0 1px rgba(7,21,27,.2);
+  font-weight: 900;
+}
+.tossit-page .tossit-quick-choice:active { transform: scale(.985); }
+.tossit-throw-list { display: grid; gap: 8px; margin: 10px 0; }
+.tossit-throw-row { padding: 10px; border: 1px solid rgba(145,231,213,.18); border-radius: 12px; background: rgba(7,21,27,.35); margin: 7px 0; }
+.tossit-classic-bonus-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 0 12px; }
+.tossit-bonus-options label { min-height: 45px; display: flex; align-items: center; gap: 9px; padding: 8px 10px; background: rgba(72,231,207,.06); border-radius: 10px; }
+.tossit-river-points { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; font-size: 13px; }
+.tossit-page .tossit-river-points input { width: 95px !important; }
+@media (max-width: 390px) {
+  .tossit-page .tossit-quick-choice { min-height: 46px; padding: 6px 2px; font-size: 12px; }
+  .tossit-throw-row { padding: 8px 5px; }
+  .tossit-quick-choices { gap: 4px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tossit-page .tossit-quick-choice:active { transform: none; }
+}

@@ -1,6 +1,7 @@
 import React from "react";
 import type { DrinkCardBackground, DrinkCardIcon } from "../organizations/organizationDrinkCards";
 import { stampRowLengths } from "../organizations/buvetteLayout";
+import { BUVETTE_SCENES, buvetteScenePath, isBuvetteSceneKey } from "../organizations/buvetteBackgrounds";
 
 /** Ligne vectorielle façon bottom-nav : même trait, même forme lisible à toutes les tailles. */
 export function BuvetteGlyph({ icon = "cup", size = 25, color = "currentColor", filled = false }: {
@@ -27,6 +28,7 @@ export const BUVETTE_BACKGROUNDS: Array<{ key: DrinkCardBackground; fr: string; 
   { key: "wood", fr: "Bois club-house", en: "Clubhouse wood", es: "Madera" },
   { key: "gold", fr: "Prestige doré", en: "Prestige gold", es: "Dorado" },
   { key: "clean", fr: "Noir & blanc", en: "Black & white", es: "Blanco y negro" },
+  ...BUVETTE_SCENES.map(({ key, fr, en, es }) => ({ key, fr, en, es })),
   { key: "custom", fr: "Mon image", en: "My image", es: "Mi imagen" },
 ];
 
@@ -37,6 +39,9 @@ export type BuvetteVisual = {
 };
 
 export function clubBuvetteBackground(preset: DrinkCardBackground, url: string) {
+  if (isBuvetteSceneKey(preset)) {
+    return `linear-gradient(155deg,rgba(5,8,16,.28),rgba(5,8,16,.82) 95%),url("${buvetteScenePath(preset)}")`;
+  }
   const selected = preset === "custom" && (/^https:\/\//i.test(url) || /^data:image\/\w+;base64,/i.test(url)) ? url.replace(/["\\]/g, "") : "/assets/buvette/bar-ambiance.jpg";
   switch (preset) {
     case "bar-night": case "custom": return `linear-gradient(155deg,rgba(5,8,16,.35),rgba(5,8,16,.93) 78%),url("${selected}")`;

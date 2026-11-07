@@ -73,19 +73,105 @@ const SOCIAL_QA_RESPONSE_FORMAT = {
   }
 } as const;
 
+/** Read common Workers AI envelopes without trusting arbitrary surrounding prose. */
 function extractStructured(output: unknown): unknown {
-  if (output && typeof output === 'object' && 'response' in output) {
-    const response = (output as { response?: unknown }).response;
-    if (response && typeof response === 'object') return response;
-    if (typeof response === 'string') return JSON.parse(cleanJson(response));
-  }
-
-  if (output && typeof output === 'object' && !Array.isArray(output)) {
+  if (output && typeof output === 'object') {
     const record = output as Record<string, unknown>;
+    if ('response' in record) {
+      if (record.response && typeof record.response === 'object') return record.response;
+      if (typeof record.response === 'string') return parseStructuredText(record.response);
+    }
     if ('language' in record || 'qualityScore' in record) return record;
   }
+  return parseStructuredText(extractText(output));
+}
 
-  return JSON.parse(cleanJson(extractText(output)));
+function parseStructuredText(raw: string): unknown {
+  const cleaned = cleanJson(raw);
+  const candidates = [cleaned];
+  // Models sometimes prefix JSON with commentary or suffix it with an explanation.
+  // Only extract a balanced JSON object; ignore braces occurring inside strings.
+  const start = cleaned.indexOf('{');
+  if (start >= 0) {
+    let depth = 0;
+    let quoted = false;
+    let escaped = false;
+    for (let i = start; i < cleaned.length; i += 1) {
+      const char = cleaned[i];
+      if (quoted) {
+        if (escaped) escaped = false;
+        else if (char === '\\') escaped = true;
+        else if (char === '"') quoted = false;
+      } else if (char === '"') quoted = true;
+      else if (char === '{') depth += 1;
+      else if (char === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          candidates.push(cleaned.slice(start, i + 1));
+          break;
+        }
+      }
+    }
+  }
+  for (const candidate of candidates) {
+    try { return JSON.parse(candidate) as unknown; } catch { /* try another candidate */ }
+    // Repair trailing commas only outside JSON strings.
+    let quoted = false;
+    let escaped = false;
+    let noTrailingCommas = '';
+    for (let i = 0; i < candidate.length; i += 1) {
+      const char = candidate[i];
+      if (quoted) {
+        noTrailingCommas += char;
+        if (escaped) escaped = false;
+        else if (char === '\\') escaped = true;
+        else if (char === '"') quoted = false;
+        continue;
+      }
+      if (char === '"') quoted = true;
+      if (char === ',' && /^[\s]*[}\]]/.test(candidate.slice(i + 1))) continue;
+      noTrailingCommas += char;
+    }
+    if (noTrailingCommas !== candidate) {
+      try { return JSON.parse(noTrailingCommas) as unknown; } catch { /* retry at model level */ }
+    }
+  }
+  throw new Error('Social AI returned malformed JSON');
+}
+
+function isMalformedStructuredResponse(error: unknown): boolean {
+  return error instanceof SyntaxError || (error instanceof Error && /malformed JSON|invalid JSON|unsupported response shape|empty or invalid response/.test(error.message));
+}
+
+async function readSocialStructured(
+  env: RadarEnv,
+  request: { messages: Array<{ role: 'system' | 'user'; content: string }> },
+  responseFormat: typeof SOCIAL_DRAFT_RESPONSE_FORMAT | typeof SOCIAL_QA_RESPONSE_FORMAT,
+  maxTokens: number,
+  temperature: number,
+  timeoutMs: number,
+  label: string
+): Promise<unknown> {
+  const run = (messages: Array<{ role: 'system' | 'user'; content: string }>, tokens: number) => withTimeout(env.AI.run(SOCIAL_MODEL, {
+    messages,
+    response_format: responseFormat,
+    max_tokens: tokens,
+    temperature
+  }), timeoutMs, label);
+  // `request` is the source of truth for the first prompt and for the controlled retry.
+  const messages = request.messages;
+  try {
+    return extractStructured(await run(messages, maxTokens));
+  } catch (error) {
+    if (!isMalformedStructuredResponse(error)) throw error;
+    console.warn(JSON.stringify({ event: 'social_json_retry', stage: label, reason: error instanceof Error ? error.message : String(error) }));
+    const original = Array.isArray(messages) ? messages : [];
+    const retryMessages = [
+      ...original,
+      { role: 'system' as const, content: 'The previous output could not be parsed. Return ONE complete valid JSON object matching the requested schema. No Markdown, surrounding explanation, trailing commas, or truncated strings. Keep every required key; shorten text if necessary.' }
+    ];
+    return extractStructured(await run(retryMessages, maxTokens));
+  }
 }
 
 function extractText(output: unknown): string {
@@ -202,6 +288,8 @@ function parseDraft(raw: unknown, fallbackLanguage: string): SocialDraft {
 function parseQa(raw: unknown): SocialQa {
   if (!raw || typeof raw !== 'object') throw new Error('Social QA returned invalid JSON');
   const row = raw as Record<string, unknown>;
+  const required = ['qualityScore', 'factualScore', 'brandScore', 'usefulnessScore', 'visualScore', 'spamRisk', 'cringeRisk', 'decision', 'reason'];
+  if (required.some((key) => !(key in row))) throw new Error('Social QA returned incomplete JSON');
   return {
     qualityScore: clamp(row.qualityScore),
     factualScore: clamp(row.factualScore),
@@ -240,7 +328,7 @@ export async function generateAndAuditSocialDraft(
   const timeoutMs = intFromEnv(env.SOCIAL_AI_TIMEOUT_MS, 30_000, 5_000, 90_000);
 
   const generationStarted = Date.now();
-  const generation = await withTimeout(env.AI.run(SOCIAL_MODEL, {
+  const generation = await readSocialStructured(env, {
     messages: [
       {
         role: 'system',
@@ -279,12 +367,9 @@ Rules:
         })
       }
     ],
-    response_format: SOCIAL_DRAFT_RESPONSE_FORMAT,
-    max_tokens: 1100,
-    temperature: 0.2
-  }), timeoutMs, 'Workers AI social draft generation');
+  }, SOCIAL_DRAFT_RESPONSE_FORMAT, 1100, 0.2, timeoutMs, 'Workers AI social draft generation');
 
-  const draft = parseDraft(extractStructured(generation), analysis.language);
+  const draft = parseDraft(generation, analysis.language);
   console.log(JSON.stringify({
     event: 'social_draft_generated',
     model: SOCIAL_MODEL,
@@ -294,7 +379,7 @@ Rules:
   }));
 
   const auditStarted = Date.now();
-  const audit = await withTimeout(env.AI.run(SOCIAL_MODEL, {
+  const audit = await readSocialStructured(env, {
     messages: [
       {
         role: 'system',
@@ -309,12 +394,9 @@ The media brief must be executable only with approved real product assets. If un
       },
       { role: 'user', content: JSON.stringify(draft) }
     ],
-    response_format: SOCIAL_QA_RESPONSE_FORMAT,
-    max_tokens: 420,
-    temperature: 0
-  }), timeoutMs, 'Workers AI social quality audit');
+  }, SOCIAL_QA_RESPONSE_FORMAT, 420, 0, timeoutMs, 'Workers AI social quality audit');
 
-  const qa = parseQa(extractStructured(audit));
+  const qa = parseQa(audit);
   console.log(JSON.stringify({
     event: 'social_qa_completed',
     model: SOCIAL_MODEL,

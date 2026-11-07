@@ -22,6 +22,7 @@ import tickerFiveLives from "../assets/tickers/ticker_five_lives.png";
 import tickerChaseFr from "../assets/tickers/ticker_chase_fr.webp";
 import tickerChaseEn from "../assets/tickers/ticker_chase_en.webp";
 import { readDartsMatchDraft, writeDartsMatchDraft, clearDartsMatchDraft } from "../lib/dartsMatchDrafts";
+import { captureFiveLivesUndo, isValidFiveLivesUndo, type FiveLivesUndoState } from "../lib/fiveLivesUndo";
 import type { FiveLivesConfig, FiveLivesPlayerLite } from "./FiveLivesConfig";
 import "./FiveLivesPlayResponsive.css";
 
@@ -904,6 +905,10 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
   const [currentThrow, setCurrentThrow] = React.useState<Dart[]>(restored?.currentThrow || []),
     [lastScoreToBeat, setLastScoreToBeat] = React.useState<number | null>(restored?.lastScoreToBeat ?? null);
   const [events, setEvents] = React.useState<VisitEvent[]>(restored?.events || []),
+    [lastUndo, setLastUndo] = React.useState<FiveLivesUndoState<PlayerState, VisitEvent> | null>(() => {
+      const previous = restored?.lastUndo;
+      return isValidFiveLivesUndo(previous, restored as any) ? previous : null;
+    }),
     [winnerId, setWinnerId] = React.useState<string | null>(null);
   const [endOpen, setEndOpen] = React.useState(false),
     [finalMatch, setFinalMatch] = React.useState<any>(null);
@@ -1131,6 +1136,7 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
       payload: {
         kind: "five_lives",
         mode: "five_lives",
+        ...(isChase ? { variantId: "chase" } : {}),
         status: "finished",
         config: { ...config, scoreInputMethod: inputMethod },
         players: rankings,
@@ -1177,6 +1183,9 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
       })),
       p = updated[activeIndex];
     if (!p || p.eliminated) return;
+    // Snapshot avant la volée : vies, cible, stats et ordre CHASE doivent être
+    // restaurés ensemble. Jamais de suppression dans History V4.
+    setLastUndo(captureFiveLivesUndo({ players, turnIndex, chaseRoundQueue, lastScoreToBeat, events }));
     const livesBefore = p.lives;
     if (!openingVisit && !success) {
       p.lives = Math.max(0, p.lives - 1);
@@ -1253,6 +1262,20 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
       setTurnIndex(nextAliveIndex(activeIndex, updated));
     }
   }
+  function undoLastVisit() {
+    if (winnerId || endOpen || currentThrow.length !== 0) return;
+    const current = { players, turnIndex, chaseRoundQueue, lastScoreToBeat, events };
+    if (!isValidFiveLivesUndo(lastUndo, current)) return;
+    setPlayers(lastUndo.players);
+    setTurnIndex(lastUndo.turnIndex);
+    setChaseRoundQueue(lastUndo.chaseRoundQueue);
+    setLastScoreToBeat(lastUndo.lastScoreToBeat);
+    setEvents(lastUndo.events);
+    setCurrentThrow([]);
+    setMult(1);
+    setLastUndo(null); // Une volée à la fois, y compris après reprise locale.
+    botTurnKeyRef.current = "";
+  }
   function addDart(d: Dart) {
     if (winnerId || isBotTurn) return;
     setCurrentThrow((prev) => (prev.length >= 3 ? prev : [...prev, d]));
@@ -1295,10 +1318,15 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
   // Écriture automatique de la partie finie : l'utilisateur ne doit pas perdre
   // son historique s'il ferme l'application avant de cliquer sur HISTORIQUE.
   React.useEffect(() => {
-    if (!finalMatch || savedRef.current) return;
-    savedRef.current = true;
-    try { onFinish?.(finalMatch, { navigate: false }); } catch {}
-  }, [finalMatch]);
+    if (!finalMatch || savedRef.current || typeof onFinish !== "function") return;
+    try {
+      onFinish?.(finalMatch, { navigate: false });
+      savedRef.current = true;
+    } catch (error) {
+      // Ne jamais marquer comme enregistré un match dont l'écriture a échoué.
+      console.warn("[5 VIES/CHASE] Enregistrement de l'historique impossible", error);
+    }
+  }, [finalMatch, onFinish]);
   // Une fermeture pendant l'animation d'un BOT CHASE/5 VIES peut laisser
   // sa volée révélée mais non validée. Reprendre la validation au remontage.
   React.useEffect(() => {
@@ -1308,22 +1336,37 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
   }, []);
   function finishAndSave() {
     if (!finalMatch) return;
-    setEndOpen(false);
     if (!savedRef.current) {
-      savedRef.current = true;
-      onFinish?.(finalMatch);
-    } else {
-      go("statsHub", { tab: "history" });
+      if (typeof onFinish !== "function") {
+        window.alert("L'enregistrement de cette partie n'est pas disponible.");
+        return;
+      }
+      try {
+        onFinish(finalMatch, { navigate: true });
+        savedRef.current = true;
+        setEndOpen(false);
+      } catch (error) {
+        console.warn("[5 VIES/CHASE] Impossible de sauvegarder la partie", error);
+        window.alert("L'enregistrement de la partie a échoué. Réessaie depuis les résultats.");
+      }
+      return;
     }
+    setEndOpen(false);
+    go("statsHub", { tab: "history" });
   }
   React.useEffect(() => {
     if (winnerId || finalMatch) { clearDartsMatchDraft(modeDraftId); return; }
-    if (!events.length && !currentThrow.length) return;
+    // Annuler la première volée rend un match entièrement vierge : supprimer
+    // aussi le brouillon, sinon une ancienne volée réapparaît au prochain lancement.
+    if (!events.length && !currentThrow.length) {
+      clearDartsMatchDraft(modeDraftId);
+      return;
+    }
     writeDartsMatchDraft(modeDraftId, config as any, {
-      players, turnIndex, chaseRoundQueue, lastScoreToBeat, currentThrow, mult, events,
+      players, turnIndex, chaseRoundQueue, lastScoreToBeat, currentThrow, mult, events, lastUndo,
       startedAt: startedAtRef.current,
     });
-  }, [modeDraftId, config, players, turnIndex, chaseRoundQueue, lastScoreToBeat, currentThrow, mult, events, winnerId, finalMatch]);
+  }, [modeDraftId, config, players, turnIndex, chaseRoundQueue, lastScoreToBeat, currentThrow, mult, events, lastUndo, winnerId, finalMatch]);
 
   const liveAvg = activePlayer?.stats?.visits
     ? activePlayer.stats.totalScore / activePlayer.stats.visits
@@ -1738,6 +1781,17 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
           }}
         >
           <div style={{ maxWidth: 760, margin: "0 auto" }}>
+            <div className="msc-five-lives-undo-row">
+              <button
+                className="msc-five-lives-undo"
+                type="button"
+                disabled={!isValidFiveLivesUndo(lastUndo, { players, turnIndex, chaseRoundQueue, lastScoreToBeat, events }) || currentThrow.length > 0}
+                onClick={undoLastVisit}
+                title={currentThrow.length > 0 ? "Videz d'abord la volée en cours" : "Annuler la dernière volée validée"}
+              >
+                ↶ {String(lang).toLowerCase() === "fr" ? "ANNULER LA DERNIÈRE VOLÉE" : "UNDO LAST VISIT"}
+              </button>
+            </div>
             <ScoreInputHub
               currentThrow={currentThrow}
               multiplier={mult}
@@ -2226,6 +2280,28 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
                   );
                 })}
               </div>
+              {/* V182 : journal des 8 dernières volées, utile pour CHASE et 5 VIES. */}
+              {Array.isArray(finalMatch?.payload?.visitHistory) && finalMatch.payload.visitHistory.length > 0 ? (
+                <section aria-label="Dernières volées" style={{ marginTop: 13 }}>
+                  <div style={{ color: accent, fontSize: 11, fontWeight: 1000, marginBottom: 7 }}>DERNIÈRES VOLÉES</div>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {finalMatch.payload.visitHistory.slice(-8).reverse().map((visit: VisitEvent) => (
+                      <div key={visit.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 7, padding: "8px 10px", borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)" }}>
+                        <div style={{ minWidth: 0, flex: "1 1 145px" }}>
+                          <div style={{ color: "#fff", fontSize: 11, fontWeight: 950 }}>{visit.playerName}</div>
+                          <div style={{ color: "rgba(255,255,255,.56)", fontSize: 9.5 }}>
+                            {visit.openingVisit ? "Score d'ouverture" : `Objectif : ${visit.required} pts`} · {visit.darts.length ? visit.darts.map(fmtDart).join(" / ") : "Score direct"}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontSize: 16, fontWeight: 1000, color: visit.lifeLost ? "#ff7f91" : "#72f0a8" }}>{visit.score} pts</div>
+                          <div style={{ fontSize: 9, color: visit.lifeLost ? "#ff7f91" : "#72f0a8" }}>{visit.lifeLost ? `−1 vie · ${visit.livesAfter} restante(s)` : visit.openingVisit ? "Cible posée" : "Objectif atteint"}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
               <div
                 style={{
                   marginTop: 12,

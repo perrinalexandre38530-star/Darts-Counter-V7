@@ -1,6 +1,7 @@
 import React from "react";
 import ClubBuvetteCardVisual, { BuvetteGlyph, BUVETTE_BACKGROUNDS, clubBuvetteBackground } from "./ClubBuvetteCardVisual";
 import { uploadOrganizationShopImage } from "../lib/organizationSupabaseMedia";
+import { BUVETTE_SCENES, DEFAULT_BUVETTE_COVER, buvetteScenePath, type BuvetteSceneKey } from "../organizations/buvetteBackgrounds";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
@@ -11,6 +12,7 @@ import {
   type AssignedDrinkCard, type DrinkCardEvent,
   listDrinkCardTemplates, listAssignedDrinkCards, listDrinkCardEvents,
   saveDrinkCardTemplate, issueDrinkCard, stampDrinkCard, undoDrinkCardConsumption, cancelDrinkCard,
+  getOrganizationBuvetteCover, saveOrganizationBuvetteCover,
 } from "../organizations/organizationDrinkCards";
 
 const icons: Record<DrinkCardIcon, string> = { cup: "Verre", coffee: "Café", beer: "Bière", soda: "Soda", water: "Eau", wine: "Vin", cocktail: "Cocktail" };
@@ -75,6 +77,9 @@ export default function OrganizationDrinkCardsPanel({ organization, userId, logo
   const [selectedHolder, setSelectedHolder] = React.useState("");
   const [pictureDataUrl, setPictureDataUrl] = React.useState("");
   const [printingCard, setPrintingCard] = React.useState("");
+  const [coverKey, setCoverKey] = React.useState<BuvetteSceneKey>(DEFAULT_BUVETTE_COVER);
+  const [coverEditorOpen, setCoverEditorOpen] = React.useState(false);
+  const [coverSaving, setCoverSaving] = React.useState(false);
   const cardStyle: React.CSSProperties = { border: `1px solid ${theme.borderSoft}`, background: theme.cardBackground || theme.card,
     borderRadius: 17, padding: 13, minWidth: 0 };
   const control: React.CSSProperties = { width: "100%", boxSizing: "border-box", borderRadius: 10, padding: "10px",
@@ -95,6 +100,12 @@ export default function OrganizationDrinkCardsPanel({ organization, userId, logo
     finally { setLoading(false); }
   }, [organization.id, userId]);
   React.useEffect(() => { void reload(true); }, [reload]);
+  React.useEffect(() => {
+    let live = true;
+    void getOrganizationBuvetteCover(userId, organization.id).then((key) => { if (live) setCoverKey(key); })
+      .catch((e: any) => { if (live) setError(String(e?.message || "Impossible de charger la couverture buvette.")); });
+    return () => { live = false; };
+  }, [organization.id, userId]);
   React.useEffect(() => {
     let mounted = true;
     void listOrganizationMembers(userId, organization.id).then((result) => {
@@ -186,26 +197,61 @@ export default function OrganizationDrinkCardsPanel({ organization, userId, logo
     window.setTimeout(() => window.print(), 120);
   };
   const logo = logoUrl || organization.profile.logoUrl || "";
+  const updateCover = async (key: BuvetteSceneKey) => {
+    if (coverSaving || key === coverKey) return;
+    setCoverSaving(true); setError(""); setMessage("");
+    try {
+      await saveOrganizationBuvetteCover(userId, organization.id, key);
+      setCoverKey(key);
+      setMessage(L("Couverture de la Buvette enregistrée pour le club.", "Club cover saved.", "Portada guardada para el club."));
+    } catch (e: any) { setError(String(e?.message || "Couverture non enregistrée.")); }
+    finally { setCoverSaving(false); }
+  };
 
   return <section style={{ display: "grid", gap: 12 }}>
-    <div style={{ ...cardStyle, background: `linear-gradient(125deg, ${theme.primary}22, transparent), ${theme.cardBackground || theme.card}` }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        {logo ? <img alt="" src={logo} style={{ width: 49, height: 49, borderRadius: 12, objectFit: "contain", background: "#fff", padding: 3 }}/> : <BuvetteGlyph icon="cup" size={34} color={theme.primary}/>}
-        <div style={{ minWidth: 0 }}>
-          <strong style={{ display: "block", color: theme.primary, fontSize: 15 }}>{L("BUVETTE DU CLUB", "CLUB DRINKS BAR", "BAR DEL CLUB")}</strong>
-          <div style={{ color: theme.textSoft, fontSize: 11 }}>{organization.name}</div>
+    <div style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
+      <div style={{ minHeight: 202, position: "relative", display: "flex", alignItems: "flex-end",
+        background: `linear-gradient(180deg,rgba(2,7,16,.02) 3%,rgba(2,7,16,.80) 100%),url("${buvetteScenePath(coverKey)}") center/cover no-repeat` }}>
+        <div style={{ width: "100%", display: "flex", gap: 11, alignItems: "center", padding: "18px 15px", position: "relative" }}>
+          {logo ? <img alt="" src={logo} style={{ width: 56, height: 56, flexShrink: 0, borderRadius: 13, objectFit: "contain", background: "#fff", padding: 4 }}/>
+            : <span style={{ width: 54, height: 54, borderRadius: 12, background: "#060b13bb", display: "grid", placeItems: "center" }}><BuvetteGlyph icon="cup" size={33} color={theme.primary}/></span>}
+          <div style={{ minWidth: 0 }}>
+            <strong style={{ display: "block", color: "#fff", fontSize: "clamp(17px,3vw,23px)", lineHeight: 1.16, textShadow: "0 2px 8px #000" }}>{L("BUVETTE DU CLUB", "CLUB DRINKS BAR", "BAR DEL CLUB")}</strong>
+            <div style={{ color: "#f0f2f6", fontSize: 12, fontWeight: 750, textShadow: "0 2px 7px #000" }}>{organization.name}</div>
+          </div>
+          <span style={{ marginLeft: "auto", flexShrink: 0, padding: 7, borderRadius: 12, border: `1px solid ${theme.primary}80`, background: "#091018b8" }}><BuvetteGlyph icon="cup" size={29} color={theme.primary}/></span>
         </div>
       </div>
-      <p style={{ margin: "9px 0 0", color: theme.textSoft, fontSize: 12, lineHeight: 1.55 }}>
-        {L("Cartes nominatives avec cases à cocher. Les consommations et corrections sont enregistrées et synchronisées entre appareils.",
-          "Personal drink cards with digital stamps. Uses and corrections are stored and synced between devices.",
-          "Tarjetas personales con casillas digitales. Los consumos y correcciones se guardan y sincronizan.")}
-      </p>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 10 }}>
-        <button type="button" style={button} disabled={pending} onClick={() => void reload(true)}>↻ {L("Actualiser", "Refresh", "Actualizar")}</button>
-        {canManage ? <button type="button" style={primary} disabled={pending} onClick={templateStart}>＋ {L("Créer une carte", "Design a card", "Crear tarjeta")}</button> : null}
+      <div style={{ padding: "11px 14px 13px" }}>
+        <p style={{ margin: 0, color: theme.textSoft, fontSize: 12, lineHeight: 1.5 }}>
+          {L("Cartes nominatives avec cases à cocher. Consommations et corrections synchronisées entre appareils.",
+            "Personal drink cards with digital stamps, synchronized between devices.",
+            "Tarjetas personales y consumos sincronizados entre dispositivos.")}
+        </p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 10 }}>
+          <button type="button" style={button} disabled={pending} onClick={() => void reload(true)}>↻ {L("Actualiser", "Refresh", "Actualizar")}</button>
+          {canManage ? <button type="button" style={primary} disabled={pending} onClick={templateStart}>＋ {L("Créer une carte", "Design a card", "Crear tarjeta")}</button> : null}
+          {canManage ? <button type="button" style={button} aria-expanded={coverEditorOpen} onClick={() => setCoverEditorOpen(!coverEditorOpen)}>▧ {L("Personnaliser la couverture", "Customize cover", "Personalizar portada")}</button> : null}
+        </div>
       </div>
     </div>
+    {canManage && coverEditorOpen ? <div style={{ ...cardStyle, display: "grid", gap: 10 }}>
+      <div>
+        <strong style={{ display: "block", color: theme.primary, fontSize: 13 }}>{L("COUVERTURE DE L’ESPACE BUVETTE", "BUVETTE PAGE COVER", "PORTADA DE LA CANTINA")}</strong>
+        <small style={{ color: theme.textSoft }}>{L("Choisis un des 20 fonds. La couverture est partagée par tous les membres et ne change pas les cartes déjà attribuées.",
+          "Choose one of 20 backgrounds. This cover is shared with all members and does not change issued cards.",
+          "Elige uno de los 20 fondos. Esta portada es común para todos los socios.")}</small>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,125px),1fr))", gap: 8 }}>
+        {BUVETTE_SCENES.map((b) => <button key={b.key} type="button" disabled={coverSaving} aria-pressed={coverKey === b.key}
+          onClick={() => void updateCover(b.key)}
+          style={{ ...button, minWidth: 0, padding: 5, border: `2px solid ${coverKey === b.key ? theme.primary : theme.borderSoft}`, background: coverKey === b.key ? `${theme.primary}18` : "transparent" }}>
+          <img src={b.path} alt="" loading="lazy" style={{ display: "block", width: "100%", aspectRatio: "16/9", borderRadius: 6, objectFit: "cover" }}/>
+          <span style={{ display: "block", marginTop: 5, color: coverKey === b.key ? theme.primary : theme.textSoft, fontSize: 10, fontWeight: 800 }}>{lang === "en" ? b.en : lang === "es" ? b.es : b.fr}</span>
+        </button>)}
+      </div>
+      <button type="button" style={button} onClick={() => setCoverEditorOpen(false)}>{L("Fermer", "Close", "Cerrar")}</button>
+    </div> : null}
     {error ? <div role="alert" style={{ ...cardStyle, color: "#ffb1b1", borderColor: "#d76c6c", fontSize: 12 }}>{error}</div> : null}
     {message ? <div role="status" style={{ ...cardStyle, color: theme.primary, fontSize: 12 }}>{message}</div> : null}
 

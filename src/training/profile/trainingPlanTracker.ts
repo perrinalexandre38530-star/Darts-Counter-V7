@@ -2,6 +2,37 @@ import type { TrainingExerciseFamily } from "../catalog/trainingExerciseCatalog"
 
 const KEY = "dc_training_plan_tracker_v1";
 
+/** Snapshot attached to a completed program: exact per-exercise results, including after backup restore. */
+export type TrainingProgramStepStats = {
+  exerciseId: string;
+  exerciseTitle: string;
+  success: boolean;
+  darts: number;
+  hits: number;
+  points: number;
+  goal?: number;
+  completionPct: number;
+  accuracyPct: number;
+  performanceScore: number;
+};
+
+function sanitizeProgramStep(input: any): TrainingProgramStepStats | null {
+  if (!input || typeof input !== "object" || !String(input.exerciseId || "").trim()) return null;
+  const darts = Math.max(0, Math.round(Number(input.darts) || 0));
+  return {
+    exerciseId: String(input.exerciseId),
+    exerciseTitle: String(input.exerciseTitle || input.exerciseId),
+    success: input.success === true,
+    darts,
+    hits: Math.max(0, Math.min(darts, Math.round(Number(input.hits) || 0))),
+    points: Number.isFinite(Number(input.points)) ? Number(input.points) : 0,
+    goal: Number.isFinite(Number(input.goal)) && input.goal != null ? Math.max(0, Number(input.goal)) : undefined,
+    completionPct: Math.max(0, Math.min(100, Number(input.completionPct) || 0)),
+    accuracyPct: Math.max(0, Math.min(100, Number(input.accuracyPct) || 0)),
+    performanceScore: Math.max(0, Math.min(100, Number(input.performanceScore) || 0)),
+  };
+}
+
 export type TrainingProgramSessionRecord = {
   id: string;
   endedAt: number;
@@ -9,6 +40,8 @@ export type TrainingProgramSessionRecord = {
   programTitle: string;
   durationMin: number;
   exerciseIds: string[];
+  /** Optional for existing backups; V268 persists new program breakdowns here. */
+  stepResults?: TrainingProgramStepStats[];
   plannedExerciseIds: string[];
   adaptationCount: number;
   targetHitCount: number;
@@ -43,6 +76,7 @@ function sanitizeRecord(input: any): TrainingProgramSessionRecord | null {
     programTitle: String(input.programTitle || "Programme Training"),
     durationMin: Math.max(0, Math.round(Number(input.durationMin) || 0)),
     exerciseIds,
+    stepResults: Array.isArray(input.stepResults) ? input.stepResults.slice(0, 100).map(sanitizeProgramStep).filter((row: TrainingProgramStepStats | null): row is TrainingProgramStepStats => row !== null) : undefined,
     plannedExerciseIds,
     adaptationCount: Math.max(0, Math.round(Number(input.adaptationCount) || 0)),
     targetHitCount: Math.max(0, Math.round(Number(input.targetHitCount) || 0)),
@@ -147,6 +181,7 @@ export type TrainingProgramDraftStep = {
   darts: number;
   hits: number;
   points: number;
+  goal?: number;
   completionPct: number;
   accuracyPct: number;
   performanceScore: number;
@@ -174,6 +209,7 @@ function sanitizeDraftStep(input: any): TrainingProgramDraftStep | null {
     darts: Math.max(0, Math.round(Number(input.darts) || 0)),
     hits: Math.max(0, Math.round(Number(input.hits) || 0)),
     points: Math.max(0, Math.round(Number(input.points) || 0)),
+    goal: input.goal != null && Number.isFinite(Number(input.goal)) ? Math.max(0, Number(input.goal)) : undefined,
     completionPct: Math.max(0, Math.min(100, Number(input.completionPct) || 0)),
     accuracyPct: Math.max(0, Math.min(100, Number(input.accuracyPct) || 0)),
     performanceScore: Math.max(0, Math.min(100, Number(input.performanceScore) || 0)),

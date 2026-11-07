@@ -234,47 +234,64 @@ export default function GlobalMessengerCallBridge() {
     if (!canRunMessengerBackground(auth)) return;
     let stopped = false;
     let timer: number | null = null;
+    let inFlight = false;
     let pollDelayMs = 10_000;
     const schedule = (delay = pollDelayMs) => {
       if (stopped) return;
-      if (timer) window.clearTimeout(timer);
-      timer = window.setTimeout(() => { poll().catch(() => {}); }, delay);
+      if (timer !== null) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        timer = null;
+        void poll();
+      }, delay);
     };
     const poll = async () => {
-      if (stopped) return;
-
-      // PERF V68: EventSource is the real-time channel. The previous bridge kept
-      // a second HTTP polling loop alive even while SSE was healthy, generating
-      // unnecessary auth/backend work across every screen. Keep polling purely
-      // as a fallback; incoming calls remain instant through SSE.
+      // A visibility/focus event may race with the scheduled fallback poll.
+      // Keep exactly one HTTP request in flight for the global messenger bridge.
+      if (stopped || inFlight) return;
+      if (document.visibilityState === "hidden") {
+        schedule(30_000);
+        return;
+      }
       if (streamHealthyRef.current) {
         pollDelayMs = isGameplayRuntime() ? 60_000 : 30_000;
         schedule(pollDelayMs);
         return;
       }
-
+      inFlight = true;
       try {
         const calls = await listIncomingMessengerCalls();
+        if (stopped) return;
         pollDelayMs = 10_000;
         const first = (Array.isArray(calls) ? calls : []).find((call: any) => isRingingIncoming(call));
         if (first) alertIncomingCall(first as AnyCall);
       } catch {
         pollDelayMs = Math.min(60_000, Math.max(20_000, pollDelayMs * 2));
       } finally {
-        schedule();
+        inFlight = false;
+        if (!stopped) schedule(pollDelayMs);
       }
     };
-    poll().catch(() => {});
+    void poll();
     const onFocus = () => {
       if (document.visibilityState === "hidden") return;
       pollDelayMs = 10_000;
-      poll().catch(() => {});
+      // If SSE is healthy it delivers calls without the additional fetch.
+      if (streamHealthyRef.current) {
+        schedule(30_000);
+        return;
+      }
+      // Clear the pending fallback before starting a single immediate check.
+      if (timer !== null) {
+        window.clearTimeout(timer);
+        timer = null;
+      }
+      if (!inFlight) void poll();
     };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
     return () => {
       stopped = true;
-      if (timer) window.clearTimeout(timer);
+      if (timer !== null) window.clearTimeout(timer);
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onFocus);
     };
