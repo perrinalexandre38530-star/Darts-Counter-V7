@@ -1231,14 +1231,16 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
   const searchedCompetitions = React.useMemo(() => {
     const query = normalizedText(searchQuery);
     if (!query) return hierarchyFiltered;
-    return hierarchyFiltered.filter((item) => {
+    return hierarchyFiltered.flatMap((item) => {
+      // A competition/country query intentionally keeps all its matches.
+      // A player query must narrow down to that player's actual matches;
+      // otherwise the results, season counts and totals are misleading.
       const competitionInfo = normalizedText(`${item.name} ${item.countryLabel} ${item.continent}`);
-      if (competitionInfo.includes(query)) return true;
-      // Search the complete archive, not just the first 500 results. Short-circuit
-      // on the first hit instead of building one very large concatenated string.
-      return item.matches.some((match) =>
+      if (competitionInfo.includes(query)) return [item];
+      const matches = item.matches.filter((match) =>
         normalizedText(`${match.winner?.name || ""} ${match.loser?.name || ""}`).includes(query)
       );
+      return matches.length ? [{ ...item, matches }] : [];
     });
   }, [hierarchyFiltered, searchQuery]);
   const navigationCompetitions = React.useMemo(() => [...searchedCompetitions].sort((a,b) => a.name.localeCompare(b.name, lang || "fr")), [searchedCompetitions, lang]);
@@ -1435,6 +1437,13 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
           <em>{visibleCount} résultat{visibleCount > 1 ? "s" : ""}</em>
         </div>
         <div className="msc-competition-groups">
+          {displayedCompetitions.length === 0 ? (
+            <div className="msc-empty-card">
+              <div className="msc-empty-title">Aucun résultat pour ces filtres</div>
+              <div className="msc-empty-copy">Modifie la recherche, le pays, la compétition ou la saison pour consulter les autres archives disponibles.</div>
+              <button className="msc-score-clear" type="button" onClick={() => { setSearchQuery(""); setSelectedContinent("__all__"); setSelectedCountry("__all__"); setSelected("__all__"); setSelectedSeason("__all__"); }}>EFFACER LES FILTRES</button>
+            </div>
+          ) : null}
           {displayedCompetitions.map(({ name, matches, imageUrl, tone, chips, countryCode, countryLabel, archiveSeasons, archiveCount, firstSeen, lastSeen }, index) => {
             const rounds = new Map<string, DartsLiveResult[]>();
             matches.forEach((match) => {

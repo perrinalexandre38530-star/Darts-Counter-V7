@@ -826,7 +826,7 @@ function Wave61VisitRecap({ recap, accent, onClose, durationMs = 3000 }: any) {
   };
   const scoreDelta = Number(recap.scoreAfter || 0) - Number(recap.scoreBefore || 0);
   const overlay = <div role="status" aria-live="polite" aria-label="Résumé de la volée" style={{position:"fixed",inset:0,zIndex:2147483000,display:"grid",placeItems:"center",padding:"16px",background:"rgba(0,0,0,.46)",backdropFilter:"blur(5px)",pointerEvents:"auto"}}>
-    <div style={{width:"min(470px,calc(100vw - 24px))",maxWidth:"100%",minWidth:0,borderRadius:18,border:`1px solid ${tone}88`,background:"linear-gradient(180deg,rgba(18,22,33,.995),rgba(7,10,16,.995))",boxShadow:`0 24px 60px rgba(0,0,0,.72),0 0 28px ${tone}2e`,padding:12,display:"grid",gap:9,boxSizing:"border-box",overflow:"hidden",position:"relative"}}><button type="button" aria-label="Fermer le récapitulatif" onClick={onClose} style={{position:"absolute",top:8,right:8,zIndex:3,width:32,height:32,borderRadius:11,border:"1px solid rgba(255,255,255,.13)",background:"rgba(9,12,18,.86)",color:"#fff",display:"grid",placeItems:"center",cursor:"pointer",boxShadow:"0 6px 18px rgba(0,0,0,.32)"}}><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    <div style={{width:"min(470px,calc(100vw - 24px))",maxWidth:"100%",minWidth:0,borderRadius:18,border:`1px solid ${tone}88`,background:"linear-gradient(180deg,rgba(18,22,33,.995),rgba(7,10,16,.995))",boxShadow:`0 24px 60px rgba(0,0,0,.72),0 0 28px ${tone}2e`,padding:12,display:"grid",gap:9,boxSizing:"border-box",overflow:"hidden",position:"relative"}}>{!manualContinue ? <button type="button" aria-label="Fermer le récapitulatif" onClick={onClose} style={{position:"absolute",top:8,right:8,zIndex:3,width:32,height:32,borderRadius:11,border:"1px solid rgba(255,255,255,.13)",background:"rgba(9,12,18,.86)",color:"#fff",display:"grid",placeItems:"center",cursor:"pointer",boxShadow:"0 6px 18px rgba(0,0,0,.32)"}}><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button> : null}
       <div style={{display:"grid",gridTemplateColumns:"40px minmax(0,1fr) minmax(56px,auto)",gap:9,alignItems:"center",minWidth:0,paddingRight:38}}>
         <div style={{width:40,height:40,borderRadius:999,overflow:"hidden",display:"grid",placeItems:"center",border:`1.5px solid ${tone}`,background:`${tone}14`,color:tone,fontWeight:1100}}>{recap.avatar?<img src={recap.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:String(recap.playerName||"?").slice(0,1).toUpperCase()}</div>
         <div style={{minWidth:0}}><div style={{color:tone,fontSize:8,fontWeight:1100,letterSpacing:.7}}>{recap.isBot?"BOT IA · RÉCAP VOLÉE":"RÉCAP VOLÉE"}</div><div style={{color:"#fff",fontSize:14,fontWeight:1150,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{recap.playerName}</div><div style={{color:"#aeb5c8",fontSize:8.3,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Objectif · {recap.targetLabel || "—"}</div></div>
@@ -1219,7 +1219,9 @@ export default function Wave61SharedPlay(props: any) {
   const rawModeId = String(props?.forcedModeId || props?.params?.gameId || props?.gameId || resumeRecord?.modeId || resumeRecord?.game?.modeId || "");
   const modeId = rawModeId === "galaxyes" ? "galaxies" : rawModeId;
   const spec = DARTS_WAVE_61.find((m) => m.id === modeId) || DARTS_WAVE_61[0];
-  const classicFiveMode = ["double_down", "nine_dart_century", "shove_a_penny", "green_vs_red", "black_vs_white", "three_colors", "la_suite", "color_call", "hi_score"].includes(spec.id);
+  // Same compact, responsive Play for the 8 new variants/FUN modes: fixed keypad,
+  // mode-specific situation/KPI panels, quick stats, BO/FT scoreboard and BOT recap.
+  const classicFiveMode = ["double_down", "nine_dart_century", "shove_a_penny", "green_vs_red", "black_vs_white", "three_colors", "la_suite", "color_call", "hi_score", "bim_bam_boum", "saute_moutons", "troupeau_en_danger", "une_ptite_raclette"].includes(spec.id);
   useFullscreenPlay({ enabled: true, lockBodyScroll: classicFiveMode });
   const preset = getWave61Preset(spec.id);
   const { lang } = useLang();
@@ -1235,7 +1237,16 @@ export default function Wave61SharedPlay(props: any) {
   const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(() => restoredMultiplier === 2 || restoredMultiplier === 3 ? restoredMultiplier : 1);
   const [undo, setUndo] = React.useState<Wave61State[]>([]);
   const [notice, setNotice] = React.useState("");
-  const [visitRecap, setVisitRecap] = React.useState<any>(null);
+  // V193: un récap BOT en attente doit survivre à un rechargement depuis History.
+  // Un récap humain reste éphémère; seul CONTINUER peut débloquer le BOT.
+  const [visitRecap, setVisitRecap] = React.useState<any>(() => {
+    const pending = state?.special?.pendingBotVisitRecap;
+    const lastVisit = state?.visits?.[state.visits.length - 1];
+    return state.phase === "playing" && pending?.isBot === true
+      && String(pending.visitId || "") !== ""
+      && String(pending.visitId) === String(lastVisit?.id || "")
+      ? pending : null;
+  });
   const [adviceText, setAdviceText] = React.useState("");
   const [quickPanel, setQuickPanel] = React.useState<null | "rules" | "settings" | "players" | "history" | "ranking" | "stats" | "objective" | "situation">(null);
   const adviceTimerRef = React.useRef<number | null>(null);
@@ -1361,6 +1372,9 @@ export default function Wave61SharedPlay(props: any) {
     };
   }, [profiles, profileById, spec.id, currentThrow, multiplier]);
 
+  // Serialize checkpoints for this match. Two overlapping IndexedDB upserts
+  // (BOT recap then CONTINUER) must never finish in the opposite order.
+  const historyWriteQueueRef = React.useRef<Promise<void>>(Promise.resolve());
   const persist = React.useCallback((s: Wave61State, clearDraft = false) => {
     if (s.phase === "finished" && finishedRef.current) return;
     const record = buildRecord(s, s.phase === "finished" ? "finished" : "in_progress");
@@ -1373,7 +1387,10 @@ export default function Wave61SharedPlay(props: any) {
       record.payload.multiplier = 1;
     }
     if (s.phase === "finished") finishedRef.current = true;
-    void History.upsert(record).catch(() => {});
+    historyWriteQueueRef.current = historyWriteQueueRef.current
+      .catch(() => undefined)
+      .then(() => History.upsert(record))
+      .catch(() => undefined);
   }, [buildRecord]);
 
   const commit = React.useCallback((next: Wave61State, previous = state) => {
@@ -1459,7 +1476,7 @@ export default function Wave61SharedPlay(props: any) {
       const sauteMoutonsResult = spec.id === "saute_moutons" ? ([...(next.special?.sauteMoutonsHistory || [])].reverse().find((entry:any)=>String(entry?.playerId||"")===recapPlayerId)||null) : null;
       const troupeauResult = spec.id === "troupeau_en_danger" ? ([...(next.special?.troupeauHistory || [])].reverse().find((entry:any)=>String(entry?.playerId||"")===recapPlayerId)||null) : null;
       const racletteResult = spec.id === "une_ptite_raclette" ? ([...(next.special?.racletteHistory || [])].reverse().find((entry:any)=>String(entry?.playerId||"")===recapPlayerId)||null) : null;
-      setVisitRecap({
+      const nextVisitRecap = {
         visitId: last.id,
         playerId: recapPlayerId,
         playerName: playerName(recapPlayer),
@@ -1491,7 +1508,17 @@ export default function Wave61SharedPlay(props: any) {
         troupeauResult,
         racletteResult,
         blackWhiteValidHits: Number(next.special?.blackWhiteValidHitsByPlayer?.[recapPlayerId]||0),
-      });
+      };
+      setVisitRecap(nextVisitRecap);
+      if (nextVisitRecap.isBot && committed.phase === "playing") {
+        // Serializable state only: no React closures / timers in the History snapshot.
+        // If the BOT just won a leg, this is saved alongside seriesIntermission.
+        committed = cloneWave61State(committed);
+        committed.special = {
+          ...(committed.special || {}),
+          pendingBotVisitRecap: nextVisitRecap,
+        };
+      }
     }
     setState(committed);
     setCurrentThrow([]);
@@ -1510,6 +1537,7 @@ export default function Wave61SharedPlay(props: any) {
 
   const validate = () => {
     if (!currentThrow.length || state.phase === "finished" || activeIsBot || visitRecap || state.special?.seriesIntermission) return;
+    if (state.special?.pendingBotVisitRecap) return;
     commit(playWave61Visit(state, currentThrow.map(uiToGameDart)));
   };
 
@@ -1530,6 +1558,20 @@ export default function Wave61SharedPlay(props: any) {
     setVisitRecap(null);
     setNotice("Dernière volée annulée");
     persist(restored, true);
+  };
+
+  const closeVisitRecap = () => {
+    if (visitRecap?.isBot && state.special?.pendingBotVisitRecap) {
+      // Release the BOT turn only after an explicit CONTINUER, and persist the
+      // acknowledgement so the next reload cannot replay an old modal.
+      if (String(state.special.pendingBotVisitRecap.visitId) === String(visitRecap.visitId)) {
+        const acknowledged = cloneWave61State(state);
+        delete acknowledged.special.pendingBotVisitRecap;
+        setState(acknowledged);
+        persist(acknowledged, true);
+      }
+    }
+    setVisitRecap(null);
   };
 
   const continueSeries = () => {
@@ -1556,6 +1598,7 @@ export default function Wave61SharedPlay(props: any) {
 
   React.useEffect(() => {
     if (!activeIsBot || state.phase === "finished" || visitRecap || state.special?.seriesIntermission) return;
+    if (state.special?.pendingBotVisitRecap) return;
     let cancelled = false;
     const scheduledPlayerId = String(activePlayer?.id || "");
     const timer = window.setTimeout(() => {
@@ -1597,7 +1640,7 @@ export default function Wave61SharedPlay(props: any) {
     if (state.phase !== "playing") return;
     const timer = window.setTimeout(() => persist(state), 120);
     return () => window.clearTimeout(timer);
-  }, [currentThrow, multiplier]);
+  }, [currentThrow, multiplier, state, persist]);
 
   React.useEffect(() => {
     setMemoryReveal(false);
@@ -1968,7 +2011,7 @@ export default function Wave61SharedPlay(props: any) {
         </section>
       </div>}
       {renderClassicQuickModal()}
-      {visitRecap ? <Wave61VisitRecap recap={visitRecap} accent={isColorDuelMode(spec.id) ? duelTone : accent} onClose={()=>setVisitRecap(null)} durationMs={isFinishedColorVariant(spec.id) ? 5000 : 3000} /> : null}
+      {visitRecap ? <Wave61VisitRecap recap={visitRecap} accent={isColorDuelMode(spec.id) ? duelTone : accent} onClose={closeVisitRecap} durationMs={isFinishedColorVariant(spec.id) ? 5000 : 3000} /> : null}
       {!visitRecap && state.special?.seriesIntermission ? <Wave61SeriesIntermission data={state.special.seriesIntermission} state={state} profiles={profiles} accent={isColorDuelMode(spec.id) ? duelTone : accent} onContinue={continueSeries} onUndo={canUndo ? doUndo : null} /> : null}
       <style>{`@keyframes wave61VisitRecapCountdown{from{transform:scaleX(1)}to{transform:scaleX(0)}}`}</style>
     </div>;
@@ -2017,7 +2060,7 @@ export default function Wave61SharedPlay(props: any) {
           {!activeIsBot ? <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} fitMinScale={compactHeight ? 0.28 : 0.34} /> : <div style={{ ...panelStyle(accent + "35"), height: "100%", display: "grid", placeItems: "center", textAlign: "center", color: SOFT, fontSize: 12, padding: 14 }}><div><div style={{ fontSize: 34 }}>🤖</div><b style={{ color: accent }}>{activePlayer?.name}</b><div style={{ marginTop: 6 }}>calcule son prochain lancer…</div></div></div>}
         </section>
       </div>}
-      {visitRecap ? <Wave61VisitRecap recap={visitRecap} accent={accent} onClose={()=>setVisitRecap(null)} durationMs={isColorDuelMode(spec.id) ? 5000 : 3000} /> : null}
+      {visitRecap ? <Wave61VisitRecap recap={visitRecap} accent={accent} onClose={closeVisitRecap} durationMs={isColorDuelMode(spec.id) ? 5000 : 3000} /> : null}
       {!visitRecap && state.special?.seriesIntermission ? <Wave61SeriesIntermission data={state.special.seriesIntermission} state={state} profiles={profiles} accent={accent} onContinue={continueSeries} onUndo={canUndo ? doUndo : null} /> : null}
       <style>{`@keyframes wave61VisitRecapCountdown{from{transform:scaleX(1)}to{transform:scaleX(0)}}`}</style>
     </div>;

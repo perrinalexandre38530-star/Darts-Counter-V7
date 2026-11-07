@@ -36,7 +36,9 @@ function checkpoint(maxRounds, payloadConfig, roundIdx, overrides = {}) {
     id:'match-v185', matchId:'match-v185', kind:'tic_tac_toe', status:'in_progress', players,
     game: maxRounds === undefined ? { mode:'tic_tac_toe' } : { mode:'tic_tac_toe', maxRounds },
     resume: { livePayload: {
-      config: payloadConfig, grid, matchWins:[1,1], roundIdx, currentPlayerIndex:0,
+      // Une manche gagnée maximum par manche terminée : un snapshot de
+      // la manche 2 ne peut pas déjà comptabiliser 2 victoires.
+      config: payloadConfig, grid, matchWins:roundIdx > 1 ? [1,1] : [1,0], roundIdx, currentPlayerIndex:0,
       roundResult:null, visitHistory:[{playerId:'local-a'}, {playerId:'local-b'}],
     } },
   };

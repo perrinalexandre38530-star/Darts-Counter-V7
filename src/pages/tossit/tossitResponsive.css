@@ -187,3 +187,46 @@
 @media (prefers-reduced-motion: reduce) {
   .tossit-page .tossit-quick-choice:active { transform: none; }
 }
+
+/* V192 wave 10 — remaining TOSSIT modes: accessible, touch-first entry. */
+.tossit-score-entry-card {
+  border: 1px solid rgba(145,231,213,.22);
+  border-radius: 13px;
+  padding: 12px;
+  margin: 10px 0 14px;
+  background: rgba(8,28,37,.62);
+}
+.tossit-score-entry-card > strong { color: #f7d886; font-size: 16px; }
+.tossit-assist-text { opacity: .82; font-size: 13px; line-height: 1.5; }
+.tossit-entry-summary {
+  margin: 12px 0;
+  padding: 11px 12px;
+  border: 1px solid rgba(72,231,207,.35);
+  border-radius: 11px;
+  background: rgba(72,231,207,.085);
+  color: #d6fff5;
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+.tossit-page .tossit-check-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 50px;
+  margin: 12px 0;
+  padding: 10px;
+  border: 1px solid rgba(145,231,213,.22);
+  border-radius: 11px;
+  background: rgba(25,55,61,.65);
+  font-size: 14px;
+  font-weight: 750;
+}
+.tossit-page .tossit-check-option input[type="checkbox"] {
+  width: 22px; height: 22px; flex: 0 0 22px;
+}
+@media (max-width: 390px) {
+  .tossit-score-entry-card { padding: 8px; }
+  .tossit-entry-summary { padding: 9px; }
+}

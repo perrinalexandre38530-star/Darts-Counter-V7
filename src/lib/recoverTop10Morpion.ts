@@ -97,10 +97,27 @@ export function recoverMorpion(rec: any, options: { preview?: boolean } = {}) {
   const winner = morpionWinner(grid.owners);
   const draw = morpionIsDraw(grid.owners);
   const result = payload.roundResult;
-  if (base.finished && (!result || !(wins.some((n: number) => n >= requiredWins) || round + 1 >= maxRounds))) return null;
-  if (result !== null && result !== undefined) {
+  const hasResult = result !== null && result !== undefined;
+  // Le nombre de manches créditées ne peut dépasser les manches jouées.
+  // Les manches nulles ne créditent personne, d'où une borne supérieure.
+  const winsTotal = wins.reduce((total: number, count: number) => total + count, 0);
+  if (winsTotal > round + (hasResult ? 1 : 0)) return null;
+  const hasMatchWinner = wins.some((n: number) => n >= requiredWins);
+  const reachedLastRound = hasResult && round + 1 >= maxRounds;
+  // Un checkpoint encore jouable ne peut pas représenter un match déjà gagné
+  // ou une dernière manche terminée (y compris en cas de match nul).
+  if (base.finished ? !hasResult || (!hasMatchWinner && !reachedLastRound) : hasMatchWinner || reachedLastRound) return null;
+  if (hasResult) {
     if (!isRecord(result) || result.winner !== winner || !!result.draw !== draw || (!draw && winner === null)) return null;
+    if (winner !== null && wins[winner] === 0) return null;
   } else if (winner !== null || draw) return null;
+  // Ne pas afficher un vainqueur différent du classement des manches.
+  // Les anciennes parties sans winnerId restent consultables.
+  if (base.finished && base.winnerId) {
+    const best = Math.max(...wins);
+    const leaders = players.filter((_: Player, i: number) => wins[i] === best);
+    if (leaders.length !== 1 || leaders[0].id !== base.winnerId) return null;
+  }
   const visits = payload.visitHistory ?? payload.visits ?? payload.events;
   if (!Array.isArray(visits)) return null;
   return {
