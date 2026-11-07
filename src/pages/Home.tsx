@@ -41,6 +41,7 @@ import { History } from "../lib/history";
 import { computeX01LevelSnapshot, computeX01MultiAgg, isX01Match } from "../lib/x01MultiAgg";
 import { computeCanonicalX01501DOLevel, persistCanonicalX01501DOLevel } from "../lib/x01ProfileStarring";
 import { computeCanonicalX01ProfileStats, listCanonicalX01Sessions } from "../lib/x01CanonicalProjection";
+import { ensureCanonicalX01IndexV2 } from "../lib/x01CanonicalIndexStoreV2";
 import { buildHomeModeSlides } from "../lib/homeModeStats";
 import { listProfileFriendLinks, type ProfileFriendLink } from "../lib/friendsApi";
 import { loadLinkedProfileProjection } from "../lib/linkedProfileSync";
@@ -687,7 +688,11 @@ async function buildStatsForProfile(
 ): Promise<ActiveProfileStats> {
   try {
     const [base, multiRaw, cricket] = await Promise.all([
-      getBasicProfileStatsAsync(profileId),
+      // A failure of the legacy StatsBridge must not hide valid History V4 X01 stats.
+      getBasicProfileStatsAsync(profileId).catch((error) => {
+        console.warn('[Home] Basic stats unavailable; preserving canonical X01 calculation:', error);
+        return null;
+      }),
       (async () => {
         // V130 — Home ne parcourt plus History pour X01.
         // La projection canonique est mise à jour à la fin de chaque match.
@@ -2638,6 +2643,9 @@ export default function Home({ store, go, activeSport }: Props) {
           if (!cancelled) setStats(emptyActiveProfileStats());
           return;
         }
+        // Start the canonical History V4 index independently of remote NAS/Drive.
+        // Its ready event will refresh this card once the index is complete.
+        try { ensureCanonicalX01IndexV2('home-visible'); } catch {}
         try { await loadLinkedProfileProjection([activeProfile as any]); } catch {}
         const baseStats = await buildStatsForProfile(
           activeProfile.id,
@@ -2671,10 +2679,14 @@ export default function Home({ store, go, activeSport }: Props) {
     };
 
     window.addEventListener("dc-stats-index-updated", onStatsUpdated as EventListener);
+    window.addEventListener("dc-x01-canonical-index-ready", onStatsUpdated as EventListener);
+    window.addEventListener("dc-storage-restored", onStatsUpdated as EventListener);
     return () => {
       cancelled = true;
       if (refreshTimer !== null) window.clearTimeout(refreshTimer);
       window.removeEventListener("dc-stats-index-updated", onStatsUpdated as EventListener);
+      window.removeEventListener("dc-x01-canonical-index-ready", onStatsUpdated as EventListener);
+      window.removeEventListener("dc-storage-restored", onStatsUpdated as EventListener);
     };
   }, [isFootSport, sport, activeProfile?.id, (auth as any)?.userId, (auth as any)?.user?.id]);
 
