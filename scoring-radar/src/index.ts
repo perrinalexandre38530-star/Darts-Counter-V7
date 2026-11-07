@@ -1,3 +1,4 @@
+import { assessCommercialFit } from './commercial-fit';
 import { adminHtml } from './admin';
 import { generateSalesDraft, insertSalesCampaign, listSalesCampaigns, listSalesDrafts, saveSalesDraft, updateSalesCampaignStatus, validateSalesCampaign } from './sales-agent';
 import { classifyCandidates, localizeQuery } from './ai';
@@ -335,7 +336,7 @@ async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: Ex
     if (!target?.enabled || !target.url) return json({ok:false,error:'Configure la destination de cette campagne dans le tunnel.'},409);
     const candidates = await listOpportunities(env,85,80);
     const existing = new Set((await listSalesDrafts(env,500)).filter(d=>d.campaign_id===campaign.id).map(d=>d.opportunity_id));
-    const next = candidates.find(c=>!existing.has(c.id) && c.eligible && c.outreach_status!=='dismissed' && c.outreach_status!=='contacted' && c.outreach_status!=='won');
+    const next = candidates.find(c=>assessCommercialFit(c).actionable && !existing.has(c.id) && c.eligible && c.outreach_status!=='dismissed' && c.outreach_status!=='contacted' && c.outreach_status!=='won');
     if (!next) return json({ok:false,error:'Aucune nouvelle discussion qualifiée à préparer.'},404);
     const tracked = `${url.protocol}//${url.host}/go/${campaign.goal}/${next.id}`;
     try {
@@ -506,6 +507,7 @@ async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: Ex
       ok: true,
       opportunities: rows.map((row) => ({
         ...row,
+        commercial_fit: assessCommercialFit(row),
         tracked_link: `${publicBase}/go/app/${row.id}`,
         tracked_links: {
           app: `${publicBase}/go/app/${row.id}`, web: `${publicBase}/go/web/${row.id}`,
@@ -526,6 +528,7 @@ async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: Ex
       ok: true,
       opportunity: {
         ...row,
+        commercial_fit: assessCommercialFit(row),
         tracked_link: `${publicBase}/go/app/${row.id}`,
         tracked_links: {
           app: `${publicBase}/go/app/${row.id}`, web: `${publicBase}/go/web/${row.id}`,
