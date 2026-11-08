@@ -282,7 +282,7 @@ export default function SeasonalDoodle({ season = getAppSeason(), variant = 'tit
     return () => observer.disconnect();
   }, []);
   return (
-    <div ref={rootRef} className={`mss-seasonal-doodle mss-seasonal-doodle--${variant} mss-seasonal-doodle--${season} ${compact ? 'mss-seasonal-doodle--compact' : ''} ${className}`.trim()}>
+    <div ref={rootRef} className={`mss-seasonal-doodle mss-seasonal-doodle--${variant} mss-seasonal-doodle--${season} ${compact ? 'mss-seasonal-doodle--compact' : ''} ${!enabled ? 'mss-seasonal-doodle--disabled' : ''} ${className}`.trim()}>
       {enabled ? (() => {
         const branch = season === 'winter' ? winterBranch : season === 'spring' ? springBranch : season === 'summer' ? summerBranch : autumnBranch;
         return <>

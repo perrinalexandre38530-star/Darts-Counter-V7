@@ -2939,6 +2939,8 @@ React.useEffect(() => {
             overflow: "hidden",
             isolation: "isolate",
             ["--mss-safe-title-width" as any]: "360px",
+          ["--mss-theme-accent" as any]: primary,
+
           }}
         >
           <SportWelcomeWatermark sport={String(sport)} opacity={0.12} size={205} />

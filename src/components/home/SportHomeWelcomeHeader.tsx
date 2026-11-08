@@ -73,6 +73,8 @@ export default function SportHomeWelcomeHeader({
         overflow: "hidden",
         isolation: "isolate",
         ["--mss-safe-title-width" as any]: `${safeTitleWidth}px`,
+          ["--mss-theme-accent" as any]: accent,
+
       }}
     >
       <SportWelcomeWatermark sport={sport} opacity={0.12} size={205} />

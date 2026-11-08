@@ -145,3 +145,24 @@
 @media (pointer:coarse) {
   .mss-seasonal-doodle svg g { filter:none!important }
 }
+
+/* OFF = original active sport/theme palette, ON = seasonal palette.
+   The same button and Settings preference drive the disabled class. */
+.msc-home-header:has(> .mss-seasonal-doodle--disabled) .mss-seasonal-title,
+.msc-sport-home-welcome-card:has(> .mss-seasonal-doodle--disabled) .mss-seasonal-title {
+  background-image: linear-gradient(120deg, var(--mss-theme-accent, #40d9ef), #fff, var(--mss-theme-accent, #40d9ef)) !important;
+  background-size: 200% 100% !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  color: transparent !important;
+}
+.msc-home-header:has(> .mss-seasonal-doodle--disabled) .mss-doodle-welcome,
+.msc-sport-home-welcome-card:has(> .mss-seasonal-doodle--disabled) .mss-doodle-welcome {
+  border-color: var(--mss-theme-accent, #40d9ef) !important;
+  box-shadow: 0 0 12px color-mix(in srgb, var(--mss-theme-accent, #40d9ef) 25%, transparent), inset 0 1px 8px #fff2 !important;
+}
+.msc-home-header:has(> .mss-seasonal-doodle--disabled) .mss-doodle-welcome span,
+.msc-sport-home-welcome-card:has(> .mss-seasonal-doodle--disabled) .mss-doodle-welcome span {
+  color: var(--mss-theme-accent, #40d9ef) !important;
+  text-shadow: 0 0 8px color-mix(in srgb, var(--mss-theme-accent, #40d9ef) 35%, transparent) !important;
+}

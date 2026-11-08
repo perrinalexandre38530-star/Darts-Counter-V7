@@ -877,6 +877,7 @@ export default function OrganizationsPage({ go, params }: Props) {
           position: "relative",
           overflow: "hidden",
           isolation: "isolate",
+          ["--mss-theme-accent" as any]: theme.primary,
         }}
       >
         <SportWelcomeWatermark sport={String(sportCtx?.sport || "darts")} opacity={0.12} size={205} />
