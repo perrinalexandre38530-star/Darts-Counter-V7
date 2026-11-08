@@ -81,6 +81,7 @@ const presetDescriptor=(preset:ChallengePreset|null)=>{
  if(type==='clock')return `${preset.clockIncludeBull?'1 → 20 + BULL':'1 → 20'} · ${preset.clockScoreMode==='real'?'VALEUR RÉELLE':'S1 / D2 / T3'}`;
  if(type==='half-it')return `HALF-IT · DÉPART ${preset.halfItStartScore||40}`;
  if(type==='sequence')return `SÉQUENCE · ${Math.max(1,preset.sequenceObjectives?.length||0)} OBJECTIFS`;
+ if(type==='jdc')return 'JDC CHALLENGE · 3 PHASES · 19 VOLÉES';
  if(type==='doubles8'){const targets=Array.isArray(preset.doublesTargets)&&preset.doublesTargets.length?preset.doublesTargets:[...DOUBLES_8_TARGETS];return `${preset.doublesTargetMode==='custom'?'PERSONNALISÉ':'8 DOUBLES'} · ${targets.map(n=>`D${n}`).join(' · ')} · BONUS AU CHOIX`;}
  return `GROUPEMENT ${Math.min(preset.groupingMin||15,preset.groupingMax||20)}–${Math.max(preset.groupingMin||15,preset.groupingMax||20)} · ×${preset.groupingHits||2}`;
 };
@@ -269,12 +270,12 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
 
  const resolvedSequence=exerciseType==='half-it'?[...DEFAULT_HALF_IT_SEQUENCE]:sequenceObjectives;
  const resolvedDoublesTargets=(doublesTargetMode==='official'?[...DOUBLES_8_TARGETS]:doublesTargets).filter((n,index,self)=>n>=1&&n<=20&&self.indexOf(n)===index);
- const resolvedVisits=exerciseType==='clock'?(clockIncludeBull?21:20):exerciseType==='doubles8'?(resolvedDoublesTargets.length*3+1):(exerciseType==='half-it'||exerciseType==='sequence'?Math.max(1,resolvedSequence.length):visits);
- const resolvedTarget:ChallengeTarget=exerciseType==='classic'?target:exerciseType==='grouping'?String(Math.min(groupingMin,groupingMax)) as ChallengeTarget:exerciseType==='doubles8'?String(resolvedDoublesTargets[0]||20) as ChallengeTarget:(resolvedSequence[0]&&/^([1-9]|1[0-9]|20)$/.test(String(resolvedSequence[0]))?resolvedSequence[0] as ChallengeTarget:'20');
+ const resolvedVisits=exerciseType==='jdc'?19:exerciseType==='clock'?(clockIncludeBull?21:20):exerciseType==='doubles8'?(resolvedDoublesTargets.length*3+1):(exerciseType==='half-it'||exerciseType==='sequence'?Math.max(1,resolvedSequence.length):visits);
+ const resolvedTarget:ChallengeTarget=exerciseType==='jdc'?'10':exerciseType==='classic'?target:exerciseType==='grouping'?String(Math.min(groupingMin,groupingMax)) as ChallengeTarget:exerciseType==='doubles8'?String(resolvedDoublesTargets[0]||20) as ChallengeTarget:(resolvedSequence[0]&&/^([1-9]|1[0-9]|20)$/.test(String(resolvedSequence[0]))?resolvedSequence[0] as ChallengeTarget:'20');
  const resolvedRule:ChallengeRule=exerciseType==='classic'?rule:exerciseType==='doubles8'?'double':'all';
  const exerciseValid=(exerciseType!=='sequence'||sequenceObjectives.length>0)&&(exerciseType!=='doubles8'||resolvedDoublesTargets.length>0);
  const exerciseSummary=exerciseType==='classic'?`OBJECTIF ${targetText(target)}`:exerciseTitle({target:resolvedTarget,rule:resolvedRule,visits:resolvedVisits,exerciseType,doublesTargets:resolvedDoublesTargets,doublesBonusTarget});
- const exerciseRuleSummary=exerciseType==='classic'
+ const exerciseRuleSummary=exerciseType==='jdc'?'Phase 1 : 10–15 · Phase 2 : D1→D20 + BULL · Phase 3 : 15–20 · SHANGHAI +100':exerciseType==='classic'
   ? `${targetText(target)} · ${resolvedVisits} tours`
   : exerciseType==='clock'
    ? `${clockIncludeBull?'1 → 20 + BULL':'1 → 20'} · ${clockScoreMode==='real'?'valeur réelle':'S=1 · D=2 · T=3'}`
@@ -288,6 +289,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
 
  const chooseExercise=(next:ChallengeExerciseType)=>{
   setExerciseType(next);
+  if(next==='jdc'){setRule('all');setTarget('10');}
   if(next==='clock'){setClockIncludeBull(true);setClockScoreMode('challenge');}
   if(next==='half-it'){setHalfItStartScore(40);}
   if(next==='sequence'&&!sequenceObjectives.length)setSequenceObjectives([...DEFAULT_CUSTOM_SEQUENCE]);
@@ -366,6 +368,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
     ['half-it','HALF-IT','15 · 16 · Double · 17 · 18 · Triple · 19 · 20 · Bull.','½'],
     ['sequence','SÉQUENCE','Construisez votre propre suite d’objectifs tour par tour.','≡'],
     ['grouping','GROUPEMENT','Au moins 2 fléchettes dans le même secteur choisi.','◉'],
+    ['jdc','LE JDC CHALLENGE','3 phases · 19 volées · Shanghai +100 · D1 à D20 + Bull.','🏆'],
     ['doubles8','8 DOUBLES · 9 FLÉCHETTES','Parcours officiel ou variante personnalisée avec les doubles de votre choix, puis une volée bonus.','⑧'],
    ] as Array<[ChallengeExerciseType,string,string,string]>).map(([id,label,detail,icon])=><button type="button" key={id} className={'exercise-card '+(exerciseType===id?'on':'')} onClick={()=>chooseExercise(id)}><i>{icon}</i><span><b>{label}</b><small>{detail}</small></span></button>)}
   </div>
@@ -387,9 +390,10 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
 
  const audioStage=<Section title="SONS CHALLENGE" subtitle="Jingle d’intro, impacts S / D / T / MISS et musique de fin de partie." key="audio"><div className="audio-toggle-row"><button type="button" className={soundsEnabled?'on':''} onClick={()=>toggleChallengeSounds(true)}><b>SONS ON</b><span>Jingles et impacts activés</span></button><button type="button" className={!soundsEnabled?'on off':''} onClick={()=>toggleChallengeSounds(false)}><b>SONS OFF</b><span>Challenge totalement silencieux</span></button></div></Section>;
 
- const exerciseSettings=exerciseType==='classic'?[targetStage,visitsStage,ruleStage]:exerciseType==='clock'?[clockStage]:exerciseType==='half-it'?[halfItStage]:exerciseType==='sequence'?[sequenceStage]:exerciseType==='doubles8'?[doubles8Stage]:[visitsStage,groupingStage];
+ const jdcStage=<Section title="LE JDC CHALLENGE · 19 VOLÉES" subtitle="Programme fixe, score cumulé, 57 fléchettes." key="jdc"><div className="advanced-block compact"><h3>PHASE 1 · 6 VOLÉES</h3><div className="locked-hint">10 → 15 : une volée de 3 fléchettes par secteur. S / D / T rapportent leur valeur réelle. SHANGHAI (un S + un D + un T sur la cible) = +100 pts.</div></div><div className="advanced-block compact"><h3>PHASE 2 · 7 VOLÉES</h3><div className="locked-hint">Un seul essai sur chaque double dans l’ordre D1 → D20, puis BULL 50 : +50 pts par double réussi et +100 pts pour le Bull rouge. L’objectif change après chaque fléchette.</div></div><div className="advanced-block compact"><h3>PHASE 3 · 6 VOLÉES</h3><div className="locked-hint">15 → 20 : même règle que la phase 1, SHANGHAI +100 pts. Score total théorique : 3380 pts.</div></div></Section>;
+ const exerciseSettings=exerciseType==='jdc'?[jdcStage]:exerciseType==='classic'?[targetStage,visitsStage,ruleStage]:exerciseType==='clock'?[clockStage]:exerciseType==='half-it'?[halfItStage]:exerciseType==='sequence'?[sequenceStage]:exerciseType==='doubles8'?[doubles8Stage]:[visitsStage,groupingStage];
  const stages=[formatStage,playersStage,exerciseStage,...exerciseSettings,audioStage];
- const stepLabels=['FORMAT','JOUEURS','EXERCICE',...(exerciseType==='classic'?['CIBLE','TOURS','OBJECTIF']:exerciseType==='clock'?['HORLOGE']:exerciseType==='half-it'?['HALF-IT']:exerciseType==='sequence'?['SÉQUENCE']:exerciseType==='doubles8'?['8 DOUBLES']:['TOURS','GROUPEMENT']),'SONS'];
+ const stepLabels=['FORMAT','JOUEURS','EXERCICE',...(exerciseType==='classic'?['CIBLE','TOURS','OBJECTIF']:exerciseType==='clock'?['HORLOGE']:exerciseType==='half-it'?['HALF-IT']:exerciseType==='sequence'?['SÉQUENCE']:exerciseType==='doubles8'?['8 DOUBLES']:exerciseType==='jdc'?['JDC']: ['TOURS','GROUPEMENT']),'SONS'];
  const currentStepValid=step===0?Boolean(matchMode):step===1?selectionValid:(exerciseType==='sequence'&&step===3?sequenceObjectives.length>0:true);
  React.useEffect(()=>{setStep(prev=>Math.min(prev,Math.max(0,stages.length-1)))},[exerciseType,stages.length]);
  const shown=mode==='complete'?stages:[stages[step]];

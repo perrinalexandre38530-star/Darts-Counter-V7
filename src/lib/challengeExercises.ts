@@ -1,4 +1,4 @@
-export type ChallengeExerciseType='classic'|'clock'|'half-it'|'sequence'|'grouping'|'doubles8';
+export type ChallengeExerciseType='classic'|'clock'|'half-it'|'sequence'|'grouping'|'doubles8'|'jdc';
 export type ChallengeScoreMode='challenge'|'real';
 export type ChallengeObjectiveToken='1'|'2'|'3'|'4'|'5'|'6'|'7'|'8'|'9'|'10'|'11'|'12'|'13'|'14'|'15'|'16'|'17'|'18'|'19'|'20'|'bull'|'any-double'|'any-triple';
 export type ChallengeHit='S'|'D'|'T'|'25'|'50'|'MISS';
@@ -25,6 +25,19 @@ export type ChallengeEntryLike={hit:ChallengeHit;segment?:number|null;bonusTarge
 export const DEFAULT_HALF_IT_SEQUENCE:ChallengeObjectiveToken[]=['15','16','any-double','17','18','any-triple','19','20','bull'];
 export const DEFAULT_CUSTOM_SEQUENCE:ChallengeObjectiveToken[]=['20','any-double','18','any-triple','bull'];
 export const DOUBLES_8_TARGETS=[20,18,16,12,10,8,4,2] as const;
+/** JDC : 6 volées secteurs 10–15, 7 volées de 3 doubles/Bull, 6 volées secteurs 15–20. */
+export const JDC_TOTAL_VISITS=19;
+export const JDC_TOTAL_DARTS=57;
+export const JDC_MAX_SCORE=3380;
+export type JdcDartObjective={phase:1|2|3;sector:number;hit:'sector'|'double'|'bull';label:string};
+export function jdcObjectiveForDart(dartIndex:number):JdcDartObjective{
+ const index=Math.max(0,Math.min(JDC_TOTAL_DARTS-1,Math.floor(Number(dartIndex)||0)));
+ if(index<18){const sector=10+Math.floor(index/3);return {phase:1,sector,hit:'sector',label:String(sector)};}
+ if(index<39){const n=index-18+1;return n===21?{phase:2,sector:50,hit:'bull',label:'BULL 50'}:{phase:2,sector:n,hit:'double',label:`D${n}`};}
+ const sector=15+Math.floor((index-39)/3);
+ return {phase:3,sector,hit:'sector',label:String(sector)};
+}
+
 
 export function normalizedDoublesTargets(cfg?:Pick<ChallengeExerciseConfigLike,'doublesTargets'>|null):number[]{
  const raw=Array.isArray(cfg?.doublesTargets)?cfg!.doublesTargets:DOUBLES_8_TARGETS;
@@ -46,7 +59,7 @@ const clampSector=(value:any,fallback:number)=>Math.max(1,Math.min(20,Math.round
 
 export function challengeExerciseType(cfg:ChallengeExerciseConfigLike):ChallengeExerciseType{
  const value=String(cfg?.exerciseType||'classic').toLowerCase();
- return value==='clock'||value==='half-it'||value==='sequence'||value==='grouping'||value==='doubles8'?value:'classic';
+ return value==='clock'||value==='half-it'||value==='sequence'||value==='grouping'||value==='doubles8'||value==='jdc'?value:'classic';
 }
 
 export function normalizedSequence(cfg:ChallengeExerciseConfigLike):ChallengeObjectiveToken[]{
@@ -71,6 +84,11 @@ export function objectiveForVisit(cfg:ChallengeExerciseConfigLike,visitIndex:num
   return sequence[Math.max(0,Math.min(sequence.length-1,visitIndex))]||'20';
  }
  if(type==='grouping')return `group:${clampSector(cfg.groupingMin,15)}-${clampSector(cfg.groupingMax,20)}`;
+ if(type==='jdc'){
+  const dart=jdcObjectiveForDart(visitIndex*3);
+  if(dart.phase===2){const last=jdcObjectiveForDart(visitIndex*3+2);return `jdc-run:${dart.label}→${last.label}`;}
+  return `jdc-sector:${dart.sector}`;
+ }
  if(type==='doubles8'){
   const targets=normalizedDoublesTargets(cfg);
   const bonusVisitIndex=targets.length*3;
@@ -85,6 +103,8 @@ export function objectiveLabel(objective:string,cfg?:ChallengeExerciseConfigLike
  if(objective==='any-double')return 'DOUBLE LIBRE';
  if(objective==='any-triple')return 'TRIPLE LIBRE';
  if(objective==='bull'||objective==='bull25'||objective==='bull50')return 'BULL';
+ if(objective.startsWith('jdc-sector:'))return `SECTEUR ${objective.split(':')[1]}`;
+ if(objective.startsWith('jdc-run:'))return objective.slice('jdc-run:'.length);
  if(objective.startsWith('bonus-double:'))return `BONUS D${clampSector(objective.split(':')[1],20)}`;
  if(objective.startsWith('double:'))return `D${clampSector(objective.split(':')[1],20)}`;
  if(objective.startsWith('group:')){
@@ -95,6 +115,8 @@ export function objectiveLabel(objective:string,cfg?:ChallengeExerciseConfigLike
 }
 
 export function objectiveBoardKey(objective:string,cfg?:ChallengeExerciseConfigLike):string{
+ if(objective.startsWith('jdc-sector:'))return objective.split(':')[1];
+ if(objective.startsWith('jdc-run:')){const n=Number((objective.match(/D(\d+)/)||[])[1]);return String(n||1);}
  if(objective.startsWith('group:'))return String(clampSector(cfg?.groupingMax,20));
  if(objective.startsWith('bonus-double:')||objective.startsWith('double:'))return String(clampSector(objective.split(':')[1],20));
  if(objective==='bull25'||objective==='bull50')return 'bull';
@@ -107,6 +129,7 @@ export function exerciseTitle(cfg:ChallengeExerciseConfigLike):string{
   case 'half-it':return 'HALF-IT';
   case 'sequence':return 'SÉQUENCE';
   case 'grouping':return 'GROUPEMENT';
+  case 'jdc':return 'LE JDC CHALLENGE';
   case 'doubles8':{const targets=normalizedDoublesTargets(cfg);return isDefaultDoublesTargets(targets)?'8 DOUBLES · 9 FLÉCHETTES':`${targets.length} DOUBLE${targets.length>1?'S':''} PERSONNALISÉ${targets.length>1?'S':''}`;}
   default:return 'CIBLE FIXE';
  }
@@ -118,6 +141,7 @@ export function challengeObjectiveKeyTarget(cfg:ChallengeExerciseConfigLike):str
  if(type==='clock')return `clock-${cfg.clockScoreMode==='real'?'real':'hits'}-${cfg.clockIncludeBull?'bull':'20'}`;
  if(type==='half-it')return `halfit-${Math.max(0,Math.round(Number(cfg.halfItStartScore??40)||0))}-${normalizedSequence(cfg).join('.')}`;
  if(type==='sequence')return `sequence-${cfg.sequenceScoreMode==='challenge'?'hits':'real'}-${normalizedSequence(cfg).join('.')}`;
+ if(type==='jdc')return 'jdc-challenge-v1';
  if(type==='doubles8'){
   const targets=normalizedDoublesTargets(cfg);
   // Le double bonus est désormais choisi pendant la partie. Il ne doit donc
@@ -133,6 +157,7 @@ export function challengeOnlineTargetLabel(value:string):string{
  if(value.startsWith('halfit-'))return 'HALF-IT';
  if(value.startsWith('sequence-'))return 'SÉQUENCE';
  if(value.startsWith('grouping-'))return 'GROUPEMENT';
+ if(value.startsWith('jdc-challenge'))return 'JDC CHALLENGE';
  if(value.startsWith('doubles8-custom-'))return 'DOUBLES PERSO';
  if(value==='doubles8'||value.startsWith('doubles8-'))return '8 DOUBLES';
  if(value==='any-double')return 'DOUBLES';
@@ -240,6 +265,10 @@ export type ChallengeExerciseAnalytics={
  doublesRegularScore?:number;
  doublesBonusScore?:number;
  doublesTargetStats?:Record<string,ChallengeDoublesTargetStats>;
+ jdcPhaseScores?:[number,number,number];
+ jdcShanghaiCount?:number;
+ jdcDoubleHits?:number;
+ jdcBullHits?:number;
 };
 
 export function evaluateChallengeEntries(entries:ChallengeEntryLike[],cfg:ChallengeExerciseConfigLike):ChallengeEvaluation{
@@ -263,6 +292,29 @@ export function evaluateChallengeEntries(entries:ChallengeEntryLike[],cfg:Challe
     entrySuccessful[start+j]=points>0;
     score+=points;
    });
+  }else if(type==='jdc'){
+   const phase=jdcObjectiveForDart(start).phase;
+   const shanghai=new Set<ChallengeHit>();
+   visit.forEach((entry,j)=>{
+    const objective=jdcObjectiveForDart(start+j);
+    const segment=Math.round(Number(entry.segment||0));
+    let points=0;
+    if(objective.hit==='sector'){
+     if((entry.hit==='S'||entry.hit==='D'||entry.hit==='T')&&segment===objective.sector){
+      points=realHitValue(entry.hit,segment);
+      shanghai.add(entry.hit);
+     }
+    }else if(objective.hit==='double'){
+     if(entry.hit==='D'&&segment===objective.sector)points=50;
+    }else if(entry.hit==='50')points=100;
+    entryPoints[start+j]=points;
+    entrySuccessful[start+j]=points>0;
+    score+=points;
+   });
+   if(phase!==2&&visit.length===3&&shanghai.has('S')&&shanghai.has('D')&&shanghai.has('T')){
+    entryPoints[start+2]+=100;
+    score+=100;
+   }
   }else if(type==='doubles8'){
    const targets=normalizedDoublesTargets(cfg);
    const bonusVisit=visitIndex>=targets.length*3;
@@ -350,6 +402,8 @@ export function analyzeChallengeExercise(entries:ChallengeEntryLike[],cfg:Challe
  let doublesRegularScore=0;
  let doublesBonusScore=0;
  const doublesTargetStats:Record<string,ChallengeDoublesTargetStats>={};
+ const jdcPhaseScores:[number,number,number]=[0,0,0];
+ let jdcShanghaiCount=0,jdcDoubleHits=0,jdcBullHits=0;
  const groupingSectorHits:Record<string,number>={};
  const objectiveStats:Record<string,ChallengeExerciseObjectiveStats>={};
  const visitStats:ChallengeExerciseVisitStats[]=[];
@@ -371,6 +425,12 @@ export function analyzeChallengeExercise(entries:ChallengeEntryLike[],cfg:Challe
   if(perfect){perfectVisits++;perfectVisitRun++;bestPerfectVisitStreak=Math.max(bestPerfectVisitStreak,perfectVisitRun)}else if(complete)perfectVisitRun=0;
   const visitPoints=evaluation.entryPoints.slice(start,start+visit.length).reduce((sum,value)=>sum+Math.max(0,Number(value)||0),0);
   bestVisitPoints=Math.max(bestVisitPoints,visitPoints);
+  if(type==='jdc'){
+   const phase=jdcObjectiveForDart(start).phase;
+   jdcPhaseScores[phase-1]+=visitPoints;
+   if(phase!==2&&visit.length===3&&['S','D','T'].every(h=>visit.some((entry,j)=>entry.hit===h&&successFlags[j])))jdcShanghaiCount++;
+   if(phase===2)visit.forEach((_,j)=>{if(!successFlags[j])return;if(jdcObjectiveForDart(start+j).hit==='bull')jdcBullHits++;else jdcDoubleHits++;});
+  }
   const baseObjective=String(objectiveForVisit(cfg,visitIndex));
   const targetsForVisit=type==='doubles8'?normalizedDoublesTargets(cfg):[];
   const selectedBonusTarget=type==='doubles8'&&visitIndex>=targetsForVisit.length*3
@@ -476,6 +536,10 @@ export function analyzeChallengeExercise(entries:ChallengeEntryLike[],cfg:Challe
   doublesRegularScore,
   doublesBonusScore,
   doublesTargetStats,
+  jdcPhaseScores,
+  jdcShanghaiCount,
+  jdcDoubleHits,
+  jdcBullHits,
  };
 }
 
@@ -556,7 +620,9 @@ export function challengeExerciseConfigFromRules(rules:any,objectiveOverride?:st
   doublesBonusTarget:clampSector(stored?.doublesBonusTarget,20),
   doublesTargets:normalizedDoublesTargets(stored),
  };
- if(type==='clock'){
+ if(type==='jdc'){
+  common.target='10';common.rule='all';common.visits=JDC_TOTAL_VISITS;
+ }else if(type==='clock'){
   common.target='1';common.rule='all';common.visits=common.clockIncludeBull?21:20;
  }else if(type==='half-it'||type==='sequence'){
   const sequence=normalizedSequence(common);
@@ -584,5 +650,6 @@ export function maxChallengePointsPerDart(cfg:ChallengeExerciseConfigLike):numbe
  if(type==='clock'&&cfg.clockScoreMode!=='real')return 3;
  if(type==='sequence'&&cfg.sequenceScoreMode==='challenge')return 3;
  if(type==='doubles8')return 50;
+ if(type==='jdc')return 100;
  return 60;
 }

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { uniqueHistoryParticipants, historyCanonicalKey } from "../lib/historyIdentityDedupe";
 import { dartsFamilyHistoryKey } from "../lib/historyDartsVariants";
 import AttrapeMoiMatchStatsView from "../components/AttrapeMoiMatchStatsView";
 import DartsPokerBadge from "../components/darts-poker/DartsPokerBadge";
@@ -426,13 +427,12 @@ function playerName(p: any, playersById: Record<string, any>): string {
 
 function historicalSummaryRoster(rec: any): any[] {
   const summary = rec?.summary || rec?.payload?.summary || {};
-  const ranking = asArray(pick(summary?.ranking, summary?.rankings));
-  const roster = asArray(pick(rec?.players, summary?.players, rec?.payload?.players));
+  const ranking = uniqueHistoryParticipants(rec, asArray(pick(summary?.ranking, summary?.rankings)));
+  const roster = uniqueHistoryParticipants(rec, asArray(pick(rec?.players, summary?.players, rec?.payload?.players)));
   if (roster.length) {
-    const oldNinja = roster.some((p: any) => playerId(p) === "b3517e84-41a1-4eb1-8f20-3e40e3875d38" && String(p?.name || "").toLowerCase() === "ninja");
-    const filtered = roster.filter((p: any) => !(oldNinja && playerId(p) === "1ca2469d-2e3b-41b2-807d-dd96eb1d1d4f" && String(p?.name || "").toLowerCase() === "ninja"));
-    if (ranking.length && ranking.length === filtered.length && ranking.every((r: any) => filtered.some((p: any) => playerId(p) === playerId(r)))) return ranking;
-    return filtered;
+    const rosterKeys = new Set(roster.map((p) => historyCanonicalKey(rec, p)));
+    if (ranking.length === roster.length && ranking.every((r) => rosterKeys.has(historyCanonicalKey(rec, r)))) return ranking;
+    return roster;
   }
   return ranking;
 }
@@ -673,9 +673,10 @@ function buildRows(rec: any, mode: ModeKind) {
   const players = collectPlayers(rec);
   const playersById = Object.fromEntries(players.map((p) => [playerId(p), p]));
   const stats = collectPlayerStats(rec);
-  const ranking = asArray(pick(rec?.summary?.ranking, rec?.summary?.rankings, rec?.payload?.summary?.ranking, rec?.payload?.summary?.rankings, rec?.rankings));
-  // A ranking is only complete if it contains the same match participants.
-  const ranked = ranking.length === players.length && ranking.every((r: any) => players.some((p: any) => playerId(p) === playerId(r)));
+  const ranking = uniqueHistoryParticipants(rec, asArray(pick(rec?.summary?.ranking, rec?.summary?.rankings, rec?.payload?.summary?.ranking, rec?.payload?.summary?.rankings, rec?.rankings)));
+  // Rank list must match the canonical participants, not raw technical aliases.
+  const playerKeys = new Set(players.map((p) => historyCanonicalKey(rec, p)));
+  const ranked = ranking.length === players.length && ranking.every((r: any) => playerKeys.has(historyCanonicalKey(rec, r)));
   const seed = ranked ? ranking : players;
   const scoreMap = pick(rec?.summary?.finalScores, rec?.payload?.stateSnapshot?.scores, rec?.resume?.state?.scores, {}) || {};
   const progressMap = pick(rec?.summary?.finalProgress, rec?.payload?.stateSnapshot?.progress, rec?.resume?.state?.progress, {}) || {};

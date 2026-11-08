@@ -11,6 +11,7 @@ import {
   type TrainingDart,
 } from "../../lib/trainingDarts";
 import { appendTrainingVisit, recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
+import { analyzeChallengeExercise, evaluateChallengeEntries, jdcObjectiveForDart, JDC_MAX_SCORE, JDC_TOTAL_DARTS, JDC_TOTAL_VISITS, type ChallengeEntryLike, type ChallengeHit } from "../../../lib/challengeExercises";
 
 const DOUBLES_8_TARGETS = [20, 18, 16, 12, 10, 8, 4, 2] as const;
 const normalizeDoublesTargets = (value: any): number[] => {
@@ -63,13 +64,41 @@ function DoublesObjectivePad({ target, disabled, onVisit }: { target: number; di
   );
 }
 
+/** JDC pad : sectors S/D/T on a single target, then one D/Bull attempt per dart. */
+function JdcObjectivePad({visitsCompleted,disabled,onVisit}:{visitsCompleted:number;disabled?:boolean;onVisit:(visit:TrainingDart[])=>void}){
+ const [pending,setPending]=React.useState<TrainingDart[]>([]);
+ const dartIndex=Math.min(56,visitsCompleted*3+pending.length);
+ const objective=jdcObjectiveForDart(dartIndex);
+ const options:(ChallengeHit[]) = objective.hit==='sector'?['S','D','T','MISS']:objective.hit==='bull'?['50','MISS']:['D','MISS'];
+ const push=(hit:ChallengeHit)=>{
+  if(disabled)return;
+  const miss=hit==='MISS';
+  const bull=hit==='50';
+  const mult=(hit==='T'?3:hit==='D'||bull?2:1) as 1|2|3;
+  const v=miss?0:bull?25:objective.sector;
+  const dart:TrainingDart={v,mult,score:miss?0:bull?50:v*mult,label:miss?'MISS':bull?'BULL 50':`${hit}${v}`,miss,bull:false,dbull:bull};
+  const next=[...pending,dart].slice(0,3);
+  if(next.length===3){setPending([]);queueMicrotask(()=>onVisit(next));}
+  else setPending(next);
+ };
+ return <div style={{display:'grid',gap:10,padding:'5px 0 10px'}}>
+  <div style={{textAlign:'center',padding:10,border:'1px solid #23556d',borderRadius:12,background:'#07141f'}}><small style={{display:'block',color:'#27dcff',fontSize:11,fontWeight:950}}>PHASE {objective.phase} · FLÉCHETTE {dartIndex+1}/57</small><strong style={{display:'block',fontSize:23,color:'#fff'}}>{objective.hit==='sector'?`SECTEUR ${objective.sector}`:objective.label}</strong><small>{objective.hit==='sector'?'SIMPLE · DOUBLE · TRIPLE · MISS | SHANGHAI +100':objective.hit==='bull'?'BULL ROUGE UNIQUEMENT · +100 PTS':'1 ESSAI SUR CE DOUBLE · +50 PTS'}</small></div>
+  <div style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:7}}>{[0,1,2].map(i=><div key={i} style={{padding:9,border:'1px solid #33475a',borderRadius:9,textAlign:'center',fontWeight:900,fontSize:12,minHeight:36,color:pending[i]?'#fff':'#8293a8'}}>{pending[i]?.label||`#${i+1}`}</div>)}</div>
+  <div style={{display:'grid',gridTemplateColumns:`repeat(${options.length},minmax(0,1fr))`,gap:7}}>{options.map(hit=><button key={hit} type="button" disabled={disabled} onClick={()=>push(hit)} style={{minWidth:0,minHeight:74,borderRadius:13,border:'1px solid #566271',background:hit==='MISS'?'linear-gradient(#26313c,#141a22)':hit==='T'?'linear-gradient(#e9ab29,#83521a)':hit==='D'||hit==='50'?'linear-gradient(#ed4255,#871623)':'linear-gradient(#246ca0,#142e50)',color:'#fff',fontWeight:1000,fontSize:'clamp(12px,3.5vw,20px)'}}>{hit==='MISS'?'MISS':hit==='50'?'BULL 50':`${hit}${objective.sector}`}</button>)}</div>
+  {pending.length>0&&<button type="button" onClick={()=>setPending(old=>old.slice(0,-1))} style={{padding:11,border:'1px solid #324353',borderRadius:10,color:'#d6e5f5',background:'#101722'}}>↶ ANNULER DERNIÈRE FLÉCHETTE</button>}
+  <small style={{opacity:.7,textAlign:'center'}}>Objectif automatique · volée de 3 fléchettes · score cumulé</small>
+ </div>;
+}
+
 export default function ChallengesPlay({ config, onExit }: { config: any; onExit: () => void }) {
   const challengeId = String(config?.challengeId || config?.id || "3_DOUBLES_9");
   const doublesTargets = normalizeDoublesTargets(config?.doublesTargets);
+  const jdcEntriesRef=React.useRef<ChallengeEntryLike[]>([]);
+  const jdcConfig={exerciseType:"jdc" as const,target:"10",rule:"all",visits:JDC_TOTAL_VISITS};
   const doubles8VisitsMax = doublesTargets.length * 3 + 1;
   const doubles8MaxDarts = doublesTargets.length * 9 + 3;
   const doubles8MaxScore = doublesTargets.length * 300 + 150;
-  const maxDarts = Math.max(1, Math.floor(Number(challengeId === "DOUBLES_8_BONUS" ? doubles8MaxDarts : config?.darts || (challengeId === "CHECKOUT_40_3" ? 3 : 9))));
+  const maxDarts = Math.max(1, Math.floor(Number(challengeId === "DOUBLES_8_BONUS" ? doubles8MaxDarts : challengeId === "JDC_CHALLENGE" ? JDC_TOTAL_DARTS : config?.darts || (challengeId === "CHECKOUT_40_3" ? 3 : 9))));
   const sequence = Array.isArray(config?.seq) ? config.seq.map(String) : ["BULL", "T20", "D20"];
   const startedAtRef = React.useRef(Date.now());
   const endedRef = React.useRef(false);
@@ -93,7 +122,7 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
   const [bonusDouble, setBonusDouble] = React.useState<number | null>(null);
 
   const title =
-    challengeId === "BULL_T20_D20"
+    challengeId === "JDC_CHALLENGE" ? "LE JDC CHALLENGE" : challengeId === "BULL_T20_D20"
       ? "BULL → T20 → D20"
       : challengeId === "DOUBLES_8_BONUS"
       ? (doublesTargets.length === DOUBLES_8_TARGETS.length && doublesTargets.every((n, i) => n === DOUBLES_8_TARGETS[i]) ? "8 DOUBLES · 9 FLÉCHETTES" : `${doublesTargets.length} DOUBLE${doublesTargets.length > 1 ? 'S' : ''} PERSONNALISÉ${doublesTargets.length > 1 ? 'S' : ''}`)
@@ -115,6 +144,7 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
           ? Math.min(1, data.sequenceIndex / Math.max(1, sequence.length))
           : challengeId === "DOUBLES_8_BONUS"
           ? Math.min(1, data.doubles8Visits / doubles8VisitsMax)
+          : challengeId === "JDC_CHALLENGE" ? Math.min(1,data.darts/JDC_TOTAL_DARTS)
           : success
           ? 1
           : 0;
@@ -134,7 +164,12 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
       const playedDoubles = doublesBreakdown.filter((row) => row.attempts > 0);
       const bestDouble = playedDoubles.slice().sort((a, b) => b.accuracyPct - a.accuracyPct || b.hits - a.hits || b.points - a.points)[0] || null;
       const weakestDouble = playedDoubles.slice().sort((a, b) => a.accuracyPct - b.accuracyPct || a.hits - b.hits || a.points - b.points)[0] || null;
+      const jdcAnalytics=challengeId==="JDC_CHALLENGE"?analyzeChallengeExercise(jdcEntriesRef.current,jdcConfig):null;
       const metrics = {
+        jdcPhaseScores:jdcAnalytics?.jdcPhaseScores,
+        jdcShanghaiCount:jdcAnalytics?.jdcShanghaiCount,
+        jdcDoubleHits:jdcAnalytics?.jdcDoubleHits,
+        jdcBullHits:jdcAnalytics?.jdcBullHits,
         challengeId,
         title,
         maxDarts,
@@ -144,7 +179,7 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
         accuracyPct,
         completionPct: completion * 100,
         dartsUsed: data.darts,
-        score: challengeId === "DOUBLES_8_BONUS" ? data.points : success ? 100 : completion * 100,
+        score: challengeId === "DOUBLES_8_BONUS" || challengeId === "JDC_CHALLENGE" ? data.points : success ? 100 : completion * 100,
         bonusDouble,
         bonusHits: data.bonusHits,
         regularHits: data.regularHits,
@@ -197,6 +232,22 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
         const success = score === 40 && isDoubleDart(last);
         rerender();
         finish(success);
+        return;
+      }
+
+      if(challengeId === "JDC_CHALLENGE"){
+        const offset=jdcEntriesRef.current.length;
+        const entries=darts.map((dart,j)=>{
+          const objective=jdcObjectiveForDart(offset+j);
+          return {hit:(dart.miss?'MISS':dart.dbull?'50':dart.mult===3?'T':dart.mult===2?'D':'S') as ChallengeHit,segment:dart.miss||dart.dbull?undefined:dart.v};
+        });
+        jdcEntriesRef.current.push(...entries);
+        const evaluation=evaluateChallengeEntries(jdcEntriesRef.current,jdcConfig);
+        data.darts=jdcEntriesRef.current.length;
+        data.hits=evaluation.entrySuccessful.filter(Boolean).length;
+        data.points=evaluation.score;
+        rerender();
+        if(data.darts>=JDC_TOTAL_DARTS)finish(true);
         return;
       }
 
@@ -272,7 +323,7 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
   const bonusChoiceRequired = doubles8BonusPhase && !bonusDouble && !result;
   const doubles8Target = doubles8BonusPhase ? (bonusDouble || doublesTargets[0]) : doublesTargets[Math.min(doublesTargets.length - 1, Math.floor(doubles8VisitIndex / 3))];
   const currentTarget =
-    challengeId === "3_DOUBLES_9"
+    challengeId === "JDC_CHALLENGE" ? `PHASE ${jdcObjectiveForDart(data.darts).phase} · ${jdcObjectiveForDart(data.darts).label}` : challengeId === "3_DOUBLES_9"
       ? "DOUBLE"
       : challengeId === "DOUBLES_8_BONUS"
       ? (bonusChoiceRequired ? "BONUS · À CHOISIR" : `${doubles8BonusPhase ? "BONUS · " : ""}D${doubles8Target}`)
@@ -280,7 +331,7 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
       ? "40"
       : sequence[Math.min(data.sequenceIndex, sequence.length - 1)] || "—";
   const progressValue =
-    challengeId === "3_DOUBLES_9"
+    challengeId === "JDC_CHALLENGE" ? Math.floor(data.darts/3) : challengeId === "3_DOUBLES_9"
       ? data.doubles
       : challengeId === "BULL_T20_D20"
       ? data.sequenceIndex
@@ -290,7 +341,7 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
       ? 1
       : 0;
   const progressMax =
-    challengeId === "3_DOUBLES_9" ? 3 : challengeId === "BULL_T20_D20" ? sequence.length : challengeId === "DOUBLES_8_BONUS" ? doubles8VisitsMax : 1;
+    challengeId === "JDC_CHALLENGE" ? JDC_TOTAL_VISITS : challengeId === "3_DOUBLES_9" ? 3 : challengeId === "BULL_T20_D20" ? sequence.length : challengeId === "DOUBLES_8_BONUS" ? doubles8VisitsMax : 1;
 
   return (
     <>
@@ -305,7 +356,7 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
           <>
             <p><b>{title}</b></p>
             <p>
-              {challengeId === "3_DOUBLES_9"
+              {challengeId === "JDC_CHALLENGE" ? "Phase 1 : secteurs 10 à 15, S/D/T à valeur réelle et Shanghai +100 ; phase 2 : une fléchette par D1 à D20 (+50), puis Bull rouge (+100) ; phase 3 : secteurs 15 à 20 avec Shanghai +100." : challengeId === "3_DOUBLES_9"
                 ? "Touche trois doubles quelconques en neuf fléchettes maximum."
                 : challengeId === "BULL_T20_D20"
                 ? "Valide BULL, puis T20, puis D20 dans cet ordre en douze fléchettes maximum."
@@ -317,7 +368,7 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
         }
         eyebrow={title}
         target={currentTarget}
-        targetHint={challengeId === "DOUBLES_8_BONUS" ? `Volée ${Math.min(doubles8VisitsMax, data.doubles8Visits + 1)} / ${doubles8VisitsMax} · ${data.darts} / ${maxDarts} fléchettes` : `${data.darts} / ${maxDarts} fléchettes utilisées`}
+        targetHint={challengeId === "JDC_CHALLENGE" ? `Volée ${Math.min(19,Math.floor(data.darts/3)+1)} / 19 · ${data.darts} / 57 fléchettes` : challengeId === "DOUBLES_8_BONUS" ? `Volée ${Math.min(doubles8VisitsMax, data.doubles8Visits + 1)} / ${doubles8VisitsMax} · ${data.darts} / ${maxDarts} fléchettes` : `${data.darts} / ${maxDarts} fléchettes utilisées`}
         progress={{ value: progressValue, max: progressMax, label: "OBJECTIF" }}
         kpis={[
           { label: "DARTS", value: `${data.darts}/${maxDarts}` },
@@ -326,7 +377,7 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
           { label: challengeId === "DOUBLES_8_BONUS" ? "VOLÉES" : "RESTE", value: challengeId === "DOUBLES_8_BONUS" ? `${data.doubles8Visits}/${doubles8VisitsMax}` : Math.max(0, maxDarts - data.darts) },
         ]}
       >
-        {challengeId === "DOUBLES_8_BONUS" ? (
+        {challengeId === "JDC_CHALLENGE" ? <JdcObjectivePad visitsCompleted={Math.floor(data.darts/3)} disabled={!!result} onVisit={onVisit}/> : challengeId === "DOUBLES_8_BONUS" ? (
           bonusChoiceRequired ? (
             <div style={{ display: "grid", gap: 10, padding: "7px 0 12px" }}>
               <div style={{ padding: "12px 13px", borderRadius: 14, border: "1px solid rgba(39,220,255,.34)", background: "rgba(39,220,255,.06)", textAlign: "center" }}>
@@ -357,12 +408,17 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
       <TrainingResultModal
         open={!!result}
         success={!!result?.success}
-        title={challengeId === "DOUBLES_8_BONUS" ? "Challenge terminé" : result?.success ? "Défi réussi" : "Défi manqué"}
+        title={challengeId === "JDC_CHALLENGE" || challengeId === "DOUBLES_8_BONUS" ? "Challenge terminé" : result?.success ? "Défi réussi" : "Défi manqué"}
         stats={
           result?.stats ||
           makeTrainingStats({ darts: 0, hits: 0, points: 0, startedAt: Date.now() })
         }
-        summaryCards={result ? (challengeId === "DOUBLES_8_BONUS" ? [
+        summaryCards={result ? (challengeId === "JDC_CHALLENGE" ? [
+          {label:"SCORE",value:Math.round(result.metrics.score)},
+          {label:"PHASE 1",value:result.metrics.jdcPhaseScores?.[0]||0},
+          {label:"PHASE 2",value:result.metrics.jdcPhaseScores?.[1]||0},
+          {label:"PHASE 3",value:result.metrics.jdcPhaseScores?.[2]||0},
+        ] : challengeId === "DOUBLES_8_BONUS" ? [
           { label: "SCORE", value: Math.round(result.metrics.score) },
           { label: "PHASE", value: result.metrics.regularScore },
           { label: "BONUS", value: result.metrics.bonusScore },
@@ -383,7 +439,14 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
           { label: "DARTS", value: result.metrics.dartsUsed },
           { label: "HITS", value: result.stats.hits },
         ]) : undefined}
-        metrics={result ? (challengeId === "DOUBLES_8_BONUS" ? [
+        metrics={result ? (challengeId === "JDC_CHALLENGE" ? [
+          {label:"SCORE FINAL",value:`${result.metrics.score} / ${JDC_MAX_SCORE} pts`},
+          {label:"PHASE 1 · SECTEURS 10–15",value:`${result.metrics.jdcPhaseScores?.[0]||0} pts`},
+          {label:"PHASE 2 · D1–D20 + BULL",value:`${result.metrics.jdcPhaseScores?.[1]||0} pts · ${result.metrics.jdcDoubleHits||0}/20 doubles · Bull ${result.metrics.jdcBullHits||0}/1`},
+          {label:"PHASE 3 · SECTEURS 15–20",value:`${result.metrics.jdcPhaseScores?.[2]||0} pts`},
+          {label:"SHANGHAI",value:`${result.metrics.jdcShanghaiCount||0} × 100 pts`},
+          {label:"FLÉCHETTES",value:`${result.metrics.dartsUsed}/57`},
+        ] : challengeId === "DOUBLES_8_BONUS" ? [
           { label: "DÉFI", value: result.metrics.title },
           { label: "PARCOURS", value: doublesTargets.map((target) => `D${target}`).join(" · ") },
           { label: "SCORE CHALLENGE", value: `${Math.round(result.metrics.score)} / ${doubles8MaxScore}` },

@@ -1,3 +1,4 @@
+import { uniqueHistoryParticipants } from "../lib/historyIdentityDedupe";
 // @ts-nocheck
 import { dartsFamilyHistoryKey } from "../lib/historyDartsVariants";
 // ============================================
@@ -1502,7 +1503,7 @@ function killerLivePlayerRows(e: SavedEntry): any[] {
       });
     }
   }
-  return order.map((key) => byKey.get(key)).filter(Boolean);
+  return uniqueHistoryParticipants(e, order.map((key) => byKey.get(key)).filter(Boolean));
 }
 
 
@@ -1527,7 +1528,7 @@ function getHistoryAvatarPlayersInFinalOrder(e: SavedEntry): any[] {
       if (id && !byId.has(id)) byId.set(id, p);
       if (nm && !byName.has(nm)) byName.set(nm, p);
     }
-    return rankingRows
+    return uniqueHistoryParticipants(e, rankingRows
       .map((r: any, idx: number) => ({ r, idx, rank: Number(r?.rank ?? r?.finalRank ?? r?.placement ?? r?.place ?? r?.position ?? idx + 1) || idx + 1 }))
       .sort((a: any, b: any) => a.rank - b.rank || a.idx - b.idx)
       .map(({ r }: any) => {
@@ -1535,7 +1536,7 @@ function getHistoryAvatarPlayersInFinalOrder(e: SavedEntry): any[] {
         const nm = historyRowName(r).toLowerCase();
         const f = (id && byId.get(id)) || (nm && byName.get(nm)) || {};
         return { ...f, ...r, avatarDataUrl: r?.avatarDataUrl || r?.avatarUrl || r?.avatar || f?.avatarDataUrl || f?.avatarUrl || f?.avatar };
-      });
+      }));
   }
   return getAllEntryPlayers(e);
 }
@@ -1998,7 +1999,7 @@ function fiveLivesHistoryScorePlayers(e: SavedEntry): HistoryScorePlayer[] {
     anyE?.players,
   ];
   const source = pools.find((p) => Array.isArray(p) && p.length) || [];
-  return source.map((r: any, idx: number) => ({
+  return uniqueHistoryParticipants(e, source).map((r: any, idx: number) => ({
     name: historyScoreName(e, r),
     main: historyScoreNumber(r?.livesLeft ?? r?.remainingLives ?? r?.lives, "0"),
     rank: Number(r?.rank ?? r?.position ?? idx + 1) || idx + 1,
@@ -2611,7 +2612,9 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
     const pools = participantMode === "teams"
       ? [summary?.rankings, summary?.standings, summary?.teams, anyE?.payload?.stats?.teams, anyE?.teams, summary?.entities]
       : [summary?.rankings, summary?.players, summary?.perPlayer, anyE?.payload?.stats?.players, anyE?.payload?.summary?.players, anyE?.players];
-    const rows: any[] = (pools.find((pool) => Array.isArray(pool) && pool.length) || []).slice().sort((a: any, b: any) => Number(a?.rank || 99) - Number(b?.rank || 99));
+    const sourceRows: any[] = pools.find((pool) => Array.isArray(pool) && pool.length) || [];
+    const rows: any[] = (participantMode === "teams" ? sourceRows : uniqueHistoryParticipants(e, sourceRows))
+      .slice().sort((a: any, b: any) => Number(a?.rank || 99) - Number(b?.rank || 99));
     const playerRows: any[] = ([summary?.players, summary?.perPlayer, anyE?.payload?.stats?.players, anyE?.players].find((pool) => Array.isArray(pool) && pool.length) || []);
     const global: any = summary?.matchStats || anyE?.payload?.stats?.global || {};
     const variant = String(summary?.variant || cfg?.variant || "classic").toLowerCase();

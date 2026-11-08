@@ -35,6 +35,13 @@ export const TRAINING_CHALLENGES = [
     darts: 75,
   },
   {
+    id: "JDC_CHALLENGE",
+    title: "LE JDC CHALLENGE",
+    subtitle: "19 volées · 3 phases : secteurs 10–15 + Shanghai, D1→D20 + Bull, secteurs 15–20 + Shanghai.",
+    kind: "jdc",
+    darts: 57,
+  },
+  {
     id: "CHECKOUT_40_3",
     title: "CHECKOUT 40 / 3 FLÉCHETTES",
     subtitle: "Fais exactement 40 et termine obligatoirement sur un double.",
@@ -109,6 +116,8 @@ export default function ChallengesConfig({ profiles, onStart, onExit }: { profil
               </div>
             );
           })()}
+
+          {selected.id === "JDC_CHALLENGE" && <div style={{padding:12,margin:"10px 0",border:"1px solid #2c5266",borderRadius:13,background:"#091824",fontSize:11,lineHeight:1.7}}><b style={{color:"#27dcff"}}>JDC · 3 PHASES</b><div>① 6 volées : 10→15, S/D/T à valeur réelle, Shanghai +100.</div><div>② 7 volées : un essai par D1→D20 puis Bull rouge (+50 par double, +100 Bull).</div><div>③ 6 volées : 15→20, avec le même bonus Shanghai.</div><strong>19 volées · 57 fléchettes · maximum 3380 pts.</strong></div>}
 
           <TrainingStartButton
             label={resolved.length > 1 ? `LANCER LE DÉFI — ${resolved.length} JOUEURS` : "LANCER LE DÉFI"}

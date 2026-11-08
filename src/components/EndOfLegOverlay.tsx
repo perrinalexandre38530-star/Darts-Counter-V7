@@ -1,3 +1,4 @@
+import { uniqueHistoryParticipants } from "../lib/historyIdentityDedupe";
 // ============================================
 // src/components/EndOfLegOverlay.tsx
 // Overlay "Résumé de la manche" — compact + labels FR
@@ -867,7 +868,7 @@ function Inner({
     }
 
     const visitRows = rowsFromVisitHistory(safeVisitHistory, nameOf, baseRows);
-    return mergeOverlayRows(baseRows, visitRows);
+    return uniqueHistoryParticipants(null, mergeOverlayRows(baseRows, visitRows).map((row: any) => ({ ...row, id: row.pid, name: row.name })));
   }, [result, nameOf, safeVisitHistory]);
 
   const legNo =

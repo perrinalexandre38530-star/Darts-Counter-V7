@@ -8,6 +8,7 @@
 // =============================================================
 
 import React from "react";
+import { uniqueHistoryParticipants } from "../lib/historyIdentityDedupe";
 import type { Store, MatchRecord } from "../lib/types";
 
 type Props = {
@@ -277,7 +278,7 @@ export default function KillerSummaryPage({ store, go, params }: Props) {
 
   const rows = React.useMemo(() => {
     const per = extractPerPlayer(rec);
-    let out = per.map(normalizeRow);
+    let out = uniqueHistoryParticipants(rec, per).map(normalizeRow);
 
     // Si ranks manquants, fallback simple : gagnant d'abord, puis survivants, puis morts
     const hasRanks = out.some((r) => (r.rank || 0) > 0);
