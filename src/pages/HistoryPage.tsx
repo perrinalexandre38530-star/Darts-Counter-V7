@@ -698,32 +698,69 @@ function isCricketVariantMode(mode: string): boolean {
 
 // Historical match identities are immutable: a profile linked later must not
 // become an extra participant in an already completed match.
+// V100: read-only normalization of historical participant identity.
+// Preserve History V4 verbatim: two identity aliases must not become two players.
+const HISTORICAL_NINJA_IDENTITIES = new Set([
+  "b3517e84-41a1-4eb1-8f20-3e40e3875d38",
+  "1ca2469d-2e3b-41b2-807d-dd96eb1d1d4f",
+  "bbedd4b7-e181-4b8e-a794-c948a18e8404",
+]);
+
+function historyIdentityKey(e: SavedEntry, player: any): string {
+  const row: any = e as any;
+  const id = String(getId(player) || "").trim();
+  if (!id) return "";
+  const name = String(getName(player) || "").trim().toLowerCase();
+  const links = [
+    row?.summary?.quickProfileLinks,
+    row?.quickProfileLinks,
+    row?.payload?.summary?.quickProfileLinks,
+  ];
+  // Only explicitly linked quick-party participants are resolved as aliases.
+  for (const link of links) {
+    if (link && typeof link === "object" && typeof link[id] === "string" && link[id]) {
+      const resolved = String(link[id]);
+      return HISTORICAL_NINJA_IDENTITIES.has(resolved) ? "profile:ninja" : `profile:${resolved}`;
+    }
+  }
+  if (HISTORICAL_NINJA_IDENTITIES.has(id) && name === "ninja") return "profile:ninja";
+  return `profile:${id}`;
+}
+
+function historyIdentityPriority(e: SavedEntry, player: any): number {
+  const id = String(getId(player) || "");
+  const key = historyIdentityKey(e, player);
+  if (key === "profile:ninja" && id === "b3517e84-41a1-4eb1-8f20-3e40e3875d38") return 100;
+  if (key === "profile:ninja" && id === "bbedd4b7-e181-4b8e-a794-c948a18e8404") return 95;
+  if (key === "profile:ninja" && id === "1ca2469d-2e3b-41b2-807d-dd96eb1d1d4f") return 90;
+  if (id.startsWith("quick-") || id.startsWith("tmp_") || id.startsWith("usr_")) return 10;
+  return 60;
+}
+
+function historyUniqueIdentityRows(e: SavedEntry, list: any[]): any[] {
+  const order: string[] = [];
+  const winner = new Map<string, any>();
+  for (const entry of list) {
+    if (!entry || typeof entry !== "object") continue;
+    const key = historyIdentityKey(e, entry);
+    // Do not merge unknown/unlinked players based on their display name.
+    if (!key) { order.push(`unlinked:${order.length}`); winner.set(order[order.length - 1], entry); continue; }
+    if (!winner.has(key)) { order.push(key); winner.set(key, entry); continue; }
+    const prev = winner.get(key);
+    if (historyIdentityPriority(e, entry) > historyIdentityPriority(e, prev)) winner.set(key, entry);
+  }
+  return order.map((key) => winner.get(key)).filter(Boolean);
+}
+
 function historicalRoster(e: SavedEntry): any[] {
   const x: any = e as any;
   const summary: any = x.summary || x.payload?.summary || {};
   const official = [summary.ranking, summary.rankings].find((v: any) => Array.isArray(v) && v.length);
   const saved: any[] = Array.isArray(x.players) ? x.players : [];
-  // A complete original ranking is stronger evidence than a later enriched
-  // roster, but never discard players from a partial ranking.
-  if (official && saved.length && official.length <= saved.length) {
-    const officialIds = new Set(official.map((v: any) => String(getId(v) || "")));
-    const unranked = saved.filter((p: any) => !officialIds.has(String(getId(p) || "")));
-    // Only remove an alias proven to be the *same named participant* as a
-    // ranked player; never merge different people merely by equal names.
-    const redundant = unranked.every((p: any) => {
-      const id = String(getId(p) || "");
-      const name = String(getName(p) || "").trim().toLocaleLowerCase();
-      return id === "1ca2469d-2e3b-41b2-807d-dd96eb1d1d4f" &&
-        name === "ninja" && official.some((r: any) => String(getName(r) || "").trim().toLocaleLowerCase() === name);
-    });
-    if (redundant) return official;
-  }
-  if (saved.length) {
-    const oldNinja = saved.some((p: any) => String(getId(p)) === "b3517e84-41a1-4eb1-8f20-3e40e3875d38" && String(getName(p) || "").toLowerCase() === "ninja");
-    return saved.filter((p: any) => !(oldNinja && String(getId(p)) === "1ca2469d-2e3b-41b2-807d-dd96eb1d1d4f" && String(getName(p) || "").toLowerCase() === "ninja"));
-  }
-  const pools = [summary.players, official, x.payload?.players, x.payload?.config?.players, x.payload?.state?.players, x.decoded?.players];
-  return pools.find((v: any) => Array.isArray(v) && v.length) || [];
+  const pools = [saved, summary.players, official, x.payload?.players,
+    x.payload?.config?.players, x.payload?.state?.players, x.decoded?.players];
+  const chosen: any[] = pools.find((v: any) => Array.isArray(v) && v.length) || [];
+  return historyUniqueIdentityRows(e, chosen);
 }
 
 function getAllEntryPlayers(e: SavedEntry): any[] {
@@ -1342,8 +1379,7 @@ function x01FinalSortedRows(e: SavedEntry): any[] {
   const explicit = historyRankingRows(e);
   const roster = historicalRoster(e);
   const validRows = roster.length ? explicit.filter((r: any) => roster.some((p: any) =>
-    looseHistoryIdMatch(p?.id, r?.id || r?.playerId || r?.profileId || r?.pid) ||
-    (historyRowName(p) && historyRowName(p).toLowerCase() === historyRowName(r).toLowerCase())
+    historyIdentityKey(e, p) === historyIdentityKey(e, r)
   )) : explicit;
   let rows = validRows.length ? validRows : [];
   // Keep every originally registered participant, even when a legacy
@@ -1351,8 +1387,7 @@ function x01FinalSortedRows(e: SavedEntry): any[] {
   if (roster.length && rows.length) {
     const ranked = rows;
     rows = [...ranked, ...roster.filter((p: any) => !ranked.some((r: any) =>
-      looseHistoryIdMatch(p?.id, r?.id || r?.playerId || r?.profileId || r?.pid) ||
-      (historyRowName(p) && historyRowName(p).toLowerCase() === historyRowName(r).toLowerCase())
+      historyIdentityKey(e, p) === historyIdentityKey(e, r)
     ))];
   }
   if (!rows.length && !roster.length) {
@@ -1372,7 +1407,7 @@ function x01FinalSortedRows(e: SavedEntry): any[] {
     if (id && !byId.has(id)) byId.set(id, p);
     if (nm && !byName.has(nm)) byName.set(nm, p);
   }
-  const merged = rows.map((r: any) => {
+  const merged = historyUniqueIdentityRows(e, rows).map((r: any) => {
     const id = historyRowKey(r);
     const nm = historyRowName(r).toLowerCase();
     const f = (id && byId.get(id)) || (nm && byName.get(nm)) || {};
@@ -1412,7 +1447,7 @@ function historyRankingRows(e: SavedEntry): any[] {
   const data: any = anyE.summary || anyE.payload?.summary || anyE.resume?.summary || {};
   const result = data.result || {};
   const rankings = data.rankings || data.ranking || result.rankings || result.ranking || result.players || data.players || result.standings || anyE.payload?.rankings || [];
-  return Array.isArray(rankings) ? rankings : [];
+  return Array.isArray(rankings) ? historyUniqueIdentityRows(e, rankings) : [];
 }
 
 function isProgressiveKillerEntry(e: SavedEntry): boolean {
