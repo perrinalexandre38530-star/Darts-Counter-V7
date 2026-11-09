@@ -1,4 +1,5 @@
 import React from 'react';
+import ChallengeIdeasCatalog from '../components/ChallengeIdeasCatalog';
 import { BottomNavIcon } from '../components/BottomNav';
 import BackDot from '../components/BackDot';
 import PlayerPagedSelector from '../components/PlayerPagedSelector';
@@ -373,6 +374,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
     ['doubles8','8 DOUBLES · 9 FLÉCHETTES','Parcours officiel ou variante personnalisée avec les doubles de votre choix, puis une volée bonus.','⑧'],
    ] as Array<[ChallengeExerciseType,string,string,string]>).map(([id,label,detail,icon])=><button type="button" key={id} className={'exercise-card '+(exerciseType===id?'on':'')} onClick={()=>chooseExercise(id)}><i>{icon}</i><span><b>{label}</b><small>{detail}</small></span></button>)}
   </div>
+  <ChallengeIdeasCatalog />
  </Section>;
 
  const targetStage=<Section title="CIBLE" subtitle="Choisissez un secteur précis ou un Challenge sur tous les doubles / triples." key="target"><div className="target-grid"><button type="button" className={'target-btn family '+(target==='any-double'?'on':'')} onClick={()=>{setTarget('any-double');setRule('double')}}><span className="target-thumb"><img src={getChallengeObjectiveImage('any-double')} alt=""/></span><b>DOUBLES</b></button><button type="button" className={'target-btn family '+(target==='any-triple'?'on':'')} onClick={()=>{setTarget('any-triple');setRule('triple')}}><span className="target-thumb"><img src={getChallengeObjectiveImage('any-triple')} alt=""/></span><b>TRIPLES</b></button>{[...Array.from({length:20},(_,i)=>String(i+1)),'bull'].map(x=><button type="button" key={x} className={'target-btn '+(target===x?'on':'')} onClick={()=>{setTarget(x as ChallengeTarget);if(x==='bull')setRule('bull')}}><span className="target-thumb"><img src={getChallengeObjectiveImage(x)} alt=""/></span><b>{x==='bull'?'BULL':x}</b></button>)}</div>{familyMode&&<div className="locked-hint">KEYPAD X01 DÉTAILLÉ · chaque D1–D20 / T1–T20 est enregistré · égalité départagée par la somme des numéros touchés.</div>}</Section>;
