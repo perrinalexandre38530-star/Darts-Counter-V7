@@ -128,7 +128,10 @@ export function isRecoverableChunkLoadError(error: any): boolean {
   const msg = String(error?.message || error?.reason?.message || error || "").toLowerCase();
   return (
     msg.includes("failed to fetch dynamically imported module") ||
+    msg.includes("error loading dynamically imported module") ||
+    msg.includes("dynamically imported module") ||
     msg.includes("importing a module script failed") ||
+    msg.includes("failed to load module script") ||
     msg.includes("chunkloaderror") ||
     msg.includes("loading chunk")
   );
