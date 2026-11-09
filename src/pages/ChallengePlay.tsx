@@ -325,6 +325,7 @@ function onlineRecordRawOverride(raw:any,cfg:ChallengeConfigData,detailed:Challe
 }
 function challengeVisibleHitTypes(cfg:ChallengeConfigData):Hit[]{
  const type=challengeExerciseType(cfg);
+ if(type==='perfect-line')return ['S','D','T','25','50','MISS'];
  if(type==='doubles8')return ['D','MISS'];
  if(type==='jdc')return ['S','D','T','50','MISS'];
  if(type==='grouping')return ['S','D','T','MISS'];
@@ -482,6 +483,7 @@ function buildGlobalExerciseRecordCards(rows:Array<{participant:Participant;stat
 
 function exerciseResultMeta(stats:ChallengeExerciseAnalytics,cfg:ChallengeConfigData):string{
  const type=challengeExerciseType(cfg);
+ if(type==='perfect-line')return `6/6 zones · ${Number(stats.perfectLineDarts||0)} fléchettes · ${Math.max(0,Number(stats.perfectLineDarts||0)-6)} erreurs`;
  if(type==='jdc')return `Phase 1 : ${Number(stats.jdcPhaseScores?.[0]||0)} · Phase 2 : ${Number(stats.jdcPhaseScores?.[1]||0)} · Phase 3 : ${Number(stats.jdcPhaseScores?.[2]||0)} · ${Number(stats.jdcShanghaiCount||0)} Shanghai`;
  if(type==='grouping')return `${stats.validatedVisits}/${stats.completedVisits||stats.visitsPlayed} volées groupées · ${stats.groupingTriplets} triplet${stats.groupingTriplets>1?'s':''} · top ${stats.topGroupingSector||'—'}`;
  if(type==='half-it')return `${stats.validatedVisits}/${stats.completedVisits||stats.visitsPlayed} objectifs sécurisés · ${stats.halfItCuts} division${stats.halfItCuts>1?'s':''} ÷2 · série ${stats.bestValidatedVisitStreak}`;
@@ -492,6 +494,7 @@ function exerciseResultMeta(stats:ChallengeExerciseAnalytics,cfg:ChallengeConfig
 
 function exerciseResultMetrics(stats:ChallengeExerciseAnalytics,cfg:ChallengeConfigData):Array<{label:string;value:string}>{
  const type=challengeExerciseType(cfg);
+ if(type==='perfect-line')return [{label:'FLÉCHETTES',value:String(stats.perfectLineDarts||0)},{label:'ERREURS',value:String(Math.max(0,Number(stats.perfectLineDarts||0)-6))},{label:'DIRECTS',value:String(stats.perfectVisits||0)}];
  if(type==='jdc')return [{label:'PHASE 1',value:`${Number(stats.jdcPhaseScores?.[0]||0)} PTS`},{label:'PHASE 2',value:`${Number(stats.jdcPhaseScores?.[1]||0)} PTS`},{label:'PHASE 3',value:`${Number(stats.jdcPhaseScores?.[2]||0)} PTS`},{label:'SHANGHAI',value:String(stats.jdcShanghaiCount||0)}];
  if(type==='doubles8'){
   const hits=Number(stats.doublesRegularHits||0),darts=Number(stats.doublesRegularDarts||0),rate=darts?Math.round(hits/darts*100):0;
@@ -638,6 +641,7 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
  const pct=Math.round(successful/Math.max(1,currentHits.length)*100);
  const participantScore=(p:Participant)=>computeChallengeDetailedStats(log.filter(e=>e.pid===p.id),cfg).score;
  const participantDarts=(p:Participant)=>log.filter(e=>e.pid===p.id).length;
+ const participantDisplayScore=(p:Participant)=>perfectLineMode?participantDarts(p):participantScore(p);
  const streak=React.useMemo(()=>{let n=0;for(let i=currentEvaluation.entrySuccessful.length-1;i>=0;i--){if(!currentEvaluation.entrySuccessful[i])break;n++;}return n},[currentEvaluation]);
  const participantMaxStreak=(p:Participant)=>computeChallengeDetailedStats(log.filter(x=>x.pid===p.id),cfg).bestStreak;
  const participantStats=(p:Participant)=>{const detailed=computeChallengeDetailedStats(log.filter(e=>e.pid===p.id),cfg);return {score:detailed.score,darts:detailed.darts,hits:detailed.successful,misses:detailed.failures,pct:detailed.accuracy,streak:detailed.bestStreak,hitCounts:detailed.hitCounts,detailed};};
@@ -1426,7 +1430,13 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
   const a=participantStats(left),b=participantStats(right);
   const ea=analyzeChallengeExercise(log.filter(entry=>entry.pid===left.id),cfg);
   const eb=analyzeChallengeExercise(log.filter(entry=>entry.pid===right.id),cfg);
-  if(exerciseType==='jdc')return [
+  if(exerciseType==='perfect-line')return [
+    ['FLÉCHETTES',a.darts,b.darts],
+    ['ERREURS',a.darts-a.successful,b.darts-b.successful],
+    ['VALIDÉES',`${ea.validatedVisits}/6`,`${eb.validatedVisits}/6`],
+    ...perfectLineLabels(cfg).map((label,index):[string,React.ReactNode,React.ReactNode]=>[label,ea.perfectLineStageAttempts?.[index]||'—',eb.perfectLineStageAttempts?.[index]||'—']),
+   ];
+   if(exerciseType==='jdc')return [
    ['SCORE',a.score,b.score],
    ...(['PHASE 1','PHASE 2','PHASE 3'] as const).map((label,index):[string,React.ReactNode,React.ReactNode]=>[label,`${Number(ea.jdcPhaseScores?.[index]||0)} pts`,`${Number(eb.jdcPhaseScores?.[index]||0)} pts`]),
    ['SHANGHAI',ea.jdcShanghaiCount||0,eb.jdcShanghaiCount||0],
@@ -1455,7 +1465,7 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
 
   <main className="cp-layout">
    <section className="cp-left">
-    {safeParticipants.length>1&&<div className="challenge-roster portrait-only">{safeParticipants.map((p,i)=><div key={p.id} title={p.name} aria-label={`${p.name} : ${participantScore(p)} points`} className={i===activeIndex?'active':''}><span className="roster-avatar"><ChallengeAvatar participant={p} size={30}/></span><strong>{participantScore(p)}</strong></div>)}</div>}
+    {safeParticipants.length>1&&<div className="challenge-roster portrait-only">{safeParticipants.map((p,i)=><div key={p.id} title={p.name} aria-label={`${p.name} : ${participantDisplayScore(p)} ${perfectLineMode?'fléchettes':'points'}`} className={i===activeIndex?'active':''}><span className="roster-avatar"><ChallengeAvatar participant={p} size={30}/></span><strong>{participantDisplayScore(p)}</strong></div>)}</div>}
     <div className="player">
      {current.team&&<div className="player-team-bg" aria-hidden="true"><ResolvedTeamLogo team={current.team}/></div>}
      <div className="player-avatar-wrap">
@@ -1463,7 +1473,7 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
       <div className="player-avatar-label"><b style={{color:theme.primary}}>{String(current.name||'Joueur').toUpperCase()}</b>{current.teamName?<span>{current.teamName}</span>:null}</div>
      </div>
      <div className="player-side">
-      <div className="player-score"><small>SCORE</small><b>{currentScore}</b></div>
+      <div className="player-score"><small>{perfectLineMode?'FLÉCHETTES':'SCORE'}</small><b>{perfectLineMode?currentLog.length:currentScore}</b></div>
       <div className="player-objective"><img src={groupingMode?challengeBoard:(targetBoards[currentBoardKey]||target20)} alt={`Objectif ${currentObjectiveText}`}/><b className="player-objective-value">{currentObjectiveText}</b><span>OBJECTIF</span></div>
      </div>
     </div>
@@ -1475,7 +1485,7 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
 
    <section className="cp-board">
     <div className="board-caption"><span>{exerciseTitle(cfg)} · {exerciseType==='doubles8'||exerciseType==='jdc'?'VOLÉE':'TOUR'} {done?cfg.visits:turn}/{cfg.visits}</span><b>{currentObjectiveText}</b>{objectiveHint&&<small>{objectiveHint}</small>}</div>
-    <div className="board-media"><img src={groupingMode?challengeBoard:(targetBoards[currentBoardKey]||target20)} alt={`Objectif ${currentObjectiveText}`}/><div className="board-glow"/>{exerciseType!=='classic'&&<div className={`exercise-board-hud ${exerciseType}`}><div className="exercise-board-hud-title"><span>{groupingMode?'ZONE AUTORISÉE':'PARCOURS'}</span><b>{groupingMode?`×${groupingRequired} MÊME SECTEUR`:`${Math.min(currentVisitIndex+1,cfg.visits)} / ${cfg.visits}`}</b></div><div className="exercise-route">{exerciseRouteWindow.map(item=>{const active=!groupingMode&&item.index===currentVisitIndex;const played=!groupingMode&&item.index<Math.ceil(currentLog.length/3);const ok=played&&currentVisitValidated(item.index);return <i key={item.key} className={`${active?'active ':''}${played?(ok?'ok':'ko'):''}`}><small>{groupingMode?'SECT.':`#${item.index+1}`}</small><b>{item.label}</b>{played&&<em>{ok?'✓':exerciseType==='half-it'?'½':'×'}</em>}</i>})}</div></div>}</div>
+    <div className="board-media"><img src={groupingMode?challengeBoard:(targetBoards[currentBoardKey]||target20)} alt={`Objectif ${currentObjectiveText}`}/><div className="board-glow"/>{exerciseType!=='classic'&&<div className={`exercise-board-hud ${exerciseType}`}><div className="exercise-board-hud-title"><span>{groupingMode?'ZONE AUTORISÉE':'PARCOURS'}</span><b>{groupingMode?`×${groupingRequired} MÊME SECTEUR`:`${perfectLineMode?Math.min(6,lineProgress.step):Math.min(currentVisitIndex+1,cfg.visits)} / ${cfg.visits}`}</b></div><div className="exercise-route">{exerciseRouteWindow.map(item=>{const active=!groupingMode&&item.index===currentVisitIndex;const played=!groupingMode&&item.index<(perfectLineMode?lineProgress.step:Math.ceil(currentLog.length/3));const ok=played&&(perfectLineMode||currentVisitValidated(item.index));return <i key={item.key} className={`${active?'active ':''}${played?(ok?'ok':'ko'):''}`}><small>{groupingMode?'SECT.':`#${item.index+1}`}</small><b>{item.label}</b>{played&&<em>{ok?'✓':exerciseType==='half-it'?'½':'×'}</em>}</i>})}</div></div>}</div>
    </section>
 
    <aside className="cp-right">
@@ -1485,7 +1495,7 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
      <span className="exercise-live-darts">{[0,1,2].map(index=><i key={index} className={currentVisitDartLabels[index]?'filled':''}>{currentVisitDartLabels[index]||`#${index+1}`}</i>)}</span>
      <span className="exercise-live-progress"><i style={{width:`${Math.min(100,((currentVisitIndex+(currentVisitEntries.length/3))/Math.max(1,cfg.visits))*100)}%`}}/></span>
     </div>}
-    <div className="portrait-stats-wrap portrait-only"><div className="portrait-stats"><div className="ps-title"><strong>STATS CHALLENGE</strong><button type="button" className="online-rank" aria-label="Classement online" onClick={()=>setRankOpen(true)}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 4 6 4 9s-1 6-4 9c-3-3-4-6-4-9s1-6 4-9"/></svg></button></div><div className="ps-kpis"><div><span>SCORE</span><b>{currentScore}</b></div><div><span>RÉUSSITE</span><b>{pct}%</b></div><div><span>FLÉCHETTES</span><b>{currentLog.length}/{cfg.visits*3}</b></div><div><span>SUITE</span><b>{streak}</b></div></div>{exerciseType==='jdc'?<div className="ps-hits doubles8-hit-summary"><div className="psh S"><span>SIMPLES</span><b>{counts.S}</b></div><div className="psh D"><span>DOUBLES</span><b>{counts.D}</b></div><div className="psh T"><span>TRIPLES</span><b>{counts.T}</b></div><div className="psh visit"><span>SHANGHAI</span><b>{analyzeChallengeExercise(currentLog,cfg).jdcShanghaiCount||0}</b></div></div>:exerciseType==='doubles8'?<div className="ps-hits doubles8-hit-summary"><div className="psh D"><span>TOUCHÉS</span><b>{successful}</b></div><div className="psh MISS"><span>MISS</span><b>{currentFailures}</b></div><div className="psh visit"><span>VOLÉES</span><b>{Math.min(cfg.visits,Math.floor(currentLog.length/3))}/{cfg.visits}</b></div><div className="psh target"><span>CIBLE</span><b>{currentObjectiveText}</b></div></div>:<div className="ps-hits">{allowedHits.map(h=><div className={'psh '+h} key={h}><span>{h}</span><b>{counts[h]}</b></div>)}</div>}</div><button type="button" className="match-detail-trigger" onClick={()=>{setDetailTab('global');setDetailSection(exerciseType==='doubles8'?'EXERCICE':'PERF');setDetailOpen(true)}}>STATS DÉTAILLÉES <span>↗</span></button></div>
+    <div className="portrait-stats-wrap portrait-only"><div className="portrait-stats"><div className="ps-title"><strong>STATS CHALLENGE</strong><button type="button" className="online-rank" aria-label="Classement online" onClick={()=>setRankOpen(true)}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 4 6 4 9s-1 6-4 9c-3-3-4-6-4-9s1-6 4-9"/></svg></button></div><div className="ps-kpis"><div><span>{perfectLineMode?'ZONES':'SCORE'}</span><b>{currentScore}{perfectLineMode?'/6':''}</b></div><div><span>RÉUSSITE</span><b>{pct}%</b></div><div><span>FLÉCHETTES</span><b>{currentLog.length}/{cfg.visits*3}</b></div><div><span>SUITE</span><b>{streak}</b></div></div>{exerciseType==='jdc'?<div className="ps-hits doubles8-hit-summary"><div className="psh S"><span>SIMPLES</span><b>{counts.S}</b></div><div className="psh D"><span>DOUBLES</span><b>{counts.D}</b></div><div className="psh T"><span>TRIPLES</span><b>{counts.T}</b></div><div className="psh visit"><span>SHANGHAI</span><b>{analyzeChallengeExercise(currentLog,cfg).jdcShanghaiCount||0}</b></div></div>:exerciseType==='doubles8'?<div className="ps-hits doubles8-hit-summary"><div className="psh D"><span>TOUCHÉS</span><b>{successful}</b></div><div className="psh MISS"><span>MISS</span><b>{currentFailures}</b></div><div className="psh visit"><span>VOLÉES</span><b>{Math.min(cfg.visits,Math.floor(currentLog.length/3))}/{cfg.visits}</b></div><div className="psh target"><span>CIBLE</span><b>{currentObjectiveText}</b></div></div>:<div className="ps-hits">{allowedHits.map(h=><div className={'psh '+h} key={h}><span>{h}</span><b>{counts[h]}</b></div>)}</div>}</div><button type="button" className="match-detail-trigger" onClick={()=>{setDetailTab('global');setDetailSection(exerciseType==='doubles8'?'EXERCICE':'PERF');setDetailOpen(true)}}>STATS DÉTAILLÉES <span>↗</span></button></div>
     {safeParticipants.length>1&&<button type="button" className="players-launch portrait-only" onClick={()=>setPlayersOpen(true)} aria-label="Ouvrir la liste des joueurs">
      <img src="/challenge/ticker_challenge.png" alt="" aria-hidden="true"/>
      <span className="players-launch-shade"/>
