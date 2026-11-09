@@ -25,7 +25,7 @@ export type ChallengeExportReport = {
 
 export type ExportFormat = 'pdf' | 'png' | 'share';
 export type ChallengeExportResult = {
- status: 'shared' | 'downloaded' | 'cancelled' | 'preview';
+ status: 'shared' | 'downloaded' | 'download-started' | 'cancelled' | 'share-unavailable' | 'preview';
  fileName: string;
  previewUrl?: string;
 };
@@ -237,7 +237,7 @@ function buildCanvas(report: ChallengeExportReport): HTMLCanvasElement {
   return canvas;
 }
 
-function pngFromCanvas(canvas: HTMLCanvasElement): Blob {
+function pngBytesFromCanvas(canvas: HTMLCanvasElement): Uint8Array {
  // Synchronous data URL ensures navigator.share() is invoked while the
  // user's original tap still has transient activation (Android WebView).
  const encoded = canvas.toDataURL('image/png').split(',')[1];
@@ -245,10 +245,14 @@ function pngFromCanvas(canvas: HTMLCanvasElement): Blob {
  const decoded = atob(encoded);
  const bytes = new Uint8Array(decoded.length);
  for (let i = 0; i < decoded.length; i++) bytes[i] = decoded.charCodeAt(i);
- return new Blob([bytes], {type:'image/png'});
+ return bytes;
 }
 
-function pdfFromCanvas(canvas: HTMLCanvasElement): Blob {
+function pngFromCanvas(canvas: HTMLCanvasElement): Blob {
+ return new Blob([pngBytesFromCanvas(canvas)],{type:'image/png'});
+}
+
+function pdfBytesFromCanvas(canvas: HTMLCanvasElement): Uint8Array {
   // PDF 1.4: each A4 page embeds one JPEG slice, preserving the visual report.
   // Binary streams are length-delimited so international names render as pixels.
   const enc = new TextEncoder();
@@ -320,7 +324,14 @@ function pdfFromCanvas(canvas: HTMLCanvasElement): Blob {
   }
   append('trailer\n<< /Size ' + objectCount + ' /Root 1 0 R >>\nstartxref\n' +
     xref + '\n%%EOF\n');
-  return new Blob(chunks as BlobPart[], { type: 'application/pdf' });
+  const result=new Uint8Array(size);
+  let cursor=0;
+  for(const part of chunks){result.set(part,cursor);cursor+=part.byteLength;}
+  return result;
+}
+
+function pdfFromCanvas(canvas:HTMLCanvasElement):Blob {
+ return new Blob([pdfBytesFromCanvas(canvas)],{type:'application/pdf'});
 }
 
 function saveFile(blob: Blob, name: string) {
@@ -335,52 +346,121 @@ function saveFile(blob: Blob, name: string) {
 }
 
 /**
- * Native share sheet is the default for Android/iOS (including PDF and PNG).
- * On embedded browsers that cannot share files, never auto-navigate to blob:
- * the caller gets an in-app report preview instead of about:blank.
+ * Download without navigating the app:
+ * - File System Access picker if supported (desktop);
+ * - regular anchor download in Chrome/Safari;
+ * - HTTP attachment via same-origin Cloudflare Pages Function in embedded
+ *   Android browsers (which often reject blob: downloads).
+ * Files are passed to the app's own endpoint for the response only; no storage.
  */
-export async function exportChallengeResults(report: ChallengeExportReport,
-  format: ExportFormat): Promise<ChallengeExportResult> {
-  const canvas = buildCanvas(report);
-  const actualFormat = format === 'share' ? 'png' : format;
-  const blob = actualFormat === 'pdf' ? pdfFromCanvas(canvas) : pngFromCanvas(canvas);
-  const slug = report.title.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'challenge';
-  const name = 'MSS_' + slug + '_' + new Date().toISOString().slice(0, 10) +
-    '.' + actualFormat;
-  const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-  const file = new File([blob], name, { type: blob.type });
-  const nav = navigator;
-  let canShareFiles = false;
-  try {
-    canShareFiles = typeof nav.share === 'function' &&
-      (typeof nav.canShare !== 'function' || nav.canShare({files:[file]}));
-  } catch {}
+function isEmbeddedAndroid():boolean {
+ const agent=navigator.userAgent||'';
+ return /Android/i.test(agent)&&(
+  /;\s*wv\)|\bwv\b|ChatGPT|FBAN|FBAV|Instagram|Line\//i.test(agent)||
+  typeof navigator.share!=='function'
+ );
+}
 
-  if (canShareFiles && (mobile || format === 'share')) {
-    try {
-      // Crucial: no awaited promise occurs before calling share().
-      // PNG/PDF rendering and Blob creation above are synchronous.
-      await nav.share({
-        title: report.title,
-        text: 'Résultats MULTISPORTS SCORING',
-        files: [file],
-      });
-      return {status:'shared',fileName:name};
-    } catch (error) {
-      if ((error as Error)?.name === 'AbortError') return {status:'cancelled',fileName:name};
-      console.warn('[challenge-export] native file share unavailable',error);
-    }
+function encodeBase64(bytes:Uint8Array):string {
+ const batch=24_576; // divisible by 3: each encoded block is valid base64
+ const result:string[]=[];
+ for(let at=0;at<bytes.length;at+=batch) {
+  const part=bytes.subarray(at,Math.min(at+batch,bytes.length));
+  let chars='';
+  for(let i=0;i<part.length;i++)chars+=String.fromCharCode(part[i]);
+  result.push(btoa(chars));
+ }
+ return result.join('');
+}
+
+function beginHttpAttachment(bytes:Uint8Array,name:string,format:'pdf'|'png'):void {
+ // Unlike a blob: link, a real HTTP attachment can be handled by Android's
+ // DownloadListener. Keep its frame hidden so unsupported WebViews never open
+ // a visible about:blank page. The server retains none of the bytes.
+ const id='mss-report-frame-'+Date.now();
+ const frame=document.createElement('iframe');
+ frame.name=id;
+ frame.title='Téléchargement du rapport';
+ frame.style.cssText='position:absolute;width:0;height:0;border:0;opacity:0;pointer-events:none';
+ const form=document.createElement('form');
+ form.action='/api/report-download';
+ form.method='POST';
+ form.enctype='multipart/form-data';
+ form.target=id;
+ form.style.display='none';
+ for(const [key,value] of Object.entries({
+  format,
+  filename:name,
+  data:encodeBase64(bytes)
+ })) {
+  const field=document.createElement('input');
+  field.type='hidden';field.name=key;field.value=value;
+  form.appendChild(field);
+ }
+ document.body.appendChild(frame);
+ document.body.appendChild(form);
+ form.submit();
+ window.setTimeout(()=>{form.remove();frame.remove();},120_000);
+}
+
+async function useSavePicker(bytes:Uint8Array,name:string,format:'pdf'|'png'):Promise<'saved'|'cancelled'|'unsupported'> {
+ const browser=window as Window & {
+  showSaveFilePicker?:(options:any)=>Promise<{createWritable:()=>Promise<{write:(blob:Blob)=>Promise<void>;close:()=>Promise<void>}>}>;
+ };
+ if(typeof browser.showSaveFilePicker!=='function')return 'unsupported';
+ try {
+  const mime=format==='pdf'?'application/pdf':'image/png';
+  const handle=await browser.showSaveFilePicker({
+   suggestedName:name,
+   types:[{description:format.toUpperCase()+' MULTISPORTS SCORING',accept:{[mime]:['.'+format]}}],
+  });
+  const writable=await handle.createWritable();
+  await writable.write(new Blob([bytes],{type:mime}));
+  await writable.close();
+  return 'saved';
+ }catch(error){
+  if((error as Error)?.name==='AbortError')return 'cancelled';
+  console.warn('[challenge-export] save picker failed',error);
+  return 'unsupported';
+ }
+}
+
+export async function exportChallengeResults(report:ChallengeExportReport,format:ExportFormat,
+ options:{share?:boolean}={}):Promise<ChallengeExportResult> {
+ const actualFormat=format==='share'?'png':format;
+ const shareRequested=Boolean(options.share||format==='share');
+ const slug=report.title.normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+  .toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'challenge';
+ const name='MSS_'+slug+'_'+new Date().toISOString().slice(0,10)+'.'+actualFormat;
+ // Rendering must precede native sharing, but no await precedes the native call.
+ const canvas=buildCanvas(report);
+ const bytes=actualFormat==='pdf'?pdfBytesFromCanvas(canvas):pngBytesFromCanvas(canvas);
+ const mime=actualFormat==='pdf'?'application/pdf':'image/png';
+
+ if(shareRequested){
+  const nav=navigator;
+  const file=new File([bytes],name,{type:mime});
+  const available=typeof nav.share==='function'&&
+   (typeof nav.canShare!=='function'||nav.canShare({files:[file]}));
+  if(!available)return {status:'share-unavailable',fileName:name};
+  try{
+   await nav.share({files:[file],title:report.title,text:'Résultats MULTISPORTS SCORING'});
+   return {status:'shared',fileName:name};
+  }catch(error){
+   if((error as Error)?.name==='AbortError')return {status:'cancelled',fileName:name};
+   console.warn('[challenge-export] native share failed',error);
+   return {status:'share-unavailable',fileName:name};
   }
-
-  if (mobile) {
-    // ChatGPT / embedded WebViews may turn anchor(blob:) into about:blank.
-    // Instead show an actual inline image, which can be long-pressed / saved.
-    return {status:'preview',fileName:name,previewUrl:canvas.toDataURL('image/png')};
-  }
-
-  saveFile(blob,name);
-  return {status:'downloaded',fileName:name};
+ }
+ if(!isEmbeddedAndroid()){
+  const pick=await useSavePicker(bytes,name,actualFormat);
+  if(pick==='saved')return {status:'downloaded',fileName:name};
+  if(pick==='cancelled')return {status:'cancelled',fileName:name};
+  saveFile(new Blob([bytes],{type:mime}),name);
+  return {status:'download-started',fileName:name};
+ }
+ beginHttpAttachment(bytes,name,actualFormat);
+ return {status:'download-started',fileName:name};
 }
 
 /** For an explicit second click from the in-app preview (eg. opened in Chrome). */
