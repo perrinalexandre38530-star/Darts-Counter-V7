@@ -1,4 +1,4 @@
-name: Pack JDC Patch (6 fichiers)
+name: Pack JDC Patch (7 fichiers)
 on:
   push:
     branches:
@@ -11,6 +11,7 @@ on:
       - 'src/lib/appRecovery.ts'
       - 'src/lib/challengeResultsExport.ts'
       - 'src/components/ChallengeReportUI.tsx'
+      - 'functions/api/report-download.ts'
   workflow_dispatch:
 
 permissions:
@@ -37,13 +38,14 @@ jobs:
             src/main.tsx
             src/pages/ChallengePlay.tsx
             src/pages/HistoryPage.tsx
+            functions/api/report-download.ts
           )
           for file in "${files[@]}"; do
             test -f "$file"
             mkdir -p "package/$(dirname "$file")"
             cp "$file" "package/$file"
           done
-          test "$(find package -type f | wc -l)" -eq 6
+          test "$(find package -type f | wc -l)" -eq 7
           {
             echo "### Patch MULTISPORTS SCORING - JDC / Challenge"
             echo "- Commit: \`$GITHUB_SHA\`"
@@ -51,12 +53,12 @@ jobs:
             echo "- Fichiers à extraire à la racine du projet :"
             printf '%s\n' "${files[@]}" | sed 's/^/- /'
             echo ""
-            echo "Le ZIP contient strictement ces 6 fichiers. Ne pas le remplacer par une archive complete du depot."
+            echo "Le ZIP contient strictement ces 7 fichiers. Ne pas le remplacer par une archive complete du depot."
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Fournir le ZIP a telecharger
         uses: actions/upload-artifact@v4
         with:
-          name: MSS_JDC_PATCH_6_FICHIERS_${{ github.sha }}
+          name: MSS_JDC_PATCH_7_FICHIERS_${{ github.sha }}
           path: package/
           if-no-files-found: error
           retention-days: 30
