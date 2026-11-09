@@ -7,6 +7,7 @@ import InfoDot from "../../components/InfoDot";
 import { History } from "../../lib/history";
 import { scopedStorageKey } from "../../lib/storage";
 import { encodeTossitDraft, decodeTossitDraft } from "./tossitDraft";
+import { decodeTossitPendingResult, encodeTossitPendingResult, tossitMatchId, type TossitFinishedMatch, type TossitPendingResult } from "./tossitFinalRecovery";
 import { PageAdBanner } from "../../monetization/AdSlot";
 import { previewBorderRound, previewThiefRound, previewChoreRound } from "./tossitScoringPreview";
 import { previewReachTurn, previewRainbowTurn, previewBottleRound } from "./tossitCreativePreview";
@@ -69,6 +70,34 @@ const ACCENT = "#48E7CF";
 const rulesUrl = "https://tossit.game/pages/how-to-play";
 // Local interrupted-game draft only. Finished matches remain in History V4.
 const TOSSIT_DRAFT_KEY = "mss:tossit:draft:v132";
+// A completed match waiting for its History V4 acknowledgment, stored separately
+// from the unfinished draft. Scoped the same way as other device-local TOSSIT data.
+const TOSSIT_PENDING_KEY = "mss:tossit:pending-result:v1";
+const validTossitMode = (mode: unknown) => TOSSIT_MODES.some(entry => entry.id === mode);
+function readPendingResult(): TossitPendingResult | null {
+  try {
+    if (typeof localStorage === "undefined") return null;
+    return decodeTossitPendingResult(localStorage.getItem(scopedStorageKey(TOSSIT_PENDING_KEY)), validTossitMode);
+  } catch { return null; }
+}
+function writePendingResult(state: TossitState, match: TossitFinishedMatch): boolean {
+  try {
+    if (typeof localStorage === "undefined") return false;
+    const serialized = encodeTossitPendingResult(state, match);
+    if (!serialized) return false;
+    localStorage.setItem(scopedStorageKey(TOSSIT_PENDING_KEY), serialized);
+    return true;
+  } catch { return false; }
+}
+function clearPendingResultForMatch(matchId: string) {
+  try {
+    if (typeof localStorage === "undefined") return;
+    const key = scopedStorageKey(TOSSIT_PENDING_KEY);
+    const raw = localStorage.getItem(key);
+    if (raw && JSON.parse(raw)?.match?.id === matchId) localStorage.removeItem(key);
+  } catch { /* recovery failure must not block an already-saved match */ }
+}
+
 function readDraft(): TossitState | null {
   try {
     if (typeof localStorage === "undefined") return null;
@@ -86,6 +115,16 @@ function writeDraft(state: TossitState) {
     if (serialized === null) localStorage.removeItem(key);
     else localStorage.setItem(key, serialized);
   } catch { /* browsing without storage access must not block gameplay */ }
+}
+
+function clearDraftForMatch(createdAt: number) {
+  try {
+    if (typeof localStorage === "undefined") return;
+    const key = scopedStorageKey(TOSSIT_DRAFT_KEY);
+    const raw = localStorage.getItem(key);
+    // Never erase a newer match started in another tab while the save completed.
+    if (raw && JSON.parse(raw)?.createdAt === createdAt) localStorage.removeItem(key);
+  } catch { /* local storage can be unavailable: history is still authoritative */ }
 }
 
 const tinfo: Record<TossitMode, string> = {
@@ -198,6 +237,7 @@ export function TossitMenu({ go }: { go: (route: any, params?: any) => void }) {
   const tr = useCopy();
   const { lang } = useLang();
   const [draft] = React.useState<TossitState | null>(readDraft);
+  const [pending] = React.useState<TossitPendingResult | null>(readPendingResult);
   const [query, setQuery] = React.useState("");
   const filteredModes = React.useMemo(() => {
     const term = query.toLocaleLowerCase().trim();
@@ -205,7 +245,13 @@ export function TossitMenu({ go }: { go: (route: any, params?: any) => void }) {
   }, [query]);
   return <Layout className="tossit-menu-page"><Header title="GAMES" mode="games" onBack={() => go("gameSelect")} />
     <PageAdBanner placement="games" slotKey="page-games-tossit-under-header" />
-    {draft && <section style={{ ...panel, border: "1px solid #48E7CF" }}>
+    {pending && <section className="tossit-draft-warning" style={{ ...panel, border: "1px solid #F7C45F" }} role="status">
+      <strong>{tr("Résultat TOSSIT non confirmé dans l’historique", "TOSSIT result awaiting history confirmation")}</strong>
+      <p>{TOSSIT_MODES.find(m => m.id === pending.state.mode)?.title} · {pending.state.players.map(p => p.name).join(" / ")}</p>
+      <button type="button" style={button} onClick={() => go("tossit_play", { mode: pending.state.mode, recoverPending: true })}>{tr("RÉCUPÉRER ET ENREGISTRER", "RECOVER AND SAVE")}</button>
+      <p className="tossit-assist-text">{tr("Résultat conservé sur cet appareil jusqu’à la confirmation de History V4.", "Result kept on this device until History V4 confirms the save.")}</p>
+    </section>}
+    {draft && !pending && <section style={{ ...panel, border: "1px solid #48E7CF" }}>
       <strong>{tr("Partie TOSSIT interrompue", "Interrupted TOSSIT match")}</strong>
       <p style={{ opacity: .8, fontSize: 13 }}>{TOSSIT_MODES.find((m) => m.id === draft.mode)?.title} · {draft.players.map((p) => p.name).join(" / ")} · {draft.events.length} {tr("tours validés", "confirmed turns")}</p>
       <button style={button} onClick={() => go("tossit_play", { mode: draft.mode, resume: true })}>{tr("REPRENDRE LA PARTIE", "RESUME MATCH")}</button>
@@ -246,6 +292,8 @@ export function TossitConfig({ go, store, params }: { go: (route: any, params?: 
     return { id: p?.id ? String(p.id) : `tossit-guest-${index + 1}`, name: String(p?.nickname || p?.displayName || p?.name || `${tr("Joueur", "Player")} ${index + 1}`) };
   });
   const [players, setPlayers] = React.useState<TossitPlayer[]>(defaultPlayers);
+  const [interruptedDraft] = React.useState<TossitState | null>(readDraft);
+  const [pendingResult] = React.useState<TossitPendingResult | null>(readPendingResult);
   const [darts, setDarts] = React.useState(["duel", "river", "football_pitch", "thief_cop"].includes(mode) ? 6 : 3);
   const [gridSize, setGridSize] = React.useState<4 | 5>(4);
   const [victoryTarget, setVictoryTarget] = React.useState(["conquest", "bottle"].includes(mode) ? 5 : mode === "thief_cop" ? 4 : 3);
@@ -274,16 +322,35 @@ export function TossitConfig({ go, store, params }: { go: (route: any, params?: 
     {(["battle", "conquest"].includes(mode)) && <section className="tossit-mode-panel" style={panel}><h3>{tr("Format de match MSS", "MSS match format")}</h3><p style={{ opacity: .75, fontSize: 13 }}>{tr("Le nombre de manches nécessaires est une option MULTISPORTS SCORING, pas une règle officielle TOSSIT.", "The round-win goal is an MSS option, not an official TOSSIT rule.")}</p><div style={{ display: "flex", gap: 8 }}>{[3, 5, 7].map((n) => <button key={n} type="button" style={victoryTarget === n ? button : secondary} onClick={() => setVictoryTarget(n)}>{n} {tr("manches", "rounds")}</button>)}</div></section>}
     {mode === "thief_cop" && <section className="tossit-mode-panel" style={panel}><h3>{tr("Nombre de manches", "Match rounds")}</h3><div style={{ display: "flex", gap: 8 }}>{[2, 4].map(n => <button key={n} style={victoryTarget === n ? button : secondary} type="button" onClick={() => setVictoryTarget(n)}>{n} {tr("manches", "rounds")}</button>)}</div><p style={{ fontSize: 12, opacity: .75 }}>{tr("Les rôles voleur/policier alternent automatiquement à chaque manche.", "Thief/Cop roles automatically alternate each round.")}</p></section>}
     {(["reach", "rainbow", "chores", "bottle"].includes(mode)) && <section className="tossit-mode-panel" style={panel}><h3>{tr("Passages par joueur (format MSS)", "Turns per player (MSS format)")}</h3><div style={{ display: "flex", gap: 8 }}>{[3, 5].map(n => <button key={n} type="button" style={victoryTarget === n ? button : secondary} onClick={() => setVictoryTarget(n)}>{n} {tr("passages", "turns")}</button>)}</div></section>}
-    <button style={{ ...button, width: "100%" }} disabled={players.some((p) => !p.name.trim())} onClick={() => go("tossit_play", { mode, players: players.map((p) => ({ ...p, name: p.name.trim() })), darts, gridSize, victoryTarget })}>{tr("LANCER LA PARTIE", "START GAME")}</button>
+    {pendingResult && <section className="tossit-draft-warning" role="note" style={{ ...panel, border: "1px solid #F7C45F" }}>
+      <strong>{tr("Résultat précédent en attente de sauvegarde", "Previous match awaiting save")}</strong>
+      <p>{pendingResult.state.players.map(p => p.name).join(" / ")} · {pendingResult.state.events.length} {tr("saisies", "entries")}</p>
+      <button type="button" style={secondary} onClick={() => go("tossit_play", { mode: pendingResult.state.mode, recoverPending: true })}>{tr("RÉCUPÉRER LE RÉSULTAT", "RECOVER RESULT")}</button>
+      <p className="tossit-assist-text">{tr("Démarrer une nouvelle partie supprimera ce résultat non enregistré, après confirmation.", "Starting another match will discard this unsaved result, after confirmation.")}</p>
+    </section>}
+    {interruptedDraft && !pendingResult && <section className="tossit-draft-warning" role="note" style={{ ...panel, border: "1px solid #F7C45F" }}>
+      <strong>{tr("Une partie TOSSIT est encore en cours", "A TOSSIT game is still in progress")}</strong>
+      <p>{TOSSIT_MODES.find(m => m.id === interruptedDraft.mode)?.title} · {interruptedDraft.players.map(p => p.name).join(" / ")} · {interruptedDraft.events.length} {tr("saisies validées", "confirmed entries")}</p>
+      <button type="button" style={secondary} onClick={() => go("tossit_play", { mode: interruptedDraft.mode, resume: true })}>{tr("REPRENDRE CETTE PARTIE", "RESUME THIS GAME")}</button>
+      <p className="tossit-assist-text">{tr("Commencer une autre partie remplacera le brouillon de cet appareil après confirmation.", "Starting a different match will overwrite this device's draft after confirmation.")}</p>
+    </section>}
+    <button type="button" style={{ ...button, width: "100%" }} disabled={players.some((p) => !p.name.trim())} onClick={() => {
+      if (pendingResult) {
+        if (!window.confirm(tr("Une partie TOSSIT terminée n'a pas encore été enregistrée. Abandonner définitivement ce résultat et commencer une autre partie ?", "A completed TOSSIT match has not been saved yet. Discard its result permanently and start another match?"))) return;
+        clearPendingResultForMatch(pendingResult.match.id);
+      } else if (interruptedDraft && !window.confirm(tr("Une partie TOSSIT est en cours. Remplacer son brouillon et démarrer une nouvelle partie ?", "A TOSSIT game is in progress. Replace its draft and start a new game?"))) return;
+      go("tossit_play", { mode, players: players.map((p) => ({ ...p, name: p.name.trim() })), darts, gridSize, victoryTarget });
+    }}>{tr("LANCER LA PARTIE", "START GAME")}</button>
   </Layout>;
 }
 
-export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?: any) => void; params?: any; onFinish?: (match: any) => void }) {
+export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?: any) => void; params?: any; onFinish?: (match: any) => Promise<boolean> | boolean | void }) {
   const tr = useCopy();
-  const resumeState = React.useMemo(() => params?.resume ? readDraft() : null, [params?.resume]);
-  const mode: TossitMode = resumeState?.mode ?? (TOSSIT_MODES.some((x) => x.id === params?.mode) ? params.mode : "classic");
-  const players: TossitPlayer[] = resumeState?.players ?? (Array.isArray(params?.players) && params.players.length ? params.players : [{ id: "tossit-guest-1", name: "Joueur 1" }, { id: "tossit-guest-2", name: "Joueur 2" }]);
-  const [state, setState] = React.useState<TossitState>(() => resumeState ?? newTossitGame(mode, players, Number(params?.darts) || 3, Date.now(), params?.gridSize === 5 ? 5 : 4, Number(params?.victoryTarget) || undefined));
+  const recoveredResult = React.useMemo(() => params?.recoverPending ? readPendingResult() : null, [params?.recoverPending]);
+  const resumeState = React.useMemo(() => !recoveredResult && params?.resume ? readDraft() : null, [params?.resume, recoveredResult]);
+  const mode: TossitMode = recoveredResult?.state.mode ?? resumeState?.mode ?? (TOSSIT_MODES.some((x) => x.id === params?.mode) ? params.mode : "classic");
+  const players: TossitPlayer[] = recoveredResult?.state.players ?? resumeState?.players ?? (Array.isArray(params?.players) && params.players.length ? params.players : [{ id: "tossit-guest-1", name: "Joueur 1" }, { id: "tossit-guest-2", name: "Joueur 2" }]);
+  const [state, setState] = React.useState<TossitState>(() => recoveredResult?.state ?? resumeState ?? newTossitGame(mode, players, Number(params?.darts) || 3, Date.now(), params?.gridSize === 5 ? 5 : 4, Number(params?.victoryTarget) || undefined));
   const [error, setError] = React.useState("");
   const [roundWinner, setRoundWinner] = React.useState(players[0]?.id || "");
   const [closestDarts, setClosestDarts] = React.useState(1);
@@ -334,24 +401,57 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
   type BorderDart = { kind: "miss" | "wrong" | "valid"; cm: string };
   const [borderDarts, setBorderDarts] = React.useState<Record<string, BorderDart[]>>(() => Object.fromEntries(players.map((p) => [p.id, Array.from({ length: state.dartsPerPlayer }, () => ({ kind: "miss", cm: "" }))])));
   const saved = React.useRef(false);
+  const completedMatch = React.useRef<any>(null);
+  const saveInFlight = React.useRef(false);
+  const [historyStatus, setHistoryStatus] = React.useState<"idle" | "saving" | "saved" | "failed">("idle");
+  const [durableRecovery, setDurableRecovery] = React.useState(true);
   // Ignore double taps after a successful validation (no timer, no hidden navigation).
   const lastCommitAt = React.useRef(0);
   const meta = TOSSIT_MODES.find((x) => x.id === mode)!;
 
-  React.useEffect(() => { writeDraft(state); }, [state]);
+  // Keep the last completed turn recoverable until IndexedDB confirms success.
+  // A failed final save must not erase the last valid interrupted-game draft.
+  React.useEffect(() => {
+    // A recovery link opened after another tab already saved the match must
+    // never create a replacement blank draft behind the user's back.
+    if (params?.recoverPending && !recoveredResult) return;
+    if (!state.finished) writeDraft(state);
+  }, [state, params?.recoverPending, recoveredResult]);
+
+  const saveFinishedMatch = async (match: any) => {
+    if (saveInFlight.current) return;
+    saveInFlight.current = true;
+    setHistoryStatus("saving");
+    try {
+      if (!onFinish) throw new Error("No history persistence callback");
+      const result = await onFinish?.(match);
+      if (result !== true) throw new Error("History V4 did not confirm the save");
+      clearPendingResultForMatch(match.id);
+      clearDraftForMatch(match.createdAt);
+      setHistoryStatus("saved");
+    } catch {
+      // App.tsx already reports local storage errors. Offer an explicit retry
+      // without creating a second match id or claiming the game was saved.
+      setHistoryStatus("failed");
+    } finally { saveInFlight.current = false; }
+  };
 
   React.useEffect(() => {
     if (!state.finished || saved.current) return;
     saved.current = true;
     const end = Date.now();
-    const match = {
-      id: `tossit-${state.createdAt}-${Math.random().toString(36).slice(2, 8)}`,
+    const match: TossitFinishedMatch = recoveredResult?.match ?? {
+      id: tossitMatchId(state),
       kind: "tossit", sport: "tossit", mode, status: "finished", winnerId: state.winnerId,
       players: state.players, createdAt: state.createdAt, updatedAt: end, finishedAt: end,
       summary: summaryForTossit(state),
       payload: { sport: "tossit", mode, dartsPerPlayer: state.dartsPerPlayer, players: state.players, events: state.events, scores: state.scores, winnerId: state.winnerId },
     };
-    onFinish?.(match);
+    // Write the completed result *before* awaiting IndexedDB. If the page is
+    // closed mid-save, the exact result and its stable ID can be recovered.
+    if (!recoveredResult) setDurableRecovery(writePendingResult(state, match));
+    completedMatch.current = match;
+    void saveFinishedMatch(match);
   }, [state, mode, onFinish]);
   const commit = (action: Parameters<typeof applyTossitAction>[1]): boolean => {
     // Prevent a double tap from recording the same physical throw twice.
@@ -397,6 +497,14 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
       setBorderDarts(Object.fromEntries(state.players.map((p) => [p.id, Array.from({ length: state.dartsPerPlayer }, () => ({ kind: "miss", cm: "" }))])));
     }
   };
+  if (params?.recoverPending && !recoveredResult) {
+    return <Layout className="tossit-play-page"><Header title={meta.title} mode={mode} onBack={() => go("games")}/>
+      <section style={panel} role="status"><h2>{tr("Aucun résultat à récupérer", "No result to recover")}</h2>
+        <p>{tr("La sauvegarde a peut-être déjà été finalisée dans un autre onglet.", "The match may already have been saved in another tab.")}</p>
+        <button type="button" style={button} onClick={() => go("games")}>{tr("RETOUR AUX JEUX", "BACK TO GAMES")}</button>
+      </section>
+    </Layout>;
+  }
   return <Layout className="tossit-play-page"><Header title={meta.title} mode={mode} onBack={() => go("tossit_config", { mode })} />
     <div className="tossit-play-grid">
     <aside className="tossit-play-sidebar" aria-label={tr("Score de la partie", "Match scoreboard")}>
@@ -405,7 +513,20 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
     </aside>
     <div className="tossit-play-main">
     {(["battle", "conquest"].includes(mode)) && <p style={{ textAlign: "center", fontSize: 12, opacity: .75, marginTop: -6 }}>{tr("Scores = manches gagnées, pas des points de fléchettes.", "Scores = rounds won, not dart points.")}</p>}
-    {state.finished ? <section style={{ ...panel, textAlign: "center", border: `2px solid ${ACCENT}` }}><h2>{state.winnerId ? `🏆 ${state.players.find((p) => p.id === state.winnerId)?.name}` : mode === "chores" ? tr("SESSION TERMINÉE", "SESSION COMPLETE") : tr("MATCH NUL", "DRAW")}</h2><p>{tr("Résultat transmis à l'historique.", "Result sent to history.")}</p><div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}><button style={button} onClick={() => go("tossit_stats")}>{tr("Historique & stats", "History & stats")}</button><button style={secondary} onClick={() => go("games")}>{tr("Autre partie", "New game")}</button></div></section> : <>
+    {state.finished ? <section className="tossit-finish-panel" style={{ ...panel, textAlign: "center", border: `2px solid ${ACCENT}` }}><h2>{state.winnerId ? `🏆 ${state.players.find((p) => p.id === state.winnerId)?.name}` : mode === "chores" ? tr("SESSION TERMINÉE", "SESSION COMPLETE") : tr("MATCH NUL", "DRAW")}</h2>
+      <p role={historyStatus === "failed" ? "alert" : "status"} aria-live="polite" className={`tossit-save-status tossit-save-${historyStatus}`}>
+        {historyStatus === "saved" ? tr("Partie enregistrée dans l'historique V4.", "Match saved in History V4.") :
+          historyStatus === "failed" ? tr("Échec de l’enregistrement dans l’historique. Vous pouvez réessayer sans perdre le résultat.", "History save failed. You can retry without losing the result.") :
+          tr("Enregistrement de la partie dans l'historique…", "Saving the match to history…")}
+      </p>
+      {historyStatus === "failed" && <button type="button" className="tossit-confirm-button" style={{ ...button, width: "100%" }} disabled={saveInFlight.current} onClick={() => { if (completedMatch.current) void saveFinishedMatch(completedMatch.current); }}>{tr("RÉESSAYER L'ENREGISTREMENT", "RETRY SAVING")}</button>}
+      <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+        <button type="button" style={button} disabled={historyStatus !== "saved"} onClick={() => go("tossit_stats")}>{tr("Historique & stats", "History & stats")}</button>
+        <button type="button" style={secondary} disabled={historyStatus !== "saved"} onClick={() => go("games")}>{tr("Autre partie", "New game")}</button>
+      </div>
+      {historyStatus !== "saved" && !durableRecovery && <p className="tossit-recovery-warning" role="alert">{tr("Stockage de secours indisponible. Ne fermez pas cette page avant l’enregistrement.", "Recovery storage is unavailable. Keep this page open until the match is saved.")}</p>}
+      {historyStatus === "failed" && durableRecovery && <button type="button" style={{ ...secondary, marginTop: 10 }} onClick={() => go("games")}>{tr("Quitter (résultat récupérable)", "Leave (result can be recovered)")}</button>}
+    </section> : <>
       {mode === "classic" && <section className="tossit-mode-panel" style={panel}>
         <h3 style={{ marginTop: 0 }}>{tr("Résultat de la manche", "Round result")}</h3>
         <div className="tossit-entry-field"><strong>{tr("Joueur le plus proche", "Closest player")}</strong>

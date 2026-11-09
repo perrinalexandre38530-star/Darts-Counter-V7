@@ -4749,26 +4749,30 @@ useEffect(() => {
       },
     };
 
-    // ✅ Met à jour immédiatement le tri des profils par mode de jeu.
-    // L'IndexedDB fera aussi le rappel à la fin, mais ce bump rend le sélecteur
-    // cohérent dès le retour au configurateur.
-    try { recordProfileUsageFromMatch(saved, saved.kind, safeArray(store?.profiles)); } catch {}
+    // TOSSIT's finish screen explicitly waits for History V4. Do not also
+    // publish a *failed* TOSSIT match to the in-memory stats/history mirror.
+    // Other sports keep their pre-existing optimistic update behavior.
+    const isTossitMatch = String(saved.kind).toLowerCase() === "tossit" || String(saved.payload?.sport).toLowerCase() === "tossit";
+    const mirrorToAppStore = () => {
+      try { recordProfileUsageFromMatch(saved, saved.kind, safeArray(store?.profiles)); } catch {}
+      setStore((s) => {
+        const list = [...((s as any).history ?? [])];
+        const i = list.findIndex((r: any) => r.id === saved.id);
+        if (i >= 0) list[i] = saved;
+        else list.unshift(saved);
+        const next = { ...(s as any), history: list } as any;
+        scheduleStorePersist(next);
+        return next;
+      });
+    };
+    if (!isTossitMatch) mirrorToAppStore();
 
-    setStore((s) => {
-      const list = [...((s as any).history ?? [])];
-      const i = list.findIndex((r: any) => r.id === saved.id);
-      if (i >= 0) list[i] = saved;
-      else list.unshift(saved);
-      const next = { ...(s as any), history: list } as any;
-      scheduleStorePersist(next);
-      return next;
-    });
-
-    // ================================
-    // ✅ Persist in History (IndexedDB), puis seulement compter la partie pour les pubs.
-    // La navigation attend la fin de cette écriture afin que l'Historique reste la source de vérité.
-    // ================================
+    // IndexedDB remains the canonical History V4 store. TOSSIT's UI awaits
+    // this boolean result before reporting success or clearing local recovery.
     const upsertPromise = persistFinishedMatchForAds(saved, String(saved.kind || "game"));
+    if (isTossitMatch) {
+      void upsertPromise.then((committed) => { if (committed) mirrorToAppStore(); });
+    }
 
     // LOCAL-FIRST WAVE 4: every online mirror/upload is chained AFTER the
     // canonical IndexedDB commit. A failed local save therefore cannot produce a
@@ -4914,9 +4918,13 @@ useEffect(() => {
           detail: { id: String(saved?.id || ""), kind: String(saved?.kind || "game"), at: Date.now() },
         }));
       } catch {}
-      try {
-        window.alert("La partie n'a pas pu être enregistrée localement. Elle reste affichée afin que tu puisses réessayer sans perdre le résultat.");
-      } catch {}
+      // The TOSSIT finish panel already provides a non-blocking, retryable
+      // error message; keep alerts for existing modes as before.
+      if (!isTossitMatch) {
+        try {
+          window.alert("La partie n'a pas pu être enregistrée localement. Elle reste affichée afin que tu puisses réessayer sans perdre le résultat.");
+        } catch {}
+      }
     };
 
     if (shouldNavigate) {
@@ -4930,6 +4938,9 @@ useEffect(() => {
       });
     }
 
+    // The gameplay screen can now await the authoritative History V4 commit.
+    // Existing callers may continue to ignore the returned promise.
+    return upsertPromise;
   }
 
   // ONLINE V10 — publie le route/config actuel quand une page de gameplay online est ouverte.

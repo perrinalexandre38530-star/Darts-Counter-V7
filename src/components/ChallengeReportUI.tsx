@@ -20,17 +20,18 @@ export function ChallengeReportActions({onExport,busy=false,compact=false}:{
  onExport:(format:ChallengeReportFormat)=>void;busy?:boolean;compact?:boolean;
 }){
  return <div className="challenge-report-actions" style={{
-  display:'flex',justifyContent:'center',alignItems:'center',gap:compact?14:25,
-  width:'100%',minWidth:0,margin:'0 auto',padding:'5px 0'
+  display:'flex',justifyContent:'center',alignItems:'stretch',gap:compact?10:14,
+  width:'100%',minWidth:0,margin:'0 auto',padding:compact?'2px 0':'6px 0',flexWrap:'wrap'
  }}>
   {formats.map(format=><button key={format} type="button"
    disabled={busy} onClick={()=>onExport(format)} title={titles[format]}
    aria-label={format==='pdf'?'Télécharger le rapport PDF':format==='png'?'Télécharger toutes les pages PNG A4 dans un ZIP':'Choisir où partager la partie'}
-   style={{display:'grid',placeItems:'center',flex:'0 0 auto',
-    width:compact?44:56,height:compact?44:56,border:0,outline:0,borderRadius:13,
-    background:'transparent',color:colors[format],boxShadow:'none',padding:8,
-    cursor:busy?'wait':'pointer',opacity:busy?.52:1,touchAction:'manipulation'}}>
-    <span style={{display:'flex',transform:compact?'scale(1.20)':'scale(1.38)'}}><ReportIcon kind={format}/></span>
+   style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:compact?4:7,flex:'0 0 auto',
+    minWidth:compact?72:108,height:compact?58:74,border:'1px solid rgba(89,123,154,.42)',outline:0,borderRadius:14,
+    background:'linear-gradient(180deg,#132131,#0a121d)',color:colors[format],boxShadow:'inset 0 0 0 1px rgba(255,255,255,.03)',padding:compact?'6px 8px':'10px 12px',
+    cursor:busy?'wait':'pointer',opacity:busy ? .52 : 1,touchAction:'manipulation'}}>
+    <span style={{display:'flex',transform:compact?'scale(1.02)':'scale(1.18)'}}><ReportIcon kind={format}/></span>
+    <span style={{fontSize:compact?10:11,fontWeight:900,letterSpacing:'.35px',lineHeight:1.05,color:'#eff7ff'}}>{format==='png'?'IMAGE':format==='share'?'PARTAGE':'PDF'}</span>
   </button>)}
  </div>;
 }
@@ -69,13 +70,13 @@ export function ChallengeReportShareDialog({
     <button type="button" disabled={busy} onClick={()=>onShare('png')}
      style={{minHeight:82,borderRadius:12,border:'1px solid #468ca7',background:'#142b3b',
       color:'#c6efff',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
-      gap:8,fontSize:11,fontWeight:900,opacity:busy?.6:1}}>
+      gap:8,fontSize:11,fontWeight:900,opacity:busy ? .6 : 1}}>
       <ReportIcon kind="png"/>IMAGES PNG (PAGES A4)
     </button>
     <button type="button" disabled={busy} onClick={()=>onShare('pdf')}
      style={{minHeight:82,borderRadius:12,border:'1px solid #945263',background:'#311c27',
       color:'#ffe3ec',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
-      gap:8,fontSize:11,fontWeight:900,opacity:busy?.6:1}}>
+      gap:8,fontSize:11,fontWeight:900,opacity:busy ? .6 : 1}}>
       <ReportIcon kind="pdf"/>DOCUMENT PDF
     </button>
    </div>

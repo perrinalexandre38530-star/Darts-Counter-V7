@@ -4601,6 +4601,23 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
     return report;
   }
 
+  async function prepareHistoryVisualReport(entry: SavedEntry): Promise<ChallengeExportReport | null> {
+    let immediate: ChallengeExportReport | null = null;
+    try {
+      immediate = buildHistoryVisualReport(entry);
+    } catch (projectionError) {
+      console.warn("[history-report] lecture de la projection impossible, tentative History V4", projectionError);
+    }
+    try {
+      const full = await hydrateSavedEntry(entry);
+      const hydrated = buildHistoryVisualReport(full);
+      if (hydrated.players.length) return hydrated;
+    } catch (error) {
+      console.warn("[history-report] hydration History V4 impossible", error);
+    }
+    return immediate?.players.length ? immediate : null;
+  }
+
   async function openHistoryVisualReport(entry: SavedEntry) {
     const requestId = ++historyReportRequestRef.current;
     setHistoryReportEntry(entry);
@@ -4609,25 +4626,45 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
     setHistoryReportInfo("");
     setHistoryReportBusy(true);
     try {
-      // The card's lightweight projection may not contain complete stats.
-      // Failure here must NEVER skip hydration of the authoritative History V4 entry.
-      let immediate: ChallengeExportReport | null = null;
-      try {
-        immediate = buildHistoryVisualReport(entry);
-        if (immediate.players.length) setHistoryReport(immediate);
-      } catch (projectionError) {
-        console.warn("[history-report] lecture de la projection impossible, tentative History V4", projectionError);
-      }
-      const full = await hydrateSavedEntry(entry);
+      const report = await prepareHistoryVisualReport(entry);
       if (requestId !== historyReportRequestRef.current) return;
-      const hydrated = buildHistoryVisualReport(full);
-      if (hydrated.players.length) setHistoryReport(hydrated);
-      else if (!immediate?.players.length) {
-        setHistoryReportError("Cette archive ne contient pas de classement exploitable. Aucun score ne sera inventé. Tu peux néanmoins utiliser le partage du fichier de partie JSON.");
-      }
+      if (report?.players.length) setHistoryReport(report);
+      else setHistoryReportError("Cette archive ne contient pas de classement exploitable. Aucun score ne sera inventé. Tu peux néanmoins utiliser le partage du fichier de partie JSON.");
     } catch (error) {
       if (requestId === historyReportRequestRef.current)
         setHistoryReportError(String((error as Error)?.message || error || "Lecture impossible."));
+    } finally {
+      if (requestId === historyReportRequestRef.current) setHistoryReportBusy(false);
+    }
+  }
+
+  async function handleHistoryCardReport(entry: SavedEntry, format: ChallengeReportFormat) {
+    const requestId = ++historyReportRequestRef.current;
+    setHistoryReportEntry(entry);
+    setHistoryReport(null);
+    setHistoryReportError("");
+    setHistoryReportInfo("");
+    setHistoryShareError("");
+    setHistoryReportBusy(true);
+    try {
+      const report = await prepareHistoryVisualReport(entry);
+      if (requestId !== historyReportRequestRef.current) return;
+      if (!report?.players.length) throw new Error("Cette archive ne contient pas de classement exploitable. Aucun score ne sera inventé.");
+      setHistoryReport(report);
+      if (format === 'share') {
+        setHistoryShareOpen(true);
+        return;
+      }
+      historyFormatRef.current = format === 'pdf' ? 'pdf' : 'png';
+      const result = await exportChallengeResults(report, format);
+      if (requestId !== historyReportRequestRef.current) return;
+      if (result.status === 'preview') setHistoryExportPreview(result);
+      if (result.status === 'download-started') setHistoryReportInfo(format === 'png'
+        ? 'ZIP d’images PNG A4 demandé : une image par page, dans Téléchargements.'
+        : 'PDF multipage demandé. Vérifie Téléchargements : le fichier peut s’ouvrir dans le lecteur PDF de Chrome.');
+    } catch (error) {
+      if (requestId === historyReportRequestRef.current)
+        setHistoryReportError(String((error as Error)?.message || error || "Export impossible."));
     } finally {
       if (requestId === historyReportRequestRef.current) setHistoryReportBusy(false);
     }
@@ -6518,13 +6555,20 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                     </button>
                   </div>
                   {!inProg && (
-                    <button type="button" onClick={(event)=>{event.stopPropagation();void openHistoryVisualReport(e);}}
-                      style={{width:'100%',minHeight:41,display:'flex',alignItems:'center',justifyContent:'center',gap:8,marginTop:6,
-                        background:'linear-gradient(180deg,#171f2c,#0b1320)',border:'1px solid #607083',
-                        borderRadius:11,color:'#cdeafd',fontWeight:950,fontSize:10,letterSpacing:'.4px'}}
-                      title="Créer un rapport visuel PDF, PNG ou partager cette partie">
-                      <Icon.Share /> RAPPORT PDF · IMAGE · PARTAGE
-                    </button>
+                    <div style={{ width: '100%', marginTop: 6, padding: '8px 8px 6px', borderRadius: 12,
+                      border: '1px solid #40556c', background: 'linear-gradient(180deg,#101b28,#09111c)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+                        <span style={{ color: '#ff8f9d', fontSize: 10, fontWeight: 1000, letterSpacing: '.5px' }}>RAPPORT DE PARTIE</span>
+                        {historyReportBusy && historyReportEntry?.id === e.id ? (
+                          <span style={{ color: '#93b9d8', fontSize: 10, fontWeight: 800 }}>Préparation…</span>
+                        ) : null}
+                      </div>
+                      <ChallengeReportActions
+                        compact
+                        busy={historyReportBusy && historyReportEntry?.id === e.id}
+                        onExport={(format) => { void handleHistoryCardReport(e, format); }}
+                      />
+                    </div>
                   )}
                 </div>
 
@@ -6636,31 +6680,6 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
         </div>
       ) : null}
 
-      {historyReportEntry&&createPortal(<div role="presentation" onClick={closeHistoryVisualReport}
-        style={{position:'fixed',inset:0,zIndex:200000,background:'rgba(0,0,0,.85)',display:'grid',placeItems:'center',padding:12}}>
-        <section role="dialog" aria-modal="true" aria-label="Exporter le rapport de cette partie" onClick={event=>event.stopPropagation()}
-          style={{width:'min(94vw,490px)',maxHeight:'85dvh',overflowY:'auto',display:'grid',gap:13,padding:15,
-            border:'1px solid #46627d',borderRadius:18,background:'#09121d',color:'#f2f7ff',boxShadow:'0 18px 70px #000b'}}>
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
-            <strong style={{fontSize:14,color:'#ff8993'}}>EXPORTER LE RAPPORT</strong>
-            <button type="button" aria-label="Fermer" onClick={closeHistoryVisualReport}
-              style={{border:0,background:'none',color:'#fff',fontSize:25,padding:'0 6px'}}>×</button>
-          </div>
-          <div role="status" style={{color:'#c4d0df',fontSize:12,lineHeight:1.5}}>
-            {historyReportBusy && <span style={{color:'#70caff'}}>Chargement des détails History V4… </span>}
-            {historyReport
-              ? `${historyReport.title} · ${historyReport.players.length} joueur(s)`
-              : 'Recherche des statistiques enregistrées'}
-          </div>
-          {historyReportError&&<div role="alert" style={{color:'#ffb5bf',fontSize:12}}>{historyReportError}</div>}
-          {historyReport&&<ChallengeReportActions busy={historyReportBusy} onExport={format=>void handleChallengeHistoryReport(format)}/>}
-          {historyReportInfo&&<p role="status" style={{color:'#a6d8eb',fontSize:11,lineHeight:1.5,margin:0}}>{historyReportInfo}</p>}
-          <small style={{color:'#a3b5c7',lineHeight:1.5}}>
-            PDF télécharge un document PDF ; Image télécharge un ZIP de pages PNG A4. Partager propose d'abord
-            le format, puis ouvre le menu Android lorsque le navigateur l'autorise.
-          </small>
-        </section>
-      </div>, document.body)}
       <ChallengeReportShareDialog open={historyShareOpen} busy={historyReportBusy} error={historyShareError}
         onClose={()=>setHistoryShareOpen(false)} onShare={format=>void handleChallengeHistoryReport(format,true)}/>
       <ChallengeReportPreview result={historyExportPreview} onClose={()=>setHistoryExportPreview(null)}
