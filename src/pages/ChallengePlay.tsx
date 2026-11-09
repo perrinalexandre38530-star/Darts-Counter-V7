@@ -1055,7 +1055,7 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
   </div>
  );
  const renderJdcTargetBars=()=>{
-  type JdcPlot={key:string;label:string;points:number;hits:number;attempts:number;shanghai:number};
+  type JdcPlot={key:string;label:string;points:number;hits:number;attempts:number;shanghai:number;darts:string[]};
   const phaseGroups=[new Map<string,JdcPlot>(),new Map<string,JdcPlot>(),new Map<string,JdcPlot>()];
   const isAll=detailTab==='global'||detailTab==='match';
   const players=isAll?safeParticipants:safeParticipants.filter(participant=>participant.id===detailTab);
@@ -1072,15 +1072,23 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
     const key='p'+objective.phase+':'+label;
     const map=phaseGroups[phaseIndex];
     let item=map.get(key);
-    if(!item){item={key,label,points:0,hits:0,attempts:0,shanghai:0};map.set(key,item);}
+    if(!item){item={key,label,points:0,hits:0,attempts:0,shanghai:0,darts:[]};map.set(key,item);}
     const dartSuccessful=Boolean(evaluated.entrySuccessful[dartIndex]);
-    item.points+=Number(evaluated.entryPoints[dartIndex]||0);
+    const dartPoints=Number(evaluated.entryPoints[dartIndex]||0);
+    const shanghai=objective.phase!==2&&dartIndex%3===2&&(()=>{
+     const volley=entries.slice(dartIndex-2,dartIndex+1);
+     return volley.length===3&&['S','D','T'].every(hit=>volley.some((entry,index)=>entry.hit===hit&&evaluated.entrySuccessful[dartIndex-2+index]));
+    })();
+    item.points+=dartPoints;
     item.hits+=dartSuccessful?1:0;
     item.attempts++;
-    if(objective.phase!==2&&dartIndex%3===2){
-     const volley=entries.slice(dartIndex-2,dartIndex+1);
-     const shanghai=volley.length===3&&['S','D','T'].every(hit=>volley.some((entry,index)=>entry.hit===hit&&evaluated.entrySuccessful[dartIndex-2+index]));
-     if(shanghai)item.shanghai++;
+    if(shanghai)item.shanghai++;
+    // Display the actual recorded darts, not an inference from their total.
+    if(players.length===1){
+     const entry=entries[dartIndex];
+     const segment=Math.round(Number(entry.segment||0));
+     const dartLabel=entry.hit==='MISS'?'MISS':entry.hit==='50'?'BULL50':entry.hit==='25'?'BULL25':entry.hit+(segment||'?');
+     item.darts.push(dartLabel+' (+'+Math.max(0,dartPoints-(shanghai?100:0))+')'+(shanghai?' · SHANGHAI (+100)':''));
     }
    }
   }
@@ -1091,7 +1099,7 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
     const objective=jdcObjectiveForDart(row.index*3);
     if(objective.phase===2)continue;
     const key='p'+objective.phase+':'+objective.sector;
-    phaseGroups[objective.phase-1].set(key,{key,label:String(objective.sector),points:row.value,hits:0,attempts:0,shanghai:0});
+    phaseGroups[objective.phase-1].set(key,{key,label:String(objective.sector),points:row.value,hits:0,attempts:0,shanghai:0,darts:[]});
    }
   }
   const labels=['PHASE 1 · SECTEURS 10 → 15','PHASE 2 · D1 → D20 + BULL','PHASE 3 · SECTEURS 15 → 20'];
@@ -1107,6 +1115,10 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
      <div className={'challenge-objective-bars '+(phaseIndex===1?'jdc-doubles':'jdc-sectors')}>
       {rows.map(row=>renderScoreBar({key:row.key,label:row.label,points:row.points,value:phaseIndex===1?row.hits:row.points,badge:row.shanghai?'★ SHANGHAI'+(row.shanghai>1?' ×'+row.shanghai:''):undefined},highest,phaseIndex===1?'double':'sector',highest))}
      </div>
+     {players.length===1&&rows.some(row=>row.darts.length>0)&&<details className="challenge-jdc-breakdown">
+      <summary>VOIR LES FLÉCHETTES ENREGISTRÉES ET LEURS POINTS</summary>
+      <div>{rows.filter(row=>row.darts.length>0).map(row=><p key={row.key}><strong>{row.label}</strong><span>{row.darts.join(' · ')}</span><b>{row.points} PTS</b></p>)}</div>
+     </details>}
     </section>;
    })}
    {!hasDartDetail&&detailVisitRows.some(row=>row.index>=6&&row.index<13)&&<div className="challenge-jdc-archive-note">Phase 2 : les résultats par double nécessitent l’historique des fléchettes. Aucun hit individuel n’est inventé.</div>}
@@ -1866,10 +1878,10 @@ const css=`
 .challenge-objective-bars.jdc-doubles{grid-template-columns:repeat(7,minmax(0,1fr))}
 .challenge-objective-bar{min-width:0;display:grid;grid-template-rows:150px auto;text-align:center;align-items:end;gap:0}
 .challenge-objective-bar-well{height:150px;min-width:0;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;position:relative;border-bottom:1px solid #3d5268;background:repeating-linear-gradient(to top,transparent 0,transparent 36px,#69809c16 37px)}
-.challenge-objective-bar-fill{box-sizing:border-box;width:min(31px,86%);min-height:15px;display:flex;align-items:center;justify-content:center;border-radius:5px 5px 0 0;background:linear-gradient(160deg,#42caf8,#1686bb);border:1px solid #63dcff;box-shadow:0 0 12px #2ebbee21;transition:height .2s ease}
-.challenge-objective-bar-fill b{display:block;font-size:clamp(9px,2.5vw,12px);color:#071119;font-weight:1100;white-space:nowrap;text-shadow:0 1px #ffffff44}
+.challenge-objective-bar-fill{box-sizing:border-box;width:min(31px,86%);min-height:15px;display:flex;align-items:center;justify-content:center;border-radius:5px 5px 0 0;background:linear-gradient(160deg,#ff6570,#ce2b40);border:1px solid #ff919d;box-shadow:0 0 12px #ff4d572b;transition:height .2s ease}
+.challenge-objective-bar-fill b{display:block;font-size:clamp(9px,2.5vw,12px);color:#fff;font-weight:1100;white-space:nowrap;text-shadow:0 1px 2px #530b19aa}
 .challenge-objective-bar.double .challenge-objective-bar-fill{background:linear-gradient(160deg,#ff889b,#dd445d);border-color:#ffa7b3;box-shadow:0 0 12px #ff6a8326}
-.challenge-objective-bar.generic .challenge-objective-bar-fill{background:linear-gradient(160deg,#5ecff1,#2479ae)}
+.challenge-objective-bar.generic .challenge-objective-bar-fill{background:linear-gradient(160deg,#ff6570,#ce2b40)}
 .challenge-objective-bar-badge{position:absolute;top:3px;left:50%;transform:translateX(-50%);width:max-content;max-width:100%;font-size:7px;line-height:1.25;padding:3px 5px;border-radius:5px;border:1px solid #d6ad3e;background:#352712;color:#ffdc64;font-weight:1000;z-index:1}
 .challenge-objective-bar-label{min-width:0;display:grid;gap:3px;place-items:center;padding:5px 1px 2px;border-top:2px solid #2c526a}
 .challenge-objective-bar-label strong{max-width:100%;font-size:clamp(9px,2.5vw,11px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#e7f1ff}
@@ -1882,6 +1894,12 @@ const css=`
 .challenge-single-target-label b{writing-mode:vertical-rl;transform:rotate(180deg);font-size:12px;color:#cfeaff}
 .challenge-single-target-label small{font-size:8px;color:#91b6ca;writing-mode:vertical-rl;transform:rotate(180deg)}
 .challenge-single-target-chart>.challenge-objective-bars{flex:1 1 auto}
+ .challenge-jdc-breakdown{margin-top:8px;border-top:1px solid #304354;padding:7px 0 0}
+ .challenge-jdc-breakdown summary{cursor:pointer;color:#ff8b95;font-size:9px;font-weight:1000;letter-spacing:.35px;list-style-position:inside}
+ .challenge-jdc-breakdown>div{display:grid;gap:5px;margin-top:7px}
+ .challenge-jdc-breakdown p{margin:0;display:grid;grid-template-columns:38px minmax(0,1fr) auto;gap:6px;align-items:start;padding:5px 6px;border:1px solid #293748;border-radius:6px;background:#08121b;color:#bbc9d6;font-size:9px;line-height:1.5}
+ .challenge-jdc-breakdown p strong{color:#fff}
+ .challenge-jdc-breakdown p b{color:#ff909a;font-size:9px;white-space:nowrap}
 @media(max-width:400px){.challenge-objective-bars{gap:3px;grid-template-columns:repeat(auto-fit,minmax(38px,1fr))}.challenge-objective-bars.jdc-sectors{gap:3px}.challenge-objective-bars.jdc-doubles{gap:3px}.challenge-objective-bar-fill{width:min(24px,90%)}.challenge-objective-bar-label strong{font-size:9px}.challenge-objective-bar-label small{font-size:8px}.challenge-jdc-phase{padding:9px 6px}}
 
 /* Challenge adaptive visit matrix — targets/volley axes follow the real configuration */
