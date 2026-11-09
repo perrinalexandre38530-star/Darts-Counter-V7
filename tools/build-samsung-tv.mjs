@@ -62,6 +62,14 @@ const result = spawnSync(process.execPath, [viteBin, "build", "--config", path.j
 
 if (result.status !== 0) process.exit(result.status || 1);
 
+// Optimize generated TV resources only. The original assets in src/ and public/
+// remain untouched. Crucially, paths and extensions remain unchanged.
+const optimize = spawnSync(process.execPath, [path.join(root, "tools", "optimize-samsung-tv-assets.mjs")], {
+  cwd: root, stdio: "inherit", env,
+});
+if (optimize.status !== 0) process.exit(optimize.status || 1);
+
+
 // Refuse de continuer si Vite a généré un ancien bundle. Le marqueur attendu
 // est lu directement dans SamsungTvApp.tsx afin d'éviter qu'un patch futur
 // mette à jour l'interface TV sans mettre à jour ce script de build.

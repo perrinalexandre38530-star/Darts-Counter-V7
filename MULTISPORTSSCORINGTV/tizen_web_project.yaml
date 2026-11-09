@@ -15,7 +15,7 @@ output_name: MULTISPORTSSCORINGTV
 output_path: ""
 
 # Enable size optimization of wgt for web workspace
-opt: false
+opt: true
 
 # Signing profile to be used for Tizen package signing
 # If value is empty: "", active signing profile will be used
