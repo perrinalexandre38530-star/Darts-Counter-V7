@@ -1,6 +1,6 @@
 import React from 'react';
 import { exportChallengeResults, downloadChallengeFile, type ChallengeExportReport, type ChallengeExportResult } from '../lib/challengeResultsExport';
-import { ChallengeReportActions, ChallengeReportPreview } from '../components/ChallengeReportUI';
+import { ChallengeReportActions, ChallengeReportPreview, ChallengeReportShareDialog } from '../components/ChallengeReportUI';
 import BackDot from '../components/BackDot';
 import ProfileAvatar from '../components/ProfileAvatar';
 import { useTheme } from '../contexts/ThemeContext';
@@ -585,6 +585,9 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
  const [finishExerciseProgressLoading,setFinishExerciseProgressLoading]=React.useState(false);
  const [challengeExportBusy,setChallengeExportBusy]=React.useState(false);
  const [challengeExportError,setChallengeExportError]=React.useState('');
+ const [challengeExportInfo,setChallengeExportInfo]=React.useState('');
+ const [challengeShareOpen,setChallengeShareOpen]=React.useState(false);
+ const [challengeShareError,setChallengeShareError]=React.useState('');
  const [challengeExportPreview,setChallengeExportPreview]=React.useState<ChallengeExportResult|null>(null);
  const challengeLastReportRef=React.useRef<ChallengeExportReport|null>(null);
  const challengeLastFormatRef=React.useRef<'pdf'|'png'>('pdf');
@@ -1362,10 +1365,16 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
 
  // Le document est construit à partir des statistiques réelles de chaque joueur.
  // Export autonome PDF/PNG, indépendant du DOM et du mode d'exercice.
- const handleChallengeExport=async(format:'pdf'|'png'|'share')=>{
+ const handleChallengeExport=async(format:'pdf'|'png'|'share',shareNow=false)=>{
+  if(format==='share'&&!shareNow){
+   setChallengeShareError('');
+   setChallengeShareOpen(true);
+   return;
+  }
   if(challengeExportBusy)return;
   setChallengeExportBusy(true);
   setChallengeExportError('');
+  setChallengeExportInfo('');
   try{
    const report:ChallengeExportReport={
     title:exerciseTitle(cfg),
@@ -1392,8 +1401,11 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
    };
    challengeLastReportRef.current=report;
    challengeLastFormatRef.current=format==='pdf'?'pdf':'png';
-   const result=await exportChallengeResults(report,format);
+   const result=await exportChallengeResults(report,format,{share:shareNow});
    if(result.status==='preview')setChallengeExportPreview(result);
+   if(result.status==='download-started')setChallengeExportInfo('Téléchargement demandé : vérifie le dossier Téléchargements de ton appareil. Si le navigateur intégré le bloque, ouvre la page dans Chrome.');
+   if(result.status==='share-unavailable')setChallengeShareError('Ce navigateur intégré ne permet pas le partage de fichiers. Télécharge l’image ou le PDF avec les icônes, puis utilise Partager depuis Galerie ou Fichiers.');
+   if(result.status==='shared')setChallengeShareOpen(false);
   }catch(error){
    const message=String((error as Error)?.message||'Export impossible sur cet appareil.');
    setChallengeExportError(message);
@@ -1600,9 +1612,11 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
  <button className="finish-stats" onClick={()=>{setDetailTab('global');setDetailSection(exerciseType==='classic'?'PERF':'EXERCICE');setDetailOpen(true)}}>{exerciseType==='classic'?'STATS DÉTAILLÉES':'STATS EXERCICE'}</button>
  <button onClick={()=>go('challenge_config')}>REJOUER</button>
  <div className="finish-export-actions"><ChallengeReportActions busy={challengeExportBusy} onExport={format=>void handleChallengeExport(format)}/></div>
+ {challengeExportInfo&&<div className="finish-export-info" role="status">{challengeExportInfo}</div>}
  {challengeExportError&&<div className="finish-export-error" role="alert">{challengeExportError}</div>}
  <button className="finish-menu" onClick={()=>go('games')}>MENU PRINCIPAL</button>
 </div></div></div>}
+  <ChallengeReportShareDialog open={challengeShareOpen} busy={challengeExportBusy} error={challengeShareError} onClose={()=>setChallengeShareOpen(false)} onShare={format=>void handleChallengeExport(format,true)}/>
   <ChallengeReportPreview result={challengeExportPreview} onClose={()=>setChallengeExportPreview(null)} onDownload={()=>{try{if(challengeLastReportRef.current)downloadChallengeFile(challengeLastReportRef.current,challengeLastFormatRef.current);}catch(error){setChallengeExportError(String((error as Error)?.message||error));setChallengeExportPreview(null);}}}/>
   <style>{css}</style>
  </div>;
@@ -2040,12 +2054,10 @@ const css=`
 .finish-panel .finish-row-metrics>div{min-width:0;display:flex;justify-content:space-between;align-items:center;gap:5px;padding:7px 9px;border:1px solid #2e3b4e;border-radius:8px;background:#0b1420}
 .finish-panel .finish-row-metrics>div small{min-width:0;color:#96a8bd;font-size:clamp(8px,1.4vw,11px);font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .finish-panel .finish-row-metrics>div strong{color:#edf6ff;font-size:clamp(11px,2.2vw,15px);font-weight:1000;white-space:nowrap}
-.finish-panel .finish-export-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;grid-column:1/-1;width:100%}
-.finish-panel .finish-export-actions button{min-width:0;min-height:42px;width:100%;padding:9px 5px;font-size:clamp(8px,1.6vw,11px);border-radius:10px;font-weight:1000;box-shadow:none}
-.finish-panel .finish-export-pdf{background:linear-gradient(180deg,#862c39,#45121e);border:1px solid #e16177;color:#fff}
-.finish-panel .finish-export-png{background:linear-gradient(180deg,#224b63,#102537);border:1px solid #52b7e3;color:#e0faff}
-.finish-panel .finish-export-share{background:linear-gradient(180deg,#175942,#0a3024);border:1px solid #48ba8d;color:#e3fff0}
-.finish-panel .finish-export-actions button:disabled{opacity:.55;cursor:wait}
+.finish-panel .finish-export-actions{display:flex;grid-column:1/-1;justify-content:center;align-items:center;width:100%;margin:0;padding:4px 0}
+.finish-panel .finish-export-actions button{width:56px;min-width:56px;max-width:56px;min-height:56px;height:56px;padding:8px;border:0;border-radius:14px;background:transparent;box-shadow:none}
+.finish-panel .finish-export-actions button:active{background:rgba(255,255,255,.075);transform:scale(.94)}
+.finish-panel .finish-export-info{grid-column:1/-1;color:#a4dff1;font-size:10px;text-align:center;line-height:1.45;padding:5px 7px}
 .finish-panel .finish-export-error{grid-column:1/-1;padding:7px 9px;border:1px solid #c35c63;border-radius:8px;background:#2c1016;color:#ffb8bd;font-size:10px}
 @media(min-width:700px){
  .finish-panel .finish-score-row>.finish-row-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}
