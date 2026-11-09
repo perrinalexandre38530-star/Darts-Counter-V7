@@ -30,7 +30,7 @@ import { isOnlineRecord } from "../lib/x01StatsSource";
 
 import { buildMatchSharePacket, isMatchSharePacketV1, shareOneMatch, type MatchSharePacketV1 } from "../lib/matchShare";
 import { visualReportFromHistory, exportChallengeResults, downloadChallengeFile, type ChallengeExportReport, type ChallengeExportResult } from "../lib/challengeResultsExport";
-import { ChallengeReportActions, ChallengeReportPreview, type ChallengeReportFormat } from "../components/ChallengeReportUI";
+import { ChallengeReportActions, ChallengeReportPreview, ChallengeReportShareDialog, type ChallengeReportFormat } from "../components/ChallengeReportUI";
 import { importRecoveredHistoryJson } from "../lib/importRecoveredHistory";
 import { exportHistoryDump, importHistoryDump } from "../lib/historyCloud";
 import { buildFullHistoryBackup, extractHistoryDumpFromJson, saveFullHistoryBackupFile } from "../lib/historyFileTransfer";
@@ -3879,6 +3879,9 @@ export default function HistoryPage({
   const [historyReport, setHistoryReport] = useState<ChallengeExportReport | null>(null);
   const [historyReportBusy, setHistoryReportBusy] = useState(false);
   const [historyReportError, setHistoryReportError] = useState("");
+  const [historyReportInfo, setHistoryReportInfo] = useState("");
+  const [historyShareOpen, setHistoryShareOpen] = useState(false);
+  const [historyShareError, setHistoryShareError] = useState("");
   const [historyExportPreview, setHistoryExportPreview] = useState<ChallengeExportResult | null>(null);
   const historyFormatRef = useRef<'pdf' | 'png'>('pdf');
   const [friendShareEntry, setFriendShareEntry] = useState<SavedEntry | null>(null);
@@ -4580,14 +4583,23 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
     }
   }
 
-  async function handleChallengeHistoryReport(format:ChallengeReportFormat) {
+  async function handleChallengeHistoryReport(format:ChallengeReportFormat,shareNow=false) {
+    if(format==='share'&&!shareNow){
+      setHistoryShareError("");
+      setHistoryShareOpen(true);
+      return;
+    }
     if(!historyReport||historyReportBusy)return;
     setHistoryReportError("");
+    setHistoryReportInfo("");
     historyFormatRef.current=format==='pdf'?'pdf':'png';
     setHistoryReportBusy(true);
     try {
-      const result=await exportChallengeResults(historyReport,format);
+      const result=await exportChallengeResults(historyReport,format,{share:shareNow});
       if(result.status==='preview')setHistoryExportPreview(result);
+      if(result.status==='download-started')setHistoryReportInfo('Téléchargement demandé. Vérifie Téléchargements ; si le navigateur intégré le bloque, ouvre cette version dans Chrome.');
+      if(result.status==='share-unavailable')setHistoryShareError('Le navigateur intégré bloque le partage de fichiers. Télécharge le PDF ou le PNG, puis partage-le depuis Galerie ou Fichiers.');
+      if(result.status==='shared')setHistoryShareOpen(false);
     } catch(error){
       setHistoryReportError(String((error as Error)?.message||error||"Export impossible."));
     } finally {
@@ -6590,12 +6602,15 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
           </div>
           {historyReportError&&<div role="alert" style={{color:'#ffb5bf',fontSize:12}}>{historyReportError}</div>}
           {historyReport&&<ChallengeReportActions busy={historyReportBusy} onExport={format=>void handleChallengeHistoryReport(format)}/>}
+          {historyReportInfo&&<p role="status" style={{color:'#a6d8eb',fontSize:11,lineHeight:1.5,margin:0}}>{historyReportInfo}</p>}
           <small style={{color:'#a3b5c7',lineHeight:1.5}}>
-            Partage natif sur Android quand disponible. Dans un navigateur intégré non compatible,
-            l'image sera consultable ici pour enregistrement par appui long.
+            PDF et Image lancent des téléchargements distincts. Partager propose d'abord
+            le format, puis ouvre le menu Android lorsque le navigateur l'autorise.
           </small>
         </section>
       </div>}
+      <ChallengeReportShareDialog open={historyShareOpen} busy={historyReportBusy} error={historyShareError}
+        onClose={()=>setHistoryShareOpen(false)} onShare={format=>void handleChallengeHistoryReport(format,true)}/>
       <ChallengeReportPreview result={historyExportPreview} onClose={()=>setHistoryExportPreview(null)}
         onDownload={()=>{try{if(historyReport)downloadChallengeFile(historyReport,historyFormatRef.current);}catch(error){setHistoryReportError(String((error as Error)?.message||error));}setHistoryExportPreview(null);}}/>
       {friendShareEntry ? (
