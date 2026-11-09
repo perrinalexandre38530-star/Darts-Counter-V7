@@ -1,4 +1,6 @@
-export type ChallengeExerciseType='classic'|'clock'|'half-it'|'sequence'|'grouping'|'doubles8'|'jdc';
+import { perfectLineProgress, perfectLineLabels, perfectLineSegment } from './challengePerfectLine';
+export { perfectLineProgress, perfectLineLabels, perfectLineSegment, perfectLineNextParticipant } from './challengePerfectLine';
+export type ChallengeExerciseType='classic'|'clock'|'half-it'|'sequence'|'grouping'|'doubles8'|'jdc'|'perfect-line';
 export type ChallengeScoreMode='challenge'|'real';
 export type ChallengeObjectiveToken='1'|'2'|'3'|'4'|'5'|'6'|'7'|'8'|'9'|'10'|'11'|'12'|'13'|'14'|'15'|'16'|'17'|'18'|'19'|'20'|'bull'|'any-double'|'any-triple';
 export type ChallengeHit='S'|'D'|'T'|'25'|'50'|'MISS';
@@ -18,9 +20,10 @@ export type ChallengeExerciseConfigLike={
  groupingHits?:2|3;
  doublesBonusTarget?:number;
  doublesTargets?:number[];
+ perfectLineSegment?:number;
 };
 
-export type ChallengeEntryLike={hit:ChallengeHit;segment?:number|null;bonusTarget?:number|null};
+export type ChallengeEntryLike={hit:ChallengeHit;segment?:number|null;bonusTarget?:number|null;singleZone?:'G'|'P'|null};
 
 export const DEFAULT_HALF_IT_SEQUENCE:ChallengeObjectiveToken[]=['15','16','any-double','17','18','any-triple','19','20','bull'];
 export const DEFAULT_CUSTOM_SEQUENCE:ChallengeObjectiveToken[]=['20','any-double','18','any-triple','bull'];
@@ -59,7 +62,7 @@ const clampSector=(value:any,fallback:number)=>Math.max(1,Math.min(20,Math.round
 
 export function challengeExerciseType(cfg:ChallengeExerciseConfigLike):ChallengeExerciseType{
  const value=String(cfg?.exerciseType||'classic').toLowerCase();
- return value==='clock'||value==='half-it'||value==='sequence'||value==='grouping'||value==='doubles8'||value==='jdc'?value:'classic';
+ return value==='clock'||value==='half-it'||value==='sequence'||value==='grouping'||value==='doubles8'||value==='jdc'||value==='perfect-line'?value:'classic';
 }
 
 export function normalizedSequence(cfg:ChallengeExerciseConfigLike):ChallengeObjectiveToken[]{
@@ -75,6 +78,7 @@ export function isChallengeObjectiveToken(value:any):value is ChallengeObjective
 
 export function objectiveForVisit(cfg:ChallengeExerciseConfigLike,visitIndex:number):ChallengeObjectiveToken|string{
  const type=challengeExerciseType(cfg);
+ if(type==='perfect-line')return perfectLineLabels(cfg)[Math.max(0,Math.min(5,visitIndex))];
  if(type==='clock'){
   if(visitIndex<20)return String(visitIndex+1) as ChallengeObjectiveToken;
   return cfg.clockIncludeBull?'bull':'20';
@@ -100,6 +104,7 @@ export function objectiveForVisit(cfg:ChallengeExerciseConfigLike,visitIndex:num
 }
 
 export function objectiveLabel(objective:string,cfg?:ChallengeExerciseConfigLike):string{
+ if(/^([DGTP](?:[1-9]|1[0-9]|20)|BULL25|DBULL50)$/.test(objective))return objective;
  if(objective==='any-double')return 'DOUBLE LIBRE';
  if(objective==='any-triple')return 'TRIPLE LIBRE';
  if(objective==='bull'||objective==='bull25'||objective==='bull50')return 'BULL';
@@ -115,6 +120,8 @@ export function objectiveLabel(objective:string,cfg?:ChallengeExerciseConfigLike
 }
 
 export function objectiveBoardKey(objective:string,cfg?:ChallengeExerciseConfigLike):string{
+ if(/^([DGTP])([1-9]|1[0-9]|20)$/.test(objective))return objective.slice(1);
+ if(objective==='BULL25'||objective==='DBULL50')return 'bull';
  if(objective.startsWith('jdc-sector:'))return objective.split(':')[1];
  if(objective.startsWith('jdc-run:')){const n=Number((objective.match(/D(\d+)/)||[])[1]);return String(n||1);}
  if(objective.startsWith('group:'))return String(clampSector(cfg?.groupingMax,20));
@@ -125,6 +132,7 @@ export function objectiveBoardKey(objective:string,cfg?:ChallengeExerciseConfigL
 
 export function exerciseTitle(cfg:ChallengeExerciseConfigLike):string{
  switch(challengeExerciseType(cfg)){
+  case 'perfect-line':return 'LIGNE PARFAITE';
   case 'clock':return 'HORLOGE 1 → 20';
   case 'half-it':return 'HALF-IT';
   case 'sequence':return 'SÉQUENCE';
@@ -138,6 +146,7 @@ export function exerciseTitle(cfg:ChallengeExerciseConfigLike):string{
 export function challengeObjectiveKeyTarget(cfg:ChallengeExerciseConfigLike):string{
  const type=challengeExerciseType(cfg);
  if(type==='classic')return String(cfg.target||'20');
+ if(type==='perfect-line')return `perfect-line-${perfectLineSegment(cfg)}`;
  if(type==='clock')return `clock-${cfg.clockScoreMode==='real'?'real':'hits'}-${cfg.clockIncludeBull?'bull':'20'}`;
  if(type==='half-it')return `halfit-${Math.max(0,Math.round(Number(cfg.halfItStartScore??40)||0))}-${normalizedSequence(cfg).join('.')}`;
  if(type==='sequence')return `sequence-${cfg.sequenceScoreMode==='challenge'?'hits':'real'}-${normalizedSequence(cfg).join('.')}`;
@@ -153,6 +162,7 @@ export function challengeObjectiveKeyTarget(cfg:ChallengeExerciseConfigLike):str
 }
 
 export function challengeOnlineTargetLabel(value:string):string{
+ if(value.startsWith('perfect-line-'))return `LIGNE PARFAITE · ${value.slice('perfect-line-'.length)}`;
  if(value.startsWith('clock-'))return 'HORLOGE';
  if(value.startsWith('halfit-'))return 'HALF-IT';
  if(value.startsWith('sequence-'))return 'SÉQUENCE';
@@ -269,10 +279,25 @@ export type ChallengeExerciseAnalytics={
  jdcShanghaiCount?:number;
  jdcDoubleHits?:number;
  jdcBullHits?:number;
+ perfectLineDarts?:number;
+ perfectLineCompleted?:boolean;
+ perfectLineStageAttempts?:number[];
+ perfectLineStageCompletedOnDart?:number[];
 };
 
 export function evaluateChallengeEntries(entries:ChallengeEntryLike[],cfg:ChallengeExerciseConfigLike):ChallengeEvaluation{
  const type=challengeExerciseType(cfg);
+ if(type==='perfect-line'){
+  const progress=perfectLineProgress(entries,cfg);
+  const entryPoints=progress.successful.map(ok=>ok?1:0);
+  const visitScores:number[]=[],cumulativeScores:number[]=[];
+  let total=0;
+  for(let i=0;i<entries.length;i+=3){
+   const points=entryPoints.slice(i,i+3).reduce((a,b)=>a+b,0);
+   total+=points;visitScores.push(points);cumulativeScores.push(total);
+  }
+  return {score:progress.step,entryPoints,entrySuccessful:progress.successful,visitScores,cumulativeScores};
+ }
  const entryPoints=Array(entries.length).fill(0) as number[];
  const entrySuccessful=Array(entries.length).fill(false) as boolean[];
  const visitScores:number[]=[];
@@ -381,6 +406,24 @@ export function evaluateChallengeEntries(entries:ChallengeEntryLike[],cfg:Challe
 export function analyzeChallengeExercise(entries:ChallengeEntryLike[],cfg:ChallengeExerciseConfigLike):ChallengeExerciseAnalytics{
  const type=challengeExerciseType(cfg);
  const evaluation=evaluateChallengeEntries(entries,cfg);
+ if(type==='perfect-line'){
+  const progress=perfectLineProgress(entries,cfg);
+  const labels=perfectLineLabels(cfg);
+  const objectiveStats:Record<string,ChallengeExerciseObjectiveStats>={};
+  const visitStats:ChallengeExerciseVisitStats[]=[];
+  for(let i=0;i<6;i++){
+   const darts=progress.stageAttempts[i],validated=i<progress.step;
+   objectiveStats[labels[i]]={attempts:darts?1:0,validated:validated?1:0,perfect:validated&&darts===1?1:0,points:validated?1:0};
+   if(darts)visitStats.push({index:i,objective:labels[i],darts,successfulHits:validated?1:0,validated,perfect:validated&&darts===1,points:validated?1:0,scoreBefore:i,scoreAfter:i+(validated?1:0),delta:validated?1:0,halfItCut:false,groupingSector:null});
+  }
+  const perfectVisits=progress.stageAttempts.filter((value,index)=>index<progress.step&&value===1).length;
+  return {type,visitsPlayed:Math.ceil(entries.length/3),completedVisits:progress.step,validatedVisits:progress.step,failedVisits:0,
+   validationRate:Math.round(progress.step/6*1000)/10,perfectVisits,bestValidatedVisitStreak:progress.step,
+   bestPerfectVisitStreak:perfectVisits,bestVisitPoints:1,objectiveStats,visitStats,halfItCuts:0,halfItLowestScore:0,halfItEndScore:0,
+   groupingDoublets:0,groupingTriplets:0,groupingPoints:0,groupingSectorHits:{},topGroupingSector:null,topGroupingSectorHits:0,
+   perfectLineDarts:entries.length,perfectLineCompleted:progress.finished,perfectLineStageAttempts:progress.stageAttempts,
+   perfectLineStageCompletedOnDart:progress.stageCompletedOnDart};
+ }
  const visitsPlayed=Math.ceil(entries.length/3);
  let completedVisits=0;
  let validatedVisits=0;
@@ -566,6 +609,7 @@ export function compareChallengeRankRows(a:ChallengeRankLike,b:ChallengeRankLike
  const scoreDelta=metric(b?.score)-metric(a?.score);
  if(scoreDelta)return scoreDelta;
  const type=challengeExerciseType(cfg);
+ if(type==='perfect-line')return metric(a?.darts)-metric(b?.darts);
  if(type!=='classic'){
   const ax=a?.exerciseStats||{},bx=b?.exerciseStats||{};
   const validation=metric((bx as any).validationRate)-metric((ax as any).validationRate);
@@ -617,10 +661,13 @@ export function challengeExerciseConfigFromRules(rules:any,objectiveOverride?:st
   groupingMin:clampSector(stored?.groupingMin,15),
   groupingMax:clampSector(stored?.groupingMax,20),
   groupingHits:Number(stored?.groupingHits)===3?3:2,
+  perfectLineSegment:clampSector(stored?.perfectLineSegment,20),
   doublesBonusTarget:clampSector(stored?.doublesBonusTarget,20),
   doublesTargets:normalizedDoublesTargets(stored),
  };
- if(type==='jdc'){
+ if(type==='perfect-line'){
+  common.target=String(common.perfectLineSegment);common.rule='all';common.visits=6;
+ }else if(type==='jdc'){
   common.target='10';common.rule='all';common.visits=JDC_TOTAL_VISITS;
  }else if(type==='clock'){
   common.target='1';common.rule='all';common.visits=common.clockIncludeBull?21:20;
@@ -646,6 +693,7 @@ export function challengeCompetitionObjectiveKey(rules:any):string{
 
 export function maxChallengePointsPerDart(cfg:ChallengeExerciseConfigLike):number{
  const type=challengeExerciseType(cfg);
+ if(type==='perfect-line')return 1;
  if(type==='classic')return Math.max(1,...(['S','D','T','25','50'] as ChallengeHit[]).map(hit=>classicHitValue(hit,String(cfg.rule||'all'),String(cfg.target||'20'),20)));
  if(type==='clock'&&cfg.clockScoreMode!=='real')return 3;
  if(type==='sequence'&&cfg.sequenceScoreMode==='challenge')return 3;
