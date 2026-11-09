@@ -257,35 +257,3 @@
 @media (max-width: 390px) {
   .tossit-play-main .tossit-entry-field .tossit-quick-choices { --tossit-quick-columns: 3 !important; }
 }
-
-/* V216 release gate: persistence acknowledgement is a real state, not a promise. */
-.tossit-finish-panel .tossit-save-status {
-  border-radius: 10px;
-  padding: 10px 12px;
-  margin: 12px 0;
-  font-size: 14px;
-  line-height: 1.5;
-  border: 1px solid rgba(145,231,213,.35);
-  background: rgba(72,231,207,.07);
-}
-.tossit-finish-panel .tossit-save-failed {
-  background: rgba(247,196,95,.1);
-  border-color: #f7c45f;
-  color: #ffe7ac;
-}
-.tossit-finish-panel .tossit-save-saved {
-  border-color: #48e7cf;
-  color: #d3fff6;
-}
-.tossit-draft-warning p { font-size: 13px; line-height: 1.5; }
-
-/* V108 – a completed result awaiting IndexedDB takes precedence over a draft. */
-.tossit-recovery-warning {
-  padding: 10px 12px;
-  border: 1px solid #f7c45f;
-  background: rgba(247,196,95,.12);
-  color: #ffe7ac;
-  border-radius: 10px;
-  font-size: 13px;
-  line-height: 1.45;
-}

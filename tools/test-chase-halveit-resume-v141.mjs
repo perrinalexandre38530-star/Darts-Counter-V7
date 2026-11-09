@@ -64,7 +64,7 @@ for (const p of ['src/pages/FiveLivesPlay.tsx','src/pages/HalveItPlay.tsx']) {
   assert.match(code(p),/clearDartsMatchDraft/);
 }
 assert.match(code('src/App.tsx'),/resumeDraft=\{routeParams\?\.resumeDraft === true\}/);
-assert.match(code('src/pages/FiveLivesPlay.tsx'),/onFinish\?\.\(finalMatch, \{ navigate: false \}\)/,'automatic history save at the end');
+assert.match(code('src/pages/FiveLivesPlay.tsx'),/if \(finalMatch\) void saveFinalResult\(false\)/,'automatic history save at the end');
 assert.match(code('src/components/DartsResumeDraftCard.tsx'),/window\.confirm/,'explicit abandonment');
 
 console.log('PASS V141 — 4 isolated local draft slots, resumed rounds/darts, history auto-save, invalid/oversize drafts.');

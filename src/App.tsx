@@ -102,7 +102,7 @@ import AuthCallback from "./pages/AuthCallback"; // si présent dans ton projet
 import AuthReset from "./pages/AuthReset";
 
 import SplashScreen from "./components/SplashScreen";
-import PublicLandingPage from "./pages/PublicLandingPage";
+const PublicLandingPage = React.lazy(() => import("./pages/PublicLandingPage"));
 const UserGuide = React.lazy(() => import("./pages/UserGuide"));
 import { getStartupIntroEnabled } from "./lib/startupAudioPrefs";
 
@@ -4674,7 +4674,7 @@ useEffect(() => {
   /* --------------------------------------------
       pushHistory (FIN DE PARTIE)
   -------------------------------------------- */
-  function pushHistory(m: MatchRecord, options?: { navigate?: boolean }) {
+  function pushHistory(m: MatchRecord, options?: { navigate?: boolean; confirmPersistence?: boolean; suppressFailureAlert?: boolean }): Promise<boolean> {
     const now = Date.now();
     const id = (m as any)?.id || (m as any)?.matchId || `x01-${now}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -4749,11 +4749,12 @@ useEffect(() => {
       },
     };
 
-    // TOSSIT's finish screen explicitly waits for History V4. Do not also
-    // publish a *failed* TOSSIT match to the in-memory stats/history mirror.
-    // Other sports keep their pre-existing optimistic update behavior.
+    // TOSSIT (V113) and the four 5 VIES/CHASE/HALVE-IT/SPLIT SCORE flows
+    // must wait for the authoritative History V4 commit before updating the
+    // in-memory mirror. Other modes retain their legacy optimistic behavior.
     const isTossitMatch = String(saved.kind).toLowerCase() === "tossit" || String(saved.payload?.sport).toLowerCase() === "tossit";
-    const mirrorToAppStore = () => {
+    const confirmBeforeMirror = isTossitMatch || options?.confirmPersistence === true;
+    const updateVisibleHistory = () => {
       try { recordProfileUsageFromMatch(saved, saved.kind, safeArray(store?.profiles)); } catch {}
       setStore((s) => {
         const list = [...((s as any).history ?? [])];
@@ -4765,13 +4766,13 @@ useEffect(() => {
         return next;
       });
     };
-    if (!isTossitMatch) mirrorToAppStore();
+    if (!confirmBeforeMirror) updateVisibleHistory();
 
-    // IndexedDB remains the canonical History V4 store. TOSSIT's UI awaits
-    // this boolean result before reporting success or clearing local recovery.
+    // IndexedDB remains the single History V4 source of truth.
+    // Do not publish uncommitted matches for either TOSSIT or the four modes.
     const upsertPromise = persistFinishedMatchForAds(saved, String(saved.kind || "game"));
-    if (isTossitMatch) {
-      void upsertPromise.then((committed) => { if (committed) mirrorToAppStore(); });
+    if (confirmBeforeMirror) {
+      void upsertPromise.then((committed) => { if (committed) updateVisibleHistory(); });
     }
 
     // LOCAL-FIRST WAVE 4: every online mirror/upload is chained AFTER the
@@ -4918,9 +4919,9 @@ useEffect(() => {
           detail: { id: String(saved?.id || ""), kind: String(saved?.kind || "game"), at: Date.now() },
         }));
       } catch {}
-      // The TOSSIT finish panel already provides a non-blocking, retryable
-      // error message; keep alerts for existing modes as before.
-      if (!isTossitMatch) {
+      // TOSSIT and the four modes have their own non-blocking retry UI.
+      // Preserve alerts for all other gameplay modes.
+      if (!isTossitMatch && options?.suppressFailureAlert !== true) {
         try {
           window.alert("La partie n'a pas pu être enregistrée localement. Elle reste affichée afin que tu puisses réessayer sans perdre le résultat.");
         } catch {}
@@ -6740,7 +6741,7 @@ case "babyfoot_team_edit":
           );
           break;
         }
-        page = <FiveLivesPlay key={String(cfg?.id || "five-lives")} store={store} go={go} config={cfg} resumeDraft={routeParams?.resumeDraft === true} onFinish={(m: any, options?: { navigate?: boolean }) => pushHistory(enrichOnlineMatchForHistory(m, "five_lives", routeParams), options)} />;
+        page = <FiveLivesPlay key={String(cfg?.id || "five-lives")} store={store} go={go} config={cfg} resumeDraft={routeParams?.resumeDraft === true} onFinish={(m: any, options?: { navigate?: boolean; confirmPersistence?: boolean; suppressFailureAlert?: boolean }) => pushHistory(enrichOnlineMatchForHistory(m, "five_lives", routeParams), options)} />;
         break;
       }
 
@@ -7119,7 +7120,7 @@ case "babyfoot_team_edit":
             go={go}
             setTab={go}
             params={routeParams}
-            onFinish={(m: any, options?: { navigate?: boolean }) =>
+            onFinish={(m: any, options?: { navigate?: boolean; confirmPersistence?: boolean; suppressFailureAlert?: boolean }) =>
               pushHistory(enrichOnlineMatchForHistory(m, routeParams?.variantId === "split_score" ? "split_score" : "halve_it", routeParams), options)
             }
           />

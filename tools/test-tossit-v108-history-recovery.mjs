@@ -46,8 +46,9 @@ const app = readFileSync('src/App.tsx', 'utf8');
 const screens = readFileSync('src/pages/tossit/TossitScreens.tsx', 'utf8');
 const css = readFileSync('src/pages/tossit/tossitResponsive.css', 'utf8');
 assert.match(app, /return upsertPromise;/, 'History V4 promise returned to TOSSIT');
-assert.match(app, /if \(!isTossitMatch\) mirrorToAppStore\(\);/, 'other sports retain existing behavior');
-assert.match(app, /if \(isTossitMatch\) \{\s*void upsertPromise\.then\(\(committed\) => \{ if \(committed\) mirrorToAppStore\(\); \}\);/, 'TOSSIT in-memory history updates only after IndexedDB success');
+assert.match(app, /const confirmBeforeMirror = isTossitMatch \|\| options\?\.confirmPersistence === true;/, 'TOSSIT and V217 modes await History V4');
+assert.match(app, /if \(!confirmBeforeMirror\) updateVisibleHistory\(\);/, 'other sports retain existing optimistic behavior');
+assert.match(app, /if \(confirmBeforeMirror\) \{\s*void upsertPromise\.then\(\(committed\) => \{ if \(committed\) updateVisibleHistory\(\); \}\);/, 'TOSSIT history mirrors only after IndexedDB success');
 
 assert.match(app, /<TossitPlay go=\{go\} params=\{routeParams\} onFinish=/, 'TOSSIT receives persistence callback');
 for (const phrase of [

@@ -18,7 +18,6 @@ import { dartsFamilyHistoryKey } from "../lib/historyDartsVariants";
 // ============================================
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import type { Store } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
@@ -3876,7 +3875,6 @@ export default function HistoryPage({
   const [inboxLocal, setInboxLocal] = useState<InboxItemLocal[]>([]);
   const [inboxCloud, setInboxCloud] = useState<InboxRowCloud[]>([]);
   const [inboxLoading, setInboxLoading] = useState(false);
-  const historyReportRequestRef = useRef(0);
   const [historyReportEntry, setHistoryReportEntry] = useState<SavedEntry | null>(null);
   const [historyReport, setHistoryReport] = useState<ChallengeExportReport | null>(null);
   const [historyReportBusy, setHistoryReportBusy] = useState(false);
@@ -4557,116 +4555,31 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
   }
 
 
-  // Keep the report window outside StatsHub's transformed/scrolling layout:
-  // a fixed child inside that layout can be clipped, leaving only a dark screen.
-  function closeHistoryVisualReport() {
-    historyReportRequestRef.current++;
-    setHistoryReportEntry(null);
-    setHistoryReport(null);
-    setHistoryReportBusy(false);
-    setHistoryReportError("");
-    setHistoryReportInfo("");
-    setHistoryShareOpen(false);
-  }
-
-  // Read already available card data immediately, then enrich with History V4.
-  // No silent failure for older sports/matches lacking detailed darts.
-  function buildHistoryVisualReport(entry: SavedEntry): ChallengeExportReport {
-    const report = visualReportFromHistory(entry);
-    if (report.players.length) return report;
-    const ranked = genericHistoryRankScorePlayers(entry);
-    const avatars = getHistoryAvatarPlayersInFinalOrder(entry);
-    const players = ranked.length ? ranked.map((row) => ({
-      name: row.name,
-      score: row.main,
-    })) : avatars.map((row) => ({
-      name: historyScoreName(entry, row),
-      score: row?.score ?? row?.points ?? row?.total ?? row?.finalScore ?? "—",
-    }));
-    const names = new Set<string>();
-    report.players = players.filter((p) => {
-      const key = String(p.name || "").trim().toLowerCase();
-      if (!key || names.has(key)) return false;
-      names.add(key);
-      return true;
-    }).map((p) => {
-      const raw = String(p.score ?? "").trim().replace(',', '.');
-      const numeric = raw !== '' && /^-?\d+(?:\.\d+)?$/.test(raw) ? Number(raw) : Number.NaN;
-      return {
-        name: p.name, score: numeric,
-        accuracy: null, darts: null, bestStreak: null, avgVisit: null,
-        metrics: [], visits: [],
-      };
-    });
-    return report;
-  }
-
-  async function prepareHistoryVisualReport(entry: SavedEntry): Promise<ChallengeExportReport | null> {
-    let immediate: ChallengeExportReport | null = null;
-    try {
-      immediate = buildHistoryVisualReport(entry);
-    } catch (projectionError) {
-      console.warn("[history-report] lecture de la projection impossible, tentative History V4", projectionError);
-    }
-    try {
-      const full = await hydrateSavedEntry(entry);
-      const hydrated = buildHistoryVisualReport(full);
-      if (hydrated.players.length) return hydrated;
-    } catch (error) {
-      console.warn("[history-report] hydration History V4 impossible", error);
-    }
-    return immediate?.players.length ? immediate : null;
-  }
-
+  // Two-step historical export keeps navigator.share() tied to a real user tap:
+  // first hydrate the archived entry; then tap PDF, PNG or share in the dialog.
   async function openHistoryVisualReport(entry: SavedEntry) {
-    const requestId = ++historyReportRequestRef.current;
     setHistoryReportEntry(entry);
     setHistoryReport(null);
     setHistoryReportError("");
-    setHistoryReportInfo("");
     setHistoryReportBusy(true);
     try {
-      const report = await prepareHistoryVisualReport(entry);
-      if (requestId !== historyReportRequestRef.current) return;
-      if (report?.players.length) setHistoryReport(report);
-      else setHistoryReportError("Cette archive ne contient pas de classement exploitable. Aucun score ne sera inventé. Tu peux néanmoins utiliser le partage du fichier de partie JSON.");
-    } catch (error) {
-      if (requestId === historyReportRequestRef.current)
-        setHistoryReportError(String((error as Error)?.message || error || "Lecture impossible."));
-    } finally {
-      if (requestId === historyReportRequestRef.current) setHistoryReportBusy(false);
-    }
-  }
-
-  async function handleHistoryCardReport(entry: SavedEntry, format: ChallengeReportFormat) {
-    const requestId = ++historyReportRequestRef.current;
-    setHistoryReportEntry(entry);
-    setHistoryReport(null);
-    setHistoryReportError("");
-    setHistoryReportInfo("");
-    setHistoryShareError("");
-    setHistoryReportBusy(true);
-    try {
-      const report = await prepareHistoryVisualReport(entry);
-      if (requestId !== historyReportRequestRef.current) return;
-      if (!report?.players.length) throw new Error("Cette archive ne contient pas de classement exploitable. Aucun score ne sera inventé.");
-      setHistoryReport(report);
-      if (format === 'share') {
-        setHistoryShareOpen(true);
-        return;
+      const full=await hydrateSavedEntry(entry);
+      const report=visualReportFromHistory(full);
+      // Some older records only expose their score line through the legacy
+      // History parser. Keep that display truthful instead of inventing scores.
+      if(!report.players.length){
+        const rankRows=genericHistoryRankScorePlayers(full);
+        report.players=rankRows.map(row=>{
+          const numeric=Number(String(row.main??'').replace(',','.'));
+          return {name:row.name,score:Number.isFinite(numeric)?numeric:Number.NaN,accuracy:null,darts:null,bestStreak:null,avgVisit:null,metrics:[],visits:[]};
+        });
       }
-      historyFormatRef.current = format === 'pdf' ? 'pdf' : 'png';
-      const result = await exportChallengeResults(report, format);
-      if (requestId !== historyReportRequestRef.current) return;
-      if (result.status === 'preview') setHistoryExportPreview(result);
-      if (result.status === 'download-started') setHistoryReportInfo(format === 'png'
-        ? 'ZIP d’images PNG A4 demandé : une image par page, dans Téléchargements.'
-        : 'PDF multipage demandé. Vérifie Téléchargements : le fichier peut s’ouvrir dans le lecteur PDF de Chrome.');
-    } catch (error) {
-      if (requestId === historyReportRequestRef.current)
-        setHistoryReportError(String((error as Error)?.message || error || "Export impossible."));
+      if(!report.players.length)throw new Error("Cette archive ne contient pas de classement exploitable pour un rapport visuel.");
+      setHistoryReport(report);
+    } catch(error) {
+      setHistoryReportError(String((error as Error)?.message||error||"Lecture impossible."));
     } finally {
-      if (requestId === historyReportRequestRef.current) setHistoryReportBusy(false);
+      setHistoryReportBusy(false);
     }
   }
 
@@ -4684,7 +4597,7 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
     try {
       const result=await exportChallengeResults(historyReport,format,{share:shareNow});
       if(result.status==='preview')setHistoryExportPreview(result);
-      if(result.status==='download-started')setHistoryReportInfo(format==='png'?'ZIP d’images PNG A4 demandé : une image par page, dans Téléchargements.':'PDF multipage demandé. Vérifie Téléchargements : le fichier peut s’ouvrir dans le lecteur PDF de Chrome.');
+      if(result.status==='download-started')setHistoryReportInfo('Téléchargement demandé. Vérifie Téléchargements ; si le navigateur intégré le bloque, ouvre cette version dans Chrome.');
       if(result.status==='share-unavailable')setHistoryShareError('Le navigateur intégré bloque le partage de fichiers. Télécharge le PDF ou le PNG, puis partage-le depuis Galerie ou Fichiers.');
       if(result.status==='shared')setHistoryShareOpen(false);
     } catch(error){
@@ -6555,20 +6468,13 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                     </button>
                   </div>
                   {!inProg && (
-                    <div style={{ width: '100%', marginTop: 6, padding: '8px 8px 6px', borderRadius: 12,
-                      border: '1px solid #40556c', background: 'linear-gradient(180deg,#101b28,#09111c)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
-                        <span style={{ color: '#ff8f9d', fontSize: 10, fontWeight: 1000, letterSpacing: '.5px' }}>RAPPORT DE PARTIE</span>
-                        {historyReportBusy && historyReportEntry?.id === e.id ? (
-                          <span style={{ color: '#93b9d8', fontSize: 10, fontWeight: 800 }}>Préparation…</span>
-                        ) : null}
-                      </div>
-                      <ChallengeReportActions
-                        compact
-                        busy={historyReportBusy && historyReportEntry?.id === e.id}
-                        onExport={(format) => { void handleHistoryCardReport(e, format); }}
-                      />
-                    </div>
+                    <button type="button" onClick={(event)=>{event.stopPropagation();void openHistoryVisualReport(e);}}
+                      style={{width:'100%',minHeight:41,display:'flex',alignItems:'center',justifyContent:'center',gap:8,marginTop:6,
+                        background:'linear-gradient(180deg,#171f2c,#0b1320)',border:'1px solid #607083',
+                        borderRadius:11,color:'#cdeafd',fontWeight:950,fontSize:10,letterSpacing:'.4px'}}
+                      title="Créer un rapport visuel PDF, PNG ou partager cette partie">
+                      <Icon.Share /> RAPPORT PDF · IMAGE · PARTAGE
+                    </button>
                   )}
                 </div>
 
@@ -6680,6 +6586,29 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
         </div>
       ) : null}
 
+      {historyReportEntry&&<div role="presentation" onClick={()=>!historyReportBusy&&setHistoryReportEntry(null)}
+        style={{position:'fixed',inset:0,zIndex:13000,background:'rgba(0,0,0,.85)',display:'grid',placeItems:'center',padding:12}}>
+        <section role="dialog" aria-modal="true" aria-label="Exporter le rapport de cette partie" onClick={event=>event.stopPropagation()}
+          style={{width:'min(94vw,490px)',maxHeight:'85dvh',overflowY:'auto',display:'grid',gap:13,padding:15,
+            border:'1px solid #46627d',borderRadius:18,background:'#09121d',color:'#f2f7ff',boxShadow:'0 18px 70px #000b'}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
+            <strong style={{fontSize:14,color:'#ff8993'}}>EXPORTER LE RAPPORT</strong>
+            <button type="button" aria-label="Fermer" onClick={()=>setHistoryReportEntry(null)}
+              style={{border:0,background:'none',color:'#fff',fontSize:25,padding:'0 6px'}}>×</button>
+          </div>
+          <div style={{color:'#c4d0df',fontSize:12}}>
+            {historyReportBusy&&!historyReport?'Lecture des statistiques enregistrées…':
+              historyReport?(historyReport.title+' · '+historyReport.players.length+' joueur(s)'):'Rapport'}
+          </div>
+          {historyReportError&&<div role="alert" style={{color:'#ffb5bf',fontSize:12}}>{historyReportError}</div>}
+          {historyReport&&<ChallengeReportActions busy={historyReportBusy} onExport={format=>void handleChallengeHistoryReport(format)}/>}
+          {historyReportInfo&&<p role="status" style={{color:'#a6d8eb',fontSize:11,lineHeight:1.5,margin:0}}>{historyReportInfo}</p>}
+          <small style={{color:'#a3b5c7',lineHeight:1.5}}>
+            PDF et Image lancent des téléchargements distincts. Partager propose d'abord
+            le format, puis ouvre le menu Android lorsque le navigateur l'autorise.
+          </small>
+        </section>
+      </div>}
       <ChallengeReportShareDialog open={historyShareOpen} busy={historyReportBusy} error={historyShareError}
         onClose={()=>setHistoryShareOpen(false)} onShare={format=>void handleChallengeHistoryReport(format,true)}/>
       <ChallengeReportPreview result={historyExportPreview} onClose={()=>setHistoryExportPreview(null)}

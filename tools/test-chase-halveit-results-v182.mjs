@@ -47,7 +47,7 @@ assert.match(halve,/\$\{stat\.validHits\}\/\$\{stat\.darts\}/,'dénominateur bas
 assert.doesNotMatch(halve,/minWidth: 790/,'plus de tableau rigide de 790px dans les résultats');
 assert.match(css,/msc-halveit-end-actions/,'actions adaptées aux petits écrans');
 assert.match(five,/finalMatch\.payload\.visitHistory\.slice\(-8\)/,'huit dernières volées 5 VIES et CHASE');
-assert.match(five,/if \(!finalMatch \|\| savedRef\.current \|\| typeof onFinish !== "function"\) return;/,'pas de confirmation de sauvegarde sans onFinish');
-assert.match(five,/onFinish\?\.\(finalMatch, \{ navigate: false \}\);\s*savedRef\.current = true;/,'drapeau confirmé après écriture');
-assert.match(five,/Réessaie depuis les résultats/,'message de récupération en cas d’erreur');
+assert.match(five,/if \(!finalMatch \|\| typeof onFinish !== "function"\)/,'pas de confirmation de sauvegarde sans onFinish');
+assert.match(five,/const confirmed = await saveGateRef\.current\.save/,'drapeau confirmé après écriture');
+assert.match(five,/Sauvegarde locale échouée/,'message de récupération en cas d’erreur');
 console.log('PASS V182 — équipes, scoring 9 manches, stats et journaux, fin de partie responsive, History protégé.');

@@ -1,5 +1,4 @@
 import React from 'react';
-import { BottomNavIcon } from '../components/BottomNav';
 import BackDot from '../components/BackDot';
 import PlayerPagedSelector from '../components/PlayerPagedSelector';
 import ProfileAvatar from '../components/ProfileAvatar';
@@ -391,53 +390,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
 
  const audioStage=<Section title="SONS CHALLENGE" subtitle="Jingle d’intro, impacts S / D / T / MISS et musique de fin de partie." key="audio"><div className="audio-toggle-row"><button type="button" className={soundsEnabled?'on':''} onClick={()=>toggleChallengeSounds(true)}><b>SONS ON</b><span>Jingles et impacts activés</span></button><button type="button" className={!soundsEnabled?'on off':''} onClick={()=>toggleChallengeSounds(false)}><b>SONS OFF</b><span>Challenge totalement silencieux</span></button></div></Section>;
 
- const jdcStage=<Section title="LE JDC CHALLENGE" subtitle="3 phases · 19 volées · 57 fléchettes" key="jdc">
-  <div className="jdc-guide" aria-label="Règles et déroulement du JDC Challenge">
-   <div className="jdc-guide-intro">
-    <span className="jdc-guide-intro-title"><span className="jdc-guide-intro-symbol" aria-hidden="true"><BottomNavIcon name="tournaments" size={20}/></span><span>PARCOURS DU CHALLENGE</span></span>
-    <div className="jdc-guide-metrics" aria-label="3 phases, 19 volées, 57 fléchettes">
-     <span><b>03</b><small>PHASES</small></span>
-     <span><b>19</b><small>VOLÉES</small></span>
-     <span><b>57</b><small>FLÉCHETTES</small></span>
-    </div>
-   </div>
-   <div className="jdc-guide-steps">
-    <article className="jdc-guide-phase jdc-guide-phase--blue">
-     <div className="jdc-guide-phase-head">
-      <span className="jdc-guide-index" aria-label="Phase 1"><BottomNavIcon name="games" size={20}/><small>01</small></span>
-      <div className="jdc-guide-phase-heading"><span className="jdc-guide-eyebrow">PHASE 1 · PRÉCISION</span><h3>LES SECTEURS 10 À 15</h3></div>
-      <span className="jdc-guide-count">6 VOLÉES</span>
-     </div>
-     <div className="jdc-guide-targets" aria-label="Une volée par secteur de 10 à 15">{[10,11,12,13,14,15].map(value=><span key={value}>{value}</span>)}</div>
-     <div className="jdc-guide-rule"><span className="jdc-guide-rule-icon" aria-hidden="true"><BottomNavIcon name="games" size={18}/></span><p><strong>3 fléchettes par secteur.</strong> Chaque S, D ou T rapporte sa <strong>valeur réelle</strong>.</p></div>
-     <div className="jdc-guide-bonus"><span className="jdc-guide-bonus-icon" aria-hidden="true"><BottomNavIcon name="tournaments" size={18}/></span><div><b>SHANGHAI <strong>+100 PTS</strong></b><small>Un simple + un double + un triple du secteur dans la même volée.</small></div></div>
-    </article>
-    <div className="jdc-guide-connector" aria-hidden="true"><span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v16m-6-6 6 6 6-6"/></svg></span></div>
-    <article className="jdc-guide-phase jdc-guide-phase--red">
-     <div className="jdc-guide-phase-head">
-      <span className="jdc-guide-index" aria-label="Phase 2"><BottomNavIcon name="tournaments" size={20}/><small>02</small></span>
-      <div className="jdc-guide-phase-heading"><span className="jdc-guide-eyebrow">PHASE 2 · ADRESSE</span><h3>LE TOUR DES DOUBLES</h3></div>
-      <span className="jdc-guide-count">7 VOLÉES</span>
-     </div>
-     <div className="jdc-guide-path" aria-label="D1 à D20 puis Bull rouge"><span>D1</span><i>→</i><span>D2</span><i>→</i><span className="jdc-guide-ellipsis">···</span><i>→</i><span>D20</span><i>→</i><span className="jdc-guide-bull">BULL</span></div>
-     <div className="jdc-guide-rule"><span className="jdc-guide-rule-icon" aria-hidden="true"><BottomNavIcon name="games" size={18}/></span><p><strong>1 seule fléchette par double</strong>, dans l’ordre. La cible change après chaque lancer. Termine par le <strong>Bull rouge (50)</strong>.</p></div>
-     <div className="jdc-guide-payouts"><span><strong>+50</strong><small>PAR DOUBLE TOUCHÉ</small></span><span className="jdc-guide-payouts-bull"><strong>+100</strong><small>SI BULL ROUGE</small></span></div>
-    </article>
-    <div className="jdc-guide-connector" aria-hidden="true"><span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v16m-6-6 6 6 6-6"/></svg></span></div>
-    <article className="jdc-guide-phase jdc-guide-phase--blue">
-     <div className="jdc-guide-phase-head">
-      <span className="jdc-guide-index" aria-label="Phase 3"><BottomNavIcon name="stats" size={20}/><small>03</small></span>
-      <div className="jdc-guide-phase-heading"><span className="jdc-guide-eyebrow">PHASE 3 · FINISH</span><h3>LES SECTEURS 15 À 20</h3></div>
-      <span className="jdc-guide-count">6 VOLÉES</span>
-     </div>
-     <div className="jdc-guide-targets" aria-label="Une volée par secteur de 15 à 20">{[15,16,17,18,19,20].map(value=><span key={value}>{value}</span>)}</div>
-     <div className="jdc-guide-rule"><span className="jdc-guide-rule-icon" aria-hidden="true"><BottomNavIcon name="games" size={18}/></span><p><strong>3 fléchettes par secteur.</strong> Même règle que la phase 1 : points réels pour S, D et T.</p></div>
-     <div className="jdc-guide-bonus"><span className="jdc-guide-bonus-icon" aria-hidden="true"><BottomNavIcon name="tournaments" size={18}/></span><div><b>SHANGHAI <strong>+100 PTS</strong></b><small>Simple + double + triple sur le même secteur.</small></div></div>
-    </article>
-   </div>
-   <div className="jdc-guide-finale"><span className="jdc-guide-finale-icon" aria-hidden="true"><BottomNavIcon name="stats" size={22}/></span><div><small>CLASSEMENT FINAL · TOTAL DES TROIS PHASES</small><strong>À TOI DE BATTRE LE RECORD !</strong></div><span className="jdc-guide-max"><b>3 380</b><small>PTS MAX</small></span></div>
-  </div>
- </Section>;
+ const jdcStage=<Section title="LE JDC CHALLENGE · 19 VOLÉES" subtitle="Programme fixe, score cumulé, 57 fléchettes." key="jdc"><div className="advanced-block compact"><h3>PHASE 1 · 6 VOLÉES</h3><div className="locked-hint">10 → 15 : une volée de 3 fléchettes par secteur. S / D / T rapportent leur valeur réelle. SHANGHAI (un S + un D + un T sur la cible) = +100 pts.</div></div><div className="advanced-block compact"><h3>PHASE 2 · 7 VOLÉES</h3><div className="locked-hint">Un seul essai sur chaque double dans l’ordre D1 → D20, puis BULL 50 : +50 pts par double réussi et +100 pts pour le Bull rouge. L’objectif change après chaque fléchette.</div></div><div className="advanced-block compact"><h3>PHASE 3 · 6 VOLÉES</h3><div className="locked-hint">15 → 20 : même règle que la phase 1, SHANGHAI +100 pts. Score total théorique : 3380 pts.</div></div></Section>;
  const exerciseSettings=exerciseType==='jdc'?[jdcStage]:exerciseType==='classic'?[targetStage,visitsStage,ruleStage]:exerciseType==='clock'?[clockStage]:exerciseType==='half-it'?[halfItStage]:exerciseType==='sequence'?[sequenceStage]:exerciseType==='doubles8'?[doubles8Stage]:[visitsStage,groupingStage];
  const stages=[formatStage,playersStage,exerciseStage,...exerciseSettings,audioStage];
  const stepLabels=['FORMAT','JOUEURS','EXERCICE',...(exerciseType==='classic'?['CIBLE','TOURS','OBJECTIF']:exerciseType==='clock'?['HORLOGE']:exerciseType==='half-it'?['HALF-IT']:exerciseType==='sequence'?['SÉQUENCE']:exerciseType==='doubles8'?['8 DOUBLES']:exerciseType==='jdc'?['JDC']: ['TOURS','GROUPEMENT']),'SONS'];
@@ -522,109 +475,6 @@ const css=(p:string)=>`
 .preset-actions{display:flex;align-items:center;gap:9px;margin-top:7px;padding:0 3px}.preset-actions small{color:#7f8c9e;font-size:7.5px}.favorite-set{min-height:34px;border:1px solid #4d5b6e;border-radius:999px;background:#0a1119;color:#d9e2ed;padding:6px 11px;display:flex;align-items:center;gap:6px;font-size:8px;font-weight:1000}.favorite-set span{font-size:15px;color:#ffd85c}.favorite-set.on{border-color:#9c7a2d;background:#211a09;color:#fff}
 .config-actions{position:sticky;bottom:calc(82px + env(safe-area-inset-bottom,0px));z-index:8;display:flex;justify-content:flex-end;gap:8px;margin-top:6px;padding:7px;border-radius:14px;background:linear-gradient(180deg,#06090eda,#040609f2);backdrop-filter:blur(10px);border:1px solid #293544}.config-actions button{min-height:42px}.config-actions .launch{min-width:220px;background:linear-gradient(180deg,#2be15e,#07852e);border-color:#69ff8d;box-shadow:inset 0 0 14px #aaffb433,0 0 22px #23e75c44;font-size:12px}.config-actions button:disabled{opacity:.38;filter:grayscale(.6);cursor:not-allowed;box-shadow:none}
 .team-picker-overlay{position:fixed;inset:0;z-index:10040;display:grid;place-items:center;padding:max(12px,env(safe-area-inset-top,0px)) 12px max(14px,env(safe-area-inset-bottom,0px));background:#000d;backdrop-filter:blur(8px)}.team-picker-card{width:min(720px,96vw);max-height:min(88dvh,760px);display:flex;flex-direction:column;overflow:hidden;border:1px solid ${p}99;border-radius:22px;background:linear-gradient(180deg,#0d1622,#05080e);box-shadow:0 28px 80px #000,0 0 32px ${p}33}.team-picker-head{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 12px;border-bottom:1px solid ${p}55}.team-picker-identity{min-width:0;display:grid;grid-template-columns:50px minmax(0,1fr);gap:9px;align-items:center}.team-picker-identity>img,.team-picker-identity>span{width:50px;height:50px;border-radius:50%;object-fit:cover;display:grid;place-items:center;background:#101722;border:1px solid #59687b;font-weight:1000}.team-picker-identity>div{min-width:0}.team-picker-identity small,.team-picker-identity b,.team-picker-identity em{display:block}.team-picker-identity small{font-size:8px;color:${p};font-weight:1000;letter-spacing:1px}.team-picker-identity b{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.team-picker-identity em{font-size:9px;color:#9aa7b8;font-style:normal}.team-picker-close{width:40px;height:40px;border-radius:12px;border:1px solid #566477;background:#0c121b;color:#fff;font-size:21px}.team-picker-body{min-height:0;overflow:auto;padding:12px}.team-player-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.team-player-card{min-width:0;min-height:142px;border:1px solid #3d4a5d;border-radius:16px;background:linear-gradient(180deg,#101722,#080d14);color:#fff;padding:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}.team-player-card.on{border-color:${p};background:linear-gradient(180deg,#471319,#17090c);box-shadow:0 0 18px ${p}44}.team-player-card:disabled{opacity:.36}.team-player-avatar{width:78px;height:78px;border-radius:50%;overflow:hidden;display:grid;place-items:center;border:2px solid #59687b;background:#101722}.team-player-avatar>*{width:100%!important;height:100%!important}.team-player-fallback{font-size:28px;font-weight:1000}.team-player-card b{width:100%;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.team-player-card small{font-size:7px;color:#97a4b4;font-weight:900}.team-picker-actions{flex:0 0 auto;display:flex;justify-content:flex-end;gap:8px;padding:10px 12px;border-top:1px solid #273545}.team-picker-actions button{min-height:40px;border:1px solid #4f5d6e;border-radius:11px;background:#0a1018;color:#fff;padding:8px 14px;font-weight:1000}.team-picker-actions .validate{border-color:${p};background:linear-gradient(180deg,#5a141b,#1a090c);color:#fff}.team-picker-actions button:disabled{opacity:.4}
-/* JDC guided rules — self-contained; never changes the other challenge screens. */
-.jdc-guide{min-width:0;display:grid;gap:12px;color:#e8f1fc}
-.jdc-guide-intro{min-width:0;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:12px 13px;border-radius:15px;background:linear-gradient(112deg,#122338,#090f1b 72%);border:1px solid #2c4d66}
-.jdc-guide-intro-title{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:1000;letter-spacing:.65px;color:#fff}
-.jdc-guide-intro-title>span{font-size:22px}
-.jdc-guide-metrics{display:flex;gap:3px;flex-wrap:wrap}
-.jdc-guide-metrics>span{display:flex;align-items:baseline;gap:5px;padding:5px 8px;border-radius:9px;background:#08101b;border:1px solid #314358}
-.jdc-guide-metrics b{font-size:17px;font-weight:1000;line-height:1;color:#fff}
-.jdc-guide-metrics small{font-size:8px;letter-spacing:.4px;color:#91afc8;font-weight:900}
-.jdc-guide-steps{min-width:0;display:grid;gap:0}
-.jdc-guide-phase{--jdc-accent:#3ebdff;--jdc-soft:rgba(62,189,255,.16);position:relative;min-width:0;padding:14px;border:1px solid rgba(78,150,196,.55);border-left:3px solid var(--jdc-accent);border-radius:16px;background:radial-gradient(circle at 0 0,var(--jdc-soft),transparent 46%),linear-gradient(145deg,#111d2b,#070d16 80%);box-shadow:inset 0 1px rgba(255,255,255,.045),0 9px 25px #0004}
-.jdc-guide-phase--red{--jdc-accent:#ff636c;--jdc-soft:rgba(255,86,95,.16);border-color:rgba(210,84,99,.5);border-left-color:var(--jdc-accent)}
-.jdc-guide-phase-head{min-width:0;display:flex;align-items:center;gap:10px}
-.jdc-guide-index{flex:0 0 43px;height:43px;border:1px solid color-mix(in srgb,var(--jdc-accent) 60%,transparent);border-radius:13px;background:var(--jdc-soft);display:grid;place-items:center;font-weight:1000;font-size:20px;color:var(--jdc-accent)}
-.jdc-guide-phase-heading{min-width:0;flex:1 1 auto}
-.jdc-guide-eyebrow{display:block;color:var(--jdc-accent);font-size:9px;font-weight:1000;letter-spacing:.9px}
-.jdc-guide-phase .jdc-guide-phase-heading h3{margin:4px 0 0;color:#fff;font-size:clamp(12px,2.5vw,16px);line-height:1.22;letter-spacing:.15px;font-weight:1000}
-.jdc-guide-count{flex:0 0 auto;font-size:9px;font-weight:1000;letter-spacing:.2px;color:#e1efff;border:1px solid #3a5066;background:#0a1420;border-radius:999px;padding:7px 9px;white-space:nowrap}
-.jdc-guide-targets{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px;margin-top:15px}
-.jdc-guide-targets>span{min-width:0;display:grid;place-items:center;min-height:35px;font-size:clamp(12px,3vw,17px);font-weight:1000;color:#fff;border:1px solid #405467;border-radius:9px;background:linear-gradient(180deg,#233549,#101b2a);box-shadow:inset 0 -2px var(--jdc-accent)}
-.jdc-guide-rule{display:flex;align-items:center;gap:10px;padding:11px 0 0}
-.jdc-guide-rule-icon{flex:0 0 28px;height:28px;display:grid;place-items:center;border-radius:9px;background:var(--jdc-soft);font-size:16px;color:var(--jdc-accent);font-weight:1000}
-.jdc-guide-rule p{min-width:0;margin:0;color:#acbbce;font-size:11.5px;line-height:1.5}
-.jdc-guide-rule strong{color:#eef6ff;font-weight:900}
-.jdc-guide-bonus{display:flex;align-items:center;gap:11px;margin-top:12px;padding:10px 12px;border-radius:12px;background:linear-gradient(100deg,rgba(47,142,190,.2),rgba(29,62,90,.15));border:1px solid rgba(80,171,222,.44)}
-.jdc-guide-bonus-icon{flex:0 0 30px;height:30px;display:grid;place-items:center;border-radius:10px;background:#113348;color:#57dfff;font-size:19px}
-.jdc-guide-bonus>div{min-width:0;display:grid;gap:3px}
-.jdc-guide-bonus b{color:#e6f7ff;font-size:11px;font-weight:1000;letter-spacing:.4px}
-.jdc-guide-bonus b strong{color:#62eaff;font-size:12px}
-.jdc-guide-bonus small{font-size:10px;line-height:1.4;color:#a7c5d8}
-.jdc-guide-connector{height:23px;display:grid;place-items:center;position:relative}
-.jdc-guide-connector::before{content:'';position:absolute;height:100%;width:1px;background:linear-gradient(180deg,#3b7897,#c44956)}
-.jdc-guide-connector>span{z-index:1;width:17px;height:17px;display:grid;place-items:center;border:1px solid #43556b;background:#0a121d;border-radius:50%;font-size:11px;color:#d8eaff}
-.jdc-guide-path{display:flex;align-items:center;justify-content:space-between;gap:4px;min-width:0;margin-top:15px}
-.jdc-guide-path span{min-width:0;flex:1 1 0;padding:9px 3px;border:1px solid #6c3e4c;border-radius:9px;background:linear-gradient(180deg,#3a1921,#1a1119);color:#fff;font-weight:1000;text-align:center;font-size:clamp(10px,2.6vw,15px)}
-.jdc-guide-path i{flex:0 0 auto;color:#f78489;font-size:11px;font-style:normal;font-weight:900}
-.jdc-guide-path .jdc-guide-bull{border-color:#ff5762;background:linear-gradient(180deg,#a0202f,#411019)}
-.jdc-guide-path .jdc-guide-ellipsis{letter-spacing:2px}
-.jdc-guide-payouts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:13px}
-.jdc-guide-payouts>span{min-width:0;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:4px 9px;text-align:center;padding:10px 8px;border:1px solid #88404c;border-radius:11px;background:linear-gradient(145deg,#3e141d,#1b1016)}
-.jdc-guide-payouts strong{font-size:21px;color:#ff7b81;line-height:1;font-weight:1000}
-.jdc-guide-payouts small{font-size:9px;color:#eed8db;font-weight:1000;line-height:1.35}
-.jdc-guide-payouts .jdc-guide-payouts-bull{border-color:#ac5d3d;background:linear-gradient(145deg,#3b2118,#1d1112)}
-.jdc-guide-payouts-bull strong{color:#ffb27c}
-.jdc-guide-finale{min-width:0;display:flex;align-items:center;gap:9px;padding:12px;border-radius:14px;background:linear-gradient(105deg,#291316,#0e141e);border:1px solid #914954}
-.jdc-guide-finale>span:first-child{font-size:25px}
-.jdc-guide-finale>div{min-width:0;flex:1 1 auto;display:grid;gap:4px}
-.jdc-guide-finale>div small{font-size:9px;line-height:1.3;color:#ff999d;font-weight:900}
-.jdc-guide-finale>div strong{font-size:11px;line-height:1.4;color:#fff;font-weight:1000}
-.jdc-guide-max{flex:0 0 auto;display:grid;text-align:center;gap:2px;border-left:1px solid #78454f;padding-left:11px}
-.jdc-guide-max b{color:#ff777e;font-size:21px;line-height:1.05;white-space:nowrap}
-.jdc-guide-max small{color:#eab6bc;font-size:9px;font-weight:900}
-@media(max-width:480px){.jdc-guide{gap:10px}.jdc-guide-intro{padding:10px;gap:9px}.jdc-guide-intro-title{font-size:11px}.jdc-guide-metrics{width:100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}.jdc-guide-metrics>span{justify-content:center;padding:8px 3px;gap:4px}.jdc-guide-metrics b{font-size:17px}.jdc-guide-metrics small{font-size:7px}.jdc-guide-phase{padding:11px}.jdc-guide-phase-head{gap:7px;flex-wrap:wrap}.jdc-guide-index{flex-basis:36px;height:36px;font-size:17px}.jdc-guide-phase .jdc-guide-phase-heading h3{font-size:12px}.jdc-guide-eyebrow{font-size:8px}.jdc-guide-count{font-size:8px;padding:6px 8px;margin-left:43px}.jdc-guide-targets{margin-top:11px;gap:4px}.jdc-guide-targets>span{min-height:31px;font-size:13px}.jdc-guide-rule p{font-size:10.5px}.jdc-guide-bonus{padding:9px}.jdc-guide-bonus b{font-size:10px}.jdc-guide-bonus small{font-size:9.5px}.jdc-guide-payouts strong{font-size:18px}.jdc-guide-payouts small{font-size:8px}.jdc-guide-finale{padding:10px}.jdc-guide-finale>div small{font-size:8px}.jdc-guide-finale>div strong{font-size:10px}.jdc-guide-max b{font-size:18px}.jdc-guide-max small{font-size:8px}}
-@media(max-width:350px){.jdc-guide-count{margin-left:0}.jdc-guide-path{gap:2px}.jdc-guide-path span{padding:8px 2px}.jdc-guide-path i{font-size:9px}.jdc-guide-phase{padding:9px}.jdc-guide-finale>span:first-child{display:none}}
-
-/* JDC premium finish — icons are the same SVG family as the BottomNav. */
-.jdc-guide{gap:14px;isolation:isolate}
-.jdc-guide-intro{padding:13px 15px;border-radius:16px;border-color:rgba(85,130,160,.45);background:linear-gradient(120deg,rgba(36,66,94,.45),rgba(8,15,26,.95) 56%);box-shadow:inset 0 1px rgba(255,255,255,.055)}
-.jdc-guide-intro-title{gap:10px;letter-spacing:.9px;color:#e9f5ff;font-size:11px}
-.jdc-guide-intro-symbol{width:36px;height:36px;display:grid;place-items:center;flex:0 0 36px;border-radius:11px;border:1px solid rgba(87,178,221,.45);background:linear-gradient(145deg,rgba(52,137,187,.26),rgba(23,54,81,.25));color:#70cefa}
-.jdc-guide-intro-title>span:first-child{font-size:initial}
-.jdc-guide-metrics{gap:5px}
-.jdc-guide-metrics>span{border-color:rgba(107,151,181,.35);background:rgba(5,14,25,.65);padding:8px 9px}
-.jdc-guide-metrics b{font-size:18px;font-variant-numeric:tabular-nums}
-.jdc-guide-phase{padding:16px;border-radius:17px;border-left-width:2px;border-color:rgba(58,119,164,.52);border-left-color:var(--jdc-accent);background:linear-gradient(150deg,rgba(24,48,68,.78),rgba(7,14,24,.97) 60%),radial-gradient(circle at 0 0,var(--jdc-soft),transparent 60%);box-shadow:0 10px 24px rgba(0,0,0,.2),inset 0 1px rgba(255,255,255,.035);overflow:hidden}
-.jdc-guide-phase::before{content:"";position:absolute;left:16px;right:16px;top:0;height:1px;background:linear-gradient(90deg,var(--jdc-accent),transparent 85%);opacity:.6}
-.jdc-guide-phase--red{border-color:rgba(164,69,83,.54);border-left-color:var(--jdc-accent);background:linear-gradient(155deg,rgba(53,24,36,.69),rgba(9,14,24,.98) 56%)}
-.jdc-guide-phase-head{gap:10px}
-.jdc-guide-index{flex:0 0 43px;width:43px;height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border-radius:12px;border-color:color-mix(in srgb,var(--jdc-accent) 40%,transparent);background:linear-gradient(155deg,var(--jdc-soft),rgba(10,18,29,.55));box-shadow:inset 0 1px rgba(255,255,255,.04);color:var(--jdc-accent)}
-.jdc-guide-index svg{flex:0 0 auto;display:block}
-.jdc-guide-index small{font-size:9px;font-weight:1000;line-height:1;letter-spacing:1.25px}
-.jdc-guide-eyebrow{letter-spacing:1.2px;font-size:9px}
-.jdc-guide-phase .jdc-guide-phase-heading h3{font-weight:950;letter-spacing:.2px}
-.jdc-guide-count{border-color:color-mix(in srgb,var(--jdc-accent) 36%,#284053);background:color-mix(in srgb,var(--jdc-accent) 11%,#101820);color:#eaf6ff;letter-spacing:.7px;font-size:9px}
-.jdc-guide-targets{gap:5px;margin-top:16px}
-.jdc-guide-targets>span{border:1px solid rgba(106,149,173,.36);border-bottom:2px solid var(--jdc-accent);border-radius:10px;background:linear-gradient(180deg,rgba(38,62,82,.74),rgba(10,22,34,.9));box-shadow:inset 0 1px rgba(255,255,255,.05)}
-.jdc-guide-rule{margin-top:13px;padding-top:12px;align-items:flex-start;border-top:1px solid rgba(101,137,157,.18)}
-.jdc-guide-rule-icon{flex:0 0 32px;width:32px;height:32px;border:1px solid color-mix(in srgb,var(--jdc-accent) 26%,transparent);border-radius:10px;color:var(--jdc-accent);background:var(--jdc-soft)}
-.jdc-guide-rule p{font-size:11.5px;line-height:1.55}
-.jdc-guide-bonus{margin-top:13px;gap:10px;padding:11px;border-color:rgba(71,159,204,.45);background:linear-gradient(115deg,rgba(22,81,117,.27),rgba(10,28,45,.57));box-shadow:inset 0 1px rgba(255,255,255,.045)}
-.jdc-guide-bonus-icon{width:34px;height:34px;flex:0 0 34px;border:1px solid rgba(89,191,237,.36);color:#67d8ff;background:rgba(48,132,178,.18)}
-.jdc-guide-bonus>div{width:100%;gap:5px}
-.jdc-guide-bonus b{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:3px 7px;font-size:10px;letter-spacing:.6px}
-.jdc-guide-bonus b strong{padding:4px 7px;border-radius:7px;background:rgba(61,165,216,.18);border:1px solid rgba(85,201,244,.34);font-size:11px;white-space:nowrap}
-.jdc-guide-bonus small{color:#a8c4d7;font-size:10px;line-height:1.5}
-.jdc-guide-connector{height:24px}
-.jdc-guide-connector::before{opacity:.65}
-.jdc-guide-connector>span{width:20px;height:20px;color:#9bc4dd;border:1px solid #34526b;box-shadow:0 0 0 3px #080f1a}
-.jdc-guide-path{gap:4px;margin-top:16px}
-.jdc-guide-path span{border-radius:10px;padding:10px 3px;border-color:rgba(215,93,111,.44);background:linear-gradient(180deg,rgba(78,29,42,.79),rgba(25,16,25,.9));box-shadow:inset 0 1px rgba(255,255,255,.035)}
-.jdc-guide-path i{color:#ff9aa3}
-.jdc-guide-path .jdc-guide-bull{border-color:#fe5b69;background:linear-gradient(170deg,#9e273b,#44121f);box-shadow:inset 0 1px rgba(255,255,255,.09)}
-.jdc-guide-payouts{gap:8px}
-.jdc-guide-payouts>span{min-height:61px;border-radius:12px;border-color:rgba(244,105,122,.4);background:linear-gradient(125deg,rgba(83,25,40,.68),rgba(34,17,27,.87))}
-.jdc-guide-payouts-bull{border-color:rgba(240,147,86,.5)!important}
-.jdc-guide-finale{padding:13px 14px;gap:11px;border-color:rgba(196,81,99,.58);background:linear-gradient(120deg,rgba(73,23,37,.82),rgba(18,24,35,.93));box-shadow:inset 0 1px rgba(255,255,255,.05)}
-.jdc-guide-finale-icon{width:38px;height:38px;flex:0 0 38px;display:grid;place-items:center;border:1px solid rgba(252,127,142,.5);border-radius:11px;color:#ff919e;background:rgba(209,57,76,.12)}
-.jdc-guide-finale>div small{font-size:9px;letter-spacing:.35px}
-.jdc-guide-finale>div strong{font-size:11.5px}
-.jdc-guide-max{padding-left:12px;border-color:rgba(254,136,153,.27)}
-.jdc-guide-max b{font-variant-numeric:tabular-nums;font-size:22px}
-@media(max-width:480px){.jdc-guide{gap:11px}.jdc-guide-intro{padding:11px}.jdc-guide-intro-symbol{width:33px;height:33px;flex-basis:33px}.jdc-guide-phase{padding:12px}.jdc-guide-phase-head{gap:7px}.jdc-guide-index{flex:0 0 38px;width:38px;height:44px}.jdc-guide-index svg{width:18px;height:18px}.jdc-guide-count{margin-left:0;font-size:8px;padding:7px 9px}.jdc-guide-targets{margin-top:13px;gap:4px}.jdc-guide-rule{margin-top:10px;padding-top:10px}.jdc-guide-rule p{font-size:10.5px}.jdc-guide-bonus{padding:9px}.jdc-guide-bonus small{font-size:9.5px}.jdc-guide-finale{padding:11px}.jdc-guide-finale-icon{width:32px;height:32px;flex-basis:32px}.jdc-guide-finale-icon svg{width:19px;height:19px}.jdc-guide-finale>div strong{font-size:10.5px}.jdc-guide-max b{font-size:18px}}
-@media(max-width:350px){.jdc-guide-phase{padding:10px}.jdc-guide-phase-head{flex-wrap:wrap}.jdc-guide-count{margin-left:45px}.jdc-guide-finale{gap:7px}.jdc-guide-finale-icon{display:none}}
 @media(orientation:landscape){.challenge-config{height:100dvh;min-height:0;padding:6px 8px 6px;overflow:hidden;display:flex;flex-direction:column}.challenge-head{flex:0 0 64px;width:min(1180px,100%);height:64px;min-height:64px;margin:0 auto 6px;border-radius:14px}.challenge-head>img{object-fit:contain;background:#05080d}.challenge-back{left:8px}.challenge-awena{right:8px;width:44px;height:44px}.config-wrap{width:min(1180px,100%);max-width:1180px;flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding:4px 8px 8px}.config-overview{padding:9px 11px;margin-bottom:7px}.config-overview p{margin-top:4px}.mode-row{margin-top:5px}.mode-row button{padding:7px 11px}.summary b{font-size:20px}.summary span{font-size:8px}.quick-presets{margin-bottom:7px}.quick-preset{min-height:62px}.progress-card{padding:7px 10px;margin-bottom:7px}.steps button{height:30px}.config-card{padding:10px;margin-bottom:7px}.section-title{margin-bottom:7px;padding-bottom:6px}.match-mode button{min-height:58px}.match-mode button b{font-size:15px}.team-carousel{padding-bottom:8px}.team-choice{flex-basis:176px;min-height:118px;padding:8px}.team-choice>img,.team-fallback,.team-logo-slot{width:54px;height:54px}.target-grid{grid-template-columns:repeat(11,minmax(0,1fr))}.target-btn{height:42px;min-height:42px}.exercise-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.rule-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.complete-grid{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}.complete-grid .config-card:nth-child(1),.complete-grid .config-card:nth-child(2){grid-column:1/-1}.config-actions{bottom:0;margin-top:4px;padding:5px}.config-actions button{min-height:36px;padding:7px 11px}.team-player-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.team-player-card{min-height:126px}.team-player-avatar{width:66px;height:66px}}
 @media(max-width:760px){.challenge-head{height:72px;margin-bottom:5px;border-radius:0 0 14px 14px}.challenge-head>img{object-fit:cover}.challenge-back{left:7px;transform:translateY(-50%) scale(.92)}.challenge-awena{right:7px;width:44px;height:44px}.config-wrap{padding:6px 8px 12px}.config-overview{grid-template-columns:1fr auto;padding:10px}.config-overview p{font-size:9px}.summary{min-width:118px;padding-left:9px}.summary b{font-size:17px}.summary span{font-size:7.5px}.quick-presets{grid-template-columns:1fr}.quick-preset{min-height:68px}.progress-card{grid-template-columns:1fr;padding:9px;gap:7px}.progress-card>div:first-child{min-width:0}.steps button{height:30px}.steps button span{display:none}.config-card{padding:10px}.section-title{align-items:flex-start;flex-direction:column;gap:3px}.section-title p{max-width:100%;text-align:left;font-size:8.5px}.match-mode{gap:5px}.match-mode button{min-height:60px}.match-mode button b{font-size:14px}.match-mode button span{font-size:7.5px}.target-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.target-btn{height:62px;min-height:62px}.target-btn b{font-size:12px}.target-btn.family b{font-size:9px}.target-thumb{inset:-20px}.exercise-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.exercise-card{min-height:78px}.advanced-grid,.grouping-config{grid-template-columns:1fr}.sequence-add{grid-template-columns:1fr 1fr}.sequence-add select{grid-column:1/-1}.grouping-example{grid-template-columns:1fr}.visit-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.rule-grid{grid-template-columns:1fr 1fr}.audio-toggle-row{grid-template-columns:1fr 1fr}.config-actions{bottom:calc(74px + env(safe-area-inset-bottom,0px));padding:5px}.config-actions button{flex:1;min-width:0!important;padding:9px 8px;font-size:10px!important}.team-player-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.team-choice{flex-basis:min(62vw,210px)}.preset-actions{align-items:flex-start;flex-direction:column}}
 @media(max-width:430px){.double-target-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.custom-visits{grid-template-columns:1fr 86px}.custom-visits small{display:none}.launch-preview>strong{font-size:18px}.exercise-grid{grid-template-columns:1fr}.binary-row{grid-template-columns:1fr 1fr}.sequence-add{grid-template-columns:1fr}.sequence-add select{grid-column:auto}.summary{display:none}.config-overview{grid-template-columns:1fr}.source-row{grid-template-columns:1fr 1fr}.rule-grid{grid-template-columns:1fr}.audio-toggle-row{grid-template-columns:1fr}.match-mode button span{max-width:90px;text-align:center}.target-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.team-picker-card{width:100%}.team-player-card{min-height:124px}.team-player-avatar{width:64px;height:64px}.quick-preset{grid-template-columns:34px minmax(0,1fr)}.quick-preset>strong{grid-column:2;justify-self:start}.quick-preset>i{width:34px;height:34px}}

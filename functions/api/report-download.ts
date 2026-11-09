@@ -11,7 +11,7 @@ export async function onRequestPost(context: {request: Request}): Promise<Respon
   const fail=(message:string,status=400)=>new Response(message,{
     status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'},
   });
-  const mimeTypes: Record<string,string>={pdf:'application/pdf',zip:'application/zip'};
+  const mimeTypes: Record<string,string>={pdf:'application/pdf',png:'image/png'};
   try {
     const headerLength=Number(request.headers.get('Content-Length')||0);
     if(headerLength>22_000_000)return fail('File too large',413);
@@ -22,14 +22,14 @@ export async function onRequestPost(context: {request: Request}): Promise<Respon
     if(base64.length<8||base64.length>20_000_000||!(/^[A-Za-z0-9+/]*={0,2}$/).test(base64))
       return fail('Invalid file',413);
     const inputName=String(data.get('filename')||'rapport').replace(/[^a-zA-Z0-9._-]+/g,'_').slice(0,100);
-    const name=(inputName.replace(/\.(pdf|zip)$/i,'')||'MSS_rapport')+'.'+format;
+    const name=(inputName.replace(/\.(pdf|png)$/i,'')||'MSS_rapport')+'.'+format;
     const raw=atob(base64);
     if(raw.length>15_000_000)return fail('Too large',413);
     const bytes=new Uint8Array(raw.length);
     for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
     const valid=format==='pdf'
       ?raw.startsWith('%PDF-')
-      :(bytes[0]===80&&bytes[1]===75&&bytes[2]===3&&bytes[3]===4);
+      :(bytes[0]===137&&bytes[1]===80&&bytes[2]===78&&bytes[3]===71);
     if(!valid)return fail('Invalid signature');
     return new Response(new Blob([bytes],{type:mimeTypes[format]}),{
       headers:{

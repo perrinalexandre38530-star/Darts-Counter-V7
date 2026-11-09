@@ -1405,7 +1405,7 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
    challengeLastFormatRef.current=format==='pdf'?'pdf':'png';
    const result=await exportChallengeResults(fullReport,format,{share:shareNow});
    if(result.status==='preview')setChallengeExportPreview(result);
-   if(result.status==='download-started')setChallengeExportInfo(format==='png'?'ZIP d’images A4 demandé : une image PNG par page. Vérifie le dossier Téléchargements.':'PDF multipage demandé : vérifie le dossier Téléchargements. Il peut s’ouvrir dans le lecteur PDF de Chrome ; il s’agit bien d’un document PDF.');
+   if(result.status==='download-started')setChallengeExportInfo('Téléchargement demandé : vérifie le dossier Téléchargements de ton appareil. Si le navigateur intégré le bloque, ouvre la page dans Chrome.');
    if(result.status==='share-unavailable')setChallengeShareError('Ce navigateur intégré ne permet pas le partage de fichiers. Télécharge l’image ou le PDF avec les icônes, puis utilise Partager depuis Galerie ou Fichiers.');
    if(result.status==='shared')setChallengeShareOpen(false);
   }catch(error){
