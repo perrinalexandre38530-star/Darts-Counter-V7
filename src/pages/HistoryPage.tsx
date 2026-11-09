@@ -29,7 +29,7 @@ import { loadLinkedProfileProjection } from "../lib/linkedProfileSync";
 import { isOnlineRecord } from "../lib/x01StatsSource";
 
 import { buildMatchSharePacket, isMatchSharePacketV1, shareOneMatch, type MatchSharePacketV1 } from "../lib/matchShare";
-import { challengeReportFromHistory, exportChallengeResults, downloadChallengeFile, type ChallengeExportReport, type ChallengeExportResult } from "../lib/challengeResultsExport";
+import { visualReportFromHistory, exportChallengeResults, downloadChallengeFile, type ChallengeExportReport, type ChallengeExportResult } from "../lib/challengeResultsExport";
 import { ChallengeReportActions, ChallengeReportPreview, type ChallengeReportFormat } from "../components/ChallengeReportUI";
 import { importRecoveredHistoryJson } from "../lib/importRecoveredHistory";
 import { exportHistoryDump, importHistoryDump } from "../lib/historyCloud";
@@ -4554,15 +4554,24 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
 
   // Two-step historical export keeps navigator.share() tied to a real user tap:
   // first hydrate the archived entry; then tap PDF, PNG or share in the dialog.
-  async function openChallengeHistoryReport(entry: SavedEntry) {
+  async function openHistoryVisualReport(entry: SavedEntry) {
     setHistoryReportEntry(entry);
     setHistoryReport(null);
     setHistoryReportError("");
     setHistoryReportBusy(true);
     try {
       const full=await hydrateSavedEntry(entry);
-      const report=challengeReportFromHistory(full);
-      if(!report.players.length)throw new Error("Les statistiques de cette partie ne sont pas disponibles dans l'historique.");
+      const report=visualReportFromHistory(full);
+      // Some older records only expose their score line through the legacy
+      // History parser. Keep that display truthful instead of inventing scores.
+      if(!report.players.length){
+        const rankRows=genericHistoryRankScorePlayers(full);
+        report.players=rankRows.map(row=>{
+          const numeric=Number(String(row.main??'').replace(',','.'));
+          return {name:row.name,score:Number.isFinite(numeric)?numeric:Number.NaN,accuracy:null,darts:null,bestStreak:null,avgVisit:null,metrics:[],visits:[]};
+        });
+      }
+      if(!report.players.length)throw new Error("Cette archive ne contient pas de classement exploitable pour un rapport visuel.");
       setHistoryReport(report);
     } catch(error) {
       setHistoryReportError(String((error as Error)?.message||error||"Lecture impossible."));
@@ -6446,12 +6455,12 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                       <Icon.Trash />
                     </button>
                   </div>
-                  {!inProg && isChallengeHistoryEntry(e) && (
-                    <button type="button" onClick={(event)=>{event.stopPropagation();void openChallengeHistoryReport(e);}}
+                  {!inProg && (
+                    <button type="button" onClick={(event)=>{event.stopPropagation();void openHistoryVisualReport(e);}}
                       style={{width:'100%',minHeight:41,display:'flex',alignItems:'center',justifyContent:'center',gap:8,marginTop:6,
                         background:'linear-gradient(180deg,#171f2c,#0b1320)',border:'1px solid #607083',
                         borderRadius:11,color:'#cdeafd',fontWeight:950,fontSize:10,letterSpacing:'.4px'}}
-                      title="Exporter les résultats visuels de cette partie Challenge">
+                      title="Créer un rapport visuel PDF, PNG ou partager cette partie">
                       <Icon.Share /> RAPPORT PDF · IMAGE · PARTAGE
                     </button>
                   )}
