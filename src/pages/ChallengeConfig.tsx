@@ -10,7 +10,7 @@ import { resolveTeamLogoSrc } from '../assets/teamLogoLibrary';
 import type { Profile } from '../lib/types';
 import { getChallengeObjectiveImage } from '../lib/challengeObjectiveVisuals';
 import { recordProfileUsageForMode } from '../lib/profileUsage';
-import { DEFAULT_CUSTOM_SEQUENCE, DEFAULT_HALF_IT_SEQUENCE, DOUBLES_8_TARGETS, exerciseTitle, objectiveLabel, type ChallengeExerciseType, type ChallengeObjectiveToken, type ChallengeScoreMode } from '../lib/challengeExercises';
+import { DEFAULT_CUSTOM_SEQUENCE, DEFAULT_HALF_IT_SEQUENCE, DOUBLES_8_TARGETS, perfectLineLabels, exerciseTitle, objectiveLabel, type ChallengeExerciseType, type ChallengeObjectiveToken, type ChallengeScoreMode } from '../lib/challengeExercises';
 
 export type ChallengeTarget='1'|'2'|'3'|'4'|'5'|'6'|'7'|'8'|'9'|'10'|'11'|'12'|'13'|'14'|'15'|'16'|'17'|'18'|'19'|'20'|'bull'|'bull25'|'bull50'|'any-double'|'any-triple';
 export type ChallengeRule='all'|'single'|'double'|'triple'|'bull'|'bull25'|'bull50';
@@ -39,6 +39,7 @@ export type ChallengeConfigData={
   doublesBonusTarget?:number;
   doublesTargets?:number[];
   doublesTargetMode?:'official'|'custom';
+  perfectLineSegment?:number;
 };
 
 type ConfigMode='guided'|'complete';
@@ -64,6 +65,7 @@ type ChallengePreset={
  doublesBonusTarget:number;
  doublesTargets:number[];
  doublesTargetMode:'official'|'custom';
+ perfectLineSegment:number;
 };
 
 const CHALLENGE_DRAFT_KEY='dc_challenge_config_draft_v2';
@@ -83,6 +85,7 @@ const presetDescriptor=(preset:ChallengePreset|null)=>{
  if(type==='half-it')return `HALF-IT · DÉPART ${preset.halfItStartScore||40}`;
  if(type==='sequence')return `SÉQUENCE · ${Math.max(1,preset.sequenceObjectives?.length||0)} OBJECTIFS`;
  if(type==='jdc')return 'JDC CHALLENGE · 3 PHASES · 19 VOLÉES';
+ if(type==='perfect-line')return `LIGNE PARFAITE · SECTEUR ${Math.max(1,Math.min(20,Number(preset.perfectLineSegment||20)))}`;
  if(type==='doubles8'){const targets=Array.isArray(preset.doublesTargets)&&preset.doublesTargets.length?preset.doublesTargets:[...DOUBLES_8_TARGETS];return `${preset.doublesTargetMode==='custom'?'PERSONNALISÉ':'8 DOUBLES'} · ${targets.map(n=>`D${n}`).join(' · ')} · BONUS AU CHOIX`;}
  return `GROUPEMENT ${Math.min(preset.groupingMin||15,preset.groupingMax||20)}–${Math.max(preset.groupingMin||15,preset.groupingMax||20)} · ×${preset.groupingHits||2}`;
 };
@@ -111,6 +114,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
  const [visits,setVisits]=React.useState(30);
  const [rule,setRule]=React.useState<ChallengeRule>('all');
  const [exerciseType,setExerciseType]=React.useState<ChallengeExerciseType>('classic');
+ const [perfectLineSegment,setPerfectLineSegment]=React.useState<number>(20);
  const [clockIncludeBull,setClockIncludeBull]=React.useState(true);
  const [clockScoreMode,setClockScoreMode]=React.useState<ChallengeScoreMode>('challenge');
  const [halfItStartScore,setHalfItStartScore]=React.useState(40);
@@ -144,6 +148,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
   setVisits(Math.max(1,Number(preset.visits||30)));
   setRule((preset.rule||'all') as ChallengeRule);
   setExerciseType((preset.exerciseType||'classic') as ChallengeExerciseType);
+  setPerfectLineSegment(Math.max(1,Math.min(20,Math.round(Number(preset.perfectLineSegment||20)))));
   setClockIncludeBull(preset.clockIncludeBull!==false);
   setClockScoreMode((preset.clockScoreMode||'challenge') as ChallengeScoreMode);
   setHalfItStartScore(Math.max(0,Number(preset.halfItStartScore??40)||40));
@@ -179,8 +184,8 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
  const currentPreset=React.useMemo<ChallengePreset>(()=>({
   target,visits,rule,configMode:mode,matchMode,participantSource,soundsEnabled,exerciseType,
   clockIncludeBull,clockScoreMode,halfItStartScore,sequenceObjectives:[...sequenceObjectives],sequenceScoreMode,
-  groupingMin,groupingMax,groupingHits,doublesBonusTarget,doublesTargets:[...doublesTargets],doublesTargetMode
- }),[target,visits,rule,mode,matchMode,participantSource,soundsEnabled,exerciseType,clockIncludeBull,clockScoreMode,halfItStartScore,sequenceObjectives,sequenceScoreMode,groupingMin,groupingMax,groupingHits,doublesBonusTarget,doublesTargets,doublesTargetMode]);
+  groupingMin,groupingMax,groupingHits,doublesBonusTarget,doublesTargets:[...doublesTargets],doublesTargetMode,perfectLineSegment
+ }),[target,visits,rule,mode,matchMode,participantSource,soundsEnabled,exerciseType,clockIncludeBull,clockScoreMode,halfItStartScore,sequenceObjectives,sequenceScoreMode,groupingMin,groupingMax,groupingHits,doublesBonusTarget,doublesTargets,doublesTargetMode,perfectLineSegment]);
 
  React.useEffect(()=>{if(presetHydrated)writeChallengePreset(CHALLENGE_DRAFT_KEY,currentPreset)},[presetHydrated,currentPreset]);
 
@@ -271,12 +276,12 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
 
  const resolvedSequence=exerciseType==='half-it'?[...DEFAULT_HALF_IT_SEQUENCE]:sequenceObjectives;
  const resolvedDoublesTargets=(doublesTargetMode==='official'?[...DOUBLES_8_TARGETS]:doublesTargets).filter((n,index,self)=>n>=1&&n<=20&&self.indexOf(n)===index);
- const resolvedVisits=exerciseType==='jdc'?19:exerciseType==='clock'?(clockIncludeBull?21:20):exerciseType==='doubles8'?(resolvedDoublesTargets.length*3+1):(exerciseType==='half-it'||exerciseType==='sequence'?Math.max(1,resolvedSequence.length):visits);
- const resolvedTarget:ChallengeTarget=exerciseType==='jdc'?'10':exerciseType==='classic'?target:exerciseType==='grouping'?String(Math.min(groupingMin,groupingMax)) as ChallengeTarget:exerciseType==='doubles8'?String(resolvedDoublesTargets[0]||20) as ChallengeTarget:(resolvedSequence[0]&&/^([1-9]|1[0-9]|20)$/.test(String(resolvedSequence[0]))?resolvedSequence[0] as ChallengeTarget:'20');
+ const resolvedVisits=exerciseType==='perfect-line'?6:exerciseType==='jdc'?19:exerciseType==='clock'?(clockIncludeBull?21:20):exerciseType==='doubles8'?(resolvedDoublesTargets.length*3+1):(exerciseType==='half-it'||exerciseType==='sequence'?Math.max(1,resolvedSequence.length):visits);
+ const resolvedTarget:ChallengeTarget=exerciseType==='perfect-line'?String(perfectLineSegment) as ChallengeTarget:exerciseType==='jdc'?'10':exerciseType==='classic'?target:exerciseType==='grouping'?String(Math.min(groupingMin,groupingMax)) as ChallengeTarget:exerciseType==='doubles8'?String(resolvedDoublesTargets[0]||20) as ChallengeTarget:(resolvedSequence[0]&&/^([1-9]|1[0-9]|20)$/.test(String(resolvedSequence[0]))?resolvedSequence[0] as ChallengeTarget:'20');
  const resolvedRule:ChallengeRule=exerciseType==='classic'?rule:exerciseType==='doubles8'?'double':'all';
  const exerciseValid=(exerciseType!=='sequence'||sequenceObjectives.length>0)&&(exerciseType!=='doubles8'||resolvedDoublesTargets.length>0);
  const exerciseSummary=exerciseType==='classic'?`OBJECTIF ${targetText(target)}`:exerciseTitle({target:resolvedTarget,rule:resolvedRule,visits:resolvedVisits,exerciseType,doublesTargets:resolvedDoublesTargets,doublesBonusTarget});
- const exerciseRuleSummary=exerciseType==='jdc'?'Phase 1 : 10–15 · Phase 2 : D1→D20 + BULL · Phase 3 : 15–20 · SHANGHAI +100':exerciseType==='classic'
+ const exerciseRuleSummary=exerciseType==='perfect-line'?`${perfectLineLabels({perfectLineSegment}).join(' → ')} · 1 hit exact par zone · minimum de fléchettes`:exerciseType==='jdc'?'Phase 1 : 10–15 · Phase 2 : D1→D20 + BULL · Phase 3 : 15–20 · SHANGHAI +100':exerciseType==='classic'
   ? `${targetText(target)} · ${resolvedVisits} tours`
   : exerciseType==='clock'
    ? `${clockIncludeBull?'1 → 20 + BULL':'1 → 20'} · ${clockScoreMode==='real'?'valeur réelle':'S=1 · D=2 · T=3'}`
@@ -291,6 +296,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
  const chooseExercise=(next:ChallengeExerciseType)=>{
   setExerciseType(next);
   if(next==='jdc'){setRule('all');setTarget('10');}
+  if(next==='perfect-line'){setRule('all');setTarget(String(perfectLineSegment) as ChallengeTarget);}
   if(next==='clock'){setClockIncludeBull(true);setClockScoreMode('challenge');}
   if(next==='half-it'){setHalfItStartScore(40);}
   if(next==='sequence'&&!sequenceObjectives.length)setSequenceObjectives([...DEFAULT_CUSTOM_SEQUENCE]);
@@ -320,6 +326,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
    doublesBonusTarget,
    doublesTargets:resolvedDoublesTargets,
    doublesTargetMode,
+   perfectLineSegment,
    playerIds,
    teamIds:participantSource==='team'?teamIds:[],
    participantMode:'players',
@@ -370,6 +377,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
     ['sequence','SÉQUENCE','Construisez votre propre suite d’objectifs tour par tour.','≡'],
     ['grouping','GROUPEMENT','Au moins 2 fléchettes dans le même secteur choisi.','◉'],
     ['jdc','LE JDC CHALLENGE','3 phases · 19 volées · Shanghai +100 · D1 à D20 + Bull.','🏆'],
+    ['perfect-line','LIGNE PARFAITE','D → Grand simple → Triple → Petit simple → Bull25 → DBull50. Minimum de fléchettes.','✦'],
     ['doubles8','8 DOUBLES · 9 FLÉCHETTES','Parcours officiel ou variante personnalisée avec les doubles de votre choix, puis une volée bonus.','⑧'],
    ] as Array<[ChallengeExerciseType,string,string,string]>).map(([id,label,detail,icon])=><button type="button" key={id} className={'exercise-card '+(exerciseType===id?'on':'')} onClick={()=>chooseExercise(id)}><i>{icon}</i><span><b>{label}</b><small>{detail}</small></span></button>)}
   </div>
@@ -388,6 +396,14 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
  const doubles8Stage=<Section title="DOUBLES · 9 FLÉCHETTES PAR CIBLE" subtitle="Pour chaque double : 3 volées de 3 fléchettes. Barème par volée : 1 touche = 10 pts · 2 = 30 pts · 3 = 100 pts." key="doubles8"><div className="advanced-block"><h3>VARIANTE</h3><div className="binary-row"><button type="button" className={doublesTargetMode==='official'?'on':''} onClick={()=>{setDoublesTargetMode('official');setDoublesTargets([...DOUBLES_8_TARGETS])}}><b>OFFICIEL · 8 DOUBLES</b><small>D20 · D18 · D16 · D12 · D10 · D8 · D4 · D2</small></button><button type="button" className={doublesTargetMode==='custom'?'on':''} onClick={()=>setDoublesTargetMode('custom')}><b>PERSONNALISÉ</b><small>Choisissez librement vos doubles et leur ordre</small></button></div></div>{doublesTargetMode==='custom'&&<div className="advanced-block compact"><h3>DOUBLES À JOUER · APPUYEZ DANS L’ORDRE DU PARCOURS</h3><div className="double-target-grid">{Array.from({length:20},(_,i)=>i+1).map(n=>{const index=doublesTargets.indexOf(n);return <button type="button" key={n} className={index>=0?'on':''} onClick={()=>setDoublesTargets(prev=>prev.includes(n)?prev.filter(x=>x!==n):[...prev,n])}><b>D{n}</b>{index>=0?<small>#{index+1}</small>:null}</button>})}</div><div className="double-target-actions"><button type="button" onClick={()=>setDoublesTargets([...DOUBLES_8_TARGETS])}>PRESET 8 DOUBLES</button><button type="button" className="danger" onClick={()=>setDoublesTargets([])}>VIDER</button></div></div>}<div className="sequence-preview">{resolvedDoublesTargets.map((item,i)=><span key={`${item}-${i}`}><b>{i+1}</b>D{item}</span>)}</div>{!resolvedDoublesTargets.length&&<div className="selection-status ko"><span>!</span><b>Choisissez au moins un double.</b></div>}<div className="advanced-block compact"><h3>VOLÉE BONUS</h3><div className="locked-hint">Le double bonus n’est plus fixé ici. Après la dernière volée du parcours, chaque joueur choisit son double bonus parmi les doubles réellement joués.</div></div><div className="grouping-example"><b>BONUS FINAL</b><span>1 seule volée sur le double choisi en fin de parcours → <strong>+50 pts par touche</strong></span><small>{resolvedDoublesTargets.length*3} volées sur {resolvedDoublesTargets.length} double{resolvedDoublesTargets.length>1?'s':''} + 1 bonus = {resolvedVisits*3} fléchettes maximum. Score théorique maximal : {resolvedDoublesTargets.length*300+150} points.</small></div></Section>;
 
  const groupingStage=<Section title="GROUPEMENT" subtitle="Une volée ne marque que si le même secteur autorisé reçoit le nombre minimal de fléchettes." key="grouping"><div className="grouping-presets"><button type="button" onClick={()=>{setGroupingMin(15);setGroupingMax(20);setGroupingHits(2)}}>15–20 · ×2</button><button type="button" onClick={()=>{setGroupingMin(1);setGroupingMax(20);setGroupingHits(2)}}>1–20 · ×2</button><button type="button" onClick={()=>{setGroupingMin(15);setGroupingMax(20);setGroupingHits(3)}}>15–20 · ×3</button></div><div className="grouping-config"><div className="advanced-block"><h3>FOURCHETTE DE SECTEURS</h3><div className="range-select"><label>DE <select value={groupingMin} onChange={e=>setGroupingMin(Number(e.target.value))}>{Array.from({length:20},(_,i)=>i+1).map(n=><option key={n} value={n}>{n}</option>)}</select></label><span>→</span><label>À <select value={groupingMax} onChange={e=>setGroupingMax(Number(e.target.value))}>{Array.from({length:20},(_,i)=>i+1).map(n=><option key={n} value={n}>{n}</option>)}</select></label></div></div><div className="advanced-block"><h3>VALIDATION DE LA VOLÉE</h3><div className="binary-row"><button type="button" className={groupingHits===2?'on':''} onClick={()=>setGroupingHits(2)}><b>2 FLÉCHETTES</b><small>minimum dans le même secteur</small></button><button type="button" className={groupingHits===3?'on':''} onClick={()=>setGroupingHits(3)}><b>3 FLÉCHETTES</b><small>triplet obligatoire</small></button></div></div></div><div className="grouping-example"><b>EXEMPLE</b><span>D18 + S18 + T20 → <strong>54 pts</strong></span><small>Le D18 et le S18 valident le secteur 18. Le T20 isolé ne compte pas.</small></div></Section>;
+
+ const perfectLineStage=<Section title="LIGNE PARFAITE" subtitle="Choisissez le numéro de la ligne à réaliser, de 1 à 20." key="perfect-line">
+  <div className="advanced-block compact"><h3>SECTEUR DE LA LIGNE</h3>
+   <div className="target-grid">{Array.from({length:20},(_,i)=>i+1).map(n=><button type="button" key={n} className={'target-btn '+(perfectLineSegment===n?'on':'')} onClick={()=>setPerfectLineSegment(n)}><span className="target-thumb"><img src={getChallengeObjectiveImage(String(n))} alt=""/></span><b>{n}</b></button>)}</div>
+  </div>
+  <div className="sequence-preview">{perfectLineLabels({perfectLineSegment}).map((item,i)=><span key={item}><b>{i+1}</b>{item}</span>)}</div>
+  <div className="locked-hint"><b>1 HIT EXACT PAR ZONE.</b> G = grand simple, P = petit simple. Un impact sur une autre zone compte une fléchette sans avancer. Aucune limite de tours : le moins de fléchettes gagne.</div>
+ </Section>;
 
  const audioStage=<Section title="SONS CHALLENGE" subtitle="Jingle d’intro, impacts S / D / T / MISS et musique de fin de partie." key="audio"><div className="audio-toggle-row"><button type="button" className={soundsEnabled?'on':''} onClick={()=>toggleChallengeSounds(true)}><b>SONS ON</b><span>Jingles et impacts activés</span></button><button type="button" className={!soundsEnabled?'on off':''} onClick={()=>toggleChallengeSounds(false)}><b>SONS OFF</b><span>Challenge totalement silencieux</span></button></div></Section>;
 
@@ -438,9 +454,9 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
    <div className="jdc-guide-finale"><span className="jdc-guide-finale-icon" aria-hidden="true"><BottomNavIcon name="stats" size={22}/></span><div><small>CLASSEMENT FINAL · TOTAL DES TROIS PHASES</small><strong>À TOI DE BATTRE LE RECORD !</strong></div><span className="jdc-guide-max"><b>3 380</b><small>PTS MAX</small></span></div>
   </div>
  </Section>;
- const exerciseSettings=exerciseType==='jdc'?[jdcStage]:exerciseType==='classic'?[targetStage,visitsStage,ruleStage]:exerciseType==='clock'?[clockStage]:exerciseType==='half-it'?[halfItStage]:exerciseType==='sequence'?[sequenceStage]:exerciseType==='doubles8'?[doubles8Stage]:[visitsStage,groupingStage];
+ const exerciseSettings=exerciseType==='perfect-line'?[perfectLineStage]:exerciseType==='jdc'?[jdcStage]:exerciseType==='classic'?[targetStage,visitsStage,ruleStage]:exerciseType==='clock'?[clockStage]:exerciseType==='half-it'?[halfItStage]:exerciseType==='sequence'?[sequenceStage]:exerciseType==='doubles8'?[doubles8Stage]:[visitsStage,groupingStage];
  const stages=[formatStage,playersStage,exerciseStage,...exerciseSettings,audioStage];
- const stepLabels=['FORMAT','JOUEURS','EXERCICE',...(exerciseType==='classic'?['CIBLE','TOURS','OBJECTIF']:exerciseType==='clock'?['HORLOGE']:exerciseType==='half-it'?['HALF-IT']:exerciseType==='sequence'?['SÉQUENCE']:exerciseType==='doubles8'?['8 DOUBLES']:exerciseType==='jdc'?['JDC']: ['TOURS','GROUPEMENT']),'SONS'];
+ const stepLabels=['FORMAT','JOUEURS','EXERCICE',...(exerciseType==='classic'?['CIBLE','TOURS','OBJECTIF']:exerciseType==='clock'?['HORLOGE']:exerciseType==='half-it'?['HALF-IT']:exerciseType==='sequence'?['SÉQUENCE']:exerciseType==='doubles8'?['8 DOUBLES']:exerciseType==='jdc'?['JDC']:exerciseType==='perfect-line'?['LIGNE']: ['TOURS','GROUPEMENT']),'SONS'];
  const currentStepValid=step===0?Boolean(matchMode):step===1?selectionValid:(exerciseType==='sequence'&&step===3?sequenceObjectives.length>0:true);
  React.useEffect(()=>{setStep(prev=>Math.min(prev,Math.max(0,stages.length-1)))},[exerciseType,stages.length]);
  const shown=mode==='complete'?stages:[stages[step]];
@@ -455,7 +471,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
   <main className="config-wrap">
    <section className="config-overview">
     <div className="overview-copy"><small>CONFIGURATION CHALLENGE</small><div className="mode-row"><button type="button" className={mode==='guided'?'on':''} onClick={()=>{setMode('guided');setStep(0)}}>GUIDÉE</button><button type="button" className={mode==='complete'?'on':''} onClick={()=>setMode('complete')}>COMPLÈTE</button></div><p>{mode==='guided'?'Configuration compacte, étape par étape, dans le même esprit que X01.':'Tous les réglages sont accessibles sur une seule page.'}</p><button type="button" className="challenge-leaderboard-access" onClick={()=>go('challenge_leaderboard',{from:'challenge_config'})}><span>🏆</span><b>CLASSEMENTS ONLINE</b><small>Meilleurs scores · filtres · équipes officielles</small></button></div>
-    <div className="summary"><b>{matchMode?matchMode.toUpperCase():'—'}</b><span>{playerIds.length} JOUEUR{playerIds.length>1?'S':''}</span><span>{exerciseSummary}</span><span>{resolvedVisits} TOURS</span><span>SONS {soundsEnabled?'ON':'OFF'}</span></div>
+    <div className="summary"><b>{matchMode?matchMode.toUpperCase():'—'}</b><span>{playerIds.length} JOUEUR{playerIds.length>1?'S':''}</span><span>{exerciseSummary}</span><span>{exerciseType==='perfect-line'?'6 ZONES':`${resolvedVisits} TOURS`}</span><span>SONS {soundsEnabled?'ON':'OFF'}</span></div>
    </section>
    {(lastPlayedPreset||favoritePreset)&&<section className="quick-presets" aria-label="Raccourcis Challenge">
     {lastPlayedPreset&&<button type="button" className="quick-preset last" onClick={()=>replayPreset(lastPlayedPreset)}><i>↻</i><span><small>DERNIER CHALLENGE</small><b>{presetDescriptor(lastPlayedPreset)}</b><em>Réglages chargés · choisissez joueurs ou équipes</em></span><strong>REJOUER</strong></button>}
@@ -463,7 +479,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
    </section>}
    {mode==='guided'&&<section className="progress-card"><div><strong>CONFIGURATION GUIDÉE</strong><span>Étape {step+1}/{stages.length} • {stepLabels[step]}</span></div><div className="steps">{stepLabels.map((label,i)=><button type="button" onClick={()=>{if(i<=step||currentStepValid)setStep(i)}} className={i===step?'on':i<step?'done':''} key={label}><b>{i+1}</b><span>{label}</span></button>)}</div></section>}
    <div className={mode==='complete'?'complete-grid':'guided-stage'}>{shown}</div>
-   <section className="launch-preview" aria-label="Résumé du challenge"><span><small>PRÊT À JOUER</small><b>{exerciseSummary}</b><em>{exerciseRuleSummary}</em></span><strong>{resolvedVisits}<small>TOURS</small></strong></section>
+   <section className="launch-preview" aria-label="Résumé du challenge"><span><small>PRÊT À JOUER</small><b>{exerciseSummary}</b><em>{exerciseRuleSummary}</em></span><strong>{resolvedVisits}<small>{exerciseType==='perfect-line'?'ZONES':'TOURS'}</small></strong></section>
    <div className="preset-actions"><button type="button" className={favoritePreset?'favorite-set on':'favorite-set'} onClick={saveFavorite}><span>{favoritePreset?'★':'☆'}</span><b>{favoritePreset?'METTRE À JOUR LE FAVORI':'ENREGISTRER COMME FAVORI'}</b></button><small>Les derniers réglages sont mémorisés automatiquement.</small></div>
    <div className="config-actions">
     {mode==='guided'&&step>0&&<button type="button" onClick={()=>setStep(s=>s-1)}>← PRÉCÉDENT</button>}

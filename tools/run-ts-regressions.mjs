@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 
 const root = process.cwd();
 const allTests = [
+  "tools/test-challenge-perfect-line.ts",
   "tools/test-x01v3-regression.ts",
   "tools/test-baseball-regression.ts",
   "tools/test-shooter-regression.ts",

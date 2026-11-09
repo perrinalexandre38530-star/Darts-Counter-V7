@@ -783,7 +783,7 @@ function historyStatsPayload(record: any, row: any) {
       const entryId = clean(entry?.pid || entry?.playerId || entry?.profileId || entry?.userId || entry?.user_id);
       return !!rowId && entryId === rowId;
     })
-    .map((entry: any) => ({ hit: clean(entry?.hit).toUpperCase(), pid: rowId || clean(entry?.pid || entry?.playerId || entry?.profileId) || 'player', ...(Number(entry?.segment)>0?{segment:Number(entry.segment)}:{}) }));
+    .map((entry: any) => ({ hit: clean(entry?.hit).toUpperCase(), pid: rowId || clean(entry?.pid || entry?.playerId || entry?.profileId) || 'player', ...(Number(entry?.segment)>0?{segment:Number(entry.segment)}:{}), ...(entry?.singleZone==='G'||entry?.singleZone==='P'?{singleZone:entry.singleZone}:{}) }));
 
   const derivedHitCounts = { S: 0, D: 0, T: 0, '25': 0, '50': 0, MISS: 0 } as Record<string, number>;
   for (const entry of entries) derivedHitCounts[entry.hit] = (derivedHitCounts[entry.hit] || 0) + 1;
@@ -917,7 +917,11 @@ async function exactLocalChallengeDetail(
   if (!row && rows.length === 1) row = rows[0];
   if (!row) return null;
 
-  const score = Math.max(0, int(row?.score ?? row?.points ?? row?.bestScore ?? row?.best, 0));
+  const rawScore = Math.max(0, int(row?.score ?? row?.points ?? row?.bestScore ?? row?.best, 0));
+  const config = historyConfig(record);
+  const score = config.target.startsWith('perfect-line-') && rawScore===6
+    ? Math.max(1, 100000-int(row?.darts ?? row?.dartsThrown ?? row?.hitSummary?.darts, 0))
+    : rawScore;
   if (score !== int(detail.score)) return null;
   const stats = historyStatsPayload(record, row);
   return { record, row, stats, playerId: historyRowId(row) || uid };
@@ -993,8 +997,11 @@ export async function syncChallengeHistoricalScores(profiles: any[], _teams: any
       if (!row) continue;
 
       const config = historyConfig(record);
-      const score = Math.max(0, int(row?.score ?? row?.points ?? row?.bestScore ?? row?.best, 0));
+      const rawScore = Math.max(0, int(row?.score ?? row?.points ?? row?.bestScore ?? row?.best, 0));
       const darts = Math.max(0, int(row?.darts ?? row?.dartsThrown ?? row?.hitSummary?.darts, 0));
+      const score = config.target.startsWith('perfect-line-') && rawScore===6 && darts>=6
+        ? Math.max(1,100000-darts)
+        : rawScore;
       const bestStreak = Math.max(0, int(row?.bestStreak ?? row?.special?.bestStreak, 0));
       const accuracy = Math.max(0, Math.min(100, num(row?.successRate ?? row?.accuracy ?? row?.accuracyPct ?? row?.special?.successRate, 0)));
       const pi = profile?.privateInfo || profile?.private_info || {};
