@@ -4597,7 +4597,7 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
     try {
       const result=await exportChallengeResults(historyReport,format,{share:shareNow});
       if(result.status==='preview')setHistoryExportPreview(result);
-      if(result.status==='download-started')setHistoryReportInfo('Téléchargement demandé. Vérifie Téléchargements ; si le navigateur intégré le bloque, ouvre cette version dans Chrome.');
+      if(result.status==='download-started')setHistoryReportInfo(format==='png'?'ZIP d’images PNG A4 demandé : une image par page, dans Téléchargements.':'PDF multipage demandé. Vérifie Téléchargements : le fichier peut s’ouvrir dans le lecteur PDF de Chrome.');
       if(result.status==='share-unavailable')setHistoryShareError('Le navigateur intégré bloque le partage de fichiers. Télécharge le PDF ou le PNG, puis partage-le depuis Galerie ou Fichiers.');
       if(result.status==='shared')setHistoryShareOpen(false);
     } catch(error){
@@ -6604,7 +6604,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
           {historyReport&&<ChallengeReportActions busy={historyReportBusy} onExport={format=>void handleChallengeHistoryReport(format)}/>}
           {historyReportInfo&&<p role="status" style={{color:'#a6d8eb',fontSize:11,lineHeight:1.5,margin:0}}>{historyReportInfo}</p>}
           <small style={{color:'#a3b5c7',lineHeight:1.5}}>
-            PDF et Image lancent des téléchargements distincts. Partager propose d'abord
+            PDF télécharge un document PDF ; Image télécharge un ZIP de pages PNG A4. Partager propose d'abord
             le format, puis ouvre le menu Android lorsque le navigateur l'autorise.
           </small>
         </section>
