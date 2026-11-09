@@ -140,14 +140,15 @@ export function enrichChallengeReport(
     const hits=evalResult.entrySuccessful.slice(first,first+chunk.length).filter(Boolean).length;
     visitRows.push([
       String(i+1),type==='jdc'?'P'+jdcObjectiveForDart(first).phase:'—',
-      labelObjective,chunk.map((e,j)=>hitName(e.hit,e.segment)+' (+'+n(scores[j])+')').join(' · '),
+      labelObjective,
+      ...Array.from({length:3},(_,j)=>chunk[j]?hitName(chunk[j].hit,chunk[j].segment)+' +'+n(scores[j]):'—'),
       String(hits)+'/'+chunk.length,
       String(evalResult.visitScores[i]??0),
       String(evalResult.cumulativeScores[i]??0),
     ]);
    }
    append(player,'JOURNAL DE TOUTES LES VOLÉES',
-    ['N°','PHASE','OBJECTIF','FLÉCHETTES / POINTS','TOUCHES','PTS','CUMUL'],
+    ['N°','PHASE','CIBLE','DART 1','DART 2','DART 3','HITS','PTS','TOTAL'],
     visitRows,'Le journal affiche les saisies réellement enregistrées, y compris les MISS.');
    const sumLast=evalResult.cumulativeScores[evalResult.cumulativeScores.length-1];
    if(Number.isFinite(sumLast)&&Number.isFinite(player.score)&&n(sumLast)!==n(player.score)){
