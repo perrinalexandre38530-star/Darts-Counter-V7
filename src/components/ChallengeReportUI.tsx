@@ -10,24 +10,83 @@ function ReportIcon({kind}: {kind: ChallengeReportFormat}) {
  if(kind==='png')return <svg {...shared}><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m4 18 5-5 3 3 3-4 5 6"/></svg>;
  return <svg {...shared}><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.5-4.5M8.2 13.3l7.5 4.3"/></svg>;
 }
-const styles:Record<ChallengeReportFormat,React.CSSProperties>={
- pdf:{borderColor:'#bd6277',color:'#ffbecd',background:'linear-gradient(180deg,#321720,#170e16)'},
- png:{borderColor:'#459bc2',color:'#b5edff',background:'linear-gradient(180deg,#163546,#0d1c2b)'},
- share:{borderColor:'#48b88d',color:'#c4ffe7',background:'linear-gradient(180deg,#123c2b,#0b2119)'},
-};
 const formats:ChallengeReportFormat[]=['pdf','png','share'];
-const titles:Record<ChallengeReportFormat,string>={pdf:'PDF',png:'IMAGE',share:'PARTAGER'};
+const titles:Record<ChallengeReportFormat,string>={pdf:'PDF',png:'IMAGE PNG',share:'PARTAGER'};
+const colors:Record<ChallengeReportFormat,string>={pdf:'#ffc4d1',png:'#b1efff',share:'#b8f4d6'};
+
+/** Only three clean icons: no frame, no label, centered regardless of width. */
 export function ChallengeReportActions({onExport,busy=false,compact=false}:{
  onExport:(format:ChallengeReportFormat)=>void;busy?:boolean;compact?:boolean;
 }){
- return <div className="challenge-report-actions" style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',width:'100%',gap:7,minWidth:0}}>
-  {formats.map(format=><button key={format} type="button" disabled={busy} onClick={()=>onExport(format)}
-   aria-label={format==='pdf'?'Exporter en PDF':format==='png'?'Exporter en image PNG':'Partager le résultat'} title={titles[format]}
-   style={{...styles[format],display:'flex',flexDirection:compact?'row':'column',justifyContent:'center',alignItems:'center',gap:compact?6:3,
-    minWidth:0,minHeight:compact?39:57,padding:compact?'5px 7px':'8px 3px',borderWidth:1,borderStyle:'solid',borderRadius:12,
-    fontWeight:900,fontSize:compact?9:10,letterSpacing:'.4px',cursor:busy?'wait':'pointer',opacity:busy?.55:1}}>
-   <ReportIcon kind={format}/><span>{titles[format]}</span>
+ return <div className="challenge-report-actions" style={{
+  display:'flex',justifyContent:'center',alignItems:'center',gap:compact?14:25,
+  width:'100%',minWidth:0,margin:'0 auto',padding:'5px 0'
+ }}>
+  {formats.map(format=><button key={format} type="button"
+   disabled={busy} onClick={()=>onExport(format)} title={titles[format]}
+   aria-label={format==='pdf'?'Télécharger le rapport PDF':format==='png'?'Télécharger une image PNG':'Choisir où partager la partie'}
+   style={{display:'grid',placeItems:'center',flex:'0 0 auto',
+    width:compact?44:56,height:compact?44:56,border:0,outline:0,borderRadius:13,
+    background:'transparent',color:colors[format],boxShadow:'none',padding:8,
+    cursor:busy?'wait':'pointer',opacity:busy?.52:1,touchAction:'manipulation'}}>
+    <span style={{display:'flex',transform:compact?'scale(1.20)':'scale(1.38)'}}><ReportIcon kind={format}/></span>
   </button>)}
+ </div>;
+}
+
+/**
+ * The browser share target cannot be selected by a web page. This dialog
+ * lets the user choose the file type, then uses the Android/iOS system chooser
+ * when supported, showing an accurate fallback when it is not.
+ */
+export function ChallengeReportShareDialog({
+ open,onClose,onShare,busy=false,error='',
+}:{
+ open:boolean;onClose:()=>void;onShare:(format:'png'|'pdf')=>void;
+ busy?:boolean;error?:string;
+}){
+ if(!open)return null;
+ return <div role="presentation" onClick={onClose}
+  style={{position:'fixed',inset:0,zIndex:230000,display:'grid',placeItems:'center',
+   padding:14,background:'rgba(0,0,0,.82)'}}>
+  <div role="dialog" aria-modal="true" aria-label="Partager les résultats"
+   onClick={event=>event.stopPropagation()}
+   style={{width:'min(93vw,460px)',padding:17,borderRadius:17,
+    border:'1px solid #364b61',background:'linear-gradient(180deg,#111a27,#080f19)',
+    color:'#f3f7ff',display:'grid',gap:14}}>
+   <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
+    <strong style={{color:'#ff8293',fontSize:16,letterSpacing:'.3px'}}>PARTAGER MES RÉSULTATS</strong>
+    <button type="button" onClick={onClose} aria-label="Fermer"
+     style={{border:0,background:'transparent',color:'#fff',fontSize:25,padding:4}}>×</button>
+   </div>
+   <p style={{margin:0,color:'#b7cadb',fontSize:12,lineHeight:1.55}}>
+    Choisis le format à envoyer. Le menu de partage Android proposera
+    ensuite WhatsApp, Facebook, Instagram ou les autres applications compatibles
+    installées sur ton téléphone.
+   </p>
+   <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:10}}>
+    <button type="button" disabled={busy} onClick={()=>onShare('png')}
+     style={{minHeight:82,borderRadius:12,border:'1px solid #468ca7',background:'#142b3b',
+      color:'#c6efff',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+      gap:8,fontSize:11,fontWeight:900,opacity:busy?.6:1}}>
+      <ReportIcon kind="png"/>IMAGE PNG
+    </button>
+    <button type="button" disabled={busy} onClick={()=>onShare('pdf')}
+     style={{minHeight:82,borderRadius:12,border:'1px solid #945263',background:'#311c27',
+      color:'#ffe3ec',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+      gap:8,fontSize:11,fontWeight:900,opacity:busy?.6:1}}>
+      <ReportIcon kind="pdf"/>DOCUMENT PDF
+    </button>
+   </div>
+   {error&&<div role="alert" style={{padding:'10px 12px',color:'#ffd8a9',
+    fontSize:12,lineHeight:1.6,border:'1px solid #8d6641',borderRadius:10,
+    background:'#291e18'}}>{error}</div>}
+   <small style={{color:'#8298ad',lineHeight:1.55}}>
+    Certains navigateurs intégrés bloquent le menu Android.
+    Dans ce cas, télécharge le PDF ou le PNG avec les icônes du résultat,
+    puis partage le fichier depuis Téléchargements ou Galerie.
+   </small>
+  </div>
  </div>;
 }
 
