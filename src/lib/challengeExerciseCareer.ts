@@ -32,6 +32,8 @@ export type ChallengeExerciseCareer={
   lastPlayedAt:number;
   bestScore:number;
   averageScore:number;
+  bestPerfectLineDarts:number;
+  averagePerfectLineDarts:number;
   averageValidationRate:number;
   bestValidationRate:number;
   bestValidatedVisitStreak:number;
@@ -139,6 +141,7 @@ function mergeSession(target:any,session:{playedAt:number;score:number;stats:Cha
   target.lastPlayedAt=Math.max(target.lastPlayedAt,session.playedAt||0);
   target.scoreTotal+=session.score;
   target.bestScore=Math.max(target.bestScore,session.score);
+  if(stats.type==='perfect-line'&&stats.perfectLineCompleted&&Number(stats.perfectLineDarts)>=6){const darts=Number(stats.perfectLineDarts);target.bestPerfectLineDarts=target.bestPerfectLineDarts?Math.min(target.bestPerfectLineDarts,darts):darts;target.perfectLineDartsTotal+=darts;target.perfectLineDartsCount++;}
   target.validationTotal+=finite(stats.validationRate,0);
   target.bestValidationRate=Math.max(target.bestValidationRate,finite(stats.validationRate,0));
   target.bestValidatedVisitStreak=Math.max(target.bestValidatedVisitStreak,finite(stats.bestValidatedVisitStreak,0));
@@ -167,7 +170,7 @@ export function buildChallengeExerciseCareer(records:any[],cfg:ChallengeExercise
   const wantedType=challengeExerciseType(cfg);
   const wantedKey=challengeCareerConfigKey(cfg);
   const seen=new Set<string>();
-  const aggregate:any={matches:0,firstPlayedAt:0,lastPlayedAt:0,bestScore:0,scoreTotal:0,validationTotal:0,bestValidationRate:0,bestValidatedVisitStreak:0,bestPerfectVisitStreak:0,perfectVisits:0,halfItCuts:0,groupingDoublets:0,groupingTriplets:0,groupingPoints:0,objectives:{},groupingSectors:{},recent:[]};
+  const aggregate:any={matches:0,firstPlayedAt:0,lastPlayedAt:0,bestScore:0,scoreTotal:0,bestPerfectLineDarts:0,perfectLineDartsTotal:0,perfectLineDartsCount:0,validationTotal:0,bestValidationRate:0,bestValidatedVisitStreak:0,bestPerfectVisitStreak:0,perfectVisits:0,halfItCuts:0,groupingDoublets:0,groupingTriplets:0,groupingPoints:0,objectives:{},groupingSectors:{},recent:[]};
 
   for(const record of Array.isArray(records)?records:[]){
     if(!record||String(record?.kind||record?.mode||record?.game?.mode||'').toLowerCase()!=='challenge')continue;
@@ -207,6 +210,8 @@ export function buildChallengeExerciseCareer(records:any[],cfg:ChallengeExercise
     lastPlayedAt:aggregate.lastPlayedAt,
     bestScore:aggregate.bestScore,
     averageScore:aggregate.matches?Math.round((aggregate.scoreTotal/aggregate.matches)*10)/10:0,
+    bestPerfectLineDarts:aggregate.bestPerfectLineDarts,
+    averagePerfectLineDarts:aggregate.perfectLineDartsCount?Math.round((aggregate.perfectLineDartsTotal/aggregate.perfectLineDartsCount)*10)/10:0,
     averageValidationRate:aggregate.matches?Math.round((aggregate.validationTotal/aggregate.matches)*10)/10:0,
     bestValidationRate:Math.round(aggregate.bestValidationRate*10)/10,
     bestValidatedVisitStreak:aggregate.bestValidatedVisitStreak,
