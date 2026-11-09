@@ -41,7 +41,7 @@ function label(value: unknown, length = 44): string {
 function rectangle(
   ctx: CanvasRenderingContext2D,
   x: number, y: number, width: number, height: number,
-  fill: string, stroke = '', radius = 16,
+  fill: string | CanvasGradient, stroke = '', radius = 16,
 ) {
   ctx.beginPath();
   ctx.roundRect(x, y, width, height, Math.max(0, radius));
@@ -80,9 +80,14 @@ function chartRows(player: ChallengeExportPlayer): number {
 function contentHeight(report: ChallengeExportReport) {
   const rows = report.players.length;
   const summaryRows = report.highlight.length ? Math.ceil(report.highlight.length / 4) : 0;
+  // Include player-specific exercise cards; PDF and PNG must never crop the last row.
   return Math.max(1080,
-    510 + summaryRows * 104 + 80 + rows * 71 + 50 +
-    report.players.reduce((sum, p) => sum + 176 + chartRows(p) * 142 + 26, 0) + 92);
+    409 + summaryRows * 104 + 29 + 34 + rows * 71 + 48 + 36 +
+    report.players.reduce((sum, p) => {
+      const exerciseCards = p.metrics.length
+        ? Math.ceil(p.metrics.length / 4) * 88 + 30 + 40 : 0;
+      return sum + 176 + chartRows(p) * 142 + 26 + 20 + exerciseCards;
+    }, 0) + 80);
 }
 
 function renderChart(ctx: CanvasRenderingContext2D, x: number, y: number,
@@ -152,7 +157,7 @@ async function buildCanvas(report: ChallengeExportReport): Promise<HTMLCanvasEle
   ctx.lineWidth = 4;
   ctx.strokeStyle = RED;
   ctx.stroke();
-  txt(ctx, label(leadName, 2).toUpperCase(), MARGIN + 100, 298, 44, '#fff', 900, 'center');
+  txt(ctx, leadName.slice(0, 2).toUpperCase(), MARGIN + 100, 298, 44, '#fff', 900, 'center');
   txt(ctx, report.players.length > 1 ? 'VAINQUEUR' : 'RÉSULTAT', MARGIN + 188, 252, 18, MUTED, 850);
   txt(ctx, leadName.toUpperCase(), MARGIN + 188, 298, 35, TEXT, 950, 'left', 520);
   txt(ctx, String(winner?.score ?? 0) + ' PTS',
