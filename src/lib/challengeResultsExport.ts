@@ -1,3 +1,5 @@
+import { enrichChallengeReport } from './challengeFullReport';
+
 /**
  * Portable visual report for every Challenge exercise (PNG and multipage PDF).
  * Pure canvas rendering: no external runtime dependency and no user-data mutation.
@@ -626,6 +628,7 @@ export function challengeReportFromHistory(entry:any):ChallengeExportReport {
   const rawVisits=row.visitScores??row.stats?.visitScores;
   return {
    name:String(row.name||row.playerName||row.displayName||'Joueur'),
+   participantId:String(row.id||row.pid||row.playerId||''),
    score:Number(row.score??row.points??0)||0,
    accuracy,darts,
    bestStreak:Number(row.bestStreak||0)||0,
@@ -639,12 +642,12 @@ export function challengeReportFromHistory(entry:any):ChallengeExportReport {
  const first=players[0];
  const highlight:ChallengeExportMetric[]=(first?.metrics||[]).slice(0,4);
  if(!highlight.length&&first)highlight.push({label:'SCORE',value:first.score+' PTS'},{label:'RÉUSSITE',value:first.accuracy.toFixed(1)+'%'});
- return {
+ return enrichChallengeReport({
   title:String(summary.objective||entry?.game?.objective||summary.title||'CHALLENGE'),
   rounds:Number(summary.visits??cfg.visits??entry?.game?.visits??0)||0,
   unit:['jdc','doubles8'].includes(String(summary.exerciseType||cfg.exerciseType||''))?'volées':'tours',
   players,highlight,date,
- };
+ },cfg,payload.entries||payload.events||payload?.state?.entries||payload?.state?.log||entry?.entries,source);
 }
 
 
