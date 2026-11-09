@@ -1,5 +1,6 @@
 import React from 'react';
-import { exportChallengeResults, type ChallengeExportReport } from '../lib/challengeResultsExport';
+import { exportChallengeResults, downloadChallengeFile, type ChallengeExportReport, type ChallengeExportResult } from '../lib/challengeResultsExport';
+import { ChallengeReportActions, ChallengeReportPreview } from '../components/ChallengeReportUI';
 import BackDot from '../components/BackDot';
 import ProfileAvatar from '../components/ProfileAvatar';
 import { useTheme } from '../contexts/ThemeContext';
@@ -584,6 +585,9 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
  const [finishExerciseProgressLoading,setFinishExerciseProgressLoading]=React.useState(false);
  const [challengeExportBusy,setChallengeExportBusy]=React.useState(false);
  const [challengeExportError,setChallengeExportError]=React.useState('');
+ const [challengeExportPreview,setChallengeExportPreview]=React.useState<ChallengeExportResult|null>(null);
+ const challengeLastReportRef=React.useRef<ChallengeExportReport|null>(null);
+ const challengeLastFormatRef=React.useRef<'pdf'|'png'>('pdf');
  const [voiceOn,setVoiceOn]=React.useState(false);
  const [voiceHeard,setVoiceHeard]=React.useState('');
  const [segmentMultiplier,setSegmentMultiplier]=React.useState<'S'|'D'|'T'>('S');
@@ -1386,7 +1390,10 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
      };
     }),
    };
-   await exportChallengeResults(report,format);
+   challengeLastReportRef.current=report;
+   challengeLastFormatRef.current=format==='pdf'?'pdf':'png';
+   const result=await exportChallengeResults(report,format);
+   if(result.status==='preview')setChallengeExportPreview(result);
   }catch(error){
    const message=String((error as Error)?.message||'Export impossible sur cet appareil.');
    setChallengeExportError(message);
@@ -1592,14 +1599,11 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
  </div>})}</div><div className="finish-actions">
  <button className="finish-stats" onClick={()=>{setDetailTab('global');setDetailSection(exerciseType==='classic'?'PERF':'EXERCICE');setDetailOpen(true)}}>{exerciseType==='classic'?'STATS DÉTAILLÉES':'STATS EXERCICE'}</button>
  <button onClick={()=>go('challenge_config')}>REJOUER</button>
- <div className="finish-export-actions">
-  <button type="button" className="finish-export-pdf" disabled={challengeExportBusy} onClick={()=>void handleChallengeExport('pdf')}>📄 {challengeExportBusy?'EXPORT…':'PDF'}</button>
-  <button type="button" className="finish-export-png" disabled={challengeExportBusy} onClick={()=>void handleChallengeExport('png')}>🖼️ IMAGE PNG</button>
-  <button type="button" className="finish-export-share" disabled={challengeExportBusy} onClick={()=>void handleChallengeExport('share')}>↗ PARTAGER</button>
- </div>
+ <div className="finish-export-actions"><ChallengeReportActions busy={challengeExportBusy} onExport={format=>void handleChallengeExport(format)}/></div>
  {challengeExportError&&<div className="finish-export-error" role="alert">{challengeExportError}</div>}
  <button className="finish-menu" onClick={()=>go('games')}>MENU PRINCIPAL</button>
 </div></div></div>}
+  <ChallengeReportPreview result={challengeExportPreview} onClose={()=>setChallengeExportPreview(null)} onDownload={()=>{try{if(challengeLastReportRef.current)downloadChallengeFile(challengeLastReportRef.current,challengeLastFormatRef.current);}catch(error){setChallengeExportError(String((error as Error)?.message||error));setChallengeExportPreview(null);}}}/>
   <style>{css}</style>
  </div>;
 }
