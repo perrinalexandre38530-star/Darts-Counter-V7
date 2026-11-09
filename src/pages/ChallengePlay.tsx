@@ -176,6 +176,9 @@ function mergeExerciseAnalytics(rows:ChallengeExerciseAnalytics[],cfg:ChallengeC
   jdcShanghaiCount:sum('jdcShanghaiCount'),
   jdcDoubleHits:sum('jdcDoubleHits'),
   jdcBullHits:sum('jdcBullHits'),
+  perfectLineDarts:sum('perfectLineDarts'),
+  perfectLineCompleted:rows.length>0&&rows.every(row=>Boolean(row.perfectLineCompleted)),
+  perfectLineStageAttempts:Array.from({length:6},(_,index)=>rows.reduce((total,row)=>total+Number(row.perfectLineStageAttempts?.[index]||0),0)),
  };
 }
 
@@ -360,6 +363,13 @@ function makeRecordCards(raw:ChallengeRecordRaw,cfg:ChallengeConfigData,holder?:
   const quality=sampled?(opts?.inverse?1-ratio:ratio):0;
   cards.push({key,label,value:opts?.pct?`${value.toFixed(1)}%`:String(Math.round(value*10)/10),numeric:value,quality,group,holder,inverse:opts?.inverse,sampled});
  };
+ if(type==='perfect-line'){
+  push('line_darts','FLÉCHETTES',raw.darts,Math.max(10,raw.darts*1.5),'PERF',{inverse:true});
+  push('line_errors','ERREURS',raw.failures,Math.max(10,raw.darts),'PERF',{inverse:true});
+  push('line_precision','PRÉCISION',raw.accuracy,100,'PERF',{pct:true});
+  push('line_direct','SUITE MAX',raw.bestStreak,6,'PERF');
+  return cards;
+ }
  push('score','SCORE',raw.score,type==='jdc'?JDC_MAX_SCORE:totalDarts*maxPerDart,'PERF');
  if(type==='classic')push('first9','9 FL.',raw.firstNine,Math.min(9,totalDarts)*maxPerDart,'PERF');
  push('bestStreak',type==='doubles8'?'TOUCHES DE SUITE':'SUITE MAX',raw.bestStreak,totalDarts,'PERF');
@@ -1401,7 +1411,7 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
    const report:ChallengeExportReport={
     title:exerciseTitle(cfg),
     rounds:Number(cfg.visits)||0,
-    unit:exerciseType==='jdc'||exerciseType==='doubles8'?'volées':'tours',
+    unit:perfectLineMode?'zones':exerciseType==='jdc'||exerciseType==='doubles8'?'volées':'tours',
     date:new Date().toLocaleString('fr-FR'),
     highlight:(finishExerciseRecords.length
       ?finishExerciseRecords.map(card=>({label:card.label,value:String(card.value)}))
@@ -1413,7 +1423,7 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
       ?[{label:'RÉUSSITE',value:detail.accuracy.toFixed(1)+'%'},{label:'SUITE',value:String(detail.bestStreak)},{label:'BEST',value:String(detail.bestVisit)}]
       :exerciseResultMetrics(exercise,cfg);
      return {
-      name:String(p.name||'Joueur'),participantId:String(p.id),score:Number(participantScore(p)||0),
+      name:String(p.name||'Joueur'),participantId:String(p.id),score:Number(perfectLineMode?participantDarts(p):participantScore(p))||0,
       accuracy:Number(detail.accuracy||0),darts:Number(detail.darts||0),
       bestStreak:Number(detail.bestStreak||0),avgVisit:Number(detail.avgVisit||0),
       visits:detail.visitScores.map(value=>Number(value)||0),
