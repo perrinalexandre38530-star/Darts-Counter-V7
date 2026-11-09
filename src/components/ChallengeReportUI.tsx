@@ -46,7 +46,8 @@ export function ChallengeReportPreview({result,onClose,onDownload}:{result:Chall
    </p>
    {result.previewUrl&&<img src={result.previewUrl} alt="Rapport Challenge complet avec classement et statistiques" style={{display:'block',width:'100%',height:'auto',borderRadius:10,border:'1px solid #344254'}}/>}
    <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-    {onDownload&&<button type="button" onClick={onDownload} style={{flex:1,minHeight:42,border:'1px solid #459bc2',borderRadius:10,color:'#d1f2ff',background:'#133246',fontWeight:900}}>ESSAYER LE TÉLÉCHARGEMENT</button>}
+    {onDownload&&!/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)&&<button type="button" onClick={onDownload} style={{flex:1,minHeight:42,border:'1px solid #459bc2',borderRadius:10,color:'#d1f2ff',background:'#133246',fontWeight:900}}>TÉLÉCHARGER</button>}
+    <button type="button" onClick={()=>{void navigator.clipboard?.writeText(window.location.href);}} style={{flex:1,minHeight:42,border:'1px solid #459bc2',borderRadius:10,color:'#d1f2ff',background:'#133246',fontWeight:900}}>COPIER LE LIEN POUR CHROME</button>
     <button type="button" onClick={onClose} style={{flex:1,minHeight:42,border:'1px solid #6f788b',borderRadius:10,color:'#fff',background:'#202c3d',fontWeight:900}}>FERMER</button>
    </div>
   </div>
