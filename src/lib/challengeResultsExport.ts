@@ -4,8 +4,12 @@
  * Score inputs are display-only snapshots provided by the game engine.
  */
 export type ChallengeExportMetric = { label: string; value: string };
+export type ChallengeExportSection = {
+ title:string; columns:string[]; rows:string[][]; note?:string;
+};
 export type ChallengeExportPlayer = {
   name: string;
+  participantId?: string;
   score: number;
   accuracy: number | null;
   darts: number | null;
@@ -21,6 +25,7 @@ export type ChallengeExportReport = {
   highlight: ChallengeExportMetric[];
   players: ChallengeExportPlayer[];
   date: string;
+  details?: ChallengeExportSection[];
 };
 
 export type ExportFormat = 'pdf' | 'png' | 'share';
@@ -237,6 +242,105 @@ function buildCanvas(report: ChallengeExportReport): HTMLCanvasElement {
   return canvas;
 }
 
+
+const PDF_SLICE_HEIGHT=Math.floor(WIDTH*(842-44)/(595-44));
+const PAGE_BOTTOM=PDF_SLICE_HEIGHT-106;
+const DETAIL_ROW_HEIGHT=48;
+
+function detailedPages(report:ChallengeExportReport):HTMLCanvasElement[]{
+ const sections=report.details||[];
+ if(!sections.length)return [];
+ const pages:HTMLCanvasElement[]=[];
+ let page:HTMLCanvasElement;
+ let ctx:CanvasRenderingContext2D;
+ let y=0;
+ const startPage=()=>{
+  const c=document.createElement('canvas');
+  c.width=WIDTH;
+  c.height=PDF_SLICE_HEIGHT;
+  const context=c.getContext('2d');
+  if(!context)throw Error('Canvas indisponible pour le rapport détaillé.');
+  page=c;ctx=context;pages.push(c);
+  const background=ctx.createLinearGradient(0,0,0,PDF_SLICE_HEIGHT);
+  background.addColorStop(0,'#080e19');background.addColorStop(1,'#030711');
+  ctx.fillStyle=background;ctx.fillRect(0,0,WIDTH,PDF_SLICE_HEIGHT);
+  rectangle(ctx,MARGIN,33,CONTENT,125,'#17111c','#7f3345',17);
+  txt(ctx,'MULTISPORTS SCORING',MARGIN+22,65,25,RED,950);
+  txt(ctx,label(report.title.toUpperCase(),52),MARGIN+22,106,32,TEXT,950,'left',CONTENT-48);
+  txt(ctx,'RAPPORT COMPLET · '+report.date,MARGIN,PDF_SLICE_HEIGHT-55,17,MUTED,800,'left',CONTENT-50);
+  txt(ctx,'PAGE '+(pages.length+Math.ceil(contentHeight(report)/PDF_SLICE_HEIGHT)),WIDTH-MARGIN,PDF_SLICE_HEIGHT-55,
+   17,RED,900,'right');
+  y=195;
+ };
+ const newPageIf=(h:number)=>{
+  if(y+h>PAGE_BOTTOM)startPage();
+ };
+ startPage();
+ for(const section of sections){
+  const rows=Array.isArray(section.rows)?section.rows:[];
+  if(!rows.length)continue;
+  let index=0;
+  const totalCols=Math.max(1,section.columns.length);
+  const title=label(section.title,70);
+  while(index<rows.length){
+   const titleHeight=section.note?104:76;
+   newPageIf(titleHeight+DETAIL_ROW_HEIGHT+DETAIL_ROW_HEIGHT);
+   rectangle(ctx,MARGIN,y,CONTENT,49,'#211522','#7d3549',9);
+   txt(ctx,title+(index?' · SUITE':''),MARGIN+16,y+25,22,'#ff8892',950,'left',CONTENT-32);
+   y+=57;
+   if(section.note){
+    txt(ctx,label(section.note,110),MARGIN+6,y+12,16,MUTED,650,'left',CONTENT-14);
+    y+=42;
+   }
+   const headerY=y;
+   rectangle(ctx,MARGIN,headerY,CONTENT,45,'#172b3b','#344b60',7);
+   const weighted=section.columns.map(name=>
+    /FLÉCHETTE|SAISIE|OBJECTIF/i.test(name)?2.4:
+    /STATISTIQUE|INDICATEUR|PARAMÈTRE|CIBLE/i.test(name)?1.7:1);
+   const totalWeight=weighted.reduce((a,b)=>a+b,0);
+   const positions:number[]=[];
+   let current=MARGIN;
+   weighted.forEach(w=>{positions.push(current);current+=CONTENT*w/totalWeight;});
+   for(let col=0;col<totalCols;col++){
+    const width=CONTENT*weighted[col]/totalWeight;
+    txt(ctx,label(section.columns[col]||'',25),positions[col]+9,headerY+23,15,'#c5d9eb',850,'left',Math.max(18,width-15));
+   }
+   y+=52;
+   while(index<rows.length&&y+DETAIL_ROW_HEIGHT<PAGE_BOTTOM){
+    const values=rows[index]||[];
+    rectangle(ctx,MARGIN,y,CONTENT,DETAIL_ROW_HEIGHT-4,
+      index%2?'#0c1724':'#101d2c','#223a50',5);
+    for(let col=0;col<totalCols;col++){
+     const width=CONTENT*weighted[col]/totalWeight;
+     const value=String(values[col]??'—');
+     txt(ctx,label(value,160),positions[col]+9,y+21,col===3&&totalCols>=6?15:17,
+      col===0?'#ffb5c0':TEXT,col===0?900:700,'left',Math.max(22,width-15));
+    }
+    index++;y+=DETAIL_ROW_HEIGHT;
+   }
+   y+=19;
+  }
+  y+=17;
+ }
+ return pages;
+}
+
+function reportCanvasPages(report:ChallengeExportReport):HTMLCanvasElement[]{
+ return [buildCanvas(report),...detailedPages(report)];
+}
+
+function stackedImage(pages:HTMLCanvasElement[]):HTMLCanvasElement {
+ const totalHeight=pages.reduce((sum,c)=>sum+c.height,0);
+ if(totalHeight>15000)throw Error('Rapport trop long pour une image unique. Utilise le PDF multipage.');
+ const canvas=document.createElement('canvas');
+ canvas.width=WIDTH;canvas.height=totalHeight;
+ const ctx=canvas.getContext('2d');
+ if(!ctx)throw Error('Image indisponible.');
+ let y=0;
+ for(const page of pages){ctx.drawImage(page,0,y);y+=page.height;}
+ return canvas;
+}
+
 function pngBytesFromCanvas(canvas: HTMLCanvasElement): Uint8Array {
  // Synchronous data URL ensures navigator.share() is invoked while the
  // user's original tap still has transient activation (Android WebView).
@@ -252,7 +356,7 @@ function pngFromCanvas(canvas: HTMLCanvasElement): Blob {
  return new Blob([pngBytesFromCanvas(canvas)],{type:'image/png'});
 }
 
-function pdfBytesFromCanvas(canvas: HTMLCanvasElement): Uint8Array {
+function pdfBytesFromCanvases(canvases: HTMLCanvasElement[]): Uint8Array {
   // PDF 1.4: each A4 page embeds one JPEG slice, preserving the visual report.
   // Binary streams are length-delimited so international names render as pixels.
   const enc = new TextEncoder();
@@ -272,8 +376,13 @@ function pdfBytesFromCanvas(canvas: HTMLCanvasElement): Uint8Array {
   const pageWidth = 595, pageHeight = 842, margin = 22;
   const contentWidth = pageWidth - margin * 2;
   const contentHeight = pageHeight - margin * 2;
-  const sliceHeight = Math.max(1, Math.floor(canvas.width * contentHeight / contentWidth));
-  const pageCount = Math.ceil(canvas.height / sliceHeight);
+  const sliceHeight = PDF_SLICE_HEIGHT;
+  const segments=canvases.flatMap(canvas=>Array.from(
+   {length:Math.ceil(canvas.height/sliceHeight)},(_,index)=>({
+    canvas,offset:index*sliceHeight,
+    h:Math.min(sliceHeight,canvas.height-index*sliceHeight),
+   })));
+  const pageCount = segments.length;
   const pages = Array.from({ length: pageCount }, (_, i) => 3 + i * 3);
   append('%PDF-1.4\n%MSS VISUAL REPORT\n');
   begin(1);
@@ -284,13 +393,13 @@ function pdfBytesFromCanvas(canvas: HTMLCanvasElement): Uint8Array {
     '] /Count ' + pageCount + ' >>');
   end();
   for (let i = 0; i < pageCount; i++) {
-    const h = Math.min(sliceHeight, canvas.height - i * sliceHeight);
+    const {canvas,offset,h}=segments[i];
     const segment = document.createElement('canvas');
     segment.width = canvas.width;
     segment.height = h;
     const segmentCtx = segment.getContext('2d');
     if (!segmentCtx) throw new Error('Création PDF indisponible.');
-    segmentCtx.drawImage(canvas, 0, i * sliceHeight, canvas.width, h, 0, 0, canvas.width, h);
+    segmentCtx.drawImage(canvas, 0, offset, canvas.width, h, 0, 0, canvas.width, h);
     const jpeg = atob(segment.toDataURL('image/jpeg', 0.90).split(',')[1]);
     const bytes = new Uint8Array(jpeg.length);
     for (let j = 0; j < jpeg.length; j++) bytes[j] = jpeg.charCodeAt(j);
@@ -332,6 +441,10 @@ function pdfBytesFromCanvas(canvas: HTMLCanvasElement): Uint8Array {
 
 function pdfFromCanvas(canvas:HTMLCanvasElement):Blob {
  return new Blob([pdfBytesFromCanvas(canvas)],{type:'application/pdf'});
+}
+
+function pdfBytesFromCanvas(canvas:HTMLCanvasElement):Uint8Array {
+ return pdfBytesFromCanvases([canvas]);
 }
 
 function saveFile(blob: Blob, name: string) {
@@ -433,8 +546,8 @@ export async function exportChallengeResults(report:ChallengeExportReport,format
   .toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'challenge';
  const name='MSS_'+slug+'_'+new Date().toISOString().slice(0,10)+'.'+actualFormat;
  // Rendering must precede native sharing, but no await precedes the native call.
- const canvas=buildCanvas(report);
- const bytes=actualFormat==='pdf'?pdfBytesFromCanvas(canvas):pngBytesFromCanvas(canvas);
+ const pages=reportCanvasPages(report);
+ const bytes=actualFormat==='pdf'?pdfBytesFromCanvases(pages):pngBytesFromCanvas(stackedImage(pages));
  const mime=actualFormat==='pdf'?'application/pdf':'image/png';
 
  if(shareRequested){
@@ -465,8 +578,9 @@ export async function exportChallengeResults(report:ChallengeExportReport,format
 
 /** For an explicit second click from the in-app preview (eg. opened in Chrome). */
 export function downloadChallengeFile(report:ChallengeExportReport,format:'pdf'|'png'):void {
- const canvas=buildCanvas(report);
- const blob=format==='pdf'?pdfFromCanvas(canvas):pngFromCanvas(canvas);
+ const pages=reportCanvasPages(report);
+ const blob=format==='pdf'?new Blob([pdfBytesFromCanvases(pages)],{type:'application/pdf'})
+  :new Blob([pngBytesFromCanvas(stackedImage(pages))],{type:'image/png'});
  const slug=report.title.normalize('NFD').replace(/[\u0300-\u036f]/g,'')
   .toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'challenge';
  const name='MSS_'+slug+'_'+new Date().toISOString().slice(0,10)+'.'+format;
