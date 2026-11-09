@@ -49,12 +49,12 @@ import targetAnyDouble from '../assets/challenge_targets/target_any_double.webp'
 import targetAnyTriple from '../assets/challenge_targets/target_any_triple.webp';
 import challengeBoard from '../assets/challenge_board.webp';
 import type { ChallengeConfigData,ChallengeRule } from './ChallengeConfig';
-import { analyzeChallengeExercise, challengeExerciseType, challengeObjectiveKeyTarget, challengeOnlineTargetLabel, classicHitAllowed, classicHitValue, compareChallengeRankRows, evaluateChallengeEntries, exerciseTitle, jdcObjectiveForDart, JDC_MAX_SCORE, maxChallengePointsPerDart, normalizedDoublesTargets, objectiveBoardKey, objectiveForVisit, objectiveLabel, realHitValue, type ChallengeExerciseAnalytics, type ChallengeHit } from '../lib/challengeExercises';
+import { analyzeChallengeExercise, challengeExerciseType, challengeObjectiveKeyTarget, challengeOnlineTargetLabel, classicHitAllowed, classicHitValue, compareChallengeRankRows, evaluateChallengeEntries, exerciseTitle, jdcObjectiveForDart, JDC_MAX_SCORE, maxChallengePointsPerDart, perfectLineProgress, perfectLineLabels, perfectLineNextParticipant, perfectLineSegment, normalizedDoublesTargets, objectiveBoardKey, objectiveForVisit, objectiveLabel, realHitValue, type ChallengeExerciseAnalytics, type ChallengeHit } from '../lib/challengeExercises';
 import { buildChallengeExerciseCareer, challengeCareerConfigKey, type ChallengeExerciseCareer } from '../lib/challengeExerciseCareer';
 import { buildChallengeExerciseProgress, type ChallengeExerciseProgress } from '../lib/challengeExerciseProgress';
 
 type Hit=ChallengeHit;
-type Entry={hit:Hit;pid:string;segment?:number|null;bonusTarget?:number|null};
+type Entry={hit:Hit;pid:string;segment?:number|null;bonusTarget?:number|null;singleZone?:'G'|'P'};
 type Participant={id:string;name:string;profile?:any;team?:any;teamName?:string;avatarDataUrl?:string|null};
 
 const hits:Hit[]=['S','D','T','25','50','MISS'];
@@ -554,7 +554,7 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
   return [];
  },[cfg.playerIds,cfg.participantMode,cfg.teamIds,profiles,selectedTeams,teams,resumeRecord,resumePayload,params?.competitionParticipants]);
  const safeParticipants=participants.length?participants:[{id:'solo',name:'Joueur'}];
- const initialLog=React.useMemo<Entry[]>(()=>{const source=resumeSnapshot?.log||resumeSnapshot?.entries||resumePayload?.entries||resumeRecord?.resume?.livePayload?.entries||[];return Array.isArray(source)?source.filter((e:any)=>e&&hits.includes(e.hit)&&e.pid).map((e:any)=>({hit:e.hit as Hit,pid:String(e.pid),...(Number(e?.segment)>0?{segment:Number(e.segment)}:{}),...(Number(e?.bonusTarget)>0?{bonusTarget:Number(e.bonusTarget)}:{})})):[]},[resumeSnapshot,resumePayload,resumeRecord]);
+ const initialLog=React.useMemo<Entry[]>(()=>{const source=resumeSnapshot?.log||resumeSnapshot?.entries||resumePayload?.entries||resumeRecord?.resume?.livePayload?.entries||[];return Array.isArray(source)?source.filter((e:any)=>e&&hits.includes(e.hit)&&e.pid).map((e:any)=>({hit:e.hit as Hit,pid:String(e.pid),...(Number(e?.segment)>0?{segment:Number(e.segment)}:{}),...(Number(e?.bonusTarget)>0?{bonusTarget:Number(e.bonusTarget)}:{}),...((e?.singleZone==='G'||e?.singleZone==='P')?{singleZone:e.singleZone}:{})})):[]},[resumeSnapshot,resumePayload,resumeRecord]);
  const [log,setLog]=React.useState<Entry[]>(()=>initialLog);
  const [bonusTargetByPlayer,setBonusTargetByPlayer]=React.useState<Record<string,number>>(()=>{
   const restored:Record<string,number>={};
@@ -606,23 +606,25 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
  const soundPoolsRef=React.useRef<Partial<Record<keyof typeof challengeSoundUrls,HTMLAudioElement[]>>>({});
  const introPlayedRef=React.useRef(false);
  const endPlayedRef=React.useRef(false);
+ const exerciseType=challengeExerciseType(cfg);
+ const perfectLineMode=exerciseType==='perfect-line';
  const totalMax=cfg.visits*3*safeParticipants.length;
- const done=log.length>=totalMax;
- const activeIndex=Math.floor(log.length/3)%safeParticipants.length;
+ const done=perfectLineMode?safeParticipants.every(p=>perfectLineProgress(log.filter(e=>e.pid===p.id),cfg).finished):log.length>=totalMax;
+ const activeIndex=perfectLineMode?perfectLineNextParticipant(log,safeParticipants,cfg):Math.floor(log.length/3)%safeParticipants.length;
  const current=safeParticipants[activeIndex];
  const currentLog=log.filter(e=>e.pid===current.id);
- const turn=Math.min(cfg.visits,Math.floor(currentLog.length/3)+1);
- const currentVisitIndex=Math.max(0,Math.min(cfg.visits-1,Math.floor(currentLog.length/3)));
- const exerciseType=challengeExerciseType(cfg);
+ const lineProgress=perfectLineProgress(currentLog,cfg);
+ const turn=perfectLineMode?Math.min(6,lineProgress.step+1):Math.min(cfg.visits,Math.floor(currentLog.length/3)+1);
+ const currentVisitIndex=perfectLineMode?Math.min(5,lineProgress.step):Math.max(0,Math.min(cfg.visits-1,Math.floor(currentLog.length/3)));
  const doublesTargets=React.useMemo(()=>normalizedDoublesTargets(cfg),[cfg]);
  const jdcStep=exerciseType==='jdc'?jdcObjectiveForDart(currentLog.length):null;
  const isDoublesBonusVisit=exerciseType==='doubles8'&&currentVisitIndex>=doublesTargets.length*3;
  const currentBonusTarget=isDoublesBonusVisit?Number(bonusTargetByPlayer[String(current.id)]||0):0;
  const bonusChoiceRequired=isDoublesBonusVisit&&!currentBonusTarget&&!done&&!historyStatsOnly;
- const baseCurrentObjective=String(objectiveForVisit(cfg,currentVisitIndex));
+ const baseCurrentObjective=perfectLineMode?perfectLineLabels(cfg)[currentVisitIndex]:String(objectiveForVisit(cfg,currentVisitIndex));
  const currentObjective=isDoublesBonusVisit&&currentBonusTarget?`bonus-double:${currentBonusTarget}`:baseCurrentObjective;
  const currentObjectiveText=jdcStep?`PHASE ${jdcStep.phase} · ${jdcStep.label}`:bonusChoiceRequired?'BONUS À CHOISIR':objectiveLabel(currentObjective,cfg);
- const currentBoardKey=jdcStep?(jdcStep.hit==='bull'?'bull50':String(jdcStep.sector)):bonusChoiceRequired?String(doublesTargets[0]||20):objectiveBoardKey(currentObjective,cfg);
+ const currentBoardKey=perfectLineMode?(lineProgress.step===4?'bull25':lineProgress.step===5?'bull50':String(perfectLineSegment(cfg))):jdcStep?(jdcStep.hit==='bull'?'bull50':String(jdcStep.sector)):bonusChoiceRequired?String(doublesTargets[0]||20):objectiveBoardKey(currentObjective,cfg);
  const groupingMode=exerciseType==='grouping';
  const familyMode=exerciseType==='classic'&&(cfg.target==='any-double'||cfg.target==='any-triple');
  const objectiveFamilyMode=currentObjective==='any-double'||currentObjective==='any-triple';
@@ -645,6 +647,7 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
   return {score:st.score,tieBreakPoints:entries.reduce((sum,e)=>sum+tieBreakValue(e,cfg),0),accuracy:st.pct,bestStreak:st.streak,bestVisit:st.detailed.bestVisit,darts:st.darts,exerciseStats:analyzeChallengeExercise(entries,cfg)};
  };
  const allowedHits=React.useMemo<Hit[]>(()=>{
+  if(perfectLineMode)return ['S','D','T','25','50','MISS'];
   if(groupingMode)return ['MISS'];
   if(jdcStep)return jdcStep.hit==='bull'?['50','MISS']:jdcStep.hit==='double'?['D','MISS']:['S','D','T','MISS'];
   if(currentObjective==='bull'||currentObjective==='bull25'||currentObjective==='bull50')return ['25','50','MISS'];
@@ -652,7 +655,7 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
   if(exerciseType!=='classic')return ['S','D','T','MISS'];
   if(isBullMode(cfg.rule,cfg.target))return ['25','50','MISS'];
   if(cfg.rule==='single')return ['S','MISS'];if(cfg.rule==='double')return ['D','MISS'];if(cfg.rule==='triple')return ['T','MISS'];return ['S','D','T','MISS'];
- },[groupingMode,currentObjective,objectiveFamilyMode,exerciseType,cfg.target,cfg.rule,jdcStep?.phase,jdcStep?.sector,jdcStep?.hit]);
+ },[perfectLineMode,groupingMode,currentObjective,objectiveFamilyMode,exerciseType,cfg.target,cfg.rule,jdcStep?.phase,jdcStep?.sector,jdcStep?.hit]);
  const currentVisitStart=currentVisitIndex*3;
  const currentVisitEntries=currentLog.slice(currentVisitStart,currentVisitStart+3);
  const currentVisitFlags=currentEvaluation.entrySuccessful.slice(currentVisitStart,currentVisitStart+currentVisitEntries.length);
@@ -660,7 +663,7 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
  const currentVisitSuccessCount=currentVisitFlags.filter(Boolean).length;
  const doublesTargetVisitNumber=exerciseType==='doubles8'&&!currentObjective.startsWith('bonus-double:')?(currentVisitIndex%3)+1:1;
  const currentFailures=Math.max(0,currentHits.length-successful);
- const objectiveHint=jdcStep?(jdcStep.phase===2?`PHASE 2 · 1 ESSAI PAR DOUBLE / BULL · ${jdcStep.hit==='bull'?'+100':'+50'} PTS`: `PHASE ${jdcStep.phase} · SECTEUR ${jdcStep.sector} · S / D / T · SHANGHAI +100`):bonusChoiceRequired?'CHOISISSEZ VOTRE DOUBLE BONUS AVANT LA DERNIÈRE VOLÉE':groupingMode?`Au moins ${Number(cfg.groupingHits||2)} fléchettes dans le même secteur ${Math.min(Number(cfg.groupingMin||15),Number(cfg.groupingMax||20))}–${Math.max(Number(cfg.groupingMin||15),Number(cfg.groupingMax||20))}`:exerciseType==='half-it'?'Échec de la volée = score ÷ 2':exerciseType==='clock'?'L’objectif avance à chaque volée':exerciseType==='sequence'?'Objectif programmé pour cette volée':exerciseType==='doubles8'?(currentVisitIndex>=cfg.visits-1?'VOLÉE BONUS · +50 PAR TOUCHE':`VOLÉE ${doublesTargetVisitNumber}/3 SUR ${currentObjectiveText} · 10 / 30 / 100 PTS`):'';
+ const objectiveHint=perfectLineMode?'1 HIT EXACT PAR ZONE · AUCUNE LIMITE DE FLÉCHETTES · LE PLUS RAPIDE GAGNE':jdcStep?(jdcStep.phase===2?`PHASE 2 · 1 ESSAI PAR DOUBLE / BULL · ${jdcStep.hit==='bull'?'+100':'+50'} PTS`: `PHASE ${jdcStep.phase} · SECTEUR ${jdcStep.sector} · S / D / T · SHANGHAI +100`):bonusChoiceRequired?'CHOISISSEZ VOTRE DOUBLE BONUS AVANT LA DERNIÈRE VOLÉE':groupingMode?`Au moins ${Number(cfg.groupingHits||2)} fléchettes dans le même secteur ${Math.min(Number(cfg.groupingMin||15),Number(cfg.groupingMax||20))}–${Math.max(Number(cfg.groupingMin||15),Number(cfg.groupingMax||20))}`:exerciseType==='half-it'?'Échec de la volée = score ÷ 2':exerciseType==='clock'?'L’objectif avance à chaque volée':exerciseType==='sequence'?'Objectif programmé pour cette volée':exerciseType==='doubles8'?(currentVisitIndex>=cfg.visits-1?'VOLÉE BONUS · +50 PAR TOUCHE':`VOLÉE ${doublesTargetVisitNumber}/3 SUR ${currentObjectiveText} · 10 / 30 / 100 PTS`):'';
  const currentVisitBeforeScore=currentVisitIndex>0?Number(currentEvaluation.cumulativeScores[currentVisitIndex-1]||0):(exerciseType==='half-it'?Math.max(0,Number(cfg.halfItStartScore??40)||0):0);
  const groupingRequired=Math.max(2,Math.min(3,Number(cfg.groupingHits||2)));
  const groupingLive=React.useMemo(()=>{
@@ -670,6 +673,7 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
   return {leader,qualified:Boolean(leader&&leader.count>=groupingRequired),remaining:leader?Math.max(0,groupingRequired-leader.count):groupingRequired};
  },[currentVisitEntries,groupingRequired]);
  const currentVisitDartLabels=React.useMemo(()=>currentVisitEntries.map(entry=>{
+  if(perfectLineMode&&entry.hit==='S'&&entry.singleZone)return `${entry.singleZone}${perfectLineSegment(cfg)}`;
   if(entry.hit==='MISS')return 'MISS';
   if(entry.hit==='25')return 'B25';
   if(entry.hit==='50')return 'B50';
@@ -677,8 +681,9 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
   const fallback=/^([1-9]|1[0-9]|20)$/.test(currentObjective)?Number(currentObjective):objectiveSector;
   const segment=Math.round(Number(entry.segment||fallback||0));
   return segment?`${entry.hit}${segment}`:entry.hit;
- }),[currentVisitEntries,currentObjective]);
+ }),[currentVisitEntries,currentObjective,perfectLineMode,cfg]);
  const liveExerciseStatus=React.useMemo(()=>{
+  if(perfectLineMode)return {tone:lineProgress.finished?'ok':'wait',title:lineProgress.finished?'LIGNE PARFAITE TERMINÉE':`ZONE À ATTEINDRE : ${currentObjectiveText}`,detail:`${lineProgress.step}/6 ZONES · ${currentLog.length} FLÉCHETTES · ${currentLog.length-lineProgress.step} ERREURS`};
   if(exerciseType==='grouping'){
    if(groupingLive.qualified)return {tone:'ok',title:`SECTEUR ${groupingLive.leader?.sector} VALIDÉ`,detail:`${groupingLive.leader?.count}/${groupingRequired} fléchettes · +${currentVisitPoints} pts`};
    if(groupingLive.leader)return {tone:'wait',title:`GROUPEMENT ${groupingLive.leader.sector} · ${groupingLive.leader.count}/${groupingRequired}`,detail:`Encore ${groupingLive.remaining} fléchette${groupingLive.remaining>1?'s':''} sur le même secteur`};
@@ -697,7 +702,7 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
   }
   if(exerciseType==='clock'||exerciseType==='sequence')return {tone:currentVisitSuccessCount>0?'ok':'wait',title:`OBJECTIF ${currentObjectiveText}`,detail:`${currentVisitSuccessCount}/3 hit${currentVisitSuccessCount>1?'s':''} · +${currentVisitPoints} pts`};
   return null;
- },[exerciseType,groupingLive,groupingRequired,currentVisitPoints,currentVisitSuccessCount,currentObjectiveText,currentVisitEntries.length,currentVisitBeforeScore,currentObjective,doublesTargetVisitNumber,bonusChoiceRequired,currentVisitIndex]);
+ },[perfectLineMode,lineProgress.finished,lineProgress.step,currentLog.length,exerciseType,groupingLive,groupingRequired,currentVisitPoints,currentVisitSuccessCount,currentObjectiveText,currentVisitEntries.length,currentVisitBeforeScore,currentObjective,doublesTargetVisitNumber,bonusChoiceRequired,currentVisitIndex]);
  const onlineObjectiveTarget=challengeObjectiveKeyTarget(cfg);
  const onlineTargetOptions=React.useMemo(()=>Array.from(new Set([onlineObjectiveTarget,...onlineTargetFilters])),[onlineObjectiveTarget]);
  const onlineVisitOptions=React.useMemo(()=>Array.from(new Set([Math.max(1,Number(cfg.visits||1)),onlineVisits,...onlineVisitFilters])).sort((a,b)=>a-b),[cfg.visits,onlineVisits]);
@@ -724,15 +729,18 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
   endPlayedRef.current=true;
   playChallengeSound('end');
  },[soundsEnabled,done,historyStatsOnly,playChallengeSound]);
- const add=React.useCallback((h:Hit,segment?:number|null)=>{
+ const add=React.useCallback((h:Hit,segment?:number|null,singleZone?:'G'|'P')=>{
   if(done||bonusChoiceRequired)return;
   setLog(v=>{
-   const pid=safeParticipants[Math.floor(v.length/3)%safeParticipants.length].id;
+   if(perfectLineMode&&safeParticipants.every(p=>perfectLineProgress(v.filter(e=>e.pid===p.id),cfg).finished))return v;
+   const nextIndex=perfectLineMode?perfectLineNextParticipant(v,safeParticipants,cfg):Math.floor(v.length/3)%safeParticipants.length;
+   const pid=safeParticipants[nextIndex].id;
+   if(perfectLineMode&&perfectLineProgress(v.filter(e=>e.pid===pid),cfg).finished)return v;
    const bonusTarget=isDoublesBonusVisit?Number(bonusTargetByPlayer[String(pid)]||0):0;
-   return [...v,{hit:h,pid,...(segment?{segment}: {}),...(bonusTarget?{bonusTarget}:{})}];
+   return [...v,{hit:h,pid,...(segment?{segment}: {}),...(singleZone?{singleZone}:{}),...(bonusTarget?{bonusTarget}:{})}];
   });
   if(h==='S'||h==='D'||h==='T'||h==='MISS')playChallengeSound(h);
- },[done,bonusChoiceRequired,safeParticipants,playChallengeSound,isDoublesBonusVisit,bonusTargetByPlayer]);
+ },[done,bonusChoiceRequired,safeParticipants,playChallengeSound,isDoublesBonusVisit,bonusTargetByPlayer,perfectLineMode,cfg]);
  const addJdcHit=React.useCallback((hit:Hit)=>{if(!jdcStep)return;add(hit,jdcStep.hit==='bull'?undefined:jdcStep.sector);},[add,jdcStep?.sector,jdcStep?.hit]);
  const addFamilySegment=React.useCallback((segment:number)=>add(currentObjective==='any-triple'?'T':'D',segment),[add,currentObjective]);
  const addObjectiveDoubleHit=React.useCallback(()=>add('D',currentObjectiveDouble),[add,currentObjectiveDouble]);
@@ -744,7 +752,7 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
   setBonusTargetByPlayer(prev=>({...prev,[String(current.id)]:selected}));
  },[isDoublesBonusVisit,doublesTargets,current.id]);
  const lang=React.useMemo(()=>{try{return localStorage.getItem('dc_lang_v1')||navigator.language||'fr'}catch{return 'fr'}},[]);
- const startVoice=React.useCallback(()=>{if(groupingMode||objectiveFamilyMode||objectiveDoubleMode||exerciseType==='jdc'){setVoiceHeard('Utilisez le keypad détaillé pour cet objectif');return;}const Ctor=(window as any).SpeechRecognition||(window as any).webkitSpeechRecognition;if(!Ctor){setVoiceHeard('Micro non supporté');return;}try{const rec=new Ctor();rec.lang=localeMap[String(lang).toLowerCase().split('-')[0]]||lang||'fr-FR';rec.interimResults=false;rec.maxAlternatives=5;rec.continuous=false;setVoiceOn(true);setVoiceHeard('…');rec.onresult=(ev:any)=>{const alternatives=Array.from(ev?.results?.[0]||[]) as any[];const heard=alternatives.map(a=>a?.transcript||'').filter(Boolean).join(' | ');setVoiceHeard(heard);const hit=parseChallengeVoice(heard,String(lang),allowedHits);if(hit)add(hit);else setVoiceHeard(`${heard} ?`);};rec.onerror=()=>setVoiceHeard('');rec.onend=()=>setVoiceOn(false);rec.start();}catch{setVoiceOn(false);}},[lang,allowedHits,add,groupingMode,objectiveFamilyMode,objectiveDoubleMode,exerciseType]);
+ const startVoice=React.useCallback(()=>{if(perfectLineMode||groupingMode||objectiveFamilyMode||objectiveDoubleMode||exerciseType==='jdc'){setVoiceHeard('Utilisez le keypad détaillé pour cet objectif');return;}const Ctor=(window as any).SpeechRecognition||(window as any).webkitSpeechRecognition;if(!Ctor){setVoiceHeard('Micro non supporté');return;}try{const rec=new Ctor();rec.lang=localeMap[String(lang).toLowerCase().split('-')[0]]||lang||'fr-FR';rec.interimResults=false;rec.maxAlternatives=5;rec.continuous=false;setVoiceOn(true);setVoiceHeard('…');rec.onresult=(ev:any)=>{const alternatives=Array.from(ev?.results?.[0]||[]) as any[];const heard=alternatives.map(a=>a?.transcript||'').filter(Boolean).join(' | ');setVoiceHeard(heard);const hit=parseChallengeVoice(heard,String(lang),allowedHits);if(hit)add(hit);else setVoiceHeard(`${heard} ?`);};rec.onerror=()=>setVoiceHeard('');rec.onend=()=>setVoiceOn(false);rec.start();}catch{setVoiceOn(false);}},[lang,allowedHits,add,groupingMode,objectiveFamilyMode,objectiveDoubleMode,exerciseType]);
  const participantTieBreak=(p:Participant)=>log.filter(e=>e.pid===p.id).reduce((sum,e)=>sum+tieBreakValue(e,cfg),0);
  const standings=[...safeParticipants].sort((a,b)=>compareChallengeRankRows(participantRankSnapshot(a),participantRankSnapshot(b),cfg));
  const playerLabel=current.team?'ÉQUIPE ACTIVE':'JOUEUR ACTIF';
