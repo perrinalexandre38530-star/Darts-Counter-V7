@@ -7,10 +7,10 @@ export type ChallengeExportMetric = { label: string; value: string };
 export type ChallengeExportPlayer = {
   name: string;
   score: number;
-  accuracy: number;
-  darts: number;
-  bestStreak: number;
-  avgVisit: number;
+  accuracy: number | null;
+  darts: number | null;
+  bestStreak: number | null;
+  avgVisit: number | null;
   metrics: ChallengeExportMetric[];
   visits: number[];
 };
@@ -165,7 +165,7 @@ function buildCanvas(report: ChallengeExportReport): HTMLCanvasElement {
   txt(ctx, leadName.slice(0, 2).toUpperCase(), MARGIN + 100, 298, 44, '#fff', 900, 'center');
   txt(ctx, report.players.length > 1 ? 'VAINQUEUR' : 'RÉSULTAT', MARGIN + 188, 252, 18, MUTED, 850);
   txt(ctx, leadName.toUpperCase(), MARGIN + 188, 298, 35, TEXT, 950, 'left', 520);
-  txt(ctx, String(winner?.score ?? 0) + ' PTS',
+  txt(ctx, (winner&&Number.isFinite(winner.score)?String(winner.score)+' PTS':'SCORE —'),
     MARGIN + CONTENT - 27, 301, 48, RED, 950, 'right', 340);
 
   let y = 409;
@@ -189,7 +189,7 @@ function buildCanvas(report: ChallengeExportReport): HTMLCanvasElement {
       i === 0 ? '#9e3e51' : BORDER, 11);
     txt(ctx, String(i + 1) + '.', MARGIN + 17, y + 31, 28, i === 0 ? RED : TEXT, 900);
     txt(ctx, label(p.name.toUpperCase(), 30), MARGIN + 70, y + 31, 24, TEXT, 850, 'left', 570);
-    txt(ctx, String(p.score) + ' PTS', MARGIN + CONTENT - 21, y + 31, 28,
+    txt(ctx, Number.isFinite(p.score)?String(p.score)+' PTS':'SCORE —', MARGIN + CONTENT - 21, y + 31, 28,
       i === 0 ? RED : '#e6efff', 950, 'right');
     y += 71;
   }
@@ -204,13 +204,13 @@ function buildCanvas(report: ChallengeExportReport): HTMLCanvasElement {
     rectangle(ctx, MARGIN, y, CONTENT, sectionHeight, '#091321', BORDER, 17);
     txt(ctx, label(player.name.toUpperCase(), 33), MARGIN + 23, y + 35,
       27, TEXT, 950, 'left', 750);
-    txt(ctx, String(player.score) + ' PTS',
+    txt(ctx, Number.isFinite(player.score)?String(player.score)+' PTS':'SCORE —',
       MARGIN + CONTENT - 23, y + 35, 31, RED, 950, 'right');
     const tiles: ChallengeExportMetric[] = [
-      { label: 'RÉUSSITE', value: (Number(player.accuracy) || 0).toFixed(1) + '%' },
-      { label: 'FLÉCHETTES', value: String(player.darts || 0) },
-      { label: 'SUITE', value: String(player.bestStreak || 0) },
-      { label: 'MOY. / VOLÉE', value: (Number(player.avgVisit) || 0).toFixed(1) },
+      { label: 'RÉUSSITE', value: player.accuracy === null ? '—' : player.accuracy.toFixed(1) + '%' },
+      { label: 'FLÉCHETTES', value: player.darts === null ? '—' : String(player.darts) },
+      { label: 'SUITE', value: player.bestStreak === null ? '—' : String(player.bestStreak) },
+      { label: 'MOY. / VOLÉE', value: player.avgVisit === null ? '—' : player.avgVisit.toFixed(1) },
     ];
     const width = (CONTENT - 46 - colGap * 3) / 4;
     tiles.forEach((m, i) => metricBox(ctx,
@@ -450,5 +450,82 @@ export function challengeReportFromHistory(entry:any):ChallengeExportReport {
   rounds:Number(summary.visits??cfg.visits??entry?.game?.visits??0)||0,
   unit:['jdc','doubles8'].includes(String(summary.exerciseType||cfg.exerciseType||''))?'volées':'tours',
   players,highlight,date,
+ };
+}
+
+
+/**
+ * Generic report from a saved history entry for other sports/modes.
+ * Missing values are shown as unknown, not as invented scores.
+ * Challenge entries use the specialized parser above.
+ */
+export function visualReportFromHistory(entry:any):ChallengeExportReport {
+ const payload=entry?.payload||entry?.decoded||{};
+ const summary=entry?.summary||payload?.summary||{};
+ const mode=String(entry?.game?.mode||entry?.mode||summary?.mode||entry?.kind||'').toLowerCase();
+ if(mode.includes('challenge')||String(summary?.kind||'').toLowerCase()==='challenge'){
+  return challengeReportFromHistory(entry);
+ }
+ const result=summary?.result||payload?.result||{};
+ const pools=[
+  summary?.rankings,summary?.perPlayer,result?.rankings,result?.players,
+  result?.standings,payload?.stats?.players,payload?.summary?.rankings,
+  payload?.summary?.perPlayer,payload?.finalPlayers,entry?.players,
+ ];
+ const rows=pools.find(v=>Array.isArray(v)&&v.length>0)||[];
+ const validNumber=(value:any):number|null=>{
+  if(value===undefined||value===null||value==='')return null;
+  const n=Number(value);
+  return Number.isFinite(n)?n:null;
+ };
+ const players:ChallengeExportPlayer[]=rows.map((raw:any)=>{
+  const row={...(raw?.stats||{}),...(raw||{})};
+  const score=validNumber(row.score??row.points??row.total??row.finalScore??row.scoreFinal??row.scoreTotal);
+  const darts=validNumber(row.darts??row.dartsThrown);
+  const rate=validNumber(row.accuracy??row.successRate??row.hitRate);
+  const streak=validNumber(row.bestStreak??row.streak);
+  const average=validNumber(row.avgVisit??row.avgPerVisit);
+  const extras:ChallengeExportMetric[]=[];
+  const add=(title:string,value:any,suffix='')=>{
+   if(value===undefined||value===null||value==='')return;
+   const v=String(value);
+   if(v!=='NaN'&&v!=='undefined')extras.push({label:title,value:v+suffix});
+  };
+  add('SETS',row.setsWon??row.sets);
+  add('LEGS',row.legsWon??row.legs);
+  add('AVG3',row.avg3??row.average3Darts);
+  add('FINISH',row.highestCheckout??row.highFinish);
+  add('BEST VOLÉE',row.bestVisit);
+  add('180',row.count180??row.hits180);
+  add('MISS',row.misses??row.miss);
+  add('RÉUSSITE',rate,rate!==null?'%':'');
+  const visits=row.visitScores??row.stats?.visitScores??row.roundScores;
+  return {
+   name:String(row.name||row.playerName||row.displayName||row.nickname||row.label||'Joueur'),
+   score:score===null?Number.NaN:score,
+   darts,accuracy:rate,bestStreak:streak,avgVisit:average,
+   visits:Array.isArray(visits)?visits.map((v:any)=>Number(v)||0):[],
+   metrics:extras,
+  };
+ });
+ const ranked=rows.some((r:any)=>r?.rank!==undefined||r?.finalRank!==undefined);
+ if(ranked)players.sort((a,b)=>{
+  const rank=(p:ChallengeExportPlayer)=>Number(rows.find((r:any)=>String(r.name||r.playerName||r.displayName||r.nickname||'Joueur')===p.name)?.rank??Number.MAX_SAFE_INTEGER);
+  return rank(a)-rank(b);
+ });
+ const rawDate=entry?.finishedAt||entry?.endedAt||entry?.updatedAt||entry?.createdAt||Date.now();
+ const d=new Date(rawDate);
+ const highlights:ChallengeExportMetric[]=[];
+ const addHighlight=(label:string,value:any)=>{if(value!==null&&value!==undefined&&value!=='')highlights.push({label,value:String(value)})};
+ addHighlight('MODE',mode.toUpperCase()||'PARTIE');
+ addHighlight('JOUEURS',players.length);
+ addHighlight('STATUT',String(entry?.status||summary?.status||'terminée').toUpperCase());
+ if(summary?.durationMs)addHighlight('DURÉE (MIN)',(Number(summary.durationMs)/60000).toFixed(1));
+ return {
+  title:String(summary?.title||summary?.modeLabel||entry?.game?.mode||entry?.kind||'PARTIE'),
+  rounds:validNumber(summary?.rounds??entry?.game?.rounds??summary?.visits??0)||0,
+  unit:'tours',
+  players,highlight:highlights,
+  date:Number.isNaN(d.getTime())?'Date inconnue':d.toLocaleString('fr-FR'),
  };
 }
