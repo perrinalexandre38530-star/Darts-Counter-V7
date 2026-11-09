@@ -1,4 +1,5 @@
 import React from 'react';
+import { exportChallengeResults, type ChallengeExportReport } from '../lib/challengeResultsExport';
 import BackDot from '../components/BackDot';
 import ProfileAvatar from '../components/ProfileAvatar';
 import { useTheme } from '../contexts/ThemeContext';
@@ -581,6 +582,8 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
  const [exerciseCareerLoading,setExerciseCareerLoading]=React.useState(false);
  const [finishExerciseProgressByPlayer,setFinishExerciseProgressByPlayer]=React.useState<Record<string,ChallengeExerciseProgress>>({});
  const [finishExerciseProgressLoading,setFinishExerciseProgressLoading]=React.useState(false);
+ const [challengeExportBusy,setChallengeExportBusy]=React.useState(false);
+ const [challengeExportError,setChallengeExportError]=React.useState('');
  const [voiceOn,setVoiceOn]=React.useState(false);
  const [voiceHeard,setVoiceHeard]=React.useState('');
  const [segmentMultiplier,setSegmentMultiplier]=React.useState<'S'|'D'|'T'>('S');
@@ -1352,6 +1355,44 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
  const finishLeaderProgress=finishLeader?finishExerciseProgressByPlayer[String(finishLeader.id)]||null:null;
  const finishProgressImproved=finishLeaderProgress?(exerciseType==='grouping'?finishLeaderProgress.improvedSector:finishLeaderProgress.improvedObjective):null;
  const finishProgressRegressed=finishLeaderProgress?(exerciseType==='grouping'?finishLeaderProgress.regressedSector:finishLeaderProgress.regressedObjective):null;
+
+ // Le document est construit à partir des statistiques réelles de chaque joueur.
+ // Export autonome PDF/PNG, indépendant du DOM et du mode d'exercice.
+ const handleChallengeExport=async(format:'pdf'|'png'|'share')=>{
+  if(challengeExportBusy)return;
+  setChallengeExportBusy(true);
+  setChallengeExportError('');
+  try{
+   const report:ChallengeExportReport={
+    title:exerciseTitle(cfg),
+    rounds:Number(cfg.visits)||0,
+    unit:exerciseType==='jdc'||exerciseType==='doubles8'?'volées':'tours',
+    date:new Date().toLocaleString('fr-FR'),
+    highlight:(finishExerciseRecords.length
+      ?finishExerciseRecords.map(card=>({label:card.label,value:String(card.value)}))
+      :[{label:'SCORE',value:String(finishLeaderStats.score)},{label:'RÉUSSITE',value:String(finishLeaderStats.pct)+'%'},{label:'SUITE MAX',value:String(finishLeaderStats.streak)},{label:'MEILLEURE VOLÉE',value:String(finishLeaderStats.detailed.bestVisit)}]),
+    players:standings.map(p=>{
+     const detail=participantStats(p).detailed;
+     const exercise=exerciseAnalyticsByPlayer.find(row=>row.participant.id===p.id)?.stats||globalExerciseAnalytics;
+     const metrics=exerciseType==='classic'
+      ?[{label:'RÉUSSITE',value:detail.accuracy.toFixed(1)+'%'},{label:'SUITE',value:String(detail.bestStreak)},{label:'BEST',value:String(detail.bestVisit)}]
+      :exerciseResultMetrics(exercise,cfg);
+     return {
+      name:String(p.name||'Joueur'),score:Number(participantScore(p)||0),
+      accuracy:Number(detail.accuracy||0),darts:Number(detail.darts||0),
+      bestStreak:Number(detail.bestStreak||0),avgVisit:Number(detail.avgVisit||0),
+      visits:detail.visitScores.map(value=>Number(value)||0),
+      metrics:metrics.map(metric=>({label:String(metric.label),value:String(metric.value)})),
+     };
+    }),
+   };
+   await exportChallengeResults(report,format);
+  }catch(error){
+   const message=String((error as Error)?.message||'Export impossible sur cet appareil.');
+   setChallengeExportError(message);
+   console.error('[challenge] export',error);
+  }finally{setChallengeExportBusy(false);}
+ };
  const buildMatchComparisonRows=React.useCallback((left:Participant,right:Participant):Array<[string,React.ReactNode,React.ReactNode]>=>{
   const a=participantStats(left),b=participantStats(right);
   const ea=analyzeChallengeExercise(log.filter(entry=>entry.pid===left.id),cfg);
@@ -1538,7 +1579,27 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
    <div className="online-ranking-actions"><button className="online-open" onClick={()=>void (async()=>{setOnlineHistorySyncing(true);try{await syncChallengeHistoricalScores(profiles,teams);onlineHistorySyncedRef.current=true;await refreshOnlineTeams();await refreshOnlineRanking()}finally{setOnlineHistorySyncing(false)}})()}>↻ SYNCHRONISER</button><button className="online-open full" onClick={()=>go('challenge_leaderboard',{from:'challenge_play',prefilter:true,target:onlineTarget,rule:onlineRule,visits:onlineVisits})}>🏆 CLASSEMENT COMPLET & STATS</button></div>
    {onlineFiltersOpen&&<div className="online-filter-picker" onClick={()=>setOnlineFiltersOpen(false)}><div className="online-filter-picker-card" onClick={e=>e.stopPropagation()}><header><div><strong>FILTRES</strong><span>SOLO / DUO / MULTI sont regroupés : la performance est individuelle.</span></div><button onClick={()=>setOnlineFiltersOpen(false)}>×</button></header><section><h3>CLASSEMENT</h3><div><button className={onlineScope==='public'?'on':''} onClick={()=>setOnlineScope('public')}>🌍 PUBLIC</button><button className={onlineScope==='team'?'on':''} onClick={()=>setOnlineScope('team')} disabled={!onlineTeams.length}>🛡️ ÉQUIPE OFFICIELLE</button></div></section>{onlineScope==='team'&&<section><h3>ÉQUIPE OFFICIELLE</h3><div>{onlineTeams.length?onlineTeams.map(team=><button key={team.key} className={onlineTeamKey===team.key?'on':''} onClick={()=>setOnlineTeamKey(team.key)}><b>✓ {team.name}</b><small>{team.organizationName||'Organisation MSS'}</small></button>):<em>Aucune équipe officielle. Affecte ton compte à une équipe Darts dans une Organisation MSS.</em>}</div></section>}<section><h3>🎯 CIBLE</h3><div>{onlineTargetOptions.map(value=><button key={value} className={onlineTarget===value?'on':''} onClick={()=>setOnlineTarget(value)}>{challengeOnlineTargetLabel(value)}</button>)}</div></section><section><h3>🔁 TOURS</h3><div>{onlineVisitOptions.map(value=><button key={value} className={onlineVisits===value?'on':''} onClick={()=>setOnlineVisits(value)}>{value}</button>)}</div></section><section><h3>✦ HITS</h3><div>{onlineRuleFilters.map(value=><button key={value} className={onlineRule===value?'on':''} onClick={()=>setOnlineRule(value)}>{ruleLabel(value)}</button>)}</div></section><footer><button onClick={()=>{setOnlineFiltersOpen(false);void refreshOnlineRanking()}}>APPLIQUER</button></footer></div></div>}
   </div></div>}
-  {done&&!historyStatsOnly&&<div className={`finish finish-wow finish-${exerciseType}`}><div className="finish-burst" aria-hidden="true">{Array.from({length:24},(_,i)=><i key={i} style={{'--i':i} as React.CSSProperties}/>)}</div><div className="finish-glow" aria-hidden="true"/><div className="finish-panel"><div className="finish-exercise-badge"><i>{exerciseType==='clock'?'↻':exerciseType==='half-it'?'½':exerciseType==='sequence'?'≡':exerciseType==='grouping'?'◉':exerciseType==='doubles8'?'⑧':'★'}</i><span><small>CHALLENGE TERMINÉ</small><b>{exerciseTitle(cfg)}</b></span><em>{cfg.visits} {exerciseType==='doubles8'||exerciseType==='jdc'?'VOLÉES':'TOURS'}</em></div><div className="finish-hero"><span className="finish-hero-avatar"><ChallengeAvatar participant={finishLeader} size={82}/></span><div><small>{safeParticipants.length>1?'VAINQUEUR':'RÉSULTAT'}</small><h2>{String(finishLeader?.name||'Joueur').toUpperCase()}</h2><strong>{finishLeaderStats.score} <small>PTS</small></strong><p>{finishExerciseSubline}</p></div></div>{finishExerciseRecords.length>0&&<div className="finish-exercise-records">{finishExerciseRecords.map(card=><div key={card.key}><span>{card.label}</span><b>{card.value}</b>{card.holder&&safeParticipants.length>1?<small>{card.holder}</small>:null}</div>)}</div>}{exerciseType!=='classic'&&<div className="finish-progress"><header><span><small>PROGRESSION PERSONNELLE</small><b>COMPARAISON AVEC L’HISTORIQUE</b></span>{finishExerciseProgressLoading?<em>ANALYSE…</em>:finishLeaderProgress?.baseline?<em>PREMIÈRE RÉFÉRENCE</em>:finishLeaderProgress?.records.length?<em className="record">NOUVEAU RECORD ×{finishLeaderProgress.records.length}</em>:<em>HISTORIQUE · {finishLeaderProgress?.previousMatches||0} PARTIES</em>}</header>{finishExerciseProgressLoading?<div className="finish-progress-empty">Comparaison avec les performances précédentes…</div>:finishLeaderProgress?.baseline?<div className="finish-progress-empty">Cette partie devient la référence de départ pour cette configuration. Les prochaines performances seront comparées à celle-ci.</div>:finishLeaderProgress?<><div className="finish-progress-deltas"><div className={(finishLeaderProgress.scoreDeltaFromLast||0)>0?'up':(finishLeaderProgress.scoreDeltaFromLast||0)<0?'down':'flat'}><span>SCORE VS DERNIÈRE</span><b>{finishLeaderProgress.scoreDeltaFromLast===null?'—':`${finishLeaderProgress.scoreDeltaFromLast>0?'+':''}${finishLeaderProgress.scoreDeltaFromLast}`}</b><small>{finishLeaderStats.score} pts aujourd’hui</small></div><div className={(finishLeaderProgress.validationDeltaFromLast||0)>0?'up':(finishLeaderProgress.validationDeltaFromLast||0)<0?'down':'flat'}><span>VALIDATION VS DERNIÈRE</span><b>{finishLeaderProgress.validationDeltaFromLast===null?'—':`${finishLeaderProgress.validationDeltaFromLast>0?'+':''}${finishLeaderProgress.validationDeltaFromLast.toFixed(1)} pts`}</b><small>{finishLeaderExercise.validationRate.toFixed(1)}% aujourd’hui</small></div></div>{finishLeaderProgress.records.length>0&&<div className="finish-new-records">{finishLeaderProgress.records.map(record=><div key={record.key}><span>NOUVEAU RECORD</span><b>{record.label}</b><strong>{record.value}{record.suffix}</strong><small>ancien {record.previous}{record.suffix}</small></div>)}</div>}{(finishProgressImproved||finishProgressRegressed)&&<div className="finish-progress-insights">{finishProgressImproved&&('sector' in finishProgressImproved?<div className="up"><span>SECTEUR EN PROGRÈS</span><b>{finishProgressImproved.sector}</b><small>+{finishProgressImproved.delta.toFixed(1)} hit{finishProgressImproved.delta>1?'s':''} vs moyenne historique</small></div>:<div className="up"><span>OBJECTIF EN PROGRÈS</span><b>{finishProgressImproved.label}</b><small>+{finishProgressImproved.delta.toFixed(1)} pts de validation vs historique</small></div>)}{finishProgressRegressed&&('sector' in finishProgressRegressed?<div className="down"><span>SECTEUR EN RECUL</span><b>{finishProgressRegressed.sector}</b><small>{finishProgressRegressed.delta.toFixed(1)} hit{Math.abs(finishProgressRegressed.delta)>1?'s':''} vs moyenne historique</small></div>:<div className="down"><span>OBJECTIF EN RECUL</span><b>{finishProgressRegressed.label}</b><small>{finishProgressRegressed.delta.toFixed(1)} pts de validation vs historique</small></div>)}</div>}</>:<div className="finish-progress-empty">Comparaison historique indisponible.</div>}</div>}<div className={`finish-scoreline ${safeParticipants.length===1?'solo':''}`}>{standings.map((p,i)=>{const st=participantStats(p).detailed;const ex=exerciseAnalyticsByPlayer.find(row=>row.participant.id===p.id)?.stats||globalExerciseAnalytics;const progress=finishExerciseProgressByPlayer[String(p.id)];const rowMetrics=exerciseType==='classic'?[{label:'RÉUSSITE',value:`${st.accuracy.toFixed(1)}%`},{label:'SUITE',value:String(st.bestStreak)},{label:'BEST',value:String(st.bestVisit)}]:exerciseResultMetrics(ex,cfg);return <div className={'finish-score-row '+(i===0?'winner':'')} key={p.id}><span className="finish-row-avatar"><ChallengeAvatar participant={p} size={52}/></span><span className="finish-row-name"><b>{i+1}. {p.name}</b><span className="finish-row-metrics">{rowMetrics.map(metric=><span key={metric.label}><small>{metric.label}</small><strong>{metric.value}</strong></span>)}</span>{exerciseType!=='classic'&&progress?.records.length>0?<i className="finish-row-record">NOUVEAU RECORD ×{progress.records.length}</i>:null}</span><strong className="finish-row-score">{participantScore(p)}<small>PTS</small></strong></div>})}</div><div className="finish-actions"><button className="finish-stats" onClick={()=>{setDetailTab('global');setDetailSection(exerciseType==='classic'?'PERF':'EXERCICE');setDetailOpen(true)}}>{exerciseType==='classic'?'STATS DÉTAILLÉES':'STATS EXERCICE'}</button><button onClick={()=>go('challenge_config')}>REJOUER</button><button className="finish-menu" onClick={()=>go('games')}>MENU PRINCIPAL</button></div></div></div>}
+  {done&&!historyStatsOnly&&<div className={`finish finish-wow finish-${exerciseType}`}><div className="finish-burst" aria-hidden="true">{Array.from({length:24},(_,i)=><i key={i} style={{'--i':i} as React.CSSProperties}/>)}</div><div className="finish-glow" aria-hidden="true"/><div className="finish-panel"><div className="finish-exercise-badge"><i>{exerciseType==='clock'?'↻':exerciseType==='half-it'?'½':exerciseType==='sequence'?'≡':exerciseType==='grouping'?'◉':exerciseType==='doubles8'?'⑧':'★'}</i><span><small>CHALLENGE TERMINÉ</small><b>{exerciseTitle(cfg)}</b></span><em>{cfg.visits} {exerciseType==='doubles8'||exerciseType==='jdc'?'VOLÉES':'TOURS'}</em></div><div className="finish-hero"><span className="finish-hero-avatar"><ChallengeAvatar participant={finishLeader} size={82}/></span><div><small>{safeParticipants.length>1?'VAINQUEUR':'RÉSULTAT'}</small><h2>{String(finishLeader?.name||'Joueur').toUpperCase()}</h2><strong>{finishLeaderStats.score} <small>PTS</small></strong><p>{finishExerciseSubline}</p></div></div>{finishExerciseRecords.length>0&&<div className="finish-exercise-records">{finishExerciseRecords.map(card=><div key={card.key}><span>{card.label}</span><b>{card.value}</b>{card.holder&&safeParticipants.length>1?<small>{card.holder}</small>:null}</div>)}</div>}{exerciseType!=='classic'&&<div className="finish-progress"><header><span><small>PROGRESSION PERSONNELLE</small><b>COMPARAISON AVEC L’HISTORIQUE</b></span>{finishExerciseProgressLoading?<em>ANALYSE…</em>:finishLeaderProgress?.baseline?<em>PREMIÈRE RÉFÉRENCE</em>:finishLeaderProgress?.records.length?<em className="record">NOUVEAU RECORD ×{finishLeaderProgress.records.length}</em>:<em>HISTORIQUE · {finishLeaderProgress?.previousMatches||0} PARTIES</em>}</header>{finishExerciseProgressLoading?<div className="finish-progress-empty">Comparaison avec les performances précédentes…</div>:finishLeaderProgress?.baseline?<div className="finish-progress-empty">Cette partie devient la référence de départ pour cette configuration. Les prochaines performances seront comparées à celle-ci.</div>:finishLeaderProgress?<><div className="finish-progress-deltas"><div className={(finishLeaderProgress.scoreDeltaFromLast||0)>0?'up':(finishLeaderProgress.scoreDeltaFromLast||0)<0?'down':'flat'}><span>SCORE VS DERNIÈRE</span><b>{finishLeaderProgress.scoreDeltaFromLast===null?'—':`${finishLeaderProgress.scoreDeltaFromLast>0?'+':''}${finishLeaderProgress.scoreDeltaFromLast}`}</b><small>{finishLeaderStats.score} pts aujourd’hui</small></div><div className={(finishLeaderProgress.validationDeltaFromLast||0)>0?'up':(finishLeaderProgress.validationDeltaFromLast||0)<0?'down':'flat'}><span>VALIDATION VS DERNIÈRE</span><b>{finishLeaderProgress.validationDeltaFromLast===null?'—':`${finishLeaderProgress.validationDeltaFromLast>0?'+':''}${finishLeaderProgress.validationDeltaFromLast.toFixed(1)} pts`}</b><small>{finishLeaderExercise.validationRate.toFixed(1)}% aujourd’hui</small></div></div>{finishLeaderProgress.records.length>0&&<div className="finish-new-records">{finishLeaderProgress.records.map(record=><div key={record.key}><span>NOUVEAU RECORD</span><b>{record.label}</b><strong>{record.value}{record.suffix}</strong><small>ancien {record.previous}{record.suffix}</small></div>)}</div>}{(finishProgressImproved||finishProgressRegressed)&&<div className="finish-progress-insights">{finishProgressImproved&&('sector' in finishProgressImproved?<div className="up"><span>SECTEUR EN PROGRÈS</span><b>{finishProgressImproved.sector}</b><small>+{finishProgressImproved.delta.toFixed(1)} hit{finishProgressImproved.delta>1?'s':''} vs moyenne historique</small></div>:<div className="up"><span>OBJECTIF EN PROGRÈS</span><b>{finishProgressImproved.label}</b><small>+{finishProgressImproved.delta.toFixed(1)} pts de validation vs historique</small></div>)}{finishProgressRegressed&&('sector' in finishProgressRegressed?<div className="down"><span>SECTEUR EN RECUL</span><b>{finishProgressRegressed.sector}</b><small>{finishProgressRegressed.delta.toFixed(1)} hit{Math.abs(finishProgressRegressed.delta)>1?'s':''} vs moyenne historique</small></div>:<div className="down"><span>OBJECTIF EN RECUL</span><b>{finishProgressRegressed.label}</b><small>{finishProgressRegressed.delta.toFixed(1)} pts de validation vs historique</small></div>)}</div>}</>:<div className="finish-progress-empty">Comparaison historique indisponible.</div>}</div>}<div className={`finish-scoreline ${safeParticipants.length===1?'solo':''}`}>{standings.map((p,i)=>{const st=participantStats(p).detailed;const ex=exerciseAnalyticsByPlayer.find(row=>row.participant.id===p.id)?.stats||globalExerciseAnalytics;const progress=finishExerciseProgressByPlayer[String(p.id)];const rowMetrics=exerciseType==='classic'?[{label:'RÉUSSITE',value:`${st.accuracy.toFixed(1)}%`},{label:'SUITE',value:String(st.bestStreak)},{label:'BEST',value:String(st.bestVisit)}]:exerciseResultMetrics(ex,cfg);return <div className={'finish-score-row '+(i===0?'winner':'')} key={p.id}>
+  <div className="finish-row-person">
+   <div className="finish-row-avatar"><ChallengeAvatar participant={p} size={48}/></div>
+   <div className="finish-row-heading">
+    <b>{i+1}. {p.name}</b>
+    {exerciseType!=='classic'&&progress?.records.length>0?<i className="finish-row-record">NOUVEAU RECORD ×{progress.records.length}</i>:null}
+   </div>
+  </div>
+  <strong className="finish-row-score">{participantScore(p)}<small>PTS</small></strong>
+  <div className="finish-row-metrics">{rowMetrics.map(metric=><div key={metric.label}><small>{metric.label}</small><strong>{metric.value}</strong></div>)}</div>
+ </div>})}</div><div className="finish-actions">
+ <button className="finish-stats" onClick={()=>{setDetailTab('global');setDetailSection(exerciseType==='classic'?'PERF':'EXERCICE');setDetailOpen(true)}}>{exerciseType==='classic'?'STATS DÉTAILLÉES':'STATS EXERCICE'}</button>
+ <button onClick={()=>go('challenge_config')}>REJOUER</button>
+ <div className="finish-export-actions">
+  <button type="button" className="finish-export-pdf" disabled={challengeExportBusy} onClick={()=>void handleChallengeExport('pdf')}>📄 {challengeExportBusy?'EXPORT…':'PDF'}</button>
+  <button type="button" className="finish-export-png" disabled={challengeExportBusy} onClick={()=>void handleChallengeExport('png')}>🖼️ IMAGE PNG</button>
+  <button type="button" className="finish-export-share" disabled={challengeExportBusy} onClick={()=>void handleChallengeExport('share')}>↗ PARTAGER</button>
+ </div>
+ {challengeExportError&&<div className="finish-export-error" role="alert">{challengeExportError}</div>}
+ <button className="finish-menu" onClick={()=>go('games')}>MENU PRINCIPAL</button>
+</div></div></div>}
   <style>{css}</style>
  </div>;
 }
@@ -1951,6 +2012,43 @@ const css=`
  .cp .exercise-hit-pad button{padding:3px 2px;border-radius:10px}
  .cp .exercise-hit-pad button b{font-size:clamp(24px,6vh,36px)}
  .cp .exercise-hit-pad button[class~="25"] b,.cp .exercise-hit-pad button[class~="50"] b{font-size:clamp(20px,4.8vh,29px)}
+}
+
+/* Challenge final score: structural row layout, no inherited legacy span/b grid areas. */
+.finish-panel .finish-scoreline .finish-score-row,
+.finish-panel .finish-scoreline.solo .finish-score-row{
+ display:grid;grid-template-columns:minmax(0,1fr) max-content;
+ grid-template-areas:"person score" "metrics metrics";
+ gap:10px 9px;align-items:center;min-height:0;padding:11px;
+ box-sizing:border-box;overflow:hidden
+}
+.finish-panel .finish-score-row span,
+.finish-panel .finish-score-row b{grid-area:auto;white-space:normal;overflow:visible;text-overflow:clip}
+.finish-panel .finish-score-row .finish-row-person{grid-area:person;display:flex;align-items:center;gap:10px;min-width:0}
+.finish-panel .finish-score-row .finish-row-avatar,
+.finish-panel .finish-scoreline.solo .finish-row-avatar{flex:0 0 49px;width:49px;height:49px;min-width:49px;max-width:49px;overflow:hidden}
+.finish-panel .finish-score-row .finish-row-heading{display:flex;flex-direction:column;justify-content:center;min-width:0}
+.finish-panel .finish-score-row .finish-row-heading>b{font-size:clamp(12px,2.8vw,17px);font-weight:1000;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.finish-panel .finish-score-row .finish-row-heading>i{font-size:8px;max-width:100%;white-space:normal}
+.finish-panel .finish-score-row>.finish-row-score{grid-area:score;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;font-size:clamp(22px,4.8vw,32px);min-width:78px;white-space:nowrap;line-height:1.05}
+.finish-panel .finish-score-row>.finish-row-score small{font-size:9px;margin-top:3px}
+.finish-panel .finish-score-row>.finish-row-metrics{grid-area:metrics;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin:0;min-width:0}
+.finish-panel .finish-row-metrics>div{min-width:0;display:flex;justify-content:space-between;align-items:center;gap:5px;padding:7px 9px;border:1px solid #2e3b4e;border-radius:8px;background:#0b1420}
+.finish-panel .finish-row-metrics>div small{min-width:0;color:#96a8bd;font-size:clamp(8px,1.4vw,11px);font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.finish-panel .finish-row-metrics>div strong{color:#edf6ff;font-size:clamp(11px,2.2vw,15px);font-weight:1000;white-space:nowrap}
+.finish-panel .finish-export-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;grid-column:1/-1;width:100%}
+.finish-panel .finish-export-actions button{min-width:0;min-height:42px;width:100%;padding:9px 5px;font-size:clamp(8px,1.6vw,11px);border-radius:10px;font-weight:1000;box-shadow:none}
+.finish-panel .finish-export-pdf{background:linear-gradient(180deg,#862c39,#45121e);border:1px solid #e16177;color:#fff}
+.finish-panel .finish-export-png{background:linear-gradient(180deg,#224b63,#102537);border:1px solid #52b7e3;color:#e0faff}
+.finish-panel .finish-export-share{background:linear-gradient(180deg,#175942,#0a3024);border:1px solid #48ba8d;color:#e3fff0}
+.finish-panel .finish-export-actions button:disabled{opacity:.55;cursor:wait}
+.finish-panel .finish-export-error{grid-column:1/-1;padding:7px 9px;border:1px solid #c35c63;border-radius:8px;background:#2c1016;color:#ffb8bd;font-size:10px}
+@media(min-width:700px){
+ .finish-panel .finish-score-row>.finish-row-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
+@media(max-width:370px){
+ .finish-panel .finish-score-row .finish-row-avatar,.finish-panel .finish-scoreline.solo .finish-row-avatar{width:42px;height:42px;min-width:42px;flex-basis:42px}
+ .finish-panel .finish-row-metrics>div{padding:6px}
 }
 
 `;
