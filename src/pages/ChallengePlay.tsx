@@ -1426,7 +1426,6 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
     <button type="button" className="landscape-stats landscape-only stats-hit-open" onClick={()=>{setDetailTab('global');setDetailSection(exerciseType==='doubles8'?'EXERCICE':'PERF');setDetailOpen(true)}}><h2>{exerciseType==='doubles8'?'STATS DOUBLES':'STATS HITS'} <span>↗</span></h2>{exerciseType==='doubles8'?<div className="hitstats doubles8-landscape-summary"><div className="hs D"><b>TOUCHÉS</b><strong>{successful}</strong></div><div className="hs MISS"><b>MISS</b><strong>{currentFailures}</strong></div><div className="hs visit"><b>VOLÉES</b><strong>{Math.min(cfg.visits,Math.floor(currentLog.length/3))}/{cfg.visits}</strong></div><div className="hs target"><b>CIBLE</b><strong>{currentObjectiveText}</strong></div></div>:<div className="hitstats">{challengeVisibleHitTypes(cfg).map(h=><div className={'hs '+h} key={h}><b>{h}<small>{h==='S'?' ×1':h==='D'?' ×2':h==='T'?' ×3':''}</small></b><strong>{counts[h]}</strong></div>)}</div>}</button>
     <div className="input-tools"><button className="undo" disabled={!log.length} onClick={()=>setLog(v=>v.slice(0,-1))}>↶ <span>ANNULER</span></button><button className={'voice '+(voiceOn?'listening':'')} type="button" onClick={startVoice} aria-label="Saisie vocale"><svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg><span>{voiceOn?'ÉCOUTE…':'VOCAL'}</span></button></div>
     {jdcStep?<div className="challenge-segment-keypad compact jdc-keypad">
-      <div className="grouping-keypad-help"><b>PHASE {jdcStep.phase}</b> · CIBLE {jdcStep.label} · {jdcStep.hit==='sector'?'VALEUR RÉELLE · SHANGHAI +100':jdcStep.hit==='bull'?'+100 PTS':'+50 PTS'}</div>
       <div className={`keypad keys-${jdcStep.hit==='sector'?4:2} exercise-hit-pad`}>
        {(jdcStep.hit==='sector'?(['S','D','T','MISS'] as Hit[]):jdcStep.hit==='bull'?(['50','MISS'] as Hit[]):(['D','MISS'] as Hit[])).map(hit=><button type="button" className={hit} key={hit} disabled={done} onClick={()=>addJdcHit(hit)} aria-label={hit==='MISS'?'MISS':jdcStep.hit==='bull'?'DBULL':`${hit}${jdcStep.sector}`}><b>{hit==='MISS'?'MISS':jdcStep.hit==='bull'?'DBULL':`${hit}${jdcStep.sector}`}</b></button>)}
       </div>
@@ -1929,7 +1928,7 @@ const css=`
 .cp .exercise-hit-pad button.T{background:linear-gradient(180deg,#4c2b43,#291826);border-color:#65415c}
 .cp .exercise-hit-pad button.T b{color:#ffccff}
 .cp .exercise-hit-pad button.MISS{background:linear-gradient(180deg,#f0a927,#bd7008);border-color:#ffcb62}
-.cp .exercise-hit-pad button.MISS b{color:#fff}
+.cp .exercise-hit-pad button.MISS b{color:#602600;text-shadow:0 1px 0 #f9b44a66}
 .cp .exercise-hit-pad button[class~="25"]{background:linear-gradient(180deg,#184b38,#0c2e23);border-color:#326a53}
 .cp .exercise-hit-pad button[class~="25"] b{color:#9eefd0}
 .cp .exercise-hit-pad button[class~="50"]{background:linear-gradient(180deg,#cf3c46,#85121e);border-color:#ed7480}
@@ -1939,7 +1938,7 @@ const css=`
 .cp .exercise-segment-grid button.hit-S{background:linear-gradient(180deg,#28282b,#17171a);border-color:#46464c;color:#fff}
 .cp .exercise-segment-grid button.hit-D{background:linear-gradient(180deg,#214757,#122c39);border-color:#335868;color:#bfeaff}
 .cp .exercise-segment-grid button.hit-T{background:linear-gradient(180deg,#4c2b43,#291826);border-color:#65415c;color:#ffccff}
-.cp .exercise-segment-miss{background:linear-gradient(180deg,#f0a927,#bd7008);border-color:#ffcb62;color:#fff;font-size:clamp(16px,3vw,24px)}
+.cp .exercise-segment-miss{background:linear-gradient(180deg,#f0a927,#bd7008);border-color:#ffcb62;color:#602600;font-size:clamp(16px,3vw,24px)}
 .cp .grouping-keypad .multiplier-tabs button.on.S{background:linear-gradient(180deg,#28282b,#17171a);border-color:#606068;color:#fff}
 .cp .grouping-keypad .multiplier-tabs button.on.D{background:linear-gradient(180deg,#214757,#122c39);border-color:#497a90;color:#bfeaff}
 .cp .grouping-keypad .multiplier-tabs button.on.T{background:linear-gradient(180deg,#4c2b43,#291826);border-color:#825676;color:#ffccff}
