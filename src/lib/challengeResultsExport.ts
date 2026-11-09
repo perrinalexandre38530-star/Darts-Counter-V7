@@ -141,7 +141,7 @@ function renderChart(ctx: CanvasRenderingContext2D, x: number, y: number,
 }
 
 function buildCanvas(report: ChallengeExportReport): HTMLCanvasElement {
-  const height = contentHeight(report);
+  const height = Math.max(PDF_SLICE_HEIGHT, contentHeight(report));
   const canvas = document.createElement('canvas');
   canvas.width = WIDTH;
   canvas.height = height;
