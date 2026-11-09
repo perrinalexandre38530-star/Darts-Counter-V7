@@ -1920,14 +1920,29 @@ const css=`
 .cp .exercise-hit-pad{gap:clamp(5px,1vw,10px)}
 .cp .exercise-hit-pad button{display:flex;align-items:center;justify-content:center;padding:6px 4px;border-radius:14px;min-width:0;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .cp .exercise-hit-pad button b{display:block;font-size:clamp(28px,5vw,52px);line-height:1.05;font-weight:1000;letter-spacing:.02em;color:#fff;text-shadow:0 2px 5px #0008;white-space:nowrap}
-.cp .exercise-hit-pad button[class~="25"]{background:linear-gradient(180deg,#14bd78,#05683d);border-color:#43e2a0}
-.cp .exercise-hit-pad button[class~="50"]{background:linear-gradient(180deg,#f03940,#981017);border-color:#ff7a83}
+/* Palette X01: touches numériques anthracite / double bleu / triple prune.
+   BULL25 vert, DBULL rouge et MISS orange (même en modes Challenge spéciaux). */
+.cp .exercise-hit-pad button.S{background:linear-gradient(180deg,#28282b,#17171a);border-color:#46464c}
+.cp .exercise-hit-pad button.S b{color:#fff}
+.cp .exercise-hit-pad button.D{background:linear-gradient(180deg,#214757,#122c39);border-color:#335868}
+.cp .exercise-hit-pad button.D b{color:#bfeaff}
+.cp .exercise-hit-pad button.T{background:linear-gradient(180deg,#4c2b43,#291826);border-color:#65415c}
+.cp .exercise-hit-pad button.T b{color:#ffccff}
+.cp .exercise-hit-pad button.MISS{background:linear-gradient(180deg,#f0a927,#bd7008);border-color:#ffcb62}
+.cp .exercise-hit-pad button.MISS b{color:#fff}
+.cp .exercise-hit-pad button[class~="25"]{background:linear-gradient(180deg,#184b38,#0c2e23);border-color:#326a53}
+.cp .exercise-hit-pad button[class~="25"] b{color:#9eefd0}
+.cp .exercise-hit-pad button[class~="50"]{background:linear-gradient(180deg,#cf3c46,#85121e);border-color:#ed7480}
+.cp .exercise-hit-pad button[class~="50"] b{color:#fff}
 .cp .exercise-hit-pad button[class~="25"] b,.cp .exercise-hit-pad button[class~="50"] b{font-size:clamp(24px,3.8vw,43px)}
 .cp .exercise-segment-grid button{font-size:clamp(18px,3vw,25px);font-weight:1000;touch-action:manipulation}
-.cp .exercise-segment-grid button.hit-S{background:linear-gradient(180deg,#1389ed,#074ea8);border-color:#53aeff;color:#fff}
-.cp .exercise-segment-grid button.hit-D{background:linear-gradient(180deg,#f03940,#981017);border-color:#ff7a83;color:#fff}
-.cp .exercise-segment-grid button.hit-T{background:linear-gradient(180deg,#e69b13,#8a5205);border-color:#ffbc5a;color:#fff}
-.cp .exercise-segment-miss{background:linear-gradient(180deg,#56616e,#242c35);border-color:#788999;color:#fff;font-size:clamp(16px,3vw,24px)}
+.cp .exercise-segment-grid button.hit-S{background:linear-gradient(180deg,#28282b,#17171a);border-color:#46464c;color:#fff}
+.cp .exercise-segment-grid button.hit-D{background:linear-gradient(180deg,#214757,#122c39);border-color:#335868;color:#bfeaff}
+.cp .exercise-segment-grid button.hit-T{background:linear-gradient(180deg,#4c2b43,#291826);border-color:#65415c;color:#ffccff}
+.cp .exercise-segment-miss{background:linear-gradient(180deg,#f0a927,#bd7008);border-color:#ffcb62;color:#fff;font-size:clamp(16px,3vw,24px)}
+.cp .grouping-keypad .multiplier-tabs button.on.S{background:linear-gradient(180deg,#28282b,#17171a);border-color:#606068;color:#fff}
+.cp .grouping-keypad .multiplier-tabs button.on.D{background:linear-gradient(180deg,#214757,#122c39);border-color:#497a90;color:#bfeaff}
+.cp .grouping-keypad .multiplier-tabs button.on.T{background:linear-gradient(180deg,#4c2b43,#291826);border-color:#825676;color:#ffccff}
 @media(orientation:portrait){
  .cp .exercise-hit-pad button b{font-size:clamp(31px,9.2vw,48px)}
  .cp .exercise-hit-pad button[class~="25"] b,.cp .exercise-hit-pad button[class~="50"] b{font-size:clamp(24px,6.3vw,37px)}
