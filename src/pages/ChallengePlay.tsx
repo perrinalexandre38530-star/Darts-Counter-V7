@@ -1505,7 +1505,15 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
     </button>}
     <button type="button" className="landscape-stats landscape-only stats-hit-open" onClick={()=>{setDetailTab('global');setDetailSection(exerciseType==='doubles8'?'EXERCICE':'PERF');setDetailOpen(true)}}><h2>{exerciseType==='doubles8'?'STATS DOUBLES':'STATS HITS'} <span>↗</span></h2>{exerciseType==='doubles8'?<div className="hitstats doubles8-landscape-summary"><div className="hs D"><b>TOUCHÉS</b><strong>{successful}</strong></div><div className="hs MISS"><b>MISS</b><strong>{currentFailures}</strong></div><div className="hs visit"><b>VOLÉES</b><strong>{Math.min(cfg.visits,Math.floor(currentLog.length/3))}/{cfg.visits}</strong></div><div className="hs target"><b>CIBLE</b><strong>{currentObjectiveText}</strong></div></div>:<div className="hitstats">{challengeVisibleHitTypes(cfg).map(h=><div className={'hs '+h} key={h}><b>{h}<small>{h==='S'?' ×1':h==='D'?' ×2':h==='T'?' ×3':''}</small></b><strong>{counts[h]}</strong></div>)}</div>}</button>
     <div className="input-tools"><button className="undo" disabled={!log.length} onClick={()=>setLog(v=>v.slice(0,-1))}>↶ <span>ANNULER</span></button><button className={'voice '+(voiceOn?'listening':'')} type="button" onClick={startVoice} aria-label="Saisie vocale"><svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg><span>{voiceOn?'ÉCOUTE…':'VOCAL'}</span></button></div>
-    {jdcStep?<div className="challenge-segment-keypad compact jdc-keypad">
+    {perfectLineMode?<div className="challenge-segment-keypad compact perfect-line-keypad">
+      <div className="perfect-line-target-status"><span>SECTEUR {perfectLineSegment(cfg)} · ZONE {Math.min(6,lineProgress.step+1)} / 6</span><strong>{lineProgress.finished?'✓ LIGNE TERMINÉE':currentObjectiveText}</strong><small>{currentLog.length} FLÉCHETTES · {Math.max(0,currentLog.length-lineProgress.step)} ERREURS</small></div>
+      <div className="perfect-line-key-grid">{([
+       ['D',`D${perfectLineSegment(cfg)}`,'D',undefined],['G',`G${perfectLineSegment(cfg)}`,'S','G'],
+       ['T',`T${perfectLineSegment(cfg)}`,'T',undefined],['P',`P${perfectLineSegment(cfg)}`,'S','P'],
+       ['25','BULL25','25',undefined],['50','DBULL50','50',undefined],
+      ] as Array<[string,string,Hit,'G'|'P'|undefined]>).map(([key,label,hit,zone],index)=><button type="button" key={key} className={`perfect-line-hit hit-${key} ${lineProgress.step===index?'active':''} ${lineProgress.step>index?'done':''}`} disabled={done||lineProgress.finished} onClick={()=>add(hit,index<4?perfectLineSegment(cfg):undefined,zone)}><b>{label}</b><small>{lineProgress.step>index?'✓ VALIDÉ':lineProgress.step===index?'CIBLE ACTUELLE':'TOUCHE'}</small></button>)}</div>
+      <button type="button" className="segment-miss exercise-segment-miss" disabled={done||lineProgress.finished} onClick={()=>add('MISS')}>MISS · HORS ZONE / AUTRE SECTEUR</button>
+     </div>:jdcStep?<div className="challenge-segment-keypad compact jdc-keypad">
       <div className={`keypad keys-${jdcStep.hit==='sector'?4:2} exercise-hit-pad`}>
        {(jdcStep.hit==='sector'?(['S','D','T','MISS'] as Hit[]):jdcStep.hit==='bull'?(['50','MISS'] as Hit[]):(['D','MISS'] as Hit[])).map(hit=><button type="button" className={hit} key={hit} disabled={done} onClick={()=>addJdcHit(hit)} aria-label={hit==='MISS'?'MISS':jdcStep.hit==='bull'?'DBULL':`${hit}${jdcStep.sector}`}><b>{hit==='MISS'?'MISS':jdcStep.hit==='bull'?'DBULL':`${hit}${jdcStep.sector}`}</b></button>)}
       </div>
@@ -2051,6 +2059,24 @@ const css=`
  .cp .exercise-hit-pad button b{font-size:clamp(24px,6vh,36px)}
  .cp .exercise-hit-pad button[class~="25"] b,.cp .exercise-hit-pad button[class~="50"] b{font-size:clamp(20px,4.8vh,29px)}
 }
+
+/* Ligne parfaite: G = grand simple; P = petit simple. Cibles tactiles fixes, sans timer. */
+ .cp .perfect-line-target-status{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:9px 11px;border-radius:12px;background:#0a1b2a;border:1px solid #335874}
+ .cp .perfect-line-target-status span,.cp .perfect-line-target-status small{color:#a9c2d7;font-size:10px;font-weight:850}
+ .cp .perfect-line-target-status strong{font-size:clamp(17px,3vw,24px);color:#f4d684}
+ .cp .perfect-line-key-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:9px}
+ .cp .perfect-line-hit{min-width:0;min-height:75px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:5px;padding:8px 3px;border:1px solid #3c5160;border-radius:12px;background:linear-gradient(180deg,#1a2d3c,#0a1720);color:white;touch-action:manipulation}
+ .cp .perfect-line-hit b{font-size:clamp(17px,3.4vw,30px);font-weight:1000}
+ .cp .perfect-line-hit small{font-size:8px;font-weight:900;color:#acc0d4}
+ .cp .perfect-line-hit.hit-D{border-color:#46748c}.cp .perfect-line-hit.hit-T{border-color:#815b7c}
+ .cp .perfect-line-hit.hit-G,.cp .perfect-line-hit.hit-P{border-color:#a28c48}
+ .cp .perfect-line-hit.hit-25{background:linear-gradient(180deg,#13583c,#092b24)}
+ .cp .perfect-line-hit.hit-50{background:linear-gradient(180deg,#9a2735,#3d1222)}
+ .cp .perfect-line-hit.active{border:2px solid #ffd968;background:linear-gradient(180deg,#4b3b1b,#1d1a13);box-shadow:0 0 16px #edc55040}
+ .cp .perfect-line-hit.active small{color:#ffdc72}
+ .cp .perfect-line-hit.done{opacity:.54;border-color:#44ba83}
+ .cp .perfect-line-keypad .exercise-segment-miss{width:100%;margin-top:9px;min-height:45px}
+ @media(orientation:portrait) and (max-width:430px){.cp .perfect-line-key-grid{gap:5px}.cp .perfect-line-hit{min-height:64px}.cp .perfect-line-hit b{font-size:19px}.cp .perfect-line-hit small{font-size:7px}}
 
 /* Challenge final score: structural row layout, no inherited legacy span/b grid areas. */
 .finish-panel .finish-scoreline .finish-score-row,
