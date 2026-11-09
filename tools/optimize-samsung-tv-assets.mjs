@@ -5,6 +5,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -28,7 +29,10 @@ function collect(dir, acc=[]) {
   }
   return acc;
 }
-const files = collect(assetDir);
+const files = collect(assetDir).filter(f => !path.basename(f).includes('.mss-tmp-'));
+// Intermediate files must NEVER be written in the Tizen project: RDS watches assets/.
+// A watched .mss-tmp file triggers hundreds of spurious sync/hash-verification events.
+const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mss-tv-media-'));
 const bytes = (items) => items.reduce((a,f) => a + fs.statSync(f).size, 0);
 const before = bytes(files);
 let sharp = null;
@@ -47,20 +51,27 @@ let optimized = 0, saved = 0, failed = 0;
 const counts={image:0,video:0};
 async function commitIfSmaller(file, temporary, oldSize, kind) {
   if (!fs.existsSync(temporary)) return;
-  const newSize=fs.statSync(temporary).size;
-  if (newSize > 0 && newSize <= oldSize*(1-MIN_WIN)) {
-    // Windows cannot always rename over an existing file; write in-place only after result validated.
-    const content=fs.readFileSync(temporary);
-    fs.writeFileSync(file,content);
-    saved+=oldSize-newSize;
-    optimized++; counts[kind]++;
+  const newSize = fs.statSync(temporary).size;
+  if (!(newSize > 0 && newSize <= oldSize * (1 - MIN_WIN))) return;
+  // The complete, validated candidate is written outside the Tizen/RDS watched tree.
+  // Rename over the original only after the compressor has closed its file handle.
+  // Windows rename may be denied if another process locks a file: skip safely.
+  // Never write an unvalidated partial buffer into a game asset.
+  try {
+    fs.renameSync(temporary, file);
+  } catch (error) {
+    // Avoid destroying the source if Tizen/antivirus still holds the file open.
+    if (['EPERM', 'EACCES', 'EBUSY'].includes(error?.code)) throw new Error(`file locked during replace: ${file} (${error.code})`);
+    throw error;
   }
+  saved += oldSize - newSize;
+  optimized++; counts[kind]++;
 }
 for(const file of files) {
   const ext=path.extname(file).toLowerCase();
   const originalSize=fs.statSync(file).size;
   if (!originalSize) continue;
-  const tmp=path.join(path.dirname(file), `.${path.basename(file)}.mss-tmp-${process.pid}${ext}`);
+  const tmp=path.join(workDir, `${files.indexOf(file)}${ext}`);
   try {
     if (sharp && originalSize >= 120*1024 && ['.png','.jpg','.jpeg','.webp'].includes(ext)) {
       const meta=await sharp(file).metadata();
@@ -88,6 +99,7 @@ for(const file of files) {
     try{fs.rmSync(tmp,{force:true});}catch{}
   }
 }
+fs.rmSync(workDir, {recursive:true,force:true});
 const after=bytes(files);
 const mb=(n)=>(n/1048576).toFixed(2);
 console.log(`📺 Samsung TV assets: ${files.length} files; ${mb(before)} MiB → ${mb(after)} MiB; saved ${mb(saved)} MiB (${optimized} optimized: ${counts.image} images, ${counts.video} videos; ${failed} skipped errors).`);

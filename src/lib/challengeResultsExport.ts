@@ -1,4 +1,6 @@
 import { enrichChallengeReport } from './challengeFullReport';
+import { zipSync } from 'fflate';
+import historyTickerSrc from '../assets/tickers/ticker_history.png';
 
 /**
  * Portable visual report for every Challenge exercise (PNG and multipage PDF).
@@ -18,7 +20,9 @@ export type ChallengeExportPlayer = {
   bestStreak: number | null;
   avgVisit: number | null;
   metrics: ChallengeExportMetric[];
+  headlineMetrics?: ChallengeExportMetric[];
   visits: number[];
+  avatarUrl?: string | null;
 };
 export type ChallengeExportReport = {
   title: string;
@@ -28,6 +32,11 @@ export type ChallengeExportReport = {
   players: ChallengeExportPlayer[];
   date: string;
   details?: ChallengeExportSection[];
+  configSummary?: ChallengeExportMetric[];
+  tickerSrc?: string;
+  appLogoSrc?: string;
+  footerBrand?: string;
+  sportLabel?: string;
 };
 
 export type ExportFormat = 'pdf' | 'png' | 'share';
@@ -37,6 +46,7 @@ export type ChallengeExportResult = {
  previewUrl?: string;
 };
 
+
 const WIDTH = 1200;
 const MARGIN = 46;
 const CONTENT = WIDTH - MARGIN * 2;
@@ -44,6 +54,15 @@ const TEXT = '#edf4ff';
 const MUTED = '#a6b6c6';
 const BORDER = '#324258';
 const RED = '#ff5a69';
+const APP_LOGO_SRC = '/app-512.png';
+const DEFAULT_CHALLENGE_TICKER = '/challenge/ticker_challenge.png';
+
+type PreparedAssets = {
+  logo: HTMLImageElement | null;
+  ticker: HTMLImageElement | null;
+  avatars: Map<string, HTMLImageElement | null>;
+};
+const EMPTY_ASSETS: PreparedAssets = { logo: null, ticker: null, avatars: new Map() };
 
 function label(value: unknown, length = 44): string {
   const v = String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -67,7 +86,7 @@ function rectangle(
 }
 
 function txt(ctx: CanvasRenderingContext2D, value: unknown, x: number, y: number,
-  size = 25, color = TEXT, weight = 700, align: CanvasTextAlign = 'left', maxWidth = 0) {
+  size = 25, color: string | CanvasGradient = TEXT, weight = 700, align: CanvasTextAlign = 'left', maxWidth = 0) {
   ctx.fillStyle = color;
   ctx.font = String(weight) + ' ' + String(size) + 'px system-ui,Arial,sans-serif';
   ctx.textAlign = align;
@@ -79,36 +98,32 @@ function txt(ctx: CanvasRenderingContext2D, value: unknown, x: number, y: number
 }
 
 function metricBox(ctx: CanvasRenderingContext2D, x: number, y: number,
-  width: number, height: number, metric: ChallengeExportMetric, color = RED) {
-  rectangle(ctx, x, y, width, height, '#0d1825', BORDER, 13);
-  txt(ctx, label(metric.label.toUpperCase(), 28), x + 17, y + 24, 16, MUTED, 800, 'left', width - 34);
-  txt(ctx, label(metric.value, 30), x + 17, y + height - 25, 31, color, 900, 'left', width - 34);
+  width: number, height: number, metric: ChallengeExportMetric, color: string | CanvasGradient = RED) {
+  // Keep the approved A4 grid: only enhance its surface treatment.
+  const fill = ctx.createLinearGradient(x, y, x + width, y + height);
+  fill.addColorStop(0, '#18283b');
+  fill.addColorStop(.65, '#101e2e');
+  fill.addColorStop(1, '#081521');
+  rectangle(ctx, x, y, width, height, fill, BORDER, 13);
+  ctx.fillStyle = color;
+  ctx.fillRect(x + 2, y + 14, 4, Math.max(4, height - 28));
+  txt(ctx, label(metric.label.toUpperCase(), 28), x + 17, y + 24, 16, '#adc6dc', 800, 'left', width - 34);
+  txt(ctx, label(metric.value, 30), x + 17, y + height - 25, 31, color, 950, 'left', width - 34);
 }
 
 function chartRows(player: ChallengeExportPlayer): number {
   return Math.max(1, Math.ceil((player.visits?.length || 0) / 12));
 }
 
-function contentHeight(report: ChallengeExportReport) {
-  const rows = report.players.length;
-  const summaryRows = report.highlight.length ? Math.ceil(report.highlight.length / 4) : 0;
-  // Include player-specific exercise cards; PDF and PNG must never crop the last row.
-  return Math.max(1080,
-    409 + summaryRows * 104 + 29 + 34 + rows * 71 + 48 + 36 +
-    report.players.reduce((sum, p) => {
-      const exerciseCards = p.metrics.length
-        ? Math.ceil(p.metrics.length / 4) * 88 + 30 + 40 : 0;
-      return sum + 176 + chartRows(p) * 142 + 26 + 20 + exerciseCards;
-    }, 0) + 80);
-}
-
+// The printable page height is fixed. Cards must never be positioned across a
+// PDF page boundary. A long chart is split into complete groups of chart rows.
 function renderChart(ctx: CanvasRenderingContext2D, x: number, y: number,
-  player: ChallengeExportPlayer) {
+  player: ChallengeExportPlayer, startRow = 0, rowCount = chartRows(player)) {
   const values = player.visits || [];
-  const rows = chartRows(player);
   const colWidth = CONTENT / 12;
-  for (let row = 0; row < rows; row++) {
-    const slice = values.slice(row * 12, (row + 1) * 12);
+  for (let row = 0; row < rowCount; row++) {
+    const absoluteRow = startRow + row;
+    const slice = values.slice(absoluteRow * 12, (absoluteRow + 1) * 12);
     const max = Math.max(1, ...slice.map(v => Number(v) || 0));
     const baseline = y + row * 142 + 116;
     ctx.strokeStyle = '#2c4052';
@@ -133,125 +148,368 @@ function renderChart(ctx: CanvasRenderingContext2D, x: number, y: number,
       }
       txt(ctx, points, bx + (colWidth - 31) / 2, baseline - barHeight - 14, 17,
         TEXT, 850, 'center');
-      txt(ctx, 'V' + String(row * 12 + index + 1),
+      txt(ctx, 'V' + String(absoluteRow * 12 + index + 1),
         bx + (colWidth - 31) / 2, baseline + 17, 14, MUTED, 700, 'center');
     });
   }
-  return rows * 142;
+  return rowCount * 142;
 }
 
-function buildCanvas(report: ChallengeExportReport): HTMLCanvasElement {
-  const height = Math.max(PDF_SLICE_HEIGHT, contentHeight(report));
-  const canvas = document.createElement('canvas');
-  canvas.width = WIDTH;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Export visuel indisponible sur cet appareil.');
-  const bg = ctx.createLinearGradient(0, 0, 0, height);
-  bg.addColorStop(0, '#070d18');
-  bg.addColorStop(1, '#03060d');
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, WIDTH, height);
+function imageKey(player: ChallengeExportPlayer): string {
+  return String(player.participantId || player.name || '').trim().toLowerCase();
+}
 
-  rectangle(ctx, MARGIN, 40, CONTENT, 145, '#17101d', '#a63446', 21);
-  txt(ctx, 'MULTISPORTS SCORING', MARGIN + 26, 80, 27, RED, 900);
-  txt(ctx, label(report.title.toUpperCase(), 48), MARGIN + 26, 127, 38, TEXT, 950, 'left', CONTENT - 52);
-  txt(ctx, report.date + '  •  ' + report.rounds + ' ' + report.unit,
-    MARGIN + 26, 159, 19, MUTED, 700, 'left', CONTENT - 52);
+function resolveAvatarImage(player: ChallengeExportPlayer, assets: PreparedAssets): HTMLImageElement | null {
+  return assets.avatars.get(imageKey(player)) || null;
+}
 
+function drawCircularAvatar(ctx: CanvasRenderingContext2D, x: number, y: number, size: number,
+  player: ChallengeExportPlayer | { name: string }, image: HTMLImageElement | null, borderColor = RED) {
+  const r = size / 2;
+  const grad = ctx.createLinearGradient(x, y, x + size, y + size);
+  grad.addColorStop(0, '#ff9c57');
+  grad.addColorStop(1, '#5a2033');
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x + r, y + r, r, 0, Math.PI * 2);
+  ctx.closePath();
+  ctx.clip();
+  if (image) {
+    const sw = image.naturalWidth || image.width || size;
+    const sh = image.naturalHeight || image.height || size;
+    const scale = Math.max(size / sw, size / sh);
+    const dw = sw * scale;
+    const dh = sh * scale;
+    ctx.drawImage(image, x + (size - dw) / 2, y + (size - dh) / 2, dw, dh);
+  } else {
+    ctx.fillStyle = grad;
+    ctx.fillRect(x, y, size, size);
+    txt(ctx, label(String(player.name || '').slice(0, 2).toUpperCase(), 2), x + r, y + r + 2, Math.max(22, size * 0.34), '#fff', 950, 'center');
+  }
+  ctx.restore();
+  ctx.beginPath();
+  ctx.arc(x + r, y + r, r - 1.5, 0, Math.PI * 2);
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = borderColor;
+  ctx.stroke();
+}
+
+function drawRoundImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement | null,
+  x: number, y: number, width: number, height: number, radius = 14, overlay = true) {
+  rectangle(ctx, x, y, width, height, '#121924', '#49576b', radius);
+  if (!image) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(x, y, width, height, radius);
+  ctx.clip();
+  const sw = image.naturalWidth || image.width || width;
+  const sh = image.naturalHeight || image.height || height;
+  const scale = Math.max(width / sw, height / sh);
+  const dw = sw * scale;
+  const dh = sh * scale;
+  ctx.drawImage(image, x + (width - dw) / 2, y + (height - dh) / 2, dw, dh);
+  if (overlay) {
+    const shade = ctx.createLinearGradient(x, y, x + width, y);
+    shade.addColorStop(0, 'rgba(3,7,15,.92)');
+    shade.addColorStop(.22, 'rgba(3,7,15,.28)');
+    shade.addColorStop(.78, 'rgba(3,7,15,.28)');
+    shade.addColorStop(1, 'rgba(3,7,15,.88)');
+    ctx.fillStyle = shade;
+    ctx.fillRect(x, y, width, height);
+  }
+  ctx.restore();
+}
+
+function drawLogo(ctx: CanvasRenderingContext2D, image: HTMLImageElement | null, x: number, y: number, size: number) {
+  rectangle(ctx, x, y, size, size, 'rgba(8,18,29,.78)', 'rgba(122,150,176,.45)', 18);
+  if (image) {
+    const pad = 8;
+    ctx.drawImage(image, x + pad, y + pad, size - pad * 2, size - pad * 2);
+  } else {
+    const grad = ctx.createLinearGradient(x, y, x + size, y + size);
+    grad.addColorStop(0, '#ff5a69');
+    grad.addColorStop(.5, '#ffb86d');
+    grad.addColorStop(1, '#64dfff');
+    txt(ctx, 'MSS', x + size / 2, y + size / 2 + 1, 20, grad, 1000, 'center');
+  }
+}
+
+function drawArcadeFooter(ctx: CanvasRenderingContext2D, height: number, report: ChallengeExportReport) {
+  const brand = String(report.footerBrand || 'MULTISPORTS SCORING');
+  const grad = ctx.createLinearGradient(MARGIN, 0, WIDTH - MARGIN, 0);
+  grad.addColorStop(0, '#ff536a');
+  grad.addColorStop(.34, '#ffbc6b');
+  grad.addColorStop(.7, '#67e2ff');
+  grad.addColorStop(1, '#7b8bff');
+  txt(ctx, brand, WIDTH / 2, height - 38, 25, grad, 1000, 'center');
+  txt(ctx, 'Rapport partageable · stats, score et configuration de partie', WIDTH / 2, height - 16, 13, MUTED, 700, 'center');
+}
+
+function drawHeader(ctx: CanvasRenderingContext2D, report: ChallengeExportReport, assets: PreparedAssets,
+  title: string, subtitle: string, pageLabel?: string) {
+  drawRoundImage(ctx, assets.ticker, MARGIN, 34, CONTENT, 138, 21, true);
+  const lineGrad = ctx.createLinearGradient(MARGIN, 34, MARGIN + CONTENT, 34);
+  lineGrad.addColorStop(0, 'rgba(255,91,109,.75)');
+  lineGrad.addColorStop(.5, 'rgba(98,190,255,.32)');
+  lineGrad.addColorStop(1, 'rgba(255,91,109,.75)');
+  ctx.strokeStyle = lineGrad;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(MARGIN, 34, CONTENT, 138, 21);
+  ctx.stroke();
+  txt(ctx, 'MULTISPORTS SCORING', MARGIN + 24, 62, 18, RED, 950);
+  txt(ctx, label(title.toUpperCase(), 54), MARGIN + 24, 98, 37, TEXT, 1000, 'left', CONTENT - 180);
+  txt(ctx, label(subtitle, 88), MARGIN + 24, 136, 17, '#d4e0ec', 700, 'left', CONTENT - 220);
+  drawLogo(ctx, assets.logo, MARGIN + CONTENT - 86, 51, 56);
+  if (pageLabel) txt(ctx, pageLabel, MARGIN + CONTENT - 28, 140, 16, '#ff8f9a', 900, 'right');
+}
+
+/**
+ * Logical A4 paginator: a page is created before drawing each indivisible
+ * section. Previously a huge canvas was sliced every PDF_SLICE_HEIGHT pixels,
+ * which split players/metrics halfway and even created an almost empty page.
+ * Both PDF and image exports now reuse these exact, ready-to-print pages.
+ */
+function headlineStatsForPlayer(player: ChallengeExportPlayer): ChallengeExportMetric[] {
+  if (player.headlineMetrics?.length) return player.headlineMetrics.slice(0, 4);
+  const fromMetrics = player.metrics.filter(metric => metric.value !== '' && metric.value !== '—').slice(0, 4);
+  if (fromMetrics.length) return fromMetrics;
+  const known: ChallengeExportMetric[] = [];
+  if (player.accuracy !== null) known.push({label:'RÉUSSITE',value:player.accuracy.toFixed(1)+'%'});
+  if (player.darts !== null) known.push({label:'FLÉCHETTES',value:String(player.darts)});
+  if (player.bestStreak !== null) known.push({label:'SUITE',value:String(player.bestStreak)});
+  if (player.avgVisit !== null) known.push({label:'MOY. / VOLÉE',value:player.avgVisit.toFixed(1)});
+  return known.slice(0, 4);
+}
+
+function buildSummaryPages(report: ChallengeExportReport, assets: PreparedAssets = EMPTY_ASSETS): HTMLCanvasElement[] {
+  const pages: HTMLCanvasElement[] = [];
+  let ctx: CanvasRenderingContext2D;
+  let y = 0;
+  const bodyTop = 207;
+  const contentBottom = PAGE_BOTTOM - 8;
+  const pageCapacity = contentBottom - bodyTop;
+  const newPage = (contextLabel = 'RAPPORT COMPLET') => {
+    const canvas = document.createElement('canvas');
+    canvas.width = WIDTH;
+    canvas.height = PDF_SLICE_HEIGHT;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Export visuel indisponible sur cet appareil.');
+    ctx = context;
+    pages.push(canvas);
+    const bg = ctx.createLinearGradient(0, 0, 0, PDF_SLICE_HEIGHT);
+    bg.addColorStop(0, '#070d18');
+    bg.addColorStop(1, '#03060d');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, WIDTH, PDF_SLICE_HEIGHT);
+    const headline = `${report.date}  •  ${report.rounds} ${report.unit}`;
+    drawHeader(ctx, report, assets, report.title, headline,
+      pages.length === 1 ? 'SCORE GLOBAL' : `PAGE ${pages.length}`);
+    drawArcadeFooter(ctx, PDF_SLICE_HEIGHT, report);
+    y = bodyTop;
+    if (pages.length > 1) {
+      txt(ctx, contextLabel, MARGIN + 2, y + 18, 22, RED, 950);
+      y += 44;
+    }
+  };
+  const ensureRoom = (neededHeight: number, contextLabel = 'RAPPORT COMPLET'): boolean => {
+    if (y + neededHeight > contentBottom) {
+      newPage(contextLabel);
+      return true;
+    }
+    return false;
+  };
+  const sectionHeading = (title: string, preserveNextHeight: number) => {
+    // When a title moves with its block, the continuation-page title doubles
+    // as the section heading. Never leave an orphaned heading at page bottom.
+    if (ensureRoom(49 + preserveNextHeight, title)) return;
+    txt(ctx, title, MARGIN, y + 20, 28, RED, 950);
+    y += 47;
+  };
+  const drawMetrics = (values: ChallengeExportMetric[], tint: string) => {
+    const gap = 13;
+    for (let offset = 0; offset < values.length; offset += 4) {
+      ensureRoom(104, 'CHIFFRES ET CONFIGURATION · SUITE');
+      const line = values.slice(offset, offset + 4);
+      const width = (CONTENT - (line.length - 1) * gap) / line.length;
+      line.forEach((metric, index) => {
+        metricBox(ctx, MARGIN + index * (width + gap), y, width, 88, metric, tint);
+      });
+      y += 104;
+    }
+  };
+
+  newPage();
+  // Result/leader panel: always kept intact.
+  ensureRoom(209);
   const winner = report.players[0];
   const leadName = label(winner?.name || 'Joueur', 37);
-  rectangle(ctx, MARGIN, 208, CONTENT, 175, '#101a29', BORDER, 20);
-  ctx.beginPath();
-  ctx.arc(MARGIN + 100, 295, 58, 0, Math.PI * 2);
-  ctx.fillStyle = '#5e3439';
-  ctx.fill();
-  ctx.lineWidth = 4;
-  ctx.strokeStyle = RED;
-  ctx.stroke();
-  txt(ctx, leadName.slice(0, 2).toUpperCase(), MARGIN + 100, 298, 44, '#fff', 900, 'center');
-  txt(ctx, report.players.length > 1 ? 'VAINQUEUR' : 'RÉSULTAT', MARGIN + 188, 252, 18, MUTED, 850);
-  txt(ctx, leadName.toUpperCase(), MARGIN + 188, 298, 35, TEXT, 950, 'left', 520);
-  txt(ctx, (winner&&Number.isFinite(winner.score)?String(winner.score)+' PTS':'SCORE —'),
-    MARGIN + CONTENT - 27, 301, 48, RED, 950, 'right', 340);
+  rectangle(ctx, MARGIN, y, CONTENT, 190, '#101a29', BORDER, 20);
+  drawCircularAvatar(ctx, MARGIN + 18, y + 30, 118, { name: leadName },
+    winner ? resolveAvatarImage(winner, assets) : null);
+  txt(ctx, report.players.length > 1 ? 'VAINQUEUR' : 'RÉSULTAT', MARGIN + 162, y + 46, 18, MUTED, 850);
+  txt(ctx, leadName.toUpperCase(), MARGIN + 162, y + 88, 36, TEXT, 950, 'left', 480);
+  txt(ctx, winner && Number.isFinite(winner.score) ? `${winner.score} PTS` : 'SCORE —',
+    MARGIN + CONTENT - 28, y + 88, 54, RED, 980, 'right', 360);
+  const scoreBreakdown = report.players.slice(0, 4).map((player, index) =>
+    `${index + 1}. ${label(player.name, 12)} · ${Number.isFinite(player.score) ? player.score + ' pts' : '—'}`).join('   •   ');
+  txt(ctx, scoreBreakdown || 'Aucun classement disponible', MARGIN + 162, y + 138,
+    16, '#d9e7f4', 700, 'left', CONTENT - 220);
+  y += 209;
 
-  let y = 409;
   if (report.highlight.length) {
-    const cols = 4, gap = 13;
-    const width = (CONTENT - (cols - 1) * gap) / cols;
-    for (let i = 0; i < report.highlight.length; i++) {
-      metricBox(ctx, MARGIN + (i % cols) * (width + gap),
-        y + Math.floor(i / cols) * 104, width, 88,
-        report.highlight[i], '#ff7d87');
-    }
-    y += Math.ceil(report.highlight.length / cols) * 104;
+    sectionHeading('CHIFFRES CLÉS', 104);
+    drawMetrics(report.highlight, '#ff7d87');
+    y += 8;
+  }
+  if (report.configSummary?.length) {
+    sectionHeading('CONFIGURATION DE LA PARTIE', 104);
+    drawMetrics(report.configSummary, '#c7f1ff');
+    y += 10;
   }
 
-  y += 29;
-  txt(ctx, 'CLASSEMENT FINAL', MARGIN, y, 28, RED, 950);
-  y += 34;
+  sectionHeading('CLASSEMENT FINAL', report.players.length ? 79 : 40);
+  if (!report.players.length) {
+    txt(ctx, 'Aucun classement enregistré', MARGIN + 8, y + 22, 21, MUTED, 700);
+    y += 52;
+  }
   for (let i = 0; i < report.players.length; i++) {
-    const p = report.players[i];
-    rectangle(ctx, MARGIN, y, CONTENT, 63, i === 0 ? '#24151d' : '#0e1621',
+    ensureRoom(79, 'CLASSEMENT FINAL · SUITE');
+    const player = report.players[i];
+    rectangle(ctx, MARGIN, y, CONTENT, 71, i === 0 ? '#24151d' : '#0e1621',
       i === 0 ? '#9e3e51' : BORDER, 11);
-    txt(ctx, String(i + 1) + '.', MARGIN + 17, y + 31, 28, i === 0 ? RED : TEXT, 900);
-    txt(ctx, label(p.name.toUpperCase(), 30), MARGIN + 70, y + 31, 24, TEXT, 850, 'left', 570);
-    txt(ctx, Number.isFinite(p.score)?String(p.score)+' PTS':'SCORE —', MARGIN + CONTENT - 21, y + 31, 28,
-      i === 0 ? RED : '#e6efff', 950, 'right');
-    y += 71;
+    txt(ctx, `${i + 1}.`, MARGIN + 16, y + 36, 28, i === 0 ? RED : TEXT, 900);
+    drawCircularAvatar(ctx, MARGIN + 54, y + 10, 50, player,
+      resolveAvatarImage(player, assets), i === 0 ? RED : '#62beff');
+    txt(ctx, label(player.name.toUpperCase(), 30), MARGIN + 117, y + 36, 24, TEXT, 850, 'left', 540);
+    txt(ctx, Number.isFinite(player.score) ? `${player.score} PTS` : 'SCORE —',
+      MARGIN + CONTENT - 21, y + 36, 28, i === 0 ? RED : '#e6efff', 950, 'right');
+    y += 79;
   }
+  y += 12;
 
-  y += 48;
-  txt(ctx, 'STATISTIQUES PAR JOUEUR', MARGIN, y, 29, RED, 950);
-  y += 36;
-  const colGap = 13;
+  if (report.players.length) {
+    const firstPlayer = report.players[0];
+    const firstPanel = firstPlayer.visits.length ? 196 + Math.min(4, chartRows(firstPlayer)) * 142 + 26 : 186;
+    const visibleHeadline = headlineStatsForPlayer(firstPlayer);
+    const featured = new Set(visibleHeadline.map(metric => metric.label));
+    const firstMetricRows = Math.ceil(firstPlayer.metrics.filter(metric => !featured.has(metric.label)).length / 4);
+    const firstMetrics = firstMetricRows ? firstMetricRows * 88 + 30 : 0;
+    sectionHeading('STATISTIQUES PAR JOUEUR',
+      Math.min(pageCapacity - 55, firstPanel + 20 + firstMetrics));
+  }
   for (const player of report.players) {
-    const chartsHeight = chartRows(player) * 142;
-    const sectionHeight = 176 + chartsHeight + 26;
-    rectangle(ctx, MARGIN, y, CONTENT, sectionHeight, '#091321', BORDER, 17);
-    txt(ctx, label(player.name.toUpperCase(), 33), MARGIN + 23, y + 35,
-      27, TEXT, 950, 'left', 750);
-    txt(ctx, Number.isFinite(player.score)?String(player.score)+' PTS':'SCORE —',
-      MARGIN + CONTENT - 23, y + 35, 31, RED, 950, 'right');
-    const tiles: ChallengeExportMetric[] = [
-      { label: 'RÉUSSITE', value: player.accuracy === null ? '—' : player.accuracy.toFixed(1) + '%' },
-      { label: 'FLÉCHETTES', value: player.darts === null ? '—' : String(player.darts) },
-      { label: 'SUITE', value: player.bestStreak === null ? '—' : String(player.bestStreak) },
-      { label: 'MOY. / VOLÉE', value: player.avgVisit === null ? '—' : player.avgVisit.toFixed(1) },
-    ];
-    const width = (CONTENT - 46 - colGap * 3) / 4;
-    tiles.forEach((m, i) => metricBox(ctx,
-      MARGIN + 23 + i * (width + colGap), y + 61, width, 74, m, '#f3f7ff'));
-    txt(ctx, 'POINTS PAR VOLÉE', MARGIN + 23, y + 160, 18, MUTED, 850);
-    renderChart(ctx, MARGIN + 1, y + 182, player);
-    y += sectionHeight + 20;
+    const hasVisits = player.visits.length > 0;
+    const featured = headlineStatsForPlayer(player);
+    const featuredLabels = new Set(featured.map(metric => metric.label));
+    const remainingMetrics = player.metrics.filter(metric => !featuredLabels.has(metric.label));
+    const totalChartRows = hasVisits ? chartRows(player) : 1;
+    const metricRows = Math.ceil(remainingMetrics.length / 4);
+    const metricsHeight = metricRows ? metricRows * 88 + 30 : 0;
+    let startRow = 0;
+    while (startRow < totalChartRows) {
+      const count = Math.min(4, totalChartRows - startRow);
+      const panelHeight = hasVisits ? 196 + count * 142 + 26 : 186;
+      const extraTogether = startRow + count === totalChartRows &&
+        panelHeight + 20 + metricsHeight <= pageCapacity;
+      const reserve = panelHeight + 20 + (extraTogether ? metricsHeight : 0);
+      ensureRoom(reserve, `STATISTIQUES · ${label(player.name.toUpperCase(), 28)}`);
 
-    if (player.metrics.length) {
-      const metricsCols = 4;
-      const countRows = Math.ceil(player.metrics.length / metricsCols);
-      const boxHeight = countRows * 88 + 30;
-      rectangle(ctx, MARGIN, y, CONTENT, boxHeight, '#101723', BORDER, 14);
-      const metricWidth = (CONTENT - 42 - 3 * 12) / 4;
-      player.metrics.forEach((metric, i) => {
-        metricBox(ctx, MARGIN + 21 + (i % 4) * (metricWidth + 12),
-          y + 16 + Math.floor(i / 4) * 88, metricWidth, 73, metric, '#ffb9bf');
-      });
-      y += boxHeight + 20;
+      const panelGradient = ctx.createLinearGradient(MARGIN, y, MARGIN + CONTENT, y + panelHeight);
+      panelGradient.addColorStop(0, '#111f31');
+      panelGradient.addColorStop(.55, '#0b1727');
+      panelGradient.addColorStop(1, '#080f1c');
+      rectangle(ctx, MARGIN, y, CONTENT, panelHeight, panelGradient, BORDER, 17);
+      ctx.fillStyle = '#4cc7f1';
+      ctx.fillRect(MARGIN + 8, y + 20, 4, panelHeight - 40);
+      drawCircularAvatar(ctx, MARGIN + 20, y + 18, 68, player,
+        resolveAvatarImage(player, assets), '#62beff');
+      txt(ctx, label(player.name.toUpperCase(), 33), MARGIN + 104, y + 35,
+        27, TEXT, 950, 'left', 630);
+      txt(ctx, Number.isFinite(player.score) ? `${player.score} PTS` : 'SCORE —',
+        MARGIN + CONTENT - 23, y + 35, 31, RED, 950, 'right');
+      if (featured.length) {
+        const gap = 13;
+        const cols = Math.min(4, featured.length);
+        const boxWidth = (CONTENT - 132 - gap * (cols - 1)) / cols;
+        featured.slice(0, cols).forEach((metric, i) => metricBox(ctx,
+          MARGIN + 104 + i * (boxWidth + gap), y + 61, boxWidth, 74, metric, '#f3f7ff'));
+      } else {
+        txt(ctx, 'Statistiques individuelles non conservées pour cette partie',
+          MARGIN + 104, y + 93, 19, MUTED, 650, 'left', CONTENT - 140);
+      }
+      if (hasVisits) {
+        txt(ctx, startRow > 0 ? 'POINTS PAR VOLÉE · SUITE' : 'POINTS PAR VOLÉE',
+          MARGIN + 23, y + 170, 18, MUTED, 850);
+        renderChart(ctx, MARGIN + 1, y + 190, player, startRow, count);
+      } else {
+        // Do not waste half a page on an empty graphic for legacy saves.
+        txt(ctx, 'Les volées individuelles ne sont pas présentes dans cette archive',
+          MARGIN + 105, y + 159, 16, '#849cb4', 600, 'left', CONTENT - 150);
+      }
+      y += panelHeight + 20;
+      startRow += count;
+    }
+
+    if (metricRows) {
+      let startMetric = 0;
+      const maxRowsPerCard = Math.max(1, Math.floor((pageCapacity - 20 - 30) / 88));
+      while (startMetric < remainingMetrics.length) {
+        const visibleCount = Math.min(remainingMetrics.length - startMetric, maxRowsPerCard * 4);
+        const countRows = Math.ceil(visibleCount / 4);
+        const boxHeight = countRows * 88 + 30;
+        ensureRoom(boxHeight + 20, `INDICATEURS · ${label(player.name.toUpperCase(), 28)}`);
+        rectangle(ctx, MARGIN, y, CONTENT, boxHeight, '#101723', BORDER, 14);
+        const cardMetrics = remainingMetrics.slice(startMetric, startMetric + visibleCount);
+        for (let lineIndex = 0; lineIndex < cardMetrics.length; lineIndex += 4) {
+          const line = cardMetrics.slice(lineIndex, lineIndex + 4);
+          const gap = 12;
+          const width = (CONTENT - 42 - (line.length - 1) * gap) / line.length;
+          line.forEach((metric, index) => {
+            metricBox(ctx, MARGIN + 21 + index * (width + gap),
+              y + 16 + Math.floor(lineIndex / 4) * 88, width, 73, metric, '#ffb9bf');
+          });
+        }
+        y += boxHeight + 20;
+        startMetric += visibleCount;
+      }
     }
   }
-  txt(ctx, 'Résultats MULTISPORTS SCORING • Document partageable',
-    MARGIN + CONTENT / 2, height - 35, 18, MUTED, 750, 'center');
-  return canvas;
+  return pages;
 }
 
+async function loadImageMaybe(src: string | null | undefined): Promise<HTMLImageElement | null> {
+  const value = String(src || '').trim();
+  if (!value) return null;
+  return await new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = value;
+    if (img.complete && img.naturalWidth > 0) resolve(img);
+  });
+}
 
+async function prepareAssets(report: ChallengeExportReport): Promise<PreparedAssets> {
+  const logo = await loadImageMaybe(report.appLogoSrc || APP_LOGO_SRC);
+  const ticker = await loadImageMaybe(report.tickerSrc || '');
+  const avatars = new Map<string, HTMLImageElement | null>();
+  await Promise.all(report.players.map(async (player) => {
+    const key = imageKey(player);
+    if (!key || avatars.has(key)) return;
+    avatars.set(key, await loadImageMaybe(player.avatarUrl || ''));
+  }));
+  return { logo, ticker, avatars };
+}
 const PDF_SLICE_HEIGHT=Math.floor(WIDTH*(842-44)/(595-44));
 const PAGE_BOTTOM=PDF_SLICE_HEIGHT-106;
-const DETAIL_ROW_HEIGHT=48;
+const DETAIL_ROW_HEIGHT=44;
 
-function detailedPages(report:ChallengeExportReport):HTMLCanvasElement[]{
+function detailedPages(report:ChallengeExportReport, assets: PreparedAssets = EMPTY_ASSETS,
+ previousPageCount = 0):HTMLCanvasElement[]{
  const sections=report.details||[];
- if(!sections.length)return [];
+ if(!sections.some(section => Array.isArray(section.rows) && section.rows.length)) return [];
  const pages:HTMLCanvasElement[]=[];
  let page:HTMLCanvasElement;
  let ctx:CanvasRenderingContext2D;
@@ -266,13 +524,9 @@ function detailedPages(report:ChallengeExportReport):HTMLCanvasElement[]{
   const background=ctx.createLinearGradient(0,0,0,PDF_SLICE_HEIGHT);
   background.addColorStop(0,'#080e19');background.addColorStop(1,'#030711');
   ctx.fillStyle=background;ctx.fillRect(0,0,WIDTH,PDF_SLICE_HEIGHT);
-  rectangle(ctx,MARGIN,33,CONTENT,125,'#17111c','#7f3345',17);
-  txt(ctx,'MULTISPORTS SCORING',MARGIN+22,65,25,RED,950);
-  txt(ctx,label(report.title.toUpperCase(),52),MARGIN+22,106,32,TEXT,950,'left',CONTENT-48);
-  txt(ctx,'RAPPORT COMPLET · '+report.date,MARGIN,PDF_SLICE_HEIGHT-55,17,MUTED,800,'left',CONTENT-50);
-  txt(ctx,'PAGE '+(pages.length+Math.ceil(contentHeight(report)/PDF_SLICE_HEIGHT)),WIDTH-MARGIN,PDF_SLICE_HEIGHT-55,
-   17,RED,900,'right');
-  y=195;
+  drawHeader(ctx, report, assets, report.title, 'Rapport complet · '+report.date, 'PAGE '+String(previousPageCount + pages.length));
+  drawArcadeFooter(ctx, PDF_SLICE_HEIGHT, report);
+  y=196;
  };
  const newPageIf=(h:number)=>{
   if(y+h>PAGE_BOTTOM)startPage();
@@ -286,7 +540,15 @@ function detailedPages(report:ChallengeExportReport):HTMLCanvasElement[]{
   const title=label(section.title,70);
   while(index<rows.length){
    const titleHeight=section.note?104:76;
-   newPageIf(titleHeight+DETAIL_ROW_HEIGHT+DETAIL_ROW_HEIGHT);
+   const pendingHeight = titleHeight + 52 + (rows.length - index) * DETAIL_ROW_HEIGHT + 22;
+   const availableOnFreshPage = PAGE_BOTTOM - 195;
+   // A table that can fit on one page is atomic: move all of it forward.
+   // Only genuinely longer tables are split, always between complete rows.
+   if (pendingHeight <= availableOnFreshPage && y + pendingHeight > PAGE_BOTTOM) {
+     startPage();
+   } else {
+     newPageIf(titleHeight+DETAIL_ROW_HEIGHT+DETAIL_ROW_HEIGHT);
+   }
    rectangle(ctx,MARGIN,y,CONTENT,49,'#211522','#7d3549',9);
    txt(ctx,title+(index?' · SUITE':''),MARGIN+16,y+25,22,'#ff8892',950,'left',CONTENT-32);
    y+=57;
@@ -328,19 +590,51 @@ function detailedPages(report:ChallengeExportReport):HTMLCanvasElement[]{
 }
 
 function reportCanvasPages(report:ChallengeExportReport):HTMLCanvasElement[]{
- return [buildCanvas(report),...detailedPages(report)];
+ const summary = buildSummaryPages(report);
+ return [...summary, ...detailedPages(report, EMPTY_ASSETS, summary.length)];
 }
 
-function stackedImage(pages:HTMLCanvasElement[]):HTMLCanvasElement {
- const totalHeight=pages.reduce((sum,c)=>sum+c.height,0);
- if(totalHeight>15000)throw Error('Rapport trop long pour une image unique. Utilise le PDF multipage.');
- const canvas=document.createElement('canvas');
- canvas.width=WIDTH;canvas.height=totalHeight;
- const ctx=canvas.getContext('2d');
- if(!ctx)throw Error('Image indisponible.');
- let y=0;
- for(const page of pages){ctx.drawImage(page,0,y);y+=page.height;}
- return canvas;
+async function reportCanvasPagesPrepared(report:ChallengeExportReport):Promise<HTMLCanvasElement[]>{
+ const assets = await prepareAssets(report);
+ const summary = buildSummaryPages(report, assets);
+ return [...summary, ...detailedPages(report, assets, summary.length)];
+}
+
+/** Rasterize each printed page separately (1200 x 1698 pixels, A4 aspect).
+ * Unlike the former panorama, every output file is a conventional page. */
+const A4_PNG_HEIGHT=Math.round(WIDTH*842/595);
+function pngPaperPages(canvases:HTMLCanvasElement[]):HTMLCanvasElement[] {
+ const out:HTMLCanvasElement[]=[];
+ for(const source of canvases){
+  for(let offset=0;offset<source.height;offset+=PDF_SLICE_HEIGHT){
+   const length=Math.min(PDF_SLICE_HEIGHT,source.height-offset);
+   const paper=document.createElement('canvas');
+   paper.width=WIDTH;
+   paper.height=A4_PNG_HEIGHT;
+   const ctx=paper.getContext('2d');
+   if(!ctx)throw Error('Impossible de préparer une image A4.');
+   ctx.fillStyle='#070d18';ctx.fillRect(0,0,paper.width,paper.height);
+   const fit=Math.min(paper.width/source.width,paper.height/PDF_SLICE_HEIGHT);
+   const drawWidth=source.width*fit;
+   const drawHeight=length*fit;
+   ctx.drawImage(source,0,offset,source.width,length,
+    (paper.width-drawWidth)/2,0,drawWidth,drawHeight);
+   out.push(paper);
+  }
+ }
+ return out;
+}
+function pngPageFiles(canvases:HTMLCanvasElement[],stem:string):Array<{name:string;bytes:Uint8Array}> {
+ return pngPaperPages(canvases).map((page,index)=>({
+  name:stem+'_page-'+String(index+1).padStart(2,'0')+'.png',
+  bytes:pngBytesFromCanvas(page),
+ }));
+}
+function pngZipFromPages(pages:Array<{name:string;bytes:Uint8Array}>):Uint8Array {
+ const items:Record<string,Uint8Array>={};
+ pages.forEach(page=>{items[page.name]=page.bytes;});
+ // PNG is already compressed; store each complete image without recompression.
+ return zipSync(items,{level:0});
 }
 
 function pngBytesFromCanvas(canvas: HTMLCanvasElement): Uint8Array {
@@ -488,7 +782,7 @@ function encodeBase64(bytes:Uint8Array):string {
  return result.join('');
 }
 
-function beginHttpAttachment(bytes:Uint8Array,name:string,format:'pdf'|'png'):void {
+function beginHttpAttachment(bytes:Uint8Array,name:string,format:'pdf'|'zip'):void {
  // Unlike a blob: link, a real HTTP attachment can be handled by Android's
  // DownloadListener. Keep its frame hidden so unsupported WebViews never open
  // a visible about:blank page. The server retains none of the bytes.
@@ -518,13 +812,13 @@ function beginHttpAttachment(bytes:Uint8Array,name:string,format:'pdf'|'png'):vo
  window.setTimeout(()=>{form.remove();frame.remove();},120_000);
 }
 
-async function useSavePicker(bytes:Uint8Array,name:string,format:'pdf'|'png'):Promise<'saved'|'cancelled'|'unsupported'> {
+async function useSavePicker(bytes:Uint8Array,name:string,format:'pdf'|'zip'):Promise<'saved'|'cancelled'|'unsupported'> {
  const browser=window as Window & {
   showSaveFilePicker?:(options:any)=>Promise<{createWritable:()=>Promise<{write:(blob:Blob)=>Promise<void>;close:()=>Promise<void>}>}>;
  };
  if(typeof browser.showSaveFilePicker!=='function')return 'unsupported';
  try {
-  const mime=format==='pdf'?'application/pdf':'image/png';
+  const mime=format==='pdf'?'application/pdf':'application/zip';
   const handle=await browser.showSaveFilePicker({
    suggestedName:name,
    types:[{description:format.toUpperCase()+' MULTISPORTS SCORING',accept:{[mime]:['.'+format]}}],
@@ -546,47 +840,74 @@ export async function exportChallengeResults(report:ChallengeExportReport,format
  const shareRequested=Boolean(options.share||format==='share');
  const slug=report.title.normalize('NFD').replace(/[\u0300-\u036f]/g,'')
   .toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'challenge';
- const name='MSS_'+slug+'_'+new Date().toISOString().slice(0,10)+'.'+actualFormat;
- // Rendering must precede native sharing, but no await precedes the native call.
- const pages=reportCanvasPages(report);
- const bytes=actualFormat==='pdf'?pdfBytesFromCanvases(pages):pngBytesFromCanvas(stackedImage(pages));
- const mime=actualFormat==='pdf'?'application/pdf':'image/png';
-
+ const stem='MSS_'+slug+'_'+new Date().toISOString().slice(0,10);
+ const pages=await reportCanvasPagesPrepared(report);
+ const picturePages=actualFormat==='png'?pngPageFiles(pages,stem):[];
+ const files=actualFormat==='png'
+  ?picturePages.map(page=>new File([page.bytes],page.name,{type:'image/png'}))
+  :[new File([pdfBytesFromCanvases(pages)],stem+'.pdf',{type:'application/pdf'})];
+ // PDF stays a real multipage PDF. PNG pages download as a ZIP of actual PNG files.
+ const downloadFormat=actualFormat==='png'?'zip':'pdf';
+ const fileName=stem+(downloadFormat==='zip'?'_images_A4.zip':'.pdf');
  if(shareRequested){
   const nav=navigator;
-  const file=new File([bytes],name,{type:mime});
-  const available=typeof nav.share==='function'&&
-   (typeof nav.canShare!=='function'||nav.canShare({files:[file]}));
-  if(!available)return {status:'share-unavailable',fileName:name};
+  const canShare=typeof nav.share==='function'&&
+    (typeof nav.canShare!=='function'||nav.canShare({files}));
+  if(!canShare)return {status:'share-unavailable',fileName};
   try{
-   await nav.share({files:[file],title:report.title,text:'Résultats MULTISPORTS SCORING'});
-   return {status:'shared',fileName:name};
+   await nav.share({files,title:report.title,text:'Résultats MULTISPORTS SCORING'});
+   return {status:'shared',fileName};
   }catch(error){
-   if((error as Error)?.name==='AbortError')return {status:'cancelled',fileName:name};
-   console.warn('[challenge-export] native share failed',error);
-   return {status:'share-unavailable',fileName:name};
+   if((error as Error)?.name==='AbortError')return {status:'cancelled',fileName};
+   console.warn('[challenge-export] native file share failed',error);
+   return {status:'share-unavailable',fileName};
   }
  }
+ const bytes=downloadFormat==='pdf'?pdfBytesFromCanvases(pages):pngZipFromPages(picturePages);
+ const mime=downloadFormat==='pdf'?'application/pdf':'application/zip';
  if(!isEmbeddedAndroid()){
-  const pick=await useSavePicker(bytes,name,actualFormat);
-  if(pick==='saved')return {status:'downloaded',fileName:name};
-  if(pick==='cancelled')return {status:'cancelled',fileName:name};
-  saveFile(new Blob([bytes],{type:mime}),name);
-  return {status:'download-started',fileName:name};
+  const picker=await useSavePicker(bytes,fileName,downloadFormat);
+  if(picker==='saved')return {status:'downloaded',fileName};
+  if(picker==='cancelled')return {status:'cancelled',fileName};
+  saveFile(new Blob([bytes],{type:mime}),fileName);
+  return {status:'download-started',fileName};
  }
- beginHttpAttachment(bytes,name,actualFormat);
- return {status:'download-started',fileName:name};
+ beginHttpAttachment(bytes,fileName,downloadFormat);
+ return {status:'download-started',fileName};
+}
+/** Manual download from the preview, using identical page-sized assets. */
+export function downloadChallengeFile(report:ChallengeExportReport,format:'pdf'|'png'):void {
+ const stem='MSS_'+report.title.normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+  .toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')+'_'+new Date().toISOString().slice(0,10);
+ const pages=reportCanvasPages(report);
+ if(format==='pdf'){
+  saveFile(new Blob([pdfBytesFromCanvases(pages)],{type:'application/pdf'}),stem+'.pdf');
+ }else{
+  const entries=pngPageFiles(pages,stem);
+  saveFile(new Blob([pngZipFromPages(entries)],{type:'application/zip'}),stem+'_images_A4.zip');
+ }
 }
 
-/** For an explicit second click from the in-app preview (eg. opened in Chrome). */
-export function downloadChallengeFile(report:ChallengeExportReport,format:'pdf'|'png'):void {
- const pages=reportCanvasPages(report);
- const blob=format==='pdf'?new Blob([pdfBytesFromCanvases(pages)],{type:'application/pdf'})
-  :new Blob([pngBytesFromCanvas(stackedImage(pages))],{type:'image/png'});
- const slug=report.title.normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-  .toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'challenge';
- const name='MSS_'+slug+'_'+new Date().toISOString().slice(0,10)+'.'+format;
- saveFile(blob,name);
+function pickAvatarSource(raw:any):string {
+ const values=[
+  raw?.avatarDataUrl, raw?.avatarUrl, raw?.avatar, raw?.avatarPath,
+  raw?.photoDataUrl, raw?.photoUrl, raw?.imageUrl,
+  raw?.profile?.avatarDataUrl, raw?.profile?.avatarUrl, raw?.profile?.avatar,
+  raw?.profile?.photoUrl, raw?.profile?.photoDataUrl,
+  raw?.meta?.avatarDataUrl, raw?.meta?.avatarUrl, raw?.meta?.avatar,
+  raw?.user?.avatarDataUrl, raw?.user?.avatarUrl, raw?.user?.avatar,
+  raw?.stats?.avatarDataUrl, raw?.stats?.avatarUrl,
+ ];
+ for(const value of values){
+  const src=String(value||'').trim();
+  if(src) return src;
+ }
+ return '';
+}
+
+function configMetric(labelText:string, value:any):ChallengeExportMetric | null {
+ if(value===undefined||value===null||value==='') return null;
+ return { label: labelText, value: String(value) };
 }
 
 /** Reuses the exact historical Challenge per-player score and exercise stats. */
@@ -635,6 +956,7 @@ export function challengeReportFromHistory(entry:any):ChallengeExportReport {
    avgVisit:Number(row.avgVisit||0)||0,
    visits:Array.isArray(rawVisits)?rawVisits.map((x:any)=>Number(x)||0):[],
    metrics:metrics.slice(0,16),
+   avatarUrl: pickAvatarSource(row),
   };
  }).sort((a:ChallengeExportPlayer,b:ChallengeExportPlayer)=>b.score-a.score);
  const rawDate=entry?.finishedAt||entry?.updatedAt||entry?.createdAt||Date.now();
@@ -642,12 +964,244 @@ export function challengeReportFromHistory(entry:any):ChallengeExportReport {
  const first=players[0];
  const highlight:ChallengeExportMetric[]=(first?.metrics||[]).slice(0,4);
  if(!highlight.length&&first)highlight.push({label:'SCORE',value:first.score+' PTS'},{label:'RÉUSSITE',value:first.accuracy.toFixed(1)+'%'});
+ const title = String(summary.objective||entry?.game?.objective||summary.title||'CHALLENGE');
+ const exerciseType = String(summary.exerciseType||cfg.exerciseType||'').toLowerCase();
+ const configSummary = [
+  configMetric('EXERCICE', title),
+  configMetric('TYPE', exerciseType ? exerciseType.toUpperCase() : undefined),
+  configMetric('CIBLE', cfg.target),
+  configMetric('RÈGLE', cfg.rule),
+  configMetric('VOLÉES', Number(summary.visits??cfg.visits??entry?.game?.visits??0)||0),
+  configMetric('JOUEURS', players.length),
+ ].filter(Boolean) as ChallengeExportMetric[];
  return enrichChallengeReport({
-  title:String(summary.objective||entry?.game?.objective||summary.title||'CHALLENGE'),
+  title,
   rounds:Number(summary.visits??cfg.visits??entry?.game?.visits??0)||0,
   unit:['jdc','doubles8'].includes(String(summary.exerciseType||cfg.exerciseType||''))?'volées':'tours',
   players,highlight,date,
+  configSummary,
+  tickerSrc: DEFAULT_CHALLENGE_TICKER,
+  appLogoSrc: APP_LOGO_SRC,
+  footerBrand: 'MULTISPORTS SCORING',
+  sportLabel: 'DARTS',
  },cfg,payload.entries||payload.events||payload?.state?.entries||payload?.state?.log||entry?.entries,source);
+}
+
+
+/**
+ * The History V4 format differs between game modes and older revisions.
+ * Enrich a single authoritative ranking with independently saved statistics
+ * without duplicating players whose profile IDs have changed.
+ */
+const REPORT_STAT_FIELDS: Array<{title:string;names:string[];unit?:string}> = [
+ {title:'AVG3',names:['avg3','avg3d','avg3D','average3Darts','avg3Darts','average3']},
+ {title:'BEST VOLÉE',names:['bestVisit','highestVisit','bestTurn','bestRound','maxVisit','maxScoreVisit']},
+ {title:'CHECKOUT',names:['bestCheckout','highestCheckout','highFinish','highestFinish','finishMax']},
+ {title:'180',names:['count180','hits180','n180','oneEighties']},
+ {title:'140+',names:['count140','hits140','n140']},
+ {title:'100+',names:['count100','hits100','n100']},
+ {title:'SETS',names:['setsWon','wonSets','setWins','sets','setsCount']},
+ {title:'LEGS',names:['legsWon','wonLegs','legWins','legs','legsCount']},
+ {title:'MATCHS GAGNÉS',names:['wins','matchesWon','gamesWon']},
+ {title:'MATCHS PERDUS',names:['losses','matchesLost','gamesLost']},
+ {title:'TOUCHES',names:['hitCount','hits','successfulHits','hitsMade','usefulHits']},
+ {title:'FLÉCHETTES',names:['dartsThrown','darts','totalDarts','dartsPlayed']},
+ {title:'MISS',names:['misses','miss','missCount','failedDarts']},
+ {title:'RÉUSSITE',names:['successRate','accuracy','hitRate','successPct','accuracyPct'],unit:'%'},
+ {title:'SUITE',names:['bestStreak','streak','longestStreak']},
+ {title:'MOY. / VOLÉE',names:['avgVisit','avgPerVisit','averageVisit','avgRound']},
+ {title:'TOURS',names:['roundsPlayed','rounds','visitsPlayed','visits']},
+ {title:'BULL 25',names:['bull25','bull25Hits','singleBull','sBull','SBull']},
+ {title:'DBULL 50',names:['bull50','bull50Hits','doubleBull','dBull','DBull']},
+ {title:'DOUBLES',names:['doubleHits','doublesHits','hitDoubles']},
+ {title:'TRIPLES',names:['tripleHits','triplesHits','hitTriples']},
+ {title:'CAPTURES',names:['captures','catches','gotchas','captured']},
+ {title:'FUITES',names:['escapes','escapesMade']},
+ {title:'BUSTS',names:['busts','bustCount']},
+ {title:'VIES',names:['livesLeft','remainingLives','lives']},
+ {title:'VICTIMES',names:['victims','victimsHit']},
+ {title:'COUPS',names:['shots','throws','attempts']},
+ {title:'PTS MARQUÉS',names:['pointsScored','scoredPoints','totalPointsScored']},
+ {title:'RESTANT',names:['remaining','remainingScore','scoreLeft']},
+ {title:'SECTEURS',names:['sectors','territories','ownedTerritories']},
+ {title:'VOLÉES PARFAITES',names:['perfectVisits','perfectRounds']},
+ {title:'VOLÉES VALIDÉES',names:['validatedVisits','successfulVisits']},
+ {title:'BONUS',names:['bonus','bonusScore','bonusPoints']},
+];
+const NON_STAT_KEYS = /(?:^id$|schema|version|^index$|^ordinal$|^order$|^seed$|sortorder|playerid|userid|profileid|teamid|avatar|photo|image|picture|url|timestamp|createdat|updatedat|finishedat|birth|email|phone|password|secret|token|credential|signature|hash|config|device|address|geo|lat|lon|key$|name$|displayname|nickname|^rank$|^position$|^score$|^points$|^total$|^finalscore$|^name$|^mode$|^kind$|^status$|^player$|^team$|^profile$)/i;
+const EXTRA_STAT_BRANCHES = ['stats','statistics','special','metrics','performance','result','detail','telemetry','exerciseStats','summary','aggregates','totals'];
+function validMetricNumber(value:unknown):number|null {
+ if(value===null||value===undefined||value===''||typeof value==='boolean')return null;
+ const result=typeof value==='string' ? Number(value.replace(',', '.')) : Number(value);
+ return Number.isFinite(result)?result:null;
+}
+function realMetric(value:unknown,unit=''):string|null {
+ const n=validMetricNumber(value);
+ if(n===null)return null;
+ const formatted=Number.isInteger(n)?String(n):String(Math.round(n*100)/100);
+ return formatted+unit;
+}
+function normalizedPersonKey(value:unknown):string {
+ return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().replace(/\s+/g,' ').toLowerCase();
+}
+function personId(row:any):string {
+ return String(row?.id||row?.playerId||row?.profileId||row?.pid||'').trim();
+}
+function personName(row:any):string {
+ return String(row?.name||row?.playerName||row?.displayName||row?.nickname||row?.username||row?.label||'').trim();
+}
+function locateSavedRow(row:any, pools:any[][]):any[] {
+ const id=personId(row);
+ const name=normalizedPersonKey(personName(row));
+ return pools.flatMap(pool=>{
+  const byId=id?pool.filter(p=>personId(p)&&personId(p)===id):[];
+  if(byId.length)return byId;
+  if(!name)return [];
+  const named=pool.filter(p=>normalizedPersonKey(personName(p))===name);
+  return named.length===1?named:[]; // never conflate ambiguous duplicate names
+ });
+}
+function reportValue(objects:any[],names:string[]):unknown {
+ for(const source of objects){
+  if(!source||typeof source!=='object'||Array.isArray(source))continue;
+  for(const key of names){
+   if(Object.prototype.hasOwnProperty.call(source,key)){
+    const value=source[key];
+    if(validMetricNumber(value)!==null)return value;
+   }
+  }
+ }
+ return undefined;
+}
+function mappedStatsForPlayer(entry:any,payload:any,summary:any,result:any,row:any):any {
+ const id=personId(row);
+ const name=normalizedPersonKey(personName(row));
+ const roots=[result,summary,summary?.result,payload?.result,payload?.stats,
+  payload?.summary?.result,payload?.summary,entry?.stats,entry?.result];
+ const allKeys=REPORT_STAT_FIELDS.flatMap(field=>field.names);
+ const fields:Record<string,unknown>={};
+ const find=(value:any):unknown=>{
+  if(!value||typeof value!=='object'||Array.isArray(value))return undefined;
+  if(id&&Object.prototype.hasOwnProperty.call(value,id))return value[id];
+  if(name){
+   const names=Object.entries(value).filter(([key])=>normalizedPersonKey(key)===name);
+   if(names.length===1)return names[0][1];
+  }
+  return undefined;
+ };
+ for(const root of roots){
+  if(!root||typeof root!=='object')continue;
+  const perPlayer=find(root.perPlayer)||find(root.playersById)||find(root.playerStats)||find(root.statsByPlayer);
+  if(perPlayer&&typeof perPlayer==='object'&&!Array.isArray(perPlayer)){
+   for(const [key,value] of Object.entries(perPlayer))if(fields[key]===undefined)fields[key]=value;
+  }
+  for(const key of allKeys){
+   if(fields[key]!==undefined)continue;
+   const value=find(root[key]);
+   if(validMetricNumber(value)!==null)fields[key]=value;
+  }
+ }
+ return fields;
+}
+
+function gatherStatObjects(rows:any[]):any[] {
+ const objects:any[]=[];
+ const seen=new Set<any>();
+ const explore=(value:any,depth:number)=>{
+  if(!value||typeof value!=='object'||Array.isArray(value)||depth>2||seen.has(value))return;
+  seen.add(value);objects.push(value);
+  if(depth<2)for(const branch of EXTRA_STAT_BRANCHES)explore(value[branch],depth+1);
+ };
+ rows.forEach(row=>explore(row,0));
+ return objects;
+}
+function readableStatLabel(key:string):string {
+ const known=REPORT_STAT_FIELDS.find(field=>field.names.includes(key));
+ if(known)return known.title;
+ return key.replace(/([a-z0-9])([A-Z])/g,'$1 $2').replace(/[_-]+/g,' ').trim().toUpperCase();
+}
+function actualSavedMetrics(objects:any[]):ChallengeExportMetric[] {
+ const metrics:ChallengeExportMetric[]=[];
+ const used=new Set<string>();
+ const add=(title:string,value:unknown,unit='')=>{
+  const rendered=realMetric(value,unit);
+  if(rendered===null||used.has(title))return;
+  used.add(title);metrics.push({label:title,value:rendered});
+ };
+ REPORT_STAT_FIELDS.forEach(field=>add(field.title,reportValue(objects,field.names),field.unit));
+ // Include every *scalar numeric* game statistic retained by old/new modes.
+ // No guessing: use its persisted name when no translation is known.
+ for(const obj of objects){
+  for(const [key,value] of Object.entries(obj)){
+   if(NON_STAT_KEYS.test(key)||EXTRA_STAT_BRANCHES.includes(key)||typeof value==='object')continue;
+   const title=readableStatLabel(key);
+   add(title,value);
+   if(metrics.length>=80)return metrics;
+  }
+ }
+ return metrics;
+}
+function chooseHeadlineStats(metrics:ChallengeExportMetric[],mode:string,score:number):ChallengeExportMetric[] {
+ const byTitle=new Map(metrics.map(metric=>[metric.label,metric]));
+ const dartsMode=/dart|x01|501|301|gotcha|attrape|cricket|killer|shanghai|challenge/i.test(mode);
+ const preferred=dartsMode
+  ? ['AVG3','BEST VOLÉE','LEGS','SETS','CHECKOUT','RÉUSSITE','FLÉCHETTES','180','MISS','SUITE','MOY. / VOLÉE']
+  : ['RÉUSSITE','BEST VOLÉE','TOUCHES','FLÉCHETTES','CAPTURES','FUITES','TOURS','MATCHS GAGNÉS','SETS','LEGS'];
+ const chosen:ChallengeExportMetric[]=[];
+ for(const labelText of preferred){const m=byTitle.get(labelText);if(m&&!chosen.includes(m))chosen.push(m);if(chosen.length===4)break;}
+ for(const metric of metrics){if(!chosen.includes(metric))chosen.push(metric);if(chosen.length===4)break;}
+ if(!chosen.length&&Number.isFinite(score))chosen.push({label:'SCORE ENREGISTRÉ',value:String(score)});
+ return chosen;
+}
+function pickVisitScores(objects:any[]):number[]{
+ for(const obj of objects){
+  const found=obj.visitScores??obj.visitsScores??obj.roundScores??obj.pointsByVisit;
+  if(Array.isArray(found)&&found.length){
+   const points=found.map(row=>validMetricNumber(typeof row==='object'&&row!==null?(row.points??row.score??row.total):row));
+   if(points.every(value=>value!==null))return points as number[];
+  }
+ }
+ return [];
+}
+function findTicker(entry:any,payload:any):string {
+ const saved=[entry?.game?.tickerSrc,entry?.game?.tickerUrl,entry?.game?.ticker,
+  payload?.config?.tickerSrc,payload?.config?.tickerUrl,payload?.config?.ticker,
+  entry?.summary?.tickerSrc,payload?.summary?.tickerSrc];
+ for(const raw of saved){
+  const src=String(raw||'').trim();
+  if(src&&(src.startsWith('data:image/')||src.startsWith('/')||src.startsWith('https://')))return src;
+ }
+ return historyTickerSrc;
+}
+function reportConfig(entry:any,summary:any,payload:any,mode:string,numberOfPlayers:number):ChallengeExportMetric[] {
+ const cfg={...(payload?.config&&typeof payload.config==='object'?payload.config:{}),
+  ...(entry?.game&&typeof entry.game==='object'?entry.game:{}),
+  ...(summary?.config&&typeof summary.config==='object'?summary.config:{})};
+ const known:[string,string[]][]=[
+  ['MODE',['mode','gameMode','modeId']],['VARIANTE',['variant','variantId']],
+  ['RÈGLE',['rule','rules','scoringRule']],['CIBLE',['target','targetScore']],
+  ['DÉPART',['startingScore','startScore','initialScore']],
+  ['ENTRÉE',['inMode','inRule','in']],['SORTIE',['outMode','outRule','out']],
+  ['FORMAT',['format','matchMode','gameType']],['SETS',['sets','maxSets','setsToWin']],
+  ['LEGS',['legs','maxLegs','legsToWin']],['BO',['bestOf','bo']],['FT',['firstTo','ft']],
+  ['ÉQUIPES',['teamsMode','teamMode']],['DURÉE',['duration','durationMinutes']],
+  ['VOLÉES',['visits','visitsLimit']],['TOURS',['rounds','maxRounds']],
+  ['DIFFICULTÉ',['difficulty','level']],
+ ];
+ const output:ChallengeExportMetric[]=[];
+ const seen=new Set<string>();
+ const add=(title:string,value:any)=>{
+  if(value===undefined||value===null||value===''||typeof value==='object'||seen.has(title))return;
+  if(typeof value==='boolean')value=value?'OUI':'NON';
+  seen.add(title);output.push({label:title,value:String(value).slice(0,38)});
+ };
+ add('MODE',mode||'PARTIE');add('JOUEURS',numberOfPlayers);
+ for(const [title,keys] of known){
+  for(const key of keys){const value=cfg[key];if(value!==undefined&&value!==null&&value!==''){add(title,value);break;}}
+ }
+ const duration=validMetricNumber(summary?.durationMs??payload?.summary?.durationMs);
+ if(duration!==null&&duration>0)add('DURÉE',(duration/60000).toFixed(1)+' min');
+ return output.slice(0,20);
 }
 
 
@@ -659,70 +1213,80 @@ export function challengeReportFromHistory(entry:any):ChallengeExportReport {
 export function visualReportFromHistory(entry:any):ChallengeExportReport {
  const payload=entry?.payload||entry?.decoded||{};
  const summary=entry?.summary||payload?.summary||{};
- const mode=String(entry?.game?.mode||entry?.mode||summary?.mode||entry?.kind||'').toLowerCase();
+ const result=summary?.result||payload?.result||{};
+ const mode=String(entry?.game?.mode||entry?.mode||summary?.mode||entry?.kind||payload?.kind||'').toLowerCase();
  if(mode.includes('challenge')||String(summary?.kind||'').toLowerCase()==='challenge'){
   return challengeReportFromHistory(entry);
  }
- const result=summary?.result||payload?.result||{};
  const pools=[
-  summary?.rankings,summary?.perPlayer,result?.rankings,result?.players,
-  result?.standings,payload?.stats?.players,payload?.summary?.rankings,
-  payload?.summary?.perPlayer,payload?.finalPlayers,entry?.players,
- ];
- const rows=pools.find(v=>Array.isArray(v)&&v.length>0)||[];
- const validNumber=(value:any):number|null=>{
-  if(value===undefined||value===null||value==='')return null;
-  const n=Number(value);
-  return Number.isFinite(n)?n:null;
- };
- const players:ChallengeExportPlayer[]=rows.map((raw:any)=>{
-  const row={...(raw?.stats||{}),...(raw||{})};
-  const score=validNumber(row.score??row.points??row.total??row.finalScore??row.scoreFinal??row.scoreTotal);
-  const darts=validNumber(row.darts??row.dartsThrown);
-  const rate=validNumber(row.accuracy??row.successRate??row.hitRate);
-  const streak=validNumber(row.bestStreak??row.streak);
-  const average=validNumber(row.avgVisit??row.avgPerVisit);
-  const extras:ChallengeExportMetric[]=[];
-  const add=(title:string,value:any,suffix='')=>{
-   if(value===undefined||value===null||value==='')return;
-   const v=String(value);
-   if(v!=='NaN'&&v!=='undefined')extras.push({label:title,value:v+suffix});
-  };
-  add('SETS',row.setsWon??row.sets);
-  add('LEGS',row.legsWon??row.legs);
-  add('AVG3',row.avg3??row.average3Darts);
-  add('FINISH',row.highestCheckout??row.highFinish);
-  add('BEST VOLÉE',row.bestVisit);
-  add('180',row.count180??row.hits180);
-  add('MISS',row.misses??row.miss);
-  add('RÉUSSITE',rate,rate!==null?'%':'');
-  const visits=row.visitScores??row.stats?.visitScores??row.roundScores;
+  summary?.rankings,summary?.perPlayer,summary?.players,summary?.result?.rankings,
+  summary?.result?.players,payload?.summary?.rankings,payload?.summary?.perPlayer,
+  result?.rankings,result?.players,result?.standings,
+  payload?.stats?.players,payload?.summary?.players,payload?.players,
+  payload?.finalPlayers,entry?.stats?.players,entry?.players,
+ ].filter(Array.isArray) as any[][];
+ const source=pools.find(pool=>pool.length)||[];
+ const players:ChallengeExportPlayer[]=source.map((raw:any,index:number)=>{
+  const matches=locateSavedRow(raw,pools);
+  const maps=mappedStatsForPlayer(entry,payload,summary,result,raw);
+  const objects=gatherStatObjects([raw,...matches,maps]);
+  // Do not replace the ranking's original score with an unrelated game stat.
+  const originalScore=reportValue([raw],['score','points','total','finalScore','scoreFinal','scoreTotal','totalScore']);
+  const score=validMetricNumber(originalScore ?? reportValue(objects,['score','points','total','finalScore','scoreFinal','scoreTotal','totalScore']));
+  const accuracy=validMetricNumber(reportValue(objects,['successRate','accuracy','hitRate','accuracyPct']));
+  const darts=validMetricNumber(reportValue(objects,['dartsThrown','darts','totalDarts','dartsPlayed']));
+  const bestStreak=validMetricNumber(reportValue(objects,['bestStreak','streak','longestStreak']));
+  const avgVisit=validMetricNumber(reportValue(objects,['avgVisit','avgPerVisit','averageVisit']));
+  const savedMetrics=actualSavedMetrics(objects);
+  const finalScore=score===null?Number.NaN:score;
+  const bestImageRow=[...matches,raw].find(row=>pickAvatarSource(row));
+  const person=personName(raw)||matches.map(personName).find(Boolean)||'Joueur '+(index+1);
   return {
-   name:String(row.name||row.playerName||row.displayName||row.nickname||row.label||'Joueur'),
-   score:score===null?Number.NaN:score,
-   darts,accuracy:rate,bestStreak:streak,avgVisit:average,
-   visits:Array.isArray(visits)?visits.map((v:any)=>Number(v)||0):[],
-   metrics:extras,
+   name:person,participantId:personId(raw)||matches.map(personId).find(Boolean)||undefined,
+   score:finalScore,accuracy,darts,bestStreak,avgVisit,
+   visits:pickVisitScores(objects),metrics:savedMetrics,
+   headlineMetrics:chooseHeadlineStats(savedMetrics,mode,finalScore),
+   avatarUrl:bestImageRow?pickAvatarSource(bestImageRow):'',
   };
  });
- const ranked=rows.some((r:any)=>r?.rank!==undefined||r?.finalRank!==undefined);
- if(ranked)players.sort((a,b)=>{
-  const rank=(p:ChallengeExportPlayer)=>Number(rows.find((r:any)=>String(r.name||r.playerName||r.displayName||r.nickname||'Joueur')===p.name)?.rank??Number.MAX_SAFE_INTEGER);
-  return rank(a)-rank(b);
- });
+ // Respect the saved rank; some modes rank by sets, legs or objectives.
+ if(source.some(row=>row?.rank!==undefined||row?.finalRank!==undefined)){
+  const rankOf=(row:any)=>validMetricNumber(row?.finalRank??row?.rank)??Number.MAX_SAFE_INTEGER;
+  const indexed=players.map((player,index)=>({player,index,rank:rankOf(source[index])}));
+  indexed.sort((a,b)=>a.rank-b.rank||a.index-b.index);
+  players.splice(0,players.length,...indexed.map(item=>item.player));
+ }
  const rawDate=entry?.finishedAt||entry?.endedAt||entry?.updatedAt||entry?.createdAt||Date.now();
- const d=new Date(rawDate);
+ const dateObj=new Date(rawDate);
+ const date=Number.isNaN(dateObj.getTime())?'Date inconnue':dateObj.toLocaleString('fr-FR');
+ const title=String(summary?.title||summary?.modeLabel||entry?.game?.objective||entry?.game?.mode||entry?.kind||'PARTIE');
+ const configSummary=reportConfig(entry,summary,payload,mode,players.length);
  const highlights:ChallengeExportMetric[]=[];
- const addHighlight=(label:string,value:any)=>{if(value!==null&&value!==undefined&&value!=='')highlights.push({label,value:String(value)})};
- addHighlight('MODE',mode.toUpperCase()||'PARTIE');
- addHighlight('JOUEURS',players.length);
- addHighlight('STATUT',String(entry?.status||summary?.status||'terminée').toUpperCase());
- if(summary?.durationMs)addHighlight('DURÉE (MIN)',(Number(summary.durationMs)/60000).toFixed(1));
- return {
-  title:String(summary?.title||summary?.modeLabel||entry?.game?.mode||entry?.kind||'PARTIE'),
-  rounds:validNumber(summary?.rounds??entry?.game?.rounds??summary?.visits??0)||0,
-  unit:'tours',
-  players,highlight:highlights,
-  date:Number.isNaN(d.getTime())?'Date inconnue':d.toLocaleString('fr-FR'),
- };
+ if(Number.isFinite(players[0]?.score))highlights.push({label:'SCORE GLOBAL',value:String(players[0].score)});
+ if(players.length>1)highlights.push({label:'PARTICIPANTS',value:String(players.length)});
+ const duration=validMetricNumber(summary?.durationMs??payload?.summary?.durationMs);
+ if(duration!==null&&duration>0)highlights.push({label:'DURÉE',value:(duration/60000).toFixed(1)+' MIN'});
+ const winner=summary?.winnerName||result?.winnerName;
+ if(winner)highlights.push({label:'GAGNANT',value:String(winner)});
+ const details:ChallengeExportSection[]=[];
+ for(const player of players){
+  if(player.metrics.length){
+   details.push({title:player.name.toUpperCase()+' · STATISTIQUES ENREGISTRÉES',
+    columns:['INDICATEUR','VALEUR'],rows:player.metrics.map(m=>[m.label,m.value])});
+  }
+  if(player.visits.length){
+   let total=0;
+   details.push({title:player.name.toUpperCase()+' · JOURNAL DES VOLÉES',
+    columns:['VOLÉE','POINTS','TOTAL CUMULÉ'],
+    rows:player.visits.map((points,index)=>{total+=points;return [String(index+1),String(points),String(total)];})});
+  }
+ }
+ if(configSummary.length){
+  details.unshift({title:'PARAMÈTRES DE LA PARTIE',columns:['PARAMÈTRE','VALEUR'],
+   rows:configSummary.map(m=>[m.label,m.value])});
+ }
+ return {title,rounds:validMetricNumber(summary?.rounds??entry?.game?.rounds??summary?.visits)??0,
+  unit:'tours',players,highlight:highlights,date,configSummary,
+  details,tickerSrc:findTicker(entry,payload),appLogoSrc:APP_LOGO_SRC,
+  footerBrand:'MULTISPORTS SCORING'};
 }
