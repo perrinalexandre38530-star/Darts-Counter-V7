@@ -1,4 +1,5 @@
 import { enrichChallengeReport } from './challengeFullReport';
+import { zipSync } from 'fflate';
 
 /**
  * Portable visual report for every Challenge exercise (PNG and multipage PDF).
@@ -331,16 +332,41 @@ function reportCanvasPages(report:ChallengeExportReport):HTMLCanvasElement[]{
  return [buildCanvas(report),...detailedPages(report)];
 }
 
-function stackedImage(pages:HTMLCanvasElement[]):HTMLCanvasElement {
- const totalHeight=pages.reduce((sum,c)=>sum+c.height,0);
- if(totalHeight>15000)throw Error('Rapport trop long pour une image unique. Utilise le PDF multipage.');
- const canvas=document.createElement('canvas');
- canvas.width=WIDTH;canvas.height=totalHeight;
- const ctx=canvas.getContext('2d');
- if(!ctx)throw Error('Image indisponible.');
- let y=0;
- for(const page of pages){ctx.drawImage(page,0,y);y+=page.height;}
- return canvas;
+/** Rasterize each printed page separately (1200 x 1698 pixels, A4 aspect).
+ * Unlike the former panorama, every output file is a conventional page. */
+const A4_PNG_HEIGHT=Math.round(WIDTH*842/595);
+function pngPaperPages(canvases:HTMLCanvasElement[]):HTMLCanvasElement[] {
+ const out:HTMLCanvasElement[]=[];
+ for(const source of canvases){
+  for(let offset=0;offset<source.height;offset+=PDF_SLICE_HEIGHT){
+   const length=Math.min(PDF_SLICE_HEIGHT,source.height-offset);
+   const paper=document.createElement('canvas');
+   paper.width=WIDTH;
+   paper.height=A4_PNG_HEIGHT;
+   const ctx=paper.getContext('2d');
+   if(!ctx)throw Error('Impossible de préparer une image A4.');
+   ctx.fillStyle='#070d18';ctx.fillRect(0,0,paper.width,paper.height);
+   const fit=Math.min(paper.width/source.width,paper.height/PDF_SLICE_HEIGHT);
+   const drawWidth=source.width*fit;
+   const drawHeight=length*fit;
+   ctx.drawImage(source,0,offset,source.width,length,
+    (paper.width-drawWidth)/2,0,drawWidth,drawHeight);
+   out.push(paper);
+  }
+ }
+ return out;
+}
+function pngPageFiles(canvases:HTMLCanvasElement[],stem:string):Array<{name:string;bytes:Uint8Array}> {
+ return pngPaperPages(canvases).map((page,index)=>({
+  name:stem+'_page-'+String(index+1).padStart(2,'0')+'.png',
+  bytes:pngBytesFromCanvas(page),
+ }));
+}
+function pngZipFromPages(pages:Array<{name:string;bytes:Uint8Array}>):Uint8Array {
+ const items:Record<string,Uint8Array>={};
+ pages.forEach(page=>{items[page.name]=page.bytes;});
+ // PNG is already compressed; store each complete image without recompression.
+ return zipSync(items,{level:0});
 }
 
 function pngBytesFromCanvas(canvas: HTMLCanvasElement): Uint8Array {
@@ -488,7 +514,7 @@ function encodeBase64(bytes:Uint8Array):string {
  return result.join('');
 }
 
-function beginHttpAttachment(bytes:Uint8Array,name:string,format:'pdf'|'png'):void {
+function beginHttpAttachment(bytes:Uint8Array,name:string,format:'pdf'|'zip'):void {
  // Unlike a blob: link, a real HTTP attachment can be handled by Android's
  // DownloadListener. Keep its frame hidden so unsupported WebViews never open
  // a visible about:blank page. The server retains none of the bytes.
@@ -518,13 +544,13 @@ function beginHttpAttachment(bytes:Uint8Array,name:string,format:'pdf'|'png'):vo
  window.setTimeout(()=>{form.remove();frame.remove();},120_000);
 }
 
-async function useSavePicker(bytes:Uint8Array,name:string,format:'pdf'|'png'):Promise<'saved'|'cancelled'|'unsupported'> {
+async function useSavePicker(bytes:Uint8Array,name:string,format:'pdf'|'zip'):Promise<'saved'|'cancelled'|'unsupported'> {
  const browser=window as Window & {
   showSaveFilePicker?:(options:any)=>Promise<{createWritable:()=>Promise<{write:(blob:Blob)=>Promise<void>;close:()=>Promise<void>}>}>;
  };
  if(typeof browser.showSaveFilePicker!=='function')return 'unsupported';
  try {
-  const mime=format==='pdf'?'application/pdf':'image/png';
+  const mime=format==='pdf'?'application/pdf':'application/zip';
   const handle=await browser.showSaveFilePicker({
    suggestedName:name,
    types:[{description:format.toUpperCase()+' MULTISPORTS SCORING',accept:{[mime]:['.'+format]}}],
@@ -546,47 +572,52 @@ export async function exportChallengeResults(report:ChallengeExportReport,format
  const shareRequested=Boolean(options.share||format==='share');
  const slug=report.title.normalize('NFD').replace(/[\u0300-\u036f]/g,'')
   .toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'challenge';
- const name='MSS_'+slug+'_'+new Date().toISOString().slice(0,10)+'.'+actualFormat;
- // Rendering must precede native sharing, but no await precedes the native call.
+ const stem='MSS_'+slug+'_'+new Date().toISOString().slice(0,10);
  const pages=reportCanvasPages(report);
- const bytes=actualFormat==='pdf'?pdfBytesFromCanvases(pages):pngBytesFromCanvas(stackedImage(pages));
- const mime=actualFormat==='pdf'?'application/pdf':'image/png';
-
+ const picturePages=actualFormat==='png'?pngPageFiles(pages,stem):[];
+ const files=actualFormat==='png'
+  ?picturePages.map(page=>new File([page.bytes],page.name,{type:'image/png'}))
+  :[new File([pdfBytesFromCanvases(pages)],stem+'.pdf',{type:'application/pdf'})];
+ // PDF stays a real multipage PDF. PNG pages download as a ZIP of actual PNG files.
+ const downloadFormat=actualFormat==='png'?'zip':'pdf';
+ const fileName=stem+(downloadFormat==='zip'?'_images_A4.zip':'.pdf');
  if(shareRequested){
   const nav=navigator;
-  const file=new File([bytes],name,{type:mime});
-  const available=typeof nav.share==='function'&&
-   (typeof nav.canShare!=='function'||nav.canShare({files:[file]}));
-  if(!available)return {status:'share-unavailable',fileName:name};
+  const canShare=typeof nav.share==='function'&&
+    (typeof nav.canShare!=='function'||nav.canShare({files}));
+  if(!canShare)return {status:'share-unavailable',fileName};
   try{
-   await nav.share({files:[file],title:report.title,text:'Résultats MULTISPORTS SCORING'});
-   return {status:'shared',fileName:name};
+   await nav.share({files,title:report.title,text:'Résultats MULTISPORTS SCORING'});
+   return {status:'shared',fileName};
   }catch(error){
-   if((error as Error)?.name==='AbortError')return {status:'cancelled',fileName:name};
-   console.warn('[challenge-export] native share failed',error);
-   return {status:'share-unavailable',fileName:name};
+   if((error as Error)?.name==='AbortError')return {status:'cancelled',fileName};
+   console.warn('[challenge-export] native file share failed',error);
+   return {status:'share-unavailable',fileName};
   }
  }
+ const bytes=downloadFormat==='pdf'?pdfBytesFromCanvases(pages):pngZipFromPages(picturePages);
+ const mime=downloadFormat==='pdf'?'application/pdf':'application/zip';
  if(!isEmbeddedAndroid()){
-  const pick=await useSavePicker(bytes,name,actualFormat);
-  if(pick==='saved')return {status:'downloaded',fileName:name};
-  if(pick==='cancelled')return {status:'cancelled',fileName:name};
-  saveFile(new Blob([bytes],{type:mime}),name);
-  return {status:'download-started',fileName:name};
+  const picker=await useSavePicker(bytes,fileName,downloadFormat);
+  if(picker==='saved')return {status:'downloaded',fileName};
+  if(picker==='cancelled')return {status:'cancelled',fileName};
+  saveFile(new Blob([bytes],{type:mime}),fileName);
+  return {status:'download-started',fileName};
  }
- beginHttpAttachment(bytes,name,actualFormat);
- return {status:'download-started',fileName:name};
+ beginHttpAttachment(bytes,fileName,downloadFormat);
+ return {status:'download-started',fileName};
 }
-
-/** For an explicit second click from the in-app preview (eg. opened in Chrome). */
+/** Manual download from the preview, using identical page-sized assets. */
 export function downloadChallengeFile(report:ChallengeExportReport,format:'pdf'|'png'):void {
+ const stem='MSS_'+report.title.normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+  .toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')+'_'+new Date().toISOString().slice(0,10);
  const pages=reportCanvasPages(report);
- const blob=format==='pdf'?new Blob([pdfBytesFromCanvases(pages)],{type:'application/pdf'})
-  :new Blob([pngBytesFromCanvas(stackedImage(pages))],{type:'image/png'});
- const slug=report.title.normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-  .toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'challenge';
- const name='MSS_'+slug+'_'+new Date().toISOString().slice(0,10)+'.'+format;
- saveFile(blob,name);
+ if(format==='pdf'){
+  saveFile(new Blob([pdfBytesFromCanvases(pages)],{type:'application/pdf'}),stem+'.pdf');
+ }else{
+  const entries=pngPageFiles(pages,stem);
+  saveFile(new Blob([pngZipFromPages(entries)],{type:'application/zip'}),stem+'_images_A4.zip');
+ }
 }
 
 /** Reuses the exact historical Challenge per-player score and exercise stats. */

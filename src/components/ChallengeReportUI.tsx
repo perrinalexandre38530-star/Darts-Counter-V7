@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import type { ChallengeExportResult } from '../lib/challengeResultsExport';
 
 export type ChallengeReportFormat = 'pdf' | 'png' | 'share';
@@ -11,7 +12,7 @@ function ReportIcon({kind}: {kind: ChallengeReportFormat}) {
  return <svg {...shared}><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.5-4.5M8.2 13.3l7.5 4.3"/></svg>;
 }
 const formats:ChallengeReportFormat[]=['pdf','png','share'];
-const titles:Record<ChallengeReportFormat,string>={pdf:'PDF',png:'IMAGE PNG',share:'PARTAGER'};
+const titles:Record<ChallengeReportFormat,string>={pdf:'PDF',png:'IMAGES PNG A4 (ZIP)',share:'PARTAGER'};
 const colors:Record<ChallengeReportFormat,string>={pdf:'#ffc4d1',png:'#b1efff',share:'#b8f4d6'};
 
 /** Only three clean icons: no frame, no label, centered regardless of width. */
@@ -24,7 +25,7 @@ export function ChallengeReportActions({onExport,busy=false,compact=false}:{
  }}>
   {formats.map(format=><button key={format} type="button"
    disabled={busy} onClick={()=>onExport(format)} title={titles[format]}
-   aria-label={format==='pdf'?'Télécharger le rapport PDF':format==='png'?'Télécharger une image PNG':'Choisir où partager la partie'}
+   aria-label={format==='pdf'?'Télécharger le rapport PDF':format==='png'?'Télécharger toutes les pages PNG A4 dans un ZIP':'Choisir où partager la partie'}
    style={{display:'grid',placeItems:'center',flex:'0 0 auto',
     width:compact?44:56,height:compact?44:56,border:0,outline:0,borderRadius:13,
     background:'transparent',color:colors[format],boxShadow:'none',padding:8,
@@ -46,7 +47,7 @@ export function ChallengeReportShareDialog({
  busy?:boolean;error?:string;
 }){
  if(!open)return null;
- return <div role="presentation" onClick={onClose}
+ return createPortal(<div role="presentation" onClick={onClose}
   style={{position:'fixed',inset:0,zIndex:230000,display:'grid',placeItems:'center',
    padding:14,background:'rgba(0,0,0,.82)'}}>
   <div role="dialog" aria-modal="true" aria-label="Partager les résultats"
@@ -69,7 +70,7 @@ export function ChallengeReportShareDialog({
      style={{minHeight:82,borderRadius:12,border:'1px solid #468ca7',background:'#142b3b',
       color:'#c6efff',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
       gap:8,fontSize:11,fontWeight:900,opacity:busy?.6:1}}>
-      <ReportIcon kind="png"/>IMAGE PNG
+      <ReportIcon kind="png"/>IMAGES PNG (PAGES A4)
     </button>
     <button type="button" disabled={busy} onClick={()=>onShare('pdf')}
      style={{minHeight:82,borderRadius:12,border:'1px solid #945263',background:'#311c27',
@@ -87,12 +88,12 @@ export function ChallengeReportShareDialog({
     puis partage le fichier depuis Téléchargements ou Galerie.
    </small>
   </div>
- </div>;
+ </div>, document.body);
 }
 
 export function ChallengeReportPreview({result,onClose,onDownload}:{result:ChallengeExportResult|null;onClose:()=>void;onDownload?:()=>void}) {
  if(!result||result.status!=='preview')return null;
- return <div role="presentation" onClick={onClose} style={{position:'fixed',inset:0,zIndex:220000,display:'grid',placeItems:'center',background:'rgba(0,0,0,.88)',padding:12}}>
+ return createPortal(<div role="presentation" onClick={onClose} style={{position:'fixed',inset:0,zIndex:220000,display:'grid',placeItems:'center',background:'rgba(0,0,0,.88)',padding:12}}>
   <div role="dialog" aria-modal="true" aria-label="Prévisualisation du rapport" onClick={e=>e.stopPropagation()} style={{width:'min(95vw,620px)',maxHeight:'92dvh',overflowY:'auto',background:'#09111d',color:'#edf6ff',border:'1px solid #42536c',borderRadius:16,padding:13,display:'grid',gap:11,boxShadow:'0 22px 70px #000b'}}>
    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
     <strong style={{fontSize:15,color:'#ff818b'}}>APERÇU DU RAPPORT</strong>
@@ -110,5 +111,5 @@ export function ChallengeReportPreview({result,onClose,onDownload}:{result:Chall
     <button type="button" onClick={onClose} style={{flex:1,minHeight:42,border:'1px solid #6f788b',borderRadius:10,color:'#fff',background:'#202c3d',fontWeight:900}}>FERMER</button>
    </div>
   </div>
- </div>;
+ </div>, document.body);
 }
