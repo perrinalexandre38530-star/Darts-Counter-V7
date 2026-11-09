@@ -1,0 +1,34 @@
+name: CHALLENGE Arcade Preview
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/lib/challengeArcade*'
+      - 'src/lib/challengeExercises.ts'
+      - 'src/pages/ChallengeArcadePlay.*'
+      - 'src/pages/ChallengeConfig.tsx'
+      - 'src/pages/ChallengePlay.tsx'
+      - 'tools/test-challenge-arcade-preview.ts'
+      - '.github/workflows/challenge-arcade-preview.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  challenge-preview:
+    name: Arcade rules + TypeScript
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Verify arcade catalog and objective engine
+        run: node --experimental-strip-types ./tools/test-challenge-arcade-preview.ts
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck app
+        run: npm run typecheck

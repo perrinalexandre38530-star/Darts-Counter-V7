@@ -1,4 +1,4 @@
-export type ChallengeExerciseType='classic'|'clock'|'half-it'|'sequence'|'grouping'|'doubles8'|'jdc';
+export type ChallengeExerciseType='classic'|'clock'|'half-it'|'sequence'|'grouping'|'doubles8'|'jdc'|'arcade';
 export type ChallengeScoreMode='challenge'|'real';
 export type ChallengeObjectiveToken='1'|'2'|'3'|'4'|'5'|'6'|'7'|'8'|'9'|'10'|'11'|'12'|'13'|'14'|'15'|'16'|'17'|'18'|'19'|'20'|'bull'|'any-double'|'any-triple';
 export type ChallengeHit='S'|'D'|'T'|'25'|'50'|'MISS';
