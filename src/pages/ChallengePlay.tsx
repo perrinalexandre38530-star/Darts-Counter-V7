@@ -1,5 +1,6 @@
 import React from 'react';
 import { exportChallengeResults, downloadChallengeFile, type ChallengeExportReport, type ChallengeExportResult } from '../lib/challengeResultsExport';
+import { enrichChallengeReport } from '../lib/challengeFullReport';
 import { ChallengeReportActions, ChallengeReportPreview, ChallengeReportShareDialog } from '../components/ChallengeReportUI';
 import BackDot from '../components/BackDot';
 import ProfileAvatar from '../components/ProfileAvatar';
@@ -1391,7 +1392,7 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
       ?[{label:'RÉUSSITE',value:detail.accuracy.toFixed(1)+'%'},{label:'SUITE',value:String(detail.bestStreak)},{label:'BEST',value:String(detail.bestVisit)}]
       :exerciseResultMetrics(exercise,cfg);
      return {
-      name:String(p.name||'Joueur'),score:Number(participantScore(p)||0),
+      name:String(p.name||'Joueur'),participantId:String(p.id),score:Number(participantScore(p)||0),
       accuracy:Number(detail.accuracy||0),darts:Number(detail.darts||0),
       bestStreak:Number(detail.bestStreak||0),avgVisit:Number(detail.avgVisit||0),
       visits:detail.visitScores.map(value=>Number(value)||0),
@@ -1399,9 +1400,10 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
      };
     }),
    };
-   challengeLastReportRef.current=report;
+   const fullReport=enrichChallengeReport(report,cfg,log);
+   challengeLastReportRef.current=fullReport;
    challengeLastFormatRef.current=format==='pdf'?'pdf':'png';
-   const result=await exportChallengeResults(report,format,{share:shareNow});
+   const result=await exportChallengeResults(fullReport,format,{share:shareNow});
    if(result.status==='preview')setChallengeExportPreview(result);
    if(result.status==='download-started')setChallengeExportInfo('Téléchargement demandé : vérifie le dossier Téléchargements de ton appareil. Si le navigateur intégré le bloque, ouvre la page dans Chrome.');
    if(result.status==='share-unavailable')setChallengeShareError('Ce navigateur intégré ne permet pas le partage de fichiers. Télécharge l’image ou le PDF avec les icônes, puis utilise Partager depuis Galerie ou Fichiers.');
