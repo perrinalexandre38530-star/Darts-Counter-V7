@@ -258,11 +258,10 @@ async function hardRecoverFromChunkFailure(reason: any) {
   let last = 0;
   try { last = Number(localStorage.getItem(DC_CHUNK_HARD_RECOVER_TS_KEY) || "0") || 0; } catch {}
 
-  // Évite une boucle infinie: au 2e échec rapproché, on active le safe mode
-  // mais on ne laisse plus l'écran CRASH bloquer avant tentative de purge.
-  if (last && now - last < 15000) {
-    try { localStorage.setItem("dc_safe_mode_v1", "1"); } catch {}
-  }
+  // Une seule récupération par fenêtre de 20 s : une URL de chunk
+  // réellement indisponible ne doit pas déclencher une boucle de rechargement.
+  // Ne pas activer le safe mode pour une simple erreur de déploiement.
+  if (last && now - last < 20_000) return;
   try { localStorage.setItem(DC_CHUNK_HARD_RECOVER_TS_KEY, String(now)); } catch {}
 
   try {
@@ -293,6 +292,16 @@ async function hardRecoverFromChunkFailure(reason: any) {
   }
 }
 
+// Vite emits this event before a missing lazy chunk becomes a React crash.
+// Recover the app shell (SW and code caches only), never the user data.
+try {
+  window.addEventListener("vite:preloadError", (event: Event) => {
+    if (!shouldAttemptRemoteWork()) return;
+    event.preventDefault();
+    void hardRecoverFromChunkFailure((event as Event & { payload?: unknown }).payload || event);
+  });
+} catch {}
+
 // ---- PATCH: one-shot recovery for Vite lazy chunk load errors (Cloudflare cache mismatch, etc.) ----
 try {
   const KEY = "dc:chunk-reload";
@@ -300,6 +309,8 @@ try {
     const m = (msg || "").toLowerCase();
     return (
       m.includes("failed to fetch dynamically imported module") ||
+      m.includes("error loading dynamically imported module") ||
+      m.includes("dynamically imported module") ||
       m.includes("loading chunk") ||
       m.includes("chunkloaderror") ||
       m.includes("importing a module script failed")

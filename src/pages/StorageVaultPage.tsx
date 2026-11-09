@@ -95,6 +95,7 @@ import {
   chooseExternalBackupFile,
   chooseExternalBackupFileWithJson,
   chooseExternalBackupTargetOnly,
+  authorizeExternalBackupTarget,
   downloadExternalBackupFallback,
   downloadExternalBackupJson,
   getExternalBackupStatus,
@@ -1478,16 +1479,17 @@ function BackupDetailsModal({ state, onClose }: { state: { entry: SaveEntry; det
   );
 }
 
-function DestinationSetupModal({ destination, status, busy, onClose, onChoose }: {
+function DestinationSetupModal({ destination, status, busy, onClose, onChoose, onProviderChoose }: {
   destination: ReturnType<typeof getStorageDestination> | null;
   status: ExternalBackupStatus;
   busy: boolean;
   onClose: () => void;
   onChoose: () => void;
+  onProviderChoose: (provider: PersonalCloudProvider) => void;
 }) {
   if (!destination) return null;
   const cloudNas = destination.id === "personal_cloud_manual";
-  const external = destination.id === "external_sd_manual";
+  const external = destination.id === "external_sd_manual" || destination.id === "device_file";
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 1450, background: "rgba(0,0,0,.82)", display: "grid", placeItems: "center", padding: 16 }}>
       <div onClick={(event) => event.stopPropagation()} style={{ width: "min(560px,100%)", maxHeight: "86vh", overflowY: "auto", borderRadius: 22, border: `1px solid ${gold}`, background: "linear-gradient(180deg,#0f172a,#020617)", boxShadow: `0 0 34px ${accentGlow}`, padding: 16 }}>
@@ -1511,8 +1513,19 @@ function DestinationSetupModal({ destination, status, busy, onClose, onChoose }:
             <div style={{ display: "grid", gap: 7, marginTop: 9, color: "#dbe5f1", fontSize: 12.5, lineHeight: 1.45 }}>
               <div>1. Ajoute Google Drive, OneDrive, Dropbox, Nextcloud, Synology Drive ou QNAP dans le gestionnaire de fichiers de l’appareil.</div>
               <div>2. Pour un NAS, monte son partage réseau ou utilise l’application du constructeur afin qu’il apparaisse dans le sélecteur système.</div>
-              <div>3. Choisis ensuite le fichier de sauvegarde ici. Aucun mot de passe de ton NAS n’est transmis à MULTISPORTS SCORING.</div>
+              <div>3. Pour Google Drive, OneDrive ou Dropbox, utilise directement les boutons ci-dessous pour bénéficier de la connexion au compte.</div>
+              <div>4. Pour Nextcloud, QNAP, Synology ou un autre stockage, monte ton dossier dans le sélecteur système. Aucun mot de passe NAS n’est transmis à MULTISPORTS SCORING.</div>
             </div>
+          </div>
+        ) : null}
+
+        {cloudNas ? (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginTop: 11 }}>
+            {(["google_drive", "onedrive", "dropbox"] as PersonalCloudProvider[]).map((provider) => (
+              <button key={provider} type="button" disabled={busy} onClick={() => onProviderChoose(provider)} style={{ ...btn, minHeight: 47, padding: "7px 4px", color: "#fff", borderColor: gold, fontSize: 11 }}>
+                {personalCloudProviderLabel(provider)}
+              </button>
+            ))}
           </div>
         ) : null}
 
@@ -3486,7 +3499,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
     const needsSystemTarget = destination === "device_file" || destination === "external_sd_manual" || destination === "personal_cloud_manual";
     if (needsSystemTarget) setDestinationSetup(destination);
     setMessage(needsSystemTarget
-      ? `Destination active : ${label}. Choisis maintenant l'emplacement exact dans la fenêtre de configuration.`
+      ? `Destination active : ${label}. Configure maintenant le fournisseur ou l'emplacement exact.`
       : `Destination active : ${label}. Le prochain clic sur Sauvegarder écrira directement ici.`);
 
     // La préférence locale est la source de vérité immédiate. La copie serveur
@@ -3512,13 +3525,29 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
     setBusy(true);
     const startedAt = performance.now();
     try {
+      // Le picker doit s'ouvrir dans le geste utilisateur, AVANT les awaits
+      // de construction de l'historique (activation transitoire du navigateur).
+      if (action === "choose") {
+        const chosen = await chooseExternalBackupTargetOnly();
+        setExternalBackupStatus(chosen);
+        if (chosen.lastError) throw new Error(chosen.lastError);
+        if (!chosen.configured) {
+          setMessage("Emplacement non configuré. Aucun fichier n'a été écrit.");
+          return;
+        }
+      }
+      if (action === "choose" || action === "save") {
+        const permitted = await authorizeExternalBackupTarget();
+        setExternalBackupStatus(permitted);
+        if (permitted.lastError) throw new Error(permitted.lastError);
+      }
       const prepared = await prepareCurrentBackupOnce();
       let next: ExternalBackupStatus;
-      if (action === "choose") next = await chooseExternalBackupFileWithJson(prepared.snapshotJson, "storage-vault-manual");
-      else if (action === "save") next = await writeExternalBackupJsonNow(prepared.snapshotJson, "storage-vault-manual", { requestPermission: true });
+      if (action === "choose" || action === "save") next = await writeExternalBackupJsonNow(prepared.snapshotJson, "storage-vault-manual", { requestPermission: true });
       else next = await downloadExternalBackupJson(prepared.snapshotJson, "storage-vault-download");
       setExternalBackupStatus(next);
       if (next.lastError) throw new Error(next.lastError);
+      if (!next.lastSavedAt) throw new Error("Aucune écriture de sauvegarde confirmée.");
       const duration = Math.max(1, Math.round(performance.now() - startedAt));
       setMessage(`Sauvegarde fichier créée en ${duration} ms · ${next.fileName || "copie téléchargée"} · ${formatStorageBytes(next.lastBytes || prepared.bytes)}.`);
       const estimate = await estimateBrowserStorage();
@@ -3692,19 +3721,32 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
       setBusy(true);
       setMessage(`Préparation du fichier vers ${destinationLabel}…`);
       try {
+        // La sélection native doit précéder la préparation asynchrone.
+        // En cas d'annulation, on n'annonce jamais un succès fictif.
+        let targetStatus = await getExternalBackupStatus();
+        if (!targetStatus.configured && targetStatus.supported) {
+          targetStatus = await chooseExternalBackupTargetOnly();
+          setExternalBackupStatus(targetStatus);
+          if (targetStatus.lastError) throw new Error(targetStatus.lastError);
+          if (!targetStatus.configured) {
+            setMessage("Sélection du fichier annulée : aucune sauvegarde externe écrite.");
+            return;
+          }
+        }
+        if (targetStatus.configured) {
+          targetStatus = await authorizeExternalBackupTarget();
+          setExternalBackupStatus(targetStatus);
+          if (targetStatus.lastError) throw new Error(targetStatus.lastError);
+        }
         const prepared = await prepareCurrentBackupOnce("full");
         const quality = assessSaveForProvider(prepared.summary, "local");
         if (!quality.restorable) throw new Error(`Sauvegarde refusée : ${quality.reason}`);
-        let status: ExternalBackupStatus;
-        if (!externalBackupStatus.configured && externalBackupStatus.supported) {
-          status = await chooseExternalBackupFileWithJson(prepared.snapshotJson, "storage-vault-instant");
-        } else if (externalBackupStatus.configured) {
-          status = await writeExternalBackupJsonNow(prepared.snapshotJson, "storage-vault-instant", { requestPermission: true });
-        } else {
-          status = await downloadExternalBackupJson(prepared.snapshotJson, "storage-vault-instant");
-        }
+        const status: ExternalBackupStatus = targetStatus.configured
+          ? await writeExternalBackupJsonNow(prepared.snapshotJson, "storage-vault-instant", { requestPermission: true })
+          : await downloadExternalBackupJson(prepared.snapshotJson, "storage-vault-instant");
         setExternalBackupStatus(status);
         if (status.lastError) throw new Error(status.lastError);
+        if (!status.lastSavedAt) throw new Error("Aucune écriture de sauvegarde confirmée.");
         void registerAccountLatestBackup({
           provider: "external",
           backupId: `external_${Date.now()}`,
@@ -4681,6 +4723,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         busy={externalBackupBusy === "choose"}
         onClose={() => setDestinationSetup(null)}
         onChoose={() => void configureExternalDestination()}
+        onProviderChoose={(provider) => { setDestinationSetup(null); void selectStorageDestination(provider); }}
       />
       <style>{`@keyframes dcVaultBusy { from { transform: translateX(-40%); opacity:.45 } to { transform: translateX(140%); opacity:1 } }`}</style>
     </div>

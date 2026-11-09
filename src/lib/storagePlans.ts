@@ -190,8 +190,8 @@ export const STORAGE_DESTINATIONS: StorageDestination[] = [
   },
   {
     id: "device_file",
-    label: "Fichier ou dossier choisi par l'utilisateur",
-    shortLabel: "Fichier / dossier",
+    label: "Fichier / dossier / SD / USB / disque",
+    shortLabel: "Fichier / SD / USB",
     cloud: false,
     public: true,
     description: "Le sélecteur système choisit l'emplacement exact : mémoire du téléphone, Documents, disque, clé USB ou dossier accessible.",
@@ -312,6 +312,8 @@ function normalizePlanId(value: any): StoragePlanId {
 
 function normalizeDestinationId(value: any): StorageDestinationId {
   const raw = String(value || "").trim() as StorageDestinationId;
+  // Les anciennes préférences SD/USB utilisent désormais le même sélecteur de fichier.
+  if (raw === "external_sd_manual") return "device_file";
   return STORAGE_DESTINATIONS.some((d) => d.id === raw) ? raw : DEFAULT_STORAGE_PREFS.selectedDestination;
 }
 
@@ -328,7 +330,7 @@ export function getPublicStoragePlans(): StoragePlan[] {
 }
 
 export function getPublicStorageDestinations(): StorageDestination[] {
-  return STORAGE_DESTINATIONS.filter((d) => d.public);
+  return STORAGE_DESTINATIONS.filter((d) => d.public && d.id !== "external_sd_manual");
 }
 
 export function loadStoragePrefs(): StoragePrefs {

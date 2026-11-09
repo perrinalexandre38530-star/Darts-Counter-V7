@@ -223,6 +223,16 @@ export async function downloadExternalBackupJson(snapshotJson: string, reason = 
   }
 }
 
+/** Demande l'autorisation tant que le clic utilisateur est encore actif. */
+export async function authorizeExternalBackupTarget(): Promise<ExternalBackupStatus> {
+  const current = readStatus();
+  const handle = await getHandle();
+  if (!handle) return writeStatus({ ...current, configured: false, lastError: "Aucun fichier cible configuré." });
+  const permission = await permissionFor(handle, true);
+  return writeStatus({ ...current, configured: true, fileName: String(handle.name || current.fileName || "backup.json"), permission,
+    lastError: permission === "granted" ? null : "L'autorisation d'écriture du fichier n'a pas été accordée." });
+}
+
 export async function writeExternalBackupJsonNow(
   snapshotJson: string,
   reason = "manual",

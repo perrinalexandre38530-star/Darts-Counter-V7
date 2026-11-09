@@ -402,8 +402,11 @@ export async function uploadPersonalCloudSnapshot(
       return rawResult;
     } catch (rawError: any) {
       const rawStatus = Number(rawError?.status || rawError?.statusCode || 0);
-      const canFallback = rawError?.code === `raw_${code}_unsupported` || rawError?.code === `${code}_job_lost` || rawError?.code === `${code}_job_timeout` ||
-        [0, 401, 404, 405, 408, 409, 415, 429, 500, 502, 503, 504].includes(rawStatus);
+      // Une tâche acceptée puis perdue/expirée a un état inconnu :
+      // ne jamais déclencher un deuxième upload qui pourrait dupliquer l'archive.
+      if (rawError?.code === `${code}_job_lost` || rawError?.code === `${code}_job_timeout`) throw rawError;
+      const canFallback = rawError?.code === `raw_${code}_unsupported` ||
+        [401, 404, 405, 415, 429, 500, 502, 503, 504].includes(rawStatus);
       if (!canFallback) throw rawError;
       console.warn(`[personalCloud] ${label} raw job indisponible, fallback JSON`, rawError);
     }

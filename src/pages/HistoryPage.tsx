@@ -29,6 +29,8 @@ import { loadLinkedProfileProjection } from "../lib/linkedProfileSync";
 import { isOnlineRecord } from "../lib/x01StatsSource";
 
 import { buildMatchSharePacket, isMatchSharePacketV1, shareOneMatch, type MatchSharePacketV1 } from "../lib/matchShare";
+import { visualReportFromHistory, exportChallengeResults, downloadChallengeFile, type ChallengeExportReport, type ChallengeExportResult } from "../lib/challengeResultsExport";
+import { ChallengeReportActions, ChallengeReportPreview, ChallengeReportShareDialog, type ChallengeReportFormat } from "../components/ChallengeReportUI";
 import { importRecoveredHistoryJson } from "../lib/importRecoveredHistory";
 import { exportHistoryDump, importHistoryDump } from "../lib/historyCloud";
 import { buildFullHistoryBackup, extractHistoryDumpFromJson, saveFullHistoryBackupFile } from "../lib/historyFileTransfer";
@@ -3873,6 +3875,15 @@ export default function HistoryPage({
   const [inboxLocal, setInboxLocal] = useState<InboxItemLocal[]>([]);
   const [inboxCloud, setInboxCloud] = useState<InboxRowCloud[]>([]);
   const [inboxLoading, setInboxLoading] = useState(false);
+  const [historyReportEntry, setHistoryReportEntry] = useState<SavedEntry | null>(null);
+  const [historyReport, setHistoryReport] = useState<ChallengeExportReport | null>(null);
+  const [historyReportBusy, setHistoryReportBusy] = useState(false);
+  const [historyReportError, setHistoryReportError] = useState("");
+  const [historyReportInfo, setHistoryReportInfo] = useState("");
+  const [historyShareOpen, setHistoryShareOpen] = useState(false);
+  const [historyShareError, setHistoryShareError] = useState("");
+  const [historyExportPreview, setHistoryExportPreview] = useState<ChallengeExportResult | null>(null);
+  const historyFormatRef = useRef<'pdf' | 'png'>('pdf');
   const [friendShareEntry, setFriendShareEntry] = useState<SavedEntry | null>(null);
   const [friendShareFriends, setFriendShareFriends] = useState<OnlineFriendUser[]>([]);
   const [friendShareParticipantIds, setFriendShareParticipantIds] = useState<string[]>([]);
@@ -4543,6 +4554,58 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
     }
   }
 
+
+  // Two-step historical export keeps navigator.share() tied to a real user tap:
+  // first hydrate the archived entry; then tap PDF, PNG or share in the dialog.
+  async function openHistoryVisualReport(entry: SavedEntry) {
+    setHistoryReportEntry(entry);
+    setHistoryReport(null);
+    setHistoryReportError("");
+    setHistoryReportBusy(true);
+    try {
+      const full=await hydrateSavedEntry(entry);
+      const report=visualReportFromHistory(full);
+      // Some older records only expose their score line through the legacy
+      // History parser. Keep that display truthful instead of inventing scores.
+      if(!report.players.length){
+        const rankRows=genericHistoryRankScorePlayers(full);
+        report.players=rankRows.map(row=>{
+          const numeric=Number(String(row.main??'').replace(',','.'));
+          return {name:row.name,score:Number.isFinite(numeric)?numeric:Number.NaN,accuracy:null,darts:null,bestStreak:null,avgVisit:null,metrics:[],visits:[]};
+        });
+      }
+      if(!report.players.length)throw new Error("Cette archive ne contient pas de classement exploitable pour un rapport visuel.");
+      setHistoryReport(report);
+    } catch(error) {
+      setHistoryReportError(String((error as Error)?.message||error||"Lecture impossible."));
+    } finally {
+      setHistoryReportBusy(false);
+    }
+  }
+
+  async function handleChallengeHistoryReport(format:ChallengeReportFormat,shareNow=false) {
+    if(format==='share'&&!shareNow){
+      setHistoryShareError("");
+      setHistoryShareOpen(true);
+      return;
+    }
+    if(!historyReport||historyReportBusy)return;
+    setHistoryReportError("");
+    setHistoryReportInfo("");
+    historyFormatRef.current=format==='pdf'?'pdf':'png';
+    setHistoryReportBusy(true);
+    try {
+      const result=await exportChallengeResults(historyReport,format,{share:shareNow});
+      if(result.status==='preview')setHistoryExportPreview(result);
+      if(result.status==='download-started')setHistoryReportInfo('Téléchargement demandé. Vérifie Téléchargements ; si le navigateur intégré le bloque, ouvre cette version dans Chrome.');
+      if(result.status==='share-unavailable')setHistoryShareError('Le navigateur intégré bloque le partage de fichiers. Télécharge le PDF ou le PNG, puis partage-le depuis Galerie ou Fichiers.');
+      if(result.status==='shared')setHistoryShareOpen(false);
+    } catch(error){
+      setHistoryReportError(String((error as Error)?.message||error||"Export impossible."));
+    } finally {
+      setHistoryReportBusy(false);
+    }
+  }
 
   async function handleExportMatchFile(entry: SavedEntry) {
     try {
@@ -6404,6 +6467,15 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                       <Icon.Trash />
                     </button>
                   </div>
+                  {!inProg && (
+                    <button type="button" onClick={(event)=>{event.stopPropagation();void openHistoryVisualReport(e);}}
+                      style={{width:'100%',minHeight:41,display:'flex',alignItems:'center',justifyContent:'center',gap:8,marginTop:6,
+                        background:'linear-gradient(180deg,#171f2c,#0b1320)',border:'1px solid #607083',
+                        borderRadius:11,color:'#cdeafd',fontWeight:950,fontSize:10,letterSpacing:'.4px'}}
+                      title="Créer un rapport visuel PDF, PNG ou partager cette partie">
+                      <Icon.Share /> RAPPORT PDF · IMAGE · PARTAGE
+                    </button>
+                  )}
                 </div>
 
                 {historyVisits.length > 0 ? (
@@ -6514,6 +6586,33 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
         </div>
       ) : null}
 
+      {historyReportEntry&&<div role="presentation" onClick={()=>!historyReportBusy&&setHistoryReportEntry(null)}
+        style={{position:'fixed',inset:0,zIndex:13000,background:'rgba(0,0,0,.85)',display:'grid',placeItems:'center',padding:12}}>
+        <section role="dialog" aria-modal="true" aria-label="Exporter le rapport de cette partie" onClick={event=>event.stopPropagation()}
+          style={{width:'min(94vw,490px)',maxHeight:'85dvh',overflowY:'auto',display:'grid',gap:13,padding:15,
+            border:'1px solid #46627d',borderRadius:18,background:'#09121d',color:'#f2f7ff',boxShadow:'0 18px 70px #000b'}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
+            <strong style={{fontSize:14,color:'#ff8993'}}>EXPORTER LE RAPPORT</strong>
+            <button type="button" aria-label="Fermer" onClick={()=>setHistoryReportEntry(null)}
+              style={{border:0,background:'none',color:'#fff',fontSize:25,padding:'0 6px'}}>×</button>
+          </div>
+          <div style={{color:'#c4d0df',fontSize:12}}>
+            {historyReportBusy&&!historyReport?'Lecture des statistiques enregistrées…':
+              historyReport?(historyReport.title+' · '+historyReport.players.length+' joueur(s)'):'Rapport'}
+          </div>
+          {historyReportError&&<div role="alert" style={{color:'#ffb5bf',fontSize:12}}>{historyReportError}</div>}
+          {historyReport&&<ChallengeReportActions busy={historyReportBusy} onExport={format=>void handleChallengeHistoryReport(format)}/>}
+          {historyReportInfo&&<p role="status" style={{color:'#a6d8eb',fontSize:11,lineHeight:1.5,margin:0}}>{historyReportInfo}</p>}
+          <small style={{color:'#a3b5c7',lineHeight:1.5}}>
+            PDF et Image lancent des téléchargements distincts. Partager propose d'abord
+            le format, puis ouvre le menu Android lorsque le navigateur l'autorise.
+          </small>
+        </section>
+      </div>}
+      <ChallengeReportShareDialog open={historyShareOpen} busy={historyReportBusy} error={historyShareError}
+        onClose={()=>setHistoryShareOpen(false)} onShare={format=>void handleChallengeHistoryReport(format,true)}/>
+      <ChallengeReportPreview result={historyExportPreview} onClose={()=>setHistoryExportPreview(null)}
+        onDownload={()=>{try{if(historyReport)downloadChallengeFile(historyReport,historyFormatRef.current);}catch(error){setHistoryReportError(String((error as Error)?.message||error));}setHistoryExportPreview(null);}}/>
       {friendShareEntry ? (
         <div
           role="dialog"

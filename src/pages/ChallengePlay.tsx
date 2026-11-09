@@ -1,4 +1,7 @@
 import React from 'react';
+import { exportChallengeResults, downloadChallengeFile, type ChallengeExportReport, type ChallengeExportResult } from '../lib/challengeResultsExport';
+import { enrichChallengeReport } from '../lib/challengeFullReport';
+import { ChallengeReportActions, ChallengeReportPreview, ChallengeReportShareDialog } from '../components/ChallengeReportUI';
 import BackDot from '../components/BackDot';
 import ProfileAvatar from '../components/ProfileAvatar';
 import { useTheme } from '../contexts/ThemeContext';
@@ -189,6 +192,14 @@ const recordColor=(quality:number)=>RECORD_COLORS[recordTone(Math.max(0,Math.min
 const percent=(n:number,d:number)=>d>0?Math.round((n/d)*1000)/10:0;
 const maxPointsPerDart=(cfg:ChallengeConfigData)=>maxChallengePointsPerDart(cfg);
 const hitLabel=(h:Hit)=>h==='25'?'BULL25':h==='50'?'BULL50':h;
+// Visual labels only: scoring remains delegated to evaluateChallengeEntries.
+const challengeKeyLabel=(hit:Hit,objective:string):string=>{
+ if(hit==='25')return 'BULL';
+ if(hit==='50')return 'DBULL';
+ if(hit==='MISS')return 'MISS';
+ const sector=/^(?:[1-9]|1[0-9]|20)$/.test(objective)?objective:'';
+ return sector?hit+sector:hit;
+};
 
 function bestExactHitStreak(entries:Entry[],hit:Hit){
  let best=0,run=0;
@@ -573,6 +584,14 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
  const [exerciseCareerLoading,setExerciseCareerLoading]=React.useState(false);
  const [finishExerciseProgressByPlayer,setFinishExerciseProgressByPlayer]=React.useState<Record<string,ChallengeExerciseProgress>>({});
  const [finishExerciseProgressLoading,setFinishExerciseProgressLoading]=React.useState(false);
+ const [challengeExportBusy,setChallengeExportBusy]=React.useState(false);
+ const [challengeExportError,setChallengeExportError]=React.useState('');
+ const [challengeExportInfo,setChallengeExportInfo]=React.useState('');
+ const [challengeShareOpen,setChallengeShareOpen]=React.useState(false);
+ const [challengeShareError,setChallengeShareError]=React.useState('');
+ const [challengeExportPreview,setChallengeExportPreview]=React.useState<ChallengeExportResult|null>(null);
+ const challengeLastReportRef=React.useRef<ChallengeExportReport|null>(null);
+ const challengeLastFormatRef=React.useRef<'pdf'|'png'>('pdf');
  const [voiceOn,setVoiceOn]=React.useState(false);
  const [voiceHeard,setVoiceHeard]=React.useState('');
  const [segmentMultiplier,setSegmentMultiplier]=React.useState<'S'|'D'|'T'>('S');
@@ -1040,22 +1059,110 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
   const best=!row.isBonus&&row.value===detailVisitSummary.bestValue&&detailVisitSummary.bestValue>0;
   return <div className={`dvm-cell ${best?'best':''} ${row.isBonus?'bonus':''} ${extraClass}`} key={key}><b>{row.value}</b><span>PTS</span></div>;
  };
+
+ // Shared per-target visualization: one true bar per objective. JDC phase 2
+ // works at dart resolution (D1…D20+BULL), unlike visit-based stats.
+ const renderScoreBar=(item:{key:string;label:string;points:number;value:number;badge?:string},max:number,variant:'sector'|'double'|'generic',best:number)=>(
+  <div className={'challenge-objective-bar '+(item.points>0&&item.points===best?'best ':'')+variant} key={item.key} title={item.label+' · '+item.points+' pts'+(item.badge?' · '+item.badge:'')}>
+   <div className="challenge-objective-bar-well">
+    <div className="challenge-objective-bar-fill" style={{height:Math.max(15,Math.round(Math.max(0,item.points)/Math.max(1,max)*132))+'px'}}>
+     <b>{item.value}</b>
+    </div>
+    {item.badge&&<span className="challenge-objective-bar-badge">{item.badge}</span>}
+   </div>
+   <div className="challenge-objective-bar-label"><strong>{item.label}</strong><small>{item.points} pts</small></div>
+  </div>
+ );
+ const renderJdcTargetBars=()=>{
+  type JdcPlot={key:string;label:string;points:number;hits:number;attempts:number;shanghai:number;darts:string[]};
+  const phaseGroups=[new Map<string,JdcPlot>(),new Map<string,JdcPlot>(),new Map<string,JdcPlot>()];
+  const isAll=detailTab==='global'||detailTab==='match';
+  const players=isAll?safeParticipants:safeParticipants.filter(participant=>participant.id===detailTab);
+  let hasDartDetail=false;
+  for(const participant of players){
+   const entries=detailEntries.filter(entry=>entry.pid===participant.id);
+   if(!entries.length)continue;
+   hasDartDetail=true;
+   const evaluated=evaluateChallengeEntries(entries,cfg);
+   for(let dartIndex=0;dartIndex<Math.min(57,entries.length);dartIndex++){
+    const objective=jdcObjectiveForDart(dartIndex);
+    const phaseIndex=objective.phase-1;
+    const label=objective.phase===2?(objective.hit==='bull'?'BULL':objective.label):String(objective.sector);
+    const key='p'+objective.phase+':'+label;
+    const map=phaseGroups[phaseIndex];
+    let item=map.get(key);
+    if(!item){item={key,label,points:0,hits:0,attempts:0,shanghai:0,darts:[]};map.set(key,item);}
+    const dartSuccessful=Boolean(evaluated.entrySuccessful[dartIndex]);
+    const dartPoints=Number(evaluated.entryPoints[dartIndex]||0);
+    const shanghai=objective.phase!==2&&dartIndex%3===2&&(()=>{
+     const volley=entries.slice(dartIndex-2,dartIndex+1);
+     return volley.length===3&&['S','D','T'].every(hit=>volley.some((entry,index)=>entry.hit===hit&&evaluated.entrySuccessful[dartIndex-2+index]));
+    })();
+    item.points+=dartPoints;
+    item.hits+=dartSuccessful?1:0;
+    item.attempts++;
+    if(shanghai)item.shanghai++;
+    // Display the actual recorded darts, not an inference from their total.
+    if(players.length===1){
+     const entry=entries[dartIndex];
+     const segment=Math.round(Number(entry.segment||0));
+     const dartLabel=entry.hit==='MISS'?'MISS':entry.hit==='50'?'BULL50':entry.hit==='25'?'BULL25':entry.hit+(segment||'?');
+     item.darts.push(dartLabel+' (+'+Math.max(0,dartPoints-(shanghai?100:0))+')'+(shanghai?' · SHANGHAI (+100)':''));
+    }
+   }
+  }
+  // Archived stats without dart-level events can still show actual scored
+  // sector visits; do not guess D1..D20 hit positions from an aggregate.
+  if(!hasDartDetail){
+   for(const row of detailVisitRows){
+    const objective=jdcObjectiveForDart(row.index*3);
+    if(objective.phase===2)continue;
+    const key='p'+objective.phase+':'+objective.sector;
+    phaseGroups[objective.phase-1].set(key,{key,label:String(objective.sector),points:row.value,hits:0,attempts:0,shanghai:0,darts:[]});
+   }
+  }
+  const labels=['PHASE 1 · SECTEURS 10 → 15','PHASE 2 · D1 → D20 + BULL','PHASE 3 · SECTEURS 15 → 20'];
+  return <div className="challenge-jdc-chart">
+   {phaseGroups.map((group,phaseIndex)=>{
+    const rows=Array.from(group.values());
+    if(!rows.length)return null;
+    const highest=Math.max(0,...rows.map(row=>row.points));
+    const phaseScore=rows.reduce((sum,row)=>sum+row.points,0);
+    return <section className={'challenge-jdc-phase phase-'+(phaseIndex+1)} key={'jdc-phase-'+phaseIndex}>
+     <div className="challenge-jdc-phase-head"><strong>{labels[phaseIndex]}</strong><span>{phaseScore} PTS</span></div>
+     <div className="challenge-jdc-phase-hint">{phaseIndex===1?'Chiffre = doubles/Bull réussis · points sous chaque cible':'Chiffre = points de la volée · Shanghai signalé par une étoile'}</div>
+     <div className={'challenge-objective-bars '+(phaseIndex===1?'jdc-doubles':'jdc-sectors')}>
+      {rows.map(row=>renderScoreBar({key:row.key,label:row.label,points:row.points,value:phaseIndex===1?row.hits:row.points,badge:row.shanghai?'★ SHANGHAI'+(row.shanghai>1?' ×'+row.shanghai:''):undefined},highest,phaseIndex===1?'double':'sector',highest))}
+     </div>
+     {players.length===1&&rows.some(row=>row.darts.length>0)&&<details className="challenge-jdc-breakdown">
+      <summary>VOIR LES FLÉCHETTES ENREGISTRÉES ET LEURS POINTS</summary>
+      <div>{rows.filter(row=>row.darts.length>0).map(row=><p key={row.key}><strong>{row.label}</strong><span>{row.darts.join(' · ')}</span><b>{row.points} PTS</b></p>)}</div>
+     </details>}
+    </section>;
+   })}
+   {!hasDartDetail&&detailVisitRows.some(row=>row.index>=6&&row.index<13)&&<div className="challenge-jdc-archive-note">Phase 2 : les résultats par double nécessitent l’historique des fléchettes. Aucun hit individuel n’est inventé.</div>}
+  </div>;
+ };
+ const renderGenericTargetBars=(groups:Array<{key:string;label:string;rows:typeof detailVisitRows}>,bonus?:{rows:typeof detailVisitRows}|null,singleTarget=false)=>{
+  const values=groups.map((group,index)=>({key:group.key+'-'+index,label:singleTarget?'V'+(index+1):group.label,points:group.rows.reduce((sum,row)=>sum+Number(row.value||0),0),value:group.rows.reduce((sum,row)=>sum+Number(row.value||0),0)}));
+  if(singleTarget&&groups.length===1) return <div className="challenge-single-target-chart">
+   <div className="challenge-single-target-label"><b>{groups[0].label}</b><small>CIBLE</small></div>
+   <div className="challenge-objective-bars">
+    {groups[0].rows.map((row,index)=>renderScoreBar({key:'visit-'+index,label:'V'+(index+1),points:row.value,value:row.value},Math.max(1,...groups[0].rows.map(item=>item.value)),'generic',Math.max(1,...groups[0].rows.map(item=>item.value))))}
+    {bonus?.rows?.map((row,index)=>renderScoreBar({key:'bonus-'+index,label:'BONUS',points:row.value,value:row.value},Math.max(1,row.value),'generic',row.value))}
+   </div>
+  </div>;
+  if(bonus?.rows?.length)values.push({key:'bonus',label:'BONUS',points:bonus.rows.reduce((sum,row)=>sum+row.value,0),value:bonus.rows.reduce((sum,row)=>sum+row.value,0)});
+  const max=Math.max(1,...values.map(row=>row.points));
+  return <div className="challenge-objective-bars">{values.map(row=>renderScoreBar(row,max,'generic',max))}</div>;
+ };
+
  const renderAdaptiveVisitLayout=()=>{
   const layout=detailVisitLayout;
+  if(exerciseType==='jdc')return renderJdcTargetBars();
   if(!layout.groups.length)return <div className="visit-bars">{detailVisitRows.map(row=>{const max=Math.max(1,...detailVisitRows.map(item=>item.value));const best=row.value===detailVisitSummary.bestValue&&detailVisitSummary.bestValue>0;return <div className={best?'best':''} key={row.index}><i style={{height:`${Math.max(3,(row.value/Math.max(1,max))*100)}%`}}/><span>{row.label}</span><b>{row.value}</b></div>})}</div>;
 
-  if(layout.mode==='single-target'){
-   const group=layout.groups[0];
-   const bonusRow=layout.bonus?.rows?.[0];
-   return <div className="adaptive-visit-matrix-scroll"><div className="adaptive-visit-matrix single-target" style={{'--visit-columns':group.rows.length+(bonusRow?1:0)} as React.CSSProperties}>
-    <div className="dvm-head dvm-corner">CIBLE</div>
-    {group.rows.map((_,visitIndex)=><div className="dvm-head" key={`single-head-v${visitIndex+1}`}>V{visitIndex+1}</div>)}
-    {bonusRow&&(exerciseType==='doubles8'?<div className="dvm-head dvm-bonus-head"><b>BONUS</b><small>{detailBonusLabel}</small></div>:<div className="dvm-head dvm-bonus-head"><b>BONUS</b><small>{objectiveLabel(String(bonusRow.objective||'bonus'),cfg)}</small></div>)}
-    <div className="dvm-row-label target-vertical">{group.label}</div>
-    {group.rows.map((row,visitIndex)=>renderVisitScoreCell(row,`single-${group.key}-v${visitIndex+1}`))}
-    {bonusRow&&renderVisitScoreCell(bonusRow,'single-bonus','bonus')}
-   </div></div>;
-  }
+  if(layout.mode==='single-target')return renderGenericTargetBars(layout.groups,layout.bonus,true);
 
   if(layout.mode==='matrix'){
    const bonusRow=layout.bonus?.rows?.[0];
@@ -1115,17 +1222,8 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
    </div></div>;
   }
 
-  if(layout.mode==='strip'){
-   const bonusRow=layout.bonus?.rows?.[0];
-   return <div className="visit-target-strip-scroll"><div className="visit-target-strip">
-    {layout.groups.map((group,index)=>{const row=group.rows[0];const best=row&&row.value===detailVisitSummary.bestValue&&detailVisitSummary.bestValue>0;return <div className={`visit-target-card ${best?'best':''}`} key={`strip-${group.key}-${index}`}><span>{group.label}</span><b>{row?.value??'—'}</b><small>PTS</small></div>})}
-    {bonusRow&&<div className="visit-target-card bonus"><span>BONUS · {objectiveLabel(String(bonusRow.objective||'bonus'),cfg)}</span><b>{bonusRow.value}</b><small>PTS</small></div>}
-   </div></div>;
-  }
+  return renderGenericTargetBars(layout.groups,layout.bonus);
 
-  const group=layout.groups[0];
-  const row=group?.rows?.[0];
-  return <div className="visit-target-strip single"><div className="visit-target-card"><span>{group?.label||row?.label||'VOLÉE'}</span><b>{row?.value??0}</b><small>PTS</small></div></div>;
  };
  const detailExerciseDenominator=detailExerciseAnalytics.completedVisits||detailExerciseAnalytics.visitsPlayed;
  const exerciseRouteItems=React.useMemo(()=>{
@@ -1265,6 +1363,57 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
  const finishLeaderProgress=finishLeader?finishExerciseProgressByPlayer[String(finishLeader.id)]||null:null;
  const finishProgressImproved=finishLeaderProgress?(exerciseType==='grouping'?finishLeaderProgress.improvedSector:finishLeaderProgress.improvedObjective):null;
  const finishProgressRegressed=finishLeaderProgress?(exerciseType==='grouping'?finishLeaderProgress.regressedSector:finishLeaderProgress.regressedObjective):null;
+
+ // Le document est construit à partir des statistiques réelles de chaque joueur.
+ // Export autonome PDF/PNG, indépendant du DOM et du mode d'exercice.
+ const handleChallengeExport=async(format:'pdf'|'png'|'share',shareNow=false)=>{
+  if(format==='share'&&!shareNow){
+   setChallengeShareError('');
+   setChallengeShareOpen(true);
+   return;
+  }
+  if(challengeExportBusy)return;
+  setChallengeExportBusy(true);
+  setChallengeExportError('');
+  setChallengeExportInfo('');
+  try{
+   const report:ChallengeExportReport={
+    title:exerciseTitle(cfg),
+    rounds:Number(cfg.visits)||0,
+    unit:exerciseType==='jdc'||exerciseType==='doubles8'?'volées':'tours',
+    date:new Date().toLocaleString('fr-FR'),
+    highlight:(finishExerciseRecords.length
+      ?finishExerciseRecords.map(card=>({label:card.label,value:String(card.value)}))
+      :[{label:'SCORE',value:String(finishLeaderStats.score)},{label:'RÉUSSITE',value:String(finishLeaderStats.pct)+'%'},{label:'SUITE MAX',value:String(finishLeaderStats.streak)},{label:'MEILLEURE VOLÉE',value:String(finishLeaderStats.detailed.bestVisit)}]),
+    players:standings.map(p=>{
+     const detail=participantStats(p).detailed;
+     const exercise=exerciseAnalyticsByPlayer.find(row=>row.participant.id===p.id)?.stats||globalExerciseAnalytics;
+     const metrics=exerciseType==='classic'
+      ?[{label:'RÉUSSITE',value:detail.accuracy.toFixed(1)+'%'},{label:'SUITE',value:String(detail.bestStreak)},{label:'BEST',value:String(detail.bestVisit)}]
+      :exerciseResultMetrics(exercise,cfg);
+     return {
+      name:String(p.name||'Joueur'),participantId:String(p.id),score:Number(participantScore(p)||0),
+      accuracy:Number(detail.accuracy||0),darts:Number(detail.darts||0),
+      bestStreak:Number(detail.bestStreak||0),avgVisit:Number(detail.avgVisit||0),
+      visits:detail.visitScores.map(value=>Number(value)||0),
+      metrics:metrics.map(metric=>({label:String(metric.label),value:String(metric.value)})),
+     };
+    }),
+   };
+   const fullReport=enrichChallengeReport(report,cfg,log);
+   challengeLastReportRef.current=fullReport;
+   challengeLastFormatRef.current=format==='pdf'?'pdf':'png';
+   const result=await exportChallengeResults(fullReport,format,{share:shareNow});
+   if(result.status==='preview')setChallengeExportPreview(result);
+   if(result.status==='download-started')setChallengeExportInfo('Téléchargement demandé : vérifie le dossier Téléchargements de ton appareil. Si le navigateur intégré le bloque, ouvre la page dans Chrome.');
+   if(result.status==='share-unavailable')setChallengeShareError('Ce navigateur intégré ne permet pas le partage de fichiers. Télécharge l’image ou le PDF avec les icônes, puis utilise Partager depuis Galerie ou Fichiers.');
+   if(result.status==='shared')setChallengeShareOpen(false);
+  }catch(error){
+   const message=String((error as Error)?.message||'Export impossible sur cet appareil.');
+   setChallengeExportError(message);
+   console.error('[challenge] export',error);
+  }finally{setChallengeExportBusy(false);}
+ };
  const buildMatchComparisonRows=React.useCallback((left:Participant,right:Participant):Array<[string,React.ReactNode,React.ReactNode]>=>{
   const a=participantStats(left),b=participantStats(right);
   const ea=analyzeChallengeExercise(log.filter(entry=>entry.pid===left.id),cfg);
@@ -1339,11 +1488,10 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
     <button type="button" className="landscape-stats landscape-only stats-hit-open" onClick={()=>{setDetailTab('global');setDetailSection(exerciseType==='doubles8'?'EXERCICE':'PERF');setDetailOpen(true)}}><h2>{exerciseType==='doubles8'?'STATS DOUBLES':'STATS HITS'} <span>↗</span></h2>{exerciseType==='doubles8'?<div className="hitstats doubles8-landscape-summary"><div className="hs D"><b>TOUCHÉS</b><strong>{successful}</strong></div><div className="hs MISS"><b>MISS</b><strong>{currentFailures}</strong></div><div className="hs visit"><b>VOLÉES</b><strong>{Math.min(cfg.visits,Math.floor(currentLog.length/3))}/{cfg.visits}</strong></div><div className="hs target"><b>CIBLE</b><strong>{currentObjectiveText}</strong></div></div>:<div className="hitstats">{challengeVisibleHitTypes(cfg).map(h=><div className={'hs '+h} key={h}><b>{h}<small>{h==='S'?' ×1':h==='D'?' ×2':h==='T'?' ×3':''}</small></b><strong>{counts[h]}</strong></div>)}</div>}</button>
     <div className="input-tools"><button className="undo" disabled={!log.length} onClick={()=>setLog(v=>v.slice(0,-1))}>↶ <span>ANNULER</span></button><button className={'voice '+(voiceOn?'listening':'')} type="button" onClick={startVoice} aria-label="Saisie vocale"><svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg><span>{voiceOn?'ÉCOUTE…':'VOCAL'}</span></button></div>
     {jdcStep?<div className="challenge-segment-keypad compact jdc-keypad">
-      <div className="grouping-keypad-help"><b>PHASE {jdcStep.phase}</b> · CIBLE {jdcStep.label} · {jdcStep.hit==='sector'?'VALEUR RÉELLE · SHANGHAI +100':jdcStep.hit==='bull'?'+100 PTS':'+50 PTS'}</div>
-      <div className={`keypad keys-${jdcStep.hit==='sector'?4:2}`}>
-       {(jdcStep.hit==='sector'?(['S','D','T','MISS'] as Hit[]):jdcStep.hit==='bull'?(['50','MISS'] as Hit[]):(['D','MISS'] as Hit[])).map(hit=><button type="button" className={hit} key={hit} disabled={done} onClick={()=>addJdcHit(hit)}><b>{hit==='MISS'?'MISS':jdcStep.hit==='bull'?'BULL 50':`${hit}${jdcStep.sector}`}</b><span>{hit==='MISS'?'RATÉ':jdcStep.hit==='sector'?`${hit==='S'?jdcStep.sector:hit==='D'?jdcStep.sector*2:jdcStep.sector*3} PTS`:jdcStep.hit==='bull'?'+100':'+50'}</span></button>)}
+      <div className={`keypad keys-${jdcStep.hit==='sector'?4:2} exercise-hit-pad`}>
+       {(jdcStep.hit==='sector'?(['S','D','T','MISS'] as Hit[]):jdcStep.hit==='bull'?(['50','MISS'] as Hit[]):(['D','MISS'] as Hit[])).map(hit=><button type="button" className={hit} key={hit} disabled={done} onClick={()=>addJdcHit(hit)} aria-label={hit==='MISS'?'MISS':jdcStep.hit==='bull'?'DBULL':`${hit}${jdcStep.sector}`}><b>{hit==='MISS'?'MISS':jdcStep.hit==='bull'?'DBULL':`${hit}${jdcStep.sector}`}</b></button>)}
       </div>
-    </div>:groupingMode?<div className="challenge-segment-keypad compact grouping-keypad"><div className="multiplier-tabs"><button type="button" className={segmentMultiplier==='S'?'on S':''} onClick={()=>setSegmentMultiplier('S')}>SIMPLE</button><button type="button" className={segmentMultiplier==='D'?'on D':''} onClick={()=>setSegmentMultiplier('D')}>DOUBLE</button><button type="button" className={segmentMultiplier==='T'?'on T':''} onClick={()=>setSegmentMultiplier('T')}>TRIPLE</button></div><div className={'grouping-keypad-help '+(groupingLive.qualified?'ok':'')}>{groupingLive.qualified?`✓ ${liveExerciseStatus?.title} · +${currentVisitPoints} PTS`:`${segmentMultiplier} · ${liveExerciseStatus?.title||'CHOISISSEZ LE SECTEUR'}`}</div><div className="segment-number-grid grouping-range-grid">{Array.from({length:Math.max(1,Math.max(Number(cfg.groupingMin||15),Number(cfg.groupingMax||20))-Math.min(Number(cfg.groupingMin||15),Number(cfg.groupingMax||20))+1)},(_,i)=>Math.min(Number(cfg.groupingMin||15),Number(cfg.groupingMax||20))+i).map(n=><button type="button" key={n} className={familyBandClass(n)} disabled={done} onClick={()=>addGroupingSegment(n)}>{segmentMultiplier}{n}</button>)}</div><button type="button" className="segment-miss" disabled={done} onClick={()=>add('MISS')}>MISS / HORS ZONE</button></div>:objectiveDoubleMode?<div className="challenge-segment-keypad compact doubles-objective-keypad"><div className="grouping-keypad-help">CIBLE : <b>{currentObjectiveText}</b> · 3 fléchettes par volée</div><div className="keypad keys-2"><button type="button" className="D" disabled={done} onClick={addObjectiveDoubleHit}><b>D{currentObjectiveDouble}</b><span>TOUCHÉ</span></button><button type="button" className="MISS" disabled={done} onClick={()=>add('MISS')}><b>MISS</b><span>RATÉ</span></button></div></div>:objectiveFamilyMode?<div className="challenge-segment-keypad compact"><div className="segment-number-grid">{Array.from({length:20},(_,i)=>i+1).map(n=><button type="button" key={n} className={familyBandClass(n)} disabled={done} onClick={()=>addFamilySegment(n)}>{currentObjective==='any-triple'?'T':'D'}{n}</button>)}</div><button type="button" className="segment-miss" disabled={done} onClick={()=>add('MISS')}>MISS</button></div>:<div className={'keypad keys-'+allowedHits.length}>{allowedHits.map(h=><button className={h} key={h} disabled={done} onClick={()=>add(h)}><b>{h==='25'?'BULL 25':h==='50'?'BULL 50':h}</b><span>{h==='S'?'×1':h==='D'?'×2':h==='T'?'×3':h==='25'?'25':h==='50'?'50':'×'}</span></button>)}</div>}
+    </div>:groupingMode?<div className="challenge-segment-keypad compact grouping-keypad"><div className="multiplier-tabs"><button type="button" className={segmentMultiplier==='S'?'on S':''} onClick={()=>setSegmentMultiplier('S')}>SIMPLE</button><button type="button" className={segmentMultiplier==='D'?'on D':''} onClick={()=>setSegmentMultiplier('D')}>DOUBLE</button><button type="button" className={segmentMultiplier==='T'?'on T':''} onClick={()=>setSegmentMultiplier('T')}>TRIPLE</button></div><div className={'grouping-keypad-help '+(groupingLive.qualified?'ok':'')}>{groupingLive.qualified?`✓ ${liveExerciseStatus?.title} · +${currentVisitPoints} PTS`:`${segmentMultiplier} · ${liveExerciseStatus?.title||'CHOISISSEZ LE SECTEUR'}`}</div><div className="segment-number-grid grouping-range-grid exercise-segment-grid">{Array.from({length:Math.max(1,Math.max(Number(cfg.groupingMin||15),Number(cfg.groupingMax||20))-Math.min(Number(cfg.groupingMin||15),Number(cfg.groupingMax||20))+1)},(_,i)=>Math.min(Number(cfg.groupingMin||15),Number(cfg.groupingMax||20))+i).map(n=><button type="button" key={n} className={`${familyBandClass(n)} hit-${segmentMultiplier}`} disabled={done} onClick={()=>addGroupingSegment(n)}>{segmentMultiplier}{n}</button>)}</div><button type="button" className="segment-miss exercise-segment-miss" title="MISS / HORS ZONE" disabled={done} onClick={()=>add('MISS')}>MISS</button></div>:objectiveDoubleMode?<div className="challenge-segment-keypad compact doubles-objective-keypad"><div className="grouping-keypad-help">CIBLE : <b>{currentObjectiveText}</b> · 3 fléchettes par volée</div><div className="keypad keys-2 exercise-hit-pad"><button type="button" className="D" disabled={done} onClick={addObjectiveDoubleHit}><b>D{currentObjectiveDouble}</b></button><button type="button" className="MISS" disabled={done} onClick={()=>add('MISS')}><b>MISS</b></button></div></div>:objectiveFamilyMode?<div className="challenge-segment-keypad compact"><div className="segment-number-grid exercise-segment-grid">{Array.from({length:20},(_,i)=>i+1).map(n=><button type="button" key={n} className={`${familyBandClass(n)} hit-${currentObjective==='any-triple'?'T':'D'}`} disabled={done} onClick={()=>addFamilySegment(n)}>{currentObjective==='any-triple'?'T':'D'}{n}</button>)}</div><button type="button" className="segment-miss exercise-segment-miss" disabled={done} onClick={()=>add('MISS')}>MISS</button></div>:<div className={'keypad keys-'+allowedHits.length+' exercise-hit-pad'}>{allowedHits.map(h=><button type="button" className={h} key={h} disabled={done} onClick={()=>add(h)} aria-label={challengeKeyLabel(h,currentObjective)}><b>{challengeKeyLabel(h,currentObjective)}</b></button>)}</div>}
     <div className="sr-only" aria-live="polite">{voiceHeard}</div>
    </aside>
   </main>
@@ -1434,7 +1582,7 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
     {detailSection==='EXERCICE'&&<section className="exercise-detail"><div className="exercise-detail-head"><span><small>ANALYSE SPÉCIFIQUE</small><b>{exerciseTitle(cfg)}</b></span><strong>{detailExerciseAnalytics.validationRate.toFixed(1)}%<small>VALIDATION</small></strong></div>{detailExerciseRecordCards.length>0&&<div className="exercise-records-block"><ChallengeRecordGrid cards={detailExerciseRecordCards} showHolder={detailTab==='global'||detailTab==='match'}/></div>}<div className="exercise-detail-kpis"><div><span>{exerciseType==='doubles8'?'VOLÉES VALIDÉES':'TOURS VALIDÉS'}</span><b>{detailExerciseAnalytics.validatedVisits}<small> / {detailExerciseDenominator||0}</small></b></div><div><span>ÉCHECS</span><b>{detailExerciseAnalytics.failedVisits}</b></div><div><span>VOLÉES PARFAITES</span><b>{detailExerciseAnalytics.perfectVisits}</b></div><div><span>{exerciseType==='doubles8'?'VOLÉES JOUÉES':'TOURS JOUÉS'}</span><b>{detailExerciseAnalytics.visitsPlayed}</b></div></div><div className="exercise-detail-kpis exercise-streak-kpis"><div><span>MEILLEURE SÉRIE</span><b>{detailExerciseAnalytics.bestValidatedVisitStreak}</b></div><div><span>SÉRIE PARFAITE</span><b>{detailExerciseAnalytics.bestPerfectVisitStreak}</b></div><div><span>BEST OBJECTIF</span><b>{detailExerciseAnalytics.bestVisitPoints}</b></div><div><span>VALIDATION</span><b>{detailExerciseAnalytics.validationRate.toFixed(1)}%</b></div></div>{exerciseType==='grouping'&&<><div className="exercise-detail-kpis accent"><div><span>DOUBLETS</span><b>{detailExerciseAnalytics.groupingDoublets}</b></div><div><span>TRIPLETS</span><b>{detailExerciseAnalytics.groupingTriplets}</b></div><div><span>POINTS GROUPÉS</span><b>{detailExerciseAnalytics.groupingPoints}</b></div><div><span>SECTEUR FORT</span><b>{detailExerciseAnalytics.topGroupingSector?`${detailExerciseAnalytics.topGroupingSector}`:'—'}<small>{detailExerciseAnalytics.topGroupingSectorHits?` · ${detailExerciseAnalytics.topGroupingSectorHits} hits`:''}</small></b></div></div><div className="grouping-sector-analysis"><h3>SECTEURS LES PLUS REGROUPÉS</h3>{detailGroupingSectors.length?detailGroupingSectors.map(row=>{const max=Math.max(1,...detailGroupingSectors.map(item=>item.hits));return <div key={row.sector}><span>{row.sector}</span><i><b style={{width:`${Math.max(6,row.hits/max*100)}%`}}/></i><strong>{row.hits} hits</strong></div>}):<p>Aucun groupement validé pour le moment.</p>}</div></>}{exerciseType==='half-it'&&<div className="exercise-detail-kpis accent"><div><span>DIVISIONS ÷2</span><b>{detailExerciseAnalytics.halfItCuts}</b></div><div><span>TOURS SÉCURISÉS</span><b>{detailExerciseAnalytics.validatedVisits}</b></div><div><span>SCORE DÉPART</span><b>{Math.max(0,Number(cfg.halfItStartScore??40)||0)}</b></div><div><span>SCORE ACTUEL</span><b>{detailStats.score}</b></div></div>}{exerciseType==='doubles8'&&<><div className="exercise-detail-kpis accent"><div><span>SCORE PHASE</span><b>{Number(detailExerciseAnalytics.doublesRegularScore||0)}</b></div><div><span>SCORE BONUS</span><b>{Number(detailExerciseAnalytics.doublesBonusScore||0)}</b></div><div><span>TOUCHES PHASE</span><b>{Number(detailExerciseAnalytics.doublesRegularHits||0)}<small> / {Number(detailExerciseAnalytics.doublesRegularDarts||0)}</small></b></div><div><span>RÉUSSITE DOUBLES</span><b>{detailDoublesRegularAccuracy.toFixed(1)}%</b></div></div><div className="objective-performance objective-performance-doubles8"><div className="objective-performance-head"><span><small>LECTURE DOUBLE PAR DOUBLE</small><b>PERFORMANCE PAR CIBLE</b></span><em>{detailTab==='global'||detailTab==='match'?'TOUS LES JOUEURS':String(detailCurrent?.participant?.name||safeParticipants[0]?.name||'JOUEUR').toUpperCase()}</em></div>{detailDoublesBest&&<div className="objective-highlights"><div className="best"><span>DOUBLE FORT</span><b>D{detailDoublesBest.target}</b><small>{detailDoublesBest.hits}/{detailDoublesBest.darts} touches · {detailDoublesBest.accuracy.toFixed(1)}% · {detailDoublesBest.points} pts</small></div><div className="weak"><span>DOUBLE À TRAVAILLER</span><b>{detailDoublesWeak?`D${detailDoublesWeak.target}`:'—'}</b><small>{detailDoublesWeak?`${detailDoublesWeak.hits}/${detailDoublesWeak.darts} touches · ${detailDoublesWeak.accuracy.toFixed(1)}% · ${detailDoublesWeak.points} pts`:'—'}</small></div></div>}<div className="objective-performance-grid">{detailDoublesRows.map((row,index)=>{const pending=row.darts===0;const status=pending?'pending':row.accuracy>=66.7?'perfect':row.accuracy>0?'ok':'fail';return <div className={`objective-performance-card ${status}`} key={`double-${row.target}`}><header><span>#{index+1}</span><strong>{pending?'À VENIR':`${Math.round(row.accuracy)}%`}</strong></header><b>D{row.target}</b><div className="objective-performance-bar"><i style={{width:`${pending?0:Math.max(5,row.accuracy)}%`}}/></div><footer><span>{row.hits}/{row.darts} TOUCHES</span><em>{row.points} PTS</em></footer><small className="objective-score-shift">{row.validatedVisits}/{row.visits} volées validées · {row.perfectVisits} parfaite{row.perfectVisits>1?'s':''}</small></div>})}</div><div className="exercise-detail-note"><b>VOLÉE BONUS · {detailBonusLabel}</b><span>{Number(detailExerciseAnalytics.doublesBonusHits||0)}/{Number(detailExerciseAnalytics.doublesBonusDarts||0)} touches · {Number(detailExerciseAnalytics.doublesBonusScore||0)} points bonus.</span></div></div></>}{(exerciseType==='clock'||exerciseType==='sequence')&&<div className="exercise-detail-note"><b>{exerciseType==='clock'?'PARCOURS AUTOMATIQUE':'SÉQUENCE PROGRAMMÉE'}</b><span>{detailExerciseAnalytics.validatedVisits} objectif{detailExerciseAnalytics.validatedVisits>1?'s':''} validé{detailExerciseAnalytics.validatedVisits>1?'s':''} · {detailExerciseAnalytics.failedVisits} tour{detailExerciseAnalytics.failedVisits>1?'s':''} sans hit · {detailExerciseAnalytics.perfectVisits} volée{detailExerciseAnalytics.perfectVisits>1?'s':''} parfaite{detailExerciseAnalytics.perfectVisits>1?'s':''}.</span></div>}{exerciseType!=='classic'&&exerciseType!=='grouping'&&exerciseType!=='doubles8'&&<div className={`objective-performance objective-performance-${exerciseType}`}><div className="objective-performance-head"><span><small>LECTURE OBJECTIF PAR OBJECTIF</small><b>{exerciseType==='clock'?'CARTE 1 → 20':exerciseType==='half-it'?'PARCOURS HALF-IT':'CARTE DE LA SÉQUENCE'}</b></span><em>{detailTab==='global'||detailTab==='match'?'TOUS LES JOUEURS':String(detailCurrent?.participant?.name||safeParticipants[0]?.name||'JOUEUR').toUpperCase()}</em></div>{detailObjectiveHighlights.best&&<div className="objective-highlights"><div className="best"><span>OBJECTIF FORT</span><b>{detailObjectiveHighlights.best.label}</b><small>{detailObjectiveHighlights.best.validated}/{detailObjectiveHighlights.best.attempts} validé · {detailObjectiveHighlights.best.points} pts</small></div><div className="weak"><span>{exerciseType==='half-it'?'ZONE À SÉCURISER':'OBJECTIF À TRAVAILLER'}</span><b>{detailObjectiveHighlights.weak?.label||'—'}</b><small>{detailObjectiveHighlights.weak?`${detailObjectiveHighlights.weak.validated}/${detailObjectiveHighlights.weak.attempts} validé${detailObjectiveHighlights.weak.cuts?` · ${detailObjectiveHighlights.weak.cuts} × ÷2`:''}`:'—'}</small></div></div>}<div className="objective-performance-grid">{detailObjectivePerformance.map(row=>{const pending=row.attempts===0;const rate=row.attempts?Math.round(row.validated/row.attempts*100):0;const incomplete=row.attempts>0&&row.completed===0;const allPerfect=row.attempts>0&&row.perfect===row.attempts;const status=pending?'pending':incomplete&&!row.validated?'active':row.cuts>0?'cut':row.validated===0?'fail':allPerfect?'perfect':'ok';const statusLabel=pending?'À VENIR':incomplete&&!row.validated?'EN COURS':row.cuts>0?(row.cuts===1?'÷2':`${row.cuts} × ÷2`):row.validated===0?'RATÉ':allPerfect?'3/3':`${rate}%`;return <div className={`objective-performance-card ${status}`} key={`${row.index}-${row.objective}`}><header><span>#{row.index+1}</span><strong>{statusLabel}</strong></header><b>{row.label}</b><div className="objective-performance-bar"><i style={{width:`${pending?0:Math.max(5,rate)}%`}}/></div><footer><span>{row.successfulHits} HIT{row.successfulHits>1?'S':''}</span><em>{row.points} PTS</em></footer>{exerciseType==='half-it'&&row.scoreBefore!==null&&row.scoreAfter!==null?<small className="objective-score-shift">{row.scoreBefore} → <b>{row.scoreAfter}</b></small>:null}</div>})}</div></div>}{<div className="exercise-career"><div className="exercise-career-head"><span><small>RECORDS PERSISTANTS</small><b>HISTORIQUE DE L’EXERCICE</b></span>{careerParticipant&&<em>{String(careerParticipant.name||'Joueur').toUpperCase()}</em>}</div>{!careerParticipant?<div className="exercise-career-empty">Sélectionne un joueur pour afficher ses records historiques sur cette configuration.</div>:exerciseCareerLoading?<div className="exercise-career-empty">Analyse de l’historique Challenge…</div>:exerciseCareer&&exerciseCareer.matches>0?<><div className="exercise-career-kpis"><div><span>PARTIES</span><b>{exerciseCareer.matches}</b></div><div><span>RECORD SCORE</span><b>{exerciseCareer.bestScore}</b><small>Moy. {exerciseCareer.averageScore.toFixed(1)}</small></div><div><span>VALIDATION MOY.</span><b>{exerciseCareer.averageValidationRate.toFixed(1)}%</b><small>Record {exerciseCareer.bestValidationRate.toFixed(1)}%</small></div><div><span>MEILLEURE SÉRIE</span><b>{exerciseCareer.bestValidatedVisitStreak}</b><small>Parfaite {exerciseCareer.bestPerfectVisitStreak}</small></div></div><div className="exercise-career-trend"><div><span>FORME RÉCENTE</span><b className={exerciseCareer.trendDelta>0?'up':exerciseCareer.trendDelta<0?'down':'flat'}>{exerciseCareer.trendDelta>0?'+':''}{exerciseCareer.trendDelta.toFixed(1)} pts</b></div><section>{exerciseCareer.recent.map((row,index)=><i key={`${row.playedAt}-${index}`} title={`${row.validationRate.toFixed(1)}% · ${row.score} pts`}><u style={{height:`${Math.max(5,Math.min(100,row.validationRate))}%`}}/><small>{Math.round(row.validationRate)}%</small></i>)}</section></div>{exerciseType==='grouping'?<div className="exercise-career-insights"><div className="strong"><span>SECTEUR HISTORIQUE FORT</span><b>{exerciseCareer.topGroupingSector?.sector||'—'}</b><small>{exerciseCareer.topGroupingSector?`${exerciseCareer.topGroupingSector.hits} hits groupés`:'Aucun groupement enregistré'}</small></div><div><span>TRIPLETS CUMULÉS</span><b>{exerciseCareer.groupingTriplets}</b><small>{exerciseCareer.groupingPoints} points groupés</small></div><div className="career-sector-list"><span>TOP SECTEURS</span><b>{exerciseCareer.groupingSectors.slice(0,4).map(row=>`${row.sector} · ${row.hits}`).join('  •  ')||'—'}</b></div></div>:<div className="exercise-career-insights"><div className="strong"><span>OBJECTIF HISTORIQUE FORT</span><b>{exerciseCareer.strongestObjective?.label||'—'}</b><small>{exerciseCareer.strongestObjective?`${exerciseCareer.strongestObjective.validationRate.toFixed(1)}% · ${exerciseCareer.strongestObjective.validated}/${exerciseCareer.strongestObjective.attempts}`:'Aucune donnée'}</small></div><div className="weak"><span>{exerciseType==='half-it'?'ZONE LA PLUS DANGEREUSE':'OBJECTIF À TRAVAILLER'}</span><b>{(exerciseType==='half-it'?exerciseCareer.dangerObjective:exerciseCareer.weakestObjective)?.label||'—'}</b><small>{exerciseType==='half-it'&&exerciseCareer.dangerObjective?`${exerciseCareer.dangerObjective.cuts} × ÷2 · ${exerciseCareer.dangerObjective.validationRate.toFixed(1)}%`:exerciseCareer.weakestObjective?`${exerciseCareer.weakestObjective.validationRate.toFixed(1)}% · ${exerciseCareer.weakestObjective.validated}/${exerciseCareer.weakestObjective.attempts}`:'Aucune donnée'}</small></div></div>}</>:<div className="exercise-career-empty">Aucune partie terminée enregistrée pour cette configuration. Les records apparaîtront ici dès la première partie terminée.</div>}</div>}</section>}
     {detailSection==='ANALYSE'&&<section className="visual-analysis"><h3>ANALYSE VISUELLE</h3><div className="detail-kpis">{exerciseType==='jdc'?<><div><span>SCORE</span><b>{detailStats.score}</b></div><div><span>PHASE 1</span><b>{Number(detailExerciseAnalytics.jdcPhaseScores?.[0]||0)}</b></div><div><span>PHASE 2</span><b>{Number(detailExerciseAnalytics.jdcPhaseScores?.[1]||0)}</b></div><div><span>PHASE 3</span><b>{Number(detailExerciseAnalytics.jdcPhaseScores?.[2]||0)}</b></div><div><span>SHANGHAI</span><b>{Number(detailExerciseAnalytics.jdcShanghaiCount||0)}</b></div><div><span>DOUBLES</span><b>{Number(detailExerciseAnalytics.jdcDoubleHits||0)}/20</b></div></>:exerciseType==='doubles8'?<><div><span>SCORE</span><b>{detailStats.score}</b></div><div><span>PHASE</span><b>{Number(detailExerciseAnalytics.doublesRegularScore||0)}</b></div><div><span>BONUS</span><b>{Number(detailExerciseAnalytics.doublesBonusScore||0)}</b></div><div><span>RÉUSSITE DOUBLES</span><b>{detailDoublesRegularAccuracy.toFixed(1)}%</b></div><div><span>TOUCHES PHASE</span><b>{Number(detailExerciseAnalytics.doublesRegularHits||0)}</b></div><div><span>VOLÉES 3/3</span><b>{detailDoublesRows.reduce((sum,row)=>sum+Number(row.perfectVisits||0),0)}</b></div></>:exerciseType==='grouping'?<><div><span>SCORE</span><b>{detailStats.score}</b></div><div><span>VOLÉES GROUPÉES</span><b>{detailExerciseAnalytics.validatedVisits}</b></div><div><span>DOUBLETS</span><b>{detailExerciseAnalytics.groupingDoublets}</b></div><div><span>TRIPLETS</span><b>{detailExerciseAnalytics.groupingTriplets}</b></div><div><span>POINTS GROUPÉS</span><b>{detailExerciseAnalytics.groupingPoints}</b></div><div><span>TOP SECTEUR</span><b>{detailExerciseAnalytics.topGroupingSector||'—'}</b></div></>:exerciseType==='half-it'?<><div><span>SCORE</span><b>{detailStats.score}</b></div><div><span>SÉCURISÉS</span><b>{detailExerciseAnalytics.validatedVisits}</b></div><div><span>DIVISIONS ÷2</span><b>{detailExerciseAnalytics.halfItCuts}</b></div><div><span>PARFAITES</span><b>{detailExerciseAnalytics.perfectVisits}</b></div><div><span>SÉRIE MAX</span><b>{detailExerciseAnalytics.bestValidatedVisitStreak}</b></div><div><span>SCORE BAS</span><b>{Math.min(...detailStats.cumulativeScores.filter(value=>Number.isFinite(value)),detailStats.score)}</b></div></>:exerciseType==='clock'||exerciseType==='sequence'?<><div><span>SCORE</span><b>{detailStats.score}</b></div><div><span>VALIDÉS</span><b>{detailExerciseAnalytics.validatedVisits}</b></div><div><span>RATÉS</span><b>{detailExerciseAnalytics.failedVisits}</b></div><div><span>PARFAITES</span><b>{detailExerciseAnalytics.perfectVisits}</b></div><div><span>SÉRIE MAX</span><b>{detailExerciseAnalytics.bestValidatedVisitStreak}</b></div><div><span>BEST OBJECTIF</span><b>{detailExerciseAnalytics.bestVisitPoints}</b></div></>:<><div><span>SCORE</span><b>{detailStats.score}</b></div><div><span>PRÉCISION</span><b>{detailStats.accuracy.toFixed(1)}%</b></div><div><span>SUITE MAX</span><b>{detailStats.bestStreak}</b></div><div><span>BEST VOLÉE</span><b>{detailStats.bestVisit}</b></div><div><span>MOY./VOLÉE</span><b>{detailStats.avgVisit.toFixed(1)}</b></div><div><span>MEILLEURE FL.</span><b>{bestDartPosition?`#${bestDartPosition.position} · ${bestDartPosition.accuracy.toFixed(1)}%`:'—'}</b></div></>}</div>{familyMode&&<div className="family-analysis-strip"><div><span>DÉPARTAGE</span><b>{detailTieBreak}</b></div><div><span>TOP SEGMENTS</span><b>{detailFamilySegments.slice(0,3).map(row=>`${cfg.target==='any-triple'?'T':'D'}${row.segment} · ${row.hits}`).join('  •  ')||'—'}</b></div></div>}<div className="detail-grid"><section><h3>RÉPARTITION HITS</h3><Donut stats={detailStats} cfg={cfg}/></section><section><h3>ÉVOLUTION SCORE</h3><MiniLine values={detailStats.cumulativeScores}/></section></div></section>}
     {detailSection==='FLÉCHETTES'&&<section className="position-section standalone"><h3>PRÉCISION PAR FLÉCHETTE</h3><div className="position-grid">{detailStats.positionStats.map(pos=><div className="position-card" key={pos.position}><div className="position-head"><b>FLÉCHETTE {pos.position}</b><strong>{pos.accuracy.toFixed(1)}%</strong></div><div className="position-bar"><i style={{width:`${Math.min(100,pos.accuracy)}%`}}/></div><div className="position-rings">{challengeVisibleHitTypes(cfg).map(hit=>{const count=hit==='S'?pos.S:hit==='D'?pos.D:hit==='T'?pos.T:hit==='25'?pos.B25:hit==='50'?pos.B50:pos.MISS;return <span key={hit}>{challengeHitDisplayLabel(hit,cfg)} <b>{pos.attempts?((count/pos.attempts)*100).toFixed(1):'0.0'}%</b><em>{count}</em></span>})}</div></div>)}</div></section>}
-    {detailSection==='VOLÉES'&&<section className="visits-section standalone"><h3>{exerciseType==='doubles8'?'BARÈME RÉEL PAR VOLÉE':'POINTS PAR VOLÉE'}</h3><div className="visit-summary"><div><span>★</span><small>{exerciseType==='doubles8'?'BEST PHASE':'BEST'}</small><b>{detailVisitSummary.bestValue}</b><em>volée {detailVisitSummary.bestIndex||'—'}</em></div><div><span>≈</span><small>MOYENNE</small><b>{detailVisitSummary.average.toFixed(1)}</b><em>{exerciseType==='doubles8'?'phase principale':'pts / volée'}</em></div><div><span>{detailVisitSummary.trend>0?'↗':detailVisitSummary.trend<0?'↘':'→'}</span><small>TENDANCE</small><b>{detailVisitSummary.trend>0?'+':''}{detailVisitSummary.trend.toFixed(1)}</b><em>2e moitié vs 1re</em></div><div><span>✦</span><small>{exerciseType==='doubles8'?'BONUS':'DERNIÈRE'}</small><b>{exerciseType==='doubles8'?Number(detailExerciseAnalytics.doublesBonusScore||0):detailVisitSummary.last}</b><em>{exerciseType==='doubles8'?detailBonusLabel:`${detailStats.visitScores.length} volée${detailStats.visitScores.length>1?'s':''}`}</em></div></div>{renderAdaptiveVisitLayout()}<div className="exercise-detail-note adaptive-visit-note"><b>{detailVisitLayout.mode==='matrix'?'LECTURE DU GRAPHIQUE':'LECTURE DU TABLEAU'}</b><span>{detailVisitLayout.mode==='single-target'?'Une seule cible : la cible reste en frise verticale et les volées se lisent horizontalement.':detailVisitLayout.mode==='matrix'?'Une cible par colonne : V1 / V2 / V3 sont empilées verticalement. Chaque barre indique les hits (0 à 3) ; le total des points de la cible figure sous son nom.':detailVisitLayout.mode==='strip'?'Une seule volée par cible : lecture horizontale dans l’ordre réel du parcours.':'Lecture directe de la volée jouée.'}{exerciseType==='doubles8'?' Le bonus reste isolé sur V1 car il ne comporte qu’une seule volée.':''}</span></div></section>}
+    {detailSection==='VOLÉES'&&<section className="visits-section standalone"><h3>{exerciseType==='doubles8'?'BARÈME RÉEL PAR VOLÉE':exerciseType==='jdc'?'JDC · PERFORMANCES PAR CIBLE':'POINTS PAR CIBLE ET PAR VOLÉE'}</h3><div className="visit-summary"><div><span>★</span><small>{exerciseType==='doubles8'?'BEST PHASE':'BEST'}</small><b>{detailVisitSummary.bestValue}</b><em>volée {detailVisitSummary.bestIndex||'—'}</em></div><div><span>≈</span><small>MOYENNE</small><b>{detailVisitSummary.average.toFixed(1)}</b><em>{exerciseType==='doubles8'?'phase principale':'pts / volée'}</em></div><div><span>{detailVisitSummary.trend>0?'↗':detailVisitSummary.trend<0?'↘':'→'}</span><small>TENDANCE</small><b>{detailVisitSummary.trend>0?'+':''}{detailVisitSummary.trend.toFixed(1)}</b><em>2e moitié vs 1re</em></div><div><span>✦</span><small>{exerciseType==='doubles8'?'BONUS':'DERNIÈRE'}</small><b>{exerciseType==='doubles8'?Number(detailExerciseAnalytics.doublesBonusScore||0):detailVisitSummary.last}</b><em>{exerciseType==='doubles8'?detailBonusLabel:`${detailStats.visitScores.length} volée${detailStats.visitScores.length>1?'s':''}`}</em></div></div>{renderAdaptiveVisitLayout()}<div className="exercise-detail-note adaptive-visit-note"><b>LECTURE DU GRAPHIQUE</b><span>{exerciseType==='jdc'?'JDC : une barre par secteur en phases 1 et 3 ; un hit 0/1 par double et Bull en phase 2. Seules les cibles réellement jouées sont tracées.':detailVisitLayout.mode==='single-target'?'Une seule cible : la cible reste en frise verticale et les volées se lisent horizontalement.':detailVisitLayout.mode==='matrix'?'Une cible par colonne : V1 / V2 / V3 sont empilées verticalement. Chaque barre indique les hits (0 à 3) ; le total des points de la cible figure sous son nom.':detailVisitLayout.mode==='strip'?'Une barre par cible, dans l’ordre réel du parcours : valeur jouée dans la barre et points au-dessous.':'Lecture directe de la volée jouée.'}{exerciseType==='doubles8'?' Le bonus reste isolé sur V1 car il ne comporte qu’une seule volée.':''}</span></div></section>}
    </div>}
    <button type="button" className="match-detail-close" onClick={closeDetail}>{historyStatsOnly?statsReturnLabel:'FERMER'}</button>
   </div></div>}
@@ -1452,7 +1600,26 @@ export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any
    <div className="online-ranking-actions"><button className="online-open" onClick={()=>void (async()=>{setOnlineHistorySyncing(true);try{await syncChallengeHistoricalScores(profiles,teams);onlineHistorySyncedRef.current=true;await refreshOnlineTeams();await refreshOnlineRanking()}finally{setOnlineHistorySyncing(false)}})()}>↻ SYNCHRONISER</button><button className="online-open full" onClick={()=>go('challenge_leaderboard',{from:'challenge_play',prefilter:true,target:onlineTarget,rule:onlineRule,visits:onlineVisits})}>🏆 CLASSEMENT COMPLET & STATS</button></div>
    {onlineFiltersOpen&&<div className="online-filter-picker" onClick={()=>setOnlineFiltersOpen(false)}><div className="online-filter-picker-card" onClick={e=>e.stopPropagation()}><header><div><strong>FILTRES</strong><span>SOLO / DUO / MULTI sont regroupés : la performance est individuelle.</span></div><button onClick={()=>setOnlineFiltersOpen(false)}>×</button></header><section><h3>CLASSEMENT</h3><div><button className={onlineScope==='public'?'on':''} onClick={()=>setOnlineScope('public')}>🌍 PUBLIC</button><button className={onlineScope==='team'?'on':''} onClick={()=>setOnlineScope('team')} disabled={!onlineTeams.length}>🛡️ ÉQUIPE OFFICIELLE</button></div></section>{onlineScope==='team'&&<section><h3>ÉQUIPE OFFICIELLE</h3><div>{onlineTeams.length?onlineTeams.map(team=><button key={team.key} className={onlineTeamKey===team.key?'on':''} onClick={()=>setOnlineTeamKey(team.key)}><b>✓ {team.name}</b><small>{team.organizationName||'Organisation MSS'}</small></button>):<em>Aucune équipe officielle. Affecte ton compte à une équipe Darts dans une Organisation MSS.</em>}</div></section>}<section><h3>🎯 CIBLE</h3><div>{onlineTargetOptions.map(value=><button key={value} className={onlineTarget===value?'on':''} onClick={()=>setOnlineTarget(value)}>{challengeOnlineTargetLabel(value)}</button>)}</div></section><section><h3>🔁 TOURS</h3><div>{onlineVisitOptions.map(value=><button key={value} className={onlineVisits===value?'on':''} onClick={()=>setOnlineVisits(value)}>{value}</button>)}</div></section><section><h3>✦ HITS</h3><div>{onlineRuleFilters.map(value=><button key={value} className={onlineRule===value?'on':''} onClick={()=>setOnlineRule(value)}>{ruleLabel(value)}</button>)}</div></section><footer><button onClick={()=>{setOnlineFiltersOpen(false);void refreshOnlineRanking()}}>APPLIQUER</button></footer></div></div>}
   </div></div>}
-  {done&&!historyStatsOnly&&<div className={`finish finish-wow finish-${exerciseType}`}><div className="finish-burst" aria-hidden="true">{Array.from({length:24},(_,i)=><i key={i} style={{'--i':i} as React.CSSProperties}/>)}</div><div className="finish-glow" aria-hidden="true"/><div className="finish-panel"><div className="finish-exercise-badge"><i>{exerciseType==='clock'?'↻':exerciseType==='half-it'?'½':exerciseType==='sequence'?'≡':exerciseType==='grouping'?'◉':exerciseType==='doubles8'?'⑧':'★'}</i><span><small>CHALLENGE TERMINÉ</small><b>{exerciseTitle(cfg)}</b></span><em>{cfg.visits} {exerciseType==='doubles8'||exerciseType==='jdc'?'VOLÉES':'TOURS'}</em></div><div className="finish-hero"><span className="finish-hero-avatar"><ChallengeAvatar participant={finishLeader} size={82}/></span><div><small>{safeParticipants.length>1?'VAINQUEUR':'RÉSULTAT'}</small><h2>{String(finishLeader?.name||'Joueur').toUpperCase()}</h2><strong>{finishLeaderStats.score} <small>PTS</small></strong><p>{finishExerciseSubline}</p></div></div>{finishExerciseRecords.length>0&&<div className="finish-exercise-records">{finishExerciseRecords.map(card=><div key={card.key}><span>{card.label}</span><b>{card.value}</b>{card.holder&&safeParticipants.length>1?<small>{card.holder}</small>:null}</div>)}</div>}{exerciseType!=='classic'&&<div className="finish-progress"><header><span><small>PROGRESSION PERSONNELLE</small><b>COMPARAISON AVEC L’HISTORIQUE</b></span>{finishExerciseProgressLoading?<em>ANALYSE…</em>:finishLeaderProgress?.baseline?<em>PREMIÈRE RÉFÉRENCE</em>:finishLeaderProgress?.records.length?<em className="record">NOUVEAU RECORD ×{finishLeaderProgress.records.length}</em>:<em>HISTORIQUE · {finishLeaderProgress?.previousMatches||0} PARTIES</em>}</header>{finishExerciseProgressLoading?<div className="finish-progress-empty">Comparaison avec les performances précédentes…</div>:finishLeaderProgress?.baseline?<div className="finish-progress-empty">Cette partie devient la référence de départ pour cette configuration. Les prochaines performances seront comparées à celle-ci.</div>:finishLeaderProgress?<><div className="finish-progress-deltas"><div className={(finishLeaderProgress.scoreDeltaFromLast||0)>0?'up':(finishLeaderProgress.scoreDeltaFromLast||0)<0?'down':'flat'}><span>SCORE VS DERNIÈRE</span><b>{finishLeaderProgress.scoreDeltaFromLast===null?'—':`${finishLeaderProgress.scoreDeltaFromLast>0?'+':''}${finishLeaderProgress.scoreDeltaFromLast}`}</b><small>{finishLeaderStats.score} pts aujourd’hui</small></div><div className={(finishLeaderProgress.validationDeltaFromLast||0)>0?'up':(finishLeaderProgress.validationDeltaFromLast||0)<0?'down':'flat'}><span>VALIDATION VS DERNIÈRE</span><b>{finishLeaderProgress.validationDeltaFromLast===null?'—':`${finishLeaderProgress.validationDeltaFromLast>0?'+':''}${finishLeaderProgress.validationDeltaFromLast.toFixed(1)} pts`}</b><small>{finishLeaderExercise.validationRate.toFixed(1)}% aujourd’hui</small></div></div>{finishLeaderProgress.records.length>0&&<div className="finish-new-records">{finishLeaderProgress.records.map(record=><div key={record.key}><span>NOUVEAU RECORD</span><b>{record.label}</b><strong>{record.value}{record.suffix}</strong><small>ancien {record.previous}{record.suffix}</small></div>)}</div>}{(finishProgressImproved||finishProgressRegressed)&&<div className="finish-progress-insights">{finishProgressImproved&&('sector' in finishProgressImproved?<div className="up"><span>SECTEUR EN PROGRÈS</span><b>{finishProgressImproved.sector}</b><small>+{finishProgressImproved.delta.toFixed(1)} hit{finishProgressImproved.delta>1?'s':''} vs moyenne historique</small></div>:<div className="up"><span>OBJECTIF EN PROGRÈS</span><b>{finishProgressImproved.label}</b><small>+{finishProgressImproved.delta.toFixed(1)} pts de validation vs historique</small></div>)}{finishProgressRegressed&&('sector' in finishProgressRegressed?<div className="down"><span>SECTEUR EN RECUL</span><b>{finishProgressRegressed.sector}</b><small>{finishProgressRegressed.delta.toFixed(1)} hit{Math.abs(finishProgressRegressed.delta)>1?'s':''} vs moyenne historique</small></div>:<div className="down"><span>OBJECTIF EN RECUL</span><b>{finishProgressRegressed.label}</b><small>{finishProgressRegressed.delta.toFixed(1)} pts de validation vs historique</small></div>)}</div>}</>:<div className="finish-progress-empty">Comparaison historique indisponible.</div>}</div>}<div className={`finish-scoreline ${safeParticipants.length===1?'solo':''}`}>{standings.map((p,i)=>{const st=participantStats(p).detailed;const ex=exerciseAnalyticsByPlayer.find(row=>row.participant.id===p.id)?.stats||globalExerciseAnalytics;const progress=finishExerciseProgressByPlayer[String(p.id)];const rowMetrics=exerciseType==='classic'?[{label:'RÉUSSITE',value:`${st.accuracy.toFixed(1)}%`},{label:'SUITE',value:String(st.bestStreak)},{label:'BEST',value:String(st.bestVisit)}]:exerciseResultMetrics(ex,cfg);return <div className={'finish-score-row '+(i===0?'winner':'')} key={p.id}><span className="finish-row-avatar"><ChallengeAvatar participant={p} size={52}/></span><span className="finish-row-name"><b>{i+1}. {p.name}</b><span className="finish-row-metrics">{rowMetrics.map(metric=><span key={metric.label}><small>{metric.label}</small><strong>{metric.value}</strong></span>)}</span>{exerciseType!=='classic'&&progress?.records.length>0?<i className="finish-row-record">NOUVEAU RECORD ×{progress.records.length}</i>:null}</span><strong className="finish-row-score">{participantScore(p)}<small>PTS</small></strong></div>})}</div><div className="finish-actions"><button className="finish-stats" onClick={()=>{setDetailTab('global');setDetailSection(exerciseType==='classic'?'PERF':'EXERCICE');setDetailOpen(true)}}>{exerciseType==='classic'?'STATS DÉTAILLÉES':'STATS EXERCICE'}</button><button onClick={()=>go('challenge_config')}>REJOUER</button><button className="finish-menu" onClick={()=>go('games')}>MENU PRINCIPAL</button></div></div></div>}
+  {done&&!historyStatsOnly&&<div className={`finish finish-wow finish-${exerciseType}`}><div className="finish-burst" aria-hidden="true">{Array.from({length:24},(_,i)=><i key={i} style={{'--i':i} as React.CSSProperties}/>)}</div><div className="finish-glow" aria-hidden="true"/><div className="finish-panel"><div className="finish-exercise-badge"><i>{exerciseType==='clock'?'↻':exerciseType==='half-it'?'½':exerciseType==='sequence'?'≡':exerciseType==='grouping'?'◉':exerciseType==='doubles8'?'⑧':'★'}</i><span><small>CHALLENGE TERMINÉ</small><b>{exerciseTitle(cfg)}</b></span><em>{cfg.visits} {exerciseType==='doubles8'||exerciseType==='jdc'?'VOLÉES':'TOURS'}</em></div><div className="finish-hero"><span className="finish-hero-avatar"><ChallengeAvatar participant={finishLeader} size={82}/></span><div><small>{safeParticipants.length>1?'VAINQUEUR':'RÉSULTAT'}</small><h2>{String(finishLeader?.name||'Joueur').toUpperCase()}</h2><strong>{finishLeaderStats.score} <small>PTS</small></strong><p>{finishExerciseSubline}</p></div></div>{finishExerciseRecords.length>0&&<div className="finish-exercise-records">{finishExerciseRecords.map(card=><div key={card.key}><span>{card.label}</span><b>{card.value}</b>{card.holder&&safeParticipants.length>1?<small>{card.holder}</small>:null}</div>)}</div>}{exerciseType!=='classic'&&<div className="finish-progress"><header><span><small>PROGRESSION PERSONNELLE</small><b>COMPARAISON AVEC L’HISTORIQUE</b></span>{finishExerciseProgressLoading?<em>ANALYSE…</em>:finishLeaderProgress?.baseline?<em>PREMIÈRE RÉFÉRENCE</em>:finishLeaderProgress?.records.length?<em className="record">NOUVEAU RECORD ×{finishLeaderProgress.records.length}</em>:<em>HISTORIQUE · {finishLeaderProgress?.previousMatches||0} PARTIES</em>}</header>{finishExerciseProgressLoading?<div className="finish-progress-empty">Comparaison avec les performances précédentes…</div>:finishLeaderProgress?.baseline?<div className="finish-progress-empty">Cette partie devient la référence de départ pour cette configuration. Les prochaines performances seront comparées à celle-ci.</div>:finishLeaderProgress?<><div className="finish-progress-deltas"><div className={(finishLeaderProgress.scoreDeltaFromLast||0)>0?'up':(finishLeaderProgress.scoreDeltaFromLast||0)<0?'down':'flat'}><span>SCORE VS DERNIÈRE</span><b>{finishLeaderProgress.scoreDeltaFromLast===null?'—':`${finishLeaderProgress.scoreDeltaFromLast>0?'+':''}${finishLeaderProgress.scoreDeltaFromLast}`}</b><small>{finishLeaderStats.score} pts aujourd’hui</small></div><div className={(finishLeaderProgress.validationDeltaFromLast||0)>0?'up':(finishLeaderProgress.validationDeltaFromLast||0)<0?'down':'flat'}><span>VALIDATION VS DERNIÈRE</span><b>{finishLeaderProgress.validationDeltaFromLast===null?'—':`${finishLeaderProgress.validationDeltaFromLast>0?'+':''}${finishLeaderProgress.validationDeltaFromLast.toFixed(1)} pts`}</b><small>{finishLeaderExercise.validationRate.toFixed(1)}% aujourd’hui</small></div></div>{finishLeaderProgress.records.length>0&&<div className="finish-new-records">{finishLeaderProgress.records.map(record=><div key={record.key}><span>NOUVEAU RECORD</span><b>{record.label}</b><strong>{record.value}{record.suffix}</strong><small>ancien {record.previous}{record.suffix}</small></div>)}</div>}{(finishProgressImproved||finishProgressRegressed)&&<div className="finish-progress-insights">{finishProgressImproved&&('sector' in finishProgressImproved?<div className="up"><span>SECTEUR EN PROGRÈS</span><b>{finishProgressImproved.sector}</b><small>+{finishProgressImproved.delta.toFixed(1)} hit{finishProgressImproved.delta>1?'s':''} vs moyenne historique</small></div>:<div className="up"><span>OBJECTIF EN PROGRÈS</span><b>{finishProgressImproved.label}</b><small>+{finishProgressImproved.delta.toFixed(1)} pts de validation vs historique</small></div>)}{finishProgressRegressed&&('sector' in finishProgressRegressed?<div className="down"><span>SECTEUR EN RECUL</span><b>{finishProgressRegressed.sector}</b><small>{finishProgressRegressed.delta.toFixed(1)} hit{Math.abs(finishProgressRegressed.delta)>1?'s':''} vs moyenne historique</small></div>:<div className="down"><span>OBJECTIF EN RECUL</span><b>{finishProgressRegressed.label}</b><small>{finishProgressRegressed.delta.toFixed(1)} pts de validation vs historique</small></div>)}</div>}</>:<div className="finish-progress-empty">Comparaison historique indisponible.</div>}</div>}<div className={`finish-scoreline ${safeParticipants.length===1?'solo':''}`}>{standings.map((p,i)=>{const st=participantStats(p).detailed;const ex=exerciseAnalyticsByPlayer.find(row=>row.participant.id===p.id)?.stats||globalExerciseAnalytics;const progress=finishExerciseProgressByPlayer[String(p.id)];const rowMetrics=exerciseType==='classic'?[{label:'RÉUSSITE',value:`${st.accuracy.toFixed(1)}%`},{label:'SUITE',value:String(st.bestStreak)},{label:'BEST',value:String(st.bestVisit)}]:exerciseResultMetrics(ex,cfg);return <div className={'finish-score-row '+(i===0?'winner':'')} key={p.id}>
+  <div className="finish-row-person">
+   <div className="finish-row-avatar"><ChallengeAvatar participant={p} size={48}/></div>
+   <div className="finish-row-heading">
+    <b>{i+1}. {p.name}</b>
+    {exerciseType!=='classic'&&progress?.records.length>0?<i className="finish-row-record">NOUVEAU RECORD ×{progress.records.length}</i>:null}
+   </div>
+  </div>
+  <strong className="finish-row-score">{participantScore(p)}<small>PTS</small></strong>
+  <div className="finish-row-metrics">{rowMetrics.map(metric=><div key={metric.label}><small>{metric.label}</small><strong>{metric.value}</strong></div>)}</div>
+ </div>})}</div><div className="finish-actions">
+ <button className="finish-stats" onClick={()=>{setDetailTab('global');setDetailSection(exerciseType==='classic'?'PERF':'EXERCICE');setDetailOpen(true)}}>{exerciseType==='classic'?'STATS DÉTAILLÉES':'STATS EXERCICE'}</button>
+ <button onClick={()=>go('challenge_config')}>REJOUER</button>
+ <div className="finish-export-actions"><ChallengeReportActions busy={challengeExportBusy} onExport={format=>void handleChallengeExport(format)}/></div>
+ {challengeExportInfo&&<div className="finish-export-info" role="status">{challengeExportInfo}</div>}
+ {challengeExportError&&<div className="finish-export-error" role="alert">{challengeExportError}</div>}
+ <button className="finish-menu" onClick={()=>go('games')}>MENU PRINCIPAL</button>
+</div></div></div>}
+  <ChallengeReportShareDialog open={challengeShareOpen} busy={challengeExportBusy} error={challengeShareError} onClose={()=>setChallengeShareOpen(false)} onShare={format=>void handleChallengeExport(format,true)}/>
+  <ChallengeReportPreview result={challengeExportPreview} onClose={()=>setChallengeExportPreview(null)} onDownload={()=>{try{if(challengeLastReportRef.current)downloadChallengeFile(challengeLastReportRef.current,challengeLastFormatRef.current);}catch(error){setChallengeExportError(String((error as Error)?.message||error));setChallengeExportPreview(null);}}}/>
   <style>{css}</style>
  </div>;
 }
@@ -1785,9 +1952,121 @@ const css=`
 @media(max-width:620px){.layered-visit-chart.doubles-fit .layered-visit-columns{grid-auto-rows:208px}.layered-visit-chart.doubles-fit .layered-visit-stack,.layered-visit-chart.doubles-fit .layered-visit-stack.bonus{width:20px;max-width:92%}.layered-visit-chart.doubles-fit .layered-bar-segment b{font-size:9px}}
 @media(max-width:350px){.layered-visit-chart.doubles-fit{padding-left:4px;padding-right:4px}.layered-visit-chart.doubles-fit .layered-visit-columns{column-gap:1px}.layered-visit-chart.doubles-fit .layered-visit-stack,.layered-visit-chart.doubles-fit .layered-visit-stack.bonus{width:18px}.layered-visit-chart.doubles-fit .layered-target-caption small{font-size:6px}}
 
+
+/* Challenge objective score bars — shared across all exercises, JDC split in 3 phases */
+.challenge-jdc-chart{display:grid;gap:13px;min-width:0}
+.challenge-jdc-phase{min-width:0;border:1px solid #2a4056;border-left:3px solid #43c8f7;border-radius:12px;background:linear-gradient(165deg,#0b1b2a,#060e18);padding:11px 9px 9px}
+.challenge-jdc-phase.phase-2{border-left-color:#ff687d;background:linear-gradient(165deg,#211321,#080e18)}
+.challenge-jdc-phase-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:11px;font-weight:1000;color:#cdefff}
+.challenge-jdc-phase.phase-2 .challenge-jdc-phase-head{color:#ffb0bc}
+.challenge-jdc-phase-head span{border:1px solid #385469;border-radius:8px;padding:5px 8px;color:#f3f8ff;white-space:nowrap;font-size:10px}
+.challenge-jdc-phase-hint{color:#899eaf;font-size:9px;line-height:1.35;margin:7px 0 1px}
+.challenge-objective-bars{display:grid;grid-template-columns:repeat(auto-fit,minmax(45px,1fr));gap:5px;min-width:0;padding:9px 0 2px;align-items:end}
+.challenge-objective-bars.jdc-sectors{grid-template-columns:repeat(6,minmax(0,1fr))}
+.challenge-objective-bars.jdc-doubles{grid-template-columns:repeat(7,minmax(0,1fr))}
+.challenge-objective-bar{min-width:0;display:grid;grid-template-rows:150px auto;text-align:center;align-items:end;gap:0}
+.challenge-objective-bar-well{height:150px;min-width:0;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;position:relative;border-bottom:1px solid #3d5268;background:repeating-linear-gradient(to top,transparent 0,transparent 36px,#69809c16 37px)}
+.challenge-objective-bar-fill{box-sizing:border-box;width:min(31px,86%);min-height:15px;display:flex;align-items:center;justify-content:center;border-radius:5px 5px 0 0;background:linear-gradient(160deg,#ff6570,#ce2b40);border:1px solid #ff919d;box-shadow:0 0 12px #ff4d572b;transition:height .2s ease}
+.challenge-objective-bar-fill b{display:block;font-size:clamp(9px,2.5vw,12px);color:#fff;font-weight:1100;white-space:nowrap;text-shadow:0 1px 2px #530b19aa}
+.challenge-objective-bar.double .challenge-objective-bar-fill{background:linear-gradient(160deg,#ff889b,#dd445d);border-color:#ffa7b3;box-shadow:0 0 12px #ff6a8326}
+.challenge-objective-bar.generic .challenge-objective-bar-fill{background:linear-gradient(160deg,#ff6570,#ce2b40)}
+.challenge-objective-bar-badge{position:absolute;top:3px;left:50%;transform:translateX(-50%);width:max-content;max-width:100%;font-size:7px;line-height:1.25;padding:3px 5px;border-radius:5px;border:1px solid #d6ad3e;background:#352712;color:#ffdc64;font-weight:1000;z-index:1}
+.challenge-objective-bar-label{min-width:0;display:grid;gap:3px;place-items:center;padding:5px 1px 2px;border-top:2px solid #2c526a}
+.challenge-objective-bar-label strong{max-width:100%;font-size:clamp(9px,2.5vw,11px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#e7f1ff}
+.challenge-objective-bar-label small{max-width:100%;font-size:clamp(8px,2.1vw,10px);font-weight:900;color:#9cafc2;white-space:nowrap}
+.challenge-objective-bar.best .challenge-objective-bar-label small{color:#ffcf56}
+.challenge-objective-bar.best .challenge-objective-bar-label{border-top-color:#ffc957}
+.challenge-jdc-archive-note{font-size:10px;line-height:1.4;color:#a2b5c9;padding:9px;border:1px solid #34465a;border-radius:9px}
+.challenge-single-target-chart{display:flex;gap:8px;min-width:0;align-items:stretch}
+.challenge-single-target-label{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;flex:0 0 35px;border:1px solid #34516a;background:#0b1d2b;border-radius:8px}
+.challenge-single-target-label b{writing-mode:vertical-rl;transform:rotate(180deg);font-size:12px;color:#cfeaff}
+.challenge-single-target-label small{font-size:8px;color:#91b6ca;writing-mode:vertical-rl;transform:rotate(180deg)}
+.challenge-single-target-chart>.challenge-objective-bars{flex:1 1 auto}
+ .challenge-jdc-breakdown{margin-top:8px;border-top:1px solid #304354;padding:7px 0 0}
+ .challenge-jdc-breakdown summary{cursor:pointer;color:#ff8b95;font-size:9px;font-weight:1000;letter-spacing:.35px;list-style-position:inside}
+ .challenge-jdc-breakdown>div{display:grid;gap:5px;margin-top:7px}
+ .challenge-jdc-breakdown p{margin:0;display:grid;grid-template-columns:38px minmax(0,1fr) auto;gap:6px;align-items:start;padding:5px 6px;border:1px solid #293748;border-radius:6px;background:#08121b;color:#bbc9d6;font-size:9px;line-height:1.5}
+ .challenge-jdc-breakdown p strong{color:#fff}
+ .challenge-jdc-breakdown p b{color:#ff909a;font-size:9px;white-space:nowrap}
+@media(max-width:400px){.challenge-objective-bars{gap:3px;grid-template-columns:repeat(auto-fit,minmax(38px,1fr))}.challenge-objective-bars.jdc-sectors{gap:3px}.challenge-objective-bars.jdc-doubles{gap:3px}.challenge-objective-bar-fill{width:min(24px,90%)}.challenge-objective-bar-label strong{font-size:9px}.challenge-objective-bar-label small{font-size:8px}.challenge-jdc-phase{padding:9px 6px}}
+
 /* Challenge adaptive visit matrix — targets/volley axes follow the real configuration */
 .adaptive-visit-matrix-scroll,.visit-target-strip-scroll{width:100%;max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;padding:2px 0 5px;scrollbar-width:thin}.adaptive-visit-matrix{display:grid;gap:4px;align-items:stretch;min-width:100%}.adaptive-visit-matrix.multi-target{grid-template-columns:minmax(48px,.7fr) repeat(var(--data-columns),minmax(58px,1fr));min-width:max(100%,calc(58px * var(--data-columns) + 52px))}.adaptive-visit-matrix.single-target{grid-template-columns:minmax(66px,.9fr) repeat(var(--visit-columns),minmax(58px,1fr));min-width:max(100%,calc(58px * var(--visit-columns) + 70px))}.adaptive-visit-matrix .target-vertical{min-height:64px;writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:.55px}.adaptive-visit-matrix .dvm-cell.empty{opacity:.18;border-style:dashed}.adaptive-visit-matrix .dvm-cell.empty:before{display:none}.visit-target-strip{display:flex;align-items:stretch;gap:5px;min-width:max-content}.visit-target-strip.single{min-width:0}.visit-target-card{flex:0 0 68px;min-height:66px;padding:7px 5px;border:1px solid #2b3a4b;border-radius:9px;background:#09111a;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;position:relative;overflow:hidden}.visit-target-card:after{content:'';position:absolute;left:0;right:0;bottom:0;height:3px;background:#3b4c61}.visit-target-card span{max-width:100%;font-size:7px;line-height:1.15;color:#9ba9b9;font-weight:1000;overflow:hidden;text-overflow:ellipsis}.visit-target-card b{margin-top:4px;font-size:18px;line-height:1;color:#fff}.visit-target-card small{margin-top:3px;font-size:6px;color:#738296;font-weight:1000}.visit-target-card.best{border-color:#8b7025;background:linear-gradient(180deg,#211b09,#0b1117)}.visit-target-card.best b{color:#ffd44f}.visit-target-card.best:after{background:#ffd44f}.visit-target-card.bonus{border-color:#7b6021;background:linear-gradient(180deg,#241c08,#0b1117)}.visit-target-card.bonus b{color:#ffd44f}.visit-target-card.bonus:after{background:#d8a928}.adaptive-visit-note{margin-top:8px!important}
 @media(max-width:620px){.adaptive-visit-matrix{gap:3px}.adaptive-visit-matrix.multi-target{grid-template-columns:44px repeat(var(--data-columns),56px);min-width:calc(56px * var(--data-columns) + 48px)}.adaptive-visit-matrix.single-target{grid-template-columns:54px repeat(var(--visit-columns),56px);min-width:calc(56px * var(--visit-columns) + 58px)}.adaptive-visit-matrix .target-vertical{min-height:56px}.visit-target-card{flex-basis:60px;min-height:60px}.visit-target-card b{font-size:16px}}
 .doubles-visit-matrix-scroll{width:100%;overflow-x:auto;overscroll-behavior-x:contain;padding:2px 0 4px}.doubles-visit-matrix{display:grid;grid-template-columns:minmax(48px,.7fr) repeat(var(--double-columns),minmax(58px,1fr)) minmax(68px,1fr);min-width:max(100%,calc(58px * var(--double-columns) + 122px));gap:4px;align-items:stretch}.dvm-head,.dvm-row-label,.dvm-cell{min-width:0;border:1px solid #2b3a4b;border-radius:8px;background:#09111a;display:flex;align-items:center;justify-content:center;text-align:center}.dvm-head{min-height:34px;padding:5px 3px;color:#fff;font-size:9px;font-weight:1000;letter-spacing:.35px}.dvm-corner{color:#8291a3;font-size:7px}.dvm-bonus-head{flex-direction:column;border-color:#725b22;background:linear-gradient(180deg,#211a08,#0d1115)}.dvm-bonus-head b{font-size:8px;color:#ffd45a}.dvm-bonus-head small{margin-top:1px;font-size:6px;color:#b7a76c}.dvm-row-label{min-height:48px;color:var(--exercise-accent);font-size:12px;font-weight:1000;background:#0b1620}.dvm-cell{min-height:48px;flex-direction:column;position:relative;overflow:hidden}.dvm-cell:before{content:'';position:absolute;left:0;right:0;bottom:0;height:3px;background:#3b4c61}.dvm-cell b{position:relative;z-index:1;font-size:16px;color:#fff;line-height:1}.dvm-cell span{position:relative;z-index:1;margin-top:3px;font-size:6px;color:#8291a2;font-weight:1000}.dvm-cell.best{border-color:#8b7025;background:linear-gradient(180deg,#211b09,#0b1117);box-shadow:inset 0 0 14px rgba(255,211,74,.07)}.dvm-cell.best b{color:#ffd44f}.dvm-cell.best:before{background:#ffd44f}.dvm-cell.bonus{border-color:#7b6021;background:linear-gradient(180deg,#241c08,#0b1117)}.dvm-cell.bonus b{color:#ffd44f}.dvm-cell.bonus:before{background:#d8a928}.dvm-cell.bonus-empty{border-style:dashed;opacity:.18;background:#070c12}.dvm-cell.bonus-empty:before{display:none}
 @media(max-width:620px){.detail-podium-grid{grid-template-columns:1fr}.detail-podium{padding:8px}.detail-podium-row{padding:6px 7px}.visit-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.visit-summary>div{min-height:66px}.detail-podium-title b{display:none}.doubles-visit-matrix{grid-template-columns:44px repeat(var(--double-columns),56px) 64px;min-width:calc(56px * var(--double-columns) + 116px);gap:3px}.dvm-head{min-height:31px;font-size:8px}.dvm-row-label,.dvm-cell{min-height:44px}.dvm-cell b{font-size:14px}}
+/* Challenge exercise keypad — X01-inspired large touch targets.
+   Only presentation changes; do not alter hit types, callbacks or scoring. */
+.cp .exercise-hit-pad{gap:clamp(5px,1vw,10px)}
+.cp .exercise-hit-pad button{display:flex;align-items:center;justify-content:center;padding:6px 4px;border-radius:14px;min-width:0;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.cp .exercise-hit-pad button b{display:block;font-size:clamp(28px,5vw,52px);line-height:1.05;font-weight:1000;letter-spacing:.02em;color:#fff;text-shadow:0 2px 5px #0008;white-space:nowrap}
+/* Palette X01: touches numériques anthracite / double bleu / triple prune.
+   BULL25 vert, DBULL rouge et MISS orange (même en modes Challenge spéciaux). */
+.cp .exercise-hit-pad button.S{background:linear-gradient(180deg,#28282b,#17171a);border-color:#46464c}
+.cp .exercise-hit-pad button.S b{color:#fff}
+.cp .exercise-hit-pad button.D{background:linear-gradient(180deg,#214757,#122c39);border-color:#335868}
+.cp .exercise-hit-pad button.D b{color:#bfeaff}
+.cp .exercise-hit-pad button.T{background:linear-gradient(180deg,#4c2b43,#291826);border-color:#65415c}
+.cp .exercise-hit-pad button.T b{color:#ffccff}
+.cp .exercise-hit-pad button.MISS{background:linear-gradient(180deg,#f0a927,#bd7008);border-color:#ffcb62}
+.cp .exercise-hit-pad button.MISS b{color:#602600;text-shadow:0 1px 0 #f9b44a66}
+.cp .exercise-hit-pad button[class~="25"]{background:linear-gradient(180deg,#184b38,#0c2e23);border-color:#326a53}
+.cp .exercise-hit-pad button[class~="25"] b{color:#9eefd0}
+.cp .exercise-hit-pad button[class~="50"]{background:linear-gradient(180deg,#cf3c46,#85121e);border-color:#ed7480}
+.cp .exercise-hit-pad button[class~="50"] b{color:#fff}
+.cp .exercise-hit-pad button[class~="25"] b,.cp .exercise-hit-pad button[class~="50"] b{font-size:clamp(24px,3.8vw,43px)}
+.cp .exercise-segment-grid button{font-size:clamp(18px,3vw,25px);font-weight:1000;touch-action:manipulation}
+.cp .exercise-segment-grid button.hit-S{background:linear-gradient(180deg,#28282b,#17171a);border-color:#46464c;color:#fff}
+.cp .exercise-segment-grid button.hit-D{background:linear-gradient(180deg,#214757,#122c39);border-color:#335868;color:#bfeaff}
+.cp .exercise-segment-grid button.hit-T{background:linear-gradient(180deg,#4c2b43,#291826);border-color:#65415c;color:#ffccff}
+.cp .exercise-segment-miss{background:linear-gradient(180deg,#f0a927,#bd7008);border-color:#ffcb62;color:#602600;font-size:clamp(16px,3vw,24px)}
+.cp .grouping-keypad .multiplier-tabs button.on.S{background:linear-gradient(180deg,#28282b,#17171a);border-color:#606068;color:#fff}
+.cp .grouping-keypad .multiplier-tabs button.on.D{background:linear-gradient(180deg,#214757,#122c39);border-color:#497a90;color:#bfeaff}
+.cp .grouping-keypad .multiplier-tabs button.on.T{background:linear-gradient(180deg,#4c2b43,#291826);border-color:#825676;color:#ffccff}
+@media(orientation:portrait){
+ .cp .exercise-hit-pad button b{font-size:clamp(31px,9.2vw,48px)}
+ .cp .exercise-hit-pad button[class~="25"] b,.cp .exercise-hit-pad button[class~="50"] b{font-size:clamp(24px,6.3vw,37px)}
+ .cp .exercise-segment-grid button{font-size:clamp(18px,5.4vw,25px)}
+}
+@media(orientation:landscape) and (max-height:520px){
+ .cp .exercise-hit-pad button{padding:3px 2px;border-radius:10px}
+ .cp .exercise-hit-pad button b{font-size:clamp(24px,6vh,36px)}
+ .cp .exercise-hit-pad button[class~="25"] b,.cp .exercise-hit-pad button[class~="50"] b{font-size:clamp(20px,4.8vh,29px)}
+}
+
+/* Challenge final score: structural row layout, no inherited legacy span/b grid areas. */
+.finish-panel .finish-scoreline .finish-score-row,
+.finish-panel .finish-scoreline.solo .finish-score-row{
+ display:grid;grid-template-columns:minmax(0,1fr) max-content;
+ grid-template-areas:"person score" "metrics metrics";
+ gap:10px 9px;align-items:center;min-height:0;padding:11px;
+ box-sizing:border-box;overflow:hidden
+}
+.finish-panel .finish-score-row span,
+.finish-panel .finish-score-row b{grid-area:auto;white-space:normal;overflow:visible;text-overflow:clip}
+.finish-panel .finish-score-row .finish-row-person{grid-area:person;display:flex;align-items:center;gap:10px;min-width:0}
+.finish-panel .finish-score-row .finish-row-avatar,
+.finish-panel .finish-scoreline.solo .finish-row-avatar{flex:0 0 49px;width:49px;height:49px;min-width:49px;max-width:49px;overflow:hidden}
+.finish-panel .finish-score-row .finish-row-heading{display:flex;flex-direction:column;justify-content:center;min-width:0}
+.finish-panel .finish-score-row .finish-row-heading>b{font-size:clamp(12px,2.8vw,17px);font-weight:1000;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.finish-panel .finish-score-row .finish-row-heading>i{font-size:8px;max-width:100%;white-space:normal}
+.finish-panel .finish-score-row>.finish-row-score{grid-area:score;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;font-size:clamp(22px,4.8vw,32px);min-width:78px;white-space:nowrap;line-height:1.05}
+.finish-panel .finish-score-row>.finish-row-score small{font-size:9px;margin-top:3px}
+.finish-panel .finish-score-row>.finish-row-metrics{grid-area:metrics;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin:0;min-width:0}
+.finish-panel .finish-row-metrics>div{min-width:0;display:flex;justify-content:space-between;align-items:center;gap:5px;padding:7px 9px;border:1px solid #2e3b4e;border-radius:8px;background:#0b1420}
+.finish-panel .finish-row-metrics>div small{min-width:0;color:#96a8bd;font-size:clamp(8px,1.4vw,11px);font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.finish-panel .finish-row-metrics>div strong{color:#edf6ff;font-size:clamp(11px,2.2vw,15px);font-weight:1000;white-space:nowrap}
+.finish-panel .finish-export-actions{display:flex;grid-column:1/-1;justify-content:center;align-items:center;width:100%;margin:0;padding:4px 0}
+.finish-panel .finish-export-actions button{width:56px;min-width:56px;max-width:56px;min-height:56px;height:56px;padding:8px;border:0;border-radius:14px;background:transparent;box-shadow:none}
+.finish-panel .finish-export-actions button:active{background:rgba(255,255,255,.075);transform:scale(.94)}
+.finish-panel .finish-export-info{grid-column:1/-1;color:#a4dff1;font-size:10px;text-align:center;line-height:1.45;padding:5px 7px}
+.finish-panel .finish-export-error{grid-column:1/-1;padding:7px 9px;border:1px solid #c35c63;border-radius:8px;background:#2c1016;color:#ffb8bd;font-size:10px}
+@media(min-width:700px){
+ .finish-panel .finish-score-row>.finish-row-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
+@media(max-width:370px){
+ .finish-panel .finish-score-row .finish-row-avatar,.finish-panel .finish-scoreline.solo .finish-row-avatar{width:42px;height:42px;min-width:42px;flex-basis:42px}
+ .finish-panel .finish-row-metrics>div{padding:6px}
+}
+
 `;
