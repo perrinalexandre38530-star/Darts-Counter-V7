@@ -23,7 +23,12 @@ export type ChallengeExportReport = {
   date: string;
 };
 
-type ExportFormat = 'pdf' | 'png' | 'share';
+export type ExportFormat = 'pdf' | 'png' | 'share';
+export type ChallengeExportResult = {
+ status: 'shared' | 'downloaded' | 'cancelled' | 'preview';
+ fileName: string;
+ previewUrl?: string;
+};
 
 const WIDTH = 1200;
 const MARGIN = 46;
@@ -128,7 +133,7 @@ function renderChart(ctx: CanvasRenderingContext2D, x: number, y: number,
   return rows * 142;
 }
 
-async function buildCanvas(report: ChallengeExportReport): Promise<HTMLCanvasElement> {
+function buildCanvas(report: ChallengeExportReport): HTMLCanvasElement {
   const height = contentHeight(report);
   const canvas = document.createElement('canvas');
   canvas.width = WIDTH;
@@ -232,11 +237,15 @@ async function buildCanvas(report: ChallengeExportReport): Promise<HTMLCanvasEle
   return canvas;
 }
 
-function toBlob(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(value => value ? resolve(value) : reject(new Error('Impossible de créer le fichier.')),
-      type, quality);
-  });
+function pngFromCanvas(canvas: HTMLCanvasElement): Blob {
+ // Synchronous data URL ensures navigator.share() is invoked while the
+ // user's original tap still has transient activation (Android WebView).
+ const encoded = canvas.toDataURL('image/png').split(',')[1];
+ if (!encoded) throw new Error("L'image n'a pas pu être générée.");
+ const decoded = atob(encoded);
+ const bytes = new Uint8Array(decoded.length);
+ for (let i = 0; i < decoded.length; i++) bytes[i] = decoded.charCodeAt(i);
+ return new Blob([bytes], {type:'image/png'});
 }
 
 function pdfFromCanvas(canvas: HTMLCanvasElement): Blob {
@@ -325,30 +334,121 @@ function saveFile(blob: Blob, name: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 15_000);
 }
 
+/**
+ * Native share sheet is the default for Android/iOS (including PDF and PNG).
+ * On embedded browsers that cannot share files, never auto-navigate to blob:
+ * the caller gets an in-app report preview instead of about:blank.
+ */
 export async function exportChallengeResults(report: ChallengeExportReport,
-  format: ExportFormat): Promise<'downloaded' | 'shared' | 'cancelled'> {
-  const canvas = await buildCanvas(report);
+  format: ExportFormat): Promise<ChallengeExportResult> {
+  const canvas = buildCanvas(report);
   const actualFormat = format === 'share' ? 'png' : format;
-  const blob = actualFormat === 'pdf' ? pdfFromCanvas(canvas) : await toBlob(canvas, 'image/png');
+  const blob = actualFormat === 'pdf' ? pdfFromCanvas(canvas) : pngFromCanvas(canvas);
   const slug = report.title.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'challenge';
   const name = 'MSS_' + slug + '_' + new Date().toISOString().slice(0, 10) +
     '.' + actualFormat;
-  if (format === 'share' && typeof navigator.share === 'function') {
-    const file = new File([blob], name, { type: blob.type });
+  const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const file = new File([blob], name, { type: blob.type });
+  const nav = navigator;
+  let canShareFiles = false;
+  try {
+    canShareFiles = typeof nav.share === 'function' &&
+      (typeof nav.canShare !== 'function' || nav.canShare({files:[file]}));
+  } catch {}
+
+  if (canShareFiles && (mobile || format === 'share')) {
     try {
-      if (!navigator.canShare || navigator.canShare({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          title: report.title,
-          text: 'Résultats MULTISPORTS SCORING',
-        });
-        return 'shared';
-      }
+      // Crucial: no awaited promise occurs before calling share().
+      // PNG/PDF rendering and Blob creation above are synchronous.
+      await nav.share({
+        title: report.title,
+        text: 'Résultats MULTISPORTS SCORING',
+        files: [file],
+      });
+      return {status:'shared',fileName:name};
     } catch (error) {
-      if ((error as Error)?.name === 'AbortError') return 'cancelled';
+      if ((error as Error)?.name === 'AbortError') return {status:'cancelled',fileName:name};
+      console.warn('[challenge-export] native file share unavailable',error);
     }
   }
-  saveFile(blob, name);
-  return 'downloaded';
+
+  if (mobile) {
+    // ChatGPT / embedded WebViews may turn anchor(blob:) into about:blank.
+    // Instead show an actual inline image, which can be long-pressed / saved.
+    return {status:'preview',fileName:name,previewUrl:canvas.toDataURL('image/png')};
+  }
+
+  saveFile(blob,name);
+  return {status:'downloaded',fileName:name};
+}
+
+/** For an explicit second click from the in-app preview (eg. opened in Chrome). */
+export function downloadChallengeFile(report:ChallengeExportReport,format:'pdf'|'png'):void {
+ const canvas=buildCanvas(report);
+ const blob=format==='pdf'?pdfFromCanvas(canvas):pngFromCanvas(canvas);
+ const slug=report.title.normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+  .toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'challenge';
+ const name='MSS_'+slug+'_'+new Date().toISOString().slice(0,10)+'.'+format;
+ saveFile(blob,name);
+}
+
+/** Reuses the exact historical Challenge per-player score and exercise stats. */
+export function challengeReportFromHistory(entry:any):ChallengeExportReport {
+ const payload=entry?.payload || entry?.decoded || {};
+ const summary=entry?.summary || payload?.summary || {};
+ const cfg=payload?.config || entry?.resume?.config || summary?.config || {};
+ const candidates=[
+  summary?.perPlayer,payload?.summary?.perPlayer,
+  payload?.stats?.players,summary?.rankings,
+  payload?.players,entry?.players,
+ ];
+ const source=candidates.find(v=>Array.isArray(v)&&v.length>0)||[];
+ const players:ChallengeExportPlayer[]=source.map((raw:any)=>{
+  const row=raw?.stats&&typeof raw.stats==='object'?{...raw.stats,...raw}:raw||{};
+  const exercise=row.exerciseStats||row.stats?.exerciseStats||row.special?.exerciseStats||{};
+  const darts=Math.max(0,Number(row.darts??row.dartsThrown??0)||0);
+  const accuracy=Number(row.successRate??row.accuracy??(darts?Number(row.hitCount||0)/darts*100:0))||0;
+  const metrics:ChallengeExportMetric[]=[];
+  const push=(name:string,v:unknown)=>{
+   if(v!==undefined&&v!==null&&v!=='')metrics.push({label:name,value:String(v)});
+  };
+  if(Array.isArray(exercise.jdcPhaseScores)){
+   exercise.jdcPhaseScores.forEach((v:unknown,i:number)=>push('PHASE '+(i+1),String(v)+' PTS'));
+   push('SHANGHAI',exercise.jdcShanghaiCount);
+   push('DOUBLES',exercise.jdcDoubleHits);
+   push('BULL 50',exercise.jdcBullHits);
+  }else{
+   push('VOLÉES VALIDÉES',exercise.validatedVisits);
+   push('VOLÉES PARFAITES',exercise.perfectVisits);
+   push('POINTS BONUS',exercise.doublesBonusScore);
+   push('DOUBLES',exercise.doublesRegularHits);
+   push('TRIPLETS',exercise.groupingTriplets);
+   push('DOUBLETS',exercise.groupingDoublets);
+   push('DIVISIONS ÷2',exercise.halfItCuts);
+   push('TOP SECTEUR',exercise.topGroupingSector);
+  }
+  push('BEST VOLÉE',row.bestVisit);
+  const rawVisits=row.visitScores??row.stats?.visitScores;
+  return {
+   name:String(row.name||row.playerName||row.displayName||'Joueur'),
+   score:Number(row.score??row.points??0)||0,
+   accuracy,darts,
+   bestStreak:Number(row.bestStreak||0)||0,
+   avgVisit:Number(row.avgVisit||0)||0,
+   visits:Array.isArray(rawVisits)?rawVisits.map((x:any)=>Number(x)||0):[],
+   metrics:metrics.slice(0,16),
+  };
+ }).sort((a:ChallengeExportPlayer,b:ChallengeExportPlayer)=>b.score-a.score);
+ const rawDate=entry?.finishedAt||entry?.updatedAt||entry?.createdAt||Date.now();
+ const date=new Date(rawDate).toLocaleString('fr-FR');
+ const first=players[0];
+ const highlight:ChallengeExportMetric[]=(first?.metrics||[]).slice(0,4);
+ if(!highlight.length&&first)highlight.push({label:'SCORE',value:first.score+' PTS'},{label:'RÉUSSITE',value:first.accuracy.toFixed(1)+'%'});
+ return {
+  title:String(summary.objective||entry?.game?.objective||summary.title||'CHALLENGE'),
+  rounds:Number(summary.visits??cfg.visits??entry?.game?.visits??0)||0,
+  unit:['jdc','doubles8'].includes(String(summary.exerciseType||cfg.exerciseType||''))?'volées':'tours',
+  players,highlight,date,
+ };
 }
