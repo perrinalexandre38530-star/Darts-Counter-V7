@@ -38,7 +38,7 @@ export default function ChallengeArcadePlay({go,params}:{go:(tab:any,params?:any
  const ids=players.map(p=>p.id);
  const currentId=currentArcadePlayer(hits,ids,config);
  const progress=players.map(player=>({player,...evaluateArcadeProgress(hits.filter(h=>h.pid===player.id),config)}));
- const active=progress.find(row=>row.player.id===currentId)||progress[0];
+ const active=progress.find(row=>row.player.id===currentId)||progress[0]!;
  const objectives=arcadeObjectives(config);
  const finished=progress.every(row=>row.complete);
  const standings=[...progress].sort((a,b)=>Number(b.complete)-Number(a.complete)||b.index-a.index||a.attempts-b.attempts);
