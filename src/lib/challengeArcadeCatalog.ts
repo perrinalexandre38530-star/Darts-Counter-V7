@@ -53,5 +53,5 @@ export const CHALLENGE_ARCADE_CATALOG:readonly ArcadeChallenge[] = [
   {id:"revenge",title:"LA REVANCHE",family:"MULTIJOUEURS",description:"Réussir les cibles précédemment ratées par l'adversaire.",goal:"max",status:"preview"},
 ];
 export const CHALLENGE_ARCADE_FAMILIES:readonly ArcadeFamily[]=['PRÉCISION','PARCOURS','COMBINAISONS','SCORING','RISQUE','STRATÉGIE','MULTIJOUEURS'];
-export const getArcadeChallenge=(id:string|undefined|null)=>CHALLENGE_ARCADE_CATALOG.find(item=>item.id===id)||CHALLENGE_ARCADE_CATALOG[0];
+export const getArcadeChallenge=(id:string|undefined|null):ArcadeChallenge=>CHALLENGE_ARCADE_CATALOG.find(item=>item.id===id)??CHALLENGE_ARCADE_CATALOG[0]!;
 export const isArcadeChallengePlayable=(id:string|undefined|null)=>Boolean(CHALLENGE_ARCADE_CATALOG.find(item=>item.id===id&&item.status==='ready'));
