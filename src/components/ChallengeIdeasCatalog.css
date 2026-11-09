@@ -1,0 +1,35 @@
+.challenge-ideas-catalog{margin-top:14px;padding:13px;border:1px solid #3e5368;border-radius:16px;background:linear-gradient(145deg,#0e1a27,#070c12);box-shadow:inset 0 0 23px #0007;color:#f6f8fb}
+.challenge-ideas-heading{display:flex;align-items:center;gap:10px;min-width:0}
+.challenge-ideas-icon{display:grid;place-items:center;flex:0 0 34px;height:34px;border:1px solid #956b2a;background:#2a200f;border-radius:11px;color:#f7ca68;font-size:20px}
+.challenge-ideas-heading>div{min-width:0;flex:1}
+.challenge-ideas-heading strong{display:block;font-size:12px;letter-spacing:.7px}
+.challenge-ideas-heading p{color:#a9b9c7;font-size:9px;margin:4px 0 0;line-height:1.4}
+.challenge-ideas-counter{display:grid;place-items:center;flex:0 0 38px;height:38px;border-radius:50%;border:1px solid #856c46;background:#262012;color:#f5cd76;font-weight:900}
+.challenge-ideas-note{margin:11px 0;font-size:10px;color:#a8b5c4;line-height:1.55}
+.challenge-ideas-search{display:block;margin:0 0 11px}
+.challenge-ideas-search input{width:100%;min-height:42px;border:1px solid #41566b;border-radius:10px;background:#07101a;color:#fff;padding:9px 11px;font-size:12px;outline-offset:2px}
+.challenge-ideas-search input:focus-visible{outline:2px solid #65d7e9}
+.challenge-ideas-search input::placeholder{color:#798ca0}
+.challenge-ideas-search .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.challenge-ideas-filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.challenge-ideas-filters button{min-height:34px;border:1px solid #3a4b60;border-radius:999px;background:#0c1420;color:#c8d3df;padding:6px 9px;font-size:9px;font-weight:850;cursor:pointer}
+.challenge-ideas-filters button span{color:#8b9dad;margin-left:3px}
+.challenge-ideas-filters button.on{color:#fff;border-color:#dc6d78;background:#51212b}
+.challenge-ideas-filters button.on span{color:#fff}
+.challenge-ideas-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.challenge-idea{min-width:0;border:1px solid #384a5e;background:linear-gradient(160deg,#121f2d,#080e17);border-radius:11px;overflow:hidden}
+.challenge-idea summary{min-height:63px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px;cursor:pointer;list-style:none}
+.challenge-idea summary::-webkit-details-marker{display:none}
+.challenge-idea summary::after{content:'⌄';color:#a1b1c3;margin-left:1px;font-size:14px}
+.challenge-idea[open] summary::after{content:'⌃'}
+.challenge-idea-name{min-width:0;flex:1;font-weight:900;font-size:11px;line-height:1.3}
+.challenge-idea-planned{flex:0 0 auto;color:#d4b77b;background:#312616;border:1px solid #745c36;border-radius:999px;padding:4px 6px;font-size:7px;font-weight:850;white-space:nowrap}
+.challenge-idea-detail{border-top:1px solid #364657;padding:3px 10px 11px}
+.challenge-idea-detail p{margin:9px 0;font-size:10px;line-height:1.5;color:#ced8e2}
+.challenge-idea-detail p b{display:block;color:#e2b96e;font-size:8px;letter-spacing:.7px;margin-bottom:2px}
+.challenge-idea-detail small{display:block;font-size:9px;color:#91a4b6;line-height:1.5}
+.challenge-ideas-empty{border:1px dashed #4b6074;border-radius:10px;padding:15px;font-size:11px;color:#aab9c8;text-align:center}
+.challenge-ideas-more{display:block;margin:13px auto 0;min-height:37px;border:1px solid #5f7083;border-radius:10px;background:#152334;color:#fff;font-size:10px;font-weight:900;padding:8px 16px;cursor:pointer}
+.challenge-idea summary:focus-visible,.challenge-ideas-filters button:focus-visible,.challenge-ideas-more:focus-visible{outline:2px solid #65d7e9;outline-offset:2px}
+@media(max-width:700px){.challenge-ideas-grid{grid-template-columns:minmax(0,1fr)}.challenge-idea summary{min-height:56px}.challenge-ideas-catalog{padding:10px}.challenge-ideas-filters{flex-wrap:nowrap;overflow-x:auto;padding-bottom:6px;scrollbar-width:thin}.challenge-ideas-filters button{white-space:nowrap;flex:0 0 auto}}
+@media(prefers-reduced-motion:reduce){.challenge-ideas-catalog *{scroll-behavior:auto}}
