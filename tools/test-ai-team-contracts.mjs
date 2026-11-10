@@ -19,7 +19,7 @@ const expected = {
   "12-integrateur": ["pr-safe-integration"],
 };
 
-assert.match(contentAt("AGENTS.md"), /History V4/);
+assert.match(contentAt("AGENTS.md"), /(?:historique|History) V4/i);
 assert.match(contentAt("docs/AI_COMPETENCIES.md"), /Certification des compétences/);
 
 for (const [agent, skills] of Object.entries(expected)) {
