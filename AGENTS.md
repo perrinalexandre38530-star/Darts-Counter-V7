@@ -15,6 +15,12 @@ Ne jamais synchroniser le projet en recopiant un ZIP sur une branche de référe
 9. Ne jamais exécuter de commandes destructives, exposer de secrets, activer des publications ou déclencher des dépenses/communications sans accord humain.
 10. Toute PR doit fournir une procédure de retour arrière ; ne jamais considérer les résultats de test comme une autorisation de fusionner.
 
+## Compétences et limites de responsabilité
+Chaque agent doit lire `docs/AI_COMPETENCIES.md` et son ou ses `SKILL.md` désignés dans son profil avant toute action. Une compétence non prouvée n'autorise pas l'exécution autonome.
+Un domaine transversal doit être découpé en missions séparées. L'agent n'est pas juge de sa propre réussite : QA indépendant pour chaque patch et audit pour les zones critiques.
+En cas d'échec de test, de version désalignée, de conflit ou d'incertitude métier, arrêter la mission, documenter la cause et signaler le blocage. Ne jamais assouplir les tests pour obtenir du vert.
+La protection réelle repose sur les règles GitHub, permissions minimales, CI et validation humaine ; les instructions ne remplacent jamais ces contrôles techniques.
+
 ## Vérification minimale
 Selon le périmètre : `npm run typecheck`, `npm run build`, puis tests ciblés existants dans `package.json`. Contrôler manuellement les interfaces et l'Android/Tizen quand le périmètre l'exige. Ne pas prétendre qu'un contrôle a été réalisé sans l'avoir exécuté.
 
