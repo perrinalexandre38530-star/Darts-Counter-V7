@@ -32,7 +32,7 @@ for (const [agent, skills] of Object.entries(expected)) {
     const skillPath = `.github/skills/${skill}/SKILL.md`;
     const skillText = contentAt(skillPath);
     assert.ok(agentText.includes(skillPath), `${agent} missing skill reference ${skill}`);
-    assert.match(skillText, /^---\nname: [a-z][a-z-]+\ndescription: "/);
+    assert.match(skillText, /^---\nname: [a-z][a-z0-9-]+\ndescription: "/);
     assert.match(skillText, /## Procédure obligatoire/);
     assert.match(skillText, /## Preuves exigées/);
     assert.match(skillText, /## Règles transversales/);
