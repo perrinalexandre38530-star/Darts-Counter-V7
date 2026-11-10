@@ -1,0 +1,67 @@
+name: "Mission pour un agent IA"
+description: "Attribuer un travail précis à un spécialiste MULTISPORTS SCORING"
+title: "[AGENT] "
+body:
+  - type: markdown
+    attributes:
+      value: "Une mission ciblée, une branche séparée, une PR pour revue. Aucun merge ni déploiement automatique."
+  - type: dropdown
+    id: specialist
+    attributes:
+      label: "Agent responsable"
+      options:
+        - Directeur
+        - Developpeur
+        - Debogueur
+        - Data-Cloud
+        - Designer
+        - Mobile-TV
+        - Testeur-QA
+        - Auditeur
+        - Live-Online
+        - Marketing
+        - Monetisation
+        - Integrateur
+    validations:
+      required: true
+  - type: textarea
+    id: objective
+    attributes:
+      label: "Objectif et comportement attendu"
+      description: "Ce qui doit fonctionner à la fin"
+      placeholder: "Expliquer les règles, l'interface ou le bug à résoudre..."
+    validations:
+      required: true
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: "Périmètre et interdictions"
+      placeholder: "Fichiers/modules concernés, choses à préserver et actions interdites..."
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: "Critères de réussite et tests"
+      placeholder: "Scénarios, captures attendues, commandes de tests..."
+    validations:
+      required: true
+  - type: dropdown
+    id: risk
+    attributes:
+      label: "Niveau de risque"
+      options:
+        - Faible (docs/tests/isolation)
+        - Moyen (fonctionnalite/interface)
+        - Eleve (donnees/cloud/securite/monetisation)
+    validations:
+      required: true
+  - type: checkboxes
+    id: guardrails
+    attributes:
+      label: "Contrôles"
+      options:
+        - label: "Aucun déploiement, publication, achat, envoi public ou fusion sans validation humaine"
+          required: true
+        - label: "Travail exclusivement sur une branche dédiée avec Pull Request"
+          required: true
