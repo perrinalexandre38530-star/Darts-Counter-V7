@@ -1,0 +1,34 @@
+name: MSS Agent - verification non destructive
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mss-agent-quality-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout de la revision a tester
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Node.js 22 et cache npm
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Installation reproductible
+        run: npm ci
+      - name: Verification TypeScript
+        run: npm run typecheck
+      - name: Tests contractuels et build
+        run: npm run build
