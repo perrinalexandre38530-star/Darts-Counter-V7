@@ -3,6 +3,9 @@
 ## Situation
 Cette PR apporte des **profils d'agents** et des fondations d'orchestration, pas encore une entreprise autonome active 24 h/24. Les profils deviennent disponibles dans les environnements compatibles une fois cette PR fusionnée. Pour l'exécution en tâche de fond, il faut autoriser/configurer un moteur d'agent (p. ex. GitHub Copilot coding agent ou Codex connecté), la gestion des coûts et des déclencheurs.
 
+## Matrice des compétences
+Consulter `docs/AI_COMPETENCIES.md` pour la matrice des 12 agents, les 13 compétences procédurales, la certification sur scénarios et les conditions de blocage. Les agents ne sont pas certifiés du seul fait d'avoir un profil.
+
 ## Chaîne de traitement
 1. Le propriétaire décrit une mission avec le modèle GitHub "Mission pour un agent IA" (spécialiste, objectif, limites, tests, risque).
 2. Le directeur IA découpe les missions trop grandes et identifie les dépendances ; plusieurs missions indépendantes peuvent être lancées en parallèle.
