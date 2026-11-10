@@ -28,6 +28,8 @@ jobs:
           cache: npm
       - name: Installation reproductible
         run: npm ci
+      - name: Contrats des agents et specialisations
+        run: node tools/test-ai-team-contracts.mjs
       - name: Verification TypeScript
         run: npm run typecheck
       - name: Tests contractuels et build
