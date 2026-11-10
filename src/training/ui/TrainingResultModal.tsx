@@ -1,5 +1,6 @@
 import React from "react";
 import type { TrainingStats } from "../engine/trainingStats";
+import "./trainingResponsive.css";
 
 export type TrainingResultMetric = {
   label: string;
@@ -27,6 +28,12 @@ export default function TrainingResultModal({
   actionLabel?: string;
   note?: React.ReactNode;
 }) {
+  React.useEffect(() => {
+    if (!open) return;
+    const onEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onEscape);
+    return () => window.removeEventListener("keydown", onEscape);
+  }, [open, onClose]);
   if (!open) return null;
 
   const accent = success ? "#27dcff" : "#ff5f9e";
@@ -37,6 +44,7 @@ export default function TrainingResultModal({
 
   return (
     <div
+      className="mssTrainingResultBackdrop"
       onClick={onClose}
       style={{
         position: "fixed",
@@ -50,6 +58,10 @@ export default function TrainingResultModal({
       }}
     >
       <div
+        className="mssTrainingResultSheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title || "Bilan de fin de séance"}
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "min(560px,100%)",
@@ -76,6 +88,7 @@ export default function TrainingResultModal({
         </div>
 
         <div
+          className="mssTrainingResultSummary"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(4,minmax(0,1fr))",
@@ -121,6 +134,7 @@ export default function TrainingResultModal({
 
         {metrics.length ? (
           <div
+            className="mssTrainingResultMetrics"
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(2,minmax(0,1fr))",
@@ -150,6 +164,7 @@ export default function TrainingResultModal({
         {note ? <div style={{ marginTop: 10 }}>{note}</div> : null}
 
         <button
+          className="mssTrainingResultAction"
           type="button"
           onClick={onClose}
           style={{

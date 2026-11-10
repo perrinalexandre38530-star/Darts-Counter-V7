@@ -273,3 +273,67 @@
 @media (prefers-reduced-motion:reduce) {
   .mssTrainingProgressTrack > div,.mssTrainingDarts img,.mssTrainingHubPrimaryNav button { transition:none!important; }
 }
+
+/* V99 / Training Wave 3 — lisibilité du dernier bilan, sans allonger l'accueil. */
+.mssTrainingHubLastResult {
+  margin-left:auto; flex:0 0 auto; min-height:25px; border:1px solid rgba(140,255,204,.28);
+  background:rgba(80,255,174,.07); color:#9ef5ce; padding:4px 7px;
+  border-radius:8px; font-size:9px; font-weight:950; cursor:pointer;
+}
+.mssTrainingHubLastResult:focus-visible { outline:2px solid #67ecff; outline-offset:2px; }
+.mssTrainingSessionStats { min-width:0; }
+.mssTrainingSessionComparison {
+  display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:10px;
+  padding:9px; border:1px solid rgba(255,255,255,.1); border-radius:11px;
+  background:rgba(0,0,0,.20); font-variant-numeric:tabular-nums;
+}
+.mssTrainingSessionComparison > span { color:#8ceafd; font-size:9px; font-weight:900; flex:1 1 100%; }
+.mssTrainingSessionComparison > strong { padding:5px 7px; border-radius:7px; background:rgba(255,255,255,.05); font-size:10px; white-space:nowrap; }
+.mssTrainingSessionComparison > strong.isUp { color:#8cffcb; }
+.mssTrainingSessionComparison > strong.isDown { color:#ffadb6; }
+.mssTrainingSessionCoach {
+  margin-top:11px; padding:11px; border-radius:12px;
+  border:1px solid rgba(39,220,255,.25);
+  background:linear-gradient(120deg,rgba(39,220,255,.075),rgba(185,156,255,.04));
+}
+.mssTrainingSessionCoachTitle { color:#8ceafd; font-size:10px; font-weight:950; letter-spacing:.35px; }
+.mssTrainingSessionCoach p { margin:5px 0 0; font-size:12px; line-height:1.4; }
+.mssTrainingSessionCoach small { display:block; margin-top:6px; color:#f6d28a; font-size:10px; line-height:1.35; }
+.mssTrainingSessionCoach button {
+  width:100%; margin-top:10px; min-height:38px; padding:8px 12px;
+  border:1px solid rgba(39,220,255,.45); border-radius:10px;
+  background:rgba(39,220,255,.14); color:#b9f7ff; font-size:11px;
+  font-weight:950; cursor:pointer;
+}
+.mssTrainingSessionCoach button:focus-visible { outline:2px solid #67ecff; outline-offset:2px; }
+.mssTrainingSessionExerciseTrack { height:4px; margin:0 7px 7px; border-radius:8px; overflow:hidden; background:rgba(255,255,255,.10); }
+.mssTrainingSessionExerciseTrack span { display:block; height:100%; background:linear-gradient(90deg,#12b9dc,#80f6d2); border-radius:8px; }
+
+/* Les bilans de fin de séance restent consultables sur les écrans les plus étroits.
+   Le bouton de sortie demeure atteignable même lorsque les métriques défilent. */
+.mssTrainingResultBackdrop { box-sizing:border-box; padding:max(7px,env(safe-area-inset-top)) 8px max(7px,env(safe-area-inset-bottom))!important; }
+.mssTrainingResultSheet { box-sizing:border-box; width:min(560px,100%); max-height:calc(100dvh - 16px)!important; overscroll-behavior:contain; scrollbar-width:thin; }
+.mssTrainingResultAction { position:sticky; bottom:0; z-index:1; box-shadow:0 -8px 16px rgba(3,9,17,.9); }
+@media (max-width:380px) {
+  .mssTrainingResultSheet { padding:11px!important; border-radius:15px!important; }
+  .mssTrainingResultSummary { grid-template-columns:repeat(2,minmax(0,1fr))!important; gap:6px!important; }
+  .mssTrainingResultSummary > div { padding:6px 4px!important; }
+  .mssTrainingResultMetrics { gap:6px!important; }
+  .mssTrainingResultMetrics > div { padding:7px!important; }
+  .mssTrainingResultAction { height:42px!important; }
+}
+@media (max-height:600px) {
+  .mssTrainingResultSheet { max-height:calc(100dvh - 10px)!important; padding:10px!important; border-radius:14px!important; }
+  .mssTrainingResultSummary { margin-top:7px!important; gap:6px!important; }
+  .mssTrainingResultSummary > div { padding:6px 4px!important; }
+  .mssTrainingResultMetrics { margin-top:6px!important; gap:5px!important; }
+  .mssTrainingResultMetrics > div { padding:6px 8px!important; }
+  .mssTrainingResultAction { margin-top:9px!important; }
+}
+@media (orientation:landscape) and (max-height:440px) {
+  .mssTrainingPlayOverview { scrollbar-width:thin; }
+  .mssTrainingPlayMain { min-height:0; }
+  .mssTrainingResultSheet { max-height:calc(100dvh - 8px)!important; }
+}
+
+.mssTrainingSessionCoach button.mssTrainingFocusExercise { border-color:rgba(255,216,107,.40); background:rgba(255,216,107,.09); color:#ffe2a4; }

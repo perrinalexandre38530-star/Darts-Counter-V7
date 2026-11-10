@@ -1,5 +1,7 @@
 import React from "react";
 import type { TrainingSessionCard, TrainingSessionExerciseRow } from "../profile/trainingSessionCards";
+import { buildTrainingSessionInsight } from "../profile/trainingSessionInsights";
+import "./trainingResponsive.css";
 
 const cyan = "#43e1f3";
 const mint = "#8cffcb";
@@ -54,24 +56,48 @@ function ExerciseResultRow({ row, number }: { row: TrainingSessionExerciseRow; n
 }
 
 /** Display-only, no writes to Training stats or competitive match History. */
-export default function TrainingSessionResultsCard({ card, expanded, onToggle }: { card: TrainingSessionCard; expanded: boolean; onToggle: () => void }) {
+export default function TrainingSessionResultsCard({ card, allCards = [], expanded, onToggle, latest = false, onNextAction, onFocusExercise }: {
+  card: TrainingSessionCard; allCards?: TrainingSessionCard[]; expanded: boolean;
+  onToggle: () => void; latest?: boolean; onNextAction?: () => void;
+  onFocusExercise?: (exerciseId: string) => void;
+}) {
+  const insight = React.useMemo(() => buildTrainingSessionInsight(card, allCards), [card, allCards]);
+  const previous = insight.comparison;
+  const delta = (value: number) => `${value > 0 ? "+" : ""}${value}`;
   return <article style={{ minWidth: 0, borderRadius: 18, padding: "clamp(12px,2.2vw,18px)", border: "1px solid rgba(39,220,255,.33)", background: "linear-gradient(145deg,rgba(6,26,37,.9),rgba(9,13,24,.94) 58%,rgba(10,24,34,.87))", boxShadow: "0 8px 22px rgba(0,0,0,.16)" }}>
-    <div style={{ color: mint, fontSize: 10, fontWeight: 950, letterSpacing: .4 }}>TERMINÉE · {card.kind === "program" ? "PROGRAMME" : "ENTRAÎNEMENT LIBRE"}</div>
+    <div className="mssTrainingResultEyebrow" style={{ color: mint, fontSize: 10, fontWeight: 950, letterSpacing: .4 }}>{latest ? "DERNIER BILAN" : "TERMINÉE"} · {card.kind === "program" ? "PROGRAMME" : "ENTRAÎNEMENT LIBRE"}</div>
     <h3 style={{ margin: "5px 0 0", fontSize: "clamp(16px,3vw,19px)", lineHeight: 1.23, fontWeight: 950, overflowWrap: "anywhere" }}>{card.title}</h3>
     <div style={{ fontSize: 11, opacity: .67, marginTop: 5 }}>{new Date(card.at).toLocaleDateString("fr-FR")} · {card.count} exercice{card.count > 1 ? "s" : ""}</div>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 13 }}>
+    <div className="mssTrainingSessionStats" style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 13 }}>
       <StatBox icon="▥" label="Performance" value={`${Math.round(card.performance)}/100`} />
       <StatBox icon="◎" label="Précision" value={card.accuracy == null ? "—" : `${Math.round(card.accuracy)} %`} />
       <StatBox icon="➤" label="Fléchettes" value={String(card.darts)} />
       <StatBox icon="★" label="Objectifs réussis" value={`${card.successes}/${card.count}`} warning={card.successes < card.count} />
     </div>
+    {previous && <div className="mssTrainingSessionComparison" aria-label="Comparaison avec la précédente séance de même contenu">
+      <span>↗ MÊME PARCOURS · {new Date(previous.previousAt).toLocaleDateString("fr-FR")}</span>
+      <strong className={previous.performanceDelta > 0 ? "isUp" : previous.performanceDelta < 0 ? "isDown" : ""}>PERF. {delta(previous.performanceDelta)} pts</strong>
+      {previous.accuracyDelta !== null && <strong className={previous.accuracyDelta > 0 ? "isUp" : previous.accuracyDelta < 0 ? "isDown" : ""}>PRÉC. {delta(previous.accuracyDelta)} pts</strong>}
+      <strong>OBJECTIFS {delta(previous.successesDelta)}</strong>
+    </div>}
+    {latest && <section className="mssTrainingSessionCoach" aria-label="Prochaine étape conseillée par les résultats">
+      <div className="mssTrainingSessionCoachTitle">◎ BILAN & PROCHAINE ÉTAPE</div>
+      <p>{insight.guidance}</p>
+      {insight.aggregatedDarts > 0 && <small>Précision partielle ou indisponible : {insight.aggregatedDarts} fléchettes saisies par total.</small>}
+      {insight.weakest && insight.weakest.score < 70 && onFocusExercise &&
+        <button type="button" className="mssTrainingFocusExercise" onClick={() => onFocusExercise(insight.weakest!.exerciseId)}>RETRAVAILLER CET EXERCICE ›</button>}
+      {onNextAction && <button type="button" onClick={onNextAction}>VOIR LA SUITE AVEC AWENA ›</button>}
+    </section>}
     <button type="button" aria-expanded={expanded} aria-label={`${expanded ? "Masquer" : "Voir"} le détail de ${card.title}`} onClick={onToggle} style={{ marginTop: 13, padding: "10px 16px", minHeight: 42, borderRadius: 10, border: "1px solid rgba(39,220,255,.48)", background: "rgba(39,220,255,.11)", color: "inherit", cursor: "pointer", fontSize: 12, fontWeight: 900 }}>
       {expanded ? "MASQUER LE DÉTAIL" : `VOIR LES ${card.exercises.length} RÉSULTATS`}
     </button>
     {expanded && <section aria-label={`Statistiques détaillées de ${card.title}`} style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid rgba(39,220,255,.20)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 11, fontSize: 12, fontWeight: 950 }}>☷ DÉTAIL PAR EXERCICE</div>
       <div style={{ display: "grid", gap: 7 }}>
-        {card.exercises.map((row, index) => <ExerciseResultRow key={`${card.id}:${index}:${row.exerciseId}`} row={row} number={index + 1}/>)}
+        {card.exercises.map((row, index) => <div key={`${card.id}:${index}:${row.exerciseId}`}>
+          <ExerciseResultRow row={row} number={index + 1}/>
+          {row.performance != null && Number.isFinite(row.performance) && <div className="mssTrainingSessionExerciseTrack" role="meter" aria-label={`Performance ${row.title}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.max(0,Math.min(100,Math.round(row.performance)))}><span style={{ width: `${Math.max(0,Math.min(100,row.performance))}%` }} /></div>}
+        </div>)}
       </div>
     </section>}
   </article>;

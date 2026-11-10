@@ -6,6 +6,7 @@ import {
   listClubShopNotifications, markClubShopNotificationsRead,
   type ShopNotification, type ShopNotificationInbox,
 } from "../organizations/organizationShopNotifications";
+import { disableShopPush, enableShopPush, isShopPushEnabled, shopPushAvailability } from "../organizations/organizationShopPush";
 
 const EMPTY: ShopNotificationInbox = { items: [], unreadCount: 0, lastReadId: 0 };
 
@@ -26,6 +27,9 @@ export default function OrganizationShopNotificationsPanel({
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
   const [alertsEnabled, setAlertsEnabled] = React.useState(false);
+  const [pushEnabled, setPushEnabled] = React.useState(false);
+  const [pushBusy, setPushBusy] = React.useState(false);
+  const pushAvailability = shopPushAvailability();
   const alertsRef = React.useRef(false);
   const settingKey = `mss-shop-browser-alerts-v26:${userId || "none"}:${organizationId}`;
   const btn: React.CSSProperties = {
@@ -33,6 +37,14 @@ export default function OrganizationShopNotificationsPanel({
     padding: "8px 10px", border: `1px solid ${theme.borderSoft}`,
     background: `${theme.primary}15`, color: theme.primary,
   };
+  React.useEffect(() => {
+    let active = true;
+    setPushEnabled(false);
+    if (!userId || !pushAvailability.available) return;
+    void isShopPushEnabled().then((enabled) => { if (active) setPushEnabled(enabled); }).catch(() => {});
+    return () => { active = false; };
+  }, [userId, organizationId, pushAvailability.available]);
+
   React.useEffect(() => {
     let value = false;
     try { value = window.localStorage.getItem(settingKey) === "1" && "Notification" in window && Notification.permission === "granted"; }
@@ -56,7 +68,7 @@ export default function OrganizationShopNotificationsPanel({
         const newest = next.items[0];
         // Aucun pop-up lors du premier chargement (anciennes demandes).
         if (newest && lastMaxId !== null && newest.id > lastMaxId &&
-            !newest.isRead && alertsRef.current && "Notification" in window && Notification.permission === "granted") {
+            !newest.isRead && alertsRef.current && !pushEnabled && "Notification" in window && Notification.permission === "granted") {
           try {
             const title = newest.kind === "new_request" ? "Nouvelle demande de boutique" : "Boutique : statut mis à jour";
             const message = newest.kind === "new_request" ? newest.itemTitle : `${newest.itemTitle} · ${newest.status}`;
@@ -76,7 +88,7 @@ export default function OrganizationShopNotificationsPanel({
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
     return () => { active = false; window.clearInterval(timer); window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onFocus); };
-  }, [organizationId, userId]);
+  }, [organizationId, userId, pushEnabled]);
 
   const markAll = async () => {
     const latestId = inbox.items[0]?.id;
@@ -105,6 +117,24 @@ export default function OrganizationShopNotificationsPanel({
     alertsRef.current = false; setAlertsEnabled(false);
     try { window.localStorage.removeItem(settingKey); } catch { /* stockage indisponible */ }
   };
+  const togglePush = async () => {
+    if (pushBusy) return;
+    setPushBusy(true); setError("");
+    try {
+      if (pushEnabled) {
+        await disableShopPush();
+        setPushEnabled(false);
+      } else {
+        await enableShopPush();
+        setPushEnabled(true);
+        // Ne pas doubler les pop-ups V26 avec les vrais push reçus par le SW.
+        alertsRef.current = false;
+        setAlertsEnabled(false);
+        try { window.localStorage.removeItem(settingKey); } catch {}
+      }
+    } catch (err: any) { setError(String(err?.message || "Notifications push indisponibles.")); }
+    finally { setPushBusy(false); }
+  };
   const statusLabel = (status: ShopNotification["status"]): string => ({
     pending: L("À traiter", "Pending", "Pendiente"), accepted: L("Acceptée", "Accepted", "Aceptada"),
     ready: L("Prête", "Ready", "Lista"), completed: L("Remise", "Handed over", "Entregada"),
@@ -126,11 +156,20 @@ export default function OrganizationShopNotificationsPanel({
     {open && <div style={{ display: "grid", gap: 9 }}>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 7, alignItems: "center" }}>
         <button type="button" style={btn} disabled={busy || inbox.unreadCount === 0} onClick={() => void markAll()}>{L("Tout marquer comme lu", "Mark all as read", "Marcar todo leído")}</button>
+        <button type="button" style={btn} disabled={pushBusy || !pushAvailability.available} onClick={() => void togglePush()}>
+          {pushBusy ? L("Configuration…", "Configuring…", "Configurando…") : pushEnabled
+            ? L("Désactiver les push Boutique", "Disable shop push", "Desactivar push")
+            : L("Activer les push Boutique (PWA)", "Enable shop push (PWA)", "Activar push")}
+        </button>
         {typeof window !== "undefined" && "Notification" in window && (alertsEnabled
           ? <button type="button" style={btn} onClick={disableBrowserAlerts}>{L("Désactiver les alertes navigateur", "Disable browser alerts", "Desactivar alertas")}</button>
           : <button type="button" style={btn} onClick={() => void enableBrowserAlerts()}>{L("Activer les alertes navigateur", "Enable browser alerts", "Activar alertas")}</button>)}
       </div>
-      <small style={{ color: theme.textSoft, fontSize: 10 }}>{L("Synchronisation automatique toutes les 45 s quand la page est ouverte. Pas de notification push lorsque l'application est fermée.", "Automatically checks every 45s while this page is open. No push when the app is closed.", "Actualización cada 45 s con la página abierta. Sin push con la app cerrada.")}</small>
+      <small style={{ color: theme.textSoft, fontSize: 10 }}>
+        {pushAvailability.available
+          ? L("Alertes internes : toutes les 45 s. Push Web hors page : après déploiement de la fonction serveur et configuration du Cron.", "In-app alerts: every 45s. Web Push when closed: requires the server function and Cron.", "Avisos internos cada 45 s. Push web requiere servidor y Cron.")
+          : pushAvailability.reason}
+      </small>
       {!inbox.items.length && !error && <small style={{ color: theme.textSoft }}>{L("Pas encore de notification.", "No notifications yet.", "Sin notificaciones todavía.")}</small>}
       {visible.map((item) => <button key={item.id} type="button" style={{ ...btn, textAlign: "left", display: "grid", gap: 4, background: item.isRead ? "rgba(0,0,0,.04)" : `${theme.primary}20`, color: theme.text, borderColor: item.isRead ? theme.borderSoft : theme.primary }} onClick={() => onSelectRequest(item.requestId)}>
         <span style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>

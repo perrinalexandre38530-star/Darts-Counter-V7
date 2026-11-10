@@ -136,10 +136,10 @@ export default function TrainingDartPad({
   }, [disabled]);
 
   React.useEffect(() => {
-    if ((method === "visit_score" && !canQuick) || (method === "camera" && !cameraAvailable) || (method === "external" && !externalConnected)) {
+    if ((method === "visit_score" && !canQuick) || (method === "voice" && !voice.supported) || (method === "camera" && !cameraAvailable) || (method === "external" && !externalConnected)) {
       setMethod("keypad");
     }
-  }, [method, canQuick, cameraAvailable, externalConnected]);
+  }, [method, canQuick, voice.supported, cameraAvailable, externalConnected]);
 
   const changeMethod = (next: TrainingMethod) => {
     if (disabled || currentThrow.length > 0) return;
@@ -183,7 +183,7 @@ export default function TrainingDartPad({
 
   return <div className="mssTrainingPad" aria-label="Saisie de l'entraînement">
     {enableMethods && <div className="mssTrainingInputToolbar">
-      <button className="mssTrainingMethodButton" type="button" title="Choisir le mode de saisie" aria-label="Choisir le mode de saisie" aria-haspopup="dialog" onClick={() => setDrawerOpen(true)} disabled={disabled}>
+      <button className="mssTrainingMethodButton" type="button" title="Choisir le mode de saisie" aria-label="Choisir le mode de saisie" aria-haspopup="dialog" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)} disabled={disabled}>
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M7 16h10"/></svg>
       </button>
       <div className="mssTrainingMethodLabel"><small>MODE DE SAISIE</small><strong>{currentMethod.label}</strong></div>

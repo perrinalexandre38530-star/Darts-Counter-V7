@@ -813,7 +813,9 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
           </section>}
 
           {tab === "program" && <section className="mssTrainingHubMobileNext" aria-label="Prochaine étape d'entraînement">
-            <div className="mssTrainingHubNextHead"><HubGlyph name={programDraft ? "history" : "coach"} size={18}/><span>{programDraft ? "SÉANCE À REPRENDRE" : pausedExerciseDrafts.length ? "EXERCICE EN PAUSE" : actionCoach.eyebrow}</span></div>
+            <div className="mssTrainingHubNextHead"><HubGlyph name={programDraft ? "history" : "coach"} size={18}/><span>{programDraft ? "SÉANCE À REPRENDRE" : pausedExerciseDrafts.length ? "EXERCICE EN PAUSE" : actionCoach.eyebrow}</span>
+              {trainingSessionCards.length > 0 && <button className="mssTrainingHubLastResult" type="button" onClick={() => setTab("sessions")} aria-label={`Voir mon dernier bilan, ${Math.round(trainingSessionCards[0].performance)} sur 100`}>BILAN {Math.round(trainingSessionCards[0].performance)}/100 ›</button>}
+            </div>
             <div className="mssTrainingHubNextBody">
               <div className="mssTrainingHubNextCopy"><strong>{programDraft?.programTitle || pausedExerciseDrafts[0]?.exercise.title || actionCoach.title}</strong>
                 <small>{programDraft ? `Étape ${programDraft.nextStepIndex + 1}/${programDraft.exerciseIds.length}` : pausedExerciseDrafts.length ? "Reprendre sans perdre sa progression" : `${actionCoach.durationMin} MIN · ${actionCoach.familyLabel}`}</small></div>
@@ -849,9 +851,13 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
             <div style={{ fontSize: 11, fontWeight: 950, margin: "18px 0 10px" }}>SÉANCES TERMINÉES</div>
             {!trainingSessionCards.length && <div style={{ opacity: .66, fontSize: 11, padding: 16 }}>Aucune séance terminée pour le moment.</div>}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,375px),1fr))", gap: 12 }}>
-              {trainingSessionCards.map((card) => <TrainingSessionResultsCard
+              {trainingSessionCards.map((card, index) => <TrainingSessionResultsCard
                 key={card.id}
                 card={card}
+                allCards={trainingSessionCards}
+                latest={index === 0}
+                onNextAction={index === 0 ? () => { setTab("program"); setShowMobileDetails(true); setDetailSheet(nextRecommendation ? "followup" : "coach"); } : undefined}
+                onFocusExercise={index === 0 ? (id) => { if (!TRAINING_EXERCISE_CATALOG.some((exercise) => exercise.id === id)) return; setTab("exercises"); setExercisePanel("catalog"); openExerciseDetail(id); } : undefined}
                 expanded={expandedTrainingSessionId === card.id}
                 onToggle={() => setExpandedTrainingSessionId((id) => id === card.id ? null : card.id)}
               />)}

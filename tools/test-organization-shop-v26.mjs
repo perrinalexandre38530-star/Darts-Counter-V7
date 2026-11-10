@@ -1,7 +1,7 @@
 // MSS V26 — centre d'alertes de la Boutique (tests structurels sans base distante).
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
-import ts from '/opt/nvm/versions/node/v22.16.0/lib/node_modules/typescript/lib/typescript.js';
+import ts from 'typescript';
 const read = (path) => fs.readFileSync(new URL('../' + path, import.meta.url), 'utf8');
 const codeFiles = [
   'src/organizations/organizationShopNotifications.ts',

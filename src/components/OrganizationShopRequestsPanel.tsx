@@ -1,4 +1,5 @@
 import React from "react";
+import OrganizationShopNotificationsPanel from "./OrganizationShopNotificationsPanel";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
@@ -163,6 +164,9 @@ export default function OrganizationShopRequestsPanel({ organization, userId }: 
       </div>
       <button type="button" style={btn} onClick={() => setOpen((v) => !v)} aria-expanded={open}>{open ? L("Masquer", "Hide", "Ocultar") : L("Gérer", "Manage", "Gestionar")}</button>
     </div>
+    <OrganizationShopNotificationsPanel organizationId={organization.id} userId={userId} onSelectRequest={(requestId) => {
+      setFilter("all"); setSearch(requestId); setOpen(true);
+    }} />
     {open ? <>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(100px,1fr))", gap: 7 }}>
         {([{ key: "pending", count: stats.pending }, { key: "accepted", count: stats.accepted }, { key: "ready", count: stats.ready }, { key: "all", count: stats.total }] as const).map(({ key, count }) => <button type="button" key={key}

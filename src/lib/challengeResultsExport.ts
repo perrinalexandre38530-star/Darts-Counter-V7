@@ -1,6 +1,59 @@
 import { enrichChallengeReport } from './challengeFullReport';
 import { zipSync } from 'fflate';
-import historyTickerSrc from '../assets/tickers/ticker_history.png';
+import tickerX01 from '../assets/tickers/ticker_x01.png';
+import tickerCricket from '../assets/tickers/ticker_cricket.png';
+import tickerChallenge from '../assets/tickers/ticker_challenge.png';
+import tickerAttrapeMoi from '../assets/tickers/ticker_attrape_moi.png';
+import tickerGotcha from '../assets/tickers/ticker_gotcha.png';
+import tickerKiller from '../assets/tickers/ticker_killer.png';
+import tickerGolf from '../assets/tickers/ticker_golf.png';
+import tickerFiveLives from '../assets/tickers/ticker_five_lives.png';
+import tickerLoterie from '../assets/tickers/ticker_loterie.png';
+import tickerSuperBull from '../assets/tickers/ticker_super_bull.png';
+import tickerHalveIt from '../assets/tickers/ticker_halve_it.png';
+import tickerBowling from '../assets/tickers/ticker_bowling.png';
+import tickerBaseball from '../assets/tickers/ticker_baseball.png';
+import tickerPendu from '../assets/tickers/ticker_pendu.png';
+import tickerScram from '../assets/tickers/ticker_scram.png';
+import tickerPrisoner from '../assets/tickers/ticker_prisoner.png';
+import tickerCastle from '../assets/tickers/ticker_castle.png';
+import tickerBob27 from '../assets/tickers/ticker_bobs_27.png';
+import tickerCrados from '../assets/tickers/ticker_crados.png';
+import tickerShanghai from '../assets/tickers/ticker_shanghai.png';
+import tickerCountUp from '../assets/tickers/ticker_count_up.png';
+import tickerCapital from '../assets/tickers/ticker_capital.png';
+import tickerBastard from '../assets/tickers/ticker_bastard.png';
+import tickerCargo from '../assets/tickers/ticker_cargo.png';
+import tickerDartsPoker from '../assets/tickers/ticker_darts_poker.png';
+import tickerDartsRacer from '../assets/tickers/ticker_darts_racer.png';
+import tickerDartsFirefighter from '../assets/tickers/ticker_darts_firefighter.png';
+import tickerWarfare from '../assets/tickers/ticker_warfare.png';
+import tickerPresident from '../assets/tickers/ticker_president.png';
+import tickerMenteur from '../assets/tickers/ticker_menteur.png';
+import tickerPtit1 from '../assets/tickers/ticker_ptit_1.png';
+import tickerOceanControl from '../assets/tickers/ticker_ocean_control.png';
+import tickerTicTacToe from '../assets/tickers/ticker_tic_tac_toe.png';
+import tickerHareHounds from '../assets/tickers/ticker_hare_hounds.png';
+import tickerFootball from '../assets/tickers/ticker_football.png';
+import tickerBssKing from '../assets/tickers/ticker_bss_king.webp';
+import tickerTop10 from '../assets/tickers/ticker_top_10.webp';
+import tickerSauteMoutons from '../assets/tickers/ticker_saute_moutons.webp';
+import tickerTroop from '../assets/tickers/ticker_troupeau_en_danger.webp';
+import tickerBimBamBoum from '../assets/tickers/ticker_bim_bam_boum_fr.webp';
+import tickerLaSuite from '../assets/tickers/ticker_la_suite_fr.webp';
+import tickerGreenVsRed from '../assets/tickers/ticker_green_vs_red.webp';
+import tickerBlackVsWhite from '../assets/tickers/ticker_black_vs_white_fr.webp';
+import tickerColorCall from '../assets/tickers/ticker_color_call_fr.webp';
+import tickerThreeColors from '../assets/tickers/ticker_three_colors_fr.webp';
+import tickerSplitScore from '../assets/tickers/ticker_split_score_fr.webp';
+import tickerChase from '../assets/tickers/ticker_chase_fr.webp';
+import tickerRaclette from '../assets/tickers/ticker_une_ptite_raclette_fr.webp';
+import tickerNineDart from '../assets/tickers/ticker_nine_dart_century.webp';
+import tickerHiScore from '../assets/tickers/ticker_hi_score.webp';
+import tickerClosestCenter from '../assets/tickers/ticker_closest_center.webp';
+import tickerDoubleDown from '../assets/tickers/ticker_double_down.webp';
+import tickerShovePenny from '../assets/tickers/ticker_shove_a_penny.webp';
+
 
 /**
  * Portable visual report for every Challenge exercise (PNG and multipage PDF).
@@ -21,6 +74,8 @@ export type ChallengeExportPlayer = {
   avgVisit: number | null;
   metrics: ChallengeExportMetric[];
   headlineMetrics?: ChallengeExportMetric[];
+  scoreDisplay?: string; // Unit-specific match result; never remaining X01 score
+  scoreSecondary?: string;
   visits: number[];
   avatarUrl?: string | null;
 };
@@ -37,6 +92,8 @@ export type ChallengeExportReport = {
   appLogoSrc?: string;
   footerBrand?: string;
   sportLabel?: string;
+  matchType?: 'x01' | 'generic';
+  matchBreakdown?: { headers: string[]; rows: string[][]; note?: string };
 };
 
 export type ExportFormat = 'pdf' | 'png' | 'share';
@@ -282,6 +339,220 @@ function headlineStatsForPlayer(player: ChallengeExportPlayer): ChallengeExportM
   return known.slice(0, 4);
 }
 
+
+/**
+ * X01 DUEL — mirrored column-major statistics, matching the validated X01
+ * History comparison: player / stat label / player.  The winning set/leg score
+ * comes from the saved X01 counters, never from a remaining 501/301 balance.
+ * Shared by PDF and fixed-size PNG exports and does not affect other modes.
+ */
+type X01DuelRow = { label: string; left: string; right: string; tone: 'higher' | 'lower' | 'neutral' };
+
+function x01DuelRows(report: ChallengeExportReport): X01DuelRow[] {
+  const [left, right] = report.players;
+  if (!left || !right) return [];
+  const norm = (text: unknown) => String(text ?? '').normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
+  const excluded = /^(RESTANT|REMAINING|SCORE FINAL|SCORE ENREGISTRE|POINTS RESTANTS)$/;
+  const all = [left, right].flatMap(player => player.metrics || []);
+  const seen = new Set<string>();
+  const rows: X01DuelRow[] = [];
+  const valueFor = (player: ChallengeExportPlayer, keys: string[]): string => {
+    for (const key of keys) {
+      const found = player.metrics.find(metric => norm(metric.label) === norm(key));
+      if (found && String(found.value).trim() !== '') return String(found.value);
+    }
+    return '—';
+  };
+  const register = (title: string, aliases: string[], tone: X01DuelRow['tone'] = 'neutral') => {
+    const mapped = aliases.map(norm);
+    if (mapped.every(key => seen.has(key))) return;
+    const leftValue = valueFor(left, aliases);
+    const rightValue = valueFor(right, aliases);
+    if (leftValue === '—' && rightValue === '—') return;
+    mapped.forEach(key => seen.add(key));
+    rows.push({ label:title, left:leftValue, right:rightValue, tone });
+  };
+  // Preserve X01's existing metric vocabulary and group the main KPIs first.
+  const ordered: Array<[string, string[], X01DuelRow['tone']]> = [
+    ['SETS GAGNÉS', ['SETS REMPORTÉS','SETS GAGNÉS','SETS'], 'higher'],
+    ['LEGS GAGNÉS', ['LEGS REMPORTÉS','LEGS GAGNÉS','LEGS'], 'higher'],
+    ['POINTS MARQUÉS', ['PTS MARQUÉS','POINTS MARQUÉS','TOTAL SCORE'], 'neutral'],
+    ['AVG3', ['AVG3','AVG3D','MOYENNE 3 FLÉCHETTES'], 'higher'],
+    ['MEILLEURE VOLÉE', ['BEST VOLÉE','MEILLEURE VOLÉE','BEST VISIT'], 'higher'],
+    ['CHECKOUT MAX', ['CHECKOUT','BEST CHECKOUT','HIGHEST CHECKOUT'], 'higher'],
+    ['CHECKOUTS RÉUSSIS', ['CHECKOUT RÉUSSIS','CHECKOUT HITS'], 'higher'],
+    ['TENTATIVES CHECKOUT', ['TENTATIVES CHECKOUT','CHECKOUT ATTEMPTS'], 'neutral'],
+    ['TAUX CHECKOUT', ['TAUX CHECKOUT','CHECKOUT RATE'], 'higher'],
+    ['180', ['180','H180'], 'higher'],
+    ['140+', ['140+','H140'], 'higher'],
+    ['100+', ['100+','H100'], 'higher'],
+    ['60+', ['60+','H60'], 'higher'],
+    ['FLÉCHETTES', ['FLÉCHETTES','DARTS'], 'neutral'],
+    ['TOURS / VOLÉES', ['TOURS','VISITS'], 'neutral'],
+    ['MISS', ['MISS','MISSES'], 'lower'],
+    ['BUSTS', ['BUSTS','BUST'], 'lower'],
+    ['SIMPLES', ['SIMPLES','SINGLES'], 'neutral'],
+    ['DOUBLES', ['DOUBLES'], 'neutral'],
+    ['TRIPLES', ['TRIPLES'], 'neutral'],
+    ['BULL 25', ['BULL','BULL 25','BULLS'], 'neutral'],
+    ['DBULL 50', ['DBULL','DBULL 50','DBULLS'], 'neutral'],
+    ['PRÉCISION', ['RÉUSSITE','REUSSITE','PRÉCISION','PRECISION'], 'higher'],
+  ];
+  for (const [title, aliases, tone] of ordered) register(title, aliases, tone);
+  for (const metric of all) {
+    const key = norm(metric.label);
+    if (!key || seen.has(key) || excluded.test(key)) continue;
+    register(metric.label.toUpperCase(), [metric.label]);
+  }
+  return rows;
+}
+
+function drawDuelStatRows(ctx:CanvasRenderingContext2D, y:number,
+  rows:X01DuelRow[], report:ChallengeExportReport):number {
+  const colLeft = MARGIN + CONTENT*.235;
+  const colRight = MARGIN + CONTENT*.765;
+  const center = WIDTH/2;
+  const rowH = 59;
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+    const row = rows[rowIndex];
+    const top = y + rowIndex*rowH;
+    rectangle(ctx, MARGIN, top, CONTENT, rowH-5,
+      rowIndex%2 ? '#0d1b2a' : '#122033', BORDER, 8);
+    const toNumber = (s:string):number => {
+      if (s === '—') return NaN;
+      const match = s.replace(',','.').match(/^-?\d+(?:\.\d+)?/);
+      return match ? Number(match[0]) : NaN;
+    };
+    const lv = toNumber(row.left), rv = toNumber(row.right);
+    const unique = row.tone !== 'neutral' && Number.isFinite(lv) && Number.isFinite(rv) && lv !== rv;
+    const leftBest = unique && (row.tone === 'higher' ? lv > rv : lv < rv);
+    const rightBest = unique && !leftBest;
+    // Two symmetrical value zones; central column carries only the stat label.
+    const leftColor = leftBest ? '#ffcb70' : '#eaf2ff';
+    const rightColor = rightBest ? '#ffcb70' : '#eaf2ff';
+    txt(ctx, label(row.left,25), colLeft, top+25, 29, leftColor, 950, 'center', CONTENT*.37);
+    txt(ctx, label(row.label,26), center, top+25, 17, '#b8cee4', 900, 'center', CONTENT*.29);
+    txt(ctx, label(row.right,25), colRight, top+25, 29, rightColor, 950, 'center', CONTENT*.37);
+    const leftLine=ctx.createLinearGradient(MARGIN+12,top,center-165,top);
+    leftLine.addColorStop(0,leftBest?'rgba(255,187,80,.9)':'rgba(96,167,212,.65)');
+    leftLine.addColorStop(1,'rgba(255,255,255,0)');
+    const rightLine=ctx.createLinearGradient(center+165,top,MARGIN+CONTENT-12,top);
+    rightLine.addColorStop(0,'rgba(255,255,255,0)');
+    rightLine.addColorStop(1,rightBest?'rgba(255,187,80,.9)':'rgba(96,167,212,.65)');
+    ctx.fillStyle=leftLine;ctx.fillRect(MARGIN+12,top+rowH-12,CONTENT*.32,2);
+    ctx.fillStyle=rightLine;ctx.fillRect(MARGIN+CONTENT*.68,top+rowH-12,CONTENT*.32-12,2);
+  }
+  return y+rows.length*rowH;
+}
+
+function buildX01DuelPages(report:ChallengeExportReport, assets:PreparedAssets=EMPTY_ASSETS):HTMLCanvasElement[] {
+  const [left,right] = report.players;
+  if (!left || !right) return buildSummaryPages(report,assets);
+  const pages:HTMLCanvasElement[]=[];
+  let ctx:CanvasRenderingContext2D;
+  let y=0;
+  const maxY=PAGE_BOTTOM-12;
+  const middle=WIDTH/2;
+  const leftCenter=MARGIN+CONTENT*.235;
+  const rightCenter=MARGIN+CONTENT*.765;
+  const metric=(player:ChallengeExportPlayer,labelName:string) =>
+    player.metrics.find(m => m.label === labelName)?.value ?? '—';
+  const addPage=(continuation=false)=>{
+    const c=document.createElement('canvas');
+    c.width=WIDTH;c.height=PDF_SLICE_HEIGHT;
+    const context=c.getContext('2d');
+    if(!context)throw new Error('Impossible de générer la page de duel.');
+    ctx=context;pages.push(c);
+    const bg=ctx.createLinearGradient(0,0,0,PDF_SLICE_HEIGHT);
+    bg.addColorStop(0,'#091422');bg.addColorStop(1,'#030610');
+    ctx.fillStyle=bg;ctx.fillRect(0,0,WIDTH,PDF_SLICE_HEIGHT);
+    const title=continuation?'STATISTIQUES X01 · FACE À FACE':report.title;
+    drawHeader(ctx,report,assets,title,report.date,
+      pages.length===1?'DUEL X01':'PAGE '+pages.length);
+    drawArcadeFooter(ctx,PDF_SLICE_HEIGHT,report);
+    y=207;
+    // Keep both players visible on every page, including continuation pages.
+    const heroHeight=continuation?142:233;
+    rectangle(ctx,MARGIN,y,CONTENT,heroHeight,'#101d2e','#42566d',19);
+    ctx.fillStyle='#58c8f0';ctx.fillRect(MARGIN+5,y+14,4,heroHeight-28);
+    ctx.fillStyle='#fa6076';ctx.fillRect(MARGIN+CONTENT-9,y+14,4,heroHeight-28);
+    if(!continuation){
+      drawCircularAvatar(ctx,leftCenter-55,y+15,110,left,resolveAvatarImage(left,assets),'#58c8f0');
+      drawCircularAvatar(ctx,rightCenter-55,y+15,110,right,resolveAvatarImage(right,assets),'#fa6076');
+    }else{
+      drawCircularAvatar(ctx,leftCenter-41,y+11,82,left,resolveAvatarImage(left,assets),'#58c8f0');
+      drawCircularAvatar(ctx,rightCenter-41,y+11,82,right,resolveAvatarImage(right,assets),'#fa6076');
+    }
+    const nY=y+(continuation?112:157);
+    txt(ctx,label(left.name.toUpperCase(),24),leftCenter,nY,continuation?24:28,TEXT,950,'center',CONTENT*.4);
+    txt(ctx,label(right.name.toUpperCase(),24),rightCenter,nY,continuation?24:28,TEXT,950,'center',CONTENT*.4);
+    rectangle(ctx,middle-133,y+(continuation?24:35),266,continuation?87:145,'#241b2a','#855268',17);
+    txt(ctx,'SCORE DU MATCH',middle,y+(continuation?47:60),15,'#ffb4bf',950,'center');
+    const setLeft=metric(left,'SETS REMPORTÉS'),setRight=metric(right,'SETS REMPORTÉS');
+    const legLeft=metric(left,'LEGS REMPORTÉS'),legRight=metric(right,'LEGS REMPORTÉS');
+    txt(ctx,`${setLeft}  :  ${setRight}`,middle,y+(continuation?73:101),continuation?31:40,'#ffe2ae',1000,'center');
+    txt(ctx,`SETS · LEGS ${legLeft} – ${legRight}`,middle,y+(continuation?98:143),continuation?13:17,'#f0d4de',850,'center');
+    if(!continuation){
+      txt(ctx,'STATISTIQUES CUMULÉES SUR LE MATCH',middle,y+202,18,'#a7c9de',800,'center');
+    }
+    y+=heroHeight+19;
+  };
+  const heading=(name:string)=>{
+    // Keep every heading with at least one following comparison row.
+    if(y+49+59>maxY)addPage(true);
+    txt(ctx,name,MARGIN+6,y+19,25,RED,950);
+    y+=45;
+  };
+  addPage();
+  if(report.configSummary?.length){
+    // Compact but readable config strip on the very first page.
+    const brief=report.configSummary.filter(m=>
+      /MODE|DÉPART|ENTRÉE|SORTIE|FORMAT|SETS|LEGS|BO|FT/i.test(m.label)).slice(0,5);
+    if(brief.length){
+      rectangle(ctx,MARGIN,y,CONTENT,75,'#0d1b29',BORDER,12);
+      const column=CONTENT/brief.length;
+      brief.forEach((m,i)=>{
+        const cx=MARGIN+column*(i+.5);
+        txt(ctx,label(m.label.toUpperCase(),22),cx,y+21,15,'#a2bed6',900,'center',column-16);
+        txt(ctx,label(m.value,22),cx,y+49,22,'#eaf6ff',950,'center',column-16);
+      });
+      y+=93;
+    }
+  }
+  heading('COMPARATIF DES STATISTIQUES');
+  const duelRows=x01DuelRows(report);
+  if(!duelRows.length){
+    txt(ctx,'Statistiques individuelles non conservées dans cette archive',middle,y+24,19,MUTED,700,'center');
+    y+=65;
+  }
+  let cursor=0;
+  while(cursor<duelRows.length){
+    const canFit=Math.floor((maxY-y)/59);
+    if(canFit<=0){addPage(true);heading('COMPARATIF · SUITE');continue;}
+    const chunk=duelRows.slice(cursor,cursor+canFit);
+    y=drawDuelStatRows(ctx,y,chunk,report);
+    cursor+=chunk.length;
+  }
+  if(report.matchBreakdown?.rows.length){
+    const breakdown=report.matchBreakdown;
+    const rows=breakdown.rows;
+    let index=0;
+    while(index<rows.length){
+      if(y+105>maxY)addPage(true);
+      heading(index?'RÉSULTATS SET PAR SET · SUITE':'RÉSULTATS SET PAR SET');
+      while(index<rows.length && y+59<=maxY){
+        const row=rows[index];
+        const leftLegs=String(row[1]??'—');
+        const rightLegs=String(row[2]??'—');
+        y=drawDuelStatRows(ctx,y,[{label:'SET '+String(row[0]??index+1)+' · LEGS',left:leftLegs,right:rightLegs,tone:'higher'}],report);
+        index++;
+      }
+    }
+  }
+  return pages;
+}
+
 function buildSummaryPages(report: ChallengeExportReport, assets: PreparedAssets = EMPTY_ASSETS): HTMLCanvasElement[] {
   const pages: HTMLCanvasElement[] = [];
   let ctx: CanvasRenderingContext2D;
@@ -302,9 +573,9 @@ function buildSummaryPages(report: ChallengeExportReport, assets: PreparedAssets
     bg.addColorStop(1, '#03060d');
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, WIDTH, PDF_SLICE_HEIGHT);
-    const headline = `${report.date}  •  ${report.rounds} ${report.unit}`;
+    const headline = report.rounds > 0 ? `${report.date}  •  ${report.rounds} ${report.unit}` : report.date;
     drawHeader(ctx, report, assets, report.title, headline,
-      pages.length === 1 ? 'SCORE GLOBAL' : `PAGE ${pages.length}`);
+      pages.length === 1 ? (report.matchType === 'x01' ? 'RÉSULTAT X01' : 'RÉSULTAT FINAL') : `PAGE ${pages.length}`);
     drawArcadeFooter(ctx, PDF_SLICE_HEIGHT, report);
     y = bodyTop;
     if (pages.length > 1) {
@@ -349,10 +620,10 @@ function buildSummaryPages(report: ChallengeExportReport, assets: PreparedAssets
     winner ? resolveAvatarImage(winner, assets) : null);
   txt(ctx, report.players.length > 1 ? 'VAINQUEUR' : 'RÉSULTAT', MARGIN + 162, y + 46, 18, MUTED, 850);
   txt(ctx, leadName.toUpperCase(), MARGIN + 162, y + 88, 36, TEXT, 950, 'left', 480);
-  txt(ctx, winner && Number.isFinite(winner.score) ? `${winner.score} PTS` : 'SCORE —',
-    MARGIN + CONTENT - 28, y + 88, 54, RED, 980, 'right', 360);
+  txt(ctx, winner?.scoreDisplay || (winner && Number.isFinite(winner.score) ? `${winner.score} PTS` : 'RÉSULTAT —'),
+    MARGIN + CONTENT - 28, y + 88, report.matchType === 'x01' ? 30 : 54, RED, 980, 'right', report.matchType === 'x01' ? 470 : 360);
   const scoreBreakdown = report.players.slice(0, 4).map((player, index) =>
-    `${index + 1}. ${label(player.name, 12)} · ${Number.isFinite(player.score) ? player.score + ' pts' : '—'}`).join('   •   ');
+    `${index + 1}. ${label(player.name, 12)} · ${player.scoreDisplay || (Number.isFinite(player.score) ? player.score + ' pts' : '—')}`).join('   •   ');
   txt(ctx, scoreBreakdown || 'Aucun classement disponible', MARGIN + 162, y + 138,
     16, '#d9e7f4', 700, 'left', CONTENT - 220);
   y += 209;
@@ -366,6 +637,32 @@ function buildSummaryPages(report: ChallengeExportReport, assets: PreparedAssets
     sectionHeading('CONFIGURATION DE LA PARTIE', 104);
     drawMetrics(report.configSummary, '#c7f1ff');
     y += 10;
+  }
+
+  if (report.matchBreakdown?.rows.length) {
+    const breakdown = report.matchBreakdown;
+    sectionHeading('RÉSULTAT SET PAR SET', 43 + Math.min(4, breakdown.rows.length) * 44);
+    const columns = breakdown.headers;
+    const rowHeight = 44;
+    const drawLine = (row: string[], header: boolean) => {
+      ensureRoom(rowHeight, 'RÉSULTAT SET PAR SET · SUITE');
+      rectangle(ctx, MARGIN, y, CONTENT, 39, header ? '#1a3043' : '#102030', header ? '#6587a8' : BORDER, 8);
+      const colWidth = CONTENT / Math.max(columns.length, 1);
+      columns.forEach((_head, idx) => {
+        txt(ctx, label(row[idx] || '—', 30), MARGIN + idx * colWidth + 12, y + 20,
+          header ? 15 : 19, idx === 0 ? '#ffb4c0' : (header ? '#c7e1f4' : TEXT), header ? 900 : 800,
+          'left', colWidth - 22);
+      });
+      y += rowHeight;
+    };
+    drawLine(columns, true);
+    breakdown.rows.slice(0, 4).forEach(row => drawLine(row, false));
+    if (breakdown.rows.length > 4) {
+      ensureRoom(34, 'RÉSULTAT SET PAR SET · SUITE');
+      txt(ctx, 'Détail des autres sets dans les pages suivantes', MARGIN + 12, y + 14, 16, MUTED, 650);
+      y += 34;
+    }
+    y += 11;
   }
 
   sectionHeading('CLASSEMENT FINAL', report.players.length ? 79 : 40);
@@ -382,8 +679,8 @@ function buildSummaryPages(report: ChallengeExportReport, assets: PreparedAssets
     drawCircularAvatar(ctx, MARGIN + 54, y + 10, 50, player,
       resolveAvatarImage(player, assets), i === 0 ? RED : '#62beff');
     txt(ctx, label(player.name.toUpperCase(), 30), MARGIN + 117, y + 36, 24, TEXT, 850, 'left', 540);
-    txt(ctx, Number.isFinite(player.score) ? `${player.score} PTS` : 'SCORE —',
-      MARGIN + CONTENT - 21, y + 36, 28, i === 0 ? RED : '#e6efff', 950, 'right');
+    txt(ctx, player.scoreDisplay || (Number.isFinite(player.score) ? `${player.score} PTS` : 'RÉSULTAT —'),
+      MARGIN + CONTENT - 21, y + 36, report.matchType === 'x01' ? 21 : 28, i === 0 ? RED : '#e6efff', 950, 'right', 400);
     y += 79;
   }
   y += 12;
@@ -426,8 +723,8 @@ function buildSummaryPages(report: ChallengeExportReport, assets: PreparedAssets
         resolveAvatarImage(player, assets), '#62beff');
       txt(ctx, label(player.name.toUpperCase(), 33), MARGIN + 104, y + 35,
         27, TEXT, 950, 'left', 630);
-      txt(ctx, Number.isFinite(player.score) ? `${player.score} PTS` : 'SCORE —',
-        MARGIN + CONTENT - 23, y + 35, 31, RED, 950, 'right');
+      txt(ctx, player.scoreDisplay || (Number.isFinite(player.score) ? `${player.score} PTS` : 'RÉSULTAT —'),
+        MARGIN + CONTENT - 23, y + 35, report.matchType === 'x01' ? 23 : 31, RED, 950, 'right', 370);
       if (featured.length) {
         const gap = 13;
         const cols = Math.min(4, featured.length);
@@ -590,14 +887,22 @@ function detailedPages(report:ChallengeExportReport, assets: PreparedAssets = EM
 }
 
 function reportCanvasPages(report:ChallengeExportReport):HTMLCanvasElement[]{
- const summary = buildSummaryPages(report);
- return [...summary, ...detailedPages(report, EMPTY_ASSETS, summary.length)];
+ const summary = report.matchType === 'x01' && report.players.length === 2
+  ? buildX01DuelPages(report) : buildSummaryPages(report);
+ const detailed = report.matchType === 'x01' && report.players.length === 2
+  ? {...report, details:(report.details||[]).filter(section=>!/(?:STATISTIQUES ENREGISTRÉES|BILAN COMPLET DES JOUEURS|RÉSULTATS SET PAR SET|PARAMÈTRES DE LA PARTIE)/i.test(section.title))}
+  : report;
+ return [...summary, ...detailedPages(detailed, EMPTY_ASSETS, summary.length)];
 }
 
 async function reportCanvasPagesPrepared(report:ChallengeExportReport):Promise<HTMLCanvasElement[]>{
  const assets = await prepareAssets(report);
- const summary = buildSummaryPages(report, assets);
- return [...summary, ...detailedPages(report, assets, summary.length)];
+ const summary = report.matchType === 'x01' && report.players.length === 2
+  ? buildX01DuelPages(report, assets) : buildSummaryPages(report, assets);
+ const detailed = report.matchType === 'x01' && report.players.length === 2
+  ? {...report, details:(report.details||[]).filter(section=>!/(?:STATISTIQUES ENREGISTRÉES|BILAN COMPLET DES JOUEURS|RÉSULTATS SET PAR SET|PARAMÈTRES DE LA PARTIE)/i.test(section.title))}
+  : report;
+ return [...summary, ...detailedPages(detailed, assets, summary.length)];
 }
 
 /** Rasterize each printed page separately (1200 x 1698 pixels, A4 aspect).
@@ -1021,7 +1326,7 @@ const REPORT_STAT_FIELDS: Array<{title:string;names:string[];unit?:string}> = [
  {title:'VIES',names:['livesLeft','remainingLives','lives']},
  {title:'VICTIMES',names:['victims','victimsHit']},
  {title:'COUPS',names:['shots','throws','attempts']},
- {title:'PTS MARQUÉS',names:['pointsScored','scoredPoints','totalPointsScored']},
+ {title:'PTS MARQUÉS',names:['pointsScored','scoredPoints','totalPointsScored','scoredTotal','totalScored']},
  {title:'RESTANT',names:['remaining','remainingScore','scoreLeft']},
  {title:'SECTEURS',names:['sectors','territories','ownedTerritories']},
  {title:'VOLÉES PARFAITES',names:['perfectVisits','perfectRounds']},
@@ -1163,15 +1468,76 @@ function pickVisitScores(objects:any[]):number[]{
  }
  return [];
 }
-function findTicker(entry:any,payload:any):string {
+const REPORT_MODE_TICKERS: Record<string, string> = {
+ x01:tickerX01,training_x01:tickerX01,cricket:tickerCricket,challenge:tickerChallenge,
+ attrape_moi:tickerAttrapeMoi,gotcha:tickerGotcha,killer:tickerKiller,
+ golf:tickerGolf,five_lives:tickerFiveLives,loterie:tickerLoterie,
+ super_bull:tickerSuperBull,halve_it:tickerHalveIt,bowling:tickerBowling,
+ baseball:tickerBaseball,pendu:tickerPendu,scram:tickerScram,
+ prisoner:tickerPrisoner,castle:tickerCastle,bobs_27:tickerBob27,
+ crados:tickerCrados, 
+ shanghai:tickerShanghai, 
+ count_up:tickerCountUp, 
+ capital:tickerCapital, 
+ bastard:tickerBastard, 
+ cargo:tickerCargo, 
+ darts_poker:tickerDartsPoker, 
+ darts_racer:tickerDartsRacer, 
+ darts_firefighter:tickerDartsFirefighter, 
+ warfare:tickerWarfare, 
+ president:tickerPresident, 
+ menteur:tickerMenteur, 
+ ptit_1:tickerPtit1, 
+ ocean_control:tickerOceanControl, 
+ tic_tac_toe:tickerTicTacToe, 
+ hare_hounds:tickerHareHounds, 
+ football:tickerFootball, 
+ bss_king:tickerBssKing, 
+ top_10:tickerTop10, 
+ saute_moutons:tickerSauteMoutons, 
+ troupeau_en_danger:tickerTroop, 
+ bim_bam_boum:tickerBimBamBoum, 
+ la_suite:tickerLaSuite, 
+ green_vs_red:tickerGreenVsRed, 
+ black_vs_white:tickerBlackVsWhite, 
+ color_call:tickerColorCall, 
+ three_colors:tickerThreeColors, 
+ split_score:tickerSplitScore, 
+ chase:tickerChase, 
+ une_ptite_raclette:tickerRaclette, 
+ nine_dart_century:tickerNineDart, 
+ hi_score:tickerHiScore, 
+ closest_center:tickerClosestCenter, 
+ double_down:tickerDoubleDown, 
+ shove_a_penny:tickerShovePenny,
+};
+function tickerModeKey(value: unknown):string {
+ return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+  .replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+}
+function findTicker(entry:any,payload:any,mode?:string):string {
+ const key = tickerModeKey(mode || entry?.game?.mode || entry?.mode || payload?.summary?.mode || entry?.kind);
+ if(REPORT_MODE_TICKERS[key])return REPORT_MODE_TICKERS[key];
+ const aliases:Record<string,string> = {
+ x01_multi:'x01',x01_quick:'x01',x01_fast:'x01',quick_x01:'x01',
+ x01_v3:'x01',five_lives_killer:'five_lives',crados:'challenge',
+ attrape_moi_v2:'attrape_moi',shanghai:'shanghai',
+  the_chase:'chase',morpion:'tic_tac_toe',ptit1:'ptit_1',
+  le_jdc_challenge:'challenge',jdc:'challenge',
+ };
+ const alias=aliases[key];if(alias && REPORT_MODE_TICKERS[alias])return REPORT_MODE_TICKERS[alias];
+ const found=Object.entries(REPORT_MODE_TICKERS).find(([known])=>key.startsWith(known+'_'));
+ if(found)return found[1];
  const saved=[entry?.game?.tickerSrc,entry?.game?.tickerUrl,entry?.game?.ticker,
   payload?.config?.tickerSrc,payload?.config?.tickerUrl,payload?.config?.ticker,
   entry?.summary?.tickerSrc,payload?.summary?.tickerSrc];
  for(const raw of saved){
   const src=String(raw||'').trim();
-  if(src&&(src.startsWith('data:image/')||src.startsWith('/')||src.startsWith('https://')))return src;
+  // Do not put the History page ticker on a match report.
+  if(src && !/ticker[_/-]histor(?:y|ique)/i.test(src) &&
+     (src.startsWith('data:image/')||src.startsWith('/')||src.startsWith('https://')))return src;
  }
- return historyTickerSrc;
+ return ''; // Neutral graphic, never the unrelated "HISTORY" ticker
 }
 function reportConfig(entry:any,summary:any,payload:any,mode:string,numberOfPlayers:number):ChallengeExportMetric[] {
  const cfg={...(payload?.config&&typeof payload.config==='object'?payload.config:{}),
@@ -1204,6 +1570,278 @@ function reportConfig(entry:any,summary:any,payload:any,mode:string,numberOfPlay
  return output.slice(0,20);
 }
 
+
+/** X01: results are SETS/LEGS, never the residual score of the last leg.
+ * The X01 stats tab already uses these same summary keys and replay structures.
+ * Only explicit saved counters/points are printed; historical gaps remain unknown.
+ */
+function applyX01Report(
+ report:ChallengeExportReport,entry:any,payload:any,summary:any,result:any,source:any[]
+):ChallengeExportReport {
+ const summaries=[summary,payload?.summary,entry?.summary,payload?.resume?.summary,entry?.resume?.summary,result].filter(Boolean);
+ const rankRows=[...source,...summaries.flatMap(root=>Array.isArray(root?.rankings)?root.rankings:[])];
+ const config={...payload?.config,...entry?.game,...summary?.game,...summary?.config};
+ const matchingRow=(player:ChallengeExportPlayer):any=>{
+  const id=String(player.participantId||'');
+  const name=normalizedPersonKey(player.name);
+  return rankRows.find(r=>id&&personId(r)===id)||rankRows.find(r=>normalizedPersonKey(personName(r))===name)||{};
+ };
+ const readMap=(name:string,player:ChallengeExportPlayer):number|null=>{
+  const roots=[...summaries,payload?.stats,entry?.stats];
+  const id=String(player.participantId||'');
+  const nameKey=normalizedPersonKey(player.name);
+  for(const root of roots){
+   const map=root?.[name];
+   if(!map||typeof map!=='object'||Array.isArray(map))continue;
+   if(id&&Object.prototype.hasOwnProperty.call(map,id)){
+    const v=validMetricNumber(map[id]);if(v!==null)return v;
+   }
+   const keys=Object.keys(map).filter(k=>normalizedPersonKey(k)===nameKey);
+   if(keys.length===1){const v=validMetricNumber(map[keys[0]]);if(v!==null)return v;}
+  }
+  return null;
+ };
+ const readPersisted=(player:ChallengeExportPlayer,keys:string[],mapNames:string[]):number|null=>{
+  const r=matchingRow(player);
+  const detailed=summaries.flatMap(root=>{
+   const obj=root?.detailedByPlayer;
+   if(!obj||typeof obj!=='object')return [];
+   const id=String(player.participantId||'');
+   if(id&&obj[id])return [obj[id]];
+   const found=Object.values(obj).filter((v:any)=>normalizedPersonKey(personName(v))===normalizedPersonKey(player.name));
+   return found.length===1?found:[];
+  });
+  // Won sets/legs are cumulative counters; older summary levels may only
+  // contain the *last* set. Prefer the largest explicitly saved cumulative
+  // value over an outdated zero, never the ranking's residual X01 score.
+  const found:number[]=[];
+  for(const obj of [...detailed,r]){
+   for(const key of keys){
+    const number=validMetricNumber(obj?.[key]);
+    if(number!==null && number>=0)found.push(number);
+   }
+  }
+  for(const mapName of mapNames){
+   const value=readMap(mapName,player);
+   if(value!==null && value>=0)found.push(value);
+  }
+  return found.length?Math.max(...found):null;
+ };
+ const savedVisits=summaries.flatMap(root=>[root?.visitHistory,root?.visitsHistory,root?.__legStats?.visits]).find(arr=>Array.isArray(arr)&&arr.length) || [];
+ const savedLegs=summaries.flatMap(root=>[root?.legDetails,root?.legSummaries,root?.__legStats?.legs,root?.legs]).find(arr=>Array.isArray(arr)&&arr.length) || [];
+ const matchPlayer=(person:any,player:ChallengeExportPlayer):boolean=>{
+  if(person===null||person===undefined)return false;
+  const id=String(player.participantId||'');
+  if(typeof person==='string'||typeof person==='number'){
+   const target=String(person);
+   return !!id&&target===id || normalizedPersonKey(target)===normalizedPersonKey(player.name);
+  }
+  const sourceId=personId(person);
+  return !!id&&id===sourceId || normalizedPersonKey(personName(person))===normalizedPersonKey(player.name);
+ };
+ const visitPts=(visit:any):number|null=>{
+  if(visit?.bust===true||visit?.isBust===true)return 0;
+  return validMetricNumber(visit?.score ?? visit?.scored ?? visit?.points);
+ };
+ const numberMetric=(metrics:ChallengeExportMetric[],name:string):number|null=>{
+  const item=metrics.find(m=>m.label===name);
+  return item?validMetricNumber(item.value.replace(/\s*pts$/i,'')):null;
+ };
+ const statRows=(player:ChallengeExportPlayer):any[]=>{
+  const id=String(player.participantId||'');
+  const target=normalizedPersonKey(player.name);
+  const result:any[]=[];
+  for(const root of summaries){
+   for(const mapName of ['detailedByPlayer','liveStatsByPlayer','perPlayerStats','statsByPlayer']){
+    const map=root?.[mapName];
+    if(!map||typeof map!=='object')continue;
+    const entry=id&&map[id];
+    if(entry&&typeof entry==='object')result.push(entry);
+    else{
+     const found=Object.values(map).filter((v:any)=>normalizedPersonKey(personName(v))===target);
+     if(found.length===1)result.push(found[0]);
+    }
+   }
+   for(const arrName of ['perPlayer','players','rankings']){
+    const arr=root?.[arrName];
+    if(!Array.isArray(arr))continue;
+    const matched=arr.filter((v:any)=>id&&personId(v)===id||normalizedPersonKey(personName(v))===target);
+    if(matched.length===1)result.push(matched[0]);
+   }
+  }
+  result.push(matchingRow(player));
+  return result;
+ };
+ const savedStat=(player:ChallengeExportPlayer,keys:string[],mapNames:string[]=[]):number|null=>{
+  const rows=statRows(player);
+  for(const row of rows){
+   const value=validMetricNumber(reportValue([row],keys));
+   if(value!==null)return value;
+  }
+  for(const mapName of mapNames){const value=readMap(mapName,player);if(value!==null)return value;}
+  // Older X01 archives maintain statistics under summary.legacy.
+  const id=String(player.participantId||'');
+  if(id){
+   for(const root of summaries){
+    for(const key of keys){
+     const value=validMetricNumber(root?.legacy?.[key]?.[id]);
+     if(value!==null)return value;
+    }
+   }
+  }
+  return null;
+ };
+ for(const player of report.players){
+  const storedSets=readPersisted(player,['setsWonTotal','setsWon','setWins','wonSets','sets'],
+   ['setsWonByPlayer','setsByPlayer','setsWon','setsScore']);
+  const storedLegs=readPersisted(player,['legsWonTotal','legsWon','legWins','wonLegs','legs'],
+   ['legsWonByPlayer','legsByPlayer','legsWon','legsScore']);
+  const legWins=savedLegs.filter((leg:any)=>matchPlayer(leg?.winnerId??leg?.winner,player)).length;
+  const explicitSetWinners=new Map<number,string>();
+  savedLegs.forEach((leg:any)=>{
+   const set=validMetricNumber(leg?.setNo??leg?.setIndex);
+   const winner=leg?.setWinnerId??leg?.winnerSetId;
+   if(set!==null&&winner)explicitSetWinners.set(set,String(winner));
+  });
+  const setWins=[...explicitSetWinners.values()].filter(w=>matchPlayer(w,player)).length;
+  const sets=storedSets===null?(explicitSetWinners.size?setWins:null):Math.max(storedSets,setWins);
+  const legs=storedLegs===null?(savedLegs.length?legWins:null):Math.max(storedLegs,legWins);
+  // The direct ranking score is often final remaining X01; do not use it.
+  player.score=sets ?? legs ?? Number.NaN;
+  player.scoreDisplay=sets!==null?`${sets} SET${sets===1?'':'S'}${legs!==null?' · '+legs+' LEG'+(legs===1?'':'S'):''}`:
+   legs!==null?`${legs} LEG${legs===1?'':'S'}`:'RÉSULTAT —';
+  player.scoreSecondary=sets!==null?'Sets remportés sur le match':'Legs remportés sur le match';
+  let scored=readPersisted(player,
+    ['totalScore','totalPointsScored','pointsScored','scoredPoints','scoredTotal'],
+    ['pointsByPlayer','scoredPointsByPlayer','totalPointsByPlayer']);
+  if(scored===null)scored=numberMetric(player.metrics,'TOTAL SCORE')??numberMetric(player.metrics,'PTS MARQUÉS');
+  if(scored===null&&savedVisits.length){
+   let total=0,count=0;
+   savedVisits.forEach((v:any)=>{
+    if(!matchPlayer(v?.playerId??v?.pid??v?.profileId,player))return;
+    const pts=visitPts(v);
+    if(pts!==null){total+=pts;count++;}
+   });
+   if(count)scored=total;
+  }
+  const keep=player.metrics.filter(m=>!['RESTANT','SCORE FINAL','REMAINING','TOTAL SCORE',
+    'SETS','LEGS','PTS MARQUÉS','SCORE ENREGISTRÉ'].includes(m.label));
+  // Reuse the same metrics already persisted for the X01 Stats/History screens.
+  const statsToRecover:[string,string[],string[]][]=[
+   ['AVG3',['avg3','avg3d','avg3D','average3Darts','average3'],['avg3ByPlayer']],
+   ['BEST VOLÉE',['bestVisit','highestVisit','bestTurn'],['bestVisitByPlayer']],
+   ['CHECKOUT',['bestCheckout','highestCheckout','highFinish'],['bestCheckoutByPlayer']],
+   ['FLÉCHETTES',['darts','dartsThrown','totalDarts'],['dartsByPlayer']],
+   ['180',['h180','count180','hits180'],['h180ByPlayer']],
+   ['140+',['h140','count140','hits140'],['h140ByPlayer']],
+   ['100+',['h100','count100','hits100'],['h100ByPlayer']],
+   ['MISS',['miss','misses','missCount'],['missByPlayer']],
+   ['BUSTS',['bust','busts','bustCount'],['bustByPlayer']],
+   ['CHECKOUT RÉUSSIS',['checkoutHits'],['checkoutHitsByPlayer']],
+   ['TENTATIVES CHECKOUT',['checkoutAttempts'],['checkoutAttemptsByPlayer']],
+  ];
+  const known=new Set(keep.map(m=>m.label));
+  for(const [name,keys,maps] of statsToRecover){
+   if(known.has(name))continue;
+   const value=savedStat(player,keys,maps);
+   if(value!==null){keep.push({label:name,value:String(Math.round(value*100)/100)});known.add(name);}
+  }
+  const prepend:ChallengeExportMetric[]=[];
+  if(scored!==null)prepend.push({label:'PTS MARQUÉS',value:String(scored)});
+  if(sets!==null)prepend.push({label:'SETS REMPORTÉS',value:String(sets)});
+  if(legs!==null)prepend.push({label:'LEGS REMPORTÉS',value:String(legs)});
+  player.metrics=[...prepend,...keep];
+  const preferred=['AVG3','BEST VOLÉE','CHECKOUT','PTS MARQUÉS','180','140+','FLÉCHETTES'];
+  const picks=preferred.map(label=>player.metrics.find(m=>m.label===label)).filter(Boolean) as ChallengeExportMetric[];
+  player.headlineMetrics=picks.slice(0,4);
+  if(savedVisits.length){
+   const visits=savedVisits.filter((v:any)=>matchPlayer(v?.playerId??v?.pid??v?.profileId,player))
+     .map(visitPts).filter((v:any)=>v!==null) as number[];
+   if(visits.length)player.visits=visits;
+  }
+ }
+ report.matchType='x01';
+ report.tickerSrc=tickerX01;
+ report.unit='tours enregistrés';
+ const sets=report.players.map(p=>validMetricNumber(p.metrics.find(m=>m.label==='SETS REMPORTÉS')?.value));
+ const legs=report.players.map(p=>validMetricNumber(p.metrics.find(m=>m.label==='LEGS REMPORTÉS')?.value));
+ const points=report.players.map(p=>validMetricNumber(p.metrics.find(m=>m.label==='PTS MARQUÉS')?.value));
+ const metrics:ChallengeExportMetric[]=[];
+ // A4 tiles must hold short values; never concatenate all players in one box.
+ // Present X01 as a head-to-head result, with unit-specific performance KPIs.
+ for(const player of report.players.slice(0,3)){
+  const name=label(player.name.toUpperCase(),15);
+  const value=(title:string)=>player.metrics.find(m=>m.label===title)?.value;
+  const add=(suffix:string,text:string|undefined)=>{
+   if(text!==undefined&&text!=='')metrics.push({label:name+' · '+suffix,value:text});
+  };
+  add('SETS',value('SETS REMPORTÉS'));
+  add('LEGS',value('LEGS REMPORTÉS'));
+  add('POINTS MARQUÉS',value('PTS MARQUÉS'));
+  add('AVG3',value('AVG3'));
+ }
+ if(!metrics.length)metrics.push({label:'JOUEURS',value:String(report.players.length)});
+ report.highlight=metrics;
+ const rawSets=new Map<number,any[]>();
+ const allLegRows:Array<{set:number|null;leg:number|null;winner:string;points:string[];winnerId:string}>=[];
+ for(const raw of savedLegs){
+  const setNo=validMetricNumber(raw?.setNo??raw?.setIndex);
+  const legNo=validMetricNumber(raw?.matchLegNo??raw?.legNo??raw?.legIndex);
+  const winner=String(raw?.winnerId??raw?.winner??'');
+  const winnerPlayer=report.players.find(p=>matchPlayer(winner,p));
+  const stats=raw?.perPlayer||raw?.statsByPlayer||{};
+  const pts=report.players.map(player=>{
+   const pid=String(player.participantId||'');
+   let found:any=pid&&stats[pid];
+   if(!found){const keys=Object.keys(stats).filter(k=>normalizedPersonKey(k)===normalizedPersonKey(player.name));
+    if(keys.length===1)found=stats[keys[0]];}
+   const n=validMetricNumber(found?.points??found?.totalScore);
+   return n===null?'—':String(n);
+  });
+  allLegRows.push({set:setNo,leg:legNo,winner:winnerPlayer?.name||'—',winnerId:winner,points:pts});
+  if(setNo!==null&&setNo>0)rawSets.set(setNo,[...(rawSets.get(setNo)||[]),raw]);
+ }
+ const setTable:string[][]=[];
+ for(const [setNo,rows] of [...rawSets.entries()].sort((a,b)=>a[0]-b[0])){
+  const perPlayerWins=report.players.map(p=>rows.filter(row=>matchPlayer(row?.winnerId??row?.winner,p)).length);
+  const explicitWinner=rows.map(row=>row?.setWinnerId??row?.winnerSetId).find(Boolean);
+  const winner=report.players.find(p=>matchPlayer(explicitWinner,p))?.name||'—';
+  setTable.push([String(setNo),...perPlayerWins.map(String),winner]);
+ }
+ if(setTable.length){
+  const columns=['SET',...report.players.map(p=>label(p.name,14)+' · LEGS'),'GAGNANT SET'];
+  report.matchBreakdown={headers:columns,rows:setTable,
+   note:'Legs gagnés dans chaque set ; vainqueur indiqué seulement si enregistré.'};
+ }
+ const x01details:ChallengeExportSection[]=[];
+ if(setTable.length)x01details.push({title:'X01 · RÉSULTATS SET PAR SET',
+  columns:report.matchBreakdown!.headers,rows:setTable,
+  note:report.matchBreakdown!.note});
+ if(allLegRows.length){
+  x01details.push({title:'X01 · DÉTAIL DES LEGS',
+   columns:['SET','LEG','VAINQUEUR',...report.players.map(p=>label(p.name,14)+' · PTS')],
+   rows:allLegRows.map(row=>[row.set===null?'—':String(row.set),row.leg===null?'—':String(row.leg),row.winner,...row.points]),
+   note:'Points marqués dans chaque leg si les statistiques ont été conservées.'});
+ }
+ if(report.players.length){
+  x01details.push({title:'X01 · BILAN COMPLET DES JOUEURS',
+   columns:['JOUEUR','SETS GAGNÉS','LEGS GAGNÉS','PTS MARQUÉS','AVG3','MEILLEURE VOLÉE'],
+   rows:report.players.map(p=>{
+    const v=(name:string)=>p.metrics.find(m=>m.label===name)?.value||'—';
+    return [p.name,v('SETS REMPORTÉS'),v('LEGS REMPORTÉS'),v('PTS MARQUÉS'),v('AVG3'),v('BEST VOLÉE')];
+   }),note:'Les points correspondent aux points marqués, jamais au restant de la dernière manche.'});
+ }
+ // Preserve the existing, proven detailed X01 data table used elsewhere in the report.
+ report.details=[...x01details,...(report.details||[]).map(section=>({
+  ...section,
+  rows:section.rows.map(row=>{
+   const name=String(row[0]||'').toUpperCase();
+   if(name==='TOTAL SCORE')return ['PTS MARQUÉS (TOUS SETS)',...row.slice(1)];
+   return row;
+  }).filter(row=>!['RESTANT','REMAINING','SCORE FINAL','SCORE ENREGISTRÉ','POINTS RESTANTS'].includes(String(row[0]||'').toUpperCase())),
+ }))];
+ return report;
+}
 
 /**
  * Generic report from a saved history entry for other sports/modes.
@@ -1285,8 +1923,36 @@ export function visualReportFromHistory(entry:any):ChallengeExportReport {
   details.unshift({title:'PARAMÈTRES DE LA PARTIE',columns:['PARAMÈTRE','VALEUR'],
    rows:configSummary.map(m=>[m.label,m.value])});
  }
- return {title,rounds:validMetricNumber(summary?.rounds??entry?.game?.rounds??summary?.visits)??0,
+ const report:ChallengeExportReport={title,rounds:validMetricNumber(summary?.rounds??entry?.game?.rounds??summary?.visits)??0,
   unit:'tours',players,highlight:highlights,date,configSummary,
-  details,tickerSrc:findTicker(entry,payload),appLogoSrc:APP_LOGO_SRC,
+  details,tickerSrc:findTicker(entry,payload,mode),appLogoSrc:APP_LOGO_SRC,
   footerBrand:'MULTISPORTS SCORING'};
+ if(/^(training_)?x01(?:$|_)/.test(mode)||mode==='501'||mode==='301'||mode==='701'||mode==='901'){
+  return applyX01Report(report,entry,payload,summary,result,source);
+ }
+ // Use the mode's own recorded units rather than treating every result as points.
+ const isPointsMode=/challenge|top_10|split_score|hi_score|count_up|shanghai|petanque|molkky|bowling|gotcha|attrape/i.test(mode);
+ const usesSets=/ping.?pong|tennis|badminton/i.test(mode);
+ report.players.forEach(player=>{
+  if(usesSets){
+   const m=player.metrics.find(v=>v.label==='SETS');
+   if(m){player.scoreDisplay=m.value+' SET'+(m.value==='1'?'':'S');return;}
+  }
+  if(!isPointsMode){
+   const m=player.metrics.find(v=>v.label==='SETS')||player.metrics.find(v=>v.label==='LEGS')||
+    player.metrics.find(v=>v.label==='MATCHS GAGNÉS')||player.metrics.find(v=>v.label==='VIES');
+   if(m){player.scoreDisplay=m.value+' '+m.label;return;}
+   if(/golf|mini_golf/i.test(mode)){
+    const shots=player.metrics.find(v=>v.label==='COUPS');
+    if(shots){player.scoreDisplay=shots.value+' COUPS';return;}
+   }
+   if(Number.isFinite(player.score))player.scoreDisplay=String(player.score)+' · RÉSULTAT';
+   else player.scoreDisplay='RÉSULTAT —';
+  }else if(!player.metrics.some(m=>m.label==='PTS MARQUÉS')&&/gotcha|attrape/i.test(mode)){
+   // Gotcha/Attrape-moi often ranks by captures or sets, not dart points.
+   const relevant=player.metrics.find(v=>v.label==='CAPTURES')||player.metrics.find(v=>v.label==='SETS');
+   if(relevant)player.scoreDisplay=relevant.value+' '+relevant.label;
+  }
+ });
+ return report;
 }
