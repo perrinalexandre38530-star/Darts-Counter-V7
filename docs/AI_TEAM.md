@@ -15,6 +15,9 @@ Cette PR apporte des **profils d'agents** et des fondations d'orchestration, pas
 ## Appel des agents
 Sur GitHub, ouvrir l'onglet Agents ou choisir Copilot comme responsable d'une issue ; sélectionner le profil d'agent correspondant (selon l'abonnement et la disponibilité). Dans VS Code, sélectionner un agent personnalisé de l'espace de travail. Les fichiers sont dans `.github/agents/*.agent.md`.
 
+## Attention : dépôt actuellement public
+Le dépôt GitHub est **public**. Les automations **natives de Copilot cloud agent** déclenchées selon un calendrier ou un événement sont, selon la documentation GitHub actuelle, réservées aux dépôts privés et internes. Ne pas prétendre qu'elles sont opérationnelles ici. Les sessions de coding agent et profils spécialisés peuvent fonctionner sur des dépôts publics avec un abonnement Copilot payant et l'agent activé. Pour une file d'attente réellement autonome sur ce dépôt public, évaluer des GitHub Agentic Workflows via GitHub Actions (`gh aw`) ou un orchestrateur externe, avec identifiants sécurisés, quotas et validation humaine. Ne pas activer un coût récurrent sans accord.
+
 ## Exécution continue — à activer après revue
 - GitHub reste l'unique référentiel de code.
 - Un ordonnanceur GitHub Actions ou un moteur d'agents externe surveille la file des issues approuvées et lance des agents selon les capacités, quotas et règles d'accès.
