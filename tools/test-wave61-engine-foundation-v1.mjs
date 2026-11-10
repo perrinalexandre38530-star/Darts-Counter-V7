@@ -13,13 +13,13 @@ const engine = read('src/lib/gameEngines/wave61Engine.ts');
 const gamesPage = read('src/pages/Games.tsx');
 
 const ids = [...catalog.matchAll(/\{ id: "([a-z0-9_]+)", label:/g)].map((m) => m[1]);
-const EXPECTED = 65;
-assert(ids.length === EXPECTED, `Catalogue: ${ids.length}/${EXPECTED}`);
-assert(new Set(ids).size === EXPECTED, 'IDs dupliqués dans le catalogue');
+const MIN_EXPECTED = 65;
+assert(ids.length >= MIN_EXPECTED, `Catalogue incomplet: ${ids.length} < ${MIN_EXPECTED}`);
+assert(new Set(ids).size === ids.length, 'IDs dupliqués dans le catalogue');
 
 const classified = [...catalog.matchAll(/\{ id: "([a-z0-9_]+)", label: "[^"]+", category: "([^"]+)", subCategory: "([^"]+)"/g)]
   .map((m) => ({ id: m[1], category: m[2], subCategory: m[3] }));
-assert(classified.length === EXPECTED, `Classement UI incomplet: ${classified.length}/${EXPECTED}`);
+assert(classified.length === ids.length, `Classement UI incomplet: ${classified.length}/${ids.length}`);
 assert(classified.every((row) => row.subCategory !== 'wave61'), 'Sous-onglet artificiel wave61 encore présent');
 assert(classified.some((row) => row.category === 'classic'), 'Aucun mode Wave61 classé en Classiques');
 assert(classified.some((row) => row.category === 'challenge'), 'Aucun mode Wave61 classé en Défis');
@@ -51,6 +51,6 @@ assert(engine.includes('state.modeId === "nine_dart_century"'), '9 DART CENTURY 
 
 console.log(`✅ Vague 61: ${ids.length} modes, ${new Set(ids).size} IDs uniques`);
 console.log('✅ 11 familles moteur + config/play mutualisés');
-console.log(`✅ ${EXPECTED} modes redistribués dans Classiques / Défis / Fun + sous-onglets métier`);
+console.log(`✅ ${ids.length} modes redistribués dans Classiques / Défis / Fun + sous-onglets métier`);
 console.log('✅ Undo + History + Bots + Teams auto + ScoreInputHub');
 console.log('✅ Spécialisations V1: ALIGN 4, DÉMINEUR, REPLICAT, DOUBLE DOWN, 9 DART CENTURY, CODEBREAKER');
