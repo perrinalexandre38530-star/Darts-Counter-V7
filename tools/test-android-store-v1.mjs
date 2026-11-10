@@ -42,7 +42,7 @@ const manifest = fs.readFileSync("android/app/src/main/AndroidManifest.xml", "ut
 const socialAuthPlugin = fs.readFileSync("android/app/src/main/java/com/multisportsscoring/app/SocialAuthPlugin.java", "utf8");
 const server = fs.readFileSync("server.js", "utf8");
 assert.ok(personalCloud.includes('multisportsscoring://cloud/callback'), "Callback natif Google Drive absent.");
-assert.ok(personalCloud.includes('NativeOAuth.openExternal'), "Google Drive Android doit ouvrir le navigateur système.");
+assert.ok(personalCloud.includes('getNativeOAuthBridge().openExternal({ url: String(res.url) })'), "Google Drive Android doit ouvrir le navigateur système via le pont OAuth natif.");
 assert.ok(personalCloud.includes('initNativePersonalCloudBridge'), "Bridge retour Google Drive Android absent.");
 assert.ok(manifest.includes('android:host="cloud"') && manifest.includes('android:pathPrefix="/callback"'), "Deep link cloud Android absent du manifest.");
 assert.ok(socialAuthPlugin.includes('call.getString("prefix")'), "Le bridge natif doit filtrer les callbacks OAuth par préfixe.");
