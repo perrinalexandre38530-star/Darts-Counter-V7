@@ -1,0 +1,44 @@
+name: MSS AI CONTROL - suivi des missions (lecture seule)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "35 6 * * *"
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+  actions: read
+
+concurrency:
+  group: mss-ai-control-readonly-report
+  cancel-in-progress: true
+
+jobs:
+  status:
+    name: Rapport de suivi sans IA ni ecriture
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Code source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verifier le rapport sans acces reseau
+        run: node --test tools/test-ai-control-report.mjs
+      - name: Lire les missions et publier le resume dans Actions
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node tools/ai-control-report.mjs
+      - name: Conserver le rapport
+        uses: actions/upload-artifact@v4
+        with:
+          name: mss-ai-control-readonly-report
+          path: ai-control-report-output/
+          if-no-files-found: error
+          retention-days: 14
