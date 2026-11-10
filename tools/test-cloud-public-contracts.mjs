@@ -117,8 +117,9 @@ expect(
   /function subscribeOnlineStream[\s\S]{0,700}supabase\s*\.channel\(/.test(onlineApi),
 );
 expect(
-  "Le chat salon suit la session active et non le provider NAS global",
-  /canUseNasOnlineApi/.test(chatApi) && !/isNasProviderEnabled/.test(chatApi),
+  "Le chat salon utilise le backend public Supabase sans dépendre du provider NAS global",
+  /supabase\.auth\.getUser\(\)/.test(chatApi) && /supabase\s*\.channel\(/.test(chatApi)
+  && !/isNasProviderEnabled/.test(chatApi),
 );
 expect(
   "La présence realtime suit la session active et non le provider NAS global",
