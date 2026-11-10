@@ -11,6 +11,8 @@ import type { Profile } from '../lib/types';
 import { getChallengeObjectiveImage } from '../lib/challengeObjectiveVisuals';
 import { recordProfileUsageForMode } from '../lib/profileUsage';
 import { DEFAULT_CUSTOM_SEQUENCE, DEFAULT_HALF_IT_SEQUENCE, DOUBLES_8_TARGETS, exerciseTitle, objectiveLabel, type ChallengeExerciseType, type ChallengeObjectiveToken, type ChallengeScoreMode } from '../lib/challengeExercises';
+import {CHALLENGE_ARCADE_CATALOG,CHALLENGE_ARCADE_FAMILIES,getArcadeChallenge,isArcadeChallengePlayable} from '../lib/challengeArcadeCatalog';
+import type {ArcadeVariant} from '../lib/challengeArcadeEngine';
 
 export type ChallengeTarget='1'|'2'|'3'|'4'|'5'|'6'|'7'|'8'|'9'|'10'|'11'|'12'|'13'|'14'|'15'|'16'|'17'|'18'|'19'|'20'|'bull'|'bull25'|'bull50'|'any-double'|'any-triple';
 export type ChallengeRule='all'|'single'|'double'|'triple'|'bull'|'bull25'|'bull50';
@@ -28,6 +30,10 @@ export type ChallengeConfigData={
   matchMode?:ChallengeMatchMode;
   soundsEnabled?:boolean;
   exerciseType?:ChallengeExerciseType;
+  catalogChallengeId?:string;
+  catalogLine?:number;
+  catalogVariant?:ArcadeVariant;
+  catalogRounds?:number;
   clockIncludeBull?:boolean;
   clockScoreMode?:ChallengeScoreMode;
   halfItStartScore?:number;
@@ -53,6 +59,10 @@ type ChallengePreset={
  participantSource:ChallengeParticipantSource;
  soundsEnabled:boolean;
  exerciseType:ChallengeExerciseType;
+ catalogChallengeId?:string;
+ catalogLine?:number;
+ catalogVariant?:ArcadeVariant;
+ catalogRounds?:number;
  clockIncludeBull:boolean;
  clockScoreMode:ChallengeScoreMode;
  halfItStartScore:number;
@@ -78,6 +88,7 @@ const writeChallengePreset=(key:string,preset:ChallengePreset)=>{try{localStorag
 const presetDescriptor=(preset:ChallengePreset|null)=>{
  if(!preset)return '';
  const type=preset.exerciseType||'classic';
+ if(type==='arcade')return `${getArcadeChallenge(preset.catalogChallengeId).title} · LIGNE ${preset.catalogLine||20}`;
  if(type==='classic')return `${targetText(preset.target||'20')} · ${preset.visits||30} TOURS`;
  if(type==='clock')return `${preset.clockIncludeBull?'1 → 20 + BULL':'1 → 20'} · ${preset.clockScoreMode==='real'?'VALEUR RÉELLE':'S1 / D2 / T3'}`;
  if(type==='half-it')return `HALF-IT · DÉPART ${preset.halfItStartScore||40}`;
@@ -111,6 +122,12 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
  const [visits,setVisits]=React.useState(30);
  const [rule,setRule]=React.useState<ChallengeRule>('all');
  const [exerciseType,setExerciseType]=React.useState<ChallengeExerciseType>('classic');
+ const [catalogChallengeId,setCatalogChallengeId]=React.useState('perfect-line');
+ const [catalogLine,setCatalogLine]=React.useState(20);
+ const [catalogVariant,setCatalogVariant]=React.useState<ArcadeVariant>('classic');
+ const [catalogRounds,setCatalogRounds]=React.useState(5);
+ const [catalogFamily,setCatalogFamily]=React.useState('TOUS');
+ const [catalogSearch,setCatalogSearch]=React.useState('');
  const [clockIncludeBull,setClockIncludeBull]=React.useState(true);
  const [clockScoreMode,setClockScoreMode]=React.useState<ChallengeScoreMode>('challenge');
  const [halfItStartScore,setHalfItStartScore]=React.useState(40);
@@ -144,6 +161,10 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
   setVisits(Math.max(1,Number(preset.visits||30)));
   setRule((preset.rule||'all') as ChallengeRule);
   setExerciseType((preset.exerciseType||'classic') as ChallengeExerciseType);
+  setCatalogChallengeId(String(preset.catalogChallengeId||'perfect-line'));
+  setCatalogLine(Math.max(1,Math.min(20,Number(preset.catalogLine)||20)));
+  setCatalogVariant(preset.catalogVariant==='doubles'?'doubles':preset.catalogVariant==='triples'?'triples':'classic');
+  setCatalogRounds(Math.max(1,Math.min(10,Number(preset.catalogRounds)||5)));
   setClockIncludeBull(preset.clockIncludeBull!==false);
   setClockScoreMode((preset.clockScoreMode||'challenge') as ChallengeScoreMode);
   setHalfItStartScore(Math.max(0,Number(preset.halfItStartScore??40)||40));
@@ -178,9 +199,10 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
 
  const currentPreset=React.useMemo<ChallengePreset>(()=>({
   target,visits,rule,configMode:mode,matchMode,participantSource,soundsEnabled,exerciseType,
+  catalogChallengeId,catalogLine,catalogVariant,catalogRounds,
   clockIncludeBull,clockScoreMode,halfItStartScore,sequenceObjectives:[...sequenceObjectives],sequenceScoreMode,
   groupingMin,groupingMax,groupingHits,doublesBonusTarget,doublesTargets:[...doublesTargets],doublesTargetMode
- }),[target,visits,rule,mode,matchMode,participantSource,soundsEnabled,exerciseType,clockIncludeBull,clockScoreMode,halfItStartScore,sequenceObjectives,sequenceScoreMode,groupingMin,groupingMax,groupingHits,doublesBonusTarget,doublesTargets,doublesTargetMode]);
+ }),[target,visits,rule,mode,matchMode,participantSource,soundsEnabled,exerciseType,catalogChallengeId,catalogLine,catalogVariant,catalogRounds,clockIncludeBull,clockScoreMode,halfItStartScore,sequenceObjectives,sequenceScoreMode,groupingMin,groupingMax,groupingHits,doublesBonusTarget,doublesTargets,doublesTargetMode]);
 
  React.useEffect(()=>{if(presetHydrated)writeChallengePreset(CHALLENGE_DRAFT_KEY,currentPreset)},[presetHydrated,currentPreset]);
 
@@ -271,12 +293,12 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
 
  const resolvedSequence=exerciseType==='half-it'?[...DEFAULT_HALF_IT_SEQUENCE]:sequenceObjectives;
  const resolvedDoublesTargets=(doublesTargetMode==='official'?[...DOUBLES_8_TARGETS]:doublesTargets).filter((n,index,self)=>n>=1&&n<=20&&self.indexOf(n)===index);
- const resolvedVisits=exerciseType==='jdc'?19:exerciseType==='clock'?(clockIncludeBull?21:20):exerciseType==='doubles8'?(resolvedDoublesTargets.length*3+1):(exerciseType==='half-it'||exerciseType==='sequence'?Math.max(1,resolvedSequence.length):visits);
- const resolvedTarget:ChallengeTarget=exerciseType==='jdc'?'10':exerciseType==='classic'?target:exerciseType==='grouping'?String(Math.min(groupingMin,groupingMax)) as ChallengeTarget:exerciseType==='doubles8'?String(resolvedDoublesTargets[0]||20) as ChallengeTarget:(resolvedSequence[0]&&/^([1-9]|1[0-9]|20)$/.test(String(resolvedSequence[0]))?resolvedSequence[0] as ChallengeTarget:'20');
+ const resolvedVisits=exerciseType==='arcade'?(catalogChallengeId==='perfect-line'?2:Math.ceil(catalogRounds*2/3)):exerciseType==='jdc'?19:exerciseType==='clock'?(clockIncludeBull?21:20):exerciseType==='doubles8'?(resolvedDoublesTargets.length*3+1):(exerciseType==='half-it'||exerciseType==='sequence'?Math.max(1,resolvedSequence.length):visits);
+ const resolvedTarget:ChallengeTarget=exerciseType==='arcade'?String(catalogLine) as ChallengeTarget:exerciseType==='jdc'?'10':exerciseType==='classic'?target:exerciseType==='grouping'?String(Math.min(groupingMin,groupingMax)) as ChallengeTarget:exerciseType==='doubles8'?String(resolvedDoublesTargets[0]||20) as ChallengeTarget:(resolvedSequence[0]&&/^([1-9]|1[0-9]|20)$/.test(String(resolvedSequence[0]))?resolvedSequence[0] as ChallengeTarget:'20');
  const resolvedRule:ChallengeRule=exerciseType==='classic'?rule:exerciseType==='doubles8'?'double':'all';
- const exerciseValid=(exerciseType!=='sequence'||sequenceObjectives.length>0)&&(exerciseType!=='doubles8'||resolvedDoublesTargets.length>0);
- const exerciseSummary=exerciseType==='classic'?`OBJECTIF ${targetText(target)}`:exerciseTitle({target:resolvedTarget,rule:resolvedRule,visits:resolvedVisits,exerciseType,doublesTargets:resolvedDoublesTargets,doublesBonusTarget});
- const exerciseRuleSummary=exerciseType==='jdc'?'Phase 1 : 10–15 · Phase 2 : D1→D20 + BULL · Phase 3 : 15–20 · SHANGHAI +100':exerciseType==='classic'
+ const exerciseValid=(exerciseType!=='arcade'||isArcadeChallengePlayable(catalogChallengeId))&&(exerciseType!=='sequence'||sequenceObjectives.length>0)&&(exerciseType!=='doubles8'||resolvedDoublesTargets.length>0);
+ const exerciseSummary=exerciseType==='arcade'?getArcadeChallenge(catalogChallengeId).title:exerciseType==='classic'?`OBJECTIF ${targetText(target)}`:exerciseTitle({target:resolvedTarget,rule:resolvedRule,visits:resolvedVisits,exerciseType,doublesTargets:resolvedDoublesTargets,doublesBonusTarget});
+ const exerciseRuleSummary=exerciseType==='arcade'?getArcadeChallenge(catalogChallengeId).description:exerciseType==='jdc'?'Phase 1 : 10–15 · Phase 2 : D1→D20 + BULL · Phase 3 : 15–20 · SHANGHAI +100':exerciseType==='classic'
   ? `${targetText(target)} · ${resolvedVisits} tours`
   : exerciseType==='clock'
    ? `${clockIncludeBull?'1 → 20 + BULL':'1 → 20'} · ${clockScoreMode==='real'?'valeur réelle':'S=1 · D=2 · T=3'}`
@@ -290,6 +312,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
 
  const chooseExercise=(next:ChallengeExerciseType)=>{
   setExerciseType(next);
+  if(next==='arcade'){setRule('all');setTarget('20');}
   if(next==='jdc'){setRule('all');setTarget('10');}
   if(next==='clock'){setClockIncludeBull(true);setClockScoreMode('challenge');}
   if(next==='half-it'){setHalfItStartScore(40);}
@@ -309,6 +332,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
   go('challenge_play',{config:{
    target:resolvedTarget,visits:resolvedVisits,rule:resolvedRule,
    exerciseType,
+   catalogChallengeId,catalogLine,catalogVariant,catalogRounds,
    clockIncludeBull,
    clockScoreMode,
    halfItStartScore,
@@ -371,6 +395,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
     ['grouping','GROUPEMENT','Au moins 2 fléchettes dans le même secteur choisi.','◉'],
     ['jdc','LE JDC CHALLENGE','3 phases · 19 volées · Shanghai +100 · D1 à D20 + Bull.','🏆'],
     ['doubles8','8 DOUBLES · 9 FLÉCHETTES','Parcours officiel ou variante personnalisée avec les doubles de votre choix, puis une volée bonus.','⑧'],
+    ['arcade','CATALOGUE · 44 CHALLENGES','42 nouveaux concepts + PERFECT LINE + LES OPPOSÉS et ses variantes.','✦'],
    ] as Array<[ChallengeExerciseType,string,string,string]>).map(([id,label,detail,icon])=><button type="button" key={id} className={'exercise-card '+(exerciseType===id?'on':'')} onClick={()=>chooseExercise(id)}><i>{icon}</i><span><b>{label}</b><small>{detail}</small></span></button>)}
   </div>
  </Section>;
@@ -438,10 +463,38 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
    <div className="jdc-guide-finale"><span className="jdc-guide-finale-icon" aria-hidden="true"><BottomNavIcon name="stats" size={22}/></span><div><small>CLASSEMENT FINAL · TOTAL DES TROIS PHASES</small><strong>À TOI DE BATTRE LE RECORD !</strong></div><span className="jdc-guide-max"><b>3 380</b><small>PTS MAX</small></span></div>
   </div>
  </Section>;
- const exerciseSettings=exerciseType==='jdc'?[jdcStage]:exerciseType==='classic'?[targetStage,visitsStage,ruleStage]:exerciseType==='clock'?[clockStage]:exerciseType==='half-it'?[halfItStage]:exerciseType==='sequence'?[sequenceStage]:exerciseType==='doubles8'?[doubles8Stage]:[visitsStage,groupingStage];
+ const catalogStage=<Section title="CATALOGUE DES CHALLENGES" subtitle="44 défis dans 7 familles. Ceux en préparation sont présentés, sans activation prématurée." key="catalog">
+  <div className="challenge-catalog-tools">
+   <input aria-label="Rechercher un challenge" placeholder="Rechercher un défi…" value={catalogSearch} onChange={e=>setCatalogSearch(e.target.value)}/>
+   <select aria-label="Famille de challenges" value={catalogFamily} onChange={e=>setCatalogFamily(e.target.value)}>
+    <option value="TOUS">TOUTES LES FAMILLES</option>
+    {CHALLENGE_ARCADE_FAMILIES.map(family=><option key={family} value={family}>{family}</option>)}
+   </select>
+  </div>
+  <div className="challenge-catalog-grid">
+   {CHALLENGE_ARCADE_CATALOG.filter(item=>(catalogFamily==='TOUS'||item.family===catalogFamily)&&(!catalogSearch||[item.title,item.description].join(' ').toLocaleLowerCase().includes(catalogSearch.toLocaleLowerCase()))).map(item=><button type="button" key={item.id} className={'challenge-catalog-tile '+(catalogChallengeId===item.id?'selected':'')} onClick={()=>setCatalogChallengeId(item.id)}>
+    <small>{item.family}</small><b>{item.title}</b><span>{item.description}</span><em className={item.status==='ready'?'ready':'preview'}>{item.status==='ready'?'APERÇU JOUABLE':'EN DÉVELOPPEMENT'}</em>
+   </button>)}
+  </div>
+  <div className="challenge-catalog-options">
+   <h3>{getArcadeChallenge(catalogChallengeId).title}</h3>
+   <p>{getArcadeChallenge(catalogChallengeId).description}</p>
+   {!isArcadeChallengePlayable(catalogChallengeId)&&<div className="locked-hint">Ce défi est visible dans le catalogue, mais son moteur est encore en développement. Il ne peut pas être démarré.</div>}
+   {catalogChallengeId==='perfect-line'&&<div className="locked-hint"><b>PARCOURS EXACT :</b> D{catalogLine} → G{catalogLine} → T{catalogLine} → P{catalogLine} → BULL25 → DBULL50. La bonne cible doit être touchée avant d'avancer, sans limite de tentatives.</div>}
+   {catalogChallengeId==='opposites'&&<div className="locked-hint"><b>OPPOSÉS :</b> les secteurs sont calculés sur le véritable ordre du cadran. Les variantes de cet aperçu (simples, doubles, triples) restent à confirmer par rapport aux règles définitives.</div>}
+   {(catalogChallengeId==='perfect-line'||catalogChallengeId==='opposites')&&<div className="challenge-catalog-config">
+    <label>LIGNE / NUMÉRO INITIAL<select value={catalogLine} onChange={e=>setCatalogLine(Number(e.target.value))}>{Array.from({length:20},(_,i)=><option value={i+1} key={i+1}>{i+1}</option>)}</select></label>
+    {catalogChallengeId==='opposites'&&<>
+     <label>VARIANTE<select value={catalogVariant} onChange={e=>setCatalogVariant(e.target.value as ArcadeVariant)}><option value="classic">SIMPLES (G/P)</option><option value="doubles">DOUBLES</option><option value="triples">TRIPLES</option></select></label>
+     <label>PAIRES À JOUER<select value={catalogRounds} onChange={e=>setCatalogRounds(Number(e.target.value))}>{[1,3,5,7,10].map(n=><option value={n} key={n}>{n}</option>)}</select></label>
+    </>}
+   </div>}
+  </div>
+ </Section>;
+ const exerciseSettings=exerciseType==='arcade'?[catalogStage]:exerciseType==='jdc'?[jdcStage]:exerciseType==='classic'?[targetStage,visitsStage,ruleStage]:exerciseType==='clock'?[clockStage]:exerciseType==='half-it'?[halfItStage]:exerciseType==='sequence'?[sequenceStage]:exerciseType==='doubles8'?[doubles8Stage]:[visitsStage,groupingStage];
  const stages=[formatStage,playersStage,exerciseStage,...exerciseSettings,audioStage];
- const stepLabels=['FORMAT','JOUEURS','EXERCICE',...(exerciseType==='classic'?['CIBLE','TOURS','OBJECTIF']:exerciseType==='clock'?['HORLOGE']:exerciseType==='half-it'?['HALF-IT']:exerciseType==='sequence'?['SÉQUENCE']:exerciseType==='doubles8'?['8 DOUBLES']:exerciseType==='jdc'?['JDC']: ['TOURS','GROUPEMENT']),'SONS'];
- const currentStepValid=step===0?Boolean(matchMode):step===1?selectionValid:(exerciseType==='sequence'&&step===3?sequenceObjectives.length>0:true);
+ const stepLabels=['FORMAT','JOUEURS','EXERCICE',...(exerciseType==='arcade'?['CATALOGUE']:exerciseType==='classic'?['CIBLE','TOURS','OBJECTIF']:exerciseType==='clock'?['HORLOGE']:exerciseType==='half-it'?['HALF-IT']:exerciseType==='sequence'?['SÉQUENCE']:exerciseType==='doubles8'?['8 DOUBLES']:exerciseType==='jdc'?['JDC']: ['TOURS','GROUPEMENT']),'SONS'];
+ const currentStepValid=step===0?Boolean(matchMode):step===1?selectionValid:(step===3&&exerciseType==='arcade'&&!isArcadeChallengePlayable(catalogChallengeId))?false:(exerciseType==='sequence'&&step===3?sequenceObjectives.length>0:true);
  React.useEffect(()=>{setStep(prev=>Math.min(prev,Math.max(0,stages.length-1)))},[exerciseType,stages.length]);
  const shown=mode==='complete'?stages:[stages[step]];
  const pickerMembers=teamPicker?(Array.isArray(teamPicker.playerIds)?teamPicker.playerIds.map(String):[]):[];
@@ -455,7 +508,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
   <main className="config-wrap">
    <section className="config-overview">
     <div className="overview-copy"><small>CONFIGURATION CHALLENGE</small><div className="mode-row"><button type="button" className={mode==='guided'?'on':''} onClick={()=>{setMode('guided');setStep(0)}}>GUIDÉE</button><button type="button" className={mode==='complete'?'on':''} onClick={()=>setMode('complete')}>COMPLÈTE</button></div><p>{mode==='guided'?'Configuration compacte, étape par étape, dans le même esprit que X01.':'Tous les réglages sont accessibles sur une seule page.'}</p><button type="button" className="challenge-leaderboard-access" onClick={()=>go('challenge_leaderboard',{from:'challenge_config'})}><span>🏆</span><b>CLASSEMENTS ONLINE</b><small>Meilleurs scores · filtres · équipes officielles</small></button></div>
-    <div className="summary"><b>{matchMode?matchMode.toUpperCase():'—'}</b><span>{playerIds.length} JOUEUR{playerIds.length>1?'S':''}</span><span>{exerciseSummary}</span><span>{resolvedVisits} TOURS</span><span>SONS {soundsEnabled?'ON':'OFF'}</span></div>
+    <div className="summary"><b>{matchMode?matchMode.toUpperCase():'—'}</b><span>{playerIds.length} JOUEUR{playerIds.length>1?'S':''}</span><span>{exerciseSummary}</span><span>{exerciseType==='arcade'?(catalogChallengeId==='perfect-line'?'6 ÉTAPES':catalogRounds+' PAIRES'):resolvedVisits+' TOURS'}</span><span>SONS {soundsEnabled?'ON':'OFF'}</span></div>
    </section>
    {(lastPlayedPreset||favoritePreset)&&<section className="quick-presets" aria-label="Raccourcis Challenge">
     {lastPlayedPreset&&<button type="button" className="quick-preset last" onClick={()=>replayPreset(lastPlayedPreset)}><i>↻</i><span><small>DERNIER CHALLENGE</small><b>{presetDescriptor(lastPlayedPreset)}</b><em>Réglages chargés · choisissez joueurs ou équipes</em></span><strong>REJOUER</strong></button>}
@@ -490,6 +543,17 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
 function Section({title,subtitle,children}:{title:string;subtitle?:string;children:any}){return <section className="config-card"><div className="section-title"><h2>{title}</h2>{subtitle?<p>{subtitle}</p>:null}</div>{children}</section>}
 
 const css=(p:string)=>`
+.challenge-catalog-tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.challenge-catalog-tools input,.challenge-catalog-tools select,.challenge-catalog-config select{background:#101a28;color:#f0f5fc;border:1px solid #4c5b70;border-radius:9px;padding:10px;font-size:11px;font-weight:800;min-width:0}
+.challenge-catalog-tools input{flex:1 1 220px}.challenge-catalog-tools select{flex:1 1 160px}
+.challenge-catalog-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px;max-height:330px;overflow-y:auto;padding:3px}
+.challenge-catalog-tile{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;background:linear-gradient(150deg,#151f30,#0a101a);border:1px solid #425168;border-radius:12px;padding:12px;color:white;cursor:pointer}
+.challenge-catalog-tile.selected{border-color:#ff626e;background:linear-gradient(145deg,#442029,#0e121c);box-shadow:0 0 12px #ff3a4c22}
+.challenge-catalog-tile small{font-size:9px;color:#ff8a91;font-weight:900;letter-spacing:1px}.challenge-catalog-tile b{font-size:13px}.challenge-catalog-tile span{font-size:10px;color:#b3c0d1;line-height:1.45;flex:1}
+.challenge-catalog-tile em{font-size:9px;font-weight:950;font-style:normal;color:#8c9db0}.challenge-catalog-tile em.ready{color:#75f3b3}
+.challenge-catalog-options{margin-top:12px;background:#0a111e;border-radius:13px;border:1px solid #3f4f66;padding:14px}
+.challenge-catalog-options h3{font-size:16px;margin:0 0 6px;color:white}.challenge-catalog-options p{font-size:12px;line-height:1.5;color:#aebdd0;margin:0 0 11px}
+.challenge-catalog-config{display:flex;gap:10px;flex-wrap:wrap}.challenge-catalog-config label{flex:1 1 160px;font-size:10px;font-weight:950;color:#a9bfd3;display:flex;flex-direction:column;gap:6px}
 .challenge-config{min-height:100dvh;padding:0 0 88px;overflow-x:hidden;background:radial-gradient(circle at 50% -8%,#321015 0,transparent 36%),linear-gradient(180deg,#070a10,#030507)!important;box-sizing:border-box}
 .challenge-head{height:clamp(76px,10vw,96px);max-width:1180px;margin:0 auto 8px;position:relative;overflow:hidden;border:1px solid #485668;border-top:0;border-radius:0 0 18px 18px;background:#06090e;box-shadow:0 12px 32px #0009,inset 0 0 26px #000}
 .challenge-head>img{width:100%;height:100%;display:block;object-fit:cover;object-position:center;filter:saturate(1.04) contrast(1.03)}

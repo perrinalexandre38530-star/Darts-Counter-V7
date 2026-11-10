@@ -1,4 +1,5 @@
 import React from 'react';
+import ChallengeArcadePlay from './ChallengeArcadePlay';
 import { exportChallengeResults, downloadChallengeFile, type ChallengeExportReport, type ChallengeExportResult } from '../lib/challengeResultsExport';
 import { enrichChallengeReport } from '../lib/challengeFullReport';
 import { ChallengeReportActions, ChallengeReportPreview, ChallengeReportShareDialog } from '../components/ChallengeReportUI';
@@ -526,7 +527,7 @@ function ChallengeAvatar({participant,size}: {participant:Participant;size:numbe
  return <span className="challenge-avatar-fallback">{String(participant.name||'?').slice(0,1).toUpperCase()}</span>;
 }
 
-export default function ChallengePlay({go,params,onCompetitionFinish}:{go:(t:any,p?:any)=>void;params?:any;onCompetitionFinish?:(result:{winnerId:string|null;standings:Array<{id:string;name:string;score:number;tieBreak:number;accuracy:number;bestStreak:number}>;record:any})=>void|Promise<void>}){
+function LegacyChallengePlay({go,params,onCompetitionFinish}:{go:(t:any,p?:any)=>void;params?:any;onCompetitionFinish?:(result:{winnerId:string|null;standings:Array<{id:string;name:string;score:number;tieBreak:number;accuracy:number;bestStreak:number}>;record:any})=>void|Promise<void>}){
  const historyStatsOnly=Boolean(params?.historyStatsOnly);
  const onlineStatsOverride=params?.onlineStatsOverride||null;
  useFullscreenPlay({enabled:true,lockBodyScroll:true});
@@ -2070,3 +2071,13 @@ const css=`
 }
 
 `;
+
+/** Nouveau moteur isolé, sans migration ni modification des challenges historiques. */
+export default function ChallengePlay(props:{go:(t:any,p?:any)=>void;params?:any;onCompetitionFinish?:(result:{winnerId:string|null;standings:Array<{id:string;name:string;score:number;tieBreak:number;accuracy:number;bestStreak:number}>;record:any})=>void|Promise<void>}){
+ const params=props.params;
+ const record=params?.rec||null;
+ const payload=record?.decoded||record?.payload||record?.resume?.livePayload||{};
+ const cfg=params?.config||record?.resume?.config||payload?.config||null;
+ if(cfg?.exerciseType==='arcade')return <ChallengeArcadePlay go={props.go} params={{...params,config:cfg}}/>;
+ return <LegacyChallengePlay {...props}/>;
+}
