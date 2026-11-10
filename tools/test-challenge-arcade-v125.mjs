@@ -6,10 +6,10 @@ import {BOARD_CLOCKWISE,arcadeObjectives,evaluateArcadeProgress,oppositeSector,c
 
 assert.equal(CHALLENGE_ARCADE_CATALOG.length,44,'42 concepts + Perfect Line + Opposés');
 assert.equal(new Set(CHALLENGE_ARCADE_CATALOG.map(x=>x.id)).size,44,'all unique');
-assert.equal(CHALLENGE_ARCADE_CATALOG.filter(x=>x.status==='ready').length,2,'only tested modes enabled in preview');
+assert.equal(CHALLENGE_ARCADE_CATALOG.filter(x=>x.status==='ready').length,44,'all CHALLENGE arcade engines implemented');
 assert.ok(isArcadeChallengePlayable('perfect-line'));
 assert.ok(isArcadeChallengePlayable('opposites'));
-assert.ok(!isArcadeChallengePlayable('snake'));
+assert.ok(isArcadeChallengePlayable('snake'));
 
 const line={catalogChallengeId:'perfect-line',catalogLine:17,catalogVariant:'classic',catalogRounds:5};
 assert.deepEqual(arcadeObjectives(line).map(x=>x.label),['D17','G17','T17','P17','BULL 25','DBULL 50']);
@@ -55,9 +55,9 @@ assert.equal(EXISTING_CHALLENGE_MODES.length,7,'existing exercises preserved');
 assert.equal(CHALLENGE_MODE_OPTIONS.length,51,'single selection: 7 historical + 44 new');
 assert.equal(new Set(CHALLENGE_MODE_OPTIONS.map(x=>x.id)).size,51,'unique choices');
 assert.equal(CHALLENGE_MODE_FAMILIES.length,7,'seven unified families');
-assert.equal(CHALLENGE_MODE_OPTIONS.filter(x=>x.state==='available').length,7,'existing modes remain available');
-assert.equal(CHALLENGE_MODE_OPTIONS.filter(x=>x.state==='preview').length,2,'only both new games have playable preview');
-assert.equal(CHALLENGE_MODE_OPTIONS.filter(x=>x.state==='planned').length,42,'other proposals stay visible but locked');
+assert.equal(CHALLENGE_MODE_OPTIONS.filter(x=>x.state==='available').length,51,'existing and all new modes available');
+assert.equal(CHALLENGE_MODE_OPTIONS.filter(x=>x.state==='preview').length,0,'no preview-only cards remain');
+assert.equal(CHALLENGE_MODE_OPTIONS.filter(x=>x.state==='planned').length,0,'no proposed challenge stays locked');
 assert.equal(selectedChallengeMode('jdc')?.id,'jdc');
 assert.equal(selectedChallengeMode('arcade','perfect-line')?.id,'arcade:perfect-line');
 for(const family of CHALLENGE_MODE_FAMILIES) assert.ok(CHALLENGE_MODE_OPTIONS.some(x=>x.family===family));
@@ -72,4 +72,4 @@ assert.ok(fs.readFileSync('.gitignore','utf8').includes('*.wgt'),'Tizen package 
 assert.ok(cfg.includes("isArcadeChallengePlayable(catalogChallengeId)"));
 const play=fs.readFileSync('src/pages/ChallengePlay.tsx','utf8');
 assert.ok(play.includes("if(cfg?.exerciseType==='arcade')return <ChallengeArcadePlay"));
-console.log('✅ CHALLENGE V126 : sélection unique 51 défis / 7 familles, 2 aperçus jouables, moteurs historiques préservés, packages WGT ignorés.');
+console.log('✅ CHALLENGE V128 : sélection unique 51 défis / 7 familles, nouveaux moteurs jouables, historiques préservés.');

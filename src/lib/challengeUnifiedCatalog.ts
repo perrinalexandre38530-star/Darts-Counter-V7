@@ -1,6 +1,6 @@
 /**
  * Menu unique de CHALLENGE : mêmes catégories pour les exercices historiques
- * et les nouveaux défis. Les modes en préparation restent consultables, jamais jouables.
+ * et les nouveaux défis. Chaque carte garde son moteur spécialisé avec les mêmes catégories et réglages.
  * Les identifiants de l'ancien moteur sont conservés pour les sauvegardes.
  */
 import { CHALLENGE_ARCADE_CATALOG, CHALLENGE_ARCADE_FAMILIES, type ArcadeFamily } from './challengeArcadeCatalog.ts';
@@ -48,7 +48,7 @@ export const CHALLENGE_MODE_OPTIONS: readonly UnifiedChallengeMode[] = [
   exerciseType:'arcade',
   arcadeId:item.id,
   icon:FAMILY_ICONS[item.family],
-  state:item.status==='ready'?'preview':'planned',
+  state:item.status==='ready'?'available':'planned',
  })),
 ];
 export const CHALLENGE_MODE_FAMILIES = CHALLENGE_ARCADE_FAMILIES;
