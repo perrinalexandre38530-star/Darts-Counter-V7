@@ -539,6 +539,34 @@ const OTHER_SPORT_SOURCES: SportLiveSource[] = [
   { id:"dicegame-guide", sport:"dicegame", name:"Jeux de dés — compétitions locales MSS", shortName:"Jeux de dés", description:"Résultats des parties locales : aucune fédération universelle ni flux de scores automatisé pour ce mode.", kind:"calendar", regions:["global","france"], official:false, homeUrl:"https://multisports-scoring.pages.dev/", badges:["LOCAL","NON CONNECTÉ"] },
 ];
 
+// Flashscore is an external results/news directory. These are verified sport hub
+// links only; no automated ingestion or official-provider claim is implied.
+const FLASH_SCORE_HUBS: Array<[SportLiveSportId, string, string]> = [
+  ["darts", "Darts", "darts"],
+  ["pingpong", "Table Tennis", "table-tennis"],
+  ["foot", "Football", "football"],
+  ["badminton", "Badminton", "badminton"],
+  ["basket", "Basketball", "basketball"],
+  ["rugby", "Rugby Union", "rugby-union"],
+  ["volleyball", "Volleyball", "volleyball"],
+  ["tennis", "Tennis", "tennis"],
+  ["esports", "eSports", "esports"],
+];
+const FLASH_SCORE_SOURCES: SportLiveSource[] = FLASH_SCORE_HUBS.map(([sport, title, slug]) => ({
+  id: `live-flashscore-${sport}`,
+  sport,
+  name: `Flashscore · ${title}`,
+  shortName: "Flashscore",
+  description: "Annuaire externe : accès aux résultats, matchs à venir, classements, tableaux et actualités selon la compétition. L'intégration automatique des données nécessite un accès autorisé.",
+  kind: "live_scores",
+  regions: ["global", "europe", "north_america", "latin_america", "asia", "oceania", "africa"],
+  official: false,
+  homeUrl: `https://www.flashscore.com/${slug}/`,
+  scoresUrl: `https://www.flashscore.com/${slug}/`,
+  resultsUrl: `https://www.flashscore.com/${slug}/`,
+  badges: ["ANNUAIRE", "MONDE", "LIEN EXTERNE"],
+}));
+
 const DARTS_AS_GENERIC: SportLiveSource[] = DARTS_LIVE_SOURCES.map((source) => ({
   ...source,
   sport: "darts" as const,
@@ -546,7 +574,7 @@ const DARTS_AS_GENERIC: SportLiveSource[] = DARTS_LIVE_SOURCES.map((source) => (
 }));
 
 export const SPORT_LIVE_SOURCES: SportLiveSource[] = Array.from(
-  new Map([...DARTS_AS_GENERIC, ...OTHER_SPORT_SOURCES].map((source) => [source.id, source] as const)).values(),
+  new Map([...DARTS_AS_GENERIC, ...OTHER_SPORT_SOURCES, ...FLASH_SCORE_SOURCES].map((source) => [source.id, source] as const)).values(),
 );
 
 export function getLocaleProfile(locale: string | null | undefined): SportLiveLocaleProfile {
@@ -560,7 +588,7 @@ export function getSportSources(sport: SportLiveSportId): SportLiveSource[] {
 
 export function getRecommendedSportSources(sport: SportLiveSportId, locale: string | null | undefined): SportLiveSource[] {
   if (sport === "darts") {
-    return getDartsRecommendedSources(locale).map((source) => ({ ...source, sport: "darts" as const, regions: source.regions as SportLiveRegion[] }));
+    return [...getDartsRecommendedSources(locale).map((source) => ({ ...source, sport: "darts" as const, regions: source.regions as SportLiveRegion[] })), ...FLASH_SCORE_SOURCES.filter((source) => source.sport === "darts")];
   }
 
   const profile = getLocaleProfile(locale);

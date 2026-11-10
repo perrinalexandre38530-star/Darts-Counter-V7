@@ -11,7 +11,8 @@ import type { Profile } from '../lib/types';
 import { getChallengeObjectiveImage } from '../lib/challengeObjectiveVisuals';
 import { recordProfileUsageForMode } from '../lib/profileUsage';
 import { DEFAULT_CUSTOM_SEQUENCE, DEFAULT_HALF_IT_SEQUENCE, DOUBLES_8_TARGETS, exerciseTitle, objectiveLabel, type ChallengeExerciseType, type ChallengeObjectiveToken, type ChallengeScoreMode } from '../lib/challengeExercises';
-import {CHALLENGE_ARCADE_CATALOG,CHALLENGE_ARCADE_FAMILIES,getArcadeChallenge,isArcadeChallengePlayable} from '../lib/challengeArcadeCatalog';
+import {getArcadeChallenge,isArcadeChallengePlayable} from '../lib/challengeArcadeCatalog';
+import {CHALLENGE_MODE_OPTIONS,CHALLENGE_MODE_FAMILIES,selectedChallengeMode, type UnifiedChallengeMode} from '../lib/challengeUnifiedCatalog';
 import type {ArcadeVariant} from '../lib/challengeArcadeEngine';
 
 export type ChallengeTarget='1'|'2'|'3'|'4'|'5'|'6'|'7'|'8'|'9'|'10'|'11'|'12'|'13'|'14'|'15'|'16'|'17'|'18'|'19'|'20'|'bull'|'bull25'|'bull50'|'any-double'|'any-triple';
@@ -321,6 +322,17 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
   if(next==='doubles8'){setRule('double');setDoublesBonusTarget(20);setDoublesTargetMode('official');setDoublesTargets([...DOUBLES_8_TARGETS]);}
  };
 
+ const chooseUnifiedMode=(choice:UnifiedChallengeMode)=>{
+  if(choice.exerciseType==='arcade')setCatalogChallengeId(choice.arcadeId||'perfect-line');
+  chooseExercise(choice.exerciseType);
+ };
+ const activeChoice=selectedChallengeMode(exerciseType,catalogChallengeId);
+ const searchTerm=catalogSearch.trim().toLocaleLowerCase();
+ const filteredChoices=CHALLENGE_MODE_OPTIONS.filter(choice=>
+  (catalogFamily==='TOUS'||choice.family===catalogFamily) &&
+  (!searchTerm||[choice.title,choice.description,choice.family].join(' ').toLocaleLowerCase().includes(searchTerm))
+ );
+
  const replayPreset=(preset:ChallengePreset|null)=>applyPreset(preset,{jumpToPlayers:true,resetPlayers:true});
  const saveFavorite=()=>{writeChallengePreset(CHALLENGE_FAVORITE_KEY,currentPreset);setFavoritePreset(currentPreset)};
 
@@ -385,19 +397,37 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
   </>}
  </Section>;
 
- const exerciseStage=<Section title="TYPE DE CHALLENGE" subtitle="Le moteur Challenge reste le même ; choisissez simplement l’exercice à jouer." key="exercise">
-  <div className="exercise-grid">
-   {([
-    ['classic','CIBLE FIXE','Le Challenge actuel : secteur, Bull, Doubles ou Triples.','◎'],
-    ['clock','HORLOGE 1 → 20','Un secteur différent à chaque volée, puis Bull en option.','↻'],
-    ['half-it','HALF-IT','15 · 16 · Double · 17 · 18 · Triple · 19 · 20 · Bull.','½'],
-    ['sequence','SÉQUENCE','Construisez votre propre suite d’objectifs tour par tour.','≡'],
-    ['grouping','GROUPEMENT','Au moins 2 fléchettes dans le même secteur choisi.','◉'],
-    ['jdc','LE JDC CHALLENGE','3 phases · 19 volées · Shanghai +100 · D1 à D20 + Bull.','🏆'],
-    ['doubles8','8 DOUBLES · 9 FLÉCHETTES','Parcours officiel ou variante personnalisée avec les doubles de votre choix, puis une volée bonus.','⑧'],
-    ['arcade','CATALOGUE · 44 CHALLENGES','42 nouveaux concepts + PERFECT LINE + LES OPPOSÉS et ses variantes.','✦'],
-   ] as Array<[ChallengeExerciseType,string,string,string]>).map(([id,label,detail,icon])=><button type="button" key={id} className={'exercise-card '+(exerciseType===id?'on':'')} onClick={()=>chooseExercise(id)}><i>{icon}</i><span><b>{label}</b><small>{detail}</small></span></button>)}
+ const exerciseStage=<Section title="CHOISIR UN CHALLENGE" subtitle="Tous les challenges, anciens et nouveaux, réunis par catégorie. Sélectionnez une carte pour afficher ses réglages et ses règles." key="exercise">
+  <div className="challenge-unified-tools">
+   <label className="challenge-unified-search"><span>RECHERCHER UN DÉFI</span><input type="search" placeholder="Nom, règle ou catégorie…" value={catalogSearch} onChange={e=>setCatalogSearch(e.target.value)} aria-label="Rechercher un challenge"/></label>
+   <div className="challenge-unified-filters" role="group" aria-label="Filtrer par catégorie">
+    {(['TOUS',...CHALLENGE_MODE_FAMILIES] as string[]).map(family=><button type="button" key={family} className={catalogFamily===family?'on':''} aria-pressed={catalogFamily===family} onClick={()=>setCatalogFamily(family)}>{family==='TOUS'?'TOUS LES DÉFIS':family}</button>)}
+   </div>
+   <div className="challenge-unified-count"><b>{filteredChoices.length}</b> CHALLENGE{filteredChoices.length>1?'S':''} AFFICHÉ{filteredChoices.length>1?'S':''}<span>DISPONIBLE · APERÇU · À VENIR</span></div>
   </div>
+  <div className="challenge-unified-families">
+   {CHALLENGE_MODE_FAMILIES.map(family=>{
+    const choices=filteredChoices.filter(item=>item.family===family);
+    if(!choices.length)return null;
+    return <section className="challenge-unified-family" key={family} aria-label={family}>
+     <div className="challenge-family-heading"><h3>{family}</h3><span>{choices.length} DÉFI{choices.length>1?'S':''}</span></div>
+     <div className="challenge-unified-grid">
+      {choices.map(choice=>{
+       const selected=exerciseType===choice.exerciseType&&(choice.exerciseType!=='arcade'||catalogChallengeId===choice.arcadeId);
+       const stateLabel=choice.state==='available'?'DISPONIBLE':choice.state==='preview'?'APERÇU JOUABLE':'À VENIR';
+       return <button type="button" key={choice.id} className={'challenge-unified-tile '+(selected?'on ':'')+choice.state} aria-pressed={selected} onClick={()=>chooseUnifiedMode(choice)}>
+        <i aria-hidden="true">{choice.icon}</i><span className="challenge-unified-tile-text"><b>{choice.title}</b><small>{choice.description}</small><em>{stateLabel}</em></span>
+       </button>;
+      })}
+     </div>
+    </section>;
+   })}
+   {!filteredChoices.length&&<div className="locked-hint">Aucun challenge trouvé. Effacez la recherche ou choisissez une autre catégorie.</div>}
+  </div>
+  {activeChoice&&<div className="challenge-unified-selection">
+    <div><small>CHALLENGE SÉLECTIONNÉ</small><b>{activeChoice.title}</b><span>{activeChoice.family} · {activeChoice.state==='available'?'DISPONIBLE':activeChoice.state==='preview'?'APERÇU JOUABLE':'EN DÉVELOPPEMENT'}</span></div>
+    {activeChoice.state==='planned'&&<p>Ce défi est présenté pour découvrir ses règles, mais son moteur n'est pas encore jouable.</p>}
+  </div>}
  </Section>;
 
  const targetStage=<Section title="CIBLE" subtitle="Choisissez un secteur précis ou un Challenge sur tous les doubles / triples." key="target"><div className="target-grid"><button type="button" className={'target-btn family '+(target==='any-double'?'on':'')} onClick={()=>{setTarget('any-double');setRule('double')}}><span className="target-thumb"><img src={getChallengeObjectiveImage('any-double')} alt=""/></span><b>DOUBLES</b></button><button type="button" className={'target-btn family '+(target==='any-triple'?'on':'')} onClick={()=>{setTarget('any-triple');setRule('triple')}}><span className="target-thumb"><img src={getChallengeObjectiveImage('any-triple')} alt=""/></span><b>TRIPLES</b></button>{[...Array.from({length:20},(_,i)=>String(i+1)),'bull'].map(x=><button type="button" key={x} className={'target-btn '+(target===x?'on':'')} onClick={()=>{setTarget(x as ChallengeTarget);if(x==='bull')setRule('bull')}}><span className="target-thumb"><img src={getChallengeObjectiveImage(x)} alt=""/></span><b>{x==='bull'?'BULL':x}</b></button>)}</div>{familyMode&&<div className="locked-hint">KEYPAD X01 DÉTAILLÉ · chaque D1–D20 / T1–T20 est enregistré · égalité départagée par la somme des numéros touchés.</div>}</Section>;
@@ -463,25 +493,13 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
    <div className="jdc-guide-finale"><span className="jdc-guide-finale-icon" aria-hidden="true"><BottomNavIcon name="stats" size={22}/></span><div><small>CLASSEMENT FINAL · TOTAL DES TROIS PHASES</small><strong>À TOI DE BATTRE LE RECORD !</strong></div><span className="jdc-guide-max"><b>3 380</b><small>PTS MAX</small></span></div>
   </div>
  </Section>;
- const catalogStage=<Section title="CATALOGUE DES CHALLENGES" subtitle="44 défis dans 7 familles. Ceux en préparation sont présentés, sans activation prématurée." key="catalog">
-  <div className="challenge-catalog-tools">
-   <input aria-label="Rechercher un challenge" placeholder="Rechercher un défi…" value={catalogSearch} onChange={e=>setCatalogSearch(e.target.value)}/>
-   <select aria-label="Famille de challenges" value={catalogFamily} onChange={e=>setCatalogFamily(e.target.value)}>
-    <option value="TOUS">TOUTES LES FAMILLES</option>
-    {CHALLENGE_ARCADE_FAMILIES.map(family=><option key={family} value={family}>{family}</option>)}
-   </select>
-  </div>
-  <div className="challenge-catalog-grid">
-   {CHALLENGE_ARCADE_CATALOG.filter(item=>(catalogFamily==='TOUS'||item.family===catalogFamily)&&(!catalogSearch||[item.title,item.description].join(' ').toLocaleLowerCase().includes(catalogSearch.toLocaleLowerCase()))).map(item=><button type="button" key={item.id} className={'challenge-catalog-tile '+(catalogChallengeId===item.id?'selected':'')} onClick={()=>setCatalogChallengeId(item.id)}>
-    <small>{item.family}</small><b>{item.title}</b><span>{item.description}</span><em className={item.status==='ready'?'ready':'preview'}>{item.status==='ready'?'APERÇU JOUABLE':'EN DÉVELOPPEMENT'}</em>
-   </button>)}
-  </div>
+ const arcadeStage=<Section title="RÈGLES ET PARAMÈTRES" subtitle="Réglages propres au défi sélectionné, comme pour les exercices historiques." key="arcade">
   <div className="challenge-catalog-options">
    <h3>{getArcadeChallenge(catalogChallengeId).title}</h3>
    <p>{getArcadeChallenge(catalogChallengeId).description}</p>
-   {!isArcadeChallengePlayable(catalogChallengeId)&&<div className="locked-hint">Ce défi est visible dans le catalogue, mais son moteur est encore en développement. Il ne peut pas être démarré.</div>}
-   {catalogChallengeId==='perfect-line'&&<div className="locked-hint"><b>PARCOURS EXACT :</b> D{catalogLine} → G{catalogLine} → T{catalogLine} → P{catalogLine} → BULL25 → DBULL50. La bonne cible doit être touchée avant d'avancer, sans limite de tentatives.</div>}
-   {catalogChallengeId==='opposites'&&<div className="locked-hint"><b>OPPOSÉS :</b> les secteurs sont calculés sur le véritable ordre du cadran. Les variantes de cet aperçu (simples, doubles, triples) restent à confirmer par rapport aux règles définitives.</div>}
+   {!isArcadeChallengePlayable(catalogChallengeId)&&<div className="locked-hint">DÉFI EN DÉVELOPPEMENT · Vous pouvez découvrir la règle, mais le lancement restera indisponible tant que le moteur n'est pas terminé.</div>}
+   {catalogChallengeId==='perfect-line'&&<div className="locked-hint"><b>PARCOURS EXACT :</b> D{catalogLine} → G{catalogLine} → T{catalogLine} → P{catalogLine} → BULL25 → DBULL50. Le segment suivant ne s'active qu'après le bon impact, sans limite de tentatives.</div>}
+   {catalogChallengeId==='opposites'&&<div className="locked-hint"><b>LES OPPOSÉS :</b> paires diamétralement opposées calculées à partir des vrais secteurs. En prévisualisation : simples, doubles et triples (variantes à confirmer).</div>}
    {(catalogChallengeId==='perfect-line'||catalogChallengeId==='opposites')&&<div className="challenge-catalog-config">
     <label>LIGNE / NUMÉRO INITIAL<select value={catalogLine} onChange={e=>setCatalogLine(Number(e.target.value))}>{Array.from({length:20},(_,i)=><option value={i+1} key={i+1}>{i+1}</option>)}</select></label>
     {catalogChallengeId==='opposites'&&<>
@@ -491,9 +509,9 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
    </div>}
   </div>
  </Section>;
- const exerciseSettings=exerciseType==='arcade'?[catalogStage]:exerciseType==='jdc'?[jdcStage]:exerciseType==='classic'?[targetStage,visitsStage,ruleStage]:exerciseType==='clock'?[clockStage]:exerciseType==='half-it'?[halfItStage]:exerciseType==='sequence'?[sequenceStage]:exerciseType==='doubles8'?[doubles8Stage]:[visitsStage,groupingStage];
+ const exerciseSettings=exerciseType==='arcade'?[arcadeStage]:exerciseType==='jdc'?[jdcStage]:exerciseType==='classic'?[targetStage,visitsStage,ruleStage]:exerciseType==='clock'?[clockStage]:exerciseType==='half-it'?[halfItStage]:exerciseType==='sequence'?[sequenceStage]:exerciseType==='doubles8'?[doubles8Stage]:[visitsStage,groupingStage];
  const stages=[formatStage,playersStage,exerciseStage,...exerciseSettings,audioStage];
- const stepLabels=['FORMAT','JOUEURS','EXERCICE',...(exerciseType==='arcade'?['CATALOGUE']:exerciseType==='classic'?['CIBLE','TOURS','OBJECTIF']:exerciseType==='clock'?['HORLOGE']:exerciseType==='half-it'?['HALF-IT']:exerciseType==='sequence'?['SÉQUENCE']:exerciseType==='doubles8'?['8 DOUBLES']:exerciseType==='jdc'?['JDC']: ['TOURS','GROUPEMENT']),'SONS'];
+ const stepLabels=['FORMAT','JOUEURS','EXERCICE',...(exerciseType==='arcade'?['RÈGLES']:exerciseType==='classic'?['CIBLE','TOURS','OBJECTIF']:exerciseType==='clock'?['HORLOGE']:exerciseType==='half-it'?['HALF-IT']:exerciseType==='sequence'?['SÉQUENCE']:exerciseType==='doubles8'?['8 DOUBLES']:exerciseType==='jdc'?['JDC']: ['TOURS','GROUPEMENT']),'SONS'];
  const currentStepValid=step===0?Boolean(matchMode):step===1?selectionValid:(step===3&&exerciseType==='arcade'&&!isArcadeChallengePlayable(catalogChallengeId))?false:(exerciseType==='sequence'&&step===3?sequenceObjectives.length>0:true);
  React.useEffect(()=>{setStep(prev=>Math.min(prev,Math.max(0,stages.length-1)))},[exerciseType,stages.length]);
  const shown=mode==='complete'?stages:[stages[step]];
@@ -516,7 +534,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
    </section>}
    {mode==='guided'&&<section className="progress-card"><div><strong>CONFIGURATION GUIDÉE</strong><span>Étape {step+1}/{stages.length} • {stepLabels[step]}</span></div><div className="steps">{stepLabels.map((label,i)=><button type="button" onClick={()=>{if(i<=step||currentStepValid)setStep(i)}} className={i===step?'on':i<step?'done':''} key={label}><b>{i+1}</b><span>{label}</span></button>)}</div></section>}
    <div className={mode==='complete'?'complete-grid':'guided-stage'}>{shown}</div>
-   <section className="launch-preview" aria-label="Résumé du challenge"><span><small>PRÊT À JOUER</small><b>{exerciseSummary}</b><em>{exerciseRuleSummary}</em></span><strong>{resolvedVisits}<small>TOURS</small></strong></section>
+   <section className="launch-preview" aria-label="Résumé du challenge"><span><small>{exerciseValid?'PRÊT À JOUER':'EN DÉVELOPPEMENT'}</small><b>{exerciseSummary}</b><em>{exerciseRuleSummary}</em></span><strong>{exerciseType==='arcade'?(catalogChallengeId==='perfect-line'?'6':String(catalogRounds*2)):resolvedVisits}<small>{exerciseType==='arcade'?'ÉTAPES':'TOURS'}</small></strong></section>
    <div className="preset-actions"><button type="button" className={favoritePreset?'favorite-set on':'favorite-set'} onClick={saveFavorite}><span>{favoritePreset?'★':'☆'}</span><b>{favoritePreset?'METTRE À JOUR LE FAVORI':'ENREGISTRER COMME FAVORI'}</b></button><small>Les derniers réglages sont mémorisés automatiquement.</small></div>
    <div className="config-actions">
     {mode==='guided'&&step>0&&<button type="button" onClick={()=>setStep(s=>s-1)}>← PRÉCÉDENT</button>}
@@ -543,6 +561,34 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
 function Section({title,subtitle,children}:{title:string;subtitle?:string;children:any}){return <section className="config-card"><div className="section-title"><h2>{title}</h2>{subtitle?<p>{subtitle}</p>:null}</div>{children}</section>}
 
 const css=(p:string)=>`
+.challenge-unified-tools{display:flex;flex-direction:column;gap:10px;margin-bottom:15px}
+.challenge-unified-search{display:flex;flex-direction:column;gap:6px;font-size:10px;color:#a9bed0;font-weight:900;letter-spacing:.65px}
+.challenge-unified-search input{width:100%;min-width:0;border:1px solid #4e6077;border-radius:11px;background:#0a1220;color:#fff;padding:12px 14px;font-size:13px;outline:none;box-sizing:border-box}
+.challenge-unified-search input:focus{border-color:${p};box-shadow:0 0 0 2px #ff414822}
+.challenge-unified-filters{display:flex;gap:6px;flex-wrap:wrap}
+.challenge-unified-filters button{border:1px solid #415268;background:#111a28;border-radius:999px;padding:7px 11px;color:#c2d0e0;font-size:10px;font-weight:900;cursor:pointer;transition:border .15s}
+.challenge-unified-filters button.on{background:#51161d;border-color:${p};color:#fff}
+.challenge-unified-count{font-size:10px;font-weight:900;color:#e2e8f1;display:flex;gap:6px;align-items:center}.challenge-unified-count b{font-size:18px;color:#ff727b}
+.challenge-unified-count span{margin-left:auto;color:#8f9eae;font-size:9px;letter-spacing:.3px}
+.challenge-unified-families{display:flex;flex-direction:column;gap:14px}
+.challenge-unified-family{min-width:0;border:1px solid #2b3b50;background:linear-gradient(150deg,#0c1420,#080e16);padding:11px;border-radius:14px}
+.challenge-family-heading{display:flex;gap:10px;justify-content:space-between;align-items:center;margin-bottom:10px;padding:0 2px 8px;border-bottom:1px solid #354359}
+.challenge-family-heading h3{margin:0;color:#fff;font-size:12px;font-weight:950;letter-spacing:1px}
+.challenge-family-heading span{font-size:9px;color:#9caec0;font-weight:900}
+.challenge-unified-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.challenge-unified-tile{min-width:0;display:grid;grid-template-columns:37px minmax(0,1fr);align-items:start;gap:9px;text-align:left;padding:12px;background:linear-gradient(145deg,#172232,#0b111a);border:1px solid #45566e;border-radius:13px;color:#fff;cursor:pointer;box-shadow:inset 0 0 12px #0005}
+.challenge-unified-tile:hover{border-color:#91a6ba}.challenge-unified-tile.on{border-color:${p};background:linear-gradient(145deg,#4d1921,#150b11);box-shadow:0 0 17px #ff465433}
+.challenge-unified-tile>i{width:37px;height:37px;border-radius:11px;display:grid;place-items:center;background:#132236;border:1px solid #50647b;font-size:18px;font-weight:950;font-style:normal;color:#e0edff}
+.challenge-unified-tile.on>i{background:#30141c;border-color:#ff6671;color:#ff8e95}
+.challenge-unified-tile-text{min-width:0;display:flex;flex-direction:column;gap:5px}.challenge-unified-tile b{font-size:11px;line-height:1.35;letter-spacing:.25px}.challenge-unified-tile small{font-size:10px;color:#a4b5c7;line-height:1.35;min-height:26px}
+.challenge-unified-tile em{margin-top:3px;align-self:flex-start;font-style:normal;font-size:9px;font-weight:900;letter-spacing:.3px;color:#77f0bb}
+.challenge-unified-tile.preview em{color:#84cbff}.challenge-unified-tile.planned em{color:#93a0b3}
+.challenge-unified-tile.planned{opacity:.76}.challenge-unified-tile.planned.on{opacity:1}
+.challenge-unified-selection{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-top:13px;padding:12px;background:#0a111b;border:1px solid #ff626d6a;border-radius:12px}
+.challenge-unified-selection>div{display:flex;flex-direction:column;gap:4px}.challenge-unified-selection small{font-size:9px;color:#ff7c85;font-weight:950}.challenge-unified-selection b{font-size:14px}.challenge-unified-selection span{font-size:10px;color:#aab9c9;font-weight:800}
+.challenge-unified-selection p{font-size:10px;color:#ecb6bf;max-width:290px;margin:0;line-height:1.5}
+@media(max-width:850px){.challenge-unified-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.challenge-unified-grid{grid-template-columns:1fr}.challenge-unified-count{flex-wrap:wrap}.challenge-unified-count span{margin-left:0;width:100%}.challenge-unified-tile{padding:10px}.challenge-unified-tile small{min-height:0}}
 .challenge-catalog-tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 .challenge-catalog-tools input,.challenge-catalog-tools select,.challenge-catalog-config select{background:#101a28;color:#f0f5fc;border:1px solid #4c5b70;border-radius:9px;padding:10px;font-size:11px;font-weight:800;min-width:0}
 .challenge-catalog-tools input{flex:1 1 220px}.challenge-catalog-tools select{flex:1 1 160px}

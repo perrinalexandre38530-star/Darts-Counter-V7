@@ -1,5 +1,6 @@
 import React from "react";
 import BackDot from "../components/BackDot";
+import CompetitionDashboard from "./CompetitionDashboard";
 import { BottomNavIcon } from "../components/BottomNav";
 import { LIVE_SPORTS_APP_ORDER } from "./support";
 import { useLang } from "../contexts/LangContext";
@@ -341,7 +342,7 @@ function competitionGeography(row?: DartsLiveResult | null) {
   return "AUTRES";
 }
 
-function competitionContinent(row?: DartsLiveResult | null) {
+function competitionContinent(row?: DartsLiveResult | DartsLiveFixture | null) {
   const meta = competitionMetaOf(row);
   if (!meta) return "AUTRES";
   if (meta.family === "world" || String(meta.continent || "").toLowerCase() === "monde") return "MONDE";
@@ -351,7 +352,7 @@ function competitionContinent(row?: DartsLiveResult | null) {
   return "AUTRES";
 }
 
-function competitionCountry(row?: DartsLiveResult | null) {
+function competitionCountry(row?: DartsLiveResult | DartsLiveFixture | null) {
   const meta = competitionMetaOf(row);
   if (!meta) return { key: "AUTRES", label: "Autres", code: null as string | null };
   if (meta.family === "world") return { key: "MONDE", label: "Monde", code: null as string | null };
@@ -386,7 +387,7 @@ function countryVisual(code?: string | null, label?: string | null) {
   return "🏳️";
 }
 
-function competitionLevelGroup(row?: DartsLiveResult | null) {
+function competitionLevelGroup(row?: DartsLiveResult | DartsLiveFixture | null) {
   const meta = competitionMetaOf(row);
   if (!meta) return "AUTRES";
   if (meta.family === "national_teams") return "SÉLECTIONS";
@@ -417,7 +418,7 @@ function categoryIcon(label: string) {
   return "🏳️";
 }
 
-function competitionMetaChips(row?: DartsLiveResult | null) {
+function competitionMetaChips(row?: DartsLiveResult | DartsLiveFixture | null) {
   const meta = competitionMetaOf(row);
   if (!meta) return [] as string[];
   return [meta.regionLabel || meta.countryName || meta.continent, familyLabel(meta.family), meta.tier, levelLabel(meta.level), meta.gender === "women" ? "Féminin" : meta.gender === "mixed" ? "Mixte" : null, meta.age]
@@ -978,6 +979,48 @@ function LiveStyles() {
         .msc-float-overlay { padding:12px 12px calc(72px + env(safe-area-inset-bottom,0px)); }
         .msc-float-panel { width:min(980px,95vw); max-height:calc(100dvh - 85px); }
       }
+
+      /* Fiche compétition commune : lisible en portrait et paysage, sans rail interne. */
+      .msc-competition-detail-title { font-size:clamp(16px,3vw,20px); line-height:1.22; overflow-wrap:anywhere; white-space:normal; }
+      .msc-competition-detail-meta { color:#c1cbd6; font-size:10px; line-height:1.35; }
+      .msc-competition-detail-main { padding:12px; }
+      .msc-competition-back { min-height:34px; font-size:10px; }
+      .msc-season-tab { min-height:34px; padding:0 11px; font-size:10px; }
+      @media (max-width:620px) { .msc-competition-detail-title { font-size:16px; } }
+      .msc-cd { padding:0 9px 12px; }
+      .msc-cd-tabs { display:flex; gap:4px; overflow-x:auto; overscroll-behavior-x:contain; padding:7px 0 9px; scrollbar-width:thin; scrollbar-color:#536273 transparent; }
+      .msc-cd-tab { flex:0 0 auto; display:flex; align-items:center; gap:6px; min-height:38px; padding:8px 10px; border:1px solid #2b3845; border-radius:8px; background:#101923; color:#dce4ed; font-weight:850; font-size:11px; cursor:pointer; white-space:nowrap; }
+      .msc-cd-tab span { font-size:14px; }
+      .msc-cd-tab small { padding:2px 5px; border-radius:999px; background:#273544; font-size:9px; }
+      .msc-cd-tab.is-active { border-color:#ed4260; color:#fff; background:#511b2c; box-shadow:inset 0 -2px #ff4767; }
+      .msc-cd-context { display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:9px 1px; color:#aab7c6; font-size:10px; }
+      .msc-cd-context strong { color:#fff; }
+      .msc-cd-panel { display:grid; gap:9px; min-width:0; }
+      .msc-cd-section-top { display:flex; justify-content:space-between; align-items:center; gap:7px; padding:10px 0 4px; border-bottom:1px solid #32404c; }
+      .msc-cd-section-top h3,.msc-cd-table-wrap h3 { margin:0; font-size:14px; color:#fff; }
+      .msc-cd-section-top button { border:0; background:none; color:#ff6b86; font-size:11px; font-weight:850; cursor:pointer; }
+      .msc-cd-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
+      .msc-cd-metrics>div { display:flex; flex-direction:column; align-items:center; gap:3px; padding:10px 4px; background:#15202b; border:1px solid #2d3c4b; border-radius:9px; }
+      .msc-cd-metrics b { color:#fff; font-size:18px; }
+      .msc-cd-metrics span { color:#a8b8c7; font-size:9px; }
+      .msc-cd-empty { padding:15px 10px; border:1px dashed #364452; border-radius:9px; color:#afbfcf; font-size:12px; line-height:1.5; }
+      .msc-cd-caution { margin:0; padding:9px; border-radius:8px; background:#111e2a; color:#aebdcc; font-size:11px; line-height:1.45; }
+      .msc-cd-round { display:grid; gap:6px; min-width:0; }
+      .msc-cd-round-head { display:flex; justify-content:space-between; align-items:center; padding:10px 9px; border-left:3px solid #eb4264; background:#152331; color:#fff; font-size:11px; }
+      .msc-cd-round-head span { color:#96a7b9; font-size:10px; }
+      .msc-cd-elim { display:grid; grid-template-columns:minmax(0,1fr) 54px minmax(0,1fr); align-items:center; gap:6px; padding:12px 9px; background:#111a23; border:1px solid #2a3848; border-radius:8px; color:#e6ecf4; font-size:11px; }
+      .msc-cd-elim span { overflow-wrap:anywhere; }
+      .msc-cd-elim b { text-align:center; color:#ffc45d; }
+      .msc-cd-more { padding:13px; background:#1c2d3b; color:#fff; border:1px solid #405268; border-radius:9px; font-weight:900; cursor:pointer; }
+      .msc-cd-table-scroll { width:100%; overflow-x:auto; }
+      .msc-cd-table { width:100%; border-collapse:collapse; color:#ebf1f7; font-size:11px; }
+      .msc-cd-table th { position:sticky; top:0; background:#193041; color:#9faebe; text-align:left; font-size:10px; }
+      .msc-cd-table th,.msc-cd-table td { padding:10px 8px; border-bottom:1px solid #263847; }
+      .msc-cd-table td:first-child { color:#8dabc5; width:24px; }
+      .msc-cd-table td:nth-child(2) { font-weight:850; }
+      .msc-cd-table-wrap { display:grid; gap:8px; min-width:0; }
+      @media (max-width:540px) { .msc-cd { padding:0 4px 10px; }.msc-cd-tab { padding:8px; font-size:10px; } }
+
       @media (max-width:380px) { .msc-live-fixed-action span { font-size:8px; } .msc-live-sport-choice { padding:7px 9px; } }
     `}</style>
   );
@@ -1173,7 +1216,7 @@ function ResultMatchCard({ item, source, lang }: { item: DartsLiveResult; source
   );
 }
 
-function GroupedResults({ rows, source, lang, newsRows, allSources, sport, competitionIndex = [] }: { rows: DartsLiveResult[]; source?: SportLiveSource | null; lang: string; newsRows: SportLiveNewsItem[]; allSources: SportLiveSource[]; sport: string; competitionIndex?: SportLiveCompetitionIndexEntry[] }) {
+function GroupedResults({ rows, fixtures, source, lang, newsRows, allSources, sport, competitionIndex = [] }: { rows: DartsLiveResult[]; fixtures: DartsLiveFixture[]; source?: SportLiveSource | null; lang: string; newsRows: SportLiveNewsItem[]; allSources: SportLiveSource[]; sport: string; competitionIndex?: SportLiveCompetitionIndexEntry[] }) {
   const indexByCompetition = React.useMemo(() => {
     const map = new Map<string, SportLiveCompetitionIndexEntry>();
     competitionIndex.forEach((entry) => {
@@ -1184,23 +1227,27 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
   }, [competitionIndex]);
 
   const competitions = React.useMemo(() => {
-    const map = new Map<string, DartsLiveResult[]>();
+    const map = new Map<string, { matches: DartsLiveResult[]; upcoming: DartsLiveFixture[] }>();
     const displayNames = new Map<string, string>();
-    rows.forEach((row) => {
+    const append = (row: DartsLiveResult | DartsLiveFixture, kind: "match" | "fixture") => {
       const rawName = competitionKey(row.competition);
       const meta = competitionMetaOf(row);
       const countryId = String(meta?.countryCode || meta?.countryName || "").trim().toLowerCase();
       const key = `${competitionGroupingKey(rawName, sport)}::${countryId || "unknown"}`;
-      const bucket = map.get(key) || [];
-      bucket.push(row);
+      const bucket = map.get(key) || { matches: [], upcoming: [] };
+      if (kind === "match") bucket.matches.push(row as DartsLiveResult);
+      else bucket.upcoming.push(row as DartsLiveFixture);
       map.set(key, bucket);
       const current = displayNames.get(key);
       displayNames.set(key, current ? preferredCompetitionName(current, rawName) : rawName);
-    });
+    };
+    rows.forEach((row) => append(row, "match"));
+    fixtures.forEach((row) => append(row, "fixture"));
     return Array.from(map.entries())
-      .map(([groupKey, matches]) => {
-        const name = displayNames.get(groupKey) || competitionKey(matches[0]?.competition);
-        const reference = matches.find((match) => !!competitionMetaOf(match)) || matches[0];
+      .map(([groupKey, bucket]) => {
+        const { matches, upcoming } = bucket;
+        const name = displayNames.get(groupKey) || competitionKey(matches[0]?.competition || upcoming[0]?.competition);
+        const reference = matches.find((match) => !!competitionMetaOf(match)) || upcoming.find((item) => !!competitionMetaOf(item)) || matches[0] || upcoming[0];
         const indexed = indexByCompetition.get(normalizedText(name)) || indexByCompetition.get(name.toLowerCase()) || null;
         const country = indexed?.countryName
           ? { key: indexed.countryCode || normalizedText(indexed.countryName), label: indexed.countryName, code: indexed.countryCode || null }
@@ -1210,7 +1257,8 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
           groupKey,
           name,
           matches: [...matches].sort((a, b) => dateTs(b.playedOn) - dateTs(a.playedOn)),
-          latest: Math.max(...matches.map((match) => dateTs(match.playedOn)), 0),
+          upcoming: [...upcoming].sort((a,b) => dateTs(a.startsAt || a.date) - dateTs(b.startsAt || b.date)),
+          latest: Math.max(matches.reduce((max, match) => Math.max(max, dateTs(match.playedOn)), 0), upcoming.reduce((max, item) => Math.max(max, dateTs(item.startsAt || item.date)), 0)),
           imageUrl: indexed?.logoUrl || findCompetitionImage(name, matches, newsRows, allSources),
           tone: competitionVisualTone(name),
           continent: indexed?.continent || competitionContinent(reference),
@@ -1226,7 +1274,7 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
         };
       })
       .sort((a, b) => (b.latest - a.latest) || (b.matches.length - a.matches.length) || a.name.localeCompare(b.name));
-  }, [rows, newsRows, allSources, sport, indexByCompetition]);
+  }, [rows, fixtures, newsRows, allSources, sport, indexByCompetition]);
 
   const continents = React.useMemo(() => {
     const counts = new Map<string, number>();
@@ -1282,7 +1330,8 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
       const matches = item.matches.filter((match) =>
         normalizedText(`${match.winner?.name || ""} ${match.loser?.name || ""}`).includes(query)
       );
-      return matches.length ? [{ ...item, matches }] : [];
+      const upcoming = item.upcoming.filter((fixture) => normalizedText((fixture.players || []).map((player) => player.name).join(" ")).includes(query));
+      return matches.length || upcoming.length ? [{ ...item, matches, upcoming }] : [];
     });
   }, [hierarchyFiltered, searchQuery]);
   const navigationCompetitions = React.useMemo(() => [...searchedCompetitions].sort((a,b) => a.name.localeCompare(b.name, lang || "fr")), [searchedCompetitions, lang]);
@@ -1320,6 +1369,10 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
       const season = resultSeasonLabel(match.playedOn);
       counts.set(season, (counts.get(season) || 0) + 1);
     }));
+    competitionFiltered.forEach((item) => item.upcoming.forEach((fixture) => {
+      const season = resultSeasonLabel(fixture.startsAt || fixture.date);
+      counts.set(season, (counts.get(season) || 0) + 1);
+    }));
     return Array.from(counts.entries()).sort(([a],[b]) => {
       if (a === "NON DATÉ") return 1;
       if (b === "NON DATÉ") return -1;
@@ -1332,8 +1385,8 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
   }, [seasons, selectedSeason]);
 
   const visible = React.useMemo(() => competitionFiltered
-    .map((item) => selectedSeason === "__all__" ? item : { ...item, matches: item.matches.filter((match) => resultSeasonLabel(match.playedOn) === selectedSeason) })
-    .filter((item) => item.matches.length > 0), [competitionFiltered, selectedSeason]);
+    .map((item) => selectedSeason === "__all__" ? item : { ...item, matches: item.matches.filter((match) => resultSeasonLabel(match.playedOn) === selectedSeason), upcoming: item.upcoming.filter((fixture) => resultSeasonLabel(fixture.startsAt || fixture.date) === selectedSeason) })
+    .filter((item) => item.matches.length > 0 || item.upcoming.length > 0), [competitionFiltered, selectedSeason]);
   const scoreCenterVisible = React.useMemo(() => [...visible].sort((a,b) => {
     const countryCmp = a.countryLabel.localeCompare(b.countryLabel, lang || "fr");
     if (countryCmp) return countryCmp;
@@ -1358,6 +1411,10 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
     const counts = new Map<string, number>();
     selectedCompetition.matches.forEach((match) => {
       const season = resultSeasonLabel(match.playedOn);
+      counts.set(season, (counts.get(season) || 0) + 1);
+    });
+    selectedCompetition.upcoming.forEach((fixture) => {
+      const season = resultSeasonLabel(fixture.startsAt || fixture.date);
       counts.set(season, (counts.get(season) || 0) + 1);
     });
     return Array.from(counts.entries()).sort(([a],[b]) => {
@@ -1480,12 +1537,25 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
               <button className="msc-competition-back" type="button" onClick={() => { setSelected("__all__"); setSelectedSeason("__all__"); setHistoryLimit(120); }}>← TOUTES LES COMPÉTITIONS</button>
             </div>
             <div className="msc-season-tabs" aria-label="Saisons de la compétition">
-              <button className={`msc-season-tab${selectedSeason === "__all__" ? " is-active" : ""}`} type="button" onClick={() => setSelectedSeason("__all__")}>TOUTES · {selectedCompetition.matches.length}</button>
+              <button className={`msc-season-tab${selectedSeason === "__all__" ? " is-active" : ""}`} type="button" onClick={() => setSelectedSeason("__all__")}>TOUTES · {selectedCompetition.matches.length + selectedCompetition.upcoming.length}</button>
               {selectedCompetitionSeasons.map(([season,count]) => <button key={season} className={`msc-season-tab${selectedSeason === season ? " is-active" : ""}`} type="button" onClick={() => setSelectedSeason(season)}>{season} · {count}</button>)}
             </div>
+            <CompetitionDashboard
+              key={selectedCompetition.groupKey}
+              sport={sport}
+              competition={selectedCompetition.name}
+              country={selectedCompetition.countryLabel}
+              season={selectedSeason}
+              results={visible.find((item) => item.groupKey === selectedCompetition.groupKey)?.matches || []}
+              fixtures={visible.find((item) => item.groupKey === selectedCompetition.groupKey)?.upcoming || []}
+              news={newsRows}
+              renderResult={(item) => <ResultMatchCard key={item.id} item={item} source={source} lang={lang} />}
+              renderFixture={(item) => <FixtureMatchCard key={item.id} item={item} source={source} lang={lang} />}
+              renderNews={(item) => <NewsCard key={item.id} item={item} lang={lang} />}
+            />
           </div>
         ) : null}
-        <div className="msc-results-context">
+        {!selectedCompetitionMode ? <div className="msc-results-context">
           <span>{selectedContinent === "__all__" ? "Tous continents" : selectedContinent}</span>
           <span>›</span>
           <span>{selectedCountry === "__all__" ? "Tous pays" : (countries.find((item) => item.key === selectedCountry)?.label || selectedCountry)}</span>
@@ -1494,8 +1564,8 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
           <span>›</span>
           <strong>{selectedSeason === "__all__" ? "Toutes saisons" : selectedSeason}</strong>
           <em>{visibleCount} résultat{visibleCount > 1 ? "s" : ""}</em>
-        </div>
-        <div className="msc-competition-groups">
+        </div> : null}
+        {selectedCompetitionMode ? null : <div className="msc-competition-groups">
           {displayedCompetitions.length === 0 ? (
             <div className="msc-empty-card">
               <div className="msc-empty-title">Aucun résultat pour ces filtres</div>
@@ -1504,14 +1574,6 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
             </div>
           ) : null}
           {displayedCompetitions.map(({ groupKey, name, matches, imageUrl, tone, chips, countryCode, countryLabel, archiveSeasons, archiveCount, firstSeen, lastSeen }, index) => {
-            const rounds = new Map<string, DartsLiveResult[]>();
-            matches.forEach((match) => {
-              const round = normalizedRound(match.round);
-              const bucket = rounds.get(round) || [];
-              bucket.push(match);
-              rounds.set(round, bucket);
-            });
-            const orderedRounds = Array.from(rounds.entries()).sort(([a], [b]) => roundOrder(a) - roundOrder(b));
             const previousCountry = index > 0 ? displayedCompetitions[index - 1]?.countryLabel : null;
             const showCountryHead = selectedCountry === "__all__" && previousCountry !== countryLabel;
             return (
@@ -1538,55 +1600,14 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
                     </div>
                     <span className="msc-competition-head-count">{matches.length}</span>
                   </div>
-                  {selectedCompetitionMode ? (() => {
-                    // Paginate globally by date FIRST. The former implementation
-                    // applied the 120-row limit while iterating rounds, so older
-                    // finals could appear before newer matches from other rounds.
-                    const latestRows = [...matches]
-                      .sort((a, b) => dateTs(b.playedOn) - dateTs(a.playedOn))
-                      .slice(0, historyLimit);
-                    const seasonsToRender = Array.from(new Set(latestRows.map((match) => resultSeasonLabel(match.playedOn))))
-                      .sort((a,b) => a === "NON DATÉ" ? 1 : b === "NON DATÉ" ? -1 : Number(b) - Number(a));
-                    const seasonBlocks = seasonsToRender.map((season) => {
-                      const seasonRows = latestRows.filter((match) => resultSeasonLabel(match.playedOn) === season);
-                      const seasonTotal = matches.filter((match) => resultSeasonLabel(match.playedOn) === season).length;
-                      const seasonRounds = new Map<string, DartsLiveResult[]>();
-                      seasonRows.forEach((match) => {
-                        const round = normalizedRound(match.round);
-                        const bucket = seasonRounds.get(round) || [];
-                        bucket.push(match);
-                        seasonRounds.set(round, bucket);
-                      });
-                      const orderedSeasonRounds = Array.from(seasonRounds.entries()).sort(([a],[b]) => roundOrder(a) - roundOrder(b));
-                      const roundBlocks = orderedSeasonRounds.map(([round, roundRows]) => {
-                        const byDate = new Map<string, DartsLiveResult[]>();
-                        roundRows.forEach((match) => {
-                          const date = match.playedOn ? String(match.playedOn).slice(0, 10) : "NON DATÉ";
-                          const group = byDate.get(date) || [];
-                          group.push(match);
-                          byDate.set(date, group);
-                        });
-                        const orderedDates = Array.from(byDate.entries()).sort(([a], [b]) => b.localeCompare(a));
-                        return <div className="msc-round-group" key={`${name}-${season}-${round}`}>
-                          <div className="msc-round-head"><span>{round}</span><span>{roundRows.length} match{roundRows.length > 1 ? "s" : ""} affiché{roundRows.length > 1 ? "s" : ""}</span></div>
-                          {orderedDates.map(([date, dateRows]) => <React.Fragment key={`${name}-${season}-${round}-${date}`}>
-                            <div className="msc-result-day-head"><span>{date === "NON DATÉ" ? "DATE INCONNUE" : formatDate(date, lang)}</span><span>{dateRows.length} match{dateRows.length > 1 ? "s" : ""}</span></div>
-                            {dateRows.map((item) => <ResultMatchCard key={item.id} item={item} source={source} lang={lang} />)}
-                          </React.Fragment>)}
-                        </div>;
-                      });
-                      return <div className="msc-season-block" key={`${name}-${season}`}><div className="msc-season-head"><span>SAISON {season}</span><span>{seasonRows.length} / {seasonTotal} résultats</span></div>{roundBlocks}</div>;
-                    });
-                    return <>{seasonBlocks}{matches.length > historyLimit ? <button className="msc-history-more" type="button" onClick={() => setHistoryLimit((value) => value + 120)}>AFFICHER 120 RÉSULTATS SUPPLÉMENTAIRES · <strong>{Math.max(0, matches.length - historyLimit)} RESTANTS</strong></button> : null}</>;
-                  })() : (
                     <>
                       <div className="msc-round-group">
                         <div className="msc-round-head"><span>DERNIERS MATCHS</span><span>{Math.min(matches.length, 6)} / {matches.length}</span></div>
                         {[...matches].sort((a, b) => dateTs(b.playedOn) - dateTs(a.playedOn)).slice(0, 6).map((item) => <ResultMatchCard key={item.id} item={item} source={source} lang={lang} />)}
+                        {!matches.length ? (visible.find((item) => item.groupKey === groupKey)?.upcoming || []).slice(0, 3).map((item) => <FixtureMatchCard key={item.id} item={item} source={source} lang={lang} />) : null}
                       </div>
-                      <div className="msc-competition-preview-note"><span>{matches.length > 6 ? `${matches.length - 6} résultats de plus` : `${matches.length} résultat${matches.length > 1 ? "s" : ""} disponible${matches.length > 1 ? "s" : ""}`}</span><button className="msc-open-competition" type="button" onClick={() => setSelected(groupKey)}>VOIR LA COMPÉTITION</button></div>
+                      <div className="msc-competition-preview-note"><span>{matches.length ? `${matches.length} résultat${matches.length > 1 ? "s" : ""}` : "Résultats à venir"}{(visible.find((item) => item.groupKey === groupKey)?.upcoming.length || 0) ? ` · ${visible.find((item) => item.groupKey === groupKey)?.upcoming.length} matchs programmés` : ""}</span><button className="msc-open-competition" type="button" onClick={() => setSelected(groupKey)}>OUVRIR LA FICHE</button></div>
                     </>
-                  )}
                 </section>
               </React.Fragment>
             );
@@ -1596,7 +1617,7 @@ function GroupedResults({ rows, source, lang, newsRows, allSources, sport, compe
               AFFICHER 30 COMPÉTITIONS SUPPLÉMENTAIRES · <strong>{scoreCenterVisible.length - displayedCompetitions.length} RESTANTES</strong>
             </button>
           ) : null}
-        </div>
+        </div>}
       </div>
     </div>
   );
@@ -2247,7 +2268,7 @@ export default function SportLiveHub({ go, onBack }: { go?: (route: any, params?
             <div><b>{archiveStorage?.competitions ?? competitionIndex.length}</b><small>compétitions</small></div>
             <div><b>{archiveStorage?.results ?? resultRows.length}</b><small>résultats</small></div>
           </div>
-          {resultRows.length ? <><GroupedResults rows={resultRows} source={sourceForCards} lang={lang} newsRows={newsRows} allSources={allSportSources} sport={liveSport} competitionIndex={competitionIndex} />{resultEvents.length ? <div style={{ marginTop: 12 }}><div className="msc-round-head"><span>AUTRES RÉSULTATS / PODIUMS</span><span>{resultEvents.length}</span></div>{resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />)}</div> : null}</> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Résultats officiels" copy="Aucun résultat automatique n’est chargé pour l’instant. Ouvre une source officielle pour consulter les derniers scores." sources={recommended.filter((source) => source.resultsUrl)} />}
+          {resultRows.length || fixtureRows.length ? <><GroupedResults rows={resultRows} fixtures={fixtureRows} source={sourceForCards} lang={lang} newsRows={newsRows} allSources={allSportSources} sport={liveSport} competitionIndex={competitionIndex} />{resultEvents.length ? <div style={{ marginTop: 12 }}><div className="msc-round-head"><span>AUTRES RÉSULTATS / PODIUMS</span><span>{resultEvents.length}</span></div>{resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />)}</div> : null}</> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Résultats officiels" copy="Aucun résultat automatique n’est chargé pour l’instant. Ouvre une source officielle pour consulter les derniers scores." sources={recommended.filter((source) => source.resultsUrl)} />}
         </section>
       ) : null}
 
@@ -2287,7 +2308,7 @@ export default function SportLiveHub({ go, onBack }: { go?: (route: any, params?
       </nav>
 
       {floatingPanel === "news" ? <FloatingDrawer title={`ACTUALITÉS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}>{newsRows.length ? <div className="msc-news-grid">{newsRows.slice(0, 80).map((item) => <NewsCard key={item.id} item={item} lang={lang} />)}</div> : <EmptySection title="Aucune actualité détectée" copy="Réessaie l’actualisation dans quelques instants." sources={recommended.slice(0, 2)} />}</FloatingDrawer> : null}
-      {floatingPanel === "results" ? <FloatingDrawer title={`RÉSULTATS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}><div className="msc-archive-summary" style={{ marginBottom: 8 }}><div><strong>{archiveLoading ? "ARCHIVES · CHARGEMENT…" : `ARCHIVES · ${archiveSeasonCount || 0} SAISON${archiveSeasonCount === 1 ? "" : "S"}`}</strong></div><div><b>{Math.max(competitionIndex.length, archiveStorage?.competitions || 0)}</b><small>compétitions</small></div><div><b>{Math.max(resultRows.length, archiveStorage?.results || 0)}</b><small>résultats</small></div></div>{resultRows.length ? <><GroupedResults rows={resultRows} source={sourceForCards} lang={lang} newsRows={newsRows} allSources={allSportSources} sport={liveSport} competitionIndex={competitionIndex} />{resultEvents.length ? <div style={{ marginTop: 12 }}><div className="msc-round-head"><span>AUTRES RÉSULTATS / PODIUMS</span><span>{resultEvents.length}</span></div>{resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />)}</div> : null}</> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Aucun résultat détecté" copy="Les sources officielles restent disponibles." sources={recommended.filter((source) => source.resultsUrl).slice(0, 2)} />}</FloatingDrawer> : null}
+      {floatingPanel === "results" ? <FloatingDrawer title={`RÉSULTATS · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}><div className="msc-archive-summary" style={{ marginBottom: 8 }}><div><strong>{archiveLoading ? "ARCHIVES · CHARGEMENT…" : `ARCHIVES · ${archiveSeasonCount || 0} SAISON${archiveSeasonCount === 1 ? "" : "S"}`}</strong></div><div><b>{Math.max(competitionIndex.length, archiveStorage?.competitions || 0)}</b><small>compétitions</small></div><div><b>{Math.max(resultRows.length, archiveStorage?.results || 0)}</b><small>résultats</small></div></div>{resultRows.length || fixtureRows.length ? <><GroupedResults rows={resultRows} fixtures={fixtureRows} source={sourceForCards} lang={lang} newsRows={newsRows} allSources={allSportSources} sport={liveSport} competitionIndex={competitionIndex} />{resultEvents.length ? <div style={{ marginTop: 12 }}><div className="msc-round-head"><span>AUTRES RÉSULTATS / PODIUMS</span><span>{resultEvents.length}</span></div>{resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />)}</div> : null}</> : resultEvents.length ? resultEvents.map((event) => <OfficialEventCard key={event.id} event={event} />) : <EmptySection title="Aucun résultat détecté" copy="Les sources officielles restent disponibles." sources={recommended.filter((source) => source.resultsUrl).slice(0, 2)} />}</FloatingDrawer> : null}
       {floatingPanel === "fixtures" ? <FloatingDrawer title={`AGENDA · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}><div className="msc-empty-card"><div className="msc-empty-title">AGENDA MULTISPORTS</div><div className="msc-empty-copy">Le calendrier LIVE n’est plus dupliqué dans cette page. Les événements réels sont affichés dans l’Agenda principal avec le filtre LIVE.</div><button className="msc-more-btn" type="button" onClick={openAgenda}>OUVRIR L’AGENDA</button></div></FloatingDrawer> : null}
       {floatingPanel === "sources" ? <FloatingDrawer title={`SOURCES · ${meta.label.toUpperCase()}`} onClose={() => setFloatingPanel(null)}><input className="msc-live-source-search" value={sourceSearch} onChange={(e) => setSourceSearch(e.target.value)} placeholder="Rechercher une source, un pays…" aria-label="Rechercher les sources" /><SourceDirectory sources={visibleSources} /></FloatingDrawer> : null}
 
