@@ -1,0 +1,7 @@
+# MSS AI CONTROL - projet Pages indépendant.
+# Ce fichier empêche de réutiliser le wrangler.toml à la racine de MULTISPORTS SCORING.
+# Aucun binding R2/D1/Supabase ni secret dans ce dépôt.
+name = "mss-ai-control-admin"
+pages_build_output_dir = "./public"
+compatibility_date = "2026-11-11"
+compatibility_flags = ["nodejs_compat"]
