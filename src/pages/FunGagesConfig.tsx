@@ -1,3 +1,4 @@
+import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
 import React, { useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
@@ -65,6 +66,8 @@ export default function FunGagesConfig(props: any) {
           {t("config.startGame", "Démarrer")}
         </button>
       </Section>
-    </div>
+    
+      <NativeStartOrderConfig />
+      </div>
   );
 }

@@ -1,6 +1,6 @@
 import React from 'react';
 import ChallengeArcadePlay from './ChallengeArcadePlay';
-import { exportChallengeResults, downloadChallengeFile, type ChallengeExportReport, type ChallengeExportResult } from '../lib/challengeResultsExport';
+import { exportChallengeResults, downloadChallengeFile, prepareChallengeShare, sharePreparedChallenge, type ChallengeExportReport, type ChallengeExportResult, type ChallengePreparedShare } from '../lib/challengeResultsExport';
 import { enrichChallengeReport } from '../lib/challengeFullReport';
 import { ChallengeReportActions, ChallengeReportPreview, ChallengeReportShareDialog } from '../components/ChallengeReportUI';
 import BackDot from '../components/BackDot';
@@ -13,6 +13,8 @@ import { loadTeamsBySport, resolveTeamLogo } from '../lib/petanqueTeamsStore';
 import { resolveTeamLogoSrc } from '../assets/teamLogoLibrary';
 import { History } from '../lib/history';
 import { recordTrainingDetailedSession } from '../training/stats/trainingStatsHub';
+import { getChallengeTrainingPreset } from '../training/catalog/challengeTrainingCatalog';
+import { saveTrainingChallengeDraft, clearTrainingChallengeDraft } from '../training/profile/trainingChallengeDraft';
 import {
  fetchChallengeLeaderboard,
  getChallengeOnlineUserId,
@@ -536,6 +538,8 @@ function LegacyChallengePlay({go,params,onCompetitionFinish}:{go:(t:any,p?:any)=
  const resumePayload=resumeRecord?.decoded||resumeRecord?.payload||resumeRecord?.resume?.livePayload||{};
  const resumeSnapshot=params?.snapshot||resumeRecord?.resume?.state||resumePayload?.state||resumePayload?.snapshot||null;
  const cfg:ChallengeConfigData=params?.config||resumeRecord?.resume?.config||resumePayload?.config||{target:'20',visits:30,rule:'all',playerIds:[],teamIds:[],participantMode:'players',participantSource:'direct',configMode:'guided',matchMode:'solo'};
+ const fromTrainingLab = Boolean(params?.fromTrainingLab === true || cfg.trainingOrigin === 'training_lab');
+ const backToTraining = () => go('training_mode', { modeId: 'training_lab', challengeCatalog: true });
  const soundsEnabled=React.useMemo(()=>{if(typeof cfg.soundsEnabled==='boolean')return cfg.soundsEnabled;try{return localStorage.getItem('dc_challenge_sounds_v1')!=='0'}catch{return true}},[cfg.soundsEnabled]);
  const profiles=store?.profiles||[];
  const teams=React.useMemo(()=>{try{return loadTeamsBySport('darts')||[]}catch{return []}},[]);
@@ -557,8 +561,11 @@ function LegacyChallengePlay({go,params,onCompetitionFinish}:{go:(t:any,p?:any)=
  const safeParticipants=participants.length?participants:[{id:'solo',name:'Joueur'}];
  const initialLog=React.useMemo<Entry[]>(()=>{const source=resumeSnapshot?.log||resumeSnapshot?.entries||resumePayload?.entries||resumeRecord?.resume?.livePayload?.entries||[];return Array.isArray(source)?source.filter((e:any)=>e&&hits.includes(e.hit)&&e.pid).map((e:any)=>({hit:e.hit as Hit,pid:String(e.pid),...(Number(e?.segment)>0?{segment:Number(e.segment)}:{}),...(Number(e?.bonusTarget)>0?{bonusTarget:Number(e.bonusTarget)}:{})})):[]},[resumeSnapshot,resumePayload,resumeRecord]);
  const [log,setLog]=React.useState<Entry[]>(()=>initialLog);
+ const trainingDraftParticipantId = fromTrainingLab ? String(cfg.trainingOwnerId || cfg.playerIds?.[0] || '') : '';
+ const trainingDraftPresetId = fromTrainingLab ? String(cfg.trainingCatalogPresetId || '') : '';
+ const trainingDraftConfigRef=React.useRef(cfg);
  const [bonusTargetByPlayer,setBonusTargetByPlayer]=React.useState<Record<string,number>>(()=>{
-  const restored:Record<string,number>={};
+  const restored:Record<string,number>={...(resumeSnapshot?.bonusTargetByPlayer || {})};
   for(const entry of initialLog){
    const target=Math.round(Number(entry.bonusTarget||0));
    if(target>=1&&target<=20)restored[String(entry.pid)]=target;
@@ -593,6 +600,7 @@ function LegacyChallengePlay({go,params,onCompetitionFinish}:{go:(t:any,p?:any)=
  const [challengeExportPreview,setChallengeExportPreview]=React.useState<ChallengeExportResult|null>(null);
  const challengeLastReportRef=React.useRef<ChallengeExportReport|null>(null);
  const challengeLastFormatRef=React.useRef<'pdf'|'png'>('pdf');
+ const challengePreparedShareRef=React.useRef<ChallengePreparedShare|null>(null);
  const [voiceOn,setVoiceOn]=React.useState(false);
  const [voiceHeard,setVoiceHeard]=React.useState('');
  const [segmentMultiplier,setSegmentMultiplier]=React.useState<'S'|'D'|'T'>('S');
@@ -609,6 +617,13 @@ function LegacyChallengePlay({go,params,onCompetitionFinish}:{go:(t:any,p?:any)=
  const endPlayedRef=React.useRef(false);
  const totalMax=cfg.visits*3*safeParticipants.length;
  const done=log.length>=totalMax;
+ React.useEffect(()=>{
+  if(!fromTrainingLab||!trainingDraftParticipantId||!trainingDraftPresetId)return;
+  if(done){clearTrainingChallengeDraft(trainingDraftParticipantId,trainingDraftPresetId);return;}
+  if(!log.length)return;
+  saveTrainingChallengeDraft({participantId:trainingDraftParticipantId,presetId:trainingDraftPresetId,
+   savedAt:Date.now(),config:trainingDraftConfigRef.current,log:[...log],bonusTargetByPlayer:{...bonusTargetByPlayer}});
+ },[fromTrainingLab,trainingDraftParticipantId,trainingDraftPresetId,done,log,bonusTargetByPlayer]);
  const activeIndex=Math.floor(log.length/3)%safeParticipants.length;
  const current=safeParticipants[activeIndex];
  const currentLog=log.filter(e=>e.pid===current.id);
@@ -780,7 +795,7 @@ function LegacyChallengePlay({go,params,onCompetitionFinish}:{go:(t:any,p?:any)=
  },[activeIndex,cfg,log,safeParticipants,turn,bonusTargetByPlayer]);
 
  React.useEffect(()=>{
-  if(historyStatsOnly||log.length===0) return;
+  if(historyStatsOnly||fromTrainingLab||log.length===0) return;
   const status=done?'finished':'in_progress';
   const record:any=buildChallengeRecord(status);
   const signature=`${status}|${log.length}|${record?.summary?.scoreLine||''}`;
@@ -790,7 +805,7 @@ function LegacyChallengePlay({go,params,onCompetitionFinish}:{go:(t:any,p?:any)=
  },[buildChallengeRecord,done,log.length,historyStatsOnly]);
 
  React.useEffect(()=>{
-  if(!done||historyStatsOnly||!onCompetitionFinish||competitionFinishRef.current) return;
+  if(!done||historyStatsOnly||fromTrainingLab||!onCompetitionFinish||competitionFinishRef.current) return;
   competitionFinishRef.current=true;
   const record:any=buildChallengeRecord('finished');
   const rows=safeParticipants.map(p=>{const st=participantStats(p);const exerciseStats=analyzeChallengeExercise(log.filter(e=>e.pid===p.id),cfg);return{id:String(p.id),name:p.name,score:st.score,tieBreak:participantTieBreak(p),tieBreakPoints:participantTieBreak(p),accuracy:st.pct,bestStreak:st.streak,bestVisit:st.detailed.bestVisit,darts:st.darts,exerciseStats}});
@@ -806,7 +821,7 @@ function LegacyChallengePlay({go,params,onCompetitionFinish}:{go:(t:any,p?:any)=
   const p=safeParticipants[0];
   const stats=participantStats(p);
   try{
-   recordTrainingDetailedSession({id:`${matchIdRef.current}-training`,modeId:'training_challenges',participantId:p.profile?.id?String(p.profile.id):String(p.id),participantName:p.name,participantType:'player',startedAt:createdAtRef.current,endedAt:Date.now(),durationMs:Date.now()-createdAtRef.current,darts:stats.darts,hits:stats.hits,misses:stats.misses,points:stats.score,accuracyPct:stats.pct,success:stats.score>0,config:{...cfg,sourceMode:'challenge',challengeTarget:cfg.target,challengeRule:cfg.rule},metrics:{sourceMode:'challenge',score:stats.score,bestStreak:stats.streak,bestVisit:stats.detailed.bestVisit,avgVisit:stats.detailed.avgVisit,target:cfg.target,rule:cfg.rule,visits:cfg.visits,exerciseType:challengeExerciseType(cfg),exerciseValidationRate:analyzeChallengeExercise(log.filter(entry=>entry.pid===p.id),cfg).validationRate,matchId:matchIdRef.current,bestDartPosition:(stats.detailed.positionStats.slice().sort((a,b)=>b.accuracy-a.accuracy)[0]?.position||0),bestDartAccuracy:(stats.detailed.positionStats.slice().sort((a,b)=>b.accuracy-a.accuracy)[0]?.accuracy||0),...Object.fromEntries(stats.detailed.positionStats.flatMap(pos=>[[`dart${pos.position}Attempts`,pos.attempts],[`dart${pos.position}Successful`,pos.successful],[`dart${pos.position}Accuracy`,pos.accuracy],[`dart${pos.position}S`,pos.S],[`dart${pos.position}D`,pos.D],[`dart${pos.position}T`,pos.T],[`dart${pos.position}B25`,pos.B25],[`dart${pos.position}B50`,pos.B50],[`dart${pos.position}MISS`,pos.MISS]]))},visitHistory:log,telemetry:{target:cfg.target,rule:cfg.rule,hits:stats.hitCounts,positionStats:stats.detailed.positionStats,visitScores:stats.detailed.visitScores,cumulativeScores:stats.detailed.cumulativeScores,exerciseStats:analyzeChallengeExercise(log.filter(entry=>entry.pid===p.id),cfg)},telemetryCoverage:'exact'} as any);
+   recordTrainingDetailedSession({id:`${matchIdRef.current}-training`,modeId:'training_challenges',participantId:p.profile?.id?String(p.profile.id):String(p.id),participantName:p.name,participantType:'player',startedAt:createdAtRef.current,endedAt:Date.now(),durationMs:Date.now()-createdAtRef.current,darts:stats.darts,hits:stats.hits,misses:stats.misses,points:stats.score,accuracyPct:stats.pct,success:fromTrainingLab ? analyzeChallengeExercise(log.filter(entry=>entry.pid===p.id),cfg).validationRate >= Number(getChallengeTrainingPreset(trainingDraftPresetId)?.successValidationPct ?? 50) : stats.score>0,config:{...cfg,sourceMode:'challenge',challengeTarget:cfg.target,challengeRule:cfg.rule},metrics:{sourceMode:'challenge',...(fromTrainingLab ? {exerciseId:trainingDraftPresetId,exerciseTitle:getChallengeTrainingPreset(trainingDraftPresetId)?.title||exerciseTitle(cfg),goal:Number(getChallengeTrainingPreset(trainingDraftPresetId)?.successValidationPct??50),completionPct:Math.round(analyzeChallengeExercise(log.filter(entry=>entry.pid===p.id),cfg).validationRate),performanceScore:Math.round(analyzeChallengeExercise(log.filter(entry=>entry.pid===p.id),cfg).validationRate),trainingPerformancePct:Math.round(analyzeChallengeExercise(log.filter(entry=>entry.pid===p.id),cfg).validationRate)} : {}),score:stats.score,bestStreak:stats.streak,bestVisit:stats.detailed.bestVisit,avgVisit:stats.detailed.avgVisit,target:cfg.target,rule:cfg.rule,visits:cfg.visits,exerciseType:challengeExerciseType(cfg),exerciseValidationRate:analyzeChallengeExercise(log.filter(entry=>entry.pid===p.id),cfg).validationRate,matchId:matchIdRef.current,bestDartPosition:(stats.detailed.positionStats.slice().sort((a,b)=>b.accuracy-a.accuracy)[0]?.position||0),bestDartAccuracy:(stats.detailed.positionStats.slice().sort((a,b)=>b.accuracy-a.accuracy)[0]?.accuracy||0),...Object.fromEntries(stats.detailed.positionStats.flatMap(pos=>[[`dart${pos.position}Attempts`,pos.attempts],[`dart${pos.position}Successful`,pos.successful],[`dart${pos.position}Accuracy`,pos.accuracy],[`dart${pos.position}S`,pos.S],[`dart${pos.position}D`,pos.D],[`dart${pos.position}T`,pos.T],[`dart${pos.position}B25`,pos.B25],[`dart${pos.position}B50`,pos.B50],[`dart${pos.position}MISS`,pos.MISS]]))},visitHistory:log,telemetry:{target:cfg.target,rule:cfg.rule,hits:stats.hitCounts,positionStats:stats.detailed.positionStats,visitScores:stats.detailed.visitScores,cumulativeScores:stats.detailed.cumulativeScores,exerciseStats:analyzeChallengeExercise(log.filter(entry=>entry.pid===p.id),cfg)},telemetryCoverage:'exact'} as any);
   }catch(error){console.warn('[challenge] training stats persistence failed',error)}
  },[cfg,done,log,participantStats,safeParticipants,historyStatsOnly]);
 
@@ -842,7 +857,7 @@ function LegacyChallengePlay({go,params,onCompetitionFinish}:{go:(t:any,p?:any)=
  },[onlineTeamKey]);
 
  React.useEffect(()=>{
-  if(!rankOpen) return;
+  if(!rankOpen || fromTrainingLab) return;
   let cancelled=false;
   void (async()=>{
    // P0 V10: ouvrir le classement doit être immédiat. Le backfill des anciennes
@@ -859,7 +874,7 @@ function LegacyChallengePlay({go,params,onCompetitionFinish}:{go:(t:any,p?:any)=
  },[rankOpen,onlineTarget,onlineRule,onlineVisits,onlineScope,onlineTeamKey,refreshOnlineTeams,refreshOnlineRanking]);
 
  React.useEffect(()=>{
-  if(historyStatsOnly||!done||onlineSubmittedRef.current||onlineSubmittingRef.current) return;
+  if(historyStatsOnly||fromTrainingLab||!done||onlineSubmittedRef.current||onlineSubmittingRef.current) return;
   onlineSubmittingRef.current=true;
   void (async()=>{
    try{
@@ -1367,17 +1382,7 @@ function LegacyChallengePlay({go,params,onCompetitionFinish}:{go:(t:any,p?:any)=
 
  // Le document est construit à partir des statistiques réelles de chaque joueur.
  // Export autonome PDF/PNG, indépendant du DOM et du mode d'exercice.
- const handleChallengeExport=async(format:'pdf'|'png'|'share',shareNow=false)=>{
-  if(format==='share'&&!shareNow){
-   setChallengeShareError('');
-   setChallengeShareOpen(true);
-   return;
-  }
-  if(challengeExportBusy)return;
-  setChallengeExportBusy(true);
-  setChallengeExportError('');
-  setChallengeExportInfo('');
-  try{
+ const makeChallengeExportReport=():ChallengeExportReport=>{
    const report:ChallengeExportReport={
     title:exerciseTitle(cfg),
     rounds:Number(cfg.visits)||0,
@@ -1402,13 +1407,52 @@ function LegacyChallengePlay({go,params,onCompetitionFinish}:{go:(t:any,p?:any)=
     }),
    };
    const fullReport=enrichChallengeReport(report,cfg,log);
+   return fullReport;
+ };
+ const handleChallengeExport=async(format:'pdf'|'png'|'share',shareNow=false)=>{
+  if(format==='share'&&!shareNow){
+   challengePreparedShareRef.current=null;
+   setChallengeShareError('');
+   setChallengeShareOpen(true);
+   setChallengeExportBusy(true);
+   try{
+    const fullReport=makeChallengeExportReport();
+    challengeLastReportRef.current=fullReport;
+    // Preparing after the first tap leaves the second tap as a clean gesture
+    // for the native Android/iOS share sheet.
+    challengePreparedShareRef.current=await prepareChallengeShare(fullReport);
+   }catch(error){
+    setChallengeShareError(String((error as Error)?.message||'Impossible de préparer les fichiers.'));
+   }finally{setChallengeExportBusy(false);}
+   return;
+  }
+  if(challengeExportBusy)return;
+  setChallengeExportError('');
+  setChallengeExportInfo('');
+  if(shareNow){
+   const prepared=challengePreparedShareRef.current;
+   if(!prepared){setChallengeShareError('Le rapport n’est pas encore prêt. Ferme puis rouvre Partager.');return;}
+   // Direct call while the selected format button's click is active.
+   const sharing=sharePreparedChallenge(prepared,format as 'pdf'|'png');
+   setChallengeExportBusy(true);
+   try{
+    const result=await sharing;
+    if(result.status==='share-unavailable')setChallengeShareError('Le navigateur ne permet pas ce partage. Télécharge le PDF ou le ZIP de PNG et partage depuis Galerie/Fichiers.');
+    if(result.status==='shared')setChallengeShareOpen(false);
+   }catch(error){setChallengeShareError(String((error as Error)?.message||'Partage impossible.'));}
+   finally{setChallengeExportBusy(false);}
+   return;
+  }
+  setChallengeExportBusy(true);
+  try{
+   const fullReport=makeChallengeExportReport();
    challengeLastReportRef.current=fullReport;
    challengeLastFormatRef.current=format==='pdf'?'pdf':'png';
-   const result=await exportChallengeResults(fullReport,format,{share:shareNow});
+   const result=await exportChallengeResults(fullReport,format);
    if(result.status==='preview')setChallengeExportPreview(result);
-   if(result.status==='download-started')setChallengeExportInfo('Téléchargement demandé : vérifie le dossier Téléchargements de ton appareil. Si le navigateur intégré le bloque, ouvre la page dans Chrome.');
-   if(result.status==='share-unavailable')setChallengeShareError('Ce navigateur intégré ne permet pas le partage de fichiers. Télécharge l’image ou le PDF avec les icônes, puis utilise Partager depuis Galerie ou Fichiers.');
-   if(result.status==='shared')setChallengeShareOpen(false);
+   if(result.status==='download-started')setChallengeExportInfo(format==='pdf'
+    ?'Téléchargement du PDF multipage demandé. Vérifie le dossier Téléchargements.'
+    :'Téléchargement du ZIP : une image PNG A4 par page, dans Téléchargements.');
   }catch(error){
    const message=String((error as Error)?.message||'Export impossible sur cet appareil.');
    setChallengeExportError(message);
@@ -1441,7 +1485,7 @@ function LegacyChallengePlay({go,params,onCompetitionFinish}:{go:(t:any,p?:any)=
 
  return <div className={`cp exercise-${exerciseType}`} style={{background:theme.bg,color:theme.text}}>
   <header className="cp-head">
-   <div className="cp-back"><BackDot onClick={()=>historyStatsOnly?go(statsReturnTab,statsReturnParams):go('challenge_config')} size={44} color="#35e9ff" glow="#35e9ff77"/></div>
+   <div className="cp-back"><BackDot onClick={()=>historyStatsOnly?go(statsReturnTab,statsReturnParams):fromTrainingLab?backToTraining():go('challenge_config')} size={44} color="#35e9ff" glow="#35e9ff77"/></div>
    <img className="cp-ticker" src="/challenge/ticker_challenge.png" alt="Challenge"/>
    <button className="cp-awena" type="button" aria-label="Ouvrir Awena" title="Awena" onClick={()=>awena?.openPanel?.()}><span><img src="/awena/awena-avatar.webp" alt="Awena"/></span><i aria-hidden>🎙</i></button>
   </header>
@@ -1462,7 +1506,7 @@ function LegacyChallengePlay({go,params,onCompetitionFinish}:{go:(t:any,p?:any)=
     </div>
     <div className="player-context-strip landscape-only"><span>{exerciseType==='doubles8'||exerciseType==='jdc'?'VOLÉE':'TOUR'} <b>{done?cfg.visits:turn}</b> / {cfg.visits}</span><strong>{safeParticipants.length} {safeParticipants.length>1?'JOUEURS':'JOUEUR'}</strong></div>
     <div className="left-kpis landscape-only"><div><span>RÉUSSITE</span><b>{pct}%</b></div><div><span>SUITE</span><b>{streak}</b></div><div><span>FLÉCHETTES</span><b>{currentLog.length}/{cfg.visits*3}</b></div></div>
-    <div className="left-actions landscape-only"><button type="button" onClick={()=>setRankOpen(true)}><span>◎</span><b>ONLINE</b></button><div><span>RECORD SUITE</span><b>{participantMaxStreak(current)}</b></div></div>
+    <div className="left-actions landscape-only">{!fromTrainingLab && <button type="button" onClick={()=>setRankOpen(true)}><span>◎</span><b>ONLINE</b></button>}<div><span>RECORD SUITE</span><b>{participantMaxStreak(current)}</b></div></div>
     {safeParticipants.length>1&&<div className="player-list landscape-only"><div className="player-list-title"><b>JOUEURS</b><span>{safeParticipants.length}</span></div><div className="player-list-scroll">{safeParticipants.map((p,i)=><div key={p.id} className={'player-row '+(i===activeIndex?'active':'')}><div className="list-team-bg">{p.team?<ResolvedTeamLogo team={p.team}/>:null}</div><span className="list-avatar"><ChallengeAvatar participant={p} size={34}/></span><span className="list-name"><b>{p.name}</b>{p.teamName?<small>{p.teamName}</small>:null}</span><span className="list-score"><b>{participantScore(p)}</b><small>{participantDarts(p)} fl.</small></span></div>)}</div></div>}
    </section>
 
@@ -1613,11 +1657,11 @@ function LegacyChallengePlay({go,params,onCompetitionFinish}:{go:(t:any,p?:any)=
   <div className="finish-row-metrics">{rowMetrics.map(metric=><div key={metric.label}><small>{metric.label}</small><strong>{metric.value}</strong></div>)}</div>
  </div>})}</div><div className="finish-actions">
  <button className="finish-stats" onClick={()=>{setDetailTab('global');setDetailSection(exerciseType==='classic'?'PERF':'EXERCICE');setDetailOpen(true)}}>{exerciseType==='classic'?'STATS DÉTAILLÉES':'STATS EXERCICE'}</button>
- <button onClick={()=>go('challenge_config')}>REJOUER</button>
+ <button onClick={()=>fromTrainingLab?backToTraining():go('challenge_config')}>{fromTrainingLab?'AUTRES EXERCICES':'REJOUER'}</button>
  <div className="finish-export-actions"><ChallengeReportActions busy={challengeExportBusy} onExport={format=>void handleChallengeExport(format)}/></div>
  {challengeExportInfo&&<div className="finish-export-info" role="status">{challengeExportInfo}</div>}
  {challengeExportError&&<div className="finish-export-error" role="alert">{challengeExportError}</div>}
- <button className="finish-menu" onClick={()=>go('games')}>MENU PRINCIPAL</button>
+ <button className="finish-menu" onClick={()=>fromTrainingLab?backToTraining():go('games')}>{fromTrainingLab?'CENTRE D’ENTRAÎNEMENT':'MENU PRINCIPAL'}</button>
 </div></div></div>}
   <ChallengeReportShareDialog open={challengeShareOpen} busy={challengeExportBusy} error={challengeShareError} onClose={()=>setChallengeShareOpen(false)} onShare={format=>void handleChallengeExport(format,true)}/>
   <ChallengeReportPreview result={challengeExportPreview} onClose={()=>setChallengeExportPreview(null)} onDownload={()=>{try{if(challengeLastReportRef.current)downloadChallengeFile(challengeLastReportRef.current,challengeLastFormatRef.current);}catch(error){setChallengeExportError(String((error as Error)?.message||error));setChallengeExportPreview(null);}}}/>

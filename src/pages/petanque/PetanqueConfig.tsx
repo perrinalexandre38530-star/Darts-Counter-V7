@@ -1,3 +1,4 @@
+import NativeStartOrderConfig from '../../components/NativeStartOrderConfig';
 // =============================================================
 // src/pages/petanque/PetanqueConfig.tsx
 // Config Pétanque — UI calquée sur X01ConfigV3 (cards + carrousel + pills)
@@ -2123,7 +2124,9 @@ function handleStart() {
         </div>
       )}
 
-    </div>
+    
+      <NativeStartOrderConfig />
+      </div>
   );
 }
 

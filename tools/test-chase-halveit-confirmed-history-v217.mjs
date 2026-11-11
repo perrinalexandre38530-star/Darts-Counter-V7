@@ -33,7 +33,7 @@ assert.equal(await gate.save('', () => true), false, 'pas de sauvegarde sans ID 
 const app = readFileSync(resolve(root, 'src/App.tsx'), 'utf8');
 const five = readFileSync(resolve(root, 'src/pages/FiveLivesPlay.tsx'), 'utf8');
 const halve = readFileSync(resolve(root, 'src/pages/HalveItPlay.tsx'), 'utf8');
-assert.match(app, /return upsertPromise;\s*}\s*\/\/ ONLINE V10/, 'callback remonte le résultat IDB');
+assert.match(app, /return upsertPromise;\s*}/, 'callback remonte le résultat IDB');
 assert.match(app, /const confirmBeforeMirror = isTossitMatch \|\| options\?\.confirmPersistence === true;/, 'TOSSIT et V217 attendent tous deux le commit');
 assert.match(app, /if \(!confirmBeforeMirror\) updateVisibleHistory\(\)/, 'cache optimiste conservé pour les autres modes');
 assert.match(app, /if \(committed\) updateVisibleHistory\(\)/);

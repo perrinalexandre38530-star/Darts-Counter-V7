@@ -1,4 +1,5 @@
 // @ts-nocheck
+import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
 // =============================================================
 // HALVE-IT — configuration complète / guidée
 // Sélecteur JOUEURS / ÉQUIPES partagé avec X01
@@ -14,6 +15,7 @@ import OptionToggle from "../components/OptionToggle";
 import PageHeader from "../components/PageHeader";
 import DartsModeFamilyBridge from "../components/DartsModeFamilyBridge";
 import DartsResumeDraftCard from "../components/DartsResumeDraftCard";
+import DartsPendingFinalCard from "../components/DartsPendingFinalCard";
 import { clearDartsMatchDraft } from "../lib/dartsMatchDrafts";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import Section from "../components/Section";
@@ -287,7 +289,7 @@ export default function HalveItConfig(props: any) {
   const rulesBlock = isSplitScore ? <section style={guidedCard}>
     <h3 style={{ margin: "0 0 8px", color: primary, fontSize: 13 }}>RÈGLES SPLIT SCORE</h3>
     <div style={{ color: "#dce5f0", fontSize: 12, lineHeight: 1.6 }}>Départ <b>40 points</b>. Chaque touche valable ajoute la valeur réelle (S/D/T, BULL25/DBULL50). Aucune touche valable parmi les 3 fléchettes : le score est divisé par deux, arrondi à l'entier inférieur. Le meilleur total après la neuvième manche gagne.</div>
-    <div style={{ marginTop: 10 }}><OptionRow label="Ordre aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow></div>
+    <div style={{ marginTop: 10 }}><NativeStartOrderConfig initialMode={randomOrder ? "random" : "alternate"} onModeChange={(mode) => setRandomOrder(mode === "random")} /></div>
   </section> : <section style={guidedCard}>
     <h3 style={{ margin: "0 0 8px", color: primary, fontSize: 13, textTransform: "uppercase", letterSpacing: 1 }}>Règles</h3>
     <OptionRow label="Score de départ"><OptionSelect value={startMode} options={[
@@ -297,7 +299,7 @@ export default function HalveItConfig(props: any) {
     ]} onChange={setStartMode} /></OptionRow>
     {startMode === "fixed" ? <OptionRow label="Capital initial"><OptionSelect value={fixedStartingScore} options={[20, 40, 50, 100]} onChange={(v: any) => setFixedStartingScore(Number(v) || 40)} /></OptionRow> : null}
     <OptionRow label="Arrondi après /2"><OptionSelect value={rounding} options={[{ value: "floor", label: "Inférieur · standard" }, { value: "ceil", label: "Supérieur" }]} onChange={setRounding} /></OptionRow>
-    <OptionRow label="Ordre aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow>
+    <NativeStartOrderConfig initialMode={randomOrder ? "random" : "alternate"} onModeChange={(mode) => setRandomOrder(mode === "random")} />
     <div style={{ marginTop: 9, padding: 10, borderRadius: 12, background: `${primary}0d`, border: `1px solid ${primary}30`, color: "#cfd4ea", fontSize: 10.8, lineHeight: 1.45 }}>3 fléchettes par cible. Les touches valides ajoutent leur valeur réelle. 0/3 sur la cible = score courant divisé par deux. La volée libre initiale, si choisie, ne déclenche jamais de division.</div>
   </section>;
 
@@ -321,6 +323,8 @@ export default function HalveItConfig(props: any) {
 
   return <div style={{ minHeight: "100dvh", width: "100%", maxWidth: "100%", overflowX: "hidden", paddingBottom: 92 }}>
     <PageHeader tickerSrc={headerTicker} tickerAlt={modeLabel} left={<BackDot onClick={backToGames} color={primary} glow={`${primary}88`} title="Retour" />} right={<InfoDot title={`Règles ${modeLabel}`} color={theme?.accent1 || primary} glow={`${theme?.accent1 || primary}77`} content={<RulesContent primary={primary} isSplitScore={isSplitScore} />} />} />
+    <DartsPendingFinalCard mode={isSplitScore ? "split_score" : "halve_it"} accent={primary}
+      onRecovered={() => go?.("statsHub", { tab: "history" })} />
     <DartsResumeDraftCard mode={isSplitScore ? "split_score" : "halve_it"} accent={primary}
       onResume={(savedConfig) => go?.("halve_it_play", { ...savedConfig, resumeDraft: true })} />
     <div style={{ padding: "0 8px", width: "100%", boxSizing: "border-box" }}>

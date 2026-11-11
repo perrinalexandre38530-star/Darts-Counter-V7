@@ -1,4 +1,5 @@
 // @ts-nocheck
+import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
 // =============================================================
 // OCEAN CONTROL — configuration guidée / complète
 // =============================================================
@@ -225,7 +226,7 @@ export default function OceanControlConfig(props: any) {
       <OptionRow label="Format du match" hint="Premier à 1, 2 ou 3 victoires"><OptionSelect value={winsNeeded} onChange={(v) => setWinsNeeded(Number(v) as any)} options={[{ value: 1, label: "1 manche" }, { value: 2, label: "Best of 3" }, { value: 3, label: "Best of 5" }]} /></OptionRow>
       <OptionRow label="Niveau des bots" hint="Précision et qualité de recherche"><OptionSelect value={botLevel} onChange={setBotLevel} options={[{ value: "easy", label: "Facile" }, { value: "normal", label: "Normal" }, { value: "hard", label: "Difficile" }]} /></OptionRow>
       <OptionRow label="Méthode de saisie"><OptionSelect value={scoreInputMethod} onChange={setScoreInputMethod} options={[{ value: "keypad", label: "Keypad" }, { value: "dartboard", label: "Cible tactile" }]} /></OptionRow>
-      <OptionRow label="Ordre aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow>
+      <NativeStartOrderConfig initialMode={randomOrder ? "random" : "alternate"} onModeChange={(mode) => setRandomOrder(mode === "random")} />
     </div>
   </section>;
 

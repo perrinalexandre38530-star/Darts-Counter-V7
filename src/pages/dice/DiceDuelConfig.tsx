@@ -1,4 +1,5 @@
 // @ts-nocheck
+import NativeStartOrderConfig from '../../components/NativeStartOrderConfig';
 // =============================================================
 // src/pages/dice/DiceConfig.tsx
 // Config DICE — UI calquée sur MolkkyConfig / X01ConfigV3
@@ -282,7 +283,9 @@ export default function DiceConfig({ go, store, params }: Props) {
       {/* CTA */}
       <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, padding: 16, paddingBottom: 16 }}>
         <div style={{ maxWidth: 680, margin: "0 auto" }}>
-          <button
+          
+      <NativeStartOrderConfig />
+      <button
             onClick={() => {
               if (!canStart) return;
               const chosen = players.map((p: any) => ({ id: p.id, name: p.name, avatarDataUrl: p.profile?.avatarDataUrl ?? null }));
@@ -362,6 +365,8 @@ export default function DiceConfig({ go, store, params }: Props) {
           </div>
         </div>
       )}
-    </div>
+    
+      
+      </div>
   );
 }

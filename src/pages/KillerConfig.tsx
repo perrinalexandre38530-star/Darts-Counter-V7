@@ -75,6 +75,7 @@ export type KillerConfig = {
 
   numberAssignMode: KillerNumberAssignMode;
   randomStartOrder?: boolean;
+  startOrderMode?: "random" | "alternate" | "manual" | "bull";
 
   // ✅ Variantes claires (et prévues pour KillerPlay patché)
   selfHitWhileKiller: boolean; // toucher son numéro quand KILLER => perd vie(s) (PAS dead instant)
@@ -512,6 +513,7 @@ export default function KillerConfigPage(props: Props) {
 
   const [numberAssignMode, setNumberAssignMode] = React.useState<KillerNumberAssignMode>(isProgressive ? "throw" : "random");
   const [randomStartOrder, setRandomStartOrder] = React.useState<boolean>(false);
+  const [startOrderMode, setStartOrderMode] = React.useState<"random" | "alternate" | "manual" | "bull">("alternate");
 
   // ✅ variantes
   const [selfHitWhileKiller, setSelfHitWhileKiller] = React.useState<boolean>(false);
@@ -846,7 +848,7 @@ export default function KillerConfigPage(props: Props) {
       }
     }
 
-    const finalPlayers = randomStartOrder ? shuffleArray(players) : players;
+    const finalPlayers = startOrderMode === "random" ? shuffleArray(players) : players;
 
     const cfg: KillerConfig = {
       id: `${isProgressive ? "killer-progressive" : "killer"}-${Date.now()}`,
@@ -861,7 +863,8 @@ export default function KillerConfigPage(props: Props) {
       damageRule: isProgressive ? "multiplier" : damageRule,
 
       numberAssignMode: effectiveNumberAssignMode,
-      randomStartOrder,
+      randomStartOrder: startOrderMode === "random",
+      startOrderMode,
 
       selfHitWhileKiller: isProgressive ? false : selfHitWhileKiller,
       selfHitUsesMultiplier: isProgressive ? false : selfHitUsesMultiplier,
@@ -1294,44 +1297,17 @@ export default function KillerConfigPage(props: Props) {
           <div data-mss-guide-section="killer-start-order" data-mss-guide-label="Ordre de départ" style={{ marginTop: 2, marginBottom: 14 }}>
             <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Ordre de départ</div>
 
-            <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
-              <button
-                type="button"
-                onClick={() => setRandomStartOrder(false)}
-                style={{
-                  flex: 1,
-                  padding: "10px 12px",
-                  borderRadius: 14,
-                  fontWeight: 900,
-                  border: !randomStartOrder ? "1px solid rgba(255,198,58,.55)" : "1px solid rgba(255,255,255,.12)",
-                  background: !randomStartOrder ? "rgba(255,198,58,.18)" : "rgba(0,0,0,.35)",
-                  color: !randomStartOrder ? "#ffe7b0" : "#fff",
-                  cursor: "pointer",
-                }}
-              >
-                Ordre de sélection
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setRandomStartOrder(true)}
-                style={{
-                  flex: 1,
-                  padding: "10px 12px",
-                  borderRadius: 14,
-                  fontWeight: 900,
-                  border: randomStartOrder ? "1px solid rgba(255,198,58,.55)" : "1px solid rgba(255,255,255,.12)",
-                  background: randomStartOrder ? "rgba(255,198,58,.18)" : "rgba(0,0,0,.35)",
-                  color: randomStartOrder ? "#ffe7b0" : "#fff",
-                  cursor: "pointer",
-                }}
-              >
-                🎲 Aléatoire
-              </button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+              {([['random','ALÉATOIRE'],['alternate','ALTERNÉ'],['manual','MANUEL'],['bull','BULL']] as const).map(([mode,label]) => (
+                <button key={mode} type="button" aria-pressed={startOrderMode === mode}
+                  onClick={() => { setStartOrderMode(mode); setRandomStartOrder(mode === "random"); }}
+                  style={{ padding: "10px 12px", borderRadius: 14, fontWeight: 850, border: startOrderMode === mode ? "1px solid #f6c44d" : "1px solid rgba(255,255,255,.15)", background: startOrderMode === mode ? "rgba(255,198,58,.18)" : "rgba(0,0,0,.35)", color: "#fff", cursor: "pointer" }}>
+                  {label}
+                </button>
+              ))}
             </div>
-
-            <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 6 }}>
-              Si activé, l’ordre de jeu est mélangé automatiquement au lancement.
+            <div style={{ fontSize: 11, color: "#9da5b9", marginTop: 7 }}>
+              {startOrderMode === "bull" ? "Après le lancer physique à la bull, classe les participants avant de jouer." : startOrderMode === "manual" ? "Choisis l'ordre des participants avant la partie." : startOrderMode === "random" ? "Les joueurs seront mélangés au lancement." : "L'ordre de sélection est conservé pour le premier départ."}
             </div>
           </div>
 

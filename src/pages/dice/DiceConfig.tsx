@@ -1,4 +1,5 @@
 // @ts-nocheck
+import NativeStartOrderConfig from '../../components/NativeStartOrderConfig';
 // =============================================================
 // src/pages/dice/DiceConfig.tsx
 // Config DICE — gabarit proche MolkkyConfig (minimal stable)
@@ -191,7 +192,9 @@ export default function DiceConfig({ go, store, params }: Props) {
           <Field label="Sets" value={sets} setValue={setSets} min={1} max={25} />
         </div>
 
-        <button
+        
+      <NativeStartOrderConfig />
+      <button
           onClick={start}
           disabled={!canStart}
           style={{
@@ -211,7 +214,9 @@ export default function DiceConfig({ go, store, params }: Props) {
           Lancer
         </button>
       </div>
-    </div>
+    
+      
+      </div>
   );
 }
 

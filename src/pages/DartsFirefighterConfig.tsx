@@ -1,4 +1,5 @@
 // @ts-nocheck
+import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
 // =============================================================
 // DARTS FIREFIGHTER — CONFIGURATION V3
 // Configuration guidée + complète, reliée au moteur de jeu.
@@ -727,7 +728,7 @@ export default function DartsFirefighterConfig(props: any) {
         {selectedCpuBots.length ? <CfgOption label="Niveau tactique des Bots" hint="Ce réglage sert uniquement de niveau de secours pour tes Bots CPU sans niveau personnel. Les mascottes Firefighter conservent leur niveau propre."><OptionSelect value={botLevel} options={[{ value: "easy", label: "Recrue" }, { value: "normal", label: "Confirmé" }, { value: "hard", label: "Élite" }]} onChange={setBotLevel} /></CfgOption> : null}
       </ConfigAccordion>
       <ConfigAccordion title="Ordre de passage" subtitle="Ordre des joueurs" icon="🔀" color={GREEN} badge={config.randomOrder ? "ALÉATOIRE" : "FIXE"}>
-        <CfgOption label="Ordre de passage aléatoire" hint="Mélange la brigade au lancement"><OptionToggle value={Boolean(config.randomOrder)} onChange={(v) => setField("randomOrder", v)} /></CfgOption>
+        <NativeStartOrderConfig initialMode={config.randomOrder ? "random" : "alternate"} onModeChange={(mode) => setField("randomOrder", mode === "random")} />
       </ConfigAccordion>
     </div>
   </section>;

@@ -30,7 +30,7 @@ import { loadLinkedProfileProjection } from "../lib/linkedProfileSync";
 import { isOnlineRecord } from "../lib/x01StatsSource";
 
 import { buildMatchSharePacket, isMatchSharePacketV1, shareOneMatch, type MatchSharePacketV1 } from "../lib/matchShare";
-import { visualReportFromHistory, exportChallengeResults, downloadChallengeFile, type ChallengeExportReport, type ChallengeExportResult } from "../lib/challengeResultsExport";
+import { visualReportFromHistory, exportChallengeResults, downloadChallengeFile, prepareChallengeShare, sharePreparedChallenge, type ChallengeExportReport, type ChallengeExportResult, type ChallengePreparedShare } from "../lib/challengeResultsExport";
 import { ChallengeReportActions, ChallengeReportPreview, ChallengeReportShareDialog, type ChallengeReportFormat } from "../components/ChallengeReportUI";
 import { importRecoveredHistoryJson } from "../lib/importRecoveredHistory";
 import { exportHistoryDump, importHistoryDump } from "../lib/historyCloud";
@@ -1249,7 +1249,10 @@ function summarizeX01SetsLegsScore(e: SavedEntry): string {
     legs: data.legsWonByPlayer || data.legsByPlayer || data.legsWon || data.legsScore || anyE.payload?.summary?.legsWonByPlayer || anyE.payload?.summary?.legsWon,
   };
 
-  const values = rankings.map((r: any) => ({
+  // A match's rank list can contain both the old profile ID and its newer
+  // linked identity. Resolve display identities before formatting the scores;
+  // never add (or average) scores from the discarded alias.
+  const values = historyUniqueIdentityRows(e, rankings).map((r: any) => ({
     r,
     sets: cleanScore(r.setsWon ?? r.sw ?? r.sets ?? r.setsScore ?? looseMap(maps.sets, r)),
     legs: cleanScore(r.legsWon ?? r.lw ?? r.legs ?? r.legsScore ?? looseMap(maps.legs, r)),
@@ -2618,7 +2621,7 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
     const sourceRows: any[] = pools.find((pool) => Array.isArray(pool) && pool.length) || [];
     const rows: any[] = (participantMode === "teams" ? sourceRows : uniqueHistoryParticipants(e, sourceRows))
       .slice().sort((a: any, b: any) => Number(a?.rank || 99) - Number(b?.rank || 99));
-    const playerRows: any[] = ([summary?.players, summary?.perPlayer, anyE?.payload?.stats?.players, anyE?.players].find((pool) => Array.isArray(pool) && pool.length) || []);
+    const playerRows: any[] = historyUniqueIdentityRows(e, ([summary?.players, summary?.perPlayer, anyE?.payload?.stats?.players, anyE?.players].find((pool) => Array.isArray(pool) && pool.length) || []));
     const global: any = summary?.matchStats || anyE?.payload?.stats?.global || {};
     const variant = String(summary?.variant || cfg?.variant || "classic").toLowerCase();
     const expressAttempts = String(summary?.expressAttempts || cfg?.expressAttempts || "one") === "up_to_3" ? "up_to_3" : "one";
@@ -2692,11 +2695,11 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
   if (normalizeToken(baseMode(e)) === "baseball" || inferGameFilterKey(e, "darts") === "baseball") {
     const anyE: any = e as any;
     const summary: any = anyE?.summary || anyE?.payload?.summary || {};
-    const standings = Array.isArray(summary?.standings)
+    const standings = historyUniqueIdentityRows(e, Array.isArray(summary?.standings)
       ? summary.standings
       : Array.isArray(summary?.rankings)
       ? summary.rankings
-      : [];
+      : []);
     if (standings.length) {
       return (
         <div style={{ display: "grid", gap: 5, minWidth: 0 }}>
@@ -2737,7 +2740,7 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
       : Array.isArray(summary?.players) && summary.players.length
       ? summary.players
       : getAllEntryPlayers(e);
-    const allPlayers = richPool;
+    const allPlayers = historyUniqueIdentityRows(e, richPool);
     const participantMode = String(summary?.participantMode || anyE?.payload?.stats?.global?.participantMode || anyE?.payload?.config?.participantMode || "players");
     const isSolo = participantMode !== "teams" && allPlayers.length === 2;
     const teams = Array.isArray(summary?.teams) ? summary.teams : Array.isArray(anyE?.payload?.teams) ? anyE.payload.teams : [];
@@ -2997,7 +3000,7 @@ function summarizeScore(e: SavedEntry): string {
   const rankings = data.rankings || result.rankings || result.players || data.players || result.standings;
 
   if (Array.isArray(rankings)) {
-    const parts = rankings
+    const parts = historyUniqueIdentityRows(e, rankings)
       .map((r: any) => {
         const name = cleanName(r.name || r.playerName || r.label) || historyPlayerNameById(e, r.id || r.playerId || r.profileId || r.pid) || undefined;
         const score =
@@ -3886,6 +3889,8 @@ export default function HistoryPage({
   const [historyShareError, setHistoryShareError] = useState("");
   const [historyExportPreview, setHistoryExportPreview] = useState<ChallengeExportResult | null>(null);
   const historyFormatRef = useRef<'pdf' | 'png'>('pdf');
+  const historyPreparedShareRef = useRef<ChallengePreparedShare | null>(null);
+  const historyPreparedReportRef = useRef<ChallengeExportReport | null>(null);
   const [friendShareEntry, setFriendShareEntry] = useState<SavedEntry | null>(null);
   const [friendShareFriends, setFriendShareFriends] = useState<OnlineFriendUser[]>([]);
   const [friendShareParticipantIds, setFriendShareParticipantIds] = useState<string[]>([]);
@@ -4561,6 +4566,8 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
   // a fixed child inside that layout can be clipped, leaving only a dark screen.
   function closeHistoryVisualReport() {
     historyReportRequestRef.current++;
+    historyPreparedShareRef.current = null;
+    historyPreparedReportRef.current = null;
     setHistoryReportEntry(null);
     setHistoryReport(null);
     setHistoryReportBusy(false);
@@ -4631,6 +4638,8 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
 
   async function openHistoryVisualReport(entry: SavedEntry) {
     const requestId = ++historyReportRequestRef.current;
+    historyPreparedShareRef.current = null;
+    historyPreparedReportRef.current = null;
     setHistoryReportEntry(entry);
     setHistoryReport(null);
     setHistoryReportError("");
@@ -4651,11 +4660,16 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
 
   async function handleHistoryCardReport(entry: SavedEntry, format: ChallengeReportFormat) {
     const requestId = ++historyReportRequestRef.current;
+    historyPreparedShareRef.current = null;
+    historyPreparedReportRef.current = null;
     setHistoryReportEntry(entry);
     setHistoryReport(null);
     setHistoryReportError("");
     setHistoryReportInfo("");
     setHistoryShareError("");
+    // Open the format choice immediately. Rendering assets takes time but the
+    // actual Android share must start directly from the later format tap.
+    if (format === 'share') setHistoryShareOpen(true);
     setHistoryReportBusy(true);
     try {
       const report = await prepareHistoryVisualReport(entry);
@@ -4663,7 +4677,10 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
       if (!report?.players.length) throw new Error("Cette archive ne contient pas de classement exploitable. Aucun score ne sera inventé.");
       setHistoryReport(report);
       if (format === 'share') {
-        setHistoryShareOpen(true);
+        const prepared = await prepareChallengeShare(report);
+        if (requestId !== historyReportRequestRef.current) return;
+        historyPreparedShareRef.current = prepared;
+        historyPreparedReportRef.current = report;
         return;
       }
       historyFormatRef.current = format === 'pdf' ? 'pdf' : 'png';
@@ -4674,32 +4691,67 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
         ? 'ZIP d’images PNG A4 demandé : une image par page, dans Téléchargements.'
         : 'PDF multipage demandé. Vérifie Téléchargements : le fichier peut s’ouvrir dans le lecteur PDF de Chrome.');
     } catch (error) {
-      if (requestId === historyReportRequestRef.current)
-        setHistoryReportError(String((error as Error)?.message || error || "Export impossible."));
+      if (requestId === historyReportRequestRef.current) {
+        const message = String((error as Error)?.message || error || "Export impossible.");
+        setHistoryReportError(message);
+        if (format === 'share') setHistoryShareError(message);
+      }
     } finally {
       if (requestId === historyReportRequestRef.current) setHistoryReportBusy(false);
     }
   }
 
   async function handleChallengeHistoryReport(format:ChallengeReportFormat,shareNow=false) {
-    if(format==='share'&&!shareNow){
-      setHistoryShareError("");
+    if (format === 'share' && !shareNow) {
+      setHistoryShareError('');
       setHistoryShareOpen(true);
+      if (historyReport && historyPreparedReportRef.current !== historyReport) {
+        setHistoryReportBusy(true);
+        try {
+          historyPreparedShareRef.current = await prepareChallengeShare(historyReport);
+          historyPreparedReportRef.current = historyReport;
+        } catch (error) {
+          setHistoryShareError(String((error as Error)?.message || error || 'Préparation impossible.'));
+        } finally {
+          setHistoryReportBusy(false);
+        }
+      }
       return;
     }
-    if(!historyReport||historyReportBusy)return;
-    setHistoryReportError("");
-    setHistoryReportInfo("");
-    historyFormatRef.current=format==='pdf'?'pdf':'png';
+    if (!historyReport || historyReportBusy) return;
+    setHistoryReportError('');
+    setHistoryReportInfo('');
+    historyFormatRef.current = format === 'pdf' ? 'pdf' : 'png';
+    if (shareNow) {
+      const prepared = historyPreparedShareRef.current;
+      if (!prepared || historyPreparedReportRef.current !== historyReport) {
+        setHistoryShareError('Fichiers non prêts : referme puis rouvre Partager pour préparer le rapport.');
+        return;
+      }
+      // IMPORTANT: navigator.share is invoked synchronously from the click,
+      // before any await or long-running image/PDF rendering.
+      const sharing = sharePreparedChallenge(prepared, format as 'pdf'|'png');
+      setHistoryReportBusy(true);
+      try {
+        const result = await sharing;
+        if (result.status === 'share-unavailable') setHistoryShareError('Ce navigateur n’autorise pas le partage de ces fichiers. Télécharge le PDF ou le ZIP d’images et partage depuis Galerie/Fichiers.');
+        if (result.status === 'shared') setHistoryShareOpen(false);
+      } catch (error) {
+        setHistoryShareError(String((error as Error)?.message || error || 'Partage impossible.'));
+      } finally {
+        setHistoryReportBusy(false);
+      }
+      return;
+    }
     setHistoryReportBusy(true);
     try {
-      const result=await exportChallengeResults(historyReport,format,{share:shareNow});
-      if(result.status==='preview')setHistoryExportPreview(result);
-      if(result.status==='download-started')setHistoryReportInfo(format==='png'?'ZIP d’images PNG A4 demandé : une image par page, dans Téléchargements.':'PDF multipage demandé. Vérifie Téléchargements : le fichier peut s’ouvrir dans le lecteur PDF de Chrome.');
-      if(result.status==='share-unavailable')setHistoryShareError('Le navigateur intégré bloque le partage de fichiers. Télécharge le PDF ou le PNG, puis partage-le depuis Galerie ou Fichiers.');
-      if(result.status==='shared')setHistoryShareOpen(false);
-    } catch(error){
-      setHistoryReportError(String((error as Error)?.message||error||"Export impossible."));
+      const result = await exportChallengeResults(historyReport, format);
+      if (result.status === 'preview') setHistoryExportPreview(result);
+      if (result.status === 'download-started') setHistoryReportInfo(format === 'png'
+        ? 'ZIP d’images PNG A4 demandé : une image par page, dans Téléchargements.'
+        : 'PDF multipage demandé. Vérifie Téléchargements.');
+    } catch (error) {
+      setHistoryReportError(String((error as Error)?.message || error || 'Export impossible.'));
     } finally {
       setHistoryReportBusy(false);
     }
@@ -5139,10 +5191,7 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
   }
 
 
-  // CHALLENGE appartient maintenant à STATS > TRAINING. Ne PAS supprimer les
-  // enregistrements History V4 : ils servent encore aux records, sauvegardes et reprises.
-  // Le filtre agit uniquement sur les cartes de l'Historique général.
-  const rawAllItems = useMemo(() => dedupe(items).filter((e) => !isChallengeHistoryEntry(e)), [items]);
+  const rawAllItems = useMemo(() => dedupe(items).filter((e) => !isChallengeHistoryEntry(e) || challengeHistoryHasStarted(e)), [items]);
   const quickItems = useMemo(() => rawAllItems.filter((e) => isQuickPartyRecord(e)), [rawAllItems]);
   // Les PARTIES RAPIDES sont volontairement absentes de ALL / TERMINÉES / EN COURS classiques.
   const allItems = useMemo(() => rawAllItems.filter((e) => !isQuickPartyRecord(e)), [rawAllItems]);

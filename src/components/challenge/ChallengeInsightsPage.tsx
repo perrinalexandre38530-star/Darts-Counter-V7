@@ -2,6 +2,8 @@ import React from 'react';
 import { BottomNavIcon } from '../BottomNav';
 import { loadChallengeArchive, challengeArchiveItems, summarizeChallengeArchive, type ChallengeArchiveItem } from '../../lib/challengeArchive';
 import {buildChallengeStats,buildChallengeRecordDetails} from '../../lib/challengeInsightMetrics';
+import {buildChallengeImpactDetails,buildChallengeFormComparison} from '../../lib/challengePerformanceDetails';
+import {ChallengeModeDiagnosticsUI} from './ChallengeModeDiagnosticsUI';
 import './ChallengeInsightsPage.css';
 
 export type ChallengeInsightView='stats'|'records';
@@ -36,21 +38,17 @@ function Bars({values,title}:{values:Array<{label:string;value:number}>;title:st
  if(!values.some(row=>row.value>0))return <div className="mss-ci-empty">Aucune répartition de touches disponible.</div>;
  return <div className="mss-ci-chart"><div className="mss-ci-chart-heading"><b>{title}</b></div><div className={"mss-ci-bars"+(title.includes("CONFIGURATION")?" mss-ci-bars--config":"")}>{values.map(item=><div key={item.label} className="mss-ci-bar-row"><span>{item.label}</span><div><i style={{width:(100*item.value/max)+'%'}}/></div><b>{item.value}</b></div>)}</div></div>;
 }
-function documentedHits(items:ChallengeArchiveItem[]){
- const counts:Record<string,number>={G:0,P:0,S:0,D:0,T:0,BULL25:0,DBULL50:0,MISS:0};
- let entriesCount=0;
- for(const item of items){
-  const payload=item.record?.payload||item.record?.decoded||{};
-  const entries=payload?.entries||payload?.log||item.record?.resume?.state?.log||[];
-  if(!Array.isArray(entries))continue;
-  for(const hit of entries){
-   if(item.playerId&&String(hit?.pid||hit?.playerId)!==String(item.playerId))continue;
-   let zone=String(hit?.zone||hit?.hit||'').toUpperCase();
-   if(zone==='25'||zone==='BULL')zone='BULL25';if(zone==='50'||zone==='DBULL')zone='DBULL50';
-   if(Object.prototype.hasOwnProperty.call(counts,zone)){counts[zone]++;entriesCount++;}
-  }
- }
- return {counts,entriesCount};
+/** A heatmap built only from real numbered impacts. No inferred sectors. */
+function SectorHeatmap({sectors}:{sectors:ReturnType<typeof buildChallengeImpactDetails>['sectors']}){
+ const max=Math.max(1,...sectors.map(row=>row.total));
+ const [selected,setSelected]=React.useState<number|null>(null);
+ const chosen=sectors.find(row=>row.sector===selected)||null;
+ return <div className="mss-ci-chart mss-ci-sector-analysis">
+  <div className="mss-ci-chart-heading"><b>CARTE DE TOUCHES · NUMÉROS 1 À 20</b><small>IMPACTS SAISIS AVEC LEUR NUMÉRO</small></div>
+  <p className="mss-ci-sector-help">Plus le numéro est éclairé, plus il a été touché. Touche une case pour consulter ses couronnes.</p>
+  <div className="mss-ci-sector-grid">{sectors.map(row=><button type="button" key={row.sector} className={row.sector===selected?'selected':''} onClick={()=>setSelected(current=>current===row.sector?null:row.sector)} aria-pressed={row.sector===selected} aria-label={`Numéro ${row.sector}, ${row.total} impacts documentés`} style={{backgroundColor:`rgba(45,193,216,${(0.10+row.total/max*.50).toFixed(3)})`,borderColor:`rgba(75,183,205,${(0.30+row.total/max*.65).toFixed(3)})`}}><b>{row.sector}</b><small>{row.total}</small></button>)}</div>
+  {chosen&&<div className="mss-ci-sector-detail"><strong>N° {chosen.sector} · {chosen.total} IMPACT{chosen.total>1?'S':''}</strong><span>G {chosen.G} · P {chosen.P} · S non différenciés {chosen.S} · D {chosen.D} · T {chosen.T}</span></div>}
+ </div>;
 }
 
 export function ChallengeInsightsPage({modeId,modeTitle,playerId,playerName,initialView,onClose}:{
@@ -78,7 +76,8 @@ export function ChallengeInsightsPage({modeId,modeTitle,playerId,playerName,init
  const filtered=React.useMemo(()=>config==='all'?all:all.filter(row=>row.configKey===config),[all,config]);
  const stats=React.useMemo(()=>buildChallengeStats(filtered),[filtered]);
  const recordDetails=React.useMemo(()=>selectedRecordsGroup?buildChallengeRecordDetails(all,selectedRecordsGroup.key,selectedRecordsGroup.goal):null,[all,selectedRecordsGroup]);
- const hits=React.useMemo(()=>documentedHits(stats.recent),[stats.recent]);
+ const impacts=React.useMemo(()=>buildChallengeImpactDetails(filtered),[filtered]);
+ const form=React.useMemo(()=>{const group=summarizeChallengeArchive(filtered).byConfig;return group.length===1?buildChallengeFormComparison(filtered,group[0]!.goal):null},[filtered]);
  const mixedConfigs=config==='all'&&stats.configurations.length>1;
  const visibleRecord=recordDetails?.best||null;
  const recordUnit=selectedRecordsGroup?.goal==='min'?'FL.':'PTS';
@@ -122,7 +121,14 @@ export function ChallengeInsightsPage({modeId,modeTitle,playerId,playerName,init
       {mixedConfigs&&<p className="mss-ci-hint">Les scores de configurations différentes ne sont pas directement comparables. Sélectionne une configuration pour analyser l’évolution des points.</p>}
       {!mixedConfigs&&<TimeChart title="SCORE · ÉVOLUTION DES 30 DERNIÈRES PARTIES" values={stats.history.map(row=>row.score)} labels={stats.history.map(row=>frenchDate(row.playedAt))} suffix=" pts"/>}
       <div className="mss-ci-chart-pair"><TimeChart title="PRÉCISION · ÉVOLUTION" values={stats.history.map(row=>row.accuracy)} labels={stats.history.map(row=>frenchDate(row.playedAt))} suffix=" %"/><TimeChart title="FLÉCHETTES PAR PARTIE" values={stats.history.map(row=>row.darts)} labels={stats.history.map(row=>frenchDate(row.playedAt))} suffix=" fl." higherBetter={false}/></div>
-      {hits.entriesCount>0?<Bars title={`TYPES DE TOUCHES · ${hits.entriesCount} IMPACTS DOCUMENTÉS (PARTIES RÉCENTES)`} values={Object.entries(hits.counts).map(([label,value])=>({label,value}))}/>:<p className="mss-ci-hint">Le détail des zones G/P/D/T apparaîtra lorsque les impacts de ces parties seront disponibles dans leur journal.</p>}
+      {form&&<div className="mss-ci-form"><div className="mss-ci-chart-heading"><b>FORME RÉCENTE · 5 PARTIES VS 5 PRÉCÉDENTES</b><small>MÊME CONFIGURATION UNIQUEMENT</small></div><div className="mss-ci-form-grid"><div><small>PERFORMANCE MOYENNE · {form.goal==='min'?'MOINS = MIEUX':'PLUS = MIEUX'}</small><strong>{num(form.latest,1)} {form.unit}</strong><span>Avant : {num(form.previous,1)} {form.unit}</span><em className={form.delta===0?'flat':form.improved?'up':'down'}>{form.delta>0?'+':''}{num(form.delta,1)} {form.unit} {form.delta===0?'stable':form.improved?'· PROGRÈS':'· EN RECUL'}</em></div><div><small>PRÉCISION MOYENNE</small><strong>{num(form.accuracyLatest,1)} %</strong><span>Avant : {num(form.accuracyPrevious,1)} %</span><em className={form.accuracyDelta===0?'flat':form.accuracyDelta>0?'up':'down'}>{form.accuracyDelta>0?'+':''}{num(form.accuracyDelta,1)} point{Math.abs(form.accuracyDelta)>1?'s':''}</em></div></div></div>}
+      {mixedConfigs?<p className="mss-ci-hint">Sélectionne une configuration précise pour obtenir les taux de réussite par objectif et par volée. Deux parcours différents ne sont pas additionnés artificiellement.</p>:<ChallengeModeDiagnosticsUI modeId={modeId} items={filtered} view="stats"/>}
+      {impacts.total>0?<>
+       <Bars title={`ZONES TOUCHÉES · ${impacts.total} IMPACTS DOCUMENTÉS`} values={Object.entries(impacts.byZone).map(([label,value])=>({label,value}))}/>
+       {impacts.documentedSectors>0&&<SectorHeatmap sectors={impacts.sectors}/>}
+       {impacts.topSectors.length>0&&<div className="mss-ci-sector-top"><b>SECTEURS LES PLUS TOUCHÉS</b>{impacts.topSectors.slice(0,5).map((row,i)=><span key={row.sector}><strong>#{i+1}</strong> N° {row.sector} <em>{row.total} IMPACTS</em></span>)}</div>}
+       <p className="mss-ci-hint">{impacts.logSessions} partie(s) avec journal détaillé · {impacts.summarySessions} partie(s) avec seulement un récapitulatif de zones{impacts.unavailableSessions?` · ${impacts.unavailableSessions} sans détail de touches`:''}. Les secteurs précis proviennent exclusivement des impacts contenant un numéro, et ne représentent pas nécessairement des touches validées.</p>
+      </>:<p className="mss-ci-hint">Le détail des zones G/P/D/T et des numéros apparaîtra lorsque les impacts de ces parties seront disponibles dans leur journal ou leur récapitulatif. Aucun secteur n'est estimé.</p>}
       {config==='all'&&stats.configurations.length>1&&<Bars title="PARTIES TERMINÉES PAR CONFIGURATION" values={stats.configurations.slice(0,12).map(row=>({label:row.label,value:row.count}))}/>}
       <h3 className="mss-ci-section-title">JOURNAL DES DERNIÈRES PERFORMANCES</h3>
       <div className="mss-ci-results">{stats.recent.map(row=><div key={row.id}><span><b>{frenchDate(row.playedAt)}</b><small>{row.configLabel}</small></span><strong>{num(row.score)} pts</strong><small>{row.darts} fl. · {num(row.accuracy,1)} % · série {row.bestStreak}</small></div>)}</div>
@@ -134,6 +140,7 @@ export function ChallengeInsightsPage({modeId,modeTitle,playerId,playerName,init
        <div><small>RECORD PERSONNEL · {selectedRecordsGroup.label}</small><strong>{formatRecord(recordDetails.value)} <em>{recordUnit}</em></strong><span>{selectedRecordsGroup.goal==='min'?'MINIMUM DE FLÉCHETTES':'MAXIMUM DE POINTS'} · établi le {frenchDate(visibleRecord.playedAt)}</span></div>
        <div className="mss-ci-record-badge"><BottomNavIcon name="tournaments" size={28}/><span>MEILLEURE<br/>PERFORMANCE</span></div>
       </div>
+      <div className="mss-ci-next-record"><div><small>PROCHAIN OBJECTIF PERSONNEL</small><strong>{selectedRecordsGroup.goal==='min'&&recordDetails.value===1?'RECORD ACTUEL · 1 FLÉCHETTE':selectedRecordsGroup.goal==='min'?`${num((recordDetails.value??1)-1)} FLÉCHETTES OU MOINS`:`${num((recordDetails.value??0)+1)} POINTS OU PLUS`}</strong><span>{selectedRecordsGroup.goal==='min'&&recordDetails.value===1?'Impossible de descendre sous une fléchette sur ce critère.':'Pour dépasser ce record sur une configuration strictement identique.'}</span></div><BottomNavIcon name="tournaments" size={29}/></div>
       <div className="mss-ci-record-metrics">
        <div><small>PARTIES HOMOLOGUÉES</small><b>{recordDetails.played}</b></div>
        <div><small>RECORDS AMÉLIORÉS</small><b>{recordDetails.improvements}</b></div>
@@ -143,6 +150,7 @@ export function ChallengeInsightsPage({modeId,modeTitle,playerId,playerName,init
       <TimeChart title="HISTORIQUE DU MEILLEUR RECORD" values={recordDetails.history.map(item=>item.value)} labels={recordDetails.history.map(item=>frenchDate(item.playedAt))} suffix={selectedRecordsGroup.goal==='min'?' fl.':' pts'} higherBetter={selectedRecordsGroup.goal!=='min'}/>
       <div className="mss-ci-record-focus"><small>DERNIER RÉSULTAT · {frenchDate(recordDetails.last?.playedAt||0)}</small><strong>{num(recordDetails.last?measure(recordDetails.last,selectedRecordsGroup.goal==='min'):0)} {recordUnit}</strong><span>{recordDetails.gap===0?'Ta dernière partie égalise le record.':'Le record reste à améliorer.'}</span></div>
       <div className="mss-ci-chart-pair"><TimeChart title="LES 30 DERNIÈRES TENTATIVES" values={recordDetails.performances.map(r=>measure(r,selectedRecordsGroup.goal==='min'))} labels={recordDetails.performances.map(r=>frenchDate(r.playedAt))} suffix={selectedRecordsGroup.goal==='min'?' fl.':' pts'} higherBetter={selectedRecordsGroup.goal!=='min'}/><div className="mss-ci-record-secondary"><h3>RECORDS COMPLÉMENTAIRES</h3><div><small>MEILLEURE PRÉCISION</small><b>{num(recordDetails.bestAccuracy?.accuracy||0,1)} %</b><span>{frenchDate(recordDetails.bestAccuracy?.playedAt||0)}</span></div><div><small>PLUS LONGUE SÉRIE</small><b>{recordDetails.longestStreak?.bestStreak??'—'}</b><span>{frenchDate(recordDetails.longestStreak?.playedAt||0)}</span></div></div></div>
+      <ChallengeModeDiagnosticsUI modeId={modeId} items={all.filter(row=>row.configKey===selectedRecordsGroup.key)} view="records"/>
       <h3 className="mss-ci-section-title">LES 5 MEILLEURES PARTIES</h3>
       <div className="mss-ci-results mss-ci-record-ranking">{recordDetails.ranking.map((row,i)=><div key={row.id}><span><b>#{i+1} · {frenchDate(row.playedAt)}</b><small>{row.configLabel}</small></span><strong>{num(measure(row,selectedRecordsGroup.goal==='min'))} {recordUnit}</strong><small>{row.darts} fl. · {num(row.accuracy,1)} %</small></div>)}</div>
       <h3 className="mss-ci-section-title">DATES D’AMÉLIORATION DES RECORDS</h3>

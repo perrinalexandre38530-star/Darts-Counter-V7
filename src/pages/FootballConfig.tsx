@@ -1,4 +1,5 @@
 // @ts-nocheck
+import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
 // =============================================================
 // DARTS FOOTBALL — configuration guidée claire et progressive
 // V11 — 7 étapes, une décision principale par écran + résumé avant coup d'envoi
@@ -467,7 +468,7 @@ export default function FootballConfig(props: any) {
     <GuidedIntro index={6} title="Comment vas-tu saisir les fléchettes ?" text="Choisis seulement la méthode de saisie et l’aide visuelle. Le lancement se fait à l’étape suivante." color={GREEN} />
     <div className="football-options-list">
       <OptionRow label="Coach tactique" hint="Affiche clairement quoi viser et l’effet de S / D / T"><OptionToggle value={coachHints} onChange={setCoachHints} /></OptionRow>
-      {participantMode === "players" ? <OptionRow label="Ordre des joueurs aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow> : null}
+      {participantMode === "players" ? <NativeStartOrderConfig initialMode={randomOrder ? "random" : "alternate"} onModeChange={(mode) => setRandomOrder(mode === "random")} /> : null}
       <OptionRow label="Méthode de saisie" hint="Le clavier compact est le choix le plus rapide"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Clavier compact" }, { value: "dartboard", label: "Cible tactile" }]} onChange={setScoreInputMethod} /></OptionRow>
     </div>
     <div className="football-config-note"><strong style={{ color: GREEN }}>CONSEIL :</strong> garde le coach tactique activé pour les premières parties. Il explique l’action à jouer sans ouvrir les règles.</div>

@@ -1,4 +1,5 @@
 // @ts-nocheck
+import NativeStartOrderConfig from '../../components/NativeStartOrderConfig';
 // =============================================================
 // src/pages/dice/Dice421Config.tsx
 // Config DICE — 421 (gabarit 2 joueurs)
@@ -233,7 +234,9 @@ export default function Dice421Config({ go, store }: Props) {
           <Toggle label="Pénalités (placeholder)" checked={penalty} onChange={setPenalty} theme={theme} />
         </div>
 
-        <button
+        
+      <NativeStartOrderConfig />
+      <button
           onClick={onLaunch}
           disabled={!canStart}
           style={{
@@ -259,6 +262,8 @@ export default function Dice421Config({ go, store }: Props) {
           </div>
         )}
       </div>
-    </div>
+    
+      
+      </div>
   );
 }

@@ -26,6 +26,7 @@ import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
 import DartsModeFamilyBridge from "../components/DartsModeFamilyBridge";
 import DartsResumeDraftCard from "../components/DartsResumeDraftCard";
+import DartsPendingFinalCard from "../components/DartsPendingFinalCard";
 import { clearDartsMatchDraft } from "../lib/dartsMatchDrafts";
 import {
   SCORE_INPUT_LS_KEY,
@@ -78,6 +79,7 @@ export type FiveLivesConfig = {
   startingLives: number;
   randomStartOrder: boolean;
   startOrderSource?: "random" | "selection" | "bull";
+  startOrderMode?: "random" | "alternate" | "manual" | "bull";
   allowEqualScore?: boolean; // CHASE : égalité autorisée
   variantId?: "chase";
   scoreInputMethod: ScoreInputMethod;
@@ -373,6 +375,7 @@ export default function FiveLivesConfig({ store, go, presetVariantId, onBack, on
   const [startingLives, setStartingLives] = React.useState<number>(5);
   const [randomStartOrder, setRandomStartOrder] = React.useState<boolean>(true);
   const [bullOrder, setBullOrder] = React.useState<boolean>(false);
+  const [startOrderMode, setStartOrderMode] = React.useState<"random" | "alternate" | "manual" | "bull">("random");
   // CHASE depuis Games > Variantes est toujours le preset « égal ou supérieur ».
   // Le mode historique RELAIS des Cinq Vies est conservé séparément de CHASE.
   const [allowEqualScore, setAllowEqualScore] = React.useState<boolean>(chasePreset);
@@ -482,7 +485,8 @@ export default function FiveLivesConfig({ store, go, presetVariantId, onBack, on
       createdAt: Date.now(),
       startingLives: clampInt(startingLives, 1, 20, 5),
       randomStartOrder: !!randomStartOrder,
-      startOrderSource: bullOrder ? "bull" : randomStartOrder ? "random" : "selection",
+      startOrderSource: startOrderMode === "bull" ? "bull" : startOrderMode === "random" ? "random" : "selection",
+      startOrderMode,
       allowEqualScore: chasePreset || allowEqualScore,
       scoreInputMethod,
       players: finalPlayers,
@@ -568,6 +572,8 @@ export default function FiveLivesConfig({ store, go, presetVariantId, onBack, on
 
       {/* CONTENT */}
       <div className="msc-mode-config-body" style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
+        <DartsPendingFinalCard mode={chaseActive ? "chase" : "five_lives"} accent={primary}
+          onRecovered={() => go?.("statsHub", { tab: "history" })} />
         <DartsResumeDraftCard mode={chaseActive ? "chase" : "five_lives"} accent={primary}
           onResume={(savedConfig) => go?.("five_lives_play", { config: savedConfig, resumeDraft: true })} />
         {/* JOUEURS */}
@@ -729,30 +735,14 @@ export default function FiveLivesConfig({ store, go, presetVariantId, onBack, on
           <div style={{ marginBottom: 6 }}>
             <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Ordre de départ</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <PillButton
-                label="Aléatoire"
-                active={!!randomStartOrder && !bullOrder}
-                onClick={() => { setRandomStartOrder(true); setBullOrder(false); }}
-                primary={primary}
-                primarySoft={primarySoft}
-              />
-              <PillButton
-                label="Conserver l'ordre"
-                active={!randomStartOrder && !bullOrder}
-                onClick={() => { setRandomStartOrder(false); setBullOrder(false); }}
-                primary={primary}
-                primarySoft={primarySoft}
-              />
-              <PillButton
-                label="Plus près de la BULL"
-                active={bullOrder}
-                onClick={() => { setRandomStartOrder(false); setBullOrder(true); }}
-                primary={primary}
-                primarySoft={primarySoft}
-              />
+              {([['random','ALÉATOIRE'],['alternate','ALTERNÉ'],['manual','MANUEL'],['bull','BULL']] as const).map(([mode,label]) => (
+                <PillButton key={mode} label={label} active={startOrderMode === mode}
+                  onClick={() => { setStartOrderMode(mode); setRandomStartOrder(mode === "random"); setBullOrder(false); }}
+                  primary={primary} primarySoft={primarySoft} />
+              ))}
             </div>
-            <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 6 }}>
-              {bullOrder ? "Chaque joueur tire une fléchette vers la Bull. Classe les joueurs ci-dessous, du plus proche au plus éloigné : cet ordre sera utilisé en partie." : randomStartOrder ? "Tirage au sort de l'ordre des participants." : "L'ordre de sélection des joueurs sera utilisé."}
+            <div style={{ fontSize: 11, color: "#9da5b9", marginTop: 6 }}>
+              {startOrderMode === "bull" ? "Classe les joueurs après le lancer à la bull, au lancement." : startOrderMode === "manual" ? "Choisis l'ordre au lancement." : startOrderMode === "random" ? "L'ordre sera mélangé au lancement." : "L'ordre de sélection sera conservé."}
             </div>
             {bullOrder && <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
               {selectedIds.map((playerId, index) => <div key={playerId} style={{ display: "flex", alignItems: "center", gap: 9, border: "1px solid rgba(255,255,255,.14)", borderRadius: 12, padding: "7px 10px" }}>

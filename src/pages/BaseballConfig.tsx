@@ -1,4 +1,5 @@
 // @ts-nocheck
+import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
 // =============================================================
 // BASEBALL DARTS — configuration complète
 // Sélecteur JOUEURS / ÉQUIPES partagé avec X01
@@ -587,7 +588,7 @@ export default function BaseballConfig(props: any) {
           <div style={{ marginTop: 5, fontSize: 10.5, color: themeTextSoft, lineHeight: 1.35 }}>1v1 ou 2 équipes. Chaque camp attaque puis défend la même cible.</div>
         </button>
       </div>
-      <div style={{ marginTop: 11 }}><OptionRow label="Ordre de passage aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow></div>
+      <div style={{ marginTop: 11 }}><NativeStartOrderConfig initialMode={randomOrder ? "random" : "alternate"} onModeChange={(mode) => setRandomOrder(mode === "random")} /></div>
       <div style={{ marginTop: 9, padding: "9px 10px", borderRadius: 12, background: `${primary}0d`, border: `1px solid ${primary}30`, color: "#cfd4ea", fontSize: 10.8, lineHeight: 1.4 }}>
         {gameVariant === "attack_defense"
           ? participantMode === "teams"
@@ -688,7 +689,7 @@ export default function BaseballConfig(props: any) {
                 <div style={{ margin: "-5px 0 5px", fontSize: 10.5, opacity: .62, lineHeight: 1.3 }}>{missEndsTurn ? "MISS = perte immédiate de la volée en cours et changement de tour/rôle." : "MISS = 0 point, mais la volée peut continuer jusqu’à 3 fléchettes."}</div>
                 <OptionRow label="Règle BULL / DBULL"><OptionSelect value={bullTargetMode} options={[{ value: "off", label: "Jamais" }, { value: "defense", label: "Défense" }, { value: "attack", label: "Attaque" }, { value: "random", label: "Dans le tirage aléatoire" }]} onChange={setBullTargetMode} /></OptionRow>
                 {(bullTargetMode === "attack" || bullTargetMode === "defense") ? <OptionRow label="Valeur du BULL"><OptionSelect value={bullBonusPoints} options={[1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20]} onChange={(value: any) => setBullBonusPoints(Math.min(20, Math.max(1, Number(value) || 4)))} /></OptionRow> : null}
-                <OptionRow label="Ordre de passage aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow>
+                <NativeStartOrderConfig initialMode={randomOrder ? "random" : "alternate"} onModeChange={(mode) => setRandomOrder(mode === "random")} />
                 <OptionRow label="Mode de saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Keypad" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow>
                 <div style={{ marginTop: 9, fontSize: 11.5, opacity: .68, lineHeight: 1.4 }}>
                   {gameVariant === "attack_defense"

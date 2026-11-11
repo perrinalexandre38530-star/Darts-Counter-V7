@@ -1,0 +1,41 @@
+/** V219 — sauvegarde finale 5 VIES/CHASE confirmée par History V4. Lecture seule. */
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createConfirmedHistorySaveGate } from '../src/lib/confirmedHistorySave.ts';
+
+const gate = createConfirmedHistorySaveGate();
+let calls = 0;
+let complete;
+const pending = new Promise(resolve => { complete = resolve; });
+const first = gate.save('match-a', () => { calls++; return pending; });
+const second = gate.save('match-a', () => { calls++; return true; });
+assert.strictEqual(first, second, 'double clic/autosave = une seule transaction');
+await Promise.resolve();
+assert.equal(calls, 1);
+assert.equal(gate.isSaved('match-a'), false, 'aucune confirmation pendant IndexedDB');
+complete(true);
+assert.equal(await first, true);
+assert.equal(gate.isSaved('match-a'), true);
+assert.equal(await gate.save('match-a', () => { throw Error('doublon'); }), true);
+assert.equal(calls, 1);
+let retries = 0;
+assert.equal(await gate.save('match-b', () => { retries++; return false; }), false);
+assert.equal(gate.isSaved('match-b'), false);
+assert.equal(await gate.save('match-b', () => { retries++; return Promise.reject(Error('IndexedDB')); }), false);
+assert.equal(gate.isSaved('match-b'), false);
+assert.equal(await gate.save('match-b', () => { retries++; return Promise.resolve(true); }), true);
+assert.equal(retries, 3);
+assert.equal(await gate.save('', () => true), false);
+
+const source = readFileSync('src/pages/FiveLivesPlay.tsx','utf8');
+const app = readFileSync('src/App.tsx','utf8');
+assert.match(app, /return upsertPromise;/,'App renvoie le résultat du commit History V4');
+assert.match(source, /confirmPersistence: true/, 'ne publie pas le miroir avant le commit');
+assert.match(source, /const confirmed = await saveGateRef\.current\.save/, 'await confirmation');
+assert.match(source, /setSaveStatus\(confirmed \? "saved" : "failed"\)/);
+assert.match(source, /if \(saveStatus === "saved"\) \{ clearDartsMatchDraft\(modeDraftId\); return; \}/, 'ne nettoie le brouillon qu’après succès');
+assert.match(source, /finishedMatch: match/, 'résultat final sauvegardé en local avant History');
+assert.match(source, /React\.useState<any>\(restored\?\.finishedMatch \?\? null\)/, 'résultat récupéré après fermeture');
+assert.match(source, /saveStatus === "failed" \? "RÉESSAYER LA SAUVEGARDE"/, 'bouton de réessai visible');
+assert.match(source, /autoSaveAttemptedIdRef\.current === matchId/, 'aucune boucle de retry automatique');
+console.log('PASS V219 — une écriture en vol, confirmation IDB, échecs et réessai, journal final local récupérable.');

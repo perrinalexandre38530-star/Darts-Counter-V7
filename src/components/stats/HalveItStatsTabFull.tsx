@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React from "react";
-import { dartsFamilyStatsMode, dartsStatsRowMatchesProfile, isDartsFamilyDraw } from "../../lib/stats/dartsFamilyStatsSource";
+import { dartsFamilyStatsMode, dartsStatsRowMatchesProfile, isDartsFamilyDraw, halveItStatsRows } from "../../lib/stats/dartsFamilyStatsSource";
 
 const ACCENT = "#ffd76a";
 const GOOD = "#65efb4";
@@ -18,7 +18,7 @@ function pools(record: any): any[][] {
   return [record?.payload?.stats?.players, record?.payload?.summary?.players,
     record?.payload?.summary?.perPlayer, record?.summary?.players,
     record?.summary?.perPlayer, record?.payload?.players, record?.stats?.players,
-    record?.players].filter(Array.isArray);
+    record?.players].map(halveItStatsRows).filter((rows) => rows.length > 0);
 }
 function findRow(record: any, id: string, name?: string | null) {
   for (const pool of pools(record)) {

@@ -337,3 +337,23 @@
 }
 
 .mssTrainingSessionCoach button.mssTrainingFocusExercise { border-color:rgba(255,216,107,.40); background:rgba(255,216,107,.09); color:#ffe2a4; }
+
+
+/* Catalogue Challenge V128 : statuts des 44 nouvelles fiches */
+.mssChallengeAvailability{min-height:40px;padding:8px;border:1px solid rgba(39,220,255,.26);border-radius:10px;background:#0e1827;color:#c4f6ff;font-size:10px;font-weight:900;max-width:100%}
+.mssChallengeCatalogNotReady{margin-top:auto;margin-bottom:12px;padding:9px;border:1px dashed rgba(255,210,100,.34);border-radius:9px;background:rgba(255,210,100,.045);color:#efd4a0;font-size:9px;line-height:1.5}
+.mssChallengeCatalogCardHead small{white-space:nowrap}.mssChallengeCatalogCard.is-planned{border-color:rgba(255,200,110,.16)}
+@media(max-width:540px){.mssChallengeAvailability{flex:1 1 130px;min-width:0}.mssChallengeCatalogCard{padding:11px}}
+
+
+/* Rebase V135 : fiches Challenge lisibles sur petits téléphones, sans grille écrasée. */
+@media (max-width:460px){
+ .mssChallengeCatalogGrid{grid-template-columns:1fr;gap:8px}
+ .mssChallengeCatalogActions{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .mssChallengeCatalogCard{padding:12px}
+ .mssChallengeCatalogCard h4{font-size:12px}
+ .mssChallengeCatalogCard p{font-size:10px;min-height:0}
+ .mssChallengeCatalogCardHead span{font-size:8px}
+ .mssChallengeCatalogActions button{min-height:38px}
+ .mssChallengeCatalogDialog{max-height:calc(100dvh - 20px)}
+}

@@ -1,4 +1,5 @@
 // @ts-nocheck
+import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
 // =============================================================
 // PRÉSIDENT — configuration guidée / complète
 // =============================================================
@@ -165,7 +166,7 @@ export default function PresidentConfig(props: any) {
     <OptionRow label="Manches"><OptionSelect value={rounds} options={[1,3,5,7,10]} onChange={(v: any) => setRounds(Number(v) as any)} /></OptionRow>
     <OptionRow label="Cartes / joueur"><OptionSelect value={handSize} options={[6,8,10,12,14,16]} onChange={(v: any) => setHandSize(Number(v))} /></OptionRow>
     <OptionRow label="Copies 1→20"><OptionSelect value={deckCopies} options={[3,4,5]} onChange={(v: any) => setDeckCopies(Number(v) as any)} /></OptionRow>
-    <OptionRow label="Ordre de départ aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow>
+    <NativeStartOrderConfig initialMode={randomOrder ? "random" : "alternate"} onModeChange={(mode) => setRandomOrder(mode === "random")} />
     <div style={rowHelp}>Chaque manche redistribue une nouvelle main. À partir de la manche 2, les taxes Président/Trou du cul sont appliquées automatiquement après la distribution.</div>
     {deckWarning ? <div style={{ marginTop: 8, color: "#ffd36e", fontSize: 10.5 }}>Le moteur complètera automatiquement le paquet si {needCards} cartes sont nécessaires pour une capacité nominale de {deckCapacity}.</div> : null}
   </section>;

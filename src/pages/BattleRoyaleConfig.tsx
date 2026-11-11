@@ -1,3 +1,4 @@
+import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
 // ============================================
 // src/pages/BattleRoyaleConfig.tsx
 // BATTLE ROYALE — CONFIG (UI raccord Games/Shanghai)
@@ -799,6 +800,8 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
           </div>
         </div>
       )}
-    </div>
+    
+      <NativeStartOrderConfig />
+      </div>
   );
 }

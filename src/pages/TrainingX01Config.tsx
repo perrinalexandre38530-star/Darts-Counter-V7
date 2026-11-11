@@ -1,3 +1,4 @@
+import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
@@ -286,6 +287,8 @@ export default function TrainingX01Config({ store, go }: Props) {
         <strong style={{ color: theme.primary }}>{resolvedParticipants.length}</strong> participant{resolvedParticipants.length > 1 ? "s" : ""} • {participants.participantMode === "teams" ? "Training en équipes" : resolvedParticipants.length > 1 ? "Training multi-joueurs" : "Training solo"} • {startScore} • {outMode.toUpperCase()} OUT
       </section>
 
+      
+      <NativeStartOrderConfig />
       <button
         type="button"
         disabled={!canLaunch}
@@ -309,6 +312,8 @@ export default function TrainingX01Config({ store, go }: Props) {
       >
         Lancer la session Training
       </button>
-    </div>
+    
+      
+      </div>
   );
 }

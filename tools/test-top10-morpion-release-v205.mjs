@@ -15,6 +15,8 @@ const suites = [
   'tools/test-top10-morpion-final-stats-v202.mjs',
   'tools/test-top10-morpion-outcomes-v205.mjs',
   'tools/test-top10-morpion-stats-authority-v217.mjs',
+  'tools/test-top10-morpion-result-consistency-v218.mjs',
+  'tools/test-five-lives-confirmed-history-v219.mjs',
   'tools/test-five-lives-chase-undo-v184.mjs',
   'tools/test-chase-halveit-results-v182.mjs',
 ];

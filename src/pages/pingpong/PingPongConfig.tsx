@@ -1,3 +1,4 @@
+import NativeStartOrderConfig from '../../components/NativeStartOrderConfig';
 // =============================================================
 // src/pages/pingpong/PingPongConfig.tsx
 // Config Ping-Pong (LOCAL ONLY) — V2
@@ -602,7 +603,9 @@ export default function PingPongConfig({ go, params, store }: Props) {
           </div>
 
           {/* CTA */}
-          <button className="msc-mode-config-actions" style={cta(theme, canStart)} onClick={onStart} disabled={!canStart}>
+          
+      <NativeStartOrderConfig />
+      <button className="msc-mode-config-actions" style={cta(theme, canStart)} onClick={onStart} disabled={!canStart}>
             Lancer la partie
           </button>
         </>
@@ -654,7 +657,9 @@ export default function PingPongConfig({ go, params, store }: Props) {
           </div>
         </div>
       )}
-    </div>
+    
+      
+      </div>
   );
 }
 

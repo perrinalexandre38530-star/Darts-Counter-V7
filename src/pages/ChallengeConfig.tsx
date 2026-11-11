@@ -1,3 +1,4 @@
+import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
 import React from 'react';
 import { BottomNavIcon } from '../components/BottomNav';
 import BackDot from '../components/BackDot';
@@ -17,6 +18,7 @@ import { ChallengeInsightsPage, type ChallengeInsightView } from '../components/
 import { ChallengeGuideInfo, ChallengeGuideTiles } from '../components/challenge/ChallengeGuideInfo';
 import { buildChallengeGuide } from '../lib/challengeGuideContent';
 import {arcadeRuleDetails,arcadeRuleDescription, type ArcadeVariant, type ArcadePlayConfig} from '../lib/challengeArcadeEngine';
+import { getChallengeTrainingPreset, CHALLENGE_TRAINING_ARCADE_CATALOG } from '../training/catalog/challengeTrainingCatalog';
 
 export type ChallengeTarget='1'|'2'|'3'|'4'|'5'|'6'|'7'|'8'|'9'|'10'|'11'|'12'|'13'|'14'|'15'|'16'|'17'|'18'|'19'|'20'|'bull'|'bull25'|'bull50'|'any-double'|'any-triple';
 export type ChallengeRule='all'|'single'|'double'|'triple'|'bull'|'bull25'|'bull50';
@@ -33,6 +35,9 @@ export type ChallengeConfigData={
   configMode:'guided'|'complete';
   matchMode?:ChallengeMatchMode;
   soundsEnabled?:boolean;
+  trainingOrigin?: 'training_lab';
+  trainingCatalogPresetId?: string;
+  trainingOwnerId?: string;
   exerciseType?:ChallengeExerciseType;
   catalogChallengeId?:string;
   catalogLine?:number;
@@ -113,7 +118,10 @@ function TeamLogoView({team,className='',alt=''}:{team:any;className?:string;alt
  return <img className={className} src={src} alt={alt||team?.name||''} onError={()=>{const fallback=resolveTeamLogoSrc(team?.logoLibraryId||team?.logoLibraryFileName||null)||'';if(fallback&&fallback!==src)setSrc(fallback)}}/>;
 }
 
-export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{go:(tab:any,params?:any)=>void;profiles?:Profile[];activeProfileId?:string|null}){
+export default function ChallengeConfig({go,params,profiles=[],activeProfileId=null}:{go:(tab:any,params?:any)=>void;params?:any;profiles?:Profile[];activeProfileId?:string|null}){
+ const fromTrainingLab = params?.fromTrainingLab === true;
+ const trainingPresetId = fromTrainingLab ? String(params?.trainingChallengePresetId || '') : '';
+ const trainingOwnerId = fromTrainingLab ? String(params?.trainingParticipantId || activeProfileId || '') : '';
  const theme=useTheme();
  const awena=useAwenaOptional();
  const primary='#ff4148';
@@ -203,10 +211,26 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
  },[]);
 
  React.useEffect(()=>{
-  const draft=readChallengePreset(CHALLENGE_DRAFT_KEY);
-  if(draft)applyPreset(draft,{jumpToPlayers:false,resetPlayers:false});
+  const trainingPreset = fromTrainingLab ? getChallengeTrainingPreset(trainingPresetId) : null;
+  if (trainingPreset) {
+    applyPreset({
+      target:'20',visits:10,rule:'all',configMode:'complete',matchMode:'solo',
+      participantSource:'direct',soundsEnabled:true,exerciseType:'classic',
+      clockIncludeBull:true,clockScoreMode:'challenge',halfItStartScore:40,
+      sequenceObjectives:[...DEFAULT_CUSTOM_SEQUENCE],sequenceScoreMode:'real',
+      groupingMin:15,groupingMax:20,groupingHits:2,
+      doublesBonusTarget:20,doublesTargets:[...DOUBLES_8_TARGETS],doublesTargetMode:'official',
+      ...trainingPreset.config,
+      matchMode:(trainingPreset.minPlayers || 1) > 1 ? 'duo' : 'solo',
+    } as ChallengePreset);
+    setDirectPlayerIds(trainingOwnerId ? [trainingOwnerId] : []);
+    setMode('complete');
+  } else if (!fromTrainingLab) {
+    const draft=readChallengePreset(CHALLENGE_DRAFT_KEY);
+    if(draft)applyPreset(draft,{jumpToPlayers:false,resetPlayers:false});
+  }
   setPresetHydrated(true);
- },[applyPreset]);
+ },[applyPreset,fromTrainingLab,trainingPresetId,trainingOwnerId]);
 
  React.useEffect(()=>{
   if(target==='bull'||target==='bull25'||target==='bull50'){ if(target!=='bull') setTarget('bull'); if(rule!=='bull') setRule('bull'); return; }
@@ -222,7 +246,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
   groupingMin,groupingMax,groupingHits,doublesBonusTarget,doublesTargets:[...doublesTargets],doublesTargetMode
  }),[target,visits,rule,mode,matchMode,participantSource,soundsEnabled,exerciseType,catalogChallengeId,catalogLine,catalogVariant,catalogRounds,catalogTarget,catalogStep,catalogMin,catalogMax,catalogLives,clockIncludeBull,clockScoreMode,halfItStartScore,sequenceObjectives,sequenceScoreMode,groupingMin,groupingMax,groupingHits,doublesBonusTarget,doublesTargets,doublesTargetMode]);
 
- React.useEffect(()=>{if(presetHydrated)writeChallengePreset(CHALLENGE_DRAFT_KEY,currentPreset)},[presetHydrated,currentPreset]);
+ React.useEffect(()=>{if(presetHydrated && !fromTrainingLab)writeChallengePreset(CHALLENGE_DRAFT_KEY,currentPreset)},[presetHydrated,currentPreset,fromTrainingLab]);
 
  const maxPlayers=matchMode==='solo'?1:matchMode==='duo'?2:Number.POSITIVE_INFINITY;
  const minPlayers=matchMode==='solo'?1:matchMode==='duo'?2:matchMode==='multi'?3:0;
@@ -362,9 +386,11 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
 
  const start=()=>{
   if(!matchMode||!selectionValid||!exerciseValid||(exerciseType==='arcade'&&playerIds.length<arcadeRule.minPlayers)) return;
-  writeChallengePreset(CHALLENGE_LAST_PLAYED_KEY,currentPreset);
-  setLastPlayedPreset(currentPreset);
-  try{recordProfileUsageForMode('challenge',playerIds)}catch{}
+  if (!fromTrainingLab) {
+    writeChallengePreset(CHALLENGE_LAST_PLAYED_KEY,currentPreset);
+    setLastPlayedPreset(currentPreset);
+    try{recordProfileUsageForMode('challenge',playerIds)}catch{}
+  }
   go('challenge_play',{config:{
    target:resolvedTarget,visits:resolvedVisits,rule:resolvedRule,
    exerciseType,
@@ -386,8 +412,9 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
    participantSource,
    configMode:mode,
    matchMode,
-   soundsEnabled
-  } satisfies ChallengeConfigData});
+   soundsEnabled,
+   ...(fromTrainingLab ? { trainingOrigin:'training_lab' as const, trainingCatalogPresetId:exerciseType==='arcade' ? (CHALLENGE_TRAINING_ARCADE_CATALOG.find(row => row.arcadeId === catalogChallengeId)?.id || trainingPresetId) : trainingPresetId, trainingOwnerId } : {})
+  } satisfies ChallengeConfigData, ...(fromTrainingLab ? { fromTrainingLab:true } : {})});
  };
 
  const formatStage=<Section title="TYPE DE PARTIE" subtitle="Choisissez d’abord le format : il fixe immédiatement le nombre de joueurs autorisé." key="format">
@@ -553,12 +580,12 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
  return <div className="challenge-config" style={{background:theme.bg,color:theme.text}}>
   <header className="challenge-head">
    <img src="/challenge/ticker_challenge.png" alt="Challenge"/>
-   <div className="challenge-back"><BackDot onClick={()=>go('games')} size={44} color="#36e9ff" glow="#36e9ff77"/></div>
+   <div className="challenge-back"><BackDot onClick={()=>fromTrainingLab?go('training_mode',{modeId:'training_lab',challengeCatalog:true}):go('games')} size={44} color="#36e9ff" glow="#36e9ff77"/></div>
    <button className="challenge-awena" type="button" aria-label="Ouvrir Awena" title="Awena" onClick={()=>awena?.openPanel?.()}><span><img src="/awena/awena-avatar.webp" alt="Awena"/></span><i aria-hidden>🎙</i></button>
   </header>
   <main className="config-wrap">
    <section className="config-overview">
-    <div className="overview-copy"><small>CONFIGURATION CHALLENGE</small><div className="mode-row"><button type="button" className={mode==='guided'?'on':''} onClick={()=>{setMode('guided');setStep(0)}}>GUIDÉE</button><button type="button" className={mode==='complete'?'on':''} onClick={()=>setMode('complete')}>COMPLÈTE</button></div><p>{mode==='guided'?'Configuration compacte, étape par étape, dans le même esprit que X01.':'Tous les réglages sont accessibles sur une seule page.'}</p><button type="button" className="challenge-leaderboard-access" onClick={()=>go('challenge_leaderboard',{from:'challenge_config'})}><span>🏆</span><b>CLASSEMENTS ONLINE</b><small>Meilleurs scores · filtres · équipes officielles</small></button></div>
+    <div className="overview-copy"><small>CONFIGURATION CHALLENGE</small><div className="mode-row"><button type="button" className={mode==='guided'?'on':''} onClick={()=>{setMode('guided');setStep(0)}}>GUIDÉE</button><button type="button" className={mode==='complete'?'on':''} onClick={()=>setMode('complete')}>COMPLÈTE</button></div><p>{mode==='guided'?'Configuration compacte, étape par étape, dans le même esprit que X01.':'Tous les réglages sont accessibles sur une seule page.'}</p>{!fromTrainingLab && <button type="button" className="challenge-leaderboard-access" onClick={()=>go('challenge_leaderboard',{from:'challenge_config'})}><span>🏆</span><b>CLASSEMENTS ONLINE</b><small>Meilleurs scores · filtres · équipes officielles</small></button>}</div>
     <div className="summary"><b>{matchMode?matchMode.toUpperCase():'—'}</b><span>{playerIds.length} JOUEUR{playerIds.length>1?'S':''}</span><span>{exerciseSummary}</span><span>{exerciseType==='arcade'?arcadeRule.roundUnit+' · '+catalogRounds:resolvedVisits+' TOURS'}</span><span>SONS {soundsEnabled?'ON':'OFF'}</span></div>
    </section>
    {(lastPlayedPreset||favoritePreset)&&<section className="quick-presets" aria-label="Raccourcis Challenge">
@@ -621,7 +648,9 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
    </div>
   </div>}
   <style>{css(primary)}</style>
- </div>;
+ 
+      <NativeStartOrderConfig />
+      </div>;
 }
 
 function Section({title,subtitle,children}:{title:string;subtitle?:string;children:any}){return <section className="config-card"><div className="section-title"><h2>{title}</h2>{subtitle?<p>{subtitle}</p>:null}</div>{children}</section>}

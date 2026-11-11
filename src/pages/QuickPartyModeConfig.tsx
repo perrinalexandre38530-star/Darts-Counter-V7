@@ -1,4 +1,5 @@
 // @ts-nocheck
+import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 
@@ -229,6 +230,7 @@ export default function QuickPartyModeConfig({ modeId, title, params, onBack, on
         </div>
         {modeOptions}
         <div style={{borderRadius:16,border:"1px solid #52f5b244",background:"#52f5b20d",padding:10,textAlign:"center",fontSize:12,fontWeight:900}}>⚡ {playerCount} joueur{playerCount>1?"s":""} · profils temporaires · sauvegarde dans PARTIES RAPIDES</div>
+        <NativeStartOrderConfig />
         <button type="button" onClick={start} style={{minHeight:56,border:"1px solid #52f5b2aa",borderRadius:17,background:"linear-gradient(180deg,#52f5b23a,#52f5b214)",color:"#baffdf",fontWeight:1000,fontSize:18,letterSpacing:.6,cursor:"pointer"}}>JOUER</button>
       </div>
     </div>

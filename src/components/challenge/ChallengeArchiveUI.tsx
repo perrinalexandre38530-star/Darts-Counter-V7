@@ -3,6 +3,7 @@ import { CHALLENGE_MODE_OPTIONS } from '../../lib/challengeUnifiedCatalog';
 import { BottomNavIcon } from '../BottomNav';
 import {ChallengeInsightsPage,type ChallengeInsightView} from './ChallengeInsightsPage';
 import {challengeArchiveItems,loadChallengeArchive,summarizeChallengeArchive,type ChallengeArchiveItem} from '../../lib/challengeArchive';
+import {buildChallengeImpactDetails} from '../../lib/challengePerformanceDetails';
 import './ChallengeArchiveUI.css';
 
 const date=(ms:number)=>ms?new Date(ms).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'}):'—';
@@ -36,21 +37,8 @@ export function ChallengeArchiveDetails({modeId,playerId,playerName,onResume,com
  const options=React.useMemo(()=>[...new Set(all.map(item=>item.modeId))].map(id=>({id,name:archiveFrom(id)?.title||id})),[all]);
  const relevant=React.useMemo(()=>modeFilter==='all'?all:all.filter(item=>item.modeId===modeFilter),[all,modeFilter]);
  const summary=React.useMemo(()=>summarizeChallengeArchive(relevant),[relevant]);
- const impactDetails=React.useMemo(()=>{
-  const buckets:Record<string,number>={S:0,G:0,P:0,D:0,T:0,BULL25:0,DBULL50:0,MISS:0};
-  for(const item of relevant){
-   if(item.status!=='finished')continue;
-   const entries=item.record?.payload?.entries||item.record?.decoded?.entries||[];
-   if(!Array.isArray(entries))continue;
-   for(const hit of entries){
-    if(item.playerId&&String(hit?.pid||hit?.playerId)!==item.playerId)continue;
-    const zone=String(hit?.zone||hit?.hit||'').toUpperCase();
-    const mapped=zone==='25'||zone==='BULL'?'BULL25':zone==='50'||zone==='DBULL'?'DBULL50':zone;
-    if(Object.prototype.hasOwnProperty.call(buckets,mapped))buckets[mapped]++;
-   }
-  }
-  return {buckets,total:Object.values(buckets).reduce((a,b)=>a+b,0)};
- },[relevant]);
+ const impactDetails=React.useMemo(()=>buildChallengeImpactDetails(relevant),[relevant]);
+ const recordGoal=(item:ChallengeArchiveItem)=>summary.byConfig.find(group=>group.key===item.configKey)?.goal==='min';
  const bestStreak=React.useMemo(()=>Math.max(0,...summary.latest.map(row=>row.bestStreak),...summary.byConfig.map(group=>group.best.bestStreak)),[summary]);
  return <section className={'mss-challenge-archive '+(compact?'compact':'')} aria-label="Performances et records Challenge">
   {modeFilter!=='all'&&<div className="mss-ca-insight-launchers">
@@ -67,10 +55,10 @@ export function ChallengeArchiveDetails({modeId,playerId,playerName,onResume,com
   {loading&&<p className="mss-ca-muted" role="status">Chargement des records enregistrés…</p>}
   {error&&<p className="mss-ca-error" role="alert">Impossible de charger les parties : {error} <button type="button" onClick={()=>refresh()}>Réessayer</button></p>}
   {!loading&&!error&&!summary.total&&<p className="mss-ca-muted">Aucune partie pour ce défi et ce profil. Ton premier résultat apparaîtra ici à la fin de la partie.</p>}
-  {summary.completed>0&&<div className="mss-ca-quick-records"><span>MEILLEURE SÉRIE <b>{bestStreak}</b></span><span>DERNIER SCORE <b>{summary.latest[0]?.score??'—'} pts</b></span><span>DERNIÈRE PARTIE <b>{date(summary.latest[0]?.playedAt||0)}</b></span></div>}
-  {impactDetails.total>0&&<div className="mss-ca-block"><h3>RÉPARTITION DES IMPACTS · {impactDetails.total} FLÉCHETTES DOCUMENTÉES</h3><div className="mss-ca-hit-grid">{Object.entries(impactDetails.buckets).map(([zone,count])=><div key={zone}><b>{zone}</b><strong>{count}</strong><small>{Math.round(count/impactDetails.total*100)}%</small></div>)}</div></div>}
+  {summary.completed>0&&<div className="mss-ca-quick-records"><span>MEILLEURE SÉRIE <b>{bestStreak}</b></span><span>DERNIÈRE PERFORMANCE <b>{summary.latest[0]?score(summary.latest[0],recordGoal(summary.latest[0])):'—'}</b></span><span>DERNIÈRE PARTIE <b>{date(summary.latest[0]?.playedAt||0)}</b></span></div>}
+  {impactDetails.total>0&&<div className="mss-ca-block"><h3>RÉPARTITION DES IMPACTS · {impactDetails.total} TOUCHES DOCUMENTÉES</h3><div className="mss-ca-hit-grid">{Object.entries(impactDetails.byZone).map(([zone,count])=><div key={zone}><b>{zone}</b><strong>{count}</strong><small>{Math.round(count/impactDetails.total*100)}%</small></div>)}</div></div>}
   {summary.byConfig.length>0&&<div className="mss-ca-block"><h3>RECORDS PAR CONFIGURATION</h3><div className="mss-ca-config-list">{summary.byConfig.slice(0,compact?5:20).map(group=><article key={group.key}><div><b>{group.best.title}</b><small>{group.label} · {group.plays} partie{group.plays>1?'s':''}</small></div><div className="mss-ca-best"><span>RECORD</span><strong>{score(group.best,group.goal==='min')}</strong><small>{date(group.best.playedAt)}</small></div></article>)}</div></div>}
-  {summary.latest.length>0&&<div className="mss-ca-block"><h3>DERNIÈRES PERFORMANCES</h3><div className="mss-ca-recent-list">{summary.latest.slice(0,compact?4:8).map(item=><div key={item.id}><div><b>{item.title}</b><small>{date(item.playedAt)} · {item.configLabel}</small></div><strong>{item.score} pts</strong><small>{item.darts} fl. · {item.accuracy.toFixed(1)}% · série {item.bestStreak}</small></div>)}</div></div>}
+  {summary.latest.length>0&&<div className="mss-ca-block"><h3>DERNIÈRES PERFORMANCES</h3><div className="mss-ca-recent-list">{summary.latest.slice(0,compact?4:8).map(item=><div key={item.id}><div><b>{item.title}</b><small>{date(item.playedAt)} · {item.configLabel}</small></div><strong>{score(item,recordGoal(item))}</strong><small>{item.darts} fl. · {item.accuracy.toFixed(1)}% · série {item.bestStreak}</small></div>)}</div></div>}
   {summary.ongoing.length>0&&<div className="mss-ca-block"><h3>PARTIES À REPRENDRE</h3><div className="mss-ca-recent-list">{summary.ongoing.slice(0,6).map(item=><div key={item.id}><div><b>{item.title}</b><small>{date(item.playedAt)} · {item.darts} fléchettes jouées</small></div>{onResume&&<button type="button" onClick={()=>onResume(item)}>REPRENDRE</button>}</div>)}</div></div>}
   {insightView&&modeFilter!=='all'&&<ChallengeInsightsPage modeId={modeFilter} modeTitle={archiveFrom(modeFilter)?.title||modeFilter} playerId={playerId} playerName={playerName} initialView={insightView} onClose={()=>setInsightView(null)}/>}
  </section>;

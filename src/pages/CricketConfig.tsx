@@ -1,3 +1,4 @@
+import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
 // ============================================
 // src/pages/CricketConfig.tsx
 // Cricket — CONFIG (v1)
@@ -423,42 +424,8 @@ export default function CricketConfig({ profiles, value, onChange, onStart }: Pr
           </button>
         </div>
 
-        {/* start order */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <span style={{ fontSize: 13, color: T.textSoft }}>Ordre de départ</span>
-          <div style={{ display: "inline-flex", gap: 6 }}>
-            <button
-              type="button"
-              onClick={() => set({ startOrder: "selected" })}
-              style={{
-                padding: "6px 10px",
-                borderRadius: 999,
-                border: "none",
-                background: value.startOrder === "selected" ? "rgba(246,194,86,0.20)" : "rgba(255,255,255,0.08)",
-                color: value.startOrder === "selected" ? T.gold : T.textSoft,
-                fontWeight: 900,
-                cursor: "pointer",
-              }}
-            >
-              CHOISI
-            </button>
-            <button
-              type="button"
-              onClick={() => set({ startOrder: "random" })}
-              style={{
-                padding: "6px 10px",
-                borderRadius: 999,
-                border: "none",
-                background: value.startOrder === "random" ? "rgba(56,189,248,0.18)" : "rgba(255,255,255,0.08)",
-                color: value.startOrder === "random" ? "#7dd3fc" : T.textSoft,
-                fontWeight: 900,
-                cursor: "pointer",
-              }}
-            >
-              ALÉA
-            </button>
-          </div>
-        </div>
+        {/* start order: player order only; the round rotation remains independent */}
+        <NativeStartOrderConfig initialMode={value.startOrder === "random" ? "random" : "alternate"} onModeChange={(mode) => set({ startOrder: mode === "random" ? "random" : "selected" })} />
 
         {/* dartSetId (v1) */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>

@@ -317,6 +317,7 @@ export default function Gros6Config({ store, go }: any) {
   const [thirdDartBonusSelection, setThirdDartBonusSelection] = React.useState(true);
   const [thirdDartBonusCount, setThirdDartBonusCount] = React.useState(3);
   const [randomStartOrder, setRandomStartOrder] = React.useState(false);
+  const [startOrderMode, setStartOrderMode] = React.useState<"random" | "alternate" | "manual" | "bull">("alternate");
   const [scoreInputMethod, setScoreInputMethod] = React.useState<"keypad" | "voice">("keypad");
   const [teamLifeMode, setTeamLifeMode] = React.useState<TeamLifeMode>("individual");
   const [rulesOpen, setRulesOpen] = React.useState(false);
@@ -534,7 +535,8 @@ export default function Gros6Config({ store, go }: any) {
       selectionPolicy,
       startingTargetMode,
       startingTarget,
-      randomStartOrder,
+      randomStartOrder: startOrderMode === "random",
+      startOrderMode,
       thirdDartBonusSelection,
       thirdDartBonusCount,
       scoreInputDefaultMethod: scoreInputMethod,
@@ -548,7 +550,7 @@ export default function Gros6Config({ store, go }: any) {
       recordProfileUsageForMode("gros_6", ids);
     } catch {}
     go?.("gros_6_play", { config });
-  }, [participantMode, teamsSourceMode, teamLifeMode, startingLives, targetRule, allowBull, allowSpecialZones, allowOuterRing, selectionPolicy, startingTargetMode, randomStartOrder, thirdDartBonusSelection, thirdDartBonusCount, scoreInputMethod, presetId, go, selectedIds, selectedSavedTeamIds, selectedBotTeamIds, teamMemberSelections, manualAssignments, autoTeams]);
+  }, [participantMode, teamsSourceMode, teamLifeMode, startingLives, targetRule, allowBull, allowSpecialZones, allowOuterRing, selectionPolicy, startingTargetMode, randomStartOrder, startOrderMode, thirdDartBonusSelection, thirdDartBonusCount, scoreInputMethod, presetId, go, selectedIds, selectedSavedTeamIds, selectedBotTeamIds, teamMemberSelections, manualAssignments, autoTeams]);
 
   const ParticipantsSelector = () => (
     <Section title={participantMode === "players" ? "2. Joueurs" : "2. Participants des équipes"} subtitle={participantMode === "players" ? "Sélectionne les profils locaux puis, si besoin, des BOTS IA." : teamsSourceMode === "saved" ? "Choisis des équipes déjà enregistrées ou des équipes BOTS IA." : "Sélectionne d'abord les joueurs utilisés pour la composition des équipes."} primary={primary}>
@@ -751,8 +753,10 @@ export default function Gros6Config({ store, go }: any) {
         <div>
           <div style={{ color: "#c8cbe4", fontSize: 11, marginBottom: 7 }}>Ordre de départ</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <PillButton label="Ordre sélectionné" active={!randomStartOrder} onClick={() => setRandomStartOrder(false)} primary={primary} primarySoft={primarySoft} />
-            <PillButton label="Aléatoire" active={randomStartOrder} onClick={() => setRandomStartOrder(true)} primary={primary} primarySoft={primarySoft} />
+            {([['random','ALÉATOIRE'],['alternate','ALTERNÉ'],['manual','MANUEL'],['bull','BULL']] as const).map(([mode,label]) => (
+              <PillButton key={mode} label={label} active={startOrderMode === mode}
+                onClick={() => { setStartOrderMode(mode); setRandomStartOrder(mode === 'random'); }} primary={primary} primarySoft={primarySoft} />
+            ))}
           </div>
         </div>
       </div>

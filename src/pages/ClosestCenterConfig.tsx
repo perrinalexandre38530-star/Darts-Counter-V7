@@ -1,4 +1,5 @@
 // @ts-nocheck
+import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
 import React from "react";
 import QRCode from "qrcode";
 import BackDot from "../components/BackDot";
@@ -327,6 +328,8 @@ export default function ClosestCenterConfig(props: any) {
           ? <><b>Variante Plus proche :</b> indique uniquement le propriétaire de la fléchette gagnante.</>
           : <><b>Variante Top 5 :</b> renseigne uniquement les cinq fléchettes qui scorent, dans l’ordre #1 à #5.</>}
       </div>
+      
+      <NativeStartOrderConfig />
       <button disabled={!canStart} onClick={start} style={{...navBtn,width:"100%",marginTop:10,borderColor:"#8fffc2",background:"rgba(57,217,138,.12)",opacity:canStart?1:.4}}>▶ LANCER EN SAISIE MANUELLE</button>
     </>}
   </section>;
@@ -363,7 +366,9 @@ export default function ClosestCenterConfig(props: any) {
       <div style={{minHeight:0,overflow:"auto",paddingRight:landscape?2:0}}>{configMain}</div>
       {landscape ? landscapeAside : null}
     </div>
-  </div>;
+  
+      
+      </div>;
 }
 
 const card:React.CSSProperties={border:"1px solid rgba(255,255,255,.10)",background:"linear-gradient(180deg,rgba(13,24,34,.82),rgba(5,11,17,.78))",borderRadius:18,padding:14,boxShadow:"0 14px 36px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.035)",backdropFilter:"blur(12px)"};

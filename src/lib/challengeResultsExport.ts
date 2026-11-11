@@ -96,6 +96,16 @@ export type ChallengeExportReport = {
   matchBreakdown?: { headers: string[]; rows: string[][]; note?: string };
 };
 
+/** Ready-to-share files created before the share button is tapped.
+ * navigator.share() must run during the original user gesture; awaiting image
+ * decoding or canvas export first loses transient activation on mobile.
+ */
+export type ChallengePreparedShare = {
+  title: string;
+  pdf: File;
+  pngPages: File[];
+};
+
 export type ExportFormat = 'pdf' | 'png' | 'share';
 export type ChallengeExportResult = {
  status: 'shared' | 'downloaded' | 'download-started' | 'cancelled' | 'share-unavailable' | 'preview';
@@ -777,14 +787,25 @@ function buildSummaryPages(report: ChallengeExportReport, assets: PreparedAssets
 
 async function loadImageMaybe(src: string | null | undefined): Promise<HTMLImageElement | null> {
   const value = String(src || '').trim();
-  if (!value) return null;
-  return await new Promise((resolve) => {
+  if (!value || !/^(?:https?:\/\/|data:image\/|blob:|\/)/i.test(value)) return null;
+  return new Promise((resolve) => {
     const img = new Image();
+    let settled = false;
+    // A missing external avatar/ticker must not freeze an entire export.
+    const finish = (found: HTMLImageElement | null) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      img.onload = null;
+      img.onerror = null;
+      resolve(found);
+    };
+    const timeout = window.setTimeout(() => finish(null), 4500);
     img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
+    img.onload = () => finish(img.naturalWidth > 0 ? img : null);
+    img.onerror = () => finish(null);
     img.src = value;
-    if (img.complete && img.naturalWidth > 0) resolve(img);
+    if (img.complete && img.naturalWidth > 0) finish(img);
   });
 }
 
@@ -1137,6 +1158,50 @@ async function useSavePicker(bytes:Uint8Array,name:string,format:'pdf'|'zip'):Pr
   console.warn('[challenge-export] save picker failed',error);
   return 'unsupported';
  }
+}
+
+/** Pre-generate native share payload when the format-choice modal opens.
+ * The subsequent PNG/PDF tap never waits for a new render before navigator.share.
+ */
+export async function prepareChallengeShare(report: ChallengeExportReport): Promise<ChallengePreparedShare> {
+  const slug = report.title.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'partie';
+  const stem = 'MSS_' + slug + '_' + new Date().toISOString().slice(0, 10);
+  const pages = await reportCanvasPagesPrepared(report);
+  if (!pages.length) throw new Error('Aucune page à partager.');
+  const pdf = new File([pdfBytesFromCanvases(pages)], stem + '.pdf', {type:'application/pdf'});
+  const pngPages = pngPageFiles(pages, stem).map(page =>
+    new File([page.bytes], page.name, {type:'image/png'}));
+  return {title:report.title, pdf, pngPages};
+}
+
+/** IMPORTANT: call directly from an onClick handler, with no awaited operation
+ * before this function. It invokes the system sheet synchronously, so iOS and
+ * Android still recognise the gesture as a valid file-sharing action.
+ */
+export function sharePreparedChallenge(
+  prepared: ChallengePreparedShare, format: 'pdf'|'png',
+): Promise<ChallengeExportResult> {
+  const files = format === 'pdf' ? [prepared.pdf] : prepared.pngPages;
+  const fileName = format === 'pdf' ? prepared.pdf.name : files[0]?.name || 'MSS_images.png';
+  if (!files.length) return Promise.resolve({status:'share-unavailable',fileName});
+  const nav = navigator;
+  try {
+    if (typeof nav.share !== 'function' ||
+      (typeof nav.canShare === 'function' && !nav.canShare({files}))) {
+      return Promise.resolve({status:'share-unavailable',fileName});
+    }
+    // Do not turn this into an async function with a preceding await.
+    const pending = nav.share({files,title:prepared.title,text:'Résultats MULTISPORTS SCORING'});
+    return pending.then(() => ({status:'shared' as const,fileName})).catch((error:unknown) => {
+      if ((error as Error)?.name === 'AbortError') return {status:'cancelled' as const,fileName};
+      console.warn('[challenge-export] sharing rejected by host',error);
+      return {status:'share-unavailable' as const,fileName};
+    });
+  } catch (error) {
+    console.warn('[challenge-export] sharing not supported',error);
+    return Promise.resolve({status:'share-unavailable',fileName});
+  }
 }
 
 export async function exportChallengeResults(report:ChallengeExportReport,format:ExportFormat,

@@ -22,6 +22,7 @@ import tickerFiveLives from "../assets/tickers/ticker_five_lives.png";
 import tickerChaseFr from "../assets/tickers/ticker_chase_fr.webp";
 import tickerChaseEn from "../assets/tickers/ticker_chase_en.webp";
 import { readDartsMatchDraft, writeDartsMatchDraft, clearDartsMatchDraft } from "../lib/dartsMatchDrafts";
+import { createConfirmedHistorySaveGate } from "../lib/confirmedHistorySave";
 import { captureFiveLivesUndo, isValidFiveLivesUndo, type FiveLivesUndoState } from "../lib/fiveLivesUndo";
 import type { FiveLivesConfig, FiveLivesPlayerLite } from "./FiveLivesConfig";
 import "./FiveLivesPlayResponsive.css";
@@ -50,7 +51,7 @@ type Props = {
   go: (tab: any, params?: any) => void;
   config: FiveLivesConfig;
   resumeDraft?: boolean;
-  onFinish?: (m: any, options?: { navigate?: boolean }) => void;
+  onFinish?: (m: any, options?: { navigate?: boolean; confirmPersistence?: boolean; suppressFailureAlert?: boolean }) => Promise<boolean>;
 };
 type FiveLivesStats = {
   visits: number;
@@ -879,6 +880,8 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
       || !Array.isArray(s.chaseRoundQueue) || (isChase && !s.chaseRoundQueue.length)
       || s.chaseRoundQueue.some((id: unknown) => !s.players.some((p: any) => p.id === id))
       || (s.lastScoreToBeat !== null && !Number.isFinite(s.lastScoreToBeat))
+      || (s.finishedMatch && (String(s.finishedMatch.id || "") !== String(config?.id || "") ||
+        !s.players.some((p: any) => p.id === s.finishedMatch.winnerId) || s.finishedMatch.status !== "finished"))
       || !Array.isArray(s.currentThrow) || s.currentThrow.length > 3
       || s.currentThrow.some((d: any) => !Number.isInteger(d?.v) ||
         !(d.v === 0 || d.v === 25 || (d.v >= 1 && d.v <= 20)) ||
@@ -886,7 +889,8 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
     return s;
   }, []);
   const startedAtRef = React.useRef(Number(restored?.startedAt || config?.createdAt) || Date.now());
-  const savedRef = React.useRef(false);
+  const saveGateRef = React.useRef(createConfirmedHistorySaveGate());
+  const [saveStatus, setSaveStatus] = React.useState<"idle" | "saving" | "saved" | "failed">("idle");
   const [players, setPlayers] = React.useState<PlayerState[]>(() => restored?.players ||
     (config?.players || []).map((p) => ({
       ...p,
@@ -909,9 +913,9 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
       const previous = restored?.lastUndo;
       return isValidFiveLivesUndo(previous, restored as any) ? previous : null;
     }),
-    [winnerId, setWinnerId] = React.useState<string | null>(null);
-  const [endOpen, setEndOpen] = React.useState(false),
-    [finalMatch, setFinalMatch] = React.useState<any>(null);
+    [winnerId, setWinnerId] = React.useState<string | null>(restored?.finishedMatch?.winnerId ?? null);
+  const [endOpen, setEndOpen] = React.useState(!!restored?.finishedMatch),
+    [finalMatch, setFinalMatch] = React.useState<any>(restored?.finishedMatch ?? null);
   const [infoOpen, setInfoOpen] = React.useState(false);
   const [playersOpen, setPlayersOpen] = React.useState(false);
   // La hauteur du clavier est gérée en CSS (portrait/paysage).
@@ -1245,6 +1249,13 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
     if (alive.length === 1) {
       const winId = alive[0].id,
         match = buildFinishedMatch(updated, nextEvents, winId);
+      // V139: preserve the complete finished match synchronously before
+      // the asynchronous History V4 write can be interrupted.
+      writeDartsMatchDraft(modeDraftId, config as any, {
+        players: updated, turnIndex, chaseRoundQueue, lastScoreToBeat: score,
+        currentThrow: [], mult: 1, events: nextEvents, lastUndo: null,
+        startedAt: startedAtRef.current, finishedMatch: match,
+      });
       setWinnerId(winId);
       setFinalMatch(match);
       setEndOpen(true);
@@ -1315,18 +1326,33 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isBotTurn, activePlayer?.id, activePlayer?.botLevel, winnerId, endOpen, events.length, lastScoreToBeat]);
 
-  // Écriture automatique de la partie finie : l'utilisateur ne doit pas perdre
-  // son historique s'il ferme l'application avant de cliquer sur HISTORIQUE.
-  React.useEffect(() => {
-    if (!finalMatch || savedRef.current || typeof onFinish !== "function") return;
-    try {
-      onFinish?.(finalMatch, { navigate: false });
-      savedRef.current = true;
-    } catch (error) {
-      // Ne jamais marquer comme enregistré un match dont l'écriture a échoué.
-      console.warn("[5 VIES/CHASE] Enregistrement de l'historique impossible", error);
+  // V217 : la partie n'est enregistrée qu'après le commit History V4.
+  // Les clics simultanés sur HISTORIQUE partagent une seule écriture en cours.
+  async function saveFinalResult(openHistory: boolean): Promise<boolean> {
+    if (!finalMatch || typeof onFinish !== "function") {
+      setSaveStatus("failed");
+      return false;
     }
-  }, [finalMatch, onFinish]);
+    const id = String(finalMatch.id || finalMatch.matchId || "");
+    if (!saveGateRef.current.isSaved(id)) setSaveStatus("saving");
+    const confirmed = await saveGateRef.current.save(id, () => onFinish(finalMatch, {
+      navigate: false, confirmPersistence: true, suppressFailureAlert: true,
+    }));
+    setSaveStatus(confirmed ? "saved" : "failed");
+    if (confirmed) {
+      clearDartsMatchDraft(modeDraftId);
+      if (openHistory) {
+        setEndOpen(false);
+        go("statsHub", { tab: "history" });
+      }
+    }
+    return confirmed;
+  }
+  React.useEffect(() => {
+    if (finalMatch) void saveFinalResult(false);
+    // Une seule tentative automatique par partie : un échec requiert un clic explicite.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finalMatch]);
   // Une fermeture pendant l'animation d'un BOT CHASE/5 VIES peut laisser
   // sa volée révélée mais non validée. Reprendre la validation au remontage.
   React.useEffect(() => {
@@ -1335,27 +1361,15 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
     return () => window.clearTimeout(timer);
   }, []);
   function finishAndSave() {
-    if (!finalMatch) return;
-    if (!savedRef.current) {
-      if (typeof onFinish !== "function") {
-        window.alert("L'enregistrement de cette partie n'est pas disponible.");
-        return;
-      }
-      try {
-        onFinish(finalMatch, { navigate: true });
-        savedRef.current = true;
-        setEndOpen(false);
-      } catch (error) {
-        console.warn("[5 VIES/CHASE] Impossible de sauvegarder la partie", error);
-        window.alert("L'enregistrement de la partie a échoué. Réessaie depuis les résultats.");
-      }
-      return;
-    }
-    setEndOpen(false);
-    go("statsHub", { tab: "history" });
+    if (saveStatus === "saving") return;
+    void saveFinalResult(true);
   }
   React.useEffect(() => {
-    if (winnerId || finalMatch) { clearDartsMatchDraft(modeDraftId); return; }
+    // Garder le dernier brouillon tant que la transaction finale n'est pas confirmée.
+    if (winnerId || finalMatch) {
+      if (saveStatus === "saved") clearDartsMatchDraft(modeDraftId);
+      return;
+    }
     // Annuler la première volée rend un match entièrement vierge : supprimer
     // aussi le brouillon, sinon une ancienne volée réapparaît au prochain lancement.
     if (!events.length && !currentThrow.length) {
@@ -1366,7 +1380,7 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
       players, turnIndex, chaseRoundQueue, lastScoreToBeat, currentThrow, mult, events, lastUndo,
       startedAt: startedAtRef.current,
     });
-  }, [modeDraftId, config, players, turnIndex, chaseRoundQueue, lastScoreToBeat, currentThrow, mult, events, lastUndo, winnerId, finalMatch]);
+  }, [modeDraftId, config, players, turnIndex, chaseRoundQueue, lastScoreToBeat, currentThrow, mult, events, lastUndo, winnerId, finalMatch, saveStatus]);
 
   const liveAvg = activePlayer?.stats?.visits
     ? activePlayer.stats.totalScore / activePlayer.stats.visits
@@ -1383,6 +1397,13 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
     const now = Date.now();
     if (now - lastBackTapRef.current < 350) return;
     lastBackTapRef.current = now;
+    // Une partie terminée non confirmée doit rester récupérable : le BackDot
+    // ne peut pas contourner la protection du bouton REJOUER.
+    if (finalMatch && !saveGateRef.current.isSaved(String(finalMatch.id || finalMatch.matchId || ""))) {
+      setEndOpen(true);
+      window.alert("Le résultat n'est pas encore confirmé dans l'historique. Réessaie la sauvegarde avant de quitter.");
+      return;
+    }
     go("five_lives_config", isChase ? { variantId: "chase", launchMode: "arcade" } : { launchMode: (config as any)?.quickParty ? "quick" : "arcade" });
   };
 
@@ -2302,6 +2323,9 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
                   </div>
                 </section>
               ) : null}
+              <div role="status" aria-live="polite" style={{ textAlign: "center", marginTop: 10, fontSize: 11, fontWeight: 850, color: saveStatus === "failed" ? "#ff889a" : "#d5deed" }}>
+                {saveStatus === "saving" ? "Sauvegarde History V4 en cours…" : saveStatus === "failed" ? "Sauvegarde locale échouée : réessaie avant de quitter." : saveStatus === "saved" ? "Résultat confirmé dans History V4." : "Préparation de la sauvegarde…"}
+              </div>
               <div
                 style={{
                   marginTop: 12,
@@ -2312,7 +2336,11 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
               >
                 <button
                   type="button"
-                  onClick={() => go("five_lives_config", isChase ? { variantId: "chase", launchMode: "arcade" } : { launchMode: (config as any)?.quickParty ? "quick" : "arcade" })}
+                  onClick={() => {
+                    if (saveStatus !== "saved") return;
+                    go("five_lives_config", isChase ? { variantId: "chase", launchMode: "arcade" } : { launchMode: (config as any)?.quickParty ? "quick" : "arcade" });
+                  }}
+                  disabled={saveStatus !== "saved"}
                   style={{
                     height: 44,
                     borderRadius: 999,
@@ -2327,6 +2355,7 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
                 <button
                   type="button"
                   onClick={finishAndSave}
+                  disabled={saveStatus === "saving"}
                   style={{
                     height: 44,
                     borderRadius: 999,
@@ -2337,7 +2366,7 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
                     boxShadow: `0 12px 28px ${accent}33`,
                   }}
                 >
-                  VOIR HISTORIQUE
+                  {saveStatus === "saving" ? "ENREGISTREMENT..." : saveStatus === "failed" ? "RÉESSAYER LA SAUVEGARDE" : "VOIR HISTORIQUE"}
                 </button>
               </div>
             </div>

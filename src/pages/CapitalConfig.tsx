@@ -1,3 +1,4 @@
+import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
 // src/pages/CapitalConfig.tsx
 // CAPITAL — Config écran (cohérent avec les autres menus config)
 // - Sélection profils locaux (carousel)
@@ -832,9 +833,7 @@ export default function CapitalConfig(props: any) {
             </Section>
           ) : null}
           <Section title="Départ">
-            <CapitalOptionCard label="Ordre de départ" info={CAPITAL_OPTION_HELP.startOrder} onInfo={openOptionInfo}>
-              <OptionSelect value={startOrderMode} options={[{ value: "random", label: "Aléatoire" }, { value: "fixed", label: "Ordre de sélection" }]} onChange={(value: any) => setStartOrderMode(value)} />
-            </CapitalOptionCard>
+            <NativeStartOrderConfig initialMode={startOrderMode === "random" ? "random" : "alternate"} onModeChange={(mode) => setStartOrderMode(mode === "random" ? "random" : "fixed")} />
             <div style={{ marginTop: 9, fontSize: 12, opacity: .72 }}>
               {startOrderMode === "random" ? "L’ordre sera tiré une seule fois au démarrage." : "L’ordre affiché dans le sélecteur X01 sera conservé."}
             </div>

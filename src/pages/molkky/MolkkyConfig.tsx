@@ -1,4 +1,5 @@
 // @ts-nocheck
+import NativeStartOrderConfig from '../../components/NativeStartOrderConfig';
 // =============================================================
 // src/pages/molkky/MolkkyConfig.tsx
 // Config MÖLKKY — UI calquée sur X01ConfigV3 (Darts)
@@ -398,7 +399,9 @@ export default function MolkkyConfig({ go, store, params }: Props) {
           </div>
         </div>
       )}
-    </div>
+    
+      <NativeStartOrderConfig />
+      </div>
   );
 }
 

@@ -36,6 +36,7 @@ export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void
   const warm = "#ffc857";
   const [rulesVideoOpen, setRulesVideoOpen] = React.useState(false);
   const [mode, setMode] = React.useState<QuickMode>("duel");
+  const [serveMode, setServeMode] = React.useState<"random" | "alternate" | "manual" | "bull">("alternate");
   const [multiCount, setMultiCount] = React.useState(4);
   const [startScore, setStartScore] = React.useState<301 | 501 | 701 | 901>(501);
   const [inMode, setInMode] = React.useState<"single" | "double">("single");
@@ -51,6 +52,7 @@ export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void
       if (!raw) return;
       const v = JSON.parse(raw);
       if (["solo", "duel", "teams", "multi"].includes(v?.mode)) setMode(v.mode);
+      if (["random", "alternate", "manual", "bull"].includes(v?.serveMode)) setServeMode(v.serveMode);
       if ([301, 501, 701, 901].includes(Number(v?.startScore))) setStartScore(Number(v.startScore) as any);
       if (["single", "double"].includes(v?.inMode)) setInMode(v.inMode);
       if (["single", "double"].includes(v?.outMode)) setOutMode(v.outMode);
@@ -120,7 +122,7 @@ export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void
           ]
         : undefined,
       multiFinishMode: isMulti ? "stop_on_first" : "stop_on_first",
-      serveMode: "alternate",
+      serveMode,
       matchVictoryMode: victoryMode,
       victoryMode,
       matchFormat,
@@ -145,7 +147,7 @@ export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void
     };
 
     try {
-      localStorage.setItem(LS_KEY, JSON.stringify({ mode, multiCount, startScore, inMode, outMode, victoryMode, target: selectedTarget, unit }));
+      localStorage.setItem(LS_KEY, JSON.stringify({ mode, multiCount, startScore, inMode, outMode, victoryMode, target: selectedTarget, unit, serveMode }));
     } catch {}
     onStart(cfg as X01ConfigV3);
   }
@@ -332,6 +334,18 @@ export default function X01QuickConfig({ onBack, onStart }: { onBack: () => void
                 <button type="button" style={chip(unit === "legs", warm)} onClick={() => setUnit("legs")}>LEGS</button>
                 <button type="button" style={chip(unit === "sets", warm)} onClick={() => setUnit("sets")}>SETS</button>
               </div>
+            </div>
+
+            <div style={block}>
+              <div style={label}>SERVICE / ORDRE DE DÉPART</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                {([['random', 'ALÉATOIRE'], ['alternate', 'ALTERNÉ'], ['manual', 'MANUEL'], ['bull', 'BULL']] as const).map(([value, text]) => (
+                  <button key={value} type="button" aria-pressed={serveMode === value} style={chip(serveMode === value, warm)} onClick={() => setServeMode(value)}>{text}</button>
+                ))}
+              </div>
+              {(serveMode === 'manual' || serveMode === 'bull') && <div style={{ color: '#c9d2e5', fontSize: 12 }}>
+                {serveMode === 'bull' ? 'Après le lancer de bull, classe les participants au démarrage.' : 'Définis l’ordre des participants juste avant de jouer.'}
+              </div>}
             </div>
 
             <div style={{ borderRadius: 16, border: `1px solid ${accent}44`, background: `${accent}0d`, padding: 10, textAlign: "center", fontSize: 12, fontWeight: 900 }}>

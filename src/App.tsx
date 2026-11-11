@@ -88,6 +88,8 @@ const GlobalCollectibleUnlockNotifier = React.lazy(() => import("./components/Gl
 import SportQuickSwitch from "./components/SportQuickSwitch";
 import DartsConfigGuideBoundary from "./components/DartsConfigGuideBoundary";
 import PlayLandscapeAutoLayout from "./components/gameplay/PlayLandscapeAutoLayout";
+import ChoiceStartOrderModal from "./components/ChoiceStartOrderModal";
+import { readStartParticipants, applyChosenStartOrder } from "./lib/choiceStartOrder";
 import { ORGANIZATION_WORKSPACE_EVENT, loadOrganizationWorkspace, type OrganizationWorkspace } from "./organizations/organizationWorkspace";
 import { applyOrganizationPlayContext } from "./organizations/organizationPlayContext";
 // MONETIZATION_V1
@@ -197,6 +199,11 @@ const SportLiveHub = React.lazy(() => import("./sportsLive/SportLiveHub"));
 
 // Historique
 import { History } from "./lib/history";
+import {
+  stagePendingDartsFinalResult, clearPendingDartsFinalResult,
+  listPendingDartsFinalResults, recoverPendingDartsFinalResult,
+  type DartsFinalMode,
+} from "./lib/dartsPendingFinalResults";
 import { installMultisportHistoryAuthorityBridge } from "./lib/multisportHistoryAuthority";
 import { getX01CriticalCheckpoint } from "./lib/x01CriticalCheckpoint";
 import { recordProfileUsageFromMatch } from "./lib/profileUsage";
@@ -3400,9 +3407,54 @@ useEffect(() => {
   /* X01 v3 config */
   const [x01ConfigV3, setX01ConfigV3] = React.useState<X01ConfigV3Type | null>(() => (samsungTvNativeBoot?.gameConfig as X01ConfigV3Type | null) || null);
 
+  // Universal pre-game bull-off: opt-in per configuration visit, never affects legacy defaults.
+  const [choiceStartOrderMode, setChoiceStartOrderMode] = React.useState<"random" | "alternate" | "manual" | "bull">("alternate");
+  const [choiceStartOrderPending, setChoiceStartOrderPending] = React.useState<any>(null);
+  const choiceStartOrderBypassRef = React.useRef(false);
+  const universalOrderTouchedRef = React.useRef(false);
+  const choiceStartOrderCurrentConfig = React.useRef<any>(null);
+  choiceStartOrderCurrentConfig.current = x01ConfigV3;
+  React.useEffect(() => { universalOrderTouchedRef.current = false; setChoiceStartOrderMode("alternate"); }, [tab]);
+  React.useEffect(() => {
+    const listener = (event: Event) => {
+      const data = (event as CustomEvent<{ mode?: string; touched?: boolean }>).detail;
+      if (!data || !['random', 'alternate', 'manual', 'bull'].includes(String(data.mode))) return;
+      universalOrderTouchedRef.current = Boolean(data.touched);
+      setChoiceStartOrderMode(data.mode as 'random' | 'alternate' | 'manual' | 'bull');
+    };
+    window.addEventListener('mss:start-order-changed', listener);
+    return () => window.removeEventListener('mss:start-order-changed', listener);
+  }, []);
+
+
   /* Navigation */
   const liveReturnRouteRef = React.useRef<{ tab: Tab; params: any } | null>(null);
   function go(next: Tab, params?: any) {
+    const nextName = String(next || '');
+    const fromName = String(tab || '');
+    const launchingPlay = nextName === 'x01' || nextName === 'x01_play_v3' || nextName.endsWith('_play') || nextName.endsWith('_game') || nextName === 'darts_mode_play';
+    const fromConfig = fromName.endsWith('_config') || fromName === 'x01setup' || fromName === 'x01_config_v3' || fromName === 'x01_online_setup' || fromName === 'shanghai' || fromName === 'battle_royale' || fromName === 'killer' || fromName === 'cricket' || fromName === 'training_x01';
+    // The universal configuration selector is authoritative only when actually used.
+    // Do not overwrite existing native configuration defaults or resumed matches.
+    if (universalOrderTouchedRef.current && launchingPlay && fromConfig && !params?.resume && !params?.resumeId) {
+      params = {
+        ...(params || {}),
+        startOrderMode: choiceStartOrderMode,
+        ...(params?.config ? { config: { ...params.config, startOrderMode: choiceStartOrderMode, serveMode: choiceStartOrderMode } } : {}),
+      };
+    }
+    const configuredMode = universalOrderTouchedRef.current ? choiceStartOrderMode : (nextName === 'x01_play_v3' ? String(choiceStartOrderCurrentConfig.current?.serveMode || choiceStartOrderMode) : String(params?.serveMode || params?.startOrderMode || params?.config?.startOrderMode || choiceStartOrderMode));
+    if (!choiceStartOrderBypassRef.current && (configuredMode === 'manual' || configuredMode === 'bull') && launchingPlay && fromConfig && !params?.resume && !params?.resumeId) {
+      const source = nextName === 'x01_play_v3' ? choiceStartOrderCurrentConfig.current : (params?.config || params);
+      const participants = readStartParticipants(source, (store as any)?.profiles || []);
+      if (participants.length > 1) {
+        setChoiceStartOrderPending({ next, params, participants, mode: configuredMode, isX01V3: nextName === 'x01_play_v3', tickerHints: [fromName, nextName, String((params as any)?.mode || ''), String((params as any)?.config?.mode || ''), String((source as any)?.mode || ''), String((source as any)?.tickerId || ''), String((source as any)?.id || '')].filter(Boolean) });
+        return;
+      }
+      // Never guess an order or silently replace the participant selection.
+      setChoiceStartOrderPending({ next, params, participants: [], mode: configuredMode, isX01V3: nextName === 'x01_play_v3', error: true });
+      return;
+    }
     const intercepted = interceptMonetizedNavigation({
       fromTab: String(tab || ""),
       fromParams: routeParams,
@@ -4770,7 +4822,24 @@ useEffect(() => {
 
     // IndexedDB remains the single History V4 source of truth.
     // Do not publish uncommitted matches for either TOSSIT or the four modes.
+    // V219 : sécuriser le résultat final AVANT l'écriture asynchrone.
+    // Ce secours, propre au compte connecté, survit à une fermeture brutale.
+    const dartsFinalMode: DartsFinalMode | null = options?.confirmPersistence === true
+      ? String(saved.kind).toLowerCase() === "five_lives"
+        ? ((m as any)?.variantId === "chase" || (m as any)?.payload?.variantId === "chase" ? "chase" : "five_lives")
+        : (["halve_it", "split_score"].includes(String(saved.kind).toLowerCase())
+          ? String(saved.kind).toLowerCase() as DartsFinalMode : null)
+      : null;
+    const pendingScope = getStorageUser();
+    if (dartsFinalMode && !stagePendingDartsFinalResult(dartsFinalMode, saved, pendingScope)) {
+      console.warn("[darts final] stockage de secours indisponible : seule la sauvegarde History V4 est tentée", saved.id);
+    }
     const upsertPromise = persistFinishedMatchForAds(saved, String(saved.kind || "game"));
+    if (dartsFinalMode) {
+      void upsertPromise.then((committed) => {
+        if (committed) clearPendingDartsFinalResult(String(saved.id), pendingScope);
+      });
+    }
     if (confirmBeforeMirror) {
       void upsertPromise.then((committed) => { if (committed) updateVisibleHistory(); });
     }
@@ -4943,6 +5012,32 @@ useEffect(() => {
     // Existing callers may continue to ignore the returned promise.
     return upsertPromise;
   }
+
+  // V219 : reprise automatique des résultats finalisés restés en attente après
+  // une fermeture pendant History.upsert. Idempotent : même id, jamais un nouvel id.
+  const dartsFinalRecoveryScopeRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (loading) return;
+    const scope = getStorageUser() || "local";
+    if (dartsFinalRecoveryScopeRef.current === scope) return;
+    dartsFinalRecoveryScopeRef.current = scope;
+    const pending = listPendingDartsFinalResults(scope);
+    if (!pending.length) return;
+    void (async () => {
+      for (const item of pending) {
+        const committed = await recoverPendingDartsFinalResult(item.id, scope, async (record) => {
+          const existing = await History.get(item.id).catch(() => null);
+          if (existing?.status === "finished") return true;
+          return persistFinishedMatchForAds(record, String(record.kind || item.mode));
+        });
+        if (committed) {
+          // L'historique canonique émet dc-history-updated ; informer aussi les
+          // cartes de configuration et la navigation déjà ouvertes.
+          try { window.dispatchEvent(new Event("dc-history-updated")); } catch {}
+        }
+      }
+    })();
+  }, [loading, (store as any)?.activeProfileId]);
 
   // ONLINE V10 — publie le route/config actuel quand une page de gameplay online est ouverte.
   // Cela donne au NAS une source de vérité minimale pour spectateur/reprise/invité,
@@ -6596,7 +6691,7 @@ case "babyfoot_team_edit":
       }
 
       case "challenge_config":
-        page = <ChallengeConfig go={go} profiles={store.profiles} activeProfileId={store.activeProfileId ?? null} />;
+        page = <ChallengeConfig go={go} params={routeParams} profiles={store.profiles} activeProfileId={store.activeProfileId ?? null} />;
         break;
       case "challenge_play":
         page = <ChallengePlay go={go} params={routeParams} />;
@@ -6612,6 +6707,7 @@ case "babyfoot_team_edit":
             <X01QuickConfig
               onBack={() => go("x01_config_v3")}
               onStart={(cfg) => {
+                choiceStartOrderCurrentConfig.current = cfg;
                 setX01ConfigV3(cfg);
                 go("x01_play_v3", { fresh: Date.now(), quickParty: true });
               }}
@@ -6622,9 +6718,11 @@ case "babyfoot_team_edit":
             <X01ConfigV3
               profiles={store.profiles}
               activeProfileId={store.activeProfileId ?? null}
+              onStartOrderModeChange={setChoiceStartOrderMode}
               onBack={() => go("x01_config_v3")}
               onStart={(cfg) => {
-                setX01ConfigV3({ ...(cfg as any), quickParty: false, partyMode: "arcade", profileStatsDeferred: false } as any);
+                choiceStartOrderCurrentConfig.current = { ...(cfg as any), quickParty: false, partyMode: "arcade", profileStatsDeferred: false };
+                setX01ConfigV3(choiceStartOrderCurrentConfig.current as any);
                 go("x01_play_v3", { fresh: Date.now(), quickParty: false });
               }}
               go={go}
@@ -6864,7 +6962,7 @@ case "babyfoot_team_edit":
           page = <div style={{ padding: 16 }}>Mode Training manquant</div>;
           break;
         }
-        page = <TrainingModePage modeId={modeId} profiles={store.profiles ?? []} onExit={() => go("training")} />;
+        page = <TrainingModePage modeId={modeId} profiles={store.profiles ?? []} initialChallengeCatalog={Boolean(routeParams?.challengeCatalog)} onOpenChallenge={(config, presetId, snapshot) => go("challenge_play", { config, snapshot, fromTrainingLab: true, trainingChallengePresetId: presetId })} onCustomizeChallenge={(presetId, participantId) => go("challenge_config", { fromTrainingLab: true, trainingChallengePresetId: presetId, trainingParticipantId: participantId })} onExit={() => go("training")} />;
         break;
       }
 
@@ -7964,6 +8062,24 @@ case "babyfoot_team_edit":
     <CrashCatcher>
       <>
         <MobileErrorOverlay />
+        {choiceStartOrderPending && (choiceStartOrderPending.error ?
+          <div role="alertdialog" aria-modal="true" style={{ position: 'fixed', inset: 0, zIndex: 2147482000, display: 'grid', placeItems: 'center', background: '#000c', padding: 16 }}>
+            <div style={{ maxWidth: 420, background: '#162436', padding: 24, borderRadius: 16, color: 'white' }}>
+              <h2>Ordre de départ</h2>
+              <p>Impossible de retrouver les participants sélectionnés pour ce mode. La partie ne sera pas modifiée.</p>
+              <button type="button" onClick={() => setChoiceStartOrderPending(null)}>RETOUR À LA CONFIGURATION</button>
+              <button type="button" onClick={() => { const pending = choiceStartOrderPending; setChoiceStartOrderPending(null); choiceStartOrderBypassRef.current = true; try { go(pending.next, pending.params); } finally { choiceStartOrderBypassRef.current = false; } }}>DÉMARRER SANS CHANGER L’ORDRE</button>
+            </div>
+          </div> :
+          <ChoiceStartOrderModal mode={choiceStartOrderPending.mode} participants={choiceStartOrderPending.participants} teams={[...((choiceStartOrderPending.isX01V3 ? choiceStartOrderCurrentConfig.current?.teams : undefined) || []), ...((choiceStartOrderPending.params as any)?.config?.teams || []), ...((choiceStartOrderPending.params as any)?.teams || []), ...((choiceStartOrderPending.params as any)?.config?.teamConfigs || []), ...((choiceStartOrderPending.params as any)?.teamConfigs || []), ...((store as any)?.teams || [])]} tickerHints={choiceStartOrderPending.tickerHints || []} onCancel={() => setChoiceStartOrderPending(null)} onConfirm={(ids) => {
+            const pending = choiceStartOrderPending;
+            if (pending.isX01V3) setX01ConfigV3((prev: any) => applyChosenStartOrder(prev, ids));
+            const nextParams = applyChosenStartOrder(pending.params || {}, ids);
+            setChoiceStartOrderPending(null);
+            choiceStartOrderBypassRef.current = true;
+            try { go(pending.next, nextParams); } finally { choiceStartOrderBypassRef.current = false; }
+          }} />)}
+
         <GlobalMessengerCallBridge />
         {!isThemePreviewFrame && !loading && !!(store as any)?.activeProfileId && ((store as any)?.profiles || []).some((p: any) => String(p?.id) === String((store as any).activeProfileId)) && (
           <React.Suspense fallback={null}>
@@ -8005,6 +8121,8 @@ case "babyfoot_team_edit":
           }}
         >
           <PlayLandscapeAutoLayout active={isGamePlayRoute} />
+
+
           <AppGate go={go} tab={tab}>
             <React.Suspense fallback={<div className="container" style={{ padding: 16, color: "#cfe48b" }}>Chargement…</div>}>
               {needsUniversalDartsConfigGuide ? (

@@ -36,6 +36,9 @@ type Props = {
   modeId: string;
   onExit: () => void;
   profiles?: Profile[];
+  initialChallengeCatalog?: boolean;
+  onOpenChallenge?: (config: any, presetId: string, snapshot?: any) => void;
+  onCustomizeChallenge?: (presetId: string, participantId: string) => void;
 };
 
 type TrainingQueuedParticipant = {
@@ -99,7 +102,7 @@ function normalizeQueue(config: any, profiles?: Profile[]): TrainingQueuedPartic
   return out;
 }
 
-export default function TrainingModePage({ modeId, onExit, profiles }: Props) {
+export default function TrainingModePage({ modeId, onExit, profiles, initialChallengeCatalog = false, onOpenChallenge, onCustomizeChallenge }: Props) {
   const { user, online } = useAuthOnline();
   const currentProfile = useCurrentProfile();
   const id = canonicalTrainingId(modeId);
@@ -268,7 +271,7 @@ export default function TrainingModePage({ modeId, onExit, profiles }: Props) {
   }, [activeParticipant, config, participantIndex, queue.length]);
 
   const configProps = { profiles, onStart: start, onExit: exitAndSync };
-  const labConfigProps = { ...configProps, accountProfile: currentProfile || null, initialDetailExerciseId: id === "training_lab" ? String(config?.returnExerciseDetailId || "") || null : null };
+  const labConfigProps = { ...configProps, accountProfile: currentProfile || null, initialChallengeCatalog, onOpenChallenge, onCustomizeChallenge, initialDetailExerciseId: id === "training_lab" ? String(config?.returnExerciseDetailId || "") || null : null };
   const playProps = { config: activePlayConfig, onExit: finishOrAdvance };
 
   if (phase === "summary" && summary) {

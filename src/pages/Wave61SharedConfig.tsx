@@ -1,4 +1,5 @@
 // @ts-nocheck
+import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
 import React from "react";
 import BackDot from "../components/BackDot";
 import BotPagedSelector from "../components/BotPagedSelector";
@@ -512,7 +513,7 @@ export default function Wave61SharedConfig(props: any) {
         <OptionRow label={`${roundsFieldLabel}${lockedRounds ? " · verrouillé" : ""}`}><input type="number" min={1} max={60} value={lockedRounds ?? rounds} disabled={lockedRounds != null} onChange={(e) => setRounds(Number(e.target.value))} style={{ width: 82, borderRadius: 10, border: "1px solid rgba(255,255,255,.14)", background: lockedRounds != null ? "rgba(255,255,255,.04)" : "rgba(0,0,0,.28)", color: lockedRounds != null ? "#9ba2b3" : "#fff", padding: "8px 9px", fontWeight: 900 }} /></OptionRow>
         {preset.defaultGoal > 0 ? <OptionRow label={`${goalFieldLabel}${lockedGoal ? " · verrouillé" : ""}`}><input type="number" min={1} max={9999} value={lockedGoal ?? goal} disabled={lockedGoal != null} onChange={(e) => setGoal(Number(e.target.value))} style={{ width: 82, borderRadius: 10, border: "1px solid rgba(255,255,255,.14)", background: lockedGoal != null ? "rgba(255,255,255,.04)" : "rgba(0,0,0,.28)", color: lockedGoal != null ? "#9ba2b3" : "#fff", padding: "8px 9px", fontWeight: 900 }} /></OptionRow> : null}
         {preset.defaultLives > 0 ? <OptionRow label="Vies"><OptionSelect value={lives} options={[3,4,5,6,7]} onChange={(v: any) => setLives(Number(v))} /></OptionRow> : null}
-        <OptionRow label="Ordre aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow>
+        <NativeStartOrderConfig initialMode={randomOrder ? "random" : "alternate"} onModeChange={(mode) => setRandomOrder(mode === "random")} />
         <OptionRow label="Saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Keypad" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow>
       </section>
 

@@ -80,6 +80,9 @@ export function ChallengeReportShareDialog({
       <ReportIcon kind="pdf"/>DOCUMENT PDF
     </button>
    </div>
+   {busy&&!error&&<div role="status" aria-live="polite" style={{color:'#9ec7df',fontSize:12,textAlign:'center',padding:'6px 4px',fontWeight:800}}>
+    Préparation du PDF et des images A4 pour le partage…
+   </div>}
    {error&&<div role="alert" style={{padding:'10px 12px',color:'#ffd8a9',
     fontSize:12,lineHeight:1.6,border:'1px solid #8d6641',borderRadius:10,
     background:'#291e18'}}>{error}</div>}

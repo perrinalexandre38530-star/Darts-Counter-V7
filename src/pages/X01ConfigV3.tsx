@@ -119,7 +119,7 @@ type MatchVictoryModeV3 = "best_of" | "first_to";
 type MatchFormatUnitV3 = "sets" | "legs";
 type InModeV3 = "simple" | "double" | "master";
 type OutModeV3 = "simple" | "double" | "master";
-type ServiceModeV3 = "random" | "alternate";
+type ServiceModeV3 = "random" | "alternate" | "manual" | "bull";
 type TeamId = "gold" | "pink" | "blue" | "green";
 type TeamsSourceMode = "manual" | "saved" | "auto";
 type ParticipantMode = "players" | "teams";
@@ -129,6 +129,7 @@ type Props = {
   profiles: Profile[];
   activeProfileId?: string | null;
   onBack: () => void;
+  onStartOrderModeChange?: (mode: ServiceModeV3) => void;
   onStart: (cfg: X01ConfigV3) => void;
   go?: (tab: any, params?: any) => void; // pour ouvrir "Créer BOT"
   /** Déclenche le pilote de configuration X01 entièrement guidé par Awena. */
@@ -2281,7 +2282,7 @@ function x01VoiceNameMatches(transcript: string, name: string) {
   return hay.includes(` ${needle} `) || (needle.length >= 5 && hay.includes(needle));
 }
 
-export default function X01ConfigV3({ profiles, activeProfileId: activeProfileIdProp = null, onBack, onStart, go, voiceSetupRequested = false, voiceSetupRequestId = null }: Props) {
+export default function X01ConfigV3({ profiles, activeProfileId: activeProfileIdProp = null, onBack, onStart, onStartOrderModeChange, go, voiceSetupRequested = false, voiceSetupRequestId = null }: Props) {
   const { theme } = useTheme() as any;
   const { t } = useLang() as any;
   const awena = useAwenaOptional();
@@ -2487,6 +2488,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   const [legVictoryTarget, setLegVictoryTarget] = React.useState<number>(3);
   const [showProFormats, setShowProFormats] = React.useState<boolean>(false);
   const [serveMode, setServeMode] = React.useState<ServiceModeV3>("alternate");
+  React.useEffect(() => { onStartOrderModeChange?.(serveMode); }, [serveMode, onStartOrderModeChange]);
   const [matchMode, setMatchMode] = React.useState<MatchModeV3>("solo");
   const [multiFinishMode, setMultiFinishMode] = React.useState<MultiFinishModeV3>("stop_on_first");
 
@@ -3587,7 +3589,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             ? `${selectedSavedTeamsCount || selectedStoredTeamIds.length} équipes`
             : (selectedParticipantProfiles || []).map((p: any) => p?.name).filter(Boolean).join(", ") || `${selectedIds.length} joueurs`;
           const formatLabel = formatSummaryLabel(matchVictoryMode, setVictoryTarget, setsToWin, legVictoryMode, legVictoryTarget, legsPerSet);
-          await awenaVoiceSpeak(`Récapitulatif. ${playerLabel}. Départ ${startScore}. ${inMode} in, ${outMode} out. Format ${formatLabel}. Ordre ${serveMode === "alternate" ? "alterné" : "aléatoire"}. Saisie ${scoreInputMethod}. Sons arcade ${arcadeEnabled ? "activés" : "désactivés"}, bruitages ${hitEnabled ? "activés" : "désactivés"}, voix de partie ${voiceEnabled ? "activée" : "désactivée"}. Comptage externe ${externalScoringEnabled ? "activé" : "désactivé"}. Si tout est correct, dis oui lance la partie. Sinon, dis recommence ou annule.`, "confirm");
+          await awenaVoiceSpeak(`Récapitulatif. ${playerLabel}. Départ ${startScore}. ${inMode} in, ${outMode} out. Format ${formatLabel}. Ordre ${serveMode === "alternate" ? "alterné" : serveMode === "random" ? "aléatoire" : serveMode === "bull" ? "bull" : "manuel"}. Saisie ${scoreInputMethod}. Sons arcade ${arcadeEnabled ? "activés" : "désactivés"}, bruitages ${hitEnabled ? "activés" : "désactivés"}, voix de partie ${voiceEnabled ? "activée" : "désactivée"}. Comptage externe ${externalScoringEnabled ? "activé" : "désactivé"}. Si tout est correct, dis oui lance la partie. Sinon, dis recommence ou annule.`, "confirm");
           return;
         }
 
@@ -4336,6 +4338,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <PillButton label="Alterné" active={serveMode === "alternate"} onClick={() => setServeMode("alternate")} primary={primary} primarySoft={primarySoft} />
                     <PillButton label="Aléatoire" active={serveMode === "random"} onClick={() => setServeMode("random")} primary={primary} primarySoft={primarySoft} />
+                    <PillButton label="Manuel" active={serveMode === "manual"} onClick={() => setServeMode("manual")} primary={primary} primarySoft={primarySoft} />
+                    <PillButton label="Bull" active={serveMode === "bull"} onClick={() => setServeMode("bull")} primary={primary} primarySoft={primarySoft} />
                   </div>
                 </div>
               </section>
@@ -4867,7 +4871,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
 
           <div style={{ marginBottom: 12 }}>
             <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>{t("x01v3.service", "Service / ordre de départ")}</div>
-            <div style={{ display: "flex", gap: 6 }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <PillButton
                 label={t("x01v3.service.random", "Aléatoire")}
                 active={serveMode === "random"}
@@ -4882,6 +4886,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                 primary={primary}
                 primarySoft={primarySoft}
               />
+              <PillButton label="Manuel" active={serveMode === "manual"} onClick={() => setServeMode("manual")} primary={primary} primarySoft={primarySoft} />
+              <PillButton label="Bull" active={serveMode === "bull"} onClick={() => setServeMode("bull")} primary={primary} primarySoft={primarySoft} />
             </div>
           </div>
 

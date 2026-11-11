@@ -1,4 +1,5 @@
 // @ts-nocheck
+import NativeStartOrderConfig from '../../components/NativeStartOrderConfig';
 // =============================================================
 // src/pages/dice/DiceFarkleConfig.tsx
 // Config DICE — FARKLE (gabarit 2 joueurs)
@@ -241,7 +242,9 @@ export default function DiceFarkleConfig({ go, store }: Props) {
           <Toggle label="Hot Dice (relance si tout score) (placeholder)" checked={hotDice} onChange={setHotDice} theme={theme} />
         </div>
 
-        <button
+        
+      <NativeStartOrderConfig />
+      <button
           onClick={onLaunch}
           disabled={!canStart}
           style={{
@@ -267,6 +270,8 @@ export default function DiceFarkleConfig({ go, store }: Props) {
           </div>
         )}
       </div>
-    </div>
+    
+      
+      </div>
   );
 }

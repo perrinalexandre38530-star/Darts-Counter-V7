@@ -1,3 +1,4 @@
+import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
 // =============================================================
 // src/pages/GolfConfig.tsx
 // GOLF (Darts) — Config PRO (UX alignée sur DepartementsConfig / X01Config)
@@ -813,16 +814,7 @@ export default function GolfConfig(props: any) {
               />
             </OptionRow>
 
-            <OptionRow label="Ordre de départ" hint={teamsEnabled ? "Équipes" : "Joueurs"}>
-              <OptionSelect
-                value={startOrderMode}
-                options={[
-                  { value: "chronological", label: "Chronologique" },
-                  { value: "random", label: "Aléatoire" },
-                ]}
-                onChange={(v: any) => setStartOrderMode(v === "random" ? "random" : "chronological")}
-              />
-            </OptionRow>
+            <NativeStartOrderConfig initialMode={startOrderMode === "random" ? "random" : "alternate"} onModeChange={(mode) => setStartOrderMode(mode === "random" ? "random" : "chronological")} />
 
             <OptionRow label="Mode de scoring" hint={scoringMode === "strokes" ? "Score bas gagne" : "Score haut gagne"}>
               <OptionSelect

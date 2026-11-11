@@ -1,3 +1,4 @@
+import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
 import React from "react";
 import PageHeader from "../components/PageHeader";
 import BackDot from "../components/BackDot";
@@ -41,5 +42,7 @@ export default function Top10Config(props: any) {
         <button type="button" className="btn-primary" style={{ width: "100%", marginTop: 23, padding: 14, fontWeight: 1000 }} onClick={launch}>{tr("DÉMARRER TOP 10")}</button>
       </section>
     </div>
-  </div>;
+  
+      <NativeStartOrderConfig />
+      </div>;
 }

@@ -62,6 +62,17 @@ export function challengeRecordConfigKey(rec:any):string{
   const relevant=mode.startsWith('arcade:')
     ?[cfg.catalogLine,cfg.catalogVariant,cfg.catalogRounds,cfg.catalogTarget,cfg.catalogMin,cfg.catalogMax,cfg.catalogLives,cfg.catalogStep]
     :[cfg.target||rec?.game?.target,cfg.rule||rec?.game?.rule,cfg.visits||rec?.game?.visits,cfg.clockIncludeBull,cfg.clockScoreMode,cfg.halfItStartScore,cfg.sequenceObjectives,cfg.groupingMin,cfg.groupingMax,cfg.groupingHits,cfg.doublesTargets,cfg.doublesBonusTarget];
+  // Preserve all previous keys for default/legacy recordings. If an arcade seed
+  // or an opponent-assigned route actually changes the challenge, differentiate it.
+  if(mode.startsWith('arcade:')){
+    const seed=num(cfg.catalogSeed);
+    if(seed!==0&&seed!==1)relevant.push({seed});
+    const assignments=cfg.catalogAssignments;
+    if(assignments&&typeof assignments==='object'&&Object.keys(assignments).length){
+      // Object keys are normalized so save/load order never splits a record group.
+      relevant.push({assignments:Object.fromEntries(Object.entries(assignments).sort(([a],[b])=>a.localeCompare(b)))});
+    }
+  }
   return mode+':'+official+':'+JSON.stringify(relevant);
 }
 export function challengeConfigDisplay(rec:any):string{

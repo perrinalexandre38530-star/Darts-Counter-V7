@@ -1,4 +1,5 @@
 // @ts-nocheck
+import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
 // =============================================================
 // DARTS POKER — CONFIG FINAL
 // Configuration guidée / complète, lisible avant le premier lancer.
@@ -146,7 +147,7 @@ export default function DartsPokerConfig(props: any) {
     <div style={{ color: soft, fontSize: 9, marginBottom: 8 }}>Chaque manche donne exactement 6 fléchettes à chaque joueur, en alternance stricte.</div>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginBottom: 9 }}>{([3, 5, 7, 10] as const).map((value) => <button key={value} type="button" onClick={() => setRounds(value)} style={choiceCard(rounds === value, RED)}><div style={{ color: rounds === value ? RED : soft, fontSize: 7, fontWeight: 1050 }}>MANCHES</div><div style={{ fontSize: 18, fontWeight: 1200, marginTop: 2 }}>{value}</div></button>)}</div>
     <div style={{ padding: 9, borderRadius: 12, border: `1px solid ${GOLD}55`, background: `${GOLD}0b`, textAlign: "center", marginBottom: 7 }}><div style={{ color: GOLD, fontSize: 10, fontWeight: 1200 }}>6 FLÉCHETTES / JOUEUR</div><div style={{ color: "#fff", fontSize: 8, marginTop: 3 }}>1 fléchette → joueur suivant → 1 fléchette → joueur suivant…</div></div>
-    <OptionRow label="Ordre aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow>
+    <NativeStartOrderConfig initialMode={randomOrder ? "random" : "alternate"} onModeChange={(mode) => setRandomOrder(mode === "random")} />
     <OptionRow label="Mains adverses visibles"><OptionToggle value={openHands} onChange={setOpenHands} /></OptionRow>
   </section>;
 

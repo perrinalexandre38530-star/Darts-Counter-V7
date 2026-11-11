@@ -1,3 +1,4 @@
+import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
 import React, { useMemo, useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
@@ -101,6 +102,8 @@ export default function TicTacToeConfig(props: any) {
           {t("config.startGame", "Démarrer la partie")}
         </button>
       </Section>
-    </div>
+    
+      <NativeStartOrderConfig />
+      </div>
   );
 }

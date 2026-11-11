@@ -1,4 +1,5 @@
 // @ts-nocheck
+import NativeStartOrderConfig from '../../components/NativeStartOrderConfig';
 // =============================================================
 // src/pages/dice/DiceYamsConfig.tsx
 // Config Yam's — style identique (carte + boutons) / stable
@@ -248,7 +249,9 @@ Choisis 2 joueurs puis lance.`}
           </div>
         </div>
 
-        <button
+        
+      <NativeStartOrderConfig />
+      <button
           disabled={!canStart}
           onClick={start}
           style={{
@@ -268,6 +271,8 @@ Choisis 2 joueurs puis lance.`}
           Lancer
         </button>
       </div>
-    </div>
+    
+      
+      </div>
   );
 }

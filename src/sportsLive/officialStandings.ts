@@ -5,14 +5,14 @@
 export type OfficialStandingRow = {
   position: number;
   name: string;
-  played: number;
-  won: number;
-  drawn: number;
-  lost: number;
+  played: number | null;
+  won: number | null;
+  drawn: number | null;
+  lost: number | null;
   goalsFor: number | null;
   goalsAgainst: number | null;
   goalDifference: number | null;
-  points: number;
+  points: number | null;
 };
 export type OfficialStandingTable = {
   name: string;

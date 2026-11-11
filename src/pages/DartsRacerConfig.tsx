@@ -1,4 +1,5 @@
 // @ts-nocheck
+import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
 // =============================================================
 // DARTS RACER — configuration complète / guidée
 // Sélecteurs JOUEURS / ÉQUIPES / BOTS / SETS identiques à X01
@@ -257,7 +258,7 @@ export default function DartsRacerConfig(props: any) {
       <OptionRow label="Style de course"><OptionSelect value={raceStyle} options={[{ value: "sprint", label: "Sprint · pur pilotage" }, { value: "arcade", label: "Arcade · équilibré" }, { value: "chaos", label: "Chaos · effets renforcés" }]} onChange={(v: any) => { setRaceStyle(v); if (v === "sprint") setSpecialCells(false); }} /></OptionRow>
       <OptionRow label="Cases spéciales"><OptionToggle value={raceStyle === "sprint" ? false : specialCells} onChange={setSpecialCells} /></OptionRow>
       <OptionRow label="Collisions"><OptionToggle value={collisions} onChange={setCollisions} /></OptionRow>
-      <OptionRow label="Ordre aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow>
+      <NativeStartOrderConfig initialMode={randomOrder ? "random" : "alternate"} onModeChange={(mode) => setRandomOrder(mode === "random")} />
       <div style={{ marginTop: 9, padding: 10, borderRadius: 12, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.08)", color: "#cfd4ea", fontSize: 10.8, lineHeight: 1.45 }}>Arcade : BOOST +2, attaque −2, piège −2. Chaos renforce ces effets. Le bouclier absorbe une attaque, un piège ou une collision.</div>
     </div>
   </section>;
@@ -289,7 +290,7 @@ export default function DartsRacerConfig(props: any) {
     <OptionRow label="Cases spéciales"><OptionToggle value={raceStyle === "sprint" ? false : specialCells} onChange={setSpecialCells} /></OptionRow>
     <OptionRow label="Collisions"><OptionToggle value={collisions} onChange={setCollisions} /></OptionRow>
     <OptionRow label="Limite de rounds"><OptionSelect value={maxRounds} options={[{ value: 0, label: "Illimitée" },10,15,20,25,30,40]} onChange={(v: any) => setMaxRounds(Number(v) || 0)} /></OptionRow>
-    <OptionRow label="Ordre aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow>
+    <NativeStartOrderConfig initialMode={randomOrder ? "random" : "alternate"} onModeChange={(mode) => setRandomOrder(mode === "random")} />
     <OptionRow label="Mode de saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Keypad X01" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow>
   </div></Section>;
 

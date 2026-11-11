@@ -5,6 +5,9 @@ import {useStore} from '../contexts/StoreContext';
 import {useAwenaOptional} from '../awena/AwenaProvider';
 import {useFullscreenPlay} from '../hooks/useFullscreenPlay';
 import {History} from '../lib/history';
+import {recordTrainingDetailedSession} from '../training/stats/trainingStatsHub';
+import {getChallengeTrainingPreset} from '../training/catalog/challengeTrainingCatalog';
+import {saveTrainingArcadeDraft,clearTrainingArcadeDraft} from '../training/profile/trainingArcadeDraft';
 import {getArcadeChallenge} from '../lib/challengeArcadeCatalog';
 import {arcadeObjectives,arcadeBountyNumbers,arcadeRuleDetails,arcadeRuleDescription,arcadeTerritories,arcadeHitValue,compareArcadeRanks,currentArcadePlayer,evaluateArcadeProgress,formatArcadeHit,type ArcadeHit,type ArcadeObjective,type ArcadePlayConfig,type ArcadeZone,type ArcadeVariant} from '../lib/challengeArcadeEngine';
 import './ChallengeArcadePlay.css';
@@ -30,12 +33,15 @@ export default function ChallengeArcadePlay({go,params}:{go:(tab:any,params?:any
  const restored:any=record?.decoded||record?.payload||record?.resume?.livePayload||{};
  const oldState:any=params?.snapshot||record?.resume?.state||restored?.state||{};
  const game:any=params?.config||record?.resume?.config||restored?.config||{};
+ const fromTrainingLab=Boolean(params?.fromTrainingLab===true || game.trainingOrigin==='training_lab');
+ const trainingOwnerId=fromTrainingLab?String(game.trainingOwnerId||game.playerIds?.[0]||''):'';
+ const trainingPresetId=fromTrainingLab?String(game.trainingCatalogPresetId||''):'';
  const id=String(game.catalogChallengeId||'perfect-line');
  const definition=getArcadeChallenge(id);
  const players=React.useMemo(()=>useStablePlayers(Array.isArray(game.playerIds)?game.playerIds.map(String):[],Array.isArray(store?.profiles)?store.profiles:[]),[game.playerIds,store?.profiles]);
- const [assignments,setAssignments]=React.useState<Record<string,ArcadeObjective[]>>(()=>game.catalogAssignments||{});
- const [ready,setReady]=React.useState(id!=='architects-duel'||Boolean(game.catalogAssignments));
- const [ghost,setGhost]=React.useState<number[]>(()=>Array.isArray(game.catalogGhost)?game.catalogGhost:[]);
+ const [assignments,setAssignments]=React.useState<Record<string,ArcadeObjective[]>>(()=>oldState.assignments||game.catalogAssignments||{});
+ const [ready,setReady]=React.useState(id!=='architects-duel'||Boolean(oldState.assignments||game.catalogAssignments));
+ const [ghost,setGhost]=React.useState<number[]>(()=>Array.isArray(oldState.ghost)?oldState.ghost:Array.isArray(game.catalogGhost)?game.catalogGhost:[]);
  const [zone,setZone]=React.useState<ArcadeZone>('D');
  const [risk,setRisk]=React.useState<ArcadeVariant>(game.catalogVariant==='doubles'?'doubles':game.catalogVariant==='triples'?'triples':'classic');
  const [intendedSegment,setIntendedSegment]=React.useState(20);
@@ -65,7 +71,7 @@ export default function ChallengeArcadePlay({go,params}:{go:(tab:any,params?:any
  const board=id==='territory-war'?arcadeTerritories(hits):null;
  const isTeam=id==='perfect-relay';
  const isHistoryView=Boolean(params?.historyStatsOnly);
- const back=()=>isHistoryView?go(String(params?.returnTab||'history'),params?.returnParams):go('challenge_config');
+ const back=()=>isHistoryView?go(String(params?.returnTab||'history'),params?.returnParams):fromTrainingLab?go('training_mode',{modeId:'training_lab',challengeCatalog:true}):go('challenge_config');
  const finishLeader=standings[0];
  const lastHits=hits.slice(-9).reverse();
  const stats=(player:Player)=>{
@@ -127,11 +133,52 @@ export default function ChallengeArcadePlay({go,params}:{go:(tab:any,params?:any
  // Sur le moteur central History V4, la partie commencée n'apparaît pas comme terminée.
  // Debounce pour éviter un accès IndexedDB par pression ; unflush de fin est immédiat.
  const pendingSaveRef=React.useRef<{record:any;dirty:boolean}>({record:null,dirty:false});
+ const trainingSavedRef=React.useRef<string|null>(null);
  React.useEffect(()=>{
-  if(!isHistoryView&&ready&&hits.length)pendingSaveRef.current={record:historyRecord,dirty:true};
+  if(!fromTrainingLab||isHistoryView||!trainingOwnerId||!trainingPresetId)return;
+  if(finished){clearTrainingArcadeDraft(trainingOwnerId,trainingPresetId);return;}
+  if(!hits.length)return;
+  saveTrainingArcadeDraft({participantId:trainingOwnerId,presetId:trainingPresetId,savedAt:Date.now(),
+   hits:[...hits],config:game,assignments,ghost});
+ },[fromTrainingLab,isHistoryView,trainingOwnerId,trainingPresetId,finished,hits,assignments,ghost]);
+ React.useEffect(()=>{
+  if(!fromTrainingLab||isHistoryView||!ready||!finished||trainingSavedRef.current===sessionId)return;
+  trainingSavedRef.current=sessionId;
+  const now=Date.now();
+  const definition=getChallengeTrainingPreset(trainingPresetId);
+  for(const row of progress){
+   const participantHits=hits.filter(hit=>hit.pid===row.player.id);
+   const completionPct=modeDetails.kind==='path'||modeDetails.kind==='team'
+     ?Math.max(0,Math.min(100,Math.round(row.index/Math.max(1,row.totalObjectives)*100)))
+     :Math.max(0,Math.min(100,Math.round(row.accuracy)));
+   const successful=participantHits.filter((_,index)=>row.hitResults[index]===true).length;
+   const objectiveReached=modeDetails.kind==='path'||modeDetails.kind==='team'
+     ?row.index>=Math.max(1,row.totalObjectives)
+     :modeDetails.kind==='streak'?row.bestStreak>0:row.score>0;
+   try{
+    recordTrainingDetailedSession({
+     id:`${sessionId}-training-${row.player.id}`,modeId:'training_challenges',participantId:row.player.id,
+     participantName:row.player.name,participantType:'player',startedAt:createdAt,endedAt:now,
+     durationMs:Math.max(0,now-createdAt),darts:row.attempts,hits:successful,
+     misses:Math.max(0,row.attempts-successful),points:row.score,accuracyPct:row.accuracy,success:objectiveReached,
+     config:{...game,...rules,trainingOrigin:'training_lab',trainingCatalogPresetId:trainingPresetId,sourceMode:'challenge'},
+     metrics:{sourceMode:'challenge',exerciseId:trainingPresetId,
+      exerciseTitle:definition?.title||getArcadeChallenge(id).title,score:row.score,
+      performanceScore:completionPct,trainingPerformancePct:completionPct,completionPct,
+      goal:100,exerciseValidationRate:row.accuracy,bestStreak:row.bestStreak,
+      exerciseType:'arcade',arcadeId:id,matchId:sessionId},
+     visitHistory:participantHits,
+     telemetry:{sourceMode:'challenge',arcadeId:id,hits:participantHits,scoreHistory:row.scoreHistory,
+      visitScores:row.visitScores,hitResults:row.hitResults},telemetryCoverage:'exact',
+    });
+   }catch(error){console.warn('[challenge-arcade] entraînement : enregistrement impossible',error)}
+  }
+ },[fromTrainingLab,isHistoryView,ready,finished,sessionId,trainingPresetId,createdAt,hits,progress,game,modeDetails.kind,id]);
+ React.useEffect(()=>{
+  if(!isHistoryView&&!fromTrainingLab&&ready&&hits.length)pendingSaveRef.current={record:historyRecord,dirty:true};
  },[historyRecord,isHistoryView,ready,hits.length]);
  React.useEffect(()=>{
-  if(isHistoryView||!ready||!hits.length)return;
+  if(isHistoryView||fromTrainingLab||!ready||!hits.length)return;
   const snapshot=historyRecord;
   const timer=window.setTimeout(()=>{
    void History.upsert(snapshot as any).then(()=>{
@@ -143,13 +190,14 @@ export default function ChallengeArcadePlay({go,params}:{go:(tab:any,params?:any
  },[hits.length,historyRecord,finished,ready,isHistoryView]);
  React.useEffect(()=>()=>{
   // Une sortie rapide de page ne doit pas annuler l'enregistrement de la volée courante.
-  if(pendingSaveRef.current.dirty&&pendingSaveRef.current.record){
+  if(!fromTrainingLab&&pendingSaveRef.current.dirty&&pendingSaveRef.current.record){
    void History.upsert(pendingSaveRef.current.record).catch(error=>console.warn('[challenge-arcade] sortie : sauvegarde',error));
   }
  },[]);
  const restart=()=>{
   if(isHistoryView)return;
   setHits([]);setGhost([]);setResetOpen(false);setCreatedAt(Date.now());
+  if(fromTrainingLab&&trainingOwnerId&&trainingPresetId)clearTrainingArcadeDraft(trainingOwnerId,trainingPresetId);
   setSessionId(`challenge-arcade-${Date.now()}-${Math.random().toString(36).slice(2,8)}`);
  };
  const shownScore=modeDetails.kind==='path'||modeDetails.kind==='team'?`${active.attempts} FLÉCHETTES`:active.score+' PTS';
@@ -198,7 +246,7 @@ export default function ChallengeArcadePlay({go,params}:{go:(tab:any,params?:any
     </>}
     {!isHistoryView&&<div className="ca-reset"><button type="button" onClick={()=>setResetOpen(v=>!v)}>{resetOpen?'ANNULER':'RECOMMENCER'}</button>{resetOpen&&<button type="button" onClick={restart}>CONFIRMER</button>}</div>}
     {persistError&&<p className="ca-warning ca-error">{persistError}</p>}
-    <p className="ca-warning">Les lancers sont enregistrés dans l’Historique V4 après le début de la partie. Classements ONLINE : publication désactivée tant que les barèmes de chaque défi ne sont pas validés.</p>
+    <p className="ca-warning">{fromTrainingLab?"Séance privée du Centre d’entraînement : reprise locale et bilan dans Mes séances. Aucun match envoyé à l’Historique compétitif.":"Les lancers sont enregistrés dans l’Historique V4 après le début de la partie. Classements ONLINE : publication désactivée tant que les barèmes de chaque défi ne sont pas validés."}</p>
    </section>
   </main>
  </div>;

@@ -9,13 +9,23 @@ const require = createRequire(import.meta.url);
 const ts = require("typescript");
 const base = resolve(import.meta.dirname, "../functions/api/sports-live/[[path]].ts");
 const helper = resolve(import.meta.dirname, "../src/sportsLive/officialStandings.ts");
+const feed = resolve(import.meta.dirname, "../src/sportsLive/officialCompetitionFeed.ts");
+const support = resolve(import.meta.dirname, "../src/sportsLive/support.ts");
 const src = await readFile(base, "utf8");
 const out = ts.transpileModule(src, { compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext} }).outputText
   .replace(/from ["']\.\.\/\.\.\/\.\.\/src\/sportsLive\/officialStandings["']/, `from "${pathToFileURL(helper).href}"`);
 const dir = await mkdtemp(join(tmpdir(), "msc-v269-route-"));
 try {
+  const helperJs = ts.transpileModule(await readFile(helper,"utf8"), { compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext} }).outputText;
+  await writeFile(join(dir,"officialStandings.mjs"),helperJs);
+  const supportJs = ts.transpileModule(await readFile(support,"utf8"), { compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext} }).outputText;
+  await writeFile(join(dir,"support.mjs"),supportJs);
+  const feedJs = ts.transpileModule(await readFile(feed,"utf8"), { compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext} }).outputText
+    .replace(/from ["']\.\/support["']/, `from "${pathToFileURL(join(dir,"support.mjs")).href}"`);
+  await writeFile(join(dir,"officialCompetitionFeed.mjs"),feedJs);
   const file = join(dir,"route.mjs");
-  await writeFile(file,out);
+  await writeFile(file,out.replace(pathToFileURL(helper).href, pathToFileURL(join(dir,"officialStandings.mjs")).href)
+    .replace(/from ["']\.\.\/\.\.\/\.\.\/src\/sportsLive\/officialCompetitionFeed["']/, `from "${pathToFileURL(join(dir,"officialCompetitionFeed.mjs")).href}"`));
   const { onRequestGet } = await import(pathToFileURL(file).href);
   const responseBody = {
     competition:{name:"Ligue 1"},season:{startDate:"2025-08-01"},

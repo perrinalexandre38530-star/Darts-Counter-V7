@@ -102,7 +102,7 @@ export interface X01ConfigV3 {
   legFormat?: X01NestedFormatV3;
 
   // Serve: random / alterné
-  serveMode: "random" | "alternate";
+  serveMode: "random" | "alternate" | "manual" | "bull";
 
   // -------------------------------------------------
   // ✅ EXTENSIONS APP (UI X01 V3)

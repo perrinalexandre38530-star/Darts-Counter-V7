@@ -1,4 +1,5 @@
 // @ts-nocheck
+import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
 // =============================================================
 // CARGO — configuration guidée / complète
 // =============================================================
@@ -276,7 +277,7 @@ export default function CargoConfig(props: any) {
     <OptionRow label="Variante"><OptionSelect value={variant} options={Object.entries(CARGO_VARIANT_LABELS).map(([value, label]) => ({ value, label }))} onChange={setVariant} /></OptionRow>
     <OptionRow label="Nombre de tours"><OptionSelect value={rounds} options={[5, 8, 10, 12, 15, 20]} onChange={(v: any) => setRounds(Number(v))} /></OptionRow>
     {usesContracts ? <OptionRow label="Contrats visibles"><OptionSelect value={visibleContracts} options={[2, 3, 4]} onChange={(v: any) => setVisibleContracts(Number(v) as any)} /></OptionRow> : null}
-    <OptionRow label="Ordre aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow>
+    <NativeStartOrderConfig initialMode={randomOrder ? "random" : "alternate"} onModeChange={(mode) => setRandomOrder(mode === "random")} />
     <div style={{ color: SOFT, fontSize: 10, lineHeight: 1.5, marginTop: 7 }}>{isParcel ? "Une adresse correspond à un numéro. Les séries sont plafonnées à 5 colis et débloquent des bonus progressifs." : "Les contrats combinent segment, longueur de série, poids, urgence et fragilité."}</div>
   </section>;
 

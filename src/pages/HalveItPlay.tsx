@@ -5,6 +5,7 @@
 // =============================================================
 
 import React from "react";
+import { createConfirmedHistorySaveGate } from "../lib/confirmedHistorySave";
 import BackDot from "../components/BackDot";
 import DartboardClickable, { type DartboardGuideTarget } from "../components/DartboardClickable";
 import InfoDot from "../components/InfoDot";
@@ -161,7 +162,7 @@ export default function HalveItPlay(props: any) {
   const headerTicker = isSplitScore ? (lang === "fr" ? tickerSplitScoreFr : tickerSplitScoreEn) : tickerHalveIt;
   const store = props?.store;
   const go = props?.go ?? props?.setTab;
-  const onFinish = props?.onFinish as ((record: any, options?: { navigate?: boolean }) => void) | undefined;
+  const onFinish = props?.onFinish as ((record: any, options?: { navigate?: boolean; confirmPersistence?: boolean; suppressFailureAlert?: boolean }) => Promise<boolean>) | undefined;
   const primary = theme?.primary || C.gold;
   const secondary = theme?.accent1 || primary;
   const themeText = theme?.text || C.text;
@@ -222,7 +223,8 @@ export default function HalveItPlay(props: any) {
   const [botThinking, setBotThinking] = React.useState(false);
   const [notice, setNotice] = React.useState("");
   const matchIdRef = React.useRef(String(restored?.matchId || config.sessionId || `halveit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
-  const autoSavedRef = React.useRef("");
+  const saveGateRef = React.useRef(createConfirmedHistorySaveGate());
+  const [saveStatus, setSaveStatus] = React.useState<"idle" | "saving" | "saved" | "failed">("idle");
   const lastBackRef = React.useRef(0);
 
   const byId = React.useMemo(() => new Map(profiles.map((profile: any) => [String(profile.id), profile])), [profiles]);
@@ -288,14 +290,23 @@ export default function HalveItPlay(props: any) {
   }, [state.history.length, state.roundIndex, state.activePlayerIndex, state.finished, activePlayerId, target?.id]);
 
   function resetMatch() {
+    if (state.finished && !saveGateRef.current.isSaved(matchIdRef.current)) {
+      window.alert("La partie n'est pas sauvegardée. Réessaie depuis les résultats avant de rejouer.");
+      return;
+    }
     const next = createHalveItState(profiles as any, rules, teamConfigs, config.selectedIds);
     setState(next); setUndoStack([]); setThrowDarts([]); setMultiplier(1); setShowEnd(false); setShowTable(false); setShowStats(false); setNotice("");
     // Un nouveau match ne doit jamais proposer de reprendre le précédent.
     clearDartsMatchDraft(draftMode);
-    matchIdRef.current = `halveit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; autoSavedRef.current = "";
+    matchIdRef.current = `halveit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setSaveStatus("idle");
   }
   function backToConfig() {
     const now = Date.now(); if (now - lastBackRef.current < 350) return; lastBackRef.current = now;
+    if (state.finished && !saveGateRef.current.isSaved(matchIdRef.current)) {
+      window.alert("La partie n'est pas sauvegardée. Réessaie depuis les résultats avant de quitter.");
+      return;
+    }
     if (state.history.length && !state.finished && !window.confirm(`Quitter cette partie de ${modeLabel} en cours ?`)) return;
     if (typeof go === "function") go("halve_it_config", { ...config, variantId: isSplitScore ? "split_score" : undefined, launchMode: props?.params?.quickParty === true ? "quick" : "arcade", quickParty: props?.params?.quickParty === true });
   }
@@ -362,36 +373,48 @@ export default function HalveItPlay(props: any) {
     };
   }
 
-  // Enregistrement automatique unique ; le bouton HISTORIQUE ne doit pas
-  // renvoyer une seconde fois la même partie finie au pipeline History V4.
+  // V217 : attendre la transaction IndexedDB, ne jamais considérer le simple
+  // déclenchement du callback comme une sauvegarde confirmée.
+  async function saveFinalResult(openHistory: boolean): Promise<boolean> {
+    const id = matchIdRef.current;
+    if (typeof onFinish !== "function") {
+      setSaveStatus("failed");
+      return false;
+    }
+    if (!saveGateRef.current.isSaved(id)) setSaveStatus("saving");
+    const confirmed = await saveGateRef.current.save(id, () => onFinish(buildHistoryRecord(), {
+      navigate: false, confirmPersistence: true, suppressFailureAlert: true,
+    }));
+    setSaveStatus(confirmed ? "saved" : "failed");
+    if (confirmed) {
+      clearDartsMatchDraft(draftMode);
+      if (openHistory && typeof go === "function") go("statsHub", { tab: "history" });
+    }
+    return confirmed;
+  }
   React.useEffect(() => {
     if (!state.finished) return;
     setShowEnd(true);
-    if (autoSavedRef.current === matchIdRef.current || typeof onFinish !== "function") return;
-    try {
-      onFinish(buildHistoryRecord(), { navigate: false });
-      autoSavedRef.current = matchIdRef.current;
-    } catch { /* Ne pas marquer comme sauvegardé si l'écriture a échoué. */ }
+    void saveFinalResult(false);
+    // Une seule tentative automatique ; un échec est relancé sur action du joueur.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.finished]);
 
   function openFinishedHistory() {
-    if (autoSavedRef.current !== matchIdRef.current && typeof onFinish === "function") {
-      try {
-        onFinish(buildHistoryRecord(), { navigate: true });
-        autoSavedRef.current = matchIdRef.current;
-        return;
-      } catch { /* L'historique reste consultable même si l'écriture échoue. */ }
-    }
-    if (typeof go === "function") go("statsHub", { tab: "history" });
+    if (saveStatus === "saving") return;
+    void saveFinalResult(true);
   }
 
   React.useEffect(() => {
-    if (state.finished) { clearDartsMatchDraft(draftMode); return; }
+    if (state.finished) {
+      if (saveStatus === "saved") clearDartsMatchDraft(draftMode);
+      return;
+    }
     if (!state.history.length && !throwDarts.length) return;
     writeDartsMatchDraft(draftMode, config as any, {
       state, throwDarts, multiplier, lastUndo: undoStack.at(-1) || null, matchId: matchIdRef.current,
     });
-  }, [draftMode, config, state, throwDarts, multiplier, undoStack]);
+  }, [draftMode, config, state, throwDarts, multiplier, undoStack, saveStatus]);
 
   const previewScores = throwDarts.map((d) => halveItTargetScore(target, toGameDart(d)));
   const currentHitCount = previewScores.filter((n) => n > 0).length;
@@ -460,6 +483,9 @@ export default function HalveItPlay(props: any) {
         </div>
       </section>
 
+      {state.finished ? <div role="status" aria-live="polite" style={{ marginBottom: 6, padding: "6px 9px", color: saveStatus === "failed" ? C.red : themeSoft, fontSize: 11, fontWeight: 800 }}>
+        {saveStatus === "saving" ? "Sauvegarde History V4 en cours…" : saveStatus === "failed" ? "Sauvegarde échouée : ouvre les résultats pour réessayer." : saveStatus === "saved" ? "Résultat confirmé dans History V4." : "Préparation de la sauvegarde…"}
+      </div> : null}
       {state.finished ? <div className="msc-halveit-finished-bar" style={{ ...panelStyle(), marginBottom: 7, padding: "9px 11px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 9 }}>
         <div style={{ minWidth: 0 }}><strong style={{ color: primary, fontSize: 11 }}>PARTIE TERMINÉE</strong><div style={{ color: themeSoft, fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{state.tied ? "Égalité" : `Vainqueur : ${state.standings[0]?.name || "—"}`}</div></div>
         <button type="button" onClick={() => setShowEnd(true)} style={{ ...miniAction(primary), minHeight: 42, flexShrink: 0 }}>VOIR LES RÉSULTATS</button>
@@ -494,7 +520,7 @@ export default function HalveItPlay(props: any) {
 
     {showTable ? <StandingsModal modeLabel={modeLabel} state={state} profilesById={byId} teamById={teamById} participantMode={config.participantMode} primary={primary} onClose={() => setShowTable(false)} /> : null}
     {showStats ? <LiveStatsModal modeLabel={modeLabel} state={state} profilesById={byId} primary={primary} onClose={() => setShowStats(false)} /> : null}
-    {showEnd && state.finished ? <EndModal modeLabel={modeLabel} state={state} profilesById={byId} teamById={teamById} participantMode={config.participantMode} primary={primary} onClose={() => setShowEnd(false)} onReplay={resetMatch} onHistory={openFinishedHistory} /> : null}
+    {showEnd && state.finished ? <EndModal modeLabel={modeLabel} state={state} profilesById={byId} teamById={teamById} participantMode={config.participantMode} primary={primary} onClose={() => setShowEnd(false)} onReplay={resetMatch} onHistory={openFinishedHistory} saveStatus={saveStatus} /> : null}
   </div>;
 }
 
@@ -563,7 +589,7 @@ function StatKpi({ label, value }: any) { return <div style={{ padding: 7, borde
 // V182 — Résultats lisibles sur téléphone et classement réel des ÉQUIPES.
 // Le classement final vient de state.standings (source du moteur), jamais d'un
 // tri par score individuel qui inverserait le résultat d'une partie en équipe.
-function EndModal({ modeLabel, state, profilesById, teamById, participantMode, primary, onClose, onReplay, onHistory }: any) {
+function EndModal({ modeLabel, state, profilesById, teamById, participantMode, primary, onClose, onReplay, onHistory, saveStatus }: any) {
   const standings = Array.isArray(state.standings) ? state.standings : [];
   const winnerIds = new Set<string>((state.winnerIds || []).map(String));
   const teamsMode = participantMode === "teams" && Array.isArray(state.teams) && state.teams.length > 0;
@@ -660,9 +686,12 @@ function EndModal({ modeLabel, state, profilesById, teamById, participantMode, p
         </div>)}</div>
       </section> : null}
 
+      <div role="status" aria-live="polite" style={{ color: saveStatus === "failed" ? C.red : C.soft, fontSize: 11, textAlign: "center", marginTop: 12 }}>
+        {saveStatus === "saving" ? "Enregistrement en cours…" : saveStatus === "failed" ? "Échec de la sauvegarde locale : réessaie avant de quitter." : saveStatus === "saved" ? "Partie enregistrée dans History V4." : "Préparation de la sauvegarde…"}
+      </div>
       <div className="msc-halveit-end-actions" style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}>
-        <button type="button" onClick={onReplay} style={{ minHeight: 46, borderRadius: 999, border: `1px solid ${primary}`, background: `${primary}16`, color: primary, fontWeight: 1100 }}>REJOUER</button>
-        <button type="button" onClick={onHistory} style={{ minHeight: 46, borderRadius: 999, border: `1px solid ${primary}`, background: `linear-gradient(90deg,${primary},#ffd76a)`, color: "#14120b", fontWeight: 1100 }}>HISTORIQUE & STATS</button>
+        <button type="button" disabled={saveStatus !== "saved"} onClick={onReplay} style={{ minHeight: 46, borderRadius: 999, border: `1px solid ${primary}`, background: `${primary}16`, color: primary, fontWeight: 1100 }}>REJOUER</button>
+        <button type="button" disabled={saveStatus === "saving"} onClick={onHistory} style={{ minHeight: 46, borderRadius: 999, border: `1px solid ${primary}`, background: `linear-gradient(90deg,${primary},#ffd76a)`, color: "#14120b", fontWeight: 1100 }}>{saveStatus === "saving" ? "ENREGISTREMENT…" : saveStatus === "failed" ? "RÉESSAYER" : "HISTORIQUE & STATS"}</button>
       </div>
     </div>
   </div>;

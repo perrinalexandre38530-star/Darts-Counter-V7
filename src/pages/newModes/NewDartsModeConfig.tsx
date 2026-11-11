@@ -1,4 +1,5 @@
 // @ts-nocheck
+import NativeStartOrderConfig from "../../components/NativeStartOrderConfig";
 import React from "react";
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
@@ -852,14 +853,14 @@ export default function NewDartsModeConfig(props: Props) {
 
   const participantsBlock = mode === "crados" ? (cradosTeamMode ? cradosTeamsBlock : playerParticipantsBlock) : playerParticipantsBlock;
   const cradosOrderBlock = mode === "crados" ? <section style={{ ...selectorCard, padding: "9px 10px" }}>
-    <OptionRow compact label="Ordre de passage aléatoire" hint="Mélange les participants au lancement"><OptionToggle compact value={randomOrder} onChange={setRandomOrder} /></OptionRow>
+    <NativeStartOrderConfig initialMode={randomOrder ? "random" : "alternate"} onModeChange={(mode) => setRandomOrder(mode === "random")} />
   </section> : null;
 
   const matchBlock = <section style={selectorCard}>
     <div style={{ color: accent, textTransform: "uppercase", letterSpacing: 1, fontSize: 12, fontWeight: 950, marginBottom: 10 }}>{mode === "ptit_hun" && !ptitHunFr ? "Match format" : "Format de match"}</div>
     <div style={panel}>
       {mode !== "ptit_hun" ? <OptionRow compact={mode === "crados"} label="Série"><OptionSelect compact={mode === "crados"} value={seriesWins} options={[{ value: 1, label: "BO1 — 1 victoire" }, { value: 2, label: "BO3 — 2 victoires" }, { value: 3, label: "BO5 — 3 victoires" }]} onChange={(v: any) => setSeriesWins(Number(v) as any)} /></OptionRow> : <div style={{ color: soft, fontSize: 11, lineHeight: 1.45, marginBottom: 8 }}>{ptitHunFr ? "Une seule partie : tous les joueurs jouent le même nombre de volées. Le plus petit score final gagne." : "Single match: every player throws the same number of visits. The lowest final score wins."}</div>}
-      {mode !== "crados" ? <OptionRow label={mode === "ptit_hun" && !ptitHunFr ? "Random order" : "Ordre aléatoire"}><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow> : null}
+      {mode !== "crados" ? <NativeStartOrderConfig initialMode={randomOrder ? "random" : "alternate"} onModeChange={(mode) => setRandomOrder(mode === "random")} /> : null}
     </div>
   </section>;
 

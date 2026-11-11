@@ -55,30 +55,44 @@ function outcomeOf(r: any, mode: Top10MorpionMode): CompetitiveOutcome {
   if (players.length < 2) return { kind: "unknown" };
   const ids = players.map(pId);
   if (ids.some(id => !id) || new Set(ids).size !== ids.length) return { kind: "unknown" };
-  const explicit = String(r?.winnerId ?? r?.summary?.winnerId ?? "").trim();
-  if (explicit && ids.includes(explicit)) return { kind: "winner", winnerId: explicit };
-  if (r?.summary?.draw === true || r?.summary?.isDraw === true || r?.result === "draw") return { kind: "draw" };
-
+  const declaredWinner = String(r?.winnerId ?? r?.summary?.winnerId ?? "").trim();
+  const declaredDraw = r?.summary?.draw === true || r?.summary?.isDraw === true || r?.result === "draw";
   const topVisits = arr(r?.payload?.visitScores);
   const morpionWins = arr(r?.payload?.matchWins);
-  // Priorité aux véritables données définitives. Aucun score manquant n'est inventé.
-  let scores: number[] | null = null;
+
+  // Seuls les détails COMPLETS et les scores finaux officiels permettent de
+  // contredire un winnerId historique. players[].score peut rester à zéro
+  // dans de vieilles sauvegardes : il ne fait pas autorité dans ce contrôle.
+  let authoritativeScores: number[] | null = null;
   if (mode === "top_10" && topVisits.length === ids.length &&
       topVisits.every((line: any) => Array.isArray(line) && line.length === 10 &&
-        line.every((v: any) => finite(v) !== null && Number(v) <= 180))) {
-    scores = topVisits.map((line: any[]) => line.reduce((sum: number, n: any) => sum + Number(n), 0));
+        line.every((v: any) => finite(v) !== null && Number.isInteger(Number(v)) && Number(v) <= 180))) {
+    authoritativeScores = topVisits.map((line: any[]) => line.reduce((sum: number, n: any) => sum + Number(n), 0));
   } else if (mode === "tic_tac_toe" && morpionWins.length === ids.length &&
       morpionWins.every((n: any) => finite(n) !== null && Number.isInteger(Number(n)))) {
-    scores = morpionWins.map(Number);
-  } else if (obj(r?.summary?.finalScores) &&
-      ids.every(id => finite(r.summary.finalScores[id]) !== null)) {
-    scores = ids.map(id => Number(r.summary.finalScores[id]));
-  } else if (players.every(p => finite(p?.score) !== null)) {
-    scores = players.map(p => Number(p.score));
+    authoritativeScores = morpionWins.map(Number);
+  } else if (obj(r?.summary?.finalScores) && ids.every(id => finite(r.summary.finalScores[id]) !== null)) {
+    authoritativeScores = ids.map(id => Number(r.summary.finalScores[id]));
   }
-  if (!scores) return { kind: "unknown" };
+  if (authoritativeScores) {
+    const best = Math.max(...authoritativeScores);
+    const leaders = ids.filter((_, i) => authoritativeScores![i] === best);
+    const actual: CompetitiveOutcome = leaders.length === 1
+      ? { kind: "winner", winnerId: leaders[0] } : { kind: "draw" };
+    // Un gagnant/nul déclaré en conflit avec le résultat vérifiable rend le
+    // résultat indéterminé. Ne jamais altérer le record History V4.
+    if (declaredWinner && (actual.kind !== "winner" || actual.winnerId !== declaredWinner)) return { kind: "unknown" };
+    if (declaredDraw && actual.kind !== "draw") return { kind: "unknown" };
+    return actual;
+  }
+  // Compatibilité des anciennes parties dépourvues de scores fiables.
+  if (declaredWinner) return ids.includes(declaredWinner)
+    ? { kind: "winner", winnerId: declaredWinner } : { kind: "unknown" };
+  if (declaredDraw) return { kind: "draw" };
+  if (!players.every(p => finite(p?.score) !== null)) return { kind: "unknown" };
+  const scores = players.map(p => Number(p.score));
   const best = Math.max(...scores);
-  const leaders = ids.filter((_, i) => scores![i] === best);
+  const leaders = ids.filter((_, i) => scores[i] === best);
   return leaders.length === 1 ? { kind: "winner", winnerId: leaders[0] } : { kind: "draw" };
 }
 function snapshotOf(r: any, playerId: string, mode: Top10MorpionMode): GameStat | null {

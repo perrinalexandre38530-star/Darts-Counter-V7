@@ -1428,6 +1428,7 @@ function useHistoryAPI(enabled = true, focusMode?: string | null): SavedMatch[] 
     if (typeof window === "undefined") return;
 
     let mounted = true;
+    let latestReadToken = 0;
 
     // Hydrate payloads for modes that need deep stats (X01, etc.).
     // History.list() is intentionally "light" (no payload) for most games; the dashboard
@@ -1550,9 +1551,10 @@ function useHistoryAPI(enabled = true, focusMode?: string | null): SavedMatch[] 
     };
 
     const load = async () => {
+      const readToken = ++latestReadToken;
       try {
         const list = await History.list();
-        if (!mounted) return;
+        if (!mounted || readToken !== latestReadToken) return;
         const base = takeRecent(toArr<SavedMatch>(list).filter((row: any) => !isQuickPartyRecord(row)), STATSHUB_HISTORY_LIGHT_CAP);
         setRows(base);
 
@@ -1560,7 +1562,7 @@ function useHistoryAPI(enabled = true, focusMode?: string | null): SavedMatch[] 
         // If hydration fails, we keep the light list.
         try {
           const hydrated = await hydrateMissingPayloads(base as any);
-          if (!mounted) return;
+          if (!mounted || readToken !== latestReadToken) return;
           setRows(hydrated);
         } catch {
           // ignore
@@ -1568,7 +1570,7 @@ function useHistoryAPI(enabled = true, focusMode?: string | null): SavedMatch[] 
       } catch (error) {
         // V123 SINGLE SOURCE: a transient canonical-history read failure must not
         // zero the UI. Keep the last rendered projection until History V4 is readable.
-        if (!mounted) return;
+        if (!mounted || readToken !== latestReadToken) return;
         console.warn("[StatsHub] canonical History V4 read failed; keeping previous rows", error);
       }
     };
@@ -1578,9 +1580,12 @@ function useHistoryAPI(enabled = true, focusMode?: string | null): SavedMatch[] 
     const onUpd = () => load();
 
     window.addEventListener("dc-history-updated", onUpd as any);
+    window.addEventListener("dc-storage-restored", onUpd as any);
     return () => {
       mounted = false;
+      latestReadToken += 1;
       window.removeEventListener("dc-history-updated", onUpd as any);
+      window.removeEventListener("dc-storage-restored", onUpd as any);
     };
   }, [enabled, focusMode]);
 

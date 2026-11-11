@@ -60,6 +60,15 @@ export function recoverTop10(rec: any, options: { preview?: boolean } = {}) {
   if (!scores.every((row: number[], i: number) => row.length === round + (i < current ? 1 : 0))) return null;
   if (payload.roundIdx !== undefined && !whole(payload.roundIdx, round, round)) return null;
   if (payload.currentPlayerIndex !== undefined && !whole(payload.currentPlayerIndex, current, current)) return null;
+  if (base.finished) {
+    // L'aperçu ne doit pas présenter comme vainqueur un profil qui a perdu
+    // d'après les 10 volées complètes. Une partie ancienne sans winnerId reste
+    // consultable, sans altérer l'Historique original.
+    const totals = scores.map((row: number[]) => row.reduce((sum, n) => sum + n, 0));
+    const best = Math.max(...totals);
+    const leaders = players.filter((_: Player, i: number) => totals[i] === best);
+    if (base.winnerId && (leaders.length !== 1 || leaders[0].id !== base.winnerId)) return null;
+  }
   const visits = payload.visitHistory ?? payload.visits ?? payload.events;
   if (!Array.isArray(visits) || visits.length !== completed) return null;
   return { ...base, scores: scores.map((row: number[]) => [...row]), round, current, visits: [...visits] };

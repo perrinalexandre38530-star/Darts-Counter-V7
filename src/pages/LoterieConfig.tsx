@@ -1,4 +1,5 @@
 // @ts-nocheck
+import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
 // =============================================================
 // LOTERIE — configuration V5
 // Structure guidée / complète + sélecteurs JOUEURS / ÉQUIPES / BOTS
@@ -645,15 +646,7 @@ export default function LoterieConfig(props: any) {
   const rulesBlock = (
     <Section title="RÈGLES DE PARTIE">
       <div style={{ ...panel, display: "grid", gap: 7 }}>
-        <CompactConfigSelect
-          label="Ordre"
-          helpTitle="Ordre de départ"
-          help={<><b>Défini</b> conserve exactement l'ordre de sélection des joueurs. <b>Aléatoire</b> mélange les participants au lancement.</>}
-          value={randomOrder ? "random" : "fixed"}
-          options={[{ value: "fixed", label: "Défini" }, { value: "random", label: "Aléatoire" }]}
-          onChange={(value: any) => setRandomOrder(value === "random")}
-          color={primary}
-        />
+        <NativeStartOrderConfig initialMode={randomOrder ? "random" : "alternate"} onModeChange={(mode) => setRandomOrder(mode === "random")} />
         <CompactConfigSelect
           label="Attribution"
           helpTitle="Attribution des scores"

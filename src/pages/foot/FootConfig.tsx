@@ -1,3 +1,4 @@
+import NativeStartOrderConfig from '../../components/NativeStartOrderConfig';
 import React from "react";
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
@@ -579,7 +580,9 @@ export default function FootConfig({ go, params, store }: Props) {
           </>
         )}
       </div>
-    </div>
+    
+      <NativeStartOrderConfig />
+      </div>
   );
 }
 

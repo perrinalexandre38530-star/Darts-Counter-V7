@@ -1,4 +1,5 @@
 // @ts-nocheck
+import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
 import React from "react";
 import BackDot from "../components/BackDot";
 import BotPagedSelector from "../components/BotPagedSelector";
@@ -584,6 +585,8 @@ export default function SuperBullConfig(props: any) {
           }
         }
       `}</style>
-    </div>
+    
+      <NativeStartOrderConfig />
+      </div>
   );
 }

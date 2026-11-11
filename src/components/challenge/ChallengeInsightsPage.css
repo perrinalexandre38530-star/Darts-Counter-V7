@@ -35,3 +35,25 @@
 @media(max-width:390px){.mss-ci-record-badge{display:none}.mss-ci-record-hero{padding:14px}.mss-ci-kpis{gap:5px}.mss-ci-record-metrics>div,.mss-ci-metrics>div{padding:9px}}
 
 .mss-ci-bars--config .mss-ci-bar-row{grid-template-columns:minmax(105px,36%) minmax(0,1fr) 30px}.mss-ci-bars--config .mss-ci-bar-row>span{overflow-wrap:anywhere;line-height:1.4}
+/* V134 — granular, verified dart-impact analytics and personal form. */
+.mss-ci-sector-help{font-size:10px;line-height:1.5;color:#a5bdd0;margin:9px 0 12px}
+.mss-ci-sector-grid{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:6px}
+.mss-ci-sector-grid button{display:grid;place-items:center;min-height:53px;gap:2px;min-width:0;border:1px solid #4b8eaa;border-radius:9px;color:#eef7ff;cursor:pointer;padding:5px 0;touch-action:manipulation}
+.mss-ci-sector-grid button.selected{outline:2px solid #ff6877;outline-offset:1px;background:#4c2532}
+.mss-ci-sector-grid b{font-size:16px}.mss-ci-sector-grid small{color:#afd4e1;font-size:9px}
+.mss-ci-sector-detail{display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap;margin-top:12px;padding:12px;border:1px solid #3f6478;background:#0b2835;border-radius:10px}
+.mss-ci-sector-detail strong{font-size:11px;color:#95eeff}.mss-ci-sector-detail span{font-size:10px;line-height:1.5;color:#c0d2e1}
+.mss-ci-sector-top{display:flex;gap:7px;align-items:center;flex-wrap:wrap;background:#0d1927;border:1px solid #40566e;border-radius:13px;padding:11px}
+.mss-ci-sector-top>b{flex:0 0 100%;font-size:10px;color:#bcd4e5;letter-spacing:.4px}
+.mss-ci-sector-top span{display:flex;gap:5px;align-items:center;background:#14243a;border:1px solid #40566e;border-radius:8px;padding:7px 9px;font-size:10px;font-weight:850}
+.mss-ci-sector-top span strong{color:#86e4f4}.mss-ci-sector-top span em{font-size:9px;color:#a3b9cb;font-style:normal}
+.mss-ci-form{display:grid;gap:12px;padding:13px;background:linear-gradient(135deg,#101e30,#0a1627);border:1px solid #467088;border-radius:14px}
+.mss-ci-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.mss-ci-form-grid>div{display:grid;gap:5px;padding:12px;border:1px solid #3a556e;border-radius:12px;background:#091523}
+.mss-ci-form-grid small{font-size:9px;font-weight:900;color:#aac0d3}.mss-ci-form-grid strong{font-size:clamp(19px,3vw,29px);color:#fff}.mss-ci-form-grid span{font-size:10px;color:#9fb2c6}
+.mss-ci-form-grid em{font-size:10px;font-weight:950;font-style:normal}.mss-ci-form-grid em.up{color:#7df0b8}.mss-ci-form-grid em.down{color:#ff999d}.mss-ci-form-grid em.flat{color:#a5c0d6}
+.mss-ci-next-record{display:flex;align-items:center;justify-content:space-between;gap:16px;border-radius:14px;border:1px solid #5a725d;background:linear-gradient(105deg,#123029,#091b24);padding:14px;color:#85eab8}
+.mss-ci-next-record small,.mss-ci-next-record strong,.mss-ci-next-record span{display:block}
+.mss-ci-next-record small{font-size:9px;font-weight:1000;letter-spacing:.9px;color:#b4d8c8}.mss-ci-next-record strong{font-size:clamp(16px,2.8vw,25px);margin:5px 0 4px;color:#eafff1}.mss-ci-next-record span{font-size:10px;color:#afcbbe;line-height:1.5}
+@media(max-width:720px){.mss-ci-sector-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.mss-ci-sector-grid button{min-height:47px}}
+@media(max-width:480px){.mss-ci-form-grid{grid-template-columns:1fr}.mss-ci-sector-top span{flex:1 1 115px;justify-content:center}}

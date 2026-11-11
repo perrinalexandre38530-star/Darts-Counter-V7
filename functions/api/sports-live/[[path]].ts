@@ -1,10 +1,14 @@
 import { footballCompetitionCode, projectFootballStandings } from "../../../src/sportsLive/officialStandings";
+import { managedCompetitionKey, managedFeedMatches, parseManagedCompetitionFeed } from "../../../src/sportsLive/officialCompetitionFeed";
+import type { ManagedCompetitionResponse } from "../../../src/sportsLive/officialCompetitionFeed";
 type Env = {
   USER_DATA_BUCKET?: R2Bucket;
   DARTS_API_KEY?: string;
   TABLE_TENNIS_API_KEY?: string;
   OPENAI_API_KEY?: string;
   FOOTBALL_DATA_API_KEY?: string;
+  LIVE_OFFICIAL_BUCKET?: R2Bucket;
+  LIVE_OFFICIAL_INGEST_TOKEN?: string;
   LIVE_INTELLIGENCE_MODEL?: string;
 };
 
@@ -49,7 +53,7 @@ type NormalResult = {
 
 const DARTS_BASE = "https://api.dartsapi.com/v1";
 const TT_BASE = "https://api.tabletennisapi.com/v1";
-const METHODS = "GET, OPTIONS";
+const METHODS = "GET, OPTIONS, POST";
 const COMPETITION_LOGO_AI_CACHE = new Map<string, { logoUrl: string; logoPageUrl?: string | null }>();
 
 function json(payload: unknown, status = 200, cacheSeconds = 60) {
@@ -60,7 +64,7 @@ function json(payload: unknown, status = 200, cacheSeconds = 60) {
       "cache-control": `public, max-age=${Math.min(cacheSeconds, 60)}, s-maxage=${cacheSeconds}, stale-while-revalidate=${Math.max(cacheSeconds, 120)}`,
       "access-control-allow-origin": "*",
       "access-control-allow-methods": METHODS,
-      "access-control-allow-headers": "content-type",
+      "access-control-allow-headers": "content-type,authorization",
     },
   });
 }
@@ -3545,6 +3549,58 @@ async function footballOfficialStandings(env: Env, request: URL) {
 }
 
 
+// Verified provider feeds are separate from personal backups and existing LIVE
+// archives. A federation/authorized collector can upload a bounded JSON record
+// via the bearer-token-protected POST route; all sports use the same schema.
+function managedBucket(env: Env): R2Bucket | undefined {
+  return env.LIVE_OFFICIAL_BUCKET || env.USER_DATA_BUCKET;
+}
+async function managedOfficialStandings(env: Env, request: URL, sport: string): Promise<ManagedCompetitionResponse | null> {
+  const competition = str(request.searchParams.get("competition")).trim();
+  const country = str(request.searchParams.get("country")).trim();
+  const season = str(request.searchParams.get("season") || "current").trim();
+  const key = managedCompetitionKey(sport, country, competition, season);
+  const bucket = managedBucket(env);
+  if (!key || !bucket) return null;
+  try {
+    const object = await bucket.get(key);
+    if (!object) return null;
+    const raw = await object.json();
+    const parsed = parseManagedCompetitionFeed(raw, sport);
+    return parsed && managedFeedMatches(parsed, sport, country, competition, season) ? parsed : null;
+  } catch { return null; }
+}
+
+export const onRequestPost: PagesFunction<Env> = async (context) => {
+  const raw = context.params?.path;
+  const path = Array.isArray(raw) ? raw : String(raw || "").split("/").filter(Boolean);
+  const sport = str(path[0]).toLowerCase();
+  const action = str(path[1]).toLowerCase();
+  if (action !== "official") return json({error:"not_found"},404,0);
+  const token = str(context.env?.LIVE_OFFICIAL_INGEST_TOKEN).trim();
+  const submitted = str(context.request.headers.get("Authorization"));
+  if (!token || submitted !== `Bearer ${token}`) return json({error:"unauthorized"},401,0);
+  const bucket = managedBucket(context.env);
+  if (!bucket) return json({error:"official_bucket_not_configured"},503,0);
+  const declaredSize = Number(context.request.headers.get("Content-Length") || 0);
+  if (declaredSize > 512_000) return json({error:"payload_too_large"},413,0);
+  const bodyText = await context.request.text();
+  if (bodyText.length > 512_000) return json({error:"payload_too_large"},413,0);
+  let body: unknown;
+  try { body = JSON.parse(bodyText); } catch { return json({error:"invalid_json"},400,0); }
+  const parsed = parseManagedCompetitionFeed(body, sport);
+  if (!parsed) return json({error:"invalid_official_feed",message:"Competition, country, season, HTTPS source and bounded standings/bracket are required."},422,0);
+  const key = managedCompetitionKey(sport, parsed.country, parsed.competition, parsed.season || "current");
+  if (!key) return json({error:"invalid_identity"},422,0);
+  try {
+    await bucket.put(key, JSON.stringify(parsed), {httpMetadata:{contentType:"application/json"},
+      customMetadata:{kind:"sports-live-managed-official",sport,source:parsed.sourceName || "unknown"}});
+    return json({ok:true,sport,competition:parsed.competition,country:parsed.country,season:parsed.season,
+      tables:parsed.tables.length,bracketRounds:parsed.bracket.length,updatedAt:parsed.updatedAt},200,0);
+  } catch { return json({error:"storage_unavailable"},503,0); }
+};
+
+
 function dateOffsetIso(offsetDays: number) {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() + offsetDays);
@@ -3978,7 +4034,7 @@ export const onRequestOptions: PagesFunction<Env> = async () =>
     headers: {
       "access-control-allow-origin": "*",
       "access-control-allow-methods": METHODS,
-      "access-control-allow-headers": "content-type",
+      "access-control-allow-headers": "content-type,authorization",
       "access-control-max-age": "86400",
     },
   });
@@ -3992,8 +4048,14 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const lang = str(requestUrl.searchParams.get("lang") || "fr").toLowerCase();
   const phase = str(requestUrl.searchParams.get("phase") || "full").toLowerCase();
   if (action === "standings") {
-    if (sport !== "foot") return json({available:false,sport,competition:"",season:null,sourceName:null,sourceUrl:null,updatedAt:null,tables:[],reason:"Aucun flux de classement structuré disponible pour ce sport."},200,600);
-    return cachedResponse(context, async () => footballOfficialStandings(context.env, requestUrl));
+    // Always check the managed R2 feed BEFORE the edge cache. A federation
+    // import must not remain hidden behind an older cached "unavailable" answer.
+    const managed = await managedOfficialStandings(context.env, requestUrl, sport);
+    if (managed) return json(managed,200,60);
+    if (sport === "foot") return cachedResponse(context, async () => footballOfficialStandings(context.env, requestUrl));
+    return json({available:false,sport,competition:str(requestUrl.searchParams.get("competition")),
+      season:null,sourceName:null,sourceUrl:null,updatedAt:null,tables:[],bracket:[],
+      reason:"Aucun classement ou tableau structuré fourni pour cette compétition."},200,120);
   }
   if (action === "logo") {
     const external = safeExternalImageUrl(str(requestUrl.searchParams.get("url") || ""));

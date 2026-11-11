@@ -1,3 +1,4 @@
+import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
 // ============================================
 // src/pages/WarfareConfig.tsx
 // WARFARE — CONFIG (DUEL + ÉQUIPES)
@@ -832,6 +833,8 @@ export default function WarfareConfigPage({ store, go }: Props) {
           {t("warfare.start", "LANCER LA PARTIE")}
         </button>
       </div>
-    </div>
+    
+      <NativeStartOrderConfig />
+      </div>
   );
 }

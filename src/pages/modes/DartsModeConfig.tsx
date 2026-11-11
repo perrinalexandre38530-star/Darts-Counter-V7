@@ -1,4 +1,5 @@
 // @ts-nocheck
+import NativeStartOrderConfig from '../../components/NativeStartOrderConfig';
 // =============================================================
 // src/pages/modes/DartsModeConfig.tsx
 // Config generique pour les nouveaux modes (design proche configs existantes)
@@ -267,7 +268,9 @@ export default function DartsModeConfig({ store, go, gameId }) {
         padding:"10px 12px 14px",
         background:"linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,0.85))",
       }}>
-        <button onClick={start} style={{
+        
+      <NativeStartOrderConfig />
+      <button onClick={start} style={{
           width:"100%",
           border:"1px solid rgba(243,199,106,0.45)",
           background:"rgba(243,199,106,0.16)",
@@ -281,6 +284,8 @@ export default function DartsModeConfig({ store, go, gameId }) {
           Lancer la partie
         </button>
       </div>
-    </div>
+    
+      
+      </div>
   );
 }

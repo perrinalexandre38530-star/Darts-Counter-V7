@@ -6,6 +6,10 @@ import "../../ui/trainingResponsive.css";
 import TrainingStartButton from "../../ui/TrainingStartButton";
 import TrainingExerciseDetail from "../../ui/TrainingExerciseDetail";
 import TrainingSessionResultsCard from "../../ui/TrainingSessionResultsCard";
+import TrainingChallengeCatalog from "../../ui/TrainingChallengeCatalog";
+import { clearTrainingChallengeDraft, loadTrainingChallengeDraft } from "../../profile/trainingChallengeDraft";
+import { clearTrainingArcadeDraft, loadTrainingArcadeDraft } from "../../profile/trainingArcadeDraft";
+import { makeChallengeTrainingConfig, type ChallengeTrainingPreset, CHALLENGE_TRAINING_ALL } from "../../catalog/challengeTrainingCatalog";
 import { buildTrainingSessionCards } from "../../profile/trainingSessionCards";
 import { getTrainingDetailedSessions } from "../../stats/trainingStatsHub";
 import { buildGoalAwareCoachPrescription, buildTrainingDiagnosis, buildTrainingGoalStatuses, buildTrainingProgression, chooseGoalPriorityFamily } from "../../coach/trainingDiagnosis";
@@ -49,7 +53,7 @@ const familyOrder: TrainingExerciseFamily[] = ["scoring", "doubles", "checkout",
 type HubTab = "program" | "exercises" | "sessions" | "diagnosis" | "progress";
 type ProgramPanel = "today" | "week" | "cycle" | "library";
 type ProgressPanel = "overview" | "skills" | "coach" | "cycles" | "history";
-type ExercisePanel = "path" | "catalog" | "technique" | "favorites";
+type ExercisePanel = "path" | "catalog" | "challenge" | "technique" | "favorites";
 type CatalogProgressFilter = "all" | "new" | "in_progress" | "mastered";
 type CatalogSort = "smart" | "name" | "difficulty" | "level";
 type DiagnosisPanel = "overview" | "skill" | "goal";
@@ -170,7 +174,7 @@ function pct(value: number) {
   return `${Math.round(Number(value) || 0)}%`;
 }
 
-export default function TrainingLabConfig({ profiles, accountProfile, initialDetailExerciseId, onStart, onExit }: { profiles?: Profile[]; accountProfile?: Profile | null; initialDetailExerciseId?: string | null; onStart: (cfg: any) => void; onExit: () => void; }) {
+export default function TrainingLabConfig({ profiles, accountProfile, initialDetailExerciseId, initialChallengeCatalog = false, onOpenChallenge, onCustomizeChallenge, onStart, onExit }: { profiles?: Profile[]; accountProfile?: Profile | null; initialDetailExerciseId?: string | null; initialChallengeCatalog?: boolean; onOpenChallenge?: (config: any, presetId: string, snapshot?: any) => void; onCustomizeChallenge?: (presetId: string, participantId: string) => void; onStart: (cfg: any) => void; onExit: () => void; }) {
   const accountParticipantId = accountProfile?.id ? String(accountProfile.id) : "";
   const accountParticipant = React.useMemo(() => accountParticipantId ? {
     id: accountParticipantId,
@@ -226,6 +230,30 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
     void revision;
     return getTrainingDetailedSessions({ participantId: accountParticipantId || null, limit: 300 });
   }, [revision]);
+  const challengeSessions = React.useMemo(() => sessions.filter((row) => row.modeId === "training_challenges" && row.config?.trainingOrigin === "training_lab"), [sessions]);
+  const launchChallengeExercise = React.useCallback((preset: ChallengeTrainingPreset) => {
+    if (!onOpenChallenge || !accountParticipantId) return;
+    if ((preset.minPlayers || 1) > 1) { onCustomizeChallenge?.(preset.id, accountParticipantId); return; }
+    if (preset.arcadeId) clearTrainingArcadeDraft(accountParticipantId, preset.id);
+    else clearTrainingChallengeDraft(accountParticipantId, preset.id);
+    onOpenChallenge(makeChallengeTrainingConfig(preset, accountParticipantId), preset.id);
+  }, [onOpenChallenge, onCustomizeChallenge, accountParticipantId]);
+  const resumeChallengeExercise = React.useCallback((preset: ChallengeTrainingPreset) => {
+    if (!onOpenChallenge || !accountParticipantId) return;
+    if (preset.arcadeId) {
+      const draft = loadTrainingArcadeDraft(accountParticipantId, preset.id);
+      if (!draft) return;
+      onOpenChallenge(draft.config || makeChallengeTrainingConfig(preset, accountParticipantId), preset.id, {hits:draft.hits, assignments:draft.assignments, ghost:draft.ghost});
+    } else {
+      const draft = loadTrainingChallengeDraft(accountParticipantId, preset.id);
+      if (!draft) return;
+      onOpenChallenge(draft.config, preset.id, {log:draft.log, bonusTargetByPlayer:draft.bonusTargetByPlayer});
+    }
+  }, [onOpenChallenge, accountParticipantId]);
+  const customizeChallengeExercise = React.useCallback((preset: ChallengeTrainingPreset) => {
+    if (!onCustomizeChallenge || !accountParticipantId) return;
+    onCustomizeChallenge(preset.id, accountParticipantId);
+  }, [onCustomizeChallenge, accountParticipantId]);
   const programSessions = React.useMemo(() => {
     void revision;
     return loadTrainingProgramSessions(accountParticipantId || null);
@@ -269,10 +297,10 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
     return [...base, ...preferences.favoritePrograms.filter((program) => !baseIds.has(program.id))];
   }, [coachProgram, preferences.favoritePrograms]);
 
-  const [tab, setTab] = React.useState<HubTab>("program");
+  const [tab, setTab] = React.useState<HubTab>(initialChallengeCatalog ? "exercises" : "program");
   const [programPanel, setProgramPanel] = React.useState<ProgramPanel>("today");
   const [progressPanel, setProgressPanel] = React.useState<ProgressPanel>("overview");
-  const [exercisePanel, setExercisePanel] = React.useState<ExercisePanel>("path");
+  const [exercisePanel, setExercisePanel] = React.useState<ExercisePanel>(initialChallengeCatalog ? "challenge" : "path");
   const [techniqueTrack, setTechniqueTrack] = React.useState<TrainingTechniqueTrack>("setup");
   const [diagnosisPanel, setDiagnosisPanel] = React.useState<DiagnosisPanel>("overview");
   const [diagnosisFamily, setDiagnosisFamily] = React.useState<TrainingExerciseFamily>(recommendedFamily);
@@ -311,7 +339,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
     if (viewMode === "essential") {
       setProgramPanel("today");
       setTodayPanel("plan");
-      setExercisePanel("path");
+      if (!initialChallengeCatalog) setExercisePanel("path");
       setDiagnosisPanel("overview");
       setProgressPanel("overview");
     }
@@ -1300,12 +1328,14 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
             <CompactIconNav items={[
               { id: "path", label: "PARCOURS", icon: "progress", status: `NIV. ${skillPath.currentLevel}/5` },
               { id: "catalog", label: "CATALOGUE", icon: "exercises", status: `${unifiedCatalogItems.length} EX.` },
+              { id: "challenge", label: "CHALLENGE", icon: "bull", status: `${CHALLENGE_TRAINING_ALL.length} EX.` },
               { id: "technique", label: "TECHNIQUE", icon: "skills", status: `${techniqueItems.length}` },
               { id: "favorites", label: "FAVORIS", icon: "library", status: `${favoriteExercises.length}` },
             ]} activeId={exercisePanel} onChange={(id) => setExercisePanel(id as ExercisePanel)} stickyTop={56} />
 
-            <div style={{ margin: "10px 0 4px", fontSize: 8.2, fontWeight: 950, letterSpacing: .8, color: "#27dcff", opacity: .72 }}>COMPÉTENCE</div>
-            <CompactIconNav items={familyOrder.map((id) => { const row = diagnosis.find((x) => x.family === id); return { id, label: `${TRAINING_FAMILY_META[id].label}${id === recommendedFamily ? " ★" : ""}`, icon: id, status: row?.sessions ? `${Math.round(row.recentScore)}/100` : "NOUVEAU" }; })} activeId={family} onChange={(id) => setFamily(id as TrainingExerciseFamily)} />
+            {exercisePanel !== "challenge" && <><div style={{ margin: "10px 0 4px", fontSize: 8.2, fontWeight: 950, letterSpacing: .8, color: "#27dcff", opacity: .72 }}>COMPÉTENCE</div>
+            <CompactIconNav items={familyOrder.map((id) => { const row = diagnosis.find((x) => x.family === id); return { id, label: `${TRAINING_FAMILY_META[id].label}${id === recommendedFamily ? " ★" : ""}`, icon: id, status: row?.sessions ? `${Math.round(row.recentScore)}/100` : "NOUVEAU" }; })} activeId={family} onChange={(id) => setFamily(id as TrainingExerciseFamily)} /></>}
+            {exercisePanel === "challenge" && <TrainingChallengeCatalog participantId={accountParticipantId} sessions={challengeSessions} canStart={Boolean(accountParticipantId && onOpenChallenge)} onStart={launchChallengeExercise} onResume={resumeChallengeExercise} onCustomize={customizeChallengeExercise} />}
 
             {exercisePanel === "path" && <>
               <div style={{ marginTop: 10, padding: 13, borderRadius: 15, border: "1px solid rgba(39,220,255,.22)", background: "linear-gradient(135deg,rgba(39,220,255,.08),rgba(140,90,255,.04))" }}>
@@ -1535,7 +1565,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
               </div>}
             </>}
 
-            {exercisePanel !== "technique" && <>
+            {exercisePanel !== "technique" && exercisePanel !== "challenge" && <>
               <div style={{ marginTop: 10, padding: 11, borderRadius: 13, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.025)", display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <div style={{ minWidth: 0, flex: "1 1 230px" }}>
                   <div style={{ fontSize: 7.3, fontWeight: 950, opacity: .48 }}>EXERCICE SÉLECTIONNÉ • NIVEAU {selected.difficulty}</div>

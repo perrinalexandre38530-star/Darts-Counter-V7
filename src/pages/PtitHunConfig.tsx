@@ -1,3 +1,4 @@
+import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
 import React from "react";
 import NewDartsModeConfig from "./newModes/NewDartsModeConfig";
 import ticker from "../assets/tickers/ticker_ptit_1.png";
@@ -16,7 +17,9 @@ function Ptit1RulesContent({ lang }: { lang: string }) {
     <div><b style={{ color: "#ffd84d" }}>JACKPOT</b><br/>{fr ? "Une ou deux zones spéciales apparaissent uniquement sur des DOUBLES ou des TRIPLES. Toucher une zone Jackpot annule la volée entière : 0 point. Le type de zone et son renouvellement sont configurables." : "One or two Jackpot zones appear only on DOUBLES or TRIPLES. Hitting a Jackpot cancels the whole visit: 0 points. Zone type and refresh behavior are configurable."}</div>
     <div><b style={{ color: "#65d8ff" }}>{fr ? "ZONES SPÉCIALES HORS CIBLE" : "SPECIAL OFF-BOARD ZONES"}</b><br/>{fr ? "P’TIT 1 reprend les mêmes zones fermées des chiffres et le contour extérieur que GROS 6. Dans le keypad, ouvre ZONE puis choisis exactement la zone touchée. Dans P’TIT 1, cette saisie est traitée comme un MISS spécial et applique la pénalité MISS configurée." : "P’TIT 1 uses the same enclosed number zones and outer ring as BIG 6. In the keypad, open ZONE and select the exact area hit. In P’TIT 1, that input is treated as a special MISS and applies the configured MISS penalty."}</div>
     <DartsSpecialZonesRulesVisual lang={lang} borderColor="#f2c84b66" />
-  </div>;
+  
+      <NativeStartOrderConfig />
+      </div>;
 }
 
 

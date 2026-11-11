@@ -1,3 +1,4 @@
+import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
 // src/pages/DepartementsConfig.tsx
 import React from "react";
 import { applyResolvedBotCountries } from "../lib/botCountries";
@@ -2038,6 +2039,8 @@ export default function DepartementsConfig(props: any) {
         </div>
       </Section>
       </div>
-    </div>
+    
+      <NativeStartOrderConfig />
+      </div>
   );
 }

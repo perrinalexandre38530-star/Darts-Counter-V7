@@ -1,3 +1,4 @@
+import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
 // ============================================
 // src/pages/ShanghaiConfig.tsx
 // SHANGHAI — CONFIG (UI calquée X01Multi / style CRICKET header)
@@ -754,6 +755,8 @@ export default function ShanghaiConfigPage({ store, go, onBack }: Props) {
           </div>
         </div>
       )}
-    </div>
+    
+      <NativeStartOrderConfig />
+      </div>
   );
 }

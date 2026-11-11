@@ -1,4 +1,5 @@
 // @ts-nocheck
+import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
 // =============================================================
 // src/pages/ScramConfig.tsx
 // SCRAM — configuration avec le sélecteur participants EXACT de X01
@@ -927,7 +928,9 @@ export default function ScramConfig(props: any) {
           }}
         >
           <div style={{ width: "min(560px, 92%)" }}>
-            <button
+            
+      <NativeStartOrderConfig />
+      <button
               type="button"
               disabled={!validSelection}
               onClick={onStart}
@@ -961,6 +964,8 @@ export default function ScramConfig(props: any) {
           </div>
         </div>
       </div>
-    </div>
+    
+      
+      </div>
   );
 }

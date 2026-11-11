@@ -17,7 +17,8 @@ export function dartsFamilyStatsMode(record: unknown): DartsFamilyStatsMode | nu
  * lorsque l'onglet SPLIT SCORE est actif, puis classifier le record complet. */
 export function shouldHydrateFamilyHistoryForStats(record: unknown, focusedMode: string | null | undefined): boolean {
   const family = dartsFamilyStatsMode(record);
-  if (focusedMode === "split_score") return family === "halve_it" || family === "split_score";
+  if (focusedMode === "split_score" || focusedMode === "halve_it")
+    return family === "halve_it" || family === "split_score";
   if (focusedMode === "five_lives") return family === "five_lives";
   return false;
 }
@@ -49,4 +50,21 @@ export function isDartsFamilyDraw(record: unknown): boolean {
   if (!record || typeof record !== "object") return false;
   const r = record as Record<string, any>;
   return r.tied === true || r.summary?.tied === true || r.payload?.tied === true || r.payload?.summary?.tied === true;
+}
+
+// Les archives restaurées peuvent contenir `players` comme tableau OU comme
+// dictionnaire indexé par profileId. Ne jamais modifier le record History V4.
+export function halveItStatsRows(source: unknown): any[] {
+  if (Array.isArray(source)) return source;
+  if (!source || typeof source !== "object") return [];
+  return Object.entries(source as Record<string, any>)
+    .filter(([, row]) => row && typeof row === "object" && !Array.isArray(row))
+    .map(([key, row]) => {
+      const hasIdentity = [row.id, row.playerId, row.profileId, row.pid, row.selectedPlayerId]
+        .some((value) => String(value ?? "").trim().length > 0);
+      // Une clé non numérique suffisamment spécifique peut être l'identifiant
+      // d'un ancien profil. Une clé courte (`0`, `Ninja`) n'est pas une preuve.
+      return hasIdentity || (key.length < 12 && !key.startsWith("bot_")) || /^\d+$/.test(key)
+        ? row : { ...row, playerId: key };
+    });
 }

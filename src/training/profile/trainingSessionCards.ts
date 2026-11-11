@@ -155,5 +155,19 @@ export function buildTrainingSessionCards(
       exercises: orderedRows.map(fromDetailedSession),
     };
   });
-  return [...programCards, ...practiceCards].sort((a, b) => b.at - a.at).slice(0, 80);
+  // Every completed Training Challenge is one exercise session, never a competitive match.
+  const challengeCards: TrainingSessionCard[] = sortedDetails
+    .filter((row) => row.modeId === "training_challenges" && row.config?.trainingOrigin === "training_lab")
+    .map((row) => {
+      const exercise = fromDetailedSession(row);
+      return {
+        id: row.id, at: row.endedAt,
+        title: `Challenge · ${exercise.title || "Exercice"}`,
+        kind: "practice" as const, count: 1, darts: row.darts,
+        performance: pct(row.metrics?.trainingPerformancePct ?? row.metrics?.performanceScore) ?? 0,
+        accuracy: pct(row.accuracyPct), successes: row.success ? 1 : 0,
+        exercises: [exercise],
+      };
+    });
+  return [...programCards, ...practiceCards, ...challengeCards].sort((a, b) => b.at - a.at).slice(0, 80);
 }
