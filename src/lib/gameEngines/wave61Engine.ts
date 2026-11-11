@@ -4072,12 +4072,14 @@ function processCosmoKnights(state: Wave61State, playerId: string, darts: GameDa
 export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave61State {
   const state = cloneWave61State(input);
   if (state.phase !== "playing" || !state.players.length) return state;
-  const darts = (dartsRaw || []).slice(0, 3);
+  let darts = (dartsRaw || []).slice(0, 3);
+  // Certains modes s'arrêtent dès le dart gagnant, avant la fin des 3 fléchettes.
+  let consumedDarts = darts.length;
   const player = state.players[state.activePlayerIndex];
   if (!player || state.eliminated[player.id]) return advanceWave61Turn(state);
   const st = state.statsByPlayer[player.id] || (state.statsByPlayer[player.id] = blankStats());
   const target = getWave61Target(state);
-  const visitScore = darts.reduce((sum, d) => sum + wave61DartScore(d), 0);
+  let visitScore = darts.reduce((sum, d) => sum + wave61DartScore(d), 0);
   const events: string[] = [];
   let hits = target ? darts.filter((d) => dartMatchesTarget(d, target, state.config.difficulty)).length : darts.filter((d) => wave61DartScore(d) > 0).length;
   let delta = 0;
@@ -4248,7 +4250,8 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
     const leapMap = state.special.sauteMoutonsLeapfrogsByPlayer || (state.special.sauteMoutonsLeapfrogsByPlayer = {});
     const bestJumpMap = state.special.sauteMoutonsBestJumpByPlayer || (state.special.sauteMoutonsBestJumpByPlayer = {});
     const bullJumpMap = state.special.sauteMoutonsBullJumpsByPlayer || (state.special.sauteMoutonsBullJumpsByPlayer = {});
-    for (const d of darts) {
+    for (let i = 0; i < darts.length; i++) {
+      const d = darts[i];
       let jump = d?.bed === "D" ? 2 : d?.bed === "T" ? 3 : d?.bed === "OB" ? bull25Jump : d?.bed === "IB" ? bull50Jump : d?.bed === "S" ? 1 : 0;
       if (jump <= 0) continue;
       const before = pos; const intended = Math.min(trackLength, pos + jump);
@@ -4259,7 +4262,7 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
       bestJumpMap[player.id] = Math.max(Number(bestJumpMap[player.id] || 0), gained);
       if (d?.bed === "OB" || d?.bed === "IB") bullJumpMap[player.id] = Number(bullJumpMap[player.id] || 0) + 1;
       if (crossed && leapBonus) { leapMap[player.id] = Number(leapMap[player.id] || 0) + 1; events.push(`🐑 Saute-mouton ! +${leapBonus} case${leapBonus>1?"s":""}`); }
-      if (pos >= trackLength) break;
+      if (pos >= trackLength) { consumedDarts = i + 1; break; }
     }
     state.progress[player.id] = pos; state.scores[player.id] = pos; delta = totalJump;
     distanceMap[player.id] = Number(distanceMap[player.id] || 0) + totalJump;
@@ -4348,7 +4351,8 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
     let varietyAwarded = 0;
     let missPenaltyTotal = 0;
     let bullBonusTotal = 0;
-    for (const d of darts) {
+    for (let i = 0; i < darts.length; i++) {
+      const d = darts[i];
       if (!d || d.bed === "MISS") {
         if (missPenalty > 0) {
           const beforePenalty = Number(state.scores[player.id] || 0);
@@ -4386,6 +4390,11 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
         servedMap[player.id] = Number(servedMap[player.id] || 0) + 1;
         state.scores[player.id] = Number(state.scores[player.id] || 0) + racletteBonus;
         delta += racletteBonus;
+      }
+      // Une fois l'objectif servi, les darts suivants n'ont pas été joués.
+      if (Number(state.config?.goal || 0) > 0 && Number(servedMap[player.id] || 0) >= Number(state.config.goal)) {
+        consumedDarts = i + 1;
+        break;
       }
     }
     if (ingredientHits.size === 3 && visitVarietyBonus > 0) {
@@ -4582,6 +4591,23 @@ export function playWave61Visit(input: Wave61State, dartsRaw: GameDart[]): Wave6
     }
   }
 
+  // Réconcilier le nombre réel de fléchettes lorsque la victoire arrive au
+  // premier ou deuxième dart (course / service Raclette). Les fléchettes non
+  // lancées ne doivent figurer ni dans les KPI, ni dans History, ni dans Undo.
+  if (consumedDarts < darts.length) {
+    const discarded = darts.slice(consumedDarts);
+    for (const d of discarded) {
+      st.darts -= 1;
+      if (!d || d.bed === "MISS") st.misses -= 1;
+      if (d?.bed === "D") st.doubles -= 1;
+      if (d?.bed === "T") st.triples -= 1;
+      if (d?.bed === "OB" || d?.bed === "IB") st.bulls -= 1;
+    }
+    st.rawPoints -= discarded.reduce((sum, d) => sum + wave61DartScore(d), 0);
+    darts = darts.slice(0, consumedDarts);
+    visitScore = darts.reduce((sum, d) => sum + wave61DartScore(d), 0);
+    st.bestVisit = Math.max(Number(input.statsByPlayer?.[player.id]?.bestVisit || 0), visitScore);
+  }
   st.score = Number(state.scores[player.id] || 0);
   st.progress = Number(state.progress[player.id] || 0);
   st.hits += hits;

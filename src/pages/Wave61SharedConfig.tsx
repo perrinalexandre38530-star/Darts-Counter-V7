@@ -1,4 +1,5 @@
 // @ts-nocheck
+import DartsQuickHeader, { DartsQuickIntro } from "../components/DartsQuickHeader";
 import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
 import React from "react";
 import BackDot from "../components/BackDot";
@@ -454,13 +455,9 @@ export default function Wave61SharedConfig(props: any) {
     const quickInput:React.CSSProperties = { width: "100%", minWidth: 0, minHeight: 42, borderRadius: 12,
       border: "1px solid rgba(255,255,255,.18)", color: "#fff", background: "rgba(255,255,255,.05)", padding: "8px 12px", fontSize: 16, fontWeight: 850 };
     return <div className="page wave61-config-screen wave61-quick-config" data-wave61-quick="1" style={{ minHeight:"100dvh", paddingBottom:90, color:"#fff", background:"#060811" }}>
-      <PageHeader tickerSrc={modeTicker || undefined} tickerAlt={spec.label} title={modeTicker ? undefined : spec.label} tickerHeight={82}
-        tickerFit="cover" left={<BackDot onClick={() => go?.("games", { gamesView: "all" })} color={accent} glow={`${accent}88`} />} />
+      <div style={{padding:"0 12px"}}><DartsQuickHeader modeId={spec.id} title={spec.label} onBack={() => go?.("games", { gamesView: "all" })} /></div>
       <main style={{ maxWidth:760, margin:"0 auto", padding:"12px", display:"grid", gap:12 }}>
-        <section style={card}>
-          <div style={{color:accent,fontSize:13,fontWeight:1000,letterSpacing:1,marginBottom:8}}>PARTIE RAPIDE · {spec.label.toUpperCase()}</div>
-          <div style={{fontSize:11,color:"#a9b0c0"}}>Sans profil ni bot · joueurs temporaires · réglages essentiels</div>
-        </section>
+        <DartsQuickIntro title={spec.label} />
         <section style={card}>
           <div style={{color:accent,fontWeight:1000,marginBottom:10}}>JOUEURS</div>
           <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:12}}>

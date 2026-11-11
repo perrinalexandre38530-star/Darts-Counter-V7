@@ -28,6 +28,7 @@ import DartsModeFamilyBridge from "../components/DartsModeFamilyBridge";
 import DartsResumeDraftCard from "../components/DartsResumeDraftCard";
 import DartsPendingFinalCard from "../components/DartsPendingFinalCard";
 import { clearDartsMatchDraft } from "../lib/dartsMatchDrafts";
+import { getStorageUser } from "../lib/storage";
 import {
   SCORE_INPUT_LS_KEY,
   sanitizeScoreInputMethod,
@@ -492,7 +493,7 @@ export default function FiveLivesConfig({ store, go, presetVariantId, onBack, on
       players: finalPlayers,
     };
 
-    clearDartsMatchDraft(chaseActive ? "chase" : "five_lives");
+    clearDartsMatchDraft(chaseActive ? "chase" : "five_lives", getStorageUser());
     try { localStorage.setItem(SCORE_INPUT_LS_KEY, scoreInputMethod); } catch {}
 
     try { recordProfileUsageForMode("five_lives", finalPlayers.map((p: any) => p.id)); } catch {}

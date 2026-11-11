@@ -10,6 +10,8 @@ export type VerifiedCompetitionMatch = {
   scoreB: number | null;
   status: "scheduled" | "live" | "finished" | "postponed" | "cancelled" | "unknown";
   startsAt: string | null;
+  /** Calendar day when the supplier provides a date but not a start time. */
+  dateOnly?: string | null;
   stage: string | null;
   group: string | null;
   matchday: number | null;
@@ -48,7 +50,7 @@ export function normalizeVerifiedMatch(row: unknown): VerifiedCompetitionMatch |
   return {
     id, participantA:text(r.participantA) || "À confirmer",participantB:text(r.participantB) || "À confirmer",
     scoreA:num(r.scoreA),scoreB:num(r.scoreB),status,
-    startsAt:iso(r.startsAt),stage:text(r.stage,90) || null,group:text(r.group,90) || null,
+    startsAt:iso(r.startsAt),dateOnly:/^\d{4}-\d{2}-\d{2}$/.test(text(r.dateOnly)) && Number.isFinite(Date.parse(text(r.dateOnly))) ? text(r.dateOnly) : null,stage:text(r.stage,90) || null,group:text(r.group,90) || null,
     matchday:matchday !== null && Number.isInteger(matchday) && matchday > 0 ? matchday : null,
   };
 }
@@ -89,14 +91,14 @@ export function projectFootballCompetitionMatches(raw: any, requestedCompetition
     ...(!matches.length ? {reason:"Aucune rencontre structurée disponible pour cette compétition."} : {})};
 }
 
-const knockoutStages = new Set(["LAST_64", "LAST_32", "LAST_16", "ROUND_OF_16", "QUARTER_FINALS", "SEMI_FINALS", "FINAL", "THIRD_PLACE", "PLAYOFFS", "PLAY_OFFS", "PRELIMINARY_ROUND"]);
-const STAGE_ORDER: Record<string,number> = {PRELIMINARY_ROUND:10,LAST_64:20,LAST_32:30,LAST_16:40,ROUND_OF_16:40,QUARTER_FINALS:50,SEMI_FINALS:60,THIRD_PLACE:65,FINAL:70,PLAYOFFS:80,PLAY_OFFS:80};
+const knockoutStages = new Set(["LAST_64", "LAST_32", "LAST_16", "ROUND_OF_16", "QUARTER_FINALS", "QUARTER_FINAL", "SEMI_FINALS", "SEMI_FINAL", "FINAL", "THIRD_PLACE", "PLAYOFFS", "PLAY_OFFS", "PRELIMINARY_ROUND"]);
+const STAGE_ORDER: Record<string,number> = {PRELIMINARY_ROUND:10,LAST_64:20,LAST_32:30,LAST_16:40,ROUND_OF_16:40,QUARTER_FINALS:50,QUARTER_FINAL:50,SEMI_FINALS:60,SEMI_FINAL:60,THIRD_PLACE:65,FINAL:70,PLAYOFFS:80,PLAY_OFFS:80};
 export function isVerifiedKnockoutStage(stage: string | null): boolean {
   return knockoutStages.has(String(stage || "").toUpperCase());
 }
 export function verifiedStageLabel(stage: string | null, matchday: number | null = null, group: string | null = null): string {
   const code = String(stage || "").toUpperCase();
-  const known: Record<string,string> = {LAST_64:"64es de finale",LAST_32:"16es de finale",LAST_16:"Huitièmes de finale",ROUND_OF_16:"Huitièmes de finale",QUARTER_FINALS:"Quarts de finale",SEMI_FINALS:"Demi-finales",FINAL:"Finale",THIRD_PLACE:"Petite finale",GROUP_STAGE:"Phase de groupes",REGULAR_SEASON:"Championnat",PRELIMINARY_ROUND:"Tour préliminaire",PLAYOFFS:"Barrages",PLAY_OFFS:"Barrages"};
+  const known: Record<string,string> = {LAST_64:"64es de finale",LAST_32:"16es de finale",LAST_16:"Huitièmes de finale",ROUND_OF_16:"Huitièmes de finale",QUARTER_FINALS:"Quarts de finale",QUARTER_FINAL:"Quarts de finale",SEMI_FINALS:"Demi-finales",SEMI_FINAL:"Demi-finales",FINAL:"Finale",THIRD_PLACE:"Petite finale",GROUP_STAGE:"Phase de groupes",REGULAR_SEASON:"Championnat",PRELIMINARY_ROUND:"Tour préliminaire",PLAYOFFS:"Barrages",PLAY_OFFS:"Barrages"};
   const title = known[code] || text(stage,80).replace(/_/g," ") || "Rencontres";
   return `${title}${group ? ` · ${text(group,30).replace(/^GROUP_/i,"Groupe ")}` : ""}${matchday && !isVerifiedKnockoutStage(stage) ? ` · Journée ${matchday}` : ""}`;
 }
@@ -108,5 +110,5 @@ export function verifiedKnockoutRounds(matches: VerifiedCompetitionMatch[]) {
     if (!grouped.has(id)) grouped.set(id,{id,name:verifiedStageLabel(id),order:STAGE_ORDER[id] || 99,matches:[]});
     grouped.get(id)!.matches.push(match);
   }
-  return [...grouped.values()].sort((a,b)=>a.order-b.order).map(round=>({...round,matches:round.matches.sort((a,b)=>(Date.parse(a.startsAt || "") || 0)-(Date.parse(b.startsAt || "") || 0))}));
+  return [...grouped.values()].sort((a,b)=>a.order-b.order).map(round=>({...round,matches:round.matches.sort((a,b)=>(Date.parse(a.startsAt || a.dateOnly || "") || 0)-(Date.parse(b.startsAt || b.dateOnly || "") || 0))}));
 }

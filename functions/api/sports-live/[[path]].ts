@@ -2,6 +2,7 @@ import { footballCompetitionCode, projectFootballStandings } from "../../../src/
 import { managedCompetitionKey, managedFeedMatches, parseManagedCompetitionFeed } from "../../../src/sportsLive/officialCompetitionFeed";
 import type { ManagedCompetitionResponse } from "../../../src/sportsLive/officialCompetitionFeed";
 import { projectFootballCompetitionMatches } from "../../../src/sportsLive/officialCompetitionMatches";
+import { dartsCompetitionIdentity, projectDartsCompetitionMatches, tableTennisEventIdentity, projectTableTennisCompetitionMatches, providerNoData } from "../../../src/sportsLive/specialistCompetitionMatches";
 type Env = {
   USER_DATA_BUCKET?: R2Bucket;
   DARTS_API_KEY?: string;
@@ -3653,6 +3654,69 @@ function sportsDbStartsAt(row: any) {
   return Number.isFinite(d.getTime()) ? d.toISOString() : date;
 }
 
+// Explicit competition-page provider adapters. Never forward a key to the browser.
+// Lookup must resolve exactly one competition/event: a fuzzy search is NOT
+// sufficient proof that two competitions from different places are the same.
+async function dartsCompetitionMatches(env: Env, url: URL) {
+  const name = str(url.searchParams.get("competition")).trim().slice(0, 140);
+  const season = str(url.searchParams.get("season")).trim();
+  const year = /^(?:19[7-9]\d|20\d{2})$/.test(season) ? season : null;
+  if (!name || (season && !year)) return {status:200,ttl:300,payload:providerNoData("darts",name,year,"Compétition ou saison non reconnue.")};
+  const key = str(env.DARTS_API_KEY).trim();
+  if (!key) return {status:200,ttl:300,payload:providerNoData("darts",name,year,"Configure DARTS_API_KEY dans Cloudflare pour les rencontres vérifiées.")};
+  try {
+    const lookupName = name.replace(/\b(?:19[7-9]\d|20\d{2})\b/g, " ").replace(/\s+/g, " ").trim();
+    const list = await apiFetch(DARTS_BASE,key,`/competitions?q=${encodeURIComponent(lookupName)}&limit=100`);
+    if (!list.ok) return {status:200,ttl:180,payload:providerNoData("darts",name,year,`DartsAPI indisponible (HTTP ${list.status}).`)};
+    const id = dartsCompetitionIdentity(list.body,name);
+    if (!id) return {status:200,ttl:900,payload:providerNoData("darts",name,year,"Compétition introuvable ou ambiguë dans DartsAPI.")};
+    const range = year ? `&from=${year}-01-01&to=${year}-12-31` : "";
+    // Results are limited by the subscription and paginated; never imply
+    // that this is the whole historical archive when next_cursor is present.
+    const load = async (type: "results" | "fixtures", max: number) => {
+      const out: any[] = [];
+      let cursor = "";
+      for (let page = 0; page < 3 && out.length < max; page++) {
+        const query = `/${type}?competition_id=${encodeURIComponent(id)}${range}&limit=${type === "results" ? 200 : 200}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+        const response = await apiFetch(DARTS_BASE,key,query);
+        if (!response.ok) { if (!out.length) throw new Error(`DartsAPI ${type}: HTTP ${response.status}`); break; }
+        out.push(...payloadRows(response.body,[type,"matches"]));
+        const next = str(response.body?.meta?.next_cursor);
+        if (!next || next === cursor) break;
+        cursor = next;
+      }
+      return out.slice(0,max);
+    };
+    const [results, fixtures] = await Promise.allSettled([load("results",600),load("fixtures",400)]);
+    if (results.status === "rejected" && fixtures.status === "rejected")
+      return {status:200,ttl:180,payload:providerNoData("darts",name,year,"DartsAPI ne fournit aucune rencontre accessible avec ce forfait.")};
+    const payload = projectDartsCompetitionMatches(results.status === "fulfilled" ? results.value : [],
+      fixtures.status === "fulfilled" ? fixtures.value : [],id,name,year);
+    return {status:200,ttl:900,payload};
+  } catch { return {status:200,ttl:180,payload:providerNoData("darts",name,year,"Connexion DartsAPI momentanément indisponible.")}; }
+}
+
+async function tableTennisCompetitionMatches(env: Env, url: URL) {
+  const name = str(url.searchParams.get("competition")).trim().slice(0,140);
+  const season = str(url.searchParams.get("season")).trim();
+  const year = /^(?:19[7-9]\d|20\d{2})$/.test(season) ? season : null;
+  if (!name || (season && !year)) return {status:200,ttl:300,payload:providerNoData("pingpong",name,year,"Compétition ou saison non reconnue.")};
+  const key = str(env.TABLE_TENNIS_API_KEY).trim();
+  if (!key) return {status:200,ttl:300,payload:providerNoData("pingpong",name,year,"Configure TABLE_TENNIS_API_KEY dans Cloudflare pour les matchs structurés.")};
+  try {
+    const today = new Date();
+    const from = year ? `${year}-01-01` : isoDate(new Date(today.getTime()-90*86400000));
+    const to = year ? `${year}-12-31` : isoDate(new Date(today.getTime()+120*86400000));
+    const catalog = await apiFetch(TT_BASE,key,`/events?from=${from}&to=${to}`);
+    if (!catalog.ok) return {status:200,ttl:180,payload:providerNoData("pingpong",name,year,`Table Tennis API indisponible (HTTP ${catalog.status}).`)};
+    const id = tableTennisEventIdentity(catalog.body,name,year);
+    if (!id) return {status:200,ttl:900,payload:providerNoData("pingpong",name,year,"Événement introuvable ou ambigu dans Table Tennis API.")};
+    const response = await apiFetch(TT_BASE,key,`/events/${encodeURIComponent(id)}/matches`);
+    if (!response.ok) return {status:200,ttl:180,payload:providerNoData("pingpong",name,year,`Matchs indisponibles pour cette édition (HTTP ${response.status}).`)};
+    return {status:200,ttl:900,payload:projectTableTennisCompetitionMatches(response.body,id,name,year)};
+  } catch { return {status:200,ttl:180,payload:providerNoData("pingpong",name,year,"Connexion Table Tennis API momentanément indisponible.")}; }
+}
+
 async function sportsDbFootballOverview(depth: "fast" | "deep" = "fast") {
   const offsets = depth === "deep" ? [-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7] : [-1, 0, 1, 2];
   const settled = await Promise.allSettled(offsets.map(async (offset) => {
@@ -4084,6 +4148,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         matches:managed.matches},200,60);
     }
     if (sport === "foot") return cachedResponse(context,async () => footballCompetitionMatches(context.env,requestUrl));
+    if (sport === "darts") return cachedResponse(context,async () => dartsCompetitionMatches(context.env,requestUrl));
+    if (sport === "pingpong") return cachedResponse(context,async () => tableTennisCompetitionMatches(context.env,requestUrl));
     return json({available:false,sport,competition:str(requestUrl.searchParams.get("competition")),
       season:null,sourceName:null,sourceUrl:null,updatedAt:null,matches:[],
       reason:"Aucune rencontre structurée autorisée pour cette compétition."},200,120);

@@ -51,10 +51,17 @@ export function enrichChallengeReport(
  ];
  details.push(section('CONFIGURATION DE LA PARTIE',['PARAMÈTRE','VALEUR'],meta));
  for(const player of report.players){
-  const stored=historical.find(row=>String(row?.id||row?.pid||row?.playerId||'')===String(player.participantId||''))
-   ||historical.find(row=>String(row?.name||row?.playerName||'')===String(player.name))||{};
-  const all=allEntries.filter(e=>!player.participantId||String(e?.pid||'')===String(player.participantId));
-  const entries=all.length?all:(report.players.length===1?allEntries:[]);
+  const pid=String(player.participantId||'').trim();
+  const nickname=String(player.name||'').trim().toLowerCase();
+  const unambiguous=report.players.filter(p=>String(p.name||'').trim().toLowerCase()===nickname).length===1;
+  const storedById=pid?historical.find(row=>String(row?.id||row?.pid||row?.playerId||'').trim()===pid):undefined;
+  const storedByName=unambiguous?historical.filter(row=>String(row?.name||row?.playerName||'').trim().toLowerCase()===nickname&&
+    (!pid||!String(row?.id||row?.pid||row?.playerId||'').trim()||String(row?.id||row?.pid||row?.playerId).trim()===pid)):[];
+  const stored=storedById||(storedByName.length===1?storedByName[0]:{})||{};
+  // Historical logs without a pid are not attributable in multiplayer games.
+  // Never repeat every unlabelled dart under every player's report.
+  const byPid=pid?allEntries.filter(e=>String(e?.pid||'').trim()===pid):[];
+  const entries=byPid.length?byPid:(report.players.length===1?allEntries:[]);
   const storedHits=stored.hitSummary||{};
   const storedPositions=Array.isArray(stored.positionStats)?stored.positionStats:[];
   const storedExercise=stored.exerciseStats||stored.special?.exerciseStats||{};

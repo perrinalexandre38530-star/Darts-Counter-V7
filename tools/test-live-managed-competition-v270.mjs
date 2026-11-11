@@ -21,11 +21,13 @@ try {
   await compile('src/sportsLive/support.ts','support.mjs');
   await compile('src/sportsLive/officialStandings.ts','officialStandings.mjs');
   await compile('src/sportsLive/officialCompetitionMatches.ts','officialCompetitionMatches.mjs');
+  await compile('src/sportsLive/specialistCompetitionMatches.ts','specialistCompetitionMatches.mjs',[[/from ["']\.\/officialCompetitionMatches["']/,`from '${url('officialCompetitionMatches.mjs')}'`]]);
   await compile('src/sportsLive/officialCompetitionFeed.ts','officialCompetitionFeed.mjs',[[/from ["']\.\/support["']/,`from '${url('support.mjs')}'`],[/from ["']\.\/officialCompetitionMatches["']/,`from '${url('officialCompetitionMatches.mjs')}'`]]);
   await compile('functions/api/sports-live/[[path]].ts','route.mjs',[
     [/from ["']\.\.\/\.\.\/\.\.\/src\/sportsLive\/officialStandings["']/,`from '${url('officialStandings.mjs')}'`],
     [/from ["']\.\.\/\.\.\/\.\.\/src\/sportsLive\/officialCompetitionFeed["']/,`from '${url('officialCompetitionFeed.mjs')}'`],
     [/from ["']\.\.\/\.\.\/\.\.\/src\/sportsLive\/officialCompetitionMatches["']/,`from '${url('officialCompetitionMatches.mjs')}'`],
+    [/from ["']\.\.\/\.\.\/\.\.\/src\/sportsLive\/specialistCompetitionMatches["']/,`from '${url('specialistCompetitionMatches.mjs')}'`],
   ]);
   const {parseManagedCompetitionFeed,managedCompetitionKey}=await import(url('officialCompetitionFeed.mjs'));
   const {onRequestGet,onRequestPost}=await import(url('route.mjs'));

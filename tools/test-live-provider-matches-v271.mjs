@@ -20,6 +20,9 @@ async function compile(path,file,replaces=[]) {
 try {
   await compile('src/sportsLive/officialStandings.ts','standings.mjs');
   await compile('src/sportsLive/officialCompetitionMatches.ts','matches.mjs');
+  await compile('src/sportsLive/specialistCompetitionMatches.ts','specialist.mjs',[
+    [/from ["']\.\/officialCompetitionMatches["']/,`from '${href('matches.mjs')}'`],
+  ]);
   await compile('src/sportsLive/support.ts','support.mjs');
   await compile('src/sportsLive/officialCompetitionFeed.ts','feed.mjs',[
     [/from ["']\.\/support["']/,`from '${href('support.mjs')}'`],
@@ -29,6 +32,7 @@ try {
     [/from ["']\.\.\/\.\.\/\.\.\/src\/sportsLive\/officialStandings["']/,`from '${href('standings.mjs')}'`],
     [/from ["']\.\.\/\.\.\/\.\.\/src\/sportsLive\/officialCompetitionMatches["']/,`from '${href('matches.mjs')}'`],
     [/from ["']\.\.\/\.\.\/\.\.\/src\/sportsLive\/officialCompetitionFeed["']/,`from '${href('feed.mjs')}'`],
+    [/from ["']\.\.\/\.\.\/\.\.\/src\/sportsLive\/specialistCompetitionMatches["']/,`from '${href('specialist.mjs')}'`],
   ]);
   await compile('src/sportsLive/CompetitionDashboard.tsx','dashboard.mjs');
   const {projectFootballCompetitionMatches,verifiedKnockoutRounds}=await import(href('matches.mjs'));

@@ -37,7 +37,7 @@ assert.match(source, /setChaseRoundQueue\(lastUndo.chaseRoundQueue\)/,'Restore s
 assert.match(source, /setLastScoreToBeat\(lastUndo.lastScoreToBeat\)/,'Restore target');
 assert.match(source, /setEvents\(lastUndo.events\)/,'Restore visits');
 assert.match(source, /lastUndo,\s*startedAt:/,'Persist previous visit with unfinished draft');
-assert.match(source, /clearDartsMatchDraft\(modeDraftId\);\s*return;\s*}\s*writeDartsMatchDraft/, 'Clear stale draft after undoing first visit');
+assert.match(source, /clearDartsMatchDraft\(modeDraftId, getStorageUser\(\)\);\s*return;\s*}\s*writeDartsMatchDraft/, 'Clear stale draft after undoing first visit');
 assert.match(source, /disabled=\{!isValidFiveLivesUndo\(/,'Disable undo when invalid or before first visit');
 assert.match(source, /\.\.\.\(isChase \? \{ variantId: "chase" \} : \{\}\),\s*status: "finished"/, 'History V4 payload tags CHASE');
 assert.match(responsive, /msc-five-lives-undo-row/,'Undo is reachable beside keypad');

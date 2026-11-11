@@ -36,6 +36,7 @@ import {
   WAVE61_ENGINE_VERSION,
   type Wave61State,
 } from "../lib/gameEngines/wave61Engine";
+import { decideWave61SeriesLeg } from "../lib/gameEngines/wave61SeriesDecision";
 import {
   Meter,
   ModeEndPanel,
@@ -1401,20 +1402,27 @@ export default function Wave61SharedPlay(props: any) {
     if (isFinishedColorVariant(spec.id) && next.phase === "finished") {
       const series = greenRedSeriesSpec(config);
       if (series.enabled && !next.special?.troupeauSoloDefeat) {
-        const winnerKey = String(next.winnerTeamId ? `team:${next.winnerTeamId}` : (next.winnerId || ""));
         const winsKey = variantSeriesWinsKey(spec.id);
         const gameIndexKey = variantSeriesGameIndexKey(spec.id);
-        const previousWins = { ...((previous.special as any)?.[winsKey] || {}) };
-        if (winnerKey) previousWins[winnerKey] = Number(previousWins[winnerKey] || 0) + 1;
-        const matchWon = winnerKey && Number(previousWins[winnerKey] || 0) >= series.winsTo;
+        const decision = decideWave61SeriesLeg({
+          format: String(config?.modeOptions?.seriesFormat || "single"),
+          teamMode: config.participantMode === "teams",
+          teamByPlayer: config.teamByPlayer || {},
+          winnerId: next.winnerId,
+          winnerTeamId: next.winnerTeamId,
+          previousWins: (previous.special as any)?.[winsKey] || {},
+          gameIndex: (previous.special as any)?.[gameIndexKey] || 1,
+        });
+        const previousWins = decision.wins;
+        const winnerKey = decision.winnerKey;
+        const matchWon = decision.matchWon;
 
         if (!matchWon) {
           const fresh = createWave61State(players, spec.id, config);
           fresh.startedAt = previous.startedAt;
           fresh.visits = [...(next.visits || [])];
           fresh.statsByPlayer = JSON.parse(JSON.stringify(next.statsByPlayer || {}));
-          const completedGameIndex = Number((previous.special as any)?.[gameIndexKey] || 1);
-          const nextGameIndex = completedGameIndex + 1;
+          const { completedGameIndex, nextGameIndex } = decision;
           fresh.special = {
             ...carryVariantSeriesSpecial(fresh, next, spec.id),
             [winsKey]: previousWins,
@@ -1428,7 +1436,7 @@ export default function Wave61SharedPlay(props: any) {
               winsTo: series.winsTo,
               winnerKey,
               winnerId: next.winnerId || null,
-              winnerTeamId: next.winnerTeamId || null,
+              winnerTeamId: decision.winnerTeamId,
               winnerName: next.players.find((p:any)=>String(p.id)===String(next.winnerId||""))?.name || "",
               wins: { ...previousWins },
               teamMode: config.participantMode === "teams",

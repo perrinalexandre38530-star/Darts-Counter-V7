@@ -5,10 +5,12 @@
 import React from "react";
 import { useLang } from "../../contexts/LangContext";
 import { useAwenaOptional } from "../../awena/AwenaProvider";
-import ConfigTickerHeader from "../../components/ConfigTickerHeader";
 import BackDot from "../../components/BackDot";
 import PlayerPagedSelector from "../../components/PlayerPagedSelector";
 import TeamSelectorV2 from "../../components/TeamSelectorV2";
+import tickerArcade from "../../assets/tickers/ticker_arcade.png";
+import tickerPartieRapide from "../../assets/tickers/ticker_partie_rapide.png";
+import tickerQuickGame from "../../assets/tickers/ticker_quick_game.png";
 import { loadTeamsBySport } from "../../lib/petanqueTeamsStore";
 import { teamBaseId, nextTeamInstanceId } from "../../lib/teamSelectionInstances";
 import { findRememberedGeneratedTeam } from "../../lib/teamAutoShuffle";
@@ -83,6 +85,19 @@ function Choice<T extends string | number>({ options, value, onChange, label }: 
   return <div className="tossit-v2-choices" role="group" aria-label={label}>{options.map(item =>
     <button key={String(item.value)} type="button" aria-pressed={value === item.value} onClick={() => onChange(item.value)}>{item.text}</button>
   )}</div>;
+}
+
+function EntryTickerButton({ src, alt, active, onClick }: { src: string; alt: string; active: boolean; onClick: () => void }) {
+  return <button
+    type="button"
+    className="tossit-v2-entry-ticker"
+    data-active={active ? "true" : "false"}
+    aria-pressed={active}
+    aria-label={alt}
+    onClick={onClick}
+  >
+    <img src={src} alt={alt} draggable={false} />
+  </button>;
 }
 
 export default function TossitConfigV2({ go, store, mode, onModeChange, ticker, initialStyle = "quick", showModePicker = false }: Props) {
@@ -191,9 +206,15 @@ export default function TossitConfigV2({ go, store, mode, onModeChange, ticker, 
   const headerHelp = `${meta.description} ${tr("Les joueurs et équipes proviennent des profils locaux MSS.", "Players and teams come from MSS local profiles.")}`;
 
   return <main className={`tossit-page tossit-config-page tossit-v2-config tossit-v2-config--${configView}`}>
-    <ConfigTickerHeader src={ticker} alt={meta.title} height={130} sticky={false}
-      left={<BackDot color={ACCENT} size={40} onClick={() => go("games")} />}
-      right={<AwenaConfigMedallion mode={mode} help={headerHelp} />}/>
+    <div className="tossit-v2-ticker-shell">
+      <img className="tossit-v2-ticker-image" src={ticker} alt={meta.title} draggable={false} />
+      <div className="tossit-v2-ticker-side tossit-v2-ticker-side--left">
+        <BackDot color={ACCENT} size={40} onClick={() => go("games")} />
+      </div>
+      <div className="tossit-v2-ticker-side tossit-v2-ticker-side--right">
+        <AwenaConfigMedallion mode={mode} help={headerHelp} />
+      </div>
+    </div>
     <header className="tossit-v2-heading">
       <div className="tossit-v2-kicker">TOSSIT SCORING • {tr("CONFIGURATION", "CONFIGURATION")}</div>
       <h1>{meta.title}</h1>
@@ -211,13 +232,19 @@ export default function TossitConfigV2({ go, store, mode, onModeChange, ticker, 
 
     {canView(0) && <section className="tossit-v2-panel" style={SURFACE}>
       <h2><span>01</span>{tr("FORMAT DE PARTIE", "MATCH FORMAT")}</h2>
-      <div className="tossit-v2-presets">
-        <button type="button" className="tossit-v2-preset" aria-pressed={setupStyle === "quick"} onClick={() => setPreset("quick")}>
-          <span className="tossit-v2-preset-icon">⚡</span><strong>{tr("PARTIE RAPIDE", "QUICK GAME")}</strong><small>{tr("Préréglages courts et démarrage immédiat", "Short presets and fast start")}</small>
-        </button>
-        <button type="button" className="tossit-v2-preset" aria-pressed={setupStyle === "arcade"} onClick={() => setPreset("arcade")}>
-          <span className="tossit-v2-preset-icon">🏆</span><strong>ARCADE</strong><small>{tr("Plus de manches et de ventouses selon le mode", "More rounds and darts where supported")}</small>
-        </button>
+      <div className="tossit-v2-entry-tickers">
+        <EntryTickerButton
+          src={fr ? tickerPartieRapide : tickerQuickGame}
+          alt={tr("Partie rapide", "Quick game")}
+          active={setupStyle === "quick"}
+          onClick={() => setPreset("quick")}
+        />
+        <EntryTickerButton
+          src={tickerArcade}
+          alt="Arcade"
+          active={setupStyle === "arcade"}
+          onClick={() => setPreset("arcade")}
+        />
       </div>
       {showModePicker && <div className="tossit-v2-mode-picker">
         <h3>{tr("Choisir un des 18 modes", "Choose one of the 18 modes")}</h3>

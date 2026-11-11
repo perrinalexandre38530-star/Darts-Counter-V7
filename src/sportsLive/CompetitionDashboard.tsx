@@ -78,7 +78,7 @@ function VerifiedMatchCard({match}:{match:VerifiedCompetitionMatch}) {
   return <div className={`msc-cd-elim msc-cd-verified${match.status === "live" ? " is-live" : ""}`} aria-label={`${match.participantA} contre ${match.participantB} · ${state}`}>
     <div className="msc-cd-elim-names"><span>{match.participantA}</span><span>{match.participantB}</span></div>
     <div className="msc-cd-elim-info"><b>{hasScore ? `${match.scoreA} : ${match.scoreB}` : "– : –"}</b><small className="msc-cd-state" data-state={match.status}>{state}</small>
-      {match.startsAt ? <small>{timeLabel(match.startsAt)}</small> : null}</div>
+      {match.startsAt ? <small>{timeLabel(match.startsAt)}</small> : match.dateOnly ? <small>{dayLabel(match.dateOnly)}</small> : null}</div>
   </div>;
 }
 function VerifiedMatchList({items,limit,onMore}:{items:VerifiedCompetitionMatch[];limit:number;onMore:()=>void}) {
@@ -86,7 +86,7 @@ function VerifiedMatchList({items,limit,onMore}:{items:VerifiedCompetitionMatch[
   for (const match of items.slice(0,limit)) {
     const stage=verifiedStageLabel(match.stage,match.matchday,match.group);
     if (!grouped.has(stage)) grouped.set(stage,new Map());
-    const date=dayKey(match.startsAt);
+    const date=dayKey(match.startsAt || match.dateOnly);
     const bucket=grouped.get(stage)!;
     if (!bucket.has(date)) bucket.set(date,[]);
     bucket.get(date)!.push(match);
@@ -163,16 +163,21 @@ export default function CompetitionDashboard({ sport, competition, country, seas
   },[sport,competition,country,providerSeason,tab,chooseSeasonForTables,officialKey]);
   const verifiedData = verifiedMatches?.key === officialKey && verifiedMatches.data.available ? verifiedMatches.data : null;
   const verifiedLoading = verifiedPending === officialKey;
-  const supplierResults = React.useMemo(()=>verifiedData?.matches.filter(m=>m.status==="finished").sort((a,b)=>competitionDate(b.startsAt)-competitionDate(a.startsAt))||[],[verifiedData]);
-  const supplierFixtures = React.useMemo(()=>verifiedData?.matches.filter(m=>["scheduled","live","postponed","cancelled"].includes(m.status)
-    && (!m.startsAt || competitionDate(m.startsAt) >= Date.now()-24*60*60*1000))
-    .sort((a,b)=>(competitionDate(a.startsAt)||Number.MAX_SAFE_INTEGER)-(competitionDate(b.startsAt)||Number.MAX_SAFE_INTEGER))||[],[verifiedData]);
+  const supplierResults = React.useMemo(()=>verifiedData?.matches.filter(m=>m.status==="finished").sort((a,b)=>competitionDate(b.startsAt || b.dateOnly)-competitionDate(a.startsAt || a.dateOnly))||[],[verifiedData]);
+  const supplierFixtures = React.useMemo(()=>verifiedData?.matches.filter(m=>["scheduled","live"].includes(m.status)
+    && (!(m.startsAt || m.dateOnly) || competitionDate(m.startsAt || m.dateOnly) >= Date.now()-24*60*60*1000))
+    .sort((a,b)=>(competitionDate(a.startsAt || a.dateOnly)||Number.MAX_SAFE_INTEGER)-(competitionDate(b.startsAt || b.dateOnly)||Number.MAX_SAFE_INTEGER))||[],[verifiedData]);
   // A competition can have verified fixtures but no group standings.
   const providerBrackets = React.useMemo(()=>verifiedData?.matches ? verifiedKnockoutRounds(verifiedData.matches).map(round=>({
     ...round,matches:round.matches.map(m=>({...m,nextMatchId:null}))
   })) : [],[verifiedData]);
   const displayedBracket = officialBrackets || (providerBrackets.length ? providerBrackets : null);
   const displayedBracketSource = officialBrackets ? officialData : verifiedData;
+  // Score Center metrics must reflect the verified supplier matches when the
+  // provider loads; previously the headline stayed at 0 even with match data.
+  const resultCount = supplierResults.length || sortedResults.length;
+  const fixtureCount = supplierFixtures.length || sortedFixtures.length;
+  const bracketCount = displayedBracket?.length || brackets.length;
 
   const relatedNews = React.useMemo(() => {
     const comp = competitionTextKey(competition);
@@ -214,13 +219,18 @@ export default function CompetitionDashboard({ sport, competition, country, seas
     <div className="msc-cd-tabs" role="tablist" aria-label={`Rubriques ${competition}`}>
       {TABS.map((item) => <button key={item.key} type="button" role="tab" aria-selected={tab === item.key} className={`msc-cd-tab${tab === item.key ? " is-active" : ""}`} onClick={() => setTab(item.key)}>
         <span aria-hidden="true">{item.icon}</span>{item.label}
-        {item.key === "results" && results.length ? <small>{results.length}</small> : null}
-        {item.key === "fixtures" && sortedFixtures.length ? <small>{sortedFixtures.length}</small> : null}
+        {item.key === "results" && resultCount ? <small>{resultCount}</small> : null}
+        {item.key === "fixtures" && fixtureCount ? <small>{fixtureCount}</small> : null}
       </button>)}
     </div>
     <div className="msc-cd-context"><strong>{country}</strong><span>›</span><span>{season === "__all__" ? "Toutes saisons" : season}</span></div>
+    {verifiedData?.available && verifiedData.matches.length ? <div className="msc-cd-context" role="status">
+      <strong>Matchs vérifiés · {verifiedData.sourceName}</strong>
+      <span>{verifiedData.matches.length} rencontres disponibles</span>
+      {verifiedData.sourceUrl ? <a href={verifiedData.sourceUrl} target="_blank" rel="noopener noreferrer">Voir la source ↗</a> : null}
+    </div> : null}
     {tab === "summary" ? <div className="msc-cd-panel">
-      <div className="msc-cd-metrics"><div><b>{sortedResults.length}</b><span>Résultats connus</span></div><div><b>{sortedFixtures.length}</b><span>Matchs programmés</span></div><div><b>{brackets.length}</b><span>Tours éliminatoires</span></div></div>
+      <div className="msc-cd-metrics"><div><b>{resultCount}</b><span>Résultats connus</span></div><div><b>{fixtureCount}</b><span>Matchs programmés</span></div><div><b>{bracketCount}</b><span>Tours éliminatoires</span></div></div>
       {officialSource ? <a className="msc-cd-source" href={officialSource} target="_blank" rel="noopener noreferrer">Consulter la source du match ↗</a> : null}
       <div className="msc-cd-section-top"><h3>Prochaines rencontres</h3><button type="button" onClick={() => setTab("fixtures")}>Tout voir ›</button></div>
       {verifiedLoading && !verifiedData ? <p className="msc-cd-caution" role="status">Recherche des rencontres du fournisseur…</p> : null}
@@ -281,7 +291,7 @@ export default function CompetitionDashboard({ sport, competition, country, seas
             <div className="msc-cd-elim-names"><span>{match.participantA}</span><span>{match.participantB}</span></div>
             <div className="msc-cd-elim-info"><b>{match.scoreA === null || match.scoreB === null ? "– : –" : `${match.scoreA} : ${match.scoreB}`}</b>
               <small>{match.status === "finished" ? "TERMINÉ" : match.status === "live" ? "EN DIRECT" : match.status === "scheduled" ? "À VENIR" : "STATUT NON CONFIRMÉ"}</small>
-              {match.startsAt ? <small>{timeLabel(match.startsAt)}</small> : null}
+              {match.startsAt ? <small>{timeLabel(match.startsAt)}</small> : match.dateOnly ? <small>{dayLabel(match.dateOnly)}</small> : null}
               {match.nextMatchId ? <small>Suite → match {match.nextMatchId}</small> : null}
             </div>
           </div>)}

@@ -3,6 +3,7 @@ import { BottomNavIcon } from '../BottomNav';
 import { loadChallengeArchive, challengeArchiveItems, summarizeChallengeArchive, type ChallengeArchiveItem } from '../../lib/challengeArchive';
 import {buildChallengeStats,buildChallengeRecordDetails} from '../../lib/challengeInsightMetrics';
 import {buildChallengeImpactDetails,buildChallengeFormComparison} from '../../lib/challengePerformanceDetails';
+import {buildChallengeArchiveReliability} from '../../lib/challengeArchiveReliability';
 import {ChallengeModeDiagnosticsUI} from './ChallengeModeDiagnosticsUI';
 import './ChallengeInsightsPage.css';
 
@@ -77,6 +78,7 @@ export function ChallengeInsightsPage({modeId,modeTitle,playerId,playerName,init
  const stats=React.useMemo(()=>buildChallengeStats(filtered),[filtered]);
  const recordDetails=React.useMemo(()=>selectedRecordsGroup?buildChallengeRecordDetails(all,selectedRecordsGroup.key,selectedRecordsGroup.goal):null,[all,selectedRecordsGroup]);
  const impacts=React.useMemo(()=>buildChallengeImpactDetails(filtered),[filtered]);
+ const reliability=React.useMemo(()=>buildChallengeArchiveReliability(tab==='stats'?filtered:all.filter(row=>row.configKey===selectedRecordsGroup?.key)),[tab,filtered,all,selectedRecordsGroup?.key]);
  const form=React.useMemo(()=>{const group=summarizeChallengeArchive(filtered).byConfig;return group.length===1?buildChallengeFormComparison(filtered,group[0]!.goal):null},[filtered]);
  const mixedConfigs=config==='all'&&stats.configurations.length>1;
  const visibleRecord=recordDetails?.best||null;
@@ -106,6 +108,24 @@ export function ChallengeInsightsPage({modeId,modeTitle,playerId,playerName,init
       {configGroups.map(group=><option value={group.key} key={group.key}>{group.label}</option>)}
      </select>
     </label>}
+    {!busy&&!error&&(reliability.finished>0||reliability.inProgress>0)&&<section className="mss-ci-reliability" aria-label="Fiabilité des données CHALLENGE">
+      <div className="mss-ci-reliability-heading"><b>FIABILITÉ DES DONNÉES</b><small>Contrôle en lecture seule · {tab==='records'?'configuration du record':'filtre sélectionné'}</small></div>
+      <div className="mss-ci-reliability-tiles">
+       <div><strong>{reliability.withJournal}</strong><span>JOURNAL DÉTAILLÉ</span></div>
+       <div><strong>{reliability.summaryOnly}</strong><span>RÉSUMÉ SEUL</span></div>
+       <div><strong>{reliability.withoutDetail}</strong><span>SANS DÉTAIL</span></div>
+       <div><strong>{reliability.inProgress}</strong><span>EN COURS · EXCLUES</span></div>
+      </div>
+      {(reliability.unknownConfig>0||reliability.missingDartsForMinimum>0||reliability.missingScores>0||reliability.dartCountConflicts>0||reliability.missingDates>0)&&<p className="mss-ci-reliability-note">
+       {[
+        reliability.unknownConfig?`${reliability.unknownConfig} configuration(s) non documentée(s)`:null,
+        reliability.missingScores?`${reliability.missingScores} partie(s) sans score exploitable`:null,
+        reliability.missingDartsForMinimum?`${reliability.missingDartsForMinimum} parcours sans mesure de fléchettes pour homologuer un record`:null,
+        reliability.dartCountConflicts?`${reliability.dartCountConflicts} écart(s) entre compteur de fléchettes et journal`:null,
+        reliability.missingDates?`${reliability.missingDates} partie(s) sans date exploitable`:null,
+       ].filter(Boolean).join(' · ')}. Les parties restent conservées sans correction automatique.
+      </p>}
+     </section>}
     {busy&&<p role="status" className="mss-ci-empty">Chargement des résultats enregistrés dans History V4…</p>}
     {error&&<div className="mss-ci-empty" role="alert">Impossible de charger les résultats : {error} <button type="button" onClick={()=>setRefreshId(x=>x+1)}>RÉESSAYER</button></div>}
     {!busy&&!error&&(tab==='stats'?<>
@@ -119,7 +139,7 @@ export function ChallengeInsightsPage({modeId,modeTitle,playerId,playerName,init
      {stats.played? <>
       <div className="mss-ci-metrics"><div><small>SCORE MOYEN</small><b>{num(stats.averageScore!,1)} pts</b></div><div><small>FLÉCHETTES / PARTIE</small><b>{num(stats.averageDarts!,1)}</b></div><div><small>TOUCHES VALIDES / PARTIE</small><b>{num(stats.averageSuccessful!,1)}</b></div><div><small>MEILLEURE SÉRIE</small><b>{stats.bestStreak}</b></div></div>
       {mixedConfigs&&<p className="mss-ci-hint">Les scores de configurations différentes ne sont pas directement comparables. Sélectionne une configuration pour analyser l’évolution des points.</p>}
-      {!mixedConfigs&&<TimeChart title="SCORE · ÉVOLUTION DES 30 DERNIÈRES PARTIES" values={stats.history.map(row=>row.score)} labels={stats.history.map(row=>frenchDate(row.playedAt))} suffix=" pts"/>}
+      {!mixedConfigs&&<TimeChart title="SCORE · ÉVOLUTION DES 30 DERNIÈRES PARTIES" values={stats.history.filter(row=>row.scoreKnown).map(row=>row.score)} labels={stats.history.filter(row=>row.scoreKnown).map(row=>frenchDate(row.playedAt))} suffix=" pts"/>}
       <div className="mss-ci-chart-pair"><TimeChart title="PRÉCISION · ÉVOLUTION" values={stats.history.map(row=>row.accuracy)} labels={stats.history.map(row=>frenchDate(row.playedAt))} suffix=" %"/><TimeChart title="FLÉCHETTES PAR PARTIE" values={stats.history.map(row=>row.darts)} labels={stats.history.map(row=>frenchDate(row.playedAt))} suffix=" fl." higherBetter={false}/></div>
       {form&&<div className="mss-ci-form"><div className="mss-ci-chart-heading"><b>FORME RÉCENTE · 5 PARTIES VS 5 PRÉCÉDENTES</b><small>MÊME CONFIGURATION UNIQUEMENT</small></div><div className="mss-ci-form-grid"><div><small>PERFORMANCE MOYENNE · {form.goal==='min'?'MOINS = MIEUX':'PLUS = MIEUX'}</small><strong>{num(form.latest,1)} {form.unit}</strong><span>Avant : {num(form.previous,1)} {form.unit}</span><em className={form.delta===0?'flat':form.improved?'up':'down'}>{form.delta>0?'+':''}{num(form.delta,1)} {form.unit} {form.delta===0?'stable':form.improved?'· PROGRÈS':'· EN RECUL'}</em></div><div><small>PRÉCISION MOYENNE</small><strong>{num(form.accuracyLatest,1)} %</strong><span>Avant : {num(form.accuracyPrevious,1)} %</span><em className={form.accuracyDelta===0?'flat':form.accuracyDelta>0?'up':'down'}>{form.accuracyDelta>0?'+':''}{num(form.accuracyDelta,1)} point{Math.abs(form.accuracyDelta)>1?'s':''}</em></div></div></div>}
       {mixedConfigs?<p className="mss-ci-hint">Sélectionne une configuration précise pour obtenir les taux de réussite par objectif et par volée. Deux parcours différents ne sont pas additionnés artificiellement.</p>:<ChallengeModeDiagnosticsUI modeId={modeId} items={filtered} view="stats"/>}
@@ -131,7 +151,7 @@ export function ChallengeInsightsPage({modeId,modeTitle,playerId,playerName,init
       </>:<p className="mss-ci-hint">Le détail des zones G/P/D/T et des numéros apparaîtra lorsque les impacts de ces parties seront disponibles dans leur journal ou leur récapitulatif. Aucun secteur n'est estimé.</p>}
       {config==='all'&&stats.configurations.length>1&&<Bars title="PARTIES TERMINÉES PAR CONFIGURATION" values={stats.configurations.slice(0,12).map(row=>({label:row.label,value:row.count}))}/>}
       <h3 className="mss-ci-section-title">JOURNAL DES DERNIÈRES PERFORMANCES</h3>
-      <div className="mss-ci-results">{stats.recent.map(row=><div key={row.id}><span><b>{frenchDate(row.playedAt)}</b><small>{row.configLabel}</small></span><strong>{num(row.score)} pts</strong><small>{row.darts} fl. · {num(row.accuracy,1)} % · série {row.bestStreak}</small></div>)}</div>
+      <div className="mss-ci-results">{stats.recent.map(row=><div key={row.id}><span><b>{frenchDate(row.playedAt)}</b><small>{row.configLabel}</small></span><strong>{row.scoreKnown===false?'—':`${num(row.score)} pts`}</strong><small>{row.darts} fl. · {num(row.accuracy,1)} % · série {row.bestStreak}</small></div>)}</div>
      </>:<div className="mss-ci-zero mss-ci-zero--stats"><BottomNavIcon name="stats" size={32}/><h3>AUCUNE PERFORMANCE ENREGISTRÉE</h3><p>Après ta première partie terminée, tu retrouveras ici les courbes de précision, les scores par partie, les fléchettes jouées et les impacts réellement documentés.</p></div>}
     </>:<>
      <div className="mss-ci-view-intro mss-ci-view-intro--records"><BottomNavIcon name="tournaments" size={26}/><div><b>TABLEAU DES RECORDS</b><span>Chaque record est calculé uniquement sur des parties terminées avec exactement la même configuration.</span></div></div>
@@ -156,6 +176,7 @@ export function ChallengeInsightsPage({modeId,modeTitle,playerId,playerName,init
       <h3 className="mss-ci-section-title">DATES D’AMÉLIORATION DES RECORDS</h3>
       <div className="mss-ci-breakthroughs">{recordDetails.breakthroughs.map(row=><div key={row.id}><span><b>{frenchDate(row.playedAt)}</b><small>{row.first?'Premier record enregistré':`Amélioration de ${num(row.gain)} ${recordUnit}`}</small></span><strong>{num(row.value)} {recordUnit}</strong></div>)}</div>
       {recordDetails.ignoredZeroDarts>0&&<p className="mss-ci-hint">{recordDetails.ignoredZeroDarts} ancienne(s) partie(s) sans nombre de fléchettes exploitable sont exclues des records au minimum de fléchettes.</p>}
+      {recordDetails.ignoredUnknownScores>0&&<p className="mss-ci-hint">{recordDetails.ignoredUnknownScores} ancienne(s) partie(s) sans score documenté sont conservées dans le bilan, mais ne créent pas de faux records à zéro.</p>}
      </>:<div className="mss-ci-zero mss-ci-zero--records"><BottomNavIcon name="tournaments" size={34}/><h3>AUCUN RECORD HOMOLOGUÉ</h3><p>{selectedRecordsGroup?'Les parties terminées sans mesure exploitable ne permettent pas de déterminer un record de fléchettes.':'Termine un challenge pour établir ton premier record personnel. Les meilleurs résultats seront ensuite comparés uniquement à configuration équivalente.'}</p></div>}
      {configGroups.length>1&&<><h3 className="mss-ci-section-title">PALMARÈS PAR CONFIGURATION</h3><div className="mss-ci-records">{configGroups.map(group=><button type="button" key={group.key} className={selectedRecordsGroup?.key===group.key?'selected':''} onClick={()=>setRecordKey(group.key)}><span><b>{group.label}</b><small>{group.plays} partie{group.plays>1?'s':''}</small></span><span><small>{group.goal==='min'?'MIN. FLÉCHETTES':'MAX. POINTS'}</small><strong>{group.goal==='min'&&!group.best.darts?'—':num(measure(group.best,group.goal==='min'))} {group.goal==='min'?'FL.':'PTS'}</strong></span></button>)}</div></>}
     </>)}

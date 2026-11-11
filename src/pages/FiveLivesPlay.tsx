@@ -22,6 +22,7 @@ import tickerFiveLives from "../assets/tickers/ticker_five_lives.png";
 import tickerChaseFr from "../assets/tickers/ticker_chase_fr.webp";
 import tickerChaseEn from "../assets/tickers/ticker_chase_en.webp";
 import { readDartsMatchDraft, writeDartsMatchDraft, clearDartsMatchDraft } from "../lib/dartsMatchDrafts";
+import { getStorageUser } from "../lib/storage";
 import { createConfirmedHistorySaveGate } from "../lib/confirmedHistorySave";
 import { captureFiveLivesUndo, isValidFiveLivesUndo, type FiveLivesUndoState } from "../lib/fiveLivesUndo";
 import type { FiveLivesConfig, FiveLivesPlayerLite } from "./FiveLivesConfig";
@@ -871,7 +872,7 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
   const modeDraftId = isChase ? "chase" : "five_lives";
   const restored = React.useMemo(() => {
     if (!resumeDraft) return null;
-    const record = readDartsMatchDraft(modeDraftId);
+    const record = readDartsMatchDraft(modeDraftId, getStorageUser());
     const s: any = record?.snapshot;
     if (!s || record?.config?.id !== config?.id || !Array.isArray(s.players) || !Array.isArray(s.events)
       || s.players.length !== (config?.players || []).length || s.players.some((p: any) =>
@@ -1255,7 +1256,7 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
         players: updated, turnIndex, chaseRoundQueue, lastScoreToBeat: score,
         currentThrow: [], mult: 1, events: nextEvents, lastUndo: null,
         startedAt: startedAtRef.current, finishedMatch: match,
-      });
+      }, getStorageUser());
       setWinnerId(winId);
       setFinalMatch(match);
       setEndOpen(true);
@@ -1340,7 +1341,7 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
     }));
     setSaveStatus(confirmed ? "saved" : "failed");
     if (confirmed) {
-      clearDartsMatchDraft(modeDraftId);
+      clearDartsMatchDraft(modeDraftId, getStorageUser());
       if (openHistory) {
         setEndOpen(false);
         go("statsHub", { tab: "history" });
@@ -1367,19 +1368,19 @@ export default function FiveLivesPlay({ go, config, resumeDraft = false, onFinis
   React.useEffect(() => {
     // Garder le dernier brouillon tant que la transaction finale n'est pas confirmée.
     if (winnerId || finalMatch) {
-      if (saveStatus === "saved") clearDartsMatchDraft(modeDraftId);
+      if (saveStatus === "saved") clearDartsMatchDraft(modeDraftId, getStorageUser());
       return;
     }
     // Annuler la première volée rend un match entièrement vierge : supprimer
     // aussi le brouillon, sinon une ancienne volée réapparaît au prochain lancement.
     if (!events.length && !currentThrow.length) {
-      clearDartsMatchDraft(modeDraftId);
+      clearDartsMatchDraft(modeDraftId, getStorageUser());
       return;
     }
     writeDartsMatchDraft(modeDraftId, config as any, {
       players, turnIndex, chaseRoundQueue, lastScoreToBeat, currentThrow, mult, events, lastUndo,
       startedAt: startedAtRef.current,
-    });
+    }, getStorageUser());
   }, [modeDraftId, config, players, turnIndex, chaseRoundQueue, lastScoreToBeat, currentThrow, mult, events, lastUndo, winnerId, finalMatch, saveStatus]);
 
   const liveAvg = activePlayer?.stats?.visits

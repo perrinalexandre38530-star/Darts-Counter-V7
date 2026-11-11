@@ -1,5 +1,5 @@
 // @ts-nocheck
-import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
+import DartsQuickHeader, { DartsQuickIntro } from "../components/DartsQuickHeader";
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 
@@ -105,7 +105,7 @@ export default function QuickPartyModeConfig({ modeId, title, params, onBack, on
     if (layout === "solo" && !spec.allowSolo) setLayout("duel");
   }, [layout, spec]);
 
-  const block: React.CSSProperties = { border: "1px solid rgba(255,255,255,.10)", borderRadius: 18, background: "rgba(255,255,255,.035)", padding: 12, display: "grid", gap: 9 };
+  const block: React.CSSProperties = { border: "1px solid rgba(255,255,255,.10)", borderRadius: 18, background: "rgba(10,12,24,.94)", padding: 12, display: "grid", gap: 9 };
   const label: React.CSSProperties = { fontSize: 10, opacity: .55, fontWeight: 950, letterSpacing: .7 };
   const chip = (active: boolean, color = accent): React.CSSProperties => ({ borderRadius: 12, border: `1px solid ${active ? color : "rgba(255,255,255,.13)"}`, background: active ? `${color}22` : "rgba(255,255,255,.035)", color: active ? color : "rgba(255,255,255,.78)", fontWeight: 950, minHeight: 40, padding: "8px 12px", cursor: "pointer" });
 
@@ -217,11 +217,9 @@ export default function QuickPartyModeConfig({ modeId, title, params, onBack, on
 
   return (
     <div style={{ color: "#fff", minHeight: "100%", padding: "10px 12px 28px", display: "grid", gap: 12, alignContent: "start" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "42px 1fr 42px", alignItems: "center" }}>
-        <button type="button" onClick={onBack} style={{ width: 40, height: 40, borderRadius: 999, border: "1px solid rgba(255,255,255,.15)", background: "rgba(255,255,255,.05)", color: "#fff", fontSize: 22 }}>‹</button>
-        <div style={{ textAlign: "center" }}><div style={{ fontWeight: 1000, fontSize: 22 }}>⚡ PARTIE RAPIDE {title || spec.title}</div><div style={{ fontSize: 10, opacity: .58, fontWeight: 850 }}>SANS PROFIL · SON COUPÉ · RÉGLAGES ESSENTIELS</div></div><div />
-      </div>
-      <div style={{ maxWidth: 900, width: "100%", margin: "0 auto", display: "grid", gap: 10 }}>
+      <DartsQuickHeader modeId={modeId} title={title || spec.title} onBack={onBack} />
+      <div style={{ maxWidth: 760, width: "100%", margin: "0 auto", display: "grid", gap: 12 }}>
+        <DartsQuickIntro title={title || spec.title} />
         <div style={block}>
           <div style={label}>FORMAT JOUEURS</div>
           <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(4, availableLayouts.length)},1fr)`, gap: 7 }}>{availableLayouts.map(([key,text])=><button key={key} type="button" onClick={()=>setLayout(key)} style={chip(layout===key,"#52f5b2")}>{text}</button>)}</div>
@@ -229,8 +227,8 @@ export default function QuickPartyModeConfig({ modeId, title, params, onBack, on
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 7 }}>{Array.from({length:playerCount},(_,i)=><label key={i} style={{display:"grid",gap:4}}><span style={{fontSize:9,opacity:.48,fontWeight:900}}>{layout==="teams"?`ÉQUIPE ${i<2?1:2} · J${i+1}`:`J${i+1}`}</span><input value={names[i]} onFocus={e=>e.currentTarget.select()} onChange={e=>updateName(i,e.target.value)} placeholder={`J${i+1}`} maxLength={22} style={{borderRadius:11,border:"1px solid rgba(255,255,255,.12)",background:"rgba(0,0,0,.24)",color:"#fff",padding:"10px 11px",fontWeight:850,outline:"none"}} /></label>)}</div>
         </div>
         {modeOptions}
-        <div style={{borderRadius:16,border:"1px solid #52f5b244",background:"#52f5b20d",padding:10,textAlign:"center",fontSize:12,fontWeight:900}}>⚡ {playerCount} joueur{playerCount>1?"s":""} · profils temporaires · sauvegarde dans PARTIES RAPIDES</div>
-        <NativeStartOrderConfig />
+        <div style={{borderRadius:16,border:"1px solid #52f5b244",background:"#52f5b20d",padding:10,textAlign:"center",fontSize:12,fontWeight:900}}>⚡ {playerCount} joueur{playerCount>1?"s":""} · participants temporaires · aucune modification des profils</div>
+        
         <button type="button" onClick={start} style={{minHeight:56,border:"1px solid #52f5b2aa",borderRadius:17,background:"linear-gradient(180deg,#52f5b23a,#52f5b214)",color:"#baffdf",fontWeight:1000,fontSize:18,letterSpacing:.6,cursor:"pointer"}}>JOUER</button>
       </div>
     </div>

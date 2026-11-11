@@ -989,7 +989,8 @@ const startRandom =
     const ids: string[] = Array.isArray(cfg.selectedIds) ? cfg.selectedIds : [];
     if (ids.length) {
       return ids.map((id, i) => {
-        const p = profilesById[id];
+        const quick = (Array.isArray((cfg as any).quickPlayers) ? (cfg as any).quickPlayers : []).find((row: any) => String(row?.id) === String(id));
+        const p = quick || profilesById[id];
         return {
           id,
           name: safeStr(p?.name, `Joueur ${i + 1}`),
@@ -1001,7 +1002,7 @@ const startRandom =
       { id: "p1", name: "Joueur 1", avatar: null },
       { id: "p2", name: "Joueur 2", avatar: null },
     ];
-  }, [cfg.selectedIds, profilesById]);
+  }, [cfg.selectedIds, (cfg as any).quickPlayers, profilesById]);
 
   // Alias compat : ancien code attendait `players`
   const players = roster;

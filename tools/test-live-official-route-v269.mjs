@@ -12,6 +12,7 @@ const helper = resolve(import.meta.dirname, "../src/sportsLive/officialStandings
 const feed = resolve(import.meta.dirname, "../src/sportsLive/officialCompetitionFeed.ts");
 const support = resolve(import.meta.dirname, "../src/sportsLive/support.ts");
 const matchHelper = resolve(import.meta.dirname, "../src/sportsLive/officialCompetitionMatches.ts");
+const specialistHelper = resolve(import.meta.dirname, "../src/sportsLive/specialistCompetitionMatches.ts");
 const src = await readFile(base, "utf8");
 const out = ts.transpileModule(src, { compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext} }).outputText
   .replace(/from ["']\.\.\/\.\.\/\.\.\/src\/sportsLive\/officialStandings["']/, `from "${pathToFileURL(helper).href}"`);
@@ -23,6 +24,9 @@ try {
   await writeFile(join(dir,"support.mjs"),supportJs);
   const matchJs = ts.transpileModule(await readFile(matchHelper,"utf8"), { compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext} }).outputText;
   await writeFile(join(dir,"officialCompetitionMatches.mjs"),matchJs);
+  const specialistJs = ts.transpileModule(await readFile(specialistHelper,"utf8"), { compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext} }).outputText
+    .replace(/from ["']\.\/officialCompetitionMatches["']/, `from "${pathToFileURL(join(dir,"officialCompetitionMatches.mjs")).href}"`);
+  await writeFile(join(dir,"specialistCompetitionMatches.mjs"),specialistJs);
   const feedJs = ts.transpileModule(await readFile(feed,"utf8"), { compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext} }).outputText
     .replace(/from ["']\.\/support["']/, `from "${pathToFileURL(join(dir,"support.mjs")).href}"`)
     .replace(/from ["']\.\/officialCompetitionMatches["']/, `from "${pathToFileURL(join(dir,"officialCompetitionMatches.mjs")).href}"`);
@@ -30,7 +34,8 @@ try {
   const file = join(dir,"route.mjs");
   await writeFile(file,out.replace(pathToFileURL(helper).href, pathToFileURL(join(dir,"officialStandings.mjs")).href)
     .replace(/from ["']\.\.\/\.\.\/\.\.\/src\/sportsLive\/officialCompetitionFeed["']/, `from "${pathToFileURL(join(dir,"officialCompetitionFeed.mjs")).href}"`)
-    .replace(/from ["']\.\.\/\.\.\/\.\.\/src\/sportsLive\/officialCompetitionMatches["']/, `from "${pathToFileURL(join(dir,"officialCompetitionMatches.mjs")).href}"`));
+    .replace(/from ["']\.\.\/\.\.\/\.\.\/src\/sportsLive\/officialCompetitionMatches["']/, `from "${pathToFileURL(join(dir,"officialCompetitionMatches.mjs")).href}"`)
+    .replace(/from ["']\.\.\/\.\.\/\.\.\/src\/sportsLive\/specialistCompetitionMatches["']/, `from "${pathToFileURL(join(dir,"specialistCompetitionMatches.mjs")).href}"`));
   const { onRequestGet } = await import(pathToFileURL(file).href);
   const responseBody = {
     competition:{name:"Ligue 1"},season:{startDate:"2025-08-01"},

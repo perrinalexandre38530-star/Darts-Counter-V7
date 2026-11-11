@@ -33,9 +33,11 @@ assert.match(app, /return upsertPromise;/,'App renvoie le résultat du commit Hi
 assert.match(source, /confirmPersistence: true/, 'ne publie pas le miroir avant le commit');
 assert.match(source, /const confirmed = await saveGateRef\.current\.save/, 'await confirmation');
 assert.match(source, /setSaveStatus\(confirmed \? "saved" : "failed"\)/);
-assert.match(source, /if \(saveStatus === "saved"\) \{ clearDartsMatchDraft\(modeDraftId\); return; \}/, 'ne nettoie le brouillon qu’après succès');
+assert.match(source, /if \(saveStatus === "saved"\) clearDartsMatchDraft\(modeDraftId\)/, 'ne nettoie le brouillon qu’après succès');
+assert.match(source, /if \(confirmed\) \{\s*clearDartsMatchDraft\(modeDraftId\)/, 'le résultat final est effacé seulement après confirmation');
 assert.match(source, /finishedMatch: match/, 'résultat final sauvegardé en local avant History');
 assert.match(source, /React\.useState<any>\(restored\?\.finishedMatch \?\? null\)/, 'résultat récupéré après fermeture');
 assert.match(source, /saveStatus === "failed" \? "RÉESSAYER LA SAUVEGARDE"/, 'bouton de réessai visible');
-assert.match(source, /autoSaveAttemptedIdRef\.current === matchId/, 'aucune boucle de retry automatique');
+assert.match(source, /if \(finalMatch\) void saveFinalResult\(false\)/, 'autosave du résultat final');
+assert.match(source, /\}, \[finalMatch\]\)/, 'pas de boucle de retry automatique sur erreur');
 console.log('PASS V219 — une écriture en vol, confirmation IDB, échecs et réessai, journal final local récupérable.');

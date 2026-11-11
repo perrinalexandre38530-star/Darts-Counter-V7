@@ -17,6 +17,7 @@ import DartsModeFamilyBridge from "../components/DartsModeFamilyBridge";
 import DartsResumeDraftCard from "../components/DartsResumeDraftCard";
 import DartsPendingFinalCard from "../components/DartsPendingFinalCard";
 import { clearDartsMatchDraft } from "../lib/dartsMatchDrafts";
+import { getStorageUser } from "../lib/storage";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import Section from "../components/Section";
 import { useTheme } from "../contexts/ThemeContext";
@@ -244,7 +245,7 @@ export default function HalveItConfig(props: any) {
       rounding: isSplitScore ? "floor" : rounding,
       randomOrder, scoreInputMethod,
     };
-    clearDartsMatchDraft(isSplitScore ? "split_score" : "halve_it");
+    clearDartsMatchDraft(isSplitScore ? "split_score" : "halve_it", getStorageUser());
     try { recordProfileUsageForMode(isSplitScore ? "split_score" : "halve_it", orderedIds); } catch {}
     if (typeof go === "function") go("halve_it_play", { ...payload, variantId: isSplitScore ? "split_score" : undefined });
   }

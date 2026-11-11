@@ -5,6 +5,7 @@ import NativeStartOrderConfig from '../../components/NativeStartOrderConfig';
 // Config generique pour les nouveaux modes (design proche configs existantes)
 // =============================================================
 import React from "react";
+import DartsQuickHeader, { DartsQuickIntro } from "../../components/DartsQuickHeader";
 import InfoDot from "../../components/InfoDot";
 import { getModeById } from "../../lib/dartsModesCatalog";
 import { recordProfileUsageForMode, sortProfilesByModeUsage } from "../../lib/profileUsage";
@@ -131,8 +132,9 @@ export default function DartsModeConfig({ store, go, gameId, params }) {
       ...(mode?.targetScore != null ? [{label:"OBJECTIF",value:targetScore,change:setTargetScore,min:1,max:9999}] : []),
     ];
     return <div className="msc-mode-config msc-mode-quick" style={{minHeight:"100dvh",background:"#060811",color:"white",padding:"12px 12px 96px"}}>
+      <DartsQuickHeader modeId={gameId} title={mode?.label||gameId} onBack={()=>go("games", { gamesView: "all" })} />
       <div style={{maxWidth:760,margin:"auto",display:"grid",gap:12}}>
-        <div style={smallCard}><button onClick={()=>go("games", { gamesView: "all" })} style={{background:"transparent",border:0,color:"#f3c76a",fontWeight:900}}>← RETOUR</button><h2 style={{margin:"8px 0",color:"#f3c76a"}}>{mode?.label||gameId}</h2><strong>PARTIE RAPIDE</strong><p style={{fontSize:12,color:"#aeb5c8"}}>Noms libres · sans profil · règles essentielles</p></div>
+        <DartsQuickIntro title={mode?.label||gameId} />
         <section style={smallCard}><b style={{color:"#f3c76a"}}>JOUEURS</b><div style={{display:"flex",gap:8,margin:"10px 0"}}>{[1,2,3,4].map(n=><button key={n} onClick={()=>setQuickCount(n)} style={{padding:"9px 13px",borderRadius:12,border:`1px solid ${quickCount===n?"#f3c76a":"#444"}`,background:quickCount===n?"#514022":"#151722",color:"white"}}>{n===1?"SOLO":n===2?"DUEL":`${n} JOUEURS`}</button>)}</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(145px,1fr))",gap:9}}>{quickNames.slice(0,quickCount).map((name,i)=><label key={i} style={{fontSize:11}}>JOUEUR {i+1}<input aria-label={`Nom du joueur ${i+1}`} maxLength={32} value={name} onChange={e=>setQuickNames(p=>p.map((v,j)=>i===j?e.target.value:v))} style={quickInput}/></label>)}</div></section>
         <section style={smallCard}><b style={{color:"#f3c76a"}}>RÈGLES DU JEU</b><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(145px,1fr))",gap:10,marginTop:10}}>{fields.map((f,i)=><label key={i} style={{fontSize:11,fontWeight:900}}>{f.label}<input type="number" min={f.min} max={f.max} value={f.value} onChange={e=>f.change(Number(e.target.value))} style={quickInput}/></label>)}{isTerritories&&<label style={{fontSize:11}}>CARTE<select value={mapId} onChange={e=>setMapId(e.target.value)} style={quickInput}>{TERRITORIES_MAPS.map(m=><option value={m.id} key={m.id}>{m.label}</option>)}</select></label>}</div></section>
         <button onClick={start} style={{padding:16,borderRadius:14,background:"#4a3818",color:"white",fontSize:18,fontWeight:1000,border:"1px solid #f3c76a"}}>JOUER</button>

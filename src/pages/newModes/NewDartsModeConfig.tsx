@@ -1,6 +1,7 @@
 // @ts-nocheck
 import NativeStartOrderConfig from "../../components/NativeStartOrderConfig";
 import React from "react";
+import DartsQuickHeader, { DartsQuickIntro } from "../../components/DartsQuickHeader";
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
 import BotPagedSelector from "../../components/BotPagedSelector";
@@ -1268,9 +1269,9 @@ export default function NewDartsModeConfig(props: Props) {
     if (mode === "ptit_hun") fields.push(choice("Volées", ptitHunRounds, [[3,"3"],[5,"5"],[7,"7"],[10,"10"]], (v) => setPtitHunRounds(Number(v))));
     const qStyle: React.CSSProperties = {minHeight:44,borderRadius:12,padding:"9px 12px",background:"#151928",color:"white",border:"1px solid rgba(255,255,255,.2)",minWidth:0};
     return <div style={{height:"100dvh",overflowY:"auto",paddingBottom:95,background:"#060811",color:"white"}}>
-      <PageHeader tickerSrc={definition.ticker} tickerAlt={definition.title} tickerHeight={90} tickerFit="cover" left={<BackDot onClick={backToGames} color={accent} />} />
+      <div style={{padding:"0 12px"}}><DartsQuickHeader modeId={mode} title={definition.title} onBack={backToGames}/></div>
       <main style={{maxWidth:700,margin:"0 auto",padding:"12px 16px",display:"grid",gap:17}}>
-        <div style={{fontWeight:1000,fontSize:18,color:accent}}>PARTIE RAPIDE · {definition.title}</div>
+        <DartsQuickIntro title={definition.title}/>
         <section style={{display:"grid",gap:11,padding:14,borderRadius:18,border:`1px solid ${accent}55`,background:"#10131e"}}>
           <strong>JOUEURS</strong>
           <div style={{display:"flex",flexWrap:"wrap",gap:8}}>{Array.from(new Set([definition.minPlayers,2,3,4,definition.maxPlayers])).filter(n=>n>=definition.minPlayers&&n<=definition.maxPlayers).sort((a,b)=>a-b).map(n=><button key={n} type="button" onClick={()=>setQuickCount(n)} style={{...qStyle,borderColor:quickCount===n?accent:"#414657",color:quickCount===n?accent:"white"}}>{n===1?"SOLO":n===2?"DUEL":`${n} JOUEURS`}</button>)}</div>

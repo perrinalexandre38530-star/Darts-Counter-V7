@@ -30,12 +30,12 @@ export function buildChallengeStats(items:readonly ChallengeArchiveItem[]){
  return {
   played,ongoing:ongoing.length,totalDarts,totalHits,
   accuracy:played?pct(weightedAccuracy):null,
-  averageScore:played?pct(avg(finished.map(i=>i.score))):null,
+  averageScore:finished.some(i=>i.scoreKnown!==false)?pct(avg(finished.filter(i=>i.scoreKnown!==false).map(i=>i.score))):null,
   averageDarts:played?pct(totalDarts/played):null,
   averageSuccessful:played?pct(totalHits/played):null,
   bestStreak:played?Math.max(...finished.map(i=>i.bestStreak)):null,
   latest:finished[finished.length-1]||null,
-  history:finished.slice(-30).map(i=>({playedAt:i.playedAt,score:i.score,darts:i.darts,accuracy:i.accuracy,bestStreak:i.bestStreak})),
+  history:finished.slice(-30).map(i=>({playedAt:i.playedAt,score:i.score,scoreKnown:i.scoreKnown!==false,darts:i.darts,accuracy:i.accuracy,bestStreak:i.bestStreak})),
   configurations:Array.from(configs.values()).sort((a,b)=>b.count-a.count||b.last-a.last),
   recent:finished.slice(-20).reverse(),
  };
@@ -43,7 +43,7 @@ export function buildChallengeStats(items:readonly ChallengeArchiveItem[]){
 
 export function buildChallengeRecordDetails(items:readonly ChallengeArchiveItem[],configKey:string,goal:'min'|'max'){
  const matches=chronological(items).filter(i=>i.configKey===configKey);
- const eligible=goal==='min'?matches.filter(i=>i.darts>0):matches;
+ const eligible=goal==='min'?matches.filter(i=>i.darts>0):matches.filter(i=>i.scoreKnown!==false);
  const metric=(i:ChallengeArchiveItem)=>goal==='min'?i.darts:i.score;
  const better=(a:number,b:number)=>goal==='min'?a<b:a>b;
  const breakthroughs:RecordBreakthrough[]=[];
@@ -66,6 +66,7 @@ export function buildChallengeRecordDetails(items:readonly ChallengeArchiveItem[
  const absoluteProgress=top&&first?Math.max(0,goal==='min'?first.darts-top.darts:top.score-first.score):0;
  return {
   goal,played:eligible.length,ignoredZeroDarts:goal==='min'?matches.length-eligible.length:0,
+  ignoredUnknownScores:goal==='max'?matches.length-eligible.length:0,
   best:top,last,first,value:top?metric(top):null,gap,initial,
   absoluteProgress,
   breakthroughs:breakthroughs.slice().reverse(),improvements:Math.max(0,breakthroughs.length-1),

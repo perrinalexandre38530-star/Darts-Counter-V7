@@ -33,6 +33,7 @@ import "./HalveItPlayResponsive.css";
 import tickerSplitScoreFr from "../assets/tickers/ticker_split_score_fr.webp";
 import tickerSplitScoreEn from "../assets/tickers/ticker_split_score_en.webp";
 import { readDartsMatchDraft, writeDartsMatchDraft, clearDartsMatchDraft } from "../lib/dartsMatchDrafts";
+import { getStorageUser } from "../lib/storage";
 import { useLang } from "../contexts/LangContext";
 import targetBg from "../assets/target_bg.png";
 
@@ -197,7 +198,7 @@ export default function HalveItPlay(props: any) {
   const draftMode = isSplitScore ? "split_score" : "halve_it";
   const restored = React.useMemo(() => {
     if (props?.params?.resumeDraft !== true) return null;
-    const draft = readDartsMatchDraft(draftMode);
+    const draft = readDartsMatchDraft(draftMode, getStorageUser());
     const snap: any = draft?.snapshot;
     const s: any = snap?.state;
     if (!s || draft?.config?.sessionId !== config.sessionId || !Array.isArray(s.players)
@@ -297,7 +298,7 @@ export default function HalveItPlay(props: any) {
     const next = createHalveItState(profiles as any, rules, teamConfigs, config.selectedIds);
     setState(next); setUndoStack([]); setThrowDarts([]); setMultiplier(1); setShowEnd(false); setShowTable(false); setShowStats(false); setNotice("");
     // Un nouveau match ne doit jamais proposer de reprendre le précédent.
-    clearDartsMatchDraft(draftMode);
+    clearDartsMatchDraft(draftMode, getStorageUser());
     matchIdRef.current = `halveit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setSaveStatus("idle");
   }
@@ -387,7 +388,7 @@ export default function HalveItPlay(props: any) {
     }));
     setSaveStatus(confirmed ? "saved" : "failed");
     if (confirmed) {
-      clearDartsMatchDraft(draftMode);
+      clearDartsMatchDraft(draftMode, getStorageUser());
       if (openHistory && typeof go === "function") go("statsHub", { tab: "history" });
     }
     return confirmed;
@@ -407,13 +408,13 @@ export default function HalveItPlay(props: any) {
 
   React.useEffect(() => {
     if (state.finished) {
-      if (saveStatus === "saved") clearDartsMatchDraft(draftMode);
+      if (saveStatus === "saved") clearDartsMatchDraft(draftMode, getStorageUser());
       return;
     }
     if (!state.history.length && !throwDarts.length) return;
     writeDartsMatchDraft(draftMode, config as any, {
       state, throwDarts, multiplier, lastUndo: undoStack.at(-1) || null, matchId: matchIdRef.current,
-    });
+    }, getStorageUser());
   }, [draftMode, config, state, throwDarts, multiplier, undoStack, saveStatus]);
 
   const previewScores = throwDarts.map((d) => halveItTargetScore(target, toGameDart(d)));

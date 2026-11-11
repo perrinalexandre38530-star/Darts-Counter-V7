@@ -250,6 +250,8 @@ const TournamentMatchResult = React.lazy(() => import("./pages/TournamentMatchRe
 const X01ConfigV3 = React.lazy(() => import("./pages/X01ConfigV3"));
 const X01QuickConfig = React.lazy(() => import("./pages/X01QuickConfig"));
 const QuickPartyModeConfig = React.lazy(() => import("./pages/QuickPartyModeConfig"));
+const QuickBobs27Config = React.lazy(() => import("./pages/QuickBobs27Config"));
+const QuickIndependentDartsConfig = React.lazy(() => import("./pages/QuickIndependentDartsConfig"));
 const GameModeEntryChoice = React.lazy(() => import("./components/GameModeEntryChoice"));
 const X01PlayV3 = React.lazy(() => import("./pages/X01PlayV3"));
 const ChallengeConfig = React.lazy(() => import("./pages/ChallengeConfig"));
@@ -6845,7 +6847,7 @@ case "babyfoot_team_edit":
       }
 
       case "gros_6_config":
-        page = <Gros6Config store={store} go={go} />;
+        page = routeParams?.launchMode === "quick" ? <QuickIndependentDartsConfig modeId="gros_6" go={go} onBack={() => go("games")} /> : <Gros6Config store={store} go={go} />;
         break;
 
       case "gros_6_play": {
@@ -6897,7 +6899,7 @@ case "babyfoot_team_edit":
 
       // ✅ NEW: WARFARE
       case "warfare_config":
-        page = <WarfareConfigPage store={store} go={go} />;
+        page = routeParams?.launchMode === "quick" ? <QuickIndependentDartsConfig modeId="warfare" go={go} onBack={() => go("games")} /> : <WarfareConfigPage store={store} go={go} />;
         break;
 
       case "warfare_play": {
@@ -7234,7 +7236,7 @@ case "babyfoot_team_edit":
         break;
 
       case "prisoner_config":
-        page = <PrisonerConfig store={store} go={go} setTab={go} params={routeParams} />;
+        page = routeParams?.launchMode === "quick" ? <QuickIndependentDartsConfig modeId="prisoner" go={go} onBack={() => go("games")} /> : <PrisonerConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "prisoner_play":
         page = (
@@ -7329,9 +7331,17 @@ case "babyfoot_team_edit":
         page = <KnockoutPlay setTab={go} params={routeParams} />;
         break;
 
-      case "bobs_27_config":
-        page = <Bobs27Config store={store} go={go} setTab={go} params={routeParams} />;
+      case "bobs_27_config": {
+        const launchMode = routeParams?.launchMode === "quick" ? "quick" : routeParams?.launchMode === "arcade" || routeParams?.resume || routeParams?.config ? "arcade" : null;
+        if (launchMode === "quick") {
+          page = <QuickBobs27Config onBack={() => go("bobs_27_config")} onStart={(config) => go("bobs_27_play", { ...config, config })} />;
+        } else if (launchMode === "arcade") {
+          page = <Bobs27Config store={store} go={go} setTab={go} params={routeParams} />;
+        } else {
+          page = <GameModeEntryChoice title="BOB'S 27" tickerId="bobs_27" onBack={() => go("games")} onQuick={() => go("bobs_27_config", { launchMode: "quick" })} onArcade={() => go("bobs_27_config", { launchMode: "arcade" })} />;
+        }
         break;
+      }
       case "bobs_27_play":
         page = (
           <Bobs27Play
@@ -7385,7 +7395,7 @@ case "babyfoot_team_edit":
         break;
 
       case "golf_config":
-        page = <GolfConfig store={store} go={go} setTab={go} params={routeParams} />;
+        page = routeParams?.launchMode === "quick" ? <QuickIndependentDartsConfig modeId="golf" go={go} onBack={() => go("games")} /> : <GolfConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "golf_play":
         // ✅ pass store so GolfPlay can resolve avatars (needed for the X01PlayV3-like header)
@@ -8058,6 +8068,7 @@ case "babyfoot_team_edit":
   const isDartsEntryChoice = React.isValidElement(page) && page.type === GameModeEntryChoice;
   const needsUniversalDartsConfigGuide =
     !isDartsEntryChoice &&
+    routeParams?.launchMode !== "quick" &&
     DARTS_CONFIG_TABS.has(gameRouteName) &&
     !NATIVE_GUIDED_DARTS_CONFIG_TABS.has(gameRouteName) &&
     gameRouteName !== "x01_online_setup" && gameRouteName !== "x01setup";

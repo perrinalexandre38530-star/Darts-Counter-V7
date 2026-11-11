@@ -7,7 +7,7 @@ import {buildChallengeImpactDetails} from '../../lib/challengePerformanceDetails
 import './ChallengeArchiveUI.css';
 
 const date=(ms:number)=>ms?new Date(ms).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'}):'—';
-const score=(item:ChallengeArchiveItem,minimum=false)=>minimum?`${item.darts||'—'} fléchettes`:`${item.score} pts`;
+const score=(item:ChallengeArchiveItem,minimum=false)=>minimum?`${item.darts||'—'} fléchettes`:item.scoreKnown===false?'—':`${item.score} pts`;
 const archiveFrom=(mode:string)=>CHALLENGE_MODE_OPTIONS.find(item=>item.id===mode);
 
 /** Detail screen shared by the chooser's floating sheet and Stats > Training. */

@@ -29,8 +29,8 @@ assert.match(halve,/aria-current=\{isActive/);
 assert.match(halveCss,/\.msc-halveit-standings-strip/);
 assert.match(halveCss,/overflow-x:\s*auto/);
 const reset=halve.slice(halve.indexOf('function resetMatch()'),halve.indexOf('function backToConfig()'));
-assert.match(reset,/clearDartsMatchDraft\(draftMode\)/);
-assert.ok(reset.indexOf('clearDartsMatchDraft(draftMode)')<reset.indexOf('matchIdRef.current ='));
+assert.match(reset,/clearDartsMatchDraft\(draftMode, getStorageUser\(\)\)/);
+assert.ok(reset.indexOf('clearDartsMatchDraft(draftMode, getStorageUser())')<reset.indexOf('matchIdRef.current ='));
 assert.match(halve,/isSplitScore \? "split_score" : "halve_it"/);
 assert.match(lives,/isChase \? "chase" : "five_lives"/);
 

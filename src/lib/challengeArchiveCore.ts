@@ -9,6 +9,7 @@ export type ChallengeArchiveItem = {
   id:string; modeId:string; title:string; configKey:string; configLabel:string;
   playedAt:number; score:number; darts:number; successful:number; accuracy:number; bestStreak:number;
   status:'finished'|'in_progress'; playerId:string; playerName:string;
+  scoreKnown?:boolean;dartsKnown?:boolean; // false only for legacy records missing those measures
   record:any;
 };
 export type ChallengeArchiveSummary = {
@@ -20,6 +21,13 @@ export type ChallengeArchiveSummary = {
 
 const txt=(v:unknown)=>String(v??'').trim();
 const num=(v:unknown)=>{const n=Number(v);return Number.isFinite(n)?n:0};
+/** Keep timestamps in milliseconds, including old ISO and Unix-second backups. */
+const timestamp=(v:unknown):number=>{
+ const raw=txt(v);if(!raw)return 0;
+ const numeric=Number(raw);
+ if(Number.isFinite(numeric))return numeric>=1e9&&numeric<1e12?numeric*1000:numeric;
+ const parsed=Date.parse(raw);return Number.isFinite(parsed)?parsed:0;
+};
 const norm=(v:unknown)=>txt(v).toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
 const isArray=(v:unknown):v is any[]=>Array.isArray(v);
 const archiveIds=new Set(CHALLENGE_MODE_OPTIONS.map(mode=>mode.id));
@@ -73,19 +81,25 @@ export function challengeRecordConfigKey(rec:any):string{
       relevant.push({assignments:Object.fromEntries(Object.entries(assignments).sort(([a],[b])=>a.localeCompare(b)))});
     }
   }
+  // Do not quietly merge legacy backups with completely unknown configuration.
+  // Each such session remains visible, but it cannot create a cross-game record.
+  if(!official && relevant.every(value=>value===undefined||value===null||value==='')){
+   return mode+':configuration-inconnue:'+txt(rec?.matchId||rec?.id||rec?.resumeId);
+  }
   return mode+':'+official+':'+JSON.stringify(relevant);
 }
 export function challengeConfigDisplay(rec:any):string{
  const cfg=rec?.payload?.config||rec?.decoded?.config||rec?.resume?.config||{};
  const mode=challengeRecordModeId(rec);
  if(mode.startsWith('arcade:')){
+  if(!cfg.catalogVariant&&!cfg.catalogLine&&!cfg.catalogRounds)return 'CONFIGURATION NON DOCUMENTÉE';
   const fields=[cfg.catalogVariant&&cfg.catalogVariant!=='classic'?txt(cfg.catalogVariant).toUpperCase():'CLASSIQUE',cfg.catalogLine?'N° '+cfg.catalogLine:'',cfg.catalogRounds?cfg.catalogRounds+' OBJECTIFS':''];
   return fields.filter(Boolean).join(' · ');
  }
- const target=txt(cfg.target||rec?.game?.target||rec?.summary?.target||'20');
+ const target=txt(cfg.target||rec?.game?.target||rec?.summary?.target);
  const visits=num(cfg.visits||rec?.game?.visits||rec?.summary?.visits);
- const rule=txt(cfg.rule||rec?.game?.rule||'all').toUpperCase();
- return [target.toUpperCase(),rule,visits?visits+' TOURS':''].filter(Boolean).join(' · ');
+ const rule=txt(cfg.rule||rec?.game?.rule).toUpperCase();
+ return [target.toUpperCase(),rule,visits?visits+' TOURS':''].filter(Boolean).join(' · ')||'CONFIGURATION NON DOCUMENTÉE';
 }
 
 function playerRows(rec:any):any[]{
@@ -103,7 +117,10 @@ function chosenPlayer(rec:any,id:string,name:string):any|null{
   const roster=isArray(rec?.players)?rec.players:[];
   // Legacy backup may only have an identity in the lightweight roster.
   if(roster.some((p:any)=>[p?.id,p?.userId,p?.onlineUserId].some(v=>txt(v).replace(/^online:/,'')===canonical))){
-   return rows.find(p=>norm(p?.name)===norm(roster.find((x:any)=>txt(x?.id)===canonical)?.name))||{id:canonical,name};
+   const matchedName=norm(roster.find((x:any)=>[x?.id,x?.userId,x?.onlineUserId].some(v=>txt(v).replace(/^online:/,'')===canonical))?.name);
+   const sameName=matchedName?rows.filter(p=>norm(p?.name||p?.displayName)===matchedName):[];
+   // Never claim one of several homonymous players as the owner of a result.
+   return sameName.length===1?sameName[0]:rows.length?null:{id:canonical,name};
   }
   // No reliable identity: never join two different profiles by display name.
   return null;
@@ -114,29 +131,55 @@ function chosenPlayer(rec:any,id:string,name:string):any|null{
  }
  return rows[0]||(isArray(rec?.players)?rec.players[0]:null)||null;
 }
+/** A backup can contain several snapshots of one match. A finished snapshot is
+ * authoritative over an in-progress copy, even if the latter has a later date.
+ * Among snapshots of the same status, prefer the one with usable game details.
+ */
+export function dedupeChallengeMatchSnapshots(records:readonly any[]):any[]{
+ const selected=new Map<string,any>();
+ const quality=(rec:any):number=>{
+  const rows=[rec?.summary?.perPlayer,rec?.payload?.summary?.perPlayer,rec?.decoded?.summary?.perPlayer];
+  const logs=[rec?.payload?.state?.hits,rec?.decoded?.state?.hits,rec?.payload?.entries,rec?.decoded?.entries,rec?.payload?.state?.log];
+  const hasPlayers=rows.some(value=>Array.isArray(value)&&value.length>0);
+  const hasLogs=logs.some(value=>Array.isArray(value)&&value.length>0);
+  return (hasLogs?4:0)+(hasPlayers?2:0)+(rec?.payload?.config||rec?.decoded?.config?1:0);
+ };
+ for(const rec of records){
+  if(!isChallengeMatchRecord(rec))continue;
+  const key=txt(rec?.matchId||rec?.id||rec?.resumeId);
+  if(!key)continue;
+  const current=selected.get(key);
+  if(!current){selected.set(key,rec);continue;}
+  const finished=Number(isFinishedChallengeRecord(rec));
+  const currentFinished=Number(isFinishedChallengeRecord(current));
+  if(finished!==currentFinished){if(finished)selected.set(key,rec);continue;}
+  const a=quality(rec),b=quality(current);
+  if(a>b||(a===b&&timestamp(rec?.updatedAt||rec?.finishedAt||rec?.createdAt)>timestamp(current?.updatedAt||current?.finishedAt||current?.createdAt)))selected.set(key,rec);
+ }
+ return Array.from(selected.values());
+}
 export function challengeArchiveItems(records:readonly any[],options?:{modeId?:string|null;playerId?:string|null;playerName?:string|null}):ChallengeArchiveItem[]{
  const modeFilter=txt(options?.modeId);
  const playerId=txt(options?.playerId),playerName=txt(options?.playerName);
- const used=new Set<string>();
  const out:ChallengeArchiveItem[]=[];
- for(const rec of records){
-  if(!isChallengeMatchRecord(rec))continue;
+ for(const rec of dedupeChallengeMatchSnapshots(records)){
   const id=txt(rec?.matchId||rec?.id||rec?.resumeId);
-  if(!id||used.has(id))continue;
-  used.add(id);
   const modeId=challengeRecordModeId(rec);
   if(modeFilter&&modeId!==modeFilter)continue;
   const player=chosenPlayer(rec,playerId,playerName);
   if((playerId||playerName)&&!player)continue;
   const status=isFinishedChallengeRecord(rec)?'finished':'in_progress';
-  const score=num(player?.score??player?.points??player?.special?.score??rec?.summary?.finalScores?.[playerId]);
-  const darts=num(player?.darts??player?.dartsThrown??player?.stats?.darts??rec?.summary?.darts);
+  const rawScore=player?.score??player?.points??player?.special?.score??rec?.summary?.finalScores?.[playerId];
+  const rawDarts=player?.darts??player?.dartsThrown??player?.stats?.darts??rec?.summary?.darts;
+  const scoreKnown=rawScore!==undefined&&rawScore!==null&&rawScore!==''&&Number.isFinite(Number(rawScore));
+  const dartsKnown=rawDarts!==undefined&&rawDarts!==null&&rawDarts!==''&&Number.isFinite(Number(rawDarts));
+  const score=num(rawScore),darts=num(rawDarts);
   const successes=num(player?.hitCount??player?.successful??player?.stats?.hitCount);
   const accuracy=num(player?.accuracy??player?.successRate??player?.stats?.accuracy) || (darts?Math.round(successes/darts*1000)/10:0);
   const entry=CHALLENGE_MODE_OPTIONS.find(mode=>mode.id===modeId);
   out.push({id,modeId,title:entry?.title||modeId,configKey:challengeRecordConfigKey(rec),configLabel:challengeConfigDisplay(rec),
-   playedAt:num(rec?.finishedAt||rec?.updatedAt||rec?.createdAt),score,darts,successful:successes,accuracy,
-   bestStreak:num(player?.bestStreak??player?.stats?.bestStreak),status,
+   playedAt:timestamp(rec?.finishedAt||rec?.updatedAt||rec?.createdAt),score,darts,successful:successes,accuracy,
+   bestStreak:num(player?.bestStreak??player?.stats?.bestStreak),status,scoreKnown,dartsKnown,
    playerId:txt(player?.id||playerId),playerName:txt(player?.name||playerName),record:rec});
  }
  return out.sort((a,b)=>b.playedAt-a.playedAt);
@@ -152,6 +195,8 @@ export function summarizeChallengeArchive(items:ChallengeArchiveItem[]):Challeng
  const configurations=new Map<string,{key:string;label:string;plays:number;best:ChallengeArchiveItem;latest:ChallengeArchiveItem;goal:'min'|'max'}>();
  for(const item of completed){
   const goal=lowerBetter(item.modeId)?'min':'max';
+  // Unknown is not zero. Don't create a fake 0-point record from an old roster-only backup.
+  if(goal==='min'?item.darts<=0:item.scoreKnown===false)continue;
   const current=configurations.get(item.configKey);
   if(!current){configurations.set(item.configKey,{key:item.configKey,label:item.configLabel,plays:1,best:item,latest:item,goal});continue;}
   current.plays++;

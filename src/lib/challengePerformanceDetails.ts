@@ -28,14 +28,17 @@ function getPlayerSummary(row:ChallengeArchiveItem):any|null {
 }
 function playerHits(row:ChallengeArchiveItem):any[]|null {
  const rec=row.record;
- const list=[rec?.payload?.entries,rec?.payload?.state?.hits,rec?.decoded?.entries,rec?.decoded?.state?.hits,rec?.resume?.state?.log]
-  .find(Array.isArray);
+ const isArcade=row.modeId.startsWith('arcade:');
+ const list=(isArcade
+  ?[rec?.payload?.state?.hits,rec?.decoded?.state?.hits,rec?.resume?.state?.hits,rec?.payload?.entries,rec?.decoded?.entries,rec?.resume?.state?.log]
+  :[rec?.payload?.entries,rec?.decoded?.entries,rec?.payload?.state?.log,rec?.resume?.state?.log])
+  .find((candidate:any)=>Array.isArray(candidate)&&candidate.length>0);
  if(!Array.isArray(list)||!list.length)return null;
  // If identities are absent, never attribute a multiplayer log to a player.
  const rowId=String(row.playerId||'');
  if(!rowId)return null;
  const people=rec?.summary?.perPlayer||rec?.payload?.summary?.perPlayer||rec?.players||[];
- const isSolo=Array.isArray(people)&&people.length===1;
+ const isSolo=Array.isArray(people)&&people.length===1&&String(people[0]?.id??people[0]?.playerId??people[0]?.profileId??'')===rowId;
  return list.filter((entry:any)=>{
   const id=String(entry?.pid??entry?.playerId??entry?.profileId??'');
   return id?id===rowId:isSolo;
@@ -85,7 +88,7 @@ export type ChallengeFormComparison={latestCount:number;previousCount:number;goa
  improved:boolean;};
 /** Compare only complete, identical configurations and real scores/darts. */
 export function buildChallengeFormComparison(items:readonly ChallengeArchiveItem[],goal:'min'|'max'):ChallengeFormComparison|null {
- const relevant=items.filter(row=>row.status==='finished'&&(goal!=='min'||row.darts>0))
+ const relevant=items.filter(row=>row.status==='finished'&&(goal==='min'?row.darts>0:row.scoreKnown!==false))
   .slice().sort((a,b)=>a.playedAt-b.playedAt||a.id.localeCompare(b.id));
  if(relevant.length<10||new Set(relevant.map(row=>row.configKey)).size!==1)return null;
  const recent=relevant.slice(-5),prior=relevant.slice(-10,-5);

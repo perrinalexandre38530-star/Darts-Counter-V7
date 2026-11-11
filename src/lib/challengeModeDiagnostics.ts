@@ -29,7 +29,12 @@ const statuses=new Set(['finished']);
 
 function fullLog(item:ChallengeArchiveItem):any[]|null{
  const rec=item.record;
- const candidates=[rec?.payload?.entries,rec?.payload?.state?.hits,rec?.payload?.state?.log,rec?.decoded?.entries,rec?.decoded?.state?.hits,rec?.decoded?.state?.log,rec?.resume?.state?.log];
+ // Arcade snapshots preserve exact G/P in state.hits; some old payload.entries
+ // collapsed both rings into S. Prefer the lossless journal when available.
+ const arcade=item.modeId.startsWith('arcade:');
+ const candidates=arcade
+  ?[rec?.payload?.state?.hits,rec?.decoded?.state?.hits,rec?.resume?.state?.hits,rec?.payload?.entries,rec?.decoded?.entries,rec?.payload?.state?.log,rec?.decoded?.state?.log,rec?.resume?.state?.log]
+  :[rec?.payload?.entries,rec?.decoded?.entries,rec?.payload?.state?.log,rec?.decoded?.state?.log,rec?.resume?.state?.log];
  const list=candidates.find(value=>Array.isArray(value)&&value.length>0);
  return Array.isArray(list)&&list.length?list:null;
 }

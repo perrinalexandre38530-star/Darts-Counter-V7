@@ -1291,11 +1291,33 @@ export function challengeReportFromHistory(entry:any):ChallengeExportReport {
   payload?.players,entry?.players,
  ];
  const source=candidates.find(v=>Array.isArray(v)&&v.length>0)||[];
+ const statPools=candidates.filter((rows):rows is any[]=>Array.isArray(rows)&&rows.length>0);
  const players:ChallengeExportPlayer[]=source.map((raw:any)=>{
-  const row=raw?.stats&&typeof raw.stats==='object'?{...raw.stats,...raw}:raw||{};
+  const id=String(raw?.id||raw?.pid||raw?.playerId||raw?.profileId||'').trim();
+  const name=String(raw?.name||raw?.playerName||raw?.displayName||'').trim().toLowerCase();
+  const nicknameUnique=name&&source.filter((person:any)=>String(person?.name||person?.playerName||person?.displayName||'').trim().toLowerCase()===name).length===1;
+  // The ranking establishes participant identity and final score. Performance
+  // counters may be stored separately in payload.stats.players. Join by an
+  // explicit ID first; only use the nickname when both sides are unambiguous.
+  const merged:any={};
+  for(const pool of statPools){
+   const byId=id?pool.filter((person:any)=>String(person?.id||person?.pid||person?.playerId||person?.profileId||'').trim()===id):[];
+   const byName=!byId.length&&nicknameUnique?pool.filter((person:any)=>
+    String(person?.name||person?.playerName||person?.displayName||'').trim().toLowerCase()===name&&
+    (!id||!String(person?.id||person?.pid||person?.playerId||person?.profileId||'').trim()||
+      String(person?.id||person?.pid||person?.playerId||person?.profileId||'').trim()===id)):[];
+   const candidate=byId.length===1?byId[0]:byName.length===1?byName[0]:null;
+   if(candidate&&typeof candidate==='object')Object.assign(merged,candidate?.stats||{},candidate);
+  }
+  const row={...merged,...(raw?.stats&&typeof raw.stats==='object'?raw.stats:{}),...raw};
   const exercise=row.exerciseStats||row.stats?.exerciseStats||row.special?.exerciseStats||{};
-  const darts=Math.max(0,Number(row.darts??row.dartsThrown??0)||0);
-  const accuracy=Number(row.successRate??row.accuracy??(darts?Number(row.hitCount||0)/darts*100:0))||0;
+  // An omitted statistic is unknown, not a measured zero. Older archives
+  // often persisted the ranking but not its dart-level performance counters.
+  const darts=validMetricNumber(row.darts??row.dartsThrown);
+  const explicitAccuracy=validMetricNumber(row.successRate??row.accuracy);
+  const hitCount=validMetricNumber(row.hitCount??row.hits);
+  const accuracy=explicitAccuracy!==null ? explicitAccuracy
+   : (darts!==null&&darts>0&&hitCount!==null ? hitCount/darts*100 : null);
   const metrics:ChallengeExportMetric[]=[];
   const push=(name:string,v:unknown)=>{
    if(v!==undefined&&v!==null&&v!=='')metrics.push({label:name,value:String(v)});
@@ -1320,20 +1342,24 @@ export function challengeReportFromHistory(entry:any):ChallengeExportReport {
   return {
    name:String(row.name||row.playerName||row.displayName||'Joueur'),
    participantId:String(row.id||row.pid||row.playerId||''),
-   score:Number(row.score??row.points??0)||0,
+   score:validMetricNumber(row.score??row.points)??Number.NaN,
    accuracy,darts,
-   bestStreak:Number(row.bestStreak||0)||0,
-   avgVisit:Number(row.avgVisit||0)||0,
+   bestStreak:validMetricNumber(row.bestStreak),
+   avgVisit:validMetricNumber(row.avgVisit),
    visits:Array.isArray(rawVisits)?rawVisits.map((x:any)=>Number(x)||0):[],
    metrics:metrics.slice(0,16),
    avatarUrl: pickAvatarSource(row),
   };
- }).sort((a:ChallengeExportPlayer,b:ChallengeExportPlayer)=>b.score-a.score);
+ }).sort((a:ChallengeExportPlayer,b:ChallengeExportPlayer)=>
+  (Number.isFinite(b.score)?b.score:-Infinity)-(Number.isFinite(a.score)?a.score:-Infinity));
  const rawDate=entry?.finishedAt||entry?.updatedAt||entry?.createdAt||Date.now();
  const date=new Date(rawDate).toLocaleString('fr-FR');
  const first=players[0];
  const highlight:ChallengeExportMetric[]=(first?.metrics||[]).slice(0,4);
- if(!highlight.length&&first)highlight.push({label:'SCORE',value:first.score+' PTS'},{label:'RÉUSSITE',value:first.accuracy.toFixed(1)+'%'});
+ if(!highlight.length&&first){
+  if(Number.isFinite(first.score))highlight.push({label:'SCORE',value:first.score+' PTS'});
+  if(first.accuracy!==null)highlight.push({label:'RÉUSSITE',value:first.accuracy.toFixed(1)+'%'});
+ }
  const title = String(summary.objective||entry?.game?.objective||summary.title||'CHALLENGE');
  const exerciseType = String(summary.exerciseType||cfg.exerciseType||'').toLowerCase();
  const configSummary = [
@@ -1365,6 +1391,9 @@ export function challengeReportFromHistory(entry:any):ChallengeExportReport {
  */
 const REPORT_STAT_FIELDS: Array<{title:string;names:string[];unit?:string}> = [
  {title:'AVG3',names:['avg3','avg3d','avg3D','average3Darts','avg3Darts','average3']},
+ {title:'MPR',names:['mpr','marksPerRound','marksPerVisit']},
+ {title:'MARQUES',names:['marks','totalMarks','marksScored']},
+ {title:'SECTEURS FERMÉS',names:['closedSectors','closedNumbers','numbersClosed']},
  {title:'BEST VOLÉE',names:['bestVisit','highestVisit','bestTurn','bestRound','maxVisit','maxScoreVisit']},
  {title:'CHECKOUT',names:['bestCheckout','highestCheckout','highFinish','highestFinish','finishMax']},
  {title:'180',names:['count180','hits180','n180','oneEighties']},
@@ -1427,8 +1456,10 @@ function locateSavedRow(row:any, pools:any[][]):any[] {
   const byId=id?pool.filter(p=>personId(p)&&personId(p)===id):[];
   if(byId.length)return byId;
   if(!name)return [];
-  const named=pool.filter(p=>normalizedPersonKey(personName(p))===name);
-  return named.length===1?named:[]; // never conflate ambiguous duplicate names
+  const named=pool.filter(p=>normalizedPersonKey(personName(p))===name &&
+   // Two different explicit IDs must never be joined only because names match.
+   (!id||!personId(p)||personId(p)===id));
+  return named.length===1?named:[]; // never conflate duplicate profiles
  });
 }
 function reportValue(objects:any[],names:string[]):unknown {
@@ -1513,13 +1544,32 @@ function actualSavedMetrics(objects:any[]):ChallengeExportMetric[] {
 }
 function chooseHeadlineStats(metrics:ChallengeExportMetric[],mode:string,score:number):ChallengeExportMetric[] {
  const byTitle=new Map(metrics.map(metric=>[metric.label,metric]));
- const dartsMode=/dart|x01|501|301|gotcha|attrape|cricket|killer|shanghai|challenge/i.test(mode);
- const preferred=dartsMode
-  ? ['AVG3','BEST VOLÉE','LEGS','SETS','CHECKOUT','RÉUSSITE','FLÉCHETTES','180','MISS','SUITE','MOY. / VOLÉE']
-  : ['RÉUSSITE','BEST VOLÉE','TOUCHES','FLÉCHETTES','CAPTURES','FUITES','TOURS','MATCHS GAGNÉS','SETS','LEGS'];
+ const normalized=tickerModeKey(mode);
+ // Mode-specific selection uses only the *saved* values. Never fill a missing
+ // slot with a fictitious zero or a counter from an unrelated sport.
+ const profiles: Array<[RegExp,string[]]> = [
+  [/cricket/,['MPR','MARQUES','SECTEURS FERMÉS','RÉUSSITE','FLÉCHETTES','MISS','BULL 25']],
+  [/attrape|gotcha/,['CAPTURES','SETS','LEGS','AVG3','BEST VOLÉE','FLÉCHETTES','MISS']],
+  [/killer|five_lives|chase/,['VIES','VICTIMES','TOUCHES','FLÉCHETTES','MISS','SUITE']],
+  [/ping_?pong|tennis|badminton/,['SETS','MATCHS GAGNÉS','MATCHS PERDUS','TOUCHES']],
+  [/petanque|molkky|molky|golf/,['COUPS','PTS MARQUÉS','RÉUSSITE','TOUCHES','TOURS']],
+  [/challenge|jdc|training/,['RÉUSSITE','BEST VOLÉE','VOLÉES VALIDÉES','VOLÉES PARFAITES','FLÉCHETTES']],
+  [/x01|301|501|701|901/,['AVG3','BEST VOLÉE','LEGS','SETS','CHECKOUT','PTS MARQUÉS','180']],
+ ];
+ const target=profiles.find(([pattern])=>pattern.test(normalized))?.[1]||
+  (/(dart|shanghai|count_up)/.test(normalized)
+    ? ['AVG3','BEST VOLÉE','CHECKOUT','RÉUSSITE','FLÉCHETTES','180','MISS']
+    : ['RÉUSSITE','TOUCHES','FLÉCHETTES','SETS','MATCHS GAGNÉS','TOURS']);
  const chosen:ChallengeExportMetric[]=[];
- for(const labelText of preferred){const m=byTitle.get(labelText);if(m&&!chosen.includes(m))chosen.push(m);if(chosen.length===4)break;}
- for(const metric of metrics){if(!chosen.includes(metric))chosen.push(metric);if(chosen.length===4)break;}
+ for(const labelText of target){
+  const m=byTitle.get(labelText);
+  if(m&&!chosen.includes(m))chosen.push(m);
+  if(chosen.length===4)break;
+ }
+ for(const metric of metrics){
+  if(!chosen.includes(metric))chosen.push(metric);
+  if(chosen.length===4)break;
+ }
  if(!chosen.length&&Number.isFinite(score))chosen.push({label:'SCORE ENREGISTRÉ',value:String(score)});
  return chosen;
 }
@@ -1579,6 +1629,32 @@ const REPORT_MODE_TICKERS: Record<string, string> = {
 function tickerModeKey(value: unknown):string {
  return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
   .replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+}
+/** Match history may store sport="darts" in game.mode while the actual
+ * ruleset is in summary.mode or game.modeId. Prefer a specific mode token.
+ * This also selects the correct match ticker for older History V4 archives.
+ */
+function resolveReportMode(entry:any,payload:any,summary:any):string {
+ const candidates=[entry?.game?.modeId,entry?.game?.gameMode,entry?.game?.mode,
+  entry?.mode,summary?.modeId,summary?.gameMode,summary?.game?.mode,
+  summary?.mode,payload?.summary?.modeId,payload?.summary?.gameMode,
+  payload?.summary?.mode,payload?.game?.mode,payload?.mode,
+  entry?.game?.kind,entry?.kind,payload?.kind,summary?.kind];
+ const values=candidates.map(tickerModeKey).filter(Boolean);
+ const generic=new Set(['darts','dart','fléchettes','flechettes','game','games',
+  'match','solo','multi','duel','team','teams','sport','unknown','classic']);
+ const canonical=(value:string):string=>{
+  if(/^(?:x01(?:_|$)|x_?01(?:_|$)|quick_x01|training_x01|301$|501$|701$|901$)/.test(value))return 'x01';
+  if(/^(?:challenge(?:_|$)|jdc$|le_jdc_challenge)/.test(value))return 'challenge';
+  if(value==='catch_me'||value==='catchme')return 'attrape_moi';
+  return value;
+ };
+ for(const token of values){
+  if(generic.has(token))continue;
+  const key=canonical(token);
+  if(REPORT_MODE_TICKERS[key]||key==='x01'||key==='challenge')return key;
+ }
+ return canonical(values.find(value=>!generic.has(value))||'unknown');
 }
 function findTicker(entry:any,payload:any,mode?:string):string {
  const key = tickerModeKey(mode || entry?.game?.mode || entry?.mode || payload?.summary?.mode || entry?.kind);
@@ -1646,10 +1722,18 @@ function applyX01Report(
  const summaries=[summary,payload?.summary,entry?.summary,payload?.resume?.summary,entry?.resume?.summary,result].filter(Boolean);
  const rankRows=[...source,...summaries.flatMap(root=>Array.isArray(root?.rankings)?root.rankings:[])];
  const config={...payload?.config,...entry?.game,...summary?.game,...summary?.config};
+ const matchesUniqueX01Name=(name:string,id:string):boolean=>
+  !!name&&report.players.filter(p=>normalizedPersonKey(p.name)===name).length===1;
  const matchingRow=(player:ChallengeExportPlayer):any=>{
   const id=String(player.participantId||'');
   const name=normalizedPersonKey(player.name);
-  return rankRows.find(r=>id&&personId(r)===id)||rankRows.find(r=>normalizedPersonKey(personName(r))===name)||{};
+  const exact=id?rankRows.find(r=>personId(r)===id):undefined;
+  if(exact)return exact;
+  if(!matchesUniqueX01Name(name,id))return {};
+  const named=rankRows.filter(r=>normalizedPersonKey(personName(r))===name&&(!id||!personId(r)||personId(r)===id));
+  // A ranking can appear twice (source + summary.rankings) in the same
+  // History V4 archive. Those copies do not imply two different players.
+  return named.length?named[0]:{};
  };
  const readMap=(name:string,player:ChallengeExportPlayer):number|null=>{
   const roots=[...summaries,payload?.stats,entry?.stats];
@@ -1661,6 +1745,7 @@ function applyX01Report(
    if(id&&Object.prototype.hasOwnProperty.call(map,id)){
     const v=validMetricNumber(map[id]);if(v!==null)return v;
    }
+   if(!matchesUniqueX01Name(nameKey,id))continue;
    const keys=Object.keys(map).filter(k=>normalizedPersonKey(k)===nameKey);
    if(keys.length===1){const v=validMetricNumber(map[keys[0]]);if(v!==null)return v;}
   }
@@ -1673,8 +1758,12 @@ function applyX01Report(
    if(!obj||typeof obj!=='object')return [];
    const id=String(player.participantId||'');
    if(id&&obj[id])return [obj[id]];
-   const found=Object.values(obj).filter((v:any)=>normalizedPersonKey(personName(v))===normalizedPersonKey(player.name));
-   return found.length===1?found:[];
+   const name=normalizedPersonKey(player.name);
+   if(!matchesUniqueX01Name(name,id))return [];
+   const found=Object.values(obj).filter((v:any)=>normalizedPersonKey(personName(v))===name&&
+     (!id||!personId(v)||personId(v)===id));
+   const explicitIds=new Set(found.map(personId).filter(Boolean));
+   return explicitIds.size<=1?found:[];
   });
   // Won sets/legs are cumulative counters; older summary levels may only
   // contain the *last* set. Prefer the largest explicitly saved cumulative
@@ -1697,16 +1786,25 @@ function applyX01Report(
  const matchPlayer=(person:any,player:ChallengeExportPlayer):boolean=>{
   if(person===null||person===undefined)return false;
   const id=String(player.participantId||'');
+  const name=normalizedPersonKey(player.name);
   if(typeof person==='string'||typeof person==='number'){
    const target=String(person);
-   return !!id&&target===id || normalizedPersonKey(target)===normalizedPersonKey(player.name);
+   if(id&&target===id)return true;
+   return matchesUniqueX01Name(name,id)&&normalizedPersonKey(target)===name;
   }
   const sourceId=personId(person);
-  return !!id&&id===sourceId || normalizedPersonKey(personName(person))===normalizedPersonKey(player.name);
+  if(id&&sourceId)return id===sourceId;
+  return matchesUniqueX01Name(name,id)&&normalizedPersonKey(personName(person))===name;
  };
  const visitPts=(visit:any):number|null=>{
   if(visit?.bust===true||visit?.isBust===true)return 0;
-  return validMetricNumber(visit?.score ?? visit?.scored ?? visit?.points);
+  // X01 snapshots may call the *remaining* amount "score". Prefer an
+  // explicit throw total; do not silently add remaining balances as points.
+  const explicit=visit?.scored??visit?.pointsScored??visit?.visitPoints??visit?.points;
+  if(explicit!==undefined&&explicit!==null)return validMetricNumber(explicit);
+  if(visit?.remaining!==undefined||visit?.scoreLeft!==undefined||
+     visit?.remainingScore!==undefined)return null;
+  return validMetricNumber(visit?.score);
  };
  const numberMetric=(metrics:ChallengeExportMetric[],name:string):number|null=>{
   const item=metrics.find(m=>m.label===name);
@@ -1723,14 +1821,20 @@ function applyX01Report(
     const entry=id&&map[id];
     if(entry&&typeof entry==='object')result.push(entry);
     else{
-     const found=Object.values(map).filter((v:any)=>normalizedPersonKey(personName(v))===target);
-     if(found.length===1)result.push(found[0]);
+     if(matchesUniqueX01Name(target,id)){
+      const found=Object.values(map).filter((v:any)=>normalizedPersonKey(personName(v))===target&&
+        (!id||!personId(v)||personId(v)===id));
+      if(found.length===1)result.push(found[0]);
+     }
     }
    }
    for(const arrName of ['perPlayer','players','rankings']){
     const arr=root?.[arrName];
     if(!Array.isArray(arr))continue;
-    const matched=arr.filter((v:any)=>id&&personId(v)===id||normalizedPersonKey(personName(v))===target);
+    const matchedById=id?arr.filter((v:any)=>personId(v)===id):[];
+    const matched=matchedById.length?matchedById:(matchesUniqueX01Name(target,id)?
+      arr.filter((v:any)=>normalizedPersonKey(personName(v))===target&&
+        (!id||!personId(v)||personId(v)===id)):[]);
     if(matched.length===1)result.push(matched[0]);
    }
   }
@@ -1827,7 +1931,8 @@ function applyX01Report(
  }
  report.matchType='x01';
  report.tickerSrc=tickerX01;
- report.unit='tours enregistrés';
+ report.rounds=savedVisits.length||0;
+ report.unit='volées enregistrées';
  const sets=report.players.map(p=>validMetricNumber(p.metrics.find(m=>m.label==='SETS REMPORTÉS')?.value));
  const legs=report.players.map(p=>validMetricNumber(p.metrics.find(m=>m.label==='LEGS REMPORTÉS')?.value));
  const points=report.players.map(p=>validMetricNumber(p.metrics.find(m=>m.label==='PTS MARQUÉS')?.value));
@@ -1917,7 +2022,7 @@ export function visualReportFromHistory(entry:any):ChallengeExportReport {
  const payload=entry?.payload||entry?.decoded||{};
  const summary=entry?.summary||payload?.summary||{};
  const result=summary?.result||payload?.result||{};
- const mode=String(entry?.game?.mode||entry?.mode||summary?.mode||entry?.kind||payload?.kind||'').toLowerCase();
+ const mode=resolveReportMode(entry,payload,summary);
  if(mode.includes('challenge')||String(summary?.kind||'').toLowerCase()==='challenge'){
   return challengeReportFromHistory(entry);
  }
@@ -1962,7 +2067,8 @@ export function visualReportFromHistory(entry:any):ChallengeExportReport {
  const rawDate=entry?.finishedAt||entry?.endedAt||entry?.updatedAt||entry?.createdAt||Date.now();
  const dateObj=new Date(rawDate);
  const date=Number.isNaN(dateObj.getTime())?'Date inconnue':dateObj.toLocaleString('fr-FR');
- const title=String(summary?.title||summary?.modeLabel||entry?.game?.objective||entry?.game?.mode||entry?.kind||'PARTIE');
+ const title=String(summary?.title||summary?.modeLabel||entry?.game?.objective||
+  (mode!=='unknown'?mode.toUpperCase():undefined)||entry?.kind||'PARTIE');
  const configSummary=reportConfig(entry,summary,payload,mode,players.length);
  const highlights:ChallengeExportMetric[]=[];
  if(Number.isFinite(players[0]?.score))highlights.push({label:'SCORE GLOBAL',value:String(players[0].score)});

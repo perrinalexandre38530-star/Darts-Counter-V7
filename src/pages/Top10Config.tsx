@@ -1,5 +1,6 @@
 import NativeStartOrderConfig from '../components/NativeStartOrderConfig';
 import React from "react";
+import DartsQuickHeader, { DartsQuickIntro } from "../components/DartsQuickHeader";
 import PageHeader from "../components/PageHeader";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
@@ -34,9 +35,9 @@ export default function Top10Config(props: any) {
     props?.setTab?.("top_10_play", { config });
   };
   const pill = (value: any, active: boolean, onClick: () => void) => <button type="button" onClick={onClick} style={{ padding: "10px 13px", borderRadius: 20, color: "#fff", fontWeight: 800, background: active ? "#195b8d" : "#20253c", border: active ? "1px solid #63dafa" : "1px solid #ffffff28" }}>{value}</button>;
-  if (isQuick) return <div className="page"><PageHeader tickerSrc={lang === "fr" ? tickerTop10Fr : tickerTop10En} left={<BackDot onClick={back} />} />
+  if (isQuick) return <div className="page" style={{background:"radial-gradient(circle at top,#15192c 0,#05060c 50%,#020308 100%)",minHeight:"100dvh",padding:"0 12px"}}><DartsQuickHeader modeId="top_10" title="TOP 10" onBack={back} />
     <main style={{maxWidth:650,margin:"0 auto",padding:"18px 14px 110px",color:"white",display:"grid",gap:15}}>
-      <h2 style={{fontSize:19,color:"#f3c76a"}}>PARTIE RAPIDE · TOP 10</h2>
+      <DartsQuickIntro title="TOP 10" />
       <section style={{background:"#10172bd9",border:"1px solid #ffffff25",borderRadius:18,padding:15,display:"grid",gap:12}}>
         <strong>JOUEURS</strong><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[1,2,3,4].map(n=>pill(n===1?"SOLO":n===2?"DUEL":`${n} JOUEURS`,players===n,()=>setPlayers(n)))}</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(145px,1fr))",gap:10}}>{quickNames.slice(0,players).map((name,i)=><label key={i} style={{fontSize:12,display:"grid",gap:6}}>JOUEUR {i+1}<input aria-label={`Nom du joueur ${i+1}`} maxLength={32} value={name} onChange={e=>setQuickNames(prev=>prev.map((v,j)=>i===j?e.target.value:v))} style={{padding:12,borderRadius:12,background:"#161c2b",color:"white",border:"1px solid #555"}}/></label>)}</div>

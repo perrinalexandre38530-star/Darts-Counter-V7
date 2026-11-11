@@ -357,3 +357,77 @@
  .mssChallengeCatalogActions button{min-height:38px}
  .mssChallengeCatalogDialog{max-height:calc(100dvh - 20px)}
 }
+
+/* V162 / Training wave 5 — Challenge catalogue, Awena and comparable-session details.
+   Styles are scoped: no effect on game HUDs or the competitive Challenge page. */
+.mssChallengeCatalog { display:flex; flex-direction:column; min-width:0; gap:12px; color:#edfaff; }
+.mssChallengeCatalog *, .mssChallengeCatalog *::before, .mssChallengeCatalog *::after { box-sizing:border-box; }
+.mssChallengeCatalogHero { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; padding:14px; border-radius:17px; border:1px solid rgba(39,220,255,.23); background:linear-gradient(120deg,rgba(24,76,98,.27),rgba(8,15,30,.95)); }
+.mssChallengeCatalogHeroText { flex:1 1 230px; min-width:0; }
+.mssChallengeCatalogEyebrow, .mssChallengeCoachHead small { display:block; font-size:9px; font-weight:950; letter-spacing:1px; color:#64e8ff; }
+.mssChallengeCatalogHero h3 { margin:5px 0 6px; font-size:clamp(15px,3.2vw,20px); line-height:1.15; }
+.mssChallengeCatalogHero p, .mssChallengeCoachHead p { margin:0; color:#a9c7d7; font-size:10.5px; line-height:1.4; }
+.mssChallengeCatalogMetrics { display:flex; gap:8px; }
+.mssChallengeCatalogMetrics > div { min-width:65px; padding:8px 10px; text-align:center; border-radius:12px; background:rgba(0,0,0,.27); border:1px solid rgba(255,255,255,.09); }
+.mssChallengeCatalogMetrics b { display:block; font-size:21px; font-variant-numeric:tabular-nums; color:#73e9ff; }
+.mssChallengeCatalogMetrics small { display:block; font-size:8px; font-weight:900; color:#9cbbcc; }
+.mssChallengeCoach { padding:12px; border:1px solid rgba(255,216,107,.25); border-radius:16px; background:linear-gradient(135deg,rgba(255,216,107,.065),rgba(39,220,255,.035)); }
+.mssChallengeCoachHead { display:flex; align-items:center; gap:10px; margin-bottom:11px; }
+.mssChallengeCoachIcon { flex:0 0 35px; width:35px; height:35px; display:grid; place-items:center; border-radius:12px; background:rgba(255,216,107,.1); border:1px solid rgba(255,216,107,.3); font-size:21px; color:#ffe59d; }
+.mssChallengeCoachHead h4 { margin:3px 0; font-size:14px; }
+.mssChallengeCoachGrid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+.mssChallengeCoachTile { display:flex; flex-direction:column; min-width:0; gap:6px; padding:10px; border-radius:12px; border:1px solid rgba(255,255,255,.1); background:rgba(5,16,29,.7); }
+.mssChallengeCoachTile strong { font-size:11px; line-height:1.3; }
+.mssChallengeCoachTile p { flex:1; margin:0; font-size:9.5px; line-height:1.45; color:#b4c5d3; }
+.mssChallengeCoachTag { font-size:8px; font-weight:950; letter-spacing:.5px; color:#ffe1a1; }
+.mssChallengeCoachTile button { min-height:35px; border-radius:9px; border:1px solid rgba(255,216,107,.43); background:rgba(255,216,107,.10); color:#ffe4ae; font-size:10px; font-weight:950; cursor:pointer; }
+.mssChallengeCatalogControls { display:flex; flex-wrap:wrap; gap:7px; align-items:center; }
+.mssChallengeCatalogControls > button { flex:0 0 auto; min-height:38px; padding:6px 9px; border-radius:10px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.04); color:#cbeaf7; font-size:9px; font-weight:950; cursor:pointer; }
+.mssChallengeCatalogControls > button.is-active { border-color:rgba(39,220,255,.64); background:rgba(39,220,255,.12); }
+.mssChallengeCatalogSearch { display:flex; align-items:center; flex:1 1 205px; min-width:0; gap:7px; padding:0 10px; min-height:40px; border:1px solid rgba(39,220,255,.3); border-radius:11px; background:rgba(3,15,27,.7); color:#69e8ff; }
+.mssChallengeCatalogSearch input { min-width:0; flex:1; border:0; outline:0; background:transparent; color:#eafaff; font-size:11px; }
+.mssChallengeCatalogSearch input::placeholder { color:#91aaba; }
+.mssChallengeCatalogFilters { display:flex; gap:5px; flex-wrap:wrap; }
+.mssChallengeCatalogFilters button { padding:6px 9px; min-height:30px; border-radius:999px; border:1px solid rgba(255,255,255,.10); background:rgba(255,255,255,.045); color:#abc7d4; font-size:9px; font-weight:900; cursor:pointer; }
+.mssChallengeCatalogFilters button.is-active { color:#00202c; background:#70e9ff; border-color:#70e9ff; }
+.mssChallengeCatalogCount { color:#94b2c6; font-size:9px; font-weight:900; }
+.mssChallengeCatalogGrid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
+.mssChallengeCatalogCard { display:flex; flex-direction:column; min-width:0; gap:9px; padding:13px; border:1px solid rgba(39,220,255,.17); background:rgba(5,16,29,.82); border-radius:14px; }
+.mssChallengeCatalogCardHead { display:flex; justify-content:space-between; flex-wrap:wrap; gap:5px; color:#6ce4f8; font-size:9px; font-weight:950; letter-spacing:.5px; }
+.mssChallengeCatalogCardHead small { color:#bdc9d6; font-size:8px; }
+.mssChallengeCatalogCard h4 { margin:0; font-size:14px; line-height:1.2; }
+.mssChallengeCatalogCard > p { margin:0; flex:1; color:#a7bed0; font-size:10.5px; line-height:1.45; }
+.mssChallengeCatalogProgress { display:flex; flex-direction:column; gap:5px; }
+.mssChallengeCatalogProgress > div:first-child { display:flex; align-items:center; justify-content:space-between; gap:7px; color:#b5d5e4; font-size:9px; }
+.mssChallengeCatalogProgress b { color:#7deaff; font-size:12px; }
+.mssChallengeCatalogProgressTrack { width:100%; height:6px; border-radius:99px; background:rgba(255,255,255,.1); overflow:hidden; }
+.mssChallengeCatalogProgressTrack i { display:block; height:100%; background:linear-gradient(90deg,#22bce4,#72efff); border-radius:99px; }
+.mssChallengeCatalogTrend, .mssChallengeCatalogCompareHint { font-size:9px; line-height:1.3; color:#9bdec4; }
+.mssChallengeCatalogCompareHint { color:#a7b9ce; }
+.mssChallengeCatalogActions { display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-top:auto; }
+.mssChallengeCatalogActions button, .mssChallengeCatalogResume button, .mssChallengeCatalogDialog footer button { min-width:0; min-height:37px; padding:7px 9px; border:1px solid rgba(39,220,255,.32); background:rgba(39,220,255,.08); border-radius:9px; color:#d3f6ff; font-size:9px; font-weight:950; cursor:pointer; }
+.mssChallengeCatalogActions button:last-child, .mssChallengeCatalogDialog footer button:last-child { border-color:rgba(39,220,255,.6); background:linear-gradient(180deg,#46e5ff,#1aafd1); color:#001e2b; }
+.mssChallengeCatalog button:disabled { opacity:.45; cursor:not-allowed; }
+.mssChallengeCatalogResume { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:7px; padding:8px; border-radius:9px; background:rgba(255,216,107,.065); color:#ffdeab; font-size:9px; }
+.mssChallengeCatalogNotice, .mssChallengeCatalogEmpty { padding:12px; border-radius:11px; border:1px solid rgba(255,216,107,.25); background:rgba(255,216,107,.05); font-size:11px; line-height:1.4; }
+.mssChallengeCatalogEmpty button { background:none; border:none; color:#7ce9ff; text-decoration:underline; cursor:pointer; }
+.mssChallengeCatalogOverlay { position:fixed; inset:0; z-index:1300; display:grid; place-items:center; padding: max(10px,env(safe-area-inset-top)) 10px max(10px,env(safe-area-inset-bottom)); background:rgba(1,5,10,.83); backdrop-filter:blur(9px); }
+.mssChallengeCatalogDialog { display:flex; flex-direction:column; gap:11px; width:min(540px,100%); max-height:calc(100dvh - 22px); overflow:auto; overscroll-behavior:contain; border-radius:18px; padding:15px; background:linear-gradient(150deg,#122f3a,#080f20); border:1px solid rgba(39,220,255,.4); box-shadow:0 20px 80px rgba(0,0,0,.6); }
+.mssChallengeCatalogDialog > header { display:flex; justify-content:space-between; gap:8px; align-items:flex-start; }
+.mssChallengeCatalogDialog header small { font-size:9px; color:#75e9ff; }
+.mssChallengeCatalogDialog h3 { margin:4px 0; font-size:17px; }
+.mssChallengeCatalogDialog header button { flex:0 0 34px; width:34px; height:34px; border:1px solid rgba(255,255,255,.15); border-radius:9px; background:rgba(255,255,255,.06); color:#fff; font-size:21px; cursor:pointer; }
+.mssChallengeCatalogDialog > p { font-size:11px; color:#b7cddd; line-height:1.5; margin:0; }
+.mssChallengeCatalogDialogMetrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
+.mssChallengeCatalogDialogMetrics > div { min-width:0; display:flex; flex-direction:column; gap:4px; padding:9px 5px; border-radius:10px; border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.035); text-align:center; }
+.mssChallengeCatalogDialogMetrics small { font-size:8px; color:#a6c2cf; }
+.mssChallengeCatalogDialogMetrics b { font-size:14px; color:#6ce7ff; }
+.mssChallengeCatalogDialog footer { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
+.mssChallengeCatalogComparison { display:flex; flex-direction:column; gap:5px; padding:9px; border-radius:11px; border:1px solid rgba(39,220,255,.23); background:rgba(39,220,255,.06); font-size:10px; line-height:1.4; }
+.mssChallengeCatalogComparison b { font-size:9px; color:#78edff; letter-spacing:.5px; }
+.mssChallengeCatalogComparison strong { color:#b4f5ca; }
+.mssChallengeCatalogComparison small { color:#acbdcf; }
+.mssChallengeCatalog button:focus-visible, .mssChallengeCatalog input:focus-visible, .mssChallengeCatalog select:focus-visible { outline:2px solid #ffe09b; outline-offset:2px; }
+@media(max-width:650px) { .mssChallengeCoachGrid { grid-template-columns:1fr; } .mssChallengeCoachTile { display:grid; grid-template-columns:1fr auto; gap:4px 8px; } .mssChallengeCoachTile .mssChallengeCoachTag { grid-column:1 / -1; } .mssChallengeCoachTile button { grid-column:2; grid-row:2 / 4; align-self:center; } .mssChallengeCoachTile p { grid-column:1; } }
+@media(max-width:460px) { .mssChallengeCatalog { gap:9px; } .mssChallengeCatalogHero { padding:10px; } .mssChallengeCatalogHero p { font-size:9.5px; } .mssChallengeCatalogMetrics > div { padding:5px 8px; } .mssChallengeCatalogGrid { grid-template-columns:1fr; } .mssChallengeCatalogCard { padding:11px; } .mssChallengeCatalogControls { gap:5px; } .mssChallengeCatalogControls > button { flex:1 1 100px; } .mssChallengeCatalogDialog { padding:11px; } .mssChallengeCatalogDialog footer { grid-template-columns:1fr 1fr; } .mssChallengeCatalogDialog footer button:first-child { grid-column:1 / -1; } }
+@media(orientation:landscape) and (max-height:460px) { .mssChallengeCatalogDialog { max-height:calc(100dvh - 8px); padding:9px 12px; } .mssChallengeCatalogOverlay { padding:4px; } .mssChallengeCatalogHero { padding:8px 12px; } }
