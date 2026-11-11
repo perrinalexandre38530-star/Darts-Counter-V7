@@ -105,7 +105,7 @@ type Props = {
   onSetVisitDarts?: (darts: UIDart[]) => void;
 
   /** Valide directement un total de volée (mode Keypad score de volée / Dartsmind-like). */
-  onSubmitVisitScore?: (score: number, opts?: { bust?: boolean; source?: "typed" | "quick" | "next" | "bust" }) => void;
+  onSubmitVisitScore?: (score: number, opts?: { bust?: boolean; dartsUsed?: number; source?: "typed" | "quick" | "next" | "bust" }) => void;
   /** Mode score de volée : corrige la saisie en cours ou, si elle est vide, annule la dernière volée validée. */
   onCorrectVisitScore?: () => void;
   visitScoreFeedback?: React.ReactNode;
@@ -706,7 +706,7 @@ function VisitScoreKeypad({
 }: {
   disabled: boolean;
   feedback?: React.ReactNode;
-  onSubmit: (score: number, opts?: { bust?: boolean; source?: "typed" | "quick" | "next" | "bust" }) => void;
+  onSubmit: (score: number, opts?: { bust?: boolean; dartsUsed?: number; source?: "typed" | "quick" | "next" | "bust" }) => void;
   onCancel: () => void;
   onCorrectEmpty: () => void;
   fitToParent: boolean;
@@ -720,6 +720,8 @@ function VisitScoreKeypad({
 }) {
   const [raw, setRaw] = React.useState("");
   const [localError, setLocalError] = React.useState<string | null>(null);
+  // En SCORE VOLÉE, la quantité ne peut pas être déduite d’un BUST ou d’un checkout.
+  const [terminalDarts, setTerminalDarts] = React.useState<1 | 2 | 3>(3);
 
   const parsed = raw.trim() ? Number(raw) : NaN;
   const canEnter = raw.trim().length > 0 && Number.isFinite(parsed) && parsed >= 0 && parsed <= 180;
@@ -817,7 +819,7 @@ function VisitScoreKeypad({
     const n = Math.max(0, Math.min(180, Math.floor(Number(score) || 0)));
     setLocalError(null);
     setRaw("");
-    onSubmit(n, { source });
+    onSubmit(n, { source, dartsUsed: terminalDarts });
   };
 
   const submitTyped = (source: "typed" | "next" = "typed") => {
@@ -867,7 +869,7 @@ function VisitScoreKeypad({
       >
         <div style={{ ...wrapCard, width: "100%", maxWidth: "100%", margin: "0 auto", paddingBottom: "calc(8px + env(safe-area-inset-bottom))" }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: compactFit ? 8 : 10, marginBottom: compactFit ? 8 : 10 }}>
-            <button type="button" style={btnDanger} disabled={disabled} onClick={() => { setLocalError(null); setRaw(""); onSubmit(0, { bust: true, source: "bust" }); }}>BUST</button>
+            <button type="button" style={btnDanger} disabled={disabled} onClick={() => { setLocalError(null); setRaw(""); onSubmit(0, { bust: true, source: "bust", dartsUsed: terminalDarts }); }}>BUST</button>
             <div
               aria-live="polite"
               style={{
@@ -889,6 +891,18 @@ function VisitScoreKeypad({
               {raw || "0"}
             </div>
             <button type="button" style={btnGold} disabled={disabled} onClick={clearOne}>CORRIGER</button>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: compactFit ? 5 : 9, marginBottom: compactFit ? 7 : 9, color: "rgba(255,255,255,.85)", fontSize: compactFit ? 10 : 12, fontWeight: 800 }}>
+            <span>Sur BUST / FINISH :</span>
+            {([1, 2, 3] as const).map((count) => (
+              <button key={count} type="button" disabled={disabled} aria-pressed={terminalDarts === count}
+                title={`${count} fléchette${count > 1 ? "s" : ""} réellement jouée${count > 1 ? "s" : ""}`}
+                onClick={() => setTerminalDarts(count)}
+                style={{ borderRadius: 9, padding: compactFit ? "4px 9px" : "5px 12px", fontWeight: 900, cursor: "pointer", color: terminalDarts === count ? "#080b12" : "#fff", background: terminalDarts === count ? primary : "rgba(255,255,255,.13)", border: terminalDarts === count ? `1px solid ${primary}` : "1px solid rgba(255,255,255,.2)" }}>
+                {count}
+              </button>
+            ))}
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: compactFit ? 6 : 7, marginBottom: compactFit ? 8 : 10 }}>

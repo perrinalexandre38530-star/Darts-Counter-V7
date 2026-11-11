@@ -1228,6 +1228,7 @@ type Tab =
   | "viewer_join"
   | "viewer_display"
   | "mode_not_ready"
+  | "darts_entry_choice"
   | "wave61_config"
   | "wave61_play"
   // ✅ NEW (OBLIGATOIRE): Tabs Pétanque (snake_case)
@@ -7848,6 +7849,30 @@ case "babyfoot_team_edit":
         page = <Wave61Play store={store} go={go} params={routeParams} />;
         break;
 
+      // Point d'entrée commun des cartes Darts sans sélecteur natif.
+      // Le routeur conserve les paramètres d'origine (gameId / variantId / preset).
+      case "darts_entry_choice": {
+        const destination = String(routeParams?.destination || "");
+        const gameId = String(routeParams?.gameId || "");
+        const entryTitle = String(routeParams?.entryTitle || gameId || "DARTS");
+        const destinationParams = { ...(routeParams?.destinationParams || {}) };
+        const openConfig = (launchMode: "quick" | "arcade") => {
+          if (!destination || destination === "darts_entry_choice") return;
+          // La plupart des jeux historiques n'ont pas encore de moteur Quick
+          // distinct. On transmet le choix sans imposer des joueurs temporaires
+          // incompatibles avec leurs moteurs de configuration.
+          go(destination as Tab, { ...destinationParams, launchMode, entryChoicePassed: true });
+        };
+        page = <GameModeEntryChoice
+          title={entryTitle}
+          tickerId={gameId}
+          onBack={() => go("games", { gamesView: "all", gamesCategory: routeParams?.gamesCategory || "classic" })}
+          onQuick={() => openConfig("quick")}
+          onArcade={() => openConfig("arcade")}
+        />;
+        break;
+      }
+
       case "mode_not_ready":
         page = <ModeNotReady go={go} params={routeParams} />;
         break;
@@ -8028,7 +8053,11 @@ case "babyfoot_team_edit":
     "president_config", "capital_config", "loterie_config", "departements_config",
     "football_config"
   ]);
+  // Une page Partie rapide / Arcade n'est PAS une configuration : aucune
+  // barre Guidée / Complète ne doit être injectée avant le choix du joueur.
+  const isDartsEntryChoice = React.isValidElement(page) && page.type === GameModeEntryChoice;
   const needsUniversalDartsConfigGuide =
+    !isDartsEntryChoice &&
     DARTS_CONFIG_TABS.has(gameRouteName) &&
     !NATIVE_GUIDED_DARTS_CONFIG_TABS.has(gameRouteName) &&
     gameRouteName !== "x01_online_setup" && gameRouteName !== "x01setup";

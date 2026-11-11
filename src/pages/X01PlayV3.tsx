@@ -729,7 +729,7 @@ function visitScoreSequenceIsValid(seq: UIDart[], scoreBeforeInput: number, outM
   return true;
 }
 
-function findVisitScoreDarts(totalInput: number, scoreBeforeInput: number, outMode: any): UIDart[] | null {
+function findVisitScoreDarts(totalInput: number, scoreBeforeInput: number, outMode: any, checkoutDarts?: number): UIDart[] | null {
   const target = Math.floor(Number(totalInput));
   const scoreBefore = Number(scoreBeforeInput || 0);
   if (!Number.isFinite(target) || target < 0 || target > 180) return null;
@@ -748,7 +748,10 @@ function findVisitScoreDarts(totalInput: number, scoreBeforeInput: number, outMo
     if (visitScoreDartValue(a) + visitScoreDartValue(b) + visitScoreDartValue(c) === target) candidates.push([a, b, c]);
   }
 
-  const valid = candidates.find((seq) => visitScoreSequenceIsValid(seq, scoreBefore, outMode));
+  const valid = candidates.find((seq) =>
+    (target !== scoreBefore || checkoutDarts == null || seq.length === checkoutDarts) &&
+    visitScoreSequenceIsValid(seq, scoreBefore, outMode)
+  );
   if (!valid) return null;
 
   // Hors checkout, on padde à 3 fléchettes pour garder un compteur de darts cohérent.
@@ -760,7 +763,7 @@ function findVisitScoreDarts(totalInput: number, scoreBeforeInput: number, outMo
   return padded.slice(0, 3);
 }
 
-function findVisitScoreBustDarts(scoreBeforeInput: number, outMode: any): UIDart[] | null {
+function findVisitScoreBustDarts(scoreBeforeInput: number, outMode: any, bustDarts?: number): UIDart[] | null {
   const scoreBefore = Number(scoreBeforeInput || 0);
   if (!Number.isFinite(scoreBefore) || scoreBefore <= 0) return null;
   const opts = VISIT_SCORE_DART_OPTIONS.filter((d) => visitScoreDartValue(d) > 0);
@@ -770,13 +773,13 @@ function findVisitScoreBustDarts(scoreBeforeInput: number, outMode: any): UIDart
     for (let i = 0; i < seq.length; i += 1) {
       const d = seq[i];
       const tentative = remaining - visitScoreDartValue(d);
-      if (tentative < 0) return seq.slice(0, i + 1).map((x) => ({ ...x } as UIDart));
+      if (tentative < 0) { const used = seq.slice(0, i + 1); if (bustDarts == null || used.length === bustDarts) return used.map((x) => ({ ...x } as UIDart)); break; }
       if (tentative === 0) {
-        if (!visitScoreFinishAllowed(d, outMode)) return seq.slice(0, i + 1).map((x) => ({ ...x } as UIDart));
+        if (!visitScoreFinishAllowed(d, outMode)) { const used = seq.slice(0, i + 1); if (bustDarts == null || used.length === bustDarts) return used.map((x) => ({ ...x } as UIDart)); }
         break;
       }
       if (tentative === 1 && String(outMode || "double").toLowerCase() !== "simple" && String(outMode || "double").toLowerCase() !== "single" && String(outMode || "double").toLowerCase() !== "straight") {
-        return seq.slice(0, i + 1).map((x) => ({ ...x } as UIDart));
+        { const used = seq.slice(0, i + 1); if (bustDarts == null || used.length === bustDarts) return used.map((x) => ({ ...x } as UIDart)); break; }
       }
       remaining = tentative;
     }
@@ -3920,7 +3923,7 @@ const handleSetVisitDarts = (darts: UIDart[]) => {
   }
 };
 
-const handleSubmitVisitScore = (score: number, opts?: { bust?: boolean; source?: "typed" | "quick" | "next" | "bust" }) => {
+const handleSubmitVisitScore = (score: number, opts?: { bust?: boolean; dartsUsed?: number; source?: "typed" | "quick" | "next" | "bust" }) => {
   if (!onlineCanScore) return;
   if (!activePlayerId) return;
 
@@ -3931,9 +3934,9 @@ const handleSubmitVisitScore = (score: number, opts?: { bust?: boolean; source?:
   let darts: UIDart[] | null = null;
 
   if (opts?.bust) {
-    darts = findVisitScoreBustDarts(scoreBefore, out);
+    darts = findVisitScoreBustDarts(scoreBefore, out, opts?.dartsUsed);
     if (!darts || !darts.length) {
-      setVisitScoreFeedback("BUST impossible à ce score : il faut être à portée de bust en 3 fléchettes.");
+      setVisitScoreFeedback("BUST impossible avec ce nombre de fléchettes et ce score restant.");
       return;
     }
     darts = markVisitScoreDarts(darts, "BUST", source);
@@ -3943,9 +3946,9 @@ const handleSubmitVisitScore = (score: number, opts?: { bust?: boolean; source?:
       setVisitScoreFeedback("Score invalide : entre un total entre 0 et 180.");
       return;
     }
-    darts = findVisitScoreDarts(total, scoreBefore, out);
+    darts = findVisitScoreDarts(total, scoreBefore, out, total === scoreBefore ? opts?.dartsUsed : undefined);
     if (!darts || !darts.length) {
-      setVisitScoreFeedback("Score impossible ou checkout non valide avec le mode de sortie actuel.");
+      setVisitScoreFeedback("Score ou finish impossible avec le nombre de fléchettes sélectionné et le mode de sortie actuel.");
       return;
     }
     darts = markVisitScoreDarts(darts, total, source);

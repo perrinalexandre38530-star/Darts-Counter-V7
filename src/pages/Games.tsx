@@ -645,6 +645,41 @@ export default function Games({ setTab, params }: Props) {
   }
 
   // Smart navigation for ticker items
+  // Les modes qui gèrent déjà leur propre page Quick / Arcade ne sont pas
+  // encapsulés une seconde fois. Les autres passent par l'entrée commune.
+  const NATIVE_ENTRY_TABS = new Set([
+    "x01_config_v3", "cricket", "killer", "killer_config", "five_lives_config",
+    "shanghai", "halve_it_config", "super_bull_config", "shooter_config",
+    "bowling_config", "baseball_config", "president_config", "bss_king_config",
+  ]);
+
+  function launchDartsCard(g: DartsGameDef) {
+    const path = configPathForGame(g);
+    const raw = path.startsWith("tab:") ? path.slice(4) : path;
+    const [destination, query] = raw.split("?");
+    if (!destination || /[\/#]/.test(destination)) { navSmart(path); return; }
+    const destinationParams: Record<string, string> = {};
+    if (query) for (const piece of query.split("&")) {
+      const [key, val] = piece.split("=");
+      if (key) destinationParams[decodeURIComponent(key)] = decodeURIComponent(val || "");
+    }
+    if (g.variantId && !destinationParams.variantId) destinationParams.variantId = g.variantId;
+    if (g.id && (destination === "wave61_config" || destination === "darts_mode_config") && !destinationParams.gameId) destinationParams.gameId = g.id;
+
+    if (NATIVE_ENTRY_TABS.has(destination) && !(
+      // Ces presets accèdent directement à une configuration dans V156.
+      (destination === "five_lives_config" && g.id === "chase") ||
+      (destination === "halve_it_config" && g.id === "split_score")
+    )) {
+      navigate(destination, Object.keys(destinationParams).length ? destinationParams : undefined);
+      return;
+    }
+    navigate("darts_entry_choice", {
+      gameId: g.id, entryTitle: localizedGameLabel(g, lang), destination,
+      destinationParams, gamesCategory: g.category,
+    });
+  }
+
   function navSmart(path: string) {
     if (!path) return;
     const p = String(path);
@@ -992,16 +1027,15 @@ export default function Games({ setTab, params }: Props) {
       // Tous les autres (classic/variant/challenge/fun) :
       // on passe par le routeur "configPath" pour supporter les presets/variantes (ex: Cricket -> Enculette/Cut-Throat)
       if (g) {
-        const path = configPathForGame(g);
         if (String(g.id) === "x01") {
-          void openX01WithFirstRules(() => navSmart(path));
+          void openX01WithFirstRules(() => launchDartsCard(g));
           return;
         }
         if (String(g.id) === "killer") {
-          void openKillerWithFirstRules(() => navSmart(path));
+          void openKillerWithFirstRules(() => launchDartsCard(g));
           return;
         }
-        navSmart(path);
+        launchDartsCard(g);
         return;
       }
 
@@ -1279,15 +1313,17 @@ export default function Games({ setTab, params }: Props) {
           type="button"
           className="msc-games-quick-launch-card"
           onClick={() => {
+            const game = DARTS_GAMES.find((g) => String(g.id) === String(current.id));
+            if (!game) { navSmart(current.configPath); return; }
             if (String(current.id) === "x01") {
-              void openX01WithFirstRules(() => navSmart(current.configPath));
+              void openX01WithFirstRules(() => launchDartsCard(game));
               return;
             }
             if (String(current.id) === "killer") {
-              void openKillerWithFirstRules(() => navSmart(current.configPath));
+              void openKillerWithFirstRules(() => launchDartsCard(game));
               return;
             }
-            navSmart(current.configPath);
+            launchDartsCard(game);
           }}
           style={{
             width: "100%",
@@ -2035,20 +2071,15 @@ export default function Games({ setTab, params }: Props) {
                               body: g.infoBody,
                             });
                           }
-                          const gameParams = String(g.tab || "") === "wave61_config"
-                            ? { gameId: g.id }
-                            : g.variantId
-                              ? { gameId: g.id, baseGame: g.baseGame, variantId: g.variantId }
-                              : undefined;
                           if (String(g.id) === "x01") {
-                            void openX01WithFirstRules(() => navigate(g.tab, gameParams));
+                            void openX01WithFirstRules(() => launchDartsCard(g));
                             return;
                           }
                           if (String(g.id) === "killer") {
-                            void openKillerWithFirstRules(() => navigate(g.tab, gameParams));
+                            void openKillerWithFirstRules(() => launchDartsCard(g));
                             return;
                           }
-                          return navigate(g.tab, gameParams);
+                          return launchDartsCard(g);
                         }}
                         style={{
                           position: "relative",

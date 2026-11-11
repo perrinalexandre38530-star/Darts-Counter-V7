@@ -5,12 +5,43 @@ import DartsModeFamilyBridge from "./DartsModeFamilyBridge";
 import tickerArcade from "../assets/tickers/ticker_arcade.png";
 import tickerPartieRapide from "../assets/tickers/ticker_partie_rapide.png";
 import tickerQuickGame from "../assets/tickers/ticker_quick_game.png";
-import tickerX01 from "../assets/tickers/ticker_x01.png";
-import tickerSuperBull from "../assets/tickers/ticker_super_bull.png";
-import tickerBssKing from "../assets/tickers/ticker_bss_king.webp";
+// Les pages d'entrée utilisent les mêmes fichiers tickers que les jeux.
+// Vite résout ces URL à la compilation, sans charger les images avant affichage.
+const modeTickerFiles = import.meta.glob("../assets/tickers/ticker_*.{png,webp,jpg,jpeg}", {
+  eager: true,
+  query: "?url",
+  import: "default",
+}) as Record<string, string>;
+
+const tickerAliases: Record<string, string> = {
+  "5 vies": "five_lives",
+  "five lives": "five_lives",
+  "halve-it": "halve_it",
+  "halve it": "halve_it",
+  "super bull": "super_bull",
+  "superbull": "super_bull",
+  "bss king": "bss_king",
+  "president": "president",
+  "killer progressif": "killer",
+  "killer progressive": "killer",
+};
+
+function resolveEntryTicker(title: string, lang = "fr"): string | null {
+  const normalized = String(title || "").trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ").trim();
+  const key = tickerAliases[normalized] || normalized.replace(/\s+/g, "_");
+  const preferred = String(lang).toLowerCase() === "fr" ? "fr" : "en";
+  const variants = [`${key}_${preferred}`, key, `${key}_en`, `${key}_fr`];
+  const path = variants.map((variant) => Object.keys(modeTickerFiles).find((name) =>
+    ["png", "webp", "jpg", "jpeg"].some((ext) => name.endsWith(`/ticker_${variant}.${ext}`))
+  )).find(Boolean);
+  return path ? modeTickerFiles[path] : null;
+}
 
 type Props = {
   title: string;
+  tickerId?: string;
   subtitle?: string;
   onQuick: () => void;
   onArcade: () => void;
@@ -19,17 +50,12 @@ type Props = {
   onVariant?: () => void;
 };
 
-export default function GameModeEntryChoice({ title, onQuick, onArcade, onBack, family, onVariant }: Props) {
+export default function GameModeEntryChoice({ title, tickerId, onQuick, onArcade, onBack, family, onVariant }: Props) {
   const { lang } = useLang();
   const isFr = String(lang || "fr").toLowerCase() === "fr";
-  const normalizedTitle = String(title || "").trim().toLowerCase();
-  const modeTicker = normalizedTitle === "x01"
-    ? tickerX01
-    : (normalizedTitle === "super bull" || normalizedTitle === "superbull")
-      ? tickerSuperBull
-      : (normalizedTitle === "bss king" || normalizedTitle === "bss_king")
-        ? tickerBssKing
-        : null;
+  // Un mode récent peut avoir un libellé différent de son identifiant
+  // (ex. 9 DART CENTURY). Le ticker doit provenir de l'ID de la carte.
+  const modeTicker = (tickerId ? resolveEntryTicker(tickerId, lang) : null) || resolveEntryTicker(title, lang);
 
   const labels = isFr
     ? {
