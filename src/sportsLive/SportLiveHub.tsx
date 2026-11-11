@@ -1,6 +1,7 @@
 import React from "react";
 import BackDot from "../components/BackDot";
 import CompetitionDashboard from "./CompetitionDashboard";
+import { matchCompetitionIndex } from "./competitionModels";
 import { BottomNavIcon } from "../components/BottomNav";
 import { LIVE_SPORTS_APP_ORDER } from "./support";
 import { useLang } from "../contexts/LangContext";
@@ -1008,9 +1009,6 @@ function LiveStyles() {
       .msc-cd-round { display:grid; gap:6px; min-width:0; }
       .msc-cd-round-head { display:flex; justify-content:space-between; align-items:center; padding:10px 9px; border-left:3px solid #eb4264; background:#152331; color:#fff; font-size:11px; }
       .msc-cd-round-head span { color:#96a7b9; font-size:10px; }
-      .msc-cd-elim { display:grid; grid-template-columns:minmax(0,1fr) 54px minmax(0,1fr); align-items:center; gap:6px; padding:12px 9px; background:#111a23; border:1px solid #2a3848; border-radius:8px; color:#e6ecf4; font-size:11px; }
-      .msc-cd-elim span { overflow-wrap:anywhere; }
-      .msc-cd-elim b { text-align:center; color:#ffc45d; }
       .msc-cd-more { padding:13px; background:#1c2d3b; color:#fff; border:1px solid #405268; border-radius:9px; font-weight:900; cursor:pointer; }
       .msc-cd-table-scroll { width:100%; overflow-x:auto; }
       .msc-cd-table { width:100%; border-collapse:collapse; color:#ebf1f7; font-size:11px; }
@@ -1019,6 +1017,21 @@ function LiveStyles() {
       .msc-cd-table td:first-child { color:#8dabc5; width:24px; }
       .msc-cd-table td:nth-child(2) { font-weight:850; }
       .msc-cd-table-wrap { display:grid; gap:8px; min-width:0; }
+      .msc-cd-source { display:inline-flex; width:fit-content; gap:5px; color:#9fd7ef; font-size:11px; text-decoration:underline; text-underline-offset:3px; }
+      .msc-cd-day { display:grid; gap:5px; min-width:0; }
+      .msc-cd-day-title { display:flex; justify-content:space-between; align-items:center; gap:6px; padding:8px 10px; border-radius:7px; background:#101d29; color:#dce5ef; font-size:11px; font-weight:800; text-transform:capitalize; }
+      .msc-cd-day-title span { color:#8c9eb0; font-size:10px; font-weight:600; }
+      .msc-cd-phase-filter { display:flex; gap:5px; overflow-x:auto; padding:4px 0 8px; scrollbar-width:thin; }
+      .msc-cd-phase-filter button { flex:none; border:1px solid #334253; border-radius:8px; padding:9px 11px; background:#13202b; color:#d3deea; font-size:11px; font-weight:750; cursor:pointer; }
+      .msc-cd-phase-filter button.is-active { color:#fff; border-color:#e95572; background:#4b2033; }
+      .msc-cd-elim { display:grid; grid-template-columns:minmax(0,1fr) minmax(100px,auto); align-items:center; gap:8px; padding:9px 11px; background:#111a23; border:1px solid #2a3848; border-radius:8px; color:#e6ecf4; font-size:12px; }
+      .msc-cd-elim-names { display:grid; gap:8px; min-width:0; }
+      .msc-cd-elim-names span { overflow-wrap:anywhere; }
+      .msc-cd-elim-info { display:grid; gap:3px; text-align:right; justify-items:end; }
+      .msc-cd-elim-info b { color:#fff; font-size:14px; font-variant-numeric:tabular-nums; }
+      .msc-cd-elim-info small { color:#94a7b7; font-size:9px; }
+      @media (max-width:400px) { .msc-cd-elim { grid-template-columns:minmax(0,1fr) 98px; padding:8px; } .msc-cd-elim-info b {font-size:12px;} }
+
       @media (max-width:540px) { .msc-cd { padding:0 4px 10px; }.msc-cd-tab { padding:8px; font-size:10px; } }
 
       @media (max-width:380px) { .msc-live-fixed-action span { font-size:8px; } .msc-live-sport-choice { padding:7px 9px; } }
@@ -1217,11 +1230,17 @@ function ResultMatchCard({ item, source, lang }: { item: DartsLiveResult; source
 }
 
 function GroupedResults({ rows, fixtures, source, lang, newsRows, allSources, sport, competitionIndex = [] }: { rows: DartsLiveResult[]; fixtures: DartsLiveFixture[]; source?: SportLiveSource | null; lang: string; newsRows: SportLiveNewsItem[]; allSources: SportLiveSource[]; sport: string; competitionIndex?: SportLiveCompetitionIndexEntry[] }) {
+
+
+  // Group R2 metadata once; a linear scan for each competition becomes O(n²)
+  // with thousands of archived competitions.
   const indexByCompetition = React.useMemo(() => {
-    const map = new Map<string, SportLiveCompetitionIndexEntry>();
+    const map = new Map<string, SportLiveCompetitionIndexEntry[]>();
     competitionIndex.forEach((entry) => {
-      const keys = [entry.key, normalizedText(entry.name)];
-      keys.filter(Boolean).forEach((key) => map.set(String(key), entry));
+      const key = normalizedText(entry.name);
+      const bucket = map.get(key) || [];
+      bucket.push(entry);
+      map.set(key, bucket);
     });
     return map;
   }, [competitionIndex]);
@@ -1248,10 +1267,13 @@ function GroupedResults({ rows, fixtures, source, lang, newsRows, allSources, sp
         const { matches, upcoming } = bucket;
         const name = displayNames.get(groupKey) || competitionKey(matches[0]?.competition || upcoming[0]?.competition);
         const reference = matches.find((match) => !!competitionMetaOf(match)) || upcoming.find((item) => !!competitionMetaOf(item)) || matches[0] || upcoming[0];
-        const indexed = indexByCompetition.get(normalizedText(name)) || indexByCompetition.get(name.toLowerCase()) || null;
+        const referenceMeta = competitionMetaOf(reference);
+        const inferredCountry = competitionCountry(reference);
+        const indexed = matchCompetitionIndex(indexByCompetition.get(normalizedText(name)) || [], name,
+          referenceMeta?.countryCode || inferredCountry.code, referenceMeta?.countryName || inferredCountry.label);
         const country = indexed?.countryName
           ? { key: indexed.countryCode || normalizedText(indexed.countryName), label: indexed.countryName, code: indexed.countryCode || null }
-          : competitionCountry(reference);
+          : inferredCountry;
         const indexedChips = [indexed?.tier, indexed?.level, indexed?.family].filter(Boolean).map((value) => String(value).replace(/_/g, " ").toUpperCase());
         return {
           groupKey,
@@ -1541,7 +1563,7 @@ function GroupedResults({ rows, fixtures, source, lang, newsRows, allSources, sp
               {selectedCompetitionSeasons.map(([season,count]) => <button key={season} className={`msc-season-tab${selectedSeason === season ? " is-active" : ""}`} type="button" onClick={() => setSelectedSeason(season)}>{season} · {count}</button>)}
             </div>
             <CompetitionDashboard
-              key={selectedCompetition.groupKey}
+              key={`${sport}-${selectedCompetition.groupKey}`}
               sport={sport}
               competition={selectedCompetition.name}
               country={selectedCompetition.countryLabel}

@@ -1,3 +1,4 @@
+import { footballCompetitionCode, projectFootballStandings } from "../../../src/sportsLive/officialStandings";
 type Env = {
   USER_DATA_BUCKET?: R2Bucket;
   DARTS_API_KEY?: string;
@@ -923,7 +924,10 @@ function buildCentralCompetitionIndex(sport: string, lang: string, results: Norm
   const map = new Map<string, CentralCompetitionIndexEntry>();
   const touch = (name: string, meta: CompetitionMeta | null | undefined, kind: "result" | "fixture" | "event", dateValue?: string | null) => {
     const cleanName = String(name || "Compétition").replace(/\s+/g, " ").trim() || "Compétition";
-    const key = competitionSlug(cleanName) || safeArchiveSegment(cleanName);
+    // Identical competition names in different countries must never share an R2 index entry.
+    // This is metadata indexing only: archived result IDs and paths remain unchanged.
+    const countryToken = String(meta?.countryCode || meta?.countryName || "").trim();
+    const key = `${competitionSlug(cleanName) || safeArchiveSegment(cleanName)}${countryToken ? `--${safeArchiveSegment(countryToken)}` : ""}`;
     const entry = map.get(key) || {
       key,
       name: cleanName,
@@ -3511,6 +3515,36 @@ async function directDartsResults(lang: string, depth: "fast" | "deep" = "deep")
 const SPORTSDB_BASE = "https://www.thesportsdb.com/api/v1/json/123";
 const FOOTBALL_DATA_BASE = "https://api.football-data.org/v4";
 
+// Authorized data only. The authenticated provider is queried lazily, when the
+// user opens a competition's standings, and cached at the Cloudflare edge.
+async function footballOfficialStandings(env: Env, request: URL) {
+  const competition = str(request.searchParams.get("competition")).trim().slice(0, 140);
+  const country = str(request.searchParams.get("country")).trim().slice(0, 100);
+  const code = footballCompetitionCode(competition, country);
+  const unavailable = (reason: string, ttl = 600) => ({status:200,ttl,payload:{
+    available:false, sport:"foot", competition, season:null, sourceName:null,
+    sourceUrl:null, updatedAt:null, tables:[], reason,
+  }});
+  if (!code) return unavailable("Compétition non identifiée de façon certaine dans le fournisseur.");
+  const key = str(env?.FOOTBALL_DATA_API_KEY).trim();
+  if (!key) return unavailable("FOOTBALL_DATA_API_KEY non configurée côté Cloudflare.");
+  const season = str(request.searchParams.get("season")).trim();
+  if (season && !/^(19[7-9]\d|20\d{2})$/.test(season)) return unavailable("Saison non reconnue.");
+  const address = `${FOOTBALL_DATA_BASE}/competitions/${code}/standings${season ? `?season=${season}` : ""}`;
+  try {
+    const upstream = await timedFetch(address, {headers:{Accept:"application/json", "X-Auth-Token":key}}, 5000);
+    if (upstream.status === 429) return unavailable("Limite temporaire du fournisseur atteinte.", 60);
+    if (!upstream.ok) return unavailable(`Classement indisponible auprès du fournisseur (${upstream.status}).`, 180);
+    const body = await upstream.json().catch(() => null);
+    if (!body || typeof body !== "object") return unavailable("Réponse du fournisseur invalide.", 120);
+    const result = projectFootballStandings(body, competition);
+    return {status:200, ttl:1200, payload:result};
+  } catch {
+    return unavailable("Connexion au fournisseur momentanément indisponible.", 60);
+  }
+}
+
+
 function dateOffsetIso(offsetDays: number) {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() + offsetDays);
@@ -3605,6 +3639,20 @@ function footballDataPlayers(row: any): NormalPlayer[] {
   ];
 }
 
+function footballDataCompetitionMeta(row: any, competition: string): CompetitionMeta {
+  const base = competitionMetaFor("foot", competition, "football-data.org", "https://www.football-data.org/") || {};
+  const area = row?.competition?.area || {};
+  const name = str(area?.name).trim();
+  const code = str(area?.code).trim().toUpperCase();
+  const emblem = str(row?.competition?.emblem).trim();
+  return {
+    ...base,
+    ...(name ? {countryName:name} : {}),
+    ...(code ? {countryCode:code} : {}),
+    ...(isDirectImageUrl(emblem) ? {logoUrl:emblem,logoPageUrl:"https://www.football-data.org/"} : {}),
+  };
+}
+
 async function footballDataOverview(key: string, depth: "fast" | "deep" = "fast") {
   const dateFrom = dateOffsetIso(depth === "deep" ? -7 : -1);
   const dateTo = dateOffsetIso(depth === "deep" ? 7 : 3);
@@ -3623,17 +3671,25 @@ async function footballDataOverview(key: string, depth: "fast" | "deep" = "fast"
     const players = footballDataPlayers(row);
     const [home, away] = players;
     const competition = str(row?.competition?.name) || "Football";
-    const round = str(row?.stage || row?.matchday) || null;
+    const competitionMeta = footballDataCompetitionMeta(row, competition);
+    const stage = str(row?.stage).toUpperCase();
+    const group = str(row?.group).toUpperCase();
+    const stageNames: Record<string, string> = {
+      FINAL:"Finale", SEMI_FINALS:"Demi-finales", QUARTER_FINALS:"Quarts de finale",
+      LAST_16:"Huitièmes de finale", LAST_32:"Seizièmes de finale", LAST_64:"Trente-deuxièmes de finale",
+    };
+    const round = /^GROUP_[A-Z]$/.test(group) ? `Groupe ${group.slice(-1)}`
+      : stageNames[stage] || (row?.matchday ? `Journée ${row.matchday}` : stage.replace(/_/g, " ") || null);
     const startsAt = str(row?.utcDate) || null;
     const date = startsAt ? startsAt.slice(0, 10) : null;
     const status = str(row?.status).toUpperCase();
-    const match: NormalMatch = { id, competition, round, startsAt, date, players, raw: row, sourceName: "football-data.org", sourceUrl: "https://www.football-data.org/", competitionMeta: competitionMetaFor("foot", competition, "football-data.org", "https://www.football-data.org/") };
+    const match: NormalMatch = { id, competition, round, startsAt, date, players, raw: row, sourceName: "football-data.org", sourceUrl: "https://www.football-data.org/", competitionMeta };
     if (["IN_PLAY", "PAUSED", "LIVE"].includes(status)) { live.push(match); return; }
     if (status === "FINISHED" && home?.score != null && away?.score != null) {
       const isDraw = Number(home.score) === Number(away.score);
       const winner = isDraw ? home : (Number(home.score) > Number(away.score) ? home : away);
       const loser = isDraw ? away : (Number(home.score) > Number(away.score) ? away : home);
-      results.push({ id, playedOn: date, competition, round, winner, loser, raw: isDraw ? { ...row, draw: true } : row, sourceName: "football-data.org", sourceUrl: "https://www.football-data.org/", competitionMeta: competitionMetaFor("foot", competition, "football-data.org", "https://www.football-data.org/") });
+      results.push({ id, playedOn: date, competition, round, winner, loser, raw: isDraw ? { ...row, draw: true } : row, sourceName: "football-data.org", sourceUrl: "https://www.football-data.org/", competitionMeta });
       if (isDraw) events.push({ id: `draw-${id}`, title: `${home.name} ${home.score}-${away.score} ${away.name}`, subtitle: competition, startsAt, dateLabel: date, status: "result", sourceName: "football-data.org", sourceUrl: "https://www.football-data.org/", resultLabel: `${home.score}-${away.score} · Match nul` });
       return;
     }
@@ -3935,6 +3991,10 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const requestUrl = new URL(context.request.url);
   const lang = str(requestUrl.searchParams.get("lang") || "fr").toLowerCase();
   const phase = str(requestUrl.searchParams.get("phase") || "full").toLowerCase();
+  if (action === "standings") {
+    if (sport !== "foot") return json({available:false,sport,competition:"",season:null,sourceName:null,sourceUrl:null,updatedAt:null,tables:[],reason:"Aucun flux de classement structuré disponible pour ce sport."},200,600);
+    return cachedResponse(context, async () => footballOfficialStandings(context.env, requestUrl));
+  }
   if (action === "logo") {
     const external = safeExternalImageUrl(str(requestUrl.searchParams.get("url") || ""));
     if (!external) return json({ error: "invalid_logo_url" }, 400, 60);

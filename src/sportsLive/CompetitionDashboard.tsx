@@ -2,6 +2,8 @@ import React from "react";
 import type { DartsLiveFixture, DartsLiveResult } from "../dartsLive/types";
 import type { SportLiveNewsItem } from "./types";
 import { InlineAdBanner } from "../monetization/AdSlot";
+import { buildCompetitionBracket, buildCompetitionStandings, competitionDate, competitionTextKey, completeMatchScore } from "./competitionModels";
+import type { OfficialStandingsResponse } from "./officialStandings";
 
 export type CompetitionDetailTab = "summary" | "results" | "fixtures" | "standings" | "bracket" | "news";
 
@@ -27,144 +29,158 @@ type Props = {
   renderNews: (item: SportLiveNewsItem) => React.ReactNode;
 };
 
-function dateOf(value?: string | null) {
-  const stamp = Date.parse(value || "");
-  return Number.isFinite(stamp) ? stamp : 0;
+function dayKey(value?: string | null): string {
+  const stamp = competitionDate(value);
+  return stamp ? new Date(stamp).toISOString().slice(0, 10) : "undated";
 }
-function normal(value?: string | null) {
-  return String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+function dayLabel(value: string): string {
+  if (value === "undated") return "DATE À CONFIRMER";
+  const stamp = Date.parse(`${value}T12:00:00Z`);
+  return new Intl.DateTimeFormat("fr-FR", { weekday: "short", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(stamp);
 }
-function score(player?: { score?: number | null } | null) {
-  return player?.score === undefined || player?.score === null || !Number.isFinite(Number(player.score)) ? "–" : String(player.score);
+function timeLabel(value?: string | null): string {
+  const stamp = competitionDate(value);
+  if (!stamp) return "À confirmer";
+  return new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(stamp);
 }
+function score(value?: number | null): string { return value === null || value === undefined || !Number.isFinite(Number(value)) ? "–" : String(value); }
 function roundLabel(value?: string | null) { return String(value || "").trim() || "Tour non précisé"; }
-function groupName(value?: string | null) {
-  const match = String(value || "").match(/(?:group|groupe|poule|pool)\s*[-:]?\s*([A-Z0-9]+)/i);
-  return match ? `Groupe ${match[1].toUpperCase()}` : null;
-}
-function phase(value?: string | null): { order: number; label: string } | null {
-  const s = normal(value);
-  if (/\b(finale|final)\b/.test(s) && !/semi|demi|quarter|quart|huitiem|round/.test(s)) return { order: 6, label: "Finale" };
-  if (/semi\s*final|demi\s*final/.test(s)) return { order: 5, label: "Demi-finales" };
-  if (/quarter\s*final|quart\s*de\s*final|quart\s*final/.test(s)) return { order: 4, label: "Quarts de finale" };
-  if (/1\s*8|last\s*16|round\s*of\s*16|huitiem/.test(s)) return { order: 3, label: "Huitièmes de finale" };
-  if (/1\s*16|last\s*32|round\s*of\s*32|seiziem/.test(s)) return { order: 2, label: "Seizièmes de finale" };
-  if (/1\s*32|last\s*64|round\s*of\s*64/.test(s)) return { order: 1, label: "Trente-deuxièmes de finale" };
-  return null;
-}
-
-type StandingRow = { name: string; played: number; won: number; drawn: number; lost: number };
-function computeStandings(rows: DartsLiveResult[]) {
-  const tables = new Map<string, Map<string, StandingRow>>();
-  for (const match of rows) {
-    const a = match.winner;
-    const b = match.loser;
-    const as = a?.score;
-    const bs = b?.score;
-    // Une rencontre partiellement renseignée ne doit produire aucun point ni victoire.
-    if (!a?.name || !b?.name || as === null || as === undefined || bs === null || bs === undefined || !Number.isFinite(Number(as)) || !Number.isFinite(Number(bs))) continue;
-    const label = groupName(match.round) || "Bilan des participants";
-    const table = tables.get(label) || new Map<string, StandingRow>();
-    for (const [player, won, drawn] of [[a, Number(as) > Number(bs), Number(as) === Number(bs)], [b, Number(bs) > Number(as), Number(bs) === Number(as)]] as const) {
-      const key = normal(player.name);
-      const current = table.get(key) || { name: player.name, played: 0, won: 0, drawn: 0, lost: 0 };
-      current.played += 1;
-      current.won += Number(won);
-      current.drawn += Number(drawn);
-      current.lost += Number(!won && !drawn);
-      table.set(key, current);
-    }
-    tables.set(label, table);
-  }
-  return Array.from(tables.entries()).map(([name, table]) => ({
-    name,
-    rows: [...table.values()].sort((a, b) => b.won - a.won || b.drawn - a.drawn || a.lost - b.lost || a.name.localeCompare(b.name)),
-  })).sort((a, b) => a.name.localeCompare(b.name));
-}
-
-function NoData({ children }: { children: React.ReactNode }) {
-  return <div className="msc-cd-empty">{children}</div>;
-}
+function NoData({ children }: { children: React.ReactNode }) { return <div className="msc-cd-empty">{children}</div>; }
 
 export default function CompetitionDashboard({ sport, competition, country, season, results, fixtures, news, renderResult, renderFixture, renderNews }: Props) {
   const [tab, setTab] = React.useState<CompetitionDetailTab>("summary");
-  const [limit, setLimit] = React.useState(120);
-  React.useEffect(() => { setLimit(120); }, [season, competition]);
-  const sortedResults = React.useMemo(() => [...results].sort((a,b) => dateOf(b.playedOn) - dateOf(a.playedOn)), [results]);
+  const [resultLimit, setResultLimit] = React.useState(120);
+  const [fixtureLimit, setFixtureLimit] = React.useState(60);
+  const [bracketFilter, setBracketFilter] = React.useState("all");
+  const [bracketLimit, setBracketLimit] = React.useState(40);
+  React.useEffect(() => { setResultLimit(120); setFixtureLimit(60); setBracketFilter("all"); setBracketLimit(40); }, [sport, season, competition]);
+  React.useEffect(() => { setTab("summary"); }, [sport, competition]);
+
+  const sortedResults = React.useMemo(() => [...results].sort((a, b) => competitionDate(b.playedOn) - competitionDate(a.playedOn)), [results]);
   const sortedFixtures = React.useMemo(() => {
     const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-    return fixtures.filter((item) => {
-      const date = dateOf(item.startsAt || item.date);
-      return !date || date >= cutoff;
-    }).sort((a,b) => (dateOf(a.startsAt || a.date) || Number.MAX_SAFE_INTEGER) - (dateOf(b.startsAt || b.date) || Number.MAX_SAFE_INTEGER));
+    return fixtures.filter((item) => { const date = competitionDate(item.startsAt || item.date); return !date || date >= cutoff; })
+      .sort((a, b) => (competitionDate(a.startsAt || a.date) || Number.MAX_SAFE_INTEGER) - (competitionDate(b.startsAt || b.date) || Number.MAX_SAFE_INTEGER));
   }, [fixtures]);
-  const standings = React.useMemo(() => computeStandings(sortedResults), [sortedResults]);
-  const brackets = React.useMemo(() => {
-    const map = new Map<string, { order: number; matches: DartsLiveResult[] }>();
-    for (const match of sortedResults) {
-      const p = phase(match.round);
-      if (!p) continue;
-      const bucket = map.get(p.label) || { order: p.order, matches: [] };
-      bucket.matches.push(match);
-      map.set(p.label, bucket);
-    }
-    return [...map.entries()].sort((a,b) => a[1].order - b[1].order);
-  }, [sortedResults]);
+  const standings = React.useMemo(() => buildCompetitionStandings(sortedResults), [sortedResults]);
+  const brackets = React.useMemo(() => buildCompetitionBracket(sortedResults, sortedFixtures), [sortedResults, sortedFixtures]);
+  const availableYears = React.useMemo(() => new Set([
+    ...results.map((item) => String(item.playedOn || "").match(/(?:19|20)\d{2}/)?.[0] || ""),
+    ...fixtures.map((item) => String(item.startsAt || item.date || "").match(/(?:19|20)\d{2}/)?.[0] || ""),
+  ].filter(Boolean)), [results, fixtures]);
+  // Never amalgamate Group A standings or quarter-finals from different editions.
+  const chooseSeasonForTables = season === "__all__" && availableYears.size > 1;
+  const officialKey = `${sport}|${competition}|${country}|${season}`;
+  const [official, setOfficial] = React.useState<{key:string;data:OfficialStandingsResponse} | null>(null);
+  const [officialRequest, setOfficialRequest] = React.useState<{key:string;loading:boolean} | null>(null);
+  React.useEffect(() => {
+    if (sport !== "foot" || tab !== "standings" || chooseSeasonForTables) return;
+    const controller = new AbortController();
+    const params = new URLSearchParams({competition, country});
+    if (/^(?:19|20)\d{2}$/.test(season)) params.set("season", season);
+    setOfficialRequest({key:officialKey,loading:true});
+    fetch(`/api/sports-live/foot/standings?${params}`, {signal:controller.signal,headers:{Accept:"application/json"}})
+      .then((response) => { if (!response.ok) throw new Error(`HTTP ${response.status}`); return response.json(); })
+      .then((data:OfficialStandingsResponse) => { if (!controller.signal.aborted) setOfficial({key:officialKey,data}); })
+      .catch(() => { if (!controller.signal.aborted) setOfficial({key:officialKey,data:{available:false,sport,competition,season:null,sourceName:null,sourceUrl:null,updatedAt:null,tables:[],reason:"Source indisponible."}}); })
+      .finally(() => { if (!controller.signal.aborted) setOfficialRequest({key:officialKey,loading:false}); });
+    return () => controller.abort();
+  }, [sport,competition,country,season,tab,chooseSeasonForTables,officialKey]);
+  const officialData = official?.key === officialKey && official.data.available && official.data.tables.length > 0 ? official.data : null;
+  const officialLoading = officialRequest?.key === officialKey && officialRequest.loading;
+
   const relatedNews = React.useMemo(() => {
-    const comp = normal(competition);
+    const comp = competitionTextKey(competition);
     const terms = comp.split(" ").filter((term) => term.length > 3 && !["championship", "championships", "open", "tour", "world", "coupe", "championnat"].includes(term));
     return news.filter((item) => {
-      const content = normal(`${item.title} ${item.summary || ""}`);
+      const content = competitionTextKey(`${item.title} ${item.summary || ""}`);
       return (comp.length > 5 && content.includes(comp)) || (terms.length >= 2 && terms.slice(0, 2).every((term) => content.includes(term)));
     }).slice(0, 16);
   }, [competition, news]);
-  const summaryNext = sortedFixtures.slice(0, 4);
-  const summaryResults = sortedResults.slice(0, 4);
-  const visibleResults = sortedResults.slice(0, limit);
+  const visibleResults = sortedResults.slice(0, resultLimit);
   const groupedResults = React.useMemo(() => {
-    const map = new Map<string, DartsLiveResult[]>();
+    const rounds = new Map<string, DartsLiveResult[]>();
     for (const match of visibleResults) {
-      const key = roundLabel(match.round);
-      const group = map.get(key) || [];
-      group.push(match);
-      map.set(key, group);
+      const round = roundLabel(match.round);
+      const bucket = rounds.get(round) || [];
+      bucket.push(match);
+      rounds.set(round, bucket);
     }
-    return [...map.entries()];
+    return [...rounds.entries()].map(([round, matches]) => {
+      const days = new Map<string, DartsLiveResult[]>();
+      matches.forEach((match) => { const day = dayKey(match.playedOn); const bucket = days.get(day) || []; bucket.push(match); days.set(day, bucket); });
+      return { round, days: [...days.entries()].sort(([a], [b]) => b.localeCompare(a)), count: matches.length };
+    });
   }, [visibleResults]);
-  const slotKey = `live-comp-${normal(`${sport}-${competition}`).slice(0, 55).replace(/\s+/g, "-")}`;
+  const visibleFixtures = sortedFixtures.slice(0, fixtureLimit);
+  const fixtureDays = React.useMemo(() => {
+    const groups = new Map<string, DartsLiveFixture[]>();
+    visibleFixtures.forEach((match) => { const day = dayKey(match.startsAt || match.date); const bucket = groups.get(day) || []; bucket.push(match); groups.set(day, bucket); });
+    return [...groups.entries()];
+  }, [visibleFixtures]);
+  const slotKey = `live-comp-${competitionTextKey(`${sport}-${competition}`).slice(0, 55).replace(/\s+/g, "-")}`;
+  const officialSource = React.useMemo(() => {
+    const rows = [...sortedResults.slice(0, 40), ...sortedFixtures.slice(0, 40)];
+    const match = rows.find((item) => /^https:\/\//i.test(String(item.sourceUrl || "")));
+    return match?.sourceUrl || null;
+  }, [sortedResults, sortedFixtures]);
 
   return <div className="msc-cd" aria-label={`Fiche ${competition}`}>
     <div className="msc-cd-tabs" role="tablist" aria-label={`Rubriques ${competition}`}>
       {TABS.map((item) => <button key={item.key} type="button" role="tab" aria-selected={tab === item.key} className={`msc-cd-tab${tab === item.key ? " is-active" : ""}`} onClick={() => setTab(item.key)}>
         <span aria-hidden="true">{item.icon}</span>{item.label}
-        {item.key === "results" && results.length > 0 ? <small>{results.length}</small> : null}
-        {item.key === "fixtures" && sortedFixtures.length > 0 ? <small>{sortedFixtures.length}</small> : null}
+        {item.key === "results" && results.length ? <small>{results.length}</small> : null}
+        {item.key === "fixtures" && sortedFixtures.length ? <small>{sortedFixtures.length}</small> : null}
       </button>)}
     </div>
-    <div className="msc-cd-context"><strong>{country}</strong><span>›</span><span>{competition}</span><span>›</span><span>{season === "__all__" ? "Toutes saisons" : season}</span></div>
+    <div className="msc-cd-context"><strong>{country}</strong><span>›</span><span>{season === "__all__" ? "Toutes saisons" : season}</span></div>
     {tab === "summary" ? <div className="msc-cd-panel">
-      <div className="msc-cd-metrics"><div><b>{results.length}</b><span>Résultats</span></div><div><b>{sortedFixtures.length}</b><span>À venir</span></div><div><b>{brackets.length}</b><span>Phases connues</span></div></div>
-      <div className="msc-cd-section-top"><h3>Prochains matchs</h3><button type="button" onClick={() => setTab("fixtures")}>Tout voir ›</button></div>
-      {summaryNext.length ? summaryNext.map((item) => <React.Fragment key={item.id}>{renderFixture(item)}</React.Fragment>) : <NoData>Aucun match programmé confirmé pour cette sélection.</NoData>}
-      <InlineAdBanner placement="competitions" slotKey={`${slotKey}-summary`} compact style={{ margin:"12px 0" }} />
+      <div className="msc-cd-metrics"><div><b>{sortedResults.length}</b><span>Résultats connus</span></div><div><b>{sortedFixtures.length}</b><span>Matchs programmés</span></div><div><b>{brackets.length}</b><span>Tours éliminatoires</span></div></div>
+      {officialSource ? <a className="msc-cd-source" href={officialSource} target="_blank" rel="noopener noreferrer">Consulter la source du match ↗</a> : null}
+      <div className="msc-cd-section-top"><h3>Prochaines rencontres</h3><button type="button" onClick={() => setTab("fixtures")}>Tout voir ›</button></div>
+      {sortedFixtures.length ? sortedFixtures.slice(0, 4).map((item) => <React.Fragment key={item.id}>{renderFixture(item)}</React.Fragment>) : <NoData>Aucun match programmé confirmé pour cette sélection.</NoData>}
+      <InlineAdBanner placement="competitions" slotKey={`${slotKey}-summary`} compact style={{ margin: "12px 0" }} />
       <div className="msc-cd-section-top"><h3>Derniers résultats</h3><button type="button" onClick={() => setTab("results")}>Tout voir ›</button></div>
-      {summaryResults.length ? summaryResults.map((item) => <React.Fragment key={item.id}>{renderResult(item)}</React.Fragment>) : <NoData>Aucun résultat vérifié pour cette sélection.</NoData>}
+      {sortedResults.length ? sortedResults.slice(0, 4).map((item) => <React.Fragment key={item.id}>{renderResult(item)}</React.Fragment>) : <NoData>Aucun résultat disponible pour cette sélection.</NoData>}
     </div> : null}
     {tab === "results" ? <div className="msc-cd-panel">
-      {groupedResults.length ? groupedResults.map(([round, matches]) => <section key={round} className="msc-cd-round"><div className="msc-cd-round-head"><strong>{round}</strong><span>{matches.length} affiché{matches.length > 1 ? "s" : ""}</span></div>{matches.map((item) => <React.Fragment key={item.id}>{renderResult(item)}</React.Fragment>)}</section>) : <NoData>Aucun résultat disponible pour cette saison. Consulter les autres saisons ou les sources officielles.</NoData>}
-      {results.length > visibleResults.length ? <button className="msc-cd-more" type="button" onClick={() => setLimit((value) => value + 120)}>Afficher 120 résultats de plus · {results.length - visibleResults.length} restants</button> : null}
+      <p className="msc-cd-caution">{visibleResults.length} sur {sortedResults.length} résultats affichés, du plus récent au plus ancien.</p>
+      {groupedResults.length ? groupedResults.map(({ round, days, count }) => <section key={round} className="msc-cd-round"><div className="msc-cd-round-head"><strong>{round}</strong><span>{count} match{count > 1 ? "s" : ""}</span></div>
+        {days.map(([day, matches]) => <div key={`${round}-${day}`} className="msc-cd-day"><div className="msc-cd-day-title">{dayLabel(day)} <span>{matches.length} match{matches.length > 1 ? "s" : ""}</span></div>{matches.map((item) => <React.Fragment key={item.id}>{renderResult(item)}</React.Fragment>)}</div>)}
+      </section>) : <NoData>Aucun résultat disponible pour cette saison. Consulter les autres saisons ou les sources officielles.</NoData>}
+      {sortedResults.length > visibleResults.length ? <button className="msc-cd-more" type="button" onClick={() => setResultLimit((value) => value + 120)}>Afficher 120 résultats de plus · {sortedResults.length - visibleResults.length} restants</button> : null}
     </div> : null}
     {tab === "fixtures" ? <div className="msc-cd-panel">
-      {sortedFixtures.length ? sortedFixtures.slice(0, 120).map((item) => <React.Fragment key={item.id}>{renderFixture(item)}</React.Fragment>) : <NoData>Aucune rencontre programmée disponible. Le calendrier personnel reste dans Agenda.</NoData>}
-      {sortedFixtures.length > 120 ? <p className="msc-cd-caution">120 prochaines rencontres affichées. Affiner la saison pour consulter les autres.</p> : null}
+      {fixtureDays.length ? fixtureDays.map(([day, matches]) => <section className="msc-cd-day" key={day}><div className="msc-cd-day-title">{dayLabel(day)} <span>{matches.length} match{matches.length > 1 ? "s" : ""}</span></div>{matches.map((item) => <React.Fragment key={item.id}>{renderFixture(item)}</React.Fragment>)}</section>) : <NoData>Aucune rencontre programmée disponible. L'Agenda personnel reste dans l'Agenda principal.</NoData>}
+      {sortedFixtures.length > visibleFixtures.length ? <button className="msc-cd-more" type="button" onClick={() => setFixtureLimit((value) => value + 60)}>Afficher 60 rencontres supplémentaires · {sortedFixtures.length - visibleFixtures.length} restantes</button> : null}
     </div> : null}
     {tab === "standings" ? <div className="msc-cd-panel">
-      <p className="msc-cd-caution">Bilans calculés à partir des matchs disposant de deux scores complets. Ils ne constituent pas un classement officiel : barèmes, départages et sanctions ne sont pas connus.</p>
-      {standings.length ? standings.map((table) => <section key={table.name} className="msc-cd-table-wrap"><h3>{table.name}</h3><div className="msc-cd-table-scroll"><table className="msc-cd-table"><thead><tr><th>#</th><th>Participant</th><th>J</th><th>V</th><th>N</th><th>D</th></tr></thead><tbody>{table.rows.slice(0, 80).map((row, index) => <tr key={normal(row.name)}><td>{index+1}</td><td>{row.name}</td><td>{row.played}</td><td>{row.won}</td><td>{row.drawn}</td><td>{row.lost}</td></tr>)}</tbody></table></div></section>) : <NoData>Pas assez de scores complets pour établir un bilan fiable.</NoData>}
+      {chooseSeasonForTables ? <NoData>Plusieurs saisons sont présentes : sélectionne une année au-dessus pour éviter de mélanger leurs classements.</NoData> : null}
+      {!chooseSeasonForTables && officialLoading ? <p className="msc-cd-caution" role="status">Recherche du classement publié par le fournisseur…</p> : null}
+      {!chooseSeasonForTables && officialData ? <>
+        <p className="msc-cd-caution"><strong>CLASSEMENT FOURNISSEUR</strong> · {officialData.sourceName} · {officialData.season ? `Saison ${officialData.season}` : "Saison courante"}. Points et départages issus du fournisseur, non recalculés dans l'application.</p>
+        {officialData.tables.map((table, index) => <section key={`${table.stage}-${table.group}-${index}`} className="msc-cd-table-wrap">
+          <h3>{table.name}</h3>
+          <div className="msc-cd-table-scroll"><table className="msc-cd-table"><thead><tr><th>#</th><th>Équipe</th><th>J</th><th>V</th><th>N</th><th>D</th><th>BP</th><th>BC</th><th>Diff.</th><th>Pts</th></tr></thead>
+            <tbody>{table.rows.map((row) => <tr key={`${table.name}-${row.position}-${row.name}`}><td>{row.position}</td><td>{row.name}</td><td>{row.played}</td><td>{row.won}</td><td>{row.drawn}</td><td>{row.lost}</td><td>{row.goalsFor ?? "–"}</td><td>{row.goalsAgainst ?? "–"}</td><td>{row.goalDifference ?? "–"}</td><td><strong>{row.points}</strong></td></tr>)}</tbody>
+          </table></div>
+        </section>)}
+        {officialData.sourceUrl ? <a className="msc-cd-source" href={officialData.sourceUrl} target="_blank" rel="noopener noreferrer">Source : {officialData.sourceName} ↗</a> : null}
+      </> : null}
+      {!chooseSeasonForTables && !officialData && !officialLoading ? <>
+        <p className="msc-cd-caution">{sport === "foot" && officialLoading ? "" : "BILAN INDICATIF · Calculé uniquement sur les scores complets reçus. Ce tableau n'est pas un classement officiel : barème, départages et sanctions peuvent manquer. Les matchs éliminatoires sont exclus."}</p>
+        {standings.length ? standings.map((table) => <section key={table.name} className="msc-cd-table-wrap"><h3>{table.name}</h3><div className="msc-cd-table-scroll"><table className="msc-cd-table"><thead><tr><th>#</th><th>Participant</th><th>J</th><th>V</th><th>N</th><th>D</th></tr></thead><tbody>{table.rows.slice(0, 120).map((row, index) => <tr key={`${table.name}-${competitionTextKey(row.name)}`}><td>{index + 1}</td><td>{row.name}</td><td>{row.played}</td><td>{row.won}</td><td>{row.drawn}</td><td>{row.lost}</td></tr>)}</tbody></table></div></section>) : <NoData>{sport === "foot" && officialLoading ? "Chargement…" : "Aucun classement de poule ou championnat exploitable pour cette sélection."}</NoData>}
+      </> : null}
     </div> : null}
     {tab === "bracket" ? <div className="msc-cd-panel">
-      <p className="msc-cd-caution">Parcours par tour, uniquement pour les matchs identifiés. Aucun lien de qualification entre tours n'est inventé.</p>
-      {brackets.length ? brackets.map(([label, bucket]) => <section key={label} className="msc-cd-round"><div className="msc-cd-round-head"><strong>{label}</strong><span>{bucket.matches.length} match{bucket.matches.length > 1 ? "s" : ""}</span></div>{bucket.matches.slice(0, 64).map((item) => <React.Fragment key={item.id}><div className="msc-cd-elim"><span>{item.winner?.name || "À confirmer"}</span><b>{score(item.winner)} : {score(item.loser)}</b><span>{item.loser?.name || "À confirmer"}</span></div></React.Fragment>)}{bucket.matches.length > 64 ? <div className="msc-cd-caution">64 premiers matchs de ce tour affichés.</div> : null}</section>) : <NoData>Aucune phase éliminatoire identifiable dans les résultats reçus.</NoData>}
+      <p className="msc-cd-caution">Parcours par tours confirmés : résultats et rencontres programmées. Les liens de qualification entre les tours ne sont affichés que si un fournisseur transmet un véritable tableau structuré.</p>
+      {chooseSeasonForTables ? <NoData>Plusieurs éditions sont mélangées dans cette sélection. Choisis une saison pour voir les tours éliminatoires d'une seule édition.</NoData> : null}
+      {!chooseSeasonForTables && brackets.length ? <div className="msc-cd-phase-filter" aria-label="Choisir un tour"><button type="button" aria-pressed={bracketFilter === "all"} className={bracketFilter === "all" ? "is-active" : ""} onClick={() => setBracketFilter("all")}>Tous les tours</button>{brackets.map((round) => <button key={round.label} type="button" aria-pressed={bracketFilter === round.label} className={bracketFilter === round.label ? "is-active" : ""} onClick={() => setBracketFilter(round.label)}>{round.label}</button>)}</div> : null}
+      {!chooseSeasonForTables && brackets.length ? brackets.filter((round) => bracketFilter === "all" || round.label === bracketFilter).map((round) => <section key={round.label} className="msc-cd-round"><div className="msc-cd-round-head"><strong>{round.label}</strong><span>{round.completed.length} terminé{round.completed.length > 1 ? "s" : ""} · {round.scheduled.length} à venir</span></div>
+        {round.completed.slice(0, bracketLimit).map((match) => <div className="msc-cd-elim" key={`r-${match.id}`}><div className="msc-cd-elim-names"><span>{match.winner?.name || "À confirmer"}</span><span>{match.loser?.name || "À confirmer"}</span></div><div className="msc-cd-elim-info"><b>{completeMatchScore(match) ? `${score(match.winner.score)} : ${score(match.loser.score)}` : "– : –"}</b><small>{completeMatchScore(match) ? "RÉSULTAT" : "SCORE INCOMPLET"}</small><small>{timeLabel(match.playedOn)}</small></div></div>)}
+        {round.scheduled.slice(0, bracketLimit).map((match) => <div className="msc-cd-elim" key={`f-${match.id}`}><div className="msc-cd-elim-names"><span>{match.players?.[0]?.name || "À confirmer"}</span><span>{match.players?.[1]?.name || "À confirmer"}</span></div><div className="msc-cd-elim-info"><b>– : –</b><small>À VENIR</small><small>{timeLabel(match.startsAt || match.date)}</small></div></div>)}
+        {round.completed.length > bracketLimit || round.scheduled.length > bracketLimit ? <button className="msc-cd-more" type="button" onClick={() => setBracketLimit((n) => n + 40)}>Afficher jusqu'à 40 matchs supplémentaires par tour</button> : null}
+      </section>) : !chooseSeasonForTables ? <NoData>Aucune phase éliminatoire identifiable dans les résultats ou les rencontres programmées.</NoData> : null}
     </div> : null}
     {tab === "news" ? <div className="msc-cd-panel"><div className="msc-cd-section-top"><h3>Actualités de {competition}</h3></div>{relatedNews.length ? relatedNews.map((item) => <React.Fragment key={item.id}>{renderNews(item)}</React.Fragment>) : <NoData>Pas d'actualité associée de façon fiable à cette compétition pour le moment.</NoData>}</div> : null}
   </div>;
