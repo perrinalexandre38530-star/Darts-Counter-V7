@@ -104,6 +104,7 @@ function shuffle<T>(items: T[]) { const out = [...items]; for (let i = out.lengt
 
 export default function Wave61SharedConfig(props: any) {
   const go = props?.go ?? props?.setTab;
+  const isQuick = props?.params?.launchMode === "quick";
   const awena = useAwenaOptional();
   const store = props?.store ?? props?.params?.store ?? null;
   const rawModeId = String(props?.forcedModeId || props?.params?.gameId || props?.gameId || "");
@@ -206,6 +207,13 @@ export default function Wave61SharedConfig(props: any) {
   const [targetAdviceEnabled, setTargetAdviceEnabled] = React.useState(saved.targetAdviceEnabled !== false);
   const [awenaCommentaryEnabled, setAwenaCommentaryEnabled] = React.useState(saved.awenaCommentaryEnabled !== false);
   const [wave61SfxEnabled, setWave61SfxEnabled] = React.useState(saved.wave61SfxEnabled !== false);
+  // X01 quick-party contract: participants are session-only names, never local profiles.
+  const quickMin = Math.max(1, Math.min(spec.maxPlayers, preset.minPlayers));
+  const quickMax = Math.max(quickMin, Math.min(spec.maxPlayers, 10));
+  const [quickCount, setQuickCount] = React.useState(() => Math.min(quickMax, Math.max(quickMin, quickMin === 1 ? 2 : quickMin)));
+  const [quickNames, setQuickNames] = React.useState<string[]>(() => Array.from({length: 10}, (_, i) => `J${i + 1}`));
+  const quickPlayersValid = quickCount >= quickMin && quickCount <= quickMax;
+
 
   React.useEffect(() => {
     if (selectedIds.length) return;
@@ -361,7 +369,7 @@ export default function Wave61SharedConfig(props: any) {
   const modeTicker = React.useMemo(() => getTicker(spec.id, lang), [spec.id, lang]);
 
   function start() {
-    if (!valid || typeof go !== "function") return;
+    if (!(isQuick ? quickPlayersValid : valid) || typeof go !== "function") return;
     const teamByPlayer: Record<string, string> = {};
     let orderedIds: string[] = [];
     if (spec.id === "green_vs_red" && greenRedFormat === "teams") {
@@ -380,7 +388,16 @@ export default function Wave61SharedConfig(props: any) {
       orderedIds = randomOrder ? shuffle(baseIds) : baseIds;
       if (effectiveParticipantMode === "teams") orderedIds.forEach((id, index) => { teamByPlayer[id] = index % 2 === 0 ? "A" : "B"; });
     }
-    const playersList = orderedIds.map((id) => profileById.get(id)).filter(Boolean).map((p: any) => ({ ...p, id: String(p.id), name: p?.name || p?.displayName || "Joueur" }));
+    let playersList = orderedIds.map((id) => profileById.get(id)).filter(Boolean).map((p: any) => ({ ...p, id: String(p.id), name: p?.name || p?.displayName || "Joueur" }));
+    if (isQuick) {
+      const sessionId = `quick-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+      playersList = quickNames.slice(0, quickCount).map((rawName, index) => {
+        const id = `${sessionId}-p${index + 1}`;
+        return { id, profileId: null, temporaryPlayerId: id, isTemporary: true,
+          name: String(rawName || "").trim() || `J${index + 1}`, avatarDataUrl: null, isBot: false };
+      });
+      orderedIds = playersList.map((p) => p.id);
+    }
     const greenRedVariantId = spec.id === "green_vs_red"
       ? `gvr:${String(modeOptions?.contractRule || "official_unique")}:${String(modeOptions?.scoreModel || "hit_count")}:${String(modeOptions?.bullAccess || "final_only")}:${String(modeOptions?.penaltyModel || "transfer")}:${String(modeOptions?.bullRule || "classic")}:base${Number(modeOptions?.transferBaseErrorPoints ?? 1)}:opp${Number(modeOptions?.transferOppMultiplier ?? 2)}:miss${Number(modeOptions?.transferMissPoints ?? modeOptions?.transferMissMultiplier ?? 2)}`
       : undefined;
@@ -392,8 +409,8 @@ export default function Wave61SharedConfig(props: any) {
       playersList,
       botIds: playersList.filter(isBotLike).map((p: any) => String(p.id)),
       botsEnabled: playersList.some(isBotLike),
-      participantMode: effectiveParticipantMode,
-      teamByPlayer,
+      participantMode: isQuick ? "players" : effectiveParticipantMode,
+      teamByPlayer: isQuick ? {} : teamByPlayer,
       difficulty,
       botLevel,
       rounds: Number(lockedRounds ?? Math.max(1, Math.min(60, Number(rounds) || preset.defaultRounds))),
@@ -401,22 +418,92 @@ export default function Wave61SharedConfig(props: any) {
       lives: Math.max(0, Math.min(9, Number(lives) || 0)),
       randomOrder,
       scoreInputMethod,
-      modeOptions,
+      modeOptions: isQuick && spec.id === "green_vs_red" ? { ...modeOptions, matchFormat: "duel" } : modeOptions,
       targetAdviceEnabled,
       awenaCommentaryEnabled,
-      wave61SfxEnabled,
+      wave61SfxEnabled: isQuick ? false : wave61SfxEnabled,
+      profileStatsDeferred: isQuick,
+      temporaryParticipants: isQuick,
+      voiceEnabled: isQuick ? false : undefined,
+      audio: isQuick ? { arcadeEnabled: false, hitEnabled: false, voiceEnabled: false, sfxVolume: 0 } : undefined,
+      quickParty: isQuick,
+      partyMode: isQuick ? "quick" : "arcade",
       engineFamily: preset.family,
       engineVersion: WAVE61_ENGINE_VERSION,
     };
-    try { recordProfileUsageForMode(spec.id, orderedIds); } catch {}
-    go("wave61_play", { gameId: spec.id, config: payload });
+    if (!isQuick) { try { recordProfileUsageForMode(spec.id, orderedIds); } catch {} }
+    go("wave61_play", { gameId: spec.id, config: payload, launchMode: isQuick ? "quick_play" : "arcade" });
   }
 
   const card: React.CSSProperties = { borderRadius: 18, padding: 12, background: "linear-gradient(180deg,rgba(16,18,30,.96),rgba(7,9,16,.98))", border: `1px solid ${accent}35`, boxShadow: "0 15px 36px rgba(0,0,0,.38)" };
   const pill = (active: boolean): React.CSSProperties => ({ minHeight: 36, padding: "7px 12px", borderRadius: 999, border: `1px solid ${active ? accent : "rgba(255,255,255,.12)"}`, background: active ? `${accent}1c` : "rgba(255,255,255,.035)", color: active ? "#fff" : "#aeb5c8", fontWeight: 950 });
 
+  if (isQuick) {
+    // Only game-specific decisions belong here. Fixed engine contracts stay in defaults.
+    const relevantKeys: Record<string, string[]> = {
+      green_vs_red: ["contractRule", "scoreModel"], black_vs_white: ["firstTrack", "matchFormat"],
+      three_colors: ["scoreMode", "bullColors"], la_suite: ["sequenceOrder"],
+      color_call: ["callOrder", "scoreMode"], bim_bam_boum: ["comboRule"],
+      saute_moutons: ["trackLength"], troupeau_en_danger: ["flockSize", "wolfDifficulty"],
+      une_ptite_raclette: ["seriesFormat"],
+    };
+    const quickOptions = dedicatedOptions.filter((o) =>
+      (relevantKeys[spec.id] || dedicatedOptions.filter((x) => x.type === "select").slice(0, 2).map((x) => x.key)).includes(o.key)
+    ).slice(0, 2);
+    const quickChip = (active:boolean):React.CSSProperties => ({ ...pill(active), minHeight: 42, padding: "8px 14px", cursor: "pointer" });
+    const quickInput:React.CSSProperties = { width: "100%", minWidth: 0, minHeight: 42, borderRadius: 12,
+      border: "1px solid rgba(255,255,255,.18)", color: "#fff", background: "rgba(255,255,255,.05)", padding: "8px 12px", fontSize: 16, fontWeight: 850 };
+    return <div className="page wave61-config-screen wave61-quick-config" data-wave61-quick="1" style={{ minHeight:"100dvh", paddingBottom:90, color:"#fff", background:"#060811" }}>
+      <PageHeader tickerSrc={modeTicker || undefined} tickerAlt={spec.label} title={modeTicker ? undefined : spec.label} tickerHeight={82}
+        tickerFit="cover" left={<BackDot onClick={() => go?.("games", { gamesView: "all" })} color={accent} glow={`${accent}88`} />} />
+      <main style={{ maxWidth:760, margin:"0 auto", padding:"12px", display:"grid", gap:12 }}>
+        <section style={card}>
+          <div style={{color:accent,fontSize:13,fontWeight:1000,letterSpacing:1,marginBottom:8}}>PARTIE RAPIDE · {spec.label.toUpperCase()}</div>
+          <div style={{fontSize:11,color:"#a9b0c0"}}>Sans profil ni bot · joueurs temporaires · réglages essentiels</div>
+        </section>
+        <section style={card}>
+          <div style={{color:accent,fontWeight:1000,marginBottom:10}}>JOUEURS</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:12}}>
+            {quickMin <= 1 && <button type="button" style={quickChip(quickCount===1)} onClick={() => setQuickCount(1)}>SOLO</button>}
+            {quickMin <= 2 && quickMax >= 2 && <button type="button" style={quickChip(quickCount===2)} onClick={() => setQuickCount(2)}>DUEL</button>}
+            {quickMax > 2 && <><button type="button" style={quickChip(quickCount>2)} onClick={() => setQuickCount(Math.max(3,quickMin))}>MULTI</button>
+            {quickCount > 2 && <select aria-label="Nombre de joueurs" value={quickCount} onChange={(e) => setQuickCount(Number(e.target.value))} style={{...quickInput,width:90}}>
+              {Array.from({length:quickMax-Math.max(3,quickMin)+1},(_,i)=>i+Math.max(3,quickMin)).map(n=><option value={n} key={n}>{n}</option>)}
+            </select>}</>}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(135px,1fr))",gap:9}}>
+            {quickNames.slice(0,quickCount).map((name,i)=><label key={i} style={{display:"grid",gap:5,fontSize:11,color:"#aab4c7",fontWeight:900}}>JOUEUR {i+1}
+              <input aria-label={`Nom du joueur ${i+1}`} maxLength={32} value={name} onChange={(e)=>setQuickNames(prev=>prev.map((v,j)=>i===j?e.target.value:v))} style={quickInput}/>
+            </label>)}
+          </div>
+        </section>
+        <section style={card}>
+          <div style={{color:accent,fontWeight:1000,marginBottom:10}}>RÈGLES · {spec.label.toUpperCase()}</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(145px,1fr))",gap:9}}>
+            {lockedRounds == null && <label style={{display:"grid",gap:5,fontSize:11,fontWeight:900}}>NOMBRE DE TOURS
+              <input type="number" min={1} max={60} value={rounds} onChange={(e)=>setRounds(Number(e.target.value))} style={quickInput}/></label>}
+            {preset.defaultGoal > 0 && lockedGoal == null && <label style={{display:"grid",gap:5,fontSize:11,fontWeight:900}}>OBJECTIF
+              <input type="number" min={1} max={9999} value={goal} onChange={(e)=>setGoal(Number(e.target.value))} style={quickInput}/></label>}
+            {preset.defaultLives > 0 && <label style={{display:"grid",gap:5,fontSize:11,fontWeight:900}}>VIES
+              <select value={lives} onChange={(e)=>setLives(Number(e.target.value))} style={quickInput}>{[3,4,5,6,7].map(n=><option value={n} key={n}>{n}</option>)}</select></label>}
+            {quickOptions.map(option=><label key={option.key} style={{display:"grid",gap:5,fontSize:11,fontWeight:900}}>{option.label}
+              {option.type==="select"?<select value={modeOptions[option.key] ?? option.defaultValue} onChange={e=>setModeOptions(p=>({...p,[option.key]:e.target.value}))} style={quickInput}>{(option.options||[]).map(o=><option key={String(o.value)} value={o.value}>{o.label}</option>)}</select>
+              :option.type==="toggle"?<input type="checkbox" checked={!!(modeOptions[option.key] ?? option.defaultValue)} onChange={e=>setModeOptions(p=>({...p,[option.key]:e.target.checked}))}/>
+              :<input type="number" min={option.min} max={option.max} value={modeOptions[option.key] ?? option.defaultValue} onChange={e=>setModeOptions(p=>({...p,[option.key]:Number(e.target.value)}))} style={quickInput}/>}</label>)}
+          </div>
+        </section>
+        <section style={card}>
+          <div style={{color:accent,fontWeight:1000,marginBottom:9}}>ORDRE DE DÉPART</div>
+          <div style={{display:"flex",gap:8}}>{[[true,"ALÉATOIRE"],[false,"DANS L’ORDRE"]].map(([v,label]:any)=><button key={label} type="button" style={quickChip(randomOrder===v)} onClick={()=>setRandomOrder(v)}>{label}</button>)}</div>
+        </section>
+        <button type="button" disabled={!quickPlayersValid} onClick={start} style={{minHeight:54,borderRadius:15,border:`1px solid ${accent}`,background:`${accent}28`,color:"#fff",fontWeight:1100,fontSize:18}}>JOUER</button>
+      </main>
+    </div>;
+  }
+
   return <div className="page wave61-config-screen" data-wave61-config="1" style={{ minHeight: "100dvh", paddingBottom: 88, background: `radial-gradient(circle at 50% 0%,${accent}14,transparent 34%)` }}>
     <div className="wave61-config-header"><PageHeader tickerSrc={modeTicker || undefined} tickerAlt={spec.label} title={modeTicker ? undefined : spec.label} subtitle={modeTicker ? undefined : familyText} tickerHeight={82} tickerBottomGap={8} tickerFit="cover" left={<div style={{ marginLeft: 7 }}><BackDot onClick={() => go?.("games", { gamesView: "all" })} color={accent} glow={`${accent}88`} /></div>} right={awena?.enabled !== false ? <div style={{ marginRight: 7 }}><PremiumAwenaButton awena={awena} route={`${spec.id}_config`} mode={spec.id} screenLabel={`${spec.label} · Configuration`} accent={accent} /></div> : null} /></div>
+    {isQuick ? <div style={{maxWidth:980,margin:"8px auto",padding:"9px 14px",fontWeight:950,color:accent}}>⚡ PARTIE RAPIDE · {spec.label} · JOUEURS ET RÈGLES ESSENTIELLES</div> : null}
     <div className="wave61-config-body" style={{ padding: "8px 10px 20px", maxWidth: 980, margin: "0 auto", display: "grid", gap: 10, width: "100%", minWidth: 0, overflowX: "hidden" }}>
       <section className="wave61-config-participants" style={spec.id === "green_vs_red" && greenRedFormat === "teams" ? { padding:0, background:"transparent", border:"none", boxShadow:"none" } : card}>
         {spec.id === "green_vs_red" ? <>
@@ -517,7 +604,7 @@ export default function Wave61SharedConfig(props: any) {
         <OptionRow label="Saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Keypad" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow>
       </section>
 
-      <section className="wave61-config-assistance" style={{ ...card, borderColor: `${accent}45` }}>
+      {!isQuick ? <section className="wave61-config-assistance" style={{ ...card, borderColor: `${accent}45` }}>
         <div className="wave61-config-awena-card" aria-hidden="true">
           <img src="/awena/awena-avatar.webp" alt="" />
           <div><b>AWENA VOUS EXPLIQUE</b><span>{spec.infoBody}</span></div>
@@ -527,11 +614,11 @@ export default function Wave61SharedConfig(props: any) {
         <OptionRow label="Conseil de cible · 3 secondes"><OptionToggle value={targetAdviceEnabled} onChange={setTargetAdviceEnabled} /></OptionRow>
         <OptionRow label="Awena · conseils & commentaires brefs"><OptionToggle value={awenaCommentaryEnabled} onChange={setAwenaCommentaryEnabled} /></OptionRow>
         <OptionRow label="Bruitages Wave61"><OptionToggle value={wave61SfxEnabled} onChange={setWave61SfxEnabled} /></OptionRow>
-      </section>
+      </section> : null}
 
       {dedicatedOptions.length ? <section className="wave61-config-dedicated" style={{ ...card, borderColor: `${accent}4d` }}>
         <div style={{ color: accent, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>Réglages propres à {spec.label}</div>
-        {dedicatedIntro ? <div style={{ color: "#aeb5c8", fontSize: 10.5, lineHeight: 1.5, marginBottom: 8 }}>{dedicatedIntro}</div> : null}
+        {!isQuick && dedicatedIntro ? <div style={{ color: "#aeb5c8", fontSize: 10.5, lineHeight: 1.5, marginBottom: 8 }}>{dedicatedIntro}</div> : null}
         {dedicatedGroupsForMode(spec.id) ? (() => {
           const optionMap = new Map(dedicatedOptions.map((option) => [option.key, option]));
           const groups = dedicatedGroupsForMode(spec.id) || [];
@@ -559,8 +646,8 @@ export default function Wave61SharedConfig(props: any) {
       </section> : null}
 
       <section className="wave61-config-launch" style={{ ...card, borderColor: valid ? `${accent}66` : "rgba(255,255,255,.08)" }}>
-        <div style={{ color: "#aeb5c8", fontSize: 11, lineHeight: 1.55 }}><b style={{ color: "#fff" }}>{spec.label}</b> utilise désormais le moteur <b style={{ color: accent }}>{preset.label}</b>. La sauvegarde/reprise, l'Undo, les bots, le scoring par dart et l'écran de fin sont branchés dans le socle commun.</div>
-        <button disabled={!valid} onClick={start} style={{ width: "100%", minHeight: 48, marginTop: 12, borderRadius: 14, border: `1px solid ${valid ? accent : "rgba(255,255,255,.1)"}`, background: valid ? `linear-gradient(180deg,${accent}33,${accent}12)` : "rgba(255,255,255,.03)", color: valid ? "#fff" : "#5e6474", fontWeight: 1100, letterSpacing: .8 }}>LANCER {spec.label}</button>
+        {!isQuick ? <div style={{ color: "#aeb5c8", fontSize: 11, lineHeight: 1.55 }}><b style={{ color: "#fff" }}>{spec.label}</b> utilise désormais le moteur <b style={{ color: accent }}>{preset.label}</b>. La sauvegarde/reprise, l'Undo, les bots, le scoring par dart et l'écran de fin sont branchés dans le socle commun.</div> : null}
+        <button disabled={!valid} onClick={start} style={{ width: "100%", minHeight: 48, marginTop: 12, borderRadius: 14, border: `1px solid ${valid ? accent : "rgba(255,255,255,.1)"}`, background: valid ? `linear-gradient(180deg,${accent}33,${accent}12)` : "rgba(255,255,255,.03)", color: valid ? "#fff" : "#5e6474", fontWeight: 1100, letterSpacing: .8 }}>{isQuick ? "JOUER" : `LANCER ${spec.label}`}</button>
       </section>
     </div>
   </div>;

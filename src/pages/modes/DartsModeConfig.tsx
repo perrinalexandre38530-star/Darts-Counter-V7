@@ -23,7 +23,8 @@ const TERRITORIES_MAPS: { id: string; label: string }[] = [
   { id: "WORLD", label: "World" },
 ];
 
-export default function DartsModeConfig({ store, go, gameId }) {
+export default function DartsModeConfig({ store, go, gameId, params }) {
+  const isQuick = params?.launchMode === "quick";
   const mode = getModeById(gameId);
 
   // ⚙️ restore previous config (if exists)
@@ -45,6 +46,8 @@ export default function DartsModeConfig({ store, go, gameId }) {
     return (saved && saved.length ? saved : profiles.slice(0, 2).map((p: any) => p.id)) as any;
   });
   const [bots, setBots] = React.useState([]);
+  const [quickCount, setQuickCount] = React.useState(2);
+  const [quickNames, setQuickNames] = React.useState(() => Array.from({ length: 10 }, (_,i) => `J${i+1}`));
 
   // Recreate bots from saved config (so selection is consistent)
   React.useEffect(() => {
@@ -88,16 +91,26 @@ export default function DartsModeConfig({ store, go, gameId }) {
   }
 
   function start() {
+    const quickSession = `quick-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,6)}`;
+    const quickPlayers = quickNames.slice(0,quickCount).map((value,index) => {
+      const id = `${quickSession}-p${index+1}`;
+      return {id, profileId:null, temporaryPlayerId:id, isTemporary:true, name:String(value||"").trim()||`J${index+1}`, avatarDataUrl:null};
+    });
     const cfg = {
       modeId: gameId,
       rounds: Math.max(1, Number(rounds) || 1),
       dartsPerRound: Math.max(1, Math.min(3, Number(dartsPerRound) || 3)),
       targetScore: targetScore === "" ? null : Number(targetScore) || null,
       ...(isTerritories ? { mapId } : {}),
-      players: selectedPlayers.map(p => ({ id: p.id, name: p.name, avatarDataUrl: p.avatarDataUrl ?? null })),
+      players: isQuick ? quickPlayers : selectedPlayers.map(p => ({ id: p.id, name: p.name, avatarDataUrl: p.avatarDataUrl ?? null })),
+      temporaryParticipants: isQuick,
+      profileStatsDeferred: isQuick,
+      audio: isQuick ? { arcadeEnabled:false, hitEnabled:false, voiceEnabled:false, sfxVolume:0 } : undefined,
+      quickParty: isQuick,
+      partyMode: isQuick ? "quick" : "arcade",
     };
-    try { localStorage.setItem(`dc_modecfg_${gameId}`, JSON.stringify(cfg)); } catch {}
-    try { recordProfileUsageForMode(gameId || "darts_mode", selectedPlayers.map((p: any) => p.id)); } catch {}
+    if (!isQuick) { try { localStorage.setItem(`dc_modecfg_${gameId}`, JSON.stringify(cfg)); } catch {} }
+    if (!isQuick) { try { recordProfileUsageForMode(gameId || "darts_mode", selectedPlayers.map((p: any) => p.id)); } catch {} }
     go("darts_mode_play", { gameId, config: cfg });
   }
 
@@ -109,6 +122,23 @@ export default function DartsModeConfig({ store, go, gameId }) {
     border:"rgba(255,255,255,0.12)",
     accent:"#f3c76a",
   };
+
+  if (isQuick) {
+    const smallCard = {borderRadius:16,background:"rgba(15,18,30,.96)",border:"1px solid rgba(243,199,106,.28)",padding:14};
+    const quickInput = {width:"100%",boxSizing:"border-box",borderRadius:11,padding:"10px 12px",background:"#181b29",color:"white",border:"1px solid rgba(255,255,255,.16)",fontSize:16};
+    const fields = [
+      {label:"TOURS",value:rounds,change:setRounds,min:1,max:60},
+      ...(mode?.targetScore != null ? [{label:"OBJECTIF",value:targetScore,change:setTargetScore,min:1,max:9999}] : []),
+    ];
+    return <div className="msc-mode-config msc-mode-quick" style={{minHeight:"100dvh",background:"#060811",color:"white",padding:"12px 12px 96px"}}>
+      <div style={{maxWidth:760,margin:"auto",display:"grid",gap:12}}>
+        <div style={smallCard}><button onClick={()=>go("games", { gamesView: "all" })} style={{background:"transparent",border:0,color:"#f3c76a",fontWeight:900}}>← RETOUR</button><h2 style={{margin:"8px 0",color:"#f3c76a"}}>{mode?.label||gameId}</h2><strong>PARTIE RAPIDE</strong><p style={{fontSize:12,color:"#aeb5c8"}}>Noms libres · sans profil · règles essentielles</p></div>
+        <section style={smallCard}><b style={{color:"#f3c76a"}}>JOUEURS</b><div style={{display:"flex",gap:8,margin:"10px 0"}}>{[1,2,3,4].map(n=><button key={n} onClick={()=>setQuickCount(n)} style={{padding:"9px 13px",borderRadius:12,border:`1px solid ${quickCount===n?"#f3c76a":"#444"}`,background:quickCount===n?"#514022":"#151722",color:"white"}}>{n===1?"SOLO":n===2?"DUEL":`${n} JOUEURS`}</button>)}</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(145px,1fr))",gap:9}}>{quickNames.slice(0,quickCount).map((name,i)=><label key={i} style={{fontSize:11}}>JOUEUR {i+1}<input aria-label={`Nom du joueur ${i+1}`} maxLength={32} value={name} onChange={e=>setQuickNames(p=>p.map((v,j)=>i===j?e.target.value:v))} style={quickInput}/></label>)}</div></section>
+        <section style={smallCard}><b style={{color:"#f3c76a"}}>RÈGLES DU JEU</b><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(145px,1fr))",gap:10,marginTop:10}}>{fields.map((f,i)=><label key={i} style={{fontSize:11,fontWeight:900}}>{f.label}<input type="number" min={f.min} max={f.max} value={f.value} onChange={e=>f.change(Number(e.target.value))} style={quickInput}/></label>)}{isTerritories&&<label style={{fontSize:11}}>CARTE<select value={mapId} onChange={e=>setMapId(e.target.value)} style={quickInput}>{TERRITORIES_MAPS.map(m=><option value={m.id} key={m.id}>{m.label}</option>)}</select></label>}</div></section>
+        <button onClick={start} style={{padding:16,borderRadius:14,background:"#4a3818",color:"white",fontSize:18,fontWeight:1000,border:"1px solid #f3c76a"}}>JOUER</button>
+      </div>
+    </div>;
+  }
 
   return (
     <div className="msc-mode-config msc-mode-config--split darts-mode-config-screen" style={{
@@ -140,6 +170,7 @@ export default function DartsModeConfig({ store, go, gameId }) {
         </div>
       </div>
 
+      {isQuick ? <div style={{ color: "#54efb2", fontWeight: 900, marginBottom: 10 }}>⚡ PARTIE RAPIDE · {mode?.label || gameId}</div> : null}
       <div className="msc-mode-config-primary" style={{ background:T.card, border:"1px solid "+T.border, borderRadius:16, padding:12, marginBottom:12 }}>
         <div style={{ fontWeight:900, marginBottom:10 }}>Joueurs</div>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
@@ -281,7 +312,7 @@ export default function DartsModeConfig({ store, go, gameId }) {
           letterSpacing:0.2,
           boxShadow:"0 16px 40px rgba(0,0,0,0.35)",
         }}>
-          Lancer la partie
+          {isQuick ? "⚡ JOUER" : "Lancer la partie"}
         </button>
       </div>
     

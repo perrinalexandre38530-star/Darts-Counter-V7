@@ -5893,6 +5893,7 @@ try {
       onValidate={onlineCanScore ? requestValidateThrow : (() => {})}
       onDirectDart={onlineCanScore ? handleDirectDart : (() => {})}
       onSetVisitDarts={onlineCanScore ? handleSetVisitDarts : (() => {})}
+      visitScoreRemaining={currentScore}
       onSubmitVisitScore={onlineCanScore ? handleSubmitVisitScore : (() => {})}
       onCorrectVisitScore={onlineCanScore ? handleCorrectVisitScore : (() => {})}
       visitScoreFeedback={visitScoreFeedback}
@@ -6468,6 +6469,7 @@ try {
               onValidate={onlineCanScore ? requestValidateThrow : (() => {})}
               onDirectDart={onlineCanScore ? handleDirectDart : (() => {})}
               onSetVisitDarts={onlineCanScore ? handleSetVisitDarts : (() => {})}
+              visitScoreRemaining={currentScore}
               onSubmitVisitScore={onlineCanScore ? handleSubmitVisitScore : (() => {})}
               onCorrectVisitScore={onlineCanScore ? handleCorrectVisitScore : (() => {})}
               visitScoreFeedback={visitScoreFeedback}

@@ -7830,7 +7830,7 @@ case "babyfoot_team_edit":
 
       case "darts_mode_config": {
         const gameId = routeParams?.gameId;
-        page = <DartsModeConfig store={store} go={go} gameId={gameId} />;
+        page = <DartsModeConfig store={store} go={go} gameId={gameId} params={routeParams} />;
         break;
       }
 

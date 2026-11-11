@@ -197,8 +197,10 @@ export default function NewDartsModeConfig(props: Props) {
   }, [props.mode]);
   const awenaEnabled = Boolean(awena?.enabled !== false);
   const { mode, definition } = props;
-  const bssLaunchMode = mode === "bss_king" && props?.params?.launchMode === "quick" ? "quick" : mode === "bss_king" && props?.params?.launchMode === "arcade" ? "arcade" : null;
-  const bssQuickMode = bssLaunchMode === "quick";
+  const launchMode = props?.params?.launchMode;
+  const isQuick = launchMode === "quick";
+  const bssLaunchMode = mode === "bss_king" && (launchMode === "quick" || launchMode === "arcade") ? launchMode : null;
+  const bssQuickMode = mode === "bss_king" && isQuick;
   const ptitHunFr = mode === "ptit_hun" ? ptit1ConfigIsFrench() : true;
   const { theme } = useTheme();
   const go = props.go ?? props.setTab;
@@ -214,6 +216,8 @@ export default function NewDartsModeConfig(props: Props) {
   const [guidedStep, setGuidedStep] = React.useState(0);
   const [viewModeChosen, setViewModeChosen] = React.useState(() => mode !== "crados");
   const configScrollRef = React.useRef<HTMLDivElement | null>(null);
+  const [quickCount, setQuickCount] = React.useState(() => Math.min(definition.maxPlayers, Math.max(2, definition.minPlayers)));
+  const [quickNames, setQuickNames] = React.useState<string[]>(() => Array.from({ length: 20 }, (_, i) => `J${i + 1}`));
   const [selectedIds, setSelectedIds] = React.useState<string[]>(Array.isArray(saved.selectedIds) ? saved.selectedIds.map(String).slice(0, definition.maxPlayers) : []);
   const [botsOpen, setBotsOpen] = React.useState(Object.prototype.hasOwnProperty.call(saved, "botsOpen") ? saved.botsOpen === true : (mode === "bss_king" && bssLaunchMode === "arcade"));
   const [botLevel, setBotLevel] = React.useState<BotLevel>(saved.botLevel === "easy" || saved.botLevel === "hard" ? saved.botLevel : "normal");
@@ -634,6 +638,7 @@ export default function NewDartsModeConfig(props: Props) {
 
   function backToGames() {
     if (typeof props?.params?.onBack === "function") return props.params.onBack();
+    if (isQuick && typeof go === "function") return go("darts_entry_choice", { ...props.params?.entryChoice, destination: props.params?.entryChoice?.destination || `${mode}_config`, gameId: mode, entryTitle: definition.title });
     if (mode === "bss_king" && bssLaunchMode && typeof go === "function") return go("bss_king_config", { launchMode: undefined });
     if (typeof go === "function") return go("games", { gamesView: "all" });
     window.history.back();
@@ -662,7 +667,7 @@ export default function NewDartsModeConfig(props: Props) {
   }
 
   function start() {
-    if (!validSelection || typeof go !== "function") return;
+    if (!(isQuick ? quickCount >= definition.minPlayers && quickCount <= definition.maxPlayers : validSelection) || typeof go !== "function") return;
     let teams: any[] = [];
     let resolvedIds = selectedProfiles.map((p: any) => String(p.id));
     if (mode === "crados" && cradosParticipantMode === "teams") {
@@ -685,7 +690,15 @@ export default function NewDartsModeConfig(props: Props) {
     const orderedIds = mode === "crados" && cradosParticipantMode === "teams"
       ? resolvedIds
       : (randomOrder ? shuffleCopy(resolvedIds) : [...resolvedIds]);
-    const playersList = orderedIds.map((id) => profileById.get(String(id))).filter(Boolean).map((p: any) => ({ ...p, id: String(p.id), name: p?.name || p?.displayName || "Joueur" }));
+    let playersList = orderedIds.map((id) => profileById.get(String(id))).filter(Boolean).map((p: any) => ({ ...p, id: String(p.id), name: p?.name || p?.displayName || "Joueur" }));
+    if (isQuick) {
+      const sessionId = `quick-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+      playersList = quickNames.slice(0, quickCount).map((name, index) => {
+        const id = `${sessionId}-p${index + 1}`;
+        return { id, profileId: null, temporaryPlayerId: id, isTemporary: true, name: String(name || "").trim() || `J${index + 1}`, avatarDataUrl: null, isBot: false };
+      });
+      orderedIds.splice(0, orderedIds.length, ...playersList.map((p) => p.id));
+    }
     const payload = {
       mode,
       selectedIds: orderedIds,
@@ -695,8 +708,8 @@ export default function NewDartsModeConfig(props: Props) {
       botsEnabled: playersList.some(isBotLike),
       botLevel,
       randomOrder,
-      scoreInputMethod,
-      seriesWins,
+      scoreInputMethod: isQuick ? "keypad" : scoreInputMethod,
+      seriesWins: isQuick ? 1 : seriesWins,
       rules: modeRulesPayload(),
       ...(mode === "ptit_hun" ? { sfxEnabled: ptitHunSfxEnabled } : {}),
       ...(mode === "crados" ? {
@@ -712,13 +725,31 @@ export default function NewDartsModeConfig(props: Props) {
           : [],
       } : {}),
       ...(mode === "bss_king" ? {
-        quickParty: bssQuickMode,
-        partyMode: bssQuickMode ? "quick" : "arcade",
-        temporaryParticipants: bssQuickMode,
+        quickParty: isQuick,
+        partyMode: isQuick ? "quick" : "arcade",
+        temporaryParticipants: isQuick,
       } : {}),
       menuVersion: 3,
     };
-    if (!(mode === "bss_king" && bssQuickMode)) { try { recordProfileUsageForMode(mode, orderedIds); } catch {} }
+    payload.quickParty = isQuick;
+    payload.partyMode = isQuick ? "quick" : "arcade";
+    payload.temporaryParticipants = isQuick;
+    payload.profileStatsDeferred = isQuick;
+    if (isQuick) {
+      payload.botIds = [];
+      payload.botsEnabled = false;
+      payload.audio = { arcadeEnabled: false, voiceEnabled: false, hitEnabled: false, sfxVolume: 0 };
+      if (mode === "crados") {
+        payload.participantMode = "players";
+        payload.gameMode = "players";
+        payload.teams = undefined;
+        payload.familyTeamIds = [];
+        payload.sfxEnabled = false;
+        payload.awenaEnabled = false;
+        payload.coachEnabled = false;
+      }
+    }
+    if (!isQuick) { try { recordProfileUsageForMode(mode, orderedIds); } catch {} }
     go(definition.playTab, { config: payload });
   }
 
@@ -1217,6 +1248,40 @@ export default function NewDartsModeConfig(props: Props) {
       try { configScrollRef.current?.scrollTo({ top: 0, left: 0, behavior: "smooth" }); } catch {}
     });
   }, [maxStep]);
+
+  // Partie rapide : aucun profil local, aucun assistant de configuration guidée/complète.
+  // Les règles non exposées conservent les valeurs déjà prises en charge par le moteur.
+  if (isQuick) {
+    const fields: React.ReactNode[] = [];
+    const choice = (label: string, current: any, values: Array<[any, string]>, setter: (value: any) => void) =>
+      <label key={label} style={{display:"grid",gap:7,fontSize:12,fontWeight:850}}>{label}<select value={current} onChange={(event) => setter(event.target.value)} style={{padding:12,borderRadius:12,color:"white",background:"#171b2a",border:"1px solid #51586b"}}>{values.map(([value,text]) => <option key={String(value)} value={value}>{text}</option>)}</select></label>;
+    if (mode === "castle") fields.push(choice("Briques du château", castleBricks, [[10,"10"],[15,"15"],[20,"20"]], (v) => setCastleBricks(Number(v))));
+    if (mode === "gotcha") fields.push(choice("Score à atteindre", gotchaTarget, [201,301,401,501,601,701].map(v=>[v,String(v)]), (v) => setGotchaTarget(Number(v))));
+    if (mode === "hare_hounds") fields.push(choice("Départ des chiens", houndStart, [[5,"5"],[12,"12"]], (v) => setHoundStart(Number(v))));
+    if (mode === "pendu") fields.push(choice("Nombre d'erreurs", penduPartsToLose, [[6,"6"],[8,"8"]], (v) => setPenduPartsToLose(Number(v))));
+    if (mode === "menteur") fields.push(choice("Vies", menteurLives, [[3,"3"],[5,"5"],[7,"7"]], (v) => setMenteurLives(Number(v))));
+    if (mode === "crados") fields.push(choice("Limite de crasse", cradosDirtLimit, [[10,"10"],[15,"15"],[20,"20"]], (v) => setCradosDirtLimit(Number(v))));
+    if (mode === "bss_king") fields.push(choice("Écussons pour le trône", bssBadgesToThrone, [[3,"3"],[5,"5"],[7,"7"]], (v) => setBssBadgesToThrone(Number(v))));
+    if (mode === "fifty_one_by_five") fields.push(choice("Objectif", fiftyOneTarget, [[31,"31"],[51,"51"],[71,"71"],[101,"101"]], (v) => setFiftyOneTarget(Number(v))));
+    if (mode === "looper") fields.push(choice("Vies", looperLives, [[3,"3"],[4,"4"],[5,"5"]], (v) => setLooperLives(Number(v))));
+    if (mode === "call_three") fields.push(choice("Tours", callThreeRounds, [[3,"3"],[5,"5"],[7,"7"],[10,"10"]], (v) => setCallThreeRounds(Number(v))));
+    if (mode === "ptit_hun") fields.push(choice("Volées", ptitHunRounds, [[3,"3"],[5,"5"],[7,"7"],[10,"10"]], (v) => setPtitHunRounds(Number(v))));
+    const qStyle: React.CSSProperties = {minHeight:44,borderRadius:12,padding:"9px 12px",background:"#151928",color:"white",border:"1px solid rgba(255,255,255,.2)",minWidth:0};
+    return <div style={{height:"100dvh",overflowY:"auto",paddingBottom:95,background:"#060811",color:"white"}}>
+      <PageHeader tickerSrc={definition.ticker} tickerAlt={definition.title} tickerHeight={90} tickerFit="cover" left={<BackDot onClick={backToGames} color={accent} />} />
+      <main style={{maxWidth:700,margin:"0 auto",padding:"12px 16px",display:"grid",gap:17}}>
+        <div style={{fontWeight:1000,fontSize:18,color:accent}}>PARTIE RAPIDE · {definition.title}</div>
+        <section style={{display:"grid",gap:11,padding:14,borderRadius:18,border:`1px solid ${accent}55`,background:"#10131e"}}>
+          <strong>JOUEURS</strong>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8}}>{Array.from(new Set([definition.minPlayers,2,3,4,definition.maxPlayers])).filter(n=>n>=definition.minPlayers&&n<=definition.maxPlayers).sort((a,b)=>a-b).map(n=><button key={n} type="button" onClick={()=>setQuickCount(n)} style={{...qStyle,borderColor:quickCount===n?accent:"#414657",color:quickCount===n?accent:"white"}}>{n===1?"SOLO":n===2?"DUEL":`${n} JOUEURS`}</button>)}</div>
+          {definition.maxPlayers > 4 && <label style={{display:"grid",gap:5,fontSize:12}}>Nombre de joueurs <select style={qStyle} value={quickCount} onChange={e=>setQuickCount(Number(e.target.value))}>{Array.from({length:definition.maxPlayers-definition.minPlayers+1},(_,i)=>definition.minPlayers+i).map(n=><option key={n} value={n}>{n}</option>)}</select></label>}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:9}}>{quickNames.slice(0,quickCount).map((name,index)=><label key={index} style={{display:"grid",gap:5,fontSize:11}}>JOUEUR {index+1}<input aria-label={`Nom du joueur ${index+1}`} maxLength={32} value={name} onChange={e=>setQuickNames(prev=>prev.map((v,i)=>i===index?e.target.value:v))} style={qStyle}/></label>)}</div>
+        </section>
+        {fields.length>0&&<section style={{display:"grid",gap:10,padding:14,borderRadius:18,border:"1px solid #404858",background:"#10131e"}}><strong>RÈGLE DU JEU</strong>{fields}</section>}
+        <button type="button" onClick={start} style={{...qStyle,minHeight:56,fontSize:18,fontWeight:1000,borderColor:accent,background:`${accent}24`}}>JOUER</button>
+      </main>
+    </div>;
+  }
 
   return <div ref={configScrollRef} className="msc-new-darts-config" style={{ height: "100dvh", minHeight: "100dvh", width: "100%", maxWidth: "100%", overflowX: "hidden", overflowY: "auto", WebkitOverflowScrolling: "touch", touchAction: "pan-y", overscrollBehaviorY: "contain", paddingBottom: 92, boxSizing: "border-box" }}>
     <style>{`

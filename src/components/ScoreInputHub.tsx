@@ -8,6 +8,7 @@
 // ============================================
 
 import React from "react";
+import { createPortal } from "react-dom";
 import Keypad, { LightningMiniIcon, MicroMiniIcon } from "./Keypad";
 import DartboardClickable, { type DartboardGuideTarget, type DartboardHitDetail } from "./DartboardClickable";
 import ScorePresetsBar from "./ScorePresetsBar";
@@ -105,6 +106,7 @@ type Props = {
   onSetVisitDarts?: (darts: UIDart[]) => void;
 
   /** Valide directement un total de volée (mode Keypad score de volée / Dartsmind-like). */
+  visitScoreRemaining?: number;
   onSubmitVisitScore?: (score: number, opts?: { bust?: boolean; dartsUsed?: number; source?: "typed" | "quick" | "next" | "bust" }) => void;
   /** Mode score de volée : corrige la saisie en cours ou, si elle est vide, annule la dernière volée validée. */
   onCorrectVisitScore?: () => void;
@@ -258,6 +260,7 @@ export default function ScoreInputHub({
   onDirectDart,
   onDartboardDetailedHit,
   onSetVisitDarts,
+  visitScoreRemaining,
   onSubmitVisitScore,
   onCorrectVisitScore,
   visitScoreFeedback,
@@ -595,6 +598,7 @@ export default function ScoreInputHub({
         <VisitScoreKeypad
           disabled={disabled}
           feedback={visitScoreFeedback}
+          remainingScore={visitScoreRemaining}
           onSubmit={onSubmitVisitScore}
           onCancel={onCancel}
           onCorrectEmpty={onCorrectVisitScore || onCancel}
@@ -692,6 +696,7 @@ export default function ScoreInputHub({
 function VisitScoreKeypad({
   disabled,
   feedback,
+  remainingScore,
   onSubmit,
   onCancel,
   onCorrectEmpty,
@@ -706,6 +711,7 @@ function VisitScoreKeypad({
 }: {
   disabled: boolean;
   feedback?: React.ReactNode;
+  remainingScore?: number;
   onSubmit: (score: number, opts?: { bust?: boolean; dartsUsed?: number; source?: "typed" | "quick" | "next" | "bust" }) => void;
   onCancel: () => void;
   onCorrectEmpty: () => void;
@@ -720,8 +726,7 @@ function VisitScoreKeypad({
 }) {
   const [raw, setRaw] = React.useState("");
   const [localError, setLocalError] = React.useState<string | null>(null);
-  // En SCORE VOLÉE, la quantité ne peut pas être déduite d’un BUST ou d’un checkout.
-  const [terminalDarts, setTerminalDarts] = React.useState<1 | 2 | 3>(3);
+  const [pendingTerminal, setPendingTerminal] = React.useState<{ kind: "bust" | "finish"; score: number; source: "typed" | "quick" | "next" | "bust" } | null>(null);
 
   const parsed = raw.trim() ? Number(raw) : NaN;
   const canEnter = raw.trim().length > 0 && Number.isFinite(parsed) && parsed >= 0 && parsed <= 180;
@@ -818,8 +823,12 @@ function VisitScoreKeypad({
     if (disabled) return;
     const n = Math.max(0, Math.min(180, Math.floor(Number(score) || 0)));
     setLocalError(null);
+    if (Number.isFinite(Number(remainingScore)) && Number(remainingScore) > 0 && n === Number(remainingScore)) {
+      setPendingTerminal({ kind: "finish", score: n, source });
+      return;
+    }
     setRaw("");
-    onSubmit(n, { source, dartsUsed: terminalDarts });
+    onSubmit(n, { source });
   };
 
   const submitTyped = (source: "typed" | "next" = "typed") => {
@@ -869,7 +878,7 @@ function VisitScoreKeypad({
       >
         <div style={{ ...wrapCard, width: "100%", maxWidth: "100%", margin: "0 auto", paddingBottom: "calc(8px + env(safe-area-inset-bottom))" }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: compactFit ? 8 : 10, marginBottom: compactFit ? 8 : 10 }}>
-            <button type="button" style={btnDanger} disabled={disabled} onClick={() => { setLocalError(null); setRaw(""); onSubmit(0, { bust: true, source: "bust", dartsUsed: terminalDarts }); }}>BUST</button>
+            <button type="button" style={btnDanger} disabled={disabled} onClick={() => { setLocalError(null); setPendingTerminal({ kind: "bust", score: 0, source: "bust" }); }}>BUST</button>
             <div
               aria-live="polite"
               style={{
@@ -891,18 +900,6 @@ function VisitScoreKeypad({
               {raw || "0"}
             </div>
             <button type="button" style={btnGold} disabled={disabled} onClick={clearOne}>CORRIGER</button>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: compactFit ? 5 : 9, marginBottom: compactFit ? 7 : 9, color: "rgba(255,255,255,.85)", fontSize: compactFit ? 10 : 12, fontWeight: 800 }}>
-            <span>Sur BUST / FINISH :</span>
-            {([1, 2, 3] as const).map((count) => (
-              <button key={count} type="button" disabled={disabled} aria-pressed={terminalDarts === count}
-                title={`${count} fléchette${count > 1 ? "s" : ""} réellement jouée${count > 1 ? "s" : ""}`}
-                onClick={() => setTerminalDarts(count)}
-                style={{ borderRadius: 9, padding: compactFit ? "4px 9px" : "5px 12px", fontWeight: 900, cursor: "pointer", color: terminalDarts === count ? "#080b12" : "#fff", background: terminalDarts === count ? primary : "rgba(255,255,255,.13)", border: terminalDarts === count ? `1px solid ${primary}` : "1px solid rgba(255,255,255,.2)" }}>
-                {count}
-              </button>
-            ))}
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: compactFit ? 6 : 7, marginBottom: compactFit ? 8 : 10 }}>
@@ -947,6 +944,81 @@ function VisitScoreKeypad({
           ) : null}
         </div>
       </div>
+      {pendingTerminal && typeof document !== "undefined" ? createPortal(
+        <div
+          role="presentation"
+          style={{
+            position: "fixed", inset: 0, zIndex: 2147483000,
+            display: "grid", placeItems: "center", padding: "max(14px, env(safe-area-inset-top)) 14px max(14px, env(safe-area-inset-bottom))",
+            background: "rgba(2, 6, 13, .82)", backdropFilter: "blur(9px)", WebkitBackdropFilter: "blur(9px)",
+          }}
+        >
+          <div
+            role="dialog" aria-modal="true" aria-labelledby="visit-darts-title" aria-describedby="visit-darts-description"
+            style={{
+              position: "relative", isolation: "isolate", overflow: "hidden",
+              width: "min(420px, 100%)", maxHeight: "min(620px, 94dvh)", overflowY: "auto",
+              borderRadius: 26, padding: "clamp(16px, 4vw, 25px)",
+              background: "linear-gradient(150deg, #1b2938 0%, #101b2a 48%, #07101b 100%)",
+              border: `1px solid color-mix(in srgb, ${primary} 66%, white 34%)`,
+              boxShadow: `0 28px 90px rgba(0,0,0,.83), 0 0 38px color-mix(in srgb, ${primary} 20%, transparent 80%), inset 0 1px 0 rgba(255,255,255,.12)`,
+              color: "#fff", textAlign: "center",
+            }}
+          >
+            <div aria-hidden="true" style={{ pointerEvents: "none", position: "absolute", inset: 0, zIndex: -1, background: `radial-gradient(ellipse at 50% -30%, color-mix(in srgb, ${primary} 26%, transparent 74%), transparent 65%), repeating-linear-gradient(135deg, transparent 0px, transparent 17px, rgba(255,255,255,.014) 18px, transparent 19px)` }} />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 17 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+                <span aria-hidden="true" style={{ width: 35, height: 35, borderRadius: 11, display: "grid", placeItems: "center", background: `linear-gradient(150deg, ${darkTone}, ${darkTone2})`, border: `1px solid color-mix(in srgb, ${primary} 55%, white 45%)`, boxShadow: `0 0 17px color-mix(in srgb, ${primary} 22%, transparent 78%)` }}>
+                  <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke={lightTone} strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5.5"/><circle cx="12" cy="12" r="2"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/>
+                  </svg>
+                </span>
+                <span style={{ fontSize: 10, fontWeight: 950, letterSpacing: 1.35, color: lightTone, textAlign: "left" }}>SCORE VOLÉE</span>
+              </div>
+              <span style={{ borderRadius: 30, padding: "6px 12px", fontSize: 11, fontWeight: 1000, letterSpacing: 1.6, color: pendingTerminal.kind === "bust" ? "#ffb2b2" : lightTone, background: pendingTerminal.kind === "bust" ? "rgba(221,37,44,.17)" : `color-mix(in srgb, ${primary} 16%, transparent 84%)`, border: `1px solid ${pendingTerminal.kind === "bust" ? "rgba(255,89,89,.6)" : `color-mix(in srgb, ${primary} 55%, transparent 45%)`}` }}>
+                {pendingTerminal.kind === "bust" ? "BUST" : "FINISH"}
+              </span>
+            </div>
+            <div aria-hidden="true" style={{ width: 61, height: 3, borderRadius: 10, margin: "0 auto 16px", background: pendingTerminal.kind === "bust" ? "linear-gradient(90deg, transparent, #ff6262, transparent)" : `linear-gradient(90deg, transparent, ${primary}, transparent)`, boxShadow: pendingTerminal.kind === "bust" ? "0 0 15px rgba(255,67,67,.35)" : `0 0 15px ${primary}` }} />
+            <div id="visit-darts-title" style={{ fontSize: "clamp(19px, 5vw, 24px)", fontWeight: 1000, lineHeight: 1.13, letterSpacing: -.35, textShadow: "0 2px 12px rgba(0,0,0,.5)" }}>Combien de fléchettes ?</div>
+            <div id="visit-darts-description" style={{ color: "rgba(225,238,252,.72)", fontSize: 12.5, fontWeight: 650, lineHeight: 1.4, margin: "9px 0 20px" }}>
+              {pendingTerminal.kind === "bust" ? "À quelle fléchette le BUST est-il survenu ?" : "En combien de fléchettes as-tu terminé ?"}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "clamp(7px, 2.5vw, 11px)" }}>
+              {([1, 2, 3] as const).map((count) => (
+                <button
+                  key={count} type="button" disabled={disabled} aria-label={`${count} fléchette${count > 1 ? "s" : ""}`}
+                  onClick={() => {
+                    const pending = pendingTerminal;
+                    setPendingTerminal(null);
+                    setRaw("");
+                    setLocalError(null);
+                    onSubmit(pending.score, { bust: pending.kind === "bust", source: pending.source, dartsUsed: count });
+                  }}
+                  style={{
+                    appearance: "none", WebkitTapHighlightColor: "transparent", touchAction: "manipulation",
+                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5,
+                    minWidth: 0, minHeight: 108, padding: "12px 4px", borderRadius: 17, cursor: disabled ? "not-allowed" : "pointer",
+                    background: `linear-gradient(155deg, color-mix(in srgb, ${primary} 24%, #16273a 76%), #091521 95%)`,
+                    border: `1px solid color-mix(in srgb, ${primary} 70%, rgba(255,255,255,.32) 30%)`,
+                    boxShadow: `inset 0 1px 0 rgba(255,255,255,.18), 0 8px 19px rgba(0,0,0,.34), 0 0 13px color-mix(in srgb, ${primary} 12%, transparent 88%)`,
+                    color: "#fff", opacity: disabled ? .5 : 1,
+                  }}
+                >
+                  <span style={{ fontWeight: 1000, fontSize: "clamp(32px, 9vw, 43px)", lineHeight: 1, color: lightTone, textShadow: `0 0 15px color-mix(in srgb, ${primary} 40%, transparent 60%)` }}>{count}</span>
+                  <span style={{ display: "flex", gap: 3, justifyContent: "center", minHeight: 15 }} aria-hidden="true">
+                    {Array.from({ length: count }, (_, i) => <span key={i} style={{ width: 4, height: 13, borderRadius: "4px 4px 1px 1px", background: `linear-gradient(180deg, ${lightTone}, ${secondary})`, transform: "rotate(24deg)", boxShadow: `0 0 6px color-mix(in srgb, ${primary} 30%, transparent 70%)` }} />)}
+                  </span>
+                  <span style={{ fontSize: 9, fontWeight: 900, letterSpacing: .45, color: "rgba(235,243,255,.78)" }}>{count === 1 ? "FLÉCHETTE" : "FLÉCHETTES"}</span>
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "flex", justifyContent: "center", marginTop: 19 }}>
+              <button type="button" onClick={() => setPendingTerminal(null)} style={{ minHeight: 39, minWidth: 132, padding: "9px 18px", background: "linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.035))", border: "1px solid rgba(211,231,251,.22)", color: "rgba(240,247,255,.85)", borderRadius: 12, cursor: "pointer", fontWeight: 850, fontSize: 11.5, letterSpacing: .7 }}>ANNULER</button>
+            </div>
+          </div>
+        </div>, document.body
+      ) : null}
     </div>
   );
 }

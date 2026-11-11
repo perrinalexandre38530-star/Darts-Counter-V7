@@ -4,6 +4,8 @@
  */
 import type { OfficialStandingsResponse, OfficialStandingRow, OfficialStandingTable } from "./officialStandings";
 import { LIVE_SPORTS_APP_ORDER } from "./support";
+import { normalizeVerifiedMatch } from "./officialCompetitionMatches";
+import type { VerifiedCompetitionMatch } from "./officialCompetitionMatches";
 
 export type VerifiedBracketMatch = {
   id: string;
@@ -19,6 +21,7 @@ export type VerifiedBracketRound = { id: string; name: string; order: number; ma
 export type ManagedCompetitionResponse = OfficialStandingsResponse & {
   country: string;
   bracket: VerifiedBracketRound[];
+  matches?: VerifiedCompetitionMatch[];
 };
 
 export function officialIdentity(value: unknown): string {
@@ -62,7 +65,7 @@ export function parseManagedCompetitionFeed(input: unknown, sport: string): Mana
   const sourceName = cleanText(raw.sourceName, 100);
   const sourceUrl = safeUrl(raw.sourceUrl);
   if (!competition || !country || !season || !sourceName || !sourceUrl) return null;
-  if (!Array.isArray(raw.tables) || !Array.isArray(raw.bracket) || raw.tables.length > 30 || raw.bracket.length > 32) return null;
+  if (!Array.isArray(raw.tables) || !Array.isArray(raw.bracket) || raw.tables.length > 30 || raw.bracket.length > 32 || (raw.matches !== undefined && (!Array.isArray(raw.matches) || raw.matches.length > 3000))) return null;
   const tables: OfficialStandingTable[] = [];
   for (const t of raw.tables) {
     if (!t || !Array.isArray(t.rows) || t.rows.length > 300 || !cleanText(t.name)) return null;
@@ -105,9 +108,17 @@ export function parseManagedCompetitionFeed(input: unknown, sport: string): Mana
     // not draw a path that was not explicitly supplied by the source.
     if (!match.nextMatchId || !matchIds.has(match.nextMatchId) || (matchRound.get(match.nextMatchId) ?? 0) <= round.order) match.nextMatchId = null;
   }
-  if (!tables.length && !bracket.length) return null;
+  const matches: VerifiedCompetitionMatch[] = [];
+  const feedMatchIds = new Set<string>();
+  for (const rawMatch of raw.matches || []) {
+    const match = normalizeVerifiedMatch(rawMatch);
+    if (!match || feedMatchIds.has(match.id)) return null;
+    feedMatchIds.add(match.id);
+    matches.push(match);
+  }
+  if (!tables.length && !bracket.length && !matches.length) return null;
   return {available:true,sport,competition,country,season:season === "current" ? null : season,sourceName,sourceUrl,
-    updatedAt:new Date().toISOString(),tables,bracket};
+    updatedAt:new Date().toISOString(),tables,bracket,matches};
 }
 
 export function managedFeedMatches(data: ManagedCompetitionResponse, sport: string, country: string, competition: string, season: string): boolean {

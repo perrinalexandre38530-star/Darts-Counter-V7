@@ -1,6 +1,7 @@
 import { footballCompetitionCode, projectFootballStandings } from "../../../src/sportsLive/officialStandings";
 import { managedCompetitionKey, managedFeedMatches, parseManagedCompetitionFeed } from "../../../src/sportsLive/officialCompetitionFeed";
 import type { ManagedCompetitionResponse } from "../../../src/sportsLive/officialCompetitionFeed";
+import { projectFootballCompetitionMatches } from "../../../src/sportsLive/officialCompetitionMatches";
 type Env = {
   USER_DATA_BUCKET?: R2Bucket;
   DARTS_API_KEY?: string;
@@ -3549,6 +3550,34 @@ async function footballOfficialStandings(env: Env, request: URL) {
 }
 
 
+// Football-data's competition matches subresource returns all verified rounds,
+// scheduled fixtures and scores for one season. Run on demand, behind the
+// existing Cloudflare edge cache; never expose the API key to the client.
+async function footballCompetitionMatches(env: Env, request: URL) {
+  const competition = str(request.searchParams.get("competition")).trim().slice(0, 140);
+  const country = str(request.searchParams.get("country")).trim().slice(0, 100);
+  const season = str(request.searchParams.get("season")).trim();
+  const unavailable = (reason: string, ttl = 600) => ({status:200,ttl,payload:{
+    available:false,sport:"foot",competition,season:season || null,sourceName:null,sourceUrl:null,
+    updatedAt:null,matches:[],reason,
+  }});
+  const code = footballCompetitionCode(competition, country);
+  if (!code) return unavailable("Compétition non identifiée sans ambiguïté.");
+  if (season && !/^(19[7-9]\d|20\d{2})$/.test(season)) return unavailable("Saison non reconnue.");
+  const token = str(env?.FOOTBALL_DATA_API_KEY).trim();
+  if (!token) return unavailable("FOOTBALL_DATA_API_KEY non configurée.");
+  const endpoint = `${FOOTBALL_DATA_BASE}/competitions/${code}/matches${season ? `?season=${season}` : ""}`;
+  try {
+    const upstream = await timedFetch(endpoint, {headers:{Accept:"application/json","X-Auth-Token":token}}, 6000);
+    if (upstream.status === 429) return unavailable("Quota du fournisseur momentanément atteint.",60);
+    if (!upstream.ok) return unavailable(`Rencontres indisponibles chez le fournisseur (${upstream.status}).`,180);
+    const raw = await upstream.json().catch(() => null);
+    if (!raw || typeof raw !== "object" || !Array.isArray(raw.matches)) return unavailable("Réponse du fournisseur invalide.",120);
+    return {status:200,ttl:900,payload:projectFootballCompetitionMatches(raw,competition,season || null)};
+  } catch { return unavailable("Connexion au fournisseur momentanément indisponible.",60); }
+}
+
+
 // Verified provider feeds are separate from personal backups and existing LIVE
 // archives. A federation/authorized collector can upload a bounded JSON record
 // via the bearer-token-protected POST route; all sports use the same schema.
@@ -3596,7 +3625,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     await bucket.put(key, JSON.stringify(parsed), {httpMetadata:{contentType:"application/json"},
       customMetadata:{kind:"sports-live-managed-official",sport,source:parsed.sourceName || "unknown"}});
     return json({ok:true,sport,competition:parsed.competition,country:parsed.country,season:parsed.season,
-      tables:parsed.tables.length,bracketRounds:parsed.bracket.length,updatedAt:parsed.updatedAt},200,0);
+      tables:parsed.tables.length,bracketRounds:parsed.bracket.length,matches:parsed.matches?.length || 0,updatedAt:parsed.updatedAt},200,0);
   } catch { return json({error:"storage_unavailable"},503,0); }
 };
 
@@ -4047,6 +4076,18 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const requestUrl = new URL(context.request.url);
   const lang = str(requestUrl.searchParams.get("lang") || "fr").toLowerCase();
   const phase = str(requestUrl.searchParams.get("phase") || "full").toLowerCase();
+  if (action === "matches") {
+    const managed = await managedOfficialStandings(context.env,requestUrl,sport);
+    if (managed?.matches?.length) {
+      return json({available:true,sport,competition:managed.competition,season:managed.season,
+        sourceName:managed.sourceName,sourceUrl:managed.sourceUrl,updatedAt:managed.updatedAt,
+        matches:managed.matches},200,60);
+    }
+    if (sport === "foot") return cachedResponse(context,async () => footballCompetitionMatches(context.env,requestUrl));
+    return json({available:false,sport,competition:str(requestUrl.searchParams.get("competition")),
+      season:null,sourceName:null,sourceUrl:null,updatedAt:null,matches:[],
+      reason:"Aucune rencontre structurée autorisée pour cette compétition."},200,120);
+  }
   if (action === "standings") {
     // Always check the managed R2 feed BEFORE the edge cache. A federation
     // import must not remain hidden behind an older cached "unavailable" answer.

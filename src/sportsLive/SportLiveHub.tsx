@@ -1025,6 +1025,17 @@ function LiveStyles() {
       .msc-cd-phase-filter button { flex:none; border:1px solid #334253; border-radius:8px; padding:9px 11px; background:#13202b; color:#d3deea; font-size:11px; font-weight:750; cursor:pointer; }
       .msc-cd-phase-filter button.is-active { color:#fff; border-color:#e95572; background:#4b2033; }
       .msc-cd-elim { display:grid; grid-template-columns:minmax(0,1fr) minmax(100px,auto); align-items:center; gap:8px; padding:9px 11px; background:#111a23; border:1px solid #2a3848; border-radius:8px; color:#e6ecf4; font-size:12px; }
+      /* V271: compact provider score rows and swipeable rounds, no fake qualifier links. */
+      .msc-cd-verified { border-left:3px solid #54778f; }
+      .msc-cd-verified.is-live { border-left-color:#ff4969; }
+      .msc-cd-state[data-state="live"] { color:#ff7088; font-weight:900; }
+      .msc-cd-state[data-state="scheduled"] { color:#9ce4f3; }
+      .msc-cd-state[data-state="postponed"],.msc-cd-state[data-state="cancelled"] { color:#f2ba76; }
+      .msc-cd-bracket-board { display:flex; gap:10px; width:100%; min-width:0; padding:3px 3px 13px; overflow-x:auto; overscroll-behavior-x:contain; scroll-snap-type:x proximity; scrollbar-width:thin; }
+      .msc-cd-bracket-column { flex:0 0 clamp(235px,31vw,330px); min-width:0; align-content:start; scroll-snap-align:start; }
+      .msc-cd-bracket-column .msc-cd-round-head { min-height:38px; }
+      .msc-cd-bracket-column .msc-cd-elim { padding:9px; }
+      @media (max-width:600px) { .msc-cd-bracket-column { flex-basis:min(82vw,300px); } }
       .msc-cd-elim-names { display:grid; gap:8px; min-width:0; }
       .msc-cd-elim-names span { overflow-wrap:anywhere; }
       .msc-cd-elim-info { display:grid; gap:3px; text-align:right; justify-items:end; }
