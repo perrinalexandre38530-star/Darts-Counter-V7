@@ -1,4 +1,5 @@
 import { assessCommercialFit } from './commercial-fit';
+import { assessCampaignMatch } from './campaign-match';
 import { adminHtml } from './admin';
 import { generateSalesDraft, insertSalesCampaign, listSalesCampaigns, listSalesDrafts, saveSalesDraft, updateSalesCampaignStatus, validateSalesCampaign } from './sales-agent';
 import { classifyCandidates, localizeQuery } from './ai';
@@ -336,8 +337,12 @@ async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: Ex
     if (!target?.enabled || !target.url) return json({ok:false,error:'Configure la destination de cette campagne dans le tunnel.'},409);
     const candidates = await listOpportunities(env,85,80);
     const existing = new Set((await listSalesDrafts(env,500)).filter(d=>d.campaign_id===campaign.id).map(d=>d.opportunity_id));
-    const next = candidates.find(c=>assessCommercialFit(c).actionable && !existing.has(c.id) && c.eligible && c.outreach_status!=='dismissed' && c.outreach_status!=='contacted' && c.outreach_status!=='won');
-    if (!next) return json({ok:false,error:'Aucune nouvelle discussion qualifiée à préparer.'},404);
+    const suitable = candidates.filter(c => assessCommercialFit(c).actionable
+      && assessCampaignMatch(campaign,c).compatible && !existing.has(c.id) && c.eligible
+      && c.outreach_status!=='dismissed' && c.outreach_status!=='contacted' && c.outreach_status!=='won');
+    suitable.sort((a,b)=>assessCampaignMatch(campaign,b).score-assessCampaignMatch(campaign,a).score);
+    const next = suitable[0];
+    if (!next) return json({ok:false,error:'Aucune discussion qualifiée correspondant à cette campagne. Essaie une campagne plus adaptée ou un autre sport.'},404);
     const tracked = `${url.protocol}//${url.host}/go/${campaign.goal}/${next.id}`;
     try {
       const draft = await generateSalesDraft(env,campaign,next,tracked);
@@ -356,7 +361,10 @@ async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: Ex
     if (!opportunity) return json({ok:false,error:'opportunity_not_found'},404);
     const target = await getAcquisitionTarget(env,campaign.goal);
     if (!target || !target.enabled || !target.url) return json({ok:false,error:'Configure d’abord la destination '+campaign.goal+' dans le tunnel.'},409);
-    if (Number(opportunity.score||0)<70 || !opportunity.eligible) return json({ok:false,error:'Discussion insuffisamment qualifiée.'},409);
+    if (Number(opportunity.score||0)<70 || !opportunity.eligible || !assessCommercialFit(opportunity).actionable)
+      return json({ok:false,error:'Discussion insuffisamment qualifiée : une demande personnelle vérifiable est nécessaire.'},409);
+    const fitToCampaign = assessCampaignMatch(campaign,opportunity);
+    if (!fitToCampaign.compatible) return json({ok:false,error:fitToCampaign.reason},409);
     // The tracked link is scoped to the detected opportunity and the selected goal.
     const tracked = `${url.protocol}//${url.host}/go/${campaign.goal}/${opportunity.id}`;
     try {

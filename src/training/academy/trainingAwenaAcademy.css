@@ -1,0 +1,67 @@
+.mssAwenaAcademy { box-sizing:border-box; width:100%; max-width:1100px; margin:10px auto 22px; color:#eff9ff; font-family:inherit; }
+.mssAwenaAcademy button { font-family:inherit; cursor:pointer; }
+.mssAwenaAcademy button:focus-visible { outline:2px solid #38e1ff; outline-offset:2px; }
+.mssAwenaAcademy button:disabled {opacity:.46;cursor:not-allowed;}
+.mssAcademyHero {display:flex;align-items:center;gap:14px;padding:15px;border:1px solid rgba(48,225,255,.27);background:radial-gradient(circle at 92% 8%,rgba(82,41,142,.3),transparent 55%),linear-gradient(115deg,#091c2e,#13111f);border-radius:20px;box-shadow:0 12px 26px rgba(0,0,0,.18);}
+.mssAcademyHero img {width:68px;height:68px;object-fit:contain;flex-shrink:0;filter:drop-shadow(0 2px 12px rgba(57,207,255,.3));}
+.mssAcademyHeroText {flex:1;min-width:0;}
+.mssAcademyHeroText small,.mssAcademyBanner small,.mssAcademyStory small,.mssAcademyMission small,.mssAcademyResult small,.mssAcademyPlayerHead small {display:block;font-size:10px;font-weight:900;letter-spacing:.85px;color:#75e8ff;}
+.mssAcademyHeroText h2 {margin:4px 0;font-size:clamp(18px,3vw,26px);font-weight:950;letter-spacing:1.2px;color:#eafdff;}
+.mssAcademyHeroText p {margin:0;max-width:650px;font-size:12px;color:#b4cbd7;line-height:1.4;}
+.mssAcademyVoice {padding:9px 10px;border-radius:10px;color:#bcf6ff;background:rgba(39,220,255,.09);border:1px solid rgba(39,220,255,.3);font-size:11px;font-weight:900;white-space:nowrap;}
+.mssAcademyVoiceNotice {padding:8px 12px;font-size:12px;color:#ffd97d;}
+.mssAcademyTabs {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:13px 0;}
+.mssAcademyTabs button {min-height:44px;border:1px solid rgba(255,255,255,.10);border-radius:12px;background:rgba(255,255,255,.035);color:#b0ccdc;font-size:11px;font-weight:950;}
+.mssAcademyTabs button.active {background:rgba(39,220,255,.14);border-color:rgba(39,220,255,.5);color:#e7fdff;box-shadow:inset 0 -2px 0 #20d4f5;}
+.mssAcademyBanner {display:flex;align-items:center;gap:12px;justify-content:space-between;padding:14px 16px;border-radius:15px;border:1px solid rgba(124,255,203,.27);background:rgba(25,74,70,.18);margin-bottom:12px;}
+.mssAcademyBanner > div {min-width:0;display:flex;flex-direction:column;gap:3px;}.mssAcademyBanner strong {font-size:16px;}.mssAcademyBanner span {font-size:11px;color:#bfd5d9;}
+.mssAcademyBanner button,.mssAcademyActions button.primary {background:linear-gradient(180deg,#36def5,#16a9d5);color:#031620;border:0;font-weight:950;}
+.mssAcademyBanner button {border-radius:11px;padding:10px 14px;white-space:nowrap;font-size:11px;}
+.mssAcademyLessonGrid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;}
+.mssAcademyLessonTile {display:flex;align-items:center;gap:10px;text-align:left;padding:13px;border:1px solid rgba(255,255,255,.10);background:linear-gradient(110deg,rgba(22,36,55,.93),rgba(16,18,31,.93));border-radius:15px;min-width:0;color:inherit;}
+.mssAcademyLessonTile:hover,.mssAcademyProgressRow:hover {border-color:rgba(39,220,255,.4);}
+.mssAcademyLessonNumber {font-size:15px;display:grid;place-items:center;flex:0 0 37px;width:37px;height:37px;border-radius:12px;color:#67e4ff;background:rgba(39,220,255,.09);border:1px solid rgba(39,220,255,.16);font-weight:900;}
+.mssAcademyLessonInfo {min-width:0;flex:1;display:flex;flex-direction:column;gap:4px;}.mssAcademyLessonInfo small {font-size:9px;color:#6ce6ff;letter-spacing:.4px;font-weight:900;}.mssAcademyLessonInfo strong {font-size:13px;font-weight:950;}.mssAcademyLessonInfo > span {font-size:10px;line-height:1.35;color:#a4bbc9;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.mssAcademyLessonStatus {font-size:9px;font-weight:850;color:#95e8bf;white-space:nowrap;}.mssAcademyLessonStatus b {font-size:20px;vertical-align:middle;margin-left:5px;color:#4fe6ff;}
+.mssAcademyPlayer {border-radius:19px;background:linear-gradient(145deg,#0b2030,#101321);border:1px solid rgba(39,220,255,.25);padding:clamp(12px,2vw,22px);}
+.mssAcademyPlayerHead {display:flex;gap:12px;align-items:center;border-bottom:1px solid rgba(255,255,255,.09);padding-bottom:12px;}
+.mssAcademyPlayerHead button {padding:9px 10px;border-radius:9px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:inherit;font-size:10px;font-weight:900;}
+.mssAcademyPlayerHead div {flex:1;min-width:0;}.mssAcademyPlayerHead h3 {margin:3px 0;font-size:clamp(16px,2.4vw,22px);}.mssAcademyPlayerHead > span {color:#ffd883;font-weight:900;font-size:11px;}
+.mssAcademyStory {max-width:740px;margin:0 auto;padding:20px 3px;}.mssAcademyStory > p {font-size:clamp(15px,2.1vw,19px);line-height:1.52;font-weight:750;margin:13px 0 17px;}
+.mssAcademyInsight {background:rgba(39,220,255,.09);border:1px solid rgba(39,220,255,.26);padding:14px;border-radius:13px;font-size:14px;line-height:1.5;}
+.mssAcademyActions {display:flex;flex-wrap:wrap;gap:8px;margin-top:17px;}.mssAcademyActions button {min-height:42px;padding:10px 13px;border:1px solid rgba(255,255,255,.17);background:rgba(255,255,255,.055);border-radius:11px;color:#ebfaff;font-size:11px;font-weight:900;}
+.mssAcademyAnswers {display:grid;gap:8px;}.mssAcademyAnswers button {text-align:left;display:flex;align-items:center;gap:11px;min-height:48px;border-radius:12px;padding:8px 12px;color:#e6f4f9;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);font-size:13px;font-weight:760;}.mssAcademyAnswers button span {display:grid;place-items:center;border-radius:8px;width:26px;height:26px;background:rgba(255,255,255,.08);color:#75e6fc;font-weight:900;}.mssAcademyAnswers button.chosen {border-color:#47d9f0;background:rgba(39,220,255,.12);}.mssAcademyAnswers button.correct {border-color:#70e4a9;}
+.mssAcademyMission {display:flex;flex-direction:column;gap:7px;padding:14px 0;}.mssAcademyMission strong {font-size:14px;line-height:1.4;}
+.mssAcademyScoreboard,.mssAcademyStats {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}.mssAcademyScoreboard>div,.mssAcademyStats>div {display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;padding:11px;border-radius:12px;background:rgba(7,28,38,.85);border:1px solid rgba(39,220,255,.14);}.mssAcademyScoreboard small,.mssAcademyStats small {text-align:center;color:#8ad7e7;font-size:9px;font-weight:900;letter-spacing:.3px;}.mssAcademyScoreboard strong,.mssAcademyStats strong {font-size:clamp(20px,3vw,29px);margin-top:5px;}
+.mssAcademyFeedback {margin-top:10px;padding:10px 12px;border-radius:11px;background:rgba(255,215,117,.08);border:1px solid rgba(255,215,117,.23);font-size:12px;line-height:1.45;}
+.mssAcademyHint {color:#a4c0cc;font-size:11px;line-height:1.5;}.mssAcademyPad {height:clamp(320px,58dvh,540px);min-height:320px;display:flex;min-width:0;flex-direction:column;overflow:hidden;margin-top:8px;border-radius:15px;background:rgba(0,0,0,.2);padding:8px;}
+.mssAcademyResult {border-radius:15px;background:radial-gradient(circle at top,rgba(39,220,255,.15),transparent 60%),rgba(0,0,0,.25);padding:20px;text-align:center;margin-top:15px;}.mssAcademyResult h3 {font-size:37px;color:#8ef7cb;margin:6px 0;}.mssAcademyResult p {font-size:13px;color:#bed4df;}.mssAcademyResult .mssAcademyActions {justify-content:center;}
+.mssAcademyProgress>p,.mssAcademyFoot {font-size:11px;color:#a5bcc8;line-height:1.5;}.mssAcademyProgressRow {width:100%;display:grid;grid-template-columns:1fr auto;gap:7px;text-align:left;min-height:54px;margin:8px 0;padding:11px 13px;color:inherit;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.04);border-radius:12px;}.mssAcademyProgressRow strong {font-size:12px;}.mssAcademyProgressRow>span {font-size:10px;color:#90f0c4;}.mssAcademyProgressTrack {grid-column:1/-1;height:5px;border-radius:99px;background:rgba(255,255,255,.09);overflow:hidden;}.mssAcademyProgressTrack span {display:block;height:100%;background:linear-gradient(90deg,#26c9e9,#7cffc1);}
+@media(max-width:700px) {.mssAcademyLessonGrid {grid-template-columns:1fr;}.mssAcademyHero {padding:11px;gap:8px;flex-wrap:wrap;}.mssAcademyHero img {width:51px;height:51px;}.mssAcademyHeroText {flex:1 1 calc(100% - 65px);}.mssAcademyHeroText h2 {font-size:19px;}.mssAcademyHeroText p {font-size:10px;}.mssAcademyVoice {margin-left:auto;padding:7px;font-size:9px;}.mssAcademyTabs {gap:4px;}.mssAcademyTabs button {font-size:9px;padding:5px 2px;}.mssAcademyBanner {padding:11px;}.mssAcademyBanner strong {font-size:13px;}.mssAcademyBanner span {font-size:10px;}.mssAcademyBanner button {font-size:9px;padding:9px;}.mssAcademyPlayerHead {gap:6px;}.mssAcademyPlayerHead button {padding:7px;font-size:9px;}.mssAcademyScoreboard>div,.mssAcademyStats>div {padding:8px 3px;}.mssAcademyScoreboard small,.mssAcademyStats small {font-size:7.5px;}.mssAcademyPad {height:clamp(320px,52dvh,480px);}.mssAcademyLessonStatus {font-size:8px;}}
+/* Academy expansion: filters, quiz challenges, and answer-by-answer progression. */
+.mssAcademyTabs {grid-template-columns:repeat(4,minmax(0,1fr));}
+.mssAcademyFilters {display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin:11px 0 14px;}
+.mssAcademyFilters label {color:#87def1;font-size:9px;letter-spacing:.6px;font-weight:900;display:flex;flex-direction:column;gap:5px;flex:1 1 140px;}
+.mssAcademyFilters input,.mssAcademyFilters select {width:100%;min-width:0;min-height:39px;padding:8px 10px;border-radius:10px;border:1px solid rgba(70,209,238,.26);background:#111e2f;color:#f0faff;font-size:12px;font-family:inherit;}
+.mssAcademyFilters input::placeholder {color:#8c9ba8;}
+.mssAcademyCount {font-weight:900;color:#94f0c4;font-size:11px;white-space:nowrap;padding:9px 0;}
+.mssAcademyQuizPanel {border-radius:19px;background:linear-gradient(145deg,#0b2030,#101321);border:1px solid rgba(39,220,255,.25);padding:clamp(12px,2vw,22px);}
+.mssAcademyQuizHeader {display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}
+.mssAcademyQuizHeader small {color:#71e1fb;font-weight:900;font-size:10px;letter-spacing:.7px;}
+.mssAcademyQuizHeader h3 {margin:5px 0;font-size:clamp(16px,2.4vw,23px);}
+.mssAcademyQuizHeader p {margin:0;color:#b0c9d5;font-size:12px;line-height:1.5;}
+.mssAcademyQuizHeader button {background:linear-gradient(180deg,#36def5,#16a9d5);color:#031620;border:0;border-radius:11px;padding:11px 15px;font-weight:950;font-size:11px;white-space:nowrap;}
+.mssAcademyQuizTrack {height:7px;border-radius:999px;background:rgba(255,255,255,.1);overflow:hidden;margin-top:12px;}
+.mssAcademyQuizTrack span {height:100%;display:block;background:linear-gradient(90deg,#23c7ed,#85eec2);transition:width .18s ease;}
+.mssAcademyAnswers button.incorrect {border-color:#ff9a88;background:rgba(246,103,87,.10);}
+.mssAcademyAnswers button:disabled {opacity:1;}
+.mssAcademyMiniScore {text-align:right;font-size:11px;color:#a1d7e8;padding:10px 2px;}
+.mssAcademyQuizStats {margin-top:9px;}
+.mssAcademyEmpty {color:#bacbd7;font-size:12px;padding:18px 10px;line-height:1.5;}
+@media(max-width:700px) {
+  .mssAcademyTabs {grid-template-columns:repeat(2,minmax(0,1fr));}
+  .mssAcademyFilters label {flex:1 1 115px;}
+  .mssAcademyCount {flex:1 1 100%;padding:1px 0 5px;}
+  .mssAcademyQuizHeader button {width:100%;}
+  .mssAcademyFilters select,.mssAcademyFilters input {font-size:11px;}
+}

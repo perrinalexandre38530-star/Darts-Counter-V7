@@ -253,6 +253,8 @@ const QuickPartyModeConfig = React.lazy(() => import("./pages/QuickPartyModeConf
 const QuickBobs27Config = React.lazy(() => import("./pages/QuickBobs27Config"));
 const QuickIndependentDartsConfig = React.lazy(() => import("./pages/QuickIndependentDartsConfig"));
 const GameModeEntryChoice = React.lazy(() => import("./components/GameModeEntryChoice"));
+const QuickBattleRoyaleConfig = React.lazy(() => import("./pages/QuickBattleRoyaleConfig"));
+const QuickScramConfig = React.lazy(() => import("./pages/QuickScramConfig"));
 const X01PlayV3 = React.lazy(() => import("./pages/X01PlayV3"));
 const ChallengeConfig = React.lazy(() => import("./pages/ChallengeConfig"));
 const ChallengePlay = React.lazy(() => import("./pages/ChallengePlay"));
@@ -6824,7 +6826,9 @@ case "babyfoot_team_edit":
         const launchMode = String(routeParams?.launchMode || (routeParams?.quickParty ? "quick" : (routeParams?.config || routeParams?.resume || routeParams?.rec ? "arcade" : "")));
         // CHASE est un preset du moteur Five Lives, pas une deuxième implémentation.
         // Ouvre sa configuration dédiée directement, avec égalité acceptée.
-        if (isChase) page = <FiveLivesConfig key="five-lives-chase" store={store} go={go} presetVariantId="chase" onBack={() => go("games", { gamesView: "all", gamesCategory: "variant" })} />;
+        if (isChase && !launchMode) page = <GameModeEntryChoice title="CHASE" tickerId="chase" onBack={() => go("games")} onQuick={() => go("five_lives_config", { ...routeParams, variantId: "chase", launchMode: "quick" })} onArcade={() => go("five_lives_config", { ...routeParams, variantId: "chase", launchMode: "arcade" })} />;
+        else if (isChase && launchMode === "quick") page = <QuickPartyModeConfig modeId="five_lives" title="CHASE" params={routeParams} onBack={() => go("five_lives_config", { variantId: "chase" })} onStart={(result) => go(result.route, result.params)} />;
+        else if (isChase) page = <FiveLivesConfig key="five-lives-chase" store={store} go={go} presetVariantId="chase" onBack={() => go("games", { gamesView: "all", gamesCategory: "variant" })} />;
         else if (launchMode === "quick") page = <QuickPartyModeConfig modeId="five_lives" title="5 VIES" params={routeParams} onBack={() => go("five_lives_config")} onStart={(result) => go(result.route, result.params)} />;
         else if (launchMode === "arcade") page = <FiveLivesConfig key="five-lives-main" store={store} go={go} onBack={() => go("five_lives_config")} />;
         else page = <GameModeEntryChoice title="5 VIES" subtitle="PARTIE RAPIDE OU EXPÉRIENCE ARCADE" family="five_lives" onVariant={() => go("five_lives_config", { variantId: "chase", launchMode: "arcade" })} onBack={() => go("games")} onQuick={() => go("five_lives_config", { launchMode: "quick" })} onArcade={() => go("five_lives_config", { launchMode: "arcade" })} />;
@@ -6918,9 +6922,13 @@ case "babyfoot_team_edit":
       }
 
       // ✅ NEW: BATTLE ROYALE (CONFIG)
-      case "battle_royale":
-        page = <BattleRoyaleConfigPage store={store} go={go} />;
+      case "battle_royale": {
+        const launchMode = String(routeParams?.launchMode || "");
+        if (launchMode === "quick") page = <QuickBattleRoyaleConfig go={go} onBack={() => go("battle_royale")} />;
+        else if (launchMode === "arcade") page = <BattleRoyaleConfigPage store={store} go={go} />;
+        else page = <GameModeEntryChoice title="BATTLE ROYALE" tickerId="battle_royale" onBack={() => go("games")} onQuick={() => go("battle_royale", { launchMode: "quick" })} onArcade={() => go("battle_royale", { launchMode: "arcade" })} />;
         break;
+      }
 
       case "battle_royale_play": {
         const cfg = routeParams?.config;
@@ -7204,7 +7212,9 @@ case "babyfoot_team_edit":
         // SPLIT SCORE réutilise le moteur HALVE-IT avec un preset canonique.
         // Entrée directe : aucun passage dans une configuration Halve-It classique.
         if (isSplitScore) {
-          page = <HalveItConfig key="halve-it-split-score" store={store} go={go} setTab={go} params={{ ...routeParams, variantId: "split_score", launchMode: "arcade" }} onBack={() => go("games", { gamesView: "all", gamesCategory: "variant" })} />;
+          if (!routeParams?.launchMode) page = <GameModeEntryChoice title="SPLIT SCORE" tickerId="split_score" onBack={() => go("games")} onQuick={() => go("halve_it_config", { ...routeParams, variantId: "split_score", launchMode: "quick" })} onArcade={() => go("halve_it_config", { ...routeParams, variantId: "split_score", launchMode: "arcade" })} />;
+          else if (routeParams?.launchMode === "quick") page = <QuickPartyModeConfig modeId="halve_it" title="SPLIT SCORE" params={routeParams} onBack={() => go("halve_it_config", { variantId: "split_score" })} onStart={(result) => go(result.route, result.params)} />;
+          else page = <HalveItConfig key="halve-it-split-score" store={store} go={go} setTab={go} params={{ ...routeParams, variantId: "split_score", launchMode: "arcade" }} onBack={() => go("games", { gamesView: "all", gamesCategory: "variant" })} />;
           break;
         }
         const launchMode = String(routeParams?.launchMode || (routeParams?.quickParty ? "quick" : (routeParams?.config || routeParams?.resume || routeParams?.rec || routeParams?.mode === "halve_it" ? "arcade" : "")));
@@ -7378,7 +7388,7 @@ case "babyfoot_team_edit":
         break;
 
       case "scram_config":
-        page = <ScramConfig store={store} go={go} setTab={go} params={routeParams} />;
+        page = routeParams?.launchMode === "quick" ? <QuickScramConfig go={go} onBack={() => go("scram_config")} /> : <ScramConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "scram_play":
         page = (

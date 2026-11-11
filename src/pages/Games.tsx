@@ -725,7 +725,7 @@ export default function Games({ setTab, params }: Props) {
       return `tab:cricket?variantId=${encodeURIComponent(variantId)}`;
     }
     if (g?.tab === "halve_it_config" && variantId === "split_score") {
-      return "tab:halve_it_config?variantId=split_score&launchMode=arcade";
+      return "tab:halve_it_config?variantId=split_score";
     }
     if (g?.tab === "five_lives_config" && variantId === "chase") {
       return "tab:five_lives_config?variantId=chase";

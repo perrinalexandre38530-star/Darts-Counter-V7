@@ -1,6 +1,7 @@
 import type { RadarEnv, OpportunityRow } from './domain';
 import { withTimeout } from './timeout';
 import { assessCommercialFit } from './commercial-fit';
+import { assessCampaignMatch } from './campaign-match';
 
 export type SalesGoal = 'app' | 'web' | 'facebook' | 'instagram';
 export type SalesCampaign = {
@@ -103,8 +104,9 @@ export async function generateSalesDraft(env: RadarEnv, campaign: SalesCampaign,
   if (!destination) throw new Error('Destination du tunnel d’acquisition non configurée.');
   // A historic AI score is not evidence that a human actually requested help.
   const fit = assessCommercialFit(opportunity);
-  if (!fit.actionable) return {
-    match:'low',reason:fit.reason,angle:'Aucune sollicitation recommandée',
+  const topicalFit = assessCampaignMatch(campaign,opportunity);
+  if (!fit.actionable || !topicalFit.compatible) return {
+    match:'low',reason:!fit.actionable ? fit.reason : topicalFit.reason,angle:'Aucune sollicitation recommandée',
     variants:{helpful:'',concise:'',promotional:''},
     language:clean(opportunity.language || campaign.language || 'fr',12),goal:campaign.goal,
     campaign_id:campaign.id,opportunity_id:opportunity.id,source_url:opportunity.source_url,

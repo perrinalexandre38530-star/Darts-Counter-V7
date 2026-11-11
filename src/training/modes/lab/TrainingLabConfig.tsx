@@ -5,6 +5,7 @@ import TrainingHeader from "../../ui/TrainingHeader";
 import "../../ui/trainingResponsive.css";
 import TrainingStartButton from "../../ui/TrainingStartButton";
 import TrainingExerciseDetail from "../../ui/TrainingExerciseDetail";
+import TrainingAwenaAcademy from "../../academy/TrainingAwenaAcademy";
 import TrainingSessionResultsCard from "../../ui/TrainingSessionResultsCard";
 import TrainingChallengeCatalog from "../../ui/TrainingChallengeCatalog";
 import { clearTrainingChallengeDraft, loadTrainingChallengeDraft } from "../../profile/trainingChallengeDraft";
@@ -50,7 +51,7 @@ import { buildTrainingDailyReview } from "../../profile/trainingDailyReview";
 import { buildTrainingSkillTrend } from "../../profile/trainingSkillTrend";
 
 const familyOrder: TrainingExerciseFamily[] = ["scoring", "doubles", "checkout", "precision", "bull", "regularity"];
-type HubTab = "program" | "exercises" | "sessions" | "diagnosis" | "progress";
+type HubTab = "program" | "academy" | "exercises" | "sessions" | "diagnosis" | "progress";
 type ProgramPanel = "today" | "week" | "cycle" | "library";
 type ProgressPanel = "overview" | "skills" | "coach" | "cycles" | "history";
 type ExercisePanel = "path" | "catalog" | "challenge" | "technique" | "favorites";
@@ -701,6 +702,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
 
   const tabs: Array<{ id: HubTab; label: string; icon: string }> = [
     { id: "program", label: "AUJOURD’HUI", icon: "today" },
+    { id: "academy", label: "AWENA ACADÉMIE", icon: "coach" },
     { id: "exercises", label: "EXERCICES", icon: "exercises" },
     { id: "sessions", label: "MES SÉANCES", icon: "history" },
     { id: "diagnosis", label: "NIVEAU", icon: "diagnosis" },
@@ -823,6 +825,7 @@ export default function TrainingLabConfig({ profiles, accountProfile, initialDet
 
 
           <PrimaryNav items={tabs} activeId={tab} onChange={(id) => setTab(id as HubTab)} />
+          {tab === "academy" && <TrainingAwenaAcademy participantId={accountParticipantId || null} />}
           {tab === "program" && <section className="mssTrainingHubWelcome" aria-label="Bienvenue au Centre d'entraînement" style={{ position: "relative", overflow: "hidden", margin: "12px 2px 8px", padding: "clamp(15px,3vw,25px)", borderRadius: 20, border: "1px solid rgba(39,220,255,.3)", background: "radial-gradient(circle at 92% 18%,rgba(40,210,241,.21),transparent 32%),radial-gradient(circle at 0 100%,rgba(161,80,255,.15),transparent 45%),linear-gradient(140deg,#071a2a,#0a101d 60%,#120e21)", boxShadow: "0 14px 36px rgba(0,0,0,.22),inset 0 0 25px rgba(39,220,255,.035)" }}>
             <div aria-hidden style={{ position: "absolute", width: 158, height: 158, border: "2px solid rgba(39,220,255,.20)", borderRadius: "50%", top: -45, right: -58, boxShadow: "0 0 0 25px rgba(39,220,255,.045),0 0 0 54px rgba(39,220,255,.025)", pointerEvents: "none" }}/>
             <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 11 }}>

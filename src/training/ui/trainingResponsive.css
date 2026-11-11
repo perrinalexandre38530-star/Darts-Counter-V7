@@ -431,3 +431,9 @@
 @media(max-width:650px) { .mssChallengeCoachGrid { grid-template-columns:1fr; } .mssChallengeCoachTile { display:grid; grid-template-columns:1fr auto; gap:4px 8px; } .mssChallengeCoachTile .mssChallengeCoachTag { grid-column:1 / -1; } .mssChallengeCoachTile button { grid-column:2; grid-row:2 / 4; align-self:center; } .mssChallengeCoachTile p { grid-column:1; } }
 @media(max-width:460px) { .mssChallengeCatalog { gap:9px; } .mssChallengeCatalogHero { padding:10px; } .mssChallengeCatalogHero p { font-size:9.5px; } .mssChallengeCatalogMetrics > div { padding:5px 8px; } .mssChallengeCatalogGrid { grid-template-columns:1fr; } .mssChallengeCatalogCard { padding:11px; } .mssChallengeCatalogControls { gap:5px; } .mssChallengeCatalogControls > button { flex:1 1 100px; } .mssChallengeCatalogDialog { padding:11px; } .mssChallengeCatalogDialog footer { grid-template-columns:1fr 1fr; } .mssChallengeCatalogDialog footer button:first-child { grid-column:1 / -1; } }
 @media(orientation:landscape) and (max-height:460px) { .mssChallengeCatalogDialog { max-height:calc(100dvh - 8px); padding:9px 12px; } .mssChallengeCatalogOverlay { padding:4px; } .mssChallengeCatalogHero { padding:8px 12px; } }
+/* AWENA Academy adds a sixth navigation destination; keep all tabs reachable on phones. */
+@media (max-width:600px) {
+ .mssTrainingHubPrimaryNav { grid-template-columns:repeat(6,minmax(0,1fr))!important; }
+ .mssTrainingHubPrimaryNav button { min-width:0!important; }
+ .mssTrainingHubPrimaryNav button span:last-child { font-size:clamp(6px,1.55vw,8px)!important; line-height:1.1!important; white-space:normal!important; overflow-wrap:anywhere!important; }
+}

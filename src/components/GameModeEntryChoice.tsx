@@ -24,6 +24,15 @@ const tickerAliases: Record<string, string> = {
   "president": "president",
   "killer progressif": "killer",
   "killer progressive": "killer",
+  "ptit_hun": "ptit_1",
+  "p_tit_1": "ptit_1",
+  "p tit 1": "ptit_1",
+  "departements": "territories_fr",
+  "territoires": "territories_fr",
+  "territories": "territories_fr",
+  "cricket_cut_throat": "cricket_cut_throat",
+  "cut_throat": "cricket_cut_throat",
+  "enculette_vache": "enculette",
 };
 
 function resolveEntryTicker(title: string, lang = "fr"): string | null {
