@@ -52,6 +52,7 @@ import {
 } from "../lib/statsBridge";
 import type { CricketProfileStats } from "../lib/cricketStats";
 import { buildChallengeStatsProgression } from "../lib/challengeStatsProgression";
+import { ChallengeTrainingCard } from "../components/challenge/ChallengeArchiveUI";
 
 // ---- Utils ----
 const STATSHUB_HISTORY_LIGHT_CAP = 5000;
@@ -9691,6 +9692,7 @@ if (tab === "training") {
         <StatsTrainingLeaderboards modeOptions={trainingModeOptions} defaultModeId={"training_time_attack"} />
       ) : (
         <>
+          <ChallengeTrainingCard playerId={effectiveProfileId || null} playerName={selectedPlayerVisual?.name || selectedPlayer?.name || null} go={go} renderDetailedStats={()=> <ChallengeStatsPanel records={detailRecords as any[]} playerId={effectiveProfileId || null} playerName={selectedPlayer?.name || null}/>} />
           <TrainingX01StatsTab />
           <StatsTrainingModesLocal />
         </>

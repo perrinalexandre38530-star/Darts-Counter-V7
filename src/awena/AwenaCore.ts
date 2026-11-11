@@ -2,6 +2,7 @@ import { getAdaptiveCheckoutSuggestionV3, type X01OutModeV3 } from "../lib/x01v3
 import { actionsForAwenaMode, allAwenaModes, awenaModesByCategory, findAwenaMode, findAwenaModeById } from "./AwenaKnowledge";
 import { actionForNavigation, actionForSport, actionForSportMode, findAwenaNavigationTopic, findAwenaSport, findAwenaSportMode } from "./AwenaAppKnowledge";
 import type { AwenaReply, AwenaRuntimeContext } from "./awena.types";
+import { answerAwenaChallengeQuestion } from "./AwenaChallengeKnowledge";
 import { detailedConfigurationText, detailedRulesText } from "./AwenaDetailedKnowledge";
 import { answerAwenaGeneralQuestion } from "./AwenaGeneralKnowledge";
 import { answerAwenaEncyclopedia } from "./AwenaEncyclopedia";
@@ -172,6 +173,11 @@ Ma couche Guide Utilisateur V9.2 ajoute **${awenaUserGuideV92Count()} sujets pra
       modeId: mode?.id || context.mode || null,
     };
   }
+
+  // Une question sur un défi CHALLENGE précis passe par le guide partagé avec l'UI.
+  // Prioritaire sur la correspondance générique des autres modes Awena.
+  const challengeReply=answerAwenaChallengeQuestion(question);
+  if(challengeReply)return challengeReply;
 
   // V9.3 MODE PRECISION : les trois actions RÈGLES / CONFIGURATION / RECORDS
   // d'un mode sont des intentions strictes. Elles ne doivent jamais être

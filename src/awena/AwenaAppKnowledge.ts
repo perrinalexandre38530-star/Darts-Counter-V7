@@ -1,4 +1,5 @@
 import type { AwenaAction } from "./awena.types";
+import { AWENA_CHALLENGE_ENTRIES } from "./AwenaChallengeKnowledge";
 
 export type AwenaNavigationTopic = {
   id: string;
@@ -45,6 +46,7 @@ export const AWENA_NAVIGATION_TOPICS: AwenaNavigationTopic[] = [
 
 
 const DARTS: AwenaSportModeKnowledge[] = [
+  ...AWENA_CHALLENGE_ENTRIES.map(entry=>({sportId:"darts",...entry})),
   {
     id: "darts_petanque",
     sportId: "darts",

@@ -5139,7 +5139,10 @@ ${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.${locationLi
   }
 
 
-  const rawAllItems = useMemo(() => dedupe(items).filter((e) => !isChallengeHistoryEntry(e) || challengeHistoryHasStarted(e)), [items]);
+  // CHALLENGE appartient maintenant à STATS > TRAINING. Ne PAS supprimer les
+  // enregistrements History V4 : ils servent encore aux records, sauvegardes et reprises.
+  // Le filtre agit uniquement sur les cartes de l'Historique général.
+  const rawAllItems = useMemo(() => dedupe(items).filter((e) => !isChallengeHistoryEntry(e)), [items]);
   const quickItems = useMemo(() => rawAllItems.filter((e) => isQuickPartyRecord(e)), [rawAllItems]);
   // Les PARTIES RAPIDES sont volontairement absentes de ALL / TERMINÉES / EN COURS classiques.
   const allItems = useMemo(() => rawAllItems.filter((e) => !isQuickPartyRecord(e)), [rawAllItems]);

@@ -1,0 +1,41 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {CHALLENGE_MODE_OPTIONS} from '../src/lib/challengeUnifiedCatalog.ts';
+
+const read=p=>fs.readFileSync(p,'utf8');
+const config=read('src/pages/ChallengeConfig.tsx');
+const guide=read('src/components/challenge/ChallengeGuideInfo.tsx');
+const insights=read('src/components/challenge/ChallengeInsightsPage.tsx');
+const awena=read('src/awena/AwenaChallengeKnowledge.ts');
+const core=read('src/awena/AwenaCore.ts');
+const app=read('src/awena/AwenaAppKnowledge.ts');
+const shared=read('src/lib/challengeGuideContent.ts');
+const archive=read('src/components/challenge/ChallengeArchiveUI.tsx');
+assert.equal(CHALLENGE_MODE_OPTIONS.length,51);
+assert.equal(new Set(CHALLENGE_MODE_OPTIONS.map(e=>e.id)).size,51);
+assert.match(config,/<ChallengeGuideInfo badges=\{previewGuide.badges\}/);
+assert.match(config,/<ChallengeInsightsPage/);
+assert.match(config,/setInsightView\('stats'\)/);
+assert.match(config,/setInsightView\('records'\)/);
+assert.ok(!config.includes('<ChallengeArchiveDetails modeId={previewChoice.id}'),'stats/records not embedded in the how-to sheet');
+assert.match(guide,/getChallengeObjectiveImage/);
+assert.match(guide,/<BottomNavIcon/);
+assert.match(guide,/\/awena\/awena-avatar\.webp/);
+assert.match(guide,/onAskAwena/);
+for(const n of Array.from({length:20},(_,i)=>i+1)){
+ const visualSource=read('src/lib/challengeObjectiveVisuals.ts');
+ assert.ok(visualSource.includes(`'${n}': target${n}`),`dartboard ${n} uses in-game art`);
+}
+assert.match(awena,/CHALLENGE_MODE_OPTIONS\.map/);
+assert.match(awena,/buildChallengeGuide/);
+assert.match(core,/answerAwenaChallengeQuestion\(question\)/);
+assert.match(app,/AWENA_CHALLENGE_ENTRIES/);
+assert.match(shared,/Barème Challenge|barème propre à Cible fixe/i);
+assert.match(insights,/loadChallengeArchive\(\{modeId,hydrate:true\}\)/);
+assert.match(insights,/challengeArchiveItems\(records,\{modeId,playerId,playerName\}\)/);
+assert.match(insights,/selectedGroup\.goal==='min'/);
+assert.match(insights,/<TimeChart/);
+assert.match(insights,/<Bars/);
+assert.match(archive,/STATS.*RECORDS|STATISTIQUES DÉTAILLÉES/);
+assert.ok(!insights.includes('Math.random'),'no invented statistical data');
+console.log('✅ CHALLENGE V131 — images réelles, icônes BottomNav, 51 règles Awena, pages STATS/RECORDS, History V4');

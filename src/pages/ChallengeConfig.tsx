@@ -13,6 +13,9 @@ import { recordProfileUsageForMode } from '../lib/profileUsage';
 import { DEFAULT_CUSTOM_SEQUENCE, DEFAULT_HALF_IT_SEQUENCE, DOUBLES_8_TARGETS, exerciseTitle, objectiveLabel, type ChallengeExerciseType, type ChallengeObjectiveToken, type ChallengeScoreMode } from '../lib/challengeExercises';
 import {getArcadeChallenge,isArcadeChallengePlayable} from '../lib/challengeArcadeCatalog';
 import {CHALLENGE_MODE_OPTIONS,CHALLENGE_MODE_FAMILIES,selectedChallengeMode, type UnifiedChallengeMode} from '../lib/challengeUnifiedCatalog';
+import { ChallengeInsightsPage, type ChallengeInsightView } from '../components/challenge/ChallengeInsightsPage';
+import { ChallengeGuideInfo, ChallengeGuideTiles } from '../components/challenge/ChallengeGuideInfo';
+import { buildChallengeGuide } from '../lib/challengeGuideContent';
 import {arcadeRuleDetails,arcadeRuleDescription, type ArcadeVariant, type ArcadePlayConfig} from '../lib/challengeArcadeEngine';
 
 export type ChallengeTarget='1'|'2'|'3'|'4'|'5'|'6'|'7'|'8'|'9'|'10'|'11'|'12'|'13'|'14'|'15'|'16'|'17'|'18'|'19'|'20'|'bull'|'bull25'|'bull50'|'any-double'|'any-triple';
@@ -101,6 +104,7 @@ const presetDescriptor=(preset:ChallengePreset|null)=>{
  return `GROUPEMENT ${Math.min(preset.groupingMin||15,preset.groupingMax||20)}–${Math.max(preset.groupingMin||15,preset.groupingMax||20)} · ×${preset.groupingHits||2}`;
 };
 
+
 function TeamLogoView({team,className='',alt=''}:{team:any;className?:string;alt?:string}){
  const direct=teamLogo(team);
  const [src,setSrc]=React.useState(direct);
@@ -126,6 +130,9 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
  const [rule,setRule]=React.useState<ChallengeRule>('all');
  const [exerciseType,setExerciseType]=React.useState<ChallengeExerciseType>('classic');
  const [catalogChallengeId,setCatalogChallengeId]=React.useState('perfect-line');
+ const [previewChoiceId,setPreviewChoiceId]=React.useState<string|null>(null);
+ const [insightView,setInsightView]=React.useState<ChallengeInsightView|null>(null);
+ const [focusedChoiceId,setFocusedChoiceId]=React.useState<string|null>(null);
  const [catalogLine,setCatalogLine]=React.useState(20);
  const [catalogVariant,setCatalogVariant]=React.useState<ArcadeVariant>('classic');
  const [catalogRounds,setCatalogRounds]=React.useState(5);
@@ -339,13 +346,18 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
   chooseExercise(choice.exerciseType);
  };
  const activeChoice=selectedChallengeMode(exerciseType,catalogChallengeId);
+ const previewChoice=CHALLENGE_MODE_OPTIONS.find(choice=>choice.id===previewChoiceId)||null;
+ const previewGuide=previewChoice?buildChallengeGuide(previewChoice,{target,rule,visits,clockIncludeBull,clockScoreMode,halfItStartScore,sequenceObjectives,sequenceScoreMode,groupingMin,groupingMax,groupingHits,doublesBonusTarget,doublesTargets,doublesTargetMode,arcadeConfig:previewChoice.exerciseType==='arcade'?{...arcadeConfig,catalogChallengeId:previewChoice.arcadeId||arcadeConfig.catalogChallengeId}:arcadeConfig}):null;
+ const focusedChoice=CHALLENGE_MODE_OPTIONS.find(choice=>choice.id===focusedChoiceId)||null;
+ const archiveProfileId=playerIds.length===1?playerIds[0]:(activeProfileId||null);
+ const archiveProfileName=profiles.find(p=>String(p.id)===String(archiveProfileId))?.name||null;
  const searchTerm=catalogSearch.trim().toLocaleLowerCase();
  const filteredChoices=CHALLENGE_MODE_OPTIONS.filter(choice=>
   (catalogFamily==='TOUS'||choice.family===catalogFamily) &&
   (!searchTerm||[choice.title,choice.description,choice.family].join(' ').toLocaleLowerCase().includes(searchTerm))
  );
 
- const replayPreset=(preset:ChallengePreset|null)=>applyPreset(preset,{jumpToPlayers:true,resetPlayers:true});
+ const replayPreset=(preset:ChallengePreset|null)=>{setFocusedChoiceId(null);setPreviewChoiceId(null);applyPreset(preset,{jumpToPlayers:true,resetPlayers:true});};
  const saveFavorite=()=>{writeChallengePreset(CHALLENGE_FAVORITE_KEY,currentPreset);setFavoritePreset(currentPreset)};
 
  const start=()=>{
@@ -410,6 +422,12 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
  </Section>;
 
  const exerciseStage=<Section title="CHOISIR UN CHALLENGE" subtitle="Tous les challenges, anciens et nouveaux, réunis par catégorie. Sélectionnez une carte pour afficher ses réglages et ses règles." key="exercise">
+  {focusedChoice ? <div className="challenge-unified-focused" aria-live="polite">
+    <button type="button" className="challenge-focused-back" onClick={()=>setFocusedChoiceId(null)}>← RETOUR AUX DÉFIS</button>
+    <div className="challenge-focused-heading"><span aria-hidden="true">{focusedChoice.icon}</span><div><small>{focusedChoice.family} · CHALLENGE RETENU</small><h3>{focusedChoice.title}</h3><p>{focusedChoice.description}</p></div></div>
+    <button type="button" className="challenge-focused-records" onClick={()=>setPreviewChoiceId(focusedChoice.id)}>🏆 DERNIERS SCORES · RECORDS · PARTIES JOUÉES</button>
+    <p className="challenge-focused-hint">Les autres cartes sont masquées. Poursuis avec les réglages de ce défi ou reviens à la liste.</p>
+   </div> : <>
   <div className="challenge-unified-tools">
    <label className="challenge-unified-search"><span>RECHERCHER UN DÉFI</span><input type="search" placeholder="Nom, règle ou catégorie…" value={catalogSearch} onChange={e=>setCatalogSearch(e.target.value)} aria-label="Rechercher un challenge"/></label>
    <div className="challenge-unified-filters" role="group" aria-label="Filtrer par catégorie">
@@ -427,7 +445,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
       {choices.map(choice=>{
        const selected=exerciseType===choice.exerciseType&&(choice.exerciseType!=='arcade'||catalogChallengeId===choice.arcadeId);
        const stateLabel=choice.state==='available'?'DISPONIBLE':choice.state==='preview'?'APERÇU JOUABLE':'À VENIR';
-       return <button type="button" key={choice.id} className={'challenge-unified-tile '+(selected?'on ':'')+choice.state} aria-pressed={selected} onClick={()=>chooseUnifiedMode(choice)}>
+       return <button type="button" key={choice.id} className={'challenge-unified-tile '+(selected?'on ':'')+choice.state} aria-pressed={selected} onClick={()=>setPreviewChoiceId(choice.id)} title={'Voir la fiche et les records de '+choice.title}>
         <i aria-hidden="true">{choice.icon}</i><span className="challenge-unified-tile-text"><b>{choice.title}</b><small>{choice.description}</small><em>{stateLabel}</em></span>
        </button>;
       })}
@@ -440,6 +458,7 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
     <div><small>CHALLENGE SÉLECTIONNÉ</small><b>{activeChoice.title}</b><span>{activeChoice.family} · {activeChoice.state==='available'?'DISPONIBLE':activeChoice.state==='preview'?'APERÇU JOUABLE':'EN DÉVELOPPEMENT'}</span></div>
     {activeChoice.state==='planned'&&<p>Ce défi est présenté pour découvrir ses règles, mais son moteur n'est pas encore jouable.</p>}
   </div>}
+  </>}
  </Section>;
 
  const targetStage=<Section title="CIBLE" subtitle="Choisissez un secteur précis ou un Challenge sur tous les doubles / triples." key="target"><div className="target-grid"><button type="button" className={'target-btn family '+(target==='any-double'?'on':'')} onClick={()=>{setTarget('any-double');setRule('double')}}><span className="target-thumb"><img src={getChallengeObjectiveImage('any-double')} alt=""/></span><b>DOUBLES</b></button><button type="button" className={'target-btn family '+(target==='any-triple'?'on':'')} onClick={()=>{setTarget('any-triple');setRule('triple')}}><span className="target-thumb"><img src={getChallengeObjectiveImage('any-triple')} alt=""/></span><b>TRIPLES</b></button>{[...Array.from({length:20},(_,i)=>String(i+1)),'bull'].map(x=><button type="button" key={x} className={'target-btn '+(target===x?'on':'')} onClick={()=>{setTarget(x as ChallengeTarget);if(x==='bull')setRule('bull')}}><span className="target-thumb"><img src={getChallengeObjectiveImage(x)} alt=""/></span><b>{x==='bull'?'BULL':x}</b></button>)}</div>{familyMode&&<div className="locked-hint">KEYPAD X01 DÉTAILLÉ · chaque D1–D20 / T1–T20 est enregistré · égalité départagée par la somme des numéros touchés.</div>}</Section>;
@@ -556,6 +575,39 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
    </div>
   </main>
 
+  {previewChoice&&<div className="mss-ca-overlay" role="presentation" onMouseDown={e=>{if(e.currentTarget===e.target)setPreviewChoiceId(null)}}>
+   <div className="mss-ca-sheet" role="dialog" aria-modal="true" aria-labelledby="mss-challenge-preview-title">
+    <header className="mss-ca-sheet-head"><div><small>{previewChoice.family} · FICHE CHALLENGE</small><h2 id="mss-challenge-preview-title">{previewChoice.title}</h2></div><button type="button" aria-label="Fermer la fiche Challenge" onClick={()=>setPreviewChoiceId(null)}>×</button></header>
+    <p className="mss-challenge-preview-intro">{previewChoice.description}</p>
+    {previewGuide&&<div className="mss-cg-guide" aria-label="Détail du challenge">
+      <ChallengeGuideInfo badges={previewGuide.badges} title={previewChoice.title} intro={previewGuide.intro}
+       onAskAwena={()=>{const configured=previewGuide.badges.join(' ; ');setPreviewChoiceId(null);awena?.openPanel?.();void awena?.ask?.(`Explique les règles du challenge « ${previewChoice.title} » avec ces réglages : ${configured}.`,{canonicalFrench:true,modeTopic:'rules',speak:true});}}/>
+      <div className="mss-cg-timeline">
+       {previewGuide.steps.map((item,index)=><article className="mss-cg-step" key={item.eyebrow+item.title}>
+        <span className="mss-cg-index" aria-hidden="true">{index+1}</span>
+        <div className="mss-cg-step-body">
+         <small>{item.eyebrow}</small>
+         <h3>{item.title}</h3>
+         <p>{item.text}</p>
+         {item.bullets?.length?<ChallengeGuideTiles badges={item.bullets} compact/>:null}
+        </div>
+       </article>)}
+      </div>
+      <div className="mss-cg-footer">
+       <span aria-hidden="true">🏁</span>
+       <div><small>OBJECTIF DU DÉFI</small><b>{previewGuide.footer}</b></div>
+      </div>
+    </div>}
+    <div className="mss-cg-insight-actions" aria-label="Voir les données du challenge">
+     <button type="button" onClick={()=>setInsightView('stats')}><BottomNavIcon name="stats" size={24}/><span><b>STATISTIQUES</b><small>Courbes, précision, évolution et dernières parties</small></span></button>
+     <button type="button" onClick={()=>setInsightView('records')}><BottomNavIcon name="tournaments" size={24}/><span><b>RECORDS</b><small>Records par configuration et progression personnelle</small></span></button>
+    </div>
+    <div className="mss-ca-actions"><button type="button" onClick={()=>setPreviewChoiceId(null)}>← RETOUR AUX DÉFIS</button><button type="button" className="primary" disabled={previewChoice.state==='planned'} onClick={()=>{const choice=previewChoice;chooseUnifiedMode(choice);setFocusedChoiceId(choice.id);setPreviewChoiceId(null);if(mode==='guided')setStep(2);}}>▶ RELEVER LE DÉFI</button></div>
+    {previewChoice.state==='planned'&&<p className="mss-ca-muted">Défi en développement : impossible à lancer tant que son moteur n'est pas validé.</p>}
+   </div>
+  </div>}
+  {insightView&&previewChoice&&<ChallengeInsightsPage modeId={previewChoice.id} modeTitle={previewChoice.title}
+   playerId={archiveProfileId} playerName={archiveProfileName} initialView={insightView} onClose={()=>setInsightView(null)}/>}
   {teamPicker&&<div className="team-picker-overlay" onClick={()=>setTeamPicker(null)}>
    <div className="team-picker-card" onClick={e=>e.stopPropagation()}>
     <div className="team-picker-head">
@@ -575,6 +627,13 @@ export default function ChallengeConfig({go,profiles=[],activeProfileId=null}:{g
 function Section({title,subtitle,children}:{title:string;subtitle?:string;children:any}){return <section className="config-card"><div className="section-title"><h2>{title}</h2>{subtitle?<p>{subtitle}</p>:null}</div>{children}</section>}
 
 const css=(p:string)=>`
+.challenge-unified-focused{display:grid;gap:12px;min-height:195px;padding:14px;border:1px solid #b94b5b;border-radius:15px;background:linear-gradient(140deg,#371721,#0d141e)}
+.challenge-focused-back{justify-self:start;background:#142237;color:#fff;border:1px solid #607087;border-radius:9px;padding:9px 12px;font-size:11px;font-weight:900;cursor:pointer}
+.challenge-focused-heading{display:flex;gap:12px;align-items:center}.challenge-focused-heading>span{font-size:32px;padding:14px;background:#171e2b;border-radius:13px;border:1px solid #627085}.challenge-focused-heading small{font-size:10px;color:#ff8189;font-weight:900}.challenge-focused-heading h3{font-size:19px;margin:5px 0;color:#fff}.challenge-focused-heading p{font-size:11px;margin:0;color:#b5c4d7;line-height:1.5}
+.challenge-focused-records{justify-self:start;background:#361923;color:#ffdde1;border:1px solid #dc6976;border-radius:10px;padding:11px;font-size:11px;font-weight:900;cursor:pointer}
+.challenge-focused-hint{font-size:10px;color:#a3b8cb;margin:0}.mss-challenge-preview-intro{font-size:12px;color:#b9c7d8;line-height:1.55;margin:0 0 12px}.mss-ca-actions button:disabled{opacity:.45;cursor:not-allowed}
+.mss-cg-guide{display:grid;gap:12px;margin:0 0 14px}.mss-cg-insight-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:6px 0 14px}.mss-cg-insight-actions button{display:flex;gap:11px;align-items:center;min-width:0;text-align:left;border:1px solid #476078;border-radius:14px;padding:13px;color:#eaf6ff;background:linear-gradient(135deg,#152a3c,#0a1422);cursor:pointer}.mss-cg-insight-actions button:first-child{color:#7be5ff}.mss-cg-insight-actions button:nth-child(2){color:#ffcb72}.mss-cg-insight-actions button span{display:grid;gap:3px;min-width:0}.mss-cg-insight-actions button b{font-size:12px;color:#fff}.mss-cg-insight-actions button small{font-size:9px;color:#b3c1d0;line-height:1.45}@media(max-width:450px){.mss-cg-insight-actions{grid-template-columns:1fr}}
+.mss-cg-timeline{position:relative;display:flex;flex-direction:column;gap:16px;padding-left:0}.mss-cg-step{position:relative;display:grid;grid-template-columns:56px minmax(0,1fr);gap:12px;align-items:flex-start}.mss-cg-step::before{content:'';position:absolute;left:27px;top:51px;bottom:-26px;width:2px;background:#ef3c4b}.mss-cg-index{position:relative;z-index:1;width:44px;height:44px;margin:2px auto 0;border:2px solid rgba(255,65,72,.75);border-radius:50%;background:linear-gradient(180deg,#171f2d,#0b1018);display:grid;place-items:center;font-weight:1000;font-size:20px;color:${p};box-shadow:0 0 0 4px #09111b}.mss-cg-step-body{min-width:0;padding-bottom:10px}.mss-cg-step-body small{display:block;font-size:9px;color:${p};font-weight:1000;letter-spacing:1px}.mss-cg-step-body h3{margin:5px 0 0;color:#fff;font-size:clamp(13px,2.3vw,18px);line-height:1.2}.mss-cg-step-body p{margin:8px 0 0;color:#b5c4d7;font-size:11px;line-height:1.6};font-size:8.5px;font-weight:900;color:#fff}.mss-cg-timeline>.mss-cg-step:last-child::before{display:none}.mss-cg-footer{display:grid;grid-template-columns:42px minmax(0,1fr);gap:10px;align-items:center;padding:12px 13px;border-radius:15px;border:1px solid #314358;background:linear-gradient(112deg,#0d1622,#070d15)}.mss-cg-footer>span{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:#1b2636;border:1px solid #516277;font-size:20px}.mss-cg-footer small{display:block;font-size:9px;color:#9cb4c8;font-weight:1000;letter-spacing:1px}.mss-cg-footer b{display:block;margin-top:4px;font-size:12px;line-height:1.45;color:#fff}@media(max-width:560px){.mss-cg-step{grid-template-columns:46px minmax(0,1fr);gap:10px}.mss-cg-step::before{left:22px;top:46px}.mss-cg-index{width:38px;height:38px;font-size:17px}}
 .challenge-unified-tools{display:flex;flex-direction:column;gap:10px;margin-bottom:15px}
 .challenge-unified-search{display:flex;flex-direction:column;gap:6px;font-size:10px;color:#a9bed0;font-weight:900;letter-spacing:.65px}
 .challenge-unified-search input{width:100%;min-width:0;border:1px solid #4e6077;border-radius:11px;background:#0a1220;color:#fff;padding:12px 14px;font-size:13px;outline:none;box-sizing:border-box}
