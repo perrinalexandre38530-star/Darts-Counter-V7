@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import { convertAndroidGeneratedPng } from './convert-android-generated-png.mjs';
 import { convertAndroidReferencedWav } from './convert-android-referenced-wav.mjs';
+import { deduplicateAndroidHashedMedia } from './deduplicate-android-hashed-media.mjs';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -291,6 +292,7 @@ const vitePngWebp = await convertAndroidGeneratedPng({
   minPsnrDb: 35,
 });
 const wavMp3 = convertAndroidReferencedWav({ dist: DIST });
+const losslessDedup = deduplicateAndroidHashedMedia({ dist: DIST });
 
 const saved = results.reduce((n, r) => n + (r.saved || 0), 0);
 const before = results.reduce((n, r) => n + (r.before || 0), 0);
@@ -322,6 +324,7 @@ fs.writeFileSync(
       ffmpeg: FFMPEG,
       vitePngWebp,
       wavMp3,
+      losslessDedup,
       before,
       after,
       saved,
