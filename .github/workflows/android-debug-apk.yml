@@ -74,6 +74,15 @@ jobs:
       - name: Build and sync Capacitor Android
         run: npm run android:sync
 
+      - name: Upload Android media diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-local-media-diagnostics
+          path: android-local-media-report.json
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Build debug APK
         run: |
           chmod +x android/gradlew
