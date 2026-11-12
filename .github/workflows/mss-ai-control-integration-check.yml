@@ -38,6 +38,8 @@ jobs:
           cd ai-control
           ./node_modules/.bin/wrangler pages functions build --outdir=./.mss-pages-check
           test -s ./.mss-pages-check/index.js
+      - name: Verifier les refus HTTP de la page et de l'API sans Cloudflare Access
+        run: node ai-control/tools/verify-local-access.mjs
       - name: Tests de la plateforme privee
         run: |
           node --check ai-control/public/app.js
