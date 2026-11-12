@@ -10,7 +10,7 @@ const budget = read('tools/check-wave61-asset-budget.mjs');
 const pkg = JSON.parse(read('package.json'));
 const ids = [...catalog.matchAll(/\{ id: "([a-z0-9_]+)", label:/g)].map((m) => m[1]);
 
-assert(ids.length === 65, `65 modes attendus, ${ids.length} trouvés`);
+assert(ids.length === 73, `73 modes attendus, ${ids.length} trouvés`);
 for (const id of ids) assert(fs.existsSync(`src/assets/tickers/ticker_${id}.webp`), `ticker manquant: ${id}`);
 assert(games.includes('loading="lazy"'), 'lazy-loading des tickers Games absent');
 assert(games.includes('decoding="async"'), 'decoding async des tickers Games absent');
@@ -27,5 +27,5 @@ assert(sync.indexOf('test:wave61') < sync.indexOf('build'), 'tests Wave61 doiven
 assert(sync.indexOf('android:media-budget') < sync.indexOf('npx cap sync android'), 'budget média doit précéder cap sync');
 
 console.log('✅ Wave61 V24 — Android readiness restauré');
-console.log('✅ 65 tickers présents + lazy loading Games + budget réel');
+console.log('✅ 73 tickers présents + lazy loading Games + budget réel');
 console.log('✅ Pipeline android:sync contrôlé');
