@@ -9,20 +9,20 @@ assert(ids.length===73,`Catalogue ${ids.length}/73`);
 const duplicate='}, [state, spec.label, persist, wave61SfxEnabled, awenaCommentaryEnabled, awena]);\n  }, [state, spec.label, persist, wave61SfxEnabled, awenaCommentaryEnabled, awena]);';
 assert(!play.includes(duplicate),'Wave61SharedPlay: fermeture commit dupliquée');
 for(const token of [
-  'if (!currentThrow.length || state.phase === "finished" || activeIsBot) return',
+  'if (!currentThrow.length || state.phase === "finished" || activeIsBot || visitRecap || state.special?.seriesIntermission) return',
   'setUndo((u) => [...u.slice(-39), cloneWave61State(previous)])',
   'finishedRef.current = false',
-  'persist(prev)',
-  'if (!activeIsBot || state.phase === "finished" || botBusy.current) return',
+  'persist(committed, true)',
+  'if (!activeIsBot || state.phase === "finished" || visitRecap || state.special?.seriesIntermission) return',
   'window.clearTimeout(timer)',
   'resumeRecord?.resume?.state || resumeRecord?.payload?.stateSnapshot',
-  'History.upsert(buildRecord(s, "finished"))',
+  '.then(() => History.upsert(record))',
   'onReplay={replay}',
   'onConfig={() => go?.("wave61_config", { gameId: spec.id })}'
 ]) assert(play.includes(token),`Play: garde V27 manquante ${token}`);
 for(const token of [
   'if (state.phase !== "playing" || !state.players.length) return state',
-  'const darts = (dartsRaw || []).slice(0, 3)',
+  'let darts = (dartsRaw || []).slice(0, 3)',
   'if (!player || state.eliminated[player.id]) return advanceWave61Turn(state)',
   'state.phase = "finished"',
   'state.finishedAt = Date.now()',
