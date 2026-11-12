@@ -577,6 +577,54 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
  const shown=mode==='complete'?stages:[stages[step]];
  const pickerMembers=teamPicker?(Array.isArray(teamPicker.playerIds)?teamPicker.playerIds.map(String):[]):[];
 
+
+ // La fiche est un écran à part entière : ne jamais la rendre après la configuration.
+ if(previewChoice) return <div className="challenge-config challenge-preview-screen" style={{background:theme.bg,color:theme.text}}>
+  <header className="challenge-head">
+   <img src="/challenge/ticker_challenge.png" alt="Challenge"/>
+   <div className="challenge-back"><BackDot onClick={()=>{setInsightView(null);setPreviewChoiceId(null)}} size={44} color="#36e9ff" glow="#36e9ff77"/></div>
+   <button className="challenge-awena" type="button" aria-label="Ouvrir Awena" title="Awena" onClick={()=>awena?.openPanel?.()}><span><img src="/awena/awena-avatar.webp" alt="Awena"/></span><i aria-hidden>🎙</i></button>
+  </header>
+  <main className="challenge-preview-main">
+   <section className="challenge-preview-card" aria-labelledby="mss-challenge-preview-title">
+    <header className="challenge-preview-heading">
+     <div><small>{previewChoice.family} · FICHE CHALLENGE</small><h1 id="mss-challenge-preview-title">{previewChoice.title}</h1></div>
+     <button type="button" className="challenge-preview-return" onClick={()=>{setInsightView(null);setPreviewChoiceId(null)}}>← RETOUR AUX DÉFIS</button>
+    </header>
+    <p className="mss-challenge-preview-intro">{previewChoice.description}</p>
+    {previewGuide&&<div className="mss-cg-guide" aria-label="Détail du challenge">
+      <ChallengeGuideInfo badges={previewGuide.badges} title={previewChoice.title} intro={previewGuide.intro}
+       onAskAwena={()=>{const configured=previewGuide.badges.join(' ; ');awena?.openPanel?.();void awena?.ask?.(`Explique les règles du challenge « ${previewChoice.title} » avec ces réglages : ${configured}.`,{canonicalFrench:true,modeTopic:'rules',speak:true});}}/>
+      <div className="mss-cg-timeline">
+       {previewGuide.steps.map((item,index)=><article className="mss-cg-step" key={item.eyebrow+item.title}>
+        <span className="mss-cg-index" aria-hidden="true">{index+1}</span>
+        <div className="mss-cg-step-body">
+         <small>{item.eyebrow}</small>
+         <h3>{item.title}</h3>
+         <p>{item.text}</p>
+         {item.bullets?.length?<ChallengeGuideTiles badges={item.bullets} compact/>:null}
+        </div>
+       </article>)}
+      </div>
+      <div className="mss-cg-footer">
+       <span aria-hidden="true">🏁</span>
+       <div><small>OBJECTIF DU DÉFI</small><b>{previewGuide.footer}</b></div>
+      </div>
+    </div>}
+    <div className="mss-cg-insight-actions" aria-label="Voir les données du challenge">
+     <button type="button" onClick={()=>setInsightView('stats')}><BottomNavIcon name="stats" size={24}/><span><b>STATISTIQUES</b><small>Courbes, précision, évolution et dernières parties</small></span></button>
+     <button type="button" onClick={()=>setInsightView('records')}><BottomNavIcon name="tournaments" size={24}/><span><b>RECORDS</b><small>Records par configuration et progression personnelle</small></span></button>
+    </div>
+    <div className="mss-ca-actions"><button type="button" onClick={()=>setPreviewChoiceId(null)}>← RETOUR AUX DÉFIS</button><button type="button" className="primary" disabled={previewChoice.state==='planned'} onClick={()=>{const choice=previewChoice;chooseUnifiedMode(choice);setFocusedChoiceId(choice.id);setPreviewChoiceId(null);if(mode==='guided')setStep(2);}}>▶ RELEVER LE DÉFI</button></div>
+    {previewChoice.state==='planned'&&<p className="mss-ca-muted">Défi en développement : impossible à lancer tant que son moteur n'est pas validé.</p>}
+
+   </section>
+  </main>
+  {insightView&&previewChoice&&<ChallengeInsightsPage modeId={previewChoice.id} modeTitle={previewChoice.title}
+   playerId={archiveProfileId} playerName={archiveProfileName} initialView={insightView} onClose={()=>setInsightView(null)}/>}
+  <style>{css(primary)}</style>
+ </div>;
+
  return <div className="challenge-config" style={{background:theme.bg,color:theme.text}}>
   <header className="challenge-head">
    <img src="/challenge/ticker_challenge.png" alt="Challenge"/>
@@ -602,39 +650,6 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
    </div>
   </main>
 
-  {previewChoice&&<div className="mss-ca-overlay" role="presentation" onMouseDown={e=>{if(e.currentTarget===e.target)setPreviewChoiceId(null)}}>
-   <div className="mss-ca-sheet" role="dialog" aria-modal="true" aria-labelledby="mss-challenge-preview-title">
-    <header className="mss-ca-sheet-head"><div><small>{previewChoice.family} · FICHE CHALLENGE</small><h2 id="mss-challenge-preview-title">{previewChoice.title}</h2></div><button type="button" aria-label="Fermer la fiche Challenge" onClick={()=>setPreviewChoiceId(null)}>×</button></header>
-    <p className="mss-challenge-preview-intro">{previewChoice.description}</p>
-    {previewGuide&&<div className="mss-cg-guide" aria-label="Détail du challenge">
-      <ChallengeGuideInfo badges={previewGuide.badges} title={previewChoice.title} intro={previewGuide.intro}
-       onAskAwena={()=>{const configured=previewGuide.badges.join(' ; ');setPreviewChoiceId(null);awena?.openPanel?.();void awena?.ask?.(`Explique les règles du challenge « ${previewChoice.title} » avec ces réglages : ${configured}.`,{canonicalFrench:true,modeTopic:'rules',speak:true});}}/>
-      <div className="mss-cg-timeline">
-       {previewGuide.steps.map((item,index)=><article className="mss-cg-step" key={item.eyebrow+item.title}>
-        <span className="mss-cg-index" aria-hidden="true">{index+1}</span>
-        <div className="mss-cg-step-body">
-         <small>{item.eyebrow}</small>
-         <h3>{item.title}</h3>
-         <p>{item.text}</p>
-         {item.bullets?.length?<ChallengeGuideTiles badges={item.bullets} compact/>:null}
-        </div>
-       </article>)}
-      </div>
-      <div className="mss-cg-footer">
-       <span aria-hidden="true">🏁</span>
-       <div><small>OBJECTIF DU DÉFI</small><b>{previewGuide.footer}</b></div>
-      </div>
-    </div>}
-    <div className="mss-cg-insight-actions" aria-label="Voir les données du challenge">
-     <button type="button" onClick={()=>setInsightView('stats')}><BottomNavIcon name="stats" size={24}/><span><b>STATISTIQUES</b><small>Courbes, précision, évolution et dernières parties</small></span></button>
-     <button type="button" onClick={()=>setInsightView('records')}><BottomNavIcon name="tournaments" size={24}/><span><b>RECORDS</b><small>Records par configuration et progression personnelle</small></span></button>
-    </div>
-    <div className="mss-ca-actions"><button type="button" onClick={()=>setPreviewChoiceId(null)}>← RETOUR AUX DÉFIS</button><button type="button" className="primary" disabled={previewChoice.state==='planned'} onClick={()=>{const choice=previewChoice;chooseUnifiedMode(choice);setFocusedChoiceId(choice.id);setPreviewChoiceId(null);if(mode==='guided')setStep(2);}}>▶ RELEVER LE DÉFI</button></div>
-    {previewChoice.state==='planned'&&<p className="mss-ca-muted">Défi en développement : impossible à lancer tant que son moteur n'est pas validé.</p>}
-   </div>
-  </div>}
-  {insightView&&previewChoice&&<ChallengeInsightsPage modeId={previewChoice.id} modeTitle={previewChoice.title}
-   playerId={archiveProfileId} playerName={archiveProfileName} initialView={insightView} onClose={()=>setInsightView(null)}/>}
   {teamPicker&&<div className="team-picker-overlay" onClick={()=>setTeamPicker(null)}>
    <div className="team-picker-card" onClick={e=>e.stopPropagation()}>
     <div className="team-picker-head">
@@ -656,13 +671,34 @@ export default function ChallengeConfig({go,params,profiles=[],activeProfileId=n
 function Section({title,subtitle,children}:{title:string;subtitle?:string;children:any}){return <section className="config-card"><div className="section-title"><h2>{title}</h2>{subtitle?<p>{subtitle}</p>:null}</div>{children}</section>}
 
 const css=(p:string)=>`
+
+/* Fiche Challenge : écran dédié, sans fond de formulaire ni fenêtre flottante. */
+.challenge-preview-screen{height:100dvh;min-height:0!important;padding:0!important;display:flex;flex-direction:column;overflow:hidden!important}
+.challenge-preview-screen .challenge-head{width:min(1180px,100%);flex:0 0 clamp(72px,10vw,96px);margin:0 auto 6px;box-sizing:border-box}
+.challenge-preview-main{width:min(1040px,100%);flex:1 1 auto;min-height:0;margin:0 auto;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;box-sizing:border-box;padding:10px 14px calc(108px + env(safe-area-inset-bottom,0px))}
+.challenge-preview-card{min-width:0;padding:clamp(14px,3vw,24px);border:1px solid #344960;border-radius:18px;background:linear-gradient(145deg,#0f1b2c,#080d15 66%);box-shadow:0 14px 36px #0007}
+.challenge-preview-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid #2d4055}
+.challenge-preview-heading>div{min-width:0}
+.challenge-preview-heading small{display:block;font-size:10px;font-weight:950;letter-spacing:1.2px;color:#ff7785}
+.challenge-preview-heading h1{font-size:clamp(24px,5vw,38px);font-weight:1000;line-height:1.13;color:#fff;margin:6px 0 0;overflow-wrap:anywhere}
+.challenge-preview-return,.challenge-preview-card .mss-ca-actions button{border:1px solid #516a81;background:linear-gradient(160deg,#172738,#0b1421);color:#fff;border-radius:12px;padding:11px 14px;font-size:11px;font-weight:950;cursor:pointer}
+.challenge-preview-return{flex:0 0 auto}
+.challenge-preview-card .mss-ca-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:22px;padding-top:16px;border-top:1px solid #304356}
+.challenge-preview-card .mss-ca-actions button{min-height:49px}
+.challenge-preview-card .mss-ca-actions .primary{border-color:#47d582;background:linear-gradient(180deg,#1dd76c,#0b8b43);box-shadow:0 0 20px #0acf5b22;color:#fff}
+.challenge-preview-card .mss-ca-actions button:disabled{opacity:.48;cursor:not-allowed}
+.challenge-preview-card .mss-ca-muted{color:#ffb9c0;font-size:11px;line-height:1.55}
+.challenge-preview-card .mss-challenge-preview-intro{font-size:clamp(12px,1.8vw,15px);line-height:1.6}
+@media(max-width:600px){.challenge-preview-main{padding:6px 8px calc(108px + env(safe-area-inset-bottom,0px))}.challenge-preview-card{padding:13px;border-radius:14px}.challenge-preview-heading{align-items:flex-start;flex-direction:column;gap:10px}.challenge-preview-return{align-self:flex-start}.challenge-preview-card .mss-ca-actions{grid-template-columns:1fr}}
+@media(orientation:landscape){.challenge-preview-screen{padding:6px 8px!important}.challenge-preview-screen .challenge-head{flex-basis:64px;height:64px;min-height:64px}.challenge-preview-main{padding:6px 12px 22px}}
+
 .challenge-unified-focused{display:grid;gap:12px;min-height:195px;padding:14px;border:1px solid #b94b5b;border-radius:15px;background:linear-gradient(140deg,#371721,#0d141e)}
 .challenge-focused-back{justify-self:start;background:#142237;color:#fff;border:1px solid #607087;border-radius:9px;padding:9px 12px;font-size:11px;font-weight:900;cursor:pointer}
 .challenge-focused-heading{display:flex;gap:12px;align-items:center}.challenge-focused-heading>span{font-size:32px;padding:14px;background:#171e2b;border-radius:13px;border:1px solid #627085}.challenge-focused-heading small{font-size:10px;color:#ff8189;font-weight:900}.challenge-focused-heading h3{font-size:19px;margin:5px 0;color:#fff}.challenge-focused-heading p{font-size:11px;margin:0;color:#b5c4d7;line-height:1.5}
 .challenge-focused-records{justify-self:start;background:#361923;color:#ffdde1;border:1px solid #dc6976;border-radius:10px;padding:11px;font-size:11px;font-weight:900;cursor:pointer}
 .challenge-focused-hint{font-size:10px;color:#a3b8cb;margin:0}.mss-challenge-preview-intro{font-size:12px;color:#b9c7d8;line-height:1.55;margin:0 0 12px}.mss-ca-actions button:disabled{opacity:.45;cursor:not-allowed}
 .mss-cg-guide{display:grid;gap:12px;margin:0 0 14px}.mss-cg-insight-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:6px 0 14px}.mss-cg-insight-actions button{display:flex;gap:11px;align-items:center;min-width:0;text-align:left;border:1px solid #476078;border-radius:14px;padding:13px;color:#eaf6ff;background:linear-gradient(135deg,#152a3c,#0a1422);cursor:pointer}.mss-cg-insight-actions button:first-child{color:#7be5ff}.mss-cg-insight-actions button:nth-child(2){color:#ffcb72}.mss-cg-insight-actions button span{display:grid;gap:3px;min-width:0}.mss-cg-insight-actions button b{font-size:12px;color:#fff}.mss-cg-insight-actions button small{font-size:9px;color:#b3c1d0;line-height:1.45}@media(max-width:450px){.mss-cg-insight-actions{grid-template-columns:1fr}}
-.mss-cg-timeline{position:relative;display:flex;flex-direction:column;gap:16px;padding-left:0}.mss-cg-step{position:relative;display:grid;grid-template-columns:56px minmax(0,1fr);gap:12px;align-items:flex-start}.mss-cg-step::before{content:'';position:absolute;left:27px;top:51px;bottom:-26px;width:2px;background:#ef3c4b}.mss-cg-index{position:relative;z-index:1;width:44px;height:44px;margin:2px auto 0;border:2px solid rgba(255,65,72,.75);border-radius:50%;background:linear-gradient(180deg,#171f2d,#0b1018);display:grid;place-items:center;font-weight:1000;font-size:20px;color:${p};box-shadow:0 0 0 4px #09111b}.mss-cg-step-body{min-width:0;padding-bottom:10px}.mss-cg-step-body small{display:block;font-size:9px;color:${p};font-weight:1000;letter-spacing:1px}.mss-cg-step-body h3{margin:5px 0 0;color:#fff;font-size:clamp(13px,2.3vw,18px);line-height:1.2}.mss-cg-step-body p{margin:8px 0 0;color:#b5c4d7;font-size:11px;line-height:1.6};font-size:8.5px;font-weight:900;color:#fff}.mss-cg-timeline>.mss-cg-step:last-child::before{display:none}.mss-cg-footer{display:grid;grid-template-columns:42px minmax(0,1fr);gap:10px;align-items:center;padding:12px 13px;border-radius:15px;border:1px solid #314358;background:linear-gradient(112deg,#0d1622,#070d15)}.mss-cg-footer>span{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:#1b2636;border:1px solid #516277;font-size:20px}.mss-cg-footer small{display:block;font-size:9px;color:#9cb4c8;font-weight:1000;letter-spacing:1px}.mss-cg-footer b{display:block;margin-top:4px;font-size:12px;line-height:1.45;color:#fff}@media(max-width:560px){.mss-cg-step{grid-template-columns:46px minmax(0,1fr);gap:10px}.mss-cg-step::before{left:22px;top:46px}.mss-cg-index{width:38px;height:38px;font-size:17px}}
+.mss-cg-timeline{position:relative;display:flex;flex-direction:column;gap:16px;padding-left:0}.mss-cg-step{position:relative;display:grid;grid-template-columns:56px minmax(0,1fr);gap:12px;align-items:flex-start}.mss-cg-step::before{content:'';position:absolute;left:27px;top:51px;bottom:-26px;width:2px;background:#ef3c4b}.mss-cg-index{position:relative;z-index:1;width:44px;height:44px;margin:2px auto 0;border:2px solid rgba(255,65,72,.75);border-radius:50%;background:linear-gradient(180deg,#171f2d,#0b1018);display:grid;place-items:center;font-weight:1000;font-size:20px;color:${p};box-shadow:0 0 0 4px #09111b}.mss-cg-step-body{min-width:0;padding-bottom:10px}.mss-cg-step-body small{display:block;font-size:9px;color:${p};font-weight:1000;letter-spacing:1px}.mss-cg-step-body h3{margin:5px 0 0;color:#fff;font-size:clamp(13px,2.3vw,18px);line-height:1.2}.mss-cg-step-body p{margin:8px 0 0;color:#b5c4d7;font-size:11px;line-height:1.6}.mss-cg-timeline>.mss-cg-step:last-child::before{display:none}.mss-cg-footer{display:grid;grid-template-columns:42px minmax(0,1fr);gap:10px;align-items:center;padding:12px 13px;border-radius:15px;border:1px solid #314358;background:linear-gradient(112deg,#0d1622,#070d15)}.mss-cg-footer>span{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:#1b2636;border:1px solid #516277;font-size:20px}.mss-cg-footer small{display:block;font-size:9px;color:#9cb4c8;font-weight:1000;letter-spacing:1px}.mss-cg-footer b{display:block;margin-top:4px;font-size:12px;line-height:1.45;color:#fff}@media(max-width:560px){.mss-cg-step{grid-template-columns:46px minmax(0,1fr);gap:10px}.mss-cg-step::before{left:22px;top:46px}.mss-cg-index{width:38px;height:38px;font-size:17px}}
 .challenge-unified-tools{display:flex;flex-direction:column;gap:10px;margin-bottom:15px}
 .challenge-unified-search{display:flex;flex-direction:column;gap:6px;font-size:10px;color:#a9bed0;font-weight:900;letter-spacing:.65px}
 .challenge-unified-search input{width:100%;min-width:0;border:1px solid #4e6077;border-radius:11px;background:#0a1220;color:#fff;padding:12px 14px;font-size:13px;outline:none;box-sizing:border-box}
