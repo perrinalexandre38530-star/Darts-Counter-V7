@@ -13,7 +13,6 @@ assert(ids.length === 73, `Catalogue Wave61 attendu: 73, trouvé ${ids.length}`)
 for (const token of [
   'wave61-config-screen',
   'wave61-config-header',
-  'wave61-config-ticker',
   'wave61-config-body',
   'wave61-config-participants',
   'wave61-config-engine',
@@ -22,6 +21,7 @@ for (const token of [
   'wave61-config-awena-card',
 ]) assert(config.includes(token), `Config Wave61: ${token} absent`);
 
+assert(config.includes('<PageHeader tickerSrc={modeTicker || undefined}'), 'Ticker du mode absent du PageHeader de configuration');
 assert(config.includes('wave61-config-dedicated'), 'Zone réglages dédiés absente');
 assert(config.includes('/awena/awena-avatar.webp'), 'Carte Awena paysage absente');
 
