@@ -126,7 +126,7 @@ async function main() {
     try { jobsByRun[String(run.id)] = (await api('/actions/runs/' + run.id + '/jobs?per_page=100')).jobs || []; }
     catch (e) { console.warn('Run ' + run.id + ': job details unavailable (' + e.message + ')'); }
   }
-  const audit = summarize(all, jobsByRun);
+  const audit = summarize(page.workflow_runs || [], jobsByRun);
   const runUrl = 'https://github.com/' + repo + '/actions/runs/' + (process.env.GITHUB_RUN_ID || '');
   await api('/issues/' + number + '/comments', 'POST', {body: report(issue, audit, branch, runUrl)});
   const label = 'mss:review';
