@@ -39,3 +39,11 @@ Le runner GitHub Actions n'a pas accès aux secrets Cloudflare, Supabase, NAS, p
 
 ## Dépendance plateforme
 Les routes du dashboard dans la branche de la PR #27 ajoutent déjà mss:approved et reconnaissent mss:review. La PR du moteur QA peut être revue indépendamment ; ne jamais confondre « mission créée » et « tâche exécutée ».
+
+## Qualité des preuves (renforcement du 12/11/2026)
+- Le rapport présente désormais un statut **PASS**, **FAIL** ou **BLOQUÉ** uniquement pour l'échantillon consulté.
+- PASS : tous les runs pris en compte sont terminés avec une conclusion probante, sans échec. **Ce n'est pas une certification de l'application**.
+- FAIL : au moins un run terminé de l'échantillon a échoué ou expiré, sous réserve d'absence d'information incomplète.
+- BLOQUÉ : aucun run terminé, des runs en cours, ou des conclusions ignorées/annulées/neutres. Ces situations ne doivent jamais être présentées comme un succès.
+- Les données sont toujours limitées aux runs consultables de la branche par défaut ; une mission qui exige l'inspection d'une PR et ses journaux complets nécessite un audit supplémentaire.
+- Tests de non-régression ajoutés pour les quatre catégories (aucune donnée, in-progress, skipped, failure/success).
