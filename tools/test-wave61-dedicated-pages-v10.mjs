@@ -4,7 +4,7 @@ import path from 'node:path';
 function assert(cond, msg) { if (!cond) throw new Error(msg); }
 const catalog = fs.readFileSync('src/games/dartsWave61.ts', 'utf8');
 const ids = [...catalog.matchAll(/\{ id: "([^"]+)"/g)].map((m) => m[1]);
-const EXPECTED = 65;
+const EXPECTED = 73;
 assert(ids.length === EXPECTED, `Catalogue attendu: ${EXPECTED}, trouvé: ${ids.length}`);
 assert(new Set(ids).size === EXPECTED, 'IDs Wave61 dupliqués');
 
