@@ -16,11 +16,11 @@ with zipfile.ZipFile(APK) as archive:
     assert 'assets/public/index.html' in names, 'Web app index.html absent'
 
     samples = {
-        'Killer Awena FR': (r'assets/public/assets/killer_awena_rules-[\\w-]{8}\\.mp4', {'video': 'h264', 'audio': 'aac'}),
-        'Killer Awena EN': (r'assets/public/assets/killer_awena_rules_en-[\\w-]{8}\\.mp4', {'video': 'h264', 'audio': 'aac'}),
-        'X01 Awena FR': (r'assets/public/assets/x01_awena_rules-[\\w-]{8}\\.mp4', {'video': 'h264', 'audio': 'aac'}),
-        'Firefighter Canadair': (r'assets/public/sounds/darts-firefighter/canadair\\.mp3', {'audio': 'mp3'}),
-        'Firefighter Water': (r'assets/public/sounds/darts-firefighter/water_1\\.mp3', {'audio': 'mp3'}),
+        'Killer Awena FR': (r'assets/public/assets/killer_awena_rules-[\w-]{8}\.mp4', {'video': 'h264', 'audio': 'aac'}),
+        'Killer Awena EN': (r'assets/public/assets/killer_awena_rules_en-[\w-]{8}\.mp4', {'video': 'h264', 'audio': 'aac'}),
+        'X01 Awena FR': (r'assets/public/assets/x01_awena_rules-[\w-]{8}\.mp4', {'video': 'h264', 'audio': 'aac'}),
+        'Firefighter Canadair': (r'assets/public/sounds/darts-firefighter/canadair\.mp3', {'audio': 'mp3'}),
+        'Firefighter Water': (r'assets/public/sounds/darts-firefighter/water_1\.mp3', {'audio': 'mp3'}),
     }
     with tempfile.TemporaryDirectory(prefix='mss-apk-media-') as directory:
         for label, (pattern, expected) in samples.items():
