@@ -5,7 +5,7 @@ const play=read('src/pages/Wave61SharedPlay.tsx');
 const engine=read('src/lib/gameEngines/wave61Engine.ts');
 const catalog=read('src/games/dartsWave61.ts');
 const ids=[...catalog.matchAll(/\{ id: "([a-z0-9_]+)", label:/g)].map(m=>m[1]);
-assert(ids.length===65,`Catalogue ${ids.length}/65`);
+assert(ids.length===73,`Catalogue ${ids.length}/73`);
 const duplicate='}, [state, spec.label, persist, wave61SfxEnabled, awenaCommentaryEnabled, awena]);\n  }, [state, spec.label, persist, wave61SfxEnabled, awenaCommentaryEnabled, awena]);';
 assert(!play.includes(duplicate),'Wave61SharedPlay: fermeture commit dupliquée');
 for(const token of [
@@ -32,5 +32,5 @@ for(const id of ids){
   assert(fs.existsSync(`src/pages/wave61/modes/${id}Config.tsx`),`${id}: Config absent`);
   assert(fs.existsSync(`src/pages/wave61/modes/${id}Play.tsx`),`${id}: Play absent`);
 }
-console.log('✅ Wave61 V27 — gardes runtime/play 65/65');
+console.log('✅ Wave61 V27 — gardes runtime/play 73/73');
 console.log('✅ commit/Undo · bots · finished gate · save/resume · Replay/Config · duplication callback interdite');
