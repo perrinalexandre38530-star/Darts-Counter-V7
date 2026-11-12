@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {isEligibleQA, summarize, report, MARKER} from './mss-qa-pilot.mjs';
+import {isEligibleQA, summarize, report, MARKER, isTrustedPilotComment, isTrustedOwnerActor} from './mss-qa-pilot.mjs';
 import {classifyLogEvidence} from './mss-qa-evidence.mjs';
 
 const approvedQA = {
@@ -73,4 +73,24 @@ test('the QA report carries signatures without leaking log contents', () => {
   assert.ok(output.includes('Vérification recommandée'));
   assert.ok(output.includes('ne pas relever le plafond'));
   assert.ok(!output.includes('SECRET-should-not-appear'));
+});
+
+test('only the repository owner can authorize a QA workflow', () => {
+  assert.equal(isTrustedOwnerActor('owner', 'owner/repo'), true);
+  assert.equal(isTrustedOwnerActor('collaborator', 'owner/repo'), false);
+  assert.equal(isTrustedOwnerActor('github-actions[bot]', 'owner/repo'), false);
+  assert.equal(isTrustedOwnerActor('', 'owner/repo'), false);
+  assert.equal(isTrustedOwnerActor('owner', 'invalid-repository'), false);
+});
+test('QA deduplication accepts only authentic same-mission bot reports', () => {
+  const candidate = {
+    user: {login: 'github-actions[bot]', type: 'Bot'},
+    body: MARKER + '\\n**Mission :** #26 — QA\\nRapport',
+    html_url: 'https://github.com/owner/repo/issues/26#issuecomment-9'
+  };
+  assert.equal(isTrustedPilotComment(candidate, 26, 'owner/repo'), true);
+  assert.equal(isTrustedPilotComment({...candidate, user: {login: 'attacker', type: 'User'}}, 26, 'owner/repo'), false);
+  assert.equal(isTrustedPilotComment({...candidate, body: MARKER}, 26, 'owner/repo'), false);
+  assert.equal(isTrustedPilotComment({...candidate, body: MARKER + '\\n**Mission :** #25 — Other'}, 26, 'owner/repo'), false);
+  assert.equal(isTrustedPilotComment({...candidate, html_url: 'https://attacker.example/report'}, 26, 'owner/repo'), false);
 });
