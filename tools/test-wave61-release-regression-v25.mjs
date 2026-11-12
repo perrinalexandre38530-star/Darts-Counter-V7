@@ -18,8 +18,9 @@ for (const id of ids) {
   const ply = `src/pages/wave61/modes/${id}Play.tsx`;
   assert(fs.existsSync(cfg), `Config absente: ${id}`);
   assert(fs.existsSync(ply), `Play absent: ${id}`);
-  assert(read(cfg).includes(`WAVE61_MODE_ID = "${id}"`), `Config ID incohérent: ${id}`);
-  assert(read(ply).includes(`WAVE61_MODE_ID = "${id}"`), `Play ID incohérent: ${id}`);
+  const declaredModeId = (source) => source.match(/\bWAVE61_MODE_ID\s*=\s*["']([^"']+)["']/)?.[1];
+  assert(declaredModeId(read(cfg)) === id, `Config ID incohérent: ${id}`);
+  assert(declaredModeId(read(ply)) === id, `Play ID incohérent: ${id}`);
 }
 
 for (const token of ['tab: "wave61_config"', 'ready: true']) assert(registry.includes(token), `registry: ${token} absent`);
