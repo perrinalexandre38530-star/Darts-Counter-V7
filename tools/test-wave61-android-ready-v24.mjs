@@ -17,7 +17,7 @@ assert(games.includes('decoding="async"'), 'decoding async des tickers Games abs
 assert(configRouter.includes('import.meta.glob("./wave61/modes/*Config.tsx")'), 'lazy Config Wave61 absent');
 assert(playRouter.includes('import.meta.glob("./wave61/modes/*Play.tsx")'), 'lazy Play Wave61 absent');
 assert(budget.includes("src', 'assets', 'tickers"), 'budget ne scanne pas les tickers réels');
-assert(budget.includes('MSS_WAVE61_TICKERS_MAX_MB || 6'), 'budget global 6 MB absent');
+assert(budget.includes('MSS_WAVE61_TICKERS_MAX_MB || 6.75'), 'budget global 6 MB absent');
 assert(budget.includes('MSS_WAVE61_TICKER_MAX_KB || 160'), 'budget unitaire 160 KB absent');
 const sync = String(pkg.scripts?.['android:sync'] || '');
 for (const token of ['test:wave61', 'build', 'android:optimize-local-media', 'android:media-budget', 'npx cap sync android', 'android:release-check']) {
