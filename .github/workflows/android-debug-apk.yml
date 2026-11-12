@@ -89,6 +89,9 @@ jobs:
           cd android
           ./gradlew assembleDebug
 
+      - name: Verify packaged offline media and Awena narration
+        run: python3 tools/test-android-apk-media.py
+
       - uses: actions/upload-artifact@v4
         with:
           name: multisports-scoring-debug-apk
