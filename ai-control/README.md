@@ -77,3 +77,9 @@ Lorsqu'une mission suspendue reçoit une nouvelle approbation, l'API retire dés
 **Changement important par rapport à la V0.1 :** si la PR du pilote QA est déployée sur la branche par défaut, cliquer « Approuver la préparation » sur une mission QA éligible **peut lancer immédiatement** le workflow de lecture seule. La suspension bloque les futurs départs mais n'annule pas un job déjà en cours. Le dashboard avertit l'administrateur avant approbation.
 
 Le contrôle de bout en bout reste conditionné au déploiement privé Cloudflare Access et à la fusion volontaire du workflow QA. La présence du code dans une PR ne vaut pas activation.
+
+## Rapports QA dans les missions (V0.2)
+
+Dans le détail d'une mission, le bouton **Rapport QA** interroge une route de lecture seule `GET /api/missions/:number/qa-report`. Le serveur vérifie que l'Issue demandée est bien une mission, lit ses commentaires GitHub et ne retient que ceux qui portent le marqueur `MSS_QA_PILOT_V1`. Seul un lien vers un commentaire de cette Issue sur `github.com` est renvoyé : le texte des journaux, les commentaires arbitraires et les liens vers d'autres domaines ne sont pas communiqués à l'interface.
+
+L'absence de rapport est explicitement indiquée, y compris lorsqu'une mission est simplement approuvée. La disponibilité d'un rapport ne constitue **ni un succès de l'agent ni une approbation humaine**. La fonctionnalité ne modifie aucune Issue.
