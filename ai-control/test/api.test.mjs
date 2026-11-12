@@ -37,3 +37,36 @@ test('POST sans origine ou utilisateur refusé',async()=>{
  const r=await onRequest(ctx);assert.equal(r.status,403);
  const noAuth=context('bootstrap');noAuth.data={};const k=await onRequest(noAuth);assert.equal(k.status,401);
 });
+
+test('reapproving a blocked QA mission removes blocked before approved trigger',async()=>{
+ const calls=[];const old=globalThis.fetch;
+ globalThis.fetch=async(url,opts={})=>{
+  const p=new URL(url).pathname,m=(opts.method||'GET').toUpperCase();
+  calls.push({p,m});
+  if(p.endsWith('/issues/42')&&m==='GET')return ok({number:42,state:'open',title:'[AGENT] QA',labels:[{name:'mss:mission'},{name:'mss:blocked'}],body:'**Robot :** qa'});
+  if(p.endsWith('/labels/mss%3Aapproved')&&m==='GET')return ok({name:'mss:approved'});
+  if(p.endsWith('/issues/42/labels/mss%3Ablocked')&&m==='DELETE')return ok({},204);
+  if(p.endsWith('/issues/42/labels')&&m==='POST')return ok([{name:'mss:approved'}]);
+  return ok({message:'Not Found'},404);
+ };
+ try{
+  const res=await onRequest(context('missions/42/approve','POST',{}));
+  assert.equal(res.status,200);
+  const rem=calls.findIndex(x=>x.m==='DELETE'&&x.p.endsWith('/labels/mss%3Ablocked'));
+  const add=calls.findIndex(x=>x.m==='POST'&&x.p.endsWith('/issues/42/labels'));
+  assert.ok(rem>=0&&add>rem,'blocked label must be removed before approval is added');
+ }finally{globalThis.fetch=old;}
+});
+test('human-review missions cannot be reapproved without review',async()=>{
+ const calls=[];const old=globalThis.fetch;
+ globalThis.fetch=async(url,opts={})=>{
+  const p=new URL(url).pathname,m=(opts.method||'GET').toUpperCase();calls.push({p,m});
+  if(p.endsWith('/issues/42')&&m==='GET')return ok({number:42,state:'open',title:'[AGENT] QA',labels:[{name:'mss:mission'},{name:'mss:review'}],body:'**Robot :** qa'});
+  return ok({message:'Not Found'},404);
+ };
+ try{
+  const res=await onRequest(context('missions/42/approve','POST',{}));
+  assert.equal(res.status,409);
+  assert.ok(calls.every(x=>x.m==='GET'));
+ }finally{globalThis.fetch=old;}
+});
