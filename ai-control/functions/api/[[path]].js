@@ -31,7 +31,7 @@ async function ensureLabel(config,name,color,description){
 }
 async function bootstrap(config){
  const issues=await github(config,'/issues?state=open&per_page=100');
- const [pulls,runs]=await Promise.allSettled([github(config,'/pulls?state=open&per_page=100'),github(config,'/actions/runs?per_page=30')]);
+ const [pulls,runs,qaWorkflow]=await Promise.allSettled([github(config,'/pulls?state=open&per_page=100'),github(config,'/actions/runs?per_page=30'),github(config,'/actions/workflows/mss-qa-pilot.yml')]);
  return {
   repository:config.repo,
   issues:issues.filter(isMission).map(mapIssue).sort((a,b)=>b.number-a.number),
@@ -39,7 +39,13 @@ async function bootstrap(config){
   runs:runs.status==='fulfilled'?(runs.value.workflow_runs||[]).map(mapRun):[],
   limitations:[...(pulls.status==='rejected'?['La liste des PR n’a pas pu être chargée.']:[]),...(runs.status==='rejected'?['Les résultats GitHub Actions ne sont pas accessibles avec le jeton fourni.']:[])],
   engineActive:false,
-  certifiedAgents:0
+  certifiedAgents:0,
+  qaPilot: {
+   // GitHub workflow existence is not evidence that a mission has executed.
+   state: qaWorkflow.status==='fulfilled'
+     ? (qaWorkflow.value?.state==='active'?'WORKFLOW ACTIF':'WORKFLOW INACTIF')
+     : (qaWorkflow.reason?.status===404?'NON INSTALLÉ':'INCONNU')
+  }
  };
 }
 function checkOrigin(request){const expected=new URL(request.url).origin;return request.headers.get('origin')===expected && request.headers.get('content-type')?.startsWith('application/json');}
