@@ -10,17 +10,17 @@ const LIMIT = 25;
 export function isTrustedPilotComment(comment, number, repo) {
   const body = String(comment?.body || '');
   if (comment?.user?.login !== 'github-actions[bot]' || comment?.user?.type !== 'Bot'
-      || !body.startsWith(MARKER + '\\n')
+      || !body.startsWith(MARKER + '\n')
       || !body.includes('**Mission :** #' + number + ' — ')) return false;
   try {
     const u = new URL(comment.html_url);
     return u.protocol === 'https:' && u.hostname === 'github.com'
       && u.pathname === '/' + repo + '/issues/' + number
-      && /^#issuecomment-\\d+$/.test(u.hash) && !u.search;
+      && /^#issuecomment-\d+$/.test(u.hash) && !u.search;
   } catch { return false; }
 }
 export function isTrustedOwnerActor(actor, repo) {
-  return /^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$/.test(repo)
+  return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)
     && typeof actor === 'string' && actor !== ''
     && actor.toLowerCase() === repo.split('/')[0].toLowerCase();
 }
