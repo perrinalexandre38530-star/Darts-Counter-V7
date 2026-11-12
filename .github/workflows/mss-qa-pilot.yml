@@ -1,0 +1,74 @@
+name: MSS QA Agent - read-only evidence
+
+on:
+  issues:
+    types: [labeled]
+  pull_request:
+    paths:
+      - "tools/mss-qa-pilot.mjs"
+      - "tools/mss-qa-evidence.mjs"
+      - "tools/test-mss-qa-pilot.mjs"
+      - ".github/workflows/mss-qa-pilot.yml"
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Existing approved QA issue number"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mss-qa-${{ github.event.issue.number || inputs.issue_number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  check_pilot:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          sparse-checkout: |
+            tools/mss-qa-pilot.mjs
+            tools/mss-qa-evidence.mjs
+            tools/test-mss-qa-pilot.mjs
+          sparse-checkout-cone-mode: false
+      - run: node --check tools/mss-qa-pilot.mjs && node --check tools/mss-qa-evidence.mjs && node --test tools/test-mss-qa-pilot.mjs
+
+  qa_pilot:
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    # A label may be placed by another collaborator; only the repository owner
+    # may authorize a QA execution. The script repeats this check fail-closed.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner) ||
+      (github.event_name == 'issues' && github.event.label.name == 'mss:approved' &&
+       github.event.issue.state == 'open' && github.event.sender.login == github.repository_owner &&
+       github.actor == github.repository_owner)
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Checkout only the QA pilot files
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          sparse-checkout: |
+            tools/mss-qa-pilot.mjs
+            tools/mss-qa-evidence.mjs
+            tools/test-mss-qa-pilot.mjs
+          sparse-checkout-cone-mode: false
+      - name: Verify the QA pilot itself
+        run: node --test tools/test-mss-qa-pilot.mjs
+      - name: Audit approved QA mission and post evidence
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
+        run: node tools/mss-qa-pilot.mjs
