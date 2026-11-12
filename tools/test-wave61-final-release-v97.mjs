@@ -9,7 +9,7 @@ const end = read('src/pages/wave61/Wave61EndSummary.tsx');
 
 const ids = [...catalog.matchAll(/\bid:\s*"([^"]+)"/g)].map((m) => m[1]);
 const unique = [...new Set(ids)];
-if (unique.length !== 65) throw new Error(`V97: catalogue Wave61 attendu=65, obtenu=${unique.length}`);
+if (unique.length !== 73) throw new Error(`V97: catalogue Wave61 attendu=73, obtenu=${unique.length}`);
 
 const missing = [];
 for (const id of unique) {
@@ -40,4 +40,4 @@ for (const f of panelFiles) {
 }
 if (exported < 1) throw new Error('V97: aucun panneau Wave61 dédié détecté');
 
-console.log(`✅ Wave61 V97 FINAL — ${unique.length}/65 modes · 65 Config · 65 Play · V94/V95 câblés · fin de partie V96 verrouillée`);
+console.log(`✅ Wave61 V97 FINAL — ${unique.length}/73 modes · 73 Config · 73 Play · V94/V95 câblés · fin de partie V96 verrouillée`);
