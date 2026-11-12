@@ -3,7 +3,7 @@
  * No model calls, file edits, deployments or external dependencies.
  */
 import { pathToFileURL } from 'node:url';
-import { classifyLogEvidence } from './mss-qa-evidence.mjs';
+import { classifyLogEvidence, suggestedChecks } from './mss-qa-evidence.mjs';
 
 export const MARKER = '<!-- MSS_QA_PILOT_V1 -->';
 const LIMIT = 25;
@@ -77,6 +77,9 @@ export function report(issue, audit, branch, runUrl) {
       if (evidence?.inspected) lines.push('    - Indices du journal (classification, **pas une cause prouvée**) : '
         + (evidence.categories.length ? evidence.categories.map(x => x.label).join(', ') : 'aucune signature reconnue')
         + (evidence.truncated ? ' ; journal partiel' : '') + '.');
+      if (evidence?.inspected) for (const check of suggestedChecks(evidence.categories)) {
+        lines.push('    - Vérification recommandée : ' + check);
+      }
       else lines.push('    - Journal non consultable ; classification indisponible.');
     }
   }
