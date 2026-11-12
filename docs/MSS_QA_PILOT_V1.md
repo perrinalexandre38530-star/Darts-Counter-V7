@@ -54,3 +54,6 @@ Les routes du dashboard dans la branche de la PR #27 ajoutent déjà mss:approve
 - Les catégories sont déterministes : budget des médias Android, Gradle, TypeScript, tests, dépendances, autorisations et réseau. Chaque catégorie peut suggérer une vérification **fixe** de diagnostic. Ce n'est ni une cause racine démontrée ni un correctif.
 - La suite pour le robot correcteur nécessite une mission distincte et une approbation explicite. Aucun accès d'écriture code, aucune branche ou PR générée par ce pilote.
 - La sortie réelle d'une mission approuvée reste non validée tant que le workflow n'a pas été activé sur la branche par défaut.
+
+## Autorisation du déclencheur et anti-usurpation
+L'exécution `qa_pilot` est désormais refusée à tout acteur autre que le propriétaire du dépôt (workflow et vérification indépendante du script). Ceci s'applique aux événements d'étiquetage et aux lancements manuels. Le script ne considère un rapport antérieur comme un doublon que si le commentaire provient de `github-actions[bot]`, mentionne la même mission et pointe vers le commentaire GitHub canonique de cette Issue. Un tiers ne peut donc pas bloquer un audit en copiant uniquement le marqueur public. Les actions d'écriture restent limitées aux commentaires et labels de l'Issue ; aucun code, déploiement ou fusion.
