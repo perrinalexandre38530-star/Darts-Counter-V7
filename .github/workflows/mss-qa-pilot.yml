@@ -3,6 +3,11 @@ name: MSS QA Agent - read-only evidence
 on:
   issues:
     types: [labeled]
+  pull_request:
+    paths:
+      - "tools/mss-qa-pilot.mjs"
+      - "tools/test-mss-qa-pilot.mjs"
+      - ".github/workflows/mss-qa-pilot.yml"
   workflow_dispatch:
     inputs:
       issue_number:
@@ -12,15 +17,32 @@ on:
 
 permissions:
   contents: read
-  actions: read
-  issues: write
 
 concurrency:
   group: mss-qa-${{ github.event.issue.number || inputs.issue_number || github.run_id }}
   cancel-in-progress: false
 
 jobs:
+  check_pilot:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          sparse-checkout: |
+            tools/mss-qa-pilot.mjs
+            tools/test-mss-qa-pilot.mjs
+          sparse-checkout-cone-mode: false
+      - run: node --check tools/mss-qa-pilot.mjs && node --test tools/test-mss-qa-pilot.mjs
+
   qa_pilot:
+    permissions:
+      contents: read
+      actions: read
+      issues: write
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.label.name == 'mss:approved' && github.event.issue.state == 'open')
