@@ -55,6 +55,7 @@ jobs:
       - name: Android policy regressions
         run: |
           npm run test:android-bootstrap
+          node tools/test-android-generated-png.mjs
           npm run test:android-store-v1
           npm run test:admob-native
           npm run test:play-billing
