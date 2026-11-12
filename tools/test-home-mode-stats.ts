@@ -50,11 +50,11 @@ assert.ok(!byId.has("mode-x01"));
 assert.ok(!byId.has("mode-cricket"));
 assert.ok(!byId.has("mode-killer"));
 
-const cardSource = fs.readFileSync(new URL("../src/components/home/ActiveProfileCard.tsx", import.meta.url), "utf8");
+const cardSource = fs.readFileSync("src/components/home/ActiveProfileCard.tsx", "utf8");
 assert.ok(!/slice\(0,\s*7\)/.test(cardSource), "le carrousel HOME ne doit plus être limité à 7 slides");
 assert.ok(cardSource.includes("out.push(...automaticModeSlides)"), "les slides des modes History doivent entrer dans la boucle");
 
-const homeSource = fs.readFileSync(new URL("../src/pages/Home.tsx", import.meta.url), "utf8");
+const homeSource = fs.readFileSync("src/pages/Home.tsx", "utf8");
 assert.ok(homeSource.includes("buildHomeModeSlides("), "Home doit construire les résumés de tous les modes joués");
 
 console.log("✅ HOME MODE STATS REGRESSION OK");
