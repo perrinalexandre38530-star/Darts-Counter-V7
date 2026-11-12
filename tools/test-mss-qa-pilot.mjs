@@ -70,5 +70,7 @@ test('the QA report carries signatures without leaking log contents', () => {
   });
   const output = report(approvedQA, audit, 'main', 'https://github.com/example/actions/runs/9');
   assert.ok(output.includes('Budget médias Android dépassé'));
+  assert.ok(output.includes('Vérification recommandée'));
+  assert.ok(output.includes('ne pas relever le plafond'));
   assert.ok(!output.includes('SECRET-should-not-appear'));
 });
