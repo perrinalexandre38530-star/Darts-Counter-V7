@@ -6,7 +6,7 @@ const engine=read('src/lib/gameEngines/wave61Engine.ts');
 const end=read('src/pages/wave61/Wave61EndSummary.tsx');
 const catalog=read('src/games/dartsWave61.ts');
 const ids=[...catalog.matchAll(/\{ id: "([a-z0-9_]+)", label:/g)].map(m=>m[1]);
-assert(ids.length===65,`Catalogue ${ids.length}/65`);
+assert(ids.length===73,`Catalogue ${ids.length}/73`);
 for(const token of [
   'resumeRecord?.resume?.state || resumeRecord?.payload?.stateSnapshot',
   'restored?.mode === "wave61" && restored?.modeId === spec.id ? cloneWave61State(restored)',
@@ -32,5 +32,5 @@ for(const token of [
   'state.finishedAt = Date.now()'
 ]) assert(engine.includes(token),`Engine V28: ${token}`);
 for(const id of ['mistigri','radin','corbeau_renard','darts_impossible']) assert(ids.includes(id),`${id}: absent`);
-console.log('✅ Wave61 V28 — intégrité reprise/historique 65/65');
+console.log('✅ Wave61 V28 — intégrité reprise/historique 73/73');
 console.log('✅ joueurs issus du snapshot · enrichissement profil optionnel · Undo après fin · état spécial/config conservés');
