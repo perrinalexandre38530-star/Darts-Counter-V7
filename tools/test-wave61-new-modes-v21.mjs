@@ -8,7 +8,8 @@ const sharedPlay = read('src/pages/Wave61SharedPlay.tsx');
 const panels = read('src/pages/wave61/Wave61FablePartyPanels.tsx');
 const catalog = read('src/games/dartsWave61.ts');
 
-assert(engine.includes('WAVE61_ENGINE_VERSION = 18'), 'Wave61 V18 moteur attendu');
+const currentVersion = Number(engine.match(/export const WAVE61_ENGINE_VERSION = (\d+);/)?.[1] || 0);
+assert(currentVersion >= 18, `Wave61 moteur V18 ou supérieur attendu (actuel V${currentVersion})`);
 for (const id of ['mistigri','radin','corbeau_renard','darts_impossible']) {
   assert(catalog.includes(`id: "${id}"`), `${id}: absent du catalogue`);
   assert(fs.existsSync(`src/pages/wave61/modes/${id}Config.tsx`), `${id}: Config absente`);

@@ -87,10 +87,13 @@ expect(
   /loadLinkedProfileProjection[\s\S]{0,500}!canUseNasOnlineApi\(\)[\s\S]{0,180}snapshots:\s*\[\]/.test(linkedProfileSync),
 );
 expect(
-  "Les listes legacy sociales renvoient un fallback local en public/hybride",
+  "Les associations de profils et groupes legacy restent neutralisés en public/hybride",
   /listProfileFriendLinks[\s\S]{0,180}publicBackendActive\(\)[\s\S]{0,80}return \[\]/.test(friendsApi)
-  && /listSharedMatches[\s\S]{0,180}publicBackendActive\(\)[\s\S]{0,80}return \[\]/.test(friendsApi)
   && /listMessengerGroups[\s\S]{0,180}publicBackendActive\(\)[\s\S]{0,80}return \[\]/.test(friendsApi),
+);
+expect(
+  "Les matchs partagés publics passent par les messages privés Supabase",
+  /listSharedMatches[\s\S]{0,180}publicBackendActive\(\)[\s\S]{0,180}cloudListPrivateMessages\([\s\S]{0,140}return sharedMatchesFromPrivateMessages\(messages\)/.test(friendsApi),
 );
 expect(
   "Le centre de messages utilise Supabase en public/hybride",
@@ -109,12 +112,16 @@ expect(
   /export function canUseNasOnlineApi\(\)[\s\S]{0,520}!activeSessionIsPublicSupabase\(\)[\s\S]{0,220}readNasAccessToken\(\)/.test(apiClient),
 );
 expect(
-  "Le stream ONLINE bascule lui aussi immédiatement sur Supabase en mode public",
-  /function subscribeOnlineStream[\s\S]{0,900}if \(!shouldUseNasForCurrentSession\(\)\)/.test(onlineApi),
+  "Le stream ONLINE utilise les abonnements Supabase Realtime avec nettoyage du canal",
+  /function subscribeOnlineStream[\s\S]{0,800}const channel = supabase[\s\S]{0,130}\.channel\(`ms-online:/.test(onlineApi)
+  && /function subscribeOnlineStream[\s\S]{0,2500}\.on\("postgres_changes"[\s\S]{0,140}table: "online_matches"/.test(onlineApi)
+  && /function subscribeOnlineStream[\s\S]{0,3500}supabase\.removeChannel\(channel\)/.test(onlineApi),
 );
 expect(
-  "Le chat salon suit la session active et non le provider NAS global",
-  /canUseNasOnlineApi/.test(chatApi) && !/isNasProviderEnabled/.test(chatApi),
+  "Le chat salon utilise Supabase directement sans fallback NAS",
+  /export async function postMessage[\s\S]{0,1100}supabase[\s\S]{0,120}\.from\("online_messages"\)/.test(chatApi)
+  && /export function subscribeMessages[\s\S]{0,400}const chan = supabase[\s\S]{0,80}\.channel\(/.test(chatApi)
+  && !/canUseNasOnlineApi|isNasProviderEnabled|\/online\//.test(chatApi),
 );
 expect(
   "La présence realtime suit la session active et non le provider NAS global",

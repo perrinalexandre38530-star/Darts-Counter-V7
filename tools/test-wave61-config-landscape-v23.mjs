@@ -8,12 +8,11 @@ const css = read('src/styles/responsive-landscape.css');
 const catalog = read('src/games/dartsWave61.ts');
 const ids = [...catalog.matchAll(/\{ id: "([^"]+)"/g)].map((m) => m[1]);
 
-assert(ids.length === 65, `Catalogue Wave61 attendu: 65, trouvé ${ids.length}`);
+assert(ids.length === 73, `Catalogue Wave61 attendu: 73, trouvé ${ids.length}`);
 
 for (const token of [
   'wave61-config-screen',
   'wave61-config-header',
-  'wave61-config-ticker',
   'wave61-config-body',
   'wave61-config-participants',
   'wave61-config-engine',
@@ -22,6 +21,7 @@ for (const token of [
   'wave61-config-awena-card',
 ]) assert(config.includes(token), `Config Wave61: ${token} absent`);
 
+assert(config.includes('<PageHeader tickerSrc={modeTicker || undefined}'), 'Ticker du mode absent du PageHeader de configuration');
 assert(config.includes('wave61-config-dedicated'), 'Zone réglages dédiés absente');
 assert(config.includes('/awena/awena-avatar.webp'), 'Carte Awena paysage absente');
 
@@ -42,6 +42,6 @@ assert(css.includes('overflow: hidden !important;'), 'Verrouillage du scroll glo
 assert(css.includes('overflow: auto !important;'), 'Scroll interne des zones paysage absent');
 
 console.log('✅ Wave61 V23 — Config paysage / tablette / TV');
-console.log('✅ 65 modes partagent la même structure Config 3 zones');
+console.log('✅ 73 modes partagent la même structure Config 3 zones');
 console.log('✅ Participants gauche · moteur/dédié centre · Awena/launch droite');
 console.log('✅ Portrait inchangé : règles V23 limitées au paysage');

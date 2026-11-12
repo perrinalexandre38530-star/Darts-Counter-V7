@@ -40,8 +40,8 @@ assert(config.includes('moteur mutualisé V${WAVE61_ENGINE_VERSION}'), 'Config n
 assert(config.includes('engineVersion: WAVE61_ENGINE_VERSION'), 'Config engineVersion non centralisée');
 assert(play.includes('engineVersion: WAVE61_ENGINE_VERSION'), 'History engineVersion non centralisée');
 
-assert(/shove_a_penny:\s*\{[^}]*defaultRounds:\s*15,\s*defaultGoal:\s*21/.test(families), 'SHOVE A PENNY doit viser 21 marques');
-assert(/green_vs_red:\s*\{[^}]*defaultRounds:\s*14,\s*defaultGoal:\s*10/.test(families), 'GREEN VS RED doit viser 10 étapes');
+assert(/shove_a_penny:\s*\{[^}]*defaultRounds:\s*60,\s*defaultGoal:\s*21/.test(families), 'SHOVE A PENNY doit prévoir 60 tours par défaut et 21 marques (3 par case)');
+assert(/green_vs_red:\s*\{[^}]*defaultRounds:\s*11,\s*defaultGoal:\s*11/.test(families), 'GREEN VS RED doit viser 11 étapes sur 11 tours');
 assert(/nine_dart_century:\s*\{\s*defaultRounds:\s*3,\s*defaultGoal:\s*100/.test(families), '9 DART CENTURY doit rester 3 rounds / 100');
 assert(/replicat:\s*\{\s*defaultGoal:\s*9/.test(families), 'REPLICAT doit viser 9 copies');
 assert(/sniper:\s*\{\s*defaultGoal:\s*12/.test(families), 'SNIPER doit viser 12 missions');

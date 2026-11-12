@@ -13,7 +13,7 @@ const engine = read('src/lib/gameEngines/wave61Engine.ts');
 const gamesPage = read('src/pages/Games.tsx');
 
 const ids = [...catalog.matchAll(/\{ id: "([a-z0-9_]+)", label:/g)].map((m) => m[1]);
-const EXPECTED = 65;
+const EXPECTED = 73;
 assert(ids.length === EXPECTED, `Catalogue: ${ids.length}/${EXPECTED}`);
 assert(new Set(ids).size === EXPECTED, 'IDs dupliqués dans le catalogue');
 

@@ -11,15 +11,16 @@ const play = read('src/pages/Wave61SharedPlay.tsx');
 const summary = read('src/pages/DartsModeSummaryPage.tsx');
 const ids = [...catalog.matchAll(/\{ id: "([a-z0-9_]+)", label:/g)].map((m) => m[1]);
 
-assert(ids.length === 65 && new Set(ids).size === 65, 'Catalogue Wave61 invalide');
+assert(ids.length === 73 && new Set(ids).size === 73, 'Catalogue Wave61 invalide');
 for (const id of ids) {
   assert(families.includes(`${id}: "`), `famille absente: ${id}`);
   const cfg = `src/pages/wave61/modes/${id}Config.tsx`;
   const ply = `src/pages/wave61/modes/${id}Play.tsx`;
   assert(fs.existsSync(cfg), `Config absente: ${id}`);
   assert(fs.existsSync(ply), `Play absent: ${id}`);
-  assert(read(cfg).includes(`WAVE61_MODE_ID = "${id}"`), `Config ID incohérent: ${id}`);
-  assert(read(ply).includes(`WAVE61_MODE_ID = "${id}"`), `Play ID incohérent: ${id}`);
+  const declaredModeId = (source) => source.match(/\bWAVE61_MODE_ID\s*=\s*["']([^"']+)["']/)?.[1];
+  assert(declaredModeId(read(cfg)) === id, `Config ID incohérent: ${id}`);
+  assert(declaredModeId(read(ply)) === id, `Play ID incohérent: ${id}`);
 }
 
 for (const token of ['tab: "wave61_config"', 'ready: true']) assert(registry.includes(token), `registry: ${token} absent`);
@@ -32,6 +33,6 @@ assert(config.includes('rawModeId === "galaxyes" ? "galaxies"'), 'compatibilité
 assert(play.includes('rawModeId === "galaxyes" ? "galaxies"') || read('src/pages/Wave61Play.tsx').includes('id === "galaxyes" ? "galaxies"'), 'compatibilité ancien ID galaxyes absente en Play');
 
 console.log('✅ Wave61 V25 — régression release Android');
-console.log('✅ 65 routes Config/Play + familles + navigation');
+console.log('✅ 73 routes Config/Play + familles + navigation');
 console.log('✅ sauvegarde/reprise + historique + stats branchés');
 console.log('✅ nouveaux modes et compatibilité GALAXIES contrôlés');

@@ -4,7 +4,7 @@ import path from 'node:path';
 function assert(cond, msg) { if (!cond) throw new Error(msg); }
 const catalog = fs.readFileSync('src/games/dartsWave61.ts', 'utf8');
 const ids = [...catalog.matchAll(/\{ id: "([^"]+)"/g)].map((m) => m[1]);
-const EXPECTED = 65;
+const EXPECTED = 73;
 assert(ids.length === EXPECTED, `Catalogue attendu: ${EXPECTED}, trouvé: ${ids.length}`);
 assert(new Set(ids).size === EXPECTED, 'IDs Wave61 dupliqués');
 
@@ -16,8 +16,10 @@ for (const id of ids) {
   assert(fs.existsSync(play), `Play dédié absent: ${play}`);
   const c = fs.readFileSync(config, 'utf8');
   const p = fs.readFileSync(play, 'utf8');
-  assert(c.includes(`WAVE61_MODE_ID = "${id}"`), `Config ${id}: mode id absent`);
-  assert(p.includes(`WAVE61_MODE_ID = "${id}"`), `Play ${id}: mode id absent`);
+  // Les modules dédiés peuvent formater l'affectation avec ou sans espaces.
+  const declaredModeId = (source) => source.match(/\bWAVE61_MODE_ID\s*=\s*["']([^"']+)["']/)?.[1];
+  assert(declaredModeId(c) === id, `Config ${id}: mode id absent ou incorrect`);
+  assert(declaredModeId(p) === id, `Play ${id}: mode id absent ou incorrect`);
   assert(c.includes('Wave61SharedConfig'), `Config ${id}: socle partagé absent`);
   assert(p.includes('Wave61SharedPlay'), `Play ${id}: socle partagé absent`);
 }

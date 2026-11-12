@@ -22,12 +22,15 @@ else ok(`static App page imports bounded (${staticPageImports})`);
 if (lazyPageImports < 150) fail(`route code splitting regressed (${lazyPageImports} lazy pages < 150)`);
 else ok(`route code splitting active (${lazyPageImports} lazy pages)`);
 
-if (!lang.includes('lang === "fr" && !literalSafetyHasRunRef.current')) {
-  fail('French DOM translation safety-net no longer skips the initial global scan');
-} else if (!lang.includes('window.requestAnimationFrame(flushMutations)')) {
-  fail('DOM literal MutationObserver is no longer frame-batched');
+// Le garde-fou FR n'applique que les libellés BULL, tandis que la traduction
+// générique reste dans la branche non-FR et les mutations sont groupées par frame.
+const narrowFrenchBullObserver = /if \(lang === "fr"\) \{[\s\S]*?scanBullOnly\(body\)[\s\S]*?bullObserver\.observe\(body,[\s\S]*?return \(\) => \{[\s\S]*?\};\s*\}\s*scan\(body\);/.test(lang);
+if (!narrowFrenchBullObserver || !lang.includes('if (/bull/i.test(current))')) {
+  fail('French DOM literals must remain limited to BULL with a separate early-return observer');
+} else if (!lang.includes('window.requestAnimationFrame(flushMutations)') || !lang.includes('window.requestAnimationFrame(flushBull)')) {
+  fail('DOM literal MutationObservers must remain frame-batched');
 } else {
-  ok('global UI literal observer is disabled for normal FR navigation and batched otherwise');
+  ok('FR BULL-only observer and non-FR translation observer remain frame-batched');
 }
 
 for (const heavyImport of [

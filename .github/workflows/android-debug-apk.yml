@@ -42,6 +42,9 @@ jobs:
           java-version: "21"
 
       - uses: android-actions/setup-android@v3
+        with:
+          # Le package Android SDK "tools" n'existe plus ; ne pas utiliser le défaut de v3.
+          packages: "platform-tools"
 
       - name: Install Android SDK 36
         run: sdkmanager "platforms;android-36" "build-tools;35.0.0"

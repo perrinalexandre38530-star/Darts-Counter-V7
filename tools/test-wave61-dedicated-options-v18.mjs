@@ -36,7 +36,7 @@ for (const [id, keys] of Object.entries(cases)) {
 
 const modeDir='src/pages/wave61/modes';
 const configs=fs.readdirSync(modeDir).filter((name)=>name.endsWith('Config.tsx'));
-const EXPECTED = 65;
+const EXPECTED = 73;
 assert(configs.length === EXPECTED, `${EXPECTED} Config attendues, trouvé ${configs.length}`);
 for (const name of configs) {
   const text=read(`${modeDir}/${name}`);
