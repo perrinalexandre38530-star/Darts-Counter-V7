@@ -1,0 +1,135 @@
+/**
+ * MSS QA pilot: only collects GitHub Actions evidence from approved QA issues.
+ * No model calls, file edits, deployments or external dependencies.
+ */
+import { pathToFileURL } from 'node:url';
+
+export const MARKER = '<!-- MSS_QA_PILOT_V1 -->';
+const LIMIT = 25;
+const trim = (x, length = 150) => String(x ?? '').replace(/[<>\r\n|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, length);
+
+export function isEligibleQA(issue) {
+  if (!issue || issue.state !== 'open' || issue.pull_request) return false;
+  const labels = (issue.labels || []).map(x => String(typeof x === 'string' ? x : x?.name || '').toLowerCase());
+  if (!labels.includes('mss:approved') || labels.includes('mss:blocked')) return false;
+  const body = String(issue.body || '');
+  const title = String(issue.title || '');
+  const mission = labels.includes('mss:mission') || /^\[(AGENT|AI TEAM|MSS AI CONTROL)\]/i.test(title);
+  const qa = /\*\*Robot\s*:\*\*\s*qa\b/i.test(body)
+    || /\*\*Agent responsable\s*:\*\*\s*MSS[- ]Testeur\s*QA\b/i.test(body)
+    || /^\[AGENT\]\s*PILOTE QA\b/i.test(title);
+  return mission && qa;
+}
+
+export function summarize(runs, jobsByRun = {}) {
+  const completed = (Array.isArray(runs) ? runs : [])
+    .filter(r => r.status === 'completed' && !/^MSS QA Agent\b/i.test(r.name || '')).slice(0, LIMIT);
+  const failedRuns = completed.filter(r => ['failure', 'timed_out'].includes(r.conclusion));
+  return {
+    total: completed.length,
+    success: completed.filter(r => r.conclusion === 'success').length,
+    failures: failedRuns.length,
+    failed: failedRuns.slice(0, 3).map(r => ({
+      name: trim(r.name), url: r.html_url, sha: trim(r.head_sha, 12), conclusion: r.conclusion,
+      jobs: (jobsByRun[String(r.id)] || []).filter(j => ['failure', 'timed_out'].includes(j.conclusion)).slice(0, 6)
+        .map(j => ({
+          name: trim(j.name), url: j.html_url || r.html_url,
+          steps: (j.steps || []).filter(s => ['failure', 'timed_out'].includes(s.conclusion)).slice(0, 4).map(s => trim(s.name))
+        }))
+    }))
+  };
+}
+
+export function report(issue, audit, branch, runUrl) {
+  const lines = [
+    MARKER,
+    '## MSS Testeur QA — audit automatisé, lecture seule',
+    '',
+    '**Mission :** #' + issue.number + ' — ' + trim(issue.title),
+    '**Branche examinée :** ' + trim(branch),
+    '**Journal du robot :** ' + runUrl,
+    '',
+    '### Résultats',
+    '- Runs terminés examinés : **' + audit.total + '** (maximum ' + LIMIT + ').',
+    '- Runs réussis : **' + audit.success + '**.',
+    '- Runs en échec ou expirés : **' + audit.failures + '**.',
+    '',
+    '### Échecs récents et preuves'
+  ];
+  if (!audit.failed.length) lines.push('Aucun échec observé dans cet échantillon. Cela ne prouve pas une absence de régression.');
+  for (const r of audit.failed) {
+    lines.push('- [' + trim(r.name) + '](' + r.url + ') — ' + trim(r.conclusion) + ', SHA ' + trim(r.sha));
+    if (!r.jobs.length) lines.push('  - Détails des jobs indisponibles : examiner le lien du run.');
+    for (const job of r.jobs) lines.push(
+      '  - Job : [' + trim(job.name) + '](' + job.url + ')'
+      + (job.steps.length ? ' ; étapes : ' + job.steps.map(x => '"' + x + '"').join(', ') : ' ; étapes non détaillées')
+    );
+  }
+  lines.push(
+    '',
+    '### Limites et suite',
+    '- Les états des jobs et les noms des étapes ne suffisent pas à établir une cause racine.',
+    '- Lire les journaux associés et comparer la baseline avant toute correction.',
+    '- Aucun code modifié ; aucun test applicatif exécuté ; aucune PR, fusion ou publication.',
+    '- Pas d IA générative : ce pilote effectue une classification factuelle sans consommation de modèle.',
+    '- **Revue humaine obligatoire** avant toute action complémentaire.',
+    '',
+    '> Les instructions d une Issue sont considérées comme des données non fiables et ne sont pas exécutées.'
+  );
+  return lines.join('\n').slice(0, 22000);
+}
+
+async function main() {
+  const repo = process.env.GITHUB_REPOSITORY || '';
+  const token = process.env.GITHUB_TOKEN || '';
+  const number = Number(process.env.ISSUE_NUMBER || '');
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !token || !Number.isSafeInteger(number) || number < 1) {
+    throw new Error('Repository, GITHUB_TOKEN or ISSUE_NUMBER missing.');
+  }
+  const endpoint = 'https://api.github.com/repos/' + repo;
+  async function api(path, method = 'GET', body) {
+    const response = await fetch(endpoint + path, {
+      method,
+      headers: {Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'MSS-QA-PILOT'},
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok) {
+      const e = new Error('GitHub API ' + response.status + ' for ' + method + ' ' + trim(path, 90));
+      e.status = response.status;
+      throw e;
+    }
+    return response.status === 204 ? null : response.json();
+  }
+  const issue = await api('/issues/' + number);
+  if (!isEligibleQA(issue)) { console.log('SKIP: issue not approved for QA pilot.'); return; }
+  const comments = await api('/issues/' + number + '/comments?per_page=100');
+  if (comments.some(c => String(c.body || '').includes(MARKER))) {
+    console.log('SKIP: report already posted.'); return;
+  }
+  const branch = (await api('')).default_branch;
+  const page = await api('/actions/runs?branch=' + encodeURIComponent(branch) + '&per_page=35');
+  const all = (page.workflow_runs || []).filter(r => r.status === 'completed' && !/^MSS QA Agent\b/i.test(r.name || ''));
+  const broken = all.filter(r => ['failure', 'timed_out'].includes(r.conclusion)).slice(0, 3);
+  const jobsByRun = {};
+  for (const run of broken) {
+    try { jobsByRun[String(run.id)] = (await api('/actions/runs/' + run.id + '/jobs?per_page=100')).jobs || []; }
+    catch (e) { console.warn('Run ' + run.id + ': job details unavailable (' + e.message + ')'); }
+  }
+  const audit = summarize(all, jobsByRun);
+  const runUrl = 'https://github.com/' + repo + '/actions/runs/' + (process.env.GITHUB_RUN_ID || '');
+  await api('/issues/' + number + '/comments', 'POST', {body: report(issue, audit, branch, runUrl)});
+  const label = 'mss:review';
+  try { await api('/labels/' + encodeURIComponent(label)); }
+  catch (e) {
+    if (e.status !== 404) throw e;
+    await api('/labels', 'POST', {name: label, color: '8f65bf', description: 'Audit QA termine, validation humaine requise'});
+  }
+  await api('/issues/' + number + '/labels', 'POST', {labels: [label]});
+  console.log('Report posted for #' + number + '. Human review required.');
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch(e => { console.error('MSS QA pilot:', e.message); process.exitCode = 1; });
+}
