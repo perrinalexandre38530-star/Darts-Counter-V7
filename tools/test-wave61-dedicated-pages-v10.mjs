@@ -16,8 +16,10 @@ for (const id of ids) {
   assert(fs.existsSync(play), `Play dédié absent: ${play}`);
   const c = fs.readFileSync(config, 'utf8');
   const p = fs.readFileSync(play, 'utf8');
-  assert(c.includes(`WAVE61_MODE_ID = "${id}"`), `Config ${id}: mode id absent`);
-  assert(p.includes(`WAVE61_MODE_ID = "${id}"`), `Play ${id}: mode id absent`);
+  // Les modules dédiés peuvent formater l'affectation avec ou sans espaces.
+  const declaredModeId = (source) => source.match(/\\bWAVE61_MODE_ID\\s*=\\s*["']([^"']+)["']/)?.[1];
+  assert(declaredModeId(c) === id, `Config ${id}: mode id absent ou incorrect`);
+  assert(declaredModeId(p) === id, `Play ${id}: mode id absent ou incorrect`);
   assert(c.includes('Wave61SharedConfig'), `Config ${id}: socle partagé absent`);
   assert(p.includes('Wave61SharedPlay'), `Play ${id}: socle partagé absent`);
 }
