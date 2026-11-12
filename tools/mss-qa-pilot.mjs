@@ -7,6 +7,24 @@ import { classifyLogEvidence, suggestedChecks } from './mss-qa-evidence.mjs';
 
 export const MARKER = '<!-- MSS_QA_PILOT_V1 -->';
 const LIMIT = 25;
+export function isTrustedPilotComment(comment, number, repo) {
+  const body = String(comment?.body || '');
+  if (comment?.user?.login !== 'github-actions[bot]' || comment?.user?.type !== 'Bot'
+      || !body.startsWith(MARKER + '\\n')
+      || !body.includes('**Mission :** #' + number + ' — ')) return false;
+  try {
+    const u = new URL(comment.html_url);
+    return u.protocol === 'https:' && u.hostname === 'github.com'
+      && u.pathname === '/' + repo + '/issues/' + number
+      && /^#issuecomment-\\d+$/.test(u.hash) && !u.search;
+  } catch { return false; }
+}
+export function isTrustedOwnerActor(actor, repo) {
+  return /^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$/.test(repo)
+    && typeof actor === 'string' && actor !== ''
+    && actor.toLowerCase() === repo.split('/')[0].toLowerCase();
+}
+
 const trim = (x, length = 150) => String(x ?? '').replace(/[<>\r\n|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, length);
 
 export function isEligibleQA(issue) {
@@ -104,7 +122,11 @@ async function main() {
   const token = process.env.GITHUB_TOKEN || '';
   const number = Number(process.env.ISSUE_NUMBER || '');
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !token || !Number.isSafeInteger(number) || number < 1) {
+    // Input validation runs before authorization checking.
     throw new Error('Repository, GITHUB_TOKEN or ISSUE_NUMBER missing.');
+  }
+  if (!isTrustedOwnerActor(process.env.GITHUB_ACTOR, repo)) {
+    throw new Error('QA pilot denied: only the repository owner may trigger a mission.');
   }
   const endpoint = 'https://api.github.com/repos/' + repo;
   async function api(path, method = 'GET', body) {
@@ -125,7 +147,7 @@ async function main() {
   const issue = await api('/issues/' + number);
   if (!isEligibleQA(issue)) { console.log('SKIP: issue not approved for QA pilot.'); return; }
   const comments = await api('/issues/' + number + '/comments?per_page=100');
-  if (comments.some(c => String(c.body || '').includes(MARKER))) {
+  if (comments.some(c => isTrustedPilotComment(c, number, repo))) {
     console.log('SKIP: report already posted.'); return;
   }
   const branch = (await api('')).default_branch;
