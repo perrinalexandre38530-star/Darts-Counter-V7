@@ -36,3 +36,22 @@ test('run classification only reports evidence, not guesses', () => {
   assert.ok(out.includes('Revue humaine'));
   assert.ok(out.includes('Quality Gate'));
 });
+
+test('incomplete or missing CI evidence is blocked, not a false PASS', () => {
+  assert.equal(summarize([]).outcome, 'BLOQUÉ');
+  assert.equal(summarize([{id: 1, status: 'in_progress', name: 'Quality Gate'}]).outcome, 'BLOQUÉ');
+  assert.equal(summarize([{id: 1, status: 'completed', conclusion: 'skipped', name: 'Quality Gate'}]).outcome, 'BLOQUÉ');
+  const mixed = summarize([
+    {id: 1, status: 'completed', conclusion: 'success', name: 'Quality Gate'},
+    {id: 2, status: 'in_progress', name: 'Android'}
+  ]);
+  assert.equal(mixed.outcome, 'BLOQUÉ');
+  assert.equal(mixed.pending, 1);
+  assert.ok(report(approvedQA, mixed, 'main', 'https://github.com/example/actions/runs/9').includes('BLOQUÉ'));
+});
+test('PASS and FAIL depend on completed conclusive CI results', () => {
+  const success = summarize([{id: 1, status: 'completed', conclusion: 'success', name: 'Quality Gate'}]);
+  const failure = summarize([{id: 2, status: 'completed', conclusion: 'failure', name: 'Android'}]);
+  assert.equal(success.outcome, 'PASS');
+  assert.equal(failure.outcome, 'FAIL');
+});
