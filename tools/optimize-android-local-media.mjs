@@ -192,7 +192,9 @@ function ffmpegOptimize(file, type) {
       return Promise.resolve(null);
     }
   } else {
-    args.push('-an');
+    // Preserve the original audio tracks on Awena/rules videos. The previous
+    // -an silently removed narration when ffmpeg was available.
+    args.push('-c:a', 'copy');
 
     if (ext === '.webm') {
       args.push(
