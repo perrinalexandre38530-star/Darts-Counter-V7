@@ -26,7 +26,7 @@ export function summarize(runs, jobsByRun = {}) {
     .filter(r => r.status === 'completed' && !/^MSS QA Agent\b/i.test(r.name || '')).slice(0, LIMIT);
   const failedRuns = completed.filter(r => ['failure', 'timed_out'].includes(r.conclusion));
   const pending = (Array.isArray(runs) ? runs : [])
-    .filter(r => ['queued', 'in_progress', 'waiting', 'pending'].includes(r.status) && !/^MSS QA Agent\\b/i.test(r.name || '')).length;
+    .filter(r => ['queued', 'in_progress', 'waiting', 'pending'].includes(r.status) && !/^MSS QA Agent\b/i.test(r.name || '')).length;
   const unknown = completed.filter(r => !['success', 'failure', 'timed_out'].includes(r.conclusion)).length;
   return {
     total: completed.length,
