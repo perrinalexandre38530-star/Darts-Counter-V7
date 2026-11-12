@@ -58,6 +58,8 @@ try {
         platform: "node",
         format: "esm",
         target: "node22",
+        // Les imports Vite .svg?raw sont des chaînes de caractères dans les tests Node.
+        loader: { ".svg": "text" },
         sourcemap: "inline",
         logLevel: "silent",
       });
