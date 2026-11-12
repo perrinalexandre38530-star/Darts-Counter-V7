@@ -13,9 +13,9 @@ for(const token of [
   'players: s.players.map((player: any, index: number) => {',
   'profileById.get(String(player.id)) || player',
   'name: playerName(profile, index) || String(player.name || `Joueur ${index + 1}`)',
-  'resume: { mode: "wave61", modeId: spec.id, config: s.config, state: cloneWave61State(s)',
+  'resume: { mode: "wave61", modeId: spec.id, variantId: s.config?.variantId, config: s.config, state: cloneWave61State(s)',
   'stateSnapshot: cloneWave61State(s)',
-  'persist(prev)',
+  'persist(committed, true)',
   'finishedRef.current = false'
 ]) assert(play.includes(token),`Play V28: ${token}`);
 for(const token of [
