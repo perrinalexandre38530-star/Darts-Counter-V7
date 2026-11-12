@@ -1367,6 +1367,10 @@ export default function CapitalPlay(props: any) {
       issueCodes: [...new Set(capitalIntegrity.issues.map((issue) => issue.code))],
     };
     if (!capitalIntegrity.ok) console.warn("[Capital] incohérences à vérifier avant toute réparation", capitalIntegrity.issues);
+    // Entête légère lisible par Historique V4 sans décoder tout le journal de fléchettes.
+    const capitalVariant = cfg?.mode === "custom"
+      ? { id: "custom", savedVariantId: cfg?.savedVariantId || null, label: cfg?.savedVariantName || "MON CAPITAL", category: "mon-capital" }
+      : { id: cfg?.gridVariant || "clubs15", label: (CAPITAL_GRID_PRESETS[cfg?.gridVariant || "clubs15"]?.label || "OFFICIEL").replace(/\s*·\s*\d+\s*tours?$/i, ""), category: CAPITAL_GRID_PRESETS[cfg?.gridVariant || "clubs15"]?.category || "club" };
     const winnerIds = winningPlayerIds.filter(Boolean);
     const record = {
       id: matchIdRef.current,
@@ -1387,6 +1391,7 @@ export default function CapitalPlay(props: any) {
         mode: "capital",
         title: "CAPITAL",
         capitalIntegrity: capitalAuditSummary,
+        capitalVariant,
         participantMode: cfg?.participantMode || "players",
         winnerId: winnerIds[0] || null,
         winnerIds,
@@ -1422,6 +1427,7 @@ export default function CapitalPlay(props: any) {
         stats: { players: playerStats, teams: teamStats, visits, match: savedMatchStats },
         summary: {
           mode: "capital",
+          capitalVariant,
           winnerId: winnerIds[0] || null,
           winnerIds,
           winnerTeamId: winnerTeam?.id || null,

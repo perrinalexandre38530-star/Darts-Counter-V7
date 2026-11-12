@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React from "react";
 import { buildCapitalPlayerStats, CAPITAL_CONTRACT_META, capitalDartScore } from "../../lib/capitalGame";
+import { capitalCompletedMatches } from "../../lib/capitalStatsHistory";
 
 const ACCENT = "#ffd166";
 
@@ -9,32 +10,11 @@ function number(value: any, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 function text(value: any) { return String(value ?? "").trim(); }
-function playerId(row: any) { return text(row?.id || row?.playerId || row?.profileId || row?.pid); }
 function playerName(row: any) { return text(row?.name || row?.playerName || row?.displayName || row?.nickname || "Joueur"); }
 function percent(value: number) { return `${Math.round(value * 10) / 10}%`; }
 function round1(value: number) { return Math.round(value * 10) / 10; }
 function ratio(num: number, den: number) { return den ? (num / den) * 100 : 0; }
 
-function isCapitalRecord(record: any) {
-  const tokens = [record?.kind, record?.mode, record?.game?.mode, record?.summary?.mode, record?.payload?.kind, record?.payload?.mode, record?.payload?.summary?.mode]
-    .map((value) => text(value).toLowerCase()).join(" ");
-  return tokens.includes("capital");
-}
-function playerPools(record: any): any[][] {
-  return [record?.payload?.stats?.players, record?.payload?.summary?.players, record?.payload?.summary?.perPlayer, record?.summary?.players, record?.summary?.perPlayer, record?.payload?.players, record?.players].filter(Array.isArray);
-}
-function findPlayerRow(record: any, wantedId: string, wantedName?: string | null) {
-  const normalizedName = text(wantedName).toLowerCase();
-  for (const pool of playerPools(record)) {
-    const byId = pool.find((row) => playerId(row) === wantedId);
-    if (byId) return byId;
-    if (normalizedName) {
-      const byName = pool.find((row) => playerName(row).toLowerCase() === normalizedName);
-      if (byName) return byName;
-    }
-  }
-  return null;
-}
 function visitsOf(record: any) {
   const pools = [record?.payload?.stats?.visits, record?.payload?.summary?.visits, record?.summary?.visits, record?.payload?.visits, record?.visits];
   return pools.find((pool) => Array.isArray(pool)) || [];
@@ -89,15 +69,24 @@ function section(title: string, children: React.ReactNode) {
 }
 
 export default function CapitalStatsTabFull({ records = [], playerId: wantedPlayerId, playerName: wantedPlayerName }: any) {
-  const matches = React.useMemo(() => (Array.isArray(records) ? records : [])
-    .filter(isCapitalRecord)
-    .map((record) => {
-      const raw = findPlayerRow(record, String(wantedPlayerId || ""), wantedPlayerName);
-      return { record, row: normalizeRow(record, raw, String(wantedPlayerId || "")) };
-    })
-    .filter((item) => item.row)
-    .sort((a, b) => playedAt(b.record) - playedAt(a.record)), [records, wantedPlayerId, wantedPlayerName]);
-
+  const [variantFilter, setVariantFilter] = React.useState("all");
+  const allMatches = React.useMemo(() => capitalCompletedMatches(records, String(wantedPlayerId || ""), wantedPlayerName)
+    .map((item) => ({ ...item, row: normalizeRow(item.record, item.row, String(wantedPlayerId || "")) })),
+  [records, wantedPlayerId, wantedPlayerName]);
+  const variants = React.useMemo(() => {
+    const groups = new Map<string, { id: string; label: string; games: number; wins: number; best: number }>();
+    for (const item of allMatches) {
+      const group = groups.get(item.variantId) || { id: item.variantId, label: item.variantLabel, games: 0, wins: 0, best: 0 };
+      group.games += 1;
+      if (winnerIds(item.record).includes(String(wantedPlayerId))) group.wins += 1;
+      group.best = Math.max(group.best, number(item.row?.finalCapital ?? item.row?.capital ?? item.row?.score));
+      groups.set(item.variantId, group);
+    }
+    return [...groups.values()].sort((a, b) => b.games - a.games || a.label.localeCompare(b.label));
+  }, [allMatches, wantedPlayerId]);
+  // Un filtre supprimé ne doit pas donner l'impression que l'historique a disparu.
+  const effectiveFilter = variantFilter === "all" || variants.some((v) => v.id === variantFilter) ? variantFilter : "all";
+  const matches = React.useMemo(() => effectiveFilter === "all" ? allMatches : allMatches.filter((item) => item.variantId === effectiveFilter), [allMatches, effectiveFilter]);
   const rows = matches.map((item) => item.row);
   const games = matches.length;
   const wins = matches.filter((item) => winnerIds(item.record).includes(String(wantedPlayerId))).length;
@@ -165,6 +154,27 @@ export default function CapitalStatsTabFull({ records = [], playerId: wantedPlay
     <div style={{ color: ACCENT, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase" }}>CAPITAL — Statistiques détaillées</div>
     <div style={{ marginTop: 5, color: "#aeb3c5", fontSize: 11.5 }}>Capital, contrats, pénalités, précision, impacts et performance contrat par contrat.</div>
 
+    {variants.length ? section("Bilan par variante", <>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 10 }}>
+        {[{ id: "all", label: "TOUTES", games: allMatches.length }, ...variants].map((variant) => (
+          <button key={variant.id} type="button" onClick={() => setVariantFilter(variant.id)}
+            aria-pressed={effectiveFilter === variant.id}
+            style={{ cursor: "pointer", padding: "9px 11px", borderRadius: 11, border: `1px solid ${effectiveFilter === variant.id ? ACCENT : "rgba(255,255,255,.15)"}`,
+              background: effectiveFilter === variant.id ? "rgba(255,209,102,.18)" : "rgba(255,255,255,.035)", color: effectiveFilter === variant.id ? ACCENT : "#e2e5eb", fontSize: 11, fontWeight: 950 }}>
+            {variant.label} · {variant.games}
+          </button>
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(135px,1fr))", gap: 7 }}>
+        {variants.map((variant) => <div key={variant.id} style={{ background: "rgba(0,0,0,.20)", borderRadius: 12, padding: 9, border: "1px solid rgba(255,255,255,.07)" }}>
+          <div style={{ color: ACCENT, fontWeight: 950, fontSize: 11 }}>{variant.label}</div>
+          <div style={{ fontSize: 10.5, marginTop: 4 }}>{variant.games} partie{variant.games > 1 ? "s" : ""} · {variant.wins} victoire{variant.wins > 1 ? "s" : ""}</div>
+          <div style={{ fontSize: 10.5, opacity: .7 }}>Record : {variant.best}</div>
+        </div>)}
+      </div>
+      <div style={{ marginTop: 7, fontSize: 10, color: "#aeb3c5" }}>Choisis une variante pour filtrer toutes les statistiques ci-dessous. Seules les parties terminées sont comptées.</div>
+    </>) : null}
+
     {!games ? <div style={{ marginTop: 14, padding: 16, borderRadius: 16, border: "1px solid rgba(255,255,255,.09)", color: "#aeb3c5" }}>Aucune partie CAPITAL terminée pour ce profil.</div> : <>
       <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}>
         {kpi("Parties", games, `${wins} victoire${wins > 1 ? "s" : ""} • ${losses} défaite${losses > 1 ? "s" : ""}`)}
@@ -207,12 +217,12 @@ export default function CapitalStatsTabFull({ records = [], playerId: wantedPlay
       <section style={{ marginTop: 12 }}>
         <div style={{ color: ACCENT, fontSize: 11, fontWeight: 1000, textTransform: "uppercase", marginBottom: 8 }}>Parties récentes</div>
         <div style={{ display: "grid", gap: 7 }}>
-          {matches.slice(0, 10).map(({ record, row }, index) => {
+          {matches.slice(0, 10).map(({ record, row, variantLabel }, index) => {
             const won = winnerIds(record).includes(String(wantedPlayerId));
             const date = playedAt(record) ? new Date(playedAt(record)).toLocaleDateString("fr-FR") : "—";
             return <div key={record?.id || index} style={{ display: "grid", gridTemplateColumns: "48px minmax(0,1fr) auto", gap: 9, alignItems: "center", padding: 10, borderRadius: 15, border: `1px solid ${won ? `${ACCENT}66` : "rgba(255,255,255,.08)"}`, background: won ? `${ACCENT}0d` : "rgba(255,255,255,.03)" }}>
               <div style={{ width: 42, height: 42, borderRadius: 13, display: "grid", placeItems: "center", background: won ? ACCENT : "rgba(255,255,255,.07)", color: won ? "#080a10" : "#c8cbd6", fontWeight: 1000 }}>{won ? "WIN" : "#" + (row?.rank || "—")}</div>
-              <div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000 }}>{date} • {record?.summary?.participantMode === "teams" ? "Équipes" : "Joueurs"}</div><div style={{ color: "#aeb3c3", fontSize: 10.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{number(row?.startingCapital)}→{number(row?.finalCapital ?? row?.capital ?? row?.score)} • contrats {number(row?.successfulContracts)}/{number(row?.contractsPlayed)} ({number(row?.successRate).toFixed(1)}%) • +{number(row?.pointsWon)} / −{number(row?.capitalLost)} • hit {number(row?.hitRate).toFixed(1)}% • best {number(row?.bestVisit)}</div></div>
+              <div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000 }}>{date} • {record?.summary?.participantMode === "teams" ? "Équipes" : "Joueurs"}</div><div style={{ color: ACCENT, fontSize: 10, fontWeight: 900 }}>{variantLabel}</div><div style={{ color: "#aeb3c3", fontSize: 10.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{number(row?.startingCapital)}→{number(row?.finalCapital ?? row?.capital ?? row?.score)} • contrats {number(row?.successfulContracts)}/{number(row?.contractsPlayed)} ({number(row?.successRate).toFixed(1)}%) • +{number(row?.pointsWon)} / −{number(row?.capitalLost)} • hit {number(row?.hitRate).toFixed(1)}% • best {number(row?.bestVisit)}</div></div>
               <div style={{ textAlign: "right" }}><div style={{ color: ACCENT, fontSize: 20, fontWeight: 1000 }}>{number(row?.finalCapital ?? row?.capital ?? row?.score)}</div><div style={{ color: "#9297aa", fontSize: 9.5 }}>capital</div></div>
             </div>;
           })}

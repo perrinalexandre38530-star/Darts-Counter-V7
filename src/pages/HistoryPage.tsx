@@ -2052,6 +2052,7 @@ function CapitalHistoryScoreBlock({ e, theme }: { e: SavedEntry; theme: any }) {
   const teams = Array.isArray(summary?.teams) ? summary.teams : Array.isArray(anyE?.payload?.stats?.teams) ? anyE.payload.stats.teams : [];
   const matchStats = summary?.matchStats || summary?.stats || anyE?.payload?.stats?.match || {};
   const winnerTeamId = String(summary?.winnerTeamId || anyE?.payload?.winnerTeamId || "");
+  const variantName = String(summary?.capitalVariant?.label || anyE?.payload?.summary?.capitalVariant?.label || "").trim();
   const fmtDuration = (msRaw: any) => {
     const ms = Number(msRaw || 0);
     if (!Number.isFinite(ms) || ms <= 0) return "";
@@ -2061,6 +2062,7 @@ function CapitalHistoryScoreBlock({ e, theme }: { e: SavedEntry; theme: any }) {
 
   return (
     <div style={{ display: "grid", gap: 5, minWidth: 0 }}>
+      {variantName ? <div style={{ color: "#ffd166", fontWeight: 1000, fontSize: 10, letterSpacing: .4 }}>VARIANTE · {variantName}</div> : null}
       {teams.length ? (
         <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
           {[...teams].sort((a: any, b: any) => Number(b?.score || b?.capital || 0) - Number(a?.score || a?.capital || 0)).slice(0, 4).map((team: any, index: number) => {
