@@ -24,7 +24,7 @@ else ok(`route code splitting active (${lazyPageImports} lazy pages)`);
 
 // Le garde-fou FR n'applique que les libellés BULL, tandis que la traduction
 // générique reste dans la branche non-FR et les mutations sont groupées par frame.
-const narrowFrenchBullObserver = /if \\(lang === "fr"\\) \\{[\\s\\S]*?scanBullOnly\\(body\\)[\\s\\S]*?bullObserver\\.observe\\(body,[\\s\\S]*?return \\(\\) => \\{[\\s\\S]*?\\};\\s*\\}\\s*scan\\(body\\);/.test(lang);
+const narrowFrenchBullObserver = /if \(lang === "fr"\) \{[\s\S]*?scanBullOnly\(body\)[\s\S]*?bullObserver\.observe\(body,[\s\S]*?return \(\) => \{[\s\S]*?\};\s*\}\s*scan\(body\);/.test(lang);
 if (!narrowFrenchBullObserver || !lang.includes('if (/bull/i.test(current))')) {
   fail('French DOM literals must remain limited to BULL with a separate early-return observer');
 } else if (!lang.includes('window.requestAnimationFrame(flushMutations)') || !lang.includes('window.requestAnimationFrame(flushBull)')) {
