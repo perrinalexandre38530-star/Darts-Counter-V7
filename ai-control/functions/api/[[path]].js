@@ -75,7 +75,7 @@ export async function onRequest(context){
    // Only GitHub-hosted links may be returned to the dashboard.
    const verified=(()=>{
     try {const u=new URL(url);return u.protocol==='https:'&&u.hostname==='github.com'
-      &&u.pathname.startsWith('/'+config.repo+'/issues/'+number+'#')?u.href:null;} catch{return null;}
+      &&u.pathname==='/'+config.repo+'/issues/'+number && /^#issuecomment-\d+$/.test(u.hash)?u.href:null;} catch{return null;}
    })();
    return json({number,reportAvailable:Boolean(verified),reportUrl:verified,
      status:matched.length?(issue.labels||[]).some(x=>(typeof x==='string'?x:x?.name)==='mss:review')?'REVUE HUMAINE':'RAPPORT DISPONIBLE':'AUCUN RAPPORT',
