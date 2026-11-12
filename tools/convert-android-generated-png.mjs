@@ -50,13 +50,16 @@ function perceptualCheck(original, webp, minPsnrDb) {
       for (let c = 0; c < 3; c++) {
         const blackA = a[i + c] * a[i + 3] / 255;
         const blackB = b[i + c] * b[i + 3] / 255;
-        const d = blackA - blackB;
-        error += d * d;
+        const dBlack = blackA - blackB;
+        const whiteA = blackA + 255 - a[i + 3];
+        const whiteB = blackB + 255 - b[i + 3];
+        const dWhite = whiteA - whiteB;
+        error += dBlack * dBlack + dWhite * dWhite;
       }
       n++;
     }
     if (!n || alphaChanged > Math.max(1, n * 0.002)) return false;
-    const mse = error / (n * 3);
+    const mse = error / (n * 6);
     const psnr = mse === 0 ? Infinity : 10 * Math.log10(255 * 255 / mse);
     return psnr >= minPsnrDb;
   });
