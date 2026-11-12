@@ -9,8 +9,8 @@ const fable = read('src/pages/wave61/Wave61FablePartyPanels.tsx');
 const catalog = read('src/games/dartsWave61.ts');
 
 const ids = [...catalog.matchAll(/\{ id: "([^"]+)"/g)].map((m) => m[1]);
-assert(ids.length === 65, `65 modes attendus, trouvé ${ids.length}`);
-assert(new Set(ids).size === 65, 'IDs Wave61 dupliqués');
+assert(ids.length === 73, `73 modes attendus, trouvé ${ids.length}`);
+assert(new Set(ids).size === 73, 'IDs Wave61 dupliqués');
 
 for (const token of ['CorbeauRenardPanel', 'DartsImpossiblePanel', 'spec.id === "corbeau_renard"', 'spec.id === "darts_impossible"']) {
   assert(play.includes(token), `V94/V95 non intégré dans le Play actif: ${token}`);
@@ -26,5 +26,5 @@ for (const token of ['Wave61EndSummary', 'onStats={() => go?.("darts_mode_summar
 }
 
 console.log('✅ Wave61 V96 — V94/V95 présents dans le Play actif');
-console.log('✅ 65 modes conservés');
+console.log('✅ 73 modes conservés');
 console.log('✅ Fin de partie enrichie: récompenses + métrique spécifique + détail mode + S/D/T/Bull');
