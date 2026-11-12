@@ -32,7 +32,12 @@ jobs:
           node-version: "22"
           cache: npm
       - name: Installer jose pour verifier les JWT Access
-        run: npm install --prefix ai-control --omit=dev --ignore-scripts --no-audit --no-fund
+        run: npm install --prefix ai-control --ignore-scripts --no-audit --no-fund
+      - name: Compiler les Pages Functions sans deployer
+        run: |
+          cd ai-control
+          ./node_modules/.bin/wrangler pages functions build --outdir=./.mss-pages-check
+          test -s ./.mss-pages-check/index.js
       - name: Tests de la plateforme privee
         run: |
           node --check ai-control/public/app.js
