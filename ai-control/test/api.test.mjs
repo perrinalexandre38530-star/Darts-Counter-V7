@@ -22,7 +22,7 @@ const valid={title:'Corriger les stats X01',agent:'data-cloud',priority:'normal'
 
 test('le tableau de bord lit GitHub sans modifier le dépôt',async()=>{
  const calls=[];const old=globalThis.fetch;globalThis.fetch=fixtureFetch(calls);
- try{const r=await onRequest(context('bootstrap'));assert.equal(r.status,200);const d=await r.json();assert.equal(d.issues.length,1);assert.equal(d.prs.length,1);assert.equal(d.runs.length,1);assert.equal(d.engineActive,false);assert.ok(calls.every(x=>x.m==='GET'));}finally{globalThis.fetch=old;}
+ try{const r=await onRequest(context('bootstrap'));assert.equal(r.status,200);const d=await r.json();assert.equal(d.issues.length,1);assert.equal(d.prs.length,1);assert.equal(d.runs.length,1);assert.equal(d.engineActive,false);assert.equal(d.qaPilot.state,'NON INSTALLÉ');assert.ok(calls.every(x=>x.m==='GET'));}finally{globalThis.fetch=old;}
 });
 test('créer une mission fabrique seulement une issue, pas de commit',async()=>{
  const calls=[];const old=globalThis.fetch;globalThis.fetch=fixtureFetch(calls);
@@ -145,4 +145,22 @@ test('bot report with wrong mission number cannot be presented',async()=>{
   const response=await onRequest(context('missions/42/qa-report'));
   assert.equal((await response.json()).reportAvailable,false);
  }finally{globalThis.fetch=previous;}
+});
+
+test('bootstrap distinguishes active QA workflow from inactive AI engine',async()=>{
+ const calls=[];const original=globalThis.fetch;
+ const baseline=fixtureFetch(calls);
+ globalThis.fetch=(url,options)=>{
+  if(new URL(url).pathname.endsWith('/actions/workflows/mss-qa-pilot.yml'))return Promise.resolve(ok({state:'active'}));
+  return baseline(url,options);
+ };
+ try{
+  const response=await onRequest(context('bootstrap'));
+  assert.equal(response.status,200);
+  const body=await response.json();
+  assert.equal(body.qaPilot.state,'WORKFLOW ACTIF');
+  assert.equal(body.engineActive,false);
+  assert.equal(body.certifiedAgents,0);
+  assert.ok(calls.every(x=>x.m==='GET'));
+ }finally{globalThis.fetch=original;}
 });
