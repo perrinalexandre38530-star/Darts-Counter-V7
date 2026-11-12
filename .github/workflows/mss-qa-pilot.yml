@@ -6,6 +6,7 @@ on:
   pull_request:
     paths:
       - "tools/mss-qa-pilot.mjs"
+      - "tools/mss-qa-evidence.mjs"
       - "tools/test-mss-qa-pilot.mjs"
       - ".github/workflows/mss-qa-pilot.yml"
   workflow_dispatch:
@@ -34,9 +35,10 @@ jobs:
           fetch-depth: 1
           sparse-checkout: |
             tools/mss-qa-pilot.mjs
+            tools/mss-qa-evidence.mjs
             tools/test-mss-qa-pilot.mjs
           sparse-checkout-cone-mode: false
-      - run: node --check tools/mss-qa-pilot.mjs && node --test tools/test-mss-qa-pilot.mjs
+      - run: node --check tools/mss-qa-pilot.mjs && node --check tools/mss-qa-evidence.mjs && node --test tools/test-mss-qa-pilot.mjs
 
   qa_pilot:
     permissions:
@@ -56,6 +58,7 @@ jobs:
           fetch-depth: 1
           sparse-checkout: |
             tools/mss-qa-pilot.mjs
+            tools/mss-qa-evidence.mjs
             tools/test-mss-qa-pilot.mjs
           sparse-checkout-cone-mode: false
       - name: Verify the QA pilot itself
