@@ -47,3 +47,10 @@ Les routes du dashboard dans la branche de la PR #27 ajoutent déjà mss:approve
 - BLOQUÉ : aucun run terminé, des runs en cours, ou des conclusions ignorées/annulées/neutres. Ces situations ne doivent jamais être présentées comme un succès.
 - Les données sont toujours limitées aux runs consultables de la branche par défaut ; une mission qui exige l'inspection d'une PR et ses journaux complets nécessite un audit supplémentaire.
 - Tests de non-régression ajoutés pour les quatre catégories (aucune donnée, in-progress, skipped, failure/success).
+
+## Diagnostic de journaux (V1.1 — préparation du robot correcteur)
+- Jusqu'à trois runs en échec et trois jobs en échec par run peuvent être inspectés, **uniquement en lecture**.
+- La lecture d'un journal est plafonnée à 2 Mo et 15 secondes par job. L'absence ou la troncature est signalée ; aucun contenu brut ne doit être transféré dans une Issue publique.
+- Les catégories sont déterministes : budget des médias Android, Gradle, TypeScript, tests, dépendances, autorisations et réseau. Chaque catégorie peut suggérer une vérification **fixe** de diagnostic. Ce n'est ni une cause racine démontrée ni un correctif.
+- La suite pour le robot correcteur nécessite une mission distincte et une approbation explicite. Aucun accès d'écriture code, aucune branche ou PR générée par ce pilote.
+- La sortie réelle d'une mission approuvée reste non validée tant que le workflow n'a pas été activé sur la branche par défaut.
