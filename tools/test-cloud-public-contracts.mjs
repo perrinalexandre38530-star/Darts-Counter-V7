@@ -118,8 +118,10 @@ expect(
   && /function subscribeOnlineStream[\s\S]{0,3500}supabase\.removeChannel\(channel\)/.test(onlineApi),
 );
 expect(
-  "Le chat salon suit la session active et non le provider NAS global",
-  /canUseNasOnlineApi/.test(chatApi) && !/isNasProviderEnabled/.test(chatApi),
+  "Le chat salon utilise Supabase directement sans fallback NAS",
+  /export async function postMessage[\s\S]{0,1100}supabase[\s\S]{0,120}\.from\("online_messages"\)/.test(chatApi)
+  && /export function subscribeMessages[\s\S]{0,400}const chan = supabase[\s\S]{0,80}\.channel\(/.test(chatApi)
+  && !/canUseNasOnlineApi|isNasProviderEnabled|\/online\//.test(chatApi),
 );
 expect(
   "La présence realtime suit la session active et non le provider NAS global",
