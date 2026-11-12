@@ -60,6 +60,27 @@ export async function onRequest(context){
    const issue=await github(config,'/issues','POST',{title:`[AGENT] ${m.title}`,body:formatIssueBody(m),labels:['mss:mission']});
    return json({number:issue.number,url:issue.html_url,status:'À QUALIFIER'},201);
   }
+  // Read-only QA evidence link. Fetch only when the owner opens a specific mission.
+  // Never return raw CI logs or arbitrary public comments as "QA evidence".
+  const qaReport=path.match(/^missions\/(\d+)\/qa-report$/);
+  if(method==='GET'&&qaReport){
+   const number=Number(qaReport[1]);
+   if(!Number.isSafeInteger(number)||number<1)return bad('Numéro de mission invalide.');
+   const issue=await github(config,`/issues/${number}`);
+   if(!isMission(issue))return bad('Mission introuvable.',404);
+   const comments=await github(config,`/issues/${number}/comments?per_page=100`);
+   const matched=comments.filter(c=>String(c.body||'').includes('<!-- MSS_QA_PILOT_V1 -->'));
+   const latest=matched.at(-1);
+   const url=latest?.html_url||'';
+   // Only GitHub-hosted links may be returned to the dashboard.
+   const verified=(()=>{
+    try {const u=new URL(url);return u.protocol==='https:'&&u.hostname==='github.com'
+      &&u.pathname.startsWith('/'+config.repo+'/issues/'+number+'#')?u.href:null;} catch{return null;}
+   })();
+   return json({number,reportAvailable:Boolean(verified),reportUrl:verified,
+     status:matched.length?(issue.labels||[]).some(x=>(typeof x==='string'?x:x?.name)==='mss:review')?'REVUE HUMAINE':'RAPPORT DISPONIBLE':'AUCUN RAPPORT',
+     note:verified?'Rapport QA disponible sur GitHub. Il nécessite une revue humaine.':'Aucun rapport QA vérifié pour cette mission.'});
+  }
   const decision=path.match(/^missions\/(\d+)\/(approve|pause)$/);
   if(method==='POST'&&decision){
    const number=Number(decision[1]);if(!Number.isSafeInteger(number)||number<1)return bad('Numéro de mission invalide.');
