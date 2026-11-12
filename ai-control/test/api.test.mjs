@@ -70,3 +70,40 @@ test('human-review missions cannot be reapproved without review',async()=>{
   assert.ok(calls.every(x=>x.m==='GET'));
  }finally{globalThis.fetch=old;}
 });
+
+test('QA report endpoint links to verified pilot evidence without returning comment contents',async()=>{
+ const calls=[];const previous=globalThis.fetch;
+ globalThis.fetch=async(url,opts={})=>{
+  const p=new URL(url).pathname;calls.push(p);
+  if(p.endsWith('/issues/42'))return ok({number:42,state:'open',title:'[AGENT] QA',labels:[{name:'mss:mission'},{name:'mss:review'}],body:'**Robot :** qa'});
+  if(p.endsWith('/issues/42/comments'))return ok([
+   {body:'Unrelated comment',html_url:'https://github.com/owner/repo/issues/42#issuecomment-1'},
+   {body:'<!-- MSS_QA_PILOT_V1 -->\\nSECRET NEVER RETURN THIS',html_url:'https://github.com/owner/repo/issues/42#issuecomment-2'}
+  ]);
+  return ok({message:'Not Found'},404);
+ };
+ try{
+  const res=await onRequest(context('missions/42/qa-report'));
+  assert.equal(res.status,200);
+  const json=await res.json();
+  assert.equal(json.reportAvailable,true);
+  assert.equal(json.reportUrl,'https://github.com/owner/repo/issues/42#issuecomment-2');
+  assert.equal(json.status,'REVUE HUMAINE');
+  assert.ok(!JSON.stringify(json).includes('SECRET'));
+  assert.ok(calls.every(p=>!p.includes('/git/')));
+ }finally{globalThis.fetch=previous;}
+});
+test('QA report endpoint rejects forged external report links',async()=>{
+ const previous=globalThis.fetch;
+ globalThis.fetch=async(url)=>{
+  const p=new URL(url).pathname;
+  if(p.endsWith('/issues/42'))return ok({number:42,state:'open',title:'[AGENT] QA',labels:[{name:'mss:mission'}]});
+  if(p.endsWith('/issues/42/comments'))return ok([{body:'<!-- MSS_QA_PILOT_V1 -->',html_url:'https://evil.example/report'}]);
+  return ok({message:'Not Found'},404);
+ };
+ try{
+  const res=await onRequest(context('missions/42/qa-report'));
+  assert.equal(res.status,200);
+  assert.equal((await res.json()).reportAvailable,false);
+ }finally{globalThis.fetch=previous;}
+});
