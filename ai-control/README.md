@@ -69,3 +69,11 @@ Les sept tests actuels ne sollicitent aucun service externe : ils simulent la cr
 5. Après certification du QA, Débogueur et Développeur, autoriser progressivement les PR sur branches séparées.
 
 **Ce fichier ne demande pas de commande Git à l'utilisateur final.** La configuration initiale de l'hébergement et de l'identité est une opération d'administration unique ; une fois effectuée, les missions passent exclusivement par l'interface MSS AI CONTROL.
+
+## Transition d'approbation QA — correctif du 12/11/2026
+
+Lorsqu'une mission suspendue reçoit une nouvelle approbation, l'API retire désormais d'abord `mss:blocked` puis ajoute `mss:approved`. Ceci évite qu'un workflow déclenché sur l'événement `issues:labeled` constate encore l'état bloqué et ignore définitivement la mission. Si le retrait échoue, l'approbation n'est pas ajoutée. Une mission déjà en `mss:review` ne peut pas être réapprouvée directement : sa revue humaine doit être terminée par une procédure distincte.
+
+**Changement important par rapport à la V0.1 :** si la PR du pilote QA est déployée sur la branche par défaut, cliquer « Approuver la préparation » sur une mission QA éligible **peut lancer immédiatement** le workflow de lecture seule. La suspension bloque les futurs départs mais n'annule pas un job déjà en cours. Le dashboard avertit l'administrateur avant approbation.
+
+Le contrôle de bout en bout reste conditionné au déploiement privé Cloudflare Access et à la fusion volontaire du workflow QA. La présence du code dans une PR ne vaut pas activation.
