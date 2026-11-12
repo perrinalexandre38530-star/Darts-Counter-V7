@@ -19,9 +19,9 @@ try {
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const i = (y * width + x) * 3;
-      pixels[i] = (x + y) % 256;
-      pixels[i + 1] = (x * 2 + Math.floor(y / 4)) % 256;
-      pixels[i + 2] = (x ^ y) % 256;
+      pixels[i] = Math.round(125 + 105 * Math.sin(x / 85) * Math.cos(y / 120));
+      pixels[i + 1] = Math.round(124 + 100 * Math.cos(x / 137 + y / 99));
+      pixels[i + 2] = Math.round(135 + 90 * Math.sin(x / 116 + y / 158));
     }
   }
   const png = await sharp(pixels, { raw: { width, height, channels: 3 } })
