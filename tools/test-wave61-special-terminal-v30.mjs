@@ -4,7 +4,7 @@ const assert=(c,m)=>{if(!c)throw new Error(m)};
 const engine=read('src/lib/gameEngines/wave61Engine.ts');
 const catalog=read('src/games/dartsWave61.ts');
 const ids=[...catalog.matchAll(/\{ id: "([a-z0-9_]+)", label:/g)].map(m=>m[1]);
-assert(ids.length===65,`Catalogue ${ids.length}/65`);
+assert(ids.length===73,`Catalogue ${ids.length}/73`);
 for (const token of [
   'aliveTeams.length === 0 && state.players.length > 0',
   'const team = bestTeam(state)',
@@ -19,5 +19,5 @@ for (const id of ['zombie_siege','eperviers','ballon_prisonnier']) {
 }
 assert(engine.includes('state.roundIndex >= state.config.rounds'), 'V30 limite rounds absente');
 assert(engine.includes('if (state.phase !== "playing" || !state.players.length) return state'), 'V30 finished gate absent');
-console.log('✅ Wave61 V30 — terminaison moteurs spéciaux 65/65');
+console.log('✅ Wave61 V30 — terminaison moteurs spéciaux 73/73');
 console.log('✅ 0 survivant joueur/équipe · limites rounds · exceptions spéciales · finished gate');
