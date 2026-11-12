@@ -289,9 +289,9 @@ const results = [
 const vitePngWebp = await convertAndroidGeneratedPng({
   dist: DIST,
   quality: 84,
-  minSavingBytes: 12 * 1024,
-  minSavingFraction: 0.16,
-  minPsnrDb: 35,
+  minSavingBytes: 8 * 1024,
+  minSavingFraction: 0.10,
+  minPsnrDb: 34,
 });
 const wavMp3 = convertAndroidReferencedWav({ dist: DIST });
 const losslessDedup = deduplicateAndroidHashedMedia({ dist: DIST });
