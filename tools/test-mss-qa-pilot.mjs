@@ -85,12 +85,12 @@ test('only the repository owner can authorize a QA workflow', () => {
 test('QA deduplication accepts only authentic same-mission bot reports', () => {
   const candidate = {
     user: {login: 'github-actions[bot]', type: 'Bot'},
-    body: MARKER + '\\n**Mission :** #26 — QA\\nRapport',
+    body: MARKER + '\n**Mission :** #26 — QA\nRapport',
     html_url: 'https://github.com/owner/repo/issues/26#issuecomment-9'
   };
   assert.equal(isTrustedPilotComment(candidate, 26, 'owner/repo'), true);
   assert.equal(isTrustedPilotComment({...candidate, user: {login: 'attacker', type: 'User'}}, 26, 'owner/repo'), false);
   assert.equal(isTrustedPilotComment({...candidate, body: MARKER}, 26, 'owner/repo'), false);
-  assert.equal(isTrustedPilotComment({...candidate, body: MARKER + '\\n**Mission :** #25 — Other'}, 26, 'owner/repo'), false);
+  assert.equal(isTrustedPilotComment({...candidate, body: MARKER + '\n**Mission :** #25 — Other'}, 26, 'owner/repo'), false);
   assert.equal(isTrustedPilotComment({...candidate, html_url: 'https://attacker.example/report'}, 26, 'owner/repo'), false);
 });
