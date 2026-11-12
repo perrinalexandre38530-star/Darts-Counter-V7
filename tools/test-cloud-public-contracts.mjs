@@ -112,8 +112,10 @@ expect(
   /export function canUseNasOnlineApi\(\)[\s\S]{0,520}!activeSessionIsPublicSupabase\(\)[\s\S]{0,220}readNasAccessToken\(\)/.test(apiClient),
 );
 expect(
-  "Le stream ONLINE bascule lui aussi immédiatement sur Supabase en mode public",
-  /function subscribeOnlineStream[\s\S]{0,900}if \(!shouldUseNasForCurrentSession\(\)\)/.test(onlineApi),
+  "Le stream ONLINE utilise les abonnements Supabase Realtime avec nettoyage du canal",
+  /function subscribeOnlineStream[\s\S]{0,800}const channel = supabase[\s\S]{0,130}\.channel\(`ms-online:/.test(onlineApi)
+  && /function subscribeOnlineStream[\s\S]{0,2500}\.on\("postgres_changes"[\s\S]{0,140}table: "online_matches"/.test(onlineApi)
+  && /function subscribeOnlineStream[\s\S]{0,3500}supabase\.removeChannel\(channel\)/.test(onlineApi),
 );
 expect(
   "Le chat salon suit la session active et non le provider NAS global",
