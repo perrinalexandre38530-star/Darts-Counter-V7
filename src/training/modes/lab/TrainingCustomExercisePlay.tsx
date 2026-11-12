@@ -9,6 +9,8 @@ import { evaluateExtendedOutcome } from "../../profile/trainingExtendedOutcome";
 import { getTrainingTechniqueGuide } from "../../catalog/trainingTechniqueGuides";
 import { clearTrainingExerciseDraft, getEffectiveDraftSeconds, saveTrainingExerciseDraft } from "../../profile/trainingExerciseDraft";
 import { buildTrainingExercisePostSessionFeedback, getTrainingExerciseProgressionSnapshot, type TrainingExercisePostSessionFeedback } from "../../profile/trainingExerciseFeedback";
+import { buildTrainingResultVoiceText, pronounceDartSegments } from "../../profile/trainingVoiceScripts";
+import { useTrainingVoiceCoach } from "../../ui/useTrainingVoiceCoach";
 
 const clamp = (n:number,a:number,b:number)=>Math.max(a,Math.min(b,n));
 const visitScore=(v:TrainingDart[])=>v.reduce((s,d)=>s+d.score,0);
@@ -226,6 +228,26 @@ export default function TrainingCustomExercisePlay({config,onExit,exercise}:{con
   const technique=rule.kind==="technique";
   const techniqueSteps = technique ? getTrainingTechniqueGuide(rule.id, String(rule.params?.focus || "Reproduis un geste fluide.")) : [];
   const techniqueStage = Math.max(0, Math.min(techniqueSteps.length, Number(s.aux?.techniqueStage || 0)));
+  const voiceCoach = useTrainingVoiceCoach();
+  const rawCustomStep = technique
+    ? `${exercise.title}. Étape ${Math.min(techniqueStage + 1, techniqueSteps.length)} sur ${techniqueSteps.length}. ${techniqueSteps[techniqueStage]?.title || "Pratique libre"}. ${techniqueSteps[techniqueStage]?.cue || "Conserve une routine stable."}`
+    : `${exercise.title}. ${rule.subtitle}. ${rule.level1Label || "Suis l'objectif indiqué sur la cible."}`;
+  const spokenCustomStep = pronounceDartSegments(rawCustomStep);
+  const spokenCustomResult = result ? buildTrainingResultVoiceText({
+    title: exercise.title,
+    success: !!result.success,
+    performanceScore: Number(result.metrics?.performanceScore) || 0,
+    completionPct: Number(result.metrics?.completionPct) || 0,
+    accuracyPct: result.metrics?.precisionUnavailable ? null : Number(result.metrics?.accuracyPct ?? 0),
+    nextCue: exerciseFeedback?.nextObjective,
+  }) : "";
+  React.useEffect(() => {
+    if (!ruleMissing && !result) voiceCoach.announce(`custom:${exercise.id}:${technique ? techniqueStage : 0}`, spokenCustomStep);
+  }, [exercise.id, result, ruleMissing, spokenCustomStep, technique, techniqueStage, voiceCoach.announce]);
+  React.useEffect(() => {
+    if (result) voiceCoach.announce(`custom-result:${exercise.id}`, spokenCustomResult);
+  }, [exercise.id, result, spokenCustomResult, voiceCoach.announce]);
+
   const advanceTechnique = (direction: number) => {
     setState(prev => {
       const next: State = { ...prev, aux: { ...prev.aux, techniqueStage: Math.max(0, Math.min(techniqueSteps.length, Number(prev.aux?.techniqueStage || 0) + direction)) } };
@@ -248,6 +270,12 @@ export default function TrainingCustomExercisePlay({config,onExit,exercise}:{con
       progress={{value:rule.rounds?Math.min(rule.rounds,s.round):Math.min(100,s.points),max:rule.rounds||100,label:rule.family.toUpperCase()}}
       kpis={[{label:"DARTS",value:s.darts},{label:"POINTS",value:s.points},{label:"TOURS",value:rule.rounds?`${Math.min(s.round+1,rule.rounds)}/${rule.rounds}`:s.round+1},{label:"TEMPS",value:timeText||"—"}]}
     >
+      <div className="mssTrainingVoiceBar" aria-label="Conseils vocaux Awena">
+        <span className="mssTrainingVoiceHint" title={spokenCustomStep}>✦ AWENA · {technique ? `ÉTAPE ${techniqueStage+1}` : "CONSEIL"}<span>{technique ? techniqueSteps[techniqueStage]?.title || "Pratique libre" : rule.subtitle}</span></span>
+        <button type="button" onClick={() => voiceCoach.say(spokenCustomStep)} aria-label="Écouter le conseil Awena">🔊</button>
+        <button type="button" aria-pressed={voiceCoach.automatic} className={voiceCoach.automatic ? "is-active" : ""} onClick={() => voiceCoach.setAuto(!voiceCoach.automatic)}>AUTO {voiceCoach.automatic ? "✓" : "○"}</button>
+      </div>
+      {voiceCoach.notice && <div className="mssTrainingVoiceNotice" role="status">{voiceCoach.notice}</div>}
       {technique ? <div style={{padding:"16px 12px",display:"grid",gap:12}}>
         <div style={{fontSize:10,fontWeight:950,letterSpacing:1,color:"#27dcff"}}>PARCOURS TECHNIQUE MSS • {techniqueStage < techniqueSteps.length ? `ÉTAPE ${techniqueStage+1}/${techniqueSteps.length}` : "PRATIQUE LIBRE"}</div>
         <div style={{display:"flex",gap:6}}>{techniqueSteps.map((step,index)=><div key={step.title} aria-label={`Étape ${index+1}`} style={{flex:1,height:6,borderRadius:99,background: index <= techniqueStage ? "#27dcff" : "rgba(255,255,255,.12)"}}/>)}</div>
@@ -267,6 +295,6 @@ export default function TrainingCustomExercisePlay({config,onExit,exercise}:{con
     <TrainingResultModal summaryCards={result?.metrics?.precisionUnavailable ? [
       { label: "SCORE", value: result?.stats?.score ?? 0 }, { label: "FLÉCHETTES", value: result?.stats?.darts ?? 0 },
       { label: "TOUCHES", value: "—" }, { label: "PRÉCISION", value: "Non mesurée" },
-    ] : undefined} open={!!result} success={!!result?.success} title={result?.success?"Objectif atteint":"Objectif à retenter"} stats={result?.stats||makeTrainingStats({darts:0,hits:0,points:0,startedAt:Date.now()})} metrics={result?[{label:"EXERCICE",value:exercise.title},{label:result.outcome?.metricLabel||"SCORE",value:result.outcome?.metricValue??s.points},{label:"PERFORMANCE",value:`${Math.round(result.metrics?.performanceScore||0)}/100`},{label:"NIVEAU",value:`${exerciseFeedback?.afterLevel??0}/5`}]:[]} note={exerciseFeedback?<div style={{padding:10,borderRadius:12,background:exerciseFeedback.levelUp?"rgba(80,255,174,.07)":"rgba(39,220,255,.06)",border:exerciseFeedback.levelUp?"1px solid rgba(80,255,174,.22)":"1px solid rgba(39,220,255,.18)"}}><div style={{fontSize:8,fontWeight:950,letterSpacing:1,opacity:.58}}>PROGRESSION PERSONNELLE</div><div style={{marginTop:4,fontSize:12,fontWeight:1000}}>{exerciseFeedback.masteredNow?"MAÎTRISE DÉBLOQUÉE":exerciseFeedback.levelUp?`NIVEAU ${exerciseFeedback.afterLevel}/5 DÉBLOQUÉ`:`NIVEAU ${exerciseFeedback.afterLevel}/5`}</div><div style={{marginTop:5,fontSize:9.2,lineHeight:1.42,opacity:.72}}>{exerciseFeedback.newRecord?`Nouveau record • ${exerciseFeedback.currentPerformance}/100. `:""}{exerciseFeedback.afterLevel>=5?"Exercice maîtrisé.":`Prochain objectif : ${exerciseFeedback.nextObjective}`}</div></div>:null} onClose={handleExit}/>
+    ] : undefined} open={!!result} success={!!result?.success} title={result?.success?"Objectif atteint":"Objectif à retenter"} stats={result?.stats||makeTrainingStats({darts:0,hits:0,points:0,startedAt:Date.now()})} metrics={result?[{label:"EXERCICE",value:exercise.title},{label:result.outcome?.metricLabel||"SCORE",value:result.outcome?.metricValue??s.points},{label:"PERFORMANCE",value:`${Math.round(result.metrics?.performanceScore||0)}/100`},{label:"NIVEAU",value:`${exerciseFeedback?.afterLevel??0}/5`}]:[]} note={<div className="mssTrainingResultVoice"><button type="button" onClick={() => voiceCoach.say(spokenCustomResult)}>🔊 ÉCOUTER LE BILAN AWENA</button>{exerciseFeedback?<div style={{padding:10,borderRadius:12,background:exerciseFeedback.levelUp?"rgba(80,255,174,.07)":"rgba(39,220,255,.06)",border:exerciseFeedback.levelUp?"1px solid rgba(80,255,174,.22)":"1px solid rgba(39,220,255,.18)"}}><div style={{fontSize:8,fontWeight:950,letterSpacing:1,opacity:.58}}>PROGRESSION PERSONNELLE</div><div style={{marginTop:4,fontSize:12,fontWeight:1000}}>{exerciseFeedback.masteredNow?"MAÎTRISE DÉBLOQUÉE":exerciseFeedback.levelUp?`NIVEAU ${exerciseFeedback.afterLevel}/5 DÉBLOQUÉ`:`NIVEAU ${exerciseFeedback.afterLevel}/5`}</div><div style={{marginTop:5,fontSize:9.2,lineHeight:1.42,opacity:.72}}>{exerciseFeedback.newRecord?`Nouveau record • ${exerciseFeedback.currentPerformance}/100. `:""}{exerciseFeedback.afterLevel>=5?"Exercice maîtrisé.":`Prochain objectif : ${exerciseFeedback.nextObjective}`}</div></div>:null}</div>} onClose={handleExit}/>
   </>;
 }

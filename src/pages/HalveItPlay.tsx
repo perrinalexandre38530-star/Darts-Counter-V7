@@ -411,7 +411,12 @@ export default function HalveItPlay(props: any) {
       if (saveStatus === "saved") clearDartsMatchDraft(draftMode, getStorageUser());
       return;
     }
-    if (!state.history.length && !throwDarts.length) return;
+    // Annuler la première volée (ou effacer la dernière fléchette d'une volée
+    // non validée) rend la partie vierge : ne pas conserver un brouillon périmé.
+    if (!state.history.length && !throwDarts.length) {
+      clearDartsMatchDraft(draftMode, getStorageUser());
+      return;
+    }
     writeDartsMatchDraft(draftMode, config as any, {
       state, throwDarts, multiplier, lastUndo: undoStack.at(-1) || null, matchId: matchIdRef.current,
     }, getStorageUser());

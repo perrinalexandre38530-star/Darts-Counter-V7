@@ -24,7 +24,7 @@ const tickerAliases: Record<string, string> = {
   "president": "president",
   "killer progressif": "killer",
   "killer progressive": "killer",
-  "ptit_hun": "ptit_1",
+  "game_170": "v170", "170": "v170", "ptit_hun": "ptit_1",
   "p_tit_1": "ptit_1",
   "p tit 1": "ptit_1",
   "departements": "territories_fr",

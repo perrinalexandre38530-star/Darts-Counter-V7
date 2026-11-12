@@ -1,6 +1,6 @@
 import React from "react";
 import "./tossitResponsive.css";
-import TossitConfigV2 from "./TossitConfigV2";
+import TossitConfigV2, { AwenaConfigMedallion } from "./TossitConfigV2";
 import type { TossitSetupStyle } from "./tossitConfigPreset";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
@@ -143,14 +143,16 @@ function useCopy() {
   const english = String(lang || "fr").toLowerCase().split("-")[0] !== "fr";
   return (fr: string, en: string) => english ? en : fr;
 }
-function Header({ title, mode, onBack }: { title: string; mode: TossitMode | "games"; onBack: () => void }) {
+function Header({ title, mode, onBack, play = false }: { title: string; mode: TossitMode | "games"; onBack: () => void; play?: boolean }) {
   const { theme } = useTheme();
   const tr = useCopy();
   const { lang } = useLang();
-  return <div style={{ position: "relative", marginBottom: 14 }}>
+  return <div className={play ? "tossit-play-ticker" : undefined} style={{ position: "relative", marginBottom: 14 }}>
     <img className="tossit-header-img" src={tickerForTossit(mode, lang)} alt={`TOSSIT • ${title}`} style={{ width: "100%", height: "clamp(90px,23vw,140px)", objectFit: "cover", borderRadius: 15, display: "block", border: `1px solid ${theme.borderSoft || "#ffffff33"}` }} />
     <div style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}><BackDot onClick={onBack} color={ACCENT} /></div>
-    <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}><InfoDot color={ACCENT} title="Règles TOSSIT" content={<div style={{ lineHeight: 1.6 }}><strong>{title}</strong><p>{mode === "games" ? "TOSSIT : des fléchettes à ventouse lancées sur une surface lisse, autour du cochonnet ou d'un objectif." : tr(tinfo[mode], newModeEnglish[mode]?.help || tinfo[mode])}</p><a href={rulesUrl} target="_blank" rel="noreferrer">Règlement officiel TOSSIT</a></div>} /></div>
+    <div className="tossit-header-right" style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}>{play && mode !== "games"
+      ? <AwenaConfigMedallion mode={mode} phase="play" help={tr(tinfo[mode], newModeEnglish[mode]?.help || tinfo[mode])} />
+      : <InfoDot color={ACCENT} title="Règles TOSSIT" content={<div style={{ lineHeight: 1.6 }}><strong>{title}</strong><p>{mode === "games" ? "TOSSIT : des fléchettes à ventouse lancées sur une surface lisse, autour du cochonnet ou d'un objectif." : tr(tinfo[mode], newModeEnglish[mode]?.help || tinfo[mode])}</p><a href={rulesUrl} target="_blank" rel="noreferrer">Règlement officiel TOSSIT</a></div>} />}</div>
   </div>;
 }
 function Layout({ children, className = "" }: { children: React.ReactNode; className?: string }) {
@@ -209,12 +211,47 @@ function TossitEntrySummary({ children }: { children: React.ReactNode }) {
   return <div className="tossit-entry-summary" role="status" aria-live="polite">{children}</div>;
 }
 
-function ScoreCards({ state }: { state: TossitState }) {
-  return <div className="tossit-score-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(126px,1fr))", gap: 8, margin: "12px 0" }}>
-    {state.players.map((p, index) => <div key={p.id} className="tossit-score-card" style={{ ...panel, border: state.winnerId === p.id ? `2px solid ${ACCENT}` : ["target", "duel", "tictac", "reach", "rainbow", "chores"].includes(state.mode) && index === state.nextPlayerIndex && !state.finished ? `2px solid ${ACCENT}` : "1px solid #45606B", textAlign: "center", margin: 0 }}>
-      <div style={{ fontSize: 12, opacity: .8 }}>{p.name}</div><div style={{ fontSize: 38, fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>{state.scores[p.id] ?? 0}{state.mode === "reach" ? <span style={{ fontSize: 15, marginLeft: 4 }}>cm</span> : null}{state.mode === "chores" ? <span style={{ fontSize: 11, marginLeft: 4 }}>tâches</span> : null}</div>{state.winnerId === p.id ? <strong style={{ color: ACCENT }}>GAGNANT</strong> : null}
-    </div>)}
+// Same profile avatars/teams as CONFIG. Keep scoring and visual highlighting separate:
+// several modes score a simultaneous round instead of a sequential player's turn.
+const TOSSIT_ROUND_MODES = new Set<TossitMode>(["classic", "speed", "border", "battle", "sniper", "conquest", "cornhole", "thief_cop", "bottle"]);
+function TossitPlayerAvatar({ player, large = false }: { player: TossitPlayer; large?: boolean }) {
+  const initials = String(player.name || "?").trim().split(/\s+/).slice(0, 2).map(part => part[0] || "").join("").toUpperCase();
+  return <span className={`tossit-play-avatar${large ? " tossit-play-avatar--large" : ""}`} aria-hidden="true">
+    {player.avatarDataUrl ? <img src={player.avatarDataUrl} alt="" /> : <span>{initials || "?"}</span>}
+  </span>;
+}
+function ScoreCards({ state, tr }: { state: TossitState; tr: (fr: string, en: string) => string }) {
+  const isSharedRound = TOSSIT_ROUND_MODES.has(state.mode);
+  const unit = state.mode === "reach" ? "cm" : state.mode === "chores" ? tr("tâches", "chores") : ["battle", "conquest"].includes(state.mode) ? tr("manches", "rounds") : tr("points", "points");
+  return <div className="tossit-score-grid tossit-play-scoreboard" aria-label={tr("Tableau des scores", "Scoreboard")}>
+    {state.players.map((p, index) => {
+      const winner = state.winnerId === p.id;
+      const active = !state.finished && !isSharedRound && index === state.nextPlayerIndex;
+      return <div key={p.id} className="tossit-score-card tossit-play-score-card" data-active={active ? "true" : "false"} data-winner={winner ? "true" : "false"}>
+        <div className="tossit-play-score-card__identity"><TossitPlayerAvatar player={p}/><div className="tossit-play-score-card__name">{p.name}</div></div>
+        <div className="tossit-play-score-card__value">{state.scores[p.id] ?? 0}<small>{unit}</small></div>
+        <div className="tossit-play-score-card__status">{winner ? `🏆 ${tr("GAGNANT", "WINNER")}` : active ? tr("À TOI DE JOUER", "YOUR TURN") : tr("EN JEU", "IN GAME")}</div>
+      </div>;
+    })}
   </div>;
+}
+function TossitActivePlayerPanel({ state, tr }: { state: TossitState; tr: (fr: string, en: string) => string }) {
+  const shared = TOSSIT_ROUND_MODES.has(state.mode);
+  const active = state.players[state.nextPlayerIndex] ?? state.players[0];
+  const turnLabel = state.finished ? tr("PARTIE TERMINÉE", "GAME FINISHED") : shared ? tr("MANCHE COLLECTIVE", "SHARED ROUND") : tr("JOUEUR ACTIF", "ACTIVE PLAYER");
+  const subLabel = state.mode === "football_pitch" && !state.finished
+    ? (active.id === state.pitch.attackerId ? tr("ATTAQUE", "ATTACK") : tr("DÉFENSE", "DEFENCE"))
+    : shared ? tr("Saisir le résultat de la manche", "Enter this round's result") : `${state.dartsPerPlayer} ${tr("ventouses par tour", "darts per turn")}`;
+  return <section className="tossit-play-active" aria-label={turnLabel}>
+    <div className="tossit-play-active__label">{turnLabel}</div>
+    {shared ? <div className="tossit-play-active__row">
+      <div className="tossit-play-active__stack">{state.players.slice(0, 4).map(p => <TossitPlayerAvatar key={p.id} player={p} large />)}</div>
+      <div className="tossit-play-active__details"><strong>{tr("TOUS LES CAMPS", "ALL SIDES")}</strong><span>{subLabel}</span></div>
+    </div> : <div className="tossit-play-active__row">
+      <TossitPlayerAvatar player={active} large />
+      <div className="tossit-play-active__details"><strong>{active.name}</strong><span>{subLabel}</span></div>
+    </div>}
+  </section>;
 }
 export function TossitMenu({ go }: { go: (route: any, params?: any) => void }) {
   const tr = useCopy();
@@ -422,13 +459,17 @@ export function TossitPlay({ go, params, onFinish }: { go: (route: any, params?:
       setBorderDarts(Object.fromEntries(state.players.map((p) => [p.id, Array.from({ length: state.dartsPerPlayer }, () => ({ kind: "miss", cm: "" }))])));
     }
   };
-  return <Layout className="tossit-play-page"><Header title={meta.title} mode={mode} onBack={() => go("tossit_config", { mode })} />
+  return <Layout className="tossit-play-page"><Header title={meta.title} mode={mode} play onBack={() => go("tossit_config", { mode })} />
     <div className="tossit-play-grid">
     <aside className="tossit-play-sidebar" aria-label={tr("Score de la partie", "Match scoreboard")}>
-    <div className="tossit-round-label" role="status" style={{ textAlign: "center", fontSize: 12, color: ACCENT, letterSpacing: 1, fontWeight: 700 }}>{tossitProgress(state, tr)}</div>
-    <ScoreCards state={state} />
+      <div className="tossit-play-brand"><span>{params?.setupStyle === "arcade" ? "ARCADE" : params?.setupStyle === "quick" ? tr("PARTIE RAPIDE", "QUICK GAME") : "TOSSIT SCORING"}</span><b>{meta.title}</b></div>
+      <div className="tossit-round-label" role="status">{tossitProgress(state, tr)}</div>
+      <TossitActivePlayerPanel state={state} tr={tr} />
+      <ScoreCards state={state} tr={tr} />
+      {state.events.length > 0 && <div className="tossit-play-last-round"><span>{tr("DERNIÈRE SAISIE", "LATEST ENTRY")}</span><p>{state.events[state.events.length - 1].explanation}</p></div>}
     </aside>
     <div className="tossit-play-main">
+      {!state.finished && <div className="tossit-play-entry-heading"><strong>{tr("SAISIE DU TOUR", "ROUND ENTRY")}</strong><span>{tr("VALIDATION MANUELLE", "MANUAL CONFIRMATION")}</span></div>}
     {(["battle", "conquest"].includes(mode)) && <p style={{ textAlign: "center", fontSize: 12, opacity: .75, marginTop: -6 }}>{tr("Scores = manches gagnées, pas des points de fléchettes.", "Scores = rounds won, not dart points.")}</p>}
     {state.finished ? <section style={{ ...panel, textAlign: "center", border: `2px solid ${ACCENT}` }}><h2>{state.winnerId ? `🏆 ${state.players.find((p) => p.id === state.winnerId)?.name}` : mode === "chores" ? tr("SESSION TERMINÉE", "SESSION COMPLETE") : tr("MATCH NUL", "DRAW")}</h2><p>{tr("Résultat transmis à l'historique.", "Result sent to history.")}</p><div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}><button style={button} onClick={() => go("tossit_stats")}>{tr("Historique & stats", "History & stats")}</button><button style={secondary} onClick={() => go("games")}>{tr("Autre partie", "New game")}</button></div></section> : <>
       {mode === "classic" && <section className="tossit-mode-panel" style={panel}>

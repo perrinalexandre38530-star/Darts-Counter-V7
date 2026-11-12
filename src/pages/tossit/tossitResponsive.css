@@ -554,3 +554,208 @@
 }
 
 .tossit-v2-config .tossit-v2-quick-start { margin: 10px 0 0; width: 100%; min-height: 54px; }
+
+/* V108 PLAY identity — DartsCounter-style ticker + active profile + scoreboard.
+ * Every selector is scoped to TOSSIT PLAY; CONFIG, GAMES and other sports are untouched.
+ */
+.tossit-play-page {
+  background: radial-gradient(ellipse at 55% 0%, #13192e 0%, #080c18 42%, #04060d 100%) !important;
+  color: #f5f8ff !important;
+}
+.tossit-play-page .tossit-play-ticker { margin-bottom: 12px !important; isolation: isolate; }
+.tossit-play-page .tossit-play-ticker .tossit-header-img {
+  display: block;
+  width: 100%;
+  height: auto !important;
+  max-height: 180px;
+  aspect-ratio: 800 / 230;
+  object-fit: cover;
+  border-radius: 15px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.4);
+}
+.tossit-play-page .tossit-awena-dot {
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 50%;
+  padding: 3px;
+  display: grid;
+  place-items: center;
+  background: conic-gradient(#ffe600,#27ff88,#16e8ff,#ff38c7,#8d52ff,#ffe600);
+  box-shadow: 0 0 16px rgba(22,232,255,.4), 0 0 23px rgba(255,56,199,.3);
+  cursor: pointer;
+}
+.tossit-play-page .tossit-play-grid { align-items: start; }
+.tossit-play-page .tossit-play-sidebar { display: grid; gap: 10px; }
+.tossit-play-page .tossit-play-brand {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  color: #f7d886;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .12em;
+}
+.tossit-play-page .tossit-play-brand b { color: #d8e4f7; letter-spacing: .02em; font-size: 11px; text-align: right; }
+.tossit-play-page .tossit-round-label {
+  text-align: center;
+  padding: 9px 10px;
+  border-radius: 11px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  color: #48e7cf;
+  background: rgba(72,231,207,.09);
+  border: 1px solid rgba(72,231,207,.29);
+}
+.tossit-play-page .tossit-play-active {
+  position: relative;
+  padding: 12px;
+  background: linear-gradient(125deg, rgba(26,48,68,.95), rgba(5,12,29,.97));
+  border: 1px solid rgba(255,220,132,.43);
+  border-radius: 16px;
+  box-shadow: 0 9px 28px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.05);
+  overflow: hidden;
+}
+.tossit-play-page .tossit-play-active::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: linear-gradient(#f7d886, #48e7cf, #e063dc);
+}
+.tossit-play-page .tossit-play-active__label {
+  color: #f7d886;
+  letter-spacing: .12em;
+  font-size: 10px;
+  font-weight: 950;
+  margin-bottom: 9px;
+}
+.tossit-play-page .tossit-play-active__row { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.tossit-play-page .tossit-play-active__details { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tossit-play-page .tossit-play-active__details strong {
+  font-size: clamp(15px, 3.5vw, 22px);
+  line-height: 1.15;
+  font-weight: 950;
+  overflow-wrap: anywhere;
+}
+.tossit-play-page .tossit-play-active__details span { font-size: 12px; color: #b7c9dc; line-height: 1.35; }
+.tossit-play-page .tossit-play-active__stack { display: flex; align-items: center; padding-right: 5px; }
+.tossit-play-page .tossit-play-active__stack .tossit-play-avatar + .tossit-play-avatar { margin-left: -18px; }
+.tossit-play-page .tossit-play-avatar {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  border: 2px solid #48e7cf;
+  background: linear-gradient(145deg, #14405b, #091126);
+  color: #f7d886;
+  box-shadow: 0 0 13px rgba(72,231,207,.2);
+  font-weight: 950;
+  font-size: 13px;
+  overflow: hidden;
+}
+.tossit-play-page .tossit-play-avatar--large { width: 58px; height: 58px; border-color: #f7d886; font-size: 18px; }
+.tossit-play-page .tossit-play-avatar img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.tossit-play-page .tossit-play-scoreboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+  gap: 9px;
+  margin: 0;
+  min-width: 0;
+}
+.tossit-play-page .tossit-play-score-card {
+  min-width: 0;
+  margin: 0;
+  padding: 11px;
+  border-radius: 15px;
+  border: 1px solid rgba(155,178,211,.28);
+  background: linear-gradient(160deg, #172439, #090f21);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+}
+.tossit-play-page .tossit-play-score-card[data-active="true"] {
+  border-color: #48e7cf;
+  box-shadow: 0 0 15px rgba(72,231,207,.17), inset 0 0 0 1px rgba(72,231,207,.28);
+}
+.tossit-play-page .tossit-play-score-card[data-winner="true"] {
+  border-color: #f7d886;
+  box-shadow: 0 0 16px rgba(247,216,134,.18);
+}
+.tossit-play-page .tossit-play-score-card__identity { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.tossit-play-page .tossit-play-score-card__name { min-width: 0; font-size: 12px; font-weight: 850; line-height: 1.2; overflow-wrap: anywhere; }
+.tossit-play-page .tossit-play-score-card__value {
+  padding: 6px 0 2px;
+  text-align: center;
+  font-size: clamp(28px, 5.5vw, 43px);
+  font-weight: 1000;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  color: #f8faff;
+  text-shadow: 0 0 14px rgba(72,231,207,.18);
+}
+.tossit-play-page .tossit-play-score-card__value small { display: block; font-size: 11px; font-weight: 850; color: #abc0d3; margin-top: 5px; }
+.tossit-play-page .tossit-play-score-card__status {
+  margin-top: 6px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  font-size: 10px;
+  text-align: center;
+  font-weight: 900;
+  letter-spacing: .03em;
+  color: #48e7cf;
+}
+.tossit-play-page .tossit-play-last-round {
+  padding: 11px 12px;
+  border: 1px solid rgba(255,255,255,.13);
+  background: rgba(11,18,34,.82);
+  border-radius: 14px;
+  overflow-wrap: anywhere;
+}
+.tossit-play-page .tossit-play-last-round span { font-weight: 950; letter-spacing: .09em; font-size: 10px; color: #f7d886; }
+.tossit-play-page .tossit-play-last-round p { margin: 6px 0 0; font-size: 12px; line-height: 1.42; color: #dce8f6; }
+.tossit-play-page .tossit-play-main {
+  border: 1px solid rgba(110,229,215,.16);
+  border-radius: 17px;
+  padding: 12px;
+  background: rgba(7,12,26,.78);
+}
+.tossit-play-page .tossit-play-entry-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 0 0 14px;
+  padding: 2px 2px 10px;
+  border-bottom: 1px solid rgba(72,231,207,.2);
+}
+.tossit-play-page .tossit-play-entry-heading strong { font-size: 13px; letter-spacing: .11em; color: #f7d886; }
+.tossit-play-page .tossit-play-entry-heading span { color: #48e7cf; font-size: 10px; font-weight: 850; }
+.tossit-play-page .tossit-mode-panel {
+  background: linear-gradient(145deg, rgba(17,30,47,.96), rgba(8,17,31,.97)) !important;
+  border-color: rgba(145,231,213,.24) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+}
+@media (max-width: 599px) {
+  .tossit-play-page .tossit-play-sidebar { gap: 8px; }
+  .tossit-play-page .tossit-play-main { margin-top: 10px; padding: 9px; }
+  .tossit-play-page .tossit-play-scoreboard { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .tossit-play-page .tossit-play-score-card { padding: 9px; }
+  .tossit-play-page .tossit-play-score-card__value { font-size: clamp(26px, 8vw, 34px); }
+}
+@media (orientation: landscape) and (min-width: 600px) {
+  .tossit-play-page .tossit-play-sidebar {
+    max-height: calc(100dvh - 165px);
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+  .tossit-play-page .tossit-play-scoreboard { grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)) !important; }
+  .tossit-play-page .tossit-play-score-card__value { font-size: clamp(25px, 3vw, 37px); }
+  .tossit-play-page .tossit-play-main { padding: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tossit-play-page .tossit-play-score-card { transition: none; }
+}

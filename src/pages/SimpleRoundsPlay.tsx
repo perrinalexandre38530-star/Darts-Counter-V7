@@ -378,7 +378,7 @@ export default function SimpleRoundsPlay(props: any) {
       objective: 0,
       humansCount: 1,
     };
-  const isQuickParty = variantId === "super_bull" && (
+  const isQuickParty = (
     (cfg as any)?.quickParty === true ||
     String((cfg as any)?.partyMode || (cfg as any)?.entryMode || "").toLowerCase() === "quick"
   );

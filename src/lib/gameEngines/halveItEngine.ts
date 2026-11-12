@@ -384,13 +384,16 @@ export function cloneHalveItState(state: HalveItState): HalveItState {
 }
 
 export function playHalveItVisit(previous: HalveItState, dartsInput: GameDart[]): HalveItState {
-  if (previous.finished) return previous;
+  // Sécurité côté moteur : une volée HALVE-IT/SPLIT SCORE comprend toujours
+  // trois fléchettes. Ne jamais compléter implicitement une saisie incomplète
+  // par des MISS : cela fausserait les statistiques et la pénalité ÷ 2.
+  if (previous.finished || !Array.isArray(dartsInput) || dartsInput.length !== 3
+    || dartsInput.some((dart) => !dart || typeof dart !== "object")) return previous;
   const state = cloneHalveItState(previous);
   const playerId = state.turnOrder[state.activePlayerIndex];
   if (!playerId) return state;
   const target = currentTarget(state);
-  const darts = (dartsInput || []).slice(0, 3).map((dart) => ({ ...dart }));
-  while (darts.length < 3) darts.push({ bed: "MISS" });
+  const darts = dartsInput.map((dart) => ({ ...dart }));
 
   const validScores = darts.map((dart) => halveItTargetScore(target, dart));
   const validHits = validScores.filter((score) => score > 0).length;

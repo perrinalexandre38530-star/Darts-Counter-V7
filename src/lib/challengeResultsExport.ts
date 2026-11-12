@@ -1,4 +1,6 @@
 import { enrichChallengeReport } from './challengeFullReport';
+import { applyHistoricalSportResult } from './historySportReport';
+import tickerBabyFoot from '../assets/tickers/ticker_babyfoot_match.png';
 import { zipSync } from 'fflate';
 import tickerX01 from '../assets/tickers/ticker_x01.png';
 import tickerCricket from '../assets/tickers/ticker_cricket.png';
@@ -2100,6 +2102,11 @@ export function visualReportFromHistory(entry:any):ChallengeExportReport {
   footerBrand:'MULTISPORTS SCORING'};
  if(/^(training_)?x01(?:$|_)/.test(mode)||mode==='501'||mode==='301'||mode==='701'||mode==='901'){
   return applyX01Report(report,entry,payload,summary,result,source);
+ }
+ applyHistoricalSportResult(report, entry, mode);
+ if (report.players.some(p=>p.scoreSecondary==='Résultat de l’équipe') || report.title === 'MÖLKKY') {
+  if (report.title === 'BABY-FOOT') report.tickerSrc = tickerBabyFoot;
+  return report;
  }
  // Use the mode's own recorded units rather than treating every result as points.
  const isPointsMode=/challenge|top_10|split_score|hi_score|count_up|shanghai|petanque|molkky|bowling|gotcha|attrape/i.test(mode);

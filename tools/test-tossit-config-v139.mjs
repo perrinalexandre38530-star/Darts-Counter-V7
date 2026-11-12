@@ -38,10 +38,11 @@ assert.equal(tossitSelectionError('classic', ['p1', 'p1'], 'players'), 'duplicat
 const view = readFileSync('src/pages/tossit/TossitConfigV2.tsx', 'utf8');
 const screen = readFileSync('src/pages/tossit/TossitScreens.tsx', 'utf8');
 const css = readFileSync('src/pages/tossit/tossitResponsive.css', 'utf8');
-for (const name of ['PlayerPagedSelector', 'TeamSelectorV2', 'ConfigTickerHeader', 'BackDot', 'useAwenaOptional', 'loadTeamsBySport("tossit")', 'tossitSetupPreset', 'newTossitGame', 'memberIds: playerIds.slice()', 'onModeChange', 'setupStyle', 'selectedTeamIds', 'selectedProfileIds']) {
+for (const name of ['PlayerPagedSelector', 'TeamSelectorV2', 'BackDot', 'useAwenaOptional', 'loadTeamsBySport("tossit")', 'tossitSetupPreset', 'newTossitGame', 'memberIds: playerIds.slice()', 'onModeChange', 'setupStyle', 'selectedTeamIds', 'selectedProfileIds']) {
   assert.ok(view.includes(name), `${name} wired in new config`);
 }
-for (const name of ['"guided"', '"complete"', '"quick"', '"arcade"', 'tossit-v2-steps', 'tossit-v2-start-bar', 'aria-pressed', 'modeTopic: "config"', 'setRuntime({ sport: "tossit"']) assert.ok(view.includes(name), `setup UI ${name}`);
+assert.ok(view.includes('tossit-v2-ticker-shell') && view.includes('tossit-v2-ticker-side--left') && view.includes('tossit-v2-ticker-side--right'), 'Direct ticker overlay replaces legacy header');
+for (const name of ['"guided"', '"complete"', '"quick"', '"arcade"', 'tossit-v2-steps', 'tossit-v2-start-bar', 'aria-pressed', 'modeTopic: phase === "play" ? "rules" : "config"', 'setRuntime({ sport: "tossit"']) assert.ok(view.includes(name), `setup UI ${name}`);
 for (const name of ['modePicker: true', 'setupStyle: "quick"', 'setupStyle: "arcade"', 'TossitConfigV2', 'tossit_config']) assert.ok(screen.includes(name), `games entry ${name}`);
 for (const name of ['@media (max-width: 530px)', 'tossit-v2-steps', 'tossit-awena-dot', 'safe-area-inset-bottom', 'orientation: landscape', 'tossit-games-entrypaths']) assert.ok(css.includes(name), `responsive ${name}`);
 for (const file of ['src/pages/tossit/TossitScreens.tsx','src/pages/tossit/TossitConfigV2.tsx','src/pages/tossit/tossitConfigPreset.ts']) {

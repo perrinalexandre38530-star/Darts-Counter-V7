@@ -437,3 +437,14 @@
  .mssTrainingHubPrimaryNav button { min-width:0!important; }
  .mssTrainingHubPrimaryNav button span:last-child { font-size:clamp(6px,1.55vw,8px)!important; line-height:1.1!important; white-space:normal!important; overflow-wrap:anywhere!important; }
 }
+/* V107 W6 — compact spoken coaching. Never steals keyboard height on small screens. */
+.mssTrainingVoiceBar { flex:0 0 auto; display:flex; align-items:center; gap:5px; min-height:27px; width:100%; padding:2px 5px; box-sizing:border-box; border:1px solid rgba(39,220,255,.19); border-radius:10px; background:rgba(39,220,255,.045); }
+.mssTrainingVoiceHint { display:flex; min-width:0; flex:1; align-items:center; gap:5px; font-size:9px; font-weight:900; white-space:nowrap; color:#85eaff; overflow:hidden; }
+.mssTrainingVoiceHint span { min-width:0; color:#bdd8df; opacity:.75; font-size:9px; font-weight:500; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; }
+.mssTrainingVoiceBar button { flex:0 0 auto; border:1px solid rgba(39,220,255,.25); border-radius:8px; background:rgba(39,220,255,.08); min-height:24px; color:#dcf9ff; padding:3px 7px; cursor:pointer; font-size:10px; font-weight:900; }
+.mssTrainingVoiceBar button.is-active { background:rgba(80,255,174,.15); border-color:rgba(80,255,174,.45); color:#9cffd6; }
+.mssTrainingVoiceNotice { flex:0 0 auto; font-size:9px; line-height:1.2; color:#ffd86b; }
+.mssTrainingResultVoice button,.mssTrainingReplaySummary { border:1px solid rgba(39,220,255,.3); color:#b3f6ff; background:rgba(39,220,255,.08); border-radius:9px; font-weight:900; font-size:9px; padding:8px 10px; cursor:pointer; }
+.mssTrainingResultVoice button { margin-bottom:7px; }
+.mssTrainingReplaySummary { margin-top:8px; }
+@media (max-height:740px), (max-width:420px) { .mssTrainingVoiceBar { min-height:24px; padding:1px 3px; } .mssTrainingVoiceBar button { min-height:22px; padding:2px 5px; } .mssTrainingVoiceHint span { display:none; } }

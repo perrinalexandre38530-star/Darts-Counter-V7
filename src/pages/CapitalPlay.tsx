@@ -4,6 +4,7 @@ import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
 import ScoreInputHub from "../components/ScoreInputHub";
+import CapitalContractMatrix from "../components/stats/CapitalContractMatrix";
 import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
 import tickerCapital from "../assets/tickers/ticker_capital.png";
@@ -44,10 +45,24 @@ import { PRO_BOTS, proBotToProfile } from "../lib/botsPro";
 import { loadBotPlayers } from "../lib/bots";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { History } from "../lib/history";
+import { createCapitalHistoryWriteQueue } from "../lib/capitalHistoryQueue";
 import { buildDartsTelemetry } from "../lib/dartsTelemetry";
 import { playSfx, unlockAudio } from "../lib/sfx";
 import {
   applyCapitalVisit,
+  applyCapitalAggregateVisit,
+  capitalAggregateIsVerifiable,
+  capitalTotalPossible,
+  evaluateCapitalContract,
+  CAPITAL_CONTRACT_META,
+  CAPITAL_GRID_PRESETS,
+  CAPITAL_CUSTOM_VARIANT_LABEL,
+  capitalPresetContracts,
+  capitalContractSuccess,
+  type CapitalContractId,
+  type CapitalGridPresetId,
+  type CapitalDart,
+  auditCapitalVisitLog,
   buildCapitalMatchStats,
   buildCapitalPlayerStats,
   buildCapitalTeamStats,
@@ -63,6 +78,31 @@ const CAPITAL_SCORE_BACKGROUNDS = [
   money1Bg, money2Bg, money3Bg, money4Bg, money5Bg,
   money6Bg, money7Bg, money8Bg, money9Bg, money10Bg,
 ];
+
+/** Options exactes de la cible : pas de validation sur un simple total invérifiable. */
+const CAPITAL_GUIDED_DART_OPTIONS = [
+  { value: "", label: "— Choisir l'impact réel —" },
+  { value: "MISS", label: "MISS / tombée au sol (0)" },
+  { value: "OUTSIDE", label: "HORS CIBLE · restée plantée (0)" },
+  { value: "BULL25", label: "BULL25 (25)" },
+  { value: "DBULL50", label: "DBULL50 (50)" },
+  ...Array.from({ length: 20 }, (_, i) => i + 1).flatMap(n => ([
+    { value: `S${n}`, label: `S${n} · ${n} points` },
+    { value: `D${n}`, label: `D${n} · ${n * 2} points` },
+    { value: `T${n}`, label: `T${n} · ${n * 3} points` },
+    { value: `E${n}`, label: `S EXT ${n} · ${n} points` },
+  ])),
+];
+function decodeCapitalGuidedDart(value: string): CapitalDart | null {
+  if (value === "MISS") return { v: 0, mult: 1, zone: "miss" };
+  if (value === "OUTSIDE") return { v: 0, mult: 1, zone: "outside" };
+  if (value === "BULL25") return { v: 25, mult: 1 };
+  if (value === "DBULL50") return { v: 25, mult: 2 };
+  const match = /^(S|D|T|E)([1-9]|1[0-9]|20)$/.exec(value);
+  if (!match) return null;
+  return { v: Number(match[2]), mult: match[1] === "D" ? 2 : match[1] === "T" ? 3 : 1,
+    ...(match[1] === "E" ? { zone: "outer-single" as const } : {}) };
+}
 
 const CAPITAL_AUDIO = {
   intro: "/sounds/capital/jingle-capital.mp3",
@@ -93,33 +133,15 @@ function capitalRankColor(rank: number, fallback: string): string {
   return fallback;
 }
 
-function capitalContractTarget(contract: CapitalContractID): string {
-  switch (contract) {
-    case "n20": return "20";
-    case "n19": return "19";
-    case "n18": return "18";
-    case "n17": return "17";
-    case "n16": return "16";
-    case "n15": return "15";
-    case "n14": return "14";
-    case "exact_57": return "57";
-    case "triple_any": return "TRIPLE";
-    case "double_any": return "DOUBLE";
-    case "center": return "BULL";
-    case "peluche": return "≤ 20 • 0 MISS";
-    case "colors_3": return "3 COUL.";
-    case "suite": return "SUITE";
-    case "side": return "SIDE";
-    case "capital":
-    default:
-      return "MAX";
-  }
+function capitalContractTarget(contract: CapitalContractID, exactTarget = 42): string {
+  return contract === "exact_custom" ? String(exactTarget) : CAPITAL_CONTRACT_META[contract]?.short || "MAX";
 }
 
 function CapitalStatsTabIcon({ id, size = 22 }: { id: string; size?: number }) {
   const p = { fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round", strokeLinejoin: "round" } as const;
   if (id === "resume") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M4 19V11"/><path {...p} d="M10 19V5"/><path {...p} d="M16 19v-9"/><path {...p} d="M22 19V8"/></svg>;
   if (id === "evolution") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M3 18 9 12l4 3 7-9"/><path {...p} d="M15 6h5v5"/><path {...p} d="M3 21h18"/></svg>;
+  if (id === "tableau") return <svg width={size} height={size} viewBox="0 0 24 24"><rect {...p} x="2" y="3" width="20" height="18" rx="2"/><path {...p} d="M2 9h20M2 15h20M9 3v18M16 3v18"/></svg>;
   if (id === "contrats") return <svg width={size} height={size} viewBox="0 0 24 24"><rect {...p} x="5" y="3" width="14" height="18" rx="2"/><path {...p} d="M8 8h8M8 12h8M8 16h5"/><circle {...p} cx="17" cy="18" r="2.5"/></svg>;
   if (id === "precision") return <svg width={size} height={size} viewBox="0 0 24 24"><circle {...p} cx="12" cy="12" r="7"/><circle {...p} cx="12" cy="12" r="3"/><path {...p} d="M12 2v3M22 12h-3M12 22v-3M2 12h3"/></svg>;
   if (id === "comparatif") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M12 4v16M5 7h14M6 7l-3 6h6L6 7ZM18 7l-3 6h6l-3-6ZM8 20h8"/></svg>;
@@ -130,25 +152,9 @@ type BotLevel = "easy" | "normal" | "hard";
 
 export type CapitalModeKind = "official" | "custom";
 
-export type CapitalContractID =
-  | "capital"
-  | "n20"
-  | "triple_any"
-  | "n19"
-  | "double_any"
-  | "n18"
-  | "side"
-  | "n17"
-  | "suite"
-  | "n16"
-  | "colors_3"
-  | "n15"
-  | "exact_57"
-  | "n14"
-  | "center"
-  | "peluche";
+export type CapitalContractID = CapitalContractId;
 
-export type CapitalStartOrderMode = "random" | "fixed";
+export type CapitalStartOrderMode = "random" | "fixed" | "alternate" | "manual" | "bull";
 
 export type CapitalConfigPayload = {
   // ✅ Participants
@@ -175,11 +181,18 @@ export type CapitalConfigPayload = {
 
   // Mode / Contrats
   mode: CapitalModeKind;
+  gridVariant?: CapitalGridPresetId;
+  savedVariantId?: string;
+  savedVariantName?: string;
+  committeeSpecialContract?: CapitalContractID;
+  exactTarget?: number;
+  shanghaiBonus?: number;
+  packetAllowMultipliers?: boolean;
   customContracts?: CapitalContractID[];
   includeCapital?: boolean;
 
   // Saisie
-  inputMethod?: "keypad" | "dartboard" | "presets";
+  inputMethod?: "keypad" | "dartboard" | "presets" | "visit_score";
 
   // ✅ Victoire / tie-break (optionnel, depuis CapitalConfig)
   victoryMode?: "best_after_contracts" | "first_to_target";
@@ -199,35 +212,24 @@ export type CapitalConfigPayload = {
   botRisk?: "safe" | "normal" | "aggressive";
 };
 
-type Dart = { v: number; mult: 1 | 2 | 3 };
+type Dart = CapitalDart;
 
-const OFFICIAL_CONTRACTS: CapitalContractID[] = [
-  "capital",
-  "n20",
-  "triple_any",
-  "n19",
-  "double_any",
-  "n18",
-  "side",
-  "n17",
-  "suite",
-  "n16",
-  "colors_3",
-  "n15",
-  "exact_57",
-  "n14",
-  "center",
-];
+const OFFICIAL_CONTRACTS: CapitalContractID[] = CAPITAL_GRID_PRESETS.clubs15.contracts;
 
-const INFO_TEXT = `RÈGLE OFFICIELLE — CAPITAL (15 contrats)
+const INFO_TEXT = `CAPITAL — 4 CATÉGORIES
 
-Avant les contrats, chaque joueur lance 3 fléchettes pour se constituer son CAPITAL (score de départ).
-Ensuite, chaque contrat se joue en 1 volée de 3 fléchettes :
+• CLUB : OFFICIEL, MIROIR et HÉRITAGE.
+• BAR : DIAGONALE, PELUCHE, SHANGHAI, 42, ÉCONOME et À LA CARTE.
+• NIVEAU : STANDARD (17 tours), CHALLENGER (17 tours), EXPERT (18 tours) et LÉGENDES (30 tours).
+• MON CAPITAL : crée, nomme et enregistre tes variantes pour les retrouver sur cet appareil.
 
-- ✅ Contrat réussi → on AJOUTE le total de la volée au score
-- ❌ Contrat raté → le score est DIVISÉ PAR 2 (arrondi à l’entier inférieur)
-
-Contrats: Capital, 20, Triple, 19, Double, 18, Side (côte à côte), 17, Suite, 16, Couleur, 15, 57, 14, Centre.`;
+RÈGLES
+3 fléchettes définissent le capital de départ. Chaque contrat réussi ajoute la volée ; un échec divise le capital par 2 si l'option est activée.
+Poubelle : 3 fléchettes plantées hors zone de score, sans gain ni perte de capital.
+Diagonale : numéro, BULL25 extérieur (pas de DBULL50), numéro opposé.
+Couronne : 3 simples extérieurs (S EXT).
+Mauvaise main : confirmer les 3 fléchettes lancées de la main non directrice.
+Les détails de chaque contrat restent accessibles depuis l'icône d'information du bandeau.`
 
 /* ================================
    Densité / responsive (style X01End)
@@ -308,42 +310,7 @@ function isValidNumber(v: number): boolean {
 }
 
 function contractLabel(id: CapitalContractID): string {
-  switch (id) {
-    case "capital":
-      return "Capital";
-    case "n20":
-      return "20";
-    case "triple_any":
-      return "Triple";
-    case "n19":
-      return "19";
-    case "double_any":
-      return "Double";
-    case "n18":
-      return "18";
-    case "side":
-      return "Side";
-    case "n17":
-      return "17";
-    case "suite":
-      return "Suite";
-    case "n16":
-      return "16";
-    case "colors_3":
-      return "Couleur";
-    case "n15":
-      return "15";
-    case "exact_57":
-      return "57";
-    case "n14":
-      return "14";
-    case "center":
-      return "Centre";
-    case "peluche":
-      return "Peluche";
-    default:
-      return String(id);
-  }
+  return CAPITAL_CONTRACT_META[id]?.label || String(id);
 }
 
 type DartColor = "black" | "white" | "red" | "green" | "none";
@@ -531,8 +498,9 @@ function botMakeThrow(contract: CapitalContractID, level: any, risk: any): Dart[
 }
 
 
-function CapitalLiveStatsModal({ open, onClose, participants, playerStats, visits, selectedIndex, onSelectPlayer }: any) {
-  const [tab, setTab] = useState<"resume" | "evolution" | "contrats" | "precision" | "comparatif" | "volees">("resume");
+function CapitalLiveStatsModal({ open, onClose, participants, playerStats, visits, selectedIndex, onSelectPlayer, contracts, scores, initialTab = "resume" }: any) {
+  const [tab, setTab] = useState<"resume" | "evolution" | "contrats" | "tableau" | "precision" | "comparatif" | "volees">("resume");
+  useEffect(() => { if (open) setTab(initialTab === "tableau" ? "tableau" : "resume"); }, [open, initialTab]);
   const [compareSelected, setCompareSelected] = useState<number[]>(() => (participants || []).map((_: any, index: number) => index));
 
   useEffect(() => {
@@ -635,8 +603,9 @@ function CapitalLiveStatsModal({ open, onClose, participants, playerStats, visit
     ["Best volée", stats?.bestVisit ?? 0],
     ["Moy. volée", stats?.averageVisit ?? 0],
     ["AVG / 3", stats?.avg3 ?? 0],
-    ["Précision", `${stats?.hitRate ?? 0}%`],
+    ["Précision impacts", Number(stats?.knownDarts || 0) > 0 ? `${stats?.hitRate ?? 0}%` : "—"],
     ["Fléchettes", stats?.dartsThrown ?? 0],
+    ["Impacts non détaillés", stats?.unmeasuredDarts ?? 0],
     ["Pénalités", stats?.penaltyEvents ?? 0],
     ["Pénalité moy.", stats?.avgPenalty ?? 0],
     ["Série réussie", stats?.successStreakMax ?? 0],
@@ -644,7 +613,7 @@ function CapitalLiveStatsModal({ open, onClose, participants, playerStats, visit
     ["Secteur favori", stats?.topSector ? `${stats.topSector} (${stats?.topSectorHits || 0})` : "—"],
   ];
   const tabs = [
-    ["resume", "Résumé"], ["evolution", "Évolution"], ["contrats", "Contrats"],
+    ["resume", "Résumé"], ["evolution", "Évolution"], ["contrats", "Contrats"], ["tableau", "Tableau"],
     ["precision", "Précision"], ["comparatif", "Comparatif"], ["volees", "Volées"],
   ];
   const chartTooltip = { background: "rgba(4,8,14,.96)", border: `1px solid ${currentPlayerColor}55`, borderRadius: 10, color: "#fff", fontSize: 11 };
@@ -772,13 +741,73 @@ function CapitalLiveStatsModal({ open, onClose, participants, playerStats, visit
             <div style={{ height: 220, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)", padding: 8 }}><div style={{ fontSize: 9.5, fontWeight: 1000, color: "rgba(255,255,255,.82)", marginBottom: 5 }}>RÉUSSITE / PRÉCISION — COULEURS JOUEURS</div><ResponsiveContainer width="100%" height="90%"><BarChart data={compareData}><CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false}/><XAxis dataKey="name" tick={{ fill: "rgba(255,255,255,.6)", fontSize: 8 }}/><YAxis domain={[0,100]} width={32} tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }}/><Tooltip contentStyle={chartTooltip as any}/><Bar dataKey="reussite" name="Réussite" radius={[4,4,0,0]}>{compareData.map((row: any) => <Cell key={`success-${row.index}`} fill={row.color} fillOpacity={1}/>)}</Bar><Bar dataKey="precision" name="Précision" radius={[4,4,0,0]}>{compareData.map((row: any) => <Cell key={`precision-${row.index}`} fill={row.color} fillOpacity={.48}/>)}</Bar></BarChart></ResponsiveContainer></div>
           </div> : null}
 
-          {tab === "volees" ? <div style={{ display: "grid", gap: 6 }}>{rows.length ? [...rows].reverse().map((visit: any) => <div key={visit.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, padding: "8px 9px", borderRadius: 12, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)" }}><div style={{ minWidth: 0 }}><div style={{ color: currentPlayerColor, fontSize: 9, fontWeight: 1000 }}>{contractLabel(visit.contractId)} · R{Number(visit.contractIndex || 0) + 1}</div><div style={{ marginTop: 3, fontSize: 11, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(visit.darts || []).map((dart: any) => capitalDartLabel(dart)).join(" · ")}</div><div style={{ marginTop: 2, fontSize: 8.5, opacity: .5 }}>{visit.scoreBefore} → {visit.scoreAfter}</div></div><div style={{ textAlign: "right" }}><b style={{ color: visit.success ? "#71e7a6" : "#ff7b8d", fontSize: 15 }}>{visit.success ? `+${visit.visitScore}` : `-${visit.penaltyLost || 0}`}</b><div style={{ fontSize: 8, opacity: .55 }}>{visit.success ? "RÉUSSI" : "ÉCHEC"}</div></div></div>) : <div style={{ opacity: .55, padding: 14 }}>Aucune volée enregistrée.</div>}</div> : null}
+          {tab === "tableau" ? <CapitalContractMatrix contracts={contracts || []} participants={participants || []} visits={visits || []} scores={scores} compact /> : null}
+          {tab === "volees" ? <div style={{ display: "grid", gap: 6 }}>{rows.length ? [...rows].reverse().map((visit: any) => <div key={visit.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, padding: "8px 9px", borderRadius: 12, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)" }}><div style={{ minWidth: 0 }}><div style={{ color: currentPlayerColor, fontSize: 9, fontWeight: 1000 }}>{contractLabel(visit.contractId)} · R{Number(visit.contractIndex || 0) + 1}</div><div style={{ marginTop: 3, fontSize: 11, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{visit.scoreInputMode === "visit_score" ? `SCORE VOLÉE · ${visit.visitScore} · ${visit.dartsUsed || 3} flèche(s)` : (visit.darts || []).map((dart: any) => capitalDartLabel(dart)).join(" · ")}</div><div style={{ marginTop: 2, fontSize: 8.5, opacity: .5 }}>{visit.scoreBefore} → {visit.scoreAfter}</div></div><div style={{ textAlign: "right" }}><b style={{ color: visit.success ? "#71e7a6" : "#ff7b8d", fontSize: 15 }}>{visit.success ? `+${Number(visit.visitScore || 0) + Number(visit.bonusPoints || 0)}` : `-${visit.penaltyLost || 0}`}</b><div style={{ fontSize: 8, opacity: .55 }}>{visit.success ? "RÉUSSI" : "ÉCHEC"}</div></div></div>) : <div style={{ opacity: .55, padding: 14 }}>Aucune volée enregistrée.</div>}</div> : null}
         </div>
       </div>
     </div>
   );
 }
 
+
+/** Programme de la partie : lecture seule, la manche en cours est toujours visible. */
+function CapitalContractRouteModal({ open, onClose, contracts, currentIndex, visits, variantName }: {
+  open: boolean;
+  onClose: () => void;
+  contracts: CapitalContractID[];
+  currentIndex: number;
+  visits: CapitalVisit[];
+  variantName: string;
+}) {
+  const listRef = useRef<HTMLDivElement>(null);
+  const activeRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onEscape);
+    const list = listRef.current;
+    const active = activeRef.current;
+    if (list && active) {
+      list.scrollTop = Math.max(0, active.offsetTop - list.offsetTop - list.clientHeight / 2 + active.clientHeight / 2);
+    }
+    return () => window.removeEventListener("keydown", onEscape);
+  }, [open, currentIndex, onClose]);
+  if (!open) return null;
+  const completed = Math.min(currentIndex, contracts.length);
+  return <div role="presentation" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 14500, display: "grid", placeItems: "center", padding: 12, background: "rgba(0,4,10,.83)", backdropFilter: "blur(7px)", WebkitBackdropFilter: "blur(7px)" }}>
+    <section role="dialog" aria-modal="true" aria-label="Liste des contrats de la partie CAPITAL" onClick={(event) => event.stopPropagation()} style={{ width: "min(520px,96vw)", maxHeight: "min(86dvh,850px)", minHeight: 220, display: "flex", flexDirection: "column", overflow: "hidden", borderRadius: 21, color: "#fff", border: "1px solid rgba(255,205,83,.58)", background: "linear-gradient(155deg,#132433,#080e17 80%)", boxShadow: "0 24px 70px #000b,0 0 26px #ffce3426" }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "15px 14px 12px", borderBottom: "1px solid #ffffff1e" }}>
+        <span aria-hidden="true" style={{ fontSize: 26 }}>📜</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ color: "#ffd369", fontSize: 12, fontWeight: 1000, letterSpacing: .6 }}>CONTRATS DE LA PARTIE</div>
+          <div style={{ marginTop: 3, fontSize: 11, opacity: .75, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{variantName} · {contracts.length} tours</div>
+        </div>
+        <button type="button" aria-label="Fermer la liste des contrats" onClick={onClose} style={{ width: 36, height: 36, flex: "0 0 36px", borderRadius: "50%", border: "1px solid #ffffff38", background: "#ffffff12", color: "#fff", fontSize: 19, cursor: "pointer" }}>×</button>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "8px 14px", color: "#bac8d2", fontWeight: 900, fontSize: 10 }}>
+        <span>{completed} / {contracts.length} manches terminées</span>
+        <span style={{ color: "#ffdb75" }}>{completed >= contracts.length ? "PARTIE TERMINÉE" : `EN COURS : #${currentIndex + 1}`}</span>
+      </div>
+      <div ref={listRef} className="dc-scroll-thin" style={{ overflowY: "auto", overscrollBehavior: "contain", position: "relative", minHeight: 0, flex: 1, padding: "4px 10px 13px" }}>
+        {contracts.map((contractId, index) => {
+          const current = index === currentIndex && currentIndex < contracts.length;
+          const done = index < currentIndex || currentIndex >= contracts.length;
+          const lineVisits = (visits || []).filter((visit) => Number(visit.contractIndex) === index);
+          const passed = lineVisits.filter((visit) => visit.success).length;
+          return <div key={`${contractId}-${index}`} ref={current ? activeRef : undefined} aria-current={current ? "step" : undefined} style={{ display: "grid", gridTemplateColumns: "36px minmax(0,1fr) auto", gap: 8, alignItems: "center", minHeight: 53, padding: "7px 10px", margin: "4px 0", borderRadius: 12, border: current ? "1px solid #ffce48" : "1px solid #ffffff18", background: current ? "linear-gradient(90deg,rgba(255,196,47,.22),rgba(255,196,47,.06))" : done ? "rgba(77,255,137,.055)" : "rgba(255,255,255,.028)", boxShadow: current ? "inset 3px 0 #ffd15b,0 0 15px #ffcc3d24" : "none" }}>
+            <span style={{ color: current ? "#ffd15b" : done ? "#5fff99" : "#95a4b2", fontSize: 11, fontWeight: 1000 }}>#{index + 1}</span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: current ? "#ffe085" : "#fff", fontSize: 12, fontWeight: current ? 1000 : 900 }}>{CAPITAL_CONTRACT_META[contractId]?.label || contractId}</div>
+              {current ? <div style={{ marginTop: 3, fontSize: 9, opacity: .76 }}>{CAPITAL_CONTRACT_META[contractId]?.rule || ""}</div> : null}
+            </div>
+            <span style={{ fontSize: 9, whiteSpace: "nowrap", fontWeight: 950, color: current ? "#ffe085" : done ? "#59e897" : "#8494a2" }}>{current ? "▶ EN COURS" : done ? `✓ ${passed}/${lineVisits.length}` : "À VENIR"}</span>
+          </div>;
+        })}
+      </div>
+      <button type="button" onClick={onClose} style={{ height: 43, margin: "10px 12px 12px", borderRadius: 12, border: "1px solid #ffd36988", background: "#ffd3691a", color: "#ffe49a", fontWeight: 1000, cursor: "pointer" }}>RETOUR À LA PARTIE</button>
+    </section>
+  </div>;
+}
 
 function CapitalLiveRankingModal({ open, onClose, participants, scores, activeIndex }: any) {
   if (!open) return null;
@@ -791,8 +820,8 @@ function CapitalLiveRankingModal({ open, onClose, participants, scores, activeIn
 
   return <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 12100, background: "rgba(0,0,0,.78)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
     <div onClick={(event) => event.stopPropagation()} style={{ width: "min(520px,96vw)", maxHeight: "88dvh", overflow: "hidden", borderRadius: 22, border: "1px solid rgba(53,216,255,.42)", background: "linear-gradient(180deg,rgba(7,17,25,.99),rgba(2,7,12,.99))", boxShadow: "0 24px 90px rgba(0,0,0,.75),0 0 28px rgba(53,216,255,.10)", color: "#fff" }}>
-      <div style={{ position: "relative", minHeight: 54, display: "grid", placeItems: "center", borderBottom: "1px solid rgba(255,255,255,.08)", padding: "8px 54px" }}>
-        <img src={tickerClassements} alt="Classement" style={{ display: "block", width: "min(220px,70vw)", height: "auto", objectFit: "contain" }} />
+      <div style={{ position: "relative", minHeight: 60, display: "grid", placeItems: "center", borderBottom: "1px solid rgba(255,192,68,.30)", padding: "8px 54px", backgroundImage: `linear-gradient(90deg,rgba(10,6,1,.20),rgba(11,6,1,.50),rgba(10,6,1,.20)),url(${tickerCapital})`, backgroundSize: "cover", backgroundPosition: "center 76%" }}>
+        <img src={tickerClassements} alt="Classement" style={{ display: "block", width: "min(220px,70vw)", height: "auto", objectFit: "contain", filter: "sepia(.75) saturate(1.8) drop-shadow(0 0 8px rgba(255,181,53,.30))" }} />
         <button type="button" onClick={onClose} aria-label="Fermer" style={{ position: "absolute", right: 10, top: 9, width: 36, height: 36, borderRadius: "50%", border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.06)", color: "#fff", fontSize: 18, fontWeight: 1000 }}>×</button>
       </div>
       <div className="dc-scroll-thin" style={{ maxHeight: "calc(88dvh - 58px)", overflowY: "auto", padding: 10, display: "grid", gap: 6 }}>
@@ -874,7 +903,7 @@ export default function CapitalPlay(props: any) {
   }, [participants]);
 
   const contracts = useMemo<CapitalContractID[]>(() => {
-    if (cfg.mode === "official") return OFFICIAL_CONTRACTS;
+    if (cfg.mode === "official") return capitalPresetContracts(cfg.gridVariant || "clubs15", cfg.committeeSpecialContract);
 
     const base = Array.isArray(cfg.customContracts) ? cfg.customContracts.filter(Boolean) : [];
     const includeCapital = cfg.includeCapital !== false;
@@ -886,7 +915,7 @@ export default function CapitalPlay(props: any) {
     }
     if (out.length === 0) out = OFFICIAL_CONTRACTS;
     return out;
-  }, [cfg.mode, cfg.customContracts, cfg.includeCapital]);
+  }, [cfg.mode, cfg.gridVariant, cfg.committeeSpecialContract, cfg.customContracts, cfg.includeCapital]);
 
   const rounds = contracts.length;
 
@@ -899,10 +928,24 @@ export default function CapitalPlay(props: any) {
   const [visits, setVisits] = useState<CapitalVisit[]>([]);
   const [finishedRecord, setFinishedRecord] = useState<any>(null);
   const historySavedRef = useRef(false);
+  // Les checkpoints et la sauvegarde finale partagent une file FIFO. Sinon un
+  // checkpoint asynchrone de la volée précédente peut arriver après la fin.
+  const historyWriteQueueRef = useRef<((record: any) => Promise<void>) | null>(null);
+  if (!historyWriteQueueRef.current) {
+    historyWriteQueueRef.current = createCapitalHistoryWriteQueue(
+      (record: any) => History.upsert(record),
+      (error: unknown) => console.warn("[Capital] historique : écriture impossible", error),
+    );
+  }
+  function enqueueCapitalHistoryWrite(record: any) {
+    return historyWriteQueueRef.current!(record);
+  }
   const matchIdRef = useRef(`capital-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   const startedAtRef = useRef(Date.now());
 
   const [currentThrow, setCurrentThrow] = useState<Dart[]>([]);
+  const [manualValidated, setManualValidated] = useState(false);
+  const [outerSingleArmed, setOuterSingleArmed] = useState(false);
   const [multiplier, setMultiplier] = useState<1 | 2 | 3>(1);
 
   // ✅ Timer state (affichage)
@@ -913,6 +956,9 @@ export default function CapitalPlay(props: any) {
   const [liveStatsOpen, setLiveStatsOpen] = useState<boolean>(false);
   const [liveStatsPlayerIdx, setLiveStatsPlayerIdx] = useState<number>(0);
   const [liveRankingOpen, setLiveRankingOpen] = useState<boolean>(false);
+  const [contractRouteOpen, setContractRouteOpen] = useState<boolean>(false);
+  const [liveStatsInitialTab, setLiveStatsInitialTab] = useState<"resume" | "tableau">("resume");
+  const [pendingVisitScore, setPendingVisitScore] = useState<{ score: number; dartsUsed: 1 | 2 | 3; declaredSuccess: boolean; dartChoices: string[] } | null>(null);
 
   // ✅ Patch: tie-break + victoire + bots
   const [winnerIdx, setWinnerIdx] = useState<number | null>(null);
@@ -940,15 +986,36 @@ export default function CapitalPlay(props: any) {
   function cancelTurn() {
     setCurrentThrow([]);
     setMultiplier(1);
+    setManualValidated(false);
+    setOuterSingleArmed(false);
   }
 
-  function validateTurn(force: boolean = false, forcedThrow?: Dart[]) {
+  function requestVisitScore(score: number, options?: { dartsUsed?: number }) {
     if (isFinished) return;
+    if (!Number.isInteger(score) || score < 0 || score > 180) return;
+    const dartsUsed = Math.max(1, Math.min(3, Number(options?.dartsUsed) || 3)) as 1 | 2 | 3;
+    const exact = currentContract === "exact_57" ? 57 : currentContract === "exact_42" ? 42 : currentContract === "exact_69" ? 69 : currentContract === "exact_custom" ? Number(cfg?.exactTarget ?? 42) : null;
+    setPendingVisitScore({ score, dartsUsed, declaredSuccess: currentContract === "capital" || (exact !== null && score === exact), dartChoices: Array.from({ length: 3 }, () => "") });
+  }
+
+  function validateTurn(force: boolean = false, forcedThrow?: Dart[], aggregate?: { score: number; dartsUsed: 1 | 2 | 3; declaredSuccess: boolean }, source?: "visit_detailed") {
+    if (isFinished || (pendingVisitScore && !aggregate && !forcedThrow)) return;
     if (!force && currentThrow.length === 0) return;
 
-    const th = normalizeCapitalDarts((forcedThrow ? [...forcedThrow] : [...currentThrow]) as any) as Dart[];
+    if (aggregate && (!capitalAggregateIsVerifiable(currentContract) || !capitalTotalPossible(aggregate.score, aggregate.dartsUsed))) return;
+    const recordedDarts = (aggregate ? [] : forcedThrow ? [...forcedThrow] : [...currentThrow]) as Dart[];
+    const th = normalizeCapitalDarts(recordedDarts as any) as Dart[];
     const before = Number(scores[playerIdx] || 0);
-    const applied = applyCapitalVisit(before, currentContract as any, th as any, cfg?.failDivideBy2 !== false);
+    const rules = {
+      exactTarget: cfg?.exactTarget,
+      shanghaiBonus: cfg?.shanghaiBonus,
+      packetAllowMultipliers: cfg?.packetAllowMultipliers,
+      manualValidated: forcedThrow && source !== "visit_detailed" ? currentContract === "bad_hand" : manualValidated,
+    };
+    const applied = aggregate
+      ? applyCapitalAggregateVisit(before, currentContract as any, aggregate.score, aggregate.declaredSuccess, cfg?.failDivideBy2 !== false, rules, aggregate.dartsUsed)
+      : applyCapitalVisit(before, currentContract as any, th as any, cfg?.failDivideBy2 !== false, rules);
+    if ("requiresDetail" in applied && applied.requiresDetail) return;
 
     // Ambiance arcade CAPITAL : les bots passent directement par validateTurn(),
     // donc on restitue aussi leurs impacts ici sans doubler les sons des saisies humaines.
@@ -977,17 +1044,39 @@ export default function CapitalPlay(props: any) {
       playerIndex: playerIdx,
       playerName: participant?.nickname ?? participant?.name ?? `Joueur ${playerIdx + 1}`,
       teamId,
-      darts: th as any,
+      darts: recordedDarts as any,
+      ...(aggregate ? { scoreInputMode: "visit_score" as const, dartsUsed: aggregate.dartsUsed } :
+        { scoreInputMode: source === "visit_detailed" ? "visit_detailed" as const : "keypad" as const, dartsUsed: recordedDarts.length as 1 | 2 | 3 }),
       visitScore: applied.visitScore,
+      rawVisitScore: applied.rawVisitScore,
+      qualifiedDarts: applied.qualifiedDarts,
+      bonusPoints: applied.bonusPoints,
       success: applied.success,
       scoreBefore: before,
       scoreAfter: applied.scoreAfter,
       delta: applied.delta,
       penaltyLost: applied.penaltyLost,
       createdAt: Date.now(),
+      ...(currentContract === "exact_custom" ? { exactTarget: cfg?.exactTarget ?? 42 } : {}),
+      ...(currentContract === "bad_hand" ? { manualValidated: forcedThrow && source !== "visit_detailed" ? true : manualValidated } : {}),
     };
     const nextVisits = [...visits, newVisit];
     setVisits(nextVisits);
+
+    const targetReached = (() => {
+      if (cfg?.victoryMode !== "first_to_target" || !Number(cfg?.targetScore)) return false;
+      if (cfg?.participantMode !== "teams") return applied.scoreAfter >= Number(cfg.targetScore);
+      const team = cfg?.teams?.find((candidate: any) => String(candidate.id) === String(teamId));
+      if (!team) return false;
+      const memberIds = (team.players || team.playerIds || []).map(String);
+      const total = participants.reduce((sum, player, index) => memberIds.includes(String(player?.id)) ? sum + Number(nextScores[index] || 0) : sum, 0);
+      return total >= Number(cfg.targetScore);
+    })();
+
+    const nextPlayerIndex = (playerIdx + 1) % playerCount;
+    const nextRoundIndex = nextPlayerIndex === 0 ? roundIdx + 1 : roundIdx;
+    const savedRoundIndex = targetReached ? rounds : nextRoundIndex;
+    const savedPlayerIndex = targetReached ? playerIdx : nextPlayerIndex;
 
     // Sauvegarde durable après chaque volée : même une partie interrompue garde
     // l'ordre exact S/D/T/BULL/DBULL/MISS et peut être recalculée plus tard.
@@ -1002,30 +1091,17 @@ export default function CapitalPlay(props: any) {
         createdAt: startedAtRef.current,
         updatedAt: Date.now(),
         players: participants.map((p: any, i: number) => ({ id: String(p?.id ?? i), name: p?.nickname ?? p?.name ?? `Joueur ${i + 1}`, avatarDataUrl: p?.avatarDataUrl ?? null })),
-        summary: { mode: "capital", finished: false, finalScores: Object.fromEntries(participants.map((p: any, i: number) => [String(p?.id ?? i), Number(nextScores[i] || 0)])) },
-        payload: { mode: "capital", sport: "darts", config: cfg, scores: nextScores, roundIdx, playerIdx, visitHistory: nextVisits, visits: nextVisits, events: nextVisits, dartLog: nextVisits },
+        summary: { mode: "capital", finished: false, turnsCompleted: nextVisits.length, finalScores: Object.fromEntries(participants.map((p: any, i: number) => [String(p?.id ?? i), Number(nextScores[i] || 0)])) },
+        payload: { mode: "capital", sport: "darts", config: cfg, scores: nextScores, roundIdx: savedRoundIndex, playerIdx: savedPlayerIndex, visitHistory: nextVisits, visits: nextVisits, events: nextVisits, dartLog: nextVisits },
       };
-      const telemetry = buildDartsTelemetry(progress, progress.payload);
-      if (telemetry) {
-        progress.payload.telemetry = telemetry;
-        progress.payload.dartTelemetry = telemetry;
-        progress.summary.hitSummary = { ...telemetry.totals, byPlayer: telemetry.perPlayer };
-        progress.summary.perPlayer = telemetry.perPlayer;
-        progress.summary.telemetryExact = true;
-        progress.summary.telemetryCoverage = "full";
-      }
-      void History.upsert(progress);
+      // Checkpoint léger : History.upsert ne stocke pas la télémétrie dérivée
+      // en cours de jeu. Le calcul exhaustif ne doit se faire qu'à la fin.
+      // Les impacts bruts et le nombre exact de fléchettes restent dans nextVisits.
+      progress.summary.telemetryExact = !nextVisits.some((visit: CapitalVisit) => visit.scoreInputMode === "visit_score");
+      progress.summary.telemetryCoverage = progress.summary.telemetryExact ? "full" : "partial";
+      void enqueueCapitalHistoryWrite(progress);
     } catch {}
 
-    const targetReached = (() => {
-      if (cfg?.victoryMode !== "first_to_target" || !Number(cfg?.targetScore)) return false;
-      if (cfg?.participantMode !== "teams") return applied.scoreAfter >= Number(cfg.targetScore);
-      const team = cfg?.teams?.find((candidate: any) => String(candidate.id) === String(teamId));
-      if (!team) return false;
-      const memberIds = (team.players || team.playerIds || []).map(String);
-      const total = participants.reduce((sum, player, index) => memberIds.includes(String(player?.id)) ? sum + Number(nextScores[index] || 0) : sum, 0);
-      return total >= Number(cfg.targetScore);
-    })();
 
     if (targetReached) {
       setWinnerIdx(playerIdx);
@@ -1041,10 +1117,8 @@ export default function CapitalPlay(props: any) {
     }
 
     if (!targetReached) {
-      const nextP = (playerIdx + 1) % playerCount;
-      const nextR = nextP === 0 ? roundIdx + 1 : roundIdx;
-      setPlayerIdx(nextP);
-      setRoundIdx(nextR);
+      setPlayerIdx(nextPlayerIndex);
+      setRoundIdx(nextRoundIndex);
     }
 
     cancelTurn();
@@ -1140,16 +1214,27 @@ export default function CapitalPlay(props: any) {
     return () => window.removeEventListener("pointerdown", unlock);
   }, []);
 
-  const successNow = useMemo(() => {
-    if (isFinished) return false;
-    if (currentThrow.length === 0) return false;
-    const th = [...currentThrow];
-    while (th.length < 3) th.push({ v: 0, mult: 1 });
-    return contractSuccess(currentContract, th);
-  }, [isFinished, currentThrow, currentContract]);
+  const pendingRequiresDetail = !!pendingVisitScore && !capitalAggregateIsVerifiable(currentContract);
+  const pendingDetailedDarts: Dart[] = pendingVisitScore
+    ? pendingVisitScore.dartChoices.slice(0, pendingVisitScore.dartsUsed).map(decodeCapitalGuidedDart).filter(Boolean) as Dart[] : [];
+  const pendingDetailsComplete = !!pendingVisitScore && pendingDetailedDarts.length === pendingVisitScore.dartsUsed;
+  const pendingDetailTotal = pendingDetailedDarts.reduce((sum, dart) => sum + (dart.zone === "outside" || dart.zone === "miss" ? 0 : dart.v === 25 ? (dart.mult === 2 ? 50 : 25) : dart.v * dart.mult), 0);
+  const pendingEvaluation = pendingDetailsComplete ? evaluateCapitalContract(currentContract, pendingDetailedDarts, {
+    exactTarget: cfg?.exactTarget, packetAllowMultipliers: cfg?.packetAllowMultipliers,
+    manualValidated,
+  }) : null;
+
+  const currentEvaluation = useMemo(() => {
+    if (isFinished || currentThrow.length === 0) return null;
+    return evaluateCapitalContract(currentContract, currentThrow, {
+      exactTarget: cfg?.exactTarget, manualValidated, packetAllowMultipliers: cfg?.packetAllowMultipliers,
+    });
+  }, [isFinished, currentThrow, currentContract, cfg?.exactTarget, cfg?.packetAllowMultipliers, manualValidated]);
+  const successNow = Boolean(currentEvaluation?.success);
 
   // ✅ Timer par tour: affichage + timeout => volée = 3 misses (0) puis validation
   useEffect(() => {
+    if (pendingVisitScore) return; // Mettre le chrono en pause pendant la confirmation du contrat.
     const sec = Number(cfg?.turnTimerSec || 0);
     if (!sec || sec <= 0) {
       setTimeLeft(0);
@@ -1186,7 +1271,7 @@ export default function CapitalPlay(props: any) {
       window.clearTimeout(timeoutId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playerIdx, roundIdx, isFinished, cfg?.turnTimerSec, cfg?.botsEnabled, cfg?.botsAutoPlay]);
+  }, [playerIdx, roundIdx, isFinished, cfg?.turnTimerSec, cfg?.botsEnabled, cfg?.botsAutoPlay, pendingVisitScore]);
 
   // ✅ Bot auto-play: génère une volée puis valide
   useEffect(() => {
@@ -1205,7 +1290,7 @@ export default function CapitalPlay(props: any) {
     const risk = cfg?.botRisk ?? "normal";
 
     const id = window.setTimeout(() => {
-      const th = makeCapitalBotVisit(currentContract as any, level, risk) as Dart[];
+      const th = makeCapitalBotVisit(currentContract as any, level, risk, { exactTarget: cfg?.exactTarget }) as Dart[];
       validateTurn(true, th);
       botActingRef.current = false;
     }, Math.max(0, delay));
@@ -1225,6 +1310,7 @@ export default function CapitalPlay(props: any) {
     cfg?.botLevel,
     cfg?.botRisk,
     currentContract,
+    cfg?.exactTarget,
   ]);
 
   const winnerI = finalWinnerIdx ?? leaderIdx;
@@ -1242,6 +1328,15 @@ export default function CapitalPlay(props: any) {
   const playerStats = useMemo(() => rankCapitalPlayers(rawPlayerStats, winningPlayerIds), [rawPlayerStats, winningPlayerIds]);
   const teamStats = useMemo(() => buildCapitalTeamStats(normalizedTeams as any, playerStats), [normalizedTeams, playerStats]);
   const matchStats = useMemo(() => buildCapitalMatchStats(playerStats, teamStats, visits), [playerStats, teamStats, visits]);
+  const capitalIntegrity = useMemo(() => auditCapitalVisitLog(capitalPlayers as any, contracts as any, visits, {
+    includeCapital: cfg?.includeCapital,
+    startingCapital: cfg?.startingCapital,
+    failDivideBy2: cfg?.failDivideBy2,
+    exactTarget: cfg?.exactTarget,
+    shanghaiBonus: cfg?.shanghaiBonus,
+    packetAllowMultipliers: cfg?.packetAllowMultipliers,
+    expectedScores: scores,
+  }), [capitalPlayers, contracts, visits, scores, cfg?.includeCapital, cfg?.startingCapital, cfg?.failDivideBy2, cfg?.exactTarget, cfg?.shanghaiBonus, cfg?.packetAllowMultipliers]);
   const activeProfile = participants[playerIdx] || null;
   const activeStats = rawPlayerStats[playerIdx] || {};
   const activeName = activeProfile?.nickname || activeProfile?.name || `${t("generic.player", "Joueur")} ${playerIdx + 1}`;
@@ -1264,6 +1359,14 @@ export default function CapitalPlay(props: any) {
     const now = Date.now();
     const startedAt = Number(visits[0]?.createdAt || now);
     const savedMatchStats = { ...matchStats, durationMs: Math.max(Number(matchStats?.durationMs || 0), Math.max(0, now - startedAt)) };
+    const capitalAuditSummary = {
+      verified: capitalIntegrity.ok,
+      checkedVisits: capitalIntegrity.checkedVisits,
+      unverifiableVisits: capitalIntegrity.unverifiableVisits,
+      issueCount: capitalIntegrity.issues.length,
+      issueCodes: [...new Set(capitalIntegrity.issues.map((issue) => issue.code))],
+    };
+    if (!capitalIntegrity.ok) console.warn("[Capital] incohérences à vérifier avant toute réparation", capitalIntegrity.issues);
     const winnerIds = winningPlayerIds.filter(Boolean);
     const record = {
       id: matchIdRef.current,
@@ -1283,6 +1386,7 @@ export default function CapitalPlay(props: any) {
       summary: {
         mode: "capital",
         title: "CAPITAL",
+        capitalIntegrity: capitalAuditSummary,
         participantMode: cfg?.participantMode || "players",
         winnerId: winnerIds[0] || null,
         winnerIds,
@@ -1305,6 +1409,7 @@ export default function CapitalPlay(props: any) {
         mode: "capital",
         sport: "darts",
         visitHistory: visits,
+        capitalIntegrity: capitalAuditSummary,
         visits,
         events: visits,
         dartLog: visits,
@@ -1341,13 +1446,13 @@ export default function CapitalPlay(props: any) {
       record.payload.dartTelemetry = telemetry;
       record.summary.hitSummary = { ...telemetry.totals, byPlayer: telemetry.perPlayer };
       record.summary.perPlayerTelemetry = telemetry.perPlayer;
-      record.summary.telemetryExact = true;
-      record.summary.telemetryCoverage = "full";
+      record.summary.telemetryExact = !visits.some((visit: CapitalVisit) => visit.scoreInputMode === "visit_score");
+      record.summary.telemetryCoverage = record.summary.telemetryExact ? "full" : "partial";
     }
     setFinishedRecord(record);
-    void History.upsert(record as any).catch((error: any) => console.warn("[Capital] history persistence failed", error));
+    void enqueueCapitalHistoryWrite(record as any);
     try { props?.onFinish?.(record); } catch {}
-  }, [isFinished, visits, playerStats, teamStats, matchStats, winningPlayerIds, winnerTeam, cfg, contracts, props?.onFinish]);
+  }, [isFinished, visits, playerStats, teamStats, matchStats, winningPlayerIds, winnerTeam, cfg, contracts, capitalIntegrity, props?.onFinish]);
 
   const EndModal = () => {
     if (!isFinished || !endModalOpen) return null;
@@ -1445,7 +1550,8 @@ export default function CapitalPlay(props: any) {
             border: D.border,
             background: "rgba(18,20,34,0.96)",
             boxShadow: "0 24px 70px rgba(0,0,0,0.55)",
-            overflow: "hidden",
+            maxHeight: "94dvh",
+            overflowY: "auto",
           }}
         >
           {/* Header */}
@@ -1505,6 +1611,11 @@ export default function CapitalPlay(props: any) {
             </div>
           </div>
 
+          {!capitalIntegrity.ok && <div role="status" style={{ margin: "10px 14px 0", padding: 10, borderRadius: 10, border: "1px solid #ffad45", color: "#ffd28f", fontSize: 12 }}>
+            ⚠ Vérification des scores : {capitalIntegrity.issues.length} écart(s) détecté(s). Le résultat est conservé tel quel ; aucune correction automatique n'est appliquée.
+          </div>}
+          {/* Tableau commun à la partie et au résumé final. */}
+          <div style={{ padding: "12px 14px 0" }}><CapitalContractMatrix contracts={contracts} participants={participants} visits={visits} scores={scores} /></div>
           {/* Table */}
           <div style={{ padding: 14 }}>
             <div style={{ marginBottom: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: 8 }}>
@@ -1512,7 +1623,8 @@ export default function CapitalPlay(props: any) {
                 ["Contrats", matchStats.contractsPlayed],
                 ["Réussite", `${matchStats.successRate}%`],
                 ["Fléchettes", matchStats.totalDarts],
-                ["Précision", `${matchStats.hitRate}%`],
+                ["Précision impacts", Number(matchStats.knownDarts || 0) > 0 ? `${matchStats.hitRate}%` : "—"],
+                ["Impacts non détaillés", matchStats.unmeasuredDarts || 0],
                 ["Points gagnés", matchStats.totalPointsWon],
                 ["Capital perdu", matchStats.totalCapitalLost],
                 ["Best volée", matchStats.bestVisit],
@@ -1612,7 +1724,10 @@ export default function CapitalPlay(props: any) {
                 {cols.map((p) => cell(`-${p.stats?.biggestLoss ?? 0}`, p.i === winnerI))}
 
                 {rowLabelCell("Précision impacts")}
-                {cols.map((p) => cell(`${p.stats?.hitRate ?? 0}%`, p.i === winnerI))}
+                {cols.map((p) => cell(Number(p.stats?.knownDarts || 0) > 0 ? `${p.stats?.hitRate ?? 0}%` : "—", p.i === winnerI))}
+
+                {rowLabelCell("Fléchettes sans détail S/D/T")}
+                {cols.map((p) => cell(p.stats?.unmeasuredDarts ?? 0, p.i === winnerI))}
 
                 {rowLabelCell("S / D / T")}
                 {cols.map((p) => cell(`${p.stats?.singles ?? 0} / ${p.stats?.doubles ?? 0} / ${p.stats?.triples ?? 0}`, p.i === winnerI))}
@@ -1660,7 +1775,7 @@ export default function CapitalPlay(props: any) {
                 {visits.slice(-8).reverse().map((visit) => (
                   <div key={visit.id} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, fontSize: 11.5 }}>
                     <span><b>{visit.playerName}</b> • {contractLabel(visit.contractId as any)} • {visit.darts.map(capitalDartLabel as any).join(" · ")}</span>
-                    <b style={{ color: visit.success ? "#72f0a8" : "#ff8aa6" }}>{visit.success ? `+${visit.visitScore}` : `/${cfg?.failDivideBy2 === false ? "—" : "2"}`}</b>
+                    <b style={{ color: visit.success ? "#72f0a8" : "#ff8aa6" }}>{visit.success ? `+${Number(visit.visitScore || 0) + Number(visit.bonusPoints || 0)}` : `/${cfg?.failDivideBy2 === false ? "—" : "2"}`}</b>
                   </div>
                 ))}
               </div>
@@ -1681,7 +1796,7 @@ export default function CapitalPlay(props: any) {
         title="CAPITAL"
         tickerSrc={tickerCapital}
         left={<BackDot onClick={goBack} />}
-        right={<InfoDot title="Règles CAPITAL" content={INFO_TEXT} />}
+        right={<InfoDot title="Règles CAPITAL" content={`${INFO_TEXT}\n\nVariante : ${cfg.mode === "custom" ? (cfg.savedVariantName || CAPITAL_CUSTOM_VARIANT_LABEL) : CAPITAL_GRID_PRESETS[cfg.gridVariant || "clubs15"]?.label || "OFFICIEL"}\n\nContrat actuel : ${CAPITAL_CONTRACT_META[currentContract]?.rule || ""}`} />}
       />
 
       <div style={{ padding: "10px 8px 8px", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
@@ -1719,20 +1834,21 @@ export default function CapitalPlay(props: any) {
               <div style={{ marginTop: 4, color: "rgba(255,255,255,.48)", fontSize: 8.2, fontWeight: 950, letterSpacing: .42, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>#{Math.max(1, scoreRankByIndex.get(playerIdx) || playerIdx + 1)}/{playerCount}{activeTeam ? ` • ${activeTeam.name}` : ""}</div>
             </div>
 
-            <div style={{ gridColumn: "2 / 3", position: "relative", zIndex: 2, display: "flex", alignItems: "stretch", justifyContent: "center", minWidth: 0, overflow: "hidden", borderRadius: 17, background: "#050913", isolation: "isolate" }}>
+            <button type="button" onClick={() => setContractRouteOpen(true)} title="Voir tous les contrats dans l’ordre" aria-label="Afficher la liste des contrats de la partie" style={{ gridColumn: "2 / 3", position: "relative", zIndex: 2, display: "flex", alignItems: "stretch", justifyContent: "center", minWidth: 0, overflow: "hidden", borderRadius: 17, border: "1px solid rgba(255,207,87,.28)", background: "#050913", isolation: "isolate", cursor: "pointer", color: "inherit", padding: 0, boxShadow: "inset 0 0 10px #ffd05f15" }}>
               <div style={{ position: "absolute", inset: 0, borderRadius: 17, backgroundImage: `linear-gradient(180deg, rgba(4,8,16,.26), rgba(4,8,16,.60)), url(${targetBg})`, backgroundPosition: "center", backgroundSize: "cover", backgroundRepeat: "no-repeat" }} />
               <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 38, background: "linear-gradient(90deg, rgba(4,8,16,.98), rgba(4,8,16,.76) 44%, rgba(4,8,16,0))", pointerEvents: "none" }} />
               <div style={{ position: "absolute", left: 0, top: 9, bottom: 9, width: 1, background: "linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,207,87,.72), rgba(255,255,255,.02))", boxShadow: "0 0 12px rgba(255,207,87,.24)", pointerEvents: "none" }} />
               <div style={{ position: "relative", width: "100%", padding: "5px 4px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
                 <div style={{ color: "rgba(255,255,255,.62)", fontSize: 8.2, fontWeight: 950, letterSpacing: .75 }}>CONTRAT</div>
-                {!isFinished && String(contractLabel(currentContract)).trim().toLowerCase() !== String(capitalContractTarget(currentContract)).trim().toLowerCase() ? (
+                {!isFinished && String(contractLabel(currentContract)).trim().toLowerCase() !== String(capitalContractTarget(currentContract, cfg?.exactTarget)).trim().toLowerCase() ? (
                   <div style={{ marginTop: 1, color: "rgba(255,255,255,.76)", fontSize: 9.6, lineHeight: 1, fontWeight: 900, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{contractLabel(currentContract)}</div>
                 ) : null}
-                <div style={{ marginTop: 1, color: "#ffcf57", fontSize: capitalContractTarget(currentContract).length > 4 ? 22 : 46, lineHeight: .92, fontWeight: 1000, letterSpacing: capitalContractTarget(currentContract).length > 4 ? -.4 : -1.2, textShadow: "0 0 18px rgba(255,207,87,.38)" }}>{isFinished ? "—" : capitalContractTarget(currentContract)}</div>
+                <div style={{ marginTop: 1, color: "#ffcf57", fontSize: capitalContractTarget(currentContract, cfg?.exactTarget).length > 4 ? 22 : 46, lineHeight: .92, fontWeight: 1000, letterSpacing: capitalContractTarget(currentContract, cfg?.exactTarget).length > 4 ? -.4 : -1.2, textShadow: "0 0 18px rgba(255,207,87,.38)" }}>{isFinished ? "—" : capitalContractTarget(currentContract, cfg?.exactTarget)}</div>
                 <div style={{ marginTop: 3, color: "#35d8ff", fontSize: 8.4, fontWeight: 1000 }}>ROUND {Math.min(roundIdx + 1, rounds)}/{rounds}</div>
                 {timeLeft > 0 && !isFinished ? <div style={{ marginTop: 1, color: "#fff", fontSize: 8.2, fontWeight: 950 }}>⏱ {timeLeft}s</div> : null}
+                <div style={{ position: "absolute", bottom: 3, right: 5, color: "#ffdc6e", fontSize: 9, lineHeight: 1, opacity: .8 }} aria-hidden="true">▤</div>
               </div>
-            </div>
+            </button>
           </div>
         </section>
 
@@ -1753,44 +1869,30 @@ export default function CapitalPlay(props: any) {
           type="button"
           onClick={() => setLiveRankingOpen(true)}
           title="Afficher le classement live"
+          aria-label="Ouvrir le classement CAPITAL en direct"
           style={{
             width: "100%",
-            height: 34,
+            height: "clamp(38px, 5.5vw, 44px)",
             marginTop: 5,
-            padding: "2px 36px",
+            padding: 0,
             position: "relative",
-            display: "grid",
-            placeItems: "center",
+            display: "block",
             overflow: "hidden",
             borderRadius: 13,
-            border: "1px solid rgba(255,207,87,.18)",
-            background: "linear-gradient(90deg, rgba(255,207,87,.025), rgba(53,216,255,.035), rgba(255,207,87,.025))",
+            border: "1px solid rgba(255,194,68,.72)",
+            background: "#2a1205",
             cursor: "pointer",
-            boxShadow: "inset 0 0 18px rgba(0,0,0,.18)",
+            boxShadow: "inset 0 0 13px rgba(255,191,60,.22), 0 0 10px rgba(255,125,23,.12)",
           }}
         >
           <img
-            aria-hidden="true"
-            src={tickerClassements}
+            src="/images/capital/classements_capital_v155.webp"
             alt=""
-            style={{
-              position: "absolute",
-              left: "50%",
-              top: "50%",
-              width: "150%",
-              height: 76,
-              maxWidth: "none",
-              objectFit: "cover",
-              objectPosition: "center",
-              transform: "translate(-50%, -50%) scale(1.08)",
-              filter: "blur(6px) saturate(1.22) brightness(.78)",
-              opacity: .58,
-              pointerEvents: "none",
-            }}
+            aria-hidden="true"
+            draggable={false}
+            style={{ display: "block", width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", pointerEvents: "none" }}
           />
-          <div aria-hidden="true" style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,.22), rgba(0,0,0,.04) 50%, rgba(0,0,0,.22))", pointerEvents: "none" }} />
-          <img src={tickerClassements} alt="Classement" style={{ position: "relative", zIndex: 1, display: "block", width: "min(170px,48vw)", height: "auto", objectFit: "contain", opacity: .96, filter: "drop-shadow(0 0 5px rgba(53,216,255,.16))" }} />
-          <span style={{ position: "absolute", zIndex: 2, right: 9, top: "50%", transform: "translateY(-50%)", width: 21, height: 21, borderRadius: "50%", display: "grid", placeItems: "center", border: "1px solid rgba(255,207,87,.36)", color: "#ffcf57", fontSize: 12, fontWeight: 1000 }}>›</span>
+          <span aria-hidden="true" style={{ position: "absolute", zIndex: 1, right: 8, top: "50%", transform: "translateY(-50%)", width: 22, height: 22, borderRadius: "50%", display: "grid", placeItems: "center", border: "1px solid rgba(255,209,99,.75)", background: "rgba(15,9,4,.82)", color: "#ffe08a", fontSize: 16, fontWeight: 1000 }}>›</span>
         </button>
 
         <div
@@ -1861,9 +1963,20 @@ export default function CapitalPlay(props: any) {
         </div>
 
         {!isFinished ? (
+          <button type="button" onClick={() => { setLiveStatsPlayerIdx(playerIdx); setLiveStatsInitialTab("tableau"); setLiveStatsOpen(true); }}
+            title="Tableau des capitaux après chaque contrat" aria-label="TABLEAU · CONTRATS / JOUEURS"
+            style={{ width: "100%", height: "clamp(54px, 7vw, 72px)", marginTop: 6, padding: 0, borderRadius: 13, border: "1px solid rgba(255,178,51,.66)", background: "#230b02", display: "block", overflow: "hidden", cursor: "pointer", boxShadow: "inset 0 0 14px #ffb53336, 0 0 8px #ff9d2117" }}>
+            <picture style={{ display: "block", width: "100%", height: "100%", overflow: "hidden" }}>
+              <source media="(max-width: 600px)" srcSet="/images/capital/contrat_tableau_signature_mobile_v154.webp"/>
+              <img src="/images/capital/contrat_tableau_signature_v154.webp" alt="" aria-hidden="true" draggable={false} style={{ display: "block", width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", pointerEvents: "none" }}/>
+            </picture>
+          </button>
+        ) : null}
+
+        {!isFinished ? (
           <button
             type="button"
-            onClick={() => { setLiveStatsPlayerIdx(playerIdx); setLiveStatsOpen(true); }}
+            onClick={() => { setLiveStatsInitialTab("resume"); setLiveStatsPlayerIdx(playerIdx); setLiveStatsOpen(true); }}
             title="Ouvrir les statistiques détaillées"
             style={{
               width: "100%",
@@ -1935,8 +2048,41 @@ export default function CapitalPlay(props: any) {
           </div>
         ) : (
           <div style={{ marginTop: 5 }}>
+            <div style={{ display: ["outer_single", "poubelle", "bad_hand"].includes(currentContract) ? "block" : "none", marginBottom: ["outer_single", "poubelle", "bad_hand"].includes(currentContract) ? 7 : 0 }}>
+              {currentContract === "outer_single" ? (
+                <button type="button" onClick={() => setOuterSingleArmed((v) => !v)}
+                  style={{ marginTop: 8, borderRadius: 11, border: `1px solid ${outerSingleArmed ? "#35d8ff" : "rgba(255,255,255,.18)"}`, background: outerSingleArmed ? "rgba(53,216,255,.18)" : "rgba(255,255,255,.04)", color: "#fff", fontSize: 11, fontWeight: 1000, padding: "9px 12px" }}>
+                  {outerSingleArmed ? "✓ S EXT ARMÉ · prochain impact uniquement" : "S EXT · activer avant CHAQUE simple extérieur"}
+                </button>
+              ) : null}
+              {currentContract === "poubelle" ? (
+                <button type="button" disabled={currentThrow.length >= 3} onClick={() => pushDart({ v: 0, mult: 1, zone: "outside" })}
+                  style={{ marginTop: 8, padding: "10px 14px", borderRadius: 11, background: "rgba(255,207,87,.14)", border: "1px solid #ffcf57", color: "#fff", fontSize: 11, fontWeight: 1000, opacity: currentThrow.length >= 3 ? .5 : 1 }}>
+                  + HORS CIBLE · fléchette plantée (≠ MISS)
+                </button>
+              ) : null}
+              {currentContract === "bad_hand" ? (
+                <label style={{ display: "flex", gap: 9, alignItems: "center", marginTop: 8, fontSize: 11, fontWeight: 850, color: "#fff" }}>
+                  <input type="checkbox" checked={manualValidated} onChange={(event) => setManualValidated(event.target.checked)} />
+                  Je confirme : les 3 fléchettes ont été lancées de la mauvaise main
+                </label>
+              ) : null}
+              {currentThrow.length > 0 ? <div role="status" aria-live="polite" style={{ fontSize: 10, marginTop: 7, padding: "8px 10px", background: "rgba(10,19,29,.8)", borderRadius: 9, border: "1px solid rgba(255,255,255,.12)" }}>
+                <div style={{ color: "#e3eaf5" }}>{currentThrow.map(capitalDartLabel).join(" · ")}</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 5, fontWeight: 900 }}>
+                  <span style={{ color: "#a7b6c8" }}>BRUT : {currentEvaluation?.rawVisitScore ?? 0}</span>
+                  <span style={{ color: successNow ? "#4dff89" : "#ffad45" }}>CONTRAT : {currentEvaluation?.visitScore ?? 0}</span>
+                  <span style={{ color: successNow ? "#4dff89" : "#ffad45" }}>{successNow ? "✓ VALIDÉ" : "• NON VALIDÉ"}</span>
+                </div>
+                {successNow && (currentEvaluation?.rawVisitScore ?? 0) > (currentEvaluation?.visitScore ?? 0) ? <div style={{ marginTop: 4, color: "#ffce77" }}>{(currentEvaluation?.rawVisitScore ?? 0) - (currentEvaluation?.visitScore ?? 0)} points hors contrat ignorés</div> : null}
+              </div> : null}
+            </div>
             <div>
               <ScoreInputHub
+                preferredMethod={cfg?.inputMethod || "keypad"}
+                allowVisitScore
+                onSubmitVisitScore={requestVisitScore}
+                hideQuickVisitHint
                 currentThrow={currentThrow as any}
                 multiplier={multiplier as any}
                 onSimple={() => setMultiplier(1)}
@@ -1947,22 +2093,27 @@ export default function CapitalPlay(props: any) {
                 onNumber={(n) => {
                   const v = Number(n);
                   if (!Number.isFinite(v)) return;
-                  pushDart({ v, mult: v === 0 ? 1 : multiplier });
+                  pushDart({ v, mult: v === 0 ? 1 : multiplier, ...(currentContract === "outer_single" && outerSingleArmed && multiplier === 1 && v > 0 && v <= 20 ? { zone: "outer-single" as const } : {}) });
                   setMultiplier(1);
+                  setOuterSingleArmed(false);
                 }}
                 onBull={() => {
                   const mult = multiplier === 2 ? 2 : 1;
                   pushDart({ v: 25, mult });
                   setMultiplier(1);
+                  setOuterSingleArmed(false);
                 }}
                 onValidate={validateTurn as any}
                 onDirectDart={(d: any) => {
-                  pushDart({ v: Number(d?.v ?? 0), mult: Number(d?.mult ?? 1) as any });
+                  const v = Number(d?.v ?? 0), mult = Number(d?.mult ?? 1) as any;
+                  pushDart({ v, mult, ...(d?.zone ? { zone: d.zone } : currentContract === "outer_single" && outerSingleArmed && mult === 1 && v > 0 && v <= 20 ? { zone: "outer-single" as const } : {}) });
                   setMultiplier(1);
+                  setOuterSingleArmed(false);
                 }}
                 onMiss={() => {
-                  pushDart({ v: 0, mult: 1 });
+                  pushDart({ v: 0, mult: 1, zone: "miss" });
                   setMultiplier(1);
+                  setOuterSingleArmed(false);
                 }}
               />
             </div>
@@ -1971,6 +2122,58 @@ export default function CapitalPlay(props: any) {
         )}
       </div>
 
+      {pendingVisitScore ? <div role="presentation" style={{ position: "fixed", inset: 0, zIndex: 15000, display: "grid", placeItems: "center", background: "rgba(1,6,12,.87)", backdropFilter: "blur(7px)", padding: 12 }}>
+        <section role="dialog" aria-modal="true" aria-label="Contrôle du score de volée CAPITAL" style={{ width: "min(460px,96vw)", maxHeight: "92dvh", overflowY: "auto", padding: 17, border: "1px solid rgba(255,207,87,.63)", borderRadius: 19, background: "linear-gradient(155deg,#142433,#080f18)", color: "#fff", boxShadow: "0 18px 60px #000a" }}>
+          <div style={{ fontSize: 11, color: "#ffcf57", fontWeight: 1000, letterSpacing: 1 }}>CAPITAL · SCORE VOLÉE · {contractLabel(currentContract)}</div>
+          <div style={{ fontSize: 32, fontWeight: 1000, textAlign: "center", margin: "9px 0" }}>{pendingVisitScore.score} <span style={{ fontSize: 12, opacity: .6 }}>points bruts</span></div>
+          <div style={{ fontSize: 11, opacity: .8, marginBottom: 8 }}>Nombre réel de fléchettes lancées</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 9, marginBottom: 13 }}>
+            {([1,2,3] as const).map(count => <button key={count} type="button" onClick={() => setPendingVisitScore(previous => previous && ({ ...previous, dartsUsed: count }))} aria-pressed={pendingVisitScore.dartsUsed === count} style={{ padding: 12, borderRadius: 12, fontWeight: 1000, border: pendingVisitScore.dartsUsed === count ? "1px solid #35d8ff" : "1px solid #ffffff3b", background: pendingVisitScore.dartsUsed === count ? "rgba(53,216,255,.21)" : "rgba(255,255,255,.04)", color: "#fff" }}>{count}</button>)}
+          </div>
+          {pendingRequiresDetail ? <>
+            <div style={{ fontSize: 12, fontWeight: 950, color: "#ffdc85", marginBottom: 6 }}>DÉTAIL DES IMPACTS OBLIGATOIRE</div>
+            <p style={{ fontSize: 11, opacity: .82, margin: "0 0 9px" }}>Le total seul ne prouve pas le contrat. Indique chaque impact réel pour calculer les points admissibles (S/D/T, Bull, MISS ou hors cible).</p>
+            <div style={{ display: "grid", gap: 8 }}>
+              {Array.from({ length: pendingVisitScore.dartsUsed }, (_, index) => <label key={index} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, fontWeight: 850 }}>
+                <span style={{ width: 64, flexShrink: 0 }}>Flèche {index + 1}</span>
+                <select aria-label={`Impact réel flèche ${index + 1}`} value={pendingVisitScore.dartChoices[index] || ""}
+                  onChange={event => setPendingVisitScore(previous => previous ? ({ ...previous, dartChoices: previous.dartChoices.map((value,i) => i === index ? event.target.value : value) }) : null)}
+                  style={{ width: "100%", minWidth: 0, padding: "10px 7px", border: "1px solid #677482", borderRadius: 9, background: "#121e2d", color: "white", fontSize: 12 }}>
+                  {CAPITAL_GUIDED_DART_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </label>)}
+            </div>
+            {currentContract === "bad_hand" ? <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, fontSize: 11 }}><input type="checkbox" checked={manualValidated} onChange={event => setManualValidated(event.target.checked)} />Je confirme les lancers de la main opposée</label> : null}
+            <div aria-live="polite" style={{ marginTop: 11, padding: 10, borderRadius: 10, border: "1px solid rgba(255,255,255,.15)", background: "rgba(0,0,0,.28)", fontSize: 11 }}>
+              {pendingDetailsComplete ? <>
+                <div>Somme des impacts : <b style={{ color: pendingDetailTotal === pendingVisitScore.score ? "#4dff89" : "#ffad45" }}>{pendingDetailTotal} / {pendingVisitScore.score}</b>{pendingDetailTotal !== pendingVisitScore.score ? " · total incohérent" : " · total vérifié"}</div>
+                {pendingDetailTotal === pendingVisitScore.score && pendingEvaluation ? <div style={{ marginTop: 5, fontWeight: 1000, color: pendingEvaluation.success ? "#4dff89" : "#ffad45" }}>
+                  {pendingEvaluation.success ? `✓ CONTRAT RÉUSSI · +${pendingEvaluation.visitScore} points valides` : "✕ CONTRAT RATÉ · pénalité du Capital"}
+                  {pendingEvaluation.success && pendingEvaluation.rawVisitScore !== pendingEvaluation.visitScore ? <span style={{ fontWeight: 650, color: "#c9d6e2" }}> · {pendingEvaluation.rawVisitScore - pendingEvaluation.visitScore} points hors contrat ignorés</span> : null}
+                </div> : null}
+              </> : <span style={{ color: "#ffdc85" }}>Complète chaque impact pour valider automatiquement le contrat.</span>}
+            </div>
+          </> : <div style={{ fontSize: 12, opacity: .84 }}>
+            {currentContract === "capital" ? "Capital initial : le total brut constitue le capital de départ." : "Contrat à score exact : la réussite est déterminée automatiquement par le total."}
+          </div>}
+          {!capitalTotalPossible(pendingVisitScore.score, pendingVisitScore.dartsUsed) ? <div role="alert" style={{ marginTop: 10, color: "#ffad45", fontSize: 11 }}>Score impossible avec {pendingVisitScore.dartsUsed} fléchette(s) sur une cible standard.</div> : null}
+          <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <button type="button" onClick={() => setPendingVisitScore(null)} style={{ padding: 12, borderRadius: 12, border: "1px solid #ffffff3b", background: "rgba(255,255,255,.06)", color: "white", fontWeight: 950 }}>ANNULER</button>
+            <button type="button"
+              disabled={!capitalTotalPossible(pendingVisitScore.score, pendingVisitScore.dartsUsed) || (pendingRequiresDetail && (!pendingDetailsComplete || pendingDetailTotal !== pendingVisitScore.score))}
+              onClick={() => { const entry = pendingVisitScore; if (pendingRequiresDetail) { if (!pendingDetailsComplete || pendingDetailTotal !== entry.score) return; validateTurn(true, pendingDetailedDarts, undefined, "visit_detailed"); } else { validateTurn(true, undefined, entry); } setPendingVisitScore(null); }}
+              style={{ padding: 12, borderRadius: 12, border: "1px solid #ffd05f", background: "#ffbe2f", color: "#1c1305", fontWeight: 1000, opacity: !capitalTotalPossible(pendingVisitScore.score, pendingVisitScore.dartsUsed) || (pendingRequiresDetail && (!pendingDetailsComplete || pendingDetailTotal !== pendingVisitScore.score)) ? .45 : 1 }}>VALIDER</button>
+          </div>
+        </section>
+      </div> : null}
+      <CapitalContractRouteModal
+        open={contractRouteOpen}
+        onClose={() => setContractRouteOpen(false)}
+        contracts={contracts}
+        currentIndex={roundIdx}
+        visits={visits}
+        variantName={cfg.mode === "custom" ? (cfg.savedVariantName || CAPITAL_CUSTOM_VARIANT_LABEL) : (CAPITAL_GRID_PRESETS[cfg.gridVariant || "clubs15"]?.label || "OFFICIEL")}
+      />
       <CapitalLiveRankingModal
         open={liveRankingOpen}
         onClose={() => setLiveRankingOpen(false)}
@@ -1984,6 +2187,9 @@ export default function CapitalPlay(props: any) {
         participants={participants}
         playerStats={rawPlayerStats}
         visits={visits}
+        contracts={contracts}
+        scores={scores}
+        initialTab={liveStatsInitialTab}
         selectedIndex={liveStatsPlayerIdx}
         onSelectPlayer={setLiveStatsPlayerIdx}
       />

@@ -1,4 +1,5 @@
 import { assessCommercialFit } from './commercial-fit';
+import { listPublicationJobs, schedulePublication, updatePublicationJob } from './publication-queue';
 import { assessCampaignMatch } from './campaign-match';
 import { adminHtml } from './admin';
 import { generateSalesDraft, insertSalesCampaign, listSalesCampaigns, listSalesDrafts, saveSalesDraft, updateSalesCampaignStatus, validateSalesCampaign } from './sales-agent';
@@ -304,6 +305,25 @@ async function handleAdminApi(request: Request, env: RadarEnv, url: URL, ctx: Ex
     if (!body.target || !allowed.has(body.target as AcquisitionTarget)) return json({ok:false,error:'invalid_target'},400);
     const id = await recordAcquisitionConversion(env,{target:body.target as AcquisitionTarget,sightingId:body.sightingId||null,campaignId:body.campaignId||null,note:body.note||''});
     return json({ok:true,id});
+  }
+
+  // Publication planner: approval, scheduling and manual confirmation only.
+  // No request in this group invokes any external publishing endpoint.
+  if (request.method === 'GET' && url.pathname === '/api/publications') {
+    return json({ok:true,jobs:await listPublicationJobs(env),automaticPublishing:false});
+  }
+  if (request.method === 'POST' && url.pathname === '/api/publications') {
+    const input = await request.json().catch(() => ({})) as Record<string, unknown>;
+    try { return json({ok:true,job:await schedulePublication(env,input)},201); }
+    catch (error) { return json({ok:false,error:error instanceof Error?error.message:'invalid_publication'},400); }
+  }
+  const publicationAction = url.pathname.match(/^\/api\/publications\/([a-f0-9-]+)\/(cancel|published)$/);
+  if (request.method === 'POST' && publicationAction) {
+    const input = await request.json().catch(() => ({})) as {url?:string};
+    try {
+      const updated = await updatePublicationJob(env,publicationAction[1]!,publicationAction[2]!,input.url);
+      return json({ok:updated},updated?200:409);
+    } catch (error) {return json({ok:false,error:error instanceof Error?error.message:'invalid_action'},400);}
   }
 
   // An active campaign controls AI suggestions, not external posting.

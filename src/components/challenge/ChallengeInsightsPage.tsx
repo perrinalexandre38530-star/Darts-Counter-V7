@@ -4,6 +4,7 @@ import { loadChallengeArchive, challengeArchiveItems, summarizeChallengeArchive,
 import {buildChallengeStats,buildChallengeRecordDetails} from '../../lib/challengeInsightMetrics';
 import {buildChallengeImpactDetails,buildChallengeFormComparison} from '../../lib/challengePerformanceDetails';
 import {buildChallengeArchiveReliability} from '../../lib/challengeArchiveReliability';
+import {buildChallengeArchiveAudit} from '../../lib/challengeArchiveAudit';
 import {ChallengeModeDiagnosticsUI} from './ChallengeModeDiagnosticsUI';
 import './ChallengeInsightsPage.css';
 
@@ -63,6 +64,7 @@ export function ChallengeInsightsPage({modeId,modeTitle,playerId,playerName,init
  const [config,setConfig]=React.useState('all');
  const [recordKey,setRecordKey]=React.useState('');
  const [refreshId,setRefreshId]=React.useState(0);
+ const [auditOpen,setAuditOpen]=React.useState(false);
  React.useEffect(()=>setTab(initialView),[initialView]);
  React.useEffect(()=>{
   let active=true;setBusy(true);setError('');
@@ -78,7 +80,22 @@ export function ChallengeInsightsPage({modeId,modeTitle,playerId,playerName,init
  const stats=React.useMemo(()=>buildChallengeStats(filtered),[filtered]);
  const recordDetails=React.useMemo(()=>selectedRecordsGroup?buildChallengeRecordDetails(all,selectedRecordsGroup.key,selectedRecordsGroup.goal):null,[all,selectedRecordsGroup]);
  const impacts=React.useMemo(()=>buildChallengeImpactDetails(filtered),[filtered]);
- const reliability=React.useMemo(()=>buildChallengeArchiveReliability(tab==='stats'?filtered:all.filter(row=>row.configKey===selectedRecordsGroup?.key)),[tab,filtered,all,selectedRecordsGroup?.key]);
+ const auditScope=React.useMemo(()=>tab==='stats'?filtered:all.filter(row=>row.configKey===selectedRecordsGroup?.key),[tab,filtered,all,selectedRecordsGroup?.key]);
+ const reliability=React.useMemo(()=>buildChallengeArchiveReliability(auditScope),[auditScope]);
+ const auditRaw=React.useMemo(()=>records.filter(row=>{
+  const matches=challengeArchiveItems([row],{modeId,playerId,playerName});
+  return matches.some(item=>tab==='stats'?(config==='all'||item.configKey===config):item.configKey===selectedRecordsGroup?.key);
+ }),[records,modeId,playerId,playerName,tab,config,selectedRecordsGroup?.key]);
+ const audit=React.useMemo(()=>buildChallengeArchiveAudit(auditScope,auditRaw),[auditScope,auditRaw]);
+ const downloadAudit=()=>{
+  // Le fichier exporté ne contient ni identifiant personnel, ni score individuel,
+  // ni historique détaillé. Il est calculé en local depuis les parties affichées.
+  const body=JSON.stringify({...audit,generatedAt:new Date().toISOString()},null,2);
+  const url=URL.createObjectURL(new Blob([body],{type:'application/json'}));
+  const anchor=document.createElement('a');anchor.href=url;anchor.download='MSS_CHALLENGE_DIAGNOSTIC_ANONYME.json';
+  document.body.appendChild(anchor);anchor.click();anchor.remove();
+  window.setTimeout(()=>URL.revokeObjectURL(url),1500);
+ };
  const form=React.useMemo(()=>{const group=summarizeChallengeArchive(filtered).byConfig;return group.length===1?buildChallengeFormComparison(filtered,group[0]!.goal):null},[filtered]);
  const mixedConfigs=config==='all'&&stats.configurations.length>1;
  const visibleRecord=recordDetails?.best||null;
@@ -125,6 +142,21 @@ export function ChallengeInsightsPage({modeId,modeTitle,playerId,playerName,init
         reliability.missingDates?`${reliability.missingDates} partie(s) sans date exploitable`:null,
        ].filter(Boolean).join(' · ')}. Les parties restent conservées sans correction automatique.
       </p>}
+      <div className="mss-ci-audit-actions">
+       <button type="button" onClick={()=>setAuditOpen(value=>!value)} aria-expanded={auditOpen}>{auditOpen?'− MASQUER LE DIAGNOSTIC':'＋ CONTRÔLER LES PARTIES'}</button>
+       <button type="button" onClick={downloadAudit}>↓ RAPPORT ANONYME</button>
+      </div>
+      {auditOpen&&<div className="mss-ci-audit-panel" aria-label="Bilan de conformité des parties">
+       <div className="mss-ci-audit-grid">
+        <span><b>{audit.finished}</b><small>TERMINÉES</small></span>
+        <span><b>{audit.recordEligible}</b><small>MESURES EXPLOITABLES</small></span>
+        <span><b>{audit.notEligible}</b><small>SANS MESURE DE RECORD</small></span>
+        <span><b>{audit.inProgress}</b><small>EN COURS · EXCLUES</small></span>
+       </div>
+       {audit.duplicateSnapshots>0&&<p className="mss-ci-audit-duplicates">{audit.duplicateSnapshots} copie(s) supplémentaires d’une même partie détectée(s) dans les données chargées. Une seule version de chaque partie est retenue pour les statistiques.</p>}
+       {audit.problems.length?<div className="mss-ci-audit-findings">{audit.problems.map(problem=><div key={problem.code} className={problem.severity}><strong>{problem.count}</strong><span>{problem.message}</span></div>)}</div>:<p>Aucune anomalie détectée parmi les informations présentes dans ces parties.</p>}
+       <p>Contrôle en lecture seule sur les résultats visibles. Le rapport ne contient aucun nom, identifiant de joueur, numéro de partie ou journal de lancers. Aucun élément de History V4 n’est modifié.</p>
+      </div>}
      </section>}
     {busy&&<p role="status" className="mss-ci-empty">Chargement des résultats enregistrés dans History V4…</p>}
     {error&&<div className="mss-ci-empty" role="alert">Impossible de charger les résultats : {error} <button type="button" onClick={()=>setRefreshId(x=>x+1)}>RÉESSAYER</button></div>}

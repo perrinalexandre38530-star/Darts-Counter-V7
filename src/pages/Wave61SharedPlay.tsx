@@ -37,6 +37,7 @@ import {
   type Wave61State,
 } from "../lib/gameEngines/wave61Engine";
 import { decideWave61SeriesLeg } from "../lib/gameEngines/wave61SeriesDecision";
+import { withWave61EightModeUndoCheckpoint, getWave61EightModeUndoCheckpoint, getWave61PendingBotVisitRecap, normalizeWave61EightModeRestoredState } from "../lib/gameEngines/wave61EightModeCheckpoint";
 import {
   Meter,
   ModeEndPanel,
@@ -1231,7 +1232,9 @@ export default function Wave61SharedPlay(props: any) {
   const profiles = React.useMemo(() => resolveModeProfiles(config, store), [config, store]);
   const players = React.useMemo(() => profiles.map((p: any, i: number) => ({ id: String(p.id || `p${i+1}`), name: playerName(p, i) })), [profiles]);
   const restored = resumeRecord?.resume?.state || resumeRecord?.payload?.stateSnapshot || null;
-  const [state, setState] = React.useState<Wave61State>(() => restored?.mode === "wave61" && restored?.modeId === spec.id ? cloneWave61State(restored) : createWave61State(players, spec.id, config));
+  const [state, setState] = React.useState<Wave61State>(() => normalizeWave61EightModeRestoredState(
+    restored?.mode === "wave61" && restored?.modeId === spec.id ? cloneWave61State(restored) : createWave61State(players, spec.id, config)
+  ));
   const restoredThrow = resumeRecord?.resume?.currentThrow || resumeRecord?.payload?.currentThrow || [];
   const restoredMultiplier = Number(resumeRecord?.resume?.multiplier ?? resumeRecord?.payload?.multiplier ?? 1);
   const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>(() => Array.isArray(restoredThrow) ? restoredThrow.slice(0, 3) : []);
@@ -1240,14 +1243,7 @@ export default function Wave61SharedPlay(props: any) {
   const [notice, setNotice] = React.useState("");
   // V193: un récap BOT en attente doit survivre à un rechargement depuis History.
   // Un récap humain reste éphémère; seul CONTINUER peut débloquer le BOT.
-  const [visitRecap, setVisitRecap] = React.useState<any>(() => {
-    const pending = state?.special?.pendingBotVisitRecap;
-    const lastVisit = state?.visits?.[state.visits.length - 1];
-    return state.phase === "playing" && pending?.isBot === true
-      && String(pending.visitId || "") !== ""
-      && String(pending.visitId) === String(lastVisit?.id || "")
-      ? pending : null;
-  });
+  const [visitRecap, setVisitRecap] = React.useState<any>(() => getWave61PendingBotVisitRecap(state));
   const [adviceText, setAdviceText] = React.useState("");
   const [quickPanel, setQuickPanel] = React.useState<null | "rules" | "settings" | "players" | "history" | "ranking" | "stats" | "objective" | "situation">(null);
   const adviceTimerRef = React.useRef<number | null>(null);
@@ -1518,7 +1514,7 @@ export default function Wave61SharedPlay(props: any) {
         blackWhiteValidHits: Number(next.special?.blackWhiteValidHitsByPlayer?.[recapPlayerId]||0),
       };
       setVisitRecap(nextVisitRecap);
-      if (nextVisitRecap.isBot && committed.phase === "playing") {
+      if (nextVisitRecap.isBot) {
         // Serializable state only: no React closures / timers in the History snapshot.
         // If the BOT just won a leg, this is saved alongside seriesIntermission.
         committed = cloneWave61State(committed);
@@ -1528,6 +1524,9 @@ export default function Wave61SharedPlay(props: any) {
         };
       }
     }
+    // Keep one non-recursive undo checkpoint across History/Android reloads.
+    // A winning BO/FT leg already has seriesIntermissionUndo instead.
+    committed = withWave61EightModeUndoCheckpoint(committed, previous);
     setState(committed);
     setCurrentThrow([]);
     setMultiplier(1);
@@ -1553,9 +1552,10 @@ export default function Wave61SharedPlay(props: any) {
     && state.special?.seriesIntermissionUndo?.modeId === spec.id
     && state.special?.seriesIntermissionUndo?.phase === "playing"
     ? state.special.seriesIntermissionUndo : null;
-  const canUndo = undo.length > 0 || !!persistedSeriesUndo;
+  const persistedLastVisitUndo = getWave61EightModeUndoCheckpoint(state);
+  const canUndo = undo.length > 0 || !!persistedSeriesUndo || !!persistedLastVisitUndo;
   const doUndo = () => {
-    const previousState = undo.length ? undo[undo.length - 1] : persistedSeriesUndo;
+    const previousState = undo.length ? undo[undo.length - 1] : (persistedSeriesUndo || persistedLastVisitUndo);
     if (!previousState) return;
     const restored = cloneWave61State(previousState);
     finishedRef.current = false;
@@ -1576,6 +1576,9 @@ export default function Wave61SharedPlay(props: any) {
         const acknowledged = cloneWave61State(state);
         delete acknowledged.special.pendingBotVisitRecap;
         setState(acknowledged);
+        // The first finished record was already written. Allow one final
+        // idempotent upsert recording the explicit BOT acknowledgement.
+        if (acknowledged.phase === "finished") finishedRef.current = false;
         persist(acknowledged, true);
       }
     }

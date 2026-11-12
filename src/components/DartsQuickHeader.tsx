@@ -8,7 +8,7 @@ const aliases: Record<string, string> = {
   "5_vies": "five_lives", "five_lives": "five_lives", "halve_it": "halve_it",
   "superbull": "super_bull", "killer_progressif": "killer", "president": "president",
   "9_dart_century": "9_dart_century", "bss_king": "bss_king",
-  "ptit_hun": "ptit_1", "p_tit_1": "ptit_1",
+  "game_170": "v170", "170": "v170", "ptit_hun": "ptit_1", "p_tit_1": "ptit_1",
   "departements": "territories_fr", "territories": "territories_fr",
 };
 export function dartsQuickTicker(id: string, lang = "fr"): string | null {

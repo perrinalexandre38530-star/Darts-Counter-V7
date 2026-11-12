@@ -47,7 +47,7 @@ function profileIds(profiles: any[], activeProfileId: any, max: number): string[
   return ids;
 }
 
-function AwenaConfigMedallion({ mode, help }: { mode: TossitMode; help: string }) {
+export function AwenaConfigMedallion({ mode, help, phase = "config" }: { mode: TossitMode; help: string; phase?: "config" | "play" }) {
   const awena = useAwenaOptional();
   const { lang } = useLang();
   const fr = String(lang || "fr").startsWith("fr");
@@ -56,20 +56,20 @@ function AwenaConfigMedallion({ mode, help }: { mode: TossitMode; help: string }
   const enabled = Boolean(awena?.settings?.enabled && awena?.settings?.interventionMode !== "off");
   const openHelp = () => {
     if (enabled && awena) {
-      awena.setRuntime({ sport: "tossit", mode, phase: "config", inGame: false, screenLabel: `TOSSIT • ${modeLabel}` });
+      awena.setRuntime({ sport: "tossit", mode, phase, inGame: phase === "play", screenLabel: `TOSSIT • ${modeLabel}` });
       awena.openPanel();
-      void awena.ask(`Explique en français la configuration de TOSSIT ${modeLabel} : profils locaux, équipes, format Partie rapide ou Arcade, règles du mode. Voici l'aide intégrée : ${help}`, { modeTopic: "config", canonicalFrench: true });
+      void awena.ask(phase === "play" ? `Explique en français comment jouer et saisir les résultats de ${modeLabel}, sans modifier les scores : ${help}` : `Explique en français la configuration de TOSSIT ${modeLabel} : profils locaux, équipes, format Partie rapide ou Arcade, règles du mode. Voici l'aide intégrée : ${help}`, { modeTopic: phase === "play" ? "rules" : "config", canonicalFrench: true });
     } else setShowHelp(true);
   };
   return <>
-    <button className="tossit-awena-dot" type="button" onClick={openHelp} title={enabled ? "Awena — aide IA TOSSIT" : "Aide de configuration TOSSIT"} aria-label={enabled ? "Ouvrir Awena, aide IA" : "Aide configuration"}>
+    <button className="tossit-awena-dot" type="button" onClick={openHelp} title={enabled ? "Awena — aide IA TOSSIT" : (phase === "play" ? "Aide au jeu TOSSIT" : "Aide de configuration TOSSIT")} aria-label={enabled ? "Ouvrir Awena, aide IA" : (phase === "play" ? "Aide au jeu" : "Aide configuration")}>
       <img src="/awena/awena-avatar.webp" alt="" />
     </button>
     {showHelp && <div className="tossit-config-help-mask" role="presentation" onClick={() => setShowHelp(false)}>
       <div className="tossit-config-help-dialog" role="dialog" aria-modal="true" aria-label="Aide TOSSIT" onClick={event => event.stopPropagation()}>
         <div className="tossit-config-help-title"><strong>{modeLabel}</strong><button type="button" onClick={() => setShowHelp(false)} aria-label="Fermer">✕</button></div>
         <p>{help}</p>
-        <p>{fr ? "Partie rapide : préréglages courts. Arcade : format plus long. Dans les deux cas, les règles du jeu sont identiques." : "Quick game: shorter presets. Arcade: longer presets. The game rules remain identical."}</p>
+        {phase === "config" && <p>{fr ? "Partie rapide : préréglages courts. Arcade : format plus long. Dans les deux cas, les règles du jeu sont identiques." : "Quick game: shorter presets. Arcade: longer presets. The game rules remain identical."}</p>}
         <button type="button" onClick={() => setShowHelp(false)} className="tossit-config-primary">OK</button>
       </div>
     </div>}

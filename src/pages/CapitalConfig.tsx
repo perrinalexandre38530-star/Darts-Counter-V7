@@ -1,4 +1,3 @@
-import NativeStartOrderConfig from "../components/NativeStartOrderConfig";
 // src/pages/CapitalConfig.tsx
 // CAPITAL — Config écran (cohérent avec les autres menus config)
 // - Sélection profils locaux (carousel)
@@ -30,6 +29,26 @@ import { getProBotAvatar } from "../lib/botsProAvatars";
 import { loadBotPlayers } from "../lib/bots";
 import { SCORE_INPUT_LS_KEY, type ScoreInputMethod } from "../lib/scoreInput/types";
 import { recordProfileUsageForMode, sortProfilesByModeUsage } from "../lib/profileUsage";
+import {
+  CAPITAL_CONTRACT_META,
+  CAPITAL_GRID_PRESETS,
+  CAPITAL_CUSTOM_VARIANT_LABEL,
+  CAPITAL_PRESET_ORDER,
+  CAPITAL_PRESET_GROUPS,
+  CAPITAL_COMMITTEE_REPLACEMENTS,
+  canonicalCapitalGridPreset,
+  capitalPresetContracts,
+  CAPITAL_SELECTABLE_CONTRACTS,
+  capitalExactScorePossible,
+  type CapitalContractId,
+  type CapitalGridPresetId,
+} from "../lib/capitalGame";
+import {
+  loadCapitalSavedVariants,
+  persistCapitalSavedVariants,
+  type CapitalSavedVariant,
+} from "../lib/capitalSavedVariants";
+import NativeStartOrderConfig, { type NativeStartOrderMode } from "../components/NativeStartOrderConfig";
 import CapitalParticipantsX01, {
   type CapitalParticipantSelection,
 } from "./CapitalParticipantsX01";
@@ -39,25 +58,9 @@ type BotRisk = "safe" | "normal" | "aggressive";
 type RulesPreset = "official" | "fun";
 
 export type CapitalModeKind = "official" | "custom";
-export type CapitalStartOrderMode = "random" | "fixed";
+export type CapitalStartOrderMode = "random" | "fixed" | "alternate" | "manual" | "bull";
 
-export type CapitalContractID =
-  | "capital"
-  | "n20"
-  | "triple_any"
-  | "n19"
-  | "double_any"
-  | "n18"
-  | "side"
-  | "n17"
-  | "suite"
-  | "n16"
-  | "colors_3"
-  | "n15"
-  | "exact_57"
-  | "n14"
-  | "center"
-  | "peluche";
+export type CapitalContractID = CapitalContractId;
 
 export type CapitalConfigPayload = {
   // ✅ Participants (profils + bots)
@@ -89,6 +92,13 @@ export type CapitalConfigPayload = {
 
   // Mode / Contrats
   mode: CapitalModeKind;
+  gridVariant?: CapitalGridPresetId;
+  savedVariantId?: string;
+  savedVariantName?: string;
+  committeeSpecialContract?: CapitalContractID;
+  exactTarget?: number;
+  shanghaiBonus?: number;
+  packetAllowMultipliers?: boolean;
   customContracts?: CapitalContractID[];
   includeCapital?: boolean;
 
@@ -111,57 +121,27 @@ export type CapitalConfigPayload = {
   turnTimerSec?: number; // 0 = off
 };
 
-const OFFICIAL_CONTRACTS: CapitalContractID[] = [
-  "capital",
-  "n20",
-  "triple_any",
-  "n19",
-  "double_any",
-  "n18",
-  "side",
-  "n17",
-  "suite",
-  "n16",
-  "colors_3",
-  "n15",
-  "exact_57",
-  "n14",
-  "center",
-];
+const OFFICIAL_CONTRACTS: CapitalContractID[] = CAPITAL_GRID_PRESETS.clubs15.contracts;
 
-const INFO_TEXT = `RÈGLE OFFICIELLE — CAPITAL (15 contrats)
+const INFO_TEXT = `CAPITAL — 4 CATÉGORIES
 
-Avant les contrats, chaque joueur lance 3 fléchettes pour se constituer son CAPITAL (score de départ).
-Ensuite, chaque contrat se joue en 1 volée de 3 fléchettes :
+• CLUB : OFFICIEL, MIROIR et HÉRITAGE.
+• BAR : DIAGONALE, PELUCHE, SHANGHAI, 42, ÉCONOME et À LA CARTE.
+• NIVEAU : STANDARD (chiffres et contrats accessibles), CHALLENGER (chiffres et contrats difficiles), EXPERT (défis techniques seuls), LÉGENDES (tous les contrats).
+• MON CAPITAL : créer, nommer, enregistrer, retrouver, modifier et supprimer ses propres variantes.
+• Les appellations géographiques n'impliquent pas une homologation fédérale.
 
-- ✅ Contrat réussi → on AJOUTE le total de la volée au score
-- ❌ Contrat raté → le score est DIVISÉ PAR 2 (arrondi à l’entier inférieur)
+RÈGLES DU CAPITAL
+3 fléchettes constituent le capital de départ. Chaque contrat réussi ajoute le score de la volée. En cas d'échec, le capital est divisé par 2 (réglage désactivable).
+Exception Poubelle : 3 fléchettes PLANTÉES hors zone de score valident le contrat sans ajouter de point ni perdre de capital.
 
-PARAMÈTRES DE CONFIGURATION
-- Joueurs / Équipes : reprend le sélecteur X01 (profils, bots, équipes manuelles, enregistrées et brassage auto).
-- En équipes : le capital collectif est la somme des capitaux des membres.
-- Ordre aléatoire : tiré une seule fois au démarrage de la partie.
-- Version Custom : permet de choisir et réordonner les contrats.
-- Score cible : arrête la partie dès que le score est atteint.
-- Timer : une volée expirée vaut trois MISS.
-- Saisie : keypad, cible interactive ou presets.
-
-Liste officielle des contrats :
-1) Capital
-2) 20
-3) Triple
-4) 19
-5) Double
-6) 18
-7) Side
-8) 17
-9) Suite
-10) 16
-11) Couleur
-12) 15
-13) 57
-14) 14
-15) Centre`;
+Saisies particulières :
+- Diagonale : seul le BULL25 extérieur est accepté au milieu ; le DBULL50 est interdit.
+- Couronne : saisir chaque fléchette avec S EXT activé.
+- Poubelle : bouton HORS CIBLE, différent du MISS au sol.
+- Mauvaise main : confirmer que les 3 fléchettes ont été lancées de la main non directrice.
+- Score exact libre : renseigner un objectif entre 1 et 180.
+Toutes les règles restent disponibles depuis le panneau d'information des contrats.`
 
 
 const CAPITAL_OPTION_HELP: Record<string, string> = {
@@ -169,19 +149,27 @@ const CAPITAL_OPTION_HELP: Record<string, string> = {
   botsAutoPlay: "Activé : les bots jouent automatiquement leur tour. Désactivé : tu saisis leurs fléchettes manuellement.",
   botSpeed: "Règle le délai avant qu’un bot joue automatiquement. Cela ne change pas sa difficulté.",
   botRisk: "Prudente favorise la sécurité ; Agressive tente davantage de doubles, triples et gros scores.",
-  startOrder: "Aléatoire mélange les participants une seule fois au lancement. Ordre de sélection conserve l’ordre choisi dans le sélecteur.",
-  version: "Officiel utilise la séquence CAPITAL complète de 15 contrats. Custom permet de créer ta propre suite de contrats.",
+  startOrder: "ALÉATOIRE mélange une fois. ALTERNÉ conserve l’ordre de sélection. MANUEL et BULL ouvrent le tableau commun de choix d’ordre avant le jeu.",
+  version: "Quatre catégories : CLUB, BAR, NIVEAU et MON CAPITAL. Dans MON CAPITAL, pars d’une grille, modifie-la et enregistre-la sous un nom pour la retrouver.",
   includeCapital: "Ajoute le contrat CAPITAL en première manche afin que chaque joueur construise son capital de départ avec 3 fléchettes.",
-  maxContracts: "Limite le nombre de contrats utilisables dans une partie Custom.",
-  preset: "Officiel applique les règles classiques CAPITAL. Fun conserve une configuration plus libre que tu peux ajuster ensuite.",
+  maxContracts: "Limite les contrats personnalisés, sans compter le Capital de départ optionnel.",
+  preset: "Classique conserve la règle de pénalité /2. Fun permet de jouer sans pénalité avec un score cible.",
   victory: "Meilleur score (Officiel) : la partie va au bout des contrats et le plus gros capital gagne. Score cible : le premier joueur qui atteint ou dépasse la cible gagne immédiatement.",
   target: "Score à atteindre ou dépasser pour gagner lorsque le mode Score cible est sélectionné.",
   tieBreak: "En cas d’égalité finale, compare le total réalisé sur le dernier contrat. Aucun conserve l’égalité.",
   failHalf: "Activé : un contrat raté divise le capital du joueur par 2, avec arrondi inférieur. C’est la règle officielle.",
   startingCapital: "Capital donné au départ lorsque le contrat CAPITAL initial est désactivé.",
   timer: "Temps disponible pour jouer une volée. Off désactive le chrono ; à expiration la volée est traitée comme trois MISS.",
-  input: "Choisit la méthode de saisie des fléchettes : clavier, cible interactive ou valeurs prédéfinies.",
+  input: "Keypad ou cible : validation automatique des contrats grâce aux impacts. Score volée : saisis le total (0 à 180), puis confirme réussite/échec du contrat ; aucun secteur n’est inventé dans les statistiques.",
 };
+
+function capitalLibraryButtonStyle(primary: boolean): React.CSSProperties {
+  return {
+    borderRadius: 11, padding: "11px 8px", cursor: "pointer", fontSize: 11, fontWeight: 950,
+    color: "#fff", border: primary ? "1px solid rgba(53,216,255,.65)" : "1px solid rgba(255,255,255,.23)",
+    background: primary ? "rgba(53,216,255,.19)" : "rgba(255,255,255,.06)",
+  };
+}
 
 function CapitalOptionCard({
   label,
@@ -224,42 +212,8 @@ function CapitalOptionCard({
 }
 
 function labelOf(id: CapitalContractID): string {
-  switch (id) {
-    case "capital":
-      return "Capital";
-    case "n20":
-      return "20 (au moins un 20)";
-    case "triple_any":
-      return "Triple (au moins un triple)";
-    case "n19":
-      return "19 (au moins un 19)";
-    case "double_any":
-      return "Double (au moins un double)";
-    case "n18":
-      return "18 (au moins un 18)";
-    case "side":
-      return "Side (3 secteurs côte à côte)";
-    case "n17":
-      return "17 (au moins un 17)";
-    case "suite":
-      return "Suite (3 numéros consécutifs)";
-    case "n16":
-      return "16 (au moins un 16)";
-    case "colors_3":
-      return "Couleur (3 couleurs différentes)";
-    case "n15":
-      return "15 (au moins un 15)";
-    case "exact_57":
-      return "57 (total exact)";
-    case "n14":
-      return "14 (au moins un 14)";
-    case "center":
-      return "Centre (25 ou 50)";
-    case "peluche":
-      return "Peluche (≤ 20 sur 3 fléchettes • MISS interdit)";
-    default:
-      return String(id);
-  }
+  const row = CAPITAL_CONTRACT_META[id];
+  return row?.label || String(id);
 }
 
 function safeStoreProfiles(store: any): any[] {
@@ -404,7 +358,7 @@ export default function CapitalConfig(props: any) {
   const [inputMethod, setInputMethod] = useState<ScoreInputMethod>(() => {
     try {
       const v = (restoredConfig.inputMethod || localStorage.getItem(SCORE_INPUT_LS_KEY) || "keypad") as any;
-      return (["keypad", "dartboard", "presets"].includes(v) ? v : "keypad") as any;
+      return (["keypad", "dartboard", "presets", "visit_score"].includes(v) ? v : "keypad") as any;
     } catch {
       return "keypad";
     }
@@ -448,6 +402,48 @@ export default function CapitalConfig(props: any) {
 
   // ------------------ Mode / Contrats ------------------
   const [mode, setMode] = useState<CapitalModeKind>(restoredConfig.mode || "official");
+  const [gridVariant, setGridVariant] = useState<CapitalGridPresetId>(
+    canonicalCapitalGridPreset(restoredConfig.gridVariant)
+  );
+  const [committeeSpecialContract, setCommitteeSpecialContract] = useState<CapitalContractID>(
+    restoredConfig.committeeSpecialContract && CAPITAL_COMMITTEE_REPLACEMENTS.includes(restoredConfig.committeeSpecialContract)
+      ? restoredConfig.committeeSpecialContract : "exact_69"
+  );
+  const activeGridContracts = useMemo(
+    () => capitalPresetContracts(gridVariant, committeeSpecialContract), [gridVariant, committeeSpecialContract]
+  );
+  const customWasInitialized = React.useRef(restoredConfig.mode === "custom");
+  // Trois catégories de grilles + MON CAPITAL pour les variantes enregistrées.
+  const selectedVariant: CapitalGridPresetId | "custom" = mode === "custom" ? "custom" : gridVariant;
+  const selectedCategory = mode === "custom" ? "custom" : CAPITAL_GRID_PRESETS[gridVariant].category;
+  const selectedPresetGroup = CAPITAL_PRESET_GROUPS.find(group => group.category === selectedCategory);
+  const handleCategoryChange = (category: typeof selectedCategory) => {
+    if (category === "custom") {
+      handleVariantChange("custom");
+      return;
+    }
+    const group = CAPITAL_PRESET_GROUPS.find(item => item.category === category);
+    if (!group) return;
+    // Une variante déjà sélectionnée dans la catégorie ne doit pas être réinitialisée.
+    const next = group.contracts.includes(gridVariant) ? gridVariant : group.contracts[0];
+    handleVariantChange(next);
+  };
+  const handleVariantChange = (value: CapitalGridPresetId | "custom") => {
+    setConfigError("");
+    if (value === "custom") {
+      if (!customWasInitialized.current) {
+        const base = capitalPresetContracts(gridVariant, committeeSpecialContract).filter(id => id !== "capital");
+        setCustomContracts(base);
+        setMaxCustomContracts(Math.max(15, base.length));
+        setIncludeCapital(true);
+        customWasInitialized.current = true;
+      }
+      setMode("custom");
+      return;
+    }
+    setGridVariant(canonicalCapitalGridPreset(value));
+    setMode("official");
+  };
   const [includeCapital, setIncludeCapital] = useState<boolean>(restoredConfig.includeCapital !== false);
 
   // ✅ Ajout : limite du nombre de contrats (custom)
@@ -463,6 +459,9 @@ export default function CapitalConfig(props: any) {
   );
   const [failDivideBy2, setFailDivideBy2] = useState<boolean>(restoredConfig.failDivideBy2 !== false);
   const [startingCapital, setStartingCapital] = useState<number>(restoredConfig.startingCapital ?? 301);
+  const [exactTarget, setExactTarget] = useState<number>(restoredConfig.exactTarget ?? 42);
+  const [shanghaiBonus, setShanghaiBonus] = useState<number>(restoredConfig.shanghaiBonus ?? 0);
+  const [packetAllowMultipliers, setPacketAllowMultipliers] = useState<boolean>(restoredConfig.packetAllowMultipliers === true);
 
   const [customContracts, setCustomContracts] = useState<CapitalContractID[]>(() => Array.isArray(restoredConfig.customContracts) && restoredConfig.customContracts.length ? restoredConfig.customContracts.filter((id) => id !== "capital") : [
     "n20",
@@ -481,6 +480,12 @@ export default function CapitalConfig(props: any) {
     "center",
     "peluche",
   ]);
+
+  // MON CAPITAL : stockage durable dans la bibliothèque locale (distinct de l'Historique V4).
+  const [savedVariants, setSavedVariants] = useState<CapitalSavedVariant[]>(loadCapitalSavedVariants);
+  const [savedVariantId, setSavedVariantId] = useState<string>(restoredConfig.savedVariantId || "");
+  const [savedVariantName, setSavedVariantName] = useState<string>(restoredConfig.savedVariantName || "");
+  const [savedNotice, setSavedNotice] = useState<string>("");
 
   const restoredPresetRef = React.useRef(Boolean(props?.params?.config));
 
@@ -516,6 +521,121 @@ export default function CapitalConfig(props: any) {
     return out;
   }, [customContracts, includeCapital, maxCustomContracts]);
 
+  const selectedSavedVariant = savedVariants.find((item) => item.id === savedVariantId);
+  const appliedVariantMatches = !!selectedSavedVariant &&
+    selectedSavedVariant.name === savedVariantName.trim() &&
+    selectedSavedVariant.basePreset === gridVariant &&
+    JSON.stringify(selectedSavedVariant.contracts) === JSON.stringify(customList.filter(id => id !== "capital")) &&
+    selectedSavedVariant.includeCapital === includeCapital &&
+    selectedSavedVariant.maxCustomContracts === maxCustomContracts &&
+    selectedSavedVariant.exactTarget === exactTarget &&
+    selectedSavedVariant.shanghaiBonus === shanghaiBonus &&
+    selectedSavedVariant.packetAllowMultipliers === packetAllowMultipliers &&
+    selectedSavedVariant.failDivideBy2 === failDivideBy2 &&
+    selectedSavedVariant.startingCapital === startingCapital &&
+    selectedSavedVariant.victoryMode === victoryMode &&
+    selectedSavedVariant.targetScore === targetScore &&
+    selectedSavedVariant.tieBreaker === tieBreaker &&
+    selectedSavedVariant.committeeSpecialContract === (gridVariant === "committee_other17" ? committeeSpecialContract : undefined);
+
+  const loadNamedVariant = (id: string) => {
+    const item = savedVariants.find(entry => entry.id === id);
+    if (!item) return;
+    setMode("custom");
+    customWasInitialized.current = true;
+    setGridVariant(item.basePreset);
+    setCustomContracts([...item.contracts]);
+    setMaxCustomContracts(item.maxCustomContracts);
+    setIncludeCapital(item.includeCapital);
+    setExactTarget(item.exactTarget);
+    setShanghaiBonus(item.shanghaiBonus);
+    setPacketAllowMultipliers(item.packetAllowMultipliers);
+    setFailDivideBy2(item.failDivideBy2);
+    setStartingCapital(item.startingCapital);
+    setVictoryMode(item.victoryMode);
+    setTargetScore(item.targetScore);
+    setTieBreaker(item.tieBreaker);
+    if (item.committeeSpecialContract) setCommitteeSpecialContract(item.committeeSpecialContract);
+    setSavedVariantId(item.id);
+    setSavedVariantName(item.name);
+    setSavedNotice(`« ${item.name} » chargée. Tu peux la jouer ou la modifier.`);
+    setConfigError("");
+  };
+
+  const resetNamedVariantFromBase = () => {
+    const from = capitalPresetContracts(gridVariant, committeeSpecialContract);
+    setCustomContracts(from.filter(id => id !== "capital"));
+    setMaxCustomContracts(Math.min(30, Math.max(15, from.length)));
+    setIncludeCapital(from.includes("capital"));
+    setSavedVariantId("");
+    setSavedVariantName("");
+    setSavedNotice("Nouvelle grille à personnaliser. Nomme-la puis enregistre-la.");
+  };
+
+  const saveNamedVariant = (asNew = false) => {
+    const name = savedVariantName.trim();
+    if (!name || name.length > 48) {
+      setSavedNotice("Saisis un nom de 1 à 48 caractères avant d’enregistrer.");
+      return;
+    }
+    if (customList.filter(id => id !== "capital").length === 0) {
+      setSavedNotice("Ajoute au moins un contrat avant d’enregistrer.");
+      return;
+    }
+    if (customList.includes("exact_custom") && !capitalExactScorePossible(exactTarget)) {
+      setSavedNotice("Le score exact libre n’est pas réalisable : corrige-le avant l’enregistrement.");
+      return;
+    }
+    const updating = !asNew && selectedSavedVariant;
+    const duplicate = savedVariants.find(item => item.id !== (updating ? selectedSavedVariant.id : "") && item.name.toLocaleLowerCase("fr") === name.toLocaleLowerCase("fr"));
+    if (duplicate) {
+      setSavedNotice("Ce nom existe déjà. Choisis un autre nom ou charge la variante existante.");
+      return;
+    }
+    if (!updating && savedVariants.length >= 100) {
+      setSavedNotice("Limite de 100 variantes personnelles atteinte. Supprime une ancienne variante.");
+      return;
+    }
+    const now = Date.now();
+    const item: CapitalSavedVariant = {
+      id: updating ? selectedSavedVariant.id : `capital_${now}_${Math.random().toString(36).slice(2, 9)}`,
+      name,
+      basePreset: gridVariant,
+      contracts: customList.filter(id => id !== "capital"),
+      includeCapital,
+      maxCustomContracts: Math.max(maxCustomContracts, customList.length - (includeCapital ? 1 : 0)),
+      exactTarget, shanghaiBonus, packetAllowMultipliers,
+      failDivideBy2, startingCapital, victoryMode, targetScore, tieBreaker,
+      committeeSpecialContract: gridVariant === "committee_other17" ? committeeSpecialContract : undefined,
+      createdAt: updating ? selectedSavedVariant.createdAt : now,
+      updatedAt: now,
+    };
+    const next = updating ? savedVariants.map(entry => entry.id === item.id ? item : entry) : [...savedVariants, item];
+    if (!persistCapitalSavedVariants(next)) {
+      setSavedNotice("Enregistrement impossible : stockage local indisponible ou saturé. Aucune variante n’a été supprimée.");
+      return;
+    }
+    setSavedVariants(next);
+    setSavedVariantId(item.id);
+    setSavedVariantName(item.name);
+    setSavedNotice(`« ${item.name} » enregistrée dans MON CAPITAL.`);
+    setConfigError("");
+  };
+
+  const deleteNamedVariant = () => {
+    if (!selectedSavedVariant) return;
+    if (!window.confirm(`Supprimer définitivement « ${selectedSavedVariant.name} » de MON CAPITAL ?`)) return;
+    const next = savedVariants.filter(item => item.id !== selectedSavedVariant.id);
+    if (!persistCapitalSavedVariants(next)) {
+      setSavedNotice("Suppression impossible : stockage local indisponible.");
+      return;
+    }
+    setSavedVariants(next);
+    setSavedVariantId("");
+    setSavedVariantName("");
+    setSavedNotice("Variante supprimée de MON CAPITAL ; la grille courante reste jouable.");
+  };
+
   const payload: CapitalConfigPayload = useMemo(() => {
     const cappedPlayers = clamp(players, 1, 12);
     const canonicalIds = canonicalSelection?.selectedIds || [];
@@ -538,9 +658,16 @@ export default function CapitalConfig(props: any) {
       botRisk: (useCanonicalParticipants ? canonicalBotsEnabled : botsEnabled) ? botRisk : undefined,
 
       mode,
+      gridVariant,
+      savedVariantId: mode === "custom" && appliedVariantMatches ? savedVariantId : undefined,
+      savedVariantName: mode === "custom" ? (savedVariantName.trim() || undefined) : undefined,
+      committeeSpecialContract: gridVariant === "committee_other17" ? committeeSpecialContract : undefined,
+      exactTarget: clamp(exactTarget, 1, 180),
+      shanghaiBonus: clamp(shanghaiBonus, 0, 500),
+      packetAllowMultipliers,
       includeCapital,
       maxCustomContracts: mode === "custom" ? clamp(maxCustomContracts, 1, 30) : undefined,
-      customContracts: mode === "official" ? OFFICIAL_CONTRACTS : customList,
+      customContracts: mode === "official" ? activeGridContracts : customList,
 
       inputMethod,
 
@@ -567,6 +694,15 @@ export default function CapitalConfig(props: any) {
     botTurnDelayMs,
     botRisk,
     mode,
+    gridVariant,
+    savedVariantId,
+    savedVariantName,
+    appliedVariantMatches,
+    activeGridContracts,
+    committeeSpecialContract,
+    exactTarget,
+    shanghaiBonus,
+    packetAllowMultipliers,
     includeCapital,
     maxCustomContracts,
     customList,
@@ -587,6 +723,11 @@ export default function CapitalConfig(props: any) {
   }
 
   function start() {
+    const playedContracts = mode === "official" ? activeGridContracts : customList;
+    if (playedContracts.includes("exact_custom") && !capitalExactScorePossible(exactTarget)) {
+      setConfigError("Le score exact choisi n’est pas réalisable avec 3 fléchettes. Choisis un autre objectif (1 à 180).");
+      return;
+    }
     if (useCanonicalParticipants && !canonicalSelection?.valid) {
       setConfigError(canonicalSelection?.error || "Sélectionne au moins deux participants.");
       setViewMode("guided");
@@ -662,23 +803,7 @@ export default function CapitalConfig(props: any) {
   // ------- contracts add pool -------
   const availableToAdd = useMemo(() => {
     const used = new Set(customList);
-    const pool: CapitalContractID[] = [
-      "n20",
-      "triple_any",
-      "n19",
-      "double_any",
-      "n18",
-      "side",
-      "n17",
-      "suite",
-      "n16",
-      "colors_3",
-      "n15",
-      "exact_57",
-      "n14",
-      "center",
-      "peluche",
-    ];
+    const pool: CapitalContractID[] = CAPITAL_SELECTABLE_CONTRACTS;
     return pool.filter((id) => !used.has(id));
   }, [customList]);
 
@@ -833,10 +958,10 @@ export default function CapitalConfig(props: any) {
             </Section>
           ) : null}
           <Section title="Départ">
-            <NativeStartOrderConfig initialMode={startOrderMode === "random" ? "random" : "alternate"} onModeChange={(mode) => setStartOrderMode(mode === "random" ? "random" : "fixed")} />
-            <div style={{ marginTop: 9, fontSize: 12, opacity: .72 }}>
-              {startOrderMode === "random" ? "L’ordre sera tiré une seule fois au démarrage." : "L’ordre affiché dans le sélecteur X01 sera conservé."}
-            </div>
+            <NativeStartOrderConfig
+              initialMode={(startOrderMode === "fixed" ? "alternate" : startOrderMode) as NativeStartOrderMode}
+              onModeChange={(value) => setStartOrderMode(value === "alternate" ? "fixed" : value)}
+            />
           </Section>
         </>
       ) : null}
@@ -1207,7 +1332,9 @@ export default function CapitalConfig(props: any) {
             value={startOrderMode}
             options={[
               { value: "random", label: "Aléatoire" },
-              { value: "fixed", label: "Ordre défini" },
+              { value: "fixed", label: "Alterné / sélection" },
+              { value: "manual", label: "Manuel" },
+              { value: "bull", label: "Bull" },
             ]}
             onChange={(v) => setStartOrderMode(v)}
           />
@@ -1367,33 +1494,142 @@ export default function CapitalConfig(props: any) {
       {/* ============================= */}
       {showMode ? (
       <Section title={t("config.mode", "Mode")}>
-        <CapitalOptionCard label="Version" info={CAPITAL_OPTION_HELP.version} onInfo={openOptionInfo}>
-          <OptionSelect
-            value={mode}
-            options={[
-              { value: "official", label: "Officiel (15 contrats)" },
-              { value: "custom", label: "Custom" },
-            ]}
-            onChange={setMode}
-          />
+        <CapitalOptionCard label="Catégorie CAPITAL" info={CAPITAL_OPTION_HELP.version} onInfo={openOptionInfo} stacked>
+          <div role="group" aria-label="Catégorie de variante CAPITAL" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(92px, 1fr))", gap: 7 }}>
+            {[...CAPITAL_PRESET_GROUPS.map(group => ({ value: group.category, label: group.label })), { value: "custom", label: "MON CAPITAL" }].map(item => {
+              const active = selectedCategory === item.value;
+              return (
+                <button
+                  key={item.value}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => handleCategoryChange(item.value as typeof selectedCategory)}
+                  style={{ minHeight: 43, padding: "8px 6px", borderRadius: 11,
+                    border: active ? "1px solid rgba(53,216,255,.65)" : "1px solid rgba(255,255,255,.17)",
+                    background: active ? "rgba(53,216,255,.18)" : "rgba(255,255,255,.05)",
+                    color: "#fff", fontWeight: 950, fontSize: 10.5, letterSpacing: .35,
+                    boxShadow: active ? "inset 0 0 0 1px rgba(53,216,255,.17)" : "none",
+                    cursor: "pointer" }}
+                >{item.label}</button>
+              );
+            })}
+          </div>
         </CapitalOptionCard>
 
+        {mode === "official" && selectedPresetGroup && (
+          <CapitalOptionCard label={selectedPresetGroup.contracts.length > 1 ? "Choisis la variante" : "Variante sélectionnée"} info="Les grilles de chaque catégorie sont regroupées ici. Les contrats et leur ordre restent inchangés." onInfo={openOptionInfo} stacked>
+            {selectedPresetGroup.contracts.length > 1 ? (
+              <OptionSelect
+                value={selectedVariant}
+                options={selectedPresetGroup.contracts.map(id => ({ value: id, label: CAPITAL_GRID_PRESETS[id].label }))}
+                onChange={(value: any) => handleVariantChange(value as CapitalGridPresetId)}
+              />
+            ) : (
+              <div style={{ borderRadius: 12, padding: "11px 12px", fontSize: 12, fontWeight: 900, border: "1px solid rgba(255,255,255,.13)", background: "rgba(255,255,255,.06)" }}>
+                {CAPITAL_GRID_PRESETS[gridVariant].label}
+              </div>
+            )}
+          </CapitalOptionCard>
+        )}
+
+        {mode === "custom" && (
+          <CapitalOptionCard label={`MON CAPITAL · ${savedVariants.length} variante(s) enregistrée(s)`} info="Retrouve ici tes variantes nommées. Sélectionner une variante recharge ses contrats et ses règles. Les modèles CLUB/BAR/NIVEAU ne sont jamais modifiés." onInfo={openOptionInfo} stacked>
+            {savedVariants.length > 0 ? (
+              <OptionSelect
+                value={savedVariantId}
+                options={[{ value: "", label: "— Nouvelle variante / grille en cours —" }, ...savedVariants.map(item => ({ value: item.id, label: `${item.name} · ${item.contracts.length + (item.includeCapital ? 1 : 0)} tours` }))]}
+                onChange={(id: any) => id ? loadNamedVariant(String(id)) : resetNamedVariantFromBase()}
+              />
+            ) : <div style={{ fontSize: 12, opacity: .75 }}>Aucune variante enregistrée. Choisis une base, personnalise-la, puis donne-lui un nom.</div>}
+            <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+              <label htmlFor="capital-personal-name" style={{ fontSize: 11, fontWeight: 900 }}>Nom de ma variante</label>
+              <input
+                id="capital-personal-name" type="text" maxLength={48} value={savedVariantName}
+                placeholder="Ex. Capital du vendredi"
+                onChange={(e) => { setSavedVariantName(e.target.value); setSavedNotice(""); }}
+                style={{ width: "100%", boxSizing: "border-box", borderRadius: 11, padding: "11px 12px", background: "rgba(0,0,0,.28)", border: "1px solid rgba(255,255,255,.25)", color: "#fff", fontWeight: 850 }}
+              />
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 7 }}>
+                <button type="button" onClick={() => saveNamedVariant(false)} style={capitalLibraryButtonStyle(true)}>
+                  {selectedSavedVariant ? "Enregistrer les modifications" : "Enregistrer ma variante"}
+                </button>
+                {selectedSavedVariant && <button type="button" onClick={() => saveNamedVariant(true)} style={capitalLibraryButtonStyle(false)}>Enregistrer une copie</button>}
+                {selectedSavedVariant && <button type="button" onClick={deleteNamedVariant} style={capitalLibraryButtonStyle(false)}>Supprimer</button>}
+              </div>
+              {selectedSavedVariant && <div style={{ fontSize: 11, opacity: .8 }}>
+                {appliedVariantMatches ? "Variante enregistrée à jour." : "Modifications non enregistrées : clique sur Enregistrer pour les conserver."}
+                <span> Pour renommer, modifie le nom puis enregistre.</span>
+              </div>}
+              {savedNotice && <div role="status" style={{ fontSize: 11.5, fontWeight: 850, color: "#9de7ff" }}>{savedNotice}</div>}
+              <div style={{ fontSize: 10.5, opacity: .65 }}>Variantes conservées sur cet appareil. Leur synchronisation entre appareils n’est pas automatique.</div>
+            </div>
+          </CapitalOptionCard>
+        )}
+
+        {mode === "custom" && (
+          <CapitalOptionCard label="MON CAPITAL · Base pour une nouvelle grille" info="Choisis une grille CLUB, BAR ou NIVEAU, puis clique sur Créer depuis cette base pour en faire une copie modifiable et enregistrable sous un nom." onInfo={openOptionInfo} stacked>
+            <OptionSelect
+              value={gridVariant}
+              options={CAPITAL_PRESET_ORDER.map(id => ({ value: id, label: `${CAPITAL_PRESET_GROUPS.find(group => group.category === CAPITAL_GRID_PRESETS[id].category)?.label || "CAPITAL"} — ${CAPITAL_GRID_PRESETS[id].label}` }))}
+              onChange={(value: any) => setGridVariant(value as CapitalGridPresetId)}
+            />
+          </CapitalOptionCard>
+        )}
+
+        {gridVariant === "committee_other17" && (
+          <CapitalOptionCard label="Contrat de remplacement (Peluche)" info="Choisis le contrat appliqué aux autres variantes régionales. Il prend exactement la place de Peluche dans les 17 tours." onInfo={openOptionInfo} stacked>
+            <OptionSelect
+              value={committeeSpecialContract}
+              options={CAPITAL_COMMITTEE_REPLACEMENTS.map(id => ({ value: id, label: labelOf(id) }))}
+              onChange={(v: any) => setCommitteeSpecialContract(v as CapitalContractID)}
+            />
+          </CapitalOptionCard>
+        )}
+
+        <div style={{ margin: "7px 0 9px", fontSize: 11, lineHeight: 1.35, opacity: .75 }}>
+          {CAPITAL_GRID_PRESETS[gridVariant].description}
+          {mode === "custom" ? ` · ${customList.length} contrat(s) dans ta liste modifiable.` : ""}
+        </div>
+
         {mode === "official" && (
-          <div style={{ marginTop: 10, fontSize: 12, opacity: 0.8, lineHeight: 1.3 }}>
-            Séquence officielle :
-            <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
-              {OFFICIAL_CONTRACTS.map((c, i) => (
-                <div key={c} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <div style={{ width: 26, textAlign: "right", opacity: 0.7, fontWeight: 900 }}>
-                    #{i + 1}
-                  </div>
-                  <div style={{ fontWeight: 900 }}>{labelOf(c)}</div>
+          <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.35 }}>
+            <b>{activeGridContracts.length} tours</b>
+            <div style={{ marginTop: 8, display: "grid", gap: 5, maxHeight: 285, overflowY: "auto" }}>
+              {activeGridContracts.map((id, i) => (
+                <div key={`${id}-${i}`} style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
+                  <span style={{ width: 24, flexShrink: 0, textAlign: "right", opacity: .6 }}>#{i + 1}</span>
+                  <span><b>{CAPITAL_CONTRACT_META[id].label}</b> <span style={{ opacity: .65, fontSize: 10 }}>{CAPITAL_CONTRACT_META[id].rule}</span></span>
                 </div>
               ))}
             </div>
           </div>
         )}
 
+        {mode === "custom" ? (
+          <button type="button" onClick={() => {
+            resetNamedVariantFromBase();
+          }} style={{ padding: "10px 12px", borderRadius: 12, background: "rgba(53,216,255,.11)", border: "1px solid rgba(53,216,255,.4)", fontWeight: 950, color: "#fff", width: "100%" }}>
+            Créer une nouvelle variante depuis cette base ({activeGridContracts.length} contrats)
+          </button>
+        ) : null}
+
+        {(mode === "custom" ? customList : activeGridContracts).includes("shanghai") && (
+          <CapitalOptionCard label="Bonus Shanghai" info="Certaines variantes locales ajoutent un bonus en cas de Shanghai complet ; par défaut aucun bonus." onInfo={openOptionInfo}>
+            <OptionSelect value={shanghaiBonus} options={[0, 25, 50, 100].map((n) => ({ value: n, label: n ? `+${n} points` : "Sans bonus" }))} onChange={(v: any) => setShanghaiBonus(Number(v))} />
+          </CapitalOptionCard>
+        )}
+        {(mode === "custom" ? customList : activeGridContracts).includes("packet") && (
+          <CapitalOptionCard label="Paquet : autoriser D / T" info="Par défaut trois simples identiques. Activer pour accepter également trois doubles identiques ou trois triples identiques." onInfo={openOptionInfo}>
+            <OptionToggle value={packetAllowMultipliers} onChange={setPacketAllowMultipliers} />
+          </CapitalOptionCard>
+        )}
+        {(mode === "custom" ? customList : activeGridContracts).includes("exact_custom") && (
+          <CapitalOptionCard label="Objectif du Score exact libre" info="Nombre à atteindre exactement en une à trois fléchettes." onInfo={openOptionInfo}>
+            <input aria-label="Score exact libre" type="number" min={1} max={180} value={exactTarget}
+              onChange={(e) => setExactTarget(Number(e.target.value))}
+              style={{ width: 95, padding: "9px 10px", borderRadius: 10, color: "#fff", background: "rgba(0,0,0,.32)", border: `1px solid ${capitalExactScorePossible(exactTarget) ? "rgba(255,255,255,.23)" : "#ff7b8d"}` }} />
+          </CapitalOptionCard>
+        )}
         {mode === "custom" && (
           <>
             <CapitalOptionCard label="Contrat Capital au départ" info={CAPITAL_OPTION_HELP.includeCapital} onInfo={openOptionInfo}>
@@ -1401,7 +1637,7 @@ export default function CapitalConfig(props: any) {
             </CapitalOptionCard>
 
             {/* ✅ Ajout : limite nb contrats */}
-            <CapitalOptionCard label="Nb max de contrats" info={CAPITAL_OPTION_HELP.maxContracts} onInfo={openOptionInfo}>
+            <CapitalOptionCard label="Limite contrats (hors CAP)" info={CAPITAL_OPTION_HELP.maxContracts} onInfo={openOptionInfo}>
               <OptionSelect
                 value={maxCustomContracts}
                 options={[
@@ -1410,6 +1646,8 @@ export default function CapitalConfig(props: any) {
                   { value: 10, label: "10" },
                   { value: 12, label: "12" },
                   { value: 15, label: "15" },
+                  { value: 16, label: "16" },
+                  { value: 17, label: "17" },
                   { value: 18, label: "18" },
                   { value: 20, label: "20" },
                   { value: 25, label: "25" },
@@ -1453,6 +1691,9 @@ export default function CapitalConfig(props: any) {
                         }}
                       >
                         {labelOf(id)}
+                      </div>
+                      <div style={{ marginTop: 3, fontSize: 10, opacity: .62, lineHeight: 1.25 }}>
+                        {CAPITAL_CONTRACT_META[id]?.rule}
                       </div>
                     </div>
 
@@ -1550,6 +1791,12 @@ export default function CapitalConfig(props: any) {
                   setCustomContracts((prev) => {
                     const base = customList.filter((x) => x !== "capital");
                     if (base.includes(addPick)) return prev;
+                    // Un ajout ne doit jamais être masqué par l'ancienne limite (15 par défaut).
+                    const required = Math.min(30, base.length + 1);
+                    const steps = [5, 8, 10, 12, 15, 16, 17, 18, 20, 25, 30];
+                    if (required > maxCustomContracts) {
+                      setMaxCustomContracts(steps.find((step) => step >= required) || 30);
+                    }
                     return [...base, addPick] as any;
                   });
                 }}
@@ -1696,6 +1943,7 @@ export default function CapitalConfig(props: any) {
               { value: "keypad", label: "Keypad" },
               { value: "dartboard", label: "Cible" },
               { value: "presets", label: "Presets" },
+              { value: "visit_score", label: "Score volée" },
             ]}
             onChange={setInputMethod}
           />
@@ -1708,10 +1956,10 @@ export default function CapitalConfig(props: any) {
           <div style={{ display: "grid", gap: 8, fontSize: 12 }}>
             {[
               ["Participants", canonicalSelection?.participantMode === "teams" ? `${canonicalSelection?.teams.length || 0} équipes • ${canonicalSelection?.selectedIds.length || 0} joueurs` : `${canonicalSelection?.selectedIds.length || 0} joueurs`],
-              ["Mode", mode === "official" ? "Officiel • 15 contrats" : `Custom • ${customList.length} contrats`],
+              ["Mode", mode === "official" ? CAPITAL_GRID_PRESETS[gridVariant].label : `${savedVariantName.trim() || CAPITAL_CUSTOM_VARIANT_LABEL} • ${customList.length} contrats${selectedSavedVariant && !appliedVariantMatches ? " (non enregistré)" : ""}`],
               ["Échec", failDivideBy2 ? "Capital divisé par 2" : "Aucune division"],
               ["Victoire", victoryMode === "first_to_target" ? `Score cible ${targetScore}` : "Meilleur capital final"],
-              ["Départ", startOrderMode === "random" ? "Aléatoire (une seule fois)" : "Ordre de sélection"],
+              ["Départ", ({ random: "Aléatoire", fixed: "Alterné / sélection", alternate: "Alterné / sélection", manual: "Manuel", bull: "Bull" } as Record<CapitalStartOrderMode, string>)[startOrderMode]],
               ["Saisie", String(inputMethod).toUpperCase()],
             ].map(([label, value]) => (
               <div key={label} style={{ display: "grid", gridTemplateColumns: "105px 1fr", gap: 8, padding: 9, borderRadius: 13, background: "rgba(255,255,255,.035)" }}>
@@ -1741,7 +1989,7 @@ export default function CapitalConfig(props: any) {
       {showRecap ? (
         <div style={{ padding: "2px 12px 104px" }}>
           <div style={{ marginTop: 8, fontSize: 11.5, opacity: 0.68, lineHeight: 1.35 }}>
-            Officiel = séquence fixe des 15 contrats. Custom = tu choisis l’ordre et les contrats.
+            Quatre catégories : CLUB, BAR, NIVEAU et MON CAPITAL. Enregistre tes grilles personnelles sous un nom pour les retrouver dans MON CAPITAL.
           </div>
         </div>
       ) : null}

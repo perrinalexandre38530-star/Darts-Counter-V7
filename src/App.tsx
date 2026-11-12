@@ -253,6 +253,7 @@ const QuickPartyModeConfig = React.lazy(() => import("./pages/QuickPartyModeConf
 const QuickBobs27Config = React.lazy(() => import("./pages/QuickBobs27Config"));
 const QuickIndependentDartsConfig = React.lazy(() => import("./pages/QuickIndependentDartsConfig"));
 const GameModeEntryChoice = React.lazy(() => import("./components/GameModeEntryChoice"));
+const QuickSimpleRoundsConfig = React.lazy(() => import("./pages/QuickSimpleRoundsConfig"));
 const QuickBattleRoyaleConfig = React.lazy(() => import("./pages/QuickBattleRoyaleConfig"));
 const QuickScramConfig = React.lazy(() => import("./pages/QuickScramConfig"));
 const X01PlayV3 = React.lazy(() => import("./pages/X01PlayV3"));
@@ -7238,9 +7239,13 @@ case "babyfoot_team_edit":
         );
         break;
 
-      case "count_up_config":
-        page = <DefiConfig setTab={go} params={{ ...routeParams, modeId: "count_up" }} />;
+      case "count_up_config": {
+        const launchMode = String(routeParams?.launchMode || "");
+        if (launchMode === "quick") page = <QuickSimpleRoundsConfig modeId="count_up" onBack={() => go("count_up_config")} onStart={(params) => go("count_up_play", params)} />;
+        else if (launchMode === "arcade" || routeParams?.resume || routeParams?.config) page = <DefiConfig setTab={go} params={{ ...routeParams, modeId: "count_up" }} />;
+        else page = <GameModeEntryChoice title="COUNT UP" tickerId="count_up" onBack={() => go("games")} onQuick={() => go("count_up_config", { ...routeParams, launchMode: "quick" })} onArcade={() => go("count_up_config", { ...routeParams, launchMode: "arcade" })} />;
         break;
+      }
       case "count_up_play":
         page = <DefiPlay setTab={go} params={{ ...routeParams, modeId: "count_up" }} />;
         break;
@@ -7471,9 +7476,13 @@ case "babyfoot_team_edit":
         );
         break;
 
-      case "game_170_config":
-        page = <Game170Config setTab={go} params={routeParams} />;
+      case "game_170_config": {
+        const launchMode = String(routeParams?.launchMode || "");
+        if (launchMode === "quick") page = <QuickSimpleRoundsConfig modeId="game_170" onBack={() => go("game_170_config")} onStart={(params) => go("game_170_play", params)} />;
+        else if (launchMode === "arcade" || routeParams?.resume || routeParams?.config) page = <Game170Config setTab={go} params={routeParams} />;
+        else page = <GameModeEntryChoice title="GAME 170" tickerId="game_170" onBack={() => go("games")} onQuick={() => go("game_170_config", { ...routeParams, launchMode: "quick" })} onArcade={() => go("game_170_config", { ...routeParams, launchMode: "arcade" })} />;
         break;
+      }
       case "game_170_play":
         page = <Game170Play setTab={go} params={routeParams} />;
         break;
@@ -7525,9 +7534,13 @@ case "babyfoot_team_edit":
         page = <LoteriePlay setTab={go} go={go} store={store} params={routeParams} onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "loterie", routeParams), { navigate: false })} />;
         break;
 
-      case "happy_mille_config":
-        page = <HappyMilleConfig setTab={go} params={routeParams} />;
+      case "happy_mille_config": {
+        const launchMode = String(routeParams?.launchMode || "");
+        if (launchMode === "quick") page = <QuickSimpleRoundsConfig modeId="happy_mille" onBack={() => go("happy_mille_config")} onStart={(params) => go("happy_mille_play", params)} />;
+        else if (launchMode === "arcade" || routeParams?.resume || routeParams?.config) page = <HappyMilleConfig setTab={go} params={routeParams} />;
+        else page = <GameModeEntryChoice title="HAPPY MILLE" tickerId="happy_mille" onBack={() => go("games")} onQuick={() => go("happy_mille_config", { ...routeParams, launchMode: "quick" })} onArcade={() => go("happy_mille_config", { ...routeParams, launchMode: "arcade" })} />;
         break;
+      }
       case "happy_mille_play":
         page = <HappyMillePlay setTab={go} params={routeParams} />;
         break;
@@ -7841,9 +7854,13 @@ case "babyfoot_team_edit":
         );
         break;
 
-      case "enculette_config":
-        page = <EnculetteConfig setTab={go} params={routeParams} />;
+      case "enculette_config": {
+        const launchMode = String(routeParams?.launchMode || "");
+        if (launchMode === "quick") page = <QuickSimpleRoundsConfig modeId="enculette" onBack={() => go("enculette_config")} onStart={(params) => go("enculette_play", params)} />;
+        else if (launchMode === "arcade" || routeParams?.resume || routeParams?.config) page = <EnculetteConfig setTab={go} params={routeParams} />;
+        else page = <GameModeEntryChoice title="ENCULETTE" tickerId="enculette" onBack={() => go("games")} onQuick={() => go("enculette_config", { ...routeParams, launchMode: "quick" })} onArcade={() => go("enculette_config", { ...routeParams, launchMode: "arcade" })} />;
         break;
+      }
       case "enculette_play":
         page = <EnculettePlay setTab={go} params={routeParams} />;
         break;
