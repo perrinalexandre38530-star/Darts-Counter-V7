@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { convertAndroidGeneratedPng } from './convert-android-generated-png.mjs';
+import { convertAndroidReferencedWav } from './convert-android-referenced-wav.mjs';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -282,7 +283,14 @@ const results = [
 
 // Android-only: transform large, fingerprinted PNGs into actual .webp files and
 // rewrite their compiled JS/CSS/HTML references. The source/site build is untouched.
-const vitePngWebp = await convertAndroidGeneratedPng({ dist: DIST });
+const vitePngWebp = await convertAndroidGeneratedPng({
+  dist: DIST,
+  quality: 84,
+  minSavingBytes: 12 * 1024,
+  minSavingFraction: 0.16,
+  minPsnrDb: 35,
+});
+const wavMp3 = convertAndroidReferencedWav({ dist: DIST });
 
 const saved = results.reduce((n, r) => n + (r.saved || 0), 0);
 const before = results.reduce((n, r) => n + (r.before || 0), 0);
@@ -313,6 +321,7 @@ fs.writeFileSync(
       generatedAt: new Date().toISOString(),
       ffmpeg: FFMPEG,
       vitePngWebp,
+      wavMp3,
       before,
       after,
       saved,
