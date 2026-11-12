@@ -92,13 +92,16 @@ export function report(issue, audit, branch, runUrl) {
       lines.push('  - Job : [' + trim(job.name) + '](' + job.url + ')'
         + (job.steps.length ? ' ; étapes : ' + job.steps.map(x => '"' + x + '"').join(', ') : ' ; étapes non détaillées'));
       const evidence = job.evidence;
-      if (evidence?.inspected) lines.push('    - Indices du journal (classification, **pas une cause prouvée**) : '
-        + (evidence.categories.length ? evidence.categories.map(x => x.label).join(', ') : 'aucune signature reconnue')
-        + (evidence.truncated ? ' ; journal partiel' : '') + '.');
-      if (evidence?.inspected) for (const check of suggestedChecks(evidence.categories)) {
-        lines.push('    - Vérification recommandée : ' + check);
+      if (evidence?.inspected) {
+        lines.push('    - Indices du journal (classification, **pas une cause prouvée**) : '
+          + (evidence.categories.length ? evidence.categories.map(x => x.label).join(', ') : 'aucune signature reconnue')
+          + (evidence.truncated ? ' ; journal partiel' : '') + '.');
+        for (const check of suggestedChecks(evidence.categories)) {
+          lines.push('    - Vérification recommandée : ' + check);
+        }
+      } else {
+        lines.push('    - Journal non consultable ; classification indisponible.');
       }
-      else lines.push('    - Journal non consultable ; classification indisponible.');
     }
   }
   lines.push(
