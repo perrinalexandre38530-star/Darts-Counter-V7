@@ -9,7 +9,7 @@ const play = read('src/pages/Wave61SharedPlay.tsx');
 const feedback = read('src/lib/wave61Feedback.ts');
 const ids = [...catalog.matchAll(/\{ id: "([^"]+)"/g)].map((m) => m[1]);
 
-const EXPECTED = 65;
+const EXPECTED = 73;
 assert(ids.length === EXPECTED, `${EXPECTED} modes attendus, ${ids.length} trouvés`);
 assert(engine.includes('WAVE61_ENGINE_VERSION = 17'), 'Moteur Wave61 V17 attendu');
 for (const key of ['targetAdviceEnabled','awenaCommentaryEnabled','wave61SfxEnabled']) {
