@@ -78,7 +78,7 @@ test('QA report endpoint links to verified pilot evidence without returning comm
   if(p.endsWith('/issues/42'))return ok({number:42,state:'open',title:'[AGENT] QA',labels:[{name:'mss:mission'},{name:'mss:review'}],body:'**Robot :** qa'});
   if(p.endsWith('/issues/42/comments'))return ok([
    {body:'Unrelated comment',html_url:'https://github.com/owner/repo/issues/42#issuecomment-1'},
-   {body:'<!-- MSS_QA_PILOT_V1 -->\\nSECRET NEVER RETURN THIS',html_url:'https://github.com/owner/repo/issues/42#issuecomment-2'}
+   {body:'<!-- MSS_QA_PILOT_V1 -->\n**Mission :** #42 — QA\nSECRET NEVER RETURN THIS',user:{login:'github-actions[bot]',type:'Bot'},html_url:'https://github.com/owner/repo/issues/42#issuecomment-2'}
   ]);
   return ok({message:'Not Found'},404);
  };
@@ -98,12 +98,51 @@ test('QA report endpoint rejects forged external report links',async()=>{
  globalThis.fetch=async(url)=>{
   const p=new URL(url).pathname;
   if(p.endsWith('/issues/42'))return ok({number:42,state:'open',title:'[AGENT] QA',labels:[{name:'mss:mission'}]});
-  if(p.endsWith('/issues/42/comments'))return ok([{body:'<!-- MSS_QA_PILOT_V1 -->',html_url:'https://evil.example/report'}]);
+  if(p.endsWith('/issues/42/comments'))return ok([{body:'<!-- MSS_QA_PILOT_V1 -->\n**Mission :** #42 — QA',user:{login:'github-actions[bot]',type:'Bot'},html_url:'https://evil.example/report'}]);
   return ok({message:'Not Found'},404);
  };
  try{
   const res=await onRequest(context('missions/42/qa-report'));
   assert.equal(res.status,200);
   assert.equal((await res.json()).reportAvailable,false);
+ }finally{globalThis.fetch=previous;}
+});
+
+test('a public commenter cannot spoof a QA report by copying the marker',async()=>{
+ const previous=globalThis.fetch;
+ globalThis.fetch=async(url)=>{
+  const p=new URL(url).pathname;
+  if(p.endsWith('/issues/42'))return ok({number:42,state:'open',title:'[AGENT] QA',labels:[{name:'mss:mission'},{name:'mss:review'}]});
+  if(p.endsWith('/issues/42/comments'))return ok([{
+   body:'<!-- MSS_QA_PILOT_V1 -->\\n**Mission :** #42 — QA',
+   user:{login:'unauthorized-user',type:'User'},
+   html_url:'https://github.com/owner/repo/issues/42#issuecomment-10'
+  }]);
+  return ok({message:'Not Found'},404);
+ };
+ try{
+  const response=await onRequest(context('missions/42/qa-report'));
+  assert.equal(response.status,200);
+  const body=await response.json();
+  assert.equal(body.reportAvailable,false);
+  assert.equal(body.reportUrl,null);
+  assert.equal(body.status,'AUCUN RAPPORT');
+ }finally{globalThis.fetch=previous;}
+});
+test('bot report with wrong mission number cannot be presented',async()=>{
+ const previous=globalThis.fetch;
+ globalThis.fetch=async(url)=>{
+  const p=new URL(url).pathname;
+  if(p.endsWith('/issues/42'))return ok({number:42,state:'open',title:'[AGENT] QA',labels:[{name:'mss:mission'}]});
+  if(p.endsWith('/issues/42/comments'))return ok([{
+   body:'<!-- MSS_QA_PILOT_V1 -->\\n**Mission :** #41 — Other',
+   user:{login:'github-actions[bot]',type:'Bot'},
+   html_url:'https://github.com/owner/repo/issues/42#issuecomment-11'
+  }]);
+  return ok({message:'Not Found'},404);
+ };
+ try{
+  const response=await onRequest(context('missions/42/qa-report'));
+  assert.equal((await response.json()).reportAvailable,false);
  }finally{globalThis.fetch=previous;}
 });
