@@ -19,7 +19,7 @@ for(const token of [
   'winnerIds,',
   'winnerTeamId: s.winnerTeamId',
   'status === "finished" ? (s.finishedAt || Date.now()) : undefined',
-  'if (finishedRef.current) return',
+  'if (s.phase === "finished" && finishedRef.current) return',
   'state.phase === "finished" || activeIsBot',
   'onStats={() => go?.("darts_mode_summary"',
   'onHistory={() => go?.("statsHub"',
