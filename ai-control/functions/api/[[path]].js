@@ -67,13 +67,18 @@ export async function onRequest(context){
    const issue=await github(config,`/issues/${number}`);
    if(!isMission(issue))return bad('La mission doit être ouverte et appartenir à MSS AI CONTROL.',403);
    const approve=decision[2]==='approve';
+   const labels=(issue.labels||[]).map(x=>String(typeof x==='string'?x:x?.name||'').toLowerCase());
+   if(approve && labels.includes('mss:review'))return bad('Mission en revue humaine : terminer cette revue avant une nouvelle approbation.',409);
    const label=approve?'mss:approved':'mss:blocked';
-   await ensureLabel(config,label,approve?'168b75':'b34f68',approve?'Mission approuvée pour préparation, pas pour exécution automatique':'Mission suspendue');
-   await github(config,`/issues/${number}/labels`,'POST',{labels:[label]});
    const opposite=approve?'mss:blocked':'mss:approved';
-   const existing=(issue.labels||[]).some(x=>(typeof x==='string'?x:x.name)?.toLowerCase()===opposite);
-   if(existing){await github(config,`/issues/${number}/labels/${encodeURIComponent(opposite)}`,'DELETE');}
-   return json({number,status:approve?'APPROUVÉE':'BLOQUÉE',message:approve?'Mission approuvée. Aucun moteur IA n’est démarré.':'Mission suspendue.'});
+   // Remove the opposite state BEFORE adding the new label. In particular, a
+   // QA workflow triggered by mss:approved must not still see mss:blocked.
+   if(labels.includes(opposite))await github(config,`/issues/${number}/labels/${encodeURIComponent(opposite)}`,'DELETE');
+   if(!labels.includes(label)){
+    await ensureLabel(config,label,approve?'168b75':'b34f68',approve?'Mission approuvée : le pilote QA peut se déclencher si activé':'Mission suspendue');
+    await github(config,`/issues/${number}/labels`,'POST',{labels:[label]});
+   }
+   return json({number,status:approve?'APPROUVÉE':'BLOQUÉE',message:approve?'Mission approuvée : un robot autorisé peut se déclencher si son workflow est actif.':'Mission suspendue.'});
   }
   return bad('Cette action n’existe pas.',404);
  }catch(e){console.error('MSS AI CONTROL API:',e?.name||'error');const message=e?.status===503?e.message:e?.status===400||e?.status===413?e.message:e?.message?.startsWith('GitHub a refusé')?e.message:'Une erreur est survenue. Vérifie la connexion administrateur.';return bad(message,Number(e?.status)||500);}
