@@ -74,13 +74,13 @@ export async function onRequest(context){
    const verifiedComment=(c)=>{
     const body=String(c?.body||'');
     if(c?.user?.login!=='github-actions[bot]' || c?.user?.type!=='Bot'
-      || !body.startsWith('<!-- MSS_QA_PILOT_V1 -->\\n')
+      || !body.startsWith('<!-- MSS_QA_PILOT_V1 -->\n')
       || !body.includes('**Mission :** #'+number+' — '))return false;
     try{
      const u=new URL(c.html_url);
      return u.protocol==='https:' && u.hostname==='github.com'
        && u.pathname==='/'+config.repo+'/issues/'+number
-       && /^#issuecomment-\\d+$/.test(u.hash) && !u.search;
+       && /^#issuecomment-\d+$/.test(u.hash) && !u.search;
     }catch{return false;}
    };
    const matched=comments.filter(verifiedComment);
