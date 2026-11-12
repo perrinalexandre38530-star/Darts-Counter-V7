@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {isEligibleQA, summarize, report, MARKER} from './mss-qa-pilot.mjs';
+import {classifyLogEvidence} from './mss-qa-evidence.mjs';
 
 const approvedQA = {
   number: 28, title: '[AGENT] Tester la creation et le suivi', state: 'open',
@@ -54,4 +55,20 @@ test('PASS and FAIL depend on completed conclusive CI results', () => {
   const failure = summarize([{id: 2, status: 'completed', conclusion: 'failure', name: 'Android'}]);
   assert.equal(success.outcome, 'PASS');
   assert.equal(failure.outcome, 'FAIL');
+});
+
+test('job logs only produce allowlisted categories, never raw secrets', () => {
+  const raw = 'Authorization: Bearer SECRET_SAMPLE_983\\nGARDE-FOU MÉDIA ANDROID DÉPASSÉ\\nerror TS2322';
+  const diagnostic = classifyLogEvidence(raw);
+  assert.equal(diagnostic.inspected, true);
+  assert.deepEqual(diagnostic.categories.map(x => x.id), ['ANDROID_MEDIA_BUDGET', 'TYPESCRIPT']);
+  assert.ok(!JSON.stringify(diagnostic).includes('SECRET_SAMPLE_983'));
+});
+test('the QA report carries signatures without leaking log contents', () => {
+  const audit = summarize([{id: 3, name:'Android', status:'completed', conclusion:'failure', html_url:'https://github.com/test/actions/runs/3'}], {
+    '3': [{id:5, name:'Android job', conclusion:'failure', qaEvidence:classifyLogEvidence('GARDE-FOU MÉDIA ANDROID DÉPASSÉ SECRET-should-not-appear'),steps:[]}]
+  });
+  const output = report(approvedQA, audit, 'main', 'https://github.com/example/actions/runs/9');
+  assert.ok(output.includes('Budget médias Android dépassé'));
+  assert.ok(!output.includes('SECRET-should-not-appear'));
 });
