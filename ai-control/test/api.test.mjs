@@ -45,7 +45,7 @@ test('reapproving a blocked QA mission removes blocked before approved trigger',
   calls.push({p,m});
   if(p.endsWith('/issues/42')&&m==='GET')return ok({number:42,state:'open',title:'[AGENT] QA',labels:[{name:'mss:mission'},{name:'mss:blocked'}],body:'**Robot :** qa'});
   if(p.endsWith('/labels/mss%3Aapproved')&&m==='GET')return ok({name:'mss:approved'});
-  if(p.endsWith('/issues/42/labels/mss%3Ablocked')&&m==='DELETE')return ok({},204);
+  if(p.endsWith('/issues/42/labels/mss%3Ablocked')&&m==='DELETE')return new Response(null,{status:204});
   if(p.endsWith('/issues/42/labels')&&m==='POST')return ok([{name:'mss:approved'}]);
   return ok({message:'Not Found'},404);
  };
