@@ -1,4 +1,7 @@
 import fs from 'node:fs';
+import { convertAndroidGeneratedPng } from './convert-android-generated-png.mjs';
+import { convertAndroidReferencedWav } from './convert-android-referenced-wav.mjs';
+import { deduplicateAndroidHashedMedia } from './deduplicate-android-hashed-media.mjs';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -189,7 +192,9 @@ function ffmpegOptimize(file, type) {
       return Promise.resolve(null);
     }
   } else {
-    args.push('-an');
+    // Preserve the original audio tracks on Awena/rules videos. The previous
+    // -an silently removed narration when ffmpeg was available.
+    args.push('-c:a', 'copy');
 
     if (ext === '.webm') {
       args.push(
@@ -279,6 +284,18 @@ const results = [
   ...(await pool(video, (f) => ffmpegOptimize(f, 'video'), 1)),
 ];
 
+// Android-only: transform large, fingerprinted PNGs into actual .webp files and
+// rewrite their compiled JS/CSS/HTML references. The source/site build is untouched.
+const vitePngWebp = await convertAndroidGeneratedPng({
+  dist: DIST,
+  quality: 84,
+  minSavingBytes: 8 * 1024,
+  minSavingFraction: 0.10,
+  minPsnrDb: 34,
+});
+const wavMp3 = convertAndroidReferencedWav({ dist: DIST });
+const losslessDedup = deduplicateAndroidHashedMedia({ dist: DIST });
+
 const saved = results.reduce((n, r) => n + (r.saved || 0), 0);
 const before = results.reduce((n, r) => n + (r.before || 0), 0);
 const after = results.reduce((n, r) => n + (r.after || 0), 0);
@@ -307,6 +324,9 @@ fs.writeFileSync(
     {
       generatedAt: new Date().toISOString(),
       ffmpeg: FFMPEG,
+      vitePngWebp,
+      wavMp3,
+      losslessDedup,
       before,
       after,
       saved,
