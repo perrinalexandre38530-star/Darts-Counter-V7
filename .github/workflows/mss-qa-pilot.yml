@@ -45,9 +45,13 @@ jobs:
       contents: read
       actions: read
       issues: write
+    # A label may be placed by another collaborator; only the repository owner
+    # may authorize a QA execution. The script repeats this check fail-closed.
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.label.name == 'mss:approved' && github.event.issue.state == 'open')
+      (github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner) ||
+      (github.event_name == 'issues' && github.event.label.name == 'mss:approved' &&
+       github.event.issue.state == 'open' && github.event.sender.login == github.repository_owner &&
+       github.actor == github.repository_owner)
     runs-on: ubuntu-latest
     timeout-minutes: 7
     steps:
