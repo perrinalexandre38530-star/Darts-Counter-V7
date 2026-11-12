@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0d1323">
+  <meta name="description" content="MSS AI CONTROL — Centre de commandement privé des agents de MULTISPORTS SCORING.">
+  <link rel="icon" type="image/svg+xml" href="./icon.svg">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="stylesheet" href="./styles.css">
+  <title>MSS AI CONTROL · Centre de commandement</title>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-mark">M<span>✳</span></div><div><b>MSS <em>AI CONTROL</em></b><small>CENTRE DE COMMANDEMENT</small></div></div>
+      <div class="side-caption">ESPACE ADMINISTRATEUR</div>
+      <nav id="main-nav" class="main-nav" aria-label="Navigation principale">
+        <button type="button" class="nav-item selected" data-page="home"><span class="ico">◈</span> Vue d'ensemble</button>
+        <button type="button" class="nav-item" data-page="missions"><span class="ico">▤</span> Missions <span class="nav-count" id="side-mission-count">0</span></button>
+        <button type="button" class="nav-item" data-page="agents"><span class="ico">◎</span> Mon équipe</button>
+        <button type="button" class="nav-item" data-page="reviews"><span class="ico">◇</span> Validations <span class="nav-count" id="side-review-count">0</span></button>
+      </nav>
+      <div class="sidebar-foot"><span class="shield">◆</span><div><strong>Mode protégé</strong><small>Aucune publication automatique</small></div></div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar"><div class="crumb">MULTISPORTS SCORING <span>/</span> <strong id="breadcrumb">Vue d'ensemble</strong></div><div class="top-actions"><span class="clock-label" id="today-date"></span><span class="avatar">ADMIN</span></div></header>
+      <main class="content" id="app-content">
+        <div class="loading-state"><div class="pulse"></div><h1>Préparation du centre de commande</h1><p>Chargement de l'interface…</p></div>
+      </main>
+      <nav class="mobile-nav" aria-label="Navigation mobile">
+        <button class="selected" type="button" data-page="home"><span>◈</span>Accueil</button>
+        <button type="button" data-page="missions"><span>▤</span>Missions</button>
+        <button type="button" data-page="agents"><span>◎</span>Équipe</button>
+        <button type="button" data-page="reviews"><span>◇</span>Valider</button>
+      </nav>
+    </div>
+  </div>
+  <dialog id="mission-dialog" class="dialog">
+    <form id="mission-form" class="mission-form" method="dialog">
+      <div class="dialog-heading"><div><span class="eyebrow">DONNER UNE DIRECTIVE</span><h2>Nouvelle mission</h2><p>Explique ce que tu veux obtenir. Le robot aura une tâche précise.</p></div><button type="button" class="icon-button" id="close-dialog" aria-label="Fermer">×</button></div>
+      <label for="mission-title">Nom de la mission <span>*</span></label><input id="mission-title" maxlength="110" required placeholder="Ex. Corriger le compteur X01">
+      <label for="mission-agent">Robot responsable <span>*</span></label><select id="mission-agent" required></select>
+      <label for="mission-priority">Priorité</label><select id="mission-priority"><option value="normal">Normale</option><option value="high">Haute</option><option value="low">Basse</option></select>
+      <label for="mission-goal">Que doit faire le robot ? <span>*</span></label><textarea id="mission-goal" rows="4" maxlength="2500" required placeholder="Décris simplement le problème, le fonctionnement souhaité et ce qu'il faut obtenir."></textarea>
+      <label for="mission-success">Comment vérifier que c'est réussi ? <span>*</span></label><textarea id="mission-success" rows="3" maxlength="2000" required placeholder="Ex. Toutes les parties X01 s'affichent, les statistiques sont identiques partout, aucun doublon."></textarea>
+      <label for="mission-boundaries">Ce qu'il ne faut surtout pas toucher</label><textarea id="mission-boundaries" rows="2" maxlength="1500" placeholder="Ex. Ne pas modifier les sauvegardes ni les données des joueurs."></textarea>
+      <div class="form-warning">⚠ Le dépôt GitHub actuel est public : ne mets ici aucun mot de passe, donnée personnelle ou secret. Une mission enregistrée n'est pas lancée automatiquement.</div>
+      <div class="dialog-footer"><button type="button" class="btn secondary" id="save-draft">Garder en brouillon</button><button type="submit" class="btn primary" id="submit-mission">Créer la mission <span>➜</span></button></div>
+      <div id="form-feedback" role="status" aria-live="polite"></div>
+    </form>
+  </dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="./app.js" type="module"></script>
+</body>
+</html>
