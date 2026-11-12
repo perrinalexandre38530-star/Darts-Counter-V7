@@ -1,0 +1,50 @@
+name: MSS AI CONTROL - integration sur base CI Android
+
+on:
+  pull_request:
+    paths:
+      - "ai-control/**"
+      - "tools/mss-qa-*.mjs"
+      - "tools/test-mss-qa-pilot.mjs"
+      - ".github/workflows/mss-ai-control-integration-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mss-ai-integration-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integrated-quality:
+    name: QA + plateforme + contrats Cloud + regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout sans ecriture GitHub
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Tests de la plateforme privee
+        run: |
+          node --check ai-control/public/app.js
+          node --check ai-control/functions/_middleware.js
+          node --check 'ai-control/functions/api/[[path]].js'
+          node --test ai-control/test/*.test.mjs
+      - name: Tests du pilote QA
+        run: |
+          node --check tools/mss-qa-pilot.mjs
+          node --check tools/mss-qa-evidence.mjs
+          node --test tools/test-mss-qa-pilot.mjs
+      - name: Contrats publics Cloud et NAS
+        run: node tools/test-cloud-public-contracts.mjs
+      - name: Dependances reproductibles
+        run: npm ci
+      - name: Regression complete MULTISPORTS SCORING
+        run: npm run test:auto
