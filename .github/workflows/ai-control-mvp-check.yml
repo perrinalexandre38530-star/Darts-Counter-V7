@@ -27,6 +27,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Installer jose pour verifier les JWT Access
+        run: npm install --prefix ai-control --omit=dev --ignore-scripts --no-audit --no-fund
       - name: Verifier la syntaxe du navigateur et des fonctions
         run: |
           node --check ai-control/public/app.js
