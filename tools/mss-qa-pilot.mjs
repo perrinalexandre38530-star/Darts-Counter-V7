@@ -3,6 +3,7 @@
  * No model calls, file edits, deployments or external dependencies.
  */
 import { pathToFileURL } from 'node:url';
+import { classifyLogEvidence } from './mss-qa-evidence.mjs';
 
 export const MARKER = '<!-- MSS_QA_PILOT_V1 -->';
 const LIMIT = 25;
@@ -40,6 +41,7 @@ export function summarize(runs, jobsByRun = {}) {
       jobs: (jobsByRun[String(r.id)] || []).filter(j => ['failure', 'timed_out'].includes(j.conclusion)).slice(0, 6)
         .map(j => ({
           name: trim(j.name), url: j.html_url || r.html_url,
+          evidence: j.qaEvidence || null,
           steps: (j.steps || []).filter(s => ['failure', 'timed_out'].includes(s.conclusion)).slice(0, 4).map(s => trim(s.name))
         }))
     }))
@@ -68,15 +70,21 @@ export function report(issue, audit, branch, runUrl) {
   for (const r of audit.failed) {
     lines.push('- [' + trim(r.name) + '](' + r.url + ') — ' + trim(r.conclusion) + ', SHA ' + trim(r.sha));
     if (!r.jobs.length) lines.push('  - Détails des jobs indisponibles : examiner le lien du run.');
-    for (const job of r.jobs) lines.push(
-      '  - Job : [' + trim(job.name) + '](' + job.url + ')'
-      + (job.steps.length ? ' ; étapes : ' + job.steps.map(x => '"' + x + '"').join(', ') : ' ; étapes non détaillées')
-    );
+    for (const job of r.jobs) {
+      lines.push('  - Job : [' + trim(job.name) + '](' + job.url + ')'
+        + (job.steps.length ? ' ; étapes : ' + job.steps.map(x => '"' + x + '"').join(', ') : ' ; étapes non détaillées'));
+      const evidence = job.evidence;
+      if (evidence?.inspected) lines.push('    - Indices du journal (classification, **pas une cause prouvée**) : '
+        + (evidence.categories.length ? evidence.categories.map(x => x.label).join(', ') : 'aucune signature reconnue')
+        + (evidence.truncated ? ' ; journal partiel' : '') + '.');
+      else lines.push('    - Journal non consultable ; classification indisponible.');
+    }
   }
   lines.push(
     '',
     '### Limites et suite',
     '- Le statut PASS signifie uniquement aucun échec parmi les runs terminés de l échantillon ; BLOQUÉ signifie preuves insuffisantes ou en cours.',
+    '- Les signatures de journaux sont des indices, pas une preuve de cause racine.',
     '- Les états des jobs et les noms des étapes ne suffisent pas à établir une cause racine.',
     '- Lire les journaux associés et comparer la baseline avant toute correction.',
     '- Aucun code modifié ; aucun test applicatif exécuté ; aucune PR, fusion ou publication.',
@@ -122,9 +130,49 @@ async function main() {
   const all = (page.workflow_runs || []).filter(r => r.status === 'completed' && !/^MSS QA Agent\b/i.test(r.name || ''));
   const broken = all.filter(r => ['failure', 'timed_out'].includes(r.conclusion)).slice(0, 3);
   const jobsByRun = {};
+  async function readJobLogEvidence(jobId) {
+    try {
+      const response = await fetch(endpoint + '/actions/jobs/' + jobId + '/logs', {
+        headers: {Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'MSS-QA-PILOT'},
+        signal: AbortSignal.timeout(15000)
+      });
+      if (!response.ok || !response.body) return null;
+      const reader = response.body.getReader();
+      const pieces = [];
+      let bytes = 0;
+      const maximum = 2_000_000;
+      let truncated = false;
+      try {
+        while (true) {
+          const {done, value} = await reader.read();
+          if (done) break;
+          if (bytes + value.length > maximum) {
+            pieces.push(value.subarray(0, maximum - bytes));
+            truncated = true;
+            await reader.cancel();
+            break;
+          }
+          pieces.push(value);
+          bytes += value.length;
+        }
+      } finally { reader.releaseLock(); }
+      const text = new TextDecoder().decode(Buffer.concat(pieces));
+      const classified = classifyLogEvidence(text);
+      return {...classified, truncated: truncated || classified.truncated};
+    } catch (error) {
+      console.warn('Job ' + jobId + ': log inaccessible (' + trim(error.message, 70) + ')');
+      return null;
+    }
+  }
   for (const run of broken) {
-    try { jobsByRun[String(run.id)] = (await api('/actions/runs/' + run.id + '/jobs?per_page=100')).jobs || []; }
-    catch (e) { console.warn('Run ' + run.id + ': job details unavailable (' + e.message + ')'); }
+    try {
+      const jobs = (await api('/actions/runs/' + run.id + '/jobs?per_page=100')).jobs || [];
+      for (const job of jobs.filter(j => ['failure', 'timed_out'].includes(j.conclusion)).slice(0, 3)) {
+        job.qaEvidence = await readJobLogEvidence(job.id);
+      }
+      jobsByRun[String(run.id)] = jobs;
+    } catch (e) { console.warn('Run ' + run.id + ': job details unavailable (' + e.message + ')'); }
   }
   const audit = summarize(page.workflow_runs || [], jobsByRun);
   const runUrl = 'https://github.com/' + repo + '/actions/runs/' + (process.env.GITHUB_RUN_ID || '');
