@@ -25,10 +25,16 @@ export function summarize(runs, jobsByRun = {}) {
   const completed = (Array.isArray(runs) ? runs : [])
     .filter(r => r.status === 'completed' && !/^MSS QA Agent\b/i.test(r.name || '')).slice(0, LIMIT);
   const failedRuns = completed.filter(r => ['failure', 'timed_out'].includes(r.conclusion));
+  const pending = (Array.isArray(runs) ? runs : [])
+    .filter(r => ['queued', 'in_progress', 'waiting', 'pending'].includes(r.status) && !/^MSS QA Agent\\b/i.test(r.name || '')).length;
+  const unknown = completed.filter(r => !['success', 'failure', 'timed_out'].includes(r.conclusion)).length;
   return {
     total: completed.length,
     success: completed.filter(r => r.conclusion === 'success').length,
     failures: failedRuns.length,
+    pending,
+    unknown,
+    outcome: !completed.length || pending || unknown ? 'BLOQUÉ' : failedRuns.length ? 'FAIL' : 'PASS',
     failed: failedRuns.slice(0, 3).map(r => ({
       name: trim(r.name), url: r.html_url, sha: trim(r.head_sha, 12), conclusion: r.conclusion,
       jobs: (jobsByRun[String(r.id)] || []).filter(j => ['failure', 'timed_out'].includes(j.conclusion)).slice(0, 6)
@@ -53,6 +59,8 @@ export function report(issue, audit, branch, runUrl) {
     '- Runs terminés examinés : **' + audit.total + '** (maximum ' + LIMIT + ').',
     '- Runs réussis : **' + audit.success + '**.',
     '- Runs en échec ou expirés : **' + audit.failures + '**.',
+    '- Runs non terminés : **' + (audit.pending || 0) + '** ; conclusions non probantes : **' + (audit.unknown || 0) + '**.',
+    '- **Statut de cet échantillon : ' + (audit.outcome || 'BLOQUÉ') + '** (pas une certification de l application).',
     '',
     '### Échecs récents et preuves'
   ];
@@ -68,6 +76,7 @@ export function report(issue, audit, branch, runUrl) {
   lines.push(
     '',
     '### Limites et suite',
+    '- Le statut PASS signifie uniquement aucun échec parmi les runs terminés de l échantillon ; BLOQUÉ signifie preuves insuffisantes ou en cours.',
     '- Les états des jobs et les noms des étapes ne suffisent pas à établir une cause racine.',
     '- Lire les journaux associés et comparer la baseline avant toute correction.',
     '- Aucun code modifié ; aucun test applicatif exécuté ; aucune PR, fusion ou publication.',
