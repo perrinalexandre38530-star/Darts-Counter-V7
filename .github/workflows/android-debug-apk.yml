@@ -57,6 +57,7 @@ jobs:
           npm run test:android-bootstrap
           node tools/test-android-generated-png.mjs
           node tools/test-android-referenced-wav.mjs
+          node tools/test-deduplicate-android-hashed-media.mjs
           npm run test:android-store-v1
           npm run test:admob-native
           npm run test:play-billing
