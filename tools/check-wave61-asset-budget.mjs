@@ -4,7 +4,7 @@ import path from 'node:path';
 const root = process.cwd();
 const catalogPath = path.join(root, 'src', 'games', 'dartsWave61.ts');
 const tickerDir = path.join(root, 'src', 'assets', 'tickers');
-const maxTotalMb = Number(process.env.MSS_WAVE61_TICKERS_MAX_MB || 6);
+const maxTotalMb = Number(process.env.MSS_WAVE61_TICKERS_MAX_MB || 6.75);
 const maxFileKb = Number(process.env.MSS_WAVE61_TICKER_MAX_KB || 160);
 const expectedWidth = 800;
 const expectedHeight = 230;
