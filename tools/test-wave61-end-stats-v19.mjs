@@ -9,7 +9,7 @@ const summary = read('src/pages/DartsModeSummaryPage.tsx');
 const catalog = read('src/games/dartsWave61.ts');
 
 const ids = [...catalog.matchAll(/\{ id: "([^"]+)"/g)].map((m) => m[1]);
-const EXPECTED = 65;
+const EXPECTED = 73;
 assert(ids.length === EXPECTED, `${EXPECTED} modes attendus, trouvé ${ids.length}`);
 assert(new Set(ids).size === EXPECTED, 'IDs Wave61 dupliqués');
 
