@@ -87,10 +87,13 @@ expect(
   /loadLinkedProfileProjection[\s\S]{0,500}!canUseNasOnlineApi\(\)[\s\S]{0,180}snapshots:\s*\[\]/.test(linkedProfileSync),
 );
 expect(
-  "Les listes legacy sociales renvoient un fallback local en public/hybride",
+  "Les associations de profils et groupes legacy restent neutralisés en public/hybride",
   /listProfileFriendLinks[\s\S]{0,180}publicBackendActive\(\)[\s\S]{0,80}return \[\]/.test(friendsApi)
-  && /listSharedMatches[\s\S]{0,180}publicBackendActive\(\)[\s\S]{0,80}return \[\]/.test(friendsApi)
   && /listMessengerGroups[\s\S]{0,180}publicBackendActive\(\)[\s\S]{0,80}return \[\]/.test(friendsApi),
+);
+expect(
+  "Les matchs partagés publics passent par les messages privés Supabase",
+  /listSharedMatches[\s\S]{0,180}publicBackendActive\(\)[\s\S]{0,180}cloudListPrivateMessages\([\s\S]{0,140}return sharedMatchesFromPrivateMessages\(messages\)/.test(friendsApi),
 );
 expect(
   "Le centre de messages utilise Supabase en public/hybride",
