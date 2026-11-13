@@ -37,6 +37,10 @@ test('only allowlisted categories and numbers reach the AI provider', () => {
   const packet = evidencePacket(sample);
   const serialized = JSON.stringify(packet);
   assert.deepEqual(packet.failures[0].jobs[0].categories, ['TYPESCRIPT']);
+  const extras=evidencePacket({outcome:'FAIL',failed:[{conclusion:'failure',jobs:[
+    {evidence:{categories:[{id:'ANDROID_SDK_SETUP'},{id:'CLOUD_SOCIAL_FALLBACK'},{id:'INJECT_THIS_SECRET'}]}}
+  ]}]});
+  assert.deepEqual(extras.failures[0].jobs[0].categories,['ANDROID_SDK_SETUP','CLOUD_SOCIAL_FALLBACK']);
   for (const phrase of ['DANGEROUS_SECRET', 'IGNORE THIS', 'SEND PRIVATE', 'evil.invalid', 'INJECT_FROM_COMMENT']) {
     assert.ok(!serialized.includes(phrase), phrase);
   }

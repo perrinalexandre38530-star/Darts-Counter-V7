@@ -5,6 +5,9 @@
 const SIGNATURES = [
   {id: 'ANDROID_MEDIA_BUDGET', label: 'Budget médias Android dépassé', re: /GARDE-FOU MÉDIA ANDROID DÉPASSÉ|Android local media.*(?:exceeded|dépasse)|MSS_ANDROID_LOCAL_MEDIA_MAX_MB/i},
   {id: 'ANDROID_GRADLE', label: 'Compilation Gradle Android', re: /Execution failed for task|BUILD FAILED|Gradle build failed/i},
+  // These are verified *log signatures*, not inferred root causes.
+  {id: 'ANDROID_SDK_SETUP', label: 'Installation des outils Android SDK (sdkmanager)', re: /Failed to find package ['"]tools['"]|sdkmanager['"]? failed with exit code 1|Failed to install Android SDK packages/i},
+  {id: 'CLOUD_SOCIAL_FALLBACK', label: 'Contrat Cloud/NAS : repli local des listes sociales', re: /listes legacy sociales renvoient un fallback local en public\/hybride|social legacy.*(?:local fallback|public.hybrid)/i},
   {id: 'TYPESCRIPT', label: 'Contrôle TypeScript', re: /error TS\d{4}|typescript compilation failed|tsc.*(?:error|failed)/i},
   {id: 'TEST_FAILURE', label: 'Test automatisé en échec', re: /not ok \d+|AssertionError|Tests:.*failed|FAIL\s+\S+\.test/i},
   {id: 'DEPENDENCY', label: 'Installation de dépendances', re: /npm ERR!|npm error|ERESOLVE|Could not resolve all dependencies/i},
@@ -14,6 +17,8 @@ const SIGNATURES = [
 const CHECKS = {
   ANDROID_MEDIA_BUDGET: 'Consulter le rapport de taille Android et vérifier les médias indispensables hors ligne ; ne pas relever le plafond.',
   ANDROID_GRADLE: 'Examiner la première tâche Gradle en échec et comparer la configuration SDK/Java entre les deux SHAs.',
+  ANDROID_SDK_SETUP: 'Vérifier pourquoi sdkmanager tente un paquet tools introuvable dans setup-android ; comparer le workflow et les versions SDK sur deux runs, sans modifier le jeu.',
+  CLOUD_SOCIAL_FALLBACK: 'Reproduire le test de contrat Cloud/NAS en public et hybride ; vérifier le chemin de repli des listes sociales legacy, puis comparer au SHA de référence.',
   TYPESCRIPT: 'Reproduire le contrôle TypeScript sur le SHA exact et identifier le fichier et la règle en échec.',
   TEST_FAILURE: 'Relancer uniquement le test concerné et comparer son résultat à la branche de référence.',
   DEPENDENCY: 'Vérifier le lockfile, la version Node et la reproductibilité avec npm ci.',
