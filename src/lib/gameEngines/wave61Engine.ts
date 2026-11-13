@@ -144,7 +144,7 @@ export function normalizeWave61Config(modeId: string, raw: any): Wave61Config {
     lives: Math.max(0, Number(raw?.lives ?? preset.defaultLives) || 0),
     scoreInputMethod: raw?.scoreInputMethod === "dartboard" ? "dartboard" : raw?.scoreInputMethod === "target" && modeId === "shove_a_penny" ? "target" : raw?.scoreInputMethod === "keypad" ? "keypad" : modeId === "shove_a_penny" ? "target" : "keypad",
     randomOrder: raw?.randomOrder !== false,
-    modeOptions: raw?.modeOptions && typeof raw.modeOptions === "object" ? { ...raw.modeOptions } : {},
+    modeOptions: modeId === "shove_a_penny" ? { ruleSet: "traditional", giftTargetRule: "next", ...(raw?.modeOptions && typeof raw.modeOptions === "object" ? raw.modeOptions : {}) } : raw?.modeOptions && typeof raw.modeOptions === "object" ? { ...raw.modeOptions } : {},
     targetAdviceEnabled: raw?.targetAdviceEnabled !== false,
     awenaCommentaryEnabled: raw?.awenaCommentaryEnabled !== false,
     wave61SfxEnabled: raw?.wave61SfxEnabled !== false,
@@ -1577,6 +1577,31 @@ function nextOpponentId(state: Wave61State, playerId: string): string | null {
 }
 
 
+
+function selectShoveGiftRecipient(
+  state: Wave61State, playerId: string, key: string,
+  marksByPlayer: Record<string, Record<string, number>>, marksPerBox: number,
+): string | null {
+  const ownTeam = state.config.participantMode === "teams" ? state.config.teamByPlayer?.[playerId] : null;
+  const possible = state.players.filter((p) => p.id !== playerId && !state.eliminated[p.id] &&
+    (!ownTeam || state.config.teamByPlayer?.[p.id] !== ownTeam));
+  if (!possible.length) return null;
+  const preferred = String(state.config?.modeOptions?.giftTargetRule || "next");
+  const targetId = String(state.config?.modeOptions?.giftRecipientId || "");
+  if (preferred === "shooter_choice") {
+    const chosen = possible.find((p) => p.id === targetId);
+    if (chosen) return chosen.id;
+  }
+  if (preferred === "most_needed") {
+    // Whoever still needs the most marks on this specific number.
+    const sorted = [...possible].sort((a, b) =>
+      Number(marksByPlayer[a.id]?.[key] || 0) - Number(marksByPlayer[b.id]?.[key] || 0));
+    return sorted[0]?.id || null;
+  }
+  const nextId = nextOpponentId(state, playerId);
+  return possible.some((p) => p.id === nextId) ? nextId : possible[0].id;
+}
+
 function processShoveAPenny(state: Wave61State, playerId: string, darts: GameDart[], events: string[]): { delta: number; hits: number } {
   const marksByPlayer = state.special.shoveMarksByPlayer || (state.special.shoveMarksByPlayer = {});
   const rule = shoveRuleSet(state.config?.modeOptions?.ruleSet);
@@ -1608,7 +1633,7 @@ function processShoveAPenny(state: Wave61State, playerId: string, darts: GameDar
     if (own) events.push("🪙 " + (key === "25" ? "BULL" : key) + " +" + own + " marque(s)");
     if (overflow > 0) {
       if (overflowRule === 1) {
-        const oppId = nextOpponentId(state, playerId);
+        const oppId = selectShoveGiftRecipient(state, playerId, key, marksByPlayer, marksPerBox);
         if (oppId) {
           const opp = marksByPlayer[oppId] || (marksByPlayer[oppId] = blankShoveMarks(rule));
           const oppBefore = Number(opp[key] || 0);
