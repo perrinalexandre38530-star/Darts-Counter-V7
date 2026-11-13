@@ -1285,7 +1285,9 @@ export default function Wave61SharedPlay(props: any) {
     ? shoveTargets(shoveRule).filter((n) => Number(shoveProjectedMarks[String(n)] || 0) >= shoveMarksPerBox).length : 0;
   const accent = preset.accent;
   const modeTicker = React.useMemo(() => getTicker(spec.id, lang), [spec.id, lang]);
-  const dedicatedPlayHint = String(props?.dedicatedPlayHint || "");
+  const dedicatedPlayHint = spec.id === "shove_a_penny"
+    ? shoveRule === "traditional" ? "1 à 9 libres · 3 marques/case · surplus offert · dernière marque personnelle" : "15 → 20 → BULL · 3 marques/case · ordre imposé"
+    : String(props?.dedicatedPlayHint || "");
   const targetAdviceEnabled = config?.targetAdviceEnabled !== false;
   const awenaCommentaryEnabled = config?.awenaCommentaryEnabled !== false;
   const wave61SfxEnabled = config?.wave61SfxEnabled !== false;
