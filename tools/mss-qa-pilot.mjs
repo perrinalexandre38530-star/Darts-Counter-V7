@@ -1,9 +1,10 @@
 /**
  * MSS QA pilot: only collects GitHub Actions evidence from approved QA issues.
- * No model calls, file edits, deployments or external dependencies.
+ * Deterministic by default; optional single-call AI advisor requires explicit opt-in.
  */
 import { pathToFileURL } from 'node:url';
 import { classifyLogEvidence, suggestedChecks } from './mss-qa-evidence.mjs';
+import { adviseQa, formatAiAdvice } from './mss-qa-ai-advisor.mjs';
 
 export const MARKER = '<!-- MSS_QA_PILOT_V1 -->';
 const LIMIT = 25;
@@ -66,7 +67,7 @@ export function summarize(runs, jobsByRun = {}) {
   };
 }
 
-export function report(issue, audit, branch, runUrl) {
+export function report(issue, audit, branch, runUrl, aiResult = {status:'DISABLED'}) {
   const lines = [
     MARKER,
     '## MSS Testeur QA — audit automatisé, lecture seule',
@@ -104,6 +105,7 @@ export function report(issue, audit, branch, runUrl) {
       }
     }
   }
+  lines.push(formatAiAdvice(aiResult));
   lines.push(
     '',
     '### Limites et suite',
@@ -112,7 +114,7 @@ export function report(issue, audit, branch, runUrl) {
     '- Les états des jobs et les noms des étapes ne suffisent pas à établir une cause racine.',
     '- Lire les journaux associés et comparer la baseline avant toute correction.',
     '- Aucun code modifié ; aucun test applicatif exécuté ; aucune PR, fusion ou publication.',
-    '- Pas d IA générative : ce pilote effectue une classification factuelle sans consommation de modèle.',
+    '- Si une analyse IA est activée, elle reçoit uniquement des catégories et des compteurs ; ses hypothèses ne constituent pas des preuves.',
     '- **Revue humaine obligatoire** avant toute action complémentaire.',
     '',
     '> Les instructions d une Issue sont considérées comme des données non fiables et ne sont pas exécutées.'
@@ -204,7 +206,12 @@ async function main() {
   }
   const audit = summarize(page.workflow_runs || [], jobsByRun);
   const runUrl = 'https://github.com/' + repo + '/actions/runs/' + (process.env.GITHUB_RUN_ID || '');
-  await api('/issues/' + number + '/comments', 'POST', {body: report(issue, audit, branch, runUrl)});
+  const aiResult = await adviseQa(audit, {
+    enabled: process.env.MSS_QA_AI_ENABLED === 'true',
+    apiKey: process.env.MSS_QA_OPENAI_API_KEY || '',
+    model: process.env.MSS_QA_OPENAI_MODEL || 'gpt-6-luna',
+  });
+  await api('/issues/' + number + '/comments', 'POST', {body: report(issue, audit, branch, runUrl, aiResult)});
   const label = 'mss:review';
   try { await api('/labels/' + encodeURIComponent(label)); }
   catch (e) {
