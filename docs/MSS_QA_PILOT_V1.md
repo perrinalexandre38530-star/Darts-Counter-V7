@@ -78,3 +78,16 @@ Le robot QA conserve **deux niveaux de capacité** :
 ### Source de l'API
 - https://developers.openai.com/api/reference/resources/responses/methods/create
 - https://developers.openai.com/api/docs/guides/structured-outputs
+
+## V3 — Diagnostics CI ciblés et consentement IA par mission (13/11/2026)
+
+Le premier audit automatisé de la mission #26 a publié un rapport GitHub réel. Deux échecs y étaient mal catégorisés bien qu'identifiables dans les journaux : installation Android SDK avec `sdkmanager` (« Failed to find package 'tools' ») et contrat Cloud/NAS (« listes legacy sociales ... fallback local en public/hybride »). V3 ajoute deux **signatures de log déterministes**, avec les contrôles recommandés. Une signature n'est pas une cause racine prouvée. Lorsqu'un échec est constaté, le statut d'échantillon est `FAIL` même si d'autres jobs tournent encore ; le nombre de jobs en cours reste indiqué séparément.
+
+### Deux autorisations obligatoires pour l'analyse payante
+
+1. Variable du dépôt GitHub Actions `MSS_QA_AI_ENABLED=true` (volontairement absente ou false par défaut) et secret `MSS_QA_OPENAI_API_KEY` côté GitHub ;
+2. Étiquette `mss:ai-approved` ajoutée spécifiquement à la mission QA déjà approuvée avec `mss:approved`, par le propriétaire.
+
+Il faut les **deux**. Le pilote ne donne jamais un avis IA si la variable globale ou l'étiquette propre à la mission est manquante. Aucune boucle ni commande de réparation : un seul appel possible avant publication du premier rapport de chaque mission. L'étiquette d'approbation ordinaire `mss:approved` suffit pour **l'audit déterministe gratuit**, sans accord implicite pour des frais API.
+
+Avant toute mise à true, privilégier un **projet OpenAI distinct** muni d'un budget strict (`Enforce a hard limit`), car les alertes de `Default project` sont non bloquantes et son utilisation est déjà au-delà de son plafond affiché. Le QA n'est pas un outil de contrôle de facturation : sa limitation d'appels réduit le risque, mais ne remplace pas les limites de dépenses du fournisseur. Pour un premier essai IA, créer une **nouvelle Issue QA** : la mission #26 a déjà un rapport et sera ignorée par la protection anti-doublon.
