@@ -1,6 +1,7 @@
 import { enrichChallengeReport } from './challengeFullReport';
 import { applyHistoricalSportResult } from './historySportReport';
 import { enrichHistoricalDartsModeReport } from './historyDartsModeReport';
+import { enrichShoveHistoryReport } from './shoveAPennyHistoryReport';
 import tickerBabyFoot from '../assets/tickers/ticker_babyfoot_match.png';
 import { zipSync } from 'fflate';
 import tickerX01 from '../assets/tickers/ticker_x01.png';
@@ -2109,6 +2110,7 @@ export function visualReportFromHistory(entry:any):ChallengeExportReport {
   if (report.title === 'BABY-FOOT') report.tickerSrc = tickerBabyFoot;
   return report;
  }
+ if(mode === 'shove_a_penny') return enrichShoveHistoryReport(report, entry);
  if(/^(capital|killer|shanghai)(?:$|_)/.test(mode)) return enrichHistoricalDartsModeReport(report,entry,mode);
  // Use the mode's own recorded units rather than treating every result as points.
  const isPointsMode=/challenge|top_10|split_score|hi_score|count_up|shanghai|petanque|molkky|bowling|gotcha|attrape/i.test(mode);

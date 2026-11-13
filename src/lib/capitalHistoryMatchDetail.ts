@@ -37,6 +37,41 @@ const finite = (value: unknown): number | null =>
   (typeof value === "number" && Number.isFinite(value)) ? value : null;
 const firstArray = (...values: unknown[]): any[] =>
   (values.find((value) => Array.isArray(value) && value.length > 0) as any[]) || [];
+const firstFinite = (...values: unknown[]): number | null => {
+  for (const value of values) {
+    const result = finite(value);
+    if (result !== null) return result;
+  }
+  return null;
+};
+/**
+ * History V4 peut exposer plusieurs représentations du journal : une synthèse
+ * courte et le journal complet. Retenir la meilleure couverture en couples
+ * (identifiant joueur, tour) réellement vérifiables, pas la première liste
+ * non vide ni la liste ayant le plus de doublons.
+ */
+export function selectCapitalHistoryJournal(expectedContracts: string[], ...sources: unknown[]): any[] {
+  let selected: any[] = [];
+  let mostRounds = -1;
+  for (const source of sources) {
+    if (!Array.isArray(source) || !source.length) continue;
+    const covered = new Set<string>();
+    for (const visit of source) {
+      const playerId = text(visit?.playerId);
+      const index = Number(visit?.contractIndex);
+      if (playerId && Number.isInteger(index) && index >= 0 && index < 120 &&
+          (!expectedContracts.length || (index < expectedContracts.length &&
+            text(visit?.contractId) === expectedContracts[index])) &&
+          finite(visit?.scoreBefore) !== null && finite(visit?.scoreAfter) !== null &&
+          typeof visit?.success === "boolean") covered.add(`${playerId}:${index}`);
+    }
+    if (covered.size > mostRounds) {
+      selected = source;
+      mostRounds = covered.size;
+    }
+  }
+  return selected;
+}
 
 export function readCapitalHistoryMatchDetail(record: any): CapitalHistoryDetail {
   const summary = record?.summary || record?.payload?.summary || {};
@@ -47,11 +82,12 @@ export function readCapitalHistoryMatchDetail(record: any): CapitalHistoryDetail
     payload?.stats?.players, payload?.summary?.players, payload?.summary?.perPlayer,
     payload?.players, record?.players,
   );
-  const sourceVisits = firstArray(
+  const sourceContracts = firstArray(summary?.contracts, payload?.summary?.contracts, cfg?.contracts);
+  const expectedContracts = sourceContracts.map((item: any) => text(typeof item === "string" ? item : item?.id));
+  const sourceVisits = selectCapitalHistoryJournal(expectedContracts,
     payload?.stats?.visits, payload?.visits, payload?.visitHistory,
     payload?.summary?.visits, summary?.visits, record?.visits, record?.visitHistory,
   );
-  const sourceContracts = firstArray(summary?.contracts, payload?.summary?.contracts, cfg?.contracts);
   const contractLabels: Record<string, string> = {};
   const contracts = sourceContracts.map((item: any) => {
     const id = text(typeof item === "string" ? item : item?.id);
@@ -70,27 +106,40 @@ export function readCapitalHistoryMatchDetail(record: any): CapitalHistoryDetail
     // On n'affiche une grille que si elle est complète depuis le premier tour.
     for (let index = 0; found.has(index); index++) contracts.push(found.get(index)! as CapitalContractId);
   }
+  // Les listes légères de l'Historique peuvent contenir le classement, mais
+  // pas les compteurs précis. Compléter UNIQUEMENT à ID identique depuis les
+  // statistiques sauvegardées ; jamais depuis le nom (homonymes possibles).
+  const detailedPlayers = new Map<string, any>();
+  for (const source of [payload?.stats?.players, payload?.players, record?.players, payload?.summary?.players]) {
+    if (!Array.isArray(source)) continue;
+    for (const candidate of source) {
+      const id = text(candidate?.id || candidate?.playerId || candidate?.profileId);
+      if (id && !detailedPlayers.has(id)) detailedPlayers.set(id, candidate);
+    }
+  }
   const rawPlayers = new Map<string, CapitalHistoryDetailPlayer>();
   sourcePlayers.forEach((row: any, index: number) => {
     // ID stable obligatoire pour relier les volées ; un homonyme reste distinct.
     const realId = text(row?.id || row?.playerId || row?.profileId);
     const id = realId || `sans-id-${index}`;
     if (rawPlayers.has(id)) return;
+    const detail = realId ? detailedPlayers.get(realId) : null;
     rawPlayers.set(id, {
       id,
-      name: text(row?.nickname || row?.name || row?.playerName || row?.displayName) || `Joueur ${index + 1}`,
-      rank: finite(row?.rank ?? row?.position),
-      finalCapital: finite(row?.finalCapital ?? row?.capital ?? row?.score),
-      startingCapital: finite(row?.startingCapital),
-      pointsWon: finite(row?.pointsWon),
-      capitalLost: finite(row?.capitalLost ?? row?.penaltyLost),
-      successfulContracts: finite(row?.successfulContracts),
-      contractsPlayed: finite(row?.contractsPlayed),
-      successRate: finite(row?.successRate),
-      averageVisit: finite(row?.averageVisit ?? row?.avgVisit),
-      bestVisit: finite(row?.bestVisit),
-      dartsThrown: finite(row?.dartsThrown ?? row?.darts),
-      teamId: text(row?.teamId) || null,
+      name: text(row?.nickname || row?.name || row?.playerName || row?.displayName) ||
+        text(detail?.nickname || detail?.name || detail?.playerName || detail?.displayName) || `Joueur ${index + 1}`,
+      rank: firstFinite(row?.rank, row?.position, detail?.rank, detail?.position),
+      finalCapital: firstFinite(row?.finalCapital, row?.capital, row?.score, detail?.finalCapital, detail?.capital, detail?.score),
+      startingCapital: firstFinite(row?.startingCapital, detail?.startingCapital),
+      pointsWon: firstFinite(row?.pointsWon, detail?.pointsWon),
+      capitalLost: firstFinite(row?.capitalLost, row?.penaltyLost, detail?.capitalLost, detail?.penaltyLost),
+      successfulContracts: firstFinite(row?.successfulContracts, detail?.successfulContracts),
+      contractsPlayed: firstFinite(row?.contractsPlayed, detail?.contractsPlayed),
+      successRate: firstFinite(row?.successRate, detail?.successRate),
+      averageVisit: firstFinite(row?.averageVisit, row?.avgVisit, detail?.averageVisit, detail?.avgVisit),
+      bestVisit: firstFinite(row?.bestVisit, detail?.bestVisit),
+      dartsThrown: firstFinite(row?.dartsThrown, row?.darts, detail?.dartsThrown, detail?.darts),
+      teamId: text(row?.teamId || detail?.teamId) || null,
     });
   });
   // À défaut de tableau des joueurs, le journal fournit les vrais ID des
