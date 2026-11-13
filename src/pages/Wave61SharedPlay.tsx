@@ -6,6 +6,9 @@ import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
 import cricketDartSvg from "../ui_assets/cricket-dart.svg";
+import ShovePennyCricketBoard from "../components/ShovePennyCricketBoard";
+import KeypadTargets from "../components/KeypadTargets";
+import { projectShoveMarks, shoveNextTarget } from "../lib/gameEngines/shoveAPennyTargets";
 import { useAwenaOptional } from "../awena/AwenaProvider";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { useViewport } from "../hooks/useViewport";
@@ -323,13 +326,7 @@ function CenturyPanel({ state, accent }: any) {
   </div>;
 }
 
-function ShovePennyPanel({ state, accent }: any) {
-  const targets = [15,16,17,18,19,20,25];
-  return <div style={{ ...panelStyle(accent + "55"), padding: 10 }}>
-    <div style={{ color: accent, fontSize: 10, fontWeight: 1100, marginBottom: 7 }}>SHOVE A PENNY · 3 MARQUES PAR CASE</div>
-    <div style={{ overflowX:"auto" }}><table style={{width:"100%",borderCollapse:"separate",borderSpacing:4,fontSize:9}}><thead><tr><th style={{color:SOFT,textAlign:"left"}}>JOUEUR</th>{targets.map(n=><th key={n} style={{color:SOFT}}>{n===25?"BULL":n}</th>)}</tr></thead><tbody>{state.players.map((p:any)=>{ const marks=state.special?.shoveMarksByPlayer?.[p.id]||{}; return <tr key={p.id}><td style={{color:"#fff",fontWeight:1000,whiteSpace:"nowrap"}}>{p.name}</td>{targets.map(n=>{const m=Number(marks[String(n)]||0);return <td key={n} style={{textAlign:"center",minWidth:34,borderRadius:8,padding:"6px 4px",background:m>=3?`${accent}1c`:"rgba(255,255,255,.035)",border:`1px solid ${m>=3?accent+"66":"rgba(255,255,255,.08)"}`,color:m>=3?accent:"#fff",fontWeight:1100}}>{m}/3</td>})}</tr>})}</tbody></table></div>
-  </div>;
-}
+function ShovePennyPanel(props: any) { return <ShovePennyCricketBoard {...props} />; }
 
 const GVR_GREEN_PATH = [1, 4, 6, 15, 17, 19, 16, 11, 9, 5] as const;
 const GVR_RED_PATH = [20, 12, 14, 8, 7, 3, 2, 10, 13, 18] as const;
@@ -1263,6 +1260,11 @@ export default function Wave61SharedPlay(props: any) {
   const activeProfile = activePlayer ? profileById.get(String(activePlayer.id)) || activePlayer : null;
   const activeIsBot = !!activeProfile && isBotProfile(activeProfile, botIds);
   const target = getWave61Target(state);
+  const shoveMarksPerBox = Math.max(2, Math.min(5, Number(config?.modeOptions?.marksPerBox || 3)));
+  const shoveProjectedMarks = spec.id === "shove_a_penny"
+    ? projectShoveMarks(state.special?.shoveMarksByPlayer?.[activePlayer?.id], currentThrow.map(uiToGameDart), shoveMarksPerBox)
+    : {};
+  const shoveCurrentTarget = spec.id === "shove_a_penny" ? shoveNextTarget(shoveProjectedMarks, shoveMarksPerBox) : null;
   const accent = preset.accent;
   const modeTicker = React.useMemo(() => getTicker(spec.id, lang), [spec.id, lang]);
   const dedicatedPlayHint = String(props?.dedicatedPlayHint || "");
@@ -1736,7 +1738,7 @@ export default function Wave61SharedPlay(props: any) {
     {spec.id === "replicat" ? <ReplicatPanel state={state} accent={accent} /> : null}
     {spec.id === "double_down" ? <DoubleDownPanel state={state} accent={accent} target={target} /> : null}
     {spec.id === "nine_dart_century" ? <CenturyPanel state={state} accent={accent} /> : null}
-    {spec.id === "shove_a_penny" ? <ShovePennyPanel state={state} accent={accent} /> : null}
+    {spec.id === "shove_a_penny" ? <ShovePennyPanel state={state} accent={accent} activePlayerId={activePlayer?.id} previewMarks={shoveProjectedMarks} marksPerBox={shoveMarksPerBox} /> : null}
     {spec.id === "green_vs_red" ? <GreenRedPanel state={state} /> : spec.id === "black_vs_white" ? <BlackWhitePanel state={state} currentThrow={currentThrow} /> : spec.id === "three_colors" ? <ThreeColorsPanel state={state} currentThrow={currentThrow} accent={accent} /> : spec.id === "la_suite" ? <LaSuitePanel state={state} currentThrow={currentThrow} accent={accent} /> : spec.id === "color_call" ? <ColorCallPanel state={state} currentThrow={currentThrow} accent={accent} /> : null}
     {spec.id === "bim_bam_boum" ? <BimBamBoumPanel state={state} currentThrow={currentThrow} accent={accent} /> : spec.id === "saute_moutons" ? <SauteMoutonsPanel state={state} currentThrow={currentThrow} accent={accent} /> : spec.id === "troupeau_en_danger" ? <TroupeauDangerPanel state={state} currentThrow={currentThrow} accent={accent} /> : spec.id === "une_ptite_raclette" ? <RaclettePanel state={state} currentThrow={currentThrow} accent={accent} /> : null}
     {spec.id === "hi_score" ? <HiScorePanel state={state} accent={accent} /> : null}
@@ -1802,7 +1804,7 @@ export default function Wave61SharedPlay(props: any) {
   const classicObjective = (() => {
     if (spec.id === "double_down") return target?.label || "Contrat du round";
     if (spec.id === "nine_dart_century") return "100 en 9 fléchettes";
-    if (spec.id === "shove_a_penny") return target?.label || "Fermer la case courante";
+    if (spec.id === "shove_a_penny") return shoveCurrentTarget === null ? "TOUTES LES CASES FERMÉES" : "Fermer " + (shoveCurrentTarget === 25 ? "BULL" : shoveCurrentTarget);
     if (spec.id === "green_vs_red") return target?.label || "D/T du numéro courant · finale BULL";
     if (spec.id === "black_vs_white") return "Jouer uniquement les secteurs de sa piste";
     if (spec.id === "three_colors") return "Obtenir 3 couleurs différentes";
@@ -2018,7 +2020,21 @@ export default function Wave61SharedPlay(props: any) {
           ? { minWidth:0,minHeight:0,overflow:"hidden",display:"flex",flexDirection:"column" }
           : { flex:`0 0 ${classicInputHeight}`,height:classicInputHeight,minHeight:0,overflow:"hidden",padding:"0 8px max(6px,env(safe-area-inset-bottom))",background:"linear-gradient(180deg,rgba(4,7,12,.88),rgba(4,7,12,1))",borderTop:"1px solid rgba(255,255,255,.07)",boxShadow:"0 -12px 28px rgba(0,0,0,.42)" }
         }>
-          {!activeIsBot ? (spec.id === "green_vs_red" && config.scoreInputMethod !== "dartboard" ? <GreenVsRedInput state={state} activePlayer={activePlayer} currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} accent={accent} /> : spec.id === "black_vs_white" && config.scoreInputMethod !== "dartboard" ? <BlackWhiteInput state={state} activePlayer={activePlayer} currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} /> : spec.id === "three_colors" && config.scoreInputMethod !== "dartboard" ? <ThreeColorsInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} accent={accent} /> : spec.id === "la_suite" && config.scoreInputMethod !== "dartboard" ? <SequenceInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} accent={accent} /> : spec.id === "color_call" && config.scoreInputMethod !== "dartboard" ? <ColorCallInput state={state} currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} accent={accent} /> : <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} fitMinScale={isLandscapeTablet?0.30:0.36} guideSegmentNumbers={spec.id === "green_vs_red" && target?.kind === "number" ? [target.value] : null} guideBull={spec.id === "green_vs_red" && target?.kind === "bull"} />) : <div style={{ ...panelStyle(accent+"35"),height:"100%",display:"grid",placeItems:"center",textAlign:"center",color:SOFT,fontSize:11,padding:12 }}><div><div style={{fontSize:32}}>🤖</div><b style={{color:accent}}>{activePlayer?.name}</b><div style={{marginTop:5}}>calcule son prochain lancer…</div></div></div>}
+          {!activeIsBot ? (spec.id === "green_vs_red" && config.scoreInputMethod !== "dartboard" ? <GreenVsRedInput state={state} activePlayer={activePlayer} currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} accent={accent} /> : spec.id === "black_vs_white" && config.scoreInputMethod !== "dartboard" ? <BlackWhiteInput state={state} activePlayer={activePlayer} currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} /> : spec.id === "three_colors" && config.scoreInputMethod !== "dartboard" ? <ThreeColorsInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} accent={accent} /> : spec.id === "la_suite" && config.scoreInputMethod !== "dartboard" ? <SequenceInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} accent={accent} /> : spec.id === "color_call" && config.scoreInputMethod !== "dartboard" ? <ColorCallInput state={state} currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} accent={accent} /> : spec.id === "shove_a_penny" && config.scoreInputMethod === "target" ? <KeypadTargets
+            allowedNumbers={shoveCurrentTarget !== null && shoveCurrentTarget !== 25 ? [shoveCurrentTarget] : []}
+            showBull={shoveCurrentTarget === 25}
+            showDBull={shoveCurrentTarget === 25}
+            selectedMultiplier={multiplier}
+            onMultiplierChange={setMultiplier}
+            darts={currentThrow}
+            onDart={(dart) => setCurrentThrow((previous) => previous.length >= 3 ? previous : [...previous, dart])}
+            onBackspace={() => setCurrentThrow((previous) => previous.slice(0, -1))}
+            onValidate={validate}
+            disabled={state.phase !== "playing" || !!visitRecap || !!state.special?.seriesIntermission || !!state.special?.pendingBotVisitRecap}
+            accent={accent}
+            title={shoveCurrentTarget === 25 ? "DERNIÈRE CASE · BULL" : "CASE À FERMER"}
+            progressLabel={shoveCurrentTarget === null ? "TERMINÉ" : String(shoveProjectedMarks[String(shoveCurrentTarget)] || 0) + "/" + shoveMarksPerBox + " MARQUES"}
+          /> : <NewModeInput currentThrow={currentThrow} setCurrentThrow={setCurrentThrow} multiplier={multiplier} setMultiplier={setMultiplier} onValidate={validate} preferredMethod={config.scoreInputMethod} validateLabel="VALIDER LA VOLÉE" accent={accent} fitMinScale={isLandscapeTablet?0.30:0.36} guideSegmentNumbers={spec.id === "green_vs_red" && target?.kind === "number" ? [target.value] : null} guideBull={spec.id === "green_vs_red" && target?.kind === "bull"} />) : <div style={{ ...panelStyle(accent+"35"),height:"100%",display:"grid",placeItems:"center",textAlign:"center",color:SOFT,fontSize:11,padding:12 }}><div><div style={{fontSize:32}}>🤖</div><b style={{color:accent}}>{activePlayer?.name}</b><div style={{marginTop:5}}>calcule son prochain lancer…</div></div></div>}
         </section>
       </div>}
       {renderClassicQuickModal()}
@@ -2123,7 +2139,7 @@ export default function Wave61SharedPlay(props: any) {
       {spec.id === "replicat" ? <ReplicatPanel state={state} accent={accent} /> : null}
       {spec.id === "double_down" ? <DoubleDownPanel state={state} accent={accent} target={target} /> : null}
       {spec.id === "nine_dart_century" ? <CenturyPanel state={state} accent={accent} /> : null}
-      {spec.id === "shove_a_penny" ? <ShovePennyPanel state={state} accent={accent} /> : null}
+      {spec.id === "shove_a_penny" ? <ShovePennyPanel state={state} accent={accent} activePlayerId={activePlayer?.id} previewMarks={shoveProjectedMarks} marksPerBox={shoveMarksPerBox} /> : null}
       {spec.id === "green_vs_red" ? <><GreenRedDuelScoreboard state={state} profiles={profiles} accent={accent} /><GreenRedPanel state={state} accent={accent} /></> : spec.id === "black_vs_white" ? <><BlackWhiteDuelScoreboard state={state} profiles={profiles} /><BlackWhitePanel state={state} currentThrow={currentThrow} /></> : null}
       {spec.id === "sniper" ? <SniperPanel state={state} accent={accent} /> : null}
       {spec.id === "luciole" ? <LuciolePanel state={state} accent={accent} reveal={lucioleReveal} /> : null}
