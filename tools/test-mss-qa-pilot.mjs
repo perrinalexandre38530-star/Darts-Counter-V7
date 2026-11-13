@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {isEligibleQA, summarize, report, MARKER, isTrustedPilotComment, isTrustedOwnerActor} from './mss-qa-pilot.mjs';
+import {isEligibleQA, summarize, report, MARKER, isTrustedPilotComment, isTrustedOwnerActor, isApprovedForAI} from './mss-qa-pilot.mjs';
 import {classifyLogEvidence} from './mss-qa-evidence.mjs';
 
 const approvedQA = {
@@ -93,4 +93,31 @@ test('QA deduplication accepts only authentic same-mission bot reports', () => {
   assert.equal(isTrustedPilotComment({...candidate, body: MARKER}, 26, 'owner/repo'), false);
   assert.equal(isTrustedPilotComment({...candidate, body: MARKER + '\n**Mission :** #25 — Other'}, 26, 'owner/repo'), false);
   assert.equal(isTrustedPilotComment({...candidate, html_url: 'https://attacker.example/report'}, 26, 'owner/repo'), false);
+});
+
+test('recognized SDK and Cloud/NAS errors yield safe precise diagnostics', () => {
+  const sdk = classifyLogEvidence("Warning: Failed to find package 'tools'\nError: The process '/sdkmanager' failed with exit code 1");
+  assert.deepEqual(sdk.categories.map(x=>x.id), ['ANDROID_SDK_SETUP']);
+  const cloud = classifyLogEvidence('Error: ❌ Les listes legacy sociales renvoient un fallback local en public/hybride');
+  assert.deepEqual(cloud.categories.map(x=>x.id), ['CLOUD_SOCIAL_FALLBACK']);
+  const audit = summarize([{id:1,name:'Android Debug APK',status:'completed',conclusion:'failure',html_url:'https://github.com/foo/bar/actions/runs/1'}],
+    {'1':[{name:'SDK setup',conclusion:'failure',qaEvidence:sdk,steps:[]}]});
+  const output = report(approvedQA, audit, 'main', 'https://github.com/foo/bar/actions/runs/9');
+  assert.ok(output.includes('Installation des outils Android SDK'));
+  assert.ok(output.includes('sdkmanager'));
+});
+test('verified CI failures remain FAIL even with other running jobs', () => {
+  const audit=summarize([
+    {id:1,name:'Android',status:'completed',conclusion:'failure'},
+    {id:2,name:'Other',status:'in_progress',conclusion:null}
+  ]);
+  assert.equal(audit.outcome,'FAIL');
+  assert.equal(audit.pending,1);
+});
+test('AI requires global consent and explicit approval on this QA mission', () => {
+  assert.equal(isApprovedForAI(approvedQA,true), false);
+  assert.equal(isApprovedForAI({...approvedQA,labels:[...approvedQA.labels,{name:'mss:ai-approved'}]},true),true);
+  assert.equal(isApprovedForAI({...approvedQA,labels:[...approvedQA.labels,{name:'mss:ai-approved'}]},false),false);
+  assert.equal(isApprovedForAI({...approvedQA,labels:[{name:'mss:mission'},{name:'mss:ai-approved'}]},true),false);
+  assert.equal(isApprovedForAI({...approvedQA,labels:[...approvedQA.labels,{name:'mss:ai-approved'},{name:'mss:blocked'}]},true),false);
 });
