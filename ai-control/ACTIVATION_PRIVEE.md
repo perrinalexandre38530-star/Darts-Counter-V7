@@ -47,3 +47,7 @@ Références officielles :
 ## Étape suivante
 
 Après un test réel QA concluant, une nouvelle mission et une PR séparée pourront préparer un robot correcteur capable de proposer une branche/PR sans merge automatique. Son activation nécessitera un fournisseur d'exécution, des limites de temps/coût, des permissions distinctes et une revue humaine.
+
+## Exactitude du statut QA dans le tableau de bord
+
+Le badge « ACTIF SUR MAIN » exige **deux preuves** : le workflow est activé dans l'API GitHub Actions et son fichier `.github/workflows/mss-qa-pilot.yml` existe sur la branche par défaut du dépôt. Sinon, afficher « EN ATTENTE DE FUSION », « WORKFLOW INACTIF » ou « NON VÉRIFIÉ SUR MAIN ». Ces libellés ne prouvent pas qu'une mission a déjà été exécutée. Pour vérifier la présence du fichier, le jeton GitHub fine-grained côté Cloudflare doit accorder **Contents: Read** (jamais Contents: Write). En l'absence de cette permission, le tableau de bord doit montrer un état non vérifié, et non une disponibilité supposée.
