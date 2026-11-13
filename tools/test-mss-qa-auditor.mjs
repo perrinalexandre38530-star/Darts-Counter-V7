@@ -87,3 +87,12 @@ test('auditor report cannot be impersonated or reused on another issue',()=>{
   assert.equal(isTrustedAuditorComment({...comment,user:{login:'owner',type:'User'}},39,repo),false);
   assert.equal(isTrustedAuditorComment({...comment,html_url:'https://github.com/owner/repo/issues/40#issuecomment-19'},39,repo),false);
 });
+
+test('a PASS without external failure evidence is not silently certified',async()=>{
+  const noFailure=body
+    .replace('**Statut de cet échantillon : FAIL**','**Statut de cet échantillon : PASS**')
+    .replace('- [Android](https://github.com/owner/repo/actions/runs/130) — failure, SHA abcdef012345','');
+  const result=await verifyQaReport(issue,[{...qaComment,body:noFailure}],repo,fetchRun,fetchJobs);
+  assert.equal(result.status,'BLOCKED');
+  assert.equal(result.reason,'AUCUN_ÉCHEC_CONCLUANT_A_RECONTRÔLER');
+});
