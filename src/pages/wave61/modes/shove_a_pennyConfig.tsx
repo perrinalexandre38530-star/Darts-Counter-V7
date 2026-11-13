@@ -38,6 +38,18 @@ const DEDICATED_OPTIONS: Wave61DedicatedOption[] = [
     ],
   },
   {
+    key: "giftTargetRule",
+    label: "Destinataire des marques offertes (3+ joueurs)",
+    type: "select",
+    defaultValue: "next",
+    options: [
+      { value: "next", label: "Joueur suivant · Classique" },
+      { value: "most_needed", label: "Joueur qui manque le plus de marques sur ce numéro" },
+      { value: "shooter_choice", label: "Choix du lanceur, avant validation" },
+    ],
+    help: "En duel, les surplus vont forcément à l'adversaire. En multijoueur, choisis la règle de distribution avant de commencer.",
+  },
+  {
     key: "overflowBonus",
     label: "Valeur d'une marque convertie",
     type: "select",
