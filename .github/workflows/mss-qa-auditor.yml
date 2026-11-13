@@ -1,0 +1,74 @@
+name: MSS Auditor - independent QA metadata review
+
+on:
+  issues:
+    types: [labeled]
+  pull_request:
+    paths:
+      - '.github/workflows/mss-qa-auditor.yml'
+      - 'tools/mss-qa-auditor.mjs'
+      - 'tools/test-mss-qa-auditor.mjs'
+      - 'tools/mss-qa-pilot.mjs'
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Existing owner-approved QA issue number'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mss-auditor-${{ github.event.issue.number || inputs.issue_number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  check_auditor:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            tools/mss-qa-auditor.mjs
+            tools/test-mss-qa-auditor.mjs
+            tools/mss-qa-pilot.mjs
+            tools/mss-qa-evidence.mjs
+            tools/mss-qa-ai-advisor.mjs
+          sparse-checkout-cone-mode: false
+      - run: node --check tools/mss-qa-auditor.mjs && node --test tools/test-mss-qa-auditor.mjs
+
+  audit_qa:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner) ||
+      (github.event_name == 'issues' && github.event.label.name == 'mss:audit-approved' &&
+       github.event.issue.state == 'open' && github.event.sender.login == github.repository_owner &&
+       github.actor == github.repository_owner)
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout only metadata auditor files
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            tools/mss-qa-auditor.mjs
+            tools/test-mss-qa-auditor.mjs
+            tools/mss-qa-pilot.mjs
+            tools/mss-qa-evidence.mjs
+            tools/mss-qa-ai-advisor.mjs
+          sparse-checkout-cone-mode: false
+      - name: Self test independent auditor
+        run: node --test tools/test-mss-qa-auditor.mjs
+      - name: Verify approved QA report against GitHub runs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
+        run: node tools/mss-qa-auditor.mjs
