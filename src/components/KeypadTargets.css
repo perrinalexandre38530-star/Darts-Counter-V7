@@ -32,3 +32,17 @@
 .mss-targetpad-complete{display:grid;place-items:center;border:1px solid #34c786;border-radius:12px;color:#4ae2a4}
 .mss-targetpad-validate{height:42px;border:1px solid #ffdd7a;background:linear-gradient(110deg,#f0a52b,#ffcf64);color:#241906;font-size:clamp(11px,2vw,14px)}
 @media(max-height:700px){.mss-targetpad{grid-template-rows:30px 38px minmax(0,1fr) 37px;gap:4px;padding:5px}.mss-targetpad-actions button{height:38px}.mss-targetpad-validate{height:37px}.mss-targetpad-targets button strong{font-size:clamp(17px,4vh,26px)}}
+
+/* SHOVE 15 -> BULL: balanced two-column target + action cluster.
+ * Keep the historical 3x3 keypad untouched for the 1..9 variant. */
+.mss-targetpad[data-targetpad-layout="focus"]{grid-template-columns:minmax(0,1.04fr) minmax(0,1fr);grid-template-rows:42px minmax(0,1fr) 48px;grid-template-areas:"visits visits" "targets actions" "validate validate";gap:7px}
+.mss-targetpad[data-targetpad-layout="focus"] .mss-targetpad-visits{grid-area:visits}
+.mss-targetpad[data-targetpad-layout="focus"] .mss-targetpad-targets{grid-area:targets;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr);min-height:0}
+.mss-targetpad[data-targetpad-layout="focus"] .mss-targetpad-targets.is-bull{grid-template-columns:minmax(0,1fr);grid-template-rows:repeat(2,minmax(0,1fr))}
+.mss-targetpad[data-targetpad-layout="focus"] .mss-targetpad-targets button{height:100%;min-height:0;border-radius:13px}
+.mss-targetpad[data-targetpad-layout="focus"] .mss-targetpad-targets button strong{font-size:clamp(27px,8vw,45px)}
+.mss-targetpad[data-targetpad-layout="focus"] .mss-targetpad-targets.is-bull button strong{font-size:clamp(16px,4vw,25px)}
+.mss-targetpad[data-targetpad-layout="focus"] .mss-targetpad-actions{grid-area:actions;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:6px;min-height:0}
+.mss-targetpad[data-targetpad-layout="focus"] .mss-targetpad-actions button{height:100%;min-height:0;padding:5px 2px;font-size:clamp(9px,2.3vw,13px);line-height:1.12;text-align:center}
+.mss-targetpad[data-targetpad-layout="focus"] .mss-targetpad-validate{grid-area:validate;height:48px;font-size:14px}
+@media(max-height:700px){.mss-targetpad[data-targetpad-layout="focus"]{grid-template-rows:34px minmax(0,1fr) 40px;gap:5px}.mss-targetpad[data-targetpad-layout="focus"] .mss-targetpad-validate{height:40px}}

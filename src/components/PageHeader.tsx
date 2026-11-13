@@ -42,7 +42,11 @@ export default function PageHeader(props: {
   } = props;
 
   const hasTicker = !!tickerSrc;
-  const effectiveTickerBottomGap = hasTicker ? Math.max(0, tickerBottomGap) : 0;
+  // Shared ticker clearance prevents first PLAY cards from hiding their top border.
+  // An explicit zero remains respected for screens that intentionally overlay the ticker.
+  const effectiveTickerBottomGap = hasTicker
+    ? tickerBottomGap === 0 ? 0 : Math.max(8, tickerBottomGap)
+    : 0;
   const landscapeTicker = typeof window !== "undefined" && window.matchMedia?.("(orientation: landscape)")?.matches && window.innerWidth >= 900;
   const resolvedTickerFit = tickerFit === "cover" && landscapeTicker ? "contain" : tickerFit;
   // Correspond au padding de .container (src/index.css)

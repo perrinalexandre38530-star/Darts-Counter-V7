@@ -1,87 +1,175 @@
 import React from "react";
 import { shoveTargets, shoveRuleSet } from "../lib/gameEngines/shoveAPennyTargets";
 import { rankShovePlayers } from "../lib/gameEngines/shoveAPennyRanking";
+import { deriveShoveMatchRecords } from "../lib/gameEngines/shoveAPennyRecords";
+import "./ShoveStatsDashboard.css";
 
-const SOFT = "#aab5c9";
-const GOLD = "#ffc34d";
-const tones = ["#ffc34d", "#60c9ff", "#dc99ff", "#83e4b8", "#ff9b91", "#a7caed"];
-const avatar = (p: any) => p?.avatarDataUrl || p?.avatarUrl || p?.avatar || p?.photoDataUrl || null;
-const number = (v: any) => Number.isFinite(Number(v)) ? Number(v) : 0;
-const percentage = (a: number, b: number) => b > 0 ? Math.min(100, Math.round(a / b * 100)) : 0;
-const format = (v: number) => Math.round(v * 10) / 10;
+const PALETTE = ["#ffc34d", "#60c9ff", "#dc99ff", "#83e4b8", "#ff9b91", "#a7caed"];
+const SOFT = "#aeb8c9";
+const avatarOf = (p: any): string | null => p?.avatarDataUrl || p?.avatarUrl || p?.avatar || p?.photoDataUrl || null;
+const num = (v: any) => Number.isFinite(Number(v)) ? Math.max(0, Number(v)) : 0;
+const pct = (v: number, total: number) => total ? Math.min(100, Math.round(v / total * 100)) : 0;
+const oneDec = (v: number) => (Math.round(v * 10) / 10).toLocaleString("fr-FR", { maximumFractionDigits: 1 });
+type TabId = "resume" | "marques" | "evolution" | "comparatif" | "records";
+const TABS: ReadonlyArray<{ id: TabId; label: string }> = [
+  { id: "resume", label: "RÉSUMÉ" }, { id: "marques", label: "MARQUES" },
+  { id: "evolution", label: "ÉVOLUTION" }, { id: "comparatif", label: "COMPARATIF" },
+  { id: "records", label: "RECORDS" },
+];
 
-/** Graphiques et KPIs SHOVE basés exclusivement sur History/Wave61State. */
-export default function ShoveStatsDashboard({ state, profiles = [], accent = GOLD, activePlayerId, isFinal = false }: {
-  state: any; profiles?: any[]; accent?: string; activePlayerId?: string; isFinal?: boolean;
+/** Same monochrome, outlined bottom-nav icon treatment used by CAPITAL. */
+function TabIcon({ id, size = 21 }: { id: TabId; size?: number }) {
+  const line = { stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round", strokeLinejoin: "round", fill: "none" } as const;
+  const paths: Record<TabId, React.ReactNode> = {
+    resume: <><path {...line} d="M3 20h18M5 17V11h3v6M11 17V4h3v13M17 17V8h3v9" /></>,
+    marques: <><rect {...line} x="3" y="3" width="18" height="18" rx="2"/><path {...line} d="M3 9h18M3 15h18M9 3v18M15 3v18"/></>,
+    evolution: <><path {...line} d="m3 17 6-6 4 3 7-9M15 5h5v5M3 21h18"/></>,
+    comparatif: <><path {...line} d="M12 3v18M5 7h14M6 8l-3 5h6L6 8ZM18 8l-3 5h6l-3-5ZM8 21h8"/></>,
+    records: <><path {...line} d="M8 5h8l-1 6a3 3 0 0 1-6 0L8 5ZM8 6H5c0 4 1 5 4 5M16 6h3c0 4-1 5-4 5M12 14v5M8 21h8M10 19h4"/></>,
+  };
+  return <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">{paths[id]}</svg>;
+}
+
+/** Live and final statistics use only the committed Wave61 match state. */
+export default function ShoveStatsDashboard({ state, profiles = [], accent = "#ffc34d", activePlayerId, isFinal = false, compactHeader = false }: {
+  state: any; profiles?: any[]; accent?: string; activePlayerId?: string; isFinal?: boolean; compactHeader?: boolean;
 }) {
+  const [tab, setTab] = React.useState<TabId>("resume");
+  const [selectedPlayerId, setSelectedPlayerId] = React.useState<string | null>(null);
   const targets = shoveTargets(shoveRuleSet(state?.config?.modeOptions?.ruleSet));
-  const required = Math.max(2, Number(state?.config?.modeOptions?.marksPerBox || 3));
+  const required = Math.max(2, Math.min(5, num(state?.config?.modeOptions?.marksPerBox) || 3));
   const goal = required * targets.length;
   const playerIds = rankShovePlayers(state);
-  const profileById = new Map((profiles || []).map((p: any) => [String(p.id), p]));
-  const [selectedPlayerId, setSelectedPlayerId] = React.useState<string | null>(null);
-  const selectedId = selectedPlayerId && playerIds.includes(selectedPlayerId) ? selectedPlayerId
-    : activePlayerId && playerIds.includes(String(activePlayerId)) ? String(activePlayerId) : playerIds[0];
-  const rows = playerIds.map((id: string, rank: number) => {
-    const p = state?.players?.find((x: any) => String(x.id) === id) || {};
-    const prof: any = profileById.get(id) || p;
-    const st = state?.statsByPlayer?.[id] || {};
-    const marksBySector = state?.special?.shoveMarksByPlayer?.[id] || {};
-    const total = targets.reduce((sum, sector) => sum + number(marksBySector[String(sector)]), 0);
-    const closed = targets.filter((sector) => number(marksBySector[String(sector)]) >= required).length;
-    const darts = number(st.darts), visits = number(st.visits), hits = number(st.hits);
-    const valid = Math.max(0, darts - number(st.misses));
-    return { id, name: String(prof.name || p.name || "Joueur"), avatar: avatar(prof), rank: rank + 1, total, closed,
-      darts, visits, hits, valid, accuracy: percentage(hits, darts), doubles: number(st.doubles), triples: number(st.triples),
-      misses: number(st.misses), sectorMarks: marksBySector, bestVisit: number(st.bestVisit),
-      tone: tones[rank % tones.length], marksPerDart: darts ? format(total / darts) : 0 };
-  });
-  const selected = rows.find((r) => r.id === selectedId) || rows[0];
-  const cards: Array<[string, string | number]> = selected ? [
-    ["CASES FERMÉES", `${selected.closed}/${targets.length}`], ["MARQUES TOTALES", `${selected.total}/${goal}`],
-    ["PRÉCISION", `${selected.accuracy}%`], ["FLÉCHETTES", selected.darts], ["VOLÉES", selected.visits],
-    ["MARQUES / FLÉCHETTE", selected.marksPerDart], ["DOUBLES", selected.doubles], ["TRIPLES", selected.triples],
-    ["MISS", selected.misses],
-  ] : [];
+  const profileMap = new Map((profiles || []).map((p: any) => [String(p.id), p]));
+  const visits: any[] = Array.isArray(state?.visits) ? state.visits : [];
   const history: any[] = Array.isArray(state?.special?.shoveHistory) ? state.special.shoveHistory : [];
-  const gained = history.filter((h) => String(h.playerId) === String(selectedId)).slice(-12).map((h) => number(h.gained));
-  const maxGained = Math.max(1, ...gained);
-  const pointY = (value: number) => 69 - (value / maxGained) * 54;
-  const pointX = (index: number) => 17 + index * (gained.length > 1 ? 268 / (gained.length - 1) : 0);
-  const sectorBars = selected ? targets.map((sector) => ({ label: sector === 25 ? "BULL" : String(sector), amount: number(selected.sectorMarks[String(sector)]) })) : [];
-  return <div data-shove-stats-dashboard="1" style={{ marginTop: 11, display: "grid", gap: 11, color: "#fff" }}>
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
-      <strong style={{ color: accent, fontSize: 11, fontWeight: 1100, letterSpacing: 1 }}>STATISTIQUES SHOVE A PENNY</strong>
-      <span style={{ fontSize: 9, color: SOFT }}>{isFinal ? "BILAN FINAL" : "EN DIRECT"} · {state?.visits?.length || 0} VOLÉES</span>
-    </div>
-    <section style={{ display: "grid", gap: 7, padding: 10, background: "#0d1524", border: `1px solid ${accent}43`, borderRadius: 13 }}>
-      <b style={{ color: accent, fontSize: 10 }}>CLASSEMENT {isFinal ? "FINAL" : "PROVISOIRE"}</b>
-      {rows.map((r) => <button key={r.id} type="button" aria-pressed={selectedId === r.id} onClick={() => setSelectedPlayerId(r.id)} style={{ display: "grid", width: "100%", gridTemplateColumns: "22px 30px minmax(0,1fr) 57px", gap: 7, alignItems: "center", borderRadius: 9, padding: "5px 6px", border: `1px solid ${selectedId === r.id ? accent + "55" : "transparent"}`, background: selectedId === r.id ? `${accent}0f` : "rgba(255,255,255,.025)", cursor: "pointer", color: "#fff", textAlign: "left" }}>
-        <b style={{ color: r.tone, fontSize: 11 }}>#{r.rank}</b>
-        {r.avatar ? <img src={r.avatar} alt="" style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover", border: `1px solid ${r.tone}` }} /> : <span style={{ fontWeight: 1000, textAlign: "center", color: r.tone }}>{r.name.slice(0, 1)}</span>}
-        <div style={{ minWidth: 0 }}><b style={{ fontSize: 10, textTransform: "uppercase", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", display: "block" }}>{r.name}</b><div style={{ height: 5, marginTop: 5, borderRadius: 999, background: "#333a47", overflow: "hidden" }}><div style={{ width: `${percentage(r.closed, targets.length)}%`, height: "100%", borderRadius: 999, background: r.tone }} /></div></div>
-        <b style={{ color: r.tone, fontSize: 10, textAlign: "right" }} title={`${r.total}/${goal} marques partielles ou complètes`}>{r.closed}/{targets.length} CASES</b>
+  const rows = playerIds.map((id: string, index: number) => {
+    const participant = state?.players?.find((p: any) => String(p.id) === id) || {};
+    const profile: any = profileMap.get(id) || participant;
+    const st = state?.statsByPlayer?.[id] || {};
+    const marks = state?.special?.shoveMarksByPlayer?.[id] || {};
+    const total = targets.reduce((sum, n) => sum + num(marks[String(n)]), 0);
+    const closed = targets.filter((n) => num(marks[String(n)]) >= required).length;
+    const darts = num(st.darts), misses = num(st.misses);
+    const hits = Math.max(0, num(st.hits));
+    return {
+      id, name: String(profile.name || participant.name || "Joueur"), avatar: avatarOf(profile),
+      rank: index + 1, tone: PALETTE[index % PALETTE.length], marks, total, closed,
+      darts, visits: num(st.visits), hits, misses, doubles: num(st.doubles), triples: num(st.triples),
+      accuracy: pct(hits, darts), marksPerDart: darts ? total / darts : 0,
+      bestVisit: num(st.bestVisit),
+    };
+  });
+  const id = selectedPlayerId && rows.some((r) => r.id === selectedPlayerId) ? selectedPlayerId
+    : rows.some((r) => r.id === String(activePlayerId)) ? String(activePlayerId) : rows[0]?.id;
+  const selected = rows.find((r) => r.id === id) || rows[0];
+  const selectedTone = selected?.tone || accent;
+  const records = deriveShoveMatchRecords(state);
+  const gains = history.filter((h) => String(h.playerId) === String(id)).slice(-15).map((h) => num(h.gained));
+  const chartMax = Math.max(1, ...gains);
+  const x = (index: number) => 17 + index * (gains.length > 1 ? 266 / (gains.length - 1) : 0);
+  const y = (value: number) => 79 - (value / chartMax) * 61;
+  const points = gains.map((n, i) => `${x(i)},${y(n)}`).join(" ");
+  const impactRows: ReadonlyArray<[string, number, string]> = selected ? [
+    ["SIMPLES", Math.max(0, selected.hits - selected.doubles - selected.triples), "#b7c4d3"],
+    ["DOUBLES", selected.doubles, "#4fd1ff"],
+    ["TRIPLES", selected.triples, "#fa80d8"],
+    ["MISS", selected.misses, "#ff6574"],
+  ] : [];
+  const totalImpact = impactRows.reduce((sum, row) => sum + row[1], 0);
+  const kpis = selected ? [
+    ["CASES FERMÉES", `${selected.closed}/${targets.length}`],
+    ["MARQUES", `${selected.total}/${goal}`],
+    ["PRÉCISION", `${selected.accuracy}%`],
+    ["FLÉCHETTES", selected.darts],
+    ["VOLÉES", selected.visits],
+    ["MARQUES / FLÉCHETTE", oneDec(selected.marksPerDart)],
+    ["DOUBLES", selected.doubles], ["TRIPLES", selected.triples], ["MISS", selected.misses],
+  ] : [];
+
+  return <section data-shove-stats-dashboard="v132" className="mss-shove-stats" style={{ "--shove-stats-accent": accent, "--shove-player-tone": selectedTone } as React.CSSProperties}>
+    <header className="mss-shove-stats-head" style={compactHeader ? { justifyContent:"flex-end", marginTop:-4 } : undefined}>
+      {!compactHeader ? <strong>STATISTIQUES SHOVE A PENNY</strong> : null}
+      <span>{isFinal ? "BILAN FINAL" : "EN DIRECT"} · {visits.length} VOLÉES</span>
+    </header>
+    <nav role="tablist" aria-label="Statistiques SHOVE A PENNY" className="mss-shove-stats-tabs">
+      {TABS.map(({ id: tabId, label }) => <button type="button" role="tab" key={tabId} aria-label={label}
+        aria-selected={tab === tabId} aria-controls={`shove-stats-panel-${tabId}`}
+        onClick={() => setTab(tabId)} className={tab === tabId ? "is-selected" : ""}>
+        <TabIcon id={tabId}/>{tab === tabId ? <span>{label}</span> : null}
       </button>)}
-    </section>
-    {selected ? <>
-      <div style={{ display: "flex", gap: 7, alignItems: "center" }}><strong style={{ color: accent, fontSize: 11, textTransform: "uppercase" }}>{selected.name}</strong><span style={{ fontSize: 9, color: SOFT }}>• #{selected.rank}</span></div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5 }}>
-        {cards.map(([label, value]) => <div key={label} style={{ borderRadius: 10, padding: "8px 5px", textAlign: "center", border: "1px solid #3b4354", background: "linear-gradient(155deg,#172032,#0c121d)" }}><span style={{ display: "block", color: SOFT, fontSize: 8, fontWeight: 950 }}>{label}</span><b style={{ display: "block", marginTop: 4, color: accent, fontSize: 16, fontWeight: 1100 }}>{value}</b></div>)}
-      </div>
-      <section style={{ border: `1px solid ${accent}39`, borderRadius: 13, padding: 10, background: "#101622" }}>
-        <div style={{ fontWeight: 1000, color: accent, fontSize: 10, marginBottom: 9 }}>RÉPARTITION DES MARQUES PAR CASE</div>
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${targets.length},minmax(0,1fr))`, gap: 3, minHeight: 86, alignItems: "end" }}>
-          {sectorBars.map(({ label, amount }) => <div key={label} style={{ display: "grid", justifyItems: "center", alignItems: "end", gap: 4 }}><b style={{ color: amount >= required ? accent : SOFT, fontSize: 9 }}>{amount}</b><div style={{ height: 55, width: "75%", display: "flex", alignItems: "end", borderRadius: "5px 5px 0 0", background: "#262d3c", overflow: "hidden" }}><div style={{ height: `${percentage(amount, required)}%`, width: "100%", background: amount >= required ? accent : "#6988bf", borderRadius: "4px 4px 0 0" }} /></div><small style={{ color: "#c9d1e0", fontSize: 8 }}>{label}</small></div>)}
+    </nav>
+    {tab !== "records" ? <div className="mss-shove-stats-players" aria-label="Joueur analysé">
+      {rows.map((row) => <button key={row.id} type="button" aria-pressed={row.id === id} onClick={() => setSelectedPlayerId(row.id)}
+        className={row.id === id ? "is-active" : ""} style={{ "--shove-player-tone": row.tone } as React.CSSProperties}>
+        {row.avatar ? <img src={row.avatar} alt=""/> : <b>{row.name[0]}</b>}
+        <span>{row.name}</span><small>{row.closed}/{targets.length}</small>
+      </button>)}
+    </div> : null}
+
+    {tab === "resume" && <div role="tabpanel" id="shove-stats-panel-resume" className="mss-shove-stats-section">
+      <div className="mss-shove-stats-kpis">{kpis.map(([label, value], i) => <div key={label} className="mss-shove-kpi" style={{ animationDelay: `${i * 35}ms` }}><span>{label}</span><strong>{value}</strong></div>)}</div>
+      {selected && <div className="mss-shove-stats-panel">
+        <h4>RÉPARTITION DES IMPACTS</h4>
+        <div className="mss-shove-accuracy-layout">
+          <div className="mss-shove-accuracy-ring" role="img" aria-label={`Précision ${selected.accuracy}%`}
+            style={{ background: `conic-gradient(${selectedTone} ${selected.accuracy}%, #293446 ${selected.accuracy}% 100%)` }}>
+            <div><strong>{selected.accuracy}%</strong><small>PRÉCISION</small></div>
+          </div>
+          <div className="mss-shove-impact-list">{impactRows.map(([label, value, tone]) => <div key={label}>
+            <span style={{ color: tone }}>{label}</span><b>{value}</b>
+            <div className="mss-shove-meter"><i style={{ width: `${pct(value, totalImpact)}%`, background: tone }} /></div>
+          </div>)}</div>
         </div>
-      </section>
-      <section style={{ border: `1px solid ${accent}39`, borderRadius: 13, padding: 10, background: "#101622" }}>
-        <div style={{ fontWeight: 1000, color: accent, fontSize: 10 }}>ÉVOLUTION · MARQUES PERSONNELLES PAR VOLÉE</div>
-        {gained.length ? <svg viewBox="0 0 302 90" role="img" aria-label="Graphique des marques gagnées à chaque volée" style={{ width: "100%", height: 128, overflow: "visible" }}>
-          {[19,44,69].map((y) => <line key={y} x1="12" y1={y} x2="291" y2={y} stroke="#384154" strokeWidth=".75" strokeDasharray="2 3" />)}
-          <polyline fill="none" stroke={accent} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" points={gained.map((n, i) => `${pointX(i)},${pointY(n)}`).join(" ")} />
-          {gained.map((v, i) => <g key={i}><circle cx={pointX(i)} cy={pointY(v)} r="4" fill={accent} stroke="#07111b" strokeWidth="1.4" /><text x={pointX(i)} y={Math.max(10, pointY(v) - 9)} fill="#fff" fontSize="9" textAnchor="middle">{v}</text></g>)}
-        </svg> : <p style={{ margin: "12px 0 4px", color: SOFT, fontSize: 10, textAlign: "center" }}>Le graphique apparaîtra après la première volée validée.</p>}
-      </section>
-    </> : null}
-  </div>;
+      </div>}
+    </div>}
+
+    {tab === "marques" && <div role="tabpanel" id="shove-stats-panel-marques" className="mss-shove-stats-section">
+      <div className="mss-shove-stats-panel"><h4>MARQUES PAR CASE</h4>
+        {selected ? <div className="mss-shove-sector-bars">{targets.map((target, i) => {
+          const value = num(selected.marks[String(target)]);
+          const closed = value >= required;
+          return <div key={target} className="mss-shove-sector-bar" title={`${target === 25 ? "BULL" : target} : ${value}/${required} marques`}>
+            <b>{value}</b><div className="mss-shove-sector-track"><i className={closed ? "is-closed" : ""} style={{ height: `${pct(value, required)}%`, animationDelay: `${i * 65}ms` }} /></div>
+            <small>{target === 25 ? "BULL" : target}</small>
+          </div>;
+        })}</div> : null}
+        <p className="mss-shove-chart-note">Une case se ferme uniquement après {required} marques ; les marques partielles restent visibles.</p>
+      </div>
+    </div>}
+
+    {tab === "evolution" && <div role="tabpanel" id="shove-stats-panel-evolution" className="mss-shove-stats-section">
+      <div className="mss-shove-stats-panel"><h4>ÉVOLUTION PAR VOLÉE</h4>
+        {gains.length ? <>
+          <svg viewBox="0 0 302 105" role="img" aria-label="Évolution des marques validées par volée" className="mss-shove-evolution-svg">
+            {[18,48,79].map((z) => <line key={z} x1="15" y1={z} x2="286" y2={z} stroke="#465166" strokeWidth=".8" strokeDasharray="3 4" />)}
+            <polygon fill={`${selectedTone}19`} points={`17,79 ${points} ${x(gains.length-1)},79`} />
+            <polyline fill="none" stroke={selectedTone} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" points={points} className="mss-shove-evolution-line" />
+            {gains.map((gain, i) => <g key={i} className="mss-shove-evolution-point" style={{ animationDelay: `${i * 50}ms` }}>
+              <circle cx={x(i)} cy={y(gain)} r="4.2" fill={selectedTone} stroke="#090d16" strokeWidth="1.4"/>
+              <text x={x(i)} y={Math.max(9, y(gain)-9)} fill="#f0f3fa" fontSize="9" textAnchor="middle">{gain}</text>
+            </g>)}
+          </svg><div className="mss-shove-evolution-caption">{gains.length} dernières volées · {gains.reduce((a,b)=>a+b,0)} marques</div>
+        </> : <p className="mss-shove-chart-note">Le graphique apparaîtra après la première volée validée.</p>}
+      </div>
+    </div>}
+
+    {tab === "comparatif" && <div role="tabpanel" id="shove-stats-panel-comparatif" className="mss-shove-stats-section">
+      <div className="mss-shove-stats-panel"><h4>COMPARATIF DES JOUEURS</h4>
+        {rows.map((row, i) => <div key={row.id} className="mss-shove-compare-row" style={{ "--compare-tone": row.tone } as React.CSSProperties}>
+          <div><strong>#{i+1} · {row.name}</strong><span>{row.closed}/{targets.length} CASES</span></div>
+          <div className="mss-shove-meter"><i style={{ width: `${pct(row.closed, targets.length)}%`, animationDelay: `${i * 75}ms` }} /></div>
+          <small>{row.total}/{goal} marques · {row.accuracy}% précision · {row.darts} fléchettes</small>
+        </div>)}
+      </div>
+    </div>}
+
+    {tab === "records" && <div role="tabpanel" id="shove-stats-panel-records" data-shove-records-tab="1" className="mss-shove-stats-section">
+      <div className="mss-shove-stats-panel"><h4>RECORDS DE CETTE PARTIE</h4>
+        {records.length ? records.map((record, i) => <div key={record.id} className="mss-shove-record" style={{ animationDelay: `${i * 75}ms` }}>
+          <div><strong>{record.label}</strong><span>{record.player}</span></div><b>{record.value}</b>
+        </div>) : <p className="mss-shove-chart-note">Aucun record pour le moment. Les performances apparaîtront après plusieurs volées validées.</p>}
+      </div>
+    </div>}
+  </section>;
 }

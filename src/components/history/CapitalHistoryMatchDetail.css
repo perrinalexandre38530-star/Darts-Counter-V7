@@ -1,0 +1,31 @@
+/* CAPITAL V163 — Les tableaux internes conservent leur défilement horizontal.
+   La fiche occupe toute la surface disponible, y compris en paysage Android. */
+.mss-capital-history-overlay { box-sizing: border-box; }
+.mss-capital-history-modal { min-height: 0; max-width: 100%; }
+.mss-capital-history-content { min-width: 0; scrollbar-width: thin; scrollbar-color: #a77324 #0c1722; }
+.mss-capital-history-tabs button { touch-action: manipulation; }
+.mss-capital-history-footer { padding-bottom: max(8px, env(safe-area-inset-bottom)) !important; }
+.mss-capital-history-footer .challenge-report-actions { flex-wrap: nowrap !important; }
+.mss-capital-history-footer .challenge-report-actions button { min-width: 0 !important; flex: 0 1 76px !important; }
+@media (max-width: 420px) {
+  .mss-capital-history-modal { border-radius: 13px !important; }
+  .mss-capital-history-header { padding: 8px 9px 7px !important; }
+  .mss-capital-history-tabs { margin-top: 7px !important; }
+  .mss-capital-history-tabs button { min-height: 32px !important; }
+  .mss-capital-history-content { padding: 9px 7px 12px !important; }
+  .mss-capital-history-footer { padding: 4px 8px max(5px, env(safe-area-inset-bottom)) !important; }
+}
+@media (orientation: landscape) and (max-height: 540px) {
+  .mss-capital-history-overlay { padding: max(3px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(3px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left)) !important; }
+  .mss-capital-history-modal { max-height: calc(100dvh - 6px) !important; border-radius: 12px !important; }
+  .mss-capital-history-header { padding: 5px 10px 4px !important; }
+  .mss-capital-history-header h2 { font-size: 14px !important; margin-top: 0 !important; }
+  .mss-capital-history-tabs { margin-top: 3px !important; }
+  .mss-capital-history-tabs button { min-height: 25px !important; padding: 3px !important; font-size: 10px !important; }
+  .mss-capital-history-content { padding: 6px 9px 8px !important; }
+  .mss-capital-history-footer { padding: 1px 8px max(3px, env(safe-area-inset-bottom)) !important; }
+  .mss-capital-history-footer-title { display: none; }
+  .mss-capital-history-footer .challenge-report-actions { padding: 0 !important; gap: 12px !important; }
+  .mss-capital-history-footer .challenge-report-actions button { height: 37px !important; min-height: 37px !important; flex-basis: 62px !important; padding: 4px !important; }
+  .mss-capital-history-footer .challenge-report-actions button span:last-child { display: none !important; }
+}

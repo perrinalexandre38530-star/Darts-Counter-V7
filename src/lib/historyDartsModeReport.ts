@@ -6,6 +6,7 @@
 import type {
   ChallengeExportReport, ChallengeExportPlayer, ChallengeExportMetric, ChallengeExportSection,
 } from './challengeResultsExport';
+import { capitalHistoryVisualReport } from './capitalHistoryVisualReport';
 
 const obj = (v: unknown): Record<string, any> =>
   v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, any> : {};
@@ -306,7 +307,7 @@ export function enrichHistoricalDartsModeReport(
   const normalized=String(mode||'').toLowerCase().replace(/[-\s]+/g,'_');
   const payload=obj(entry?.payload||entry?.decoded);
   const summary=obj(entry?.summary||payload?.summary);
-  if(normalized==='capital'||normalized.startsWith('capital_'))return capitalReport(report,entry,payload,summary);
+  if(normalized==='capital'||normalized.startsWith('capital_'))return capitalHistoryVisualReport(capitalReport(report,entry,payload,summary),entry);
   if(normalized==='killer'||normalized.startsWith('killer_'))return killerReport(report,entry,payload,summary);
   if(normalized==='shanghai'||normalized.startsWith('shanghai_'))return shanghaiReport(report,entry,payload,summary);
   return report;

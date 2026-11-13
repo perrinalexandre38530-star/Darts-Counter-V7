@@ -71,8 +71,11 @@ export default function KeypadTargets({
   };
 
   const isNine = allowedNumbers.length === 9;
+  // Ordered SHOVE: one focused sector (or BULL / DBULL) shares the main area
+  // with a 2×2 block of full-size action keys instead of a giant sector key.
+  const isFocus = !isNine && (allowedNumbers.length <= 1 || isBullStage);
   return (
-    <div className="mss-targetpad" data-mss-targeted-keypad="1" data-targetpad-layout={isNine ? "nine" : "compact"} style={{ "--mss-target-accent": accent } as React.CSSProperties}>
+    <div className="mss-targetpad" data-mss-targeted-keypad="1" data-targetpad-layout={isNine ? "nine" : isFocus ? "focus" : "compact"} style={{ "--mss-target-accent": accent } as React.CSSProperties}>
       <div className="mss-targetpad-visits" aria-label="Fléchettes de la volée">
         {Array.from({ length: capacity }, (_, i) => {
           const dart = darts[i];

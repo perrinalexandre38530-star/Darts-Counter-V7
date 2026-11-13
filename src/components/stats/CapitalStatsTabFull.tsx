@@ -236,17 +236,29 @@ export default function CapitalStatsTabFull({ records = [], playerId: wantedPlay
         </div>
       </>)}
 
-      {section("Grosses volées", <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 7 }}>
+      {section("Grosses volées", <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(70px,1fr))", gap: 7 }}>
         {[['60+', buckets.v60], ['100+', buckets.v100], ['140+', buckets.v140], ['180', buckets.v180], ['0 pt', buckets.zero]].map(([label, value]) => <div key={String(label)} style={{ padding: 9, borderRadius: 13, background: "rgba(0,0,0,.22)", textAlign: "center" }}><div style={{ color: "#9da2b4", fontSize: 9.5 }}>{label}</div><div style={{ marginTop: 2, color: ACCENT, fontSize: 18, fontWeight: 1000 }}>{value}</div></div>)}
       </div>)}
 
-      {section("Performance par contrat", <div style={{ display: "grid", gap: 6 }}>
-        {contractAgg.length ? contractAgg.map((row: any) => {
-          const label = CAPITAL_CONTRACT_META[row.id as keyof typeof CAPITAL_CONTRACT_META]?.label || row.id.replaceAll("_", " ");
-          return <div key={row.id} style={{ display: "grid", gridTemplateColumns: "minmax(90px,1.2fr) 70px 70px 70px 70px", gap: 7, alignItems: "center", padding: 8, borderRadius: 12, background: "rgba(0,0,0,.18)" }}>
-            <div style={{ fontWeight: 1000, fontSize: 11 }}>{label}</div><div style={{ color: ACCENT, fontWeight: 1000 }}>{percent(row.successRate)}</div><div style={{ fontSize: 10.5 }}>+{row.pointsWon}</div><div style={{ fontSize: 10.5, color: "#ff8aa6" }}>−{row.capitalLost}</div><div style={{ fontSize: 10.5 }}>Best {row.bestVisit}</div>
-          </div>;
-        }) : <div style={{ color: "#aeb3c5", fontSize: 11 }}>Ventilation disponible sur les prochaines parties enregistrées.</div>}
+      {section("Performance par contrat", <div style={{ minWidth: 0 }}>
+        <div style={{ color: "#b4bece", fontSize: 10, marginBottom: 6 }}>Faire glisser horizontalement pour les indicateurs masqués ↔</div>
+        <div role="region" aria-label="Performance CAPITAL par contrat, tableau défilant" tabIndex={0} style={{ maxWidth: "100%", minWidth: 0, overflowX: "auto", overscrollBehaviorX: "contain", WebkitOverflowScrolling: "touch", scrollbarWidth: "thin", scrollbarColor: "#d9a748 #182330" }}>
+          <div style={{ minWidth: 426, display: "grid", gap: 6 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(100px,1fr) repeat(4,75px)", gap: 5, padding: "4px 7px", color: ACCENT, fontSize: 9.5, fontWeight: 950 }}>
+              {['CONTRAT','RÉUSSITE','CRÉDITÉS','PERDUS','RECORD'].map(label => <span key={label}>{label}</span>)}
+            </div>
+            {contractAgg.length ? contractAgg.map((row: any) => {
+              const label = CAPITAL_CONTRACT_META[row.id as keyof typeof CAPITAL_CONTRACT_META]?.label || row.id.replaceAll("_", " ");
+              return <div key={row.id} style={{ display: "grid", gridTemplateColumns: "minmax(100px,1fr) repeat(4,75px)", gap: 5, alignItems: "center", padding: "8px 7px", borderRadius: 12, background: "rgba(0,0,0,.18)" }}>
+                <div style={{ minWidth: 0, overflowWrap: "anywhere", fontWeight: 1000, fontSize: 11 }}>{label}</div>
+                <div style={{ color: ACCENT, fontWeight: 1000, fontSize: 11 }}>{percent(row.successRate)}</div>
+                <div style={{ fontSize: 10.5 }}>+{row.pointsWon}</div>
+                <div style={{ fontSize: 10.5, color: "#ff8aa6" }}>−{row.capitalLost}</div>
+                <div style={{ fontSize: 10.5 }}>Best {row.bestVisit}</div>
+              </div>;
+            }) : <div style={{ color: "#aeb3c5", fontSize: 11 }}>Ventilation disponible sur les prochaines parties enregistrées.</div>}
+          </div>
+        </div>
       </div>)}
 
       {section("Secteurs les plus utilisés", <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>

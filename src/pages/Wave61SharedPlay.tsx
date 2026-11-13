@@ -13,8 +13,10 @@ import ShoveActivePlayerCard from "../components/ShoveActivePlayerCard";
 import ShoveObjectivesModal from "../components/ShoveObjectivesModal";
 import ShoveStatsDashboard from "../components/ShoveStatsDashboard";
 import ShoveTurnBriefing from "../components/ShoveTurnBriefing";
+import ShoveMatchMidZone from "../components/ShoveMatchMidZone";
 import shovePlayersTicker from "../assets/tickers/ticker_shove_players.webp";
 import shoveMarksTicker from "../assets/tickers/ticker_shove_marks.webp";
+import shoveStatsTicker from "../assets/tickers/ticker_shove_a_penny.webp";
 
 function ShoveRankingNavIcon({ color = "currentColor", size = 18 }: { color?: string; size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -1935,9 +1937,11 @@ export default function Wave61SharedPlay(props: any) {
 
   const classicInputHeight = isFinishedColorVariant(spec.id)
     ? (viewportH > 0 && viewportH < 700 ? "268px" : viewportH > 0 && viewportH < 840 ? "282px" : "294px")
-    : viewportH > 0 && viewportH < 700
-      ? "clamp(265px,39dvh,315px)"
-      : "clamp(290px,41dvh,355px)";
+    : spec.id === "shove_a_penny" && config.scoreInputMethod === "target"
+      ? (viewportH > 0 && viewportH < 700 ? "clamp(252px,37dvh,300px)" : "clamp(274px,37dvh,329px)")
+      : viewportH > 0 && viewportH < 700
+        ? "clamp(265px,39dvh,315px)"
+        : "clamp(290px,41dvh,355px)";
 
   const renderClassicQuickModal = () => {
     if (!quickPanel) return null;
@@ -1967,10 +1971,20 @@ export default function Wave61SharedPlay(props: any) {
       style={{ position:"fixed", inset:0, zIndex:1200, background:"rgba(0,0,0,.76)", backdropFilter:"blur(8px)", display:"grid", placeItems:"center", padding:14 }}
     >
       <div onClick={(e)=>e.stopPropagation()} style={{ width:"min(560px,96vw)", maxHeight:"78dvh", overflow:"auto", borderRadius:20, border:`1px solid ${accent}66`, background:"linear-gradient(155deg,rgba(14,18,29,.99),rgba(5,7,13,.99))", boxShadow:`0 22px 70px rgba(0,0,0,.7),0 0 34px ${accent}20`, padding:13 }}>
-        <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) 38px", gap:8, alignItems:"center" }}>
-          <div><div style={{ color:accent, fontSize:9, fontWeight:1100, letterSpacing:1.05 }}>{titles[quickPanel]}</div><div style={{ marginTop:2, color:"#fff", fontSize:16, fontWeight:1100 }}>{spec.label}</div></div>
-          <button type="button" onClick={()=>setQuickPanel(null)} aria-label="Fermer" style={{ width:38, height:38, borderRadius:12, border:"1px solid rgba(255,255,255,.12)", background:"rgba(255,255,255,.04)", color:"#fff", fontSize:18, cursor:"pointer" }}>×</button>
-        </div>
+        {spec.id === "shove_a_penny" && quickPanel === "stats" ? (
+          <div data-shove-stats-ticker-header="1" style={{ display:"grid", gap:8 }}>
+            <img src={shoveStatsTicker} alt="SHOVE A PENNY" style={{ display:"block", width:"100%", height:"auto", maxHeight:125, objectFit:"contain", objectPosition:"center", borderRadius:12 }} />
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
+              <strong style={{ color:accent, fontSize:11, fontWeight:1100, letterSpacing:1.05 }}>STATISTIQUES DE LA PARTIE</strong>
+              <button type="button" onClick={()=>setQuickPanel(null)} aria-label="Fermer" style={{ width:38, height:38, flex:"0 0 38px", borderRadius:12, border:"1px solid rgba(255,255,255,.12)", background:"rgba(255,255,255,.04)", color:"#fff", fontSize:18, cursor:"pointer" }}>×</button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) 38px", gap:8, alignItems:"center" }}>
+            <div><div style={{ color:accent, fontSize:9, fontWeight:1100, letterSpacing:1.05 }}>{titles[quickPanel]}</div><div style={{ marginTop:2, color:"#fff", fontSize:16, fontWeight:1100 }}>{spec.label}</div></div>
+            <button type="button" onClick={()=>setQuickPanel(null)} aria-label="Fermer" style={{ width:38, height:38, borderRadius:12, border:"1px solid rgba(255,255,255,.12)", background:"rgba(255,255,255,.04)", color:"#fff", fontSize:18, cursor:"pointer" }}>×</button>
+          </div>
+        )}
 
         {quickPanel === "rules" ? <div style={{ marginTop:12, display:"grid", gap:9 }}>
           <div style={{ ...panelStyle(accent+"44"), padding:11, color:"#e9edf7", fontSize:11.5, lineHeight:1.55 }}>{familyRules(spec,preset)}</div>
@@ -2019,7 +2033,7 @@ export default function Wave61SharedPlay(props: any) {
         {quickPanel === "shove_marks" && spec.id === "shove_a_penny" ? <div style={{marginTop:12}}><ShovePennyCricketBoard state={state} profiles={profiles} accent={accent} activePlayerId={activePlayer?.id} previewMarks={shoveProjectedMarks} marksPerBox={shoveMarksPerBox} ruleSet={shoveRule}/></div> : null}
         {quickPanel === "shove_advice" && spec.id === "shove_a_penny" ? <div style={{marginTop:12,display:"grid",gridTemplateColumns:"44px minmax(0,1fr)",gap:12,alignItems:"center",border:`1px solid ${accent}44`,borderRadius:14,padding:12}}><img src="/awena/awena-avatar.webp" alt="Awena" style={{width:44,height:44,borderRadius:999}}/><div style={{color:"#fff",fontSize:13,lineHeight:1.5}}>{shoveAdviceText || "Aucun nouveau conseil pour cette volée."}</div></div> : null}
         {quickPanel === "stats" ? (spec.id === "shove_a_penny" ?
-          <ShoveStatsDashboard state={state} profiles={profiles} accent={accent} activePlayerId={activePlayer?.id} /> :
+          <ShoveStatsDashboard state={state} profiles={profiles} accent={accent} activePlayerId={activePlayer?.id} compactHeader /> :
           <div data-seven-mode-stats="1" style={{ marginTop:12, display:"grid", gridTemplateColumns:"repeat(2,minmax(0,1fr))", gap:7 }}>
             {(() => { const id=String(activePlayer?.id||""); const meta=quickModeMeta(state,spec.id,id,accent); return meta.items.map(([label,value]:any)=><div key={label} style={{...panelStyle(meta.tone+"30"),padding:10,textAlign:"center"}}><div style={{color:SOFT,fontSize:7.5,fontWeight:950}}>{label}</div><b style={{display:"block",marginTop:3,color:meta.tone,fontSize:20}}>{value}</b></div>); })()}
           </div>) : null}
@@ -2079,7 +2093,7 @@ export default function Wave61SharedPlay(props: any) {
         tickerSrc={modeTicker || undefined}
         tickerAlt={spec.label}
         tickerHeight={tickerHeight}
-        tickerBottomGap={isColorDuelMode(spec.id) ? (isLandscapeTablet?8:16) : (isLandscapeTablet?3:5)}
+        tickerBottomGap={spec.id === "shove_a_penny" ? (isLandscapeTablet ? 11 : 16) : isColorDuelMode(spec.id) ? (isLandscapeTablet ? 8 : 16) : (isLandscapeTablet ? 7 : 9)}
         tickerFit="cover"
         left={<BackDot onClick={()=>go?.("wave61_config",{gameId:spec.id})} color={isColorDuelMode(spec.id)?duelTone:accent} glow={`${isColorDuelMode(spec.id)?duelTone:accent}88`} />}
         right={<div style={{position:'relative',display:'grid',placeItems:'center'}}>
@@ -2088,6 +2102,7 @@ export default function Wave61SharedPlay(props: any) {
             style={{position:'absolute',top:-5,left:-11,width:21,height:19,zIndex:4,display:'grid',placeItems:'center',borderRadius:'9px 9px 4px 9px',background:accent,color:'#231507',border:'1px solid #ffe3a3',fontSize:12,fontWeight:1100,cursor:'pointer',boxShadow:`0 1px 7px ${accent}77`,transform:'rotate(-9deg)'}}>!</button> : null}
         </div>}
       />
+      {spec.id === "shove_a_penny" ? <div data-shove-header-clearance="1" aria-hidden="true" style={{flex:"0 0 10px",height:10,minHeight:10,pointerEvents:"none"}} /> : null}
       {isColorDuelMode(spec.id) ? <div aria-hidden="true" style={{height:isLandscapeTablet?4:8,flex:`0 0 ${isLandscapeTablet?4:8}px`}} /> : null}
       {spec.id === "green_vs_red" ? <GreenRedDuelScoreboard state={state} profiles={profiles} /> : spec.id === "black_vs_white" ? (state.players?.length===2 && String(state?.config?.modeOptions?.matchFormat||"duel")==="duel" ? <BlackWhiteDuelScoreboard state={state} profiles={profiles} /> : <VariantSeriesScoreboard state={state} profiles={profiles} modeId={spec.id} accent={accent} />) : ["three_colors","la_suite","color_call","bim_bam_boum","saute_moutons","troupeau_en_danger","une_ptite_raclette"].includes(spec.id) ? <VariantSeriesScoreboard state={state} profiles={profiles} modeId={spec.id} accent={accent} /> : null}
 
@@ -2102,9 +2117,9 @@ export default function Wave61SharedPlay(props: any) {
         ? { flex:1,minHeight:0,display:"grid",gridTemplateColumns:"minmax(0,.92fr) minmax(440px,1.08fr)",gap:8,padding:"5px 7px 7px",overflow:"hidden" }
         : { flex:1,minHeight:0,display:"flex",flexDirection:"column",overflow:"hidden" }
       }>
-        <section data-wave61-classic-info="1" style={isLandscapeTablet
-          ? { minWidth:0,minHeight:0,overflowY:"auto",overscrollBehavior:"contain",padding:"0 2px 8px",display:"grid",gap:7,alignContent:"start" }
-          : { flex:"1 1 auto",minHeight:0,overflowY:isFinishedColorVariant(spec.id)?"hidden":"auto",overscrollBehavior:"contain",padding:isFinishedColorVariant(spec.id)?"6px 8px 4px":"5px 8px 7px",display:isFinishedColorVariant(spec.id)?"flex":"grid",flexDirection:isFinishedColorVariant(spec.id)?"column":undefined,gap:isFinishedColorVariant(spec.id)?4:7,alignContent:"start" }
+        <section key={spec.id === "shove_a_penny" ? `shove-info-${state.turnIndex}-${String(activePlayer?.id || "")}` : "shared-info"} data-wave61-classic-info="1" style={isLandscapeTablet
+          ? { minWidth:0,minHeight:0,overflowY:"auto",overscrollBehavior:"contain",padding:spec.id === "shove_a_penny" ? "8px 2px 8px" : "8px 2px 8px",display:spec.id === "shove_a_penny" ? "flex" : "grid",flexDirection:spec.id === "shove_a_penny" ? "column" : undefined,gap:7,alignContent:"start" }
+          : { flex:"1 1 auto",minHeight:0,overflowY:isFinishedColorVariant(spec.id)?"hidden":"auto",overscrollBehavior:"contain",padding:isFinishedColorVariant(spec.id)?"6px 8px 4px":spec.id === "shove_a_penny" ? "8px 8px 7px" : "8px 8px 7px",display:isFinishedColorVariant(spec.id)||spec.id==="shove_a_penny"?"flex":"grid",flexDirection:isFinishedColorVariant(spec.id)||spec.id==="shove_a_penny"?"column":undefined,gap:isFinishedColorVariant(spec.id)?4:7,alignContent:"start" }
         }>
           {spec.id === "shove_a_penny" ? <ShoveActivePlayerCard
             profile={activeProfile} name={String(activePlayer?.name || "—")}
@@ -2160,6 +2175,12 @@ export default function Wave61SharedPlay(props: any) {
           {spec.id === "shove_a_penny" && state.config?.modeOptions?.giftTargetRule === "shooter_choice" && shoveGiftCandidates.length>1 && !activeIsBot ? <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(135px,1fr)",gap:6,alignItems:"center",padding:"5px 7px",borderRadius:10,border:`1px solid ${accent}44`}}><label htmlFor="shove-gift-pick" style={{color:accent,fontSize:9,fontWeight:950}}>SURPLUS → JOUEUR</label><select id="shove-gift-pick" value={shoveActualGiftRecipientId} onChange={e=>setShoveGiftRecipientId(e.target.value)} style={{width:"100%",background:"#111824",color:"#fff",borderRadius:9,padding:7,border:"1px solid #485669"}}>{shoveGiftCandidates.map((p:any)=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div> : null}
           {notice && spec.id !== "shove_a_penny" ? <div style={{ borderRadius:11,padding:"6px 8px",background:`${accent}0d`,border:`1px solid ${accent}2d`,color:"#eef1f8",fontSize:9.2,fontWeight:850,lineHeight:1.25 }}>{notice}</div> : null}
 
+          {spec.id === "shove_a_penny" ? <ShoveMatchMidZone
+            state={state}
+            activePlayerId={String(activePlayer?.id || "")}
+            accent={accent}
+            showAd={viewportW >= 320 && !isLandscapeTablet && !activeIsBot && state.phase === "playing" && !shoveOverlay && !visitRecap && !quickPanel && !state.special?.seriesIntermission && !state.special?.pendingBotVisitRecap}
+          /> : null}
           {isFinishedColorVariant(spec.id) && !isColorDuelMode(spec.id) ? <div data-variant-live-stack={spec.id} style={{flex:"1 1 0",minHeight:0,overflow:"hidden",display:"grid",gridTemplateRows:"minmax(74px,1fr) auto",gap:4}}><div style={{minHeight:0,overflow:"hidden",display:"grid",alignContent:"start"}}>{renderModeSpecificPanel()}</div><VariantPerformancePanel state={state} modeId={spec.id} accent={accent} /></div> : <>{renderModeSpecificPanel()}{isFinishedColorVariant(spec.id) ? <VariantPerformancePanel state={state} modeId={spec.id} accent={accent} /> : null}</>}
           {isColorDuelMode(spec.id) ? <div style={{flex:"1 1 0",minHeight:viewportH>0&&viewportH<760?132:150,overflow:"hidden"}}>{spec.id==="black_vs_white"?<BlackWhiteSituationPanel state={state} profiles={profiles} stretch />:<GreenRedSituationPanel state={state} profiles={profiles} stretch />}</div> : null}
 

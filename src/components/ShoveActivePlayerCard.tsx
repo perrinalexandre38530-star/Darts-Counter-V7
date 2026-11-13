@@ -23,7 +23,7 @@ export default function ShoveActivePlayerCard(p: Props) {
   const objective = traditional ? '1 À 9' : '15 À BULL';
   const objectiveSub = traditional ? 'ORDRE LIBRE' : 'DANS L’ORDRE';
   const showRound = Number.isFinite(p.round) && Number.isFinite(p.maxRounds) && Number(p.maxRounds) > 0;
-  return <section data-shove-active-player="mss-hero-v5" style={{position:'relative',flex:'0 0 auto',minHeight:124,borderRadius:18,border:`1px solid ${p.accent}85`,background:`linear-gradient(100deg,${p.accent}1b,rgba(9,13,22,.99) 65%)`,overflow:'hidden',boxShadow:`inset 0 0 24px ${p.accent}16`}}>
+  return <section data-shove-active-player="mss-hero-v5" style={{position:'relative',isolation:'isolate',flex:'0 0 auto',minHeight:124,borderRadius:18,border:`1px solid ${p.accent}a8`,background:`linear-gradient(100deg,${p.accent}1b,rgba(9,13,22,.99) 65%)`,overflow:'hidden',boxShadow:`inset 0 1px 0 ${p.accent}a8, inset 0 0 24px ${p.accent}16`}}>
     {avatar ? <img src={avatar} alt="" aria-hidden="true" style={{position:'absolute',left:-38,top:-24,width:178,height:182,objectFit:'cover',objectPosition:'center',opacity:.21,filter:'saturate(.8)',pointerEvents:'none'}}/> : null}
     <div aria-hidden="true" style={{position:'absolute',inset:0,pointerEvents:'none',background:'linear-gradient(90deg,transparent 0%,rgba(6,9,15,.45) 36%,rgba(6,9,15,.70) 70%)'}}/>
     <div style={{position:'relative',display:'grid',gridTemplateColumns:'minmax(0,1fr) minmax(112px,32%)',gap:6,padding:7,minHeight:124,alignItems:'stretch'}}>
@@ -45,5 +45,6 @@ export default function ShoveActivePlayerCard(p: Props) {
         {showRound ? <small style={{fontSize:9,fontWeight:900,color:'#d0d8e6'}}>TOUR {p.round}/{p.maxRounds}</small> : null}
       </button>
     </div>
+    <span data-shove-border-overlay="1" aria-hidden="true" style={{position:'absolute',inset:0,zIndex:3,pointerEvents:'none',borderRadius:17,border:`1px solid ${p.accent}a8`,boxShadow:`inset 0 1px 0 ${p.accent}88`}} />
   </section>;
 }

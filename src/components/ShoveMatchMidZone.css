@@ -1,0 +1,105 @@
+.mss-shove-mid-zone {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 7px;
+  overflow: hidden;
+  padding: 0 4px 4px;
+  margin-top: -7px;
+  box-sizing: border-box;
+}
+.mss-shove-validated-band {
+  width: 100%;
+  flex: 0 0 auto;
+  min-width: 0;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--shove-mid-accent) 49%, transparent);
+  background: linear-gradient(110deg, rgba(18,22,32,.97), rgba(6,10,18,.97));
+  box-shadow: inset 0 0 16px color-mix(in srgb, var(--shove-mid-accent) 11%, transparent);
+  padding: 3px;
+}
+.mss-shove-validated-scroll {
+  display: flex;
+  align-items: stretch;
+  gap: 5px;
+  min-height: 48px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--shove-mid-accent) transparent;
+  touch-action: pan-x;
+}
+.mss-shove-validated-scroll:focus-visible {
+  outline: 2px solid var(--shove-mid-accent);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+.mss-shove-validated-case {
+  flex: 0 0 54px;
+  min-height: 47px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 8px;
+  background: rgba(255,255,255,.035);
+  box-sizing: border-box;
+}
+.mss-shove-validated-case.is-closed {
+  border-color: color-mix(in srgb, var(--shove-mid-accent) 64%, transparent);
+  background: color-mix(in srgb, var(--shove-mid-accent) 13%, #0d111b);
+}
+.mss-shove-validated-value {
+  color: var(--shove-mid-accent);
+  font-size: 11px;
+  font-weight: 1000;
+  line-height: 1.15;
+  letter-spacing: .2px;
+}
+.mss-shove-validated-symbol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  min-height: 25px;
+}
+.mss-shove-validated-empty { color: #586478; font-size: 21px; line-height: 1; }
+.mss-shove-validated-extra { color: var(--shove-mid-accent); font-size: 9px; font-weight: 1000; }
+.mss-shove-play-ad {
+  flex: 0 0 58px;
+  min-height: 58px;
+  margin-top: 5px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  padding: 0 4px;
+  box-sizing: border-box;
+}
+@media (max-height: 760px) {
+  .mss-shove-mid-zone { padding-block: 3px; gap: 5px; }
+  .mss-shove-validated-scroll { min-height: 48px; }
+  .mss-shove-validated-case { min-height: 47px; }
+}
+
+/* Electronic seven-sector strip: make BULL visible without compulsory scrolling.
+   On very narrow phones it still scrolls, with a visible horizontal scrollbar. */
+.mss-shove-validated-scroll.is-electronic {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(39px, 1fr);
+  gap: 4px;
+}
+.mss-shove-validated-scroll.is-electronic .mss-shove-validated-case { min-width: 39px; min-height: 47px; }
+@media (max-width: 370px) {
+  .mss-shove-validated-scroll.is-electronic { grid-auto-columns: minmax(39px,1fr); }
+  .mss-shove-validated-case { flex-basis: 48px; }
+}

@@ -6762,11 +6762,24 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
         </div>
       ) : null}
 
+      {(historyReportError || historyReportInfo) && <div role={historyReportError ? "alert" : "status"}
+        style={{position:"fixed",zIndex:240000,bottom:"max(18px, env(safe-area-inset-bottom))",left:"50%",transform:"translateX(-50%)",width:"min(92vw,540px)",padding:"12px 42px 12px 14px",background:historyReportError?"#3b2119":"#183428",border:`1px solid ${historyReportError?"#ff9b6b":"#7be8ae"}`,color:"#fff5e5",borderRadius:14,boxShadow:"0 12px 35px rgba(0,0,0,.6)",fontSize:12,lineHeight:1.5}}>
+        {historyReportError || historyReportInfo}
+        <button type="button" aria-label="Fermer la notification du rapport" onClick={() => {setHistoryReportError("");setHistoryReportInfo("");}}
+          style={{position:"absolute",top:5,right:8,color:"#fff",background:"transparent",border:0,fontSize:24,cursor:"pointer"}}>×</button>
+      </div>}
       <ChallengeReportShareDialog open={historyShareOpen} busy={historyReportBusy} error={historyShareError}
         onClose={()=>setHistoryShareOpen(false)} onShare={format=>void handleChallengeHistoryReport(format,true)}/>
       <ChallengeReportPreview result={historyExportPreview} onClose={()=>setHistoryExportPreview(null)}
         onDownload={()=>{try{if(historyReport)downloadChallengeFile(historyReport,historyFormatRef.current);}catch(error){setHistoryReportError(String((error as Error)?.message||error));}setHistoryExportPreview(null);}}/>
-      <CapitalHistoryMatchDetail record={capitalHistoryDetail} onClose={() => setCapitalHistoryDetail(null)} />
+      <CapitalHistoryMatchDetail record={capitalHistoryDetail}
+        onClose={() => setCapitalHistoryDetail(null)}
+        reportBusy={historyReportBusy}
+        onExport={(format) => {
+          const entry = capitalHistoryDetail;
+          setCapitalHistoryDetail(null);
+          if (entry) void handleHistoryCardReport(entry, format);
+        }} />
       {friendShareEntry ? (
         <div
           role="dialog"
