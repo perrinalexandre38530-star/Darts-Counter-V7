@@ -31,7 +31,7 @@ async function ensureLabel(config,name,color,description){
 }
 async function bootstrap(config){
  const issues=await github(config,'/issues?state=open&per_page=100');
- const [pulls,runs,qaWorkflow]=await Promise.allSettled([github(config,'/pulls?state=open&per_page=100'),github(config,'/actions/runs?per_page=30'),github(config,'/actions/workflows/mss-qa-pilot.yml')]);
+ const [pulls,runs,qaWorkflow,qaInDefaultBranch]=await Promise.allSettled([github(config,'/pulls?state=open&per_page=100'),github(config,'/actions/runs?per_page=30'),github(config,'/actions/workflows/mss-qa-pilot.yml'),github(config,'/contents/.github/workflows/mss-qa-pilot.yml')]);
  return {
   repository:config.repo,
   issues:issues.filter(isMission).map(mapIssue).sort((a,b)=>b.number-a.number),
@@ -41,9 +41,12 @@ async function bootstrap(config){
   engineActive:false,
   certifiedAgents:0,
   qaPilot: {
-   // GitHub workflow existence is not evidence that a mission has executed.
+   // A registered workflow may exist only on a feature branch. Never display
+   // it as runnable until its file is verified on the default branch.
    state: qaWorkflow.status==='fulfilled'
-     ? (qaWorkflow.value?.state==='active'?'WORKFLOW ACTIF':'WORKFLOW INACTIF')
+     ? (qaWorkflow.value?.state!=='active'?'WORKFLOW INACTIF'
+       : qaInDefaultBranch.status==='fulfilled'?'ACTIF SUR MAIN'
+       : qaInDefaultBranch.reason?.status===404?'EN ATTENTE DE FUSION':'NON VÉRIFIÉ SUR MAIN')
      : (qaWorkflow.reason?.status===404?'NON INSTALLÉ':'INCONNU')
   }
  };
