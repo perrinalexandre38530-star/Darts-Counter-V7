@@ -1235,6 +1235,7 @@ export default function Wave61SharedPlay(props: any) {
   const restoredThrow = resumeRecord?.resume?.currentThrow || resumeRecord?.payload?.currentThrow || [];
   const restoredMultiplier = Number(resumeRecord?.resume?.multiplier ?? resumeRecord?.payload?.multiplier ?? 1);
   const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>(() => Array.isArray(restoredThrow) ? restoredThrow.slice(0, 3) : []);
+  const [shoveGiftRecipientId, setShoveGiftRecipientId] = React.useState("");
   const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(() => restoredMultiplier === 2 || restoredMultiplier === 3 ? restoredMultiplier : 1);
   const [undo, setUndo] = React.useState<Wave61State[]>([]);
   const [notice, setNotice] = React.useState("");
@@ -1259,6 +1260,20 @@ export default function Wave61SharedPlay(props: any) {
   const activePlayer = state.players[state.activePlayerIndex];
   const activeProfile = activePlayer ? profileById.get(String(activePlayer.id)) || activePlayer : null;
   const activeIsBot = !!activeProfile && isBotProfile(activeProfile, botIds);
+  const shoveGiftCandidates = state.players.filter((p:any) => p.id !== activePlayer?.id && !state.eliminated[p.id]
+    && (state.config.participantMode !== "teams" || state.config.teamByPlayer?.[p.id] !== state.config.teamByPlayer?.[activePlayer?.id]));
+  const shoveNextGiftRecipientId = (() => {
+    const ordered = state.players;
+    const index = Math.max(0, state.activePlayerIndex);
+    for (let i = 1; i < ordered.length; i++) {
+      const id = ordered[(index + i) % ordered.length]?.id;
+      if (shoveGiftCandidates.some((p:any) => p.id === id)) return id;
+    }
+    return "";
+  })();
+  const shoveActualGiftRecipientId = shoveGiftCandidates.some((p:any) => p.id === shoveGiftRecipientId)
+    ? shoveGiftRecipientId : shoveNextGiftRecipientId;
+  React.useEffect(() => setShoveGiftRecipientId(""), [state.activePlayerIndex, state.turnIndex]);
   const target = getWave61Target(state);
   const shoveRule = shoveRuleSet(state.config?.modeOptions?.ruleSet);
   const shoveMarksPerBox = Math.max(2, Math.min(5, Number(state.config?.modeOptions?.marksPerBox || 3)));
@@ -1550,7 +1565,13 @@ export default function Wave61SharedPlay(props: any) {
   const validate = () => {
     if (!currentThrow.length || state.phase === "finished" || activeIsBot || visitRecap || state.special?.seriesIntermission) return;
     if (state.special?.pendingBotVisitRecap) return;
-    commit(playWave61Visit(state, currentThrow.map(uiToGameDart)));
+    if (spec.id === "shove_a_penny" && state.config?.modeOptions?.giftTargetRule === "shooter_choice" && shoveGiftCandidates.length > 1) {
+      const beforeThrow = cloneWave61State(state);
+      beforeThrow.config.modeOptions = { ...(beforeThrow.config.modeOptions || {}), giftRecipientId: shoveActualGiftRecipientId };
+      commit(playWave61Visit(beforeThrow, currentThrow.map(uiToGameDart)));
+    } else {
+      commit(playWave61Visit(state, currentThrow.map(uiToGameDart)));
+    }
   };
 
   const persistedSeriesUndo = state.special?.seriesIntermission?.modeId === spec.id
@@ -1741,7 +1762,15 @@ export default function Wave61SharedPlay(props: any) {
     {spec.id === "replicat" ? <ReplicatPanel state={state} accent={accent} /> : null}
     {spec.id === "double_down" ? <DoubleDownPanel state={state} accent={accent} target={target} /> : null}
     {spec.id === "nine_dart_century" ? <CenturyPanel state={state} accent={accent} /> : null}
-    {spec.id === "shove_a_penny" ? <ShovePennyPanel state={state} accent={accent} activePlayerId={activePlayer?.id} previewMarks={shoveProjectedMarks} marksPerBox={shoveMarksPerBox} ruleSet={shoveRule} /> : null}
+    {spec.id === "shove_a_penny" ? <>
+      <ShovePennyPanel state={state} accent={accent} activePlayerId={activePlayer?.id} previewMarks={shoveProjectedMarks} marksPerBox={shoveMarksPerBox} ruleSet={shoveRule} />
+      {state.config?.modeOptions?.giftTargetRule === "shooter_choice" && shoveGiftCandidates.length > 1 && !activeIsBot ? <div style={{display:"flex",gap:7,alignItems:"center",padding:"5px 7px",borderRadius:12,border:"1px solid " + accent + "55",background:"rgba(255,255,255,.03)"}}>
+        <label htmlFor="shove-gift-recipient" style={{fontSize:9,fontWeight:1000,color:accent,flex:"1 1 auto"}}>SURPLUS → JOUEUR</label>
+        <select id="shove-gift-recipient" value={shoveActualGiftRecipientId} onChange={(event)=>setShoveGiftRecipientId(event.target.value)} style={{minWidth:0,maxWidth:"64%",borderRadius:9,padding:"6px",border:"1px solid rgba(255,255,255,.15)",color:"#fff",background:"#10141f",fontWeight:900,fontSize:11}}>
+          {shoveGiftCandidates.map((p:any)=><option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      </div> : null}
+    </> : null}
     {spec.id === "green_vs_red" ? <GreenRedPanel state={state} /> : spec.id === "black_vs_white" ? <BlackWhitePanel state={state} currentThrow={currentThrow} /> : spec.id === "three_colors" ? <ThreeColorsPanel state={state} currentThrow={currentThrow} accent={accent} /> : spec.id === "la_suite" ? <LaSuitePanel state={state} currentThrow={currentThrow} accent={accent} /> : spec.id === "color_call" ? <ColorCallPanel state={state} currentThrow={currentThrow} accent={accent} /> : null}
     {spec.id === "bim_bam_boum" ? <BimBamBoumPanel state={state} currentThrow={currentThrow} accent={accent} /> : spec.id === "saute_moutons" ? <SauteMoutonsPanel state={state} currentThrow={currentThrow} accent={accent} /> : spec.id === "troupeau_en_danger" ? <TroupeauDangerPanel state={state} currentThrow={currentThrow} accent={accent} /> : spec.id === "une_ptite_raclette" ? <RaclettePanel state={state} currentThrow={currentThrow} accent={accent} /> : null}
     {spec.id === "hi_score" ? <HiScorePanel state={state} accent={accent} /> : null}
@@ -2142,7 +2171,15 @@ export default function Wave61SharedPlay(props: any) {
       {spec.id === "replicat" ? <ReplicatPanel state={state} accent={accent} /> : null}
       {spec.id === "double_down" ? <DoubleDownPanel state={state} accent={accent} target={target} /> : null}
       {spec.id === "nine_dart_century" ? <CenturyPanel state={state} accent={accent} /> : null}
-      {spec.id === "shove_a_penny" ? <ShovePennyPanel state={state} accent={accent} activePlayerId={activePlayer?.id} previewMarks={shoveProjectedMarks} marksPerBox={shoveMarksPerBox} ruleSet={shoveRule} /> : null}
+      {spec.id === "shove_a_penny" ? <>
+      <ShovePennyPanel state={state} accent={accent} activePlayerId={activePlayer?.id} previewMarks={shoveProjectedMarks} marksPerBox={shoveMarksPerBox} ruleSet={shoveRule} />
+      {state.config?.modeOptions?.giftTargetRule === "shooter_choice" && shoveGiftCandidates.length > 1 && !activeIsBot ? <div style={{display:"flex",gap:7,alignItems:"center",padding:"5px 7px",borderRadius:12,border:"1px solid " + accent + "55",background:"rgba(255,255,255,.03)"}}>
+        <label htmlFor="shove-gift-recipient" style={{fontSize:9,fontWeight:1000,color:accent,flex:"1 1 auto"}}>SURPLUS → JOUEUR</label>
+        <select id="shove-gift-recipient" value={shoveActualGiftRecipientId} onChange={(event)=>setShoveGiftRecipientId(event.target.value)} style={{minWidth:0,maxWidth:"64%",borderRadius:9,padding:"6px",border:"1px solid rgba(255,255,255,.15)",color:"#fff",background:"#10141f",fontWeight:900,fontSize:11}}>
+          {shoveGiftCandidates.map((p:any)=><option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      </div> : null}
+    </> : null}
       {spec.id === "green_vs_red" ? <><GreenRedDuelScoreboard state={state} profiles={profiles} accent={accent} /><GreenRedPanel state={state} accent={accent} /></> : spec.id === "black_vs_white" ? <><BlackWhiteDuelScoreboard state={state} profiles={profiles} /><BlackWhitePanel state={state} currentThrow={currentThrow} /></> : null}
       {spec.id === "sniper" ? <SniperPanel state={state} accent={accent} /> : null}
       {spec.id === "luciole" ? <LuciolePanel state={state} accent={accent} reveal={lucioleReveal} /> : null}
