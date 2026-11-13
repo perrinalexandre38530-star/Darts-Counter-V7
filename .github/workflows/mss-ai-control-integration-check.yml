@@ -50,7 +50,8 @@ jobs:
         run: |
           node --check tools/mss-qa-pilot.mjs
           node --check tools/mss-qa-evidence.mjs
-          node --test tools/test-mss-qa-pilot.mjs
+          node --check tools/mss-qa-ai-advisor.mjs
+          node --test tools/test-mss-qa-pilot.mjs tools/test-mss-qa-ai-advisor.mjs
       - name: Contrats publics Cloud et NAS
         run: node tools/test-cloud-public-contracts.mjs
       - name: Dependances reproductibles

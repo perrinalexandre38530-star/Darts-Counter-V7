@@ -57,3 +57,24 @@ Les routes du dashboard dans la branche de la PR #27 ajoutent déjà mss:approve
 
 ## Autorisation du déclencheur et anti-usurpation
 L'exécution `qa_pilot` est désormais refusée à tout acteur autre que le propriétaire du dépôt (workflow et vérification indépendante du script). Ceci s'applique aux événements d'étiquetage et aux lancements manuels. Le script ne considère un rapport antérieur comme un doublon que si le commentaire provient de `github-actions[bot]`, mentionne la même mission et pointe vers le commentaire GitHub canonique de cette Issue. Un tiers ne peut donc pas bloquer un audit en copiant uniquement le marqueur public. Les actions d'écriture restent limitées aux commentaires et labels de l'Issue ; aucun code, déploiement ou fusion.
+
+
+## V2 — Première compétence IA du robot TesteurQA (13/11/2026)
+
+Le robot QA conserve **deux niveaux de capacité** :
+1. **Diagnostic déterministe :** lecture seule des métadonnées Actions et classification de journaux, fonctionnel sans service IA.
+2. **Conseiller IA optionnel :** un seul appel OpenAI Responses API produit une analyse en français structurée (synthèse, confiance faible/modérée, hypothèses, vérifications, risques). Le résultat est une **proposition sous revue humaine**, jamais une cause prouvée ou une instruction exécutable.
+
+### Sécurité et coût
+- Par défaut, aucun appel IA : GitHub variable \`MSS_QA_AI_ENABLED\` doit être exactement \`true\` **ET** le secret GitHub \`MSS_QA_OPENAI_API_KEY\` doit exister.
+- Modèle optionnel via \`MSS_QA_OPENAI_MODEL\` (valeur par défaut \`gpt-6-luna\`, sous réserve des droits de l'organisation OpenAI). Ce n'est **pas** une clé ChatGPT : l'API OpenAI est un service facturé séparément.
+- Le jeton n'est fourni qu'au job GitHub Actions, **jamais au navigateur/Cloudflare ni dans une Issue GitHub publique**.
+- Le paquet transmis au modèle comporte exclusivement : des nombres, un état \`PASS/FAIL/BLOQUÉ\`, et les identifiants de 7 catégories d'erreurs définies dans le code. **Aucun log brut, fichier source, nom de job, SHA, corps de mission, chemin, adresse ou commentaire**.
+- \`store:false\`, \`tools:[]\`, au plus **1 appel par mission approuvée**, réponse plafonnée à 1 000 tokens et délai réseau maximal de 20 secondes. Aucun appel en l'absence d'échec observé. En cas d'erreur d'API, rapport déterministe conservé, mention « Analyse IA non réalisée ».
+- La sortie est contrainte par schéma JSON, validée et raccourcie localement avant publication. Les hypothèses peuvent être erronées et sont explicitement marquées comme non vérifiées.
+- **Avant d'activer :** ouvrir un projet API distinct, fixer un budget/une limite de consommation au niveau fournisseur et approuver le premier essai. Ne jamais placer la clé dans le dépôt, les screenshots ou le chat.
+- L'activation ne peut fonctionner sur le workflow principal qu'après intégration du pilote sur \`main\`.
+
+### Source de l'API
+- https://developers.openai.com/api/reference/resources/responses/methods/create
+- https://developers.openai.com/api/docs/guides/structured-outputs
