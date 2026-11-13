@@ -57,6 +57,8 @@ export async function verifyQaReport(issue,comments,repo,fetchRun,fetchJobs){
   if(!report)return {status:'BLOCKED',reason:'AUCUN_RAPPORT_QA_AUTHENTIQUE',evidence:[]};
   const parsed=extractQaReport(report,issue.number,repo);
   if(!parsed.ok)return {status:'BLOCKED',reason:parsed.reason,evidence:[]};
+  if(parsed.status!=='FAIL'||parsed.evidence.length===0)
+    return {status:'BLOCKED',reason:'AUCUN_ÉCHEC_CONCLUANT_A_RECONTRÔLER',evidence:[]};
   let qaRun;
   try{qaRun=await fetchRun(parsed.qaRun);}catch{
     return {status:'BLOCKED',reason:'JOURNAL_QA_INACCESSIBLE',evidence:[]};
