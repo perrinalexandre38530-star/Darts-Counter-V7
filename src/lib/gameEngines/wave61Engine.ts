@@ -1,6 +1,7 @@
 // @ts-nocheck
 import type { GameDart, Player } from "../types-game";
 import { getWave61Preset, type Wave61Family } from "../../games/dartsWave61Families";
+import { SHOVE_TARGETS, shoveNextTarget, shoveMarkForDart, projectShoveMarks } from "./shoveAPennyTargets";
 
 // Legacy audit markers preserved: WAVE61_ENGINE_VERSION = 9, WAVE61_ENGINE_VERSION = 10, WAVE61_ENGINE_VERSION = 11, WAVE61_ENGINE_VERSION = 12, WAVE61_ENGINE_VERSION = 13, WAVE61_ENGINE_VERSION = 14, WAVE61_ENGINE_VERSION = 15, WAVE61_ENGINE_VERSION = 16, WAVE61_ENGINE_VERSION = 17.
 export const WAVE61_ENGINE_VERSION = 25;
@@ -21,7 +22,7 @@ export type Wave61Config = {
   rounds: number;
   goal: number;
   lives: number;
-  scoreInputMethod: "keypad" | "dartboard";
+  scoreInputMethod: "keypad" | "dartboard" | "target";
   randomOrder?: boolean;
   modeOptions?: Record<string, any>;
   targetAdviceEnabled?: boolean;
@@ -141,7 +142,7 @@ export function normalizeWave61Config(modeId: string, raw: any): Wave61Config {
     rounds: forcedRounds ?? clamp(Number(raw?.rounds || preset.defaultRounds), 1, 60),
     goal: forcedGoal ?? Math.max(0, Number(raw?.goal ?? preset.defaultGoal) || 0),
     lives: Math.max(0, Number(raw?.lives ?? preset.defaultLives) || 0),
-    scoreInputMethod: raw?.scoreInputMethod === "dartboard" ? "dartboard" : "keypad",
+    scoreInputMethod: raw?.scoreInputMethod === "dartboard" ? "dartboard" : raw?.scoreInputMethod === "target" && modeId === "shove_a_penny" ? "target" : raw?.scoreInputMethod === "keypad" ? "keypad" : modeId === "shove_a_penny" ? "target" : "keypad",
     randomOrder: raw?.randomOrder !== false,
     modeOptions: raw?.modeOptions && typeof raw.modeOptions === "object" ? { ...raw.modeOptions } : {},
     targetAdviceEnabled: raw?.targetAdviceEnabled !== false,
@@ -200,7 +201,6 @@ function seededSequence(seedText: string, count: number, max = 20): number[] {
   return out;
 }
 
-const SHOVE_TARGETS = [15, 16, 17, 18, 19, 20, 25] as const;
 const RED_RING = [20, 12, 14, 8, 7, 3, 2, 10, 13, 18] as const;
 const GREEN_RING = [1, 4, 6, 15, 17, 19, 16, 11, 9, 5] as const;
 const WHITE_SINGLES = GREEN_RING;
@@ -1576,14 +1576,6 @@ function nextOpponentId(state: Wave61State, playerId: string): string | null {
   return null;
 }
 
-function shoveMarkValue(d: GameDart): { key: string | null; marks: number } {
-  if (!d || d.bed === "MISS") return { key: null, marks: 0 };
-  if (d.bed === "OB") return { key: "25", marks: 1 };
-  if (d.bed === "IB") return { key: "25", marks: 2 };
-  const n = Number(d.number || 0);
-  if (!SHOVE_TARGETS.includes(n as any)) return { key: null, marks: 0 };
-  return { key: String(n), marks: d.bed === "T" ? 3 : d.bed === "D" ? 2 : 1 };
-}
 
 function processShoveAPenny(state: Wave61State, playerId: string, darts: GameDart[], events: string[]): { delta: number; hits: number } {
   const marksByPlayer = state.special.shoveMarksByPlayer || (state.special.shoveMarksByPlayer = {});
@@ -1591,12 +1583,15 @@ function processShoveAPenny(state: Wave61State, playerId: string, darts: GameDar
   const marksPerBox = modeOptionNumber(state.config, "marksPerBox", 3, 2, 5);
   const overflowRule = modeOptionNumber(state.config, "overflowRule", 1, 0, 2);
   const overflowBonus = modeOptionNumber(state.config, "overflowBonus", 25, 0, 100);
-  const currentTarget = SHOVE_TARGETS.find((n) => Number(marks[String(n)] || 0) < marksPerBox) ?? null;
-  if (currentTarget == null) { finishWith(state, playerId); return { delta: 0, hits: 0 }; }
-  const currentKey = String(currentTarget);
+  const initialTarget = shoveNextTarget(marks, marksPerBox);
+  if (initialTarget == null) { finishWith(state, playerId); return { delta: 0, hits: 0 }; }
   let gained = 0, hits = 0, bonusScore = 0;
   for (const d of darts) {
-    const { key, marks: amount } = shoveMarkValue(d);
+    // Chaque fléchette peut fermer sa case : la suivante vise alors la nouvelle case.
+    const currentTarget = shoveNextTarget(marks, marksPerBox);
+    if (currentTarget === null) break;
+    const currentKey = String(currentTarget);
+    const { key, marks: amount } = shoveMarkForDart(d);
     if (!key || !amount) continue;
     if (key !== currentKey) {
       events.push(`• ${wave61DartLabel(d)} hors case · cible ${currentTarget === 25 ? "BULL" : currentTarget}`);
@@ -1618,6 +1613,7 @@ function processShoveAPenny(state: Wave61State, playerId: string, darts: GameDar
           const oppRoom = Math.max(0, marksPerBox - Number(opp[currentKey] || 0));
           const shove = Math.min(oppRoom, overflow);
           opp[currentKey] = Number(opp[currentKey] || 0) + shove;
+          if (shove) state.progress[oppId] = SHOVE_TARGETS.reduce((sum, n) => sum + Number(opp[String(n)] || 0), 0);
           if (shove) events.push(`↪ ${shove} surplus poussé(s) à ${state.players.find((p) => p.id === oppId)?.name || "l'adversaire"}`);
         }
       } else if (overflowRule === 2) {
@@ -1630,7 +1626,7 @@ function processShoveAPenny(state: Wave61State, playerId: string, darts: GameDar
   const total = SHOVE_TARGETS.reduce((sum, n) => sum + Number(marks[String(n)] || 0), 0);
   state.progress[playerId] = total;
   state.scores[playerId] = Number(state.scores[playerId] || 0) + gained * 25 + bonusScore;
-  state.special.shoveHistory = [...(state.special.shoveHistory || []), { playerId, target: currentTarget, gained, total }].slice(-30);
+  state.special.shoveHistory = [...(state.special.shoveHistory || []), { playerId, target: initialTarget, gained, total }].slice(-30);
   if (total >= SHOVE_TARGETS.length * marksPerBox) finishWith(state, playerId);
   return { delta: gained, hits };
 }
@@ -4764,10 +4760,21 @@ export function pickWave61BotDarts(state: Wave61State, level: Wave61Difficulty =
   const activeId = state.players[state.activePlayerIndex]?.id;
   if (state.modeId === "shove_a_penny") {
     const marks = state.special?.shoveMarksByPlayer?.[activeId] || {};
-    const targetNum = SHOVE_TARGETS.find((n) => Number(marks[String(n)] || 0) < 3) || 20;
-    const bed = level === "hard" ? "T" : level === "normal" ? "D" : "S";
-    if (targetNum === 25) return [{ bed: level === "hard" ? "IB" : "OB" } as GameDart, { bed: "OB" } as GameDart, { bed: "OB" } as GameDart];
-    return Array.from({ length: 3 }, () => ({ bed, number: targetNum } as GameDart));
+    const marksPerBox = modeOptionNumber(state.config, "marksPerBox", 3, 2, 5);
+    let projected = { ...marks };
+    const darts: GameDart[] = [];
+    for (let i = 0; i < 3; i++) {
+      const targetNum = shoveNextTarget(projected, marksPerBox);
+      const bed = level === "hard" ? "T" : level === "normal" ? "D" : "S";
+      const dart = targetNum === null
+        ? ({ bed: "MISS" } as GameDart)
+        : targetNum === 25
+          ? ({ bed: level === "hard" ? "IB" : "OB" } as GameDart)
+          : ({ bed, number: targetNum } as GameDart);
+      darts.push(dart);
+      projected = projectShoveMarks(projected, [dart], marksPerBox);
+    }
+    return darts;
   }
   if (state.modeId === "green_vs_red") {
     const playerColor = String(state.special?.greenRedColorByPlayer?.[activeId] || "GREEN") as "GREEN" | "RED";
