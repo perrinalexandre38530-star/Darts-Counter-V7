@@ -1,0 +1,70 @@
+name: SHOVE A PENNY - targeted regression
+
+on:
+  pull_request:
+    paths:
+      - 'src/lib/gameEngines/shoveAPennyTargets.ts'
+      - 'src/lib/gameEngines/wave61Engine.ts'
+      - 'src/pages/Wave61SharedPlay.tsx'
+      - 'src/pages/Wave61SharedConfig.tsx'
+      - 'src/components/KeypadTargets.*'
+      - 'src/components/ShovePennyCricketBoard.tsx'
+      - 'tools/test-wave61-shove-targeted-keypad-v101.mjs'
+      - '.github/workflows/shove-keypad-targets.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shove-targets:
+    name: Check targeted keypad and engine
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: SHOVE A PENNY sequential-target regression
+        run: node tools/test-wave61-shove-targeted-keypad-v101.mjs
+      - name: Chinatungsten engine rules regression
+        run: node tools/test-wave61-shove-tungsten-rules-v102.mjs
+      - name: Check TypeScript
+        run: npm run typecheck
+
+  package-pr35:
+    name: ZIP fichiers modifies PR 35
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Prepare changed files
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/shove-pr35/files"
+          mkdir -p "$out"
+          while IFS= read -r -d '' file; do
+            test -f "$file" || continue
+            mkdir -p "$out/$(dirname "$file")"
+            cp "$file" "$out/$file"
+          done < <(git diff --name-only --diff-filter=ACMRT -z "$BASE_SHA" HEAD)
+          find "$out" -type f | sort
+      - name: Upload patch ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: SHOVE_A_PENNY_PR35_FICHIERS_MODIFIES
+          path: ${{ runner.temp }}/shove-pr35/files/
+          retention-days: 30
+          if-no-files-found: error
+          include-hidden-files: true

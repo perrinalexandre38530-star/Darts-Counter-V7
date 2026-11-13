@@ -5,5 +5,5 @@ export const WAVE61_MODE_ID = "shove_a_penny" as const;
 
 /** Écran Play dédié à shove_a_penny. */
 export default function DedicatedWave61Play(props: any) {
-  return <Wave61SharedPlay {...props} forcedModeId={WAVE61_MODE_ID} dedicatedPlayHint="Ferme 15 → 16 → 17 → 18 → 19 → 20 → BULL dans cet ordre. Les surplus d’une case déjà fermée sont poussés au joueur suivant en règle classique." />;
+  return <Wave61SharedPlay {...props} forcedModeId={WAVE61_MODE_ID} dedicatedPlayHint="Traditionnel : ferme les numéros 1 à 9 dans l’ordre de ton choix (3 marques par case). Un surplus profite à un adversaire ; la dernière marque de victoire doit être touchée soi-même. Variante électronique : 15 → 20 → BULL dans l’ordre." />;
 }

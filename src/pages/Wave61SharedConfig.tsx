@@ -179,7 +179,7 @@ export default function Wave61SharedConfig(props: any) {
   const profileById = React.useMemo(() => new Map(allProfiles.map((p: any) => [String(p.id), p])), [allProfiles]);
 
   const lockedRounds = spec.id === "nine_dart_century" ? 3 : spec.id === "double_down" ? 9 : spec.id === "green_vs_red" ? 11 : spec.id === "athletisme" ? 6 : null;
-  const lockedGoal = spec.id === "nine_dart_century" ? 100 : spec.id === "shove_a_penny" ? 7 * Math.max(2, Number(modeOptions?.marksPerBox || 3)) : spec.id === "green_vs_red" ? 11 : spec.id === "eperviers" ? Math.max(50, Number(modeOptions?.crossingGoal || 100)) : spec.id === "iceberg" ? Math.max(2, Number(modeOptions?.compartmentGoal || 5)) : spec.id === "apocalypse" ? Math.max(50, Number(modeOptions?.refugeGoal || 100)) : spec.id === "mont_blanc" ? 4809 : spec.id === "everest" ? 8849 : spec.id === "summit_14" ? 14 : null;
+  const lockedGoal = spec.id === "nine_dart_century" ? 100 : spec.id === "shove_a_penny" ? (modeOptions?.ruleSet === "electronic" ? 7 : 9) * Math.max(2, Number(modeOptions?.marksPerBox || 3)) : spec.id === "green_vs_red" ? 11 : spec.id === "eperviers" ? Math.max(50, Number(modeOptions?.crossingGoal || 100)) : spec.id === "iceberg" ? Math.max(2, Number(modeOptions?.compartmentGoal || 5)) : spec.id === "apocalypse" ? Math.max(50, Number(modeOptions?.refugeGoal || 100)) : spec.id === "mont_blanc" ? 4809 : spec.id === "everest" ? 8849 : spec.id === "summit_14" ? 14 : null;
   const roundsFieldLabel = spec.id === "une_ptite_raclette" ? "Nombre de services max" : "Nombre de rounds";
   const goalFieldLabel = spec.id === "une_ptite_raclette" ? "Raclettes à servir" : "Objectif moteur";
   const [selectedIds, setSelectedIds] = React.useState<string[]>(Array.isArray(saved.selectedIds) ? saved.selectedIds.map(String).slice(0, spec.maxPlayers) : []);
@@ -204,7 +204,7 @@ export default function Wave61SharedConfig(props: any) {
   const [goal, setGoal] = React.useState(Number(lockedGoal ?? saved.goal ?? preset.defaultGoal));
   const [lives, setLives] = React.useState(Number(saved.lives ?? preset.defaultLives));
   const [randomOrder, setRandomOrder] = React.useState(saved.randomOrder !== false);
-  const [scoreInputMethod, setScoreInputMethod] = React.useState<"keypad" | "dartboard">(saved.scoreInputMethod === "dartboard" ? "dartboard" : "keypad");
+  const [scoreInputMethod, setScoreInputMethod] = React.useState<"keypad" | "dartboard" | "target">(saved.scoreInputMethod === "dartboard" ? "dartboard" : saved.scoreInputMethod === "target" && spec.id === "shove_a_penny" ? "target" : saved.scoreInputMethod === "keypad" ? "keypad" : spec.id === "shove_a_penny" ? "target" : "keypad");
   const [targetAdviceEnabled, setTargetAdviceEnabled] = React.useState(saved.targetAdviceEnabled !== false);
   const [awenaCommentaryEnabled, setAwenaCommentaryEnabled] = React.useState(saved.awenaCommentaryEnabled !== false);
   const [wave61SfxEnabled, setWave61SfxEnabled] = React.useState(saved.wave61SfxEnabled !== false);
@@ -598,7 +598,7 @@ export default function Wave61SharedConfig(props: any) {
         {preset.defaultGoal > 0 ? <OptionRow label={`${goalFieldLabel}${lockedGoal ? " · verrouillé" : ""}`}><input type="number" min={1} max={9999} value={lockedGoal ?? goal} disabled={lockedGoal != null} onChange={(e) => setGoal(Number(e.target.value))} style={{ width: 82, borderRadius: 10, border: "1px solid rgba(255,255,255,.14)", background: lockedGoal != null ? "rgba(255,255,255,.04)" : "rgba(0,0,0,.28)", color: lockedGoal != null ? "#9ba2b3" : "#fff", padding: "8px 9px", fontWeight: 900 }} /></OptionRow> : null}
         {preset.defaultLives > 0 ? <OptionRow label="Vies"><OptionSelect value={lives} options={[3,4,5,6,7]} onChange={(v: any) => setLives(Number(v))} /></OptionRow> : null}
         <NativeStartOrderConfig initialMode={randomOrder ? "random" : "alternate"} onModeChange={(mode) => setRandomOrder(mode === "random")} />
-        <OptionRow label="Saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Keypad" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow>
+        <OptionRow label="Saisie"><OptionSelect value={scoreInputMethod} options={[...(spec.id === "shove_a_penny" ? [{ value: "target", label: "Cibles successives · Keypad Cricket" }] : []), { value: "keypad", label: "Keypad classique" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow>
       </section>
 
       {!isQuick ? <section className="wave61-config-assistance" style={{ ...card, borderColor: `${accent}45` }}>

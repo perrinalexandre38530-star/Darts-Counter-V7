@@ -1,0 +1,52 @@
+.mss-targetpad {
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+  padding: clamp(7px, 1.8vw, 12px);
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  gap: clamp(5px, 1.3vw, 8px);
+  background: linear-gradient(155deg, rgba(18, 21, 30, .98), rgba(5, 7, 12, .99));
+  border: 1px solid rgba(246, 195, 87, .27);
+  box-shadow: inset 0 0 22px rgba(0, 0, 0, .30);
+  border-radius: 20px;
+  color: #f7f8fb;
+}
+.mss-targetpad * { box-sizing: border-box; }
+.mss-targetpad-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 17px; }
+.mss-targetpad-heading span { font-size: 10px; font-weight: 950; letter-spacing: .9px; color: #aab4c3; }
+.mss-targetpad-heading strong { color: var(--mss-target-accent); font-size: 11px; font-weight: 1050; text-align: right; }
+.mss-targetpad-visits { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.mss-targetpad-visit { min-height: 37px; border-radius: 10px; border: 1px solid rgba(255,255,255,.075); background: rgba(255,255,255,.03); display: flex; align-items: center; justify-content: center; gap: 6px; }
+.mss-targetpad-visit small { color: #768293; font-weight: 900; font-size: 10px; }
+.mss-targetpad-visit b { color: #7a8290; font-size: 12px; font-weight: 1100; }
+.mss-targetpad-visit.is-hit { border-color: rgba(246, 195, 87, .38); background: rgba(246, 195, 87, .10); }
+.mss-targetpad-visit.is-hit b { color: #fdf7e7; }
+.mss-targetpad button { display: grid; place-items: center; min-width: 0; border-radius: 12px; cursor: pointer; font-family: inherit; font-weight: 1000; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.mss-targetpad button:disabled { cursor: not-allowed; opacity: .34; box-shadow: none; }
+.mss-targetpad button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.mss-targetpad-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.mss-targetpad-actions button { min-height: 46px; border: 1px solid rgba(255,255,255,.13); color: #fff; font-size: clamp(9px, 2.2vw, 13px); letter-spacing: -.2px; padding: 4px 2px; }
+.mss-targetpad-actions .double { background: #13394a; color: #9ce6ff; }
+.mss-targetpad-actions .triple { background: #452038; color: #ffd0ea; }
+.mss-targetpad-actions .miss { background: #663620; color: #ffc18a; }
+.mss-targetpad-actions .undo { background: #5e4012; color: #ffe0a0; }
+.mss-targetpad-actions .is-active { border-color: #fff; box-shadow: 0 0 0 1px rgba(255,255,255,.55), inset 0 0 15px rgba(255,255,255,.14); }
+.mss-targetpad-targets { min-height: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 7px; }
+.mss-targetpad-targets button { min-height: 0; height: 100%; border: 1px solid rgba(249, 191, 69, .5); background: radial-gradient(circle at 50% 30%, rgba(241,180,55,.23), rgba(20,14,11,.98)); box-shadow: inset 0 0 28px rgba(225,152,34,.10); color: #fff; align-content: center; gap: 5px; }
+.mss-targetpad-targets button strong { font-size: clamp(33px, 10vw, 52px); line-height: 1; color: var(--mss-target-accent); }
+.mss-targetpad-targets button small { color: #ced4df; font-size: 10px; letter-spacing: .7px; font-weight: 900; }
+.mss-targetpad-targets.is-bull { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.mss-targetpad-targets .mss-targetpad-bull { background: linear-gradient(145deg, #0d4939, #061d18); border-color: #2cd89b99; }
+.mss-targetpad-targets .mss-targetpad-bull strong { font-size: clamp(20px, 5vw, 30px); color: #52e6b1; }
+.mss-targetpad-targets .mss-targetpad-dbull { background: linear-gradient(145deg, #542023, #19090b); border-color: #ff6b7888; }
+.mss-targetpad-targets .mss-targetpad-dbull strong { font-size: clamp(18px, 5vw, 28px); color: #ff99a2; }
+.mss-targetpad-complete { grid-column: 1/-1; display: grid; place-items: center; border: 1px solid #45db9870; border-radius: 15px; background: #0b3128; color: #78efbf; font-size: 15px; font-weight: 1100; text-align: center; padding: 12px; }
+.mss-targetpad-validate { min-height: 47px; background: linear-gradient(115deg, #e89d19, #ffd160); color: #241703; border: 1px solid #ffda7c; font-size: clamp(12px, 3vw, 16px); box-shadow: 0 3px 16px rgba(241,169,30,.23); }
+@media (max-height: 720px) {
+  .mss-targetpad { gap: 4px; padding: 6px; border-radius: 15px; }
+  .mss-targetpad-visit { min-height: 31px; }
+  .mss-targetpad-actions button { min-height: 40px; }
+  .mss-targetpad-validate { min-height: 41px; }
+}
