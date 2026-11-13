@@ -31,6 +31,8 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: SHOVE A PENNY sequential-target regression
         run: node tools/test-wave61-shove-targeted-keypad-v101.mjs
+      - name: Chinatungsten engine rules regression
+        run: node tools/test-wave61-shove-tungsten-rules-v102.mjs
       - name: Check TypeScript
         run: npm run typecheck
 
