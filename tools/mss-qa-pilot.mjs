@@ -41,6 +41,12 @@ export function isEligibleQA(issue) {
   return mission && qa;
 }
 
+// AI requires both a global owner opt-in and an explicit AI approval on this exact mission.
+export function isApprovedForAI(issue, globalOptIn) {
+  const labels=(issue?.labels || []).map(x=>String(typeof x==='string'?x:x?.name||'').toLowerCase());
+  return globalOptIn === true && isEligibleQA(issue) && labels.includes('mss:ai-approved');
+}
+
 export function summarize(runs, jobsByRun = {}) {
   const completed = (Array.isArray(runs) ? runs : [])
     .filter(r => r.status === 'completed' && !/^MSS QA Agent\b/i.test(r.name || '')).slice(0, LIMIT);
@@ -54,7 +60,8 @@ export function summarize(runs, jobsByRun = {}) {
     failures: failedRuns.length,
     pending,
     unknown,
-    outcome: !completed.length || pending || unknown ? 'BLOQUÉ' : failedRuns.length ? 'FAIL' : 'PASS',
+    // An observed failure is conclusive even if unrelated jobs are still running.
+    outcome: failedRuns.length ? 'FAIL' : !completed.length || pending || unknown ? 'BLOQUÉ' : 'PASS',
     failed: failedRuns.slice(0, 3).map(r => ({
       name: trim(r.name), url: r.html_url, sha: trim(r.head_sha, 12), conclusion: r.conclusion,
       jobs: (jobsByRun[String(r.id)] || []).filter(j => ['failure', 'timed_out'].includes(j.conclusion)).slice(0, 6)
@@ -207,7 +214,7 @@ async function main() {
   const audit = summarize(page.workflow_runs || [], jobsByRun);
   const runUrl = 'https://github.com/' + repo + '/actions/runs/' + (process.env.GITHUB_RUN_ID || '');
   const aiResult = await adviseQa(audit, {
-    enabled: process.env.MSS_QA_AI_ENABLED === 'true',
+    enabled: isApprovedForAI(issue, process.env.MSS_QA_AI_ENABLED === 'true'),
     apiKey: process.env.MSS_QA_OPENAI_API_KEY || '',
     model: process.env.MSS_QA_OPENAI_MODEL || 'gpt-6-luna',
   });
