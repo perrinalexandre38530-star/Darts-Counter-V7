@@ -30,7 +30,7 @@ function toast(message){const box=el('toast');box.textContent=message;box.classL
 function setPage(page){if(!LABELS[page])return;state.page=page;history.replaceState(null,'',`#${page}`);render();window.scrollTo({top:0,behavior:'smooth'});}
 function qaPilotBadge(){
  const status=state.online?state.data.qaPilot?.state:'NON CONNECTÉ';
- const css=status==='WORKFLOW ACTIF'?'ok':'warn';
+ const css=status==='ACTIF SUR MAIN'?'ok':'warn';
  return '<span class="status-pill '+css+'">◎ Pilote QA : '+safe(status||'INCONNU')+'</span>';
 }
 function connectionBadge(){return state.online?'<span class="status-pill ok">● Connexion sécurisée active</span>':'<span class="status-pill warn">● Aperçu local · Connexion à activer</span>';}
